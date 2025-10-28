@@ -12,8 +12,8 @@
 ### 1. Clone Repository
 
 ```bash
-git clone https://github.com/yourorg/bc-claude-agent.git
-cd bc-claude-agent
+git clone https://github.com/juparopi2/Dynamics365_BC_OpenAPI_MCP.git
+cd coresponding-folder
 ```
 
 ### 2. Install Dependencies

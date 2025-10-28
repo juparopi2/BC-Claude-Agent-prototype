@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(tree:*)"
+      "Bash(tree:*)",
+      "Bash(az group list:*)",
+      "Bash(az resource list:*)"
     ],
     "deny": [],
     "ask": []

@@ -42,23 +42,24 @@
 
 - [x] Resource Groups verificados (rg-BCAgentPrototype-{app|data|sec}-dev)
 - [x] Script de deployment creado (`infrastructure/deploy-azure-resources.sh`)
-- [ ] **Ejecutar script de deployment**
-  - [ ] Crear Key Vault (`kv-bcagent-dev`)
-  - [ ] Crear Managed Identities (`mi-bcagent-backend-dev`, `mi-bcagent-frontend-dev`)
-  - [ ] Crear Azure SQL Server (`sqlsrv-bcagent-dev`)
-  - [ ] Crear SQL Database (`sqldb-bcagent-dev`)
-  - [ ] Crear Redis Cache (`redis-bcagent-dev`)
-  - [ ] Crear Storage Account (`sabcagentdev`)
-  - [ ] Crear Container Registry (`crbcagentdev`)
-  - [ ] Crear Container Apps Environment (`cae-bcagent-dev`)
-- [ ] **Configurar secrets en Key Vault**
-  - [ ] BC-TenantId (ya tenemos)
-  - [ ] BC-ClientId (ya tenemos)
-  - [ ] BC-ClientSecret (ya tenemos)
-  - [ ] Claude-ApiKey (MANUAL - pendiente de agregar)
-  - [ ] JWT-Secret (generado por script)
-  - [ ] SqlDb-ConnectionString (generado por script)
-  - [ ] Redis-ConnectionString (generado por script)
+- [x] **Ejecutar script de deployment**
+  - [x] Crear Key Vault (`kv-bcagent-dev`)
+  - [x] Crear Managed Identities (`mi-bcagent-backend-dev`, `mi-bcagent-frontend-dev`)
+  - [x] Crear Azure SQL Server (`sqlsrv-bcagent-dev`)
+  - [x] Crear SQL Database (`sqldb-bcagent-dev`)
+  - [x] Crear Redis Cache (`redis-bcagent-dev`)
+  - [x] Crear Storage Account (`sabcagentdev`)
+  - [x] Crear Container Registry (`crbcagentdev`)
+  - [x] Crear Container Apps Environment (`cae-bcagent-dev`)
+- [x] **Configurar secrets en Key Vault**
+  - [x] BC-TenantId
+  - [x] BC-ClientId
+  - [x] BC-ClientSecret
+  - [x] Claude-ApiKey
+  - [x] JWT-Secret (generado por script)
+  - [x] SqlDb-ConnectionString (generado por script)
+  - [x] Redis-ConnectionString (generado por script)
+  - [x] Storage-ConnectionString (generado por script)
 
 #### 1.2 Backend Project Setup
 **Referencias**:

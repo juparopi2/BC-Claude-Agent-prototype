@@ -58,31 +58,35 @@ az keyvault create \
   --location $LOCATION \
   --enable-rbac-authorization false \
   --sku standard \
-  --output none
+  --output none 2>/dev/null || echo -e "${BLUE}(Key Vault already exists)${NC}"
 
-echo -e "${GREEN}✓ Key Vault created${NC}"
+echo -e "${GREEN}✓ Key Vault ready${NC}"
 
 # 1.2 Create Managed Identities
 echo -e "${BLUE}Creating Managed Identity for Backend: $MI_BACKEND_NAME${NC}"
-BACKEND_MI_ID=$(az identity create \
+az identity create \
   --name $MI_BACKEND_NAME \
   --resource-group $RG_SEC \
   --location $LOCATION \
-  --query id -o tsv)
+  --output none 2>/dev/null || echo -e "${BLUE}(Backend MI already exists)${NC}"
 
-echo -e "${GREEN}✓ Backend Managed Identity created${NC}"
+BACKEND_MI_ID=$(az identity show --name $MI_BACKEND_NAME --resource-group $RG_SEC --query id -o tsv)
+
+echo -e "${GREEN}✓ Backend Managed Identity ready${NC}"
 
 echo -e "${BLUE}Creating Managed Identity for Frontend: $MI_FRONTEND_NAME${NC}"
-FRONTEND_MI_ID=$(az identity create \
+az identity create \
   --name $MI_FRONTEND_NAME \
   --resource-group $RG_SEC \
   --location $LOCATION \
-  --query id -o tsv)
+  --output none 2>/dev/null || echo -e "${BLUE}(Frontend MI already exists)${NC}"
 
-echo -e "${GREEN}✓ Frontend Managed Identity created${NC}"
+FRONTEND_MI_ID=$(az identity show --name $MI_FRONTEND_NAME --resource-group $RG_SEC --query id -o tsv)
+
+echo -e "${GREEN}✓ Frontend Managed Identity ready${NC}"
 
 # 1.3 Get Managed Identity Principal IDs for Key Vault access
-BACKEND_MI_PRINCIPAL_ID=$(az identity show --ids $BACKEND_MI_ID --query principalId -o tsv)
+BACKEND_MI_PRINCIPAL_ID=$(az identity show --name $MI_BACKEND_NAME --resource-group $RG_SEC --query principalId -o tsv)
 
 # Grant Backend MI access to Key Vault secrets
 echo -e "${BLUE}Granting Key Vault access to Backend MI...${NC}"
@@ -102,8 +106,12 @@ echo -e "\n${GREEN}Phase 2: Creating data resources...${NC}"
 
 # 2.1 Create Azure SQL Server
 echo -e "${BLUE}Creating Azure SQL Server: $SQL_SERVER_NAME${NC}"
-echo -e "${RED}Please enter SQL Server admin password (min 8 chars, uppercase, lowercase, number, special char):${NC}"
-read -s SQL_ADMIN_PASSWORD
+
+# Check if SQL_ADMIN_PASSWORD is already set, otherwise prompt
+if [ -z "$SQL_ADMIN_PASSWORD" ]; then
+  echo -e "${RED}Please enter SQL Server admin password (min 8 chars, uppercase, lowercase, number, special char):${NC}"
+  read -s SQL_ADMIN_PASSWORD
+fi
 
 az sql server create \
   --name $SQL_SERVER_NAME \

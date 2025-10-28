@@ -3,7 +3,13 @@
     "allow": [
       "Bash(tree:*)",
       "Bash(az group list:*)",
-      "Bash(az resource list:*)"
+      "Bash(az resource list:*)",
+      "Bash(git push)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(az:*)",
+      "Bash(bash:*)",
+      "WebSearch"
     ],
     "deny": [],
     "ask": []

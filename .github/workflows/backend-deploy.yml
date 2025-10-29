@@ -82,26 +82,13 @@ jobs:
             --query identity.principalId -o tsv)
 
           echo "Container App Principal ID: $PRINCIPAL_ID"
-
-          # Assign AcrPull role to the identity
-          echo "Assigning AcrPull role..."
-          ACR_ID=$(az acr show --name ${{ env.AZURE_CONTAINER_REGISTRY }} --query id -o tsv)
-          az role assignment create \
-            --assignee $PRINCIPAL_ID \
-            --role "AcrPull" \
-            --scope $ACR_ID
-
-          # Assign Key Vault Secrets User role
-          echo "Assigning Key Vault access..."
-          KV_NAME=$(echo "${{ secrets.KEY_VAULT_URI }}" | sed 's|https://||' | sed 's|.vault.azure.net||')
-          az keyvault set-policy \
-            --name $KV_NAME \
-            --object-id $PRINCIPAL_ID \
-            --secret-permissions get list
-
-          # Wait for role assignment propagation
-          echo "Waiting for permissions to propagate..."
-          sleep 30
+          echo ""
+          echo "⚠️  IMPORTANT: Before the first deployment, you must run:"
+          echo "    bash infrastructure/setup-container-app-identity.sh"
+          echo ""
+          echo "This script configures the managed identity permissions for ACR and Key Vault."
+          echo "It only needs to be run once per Container App."
+          echo ""
 
           # Step 2: Configure ACR registry with managed identity
           az containerapp registry set \

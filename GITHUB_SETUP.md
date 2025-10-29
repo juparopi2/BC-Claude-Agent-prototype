@@ -1,5 +1,20 @@
 # GitHub Secrets Setup - Instrucciones
 
+## 📖 Guía Completa de Setup
+
+**⚠️ IMPORTANTE**: Para una guía paso a paso completa del proceso de setup, consulta:
+
+📘 **[CONTAINER_APP_SETUP.md](./CONTAINER_APP_SETUP.md)** - Guía completa de configuración
+
+Este documento contiene:
+- Proceso completo de setup inicial (una sola vez)
+- Arquitectura de permisos (Service Principal + Managed Identity)
+- Troubleshooting detallado
+- Checklist de verificación
+- Referencias a scripts y comandos
+
+---
+
 ## 🎯 Estado Actual
 
 ✅ **Completado:**
@@ -143,15 +158,55 @@ az role assignment list \
 
 ## 🚀 Después de Configurar
 
-Una vez que hayas completado estos pasos, el deployment automático estará listo. Solo necesitas hacer:
+Una vez que hayas configurado los permisos del Service Principal, sigue estos pasos:
+
+### 1. Primer Deployment (Crea el Container App)
 
 ```bash
-git add .
-git commit -m "feat: complete setup and configuration"
 git push origin main
 ```
 
-Los workflows de GitHub Actions se triggerán automáticamente y desplegarán el backend y frontend a Azure Container Apps.
+El workflow creará el Container App con system-assigned managed identity, pero **mostrará una advertencia** indicando que debes configurar los permisos de la managed identity.
+
+### 2. Configurar Managed Identity del Container App
+
+**Después del primer deployment exitoso**, ejecuta:
+
+```bash
+bash infrastructure/setup-container-app-identity.sh
+```
+
+Este script configura los permisos necesarios para que el Container App pueda:
+- ✅ Pull imágenes desde Azure Container Registry (AcrPull)
+- ✅ Leer secrets desde Key Vault (Get, List)
+
+### 3. Re-deployment Final
+
+Ejecuta el workflow nuevamente para que use la configuración completa:
+
+```bash
+git commit --allow-empty -m "trigger: re-deploy after identity setup"
+git push origin main
+```
+
+### 4. Verificar Deployment Exitoso
+
+```bash
+# Ver status del Container App
+az containerapp show \
+  --name app-bcagent-backend-dev \
+  --resource-group rg-BCAgentPrototype-app-dev \
+  --query properties.runningStatus
+
+# Test health endpoint
+curl https://app-bcagent-backend-dev.purplemushroom-befedc5f.westeurope.azurecontainerapps.io/health
+```
+
+---
+
+📘 **Para una guía detallada paso a paso, consulta [CONTAINER_APP_SETUP.md](./CONTAINER_APP_SETUP.md)**
+
+Los workflows de GitHub Actions subsiguientes serán completamente automáticos.
 
 ---
 

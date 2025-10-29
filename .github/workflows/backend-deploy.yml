@@ -1,0 +1,131 @@
+name: Backend - Build and Deploy to Azure Container Apps
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend-deploy.yml'
+  workflow_dispatch:
+
+env:
+  AZURE_CONTAINER_REGISTRY: crbcagentdev
+  CONTAINER_APP_NAME: app-bcagent-backend-dev
+  RESOURCE_GROUP: rg-BCAgentPrototype-app-dev
+  CONTAINER_APPS_ENVIRONMENT: cae-bcagent-dev
+  IMAGE_NAME: bcagent-backend
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Log in to Azure Container Registry
+        run: |
+          az acr login --name ${{ env.AZURE_CONTAINER_REGISTRY }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: |
+            ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.IMAGE_NAME }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Check if Container App exists
+        id: check_app
+        run: |
+          if az containerapp show --name ${{ env.CONTAINER_APP_NAME }} --resource-group ${{ env.RESOURCE_GROUP }} &>/dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Container App (if not exists)
+        if: steps.check_app.outputs.exists == 'false'
+        run: |
+          az containerapp create \
+            --name ${{ env.CONTAINER_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --environment ${{ env.CONTAINER_APPS_ENVIRONMENT }} \
+            --image ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            --target-port 3001 \
+            --ingress external \
+            --min-replicas 1 \
+            --max-replicas 3 \
+            --cpu 0.5 \
+            --memory 1.0Gi \
+            --registry-server ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io \
+            --secrets \
+              sql-connection-string=secretref:SqlDb-ConnectionString,keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/SqlDb-ConnectionString \
+              redis-connection-string=secretref:Redis-ConnectionString,keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/Redis-ConnectionString \
+              anthropic-api-key=secretref:Claude-ApiKey,keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/Claude-ApiKey \
+              bc-tenant-id=secretref:BC-TenantId,keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/BC-TenantId \
+              bc-client-id=secretref:BC-ClientId,keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/BC-ClientId \
+              bc-client-secret=secretref:BC-ClientSecret,keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/BC-ClientSecret \
+              jwt-secret=secretref:JWT-Secret,keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/JWT-Secret \
+              storage-connection-string=secretref:Storage-ConnectionString,keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/Storage-ConnectionString \
+            --env-vars \
+              NODE_ENV=production \
+              PORT=3001 \
+              DATABASE_CONNECTION_STRING=secretref:sql-connection-string \
+              REDIS_CONNECTION_STRING=secretref:redis-connection-string \
+              ANTHROPIC_API_KEY=secretref:anthropic-api-key \
+              BC_TENANT_ID=secretref:bc-tenant-id \
+              BC_CLIENT_ID=secretref:bc-client-id \
+              BC_CLIENT_SECRET=secretref:bc-client-secret \
+              JWT_SECRET=secretref:jwt-secret \
+              STORAGE_CONNECTION_STRING=secretref:storage-connection-string \
+              BC_API_URL=https://api.businesscentral.dynamics.com/v2.0 \
+              BC_ENVIRONMENT=production \
+              MCP_SERVER_URL=https://app-erptools-mcp-dev.purplemushroom-befedc5f.westeurope.azurecontainerapps.io/mcp \
+              LOG_LEVEL=info \
+              ENABLE_PROMPT_CACHING=true \
+              ENABLE_EXTENDED_THINKING=true
+
+      - name: Update Container App (if exists)
+        if: steps.check_app.outputs.exists == 'true'
+        run: |
+          az containerapp update \
+            --name ${{ env.CONTAINER_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --image ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+      - name: Get Container App URL
+        id: get_url
+        run: |
+          URL=$(az containerapp show \
+            --name ${{ env.CONTAINER_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --query properties.configuration.ingress.fqdn \
+            --output tsv)
+          echo "url=https://$URL" >> $GITHUB_OUTPUT
+
+      - name: Health Check
+        run: |
+          sleep 30
+          curl -f ${{ steps.get_url.outputs.url }}/health || exit 1
+
+      - name: Deployment Summary
+        run: |
+          echo "### Deployment Successful! 🚀" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Backend URL:** ${{ steps.get_url.outputs.url }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY

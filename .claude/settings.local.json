@@ -9,7 +9,10 @@
       "Bash(git commit:*)",
       "Bash(az:*)",
       "Bash(bash:*)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(npm install:*)",
+      "Bash(npx shadcn@latest add:*)",
+      "Bash(curl:*)"
     ],
     "deny": [],
     "ask": []

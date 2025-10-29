@@ -11,7 +11,9 @@
     "seed": "node -r ts-node/register scripts/seed.ts",
     "test": "jest",
     "lint": "eslint src/**/*.ts",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "verify": "npm run type-check",
+    "prepush": "npm run verify"
   },
   "keywords": [
     "business-central",

@@ -19,7 +19,7 @@ dotenv.config();
 const envSchema = z.object({
   // Server
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
-  PORT: z.string().transform(Number).pipe(z.number().min(1000).max(65535)).default('3001'),
+  PORT: z.string().transform(Number).pipe(z.number().min(1000).max(65535)).default(3001),
 
   // Azure Key Vault (optional for local development)
   AZURE_KEY_VAULT_NAME: z.string().optional(),
@@ -66,12 +66,12 @@ const envSchema = z.object({
   LOG_LEVEL: z.enum(['error', 'warn', 'info', 'debug']).default('info'),
 
   // Session
-  SESSION_TIMEOUT_MINUTES: z.string().transform(Number).pipe(z.number()).default('30'),
+  SESSION_TIMEOUT_MINUTES: z.string().transform(Number).pipe(z.number()).default(30),
 
   // Agent
-  MAX_CONTEXT_TOKENS: z.string().transform(Number).pipe(z.number()).default('100000'),
-  ENABLE_PROMPT_CACHING: z.string().transform((v) => v === 'true').default('true'),
-  ENABLE_EXTENDED_THINKING: z.string().transform((v) => v === 'true').default('true'),
+  MAX_CONTEXT_TOKENS: z.string().transform(Number).pipe(z.number()).default(100000),
+  ENABLE_PROMPT_CACHING: z.string().transform((v) => v === 'true').default(true),
+  ENABLE_EXTENDED_THINKING: z.string().transform((v) => v === 'true').default(true),
 
   // Storage
   STORAGE_CONNECTION_STRING: z.string().optional(),

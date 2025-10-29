@@ -10,7 +10,11 @@
       "Bash(npm install:*)",
       "Bash(npx shadcn@latest add:*)",
       "Bash(curl:*)",
-      "Bash(node scripts/run-db-setup.js:*)"
+      "Bash(node scripts/run-db-setup.js:*)",
+      "Bash(npm run verify:*)",
+      "Bash(npm run type-check:*)",
+      "Bash(npm run lint)",
+      "Bash(npm run build:*)"
     ],
     "deny": [],
     "ask": []

@@ -70,7 +70,7 @@ export enum SocketStatus {
 export function getSocketStatus(): SocketStatus {
   if (!socket) return SocketStatus.DISCONNECTED;
   if (socket.connected) return SocketStatus.CONNECTED;
-  if (socket.connecting) return SocketStatus.CONNECTING;
+  // Note: socket.io v4.8+ doesn't expose connecting property reliably
   return SocketStatus.DISCONNECTED;
 }
 

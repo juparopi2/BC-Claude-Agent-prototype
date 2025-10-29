@@ -7,8 +7,14 @@
  * @module config/redis
  */
 
-import { createClient, RedisClientType } from 'redis';
+import { createClient } from 'redis';
 import { env, isProd } from './environment';
+
+/**
+ * Type definitions using ReturnType to avoid generic conflicts
+ */
+type RedisClientType = ReturnType<typeof createClient>;
+type RedisClientOptions = Parameters<typeof createClient>[0];
 
 /**
  * Redis client instance
@@ -20,7 +26,7 @@ let redisClient: RedisClientType | null = null;
  *
  * @returns Redis client options
  */
-function getRedisConfig() {
+function getRedisConfig(): RedisClientOptions {
   // If connection string is provided, use it
   if (env.REDIS_CONNECTION_STRING) {
     return {
@@ -35,13 +41,21 @@ function getRedisConfig() {
 
   // Azure Redis requires SSL
   const protocol = isProd ? 'rediss' : 'redis';
+  const url = `${protocol}://:${env.REDIS_PASSWORD}@${env.REDIS_HOST}:${env.REDIS_PORT}`;
+
+  // In redis v5.9.0, tls must be exactly true, not boolean
+  if (isProd) {
+    return {
+      url,
+      socket: {
+        tls: true,
+        rejectUnauthorized: true,
+      },
+    };
+  }
 
   return {
-    url: `${protocol}://:${env.REDIS_PASSWORD}@${env.REDIS_HOST}:${env.REDIS_PORT}`,
-    socket: {
-      tls: isProd,
-      rejectUnauthorized: isProd,
-    },
+    url,
   };
 }
 
@@ -60,30 +74,31 @@ export async function initRedis(): Promise<RedisClientType> {
     console.log('🔌 Connecting to Azure Redis Cache...');
 
     const config = getRedisConfig();
-    redisClient = createClient(config);
+    const client = createClient(config);
 
     // Handle Redis errors
-    redisClient.on('error', (err) => {
+    client.on('error', (err: Error) => {
       console.error('❌ Redis client error:', err);
     });
 
-    redisClient.on('connect', () => {
+    client.on('connect', () => {
       console.log('✅ Redis client connected');
     });
 
-    redisClient.on('reconnecting', () => {
+    client.on('reconnecting', () => {
       console.log('🔄 Redis client reconnecting...');
     });
 
-    redisClient.on('ready', () => {
+    client.on('ready', () => {
       console.log('✅ Redis client ready');
     });
 
-    await redisClient.connect();
+    await client.connect();
 
     console.log('✅ Connected to Azure Redis Cache');
 
-    return redisClient;
+    redisClient = client;
+    return client;
   } catch (error) {
     console.error('❌ Failed to connect to Redis:', error);
     throw error;

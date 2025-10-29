@@ -21,21 +21,12 @@ let pool: ConnectionPool | null = null;
  * @returns SQL Server configuration object
  */
 function getDatabaseConfig(): SqlConfig {
-  // If connection string is provided, use it
+  // If connection string is provided, parse it
   if (env.DATABASE_CONNECTION_STRING) {
-    return {
-      connectionString: env.DATABASE_CONNECTION_STRING,
-      options: {
-        encrypt: true, // Required for Azure SQL
-        trustServerCertificate: !isProd, // Trust certificate in development
-        enableArithAbort: true,
-      },
-      pool: {
-        max: 10,
-        min: 0,
-        idleTimeoutMillis: 30000,
-      },
-    };
+    // In mssql v12, connectionString is no longer a direct property
+    // Parse connection string manually or use it directly with sql.connect()
+    // For now, we'll require individual parameters
+    throw new Error('Connection string parsing not yet implemented for mssql v12. Please use DATABASE_SERVER, DATABASE_NAME, DATABASE_USER, and DATABASE_PASSWORD.');
   }
 
   // Otherwise, use individual parameters

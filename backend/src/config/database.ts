@@ -81,7 +81,7 @@ export async function initDatabase(): Promise<ConnectionPool> {
     console.log('✅ Connected to Azure SQL Database');
 
     // Handle connection errors
-    pool.on('error', (err) => {
+    pool.on('error', (err: Error) => {
       console.error('❌ Database connection error:', err);
       pool = null;
     });

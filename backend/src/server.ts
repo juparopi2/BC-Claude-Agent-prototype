@@ -103,7 +103,7 @@ function configureMiddleware(): void {
  */
 function configureRoutes(): void {
   // Health check endpoint
-  app.get('/health', async (req: Request, res: Response) => {
+  app.get('/health', async (_req: Request, res: Response) => {
     const dbHealth = await checkDatabaseHealth();
     const redisHealth = await checkRedisHealth();
 
@@ -121,7 +121,7 @@ function configureRoutes(): void {
   });
 
   // API root
-  app.get('/api', (req: Request, res: Response) => {
+  app.get('/api', (_req: Request, res: Response) => {
     res.json({
       name: 'BC Claude Agent API',
       version: '1.0.0',
@@ -148,7 +148,7 @@ function configureRoutes(): void {
  * Configure error handling
  */
 function configureErrorHandling(): void {
-  app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
+  app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
     console.error('❌ Unhandled error:', err);
 
     // Don't leak error details in production

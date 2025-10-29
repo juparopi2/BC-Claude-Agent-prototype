@@ -60,30 +60,80 @@ jobs:
       - name: Create Container App (if not exists)
         if: steps.check_app.outputs.exists == 'false'
         run: |
-          # Create with system-assigned identity first
+          # Step 1: Create with a public placeholder image and system-assigned identity
+          echo "Creating Container App with placeholder image..."
           az containerapp create \
             --name ${{ env.CONTAINER_APP_NAME }} \
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --environment ${{ env.CONTAINER_APPS_ENVIRONMENT }} \
-            --image ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }} \
-            --target-port 3001 \
+            --image mcr.microsoft.com/azuredocs/containerapps-helloworld:latest \
+            --target-port 80 \
             --ingress external \
-            --min-replicas 1 \
-            --max-replicas 3 \
+            --min-replicas 0 \
+            --max-replicas 1 \
             --cpu 0.5 \
             --memory 1.0Gi \
-            --registry-server ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io \
-            --system-assigned \
+            --system-assigned
+
+          # Get the system-assigned identity principal ID
+          PRINCIPAL_ID=$(az containerapp show \
+            --name ${{ env.CONTAINER_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --query identity.principalId -o tsv)
+
+          echo "Container App Principal ID: $PRINCIPAL_ID"
+
+          # Assign AcrPull role to the identity
+          echo "Assigning AcrPull role..."
+          ACR_ID=$(az acr show --name ${{ env.AZURE_CONTAINER_REGISTRY }} --query id -o tsv)
+          az role assignment create \
+            --assignee $PRINCIPAL_ID \
+            --role "AcrPull" \
+            --scope $ACR_ID
+
+          # Assign Key Vault Secrets User role
+          echo "Assigning Key Vault access..."
+          KV_NAME=$(echo "${{ secrets.KEY_VAULT_URI }}" | sed 's|https://||' | sed 's|.vault.azure.net||')
+          az keyvault set-policy \
+            --name $KV_NAME \
+            --object-id $PRINCIPAL_ID \
+            --secret-permissions get list
+
+          # Wait for role assignment propagation
+          echo "Waiting for permissions to propagate..."
+          sleep 30
+
+          # Step 2: Configure ACR registry with managed identity
+          az containerapp registry set \
+            --name ${{ env.CONTAINER_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --server ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io \
+            --identity system
+
+          # Step 3: Configure secrets from Key Vault
+          echo "Configuring secrets from Key Vault..."
+          az containerapp secret set \
+            --name ${{ env.CONTAINER_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
             --secrets \
-              sql-connection-string=secretref:SqlDb-ConnectionString,keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/SqlDb-ConnectionString \
-              redis-connection-string=secretref:Redis-ConnectionString,keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/Redis-ConnectionString \
-              anthropic-api-key=secretref:Claude-ApiKey,keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/Claude-ApiKey \
-              bc-tenant-id=secretref:BC-TenantId,keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/BC-TenantId \
-              bc-client-id=secretref:BC-ClientId,keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/BC-ClientId \
-              bc-client-secret=secretref:BC-ClientSecret,keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/BC-ClientSecret \
-              jwt-secret=secretref:JWT-Secret,keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/JWT-Secret \
-              storage-connection-string=secretref:Storage-ConnectionString,keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/Storage-ConnectionString \
-            --env-vars \
+              sql-connection-string=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/SqlDb-ConnectionString,identityref:system \
+              redis-connection-string=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/Redis-ConnectionString,identityref:system \
+              anthropic-api-key=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/Claude-ApiKey,identityref:system \
+              bc-tenant-id=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/BC-TenantId,identityref:system \
+              bc-client-id=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/BC-ClientId,identityref:system \
+              bc-client-secret=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/BC-ClientSecret,identityref:system \
+              jwt-secret=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/JWT-Secret,identityref:system \
+              storage-connection-string=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/Storage-ConnectionString,identityref:system
+
+          # Step 4: Update to the actual backend image with env vars
+          echo "Updating to backend image..."
+          az containerapp update \
+            --name ${{ env.CONTAINER_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --image ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            --min-replicas 1 \
+            --max-replicas 3 \
+            --set-env-vars \
               NODE_ENV=production \
               PORT=3001 \
               DATABASE_CONNECTION_STRING=secretref:sql-connection-string \
@@ -101,30 +151,11 @@ jobs:
               ENABLE_PROMPT_CACHING=true \
               ENABLE_EXTENDED_THINKING=true
 
-          # Get the system-assigned identity principal ID
-          PRINCIPAL_ID=$(az containerapp show \
+          # Update ingress configuration for the backend
+          az containerapp ingress update \
             --name ${{ env.CONTAINER_APP_NAME }} \
             --resource-group ${{ env.RESOURCE_GROUP }} \
-            --query identity.principalId -o tsv)
-
-          echo "Container App Principal ID: $PRINCIPAL_ID"
-
-          # Assign AcrPull role to the identity
-          ACR_ID=$(az acr show --name ${{ env.AZURE_CONTAINER_REGISTRY }} --query id -o tsv)
-          az role assignment create \
-            --assignee $PRINCIPAL_ID \
-            --role "AcrPull" \
-            --scope $ACR_ID
-
-          # Wait for role assignment propagation
-          sleep 30
-
-          # Update registry to use the managed identity
-          az containerapp registry set \
-            --name ${{ env.CONTAINER_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
-            --server ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io \
-            --identity system
+            --target-port 3001
 
       - name: Update Container App (if exists)
         if: steps.check_app.outputs.exists == 'true'

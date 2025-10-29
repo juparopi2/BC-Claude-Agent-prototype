@@ -2,7 +2,12 @@
 
 ## 🎯 Overview
 
-Este documento describe el proceso de configuración de permisos para Azure Container Apps en este proyecto. La configuración se divide en dos partes:
+Este documento describe el proceso de configuración de permisos para Azure Container Apps en este proyecto. Este proyecto incluye **dos Container Apps**:
+
+1. **Backend** (`app-bcagent-backend-dev`) - API Node.js/Express
+2. **Frontend** (`app-bcagent-frontend-dev`) - Next.js App
+
+La configuración se divide en dos partes:
 
 1. **Configuración de permisos (una sola vez)** - Manual
 2. **Deployment automatizado (cada push)** - GitHub Actions
@@ -26,8 +31,8 @@ Este documento describe el proceso de configuración de permisos para Azure Cont
 - Asignar roles a managed identities (requiere User Access Administrator)
 - Modificar IAM de otros recursos
 
-### Container App Managed Identity
-**Propósito**: Permitir que el Container App acceda a recursos Azure
+### Backend Container App Managed Identity
+**Propósito**: Permitir que el Backend Container App acceda a recursos Azure
 
 **Permisos necesarios**:
 - ✅ **AcrPull** en Container Registry `crbcagentdev`
@@ -35,7 +40,18 @@ Este documento describe el proceso de configuración de permisos para Azure Cont
 
 **Puede hacer**:
 - Pull de imágenes Docker desde ACR
-- Leer secrets del Key Vault en runtime
+- Leer secrets del Key Vault en runtime (DB, Redis, API keys, etc.)
+
+### Frontend Container App Managed Identity
+**Propósito**: Permitir que el Frontend Container App acceda a recursos Azure
+
+**Permisos necesarios**:
+- ✅ **AcrPull** en Container Registry `crbcagentdev`
+
+**Puede hacer**:
+- Pull de imágenes Docker desde ACR
+
+**Nota**: El frontend NO necesita acceso al Key Vault ya que todas sus variables son públicas (NEXT_PUBLIC_*)
 
 ---
 
@@ -94,11 +110,15 @@ git push origin main
 
 ---
 
-### Paso 3: Configurar Managed Identity
+### Paso 3: Configurar Managed Identities
 
-**¿Cuándo?**: Inmediatamente después del primer deployment exitoso
+**¿Cuándo?**: Inmediatamente después del primer deployment exitoso de cada Container App
 
-**Script**: `infrastructure/setup-container-app-identity.sh`
+**Scripts disponibles**:
+- `infrastructure/setup-container-app-identity.sh` - Para el **Backend**
+- `infrastructure/setup-frontend-identity.sh` - Para el **Frontend**
+
+#### Configurar Backend:
 
 ```bash
 # Desde Azure Cloud Shell o local con Azure CLI
@@ -106,39 +126,65 @@ bash infrastructure/setup-container-app-identity.sh
 ```
 
 **Este script**:
-1. Obtiene el Principal ID del Container App
+1. Obtiene el Principal ID del Backend Container App
 2. Asigna **AcrPull** role al ACR
 3. Asigna permisos **Get, List** en Key Vault
 4. Verifica las asignaciones
 
-**Verificación**:
+#### Configurar Frontend:
+
 ```bash
-# Obtener el Principal ID del Container App
-PRINCIPAL_ID=$(az containerapp show \
+# Desde Azure Cloud Shell o local con Azure CLI
+bash infrastructure/setup-frontend-identity.sh
+```
+
+**Este script**:
+1. Obtiene el Principal ID del Frontend Container App
+2. Asigna **AcrPull** role al ACR
+3. Verifica las asignaciones
+
+**Verificación para Backend**:
+```bash
+# Obtener el Principal ID del Backend Container App
+BACKEND_PRINCIPAL_ID=$(az containerapp show \
   --name app-bcagent-backend-dev \
   --resource-group rg-BCAgentPrototype-app-dev \
   --query identity.principalId -o tsv)
 
-# Ver sus permisos
+# Ver sus permisos de ACR
 az role assignment list \
-  --assignee $PRINCIPAL_ID \
+  --assignee $BACKEND_PRINCIPAL_ID \
+  --all \
+  --output table
+
+# Ver sus permisos de Key Vault
+az keyvault show \
+  --name kv-bcagent-dev \
+  --query "properties.accessPolicies[?objectId=='$BACKEND_PRINCIPAL_ID'].{ObjectId:objectId, Permissions:permissions.secrets}" \
+  --output table
+```
+
+Deberías ver:
+- AcrPull en `crbcagentdev`
+- Key Vault Permissions: ['get', 'list']
+
+**Verificación para Frontend**:
+```bash
+# Obtener el Principal ID del Frontend Container App
+FRONTEND_PRINCIPAL_ID=$(az containerapp show \
+  --name app-bcagent-frontend-dev \
+  --resource-group rg-BCAgentPrototype-app-dev \
+  --query identity.principalId -o tsv)
+
+# Ver sus permisos de ACR
+az role assignment list \
+  --assignee $FRONTEND_PRINCIPAL_ID \
   --all \
   --output table
 ```
 
 Deberías ver:
 - AcrPull en `crbcagentdev`
-
-**Key Vault**:
-```bash
-az keyvault show \
-  --name kv-bcagent-dev \
-  --query "properties.accessPolicies[?objectId=='$PRINCIPAL_ID'].{ObjectId:objectId, Permissions:permissions.secrets}" \
-  --output table
-```
-
-Deberías ver:
-- Permissions: ['get', 'list']
 
 ---
 
@@ -304,34 +350,59 @@ bash infrastructure/setup-container-app-identity.sh
   - [ ] `AZURE_CREDENTIALS` con Service Principal credentials
   - [ ] `KEY_VAULT_URI` con URL del Key Vault
 
-- [ ] **3. Primer Deployment**
+- [ ] **3. Primer Deployment - Backend**
   ```bash
-  git push origin main
+  git push origin main  # Trigger backend workflow
   ```
-  - [ ] Workflow ejecuta sin errores de autorización
-  - [ ] Container App creado con managed identity
+  - [ ] Backend workflow ejecuta sin errores de autorización
+  - [ ] Backend Container App creado con managed identity
   - [ ] Workflow muestra mensaje con setup instructions
 
-- [ ] **4. Managed Identity Setup**
+- [ ] **4. Managed Identity Setup - Backend**
   ```bash
   bash infrastructure/setup-container-app-identity.sh
   ```
-  - [ ] AcrPull asignado a Container App
+  - [ ] AcrPull asignado a Backend Container App
   - [ ] Key Vault access policy configurado
   - [ ] Verificado con `az role assignment list`
 
-- [ ] **5. Re-deployment Final**
+- [ ] **5. Re-deployment - Backend**
   ```bash
-  git commit --allow-empty -m "trigger: re-deploy"
+  git commit --allow-empty -m "trigger: re-deploy backend"
   git push origin main
   ```
-  - [ ] Container App actualizado con imagen real
+  - [ ] Backend Container App actualizado con imagen real
   - [ ] Health check pasa
   - [ ] Logs muestran aplicación ejecutándose
 
+- [ ] **6. Primer Deployment - Frontend**
+  ```bash
+  # Modificar cualquier archivo en frontend/ para trigger workflow
+  git push origin main
+  ```
+  - [ ] Frontend workflow ejecuta sin errores
+  - [ ] Frontend Container App creado con managed identity
+  - [ ] Workflow muestra mensaje con setup instructions
+
+- [ ] **7. Managed Identity Setup - Frontend**
+  ```bash
+  bash infrastructure/setup-frontend-identity.sh
+  ```
+  - [ ] AcrPull asignado a Frontend Container App
+  - [ ] Verificado con `az role assignment list`
+
+- [ ] **8. Re-deployment - Frontend**
+  ```bash
+  git commit --allow-empty -m "trigger: re-deploy frontend"
+  git push origin main
+  ```
+  - [ ] Frontend Container App actualizado con imagen real
+  - [ ] Health check pasa
+  - [ ] Frontend carga correctamente
+
 ### Verificación Final
 
-- [ ] **Container App Status**
+- [ ] **Backend Container App Status**
   ```bash
   az containerapp show \
     --name app-bcagent-backend-dev \
@@ -340,20 +411,56 @@ bash infrastructure/setup-container-app-identity.sh
   ```
   Resultado esperado: `"Running"`
 
-- [ ] **Health Endpoint**
+- [ ] **Backend Health Endpoint**
   ```bash
-  curl https://app-bcagent-backend-dev.purplemushroom-befedc5f.westeurope.azurecontainerapps.io/health
+  BACKEND_URL=$(az containerapp show \
+    --name app-bcagent-backend-dev \
+    --resource-group rg-BCAgentPrototype-app-dev \
+    --query properties.configuration.ingress.fqdn -o tsv)
+
+  curl https://$BACKEND_URL/health
   ```
   Resultado esperado: `{"status":"ok"}`
 
-- [ ] **Managed Identity Permissions**
+- [ ] **Frontend Container App Status**
   ```bash
-  PRINCIPAL_ID=$(az containerapp show \
+  az containerapp show \
+    --name app-bcagent-frontend-dev \
+    --resource-group rg-BCAgentPrototype-app-dev \
+    --query properties.runningStatus
+  ```
+  Resultado esperado: `"Running"`
+
+- [ ] **Frontend URL Accessible**
+  ```bash
+  FRONTEND_URL=$(az containerapp show \
+    --name app-bcagent-frontend-dev \
+    --resource-group rg-BCAgentPrototype-app-dev \
+    --query properties.configuration.ingress.fqdn -o tsv)
+
+  curl https://$FRONTEND_URL
+  ```
+  Resultado esperado: HTML de Next.js
+
+- [ ] **Backend Managed Identity Permissions**
+  ```bash
+  BACKEND_PRINCIPAL_ID=$(az containerapp show \
     --name app-bcagent-backend-dev \
     --resource-group rg-BCAgentPrototype-app-dev \
     --query identity.principalId -o tsv)
 
-  az role assignment list --assignee $PRINCIPAL_ID --all
+  az role assignment list --assignee $BACKEND_PRINCIPAL_ID --all
+  ```
+  Resultado esperado: AcrPull en ACR
+
+- [ ] **Frontend Managed Identity Permissions**
+  ```bash
+  FRONTEND_PRINCIPAL_ID=$(az containerapp show \
+    --name app-bcagent-frontend-dev \
+    --resource-group rg-BCAgentPrototype-app-dev \
+    --query identity.principalId -o tsv)
+
+  az role assignment list --assignee $FRONTEND_PRINCIPAL_ID --all
   ```
   Resultado esperado: AcrPull en ACR
 
@@ -368,8 +475,10 @@ bash infrastructure/setup-container-app-identity.sh
 
 ### Scripts
 - `fix-sp-permissions.sh` - Asigna Contributor al Service Principal
-- `infrastructure/setup-container-app-identity.sh` - Configura managed identity del Container App
-- `.github/workflows/backend-deploy.yml` - Workflow de deployment automatizado
+- `infrastructure/setup-container-app-identity.sh` - Configura managed identity del Backend Container App
+- `infrastructure/setup-frontend-identity.sh` - Configura managed identity del Frontend Container App
+- `.github/workflows/backend-deploy.yml` - Workflow de deployment del Backend
+- `.github/workflows/frontend-deploy.yml` - Workflow de deployment del Frontend
 
 ### Microsoft Learn
 - [Azure Container Apps - GitHub Actions](https://learn.microsoft.com/en-us/azure/container-apps/github-actions)
@@ -390,13 +499,14 @@ bash infrastructure/setup-container-app-identity.sh
 ### Azure Resources
 - **Subscription ID**: `5343f6e1-f251-4b50-a592-18ff3e97eaa7`
 - **Resource Group**: `rg-BCAgentPrototype-app-dev`
-- **Container App**: `app-bcagent-backend-dev`
+- **Backend Container App**: `app-bcagent-backend-dev`
+- **Frontend Container App**: `app-bcagent-frontend-dev`
 - **Container Registry**: `crbcagentdev`
 - **Key Vault**: `kv-bcagent-dev`
 - **Environment**: `cae-bcagent-dev`
 
-### Container App Managed Identity
-- **Principal ID**: *(Obtener después de crear Container App)*
+### Backend Container App Managed Identity
+- **Principal ID**: *(Obtener después de crear Backend Container App)*
   ```bash
   az containerapp show \
     --name app-bcagent-backend-dev \
@@ -404,8 +514,17 @@ bash infrastructure/setup-container-app-identity.sh
     --query identity.principalId -o tsv
   ```
 
+### Frontend Container App Managed Identity
+- **Principal ID**: *(Obtener después de crear Frontend Container App)*
+  ```bash
+  az containerapp show \
+    --name app-bcagent-frontend-dev \
+    --resource-group rg-BCAgentPrototype-app-dev \
+    --query identity.principalId -o tsv
+  ```
+
 ---
 
-**Última actualización**: 2025-10-28
+**Última actualización**: 2025-10-29
 **Autor**: Claude Code
-**Versión**: 1.0
+**Versión**: 2.0 - Incluye Backend y Frontend

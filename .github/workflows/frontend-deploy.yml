@@ -82,22 +82,62 @@ jobs:
       - name: Create Container App (if not exists)
         if: steps.check_app.outputs.exists == 'false'
         run: |
+          # Step 1: Create with a public placeholder image and system-assigned identity
+          echo "Creating Container App with placeholder image..."
           az containerapp create \
             --name ${{ env.CONTAINER_APP_NAME }} \
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --environment ${{ env.CONTAINER_APPS_ENVIRONMENT }} \
-            --image ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }} \
-            --target-port 3000 \
+            --image mcr.microsoft.com/azuredocs/containerapps-helloworld:latest \
+            --target-port 80 \
             --ingress external \
-            --min-replicas 1 \
+            --min-replicas 0 \
             --max-replicas 5 \
             --cpu 0.25 \
             --memory 0.5Gi \
-            --registry-server ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io \
-            --env-vars \
+            --system-assigned
+
+          # Get the system-assigned identity principal ID
+          PRINCIPAL_ID=$(az containerapp show \
+            --name ${{ env.CONTAINER_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --query identity.principalId -o tsv)
+
+          echo "Container App Principal ID: $PRINCIPAL_ID"
+          echo ""
+          echo "⚠️  IMPORTANT: Before the first deployment, you must run:"
+          echo "    bash infrastructure/setup-frontend-identity.sh"
+          echo ""
+          echo "This script configures the managed identity permissions for ACR."
+          echo "It only needs to be run once per Container App."
+          echo ""
+
+          # Step 2: Configure ACR registry with managed identity
+          az containerapp registry set \
+            --name ${{ env.CONTAINER_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --server ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io \
+            --identity system
+
+          # Step 3: Update to the actual frontend image with env vars
+          echo "Updating to frontend image..."
+          az containerapp update \
+            --name ${{ env.CONTAINER_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --image ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            --min-replicas 1 \
+            --max-replicas 5 \
+            --set-env-vars \
+              NODE_ENV=production \
               NEXT_PUBLIC_API_URL=${{ steps.get_backend_url.outputs.api_url }} \
               NEXT_PUBLIC_WS_URL=${{ steps.get_backend_url.outputs.ws_url }} \
               NEXT_PUBLIC_ENV=production
+
+          # Update ingress configuration for the frontend
+          az containerapp ingress update \
+            --name ${{ env.CONTAINER_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --target-port 3000
 
       - name: Update Container App (if exists)
         if: steps.check_app.outputs.exists == 'true'
@@ -107,6 +147,7 @@ jobs:
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --image ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }} \
             --set-env-vars \
+              NODE_ENV=production \
               NEXT_PUBLIC_API_URL=${{ steps.get_backend_url.outputs.api_url }} \
               NEXT_PUBLIC_WS_URL=${{ steps.get_backend_url.outputs.ws_url }} \
               NEXT_PUBLIC_ENV=production

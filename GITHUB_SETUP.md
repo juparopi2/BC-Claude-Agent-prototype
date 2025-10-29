@@ -17,14 +17,16 @@
 
 ### Opción 1: Azure Portal (Más fácil)
 
-#### 1. Asignar Role Contributor
+#### 1. Asignar AcrPush al Container Registry
+
+**Scope:** Container Registry (para push de imágenes Docker)
 
 1. Ve a Azure Portal: https://portal.azure.com
-2. Navega a **Resource groups** → `rg-BCAgentPrototype-app-dev`
+2. Navega a **Container registries** → `crbcagentdev`
 3. Click en **Access control (IAM)**
 4. Click en **+ Add** → **Add role assignment**
 5. En la tab **Role**:
-   - Selecciona **Contributor**
+   - Selecciona **AcrPush**
    - Click **Next**
 6. En la tab **Members**:
    - Click **+ Select members**
@@ -35,39 +37,63 @@
 7. En la tab **Review + assign**:
    - Click **Review + assign**
 
-#### 2. Asignar ACR Push al Container Registry
+#### 2. Asignar Contributor al Container Apps Environment
 
-1. En Azure Portal, navega a **Container registries** → `crbcagentdev`
-2. Click en **Access control (IAM)**
-3. Click en **+ Add** → **Add role assignment**
-4. En la tab **Role**:
-   - Selecciona **AcrPush**
+**Scope:** Container Apps Environment (NO al Resource Group completo - Least Privilege)
+
+1. En Azure Portal, navega a **Container Apps Environments**
+2. Busca y selecciona: `cae-bcagent-dev`
+3. Click en **Access control (IAM)**
+4. Click en **+ Add** → **Add role assignment**
+5. En la tab **Role**:
+   - Selecciona **Contributor** (necesario para crear/actualizar Container Apps en este environment)
    - Click **Next**
-5. En la tab **Members**:
+6. En la tab **Members**:
    - Click **+ Select members**
    - Busca: `sp-bcagent-github-actions`
    - Selecciona el service principal
    - Click **Select**
    - Click **Next**
-6. En la tab **Review + assign**:
+7. En la tab **Review + assign**:
    - Click **Review + assign**
+
+**Nota sobre Least Privilege:** Esto es más seguro que asignar Contributor al Resource Group completo. El SP solo puede:
+- Hacer push a imágenes Docker en el ACR
+- Crear/actualizar Container Apps dentro del environment específico
+- Leer secrets del Key Vault
+- NO puede modificar SQL, Redis, Storage, ni otros recursos
 
 ---
 
-### Opción 2: PowerShell (En Azure Cloud Shell o PowerShell local)
+### Opción 2: PowerShell/Bash (En Azure Cloud Shell o local)
 
+```bash
+# 1. Asignar AcrPush al Container Registry
+az role assignment create \
+  --assignee 860de439-a0f5-4fef-b696-cf3131d77050 \
+  --role AcrPush \
+  --scope "/subscriptions/5343f6e1-f251-4b50-a592-18ff3e97eaa7/resourceGroups/rg-BCAgentPrototype-app-dev/providers/Microsoft.ContainerRegistry/registries/crbcagentdev"
+
+# 2. Asignar Contributor al Container Apps Environment (NO al Resource Group)
+az role assignment create \
+  --assignee 860de439-a0f5-4fef-b696-cf3131d77050 \
+  --role Contributor \
+  --scope "/subscriptions/5343f6e1-f251-4b50-a592-18ff3e97eaa7/resourceGroups/rg-BCAgentPrototype-app-dev/providers/Microsoft.App/managedEnvironments/cae-bcagent-dev"
+```
+
+**PowerShell (usa backticks ` en lugar de \\):**
 ```powershell
-# 1. Asignar Contributor al Resource Group
-az role assignment create `
-  --assignee 860de439-a0f5-4fef-b696-cf3131d77050 `
-  --role Contributor `
-  --scope "/subscriptions/5343f6e1-f251-4b50-a592-18ff3e97eaa7/resourceGroups/rg-BCAgentPrototype-app-dev"
-
-# 2. Asignar AcrPush al Container Registry
+# 1. AcrPush
 az role assignment create `
   --assignee 860de439-a0f5-4fef-b696-cf3131d77050 `
   --role AcrPush `
   --scope "/subscriptions/5343f6e1-f251-4b50-a592-18ff3e97eaa7/resourceGroups/rg-BCAgentPrototype-app-dev/providers/Microsoft.ContainerRegistry/registries/crbcagentdev"
+
+# 2. Contributor al Environment
+az role assignment create `
+  --assignee 860de439-a0f5-4fef-b696-cf3131d77050 `
+  --role Contributor `
+  --scope "/subscriptions/5343f6e1-f251-4b50-a592-18ff3e97eaa7/resourceGroups/rg-BCAgentPrototype-app-dev/providers/Microsoft.App/managedEnvironments/cae-bcagent-dev"
 ```
 
 ---
@@ -119,9 +145,12 @@ az role assignment list \
   --output table
 ```
 
-**Deberías ver:**
-- **Contributor** en scope: `.../resourceGroups/rg-BCAgentPrototype-app-dev`
+**Deberías ver (Least Privilege):**
 - **AcrPush** en scope: `.../registries/crbcagentdev`
+- **Contributor** en scope: `.../managedEnvironments/cae-bcagent-dev`
+
+**NO deberías ver:**
+- ❌ Contributor en el Resource Group completo (sería demasiado permisivo)
 
 ---
 
@@ -148,10 +177,12 @@ Los workflows de GitHub Actions se triggerán automáticamente y desplegarán el
 - **Client Secret:** *(Obtener con: `az ad sp credential reset --id 860de439-a0f5-4fef-b696-cf3131d77050`)*
 - **Tenant ID:** 1e9a7510-b103-463a-9ade-68951205e7bc
 
-### Permisos Configurados
+### Permisos Configurados (Least Privilege)
 - ✅ Key Vault: **Get, List** secrets en `kv-bcagent-dev`
-- ⚠️ Resource Group: **Contributor** en `rg-BCAgentPrototype-app-dev` (pendiente)
 - ⚠️ Container Registry: **AcrPush** en `crbcagentdev` (pendiente)
+- ⚠️ Container Apps Environment: **Contributor** en `cae-bcagent-dev` (pendiente)
+
+**Nota:** NO se asigna Contributor al Resource Group completo. Solo al Container Apps Environment específico.
 
 ---
 

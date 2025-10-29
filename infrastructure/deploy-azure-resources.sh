@@ -200,9 +200,22 @@ az acr create \
   --location $LOCATION \
   --sku Basic \
   --admin-enabled true \
-  --output none
+  --output none 2>/dev/null || echo -e "${BLUE}(Container Registry already exists)${NC}"
 
-echo -e "${GREEN}✓ Container Registry created${NC}"
+echo -e "${GREEN}✓ Container Registry ready${NC}"
+
+# 3.1.1 Get ACR resource ID
+ACR_ID=$(az acr show --name $ACR_NAME --resource-group $RG_APP --query id -o tsv)
+
+# 3.1.2 Assign AcrPull role to Backend Managed Identity
+echo -e "${BLUE}Assigning AcrPull role to Backend MI...${NC}"
+az role assignment create \
+  --assignee $BACKEND_MI_PRINCIPAL_ID \
+  --role "AcrPull" \
+  --scope $ACR_ID \
+  --output none 2>/dev/null || echo -e "${BLUE}(Role assignment already exists)${NC}"
+
+echo -e "${GREEN}✓ ACR permissions configured${NC}"
 
 # 3.2 Create Container Apps Environment
 echo -e "${BLUE}Creating Container Apps Environment: $CAE_NAME${NC}"

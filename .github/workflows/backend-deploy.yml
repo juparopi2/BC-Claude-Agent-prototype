@@ -57,6 +57,15 @@ jobs:
             echo "exists=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: Get ACR credentials
+        id: get_acr_creds
+        run: |
+          ACR_USERNAME=$(az acr credential show --name ${{ env.AZURE_CONTAINER_REGISTRY }} --query username -o tsv)
+          ACR_PASSWORD=$(az acr credential show --name ${{ env.AZURE_CONTAINER_REGISTRY }} --query passwords[0].value -o tsv)
+          echo "::add-mask::$ACR_PASSWORD"
+          echo "username=$ACR_USERNAME" >> $GITHUB_OUTPUT
+          echo "password=$ACR_PASSWORD" >> $GITHUB_OUTPUT
+
       - name: Create Container App (if not exists)
         if: steps.check_app.outputs.exists == 'false'
         run: |
@@ -72,6 +81,8 @@ jobs:
             --cpu 0.5 \
             --memory 1.0Gi \
             --registry-server ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io \
+            --registry-username ${{ steps.get_acr_creds.outputs.username }} \
+            --registry-password ${{ steps.get_acr_creds.outputs.password }} \
             --secrets \
               sql-connection-string=secretref:SqlDb-ConnectionString,keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/SqlDb-ConnectionString \
               redis-connection-string=secretref:Redis-ConnectionString,keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/Redis-ConnectionString \

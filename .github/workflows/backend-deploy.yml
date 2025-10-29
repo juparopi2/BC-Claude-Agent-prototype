@@ -57,18 +57,10 @@ jobs:
             echo "exists=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Get ACR credentials
-        id: get_acr_creds
-        run: |
-          ACR_USERNAME=$(az acr credential show --name ${{ env.AZURE_CONTAINER_REGISTRY }} --query username -o tsv)
-          ACR_PASSWORD=$(az acr credential show --name ${{ env.AZURE_CONTAINER_REGISTRY }} --query passwords[0].value -o tsv)
-          echo "::add-mask::$ACR_PASSWORD"
-          echo "username=$ACR_USERNAME" >> $GITHUB_OUTPUT
-          echo "password=$ACR_PASSWORD" >> $GITHUB_OUTPUT
-
       - name: Create Container App (if not exists)
         if: steps.check_app.outputs.exists == 'false'
         run: |
+          # Create with system-assigned identity first
           az containerapp create \
             --name ${{ env.CONTAINER_APP_NAME }} \
             --resource-group ${{ env.RESOURCE_GROUP }} \
@@ -81,8 +73,7 @@ jobs:
             --cpu 0.5 \
             --memory 1.0Gi \
             --registry-server ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io \
-            --registry-username ${{ steps.get_acr_creds.outputs.username }} \
-            --registry-password ${{ steps.get_acr_creds.outputs.password }} \
+            --system-assigned \
             --secrets \
               sql-connection-string=secretref:SqlDb-ConnectionString,keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/SqlDb-ConnectionString \
               redis-connection-string=secretref:Redis-ConnectionString,keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/Redis-ConnectionString \
@@ -109,6 +100,31 @@ jobs:
               LOG_LEVEL=info \
               ENABLE_PROMPT_CACHING=true \
               ENABLE_EXTENDED_THINKING=true
+
+          # Get the system-assigned identity principal ID
+          PRINCIPAL_ID=$(az containerapp show \
+            --name ${{ env.CONTAINER_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --query identity.principalId -o tsv)
+
+          echo "Container App Principal ID: $PRINCIPAL_ID"
+
+          # Assign AcrPull role to the identity
+          ACR_ID=$(az acr show --name ${{ env.AZURE_CONTAINER_REGISTRY }} --query id -o tsv)
+          az role assignment create \
+            --assignee $PRINCIPAL_ID \
+            --role "AcrPull" \
+            --scope $ACR_ID
+
+          # Wait for role assignment propagation
+          sleep 30
+
+          # Update registry to use the managed identity
+          az containerapp registry set \
+            --name ${{ env.CONTAINER_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --server ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io \
+            --identity system
 
       - name: Update Container App (if exists)
         if: steps.check_app.outputs.exists == 'true'

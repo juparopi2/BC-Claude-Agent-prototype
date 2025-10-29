@@ -12,7 +12,8 @@
       "WebSearch",
       "Bash(npm install:*)",
       "Bash(npx shadcn@latest add:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(node scripts/run-db-setup.js:*)"
     ],
     "deny": [],
     "ask": []

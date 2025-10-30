@@ -25,10 +25,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **Estado**: En construcción (ver TODO.md sección 1.2)
 
 El backend será un servidor Express con TypeScript que incluye:
-- Sistema de agentes (Main Orchestrator + Subagents)
-- Integración con MCP server pre-existente
-- Integración con Claude API (Anthropic SDK)
-- WebSocket server (Socket.IO)
+- **Claude Agent SDK** (@anthropic-ai/claude-agent-sdk) - Framework oficial de agentes
+- Specialized agents via system prompts (BCQuery, BCWrite, Validation)
+- Integración con MCP server pre-existente (via SDK)
+- WebSocket server (Socket.IO) para streaming
 - Autenticación JWT
 - Conexiones a Azure SQL y Redis
 
@@ -151,21 +151,28 @@ JWT_SECRET=<from Azure Key Vault>
 
 ## 🏗️ Arquitectura Resumida
 
-**Sistema de agentes multi-capa**:
+**Sistema basado en Claude Agent SDK**:
 1. **Frontend**: Next.js con chat interface + WebSocket client
 2. **API Layer**: Express server con Socket.IO
-3. **Agent Layer**: Main Orchestrator → Subagents (BCQuery, BCWrite, Validation, etc.)
-4. **Integration Layer**: MCP Client → Business Central API
+3. **Agent Layer**: Claude Agent SDK con specialized agents (via system prompts)
+   - QueryAgent: System prompt para queries
+   - WriteAgent: System prompt + approval hooks
+   - ValidationAgent: Read-only mode
+4. **Integration Layer**: SDK conecta automáticamente con MCP → Business Central API
 5. **Persistence**: Azure SQL + Redis
 
-**Flujo típico de escritura**:
+**Flujo típico de escritura con SDK**:
 ```
-Usuario → Chat → WebSocket → Main Agent → BCWrite Agent →
-Approval Request → Usuario Aprueba → MCP → Business Central →
-Confirmación → Usuario
+Usuario → Chat → WebSocket → Agent SDK query() →
+SDK detecta bc_create tool → onPreToolUse hook →
+Approval Request → Usuario Aprueba → SDK ejecuta tool automáticamente →
+MCP → Business Central → SDK streamea resultado → Usuario
 ```
 
-**Documentos de arquitectura detallada**: Ver `docs/01-architecture/` y `docs/03-agent-system/`
+**Documentos de arquitectura detallada**:
+- [Agent SDK Usage Guide](docs/02-core-concepts/06-agent-sdk-usage.md) - **NUEVO**
+- [Agentic Loop with SDK](docs/03-agent-system/01-agentic-loop.md) - **ACTUALIZADO**
+- [Orchestration with SDK](docs/03-agent-system/02-orchestration.md) - **ACTUALIZADO**
 
 ---
 
@@ -174,7 +181,7 @@ Confirmación → Usuario
 **Objetivo**: Crear un sistema de agentes AI (inspirado en Claude Code) que permite interactuar con Microsoft Business Central mediante lenguaje natural, con aprobaciones humanas para operaciones críticas, to-do lists automáticos, y streaming en tiempo real.
 
 **Tecnologías principales**:
-- **LLM**: Claude (Anthropic SDK) con extended thinking mode
+- **LLM**: **Claude Agent SDK** (@anthropic-ai/claude-agent-sdk) - Framework oficial con agentic loop, tool calling y streaming built-in
 - **Integration**: Model Context Protocol (MCP) con servidor pre-existente
 - **Frontend**: Next.js 15 + React 19 + Tailwind CSS 4 + shadcn/ui
 - **Backend**: Express + TypeScript + Socket.IO
@@ -183,17 +190,20 @@ Confirmación → Usuario
 
 **Timeline MVP**: 6-9 semanas divididas en 3 fases (ver TODO.md)
 
+**⚠️ IMPORTANTE**: Usamos Claude Agent SDK en lugar de construir un sistema de agentes desde cero. Esto ahorra ~1.5 semanas de desarrollo.
+
 ---
 
 ## 📌 Recordatorios Importantes
 
 1. **TODO.md es la fuente de verdad** - Consúltalo y actualízalo constantemente
-2. **Azure Naming Conventions** - Consulta `docs/02-core-concepts/05-AZURE_NAMING_CONVENTIONS.md` ANTES de crear recursos en Azure. Usa el comando `az` CLI
-3. **MCP Server ya existe** - No hay que crearlo, solo conectarse a él
-4. **Business Central** - Todas las operaciones de escritura requieren aprobación del usuario
-5. **Documentación extensa** - Consulta `docs/` antes de implementar features complejas
-6. **Azure Secrets** - Todos los secrets en Key Vault, nunca en código
-7. **Tests** - No hay tests todavía, se implementarán en Phase 3 (ver TODO.md)
+2. **Claude Agent SDK** - NO construyas sistema de agentes custom. Usa el SDK oficial de Anthropic
+3. **Azure Naming Conventions** - Consulta `docs/02-core-concepts/05-AZURE_NAMING_CONVENTIONS.md` ANTES de crear recursos en Azure. Usa el comando `az` CLI
+4. **MCP Server ya existe** - No hay que crearlo, solo conectarse via SDK
+5. **Business Central** - Todas las operaciones de escritura requieren aprobación del usuario (usa hooks del SDK)
+6. **Documentación actualizada** - Consulta `docs/02-core-concepts/06-agent-sdk-usage.md` PRIMERO antes de implementar agentes
+7. **Azure Secrets** - Todos los secrets en Key Vault, nunca en código
+8. **Tests** - No hay tests todavía, se implementarán en Phase 3 (ver TODO.md)
 
 ---
 

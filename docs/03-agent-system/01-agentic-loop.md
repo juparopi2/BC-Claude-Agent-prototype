@@ -1,6 +1,19 @@
-# Agentic Loop Pattern
+# Agentic Loop Pattern with Claude Agent SDK
 
-## El Ciclo Fundamental: Contexto → Acción → Verificación → Repetir
+## Overview
+
+El **agentic loop** es el patrón fundamental de los agentes de IA: un ciclo continuo de **percibir → pensar → actuar → evaluar** que se repite hasta alcanzar el objetivo.
+
+**⚠️ IMPORTANTE**: Con el Claude Agent SDK, **NO necesitas implementar el agentic loop manualmente**. El SDK ya lo provee.
+
+Este documento explica:
+1. Cómo funciona el agentic loop conceptualmente
+2. Cómo el SDK lo implementa automáticamente
+3. Cómo personalizarlo para Business Central
+
+---
+
+## El Ciclo Fundamental
 
 ```
 ┌─────────────────────────────────────────┐
@@ -11,7 +24,7 @@
            │                    │
 ┌──────────▼────────────────────┴─────────┐
 │                                          │
-│         AGENTIC LOOP                     │
+│     AGENTIC LOOP (SDK Automático)       │
 │                                          │
 │  ┌─────────────────────────────────┐    │
 │  │  1. CONTEXTO                    │    │
@@ -24,7 +37,7 @@
 │  │  2. ACCIÓN                      │    │
 │  │  • Decidir próximo paso         │    │
 │  │  • Seleccionar herramientas     │    │
-│  │  • Ejecutar                     │    │
+│  │  • Ejecutar (SDK auto)          │    │
 │  └───────────────┬─────────────────┘    │
 │                  │                       │
 │  ┌───────────────▼─────────────────┐    │
@@ -48,11 +61,14 @@
                        └──────┐
 ```
 
-## Implementación
+---
 
-### 1. Main Loop
+## Con Claude Agent SDK
+
+### ❌ Antes (Custom Implementation)
 
 ```typescript
+// OBSOLETO - No uses este approach
 class AgenticLoop {
   private maxIterations: number = 20;
   private context: Context;
@@ -75,172 +91,6 @@ class AgenticLoop {
 
       // 4. DECISIÓN: ¿Qué hacer?
       if (verification.goalAchieved) {
-        return {
-          success: true,
-          result: actionResult,
-          iterations: iteration + 1,
-        };
-      }
-
-      if (verification.shouldStop) {
-        return {
-          success: false,
-          reason: verification.stopReason,
-          iterations: iteration + 1,
-        };
-      }
-
-      // Actualizar contexto y continuar
-      this.context = this.updateContext(this.context, actionResult);
-      iteration++;
-
-      // HUMAN IN THE LOOP: Checkpoints periódicos
-      if (iteration % 5 === 0) {
-        const shouldContinue = await this.requestUserConfirmation(this.context);
-        if (!shouldContinue) {
-          return { success: false, reason: 'User stopped execution' };
-        }
-      }
-    }
-
-    return {
-      success: false,
-      reason: 'Maximum iterations reached',
-      iterations: this.maxIterations,
-    };
-  }
-}
-```
-
-### 2. Fase: CONTEXTO
-
-```typescript
-async analyzeSituation(context: Context): Promise<Situation> {
-  // Recopilar información relevante
-  const relevantMemories = await this.memory.recall(context.goal);
-  const availableTools = this.getAvailableTools(context);
-  const constraints = context.constraints || [];
-
-  return {
-    currentState: context.state,
-    history: context.history,
-    memories: relevantMemories,
-    tools: availableTools,
-    constraints,
-    progress: this.calculateProgress(context, context.goal),
-  };
-}
-```
-
-### 3. Fase: ACCIÓN
-
-```typescript
-async decideAction(situation: Situation): Promise<Action> {
-  // Usar LLM para decidir próxima acción
-  const response = await this.llm.sendMessage(
-    this.buildActionPrompt(situation),
-    {
-      tools: situation.tools,
-      thinking_mode: 'extended', // Activar thinking mode
-    }
-  );
-
-  return {
-    type: response.action_type,
-    reasoning: response.reasoning,
-    toolCalls: response.toolCalls,
-    confidence: response.confidence,
-  };
-}
-
-async executeAction(action: Action): Promise<ActionResult> {
-  const toolResults = [];
-
-  for (const toolCall of action.toolCalls) {
-    try {
-      const result = await this.executeTool(toolCall);
-      toolResults.push({
-        toolName: toolCall.name,
-        success: true,
-        result,
-      });
-    } catch (error) {
-      toolResults.push({
-        toolName: toolCall.name,
-        success: false,
-        error: error.message,
-      });
-    }
-  }
-
-  return {
-    action,
-    toolResults,
-    timestamp: new Date(),
-  };
-}
-```
-
-### 4. Fase: VERIFICACIÓN
-
-```typescript
-async verify(actionResult: ActionResult, goal: string): Promise<Verification> {
-  // Evaluar si la acción nos acercó al objetivo
-  const evaluation = await this.llm.sendMessage(`
-Goal: ${goal}
-
-Latest action:
-- Type: ${actionResult.action.type}
-- Reasoning: ${actionResult.action.reasoning}
-- Results: ${JSON.stringify(actionResult.toolResults)}
-
-Evaluate:
-1. Did this action succeed?
-2. Did it move us closer to the goal?
-3. Has the goal been achieved?
-4. Should we stop (error, impossible, etc.)?
-
-Respond with JSON:
-{
-  "actionSucceeded": boolean,
-  "progressMade": boolean,
-  "goalAchieved": boolean,
-  "shouldStop": boolean,
-  "stopReason": string | null,
-  "nextSteps": string[]
-}
-  `);
-
-  return JSON.parse(evaluation.content);
-}
-```
-
-## Human-in-the-Loop Integration
-
-### Checkpoints Automáticos
-
-```typescript
-class AgenticLoopWithHITL extends AgenticLoop {
-  async run(goal: string): Promise<Result> {
-    this.context = await this.initialize(goal);
-    let iteration = 0;
-
-    while (iteration < this.maxIterations) {
-      const situation = await this.analyzeSituation(this.context);
-      const action = await this.decideAction(situation);
-
-      // HITL: Solicitar aprobación antes de acciones críticas
-      if (this.isCriticalAction(action)) {
-        const approved = await this.requestApproval(action);
-        if (!approved) {
-          return { success: false, reason: 'User denied critical action' };
-        }
-      }
-
-      const actionResult = await this.executeAction(action);
-      const verification = await this.verify(actionResult, goal);
-
-      if (verification.goalAchieved) {
         return { success: true, result: actionResult };
       }
 
@@ -254,203 +104,538 @@ class AgenticLoopWithHITL extends AgenticLoop {
 
     return { success: false, reason: 'Max iterations reached' };
   }
-
-  private isCriticalAction(action: Action): boolean {
-    // Acciones que modifican datos son críticas
-    const criticalToolNames = [
-      'bc_create',
-      'bc_update',
-      'bc_delete',
-      'send_email',
-      'make_payment',
-    ];
-
-    return action.toolCalls.some(call =>
-      criticalToolNames.some(name => call.name.includes(name))
-    );
-  }
-
-  private async requestApproval(action: Action): Promise<boolean> {
-    const summary = this.generateActionSummary(action);
-
-    // Enviar a UI para aprobación
-    eventBus.emit('approval:requested', {
-      action,
-      summary,
-    });
-
-    // Esperar respuesta del usuario
-    return new Promise(resolve => {
-      eventBus.once('approval:responded', response => {
-        resolve(response.approved);
-      });
-    });
-  }
 }
 ```
 
-## To-Do List Automático
-
-```typescript
-class AgenticLoopWithTodos extends AgenticLoop {
-  private todoManager: TodoManager;
-
-  async run(goal: string): Promise<Result> {
-    // 1. Generar plan inicial como to-dos
-    const plan = await this.createInitialPlan(goal);
-    const todos = this.convertPlanToTodos(plan);
-
-    await this.todoManager.initialize(todos);
-
-    // 2. Ejecutar loop actualizando to-dos
-    this.context = await this.initialize(goal);
-    let iteration = 0;
-
-    while (iteration < this.maxIterations) {
-      const situation = await this.analyzeSituation(this.context);
-      const action = await this.decideAction(situation);
-
-      // Marcar to-do actual como "in_progress"
-      const currentTodo = this.todoManager.getCurrentTodo();
-      await this.todoManager.updateStatus(currentTodo.id, 'in_progress');
-
-      const actionResult = await this.executeAction(action);
-      const verification = await this.verify(actionResult, goal);
-
-      // Marcar to-do como "completed" o "failed"
-      if (verification.actionSucceeded) {
-        await this.todoManager.updateStatus(currentTodo.id, 'completed');
-      } else {
-        await this.todoManager.updateStatus(currentTodo.id, 'failed');
-      }
-
-      // Agregar nuevos to-dos si se descubren subtareas
-      if (verification.nextSteps.length > 0) {
-        const newTodos = verification.nextSteps.map(step => ({
-          description: step,
-          status: 'pending',
-        }));
-        await this.todoManager.addTodos(newTodos);
-      }
-
-      if (verification.goalAchieved) {
-        return { success: true, result: actionResult };
-      }
-
-      this.context = this.updateContext(this.context, actionResult);
-      iteration++;
-    }
-
-    return { success: false, reason: 'Max iterations reached' };
-  }
-}
-```
-
-## Error Recovery
-
-```typescript
-class ResilientAgenticLoop extends AgenticLoop {
-  async executeAction(action: Action): Promise<ActionResult> {
-    try {
-      return await super.executeAction(action);
-    } catch (error) {
-      // Intentar recuperación automática
-      const recovery = await this.planRecovery(error, action);
-
-      if (recovery.canRecover) {
-        logger.info('Attempting automatic recovery...');
-        return await this.executeAction(recovery.recoveryAction);
-      }
-
-      // Si no se puede recuperar, informar al usuario
-      const userDecision = await this.requestUserGuidance(error, action);
-
-      if (userDecision.retry) {
-        return await this.executeAction(action);
-      }
-
-      if (userDecision.alternative) {
-        return await this.executeAction(userDecision.alternative);
-      }
-
-      throw error;
-    }
-  }
-
-  private async planRecovery(
-    error: Error,
-    failedAction: Action
-  ): Promise<Recovery> {
-    const response = await this.llm.sendMessage(`
-An action failed with the following error:
-${error.message}
-
-Failed action:
-${JSON.stringify(failedAction)}
-
-Can we recover from this error? If yes, suggest a recovery action.
-
-Respond with JSON:
-{
-  "canRecover": boolean,
-  "recoveryAction": Action | null,
-  "reasoning": string
-}
-    `);
-
-    return JSON.parse(response.content);
-  }
-}
-```
-
-## Stopping Conditions
-
-```typescript
-interface StoppingConditions {
-  maxIterations: number;
-  maxTime: number; // milliseconds
-  maxCost: number; // dollars
-  errorThreshold: number; // consecutive errors
-}
-
-class ControlledAgenticLoop extends AgenticLoop {
-  private conditions: StoppingConditions;
-  private stats = {
-    consecutiveErrors: 0,
-    totalCost: 0,
-    startTime: Date.now(),
-  };
-
-  async run(goal: string): Promise<Result> {
-    // ... main loop
-
-    // Check stopping conditions
-    if (this.shouldStop()) {
-      return {
-        success: false,
-        reason: this.getStopReason(),
-        iterations: iteration,
-      };
-    }
-  }
-
-  private shouldStop(): boolean {
-    return (
-      this.stats.consecutiveErrors >= this.conditions.errorThreshold ||
-      this.stats.totalCost >= this.conditions.maxCost ||
-      Date.now() - this.stats.startTime >= this.conditions.maxTime
-    );
-  }
-}
-```
-
-## Próximos Pasos
-
-- [Orchestration](./02-orchestration.md)
-- [Memory System](./03-memory-system.md)
-- [Context Management](./04-context-management.md)
+**Líneas de código**: ~200-300 LOC
+**Tiempo de implementación**: 2-3 días
+**Bugs potenciales**: Alto
 
 ---
 
-**Última actualización**: 2025-10-28
-**Versión**: 1.0
+### ✅ Ahora (Con SDK)
+
+```typescript
+import { query } from '@anthropic-ai/claude-agent-sdk';
+
+async function runAgent(goal: string) {
+  const result = query(goal, {
+    // El agentic loop está aquí, automático
+    mcpServers: [{ type: 'sse', url: process.env.MCP_SERVER_URL, name: 'bc-mcp' }],
+  });
+
+  for await (const event of result) {
+    // Recibir eventos del loop automático
+    console.log(event);
+  }
+}
+```
+
+**Líneas de código**: ~10 LOC
+**Tiempo de implementación**: 10 minutos
+**Bugs potenciales**: Mínimo (probado por Anthropic)
+
+---
+
+## Cómo Funciona el SDK Internamente
+
+El SDK ejecuta automáticamente este ciclo:
+
+```typescript
+// Pseudocódigo de lo que el SDK hace internamente
+async function* query(prompt, options) {
+  let context = initializeContext(prompt, options);
+  let iteration = 0;
+
+  while (iteration < MAX_ITERATIONS) {
+    // 1. CONTEXTO: Construir prompt con contexto actual
+    const fullPrompt = buildPromptWithContext(context);
+
+    // 2. ACCIÓN: Claude decide qué hacer
+    const response = await claude.messages.create({
+      model: options.model || 'claude-sonnet-4',
+      messages: context.messages,
+      tools: getAvailableTools(options.mcpServers),
+      system: options.systemPrompt || claudeCodePrompt,
+    });
+
+    // Si Claude usa tools
+    if (response.stop_reason === 'tool_use') {
+      for (const toolUse of response.content.filter(c => c.type === 'tool_use')) {
+        // Hook: onPreToolUse
+        if (options.onPreToolUse) {
+          const allowed = await options.onPreToolUse(toolUse.name, toolUse.input);
+          if (!allowed) continue;
+        }
+
+        yield { type: 'tool_use', toolName: toolUse.name, args: toolUse.input };
+
+        // Ejecutar tool
+        const result = await executeTool(toolUse.name, toolUse.input, options.mcpServers);
+
+        yield { type: 'tool_result', toolName: toolUse.name, result };
+
+        // Hook: onPostToolUse
+        if (options.onPostToolUse) {
+          await options.onPostToolUse(toolUse.name, result);
+        }
+
+        // Agregar result al context
+        context.messages.push({
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: toolUse.id, content: JSON.stringify(result) }],
+        });
+      }
+
+      // 3. VERIFICACIÓN: Claude evalúa si continuar
+      // (automático: Claude decide si llamar más tools o dar respuesta final)
+
+      // 4. DECISIÓN: Continuar loop
+      iteration++;
+      continue;
+    }
+
+    // Si Claude da respuesta final (stop_reason === 'end_turn')
+    yield { type: 'message', content: response.content };
+
+    break; // Objetivo alcanzado
+  }
+
+  if (iteration >= MAX_ITERATIONS) {
+    yield { type: 'error', error: new Error('Max iterations reached') };
+  }
+}
+```
+
+**No necesitas escribir esto. El SDK lo hace por ti.**
+
+---
+
+## Personalización para Business Central
+
+### 1. Human-in-the-Loop Integration
+
+```typescript
+import { query } from '@anthropic-ai/claude-agent-sdk';
+
+async function runWithApprovals(goal: string, sessionId: string, socket: Socket) {
+  const result = query(goal, {
+    mcpServers: [bcMcpServer],
+    resume: sessionId,
+
+    // Hook en el loop: ANTES de ejecutar tool
+    onPreToolUse: async (toolName, args) => {
+      // Acciones críticas requieren aprobación
+      if (isCriticalAction(toolName)) {
+        socket.emit('approval:requested', {
+          toolName,
+          args,
+          timestamp: new Date(),
+        });
+
+        // PAUSAR EL LOOP y esperar decisión del usuario
+        return new Promise((resolve) => {
+          socket.once('approval:response', (response) => {
+            resolve(response.approved); // true = continuar loop, false = stop
+          });
+        });
+      }
+
+      return true; // Continuar loop
+    },
+  });
+
+  for await (const event of result) {
+    socket.emit('agent:event', event);
+  }
+}
+
+function isCriticalAction(toolName: string): boolean {
+  return (
+    toolName.startsWith('bc_create') ||
+    toolName.startsWith('bc_update') ||
+    toolName.startsWith('bc_delete') ||
+    toolName.includes('payment')
+  );
+}
+```
+
+### 2. To-Do List Automático
+
+```typescript
+class TodoManager {
+  private todos: Map<string, Todo[]> = new Map();
+
+  async initializeFromGoal(sessionId: string, goal: string) {
+    // Generar plan inicial como todos
+    const planResult = query(
+      `Break down into steps:\n${goal}\n\nReturn JSON: { steps: string[] }`,
+      { permissionMode: 'plan' }
+    );
+
+    for await (const event of planResult) {
+      if (event.type === 'message') {
+        const plan = JSON.parse(event.content);
+        this.todos.set(
+          sessionId,
+          plan.steps.map((step: string) => ({
+            description: step,
+            status: 'pending',
+          }))
+        );
+      }
+    }
+  }
+
+  updateForToolUse(sessionId: string, toolName: string) {
+    const todos = this.todos.get(sessionId);
+    if (!todos) return;
+
+    // Encontrar todo correspondiente y marcar como in_progress
+    const todo = todos.find((t) => t.status === 'pending');
+    if (todo) {
+      todo.status = 'in_progress';
+      this.emit('todos:updated', todos);
+    }
+  }
+
+  completeCurrentTodo(sessionId: string) {
+    const todos = this.todos.get(sessionId);
+    if (!todos) return;
+
+    const todo = todos.find((t) => t.status === 'in_progress');
+    if (todo) {
+      todo.status = 'completed';
+      this.emit('todos:updated', todos);
+    }
+  }
+}
+
+// Integración con el loop
+async function runWithTodos(goal: string, sessionId: string, socket: Socket) {
+  const todoManager = new TodoManager();
+
+  // 1. Generar todos iniciales
+  await todoManager.initializeFromGoal(sessionId, goal);
+
+  // 2. Ejecutar loop con tracking
+  const result = query(goal, {
+    resume: sessionId,
+
+    onPreToolUse: async (toolName, args) => {
+      // Marcar todo como in_progress
+      todoManager.updateForToolUse(sessionId, toolName);
+      return true;
+    },
+
+    onPostToolUse: async (toolName, result) => {
+      // Marcar todo como completed
+      todoManager.completeCurrentTodo(sessionId);
+    },
+  });
+
+  for await (const event of result) {
+    socket.emit('agent:event', event);
+
+    // Sync todos to UI
+    todoManager.on('todos:updated', (todos) => {
+      socket.emit('todos:updated', todos);
+    });
+  }
+}
+```
+
+### 3. Error Recovery
+
+```typescript
+async function runWithRecovery(goal: string, sessionId: string) {
+  let attempt = 0;
+  const MAX_RETRIES = 3;
+
+  while (attempt < MAX_RETRIES) {
+    try {
+      const result = query(goal, {
+        resume: sessionId,
+
+        onPostToolUse: async (toolName, result) => {
+          // Verificar si hubo error
+          if (result.error) {
+            logger.error(`Tool ${toolName} failed:`, result.error);
+
+            // El SDK intentará recovery automático
+            // Pero podemos agregar lógica custom
+            if (result.error.includes('rate_limit')) {
+              await sleep(5000); // Esperar antes de retry
+            }
+          }
+        },
+      });
+
+      for await (const event of result) {
+        if (event.type === 'error') {
+          throw event.error;
+        }
+
+        // Handle normal events
+      }
+
+      break; // Éxito, salir del loop de retries
+    } catch (error) {
+      attempt++;
+      logger.warn(`Attempt ${attempt} failed:`, error);
+
+      if (attempt >= MAX_RETRIES) {
+        logger.error('Max retries reached');
+        throw error;
+      }
+
+      await sleep(1000 * attempt); // Exponential backoff
+    }
+  }
+}
+```
+
+### 4. Stopping Conditions
+
+```typescript
+interface StoppingConditions {
+  maxIterations?: number;
+  maxTime?: number; // milliseconds
+  maxCost?: number; // dollars
+  errorThreshold?: number;
+}
+
+async function runWithLimits(
+  goal: string,
+  sessionId: string,
+  conditions: StoppingConditions
+) {
+  const stats = {
+    iterations: 0,
+    startTime: Date.now(),
+    cost: 0,
+    consecutiveErrors: 0,
+  };
+
+  const result = query(goal, {
+    resume: sessionId,
+
+    onPreToolUse: async (toolName, args) => {
+      stats.iterations++;
+
+      // Check stopping conditions
+      if (conditions.maxIterations && stats.iterations >= conditions.maxIterations) {
+        throw new Error('Max iterations reached');
+      }
+
+      if (conditions.maxTime && Date.now() - stats.startTime >= conditions.maxTime) {
+        throw new Error('Max time exceeded');
+      }
+
+      if (conditions.maxCost && stats.cost >= conditions.maxCost) {
+        throw new Error('Max cost exceeded');
+      }
+
+      return true;
+    },
+
+    onPostToolUse: async (toolName, result) => {
+      // Update cost (estimate based on tokens)
+      stats.cost += estimateCost(result);
+
+      // Track errors
+      if (result.error) {
+        stats.consecutiveErrors++;
+
+        if (
+          conditions.errorThreshold &&
+          stats.consecutiveErrors >= conditions.errorThreshold
+        ) {
+          throw new Error('Error threshold exceeded');
+        }
+      } else {
+        stats.consecutiveErrors = 0; // Reset on success
+      }
+    },
+  });
+
+  for await (const event of result) {
+    // Handle events
+  }
+
+  return stats;
+}
+```
+
+---
+
+## Streaming del Loop
+
+El SDK streamea eventos del loop en tiempo real:
+
+```typescript
+async function streamLoopToUI(goal: string, socket: Socket) {
+  const result = query(goal, {
+    mcpServers: [bcMcpServer],
+    includePartialMessages: true, // Stream partial messages
+
+    onPreToolUse: async (toolName, args) => {
+      // Usuario ve: "Calling bc_query_entity..."
+      socket.emit('agent:thinking', {
+        message: `Calling ${toolName}...`,
+        args,
+      });
+      return true;
+    },
+  });
+
+  for await (const event of result) {
+    switch (event.type) {
+      case 'thinking':
+        // Claude está pensando (extended thinking mode)
+        socket.emit('agent:thinking', { content: event.content });
+        break;
+
+      case 'message_partial':
+        // Streaming de mensaje parcial
+        socket.emit('agent:message_chunk', { content: event.content });
+        break;
+
+      case 'message':
+        // Mensaje completo
+        socket.emit('agent:message_complete', { content: event.content });
+        break;
+
+      case 'tool_use':
+        // Tool siendo llamado
+        socket.emit('agent:tool_use', {
+          tool: event.toolName,
+          args: event.args,
+        });
+        break;
+
+      case 'tool_result':
+        // Resultado de tool
+        socket.emit('agent:tool_result', {
+          tool: event.toolName,
+          result: event.result,
+        });
+        break;
+    }
+  }
+}
+```
+
+---
+
+## Persistence del Loop State
+
+```typescript
+import { query } from '@anthropic-ai/claude-agent-sdk';
+
+// El SDK maneja session state automáticamente
+async function persistentAgent(userMessage: string, sessionId: string | null) {
+  // Primera conversación: sessionId = null
+  // El SDK crea un nuevo sessionId
+  const result = query(userMessage, {
+    resume: sessionId, // null = new session, string = resume
+  });
+
+  let newSessionId: string | null = null;
+
+  for await (const event of result) {
+    if (event.type === 'session_start') {
+      newSessionId = event.sessionId;
+
+      // Guardar en database
+      await db.sessions.create({
+        id: newSessionId,
+        user_id: userId,
+        started_at: new Date(),
+      });
+    }
+
+    // Handle other events
+  }
+
+  return newSessionId; // Return para próximas conversaciones
+}
+
+// Uso:
+let sessionId = null;
+
+// Primera interacción
+sessionId = await persistentAgent('Create a customer named Acme', sessionId);
+
+// Segunda interacción (mismo context)
+sessionId = await persistentAgent('Update its email to new@acme.com', sessionId);
+
+// Tercera interacción (Claude recuerda todo)
+sessionId = await persistentAgent('Delete that customer', sessionId);
+```
+
+---
+
+## Performance Optimization
+
+### Prompt Caching
+
+```typescript
+const result = query(goal, {
+  promptCaching: true, // Enable caching
+  systemPrompt: 'claudeCode', // Cached prompt
+  mcpServers: [bcMcpServer], // Cached tool definitions
+});
+```
+
+Esto cachea:
+- System prompt
+- Tool definitions
+- MCP schemas
+
+Reduce:
+- Latencia: ~50%
+- Costos: ~90% (tokens cached)
+
+---
+
+## Comparación: Custom vs SDK
+
+| Aspecto | Custom Agentic Loop | SDK Agentic Loop |
+|---------|---------------------|------------------|
+| **LOC** | 200-300 | 10-20 |
+| **Tiempo implementación** | 2-3 días | 10 minutos |
+| **Tool calling** | Manual | Automático |
+| **Streaming** | Custom logic | Built-in |
+| **Error handling** | Custom | Built-in retry |
+| **Session management** | Custom | Built-in |
+| **Prompt caching** | Manual | Built-in |
+| **Thinking mode** | No | Sí (extended thinking) |
+| **Testing** | Tu responsabilidad | Probado por Anthropic |
+| **Bugs** | Alto riesgo | Bajo riesgo |
+| **Maintenance** | Tu responsabilidad | Anthropic mantiene |
+
+---
+
+## Lo que SÍ debes construir
+
+El SDK provee el loop, pero **todavía necesitas**:
+
+1. **Approval System** - Lógica de aprobaciones específica de BC
+2. **Todo Manager** - Generación y tracking de todos
+3. **BC Validation** - Validaciones de negocio de Business Central
+4. **UI** - Frontend React para chat, approvals, todos
+5. **Database** - Persistir sessions, messages, approvals en PostgreSQL/SQL
+
+---
+
+## Próximos Pasos
+
+- [Agent SDK Usage Guide](../../02-core-concepts/06-agent-sdk-usage.md) - Guía completa del SDK
+- [Orchestration with SDK](./02-orchestration.md) - Patrones de orquestación
+- [Agent SDK Backend Integration](../../11-backend/07-agent-sdk-integration.md) - Integración en Express
+
+---
+
+**Última actualización**: 2025-10-30
+**Versión**: 2.0 (Actualizado para Claude Agent SDK)

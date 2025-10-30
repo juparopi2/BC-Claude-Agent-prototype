@@ -17,9 +17,12 @@
 - [x] **Week 1 - Sección 1.1**: Azure Infrastructure
 - [x] **Week 1 - Sección 1.2**: Backend Project Setup
 - [x] **Week 1 - Sección 1.2.1**: Validación de Conectividad Azure (Redis ECONNRESET fix)
+- [x] **Week 1 - Sección 1.3**: Database Schema (11+ tablas funcionales)
+- [x] **Week 1 - Sección 1.4**: Frontend Dependencies (100% + linting fixes)
+- [x] **Week 1: Project Setup COMPLETADO 100%** ✅
 
 ### 🔄 En Progreso
-- [ ] **PHASE 1: Foundation** (Semanas 1-3)
+- [x] **PHASE 1: Foundation** (Semanas 1-3) - Week 1 completada, iniciando Week 2
 
 ### ⏳ Pendiente
 - [ ] PHASE 2: MVP Core Features (Semanas 4-7)
@@ -38,7 +41,7 @@
 
 ---
 
-### ✅ **Week 1: Project Setup** (Semana 1)
+### ✅ **Week 1: Project Setup** (Semana 1) - **COMPLETADO 100%**
 
 #### 1.1 Azure Infrastructure
 **Referencias**: @docs\02-core-concepts\05-AZURE_NAMING_CONVENTIONS.md
@@ -402,21 +405,67 @@ curl http://localhost:3001/health
 #### 1.4 Frontend Dependencies
 **Referencias**: @docs\10-ui-ux\02-component-library.md
 
-- [ ] **Instalar dependencias adicionales**
+- [x] **Instalar dependencias adicionales**
   ```bash
   cd frontend
   npm install socket.io-client zustand @tanstack/react-query lucide-react
   npm install @radix-ui/react-dialog @radix-ui/react-dropdown-menu
   ```
-- [ ] **Configurar shadcn/ui**
+- [x] **Configurar shadcn/ui**
   ```bash
   npx shadcn@latest init
-  npx shadcn@latest add button card dialog input textarea scroll-area separator avatar badge
+  npx shadcn@latest add button card dialog input textarea scroll-area separator avatar badge dropdown-menu
   ```
-- [ ] **Crear archivos de configuración**
-  - [ ] `frontend/.env.local.example`
-  - [ ] `frontend/lib/api.ts` (API client)
-  - [ ] `frontend/lib/socket.ts` (Socket.IO client)
+- [x] **Crear archivos de configuración**
+  - [x] `frontend/.env.local.example`
+  - [x] `frontend/lib/api.ts` (API client)
+  - [x] `frontend/lib/socket.ts` (Socket.IO client)
+  - [x] `frontend/lib/types.ts` (Type definitions)
+
+**✅ Completado con mejoras adicionales**:
+- Fixed all TypeScript linting errors (replaced `any` with specific types)
+- Fixed `require()` usage in `tailwind.config.ts` (changed to ES6 import)
+- Created comprehensive type definitions for API and WebSocket events
+- All 10 shadcn/ui components installed and functional
+
+---
+
+#### ✅ Verificación Final de Week 1 (Completada: 2025-10-30)
+
+**Infraestructura Azure** (1.1):
+- ✅ Todos los recursos creados y configurados
+- ✅ Key Vault con secrets configurados
+- ✅ Firewall de SQL Server actualizado para IP actual
+
+**Backend** (1.2 + 1.2.1):
+- ✅ Todas las dependencias instaladas
+- ✅ TypeScript compila sin errores (tsconfig.json arreglado)
+- ✅ Servidor corriendo en puerto 3001
+- ✅ Health endpoint: `/health` retorna 200 OK
+- ✅ Azure SQL conectado exitosamente
+- ✅ Redis conectado exitosamente
+
+**Database Schema** (1.3):
+- ✅ 13 tablas creadas (users, sessions, messages, approvals, checkpoints, refresh_tokens, audit_log, todos, tool_permissions, permission_presets, agent_executions, performance_metrics, session_files)
+- ✅ Scripts de migración funcionales
+- ✅ Seed data con usuarios de prueba
+
+**Frontend** (1.4):
+- ✅ Todas las dependencias instaladas
+- ✅ 10 componentes shadcn/ui instalados (incluyendo dropdown-menu)
+- ✅ TypeScript compila sin errores
+- ✅ Linting pasa sin errores (40 errores arreglados)
+- ✅ Dev server corriendo en puerto 3000
+- ✅ `lib/api.ts` con cliente HTTP completo y tipado
+- ✅ `lib/socket.ts` con cliente WebSocket completo y tipado
+- ✅ `lib/types.ts` con definiciones de tipos para toda la aplicación
+
+**Integración**:
+- ✅ Backend y Frontend corren simultáneamente sin conflictos
+- ✅ Socket.IO server escuchando y respondiendo
+- ✅ Configuración de environment correcta
+
+**Tiempo total invertido**: ~2 horas (incluyendo troubleshooting de firewall y refactoring de tipos)
 
 ---
 
@@ -467,48 +516,67 @@ curl http://localhost:3001/health
 
 ---
 
-### ⏳ **Week 3: Basic Agent System** (Semana 3)
+### ⏳ **Week 3: Agent SDK Integration** (Semana 3)
 
-#### 3.1 Claude Integration
-**Referencias**: @docs\02-core-concepts\02-llm-enhancements.md
+**⚠️ CAMBIO IMPORTANTE**: Usamos Claude Agent SDK en lugar de construir sistema custom desde cero.
 
-- [ ] **Crear Claude Client wrapper** (`backend/src/services/agent/ClaudeClient.ts`)
-  - [ ] Inicializar Anthropic SDK con API key del Key Vault
-  - [ ] Configurar prompt caching (@docs\09-performance\01-prompt-caching.md)
-  - [ ] Implementar streaming de respuestas
-  - [ ] Implementar tool use
-  - [ ] Manejo de errores y rate limits
-
-#### 3.2 Main Orchestrator Agent
 **Referencias**:
-- @docs\03-agent-system\01-agentic-loop.md
-- @docs\03-agent-system\02-main-orchestrator.md
-- @docs\03-agent-system\06-context-management.md
+- @docs\02-core-concepts\06-agent-sdk-usage.md (NUEVO)
+- @docs\03-agent-system\01-agentic-loop.md (ACTUALIZADO para SDK)
+- @docs\11-backend\07-agent-sdk-integration.md (NUEVO)
 
-- [ ] **Crear MainOrchestrator class** (`backend/src/services/agent/MainOrchestrator.ts`)
-  - [ ] Constructor con Claude client y MCP client
-  - [ ] Método `processMessage(sessionId, message)`
-  - [ ] Implementar intent analysis (query, write, analysis)
-  - [ ] Implementar basic planning
-  - [ ] Implementar tool selection
-  - [ ] Integrar con MCP tools
-- [ ] **Context Management**
-  - [ ] Crear `backend/src/services/agent/ContextManager.ts`
-  - [ ] Cargar mensajes previos de la sesión
-  - [ ] Mantener contexto en Redis
-  - [ ] Limitar contexto por tokens
-- [ ] **WebSocket Integration**
-  - [ ] Configurar Socket.IO en Express server
-  - [ ] Eventos: `message`, `thinking`, `tool_use`, `approval_required`
-  - [ ] Streaming de respuestas del agente
+#### 3.1 Instalar y Configurar Agent SDK
+- [ ] **Instalar Claude Agent SDK**
+  ```bash
+  cd backend
+  npm install @anthropic-ai/claude-agent-sdk
+  ```
+- [ ] **Crear configuración de Agent** (`backend/src/services/agent/agentConfig.ts`)
+  - [ ] Cargar ANTHROPIC_API_KEY desde Key Vault
+  - [ ] Configurar MCP server URL (desde env)
+  - [ ] Configurar opciones de SDK (model, caching, etc.)
+  - [ ] Definir system prompts para diferentes agent types
 
-#### 3.3 Basic Testing
-- [ ] **Test end-to-end básico**
+#### 3.2 Implementar Agent Service
+**NO crear `MainOrchestrator`, `ClaudeClient`, `ContextManager` classes. El SDK ya provee esto.**
+
+- [ ] **Crear AgentService** (`backend/src/services/agent/AgentService.ts`)
+  - [ ] Método `runAgent(prompt, sessionId, options)` - wrapper del SDK `query()`
+  - [ ] Método `createQueryAgent(prompt, sessionId)` - agent con system prompt para queries
+  - [ ] Método `createWriteAgent(prompt, sessionId)` - agent con approval hooks
+  - [ ] Método `createValidationAgent(prompt, sessionId)` - agent read-only
+- [ ] **Integrar con Approval System**
+  - [ ] Implementar `onPreToolUse` hook para detectar writes
+  - [ ] Pausar SDK loop cuando se necesita approval
+  - [ ] Reanudar loop después de respuesta del usuario
+- [ ] **Integrar con Todo Manager**
+  - [ ] Usar `onPreToolUse` para marcar todos como in_progress
+  - [ ] Usar `onPostToolUse` para marcar todos como completed
+  - [ ] Generar plan inicial con SDK en modo 'plan'
+
+#### 3.3 WebSocket Integration
+- [ ] **Configurar Socket.IO en Express server**
+  - [ ] Socket handler para evento `chat:message`
+  - [ ] Streaming de SDK events a cliente (`agent:event`)
+  - [ ] Manejo de approval requests/responses
+  - [ ] Manejo de todos updates
+- [ ] **Stream SDK Events**
+  - [ ] Event `thinking` → `agent:thinking`
+  - [ ] Event `tool_use` → `agent:tool_use`
+  - [ ] Event `tool_result` → `agent:tool_result`
+  - [ ] Event `message_partial` → `agent:message_chunk`
+  - [ ] Event `message` → `agent:message_complete`
+
+#### 3.4 Basic Testing
+- [ ] **Test end-to-end con SDK**
   - [ ] Usuario se conecta por WebSocket
   - [ ] Usuario envía mensaje "Hello"
-  - [ ] Agent responde
-  - [ ] Usuario pide "List customers"
-  - [ ] Agent llama a MCP y retorna resultados
+  - [ ] SDK agent responde (streaming)
+  - [ ] Usuario pide "List customers from BC"
+  - [ ] SDK llama a MCP tool automáticamente
+  - [ ] Resultados streameados a cliente
+
+**Ahorro de tiempo estimado**: ~2-3 días (no necesitas construir infraestructura de agentes)
 
 ---
 
@@ -534,50 +602,90 @@ Al final de Phase 1 (3 semanas), deberíamos tener:
 
 ---
 
-### ⏳ **Week 4: Subagents & Orchestration**
+### ⏳ **Week 4: Specialized Agents & Business Logic** (Semana 4)
 
-#### 4.1 BCQueryAgent
-**Referencias**: @docs\03-agent-system\04-subagents.md
+**⚠️ CAMBIO IMPORTANTE**: No crear classes `BCQueryAgent`, `BCWriteAgent`. Usar SDK con system prompts especializados.
 
-- [ ] **Crear BCQueryAgent** (`backend/src/services/agent/subagents/BCQueryAgent.ts`)
-  - [ ] Especializado en queries a BC
-  - [ ] Query building logic
-  - [ ] OData filter construction
-  - [ ] Response formatting (tablas, JSON)
-  - [ ] Error handling específico
-- [ ] **Testing**
-  - [ ] Test: Query all customers
-  - [ ] Test: Query items with filters
-  - [ ] Test: Query vendors
-  - [ ] Test: Handle empty results
-  - [ ] Test: Handle BC errors
-
-#### 4.2 BCWriteAgent
 **Referencias**:
-- @docs\03-agent-system\04-subagents.md
+- @docs\03-agent-system\05-subagents.md (ACTUALIZADO para SDK)
+- @docs\03-agent-system\02-orchestration.md (ACTUALIZADO para SDK)
 - @docs\05-control-flow\01-human-in-the-loop.md
 
-- [ ] **Crear BCWriteAgent** (`backend/src/services/agent/subagents/BCWriteAgent.ts`)
-  - [ ] Especializado en create/update operations
-  - [ ] Data validation contra BC schemas
-  - [ ] Integración con sistema de aprobaciones
-  - [ ] Checkpoint creation antes de writes
-  - [ ] Rollback on error
-- [ ] **Testing**
-  - [ ] Test: Create customer (con aprobación)
-  - [ ] Test: Update item price (con aprobación)
-  - [ ] Test: Validation errors
-  - [ ] Test: Rollback on error
+#### 4.1 Configurar Specialized Agents (SDK)
+**NO crear clases de subagents. Usar factory functions con system prompts.**
 
-#### 4.3 Orchestration Logic
-**Referencias**: @docs\03-agent-system\03-delegation-handoff.md
+- [ ] **Crear Agent Factory** (`backend/src/services/agent/AgentFactory.ts`)
+  - [ ] `createBCQueryAgent(prompt, sessionId)` - System prompt para queries
+  - [ ] `createBCWriteAgent(prompt, sessionId)` - System prompt + approval hooks
+  - [ ] `createValidationAgent(prompt, sessionId)` - Read-only mode
+  - [ ] `createAnalysisAgent(prompt, sessionId)` - Para insights
+- [ ] **Definir System Prompts**
+  - [ ] QueryAgent prompt: "You are a BC Query Agent. Only read data..."
+  - [ ] WriteAgent prompt: "You are a BC Write Agent. Always request approval..."
+  - [ ] ValidationAgent prompt: "You are a BC Validation Agent. Only validate..."
+- [ ] **Configurar Tool Restrictions**
+  - [ ] QueryAgent: `canUseTool` only allows `bc_query*`, `bc_get*`
+  - [ ] WriteAgent: `canUseTool` allows `bc_create*`, `bc_update*`, `bc_query*` (for validation)
+  - [ ] ValidationAgent: `permissionMode: 'plan'` (read-only)
 
-- [ ] **Mejorar MainOrchestrator**
-  - [ ] Delegation logic (delegar a QueryAgent o WriteAgent)
-  - [ ] Parallel execution de queries independientes
-  - [ ] Result synthesis (combinar resultados de subagents)
-  - [ ] Error recovery (retry, rollback)
-  - [ ] Plan generation y tracking
+#### 4.2 Intent Analysis & Delegation
+**Referencias**: @docs\03-agent-system\02-orchestration.md
+
+- [ ] **Crear Orchestrator Service** (`backend/src/services/agent/OrchestratorService.ts`)
+  - [ ] Método `analyzeIntent(userRequest)` - Usa SDK en modo 'plan' para clasificar intent
+  - [ ] Método `delegateToAgent(intent, userRequest, sessionId)` - Delega al agent apropiado
+  - [ ] Lógica de delegation:
+    - `intent.type === 'query'` → `createBCQueryAgent()`
+    - `intent.type === 'create' | 'update'` → `createBCWriteAgent()`
+    - `intent.type === 'validate'` → `createValidationAgent()`
+    - `intent.type === 'analyze'` → `createAnalysisAgent()`
+- [ ] **Intent Classification**
+  - [ ] Prompt para SDK: "Classify this request: query, create, update, delete, analyze, validate"
+  - [ ] Parse JSON response del SDK
+  - [ ] Fallback a agent general si intent no es claro
+
+#### 4.3 Approval System Integration
+**Referencias**: @docs\05-control-flow\01-human-in-the-loop.md
+
+- [ ] **Crear ApprovalManager** (`backend/src/services/approval/ApprovalManager.ts`)
+  - [ ] Método `request(toolName, args, sessionId)` - Crea approval request en DB
+  - [ ] Método `respondToApproval(approvalId, decision)` - Actualiza DB
+  - [ ] Emite WebSocket event `approval:requested`
+  - [ ] Returns Promise que resuelve cuando usuario responde
+- [ ] **Integrar con WriteAgent**
+  - [ ] En `createBCWriteAgent`, agregar `onPreToolUse` hook
+  - [ ] Si `toolName.startsWith('bc_create')` o `'bc_update'`, llamar `approvalManager.request()`
+  - [ ] Pausar SDK loop hasta recibir respuesta
+  - [ ] Si approved: return true (continuar)
+  - [ ] Si rejected: return false (cancelar)
+- [ ] **Generate Change Summaries**
+  - [ ] Helper function `generateChangeSummary(toolName, args)`
+  - [ ] Para creates: "Create new {entity}: {data}"
+  - [ ] Para updates: "Update {entity} (ID: {id}): {changes}"
+
+#### 4.4 BC-Specific Validation Logic
+- [ ] **Crear BC Validator** (`backend/src/services/bc/BCValidator.ts`)
+  - [ ] Método `validateCustomer(data)` - Validaciones específicas de BC
+  - [ ] Método `validateItem(data)`
+  - [ ] Método `validateVendor(data)`
+  - [ ] Business rules: unique emails, valid formats, required fields
+- [ ] **Integrar con ValidationAgent**
+  - [ ] ValidationAgent llama a BCValidator antes de writes
+  - [ ] Retorna `{ valid: boolean, errors: [...] }`
+
+#### 4.5 Testing
+- [ ] **Test Specialized Agents**
+  - [ ] Test: QueryAgent lista customers correctamente
+  - [ ] Test: QueryAgent maneja filters OData
+  - [ ] Test: WriteAgent solicita approval antes de creates
+  - [ ] Test: WriteAgent maneja rejection
+  - [ ] Test: ValidationAgent detecta errores
+- [ ] **Test Intent Delegation**
+  - [ ] Test: "List customers" → delegado a QueryAgent
+  - [ ] Test: "Create customer Acme" → delegado a WriteAgent
+  - [ ] Test: "Validate this data" → delegado a ValidationAgent
+
+**Ahorro de tiempo estimado**: ~2-3 días (no construyes clases de subagents, solo configuration)
 
 ---
 

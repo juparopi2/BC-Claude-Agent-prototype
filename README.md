@@ -14,14 +14,14 @@ Crear una interfaz conversacional tipo Claude Code que permita a los usuarios:
 
 ## Características Principales
 
-- 🤖 **Sistema de Agentes**: Orchestrator principal con subagentes especializados
+- 🤖 **Claude Agent SDK**: Framework oficial de Anthropic con agentic loop, orchestration y tool calling built-in
 - 💬 **Chat Interface**: UI tipo Claude Code con streaming en tiempo real
 - ✅ **Human-in-the-Loop**: Sistema de aprobaciones para operaciones críticas
 - 📋 **To-Do Lists**: Progreso visible y actualizado en tiempo real
 - 🔌 **MCP Integration**: Conexión con MCP server potente pre-existente
 - 🏢 **Business Central**: Integración completa con BC API (OData + REST)
 - 🎨 **Modern Stack**: Next.js 15, React 19, TypeScript, Tailwind CSS
-- ⚡ **Performance**: Prompt caching, parallel execution, token optimization
+- ⚡ **Performance**: Prompt caching (SDK), parallel execution, token optimization
 
 ## Tech Stack
 
@@ -34,14 +34,14 @@ Crear una interfaz conversacional tipo Claude Code que permita a los usuarios:
 
 ### Backend
 - **Express.js** - API server
-- **Next.js API Routes** - Edge functions
+- **Claude Agent SDK** (@anthropic-ai/claude-agent-sdk) - **Official Anthropic agent framework**
 - **TypeScript** - Type safety
-- **PostgreSQL** - Database
-- **Redis** - Cache & queues
+- **Azure SQL** - Database (en lugar de PostgreSQL)
+- **Redis** - Cache & session management
 
 ### AI & Integrations
-- **Claude SDK** (@anthropic-ai/sdk) - LLM integration
-- **MCP** - Model Context Protocol para BC
+- **Claude Agent SDK** - Complete agent infrastructure (agentic loop, tool calling, streaming)
+- **MCP** - Model Context Protocol para BC (servidor pre-existente)
 - **Business Central API** - OData v4 + REST
 
 ## Quick Start
@@ -85,21 +85,31 @@ NEXT_PUBLIC_WS_URL=ws://localhost:3001
 
 #### Backend `.env`
 ```bash
-# Database
-DATABASE_URL=postgresql://user:password@localhost:5432/bcagent
-REDIS_URL=redis://localhost:6379
+# Database (Azure SQL)
+AZURE_SQL_SERVER=sqlsrv-bcagent-dev.database.windows.net
+AZURE_SQL_DATABASE=sqldb-bcagent-dev
+AZURE_SQL_USER=your-admin-user
+AZURE_SQL_PASSWORD=<from Azure Key Vault>
 
-# Claude API
-ANTHROPIC_API_KEY=sk-ant-...
+# Redis (Azure)
+REDIS_HOST=redis-bcagent-dev.redis.cache.windows.net
+REDIS_PORT=6380
+REDIS_PASSWORD=<from Azure Key Vault>
+
+# Claude Agent SDK
+ANTHROPIC_API_KEY=<from Azure Key Vault>
 
 # Business Central
 BC_API_URL=https://api.businesscentral.dynamics.com/v2.0
-BC_TENANT_ID=your-tenant-id
-BC_CLIENT_ID=your-client-id
-BC_CLIENT_SECRET=your-client-secret
+BC_TENANT_ID=<from Azure Key Vault>
+BC_CLIENT_ID=<from Azure Key Vault>
+BC_CLIENT_SECRET=<from Azure Key Vault>
 
-# MCP
-MCP_SERVER_URL=http://localhost:3002
+# MCP Server (pre-existing)
+MCP_SERVER_URL=https://app-erptools-mcp-dev.purplemushroom-befedc5f.westeurope.azurecontainerapps.io/mcp
+
+# JWT
+JWT_SECRET=<from Azure Key Vault>
 ```
 
 ### Database Setup
@@ -109,6 +119,8 @@ cd backend
 npm run migrate
 npm run seed  # Optional: demo data
 ```
+
+**Nota**: Los secrets están en Azure Key Vault. Ver `infrastructure/deploy-azure-resources.sh` para deployment.
 
 ### Run Development
 
@@ -235,6 +247,19 @@ Prompt caching, token optimization, y ejecuciones paralelas.
 ### 5. Extensibility
 Arquitectura modular que permite agregar nuevas capacidades fácilmente.
 
+## Claude Agent SDK Integration
+
+Este proyecto usa el **Claude Agent SDK oficial** de Anthropic (`@anthropic-ai/claude-agent-sdk`), que provee:
+
+- ✅ **Agentic loop completo** - No necesitas implementarlo
+- ✅ **Tool calling automático** - Integración con MCP built-in
+- ✅ **Streaming de respuestas** - Async generators
+- ✅ **Session management** - Resume y continuación de conversaciones
+- ✅ **Permission system** - Hooks para aprovals (onPreToolUse, onPostToolUse)
+- ✅ **Multi-agent patterns** - Specialized agents vía system prompts
+
+Ver: [Agent SDK Usage Guide](./docs/02-core-concepts/06-agent-sdk-usage.md)
+
 ## MCP Integration
 
 Este proyecto utiliza un **MCP server potente pre-construido** que expone:
@@ -242,6 +267,8 @@ Este proyecto utiliza un **MCP server potente pre-construido** que expone:
 - **Tools**: `bc_query_entity`, `bc_create_entity`, `bc_update_entity`, `bc_delete_entity`, `bc_batch_operation`
 - **Resources**: Entity schemas, API docs, company info
 - **Prompts**: Query builder, data validator
+
+El Agent SDK se conecta automáticamente a este MCP server.
 
 Ver: [MCP Overview](./docs/04-integrations/01-mcp-overview.md)
 

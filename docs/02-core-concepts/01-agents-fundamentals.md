@@ -1,12 +1,14 @@
-# Agent Fundamentals
+# Agent Fundamentals with Claude SDK
 
 ## ¿Qué es un Agente?
 
 Un **agente de IA** es un sistema que:
 1. **Percibe** su entorno
 2. **Toma decisiones** basadas en objetivos
-3. **Actúa** para alcanzar esos objetivos
+3. **Actúa** para alcanzar esos objetivos (usando tools)
 4. **Aprende** de los resultados
+
+**⚠️ IMPORTANTE**: Este documento ha sido actualizado para reflejar el uso del **Claude Agent SDK**, que ya implementa toda la infraestructura de agentes.
 
 ### Diferencia: Agente vs LLM Simple
 
@@ -36,21 +38,21 @@ Usuario → Objetivo
 
 ## Componentes de un Agente
 
-### 1. Brain (LLM)
+### 1. Brain (LLM) - Powered by Claude SDK
 
-El "cerebro" del agente: Claude (Sonnet, Opus, Haiku)
+El "cerebro" del agente está incluido en el **Claude Agent SDK**:
 
 ```typescript
-class Agent {
-  private llm: ClaudeClient;
+import { query } from '@anthropic-ai/claude-agent-sdk';
 
-  constructor(model: 'sonnet' | 'opus' | 'haiku' = 'sonnet') {
-    this.llm = new ClaudeClient({
-      model: `claude-${model}-4`,
-    });
-  }
-}
+// El SDK ya incluye el "cerebro" (Claude LLM)
+const agent = query('Your task here', {
+  model: 'claude-sonnet-4', // or 'claude-opus-4', 'claude-haiku-4'
+  // SDK maneja toda la comunicación con Claude
+});
 ```
+
+**No necesitas construir un `ClaudeClient` wrapper.** El SDK lo provee.
 
 ### 2. Tools (Herramientas)
 
@@ -148,108 +150,42 @@ Output as JSON.
 
 ## El Agentic Loop
 
-El ciclo fundamental de un agente:
+El ciclo fundamental de un agente **está completamente implementado en el Claude Agent SDK**:
 
 ```typescript
-class Agent {
-  async run(goal: string): Promise<Result> {
-    let context = this.initializeContext(goal);
-    let maxIterations = 10;
+import { query } from '@anthropic-ai/claude-agent-sdk';
 
-    for (let i = 0; i < maxIterations; i++) {
-      // 1. PERCIBIR: Analizar situación actual
-      const situation = await this.perceive(context);
+// El SDK ejecuta automáticamente el agentic loop:
+// 1. PERCIBIR: Analiza la situación
+// 2. PENSAR: Claude decide qué hacer
+// 3. ACTUAR: Ejecuta tools automáticamente
+// 4. EVALUAR: Claude decide si continuar o terminar
+// 5. REPETIR: Loop automático hasta completar el goal
 
-      // 2. PENSAR: Decidir próxima acción
-      const decision = await this.think(situation);
+const result = query('Your goal here', {
+  mcpServers: [{ type: 'sse', url: 'your-mcp-server', name: 'bc-mcp' }],
+});
 
-      // 3. ACTUAR: Ejecutar acción
-      const result = await this.act(decision);
-
-      // 4. EVALUAR: ¿Se alcanzó el objetivo?
-      const evaluation = await this.evaluate(result, goal);
-
-      // 5. ACTUALIZAR: Actualizar contexto
-      context = this.updateContext(context, result);
-
-      // 6. CHECK: ¿Terminamos?
-      if (evaluation.goalAchieved) {
-        return {
-          success: true,
-          result: result,
-          iterations: i + 1,
-        };
-      }
-
-      if (evaluation.shouldStop) {
-        return {
-          success: false,
-          reason: evaluation.stopReason,
-          iterations: i + 1,
-        };
-      }
-    }
-
-    return {
-      success: false,
-      reason: 'Max iterations reached',
-      iterations: maxIterations,
-    };
+// El loop ocurre automáticamente mientras iteras sobre los events
+for await (const event of result) {
+  if (event.type === 'thinking') {
+    console.log('Agent is thinking:', event.content);
   }
 
-  private async perceive(context: Context): Promise<Situation> {
-    // Analizar contexto actual
-    return {
-      currentState: context.state,
-      availableTools: context.tools,
-      constraints: context.constraints,
-      history: context.history,
-    };
+  if (event.type === 'tool_use') {
+    console.log('Agent is using tool:', event.toolName);
   }
 
-  private async think(situation: Situation): Promise<Decision> {
-    // Usar LLM para decidir próxima acción
-    const response = await this.llm.sendMessage(
-      this.buildThinkingPrompt(situation),
-      { tools: situation.availableTools }
-    );
-
-    return {
-      action: response.action,
-      reasoning: response.reasoning,
-      toolCalls: response.toolCalls,
-    };
-  }
-
-  private async act(decision: Decision): Promise<ActionResult> {
-    // Ejecutar tool calls
-    const results = await Promise.all(
-      decision.toolCalls.map(call => this.executeTool(call))
-    );
-
-    return {
-      toolResults: results,
-      timestamp: new Date(),
-    };
-  }
-
-  private async evaluate(
-    result: ActionResult,
-    goal: string
-  ): Promise<Evaluation> {
-    // Evaluar si se alcanzó el objetivo
-    const response = await this.llm.sendMessage(`
-Goal: ${goal}
-Latest action result: ${JSON.stringify(result)}
-
-Has the goal been achieved? Should we continue or stop?
-Answer with: { goalAchieved: boolean, shouldStop: boolean, stopReason?: string }
-    `);
-
-    return JSON.parse(response.content);
+  if (event.type === 'message') {
+    console.log('Agent completed:', event.content);
+    // Loop terminó - goal alcanzado
   }
 }
 ```
+
+**No necesitas escribir el agentic loop.** El SDK lo maneja por ti.
+
+Para más detalles, ver: [Agentic Loop with SDK](../03-agent-system/01-agentic-loop.md)
 
 ## Tipos de Agentes
 
@@ -433,38 +369,64 @@ class LearningAgent {
 }
 ```
 
-## BC-Claude-Agent Architecture
+## BC-Claude-Agent Architecture (with SDK)
 
 ```
 Usuario: "Crea 5 usuarios del Excel"
     ↓
-Main Orchestrator Agent (Hybrid)
+Claude Agent SDK query()
     ↓
-    ├─→ Analiza intent (thinking)
-    ├─→ Crea plan (deliberative)
-    │   • Read Excel file
+    ├─→ SDK analiza intent automáticamente
+    ├─→ SDK crea plan automáticamente
+    │   • Read Excel file (via MCP tool)
     │   • Parse data
     │   • Validate users
-    │   • Request approval
-    │   • Create users
+    │   • Request approval (via onPreToolUse hook)
+    │   • Create users (via MCP tool)
     │
-    ├─→ Delega a subagentes
-    │   ├─→ File Reader Agent → read_file()
-    │   ├─→ Validation Agent → validate()
-    │   ├─→ Approval Agent → request_approval()
-    │   └─→ BC Write Agent → bc_create_user() x5
+    ├─→ SDK ejecuta tools automáticamente
+    │   ├─→ bc_read_file() - SDK calls MCP
+    │   ├─→ onPreToolUse hook → pausa para approval
+    │   └─→ bc_create_user() x5 - SDK calls MCP
     │
-    └─→ Sintetiza resultado final
-        "✅ 5 usuarios creados exitosamente"
+    └─→ SDK streamea resultado
+        Event: { type: 'message', content: "✅ 5 usuarios creados" }
 ```
+
+**Diferencia clave**: No construyes "Main Orchestrator" ni "Subagents" classes. El SDK lo hace todo automáticamente. Tú solo configuras los hooks y system prompts.
+
+## Comparison: Building from Scratch vs Using SDK
+
+| Concept | From Scratch | With Claude Agent SDK |
+|---------|-------------|----------------------|
+| **Agentic Loop** | Write 200+ LOC | ✅ Built-in |
+| **Tool Calling** | Manual implementation | ✅ Automatic |
+| **LLM Communication** | Anthropic SDK wrapper | ✅ Built-in |
+| **Session Management** | Custom tracking | ✅ Built-in (`resume`) |
+| **Streaming** | Custom logic | ✅ Async generators |
+| **Memory** | Custom classes | ✅ Built-in (+ custom if needed) |
+| **Orchestration** | Custom MainOrchestrator | ✅ System prompts + delegation |
+| **Development Time** | 2-3 weeks | 2-3 days |
+
+## Key Takeaway
+
+**Don't build agent infrastructure from scratch.** Use the Claude Agent SDK and focus on:
+
+1. ✅ **Business logic** - BC-specific validation, approvals, workflows
+2. ✅ **UI/UX** - Frontend components for chat, approvals, todos
+3. ✅ **Integration** - Connecting SDK with your MCP server and database
+4. ✅ **Configuration** - System prompts, hooks, tool restrictions
+
+The SDK provides the **infrastructure**. You provide the **business value**.
 
 ## Próximos Pasos
 
+- **[Agent SDK Usage Guide](./06-agent-sdk-usage.md)** - **START HERE**
 - [LLM Enhancements](./02-llm-enhancements.md)
-- [Fundamental Patterns](./03-fundamental-patterns.md)
-- [Agent System](../03-agent-system/01-agentic-loop.md)
+- [Agentic Loop with SDK](../03-agent-system/01-agentic-loop.md)
+- [Orchestration with SDK](../03-agent-system/02-orchestration.md)
 
 ---
 
-**Última actualización**: 2025-10-28
-**Versión**: 1.0
+**Última actualización**: 2025-10-30
+**Versión**: 2.0 (Actualizado para Claude Agent SDK)

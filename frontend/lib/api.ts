@@ -7,6 +7,8 @@
  * @module lib/api
  */
 
+import type { User, Session, Message, Approval, HealthStatus, AuthResponse } from './types';
+
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 /**
@@ -21,7 +23,7 @@ export class ApiError extends Error {
   constructor(
     message: string,
     public statusCode: number,
-    public data?: any
+    public data?: Record<string, unknown>
   ) {
     super(message);
     this.name = 'ApiError';
@@ -53,10 +55,10 @@ export function clearAuthToken(): void {
 /**
  * Make an HTTP request to the API
  */
-async function request<T = any>(
+async function request<T = unknown>(
   method: HttpMethod,
   endpoint: string,
-  data?: any,
+  data?: Record<string, unknown>,
   options?: RequestInit
 ): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
@@ -119,31 +121,31 @@ export const api = {
   /**
    * GET request
    */
-  get: <T = any>(endpoint: string, options?: RequestInit) =>
+  get: <T = unknown>(endpoint: string, options?: RequestInit) =>
     request<T>('GET', endpoint, undefined, options),
 
   /**
    * POST request
    */
-  post: <T = any>(endpoint: string, data?: any, options?: RequestInit) =>
+  post: <T = unknown>(endpoint: string, data?: Record<string, unknown>, options?: RequestInit) =>
     request<T>('POST', endpoint, data, options),
 
   /**
    * PUT request
    */
-  put: <T = any>(endpoint: string, data?: any, options?: RequestInit) =>
+  put: <T = unknown>(endpoint: string, data?: Record<string, unknown>, options?: RequestInit) =>
     request<T>('PUT', endpoint, data, options),
 
   /**
    * PATCH request
    */
-  patch: <T = any>(endpoint: string, data?: any, options?: RequestInit) =>
+  patch: <T = unknown>(endpoint: string, data?: Record<string, unknown>, options?: RequestInit) =>
     request<T>('PATCH', endpoint, data, options),
 
   /**
    * DELETE request
    */
-  delete: <T = any>(endpoint: string, options?: RequestInit) =>
+  delete: <T = unknown>(endpoint: string, options?: RequestInit) =>
     request<T>('DELETE', endpoint, undefined, options),
 };
 
@@ -155,7 +157,7 @@ export const authApi = {
    * Register a new user
    */
   register: async (email: string, password: string, fullName?: string) => {
-    const response = await api.post<{ token: string; user: any }>('/api/auth/register', {
+    const response = await api.post<AuthResponse>('/api/auth/register', {
       email,
       password,
       full_name: fullName,
@@ -172,7 +174,7 @@ export const authApi = {
    * Login
    */
   login: async (email: string, password: string) => {
-    const response = await api.post<{ token: string; user: any }>('/api/auth/login', {
+    const response = await api.post<AuthResponse>('/api/auth/login', {
       email,
       password,
     });
@@ -194,7 +196,7 @@ export const authApi = {
   /**
    * Get current user
    */
-  me: () => api.get<{ user: any }>('/api/auth/me'),
+  me: () => api.get<{ user: User }>('/api/auth/me'),
 
   /**
    * Refresh token
@@ -217,17 +219,17 @@ export const chatApi = {
   /**
    * Get all sessions for current user
    */
-  getSessions: () => api.get<{ sessions: any[] }>('/api/chat/sessions'),
+  getSessions: () => api.get<{ sessions: Session[] }>('/api/chat/sessions'),
 
   /**
    * Get a specific session
    */
-  getSession: (sessionId: string) => api.get<{ session: any }>(`/api/chat/sessions/${sessionId}`),
+  getSession: (sessionId: string) => api.get<{ session: Session }>(`/api/chat/sessions/${sessionId}`),
 
   /**
    * Create a new session
    */
-  createSession: (title?: string) => api.post<{ session: any }>('/api/chat/sessions', { title }),
+  createSession: (title?: string) => api.post<{ session: Session }>('/api/chat/sessions', { title }),
 
   /**
    * Delete a session
@@ -237,13 +239,13 @@ export const chatApi = {
   /**
    * Get messages for a session
    */
-  getMessages: (sessionId: string) => api.get<{ messages: any[] }>(`/api/chat/sessions/${sessionId}/messages`),
+  getMessages: (sessionId: string) => api.get<{ messages: Message[] }>(`/api/chat/sessions/${sessionId}/messages`),
 
   /**
    * Send a message (via HTTP, not WebSocket)
    */
   sendMessage: (sessionId: string, content: string) =>
-    api.post<{ message: any }>(`/api/chat/sessions/${sessionId}/messages`, { content }),
+    api.post<{ message: Message }>(`/api/chat/sessions/${sessionId}/messages`, { content }),
 };
 
 /**
@@ -253,7 +255,7 @@ export const approvalApi = {
   /**
    * Get pending approvals for current user
    */
-  getPendingApprovals: () => api.get<{ approvals: any[] }>('/api/approvals/pending'),
+  getPendingApprovals: () => api.get<{ approvals: Approval[] }>('/api/approvals/pending'),
 
   /**
    * Approve an action
@@ -271,5 +273,5 @@ export const approvalApi = {
  * Health check
  */
 export const healthApi = {
-  check: () => api.get<{ status: string; services: any }>('/health'),
+  check: () => api.get<HealthStatus>('/health'),
 };

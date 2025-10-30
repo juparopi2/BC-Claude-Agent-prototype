@@ -9,6 +9,16 @@
 
 import { io, Socket } from 'socket.io-client';
 import { getAuthToken } from './api';
+import type {
+  EventHandler,
+  ConnectionHandler,
+  MessageEventData,
+  ThinkingEventData,
+  ToolUseEventData,
+  StreamChunkEventData,
+  ApprovalEventData,
+  TodoEventData,
+} from './types';
 
 /**
  * Socket.IO configuration
@@ -23,7 +33,7 @@ let socket: Socket | null = null;
 /**
  * Event listeners registry
  */
-const eventListeners = new Map<string, Set<Function>>();
+const eventListeners = new Map<string, Set<EventHandler>>();
 
 /**
  * Socket.IO events
@@ -154,7 +164,7 @@ export function getSocket(): Socket | null {
 /**
  * Emit an event to the server
  */
-export function emit(event: string, data?: any): void {
+export function emit(event: string, data?: Record<string, unknown>): void {
   if (!socket || !socket.connected) {
     console.warn('Socket not connected, cannot emit event:', event);
     return;
@@ -166,7 +176,7 @@ export function emit(event: string, data?: any): void {
 /**
  * Listen to an event from the server
  */
-export function on(event: string, callback: Function): void {
+export function on<T = unknown>(event: string, callback: EventHandler<T>): void {
   if (!socket) {
     console.warn('Socket not initialized, call initSocket() first');
     return;
@@ -179,18 +189,18 @@ export function on(event: string, callback: Function): void {
   eventListeners.get(event)?.add(callback);
 
   // Add socket listener
-  socket.on(event, callback as any);
+  socket.on(event, callback);
 }
 
 /**
  * Remove an event listener
  */
-export function off(event: string, callback?: Function): void {
+export function off<T = unknown>(event: string, callback?: EventHandler<T>): void {
   if (!socket) return;
 
   if (callback) {
     // Remove specific callback
-    socket.off(event, callback as any);
+    socket.off(event, callback);
     eventListeners.get(event)?.delete(callback);
   } else {
     // Remove all callbacks for this event
@@ -202,13 +212,13 @@ export function off(event: string, callback?: Function): void {
 /**
  * Listen to an event once
  */
-export function once(event: string, callback: Function): void {
+export function once<T = unknown>(event: string, callback: EventHandler<T>): void {
   if (!socket) {
     console.warn('Socket not initialized, call initSocket() first');
     return;
   }
 
-  socket.once(event, callback as any);
+  socket.once(event, callback);
 }
 
 /**
@@ -239,43 +249,43 @@ export const socketChatApi = {
   /**
    * Listen for messages
    */
-  onMessage: (callback: (data: any) => void) => {
-    on(SocketEvent.MESSAGE, callback);
+  onMessage: (callback: EventHandler<MessageEventData>) => {
+    on<MessageEventData>(SocketEvent.MESSAGE, callback);
   },
 
   /**
    * Listen for thinking indicators
    */
-  onThinking: (callback: (data: any) => void) => {
-    on(SocketEvent.THINKING, callback);
+  onThinking: (callback: EventHandler<ThinkingEventData>) => {
+    on<ThinkingEventData>(SocketEvent.THINKING, callback);
   },
 
   /**
    * Listen for tool use
    */
-  onToolUse: (callback: (data: any) => void) => {
-    on(SocketEvent.TOOL_USE, callback);
+  onToolUse: (callback: EventHandler<ToolUseEventData>) => {
+    on<ToolUseEventData>(SocketEvent.TOOL_USE, callback);
   },
 
   /**
    * Listen for stream start
    */
-  onStreamStart: (callback: (data: any) => void) => {
-    on(SocketEvent.STREAM_START, callback);
+  onStreamStart: (callback: EventHandler<{ sessionId: string }>) => {
+    on<{ sessionId: string }>(SocketEvent.STREAM_START, callback);
   },
 
   /**
    * Listen for stream chunks
    */
-  onStreamChunk: (callback: (data: any) => void) => {
-    on(SocketEvent.STREAM_CHUNK, callback);
+  onStreamChunk: (callback: EventHandler<StreamChunkEventData>) => {
+    on<StreamChunkEventData>(SocketEvent.STREAM_CHUNK, callback);
   },
 
   /**
    * Listen for stream end
    */
-  onStreamEnd: (callback: (data: any) => void) => {
-    on(SocketEvent.STREAM_END, callback);
+  onStreamEnd: (callback: EventHandler<{ sessionId: string }>) => {
+    on<{ sessionId: string }>(SocketEvent.STREAM_END, callback);
   },
 };
 
@@ -286,15 +296,15 @@ export const socketApprovalApi = {
   /**
    * Listen for approval requests
    */
-  onApprovalRequired: (callback: (data: any) => void) => {
-    on(SocketEvent.APPROVAL_REQUIRED, callback);
+  onApprovalRequired: (callback: EventHandler<ApprovalEventData>) => {
+    on<ApprovalEventData>(SocketEvent.APPROVAL_REQUIRED, callback);
   },
 
   /**
    * Listen for approval resolutions
    */
-  onApprovalResolved: (callback: (data: any) => void) => {
-    on(SocketEvent.APPROVAL_RESOLVED, callback);
+  onApprovalResolved: (callback: EventHandler<ApprovalEventData>) => {
+    on<ApprovalEventData>(SocketEvent.APPROVAL_RESOLVED, callback);
   },
 
   /**
@@ -312,15 +322,15 @@ export const socketTodoApi = {
   /**
    * Listen for todo updates
    */
-  onTodoUpdated: (callback: (data: any) => void) => {
-    on(SocketEvent.TODO_UPDATED, callback);
+  onTodoUpdated: (callback: EventHandler<TodoEventData>) => {
+    on<TodoEventData>(SocketEvent.TODO_UPDATED, callback);
   },
 
   /**
    * Listen for todo completions
    */
-  onTodoCompleted: (callback: (data: any) => void) => {
-    on(SocketEvent.TODO_COMPLETED, callback);
+  onTodoCompleted: (callback: EventHandler<TodoEventData>) => {
+    on<TodoEventData>(SocketEvent.TODO_COMPLETED, callback);
   },
 };
 
@@ -328,21 +338,21 @@ export const socketTodoApi = {
  * Connection status hook helper
  */
 export function onConnectionStatusChange(callback: (status: SocketStatus) => void): () => void {
-  const handleConnect = () => callback(SocketStatus.CONNECTED);
-  const handleDisconnect = () => callback(SocketStatus.DISCONNECTED);
-  const handleConnecting = () => callback(SocketStatus.CONNECTING);
-  const handleError = () => callback(SocketStatus.ERROR);
+  const handleConnect: ConnectionHandler = () => callback(SocketStatus.CONNECTED);
+  const handleDisconnect: ConnectionHandler = () => callback(SocketStatus.DISCONNECTED);
+  const handleConnecting: ConnectionHandler = () => callback(SocketStatus.CONNECTING);
+  const handleError: ConnectionHandler = () => callback(SocketStatus.ERROR);
 
-  on(SocketEvent.CONNECT, handleConnect);
-  on(SocketEvent.DISCONNECT, handleDisconnect);
-  on('connecting', handleConnecting);
-  on(SocketEvent.CONNECT_ERROR, handleError);
+  on<void>(SocketEvent.CONNECT, handleConnect);
+  on<void>(SocketEvent.DISCONNECT, handleDisconnect);
+  on<void>('connecting', handleConnecting);
+  on<void>(SocketEvent.CONNECT_ERROR, handleError);
 
   // Return cleanup function
   return () => {
-    off(SocketEvent.CONNECT, handleConnect);
-    off(SocketEvent.DISCONNECT, handleDisconnect);
-    off('connecting', handleConnecting);
-    off(SocketEvent.CONNECT_ERROR, handleError);
+    off<void>(SocketEvent.CONNECT, handleConnect);
+    off<void>(SocketEvent.DISCONNECT, handleDisconnect);
+    off<void>('connecting', handleConnecting);
+    off<void>(SocketEvent.CONNECT_ERROR, handleError);
   };
 }

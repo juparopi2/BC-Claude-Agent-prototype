@@ -55,3 +55,22 @@ export type {
   AgentConfig,
   AgentSessionContext,
 } from './agent.types';
+
+// Auth Types
+export type {
+  UserRole,
+  RegisterRequest,
+  LoginRequest,
+  RefreshTokenRequest,
+  LogoutRequest,
+  AuthResponse,
+  UserDTO,
+  JWTPayload,
+  RefreshTokenPayload,
+  UserRecord,
+  RefreshTokenRecord,
+  PasswordValidationResult,
+  TokenVerificationResult,
+} from './auth.types';
+
+export { AuthenticationError, AuthorizationError } from './auth.types';

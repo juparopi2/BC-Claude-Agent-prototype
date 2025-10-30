@@ -94,6 +94,20 @@ export function getDatabase(): ConnectionPool | null {
 }
 
 /**
+ * Get database connection pool (throws if not initialized)
+ * Alias for getDatabase() that throws instead of returning null
+ *
+ * @returns Connection pool
+ * @throws Error if pool is not initialized
+ */
+export function getPool(): ConnectionPool {
+  if (!pool) {
+    throw new Error('[Database] Pool not initialized. Call initDatabase() first.');
+  }
+  return pool;
+}
+
+/**
  * Execute a query with parameters
  *
  * @param query - SQL query string

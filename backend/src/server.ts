@@ -18,6 +18,9 @@ import { initRedis, closeRedis, checkRedisHealth } from './config/redis';
 import { getMCPService } from './services/mcp';
 import { getBCClient } from './services/bc';
 import { getAgentService } from './services/agent';
+import { getAuthService } from './services/auth';
+import authRoutes from './routes/auth';
+import { authenticateJWT } from './middleware/auth';
 
 /**
  * Express application instance
@@ -109,6 +112,16 @@ async function initializeApp(): Promise<void> {
     }
     console.log('');
 
+    // Step 8: Initialize Auth Service
+    console.log('🔐 Initializing Auth Service...');
+    const authService = getAuthService();
+    if (authService.isConfigured()) {
+      console.log('✅ Auth Service initialized');
+    } else {
+      console.warn('⚠️  Auth Service: JWT_SECRET not configured');
+    }
+    console.log('');
+
     console.log('✅ All services initialized successfully\n');
   } catch (error) {
     console.error('❌ Failed to initialize application:', error);
@@ -189,6 +202,14 @@ function configureRoutes(): void {
       documentation: '/api/docs',
       endpoints: {
         health: '/health',
+        auth: {
+          register: '/api/auth/register',
+          login: '/api/auth/login',
+          logout: '/api/auth/logout',
+          refresh: '/api/auth/refresh',
+          me: '/api/auth/me',
+          status: '/api/auth/status',
+        },
         mcp: {
           config: '/api/mcp/config',
           health: '/api/mcp/health',
@@ -336,7 +357,7 @@ function configureRoutes(): void {
     res.json(status);
   });
 
-  app.post('/api/agent/query', async (req: Request, res: Response): Promise<void> => {
+  app.post('/api/agent/query', authenticateJWT, async (req: Request, res: Response): Promise<void> => {
     try {
       const agentService = getAgentService();
 
@@ -386,8 +407,10 @@ function configureRoutes(): void {
     }
   });
 
-  // TODO: Add route handlers
-  // app.use('/api/auth', authRoutes);
+  // Auth routes
+  app.use('/api/auth', authRoutes);
+
+  // TODO: Add additional route handlers
   // app.use('/api/chat', chatRoutes);
   // app.use('/api/approvals', approvalsRoutes);
 

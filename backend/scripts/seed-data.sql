@@ -295,6 +295,212 @@ PRINT '✅ Created 8 audit log entries';
 PRINT '';
 
 -- ============================================
+-- Seed Todos (from Migration 001)
+-- ============================================
+-- Todos for session 1
+INSERT INTO todos (session_id, description, status, order_index, created_at, started_at, completed_at)
+VALUES
+    (@session1_id, 'Connect to Business Central API', 'completed', 1, DATEADD(MINUTE, -120, GETUTCDATE()), DATEADD(MINUTE, -120, GETUTCDATE()), DATEADD(MINUTE, -119, GETUTCDATE())),
+    (@session1_id, 'Query customer entities', 'completed', 2, DATEADD(MINUTE, -120, GETUTCDATE()), DATEADD(MINUTE, -119, GETUTCDATE()), DATEADD(MINUTE, -118, GETUTCDATE())),
+    (@session1_id, 'Format and return results', 'completed', 3, DATEADD(MINUTE, -120, GETUTCDATE()), DATEADD(MINUTE, -118, GETUTCDATE()), DATEADD(MINUTE, -118, GETUTCDATE()));
+
+-- Todos for session 2 (in progress)
+INSERT INTO todos (session_id, description, status, order_index, created_at, started_at)
+VALUES
+    (@session2_id, 'Parse user input for item details', 'completed', 1, DATEADD(MINUTE, -60, GETUTCDATE()), DATEADD(MINUTE, -60, GETUTCDATE())),
+    (@session2_id, 'Request approval for item creation', 'completed', 2, DATEADD(MINUTE, -60, GETUTCDATE()), DATEADD(MINUTE, -59, GETUTCDATE())),
+    (@session2_id, 'Wait for user approval', 'in_progress', 3, DATEADD(MINUTE, -60, GETUTCDATE()), DATEADD(MINUTE, -58, GETUTCDATE())),
+    (@session2_id, 'Create item in Business Central', 'pending', 4, DATEADD(MINUTE, -60, GETUTCDATE()), NULL),
+    (@session2_id, 'Confirm creation to user', 'pending', 5, DATEADD(MINUTE, -60, GETUTCDATE()), NULL);
+
+PRINT '✅ Created 8 todos for sessions';
+
+PRINT '';
+
+-- ============================================
+-- Seed Tool Permissions (from Migration 001)
+-- ============================================
+-- Admin has full permissions
+INSERT INTO tool_permissions (user_id, tool_name, is_allowed, requires_approval)
+VALUES
+    (@admin_id, 'bc_query_entity', 1, 0),
+    (@admin_id, 'bc_create_entity', 1, 0),
+    (@admin_id, 'bc_update_entity', 1, 0),
+    (@admin_id, 'bc_delete_entity', 1, 1); -- Even admin requires approval for deletes
+
+-- John (power user) - requires approval for writes
+INSERT INTO tool_permissions (user_id, tool_name, is_allowed, requires_approval)
+VALUES
+    (@user1_id, 'bc_query_entity', 1, 0),
+    (@user1_id, 'bc_create_entity', 1, 1),
+    (@user1_id, 'bc_update_entity', 1, 1),
+    (@user1_id, 'bc_delete_entity', 1, 1);
+
+-- Jane (analyst) - read only + create with approval
+INSERT INTO tool_permissions (user_id, tool_name, is_allowed, requires_approval)
+VALUES
+    (@user2_id, 'bc_query_entity', 1, 0),
+    (@user2_id, 'bc_create_entity', 1, 1),
+    (@user2_id, 'bc_update_entity', 0, 0),
+    (@user2_id, 'bc_delete_entity', 0, 0);
+
+PRINT '✅ Created tool permissions for 3 users';
+
+PRINT '';
+
+-- ============================================
+-- Seed Agent Executions (from Migration 002)
+-- ============================================
+DECLARE @exec1_id UNIQUEIDENTIFIER = NEWID();
+DECLARE @exec2_id UNIQUEIDENTIFIER = NEWID();
+DECLARE @exec3_id UNIQUEIDENTIFIER = NEWID();
+
+-- Execution 1: MainOrchestrator for session 1
+INSERT INTO agent_executions (id, session_id, agent_type, action, input_data, output_data, status, duration_ms, tokens_used, created_at, completed_at)
+VALUES (
+    @exec1_id,
+    @session1_id,
+    'MainOrchestrator',
+    'process_message',
+    '{"message": "Show me all active customers"}',
+    '{"intent": "query", "entity": "customers", "delegation": "BCQueryAgent"}',
+    'completed',
+    1250,
+    320,
+    DATEADD(MINUTE, -120, GETUTCDATE()),
+    DATEADD(MINUTE, -119, GETUTCDATE())
+);
+
+-- Execution 2: BCQueryAgent for session 1
+INSERT INTO agent_executions (id, session_id, agent_type, action, input_data, output_data, status, duration_ms, tokens_used, thinking_tokens, created_at, completed_at)
+VALUES (
+    @exec2_id,
+    @session1_id,
+    'BCQueryAgent',
+    'query_customers',
+    '{"entity": "customers", "filters": {"status": "active"}}',
+    '{"count": 47, "results": [...]}',
+    'completed',
+    2840,
+    180,
+    45,
+    DATEADD(MINUTE, -119, GETUTCDATE()),
+    DATEADD(MINUTE, -118, GETUTCDATE())
+);
+
+-- Execution 3: MainOrchestrator for session 2 (in progress)
+INSERT INTO agent_executions (id, session_id, agent_type, action, input_data, status, duration_ms, created_at)
+VALUES (
+    @exec3_id,
+    @session2_id,
+    'MainOrchestrator',
+    'process_message',
+    '{"message": "Create a new item: Wireless Mouse with price 29.99"}',
+    'started',
+    NULL,
+    DATEADD(MINUTE, -60, GETUTCDATE())
+);
+
+PRINT '✅ Created 3 agent execution records';
+
+PRINT '';
+
+-- ============================================
+-- Seed MCP Tool Calls (from Migration 002)
+-- ============================================
+-- Tool call for query in session 1
+INSERT INTO mcp_tool_calls (session_id, execution_id, tool_name, arguments, result, status, duration_ms, created_at, completed_at)
+VALUES (
+    @session1_id,
+    @exec2_id,
+    'bc_query_entity',
+    '{"entity": "customers", "select": ["id", "name", "email", "status"], "filter": "status eq ''active''"}',
+    '{"count": 47, "results": [{"id": "C001", "name": "Acme Corporation", "email": "contact@acme.com", "status": "active"}, ...]}',
+    'success',
+    2650,
+    DATEADD(MINUTE, -119, GETUTCDATE()),
+    DATEADD(MINUTE, -118, GETUTCDATE())
+);
+
+-- Tool call for validation in session 2
+INSERT INTO mcp_tool_calls (session_id, execution_id, tool_name, arguments, result, status, duration_ms, created_at, completed_at)
+VALUES (
+    @session2_id,
+    @exec3_id,
+    'bc_validate_entity',
+    '{"entity": "items", "data": {"name": "Wireless Mouse", "price": 29.99}}',
+    '{"valid": true, "warnings": []}',
+    'success',
+    340,
+    DATEADD(MINUTE, -59, GETUTCDATE()),
+    DATEADD(MINUTE, -59, GETUTCDATE())
+);
+
+PRINT '✅ Created 2 MCP tool call records';
+
+PRINT '';
+
+-- ============================================
+-- Seed Session Files (from Migration 002)
+-- ============================================
+INSERT INTO session_files (session_id, file_name, file_path, file_type, file_size_bytes, mime_type, is_active, created_at)
+VALUES
+    (@session1_id, 'customer_schema.json', '/cloudmd/schemas/customer_schema.json', 'reference', 2048, 'application/json', 1, DATEADD(MINUTE, -120, GETUTCDATE())),
+    (@session2_id, 'item_template.json', '/cloudmd/templates/item_template.json', 'reference', 1536, 'application/json', 1, DATEADD(MINUTE, -60, GETUTCDATE()));
+
+PRINT '✅ Created 2 session file records';
+
+PRINT '';
+
+-- ============================================
+-- Seed Performance Metrics (from Migration 002)
+-- ============================================
+INSERT INTO performance_metrics (session_id, metric_name, metric_value, metric_unit, tags, created_at)
+VALUES
+    (@session1_id, 'api_latency', 2840, 'ms', '{"endpoint": "bc_query_entity", "entity": "customers"}', DATEADD(MINUTE, -118, GETUTCDATE())),
+    (@session1_id, 'token_usage', 320, 'tokens', '{"agent": "MainOrchestrator"}', DATEADD(MINUTE, -119, GETUTCDATE())),
+    (@session1_id, 'cache_hit_rate', 0, 'percent', '{"cache_type": "prompt"}', DATEADD(MINUTE, -119, GETUTCDATE())),
+    (@session2_id, 'api_latency', 340, 'ms', '{"endpoint": "bc_validate_entity", "entity": "items"}', DATEADD(MINUTE, -59, GETUTCDATE()));
+
+PRINT '✅ Created 4 performance metric records';
+
+PRINT '';
+
+-- ============================================
+-- Seed Error Logs (from Migration 002)
+-- ============================================
+-- Example of a resolved error
+INSERT INTO error_logs (session_id, user_id, error_type, error_message, error_stack, error_code, severity, context, is_resolved, resolved_at, created_at)
+VALUES (
+    @session3_id,
+    @user2_id,
+    'mcp_error',
+    'Connection timeout to Business Central API',
+    'Error: connect ETIMEDOUT...',
+    'ETIMEDOUT',
+    'warning',
+    '{"endpoint": "bc_update_entity", "retry_count": 1}',
+    1,
+    DATEADD(DAY, -5, GETUTCDATE()),
+    DATEADD(DAY, -5, GETUTCDATE())
+);
+
+-- Example of an unresolved error
+INSERT INTO error_logs (error_type, error_message, severity, context, is_resolved, created_at)
+VALUES (
+    'database_error',
+    'Connection pool exhausted',
+    'error',
+    '{"pool_size": 10, "active_connections": 10}',
+    0,
+    DATEADD(HOUR, -6, GETUTCDATE())
+);
+
+PRINT '✅ Created 2 error log records';
+
+PRINT '';
+
+-- ============================================
 -- Summary Statistics
 -- ============================================
 PRINT '';
@@ -310,6 +516,13 @@ DECLARE @message_count INT = (SELECT COUNT(*) FROM messages);
 DECLARE @approval_count INT = (SELECT COUNT(*) FROM approvals);
 DECLARE @checkpoint_count INT = (SELECT COUNT(*) FROM checkpoints);
 DECLARE @audit_count INT = (SELECT COUNT(*) FROM audit_log);
+DECLARE @todo_count INT = (SELECT COUNT(*) FROM todos WHERE 1=1);
+DECLARE @tool_perm_count INT = (SELECT COUNT(*) FROM tool_permissions WHERE 1=1);
+DECLARE @agent_exec_count INT = (SELECT COUNT(*) FROM agent_executions WHERE 1=1);
+DECLARE @mcp_call_count INT = (SELECT COUNT(*) FROM mcp_tool_calls WHERE 1=1);
+DECLARE @session_file_count INT = (SELECT COUNT(*) FROM session_files WHERE 1=1);
+DECLARE @metric_count INT = (SELECT COUNT(*) FROM performance_metrics WHERE 1=1);
+DECLARE @error_count INT = (SELECT COUNT(*) FROM error_logs WHERE 1=1);
 
 PRINT '  Users: ' + CAST(@user_count AS VARCHAR);
 PRINT '  Sessions: ' + CAST(@session_count AS VARCHAR);
@@ -317,6 +530,13 @@ PRINT '  Messages: ' + CAST(@message_count AS VARCHAR);
 PRINT '  Approvals: ' + CAST(@approval_count AS VARCHAR);
 PRINT '  Checkpoints: ' + CAST(@checkpoint_count AS VARCHAR);
 PRINT '  Audit logs: ' + CAST(@audit_count AS VARCHAR);
+PRINT '  Todos: ' + CAST(@todo_count AS VARCHAR);
+PRINT '  Tool permissions: ' + CAST(@tool_perm_count AS VARCHAR);
+PRINT '  Agent executions: ' + CAST(@agent_exec_count AS VARCHAR);
+PRINT '  MCP tool calls: ' + CAST(@mcp_call_count AS VARCHAR);
+PRINT '  Session files: ' + CAST(@session_file_count AS VARCHAR);
+PRINT '  Performance metrics: ' + CAST(@metric_count AS VARCHAR);
+PRINT '  Error logs: ' + CAST(@error_count AS VARCHAR);
 PRINT '';
 PRINT 'Test credentials:';
 PRINT '  admin@bcagent.dev / Test123! (admin)';

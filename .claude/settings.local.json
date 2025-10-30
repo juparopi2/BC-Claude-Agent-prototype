@@ -14,7 +14,9 @@
       "Bash(npm run verify:*)",
       "Bash(npm run type-check:*)",
       "Bash(npm run lint)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(npm run dev:*)",
+      "Bash(npx ts-node:*)"
     ],
     "deny": [],
     "ask": []

@@ -33,7 +33,7 @@ let socket: Socket | null = null;
 /**
  * Event listeners registry
  */
-const eventListeners = new Map<string, Set<EventHandler>>();
+const eventListeners = new Map<string, Set<EventHandler<unknown>>>();
 
 /**
  * Socket.IO events
@@ -186,7 +186,7 @@ export function on<T = unknown>(event: string, callback: EventHandler<T>): void 
   if (!eventListeners.has(event)) {
     eventListeners.set(event, new Set());
   }
-  eventListeners.get(event)?.add(callback);
+  eventListeners.get(event)?.add(callback as EventHandler<unknown>);
 
   // Add socket listener
   socket.on(event, callback);
@@ -201,7 +201,7 @@ export function off<T = unknown>(event: string, callback?: EventHandler<T>): voi
   if (callback) {
     // Remove specific callback
     socket.off(event, callback);
-    eventListeners.get(event)?.delete(callback);
+    eventListeners.get(event)?.delete(callback as EventHandler<unknown>);
   } else {
     // Remove all callbacks for this event
     socket.off(event);

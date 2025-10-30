@@ -272,3 +272,4 @@ Cuando necesites actualizar una dependencia:
 ---
 
 **Última actualización**: 2025-10-28
+- Never use any. Lint breaks because of that

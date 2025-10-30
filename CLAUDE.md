@@ -204,6 +204,70 @@ MCP → Business Central → SDK streamea resultado → Usuario
 6. **Documentación actualizada** - Consulta `docs/02-core-concepts/06-agent-sdk-usage.md` PRIMERO antes de implementar agentes
 7. **Azure Secrets** - Todos los secrets en Key Vault, nunca en código
 8. **Tests** - No hay tests todavía, se implementarán en Phase 3 (ver TODO.md)
+9. **Dependencias NPM** - **SIEMPRE usa versiones exactas** (sin `^` ni `~`) en package.json
+
+---
+
+## 📦 Convenciones de Dependencias NPM
+
+**⚠️ MUY IMPORTANTE**: Al instalar o actualizar dependencias de npm, **SIEMPRE usa versiones exactas** sin símbolos `^` o `~`.
+
+### Por qué versiones exactas
+
+- **Reproducibilidad**: Garantiza que todos los entornos (dev, CI/CD, producción) usen exactamente las mismas versiones
+- **Evita breaking changes**: Previene actualizaciones automáticas que puedan romper el build
+- **CI/CD confiable**: npm ci funcionará de forma predecible
+- **Debugging más fácil**: Sabes exactamente qué versión está instalada
+
+### Formato correcto
+
+```json
+// ✅ CORRECTO - Versiones exactas
+{
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.1.29",
+    "@anthropic-ai/sdk": "0.68.0",
+    "zod": "3.25.76",
+    "express": "5.1.0"
+  }
+}
+
+// ❌ INCORRECTO - Versiones con rangos
+{
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.1.29",  // NO usar ^
+    "@anthropic-ai/sdk": "~0.68.0",               // NO usar ~
+    "zod": "^3.25.76",                            // NO usar ^
+    "express": ">=5.0.0"                          // NO usar >=
+  }
+}
+```
+
+### Workflow recomendado
+
+```bash
+# 1. Instalar nueva dependencia CON versión exacta
+npm install package-name@1.2.3 --save-exact
+
+# 2. O editar package.json manualmente con versión exacta
+# Luego borrar package-lock.json y reinstalar
+rm package-lock.json
+npm install
+
+# 3. Verificar versión instalada
+npm list package-name
+```
+
+### Actualizar dependencias
+
+Cuando necesites actualizar una dependencia:
+
+1. Revisa el changelog de la nueva versión
+2. Actualiza manualmente a la versión exacta en package.json
+3. Borra package-lock.json
+4. Ejecuta npm install
+5. Prueba que todo funcione (npm run build, npm run test)
+6. Commitea ambos archivos (package.json + package-lock.json)
 
 ---
 

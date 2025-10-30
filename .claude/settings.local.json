@@ -22,7 +22,8 @@
       "Bash(netstat:*)",
       "Bash(findstr:*)",
       "Bash(taskkill:*)",
-      "Bash(powershell -Command \"Stop-Process -Id 14156 -Force\")"
+      "Bash(powershell -Command \"Stop-Process -Id 14156 -Force\")",
+      "Bash(npm view:*)"
     ],
     "deny": [],
     "ask": []

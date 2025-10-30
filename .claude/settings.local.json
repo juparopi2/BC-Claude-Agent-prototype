@@ -17,7 +17,8 @@
       "Bash(npm run build:*)",
       "Bash(npm run dev:*)",
       "Bash(npx ts-node:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(json_pp:*)"
     ],
     "deny": [],
     "ask": []

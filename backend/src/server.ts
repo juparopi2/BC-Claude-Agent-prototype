@@ -15,6 +15,8 @@ import { env, isProd, printConfig, validateRequiredSecrets } from './config/envi
 import { loadSecretsFromKeyVault } from './config/keyvault';
 import { initDatabase, closeDatabase, checkDatabaseHealth } from './config/database';
 import { initRedis, closeRedis, checkRedisHealth } from './config/redis';
+import { getMCPService } from './services/mcp';
+import { getBCClient } from './services/bc';
 
 /**
  * Express application instance
@@ -66,6 +68,33 @@ async function initializeApp(): Promise<void> {
     await initRedis();
     console.log('');
 
+    // Step 5: Initialize MCP Service
+    const mcpService = getMCPService();
+    if (mcpService.isConfigured()) {
+      console.log('🔌 Initializing MCP Service...');
+      const mcpHealth = await mcpService.validateMCPConnection();
+      if (mcpHealth.connected) {
+        console.log(`✅ MCP Service connected: ${mcpService.getMCPServerUrl()}`);
+      } else {
+        console.warn(`⚠️  MCP Service not reachable: ${mcpHealth.error}`);
+      }
+      console.log('');
+    } else {
+      console.warn('⚠️  MCP Service not configured (MCP_SERVER_URL missing)');
+      console.log('');
+    }
+
+    // Step 6: Initialize BC Client (validate credentials)
+    console.log('🔑 Validating Business Central credentials...');
+    const bcClient = getBCClient();
+    const bcValid = await bcClient.validateCredentials();
+    if (bcValid) {
+      console.log('✅ Business Central authentication successful');
+    } else {
+      console.warn('⚠️  Business Central authentication failed');
+    }
+    console.log('');
+
     console.log('✅ All services initialized successfully\n');
   } catch (error) {
     console.error('❌ Failed to initialize application:', error);
@@ -107,12 +136,29 @@ function configureRoutes(): void {
     const dbHealth = await checkDatabaseHealth();
     const redisHealth = await checkRedisHealth();
 
+    // Check MCP health
+    const mcpService = getMCPService();
+    let mcpHealth = 'not_configured';
+    if (mcpService.isConfigured()) {
+      const mcpStatus = await mcpService.validateMCPConnection();
+      mcpHealth = mcpStatus.connected ? 'up' : 'down';
+    }
+
+    // Check BC health
+    const bcClient = getBCClient();
+    const bcConnected = await bcClient.testConnection();
+    const bcHealth = bcConnected ? 'up' : 'down';
+
+    const allHealthy = dbHealth && redisHealth && mcpHealth !== 'down' && bcHealth === 'up';
+
     const health = {
-      status: dbHealth && redisHealth ? 'healthy' : 'unhealthy',
+      status: allHealthy ? 'healthy' : 'unhealthy',
       timestamp: new Date().toISOString(),
       services: {
         database: dbHealth ? 'up' : 'down',
         redis: redisHealth ? 'up' : 'down',
+        mcp: mcpHealth,
+        businessCentral: bcHealth,
       },
     };
 
@@ -127,7 +173,132 @@ function configureRoutes(): void {
       version: '1.0.0',
       status: 'running',
       documentation: '/api/docs',
+      endpoints: {
+        health: '/health',
+        mcp: {
+          config: '/api/mcp/config',
+          health: '/api/mcp/health',
+        },
+        bc: {
+          test: '/api/bc/test',
+          customers: '/api/bc/customers',
+        },
+      },
     });
+  });
+
+  // MCP endpoints
+  app.get('/api/mcp/config', (_req: Request, res: Response): void => {
+    const mcpService = getMCPService();
+
+    if (!mcpService.isConfigured()) {
+      res.status(503).json({
+        error: 'MCP not configured',
+        message: 'MCP_SERVER_URL is not set',
+      });
+      return;
+    }
+
+    const config = mcpService.getMCPServerConfig();
+    res.json({
+      configured: true,
+      serverUrl: mcpService.getMCPServerUrl(),
+      serverName: mcpService.getMCPServerName(),
+      config: {
+        type: config.type,
+        name: config.name,
+      },
+    });
+  });
+
+  app.get('/api/mcp/health', async (_req: Request, res: Response): Promise<void> => {
+    const mcpService = getMCPService();
+
+    if (!mcpService.isConfigured()) {
+      res.status(503).json({
+        connected: false,
+        error: 'MCP not configured',
+      });
+      return;
+    }
+
+    const health = await mcpService.validateMCPConnection();
+    const statusCode = health.connected ? 200 : 503;
+
+    res.status(statusCode).json(health);
+  });
+
+  // BC endpoints
+  app.get('/api/bc/test', async (_req: Request, res: Response): Promise<void> => {
+    try {
+      const bcClient = getBCClient();
+
+      // Test authentication
+      const authValid = await bcClient.validateCredentials();
+      if (!authValid) {
+        res.status(401).json({
+          error: 'Authentication failed',
+          message: 'BC credentials are invalid',
+        });
+        return;
+      }
+
+      // Test connection
+      const connected = await bcClient.testConnection();
+      if (!connected) {
+        res.status(503).json({
+          error: 'Connection failed',
+          message: 'Unable to connect to BC API',
+        });
+        return;
+      }
+
+      // Get token status
+      const tokenStatus = bcClient.getTokenStatus();
+
+      res.json({
+        authenticated: true,
+        connected: true,
+        token: {
+          hasToken: tokenStatus.hasToken,
+          expiresAt: tokenStatus.expiresAt,
+        },
+      });
+    } catch (error) {
+      console.error('[API] BC test failed:', error);
+      res.status(500).json({
+        error: 'Test failed',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  app.get('/api/bc/customers', async (req: Request, res: Response) => {
+    try {
+      const bcClient = getBCClient();
+
+      // Parse query parameters
+      const top = req.query.top ? parseInt(req.query.top as string) : 10;
+      const filter = req.query.filter as string | undefined;
+
+      const customers = await bcClient.query('customers', {
+        select: ['id', 'number', 'displayName', 'email', 'blocked', 'balance'],
+        top,
+        filter,
+        count: true,
+      });
+
+      res.json({
+        count: customers['@odata.count'],
+        customers: customers.value,
+      });
+    } catch (error) {
+      console.error('[API] Query customers failed:', error);
+      res.status(500).json({
+        error: 'Query failed',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
   });
 
   // TODO: Add route handlers

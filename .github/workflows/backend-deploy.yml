@@ -165,7 +165,7 @@ jobs:
       - name: Health Check
         run: |
           sleep 30
-          curl -f ${{ steps.get_url.outputs.url }}/health || exit 1
+          curl -f ${{ steps.get_url.outputs.url }}/health/liveness || exit 1
 
       - name: Deployment Summary
         run: |

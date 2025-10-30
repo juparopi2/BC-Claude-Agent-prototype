@@ -158,7 +158,15 @@ function configureMiddleware(): void {
  * Configure routes
  */
 function configureRoutes(): void {
-  // Health check endpoint
+  // Liveness probe - always returns 200 if server is running
+  app.get('/health/liveness', (_req: Request, res: Response) => {
+    res.status(200).json({
+      status: 'alive',
+      timestamp: new Date().toISOString(),
+    });
+  });
+
+  // Health check endpoint - checks all services
   app.get('/health', async (_req: Request, res: Response) => {
     const dbHealth = await checkDatabaseHealth();
     const redisHealth = await checkRedisHealth();
@@ -202,6 +210,7 @@ function configureRoutes(): void {
       documentation: '/api/docs',
       endpoints: {
         health: '/health',
+        liveness: '/health/liveness',
         auth: {
           register: '/api/auth/register',
           login: '/api/auth/login',

@@ -18,7 +18,11 @@
       "Bash(npm run dev:*)",
       "Bash(npx ts-node:*)",
       "Bash(npx tsc:*)",
-      "Bash(json_pp:*)"
+      "Bash(json_pp:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(taskkill:*)",
+      "Bash(powershell -Command \"Stop-Process -Id 14156 -Force\")"
     ],
     "deny": [],
     "ask": []

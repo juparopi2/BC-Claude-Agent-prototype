@@ -17,6 +17,7 @@ import { initDatabase, closeDatabase, checkDatabaseHealth } from './config/datab
 import { initRedis, closeRedis, checkRedisHealth } from './config/redis';
 import { getMCPService } from './services/mcp';
 import { getBCClient } from './services/bc';
+import { getAgentService } from './services/agent';
 
 /**
  * Express application instance
@@ -92,6 +93,19 @@ async function initializeApp(): Promise<void> {
       console.log('✅ Business Central authentication successful');
     } else {
       console.warn('⚠️  Business Central authentication failed');
+    }
+    console.log('');
+
+    // Step 7: Initialize Agent Service
+    console.log('🤖 Initializing Agent Service...');
+    const agentService = getAgentService();
+    const agentConfig = agentService.getConfigStatus();
+    if (agentConfig.hasApiKey) {
+      console.log('✅ Agent Service initialized');
+      console.log(`   Model: ${agentConfig.model}`);
+      console.log(`   MCP Configured: ${agentConfig.mcpConfigured ? 'Yes' : 'No'}`);
+    } else {
+      console.warn('⚠️  Agent Service: ANTHROPIC_API_KEY not configured');
     }
     console.log('');
 
@@ -182,6 +196,10 @@ function configureRoutes(): void {
         bc: {
           test: '/api/bc/test',
           customers: '/api/bc/customers',
+        },
+        agent: {
+          status: '/api/agent/status',
+          query: '/api/agent/query',
         },
       },
     });
@@ -294,6 +312,73 @@ function configureRoutes(): void {
       });
     } catch (error) {
       console.error('[API] Query customers failed:', error);
+      res.status(500).json({
+        error: 'Query failed',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  // Agent endpoints
+  app.get('/api/agent/status', (_req: Request, res: Response): void => {
+    const agentService = getAgentService();
+    const mcpService = getMCPService();
+
+    const status = {
+      configured: agentService.isConfigured(),
+      config: agentService.getConfigStatus(),
+      mcpServer: {
+        url: mcpService.getMCPServerUrl(),
+        configured: mcpService.isConfigured(),
+      },
+    };
+
+    res.json(status);
+  });
+
+  app.post('/api/agent/query', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const agentService = getAgentService();
+
+      if (!agentService.isConfigured()) {
+        res.status(503).json({
+          error: 'Agent not configured',
+          message: 'ANTHROPIC_API_KEY is not set',
+        });
+        return;
+      }
+
+      const { prompt, sessionId } = req.body;
+
+      if (!prompt || typeof prompt !== 'string') {
+        res.status(400).json({
+          error: 'Invalid request',
+          message: 'prompt is required and must be a string',
+        });
+        return;
+      }
+
+      console.log(`[Agent] Executing query: "${prompt.substring(0, 50)}..."`);
+
+      // Execute query with event logging
+      const result = await agentService.executeQuery(
+        prompt,
+        sessionId,
+        (event) => {
+          console.log(`[Agent Event] ${event.type}:`,
+            event.type === 'message' && 'content' in event
+              ? event.content.substring(0, 100)
+              : ''
+          );
+        }
+      );
+
+      console.log(`[Agent] Query completed in ${result.durationMs}ms`);
+      console.log(`[Agent] Tools used: ${result.toolsUsed.join(', ') || 'none'}`);
+
+      res.json(result);
+    } catch (error) {
+      console.error('[API] Agent query failed:', error);
       res.status(500).json({
         error: 'Query failed',
         message: error instanceof Error ? error.message : 'Unknown error',

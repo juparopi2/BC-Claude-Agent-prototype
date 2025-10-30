@@ -50,28 +50,113 @@ export class MCPService {
   }
 
   /**
+   * Get MCP Servers Configuration for Agent SDK (Record format)
+   *
+   * Returns MCP configuration in the format expected by @anthropic-ai/claude-agent-sdk
+   * Uses a record mapping server names to configurations.
+   *
+   * @example
+   * ```typescript
+   * import { query } from '@anthropic-ai/claude-agent-sdk';
+   *
+   * const mcpService = getMCPService();
+   * const result = await query({
+   *   prompt: 'List customers',
+   *   options: {
+   *     mcpServers: mcpService.getMCPServersConfig(),
+   *     apiKey: process.env.ANTHROPIC_API_KEY,
+   *   }
+   * });
+   * ```
+   */
+  getMCPServersConfig(): Record<
+    string,
+    {
+      type: 'sse';
+      url: string;
+      headers?: Record<string, string>;
+    }
+  > {
+    return {
+      [this.serverName]: {
+        type: 'sse',
+        url: this.mcpServerUrl,
+        headers: {
+          'Accept': 'application/json, text/event-stream',
+        },
+      },
+    };
+  }
+
+  /**
    * Validate MCP Connection
    *
-   * Performs a basic health check to verify the MCP server is reachable.
-   * Note: This does NOT test tool calling - use testMCPConnection.ts for that.
+   * Performs a proper MCP handshake to verify the server is reachable and responding correctly.
+   * Sends an MCP initialize message as per the JSON-RPC 2.0 protocol.
    *
    * @returns Health status of MCP connection
    */
   async validateMCPConnection(): Promise<MCPHealthStatus> {
     try {
-      // Basic HTTP check to see if server responds
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
 
+      // Send MCP initialize message (JSON-RPC 2.0)
       const response = await fetch(this.mcpServerUrl, {
-        method: 'GET',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json, text/event-stream',
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'initialize',
+          params: {
+            protocolVersion: '2024-11-05',
+            capabilities: {},
+            clientInfo: {
+              name: 'bc-claude-agent',
+              version: '1.0.0',
+            },
+          },
+        }),
         signal: controller.signal,
       });
 
       clearTimeout(timeoutId);
 
-      if (response.ok || response.status === 404) {
-        // 404 is OK - means server is up but endpoint might be different
+      if (!response.ok) {
+        return {
+          connected: false,
+          error: `MCP server returned status ${response.status}`,
+        };
+      }
+
+      // Parse JSON-RPC response
+      const data = (await response.json()) as {
+        result?: {
+          protocolVersion?: string;
+          serverInfo?: {
+            name?: string;
+            version?: string;
+          };
+          capabilities?: unknown;
+        };
+        error?: {
+          code: number;
+          message: string;
+        };
+      };
+
+      if (data.error) {
+        return {
+          connected: false,
+          error: `MCP error: ${data.error.message}`,
+        };
+      }
+
+      if (data.result && data.result.serverInfo) {
         return {
           connected: true,
           lastConnected: new Date(),
@@ -80,7 +165,7 @@ export class MCPService {
 
       return {
         connected: false,
-        error: `MCP server returned status ${response.status}`,
+        error: 'Invalid MCP response format',
       };
     } catch (error) {
       const errorMessage =

@@ -74,3 +74,19 @@ export type {
 } from './auth.types';
 
 export { AuthenticationError, AuthorizationError } from './auth.types';
+
+// Orchestration Types
+export type {
+  IntentType,
+  EntityType,
+  ConfidenceLevel,
+  IntentClassification,
+  OrchestratorConfig,
+  AgentExecutionStep,
+  AgentExecutionPlan,
+  StepExecutionResult,
+  MultiStepResult,
+  OrchestrationMetrics,
+  IntentAnalysisOptions,
+  OrchestratorStatus,
+} from './orchestration.types';

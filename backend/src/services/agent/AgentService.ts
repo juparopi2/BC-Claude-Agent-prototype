@@ -454,6 +454,143 @@ export class AgentService {
   }
 
   /**
+   * Execute Query with Orchestration
+   *
+   * Uses Orchestrator to analyze intent and route to appropriate specialized agent.
+   * Provides intelligent agent selection based on prompt classification.
+   *
+   * @param prompt - User prompt/query
+   * @param sessionId - Session ID for context
+   * @param userId - Optional user ID
+   * @param onEvent - Optional callback for streaming events
+   * @returns Promise resolving to execution result
+   *
+   * @example
+   * ```typescript
+   * const result = await agentService.executeWithOrchestration(
+   *   'Create customer Acme Corp',
+   *   'session-123',
+   *   'user-456',
+   *   (event) => console.log(event)
+   * );
+   * ```
+   */
+  async executeWithOrchestration(
+    prompt: string,
+    sessionId: string,
+    userId?: string,
+    onEvent?: (event: AgentEvent) => void
+  ): Promise<AgentExecutionResult> {
+    const startTime = Date.now();
+    const toolsUsed: string[] = [];
+    let finalResponse = '';
+    let finalMessageId = '';
+    let inputTokens = 0;
+    let outputTokens = 0;
+
+    try {
+      // Import Orchestrator (lazy import to avoid circular deps)
+      const { default: Orchestrator } = await import('./Orchestrator');
+
+      // Check if orchestrator is configured
+      if (!Orchestrator.isConfigured()) {
+        console.warn('[AgentService] Orchestrator not configured, falling back to direct execution');
+        return this.executeQuery(prompt, sessionId, onEvent);
+      }
+
+      console.log('[AgentService] Executing with orchestration');
+
+      // Get event stream from orchestrator
+      const eventStream = await Orchestrator.analyzeAndExecute(prompt, sessionId, userId);
+
+      // Stream events to callback
+      for await (const event of eventStream) {
+        // Track tools
+        if (event.type === 'tool_use') {
+          toolsUsed.push(event.toolName);
+        }
+
+        // Accumulate final response
+        if (event.type === 'message_partial') {
+          finalResponse += event.content;
+        }
+
+        // Get final message
+        if (event.type === 'message') {
+          finalResponse = event.content;
+          finalMessageId = event.messageId;
+
+          if (event.tokenUsage) {
+            inputTokens = event.tokenUsage.inputTokens || 0;
+            outputTokens = event.tokenUsage.outputTokens || 0;
+          }
+        }
+
+        // Call event callback
+        if (onEvent) {
+          onEvent(event);
+        }
+
+        // Emit session_start event on first event
+        if (onEvent && !finalMessageId && event.type === 'thinking') {
+          onEvent({
+            type: 'session_start',
+            timestamp: new Date(),
+            sessionId,
+            userId: userId || 'unknown',
+          });
+        }
+      }
+
+      const durationMs = Date.now() - startTime;
+
+      // Return execution result
+      return {
+        messageId: finalMessageId,
+        response: finalResponse || 'No response generated',
+        toolsUsed,
+        tokenUsage: {
+          inputTokens,
+          outputTokens,
+          totalTokens: inputTokens + outputTokens,
+        },
+        durationMs,
+        sessionId,
+        success: true,
+      };
+    } catch (error) {
+      const durationMs = Date.now() - startTime;
+      console.error('[AgentService] Error during orchestrated execution:', error);
+
+      // Emit error event
+      if (onEvent) {
+        onEvent({
+          type: 'error',
+          timestamp: new Date(),
+          sessionId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+
+      // Return error result
+      return {
+        messageId: `error_${Date.now()}`,
+        response: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        toolsUsed,
+        tokenUsage: {
+          inputTokens,
+          outputTokens,
+          totalTokens: inputTokens + outputTokens,
+        },
+        durationMs,
+        sessionId,
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  /**
    * Set Approval Manager
    *
    * @param approvalManager - Approval manager instance

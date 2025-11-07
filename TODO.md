@@ -45,9 +45,9 @@
 
 ### 🔄 En Progreso
 - [x] **PHASE 1: Foundation** (Semanas 1-3) - Week 1 ✅, Week 2 ✅, Week 3 ✅ **COMPLETADO 100%**
+- [ ] **PHASE 2: MVP Core Features** (Semanas 4-7) - Week 4 🔄 **EN PROGRESO**
 
 ### ⏳ Pendiente
-- [ ] PHASE 2: MVP Core Features (Semanas 4-7)
 - [ ] PHASE 3: Polish & Testing (Semanas 8-9)
 
 ---

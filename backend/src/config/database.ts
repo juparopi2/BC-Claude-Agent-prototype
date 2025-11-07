@@ -114,9 +114,9 @@ export function getPool(): ConnectionPool {
  * @param params - Query parameters
  * @returns Query result
  */
-export async function executeQuery<T = any>(
+export async function executeQuery<T = unknown>(
   query: string,
-  params?: Record<string, any>
+  params?: Record<string, unknown>
 ): Promise<sql.IResult<T>> {
   try {
     const db = getDatabase();
@@ -149,9 +149,9 @@ export async function executeQuery<T = any>(
  * @param params - Procedure parameters
  * @returns Procedure result
  */
-export async function executeProcedure<T = any>(
+export async function executeProcedure<T = unknown>(
   procedureName: string,
-  params?: Record<string, any>
+  params?: Record<string, unknown>
 ): Promise<sql.IResult<T>> {
   try {
     const db = getDatabase();

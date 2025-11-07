@@ -10,8 +10,12 @@
  * @module services/agent/AgentFactory
  */
 
-import { query, type PermissionResult, type McpServerConfig } from '@anthropic-ai/claude-agent-sdk';
+import { query, type McpServerConfig } from '@anthropic-ai/claude-agent-sdk';
 import type { ApprovalManager } from '../approval/ApprovalManager';
+import {
+  createReadOnlyPermissionCheck,
+  createWritePermissionCheck,
+} from './helpers/permissions';
 
 /**
  * Create a Query Agent
@@ -62,27 +66,8 @@ Best practices:
       permissionMode: 'default',
       includePartialMessages: true,
 
-      canUseTool: async (
-        toolName: string,
-        input: Record<string, unknown>
-      ): Promise<PermissionResult> => {
-        // Only allow read tools
-        const readPrefixes = ['bc_get', 'bc_query', 'bc_list', 'bc_search'];
-        const isAllowed = readPrefixes.some((prefix) => toolName.startsWith(prefix));
-
-        if (!isAllowed) {
-          return {
-            behavior: 'deny',
-            message: 'Query Agent can only perform read operations',
-            interrupt: true,
-          };
-        }
-
-        return {
-          behavior: 'allow',
-          updatedInput: input,
-        };
-      },
+      // Use read-only permission helper
+      canUseTool: createReadOnlyPermissionCheck(),
     },
   });
 }
@@ -143,52 +128,8 @@ Write workflow:
       permissionMode: 'default',
       includePartialMessages: true,
 
-      canUseTool: async (
-        toolName: string,
-        input: Record<string, unknown>
-      ): Promise<PermissionResult> => {
-        // Allow write and read tools (need reads for validation)
-        const allowedPrefixes = ['bc_create', 'bc_update', 'bc_get', 'bc_query'];
-        const isAllowed = allowedPrefixes.some((prefix) => toolName.startsWith(prefix));
-
-        if (!isAllowed) {
-          return {
-            behavior: 'deny',
-            message: 'Write Agent can only use bc_create, bc_update, bc_get, and bc_query tools',
-            interrupt: true,
-          };
-        }
-
-        // Request approval for write operations
-        if (toolName.startsWith('bc_create') || toolName.startsWith('bc_update')) {
-          try {
-            const approved = await approvalManager.request({
-              sessionId,
-              toolName,
-              toolArgs: input,
-            });
-
-            if (!approved) {
-              return {
-                behavior: 'deny',
-                message: 'Operation rejected by user',
-                interrupt: true,
-              };
-            }
-          } catch (error) {
-            return {
-              behavior: 'deny',
-              message: `Approval failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
-              interrupt: true,
-            };
-          }
-        }
-
-        return {
-          behavior: 'allow',
-          updatedInput: input,
-        };
-      },
+      // Use write permission helper with approval
+      canUseTool: createWritePermissionCheck(approvalManager, sessionId),
     },
   });
 }
@@ -309,52 +250,14 @@ Always support your insights with concrete data from BC.`,
       permissionMode: 'default',
       includePartialMessages: true,
 
-      canUseTool: async (
-        toolName: string,
-        input: Record<string, unknown>
-      ): Promise<PermissionResult> => {
-        // Only allow read tools
-        const readPrefixes = ['bc_get', 'bc_query', 'bc_list', 'bc_search'];
-        const isAllowed = readPrefixes.some((prefix) => toolName.startsWith(prefix));
-
-        if (!isAllowed) {
-          return {
-            behavior: 'deny',
-            message: 'Analysis Agent can only perform read operations',
-            interrupt: true,
-          };
-        }
-
-        return {
-          behavior: 'allow',
-          updatedInput: input,
-        };
-      },
+      // Use read-only permission helper
+      canUseTool: createReadOnlyPermissionCheck(),
     },
   });
 }
 
-/**
- * Check if a tool name is a write operation
- *
- * @param toolName - Tool name to check
- * @returns True if tool is a write operation
- */
-export function isWriteOperation(toolName: string): boolean {
-  const writePrefixes = ['bc_create', 'bc_update', 'bc_delete', 'bc_patch'];
-  return writePrefixes.some(prefix => toolName.startsWith(prefix));
-}
-
-/**
- * Check if a tool name is a read operation
- *
- * @param toolName - Tool name to check
- * @returns True if tool is a read operation
- */
-export function isReadOperation(toolName: string): boolean {
-  const readPrefixes = ['bc_get', 'bc_query', 'bc_list', 'bc_search', 'bc_fetch'];
-  return readPrefixes.some(prefix => toolName.startsWith(prefix));
-}
+// Re-export helper functions for convenience
+export { isWriteOperation, isReadOperation } from './helpers/permissions';
 
 /**
  * Get appropriate agent type for a given prompt

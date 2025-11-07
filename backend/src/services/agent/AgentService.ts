@@ -6,13 +6,26 @@
  * Includes hooks for approval and todo tracking.
  */
 
-import { query, type PermissionResult } from '@anthropic-ai/claude-agent-sdk';
+import {
+  query,
+  type PermissionResult,
+  type PermissionUpdate,
+  type SDKMessage,
+  type HookInput,
+  type HookJSONOutput,
+} from '@anthropic-ai/claude-agent-sdk';
+import type {
+  BetaContentBlock,
+  BetaToolUseBlock,
+  BetaTextBlock,
+} from '@anthropic-ai/sdk/resources/beta';
 import { env } from '@/config';
 import { getMCPService } from '../mcp';
 import { getDatabase } from '@/config/database';
 import type { AgentEvent, AgentExecutionResult } from '@/types';
 import type { ApprovalManager } from '../approval/ApprovalManager';
 import type { TodoManager } from '../todo/TodoManager';
+import { isWriteOperation } from './helpers/permissions';
 
 /**
  * Agent Service Class
@@ -95,7 +108,7 @@ export class AgentService {
           canUseTool: async (
             toolName: string,
             input: Record<string, unknown>,
-            _options: { signal: AbortSignal; suggestions?: any[]; toolUseID: string }
+            _options: { signal: AbortSignal; suggestions?: PermissionUpdate[]; toolUseID: string }
           ): Promise<PermissionResult> => {
             console.log(`[Agent] Checking permission for tool: ${toolName}`);
 
@@ -108,7 +121,7 @@ export class AgentService {
             }
 
             // Request approval for write operations
-            if (this.isWriteOperation(toolName) && this.approvalManager && sessionId) {
+            if (isWriteOperation(toolName) && this.approvalManager && sessionId) {
               try {
                 const approved = await this.approvalManager.request({
                   sessionId,
@@ -142,12 +155,56 @@ export class AgentService {
               updatedInput: input,
             };
           },
+
+          // PostToolUse hook for tracking tool execution results
+          hooks: {
+            PostToolUse: [
+              {
+                hooks: [
+                  async (input: HookInput): Promise<HookJSONOutput> => {
+                    // Type guard to ensure this is a PostToolUse hook
+                    if (input.hook_event_name !== 'PostToolUse') {
+                      return {};
+                    }
+
+                    const toolName = input.tool_name;
+                    const toolResponse = input.tool_response;
+
+                    // Determine if tool execution was successful
+                    const isError = typeof toolResponse === 'object' &&
+                                   toolResponse !== null &&
+                                   'is_error' in toolResponse &&
+                                   toolResponse.is_error === true;
+
+                    console.log(`[Agent] Tool executed: ${toolName}, success: ${!isError}`);
+
+                    // Mark todo as completed/failed
+                    if (this.todoManager && sessionId) {
+                      const currentTodo = await this.findCurrentTodo(sessionId);
+                      if (currentTodo) {
+                        await this.todoManager.markCompleted(sessionId, currentTodo.id, !isError);
+                      }
+                    }
+
+                    // Log to audit_log
+                    if (sessionId) {
+                      await this.logToolExecution(sessionId, toolName, {
+                        success: !isError,
+                        result: toolResponse,
+                      });
+                    }
+
+                    // Continue execution
+                    return {};
+                  },
+                ],
+              },
+            ],
+          },
         },
       });
 
-      // Stream events and track tool execution
-      const toolExecutionMap = new Map<string, { toolName: string; input: any }>();
-
+      // Stream events and track which tools were used
       for await (const sdkMessage of result) {
         // Emit event to callback if provided
         if (onEvent) {
@@ -167,53 +224,15 @@ export class AgentService {
           finalMessageId = sdkMessage.uuid;
         }
 
-        // Track tools used from assistant messages and store tool use info
+        // Track which tools were used (for response metadata)
         if (sdkMessage.type === 'assistant') {
           for (const content of sdkMessage.message.content) {
-            if (content.type === 'tool_use' && 'name' in content) {
-              const toolName = (content as any).name as string;
-              const toolUseId = (content as any).id as string;
-              const toolInput = (content as any).input;
-
-              // Store for later matching with tool result
-              toolExecutionMap.set(toolUseId, { toolName, input: toolInput });
+            if (content.type === 'tool_use') {
+              const toolUseBlock = content as BetaToolUseBlock;
+              const toolName = toolUseBlock.name;
 
               if (!toolsUsed.includes(toolName)) {
                 toolsUsed.push(toolName);
-              }
-            }
-          }
-        }
-
-        // Handle tool results for post-tool tracking
-        if (sdkMessage.type === 'user' && sdkMessage.message.content) {
-          for (const content of sdkMessage.message.content as any[]) {
-            if (content.type === 'tool_result') {
-              const toolUseId = content.tool_use_id;
-              const toolResult = content.content;
-              const isError = content.is_error || false;
-
-              // Get tool info from map
-              const toolInfo = toolExecutionMap.get(toolUseId);
-              if (toolInfo) {
-                // Mark todo as completed/failed
-                if (this.todoManager && sessionId) {
-                  const currentTodo = await this.findCurrentTodo(sessionId);
-                  if (currentTodo) {
-                    await this.todoManager.markCompleted(sessionId, currentTodo.id, !isError);
-                  }
-                }
-
-                // Log to audit_log
-                if (sessionId) {
-                  await this.logToolExecution(sessionId, toolInfo.toolName, {
-                    success: !isError,
-                    result: toolResult,
-                  });
-                }
-
-                // Remove from map
-                toolExecutionMap.delete(toolUseId);
               }
             }
           }
@@ -267,17 +286,6 @@ export class AgentService {
         error: errorMessage,
       };
     }
-  }
-
-  /**
-   * Check if a tool is a write operation
-   *
-   * @param toolName - Tool name
-   * @returns True if tool is a write operation
-   */
-  private isWriteOperation(toolName: string): boolean {
-    const writePrefixes = ['bc_create', 'bc_update', 'bc_delete', 'bc_patch'];
-    return writePrefixes.some(prefix => toolName.startsWith(prefix));
   }
 
   /**
@@ -342,7 +350,7 @@ export class AgentService {
    * @returns Mapped AgentEvent or null if not convertible
    */
   private mapSDKMessageToAgentEvent(
-    sdkMessage: any,
+    sdkMessage: SDKMessage,
     sessionId?: string
   ): AgentEvent | null {
     const timestamp = new Date();
@@ -373,8 +381,8 @@ export class AgentService {
         case 'assistant':
           // Extract text content from assistant message
           const textContent = sdkMessage.message.content
-            .filter((c: any) => c.type === 'text')
-            .map((c: any) => c.text)
+            .filter((c: BetaContentBlock): c is BetaTextBlock => c.type === 'text')
+            .map((c: BetaTextBlock) => c.text)
             .join('\n');
 
           return {

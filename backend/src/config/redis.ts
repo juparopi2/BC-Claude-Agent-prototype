@@ -233,7 +233,7 @@ export async function checkRedisHealth(): Promise<boolean> {
  */
 export async function setSession(
   sessionId: string,
-  data: Record<string, any>,
+  data: Record<string, unknown>,
   expirySeconds: number = 1800 // 30 minutes default
 ): Promise<void> {
   const client = getRedis();
@@ -252,7 +252,7 @@ export async function setSession(
  * @param sessionId - Session ID
  * @returns Session data or null if not found
  */
-export async function getSession(sessionId: string): Promise<Record<string, any> | null> {
+export async function getSession(sessionId: string): Promise<Record<string, unknown> | null> {
   const client = getRedis();
 
   if (!client) {
@@ -292,7 +292,7 @@ export async function deleteSession(sessionId: string): Promise<void> {
  * @param value - Value to cache
  * @param expirySeconds - Expiry time in seconds (optional)
  */
-export async function setCache(key: string, value: any, expirySeconds?: number): Promise<void> {
+export async function setCache(key: string, value: unknown, expirySeconds?: number): Promise<void> {
   const client = getRedis();
 
   if (!client) {
@@ -314,7 +314,7 @@ export async function setCache(key: string, value: any, expirySeconds?: number):
  * @param key - Cache key
  * @returns Cached value or null if not found
  */
-export async function getCache<T = any>(key: string): Promise<T | null> {
+export async function getCache<T = unknown>(key: string): Promise<T | null> {
   const client = getRedis();
 
   if (!client) {

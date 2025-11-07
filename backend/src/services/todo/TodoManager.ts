@@ -126,7 +126,7 @@ export class TodoManager {
             .map(line => line.replace(/^[\d\-\*\.]\s+/, '').trim())
             .filter(line => line.length > 0);
         }
-      } catch (parseError) {
+      } catch {
         console.warn('[TodoManager] Failed to parse plan JSON, using heuristic fallback');
         return this.generateTodosHeuristic(sessionId, prompt);
       }
@@ -378,36 +378,13 @@ export class TodoManager {
    * @returns Array of created todos
    */
   private async generateTodosHeuristic(sessionId: string, prompt: string): Promise<Todo[]> {
-    console.log('[TodoManager] Using heuristic todo generation');
+    console.log('[TodoManager] Using heuristic todo generation (simple fallback)');
 
-    const steps: string[] = [];
+    // Create one generic todo with the full prompt
+    // This is more reliable than trying to parse specific patterns with regex
+    const step = prompt.length > 100 ? `${prompt.substring(0, 97)}...` : prompt;
 
-    // Detect "create X customers" pattern
-    const createMultipleMatch = prompt.match(/create (\d+) (customer|vendor|item)s?/i);
-    if (createMultipleMatch && createMultipleMatch[1] && createMultipleMatch[2]) {
-      const count = parseInt(createMultipleMatch[1], 10);
-      const entityType = createMultipleMatch[2];
-      for (let i = 1; i <= count; i++) {
-        steps.push(`Create ${entityType} #${i}`);
-      }
-    }
-
-    // Detect "create customer X, Y, Z" pattern
-    const createListMatch = prompt.match(/create (?:customer|vendor|item)s?:?\s+(.+)/i);
-    if (createListMatch && createListMatch[1] && steps.length === 0) {
-      const items = createListMatch[1].split(/,|and/).map(s => s.trim()).filter(s => s.length > 0);
-      const entityType = prompt.match(/create (customer|vendor|item)/i)?.[1] || 'item';
-      items.forEach(item => {
-        steps.push(`Create ${entityType} ${item}`);
-      });
-    }
-
-    // Fallback: Single generic step
-    if (steps.length === 0) {
-      steps.push(prompt.length > 50 ? `${prompt.substring(0, 47)}...` : prompt);
-    }
-
-    return this.createTodosFromSteps(sessionId, steps);
+    return this.createTodosFromSteps(sessionId, [step]);
   }
 
   /**

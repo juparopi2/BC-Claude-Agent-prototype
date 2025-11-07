@@ -26,7 +26,14 @@
       "Bash(npm view:*)",
       "WebFetch(domain:anthropic.mintlify.app)",
       "WebFetch(domain:code.claude.com)",
-      "Bash(npm info:*)"
+      "Bash(npm info:*)",
+      "mcp__context7__resolve-library-id",
+      "Bash(cd /d D:DocumentsBC-Claude-Agent-prototype)",
+      "mcp__context7__get-library-docs",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:www.anthropic.com)",
+      "Bash(cat:*)",
+      "Bash(npm run lint:*)"
     ],
     "deny": [],
     "ask": []

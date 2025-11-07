@@ -13,11 +13,9 @@
  */
 
 import { Server as SocketServer } from 'socket.io';
-import { EventEmitter } from 'events';
 import { getDatabase } from '../../config/database';
 import {
   ApprovalRequest,
-  ApprovalResponse,
   ApprovalStatus,
   ApprovalPriority,
   ChangeSummary,
@@ -27,18 +25,28 @@ import {
 } from '../../types/approval.types';
 
 /**
+ * Pending approval promise handlers
+ */
+interface PendingApproval {
+  resolve: (approved: boolean) => void;
+  reject: (error: Error) => void;
+  timeout: NodeJS.Timeout;
+}
+
+/**
  * ApprovalManager class
  *
  * Manages approval workflows for agent operations
+ * Uses a Map of pending Promises instead of EventEmitter for simpler, more explicit flow
  */
 export class ApprovalManager {
   private io: SocketServer;
-  private eventEmitter: EventEmitter;
+  private pendingApprovals: Map<string, PendingApproval>;
   private static instance: ApprovalManager | null = null;
 
   private constructor(io: SocketServer) {
     this.io = io;
-    this.eventEmitter = new EventEmitter();
+    this.pendingApprovals = new Map();
 
     // Start background job to expire old approvals
     this.startExpirationJob();
@@ -134,43 +142,20 @@ export class ApprovalManager {
       console.log(`📋 Approval requested: ${approvalId} (${toolName})`);
 
       // Return Promise that resolves when user responds
-      return new Promise<boolean>((resolve) => {
+      return new Promise<boolean>((resolve, reject) => {
         // Set timeout to auto-reject
         const timeout = setTimeout(async () => {
           console.log(`⏰ Approval timeout: ${approvalId}`);
+          this.pendingApprovals.delete(approvalId);
           await this.expireApproval(approvalId);
           resolve(false);
         }, expiresInMs);
 
-        // Listen for user response
-        this.eventEmitter.once(`approval:${approvalId}:response`, async (response: ApprovalResponse) => {
-          clearTimeout(timeout);
-
-          // Update database
-          await db.request()
-            .input('id', approvalId)
-            .input('status', response.approved ? 'approved' : 'rejected')
-            .input('decided_at', new Date())
-            .input('decided_by', response.userId)
-            .query(`
-              UPDATE approvals
-              SET status = @status, decided_at = @decided_at, decided_by = @decided_by
-              WHERE id = @id
-            `);
-
-          // Emit resolved event
-          const resolvedEvent: ApprovalResolvedEvent = {
-            approvalId,
-            decision: response.approved ? 'approved' : 'rejected',
-            decidedBy: response.userId,
-            decidedAt: new Date(),
-          };
-
-          this.io.to(sessionId).emit('approval:resolved', resolvedEvent);
-
-          console.log(`${response.approved ? '✅' : '❌'} Approval ${response.approved ? 'approved' : 'rejected'}: ${approvalId}`);
-
-          resolve(response.approved);
+        // Store pending approval with resolve/reject handlers
+        this.pendingApprovals.set(approvalId, {
+          resolve,
+          reject,
+          timeout,
         });
       });
     } catch (error) {
@@ -194,16 +179,64 @@ export class ApprovalManager {
     approvalId: string,
     decision: 'approved' | 'rejected',
     userId: string,
-    reason?: string
+    _reason?: string
   ): Promise<void> {
-    // Emit event to resolve Promise
-    const response: ApprovalResponse = {
-      approved: decision === 'approved',
-      userId,
-      reason,
-    };
+    const pending = this.pendingApprovals.get(approvalId);
 
-    this.eventEmitter.emit(`approval:${approvalId}:response`, response);
+    if (!pending) {
+      console.warn(`⚠️  No pending approval found for ID: ${approvalId}`);
+      return;
+    }
+
+    // Clear timeout
+    clearTimeout(pending.timeout);
+
+    // Remove from pending map
+    this.pendingApprovals.delete(approvalId);
+
+    const approved = decision === 'approved';
+
+    try {
+      // Update database
+      const db = getDatabase();
+      if (db) {
+        await db.request()
+          .input('id', approvalId)
+          .input('status', approved ? 'approved' : 'rejected')
+          .input('decided_at', new Date())
+          .input('decided_by', userId)
+          .query(`
+            UPDATE approvals
+            SET status = @status, decided_at = @decided_at, decided_by = @decided_by
+            WHERE id = @id
+          `);
+      }
+
+      // Emit resolved event (get sessionId from database)
+      const result = await db?.request()
+        .input('id', approvalId)
+        .query('SELECT session_id FROM approvals WHERE id = @id');
+
+      if (result && result.recordset[0]) {
+        const sessionId = result.recordset[0].session_id;
+        const resolvedEvent: ApprovalResolvedEvent = {
+          approvalId,
+          decision: approved ? 'approved' : 'rejected',
+          decidedBy: userId,
+          decidedAt: new Date(),
+        };
+
+        this.io.to(sessionId).emit('approval:resolved', resolvedEvent);
+      }
+
+      console.log(`${approved ? '✅' : '❌'} Approval ${approved ? 'approved' : 'rejected'}: ${approvalId}`);
+
+      // Resolve the Promise
+      pending.resolve(approved);
+    } catch (error) {
+      console.error('❌ Failed to process approval response:', error);
+      pending.reject(error instanceof Error ? error : new Error('Unknown error'));
+    }
   }
 
   /**

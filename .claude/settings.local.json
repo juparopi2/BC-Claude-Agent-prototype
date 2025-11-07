@@ -23,7 +23,10 @@
       "Bash(findstr:*)",
       "Bash(taskkill:*)",
       "Bash(powershell -Command \"Stop-Process -Id 14156 -Force\")",
-      "Bash(npm view:*)"
+      "Bash(npm view:*)",
+      "WebFetch(domain:anthropic.mintlify.app)",
+      "WebFetch(domain:code.claude.com)",
+      "Bash(npm info:*)"
     ],
     "deny": [],
     "ask": []

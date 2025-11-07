@@ -19,6 +19,8 @@ import { getMCPService } from './services/mcp';
 import { getBCClient } from './services/bc';
 import { getAgentService } from './services/agent';
 import { getAuthService } from './services/auth';
+import { getApprovalManager } from './services/approval/ApprovalManager';
+import { getTodoManager } from './services/todo/TodoManager';
 import authRoutes from './routes/auth';
 import { authenticateJWT } from './middleware/auth';
 
@@ -99,9 +101,31 @@ async function initializeApp(): Promise<void> {
     }
     console.log('');
 
-    // Step 7: Initialize Agent Service
+    // Step 7: Initialize Auth Service
+    console.log('🔐 Initializing Auth Service...');
+    const authService = getAuthService();
+    if (authService.isConfigured()) {
+      console.log('✅ Auth Service initialized');
+    } else {
+      console.warn('⚠️  Auth Service: JWT_SECRET not configured');
+    }
+    console.log('');
+
+    // Step 8: Initialize Approval Manager (requires Socket.IO)
+    console.log('📋 Initializing Approval Manager...');
+    const approvalManager = getApprovalManager(io);
+    console.log('✅ Approval Manager initialized');
+    console.log('');
+
+    // Step 9: Initialize Todo Manager (requires Socket.IO)
+    console.log('✅ Initializing Todo Manager...');
+    const todoManager = getTodoManager(io);
+    console.log('✅ Todo Manager initialized');
+    console.log('');
+
+    // Step 10: Initialize Agent Service (with managers for hooks)
     console.log('🤖 Initializing Agent Service...');
-    const agentService = getAgentService();
+    const agentService = getAgentService(approvalManager, todoManager);
     const agentConfig = agentService.getConfigStatus();
     if (agentConfig.hasApiKey) {
       console.log('✅ Agent Service initialized');
@@ -109,16 +133,6 @@ async function initializeApp(): Promise<void> {
       console.log(`   MCP Configured: ${agentConfig.mcpConfigured ? 'Yes' : 'No'}`);
     } else {
       console.warn('⚠️  Agent Service: ANTHROPIC_API_KEY not configured');
-    }
-    console.log('');
-
-    // Step 8: Initialize Auth Service
-    console.log('🔐 Initializing Auth Service...');
-    const authService = getAuthService();
-    if (authService.isConfigured()) {
-      console.log('✅ Auth Service initialized');
-    } else {
-      console.warn('⚠️  Auth Service: JWT_SECRET not configured');
     }
     console.log('');
 
@@ -230,6 +244,13 @@ function configureRoutes(): void {
         agent: {
           status: '/api/agent/status',
           query: '/api/agent/query',
+        },
+        approvals: {
+          respond: '/api/approvals/:id/respond',
+          getPending: '/api/approvals/session/:sessionId',
+        },
+        todos: {
+          getTodos: '/api/todos/session/:sessionId',
         },
       },
     });
@@ -416,12 +437,101 @@ function configureRoutes(): void {
     }
   });
 
+  // Approval endpoints
+  // POST /api/approvals/:id/respond - Respond to an approval request
+  app.post('/api/approvals/:id/respond', authenticateJWT, async (req: Request, res: Response): Promise<void> => {
+    try {
+      const approvalId = req.params.id as string;
+      const { decision, reason } = req.body;
+      const userId = req.user?.userId;
+
+      if (!userId) {
+        res.status(401).json({
+          error: 'Unauthorized',
+          message: 'User ID not found in token',
+        });
+        return;
+      }
+
+      if (!decision || !['approved', 'rejected'].includes(decision)) {
+        res.status(400).json({
+          error: 'Invalid request',
+          message: 'decision must be either "approved" or "rejected"',
+        });
+        return;
+      }
+
+      // TypeScript narrowing workaround
+      const userIdVerified: string = userId;
+      const decisionVerified: 'approved' | 'rejected' = decision as 'approved' | 'rejected';
+
+      const approvalManager = getApprovalManager();
+      await approvalManager.respondToApproval(approvalId, decisionVerified, userIdVerified, reason);
+
+      res.json({
+        success: true,
+        approvalId,
+        decision,
+      });
+    } catch (error) {
+      console.error('[API] Approval response failed:', error);
+      res.status(500).json({
+        error: 'Approval response failed',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  // GET /api/approvals/session/:sessionId - Get pending approvals for a session
+  app.get('/api/approvals/session/:sessionId', authenticateJWT, async (req: Request, res: Response): Promise<void> => {
+    try {
+      const sessionId = req.params.sessionId as string;
+
+      const approvalManager = getApprovalManager();
+      const pendingApprovals = await approvalManager.getPendingApprovals(sessionId);
+
+      res.json({
+        sessionId,
+        count: pendingApprovals.length,
+        approvals: pendingApprovals,
+      });
+    } catch (error) {
+      console.error('[API] Get pending approvals failed:', error);
+      res.status(500).json({
+        error: 'Failed to get pending approvals',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  // Todo endpoints
+  // GET /api/todos/session/:sessionId - Get todos for a session
+  app.get('/api/todos/session/:sessionId', authenticateJWT, async (req: Request, res: Response): Promise<void> => {
+    try {
+      const sessionId = req.params.sessionId as string;
+
+      const todoManager = getTodoManager();
+      const todos = await todoManager.getTodosBySession(sessionId);
+
+      res.json({
+        sessionId,
+        count: todos.length,
+        todos,
+      });
+    } catch (error) {
+      console.error('[API] Get todos failed:', error);
+      res.status(500).json({
+        error: 'Failed to get todos',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
   // Auth routes
   app.use('/api/auth', authRoutes);
 
   // TODO: Add additional route handlers
   // app.use('/api/chat', chatRoutes);
-  // app.use('/api/approvals', approvalsRoutes);
 
   // 404 handler
   app.use((req: Request, res: Response) => {
@@ -458,14 +568,148 @@ function configureSocketIO(): void {
   io.on('connection', (socket) => {
     console.log(`✅ Client connected: ${socket.id}`);
 
-    // TODO: Implement Socket.IO event handlers
-    // socket.on('message', handleMessage);
-    // socket.on('approval_response', handleApprovalResponse);
+    // Handler: Chat message
+    socket.on('chat:message', async (data: { message: string; sessionId: string; userId: string }) => {
+      const { message, sessionId, userId } = data;
 
+      try {
+        console.log(`[Socket] Chat message from ${userId} in session ${sessionId}`);
+
+        // Validate session ownership (basic check)
+        // In production, verify user owns the session via database query
+
+        // Join session room
+        socket.join(sessionId);
+
+        // Generate todos from prompt first
+        const todoManager = getTodoManager();
+        await todoManager.generateFromPlan({
+          sessionId,
+          prompt: message,
+        });
+
+        // Execute agent query with streaming
+        const agentService = getAgentService();
+        await agentService.executeQuery(
+          message,
+          sessionId,
+          (event) => {
+            // Stream all events to session room
+            io.to(sessionId).emit('agent:event', event);
+
+            // Emit specific event types
+            switch (event.type) {
+              case 'thinking':
+                io.to(sessionId).emit('agent:thinking', {
+                  content: event.content,
+                });
+                break;
+
+              case 'message_partial':
+                io.to(sessionId).emit('agent:message_chunk', {
+                  content: event.content,
+                });
+                break;
+
+              case 'message':
+                io.to(sessionId).emit('agent:message_complete', {
+                  content: event.content,
+                  role: event.role,
+                });
+                break;
+
+              case 'tool_use':
+                io.to(sessionId).emit('agent:tool_use', {
+                  toolName: event.toolName,
+                  args: event.args,
+                  toolUseId: event.toolUseId,
+                });
+                break;
+
+              case 'tool_result':
+                io.to(sessionId).emit('agent:tool_result', {
+                  toolName: event.toolName,
+                  result: event.result,
+                  success: event.success,
+                  toolUseId: event.toolUseId,
+                });
+                break;
+
+              case 'error':
+                io.to(sessionId).emit('agent:error', {
+                  error: event.error,
+                });
+                break;
+
+              case 'session_end':
+                io.to(sessionId).emit('agent:complete', {
+                  reason: event.reason,
+                });
+                break;
+            }
+          }
+        );
+
+        console.log(`[Socket] Chat message completed for session ${sessionId}`);
+      } catch (error) {
+        console.error('[Socket] Chat message error:', error);
+        socket.emit('agent:error', {
+          error: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // Handler: Approval response
+    socket.on('approval:response', async (data: {
+      approvalId: string;
+      decision: 'approved' | 'rejected';
+      userId: string;
+      reason?: string;
+    }) => {
+      const { approvalId, decision, userId, reason } = data;
+
+      try {
+        console.log(`[Socket] Approval response: ${approvalId} - ${decision}`);
+
+        const approvalManager = getApprovalManager();
+        await approvalManager.respondToApproval(approvalId, decision, userId, reason);
+
+        socket.emit('approval:resolved', {
+          approvalId,
+          decision,
+        });
+      } catch (error) {
+        console.error('[Socket] Approval response error:', error);
+        socket.emit('approval:error', {
+          error: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // Handler: Join session
+    socket.on('session:join', (data: { sessionId: string }) => {
+      const { sessionId } = data;
+      socket.join(sessionId);
+      console.log(`[Socket] ${socket.id} joined session ${sessionId}`);
+
+      socket.emit('session:joined', { sessionId });
+    });
+
+    // Handler: Leave session
+    socket.on('session:leave', (data: { sessionId: string }) => {
+      const { sessionId } = data;
+      socket.leave(sessionId);
+      console.log(`[Socket] ${socket.id} left session ${sessionId}`);
+
+      socket.emit('session:left', { sessionId });
+    });
+
+    // Disconnect handler
     socket.on('disconnect', () => {
       console.log(`❌ Client disconnected: ${socket.id}`);
     });
 
+    // Error handler
     socket.on('error', (error) => {
       console.error(`❌ Socket error for ${socket.id}:`, error);
     });

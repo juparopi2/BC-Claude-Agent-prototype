@@ -314,3 +314,48 @@ export interface AgentSessionContext {
   /** Last activity timestamp */
   lastActivityAt: Date;
 }
+
+/**
+ * Agent Hook Context
+ * Context provided to SDK hooks (onPreToolUse, onPostToolUse)
+ */
+export interface AgentHookContext {
+  /** Session ID */
+  sessionId: string;
+  /** Tool name being called */
+  toolName: string;
+  /** Tool arguments */
+  toolArgs: Record<string, unknown>;
+  /** Timestamp of hook execution */
+  timestamp: Date;
+  /** User ID */
+  userId?: string;
+  /** Current todo ID (if tracked) */
+  currentTodoId?: string;
+}
+
+/**
+ * Tool Restriction
+ * Configuration for restricting tool access
+ */
+export interface ToolRestriction {
+  /** Allowed tool name prefixes */
+  allowedPrefixes: string[];
+  /** Denied tool name prefixes */
+  deniedPrefixes: string[];
+}
+
+/**
+ * Agent Hook Callbacks
+ * Callback functions for agent lifecycle hooks
+ */
+export interface AgentHooks {
+  /** Called before tool execution */
+  onPreToolUse?: (toolName: string, args: Record<string, unknown>) => Promise<boolean>;
+  /** Called after tool execution */
+  onPostToolUse?: (toolName: string, result: unknown) => Promise<void>;
+  /** Called when session starts */
+  onSessionStart?: (sessionId: string) => Promise<void>;
+  /** Called when session ends */
+  onSessionEnd?: (sessionId: string, reason?: string) => Promise<void>;
+}

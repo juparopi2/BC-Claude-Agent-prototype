@@ -3,23 +3,32 @@
  *
  * Provides agent execution capabilities using Claude Agent SDK.
  * Integrates with MCP servers for Business Central operations.
+ * Includes hooks for approval and todo tracking.
  */
 
-import { query } from '@anthropic-ai/claude-agent-sdk';
+import { query, type PermissionResult } from '@anthropic-ai/claude-agent-sdk';
 import { env } from '@/config';
 import { getMCPService } from '../mcp';
+import { getDatabase } from '@/config/database';
 import type { AgentEvent, AgentExecutionResult } from '@/types';
+import type { ApprovalManager } from '../approval/ApprovalManager';
+import type { TodoManager } from '../todo/TodoManager';
 
 /**
  * Agent Service Class
  *
  * Handles agent execution with Claude Agent SDK and MCP integration.
+ * Integrates with ApprovalManager and TodoManager for HITL and progress tracking.
  */
 export class AgentService {
   private apiKey: string;
+  private approvalManager?: ApprovalManager;
+  private todoManager?: TodoManager;
 
-  constructor() {
+  constructor(approvalManager?: ApprovalManager, todoManager?: TodoManager) {
     this.apiKey = env.ANTHROPIC_API_KEY || '';
+    this.approvalManager = approvalManager;
+    this.todoManager = todoManager;
 
     if (!this.apiKey) {
       console.warn('[AgentService] ANTHROPIC_API_KEY not configured');
@@ -30,6 +39,7 @@ export class AgentService {
    * Execute Query with Agent SDK
    *
    * Runs a query using Claude Agent SDK with automatic MCP tool discovery and calling.
+   * Integrates with ApprovalManager and TodoManager via SDK hooks.
    *
    * @param prompt - User prompt/query
    * @param sessionId - Optional session ID for context
@@ -38,10 +48,10 @@ export class AgentService {
    *
    * @example
    * ```typescript
-   * const agentService = new AgentService();
+   * const agentService = new AgentService(approvalManager, todoManager);
    *
    * const result = await agentService.executeQuery(
-   *   'List the first 5 customers from Business Central',
+   *   'Create customer Acme Corp',
    *   'session-123',
    *   (event) => {
    *     console.log('Event:', event.type);
@@ -80,10 +90,64 @@ export class AgentService {
           mcpServers,
           model: env.ANTHROPIC_MODEL,
           includePartialMessages: true,
+
+          // Permission control via canUseTool callback
+          canUseTool: async (
+            toolName: string,
+            input: Record<string, unknown>,
+            _options: { signal: AbortSignal; suggestions?: any[]; toolUseID: string }
+          ): Promise<PermissionResult> => {
+            console.log(`[Agent] Checking permission for tool: ${toolName}`);
+
+            // Mark todo as in_progress
+            if (this.todoManager && sessionId) {
+              const currentTodo = await this.findCurrentTodo(sessionId);
+              if (currentTodo) {
+                await this.todoManager.markInProgress(sessionId, currentTodo.id);
+              }
+            }
+
+            // Request approval for write operations
+            if (this.isWriteOperation(toolName) && this.approvalManager && sessionId) {
+              try {
+                const approved = await this.approvalManager.request({
+                  sessionId,
+                  toolName,
+                  toolArgs: input,
+                });
+
+                if (!approved) {
+                  console.log(`[Agent] ❌ Operation rejected by user: ${toolName}`);
+                  return {
+                    behavior: 'deny',
+                    message: 'Operation rejected by user',
+                    interrupt: true,
+                  };
+                }
+
+                console.log(`[Agent] ✅ Operation approved by user: ${toolName}`);
+              } catch (error) {
+                console.error(`[Agent] Approval request failed:`, error);
+                return {
+                  behavior: 'deny',
+                  message: `Approval request failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                  interrupt: true,
+                };
+              }
+            }
+
+            // Allow tool execution
+            return {
+              behavior: 'allow',
+              updatedInput: input,
+            };
+          },
         },
       });
 
-      // Stream events
+      // Stream events and track tool execution
+      const toolExecutionMap = new Map<string, { toolName: string; input: any }>();
+
       for await (const sdkMessage of result) {
         // Emit event to callback if provided
         if (onEvent) {
@@ -103,13 +167,53 @@ export class AgentService {
           finalMessageId = sdkMessage.uuid;
         }
 
-        // Track tools used from assistant messages
+        // Track tools used from assistant messages and store tool use info
         if (sdkMessage.type === 'assistant') {
           for (const content of sdkMessage.message.content) {
             if (content.type === 'tool_use' && 'name' in content) {
               const toolName = (content as any).name as string;
+              const toolUseId = (content as any).id as string;
+              const toolInput = (content as any).input;
+
+              // Store for later matching with tool result
+              toolExecutionMap.set(toolUseId, { toolName, input: toolInput });
+
               if (!toolsUsed.includes(toolName)) {
                 toolsUsed.push(toolName);
+              }
+            }
+          }
+        }
+
+        // Handle tool results for post-tool tracking
+        if (sdkMessage.type === 'user' && sdkMessage.message.content) {
+          for (const content of sdkMessage.message.content as any[]) {
+            if (content.type === 'tool_result') {
+              const toolUseId = content.tool_use_id;
+              const toolResult = content.content;
+              const isError = content.is_error || false;
+
+              // Get tool info from map
+              const toolInfo = toolExecutionMap.get(toolUseId);
+              if (toolInfo) {
+                // Mark todo as completed/failed
+                if (this.todoManager && sessionId) {
+                  const currentTodo = await this.findCurrentTodo(sessionId);
+                  if (currentTodo) {
+                    await this.todoManager.markCompleted(sessionId, currentTodo.id, !isError);
+                  }
+                }
+
+                // Log to audit_log
+                if (sessionId) {
+                  await this.logToolExecution(sessionId, toolInfo.toolName, {
+                    success: !isError,
+                    result: toolResult,
+                  });
+                }
+
+                // Remove from map
+                toolExecutionMap.delete(toolUseId);
               }
             }
           }
@@ -164,6 +268,69 @@ export class AgentService {
       };
     }
   }
+
+  /**
+   * Check if a tool is a write operation
+   *
+   * @param toolName - Tool name
+   * @returns True if tool is a write operation
+   */
+  private isWriteOperation(toolName: string): boolean {
+    const writePrefixes = ['bc_create', 'bc_update', 'bc_delete', 'bc_patch'];
+    return writePrefixes.some(prefix => toolName.startsWith(prefix));
+  }
+
+  /**
+   * Find the current (first pending) todo for a session
+   *
+   * @param sessionId - Session ID
+   * @returns Current todo or null
+   */
+  private async findCurrentTodo(sessionId: string): Promise<{ id: string; status: string } | null> {
+    if (!this.todoManager) {
+      return null;
+    }
+
+    try {
+      const todos = await this.todoManager.getTodosBySession(sessionId);
+      // Find first pending or in_progress todo
+      return todos.find(t => t.status === 'pending' || t.status === 'in_progress') || null;
+    } catch (error) {
+      console.error('[AgentService] Failed to find current todo:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Log tool execution to audit_log
+   *
+   * @param sessionId - Session ID
+   * @param toolName - Tool name
+   * @param result - Tool result
+   */
+  private async logToolExecution(sessionId: string, toolName: string, result: unknown): Promise<void> {
+    const db = getDatabase();
+    if (!db) {
+      return;
+    }
+
+    try {
+      await db.request()
+        .input('session_id', sessionId)
+        .input('event_type', 'tool_executed')
+        .input('event_data', JSON.stringify({ toolName, result }))
+        .input('timestamp', new Date())
+        .query(`
+          INSERT INTO audit_log (session_id, event_type, event_data, timestamp)
+          VALUES (@session_id, @event_type, @event_data, @timestamp)
+        `);
+    } catch (error) {
+      console.error('[AgentService] Failed to log tool execution:', error);
+    }
+  }
+
+  // Note: updateSessionAgentId method removed as it was unused
+  // If needed in the future, it can be re-added to track SDK session IDs
 
   /**
    * Map SDK Message to Agent Event
@@ -277,6 +444,24 @@ export class AgentService {
       model: env.ANTHROPIC_MODEL,
     };
   }
+
+  /**
+   * Set Approval Manager
+   *
+   * @param approvalManager - Approval manager instance
+   */
+  setApprovalManager(approvalManager: ApprovalManager): void {
+    this.approvalManager = approvalManager;
+  }
+
+  /**
+   * Set Todo Manager
+   *
+   * @param todoManager - Todo manager instance
+   */
+  setTodoManager(todoManager: TodoManager): void {
+    this.todoManager = todoManager;
+  }
 }
 
 // Singleton instance
@@ -285,11 +470,24 @@ let agentServiceInstance: AgentService | null = null;
 /**
  * Get Agent Service Singleton Instance
  *
+ * @param approvalManager - Optional approval manager (required on first call)
+ * @param todoManager - Optional todo manager (required on first call)
  * @returns The shared AgentService instance
  */
-export function getAgentService(): AgentService {
+export function getAgentService(
+  approvalManager?: ApprovalManager,
+  todoManager?: TodoManager
+): AgentService {
   if (!agentServiceInstance) {
-    agentServiceInstance = new AgentService();
+    agentServiceInstance = new AgentService(approvalManager, todoManager);
+  } else {
+    // Update managers if provided
+    if (approvalManager) {
+      agentServiceInstance.setApprovalManager(approvalManager);
+    }
+    if (todoManager) {
+      agentServiceInstance.setTodoManager(todoManager);
+    }
   }
   return agentServiceInstance;
 }

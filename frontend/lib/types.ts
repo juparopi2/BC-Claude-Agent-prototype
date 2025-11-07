@@ -44,6 +44,15 @@ export interface Approval {
   created_at: string;
 }
 
+export interface Todo {
+  id: string;
+  sessionId: string; // Use camelCase to match frontend conventions
+  content: string;
+  status: 'pending' | 'in_progress' | 'completed' | 'failed';
+  created_at?: string;
+  completed_at?: string;
+}
+
 export interface HealthStatus {
   status: 'healthy' | 'unhealthy' | 'degraded';
   timestamp?: string;
@@ -87,9 +96,20 @@ export interface StreamChunkEventData {
   sessionId: string;
 }
 
+export interface ApprovalSummary {
+  title: string;
+  description: string;
+  changes: Record<string, unknown>;
+  impact: 'high' | 'medium' | 'low';
+}
+
 export interface ApprovalEventData {
-  approval: Approval;
-  sessionId: string;
+  approvalId: string;
+  toolName: string;
+  summary: ApprovalSummary;
+  changes: Record<string, unknown>;
+  priority: 'high' | 'medium' | 'low';
+  expiresAt: string; // ISO string from Date
 }
 
 export interface TodoEventData {
@@ -99,6 +119,11 @@ export interface TodoEventData {
     status: 'pending' | 'in_progress' | 'completed';
     sessionId: string;
   };
+}
+
+export interface TodoCreatedEventData {
+  sessionId: string;
+  todos: Todo[];  // Array of todos when generated from plan
 }
 
 // Event handler types

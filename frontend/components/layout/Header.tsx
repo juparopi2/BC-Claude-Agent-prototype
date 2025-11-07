@@ -14,6 +14,7 @@ import {
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Settings, LogOut, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { ApprovalQueue } from '@/components/approvals';
 
 interface HeaderProps {
   className?: string;
@@ -58,8 +59,11 @@ export function Header({ className }: HeaderProps) {
           </div>
         </div>
 
-        {/* Right side: Settings + User menu */}
+        {/* Right side: Approval Queue + Settings + User menu */}
         <div className="flex items-center gap-2">
+          {/* Approval Queue */}
+          <ApprovalQueue />
+
           {/* Settings button */}
           <Button variant="ghost" size="icon" aria-label="Settings">
             <Settings className="h-4 w-4" />

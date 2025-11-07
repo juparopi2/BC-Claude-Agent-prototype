@@ -5,8 +5,10 @@ import { useChat } from '@/hooks';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
-import { PlusCircle, MessageSquare, Trash2 } from 'lucide-react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { PlusCircle, MessageSquare, Trash2, ListTodo, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { TodoList } from '@/components/todos';
 
 interface SidebarProps {
   currentSessionId?: string;
@@ -77,6 +79,24 @@ export function Sidebar({
           New Chat
         </Button>
       </div>
+
+      {/* Todo List (Collapsible) */}
+      {currentSessionId && (
+        <div className="border-b">
+          <Collapsible defaultOpen={true}>
+            <CollapsibleTrigger className="flex items-center justify-between w-full px-4 py-3 hover:bg-muted/50 transition-colors">
+              <div className="flex items-center gap-2">
+                <ListTodo className="h-4 w-4" />
+                <span className="text-sm font-medium">Tasks</span>
+              </div>
+              <ChevronDown className="h-4 w-4 transition-transform ui-expanded:rotate-180" />
+            </CollapsibleTrigger>
+            <CollapsibleContent className="px-2 pb-3">
+              <TodoList sessionId={currentSessionId} className="max-h-64" />
+            </CollapsibleContent>
+          </Collapsible>
+        </div>
+      )}
 
       {/* Sessions list */}
       <ScrollArea className="flex-1">

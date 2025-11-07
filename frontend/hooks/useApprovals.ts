@@ -31,26 +31,18 @@ export function useApprovals(sessionId?: string) {
 
     // Approval required
     const handleApprovalRequired = (data: ApprovalEventData) => {
-      console.log('[useApprovals] Approval required:', data.approval.id);
+      console.log('[useApprovals] Approval required:', data.approvalId);
 
-      // Only add approvals for current session if sessionId is specified
-      if (!sessionId || data.approval.session_id === sessionId) {
-        addApproval(data.approval);
-
-        // Auto-open approval dialog (set as current approval)
-        setCurrentApproval(data.approval);
-      }
+      // Auto-open approval dialog (set entire event data as current approval)
+      setCurrentApproval(data);
     };
 
     // Approval resolved
     const handleApprovalResolved = (data: ApprovalEventData) => {
-      console.log('[useApprovals] Approval resolved:', data.approval.id, data.approval.status);
-
-      // Update approval in store
-      addApproval(data.approval);
+      console.log('[useApprovals] Approval resolved:', data.approvalId);
 
       // Remove from current if it was open
-      if (currentApproval?.id === data.approval.id) {
+      if (currentApproval?.approvalId === data.approvalId) {
         setCurrentApproval(null);
       }
     };
@@ -117,17 +109,6 @@ export function useApprovals(sessionId?: string) {
     [isConnected, rejectApproval]
   );
 
-  // Open approval dialog
-  const openApproval = useCallback(
-    (approvalId: string) => {
-      const approval = approvals.find((a) => a.id === approvalId);
-      if (approval) {
-        setCurrentApproval(approval);
-      }
-    },
-    [approvals, setCurrentApproval]
-  );
-
   // Close approval dialog
   const closeApproval = useCallback(() => {
     setCurrentApproval(null);
@@ -145,7 +126,6 @@ export function useApprovals(sessionId?: string) {
     // Actions
     approve: handleApprove,
     reject: handleReject,
-    openApproval,
     closeApproval,
     fetchPendingApprovals,
     clearError,

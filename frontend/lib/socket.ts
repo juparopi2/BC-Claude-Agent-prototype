@@ -18,6 +18,7 @@ import type {
   StreamChunkEventData,
   ApprovalEventData,
   TodoEventData,
+  TodoCreatedEventData,
 } from './types';
 
 /**
@@ -53,12 +54,13 @@ export enum SocketEvent {
   STREAM_END = 'stream_end',
 
   // Approval events
-  APPROVAL_REQUIRED = 'approval_required',
-  APPROVAL_RESOLVED = 'approval_resolved',
+  APPROVAL_REQUIRED = 'approval:requested',  // Match backend event name
+  APPROVAL_RESOLVED = 'approval:resolved',   // Match backend event name
 
   // Todo events
-  TODO_UPDATED = 'todo_updated',
-  TODO_COMPLETED = 'todo_completed',
+  TODO_CREATED = 'todo:created',             // Match backend event name
+  TODO_UPDATED = 'todo:updated',             // Match backend event name
+  TODO_COMPLETED = 'todo:completed',         // Match backend event name
 
   // Error events
   ERROR = 'error',
@@ -320,6 +322,13 @@ export const socketApprovalApi = {
  */
 export const socketTodoApi = {
   /**
+   * Listen for todo creation (when new todos are generated)
+   */
+  onTodoCreated: (callback: EventHandler<TodoCreatedEventData>) => {
+    on<TodoCreatedEventData>(SocketEvent.TODO_CREATED, callback);
+  },
+
+  /**
    * Listen for todo updates
    */
   onTodoUpdated: (callback: EventHandler<TodoEventData>) => {
@@ -365,4 +374,5 @@ export type {
   StreamChunkEventData,
   ApprovalEventData,
   TodoEventData,
+  TodoCreatedEventData,
 } from './types';

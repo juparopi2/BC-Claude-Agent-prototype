@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Approval } from '@/lib/types';
+import type { Approval, ApprovalEventData } from '@/lib/types';
 import { approvalApi } from '@/lib/api';
 
 interface ApprovalState {
@@ -9,15 +9,15 @@ interface ApprovalState {
   isLoading: boolean;
   error: string | null;
 
-  // Current approval being reviewed
-  currentApproval: Approval | null;
+  // Current approval being reviewed (from WebSocket event)
+  currentApproval: ApprovalEventData | null;
 
   // Actions
   fetchPendingApprovals: () => Promise<void>;
   addApproval: (approval: Approval) => void;
   approveApproval: (approvalId: string) => Promise<void>;
   rejectApproval: (approvalId: string, reason?: string) => Promise<void>;
-  setCurrentApproval: (approval: Approval | null) => void;
+  setCurrentApproval: (approval: ApprovalEventData | null) => void;
   removeApproval: (approvalId: string) => void;
   clearError: () => void;
   reset: () => void;
@@ -83,7 +83,7 @@ export const useApprovalStore = create<ApprovalState>((set, get) => ({
           a.id === approvalId ? { ...a, status: 'approved' as const } : a
         ),
         pendingApprovals: state.pendingApprovals.filter((a) => a.id !== approvalId),
-        currentApproval: state.currentApproval?.id === approvalId ? null : state.currentApproval,
+        currentApproval: state.currentApproval?.approvalId === approvalId ? null : state.currentApproval,
         isLoading: false,
       }));
     } catch (error) {
@@ -105,7 +105,7 @@ export const useApprovalStore = create<ApprovalState>((set, get) => ({
           a.id === approvalId ? { ...a, status: 'rejected' as const } : a
         ),
         pendingApprovals: state.pendingApprovals.filter((a) => a.id !== approvalId),
-        currentApproval: state.currentApproval?.id === approvalId ? null : state.currentApproval,
+        currentApproval: state.currentApproval?.approvalId === approvalId ? null : state.currentApproval,
         isLoading: false,
       }));
     } catch (error) {
@@ -116,7 +116,7 @@ export const useApprovalStore = create<ApprovalState>((set, get) => ({
   },
 
   // Set current approval for review dialog
-  setCurrentApproval: (approval: Approval | null) => {
+  setCurrentApproval: (approval: ApprovalEventData | null) => {
     set({ currentApproval: approval });
   },
 
@@ -126,7 +126,7 @@ export const useApprovalStore = create<ApprovalState>((set, get) => ({
       approvals: state.approvals.filter((a) => a.id !== approvalId),
       pendingApprovals: state.pendingApprovals.filter((a) => a.id !== approvalId),
       currentApproval:
-        state.currentApproval?.id === approvalId ? null : state.currentApproval,
+        state.currentApproval?.approvalId === approvalId ? null : state.currentApproval,
     }));
   },
 

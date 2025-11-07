@@ -9,6 +9,7 @@ import { ChatInterface } from '../chat/ChatInterface';
 import { Button } from '@/components/ui/button';
 import { Menu, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { ApprovalDialog } from '@/components/approvals';
 
 interface MainLayoutProps {
   children?: React.ReactNode;
@@ -156,6 +157,9 @@ export function MainLayout({ children, showSourcePanel = true, sourcePanel }: Ma
           </aside>
         )}
       </div>
+
+      {/* Global Approval Dialog */}
+      <ApprovalDialog />
     </div>
   );
 }

@@ -45,7 +45,7 @@
 
 ### 🔄 En Progreso
 - [x] **PHASE 1: Foundation** (Semanas 1-3) - Week 1 ✅, Week 2 ✅, Week 3 ✅ **COMPLETADO 100%**
-- [ ] **PHASE 2: MVP Core Features** (Semanas 4-7) - Week 4 🔄 **EN PROGRESO**
+- [ ] **PHASE 2: MVP Core Features** (Semanas 4-7) - Week 4 ✅, Week 5 ✅, Week 6 ✅, Week 7 🔄 **EN PROGRESO**
 
 ### ⏳ Pendiente
 - [ ] PHASE 3: Polish & Testing (Semanas 8-9)
@@ -1015,48 +1015,58 @@ Al final de Phase 1 (3 semanas), deberíamos tener:
 
 ---
 
-### ⏳ **Week 6: Approval System & To-Do Lists**
+### ✅ **Week 6: Approval System & To-Do Lists** - **COMPLETADO 100%**
 
-#### 6.1 Approval System - Backend
+#### 6.1 Approval System - Backend ✅
 **Referencias**: @docs\05-control-flow\01-human-in-the-loop.md
 
-- [ ] **Crear ApprovalManager** (`backend/src/services/approval/ApprovalManager.ts`)
-  - [ ] Método `requestApproval(sessionId, action, data)`
-  - [ ] Método `respondToApproval(approvalId, decision, userId)`
-  - [ ] Persistencia en BD (tabla `approvals`)
-  - [ ] WebSocket events: `approval_requested`, `approval_resolved`
-- [ ] **Integrar con WriteAgent**
-  - [ ] WriteAgent pausa antes de writes
-  - [ ] Espera respuesta de aprobación
-  - [ ] Continúa o cancela según decisión
+- [x] **Crear ApprovalManager** (`backend/src/services/approval/ApprovalManager.ts`)
+  - [x] Método `requestApproval(sessionId, action, data)`
+  - [x] Método `respondToApproval(approvalId, decision, userId)`
+  - [x] Persistencia en BD (tabla `approvals`)
+  - [x] WebSocket events: `approval:requested`, `approval:resolved`
+- [x] **Integrar con WriteAgent**
+  - [x] WriteAgent pausa antes de writes
+  - [x] Espera respuesta de aprobación (Promise-based pattern)
+  - [x] Continúa o cancela según decisión
 
-#### 6.2 Approval System - Frontend
-- [ ] **Componentes**
-  - [ ] `components/approvals/ApprovalDialog.tsx` (dialog con shadcn/ui)
-  - [ ] `components/approvals/ChangeSummary.tsx` (preview de cambios)
-  - [ ] `components/approvals/ApprovalQueue.tsx` (queue de pending)
-- [ ] **WebSocket Integration**
-  - [ ] Escuchar evento `approval_requested`
-  - [ ] Mostrar dialog automáticamente
-  - [ ] Enviar decisión (approve/reject)
+#### 6.2 Approval System - Frontend ✅
+- [x] **Componentes**
+  - [x] `components/approvals/ApprovalDialog.tsx` - Auto-open dialog con countdown timer
+  - [x] `components/approvals/ChangeSummary.tsx` - Preview de cambios con impact indicators
+  - [x] `components/approvals/ApprovalQueue.tsx` - Badge en header con pending count
+  - [x] Integrado en MainLayout y Header
+- [x] **WebSocket Integration**
+  - [x] Escuchar evento `approval:requested`
+  - [x] Mostrar dialog automáticamente
+  - [x] Enviar decisión (approve/reject) con reason opcional
+  - [x] Real-time updates via useApprovals hook
 
-#### 6.3 To-Do Lists - Backend
+#### 6.3 To-Do Lists - Backend ✅
 **Referencias**: @docs\06-observability\06-todo-lists.md
 
-- [ ] **Crear TodoManager** (`backend/src/services/todo/TodoManager.ts`)
-  - [ ] Auto-generation de todos desde plans del agente
-  - [ ] Actualización de status en tiempo real
-  - [ ] Persistencia en memoria (Redis) o BD
-  - [ ] WebSocket events: `todo_updated`, `todo_completed`
+- [x] **Crear TodoManager** (`backend/src/services/todo/TodoManager.ts`)
+  - [x] Auto-generation de todos desde plans del agente
+  - [x] Actualización de status en tiempo real
+  - [x] Persistencia en BD (tabla `todos`)
+  - [x] WebSocket events: `todo:created`, `todo:updated`, `todo:completed`
 
-#### 6.4 To-Do Lists - Frontend
-- [ ] **Componentes**
-  - [ ] `components/panels/TodoList.tsx`
-  - [ ] `components/panels/TodoItem.tsx`
-  - [ ] Status visualization (pending, in_progress, completed)
-- [ ] **Real-time Updates**
-  - [ ] Escuchar eventos de WebSocket
-  - [ ] Actualizar UI automáticamente
+#### 6.4 To-Do Lists - Frontend ✅
+- [x] **Componentes**
+  - [x] `components/todos/TodoList.tsx` - List con progress bar y grouping por status
+  - [x] `components/todos/TodoItem.tsx` - Individual todo con status icons
+  - [x] Status visualization (pending, in_progress, completed, failed)
+  - [x] Integrado en Sidebar (collapsible section)
+- [x] **Real-time Updates**
+  - [x] Escuchar eventos de WebSocket (`todo:created`, `todo:updated`, `todo:completed`)
+  - [x] Actualizar UI automáticamente via useTodos hook
+
+**Componentes adicionales instalados**:
+- [x] shadcn/ui Alert component
+- [x] shadcn/ui Collapsible component
+- [x] shadcn/ui Progress component
+
+**Build Status**: ✅ Compilación exitosa sin errores
 
 ---
 

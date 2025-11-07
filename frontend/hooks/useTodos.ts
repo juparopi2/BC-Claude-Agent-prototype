@@ -1,7 +1,7 @@
 import { useEffect, useCallback } from 'react';
 import { useTodoStore, type Todo } from '@/store';
 import { useSocket } from './useSocket';
-import { socketTodoApi, SocketEvent, type TodoEventData } from '@/lib/socket';
+import { socketTodoApi, SocketEvent, type TodoEventData, type TodoCreatedEventData } from '@/lib/socket';
 
 /**
  * Hook for todo tracking
@@ -39,7 +39,18 @@ export function useTodos(sessionId?: string) {
   useEffect(() => {
     if (!socket || !isConnected) return;
 
-    // Todo updated (created or status changed)
+    // Todo created (when new todos are generated from plan)
+    const handleTodoCreated = (data: TodoCreatedEventData) => {
+      console.log('[useTodos] Todos created:', data.todos.length, 'todos for session', data.sessionId);
+
+      // Only add todos for current session if sessionId is specified
+      if (!sessionId || data.sessionId === sessionId) {
+        // Add all todos from the array
+        data.todos.forEach((todo) => addTodo(todo));
+      }
+    };
+
+    // Todo updated (status changed)
     const handleTodoUpdated = (data: TodoEventData) => {
       console.log('[useTodos] Todo updated:', data.todo.id, data.todo.status);
 
@@ -63,11 +74,13 @@ export function useTodos(sessionId?: string) {
     };
 
     // Register listeners
+    socketTodoApi.onTodoCreated(handleTodoCreated);
     socketTodoApi.onTodoUpdated(handleTodoUpdated);
     socketTodoApi.onTodoCompleted(handleTodoCompleted);
 
     // Cleanup listeners
     return () => {
+      socket.off(SocketEvent.TODO_CREATED, handleTodoCreated);
       socket.off(SocketEvent.TODO_UPDATED, handleTodoUpdated);
       socket.off(SocketEvent.TODO_COMPLETED, handleTodoCompleted);
     };

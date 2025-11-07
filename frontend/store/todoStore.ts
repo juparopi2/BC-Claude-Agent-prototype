@@ -1,13 +1,5 @@
 import { create } from 'zustand';
-
-export interface Todo {
-  id: string;
-  sessionId: string; // Use camelCase to match API responses
-  content: string;
-  status: 'pending' | 'in_progress' | 'completed';
-  created_at?: string;
-  completed_at?: string;
-}
+import type { Todo } from '@/lib/types';
 
 interface TodoState {
   // Todos

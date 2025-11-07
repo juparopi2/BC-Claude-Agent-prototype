@@ -356,3 +356,13 @@ export function onConnectionStatusChange(callback: (status: SocketStatus) => voi
     off<void>(SocketEvent.CONNECT_ERROR, handleError);
   };
 }
+
+// Re-export types from ./types for convenience
+export type {
+  MessageEventData,
+  ThinkingEventData,
+  ToolUseEventData,
+  StreamChunkEventData,
+  ApprovalEventData,
+  TodoEventData,
+} from './types';

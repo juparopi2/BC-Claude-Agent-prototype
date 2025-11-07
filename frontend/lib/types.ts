@@ -5,8 +5,8 @@
 export interface User {
   id: string;
   email: string;
-  full_name?: string;
-  role?: string;
+  name: string; // Full name of the user
+  role: 'admin' | 'editor' | 'viewer';
   created_at: string;
 }
 
@@ -54,7 +54,8 @@ export interface HealthStatus {
 }
 
 export interface AuthResponse {
-  token: string;
+  accessToken: string;
+  refreshToken: string;
   user: User;
 }
 

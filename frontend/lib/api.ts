@@ -158,13 +158,13 @@ export const authApi = {
    */
   register: async (email: string, password: string, fullName?: string) => {
     const response = await api.post<AuthResponse>('/api/auth/register', {
+      name: fullName, // Use 'name' to match backend expectation
       email,
       password,
-      full_name: fullName,
     });
 
-    if (response.token) {
-      setAuthToken(response.token);
+    if (response.accessToken) {
+      setAuthToken(response.accessToken);
     }
 
     return response;
@@ -179,8 +179,8 @@ export const authApi = {
       password,
     });
 
-    if (response.token) {
-      setAuthToken(response.token);
+    if (response.accessToken) {
+      setAuthToken(response.accessToken);
     }
 
     return response;
@@ -201,11 +201,11 @@ export const authApi = {
   /**
    * Refresh token
    */
-  refresh: async () => {
-    const response = await api.post<{ token: string }>('/api/auth/refresh');
+  refresh: async (refreshToken: string) => {
+    const response = await api.post<AuthResponse>('/api/auth/refresh', { refreshToken });
 
-    if (response.token) {
-      setAuthToken(response.token);
+    if (response.accessToken) {
+      setAuthToken(response.accessToken);
     }
 
     return response;

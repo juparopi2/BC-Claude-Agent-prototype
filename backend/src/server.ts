@@ -136,34 +136,6 @@ async function initializeApp(): Promise<void> {
     }
     console.log('');
 
-    // Step 11: Initialize Orchestrator
-    console.log('🎯 Initializing Orchestrator...');
-    const { Orchestrator } = await import('./services/agent/Orchestrator');
-    const orchestrator = Orchestrator.getInstance();
-    orchestrator.initialize(
-      mcpService.getMCPServersConfig(),
-      approvalManager,
-      todoManager,
-      {
-        mcpServerUrl: mcpService.getMCPServerUrl(),
-        anthropicApiKey: env.ANTHROPIC_API_KEY || '',
-        enableMultiStep: true,
-        enableAutoValidation: true,
-        maxAgentChainLength: 5,
-        intentAnalysisTimeout: 5000,
-        fallbackToGeneralAgent: true,
-      }
-    );
-    const orchestratorStatus = orchestrator.getStatus();
-    if (orchestratorStatus.initialized) {
-      console.log('✅ Orchestrator initialized');
-      console.log(`   Multi-step enabled: ${orchestratorStatus.config.enableMultiStep ? 'Yes' : 'No'}`);
-      console.log(`   Auto-validation: ${orchestratorStatus.config.enableAutoValidation ? 'Yes' : 'No'}`);
-    } else {
-      console.warn('⚠️  Orchestrator: Not fully configured');
-    }
-    console.log('');
-
     console.log('✅ All services initialized successfully\n');
   } catch (error) {
     console.error('❌ Failed to initialize application:', error);
@@ -272,7 +244,6 @@ function configureRoutes(): void {
         agent: {
           status: '/api/agent/status',
           query: '/api/agent/query',
-          orchestrate: '/api/agent/orchestrate',
         },
         approvals: {
           respond: '/api/approvals/:id/respond',
@@ -400,14 +371,9 @@ function configureRoutes(): void {
   });
 
   // Agent endpoints
-  app.get('/api/agent/status', async (_req: Request, res: Response): Promise<void> => {
+  app.get('/api/agent/status', (_req: Request, res: Response): void => {
     const agentService = getAgentService();
     const mcpService = getMCPService();
-
-    // Get Orchestrator status
-    const { Orchestrator } = await import('./services/agent/Orchestrator');
-    const orchestrator = Orchestrator.getInstance();
-    const orchestratorStatus = orchestrator.getStatus();
 
     const status = {
       configured: agentService.isConfigured(),
@@ -416,7 +382,11 @@ function configureRoutes(): void {
         url: mcpService.getMCPServerUrl(),
         configured: mcpService.isConfigured(),
       },
-      orchestrator: orchestratorStatus,
+      subagents: {
+        enabled: true,
+        routing: 'automatic',
+        agents: ['bc-query', 'bc-write', 'bc-validation', 'bc-analysis'],
+      },
     };
 
     res.json(status);
@@ -465,69 +435,6 @@ function configureRoutes(): void {
       res.json(result);
     } catch (error) {
       console.error('[API] Agent query failed:', error);
-      res.status(500).json({
-        error: 'Query failed',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      });
-    }
-  });
-
-  // POST /api/agent/orchestrate - Execute with orchestration (intelligent agent routing)
-  app.post('/api/agent/orchestrate', authenticateJWT, async (req: Request, res: Response): Promise<void> => {
-    try {
-      const agentService = getAgentService();
-
-      if (!agentService.isConfigured()) {
-        res.status(503).json({
-          error: 'Agent not configured',
-          message: 'ANTHROPIC_API_KEY is not set',
-        });
-        return;
-      }
-
-      const { prompt, sessionId } = req.body;
-      const userId = req.user?.userId;
-
-      if (!prompt || typeof prompt !== 'string') {
-        res.status(400).json({
-          error: 'Invalid request',
-          message: 'prompt is required and must be a string',
-        });
-        return;
-      }
-
-      if (!sessionId || typeof sessionId !== 'string') {
-        res.status(400).json({
-          error: 'Invalid request',
-          message: 'sessionId is required and must be a string',
-        });
-        return;
-      }
-
-      console.log(`[Orchestrator] Executing query with orchestration: "${prompt.substring(0, 50)}..."`);
-
-      // Execute query with orchestration and event logging
-      const result = await agentService.executeWithOrchestration(
-        prompt,
-        sessionId,
-        userId,
-        (event) => {
-          console.log(`[Orchestrator Event] ${event.type}:`,
-            event.type === 'message' && 'content' in event
-              ? event.content?.substring(0, 100) || ''
-              : event.type === 'thinking' && 'content' in event
-              ? event.content?.substring(0, 100) || ''
-              : ''
-          );
-        }
-      );
-
-      console.log(`[Orchestrator] Query completed in ${result.durationMs}ms`);
-      console.log(`[Orchestrator] Tools used: ${result.toolsUsed.join(', ') || 'none'}`);
-
-      res.json(result);
-    } catch (error) {
-      console.error('[API] Orchestrated query failed:', error);
       res.status(500).json({
         error: 'Query failed',
         message: error instanceof Error ? error.message : 'Unknown error',
@@ -671,13 +578,11 @@ function configureSocketIO(): void {
       message: string;
       sessionId: string;
       userId: string;
-      useOrchestration?: boolean;
     }) => {
-      const { message, sessionId, userId, useOrchestration = true } = data;
+      const { message, sessionId, userId } = data;
 
       try {
         console.log(`[Socket] Chat message from ${userId} in session ${sessionId}`);
-        console.log(`[Socket] Using orchestration: ${useOrchestration}`);
 
         // Validate session ownership (basic check)
         // In production, verify user owns the session via database query
@@ -693,15 +598,12 @@ function configureSocketIO(): void {
         });
 
         // Execute agent query with streaming
+        // SDK handles automatic routing to specialized subagents
         const agentService = getAgentService();
-
-        // Use orchestration if enabled and configured
-        if (useOrchestration) {
-          await agentService.executeWithOrchestration(
-            message,
-            sessionId,
-            userId,
-            (event) => {
+        await agentService.executeQuery(
+          message,
+          sessionId,
+          (event) => {
             // Stream all events to session room
             io.to(sessionId).emit('agent:event', event);
 
@@ -757,68 +659,6 @@ function configureSocketIO(): void {
             }
           }
         );
-        } else {
-          // Fallback: Execute without orchestration (direct execution)
-          await agentService.executeQuery(
-            message,
-            sessionId,
-            (event) => {
-              // Stream all events to session room
-              io.to(sessionId).emit('agent:event', event);
-
-              // Emit specific event types
-              switch (event.type) {
-                case 'thinking':
-                  io.to(sessionId).emit('agent:thinking', {
-                    content: event.content,
-                  });
-                  break;
-
-                case 'message_partial':
-                  io.to(sessionId).emit('agent:message_chunk', {
-                    content: event.content,
-                  });
-                  break;
-
-                case 'message':
-                  io.to(sessionId).emit('agent:message_complete', {
-                    content: event.content,
-                    role: event.role,
-                  });
-                  break;
-
-                case 'tool_use':
-                  io.to(sessionId).emit('agent:tool_use', {
-                    toolName: event.toolName,
-                    args: event.args,
-                    toolUseId: event.toolUseId,
-                  });
-                  break;
-
-                case 'tool_result':
-                  io.to(sessionId).emit('agent:tool_result', {
-                    toolName: event.toolName,
-                    result: event.result,
-                    success: event.success,
-                    toolUseId: event.toolUseId,
-                  });
-                  break;
-
-                case 'error':
-                  io.to(sessionId).emit('agent:error', {
-                    error: event.error,
-                  });
-                  break;
-
-                case 'session_end':
-                  io.to(sessionId).emit('agent:complete', {
-                    reason: event.reason,
-                  });
-                  break;
-              }
-            }
-          );
-        }
 
         console.log(`[Socket] Chat message completed for session ${sessionId}`);
       } catch (error) {

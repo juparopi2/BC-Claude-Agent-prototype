@@ -33,7 +33,9 @@
       "WebFetch(domain:github.com)",
       "WebFetch(domain:www.anthropic.com)",
       "Bash(cat:*)",
-      "Bash(npm run lint:*)"
+      "Bash(npm run lint:*)",
+      "Bash(timeout:*)",
+      "Bash(powershell:*)"
     ],
     "deny": [],
     "ask": []

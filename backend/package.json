@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "nodemon --exec ts-node src/server.ts",
     "build": "tsc",
+    "build:mcp": "cd mcp-server && npm run build",
+    "build:all": "npm run build && npm run build:mcp",
     "start": "node dist/server.js",
     "migrate": "node -r ts-node/register scripts/migrate.ts",
     "seed": "node -r ts-node/register scripts/seed.ts",
@@ -26,7 +28,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "0.1.29",
+    "@anthropic-ai/claude-agent-sdk": "0.1.30",
     "@anthropic-ai/sdk": "0.68.0",
     "@azure/identity": "4.13.0",
     "@azure/keyvault-secrets": "4.10.0",

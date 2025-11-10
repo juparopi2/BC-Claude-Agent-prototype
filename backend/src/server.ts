@@ -590,20 +590,14 @@ function configureSocketIO(): void {
         // Join session room
         socket.join(sessionId);
 
-        // Generate todos from prompt first
-        const todoManager = getTodoManager();
-        await todoManager.generateFromPlan({
-          sessionId,
-          prompt: message,
-        });
-
         // Execute agent query with streaming
+        // The SDK will automatically generate todos using TodoWrite tool
         // SDK handles automatic routing to specialized subagents
         const agentService = getAgentService();
         await agentService.executeQuery(
           message,
           sessionId,
-          (event) => {
+          async (event) => {
             // Stream all events to session room
             io.to(sessionId).emit('agent:event', event);
 
@@ -629,6 +623,15 @@ function configureSocketIO(): void {
                 break;
 
               case 'tool_use':
+                // Intercept TodoWrite to sync todos to database
+                if (event.toolName === 'TodoWrite' && event.args?.todos) {
+                  const todoManager = getTodoManager();
+                  await todoManager.syncTodosFromSDK(
+                    sessionId,
+                    event.args.todos as Array<{ content: string; status: 'pending' | 'in_progress' | 'completed'; activeForm: string }>
+                  );
+                }
+
                 io.to(sessionId).emit('agent:tool_use', {
                   toolName: event.toolName,
                   args: event.args,

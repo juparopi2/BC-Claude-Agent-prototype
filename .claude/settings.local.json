@@ -35,7 +35,15 @@
       "Bash(cat:*)",
       "Bash(npm run lint:*)",
       "Bash(timeout:*)",
-      "Bash(powershell:*)"
+      "Bash(powershell:*)",
+      "Bash(where claude-code:*)",
+      "Bash(npm search:*)",
+      "Bash(npm uninstall:*)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(git submodule add:*)",
+      "Bash(npm run index:*)",
+      "Bash(tasklist:*)",
+      "Bash(xargs kill:*)"
     ],
     "deny": [],
     "ask": []

@@ -13,6 +13,7 @@
  */
 
 import { Server as SocketServer } from 'socket.io';
+import crypto from 'crypto';
 import { getDatabase } from '../../config/database';
 import {
   ApprovalRequest,
@@ -457,12 +458,12 @@ export class ApprovalManager {
   }
 
   /**
-   * Generate unique approval ID
+   * Generate unique approval ID (GUID)
    *
-   * @returns Unique approval ID
+   * @returns UUID v4 GUID for approval ID
    */
   private generateApprovalId(): string {
-    return `approval-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    return crypto.randomUUID();
   }
 }
 

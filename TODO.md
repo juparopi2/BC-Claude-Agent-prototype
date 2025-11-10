@@ -1372,7 +1372,128 @@ frontend/
 
 ---
 
+## 🐛 Problemas Conocidos Pendientes
+
+### ❌ CRÍTICO - SDK Error (2025-11-10)
+**Error**: "Claude Code process exited with code 1"
+**Ubicación**: ProcessTransport del Agent SDK
+**Ocurre**: Al ejecutar test-chat-flow.ts
+**Stack**: `@anthropic-ai/claude-agent-sdk/sdk.mjs:6560:14`
+
+**Próximos pasos**:
+- [ ] Investigar configuración del Agent SDK en AgentService.ts
+- [ ] Verificar que MCP server URL sea accesible
+- [ ] Verificar formato de `mcpServers` config
+- [ ] Revisar logs del backend para más detalles
+- [ ] Considerar upgrade/downgrade de `@anthropic-ai/claude-agent-sdk`
+
+### ⚠️ MEDIO - CHECK Constraint en Approvals (2025-11-10)
+**Error**: `The UPDATE statement conflicted with the CHECK constraint "chk_approvals_status"`
+**Ubicación**: ApprovalManager.expireOldApprovals()
+**Root Cause**: Constraint solo permite 'pending', 'approved', 'rejected' - no permite 'expired'
+
+**Solución propuesta**:
+```sql
+-- Opción 1: Agregar 'expired' al constraint
+ALTER TABLE approvals DROP CONSTRAINT chk_approvals_status;
+ALTER TABLE approvals ADD CONSTRAINT chk_approvals_status
+  CHECK (status IN ('pending', 'approved', 'rejected', 'expired'));
+
+-- Opción 2: Cambiar lógica para usar 'rejected' en lugar de 'expired'
+-- Modificar ApprovalManager.expireApproval() para SET status = 'rejected'
+```
+
+**Próximos pasos**:
+- [ ] Decidir enfoque (agregar constraint o cambiar lógica)
+- [ ] Implementar solución
+- [ ] Actualizar types/approval.types.ts si se agrega 'expired'
+
+### ℹ️ INFO - Column Naming Mismatch (2025-11-10)
+**Estado**: Parcialmente resuelto ✅
+**Issue**: Schema usaba snake_case, TypeScript esperaba camelCase
+
+**Columnas agregadas**:
+- ✅ todos: `content`, `activeForm`, `order`
+- ✅ approvals: `tool_name`, `tool_args`, `expires_at`
+- ✅ audit_log: `event_type`, `event_data`
+
+**Pendiente**:
+- [ ] Considerar eliminar columnas viejas (description, order_index, action_type, etc.) después de validar que nada las usa
+- [ ] Actualizar documentación del schema
+
+---
+
 ## 📅 Historial de Progreso
+
+### 2025-11-10
+- ✅ **Bug Fixes & Architecture Refactoring**
+  - **GUID Generation Bugs Corregidos** ✅
+    - Fixed `generateTodoId()` in TodoManager.ts (usaba string concatenation en lugar de crypto.randomUUID())
+    - Fixed `generateApprovalId()` in ApprovalManager.ts (mismo problema)
+    - Root cause: session_id debe ser UNIQUEIDENTIFIER (GUID) en BD, no string
+  - **Test Scripts Corregidos** ✅
+    - `test-chat-flow.ts`: Ahora usa `crypto.randomUUID()` para session_id y user_id
+    - `test-approval-flow.ts`: Ahora usa `crypto.randomUUID()` para session_id y user_id
+  - **TodoManager Refactorizado para SDK Nativo** ✅ (~100 líneas eliminadas)
+    - Eliminado método `generateFromPlan()` (SDK genera todos automáticamente)
+    - Eliminado método `generateTodosHeuristic()` (lógica custom innecesaria)
+    - Eliminado import de `query` del SDK
+    - Nuevo método `syncTodosFromSDK()` para interceptar eventos TodoWrite del SDK
+    - Actualizado comentario del módulo para reflejar arquitectura SDK-nativa
+  - **Server.ts Modificado** ✅
+    - Removida llamada a `todoManager.generateFromPlan()` (líneas 593-598)
+    - Agregado interceptor para evento `tool_use` con `toolName === 'TodoWrite'`
+    - Callback ahora es `async` para permitir `await todoManager.syncTodosFromSDK()`
+  - **Compilación TypeScript**: ✅ Exitosa sin errores
+  - **Tiempo**: ~3 horas
+- ⚠️ **Nuevos Problemas Encontrados**
+  - **SDK Error**: "Claude Code process exited with code 1"
+    - Error del ProcessTransport del Agent SDK
+    - Ocurre al ejecutar test-chat-flow.ts después del refactor
+    - Requiere investigación más profunda de la configuración del agente
+    - **NO está relacionado con los bugs de GUID** (esos ya se corrigieron)
+  - **CHECK Constraint en approvals**: Status 'expired' no permitido
+    - ApprovalManager.expireOldApprovals() intenta SET status = 'expired'
+    - Constraint `chk_approvals_status` solo permite: 'pending', 'approved', 'rejected'
+    - Solución: Agregar 'expired' al constraint o cambiar lógica de expiración
+  - **Migration 001b Pendiente**:
+    - Schema tiene column naming mismatches (snake_case vs camelCase)
+    - Script `add-missing-columns-simple.ts` ejecutado ✅
+    - Agregadas columnas: `content`, `activeForm`, `order` en todos
+    - Agregadas columnas: `tool_name`, `tool_args`, `expires_at` en approvals
+    - Agregadas columnas: `event_type`, `event_data` en audit_log
+
+### 2025-11-10 (Continuación - Tarde)
+- ✅ **Integración MCP Server via Git Submodule & stdio Transport** (~6 horas)
+  - **Objetivo**: Resolver ProcessTransport error usando stdio en lugar de SSE
+  - **Logros**:
+    - ✅ MCP server agregado como git submodule en `backend/mcp-server/`
+    - ✅ MCP server built con éxito (52 entidades, 324 endpoints indexados)
+    - ✅ AgentService.ts modificado para usar stdio transport con path absoluto
+    - ✅ package.json scripts agregados: `build:mcp`, `build:all`
+    - ✅ Dockerfile actualizado para multi-stage build con MCP server
+    - ✅ Removed getMCPService import (ahora hardcoded stdio config)
+    - ✅ Fixed TypeScript compilation errors (CommonJS vs ES modules)
+    - ✅ Cleared ts-node cache y server compila exitosamente
+    - ✅ Agent SDK updated de 0.1.29 a 0.1.30
+  - **Configuración Implementada**:
+    ```typescript
+    mcpServers: {
+      'bc-mcp': {
+        type: 'stdio',
+        command: 'node',
+        args: [path.resolve(process.cwd(), 'mcp-server', 'dist', 'index.js')],
+        env: {}
+      }
+    }
+    ```
+  - **Arquitectura**: Single Docker image con backend + MCP server integrado
+  - **Deployment**: Git submodule strategy (standard, simple, version controlled)
+- ⚠️ **Problema Pendiente**: ProcessTransport Error persiste
+  - Error: "Claude Code process exited with code 1"
+  - Causa probable: SDK's cli.js subprocess crash al spawning MCP server
+  - Estado: Backend compila y arranca correctamente, pero SDK CLI falla en runtime
+  - Próximos pasos: Debug detallado del CLI subprocess con logs habilitados
 
 ### 2025-10-30
 - ✅ **Week 2 - Sección 2.2**: Authentication System completada
@@ -1393,5 +1514,5 @@ frontend/
 
 ---
 
-**Última actualización**: 2025-10-30
-**Versión**: 1.2
+**Última actualización**: 2025-11-10 (Tarde)
+**Versión**: 1.4

@@ -208,6 +208,157 @@ MCP → Business Central → SDK streamea resultado → Usuario
 
 ---
 
+## 🔥 Filosofía SDK-First - Escrito Sobre Piedra
+
+**⚠️ REGLA DE ORO**: El Claude Agent SDK es la **máxima prioridad** y **fuente de verdad** de este proyecto. NUNCA bypasees el SDK con soluciones custom.
+
+### Principio Fundamental
+
+> "Si hay un problema con el SDK y tenemos que sacrificar nuestra lógica, nuestro código o nuestra implementación, con el beneficio de utilizar el SDK, estamos dispuestos a hacerlo. No debemos pasar por alto el SDK solo porque no funciona y crear una solución por nuestra cuenta."
+
+### Qué Proporciona el SDK (NO reconstruir)
+
+El SDK ya incluye estas capacidades **built-in**:
+
+1. **Agentic Loop Automático** (Think → Act → Verify → Repeat)
+   - NO implementes loops manuales
+   - El SDK maneja iteraciones automáticamente
+
+2. **Tool Calling Nativo**
+   - Descubrimiento automático de tools vía MCP
+   - Ejecución automática de tools
+   - Manejo de errores integrado
+
+3. **Context Management**
+   - Session persistence vía `resume` parameter
+   - Automatic context window management
+   - Built-in memory across turns
+
+4. **Streaming Built-in**
+   - Real-time event streaming
+   - Partial message support vía `includePartialMessages: true`
+
+5. **Prompt Caching Automático**
+   - SDK cachea prompts automáticamente
+   - NO necesitas habilitar manualmente `promptCaching`
+   - Reducción de costos y latencia transparente
+
+6. **TodoWrite Tool Nativo**
+   - SDK genera TODOs automáticamente para tareas complejas
+   - Intercepta eventos, no reimplementes la generación
+
+### Qué Construimos Nosotros (Capa de aplicación)
+
+Nuestra responsabilidad es la **capa de aplicación** sobre el SDK:
+
+1. **Specialized Agents** (vía `agents` config)
+   - Descripciones concisas para routing
+   - System prompts específicos de dominio (Business Central)
+   - NO especifiques `tools` arrays - permite acceso a todos los tools
+
+2. **Human-in-the-Loop** (vía `canUseTool` hook)
+   - Intercepta write operations para aprobación
+   - Return `{ behavior: 'deny' }` si no hay aprobación
+   - NO bypasees el SDK ejecutando tools manualmente
+
+3. **Event Streaming** (vía query stream)
+   - Consume eventos del SDK (`agent:tool_use`, `agent:message_chunk`, etc.)
+   - Propaga eventos al frontend via WebSocket
+   - NO reimplementes el streaming
+
+4. **Database Persistence** (nuestra lógica)
+   - Intercepta eventos del SDK (`TodoWrite`, approvals)
+   - Persiste en Azure SQL
+   - NO reimplementes generación de datos que el SDK ya hace
+
+### Arquitectura SDK-Compliant
+
+```typescript
+// ✅ CORRECTO - Usa SDK query() con configuración
+const result = query({
+  prompt,
+  options: {
+    mcpServers,              // MCP auto-discovery
+    model: 'claude-sonnet-4-5',
+    resume: sessionId,        // Session persistence
+    maxTurns: 20,            // Safety limit
+    agents: {                // Specialized routing
+      'bc-query': {
+        description: 'Query Business Central data',  // Conciso
+        prompt: `System prompt...`,
+        // NO tools array - permite MCP tools
+      }
+    },
+    canUseTool: async (...) => { /* Approval logic */ },
+  }
+});
+
+// ❌ INCORRECTO - Custom agentic loop
+while (shouldContinue) {
+  const response = await callClaude();  // NO hagas esto
+  if (needsTool) {
+    await executeTool();                // SDK lo hace automáticamente
+  }
+}
+```
+
+### Best Practices SDK
+
+1. **Agents Configuration**
+   - ✅ Descriptions: Concisas (≤8 palabras) para routing
+   - ✅ Prompts: Detallados con instrucciones de dominio
+   - ❌ NO uses `tools: ['Read', 'Grep']` - bloquea MCP tools
+   - ✅ Omite `tools` array para acceso completo
+
+2. **Hook Callbacks**
+   - ✅ Usa `canUseTool` para control de permisos
+   - ✅ Return `PermissionResult` según la firma del SDK
+   - ❌ NO ejecutes tools manualmente fuera del SDK
+   - ✅ Usa `hooks: { PostToolUse }` para reaccionar a resultados
+
+3. **MCP Integration**
+   - ✅ Format: `{ 'server-name': { type: 'sse', url: '...' } }`
+   - ✅ SDK auto-discover tools con prefijo `mcp__server-name__tool`
+   - ❌ NO llames MCP directamente - deja que el SDK lo haga
+   - ✅ Confía en el SDK para ejecutar tools MCP
+
+4. **Performance**
+   - ✅ Usa `maxTurns` para límites de seguridad
+   - ✅ Caching es automático (no configurable)
+   - ✅ System prompt es manejado internalmente por Claude Code
+   - ❌ NO intentes configurar caching manualmente
+
+### Known Issues y Workarounds
+
+**ProcessTransport Error (v0.1.29)**
+- **Issue**: "Claude Code process exited with code 1"
+- **Causa**: Bug conocido con MCP servers vía SSE
+- **Fix**: Update a SDK v0.1.30+ donde fue resuelto
+- **GitHub**: Issues #176, #4619
+
+**Minimum SDK Version**
+- **Requerido**: `@anthropic-ai/claude-agent-sdk@0.1.30` o superior
+- **Razón**: Fixes critical ProcessTransport bugs con MCP
+
+### Verificación de Compliance
+
+Antes de implementar cualquier feature, pregúntate:
+
+1. ¿Estoy reimplementando algo que el SDK ya hace?
+2. ¿Estoy bloqueando capacidades del SDK (como restricting tools)?
+3. ¿Estoy siguiendo las firmas de tipos del SDK exactamente?
+4. ¿Hay una manera de hacer esto MÁS alineada con el SDK?
+
+**Si la respuesta a 1 o 2 es "sí", DETENTE y refactoriza para usar el SDK correctamente.**
+
+### Documentación de Referencia
+
+- SDK Official Docs: https://docs.claude.com/en/docs/agent-sdk/typescript
+- Agent SDK Usage Guide: `docs/02-core-concepts/06-agent-sdk-usage.md`
+- Agentic Loop with SDK: `docs/03-agent-system/01-agentic-loop.md`
+
+---
+
 ## 📦 Convenciones de Dependencias NPM
 
 **⚠️ MUY IMPORTANTE**: Al instalar o actualizar dependencias de npm, **SIEMPRE usa versiones exactas** sin símbolos `^` o `~`.
@@ -271,5 +422,7 @@ Cuando necesites actualizar una dependencia:
 
 ---
 
-**Última actualización**: 2025-10-28
+**Última actualización**: 2025-11-10
+- Added SDK-First Philosophy section (permanent guidelines)
+- Updated to SDK v0.1.30 (fixes ProcessTransport bugs)
 - Never use any. Lint breaks because of that

@@ -20,12 +20,12 @@ import type {
   BetaTextBlock,
 } from '@anthropic-ai/sdk/resources/beta';
 import { env } from '@/config';
-import { getMCPService } from '../mcp';
 import { getDatabase } from '@/config/database';
 import type { AgentEvent, AgentExecutionResult } from '@/types';
 import type { ApprovalManager } from '../approval/ApprovalManager';
 import type { TodoManager } from '../todo/TodoManager';
 import { isWriteOperation } from './helpers/permissions';
+import path from 'path';
 
 /**
  * Agent Service Class
@@ -87,11 +87,20 @@ export class AgentService {
     let outputTokens = 0;
 
     try {
-      // Get MCP configuration
-      const mcpService = getMCPService();
-      const mcpServers = mcpService.isConfigured()
-        ? mcpService.getMCPServersConfig()
-        : {};
+      // Configure stdio-based MCP server (local Business Central MCP)
+      // Uses the cloned BC MCP server at backend/mcp-server/
+      // Use absolute path from process.cwd() to ensure correct resolution
+      const mcpServerPath = path.resolve(process.cwd(), 'mcp-server', 'dist', 'index.js');
+      console.log(`[AgentService] MCP Server Path: ${mcpServerPath}`);
+
+      const mcpServers = {
+        'bc-mcp': {
+          type: 'stdio' as const,
+          command: 'node',
+          args: [mcpServerPath],
+          env: {}
+        }
+      };
 
       // Set API key in environment for SDK
       process.env.ANTHROPIC_API_KEY = this.apiKey;
@@ -105,10 +114,13 @@ export class AgentService {
           includePartialMessages: true,
           resume: sessionId,
 
+          // Performance optimizations
+          maxTurns: 20,             // Safety limit to prevent infinite loops
+
           // 🔥 NATIVE SDK SUBAGENTS - Automatic routing based on intent
           agents: {
             'bc-query': {
-              description: 'Expert in querying and retrieving Business Central data. Use for listing, searching, filtering, and reading BC entities (customers, vendors, items, sales orders, etc.).',
+              description: 'Query and retrieve Business Central data',
               prompt: `You are a specialized Business Central Query Agent.
 
 Your responsibilities:
@@ -131,11 +143,10 @@ Best practices:
 - Limit results to avoid overwhelming the user
 - Format currency and dates appropriately
 - Provide context for the data (e.g., "Found 5 customers matching...")`,
-              tools: ['Read', 'Grep', 'Glob'],
               model: 'sonnet',
             },
             'bc-write': {
-              description: 'Expert in creating and updating Business Central entities. Use for data modifications, creates, updates with user approval (Human-in-the-Loop).',
+              description: 'Create and update Business Central entities',
               prompt: `You are a specialized Business Central Write Agent.
 
 Your responsibilities:
@@ -163,11 +174,10 @@ Write workflow:
 2. Request approval from user
 3. If approved, execute the write operation
 4. Confirm success or handle errors`,
-              tools: ['Read', 'Grep', 'Glob'],
               model: 'sonnet',
             },
             'bc-validation': {
-              description: 'Expert in validating Business Central data without execution. Use for checking data validity, format validation, business rules verification.',
+              description: 'Validate Business Central data and business rules',
               prompt: `You are a specialized Business Central Validation Agent.
 
 Your responsibilities:
@@ -189,11 +199,10 @@ Output format:
 - Provide specific field names
 - Suggest corrections
 - Rate severity (error, warning, info)`,
-              tools: ['Read', 'Grep', 'Glob'],
               model: 'haiku',
             },
             'bc-analysis': {
-              description: 'Expert in analyzing Business Central data and providing insights, trends, summaries. Use for analytics, reporting, data interpretation.',
+              description: 'Analyze Business Central data and provide insights',
               prompt: `You are a specialized Business Central Analysis Agent.
 
 Your responsibilities:
@@ -218,7 +227,6 @@ Output format:
 - Use charts/tables when appropriate
 - Provide actionable recommendations
 - Highlight important insights`,
-              tools: ['Read', 'Grep', 'Glob'],
               model: 'sonnet',
             },
           },
@@ -563,11 +571,9 @@ Output format:
     mcpConfigured: boolean;
     model: string;
   } {
-    const mcpService = getMCPService();
-
     return {
       hasApiKey: this.isConfigured(),
-      mcpConfigured: mcpService.isConfigured(),
+      mcpConfigured: true,  // MCP is always configured (stdio-based)
       model: env.ANTHROPIC_MODEL,
     };
   }

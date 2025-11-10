@@ -8,10 +8,11 @@
  */
 
 import { io as ioClient, Socket } from 'socket.io-client';
+import crypto from 'crypto';
 
 const SERVER_URL = 'http://localhost:3001';
-const TEST_SESSION_ID = `test-session-${Date.now()}`;
-const TEST_USER_ID = 'test-user';
+const TEST_SESSION_ID = crypto.randomUUID(); // Use GUID for session ID
+const TEST_USER_ID = crypto.randomUUID(); // Use GUID for user ID
 
 async function testChatFlow(): Promise<void> {
   console.log('💬 Testing chat flow...\n');

@@ -1,0 +1,41 @@
+{
+  "type": "object",
+  "properties": {
+    "lineNumber": {
+      "type": "integer",
+      "format": "int32",
+      "nullable": false,
+      "description": "(v1.0) The lineNumber property for the Dynamics 365 Business Central balanceSheet entity"
+    },
+    "display": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The display property for the Dynamics 365 Business Central balanceSheet entity",
+      "maxLength": 250
+    },
+    "balance": {
+      "type": "number",
+      "format": "decimal",
+      "nullable": true,
+      "description": "(v1.0) The balance property for the Dynamics 365 Business Central balanceSheet entity"
+    },
+    "lineType": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The lineType property for the Dynamics 365 Business Central balanceSheet entity",
+      "maxLength": 30
+    },
+    "indentation": {
+      "type": "integer",
+      "format": "int32",
+      "nullable": true,
+      "description": "(v1.0) The indentation property for the Dynamics 365 Business Central balanceSheet entity"
+    },
+    "dateFilter": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true,
+      "description": "(v1.0) The dateFilter property for the Dynamics 365 Business Central balanceSheet entity"
+    }
+  }
+}

@@ -1,0 +1,108 @@
+{
+  "entity": "vendorPurchase",
+  "displayName": "Vendor Purchase",
+  "description": "VendorPurchase entity for Business Central",
+  "endpoints": [
+    {
+      "id": "listVendorPurchases",
+      "method": "GET",
+      "path": "/companies({company_id})/vendorPurchases",
+      "summary": "Returns a list of vendorPurchases",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "queryParams": [
+        "$select"
+      ],
+      "responseSchema": "schemas/vendorPurchase.schema.json",
+      "selectableFields": [
+        "vendorId",
+        "vendorNumber",
+        "name",
+        "totalPurchaseAmount",
+        "dateFilter_FilterOnly"
+      ],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getVendorPurchase",
+      "method": "GET",
+      "path": "/companies({company_id})/vendorPurchases({vendorPurchase_vendorId},'{vendorPurchase_vendorNumber}','{vendorPurchase_name}')",
+      "summary": "Retrieve the properties and relationships of an object of type vendorPurchase for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "vendorPurchase_vendorId",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) vendorId for vendorPurchase"
+        },
+        {
+          "name": "vendorPurchase_vendorNumber",
+          "type": "string",
+          "required": true,
+          "description": "(v1.0) vendorNumber for vendorPurchase"
+        },
+        {
+          "name": "vendorPurchase_name",
+          "type": "string",
+          "required": true,
+          "description": "(v1.0) name for vendorPurchase"
+        }
+      ],
+      "queryParams": [
+        "$select"
+      ],
+      "responseSchema": "schemas/vendorPurchase.schema.json",
+      "selectableFields": [
+        "vendorId",
+        "vendorNumber",
+        "name",
+        "totalPurchaseAmount",
+        "dateFilter_FilterOnly"
+      ],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    }
+  ]
+}

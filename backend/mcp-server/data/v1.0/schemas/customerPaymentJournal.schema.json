@@ -1,0 +1,52 @@
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": false,
+      "description": "(v1.0) The id property for the Dynamics 365 Business Central customerPaymentJournal entity"
+    },
+    "code": {
+      "type": "string",
+      "nullable": false,
+      "description": "(v1.0) The code property for the Dynamics 365 Business Central customerPaymentJournal entity",
+      "maxLength": 10
+    },
+    "displayName": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The displayName property for the Dynamics 365 Business Central customerPaymentJournal entity",
+      "maxLength": 100
+    },
+    "lastModifiedDateTime": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true,
+      "description": "(v1.0) The lastModifiedDateTime property for the Dynamics 365 Business Central customerPaymentJournal entity"
+    },
+    "balancingAccountId": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": true,
+      "description": "(v1.0) The balancingAccountId property for the Dynamics 365 Business Central customerPaymentJournal entity"
+    },
+    "balancingAccountNumber": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The balancingAccountNumber property for the Dynamics 365 Business Central customerPaymentJournal entity",
+      "maxLength": 20
+    },
+    "customerPayments": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/customerPayment"
+      }
+    },
+    "account": {
+      "nullable": true,
+      "$ref": "#/components/schemas/account"
+    }
+  }
+}

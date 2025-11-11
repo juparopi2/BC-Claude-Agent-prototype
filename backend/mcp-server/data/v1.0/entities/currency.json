@@ -1,0 +1,210 @@
+{
+  "entity": "currency",
+  "displayName": "Currency",
+  "description": "Currency entity for Business Central",
+  "endpoints": [
+    {
+      "id": "listCurrencies",
+      "method": "GET",
+      "path": "/companies({company_id})/currencies",
+      "summary": "Returns a list of currencies",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "queryParams": [
+        "$select"
+      ],
+      "responseSchema": "schemas/currency.schema.json",
+      "selectableFields": [
+        "id",
+        "code",
+        "displayName",
+        "symbol",
+        "amountDecimalPlaces",
+        "amountRoundingPrecision",
+        "lastModifiedDateTime"
+      ],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "postCurrency",
+      "method": "POST",
+      "path": "/companies({company_id})/currencies",
+      "summary": "Creates an object of type currency in Dynamics 365 Business Central",
+      "operationType": "create",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "responseSchema": "schemas/currency.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 201,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getCurrency",
+      "method": "GET",
+      "path": "/companies({company_id})/currencies({currency_id})",
+      "summary": "Retrieve the properties and relationships of an object of type currency for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "currency_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for currency"
+        }
+      ],
+      "queryParams": [
+        "$select"
+      ],
+      "responseSchema": "schemas/currency.schema.json",
+      "selectableFields": [
+        "id",
+        "code",
+        "displayName",
+        "symbol",
+        "amountDecimalPlaces",
+        "amountRoundingPrecision",
+        "lastModifiedDateTime"
+      ],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "patchCurrency",
+      "method": "PATCH",
+      "path": "/companies({company_id})/currencies({currency_id})",
+      "summary": "Updates an object of type currency in Dynamics 365 Business Central",
+      "operationType": "update",
+      "riskLevel": "MEDIUM",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "currency_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for currency"
+        }
+      ],
+      "responseSchema": "schemas/currency.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "deleteCurrency",
+      "method": "DELETE",
+      "path": "/companies({company_id})/currencies({currency_id})",
+      "summary": "Deletes an object of type currency in Dynamics 365 Business Central",
+      "operationType": "delete",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": true,
+      "warningMessage": "This will permanently delete the currency record",
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "currency_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for currency"
+        }
+      ],
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 204,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    }
+  ]
+}

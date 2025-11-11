@@ -1,0 +1,41 @@
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": false,
+      "description": "(v1.0) The id property for the Dynamics 365 Business Central picture entity"
+    },
+    "width": {
+      "type": "integer",
+      "format": "int32",
+      "nullable": true,
+      "description": "(v1.0) The width property for the Dynamics 365 Business Central picture entity"
+    },
+    "height": {
+      "type": "integer",
+      "format": "int32",
+      "nullable": true,
+      "description": "(v1.0) The height property for the Dynamics 365 Business Central picture entity"
+    },
+    "contentType": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The contentType property for the Dynamics 365 Business Central picture entity",
+      "maxLength": 100
+    },
+    "content@odata.mediaEditLink": {
+      "type": "string",
+      "format": "uri",
+      "nullable": true,
+      "description": "(v1.0) The content@odata.mediaEditLink property for the Dynamics 365 Business Central picture entity"
+    },
+    "content@odata.mediaReadLink": {
+      "type": "string",
+      "format": "uri",
+      "nullable": true,
+      "description": "(v1.0) The content@odata.mediaReadLink property for the Dynamics 365 Business Central picture entity"
+    }
+  }
+}

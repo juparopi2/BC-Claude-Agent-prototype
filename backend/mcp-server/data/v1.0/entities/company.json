@@ -1,0 +1,80 @@
+{
+  "entity": "company",
+  "displayName": "Company",
+  "description": "Company entity for Business Central",
+  "endpoints": [
+    {
+      "id": "listCompanies",
+      "method": "GET",
+      "path": "/companies",
+      "summary": "Returns a list of companies",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "queryParams": [
+        "$select"
+      ],
+      "responseSchema": "schemas/company.schema.json",
+      "selectableFields": [
+        "id",
+        "systemVersion",
+        "name",
+        "displayName",
+        "businessProfileId"
+      ],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getCompany",
+      "method": "GET",
+      "path": "/companies({company_id})",
+      "summary": "Retrieve the properties and relationships of an object of type company for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "queryParams": [
+        "$select"
+      ],
+      "responseSchema": "schemas/company.schema.json",
+      "selectableFields": [
+        "id",
+        "systemVersion",
+        "name",
+        "displayName",
+        "businessProfileId"
+      ],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    }
+  ]
+}

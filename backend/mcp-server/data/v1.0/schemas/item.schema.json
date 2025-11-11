@@ -1,0 +1,120 @@
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": false,
+      "description": "(v1.0) The id property for the Dynamics 365 Business Central item entity"
+    },
+    "number": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The number property for the Dynamics 365 Business Central item entity",
+      "maxLength": 20
+    },
+    "displayName": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The displayName property for the Dynamics 365 Business Central item entity",
+      "maxLength": 100
+    },
+    "type": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The type property for the Dynamics 365 Business Central item entity"
+    },
+    "itemCategoryId": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": true,
+      "description": "(v1.0) The itemCategoryId property for the Dynamics 365 Business Central item entity"
+    },
+    "itemCategoryCode": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The itemCategoryCode property for the Dynamics 365 Business Central item entity",
+      "maxLength": 20
+    },
+    "blocked": {
+      "type": "boolean",
+      "nullable": true,
+      "description": "(v1.0) The blocked property for the Dynamics 365 Business Central item entity"
+    },
+    "baseUnitOfMeasureId": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": true,
+      "description": "(v1.0) The baseUnitOfMeasureId property for the Dynamics 365 Business Central item entity"
+    },
+    "baseUnitOfMeasure": {
+      "$ref": "#/components/schemas/unitofmeasuretype",
+      "nullable": true
+    },
+    "gtin": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The gtin property for the Dynamics 365 Business Central item entity",
+      "maxLength": 14
+    },
+    "inventory": {
+      "type": "number",
+      "format": "decimal",
+      "nullable": true,
+      "description": "(v1.0) The inventory property for the Dynamics 365 Business Central item entity"
+    },
+    "unitPrice": {
+      "type": "number",
+      "format": "decimal",
+      "nullable": true,
+      "description": "(v1.0) The unitPrice property for the Dynamics 365 Business Central item entity"
+    },
+    "priceIncludesTax": {
+      "type": "boolean",
+      "nullable": true,
+      "description": "(v1.0) The priceIncludesTax property for the Dynamics 365 Business Central item entity"
+    },
+    "unitCost": {
+      "type": "number",
+      "format": "decimal",
+      "nullable": true,
+      "description": "(v1.0) The unitCost property for the Dynamics 365 Business Central item entity"
+    },
+    "taxGroupId": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": true,
+      "description": "(v1.0) The taxGroupId property for the Dynamics 365 Business Central item entity"
+    },
+    "taxGroupCode": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The taxGroupCode property for the Dynamics 365 Business Central item entity",
+      "maxLength": 20
+    },
+    "lastModifiedDateTime": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true,
+      "description": "(v1.0) The lastModifiedDateTime property for the Dynamics 365 Business Central item entity"
+    },
+    "picture": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/picture"
+      }
+    },
+    "defaultDimensions": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/defaultDimensions"
+      }
+    },
+    "itemCategory": {
+      "nullable": true,
+      "$ref": "#/components/schemas/itemCategory"
+    }
+  }
+}

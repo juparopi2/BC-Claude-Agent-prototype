@@ -1,0 +1,23 @@
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": false,
+      "description": "(v1.0) The id property for the Dynamics 365 Business Central bankAccount entity"
+    },
+    "number": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The number property for the Dynamics 365 Business Central bankAccount entity",
+      "maxLength": 20
+    },
+    "displayName": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The displayName property for the Dynamics 365 Business Central bankAccount entity",
+      "maxLength": 100
+    }
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "type": "object",
+  "properties": {
+    "number": {
+      "type": "string",
+      "nullable": false,
+      "description": "(v1.0) The number property for the Dynamics 365 Business Central trialBalance entity",
+      "maxLength": 20
+    },
+    "accountId": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": true,
+      "description": "(v1.0) The accountId property for the Dynamics 365 Business Central trialBalance entity"
+    },
+    "accountType": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The accountType property for the Dynamics 365 Business Central trialBalance entity"
+    },
+    "display": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The display property for the Dynamics 365 Business Central trialBalance entity",
+      "maxLength": 100
+    },
+    "totalDebit": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The totalDebit property for the Dynamics 365 Business Central trialBalance entity",
+      "maxLength": 30
+    },
+    "totalCredit": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The totalCredit property for the Dynamics 365 Business Central trialBalance entity",
+      "maxLength": 30
+    },
+    "balanceAtDateDebit": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The balanceAtDateDebit property for the Dynamics 365 Business Central trialBalance entity",
+      "maxLength": 30
+    },
+    "balanceAtDateCredit": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The balanceAtDateCredit property for the Dynamics 365 Business Central trialBalance entity",
+      "maxLength": 30
+    },
+    "dateFilter": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true,
+      "description": "(v1.0) The dateFilter property for the Dynamics 365 Business Central trialBalance entity"
+    },
+    "account": {
+      "nullable": true,
+      "$ref": "#/components/schemas/account"
+    }
+  }
+}

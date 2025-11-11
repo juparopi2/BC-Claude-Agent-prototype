@@ -1,0 +1,72 @@
+{
+  "type": "object",
+  "properties": {
+    "street": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The street property for the Dynamics 365 Business Central postaladdresstype entity",
+      "maxLength": 152
+    },
+    "city": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The city property for the Dynamics 365 Business Central postaladdresstype entity",
+      "maxLength": 30
+    },
+    "state": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The state property for the Dynamics 365 Business Central postaladdresstype entity",
+      "maxLength": 30
+    },
+    "countryLetterCode": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The countryLetterCode property for the Dynamics 365 Business Central postaladdresstype entity",
+      "maxLength": 10
+    },
+    "postalCode": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The postalCode property for the Dynamics 365 Business Central postaladdresstype entity",
+      "maxLength": 20
+    },
+    "customerFinancialDetails": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/customerFinancialDetail"
+      }
+    },
+    "picture": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/picture"
+      }
+    },
+    "defaultDimensions": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/defaultDimensions"
+      }
+    },
+    "currency": {
+      "nullable": true,
+      "$ref": "#/components/schemas/currency"
+    },
+    "paymentTerm": {
+      "nullable": true,
+      "$ref": "#/components/schemas/paymentTerm"
+    },
+    "shipmentMethod": {
+      "nullable": true,
+      "$ref": "#/components/schemas/shipmentMethod"
+    },
+    "paymentMethod": {
+      "nullable": true,
+      "$ref": "#/components/schemas/paymentMethod"
+    }
+  }
+}

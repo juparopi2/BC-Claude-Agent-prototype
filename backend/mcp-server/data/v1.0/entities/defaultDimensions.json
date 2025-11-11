@@ -1,0 +1,1307 @@
+{
+  "entity": "defaultDimensions",
+  "displayName": "Default Dimensions",
+  "description": "DefaultDimensions entity for Business Central",
+  "endpoints": [
+    {
+      "id": "listDefaultDimensionsForItem",
+      "method": "GET",
+      "path": "/companies({company_id})/items({item_id})/defaultDimensions",
+      "summary": "Returns a list of defaultDimensions",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "item_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for item"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/defaultDimensions.schema.json",
+      "selectableFields": [
+        "parentId",
+        "dimensionId",
+        "dimensionCode",
+        "dimensionValueId",
+        "dimensionValueCode",
+        "postingValidation"
+      ],
+      "expandableRelations": [
+        "account",
+        "dimension",
+        "dimensionValue"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "postDefaultDimensionsForItem",
+      "method": "POST",
+      "path": "/companies({company_id})/items({item_id})/defaultDimensions",
+      "summary": "Creates an object of type defaultDimensions in Dynamics 365 Business Central",
+      "operationType": "create",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "item_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for item"
+        }
+      ],
+      "responseSchema": "schemas/defaultDimensions.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 201,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getDefaultDimensionsForItem",
+      "method": "GET",
+      "path": "/companies({company_id})/items({item_id})/defaultDimensions({defaultDimensions_parentId},{defaultDimensions_dimensionId})",
+      "summary": "Retrieve the properties and relationships of an object of type defaultDimensions for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "item_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for item"
+        },
+        {
+          "name": "defaultDimensions_parentId",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) parentId for defaultDimensions"
+        },
+        {
+          "name": "defaultDimensions_dimensionId",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) dimensionId for defaultDimensions"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/defaultDimensions.schema.json",
+      "selectableFields": [
+        "parentId",
+        "dimensionId",
+        "dimensionCode",
+        "dimensionValueId",
+        "dimensionValueCode",
+        "postingValidation"
+      ],
+      "expandableRelations": [
+        "account",
+        "dimension",
+        "dimensionValue"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "patchDefaultDimensionsForItem",
+      "method": "PATCH",
+      "path": "/companies({company_id})/items({item_id})/defaultDimensions({defaultDimensions_parentId},{defaultDimensions_dimensionId})",
+      "summary": "Updates an object of type defaultDimensions in Dynamics 365 Business Central",
+      "operationType": "update",
+      "riskLevel": "MEDIUM",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "item_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for item"
+        },
+        {
+          "name": "defaultDimensions_parentId",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) parentId for defaultDimensions"
+        },
+        {
+          "name": "defaultDimensions_dimensionId",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) dimensionId for defaultDimensions"
+        }
+      ],
+      "responseSchema": "schemas/defaultDimensions.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "deleteDefaultDimensionsForItem",
+      "method": "DELETE",
+      "path": "/companies({company_id})/items({item_id})/defaultDimensions({defaultDimensions_parentId},{defaultDimensions_dimensionId})",
+      "summary": "Deletes an object of type defaultDimensions in Dynamics 365 Business Central",
+      "operationType": "delete",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": true,
+      "warningMessage": "This will permanently delete the defaultDimensions record",
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "item_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for item"
+        },
+        {
+          "name": "defaultDimensions_parentId",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) parentId for defaultDimensions"
+        },
+        {
+          "name": "defaultDimensions_dimensionId",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) dimensionId for defaultDimensions"
+        }
+      ],
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 204,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "listDefaultDimensions",
+      "method": "GET",
+      "path": "/companies({company_id})/defaultDimensions",
+      "summary": "Returns a list of defaultDimensions",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/defaultDimensions.schema.json",
+      "selectableFields": [
+        "parentId",
+        "dimensionId",
+        "dimensionCode",
+        "dimensionValueId",
+        "dimensionValueCode",
+        "postingValidation"
+      ],
+      "expandableRelations": [
+        "account",
+        "dimension",
+        "dimensionValue"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "postDefaultDimensions",
+      "method": "POST",
+      "path": "/companies({company_id})/defaultDimensions",
+      "summary": "Creates an object of type defaultDimensions in Dynamics 365 Business Central",
+      "operationType": "create",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "responseSchema": "schemas/defaultDimensions.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 201,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getDefaultDimensions",
+      "method": "GET",
+      "path": "/companies({company_id})/defaultDimensions({defaultDimensions_parentId},{defaultDimensions_dimensionId})",
+      "summary": "Retrieve the properties and relationships of an object of type defaultDimensions for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "defaultDimensions_parentId",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) parentId for defaultDimensions"
+        },
+        {
+          "name": "defaultDimensions_dimensionId",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) dimensionId for defaultDimensions"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/defaultDimensions.schema.json",
+      "selectableFields": [
+        "parentId",
+        "dimensionId",
+        "dimensionCode",
+        "dimensionValueId",
+        "dimensionValueCode",
+        "postingValidation"
+      ],
+      "expandableRelations": [
+        "account",
+        "dimension",
+        "dimensionValue"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "patchDefaultDimensions",
+      "method": "PATCH",
+      "path": "/companies({company_id})/defaultDimensions({defaultDimensions_parentId},{defaultDimensions_dimensionId})",
+      "summary": "Updates an object of type defaultDimensions in Dynamics 365 Business Central",
+      "operationType": "update",
+      "riskLevel": "MEDIUM",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "defaultDimensions_parentId",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) parentId for defaultDimensions"
+        },
+        {
+          "name": "defaultDimensions_dimensionId",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) dimensionId for defaultDimensions"
+        }
+      ],
+      "responseSchema": "schemas/defaultDimensions.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "deleteDefaultDimensions",
+      "method": "DELETE",
+      "path": "/companies({company_id})/defaultDimensions({defaultDimensions_parentId},{defaultDimensions_dimensionId})",
+      "summary": "Deletes an object of type defaultDimensions in Dynamics 365 Business Central",
+      "operationType": "delete",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": true,
+      "warningMessage": "This will permanently delete the defaultDimensions record",
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "defaultDimensions_parentId",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) parentId for defaultDimensions"
+        },
+        {
+          "name": "defaultDimensions_dimensionId",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) dimensionId for defaultDimensions"
+        }
+      ],
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 204,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "listDefaultDimensionsForCustomer",
+      "method": "GET",
+      "path": "/companies({company_id})/customers({customer_id})/defaultDimensions",
+      "summary": "Returns a list of defaultDimensions",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "customer_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for customer"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/defaultDimensions.schema.json",
+      "selectableFields": [
+        "parentId",
+        "dimensionId",
+        "dimensionCode",
+        "dimensionValueId",
+        "dimensionValueCode",
+        "postingValidation"
+      ],
+      "expandableRelations": [
+        "account",
+        "dimension",
+        "dimensionValue"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "postDefaultDimensionsForCustomer",
+      "method": "POST",
+      "path": "/companies({company_id})/customers({customer_id})/defaultDimensions",
+      "summary": "Creates an object of type defaultDimensions in Dynamics 365 Business Central",
+      "operationType": "create",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "customer_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for customer"
+        }
+      ],
+      "responseSchema": "schemas/defaultDimensions.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 201,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getDefaultDimensionsForCustomer",
+      "method": "GET",
+      "path": "/companies({company_id})/customers({customer_id})/defaultDimensions({defaultDimensions_parentId},{defaultDimensions_dimensionId})",
+      "summary": "Retrieve the properties and relationships of an object of type defaultDimensions for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "customer_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for customer"
+        },
+        {
+          "name": "defaultDimensions_parentId",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) parentId for defaultDimensions"
+        },
+        {
+          "name": "defaultDimensions_dimensionId",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) dimensionId for defaultDimensions"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/defaultDimensions.schema.json",
+      "selectableFields": [
+        "parentId",
+        "dimensionId",
+        "dimensionCode",
+        "dimensionValueId",
+        "dimensionValueCode",
+        "postingValidation"
+      ],
+      "expandableRelations": [
+        "account",
+        "dimension",
+        "dimensionValue"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "patchDefaultDimensionsForCustomer",
+      "method": "PATCH",
+      "path": "/companies({company_id})/customers({customer_id})/defaultDimensions({defaultDimensions_parentId},{defaultDimensions_dimensionId})",
+      "summary": "Updates an object of type defaultDimensions in Dynamics 365 Business Central",
+      "operationType": "update",
+      "riskLevel": "MEDIUM",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "customer_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for customer"
+        },
+        {
+          "name": "defaultDimensions_parentId",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) parentId for defaultDimensions"
+        },
+        {
+          "name": "defaultDimensions_dimensionId",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) dimensionId for defaultDimensions"
+        }
+      ],
+      "responseSchema": "schemas/defaultDimensions.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "deleteDefaultDimensionsForCustomer",
+      "method": "DELETE",
+      "path": "/companies({company_id})/customers({customer_id})/defaultDimensions({defaultDimensions_parentId},{defaultDimensions_dimensionId})",
+      "summary": "Deletes an object of type defaultDimensions in Dynamics 365 Business Central",
+      "operationType": "delete",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": true,
+      "warningMessage": "This will permanently delete the defaultDimensions record",
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "customer_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for customer"
+        },
+        {
+          "name": "defaultDimensions_parentId",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) parentId for defaultDimensions"
+        },
+        {
+          "name": "defaultDimensions_dimensionId",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) dimensionId for defaultDimensions"
+        }
+      ],
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 204,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "listDefaultDimensionsForVendor",
+      "method": "GET",
+      "path": "/companies({company_id})/vendors({vendor_id})/defaultDimensions",
+      "summary": "Returns a list of defaultDimensions",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "vendor_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for vendor"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/defaultDimensions.schema.json",
+      "selectableFields": [
+        "parentId",
+        "dimensionId",
+        "dimensionCode",
+        "dimensionValueId",
+        "dimensionValueCode",
+        "postingValidation"
+      ],
+      "expandableRelations": [
+        "account",
+        "dimension",
+        "dimensionValue"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "postDefaultDimensionsForVendor",
+      "method": "POST",
+      "path": "/companies({company_id})/vendors({vendor_id})/defaultDimensions",
+      "summary": "Creates an object of type defaultDimensions in Dynamics 365 Business Central",
+      "operationType": "create",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "vendor_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for vendor"
+        }
+      ],
+      "responseSchema": "schemas/defaultDimensions.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 201,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getDefaultDimensionsForVendor",
+      "method": "GET",
+      "path": "/companies({company_id})/vendors({vendor_id})/defaultDimensions({defaultDimensions_parentId},{defaultDimensions_dimensionId})",
+      "summary": "Retrieve the properties and relationships of an object of type defaultDimensions for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "vendor_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for vendor"
+        },
+        {
+          "name": "defaultDimensions_parentId",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) parentId for defaultDimensions"
+        },
+        {
+          "name": "defaultDimensions_dimensionId",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) dimensionId for defaultDimensions"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/defaultDimensions.schema.json",
+      "selectableFields": [
+        "parentId",
+        "dimensionId",
+        "dimensionCode",
+        "dimensionValueId",
+        "dimensionValueCode",
+        "postingValidation"
+      ],
+      "expandableRelations": [
+        "account",
+        "dimension",
+        "dimensionValue"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "patchDefaultDimensionsForVendor",
+      "method": "PATCH",
+      "path": "/companies({company_id})/vendors({vendor_id})/defaultDimensions({defaultDimensions_parentId},{defaultDimensions_dimensionId})",
+      "summary": "Updates an object of type defaultDimensions in Dynamics 365 Business Central",
+      "operationType": "update",
+      "riskLevel": "MEDIUM",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "vendor_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for vendor"
+        },
+        {
+          "name": "defaultDimensions_parentId",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) parentId for defaultDimensions"
+        },
+        {
+          "name": "defaultDimensions_dimensionId",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) dimensionId for defaultDimensions"
+        }
+      ],
+      "responseSchema": "schemas/defaultDimensions.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "deleteDefaultDimensionsForVendor",
+      "method": "DELETE",
+      "path": "/companies({company_id})/vendors({vendor_id})/defaultDimensions({defaultDimensions_parentId},{defaultDimensions_dimensionId})",
+      "summary": "Deletes an object of type defaultDimensions in Dynamics 365 Business Central",
+      "operationType": "delete",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": true,
+      "warningMessage": "This will permanently delete the defaultDimensions record",
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "vendor_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for vendor"
+        },
+        {
+          "name": "defaultDimensions_parentId",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) parentId for defaultDimensions"
+        },
+        {
+          "name": "defaultDimensions_dimensionId",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) dimensionId for defaultDimensions"
+        }
+      ],
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 204,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "listDefaultDimensionsForEmployee",
+      "method": "GET",
+      "path": "/companies({company_id})/employees({employee_id})/defaultDimensions",
+      "summary": "Returns a list of defaultDimensions",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "employee_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for employee"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/defaultDimensions.schema.json",
+      "selectableFields": [
+        "parentId",
+        "dimensionId",
+        "dimensionCode",
+        "dimensionValueId",
+        "dimensionValueCode",
+        "postingValidation"
+      ],
+      "expandableRelations": [
+        "account",
+        "dimension",
+        "dimensionValue"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "postDefaultDimensionsForEmployee",
+      "method": "POST",
+      "path": "/companies({company_id})/employees({employee_id})/defaultDimensions",
+      "summary": "Creates an object of type defaultDimensions in Dynamics 365 Business Central",
+      "operationType": "create",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "employee_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for employee"
+        }
+      ],
+      "responseSchema": "schemas/defaultDimensions.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 201,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getDefaultDimensionsForEmployee",
+      "method": "GET",
+      "path": "/companies({company_id})/employees({employee_id})/defaultDimensions({defaultDimensions_parentId},{defaultDimensions_dimensionId})",
+      "summary": "Retrieve the properties and relationships of an object of type defaultDimensions for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "employee_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for employee"
+        },
+        {
+          "name": "defaultDimensions_parentId",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) parentId for defaultDimensions"
+        },
+        {
+          "name": "defaultDimensions_dimensionId",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) dimensionId for defaultDimensions"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/defaultDimensions.schema.json",
+      "selectableFields": [
+        "parentId",
+        "dimensionId",
+        "dimensionCode",
+        "dimensionValueId",
+        "dimensionValueCode",
+        "postingValidation"
+      ],
+      "expandableRelations": [
+        "account",
+        "dimension",
+        "dimensionValue"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "patchDefaultDimensionsForEmployee",
+      "method": "PATCH",
+      "path": "/companies({company_id})/employees({employee_id})/defaultDimensions({defaultDimensions_parentId},{defaultDimensions_dimensionId})",
+      "summary": "Updates an object of type defaultDimensions in Dynamics 365 Business Central",
+      "operationType": "update",
+      "riskLevel": "MEDIUM",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "employee_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for employee"
+        },
+        {
+          "name": "defaultDimensions_parentId",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) parentId for defaultDimensions"
+        },
+        {
+          "name": "defaultDimensions_dimensionId",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) dimensionId for defaultDimensions"
+        }
+      ],
+      "responseSchema": "schemas/defaultDimensions.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "deleteDefaultDimensionsForEmployee",
+      "method": "DELETE",
+      "path": "/companies({company_id})/employees({employee_id})/defaultDimensions({defaultDimensions_parentId},{defaultDimensions_dimensionId})",
+      "summary": "Deletes an object of type defaultDimensions in Dynamics 365 Business Central",
+      "operationType": "delete",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": true,
+      "warningMessage": "This will permanently delete the defaultDimensions record",
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "employee_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for employee"
+        },
+        {
+          "name": "defaultDimensions_parentId",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) parentId for defaultDimensions"
+        },
+        {
+          "name": "defaultDimensions_dimensionId",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) dimensionId for defaultDimensions"
+        }
+      ],
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 204,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    }
+  ]
+}

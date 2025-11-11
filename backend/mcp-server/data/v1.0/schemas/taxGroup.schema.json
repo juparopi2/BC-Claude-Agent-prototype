@@ -1,0 +1,34 @@
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": false,
+      "description": "(v1.0) The id property for the Dynamics 365 Business Central taxGroup entity"
+    },
+    "code": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The code property for the Dynamics 365 Business Central taxGroup entity",
+      "maxLength": 20
+    },
+    "displayName": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The displayName property for the Dynamics 365 Business Central taxGroup entity",
+      "maxLength": 100
+    },
+    "taxType": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The taxType property for the Dynamics 365 Business Central taxGroup entity"
+    },
+    "lastModifiedDateTime": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true,
+      "description": "(v1.0) The lastModifiedDateTime property for the Dynamics 365 Business Central taxGroup entity"
+    }
+  }
+}

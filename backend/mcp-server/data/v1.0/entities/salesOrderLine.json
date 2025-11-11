@@ -1,0 +1,546 @@
+{
+  "entity": "salesOrderLine",
+  "displayName": "Sales Order Line",
+  "description": "SalesOrderLine entity for Business Central",
+  "endpoints": [
+    {
+      "id": "listSalesOrderLinesForSalesOrder",
+      "method": "GET",
+      "path": "/companies({company_id})/salesOrders({salesOrder_id})/salesOrderLines",
+      "summary": "Returns a list of salesOrderLines",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesOrder_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for salesOrder"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/salesOrderLine.schema.json",
+      "selectableFields": [
+        "id",
+        "documentId",
+        "sequence",
+        "itemId",
+        "accountId",
+        "lineType",
+        "lineDetails",
+        "description",
+        "unitOfMeasureId",
+        "unitOfMeasure",
+        "quantity",
+        "unitPrice",
+        "discountAmount",
+        "discountPercent",
+        "discountAppliedBeforeTax",
+        "amountExcludingTax",
+        "taxCode",
+        "taxPercent",
+        "totalTaxAmount",
+        "amountIncludingTax",
+        "invoiceDiscountAllocation",
+        "netAmount",
+        "netTaxAmount",
+        "netAmountIncludingTax",
+        "shipmentDate",
+        "shippedQuantity",
+        "invoicedQuantity",
+        "invoiceQuantity",
+        "shipQuantity"
+      ],
+      "expandableRelations": [
+        "item",
+        "account"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "postSalesOrderLineForSalesOrder",
+      "method": "POST",
+      "path": "/companies({company_id})/salesOrders({salesOrder_id})/salesOrderLines",
+      "summary": "Creates an object of type salesOrderLine in Dynamics 365 Business Central",
+      "operationType": "create",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesOrder_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for salesOrder"
+        }
+      ],
+      "responseSchema": "schemas/salesOrderLine.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 201,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getSalesOrderLineForSalesOrder",
+      "method": "GET",
+      "path": "/companies({company_id})/salesOrders({salesOrder_id})/salesOrderLines('{salesOrderLine_id}')",
+      "summary": "Retrieve the properties and relationships of an object of type salesOrderLine for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesOrder_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for salesOrder"
+        },
+        {
+          "name": "salesOrderLine_id",
+          "type": "string",
+          "required": true,
+          "description": "(v1.0) id for salesOrderLine"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/salesOrderLine.schema.json",
+      "selectableFields": [
+        "id",
+        "documentId",
+        "sequence",
+        "itemId",
+        "accountId",
+        "lineType",
+        "lineDetails",
+        "description",
+        "unitOfMeasureId",
+        "unitOfMeasure",
+        "quantity",
+        "unitPrice",
+        "discountAmount",
+        "discountPercent",
+        "discountAppliedBeforeTax",
+        "amountExcludingTax",
+        "taxCode",
+        "taxPercent",
+        "totalTaxAmount",
+        "amountIncludingTax",
+        "invoiceDiscountAllocation",
+        "netAmount",
+        "netTaxAmount",
+        "netAmountIncludingTax",
+        "shipmentDate",
+        "shippedQuantity",
+        "invoicedQuantity",
+        "invoiceQuantity",
+        "shipQuantity"
+      ],
+      "expandableRelations": [
+        "item",
+        "account"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "patchSalesOrderLineForSalesOrder",
+      "method": "PATCH",
+      "path": "/companies({company_id})/salesOrders({salesOrder_id})/salesOrderLines('{salesOrderLine_id}')",
+      "summary": "Updates an object of type salesOrderLine in Dynamics 365 Business Central",
+      "operationType": "update",
+      "riskLevel": "MEDIUM",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesOrder_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for salesOrder"
+        },
+        {
+          "name": "salesOrderLine_id",
+          "type": "string",
+          "required": true,
+          "description": "(v1.0) id for salesOrderLine"
+        }
+      ],
+      "responseSchema": "schemas/salesOrderLine.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "deleteSalesOrderLineForSalesOrder",
+      "method": "DELETE",
+      "path": "/companies({company_id})/salesOrders({salesOrder_id})/salesOrderLines('{salesOrderLine_id}')",
+      "summary": "Deletes an object of type salesOrderLine in Dynamics 365 Business Central",
+      "operationType": "delete",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": true,
+      "warningMessage": "This will permanently delete the salesOrderLine record",
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesOrder_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for salesOrder"
+        },
+        {
+          "name": "salesOrderLine_id",
+          "type": "string",
+          "required": true,
+          "description": "(v1.0) id for salesOrderLine"
+        }
+      ],
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 204,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "listSalesOrderLines",
+      "method": "GET",
+      "path": "/companies({company_id})/salesOrderLines",
+      "summary": "Returns a list of salesOrderLines",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/salesOrderLine.schema.json",
+      "selectableFields": [
+        "id",
+        "documentId",
+        "sequence",
+        "itemId",
+        "accountId",
+        "lineType",
+        "lineDetails",
+        "description",
+        "unitOfMeasureId",
+        "unitOfMeasure",
+        "quantity",
+        "unitPrice",
+        "discountAmount",
+        "discountPercent",
+        "discountAppliedBeforeTax",
+        "amountExcludingTax",
+        "taxCode",
+        "taxPercent",
+        "totalTaxAmount",
+        "amountIncludingTax",
+        "invoiceDiscountAllocation",
+        "netAmount",
+        "netTaxAmount",
+        "netAmountIncludingTax",
+        "shipmentDate",
+        "shippedQuantity",
+        "invoicedQuantity",
+        "invoiceQuantity",
+        "shipQuantity"
+      ],
+      "expandableRelations": [
+        "item",
+        "account"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "postSalesOrderLine",
+      "method": "POST",
+      "path": "/companies({company_id})/salesOrderLines",
+      "summary": "Creates an object of type salesOrderLine in Dynamics 365 Business Central",
+      "operationType": "create",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "responseSchema": "schemas/salesOrderLine.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 201,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getSalesOrderLine",
+      "method": "GET",
+      "path": "/companies({company_id})/salesOrderLines('{salesOrderLine_id}')",
+      "summary": "Retrieve the properties and relationships of an object of type salesOrderLine for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesOrderLine_id",
+          "type": "string",
+          "required": true,
+          "description": "(v1.0) id for salesOrderLine"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/salesOrderLine.schema.json",
+      "selectableFields": [
+        "id",
+        "documentId",
+        "sequence",
+        "itemId",
+        "accountId",
+        "lineType",
+        "lineDetails",
+        "description",
+        "unitOfMeasureId",
+        "unitOfMeasure",
+        "quantity",
+        "unitPrice",
+        "discountAmount",
+        "discountPercent",
+        "discountAppliedBeforeTax",
+        "amountExcludingTax",
+        "taxCode",
+        "taxPercent",
+        "totalTaxAmount",
+        "amountIncludingTax",
+        "invoiceDiscountAllocation",
+        "netAmount",
+        "netTaxAmount",
+        "netAmountIncludingTax",
+        "shipmentDate",
+        "shippedQuantity",
+        "invoicedQuantity",
+        "invoiceQuantity",
+        "shipQuantity"
+      ],
+      "expandableRelations": [
+        "item",
+        "account"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "patchSalesOrderLine",
+      "method": "PATCH",
+      "path": "/companies({company_id})/salesOrderLines('{salesOrderLine_id}')",
+      "summary": "Updates an object of type salesOrderLine in Dynamics 365 Business Central",
+      "operationType": "update",
+      "riskLevel": "MEDIUM",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesOrderLine_id",
+          "type": "string",
+          "required": true,
+          "description": "(v1.0) id for salesOrderLine"
+        }
+      ],
+      "responseSchema": "schemas/salesOrderLine.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "deleteSalesOrderLine",
+      "method": "DELETE",
+      "path": "/companies({company_id})/salesOrderLines('{salesOrderLine_id}')",
+      "summary": "Deletes an object of type salesOrderLine in Dynamics 365 Business Central",
+      "operationType": "delete",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": true,
+      "warningMessage": "This will permanently delete the salesOrderLine record",
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesOrderLine_id",
+          "type": "string",
+          "required": true,
+          "description": "(v1.0) id for salesOrderLine"
+        }
+      ],
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 204,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    }
+  ]
+}

@@ -3,9 +3,6 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Install git for submodule operations
-RUN apk add --no-cache git
-
 # Copy package files for backend
 COPY package*.json ./
 COPY tsconfig.json ./
@@ -17,20 +14,11 @@ RUN npm ci --only=production && \
 # Copy source code
 COPY src ./src
 
-# Copy .git and .gitmodules for submodule initialization
-COPY .git ./.git
-COPY .gitmodules ./.gitmodules
-
-# Initialize and update git submodules to get MCP server code
-RUN git submodule init && \
-    git submodule update --remote
-
-# Build MCP server
-WORKDIR /app/mcp-server
-RUN npm ci && npm run build
+# Copy vendored MCP server data files (no build needed, just data)
+COPY mcp-server/data ./mcp-server/data
+COPY mcp-server/bcoas1.0.yaml ./mcp-server/bcoas1.0.yaml
 
 # Build backend TypeScript
-WORKDIR /app
 RUN npm run build
 
 # Production stage
@@ -51,17 +39,9 @@ RUN npm ci --only=production && \
 # Copy built files from builder
 COPY --from=builder /app/dist ./dist
 
-# Copy MCP server built files
-COPY --from=builder /app/mcp-server/dist ./mcp-server/dist
+# Copy MCP server data files only (vendored, no dependencies needed)
 COPY --from=builder /app/mcp-server/data ./mcp-server/data
-COPY --from=builder /app/mcp-server/package*.json ./mcp-server/
-
-# Install MCP server production dependencies
-WORKDIR /app/mcp-server
-RUN npm ci --only=production
-
-# Go back to app root
-WORKDIR /app
+COPY --from=builder /app/mcp-server/bcoas1.0.yaml ./mcp-server/bcoas1.0.yaml
 
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs && \

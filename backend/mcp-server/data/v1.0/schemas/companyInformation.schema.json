@@ -1,0 +1,80 @@
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": false,
+      "description": "(v1.0) The id property for the Dynamics 365 Business Central companyInformation entity"
+    },
+    "displayName": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The displayName property for the Dynamics 365 Business Central companyInformation entity",
+      "maxLength": 100
+    },
+    "address": {
+      "$ref": "#/components/schemas/postaladdresstype",
+      "nullable": true
+    },
+    "phoneNumber": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The phoneNumber property for the Dynamics 365 Business Central companyInformation entity",
+      "maxLength": 30
+    },
+    "faxNumber": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The faxNumber property for the Dynamics 365 Business Central companyInformation entity",
+      "maxLength": 30
+    },
+    "email": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The email property for the Dynamics 365 Business Central companyInformation entity",
+      "maxLength": 80
+    },
+    "website": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The website property for the Dynamics 365 Business Central companyInformation entity",
+      "maxLength": 80
+    },
+    "taxRegistrationNumber": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The taxRegistrationNumber property for the Dynamics 365 Business Central companyInformation entity",
+      "maxLength": 20
+    },
+    "currencyCode": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The currencyCode property for the Dynamics 365 Business Central companyInformation entity"
+    },
+    "currentFiscalYearStartDate": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true,
+      "description": "(v1.0) The currentFiscalYearStartDate property for the Dynamics 365 Business Central companyInformation entity"
+    },
+    "industry": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The industry property for the Dynamics 365 Business Central companyInformation entity",
+      "maxLength": 30
+    },
+    "picture": {
+      "type": "string",
+      "format": "binary",
+      "nullable": true,
+      "description": "(v1.0) The picture property for the Dynamics 365 Business Central companyInformation entity"
+    },
+    "lastModifiedDateTime": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true,
+      "description": "(v1.0) The lastModifiedDateTime property for the Dynamics 365 Business Central companyInformation entity"
+    }
+  }
+}

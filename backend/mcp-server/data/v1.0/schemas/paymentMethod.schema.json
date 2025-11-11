@@ -1,0 +1,29 @@
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": false,
+      "description": "(v1.0) The id property for the Dynamics 365 Business Central paymentMethod entity"
+    },
+    "code": {
+      "type": "string",
+      "nullable": false,
+      "description": "(v1.0) The code property for the Dynamics 365 Business Central paymentMethod entity",
+      "maxLength": 10
+    },
+    "displayName": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The displayName property for the Dynamics 365 Business Central paymentMethod entity",
+      "maxLength": 100
+    },
+    "lastModifiedDateTime": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true,
+      "description": "(v1.0) The lastModifiedDateTime property for the Dynamics 365 Business Central paymentMethod entity"
+    }
+  }
+}

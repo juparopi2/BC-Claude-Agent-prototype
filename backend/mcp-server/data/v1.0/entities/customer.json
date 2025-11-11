@@ -1,0 +1,252 @@
+{
+  "entity": "customer",
+  "displayName": "Customer",
+  "description": "Customer entity for Business Central",
+  "endpoints": [
+    {
+      "id": "listCustomers",
+      "method": "GET",
+      "path": "/companies({company_id})/customers",
+      "summary": "Returns a list of customers",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/customer.schema.json",
+      "selectableFields": [
+        "id",
+        "number",
+        "displayName",
+        "type",
+        "address",
+        "phoneNumber",
+        "email",
+        "website",
+        "taxLiable",
+        "taxAreaId",
+        "taxAreaDisplayName",
+        "taxRegistrationNumber",
+        "currencyId",
+        "currencyCode",
+        "paymentTermsId",
+        "shipmentMethodId",
+        "paymentMethodId",
+        "blocked",
+        "lastModifiedDateTime"
+      ],
+      "expandableRelations": [
+        "customerFinancialDetails",
+        "picture",
+        "defaultDimensions",
+        "currency",
+        "paymentTerm",
+        "shipmentMethod",
+        "paymentMethod"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "postCustomer",
+      "method": "POST",
+      "path": "/companies({company_id})/customers",
+      "summary": "Creates an object of type customer in Dynamics 365 Business Central",
+      "operationType": "create",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "responseSchema": "schemas/customer.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 201,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getCustomer",
+      "method": "GET",
+      "path": "/companies({company_id})/customers({customer_id})",
+      "summary": "Retrieve the properties and relationships of an object of type customer for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "customer_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for customer"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/customer.schema.json",
+      "selectableFields": [
+        "id",
+        "number",
+        "displayName",
+        "type",
+        "address",
+        "phoneNumber",
+        "email",
+        "website",
+        "taxLiable",
+        "taxAreaId",
+        "taxAreaDisplayName",
+        "taxRegistrationNumber",
+        "currencyId",
+        "currencyCode",
+        "paymentTermsId",
+        "shipmentMethodId",
+        "paymentMethodId",
+        "blocked",
+        "lastModifiedDateTime"
+      ],
+      "expandableRelations": [
+        "customerFinancialDetails",
+        "picture",
+        "defaultDimensions",
+        "currency",
+        "paymentTerm",
+        "shipmentMethod",
+        "paymentMethod"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "patchCustomer",
+      "method": "PATCH",
+      "path": "/companies({company_id})/customers({customer_id})",
+      "summary": "Updates an object of type customer in Dynamics 365 Business Central",
+      "operationType": "update",
+      "riskLevel": "MEDIUM",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "customer_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for customer"
+        }
+      ],
+      "responseSchema": "schemas/customer.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "deleteCustomer",
+      "method": "DELETE",
+      "path": "/companies({company_id})/customers({customer_id})",
+      "summary": "Deletes an object of type customer in Dynamics 365 Business Central",
+      "operationType": "delete",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": true,
+      "warningMessage": "This will permanently delete the customer record",
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "customer_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for customer"
+        }
+      ],
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 204,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    }
+  ]
+}

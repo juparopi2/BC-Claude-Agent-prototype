@@ -1,0 +1,237 @@
+{
+  "entity": "dimensionLine",
+  "displayName": "Dimension Line",
+  "description": "DimensionLine entity for Business Central",
+  "endpoints": [
+    {
+      "id": "listDimensionLines",
+      "method": "GET",
+      "path": "/companies({company_id})/dimensionLines",
+      "summary": "Returns a list of dimensionLines",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/dimensionLine.schema.json",
+      "selectableFields": [
+        "parentId",
+        "id",
+        "code",
+        "displayName",
+        "valueId",
+        "valueCode",
+        "valueDisplayName"
+      ],
+      "expandableRelations": [
+        "dimension"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "postDimensionLine",
+      "method": "POST",
+      "path": "/companies({company_id})/dimensionLines",
+      "summary": "Creates an object of type dimensionLine in Dynamics 365 Business Central",
+      "operationType": "create",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "responseSchema": "schemas/dimensionLine.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 201,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getDimensionLine",
+      "method": "GET",
+      "path": "/companies({company_id})/dimensionLines({dimensionLine_parentId},{dimensionLine_id})",
+      "summary": "Retrieve the properties and relationships of an object of type dimensionLine for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "dimensionLine_parentId",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) parentId for dimensionLine"
+        },
+        {
+          "name": "dimensionLine_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for dimensionLine"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/dimensionLine.schema.json",
+      "selectableFields": [
+        "parentId",
+        "id",
+        "code",
+        "displayName",
+        "valueId",
+        "valueCode",
+        "valueDisplayName"
+      ],
+      "expandableRelations": [
+        "dimension"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "patchDimensionLine",
+      "method": "PATCH",
+      "path": "/companies({company_id})/dimensionLines({dimensionLine_parentId},{dimensionLine_id})",
+      "summary": "Updates an object of type dimensionLine in Dynamics 365 Business Central",
+      "operationType": "update",
+      "riskLevel": "MEDIUM",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "dimensionLine_parentId",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) parentId for dimensionLine"
+        },
+        {
+          "name": "dimensionLine_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for dimensionLine"
+        }
+      ],
+      "responseSchema": "schemas/dimensionLine.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "deleteDimensionLine",
+      "method": "DELETE",
+      "path": "/companies({company_id})/dimensionLines({dimensionLine_parentId},{dimensionLine_id})",
+      "summary": "Deletes an object of type dimensionLine in Dynamics 365 Business Central",
+      "operationType": "delete",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": true,
+      "warningMessage": "This will permanently delete the dimensionLine record",
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "dimensionLine_parentId",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) parentId for dimensionLine"
+        },
+        {
+          "name": "dimensionLine_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for dimensionLine"
+        }
+      ],
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 204,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    }
+  ]
+}

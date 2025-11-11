@@ -1,0 +1,75 @@
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "integer",
+      "format": "int32",
+      "nullable": false,
+      "description": "(v1.0) The id property for the Dynamics 365 Business Central generalLedgerEntry entity"
+    },
+    "postingDate": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true,
+      "description": "(v1.0) The postingDate property for the Dynamics 365 Business Central generalLedgerEntry entity"
+    },
+    "documentNumber": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The documentNumber property for the Dynamics 365 Business Central generalLedgerEntry entity",
+      "maxLength": 20
+    },
+    "documentType": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The documentType property for the Dynamics 365 Business Central generalLedgerEntry entity"
+    },
+    "accountId": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": true,
+      "description": "(v1.0) The accountId property for the Dynamics 365 Business Central generalLedgerEntry entity"
+    },
+    "accountNumber": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The accountNumber property for the Dynamics 365 Business Central generalLedgerEntry entity",
+      "maxLength": 20
+    },
+    "description": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The description property for the Dynamics 365 Business Central generalLedgerEntry entity",
+      "maxLength": 100
+    },
+    "debitAmount": {
+      "type": "number",
+      "format": "decimal",
+      "nullable": true,
+      "description": "(v1.0) The debitAmount property for the Dynamics 365 Business Central generalLedgerEntry entity"
+    },
+    "creditAmount": {
+      "type": "number",
+      "format": "decimal",
+      "nullable": true,
+      "description": "(v1.0) The creditAmount property for the Dynamics 365 Business Central generalLedgerEntry entity"
+    },
+    "dimensions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/components/schemas/dimensiontype",
+        "nullable": true
+      }
+    },
+    "lastModifiedDateTime": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true,
+      "description": "(v1.0) The lastModifiedDateTime property for the Dynamics 365 Business Central generalLedgerEntry entity"
+    },
+    "account": {
+      "nullable": true,
+      "$ref": "#/components/schemas/account"
+    }
+  }
+}

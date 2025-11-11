@@ -1,0 +1,204 @@
+{
+  "entity": "itemCategory",
+  "displayName": "Item Category",
+  "description": "ItemCategory entity for Business Central",
+  "endpoints": [
+    {
+      "id": "listItemCategories",
+      "method": "GET",
+      "path": "/companies({company_id})/itemCategories",
+      "summary": "Returns a list of itemCategories",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "queryParams": [
+        "$select"
+      ],
+      "responseSchema": "schemas/itemCategory.schema.json",
+      "selectableFields": [
+        "id",
+        "code",
+        "displayName",
+        "lastModifiedDateTime"
+      ],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "postItemCategory",
+      "method": "POST",
+      "path": "/companies({company_id})/itemCategories",
+      "summary": "Creates an object of type itemCategory in Dynamics 365 Business Central",
+      "operationType": "create",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "responseSchema": "schemas/itemCategory.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 201,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getItemCategory",
+      "method": "GET",
+      "path": "/companies({company_id})/itemCategories({itemCategory_id})",
+      "summary": "Retrieve the properties and relationships of an object of type itemCategory for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "itemCategory_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for itemCategory"
+        }
+      ],
+      "queryParams": [
+        "$select"
+      ],
+      "responseSchema": "schemas/itemCategory.schema.json",
+      "selectableFields": [
+        "id",
+        "code",
+        "displayName",
+        "lastModifiedDateTime"
+      ],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "patchItemCategory",
+      "method": "PATCH",
+      "path": "/companies({company_id})/itemCategories({itemCategory_id})",
+      "summary": "Updates an object of type itemCategory in Dynamics 365 Business Central",
+      "operationType": "update",
+      "riskLevel": "MEDIUM",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "itemCategory_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for itemCategory"
+        }
+      ],
+      "responseSchema": "schemas/itemCategory.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "deleteItemCategory",
+      "method": "DELETE",
+      "path": "/companies({company_id})/itemCategories({itemCategory_id})",
+      "summary": "Deletes an object of type itemCategory in Dynamics 365 Business Central",
+      "operationType": "delete",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": true,
+      "warningMessage": "This will permanently delete the itemCategory record",
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "itemCategory_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for itemCategory"
+        }
+      ],
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 204,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    }
+  ]
+}

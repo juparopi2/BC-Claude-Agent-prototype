@@ -1,0 +1,45 @@
+{
+  "type": "object",
+  "properties": {
+    "generalLedgerEntryNumber": {
+      "type": "integer",
+      "format": "int32",
+      "nullable": false,
+      "description": "(v1.0) The generalLedgerEntryNumber property for the Dynamics 365 Business Central generalLedgerEntryAttachments entity"
+    },
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": false,
+      "description": "(v1.0) The id property for the Dynamics 365 Business Central generalLedgerEntryAttachments entity"
+    },
+    "fileName": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The fileName property for the Dynamics 365 Business Central generalLedgerEntryAttachments entity",
+      "maxLength": 250
+    },
+    "byteSize": {
+      "type": "integer",
+      "format": "int32",
+      "nullable": true,
+      "description": "(v1.0) The byteSize property for the Dynamics 365 Business Central generalLedgerEntryAttachments entity"
+    },
+    "content": {
+      "type": "string",
+      "format": "binary",
+      "nullable": true,
+      "description": "(v1.0) The content property for the Dynamics 365 Business Central generalLedgerEntryAttachments entity"
+    },
+    "createdDateTime": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true,
+      "description": "(v1.0) The createdDateTime property for the Dynamics 365 Business Central generalLedgerEntryAttachments entity"
+    },
+    "generalLedgerEntry": {
+      "nullable": true,
+      "$ref": "#/components/schemas/generalLedgerEntry"
+    }
+  }
+}

@@ -1,0 +1,98 @@
+{
+  "entity": "cashFlowStatement",
+  "displayName": "Cash Flow Statement",
+  "description": "CashFlowStatement entity for Business Central",
+  "endpoints": [
+    {
+      "id": "listCashFlowStatement",
+      "method": "GET",
+      "path": "/companies({company_id})/cashFlowStatement",
+      "summary": "Returns a list of cashFlowStatement",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "queryParams": [
+        "$select"
+      ],
+      "responseSchema": "schemas/cashFlowStatement.schema.json",
+      "selectableFields": [
+        "lineNumber",
+        "display",
+        "netChange",
+        "lineType",
+        "indentation",
+        "dateFilter"
+      ],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getCashFlowStatement",
+      "method": "GET",
+      "path": "/companies({company_id})/cashFlowStatement({cashFlowStatement_lineNumber})",
+      "summary": "Retrieve the properties and relationships of an object of type cashFlowStatement for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "cashFlowStatement_lineNumber",
+          "type": "integer",
+          "format": "int32",
+          "required": true,
+          "description": "(v1.0) lineNumber for cashFlowStatement"
+        }
+      ],
+      "queryParams": [
+        "$select"
+      ],
+      "responseSchema": "schemas/cashFlowStatement.schema.json",
+      "selectableFields": [
+        "lineNumber",
+        "display",
+        "netChange",
+        "lineType",
+        "indentation",
+        "dateFilter"
+      ],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    }
+  ]
+}

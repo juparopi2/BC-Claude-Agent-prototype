@@ -1,0 +1,488 @@
+{
+  "entity": "timeRegistrationEntry",
+  "displayName": "Time Registration Entry",
+  "description": "TimeRegistrationEntry entity for Business Central",
+  "endpoints": [
+    {
+      "id": "listTimeRegistrationEntriesForEmployee",
+      "method": "GET",
+      "path": "/companies({company_id})/employees({employee_id})/timeRegistrationEntries",
+      "summary": "Returns a list of timeRegistrationEntries",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "employee_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for employee"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/timeRegistrationEntry.schema.json",
+      "selectableFields": [
+        "id",
+        "employeeId",
+        "employeeNumber",
+        "jobId",
+        "jobNumber",
+        "absence",
+        "lineNumber",
+        "date",
+        "quantity",
+        "status",
+        "unitOfMeasureId",
+        "unitOfMeasure",
+        "dimensions",
+        "lastModfiedDateTime"
+      ],
+      "expandableRelations": [
+        "project"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "postTimeRegistrationEntryForEmployee",
+      "method": "POST",
+      "path": "/companies({company_id})/employees({employee_id})/timeRegistrationEntries",
+      "summary": "Creates an object of type timeRegistrationEntry in Dynamics 365 Business Central",
+      "operationType": "create",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "employee_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for employee"
+        }
+      ],
+      "responseSchema": "schemas/timeRegistrationEntry.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 201,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getTimeRegistrationEntryForEmployee",
+      "method": "GET",
+      "path": "/companies({company_id})/employees({employee_id})/timeRegistrationEntries({timeRegistrationEntry_id})",
+      "summary": "Retrieve the properties and relationships of an object of type timeRegistrationEntry for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "employee_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for employee"
+        },
+        {
+          "name": "timeRegistrationEntry_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for timeRegistrationEntry"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/timeRegistrationEntry.schema.json",
+      "selectableFields": [
+        "id",
+        "employeeId",
+        "employeeNumber",
+        "jobId",
+        "jobNumber",
+        "absence",
+        "lineNumber",
+        "date",
+        "quantity",
+        "status",
+        "unitOfMeasureId",
+        "unitOfMeasure",
+        "dimensions",
+        "lastModfiedDateTime"
+      ],
+      "expandableRelations": [
+        "project"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "patchTimeRegistrationEntryForEmployee",
+      "method": "PATCH",
+      "path": "/companies({company_id})/employees({employee_id})/timeRegistrationEntries({timeRegistrationEntry_id})",
+      "summary": "Updates an object of type timeRegistrationEntry in Dynamics 365 Business Central",
+      "operationType": "update",
+      "riskLevel": "MEDIUM",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "employee_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for employee"
+        },
+        {
+          "name": "timeRegistrationEntry_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for timeRegistrationEntry"
+        }
+      ],
+      "responseSchema": "schemas/timeRegistrationEntry.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "deleteTimeRegistrationEntryForEmployee",
+      "method": "DELETE",
+      "path": "/companies({company_id})/employees({employee_id})/timeRegistrationEntries({timeRegistrationEntry_id})",
+      "summary": "Deletes an object of type timeRegistrationEntry in Dynamics 365 Business Central",
+      "operationType": "delete",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": true,
+      "warningMessage": "This will permanently delete the timeRegistrationEntry record",
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "employee_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for employee"
+        },
+        {
+          "name": "timeRegistrationEntry_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for timeRegistrationEntry"
+        }
+      ],
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 204,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "listTimeRegistrationEntries",
+      "method": "GET",
+      "path": "/companies({company_id})/timeRegistrationEntries",
+      "summary": "Returns a list of timeRegistrationEntries",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/timeRegistrationEntry.schema.json",
+      "selectableFields": [
+        "id",
+        "employeeId",
+        "employeeNumber",
+        "jobId",
+        "jobNumber",
+        "absence",
+        "lineNumber",
+        "date",
+        "quantity",
+        "status",
+        "unitOfMeasureId",
+        "unitOfMeasure",
+        "dimensions",
+        "lastModfiedDateTime"
+      ],
+      "expandableRelations": [
+        "project"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "postTimeRegistrationEntry",
+      "method": "POST",
+      "path": "/companies({company_id})/timeRegistrationEntries",
+      "summary": "Creates an object of type timeRegistrationEntry in Dynamics 365 Business Central",
+      "operationType": "create",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "responseSchema": "schemas/timeRegistrationEntry.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 201,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getTimeRegistrationEntry",
+      "method": "GET",
+      "path": "/companies({company_id})/timeRegistrationEntries({timeRegistrationEntry_id})",
+      "summary": "Retrieve the properties and relationships of an object of type timeRegistrationEntry for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "timeRegistrationEntry_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for timeRegistrationEntry"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/timeRegistrationEntry.schema.json",
+      "selectableFields": [
+        "id",
+        "employeeId",
+        "employeeNumber",
+        "jobId",
+        "jobNumber",
+        "absence",
+        "lineNumber",
+        "date",
+        "quantity",
+        "status",
+        "unitOfMeasureId",
+        "unitOfMeasure",
+        "dimensions",
+        "lastModfiedDateTime"
+      ],
+      "expandableRelations": [
+        "project"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "patchTimeRegistrationEntry",
+      "method": "PATCH",
+      "path": "/companies({company_id})/timeRegistrationEntries({timeRegistrationEntry_id})",
+      "summary": "Updates an object of type timeRegistrationEntry in Dynamics 365 Business Central",
+      "operationType": "update",
+      "riskLevel": "MEDIUM",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "timeRegistrationEntry_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for timeRegistrationEntry"
+        }
+      ],
+      "responseSchema": "schemas/timeRegistrationEntry.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "deleteTimeRegistrationEntry",
+      "method": "DELETE",
+      "path": "/companies({company_id})/timeRegistrationEntries({timeRegistrationEntry_id})",
+      "summary": "Deletes an object of type timeRegistrationEntry in Dynamics 365 Business Central",
+      "operationType": "delete",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": true,
+      "warningMessage": "This will permanently delete the timeRegistrationEntry record",
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "timeRegistrationEntry_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for timeRegistrationEntry"
+        }
+      ],
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 204,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    }
+  ]
+}

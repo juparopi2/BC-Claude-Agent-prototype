@@ -1,0 +1,45 @@
+{
+  "type": "object",
+  "properties": {
+    "code": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The code property for the Dynamics 365 Business Central unitofmeasuretype entity",
+      "maxLength": 10
+    },
+    "displayName": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The displayName property for the Dynamics 365 Business Central unitofmeasuretype entity",
+      "maxLength": 50
+    },
+    "symbol": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The symbol property for the Dynamics 365 Business Central unitofmeasuretype entity",
+      "maxLength": 10
+    },
+    "unitConversion": {
+      "$ref": "#/components/schemas/itemunitofmeasureconversiontype",
+      "nullable": true
+    },
+    "picture": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/picture"
+      }
+    },
+    "defaultDimensions": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/defaultDimensions"
+      }
+    },
+    "itemCategory": {
+      "nullable": true,
+      "$ref": "#/components/schemas/itemCategory"
+    }
+  }
+}

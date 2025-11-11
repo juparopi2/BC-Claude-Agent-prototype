@@ -1,0 +1,98 @@
+{
+  "entity": "balanceSheet",
+  "displayName": "Balance Sheet",
+  "description": "BalanceSheet entity for Business Central",
+  "endpoints": [
+    {
+      "id": "listBalanceSheet",
+      "method": "GET",
+      "path": "/companies({company_id})/balanceSheet",
+      "summary": "Returns a list of balanceSheet",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "queryParams": [
+        "$select"
+      ],
+      "responseSchema": "schemas/balanceSheet.schema.json",
+      "selectableFields": [
+        "lineNumber",
+        "display",
+        "balance",
+        "lineType",
+        "indentation",
+        "dateFilter"
+      ],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getBalanceSheet",
+      "method": "GET",
+      "path": "/companies({company_id})/balanceSheet({balanceSheet_lineNumber})",
+      "summary": "Retrieve the properties and relationships of an object of type balanceSheet for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "balanceSheet_lineNumber",
+          "type": "integer",
+          "format": "int32",
+          "required": true,
+          "description": "(v1.0) lineNumber for balanceSheet"
+        }
+      ],
+      "queryParams": [
+        "$select"
+      ],
+      "responseSchema": "schemas/balanceSheet.schema.json",
+      "selectableFields": [
+        "lineNumber",
+        "display",
+        "balance",
+        "lineType",
+        "indentation",
+        "dateFilter"
+      ],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    }
+  ]
+}

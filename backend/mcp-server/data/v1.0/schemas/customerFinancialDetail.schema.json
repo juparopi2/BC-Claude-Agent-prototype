@@ -1,0 +1,35 @@
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": false,
+      "description": "(v1.0) The id property for the Dynamics 365 Business Central customerFinancialDetail entity"
+    },
+    "number": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The number property for the Dynamics 365 Business Central customerFinancialDetail entity",
+      "maxLength": 20
+    },
+    "balance": {
+      "type": "number",
+      "format": "decimal",
+      "nullable": true,
+      "description": "(v1.0) The balance property for the Dynamics 365 Business Central customerFinancialDetail entity"
+    },
+    "totalSalesExcludingTax": {
+      "type": "number",
+      "format": "decimal",
+      "nullable": true,
+      "description": "(v1.0) The totalSalesExcludingTax property for the Dynamics 365 Business Central customerFinancialDetail entity"
+    },
+    "overdueAmount": {
+      "type": "number",
+      "format": "decimal",
+      "nullable": true,
+      "description": "(v1.0) The overdueAmount property for the Dynamics 365 Business Central customerFinancialDetail entity"
+    }
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "type": "object",
+  "properties": {
+    "vendorId": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": false,
+      "description": "(v1.0) The vendorId property for the Dynamics 365 Business Central vendorPurchase entity"
+    },
+    "vendorNumber": {
+      "type": "string",
+      "nullable": false,
+      "description": "(v1.0) The vendorNumber property for the Dynamics 365 Business Central vendorPurchase entity",
+      "maxLength": 20
+    },
+    "name": {
+      "type": "string",
+      "nullable": false,
+      "description": "(v1.0) The name property for the Dynamics 365 Business Central vendorPurchase entity",
+      "maxLength": 100
+    },
+    "totalPurchaseAmount": {
+      "type": "number",
+      "format": "decimal",
+      "nullable": true,
+      "description": "(v1.0) The totalPurchaseAmount property for the Dynamics 365 Business Central vendorPurchase entity"
+    },
+    "dateFilter_FilterOnly": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true,
+      "description": "(v1.0) The dateFilter_FilterOnly property for the Dynamics 365 Business Central vendorPurchase entity"
+    }
+  }
+}

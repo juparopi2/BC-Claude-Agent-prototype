@@ -1,0 +1,145 @@
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "nullable": false,
+      "description": "(v1.0) The id property for the Dynamics 365 Business Central salesQuoteLine entity",
+      "maxLength": 50
+    },
+    "documentId": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": true,
+      "description": "(v1.0) The documentId property for the Dynamics 365 Business Central salesQuoteLine entity"
+    },
+    "sequence": {
+      "type": "integer",
+      "format": "int32",
+      "nullable": true,
+      "description": "(v1.0) The sequence property for the Dynamics 365 Business Central salesQuoteLine entity"
+    },
+    "itemId": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": true,
+      "description": "(v1.0) The itemId property for the Dynamics 365 Business Central salesQuoteLine entity"
+    },
+    "accountId": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": true,
+      "description": "(v1.0) The accountId property for the Dynamics 365 Business Central salesQuoteLine entity"
+    },
+    "lineType": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The lineType property for the Dynamics 365 Business Central salesQuoteLine entity"
+    },
+    "lineDetails": {
+      "$ref": "#/components/schemas/documentlineobjectdetailstype",
+      "nullable": true
+    },
+    "description": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The description property for the Dynamics 365 Business Central salesQuoteLine entity",
+      "maxLength": 100
+    },
+    "unitOfMeasureId": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": true,
+      "description": "(v1.0) The unitOfMeasureId property for the Dynamics 365 Business Central salesQuoteLine entity"
+    },
+    "unitOfMeasure": {
+      "$ref": "#/components/schemas/unitofmeasuretype",
+      "nullable": true
+    },
+    "unitPrice": {
+      "type": "number",
+      "format": "decimal",
+      "nullable": true,
+      "description": "(v1.0) The unitPrice property for the Dynamics 365 Business Central salesQuoteLine entity"
+    },
+    "quantity": {
+      "type": "number",
+      "format": "decimal",
+      "nullable": true,
+      "description": "(v1.0) The quantity property for the Dynamics 365 Business Central salesQuoteLine entity"
+    },
+    "discountAmount": {
+      "type": "number",
+      "format": "decimal",
+      "nullable": true,
+      "description": "(v1.0) The discountAmount property for the Dynamics 365 Business Central salesQuoteLine entity"
+    },
+    "discountPercent": {
+      "type": "number",
+      "format": "decimal",
+      "nullable": true,
+      "description": "(v1.0) The discountPercent property for the Dynamics 365 Business Central salesQuoteLine entity"
+    },
+    "discountAppliedBeforeTax": {
+      "type": "boolean",
+      "nullable": true,
+      "description": "(v1.0) The discountAppliedBeforeTax property for the Dynamics 365 Business Central salesQuoteLine entity"
+    },
+    "amountExcludingTax": {
+      "type": "number",
+      "format": "decimal",
+      "nullable": true,
+      "description": "(v1.0) The amountExcludingTax property for the Dynamics 365 Business Central salesQuoteLine entity"
+    },
+    "taxCode": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The taxCode property for the Dynamics 365 Business Central salesQuoteLine entity",
+      "maxLength": 50
+    },
+    "taxPercent": {
+      "type": "number",
+      "format": "decimal",
+      "nullable": true,
+      "description": "(v1.0) The taxPercent property for the Dynamics 365 Business Central salesQuoteLine entity"
+    },
+    "totalTaxAmount": {
+      "type": "number",
+      "format": "decimal",
+      "nullable": true,
+      "description": "(v1.0) The totalTaxAmount property for the Dynamics 365 Business Central salesQuoteLine entity"
+    },
+    "amountIncludingTax": {
+      "type": "number",
+      "format": "decimal",
+      "nullable": true,
+      "description": "(v1.0) The amountIncludingTax property for the Dynamics 365 Business Central salesQuoteLine entity"
+    },
+    "netAmount": {
+      "type": "number",
+      "format": "decimal",
+      "nullable": true,
+      "description": "(v1.0) The netAmount property for the Dynamics 365 Business Central salesQuoteLine entity"
+    },
+    "netTaxAmount": {
+      "type": "number",
+      "format": "decimal",
+      "nullable": true,
+      "description": "(v1.0) The netTaxAmount property for the Dynamics 365 Business Central salesQuoteLine entity"
+    },
+    "netAmountIncludingTax": {
+      "type": "number",
+      "format": "decimal",
+      "nullable": true,
+      "description": "(v1.0) The netAmountIncludingTax property for the Dynamics 365 Business Central salesQuoteLine entity"
+    },
+    "item": {
+      "nullable": true,
+      "$ref": "#/components/schemas/item"
+    },
+    "account": {
+      "nullable": true,
+      "$ref": "#/components/schemas/account"
+    }
+  }
+}

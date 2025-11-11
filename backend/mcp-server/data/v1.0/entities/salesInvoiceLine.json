@@ -1,0 +1,530 @@
+{
+  "entity": "salesInvoiceLine",
+  "displayName": "Sales Invoice Line",
+  "description": "SalesInvoiceLine entity for Business Central",
+  "endpoints": [
+    {
+      "id": "listSalesInvoiceLinesForSalesInvoice",
+      "method": "GET",
+      "path": "/companies({company_id})/salesInvoices({salesInvoice_id})/salesInvoiceLines",
+      "summary": "Returns a list of salesInvoiceLines",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesInvoice_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for salesInvoice"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/salesInvoiceLine.schema.json",
+      "selectableFields": [
+        "id",
+        "documentId",
+        "sequence",
+        "itemId",
+        "accountId",
+        "lineType",
+        "lineDetails",
+        "description",
+        "unitOfMeasureId",
+        "unitOfMeasure",
+        "unitPrice",
+        "quantity",
+        "discountAmount",
+        "discountPercent",
+        "discountAppliedBeforeTax",
+        "amountExcludingTax",
+        "taxCode",
+        "taxPercent",
+        "totalTaxAmount",
+        "amountIncludingTax",
+        "invoiceDiscountAllocation",
+        "netAmount",
+        "netTaxAmount",
+        "netAmountIncludingTax",
+        "shipmentDate"
+      ],
+      "expandableRelations": [
+        "item",
+        "account"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "postSalesInvoiceLineForSalesInvoice",
+      "method": "POST",
+      "path": "/companies({company_id})/salesInvoices({salesInvoice_id})/salesInvoiceLines",
+      "summary": "Creates an object of type salesInvoiceLine in Dynamics 365 Business Central",
+      "operationType": "create",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesInvoice_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for salesInvoice"
+        }
+      ],
+      "responseSchema": "schemas/salesInvoiceLine.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 201,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getSalesInvoiceLineForSalesInvoice",
+      "method": "GET",
+      "path": "/companies({company_id})/salesInvoices({salesInvoice_id})/salesInvoiceLines('{salesInvoiceLine_id}')",
+      "summary": "Retrieve the properties and relationships of an object of type salesInvoiceLine for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesInvoice_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for salesInvoice"
+        },
+        {
+          "name": "salesInvoiceLine_id",
+          "type": "string",
+          "required": true,
+          "description": "(v1.0) id for salesInvoiceLine"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/salesInvoiceLine.schema.json",
+      "selectableFields": [
+        "id",
+        "documentId",
+        "sequence",
+        "itemId",
+        "accountId",
+        "lineType",
+        "lineDetails",
+        "description",
+        "unitOfMeasureId",
+        "unitOfMeasure",
+        "unitPrice",
+        "quantity",
+        "discountAmount",
+        "discountPercent",
+        "discountAppliedBeforeTax",
+        "amountExcludingTax",
+        "taxCode",
+        "taxPercent",
+        "totalTaxAmount",
+        "amountIncludingTax",
+        "invoiceDiscountAllocation",
+        "netAmount",
+        "netTaxAmount",
+        "netAmountIncludingTax",
+        "shipmentDate"
+      ],
+      "expandableRelations": [
+        "item",
+        "account"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "patchSalesInvoiceLineForSalesInvoice",
+      "method": "PATCH",
+      "path": "/companies({company_id})/salesInvoices({salesInvoice_id})/salesInvoiceLines('{salesInvoiceLine_id}')",
+      "summary": "Updates an object of type salesInvoiceLine in Dynamics 365 Business Central",
+      "operationType": "update",
+      "riskLevel": "MEDIUM",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesInvoice_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for salesInvoice"
+        },
+        {
+          "name": "salesInvoiceLine_id",
+          "type": "string",
+          "required": true,
+          "description": "(v1.0) id for salesInvoiceLine"
+        }
+      ],
+      "responseSchema": "schemas/salesInvoiceLine.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "deleteSalesInvoiceLineForSalesInvoice",
+      "method": "DELETE",
+      "path": "/companies({company_id})/salesInvoices({salesInvoice_id})/salesInvoiceLines('{salesInvoiceLine_id}')",
+      "summary": "Deletes an object of type salesInvoiceLine in Dynamics 365 Business Central",
+      "operationType": "delete",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": true,
+      "warningMessage": "This will permanently delete the salesInvoiceLine record",
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesInvoice_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for salesInvoice"
+        },
+        {
+          "name": "salesInvoiceLine_id",
+          "type": "string",
+          "required": true,
+          "description": "(v1.0) id for salesInvoiceLine"
+        }
+      ],
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 204,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "listSalesInvoiceLines",
+      "method": "GET",
+      "path": "/companies({company_id})/salesInvoiceLines",
+      "summary": "Returns a list of salesInvoiceLines",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/salesInvoiceLine.schema.json",
+      "selectableFields": [
+        "id",
+        "documentId",
+        "sequence",
+        "itemId",
+        "accountId",
+        "lineType",
+        "lineDetails",
+        "description",
+        "unitOfMeasureId",
+        "unitOfMeasure",
+        "unitPrice",
+        "quantity",
+        "discountAmount",
+        "discountPercent",
+        "discountAppliedBeforeTax",
+        "amountExcludingTax",
+        "taxCode",
+        "taxPercent",
+        "totalTaxAmount",
+        "amountIncludingTax",
+        "invoiceDiscountAllocation",
+        "netAmount",
+        "netTaxAmount",
+        "netAmountIncludingTax",
+        "shipmentDate"
+      ],
+      "expandableRelations": [
+        "item",
+        "account"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "postSalesInvoiceLine",
+      "method": "POST",
+      "path": "/companies({company_id})/salesInvoiceLines",
+      "summary": "Creates an object of type salesInvoiceLine in Dynamics 365 Business Central",
+      "operationType": "create",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "responseSchema": "schemas/salesInvoiceLine.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 201,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getSalesInvoiceLine",
+      "method": "GET",
+      "path": "/companies({company_id})/salesInvoiceLines('{salesInvoiceLine_id}')",
+      "summary": "Retrieve the properties and relationships of an object of type salesInvoiceLine for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesInvoiceLine_id",
+          "type": "string",
+          "required": true,
+          "description": "(v1.0) id for salesInvoiceLine"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/salesInvoiceLine.schema.json",
+      "selectableFields": [
+        "id",
+        "documentId",
+        "sequence",
+        "itemId",
+        "accountId",
+        "lineType",
+        "lineDetails",
+        "description",
+        "unitOfMeasureId",
+        "unitOfMeasure",
+        "unitPrice",
+        "quantity",
+        "discountAmount",
+        "discountPercent",
+        "discountAppliedBeforeTax",
+        "amountExcludingTax",
+        "taxCode",
+        "taxPercent",
+        "totalTaxAmount",
+        "amountIncludingTax",
+        "invoiceDiscountAllocation",
+        "netAmount",
+        "netTaxAmount",
+        "netAmountIncludingTax",
+        "shipmentDate"
+      ],
+      "expandableRelations": [
+        "item",
+        "account"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "patchSalesInvoiceLine",
+      "method": "PATCH",
+      "path": "/companies({company_id})/salesInvoiceLines('{salesInvoiceLine_id}')",
+      "summary": "Updates an object of type salesInvoiceLine in Dynamics 365 Business Central",
+      "operationType": "update",
+      "riskLevel": "MEDIUM",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesInvoiceLine_id",
+          "type": "string",
+          "required": true,
+          "description": "(v1.0) id for salesInvoiceLine"
+        }
+      ],
+      "responseSchema": "schemas/salesInvoiceLine.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "deleteSalesInvoiceLine",
+      "method": "DELETE",
+      "path": "/companies({company_id})/salesInvoiceLines('{salesInvoiceLine_id}')",
+      "summary": "Deletes an object of type salesInvoiceLine in Dynamics 365 Business Central",
+      "operationType": "delete",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": true,
+      "warningMessage": "This will permanently delete the salesInvoiceLine record",
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesInvoiceLine_id",
+          "type": "string",
+          "required": true,
+          "description": "(v1.0) id for salesInvoiceLine"
+        }
+      ],
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 204,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    }
+  ]
+}

@@ -1,3 +1,0 @@
-[submodule "backend/mcp-server"]
-	path = backend/mcp-server
-	url = https://github.com/juparopi2/Dynamics365_BC_OpenAPI_MCP.git

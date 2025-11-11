@@ -1,0 +1,1133 @@
+{
+  "version": "1.0.0",
+  "totalEndpoints": 324,
+  "totalEntities": 52,
+  "generatedAt": "2025-11-11T02:09:46.221Z",
+  "entities": [
+    {
+      "name": "account",
+      "displayName": "Account",
+      "description": "Account entity for Business Central",
+      "endpointCount": 2,
+      "operations": [
+        "list",
+        "get"
+      ],
+      "hasHighRiskOps": false,
+      "filePath": "entities/account.json"
+    },
+    {
+      "name": "agedAccountsPayable",
+      "displayName": "Aged Accounts Payable",
+      "description": "AgedAccountsPayable entity for Business Central",
+      "endpointCount": 2,
+      "operations": [
+        "list",
+        "get"
+      ],
+      "hasHighRiskOps": false,
+      "filePath": "entities/agedAccountsPayable.json"
+    },
+    {
+      "name": "agedAccountsReceivable",
+      "displayName": "Aged Accounts Receivable",
+      "description": "AgedAccountsReceivable entity for Business Central",
+      "endpointCount": 2,
+      "operations": [
+        "list",
+        "get"
+      ],
+      "hasHighRiskOps": false,
+      "filePath": "entities/agedAccountsReceivable.json"
+    },
+    {
+      "name": "attachments",
+      "displayName": "Attachments",
+      "description": "Attachments entity for Business Central",
+      "endpointCount": 15,
+      "operations": [
+        "list",
+        "create",
+        "get",
+        "update",
+        "delete"
+      ],
+      "hasHighRiskOps": true,
+      "filePath": "entities/attachments.json"
+    },
+    {
+      "name": "balanceSheet",
+      "displayName": "Balance Sheet",
+      "description": "BalanceSheet entity for Business Central",
+      "endpointCount": 2,
+      "operations": [
+        "list",
+        "get"
+      ],
+      "hasHighRiskOps": false,
+      "filePath": "entities/balanceSheet.json"
+    },
+    {
+      "name": "bankAccount",
+      "displayName": "Bank Account",
+      "description": "BankAccount entity for Business Central",
+      "endpointCount": 5,
+      "operations": [
+        "list",
+        "create",
+        "get",
+        "update",
+        "delete"
+      ],
+      "hasHighRiskOps": true,
+      "filePath": "entities/bankAccount.json"
+    },
+    {
+      "name": "cashFlowStatement",
+      "displayName": "Cash Flow Statement",
+      "description": "CashFlowStatement entity for Business Central",
+      "endpointCount": 2,
+      "operations": [
+        "list",
+        "get"
+      ],
+      "hasHighRiskOps": false,
+      "filePath": "entities/cashFlowStatement.json"
+    },
+    {
+      "name": "company",
+      "displayName": "Company",
+      "description": "Company entity for Business Central",
+      "endpointCount": 2,
+      "operations": [
+        "list",
+        "get"
+      ],
+      "hasHighRiskOps": false,
+      "filePath": "entities/company.json"
+    },
+    {
+      "name": "companyInformation",
+      "displayName": "Company Information",
+      "description": "CompanyInformation entity for Business Central",
+      "endpointCount": 3,
+      "operations": [
+        "list",
+        "get",
+        "update"
+      ],
+      "hasHighRiskOps": false,
+      "filePath": "entities/companyInformation.json"
+    },
+    {
+      "name": "countryRegion",
+      "displayName": "Country Region",
+      "description": "CountryRegion entity for Business Central",
+      "endpointCount": 5,
+      "operations": [
+        "list",
+        "create",
+        "get",
+        "update",
+        "delete"
+      ],
+      "hasHighRiskOps": true,
+      "filePath": "entities/countryRegion.json"
+    },
+    {
+      "name": "currency",
+      "displayName": "Currency",
+      "description": "Currency entity for Business Central",
+      "endpointCount": 5,
+      "operations": [
+        "list",
+        "create",
+        "get",
+        "update",
+        "delete"
+      ],
+      "hasHighRiskOps": true,
+      "filePath": "entities/currency.json"
+    },
+    {
+      "name": "customer",
+      "displayName": "Customer",
+      "description": "Customer entity for Business Central",
+      "endpointCount": 5,
+      "operations": [
+        "list",
+        "create",
+        "get",
+        "update",
+        "delete"
+      ],
+      "hasHighRiskOps": true,
+      "filePath": "entities/customer.json"
+    },
+    {
+      "name": "customerFinancialDetail",
+      "displayName": "Customer Financial Detail",
+      "description": "CustomerFinancialDetail entity for Business Central",
+      "endpointCount": 4,
+      "operations": [
+        "list",
+        "get"
+      ],
+      "hasHighRiskOps": false,
+      "filePath": "entities/customerFinancialDetail.json"
+    },
+    {
+      "name": "customerPayment",
+      "displayName": "Customer Payment",
+      "description": "CustomerPayment entity for Business Central",
+      "endpointCount": 10,
+      "operations": [
+        "list",
+        "create",
+        "get",
+        "update",
+        "delete"
+      ],
+      "hasHighRiskOps": true,
+      "filePath": "entities/customerPayment.json"
+    },
+    {
+      "name": "customerPaymentJournal",
+      "displayName": "Customer Payment Journal",
+      "description": "CustomerPaymentJournal entity for Business Central",
+      "endpointCount": 5,
+      "operations": [
+        "list",
+        "create",
+        "get",
+        "update",
+        "delete"
+      ],
+      "hasHighRiskOps": true,
+      "filePath": "entities/customerPaymentJournal.json"
+    },
+    {
+      "name": "customerSale",
+      "displayName": "Customer Sale",
+      "description": "CustomerSale entity for Business Central",
+      "endpointCount": 2,
+      "operations": [
+        "list",
+        "get"
+      ],
+      "hasHighRiskOps": false,
+      "filePath": "entities/customerSale.json"
+    },
+    {
+      "name": "defaultDimensions",
+      "displayName": "Default Dimensions",
+      "description": "DefaultDimensions entity for Business Central",
+      "endpointCount": 25,
+      "operations": [
+        "list",
+        "create",
+        "get",
+        "update",
+        "delete"
+      ],
+      "hasHighRiskOps": true,
+      "filePath": "entities/defaultDimensions.json"
+    },
+    {
+      "name": "dimension",
+      "displayName": "Dimension",
+      "description": "Dimension entity for Business Central",
+      "endpointCount": 2,
+      "operations": [
+        "list",
+        "get"
+      ],
+      "hasHighRiskOps": false,
+      "filePath": "entities/dimension.json"
+    },
+    {
+      "name": "dimensionLine",
+      "displayName": "Dimension Line",
+      "description": "DimensionLine entity for Business Central",
+      "endpointCount": 5,
+      "operations": [
+        "list",
+        "create",
+        "get",
+        "update",
+        "delete"
+      ],
+      "hasHighRiskOps": true,
+      "filePath": "entities/dimensionLine.json"
+    },
+    {
+      "name": "dimensionValue",
+      "displayName": "Dimension Value",
+      "description": "DimensionValue entity for Business Central",
+      "endpointCount": 4,
+      "operations": [
+        "list",
+        "get"
+      ],
+      "hasHighRiskOps": false,
+      "filePath": "entities/dimensionValue.json"
+    },
+    {
+      "name": "employee",
+      "displayName": "Employee",
+      "description": "Employee entity for Business Central",
+      "endpointCount": 5,
+      "operations": [
+        "list",
+        "create",
+        "get",
+        "update",
+        "delete"
+      ],
+      "hasHighRiskOps": true,
+      "filePath": "entities/employee.json"
+    },
+    {
+      "name": "generalLedgerEntry",
+      "displayName": "General Ledger Entry",
+      "description": "GeneralLedgerEntry entity for Business Central",
+      "endpointCount": 2,
+      "operations": [
+        "list",
+        "get"
+      ],
+      "hasHighRiskOps": false,
+      "filePath": "entities/generalLedgerEntry.json"
+    },
+    {
+      "name": "generalLedgerEntryAttachments",
+      "displayName": "General Ledger Entry Attachments",
+      "description": "GeneralLedgerEntryAttachments entity for Business Central",
+      "endpointCount": 5,
+      "operations": [
+        "list",
+        "create",
+        "get",
+        "update",
+        "delete"
+      ],
+      "hasHighRiskOps": true,
+      "filePath": "entities/generalLedgerEntryAttachments.json"
+    },
+    {
+      "name": "incomeStatement",
+      "displayName": "Income Statement",
+      "description": "IncomeStatement entity for Business Central",
+      "endpointCount": 2,
+      "operations": [
+        "list",
+        "get"
+      ],
+      "hasHighRiskOps": false,
+      "filePath": "entities/incomeStatement.json"
+    },
+    {
+      "name": "item",
+      "displayName": "Item",
+      "description": "Item entity for Business Central",
+      "endpointCount": 5,
+      "operations": [
+        "list",
+        "create",
+        "get",
+        "update",
+        "delete"
+      ],
+      "hasHighRiskOps": true,
+      "filePath": "entities/item.json"
+    },
+    {
+      "name": "itemCategory",
+      "displayName": "Item Category",
+      "description": "ItemCategory entity for Business Central",
+      "endpointCount": 5,
+      "operations": [
+        "list",
+        "create",
+        "get",
+        "update",
+        "delete"
+      ],
+      "hasHighRiskOps": true,
+      "filePath": "entities/itemCategory.json"
+    },
+    {
+      "name": "journal",
+      "displayName": "Journal",
+      "description": "Journal entity for Business Central",
+      "endpointCount": 6,
+      "operations": [
+        "list",
+        "create",
+        "get",
+        "update",
+        "delete",
+        "action"
+      ],
+      "hasHighRiskOps": true,
+      "filePath": "entities/journal.json"
+    },
+    {
+      "name": "journalLine",
+      "displayName": "Journal Line",
+      "description": "JournalLine entity for Business Central",
+      "endpointCount": 10,
+      "operations": [
+        "list",
+        "create",
+        "get",
+        "update",
+        "delete"
+      ],
+      "hasHighRiskOps": true,
+      "filePath": "entities/journalLine.json"
+    },
+    {
+      "name": "paymentMethod",
+      "displayName": "Payment Method",
+      "description": "PaymentMethod entity for Business Central",
+      "endpointCount": 5,
+      "operations": [
+        "list",
+        "create",
+        "get",
+        "update",
+        "delete"
+      ],
+      "hasHighRiskOps": true,
+      "filePath": "entities/paymentMethod.json"
+    },
+    {
+      "name": "paymentTerm",
+      "displayName": "Payment Term",
+      "description": "PaymentTerm entity for Business Central",
+      "endpointCount": 5,
+      "operations": [
+        "list",
+        "create",
+        "get",
+        "update",
+        "delete"
+      ],
+      "hasHighRiskOps": true,
+      "filePath": "entities/paymentTerm.json"
+    },
+    {
+      "name": "pdfDocument",
+      "displayName": "Pdf Document",
+      "description": "PdfDocument entity for Business Central",
+      "endpointCount": 10,
+      "operations": [
+        "list",
+        "get"
+      ],
+      "hasHighRiskOps": false,
+      "filePath": "entities/pdfDocument.json"
+    },
+    {
+      "name": "picture",
+      "displayName": "Picture",
+      "description": "Picture entity for Business Central",
+      "endpointCount": 20,
+      "operations": [
+        "list",
+        "get",
+        "update",
+        "delete"
+      ],
+      "hasHighRiskOps": true,
+      "filePath": "entities/picture.json"
+    },
+    {
+      "name": "project",
+      "displayName": "Project",
+      "description": "Project entity for Business Central",
+      "endpointCount": 5,
+      "operations": [
+        "list",
+        "create",
+        "get",
+        "update",
+        "delete"
+      ],
+      "hasHighRiskOps": true,
+      "filePath": "entities/project.json"
+    },
+    {
+      "name": "purchaseInvoice",
+      "displayName": "Purchase Invoice",
+      "description": "PurchaseInvoice entity for Business Central",
+      "endpointCount": 6,
+      "operations": [
+        "list",
+        "create",
+        "get",
+        "update",
+        "delete",
+        "action"
+      ],
+      "hasHighRiskOps": true,
+      "filePath": "entities/purchaseInvoice.json"
+    },
+    {
+      "name": "purchaseInvoiceLine",
+      "displayName": "Purchase Invoice Line",
+      "description": "PurchaseInvoiceLine entity for Business Central",
+      "endpointCount": 10,
+      "operations": [
+        "list",
+        "create",
+        "get",
+        "update",
+        "delete"
+      ],
+      "hasHighRiskOps": true,
+      "filePath": "entities/purchaseInvoiceLine.json"
+    },
+    {
+      "name": "retainedEarningsStatement",
+      "displayName": "Retained Earnings Statement",
+      "description": "RetainedEarningsStatement entity for Business Central",
+      "endpointCount": 2,
+      "operations": [
+        "list",
+        "get"
+      ],
+      "hasHighRiskOps": false,
+      "filePath": "entities/retainedEarningsStatement.json"
+    },
+    {
+      "name": "salesCreditMemo",
+      "displayName": "Sales Credit Memo",
+      "description": "SalesCreditMemo entity for Business Central",
+      "endpointCount": 10,
+      "operations": [
+        "list",
+        "create",
+        "get",
+        "update",
+        "delete",
+        "action"
+      ],
+      "hasHighRiskOps": true,
+      "filePath": "entities/salesCreditMemo.json"
+    },
+    {
+      "name": "salesCreditMemoLine",
+      "displayName": "Sales Credit Memo Line",
+      "description": "SalesCreditMemoLine entity for Business Central",
+      "endpointCount": 10,
+      "operations": [
+        "list",
+        "create",
+        "get",
+        "update",
+        "delete"
+      ],
+      "hasHighRiskOps": true,
+      "filePath": "entities/salesCreditMemoLine.json"
+    },
+    {
+      "name": "salesInvoice",
+      "displayName": "Sales Invoice",
+      "description": "SalesInvoice entity for Business Central",
+      "endpointCount": 11,
+      "operations": [
+        "list",
+        "create",
+        "get",
+        "update",
+        "delete",
+        "action"
+      ],
+      "hasHighRiskOps": true,
+      "filePath": "entities/salesInvoice.json"
+    },
+    {
+      "name": "salesInvoiceLine",
+      "displayName": "Sales Invoice Line",
+      "description": "SalesInvoiceLine entity for Business Central",
+      "endpointCount": 10,
+      "operations": [
+        "list",
+        "create",
+        "get",
+        "update",
+        "delete"
+      ],
+      "hasHighRiskOps": true,
+      "filePath": "entities/salesInvoiceLine.json"
+    },
+    {
+      "name": "salesOrder",
+      "displayName": "Sales Order",
+      "description": "SalesOrder entity for Business Central",
+      "endpointCount": 6,
+      "operations": [
+        "list",
+        "create",
+        "get",
+        "update",
+        "delete",
+        "action"
+      ],
+      "hasHighRiskOps": true,
+      "filePath": "entities/salesOrder.json"
+    },
+    {
+      "name": "salesOrderLine",
+      "displayName": "Sales Order Line",
+      "description": "SalesOrderLine entity for Business Central",
+      "endpointCount": 10,
+      "operations": [
+        "list",
+        "create",
+        "get",
+        "update",
+        "delete"
+      ],
+      "hasHighRiskOps": true,
+      "filePath": "entities/salesOrderLine.json"
+    },
+    {
+      "name": "salesQuote",
+      "displayName": "Sales Quote",
+      "description": "SalesQuote entity for Business Central",
+      "endpointCount": 8,
+      "operations": [
+        "list",
+        "create",
+        "get",
+        "update",
+        "delete",
+        "action"
+      ],
+      "hasHighRiskOps": true,
+      "filePath": "entities/salesQuote.json"
+    },
+    {
+      "name": "salesQuoteLine",
+      "displayName": "Sales Quote Line",
+      "description": "SalesQuoteLine entity for Business Central",
+      "endpointCount": 10,
+      "operations": [
+        "list",
+        "create",
+        "get",
+        "update",
+        "delete"
+      ],
+      "hasHighRiskOps": true,
+      "filePath": "entities/salesQuoteLine.json"
+    },
+    {
+      "name": "shipmentMethod",
+      "displayName": "Shipment Method",
+      "description": "ShipmentMethod entity for Business Central",
+      "endpointCount": 5,
+      "operations": [
+        "list",
+        "create",
+        "get",
+        "update",
+        "delete"
+      ],
+      "hasHighRiskOps": true,
+      "filePath": "entities/shipmentMethod.json"
+    },
+    {
+      "name": "taxArea",
+      "displayName": "Tax Area",
+      "description": "TaxArea entity for Business Central",
+      "endpointCount": 5,
+      "operations": [
+        "list",
+        "create",
+        "get",
+        "update",
+        "delete"
+      ],
+      "hasHighRiskOps": true,
+      "filePath": "entities/taxArea.json"
+    },
+    {
+      "name": "taxGroup",
+      "displayName": "Tax Group",
+      "description": "TaxGroup entity for Business Central",
+      "endpointCount": 5,
+      "operations": [
+        "list",
+        "create",
+        "get",
+        "update",
+        "delete"
+      ],
+      "hasHighRiskOps": true,
+      "filePath": "entities/taxGroup.json"
+    },
+    {
+      "name": "timeRegistrationEntry",
+      "displayName": "Time Registration Entry",
+      "description": "TimeRegistrationEntry entity for Business Central",
+      "endpointCount": 10,
+      "operations": [
+        "list",
+        "create",
+        "get",
+        "update",
+        "delete"
+      ],
+      "hasHighRiskOps": true,
+      "filePath": "entities/timeRegistrationEntry.json"
+    },
+    {
+      "name": "trialBalance",
+      "displayName": "Trial Balance",
+      "description": "TrialBalance entity for Business Central",
+      "endpointCount": 2,
+      "operations": [
+        "list",
+        "get"
+      ],
+      "hasHighRiskOps": false,
+      "filePath": "entities/trialBalance.json"
+    },
+    {
+      "name": "unitOfMeasure",
+      "displayName": "Unit Of Measure",
+      "description": "UnitOfMeasure entity for Business Central",
+      "endpointCount": 5,
+      "operations": [
+        "list",
+        "create",
+        "get",
+        "update",
+        "delete"
+      ],
+      "hasHighRiskOps": true,
+      "filePath": "entities/unitOfMeasure.json"
+    },
+    {
+      "name": "vendor",
+      "displayName": "Vendor",
+      "description": "Vendor entity for Business Central",
+      "endpointCount": 5,
+      "operations": [
+        "list",
+        "create",
+        "get",
+        "update",
+        "delete"
+      ],
+      "hasHighRiskOps": true,
+      "filePath": "entities/vendor.json"
+    },
+    {
+      "name": "vendorPurchase",
+      "displayName": "Vendor Purchase",
+      "description": "VendorPurchase entity for Business Central",
+      "endpointCount": 2,
+      "operations": [
+        "list",
+        "get"
+      ],
+      "hasHighRiskOps": false,
+      "filePath": "entities/vendorPurchase.json"
+    }
+  ],
+  "quickSearch": {
+    "customers": [
+      "customer",
+      "customerFinancialDetail",
+      "customerPaymentJournal",
+      "customerPayment",
+      "customerSale"
+    ],
+    "sales": [
+      "salesInvoice",
+      "salesInvoiceLine",
+      "salesOrder",
+      "salesOrderLine",
+      "salesQuote",
+      "salesQuoteLine",
+      "salesCreditMemo",
+      "salesCreditMemoLine",
+      "purchaseInvoice",
+      "purchaseInvoiceLine"
+    ],
+    "purchases": [
+      "vendor",
+      "purchaseInvoice",
+      "purchaseInvoiceLine",
+      "vendorPurchase"
+    ],
+    "inventory": [
+      "item",
+      "itemCategory"
+    ],
+    "financials": [
+      "customerPaymentJournal",
+      "account",
+      "journal",
+      "journalLine",
+      "generalLedgerEntry",
+      "agedAccountsReceivable",
+      "agedAccountsPayable",
+      "generalLedgerEntryAttachments",
+      "bankAccount"
+    ],
+    "reports": [
+      "cashFlowStatement",
+      "retainedEarningsStatement",
+      "agedAccountsReceivable",
+      "agedAccountsPayable",
+      "balanceSheet",
+      "trialBalance",
+      "incomeStatement"
+    ],
+    "configuration": [
+      "defaultDimensions",
+      "customerPaymentJournal",
+      "customerPayment",
+      "taxGroup",
+      "currency",
+      "paymentMethod",
+      "dimension",
+      "dimensionValue",
+      "dimensionLine",
+      "paymentTerm",
+      "taxArea"
+    ]
+  },
+  "operationIndex": {
+    "listCompanies": "company",
+    "getCompany": "company",
+    "listItems": "item",
+    "postItem": "item",
+    "getItem": "item",
+    "patchItem": "item",
+    "deleteItem": "item",
+    "listPictureForItem": "picture",
+    "getPictureForItem": "picture",
+    "patchPictureForItem": "picture",
+    "deletePictureForItem": "picture",
+    "listPicture": "picture",
+    "getPicture": "picture",
+    "patchPicture": "picture",
+    "deletePicture": "picture",
+    "listPictureForCustomer": "picture",
+    "getPictureForCustomer": "picture",
+    "patchPictureForCustomer": "picture",
+    "deletePictureForCustomer": "picture",
+    "listPictureForVendor": "picture",
+    "getPictureForVendor": "picture",
+    "patchPictureForVendor": "picture",
+    "deletePictureForVendor": "picture",
+    "listPictureForEmployee": "picture",
+    "getPictureForEmployee": "picture",
+    "patchPictureForEmployee": "picture",
+    "deletePictureForEmployee": "picture",
+    "listDefaultDimensionsForItem": "defaultDimensions",
+    "postDefaultDimensionsForItem": "defaultDimensions",
+    "getDefaultDimensionsForItem": "defaultDimensions",
+    "patchDefaultDimensionsForItem": "defaultDimensions",
+    "deleteDefaultDimensionsForItem": "defaultDimensions",
+    "listDefaultDimensions": "defaultDimensions",
+    "postDefaultDimensions": "defaultDimensions",
+    "getDefaultDimensions": "defaultDimensions",
+    "patchDefaultDimensions": "defaultDimensions",
+    "deleteDefaultDimensions": "defaultDimensions",
+    "listDefaultDimensionsForCustomer": "defaultDimensions",
+    "postDefaultDimensionsForCustomer": "defaultDimensions",
+    "getDefaultDimensionsForCustomer": "defaultDimensions",
+    "patchDefaultDimensionsForCustomer": "defaultDimensions",
+    "deleteDefaultDimensionsForCustomer": "defaultDimensions",
+    "listDefaultDimensionsForVendor": "defaultDimensions",
+    "postDefaultDimensionsForVendor": "defaultDimensions",
+    "getDefaultDimensionsForVendor": "defaultDimensions",
+    "patchDefaultDimensionsForVendor": "defaultDimensions",
+    "deleteDefaultDimensionsForVendor": "defaultDimensions",
+    "listDefaultDimensionsForEmployee": "defaultDimensions",
+    "postDefaultDimensionsForEmployee": "defaultDimensions",
+    "getDefaultDimensionsForEmployee": "defaultDimensions",
+    "patchDefaultDimensionsForEmployee": "defaultDimensions",
+    "deleteDefaultDimensionsForEmployee": "defaultDimensions",
+    "listCustomers": "customer",
+    "postCustomer": "customer",
+    "getCustomer": "customer",
+    "patchCustomer": "customer",
+    "deleteCustomer": "customer",
+    "listCustomerFinancialDetailsForCustomer": "customerFinancialDetail",
+    "getCustomerFinancialDetailForCustomer": "customerFinancialDetail",
+    "listCustomerFinancialDetails": "customerFinancialDetail",
+    "getCustomerFinancialDetail": "customerFinancialDetail",
+    "listVendors": "vendor",
+    "postVendor": "vendor",
+    "getVendor": "vendor",
+    "patchVendor": "vendor",
+    "deleteVendor": "vendor",
+    "listCompanyInformation": "companyInformation",
+    "getCompanyInformation": "companyInformation",
+    "patchCompanyInformation": "companyInformation",
+    "listSalesInvoices": "salesInvoice",
+    "postSalesInvoice": "salesInvoice",
+    "getSalesInvoice": "salesInvoice",
+    "patchSalesInvoice": "salesInvoice",
+    "deleteSalesInvoice": "salesInvoice",
+    "cancelAndSendActionSalesInvoices": "salesInvoice",
+    "cancelActionSalesInvoices": "salesInvoice",
+    "makeCorrectiveCreditMemoActionSalesInvoices": "salesInvoice",
+    "postAndSendActionSalesInvoices": "salesInvoice",
+    "postActionSalesInvoices": "salesInvoice",
+    "sendActionSalesInvoices": "salesInvoice",
+    "listSalesInvoiceLinesForSalesInvoice": "salesInvoiceLine",
+    "postSalesInvoiceLineForSalesInvoice": "salesInvoiceLine",
+    "getSalesInvoiceLineForSalesInvoice": "salesInvoiceLine",
+    "patchSalesInvoiceLineForSalesInvoice": "salesInvoiceLine",
+    "deleteSalesInvoiceLineForSalesInvoice": "salesInvoiceLine",
+    "listSalesInvoiceLines": "salesInvoiceLine",
+    "postSalesInvoiceLine": "salesInvoiceLine",
+    "getSalesInvoiceLine": "salesInvoiceLine",
+    "patchSalesInvoiceLine": "salesInvoiceLine",
+    "deleteSalesInvoiceLine": "salesInvoiceLine",
+    "listPdfDocumentForSalesInvoice": "pdfDocument",
+    "getPdfDocumentForSalesInvoice": "pdfDocument",
+    "listPdfDocument": "pdfDocument",
+    "getPdfDocument": "pdfDocument",
+    "listPdfDocumentForSalesQuote": "pdfDocument",
+    "getPdfDocumentForSalesQuote": "pdfDocument",
+    "listPdfDocumentForSalesCreditMemo": "pdfDocument",
+    "getPdfDocumentForSalesCreditMemo": "pdfDocument",
+    "listPdfDocumentForPurchaseInvoice": "pdfDocument",
+    "getPdfDocumentForPurchaseInvoice": "pdfDocument",
+    "listCustomerPaymentJournals": "customerPaymentJournal",
+    "postCustomerPaymentJournal": "customerPaymentJournal",
+    "getCustomerPaymentJournal": "customerPaymentJournal",
+    "patchCustomerPaymentJournal": "customerPaymentJournal",
+    "deleteCustomerPaymentJournal": "customerPaymentJournal",
+    "listCustomerPaymentsForCustomerPaymentJournal": "customerPayment",
+    "postCustomerPaymentForCustomerPaymentJournal": "customerPayment",
+    "getCustomerPaymentForCustomerPaymentJournal": "customerPayment",
+    "patchCustomerPaymentForCustomerPaymentJournal": "customerPayment",
+    "deleteCustomerPaymentForCustomerPaymentJournal": "customerPayment",
+    "listCustomerPayments": "customerPayment",
+    "postCustomerPayment": "customerPayment",
+    "getCustomerPayment": "customerPayment",
+    "patchCustomerPayment": "customerPayment",
+    "deleteCustomerPayment": "customerPayment",
+    "listAccounts": "account",
+    "getAccount": "account",
+    "listTaxGroups": "taxGroup",
+    "postTaxGroup": "taxGroup",
+    "getTaxGroup": "taxGroup",
+    "patchTaxGroup": "taxGroup",
+    "deleteTaxGroup": "taxGroup",
+    "listJournals": "journal",
+    "postJournal": "journal",
+    "getJournal": "journal",
+    "patchJournal": "journal",
+    "deleteJournal": "journal",
+    "postActionJournals": "journal",
+    "listJournalLinesForJournal": "journalLine",
+    "postJournalLineForJournal": "journalLine",
+    "getJournalLineForJournal": "journalLine",
+    "patchJournalLineForJournal": "journalLine",
+    "deleteJournalLineForJournal": "journalLine",
+    "listJournalLines": "journalLine",
+    "postJournalLine": "journalLine",
+    "getJournalLine": "journalLine",
+    "patchJournalLine": "journalLine",
+    "deleteJournalLine": "journalLine",
+    "listAttachmentsForJournalLineForJournal": "attachments",
+    "postAttachmentsForJournalLineForJournal": "attachments",
+    "getAttachmentsForJournalLineForJournal": "attachments",
+    "patchAttachmentsForJournalLineForJournal": "attachments",
+    "deleteAttachmentsForJournalLineForJournal": "attachments",
+    "listAttachmentsForJournalLine": "attachments",
+    "postAttachmentsForJournalLine": "attachments",
+    "getAttachmentsForJournalLine": "attachments",
+    "patchAttachmentsForJournalLine": "attachments",
+    "deleteAttachmentsForJournalLine": "attachments",
+    "listAttachments": "attachments",
+    "postAttachments": "attachments",
+    "getAttachments": "attachments",
+    "patchAttachments": "attachments",
+    "deleteAttachments": "attachments",
+    "listEmployees": "employee",
+    "postEmployee": "employee",
+    "getEmployee": "employee",
+    "patchEmployee": "employee",
+    "deleteEmployee": "employee",
+    "listTimeRegistrationEntriesForEmployee": "timeRegistrationEntry",
+    "postTimeRegistrationEntryForEmployee": "timeRegistrationEntry",
+    "getTimeRegistrationEntryForEmployee": "timeRegistrationEntry",
+    "patchTimeRegistrationEntryForEmployee": "timeRegistrationEntry",
+    "deleteTimeRegistrationEntryForEmployee": "timeRegistrationEntry",
+    "listTimeRegistrationEntries": "timeRegistrationEntry",
+    "postTimeRegistrationEntry": "timeRegistrationEntry",
+    "getTimeRegistrationEntry": "timeRegistrationEntry",
+    "patchTimeRegistrationEntry": "timeRegistrationEntry",
+    "deleteTimeRegistrationEntry": "timeRegistrationEntry",
+    "listGeneralLedgerEntries": "generalLedgerEntry",
+    "getGeneralLedgerEntry": "generalLedgerEntry",
+    "listCurrencies": "currency",
+    "postCurrency": "currency",
+    "getCurrency": "currency",
+    "patchCurrency": "currency",
+    "deleteCurrency": "currency",
+    "listPaymentMethods": "paymentMethod",
+    "postPaymentMethod": "paymentMethod",
+    "getPaymentMethod": "paymentMethod",
+    "patchPaymentMethod": "paymentMethod",
+    "deletePaymentMethod": "paymentMethod",
+    "listDimensions": "dimension",
+    "getDimension": "dimension",
+    "listDimensionValuesForDimension": "dimensionValue",
+    "getDimensionValueForDimension": "dimensionValue",
+    "listDimensionValues": "dimensionValue",
+    "getDimensionValue": "dimensionValue",
+    "listDimensionLines": "dimensionLine",
+    "postDimensionLine": "dimensionLine",
+    "getDimensionLine": "dimensionLine",
+    "patchDimensionLine": "dimensionLine",
+    "deleteDimensionLine": "dimensionLine",
+    "listPaymentTerms": "paymentTerm",
+    "postPaymentTerm": "paymentTerm",
+    "getPaymentTerm": "paymentTerm",
+    "patchPaymentTerm": "paymentTerm",
+    "deletePaymentTerm": "paymentTerm",
+    "listShipmentMethods": "shipmentMethod",
+    "postShipmentMethod": "shipmentMethod",
+    "getShipmentMethod": "shipmentMethod",
+    "patchShipmentMethod": "shipmentMethod",
+    "deleteShipmentMethod": "shipmentMethod",
+    "listItemCategories": "itemCategory",
+    "postItemCategory": "itemCategory",
+    "getItemCategory": "itemCategory",
+    "patchItemCategory": "itemCategory",
+    "deleteItemCategory": "itemCategory",
+    "listCashFlowStatement": "cashFlowStatement",
+    "getCashFlowStatement": "cashFlowStatement",
+    "listCountriesRegions": "countryRegion",
+    "postCountryRegion": "countryRegion",
+    "getCountryRegion": "countryRegion",
+    "patchCountryRegion": "countryRegion",
+    "deleteCountryRegion": "countryRegion",
+    "listSalesOrders": "salesOrder",
+    "postSalesOrder": "salesOrder",
+    "getSalesOrder": "salesOrder",
+    "patchSalesOrder": "salesOrder",
+    "deleteSalesOrder": "salesOrder",
+    "shipAndInvoiceActionSalesOrders": "salesOrder",
+    "listSalesOrderLinesForSalesOrder": "salesOrderLine",
+    "postSalesOrderLineForSalesOrder": "salesOrderLine",
+    "getSalesOrderLineForSalesOrder": "salesOrderLine",
+    "patchSalesOrderLineForSalesOrder": "salesOrderLine",
+    "deleteSalesOrderLineForSalesOrder": "salesOrderLine",
+    "listSalesOrderLines": "salesOrderLine",
+    "postSalesOrderLine": "salesOrderLine",
+    "getSalesOrderLine": "salesOrderLine",
+    "patchSalesOrderLine": "salesOrderLine",
+    "deleteSalesOrderLine": "salesOrderLine",
+    "listRetainedEarningsStatement": "retainedEarningsStatement",
+    "getRetainedEarningsStatement": "retainedEarningsStatement",
+    "listUnitsOfMeasure": "unitOfMeasure",
+    "postUnitOfMeasure": "unitOfMeasure",
+    "getUnitOfMeasure": "unitOfMeasure",
+    "patchUnitOfMeasure": "unitOfMeasure",
+    "deleteUnitOfMeasure": "unitOfMeasure",
+    "listAgedAccountsReceivable": "agedAccountsReceivable",
+    "getAgedAccountsReceivable": "agedAccountsReceivable",
+    "listAgedAccountsPayable": "agedAccountsPayable",
+    "getAgedAccountsPayable": "agedAccountsPayable",
+    "listBalanceSheet": "balanceSheet",
+    "getBalanceSheet": "balanceSheet",
+    "listTrialBalance": "trialBalance",
+    "getTrialBalance": "trialBalance",
+    "listIncomeStatement": "incomeStatement",
+    "getIncomeStatement": "incomeStatement",
+    "listTaxAreas": "taxArea",
+    "postTaxArea": "taxArea",
+    "getTaxArea": "taxArea",
+    "patchTaxArea": "taxArea",
+    "deleteTaxArea": "taxArea",
+    "listSalesQuotes": "salesQuote",
+    "postSalesQuote": "salesQuote",
+    "getSalesQuote": "salesQuote",
+    "patchSalesQuote": "salesQuote",
+    "deleteSalesQuote": "salesQuote",
+    "makeInvoiceActionSalesQuotes": "salesQuote",
+    "makeOrderActionSalesQuotes": "salesQuote",
+    "sendActionSalesQuotes": "salesQuote",
+    "listSalesQuoteLinesForSalesQuote": "salesQuoteLine",
+    "postSalesQuoteLineForSalesQuote": "salesQuoteLine",
+    "getSalesQuoteLineForSalesQuote": "salesQuoteLine",
+    "patchSalesQuoteLineForSalesQuote": "salesQuoteLine",
+    "deleteSalesQuoteLineForSalesQuote": "salesQuoteLine",
+    "listSalesQuoteLines": "salesQuoteLine",
+    "postSalesQuoteLine": "salesQuoteLine",
+    "getSalesQuoteLine": "salesQuoteLine",
+    "patchSalesQuoteLine": "salesQuoteLine",
+    "deleteSalesQuoteLine": "salesQuoteLine",
+    "listSalesCreditMemos": "salesCreditMemo",
+    "postSalesCreditMemo": "salesCreditMemo",
+    "getSalesCreditMemo": "salesCreditMemo",
+    "patchSalesCreditMemo": "salesCreditMemo",
+    "deleteSalesCreditMemo": "salesCreditMemo",
+    "cancelAndSendActionSalesCreditMemos": "salesCreditMemo",
+    "cancelActionSalesCreditMemos": "salesCreditMemo",
+    "postAndSendActionSalesCreditMemos": "salesCreditMemo",
+    "postActionSalesCreditMemos": "salesCreditMemo",
+    "sendActionSalesCreditMemos": "salesCreditMemo",
+    "listSalesCreditMemoLinesForSalesCreditMemo": "salesCreditMemoLine",
+    "postSalesCreditMemoLineForSalesCreditMemo": "salesCreditMemoLine",
+    "getSalesCreditMemoLineForSalesCreditMemo": "salesCreditMemoLine",
+    "patchSalesCreditMemoLineForSalesCreditMemo": "salesCreditMemoLine",
+    "deleteSalesCreditMemoLineForSalesCreditMemo": "salesCreditMemoLine",
+    "listSalesCreditMemoLines": "salesCreditMemoLine",
+    "postSalesCreditMemoLine": "salesCreditMemoLine",
+    "getSalesCreditMemoLine": "salesCreditMemoLine",
+    "patchSalesCreditMemoLine": "salesCreditMemoLine",
+    "deleteSalesCreditMemoLine": "salesCreditMemoLine",
+    "listGeneralLedgerEntryAttachments": "generalLedgerEntryAttachments",
+    "postGeneralLedgerEntryAttachments": "generalLedgerEntryAttachments",
+    "getGeneralLedgerEntryAttachments": "generalLedgerEntryAttachments",
+    "patchGeneralLedgerEntryAttachments": "generalLedgerEntryAttachments",
+    "deleteGeneralLedgerEntryAttachments": "generalLedgerEntryAttachments",
+    "listPurchaseInvoices": "purchaseInvoice",
+    "postPurchaseInvoice": "purchaseInvoice",
+    "getPurchaseInvoice": "purchaseInvoice",
+    "patchPurchaseInvoice": "purchaseInvoice",
+    "deletePurchaseInvoice": "purchaseInvoice",
+    "postActionPurchaseInvoices": "purchaseInvoice",
+    "listPurchaseInvoiceLinesForPurchaseInvoice": "purchaseInvoiceLine",
+    "postPurchaseInvoiceLineForPurchaseInvoice": "purchaseInvoiceLine",
+    "getPurchaseInvoiceLineForPurchaseInvoice": "purchaseInvoiceLine",
+    "patchPurchaseInvoiceLineForPurchaseInvoice": "purchaseInvoiceLine",
+    "deletePurchaseInvoiceLineForPurchaseInvoice": "purchaseInvoiceLine",
+    "listPurchaseInvoiceLines": "purchaseInvoiceLine",
+    "postPurchaseInvoiceLine": "purchaseInvoiceLine",
+    "getPurchaseInvoiceLine": "purchaseInvoiceLine",
+    "patchPurchaseInvoiceLine": "purchaseInvoiceLine",
+    "deletePurchaseInvoiceLine": "purchaseInvoiceLine",
+    "listProjects": "project",
+    "postProject": "project",
+    "getProject": "project",
+    "patchProject": "project",
+    "deleteProject": "project",
+    "listBankAccounts": "bankAccount",
+    "postBankAccount": "bankAccount",
+    "getBankAccount": "bankAccount",
+    "patchBankAccount": "bankAccount",
+    "deleteBankAccount": "bankAccount",
+    "listCustomerSales": "customerSale",
+    "getCustomerSale": "customerSale",
+    "listVendorPurchases": "vendorPurchase",
+    "getVendorPurchase": "vendorPurchase"
+  }
+}

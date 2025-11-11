@@ -1,0 +1,91 @@
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": false,
+      "description": "(v1.0) The id property for the Dynamics 365 Business Central timeRegistrationEntry entity"
+    },
+    "employeeId": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": true,
+      "description": "(v1.0) The employeeId property for the Dynamics 365 Business Central timeRegistrationEntry entity"
+    },
+    "employeeNumber": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The employeeNumber property for the Dynamics 365 Business Central timeRegistrationEntry entity",
+      "maxLength": 20
+    },
+    "jobId": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": true,
+      "description": "(v1.0) The jobId property for the Dynamics 365 Business Central timeRegistrationEntry entity"
+    },
+    "jobNumber": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The jobNumber property for the Dynamics 365 Business Central timeRegistrationEntry entity",
+      "maxLength": 20
+    },
+    "absence": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The absence property for the Dynamics 365 Business Central timeRegistrationEntry entity",
+      "maxLength": 10
+    },
+    "lineNumber": {
+      "type": "integer",
+      "format": "int32",
+      "nullable": true,
+      "description": "(v1.0) The lineNumber property for the Dynamics 365 Business Central timeRegistrationEntry entity"
+    },
+    "date": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true,
+      "description": "(v1.0) The date property for the Dynamics 365 Business Central timeRegistrationEntry entity"
+    },
+    "quantity": {
+      "type": "number",
+      "format": "decimal",
+      "nullable": true,
+      "description": "(v1.0) The quantity property for the Dynamics 365 Business Central timeRegistrationEntry entity"
+    },
+    "status": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The status property for the Dynamics 365 Business Central timeRegistrationEntry entity"
+    },
+    "unitOfMeasureId": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": true,
+      "description": "(v1.0) The unitOfMeasureId property for the Dynamics 365 Business Central timeRegistrationEntry entity"
+    },
+    "unitOfMeasure": {
+      "$ref": "#/components/schemas/unitofmeasuretype",
+      "nullable": true
+    },
+    "dimensions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/components/schemas/dimensiontype",
+        "nullable": true
+      }
+    },
+    "lastModfiedDateTime": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true,
+      "description": "(v1.0) The lastModfiedDateTime property for the Dynamics 365 Business Central timeRegistrationEntry entity"
+    },
+    "project": {
+      "nullable": true,
+      "$ref": "#/components/schemas/project"
+    }
+  }
+}

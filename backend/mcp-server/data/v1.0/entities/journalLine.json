@@ -1,0 +1,492 @@
+{
+  "entity": "journalLine",
+  "displayName": "Journal Line",
+  "description": "JournalLine entity for Business Central",
+  "endpoints": [
+    {
+      "id": "listJournalLinesForJournal",
+      "method": "GET",
+      "path": "/companies({company_id})/journals({journal_id})/journalLines",
+      "summary": "Returns a list of journalLines",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "journal_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for journal"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/journalLine.schema.json",
+      "selectableFields": [
+        "id",
+        "journalDisplayName",
+        "lineNumber",
+        "accountType",
+        "accountId",
+        "accountNumber",
+        "postingDate",
+        "documentNumber",
+        "externalDocumentNumber",
+        "amount",
+        "description",
+        "comment",
+        "dimensions",
+        "lastModifiedDateTime"
+      ],
+      "expandableRelations": [
+        "attachments",
+        "account"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "postJournalLineForJournal",
+      "method": "POST",
+      "path": "/companies({company_id})/journals({journal_id})/journalLines",
+      "summary": "Creates an object of type journalLine in Dynamics 365 Business Central",
+      "operationType": "create",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "journal_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for journal"
+        }
+      ],
+      "responseSchema": "schemas/journalLine.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 201,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getJournalLineForJournal",
+      "method": "GET",
+      "path": "/companies({company_id})/journals({journal_id})/journalLines({journalLine_id})",
+      "summary": "Retrieve the properties and relationships of an object of type journalLine for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "journal_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for journal"
+        },
+        {
+          "name": "journalLine_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for journalLine"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/journalLine.schema.json",
+      "selectableFields": [
+        "id",
+        "journalDisplayName",
+        "lineNumber",
+        "accountType",
+        "accountId",
+        "accountNumber",
+        "postingDate",
+        "documentNumber",
+        "externalDocumentNumber",
+        "amount",
+        "description",
+        "comment",
+        "dimensions",
+        "lastModifiedDateTime"
+      ],
+      "expandableRelations": [
+        "attachments",
+        "account"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "patchJournalLineForJournal",
+      "method": "PATCH",
+      "path": "/companies({company_id})/journals({journal_id})/journalLines({journalLine_id})",
+      "summary": "Updates an object of type journalLine in Dynamics 365 Business Central",
+      "operationType": "update",
+      "riskLevel": "MEDIUM",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "journal_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for journal"
+        },
+        {
+          "name": "journalLine_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for journalLine"
+        }
+      ],
+      "responseSchema": "schemas/journalLine.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "deleteJournalLineForJournal",
+      "method": "DELETE",
+      "path": "/companies({company_id})/journals({journal_id})/journalLines({journalLine_id})",
+      "summary": "Deletes an object of type journalLine in Dynamics 365 Business Central",
+      "operationType": "delete",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": true,
+      "warningMessage": "This will permanently delete the journalLine record",
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "journal_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for journal"
+        },
+        {
+          "name": "journalLine_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for journalLine"
+        }
+      ],
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 204,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "listJournalLines",
+      "method": "GET",
+      "path": "/companies({company_id})/journalLines",
+      "summary": "Returns a list of journalLines",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/journalLine.schema.json",
+      "selectableFields": [
+        "id",
+        "journalDisplayName",
+        "lineNumber",
+        "accountType",
+        "accountId",
+        "accountNumber",
+        "postingDate",
+        "documentNumber",
+        "externalDocumentNumber",
+        "amount",
+        "description",
+        "comment",
+        "dimensions",
+        "lastModifiedDateTime"
+      ],
+      "expandableRelations": [
+        "attachments",
+        "account"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "postJournalLine",
+      "method": "POST",
+      "path": "/companies({company_id})/journalLines",
+      "summary": "Creates an object of type journalLine in Dynamics 365 Business Central",
+      "operationType": "create",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "responseSchema": "schemas/journalLine.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 201,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getJournalLine",
+      "method": "GET",
+      "path": "/companies({company_id})/journalLines({journalLine_id})",
+      "summary": "Retrieve the properties and relationships of an object of type journalLine for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "journalLine_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for journalLine"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/journalLine.schema.json",
+      "selectableFields": [
+        "id",
+        "journalDisplayName",
+        "lineNumber",
+        "accountType",
+        "accountId",
+        "accountNumber",
+        "postingDate",
+        "documentNumber",
+        "externalDocumentNumber",
+        "amount",
+        "description",
+        "comment",
+        "dimensions",
+        "lastModifiedDateTime"
+      ],
+      "expandableRelations": [
+        "attachments",
+        "account"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "patchJournalLine",
+      "method": "PATCH",
+      "path": "/companies({company_id})/journalLines({journalLine_id})",
+      "summary": "Updates an object of type journalLine in Dynamics 365 Business Central",
+      "operationType": "update",
+      "riskLevel": "MEDIUM",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "journalLine_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for journalLine"
+        }
+      ],
+      "responseSchema": "schemas/journalLine.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "deleteJournalLine",
+      "method": "DELETE",
+      "path": "/companies({company_id})/journalLines({journalLine_id})",
+      "summary": "Deletes an object of type journalLine in Dynamics 365 Business Central",
+      "operationType": "delete",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": true,
+      "warningMessage": "This will permanently delete the journalLine record",
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "journalLine_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for journalLine"
+        }
+      ],
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 204,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    }
+  ]
+}

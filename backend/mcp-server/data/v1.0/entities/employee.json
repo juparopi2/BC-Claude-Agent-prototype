@@ -1,0 +1,242 @@
+{
+  "entity": "employee",
+  "displayName": "Employee",
+  "description": "Employee entity for Business Central",
+  "endpoints": [
+    {
+      "id": "listEmployees",
+      "method": "GET",
+      "path": "/companies({company_id})/employees",
+      "summary": "Returns a list of employees",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/employee.schema.json",
+      "selectableFields": [
+        "id",
+        "number",
+        "displayName",
+        "givenName",
+        "middleName",
+        "surname",
+        "jobTitle",
+        "address",
+        "phoneNumber",
+        "mobilePhone",
+        "email",
+        "personalEmail",
+        "employmentDate",
+        "terminationDate",
+        "status",
+        "birthDate",
+        "statisticsGroupCode",
+        "lastModifiedDateTime"
+      ],
+      "expandableRelations": [
+        "picture",
+        "defaultDimensions",
+        "timeRegistrationEntries"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "postEmployee",
+      "method": "POST",
+      "path": "/companies({company_id})/employees",
+      "summary": "Creates an object of type employee in Dynamics 365 Business Central",
+      "operationType": "create",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "responseSchema": "schemas/employee.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 201,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getEmployee",
+      "method": "GET",
+      "path": "/companies({company_id})/employees({employee_id})",
+      "summary": "Retrieve the properties and relationships of an object of type employee for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "employee_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for employee"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/employee.schema.json",
+      "selectableFields": [
+        "id",
+        "number",
+        "displayName",
+        "givenName",
+        "middleName",
+        "surname",
+        "jobTitle",
+        "address",
+        "phoneNumber",
+        "mobilePhone",
+        "email",
+        "personalEmail",
+        "employmentDate",
+        "terminationDate",
+        "status",
+        "birthDate",
+        "statisticsGroupCode",
+        "lastModifiedDateTime"
+      ],
+      "expandableRelations": [
+        "picture",
+        "defaultDimensions",
+        "timeRegistrationEntries"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "patchEmployee",
+      "method": "PATCH",
+      "path": "/companies({company_id})/employees({employee_id})",
+      "summary": "Updates an object of type employee in Dynamics 365 Business Central",
+      "operationType": "update",
+      "riskLevel": "MEDIUM",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "employee_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for employee"
+        }
+      ],
+      "responseSchema": "schemas/employee.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "deleteEmployee",
+      "method": "DELETE",
+      "path": "/companies({company_id})/employees({employee_id})",
+      "summary": "Deletes an object of type employee in Dynamics 365 Business Central",
+      "operationType": "delete",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": true,
+      "warningMessage": "This will permanently delete the employee record",
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "employee_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for employee"
+        }
+      ],
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 204,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    }
+  ]
+}

@@ -1,0 +1,100 @@
+{
+  "entity": "dimension",
+  "displayName": "Dimension",
+  "description": "Dimension entity for Business Central",
+  "endpoints": [
+    {
+      "id": "listDimensions",
+      "method": "GET",
+      "path": "/companies({company_id})/dimensions",
+      "summary": "Returns a list of dimensions",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/dimension.schema.json",
+      "selectableFields": [
+        "id",
+        "code",
+        "displayName",
+        "lastModifiedDateTime"
+      ],
+      "expandableRelations": [
+        "dimensionValues"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getDimension",
+      "method": "GET",
+      "path": "/companies({company_id})/dimensions({dimension_id})",
+      "summary": "Retrieve the properties and relationships of an object of type dimension for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "dimension_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for dimension"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/dimension.schema.json",
+      "selectableFields": [
+        "id",
+        "code",
+        "displayName",
+        "lastModifiedDateTime"
+      ],
+      "expandableRelations": [
+        "dimensionValues"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    }
+  ]
+}

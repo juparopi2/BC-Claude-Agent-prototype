@@ -1,0 +1,300 @@
+{
+  "entity": "purchaseInvoice",
+  "displayName": "Purchase Invoice",
+  "description": "PurchaseInvoice entity for Business Central",
+  "endpoints": [
+    {
+      "id": "listPurchaseInvoices",
+      "method": "GET",
+      "path": "/companies({company_id})/purchaseInvoices",
+      "summary": "Returns a list of purchaseInvoices",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/purchaseInvoice.schema.json",
+      "selectableFields": [
+        "id",
+        "number",
+        "invoiceDate",
+        "dueDate",
+        "vendorInvoiceNumber",
+        "vendorId",
+        "vendorNumber",
+        "vendorName",
+        "payToName",
+        "payToContact",
+        "payToVendorId",
+        "payToVendorNumber",
+        "shipToName",
+        "shipToContact",
+        "buyFromAddress",
+        "payToAddress",
+        "shipToAddress",
+        "currencyId",
+        "currencyCode",
+        "pricesIncludeTax",
+        "discountAmount",
+        "discountAppliedBeforeTax",
+        "totalAmountExcludingTax",
+        "totalTaxAmount",
+        "totalAmountIncludingTax",
+        "status",
+        "lastModifiedDateTime"
+      ],
+      "expandableRelations": [
+        "purchaseInvoiceLines",
+        "pdfDocument",
+        "vendor",
+        "currency"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "postPurchaseInvoice",
+      "method": "POST",
+      "path": "/companies({company_id})/purchaseInvoices",
+      "summary": "Creates an object of type purchaseInvoice in Dynamics 365 Business Central",
+      "operationType": "create",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "responseSchema": "schemas/purchaseInvoice.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 201,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getPurchaseInvoice",
+      "method": "GET",
+      "path": "/companies({company_id})/purchaseInvoices({purchaseInvoice_id})",
+      "summary": "Retrieve the properties and relationships of an object of type purchaseInvoice for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "purchaseInvoice_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for purchaseInvoice"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/purchaseInvoice.schema.json",
+      "selectableFields": [
+        "id",
+        "number",
+        "invoiceDate",
+        "dueDate",
+        "vendorInvoiceNumber",
+        "vendorId",
+        "vendorNumber",
+        "vendorName",
+        "payToName",
+        "payToContact",
+        "payToVendorId",
+        "payToVendorNumber",
+        "shipToName",
+        "shipToContact",
+        "buyFromAddress",
+        "payToAddress",
+        "shipToAddress",
+        "currencyId",
+        "currencyCode",
+        "pricesIncludeTax",
+        "discountAmount",
+        "discountAppliedBeforeTax",
+        "totalAmountExcludingTax",
+        "totalTaxAmount",
+        "totalAmountIncludingTax",
+        "status",
+        "lastModifiedDateTime"
+      ],
+      "expandableRelations": [
+        "purchaseInvoiceLines",
+        "pdfDocument",
+        "vendor",
+        "currency"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "patchPurchaseInvoice",
+      "method": "PATCH",
+      "path": "/companies({company_id})/purchaseInvoices({purchaseInvoice_id})",
+      "summary": "Updates an object of type purchaseInvoice in Dynamics 365 Business Central",
+      "operationType": "update",
+      "riskLevel": "MEDIUM",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "purchaseInvoice_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for purchaseInvoice"
+        }
+      ],
+      "responseSchema": "schemas/purchaseInvoice.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "deletePurchaseInvoice",
+      "method": "DELETE",
+      "path": "/companies({company_id})/purchaseInvoices({purchaseInvoice_id})",
+      "summary": "Deletes an object of type purchaseInvoice in Dynamics 365 Business Central",
+      "operationType": "delete",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": true,
+      "warningMessage": "This will permanently delete the purchaseInvoice record",
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "purchaseInvoice_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for purchaseInvoice"
+        }
+      ],
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 204,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "postActionPurchaseInvoices",
+      "method": "POST",
+      "path": "/companies({company_id})/purchaseInvoices({purchaseInvoice_id})/Microsoft.NAV.post",
+      "summary": "Performs the post action for purchaseInvoices entity",
+      "operationType": "action",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "purchaseInvoice_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for purchaseInvoice"
+        }
+      ],
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 204,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    }
+  ]
+}

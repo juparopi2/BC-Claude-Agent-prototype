@@ -1,0 +1,52 @@
+{
+  "type": "object",
+  "properties": {
+    "parentId": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": false,
+      "description": "(v1.0) The parentId property for the Dynamics 365 Business Central defaultDimensions entity"
+    },
+    "dimensionId": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": false,
+      "description": "(v1.0) The dimensionId property for the Dynamics 365 Business Central defaultDimensions entity"
+    },
+    "dimensionCode": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The dimensionCode property for the Dynamics 365 Business Central defaultDimensions entity",
+      "maxLength": 20
+    },
+    "dimensionValueId": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": true,
+      "description": "(v1.0) The dimensionValueId property for the Dynamics 365 Business Central defaultDimensions entity"
+    },
+    "dimensionValueCode": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The dimensionValueCode property for the Dynamics 365 Business Central defaultDimensions entity",
+      "maxLength": 20
+    },
+    "postingValidation": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The postingValidation property for the Dynamics 365 Business Central defaultDimensions entity"
+    },
+    "account": {
+      "nullable": true,
+      "$ref": "#/components/schemas/account"
+    },
+    "dimension": {
+      "nullable": true,
+      "$ref": "#/components/schemas/dimension"
+    },
+    "dimensionValue": {
+      "nullable": true,
+      "$ref": "#/components/schemas/dimensionValue"
+    }
+  }
+}

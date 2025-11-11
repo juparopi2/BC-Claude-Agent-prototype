@@ -1,0 +1,522 @@
+{
+  "entity": "salesQuoteLine",
+  "displayName": "Sales Quote Line",
+  "description": "SalesQuoteLine entity for Business Central",
+  "endpoints": [
+    {
+      "id": "listSalesQuoteLinesForSalesQuote",
+      "method": "GET",
+      "path": "/companies({company_id})/salesQuotes({salesQuote_id})/salesQuoteLines",
+      "summary": "Returns a list of salesQuoteLines",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesQuote_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for salesQuote"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/salesQuoteLine.schema.json",
+      "selectableFields": [
+        "id",
+        "documentId",
+        "sequence",
+        "itemId",
+        "accountId",
+        "lineType",
+        "lineDetails",
+        "description",
+        "unitOfMeasureId",
+        "unitOfMeasure",
+        "unitPrice",
+        "quantity",
+        "discountAmount",
+        "discountPercent",
+        "discountAppliedBeforeTax",
+        "amountExcludingTax",
+        "taxCode",
+        "taxPercent",
+        "totalTaxAmount",
+        "amountIncludingTax",
+        "netAmount",
+        "netTaxAmount",
+        "netAmountIncludingTax"
+      ],
+      "expandableRelations": [
+        "item",
+        "account"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "postSalesQuoteLineForSalesQuote",
+      "method": "POST",
+      "path": "/companies({company_id})/salesQuotes({salesQuote_id})/salesQuoteLines",
+      "summary": "Creates an object of type salesQuoteLine in Dynamics 365 Business Central",
+      "operationType": "create",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesQuote_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for salesQuote"
+        }
+      ],
+      "responseSchema": "schemas/salesQuoteLine.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 201,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getSalesQuoteLineForSalesQuote",
+      "method": "GET",
+      "path": "/companies({company_id})/salesQuotes({salesQuote_id})/salesQuoteLines('{salesQuoteLine_id}')",
+      "summary": "Retrieve the properties and relationships of an object of type salesQuoteLine for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesQuote_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for salesQuote"
+        },
+        {
+          "name": "salesQuoteLine_id",
+          "type": "string",
+          "required": true,
+          "description": "(v1.0) id for salesQuoteLine"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/salesQuoteLine.schema.json",
+      "selectableFields": [
+        "id",
+        "documentId",
+        "sequence",
+        "itemId",
+        "accountId",
+        "lineType",
+        "lineDetails",
+        "description",
+        "unitOfMeasureId",
+        "unitOfMeasure",
+        "unitPrice",
+        "quantity",
+        "discountAmount",
+        "discountPercent",
+        "discountAppliedBeforeTax",
+        "amountExcludingTax",
+        "taxCode",
+        "taxPercent",
+        "totalTaxAmount",
+        "amountIncludingTax",
+        "netAmount",
+        "netTaxAmount",
+        "netAmountIncludingTax"
+      ],
+      "expandableRelations": [
+        "item",
+        "account"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "patchSalesQuoteLineForSalesQuote",
+      "method": "PATCH",
+      "path": "/companies({company_id})/salesQuotes({salesQuote_id})/salesQuoteLines('{salesQuoteLine_id}')",
+      "summary": "Updates an object of type salesQuoteLine in Dynamics 365 Business Central",
+      "operationType": "update",
+      "riskLevel": "MEDIUM",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesQuote_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for salesQuote"
+        },
+        {
+          "name": "salesQuoteLine_id",
+          "type": "string",
+          "required": true,
+          "description": "(v1.0) id for salesQuoteLine"
+        }
+      ],
+      "responseSchema": "schemas/salesQuoteLine.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "deleteSalesQuoteLineForSalesQuote",
+      "method": "DELETE",
+      "path": "/companies({company_id})/salesQuotes({salesQuote_id})/salesQuoteLines('{salesQuoteLine_id}')",
+      "summary": "Deletes an object of type salesQuoteLine in Dynamics 365 Business Central",
+      "operationType": "delete",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": true,
+      "warningMessage": "This will permanently delete the salesQuoteLine record",
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesQuote_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for salesQuote"
+        },
+        {
+          "name": "salesQuoteLine_id",
+          "type": "string",
+          "required": true,
+          "description": "(v1.0) id for salesQuoteLine"
+        }
+      ],
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 204,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "listSalesQuoteLines",
+      "method": "GET",
+      "path": "/companies({company_id})/salesQuoteLines",
+      "summary": "Returns a list of salesQuoteLines",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/salesQuoteLine.schema.json",
+      "selectableFields": [
+        "id",
+        "documentId",
+        "sequence",
+        "itemId",
+        "accountId",
+        "lineType",
+        "lineDetails",
+        "description",
+        "unitOfMeasureId",
+        "unitOfMeasure",
+        "unitPrice",
+        "quantity",
+        "discountAmount",
+        "discountPercent",
+        "discountAppliedBeforeTax",
+        "amountExcludingTax",
+        "taxCode",
+        "taxPercent",
+        "totalTaxAmount",
+        "amountIncludingTax",
+        "netAmount",
+        "netTaxAmount",
+        "netAmountIncludingTax"
+      ],
+      "expandableRelations": [
+        "item",
+        "account"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "postSalesQuoteLine",
+      "method": "POST",
+      "path": "/companies({company_id})/salesQuoteLines",
+      "summary": "Creates an object of type salesQuoteLine in Dynamics 365 Business Central",
+      "operationType": "create",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "responseSchema": "schemas/salesQuoteLine.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 201,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getSalesQuoteLine",
+      "method": "GET",
+      "path": "/companies({company_id})/salesQuoteLines('{salesQuoteLine_id}')",
+      "summary": "Retrieve the properties and relationships of an object of type salesQuoteLine for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesQuoteLine_id",
+          "type": "string",
+          "required": true,
+          "description": "(v1.0) id for salesQuoteLine"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/salesQuoteLine.schema.json",
+      "selectableFields": [
+        "id",
+        "documentId",
+        "sequence",
+        "itemId",
+        "accountId",
+        "lineType",
+        "lineDetails",
+        "description",
+        "unitOfMeasureId",
+        "unitOfMeasure",
+        "unitPrice",
+        "quantity",
+        "discountAmount",
+        "discountPercent",
+        "discountAppliedBeforeTax",
+        "amountExcludingTax",
+        "taxCode",
+        "taxPercent",
+        "totalTaxAmount",
+        "amountIncludingTax",
+        "netAmount",
+        "netTaxAmount",
+        "netAmountIncludingTax"
+      ],
+      "expandableRelations": [
+        "item",
+        "account"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "patchSalesQuoteLine",
+      "method": "PATCH",
+      "path": "/companies({company_id})/salesQuoteLines('{salesQuoteLine_id}')",
+      "summary": "Updates an object of type salesQuoteLine in Dynamics 365 Business Central",
+      "operationType": "update",
+      "riskLevel": "MEDIUM",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesQuoteLine_id",
+          "type": "string",
+          "required": true,
+          "description": "(v1.0) id for salesQuoteLine"
+        }
+      ],
+      "responseSchema": "schemas/salesQuoteLine.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "deleteSalesQuoteLine",
+      "method": "DELETE",
+      "path": "/companies({company_id})/salesQuoteLines('{salesQuoteLine_id}')",
+      "summary": "Deletes an object of type salesQuoteLine in Dynamics 365 Business Central",
+      "operationType": "delete",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": true,
+      "warningMessage": "This will permanently delete the salesQuoteLine record",
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesQuoteLine_id",
+          "type": "string",
+          "required": true,
+          "description": "(v1.0) id for salesQuoteLine"
+        }
+      ],
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 204,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    }
+  ]
+}

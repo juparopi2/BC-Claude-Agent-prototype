@@ -1,0 +1,316 @@
+{
+  "entity": "salesOrder",
+  "displayName": "Sales Order",
+  "description": "SalesOrder entity for Business Central",
+  "endpoints": [
+    {
+      "id": "listSalesOrders",
+      "method": "GET",
+      "path": "/companies({company_id})/salesOrders",
+      "summary": "Returns a list of salesOrders",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/salesOrder.schema.json",
+      "selectableFields": [
+        "id",
+        "number",
+        "externalDocumentNumber",
+        "orderDate",
+        "customerId",
+        "contactId",
+        "customerNumber",
+        "customerName",
+        "billToName",
+        "billToCustomerId",
+        "billToCustomerNumber",
+        "shipToName",
+        "shipToContact",
+        "sellingPostalAddress",
+        "billingPostalAddress",
+        "shippingPostalAddress",
+        "currencyId",
+        "currencyCode",
+        "pricesIncludeTax",
+        "paymentTermsId",
+        "shipmentMethodId",
+        "salesperson",
+        "partialShipping",
+        "requestedDeliveryDate",
+        "discountAmount",
+        "discountAppliedBeforeTax",
+        "totalAmountExcludingTax",
+        "totalTaxAmount",
+        "totalAmountIncludingTax",
+        "fullyShipped",
+        "status",
+        "lastModifiedDateTime",
+        "phoneNumber",
+        "email"
+      ],
+      "expandableRelations": [
+        "salesOrderLines",
+        "customer",
+        "currency",
+        "paymentTerm",
+        "shipmentMethod"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "postSalesOrder",
+      "method": "POST",
+      "path": "/companies({company_id})/salesOrders",
+      "summary": "Creates an object of type salesOrder in Dynamics 365 Business Central",
+      "operationType": "create",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "responseSchema": "schemas/salesOrder.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 201,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getSalesOrder",
+      "method": "GET",
+      "path": "/companies({company_id})/salesOrders({salesOrder_id})",
+      "summary": "Retrieve the properties and relationships of an object of type salesOrder for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesOrder_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for salesOrder"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/salesOrder.schema.json",
+      "selectableFields": [
+        "id",
+        "number",
+        "externalDocumentNumber",
+        "orderDate",
+        "customerId",
+        "contactId",
+        "customerNumber",
+        "customerName",
+        "billToName",
+        "billToCustomerId",
+        "billToCustomerNumber",
+        "shipToName",
+        "shipToContact",
+        "sellingPostalAddress",
+        "billingPostalAddress",
+        "shippingPostalAddress",
+        "currencyId",
+        "currencyCode",
+        "pricesIncludeTax",
+        "paymentTermsId",
+        "shipmentMethodId",
+        "salesperson",
+        "partialShipping",
+        "requestedDeliveryDate",
+        "discountAmount",
+        "discountAppliedBeforeTax",
+        "totalAmountExcludingTax",
+        "totalTaxAmount",
+        "totalAmountIncludingTax",
+        "fullyShipped",
+        "status",
+        "lastModifiedDateTime",
+        "phoneNumber",
+        "email"
+      ],
+      "expandableRelations": [
+        "salesOrderLines",
+        "customer",
+        "currency",
+        "paymentTerm",
+        "shipmentMethod"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "patchSalesOrder",
+      "method": "PATCH",
+      "path": "/companies({company_id})/salesOrders({salesOrder_id})",
+      "summary": "Updates an object of type salesOrder in Dynamics 365 Business Central",
+      "operationType": "update",
+      "riskLevel": "MEDIUM",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesOrder_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for salesOrder"
+        }
+      ],
+      "responseSchema": "schemas/salesOrder.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "deleteSalesOrder",
+      "method": "DELETE",
+      "path": "/companies({company_id})/salesOrders({salesOrder_id})",
+      "summary": "Deletes an object of type salesOrder in Dynamics 365 Business Central",
+      "operationType": "delete",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": true,
+      "warningMessage": "This will permanently delete the salesOrder record",
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesOrder_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for salesOrder"
+        }
+      ],
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 204,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "shipAndInvoiceActionSalesOrders",
+      "method": "POST",
+      "path": "/companies({company_id})/salesOrders({salesOrder_id})/Microsoft.NAV.shipAndInvoice",
+      "summary": "Performs the shipAndInvoice action for salesOrders entity",
+      "operationType": "action",
+      "riskLevel": "MEDIUM",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesOrder_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for salesOrder"
+        }
+      ],
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 204,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    }
+  ]
+}

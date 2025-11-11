@@ -1,0 +1,778 @@
+{
+  "entity": "attachments",
+  "displayName": "Attachments",
+  "description": "Attachments entity for Business Central",
+  "endpoints": [
+    {
+      "id": "listAttachmentsForJournalLineForJournal",
+      "method": "GET",
+      "path": "/companies({company_id})/journals({journal_id})/journalLines({journalLine_id})/attachments",
+      "summary": "Returns a list of attachments",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "journal_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for journal"
+        },
+        {
+          "name": "journalLine_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for journalLine"
+        }
+      ],
+      "queryParams": [
+        "$select"
+      ],
+      "responseSchema": "schemas/attachments.schema.json",
+      "selectableFields": [
+        "parentId",
+        "id",
+        "fileName",
+        "byteSize",
+        "content",
+        "lastModifiedDateTime"
+      ],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "postAttachmentsForJournalLineForJournal",
+      "method": "POST",
+      "path": "/companies({company_id})/journals({journal_id})/journalLines({journalLine_id})/attachments",
+      "summary": "Creates an object of type attachments in Dynamics 365 Business Central",
+      "operationType": "create",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "journal_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for journal"
+        },
+        {
+          "name": "journalLine_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for journalLine"
+        }
+      ],
+      "responseSchema": "schemas/attachments.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 201,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getAttachmentsForJournalLineForJournal",
+      "method": "GET",
+      "path": "/companies({company_id})/journals({journal_id})/journalLines({journalLine_id})/attachments({attachments_parentId},{attachments_id})",
+      "summary": "Retrieve the properties and relationships of an object of type attachments for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "journal_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for journal"
+        },
+        {
+          "name": "journalLine_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for journalLine"
+        },
+        {
+          "name": "attachments_parentId",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) parentId for attachments"
+        },
+        {
+          "name": "attachments_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for attachments"
+        }
+      ],
+      "queryParams": [
+        "$select"
+      ],
+      "responseSchema": "schemas/attachments.schema.json",
+      "selectableFields": [
+        "parentId",
+        "id",
+        "fileName",
+        "byteSize",
+        "content",
+        "lastModifiedDateTime"
+      ],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "patchAttachmentsForJournalLineForJournal",
+      "method": "PATCH",
+      "path": "/companies({company_id})/journals({journal_id})/journalLines({journalLine_id})/attachments({attachments_parentId},{attachments_id})",
+      "summary": "Updates an object of type attachments in Dynamics 365 Business Central",
+      "operationType": "update",
+      "riskLevel": "MEDIUM",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "journal_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for journal"
+        },
+        {
+          "name": "journalLine_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for journalLine"
+        },
+        {
+          "name": "attachments_parentId",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) parentId for attachments"
+        },
+        {
+          "name": "attachments_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for attachments"
+        }
+      ],
+      "responseSchema": "schemas/attachments.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "deleteAttachmentsForJournalLineForJournal",
+      "method": "DELETE",
+      "path": "/companies({company_id})/journals({journal_id})/journalLines({journalLine_id})/attachments({attachments_parentId},{attachments_id})",
+      "summary": "Deletes an object of type attachments in Dynamics 365 Business Central",
+      "operationType": "delete",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": true,
+      "warningMessage": "This will permanently delete the attachments record",
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "journal_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for journal"
+        },
+        {
+          "name": "journalLine_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for journalLine"
+        },
+        {
+          "name": "attachments_parentId",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) parentId for attachments"
+        },
+        {
+          "name": "attachments_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for attachments"
+        }
+      ],
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 204,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "listAttachmentsForJournalLine",
+      "method": "GET",
+      "path": "/companies({company_id})/journalLines({journalLine_id})/attachments",
+      "summary": "Returns a list of attachments",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "journalLine_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for journalLine"
+        }
+      ],
+      "queryParams": [
+        "$select"
+      ],
+      "responseSchema": "schemas/attachments.schema.json",
+      "selectableFields": [
+        "parentId",
+        "id",
+        "fileName",
+        "byteSize",
+        "content",
+        "lastModifiedDateTime"
+      ],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "postAttachmentsForJournalLine",
+      "method": "POST",
+      "path": "/companies({company_id})/journalLines({journalLine_id})/attachments",
+      "summary": "Creates an object of type attachments in Dynamics 365 Business Central",
+      "operationType": "create",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "journalLine_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for journalLine"
+        }
+      ],
+      "responseSchema": "schemas/attachments.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 201,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getAttachmentsForJournalLine",
+      "method": "GET",
+      "path": "/companies({company_id})/journalLines({journalLine_id})/attachments({attachments_parentId},{attachments_id})",
+      "summary": "Retrieve the properties and relationships of an object of type attachments for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "journalLine_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for journalLine"
+        },
+        {
+          "name": "attachments_parentId",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) parentId for attachments"
+        },
+        {
+          "name": "attachments_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for attachments"
+        }
+      ],
+      "queryParams": [
+        "$select"
+      ],
+      "responseSchema": "schemas/attachments.schema.json",
+      "selectableFields": [
+        "parentId",
+        "id",
+        "fileName",
+        "byteSize",
+        "content",
+        "lastModifiedDateTime"
+      ],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "patchAttachmentsForJournalLine",
+      "method": "PATCH",
+      "path": "/companies({company_id})/journalLines({journalLine_id})/attachments({attachments_parentId},{attachments_id})",
+      "summary": "Updates an object of type attachments in Dynamics 365 Business Central",
+      "operationType": "update",
+      "riskLevel": "MEDIUM",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "journalLine_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for journalLine"
+        },
+        {
+          "name": "attachments_parentId",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) parentId for attachments"
+        },
+        {
+          "name": "attachments_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for attachments"
+        }
+      ],
+      "responseSchema": "schemas/attachments.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "deleteAttachmentsForJournalLine",
+      "method": "DELETE",
+      "path": "/companies({company_id})/journalLines({journalLine_id})/attachments({attachments_parentId},{attachments_id})",
+      "summary": "Deletes an object of type attachments in Dynamics 365 Business Central",
+      "operationType": "delete",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": true,
+      "warningMessage": "This will permanently delete the attachments record",
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "journalLine_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for journalLine"
+        },
+        {
+          "name": "attachments_parentId",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) parentId for attachments"
+        },
+        {
+          "name": "attachments_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for attachments"
+        }
+      ],
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 204,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "listAttachments",
+      "method": "GET",
+      "path": "/companies({company_id})/attachments",
+      "summary": "Returns a list of attachments",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "queryParams": [
+        "$select"
+      ],
+      "responseSchema": "schemas/attachments.schema.json",
+      "selectableFields": [
+        "parentId",
+        "id",
+        "fileName",
+        "byteSize",
+        "content",
+        "lastModifiedDateTime"
+      ],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "postAttachments",
+      "method": "POST",
+      "path": "/companies({company_id})/attachments",
+      "summary": "Creates an object of type attachments in Dynamics 365 Business Central",
+      "operationType": "create",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "responseSchema": "schemas/attachments.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 201,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getAttachments",
+      "method": "GET",
+      "path": "/companies({company_id})/attachments({attachments_parentId},{attachments_id})",
+      "summary": "Retrieve the properties and relationships of an object of type attachments for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "attachments_parentId",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) parentId for attachments"
+        },
+        {
+          "name": "attachments_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for attachments"
+        }
+      ],
+      "queryParams": [
+        "$select"
+      ],
+      "responseSchema": "schemas/attachments.schema.json",
+      "selectableFields": [
+        "parentId",
+        "id",
+        "fileName",
+        "byteSize",
+        "content",
+        "lastModifiedDateTime"
+      ],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "patchAttachments",
+      "method": "PATCH",
+      "path": "/companies({company_id})/attachments({attachments_parentId},{attachments_id})",
+      "summary": "Updates an object of type attachments in Dynamics 365 Business Central",
+      "operationType": "update",
+      "riskLevel": "MEDIUM",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "attachments_parentId",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) parentId for attachments"
+        },
+        {
+          "name": "attachments_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for attachments"
+        }
+      ],
+      "responseSchema": "schemas/attachments.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "deleteAttachments",
+      "method": "DELETE",
+      "path": "/companies({company_id})/attachments({attachments_parentId},{attachments_id})",
+      "summary": "Deletes an object of type attachments in Dynamics 365 Business Central",
+      "operationType": "delete",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": true,
+      "warningMessage": "This will permanently delete the attachments record",
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "attachments_parentId",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) parentId for attachments"
+        },
+        {
+          "name": "attachments_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for attachments"
+        }
+      ],
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 204,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    }
+  ]
+}

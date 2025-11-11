@@ -1,0 +1,41 @@
+{
+  "type": "object",
+  "properties": {
+    "parentId": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": false,
+      "description": "(v1.0) The parentId property for the Dynamics 365 Business Central attachments entity"
+    },
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": false,
+      "description": "(v1.0) The id property for the Dynamics 365 Business Central attachments entity"
+    },
+    "fileName": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The fileName property for the Dynamics 365 Business Central attachments entity",
+      "maxLength": 250
+    },
+    "byteSize": {
+      "type": "integer",
+      "format": "int32",
+      "nullable": true,
+      "description": "(v1.0) The byteSize property for the Dynamics 365 Business Central attachments entity"
+    },
+    "content": {
+      "type": "string",
+      "format": "binary",
+      "nullable": true,
+      "description": "(v1.0) The content property for the Dynamics 365 Business Central attachments entity"
+    },
+    "lastModifiedDateTime": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true,
+      "description": "(v1.0) The lastModifiedDateTime property for the Dynamics 365 Business Central attachments entity"
+    }
+  }
+}

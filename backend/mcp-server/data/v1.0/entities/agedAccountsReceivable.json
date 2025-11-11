@@ -1,0 +1,108 @@
+{
+  "entity": "agedAccountsReceivable",
+  "displayName": "Aged Accounts Receivable",
+  "description": "AgedAccountsReceivable entity for Business Central",
+  "endpoints": [
+    {
+      "id": "listAgedAccountsReceivable",
+      "method": "GET",
+      "path": "/companies({company_id})/agedAccountsReceivable",
+      "summary": "Returns a list of agedAccountsReceivable",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "queryParams": [
+        "$select"
+      ],
+      "responseSchema": "schemas/agedAccountsReceivable.schema.json",
+      "selectableFields": [
+        "customerId",
+        "customerNumber",
+        "name",
+        "currencyCode",
+        "balanceDue",
+        "currentAmount",
+        "period1Amount",
+        "period2Amount",
+        "period3Amount",
+        "agedAsOfDate",
+        "periodLengthFilter"
+      ],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getAgedAccountsReceivable",
+      "method": "GET",
+      "path": "/companies({company_id})/agedAccountsReceivable({agedAccountsReceivable_customerId})",
+      "summary": "Retrieve the properties and relationships of an object of type agedAccountsReceivable for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "agedAccountsReceivable_customerId",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) customerId for agedAccountsReceivable"
+        }
+      ],
+      "queryParams": [
+        "$select"
+      ],
+      "responseSchema": "schemas/agedAccountsReceivable.schema.json",
+      "selectableFields": [
+        "customerId",
+        "customerNumber",
+        "name",
+        "currencyCode",
+        "balanceDue",
+        "currentAmount",
+        "period1Amount",
+        "period2Amount",
+        "period3Amount",
+        "agedAsOfDate",
+        "periodLengthFilter"
+      ],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    }
+  ]
+}

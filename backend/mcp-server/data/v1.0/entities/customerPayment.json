@@ -1,0 +1,496 @@
+{
+  "entity": "customerPayment",
+  "displayName": "Customer Payment",
+  "description": "CustomerPayment entity for Business Central",
+  "endpoints": [
+    {
+      "id": "listCustomerPaymentsForCustomerPaymentJournal",
+      "method": "GET",
+      "path": "/companies({company_id})/customerPaymentJournals({customerPaymentJournal_id})/customerPayments",
+      "summary": "Returns a list of customerPayments",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "customerPaymentJournal_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for customerPaymentJournal"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/customerPayment.schema.json",
+      "selectableFields": [
+        "id",
+        "journalDisplayName",
+        "lineNumber",
+        "customerId",
+        "customerNumber",
+        "contactId",
+        "postingDate",
+        "documentNumber",
+        "externalDocumentNumber",
+        "amount",
+        "appliesToInvoiceId",
+        "appliesToInvoiceNumber",
+        "description",
+        "comment",
+        "dimensions",
+        "lastModifiedDateTime"
+      ],
+      "expandableRelations": [
+        "customer"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "postCustomerPaymentForCustomerPaymentJournal",
+      "method": "POST",
+      "path": "/companies({company_id})/customerPaymentJournals({customerPaymentJournal_id})/customerPayments",
+      "summary": "Creates an object of type customerPayment in Dynamics 365 Business Central",
+      "operationType": "create",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "customerPaymentJournal_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for customerPaymentJournal"
+        }
+      ],
+      "responseSchema": "schemas/customerPayment.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 201,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getCustomerPaymentForCustomerPaymentJournal",
+      "method": "GET",
+      "path": "/companies({company_id})/customerPaymentJournals({customerPaymentJournal_id})/customerPayments({customerPayment_id})",
+      "summary": "Retrieve the properties and relationships of an object of type customerPayment for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "customerPaymentJournal_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for customerPaymentJournal"
+        },
+        {
+          "name": "customerPayment_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for customerPayment"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/customerPayment.schema.json",
+      "selectableFields": [
+        "id",
+        "journalDisplayName",
+        "lineNumber",
+        "customerId",
+        "customerNumber",
+        "contactId",
+        "postingDate",
+        "documentNumber",
+        "externalDocumentNumber",
+        "amount",
+        "appliesToInvoiceId",
+        "appliesToInvoiceNumber",
+        "description",
+        "comment",
+        "dimensions",
+        "lastModifiedDateTime"
+      ],
+      "expandableRelations": [
+        "customer"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "patchCustomerPaymentForCustomerPaymentJournal",
+      "method": "PATCH",
+      "path": "/companies({company_id})/customerPaymentJournals({customerPaymentJournal_id})/customerPayments({customerPayment_id})",
+      "summary": "Updates an object of type customerPayment in Dynamics 365 Business Central",
+      "operationType": "update",
+      "riskLevel": "MEDIUM",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "customerPaymentJournal_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for customerPaymentJournal"
+        },
+        {
+          "name": "customerPayment_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for customerPayment"
+        }
+      ],
+      "responseSchema": "schemas/customerPayment.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "deleteCustomerPaymentForCustomerPaymentJournal",
+      "method": "DELETE",
+      "path": "/companies({company_id})/customerPaymentJournals({customerPaymentJournal_id})/customerPayments({customerPayment_id})",
+      "summary": "Deletes an object of type customerPayment in Dynamics 365 Business Central",
+      "operationType": "delete",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": true,
+      "warningMessage": "This will permanently delete the customerPayment record",
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "customerPaymentJournal_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for customerPaymentJournal"
+        },
+        {
+          "name": "customerPayment_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for customerPayment"
+        }
+      ],
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 204,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "listCustomerPayments",
+      "method": "GET",
+      "path": "/companies({company_id})/customerPayments",
+      "summary": "Returns a list of customerPayments",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/customerPayment.schema.json",
+      "selectableFields": [
+        "id",
+        "journalDisplayName",
+        "lineNumber",
+        "customerId",
+        "customerNumber",
+        "contactId",
+        "postingDate",
+        "documentNumber",
+        "externalDocumentNumber",
+        "amount",
+        "appliesToInvoiceId",
+        "appliesToInvoiceNumber",
+        "description",
+        "comment",
+        "dimensions",
+        "lastModifiedDateTime"
+      ],
+      "expandableRelations": [
+        "customer"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "postCustomerPayment",
+      "method": "POST",
+      "path": "/companies({company_id})/customerPayments",
+      "summary": "Creates an object of type customerPayment in Dynamics 365 Business Central",
+      "operationType": "create",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "responseSchema": "schemas/customerPayment.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 201,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getCustomerPayment",
+      "method": "GET",
+      "path": "/companies({company_id})/customerPayments({customerPayment_id})",
+      "summary": "Retrieve the properties and relationships of an object of type customerPayment for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "customerPayment_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for customerPayment"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/customerPayment.schema.json",
+      "selectableFields": [
+        "id",
+        "journalDisplayName",
+        "lineNumber",
+        "customerId",
+        "customerNumber",
+        "contactId",
+        "postingDate",
+        "documentNumber",
+        "externalDocumentNumber",
+        "amount",
+        "appliesToInvoiceId",
+        "appliesToInvoiceNumber",
+        "description",
+        "comment",
+        "dimensions",
+        "lastModifiedDateTime"
+      ],
+      "expandableRelations": [
+        "customer"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "patchCustomerPayment",
+      "method": "PATCH",
+      "path": "/companies({company_id})/customerPayments({customerPayment_id})",
+      "summary": "Updates an object of type customerPayment in Dynamics 365 Business Central",
+      "operationType": "update",
+      "riskLevel": "MEDIUM",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "customerPayment_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for customerPayment"
+        }
+      ],
+      "responseSchema": "schemas/customerPayment.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "deleteCustomerPayment",
+      "method": "DELETE",
+      "path": "/companies({company_id})/customerPayments({customerPayment_id})",
+      "summary": "Deletes an object of type customerPayment in Dynamics 365 Business Central",
+      "operationType": "delete",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": true,
+      "warningMessage": "This will permanently delete the customerPayment record",
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "customerPayment_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for customerPayment"
+        }
+      ],
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 204,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    }
+  ]
+}

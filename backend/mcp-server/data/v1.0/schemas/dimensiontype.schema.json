@@ -1,0 +1,29 @@
+{
+  "type": "object",
+  "properties": {
+    "code": {
+      "type": "string",
+      "nullable": false,
+      "description": "(v1.0) The code property for the Dynamics 365 Business Central dimensiontype entity"
+    },
+    "displayName": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The displayName property for the Dynamics 365 Business Central dimensiontype entity"
+    },
+    "valueCode": {
+      "type": "string",
+      "nullable": false,
+      "description": "(v1.0) The valueCode property for the Dynamics 365 Business Central dimensiontype entity"
+    },
+    "valueDisplayName": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The valueDisplayName property for the Dynamics 365 Business Central dimensiontype entity"
+    },
+    "customer": {
+      "nullable": true,
+      "$ref": "#/components/schemas/customer"
+    }
+  }
+}

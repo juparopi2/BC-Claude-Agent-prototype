@@ -1,0 +1,50 @@
+{
+  "type": "object",
+  "properties": {
+    "parentId": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": false,
+      "description": "(v1.0) The parentId property for the Dynamics 365 Business Central dimensionLine entity"
+    },
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": false,
+      "description": "(v1.0) The id property for the Dynamics 365 Business Central dimensionLine entity"
+    },
+    "code": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The code property for the Dynamics 365 Business Central dimensionLine entity",
+      "maxLength": 20
+    },
+    "displayName": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The displayName property for the Dynamics 365 Business Central dimensionLine entity",
+      "maxLength": 30
+    },
+    "valueId": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": true,
+      "description": "(v1.0) The valueId property for the Dynamics 365 Business Central dimensionLine entity"
+    },
+    "valueCode": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The valueCode property for the Dynamics 365 Business Central dimensionLine entity"
+    },
+    "valueDisplayName": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The valueDisplayName property for the Dynamics 365 Business Central dimensionLine entity",
+      "maxLength": 50
+    },
+    "dimension": {
+      "nullable": true,
+      "$ref": "#/components/schemas/dimension"
+    }
+  }
+}

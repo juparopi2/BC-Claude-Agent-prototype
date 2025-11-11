@@ -1,0 +1,25 @@
+{
+  "type": "object",
+  "properties": {
+    "number": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The number property for the Dynamics 365 Business Central documentlineobjectdetailstype entity",
+      "maxLength": 20
+    },
+    "displayName": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The displayName property for the Dynamics 365 Business Central documentlineobjectdetailstype entity",
+      "maxLength": 100
+    },
+    "item": {
+      "nullable": true,
+      "$ref": "#/components/schemas/item"
+    },
+    "account": {
+      "nullable": true,
+      "$ref": "#/components/schemas/account"
+    }
+  }
+}

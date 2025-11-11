@@ -1,0 +1,478 @@
+{
+  "entity": "pdfDocument",
+  "displayName": "Pdf Document",
+  "description": "PdfDocument entity for Business Central",
+  "endpoints": [
+    {
+      "id": "listPdfDocumentForSalesInvoice",
+      "method": "GET",
+      "path": "/companies({company_id})/salesInvoices({salesInvoice_id})/pdfDocument",
+      "summary": "Returns a list of pdfDocument",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesInvoice_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for salesInvoice"
+        }
+      ],
+      "queryParams": [
+        "$select"
+      ],
+      "responseSchema": "schemas/pdfDocument.schema.json",
+      "selectableFields": [
+        "id",
+        "content"
+      ],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getPdfDocumentForSalesInvoice",
+      "method": "GET",
+      "path": "/companies({company_id})/salesInvoices({salesInvoice_id})/pdfDocument({pdfDocument_id})",
+      "summary": "Retrieve the properties and relationships of an object of type pdfDocument for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesInvoice_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for salesInvoice"
+        },
+        {
+          "name": "pdfDocument_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for pdfDocument"
+        }
+      ],
+      "queryParams": [
+        "$select"
+      ],
+      "responseSchema": "schemas/pdfDocument.schema.json",
+      "selectableFields": [
+        "id",
+        "content"
+      ],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "listPdfDocument",
+      "method": "GET",
+      "path": "/companies({company_id})/pdfDocument",
+      "summary": "Returns a list of pdfDocument",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "queryParams": [
+        "$select"
+      ],
+      "responseSchema": "schemas/pdfDocument.schema.json",
+      "selectableFields": [
+        "id",
+        "content"
+      ],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getPdfDocument",
+      "method": "GET",
+      "path": "/companies({company_id})/pdfDocument({pdfDocument_id})",
+      "summary": "Retrieve the properties and relationships of an object of type pdfDocument for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "pdfDocument_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for pdfDocument"
+        }
+      ],
+      "queryParams": [
+        "$select"
+      ],
+      "responseSchema": "schemas/pdfDocument.schema.json",
+      "selectableFields": [
+        "id",
+        "content"
+      ],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "listPdfDocumentForSalesQuote",
+      "method": "GET",
+      "path": "/companies({company_id})/salesQuotes({salesQuote_id})/pdfDocument",
+      "summary": "Returns a list of pdfDocument",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesQuote_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for salesQuote"
+        }
+      ],
+      "queryParams": [
+        "$select"
+      ],
+      "responseSchema": "schemas/pdfDocument.schema.json",
+      "selectableFields": [
+        "id",
+        "content"
+      ],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getPdfDocumentForSalesQuote",
+      "method": "GET",
+      "path": "/companies({company_id})/salesQuotes({salesQuote_id})/pdfDocument({pdfDocument_id})",
+      "summary": "Retrieve the properties and relationships of an object of type pdfDocument for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesQuote_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for salesQuote"
+        },
+        {
+          "name": "pdfDocument_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for pdfDocument"
+        }
+      ],
+      "queryParams": [
+        "$select"
+      ],
+      "responseSchema": "schemas/pdfDocument.schema.json",
+      "selectableFields": [
+        "id",
+        "content"
+      ],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "listPdfDocumentForSalesCreditMemo",
+      "method": "GET",
+      "path": "/companies({company_id})/salesCreditMemos({salesCreditMemo_id})/pdfDocument",
+      "summary": "Returns a list of pdfDocument",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesCreditMemo_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for salesCreditMemo"
+        }
+      ],
+      "queryParams": [
+        "$select"
+      ],
+      "responseSchema": "schemas/pdfDocument.schema.json",
+      "selectableFields": [
+        "id",
+        "content"
+      ],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getPdfDocumentForSalesCreditMemo",
+      "method": "GET",
+      "path": "/companies({company_id})/salesCreditMemos({salesCreditMemo_id})/pdfDocument({pdfDocument_id})",
+      "summary": "Retrieve the properties and relationships of an object of type pdfDocument for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesCreditMemo_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for salesCreditMemo"
+        },
+        {
+          "name": "pdfDocument_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for pdfDocument"
+        }
+      ],
+      "queryParams": [
+        "$select"
+      ],
+      "responseSchema": "schemas/pdfDocument.schema.json",
+      "selectableFields": [
+        "id",
+        "content"
+      ],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "listPdfDocumentForPurchaseInvoice",
+      "method": "GET",
+      "path": "/companies({company_id})/purchaseInvoices({purchaseInvoice_id})/pdfDocument",
+      "summary": "Returns a list of pdfDocument",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "purchaseInvoice_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for purchaseInvoice"
+        }
+      ],
+      "queryParams": [
+        "$select"
+      ],
+      "responseSchema": "schemas/pdfDocument.schema.json",
+      "selectableFields": [
+        "id",
+        "content"
+      ],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getPdfDocumentForPurchaseInvoice",
+      "method": "GET",
+      "path": "/companies({company_id})/purchaseInvoices({purchaseInvoice_id})/pdfDocument({pdfDocument_id})",
+      "summary": "Retrieve the properties and relationships of an object of type pdfDocument for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "purchaseInvoice_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for purchaseInvoice"
+        },
+        {
+          "name": "pdfDocument_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for pdfDocument"
+        }
+      ],
+      "queryParams": [
+        "$select"
+      ],
+      "responseSchema": "schemas/pdfDocument.schema.json",
+      "selectableFields": [
+        "id",
+        "content"
+      ],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    }
+  ]
+}

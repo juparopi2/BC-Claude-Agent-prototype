@@ -1,0 +1,179 @@
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": false,
+      "description": "(v1.0) The id property for the Dynamics 365 Business Central purchaseInvoice entity"
+    },
+    "number": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The number property for the Dynamics 365 Business Central purchaseInvoice entity",
+      "maxLength": 20
+    },
+    "invoiceDate": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true,
+      "description": "(v1.0) The invoiceDate property for the Dynamics 365 Business Central purchaseInvoice entity"
+    },
+    "dueDate": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true,
+      "description": "(v1.0) The dueDate property for the Dynamics 365 Business Central purchaseInvoice entity"
+    },
+    "vendorInvoiceNumber": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The vendorInvoiceNumber property for the Dynamics 365 Business Central purchaseInvoice entity",
+      "maxLength": 35
+    },
+    "vendorId": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": true,
+      "description": "(v1.0) The vendorId property for the Dynamics 365 Business Central purchaseInvoice entity"
+    },
+    "vendorNumber": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The vendorNumber property for the Dynamics 365 Business Central purchaseInvoice entity",
+      "maxLength": 20
+    },
+    "vendorName": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The vendorName property for the Dynamics 365 Business Central purchaseInvoice entity",
+      "maxLength": 100
+    },
+    "payToName": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The payToName property for the Dynamics 365 Business Central purchaseInvoice entity",
+      "maxLength": 100
+    },
+    "payToContact": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The payToContact property for the Dynamics 365 Business Central purchaseInvoice entity",
+      "maxLength": 100
+    },
+    "payToVendorId": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": true,
+      "description": "(v1.0) The payToVendorId property for the Dynamics 365 Business Central purchaseInvoice entity"
+    },
+    "payToVendorNumber": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The payToVendorNumber property for the Dynamics 365 Business Central purchaseInvoice entity",
+      "maxLength": 20
+    },
+    "shipToName": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The shipToName property for the Dynamics 365 Business Central purchaseInvoice entity",
+      "maxLength": 100
+    },
+    "shipToContact": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The shipToContact property for the Dynamics 365 Business Central purchaseInvoice entity",
+      "maxLength": 100
+    },
+    "buyFromAddress": {
+      "$ref": "#/components/schemas/postaladdresstype",
+      "nullable": true
+    },
+    "payToAddress": {
+      "$ref": "#/components/schemas/postaladdresstype",
+      "nullable": true
+    },
+    "shipToAddress": {
+      "$ref": "#/components/schemas/postaladdresstype",
+      "nullable": true
+    },
+    "currencyId": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": true,
+      "description": "(v1.0) The currencyId property for the Dynamics 365 Business Central purchaseInvoice entity"
+    },
+    "currencyCode": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The currencyCode property for the Dynamics 365 Business Central purchaseInvoice entity"
+    },
+    "pricesIncludeTax": {
+      "type": "boolean",
+      "nullable": true,
+      "description": "(v1.0) The pricesIncludeTax property for the Dynamics 365 Business Central purchaseInvoice entity"
+    },
+    "discountAmount": {
+      "type": "number",
+      "format": "decimal",
+      "nullable": true,
+      "description": "(v1.0) The discountAmount property for the Dynamics 365 Business Central purchaseInvoice entity"
+    },
+    "discountAppliedBeforeTax": {
+      "type": "boolean",
+      "nullable": true,
+      "description": "(v1.0) The discountAppliedBeforeTax property for the Dynamics 365 Business Central purchaseInvoice entity"
+    },
+    "totalAmountExcludingTax": {
+      "type": "number",
+      "format": "decimal",
+      "nullable": true,
+      "description": "(v1.0) The totalAmountExcludingTax property for the Dynamics 365 Business Central purchaseInvoice entity"
+    },
+    "totalTaxAmount": {
+      "type": "number",
+      "format": "decimal",
+      "nullable": true,
+      "description": "(v1.0) The totalTaxAmount property for the Dynamics 365 Business Central purchaseInvoice entity"
+    },
+    "totalAmountIncludingTax": {
+      "type": "number",
+      "format": "decimal",
+      "nullable": true,
+      "description": "(v1.0) The totalAmountIncludingTax property for the Dynamics 365 Business Central purchaseInvoice entity"
+    },
+    "status": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The status property for the Dynamics 365 Business Central purchaseInvoice entity"
+    },
+    "lastModifiedDateTime": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true,
+      "description": "(v1.0) The lastModifiedDateTime property for the Dynamics 365 Business Central purchaseInvoice entity"
+    },
+    "purchaseInvoiceLines": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/purchaseInvoiceLine"
+      }
+    },
+    "pdfDocument": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/pdfDocument"
+      }
+    },
+    "vendor": {
+      "nullable": true,
+      "$ref": "#/components/schemas/vendor"
+    },
+    "currency": {
+      "nullable": true,
+      "$ref": "#/components/schemas/currency"
+    }
+  }
+}

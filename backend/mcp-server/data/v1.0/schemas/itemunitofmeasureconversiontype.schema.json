@@ -1,0 +1,35 @@
+{
+  "type": "object",
+  "properties": {
+    "toUnitOfMeasure": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The toUnitOfMeasure property for the Dynamics 365 Business Central itemunitofmeasureconversiontype entity",
+      "maxLength": 10
+    },
+    "fromToConversionRate": {
+      "type": "number",
+      "format": "decimal",
+      "nullable": true,
+      "description": "(v1.0) The fromToConversionRate property for the Dynamics 365 Business Central itemunitofmeasureconversiontype entity"
+    },
+    "picture": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/picture"
+      }
+    },
+    "defaultDimensions": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/defaultDimensions"
+      }
+    },
+    "itemCategory": {
+      "nullable": true,
+      "$ref": "#/components/schemas/itemCategory"
+    }
+  }
+}

@@ -1,0 +1,206 @@
+{
+  "entity": "unitOfMeasure",
+  "displayName": "Unit Of Measure",
+  "description": "UnitOfMeasure entity for Business Central",
+  "endpoints": [
+    {
+      "id": "listUnitsOfMeasure",
+      "method": "GET",
+      "path": "/companies({company_id})/unitsOfMeasure",
+      "summary": "Returns a list of unitsOfMeasure",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "queryParams": [
+        "$select"
+      ],
+      "responseSchema": "schemas/unitOfMeasure.schema.json",
+      "selectableFields": [
+        "id",
+        "code",
+        "displayName",
+        "internationalStandardCode",
+        "lastModifiedDateTime"
+      ],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "postUnitOfMeasure",
+      "method": "POST",
+      "path": "/companies({company_id})/unitsOfMeasure",
+      "summary": "Creates an object of type unitOfMeasure in Dynamics 365 Business Central",
+      "operationType": "create",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "responseSchema": "schemas/unitOfMeasure.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 201,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getUnitOfMeasure",
+      "method": "GET",
+      "path": "/companies({company_id})/unitsOfMeasure({unitOfMeasure_id})",
+      "summary": "Retrieve the properties and relationships of an object of type unitOfMeasure for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "unitOfMeasure_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for unitOfMeasure"
+        }
+      ],
+      "queryParams": [
+        "$select"
+      ],
+      "responseSchema": "schemas/unitOfMeasure.schema.json",
+      "selectableFields": [
+        "id",
+        "code",
+        "displayName",
+        "internationalStandardCode",
+        "lastModifiedDateTime"
+      ],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "patchUnitOfMeasure",
+      "method": "PATCH",
+      "path": "/companies({company_id})/unitsOfMeasure({unitOfMeasure_id})",
+      "summary": "Updates an object of type unitOfMeasure in Dynamics 365 Business Central",
+      "operationType": "update",
+      "riskLevel": "MEDIUM",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "unitOfMeasure_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for unitOfMeasure"
+        }
+      ],
+      "responseSchema": "schemas/unitOfMeasure.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "deleteUnitOfMeasure",
+      "method": "DELETE",
+      "path": "/companies({company_id})/unitsOfMeasure({unitOfMeasure_id})",
+      "summary": "Deletes an object of type unitOfMeasure in Dynamics 365 Business Central",
+      "operationType": "delete",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": true,
+      "warningMessage": "This will permanently delete the unitOfMeasure record",
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "unitOfMeasure_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for unitOfMeasure"
+        }
+      ],
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 204,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    }
+  ]
+}

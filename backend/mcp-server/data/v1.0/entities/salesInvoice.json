@@ -1,0 +1,512 @@
+{
+  "entity": "salesInvoice",
+  "displayName": "Sales Invoice",
+  "description": "SalesInvoice entity for Business Central",
+  "endpoints": [
+    {
+      "id": "listSalesInvoices",
+      "method": "GET",
+      "path": "/companies({company_id})/salesInvoices",
+      "summary": "Returns a list of salesInvoices",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/salesInvoice.schema.json",
+      "selectableFields": [
+        "id",
+        "number",
+        "externalDocumentNumber",
+        "invoiceDate",
+        "dueDate",
+        "customerPurchaseOrderReference",
+        "customerId",
+        "contactId",
+        "customerNumber",
+        "customerName",
+        "billToName",
+        "billToCustomerId",
+        "billToCustomerNumber",
+        "shipToName",
+        "shipToContact",
+        "sellingPostalAddress",
+        "billingPostalAddress",
+        "shippingPostalAddress",
+        "currencyId",
+        "currencyCode",
+        "orderId",
+        "orderNumber",
+        "paymentTermsId",
+        "shipmentMethodId",
+        "salesperson",
+        "pricesIncludeTax",
+        "remainingAmount",
+        "discountAmount",
+        "discountAppliedBeforeTax",
+        "totalAmountExcludingTax",
+        "totalTaxAmount",
+        "totalAmountIncludingTax",
+        "status",
+        "lastModifiedDateTime",
+        "phoneNumber",
+        "email"
+      ],
+      "expandableRelations": [
+        "salesInvoiceLines",
+        "pdfDocument",
+        "customer",
+        "currency",
+        "paymentTerm",
+        "shipmentMethod"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "postSalesInvoice",
+      "method": "POST",
+      "path": "/companies({company_id})/salesInvoices",
+      "summary": "Creates an object of type salesInvoice in Dynamics 365 Business Central",
+      "operationType": "create",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "responseSchema": "schemas/salesInvoice.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 201,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getSalesInvoice",
+      "method": "GET",
+      "path": "/companies({company_id})/salesInvoices({salesInvoice_id})",
+      "summary": "Retrieve the properties and relationships of an object of type salesInvoice for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesInvoice_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for salesInvoice"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/salesInvoice.schema.json",
+      "selectableFields": [
+        "id",
+        "number",
+        "externalDocumentNumber",
+        "invoiceDate",
+        "dueDate",
+        "customerPurchaseOrderReference",
+        "customerId",
+        "contactId",
+        "customerNumber",
+        "customerName",
+        "billToName",
+        "billToCustomerId",
+        "billToCustomerNumber",
+        "shipToName",
+        "shipToContact",
+        "sellingPostalAddress",
+        "billingPostalAddress",
+        "shippingPostalAddress",
+        "currencyId",
+        "currencyCode",
+        "orderId",
+        "orderNumber",
+        "paymentTermsId",
+        "shipmentMethodId",
+        "salesperson",
+        "pricesIncludeTax",
+        "remainingAmount",
+        "discountAmount",
+        "discountAppliedBeforeTax",
+        "totalAmountExcludingTax",
+        "totalTaxAmount",
+        "totalAmountIncludingTax",
+        "status",
+        "lastModifiedDateTime",
+        "phoneNumber",
+        "email"
+      ],
+      "expandableRelations": [
+        "salesInvoiceLines",
+        "pdfDocument",
+        "customer",
+        "currency",
+        "paymentTerm",
+        "shipmentMethod"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "patchSalesInvoice",
+      "method": "PATCH",
+      "path": "/companies({company_id})/salesInvoices({salesInvoice_id})",
+      "summary": "Updates an object of type salesInvoice in Dynamics 365 Business Central",
+      "operationType": "update",
+      "riskLevel": "MEDIUM",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesInvoice_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for salesInvoice"
+        }
+      ],
+      "responseSchema": "schemas/salesInvoice.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "deleteSalesInvoice",
+      "method": "DELETE",
+      "path": "/companies({company_id})/salesInvoices({salesInvoice_id})",
+      "summary": "Deletes an object of type salesInvoice in Dynamics 365 Business Central",
+      "operationType": "delete",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": true,
+      "warningMessage": "This will permanently delete the salesInvoice record",
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesInvoice_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for salesInvoice"
+        }
+      ],
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 204,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "cancelAndSendActionSalesInvoices",
+      "method": "POST",
+      "path": "/companies({company_id})/salesInvoices({salesInvoice_id})/Microsoft.NAV.cancelAndSend",
+      "summary": "Performs the cancelAndSend action for salesInvoices entity",
+      "operationType": "action",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesInvoice_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for salesInvoice"
+        }
+      ],
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 204,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "cancelActionSalesInvoices",
+      "method": "POST",
+      "path": "/companies({company_id})/salesInvoices({salesInvoice_id})/Microsoft.NAV.cancel",
+      "summary": "Performs the cancel action for salesInvoices entity",
+      "operationType": "action",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesInvoice_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for salesInvoice"
+        }
+      ],
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 204,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "makeCorrectiveCreditMemoActionSalesInvoices",
+      "method": "POST",
+      "path": "/companies({company_id})/salesInvoices({salesInvoice_id})/Microsoft.NAV.makeCorrectiveCreditMemo",
+      "summary": "Performs the makeCorrectiveCreditMemo action for salesInvoices entity",
+      "operationType": "action",
+      "riskLevel": "MEDIUM",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesInvoice_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for salesInvoice"
+        }
+      ],
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 204,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "postAndSendActionSalesInvoices",
+      "method": "POST",
+      "path": "/companies({company_id})/salesInvoices({salesInvoice_id})/Microsoft.NAV.postAndSend",
+      "summary": "Performs the postAndSend action for salesInvoices entity",
+      "operationType": "action",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesInvoice_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for salesInvoice"
+        }
+      ],
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 204,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "postActionSalesInvoices",
+      "method": "POST",
+      "path": "/companies({company_id})/salesInvoices({salesInvoice_id})/Microsoft.NAV.post",
+      "summary": "Performs the post action for salesInvoices entity",
+      "operationType": "action",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesInvoice_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for salesInvoice"
+        }
+      ],
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 204,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "sendActionSalesInvoices",
+      "method": "POST",
+      "path": "/companies({company_id})/salesInvoices({salesInvoice_id})/Microsoft.NAV.send",
+      "summary": "Performs the send action for salesInvoices entity",
+      "operationType": "action",
+      "riskLevel": "MEDIUM",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesInvoice_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for salesInvoice"
+        }
+      ],
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 204,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    }
+  ]
+}

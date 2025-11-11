@@ -1,0 +1,195 @@
+{
+  "entity": "dimensionValue",
+  "displayName": "Dimension Value",
+  "description": "DimensionValue entity for Business Central",
+  "endpoints": [
+    {
+      "id": "listDimensionValuesForDimension",
+      "method": "GET",
+      "path": "/companies({company_id})/dimensions({dimension_id})/dimensionValues",
+      "summary": "Returns a list of dimensionValues",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "dimension_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for dimension"
+        }
+      ],
+      "queryParams": [
+        "$select"
+      ],
+      "responseSchema": "schemas/dimensionValue.schema.json",
+      "selectableFields": [
+        "id",
+        "code",
+        "displayName",
+        "lastModifiedDateTime"
+      ],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getDimensionValueForDimension",
+      "method": "GET",
+      "path": "/companies({company_id})/dimensions({dimension_id})/dimensionValues({dimensionValue_id})",
+      "summary": "Retrieve the properties and relationships of an object of type dimensionValue for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "dimension_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for dimension"
+        },
+        {
+          "name": "dimensionValue_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for dimensionValue"
+        }
+      ],
+      "queryParams": [
+        "$select"
+      ],
+      "responseSchema": "schemas/dimensionValue.schema.json",
+      "selectableFields": [
+        "id",
+        "code",
+        "displayName",
+        "lastModifiedDateTime"
+      ],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "listDimensionValues",
+      "method": "GET",
+      "path": "/companies({company_id})/dimensionValues",
+      "summary": "Returns a list of dimensionValues",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "queryParams": [
+        "$select"
+      ],
+      "responseSchema": "schemas/dimensionValue.schema.json",
+      "selectableFields": [
+        "id",
+        "code",
+        "displayName",
+        "lastModifiedDateTime"
+      ],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getDimensionValue",
+      "method": "GET",
+      "path": "/companies({company_id})/dimensionValues({dimensionValue_id})",
+      "summary": "Retrieve the properties and relationships of an object of type dimensionValue for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "dimensionValue_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for dimensionValue"
+        }
+      ],
+      "queryParams": [
+        "$select"
+      ],
+      "responseSchema": "schemas/dimensionValue.schema.json",
+      "selectableFields": [
+        "id",
+        "code",
+        "displayName",
+        "lastModifiedDateTime"
+      ],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    }
+  ]
+}

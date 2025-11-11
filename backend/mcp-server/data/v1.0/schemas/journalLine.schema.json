@@ -1,0 +1,99 @@
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": false,
+      "description": "(v1.0) The id property for the Dynamics 365 Business Central journalLine entity"
+    },
+    "journalDisplayName": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The journalDisplayName property for the Dynamics 365 Business Central journalLine entity"
+    },
+    "lineNumber": {
+      "type": "integer",
+      "format": "int32",
+      "nullable": true,
+      "description": "(v1.0) The lineNumber property for the Dynamics 365 Business Central journalLine entity"
+    },
+    "accountType": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The accountType property for the Dynamics 365 Business Central journalLine entity"
+    },
+    "accountId": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": true,
+      "description": "(v1.0) The accountId property for the Dynamics 365 Business Central journalLine entity"
+    },
+    "accountNumber": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The accountNumber property for the Dynamics 365 Business Central journalLine entity",
+      "maxLength": 20
+    },
+    "postingDate": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true,
+      "description": "(v1.0) The postingDate property for the Dynamics 365 Business Central journalLine entity"
+    },
+    "documentNumber": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The documentNumber property for the Dynamics 365 Business Central journalLine entity",
+      "maxLength": 20
+    },
+    "externalDocumentNumber": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The externalDocumentNumber property for the Dynamics 365 Business Central journalLine entity",
+      "maxLength": 35
+    },
+    "amount": {
+      "type": "number",
+      "format": "decimal",
+      "nullable": true,
+      "description": "(v1.0) The amount property for the Dynamics 365 Business Central journalLine entity"
+    },
+    "description": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The description property for the Dynamics 365 Business Central journalLine entity",
+      "maxLength": 100
+    },
+    "comment": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The comment property for the Dynamics 365 Business Central journalLine entity",
+      "maxLength": 250
+    },
+    "dimensions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/components/schemas/dimensiontype",
+        "nullable": true
+      }
+    },
+    "lastModifiedDateTime": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true,
+      "description": "(v1.0) The lastModifiedDateTime property for the Dynamics 365 Business Central journalLine entity"
+    },
+    "attachments": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/attachments"
+      }
+    },
+    "account": {
+      "nullable": true,
+      "$ref": "#/components/schemas/account"
+    }
+  }
+}

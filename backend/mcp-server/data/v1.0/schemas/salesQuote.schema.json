@@ -1,0 +1,225 @@
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": false,
+      "description": "(v1.0) The id property for the Dynamics 365 Business Central salesQuote entity"
+    },
+    "number": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The number property for the Dynamics 365 Business Central salesQuote entity",
+      "maxLength": 20
+    },
+    "externalDocumentNumber": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The externalDocumentNumber property for the Dynamics 365 Business Central salesQuote entity",
+      "maxLength": 35
+    },
+    "documentDate": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true,
+      "description": "(v1.0) The documentDate property for the Dynamics 365 Business Central salesQuote entity"
+    },
+    "dueDate": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true,
+      "description": "(v1.0) The dueDate property for the Dynamics 365 Business Central salesQuote entity"
+    },
+    "customerId": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": true,
+      "description": "(v1.0) The customerId property for the Dynamics 365 Business Central salesQuote entity"
+    },
+    "contactId": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The contactId property for the Dynamics 365 Business Central salesQuote entity",
+      "maxLength": 250
+    },
+    "customerNumber": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The customerNumber property for the Dynamics 365 Business Central salesQuote entity",
+      "maxLength": 20
+    },
+    "customerName": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The customerName property for the Dynamics 365 Business Central salesQuote entity",
+      "maxLength": 100
+    },
+    "billToName": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The billToName property for the Dynamics 365 Business Central salesQuote entity",
+      "maxLength": 100
+    },
+    "billToCustomerId": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": true,
+      "description": "(v1.0) The billToCustomerId property for the Dynamics 365 Business Central salesQuote entity"
+    },
+    "billToCustomerNumber": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The billToCustomerNumber property for the Dynamics 365 Business Central salesQuote entity",
+      "maxLength": 20
+    },
+    "shipToName": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The shipToName property for the Dynamics 365 Business Central salesQuote entity",
+      "maxLength": 100
+    },
+    "shipToContact": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The shipToContact property for the Dynamics 365 Business Central salesQuote entity",
+      "maxLength": 100
+    },
+    "sellingPostalAddress": {
+      "$ref": "#/components/schemas/postaladdresstype",
+      "nullable": true
+    },
+    "billingPostalAddress": {
+      "$ref": "#/components/schemas/postaladdresstype",
+      "nullable": true
+    },
+    "shippingPostalAddress": {
+      "$ref": "#/components/schemas/postaladdresstype",
+      "nullable": true
+    },
+    "currencyId": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": true,
+      "description": "(v1.0) The currencyId property for the Dynamics 365 Business Central salesQuote entity"
+    },
+    "currencyCode": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The currencyCode property for the Dynamics 365 Business Central salesQuote entity"
+    },
+    "paymentTermsId": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": true,
+      "description": "(v1.0) The paymentTermsId property for the Dynamics 365 Business Central salesQuote entity"
+    },
+    "shipmentMethodId": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": true,
+      "description": "(v1.0) The shipmentMethodId property for the Dynamics 365 Business Central salesQuote entity"
+    },
+    "salesperson": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The salesperson property for the Dynamics 365 Business Central salesQuote entity",
+      "maxLength": 20
+    },
+    "discountAmount": {
+      "type": "number",
+      "format": "decimal",
+      "nullable": true,
+      "description": "(v1.0) The discountAmount property for the Dynamics 365 Business Central salesQuote entity"
+    },
+    "totalAmountExcludingTax": {
+      "type": "number",
+      "format": "decimal",
+      "nullable": true,
+      "description": "(v1.0) The totalAmountExcludingTax property for the Dynamics 365 Business Central salesQuote entity"
+    },
+    "totalTaxAmount": {
+      "type": "number",
+      "format": "decimal",
+      "nullable": true,
+      "description": "(v1.0) The totalTaxAmount property for the Dynamics 365 Business Central salesQuote entity"
+    },
+    "totalAmountIncludingTax": {
+      "type": "number",
+      "format": "decimal",
+      "nullable": true,
+      "description": "(v1.0) The totalAmountIncludingTax property for the Dynamics 365 Business Central salesQuote entity"
+    },
+    "status": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The status property for the Dynamics 365 Business Central salesQuote entity"
+    },
+    "sentDate": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true,
+      "description": "(v1.0) The sentDate property for the Dynamics 365 Business Central salesQuote entity"
+    },
+    "validUntilDate": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true,
+      "description": "(v1.0) The validUntilDate property for the Dynamics 365 Business Central salesQuote entity"
+    },
+    "acceptedDate": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true,
+      "description": "(v1.0) The acceptedDate property for the Dynamics 365 Business Central salesQuote entity"
+    },
+    "lastModifiedDateTime": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true,
+      "description": "(v1.0) The lastModifiedDateTime property for the Dynamics 365 Business Central salesQuote entity"
+    },
+    "phoneNumber": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The phoneNumber property for the Dynamics 365 Business Central salesQuote entity",
+      "maxLength": 30
+    },
+    "email": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The email property for the Dynamics 365 Business Central salesQuote entity",
+      "maxLength": 80
+    },
+    "salesQuoteLines": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/salesQuoteLine"
+      }
+    },
+    "pdfDocument": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/pdfDocument"
+      }
+    },
+    "customer": {
+      "nullable": true,
+      "$ref": "#/components/schemas/customer"
+    },
+    "currency": {
+      "nullable": true,
+      "$ref": "#/components/schemas/currency"
+    },
+    "paymentTerm": {
+      "nullable": true,
+      "$ref": "#/components/schemas/paymentTerm"
+    },
+    "shipmentMethod": {
+      "nullable": true,
+      "$ref": "#/components/schemas/shipmentMethod"
+    }
+  }
+}

@@ -1,0 +1,130 @@
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": false,
+      "description": "(v1.0) The id property for the Dynamics 365 Business Central employee entity"
+    },
+    "number": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The number property for the Dynamics 365 Business Central employee entity",
+      "maxLength": 20
+    },
+    "displayName": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The displayName property for the Dynamics 365 Business Central employee entity"
+    },
+    "givenName": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The givenName property for the Dynamics 365 Business Central employee entity",
+      "maxLength": 30
+    },
+    "middleName": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The middleName property for the Dynamics 365 Business Central employee entity",
+      "maxLength": 30
+    },
+    "surname": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The surname property for the Dynamics 365 Business Central employee entity",
+      "maxLength": 30
+    },
+    "jobTitle": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The jobTitle property for the Dynamics 365 Business Central employee entity",
+      "maxLength": 30
+    },
+    "address": {
+      "$ref": "#/components/schemas/postaladdresstype",
+      "nullable": true
+    },
+    "phoneNumber": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The phoneNumber property for the Dynamics 365 Business Central employee entity",
+      "maxLength": 30
+    },
+    "mobilePhone": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The mobilePhone property for the Dynamics 365 Business Central employee entity",
+      "maxLength": 30
+    },
+    "email": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The email property for the Dynamics 365 Business Central employee entity",
+      "maxLength": 80
+    },
+    "personalEmail": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The personalEmail property for the Dynamics 365 Business Central employee entity",
+      "maxLength": 80
+    },
+    "employmentDate": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true,
+      "description": "(v1.0) The employmentDate property for the Dynamics 365 Business Central employee entity"
+    },
+    "terminationDate": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true,
+      "description": "(v1.0) The terminationDate property for the Dynamics 365 Business Central employee entity"
+    },
+    "status": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The status property for the Dynamics 365 Business Central employee entity"
+    },
+    "birthDate": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true,
+      "description": "(v1.0) The birthDate property for the Dynamics 365 Business Central employee entity"
+    },
+    "statisticsGroupCode": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The statisticsGroupCode property for the Dynamics 365 Business Central employee entity",
+      "maxLength": 10
+    },
+    "lastModifiedDateTime": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true,
+      "description": "(v1.0) The lastModifiedDateTime property for the Dynamics 365 Business Central employee entity"
+    },
+    "picture": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/picture"
+      }
+    },
+    "defaultDimensions": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/defaultDimensions"
+      }
+    },
+    "timeRegistrationEntries": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/timeRegistrationEntry"
+      }
+    }
+  }
+}

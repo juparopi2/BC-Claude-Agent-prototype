@@ -1,0 +1,108 @@
+{
+  "entity": "agedAccountsPayable",
+  "displayName": "Aged Accounts Payable",
+  "description": "AgedAccountsPayable entity for Business Central",
+  "endpoints": [
+    {
+      "id": "listAgedAccountsPayable",
+      "method": "GET",
+      "path": "/companies({company_id})/agedAccountsPayable",
+      "summary": "Returns a list of agedAccountsPayable",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "queryParams": [
+        "$select"
+      ],
+      "responseSchema": "schemas/agedAccountsPayable.schema.json",
+      "selectableFields": [
+        "vendorId",
+        "vendorNumber",
+        "name",
+        "currencyCode",
+        "balanceDue",
+        "currentAmount",
+        "period1Amount",
+        "period2Amount",
+        "period3Amount",
+        "agedAsOfDate",
+        "periodLengthFilter"
+      ],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getAgedAccountsPayable",
+      "method": "GET",
+      "path": "/companies({company_id})/agedAccountsPayable({agedAccountsPayable_vendorId})",
+      "summary": "Retrieve the properties and relationships of an object of type agedAccountsPayable for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "agedAccountsPayable_vendorId",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) vendorId for agedAccountsPayable"
+        }
+      ],
+      "queryParams": [
+        "$select"
+      ],
+      "responseSchema": "schemas/agedAccountsPayable.schema.json",
+      "selectableFields": [
+        "vendorId",
+        "vendorNumber",
+        "name",
+        "currencyCode",
+        "balanceDue",
+        "currentAmount",
+        "period1Amount",
+        "period2Amount",
+        "period3Amount",
+        "agedAsOfDate",
+        "periodLengthFilter"
+      ],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    }
+  ]
+}

@@ -1,0 +1,151 @@
+{
+  "entity": "companyInformation",
+  "displayName": "Company Information",
+  "description": "CompanyInformation entity for Business Central",
+  "endpoints": [
+    {
+      "id": "listCompanyInformation",
+      "method": "GET",
+      "path": "/companies({company_id})/companyInformation",
+      "summary": "Returns a list of companyInformation",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "queryParams": [
+        "$select"
+      ],
+      "responseSchema": "schemas/companyInformation.schema.json",
+      "selectableFields": [
+        "id",
+        "displayName",
+        "address",
+        "phoneNumber",
+        "faxNumber",
+        "email",
+        "website",
+        "taxRegistrationNumber",
+        "currencyCode",
+        "currentFiscalYearStartDate",
+        "industry",
+        "picture",
+        "lastModifiedDateTime"
+      ],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getCompanyInformation",
+      "method": "GET",
+      "path": "/companies({company_id})/companyInformation({companyInformation_id})",
+      "summary": "Retrieve the properties and relationships of an object of type companyInformation for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "companyInformation_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for companyInformation"
+        }
+      ],
+      "queryParams": [
+        "$select"
+      ],
+      "responseSchema": "schemas/companyInformation.schema.json",
+      "selectableFields": [
+        "id",
+        "displayName",
+        "address",
+        "phoneNumber",
+        "faxNumber",
+        "email",
+        "website",
+        "taxRegistrationNumber",
+        "currencyCode",
+        "currentFiscalYearStartDate",
+        "industry",
+        "picture",
+        "lastModifiedDateTime"
+      ],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "patchCompanyInformation",
+      "method": "PATCH",
+      "path": "/companies({company_id})/companyInformation({companyInformation_id})",
+      "summary": "Updates an object of type companyInformation in Dynamics 365 Business Central",
+      "operationType": "update",
+      "riskLevel": "MEDIUM",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "companyInformation_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for companyInformation"
+        }
+      ],
+      "responseSchema": "schemas/companyInformation.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    }
+  ]
+}

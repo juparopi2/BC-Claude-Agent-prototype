@@ -1,0 +1,109 @@
+{
+  "entity": "trialBalance",
+  "displayName": "Trial Balance",
+  "description": "TrialBalance entity for Business Central",
+  "endpoints": [
+    {
+      "id": "listTrialBalance",
+      "method": "GET",
+      "path": "/companies({company_id})/trialBalance",
+      "summary": "Returns a list of trialBalance",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/trialBalance.schema.json",
+      "selectableFields": [
+        "number",
+        "accountId",
+        "accountType",
+        "display",
+        "totalDebit",
+        "totalCredit",
+        "balanceAtDateDebit",
+        "balanceAtDateCredit",
+        "dateFilter"
+      ],
+      "expandableRelations": [
+        "account"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getTrialBalance",
+      "method": "GET",
+      "path": "/companies({company_id})/trialBalance('{trialBalance_number}')",
+      "summary": "Retrieve the properties and relationships of an object of type trialBalance for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "trialBalance_number",
+          "type": "string",
+          "required": true,
+          "description": "(v1.0) number for trialBalance"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/trialBalance.schema.json",
+      "selectableFields": [
+        "number",
+        "accountId",
+        "accountType",
+        "display",
+        "totalDebit",
+        "totalCredit",
+        "balanceAtDateDebit",
+        "balanceAtDateCredit",
+        "dateFilter"
+      ],
+      "expandableRelations": [
+        "account"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    }
+  ]
+}

@@ -1,0 +1,151 @@
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "nullable": false,
+      "description": "(v1.0) The id property for the Dynamics 365 Business Central purchaseInvoiceLine entity",
+      "maxLength": 50
+    },
+    "documentId": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": true,
+      "description": "(v1.0) The documentId property for the Dynamics 365 Business Central purchaseInvoiceLine entity"
+    },
+    "sequence": {
+      "type": "integer",
+      "format": "int32",
+      "nullable": true,
+      "description": "(v1.0) The sequence property for the Dynamics 365 Business Central purchaseInvoiceLine entity"
+    },
+    "itemId": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": true,
+      "description": "(v1.0) The itemId property for the Dynamics 365 Business Central purchaseInvoiceLine entity"
+    },
+    "accountId": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": true,
+      "description": "(v1.0) The accountId property for the Dynamics 365 Business Central purchaseInvoiceLine entity"
+    },
+    "lineType": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The lineType property for the Dynamics 365 Business Central purchaseInvoiceLine entity"
+    },
+    "lineDetails": {
+      "$ref": "#/components/schemas/documentlineobjectdetailstype",
+      "nullable": true
+    },
+    "description": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The description property for the Dynamics 365 Business Central purchaseInvoiceLine entity",
+      "maxLength": 100
+    },
+    "unitOfMeasure": {
+      "$ref": "#/components/schemas/unitofmeasuretype",
+      "nullable": true
+    },
+    "unitCost": {
+      "type": "number",
+      "format": "decimal",
+      "nullable": true,
+      "description": "(v1.0) The unitCost property for the Dynamics 365 Business Central purchaseInvoiceLine entity"
+    },
+    "quantity": {
+      "type": "number",
+      "format": "decimal",
+      "nullable": true,
+      "description": "(v1.0) The quantity property for the Dynamics 365 Business Central purchaseInvoiceLine entity"
+    },
+    "discountAmount": {
+      "type": "number",
+      "format": "decimal",
+      "nullable": true,
+      "description": "(v1.0) The discountAmount property for the Dynamics 365 Business Central purchaseInvoiceLine entity"
+    },
+    "discountPercent": {
+      "type": "number",
+      "format": "decimal",
+      "nullable": true,
+      "description": "(v1.0) The discountPercent property for the Dynamics 365 Business Central purchaseInvoiceLine entity"
+    },
+    "discountAppliedBeforeTax": {
+      "type": "boolean",
+      "nullable": true,
+      "description": "(v1.0) The discountAppliedBeforeTax property for the Dynamics 365 Business Central purchaseInvoiceLine entity"
+    },
+    "amountExcludingTax": {
+      "type": "number",
+      "format": "decimal",
+      "nullable": true,
+      "description": "(v1.0) The amountExcludingTax property for the Dynamics 365 Business Central purchaseInvoiceLine entity"
+    },
+    "taxCode": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The taxCode property for the Dynamics 365 Business Central purchaseInvoiceLine entity",
+      "maxLength": 50
+    },
+    "taxPercent": {
+      "type": "number",
+      "format": "decimal",
+      "nullable": true,
+      "description": "(v1.0) The taxPercent property for the Dynamics 365 Business Central purchaseInvoiceLine entity"
+    },
+    "totalTaxAmount": {
+      "type": "number",
+      "format": "decimal",
+      "nullable": true,
+      "description": "(v1.0) The totalTaxAmount property for the Dynamics 365 Business Central purchaseInvoiceLine entity"
+    },
+    "amountIncludingTax": {
+      "type": "number",
+      "format": "decimal",
+      "nullable": true,
+      "description": "(v1.0) The amountIncludingTax property for the Dynamics 365 Business Central purchaseInvoiceLine entity"
+    },
+    "invoiceDiscountAllocation": {
+      "type": "number",
+      "format": "decimal",
+      "nullable": true,
+      "description": "(v1.0) The invoiceDiscountAllocation property for the Dynamics 365 Business Central purchaseInvoiceLine entity"
+    },
+    "netAmount": {
+      "type": "number",
+      "format": "decimal",
+      "nullable": true,
+      "description": "(v1.0) The netAmount property for the Dynamics 365 Business Central purchaseInvoiceLine entity"
+    },
+    "netTaxAmount": {
+      "type": "number",
+      "format": "decimal",
+      "nullable": true,
+      "description": "(v1.0) The netTaxAmount property for the Dynamics 365 Business Central purchaseInvoiceLine entity"
+    },
+    "netAmountIncludingTax": {
+      "type": "number",
+      "format": "decimal",
+      "nullable": true,
+      "description": "(v1.0) The netAmountIncludingTax property for the Dynamics 365 Business Central purchaseInvoiceLine entity"
+    },
+    "expectedReceiptDate": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true,
+      "description": "(v1.0) The expectedReceiptDate property for the Dynamics 365 Business Central purchaseInvoiceLine entity"
+    },
+    "item": {
+      "nullable": true,
+      "$ref": "#/components/schemas/item"
+    },
+    "account": {
+      "nullable": true,
+      "$ref": "#/components/schemas/account"
+    }
+  }
+}

@@ -1,0 +1,149 @@
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": false,
+      "description": "(v1.0) The id property for the Dynamics 365 Business Central customer entity"
+    },
+    "number": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The number property for the Dynamics 365 Business Central customer entity",
+      "maxLength": 20
+    },
+    "displayName": {
+      "type": "string",
+      "nullable": false,
+      "description": "(v1.0) The displayName property for the Dynamics 365 Business Central customer entity",
+      "maxLength": 100
+    },
+    "type": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The type property for the Dynamics 365 Business Central customer entity"
+    },
+    "address": {
+      "$ref": "#/components/schemas/postaladdresstype",
+      "nullable": true
+    },
+    "phoneNumber": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The phoneNumber property for the Dynamics 365 Business Central customer entity",
+      "maxLength": 30
+    },
+    "email": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The email property for the Dynamics 365 Business Central customer entity",
+      "maxLength": 80
+    },
+    "website": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The website property for the Dynamics 365 Business Central customer entity",
+      "maxLength": 80
+    },
+    "taxLiable": {
+      "type": "boolean",
+      "nullable": true,
+      "description": "(v1.0) The taxLiable property for the Dynamics 365 Business Central customer entity"
+    },
+    "taxAreaId": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": true,
+      "description": "(v1.0) The taxAreaId property for the Dynamics 365 Business Central customer entity"
+    },
+    "taxAreaDisplayName": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The taxAreaDisplayName property for the Dynamics 365 Business Central customer entity"
+    },
+    "taxRegistrationNumber": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The taxRegistrationNumber property for the Dynamics 365 Business Central customer entity",
+      "maxLength": 20
+    },
+    "currencyId": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": true,
+      "description": "(v1.0) The currencyId property for the Dynamics 365 Business Central customer entity"
+    },
+    "currencyCode": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The currencyCode property for the Dynamics 365 Business Central customer entity"
+    },
+    "paymentTermsId": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": true,
+      "description": "(v1.0) The paymentTermsId property for the Dynamics 365 Business Central customer entity"
+    },
+    "shipmentMethodId": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": true,
+      "description": "(v1.0) The shipmentMethodId property for the Dynamics 365 Business Central customer entity"
+    },
+    "paymentMethodId": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": true,
+      "description": "(v1.0) The paymentMethodId property for the Dynamics 365 Business Central customer entity"
+    },
+    "blocked": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The blocked property for the Dynamics 365 Business Central customer entity"
+    },
+    "lastModifiedDateTime": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true,
+      "description": "(v1.0) The lastModifiedDateTime property for the Dynamics 365 Business Central customer entity"
+    },
+    "customerFinancialDetails": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/customerFinancialDetail"
+      }
+    },
+    "picture": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/picture"
+      }
+    },
+    "defaultDimensions": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/defaultDimensions"
+      }
+    },
+    "currency": {
+      "nullable": true,
+      "$ref": "#/components/schemas/currency"
+    },
+    "paymentTerm": {
+      "nullable": true,
+      "$ref": "#/components/schemas/paymentTerm"
+    },
+    "shipmentMethod": {
+      "nullable": true,
+      "$ref": "#/components/schemas/shipmentMethod"
+    },
+    "paymentMethod": {
+      "nullable": true,
+      "$ref": "#/components/schemas/paymentMethod"
+    }
+  }
+}

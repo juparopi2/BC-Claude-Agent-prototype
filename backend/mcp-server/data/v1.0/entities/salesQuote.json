@@ -1,0 +1,392 @@
+{
+  "entity": "salesQuote",
+  "displayName": "Sales Quote",
+  "description": "SalesQuote entity for Business Central",
+  "endpoints": [
+    {
+      "id": "listSalesQuotes",
+      "method": "GET",
+      "path": "/companies({company_id})/salesQuotes",
+      "summary": "Returns a list of salesQuotes",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/salesQuote.schema.json",
+      "selectableFields": [
+        "id",
+        "number",
+        "externalDocumentNumber",
+        "documentDate",
+        "dueDate",
+        "customerId",
+        "contactId",
+        "customerNumber",
+        "customerName",
+        "billToName",
+        "billToCustomerId",
+        "billToCustomerNumber",
+        "shipToName",
+        "shipToContact",
+        "sellingPostalAddress",
+        "billingPostalAddress",
+        "shippingPostalAddress",
+        "currencyId",
+        "currencyCode",
+        "paymentTermsId",
+        "shipmentMethodId",
+        "salesperson",
+        "discountAmount",
+        "totalAmountExcludingTax",
+        "totalTaxAmount",
+        "totalAmountIncludingTax",
+        "status",
+        "sentDate",
+        "validUntilDate",
+        "acceptedDate",
+        "lastModifiedDateTime",
+        "phoneNumber",
+        "email"
+      ],
+      "expandableRelations": [
+        "salesQuoteLines",
+        "pdfDocument",
+        "customer",
+        "currency",
+        "paymentTerm",
+        "shipmentMethod"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "postSalesQuote",
+      "method": "POST",
+      "path": "/companies({company_id})/salesQuotes",
+      "summary": "Creates an object of type salesQuote in Dynamics 365 Business Central",
+      "operationType": "create",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "responseSchema": "schemas/salesQuote.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 201,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getSalesQuote",
+      "method": "GET",
+      "path": "/companies({company_id})/salesQuotes({salesQuote_id})",
+      "summary": "Retrieve the properties and relationships of an object of type salesQuote for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesQuote_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for salesQuote"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/salesQuote.schema.json",
+      "selectableFields": [
+        "id",
+        "number",
+        "externalDocumentNumber",
+        "documentDate",
+        "dueDate",
+        "customerId",
+        "contactId",
+        "customerNumber",
+        "customerName",
+        "billToName",
+        "billToCustomerId",
+        "billToCustomerNumber",
+        "shipToName",
+        "shipToContact",
+        "sellingPostalAddress",
+        "billingPostalAddress",
+        "shippingPostalAddress",
+        "currencyId",
+        "currencyCode",
+        "paymentTermsId",
+        "shipmentMethodId",
+        "salesperson",
+        "discountAmount",
+        "totalAmountExcludingTax",
+        "totalTaxAmount",
+        "totalAmountIncludingTax",
+        "status",
+        "sentDate",
+        "validUntilDate",
+        "acceptedDate",
+        "lastModifiedDateTime",
+        "phoneNumber",
+        "email"
+      ],
+      "expandableRelations": [
+        "salesQuoteLines",
+        "pdfDocument",
+        "customer",
+        "currency",
+        "paymentTerm",
+        "shipmentMethod"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "patchSalesQuote",
+      "method": "PATCH",
+      "path": "/companies({company_id})/salesQuotes({salesQuote_id})",
+      "summary": "Updates an object of type salesQuote in Dynamics 365 Business Central",
+      "operationType": "update",
+      "riskLevel": "MEDIUM",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesQuote_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for salesQuote"
+        }
+      ],
+      "responseSchema": "schemas/salesQuote.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "deleteSalesQuote",
+      "method": "DELETE",
+      "path": "/companies({company_id})/salesQuotes({salesQuote_id})",
+      "summary": "Deletes an object of type salesQuote in Dynamics 365 Business Central",
+      "operationType": "delete",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": true,
+      "warningMessage": "This will permanently delete the salesQuote record",
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesQuote_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for salesQuote"
+        }
+      ],
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 204,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "makeInvoiceActionSalesQuotes",
+      "method": "POST",
+      "path": "/companies({company_id})/salesQuotes({salesQuote_id})/Microsoft.NAV.makeInvoice",
+      "summary": "Performs the makeInvoice action for salesQuotes entity",
+      "operationType": "action",
+      "riskLevel": "MEDIUM",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesQuote_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for salesQuote"
+        }
+      ],
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 204,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "makeOrderActionSalesQuotes",
+      "method": "POST",
+      "path": "/companies({company_id})/salesQuotes({salesQuote_id})/Microsoft.NAV.makeOrder",
+      "summary": "Performs the makeOrder action for salesQuotes entity",
+      "operationType": "action",
+      "riskLevel": "MEDIUM",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesQuote_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for salesQuote"
+        }
+      ],
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 204,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "sendActionSalesQuotes",
+      "method": "POST",
+      "path": "/companies({company_id})/salesQuotes({salesQuote_id})/Microsoft.NAV.send",
+      "summary": "Performs the send action for salesQuotes entity",
+      "operationType": "action",
+      "riskLevel": "MEDIUM",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesQuote_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for salesQuote"
+        }
+      ],
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 204,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    }
+  ]
+}

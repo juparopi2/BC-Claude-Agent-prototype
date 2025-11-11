@@ -1,0 +1,17 @@
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": false,
+      "description": "(v1.0) The id property for the Dynamics 365 Business Central pdfDocument entity"
+    },
+    "content": {
+      "type": "string",
+      "format": "binary",
+      "nullable": true,
+      "description": "(v1.0) The content property for the Dynamics 365 Business Central pdfDocument entity"
+    }
+  }
+}

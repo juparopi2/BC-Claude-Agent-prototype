@@ -1,0 +1,35 @@
+{
+  "type": "object",
+  "properties": {
+    "customerId": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": false,
+      "description": "(v1.0) The customerId property for the Dynamics 365 Business Central customerSale entity"
+    },
+    "customerNumber": {
+      "type": "string",
+      "nullable": false,
+      "description": "(v1.0) The customerNumber property for the Dynamics 365 Business Central customerSale entity",
+      "maxLength": 20
+    },
+    "name": {
+      "type": "string",
+      "nullable": false,
+      "description": "(v1.0) The name property for the Dynamics 365 Business Central customerSale entity",
+      "maxLength": 100
+    },
+    "totalSalesAmount": {
+      "type": "number",
+      "format": "decimal",
+      "nullable": true,
+      "description": "(v1.0) The totalSalesAmount property for the Dynamics 365 Business Central customerSale entity"
+    },
+    "dateFilter_FilterOnly": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true,
+      "description": "(v1.0) The dateFilter_FilterOnly property for the Dynamics 365 Business Central customerSale entity"
+    }
+  }
+}

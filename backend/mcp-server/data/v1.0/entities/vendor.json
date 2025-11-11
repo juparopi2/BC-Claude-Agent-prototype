@@ -1,0 +1,244 @@
+{
+  "entity": "vendor",
+  "displayName": "Vendor",
+  "description": "Vendor entity for Business Central",
+  "endpoints": [
+    {
+      "id": "listVendors",
+      "method": "GET",
+      "path": "/companies({company_id})/vendors",
+      "summary": "Returns a list of vendors",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/vendor.schema.json",
+      "selectableFields": [
+        "id",
+        "number",
+        "displayName",
+        "address",
+        "phoneNumber",
+        "email",
+        "website",
+        "taxRegistrationNumber",
+        "currencyId",
+        "currencyCode",
+        "irs1099Code",
+        "paymentTermsId",
+        "paymentMethodId",
+        "taxLiable",
+        "blocked",
+        "balance",
+        "lastModifiedDateTime"
+      ],
+      "expandableRelations": [
+        "picture",
+        "defaultDimensions",
+        "currency",
+        "paymentTerm",
+        "paymentMethod"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "postVendor",
+      "method": "POST",
+      "path": "/companies({company_id})/vendors",
+      "summary": "Creates an object of type vendor in Dynamics 365 Business Central",
+      "operationType": "create",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "responseSchema": "schemas/vendor.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 201,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getVendor",
+      "method": "GET",
+      "path": "/companies({company_id})/vendors({vendor_id})",
+      "summary": "Retrieve the properties and relationships of an object of type vendor for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "vendor_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for vendor"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/vendor.schema.json",
+      "selectableFields": [
+        "id",
+        "number",
+        "displayName",
+        "address",
+        "phoneNumber",
+        "email",
+        "website",
+        "taxRegistrationNumber",
+        "currencyId",
+        "currencyCode",
+        "irs1099Code",
+        "paymentTermsId",
+        "paymentMethodId",
+        "taxLiable",
+        "blocked",
+        "balance",
+        "lastModifiedDateTime"
+      ],
+      "expandableRelations": [
+        "picture",
+        "defaultDimensions",
+        "currency",
+        "paymentTerm",
+        "paymentMethod"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "patchVendor",
+      "method": "PATCH",
+      "path": "/companies({company_id})/vendors({vendor_id})",
+      "summary": "Updates an object of type vendor in Dynamics 365 Business Central",
+      "operationType": "update",
+      "riskLevel": "MEDIUM",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "vendor_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for vendor"
+        }
+      ],
+      "responseSchema": "schemas/vendor.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "deleteVendor",
+      "method": "DELETE",
+      "path": "/companies({company_id})/vendors({vendor_id})",
+      "summary": "Deletes an object of type vendor in Dynamics 365 Business Central",
+      "operationType": "delete",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": true,
+      "warningMessage": "This will permanently delete the vendor record",
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "vendor_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for vendor"
+        }
+      ],
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 204,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    }
+  ]
+}

@@ -1,0 +1,98 @@
+{
+  "entity": "incomeStatement",
+  "displayName": "Income Statement",
+  "description": "IncomeStatement entity for Business Central",
+  "endpoints": [
+    {
+      "id": "listIncomeStatement",
+      "method": "GET",
+      "path": "/companies({company_id})/incomeStatement",
+      "summary": "Returns a list of incomeStatement",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "queryParams": [
+        "$select"
+      ],
+      "responseSchema": "schemas/incomeStatement.schema.json",
+      "selectableFields": [
+        "lineNumber",
+        "display",
+        "netChange",
+        "lineType",
+        "indentation",
+        "dateFilter"
+      ],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getIncomeStatement",
+      "method": "GET",
+      "path": "/companies({company_id})/incomeStatement({incomeStatement_lineNumber})",
+      "summary": "Retrieve the properties and relationships of an object of type incomeStatement for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "incomeStatement_lineNumber",
+          "type": "integer",
+          "format": "int32",
+          "required": true,
+          "description": "(v1.0) lineNumber for incomeStatement"
+        }
+      ],
+      "queryParams": [
+        "$select"
+      ],
+      "responseSchema": "schemas/incomeStatement.schema.json",
+      "selectableFields": [
+        "lineNumber",
+        "display",
+        "netChange",
+        "lineType",
+        "indentation",
+        "dateFilter"
+      ],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    }
+  ]
+}

@@ -1,0 +1,530 @@
+{
+  "entity": "salesCreditMemoLine",
+  "displayName": "Sales Credit Memo Line",
+  "description": "SalesCreditMemoLine entity for Business Central",
+  "endpoints": [
+    {
+      "id": "listSalesCreditMemoLinesForSalesCreditMemo",
+      "method": "GET",
+      "path": "/companies({company_id})/salesCreditMemos({salesCreditMemo_id})/salesCreditMemoLines",
+      "summary": "Returns a list of salesCreditMemoLines",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesCreditMemo_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for salesCreditMemo"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/salesCreditMemoLine.schema.json",
+      "selectableFields": [
+        "id",
+        "documentId",
+        "sequence",
+        "itemId",
+        "accountId",
+        "lineType",
+        "lineDetails",
+        "description",
+        "unitOfMeasureId",
+        "unitOfMeasure",
+        "unitPrice",
+        "quantity",
+        "discountAmount",
+        "discountPercent",
+        "discountAppliedBeforeTax",
+        "amountExcludingTax",
+        "taxCode",
+        "taxPercent",
+        "totalTaxAmount",
+        "amountIncludingTax",
+        "invoiceDiscountAllocation",
+        "netAmount",
+        "netTaxAmount",
+        "netAmountIncludingTax",
+        "shipmentDate"
+      ],
+      "expandableRelations": [
+        "item",
+        "account"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "postSalesCreditMemoLineForSalesCreditMemo",
+      "method": "POST",
+      "path": "/companies({company_id})/salesCreditMemos({salesCreditMemo_id})/salesCreditMemoLines",
+      "summary": "Creates an object of type salesCreditMemoLine in Dynamics 365 Business Central",
+      "operationType": "create",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesCreditMemo_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for salesCreditMemo"
+        }
+      ],
+      "responseSchema": "schemas/salesCreditMemoLine.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 201,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getSalesCreditMemoLineForSalesCreditMemo",
+      "method": "GET",
+      "path": "/companies({company_id})/salesCreditMemos({salesCreditMemo_id})/salesCreditMemoLines('{salesCreditMemoLine_id}')",
+      "summary": "Retrieve the properties and relationships of an object of type salesCreditMemoLine for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesCreditMemo_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for salesCreditMemo"
+        },
+        {
+          "name": "salesCreditMemoLine_id",
+          "type": "string",
+          "required": true,
+          "description": "(v1.0) id for salesCreditMemoLine"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/salesCreditMemoLine.schema.json",
+      "selectableFields": [
+        "id",
+        "documentId",
+        "sequence",
+        "itemId",
+        "accountId",
+        "lineType",
+        "lineDetails",
+        "description",
+        "unitOfMeasureId",
+        "unitOfMeasure",
+        "unitPrice",
+        "quantity",
+        "discountAmount",
+        "discountPercent",
+        "discountAppliedBeforeTax",
+        "amountExcludingTax",
+        "taxCode",
+        "taxPercent",
+        "totalTaxAmount",
+        "amountIncludingTax",
+        "invoiceDiscountAllocation",
+        "netAmount",
+        "netTaxAmount",
+        "netAmountIncludingTax",
+        "shipmentDate"
+      ],
+      "expandableRelations": [
+        "item",
+        "account"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "patchSalesCreditMemoLineForSalesCreditMemo",
+      "method": "PATCH",
+      "path": "/companies({company_id})/salesCreditMemos({salesCreditMemo_id})/salesCreditMemoLines('{salesCreditMemoLine_id}')",
+      "summary": "Updates an object of type salesCreditMemoLine in Dynamics 365 Business Central",
+      "operationType": "update",
+      "riskLevel": "MEDIUM",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesCreditMemo_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for salesCreditMemo"
+        },
+        {
+          "name": "salesCreditMemoLine_id",
+          "type": "string",
+          "required": true,
+          "description": "(v1.0) id for salesCreditMemoLine"
+        }
+      ],
+      "responseSchema": "schemas/salesCreditMemoLine.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "deleteSalesCreditMemoLineForSalesCreditMemo",
+      "method": "DELETE",
+      "path": "/companies({company_id})/salesCreditMemos({salesCreditMemo_id})/salesCreditMemoLines('{salesCreditMemoLine_id}')",
+      "summary": "Deletes an object of type salesCreditMemoLine in Dynamics 365 Business Central",
+      "operationType": "delete",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": true,
+      "warningMessage": "This will permanently delete the salesCreditMemoLine record",
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesCreditMemo_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for salesCreditMemo"
+        },
+        {
+          "name": "salesCreditMemoLine_id",
+          "type": "string",
+          "required": true,
+          "description": "(v1.0) id for salesCreditMemoLine"
+        }
+      ],
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 204,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "listSalesCreditMemoLines",
+      "method": "GET",
+      "path": "/companies({company_id})/salesCreditMemoLines",
+      "summary": "Returns a list of salesCreditMemoLines",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/salesCreditMemoLine.schema.json",
+      "selectableFields": [
+        "id",
+        "documentId",
+        "sequence",
+        "itemId",
+        "accountId",
+        "lineType",
+        "lineDetails",
+        "description",
+        "unitOfMeasureId",
+        "unitOfMeasure",
+        "unitPrice",
+        "quantity",
+        "discountAmount",
+        "discountPercent",
+        "discountAppliedBeforeTax",
+        "amountExcludingTax",
+        "taxCode",
+        "taxPercent",
+        "totalTaxAmount",
+        "amountIncludingTax",
+        "invoiceDiscountAllocation",
+        "netAmount",
+        "netTaxAmount",
+        "netAmountIncludingTax",
+        "shipmentDate"
+      ],
+      "expandableRelations": [
+        "item",
+        "account"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "postSalesCreditMemoLine",
+      "method": "POST",
+      "path": "/companies({company_id})/salesCreditMemoLines",
+      "summary": "Creates an object of type salesCreditMemoLine in Dynamics 365 Business Central",
+      "operationType": "create",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "responseSchema": "schemas/salesCreditMemoLine.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 201,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getSalesCreditMemoLine",
+      "method": "GET",
+      "path": "/companies({company_id})/salesCreditMemoLines('{salesCreditMemoLine_id}')",
+      "summary": "Retrieve the properties and relationships of an object of type salesCreditMemoLine for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesCreditMemoLine_id",
+          "type": "string",
+          "required": true,
+          "description": "(v1.0) id for salesCreditMemoLine"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/salesCreditMemoLine.schema.json",
+      "selectableFields": [
+        "id",
+        "documentId",
+        "sequence",
+        "itemId",
+        "accountId",
+        "lineType",
+        "lineDetails",
+        "description",
+        "unitOfMeasureId",
+        "unitOfMeasure",
+        "unitPrice",
+        "quantity",
+        "discountAmount",
+        "discountPercent",
+        "discountAppliedBeforeTax",
+        "amountExcludingTax",
+        "taxCode",
+        "taxPercent",
+        "totalTaxAmount",
+        "amountIncludingTax",
+        "invoiceDiscountAllocation",
+        "netAmount",
+        "netTaxAmount",
+        "netAmountIncludingTax",
+        "shipmentDate"
+      ],
+      "expandableRelations": [
+        "item",
+        "account"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "patchSalesCreditMemoLine",
+      "method": "PATCH",
+      "path": "/companies({company_id})/salesCreditMemoLines('{salesCreditMemoLine_id}')",
+      "summary": "Updates an object of type salesCreditMemoLine in Dynamics 365 Business Central",
+      "operationType": "update",
+      "riskLevel": "MEDIUM",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesCreditMemoLine_id",
+          "type": "string",
+          "required": true,
+          "description": "(v1.0) id for salesCreditMemoLine"
+        }
+      ],
+      "responseSchema": "schemas/salesCreditMemoLine.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "deleteSalesCreditMemoLine",
+      "method": "DELETE",
+      "path": "/companies({company_id})/salesCreditMemoLines('{salesCreditMemoLine_id}')",
+      "summary": "Deletes an object of type salesCreditMemoLine in Dynamics 365 Business Central",
+      "operationType": "delete",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": true,
+      "warningMessage": "This will permanently delete the salesCreditMemoLine record",
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "salesCreditMemoLine_id",
+          "type": "string",
+          "required": true,
+          "description": "(v1.0) id for salesCreditMemoLine"
+        }
+      ],
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 204,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    }
+  ]
+}

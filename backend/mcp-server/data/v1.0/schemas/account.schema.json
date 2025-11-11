@@ -1,0 +1,45 @@
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": false,
+      "description": "(v1.0) The id property for the Dynamics 365 Business Central account entity"
+    },
+    "number": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The number property for the Dynamics 365 Business Central account entity",
+      "maxLength": 20
+    },
+    "displayName": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The displayName property for the Dynamics 365 Business Central account entity",
+      "maxLength": 100
+    },
+    "category": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The category property for the Dynamics 365 Business Central account entity"
+    },
+    "subCategory": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The subCategory property for the Dynamics 365 Business Central account entity",
+      "maxLength": 80
+    },
+    "blocked": {
+      "type": "boolean",
+      "nullable": true,
+      "description": "(v1.0) The blocked property for the Dynamics 365 Business Central account entity"
+    },
+    "lastModifiedDateTime": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true,
+      "description": "(v1.0) The lastModifiedDateTime property for the Dynamics 365 Business Central account entity"
+    }
+  }
+}

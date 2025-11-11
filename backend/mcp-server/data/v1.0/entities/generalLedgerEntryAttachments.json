@@ -1,0 +1,235 @@
+{
+  "entity": "generalLedgerEntryAttachments",
+  "displayName": "General Ledger Entry Attachments",
+  "description": "GeneralLedgerEntryAttachments entity for Business Central",
+  "endpoints": [
+    {
+      "id": "listGeneralLedgerEntryAttachments",
+      "method": "GET",
+      "path": "/companies({company_id})/generalLedgerEntryAttachments",
+      "summary": "Returns a list of generalLedgerEntryAttachments",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/generalLedgerEntryAttachments.schema.json",
+      "selectableFields": [
+        "generalLedgerEntryNumber",
+        "id",
+        "fileName",
+        "byteSize",
+        "content",
+        "createdDateTime"
+      ],
+      "expandableRelations": [
+        "generalLedgerEntry"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "postGeneralLedgerEntryAttachments",
+      "method": "POST",
+      "path": "/companies({company_id})/generalLedgerEntryAttachments",
+      "summary": "Creates an object of type generalLedgerEntryAttachments in Dynamics 365 Business Central",
+      "operationType": "create",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "responseSchema": "schemas/generalLedgerEntryAttachments.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 201,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getGeneralLedgerEntryAttachments",
+      "method": "GET",
+      "path": "/companies({company_id})/generalLedgerEntryAttachments({generalLedgerEntryAttachments_generalLedgerEntryNumber},{generalLedgerEntryAttachments_id})",
+      "summary": "Retrieve the properties and relationships of an object of type generalLedgerEntryAttachments for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "generalLedgerEntryAttachments_generalLedgerEntryNumber",
+          "type": "integer",
+          "format": "int32",
+          "required": true,
+          "description": "(v1.0) generalLedgerEntryNumber for generalLedgerEntryAttachments"
+        },
+        {
+          "name": "generalLedgerEntryAttachments_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for generalLedgerEntryAttachments"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/generalLedgerEntryAttachments.schema.json",
+      "selectableFields": [
+        "generalLedgerEntryNumber",
+        "id",
+        "fileName",
+        "byteSize",
+        "content",
+        "createdDateTime"
+      ],
+      "expandableRelations": [
+        "generalLedgerEntry"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "patchGeneralLedgerEntryAttachments",
+      "method": "PATCH",
+      "path": "/companies({company_id})/generalLedgerEntryAttachments({generalLedgerEntryAttachments_generalLedgerEntryNumber},{generalLedgerEntryAttachments_id})",
+      "summary": "Updates an object of type generalLedgerEntryAttachments in Dynamics 365 Business Central",
+      "operationType": "update",
+      "riskLevel": "MEDIUM",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "generalLedgerEntryAttachments_generalLedgerEntryNumber",
+          "type": "integer",
+          "format": "int32",
+          "required": true,
+          "description": "(v1.0) generalLedgerEntryNumber for generalLedgerEntryAttachments"
+        },
+        {
+          "name": "generalLedgerEntryAttachments_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for generalLedgerEntryAttachments"
+        }
+      ],
+      "responseSchema": "schemas/generalLedgerEntryAttachments.schema.json",
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "deleteGeneralLedgerEntryAttachments",
+      "method": "DELETE",
+      "path": "/companies({company_id})/generalLedgerEntryAttachments({generalLedgerEntryAttachments_generalLedgerEntryNumber},{generalLedgerEntryAttachments_id})",
+      "summary": "Deletes an object of type generalLedgerEntryAttachments in Dynamics 365 Business Central",
+      "operationType": "delete",
+      "riskLevel": "HIGH",
+      "requiresAuth": true,
+      "requiresHumanApproval": true,
+      "destructive": true,
+      "warningMessage": "This will permanently delete the generalLedgerEntryAttachments record",
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "generalLedgerEntryAttachments_generalLedgerEntryNumber",
+          "type": "integer",
+          "format": "int32",
+          "required": true,
+          "description": "(v1.0) generalLedgerEntryNumber for generalLedgerEntryAttachments"
+        },
+        {
+          "name": "generalLedgerEntryAttachments_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for generalLedgerEntryAttachments"
+        }
+      ],
+      "selectableFields": [],
+      "expandableRelations": [],
+      "successStatus": 204,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    }
+  ]
+}

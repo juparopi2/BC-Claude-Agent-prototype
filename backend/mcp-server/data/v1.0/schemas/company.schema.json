@@ -1,0 +1,391 @@
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "nullable": false,
+      "description": "(v1.0) The id property for the Dynamics 365 Business Central company entity"
+    },
+    "systemVersion": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The systemVersion property for the Dynamics 365 Business Central company entity"
+    },
+    "name": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The name property for the Dynamics 365 Business Central company entity",
+      "maxLength": 30
+    },
+    "displayName": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The displayName property for the Dynamics 365 Business Central company entity",
+      "maxLength": 250
+    },
+    "businessProfileId": {
+      "type": "string",
+      "nullable": true,
+      "description": "(v1.0) The businessProfileId property for the Dynamics 365 Business Central company entity",
+      "maxLength": 250
+    },
+    "items": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/item"
+      }
+    },
+    "picture": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/picture"
+      }
+    },
+    "defaultDimensions": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/defaultDimensions"
+      }
+    },
+    "customers": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/customer"
+      }
+    },
+    "customerFinancialDetails": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/customerFinancialDetail"
+      }
+    },
+    "vendors": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/vendor"
+      }
+    },
+    "companyInformation": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/companyInformation"
+      }
+    },
+    "salesInvoices": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/salesInvoice"
+      }
+    },
+    "salesInvoiceLines": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/salesInvoiceLine"
+      }
+    },
+    "pdfDocument": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/pdfDocument"
+      }
+    },
+    "customerPaymentJournals": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/customerPaymentJournal"
+      }
+    },
+    "customerPayments": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/customerPayment"
+      }
+    },
+    "accounts": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/account"
+      }
+    },
+    "taxGroups": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/taxGroup"
+      }
+    },
+    "journals": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/journal"
+      }
+    },
+    "journalLines": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/journalLine"
+      }
+    },
+    "attachments": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/attachments"
+      }
+    },
+    "employees": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/employee"
+      }
+    },
+    "timeRegistrationEntries": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/timeRegistrationEntry"
+      }
+    },
+    "generalLedgerEntries": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/generalLedgerEntry"
+      }
+    },
+    "currencies": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/currency"
+      }
+    },
+    "paymentMethods": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/paymentMethod"
+      }
+    },
+    "dimensions": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/dimension"
+      }
+    },
+    "dimensionValues": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/dimensionValue"
+      }
+    },
+    "dimensionLines": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/dimensionLine"
+      }
+    },
+    "paymentTerms": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/paymentTerm"
+      }
+    },
+    "shipmentMethods": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/shipmentMethod"
+      }
+    },
+    "itemCategories": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/itemCategory"
+      }
+    },
+    "cashFlowStatement": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/cashFlowStatement"
+      }
+    },
+    "countriesRegions": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/countryRegion"
+      }
+    },
+    "salesOrders": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/salesOrder"
+      }
+    },
+    "salesOrderLines": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/salesOrderLine"
+      }
+    },
+    "retainedEarningsStatement": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/retainedEarningsStatement"
+      }
+    },
+    "unitsOfMeasure": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/unitOfMeasure"
+      }
+    },
+    "agedAccountsReceivable": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/agedAccountsReceivable"
+      }
+    },
+    "agedAccountsPayable": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/agedAccountsPayable"
+      }
+    },
+    "balanceSheet": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/balanceSheet"
+      }
+    },
+    "trialBalance": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/trialBalance"
+      }
+    },
+    "incomeStatement": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/incomeStatement"
+      }
+    },
+    "taxAreas": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/taxArea"
+      }
+    },
+    "salesQuotes": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/salesQuote"
+      }
+    },
+    "salesQuoteLines": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/salesQuoteLine"
+      }
+    },
+    "salesCreditMemos": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/salesCreditMemo"
+      }
+    },
+    "salesCreditMemoLines": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/salesCreditMemoLine"
+      }
+    },
+    "generalLedgerEntryAttachments": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/generalLedgerEntryAttachments"
+      }
+    },
+    "purchaseInvoices": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/purchaseInvoice"
+      }
+    },
+    "purchaseInvoiceLines": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/purchaseInvoiceLine"
+      }
+    },
+    "projects": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/project"
+      }
+    },
+    "bankAccounts": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/bankAccount"
+      }
+    },
+    "customerSales": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/customerSale"
+      }
+    },
+    "vendorPurchases": {
+      "type": "array",
+      "nullable": true,
+      "items": {
+        "$ref": "#/components/schemas/vendorPurchase"
+      }
+    }
+  }
+}

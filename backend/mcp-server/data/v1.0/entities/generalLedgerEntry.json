@@ -1,0 +1,114 @@
+{
+  "entity": "generalLedgerEntry",
+  "displayName": "General Ledger Entry",
+  "description": "GeneralLedgerEntry entity for Business Central",
+  "endpoints": [
+    {
+      "id": "listGeneralLedgerEntries",
+      "method": "GET",
+      "path": "/companies({company_id})/generalLedgerEntries",
+      "summary": "Returns a list of generalLedgerEntries",
+      "operationType": "list",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/generalLedgerEntry.schema.json",
+      "selectableFields": [
+        "id",
+        "postingDate",
+        "documentNumber",
+        "documentType",
+        "accountId",
+        "accountNumber",
+        "description",
+        "debitAmount",
+        "creditAmount",
+        "dimensions",
+        "lastModifiedDateTime"
+      ],
+      "expandableRelations": [
+        "account"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    },
+    {
+      "id": "getGeneralLedgerEntry",
+      "method": "GET",
+      "path": "/companies({company_id})/generalLedgerEntries({generalLedgerEntry_id})",
+      "summary": "Retrieve the properties and relationships of an object of type generalLedgerEntry for Dynamics 365 Business Central.",
+      "operationType": "get",
+      "riskLevel": "LOW",
+      "requiresAuth": true,
+      "requiresHumanApproval": false,
+      "destructive": false,
+      "pathParams": [
+        {
+          "name": "company_id",
+          "type": "string",
+          "format": "uuid",
+          "required": true,
+          "description": "(v1.0) id for company"
+        },
+        {
+          "name": "generalLedgerEntry_id",
+          "type": "integer",
+          "format": "int32",
+          "required": true,
+          "description": "(v1.0) id for generalLedgerEntry"
+        }
+      ],
+      "queryParams": [
+        "$expand",
+        "$select"
+      ],
+      "responseSchema": "schemas/generalLedgerEntry.schema.json",
+      "selectableFields": [
+        "id",
+        "postingDate",
+        "documentNumber",
+        "documentType",
+        "accountId",
+        "accountNumber",
+        "description",
+        "debitAmount",
+        "creditAmount",
+        "dimensions",
+        "lastModifiedDateTime"
+      ],
+      "expandableRelations": [
+        "account"
+      ],
+      "successStatus": 200,
+      "errorCodes": [
+        400,
+        401,
+        403,
+        404,
+        409,
+        500
+      ]
+    }
+  ]
+}

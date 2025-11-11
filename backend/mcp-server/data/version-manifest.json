@@ -1,0 +1,18 @@
+{
+  "current_version": "v1.0",
+  "available_versions": [
+    "v1.0"
+  ],
+  "default_version": "v1.0",
+  "versions": {
+    "v1.0": {
+      "openapi_spec": "bcoas1.0.yaml",
+      "data_path": "data/v1.0",
+      "indexed_date": "2025-11-11T02:09:46.235Z",
+      "entities_count": 52,
+      "operations_count": 324,
+      "breaking_changes": [],
+      "deprecations": []
+    }
+  }
+}

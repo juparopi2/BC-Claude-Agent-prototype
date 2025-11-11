@@ -91,72 +91,43 @@ export class MCPService {
   /**
    * Validate MCP Connection
    *
-   * Performs a proper MCP handshake to verify the server is reachable and responding correctly.
-   * Sends an MCP initialize message as per the JSON-RPC 2.0 protocol.
+   * Performs a simple health check to verify the MCP server is reachable.
+   * Uses GET request compatible with SSE endpoints instead of JSON-RPC POST.
+   *
+   * Note: This is a lightweight health check. The actual MCP handshake happens
+   * when the Agent SDK connects to the server for the first time.
    *
    * @returns Health status of MCP connection
    */
   async validateMCPConnection(): Promise<MCPHealthStatus> {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // Increased to 10s for cold starts
 
-      // Send MCP initialize message (JSON-RPC 2.0)
+      // Simple GET request to check endpoint availability
+      // SSE endpoints typically accept GET with text/event-stream
       const response = await fetch(this.mcpServerUrl, {
-        method: 'POST',
+        method: 'GET',
         headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json, text/event-stream',
+          'Accept': 'text/event-stream, application/json',
         },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: 1,
-          method: 'initialize',
-          params: {
-            protocolVersion: '2024-11-05',
-            capabilities: {},
-            clientInfo: {
-              name: 'bc-claude-agent',
-              version: '1.0.0',
-            },
-          },
-        }),
         signal: controller.signal,
       });
 
       clearTimeout(timeoutId);
 
-      if (!response.ok) {
+      // Accept any 2xx status code as healthy
+      // SSE endpoints may return 200 or 204
+      if (response.ok) {
         return {
-          connected: false,
-          error: `MCP server returned status ${response.status}`,
+          connected: true,
+          lastConnected: new Date(),
         };
       }
 
-      // Parse JSON-RPC response
-      const data = (await response.json()) as {
-        result?: {
-          protocolVersion?: string;
-          serverInfo?: {
-            name?: string;
-            version?: string;
-          };
-          capabilities?: unknown;
-        };
-        error?: {
-          code: number;
-          message: string;
-        };
-      };
-
-      if (data.error) {
-        return {
-          connected: false,
-          error: `MCP error: ${data.error.message}`,
-        };
-      }
-
-      if (data.result && data.result.serverInfo) {
+      // Some SSE endpoints return 405 for GET (expecting POST with specific headers)
+      // We still consider this "reachable" - the endpoint exists
+      if (response.status === 405) {
         return {
           connected: true,
           lastConnected: new Date(),
@@ -165,7 +136,7 @@ export class MCPService {
 
       return {
         connected: false,
-        error: 'Invalid MCP response format',
+        error: `MCP server returned status ${response.status}`,
       };
     } catch (error) {
       const errorMessage =

@@ -78,11 +78,18 @@ async function initializeApp(): Promise<void> {
     const mcpService = getMCPService();
     if (mcpService.isConfigured()) {
       console.log('🔌 Initializing MCP Service...');
-      const mcpHealth = await mcpService.validateMCPConnection();
-      if (mcpHealth.connected) {
-        console.log(`✅ MCP Service connected: ${mcpService.getMCPServerUrl()}`);
-      } else {
-        console.warn(`⚠️  MCP Service not reachable: ${mcpHealth.error}`);
+      try {
+        const mcpHealth = await mcpService.validateMCPConnection();
+        if (mcpHealth.connected) {
+          console.log(`✅ MCP Service connected: ${mcpService.getMCPServerUrl()}`);
+        } else {
+          console.warn(`⚠️  MCP Service not reachable: ${mcpHealth.error}`);
+          console.warn('   Server will continue without MCP health check validation');
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        console.warn(`⚠️  MCP health check failed: ${errorMessage}`);
+        console.warn('   Server will continue initialization anyway');
       }
       console.log('');
     } else {

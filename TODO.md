@@ -615,9 +615,11 @@ curl http://localhost:3001/health
 
 ---
 
-### 🔄 **Week 2.5: Microsoft OAuth Migration** (NUEVA IMPLEMENTACIÓN - PRIORIDAD ALTA)
+### 🔄 **Week 2.5: Microsoft OAuth Migration** ✅ IMPLEMENTACIÓN COMPLETADA (2025-01-11)
 
 **⚠️ BREAKING CHANGE**: Migración de JWT custom a Microsoft Entra ID OAuth 2.0 + Multi-tenant BC
+
+**✅ ESTADO FINAL**: Implementación core completada 100%. Pendiente solo: testing manual (2.5.7) y actualización documentación extensa (2.5.8).
 
 **Descripción**: Reemplazar el sistema de autenticación JWT tradicional (email/password) por Microsoft OAuth 2.0 con delegated permissions. Esto permite que usuarios hagan login con su cuenta Microsoft y accedan a Business Central con sus propias credenciales (multi-tenant).
 
@@ -637,79 +639,52 @@ curl http://localhost:3001/health
 
 ---
 
-#### 2.5.1 Azure App Registration (Preparación)
+#### 2.5.1 Azure App Registration (Preparación) ✅ COMPLETADO
 **Objetivo**: Crear App Registration en Azure Entra ID para habilitar OAuth 2.0 en la aplicación
 
-- [ ] **Crear App Registration en Azure Portal**
-  - [ ] Navegar a Azure Portal → Entra ID → App registrations → New registration
-  - [ ] Configuración básica:
-    - Name: `BC-Claude-Agent`
-    - Supported account types: `Accounts in any organizational directory (Any Microsoft Entra ID tenant - Multitenant)`
-    - Redirect URI (Web): `http://localhost:3002/api/auth/callback` (dev)
-    - Redirect URI (Web): `https://<production-domain>/api/auth/callback` (production)
-  - [ ] Copiar valores críticos:
-    - Application (client) ID → Guardar para MICROSOFT_CLIENT_ID
-    - Directory (tenant) ID → Guardar para MICROSOFT_TENANT_ID
-  - [ ] Crear Client secret:
-    - Ir a: Certificates & secrets → Client secrets → New client secret
-    - Description: `BC-Claude-Agent-Secret`
-    - Expiration: 24 months (default)
-    - Copiar Value (solo visible una vez) → Guardar para MICROSOFT_CLIENT_SECRET
+- [x] **Crear App Registration en Azure Portal**
+  - [x] Navegar a Azure Portal → Entra ID → App registrations → New registration
+  - [x] Configuración básica:
+    - Name: `BCAgent-Dev` ✅
+    - Supported account types: `Accounts in any organizational directory (Any Microsoft Entra ID tenant - Multitenant)` ✅
+    - Redirect URI (Web): `http://localhost:3002/api/auth/callback` (dev) ✅
+    - Redirect URI (Web): `https://app-bcagent-backend-dev.ambitiousflower-b4d27c1a.westeurope.azurecontainerapps.io/api/auth/callback` (production) ✅
+  - [x] Copiar valores críticos:
+    - Application (client) ID: `2066b7ec-a490-47d3-b75e-0b32f24209e6` ✅
+    - Directory (tenant) ID: `common` (multi-tenant) ✅
+  - [x] Crear Client secret:
+    - Ir a: Certificates & secrets → Client secrets → New client secret ✅
+    - Description: `Development Secret` ✅
+    - Expiration: Default ✅
+    - Value almacenado en Key Vault ✅
 
-- [ ] **Configurar API Permissions (Delegated)**
-  - [ ] Microsoft Graph:
-    - [ ] `User.Read` (Delegated) - Leer perfil básico del usuario
-    - [ ] `email` (Delegated) - Leer email del usuario
-    - [ ] `profile` (Delegated) - Leer perfil completo
-    - [ ] `offline_access` (Delegated) - Obtener refresh tokens
-  - [ ] Dynamics 365 Business Central:
-    - [ ] `Financials.ReadWrite.All` (Delegated) - Acceso completo a BC en nombre del usuario
-    - [ ] Si no aparece en lista: Ir a "APIs my organization uses" y buscar "Dynamics 365 Business Central"
-  - [ ] Ejecutar "Grant admin consent for [Tenant]"
-    - ⚠️ Requiere permisos de Global Administrator o Privileged Role Administrator
-    - Esto pre-autoriza los permisos para todos los usuarios del tenant
-    - Si no tienes permisos: cada usuario deberá consentir individualmente al primer login
+- [x] **Configurar API Permissions (Delegated)**
+  - [x] Microsoft Graph:
+    - [x] `User.Read` (Delegated) - Leer perfil básico del usuario ✅
+    - [x] `email` (Delegated) - Leer email del usuario ✅
+    - [x] `profile` (Delegated) - Leer perfil completo ✅
+    - [x] `offline_access` (Delegated) - Obtener refresh tokens ✅
+    - [x] `openid` (Delegated) - OpenID Connect ✅
+  - [x] Dynamics 365 Business Central:
+    - [x] `Financials.ReadWrite.All` (Delegated) - Acceso completo a BC en nombre del usuario ✅
+  - [x] Admin consent: Permisos agregados (consent se hará en primer login)
 
-- [ ] **Configurar Authentication settings**
-  - [ ] Ir a Authentication → Platform configurations → Web
-  - [ ] Front-channel logout URL: `https://<domain>/logout` (opcional)
-  - [ ] Implicit grant and hybrid flows: ❌ Deshabilitado (usamos authorization code flow)
-  - [ ] Allow public client flows: ❌ No (es aplicación web confidencial)
+- [x] **Configurar Authentication settings**
+  - [x] Ir a Authentication → Platform configurations → Web ✅
+  - [x] Redirect URIs configurados ✅
+  - [x] Authorization code flow habilitado ✅
 
-- [ ] **Agregar secrets a Azure Key Vault**
-  ```bash
-  # Ejecutar desde línea de comandos local o Cloud Shell
-  az keyvault secret set --vault-name kv-bcagent-dev \
-    --name Microsoft-ClientId \
-    --value "<APPLICATION_CLIENT_ID_FROM_PORTAL>"
+- [x] **Agregar secrets a Azure Key Vault** ✅
+  - [x] Microsoft-ClientId: `2066b7ec-a490-47d3-b75e-0b32f24209e6` ✅
+  - [x] Microsoft-ClientSecret: Almacenado ✅
+  - [x] Microsoft-TenantId: `common` ✅
+  - [x] ENCRYPTION-KEY: Generado (32-byte AES-256) ✅
+  - [x] SESSION-SECRET: Generado ✅
 
-  az keyvault secret set --vault-name kv-bcagent-dev \
-    --name Microsoft-ClientSecret \
-    --value "<CLIENT_SECRET_VALUE_FROM_PORTAL>"
+- [ ] **Eliminar secrets obsoletos de Key Vault** (Pendiente - no bloquea MVP)
+  - JWT-Secret, BC-TenantId, BC-ClientId, BC-ClientSecret (antiguos credenciales globales)
 
-  az keyvault secret set --vault-name kv-bcagent-dev \
-    --name Microsoft-TenantId \
-    --value "<DIRECTORY_TENANT_ID_FROM_PORTAL>"
-
-  # Generar encryption key para cifrar tokens BC en BD (AES-256 requiere 32 bytes)
-  az keyvault secret set --vault-name kv-bcagent-dev \
-    --name Encryption-Key \
-    --value "$(openssl rand -base64 32)"
-  ```
-
-- [ ] **Eliminar secrets obsoletos de Key Vault** (JWT system ya no se usa)
-  ```bash
-  # Opcional: eliminar secrets del sistema JWT antiguo
-  az keyvault secret delete --vault-name kv-bcagent-dev --name JWT-Secret
-  az keyvault secret delete --vault-name kv-bcagent-dev --name BC-TenantId
-  az keyvault secret delete --vault-name kv-bcagent-dev --name BC-ClientId
-  az keyvault secret delete --vault-name kv-bcagent-dev --name BC-ClientSecret
-  ```
-
-- [ ] **Documentar configuración**
-  - [ ] Screenshot del App Registration (overview page)
-  - [ ] Screenshot de API Permissions (con admin consent granted)
-  - [ ] Actualizar @docs\07-security\06-microsoft-oauth-setup.md con paso a paso
+- [ ] **Documentar configuración** (Pendiente - documentación en TODO.md suficiente por ahora)
 
 **Referencias**:
 - Tutorial oficial: https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app
@@ -717,10 +692,13 @@ curl http://localhost:3001/health
 
 ---
 
-#### 2.5.2 Backend - Nuevos Servicios OAuth
+#### 2.5.2 Backend - Nuevos Servicios OAuth ✅ COMPLETADO
 **Objetivo**: Implementar servicios para manejar OAuth flow con Microsoft y gestión de tokens BC por usuario
 
-- [ ] **Instalar dependencias npm**
+- [x] **Instalar dependencias npm** ✅
+  - [x] @azure/msal-node@3.8.1 ✅
+  - [x] express-session@1.18.1 ✅
+  - [x] @types/express-session@1.18.1 ✅
   ```bash
   cd backend
   npm install @azure/msal-node@2.18.0 --save-exact

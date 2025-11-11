@@ -11,6 +11,7 @@ import express, { Request, Response, NextFunction } from 'express';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import cors from 'cors';
+import session from 'express-session';
 import { env, isProd, printConfig, validateRequiredSecrets } from './config/environment';
 import { loadSecretsFromKeyVault } from './config/keyvault';
 import { initDatabase, closeDatabase, checkDatabaseHealth, executeQuery } from './config/database';
@@ -23,7 +24,19 @@ import { getApprovalManager } from './services/approval/ApprovalManager';
 import { getTodoManager } from './services/todo/TodoManager';
 import authRoutes from './routes/auth';
 import authMockRoutes from './routes/auth-mock';
+import authOAuthRoutes from './routes/auth-oauth';
 import { authenticateJWT } from './middleware/auth';
+import { MicrosoftOAuthSession } from './types/microsoft.types';
+
+/**
+ * Extend express-session types to include Microsoft OAuth session data
+ */
+declare module 'express-session' {
+  interface SessionData {
+    microsoftOAuth?: MicrosoftOAuthSession;
+    oauthState?: string;
+  }
+}
 
 /**
  * Express application instance
@@ -177,6 +190,19 @@ function configureMiddleware(): void {
       ? env.CORS_ORIGIN.split(',').map(o => o.trim())
       : env.CORS_ORIGIN,
     credentials: true,
+  }));
+
+  // Session middleware (required for Microsoft OAuth)
+  app.use(session({
+    secret: process.env.SESSION_SECRET || 'development-secret-change-in-production',
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      secure: isProd, // HTTPS only in production
+      httpOnly: true,
+      maxAge: parseInt(process.env.SESSION_MAX_AGE || '86400000'), // 24 hours default
+      sameSite: 'lax',
+    },
   }));
 
   // Body parsing
@@ -725,6 +751,10 @@ function configureRoutes(): void {
   if (isDatabaseAvailable) {
     console.log('[Server] Using real authentication (database connected)');
     app.use('/api/auth', authRoutes);
+
+    // Microsoft OAuth routes (requires database)
+    console.log('[Server] Registering Microsoft OAuth routes');
+    app.use('/api/auth', authOAuthRoutes);
   } else {
     console.log('[Server] Using mock authentication (database unavailable)');
     app.use('/api/auth', authMockRoutes);

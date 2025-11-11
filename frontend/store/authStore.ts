@@ -1,187 +1,121 @@
+/**
+ * Auth Store (Microsoft OAuth Session-Based)
+ *
+ * Simplified authentication store for Microsoft OAuth 2.0 flow.
+ * Authentication state is managed server-side via express-session.
+ * Frontend only checks session validity by calling /api/auth/me.
+ */
+
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
-import type { User, AuthResponse } from '@/lib/types';
-import { authApi, setAuthToken, clearAuthToken } from '@/lib/api';
+import type { User } from '@/lib/types';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 interface AuthState {
   user: User | null;
-  accessToken: string | null;
-  refreshToken: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
 
   // Actions
-  login: (email: string, password: string) => Promise<void>;
-  register: (name: string, email: string, password: string) => Promise<void>;
-  logout: () => Promise<void>;
-  refreshAuth: () => Promise<void>;
   fetchCurrentUser: () => Promise<void>;
+  logout: () => Promise<void>;
   clearError: () => void;
   setUser: (user: User | null) => void;
 }
 
-export const useAuthStore = create<AuthState>()(
-  persist(
-    (set, get) => ({
-      // Initial state
-      user: null,
-      accessToken: null,
-      refreshToken: null,
-      isAuthenticated: false,
-      isLoading: false,
-      error: null,
+export const useAuthStore = create<AuthState>((set) => ({
+  // Initial state
+  user: null,
+  isAuthenticated: false,
+  isLoading: false,
+  error: null,
 
-      // Login action
-      login: async (email: string, password: string) => {
-        set({ isLoading: true, error: null });
-        try {
-          const response: AuthResponse = await authApi.login(email, password);
+  // Fetch current user from session (server-side check)
+  fetchCurrentUser: async () => {
+    set({ isLoading: true, error: null });
+    try {
+      const response = await fetch(`${API_URL}/api/auth/me`, {
+        method: 'GET',
+        credentials: 'include', // Send cookies (session)
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
 
-          // Set token in API client
-          setAuthToken(response.accessToken);
-
-          set({
-            user: response.user,
-            accessToken: response.accessToken,
-            refreshToken: response.refreshToken,
-            isAuthenticated: true,
-            isLoading: false,
-          });
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : 'Login failed';
-          set({
-            error: errorMessage,
-            isLoading: false,
-            isAuthenticated: false,
-          });
-          throw error;
-        }
-      },
-
-      // Register action
-      register: async (name: string, email: string, password: string) => {
-        set({ isLoading: true, error: null });
-        try {
-          const response: AuthResponse = await authApi.register(email, password, name);
-
-          // Set token in API client
-          setAuthToken(response.accessToken);
-
-          set({
-            user: response.user,
-            accessToken: response.accessToken,
-            refreshToken: response.refreshToken,
-            isAuthenticated: true,
-            isLoading: false,
-          });
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : 'Registration failed';
-          set({
-            error: errorMessage,
-            isLoading: false,
-            isAuthenticated: false,
-          });
-          throw error;
-        }
-      },
-
-      // Logout action
-      logout: async () => {
-        try {
-          await authApi.logout();
-        } catch (error) {
-          console.error('Logout API call failed:', error);
-        } finally {
-          // Clear token in API client
-          clearAuthToken();
-
-          // Clear store state
+      if (!response.ok) {
+        if (response.status === 401) {
+          // Not authenticated - clear state
           set({
             user: null,
-            accessToken: null,
-            refreshToken: null,
             isAuthenticated: false,
-            error: null,
-          });
-        }
-      },
-
-      // Refresh authentication
-      refreshAuth: async () => {
-        const { refreshToken } = get();
-        if (!refreshToken) {
-          throw new Error('No refresh token available');
-        }
-
-        set({ isLoading: true, error: null });
-        try {
-          const response: AuthResponse = await authApi.refresh(refreshToken);
-
-          // Set new token in API client
-          setAuthToken(response.accessToken);
-
-          set({
-            user: response.user,
-            accessToken: response.accessToken,
-            refreshToken: response.refreshToken,
-            isAuthenticated: true,
             isLoading: false,
           });
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : 'Token refresh failed';
-          set({
-            error: errorMessage,
-            isLoading: false,
-            isAuthenticated: false,
-          });
-
-          // Clear tokens on refresh failure
-          clearAuthToken();
-          set({
-            user: null,
-            accessToken: null,
-            refreshToken: null,
-          });
-
-          throw error;
+          return;
         }
-      },
+        throw new Error('Failed to fetch user');
+      }
 
-      // Fetch current user
-      fetchCurrentUser: async () => {
-        set({ isLoading: true, error: null });
-        try {
-          const response = await authApi.me();
-          set({
-            user: response.user,
-            isAuthenticated: true,
-            isLoading: false,
-          });
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : 'Failed to fetch user';
-          set({
-            error: errorMessage,
-            isLoading: false,
-            isAuthenticated: false,
-          });
-          throw error;
-        }
-      },
+      const data = await response.json();
 
-      // Clear error
-      clearError: () => set({ error: null }),
+      // Transform backend user to frontend User type
+      const user: User = {
+        id: data.id,
+        email: data.email || data.microsoftEmail,
+        fullName: data.fullName,
+        role: data.role,
+      };
 
-      // Set user (for external updates)
-      setUser: (user: User | null) => set({ user }),
-    }),
-    {
-      name: 'auth-storage', // localStorage key
-      partialize: (state) => ({
-        accessToken: state.accessToken,
-        refreshToken: state.refreshToken,
-        user: state.user,
-      }), // Only persist these fields
+      set({
+        user,
+        isAuthenticated: true,
+        isLoading: false,
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to fetch user';
+      set({
+        error: errorMessage,
+        isLoading: false,
+        isAuthenticated: false,
+        user: null,
+      });
     }
-  )
-);
+  },
+
+  // Logout action
+  logout: async () => {
+    set({ isLoading: true });
+    try {
+      await fetch(`${API_URL}/api/auth/logout`, {
+        method: 'POST',
+        credentials: 'include', // Send cookies (session)
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+    } catch (error) {
+      console.error('Logout API call failed:', error);
+    } finally {
+      // Clear store state
+      set({
+        user: null,
+        isAuthenticated: false,
+        isLoading: false,
+        error: null,
+      });
+    }
+  },
+
+  // Clear error
+  clearError: () => {
+    set({ error: null });
+  },
+
+  // Set user (for manual override if needed)
+  setUser: (user: User | null) => {
+    set({
+      user,
+      isAuthenticated: !!user,
+    });
+  },
+}));

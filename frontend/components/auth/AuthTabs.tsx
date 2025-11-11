@@ -7,14 +7,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from '@/components/ui/tabs';
 import { LoginForm } from './LoginForm';
-import { RegisterForm } from './RegisterForm';
 
 export function AuthTabs() {
   return (
@@ -22,22 +15,11 @@ export function AuthTabs() {
       <CardHeader>
         <CardTitle className="text-2xl">BC Claude Agent</CardTitle>
         <CardDescription>
-          Sign in to your account or create a new one
+          Sign in with your Microsoft account to access Business Central
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <Tabs defaultValue="login" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="login">Login</TabsTrigger>
-            <TabsTrigger value="register">Register</TabsTrigger>
-          </TabsList>
-          <TabsContent value="login" className="mt-6">
-            <LoginForm />
-          </TabsContent>
-          <TabsContent value="register" className="mt-6">
-            <RegisterForm />
-          </TabsContent>
-        </Tabs>
+        <LoginForm />
       </CardContent>
     </Card>
   );

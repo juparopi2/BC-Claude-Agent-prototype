@@ -508,6 +508,7 @@ curl http://localhost:3001/health
   - [x] Health check de MCP server (validateMCPConnection)
   - [x] Documentación completa (README.md)
   - ℹ️ **Nota**: No se crea cliente MCP manual - Agent SDK maneja la conexión
+  - ℹ️ **Nota sobre deployment**: MCP server data está vendoreado (no requiere git submodule ni build step)
 - [x] **Crear BC Client** (`backend/src/services/bc/BCClient.ts`)
   - [x] Autenticación OAuth 2.0 con token caching
   - [x] Métodos CRUD: query, getById, create, update, delete
@@ -532,7 +533,7 @@ curl http://localhost:3001/health
   - [x] TypeScript compila sin errores
   - [x] Servidor arranca correctamente
   - [x] OAuth con BC funciona ✅
-  - ✅ MCP funciona en local vía stdio transport (indexado con 324 endpoints)
+  - ✅ MCP funciona en local vía stdio transport (datos vendoreados en backend/mcp-server/data/, 324 endpoints)
 - [x] **Claude Agent SDK Integration** ⚡ (Adelantado de Week 3)
   - [x] Instalado `@anthropic-ai/claude-agent-sdk@0.1.29`
   - [x] Downgrade Zod a 3.24.1 para compatibilidad
@@ -1432,8 +1433,32 @@ frontend/
 - ✅ audit_log: `event_type`, `event_data`
 
 **Pendiente**:
-- [ ] Considerar eliminar columnas viejas (description, order_index, action_type, etc.) después de validar que nada las usa
+- [ ] Considerar eliminar columnas viejas (description, order_index, action_type, etc.) después de validar que nada las uses
 - [ ] Actualizar documentación del schema
+
+### ✅ RESUELTO - GitHub Actions Docker Build Failure (2025-11-11)
+**Error**: Docker build failed in CI/CD due to git submodule initialization
+**Root Cause**: Git submodule URL not accessible in GitHub Actions, npm build for MCP server failed
+
+**Solución implementada** ✅:
+- Removed git submodule approach completely
+- Vendored MCP server data files (115 files: bcoas1.0.yaml + data/v1.0/)
+- Simplified Dockerfile (no git operations, no npm build for MCP)
+- Fixed package-lock.json sync issues
+- Reverted zod from v4 to v3.25.76 for SDK compatibility
+- Removed deprecated @types/uuid
+
+**Commits**:
+- 3979864: "fix: vendor MCP server data and simplify Docker build"
+- 9aa1ff0: "fix: exclude test scripts from TypeScript build"
+- 9995325: "fix: sync package-lock.json and fix dependency compatibility"
+
+**Benefits of vendored approach**:
+- ✅ No git submodule complexity
+- ✅ Faster Docker builds (no npm install for MCP server)
+- ✅ More reliable in CI/CD environments
+- ✅ Data files version-controlled directly
+- ✅ ~1.4MB total size (bcoas1.0.yaml 540KB + data/ 852KB)
 
 ---
 
@@ -1561,6 +1586,29 @@ frontend/
     - [ ] Habilitar logs detallados del SDK para debugging avanzado
     - [ ] Considerar implementar wrapper custom alrededor del SDK
 
+### 2025-11-10 (Noche - Docker Build Fixes)
+- ✅ **GitHub Actions CI/CD Fix - MCP Server Vendoring** (~3 horas)
+  - **Problema**: Docker build fallaba en GitHub Actions al inicializar git submodule
+  - **Root Cause**: Submodule URL no accesible desde CI, npm build del MCP server fallaba
+  - **Solución Implementada**:
+    - ✅ Removed git submodule completamente
+    - ✅ Vendored MCP server data files (115 archivos: bcoas1.0.yaml + data/v1.0/)
+    - ✅ Simplified Dockerfile (eliminadas operaciones git y MCP build)
+    - ✅ Dockerfile ahora solo COPY data files (no build step)
+    - ✅ Removed .gitmodules file
+  - **Package Fixes**:
+    - ✅ Synced package-lock.json with package.json (204 lines changed)
+    - ✅ Reverted zod from v4 to v3.25.76 (SDK compatibility)
+    - ✅ Removed deprecated @types/uuid
+  - **TypeScript Fixes**:
+    - ✅ Excluded test scripts from build (tsconfig.json)
+  - **Build Status**: ✅ Docker build now succeeds in CI/CD
+  - **Commits**:
+    - 3979864: "fix: vendor MCP server data and simplify Docker build"
+    - 9aa1ff0: "fix: exclude test scripts from TypeScript build"
+    - 9995325: "fix: sync package-lock.json and fix dependency compatibility"
+  - **Tiempo Total**: ~3 horas (incluyendo debugging y testing local)
+
 ### 2025-10-30
 - ✅ **Week 2 - Sección 2.2**: Authentication System completada
   - AuthService con JWT (register, login, logout, refresh)
@@ -1580,5 +1628,5 @@ frontend/
 
 ---
 
-**Última actualización**: 2025-11-10 (Noche)
-**Versión**: 1.5
+**Última actualización**: 2025-11-11 (Post Docker Fixes)
+**Versión**: 1.6

@@ -669,22 +669,27 @@ az redis update \
 
 #### 3.2 Verificar MCP Server
 
-El MCP server funciona en local vía stdio transport (integrado como git submodule en `backend/mcp-server/`):
+El MCP server funciona en local vía stdio transport (datos vendoreados en `backend/mcp-server/data/`):
+
+**Nota**: Los datos del MCP server están vendoreados (no requiere build ni git submodule)
 
 ```bash
-# Verificar que el MCP server esté indexado
-cd backend/mcp-server && npm run index
+# Verificar que existan los archivos de datos
+ls -la backend/mcp-server/data/v1.0/bc_index.json
+ls -la backend/mcp-server/bcoas1.0.yaml
 
-# Verificar que exista el archivo de índice
-ls -la data/v1.0/bc_index.json
+# Verificar contenido del índice
+cat backend/mcp-server/data/v1.0/bc_index.json | head -20
 ```
 
-**El MCP server local debe tener**:
-- ✅ 324 endpoints indexados
-- ✅ 52 entidades (customers, items, vendors, etc.)
-- ✅ 57 schemas JSON
+**El MCP server vendoreado incluye**:
+- ✅ bc_index.json con 324 endpoints indexados
+- ✅ 52 entidades en data/v1.0/entities/ (customers, items, vendors, etc.)
+- ✅ 57 schemas JSON en data/v1.0/schemas/
+- ✅ bcoas1.0.yaml - OpenAPI spec completo (552KB)
+- ✅ Total: ~1.4MB (sin dependencias npm, sin build step)
 
-**Para verificar desde Azure**: El backend en Container Apps usará el mismo MCP server local (copiado en el Docker image)
+**Para verificar desde Azure**: El backend en Container Apps usará estos datos vendoreados (copiados en el Docker image durante build)
 
 ---
 
@@ -916,11 +921,21 @@ Deberías ver:
 
 **Error**: `MCP server not accessible` o `Master index not found`
 
-**Solución**: El MCP server necesita ser indexado:
+**Solución**: Verificar que los datos vendoreados estén presentes:
 ```bash
-cd backend/mcp-server && npm run index
+# Verificar que exista el índice
+ls -la backend/mcp-server/data/v1.0/bc_index.json
+
+# Si no existe, los datos no se copiaron correctamente
+# En desarrollo local, verificar que el directorio exista
+ls -la backend/mcp-server/
+
+# En Docker, verificar que el Dockerfile incluya:
+# COPY mcp-server/data ./mcp-server/data
+# COPY mcp-server/bcoas1.0.yaml ./mcp-server/bcoas1.0.yaml
 ```
-Esto genera el bc_index.json con 324 endpoints.
+
+**Nota**: Ya no se requiere `npm run index` porque bc_index.json está vendoreado (pre-generado).
 
 ---
 

@@ -14,10 +14,10 @@
 
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
-import { pool } from '../utils/db.js';
+import { executeQuery } from '../config/database.js';
 import { createMicrosoftOAuthService } from '../services/auth/MicrosoftOAuthService.js';
 import { createBCTokenManager } from '../services/auth/BCTokenManager.js';
-import { authenticateMicrosoft, requireBCAccess } from '../middleware/auth-oauth.js';
+import { authenticateMicrosoft } from '../middleware/auth-oauth.js';
 import { MicrosoftOAuthSession } from '../types/microsoft.types.js';
 import { logger } from '../utils/logger.js';
 
@@ -102,7 +102,7 @@ router.get('/callback', async (req: Request, res: Response) => {
     const expiresAt = new Date(Date.now() + tokenResponse.expires_in * 1000);
 
     // Check if user exists in database
-    const existingUserResult = await pool.query(
+    const existingUserResult = await executeQuery(
       `
       SELECT id, microsoft_id, email, full_name, role
       FROM users
@@ -115,10 +115,10 @@ router.get('/callback', async (req: Request, res: Response) => {
 
     if (existingUserResult.recordset && existingUserResult.recordset.length > 0) {
       // User exists, update Microsoft login data
-      const user = existingUserResult.recordset[0];
-      userId = user.id;
+      const user = existingUserResult.recordset[0] as Record<string, unknown>;
+      userId = user.id as string;
 
-      await pool.query(
+      await executeQuery(
         `
         UPDATE users
         SET microsoft_id = @microsoftId,
@@ -141,7 +141,7 @@ router.get('/callback', async (req: Request, res: Response) => {
       // Create new user
       userId = crypto.randomUUID();
 
-      await pool.query(
+      await executeQuery(
         `
         INSERT INTO users (
           id, email, full_name, microsoft_id, microsoft_email, microsoft_tenant_id,
@@ -249,7 +249,7 @@ router.get('/me', authenticateMicrosoft, async (req: Request, res: Response) => 
     const userId = req.userId;
 
     // Fetch user from database
-    const result = await pool.query(
+    const result = await executeQuery(
       `
       SELECT id, email, full_name, role, microsoft_email, microsoft_id,
              last_microsoft_login, created_at, is_active
@@ -266,9 +266,9 @@ router.get('/me', authenticateMicrosoft, async (req: Request, res: Response) => 
       });
     }
 
-    const user = result.recordset[0];
+    const user = result.recordset[0] as Record<string, unknown>;
 
-    res.json({
+    return res.json({
       id: user.id,
       email: user.email,
       fullName: user.full_name,
@@ -281,7 +281,7 @@ router.get('/me', authenticateMicrosoft, async (req: Request, res: Response) => 
     });
   } catch (error) {
     logger.error('Failed to get current user', { error, userId: req.userId });
-    res.status(500).json({
+    return res.status(500).json({
       error: 'Internal Server Error',
       message: 'Failed to get user information',
     });
@@ -298,7 +298,7 @@ router.get('/bc-status', authenticateMicrosoft, async (req: Request, res: Respon
     const userId = req.userId!;
 
     // Fetch BC token status
-    const result = await pool.query(
+    const result = await executeQuery(
       `
       SELECT bc_access_token_encrypted,
              bc_token_expires_at
@@ -315,7 +315,7 @@ router.get('/bc-status', authenticateMicrosoft, async (req: Request, res: Respon
       });
     }
 
-    const user = result.recordset[0];
+    const user = result.recordset[0] as Record<string, unknown>;
 
     if (!user.bc_access_token_encrypted) {
       return res.json({
@@ -325,11 +325,11 @@ router.get('/bc-status', authenticateMicrosoft, async (req: Request, res: Respon
       });
     }
 
-    const expiresAt = new Date(user.bc_token_expires_at);
+    const expiresAt = new Date(user.bc_token_expires_at as string);
     const now = new Date();
     const isExpired = expiresAt <= now;
 
-    res.json({
+    return res.json({
       hasAccess: !isExpired,
       expiresAt: expiresAt.toISOString(),
       isExpired,
@@ -338,7 +338,7 @@ router.get('/bc-status', authenticateMicrosoft, async (req: Request, res: Respon
     });
   } catch (error) {
     logger.error('Failed to check BC status', { error, userId: req.userId });
-    res.status(500).json({
+    return res.status(500).json({
       error: 'Internal Server Error',
       message: 'Failed to check Business Central status',
     });
@@ -371,14 +371,14 @@ router.post('/bc-consent', authenticateMicrosoft, async (req: Request, res: Resp
 
     logger.info('Business Central consent granted', { userId });
 
-    res.json({
+    return res.json({
       success: true,
       message: 'Business Central access granted successfully',
       expiresAt: bcToken.expiresAt.toISOString(),
     });
   } catch (error) {
     logger.error('Failed to grant Business Central consent', { error, userId: req.userId });
-    res.status(500).json({
+    return res.status(500).json({
       error: 'Internal Server Error',
       message: 'Failed to grant Business Central access. You may need to grant admin consent for the Financials.ReadWrite.All permission.',
     });

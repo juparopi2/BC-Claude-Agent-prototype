@@ -163,11 +163,11 @@ export function useChat(sessionId?: string) {
     [sessionId, isConnected, addMessage]
   );
 
-  // Create new session and return session ID
+  // Create new session and return session object
   const handleCreateSession = useCallback(
     async (goal?: string) => {
       const session = await createSession(goal);
-      return session.id; // Return just the ID for convenience
+      return session; // Return full session object
     },
     [createSession]
   );

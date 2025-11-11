@@ -219,3 +219,9 @@ export async function checkDatabaseHealth(): Promise<boolean> {
  * SQL Server data types for type-safe queries
  */
 export { sql };
+
+/**
+ * Export pool for direct access (use with caution - may be null)
+ * Prefer using getPool() which throws if not initialized
+ */
+export { pool };

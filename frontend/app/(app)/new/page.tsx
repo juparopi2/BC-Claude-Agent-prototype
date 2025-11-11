@@ -8,7 +8,7 @@ import { MessageSquarePlus, Loader2 } from 'lucide-react';
 
 export default function NewChatPage() {
   const router = useRouter();
-  const { createSession, currentSession, isLoading } = useChat();
+  const { createSession, currentSession, sessionsLoading } = useChat();
 
   // If there's already a current session, redirect to it
   useEffect(() => {
@@ -52,10 +52,10 @@ export default function NewChatPage() {
         <Button
           size="lg"
           onClick={handleStartChat}
-          disabled={isLoading}
+          disabled={sessionsLoading}
           className="w-full max-w-xs mx-auto"
         >
-          {isLoading ? (
+          {sessionsLoading ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               Creating session...
@@ -80,7 +80,7 @@ export default function NewChatPage() {
               <button
                 key={index}
                 onClick={handleStartChat}
-                disabled={isLoading}
+                disabled={sessionsLoading}
                 className="w-full text-left px-4 py-3 rounded-lg border border-border hover:border-primary hover:bg-accent/50 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {suggestion}

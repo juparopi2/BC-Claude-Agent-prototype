@@ -159,9 +159,9 @@ export async function requireBCAccess(req: Request, res: Response, next: NextFun
     }
 
     // Check if user has BC tokens in database
-    const { pool } = await import('../utils/db.js');
+    const { executeQuery } = await import('../config/database.js');
 
-    const result = await pool.query(
+    const result = await executeQuery(
       `
       SELECT bc_access_token_encrypted,
              bc_token_expires_at
@@ -179,7 +179,7 @@ export async function requireBCAccess(req: Request, res: Response, next: NextFun
       return;
     }
 
-    const user = result.recordset[0];
+    const user = result.recordset[0] as Record<string, unknown>;
 
     // Check if BC token exists
     if (!user.bc_access_token_encrypted) {
@@ -197,7 +197,7 @@ export async function requireBCAccess(req: Request, res: Response, next: NextFun
     }
 
     // Check if BC token is expired
-    const expiresAt = new Date(user.bc_token_expires_at);
+    const expiresAt = new Date(user.bc_token_expires_at as string);
     const now = new Date();
 
     if (expiresAt <= now) {
@@ -243,7 +243,7 @@ export async function requireBCAccess(req: Request, res: Response, next: NextFun
  *
  * Useful for routes that work for both authenticated and unauthenticated users.
  */
-export function authenticateMicrosoftOptional(req: Request, res: Response, next: NextFunction): void {
+export function authenticateMicrosoftOptional(req: Request, _res: Response, next: NextFunction): void {
   try {
     if (!req.session || !req.session.microsoftOAuth) {
       // No session, continue without auth

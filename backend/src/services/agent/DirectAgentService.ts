@@ -31,6 +31,62 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 /**
+ * Type Definitions for BC Index and MCP Tools
+ */
+
+interface BCEndpoint {
+  id: string;
+  method: string;
+  path?: string;
+  summary: string;
+  operationType: string;
+  riskLevel: string;
+  requiresHumanApproval?: boolean;
+  requiredFields?: string[];
+  optionalFields?: string[];
+}
+
+interface BCRelationship {
+  entity: string;
+  type?: string;
+}
+
+interface BCIndexEntity {
+  entity: string;
+  displayName: string;
+  description: string;
+  operations: string[];
+  endpoints: BCEndpoint[];
+  relationships?: BCRelationship[];
+  commonWorkflows?: unknown[];
+}
+
+interface BCIndex {
+  entities: BCIndexEntity[];
+  operationIndex: Record<string, string>;
+}
+
+interface ToolResult {
+  type: 'tool_result';
+  tool_use_id: string;
+  content: string;
+  is_error?: boolean;
+}
+
+interface WorkflowValidationResult {
+  step_number: number;
+  operation_id: string;
+  entity: string;
+  entity_display_name?: string;
+  valid: boolean;
+  risk_level: string;
+  requires_approval: boolean;
+  operation_type?: string;
+  issues?: string[];
+  dependencies?: string[];
+}
+
+/**
  * Direct Agent Service
  *
  * Bypasses the buggy Agent SDK by using Anthropic API directly.
@@ -164,7 +220,7 @@ export class DirectAgentService {
           console.log(`[DirectAgentService] Executing ${toolUses.length} tool(s)`);
 
           // Execute all tool calls
-          const toolResults: any[] = [];
+          const toolResults: ToolResult[] = [];
 
           for (const toolUse of toolUses) {
             if (onEvent) {
@@ -327,9 +383,9 @@ export class DirectAgentService {
    *
    * Converts SDK MCP server tools to Anthropic tool format
    */
-  private async getMCPToolDefinitions(): Promise<any[]> {
+  private async getMCPToolDefinitions(): Promise<Anthropic.Messages.Tool[]> {
     // Import tools from our SDK MCP server
-    const tools: any[] = [
+    const tools: Anthropic.Messages.Tool[] = [
       {
         name: 'list_all_entities',
         description: 'Returns a complete list of all Business Central entities. Use this first to discover available entities.',
@@ -542,13 +598,13 @@ export class DirectAgentService {
     let entities = index.entities;
 
     if (args.filter_by_operations && Array.isArray(args.filter_by_operations)) {
-      entities = entities.filter((entity: any) => {
+      entities = entities.filter((entity: BCIndexEntity) => {
         return (args.filter_by_operations as string[]).every(op => entity.operations.includes(op));
       });
     }
 
-    const allOperationTypes = new Set();
-    index.entities.forEach((entity: any) => {
+    const allOperationTypes = new Set<string>();
+    index.entities.forEach((entity: BCIndexEntity) => {
       entity.operations.forEach((op: string) => allOperationTypes.add(op));
     });
 
@@ -577,7 +633,18 @@ export class DirectAgentService {
     const filterByRisk = args.filter_by_risk as string | undefined;
     const filterByOperationType = args.filter_by_operation_type as string | undefined;
 
-    const results: any[] = [];
+    const results: Array<{
+      entity: string;
+      displayName: string;
+      description: string;
+      matching_operations: Array<{
+        operation_id: string;
+        method: string;
+        summary: string;
+        operation_type: string;
+        risk_level: string;
+      }>;
+    }> = [];
 
     // Search through entities
     for (const entitySummary of index.entities) {
@@ -599,10 +666,10 @@ export class DirectAgentService {
 
       // Apply filters
       if (filterByRisk) {
-        matchingOps = matchingOps.filter((ep: any) => ep.riskLevel === filterByRisk);
+        matchingOps = matchingOps.filter((ep: BCEndpoint) => ep.riskLevel === filterByRisk);
       }
       if (filterByOperationType) {
-        matchingOps = matchingOps.filter((ep: any) => ep.operationType === filterByOperationType);
+        matchingOps = matchingOps.filter((ep: BCEndpoint) => ep.operationType === filterByOperationType);
       }
 
       if (matchingOps.length > 0) {
@@ -610,7 +677,7 @@ export class DirectAgentService {
           entity: entity.entity,
           displayName: entity.displayName,
           description: entity.description,
-          matching_operations: matchingOps.map((ep: any) => ({
+          matching_operations: matchingOps.map((ep: BCEndpoint) => ({
             operation_id: ep.id,
             method: ep.method,
             summary: ep.summary,
@@ -670,7 +737,7 @@ export class DirectAgentService {
       relationship_summary: {
         total_relationships: (entity.relationships || []).length,
         total_workflows: (entity.commonWorkflows || []).length,
-        related_entities: (entity.relationships || []).map((r: any) => r.entity),
+        related_entities: (entity.relationships || []).map((r: BCRelationship) => r.entity),
       },
     };
 
@@ -693,9 +760,9 @@ export class DirectAgentService {
     }
 
     const indexContent = fs.readFileSync(indexPath, 'utf8');
-    const index = JSON.parse(indexContent);
+    const index = JSON.parse(indexContent) as BCIndex;
 
-    const validationResults: any[] = [];
+    const validationResults: WorkflowValidationResult[] = [];
     let hasErrors = false;
     let stepNumber = 0;
 
@@ -738,10 +805,10 @@ export class DirectAgentService {
       }
 
       const entityContent = fs.readFileSync(entityPath, 'utf8');
-      const entity = JSON.parse(entityContent);
+      const entity = JSON.parse(entityContent) as BCIndexEntity;
 
       // Find endpoint
-      const endpoint = entity.endpoints.find((ep: any) => ep.id === step.operation_id);
+      const endpoint = entity.endpoints.find((ep: BCEndpoint) => ep.id === step.operation_id);
 
       if (!endpoint) {
         hasErrors = true;
@@ -779,7 +846,7 @@ export class DirectAgentService {
         entity_display_name: entity.displayName,
         valid,
         risk_level: endpoint.riskLevel,
-        requires_approval: endpoint.requiresHumanApproval,
+        requires_approval: endpoint.requiresHumanApproval ?? false,
         operation_type: endpoint.operationType,
         issues: issues.length > 0 ? issues : undefined,
         dependencies: dependencies.length > 0 ? dependencies : undefined,

@@ -9,15 +9,13 @@
  */
 
 import crypto from 'crypto';
-import { pool } from '../../utils/db.js';
-import { BCTokenData, BCTokenRecord, TokenAcquisitionResult } from '../../types/microsoft.types.js';
+import { executeQuery } from '../../config/database.js';
+import { BCTokenData, TokenAcquisitionResult } from '../../types/microsoft.types.js';
 import { MicrosoftOAuthService } from './MicrosoftOAuthService.js';
 import { logger } from '../../utils/logger.js';
 
 const ENCRYPTION_ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16;
-const SALT_LENGTH = 64;
-const TAG_LENGTH = 16;
 const KEY_LENGTH = 32;
 
 export class BCTokenManager {
@@ -74,6 +72,12 @@ export class BCTokenManager {
       }
 
       const [ivBase64, encryptedBase64, authTagBase64] = parts;
+
+      // Validate all parts exist (should always be true after length check)
+      if (!ivBase64 || !encryptedBase64 || !authTagBase64) {
+        throw new Error('Missing encryption components');
+      }
+
       const iv = Buffer.from(ivBase64, 'base64');
       const encrypted = Buffer.from(encryptedBase64, 'base64');
       const authTag = Buffer.from(authTagBase64, 'base64');
@@ -102,7 +106,7 @@ export class BCTokenManager {
       const accessTokenEncrypted = this.encryptToken(tokenData.accessToken);
       const refreshTokenEncrypted = tokenData.refreshToken ? this.encryptToken(tokenData.refreshToken) : null;
 
-      await pool.query(
+      await executeQuery(
         `
         UPDATE users
         SET bc_access_token_encrypted = @accessToken,
@@ -137,7 +141,7 @@ export class BCTokenManager {
   async getBCToken(userId: string, userRefreshToken: string): Promise<BCTokenData> {
     try {
       // Fetch encrypted tokens from database
-      const result = await pool.query(
+      const result = await executeQuery(
         `
         SELECT bc_access_token_encrypted,
                bc_refresh_token_encrypted,
@@ -152,7 +156,7 @@ export class BCTokenManager {
         throw new Error('User not found');
       }
 
-      const record = result.recordset[0];
+      const record = result.recordset[0] as Record<string, unknown>;
 
       // If no BC token stored, acquire new one
       if (!record.bc_access_token_encrypted) {
@@ -160,7 +164,7 @@ export class BCTokenManager {
         return await this.refreshBCToken(userId, userRefreshToken);
       }
 
-      const expiresAt = new Date(record.bc_token_expires_at);
+      const expiresAt = new Date(record.bc_token_expires_at as string);
       const now = new Date();
 
       // If token expired or expires in next 5 minutes, refresh it
@@ -170,8 +174,8 @@ export class BCTokenManager {
       }
 
       // Decrypt and return token
-      const accessToken = this.decryptToken(record.bc_access_token_encrypted);
-      const refreshToken = record.bc_refresh_token_encrypted ? this.decryptToken(record.bc_refresh_token_encrypted) : '';
+      const accessToken = this.decryptToken(record.bc_access_token_encrypted as string);
+      const refreshToken = record.bc_refresh_token_encrypted ? this.decryptToken(record.bc_refresh_token_encrypted as string) : '';
 
       return {
         accessToken,
@@ -219,7 +223,7 @@ export class BCTokenManager {
    */
   async clearBCToken(userId: string): Promise<void> {
     try {
-      await pool.query(
+      await executeQuery(
         `
         UPDATE users
         SET bc_access_token_encrypted = NULL,

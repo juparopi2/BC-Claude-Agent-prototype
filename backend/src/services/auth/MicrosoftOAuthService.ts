@@ -10,7 +10,7 @@
  */
 
 import { ConfidentialClientApplication, AuthorizationUrlRequest, AuthorizationCodeRequest, Configuration } from '@azure/msal-node';
-import { MicrosoftOAuthConfig, OAuthTokenResponse, MicrosoftUserProfile, TokenAcquisitionResult, ALL_SCOPES, BC_API_SCOPE, GRAPH_SCOPES } from '../../types/microsoft.types.js';
+import { MicrosoftOAuthConfig, OAuthTokenResponse, MicrosoftUserProfile, TokenAcquisitionResult, ALL_SCOPES, BC_API_SCOPE } from '../../types/microsoft.types.js';
 import { logger } from '../../utils/logger.js';
 
 export class MicrosoftOAuthService {
@@ -106,9 +106,13 @@ export class MicrosoftOAuthService {
         expiresOn: response.expiresOn,
       });
 
+      // Note: MSAL Node may not expose refreshToken in the typed response,
+      // but it may be present in the actual object. We'll extract it if available.
+      const refreshToken = (response as { refreshToken?: string }).refreshToken;
+
       return {
         access_token: response.accessToken,
-        refresh_token: response.refreshToken,
+        refresh_token: refreshToken,
         id_token: response.idToken || '',
         token_type: response.tokenType || 'Bearer',
         expires_in: response.expiresOn ? Math.floor((response.expiresOn.getTime() - Date.now()) / 1000) : 3600,
@@ -144,9 +148,13 @@ export class MicrosoftOAuthService {
         expiresOn: response.expiresOn,
       });
 
+      // Reuse the input refresh token if no new one is provided
+      // MSAL typically doesn't return a new refresh token on refresh operations
+      const newRefreshToken = (response as { refreshToken?: string }).refreshToken || refreshToken;
+
       return {
         accessToken: response.accessToken,
-        refreshToken: response.refreshToken,
+        refreshToken: newRefreshToken,
         expiresAt: response.expiresOn || new Date(Date.now() + 3600 * 1000),
       };
     } catch (error) {
@@ -190,7 +198,7 @@ export class MicrosoftOAuthService {
         throw new Error(`Microsoft Graph API error: ${response.status} ${response.statusText}`);
       }
 
-      const profile = await response.json();
+      const profile = await response.json() as MicrosoftUserProfile;
 
       logger.info('Successfully fetched user profile from Microsoft Graph', {
         userId: profile.id,
@@ -242,9 +250,12 @@ export class MicrosoftOAuthService {
         expiresOn: response.expiresOn,
       });
 
+      // Reuse the input refresh token if no new one is provided
+      const newRefreshToken = (response as { refreshToken?: string }).refreshToken || refreshToken;
+
       return {
         accessToken: response.accessToken,
-        refreshToken: response.refreshToken,
+        refreshToken: newRefreshToken,
         expiresAt: response.expiresOn || new Date(Date.now() + 3600 * 1000),
       };
     } catch (error) {

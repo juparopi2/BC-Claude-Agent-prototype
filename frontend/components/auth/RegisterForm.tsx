@@ -11,7 +11,12 @@ import { PasswordStrength } from './PasswordStrength';
 
 export function RegisterForm() {
   const router = useRouter();
-  const { register, error: authError, isLoading } = useAuth();
+  const { error: authError, isLoading } = useAuth();
+
+  // Note: Microsoft OAuth doesn't support registration - users are managed in Azure AD
+  const register = async (_name: string, _email: string, _password: string) => {
+    throw new Error('Registration not supported with Microsoft OAuth. Please contact your administrator.');
+  };
 
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');

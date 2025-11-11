@@ -239,7 +239,7 @@ export const authApi = {
    */
   register: async (email: string, password: string, fullName?: string) => {
     const response = await api.post<AuthResponse>('/api/auth/register', {
-      name: fullName, // Use 'name' to match backend expectation
+      fullName, // Backend expects 'fullName' not 'name'
       email,
       password,
     });

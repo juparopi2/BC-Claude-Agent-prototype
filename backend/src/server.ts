@@ -22,6 +22,7 @@ import { getAuthService } from './services/auth';
 import { getApprovalManager } from './services/approval/ApprovalManager';
 import { getTodoManager } from './services/todo/TodoManager';
 import authRoutes from './routes/auth';
+import authMockRoutes from './routes/auth-mock';
 import { authenticateJWT } from './middleware/auth';
 
 /**
@@ -49,6 +50,11 @@ const io = new SocketIOServer(httpServer, {
 });
 
 /**
+ * Database availability flag
+ */
+let isDatabaseAvailable = false;
+
+/**
  * Initialize the application
  */
 async function initializeApp(): Promise<void> {
@@ -69,8 +75,16 @@ async function initializeApp(): Promise<void> {
     validateRequiredSecrets();
 
     // Step 3: Initialize database connection
-    await initDatabase();
-    console.log('');
+    try {
+      await initDatabase();
+      isDatabaseAvailable = true;
+      console.log('');
+    } catch (dbError) {
+      isDatabaseAvailable = false;
+      console.warn('⚠️  Database connection failed - using mock authentication');
+      console.warn(`   Error: ${dbError instanceof Error ? dbError.message : 'Unknown error'}`);
+      console.log('');
+    }
 
     // Step 4: Initialize Redis connection
     await initRedis();
@@ -707,8 +721,14 @@ function configureRoutes(): void {
     }
   });
 
-  // Auth routes
-  app.use('/api/auth', authRoutes);
+  // Auth routes - use mock routes if database is unavailable
+  if (isDatabaseAvailable) {
+    console.log('[Server] Using real authentication (database connected)');
+    app.use('/api/auth', authRoutes);
+  } else {
+    console.log('[Server] Using mock authentication (database unavailable)');
+    app.use('/api/auth', authMockRoutes);
+  }
 
   // TODO: Add additional route handlers
   // app.use('/api/chat', chatRoutes);

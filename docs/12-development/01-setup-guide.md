@@ -39,7 +39,7 @@ NEXT_PUBLIC_WS_URL=ws://localhost:3001
 #### Backend (.env)
 ```bash
 # Server
-PORT=3001
+PORT=3002
 NODE_ENV=development
 
 # Database
@@ -48,21 +48,42 @@ REDIS_URL=redis://localhost:6379
 
 # Claude API
 ANTHROPIC_API_KEY=sk-ant-...
-CLAUDE_MODEL=claude-sonnet-4
+CLAUDE_MODEL=claude-sonnet-4-5
+
+# Microsoft OAuth (NEW)
+MICROSOFT_CLIENT_ID=<from Azure App Registration>
+MICROSOFT_CLIENT_SECRET=<from Azure App Registration>
+MICROSOFT_TENANT_ID=common  # or specific tenant ID
+MICROSOFT_REDIRECT_URI=http://localhost:3002/api/auth/callback
+MICROSOFT_SCOPES="openid profile email offline_access User.Read https://api.businesscentral.dynamics.com/Financials.ReadWrite.All"
+
+# Encryption (NEW)
+ENCRYPTION_KEY=<32-byte base64 encoded key for AES-256>
+# Generate with: openssl rand -base64 32
+
+# Session Management (NEW)
+SESSION_SECRET=<generate with: openssl rand -base64 32>
+SESSION_MAX_AGE=86400000  # 24 hours in milliseconds
 
 # Business Central
 BC_API_URL=https://api.businesscentral.dynamics.com/v2.0
-BC_TENANT_ID=your-tenant-id
-BC_CLIENT_ID=your-client-id
-BC_CLIENT_SECRET=your-client-secret
+# NOTE: BC credentials are now per-user (stored encrypted in DB), not global env vars
+# BC_TENANT_ID, BC_CLIENT_ID, BC_CLIENT_SECRET have been REMOVED
 
 # MCP
-MCP_SERVER_URL=http://localhost:3002
+MCP_SERVER_URL=https://app-erptools-mcp-dev.purplemushroom-befedc5f.westeurope.azurecontainerapps.io/mcp
 
-# JWT
-JWT_SECRET=your-secret-key
-JWT_EXPIRY=24h
+# Azure Resources (if using Key Vault)
+KEYVAULT_URI=https://kv-bcagent-dev.vault.azure.net/
+AZURE_CLIENT_ID=<Managed Identity Client ID>
 ```
+
+**Key Changes**:
+- ❌ Removed: `BC_TENANT_ID`, `BC_CLIENT_ID`, `BC_CLIENT_SECRET` (now per-user in DB)
+- ❌ Removed: `JWT_SECRET`, `JWT_EXPIRY` (using Microsoft OAuth instead)
+- ✅ Added: Microsoft OAuth configuration (`MICROSOFT_*`)
+- ✅ Added: Encryption key for storing BC tokens in DB
+- ✅ Added: Session management configuration
 
 ### 4. Database Setup
 

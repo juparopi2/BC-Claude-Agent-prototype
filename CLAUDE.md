@@ -29,7 +29,7 @@ El backend será un servidor Express con TypeScript que incluye:
 - Specialized agents via system prompts (BCQuery, BCWrite, Validation)
 - Integración con MCP server pre-existente (via SDK)
 - WebSocket server (Socket.IO) para streaming
-- Autenticación JWT
+- **Microsoft Entra ID OAuth 2.0** - Single Sign-On con delegated permissions para Business Central
 - Conexiones a Azure SQL y Redis
 
 ### Frontend
@@ -133,19 +133,34 @@ NEXT_PUBLIC_WS_URL=ws://localhost:3001
 
 **Backend** (`.env`):
 ```
-PORT=3001
+PORT=3002
 DATABASE_URL=<from Azure Key Vault>
 REDIS_URL=<from Azure Key Vault>
 ANTHROPIC_API_KEY=<from Azure Key Vault>
+
+# Microsoft OAuth (NEW)
+MICROSOFT_CLIENT_ID=<from Azure Key Vault>
+MICROSOFT_CLIENT_SECRET=<from Azure Key Vault>
+MICROSOFT_TENANT_ID=common  # or specific tenant
+MICROSOFT_REDIRECT_URI=http://localhost:3002/api/auth/callback
+MICROSOFT_SCOPES="openid profile email offline_access User.Read https://api.businesscentral.dynamics.com/Financials.ReadWrite.All"
+
+# Encryption for BC tokens (NEW)
+ENCRYPTION_KEY=<from Azure Key Vault>  # 32-byte key for AES-256
+
+# Session management (NEW)
+SESSION_SECRET=<generate with: openssl rand -base64 32>
+SESSION_MAX_AGE=86400000  # 24 hours
+
+# Business Central API
 BC_API_URL=https://api.businesscentral.dynamics.com/v2.0
-BC_TENANT_ID=<from Azure Key Vault>
-BC_CLIENT_ID=<from Azure Key Vault>
-BC_CLIENT_SECRET=<from Azure Key Vault>
+# NOTE: BC credentials are now per-user (stored encrypted in DB), not global env vars
+
+# MCP Server
 MCP_SERVER_URL=https://app-erptools-mcp-dev.purplemushroom-befedc5f.westeurope.azurecontainerapps.io/mcp
-JWT_SECRET=<from Azure Key Vault>
 ```
 
-**Nota**: Los secrets se almacenan en Azure Key Vault. Ver `infrastructure/deploy-azure-resources.sh` y TODO.md sección 1.1.
+**Nota**: Los secrets de infraestructura (Microsoft OAuth, encryption key, etc.) se almacenan en Azure Key Vault. **Los credentials de Business Central ahora son por usuario** (almacenados cifrados en la BD), no credenciales globales. Ver `infrastructure/deploy-azure-resources.sh` y TODO.md sección 2.5.
 
 ---
 

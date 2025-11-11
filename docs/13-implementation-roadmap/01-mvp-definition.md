@@ -31,7 +31,8 @@ Crear un **sistema funcional** de agente que pueda:
 **Backend**:
 - Express server con WebSockets
 - Session management
-- Basic authentication (JWT)
+- Microsoft OAuth 2.0 authentication (delegated permissions)
+- Multi-tenant BC support (encrypted tokens per user)
 - Connection con MCP server
 
 **Operaciones BC**:

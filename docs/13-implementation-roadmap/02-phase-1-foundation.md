@@ -29,8 +29,14 @@ Establecer la infraestructura base y conectividad fundamental.
 CREATE TABLE users (
   id UUID PRIMARY KEY,
   email VARCHAR(255) UNIQUE,
-  password_hash VARCHAR(255),
-  created_at TIMESTAMP DEFAULT NOW()
+  full_name VARCHAR(255),
+  microsoft_user_id VARCHAR(255) UNIQUE NOT NULL,  -- Azure AD object ID
+  bc_access_token_encrypted TEXT,  -- Encrypted with AES-256-GCM
+  bc_refresh_token_encrypted TEXT,
+  bc_token_expires_at TIMESTAMP,
+  role VARCHAR(50) DEFAULT 'viewer',  -- admin, editor, viewer
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
 );
 
 CREATE TABLE sessions (
@@ -63,11 +69,18 @@ CREATE TABLE approvals (
 
 ### Authentication
 ```typescript
-✓ Implement JWT authentication
-✓ Create auth middleware
-✓ Setup login/register endpoints
-✓ Protect API routes
+✓ Implement Microsoft OAuth 2.0 authentication
+✓ Setup Azure AD App Registration (delegated permissions)
+✓ Create MicrosoftOAuthService (token acquisition & validation)
+✓ Create BCTokenManager (encrypted token storage per user)
+✓ Create EncryptionService (AES-256-GCM for BC tokens)
+✓ Create auth-microsoft middleware (session validation)
+✓ Setup OAuth endpoints (login, callback, logout, bc-consent)
+✓ Protect API routes with authenticateMicrosoft()
+✓ Implement auto-refresh for expired BC tokens
 ```
+
+**Key Change**: Ya NO se usa JWT custom. Ahora se usa Microsoft Entra ID OAuth 2.0 con delegated permissions para Business Central. Cada usuario accede a BC con sus propias credenciales (tokens almacenados cifrados en BD).
 
 ## Week 3: Basic Agent System
 

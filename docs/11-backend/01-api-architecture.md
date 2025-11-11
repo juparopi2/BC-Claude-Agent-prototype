@@ -48,6 +48,23 @@ httpServer.listen(3001);
 
 ## API Endpoints
 
+### Authentication Endpoints (Microsoft OAuth)
+```
+GET    /api/auth/login           # Initiate Microsoft OAuth flow
+GET    /api/auth/callback        # OAuth callback handler (receives code)
+POST   /api/auth/logout          # Logout user (destroy session)
+GET    /api/auth/me              # Get current authenticated user
+POST   /api/auth/bc-consent      # Request Business Central consent
+POST   /api/auth/bc-refresh      # Refresh expired BC token
+```
+
+**Details**:
+- **login**: Redirects to Microsoft login page with BC scopes
+- **callback**: Exchanges code for tokens, stores encrypted BC tokens in DB
+- **me**: Returns user profile + BC connection status
+- **bc-consent**: Triggers additional consent screen for BC permissions
+- **bc-refresh**: Uses refresh token to get new BC access token
+
 ### Agent Endpoints
 ```
 POST   /api/agent/chat           # Send message to agent

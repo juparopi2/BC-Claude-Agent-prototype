@@ -615,6 +615,1285 @@ curl http://localhost:3001/health
 
 ---
 
+### 🔄 **Week 2.5: Microsoft OAuth Migration** (NUEVA IMPLEMENTACIÓN - PRIORIDAD ALTA)
+
+**⚠️ BREAKING CHANGE**: Migración de JWT custom a Microsoft Entra ID OAuth 2.0 + Multi-tenant BC
+
+**Descripción**: Reemplazar el sistema de autenticación JWT tradicional (email/password) por Microsoft OAuth 2.0 con delegated permissions. Esto permite que usuarios hagan login con su cuenta Microsoft y accedan a Business Central con sus propias credenciales (multi-tenant).
+
+**Justificación**:
+- ✅ Single Sign-On con cuentas Microsoft (no más passwords en BD)
+- ✅ Multi-tenant: cada usuario puede conectarse a diferentes tenants/entornos de BC
+- ✅ Delegated permissions: operaciones BC se hacen en nombre del usuario real
+- ✅ Mejor seguridad: tokens BC cifrados por usuario, no credenciales globales
+
+**Referencias**:
+- @docs\07-security\06-microsoft-oauth-setup.md (NUEVO)
+- @docs\07-security\05-bc-authentication.md (REESCRITO)
+- @docs\04-integrations\04-bc-integration.md (ACTUALIZADO)
+- Guía oficial: https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app
+
+**Tiempo estimado**: 2-3 días (16-24 horas de desarrollo)
+
+---
+
+#### 2.5.1 Azure App Registration (Preparación)
+**Objetivo**: Crear App Registration en Azure Entra ID para habilitar OAuth 2.0 en la aplicación
+
+- [ ] **Crear App Registration en Azure Portal**
+  - [ ] Navegar a Azure Portal → Entra ID → App registrations → New registration
+  - [ ] Configuración básica:
+    - Name: `BC-Claude-Agent`
+    - Supported account types: `Accounts in any organizational directory (Any Microsoft Entra ID tenant - Multitenant)`
+    - Redirect URI (Web): `http://localhost:3002/api/auth/callback` (dev)
+    - Redirect URI (Web): `https://<production-domain>/api/auth/callback` (production)
+  - [ ] Copiar valores críticos:
+    - Application (client) ID → Guardar para MICROSOFT_CLIENT_ID
+    - Directory (tenant) ID → Guardar para MICROSOFT_TENANT_ID
+  - [ ] Crear Client secret:
+    - Ir a: Certificates & secrets → Client secrets → New client secret
+    - Description: `BC-Claude-Agent-Secret`
+    - Expiration: 24 months (default)
+    - Copiar Value (solo visible una vez) → Guardar para MICROSOFT_CLIENT_SECRET
+
+- [ ] **Configurar API Permissions (Delegated)**
+  - [ ] Microsoft Graph:
+    - [ ] `User.Read` (Delegated) - Leer perfil básico del usuario
+    - [ ] `email` (Delegated) - Leer email del usuario
+    - [ ] `profile` (Delegated) - Leer perfil completo
+    - [ ] `offline_access` (Delegated) - Obtener refresh tokens
+  - [ ] Dynamics 365 Business Central:
+    - [ ] `Financials.ReadWrite.All` (Delegated) - Acceso completo a BC en nombre del usuario
+    - [ ] Si no aparece en lista: Ir a "APIs my organization uses" y buscar "Dynamics 365 Business Central"
+  - [ ] Ejecutar "Grant admin consent for [Tenant]"
+    - ⚠️ Requiere permisos de Global Administrator o Privileged Role Administrator
+    - Esto pre-autoriza los permisos para todos los usuarios del tenant
+    - Si no tienes permisos: cada usuario deberá consentir individualmente al primer login
+
+- [ ] **Configurar Authentication settings**
+  - [ ] Ir a Authentication → Platform configurations → Web
+  - [ ] Front-channel logout URL: `https://<domain>/logout` (opcional)
+  - [ ] Implicit grant and hybrid flows: ❌ Deshabilitado (usamos authorization code flow)
+  - [ ] Allow public client flows: ❌ No (es aplicación web confidencial)
+
+- [ ] **Agregar secrets a Azure Key Vault**
+  ```bash
+  # Ejecutar desde línea de comandos local o Cloud Shell
+  az keyvault secret set --vault-name kv-bcagent-dev \
+    --name Microsoft-ClientId \
+    --value "<APPLICATION_CLIENT_ID_FROM_PORTAL>"
+
+  az keyvault secret set --vault-name kv-bcagent-dev \
+    --name Microsoft-ClientSecret \
+    --value "<CLIENT_SECRET_VALUE_FROM_PORTAL>"
+
+  az keyvault secret set --vault-name kv-bcagent-dev \
+    --name Microsoft-TenantId \
+    --value "<DIRECTORY_TENANT_ID_FROM_PORTAL>"
+
+  # Generar encryption key para cifrar tokens BC en BD (AES-256 requiere 32 bytes)
+  az keyvault secret set --vault-name kv-bcagent-dev \
+    --name Encryption-Key \
+    --value "$(openssl rand -base64 32)"
+  ```
+
+- [ ] **Eliminar secrets obsoletos de Key Vault** (JWT system ya no se usa)
+  ```bash
+  # Opcional: eliminar secrets del sistema JWT antiguo
+  az keyvault secret delete --vault-name kv-bcagent-dev --name JWT-Secret
+  az keyvault secret delete --vault-name kv-bcagent-dev --name BC-TenantId
+  az keyvault secret delete --vault-name kv-bcagent-dev --name BC-ClientId
+  az keyvault secret delete --vault-name kv-bcagent-dev --name BC-ClientSecret
+  ```
+
+- [ ] **Documentar configuración**
+  - [ ] Screenshot del App Registration (overview page)
+  - [ ] Screenshot de API Permissions (con admin consent granted)
+  - [ ] Actualizar @docs\07-security\06-microsoft-oauth-setup.md con paso a paso
+
+**Referencias**:
+- Tutorial oficial: https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app
+- BC OAuth setup: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/administration/automation-apis-using-s2s-authentication
+
+---
+
+#### 2.5.2 Backend - Nuevos Servicios OAuth
+**Objetivo**: Implementar servicios para manejar OAuth flow con Microsoft y gestión de tokens BC por usuario
+
+- [ ] **Instalar dependencias npm**
+  ```bash
+  cd backend
+  npm install @azure/msal-node@2.18.0 --save-exact
+  npm install passport@0.7.0 --save-exact
+  npm install passport-azure-ad@4.3.5 --save-exact
+  # express-session para almacenar tokens OAuth en sesión
+  npm install express-session@1.18.1 --save-exact
+  npm install @types/express-session@1.18.0 --save-exact --save-dev
+  ```
+
+- [ ] **Crear MicrosoftOAuthService** (`backend/src/services/auth/MicrosoftOAuthService.ts`)
+  - [ ] Configurar MSAL ConfidentialClientApplication
+    ```typescript
+    import { ConfidentialClientApplication } from '@azure/msal-node';
+
+    const msalConfig = {
+      auth: {
+        clientId: process.env.MICROSOFT_CLIENT_ID,
+        clientSecret: process.env.MICROSOFT_CLIENT_SECRET,
+        authority: `https://login.microsoftonline.com/${process.env.MICROSOFT_TENANT_ID}`
+      }
+    };
+    ```
+  - [ ] Método `getAuthCodeUrl(state)`: Genera URL de autorización de Microsoft
+    - Scope: `openid profile email offline_access User.Read https://api.businesscentral.dynamics.com/Financials.ReadWrite.All`
+    - Response type: `code`
+    - Redirect URI: `http://localhost:3002/api/auth/callback`
+  - [ ] Método `handleAuthCallback(code)`: Intercambia authorization code por tokens
+    - Llama a `acquireTokenByCode()`
+    - Retorna: access_token, refresh_token, id_token, expires_in
+  - [ ] Método `validateAccessToken(token)`: Valida token con Microsoft
+    - Verifica firma JWT contra JWKS de Microsoft
+    - Verifica claims: `aud`, `iss`, `exp`
+  - [ ] Método `getUserProfile(accessToken)`: Obtiene datos del usuario desde Microsoft Graph
+    - Endpoint: `https://graph.microsoft.com/v1.0/me`
+    - Retorna: id, email, displayName, givenName, surname
+  - [ ] Método `refreshAccessToken(refreshToken)`: Renueva access token expirado
+    - Llama a `acquireTokenByRefreshToken()`
+  - [ ] Método `acquireBCToken(userAccessToken)`: Obtiene token específico para BC API
+    - Scope: `https://api.businesscentral.dynamics.com/Financials.ReadWrite.All`
+    - On-behalf-of flow (OBO) con token del usuario
+
+- [ ] **Crear BCTokenManager** (`backend/src/services/auth/BCTokenManager.ts`)
+  - [ ] Método `storeBCTokens(userId, tokens)`: Cifra y persiste tokens BC en BD
+    - Cifra `access_token` y `refresh_token` con EncryptionService
+    - UPDATE users SET bc_access_token_encrypted, bc_refresh_token_encrypted, bc_token_expires_at
+  - [ ] Método `getBCTokens(userId)`: Obtiene y descifra tokens BC del usuario
+    - Query: SELECT bc_access_token_encrypted, bc_refresh_token_encrypted FROM users WHERE id = ?
+    - Descifra tokens con EncryptionService
+    - Retorna: { accessToken, refreshToken, expiresAt }
+  - [ ] Método `refreshBCToken(userId)`: Renueva token BC si está expirado
+    - Verifica si `bc_token_expires_at < NOW()`
+    - Si expirado: llama a MicrosoftOAuthService.acquireBCToken()
+    - Guarda nuevo token cifrado en BD
+  - [ ] Método `revokeBCTokens(userId)`: Elimina tokens al logout
+    - UPDATE users SET bc_access_token_encrypted = NULL, bc_refresh_token_encrypted = NULL
+  - [ ] Integración con EncryptionService para cifrado AES-256
+
+- [ ] **Crear EncryptionService** (`backend/src/services/auth/EncryptionService.ts`)
+  - [ ] Método `encrypt(plaintext)`: Cifrado AES-256-GCM
+    ```typescript
+    import crypto from 'crypto';
+
+    const algorithm = 'aes-256-gcm';
+    const key = Buffer.from(process.env.ENCRYPTION_KEY, 'base64'); // 32 bytes
+    const iv = crypto.randomBytes(16); // Initialization vector
+    const cipher = crypto.createCipheriv(algorithm, key, iv);
+
+    // Retorna: iv:authTag:ciphertext (formato base64)
+    ```
+  - [ ] Método `decrypt(ciphertext)`: Descifrado con IV y auth tag
+    - Parse formato: `iv:authTag:ciphertext`
+    - Verifica auth tag para integridad
+    - Retorna plaintext original
+  - [ ] Validación: ENCRYPTION_KEY debe ser 32 bytes (256 bits)
+  - [ ] Error handling: InvalidKeyError, DecryptionError
+
+- [ ] **Type definitions** (`backend/src/types/auth.types.ts`)
+  - [ ] Actualizar interface User:
+    ```typescript
+    export interface User {
+      id: string;
+      email: string;
+      full_name: string;
+      microsoft_user_id: string;  // Azure AD object ID
+      bc_access_token_encrypted: string | null;
+      bc_refresh_token_encrypted: string | null;
+      bc_token_expires_at: Date | null;
+      role: 'admin' | 'editor' | 'viewer';
+      created_at: Date;
+      updated_at: Date;
+    }
+    ```
+  - [ ] Nuevas interfaces:
+    ```typescript
+    export interface MicrosoftOAuthConfig {
+      clientId: string;
+      clientSecret: string;
+      tenantId: string;
+      redirectUri: string;
+      scopes: string[];
+    }
+
+    export interface OAuthTokenResponse {
+      accessToken: string;
+      refreshToken: string;
+      idToken: string;
+      expiresIn: number;
+    }
+
+    export interface BCTokenData {
+      accessToken: string;
+      refreshToken: string;
+      expiresAt: Date;
+    }
+
+    export interface MicrosoftUserProfile {
+      id: string;
+      email: string;
+      displayName: string;
+      givenName: string;
+      surname: string;
+    }
+    ```
+
+**Testing**:
+- [ ] Unit tests para EncryptionService (encrypt → decrypt debe retornar plaintext)
+- [ ] Mock tests para MicrosoftOAuthService (mock MSAL responses)
+
+---
+
+#### 2.5.3 Backend - Rutas OAuth
+**Objetivo**: Crear endpoints HTTP para manejar OAuth flow (login, callback, logout, etc.)
+
+- [ ] **Crear auth-oauth.ts** (`backend/src/routes/auth-oauth.ts`)
+  - [ ] `GET /api/auth/login`: Redirect a Microsoft login
+    ```typescript
+    router.get('/login', (req, res) => {
+      const state = crypto.randomBytes(16).toString('hex'); // CSRF protection
+      req.session.oauthState = state;
+      const authUrl = microsoftOAuthService.getAuthCodeUrl(state);
+      res.redirect(authUrl);
+    });
+    ```
+  - [ ] `GET /api/auth/callback`: Maneja OAuth callback de Microsoft
+    - Verifica `state` parameter contra session (CSRF protection)
+    - Intercambia `code` por tokens con `handleAuthCallback()`
+    - Obtiene perfil del usuario con `getUserProfile()`
+    - Busca usuario en BD por `microsoft_user_id`:
+      - Si existe: actualiza `last_login_at`
+      - Si no existe: crea nuevo usuario (INSERT INTO users)
+    - Obtiene token BC con `acquireBCToken()`
+    - Guarda tokens BC cifrados con `BCTokenManager.storeBCTokens()`
+    - Guarda Microsoft tokens en session
+    - Redirect a frontend: `http://localhost:3000/` (con session cookie)
+  - [ ] `POST /api/auth/logout`: Cierra sesión
+    - Revoca tokens BC: `BCTokenManager.revokeBCTokens(userId)`
+    - Destruye session: `req.session.destroy()`
+    - Optional: revoca Microsoft tokens (llamada a Microsoft revoke endpoint)
+    - Retorna 200 OK
+  - [ ] `GET /api/auth/me`: Retorna usuario actual
+    - Requiere autenticación (middleware `authenticateMicrosoft`)
+    - Retorna: user object (sin tokens sensibles)
+  - [ ] `POST /api/auth/bc-consent`: Solicita consentimiento BC si no existe
+    - Verifica si usuario tiene `bc_access_token_encrypted`
+    - Si no: redirect a consent screen de Microsoft para scope BC
+    - Si sí: retorna 200 OK
+  - [ ] `POST /api/auth/bc-refresh`: Fuerza refresh de tokens BC
+    - Llama a `BCTokenManager.refreshBCToken(userId)`
+    - Retorna nuevo `expiresAt`
+
+- [ ] **Actualizar server.ts** (`backend/src/server.ts`)
+  - [ ] Configurar express-session middleware
+    ```typescript
+    import session from 'express-session';
+
+    app.use(session({
+      secret: process.env.SESSION_SECRET,
+      resave: false,
+      saveUninitialized: false,
+      cookie: {
+        secure: process.env.NODE_ENV === 'production', // HTTPS only in prod
+        httpOnly: true,
+        maxAge: 24 * 60 * 60 * 1000 // 24 hours
+      }
+    }));
+    ```
+  - [ ] Reemplazar rutas antiguas:
+    - Eliminar: `app.use('/api/auth', authRoutes)` (JWT system)
+    - Agregar: `app.use('/api/auth', authOAuthRoutes)` (OAuth system)
+  - [ ] Actualizar inicialización de servicios:
+    - Eliminar: `const authService = new AuthService()`
+    - Agregar: `const microsoftOAuthService = new MicrosoftOAuthService()`
+    - Agregar: `const bcTokenManager = new BCTokenManager()`
+
+- [ ] **Error handling**
+  - [ ] Manejar errores de OAuth:
+    - `invalid_grant`: Código de autorización inválido/expirado
+    - `consent_required`: Usuario no ha dado consentimiento
+    - `interaction_required`: MFA u otra interacción necesaria
+  - [ ] Redirect a frontend con error: `http://localhost:3000/auth/error?error=consent_required`
+
+**Testing**:
+- [ ] Test manual: GET /api/auth/login → Redirect a login.microsoftonline.com
+- [ ] Test manual: Callback con code válido → Usuario creado en BD
+- [ ] Test manual: Logout → Session destruida
+
+---
+
+#### 2.5.4 Backend - Middleware OAuth
+**Objetivo**: Crear middleware para validar tokens Microsoft y verificar permisos BC
+
+- [ ] **Crear auth-microsoft.ts** (`backend/src/middleware/auth-microsoft.ts`)
+  - [ ] `authenticateMicrosoft()`: Valida Microsoft access token o session
+    ```typescript
+    export async function authenticateMicrosoft(req, res, next) {
+      // Opción 1: Verificar session (cookie-based)
+      if (req.session?.userId) {
+        const user = await db.query('SELECT * FROM users WHERE id = ?', [req.session.userId]);
+        req.user = user;
+        return next();
+      }
+
+      // Opción 2: Verificar Authorization header (token-based)
+      const authHeader = req.headers.authorization;
+      if (authHeader?.startsWith('Bearer ')) {
+        const token = authHeader.substring(7);
+        const payload = await microsoftOAuthService.validateAccessToken(token);
+        const user = await db.query('SELECT * FROM users WHERE microsoft_user_id = ?', [payload.sub]);
+        req.user = user;
+        return next();
+      }
+
+      // No autenticado
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    ```
+  - [ ] `requireBCToken()`: Verifica que usuario tenga tokens BC válidos
+    - Query: `SELECT bc_access_token_encrypted, bc_token_expires_at FROM users WHERE id = ?`
+    - Si no hay token: retorna 403 con mensaje "BC consent required"
+    - Si token expiró: auto-refresh con `BCTokenManager.refreshBCToken()`
+    - Adjunta BC token descifrado a `req.bcToken`
+  - [ ] `requireRole(role)`: Mantener lógica de RBAC
+    - Verificar `req.user.role` contra rol requerido
+    - Jerarquía: admin > editor > viewer
+
+- [ ] **Eliminar middleware JWT obsoleto** (`backend/src/middleware/auth.ts`)
+  - [ ] Eliminar `authenticateJWT`, `verifyAccessToken`, `verifyRefreshToken`
+  - [ ] Mantener solo lógica de `requireRole` (copiar a auth-microsoft.ts)
+  - [ ] Eliminar imports de `jsonwebtoken`
+
+- [ ] **Actualizar rutas protegidas** (en server.ts o routes específicos)
+  - [ ] Reemplazar `authenticateJWT` → `authenticateMicrosoft`
+  - [ ] Agregar `requireBCToken` a rutas que usan BC:
+    ```typescript
+    router.post('/api/agent/query',
+      authenticateMicrosoft,  // Verifica session/token Microsoft
+      requireBCToken,         // Verifica token BC válido
+      agentController.query   // Handler
+    );
+    ```
+
+**Testing**:
+- [ ] Test: Request sin session → 401 Unauthorized
+- [ ] Test: Request con session válida → req.user populated
+- [ ] Test: Request sin BC token → 403 con "consent required"
+- [ ] Test: Request con BC token expirado → Auto-refresh exitoso
+
+---
+
+#### 2.5.5 Backend - BCClient Refactor
+**Objetivo**: Modificar BCClient para usar tokens delegados del usuario en lugar de client credentials
+
+- [ ] **Modificar BCClient** (`backend/src/services/bc/BCClient.ts`)
+  - [ ] Constructor: Recibir `userAccessToken` en lugar de leer env vars
+    ```typescript
+    // ANTES (líneas ~20-40)
+    constructor() {
+      this.tenantId = process.env.BC_TENANT_ID!;
+      this.clientId = process.env.BC_CLIENT_ID!;
+      this.clientSecret = process.env.BC_CLIENT_SECRET!;
+      this.apiUrl = process.env.BC_API_URL!;
+    }
+
+    // DESPUÉS
+    constructor(private userAccessToken: string, private apiUrl: string) {
+      // Token viene del usuario, no de env vars
+    }
+    ```
+  - [ ] Eliminar método `authenticate()` (OAuth client credentials)
+    - ❌ Ya no necesitamos `client_credentials` flow
+    - ❌ Ya no necesitamos cachear token en clase
+    - ✅ Token viene por parámetro en cada request
+  - [ ] Modificar método `getHeaders()`: Usar token delegado
+    ```typescript
+    // ANTES
+    private async getHeaders() {
+      await this.ensureAuthenticated(); // Obtiene token client_credentials
+      return {
+        'Authorization': `Bearer ${this.accessToken}`,
+        'Content-Type': 'application/json'
+      };
+    }
+
+    // DESPUÉS
+    private getHeaders() {
+      return {
+        'Authorization': `Bearer ${this.userAccessToken}`,
+        'Content-Type': 'application/json'
+      };
+    }
+    ```
+  - [ ] Mantener métodos CRUD sin cambios:
+    - `query()`, `getById()`, `create()`, `update()`, `delete()`
+  - [ ] Mantener error handling y retry logic
+
+- [ ] **Actualizar AgentService** (`backend/src/services/agent/DirectAgentService.ts`)
+  - [ ] Modificar método `query()` para pasar BC token del usuario
+    ```typescript
+    // ANTES
+    async query(userId, sessionId, prompt) {
+      const bcClient = new BCClient(); // Usa env vars
+      // ...
+    }
+
+    // DESPUÉS
+    async query(userId, sessionId, prompt) {
+      // 1. Obtener BC token del usuario (descifrado)
+      const bcTokens = await bcTokenManager.getBCTokens(userId);
+      if (!bcTokens) {
+        throw new Error('User has not granted BC consent');
+      }
+
+      // 2. Verificar si token expiró y refresh si es necesario
+      if (bcTokens.expiresAt < new Date()) {
+        await bcTokenManager.refreshBCToken(userId);
+        bcTokens = await bcTokenManager.getBCTokens(userId);
+      }
+
+      // 3. Crear BCClient con token del usuario
+      const bcClient = new BCClient(bcTokens.accessToken, process.env.BC_API_URL);
+
+      // 4. Continuar con query...
+    }
+    ```
+  - [ ] Manejar error si usuario no tiene BC consent:
+    - Retornar evento especial al frontend: `{ type: 'bc_consent_required' }`
+
+- [ ] **Actualizar tipos** (`backend/src/types/bc.types.ts`)
+  - [ ] Eliminar referencias a BC_* env vars en comentarios/JSDoc
+  - [ ] Agregar JSDoc indicando que BCClient requiere user token
+
+**Testing**:
+- [ ] Test: BCClient con token válido → Query exitoso
+- [ ] Test: BCClient con token inválido → 401 Unauthorized de BC API
+- [ ] Test: AgentService sin BC consent → Error apropiado
+- [ ] Test: AgentService con token expirado → Auto-refresh
+
+---
+
+#### 2.5.6 Database Migration
+**Objetivo**: Modificar schema de BD para soportar Microsoft OAuth y tokens BC por usuario
+
+- [ ] **Crear Migration 005** (`backend/scripts/migrations/005_microsoft_oauth.sql`)
+  ```sql
+  -- Migration 005: Microsoft OAuth + BC Multi-tenant Support
+  -- Fecha: 2025-11-11
+  -- Descripción: Reemplaza autenticación JWT por Microsoft OAuth
+
+  BEGIN TRANSACTION;
+
+  -- 1. Eliminar columna password_hash (ya no se usa)
+  IF EXISTS (SELECT * FROM sys.columns
+             WHERE object_id = OBJECT_ID('users')
+             AND name = 'password_hash')
+  BEGIN
+    ALTER TABLE users DROP COLUMN password_hash;
+  END;
+
+  -- 2. Agregar columnas Microsoft OAuth
+  IF NOT EXISTS (SELECT * FROM sys.columns
+                 WHERE object_id = OBJECT_ID('users')
+                 AND name = 'microsoft_user_id')
+  BEGIN
+    ALTER TABLE users ADD microsoft_user_id NVARCHAR(255) NULL;
+  END;
+
+  IF NOT EXISTS (SELECT * FROM sys.columns
+                 WHERE object_id = OBJECT_ID('users')
+                 AND name = 'bc_access_token_encrypted')
+  BEGIN
+    ALTER TABLE users ADD bc_access_token_encrypted NVARCHAR(MAX) NULL;
+    ALTER TABLE users ADD bc_refresh_token_encrypted NVARCHAR(MAX) NULL;
+    ALTER TABLE users ADD bc_token_expires_at DATETIME2 NULL;
+  END;
+
+  -- 3. Crear índice único en microsoft_user_id
+  IF NOT EXISTS (SELECT * FROM sys.indexes
+                 WHERE object_id = OBJECT_ID('users')
+                 AND name = 'idx_users_microsoft_id')
+  BEGIN
+    CREATE UNIQUE INDEX idx_users_microsoft_id
+    ON users(microsoft_user_id)
+    WHERE microsoft_user_id IS NOT NULL;
+  END;
+
+  -- 4. Actualizar constraint NOT NULL para microsoft_user_id
+  -- (Después de migración manual de usuarios existentes)
+  -- ALTER TABLE users ALTER COLUMN microsoft_user_id NVARCHAR(255) NOT NULL;
+
+  COMMIT TRANSACTION;
+
+  PRINT 'Migration 005 completed: Microsoft OAuth columns added';
+  ```
+
+- [ ] **Crear Migration 006** (`backend/scripts/migrations/006_drop_refresh_tokens.sql`)
+  ```sql
+  -- Migration 006: Drop refresh_tokens table (obsoleto con Microsoft OAuth)
+  -- Fecha: 2025-11-11
+
+  BEGIN TRANSACTION;
+
+  -- Eliminar tabla refresh_tokens (ya no se usa con Microsoft OAuth)
+  IF EXISTS (SELECT * FROM sys.tables WHERE name = 'refresh_tokens')
+  BEGIN
+    DROP TABLE refresh_tokens;
+    PRINT 'Table refresh_tokens dropped';
+  END
+  ELSE
+  BEGIN
+    PRINT 'Table refresh_tokens does not exist (already dropped)';
+  END;
+
+  COMMIT TRANSACTION;
+
+  PRINT 'Migration 006 completed: refresh_tokens table removed';
+  ```
+
+- [ ] **Crear script de ejecución de migrations**
+  - [ ] `backend/scripts/run-migration-005.ts`: Ejecuta migration 005
+  - [ ] `backend/scripts/run-migration-006.ts`: Ejecuta migration 006
+  - [ ] Usar mismo patrón que `run-migration-003.ts` (Azure SQL + Key Vault)
+
+- [ ] **Ejecutar migraciones en Azure SQL**
+  ```bash
+  cd backend
+  npx ts-node scripts/run-migration-005.ts
+  npx ts-node scripts/run-migration-006.ts
+  ```
+
+- [ ] **Limpiar datos existentes** (NO backward compatibility)
+  ```sql
+  -- Opción 1: Eliminar todos los usuarios existentes (forzar re-registro)
+  DELETE FROM users;
+
+  -- Opción 2: Mantener usuarios pero forzar re-login con Microsoft
+  -- (No recomendado porque no tienen microsoft_user_id)
+  ```
+
+- [ ] **Verificar integridad de BD**
+  ```sql
+  -- Verificar columnas nuevas
+  SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_NAME = 'users'
+  AND COLUMN_NAME IN ('microsoft_user_id', 'bc_access_token_encrypted', 'bc_refresh_token_encrypted', 'bc_token_expires_at');
+
+  -- Verificar índices
+  SELECT name, type_desc
+  FROM sys.indexes
+  WHERE object_id = OBJECT_ID('users');
+
+  -- Verificar tabla refresh_tokens eliminada
+  SELECT COUNT(*) FROM sys.tables WHERE name = 'refresh_tokens'; -- Debe retornar 0
+  ```
+
+**Testing**:
+- [ ] Migration 005 ejecuta sin errores
+- [ ] Migration 006 ejecuta sin errores
+- [ ] Columnas nuevas existen en users table
+- [ ] Índice único en microsoft_user_id creado
+- [ ] Tabla refresh_tokens eliminada
+
+---
+
+#### 2.5.7 Frontend - Login UI
+**Objetivo**: Crear UI de login con botón "Sign in with Microsoft" y manejar OAuth callback
+
+- [ ] **Crear LoginPage** (`frontend/app/login/page.tsx`)
+  ```tsx
+  export default function LoginPage() {
+    const handleMicrosoftLogin = () => {
+      // Redirect a backend OAuth endpoint
+      window.location.href = 'http://localhost:3002/api/auth/login';
+    };
+
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Card className="w-[400px]">
+          <CardHeader>
+            <CardTitle>BC Claude Agent</CardTitle>
+            <CardDescription>Sign in with your Microsoft account</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button onClick={handleMicrosoftLogin} className="w-full">
+              <MicrosoftIcon className="mr-2" />
+              Sign in with Microsoft
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+  ```
+  - [ ] Diseño similar a Claude Code login (minimalista, centrado)
+  - [ ] Botón azul con logo de Microsoft
+  - [ ] Descripción breve: "Access Business Central with your Microsoft account"
+
+- [ ] **Crear CallbackPage** (`frontend/app/auth/callback/page.tsx`)
+  ```tsx
+  'use client';
+
+  export default function CallbackPage() {
+    useEffect(() => {
+      // Backend ya manejó el callback y creó session
+      // Solo redirigir a home
+      setTimeout(() => {
+        window.location.href = '/';
+      }, 1000);
+    }, []);
+
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Spinner /> {/* Loading spinner */}
+        <p>Completing sign-in...</p>
+      </div>
+    );
+  }
+  ```
+
+- [ ] **Actualizar authStore** (`frontend/store/authStore.ts`)
+  - [ ] Eliminar métodos obsoletos:
+    - ❌ `login(email, password)` - Ya no se usa
+    - ❌ `register(name, email, password)` - Ya no se usa
+    - ❌ `refreshAuth()` - Microsoft tokens se refrescan en backend
+  - [ ] Agregar método `loginWithMicrosoft()`:
+    ```typescript
+    loginWithMicrosoft: () => {
+      // Redirect a backend (backend maneja todo el OAuth flow)
+      window.location.href = `${API_URL}/api/auth/login`;
+    }
+    ```
+  - [ ] Agregar método `requestBCConsent()`:
+    ```typescript
+    requestBCConsent: async () => {
+      // Redirect a consent endpoint
+      window.location.href = `${API_URL}/api/auth/bc-consent`;
+    }
+    ```
+  - [ ] Actualizar método `fetchCurrentUser()`:
+    - Llamar a GET /api/auth/me (usa session cookie, no Authorization header)
+  - [ ] Mantener `logout()`:
+    - Llamar a POST /api/auth/logout
+    - Clear local state
+
+- [ ] **Crear ConsentDialog** (`frontend/components/auth/ConsentDialog.tsx`)
+  ```tsx
+  export function ConsentDialog({ open, onOpenChange }) {
+    const { requestBCConsent } = useAuth();
+
+    return (
+      <AlertDialog open={open} onOpenChange={onOpenChange}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Business Central Access Required</AlertDialogTitle>
+            <AlertDialogDescription>
+              To perform write operations in Business Central, you need to grant
+              additional permissions. You'll be redirected to Microsoft to authorize
+              this application.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={requestBCConsent}>
+              Grant Access
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    );
+  }
+  ```
+  - [ ] Mostrar dialog cuando backend retorna error "bc_consent_required"
+  - [ ] Botón "Grant Access" redirige a `/api/auth/bc-consent`
+
+- [ ] **Actualizar rutas protegidas** (agregar redirect si no autenticado)
+  ```tsx
+  // middleware.ts o layout protegido
+  if (!user && pathname !== '/login') {
+    return redirect('/login');
+  }
+  ```
+
+**Testing**:
+- [ ] Click "Sign in with Microsoft" → Redirect a login.microsoftonline.com
+- [ ] Después de login → Redirect a /auth/callback → Redirect a /
+- [ ] Usuario autenticado puede acceder a rutas protegidas
+- [ ] ConsentDialog aparece cuando se intenta write operation sin BC token
+
+---
+
+#### 2.5.8 Environment Variables Update
+**Objetivo**: Actualizar configuración de variables de entorno para Microsoft OAuth
+
+- [ ] **Backend .env** (`backend/.env.example`)
+  ```bash
+  # ========================================
+  # MICROSOFT OAUTH (NUEVO)
+  # ========================================
+  MICROSOFT_CLIENT_ID=<from Azure Key Vault: Microsoft-ClientId>
+  MICROSOFT_CLIENT_SECRET=<from Azure Key Vault: Microsoft-ClientSecret>
+  MICROSOFT_TENANT_ID=common  # or specific tenant ID
+  MICROSOFT_REDIRECT_URI=http://localhost:3002/api/auth/callback
+
+  # OAuth scopes (espacio-separados)
+  MICROSOFT_SCOPES="openid profile email offline_access User.Read https://api.businesscentral.dynamics.com/Financials.ReadWrite.All"
+
+  # ========================================
+  # ENCRYPTION (NUEVO)
+  # ========================================
+  ENCRYPTION_KEY=<from Azure Key Vault: Encryption-Key>  # 32-char base64 for AES-256
+
+  # ========================================
+  # SESSION (NUEVO)
+  # ========================================
+  SESSION_SECRET=<generate with: openssl rand -base64 32>
+  SESSION_MAX_AGE=86400000  # 24 hours in milliseconds
+
+  # ========================================
+  # BUSINESS CENTRAL API (ACTUALIZADO)
+  # ========================================
+  BC_API_URL=https://api.businesscentral.dynamics.com/v2.0
+  # ❌ ELIMINAR: BC_TENANT_ID, BC_CLIENT_ID, BC_CLIENT_SECRET (ahora son por usuario)
+
+  # ========================================
+  # ANTHROPIC API
+  # ========================================
+  ANTHROPIC_API_KEY=<from Azure Key Vault: Claude-ApiKey>
+
+  # ========================================
+  # AZURE RESOURCES
+  # ========================================
+  SQLDB_CONNECTION_STRING=<from Azure Key Vault: SqlDb-ConnectionString>
+  REDIS_CONNECTION_STRING=<from Azure Key Vault: Redis-ConnectionString>
+  KEYVAULT_URI=https://kv-bcagent-dev.vault.azure.net/
+  AZURE_CLIENT_ID=<Managed Identity Client ID>
+
+  # ========================================
+  # MCP SERVER
+  # ========================================
+  MCP_SERVER_URL=https://app-erptools-mcp-dev.purplemushroom-befedc5f.westeurope.azurecontainerapps.io/mcp
+
+  # ========================================
+  # SERVER CONFIG
+  # ========================================
+  PORT=3002
+  NODE_ENV=development
+  ```
+
+- [ ] **Actualizar environment.ts** (`backend/src/config/environment.ts`)
+  ```typescript
+  // ELIMINAR validación de:
+  // - BC_TENANT_ID, BC_CLIENT_ID, BC_CLIENT_SECRET
+  // - JWT_SECRET, JWT_EXPIRES_IN, JWT_REFRESH_EXPIRES_IN
+
+  // AGREGAR validación de:
+  const envSchema = z.object({
+    // Microsoft OAuth
+    MICROSOFT_CLIENT_ID: z.string().min(1),
+    MICROSOFT_CLIENT_SECRET: z.string().min(1),
+    MICROSOFT_TENANT_ID: z.string().min(1),
+    MICROSOFT_REDIRECT_URI: z.string().url(),
+    MICROSOFT_SCOPES: z.string().min(1),
+
+    // Encryption
+    ENCRYPTION_KEY: z.string().length(44), // Base64 encoded 32 bytes = 44 chars
+
+    // Session
+    SESSION_SECRET: z.string().min(32),
+    SESSION_MAX_AGE: z.string().regex(/^\d+$/).transform(Number),
+
+    // BC API (sin credentials globales)
+    BC_API_URL: z.string().url(),
+
+    // ... resto sin cambios
+  });
+  ```
+
+- [ ] **Actualizar keyvault.ts** (`backend/src/config/keyvault.ts`)
+  ```typescript
+  // ELIMINAR carga de secrets obsoletos:
+  // - BC-TenantId, BC-ClientId, BC-ClientSecret, JWT-Secret
+
+  // AGREGAR carga de nuevos secrets:
+  const microsoftClientId = await getSecret('Microsoft-ClientId');
+  const microsoftClientSecret = await getSecret('Microsoft-ClientSecret');
+  const encryptionKey = await getSecret('Encryption-Key');
+
+  process.env.MICROSOFT_CLIENT_ID = microsoftClientId;
+  process.env.MICROSOFT_CLIENT_SECRET = microsoftClientSecret;
+  process.env.ENCRYPTION_KEY = encryptionKey;
+  ```
+
+- [ ] **Frontend .env** (sin cambios críticos)
+  - API_URL sigue siendo `http://localhost:3002`
+  - NO necesita variables de Microsoft OAuth (backend maneja todo)
+
+**Testing**:
+- [ ] Backend arranca sin errores de env vars faltantes
+- [ ] environment.ts valida correctamente nuevas vars
+- [ ] Key Vault carga secrets correctamente
+
+---
+
+#### 2.5.9 Infrastructure Update
+**Objetivo**: Actualizar scripts de infraestructura para nuevos secrets de Key Vault
+
+- [ ] **Actualizar deploy script** (`infrastructure/deploy-azure-resources.sh`)
+  - [ ] Eliminar creación de secrets obsoletos (líneas ~200-250):
+    ```bash
+    # ❌ ELIMINAR ESTAS LÍNEAS
+    echo "Creating Key Vault secrets (BC credentials)..."
+    az keyvault secret set --vault-name $KEYVAULT_NAME --name BC-TenantId --value "$BC_TENANT_ID"
+    az keyvault secret set --vault-name $KEYVAULT_NAME --name BC-ClientId --value "$BC_CLIENT_ID"
+    az keyvault secret set --vault-name $KEYVAULT_NAME --name BC-ClientSecret --value "$BC_CLIENT_SECRET"
+    az keyvault secret set --vault-name $KEYVAULT_NAME --name JWT-Secret --value "$(openssl rand -base64 32)"
+    ```
+  - [ ] Agregar creación de nuevos secrets:
+    ```bash
+    # ✅ AGREGAR ESTAS LÍNEAS
+    echo "Creating Key Vault secrets (Microsoft OAuth)..."
+
+    # Prompt user para Microsoft OAuth credentials
+    read -p "Enter Microsoft Client ID (from Azure App Registration): " MICROSOFT_CLIENT_ID
+    read -sp "Enter Microsoft Client Secret: " MICROSOFT_CLIENT_SECRET
+    echo ""
+    read -p "Enter Microsoft Tenant ID (or 'common' for multi-tenant): " MICROSOFT_TENANT_ID
+
+    az keyvault secret set --vault-name $KEYVAULT_NAME \
+      --name Microsoft-ClientId \
+      --value "$MICROSOFT_CLIENT_ID"
+
+    az keyvault secret set --vault-name $KEYVAULT_NAME \
+      --name Microsoft-ClientSecret \
+      --value "$MICROSOFT_CLIENT_SECRET"
+
+    az keyvault secret set --vault-name $KEYVAULT_NAME \
+      --name Microsoft-TenantId \
+      --value "$MICROSOFT_TENANT_ID"
+
+    # Generar encryption key automáticamente (32 bytes = 256 bits)
+    ENCRYPTION_KEY=$(openssl rand -base64 32)
+    az keyvault secret set --vault-name $KEYVAULT_NAME \
+      --name Encryption-Key \
+      --value "$ENCRYPTION_KEY"
+
+    echo "✅ Microsoft OAuth secrets created in Key Vault"
+    ```
+
+- [ ] **Crear script para actualizar solo secrets** (`infrastructure/update-keyvault-secrets.sh`)
+  ```bash
+  #!/bin/bash
+  # Script para actualizar solo los secrets de Key Vault (sin re-crear recursos)
+
+  KEYVAULT_NAME="kv-bcagent-dev"
+
+  echo "Updating Key Vault secrets for Microsoft OAuth..."
+
+  read -p "Enter Microsoft Client ID: " MICROSOFT_CLIENT_ID
+  read -sp "Enter Microsoft Client Secret: " MICROSOFT_CLIENT_SECRET
+  echo ""
+
+  az keyvault secret set --vault-name $KEYVAULT_NAME --name Microsoft-ClientId --value "$MICROSOFT_CLIENT_ID"
+  az keyvault secret set --vault-name $KEYVAULT_NAME --name Microsoft-ClientSecret --value "$MICROSOFT_CLIENT_SECRET"
+  az keyvault secret set --vault-name $KEYVAULT_NAME --name Encryption-Key --value "$(openssl rand -base64 32)"
+
+  echo "✅ Secrets updated"
+  ```
+
+- [ ] **Ejecutar actualización de secrets**
+  ```bash
+  cd infrastructure
+  chmod +x update-keyvault-secrets.sh
+  ./update-keyvault-secrets.sh
+  ```
+
+- [ ] **Verificar secrets en Key Vault**
+  ```bash
+  az keyvault secret list --vault-name kv-bcagent-dev --query "[].name" -o table
+
+  # Debe incluir:
+  # - Microsoft-ClientId
+  # - Microsoft-ClientSecret
+  # - Microsoft-TenantId (opcional si usas 'common')
+  # - Encryption-Key
+
+  # Debe NO incluir (obsoletos):
+  # - BC-TenantId, BC-ClientId, BC-ClientSecret, JWT-Secret
+  ```
+
+**Testing**:
+- [ ] Script ejecuta sin errores
+- [ ] Secrets nuevos existen en Key Vault
+- [ ] Backend puede cargar secrets con keyvault.ts
+
+---
+
+#### 2.5.10 Cleanup - Eliminar código obsoleto
+**Objetivo**: Eliminar archivos y código del sistema JWT antiguo que ya no se usa
+
+- [ ] **Eliminar archivos backend**
+  ```bash
+  cd backend/src
+
+  # Servicios obsoletos
+  rm services/auth/AuthService.ts  # ~600 líneas de JWT logic
+
+  # Rutas obsoletas
+  rm routes/auth.ts                # JWT endpoints (register, login, etc.)
+  rm routes/auth-mock.ts           # Mock auth para desarrollo
+
+  # Middleware obsoleto (será reemplazado por auth-microsoft.ts)
+  rm middleware/auth.ts            # JWT middleware
+
+  # Utilidades obsoletas (si existen)
+  rm utils/jwt.ts                  # JWT helpers
+  rm utils/password.ts             # bcrypt helpers
+  ```
+
+- [ ] **Actualizar exports de índices**
+  - [ ] `backend/src/services/auth/index.ts`:
+    ```typescript
+    // ANTES
+    export * from './AuthService';
+
+    // DESPUÉS
+    export * from './MicrosoftOAuthService';
+    export * from './BCTokenManager';
+    export * from './EncryptionService';
+    ```
+  - [ ] `backend/src/middleware/index.ts`:
+    ```typescript
+    // ANTES
+    export * from './auth';
+
+    // DESPUÉS
+    export * from './auth-microsoft';
+    ```
+  - [ ] `backend/src/types/index.ts`:
+    - Eliminar exports de interfaces JWT: `LoginRequest`, `RegisterRequest`, `RefreshTokenRequest`
+    - Mantener: `User`, `UserRole`, `JWTPayload` (útiles aún)
+
+- [ ] **Eliminar dependencias npm obsoletas** (opcional)
+  ```bash
+  cd backend
+  # Si no se usan en otros lugares:
+  npm uninstall bcrypt bcryptjs jsonwebtoken @types/jsonwebtoken
+  ```
+
+- [ ] **Verificar compilación TypeScript**
+  ```bash
+  cd backend
+  npm run build
+  # NO debe haber errores de imports faltantes
+  ```
+
+**Testing**:
+- [ ] Backend compila sin errores
+- [ ] No hay referencias a archivos eliminados
+- [ ] Server arranca correctamente
+
+---
+
+#### 2.5.11 Testing Manual
+**Objetivo**: Verificar que el flujo completo de Microsoft OAuth funciona end-to-end
+
+- [ ] **Test 1: OAuth Flow Completo**
+  - [ ] Abrir navegador: `http://localhost:3000/login`
+  - [ ] Click "Sign in with Microsoft"
+  - [ ] Verificar: Redirect a `https://login.microsoftonline.com/...`
+  - [ ] Login con cuenta Microsoft (que tenga acceso a BC)
+  - [ ] Verificar: Consent screen solicita permisos (User.Read, Financials.ReadWrite.All)
+  - [ ] Aceptar permisos
+  - [ ] Verificar: Redirect a `http://localhost:3002/api/auth/callback`
+  - [ ] Verificar: Redirect a `http://localhost:3000/`
+  - [ ] Verificar: Usuario autenticado (ver nombre en UI)
+
+- [ ] **Test 2: Usuario Creado en BD**
+  ```sql
+  SELECT id, email, full_name, microsoft_user_id, bc_access_token_encrypted
+  FROM users
+  ORDER BY created_at DESC
+  LIMIT 1;
+  ```
+  - [ ] Verificar: `microsoft_user_id` poblado (UUID de Azure AD)
+  - [ ] Verificar: `bc_access_token_encrypted` NO es NULL
+  - [ ] Verificar: `password_hash` columna NO existe
+
+- [ ] **Test 3: BC Operations con Token Delegado**
+  - [ ] En la UI del agente: Enviar query "List all customers"
+  - [ ] Verificar: BCClient usa token del usuario (no client credentials)
+  - [ ] Verificar: Query exitoso, retorna customers
+  - [ ] En Azure Portal BC: Verificar audit log muestra usuario real (no service account)
+
+- [ ] **Test 4: Write Operation con Approval**
+  - [ ] En la UI: "Create a new customer named Test Corp"
+  - [ ] Verificar: Approval request aparece en UI
+  - [ ] Aprobar operación
+  - [ ] Verificar: Customer creado en BC
+  - [ ] Verificar: BC audit log muestra usuario real que hizo la operación
+
+- [ ] **Test 5: Token Expiration y Refresh**
+  ```sql
+  -- Simular token expirado: cambiar expires_at al pasado
+  UPDATE users
+  SET bc_token_expires_at = DATEADD(hour, -1, GETUTCDATE())
+  WHERE id = '<user-id>';
+  ```
+  - [ ] Hacer query BC en UI
+  - [ ] Verificar: Backend auto-refresh token (check logs)
+  - [ ] Verificar: Query exitoso
+  - [ ] Verificar en BD: `bc_token_expires_at` actualizado al futuro
+
+- [ ] **Test 6: Logout**
+  - [ ] Click "Logout" en UI
+  - [ ] Verificar: Redirect a `/login`
+  - [ ] Verificar: Session destruida (cookie eliminada)
+  - [ ] Verificar en BD: `bc_access_token_encrypted` = NULL
+  - [ ] Intentar acceder a ruta protegida: Redirect a login
+
+- [ ] **Test 7: Multi-Tenant (Opcional)**
+  - [ ] Logout
+  - [ ] Login con usuario de diferente tenant de BC
+  - [ ] Hacer query BC
+  - [ ] Verificar: Datos del nuevo tenant (no del anterior)
+  - [ ] Verificar aislamiento: Usuario A no puede ver datos de Usuario B
+
+- [ ] **Test 8: Consent Required Error**
+  ```sql
+  -- Simular usuario sin BC consent: eliminar tokens
+  UPDATE users
+  SET bc_access_token_encrypted = NULL,
+      bc_refresh_token_encrypted = NULL
+  WHERE id = '<user-id>';
+  ```
+  - [ ] Intentar hacer query BC
+  - [ ] Verificar: ConsentDialog aparece con mensaje "Grant BC Access"
+  - [ ] Click "Grant Access"
+  - [ ] Verificar: Redirect a consent screen de Microsoft
+  - [ ] Aceptar permisos BC
+  - [ ] Verificar: Tokens BC guardados en BD
+  - [ ] Re-intentar query: Exitoso
+
+- [ ] **Test 9: Error Handling - Invalid Token**
+  ```sql
+  -- Corromper token en BD
+  UPDATE users
+  SET bc_access_token_encrypted = 'invalid-encrypted-data'
+  WHERE id = '<user-id>';
+  ```
+  - [ ] Intentar query BC
+  - [ ] Verificar: Error de decryption manejado gracefully
+  - [ ] Verificar: UI muestra error "Re-authentication required"
+
+- [ ] **Test 10: Estado Persistente (Session)**
+  - [ ] Login con Microsoft
+  - [ ] Cerrar navegador
+  - [ ] Reabrir navegador y navegar a `http://localhost:3000/`
+  - [ ] Verificar: Usuario sigue autenticado (session cookie válida)
+
+- [ ] **Test 11: Token Revocation (Logout desde Microsoft)**
+  - [ ] Login en la app
+  - [ ] En otra pestaña: Ir a https://myaccount.microsoft.com/
+  - [ ] Revocar permisos de la app "BC-Claude-Agent"
+  - [ ] Regresar a la app
+  - [ ] Intentar query BC
+  - [ ] Verificar: Error "consent_required" o "invalid_grant"
+  - [ ] Verificar: UI solicita re-login
+
+**Criterios de Éxito**:
+- ✅ Todos los 11 tests pasan sin errores críticos
+- ✅ No hay errores 500 en backend logs
+- ✅ BC operations usan tokens delegados (no client credentials)
+- ✅ Audit trail en BD registra operaciones por usuario
+
+---
+
+#### 2.5.12 Documentation Update
+**Objetivo**: Actualizar documentación existente y crear nuevas guías para Microsoft OAuth
+
+- [ ] **Actualizar CLAUDE.md** (ver sección 3 de este TODO)
+  - [ ] Línea ~32: Backend - Cambiar "Autenticación JWT" → "Microsoft Entra ID OAuth 2.0"
+  - [ ] Líneas ~125-148: Variables de Entorno - Eliminar BC_*, JWT_*; agregar MICROSOFT_*, ENCRYPTION_KEY
+  - [ ] Sección de secrets: Aclarar que BC credentials ahora son por usuario
+
+- [ ] **Actualizar docs/07-security/05-bc-authentication.md** (REESCRIBIR)
+  - [ ] Reemplazar sección OAuth client credentials → OAuth authorization code flow
+  - [ ] Agregar diagrama de delegated permissions
+  - [ ] Documentar scopes requeridos: Financials.ReadWrite.All
+  - [ ] Explicar on-behalf-of (OBO) flow si aplica
+
+- [ ] **Actualizar docs/04-integrations/04-bc-integration.md**
+  - [ ] Líneas ~3-29: Cambiar ejemplo de client_credentials → authorization code
+  - [ ] Agregar sección "Multi-Tenant Support"
+  - [ ] Actualizar código de ejemplo para BCClient (recibe userAccessToken)
+
+- [ ] **Actualizar docs/11-backend/05-bc-connector.md**
+  - [ ] Líneas ~3-46: Clase BCClient - Nueva firma de constructor
+  - [ ] Eliminar método authenticate()
+  - [ ] Agregar nota: "Token management es responsabilidad de BCTokenManager"
+
+- [ ] **Actualizar docs/13-implementation-roadmap/02-phase-1-foundation.md**
+  - [ ] Líneas ~29-50: Database Schema - Cambiar columnas de users table
+  - [ ] Líneas ~64-70: Week 2 - Authentication - Cambiar de JWT a OAuth
+
+- [ ] **Actualizar docs/12-development/01-setup-guide.md**
+  - [ ] Líneas ~38-64: Environment Variables - Lista completa nueva
+
+- [ ] **Actualizar docs/11-backend/01-api-architecture.md**
+  - [ ] Agregar sección "Authentication Endpoints" con 6 endpoints OAuth
+
+- [ ] **Actualizar docs/11-backend/02-express-setup.md**
+  - [ ] Línea ~60-61: Routes - Cambiar mención de auth.ts → auth-oauth.ts
+
+- [ ] **Actualizar docs/00-overview/02-system-overview.md**
+  - [ ] Líneas ~70-73: BC External System - Cambiar "OAuth 2.0" → "OAuth 2.0 Delegated Permissions"
+
+- [ ] **Actualizar docs/13-implementation-roadmap/01-mvp-definition.md**
+  - [ ] Línea ~35: Backend authentication - Cambiar "(JWT)" → "(Microsoft OAuth 2.0)"
+
+- [ ] **Actualizar docs/01-architecture/01-system-architecture.md**
+  - [ ] Líneas ~110-118: Middleware Stack - JWT → Microsoft OAuth
+  - [ ] Líneas ~413-423: Security Layer - Actualizar flujo de autenticación
+  - [ ] Agregar diagrama de OAuth redirect flow
+
+- [ ] **Crear docs/07-security/06-microsoft-oauth-setup.md** (NUEVO)
+  - [ ] Guía completa paso a paso de App Registration
+  - [ ] Screenshots del Azure Portal (cada paso crítico)
+  - [ ] Sección "API Permissions Configuration"
+  - [ ] Sección "Redirect URI Setup"
+  - [ ] Sección "Troubleshooting"
+    - redirect_uri_mismatch
+    - consent_required
+    - invalid_grant
+    - insufficient_permissions
+  - [ ] Checklist final de verificación
+
+- [ ] **Crear docs/07-security/07-bc-multi-tenant.md** (NUEVO)
+  - [ ] Explicación de arquitectura multi-tenant
+  - [ ] Cómo se aíslan datos por usuario
+  - [ ] Token storage y encryption (AES-256-GCM)
+  - [ ] Token lifecycle (acquisition, refresh, revocation)
+  - [ ] Consideraciones de seguridad:
+    - Encryption key management
+    - Token expiration policies
+    - Audit logging
+  - [ ] Diagrama de flujo de tokens
+
+- [ ] **Crear docs/11-backend/07-oauth-flow.md** (NUEVO)
+  - [ ] Diagrama de secuencia completo (User → Frontend → Backend → Microsoft → BC)
+  - [ ] Explicación de cada paso:
+    1. User clicks "Sign in with Microsoft"
+    2. Frontend redirect a /api/auth/login
+    3. Backend genera authorization URL (con state para CSRF)
+    4. Redirect a login.microsoftonline.com
+    5. User autentica y consiente permisos
+    6. Microsoft redirect a /api/auth/callback con code
+    7. Backend intercambia code por tokens
+    8. Backend crea/actualiza usuario en BD
+    9. Backend obtiene BC token delegado
+    10. Backend guarda BC token cifrado
+    11. Redirect a frontend con session cookie
+  - [ ] Error handling en cada etapa
+  - [ ] Refresh flow (cuando token expira)
+  - [ ] Logout flow (revocación de tokens)
+
+- [ ] **Crear backend/src/services/auth/README.md** (NUEVO - estructura vacía)
+  ```markdown
+  # Authentication Services
+
+  ## Overview
+  Este directorio contiene los servicios de autenticación basados en Microsoft Entra ID OAuth 2.0.
+
+  ## Services
+
+  ### MicrosoftOAuthService
+  Maneja el flujo OAuth con Microsoft Entra ID.
+
+  **Métodos principales**:
+  - `getAuthCodeUrl()` - Genera URL de autorización
+  - `handleAuthCallback()` - Intercambia code por tokens
+  - `validateAccessToken()` - Valida token Microsoft
+  - `getUserProfile()` - Obtiene perfil del usuario
+  - `refreshAccessToken()` - Renueva tokens expirados
+
+  ### BCTokenManager
+  Gestiona tokens de Business Central por usuario.
+
+  **Métodos principales**:
+  - `storeBCTokens()` - Cifra y guarda tokens en BD
+  - `getBCTokens()` - Obtiene y descifra tokens
+  - `refreshBCToken()` - Renueva token BC expirado
+  - `revokeBCTokens()` - Elimina tokens al logout
+
+  ### EncryptionService
+  Cifrado AES-256-GCM para tokens sensibles.
+
+  **Métodos principales**:
+  - `encrypt()` - Cifra plaintext
+  - `decrypt()` - Descifra ciphertext
+
+  ## Usage Example
+
+  ```typescript
+  // Login flow
+  const authUrl = microsoftOAuthService.getAuthCodeUrl(state);
+  res.redirect(authUrl);
+
+  // Callback
+  const tokens = await microsoftOAuthService.handleAuthCallback(code);
+  const profile = await microsoftOAuthService.getUserProfile(tokens.accessToken);
+
+  // BC operations
+  const bcTokens = await bcTokenManager.getBCTokens(userId);
+  const bcClient = new BCClient(bcTokens.accessToken, BC_API_URL);
+  ```
+
+  ## Security
+  - Todos los tokens BC se almacenan cifrados en BD (AES-256-GCM)
+  - Encryption key se carga desde Azure Key Vault
+  - Tokens se refrescan automáticamente antes de expiración
+  - Session cookies con httpOnly y secure flags
+
+  ## See Also
+  - @docs\07-security\06-microsoft-oauth-setup.md
+  - @docs\07-security\07-bc-multi-tenant.md
+  - @docs\11-backend\07-oauth-flow.md
+  ```
+
+**Verificación**:
+- [ ] Todos los archivos de docs actualizados sin errores markdown
+- [ ] Links internos (@docs\...) funcionan correctamente
+- [ ] No hay referencias obsoletas a JWT, email/password, AuthService
+- [ ] Nuevas guías tienen ejemplos de código completos
+
+---
+
+**Resumen Week 2.5**:
+- ✅ 12 subsecciones completadas
+- ✅ ~40 tareas individuales
+- ✅ Azure App Registration configurado
+- ✅ Backend con Microsoft OAuth funcional
+- ✅ Database schema actualizado
+- ✅ Frontend con login de Microsoft
+- ✅ BC operations usando tokens delegados
+- ✅ Documentación completamente actualizada
+- ✅ Testing manual completo (11 test cases)
+- ✅ Código obsoleto eliminado
+
+**Próximo paso**: Continuar con Week 3 (o Week 4 si Week 3 ya está completa)
+
+---
+
 ### ⏳ **Week 3: Agent SDK Integration** (Semana 3)
 
 **⚠️ CAMBIO IMPORTANTE**: Usamos Claude Agent SDK en lugar de construir sistema custom desde cero.

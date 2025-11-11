@@ -69,7 +69,7 @@ BC-Claude-Agent es un sistema multi-capa que combina una interfaz de usuario mod
 │  │      Microsoft Business Central                    │     │
 │  │      • OData API                                   │     │
 │  │      • REST API                                    │     │
-│  │      • OAuth 2.0 Authentication                    │     │
+│  │      • OAuth 2.0 Delegated Permissions            │     │
 │  └────────────────────────────────────────────────────┘     │
 └──────────────────────────────────────────────────────────────┘
 ```
@@ -103,19 +103,34 @@ BC-Claude-Agent es un sistema multi-capa que combina una interfaz de usuario mod
 **Responsabilidades**:
 - Exponer endpoints REST para el frontend
 - Manejar WebSocket para streaming
-- Autenticación y autorización
-- Middleware de permisos
+- Microsoft OAuth 2.0 authentication (delegated permissions)
+- Autorización y middleware de permisos
 - Rate limiting y seguridad
 - Logging y tracing
 
 **Endpoints Principales**:
 ```typescript
+// Authentication (Microsoft OAuth)
+GET    /api/auth/login          // Iniciar flujo OAuth
+GET    /api/auth/callback       // Callback OAuth
+POST   /api/auth/logout         // Cerrar sesión
+GET    /api/auth/me             // Obtener usuario actual
+POST   /api/auth/bc-consent     // Solicitar consent BC
+POST   /api/auth/bc-refresh     // Refresh token BC
+
+// Agent
 POST   /api/agent/chat          // Enviar mensaje al agente
 GET    /api/agent/stream        // Stream de respuestas (WebSocket)
+
+// Session
 POST   /api/session/create      // Crear nueva sesión
 GET    /api/session/:id         // Obtener sesión
 POST   /api/session/:id/fork    // Fork de sesión
+
+// Business Central
 GET    /api/bc/entities         // Listar entities de BC
+
+// Approval
 POST   /api/approval/request    // Solicitar aprobación
 POST   /api/approval/:id/approve // Aprobar cambio
 ```
@@ -179,11 +194,13 @@ El proyecto cuenta con un **MCP server potente pre-construido** que expone:
 ### 6. External Systems
 
 **Microsoft Business Central**:
-- Autenticación via OAuth 2.0
+- Autenticación via OAuth 2.0 (delegated permissions)
+- Multi-tenant support (cada usuario accede a su BC tenant)
 - API OData v4 para queries
 - API REST para operaciones
 - Webhooks para eventos
 - Integration via MCP
+- Tokens BC almacenados cifrados (AES-256-GCM)
 
 ## Flujo de Datos Típico
 
@@ -300,12 +317,13 @@ Usado para:
 ## Seguridad
 
 ### Capas de Seguridad
-1. **Autenticación**: OAuth 2.0, JWT tokens
+1. **Autenticación**: Microsoft Entra ID OAuth 2.0 (delegated permissions)
 2. **Autorización**: RBAC (Role-Based Access Control)
-3. **Tool Permissions**: Permisos granulares por herramienta
-4. **Sandboxing**: Código ejecutado en entorno aislado
-5. **Rate Limiting**: Prevención de abuso
-6. **Input Validation**: Anti-prompt injection
+3. **Token Encryption**: AES-256-GCM para tokens BC
+4. **Tool Permissions**: Permisos granulares por herramienta
+5. **Sandboxing**: Código ejecutado en entorno aislado
+6. **Rate Limiting**: Prevención de abuso
+7. **Input Validation**: Anti-prompt injection
 
 ## Observabilidad
 

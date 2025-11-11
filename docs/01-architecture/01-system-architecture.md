@@ -110,7 +110,7 @@ Cada capa tiene responsabilidades claras y bien definidas:
 │  ┌──────────────────────────────────────────────────────┐     │
 │  │  1. CORS                                             │     │
 │  │  2. Rate Limiting                                    │     │
-│  │  3. Authentication (JWT)                             │     │
+│  │  3. Authentication (Microsoft OAuth 2.0)             │     │
 │  │  4. Authorization (Permissions)                      │     │
 │  │  5. Request Validation (Zod)                         │     │
 │  │  6. Logging (Winston)                                │     │
@@ -416,7 +416,7 @@ Source: Business Central API
 ```
 Layer 1: Network (Firewall, VPN)
 Layer 2: API Gateway (Rate limiting, CORS)
-Layer 3: Authentication (JWT, OAuth)
+Layer 3: Authentication (Microsoft OAuth 2.0 - Delegated Permissions)
 Layer 4: Authorization (RBAC)
 Layer 5: Tool Permissions (Granular per-tool)
 Layer 6: Sandboxing (Code execution isolation)

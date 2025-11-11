@@ -38,6 +38,7 @@ const eventListeners = new Map<string, Set<EventHandler<unknown>>>();
 
 /**
  * Socket.IO events
+ * Updated to match backend event names (with agent: prefix)
  */
 export enum SocketEvent {
   // Connection events
@@ -45,13 +46,15 @@ export enum SocketEvent {
   DISCONNECT = 'disconnect',
   CONNECT_ERROR = 'connect_error',
 
-  // Chat events
-  MESSAGE = 'message',
-  THINKING = 'thinking',
-  TOOL_USE = 'tool_use',
-  STREAM_START = 'stream_start',
-  STREAM_CHUNK = 'stream_chunk',
-  STREAM_END = 'stream_end',
+  // Chat events (with agent: prefix to match backend)
+  MESSAGE_COMPLETE = 'agent:message_complete',  // Backend emits this instead of 'message'
+  THINKING = 'agent:thinking',                  // Backend uses agent: prefix
+  TOOL_USE = 'agent:tool_use',                  // Backend uses agent: prefix
+  TOOL_RESULT = 'agent:tool_result',            // Backend emits tool results
+  MESSAGE_CHUNK = 'agent:message_chunk',        // Backend emits this instead of 'stream_chunk'
+  COMPLETE = 'agent:complete',                  // Backend emits this instead of 'stream_end'
+
+  // Note: Backend does NOT emit 'stream_start', we use 'agent:thinking' instead
 
   // Approval events
   APPROVAL_REQUIRED = 'approval:requested',  // Match backend event name
@@ -63,7 +66,7 @@ export enum SocketEvent {
   TODO_COMPLETED = 'todo:completed',         // Match backend event name
 
   // Error events
-  ERROR = 'error',
+  ERROR = 'agent:error',                     // Backend uses agent: prefix
 }
 
 /**
@@ -243,51 +246,55 @@ export const socketChatApi = {
 
   /**
    * Send a message
+   * Backend expects: { message: string, sessionId: string, userId: string }
    */
   sendMessage: (sessionId: string, content: string) => {
-    emit('message', { sessionId, content });
+    // TODO: Get userId from auth context/store
+    const userId = 'default-user'; // Temporary until auth is fully implemented
+    emit('chat:message', { message: content, sessionId, userId });
   },
 
   /**
-   * Listen for messages
+   * Listen for complete messages (backend emits agent:message_complete)
    */
-  onMessage: (callback: EventHandler<MessageEventData>) => {
-    on<MessageEventData>(SocketEvent.MESSAGE, callback);
+  onMessageComplete: (callback: EventHandler<MessageEventData>) => {
+    on<MessageEventData>(SocketEvent.MESSAGE_COMPLETE, callback);
   },
 
   /**
-   * Listen for thinking indicators
+   * Listen for thinking indicators (backend emits agent:thinking)
    */
   onThinking: (callback: EventHandler<ThinkingEventData>) => {
     on<ThinkingEventData>(SocketEvent.THINKING, callback);
   },
 
   /**
-   * Listen for tool use
+   * Listen for tool use (backend emits agent:tool_use)
    */
   onToolUse: (callback: EventHandler<ToolUseEventData>) => {
     on<ToolUseEventData>(SocketEvent.TOOL_USE, callback);
   },
 
   /**
-   * Listen for stream start
+   * Listen for tool results (backend emits agent:tool_result)
    */
-  onStreamStart: (callback: EventHandler<{ sessionId: string }>) => {
-    on<{ sessionId: string }>(SocketEvent.STREAM_START, callback);
+  onToolResult: (callback: EventHandler<{ toolName: string; result: unknown; success: boolean }>) => {
+    on<{ toolName: string; result: unknown; success: boolean }>(SocketEvent.TOOL_RESULT, callback);
   },
 
   /**
-   * Listen for stream chunks
+   * Listen for message chunks during streaming (backend emits agent:message_chunk)
+   * Note: Backend sends { content: string }, not { chunk: string }
    */
-  onStreamChunk: (callback: EventHandler<StreamChunkEventData>) => {
-    on<StreamChunkEventData>(SocketEvent.STREAM_CHUNK, callback);
+  onMessageChunk: (callback: EventHandler<{ content: string }>) => {
+    on<{ content: string }>(SocketEvent.MESSAGE_CHUNK, callback);
   },
 
   /**
-   * Listen for stream end
+   * Listen for completion (backend emits agent:complete instead of stream_end)
    */
-  onStreamEnd: (callback: EventHandler<{ sessionId: string }>) => {
-    on<{ sessionId: string }>(SocketEvent.STREAM_END, callback);
+  onComplete: (callback: EventHandler<{ reason: string }>) => {
+    on<{ reason: string }>(SocketEvent.COMPLETE, callback);
   },
 };
 

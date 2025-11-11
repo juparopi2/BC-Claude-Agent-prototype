@@ -50,7 +50,28 @@ export function setAuthToken(token: string): void {
  */
 export function clearAuthToken(): void {
   localStorage.removeItem('auth_token');
+  localStorage.removeItem('refresh_token');
 }
+
+/**
+ * Get refresh token from localStorage
+ */
+export function getRefreshToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem('refresh_token');
+}
+
+/**
+ * Set refresh token in localStorage
+ */
+export function setRefreshToken(token: string): void {
+  localStorage.setItem('refresh_token', token);
+}
+
+/**
+ * Flag to prevent infinite refresh loops
+ */
+let isRefreshing = false;
 
 /**
  * Make an HTTP request to the API
@@ -59,7 +80,8 @@ async function request<T = unknown>(
   method: HttpMethod,
   endpoint: string,
   data?: Record<string, unknown>,
-  options?: RequestInit
+  options?: RequestInit,
+  _isRetry = false
 ): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
 
@@ -93,6 +115,65 @@ async function request<T = unknown>(
 
     // Handle errors
     if (!response.ok) {
+      // Auto-refresh on 401 Unauthorized (if not already retrying and not on auth endpoints)
+      if (
+        response.status === 401 &&
+        !_isRetry &&
+        !endpoint.includes('/auth/') &&
+        !isRefreshing
+      ) {
+        const refreshToken = getRefreshToken();
+        if (refreshToken) {
+          try {
+            isRefreshing = true;
+
+            // Attempt to refresh the token
+            const refreshResponse = await fetch(`${API_BASE_URL}/api/auth/refresh`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ refreshToken }),
+            });
+
+            if (refreshResponse.ok) {
+              const refreshData = await refreshResponse.json();
+
+              // Update tokens
+              setAuthToken(refreshData.accessToken);
+              if (refreshData.refreshToken) {
+                setRefreshToken(refreshData.refreshToken);
+              }
+
+              isRefreshing = false;
+
+              // Retry the original request with new token
+              return request<T>(method, endpoint, data, options, true);
+            } else {
+              // Refresh failed - clear tokens and redirect to login
+              isRefreshing = false;
+              clearAuthToken();
+
+              if (typeof window !== 'undefined') {
+                window.location.href = '/login';
+              }
+            }
+          } catch (refreshError) {
+            // Refresh failed - clear tokens and redirect to login
+            isRefreshing = false;
+            clearAuthToken();
+
+            if (typeof window !== 'undefined') {
+              window.location.href = '/login';
+            }
+          }
+        } else {
+          // No refresh token available - redirect to login
+          clearAuthToken();
+          if (typeof window !== 'undefined') {
+            window.location.href = '/login';
+          }
+        }
+      }
+
       throw new ApiError(
         responseData?.message || `HTTP ${response.status}: ${response.statusText}`,
         response.status,
@@ -166,6 +247,9 @@ export const authApi = {
     if (response.accessToken) {
       setAuthToken(response.accessToken);
     }
+    if (response.refreshToken) {
+      setRefreshToken(response.refreshToken);
+    }
 
     return response;
   },
@@ -181,6 +265,9 @@ export const authApi = {
 
     if (response.accessToken) {
       setAuthToken(response.accessToken);
+    }
+    if (response.refreshToken) {
+      setRefreshToken(response.refreshToken);
     }
 
     return response;
@@ -206,6 +293,9 @@ export const authApi = {
 
     if (response.accessToken) {
       setAuthToken(response.accessToken);
+    }
+    if (response.refreshToken) {
+      setRefreshToken(response.refreshToken);
     }
 
     return response;

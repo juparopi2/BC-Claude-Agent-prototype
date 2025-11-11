@@ -13,7 +13,7 @@ import { Server as SocketIOServer } from 'socket.io';
 import cors from 'cors';
 import { env, isProd, printConfig, validateRequiredSecrets } from './config/environment';
 import { loadSecretsFromKeyVault } from './config/keyvault';
-import { initDatabase, closeDatabase, checkDatabaseHealth } from './config/database';
+import { initDatabase, closeDatabase, checkDatabaseHealth, executeQuery } from './config/database';
 import { initRedis, closeRedis, checkRedisHealth } from './config/redis';
 import { getMCPService } from './services/mcp';
 import { getBCClient } from './services/bc';
@@ -159,7 +159,9 @@ async function initializeApp(): Promise<void> {
 function configureMiddleware(): void {
   // CORS
   app.use(cors({
-    origin: env.CORS_ORIGIN,
+    origin: env.CORS_ORIGIN.includes(',')
+      ? env.CORS_ORIGIN.split(',').map(o => o.trim())
+      : env.CORS_ORIGIN,
     credentials: true,
   }));
 
@@ -503,6 +505,92 @@ function configureRoutes(): void {
     }
   });
 
+  // GET /api/approvals/pending - Get all pending approvals for current user (cross-session)
+  app.get('/api/approvals/pending', authenticateJWT, async (req: Request, res: Response): Promise<void> => {
+    try {
+      const userId = req.user?.userId;
+
+      if (!userId) {
+        res.status(401).json({
+          error: 'Unauthorized',
+          message: 'User ID not found in token',
+        });
+        return;
+      }
+
+      // Query all pending approvals for sessions belonging to the user
+      const query = `
+        SELECT
+          a.id,
+          a.session_id,
+          a.tool_name,
+          a.tool_args,
+          a.status,
+          a.priority,
+          a.expires_at,
+          a.created_at,
+          s.user_id
+        FROM approvals a
+        INNER JOIN sessions s ON a.session_id = s.id
+        WHERE s.user_id = @userId AND a.status = 'pending'
+        ORDER BY a.created_at DESC
+      `;
+
+      const result = await executeQuery<{
+        id: string;
+        session_id: string;
+        tool_name: string;
+        tool_args: string;
+        status: string;
+        priority: string;
+        expires_at: Date;
+        created_at: Date;
+        user_id: string;
+      }>(query, { userId });
+
+      // Transform backend format to frontend format
+      const approvals = result.recordset.map((row) => {
+        // Parse tool_args JSON
+        let actionData: Record<string, unknown> = {};
+        try {
+          actionData = row.tool_args ? JSON.parse(row.tool_args) : {};
+        } catch (e) {
+          console.error('[API] Failed to parse tool_args:', e);
+        }
+
+        // Convert priority string to number
+        const priorityMap: Record<string, number> = {
+          high: 3,
+          medium: 2,
+          low: 1,
+        };
+
+        return {
+          id: row.id,
+          session_id: row.session_id,
+          user_id: row.user_id,
+          action_type: row.tool_name, // Map tool_name to action_type
+          action_data: actionData,     // Parse tool_args to action_data
+          status: row.status as 'pending' | 'approved' | 'rejected',
+          priority: priorityMap[row.priority] || 2,
+          expires_at: row.expires_at ? row.expires_at.toISOString() : undefined,
+          created_at: row.created_at.toISOString(),
+        };
+      });
+
+      res.json({
+        count: approvals.length,
+        approvals,
+      });
+    } catch (error) {
+      console.error('[API] Get pending approvals failed:', error);
+      res.status(500).json({
+        error: 'Failed to get pending approvals',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
   // GET /api/approvals/session/:sessionId - Get pending approvals for a session
   app.get('/api/approvals/session/:sessionId', authenticateJWT, async (req: Request, res: Response): Promise<void> => {
     try {
@@ -520,6 +608,77 @@ function configureRoutes(): void {
       console.error('[API] Get pending approvals failed:', error);
       res.status(500).json({
         error: 'Failed to get pending approvals',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  // Chat session endpoints
+  // GET /api/chat/sessions - Get all sessions for current user
+  app.get('/api/chat/sessions', authenticateJWT, async (req: Request, res: Response): Promise<void> => {
+    try {
+      const userId = req.user?.userId;
+
+      if (!userId) {
+        res.status(401).json({
+          error: 'Unauthorized',
+          message: 'User ID not found in token',
+        });
+        return;
+      }
+
+      // Query all sessions for the user
+      const query = `
+        SELECT
+          id,
+          user_id,
+          title,
+          is_active,
+          created_at,
+          updated_at
+        FROM sessions
+        WHERE user_id = @userId
+        ORDER BY updated_at DESC
+      `;
+
+      const result = await executeQuery<{
+        id: string;
+        user_id: string;
+        title: string;
+        is_active: boolean;
+        created_at: Date;
+        updated_at: Date;
+      }>(query, { userId });
+
+      // Transform backend format to frontend format
+      const sessions = result.recordset.map((row) => {
+        // Map is_active (boolean) to status (string enum)
+        let status: 'active' | 'completed' | 'cancelled' = 'active';
+        if (!row.is_active) {
+          status = 'completed'; // Default inactive sessions to 'completed'
+        }
+
+        return {
+          id: row.id,
+          user_id: row.user_id,
+          title: row.title || 'New Chat',
+          status,
+          last_activity_at: row.updated_at.toISOString(), // Use updated_at as last_activity_at
+          created_at: row.created_at.toISOString(),
+          updated_at: row.updated_at.toISOString(),
+          // Optional fields not in current schema:
+          // goal: undefined,
+          // token_count: undefined,
+        };
+      });
+
+      res.json({
+        sessions,
+      });
+    } catch (error) {
+      console.error('[API] Get sessions failed:', error);
+      res.status(500).json({
+        error: 'Failed to get sessions',
         message: error instanceof Error ? error.message : 'Unknown error',
       });
     }

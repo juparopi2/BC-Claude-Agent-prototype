@@ -58,65 +58,80 @@ export function useChat(sessionId?: string) {
   useEffect(() => {
     if (!socket || !isConnected) return;
 
-    // Message received
-    const handleMessage = (data: MessageEventData) => {
-      addMessage(data.message);
+    // Complete message received (backend emits agent:message_complete)
+    const handleMessageComplete = (data: { content: string; role: string }) => {
+      // Backend sends { content, role }, we need to construct full Message object
+      const message: Message = {
+        id: `msg-${Date.now()}-${Math.random()}`,
+        session_id: sessionId || '',
+        role: data.role as 'user' | 'assistant',
+        content: data.content,
+        created_at: new Date().toISOString(),
+        thinking_tokens: 0,
+        is_thinking: false,
+      };
+      // endStreaming also adds the message, so we pass it directly
+      endStreaming(message);
     };
 
-    // Thinking indicator
-    const handleThinking = (data: ThinkingEventData) => {
-      setThinking(data.isThinking);
+    // Thinking indicator (backend emits agent:thinking)
+    const handleThinking = (data: { content?: string }) => {
+      // When thinking starts, also start streaming
+      const isThinkingNow = !!data.content || true; // Assume thinking if event is emitted
+      setThinking(isThinkingNow);
+      if (isThinkingNow) {
+        startStreaming(); // Use thinking as signal to start streaming
+      }
     };
 
-    // Tool use (for logging/UI)
+    // Tool use (backend emits agent:tool_use)
     const handleToolUse = (data: ToolUseEventData) => {
       console.log('[useChat] Tool use:', data.toolName, data.args);
     };
 
-    // Stream start
-    const handleStreamStart = () => {
-      startStreaming();
+    // Tool result (backend emits agent:tool_result)
+    const handleToolResult = (data: { toolName: string; result: unknown; success: boolean }) => {
+      console.log('[useChat] Tool result:', data.toolName, 'success:', data.success);
     };
 
-    // Stream chunk
-    const handleStreamChunk = (data: StreamChunkEventData) => {
-      appendStreamChunk(data.chunk);
+    // Message chunk during streaming (backend emits agent:message_chunk)
+    // Note: Backend sends { content: string }, NOT { chunk: string }
+    const handleMessageChunk = (data: { content: string }) => {
+      appendStreamChunk(data.content); // Append using backend's 'content' property
     };
 
-    // Stream end
-    const handleStreamEnd = (data: { sessionId: string }) => {
-      // Create a temporary message with the streamed content
-      // The actual message will be added via the regular message event
-      console.log('[useChat] Stream ended for session:', data.sessionId);
-      // Just stop streaming, the message will be handled by onMessage
+    // Completion (backend emits agent:complete instead of stream_end)
+    const handleComplete = (data: { reason: string }) => {
+      console.log('[useChat] Agent completed, reason:', data.reason);
       setThinking(false);
+      // Note: Don't call endStreaming() here, wait for agent:message_complete
     };
 
-    // Error
+    // Error (backend emits agent:error)
     const handleError = (data: { error: string }) => {
       console.error('[useChat] WebSocket error:', data.error);
     };
 
-    // Register listeners
-    socketChatApi.onMessage(handleMessage);
+    // Register listeners using updated API
+    socketChatApi.onMessageComplete(handleMessageComplete);
     socketChatApi.onThinking(handleThinking);
     socketChatApi.onToolUse(handleToolUse);
-    socketChatApi.onStreamStart(handleStreamStart);
-    socketChatApi.onStreamChunk(handleStreamChunk);
-    socketChatApi.onStreamEnd(handleStreamEnd);
+    socketChatApi.onToolResult(handleToolResult);
+    socketChatApi.onMessageChunk(handleMessageChunk);
+    socketChatApi.onComplete(handleComplete);
     socket.on(SocketEvent.ERROR, handleError);
 
     // Cleanup listeners
     return () => {
-      socket.off(SocketEvent.MESSAGE, handleMessage);
+      socket.off(SocketEvent.MESSAGE_COMPLETE, handleMessageComplete);
       socket.off(SocketEvent.THINKING, handleThinking);
       socket.off(SocketEvent.TOOL_USE, handleToolUse);
-      socket.off(SocketEvent.STREAM_START, handleStreamStart);
-      socket.off(SocketEvent.STREAM_CHUNK, handleStreamChunk);
-      socket.off(SocketEvent.STREAM_END, handleStreamEnd);
+      socket.off(SocketEvent.TOOL_RESULT, handleToolResult);
+      socket.off(SocketEvent.MESSAGE_CHUNK, handleMessageChunk);
+      socket.off(SocketEvent.COMPLETE, handleComplete);
       socket.off(SocketEvent.ERROR, handleError);
     };
-  }, [socket, isConnected, addMessage, setThinking, startStreaming, appendStreamChunk, endStreaming]);
+  }, [socket, isConnected, sessionId, addMessage, setThinking, startStreaming, appendStreamChunk, endStreaming]);
 
   // Send message
   const sendMessage = useCallback(

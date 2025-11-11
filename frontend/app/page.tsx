@@ -1,11 +1,24 @@
-import { MainLayout } from '@/components/layout';
-import { SourcePanel } from '@/components/panels';
+'use client';
+
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/hooks/useAuth';
 
 export default function Home() {
+  const router = useRouter();
+  const { isAuthenticated, isLoading } = useAuth();
+
+  useEffect(() => {
+    if (!isLoading) {
+      // Redirect to /new if authenticated, /login if not
+      router.replace(isAuthenticated ? '/new' : '/login');
+    }
+  }, [isAuthenticated, isLoading, router]);
+
+  // Show loading state
   return (
-    <MainLayout
-      showSourcePanel={true}
-      sourcePanel={<SourcePanel />}
-    />
+    <div className="flex items-center justify-center min-h-screen">
+      <div className="text-muted-foreground">Loading...</div>
+    </div>
   );
 }

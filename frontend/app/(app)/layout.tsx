@@ -1,33 +1,34 @@
-/**
- * @deprecated This component has been replaced by app/(app)/layout.tsx
- * using Next.js App Router layouts. It's kept here for reference only.
- * DO NOT USE in new code.
- */
-
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
+import { useAuth } from '@/hooks/useAuth';
 import { useChat } from '@/hooks';
-import { Header } from './Header';
-import { Sidebar } from './Sidebar';
-import { ContextBar } from './ContextBar';
-import { ChatInterface } from '../chat/ChatInterface';
+import { Header } from '@/components/layout/Header';
+import { Sidebar } from '@/components/layout/Sidebar';
+import { ContextBar } from '@/components/layout/ContextBar';
 import { Button } from '@/components/ui/button';
 import { Menu, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ApprovalDialog } from '@/components/approvals';
+import { SourcePanel } from '@/components/panels/SourcePanel';
 
-interface MainLayoutProps {
-  children?: React.ReactNode;
-  showSourcePanel?: boolean;
-  sourcePanel?: React.ReactNode;
-}
+export default function AppLayout({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const { isAuthenticated, isLoading } = useAuth();
+  const { currentSession, selectSession, createSession } = useChat();
 
-export function MainLayout({ children, showSourcePanel = true, sourcePanel }: MainLayoutProps) {
-  const { currentSession, createSession, selectSession } = useChat();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sourcePanelOpen, setSourcePanelOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
+
+  // Auth check - redirect to login if not authenticated
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      router.replace('/login');
+    }
+  }, [isAuthenticated, isLoading, router]);
 
   // Detect mobile/tablet screen size
   useEffect(() => {
@@ -47,28 +48,42 @@ export function MainLayout({ children, showSourcePanel = true, sourcePanel }: Ma
     return () => window.removeEventListener('resize', checkScreenSize);
   }, []);
 
-  // Handle new chat
-  const handleNewChat = async () => {
-    try {
-      await createSession();
-    } catch (error) {
-      console.error('[MainLayout] Failed to create session:', error);
-    }
-  };
-
-  // Handle session selection
+  // Handle session selection from sidebar
   const handleSessionSelect = async (sessionId: string) => {
     try {
       await selectSession(sessionId);
+
+      // Navigate to chat page
+      router.push(`/chat/${sessionId}`);
 
       // Close sidebar on mobile after selection
       if (isMobile) {
         setSidebarOpen(false);
       }
     } catch (error) {
-      console.error('[MainLayout] Failed to select session:', error);
+      console.error('[AppLayout] Failed to select session:', error);
     }
   };
+
+  // Handle new chat
+  const handleNewChat = () => {
+    // Navigate to /new (which will create a session)
+    router.push('/new');
+  };
+
+  // Show loading state while checking authentication
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-muted-foreground">Loading...</div>
+      </div>
+    );
+  }
+
+  // Don't render layout if not authenticated (redirecting)
+  if (!isAuthenticated) {
+    return null;
+  }
 
   return (
     <div className="flex flex-col h-screen">
@@ -123,45 +138,37 @@ export function MainLayout({ children, showSourcePanel = true, sourcePanel }: Ma
 
         {/* Main content */}
         <main className="flex-1 flex flex-col overflow-hidden">
-          {children ? (
-            children
-          ) : (
-            <ChatInterface sessionId={currentSession?.id} />
-          )}
+          {children}
           <ContextBar />
         </main>
 
-        {/* Source panel toggle button (if panel exists) */}
-        {showSourcePanel && sourcePanel && (
-          <div className="flex flex-col justify-start pt-2">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setSourcePanelOpen(!sourcePanelOpen)}
-              className="h-8 w-8"
-              aria-label={sourcePanelOpen ? 'Close source panel' : 'Open source panel'}
-            >
-              {sourcePanelOpen ? (
-                <ChevronRight className="h-4 w-4" />
-              ) : (
-                <ChevronLeft className="h-4 w-4" />
-              )}
-            </Button>
-          </div>
-        )}
+        {/* Source panel toggle button */}
+        <div className="flex flex-col justify-start pt-2">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setSourcePanelOpen(!sourcePanelOpen)}
+            className="h-8 w-8"
+            aria-label={sourcePanelOpen ? 'Close source panel' : 'Open source panel'}
+          >
+            {sourcePanelOpen ? (
+              <ChevronRight className="h-4 w-4" />
+            ) : (
+              <ChevronLeft className="h-4 w-4" />
+            )}
+          </Button>
+        </div>
 
         {/* Source panel */}
-        {showSourcePanel && sourcePanel && (
-          <aside
-            className={cn(
-              'transition-all duration-300',
-              sourcePanelOpen ? 'w-80' : 'w-0',
-              !sourcePanelOpen && 'overflow-hidden'
-            )}
-          >
-            {sourcePanel}
-          </aside>
-        )}
+        <aside
+          className={cn(
+            'transition-all duration-300',
+            sourcePanelOpen ? 'w-80' : 'w-0',
+            !sourcePanelOpen && 'overflow-hidden'
+          )}
+        >
+          <SourcePanel />
+        </aside>
       </div>
 
       {/* Global Approval Dialog */}

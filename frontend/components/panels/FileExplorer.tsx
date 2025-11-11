@@ -61,7 +61,8 @@ export function FileExplorer({
     if (diffDays === 0) return 'Today';
     if (diffDays === 1) return 'Yesterday';
     if (diffDays < 7) return `${diffDays}d ago`;
-    return date.toLocaleDateString();
+    // Use consistent ISO date format to avoid hydration mismatch
+    return date.toISOString().split('T')[0];
   };
 
   // Handle file click
@@ -108,11 +109,11 @@ export function FileExplorer({
           const isSelected = selectedId === file.id;
 
           return (
-            <button
+            <div
               key={file.id}
               onClick={() => handleFileClick(file.id)}
               className={cn(
-                'w-full text-left p-3 rounded-lg hover:bg-muted transition-colors group',
+                'w-full text-left p-3 rounded-lg hover:bg-muted transition-colors group cursor-pointer',
                 isSelected && 'bg-muted border border-border'
               )}
             >
@@ -149,7 +150,7 @@ export function FileExplorer({
                   )}
                 </Button>
               </div>
-            </button>
+            </div>
           );
         })}
       </div>

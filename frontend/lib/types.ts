@@ -75,25 +75,24 @@ export interface ApiResponse<T> {
 }
 
 // Socket.IO event data types
+// Updated to match actual backend emission format
 export interface MessageEventData {
-  message: Message;
-  sessionId: string;
+  content: string;    // Backend emits { content, role } not full Message object
+  role: string;
 }
 
 export interface ThinkingEventData {
-  isThinking: boolean;
-  sessionId: string;
+  content?: string;   // Backend emits { content?: string }
 }
 
 export interface ToolUseEventData {
   toolName: string;
   args: Record<string, unknown>;
-  sessionId: string;
+  toolUseId?: string; // Backend may include toolUseId
 }
 
 export interface StreamChunkEventData {
-  chunk: string;
-  sessionId: string;
+  content: string;    // Backend emits { content: string }, NOT { chunk: string }
 }
 
 export interface ApprovalSummary {

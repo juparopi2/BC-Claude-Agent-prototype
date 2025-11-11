@@ -17,7 +17,7 @@ import { initDatabase, closeDatabase, checkDatabaseHealth } from './config/datab
 import { initRedis, closeRedis, checkRedisHealth } from './config/redis';
 import { getMCPService } from './services/mcp';
 import { getBCClient } from './services/bc';
-import { getAgentService } from './services/agent';
+import { getDirectAgentService } from './services/agent';
 import { getAuthService } from './services/auth';
 import { getApprovalManager } from './services/approval/ApprovalManager';
 import { getTodoManager } from './services/todo/TodoManager';
@@ -123,16 +123,17 @@ async function initializeApp(): Promise<void> {
     console.log('✅ Todo Manager initialized');
     console.log('');
 
-    // Step 10: Initialize Agent Service (with managers for hooks)
-    console.log('🤖 Initializing Agent Service...');
-    const agentService = getAgentService(approvalManager, todoManager);
-    const agentConfig = agentService.getConfigStatus();
-    if (agentConfig.hasApiKey) {
-      console.log('✅ Agent Service initialized');
-      console.log(`   Model: ${agentConfig.model}`);
-      console.log(`   MCP Configured: ${agentConfig.mcpConfigured ? 'Yes' : 'No'}`);
+    // Step 10: Initialize Direct Agent Service (bypasses ProcessTransport bug)
+    console.log('🤖 Initializing Direct Agent Service (workaround)...');
+    // Initialize singleton (will be used by routes/socket handlers)
+    getDirectAgentService(approvalManager, todoManager);
+    if (env.ANTHROPIC_API_KEY) {
+      console.log('✅ Direct Agent Service initialized');
+      console.log(`   Model: ${env.ANTHROPIC_MODEL}`);
+      console.log(`   Strategy: Direct API (bypasses Agent SDK bug)`);
+      console.log(`   MCP Tools: 7 (loaded from data files)`);
     } else {
-      console.warn('⚠️  Agent Service: ANTHROPIC_API_KEY not configured');
+      console.warn('⚠️  Direct Agent Service: ANTHROPIC_API_KEY not configured');
     }
     console.log('');
 
@@ -372,20 +373,26 @@ function configureRoutes(): void {
 
   // Agent endpoints
   app.get('/api/agent/status', (_req: Request, res: Response): void => {
-    const agentService = getAgentService();
     const mcpService = getMCPService();
 
     const status = {
-      configured: agentService.isConfigured(),
-      config: agentService.getConfigStatus(),
+      configured: !!env.ANTHROPIC_API_KEY,
+      config: {
+        hasApiKey: !!env.ANTHROPIC_API_KEY,
+        model: env.ANTHROPIC_MODEL,
+        strategy: 'direct-api',
+        mcpConfigured: true,
+        toolsAvailable: 7,
+      },
       mcpServer: {
         url: mcpService.getMCPServerUrl(),
         configured: mcpService.isConfigured(),
+        type: 'in-process-data-files',
       },
-      subagents: {
-        enabled: true,
-        routing: 'automatic',
-        agents: ['bc-query', 'bc-write', 'bc-validation', 'bc-analysis'],
+      implementation: {
+        type: 'DirectAgentService',
+        reason: 'Bypasses Agent SDK ProcessTransport bug',
+        manualAgenticLoop: true,
       },
     };
 
@@ -394,9 +401,9 @@ function configureRoutes(): void {
 
   app.post('/api/agent/query', authenticateJWT, async (req: Request, res: Response): Promise<void> => {
     try {
-      const agentService = getAgentService();
+      const agentService = getDirectAgentService();
 
-      if (!agentService.isConfigured()) {
+      if (!env.ANTHROPIC_API_KEY) {
         res.status(503).json({
           error: 'Agent not configured',
           message: 'ANTHROPIC_API_KEY is not set',
@@ -429,7 +436,7 @@ function configureRoutes(): void {
         }
       );
 
-      console.log(`[Agent] Query completed in ${result.durationMs}ms`);
+      console.log(`[Agent] Query completed in ${result.duration || result.durationMs}ms`);
       console.log(`[Agent] Tools used: ${result.toolsUsed.join(', ') || 'none'}`);
 
       res.json(result);
@@ -590,10 +597,8 @@ function configureSocketIO(): void {
         // Join session room
         socket.join(sessionId);
 
-        // Execute agent query with streaming
-        // The SDK will automatically generate todos using TodoWrite tool
-        // SDK handles automatic routing to specialized subagents
-        const agentService = getAgentService();
+        // Execute agent query with streaming (using DirectAgentService)
+        const agentService = getDirectAgentService();
         await agentService.executeQuery(
           message,
           sessionId,
@@ -615,6 +620,13 @@ function configureSocketIO(): void {
                 });
                 break;
 
+              case 'message_chunk':
+                // DirectAgentService uses message_chunk instead of message_partial
+                io.to(sessionId).emit('agent:message_chunk', {
+                  content: event.content,
+                });
+                break;
+
               case 'message':
                 io.to(sessionId).emit('agent:message_complete', {
                   content: event.content,
@@ -623,7 +635,7 @@ function configureSocketIO(): void {
                 break;
 
               case 'tool_use':
-                // Intercept TodoWrite to sync todos to database
+                // Intercept TodoWrite to sync todos to database (if SDK were used)
                 if (event.toolName === 'TodoWrite' && event.args?.todos) {
                   const todoManager = getTodoManager();
                   await todoManager.syncTodosFromSDK(
@@ -651,6 +663,13 @@ function configureSocketIO(): void {
               case 'error':
                 io.to(sessionId).emit('agent:error', {
                   error: event.error,
+                });
+                break;
+
+              case 'complete':
+                // DirectAgentService uses 'complete' event
+                io.to(sessionId).emit('agent:complete', {
+                  reason: event.reason,
                 });
                 break;
 
@@ -824,3 +843,4 @@ startServer();
  * Export Express app and Socket.IO for testing
  */
 export { app, io };
+

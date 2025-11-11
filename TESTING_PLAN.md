@@ -261,7 +261,7 @@ curl http://localhost:3001/api/mcp/config
 
 #### 3.2 Test de Conectividad con BC
 
-**Nota**: Este test podría fallar si ejecutas desde local y el MCP server solo es accesible desde Azure network.
+**Nota**: El MCP server funciona en local vía stdio transport. Este test verifica la autenticación OAuth con Business Central.
 
 ```bash
 # Test de autenticación con Business Central
@@ -269,7 +269,7 @@ curl http://localhost:3001/api/bc/test \
   -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
 ```
 
-**Resultado esperado** (si MCP es accesible):
+**Resultado esperado**:
 ```json
 {
   "status": "success",
@@ -278,13 +278,10 @@ curl http://localhost:3001/api/bc/test \
 }
 ```
 
-**Si falla con error de network**:
-```json
-{
-  "error": "MCP server not accessible from local network"
-}
+**Si falla con error de network**: Verifica que el MCP server esté indexado correctamente:
+```bash
+cd backend/mcp-server && npm run index
 ```
-→ Esto es **esperado** desde local. El MCP server solo es accesible desde Azure Container Apps.
 
 #### 3.3 Test de Query Básico (Local)
 
@@ -672,18 +669,22 @@ az redis update \
 
 #### 3.2 Verificar MCP Server
 
-El MCP server ya está desplegado en Azure Container Apps:
+El MCP server funciona en local vía stdio transport (integrado como git submodule en `backend/mcp-server/`):
 
 ```bash
-# Obtener info del MCP server (si tienes acceso)
-curl https://app-erptools-mcp-dev.purplemushroom-befedc5f.westeurope.azurecontainerapps.io/mcp/health
+# Verificar que el MCP server esté indexado
+cd backend/mcp-server && npm run index
+
+# Verificar que exista el archivo de índice
+ls -la data/v1.0/bc_index.json
 ```
 
-**Nota**: Es posible que el MCP server solo sea accesible desde la red interna de Azure (Container Apps Environment). Si obtienes timeout o error de conexión desde local, es **esperado**.
+**El MCP server local debe tener**:
+- ✅ 324 endpoints indexados
+- ✅ 52 entidades (customers, items, vendors, etc.)
+- ✅ 57 schemas JSON
 
-**Para verificar desde Azure**:
-- Deploy tu backend a Container Apps (Week 7-8)
-- El MCP server será accesible desde tu backend en Azure
+**Para verificar desde Azure**: El backend en Container Apps usará el mismo MCP server local (copiado en el Docker image)
 
 ---
 
@@ -797,8 +798,8 @@ Deberías ver:
 
 **Resultado esperado**:
 - [ ] Agent usa el subagent `bc-query`
-- [ ] Tool call a MCP: `bc_list_customers`
-- [ ] Respuesta con lista de customers
+- [ ] Tool call a MCP: `bc_list_customers` (via stdio transport)
+- [ ] Respuesta con lista de customers desde Business Central API
 - [ ] Si hay error, mensaje descriptivo
 
 ### Escenario 3: Create Entity with Approval
@@ -913,10 +914,13 @@ Deberías ver:
    ```
 3. Restart backend
 
-**Error**: `MCP server not accessible`
+**Error**: `MCP server not accessible` o `Master index not found`
 
-**Desde local**: Esperado - MCP solo accesible desde Azure network.
-**Solución**: Deploy backend a Azure Container Apps (Week 7-8).
+**Solución**: El MCP server necesita ser indexado:
+```bash
+cd backend/mcp-server && npm run index
+```
+Esto genera el bc_index.json con 324 endpoints.
 
 ---
 

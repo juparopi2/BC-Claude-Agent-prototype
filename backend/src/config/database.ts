@@ -20,7 +20,7 @@ let pool: ConnectionPool | null = null;
  *
  * @returns SQL Server configuration object
  */
-function getDatabaseConfig(): SqlConfig {
+export function getDatabaseConfig(): SqlConfig {
   // If connection string is provided, parse it
   if (env.DATABASE_CONNECTION_STRING) {
     // In mssql v12, connectionString is no longer a direct property

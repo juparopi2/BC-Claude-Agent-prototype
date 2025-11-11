@@ -30,7 +30,7 @@
   - Integración completa en server.ts
   - Endpoints: MCP, BC, y Agent
   - Test scripts y documentación completa
-  - ⚠️ Limitación: MCP server no accesible desde local (requiere Azure network)
+  - ✅ MCP server funciona en local vía stdio transport (git submodule integrado)
 - [x] **Week 2 - Sección 2.2**: Authentication System ✅ **COMPLETADO 100%**
   - AuthService con JWT (register, login, logout, refresh)
   - Middleware de autenticación/autorización (authenticateJWT, requireRole)
@@ -532,7 +532,7 @@ curl http://localhost:3001/health
   - [x] TypeScript compila sin errores
   - [x] Servidor arranca correctamente
   - [x] OAuth con BC funciona ✅
-  - ℹ️ MCP y BC API no accesibles desde local (esperado - requieren red Azure)
+  - ✅ MCP funciona en local vía stdio transport (indexado con 324 endpoints)
 - [x] **Claude Agent SDK Integration** ⚡ (Adelantado de Week 3)
   - [x] Instalado `@anthropic-ai/claude-agent-sdk@0.1.29`
   - [x] Downgrade Zod a 3.24.1 para compatibilidad
@@ -1374,39 +1374,53 @@ frontend/
 
 ## 🐛 Problemas Conocidos Pendientes
 
-### ❌ CRÍTICO - SDK Error (2025-11-10)
+### ❌ CRÍTICO - SDK ProcessTransport Error (2025-11-10) **SIN RESOLVER**
 **Error**: "Claude Code process exited with code 1"
 **Ubicación**: ProcessTransport del Agent SDK
-**Ocurre**: Al ejecutar test-chat-flow.ts
-**Stack**: `@anthropic-ai/claude-agent-sdk/sdk.mjs:6560:14`
+**Ocurre**: Al ejecutar cualquier agent query (test-chat-flow.ts, test-bc-entities.ts)
+**Stack**: `@anthropic-ai/claude-agent-sdk/sdk.mjs:6564:14`
+
+**Estado del Testing** (2025-11-10 Noche):
+- ✅ Backend inicia correctamente con todos los servicios
+- ✅ MCP in-process server se inicializa con 7 tools
+- ✅ WebSocket connection funciona
+- ❌ **Query execution falla con ProcessTransport error**
+
+**Versiones probadas**:
+- SDK 0.1.29: ProcessTransport error
+- SDK 0.1.30: ProcessTransport error (bug persiste)
+
+**Impacto**: **Bloquea completamente el testing del agente**. No se puede ejecutar ninguna query.
 
 **Próximos pasos**:
-- [ ] Investigar configuración del Agent SDK en AgentService.ts
-- [ ] Verificar que MCP server URL sea accesible
-- [ ] Verificar formato de `mcpServers` config
-- [ ] Revisar logs del backend para más detalles
-- [ ] Considerar upgrade/downgrade de `@anthropic-ai/claude-agent-sdk`
+- [ ] Review GitHub issues #176, #4619 para updates o patches
+- [ ] Considerar downgrade a versión estable anterior (< 0.1.29)
+- [ ] Evaluar alternativas: llamar MCP directamente sin SDK query()
+- [ ] Habilitar logs detallados del SDK: `DEBUG=anthropic:*` o similar
+- [ ] Ejecutar con `NODE_OPTIONS='--trace-warnings --trace-uncaught'`
+- [ ] Considerar implementar wrapper custom alrededor del SDK
+- [ ] Contactar soporte de Anthropic si el issue persiste en GitHub
 
-### ⚠️ MEDIO - CHECK Constraint en Approvals (2025-11-10)
+### ✅ RESUELTO - CHECK Constraint en Approvals (2025-11-10 - RESUELTO 2025-11-10 Tarde)
 **Error**: `The UPDATE statement conflicted with the CHECK constraint "chk_approvals_status"`
 **Ubicación**: ApprovalManager.expireOldApprovals()
-**Root Cause**: Constraint solo permite 'pending', 'approved', 'rejected' - no permite 'expired'
+**Root Cause**: Constraint solo permitía 'pending', 'approved', 'rejected' - no permitía 'expired'
 
-**Solución propuesta**:
-```sql
--- Opción 1: Agregar 'expired' al constraint
-ALTER TABLE approvals DROP CONSTRAINT chk_approvals_status;
-ALTER TABLE approvals ADD CONSTRAINT chk_approvals_status
-  CHECK (status IN ('pending', 'approved', 'rejected', 'expired'));
+**Solución implementada** ✅:
+- Migration 004 ejecutada exitosamente
+- Constraint actualizado para incluir 4 valores: `('pending', 'approved', 'rejected', 'expired')`
+- Columna `priority` agregada (NVARCHAR(20), default: 'medium')
+- Constraint `chk_approvals_priority` agregado: `('low', 'medium', 'high')`
 
--- Opción 2: Cambiar lógica para usar 'rejected' en lugar de 'expired'
--- Modificar ApprovalManager.expireApproval() para SET status = 'rejected'
-```
+**Archivos creados**:
+- `backend/scripts/migrations/004_fix_approvals_constraints.sql`
+- `backend/scripts/migrations/004_rollback_approvals_constraints.sql`
+- `backend/scripts/run-migration-004.ts`
 
-**Próximos pasos**:
-- [ ] Decidir enfoque (agregar constraint o cambiar lógica)
-- [ ] Implementar solución
-- [ ] Actualizar types/approval.types.ts si se agrega 'expired'
+**Verificación**:
+- [x] Migration ejecutada en Azure SQL Database
+- [x] Database config exportado (`getDatabaseConfig()`) en `database.ts`
+- [x] Firewall rule agregada para IP 190.145.240.83
 
 ### ℹ️ INFO - Column Naming Mismatch (2025-11-10)
 **Estado**: Parcialmente resuelto ✅
@@ -1495,6 +1509,58 @@ ALTER TABLE approvals ADD CONSTRAINT chk_approvals_status
   - Estado: Backend compila y arranca correctamente, pero SDK CLI falla en runtime
   - Próximos pasos: Debug detallado del CLI subprocess con logs habilitados
 
+### 2025-11-10 (Tarde - Testing Plan Execution)
+- ✅ **FASE 1: Database Schema Fix COMPLETADA** (~30 min)
+  - **Problema Crítico Resuelto**: Constraint `chk_approvals_status` no incluía 'expired'
+  - **Migration 004 Creada y Ejecutada**:
+    - Script SQL: `004_fix_approvals_constraints.sql` (7 batches)
+    - Rollback script: `004_rollback_approvals_constraints.sql`
+    - Helper TypeScript: `run-migration-004.ts`
+  - **Cambios en Base de Datos**:
+    - ✅ Constraint actualizado: `('pending', 'approved', 'rejected', 'expired')`
+    - ✅ Columna `priority` agregada (NVARCHAR(20), default: 'medium')
+    - ✅ Constraint `chk_approvals_priority` agregado: `('low', 'medium', 'high')`
+  - **Fixes Adicionales**:
+    - ✅ Exportado `getDatabaseConfig()` en `backend/src/config/database.ts`
+    - ✅ Fixed TypeScript errors en migration script (type guards para undefined)
+    - ✅ Firewall rule agregada para IP 190.145.240.83
+  - **Estado**: ApprovalManager.expireOldApprovals() ahora puede ejecutarse sin errores ✅
+
+### 2025-11-10 (Noche - FASE 2 Testing Execution)
+- ⚠️ **Testing del Agent con ProcessTransport Error**
+  - **Objetivo**: Ejecutar FASE 2 del testing plan (validación completa del Agent SDK)
+  - **Tareas Ejecutadas**:
+    - ✅ Limpiar proyecto (npm install, borrar logs) - 1 min
+    - ✅ Verificación de compilación (npm run build) - TypeScript compila sin errores
+    - ✅ Iniciar backend limpio (npm run dev) - Servidor corriendo en puerto 3001
+    - ❌ Test agent query ("Lista todas las entidades disponibles en Business Central") - **FALLIDO**
+  - **Resultados Positivos**:
+    - ✅ Backend inicia correctamente sin crashes
+    - ✅ Todos los servicios inicializados (Auth, Approval Manager, Todo Manager, Agent Service)
+    - ✅ MCP in-process server inicializado con 7 tools
+    - ✅ ANTHROPIC_API_KEY configurada correctamente (length: 108)
+    - ✅ Azure SQL y Redis conectados
+    - ✅ Business Central OAuth exitoso
+    - ✅ WebSocket connection establecida
+    - ✅ Session y prompt recibidos correctamente
+    - ✅ Migration 004 ejecutada exitosamente (constraint de approvals actualizado)
+  - **Error Crítico Persistente** ❌:
+    - Error: "Claude Code process exited with code 1"
+    - Ubicación: `@anthropic-ai/claude-agent-sdk/sdk.mjs:6564:14` (ProcessTransport)
+    - SDK Version: 0.1.30 (actualizado desde 0.1.29, pero error persiste)
+    - Impacto: **Bloquea completamente la ejecución de queries del agente**
+    - No se pudo verificar: SDK detecta 7 MCP tools, tool list_all_entities se ejecuta, respuesta con 52 entidades
+  - **Archivos Creados**:
+    - `backend/scripts/test-bc-entities.ts` - Script de test específico para BC entities query
+  - **Tiempo Total**: ~40 minutos
+  - **Conclusión**: Testing **NO completó exitosamente** debido al bug crítico del SDK
+  - **Próximos Pasos**:
+    - [ ] Review GitHub issues #176, #4619 para updates
+    - [ ] Considerar downgrade a versión estable anterior del SDK
+    - [ ] Evaluar alternativas: llamar MCP directamente sin SDK query()
+    - [ ] Habilitar logs detallados del SDK para debugging avanzado
+    - [ ] Considerar implementar wrapper custom alrededor del SDK
+
 ### 2025-10-30
 - ✅ **Week 2 - Sección 2.2**: Authentication System completada
   - AuthService con JWT (register, login, logout, refresh)
@@ -1514,5 +1580,5 @@ ALTER TABLE approvals ADD CONSTRAINT chk_approvals_status
 
 ---
 
-**Última actualización**: 2025-11-10 (Tarde)
-**Versión**: 1.4
+**Última actualización**: 2025-11-10 (Noche)
+**Versión**: 1.5

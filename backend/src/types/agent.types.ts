@@ -38,10 +38,12 @@ export type AgentEventType =
   | 'thinking'
   | 'message_partial'
   | 'message'
+  | 'message_chunk'
   | 'tool_use'
   | 'tool_result'
   | 'error'
   | 'session_end'
+  | 'complete'
   | 'approval_requested'
   | 'approval_resolved';
 
@@ -172,6 +174,26 @@ export interface SessionEndEvent extends BaseAgentEvent {
 }
 
 /**
+ * Message Chunk Event
+ * Emitted during streaming for incremental message content
+ */
+export interface MessageChunkEvent extends BaseAgentEvent {
+  type: 'message_chunk';
+  /** Chunk of message content */
+  content: string;
+}
+
+/**
+ * Complete Event
+ * Emitted when agent execution completes
+ */
+export interface CompleteEvent extends BaseAgentEvent {
+  type: 'complete';
+  /** Completion reason */
+  reason: 'success' | 'error' | 'max_turns' | 'user_cancelled';
+}
+
+/**
  * Approval Requested Event
  * Emitted when agent needs user approval for an action
  */
@@ -214,10 +236,12 @@ export type AgentEvent =
   | ThinkingEvent
   | MessagePartialEvent
   | MessageEvent
+  | MessageChunkEvent
   | ToolUseEvent
   | ToolResultEvent
   | ErrorEvent
   | SessionEndEvent
+  | CompleteEvent
   | ApprovalRequestedEvent
   | ApprovalResolvedEvent;
 
@@ -226,23 +250,29 @@ export type AgentEvent =
  * Final result of agent execution
  */
 export interface AgentExecutionResult {
-  /** Session ID */
-  sessionId: string;
+  /** Session ID (optional for backward compatibility) */
+  sessionId?: string;
   /** Final response text */
   response: string;
-  /** Message ID */
-  messageId: string;
+  /** Message ID (optional for backward compatibility) */
+  messageId?: string;
   /** Token usage */
-  tokenUsage: {
+  tokenUsage?: {
     inputTokens: number;
     outputTokens: number;
     thinkingTokens?: number;
     totalTokens: number;
   };
+  /** Input tokens (flat structure for DirectAgentService) */
+  inputTokens?: number;
+  /** Output tokens (flat structure for DirectAgentService) */
+  outputTokens?: number;
   /** Tools used during execution */
   toolsUsed: string[];
   /** Duration in milliseconds */
-  durationMs: number;
+  durationMs?: number;
+  /** Duration (flat structure for DirectAgentService) */
+  duration?: number;
   /** Whether execution was successful */
   success: boolean;
   /** Error if execution failed */

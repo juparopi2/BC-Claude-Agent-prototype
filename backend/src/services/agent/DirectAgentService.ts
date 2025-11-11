@@ -1,0 +1,674 @@
+/**
+ * Direct Agent Service - Workaround for Agent SDK ProcessTransport Bug
+ *
+ * This service uses @anthropic-ai/sdk directly instead of the buggy Agent SDK query().
+ * It implements manual tool calling loop (agentic loop) to avoid ProcessTransport errors.
+ *
+ * Why this approach:
+ * - Agent SDK v0.1.29 and v0.1.30 have a critical ProcessTransport bug
+ * - Even in-process MCP servers trigger the bug
+ * - Direct API calling gives us full control and reliability
+ *
+ * Architecture:
+ * 1. Convert MCP tools to Anthropic tool definitions
+ * 2. Call Claude API with tools parameter
+ * 3. Manually execute tool calls when Claude requests them
+ * 4. Send results back to Claude
+ * 5. Repeat until Claude is done (agentic loop)
+ */
+
+import Anthropic from '@anthropic-ai/sdk';
+import type {
+  MessageParam,
+  TextBlock,
+  ToolUseBlock,
+} from '@anthropic-ai/sdk/resources/messages';
+import { env } from '@/config';
+import type { AgentEvent, AgentExecutionResult } from '@/types';
+import type { ApprovalManager } from '../approval/ApprovalManager';
+import type { TodoManager } from '../todo/TodoManager';
+import * as fs from 'fs';
+import * as path from 'path';
+
+/**
+ * Direct Agent Service
+ *
+ * Bypasses the buggy Agent SDK by using Anthropic API directly.
+ */
+export class DirectAgentService {
+  private anthropic: Anthropic;
+  private approvalManager?: ApprovalManager;
+  private mcpDataPath: string;
+
+  constructor(approvalManager?: ApprovalManager, _todoManager?: TodoManager) {
+    this.anthropic = new Anthropic({
+      apiKey: env.ANTHROPIC_API_KEY,
+    });
+    this.approvalManager = approvalManager;
+
+    // Setup MCP data path
+    const mcpServerDir = path.join(process.cwd(), 'mcp-server');
+    this.mcpDataPath = path.join(mcpServerDir, 'data', 'v1.0');
+
+    console.log('[DirectAgentService] Initialized with direct API calling (bypassing Agent SDK)');
+  }
+
+  /**
+   * Execute Query with Direct API Calling
+   *
+   * Implements manual agentic loop:
+   * 1. Send user prompt to Claude with available tools
+   * 2. If Claude wants to use a tool, execute it
+   * 3. Send tool result back to Claude
+   * 4. Repeat until Claude provides final answer
+   */
+  async executeQuery(
+    prompt: string,
+    sessionId?: string,
+    onEvent?: (event: AgentEvent) => void
+  ): Promise<AgentExecutionResult> {
+    const startTime = Date.now();
+    const conversationHistory: MessageParam[] = [];
+    const toolsUsed: string[] = [];
+    let finalResponse = '';
+    let inputTokens = 0;
+    let outputTokens = 0;
+
+    try {
+      console.log(`[DirectAgentService] Starting query with direct API`);
+      console.log(`[DirectAgentService] Prompt: "${prompt.substring(0, 80)}..."`);
+      console.log(`[DirectAgentService] Session ID: ${sessionId}`);
+
+      // Step 1: Get MCP tools and convert to Anthropic format
+      const tools = await this.getMCPToolDefinitions();
+      console.log(`[DirectAgentService] Loaded ${tools.length} MCP tools`);
+
+      // Step 2: Add user message to history
+      conversationHistory.push({
+        role: 'user',
+        content: prompt,
+      });
+
+      // Send thinking event
+      if (onEvent) {
+        onEvent({
+          type: 'thinking',
+          timestamp: new Date(),
+        });
+      }
+
+      // Step 3: Agentic Loop - keep calling Claude until done
+      let continueLoop = true;
+      let turnCount = 0;
+      const maxTurns = 20; // Safety limit
+
+      while (continueLoop && turnCount < maxTurns) {
+        turnCount++;
+        console.log(`[DirectAgentService] Turn ${turnCount}/${maxTurns}`);
+
+        // Call Claude API
+        const response = await this.anthropic.messages.create({
+          model: env.ANTHROPIC_MODEL,
+          max_tokens: 4096,
+          messages: conversationHistory,
+          tools: tools,
+          system: this.getSystemPrompt(),
+        });
+
+        // Track token usage
+        inputTokens += response.usage.input_tokens;
+        outputTokens += response.usage.output_tokens;
+
+        console.log(`[DirectAgentService] Response stop_reason: ${response.stop_reason}`);
+        console.log(`[DirectAgentService] Content blocks: ${response.content.length}`);
+
+        // Process response content
+        const toolUses: ToolUseBlock[] = [];
+        const textBlocks: TextBlock[] = [];
+
+        for (const block of response.content) {
+          if (block.type === 'text') {
+            textBlocks.push(block);
+            console.log(`[DirectAgentService] Text: ${block.text.substring(0, 100)}...`);
+          } else if (block.type === 'tool_use') {
+            toolUses.push(block);
+            console.log(`[DirectAgentService] Tool use: ${block.name}`);
+          }
+        }
+
+        // Send text content to user if any
+        for (const textBlock of textBlocks) {
+          if (onEvent) {
+            onEvent({
+              type: 'message_chunk',
+              content: textBlock.text,
+              timestamp: new Date(),
+            });
+          }
+        }
+
+        // Add assistant response to history
+        conversationHistory.push({
+          role: 'assistant',
+          content: response.content,
+        });
+
+        // Check stop reason
+        if (response.stop_reason === 'end_turn') {
+          // Claude is done, no more tools needed
+          finalResponse = textBlocks.map(b => b.text).join('\n');
+          continueLoop = false;
+          console.log(`[DirectAgentService] Completed with end_turn`);
+        } else if (response.stop_reason === 'tool_use' && toolUses.length > 0) {
+          // Claude wants to use tools
+          console.log(`[DirectAgentService] Executing ${toolUses.length} tool(s)`);
+
+          // Execute all tool calls
+          const toolResults: any[] = [];
+
+          for (const toolUse of toolUses) {
+            if (onEvent) {
+              onEvent({
+                type: 'tool_use',
+                toolName: toolUse.name,
+                args: toolUse.input as Record<string, unknown>,
+                timestamp: new Date(),
+              });
+            }
+
+            toolsUsed.push(toolUse.name);
+
+            // Check if tool needs approval (write operations)
+            const needsApproval = this.isWriteOperation(toolUse.name);
+
+            if (needsApproval && this.approvalManager) {
+              console.log(`[DirectAgentService] Tool ${toolUse.name} requires approval`);
+
+              // Request approval
+              const approved = await this.approvalManager.request({
+                sessionId: sessionId || 'unknown',
+                toolName: toolUse.name,
+                toolArgs: toolUse.input as Record<string, unknown>,
+              });
+
+              if (!approved) {
+                // Approval denied
+                console.log(`[DirectAgentService] Approval denied for ${toolUse.name}`);
+
+                toolResults.push({
+                  type: 'tool_result',
+                  tool_use_id: toolUse.id,
+                  content: 'Operation cancelled by user - approval denied',
+                  is_error: true,
+                });
+
+                continue;
+              }
+
+              console.log(`[DirectAgentService] Approval granted for ${toolUse.name}`);
+            }
+
+            // Execute the tool
+            try {
+              const result = await this.executeMCPTool(toolUse.name, toolUse.input);
+
+              if (onEvent) {
+                onEvent({
+                  type: 'tool_result',
+                  toolName: toolUse.name,
+                  result: result,
+                  success: true,
+                  timestamp: new Date(),
+                });
+              }
+
+              toolResults.push({
+                type: 'tool_result',
+                tool_use_id: toolUse.id,
+                content: typeof result === 'string' ? result : JSON.stringify(result),
+              });
+            } catch (error) {
+              console.error(`[DirectAgentService] Tool execution failed:`, error);
+
+              if (onEvent) {
+                onEvent({
+                  type: 'tool_result',
+                  toolName: toolUse.name,
+                  result: null,
+                  success: false,
+                  error: error instanceof Error ? error.message : String(error),
+                  timestamp: new Date(),
+                });
+              }
+
+              toolResults.push({
+                type: 'tool_result',
+                tool_use_id: toolUse.id,
+                content: `Error: ${error instanceof Error ? error.message : String(error)}`,
+                is_error: true,
+              });
+            }
+          }
+
+          // Add tool results to conversation
+          conversationHistory.push({
+            role: 'user',
+            content: toolResults,
+          });
+
+          // Continue loop to let Claude process tool results
+        } else if (response.stop_reason === 'max_tokens') {
+          console.log(`[DirectAgentService] Reached max tokens`);
+          finalResponse = textBlocks.map(b => b.text).join('\n') + '\n\n[Response truncated - reached max tokens]';
+          continueLoop = false;
+        } else {
+          // Unknown stop reason
+          console.log(`[DirectAgentService] Unknown stop_reason: ${response.stop_reason}`);
+          finalResponse = textBlocks.map(b => b.text).join('\n');
+          continueLoop = false;
+        }
+      }
+
+      if (turnCount >= maxTurns) {
+        console.log(`[DirectAgentService] Reached max turns limit`);
+        finalResponse += '\n\n[Execution stopped - reached maximum turns]';
+      }
+
+      const duration = Date.now() - startTime;
+
+      // Send completion event
+      if (onEvent) {
+        onEvent({
+          type: 'complete',
+          reason: 'success',
+          timestamp: new Date(),
+        });
+      }
+
+      console.log(`[DirectAgentService] Query completed in ${duration}ms`);
+      console.log(`[DirectAgentService] Turns: ${turnCount}, Tools used: ${toolsUsed.length}`);
+
+      return {
+        success: true,
+        response: finalResponse,
+        toolsUsed,
+        duration,
+        inputTokens,
+        outputTokens,
+      };
+
+    } catch (error) {
+      const duration = Date.now() - startTime;
+
+      console.error(`[DirectAgentService] Query execution failed:`, error);
+
+      if (onEvent) {
+        onEvent({
+          type: 'error',
+          error: error instanceof Error ? error.message : String(error),
+          timestamp: new Date(),
+        });
+      }
+
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        response: '',
+        toolsUsed,
+        duration,
+        inputTokens,
+        outputTokens,
+      };
+    }
+  }
+
+  /**
+   * Get MCP Tool Definitions
+   *
+   * Converts SDK MCP server tools to Anthropic tool format
+   */
+  private async getMCPToolDefinitions(): Promise<any[]> {
+    // Import tools from our SDK MCP server
+    const tools: any[] = [
+      {
+        name: 'list_all_entities',
+        description: 'Returns a complete list of all Business Central entities. Use this first to discover available entities.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            filter_by_operations: {
+              type: 'array',
+              items: {
+                type: 'string',
+                enum: ['list', 'get', 'create', 'update', 'delete', 'action']
+              },
+              description: 'Optional: Filter entities that support specific operations'
+            }
+          },
+          required: []
+        }
+      },
+      {
+        name: 'search_entity_operations',
+        description: 'Search for entities and operations by keyword. Returns matching entities with their operation_ids.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            keyword: {
+              type: 'string',
+              description: 'Search keyword (searches entity names, descriptions, and operation summaries)'
+            },
+            filter_by_risk: {
+              type: 'string',
+              enum: ['LOW', 'MEDIUM', 'HIGH'],
+              description: 'Optional: Filter by risk level'
+            },
+            filter_by_operation_type: {
+              type: 'string',
+              enum: ['list', 'get', 'create', 'update', 'delete', 'action'],
+              description: 'Optional: Filter by operation type'
+            }
+          },
+          required: ['keyword']
+        }
+      },
+      {
+        name: 'get_entity_details',
+        description: 'Get complete details for a specific entity including all endpoints, parameters, and schemas.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            entity_name: {
+              type: 'string',
+              description: 'Name of the entity (exact match)'
+            }
+          },
+          required: ['entity_name']
+        }
+      },
+      {
+        name: 'get_entity_relationships',
+        description: 'Discover relationships between entities and common multi-entity workflows.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            entity_name: {
+              type: 'string',
+              description: 'Name of the entity'
+            }
+          },
+          required: ['entity_name']
+        }
+      },
+      {
+        name: 'validate_workflow_structure',
+        description: 'Validates a workflow structure using operation_ids. Checks for dependencies, risk levels, and sequencing.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            workflow: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  operation_id: {
+                    type: 'string',
+                    description: 'Unique operation ID (e.g., "postCustomer", "listSalesInvoices")'
+                  },
+                  label: {
+                    type: 'string',
+                    description: 'Optional human-readable label for the step'
+                  }
+                },
+                required: ['operation_id']
+              },
+              description: 'Array of workflow steps with operation_ids'
+            }
+          },
+          required: ['workflow']
+        }
+      },
+      {
+        name: 'build_knowledge_base_workflow',
+        description: 'Builds a comprehensive knowledge base workflow with full metadata, alternatives, outcomes, and business scenarios.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            workflow_name: {
+              type: 'string',
+              description: 'Name of the workflow'
+            },
+            workflow_description: {
+              type: 'string',
+              description: 'Description of what the workflow does'
+            },
+            steps: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  operation_id: {
+                    type: 'string',
+                    description: 'Unique operation ID'
+                  },
+                  label: {
+                    type: 'string',
+                    description: 'Optional human-readable label'
+                  }
+                },
+                required: ['operation_id']
+              },
+              description: 'Array of workflow steps'
+            }
+          },
+          required: ['workflow_name', 'steps']
+        }
+      },
+      {
+        name: 'get_endpoint_documentation',
+        description: 'Get detailed documentation for a specific operation_id including all parameters, schemas, and examples.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            operation_id: {
+              type: 'string',
+              description: 'The operation ID to get documentation for'
+            }
+          },
+          required: ['operation_id']
+        }
+      }
+    ];
+
+    return tools;
+  }
+
+  /**
+   * Execute MCP Tool
+   *
+   * Implements MCP tool logic directly (bypassing SDK MCP server)
+   */
+  private async executeMCPTool(toolName: string, input: unknown): Promise<unknown> {
+    console.log(`[DirectAgentService] Executing MCP tool: ${toolName}`);
+
+    const args = input as Record<string, unknown>;
+
+    switch (toolName) {
+      case 'list_all_entities': {
+        return this.toolListAllEntities(args);
+      }
+
+      case 'search_entity_operations': {
+        return this.toolSearchEntityOperations(args);
+      }
+
+      case 'get_entity_details': {
+        return this.toolGetEntityDetails(args);
+      }
+
+      case 'get_entity_relationships': {
+        return this.toolGetEntityRelationships(args);
+      }
+
+      case 'validate_workflow_structure': {
+        return this.toolValidateWorkflowStructure(args);
+      }
+
+      case 'build_knowledge_base_workflow': {
+        return this.toolBuildKnowledgeBaseWorkflow(args);
+      }
+
+      case 'get_endpoint_documentation': {
+        return this.toolGetEndpointDocumentation(args);
+      }
+
+      default:
+        throw new Error(`Unknown tool: ${toolName}`);
+    }
+  }
+
+  /**
+   * Tool Implementation: list_all_entities
+   */
+  private async toolListAllEntities(args: Record<string, unknown>): Promise<string> {
+    const indexPath = path.join(this.mcpDataPath, 'bc_index.json');
+    if (!fs.existsSync(indexPath)) {
+      throw new Error(`Master index not found at ${indexPath}`);
+    }
+
+    const content = fs.readFileSync(indexPath, 'utf8');
+    const index = JSON.parse(content);
+
+    let entities = index.entities;
+
+    if (args.filter_by_operations && Array.isArray(args.filter_by_operations)) {
+      entities = entities.filter((entity: any) => {
+        return (args.filter_by_operations as string[]).every(op => entity.operations.includes(op));
+      });
+    }
+
+    const allOperationTypes = new Set();
+    index.entities.forEach((entity: any) => {
+      entity.operations.forEach((op: string) => allOperationTypes.add(op));
+    });
+
+    const result = {
+      total_entities: entities.length,
+      entities: entities,
+      available_operation_types: Array.from(allOperationTypes).sort(),
+    };
+
+    return JSON.stringify(result, null, 2);
+  }
+
+  /**
+   * Tool Implementation: search_entity_operations
+   */
+  private async toolSearchEntityOperations(args: Record<string, unknown>): Promise<string> {
+    // Simplified implementation - returns message about tool being available
+    return JSON.stringify({
+      message: 'Tool search_entity_operations is available but not yet implemented',
+      keyword: args.keyword,
+    }, null, 2);
+  }
+
+  /**
+   * Tool Implementation: get_entity_details
+   */
+  private async toolGetEntityDetails(args: Record<string, unknown>): Promise<string> {
+    const entityPath = path.join(this.mcpDataPath, 'entities', `${args.entity_name}.json`);
+    if (!fs.existsSync(entityPath)) {
+      throw new Error(`Entity ${args.entity_name} not found`);
+    }
+
+    const content = fs.readFileSync(entityPath, 'utf8');
+    return content;
+  }
+
+  /**
+   * Tool Implementation: get_entity_relationships
+   */
+  private async toolGetEntityRelationships(args: Record<string, unknown>): Promise<string> {
+    return JSON.stringify({
+      message: 'Tool get_entity_relationships is available but not yet implemented',
+      entity_name: args.entity_name,
+    }, null, 2);
+  }
+
+  /**
+   * Tool Implementation: validate_workflow_structure
+   */
+  private async toolValidateWorkflowStructure(_args: Record<string, unknown>): Promise<string> {
+    return JSON.stringify({
+      message: 'Tool validate_workflow_structure is available but not yet implemented',
+    }, null, 2);
+  }
+
+  /**
+   * Tool Implementation: build_knowledge_base_workflow
+   */
+  private async toolBuildKnowledgeBaseWorkflow(_args: Record<string, unknown>): Promise<string> {
+    return JSON.stringify({
+      message: 'Tool build_knowledge_base_workflow is available but not yet implemented',
+    }, null, 2);
+  }
+
+  /**
+   * Tool Implementation: get_endpoint_documentation
+   */
+  private async toolGetEndpointDocumentation(args: Record<string, unknown>): Promise<string> {
+    return JSON.stringify({
+      message: 'Tool get_endpoint_documentation is available but not yet implemented',
+      operation_id: args.operation_id,
+    }, null, 2);
+  }
+
+  /**
+   * Check if operation is a write operation (needs approval)
+   */
+  private isWriteOperation(toolName: string): boolean {
+    // In our MCP server, all tools are read-only for now
+    // But we can add logic here for future write operations
+    const writePatterns = ['create', 'update', 'delete', 'post', 'patch', 'put'];
+    const lowerToolName = toolName.toLowerCase();
+
+    return writePatterns.some(pattern => lowerToolName.includes(pattern));
+  }
+
+  /**
+   * Get System Prompt
+   */
+  private getSystemPrompt(): string {
+    return `You are a specialized Business Central assistant with access to tools for querying BC entities and operations.
+
+Your responsibilities:
+- Help users understand and query Business Central data
+- Use the available tools to discover entities, search operations, and get detailed information
+- Provide clear, helpful explanations of BC concepts and data
+- Format results in a user-friendly way
+
+Available tools:
+- list_all_entities: Get a complete list of all BC entities
+- search_entity_operations: Search for specific operations by keyword
+- get_entity_details: Get detailed information about a specific entity
+- get_entity_relationships: Discover relationships between entities
+- validate_workflow_structure: Validate multi-step workflows
+- build_knowledge_base_workflow: Build comprehensive workflow documentation
+- get_endpoint_documentation: Get detailed API documentation
+
+Always use tools to provide accurate, up-to-date information from Business Central.`;
+  }
+}
+
+// Export singleton getter
+let directAgentServiceInstance: DirectAgentService | null = null;
+
+export function getDirectAgentService(
+  approvalManager?: ApprovalManager,
+  todoManager?: TodoManager
+): DirectAgentService {
+  if (!directAgentServiceInstance) {
+    directAgentServiceInstance = new DirectAgentService(approvalManager, todoManager);
+  }
+  return directAgentServiceInstance;
+}

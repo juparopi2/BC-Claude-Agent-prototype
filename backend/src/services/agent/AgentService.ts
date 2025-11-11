@@ -25,7 +25,6 @@ import type { AgentEvent, AgentExecutionResult } from '@/types';
 import type { ApprovalManager } from '../approval/ApprovalManager';
 import type { TodoManager } from '../todo/TodoManager';
 import { isWriteOperation } from './helpers/permissions';
-import path from 'path';
 
 /**
  * Agent Service Class
@@ -87,23 +86,23 @@ export class AgentService {
     let outputTokens = 0;
 
     try {
-      // Configure stdio-based MCP server (local Business Central MCP)
-      // Uses the cloned BC MCP server at backend/mcp-server/
-      // Use absolute path from process.cwd() to ensure correct resolution
-      const mcpServerPath = path.resolve(process.cwd(), 'mcp-server', 'dist', 'index.js');
-      console.log(`[AgentService] MCP Server Path: ${mcpServerPath}`);
+      // 🔥 SDK IN-PROCESS MCP SERVER (replaces stdio subprocess)
+      // This eliminates ProcessTransport errors by running MCP server in the same Node.js process
+      // No subprocess, no IPC overhead, no stdio communication issues
+      console.log(`[AgentService] Using SDK in-process MCP server (7 tools, zero latency)`);
+
+      // Import the SDK in-process MCP server
+      const { bcMCPServer } = await import('../mcp/SDKMCPServer');
 
       const mcpServers = {
-        'bc-mcp': {
-          type: 'stdio' as const,
-          command: 'node',
-          args: [mcpServerPath],
-          env: {}
-        }
+        'bc-mcp': bcMCPServer
       };
 
       // Set API key in environment for SDK
       process.env.ANTHROPIC_API_KEY = this.apiKey;
+      console.log(`[AgentService] ✅ ANTHROPIC_API_KEY set (length: ${this.apiKey.length})`);
+      console.log(`[AgentService] Starting query with prompt: "${prompt.substring(0, 80)}..."`);
+      console.log(`[AgentService] Session ID: ${sessionId}`);
 
       // Execute query with Agent SDK
       const result = query({

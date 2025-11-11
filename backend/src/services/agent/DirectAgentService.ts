@@ -565,11 +565,73 @@ export class DirectAgentService {
    * Tool Implementation: search_entity_operations
    */
   private async toolSearchEntityOperations(args: Record<string, unknown>): Promise<string> {
-    // Simplified implementation - returns message about tool being available
-    return JSON.stringify({
-      message: 'Tool search_entity_operations is available but not yet implemented',
-      keyword: args.keyword,
-    }, null, 2);
+    const indexPath = path.join(this.mcpDataPath, 'bc_index.json');
+    if (!fs.existsSync(indexPath)) {
+      throw new Error(`Master index not found at ${indexPath}`);
+    }
+
+    const content = fs.readFileSync(indexPath, 'utf8');
+    const index = JSON.parse(content);
+
+    const keyword = (args.keyword as string || '').toLowerCase();
+    const filterByRisk = args.filter_by_risk as string | undefined;
+    const filterByOperationType = args.filter_by_operation_type as string | undefined;
+
+    const results: any[] = [];
+
+    // Search through entities
+    for (const entitySummary of index.entities) {
+      const matches =
+        entitySummary.name.toLowerCase().includes(keyword) ||
+        entitySummary.displayName.toLowerCase().includes(keyword) ||
+        (entitySummary.description && entitySummary.description.toLowerCase().includes(keyword));
+
+      if (!matches) continue;
+
+      // Load entity details
+      const entityPath = path.join(this.mcpDataPath, 'entities', `${entitySummary.name}.json`);
+      if (!fs.existsSync(entityPath)) continue;
+
+      const entityContent = fs.readFileSync(entityPath, 'utf8');
+      const entity = JSON.parse(entityContent);
+
+      let matchingOps = entity.endpoints || [];
+
+      // Apply filters
+      if (filterByRisk) {
+        matchingOps = matchingOps.filter((ep: any) => ep.riskLevel === filterByRisk);
+      }
+      if (filterByOperationType) {
+        matchingOps = matchingOps.filter((ep: any) => ep.operationType === filterByOperationType);
+      }
+
+      if (matchingOps.length > 0) {
+        results.push({
+          entity: entity.entity,
+          displayName: entity.displayName,
+          description: entity.description,
+          matching_operations: matchingOps.map((ep: any) => ({
+            operation_id: ep.id,
+            method: ep.method,
+            summary: ep.summary,
+            operation_type: ep.operationType,
+            risk_level: ep.riskLevel,
+          })),
+        });
+      }
+    }
+
+    const result = {
+      total_matches: results.length,
+      keyword: keyword,
+      filters: {
+        risk_level: filterByRisk || 'none',
+        operation_type: filterByOperationType || 'none',
+      },
+      results: results,
+    };
+
+    return JSON.stringify(result, null, 2);
   }
 
   /**
@@ -589,38 +651,326 @@ export class DirectAgentService {
    * Tool Implementation: get_entity_relationships
    */
   private async toolGetEntityRelationships(args: Record<string, unknown>): Promise<string> {
-    return JSON.stringify({
-      message: 'Tool get_entity_relationships is available but not yet implemented',
-      entity_name: args.entity_name,
-    }, null, 2);
+    const entityName = args.entity_name as string;
+    const entityPath = path.join(this.mcpDataPath, 'entities', `${entityName}.json`);
+
+    if (!fs.existsSync(entityPath)) {
+      throw new Error(`Entity ${entityName} not found`);
+    }
+
+    const content = fs.readFileSync(entityPath, 'utf8');
+    const entity = JSON.parse(content);
+
+    const result = {
+      entity: entity.entity,
+      displayName: entity.displayName,
+      description: entity.description,
+      relationships: entity.relationships || [],
+      common_workflows: entity.commonWorkflows || [],
+      relationship_summary: {
+        total_relationships: (entity.relationships || []).length,
+        total_workflows: (entity.commonWorkflows || []).length,
+        related_entities: (entity.relationships || []).map((r: any) => r.entity),
+      },
+    };
+
+    return JSON.stringify(result, null, 2);
   }
 
   /**
    * Tool Implementation: validate_workflow_structure
    */
-  private async toolValidateWorkflowStructure(_args: Record<string, unknown>): Promise<string> {
-    return JSON.stringify({
-      message: 'Tool validate_workflow_structure is available but not yet implemented',
-    }, null, 2);
+  private async toolValidateWorkflowStructure(args: Record<string, unknown>): Promise<string> {
+    const workflow = args.workflow as Array<{ operation_id: string; label?: string }>;
+
+    if (!workflow || !Array.isArray(workflow)) {
+      throw new Error('workflow parameter must be an array of steps');
+    }
+
+    const indexPath = path.join(this.mcpDataPath, 'bc_index.json');
+    if (!fs.existsSync(indexPath)) {
+      throw new Error(`Master index not found at ${indexPath}`);
+    }
+
+    const indexContent = fs.readFileSync(indexPath, 'utf8');
+    const index = JSON.parse(indexContent);
+
+    const validationResults: any[] = [];
+    let hasErrors = false;
+    let stepNumber = 0;
+
+    for (const step of workflow) {
+      stepNumber++;
+      const issues: string[] = [];
+      const dependencies: string[] = [];
+
+      // Find entity for this operation_id
+      const entityName = index.operationIndex[step.operation_id];
+
+      if (!entityName) {
+        hasErrors = true;
+        validationResults.push({
+          step_number: stepNumber,
+          operation_id: step.operation_id,
+          entity: 'unknown',
+          valid: false,
+          risk_level: 'HIGH',
+          requires_approval: true,
+          issues: [`Operation ID "${step.operation_id}" not found in index`],
+        });
+        continue;
+      }
+
+      // Load entity details
+      const entityPath = path.join(this.mcpDataPath, 'entities', `${entityName}.json`);
+      if (!fs.existsSync(entityPath)) {
+        hasErrors = true;
+        validationResults.push({
+          step_number: stepNumber,
+          operation_id: step.operation_id,
+          entity: entityName,
+          valid: false,
+          risk_level: 'HIGH',
+          requires_approval: true,
+          issues: [`Entity file not found for "${entityName}"`],
+        });
+        continue;
+      }
+
+      const entityContent = fs.readFileSync(entityPath, 'utf8');
+      const entity = JSON.parse(entityContent);
+
+      // Find endpoint
+      const endpoint = entity.endpoints.find((ep: any) => ep.id === step.operation_id);
+
+      if (!endpoint) {
+        hasErrors = true;
+        validationResults.push({
+          step_number: stepNumber,
+          operation_id: step.operation_id,
+          entity: entityName,
+          valid: false,
+          risk_level: 'HIGH',
+          requires_approval: true,
+          issues: [`Operation "${step.operation_id}" not found in entity "${entityName}"`],
+        });
+        continue;
+      }
+
+      // Check for dependencies (fields ending in Id)
+      if (endpoint.requiredFields) {
+        const foreignKeys = endpoint.requiredFields.filter((field: string) =>
+          field.endsWith('Id') && field !== 'id'
+        );
+        if (foreignKeys.length > 0) {
+          dependencies.push(...foreignKeys.map((fk: string) => `Required field: ${fk}`));
+        }
+      }
+
+      const valid = issues.length === 0;
+      if (!valid) {
+        hasErrors = true;
+      }
+
+      validationResults.push({
+        step_number: stepNumber,
+        operation_id: step.operation_id,
+        entity: entityName,
+        entity_display_name: entity.displayName,
+        valid,
+        risk_level: endpoint.riskLevel,
+        requires_approval: endpoint.requiresHumanApproval,
+        operation_type: endpoint.operationType,
+        issues: issues.length > 0 ? issues : undefined,
+        dependencies: dependencies.length > 0 ? dependencies : undefined,
+      });
+    }
+
+    const result = {
+      workflow_valid: !hasErrors,
+      total_steps: workflow.length,
+      validation_results: validationResults,
+      summary: {
+        total_valid: validationResults.filter(r => r.valid).length,
+        total_invalid: validationResults.filter(r => !r.valid).length,
+        total_high_risk: validationResults.filter(r => r.risk_level === 'HIGH').length,
+        total_requiring_approval: validationResults.filter(r => r.requires_approval).length,
+      },
+    };
+
+    return JSON.stringify(result, null, 2);
   }
 
   /**
    * Tool Implementation: build_knowledge_base_workflow
    */
-  private async toolBuildKnowledgeBaseWorkflow(_args: Record<string, unknown>): Promise<string> {
-    return JSON.stringify({
-      message: 'Tool build_knowledge_base_workflow is available but not yet implemented',
-    }, null, 2);
+  private async toolBuildKnowledgeBaseWorkflow(args: Record<string, unknown>): Promise<string> {
+    const workflowName = args.workflow_name as string;
+    const workflowDescription = args.workflow_description as string | undefined;
+    const steps = args.steps as Array<{ operation_id: string; label?: string }>;
+
+    if (!workflowName || !steps || !Array.isArray(steps)) {
+      throw new Error('workflow_name and steps are required');
+    }
+
+    const indexPath = path.join(this.mcpDataPath, 'bc_index.json');
+    if (!fs.existsSync(indexPath)) {
+      throw new Error(`Master index not found at ${indexPath}`);
+    }
+
+    const indexContent = fs.readFileSync(indexPath, 'utf8');
+    const index = JSON.parse(indexContent);
+
+    const enrichedSteps: Record<string, unknown>[] = [];
+    let stepNumber = 0;
+
+    for (const step of steps) {
+      stepNumber++;
+      const entityName = index.operationIndex[step.operation_id];
+
+      if (!entityName) {
+        throw new Error(`Operation ID "${step.operation_id}" not found`);
+      }
+
+      const entityPath = path.join(this.mcpDataPath, 'entities', `${entityName}.json`);
+      const entityContent = fs.readFileSync(entityPath, 'utf8');
+      const entity = JSON.parse(entityContent);
+
+      const endpoint = entity.endpoints.find((ep: Record<string, unknown>) => ep.id === step.operation_id);
+
+      if (!endpoint) {
+        throw new Error(`Operation "${step.operation_id}" not found in entity "${entityName}"`);
+      }
+
+      // Find alternatives (same operation type, different endpoint)
+      const alternatives = entity.endpoints
+        .filter((ep: Record<string, unknown>) =>
+          ep.operationType === endpoint.operationType && ep.id !== endpoint.id
+        )
+        .map((ep: Record<string, unknown>) => ({
+          operation_id: ep.id,
+          summary: ep.summary,
+          risk_level: ep.riskLevel,
+        }));
+
+      // Define expected outcomes
+      const outcomes = [
+        {
+          type: 'success',
+          status: endpoint.successStatus,
+          description: `${endpoint.operationType} operation completed successfully`,
+        },
+        { type: 'error', status: 400, description: 'Bad request - invalid input data' },
+        { type: 'error', status: 401, description: 'Unauthorized - authentication required' },
+        { type: 'error', status: 404, description: 'Not found - resource does not exist' },
+      ];
+
+      if (endpoint.operationType === 'create') {
+        outcomes.push({
+          type: 'error',
+          status: 409,
+          description: 'Conflict - resource already exists',
+        });
+      }
+
+      enrichedSteps.push({
+        step_number: stepNumber,
+        operation_id: step.operation_id,
+        label: step.label || endpoint.summary,
+        entity: entityName,
+        entity_display_name: entity.displayName,
+        method: endpoint.method,
+        path: endpoint.path,
+        operation_type: endpoint.operationType,
+        risk_level: endpoint.riskLevel,
+        requires_approval: endpoint.requiresHumanApproval,
+        required_fields: endpoint.requiredFields || [],
+        optional_fields: endpoint.optionalFields || [],
+        selectable_fields: endpoint.selectableFields || [],
+        expandable_relations: endpoint.expandableRelations || [],
+        path_parameters: endpoint.pathParams || [],
+        query_parameters: endpoint.queryParams || [],
+        alternatives: alternatives.length > 0 ? alternatives : undefined,
+        expected_outcomes: outcomes,
+      });
+    }
+
+    const result = {
+      workflow_name: workflowName,
+      workflow_description: workflowDescription,
+      total_steps: steps.length,
+      created_at: new Date().toISOString(),
+      enriched_steps: enrichedSteps,
+      risk_summary: {
+        high_risk_steps: enrichedSteps.filter((s: Record<string, unknown>) => s.risk_level === 'HIGH').length,
+        requires_approval_count: enrichedSteps.filter((s: Record<string, unknown>) => s.requires_approval).length,
+      },
+    };
+
+    return JSON.stringify(result, null, 2);
   }
 
   /**
    * Tool Implementation: get_endpoint_documentation
    */
   private async toolGetEndpointDocumentation(args: Record<string, unknown>): Promise<string> {
-    return JSON.stringify({
-      message: 'Tool get_endpoint_documentation is available but not yet implemented',
-      operation_id: args.operation_id,
-    }, null, 2);
+    const operationId = args.operation_id as string;
+
+    if (!operationId) {
+      throw new Error('operation_id is required');
+    }
+
+    const indexPath = path.join(this.mcpDataPath, 'bc_index.json');
+    if (!fs.existsSync(indexPath)) {
+      throw new Error(`Master index not found at ${indexPath}`);
+    }
+
+    const indexContent = fs.readFileSync(indexPath, 'utf8');
+    const index = JSON.parse(indexContent);
+
+    const entityName = index.operationIndex[operationId];
+
+    if (!entityName) {
+      throw new Error(`Operation ID "${operationId}" not found`);
+    }
+
+    const entityPath = path.join(this.mcpDataPath, 'entities', `${entityName}.json`);
+    const entityContent = fs.readFileSync(entityPath, 'utf8');
+    const entity = JSON.parse(entityContent);
+
+    const endpoint = entity.endpoints.find((ep: Record<string, unknown>) => ep.id === operationId);
+
+    if (!endpoint) {
+      throw new Error(`Operation "${operationId}" not found in entity "${entityName}"`);
+    }
+
+    const result = {
+      operation_id: endpoint.id,
+      entity: entityName,
+      entity_display_name: entity.displayName,
+      method: endpoint.method,
+      path: endpoint.path,
+      summary: endpoint.summary,
+      operation_type: endpoint.operationType,
+      risk_level: endpoint.riskLevel,
+      requires_auth: endpoint.requiresAuth,
+      requires_approval: endpoint.requiresHumanApproval,
+      destructive: endpoint.destructive,
+      warning_message: endpoint.warningMessage,
+      path_parameters: endpoint.pathParams || [],
+      query_parameters: endpoint.queryParams || [],
+      headers: endpoint.headers || [],
+      required_fields: endpoint.requiredFields || [],
+      optional_fields: endpoint.optionalFields || [],
+      selectable_fields: endpoint.selectableFields || [],
+      expandable_relations: endpoint.expandableRelations || [],
+      success_status: endpoint.successStatus,
+      error_codes: endpoint.errorCodes || [],
+      request_body_schema: endpoint.requestBodySchema,
+      response_schema: endpoint.responseSchema,
+    };
+
+    return JSON.stringify(result, null, 2);
   }
 
   /**

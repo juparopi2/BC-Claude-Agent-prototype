@@ -8,8 +8,8 @@
  */
 
 import { Request, Response, NextFunction } from 'express';
-import { MicrosoftOAuthSession } from '../types/microsoft.types.js';
-import { logger } from '../utils/logger.js';
+import { MicrosoftOAuthSession } from '../types/microsoft.types';
+import { logger } from '../utils/logger';
 
 /**
  * Extend Express Request to include Microsoft OAuth session
@@ -159,7 +159,7 @@ export async function requireBCAccess(req: Request, res: Response, next: NextFun
     }
 
     // Check if user has BC tokens in database
-    const { executeQuery } = await import('../config/database.js');
+    const { executeQuery } = await import('../config/database');
 
     const result = await executeQuery(
       `

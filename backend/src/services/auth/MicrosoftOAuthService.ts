@@ -10,8 +10,8 @@
  */
 
 import { ConfidentialClientApplication, AuthorizationUrlRequest, AuthorizationCodeRequest, Configuration } from '@azure/msal-node';
-import { MicrosoftOAuthConfig, OAuthTokenResponse, MicrosoftUserProfile, TokenAcquisitionResult, ALL_SCOPES, BC_API_SCOPE } from '../../types/microsoft.types.js';
-import { logger } from '../../utils/logger.js';
+import { MicrosoftOAuthConfig, OAuthTokenResponse, MicrosoftUserProfile, TokenAcquisitionResult, ALL_SCOPES, BC_API_SCOPE } from '../../types/microsoft.types';
+import { logger } from '../../utils/logger';
 
 export class MicrosoftOAuthService {
   private msalClient: ConfidentialClientApplication;

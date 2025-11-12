@@ -14,12 +14,12 @@
 
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
-import { executeQuery } from '../config/database.js';
-import { createMicrosoftOAuthService } from '../services/auth/MicrosoftOAuthService.js';
-import { createBCTokenManager } from '../services/auth/BCTokenManager.js';
-import { authenticateMicrosoft } from '../middleware/auth-oauth.js';
-import { MicrosoftOAuthSession } from '../types/microsoft.types.js';
-import { logger } from '../utils/logger.js';
+import { executeQuery } from '../config/database';
+import { createMicrosoftOAuthService } from '../services/auth/MicrosoftOAuthService';
+import { createBCTokenManager } from '../services/auth/BCTokenManager';
+import { authenticateMicrosoft } from '../middleware/auth-oauth';
+import { MicrosoftOAuthSession } from '../types/microsoft.types';
+import { logger } from '../utils/logger';
 
 const router = Router();
 

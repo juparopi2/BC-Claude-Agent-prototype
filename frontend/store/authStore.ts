@@ -62,8 +62,9 @@ export const useAuthStore = create<AuthState>((set) => ({
       const user: User = {
         id: data.id,
         email: data.email || data.microsoftEmail,
-        fullName: data.fullName,
+        name: data.fullName || data.name || data.email,
         role: data.role,
+        created_at: data.created_at || new Date().toISOString(),
       };
 
       set({

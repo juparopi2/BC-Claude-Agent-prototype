@@ -60,7 +60,8 @@
       "Bash(then wc -l bc_index.json)",
       "Bash(else echo \"bc_index.json not found\")",
       "mcp__ide__getDiagnostics",
-      "Bash(if exist .nextdevlock del /F .nextdevlock)"
+      "Bash(if exist .nextdevlock del /F .nextdevlock)",
+      "Bash(find:*)"
     ],
     "deny": [],
     "ask": []

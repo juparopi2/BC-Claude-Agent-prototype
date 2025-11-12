@@ -9,10 +9,10 @@
  */
 
 import crypto from 'crypto';
-import { executeQuery } from '../../config/database.js';
-import { BCTokenData, TokenAcquisitionResult } from '../../types/microsoft.types.js';
-import { MicrosoftOAuthService } from './MicrosoftOAuthService.js';
-import { logger } from '../../utils/logger.js';
+import { executeQuery } from '../../config/database';
+import { BCTokenData, TokenAcquisitionResult } from '../../types/microsoft.types';
+import { MicrosoftOAuthService } from './MicrosoftOAuthService';
+import { logger } from '../../utils/logger';
 
 const ENCRYPTION_ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16;

@@ -54,10 +54,27 @@ const envSchema = z.object({
   // MCP Server
   MCP_SERVER_URL: z.string().url().default('https://app-erptools-mcp-dev.purplemushroom-befedc5f.westeurope.azurecontainerapps.io/mcp'),
 
-  // JWT
+  // JWT (deprecated - use Microsoft OAuth)
   JWT_SECRET: z.string().optional(),
   JWT_EXPIRES_IN: z.string().default('24h'),
   JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
+
+  // Microsoft OAuth 2.0
+  MICROSOFT_CLIENT_ID: z.string().optional(),
+  MICROSOFT_CLIENT_SECRET: z.string().optional(),
+  MICROSOFT_TENANT_ID: z.string().default('common'),
+  MICROSOFT_REDIRECT_URI: z.string().url().optional(),
+  MICROSOFT_SCOPES: z.string().optional(),
+
+  // Encryption for BC tokens (per-user)
+  ENCRYPTION_KEY: z.string().optional(),
+
+  // Session management
+  SESSION_SECRET: z.string().optional(),
+  SESSION_MAX_AGE: z.string().default('86400000').transform(Number).pipe(z.number()),
+
+  // Frontend URL
+  FRONTEND_URL: z.string().url().default('http://localhost:3000'),
 
   // CORS
   CORS_ORIGIN: z.string().default('http://localhost:3000'),
@@ -115,10 +132,10 @@ export const isTest = env.NODE_ENV === 'test';
 export function validateRequiredSecrets(): void {
   const requiredSecrets = [
     'ANTHROPIC_API_KEY',
-    'JWT_SECRET',
-    'BC_TENANT_ID',
-    'BC_CLIENT_ID',
-    'BC_CLIENT_SECRET',
+    'MICROSOFT_CLIENT_ID',
+    'MICROSOFT_CLIENT_SECRET',
+    'ENCRYPTION_KEY',
+    'SESSION_SECRET',
   ];
 
   const missing = requiredSecrets.filter((key) => !process.env[key]);

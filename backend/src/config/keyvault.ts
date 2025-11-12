@@ -16,11 +16,22 @@ import { env, isProd, isDev } from './environment';
  * These map to the secrets stored in Azure Key Vault
  */
 export const SECRET_NAMES = {
+  // Business Central (deprecated - now per-user via OAuth)
   BC_TENANT_ID: 'BC-TenantId',
   BC_CLIENT_ID: 'BC-ClientId',
   BC_CLIENT_SECRET: 'BC-ClientSecret',
+  // Claude
   CLAUDE_API_KEY: 'Claude-ApiKey',
+  // JWT (deprecated - use Microsoft OAuth)
   JWT_SECRET: 'JWT-Secret',
+  // Microsoft OAuth
+  MICROSOFT_CLIENT_ID: 'Microsoft-ClientId',
+  MICROSOFT_CLIENT_SECRET: 'Microsoft-ClientSecret',
+  MICROSOFT_TENANT_ID: 'Microsoft-TenantId',
+  // Encryption & Session
+  ENCRYPTION_KEY: 'ENCRYPTION-KEY',
+  SESSION_SECRET: 'SESSION-SECRET',
+  // Connection strings
   SQLDB_CONNECTION_STRING: 'SqlDb-ConnectionString',
   REDIS_CONNECTION_STRING: 'Redis-ConnectionString',
   STORAGE_CONNECTION_STRING: 'Storage-ConnectionString',
@@ -153,9 +164,26 @@ export async function loadSecretsFromKeyVault(): Promise<void> {
     const claudeApiKey = await getSecret(SECRET_NAMES.CLAUDE_API_KEY, 'ANTHROPIC_API_KEY');
     if (claudeApiKey) process.env.ANTHROPIC_API_KEY = claudeApiKey;
 
-    // Load JWT secret
+    // Load JWT secret (deprecated)
     const jwtSecret = await getSecret(SECRET_NAMES.JWT_SECRET, 'JWT_SECRET');
     if (jwtSecret) process.env.JWT_SECRET = jwtSecret;
+
+    // Load Microsoft OAuth credentials
+    const microsoftClientId = await getSecret(SECRET_NAMES.MICROSOFT_CLIENT_ID, 'MICROSOFT_CLIENT_ID');
+    if (microsoftClientId) process.env.MICROSOFT_CLIENT_ID = microsoftClientId;
+
+    const microsoftClientSecret = await getSecret(SECRET_NAMES.MICROSOFT_CLIENT_SECRET, 'MICROSOFT_CLIENT_SECRET');
+    if (microsoftClientSecret) process.env.MICROSOFT_CLIENT_SECRET = microsoftClientSecret;
+
+    const microsoftTenantId = await getSecret(SECRET_NAMES.MICROSOFT_TENANT_ID, 'MICROSOFT_TENANT_ID');
+    if (microsoftTenantId) process.env.MICROSOFT_TENANT_ID = microsoftTenantId;
+
+    // Load encryption and session secrets
+    const encryptionKey = await getSecret(SECRET_NAMES.ENCRYPTION_KEY, 'ENCRYPTION_KEY');
+    if (encryptionKey) process.env.ENCRYPTION_KEY = encryptionKey;
+
+    const sessionSecret = await getSecret(SECRET_NAMES.SESSION_SECRET, 'SESSION_SECRET');
+    if (sessionSecret) process.env.SESSION_SECRET = sessionSecret;
 
     // Load connection strings
     // Temporarily disabled - using individual DATABASE_* and REDIS_* parameters instead

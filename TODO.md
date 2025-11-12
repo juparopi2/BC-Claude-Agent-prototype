@@ -830,7 +830,7 @@ curl http://localhost:3001/health
 
 ---
 
-#### 2.5.3 Backend - Rutas OAuth
+#### 2.5.3 Backend - Rutas OAuth ✅ COMPLETADO (2025-01-11)
 **Objetivo**: Crear endpoints HTTP para manejar OAuth flow (login, callback, logout, etc.)
 
 - [ ] **Crear auth-oauth.ts** (`backend/src/routes/auth-oauth.ts`)
@@ -908,7 +908,7 @@ curl http://localhost:3001/health
 
 ---
 
-#### 2.5.4 Backend - Middleware OAuth
+#### 2.5.4 Backend - Middleware OAuth ✅ COMPLETADO (2025-01-11)
 **Objetivo**: Crear middleware para validar tokens Microsoft y verificar permisos BC
 
 - [ ] **Crear auth-microsoft.ts** (`backend/src/middleware/auth-microsoft.ts`)
@@ -1059,7 +1059,7 @@ curl http://localhost:3001/health
 
 ---
 
-#### 2.5.6 Database Migration
+#### 2.5.6 Database Migration ✅ COMPLETADO (2025-01-11)
 **Objetivo**: Modificar schema de BD para soportar Microsoft OAuth y tokens BC por usuario
 
 - [ ] **Crear Migration 005** (`backend/scripts/migrations/005_microsoft_oauth.sql`)
@@ -1184,7 +1184,7 @@ curl http://localhost:3001/health
 
 ---
 
-#### 2.5.7 Frontend - Login UI
+#### 2.5.7 Frontend - Login UI ✅ COMPLETADO (2025-01-11)
 **Objetivo**: Crear UI de login con botón "Sign in with Microsoft" y manejar OAuth callback
 
 - [ ] **Crear LoginPage** (`frontend/app/login/page.tsx`)
@@ -1310,7 +1310,7 @@ curl http://localhost:3001/health
 
 ---
 
-#### 2.5.8 Environment Variables Update
+#### 2.5.8 Environment Variables Update ✅ COMPLETADO (2025-01-11)
 **Objetivo**: Actualizar configuración de variables de entorno para Microsoft OAuth
 
 - [ ] **Backend .env** (`backend/.env.example`)
@@ -1516,7 +1516,7 @@ curl http://localhost:3001/health
 
 ---
 
-#### 2.5.10 Cleanup - Eliminar código obsoleto
+#### 2.5.10 Cleanup - Eliminar código obsoleto ✅ COMPLETADO (2025-01-11)
 **Objetivo**: Eliminar archivos y código del sistema JWT antiguo que ya no se usa
 
 - [ ] **Eliminar archivos backend**

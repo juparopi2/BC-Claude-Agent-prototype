@@ -19,13 +19,11 @@ import { initRedis, closeRedis, checkRedisHealth } from './config/redis';
 import { getMCPService } from './services/mcp';
 import { getBCClient } from './services/bc';
 import { getDirectAgentService } from './services/agent';
-import { getAuthService } from './services/auth';
 import { getApprovalManager } from './services/approval/ApprovalManager';
 import { getTodoManager } from './services/todo/TodoManager';
-import authRoutes from './routes/auth';
 import authMockRoutes from './routes/auth-mock';
 import authOAuthRoutes from './routes/auth-oauth';
-import { authenticateJWT } from './middleware/auth';
+import { authenticateMicrosoft } from './middleware/auth-oauth';
 import { MicrosoftOAuthSession } from './types/microsoft.types';
 
 /**
@@ -137,17 +135,7 @@ async function initializeApp(): Promise<void> {
     }
     console.log('');
 
-    // Step 7: Initialize Auth Service
-    console.log('🔐 Initializing Auth Service...');
-    const authService = getAuthService();
-    if (authService.isConfigured()) {
-      console.log('✅ Auth Service initialized');
-    } else {
-      console.warn('⚠️  Auth Service: JWT_SECRET not configured');
-    }
-    console.log('');
-
-    // Step 8: Initialize Approval Manager (requires Socket.IO)
+    // Step 7: Initialize Approval Manager (requires Socket.IO)
     console.log('📋 Initializing Approval Manager...');
     const approvalManager = getApprovalManager(io);
     console.log('✅ Approval Manager initialized');
@@ -450,7 +438,7 @@ function configureRoutes(): void {
     res.json(status);
   });
 
-  app.post('/api/agent/query', authenticateJWT, async (req: Request, res: Response): Promise<void> => {
+  app.post('/api/agent/query', authenticateMicrosoft, async (req: Request, res: Response): Promise<void> => {
     try {
       const agentService = getDirectAgentService();
 
@@ -502,7 +490,7 @@ function configureRoutes(): void {
 
   // Approval endpoints
   // POST /api/approvals/:id/respond - Respond to an approval request
-  app.post('/api/approvals/:id/respond', authenticateJWT, async (req: Request, res: Response): Promise<void> => {
+  app.post('/api/approvals/:id/respond', authenticateMicrosoft, async (req: Request, res: Response): Promise<void> => {
     try {
       const approvalId = req.params.id as string;
       const { decision, reason } = req.body;
@@ -546,7 +534,7 @@ function configureRoutes(): void {
   });
 
   // GET /api/approvals/pending - Get all pending approvals for current user (cross-session)
-  app.get('/api/approvals/pending', authenticateJWT, async (req: Request, res: Response): Promise<void> => {
+  app.get('/api/approvals/pending', authenticateMicrosoft, async (req: Request, res: Response): Promise<void> => {
     try {
       const userId = req.user?.userId;
 
@@ -632,7 +620,7 @@ function configureRoutes(): void {
   });
 
   // GET /api/approvals/session/:sessionId - Get pending approvals for a session
-  app.get('/api/approvals/session/:sessionId', authenticateJWT, async (req: Request, res: Response): Promise<void> => {
+  app.get('/api/approvals/session/:sessionId', authenticateMicrosoft, async (req: Request, res: Response): Promise<void> => {
     try {
       const sessionId = req.params.sessionId as string;
 
@@ -655,7 +643,7 @@ function configureRoutes(): void {
 
   // Chat session endpoints
   // GET /api/chat/sessions - Get all sessions for current user
-  app.get('/api/chat/sessions', authenticateJWT, async (req: Request, res: Response): Promise<void> => {
+  app.get('/api/chat/sessions', authenticateMicrosoft, async (req: Request, res: Response): Promise<void> => {
     try {
       const userId = req.user?.userId;
 
@@ -726,7 +714,7 @@ function configureRoutes(): void {
 
   // Todo endpoints
   // GET /api/todos/session/:sessionId - Get todos for a session
-  app.get('/api/todos/session/:sessionId', authenticateJWT, async (req: Request, res: Response): Promise<void> => {
+  app.get('/api/todos/session/:sessionId', authenticateMicrosoft, async (req: Request, res: Response): Promise<void> => {
     try {
       const sessionId = req.params.sessionId as string;
 
@@ -747,13 +735,10 @@ function configureRoutes(): void {
     }
   });
 
-  // Auth routes - use mock routes if database is unavailable
+  // Auth routes - Microsoft OAuth (requires database)
   if (isDatabaseAvailable) {
-    console.log('[Server] Using real authentication (database connected)');
-    app.use('/api/auth', authRoutes);
-
-    // Microsoft OAuth routes (requires database)
-    console.log('[Server] Registering Microsoft OAuth routes');
+    console.log('[Server] Using Microsoft OAuth authentication');
+    // app.use('/api/auth', authRoutes); // JWT DEPRECATED - removed
     app.use('/api/auth', authOAuthRoutes);
   } else {
     console.log('[Server] Using mock authentication (database unavailable)');

@@ -21,12 +21,11 @@
 | Archivo | Propósito | Cuándo Consultar |
 |---------|-----------|-------------------|
 | **`docs/README.md`** ⭐ | Índice maestro navegable | ANTES de cualquier feature |
-| **`docs/13-roadmap/07-direction-changes.md`** ⭐ | 8 cambios arquitectónicos, por qué se hicieron | ANTES de cambios arquitectónicos |
-| **`docs/02-core-concepts/07-sdk-first-philosophy.md`** ⭐ | Principios SDK-first (PERMANENTE) | ANTES de implementar agents |
-| **`docs/01-architecture/01-system-architecture.md`** ⭐ | Arquitectura con diagramas Mermaid | Para entender el sistema |
-| **`docs/08-state-persistence/10-database-schema.md`** ⭐ | Schema completo (DDL + ER + queries) | ANTES de modificar BD |
-| **`docs/11-backend/08-direct-agent-service.md`** ⭐ | Workaround SDK bug | Para modificar agent execution |
-| **`docs/14-deprecated/`** ⭐ | 4 approaches deprecados | Para NO reimplementar |
+| **`docs/04-direction-changes.md`** ⭐ | 8 cambios arquitectónicos, por qué se hicieron | ANTES de cambios arquitectónicos |
+| **`docs/02-sdk-first-philosophy.md`** ⭐ | Principios SDK-first (PERMANENTE) | ANTES de implementar agents |
+| **`docs/01-architecture.md`** ⭐ | Arquitectura con diagramas Mermaid + DirectAgentService | Para entender el sistema |
+| **`docs/03-database-schema.md`** ⭐ | Schema completo (DDL + ER + queries) | ANTES de modificar BD |
+| **`docs/05-deprecated/`** ⭐ | 4 approaches deprecados | Para NO reimplementar |
 | `CLAUDE.md` | Instrucciones para Claude Code | Onboarding, reglas generales |
 | `TODO.md` (este archivo) | Tareas pendientes, progreso | Tracking de tareas |
 
@@ -34,38 +33,42 @@
 
 ### Regla de Oro
 
-> "Si hiciste un cambio arquitectónico y NO actualizaste `docs/13-roadmap/07-direction-changes.md`, NO has terminado."
+> "Si hiciste un cambio arquitectónico y NO actualizaste `docs/04-direction-changes.md`, NO has terminado."
 
 ### Protocolo de Actualización
 
 **CADA VEZ QUE HAGAS UN CAMBIO SIGNIFICATIVO**:
-1. ✅ Actualiza el documento relevante en `docs/XX-section/`
+1. ✅ Actualiza el documento relevante en `docs/`
 2. ✅ Actualiza `docs/README.md` si cambia la estructura
 3. ✅ Actualiza `TODO.md` para reflejar progreso
-4. ✅ Agrega a `docs/13-roadmap/07-direction-changes.md` si es decisión arquitectónica
-5. ✅ Agrega a `docs/14-deprecated/` si deprecas un approach
+4. ✅ Agrega a `docs/04-direction-changes.md` si es decisión arquitectónica
+5. ✅ Agrega a `docs/05-deprecated/` si deprecas un approach
 
-### Estructura docs/ (15 secciones)
+### Estructura docs/ (Simplificada)
 
 ```
 docs/
-├── README.md                      ⭐ ÍNDICE MAESTRO
-├── 01-architecture/               ⭐ Arquitectura, diagramas
-├── 02-core-concepts/              ⭐ SDK-first, fundamentals
-├── 08-state-persistence/          ⭐ Database schema
-├── 11-backend/                    ⭐ DirectAgentService, APIs
-├── 13-roadmap/                    ⭐ Direction changes (8 pivots)
-├── 14-deprecated/                 ⭐ JWT, Orchestrator, Submodule, Global BC
-└── ...                            (10 más - ver docs/README.md)
+├── README.md                           ⭐ ÍNDICE MAESTRO
+├── 01-architecture.md                  ⭐ Arquitectura + Mermaid diagrams
+├── 02-sdk-first-philosophy.md          ⭐ SDK-first (PERMANENTE)
+├── 03-database-schema.md               ⭐ Schema completo (DDL + ER + queries)
+├── 04-direction-changes.md             ⭐ 8 pivots arquitectónicos
+└── 05-deprecated/                      ⭐ 4 approaches deprecados
+    ├── 01-jwt-authentication.md
+    ├── 02-custom-orchestrator.md
+    ├── 03-git-submodule-mcp.md
+    └── 04-global-bc-credentials.md
 
-docs-old/                          📦 Backup histórico
+docs-old/                               📦 Backup (74 archivos)
 ```
 
-**Referencias a documentación en TODO.md**:
-- Ver `docs/01-architecture/01-system-architecture.md` para arquitectura completa
-- Ver `docs/08-state-persistence/10-database-schema.md` para schema BD
-- Ver `docs/13-roadmap/07-direction-changes.md` para historial de decisiones
-- Ver `docs/14-deprecated/` para approaches deprecados (NO usar)
+**Total**: 5 documentos + 4 deprecated = **9 archivos** (todos con contenido)
+
+**Referencias rápidas**:
+- Arquitectura completa → `docs/01-architecture.md`
+- Database schema → `docs/03-database-schema.md`
+- Historial decisiones → `docs/04-direction-changes.md`
+- Approaches deprecados → `docs/05-deprecated/`
 
 ---
 

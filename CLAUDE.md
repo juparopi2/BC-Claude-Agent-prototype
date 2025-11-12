@@ -32,61 +32,56 @@ La documentación ha sido completamente reestructurada para reflejar el estado a
 Antes de hacer cambios significativos, **SIEMPRE lee estos documentos**:
 
 1. **`docs/README.md`** - Índice completo, quick navigation, update protocol
-2. **`docs/13-roadmap/07-direction-changes.md`** - 8 cambios arquitectónicos mayores, por qué se hicieron
-3. **`docs/02-core-concepts/07-sdk-first-philosophy.md`** - Principios SDK-first (PERMANENTE)
-4. **`docs/01-architecture/01-system-architecture.md`** - Arquitectura actual con diagramas Mermaid
-5. **`docs/08-state-persistence/10-database-schema.md`** - Schema completo (DDL + ER diagrams + queries)
-6. **`docs/14-deprecated/`** - 4 approaches deprecados (NO reimplementar)
+2. **`docs/04-direction-changes.md`** - 8 cambios arquitectónicos mayores, por qué se hicieron
+3. **`docs/02-sdk-first-philosophy.md`** - Principios SDK-first (PERMANENTE)
+4. **`docs/01-architecture.md`** - Arquitectura actual con diagramas Mermaid
+5. **`docs/03-database-schema.md`** - Schema completo (DDL + ER diagrams + queries)
+6. **`docs/05-deprecated/`** - 4 approaches deprecados (NO reimplementar)
 
 ### Cuándo Consultar Cada Sección
 
 | Tarea | Documentos a Leer |
 |-------|-------------------|
-| **Implementar agent features** | `02-core-concepts/07-sdk-first-philosophy.md`, `03-agent-system/01-agentic-loop.md` |
-| **Cambiar base de datos** | `08-state-persistence/10-database-schema.md` |
-| **Modificar autenticación** | `07-security/06-microsoft-oauth-setup.md`, `14-deprecated/01-jwt-authentication.md` |
-| **Agregar endpoints** | `11-backend/01-api-architecture.md`, `11-backend/08-direct-agent-service.md` |
-| **Crear recursos Azure** | `02-core-concepts/05-AZURE_NAMING_CONVENTIONS.md` |
-| **Entender decisiones pasadas** | `13-roadmap/07-direction-changes.md` |
+| **Implementar agent features** | `docs/02-sdk-first-philosophy.md` |
+| **Cambiar base de datos** | `docs/03-database-schema.md` |
+| **Modificar autenticación** | `docs/05-deprecated/01-jwt-authentication.md` |
+| **Agregar endpoints** | `docs/01-architecture.md` (Backend section) |
+| **Entender decisiones pasadas** | `docs/04-direction-changes.md` |
 
 ### Protocolo de Actualización de Documentación
 
 **CADA VEZ QUE HAGAS UN CAMBIO SIGNIFICATIVO**:
 
-1. ✅ **Actualiza el documento relevante** en `docs/XX-section/`
+1. ✅ **Actualiza el documento relevante** en `docs/`
 2. ✅ **Actualiza `docs/README.md`** si cambia la estructura
 3. ✅ **Actualiza `TODO.md`** para reflejar progreso
 4. ✅ **Actualiza `CLAUDE.md`** si cambian las instrucciones generales
-5. ✅ **Agrega a `13-roadmap/07-direction-changes.md`** si es decisión arquitectónica
-6. ✅ **Agrega a `14-deprecated/`** si deprecas un approach
+5. ✅ **Agrega a `docs/04-direction-changes.md`** si es decisión arquitectónica
+6. ✅ **Agrega a `docs/05-deprecated/`** si deprecas un approach
 
-**Regla de Oro**: "Si hiciste un cambio arquitectónico y NO actualizaste `docs/13-roadmap/07-direction-changes.md`, NO has terminado."
+**Regla de Oro**: "Si hiciste un cambio arquitectónico y NO actualizaste `docs/04-direction-changes.md`, NO has terminado."
 
-### Estructura de Carpetas docs/
+### Estructura de Carpetas docs/ (Simplificada)
 
 ```
 docs/
-├── README.md                      ⭐ ÍNDICE MAESTRO - LEE PRIMERO
-├── 00-overview/                   Visión del proyecto, tech stack
-├── 01-architecture/               ⭐ Arquitectura actual, diagramas
-├── 02-core-concepts/              ⭐ SDK-first philosophy, fundamentals
-├── 03-agent-system/               Agentic loop, DirectAgentService
-├── 04-integrations/               MCP, BC integration
-├── 05-control-flow/               Approvals, human-in-the-loop
-├── 06-observability/              Logging, metrics, todos
-├── 07-security/                   ⭐ OAuth, token encryption
-├── 08-state-persistence/          ⭐ Database schema, sessions
-├── 09-performance/                Optimización, caching
-├── 10-ui-ux/                      Frontend components, design
-├── 11-backend/                    ⭐ DirectAgentService, API endpoints
-├── 12-development/                Setup, workflow, testing
-├── 13-roadmap/                    ⭐ Direction changes, MVP definition
-└── 14-deprecated/                 ⭐ Approaches deprecados (NO usar)
+├── README.md                           ⭐ ÍNDICE MAESTRO - LEE PRIMERO
+├── 01-architecture.md                  ⭐ Arquitectura completa + Mermaid diagrams
+├── 02-sdk-first-philosophy.md          ⭐ Principios SDK-first (PERMANENTE)
+├── 03-database-schema.md               ⭐ Schema completo (DDL + ER + queries)
+├── 04-direction-changes.md             ⭐ 8 pivots arquitectónicos documentados
+└── 05-deprecated/                      ⭐ Approaches deprecados (NO usar)
+    ├── 01-jwt-authentication.md        JWT → Microsoft OAuth
+    ├── 02-custom-orchestrator.md       Custom → SDK native routing
+    ├── 03-git-submodule-mcp.md         Git submodule → Vendored data
+    └── 04-global-bc-credentials.md     Global → Per-user BC tokens
 
-docs-old/                          📦 Backup (referencia histórica)
+docs-old/                               📦 Backup (74 archivos históricos)
 ```
 
-**⭐ = Documentos de alta prioridad, leer frecuentemente**
+**Total**: 5 documentos + 4 deprecated = **9 archivos** (todos con contenido)
+
+**⭐ = Alta prioridad, leer frecuentemente**
 
 ---
 
@@ -148,30 +143,20 @@ Contiene scripts de deployment para Azure:
 **Lee estos ANTES de implementar cualquier feature**:
 
 1. **`docs/README.md`** ⭐ - Índice completo, quick navigation, cuándo leer qué
-2. **`docs/13-roadmap/07-direction-changes.md`** ⭐ - 8 cambios arquitectónicos (por qué se hicieron)
-3. **`docs/02-core-concepts/07-sdk-first-philosophy.md`** ⭐ - Principios SDK-first (PERMANENTE)
-4. **`docs/01-architecture/01-system-architecture.md`** ⭐ - Arquitectura con diagramas Mermaid
-5. **`docs/08-state-persistence/10-database-schema.md`** ⭐ - Schema completo (DDL + ER + queries)
-6. **`docs/11-backend/08-direct-agent-service.md`** ⭐ - Workaround SDK bug (agent execution)
-7. **`docs/14-deprecated/`** ⭐ - Approaches deprecados (JWT, Orchestrator, Git Submodule, Global BC)
+2. **`docs/04-direction-changes.md`** ⭐ - 8 cambios arquitectónicos (por qué se hicieron)
+3. **`docs/02-sdk-first-philosophy.md`** ⭐ - Principios SDK-first (PERMANENTE)
+4. **`docs/01-architecture.md`** ⭐ - Arquitectura con diagramas Mermaid + DirectAgentService
+5. **`docs/03-database-schema.md`** ⭐ - Schema completo (DDL + ER + queries)
+6. **`docs/05-deprecated/`** ⭐ - Approaches deprecados (JWT, Orchestrator, Git Submodule, Global BC)
 
-### Carpetas de Documentación (15 secciones)
+### Documentos (5 + 4 deprecated = 9 archivos)
 
-- **00-overview/** - Visión del proyecto, tech stack summary
-- **01-architecture/** ⭐ - System architecture, diagramas actuales, fault tolerance
-- **02-core-concepts/** ⭐ - SDK-first philosophy, agent fundamentals, Azure conventions
-- **03-agent-system/** - Agentic loop, DirectAgentService, specialized agents
-- **04-integrations/** - MCP (vendored), BC integration (per-user tokens)
-- **05-control-flow/** - Human-in-the-loop, approvals (priority + expiration)
-- **06-observability/** - Logging, metrics, todo automation
-- **07-security/** ⭐ - Microsoft OAuth, token encryption (AES-256-GCM), BC multi-tenant
-- **08-state-persistence/** ⭐ - Database schema (11/15 tables), session cookies vs JWT
-- **09-performance/** - Prompt caching, optimization strategies
-- **10-ui-ux/** - Frontend design, shadcn/ui components
-- **11-backend/** ⭐ - DirectAgentService, OAuth flow, API architecture
-- **12-development/** - Setup guide, exact NPM versions, workflow
-- **13-roadmap/** ⭐ - Direction changes (8 pivots), MVP definition, phases
-- **14-deprecated/** ⭐ - JWT auth, Custom orchestrator, Git submodule, Global BC credentials
+- **`README.md`** ⭐ - Índice maestro, cuándo leer qué, update protocol
+- **`01-architecture.md`** ⭐ - System architecture, Mermaid diagrams, DirectAgentService, OAuth flow, deployment
+- **`02-sdk-first-philosophy.md`** ⭐ - SDK-first principles (PERMANENTE), what SDK provides, what we build
+- **`03-database-schema.md`** ⭐ - Complete DB schema (11/15 tables), DDL, ER diagrams, example queries
+- **`04-direction-changes.md`** ⭐ - 8 architectural pivots, timeline, impact, lessons learned
+- **`05-deprecated/`** ⭐ - 4 deprecated approaches (DO NOT REIMPLEMENT)
 
 **⭐ = Alta prioridad, leer frecuentemente**
 
@@ -297,17 +282,16 @@ MCP → Business Central → SDK streamea resultado → Usuario
 
 1. **TODO.md es la fuente de verdad** - Consúltalo y actualízalo constantemente
 2. **docs/README.md es el índice maestro** - Lee PRIMERO antes de cualquier feature. Navega la documentación desde ahí
-3. **Actualiza la documentación SIEMPRE** - Cambio arquitectónico → actualizar `docs/13-roadmap/07-direction-changes.md`. Deprecar approach → agregar a `docs/14-deprecated/`
-4. **Claude Agent SDK** - NO construyas sistema de agentes custom. Usa el SDK oficial de Anthropic (ver `docs/02-core-concepts/07-sdk-first-philosophy.md`)
-5. **DirectAgentService es el workaround actual** - NO bypasear el SDK, este es SDK-compliant (ver `docs/11-backend/08-direct-agent-service.md`)
-6. **Azure Naming Conventions** - Consulta `docs/02-core-concepts/05-AZURE_NAMING_CONVENTIONS.md` ANTES de crear recursos en Azure. Usa el comando `az` CLI
-7. **MCP Server vendoreado** - 115 archivos en `backend/mcp-server/data/`. NO usar git submodule (deprecado, ver `docs/14-deprecated/03-git-submodule-mcp.md`)
-8. **Business Central** - Per-user tokens (delegated), NO global credentials (deprecado, ver `docs/14-deprecated/04-global-bc-credentials.md`)
-9. **Authentication** - Microsoft OAuth 2.0, NO JWT (deprecado, ver `docs/14-deprecated/01-jwt-authentication.md`)
-10. **Azure Secrets** - Todos los secrets en Key Vault, nunca en código
-11. **Database Schema** - Consulta `docs/08-state-persistence/10-database-schema.md` ANTES de modificar BD
-12. **Tests** - No hay tests todavía, se implementarán en Phase 3 (ver TODO.md)
-13. **Dependencias NPM** - **SIEMPRE usa versiones exactas** (sin `^` ni `~`) en package.json
+3. **Actualiza la documentación SIEMPRE** - Cambio arquitectónico → actualizar `docs/04-direction-changes.md`. Deprecar approach → agregar a `docs/05-deprecated/`
+4. **Claude Agent SDK** - NO construyas sistema de agentes custom. Usa el SDK oficial de Anthropic (ver `docs/02-sdk-first-philosophy.md`)
+5. **DirectAgentService es el workaround actual** - NO bypasear el SDK, este es SDK-compliant (ver `docs/01-architecture.md`)
+6. **MCP Server vendoreado** - 115 archivos en `backend/mcp-server/data/`. NO usar git submodule (deprecado, ver `docs/05-deprecated/03-git-submodule-mcp.md`)
+7. **Business Central** - Per-user tokens (delegated), NO global credentials (deprecado, ver `docs/05-deprecated/04-global-bc-credentials.md`)
+8. **Authentication** - Microsoft OAuth 2.0, NO JWT (deprecado, ver `docs/05-deprecated/01-jwt-authentication.md`)
+9. **Azure Secrets** - Todos los secrets en Key Vault, nunca en código
+10. **Database Schema** - Consulta `docs/03-database-schema.md` ANTES de modificar BD
+11. **Tests** - No hay tests todavía, se implementarán en Phase 3 (ver TODO.md)
+12. **Dependencias NPM** - **SIEMPRE usa versiones exactas** (sin `^` ni `~`) en package.json
 
 ---
 

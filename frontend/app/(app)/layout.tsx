@@ -12,8 +12,13 @@ import { Menu, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ApprovalDialog } from '@/components/approvals';
 import { SourcePanel } from '@/components/panels/SourcePanel';
+import { SocketProvider } from '@/providers/SocketProvider';
 
-export default function AppLayout({ children }: { children: React.ReactNode }) {
+/**
+ * Internal component that uses hooks requiring SocketProvider
+ * This must be rendered INSIDE SocketProvider
+ */
+function AppLayoutContent({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const { isAuthenticated, isLoading } = useAuth();
@@ -174,5 +179,17 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       {/* Global Approval Dialog */}
       <ApprovalDialog />
     </div>
+  );
+}
+
+/**
+ * AppLayout wrapper that provides SocketProvider
+ * This ensures socket is available before any child components mount
+ */
+export default function AppLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <SocketProvider>
+      <AppLayoutContent>{children}</AppLayoutContent>
+    </SocketProvider>
   );
 }

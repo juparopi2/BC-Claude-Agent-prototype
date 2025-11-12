@@ -35,7 +35,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gradient-to-b from-background to-muted">
+    <div className="flex items-center justify-center min-h-screen bg-linear-to-b from-background to-muted">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl font-bold">BC Claude Agent</CardTitle>
@@ -46,7 +46,7 @@ export default function LoginPage() {
         <CardContent className="space-y-4">
           <Button
             onClick={handleMicrosoftLogin}
-            className="w-full h-12 text-base font-medium"
+            className="w-full h-12 text-base font-medium cursor-pointer bg-[#004578] text-white hover:bg-[#003865] focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#003865]"
             size="lg"
           >
             <svg className="w-5 h-5 mr-2" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg">

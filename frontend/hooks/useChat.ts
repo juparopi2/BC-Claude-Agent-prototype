@@ -1,47 +1,130 @@
-import { useEffect, useCallback } from 'react';
-import { useChatStore } from '@/store';
+import { useEffect, useCallback, useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSocket } from './useSocket';
+import { chatApi } from '@/lib/api';
 import {
   socketChatApi,
   SocketEvent,
-  type MessageEventData,
-  type ThinkingEventData,
   type ToolUseEventData,
-  type StreamChunkEventData,
 } from '@/lib/socket';
-import type { Message } from '@/lib/types';
+import type { Message, Session } from '@/lib/types';
 
 /**
- * Hook for chat operations
- * Integrates with chatStore and WebSocket for real-time messaging
+ * Query keys for chat data
+ * Used for cache management and invalidation
+ */
+export const chatKeys = {
+  all: ['chat'] as const,
+  sessions: () => [...chatKeys.all, 'sessions'] as const,
+  session: (id: string) => [...chatKeys.all, 'session', id] as const,
+  messages: (sessionId: string) => [...chatKeys.all, 'messages', sessionId] as const,
+};
+
+/**
+ * Hook for chat operations (React Query version)
+ *
+ * MIGRATION NOTE: This hook now uses React Query for server state (sessions, messages)
+ * while keeping WebSocket logic for real-time features (streaming, thinking, tool use).
+ *
+ * Architecture:
+ * - React Query: Handles sessions and messages fetching/caching
+ * - Local State: Handles streaming UI state (isStreaming, streamingMessage, etc.)
+ * - WebSocket: Handles real-time events (message chunks, thinking, tool use)
+ *
+ * Benefits:
+ * - Automatic deduplication of session/message fetches
+ * - Built-in caching (30s for sessions, 10s for messages)
+ * - No more infinite loops from fetchSessions()
+ * - WebSocket events still work exactly the same
  */
 export function useChat(sessionId?: string) {
+  const queryClient = useQueryClient();
   const { socket, isConnected } = useSocket();
 
+  // Local UI state for streaming (not server state, so not in React Query)
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [streamingMessage, setStreamingMessage] = useState('');
+  const [isThinking, setIsThinking] = useState(false);
+  const [currentSession, setCurrentSession] = useState<Session | null>(null);
+
+  // Fetch all sessions - React Query handles deduplication automatically
   const {
-    sessions,
-    currentSession,
-    messages,
-    isStreaming,
-    streamingMessage,
-    isThinking,
-    messagesLoading,
-    sessionsLoading,
-    messagesError,
-    sessionsError,
-    fetchSessions,
-    createSession,
-    selectSession,
-    deleteSession,
-    fetchMessages,
-    addMessage,
-    updateMessage,
-    startStreaming,
-    appendStreamChunk,
-    endStreaming,
-    setThinking,
-    clearError,
-  } = useChatStore();
+    data: sessions = [],
+    isLoading: sessionsLoading,
+    error: sessionsError,
+  } = useQuery({
+    queryKey: chatKeys.sessions(),
+    queryFn: async () => {
+      const response = await chatApi.getSessions();
+      return response.sessions || [];
+    },
+    staleTime: 30 * 1000, // Sessions fresh for 30 seconds
+    gcTime: 5 * 60 * 1000, // Cache for 5 minutes (gcTime in v5)
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+  });
+
+  // Fetch messages for current session
+  const {
+    data: messages = [],
+    isLoading: messagesLoading,
+    error: messagesError,
+  } = useQuery({
+    queryKey: chatKeys.messages(sessionId || ''),
+    queryFn: async () => {
+      if (!sessionId) return [];
+      const response = await chatApi.getMessages(sessionId);
+      return response.messages || [];
+    },
+    enabled: !!sessionId, // Only fetch if sessionId exists
+    staleTime: 10 * 1000, // Messages fresh for 10 seconds
+    gcTime: 3 * 60 * 1000, // Cache for 3 minutes (gcTime in v5)
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+  });
+
+  // Create session mutation
+  const createSessionMutation = useMutation({
+    mutationFn: (goal?: string) => chatApi.createSession(goal),
+    onSuccess: (response) => {
+      // Invalidate sessions to refetch
+      queryClient.invalidateQueries({ queryKey: chatKeys.sessions() });
+      // Set as current session
+      setCurrentSession(response.session);
+      return response.session;
+    },
+  });
+
+  // Delete session mutation
+  const deleteSessionMutation = useMutation({
+    mutationFn: (id: string) => chatApi.deleteSession(id),
+    onSuccess: () => {
+      // Invalidate sessions to refetch
+      queryClient.invalidateQueries({ queryKey: chatKeys.sessions() });
+    },
+  });
+
+  // Select session (just fetch and set as current)
+  const selectSession = useCallback(
+    async (id: string) => {
+      try {
+        const response = await chatApi.getSession(id);
+        setCurrentSession(response.session);
+        // Prefetch messages for this session
+        await queryClient.prefetchQuery({
+          queryKey: chatKeys.messages(id),
+          queryFn: async () => {
+            const messagesResponse = await chatApi.getMessages(id);
+            return messagesResponse.messages || [];
+          },
+        });
+      } catch (error) {
+        console.error('[useChat] Failed to select session:', error);
+        throw error;
+      }
+    },
+    [queryClient]
+  );
 
   // Join session room when connected
   useEffect(() => {
@@ -54,9 +137,38 @@ export function useChat(sessionId?: string) {
     }
   }, [socket, isConnected, sessionId]);
 
-  // Set up WebSocket event listeners
+  // Set up WebSocket event listeners (UNCHANGED - keep all WebSocket logic)
   useEffect(() => {
     if (!socket || !isConnected) return;
+
+    // Streaming state helpers
+    const startStreaming = () => {
+      setIsStreaming(true);
+      setStreamingMessage('');
+    };
+
+    const appendStreamChunk = (chunk: string) => {
+      setStreamingMessage((prev) => prev + chunk);
+    };
+
+    const endStreaming = (message: Message) => {
+      setIsStreaming(false);
+      setStreamingMessage('');
+      // Invalidate messages query to refetch and include new message
+      if (sessionId) {
+        queryClient.invalidateQueries({ queryKey: chatKeys.messages(sessionId) });
+      }
+    };
+
+    const addMessage = (message: Message) => {
+      // Optimistically update messages cache
+      if (sessionId) {
+        queryClient.setQueryData<Message[]>(
+          chatKeys.messages(sessionId),
+          (old) => [...(old || []), message]
+        );
+      }
+    };
 
     // Complete message received (backend emits agent:message_complete)
     const handleMessageComplete = (data: { content: string; role: string }) => {
@@ -70,17 +182,15 @@ export function useChat(sessionId?: string) {
         thinking_tokens: 0,
         is_thinking: false,
       };
-      // endStreaming also adds the message, so we pass it directly
       endStreaming(message);
     };
 
     // Thinking indicator (backend emits agent:thinking)
     const handleThinking = (data: { content?: string }) => {
-      // When thinking starts, also start streaming
-      const isThinkingNow = !!data.content || true; // Assume thinking if event is emitted
-      setThinking(isThinkingNow);
+      const isThinkingNow = !!data.content || true;
+      setIsThinking(isThinkingNow);
       if (isThinkingNow) {
-        startStreaming(); // Use thinking as signal to start streaming
+        startStreaming();
       }
     };
 
@@ -95,16 +205,14 @@ export function useChat(sessionId?: string) {
     };
 
     // Message chunk during streaming (backend emits agent:message_chunk)
-    // Note: Backend sends { content: string }, NOT { chunk: string }
     const handleMessageChunk = (data: { content: string }) => {
-      appendStreamChunk(data.content); // Append using backend's 'content' property
+      appendStreamChunk(data.content);
     };
 
-    // Completion (backend emits agent:complete instead of stream_end)
+    // Completion (backend emits agent:complete)
     const handleComplete = (data: { reason: string }) => {
       console.log('[useChat] Agent completed, reason:', data.reason);
-      setThinking(false);
-      // Note: Don't call endStreaming() here, wait for agent:message_complete
+      setIsThinking(false);
     };
 
     // Error (backend emits agent:error)
@@ -112,7 +220,7 @@ export function useChat(sessionId?: string) {
       console.error('[useChat] WebSocket error:', data.error);
     };
 
-    // Register listeners using updated API
+    // Register listeners
     socketChatApi.onMessageComplete(handleMessageComplete);
     socketChatApi.onThinking(handleThinking);
     socketChatApi.onToolUse(handleToolUse);
@@ -131,9 +239,9 @@ export function useChat(sessionId?: string) {
       socket.off(SocketEvent.COMPLETE, handleComplete);
       socket.off(SocketEvent.ERROR, handleError);
     };
-  }, [socket, isConnected, sessionId, addMessage, setThinking, startStreaming, appendStreamChunk, endStreaming]);
+  }, [socket, isConnected, sessionId, queryClient]);
 
-  // Send message
+  // Send message (UNCHANGED)
   const sendMessage = useCallback(
     async (content: string) => {
       if (!sessionId) {
@@ -144,7 +252,7 @@ export function useChat(sessionId?: string) {
         throw new Error('WebSocket not connected');
       }
 
-      // Add optimistic message to store
+      // Add optimistic message to cache
       const tempMessage: Message = {
         id: `temp-${Date.now()}`,
         session_id: sessionId,
@@ -155,37 +263,32 @@ export function useChat(sessionId?: string) {
         is_thinking: false,
       };
 
-      addMessage(tempMessage);
+      // Optimistically update cache
+      queryClient.setQueryData<Message[]>(
+        chatKeys.messages(sessionId),
+        (old) => [...(old || []), tempMessage]
+      );
 
       // Send via WebSocket
       socketChatApi.sendMessage(sessionId, content);
     },
-    [sessionId, isConnected, addMessage]
+    [sessionId, isConnected, queryClient]
   );
 
-  // Create new session and return session object
+  // Wrapper functions for mutations
   const handleCreateSession = useCallback(
     async (goal?: string) => {
-      const session = await createSession(goal);
-      return session; // Return full session object
+      const result = await createSessionMutation.mutateAsync(goal);
+      return result.session;
     },
-    [createSession]
+    [createSessionMutation]
   );
 
-  // Select session and load messages
-  const handleSelectSession = useCallback(
-    async (id: string) => {
-      await selectSession(id);
-    },
-    [selectSession]
-  );
-
-  // Delete session
   const handleDeleteSession = useCallback(
     async (id: string) => {
-      await deleteSession(id);
+      await deleteSessionMutation.mutateAsync(id);
     },
-    [deleteSession]
+    [deleteSessionMutation]
   );
 
   return {
@@ -198,17 +301,22 @@ export function useChat(sessionId?: string) {
     isThinking,
     messagesLoading,
     sessionsLoading,
-    messagesError,
-    sessionsError,
+    messagesError: messagesError ? (messagesError instanceof Error ? messagesError.message : 'Failed to load messages') : null,
+    sessionsError: sessionsError ? (sessionsError instanceof Error ? sessionsError.message : 'Failed to load sessions') : null,
     isConnected,
 
     // Actions
     sendMessage,
     createSession: handleCreateSession,
-    selectSession: handleSelectSession,
+    selectSession,
     deleteSession: handleDeleteSession,
-    fetchSessions,
-    fetchMessages,
-    clearError,
+    fetchSessions: () => queryClient.invalidateQueries({ queryKey: chatKeys.sessions() }),
+    fetchMessages: () => sessionId ? queryClient.invalidateQueries({ queryKey: chatKeys.messages(sessionId) }) : Promise.resolve(),
+    clearError: () => {
+      queryClient.resetQueries({ queryKey: chatKeys.sessions() });
+      if (sessionId) {
+        queryClient.resetQueries({ queryKey: chatKeys.messages(sessionId) });
+      }
+    },
   };
 }

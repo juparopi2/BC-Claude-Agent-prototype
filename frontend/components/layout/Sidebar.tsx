@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect } from 'react';
+import React from 'react';
 import { useChat } from '@/hooks';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -31,12 +31,8 @@ export function Sidebar({
     deleteSession,
   } = useChat();
 
-  // Fetch sessions on mount
-  useEffect(() => {
-    fetchSessions().catch((err) => {
-      console.error('[Sidebar] Failed to fetch sessions:', err);
-    });
-  }, [fetchSessions]);
+  // React Query automatically fetches sessions when useChat() is called
+  // No need for manual useEffect - the data is cached and deduplicated automatically
 
   // Handle delete session
   const handleDelete = async (sessionId: string, e: React.MouseEvent) => {

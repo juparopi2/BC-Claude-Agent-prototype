@@ -31,47 +31,9 @@ export class ApiError extends Error {
 }
 
 /**
- * Get authentication token from localStorage
+ * NOTE: This application uses session-based authentication (cookies), not JWT tokens.
+ * Auth token functions have been removed. Session is managed server-side via express-session.
  */
-export function getAuthToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem('auth_token');
-}
-
-/**
- * Set authentication token in localStorage
- */
-export function setAuthToken(token: string): void {
-  localStorage.setItem('auth_token', token);
-}
-
-/**
- * Remove authentication token from localStorage
- */
-export function clearAuthToken(): void {
-  localStorage.removeItem('auth_token');
-  localStorage.removeItem('refresh_token');
-}
-
-/**
- * Get refresh token from localStorage
- */
-export function getRefreshToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem('refresh_token');
-}
-
-/**
- * Set refresh token in localStorage
- */
-export function setRefreshToken(token: string): void {
-  localStorage.setItem('refresh_token', token);
-}
-
-/**
- * Flag to prevent infinite refresh loops
- */
-let isRefreshing = false;
 
 /**
  * Make an HTTP request to the API
@@ -90,15 +52,13 @@ async function request<T = unknown>(
     ...(options?.headers as Record<string, string>),
   };
 
-  // Add authentication token if available
-  const token = getAuthToken();
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
+  // NOTE: No Authorization header needed - we use session cookies
+  // Session is managed server-side via express-session
 
   const config: RequestInit = {
     method,
     headers,
+    credentials: 'include', // IMPORTANT: Send cookies for session-based auth
     ...options,
   };
 
@@ -115,62 +75,10 @@ async function request<T = unknown>(
 
     // Handle errors
     if (!response.ok) {
-      // Auto-refresh on 401 Unauthorized (if not already retrying and not on auth endpoints)
-      if (
-        response.status === 401 &&
-        !_isRetry &&
-        !endpoint.includes('/auth/') &&
-        !isRefreshing
-      ) {
-        const refreshToken = getRefreshToken();
-        if (refreshToken) {
-          try {
-            isRefreshing = true;
-
-            // Attempt to refresh the token
-            const refreshResponse = await fetch(`${API_BASE_URL}/api/auth/refresh`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ refreshToken }),
-            });
-
-            if (refreshResponse.ok) {
-              const refreshData = await refreshResponse.json();
-
-              // Update tokens
-              setAuthToken(refreshData.accessToken);
-              if (refreshData.refreshToken) {
-                setRefreshToken(refreshData.refreshToken);
-              }
-
-              isRefreshing = false;
-
-              // Retry the original request with new token
-              return request<T>(method, endpoint, data, options, true);
-            } else {
-              // Refresh failed - clear tokens and redirect to login
-              isRefreshing = false;
-              clearAuthToken();
-
-              if (typeof window !== 'undefined') {
-                window.location.href = '/login';
-              }
-            }
-          } catch (refreshError) {
-            // Refresh failed - clear tokens and redirect to login
-            isRefreshing = false;
-            clearAuthToken();
-
-            if (typeof window !== 'undefined') {
-              window.location.href = '/login';
-            }
-          }
-        } else {
-          // No refresh token available - redirect to login
-          clearAuthToken();
-          if (typeof window !== 'undefined') {
-            window.location.href = '/login';
-          }
+      // On 401, redirect to login (session expired)
+      if (response.status === 401 && !endpoint.includes('/auth/')) {
+        if (typeof window !== 'undefined') {
+          window.location.href = '/login';
         }
       }
 
@@ -231,74 +139,23 @@ export const api = {
 };
 
 /**
- * Authentication API
+ * Authentication API (Session-Based)
+ *
+ * NOTE: This app uses Microsoft OAuth + session-based auth (cookies).
+ * No JWT tokens or manual login/register endpoints.
+ * Login is handled by redirecting to /api/auth/login (OAuth flow).
  */
 export const authApi = {
   /**
-   * Register a new user
+   * Get current user (Session-based auth - returns user directly, not nested)
    */
-  register: async (email: string, password: string, fullName?: string) => {
-    const response = await api.post<AuthResponse>('/api/auth/register', {
-      fullName, // Backend expects 'fullName' not 'name'
-      email,
-      password,
-    });
-
-    if (response.accessToken) {
-      setAuthToken(response.accessToken);
-    }
-    if (response.refreshToken) {
-      setRefreshToken(response.refreshToken);
-    }
-
-    return response;
-  },
+  me: () => api.get<User>('/api/auth/me'),
 
   /**
-   * Login
+   * Logout (destroys server-side session)
    */
-  login: async (email: string, password: string) => {
-    const response = await api.post<AuthResponse>('/api/auth/login', {
-      email,
-      password,
-    });
-
-    if (response.accessToken) {
-      setAuthToken(response.accessToken);
-    }
-    if (response.refreshToken) {
-      setRefreshToken(response.refreshToken);
-    }
-
-    return response;
-  },
-
-  /**
-   * Logout
-   */
-  logout: () => {
-    clearAuthToken();
-  },
-
-  /**
-   * Get current user
-   */
-  me: () => api.get<{ user: User }>('/api/auth/me'),
-
-  /**
-   * Refresh token
-   */
-  refresh: async (refreshToken: string) => {
-    const response = await api.post<AuthResponse>('/api/auth/refresh', { refreshToken });
-
-    if (response.accessToken) {
-      setAuthToken(response.accessToken);
-    }
-    if (response.refreshToken) {
-      setRefreshToken(response.refreshToken);
-    }
-
-    return response;
+  logout: async () => {
+    await api.post('/api/auth/logout');
   },
 };
 

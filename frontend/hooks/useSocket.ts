@@ -1,91 +1,96 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { initSocket, disconnectSocket, getSocketStatus } from '@/lib/socket';
+import { disconnectSocket } from '@/lib/socket';
 import type { Socket } from 'socket.io-client';
+import { useSocketContext } from '@/providers/SocketProvider';
 
 // Socket status type
 type SocketStatus = 'connected' | 'connecting' | 'disconnected' | 'error';
 
 /**
  * Hook for WebSocket connection management
- * Handles connection lifecycle and provides socket instance
+ * Consumes socket from SocketProvider context and provides status/methods
  */
 export function useSocket() {
-  const [socket, setSocket] = useState<Socket | null>(null);
+  const { socket } = useSocketContext();
   const [status, setStatus] = useState<SocketStatus>('disconnected');
   const [error, setError] = useState<string | null>(null);
   const reconnectAttempts = useRef(0);
   const maxReconnectAttempts = 5;
 
-  // Initialize socket on mount
+  // Set up event handlers when socket is available
   useEffect(() => {
-    const initializeSocket = () => {
-      try {
-        const socketInstance = initSocket();
-        setSocket(socketInstance);
+    if (!socket) {
+      setStatus('disconnected');
+      return;
+    }
+
+    // Set initial status based on socket connection state
+    if (socket.connected) {
+      setStatus('connected');
+    } else {
+      setStatus('connecting');
+    }
+
+    // Connection event handlers
+    const handleConnect = () => {
+      console.log('[useSocket] WebSocket connected');
+      setStatus('connected');
+      setError(null);
+      reconnectAttempts.current = 0;
+    };
+
+    const handleDisconnect = (reason: string) => {
+      console.log('[useSocket] WebSocket disconnected:', reason);
+      setStatus('disconnected');
+
+      // Auto-reconnect for certain disconnect reasons
+      if (reason === 'io server disconnect') {
+        // Server initiated disconnect, don't reconnect
+        setError('Server disconnected');
+      } else if (reconnectAttempts.current < maxReconnectAttempts) {
+        // Client-side disconnect or network issue, attempt reconnect
+        reconnectAttempts.current++;
         setStatus('connecting');
-
-        // Connection event handlers
-        socketInstance.on('connect', () => {
-          console.log('[useSocket] WebSocket connected');
-          setStatus('connected');
-          setError(null);
-          reconnectAttempts.current = 0;
-        });
-
-        socketInstance.on('disconnect', (reason) => {
-          console.log('[useSocket] WebSocket disconnected:', reason);
-          setStatus('disconnected');
-
-          // Auto-reconnect for certain disconnect reasons
-          if (reason === 'io server disconnect') {
-            // Server initiated disconnect, don't reconnect
-            setError('Server disconnected');
-          } else if (reconnectAttempts.current < maxReconnectAttempts) {
-            // Client-side disconnect or network issue, attempt reconnect
-            reconnectAttempts.current++;
-            setStatus('connecting');
-            socketInstance.connect();
-          } else {
-            setError('Failed to reconnect after multiple attempts');
-          }
-        });
-
-        socketInstance.on('connect_error', (err) => {
-          console.error('[useSocket] WebSocket connection error:', err);
-          setStatus('error');
-          setError(err.message);
-
-          // Retry with exponential backoff
-          if (reconnectAttempts.current < maxReconnectAttempts) {
-            const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 10000);
-            setTimeout(() => {
-              reconnectAttempts.current++;
-              socketInstance.connect();
-            }, delay);
-          }
-        });
-
-        socketInstance.on('error', (err) => {
-          console.error('[useSocket] WebSocket error:', err);
-          setError(typeof err === 'string' ? err : 'WebSocket error occurred');
-        });
-
-      } catch (err) {
-        console.error('[useSocket] Failed to initialize socket:', err);
-        setError(err instanceof Error ? err.message : 'Failed to initialize WebSocket');
-        setStatus('error');
+        socket.connect();
+      } else {
+        setError('Failed to reconnect after multiple attempts');
       }
     };
 
-    initializeSocket();
+    const handleConnectError = (err: Error) => {
+      console.error('[useSocket] WebSocket connection error:', err);
+      setStatus('error');
+      setError(err.message);
 
-    // Cleanup on unmount
-    return () => {
-      disconnectSocket();
-      setSocket(null);
-      setStatus('disconnected');
+      // Retry with exponential backoff
+      if (reconnectAttempts.current < maxReconnectAttempts) {
+        const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 10000);
+        setTimeout(() => {
+          reconnectAttempts.current++;
+          socket.connect();
+        }, delay);
+      }
     };
-  }, []);
+
+    const handleError = (err: Error | string) => {
+      console.error('[useSocket] WebSocket error:', err);
+      setError(typeof err === 'string' ? err : 'WebSocket error occurred');
+    };
+
+    // Attach event handlers
+    socket.on('connect', handleConnect);
+    socket.on('disconnect', handleDisconnect);
+    socket.on('connect_error', handleConnectError);
+    socket.on('error', handleError);
+
+    // Cleanup event handlers when component unmounts or socket changes
+    return () => {
+      socket.off('connect', handleConnect);
+      socket.off('disconnect', handleDisconnect);
+      socket.off('connect_error', handleConnectError);
+      socket.off('error', handleError);
+    };
+  }, [socket]);
 
   // Manual reconnect
   const reconnect = useCallback(() => {

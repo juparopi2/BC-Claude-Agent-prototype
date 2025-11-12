@@ -8,7 +8,6 @@
  */
 
 import { io, Socket } from 'socket.io-client';
-import { getAuthToken } from './api';
 import type {
   EventHandler,
   ConnectionHandler,
@@ -91,6 +90,7 @@ export function getSocketStatus(): SocketStatus {
 
 /**
  * Initialize Socket.IO connection
+ * NOTE: Uses session-based auth (cookies), not JWT tokens
  */
 export function initSocket(): Socket {
   if (socket && socket.connected) {
@@ -100,14 +100,11 @@ export function initSocket(): Socket {
 
   console.log('Initializing Socket.IO connection...');
 
-  // Get authentication token
-  const token = getAuthToken();
-
   // Create socket connection
+  // NOTE: No auth token needed - session is sent automatically via cookies
+  // withCredentials: true ensures cookies are sent with Socket.IO handshake
   socket = io(SOCKET_URL, {
-    auth: {
-      token,
-    },
+    withCredentials: true, // IMPORTANT: Send cookies for session-based auth
     transports: ['websocket', 'polling'],
     reconnection: true,
     reconnectionDelay: 1000,

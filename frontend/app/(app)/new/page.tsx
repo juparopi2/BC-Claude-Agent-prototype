@@ -10,12 +10,13 @@ export default function NewChatPage() {
   const router = useRouter();
   const { createSession, currentSession, sessionsLoading } = useChat();
 
-  // If there's already a current session, redirect to it
+  // If there's already a current session, redirect to it (only once)
   useEffect(() => {
     if (currentSession?.id) {
       router.replace(`/chat/${currentSession.id}`);
     }
-  }, [currentSession, router]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentSession?.id, router]); // Only depend on the ID, not the whole object
 
   const handleStartChat = async () => {
     try {

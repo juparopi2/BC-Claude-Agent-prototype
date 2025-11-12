@@ -47,6 +47,21 @@ const app = express();
 const httpServer = createServer(app);
 
 /**
+ * Session middleware configuration (shared between Express and Socket.IO)
+ */
+const sessionMiddleware = session({
+  secret: process.env.SESSION_SECRET || 'development-secret-change-in-production',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: isProd, // HTTPS only in production
+    httpOnly: true,
+    maxAge: parseInt(process.env.SESSION_MAX_AGE || '86400000'), // 24 hours default
+    sameSite: 'lax',
+  },
+});
+
+/**
  * Socket.IO server instance
  */
 const io = new SocketIOServer(httpServer, {
@@ -180,18 +195,8 @@ function configureMiddleware(): void {
     credentials: true,
   }));
 
-  // Session middleware (required for Microsoft OAuth)
-  app.use(session({
-    secret: process.env.SESSION_SECRET || 'development-secret-change-in-production',
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      secure: isProd, // HTTPS only in production
-      httpOnly: true,
-      maxAge: parseInt(process.env.SESSION_MAX_AGE || '86400000'), // 24 hours default
-      sameSite: 'lax',
-    },
-  }));
+  // Session middleware (shared with Socket.IO)
+  app.use(sessionMiddleware);
 
   // Body parsing
   app.use(express.json());
@@ -494,7 +499,7 @@ function configureRoutes(): void {
     try {
       const approvalId = req.params.id as string;
       const { decision, reason } = req.body;
-      const userId = req.user?.userId;
+      const userId = req.userId;
 
       if (!userId) {
         res.status(401).json({
@@ -536,7 +541,7 @@ function configureRoutes(): void {
   // GET /api/approvals/pending - Get all pending approvals for current user (cross-session)
   app.get('/api/approvals/pending', authenticateMicrosoft, async (req: Request, res: Response): Promise<void> => {
     try {
-      const userId = req.user?.userId;
+      const userId = req.userId;
 
       if (!userId) {
         res.status(401).json({
@@ -645,7 +650,7 @@ function configureRoutes(): void {
   // GET /api/chat/sessions - Get all sessions for current user
   app.get('/api/chat/sessions', authenticateMicrosoft, async (req: Request, res: Response): Promise<void> => {
     try {
-      const userId = req.user?.userId;
+      const userId = req.userId;
 
       if (!userId) {
         res.status(401).json({
@@ -780,8 +785,55 @@ function configureErrorHandling(): void {
  * Configure Socket.IO
  */
 function configureSocketIO(): void {
+  // Wrap session middleware for Socket.IO (converts Express middleware to Socket.IO middleware)
+  io.engine.use(sessionMiddleware);
+
+  // Socket.IO authentication middleware
+  io.use((socket, next) => {
+    const req = socket.request as express.Request;
+
+    // Check if session exists
+    if (!req.session || !req.session.microsoftOAuth) {
+      console.warn('[Socket.IO] Connection rejected: No valid session', {
+        socketId: socket.id,
+      });
+      return next(new Error('Authentication required'));
+    }
+
+    const oauthSession = req.session.microsoftOAuth as MicrosoftOAuthSession;
+
+    // Verify session has userId
+    if (!oauthSession.userId) {
+      console.warn('[Socket.IO] Connection rejected: No userId in session', {
+        socketId: socket.id,
+      });
+      return next(new Error('Invalid session'));
+    }
+
+    // Check token expiration
+    if (oauthSession.tokenExpiresAt && new Date(oauthSession.tokenExpiresAt) <= new Date()) {
+      console.warn('[Socket.IO] Connection rejected: Token expired', {
+        socketId: socket.id,
+        userId: oauthSession.userId,
+      });
+      return next(new Error('Session expired'));
+    }
+
+    // Attach userId to socket for later use
+    (socket as any).userId = oauthSession.userId;
+    (socket as any).userEmail = oauthSession.email;
+
+    console.log('[Socket.IO] Authentication successful', {
+      socketId: socket.id,
+      userId: oauthSession.userId,
+    });
+
+    next();
+  });
+
   io.on('connection', (socket) => {
-    console.log(`✅ Client connected: ${socket.id}`);
+    const userId = (socket as any).userId;
+    console.log(`✅ Client connected: ${socket.id} (User: ${userId})`);
 
     // Handler: Chat message
     socket.on('chat:message', async (data: {

@@ -32,7 +32,7 @@ export function ChatInterface({ sessionId, className }: ChatInterfaceProps) {
   // Fetch messages when sessionId changes
   useEffect(() => {
     if (sessionId) {
-      fetchMessages(sessionId).catch((err) => {
+      fetchMessages().catch((err: unknown) => {
         console.error('[ChatInterface] Failed to fetch messages:', err);
         setLocalError('Failed to load messages');
       });

@@ -514,6 +514,90 @@ CREATE TABLE todos (
 
 ---
 
+#### Connection Pool Configuration
+
+**Connection Pool Settings**:
+```typescript
+pool: {
+  max: 10,                     // Maximum 10 connections
+  min: 1,                      // Keep 1 connection always alive (prevents cold starts)
+  idleTimeoutMillis: 300000,   // 5 minutes (increased from 30s to prevent disconnections)
+  acquireTimeoutMillis: 10000  // 10 seconds to acquire connection from pool
+},
+connectionTimeout: 30000,      // 30 seconds - Overall connection establishment timeout
+requestTimeout: 30000          // 30 seconds - Individual query timeout
+```
+
+**Key Points**:
+- `min: 1` ensures at least one connection is always maintained
+- `idleTimeoutMillis: 300000` (5 minutes) prevents Azure SQL from closing idle connections
+- Connection pool initialized with retry logic (10 attempts, exponential backoff)
+
+---
+
+#### Database Keepalive Mechanism
+
+**Purpose**: Maintain database connection alive during periods of inactivity by periodically executing lightweight queries.
+
+**Implementation**: `backend/src/utils/databaseKeepalive.ts`
+
+**Features**:
+- **Interval**: Executes `SELECT 1` every 3 minutes (180 seconds)
+- **Auto-reconnection**: Detects disconnected pool and attempts reconnection via `initDatabase()`
+- **Error handling**: Tracks consecutive errors, stops after 5 failures
+- **Recovery**: Resets error count on successful execution
+- **Lifecycle integration**: Starts on server init, stops on graceful shutdown
+
+**Code Reference**:
+```typescript
+// Start keepalive on server initialization
+await initDatabase();
+startDatabaseKeepalive();  // Executes immediately, then every 3 minutes
+
+// Stop keepalive on shutdown
+stopDatabaseKeepalive();
+await closeDatabase();
+```
+
+**Logs**:
+```
+🔄 Starting database keepalive (interval: 180s)
+✅ Database keepalive scheduled (next execution in 180s)
+💚 Database keepalive: ping successful
+⏰ Database keepalive interval triggered
+```
+
+**Error Recovery**:
+- If connection lost: Logs warning, attempts reconnection, continues keepalive
+- If max errors (5): Stops keepalive, logs error
+- On reconnection success: Resets error count
+
+**Why Needed**: Azure SQL closes idle connections after ~5 minutes. Keepalive prevents this by running queries every 3 minutes (less than idle timeout).
+
+---
+
+#### Connection Retry Logic
+
+**Implementation**: `backend/src/config/database.ts` → `connectWithRetry()`
+
+**Features**:
+- **Max retries**: 10 attempts
+- **Exponential backoff**: 100ms, 200ms, 400ms, 800ms, 1600ms, 3200ms (capped)
+- **Connection verification**: Executes `SELECT 1` after connection to verify health
+- **Error handling**: Specific error type detection (ETIMEDOUT, ECONNREFUSED, ECONNRESET, ELOGIN, etc.)
+
+**Error Types Detected**:
+- `ETIMEDOUT` - Connection timeout (check network/firewall)
+- `ECONNREFUSED` - Connection refused (check if server running)
+- `ECONNRESET` - Connection reset (check SSL/TLS)
+- `ELOGIN` - Authentication failed (check credentials)
+- `ENOTFOUND` - Server not found (check hostname)
+- `EINSTLOOKUP` - Instance lookup failed (check server name/port)
+
+**Automatic Reconnection**: Pool error handler attempts reconnection after 5 seconds if connection drops during runtime.
+
+---
+
 ### Redis Cache
 
 **Purpose**: Session storage + BC query caching

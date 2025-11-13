@@ -46,10 +46,100 @@ export function getDatabaseConfig(): SqlConfig {
     },
     pool: {
       max: 10,
-      min: 0,
-      idleTimeoutMillis: 30000,
+      min: 1, // Keep 1 connection always alive (prevents cold starts)
+      idleTimeoutMillis: 300000, // 5 minutes (increased from 30s to prevent disconnections)
+      acquireTimeoutMillis: 10000, // 10 seconds to acquire connection from pool
     },
+    connectionTimeout: 30000, // 30 seconds - Overall connection establishment timeout
+    requestTimeout: 30000, // 30 seconds - Individual query timeout
   };
+}
+
+/**
+ * Handle specific database error types with actionable messages
+ *
+ * @param err - Error object
+ */
+function handleDatabaseError(err: Error): void {
+  console.error('❌ Database client error:', err.message);
+
+  // Log specific error types for debugging
+  if (err.message.includes('ETIMEDOUT')) {
+    console.error('   Connection timeout. Check network connectivity and Azure SQL firewall rules.');
+  } else if (err.message.includes('ECONNREFUSED')) {
+    console.error('   Connection refused. Check if Azure SQL server is running and accessible.');
+  } else if (err.message.includes('ECONNRESET')) {
+    console.error('   Connection was reset. Check SSL/TLS configuration and network stability.');
+  } else if (err.message.includes('ELOGIN') || err.message.includes('Login failed')) {
+    console.error('   Authentication failed. Check DATABASE_USER and DATABASE_PASSWORD.');
+  } else if (err.message.includes('ENOTFOUND')) {
+    console.error('   Server not found. Check DATABASE_SERVER hostname.');
+  } else if (err.message.includes('EINSTLOOKUP')) {
+    console.error('   Instance lookup failed. Check server name and port.');
+  }
+}
+
+/**
+ * Verify database connection with a simple query
+ *
+ * @param pool - Connection pool to verify
+ * @returns true if connection is healthy, false otherwise
+ */
+async function verifyConnection(pool: ConnectionPool): Promise<boolean> {
+  try {
+    const result = await pool.request().query('SELECT 1 AS health');
+    if (result.recordset && result.recordset.length > 0 && result.recordset[0].health === 1) {
+      console.log('✅ Database connection verified (SELECT 1 successful)');
+      return true;
+    }
+    console.error('❌ Database verification failed: unexpected result');
+    return false;
+  } catch (error) {
+    console.error('❌ Database verification failed:', error instanceof Error ? error.message : 'Unknown error');
+    return false;
+  }
+}
+
+/**
+ * Connect to database with exponential backoff retry logic
+ *
+ * @param config - Database configuration
+ * @param maxRetries - Maximum number of retry attempts (default: 10)
+ * @returns Promise that resolves to the connection pool
+ */
+async function connectWithRetry(config: SqlConfig, maxRetries: number = 10): Promise<ConnectionPool> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`🔌 Connecting to Azure SQL Database... (attempt ${attempt}/${maxRetries})`);
+
+      const newPool = await sql.connect(config);
+
+      // Verify connection with SELECT 1
+      const isHealthy = await verifyConnection(newPool);
+      if (!isHealthy) {
+        await newPool.close();
+        throw new Error('Connection established but verification failed');
+      }
+
+      return newPool;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      handleDatabaseError(lastError);
+
+      if (attempt < maxRetries) {
+        // Exponential backoff: 100ms, 200ms, 400ms, 800ms, 1600ms, 3200ms (capped)
+        const delay = Math.min(attempt * 100, 3200);
+        console.log(`🔄 Retrying in ${delay}ms... (attempt ${attempt}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+
+  // All retries exhausted
+  console.error(`❌ Failed to connect after ${maxRetries} attempts`);
+  throw lastError || new Error('Database connection failed after all retries');
 }
 
 /**
@@ -64,22 +154,36 @@ export async function initDatabase(): Promise<ConnectionPool> {
       return pool;
     }
 
-    console.log('🔌 Connecting to Azure SQL Database...');
-
     const config = getDatabaseConfig();
-    pool = await sql.connect(config);
+
+    // Connect with retry logic and exponential backoff
+    pool = await connectWithRetry(config, 10);
 
     console.log('✅ Connected to Azure SQL Database');
 
-    // Handle connection errors
-    pool.on('error', (err: Error) => {
-      console.error('❌ Database connection error:', err);
+    // Enhanced error handler with specific error types and reconnection attempt
+    pool.on('error', async (err: Error) => {
+      console.error('❌ Database connection error detected:');
+      handleDatabaseError(err);
+
+      // Mark pool as null to force reconnection on next query
       pool = null;
+
+      // Attempt to reconnect in background (don't block)
+      console.log('🔄 Attempting automatic reconnection in 5 seconds...');
+      setTimeout(async () => {
+        try {
+          await initDatabase();
+          console.log('✅ Automatic reconnection successful');
+        } catch (reconnectError) {
+          console.error('❌ Automatic reconnection failed:', reconnectError instanceof Error ? reconnectError.message : 'Unknown error');
+        }
+      }, 5000);
     });
 
     return pool;
   } catch (error) {
-    console.error('❌ Failed to connect to database:', error);
+    console.error('❌ Failed to initialize database after all retries');
     throw error;
   }
 }

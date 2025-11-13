@@ -1089,6 +1089,173 @@ const result = await pool.request()
 
 ---
 
+## Connection Management
+
+### Connection Pool Configuration
+
+**Location**: `backend/src/config/database.ts`
+
+**Pool Settings**:
+```typescript
+pool: {
+  max: 10,                     // Maximum 10 connections
+  min: 1,                      // Keep 1 connection always alive (prevents cold starts)
+  idleTimeoutMillis: 300000,   // 5 minutes (increased from 30s to prevent disconnections)
+  acquireTimeoutMillis: 10000  // 10 seconds to acquire connection from pool
+},
+connectionTimeout: 30000,      // 30 seconds - Overall connection establishment timeout
+requestTimeout: 30000          // 30 seconds - Individual query timeout
+```
+
+**Key Configuration Changes**:
+- **`min: 1`** (previously 0): Ensures at least one connection is always maintained to prevent cold starts
+- **`idleTimeoutMillis: 300000`** (previously 30000): Increased from 30 seconds to 5 minutes to prevent Azure SQL from closing idle connections
+
+---
+
+### Database Keepalive Utility
+
+**Purpose**: Maintain database connection alive during periods of inactivity by periodically executing lightweight queries.
+
+**Location**: `backend/src/utils/databaseKeepalive.ts`
+
+**Configuration**:
+- **Interval**: 3 minutes (180,000 milliseconds)
+- **Query**: `SELECT 1 AS keepalive` (lightweight health check)
+- **Max consecutive errors**: 5 (stops keepalive after 5 failures)
+
+**Features**:
+
+1. **Periodic Execution**: Executes immediately on start, then every 3 minutes
+2. **Auto-reconnection**: If pool is disconnected, attempts to reconnect via `initDatabase()`
+3. **Error Tracking**: Counts consecutive errors, stops after reaching max (5)
+4. **Recovery**: Resets error count on successful execution
+5. **Lifecycle Integration**: Starts on server init, stops on graceful shutdown
+
+**API**:
+
+```typescript
+import {
+  startDatabaseKeepalive,
+  stopDatabaseKeepalive,
+  isKeepaliveRunning,
+  getKeepaliveErrorCount
+} from './utils/databaseKeepalive';
+
+// Start keepalive (called on server initialization)
+startDatabaseKeepalive();  // Returns NodeJS.Timeout
+
+// Stop keepalive (called on graceful shutdown)
+stopDatabaseKeepalive();
+
+// Check if running
+const isRunning = isKeepaliveRunning();  // boolean
+
+// Get error count
+const errorCount = getKeepaliveErrorCount();  // number
+```
+
+**Logs**:
+
+```
+🔄 Starting database keepalive (interval: 180s)
+✅ Database keepalive scheduled (next execution in 180s)
+⏰ Database keepalive interval triggered
+💚 Database keepalive: ping successful
+```
+
+**Error Handling**:
+
+```
+⚠️  Database keepalive: connection not available, attempting reconnection...
+✅ Database keepalive: reconnection successful
+❌ Database keepalive failed (error 1/5): Connection timeout
+✅ Database keepalive: recovered from previous errors
+❌ Database keepalive: too many consecutive errors, stopping keepalive
+```
+
+**Why Needed**: Azure SQL Database closes idle connections after approximately 5 minutes of inactivity. The keepalive mechanism prevents this by executing a lightweight query every 3 minutes (well within the idle timeout window).
+
+---
+
+### Connection Retry Logic
+
+**Location**: `backend/src/config/database.ts` → `connectWithRetry()`
+
+**Features**:
+- **Max retries**: 10 attempts
+- **Exponential backoff**: 100ms, 200ms, 400ms, 800ms, 1600ms, 3200ms (capped at 3200ms)
+- **Connection verification**: Executes `SELECT 1 AS health` after connection to verify health
+- **Specific error detection**: Provides actionable error messages for common connection issues
+
+**Error Types Detected**:
+
+| Error Code | Description | Action |
+|------------|-------------|--------|
+| `ETIMEDOUT` | Connection timeout | Check network connectivity and Azure SQL firewall rules |
+| `ECONNREFUSED` | Connection refused | Check if Azure SQL server is running and accessible |
+| `ECONNRESET` | Connection was reset | Check SSL/TLS configuration and network stability |
+| `ELOGIN` / `Login failed` | Authentication failed | Check DATABASE_USER and DATABASE_PASSWORD |
+| `ENOTFOUND` | Server not found | Check DATABASE_SERVER hostname |
+| `EINSTLOOKUP` | Instance lookup failed | Check server name and port |
+
+**Code Flow**:
+
+```typescript
+// 1. Attempt connection with retry
+const pool = await connectWithRetry(config, 10);
+
+// 2. Verify connection health
+const isHealthy = await verifyConnection(pool);
+if (!isHealthy) {
+  await pool.close();
+  throw new Error('Connection established but verification failed');
+}
+
+// 3. Set up error handler for runtime disconnections
+pool.on('error', async (err: Error) => {
+  console.error('❌ Database connection error detected:');
+  handleDatabaseError(err);
+
+  // Mark pool as null to force reconnection
+  pool = null;
+
+  // Attempt to reconnect in background (5 seconds delay)
+  setTimeout(async () => {
+    try {
+      await initDatabase();
+      console.log('✅ Automatic reconnection successful');
+    } catch (reconnectError) {
+      console.error('❌ Automatic reconnection failed:', reconnectError);
+    }
+  }, 5000);
+});
+```
+
+**Retry Example Logs**:
+
+```
+🔌 Connecting to Azure SQL Database... (attempt 1/10)
+❌ Database client error: Connection timeout
+   Connection timeout. Check network connectivity and Azure SQL firewall rules.
+🔄 Retrying in 100ms... (attempt 1/10)
+🔌 Connecting to Azure SQL Database... (attempt 2/10)
+✅ Database connection verified (SELECT 1 successful)
+✅ Connected to Azure SQL Database
+```
+
+**Automatic Reconnection on Runtime Errors**:
+
+If the connection pool encounters an error during runtime (e.g., network interruption), the error handler will:
+1. Log the specific error type
+2. Mark the pool as `null` (forces reinitialization on next query)
+3. Wait 5 seconds
+4. Attempt reconnection in the background
+
+This ensures resilient connection handling without requiring server restart.
+
+---
+
 ## Security Considerations
 
 ### 1. BC Token Encryption

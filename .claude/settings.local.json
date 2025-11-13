@@ -63,7 +63,9 @@
       "Bash(if exist .nextdevlock del /F .nextdevlock)",
       "Bash(find:*)",
       "Bash(nul)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(nslookup:*)",
+      "Bash(ping:*)"
     ],
     "deny": [],
     "ask": []

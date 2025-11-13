@@ -17,6 +17,7 @@ import { env, isProd, printConfig, validateRequiredSecrets } from './config/envi
 import { loadSecretsFromKeyVault } from './config/keyvault';
 import { initDatabase, closeDatabase, checkDatabaseHealth, executeQuery } from './config/database';
 import { initRedis, closeRedis, checkRedisHealth, getRedis } from './config/redis';
+import { startDatabaseKeepalive, stopDatabaseKeepalive } from './utils/databaseKeepalive';
 import { getMCPService } from './services/mcp';
 import { getBCClient } from './services/bc';
 import { getDirectAgentService } from './services/agent';
@@ -93,16 +94,35 @@ async function initializeApp(): Promise<void> {
     // Step 2: Validate required secrets
     validateRequiredSecrets();
 
-    // Step 3: Initialize database connection
-    try {
-      await initDatabase();
-      isDatabaseAvailable = true;
-      console.log('');
-    } catch (dbError) {
-      isDatabaseAvailable = false;
-      console.warn('⚠️  Database connection failed - using mock authentication');
-      console.warn(`   Error: ${dbError instanceof Error ? dbError.message : 'Unknown error'}`);
-      console.log('');
+    // Step 3: Initialize database connection with retry
+    let dbConnected = false;
+    const maxDbRetries = 3;
+    const dbRetryDelay = 3000; // 3 seconds
+
+    for (let attempt = 1; attempt <= maxDbRetries && !dbConnected; attempt++) {
+      try {
+        console.log(`🔌 Initializing database connection (server-level attempt ${attempt}/${maxDbRetries})...`);
+        await initDatabase();
+        isDatabaseAvailable = true;
+        dbConnected = true;
+
+        // Start database keepalive to maintain connection during inactivity
+        startDatabaseKeepalive();
+
+        console.log('');
+      } catch (dbError) {
+        console.error(`❌ Database initialization failed (attempt ${attempt}/${maxDbRetries})`);
+        console.error(`   Error: ${dbError instanceof Error ? dbError.message : 'Unknown error'}`);
+
+        if (attempt < maxDbRetries) {
+          console.log(`🔄 Retrying in ${dbRetryDelay / 1000} seconds...`);
+          await new Promise(resolve => setTimeout(resolve, dbRetryDelay));
+        } else {
+          isDatabaseAvailable = false;
+          console.warn('⚠️  Database connection failed after all retries - using mock authentication');
+          console.log('');
+        }
+      }
     }
 
     // Step 4: Initialize Redis connection
@@ -1001,6 +1021,9 @@ async function gracefulShutdown(signal: string): Promise<void> {
     io.close(() => {
       console.log('✅ Socket.IO server closed');
     });
+
+    // Stop database keepalive
+    stopDatabaseKeepalive();
 
     // Close database connection
     await closeDatabase();

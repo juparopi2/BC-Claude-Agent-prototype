@@ -12,10 +12,11 @@ import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import cors from 'cors';
 import session from 'express-session';
+import RedisStore from 'connect-redis';
 import { env, isProd, printConfig, validateRequiredSecrets } from './config/environment';
 import { loadSecretsFromKeyVault } from './config/keyvault';
 import { initDatabase, closeDatabase, checkDatabaseHealth, executeQuery } from './config/database';
-import { initRedis, closeRedis, checkRedisHealth } from './config/redis';
+import { initRedis, closeRedis, checkRedisHealth, getRedis } from './config/redis';
 import { getMCPService } from './services/mcp';
 import { getBCClient } from './services/bc';
 import { getDirectAgentService } from './services/agent';
@@ -49,18 +50,9 @@ const httpServer = createServer(app);
 
 /**
  * Session middleware configuration (shared between Express and Socket.IO)
+ * Initialized after Redis connection in initializeApp()
  */
-const sessionMiddleware = session({
-  secret: process.env.SESSION_SECRET || 'development-secret-change-in-production',
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    secure: isProd, // HTTPS only in production
-    httpOnly: true,
-    maxAge: parseInt(process.env.SESSION_MAX_AGE || '86400000'), // 24 hours default
-    sameSite: 'lax',
-  },
-});
+let sessionMiddleware: any;
 
 /**
  * Socket.IO server instance
@@ -115,6 +107,26 @@ async function initializeApp(): Promise<void> {
 
     // Step 4: Initialize Redis connection
     await initRedis();
+    console.log('');
+
+    // Step 4.5: Initialize session middleware with RedisStore
+    sessionMiddleware = session({
+      store: new RedisStore({
+        client: getRedis()!,
+        prefix: 'sess:',
+        ttl: 86400, // 24 hours in seconds
+      }),
+      secret: process.env.SESSION_SECRET || 'development-secret-change-in-production',
+      resave: false,
+      saveUninitialized: false,
+      cookie: {
+        secure: isProd, // HTTPS only in production
+        httpOnly: true,
+        maxAge: parseInt(process.env.SESSION_MAX_AGE || '86400000'), // 24 hours default
+        sameSite: 'lax',
+      },
+    });
+    console.log('✅ Session middleware configured with RedisStore');
     console.log('');
 
     // Step 5: Initialize MCP Service

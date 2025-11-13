@@ -1,8 +1,8 @@
 # BC-Claude-Agent-Prototype - Documentation
 
 > **Master Index**: Complete technical documentation for the BC-Claude-Agent system
-> **Version**: 2.2 (Updated - 2025-11-13)
-> **Status**: Phase 2 - Week 7 | 100% MVP Complete + UI/UX Polished
+> **Version**: 2.3 (Updated - 2025-11-13)
+> **Status**: Phase 2 - Week 7 | 100% MVP Complete + RedisStore Sessions
 
 ---
 
@@ -261,9 +261,10 @@ docs-old/                               📦 Backup (historical reference, 74 fi
 - ✅ Todo system (custom generation)
 - ✅ Database schema (11 tables functional)
 - ✅ Frontend UI components (Next.js 16 + React 19)
-- ✅ **5 Session CRUD endpoints** (backend/src/routes/sessions.ts) ✅ **NEW**
-- ✅ **Professional UI/UX** (gradients, animations, hover states, cursor pointers) ✅ **NEW**
-- ✅ **End-to-end chat functionality** (send messages, receive responses, streaming) ✅ **NEW**
+- ✅ **5 Session CRUD endpoints** (backend/src/routes/sessions.ts)
+- ✅ **Professional UI/UX** (gradients, animations, hover states, cursor pointers)
+- ✅ **End-to-end chat functionality** (send messages, receive responses, streaming)
+- ✅ **RedisStore session persistence** (connect-redis@7.1.1 - Sessions survive restarts) ✅ **NEW**
 
 **Pending** (Phase 3 - Non-critical):
 - ⏳ 4 observability tables (1 hour, non-critical)
@@ -297,6 +298,6 @@ docs-old/                               📦 Backup (historical reference, 74 fi
 ---
 
 **Last Updated**: 2025-11-13
-**Documentation Version**: 2.2 (Updated - Session CRUD + UI/UX)
-**System Version**: Phase 2 Week 7 (100% MVP Complete + UI/UX Polished)
+**Documentation Version**: 2.3 (Updated - RedisStore session persistence)
+**System Version**: Phase 2 Week 7 (100% MVP Complete + RedisStore Sessions)
 **Total Documents**: 9 files (5 main + 4 deprecated)

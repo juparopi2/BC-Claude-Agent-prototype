@@ -2,7 +2,7 @@
 
 > **Status**: Phase 2 Week 7 (100% MVP Complete + UI/UX Polished)
 > **Last Updated**: 2025-11-13
-> **Version**: 2.1 (Updated - Session CRUD + UI/UX improvements)
+> **Version**: 2.2 (Updated - RedisStore session persistence)
 
 ---
 
@@ -520,7 +520,7 @@ CREATE TABLE todos (
 
 **Current Status**:
 - ✅ Azure Redis deployed
-- ⏳ Session storage: In-memory (dev), Redis planned (prod)
+- ✅ Session storage: RedisStore (via connect-redis@7.1.1) - Sessions persist across restarts
 - ⏳ Query caching: Not yet implemented
 
 **Planned Usage**:

@@ -73,8 +73,9 @@ export function TodoList({ sessionId, className }: TodoListProps) {
   if (isLoading) {
     return (
       <div className={cn('p-4', className)}>
-        <div className="flex items-center justify-center text-sm text-muted-foreground">
-          Loading todos...
+        <div className="flex flex-col items-center justify-center gap-3 py-8 px-4 rounded-lg border border-border/40 bg-muted/20">
+          <div className="animate-spin h-6 w-6 border-2 border-primary border-t-transparent rounded-full" />
+          <span className="text-sm font-medium text-muted-foreground">Loading todos...</span>
         </div>
       </div>
     );
@@ -83,9 +84,14 @@ export function TodoList({ sessionId, className }: TodoListProps) {
   if (totalTodos === 0) {
     return (
       <div className={cn('p-4', className)}>
-        <div className="flex flex-col items-center justify-center gap-2 py-8 text-center">
-          <ListTodo className="h-8 w-8 text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">No todos yet</p>
+        <div className="flex flex-col items-center justify-center gap-3 py-8 px-4 rounded-lg border-2 border-dashed border-border/40 bg-muted/30 text-center">
+          <div className="p-2 rounded-full bg-muted/50">
+            <ListTodo className="h-6 w-6 text-muted-foreground" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-foreground">No todos yet</p>
+            <p className="text-xs text-muted-foreground mt-1">Tasks will appear here as you chat</p>
+          </div>
         </div>
       </div>
     );
@@ -154,7 +160,7 @@ export function TodoList({ sessionId, className }: TodoListProps) {
           {/* Completed (Collapsible) */}
           {groupedTodos.completed.length > 0 && (
             <Collapsible defaultOpen={false}>
-              <CollapsibleTrigger className="flex items-center gap-2 px-1 w-full hover:opacity-70 transition-opacity">
+              <CollapsibleTrigger className="flex items-center gap-2 px-1 w-full hover:opacity-70 transition-opacity cursor-pointer">
                 <h3 className="text-sm font-semibold text-green-700">Completed</h3>
                 <Badge variant="default" className="bg-green-500/10 text-green-700">
                   {groupedTodos.completed.length}

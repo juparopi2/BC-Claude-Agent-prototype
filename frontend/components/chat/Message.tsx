@@ -28,46 +28,46 @@ export function Message({ message, className }: MessageProps) {
   return (
     <div
       className={cn(
-        'group flex gap-3 px-4 py-3',
-        isUser && 'flex-row-reverse',
+        'group flex gap-4 px-6 py-6 transition-colors hover:bg-accent/5',
+        isUser && 'bg-accent/10',
+        !isUser && 'border-b border-border/40',
         className
       )}
     >
       {/* Avatar */}
-      <Avatar className="h-8 w-8 flex-shrink-0">
+      <Avatar className="h-9 w-9 flex-shrink-0 ring-2 ring-border/20">
         <AvatarFallback
           className={cn(
-            'text-xs font-semibold',
-            isUser && 'bg-blue-500 text-white',
-            isAgent && 'bg-purple-500 text-white'
+            'text-sm font-bold',
+            isUser && 'bg-gradient-to-br from-blue-500 to-blue-600 text-white',
+            isAgent && 'bg-gradient-to-br from-purple-500 to-purple-600 text-white'
           )}
         >
-          {isUser ? 'U' : 'C'}
+          {isUser ? 'Y' : 'AI'}
         </AvatarFallback>
       </Avatar>
 
       {/* Message content */}
-      <div className={cn('flex-1 space-y-1', isUser && 'flex flex-col items-end')}>
+      <div className="flex-1 space-y-2 min-w-0">
         {/* Header */}
-        <div
-          className={cn(
-            'flex items-center gap-2 text-xs text-muted-foreground',
-            isUser && 'flex-row-reverse'
-          )}
-        >
-          <span className="font-medium">{isUser ? 'You' : 'Claude'}</span>
-          <span className="opacity-60">{formatTime(message.created_at)}</span>
+        <div className="flex items-center gap-3 text-xs">
+          <span className={cn(
+            'font-semibold',
+            isUser ? 'text-blue-600 dark:text-blue-400' : 'text-purple-600 dark:text-purple-400'
+          )}>
+            {isUser ? 'You' : 'Claude Agent'}
+          </span>
+          <span className="text-muted-foreground/60">{formatTime(message.created_at)}</span>
         </div>
 
         {/* Content */}
         <div
           className={cn(
             'prose prose-sm dark:prose-invert max-w-none',
-            isUser && 'text-right',
-            'rounded-lg px-3 py-2',
+            'rounded-xl px-4 py-3 border',
             isUser
-              ? 'bg-blue-500 text-white prose-headings:text-white prose-p:text-white prose-strong:text-white prose-code:text-white'
-              : 'bg-muted'
+              ? 'bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800/30 prose-headings:text-blue-900 dark:prose-headings:text-blue-100'
+              : 'bg-card border-border/40 shadow-sm'
           )}
         >
           <ReactMarkdown
@@ -105,9 +105,11 @@ export function Message({ message, className }: MessageProps) {
 
         {/* Thinking indicator (if applicable) */}
         {message.is_thinking && message.thinking_tokens && message.thinking_tokens > 0 && (
-          <div className="text-xs text-muted-foreground flex items-center gap-1">
-            <span className="opacity-60">💭 Thinking</span>
-            <span className="opacity-40">({message.thinking_tokens} tokens)</span>
+          <div className="text-xs text-muted-foreground flex items-center gap-2 px-1">
+            <span className="animate-pulse">💭</span>
+            <span className="font-medium">Extended thinking</span>
+            <span className="opacity-60">·</span>
+            <span className="opacity-60">{message.thinking_tokens} tokens</span>
           </div>
         )}
       </div>

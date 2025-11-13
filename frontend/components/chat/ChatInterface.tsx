@@ -65,12 +65,21 @@ export function ChatInterface({ sessionId, className }: ChatInterfaceProps) {
   if (!isConnected) {
     return (
       <div className={cn('flex-1 flex items-center justify-center p-8', className)}>
-        <div className="text-center space-y-4 max-w-md">
-          <AlertCircle className="h-12 w-12 text-yellow-500 mx-auto" />
-          <h3 className="text-lg font-semibold">Connecting to server...</h3>
-          <p className="text-sm text-muted-foreground">
-            Please wait while we establish a connection.
-          </p>
+        <div className="text-center space-y-5 max-w-md p-8 rounded-2xl border-2 border-amber-200 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-950/20 shadow-lg">
+          <div className="relative">
+            <div className="absolute inset-0 animate-ping opacity-30">
+              <AlertCircle className="h-12 w-12 text-amber-500 mx-auto" />
+            </div>
+            <AlertCircle className="h-12 w-12 text-amber-600 dark:text-amber-400 mx-auto relative" />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-amber-900 dark:text-amber-100">
+              Connecting to server...
+            </h3>
+            <p className="text-sm text-amber-700 dark:text-amber-300 mt-2">
+              Please wait while we establish a connection.
+            </p>
+          </div>
         </div>
       </div>
     );
@@ -83,12 +92,21 @@ export function ChatInterface({ sessionId, className }: ChatInterfaceProps) {
     <div className={cn('flex flex-col h-full', className)}>
       {/* Error banner */}
       {displayError && (
-        <div className="bg-red-50 dark:bg-red-950 border-b border-red-200 dark:border-red-800 px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
-            <span className="text-sm text-red-600 dark:text-red-400">{displayError}</span>
+        <div className="bg-red-50 dark:bg-red-950/30 border-b-2 border-red-200 dark:border-red-800 px-6 py-4 flex items-center justify-between shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="p-1.5 rounded-full bg-red-100 dark:bg-red-900/30">
+              <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+            </div>
+            <span className="text-sm font-medium text-red-900 dark:text-red-100">
+              {displayError}
+            </span>
           </div>
-          <Button size="sm" variant="outline" onClick={handleRetry}>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleRetry}
+            className="border-red-300 dark:border-red-700 text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/40 cursor-pointer transition-all hover:scale-105"
+          >
             Retry
           </Button>
         </div>

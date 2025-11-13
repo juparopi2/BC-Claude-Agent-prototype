@@ -76,10 +76,11 @@ export function TodoItem({ todo, showTimestamp = true }: TodoItemProps) {
   return (
     <Card
       className={cn(
-        'p-3 transition-colors',
-        todo.status === 'completed' && 'bg-green-500/5 border-green-500/20',
-        todo.status === 'in_progress' && 'bg-blue-500/5 border-blue-500/20',
-        todo.status === 'failed' && 'bg-red-500/5 border-red-500/20'
+        'p-3 transition-all hover:shadow-md',
+        todo.status === 'completed' && 'bg-green-500/5 border-green-500/20 hover:bg-green-500/10',
+        todo.status === 'in_progress' && 'bg-blue-500/5 border-blue-500/20 hover:bg-blue-500/10',
+        todo.status === 'failed' && 'bg-red-500/5 border-red-500/20 hover:bg-red-500/10',
+        todo.status === 'pending' && 'hover:bg-muted/50'
       )}
     >
       <div className="flex items-start gap-3">

@@ -17,22 +17,14 @@ export default function ChatPage() {
   // Load session on mount or when sessionId changes
   useEffect(() => {
     const loadSession = async () => {
-      // Check if session exists
-      const sessionExists = sessions.some((s) => s.id === sessionId);
-
-      if (!sessionExists) {
-        console.error('[ChatPage] Session not found:', sessionId);
-        // Redirect to /new if session doesn't exist
-        router.replace('/new');
-        return;
-      }
-
-      // Select session if it's not already selected
+      // Select session directly from backend, don't check local sessions array
+      // (it might not be loaded yet)
       if (currentSession?.id !== sessionId) {
         try {
           await selectSession(sessionId);
         } catch (error) {
           console.error('[ChatPage] Failed to select session:', error);
+          // Only redirect if the session truly doesn't exist (404 from backend)
           router.replace('/new');
         }
       }
@@ -41,7 +33,7 @@ export default function ChatPage() {
     if (sessionId) {
       loadSession();
     }
-  }, [sessionId, selectSession, currentSession, sessions, router]);
+  }, [sessionId, selectSession, currentSession, router]);
 
   // Show loading state while session loads
   if (currentSession?.id !== sessionId) {

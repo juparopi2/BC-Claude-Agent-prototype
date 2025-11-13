@@ -23,6 +23,7 @@ import { getApprovalManager } from './services/approval/ApprovalManager';
 import { getTodoManager } from './services/todo/TodoManager';
 import authMockRoutes from './routes/auth-mock';
 import authOAuthRoutes from './routes/auth-oauth';
+import sessionsRoutes from './routes/sessions';
 import { authenticateMicrosoft } from './middleware/auth-oauth';
 import { MicrosoftOAuthSession } from './types/microsoft.types';
 
@@ -646,76 +647,6 @@ function configureRoutes(): void {
     }
   });
 
-  // Chat session endpoints
-  // GET /api/chat/sessions - Get all sessions for current user
-  app.get('/api/chat/sessions', authenticateMicrosoft, async (req: Request, res: Response): Promise<void> => {
-    try {
-      const userId = req.userId;
-
-      if (!userId) {
-        res.status(401).json({
-          error: 'Unauthorized',
-          message: 'User ID not found in token',
-        });
-        return;
-      }
-
-      // Query all sessions for the user
-      const query = `
-        SELECT
-          id,
-          user_id,
-          title,
-          is_active,
-          created_at,
-          updated_at
-        FROM sessions
-        WHERE user_id = @userId
-        ORDER BY updated_at DESC
-      `;
-
-      const result = await executeQuery<{
-        id: string;
-        user_id: string;
-        title: string;
-        is_active: boolean;
-        created_at: Date;
-        updated_at: Date;
-      }>(query, { userId });
-
-      // Transform backend format to frontend format
-      const sessions = result.recordset.map((row) => {
-        // Map is_active (boolean) to status (string enum)
-        let status: 'active' | 'completed' | 'cancelled' = 'active';
-        if (!row.is_active) {
-          status = 'completed'; // Default inactive sessions to 'completed'
-        }
-
-        return {
-          id: row.id,
-          user_id: row.user_id,
-          title: row.title || 'New Chat',
-          status,
-          last_activity_at: row.updated_at.toISOString(), // Use updated_at as last_activity_at
-          created_at: row.created_at.toISOString(),
-          updated_at: row.updated_at.toISOString(),
-          // Optional fields not in current schema:
-          // goal: undefined,
-          // token_count: undefined,
-        };
-      });
-
-      res.json({
-        sessions,
-      });
-    } catch (error) {
-      console.error('[API] Get sessions failed:', error);
-      res.status(500).json({
-        error: 'Failed to get sessions',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      });
-    }
-  });
 
   // Todo endpoints
   // GET /api/todos/session/:sessionId - Get todos for a session
@@ -750,8 +681,11 @@ function configureRoutes(): void {
     app.use('/api/auth', authMockRoutes);
   }
 
-  // TODO: Add additional route handlers
-  // app.use('/api/chat', chatRoutes);
+  // Chat sessions routes (requires database)
+  if (isDatabaseAvailable) {
+    console.log('[Server] Mounting chat sessions routes');
+    app.use('/api/chat/sessions', sessionsRoutes);
+  }
 
   // 404 handler
   app.use((req: Request, res: Response) => {

@@ -70,47 +70,66 @@ export function ChatInput({
   const isOverLimit = charCount > maxChars;
 
   return (
-    <div className={cn('border-t bg-background p-4', className)}>
-      <div className="mx-auto max-w-4xl space-y-2">
+    <div className={cn('border-t border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 p-6', className)}>
+      <div className="mx-auto max-w-4xl space-y-3">
         {/* Textarea */}
-        <div className="relative flex items-end gap-2">
-          <Textarea
-            ref={textareaRef}
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            onKeyDown={handleKeyDown}
-            onCompositionStart={handleCompositionStart}
-            onCompositionEnd={handleCompositionEnd}
-            placeholder={placeholder}
-            disabled={disabled}
-            className={cn(
-              'min-h-[60px] max-h-[200px] resize-none pr-12',
-              isOverLimit && 'border-red-500 focus-visible:ring-red-500'
-            )}
-            rows={1}
-          />
+        <div className="relative flex items-end gap-3">
+          <div className="flex-1 relative">
+            <Textarea
+              ref={textareaRef}
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              onKeyDown={handleKeyDown}
+              onCompositionStart={handleCompositionStart}
+              onCompositionEnd={handleCompositionEnd}
+              placeholder={placeholder}
+              disabled={disabled}
+              className={cn(
+                'min-h-[80px] max-h-[240px] resize-none pr-14 py-4 px-4',
+                'border-2 rounded-2xl shadow-sm',
+                'focus-visible:ring-2 focus-visible:ring-primary/20',
+                'transition-all duration-200',
+                disabled && 'opacity-60 cursor-not-allowed bg-muted/50',
+                !disabled && 'hover:border-primary/40',
+                isOverLimit && 'border-red-500 focus-visible:ring-red-500/20'
+              )}
+              rows={1}
+            />
 
-          {/* Send button */}
-          <Button
-            onClick={handleSend}
-            disabled={disabled || !value.trim() || isOverLimit}
-            size="icon"
-            className="absolute bottom-2 right-2 h-8 w-8"
-            aria-label="Send message"
-          >
-            <Send className="h-4 w-4" />
-          </Button>
+            {/* Send button */}
+            <Button
+              onClick={handleSend}
+              disabled={disabled || !value.trim() || isOverLimit}
+              size="icon"
+              className={cn(
+                "absolute bottom-3 right-3 h-10 w-10 rounded-xl shadow-md",
+                "transition-all duration-200",
+                "hover:scale-105 active:scale-95",
+                (!disabled && value.trim() && !isOverLimit) && "cursor-pointer",
+                (disabled || !value.trim() || isOverLimit) && "opacity-50 cursor-not-allowed"
+              )}
+              aria-label="Send message"
+            >
+              <Send className="h-5 w-5" />
+            </Button>
+          </div>
         </div>
 
         {/* Character count and hint */}
-        <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <span className="opacity-60">
-            Press <kbd className="px-1 py-0.5 bg-muted rounded text-[10px]">⌘/Ctrl</kbd> +{' '}
-            <kbd className="px-1 py-0.5 bg-muted rounded text-[10px]">Enter</kbd> to send
+        <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
+          <span className="flex items-center gap-2 opacity-70">
+            <span>💡</span>
+            <span>
+              Press <kbd className="px-2 py-1 bg-muted/80 border border-border/40 rounded-md text-[11px] font-mono shadow-sm">⌘</kbd> +{' '}
+              <kbd className="px-2 py-1 bg-muted/80 border border-border/40 rounded-md text-[11px] font-mono shadow-sm">Enter</kbd> to send
+            </span>
           </span>
 
           {isNearLimit && (
-            <span className={cn(isOverLimit && 'text-red-500 font-medium')}>
+            <span className={cn(
+              'font-medium px-2 py-1 rounded-md',
+              isOverLimit ? 'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30' : 'text-amber-600 dark:text-amber-400'
+            )}>
               {charCount} / {maxChars}
             </span>
           )}

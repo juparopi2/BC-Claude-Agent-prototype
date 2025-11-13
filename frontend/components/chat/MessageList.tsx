@@ -38,13 +38,17 @@ export function MessageList({
   if (messages.length === 0 && !isThinking && !isStreaming && !isLoading) {
     return (
       <div className={cn('flex-1 flex items-center justify-center p-8', className)}>
-        <div className="text-center space-y-3 max-w-md">
-          <div className="text-4xl">💬</div>
-          <h3 className="text-lg font-semibold">Start a new conversation</h3>
-          <p className="text-sm text-muted-foreground">
-            Send a message to begin interacting with Claude. You can ask questions, request
-            information, or perform operations on Business Central data.
-          </p>
+        <div className="text-center space-y-5 max-w-lg p-10 rounded-2xl border-2 border-dashed border-primary/20 bg-gradient-to-br from-primary/5 to-primary/10">
+          <div className="p-4 rounded-full bg-primary/10 w-fit mx-auto">
+            <div className="text-5xl">💬</div>
+          </div>
+          <div>
+            <h3 className="text-xl font-semibold text-foreground">Start a new conversation</h3>
+            <p className="text-sm text-muted-foreground mt-3 leading-relaxed">
+              Send a message to begin interacting with Claude. You can ask questions, request
+              information, or perform operations on Business Central data.
+            </p>
+          </div>
         </div>
       </div>
     );
@@ -53,13 +57,13 @@ export function MessageList({
   // Loading state
   if (isLoading && messages.length === 0) {
     return (
-      <div className={cn('flex-1 p-4 space-y-4', className)}>
+      <div className={cn('flex-1 p-6 space-y-6', className)}>
         {[...Array(3)].map((_, i) => (
-          <div key={i} className="flex gap-3">
-            <Skeleton className="h-8 w-8 rounded-full flex-shrink-0" />
-            <div className="flex-1 space-y-2">
-              <Skeleton className="h-4 w-24" />
-              <Skeleton className="h-20 w-full" />
+          <div key={i} className="flex gap-4 px-6 py-6 bg-muted/20 rounded-xl border border-border/40">
+            <Skeleton className="h-9 w-9 rounded-full flex-shrink-0 animate-pulse" />
+            <div className="flex-1 space-y-3">
+              <Skeleton className="h-4 w-32 animate-pulse" />
+              <Skeleton className="h-24 w-full rounded-lg animate-pulse" />
             </div>
           </div>
         ))}

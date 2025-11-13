@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { PlusCircle, MessageSquare, Trash2, ListTodo, ChevronDown } from 'lucide-react';
+import { PlusCircle, MessageSquare, Trash2, ListTodo, ChevronDown, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { TodoList } from '@/components/todos';
 
@@ -99,34 +99,57 @@ export function Sidebar({
         <div className="p-2 space-y-1">
           {/* Loading state */}
           {sessionsLoading && sessions.length === 0 && (
-            <>
+            <div className="space-y-2 p-2">
               {[...Array(5)].map((_, i) => (
-                <Skeleton key={i} className="h-16 w-full" />
+                <Skeleton
+                  key={i}
+                  className="h-16 w-full rounded-lg animate-pulse"
+                />
               ))}
-            </>
+            </div>
           )}
 
           {/* Error state */}
           {sessionsError && (
-            <div className="p-4 text-center text-sm text-muted-foreground">
-              <p>{sessionsError}</p>
-              <Button
-                variant="link"
-                size="sm"
-                onClick={() => fetchSessions()}
-                className="mt-2"
-              >
-                Retry
-              </Button>
+            <div className="mx-2 my-4 p-4 rounded-xl border-2 border-red-200 dark:border-red-800/40 bg-red-50 dark:bg-red-950/20">
+              <div className="flex flex-col items-center gap-3 text-center">
+                <AlertCircle className="h-8 w-8 text-red-600 dark:text-red-400" />
+                <div>
+                  <p className="text-sm font-medium text-red-900 dark:text-red-100">
+                    Failed to load sessions
+                  </p>
+                  <p className="text-xs text-red-700 dark:text-red-300 mt-1">
+                    {sessionsError}
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fetchSessions()}
+                  className="mt-1 border-red-300 dark:border-red-700 hover:bg-red-100 dark:hover:bg-red-900/30 cursor-pointer transition-colors"
+                >
+                  Retry
+                </Button>
+              </div>
             </div>
           )}
 
           {/* Empty state */}
           {!sessionsLoading && sessions.length === 0 && !sessionsError && (
-            <div className="p-4 text-center text-sm text-muted-foreground">
-              <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-50" />
-              <p>No conversations yet</p>
-              <p className="text-xs mt-1">Start a new chat to begin</p>
+            <div className="mx-2 my-8 p-6 rounded-xl border-2 border-dashed border-border/50 bg-muted/30">
+              <div className="flex flex-col items-center gap-3 text-center">
+                <div className="p-3 rounded-full bg-primary/10">
+                  <MessageSquare className="h-8 w-8 text-primary" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-foreground">
+                    No conversations yet
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Click "New Chat" to start your first conversation
+                  </p>
+                </div>
+              </div>
             </div>
           )}
 
@@ -137,11 +160,11 @@ export function Sidebar({
             const truncatedTitle = title.length > 40 ? `${title.slice(0, 40)}...` : title;
 
             return (
-              <button
+              <div
                 key={session.id}
                 onClick={() => onSessionSelect(session.id)}
                 className={cn(
-                  'w-full text-left p-3 rounded-lg hover:bg-muted transition-colors group relative',
+                  'w-full text-left p-3 rounded-lg hover:bg-muted transition-colors group relative cursor-pointer',
                   isActive && 'bg-muted border border-border'
                 )}
               >
@@ -163,7 +186,7 @@ export function Sidebar({
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-all duration-200 hover:bg-destructive/10 hover:text-destructive cursor-pointer"
                     onClick={(e) => handleDelete(session.id, e)}
                     aria-label="Delete session"
                   >
@@ -175,7 +198,7 @@ export function Sidebar({
                 {session.status === 'active' && (
                   <div className="absolute left-1.5 top-1/2 -translate-y-1/2 h-2 w-2 rounded-full bg-green-500" />
                 )}
-              </button>
+              </div>
             );
           })}
         </div>

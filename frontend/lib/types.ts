@@ -46,12 +46,27 @@ export interface ToolUseMessage {
   created_at: string;
 }
 
+// Thinking message (client-side only, for UI - displays agent's thinking process)
+export interface ThinkingMessage {
+  id: string;
+  type: 'thinking';
+  session_id: string;
+  content?: string;          // Thinking content (optional, may be empty while thinking)
+  duration_ms?: number;      // Duration of thinking in milliseconds
+  created_at: string;
+}
+
 // Union type for all message types
-export type Message = BaseMessage | ToolUseMessage;
+export type Message = BaseMessage | ToolUseMessage | ThinkingMessage;
 
 // Type guard for tool use messages
 export function isToolUseMessage(message: Message): message is ToolUseMessage {
   return 'type' in message && message.type === 'tool_use';
+}
+
+// Type guard for thinking messages
+export function isThinkingMessage(message: Message): message is ThinkingMessage {
+  return 'type' in message && message.type === 'thinking';
 }
 
 export interface Approval {

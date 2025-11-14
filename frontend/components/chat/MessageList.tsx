@@ -3,9 +3,9 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import type { Message as MessageType } from '@/lib/types';
-import { isToolUseMessage } from '@/lib/types';
+import { isToolUseMessage, isThinkingMessage } from '@/lib/types';
 import { Message } from './Message';
-import { ToolUseMessage } from './ToolUseMessage';
+import { AgentProcessGroup } from './AgentProcessGroup';
 import { StreamingText } from './StreamingText';
 import { ThinkingIndicator } from './ThinkingIndicator';
 
@@ -73,24 +73,61 @@ export function MessageList({
     );
   }
 
+  // Helper function to check if a message is a process message (thinking or tool)
+  const isProcessMessage = (msg: MessageType) => isThinkingMessage(msg) || isToolUseMessage(msg);
+
+  // Group consecutive thinking/tool messages together
+  const renderMessages = () => {
+    const rendered: JSX.Element[] = [];
+    let i = 0;
+
+    while (i < messages.length) {
+      const message = messages[i];
+
+      // Check if this is a process message (thinking or tool)
+      if (isProcessMessage(message)) {
+        // Collect all consecutive process messages
+        const groupMessages: MessageType[] = [message];
+        let j = i + 1;
+
+        while (j < messages.length && isProcessMessage(messages[j])) {
+          groupMessages.push(messages[j]);
+          j++;
+        }
+
+        // Render as a group
+        rendered.push(
+          <div key={`group-${message.id}`} className="animate-in fade-in duration-300">
+            <AgentProcessGroup messages={groupMessages} />
+          </div>
+        );
+
+        // Skip the grouped messages
+        i = j;
+      } else {
+        // Regular message (user or assistant)
+        rendered.push(
+          <div key={message.id} className="animate-in fade-in duration-300">
+            <Message message={message} />
+          </div>
+        );
+        i++;
+      }
+    }
+
+    return rendered;
+  };
+
   return (
     <ScrollArea className={cn('flex-1', className)}>
       <div ref={scrollRef} className="space-y-4 pb-4">
-        {/* Messages */}
-        {messages.map((message) => (
-          <div key={message.id} className="animate-in fade-in duration-300">
-            {isToolUseMessage(message) ? (
-              <ToolUseMessage message={message} />
-            ) : (
-              <Message message={message} />
-            )}
-          </div>
-        ))}
+        {/* Messages with grouping */}
+        {renderMessages()}
 
-        {/* Thinking indicator */}
+        {/* Thinking indicator (live, not persisted) */}
         {isThinking && !isStreaming && <ThinkingIndicator />}
 
-        {/* Streaming message */}
+        {/* Streaming message (live, not persisted) */}
         {isStreaming && streamingMessage && <StreamingText content={streamingMessage} />}
 
         {/* Scroll anchor */}

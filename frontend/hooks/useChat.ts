@@ -7,7 +7,8 @@ import {
   SocketEvent,
   type ToolUseEventData,
 } from '@/lib/socket';
-import type { Message, Session, ToolUseMessage, isToolUseMessage } from '@/lib/types';
+import type { Message, Session, ToolUseMessage, ThinkingMessage } from '@/lib/types';
+import { isToolUseMessage, isThinkingMessage } from '@/lib/types';
 
 /**
  * Query keys for chat data
@@ -208,6 +209,24 @@ export function useChat(sessionId?: string) {
     const handleThinking = (data: { content?: string }) => {
       const isThinkingNow = !!data.content || true;
       setIsThinking(isThinkingNow);
+
+      // Persist thinking as a message (for UI cascade display)
+      if (sessionId && isThinkingNow) {
+        const thinkingMessage: ThinkingMessage = {
+          id: `thinking-${Date.now()}`,
+          type: 'thinking',
+          session_id: sessionId,
+          content: data.content,
+          created_at: new Date().toISOString(),
+        };
+
+        // Add thinking message to messages cache
+        queryClient.setQueryData<Message[]>(
+          chatKeys.messages(sessionId),
+          (old) => [...(old || []), thinkingMessage]
+        );
+      }
+
       // Don't start streaming here - let handleMessageChunk do it
       // This allows ThinkingIndicator to show briefly before streaming begins
     };

@@ -166,10 +166,31 @@ jobs:
 
       - name: Health Check
         run: |
-          echo "Waiting 90 seconds for container startup (cold start + initialization)..."
-          sleep 90
-          echo "Testing health endpoint..."
-          curl -f --max-time 30 ${{ steps.get_url.outputs.url }}/health/liveness || exit 1
+          echo "Waiting 120 seconds for container startup (cold start + initialization)..."
+          sleep 120
+          echo "Testing liveness endpoint with retries..."
+
+          MAX_RETRIES=5
+          RETRY_DELAY=15
+
+          for i in $(seq 1 $MAX_RETRIES); do
+            echo "Attempt $i/$MAX_RETRIES..."
+
+            if curl -f --max-time 60 --connect-timeout 30 ${{ steps.get_url.outputs.url }}/health/liveness; then
+              echo "✅ Health check passed!"
+              exit 0
+            else
+              echo "❌ Health check failed (attempt $i/$MAX_RETRIES)"
+
+              if [ $i -lt $MAX_RETRIES ]; then
+                echo "Waiting $RETRY_DELAY seconds before retry..."
+                sleep $RETRY_DELAY
+              fi
+            fi
+          done
+
+          echo "❌ Health check failed after $MAX_RETRIES attempts"
+          exit 1
 
       - name: Deployment Summary
         run: |

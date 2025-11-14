@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useLayoutEffect, useState, ReactNode } from 'react';
 import { Socket } from 'socket.io-client';
 import { initSocket, disconnectSocket } from '@/lib/socket';
 
@@ -17,10 +17,12 @@ interface SocketProviderProps {
 export function SocketProvider({ children }: SocketProviderProps) {
   const [socket, setSocket] = useState<Socket | null>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     // Initialize socket immediately (no delay needed with proper room join flow)
+    // useLayoutEffect is safe for synchronous setState during initialization
     console.log('[SocketProvider] Initializing socket connection...');
     const newSocket = initSocket();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Socket initialization requires synchronous setState; useLayoutEffect prevents render flicker
     setSocket(newSocket);
 
     // Cleanup cuando provider unmounts

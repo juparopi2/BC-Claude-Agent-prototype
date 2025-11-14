@@ -21,7 +21,6 @@ export function useApprovals(sessionId?: string) {
     approveApproval,
     rejectApproval,
     setCurrentApproval,
-    removeApproval,
     clearError,
   } = useApprovalStore();
 

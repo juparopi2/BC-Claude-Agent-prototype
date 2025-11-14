@@ -16,7 +16,6 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertTriangle, Clock } from 'lucide-react';
 import { useApprovals } from '@/hooks';
 import { ChangeSummary } from './ChangeSummary';
-import { cn } from '@/lib/utils';
 
 /**
  * ApprovalDialog Component

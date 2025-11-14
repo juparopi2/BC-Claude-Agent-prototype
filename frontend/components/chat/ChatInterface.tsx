@@ -1,8 +1,7 @@
 'use client';
 
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useChat } from '@/hooks';
-import { useSocket } from '@/hooks/useSocket';
 import { MessageList } from './MessageList';
 import { ChatInput } from './ChatInput';
 import { Button } from '@/components/ui/button';

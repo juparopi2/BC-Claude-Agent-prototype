@@ -4,20 +4,56 @@
 echo "🔍 Running pre-push checks..."
 echo ""
 
+# Backend linting
+echo "🧹 Running backend linter..."
+cd backend && npm run lint
+if [ $? -ne 0 ]; then
+  echo "❌ Backend linting failed. Push aborted."
+  exit 1
+fi
+
 # Backend tests
+echo ""
 echo "🧪 Running backend tests..."
-cd backend && npm test
+npm test
 if [ $? -ne 0 ]; then
   echo "❌ Backend tests failed. Push aborted."
+  exit 1
+fi
+
+# Backend build
+echo ""
+echo "🏗️  Building backend..."
+npm run build
+if [ $? -ne 0 ]; then
+  echo "❌ Backend build failed. Push aborted."
+  exit 1
+fi
+
+# Frontend linting
+echo ""
+echo "🧹 Running frontend linter..."
+cd ../frontend && npm run lint
+if [ $? -ne 0 ]; then
+  echo "❌ Frontend linting failed. Push aborted."
   exit 1
 fi
 
 # Frontend tests
 echo ""
 echo "🧪 Running frontend tests..."
-cd ../frontend && npm test
+npm test
 if [ $? -ne 0 ]; then
   echo "❌ Frontend tests failed. Push aborted."
+  exit 1
+fi
+
+# Frontend build
+echo ""
+echo "🏗️  Building frontend..."
+npm run build
+if [ $? -ne 0 ]; then
+  echo "❌ Frontend build failed. Push aborted."
   exit 1
 fi
 

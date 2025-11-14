@@ -11,6 +11,43 @@ interface ToolUseMessageProps {
   className?: string;
 }
 
+// Status icon component - moved outside render to avoid recreation
+interface StatusIconProps {
+  status: 'pending' | 'success' | 'error';
+}
+
+function StatusIcon({ status }: StatusIconProps) {
+  switch (status) {
+    case 'pending':
+      return <Loader2 className="h-4 w-4 animate-spin text-blue-500" />;
+    case 'success':
+      return <CheckCircle className="h-4 w-4 text-green-500" />;
+    case 'error':
+      return <XCircle className="h-4 w-4 text-red-500" />;
+  }
+}
+
+// Status badge component - moved outside render to avoid recreation
+interface StatusBadgeProps {
+  status: 'pending' | 'success' | 'error';
+}
+
+function StatusBadge({ status }: StatusBadgeProps) {
+  const statusConfig = {
+    pending: { label: 'Running', className: 'bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300' },
+    success: { label: 'Success', className: 'bg-green-100 dark:bg-green-950 text-green-700 dark:text-green-300' },
+    error: { label: 'Failed', className: 'bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300' },
+  };
+
+  const config = statusConfig[status];
+
+  return (
+    <span className={cn('px-2 py-0.5 rounded-full text-xs font-medium', config.className)}>
+      {config.label}
+    </span>
+  );
+}
+
 export function ToolUseMessage({ message, className }: ToolUseMessageProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -21,35 +58,6 @@ export function ToolUseMessage({ message, className }: ToolUseMessageProps) {
       .split('_')
       .map(word => word.charAt(0).toUpperCase() + word.slice(1))
       .join(' ');
-  };
-
-  // Status icon component
-  const StatusIcon = () => {
-    switch (message.status) {
-      case 'pending':
-        return <Loader2 className="h-4 w-4 animate-spin text-blue-500" />;
-      case 'success':
-        return <CheckCircle className="h-4 w-4 text-green-500" />;
-      case 'error':
-        return <XCircle className="h-4 w-4 text-red-500" />;
-    }
-  };
-
-  // Status badge component
-  const StatusBadge = () => {
-    const statusConfig = {
-      pending: { label: 'Running', className: 'bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300' },
-      success: { label: 'Success', className: 'bg-green-100 dark:bg-green-950 text-green-700 dark:text-green-300' },
-      error: { label: 'Failed', className: 'bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300' },
-    };
-
-    const config = statusConfig[message.status];
-
-    return (
-      <span className={cn('px-2 py-0.5 rounded-full text-xs font-medium', config.className)}>
-        {config.label}
-      </span>
-    );
   };
 
   return (
@@ -78,8 +86,8 @@ export function ToolUseMessage({ message, className }: ToolUseMessageProps) {
 
         {/* Status indicator */}
         <div className="flex items-center gap-2">
-          <StatusBadge />
-          <StatusIcon />
+          <StatusBadge status={message.status} />
+          <StatusIcon status={message.status} />
         </div>
       </button>
 

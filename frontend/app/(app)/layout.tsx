@@ -22,7 +22,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const { isAuthenticated, isLoading } = useAuth();
-  const { currentSession, selectSession, createSession } = useChat();
+  const { currentSession, selectSession } = useChat();
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sourcePanelOpen, setSourcePanelOpen] = useState(true);

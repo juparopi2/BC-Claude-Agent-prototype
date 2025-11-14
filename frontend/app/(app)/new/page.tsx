@@ -22,7 +22,6 @@ export default function NewChatPage() {
     if (currentSession?.id) {
       router.replace(`/chat/${currentSession.id}`);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentSession?.id, router]); // Only depend on the ID, not the whole object
 
   const handleSendMessage = async (initialMessage?: string) => {

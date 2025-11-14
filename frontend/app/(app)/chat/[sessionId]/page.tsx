@@ -4,13 +4,11 @@ import { useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useChat } from '@/hooks';
 import { ChatInterface } from '@/components/chat/ChatInterface';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { AlertCircle } from 'lucide-react';
 
 export default function ChatPage() {
   const params = useParams();
   const router = useRouter();
-  const { selectSession, currentSession, sessions } = useChat();
+  const { selectSession, currentSession } = useChat();
 
   const sessionId = params.sessionId as string;
 

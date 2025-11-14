@@ -80,8 +80,7 @@ export function Message({ message, className }: MessageProps) {
         >
           <ReactMarkdown
             components={{
-              code({ node, inline, className, children, ...props }: {
-                node?: unknown;
+              code({ inline, className, children, ...props }: {
                 inline?: boolean;
                 className?: string;
                 children?: React.ReactNode;

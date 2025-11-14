@@ -16,6 +16,8 @@ La carpeta `future-developments/` sirve como:
 ```
 future-developments/
 ├── README.md (este archivo)
+├── persistent-agent-messages/
+│   └── 01-database-persistence-prd.md
 └── rate-limiting/
     ├── 01-exponential-backoff-prd.md
     ├── 02-token-tracking-analytics-prd.md
@@ -38,7 +40,45 @@ Cada PRD sigue esta estructura estándar:
 8. **References** - Links a docs oficiales, SDKs, papers, best practices
 9. **Decision Log** - Trade-offs considerados, alternativas descartadas
 
-## 🚦 Rate Limiting Strategy (Current Focus)
+## 💾 Persistent Agent Messages
+
+El PRD en `persistent-agent-messages/` fue creado en **2025-11-14** en respuesta a un bug donde los mensajes de pensamiento (thinking) y uso de herramientas (tool use) desaparecían al recargar la página.
+
+### Quick Summary
+
+| PRD | Priority | Effort | ROI | When to Implement |
+|-----|----------|--------|-----|------------------|
+| **01. Database Persistence** | High (P1) | 16.5-23 hours | Very High (7,500%-11,800% ROI) | Phase 3 or post-MVP |
+
+### Context
+
+**Problem**: Thinking and tool use messages stored only in frontend cache (ephemeral) → lost on page reload → incomplete audit trail.
+
+**Impact**:
+- ❌ Users lose conversation context on reload
+- ❌ No enterprise compliance support (no audit trail)
+- ❌ Debugging issues difficult (can't see which tools agent used)
+- ❌ Poor UX (messages appear during streaming but disappear after)
+
+**Decision**: DEFER implementation until Phase 3 or post-MVP (not blocking for MVP launch), but document comprehensively now.
+
+**Status**: Full PRD completed (~12,000 words). NO code implemented yet.
+
+**Next Steps**:
+1. Read PRD to understand full architecture (database schema, backend, frontend changes)
+2. Implement when enterprise customer requests audit trail OR users complain about lost history
+3. Follow phased implementation: Database (1-2 hrs) → Backend (3-4 hrs) → Frontend (2-3 hrs) → Testing (2-3 hrs)
+4. Update 5 docs in `docs/` folder (8.5-11 hours estimated)
+
+**Key Technical Decisions**:
+- ✅ Option A: Add `message_type` discriminator column to existing `messages` table (simpler than separate table)
+- ✅ Store tool args/results in JSON metadata column (flexible schema, built-in SQL Server JSON support)
+- ✅ Persist on every WebSocket event (real-time, no batch complexity)
+- ✅ Big bang migration (MVP allows dropping database if needed)
+
+---
+
+## 🚦 Rate Limiting Strategy
 
 Los 5 documentos en `rate-limiting/` fueron creados en **2025-11-14** en respuesta a un 429 rate limit error detectado en producción.
 
@@ -107,10 +147,14 @@ When creating new PRDs:
 
 ## 📅 Version History
 
-- **2025-11-14**: Initial creation with 5 rate limiting PRDs
-  - Research conducted by Claude Code planning agent
-  - Context: 429 rate limit error detected in testing
-  - Decision: Document comprehensively, defer implementation
+- **2025-11-14**: Initial creation with 5 rate limiting PRDs + 1 persistent agent messages PRD
+  - **Rate Limiting**: Research conducted by Claude Code planning agent
+    - Context: 429 rate limit error detected in testing
+    - Decision: Document comprehensively, defer implementation
+  - **Persistent Agent Messages**: Created comprehensive PRD (~12,000 words)
+    - Context: Thinking/tool messages disappearing on page reload
+    - Root cause: Messages only in frontend cache, never persisted to DB
+    - Decision: Document architecture + migration + doc updates, defer implementation to Phase 3/post-MVP
 
 ---
 

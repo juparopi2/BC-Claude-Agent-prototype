@@ -13,6 +13,7 @@ export default [
       'node_modules/**',
       'coverage/**',
       '*.config.js',
+      'src/__tests__/**',  // Ignore test files (excluded from tsconfig)
     ],
   },
   {

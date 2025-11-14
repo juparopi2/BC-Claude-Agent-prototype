@@ -1,0 +1,25 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+echo "🔍 Running pre-push checks..."
+echo ""
+
+# Backend tests
+echo "🧪 Running backend tests..."
+cd backend && npm test
+if [ $? -ne 0 ]; then
+  echo "❌ Backend tests failed. Push aborted."
+  exit 1
+fi
+
+# Frontend tests
+echo ""
+echo "🧪 Running frontend tests..."
+cd ../frontend && npm test
+if [ $? -ne 0 ]; then
+  echo "❌ Frontend tests failed. Push aborted."
+  exit 1
+fi
+
+echo ""
+echo "✅ All checks passed. Pushing..."

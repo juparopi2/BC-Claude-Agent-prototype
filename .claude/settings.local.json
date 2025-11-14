@@ -66,7 +66,8 @@
       "Bash(ls:*)",
       "Bash(nslookup:*)",
       "Bash(ping:*)",
-      "Bash(if exist \"frontend\\.next\\dev\\lock\" del /F \"frontend\\.next\\dev\\lock\")"
+      "Bash(if exist \"frontend\\.next\\dev\\lock\" del /F \"frontend\\.next\\dev\\lock\")",
+      "Bash(npm test:*)"
     ],
     "deny": [],
     "ask": []

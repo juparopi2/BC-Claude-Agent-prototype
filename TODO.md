@@ -218,13 +218,105 @@ docs-old/                               📦 Backup (74 archivos)
 
 ---
 
-### Phase 3: Testing & Production Readiness ⏳ PENDING (Weeks 8-9)
+### Phase 3: Testing & Production Readiness ⏳ IN PROGRESS (Weeks 8-9)
 
-- [ ] Week 8: Unit tests, integration tests, E2E tests (Playwright)
-- [ ] Week 9: Documentation, demo prep, performance optimization
-- [ ] Target: >70% test coverage
+**Estado Actual**: Week 8 - Documentando estrategia de testing
+
+#### Week 8: Testing Infrastructure & Documentation (65-83 horas)
+
+**Fase 1: Documentación de Testing** ⏳ IN PROGRESS (6-8 horas)
+- [ ] Crear `future-developments/testing/` directory structure
+- [ ] `00-testing-strategy.md` - Tech stack, timeline, effort estimation
+- [ ] `01-unit-testing-guide.md` - Vitest setup, patterns, ejemplos críticos
+- [ ] `02-integration-testing-guide.md` - API endpoints, database, auth flows
+- [ ] `03-e2e-testing-guide.md` - Playwright setup, 5 user journeys
+- [ ] `04-edge-cases-catalog.md` - 40+ edge cases identificados
+- [ ] `05-ci-cd-pipeline.md` - GitHub Actions, Husky pre-push hooks
+
+**Fase 2: Infraestructura de Testing** (10-12 horas)
+- [ ] **Backend (Vitest)**:
+  - [ ] Install: `vitest`, `@vitest/ui`, `@types/supertest`, `supertest`, `msw`
+  - [ ] Config: `vitest.config.ts` (coverage 70%, tsconfig paths)
+  - [ ] Test structure: `src/__tests__/unit/`, `src/__tests__/integration/`
+- [ ] **Frontend (Vitest + React Testing Library)**:
+  - [ ] Install: `vitest`, `@testing-library/react`, `@testing-library/user-event`, `jsdom`
+  - [ ] Config: `vitest.config.ts` (jsdom environment, coverage 70%)
+  - [ ] Test structure: `src/__tests__/components/`, `src/__tests__/hooks/`
+- [ ] **E2E (Playwright)**:
+  - [ ] Install: `@playwright/test`
+  - [ ] Config: `playwright.config.ts` (1 worker, chromium + firefox)
+  - [ ] Test structure: `e2e/auth.spec.ts`, `e2e/chat.spec.ts`, etc.
+- [ ] **Git Hooks (Husky + lint-staged)**:
+  - [ ] Install: `husky`, `lint-staged`
+  - [ ] Pre-push hook: Run `npm test` before push
+  - [ ] Bypass option: `--no-verify` for emergencies
+- [ ] **GitHub Actions**:
+  - [ ] `.github/workflows/test.yml` - Run tests on PR (non-blocking)
+  - [ ] Jobs: backend-tests, frontend-tests, e2e-tests
+  - [ ] Upload coverage to Codecov
+
+**Fase 3: Tests Críticos** (40-50 horas)
+- [ ] **Backend Unit Tests** (20-25h, Target: 70% coverage):
+  - [ ] `DirectAgentService.test.ts` (8 tests: tool execution, max turns, approval flow, MCP failures)
+  - [ ] `ApprovalManager.test.ts` (6 tests: request/respond, timeout, expiration job)
+  - [ ] `TodoManager.test.ts` (5 tests: sync from SDK, CRUD, ordering, active form)
+  - [ ] `database.test.ts` (4 tests: retry logic, keepalive, connection pool)
+- [ ] **Frontend Unit Tests** (15-20h, Target: 70% coverage):
+  - [ ] `ChatInterface.test.tsx` (6 tests: send message, streaming states, optimistic updates)
+  - [ ] `socket.test.ts` (4 tests: connection, room join retry, reconnection)
+  - [ ] `api.test.ts` (4 tests: request with auth, 401 redirect, error handling)
+  - [ ] `useChat.test.ts` (5 tests: message management, session switching)
+- [ ] **E2E Tests** (5-8h):
+  - [ ] `auth.spec.ts` - OAuth flow, login/logout
+  - [ ] `chat.spec.ts` - Send message, streaming, history
+  - [ ] `approval.spec.ts` - Write operation → approval dialog → approve/reject
+  - [ ] `todo.spec.ts` - Complex task → auto-generated todos
+  - [ ] `errors.spec.ts` - Network disconnect, session expiry
+
+**Fase 4: Enforcement & Documentation Updates** (4-5 horas)
+- [ ] Configure Husky pre-push hook
+- [ ] Add coverage thresholds (70%) to vitest configs
+- [ ] Update `CLAUDE.md` with testing guidelines
+- [ ] Update this TODO.md with progress
+- [ ] Create `backend/README-TESTING.md` and `frontend/README-TESTING.md`
+
+#### Week 9: Polish & Deployment (TBD)
 - [ ] Accessibility improvements: ARIA labels, keyboard navigation, screen reader support
 - [ ] Production deployment: Azure Container Apps with CI/CD pipeline
+- [ ] Demo prep & user documentation
+
+---
+
+### Phase 4: Performance & Monitoring ⏳ POSTPONED (Post-MVP)
+
+**Estado**: Postponed to focus on testing first
+
+**Performance Testing** (8-12 horas, postponed):
+- [ ] Choose framework: k6 (modern, scalable) or Artillery (simpler)
+- [ ] Load testing: 10, 50, 100 concurrent users
+- [ ] Stress testing: Connection pool exhaustion, DB limits
+- [ ] WebSocket performance: Sustained streaming under load
+- [ ] Performance benchmarks: P95 latency targets
+  - API endpoints: <3s
+  - Database queries: <200ms
+  - WebSocket streaming: <500ms first token
+
+**Monitoring & Observability** (6-8 horas, postponed):
+- [ ] Implement structured logging (Winston or Pino)
+- [ ] Create observability tables (mcp_tool_calls, performance_metrics, error_logs)
+- [ ] Add APM integration (Application Insights or New Relic)
+- [ ] Create dashboards for:
+  - Request latency (P50, P95, P99)
+  - Error rates by endpoint
+  - Token usage and costs
+  - Database connection pool metrics
+
+**Production Optimizations** (4-6 horas, postponed):
+- [ ] Redis caching for frequent BC queries (TTL: 5 min)
+- [ ] Database query optimization: Composite indexes, query plan analysis
+- [ ] Rate limiting: express-rate-limit (100 req/15min per user)
+- [ ] WebSocket connection pooling
+- [ ] CDN setup for frontend assets
 
 ---
 

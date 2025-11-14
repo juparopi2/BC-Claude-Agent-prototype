@@ -17,7 +17,6 @@
  * 5. Repeat until Claude is done (agentic loop)
  */
 
-import Anthropic from '@anthropic-ai/sdk';
 import type {
   MessageParam,
   TextBlock,
@@ -27,6 +26,8 @@ import { env } from '@/config';
 import type { AgentEvent, AgentExecutionResult } from '@/types';
 import type { ApprovalManager } from '../approval/ApprovalManager';
 import type { TodoManager } from '../todo/TodoManager';
+import type { IAnthropicClient, ClaudeTool } from './IAnthropicClient';
+import { AnthropicClient } from './AnthropicClient';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -92,13 +93,19 @@ interface WorkflowValidationResult {
  * Bypasses the buggy Agent SDK by using Anthropic API directly.
  */
 export class DirectAgentService {
-  private anthropic: Anthropic;
+  private client: IAnthropicClient;
   private approvalManager?: ApprovalManager;
   private mcpDataPath: string;
 
-  constructor(approvalManager?: ApprovalManager, _todoManager?: TodoManager) {
-    this.anthropic = new Anthropic({
-      apiKey: env.ANTHROPIC_API_KEY,
+  constructor(
+    approvalManager?: ApprovalManager,
+    _todoManager?: TodoManager,
+    client?: IAnthropicClient
+  ) {
+    // Use dependency injection for testability
+    // If no client provided, create real AnthropicClient
+    this.client = client || new AnthropicClient({
+      apiKey: env.ANTHROPIC_API_KEY || '',
     });
     this.approvalManager = approvalManager;
 
@@ -162,8 +169,8 @@ export class DirectAgentService {
         turnCount++;
         console.log(`[DirectAgentService] Turn ${turnCount}/${maxTurns}`);
 
-        // Call Claude API
-        const response = await this.anthropic.messages.create({
+        // Call Claude API via our interface
+        const response = await this.client.createChatCompletion({
           model: env.ANTHROPIC_MODEL,
           max_tokens: 4096,
           messages: conversationHistory,
@@ -395,9 +402,9 @@ export class DirectAgentService {
    *
    * Converts SDK MCP server tools to Anthropic tool format
    */
-  private async getMCPToolDefinitions(): Promise<Anthropic.Messages.Tool[]> {
+  private async getMCPToolDefinitions(): Promise<ClaudeTool[]> {
     // Import tools from our SDK MCP server
-    const tools: Anthropic.Messages.Tool[] = [
+    const tools: ClaudeTool[] = [
       {
         name: 'list_all_entities',
         description: 'Returns a complete list of all Business Central entities. Use this first to discover available entities.',

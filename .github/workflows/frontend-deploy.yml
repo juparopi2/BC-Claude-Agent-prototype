@@ -146,6 +146,8 @@ jobs:
             --name ${{ env.CONTAINER_APP_NAME }} \
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --image ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            --min-replicas 1 \
+            --max-replicas 5 \
             --set-env-vars \
               NODE_ENV=production \
               NEXT_PUBLIC_API_URL=${{ steps.get_backend_url.outputs.api_url }} \
@@ -164,8 +166,10 @@ jobs:
 
       - name: Health Check
         run: |
-          sleep 30
-          curl -f ${{ steps.get_url.outputs.url }} || exit 1
+          echo "Waiting 60 seconds for Next.js server startup..."
+          sleep 60
+          echo "Testing frontend endpoint..."
+          curl -f --max-time 30 ${{ steps.get_url.outputs.url }} || exit 1
 
       - name: Deployment Summary
         run: |

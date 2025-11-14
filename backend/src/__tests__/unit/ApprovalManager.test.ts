@@ -1,5 +1,10 @@
 /**
- * ApprovalManager Unit Tests
+ * ApprovalManager Unit Tests - FIXED
+ *
+ * Fixed Issues:
+ * 1. Database mock now uses persistent spy at module level
+ * 2. Socket.IO mock properly captures emit spy
+ * 3. All assertions updated to use correct spy references
  *
  * Test Coverage:
  * 1. Request approval flow (create request, emit event, return promise)
@@ -14,40 +19,48 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ApprovalManager, getApprovalManager } from '@/services/approval/ApprovalManager';
 import type { Server as SocketServer } from 'socket.io';
 
-// Mock database
+// ===== PHASE 1: FIX DATABASE MOCK =====
+// Create persistent mock chain at module level
+const mockRequestChain = {
+  input: vi.fn().mockReturnThis(),
+  query: vi.fn().mockResolvedValue({ recordset: [], rowsAffected: [0] }),
+};
+
+const mockDbRequest = vi.fn(() => mockRequestChain);
+
+// Mock database with persistent spy
 vi.mock('@/config/database', () => ({
   getDatabase: vi.fn(() => ({
-    request: vi.fn(() => ({
-      input: vi.fn().mockReturnThis(),
-      query: vi.fn().mockResolvedValue({ recordset: [], rowsAffected: [0] }),
-    })),
+    request: mockDbRequest,  // Use the persistent spy
   })),
 }));
 
 describe('ApprovalManager', () => {
   let approvalManager: ApprovalManager;
   let mockIo: SocketServer;
-  let mockDbRequest: ReturnType<typeof vi.fn>;
+  let mockEmit: ReturnType<typeof vi.fn>;  // Phase 2: Capture emit spy
 
   beforeEach(async () => {
     vi.clearAllMocks();
     vi.useFakeTimers();
 
-    // Mock Socket.IO
+    // Re-setup database mock after clearAllMocks
+    mockDbRequest.mockReturnValue(mockRequestChain);
+    mockRequestChain.input.mockReturnThis();
+    mockRequestChain.query.mockResolvedValue({ recordset: [], rowsAffected: [0] });
+
+    // ===== PHASE 2: FIX SOCKET.IO MOCK =====
+    // Create persistent emit spy
+    mockEmit = vi.fn();
+    const mockTo = vi.fn(() => ({ emit: mockEmit }));
+
     mockIo = {
-      to: vi.fn(() => ({
-        emit: vi.fn(),
-      })),
+      to: mockTo,
     } as unknown as SocketServer;
 
     // Get fresh instance (reset singleton)
     (ApprovalManager as any).instance = null;
     approvalManager = ApprovalManager.getInstance(mockIo);
-
-    // Get mock database request
-    const { getDatabase } = await import('@/config/database');
-    const db = getDatabase();
-    mockDbRequest = db?.request;
   });
 
   afterEach(() => {
@@ -62,6 +75,7 @@ describe('ApprovalManager', () => {
         sessionId: 'session_123',
         toolName: 'bc_create_customer',
         toolArgs: { name: 'John Doe', email: 'john@example.com' },
+        expiresInMs: 10000, // 10 seconds to avoid timeout during test
       };
 
       // Act - start the request (but don't await yet)
@@ -70,12 +84,13 @@ describe('ApprovalManager', () => {
       // Fast-forward to allow async operations to complete
       await vi.runOnlyPendingTimersAsync();
 
+      // ===== PHASE 3: FIX ASSERTIONS =====
       // Assert - Database insert should be called
       expect(mockDbRequest).toHaveBeenCalled();
 
       // Assert - WebSocket event should be emitted
       expect(mockIo.to).toHaveBeenCalledWith('session_123');
-      expect((mockIo.to as any)().emit).toHaveBeenCalledWith(
+      expect(mockEmit).toHaveBeenCalledWith(
         'approval:requested',
         expect.objectContaining({
           toolName: 'bc_create_customer',
@@ -83,8 +98,8 @@ describe('ApprovalManager', () => {
         })
       );
 
-      // Cleanup - resolve the promise
-      vi.runAllTimers();
+      // Cleanup - advance to timeout
+      vi.advanceTimersByTime(10000);
       await approvalPromise;
     });
 
@@ -93,14 +108,14 @@ describe('ApprovalManager', () => {
         sessionId: 'session_123',
         toolName: 'bc_create_customer',
         toolArgs: { name: 'Acme Corp', email: 'acme@example.com', phoneNumber: '555-0123' },
+        expiresInMs: 10000,
       };
 
       const approvalPromise = approvalManager.request(requestOptions);
       await vi.runOnlyPendingTimersAsync();
 
       // Check emitted event has correct summary
-      const emitCall = (mockIo.to as any)().emit;
-      expect(emitCall).toHaveBeenCalledWith(
+      expect(mockEmit).toHaveBeenCalledWith(
         'approval:requested',
         expect.objectContaining({
           summary: expect.objectContaining({
@@ -115,7 +130,7 @@ describe('ApprovalManager', () => {
         })
       );
 
-      vi.runAllTimers();
+      vi.advanceTimersByTime(10000);
       await approvalPromise;
     });
   });
@@ -126,23 +141,22 @@ describe('ApprovalManager', () => {
         sessionId: 'session_123',
         toolName: 'bc_create_customer',
         toolArgs: { name: 'John Doe' },
+        expiresInMs: 10000, // 10 seconds to avoid timeout during test
       };
 
       // Start approval request
       const approvalPromise = approvalManager.request(requestOptions);
-      await vi.runOnlyPendingTimersAsync();
+
+      // Wait for async setup to complete (database insert, emit, Promise creation)
+      await vi.advanceTimersByTimeAsync(1);
 
       // Get the approval ID from the emitted event
-      const emitCall = (mockIo.to as any)().emit;
-      const approvalId = emitCall.mock.calls[0][1].approvalId;
+      const approvalId = mockEmit.mock.calls[0][1].approvalId;
 
       // Mock database query to return session_id
-      mockDbRequest.mockImplementationOnce(() => ({
-        input: vi.fn().mockReturnThis(),
-        query: vi.fn().mockResolvedValue({
-          recordset: [{ session_id: 'session_123' }],
-        }),
-      }));
+      mockRequestChain.query.mockResolvedValueOnce({
+        recordset: [{ session_id: 'session_123' }],
+      });
 
       // Respond with approval
       await approvalManager.respondToApproval(approvalId, 'approved', 'user_123');
@@ -157,20 +171,19 @@ describe('ApprovalManager', () => {
         sessionId: 'session_123',
         toolName: 'bc_create_customer',
         toolArgs: { name: 'John Doe' },
+        expiresInMs: 10000, // 10 seconds to avoid timeout during test
       };
 
       const approvalPromise = approvalManager.request(requestOptions);
-      await vi.runOnlyPendingTimersAsync();
 
-      const emitCall = (mockIo.to as any)().emit;
-      const approvalId = emitCall.mock.calls[0][1].approvalId;
+      // Wait for async setup to complete
+      await vi.advanceTimersByTimeAsync(1);
 
-      mockDbRequest.mockImplementationOnce(() => ({
-        input: vi.fn().mockReturnThis(),
-        query: vi.fn().mockResolvedValue({
-          recordset: [{ session_id: 'session_123' }],
-        }),
-      }));
+      const approvalId = mockEmit.mock.calls[0][1].approvalId;
+
+      mockRequestChain.query.mockResolvedValueOnce({
+        recordset: [{ session_id: 'session_123' }],
+      });
 
       await approvalManager.respondToApproval(approvalId, 'rejected', 'user_123');
 
@@ -183,31 +196,30 @@ describe('ApprovalManager', () => {
         sessionId: 'session_123',
         toolName: 'bc_create_customer',
         toolArgs: { name: 'John Doe' },
+        expiresInMs: 10000, // 10 seconds to avoid timeout during test
       };
 
       const approvalPromise = approvalManager.request(requestOptions);
-      await vi.runOnlyPendingTimersAsync();
 
-      const emitCall = (mockIo.to as any)().emit;
-      const approvalId = emitCall.mock.calls[0][1].approvalId;
+      // Wait for async setup to complete
+      await vi.advanceTimersByTimeAsync(1);
 
-      mockDbRequest.mockImplementationOnce(() => ({
-        input: vi.fn().mockReturnThis(),
-        query: vi.fn().mockResolvedValue({
-          recordset: [{ session_id: 'session_123' }],
-        }),
-      }));
+      const approvalId = mockEmit.mock.calls[0][1].approvalId;
+
+      mockRequestChain.query.mockResolvedValueOnce({
+        recordset: [{ session_id: 'session_123' }],
+      });
 
       await approvalManager.respondToApproval(approvalId, 'approved', 'user_123');
 
       // Check database UPDATE was called
       expect(mockDbRequest).toHaveBeenCalledTimes(3); // INSERT + UPDATE + SELECT
-      const queryCall = mockDbRequest.mock.results[1].value.query;
-      expect(queryCall).toHaveBeenCalledWith(
+      expect(mockRequestChain.query).toHaveBeenCalledWith(
         expect.stringContaining('UPDATE approvals')
       );
 
-      vi.runAllTimers();
+      // Cleanup - advance to timeout (avoid runAllTimers infinite loop)
+      vi.advanceTimersByTime(10000);
       await approvalPromise;
     });
   });
@@ -237,24 +249,22 @@ describe('ApprovalManager', () => {
         sessionId: 'session_123',
         toolName: 'bc_create_customer',
         toolArgs: { name: 'John Doe' },
-        expiresInMs: 5000,
+        expiresInMs: 10000, // 10 seconds
       };
 
       const approvalPromise = approvalManager.request(requestOptions);
-      await vi.runOnlyPendingTimersAsync();
 
-      const emitCall = (mockIo.to as any)().emit;
-      const approvalId = emitCall.mock.calls[0][1].approvalId;
+      // Wait for async setup to complete
+      await vi.advanceTimersByTimeAsync(1);
 
-      mockDbRequest.mockImplementationOnce(() => ({
-        input: vi.fn().mockReturnThis(),
-        query: vi.fn().mockResolvedValue({
-          recordset: [{ session_id: 'session_123' }],
-        }),
-      }));
+      const approvalId = mockEmit.mock.calls[0][1].approvalId;
 
-      // Respond before timeout
-      vi.advanceTimersByTime(2000); // 2 seconds
+      mockRequestChain.query.mockResolvedValueOnce({
+        recordset: [{ session_id: 'session_123' }],
+      });
+
+      // Respond before timeout (advance 2 seconds, still within 10 second window)
+      vi.advanceTimersByTime(2000);
       await approvalManager.respondToApproval(approvalId, 'approved', 'user_123');
 
       // Promise should resolve to true (approved)
@@ -280,12 +290,9 @@ describe('ApprovalManager', () => {
         },
       ];
 
-      mockDbRequest.mockImplementationOnce(() => ({
-        input: vi.fn().mockReturnThis(),
-        query: vi.fn().mockResolvedValue({
-          recordset: mockApprovals,
-        }),
-      }));
+      mockRequestChain.query.mockResolvedValueOnce({
+        recordset: mockApprovals,
+      });
 
       const result = await approvalManager.getPendingApprovals('session_123');
 
@@ -301,18 +308,14 @@ describe('ApprovalManager', () => {
 
   describe('5. Expire Old Approvals Job', () => {
     it('should expire old pending approvals', async () => {
-      mockDbRequest.mockImplementationOnce(() => ({
-        input: vi.fn().mockReturnThis(),
-        query: vi.fn().mockResolvedValue({
-          rowsAffected: [2], // 2 approvals expired
-        }),
-      }));
+      mockRequestChain.query.mockResolvedValueOnce({
+        rowsAffected: [2], // 2 approvals expired
+      });
 
       await approvalManager.expireOldApprovals();
 
       expect(mockDbRequest).toHaveBeenCalled();
-      const queryCall = mockDbRequest.mock.results[0].value.query;
-      expect(queryCall).toHaveBeenCalledWith(
+      expect(mockRequestChain.query).toHaveBeenCalledWith(
         expect.stringContaining("SET status = 'expired'")
       );
     });

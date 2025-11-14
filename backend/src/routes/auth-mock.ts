@@ -267,7 +267,7 @@ router.get('/me', (req: Request, res: Response): void => {
         role: user.role,
       },
     });
-  } catch (error) {
+  } catch {
     res.status(401).json({ error: 'Invalid token' });
   }
 });

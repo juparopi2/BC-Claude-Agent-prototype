@@ -22,7 +22,8 @@ export interface Session {
   updated_at: string;
 }
 
-export interface Message {
+// Base message interface (for database messages)
+export interface BaseMessage {
   id: string;
   session_id: string;
   role: 'user' | 'assistant' | 'system';
@@ -30,6 +31,27 @@ export interface Message {
   thinking_tokens?: number;
   is_thinking?: boolean;
   created_at: string;
+}
+
+// Tool use message (client-side only, for UI)
+export interface ToolUseMessage {
+  id: string;
+  type: 'tool_use';
+  session_id: string;
+  tool_name: string;
+  tool_args: Record<string, unknown>;
+  tool_result?: unknown;
+  status: 'pending' | 'success' | 'error';
+  error_message?: string;
+  created_at: string;
+}
+
+// Union type for all message types
+export type Message = BaseMessage | ToolUseMessage;
+
+// Type guard for tool use messages
+export function isToolUseMessage(message: Message): message is ToolUseMessage {
+  return 'type' in message && message.type === 'tool_use';
 }
 
 export interface Approval {

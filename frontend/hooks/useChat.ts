@@ -7,7 +7,7 @@ import {
   SocketEvent,
   type ToolUseEventData,
 } from '@/lib/socket';
-import type { Message, Session } from '@/lib/types';
+import type { Message, Session, ToolUseMessage, isToolUseMessage } from '@/lib/types';
 
 /**
  * Query keys for chat data
@@ -85,7 +85,8 @@ export function useChat(sessionId?: string) {
 
   // Create session mutation
   const createSessionMutation = useMutation({
-    mutationFn: (goal?: string) => chatApi.createSession(goal),
+    mutationFn: (params?: { goal?: string }) =>
+      chatApi.createSession(params?.goal),
     onSuccess: (response) => {
       // Invalidate sessions to refetch
       queryClient.invalidateQueries({ queryKey: chatKeys.sessions() });
@@ -129,9 +130,24 @@ export function useChat(sessionId?: string) {
   // Join session room when connected
   useEffect(() => {
     if (socket && isConnected && sessionId) {
+      console.log('[useChat] Joining session room:', sessionId);
+
+      // Listen for join confirmation
+      const handleJoined = (data: { sessionId: string }) => {
+        if (data.sessionId === sessionId) {
+          console.log('[useChat] Successfully joined room:', sessionId);
+        }
+      };
+
+      // Register listener (use once to avoid duplicates)
+      socket.once('session:joined', handleJoined);
+
+      // Emit join request
       socketChatApi.joinSession(sessionId);
 
       return () => {
+        // Clean up listener if component unmounts before confirmation
+        socket.off('session:joined', handleJoined);
         socketChatApi.leaveSession(sessionId);
       };
     }
@@ -154,9 +170,12 @@ export function useChat(sessionId?: string) {
     const endStreaming = (message: Message) => {
       setIsStreaming(false);
       setStreamingMessage('');
-      // Invalidate messages query to refetch and include new message
+      // Manually add message to cache instead of invalidating (prevents flashing)
       if (sessionId) {
-        queryClient.invalidateQueries({ queryKey: chatKeys.messages(sessionId) });
+        queryClient.setQueryData<Message[]>(
+          chatKeys.messages(sessionId),
+          (old) => [...(old || []), message]
+        );
       }
     };
 
@@ -189,23 +208,64 @@ export function useChat(sessionId?: string) {
     const handleThinking = (data: { content?: string }) => {
       const isThinkingNow = !!data.content || true;
       setIsThinking(isThinkingNow);
-      if (isThinkingNow) {
-        startStreaming();
-      }
+      // Don't start streaming here - let handleMessageChunk do it
+      // This allows ThinkingIndicator to show briefly before streaming begins
     };
 
     // Tool use (backend emits agent:tool_use)
     const handleToolUse = (data: ToolUseEventData) => {
       console.log('[useChat] Tool use:', data.toolName, data.args);
+
+      // FIX BUG #4: Add tool use message to UI
+      if (sessionId) {
+        const toolMessage: ToolUseMessage = {
+          id: `tool-${Date.now()}-${data.toolName}`,
+          type: 'tool_use',
+          session_id: sessionId,
+          tool_name: data.toolName,
+          tool_args: data.args,
+          status: 'pending',
+          created_at: new Date().toISOString(),
+        };
+
+        // Add tool message to messages cache
+        queryClient.setQueryData<Message[]>(
+          chatKeys.messages(sessionId),
+          (old) => [...(old || []), toolMessage]
+        );
+      }
     };
 
     // Tool result (backend emits agent:tool_result)
     const handleToolResult = (data: { toolName: string; result: unknown; success: boolean }) => {
       console.log('[useChat] Tool result:', data.toolName, 'success:', data.success);
+
+      // FIX BUG #4: Update tool use message with result
+      if (sessionId) {
+        queryClient.setQueryData<Message[]>(
+          chatKeys.messages(sessionId),
+          (old) => old?.map(msg => {
+            // Find pending tool message with matching tool name
+            if (isToolUseMessage(msg) && msg.tool_name === data.toolName && msg.status === 'pending') {
+              return {
+                ...msg,
+                tool_result: data.result,
+                status: data.success ? 'success' as const : 'error' as const,
+                error_message: data.success ? undefined : 'Tool execution failed',
+              };
+            }
+            return msg;
+          }) || []
+        );
+      }
     };
 
     // Message chunk during streaming (backend emits agent:message_chunk)
     const handleMessageChunk = (data: { content: string }) => {
+      // Start streaming on first chunk (this allows ThinkingIndicator to show first)
+      if (!isStreaming) {
+        startStreaming();
+      }
       appendStreamChunk(data.content);
     };
 
@@ -220,6 +280,26 @@ export function useChat(sessionId?: string) {
       console.error('[useChat] WebSocket error:', data.error);
     };
 
+    // Session title updated (backend emits session:title_updated)
+    const handleTitleUpdate = (data: { sessionId: string; title: string }) => {
+      console.log('[useChat] Session title updated:', data.title);
+
+      // Update sessions cache
+      queryClient.setQueryData<Session[]>(
+        chatKeys.sessions(),
+        (old) => old?.map(session =>
+          session.id === data.sessionId
+            ? { ...session, title: data.title }
+            : session
+        ) || []
+      );
+
+      // Update current session if it matches
+      if (currentSession?.id === data.sessionId) {
+        setCurrentSession(prev => prev ? { ...prev, title: data.title } : null);
+      }
+    };
+
     // Register listeners
     socketChatApi.onMessageComplete(handleMessageComplete);
     socketChatApi.onThinking(handleThinking);
@@ -228,6 +308,7 @@ export function useChat(sessionId?: string) {
     socketChatApi.onMessageChunk(handleMessageChunk);
     socketChatApi.onComplete(handleComplete);
     socket.on(SocketEvent.ERROR, handleError);
+    socket.on('session:title_updated', handleTitleUpdate);
 
     // Cleanup listeners
     return () => {
@@ -238,6 +319,7 @@ export function useChat(sessionId?: string) {
       socket.off(SocketEvent.MESSAGE_CHUNK, handleMessageChunk);
       socket.off(SocketEvent.COMPLETE, handleComplete);
       socket.off(SocketEvent.ERROR, handleError);
+      socket.off('session:title_updated', handleTitleUpdate);
     };
   }, [socket, isConnected, sessionId, queryClient]);
 
@@ -278,7 +360,7 @@ export function useChat(sessionId?: string) {
   // Wrapper functions for mutations
   const handleCreateSession = useCallback(
     async (goal?: string) => {
-      const result = await createSessionMutation.mutateAsync(goal);
+      const result = await createSessionMutation.mutateAsync({ goal });
       return result.session;
     },
     [createSessionMutation]

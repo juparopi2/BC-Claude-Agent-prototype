@@ -332,6 +332,18 @@ export class DirectAgentService {
 
       const duration = Date.now() - startTime;
 
+      // Send final message event (FIX BUG #6: Input bloqueado)
+      // Frontend necesita evento 'message' para llamar endStreaming() y resetear isStreaming
+      if (onEvent && finalResponse) {
+        onEvent({
+          type: 'message',
+          messageId: crypto.randomUUID(), // Generate unique messageId
+          content: finalResponse,
+          role: 'assistant',
+          timestamp: new Date(),
+        });
+      }
+
       // Send completion event
       if (onEvent) {
         onEvent({

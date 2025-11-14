@@ -224,6 +224,62 @@ export function once<T = unknown>(event: string, callback: EventHandler<T>): voi
 }
 
 /**
+ * Wait for room join confirmation with retry logic
+ * Returns a Promise that resolves when the room join is confirmed
+ * or rejects after all retries are exhausted
+ */
+export async function waitForRoomJoin(
+  sessionId: string,
+  maxRetries: number = 3,
+  timeoutMs: number = 2000
+): Promise<void> {
+  if (!socket || !socket.connected) {
+    throw new Error('Socket not connected');
+  }
+
+  let attempt = 0;
+
+  while (attempt < maxRetries) {
+    attempt++;
+    console.log(`[Socket] Joining room (attempt ${attempt}/${maxRetries}):`, sessionId);
+
+    try {
+      // Wait for join confirmation with timeout
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          socket?.off('session:joined', handleJoined);
+          reject(new Error(`Room join timeout after ${timeoutMs}ms`));
+        }, timeoutMs);
+
+        const handleJoined = (data: { sessionId: string }) => {
+          if (data.sessionId === sessionId) {
+            clearTimeout(timeout);
+            console.log(`[Socket] ✅ Room joined successfully:`, sessionId);
+            resolve();
+          }
+        };
+
+        socket?.once('session:joined', handleJoined);
+        emit('session:join', { sessionId });
+      });
+
+      // Success - exit retry loop
+      return;
+    } catch (error) {
+      console.warn(`[Socket] Room join attempt ${attempt} failed:`, error);
+
+      if (attempt >= maxRetries) {
+        console.error(`[Socket] ❌ Failed to join room after ${maxRetries} attempts`);
+        throw new Error(`Failed to join room ${sessionId} after ${maxRetries} attempts`);
+      }
+
+      // Wait a bit before retrying (exponential backoff)
+      await new Promise(resolve => setTimeout(resolve, 100 * attempt));
+    }
+  }
+}
+
+/**
  * Chat API via Socket.IO
  */
 export const socketChatApi = {
@@ -231,14 +287,20 @@ export const socketChatApi = {
    * Join a chat session
    */
   joinSession: (sessionId: string) => {
-    emit('join_session', { sessionId });
+    emit('session:join', { sessionId });
   },
+
+  /**
+   * Join a chat session and wait for confirmation
+   * Uses retry logic and throws if join fails
+   */
+  joinSessionAndWait: (sessionId: string) => waitForRoomJoin(sessionId),
 
   /**
    * Leave a chat session
    */
   leaveSession: (sessionId: string) => {
-    emit('leave_session', { sessionId });
+    emit('session:leave', { sessionId });
   },
 
   /**

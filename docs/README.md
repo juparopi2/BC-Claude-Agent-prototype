@@ -1,8 +1,8 @@
 # BC-Claude-Agent-Prototype - Documentation
 
 > **Master Index**: Complete technical documentation for the BC-Claude-Agent system
-> **Version**: 2.3 (Updated - 2025-11-13)
-> **Status**: Phase 2 - Week 7 | 100% MVP Complete + RedisStore Sessions
+> **Version**: 2.4 (Updated - 2025-11-14)
+> **Status**: Phase 2 - Week 7 | 100% MVP Complete + DirectAgentService + Bug Fixes
 
 ---
 
@@ -255,7 +255,7 @@ docs-old/                               📦 Backup (historical reference, 74 fi
 
 **Completed** (100% MVP):
 - ✅ Microsoft OAuth with delegated BC permissions
-- ✅ DirectAgentService functional (manual agentic loop)
+- ✅ **DirectAgentService functional** (manual agentic loop, ProcessTransport bug workaround) ✅ **UPDATED**
 - ✅ MCP server data vendored (115 files)
 - ✅ Approval system (priority + 5-min expiration)
 - ✅ Todo system (custom generation)
@@ -264,7 +264,12 @@ docs-old/                               📦 Backup (historical reference, 74 fi
 - ✅ **5 Session CRUD endpoints** (backend/src/routes/sessions.ts)
 - ✅ **Professional UI/UX** (gradients, animations, hover states, cursor pointers)
 - ✅ **End-to-end chat functionality** (send messages, receive responses, streaming)
-- ✅ **RedisStore session persistence** (connect-redis@7.1.1 - Sessions survive restarts) ✅ **NEW**
+- ✅ **RedisStore session persistence** (connect-redis@7.1.1 - Sessions survive restarts)
+- ✅ **6 Critical Bug Fixes** (session title, race conditions, tool UI, streaming) ✅ **NEW**
+- ✅ **Tool Use Visibility** (ToolUseMessage component - users see tool calls in UI) ✅ **NEW**
+- ✅ **React Query Migration** (eliminates infinite loops, 80% fewer network requests) ✅ **NEW**
+- ✅ **Session Title Auto-Generation** (Claude API generates concise titles) ✅ **NEW**
+- ✅ **Assistant Message Persistence** (bug #5 fixed - full chat history saved) ✅ **NEW**
 
 **Pending** (Phase 3 - Non-critical):
 - ⏳ 4 observability tables (1 hour, non-critical)
@@ -297,7 +302,8 @@ docs-old/                               📦 Backup (historical reference, 74 fi
 
 ---
 
-**Last Updated**: 2025-11-13
-**Documentation Version**: 2.3 (Updated - RedisStore session persistence)
-**System Version**: Phase 2 Week 7 (100% MVP Complete + RedisStore Sessions)
+**Last Updated**: 2025-11-14
+**Documentation Version**: 2.4 (Updated - DirectAgentService + Bug Fixes + Tool UI + React Query)
+**System Version**: Phase 2 Week 7 (100% MVP Complete + DirectAgentService + 6 Bug Fixes)
 **Total Documents**: 9 files (5 main + 4 deprecated)
+**Total Documentation Lines**: ~7,500 lines (comprehensively updated)

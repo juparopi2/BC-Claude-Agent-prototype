@@ -18,11 +18,12 @@ export function SocketProvider({ children }: SocketProviderProps) {
   const [socket, setSocket] = useState<Socket | null>(null);
 
   useEffect(() => {
+    // Initialize socket immediately (no delay needed with proper room join flow)
     console.log('[SocketProvider] Initializing socket connection...');
-    const socketInstance = initSocket();
-    setSocket(socketInstance);
+    const newSocket = initSocket();
+    setSocket(newSocket);
 
-    // Cleanup only when provider unmounts (app closes)
+    // Cleanup cuando provider unmounts
     return () => {
       console.log('[SocketProvider] Cleaning up socket connection...');
       disconnectSocket();

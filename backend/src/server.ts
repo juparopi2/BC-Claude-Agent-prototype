@@ -18,6 +18,7 @@ import { loadSecretsFromKeyVault } from './config/keyvault';
 import { initDatabase, closeDatabase, checkDatabaseHealth, executeQuery } from './config/database';
 import { initRedis, closeRedis, checkRedisHealth, getRedis } from './config/redis';
 import { startDatabaseKeepalive, stopDatabaseKeepalive } from './utils/databaseKeepalive';
+import { logger } from './utils/logger';
 import { getMCPService } from './services/mcp';
 import { getBCClient } from './services/bc';
 import { getDirectAgentService } from './services/agent';
@@ -28,6 +29,7 @@ import authOAuthRoutes from './routes/auth-oauth';
 import sessionsRoutes from './routes/sessions';
 import { authenticateMicrosoft } from './middleware/auth-oauth';
 import { MicrosoftOAuthSession } from './types/microsoft.types';
+import { Socket } from 'socket.io';
 
 /**
  * Extend express-session types to include Microsoft OAuth session data
@@ -37,6 +39,14 @@ declare module 'express-session' {
     microsoftOAuth?: MicrosoftOAuthSession;
     oauthState?: string;
   }
+}
+
+/**
+ * Extend Socket.IO socket interface to include user info
+ */
+interface AuthenticatedSocket extends Socket {
+  userId?: string;
+  userEmail?: string;
 }
 
 /**
@@ -53,7 +63,7 @@ const httpServer = createServer(app);
  * Session middleware configuration (shared between Express and Socket.IO)
  * Initialized after Redis connection in initializeApp()
  */
-let sessionMiddleware: any;
+let sessionMiddleware: ReturnType<typeof session>;
 
 /**
  * Socket.IO server instance
@@ -786,8 +796,9 @@ function configureSocketIO(): void {
     }
 
     // Attach userId to socket for later use
-    (socket as any).userId = oauthSession.userId;
-    (socket as any).userEmail = oauthSession.email;
+    const authSocket = socket as AuthenticatedSocket;
+    authSocket.userId = oauthSession.userId;
+    authSocket.userEmail = oauthSession.email;
 
     console.log('[Socket.IO] Authentication successful', {
       socketId: socket.id,
@@ -798,8 +809,9 @@ function configureSocketIO(): void {
   });
 
   io.on('connection', (socket) => {
-    const userId = (socket as any).userId;
-    console.log(`✅ Client connected: ${socket.id} (User: ${userId})`);
+    const authSocket = socket as AuthenticatedSocket;
+    const userId = authSocket.userId;
+    logger.info(`[Socket.IO] ✅ Client connected: ${socket.id} (User: ${userId})`);
 
     // Handler: Chat message
     socket.on('chat:message', async (data: {
@@ -810,15 +822,32 @@ function configureSocketIO(): void {
       const { message, sessionId, userId } = data;
 
       try {
-        console.log(`[Socket] Chat message from ${userId} in session ${sessionId}`);
+        logger.info(`[Socket.IO] [1/3] Received message from user ${userId} in session ${sessionId}`);
 
         // Validate session ownership (basic check)
         // In production, verify user owns the session via database query
 
-        // Join session room
+        // Join session room (safety measure, should already be joined via session:join)
         socket.join(sessionId);
 
+        // Save user message to DB before executing agent
+        try {
+          const userMessageQuery = `
+            INSERT INTO messages (id, session_id, role, content, created_at)
+            VALUES (NEWID(), @sessionId, 'user', @content, GETUTCDATE())
+          `;
+          await executeQuery(userMessageQuery, {
+            sessionId,
+            content: message,
+          });
+          logger.info(`[Socket.IO] [2/3] User message saved to database`);
+        } catch (dbError) {
+          logger.error('[Socket.IO] Failed to save user message:', dbError);
+          // Continue anyway - message is in frontend cache
+        }
+
         // Execute agent query with streaming (using DirectAgentService)
+        logger.info(`[Socket.IO] [3/3] Starting agent execution for session ${sessionId}`);
         const agentService = getDirectAgentService();
         await agentService.executeQuery(
           message,
@@ -849,6 +878,21 @@ function configureSocketIO(): void {
                 break;
 
               case 'message':
+                // FIX BUG #5: Guardar mensaje del assistant en BD
+                try {
+                  const assistantMessageQuery = `
+                    INSERT INTO messages (id, session_id, role, content, created_at)
+                    VALUES (NEWID(), @sessionId, 'assistant', @content, GETUTCDATE())
+                  `;
+                  await executeQuery(assistantMessageQuery, {
+                    sessionId,
+                    content: event.content,
+                  });
+                  logger.info(`[Socket.IO] Assistant message saved to database for session ${sessionId}`);
+                } catch (dbError) {
+                  logger.error('[Socket.IO] Failed to save assistant message:', dbError);
+                }
+
                 io.to(sessionId).emit('agent:message_complete', {
                   content: event.content,
                   role: event.role,
@@ -903,7 +947,62 @@ function configureSocketIO(): void {
           }
         );
 
-        console.log(`[Socket] Chat message completed for session ${sessionId}`);
+        logger.info(`[Socket.IO] ✅ Chat message processing completed for session ${sessionId}`);
+
+        // Generate session title if this is the first user message
+        try {
+          // Check if this is the first user message (count messages in session)
+          const messageCountResult = await executeQuery<{ count: number }>(
+            'SELECT COUNT(*) as count FROM messages WHERE session_id = @sessionId AND role = @role',
+            { sessionId, role: 'user' }
+          );
+
+          // Extract count from result (mssql returns recordset array)
+          const userMessageCount = messageCountResult.recordset?.[0]?.count || 0;
+
+          // If this was the first user message, generate a title
+          if (userMessageCount === 1) {
+            console.log(`[Socket] Generating title for session ${sessionId} from first message`);
+
+            // Generate title using Anthropic API
+            const Anthropic = (await import('@anthropic-ai/sdk')).default;
+            const anthropic = new Anthropic({
+              apiKey: env.ANTHROPIC_API_KEY,
+            });
+
+            const response = await anthropic.messages.create({
+              model: 'claude-sonnet-4-5-20250929',
+              max_tokens: 50,
+              messages: [{
+                role: 'user',
+                content: `Generate a short, concise title (maximum 6 words) for a conversation that starts with this message: "${message.slice(0, 200)}"`
+              }]
+            });
+
+            // Extract title from response (check if first content block is text)
+            const firstBlock = response.content[0];
+            const title = firstBlock && firstBlock.type === 'text'
+              ? firstBlock.text.trim().replace(/^["']|["']$/g, '')
+              : 'New conversation';
+
+            // Update session title in database
+            await executeQuery(
+              'UPDATE sessions SET title = @title WHERE id = @sessionId',
+              { title, sessionId }
+            );
+
+            console.log(`[Socket] Generated title: "${title}"`);
+
+            // Emit event to update frontend
+            io.to(sessionId).emit('session:title_updated', {
+              sessionId,
+              title,
+            });
+          }
+        } catch (titleError) {
+          console.error('[Socket] Failed to generate session title:', titleError);
+          // Don't fail the entire message flow if title generation fails
+        }
       } catch (error) {
         console.error('[Socket] Chat message error:', error);
         socket.emit('agent:error', {
@@ -943,7 +1042,7 @@ function configureSocketIO(): void {
     socket.on('session:join', (data: { sessionId: string }) => {
       const { sessionId } = data;
       socket.join(sessionId);
-      console.log(`[Socket] ${socket.id} joined session ${sessionId}`);
+      logger.info(`[Socket.IO] ✅ Client ${socket.id} joined room: ${sessionId}`);
 
       socket.emit('session:joined', { sessionId });
     });
@@ -952,14 +1051,14 @@ function configureSocketIO(): void {
     socket.on('session:leave', (data: { sessionId: string }) => {
       const { sessionId } = data;
       socket.leave(sessionId);
-      console.log(`[Socket] ${socket.id} left session ${sessionId}`);
+      logger.info(`[Socket.IO] Client ${socket.id} left room: ${sessionId}`);
 
       socket.emit('session:left', { sessionId });
     });
 
     // Disconnect handler
     socket.on('disconnect', () => {
-      console.log(`❌ Client disconnected: ${socket.id}`);
+      logger.info(`[Socket.IO] ❌ Client disconnected: ${socket.id}`);
     });
 
     // Error handler

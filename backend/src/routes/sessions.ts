@@ -26,6 +26,9 @@ const router = Router();
 
 const createSessionSchema = z.object({
   title: z.string().min(1).max(500).optional(),
+  // NOTE: initialMessage removed - messages should be sent via Socket.IO after room join
+  // Keeping schema field for backward compatibility, but it will be ignored
+  initialMessage: z.string().min(1).max(10000).optional(),
 });
 
 const getMessagesSchema = z.object({
@@ -220,7 +223,11 @@ router.post('/', authenticateMicrosoft, async (req: Request, res: Response): Pro
 
     const session = transformSession(result.recordset[0]);
 
-    logger.info(`[Sessions] Session ${sessionId} created successfully`);
+    logger.info(`[Sessions] ✅ Session ${sessionId} created successfully (messages will be sent via Socket.IO)`);
+
+    // NOTE: Initial message processing REMOVED
+    // Messages are now sent via Socket.IO events (chat:message) after room join
+    // This eliminates the race condition where backend emits events before frontend is ready
 
     res.status(201).json({
       session,
@@ -399,6 +406,106 @@ router.get('/:sessionId/messages', authenticateMicrosoft, async (req: Request, r
     logger.error('[Sessions] Get messages failed:', error);
     res.status(500).json({
       error: 'Failed to get messages',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * PATCH /api/chat/sessions/:sessionId
+ * Update a session title
+ */
+router.patch('/:sessionId', authenticateMicrosoft, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = req.userId;
+    const { sessionId } = req.params;
+    const { title } = req.body;
+
+    if (!userId) {
+      res.status(401).json({
+        error: 'Unauthorized',
+        message: 'User ID not found in session',
+      });
+      return;
+    }
+
+    if (!sessionId) {
+      res.status(400).json({
+        error: 'Bad Request',
+        message: 'Session ID is required',
+      });
+      return;
+    }
+
+    if (!title || typeof title !== 'string' || title.trim().length === 0) {
+      res.status(400).json({
+        error: 'Bad Request',
+        message: 'Title is required and must be a non-empty string',
+      });
+      return;
+    }
+
+    if (title.length > 500) {
+      res.status(400).json({
+        error: 'Bad Request',
+        message: 'Title must be 500 characters or less',
+      });
+      return;
+    }
+
+    logger.info(`[Sessions] Updating title for session ${sessionId}`);
+
+    // Update session title (verify ownership)
+    const query = `
+      UPDATE sessions
+      SET title = @title, updated_at = GETUTCDATE()
+      WHERE id = @sessionId AND user_id = @userId
+    `;
+
+    const result = await executeQuery(query, { sessionId, userId, title: title.trim() });
+
+    // Check if session was updated
+    if (result.rowsAffected[0] === 0) {
+      res.status(404).json({
+        error: 'Not Found',
+        message: 'Session not found or access denied',
+      });
+      return;
+    }
+
+    // Fetch updated session
+    const updatedSession = await executeQuery<{
+      id: string;
+      user_id: string;
+      title: string;
+      is_active: boolean;
+      created_at: Date;
+      updated_at: Date;
+    }>(
+      'SELECT * FROM sessions WHERE id = @sessionId',
+      { sessionId }
+    );
+
+    const sessionData = updatedSession.recordset?.[0];
+
+    if (!sessionData) {
+      res.status(404).json({
+        error: 'Not Found',
+        message: 'Session not found',
+      });
+      return;
+    }
+
+    logger.info(`[Sessions] Session ${sessionId} title updated successfully`);
+
+    res.json({
+      success: true,
+      session: transformSession(sessionData),
+    });
+  } catch (error) {
+    logger.error('[Sessions] Update title error:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
       message: error instanceof Error ? error.message : 'Unknown error',
     });
   }

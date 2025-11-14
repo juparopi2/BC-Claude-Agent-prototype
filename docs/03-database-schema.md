@@ -263,6 +263,103 @@ CREATE INDEX idx_sessions_last_activity ON sessions(last_activity_at DESC);
 - `is_active` for soft delete (user can archive sessions)
 - `token_count` for cost tracking
 
+**Session Persistence Strategy** (Updated 2025-11-13):
+
+The system uses **TWO storage layers** for sessions:
+
+#### 1. Redis Sessions (Authentication State)
+
+**Purpose**: Store express-session data (Microsoft OAuth tokens, user ID)
+**Technology**: `connect-redis@7.1.1` with `express-session`
+**TTL**: 24 hours (86400 seconds)
+
+**Storage Format**:
+```redis
+Key: sess:abc123def456...  (SHA256 hash of session ID)
+
+Value (JSON):
+{
+  "cookie": {
+    "originalMaxAge": 86400000,
+    "expires": "2025-11-15T10:30:00.000Z",
+    "httpOnly": true,
+    "secure": false,
+    "sameSite": "lax"
+  },
+  "microsoftOAuth": {
+    "userId": "a1b2c3d4-...",
+    "email": "user@example.com",
+    "displayName": "John Doe",
+    "accessToken": "eyJ0eXAi...",
+    "refreshToken": "0.AX8A...",
+    "expiresAt": "2025-11-14T11:30:00.000Z"
+  }
+}
+```
+
+**Why Redis**:
+- ✅ Sessions survive backend restarts
+- ✅ Supports horizontal scaling (multiple backend instances)
+- ✅ Fast access (< 1ms)
+- ✅ Automatic expiration via TTL
+- ✅ Users stay logged in across deployments
+
+**Configuration** (`backend/src/server.ts`):
+```typescript
+import RedisStore from 'connect-redis';
+import { getRedis } from './config/redis';
+
+app.use(session({
+  store: new RedisStore({
+    client: getRedis()!,
+    prefix: 'sess:',
+    ttl: 86400  // 24 hours
+  }),
+  secret: process.env.SESSION_SECRET,
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: 24 * 60 * 60 * 1000  // 24 hours
+  }
+}));
+```
+
+#### 2. SQL Sessions (Chat Session Metadata)
+
+**Purpose**: Store chat session data (title, goal, messages, approvals)
+**Technology**: Azure SQL Database
+**Table**: `sessions` (this table)
+
+**Relationship**:
+- **Redis sessions** ↔ **SQL sessions** are independent
+- Redis stores **authentication state** (who is logged in)
+- SQL stores **chat history** (what conversations happened)
+- SQL `sessions.user_id` links to Redis session's `microsoftOAuth.userId`
+
+**Example Flow**:
+1. User logs in → Redis session created (contains Microsoft OAuth tokens)
+2. User starts chat → SQL session created (contains title, goal)
+3. User sends messages → SQL messages inserted (linked to SQL session)
+4. User closes browser → Redis session persists (24h TTL)
+5. User returns next day → Redis session still valid → Auto-logged in
+6. Backend restarts → Redis sessions persist → Users stay logged in ✅
+
+**Before RedisStore** (MemoryStore):
+- ❌ Sessions lost on backend restart
+- ❌ Users had to re-login after every deployment
+- ❌ No horizontal scaling support
+
+**After RedisStore**:
+- ✅ Sessions persist across restarts
+- ✅ Users stay logged in (24h TTL)
+- ✅ Horizontal scaling ready
+
+**Related Documents**:
+- RedisStore Migration: `docs/04-direction-changes.md` (Direction Change #9)
+- Session Architecture: `docs/01-architecture.md` (Section 6)
+
 ---
 
 #### 3. messages
@@ -296,6 +393,56 @@ CREATE INDEX idx_messages_created_at ON messages(created_at DESC);
 - `thinking_tokens` tracks extended thinking cost
 - `is_thinking` flags thinking blocks (not shown to user)
 - Cascade delete when session deleted
+
+**Message Persistence** (Bug #5 Fix - 2025-11-14):
+
+✅ **CONFIRMED**: Assistant messages ARE saved to database
+
+**Implementation** (`backend/src/server.ts` lines 882-894):
+```typescript
+// Listen for agent:message_complete event
+socket.on('agent:message_complete', async (data) => {
+  // Save assistant message to database
+  await db.query(`
+    INSERT INTO messages (
+      id,
+      session_id,
+      role,
+      content,
+      created_at
+    ) VALUES (
+      @id,
+      @sessionId,
+      'assistant',
+      @content,
+      GETDATE()
+    )
+  `, {
+    id: data.id,
+    sessionId: socket.sessionId,
+    content: data.content
+  });
+});
+```
+
+**Flow**:
+1. DirectAgentService completes agent query
+2. Emits `agent:message_complete` event with final response
+3. Backend WebSocket handler receives event
+4. Inserts assistant message into `messages` table
+5. Frontend displays message (already in React Query cache from streaming)
+
+**Result**: Chat history persists across page reloads ✅
+
+**Before Bug Fix**:
+- ❌ Only user messages saved
+- ❌ Chat history incomplete after reload
+- ❌ Conversations lost
+
+**After Bug Fix**:
+- ✅ Both user and assistant messages saved
+- ✅ Complete chat history preserved
+- ✅ Conversations persist across sessions
 
 ---
 

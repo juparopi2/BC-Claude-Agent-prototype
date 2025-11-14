@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useChat } from '@/hooks';
+import { useSocket } from '@/hooks/useSocket';
 import { MessageList } from './MessageList';
 import { ChatInput } from './ChatInput';
 import { Button } from '@/components/ui/button';
@@ -29,18 +30,8 @@ export function ChatInterface({ sessionId, className }: ChatInterfaceProps) {
 
   const [localError, setLocalError] = useState<string | null>(null);
 
-  // Fetch messages when sessionId changes
-  useEffect(() => {
-    if (sessionId) {
-      fetchMessages().catch((err: unknown) => {
-        console.error('[ChatInterface] Failed to fetch messages:', err);
-        setLocalError('Failed to load messages');
-      });
-    }
-  }, [sessionId, fetchMessages]);
-
-  // Handle send message
-  const handleSend = async (content: string) => {
+  // Handle send message (wrapped in useCallback to prevent recreating on every render)
+  const handleSend = useCallback(async (content: string) => {
     if (!sessionId) {
       setLocalError('No active session');
       return;
@@ -53,13 +44,23 @@ export function ChatInterface({ sessionId, className }: ChatInterfaceProps) {
       console.error('[ChatInterface] Failed to send message:', err);
       setLocalError('Failed to send message. Please try again.');
     }
-  };
+  }, [sessionId, sendMessage]);
 
   // Handle retry
   const handleRetry = () => {
     setLocalError(null);
     clearError();
   };
+
+  // Fetch messages when sessionId changes
+  useEffect(() => {
+    if (sessionId) {
+      fetchMessages().catch((err: unknown) => {
+        console.error('[ChatInterface] Failed to fetch messages:', err);
+        setLocalError('Failed to load messages');
+      });
+    }
+  }, [sessionId, fetchMessages]);
 
   // Connection error state
   if (!isConnected) {

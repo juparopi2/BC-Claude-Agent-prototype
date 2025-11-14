@@ -175,6 +175,7 @@ export const chatApi = {
 
   /**
    * Create a new session
+   * NOTE: initialMessage removed - messages should be sent via Socket.IO after room join
    */
   createSession: (title?: string) => api.post<{ session: Session }>('/api/chat/sessions', { title }),
 
@@ -182,6 +183,12 @@ export const chatApi = {
    * Delete a session
    */
   deleteSession: (sessionId: string) => api.delete(`/api/chat/sessions/${sessionId}`),
+
+  /**
+   * Update session title
+   */
+  updateSessionTitle: (sessionId: string, title: string) =>
+    api.patch<{ success: boolean; session: Session }>(`/api/chat/sessions/${sessionId}`, { title }),
 
   /**
    * Get messages for a session

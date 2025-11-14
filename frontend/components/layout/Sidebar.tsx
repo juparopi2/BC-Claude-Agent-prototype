@@ -1,12 +1,14 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useChat } from '@/hooks';
+import { useSocket } from '@/hooks/useSocket';
+import { chatApi } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { PlusCircle, MessageSquare, Trash2, ListTodo, ChevronDown, AlertCircle } from 'lucide-react';
+import { PlusCircle, MessageSquare, Trash2, ListTodo, ChevronDown, AlertCircle, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { TodoList } from '@/components/todos';
 
@@ -31,14 +33,49 @@ export function Sidebar({
     deleteSession,
   } = useChat();
 
+  // Track which session is being deleted (for loading state)
+  const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
+
+  // Track which session's title is being edited
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const [editedTitle, setEditedTitle] = useState<string>('');
+
+  // Socket connection for real-time title updates
+  const { socket } = useSocket();
+
   // React Query automatically fetches sessions when useChat() is called
   // No need for manual useEffect - the data is cached and deduplicated automatically
+
+  // Listen for session title updates via WebSocket
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleTitleUpdated = (data: { sessionId: string; title: string }) => {
+      console.log(`[Sidebar] Title updated for session ${data.sessionId}: "${data.title}"`);
+      // Refresh sessions list to show new title
+      fetchSessions();
+    };
+
+    socket.on('session:title_updated', handleTitleUpdated);
+
+    return () => {
+      socket.off('session:title_updated', handleTitleUpdated);
+    };
+  }, [socket, fetchSessions]);
 
   // Handle delete session
   const handleDelete = async (sessionId: string, e: React.MouseEvent) => {
     e.stopPropagation(); // Prevent session selection
 
+    // Show confirmation dialog
+    const confirmed = window.confirm(
+      'Are you sure you want to delete this conversation? This action cannot be undone.'
+    );
+
+    if (!confirmed) return;
+
     try {
+      setDeletingSessionId(sessionId);
       await deleteSession(sessionId);
       // If deleted session was selected, trigger new chat
       if (currentSessionId === sessionId) {
@@ -46,6 +83,56 @@ export function Sidebar({
       }
     } catch (error) {
       console.error('[Sidebar] Failed to delete session:', error);
+      alert('Failed to delete conversation. Please try again.');
+    } finally {
+      setDeletingSessionId(null);
+    }
+  };
+
+  // Handle edit title - start editing
+  const handleEditTitle = (sessionId: string, currentTitle: string, e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent session selection
+    setEditingSessionId(sessionId);
+    setEditedTitle(currentTitle);
+  };
+
+  // Handle save title
+  const handleSaveTitle = async (sessionId: string, e?: React.MouseEvent | React.KeyboardEvent) => {
+    if (e) {
+      e.stopPropagation(); // Prevent session selection
+    }
+
+    const trimmedTitle = editedTitle.trim();
+
+    // Cancel if empty
+    if (!trimmedTitle) {
+      handleCancelEdit();
+      return;
+    }
+
+    try {
+      await chatApi.updateSessionTitle(sessionId, trimmedTitle);
+      fetchSessions(); // Refresh sessions list
+      setEditingSessionId(null);
+      setEditedTitle('');
+    } catch (error) {
+      console.error('[Sidebar] Failed to update title:', error);
+      alert('Failed to update title. Please try again.');
+    }
+  };
+
+  // Handle cancel edit
+  const handleCancelEdit = () => {
+    setEditingSessionId(null);
+    setEditedTitle('');
+  };
+
+  // Handle key down in title input
+  const handleTitleKeyDown = (sessionId: string, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      handleSaveTitle(sessionId, e);
+    } else if (e.key === 'Escape') {
+      handleCancelEdit();
     }
   };
 
@@ -70,7 +157,7 @@ export function Sidebar({
     <div className={cn('flex flex-col h-full border-r bg-muted/40', className)}>
       {/* New chat button */}
       <div className="p-4 border-b">
-        <Button onClick={onNewChat} className="w-full" size="sm">
+        <Button onClick={onNewChat} className="w-full cursor-pointer" size="sm">
           <PlusCircle className="mr-2 h-4 w-4" />
           New Chat
         </Button>
@@ -146,7 +233,7 @@ export function Sidebar({
                     No conversations yet
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Click "New Chat" to start your first conversation
+                    Click &quot;New Chat&quot; to start your first conversation
                   </p>
                 </div>
               </div>
@@ -156,7 +243,8 @@ export function Sidebar({
           {/* Sessions */}
           {sessions.map((session) => {
             const isActive = session.id === currentSessionId;
-            const title = session.goal || 'New conversation';
+            // FIX BUG #1: Usar session.title primero, luego session.goal como fallback
+            const title = session.title || session.goal || 'New conversation';
             const truncatedTitle = title.length > 40 ? `${title.slice(0, 40)}...` : title;
 
             return (
@@ -165,18 +253,36 @@ export function Sidebar({
                 onClick={() => onSessionSelect(session.id)}
                 className={cn(
                   'w-full text-left p-3 rounded-lg hover:bg-muted transition-colors group relative cursor-pointer',
-                  isActive && 'bg-muted border border-border'
+                  isActive && 'bg-primary/10 border-2 border-primary'
                 )}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
-                    <p className={cn(
-                      'text-sm font-medium truncate',
-                      isActive && 'text-foreground',
-                      !isActive && 'text-muted-foreground'
-                    )}>
-                      {truncatedTitle}
-                    </p>
+                    {/* Editable title */}
+                    {editingSessionId === session.id ? (
+                      <input
+                        type="text"
+                        value={editedTitle}
+                        onChange={(e) => setEditedTitle(e.target.value)}
+                        onKeyDown={(e) => handleTitleKeyDown(session.id, e)}
+                        onBlur={() => handleSaveTitle(session.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        autoFocus
+                        className="w-full text-sm font-medium bg-background border border-primary rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary"
+                      />
+                    ) : (
+                      <p
+                        className={cn(
+                          'text-sm font-medium truncate cursor-text',
+                          isActive && 'text-foreground',
+                          !isActive && 'text-muted-foreground'
+                        )}
+                        onClick={(e) => handleEditTitle(session.id, title, e)}
+                        title="Click to edit title"
+                      >
+                        {truncatedTitle}
+                      </p>
+                    )}
                     <p className="text-xs text-muted-foreground mt-0.5">
                       {formatTime(session.created_at)}
                     </p>
@@ -188,16 +294,16 @@ export function Sidebar({
                     size="icon"
                     className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-all duration-200 hover:bg-destructive/10 hover:text-destructive cursor-pointer"
                     onClick={(e) => handleDelete(session.id, e)}
+                    disabled={deletingSessionId === session.id}
                     aria-label="Delete session"
                   >
-                    <Trash2 className="h-3 w-3" />
+                    {deletingSessionId === session.id ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-3 w-3" />
+                    )}
                   </Button>
                 </div>
-
-                {/* Status indicator */}
-                {session.status === 'active' && (
-                  <div className="absolute left-1.5 top-1/2 -translate-y-1/2 h-2 w-2 rounded-full bg-green-500" />
-                )}
               </div>
             );
           })}

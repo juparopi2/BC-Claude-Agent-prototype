@@ -2,7 +2,7 @@
 
 > **Timeline**: 6-9 semanas para MVP completo
 >
-> **Estado Actual**: Phase 2 - Week 7 | **100% COMPLETADO** - MVP fully functional + UI/UX polished
+> **Estado Actual**: Phase 2 - Week 7 | **100% COMPLETADO** - MVP fully functional + Bug fixes + DirectAgentService
 >
 > **Archivo Histórico**: Ver `TODO-ARCHIVE.md` para detalles completos de implementación
 >
@@ -179,6 +179,21 @@ docs-old/                               📦 Backup (74 archivos)
 - ✅ **Visual Feedback**: Cursor pointers on all clickable elements
 - ✅ **Clear Differentiation**: Buttons have distinct borders, colors, and hover states
 - ✅ **CDN-style Design**: Professional chat styling with gradients, shadows, animations
+
+**Week 7: Additional Implementations** ✅ **COMPLETED** (2025-11-14)
+- ✅ **6 Critical Bug Fixes Applied**:
+  - Bug #1: Session title display (Sidebar uses title → goal fallback)
+  - Bug #2: Active session highlighting race condition (extract sessionId from pathname)
+  - Bug #3: Initial message race condition (waitForRoomJoin retry logic)
+  - Bug #4: Tool use messages missing in UI (handleToolUse + handleToolResult)
+  - Bug #5: Assistant messages not saved to DB (server.ts lines 882-894)
+  - Bug #6: Input blocked after streaming (emit 'message' event to reset state)
+- ✅ **DirectAgentService Implementation** - Manual agentic loop (SDK ProcessTransport bug workaround)
+- ✅ **Tool Use UI Component** - ToolUseMessage.tsx (visualización de tool calls con collapsible design)
+- ✅ **React Query Migration** - useChat.ts refactor (elimina infinite loops, automatic caching)
+- ✅ **Session Title Auto-Generation** - Claude API integration (max 6 palabras, emits session:title_updated)
+- ✅ **Mock Auth for Development** - auth-mock.ts (desarrollo sin BD disponible)
+- ✅ **RedisStore Session Persistence** - connect-redis@7.1.1 (sessions sobreviven restarts)
 
 ---
 

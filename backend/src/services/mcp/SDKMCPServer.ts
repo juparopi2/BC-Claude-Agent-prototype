@@ -384,7 +384,7 @@ const getEntityDetails = tool(
       return {
         content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
       };
-    } catch (error) {
+    } catch {
       throw new Error(
         `Entity "${args.entity_name}" not found. Use list_all_entities tool to see available entities.`
       );
@@ -567,7 +567,7 @@ const buildKnowledgeBaseWorkflow = tool(
         if (schemaName) {
           try {
             schema = loadSchema(schemaName);
-          } catch (error) {
+          } catch {
             // Schema not found, continue without it
           }
         }
@@ -665,7 +665,7 @@ const getEndpointDocumentation = tool(
       const schemaName = endpoint.requestBodySchema.replace('schemas/', '').replace('.schema.json', '');
       try {
         requestSchema = loadSchema(schemaName);
-      } catch (error) {
+      } catch {
         // Schema not found
       }
     }
@@ -674,7 +674,7 @@ const getEndpointDocumentation = tool(
       const schemaName = endpoint.responseSchema.replace('schemas/', '').replace('.schema.json', '');
       try {
         responseSchema = loadSchema(schemaName);
-      } catch (error) {
+      } catch {
         // Schema not found
       }
     }

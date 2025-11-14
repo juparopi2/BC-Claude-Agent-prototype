@@ -12,7 +12,10 @@ type SocketStatus = 'connected' | 'connecting' | 'disconnected' | 'error';
  */
 export function useSocket() {
   const { socket } = useSocketContext();
-  const [status, setStatus] = useState<SocketStatus>('disconnected');
+  const [status, setStatus] = useState<SocketStatus>(() => {
+    // Initialize status based on socket state
+    return 'disconnected';
+  });
   const [error, setError] = useState<string | null>(null);
   const reconnectAttempts = useRef(0);
   const maxReconnectAttempts = 5;
@@ -20,15 +23,14 @@ export function useSocket() {
   // Set up event handlers when socket is available
   useEffect(() => {
     if (!socket) {
-      setStatus('disconnected');
       return;
     }
 
-    // Set initial status based on socket connection state
+    // Set initial status based on socket connection state (use setTimeout to avoid setState in effect)
     if (socket.connected) {
-      setStatus('connected');
+      setTimeout(() => setStatus('connected'), 0);
     } else {
-      setStatus('connecting');
+      setTimeout(() => setStatus('connecting'), 0);
     }
 
     // Connection event handlers

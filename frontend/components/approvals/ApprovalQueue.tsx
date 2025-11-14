@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,17 +25,21 @@ import { cn } from '@/lib/utils';
 export function ApprovalQueue() {
   const { pendingApprovals, pendingCount, isConnected } = useApprovals();
   const [pulse, setPulse] = useState(false);
-  const [prevCount, setPrevCount] = useState(0);
+  const prevCountRef = useRef(0);
 
   // Trigger pulse animation when count increases
   useEffect(() => {
-    if (pendingCount > prevCount && prevCount > 0) {
-      setPulse(true);
+    if (pendingCount > prevCountRef.current && prevCountRef.current > 0) {
+      // Use setTimeout to avoid setState in effect
+      setTimeout(() => setPulse(true), 0);
       const timeout = setTimeout(() => setPulse(false), 1000);
-      return () => clearTimeout(timeout);
+      prevCountRef.current = pendingCount;
+      return () => {
+        clearTimeout(timeout);
+      };
     }
-    setPrevCount(pendingCount);
-  }, [pendingCount, prevCount]);
+    prevCountRef.current = pendingCount;
+  }, [pendingCount]);
 
   // Format time remaining
   const formatTimeRemaining = (expiresAt: string): string => {

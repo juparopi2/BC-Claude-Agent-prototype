@@ -28,6 +28,12 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
   const [sourcePanelOpen, setSourcePanelOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
 
+  // FIX BUG #2: Extraer sessionId del pathname para marcar sesión activa
+  // Evita race condition con currentSession state
+  const currentSessionId = pathname.startsWith('/chat/')
+    ? pathname.split('/')[2]
+    : currentSession?.id;
+
   // Auth check - redirect to login if not authenticated
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -115,7 +121,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
           )}
         >
           <Sidebar
-            currentSessionId={currentSession?.id}
+            currentSessionId={currentSessionId}
             onSessionSelect={handleSessionSelect}
             onNewChat={handleNewChat}
             className="h-full"

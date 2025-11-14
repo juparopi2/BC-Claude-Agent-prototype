@@ -3,7 +3,9 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import type { Message as MessageType } from '@/lib/types';
+import { isToolUseMessage } from '@/lib/types';
 import { Message } from './Message';
+import { ToolUseMessage } from './ToolUseMessage';
 import { StreamingText } from './StreamingText';
 import { ThinkingIndicator } from './ThinkingIndicator';
 
@@ -73,10 +75,16 @@ export function MessageList({
 
   return (
     <ScrollArea className={cn('flex-1', className)}>
-      <div ref={scrollRef} className="space-y-1 pb-4">
+      <div ref={scrollRef} className="space-y-4 pb-4">
         {/* Messages */}
         {messages.map((message) => (
-          <Message key={message.id} message={message} />
+          <div key={message.id} className="animate-in fade-in duration-300">
+            {isToolUseMessage(message) ? (
+              <ToolUseMessage message={message} />
+            ) : (
+              <Message message={message} />
+            )}
+          </div>
         ))}
 
         {/* Thinking indicator */}

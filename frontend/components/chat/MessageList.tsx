@@ -78,7 +78,7 @@ export function MessageList({
 
   // Group consecutive thinking/tool messages together
   const renderMessages = () => {
-    const rendered: JSX.Element[] = [];
+    const rendered: React.ReactElement[] = [];
     let i = 0;
 
     while (i < messages.length) {

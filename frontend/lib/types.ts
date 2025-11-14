@@ -2,6 +2,8 @@
  * Shared types for API responses and data structures
  */
 
+import type { JSONValue, JSONObject } from './json-utils';
+
 export interface User {
   id: string;
   email: string;
@@ -39,8 +41,8 @@ export interface ToolUseMessage {
   type: 'tool_use';
   session_id: string;
   tool_name: string;
-  tool_args: Record<string, unknown>;
-  tool_result?: unknown;
+  tool_args: JSONObject;
+  tool_result?: JSONValue;
   status: 'pending' | 'success' | 'error';
   error_message?: string;
   created_at: string;
@@ -74,7 +76,7 @@ export interface Approval {
   session_id: string;
   user_id: string;
   action_type: string;
-  action_data: Record<string, unknown>;
+  action_data: JSONObject;
   status: 'pending' | 'approved' | 'rejected';
   priority?: number;
   expires_at?: string;
@@ -124,7 +126,7 @@ export interface ThinkingEventData {
 
 export interface ToolUseEventData {
   toolName: string;
-  args: Record<string, unknown>;
+  args: JSONObject;
   toolUseId?: string; // Backend may include toolUseId
 }
 
@@ -135,7 +137,7 @@ export interface StreamChunkEventData {
 export interface ApprovalSummary {
   title: string;
   description: string;
-  changes: Record<string, unknown>;
+  changes: JSONObject;
   impact: 'high' | 'medium' | 'low';
 }
 
@@ -143,7 +145,7 @@ export interface ApprovalEventData {
   approvalId: string;
   toolName: string;
   summary: ApprovalSummary;
-  changes: Record<string, unknown>;
+  changes: JSONObject;
   priority: 'high' | 'medium' | 'low';
   expiresAt: string; // ISO string from Date
 }

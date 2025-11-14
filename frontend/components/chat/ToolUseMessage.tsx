@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { ChevronDown, ChevronRight, Wrench, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ToolUseMessage as ToolUseMessageType } from '@/lib/types';
+import { jsonToString } from '@/lib/json-utils';
 
 interface ToolUseMessageProps {
   message: ToolUseMessageType;
@@ -83,13 +84,13 @@ export function ToolUseMessage({ message, className }: ToolUseMessageProps) {
       </button>
 
       {/* Expanded content */}
-      {isExpanded && (
+      {isExpanded ? (
         <div className="px-4 pb-4 space-y-3 border-t">
           {/* Arguments */}
           <div>
             <h4 className="text-xs font-semibold text-muted-foreground mb-1.5 mt-3">Arguments:</h4>
             <pre className="text-xs bg-muted p-3 rounded-md overflow-x-auto">
-              {JSON.stringify(message.tool_args, null, 2)}
+              {jsonToString(message.tool_args)}
             </pre>
           </div>
 
@@ -98,9 +99,7 @@ export function ToolUseMessage({ message, className }: ToolUseMessageProps) {
             <div>
               <h4 className="text-xs font-semibold text-muted-foreground mb-1.5">Result:</h4>
               <pre className="text-xs bg-muted p-3 rounded-md overflow-x-auto max-h-96">
-                {typeof message.tool_result === 'string'
-                  ? message.tool_result
-                  : JSON.stringify(message.tool_result, null, 2)}
+                {jsonToString(message.tool_result)}
               </pre>
             </div>
           )}
@@ -115,7 +114,7 @@ export function ToolUseMessage({ message, className }: ToolUseMessageProps) {
             </div>
           )}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

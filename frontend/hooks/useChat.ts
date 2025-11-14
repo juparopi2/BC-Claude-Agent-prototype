@@ -268,7 +268,8 @@ export function useChat(sessionId?: string) {
             if (isToolUseMessage(msg) && msg.tool_name === data.toolName && msg.status === 'pending') {
               return {
                 ...msg,
-                tool_result: data.result,
+                // Type assertion: backend always sends valid JSON from MCP tools
+                tool_result: data.result as import('@/lib/json-utils').JSONValue,
                 status: data.success ? 'success' as const : 'error' as const,
                 error_message: data.success ? undefined : 'Tool execution failed',
               };

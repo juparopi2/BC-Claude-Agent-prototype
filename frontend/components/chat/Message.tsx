@@ -12,6 +12,14 @@ interface MessageProps {
 }
 
 export function Message({ message, className }: MessageProps) {
+  // Type guard: only BaseMessage has 'role' property
+  // ToolUseMessage and ThinkingMessage should be rendered by other components
+  const isBaseMessage = !('type' in message);
+
+  if (!isBaseMessage) {
+    return null;
+  }
+
   const isUser = message.role === 'user';
   const isAgent = message.role === 'assistant';
 

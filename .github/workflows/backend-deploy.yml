@@ -150,7 +150,9 @@ jobs:
           az containerapp update \
             --name ${{ env.CONTAINER_APP_NAME }} \
             --resource-group ${{ env.RESOURCE_GROUP }} \
-            --image ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}
+            --image ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            --min-replicas 1 \
+            --max-replicas 3
 
       - name: Get Container App URL
         id: get_url
@@ -164,8 +166,10 @@ jobs:
 
       - name: Health Check
         run: |
-          sleep 30
-          curl -f ${{ steps.get_url.outputs.url }}/health/liveness || exit 1
+          echo "Waiting 90 seconds for container startup (cold start + initialization)..."
+          sleep 90
+          echo "Testing health endpoint..."
+          curl -f --max-time 30 ${{ steps.get_url.outputs.url }}/health/liveness || exit 1
 
       - name: Deployment Summary
         run: |

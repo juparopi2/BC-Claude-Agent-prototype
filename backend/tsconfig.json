@@ -6,7 +6,7 @@
 
     /* Modules */
     "module": "commonjs",
-    "rootDir": ".",
+    "rootDir": "./src",
     "moduleResolution": "node",
     "baseUrl": "./",
     "paths": {

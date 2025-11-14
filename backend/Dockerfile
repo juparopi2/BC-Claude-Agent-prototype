@@ -7,9 +7,8 @@ WORKDIR /app
 COPY package*.json ./
 COPY tsconfig.json ./
 
-# Install backend dependencies
-RUN npm ci --only=production && \
-    npm ci --only=development
+# Install backend dependencies (all dependencies needed for build)
+RUN npm ci
 
 # Copy source code
 COPY src ./src

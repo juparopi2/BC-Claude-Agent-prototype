@@ -24,6 +24,7 @@ import { getBCClient } from './services/bc';
 import { getDirectAgentService } from './services/agent';
 import { getApprovalManager } from './services/approval/ApprovalManager';
 import { getTodoManager } from './services/todo/TodoManager';
+import { saveThinkingMessage, saveToolUseMessage, updateToolResultMessage } from './utils/messageHelpers';
 import authMockRoutes from './routes/auth-mock';
 import authOAuthRoutes from './routes/auth-oauth';
 import sessionsRoutes from './routes/sessions';
@@ -833,8 +834,8 @@ function configureSocketIO(): void {
         // Save user message to DB before executing agent
         try {
           const userMessageQuery = `
-            INSERT INTO messages (id, session_id, role, content, created_at)
-            VALUES (NEWID(), @sessionId, 'user', @content, GETUTCDATE())
+            INSERT INTO messages (id, session_id, role, message_type, content, created_at)
+            VALUES (NEWID(), @sessionId, 'user', 'standard', @content, GETUTCDATE())
           `;
           await executeQuery(userMessageQuery, {
             sessionId,
@@ -859,6 +860,15 @@ function configureSocketIO(): void {
             // Emit specific event types
             switch (event.type) {
               case 'thinking':
+                // Persist thinking message to database
+                try {
+                  await saveThinkingMessage(sessionId, event.content || '');
+                  logger.info(`[Socket.IO] Thinking message saved to database for session ${sessionId}`);
+                } catch (dbError) {
+                  logger.error('[Socket.IO] Failed to save thinking message:', dbError);
+                  // Continue streaming (DB error shouldn't break UX)
+                }
+
                 io.to(sessionId).emit('agent:thinking', {
                   content: event.content,
                 });
@@ -879,27 +889,47 @@ function configureSocketIO(): void {
 
               case 'message':
                 // FIX BUG #5: Guardar mensaje del assistant en BD
+                let assistantMessageId: string | undefined;
                 try {
                   const assistantMessageQuery = `
-                    INSERT INTO messages (id, session_id, role, content, created_at)
-                    VALUES (NEWID(), @sessionId, 'assistant', @content, GETUTCDATE())
+                    INSERT INTO messages (id, session_id, role, message_type, content, created_at)
+                    OUTPUT INSERTED.id
+                    VALUES (NEWID(), @sessionId, 'assistant', 'standard', @content, GETUTCDATE())
                   `;
-                  await executeQuery(assistantMessageQuery, {
+                  const result = await executeQuery(assistantMessageQuery, {
                     sessionId,
                     content: event.content,
                   });
-                  logger.info(`[Socket.IO] Assistant message saved to database for session ${sessionId}`);
+                  // ✅ Capture DB-generated ID
+                  assistantMessageId = (result.recordset[0] as { id: string } | undefined)?.id;
+                  logger.info(`[Socket.IO] Assistant message saved to database for session ${sessionId} with ID ${assistantMessageId}`);
                 } catch (dbError) {
                   logger.error('[Socket.IO] Failed to save assistant message:', dbError);
                 }
 
                 io.to(sessionId).emit('agent:message_complete', {
+                  id: assistantMessageId,  // ✅ SEND DB ID TO FRONTEND
                   content: event.content,
                   role: event.role,
                 });
                 break;
 
               case 'tool_use':
+                // Persist tool use message to database
+                let savedToolUseId: string;
+                try {
+                  savedToolUseId = await saveToolUseMessage(
+                    sessionId,
+                    event.toolName,
+                    event.args || {}
+                  );
+                  logger.info(`[Socket.IO] Tool use message saved to database for session ${sessionId} (tool: ${event.toolName})`);
+                } catch (dbError) {
+                  logger.error('[Socket.IO] Failed to save tool use message:', dbError);
+                  // Fallback ID if DB insert fails
+                  savedToolUseId = event.toolUseId || `tool-${Date.now()}-${event.toolName}`;
+                }
+
                 // Intercept TodoWrite to sync todos to database (if SDK were used)
                 if (event.toolName === 'TodoWrite' && event.args?.todos) {
                   const todoManager = getTodoManager();
@@ -912,11 +942,30 @@ function configureSocketIO(): void {
                 io.to(sessionId).emit('agent:tool_use', {
                   toolName: event.toolName,
                   args: event.args,
-                  toolUseId: event.toolUseId,
+                  toolUseId: savedToolUseId,
                 });
                 break;
 
               case 'tool_result':
+                // Update tool use message with result
+                if (event.toolUseId) {
+                  try {
+                    await updateToolResultMessage(
+                      sessionId,
+                      event.toolUseId,
+                      event.toolName,
+                      {}, // Args are already stored in the original tool_use message
+                      event.result,
+                      event.success !== false,
+                      event.error
+                    );
+                    logger.info(`[Socket.IO] Tool result updated in database for session ${sessionId} (tool: ${event.toolName}, success: ${event.success})`);
+                  } catch (dbError) {
+                    logger.error('[Socket.IO] Failed to update tool result:', dbError);
+                    // Continue streaming (DB error shouldn't break UX)
+                  }
+                }
+
                 io.to(sessionId).emit('agent:tool_result', {
                   toolName: event.toolName,
                   result: event.result,

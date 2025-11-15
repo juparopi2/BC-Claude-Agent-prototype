@@ -70,16 +70,27 @@ function transformSession(row: {
 
 /**
  * Transform database message row to frontend Message format
+ * Handles 3 message types: standard, thinking, tool_use
  */
 function transformMessage(row: {
   id: string;
   session_id: string;
   role: string;
+  message_type: string;
   content: string;
   metadata: string | null;
   token_count: number | null;
   created_at: Date;
 }) {
+  // Base fields common to all message types
+  const base = {
+    id: row.id,
+    session_id: row.session_id,
+    role: row.role as 'user' | 'assistant' | 'system',
+    message_type: row.message_type as 'standard' | 'thinking' | 'tool_use',
+    created_at: row.created_at.toISOString(),
+  };
+
   // Parse metadata JSON if present
   let metadata: Record<string, unknown> = {};
   if (row.metadata) {
@@ -90,15 +101,43 @@ function transformMessage(row: {
     }
   }
 
-  return {
-    id: row.id,
-    session_id: row.session_id,
-    role: row.role as 'user' | 'assistant' | 'system',
-    content: row.content,
-    thinking_tokens: metadata.thinking_tokens as number | undefined,
-    is_thinking: metadata.is_thinking as boolean | undefined,
-    created_at: row.created_at.toISOString(),
-  };
+  // Transform based on message type
+  switch (row.message_type) {
+    case 'thinking':
+      // Thinking message: content is in metadata
+      return {
+        id: row.id,
+        type: 'thinking' as const,  // ✅ ADD TYPE DISCRIMINATOR
+        session_id: row.session_id,
+        content: metadata.content as string || '',
+        duration_ms: metadata.duration_ms as number | undefined,
+        created_at: row.created_at.toISOString(),
+      };
+
+    case 'tool_use':
+      // Tool use message: tool details in metadata
+      return {
+        id: row.id,
+        type: 'tool_use' as const,  // ✅ ADD TYPE DISCRIMINATOR
+        session_id: row.session_id,
+        tool_name: metadata.tool_name as string,
+        tool_args: (metadata.tool_args as Record<string, unknown>) || {},
+        tool_result: metadata.tool_result as unknown | undefined,
+        status: (metadata.status as 'pending' | 'success' | 'error') || 'pending',
+        error_message: metadata.error_message as string | undefined,
+        created_at: row.created_at.toISOString(),
+      };
+
+    case 'standard':
+    default:
+      // Standard message: content is in content field
+      return {
+        ...base,  // Includes role and message_type for standard messages
+        content: row.content,
+        thinking_tokens: metadata.thinking_tokens as number | undefined,
+        is_thinking: metadata.is_thinking as boolean | undefined,
+      };
+  }
 }
 
 // ============================================
@@ -374,6 +413,7 @@ router.get('/:sessionId/messages', authenticateMicrosoft, async (req: Request, r
         id,
         session_id,
         role,
+        message_type,
         content,
         metadata,
         token_count,
@@ -389,6 +429,7 @@ router.get('/:sessionId/messages', authenticateMicrosoft, async (req: Request, r
       id: string;
       session_id: string;
       role: string;
+      message_type: string;
       content: string;
       metadata: string | null;
       token_count: number | null;

@@ -364,14 +364,18 @@ app.use(session({
 
 #### 3. messages
 
-**Purpose**: Chat history (user + assistant messages)
+**Purpose**: Chat history (user + assistant messages, thinking blocks, tool use events)
+
+**⚠️ UPDATED (Migration 007 - 2025-11-15)**: Added `message_type` discriminator column for persistent thinking and tool use messages.
 
 ```sql
 CREATE TABLE messages (
     id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
     session_id UNIQUEIDENTIFIER NOT NULL,
-    role NVARCHAR(20) NOT NULL,            -- 'user', 'assistant'
-    content NVARCHAR(MAX) NOT NULL,
+    role NVARCHAR(20) NOT NULL,            -- 'user', 'assistant', 'system'
+    message_type NVARCHAR(20) NOT NULL,    -- 'standard', 'thinking', 'tool_use'
+    content NVARCHAR(MAX) NOT NULL,        -- Text content (empty for thinking/tool_use)
+    metadata NVARCHAR(MAX) NULL,           -- JSON metadata (thinking content, tool args/results)
     thinking_tokens INT DEFAULT 0,         -- Tokens used in extended thinking
     is_thinking BIT DEFAULT 0,             -- Is this a thinking block?
     created_at DATETIME2 DEFAULT GETDATE(),
@@ -380,18 +384,29 @@ CREATE TABLE messages (
     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE,
 
     -- Constraints
-    CONSTRAINT chk_messages_role CHECK (role IN ('user', 'assistant', 'system'))
+    CONSTRAINT chk_messages_role CHECK (role IN ('user', 'assistant', 'system')),
+    CONSTRAINT chk_messages_type CHECK (message_type IN ('standard', 'thinking', 'tool_use'))
 );
 
 -- Indexes
 CREATE INDEX idx_messages_session_id ON messages(session_id);
 CREATE INDEX idx_messages_created_at ON messages(created_at DESC);
+CREATE INDEX idx_messages_type ON messages(message_type);
+CREATE INDEX idx_messages_session_type ON messages(session_id, message_type);
 ```
 
 **Key Features**:
 - `role` identifies message sender
+- `message_type` discriminates between standard/thinking/tool_use messages
+- `content` stores text for standard messages (empty for thinking/tool_use)
+- `metadata` stores JSON for thinking content and tool args/results
 - `thinking_tokens` tracks extended thinking cost
 - `is_thinking` flags thinking blocks (not shown to user)
+
+**Message Types**:
+- `standard`: Regular user/assistant text messages (content in `content` field)
+- `thinking`: Agent reasoning blocks (content in `metadata.content`)
+- `tool_use`: Tool calls + results (tool details in `metadata.tool_name`, `metadata.tool_args`, `metadata.tool_result`)
 - Cascade delete when session deleted
 
 **Message Persistence** (Bug #5 Fix - 2025-11-14):

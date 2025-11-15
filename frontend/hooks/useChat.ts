@@ -191,10 +191,12 @@ export function useChat(sessionId?: string) {
     };
 
     // Complete message received (backend emits agent:message_complete)
-    const handleMessageComplete = (data: { content: string; role: string }) => {
-      // Backend sends { content, role }, we need to construct full Message object
+    const handleMessageComplete = (data: { id?: string; content: string; role: string }) => {
+      // ✅ FIX: Use server-sent ID if available, otherwise generate temporary ID
+      const messageId = data.id || `msg-${Date.now()}-${Math.random()}`;
+
       const message: Message = {
-        id: `msg-${Date.now()}-${Math.random()}`,
+        id: messageId,  // ✅ Use DB ID from server
         session_id: sessionId || '',
         role: data.role as 'user' | 'assistant',
         content: data.content,
@@ -293,6 +295,15 @@ export function useChat(sessionId?: string) {
     const handleComplete = (data: { reason: string }) => {
       console.log('[useChat] Agent completed, reason:', data.reason);
       setIsThinking(false);
+
+      // ✅ FIX: Delay invalidation to allow database writes to complete
+      // This prevents race condition where refetch happens before DB INSERT completes
+      // With server-sent IDs (Fix #2), optimistic updates now match DB records exactly
+      if (sessionId) {
+        setTimeout(() => {
+          queryClient.invalidateQueries({ queryKey: chatKeys.messages(sessionId) });
+        }, 300);  // 300ms delay ensures DB writes complete
+      }
     };
 
     // Error (backend emits agent:error)

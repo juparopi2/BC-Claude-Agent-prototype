@@ -98,12 +98,14 @@ export class MessageService {
    * Save Agent Message
    *
    * @param sessionId - Session ID
+   * @param userId - User ID (audit trail)
    * @param content - Message content
    * @param stopReason - Optional stop reason from SDK
    * @returns Message ID
    */
   public async saveAgentMessage(
     sessionId: string,
+    userId: string,
     content: string,
     stopReason?: string | null
   ): Promise<string> {
@@ -115,6 +117,7 @@ export class MessageService {
         message_id: messageId,
         content,
         stop_reason: stopReason,
+        user_id: userId,  // ⭐ Audit trail
       });
 
       // 2. Queue for persistence
@@ -124,14 +127,17 @@ export class MessageService {
         role: 'assistant',
         messageType: 'text',
         content,
-        metadata: { stop_reason: stopReason },
+        metadata: {
+          stop_reason: stopReason,
+          user_id: userId,  // ⭐ Audit trail
+        },
       });
 
-      logger.debug('Agent message saved', { sessionId, messageId });
+      logger.debug('Agent message saved', { sessionId, userId, messageId });
 
       return messageId;
     } catch (error) {
-      logger.error('Failed to save agent message', { error, sessionId });
+      logger.error('Failed to save agent message', { error, sessionId, userId });
       throw error;
     }
   }
@@ -140,11 +146,13 @@ export class MessageService {
    * Save Thinking Message
    *
    * @param sessionId - Session ID
+   * @param userId - User ID (audit trail)
    * @param content - Thinking content
    * @returns Message ID
    */
   public async saveThinkingMessage(
     sessionId: string,
+    userId: string,
     content: string
   ): Promise<string> {
     const messageId = randomUUID();
@@ -154,6 +162,7 @@ export class MessageService {
         message_id: messageId,
         content,
         started_at: new Date().toISOString(),
+        user_id: userId,  // ⭐ Audit trail
       });
 
       await this.messageQueue.addMessagePersistence({
@@ -165,14 +174,15 @@ export class MessageService {
         metadata: {
           content,
           started_at: new Date().toISOString(),
+          user_id: userId,  // ⭐ Audit trail
         },
       });
 
-      logger.debug('Thinking message saved', { sessionId, messageId });
+      logger.debug('Thinking message saved', { sessionId, userId, messageId });
 
       return messageId;
     } catch (error) {
-      logger.error('Failed to save thinking message', { error, sessionId });
+      logger.error('Failed to save thinking message', { error, sessionId, userId });
       throw error;
     }
   }
@@ -181,6 +191,7 @@ export class MessageService {
    * Save Tool Use Message
    *
    * @param sessionId - Session ID
+   * @param userId - User ID (audit trail)
    * @param toolUseId - Tool use ID (DB GUID)
    * @param toolName - Tool name
    * @param toolArgs - Tool arguments
@@ -188,6 +199,7 @@ export class MessageService {
    */
   public async saveToolUseMessage(
     sessionId: string,
+    userId: string,
     toolUseId: string,
     toolName: string,
     toolArgs: Record<string, unknown>
@@ -199,6 +211,7 @@ export class MessageService {
         tool_use_id: toolUseId,
         tool_name: toolName,
         tool_args: toolArgs,
+        user_id: userId,  // ⭐ Audit trail
       });
 
       await this.messageQueue.addMessagePersistence({
@@ -212,16 +225,18 @@ export class MessageService {
           tool_args: toolArgs,
           tool_use_id: toolUseId,
           status: 'pending',
+          user_id: userId,  // ⭐ Audit trail
         },
       });
 
-      logger.debug('Tool use message saved', { sessionId, toolUseId, toolName });
+      logger.debug('Tool use message saved', { sessionId, userId, toolUseId, toolName });
 
       return messageId;
     } catch (error) {
       logger.error('Failed to save tool use message', {
         error,
         sessionId,
+        userId,
         toolUseId,
         toolName,
       });
@@ -235,6 +250,7 @@ export class MessageService {
    * Updates an existing tool use message with the result.
    *
    * @param sessionId - Session ID
+   * @param userId - User ID (audit trail)
    * @param toolUseId - Tool use ID (DB GUID)
    * @param toolName - Tool name
    * @param toolArgs - Tool arguments (preserved)
@@ -244,6 +260,7 @@ export class MessageService {
    */
   public async updateToolResult(
     sessionId: string,
+    userId: string,
     toolUseId: string,
     toolName: string,
     toolArgs: Record<string, unknown>,
@@ -259,6 +276,7 @@ export class MessageService {
         tool_result: result,
         success,
         error_message: error,
+        user_id: userId,  // ⭐ Audit trail
       });
 
       // 2. Update DB directly (this is fast, no queue needed)
@@ -273,6 +291,7 @@ export class MessageService {
           status: success ? 'success' : 'error',
           success,
           error_message: error || null,
+          user_id: userId,  // ⭐ Audit trail
         }),
       };
 
@@ -287,6 +306,7 @@ export class MessageService {
 
       logger.debug('Tool result updated', {
         sessionId,
+        userId,
         toolUseId,
         toolName,
         success,
@@ -295,6 +315,7 @@ export class MessageService {
       logger.error('Failed to update tool result', {
         error,
         sessionId,
+        userId,
         toolUseId,
         toolName,
       });

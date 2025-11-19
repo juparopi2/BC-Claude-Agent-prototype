@@ -27,7 +27,8 @@ import { env } from '@/config';
 import type { AgentEvent, AgentExecutionResult, PersistenceState } from '@/types';
 import type { ApprovalManager } from '../approval/ApprovalManager';
 import type { TodoManager } from '../todo/TodoManager';
-import type { IAnthropicClient, ClaudeTool } from './IAnthropicClient';
+import type { IAnthropicClient } from './IAnthropicClient';
+import type { Tool } from '@anthropic-ai/sdk/resources/messages';  // ⭐ Use native SDK type
 import { AnthropicClient } from './AnthropicClient';
 import { randomUUID } from 'crypto';
 import { getEventStore } from '../events/EventStore';
@@ -610,7 +611,7 @@ export class DirectAgentService {
    *
    * @returns Array of Claude tool definitions
    */
-  private async getMCPToolDefinitions(): Promise<ClaudeTool[]> {
+  private async getMCPToolDefinitions(): Promise<Tool[]> {
     const { getMCPToolDefinitions } = await import('./tool-definitions');
     return getMCPToolDefinitions();
   }

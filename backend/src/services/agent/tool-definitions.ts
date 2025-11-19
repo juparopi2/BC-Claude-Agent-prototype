@@ -7,7 +7,7 @@
  * @module services/agent/tool-definitions
  */
 
-import type { ClaudeTool } from '@anthropic-ai/claude-agent-sdk';
+import type { Tool } from '@anthropic-ai/sdk/resources/messages';  // ⭐ Use native SDK type
 
 /**
  * MCP Tool Definitions
@@ -15,7 +15,7 @@ import type { ClaudeTool } from '@anthropic-ai/claude-agent-sdk';
  * Array of tool definitions that can be used by Claude Agent SDK.
  * These tools provide access to Business Central metadata via the MCP server.
  */
-export const MCP_TOOLS: ClaudeTool[] = [
+export const MCP_TOOLS: Tool[] = [
   {
     name: 'list_all_entities',
     description:
@@ -184,7 +184,7 @@ export const MCP_TOOLS: ClaudeTool[] = [
  *
  * @returns Array of Claude tool definitions
  */
-export function getMCPToolDefinitions(): ClaudeTool[] {
+export function getMCPToolDefinitions(): Tool[] {
   return MCP_TOOLS;
 }
 
@@ -196,7 +196,7 @@ export function getMCPToolDefinitions(): ClaudeTool[] {
  * @param toolName - Name of the tool
  * @returns Tool definition or undefined if not found
  */
-export function getToolDefinition(toolName: string): ClaudeTool | undefined {
+export function getToolDefinition(toolName: string): Tool | undefined {
   return MCP_TOOLS.find((tool) => tool.name === toolName);
 }
 

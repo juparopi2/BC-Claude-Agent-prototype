@@ -24,6 +24,7 @@ import { getBCClient } from './services/bc';
 import { getDirectAgentService } from './services/agent';
 import { getApprovalManager } from './services/approval/ApprovalManager';
 import { getTodoManager } from './services/todo/TodoManager';
+import { getChatMessageHandler } from './services/websocket/ChatMessageHandler';
 import authMockRoutes from './routes/auth-mock';
 import authOAuthRoutes from './routes/auth-oauth';
 import sessionsRoutes from './routes/sessions';
@@ -447,10 +448,11 @@ function configureRoutes(): void {
 
       if (!result.success) {
         console.error('[API] Query customers failed:', result.error);
-        return res.status(500).json({
+        res.status(500).json({
           error: 'Query failed',
           details: result.error.error.message,
         });
+        return;  // ⭐ Return void instead of Response
       }
 
       res.json({
@@ -798,10 +800,10 @@ function configureSocketIO(): void {
     const userId = authSocket.userId;
     logger.info(`[Socket.IO] ✅ Client connected: ${socket.id} (User: ${userId})`);
 
-    // Handler: Chat message (TODO: Will be replaced with modular ChatMessageHandler in FASE 4)
-    socket.on('chat:message', async (_data: { message: string; sessionId: string; userId: string }) => {
-      // TODO FASE 4: Replace this with getChatMessageHandler(io).handle(data, socket)
-      socket.emit('agent:error', { error: 'Chat handler temporarily disabled during refactor' });
+    // Handler: Chat message
+    socket.on('chat:message', async (data: { message: string; sessionId: string; userId: string }) => {
+      const chatHandler = getChatMessageHandler();
+      await chatHandler.handle(data, socket, io);
     });
 
     // Handler: Approval response

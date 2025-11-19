@@ -246,7 +246,7 @@ export const RetryPredicates = {
    */
   isServerError: (error: Error): boolean => {
     const match = error.message.match(/HTTP (\d{3})/);
-    if (!match) return false;
+    if (!match || !match[1]) return false;  // ⭐ Validate match[1] exists
     const statusCode = parseInt(match[1], 10);
     return statusCode >= 500 && statusCode < 600;
   },

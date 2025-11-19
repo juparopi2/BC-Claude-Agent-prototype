@@ -1,0 +1,184 @@
+/**
+ * WebSocket Event Types
+ *
+ * Type-safe socket.io event definitions with enhanced contract.
+ * All events follow multi-tenant architecture with explicit userId.
+ *
+ * @module types/websocket
+ */
+
+import type { AgentEvent } from './agent.types';
+
+/**
+ * Chat Message Data (Client → Server)
+ *
+ * User sends a chat message to the agent.
+ *
+ * Multi-tenant: userId + sessionId uniquely identify the conversation.
+ */
+export interface ChatMessageData {
+  /**
+   * Message content from user
+   */
+  message: string;
+
+  /**
+   * Session ID (UUID)
+   */
+  sessionId: string;
+
+  /**
+   * User ID (from Microsoft OAuth)
+   *
+   * Required for multi-tenant audit trail.
+   */
+  userId: string;
+}
+
+/**
+ * Stop Agent Data (Client → Server)
+ *
+ * User requests to stop ongoing agent execution.
+ */
+export interface StopAgentData {
+  /**
+   * Session ID to stop
+   */
+  sessionId: string;
+
+  /**
+   * User ID (authorization check)
+   */
+  userId: string;
+}
+
+/**
+ * Approval Response Data (Client → Server)
+ *
+ * User responds to Human-in-the-Loop approval request.
+ */
+export interface ApprovalResponseData {
+  /**
+   * Approval request ID
+   */
+  approvalId: string;
+
+  /**
+   * True if approved, false if denied
+   */
+  approved: boolean;
+
+  /**
+   * User ID (authorization check)
+   */
+  userId: string;
+}
+
+/**
+ * Approval Request Data (Server → Client)
+ *
+ * Server requests human approval for tool execution.
+ */
+export interface ApprovalRequestData {
+  /**
+   * Unique approval request ID
+   */
+  approvalId: string;
+
+  /**
+   * Tool name requiring approval
+   */
+  toolName: string;
+
+  /**
+   * Tool arguments (for display to user)
+   */
+  args: Record<string, unknown>;
+
+  /**
+   * Session ID context
+   */
+  sessionId: string;
+
+  /**
+   * Timestamp of request
+   */
+  timestamp: Date;
+}
+
+/**
+ * Agent Error Data (Server → Client)
+ *
+ * Server sends error message to client.
+ */
+export interface AgentErrorData {
+  /**
+   * Error message (user-friendly)
+   */
+  error: string;
+
+  /**
+   * Optional session ID context
+   */
+  sessionId?: string;
+
+  /**
+   * Optional error code for categorization
+   */
+  code?: string;
+}
+
+/**
+ * WebSocket Events Map
+ *
+ * Type-safe map of all socket.io events.
+ * Use this interface for TypeScript autocomplete and type checking.
+ *
+ * Example:
+ * ```typescript
+ * socket.on('chat:message', (data: ChatMessageData) => {
+ *   // data is typed automatically
+ * });
+ * ```
+ */
+export interface WebSocketEvents {
+  // ========== Client → Server ==========
+
+  /**
+   * User sends chat message
+   */
+  'chat:message': (data: ChatMessageData) => void;
+
+  /**
+   * User stops ongoing agent execution
+   */
+  'chat:stop': (data: StopAgentData) => void;
+
+  /**
+   * User responds to approval request
+   */
+  'approval:respond': (data: ApprovalResponseData) => void;
+
+  // ========== Server → Client ==========
+
+  /**
+   * Agent event (enhanced contract)
+   *
+   * Single event type for ALL agent events.
+   * Discriminate by event.type for specific handling.
+   *
+   * This is the ONLY agent event type emitted to frontend.
+   * Legacy events (agent:thinking, agent:message_chunk, etc.) are deprecated.
+   */
+  'agent:event': (event: AgentEvent) => void;
+
+  /**
+   * Agent error occurred
+   */
+  'agent:error': (data: AgentErrorData) => void;
+
+  /**
+   * Approval requested (Human-in-the-Loop)
+   */
+  'approval:requested': (data: ApprovalRequestData) => void;
+}

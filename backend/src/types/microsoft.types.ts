@@ -83,7 +83,7 @@ export interface MicrosoftOAuthSession {
   email?: string;
   accessToken?: string;
   refreshToken?: string;
-  tokenExpiresAt?: Date;
+  tokenExpiresAt?: string;  // ⭐ Changed to string (ISO 8601 format) for session serialization
 }
 
 /**

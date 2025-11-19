@@ -46,10 +46,12 @@ export type {
   ThinkingEvent,
   MessagePartialEvent,
   MessageEvent,
+  MessageChunkEvent,  // ⭐ Added missing export
   ToolUseEvent,
   ToolResultEvent,
   ErrorEvent,
   SessionEndEvent,
+  CompleteEvent,  // ⭐ Added missing export
   ApprovalRequestedEvent,
   ApprovalResolvedEvent,
   AgentEvent,

@@ -188,7 +188,7 @@ router.get('/callback', async (req: Request, res: Response) => {
       email: userProfile.mail,
       accessToken: tokenResponse.access_token,
       refreshToken: tokenResponse.refresh_token,
-      tokenExpiresAt: expiresAt,
+      tokenExpiresAt: expiresAt.toISOString(),  // ⭐ Convert Date to string (ISO 8601)
     };
 
     // Store in express-session

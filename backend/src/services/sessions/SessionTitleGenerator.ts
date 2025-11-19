@@ -255,17 +255,25 @@ Now generate a title for the user's message:`;
     const successfulResults: Array<{ sessionId: string; title: string }> = [];
 
     results.forEach((result, index) => {
+      const session = sessions[index];  // ⭐ Cache to avoid multiple undefined checks
+
       if (result.status === 'fulfilled') {
         successfulResults.push(result.value);
       } else {
+        // Validate session exists (defensive programming)
+        if (!session) {
+          logger.warn('Session undefined in batch results', { index });
+          return;
+        }
+
         logger.error('Failed to generate title in batch', {
-          sessionId: sessions[index].sessionId,
+          sessionId: session.sessionId,
           error: result.reason,
         });
         // Add fallback title
         successfulResults.push({
-          sessionId: sessions[index].sessionId,
-          title: this.generateFallbackTitle(sessions[index].userMessage),
+          sessionId: session.sessionId,
+          title: this.generateFallbackTitle(session.userMessage),
         });
       }
     });

@@ -38,7 +38,7 @@ declare global {
  * });
  * ```
  */
-export function authenticateMicrosoft(req: Request, res: Response, next: NextFunction): void {
+export async function authenticateMicrosoft(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     // Check if session exists
     if (!req.session || !req.session.microsoftOAuth) {
@@ -111,7 +111,9 @@ export function authenticateMicrosoft(req: Request, res: Response, next: NextFun
             ...oauthSession,
             accessToken: refreshed.accessToken,
             refreshToken: refreshed.refreshToken,
-            tokenExpiresAt: refreshed.expiresAt.toISOString(),
+            tokenExpiresAt: (refreshed.expiresAt instanceof Date
+              ? refreshed.expiresAt.toISOString()
+              : refreshed.expiresAt) as string,  // ⭐ Type assertion for session storage
           };
 
           // Save session (force save to ensure it's persisted)

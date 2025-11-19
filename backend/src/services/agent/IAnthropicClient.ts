@@ -19,6 +19,7 @@ import type {
   TextBlock,
   ToolUseBlock,
   MessageStreamEvent,
+  Tool,
 } from '@anthropic-ai/sdk/resources/messages';
 
 /**
@@ -31,26 +32,13 @@ export interface AnthropicClientConfig {
 }
 
 /**
- * Tool definition for Claude API
- */
-export interface ClaudeTool {
-  name: string;
-  description: string;
-  input_schema: {
-    type: 'object';
-    properties: Record<string, unknown>;
-    required?: string[];
-  };
-}
-
-/**
  * Request parameters for chat completion
  */
 export interface ChatCompletionRequest {
   model: string;
   max_tokens: number;
   messages: MessageParam[];
-  tools?: ClaudeTool[];
+  tools?: Tool[];
   system?: string;
 }
 

@@ -338,10 +338,21 @@ export class DirectAgentService {
 
                 console.log(`[STREAM] text_delta: index=${event.index}, chunk_len=${chunk.length}`);
               } else if (event.delta.type === 'input_json_delta') {
-                // Tool input chunk (JSON partial)
-                // Parse incremental JSON (SDK handles this)
-                // In practice, we get the full input in content_block_stop
-                console.log(`[STREAM] input_json_delta: index=${event.index}`);
+                // Tool input chunk (JSON partial) - accumulate the JSON string
+                const partialJson = event.delta.partial_json;
+                const toolBlock = block.data as { id: string; name: string; input: Record<string, unknown>; inputJson?: string };
+
+                // Accumulate JSON string (will parse when complete)
+                toolBlock.inputJson = (toolBlock.inputJson || '') + partialJson;
+
+                // Try to parse accumulated JSON (may be incomplete)
+                try {
+                  toolBlock.input = JSON.parse(toolBlock.inputJson);
+                  console.log(`[STREAM] input_json_delta: index=${event.index}, parsed_input=${JSON.stringify(toolBlock.input)}`);
+                } catch {
+                  // JSON incomplete, will parse on next delta or at content_block_stop
+                  console.log(`[STREAM] input_json_delta: index=${event.index}, json_len=${partialJson.length} (incomplete)`);
+                }
               }
               break;
 

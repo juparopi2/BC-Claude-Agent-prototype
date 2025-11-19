@@ -14,6 +14,7 @@
  */
 
 import { executeQuery, getDatabase, SqlParams } from '@/config/database';
+import { getRedisClient } from '@/config/redis';
 import { randomUUID } from 'crypto';
 import { logger } from '@/utils/logger';
 
@@ -342,27 +343,46 @@ export class EventStore {
   /**
    * Get Next Sequence Number for Session
    *
-   * Auto-increments sequence number for ordering.
+   * Uses Redis INCR for atomic sequence number generation (multi-tenant safe).
+   * Prevents race conditions in horizontal scaling scenarios.
    *
    * @param sessionId - Session ID
    * @returns Next sequence number
    */
   private async getNextSequenceNumber(sessionId: string): Promise<number> {
     try {
-      const result = await executeQuery(
-        `
-        SELECT COALESCE(MAX(sequence_number), -1) + 1 AS next_seq
-        FROM message_events
-        WHERE session_id = @session_id
-        `,
-        { session_id: sessionId }
-      );
+      const redis = getRedisClient();
+      const key = `event:sequence:${sessionId}`;
 
-      return result.recordset[0]?.next_seq ?? 0;
+      // Redis INCR is atomic - perfect for distributed systems
+      const sequenceNumber = await redis.incr(key);
+
+      // Set TTL to 7 days (auto-cleanup for inactive sessions)
+      await redis.expire(key, 7 * 24 * 60 * 60);
+
+      // Redis INCR starts at 1, but we want 0-indexed sequence numbers
+      return sequenceNumber - 1;
     } catch (error) {
-      logger.error('Failed to get next sequence number', { error, sessionId });
-      // Default to 0 if error (first event in session)
-      return 0;
+      logger.error('Failed to get next sequence number from Redis', { error, sessionId });
+
+      // Fallback to database MAX+1 (slower, but guarantees correctness)
+      logger.warn('Falling back to database for sequence number', { sessionId });
+      try {
+        const result = await executeQuery(
+          `
+          SELECT COALESCE(MAX(sequence_number), -1) + 1 AS next_seq
+          FROM message_events
+          WHERE session_id = @session_id
+          `,
+          { session_id: sessionId }
+        );
+
+        return result.recordset[0]?.next_seq ?? 0;
+      } catch (dbError) {
+        logger.error('Fallback also failed', { dbError, sessionId });
+        // Last resort: use timestamp-based sequence (could have gaps)
+        return Date.now();
+      }
     }
   }
 
@@ -411,6 +431,61 @@ export class EventStore {
     } catch (error) {
       logger.error('Failed to get event count', { error, sessionId });
       return 0;
+    }
+  }
+
+  /**
+   * Get Last Event ID for Session
+   *
+   * Returns the most recent event ID for a session.
+   * Useful for correlation and parentEventId tracking.
+   *
+   * @param sessionId - Session ID
+   * @returns Event ID or null if no events exist
+   */
+  public async getLastEventId(sessionId: string): Promise<string | null> {
+    try {
+      const result = await executeQuery(
+        `
+        SELECT TOP 1 id
+        FROM message_events
+        WHERE session_id = @session_id
+        ORDER BY sequence_number DESC
+        `,
+        { session_id: sessionId }
+      );
+
+      return result.recordset[0]?.id ?? null;
+    } catch (error) {
+      logger.error('Failed to get last event ID', { error, sessionId });
+      return null;
+    }
+  }
+
+  /**
+   * Get Last Sequence Number for Session
+   *
+   * Returns the highest sequence number for a session.
+   * Useful for debugging and validation.
+   *
+   * @param sessionId - Session ID
+   * @returns Sequence number or -1 if no events exist
+   */
+  public async getLastSequenceNumber(sessionId: string): Promise<number> {
+    try {
+      const result = await executeQuery(
+        `
+        SELECT MAX(sequence_number) AS last_seq
+        FROM message_events
+        WHERE session_id = @session_id
+        `,
+        { session_id: sessionId }
+      );
+
+      return result.recordset[0]?.last_seq ?? -1;
+    } catch (error) {
+      logger.error('Failed to get last sequence number', { error, sessionId });
+      return -1;
     }
   }
 }

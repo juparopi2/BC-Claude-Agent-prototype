@@ -447,16 +447,24 @@ function configureRoutes(): void {
       const top = req.query.top ? parseInt(req.query.top as string) : 10;
       const filter = req.query.filter as string | undefined;
 
-      const customers = await bcClient.query('customers', {
+      const result = await bcClient.query('customers', {
         select: ['id', 'number', 'displayName', 'email', 'blocked', 'balance'],
         top,
         filter,
         count: true,
       });
 
+      if (!result.success) {
+        console.error('[API] Query customers failed:', result.error);
+        return res.status(500).json({
+          error: 'Query failed',
+          details: result.error.error.message,
+        });
+      }
+
       res.json({
-        count: customers['@odata.count'],
-        customers: customers.value,
+        count: result.data['@odata.count'],
+        customers: result.data.value,
       });
     } catch (error) {
       console.error('[API] Query customers failed:', error);

@@ -23,7 +23,7 @@ export type MessageType =
 
 /**
  * Message Database Record
- * Represents a message as stored in the database
+ * Represents a message as stored in the database with Event Sourcing support
  */
 export interface MessageDbRecord {
   id: string;
@@ -33,6 +33,12 @@ export interface MessageDbRecord {
   content: string;
   metadata: string; // JSON string
   created_at: Date;
+
+  // ⭐ Event Sourcing Fields (FASE 1 - Enhanced Contract)
+  /** Sequence number for guaranteed ordering (replaces timestamp ordering) */
+  sequence_number: number | null;
+  /** Event ID linking to message_events table */
+  event_id: string | null;
 }
 
 /**
@@ -58,7 +64,7 @@ export interface ToolUseMetadata {
 
 /**
  * Parsed Message
- * Message with parsed metadata
+ * Message with parsed metadata and Event Sourcing fields
  */
 export type ParsedMessage =
   | {
@@ -68,6 +74,8 @@ export type ParsedMessage =
       message_type: 'text';
       content: string;
       created_at: Date;
+      sequence_number: number | null;
+      event_id: string | null;
     }
   | {
       id: string;
@@ -77,6 +85,8 @@ export type ParsedMessage =
       content: string;
       metadata: ThinkingMetadata;
       created_at: Date;
+      sequence_number: number | null;
+      event_id: string | null;
     }
   | {
       id: string;
@@ -86,6 +96,8 @@ export type ParsedMessage =
       content: string;
       metadata: ToolUseMetadata;
       created_at: Date;
+      sequence_number: number | null;
+      event_id: string | null;
     }
   | {
       id: string;
@@ -95,6 +107,8 @@ export type ParsedMessage =
       content: string;
       metadata?: { error: string };
       created_at: Date;
+      sequence_number: number | null;
+      event_id: string | null;
     };
 
 /**
@@ -111,6 +125,8 @@ export function parseMessageMetadata(message: MessageDbRecord): ParsedMessage {
     message_type: message.message_type,
     content: message.content,
     created_at: message.created_at,
+    sequence_number: message.sequence_number,
+    event_id: message.event_id,
   };
 
   if (message.message_type === 'thinking') {

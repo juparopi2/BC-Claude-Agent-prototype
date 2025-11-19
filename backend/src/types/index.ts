@@ -40,6 +40,7 @@ export type {
 export type {
   AgentOptions,
   AgentEventType,
+  PersistenceState,
   BaseAgentEvent,
   SessionStartEvent,
   ThinkingEvent,

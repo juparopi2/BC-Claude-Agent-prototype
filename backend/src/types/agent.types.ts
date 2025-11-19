@@ -50,8 +50,14 @@ export type AgentEventType =
   | 'approval_resolved';
 
 /**
+ * Persistence State
+ * Indicates the database persistence status of an event
+ */
+export type PersistenceState = 'queued' | 'persisted' | 'failed';
+
+/**
  * Base Agent Event
- * Base structure for all agent events
+ * Base structure for all agent events with Event Sourcing support
  */
 export interface BaseAgentEvent {
   /** Event type */
@@ -60,6 +66,18 @@ export interface BaseAgentEvent {
   sessionId?: string;
   /** Timestamp */
   timestamp: Date;
+
+  // ⭐ Event Sourcing Fields (FASE 1 - Enhanced Contract)
+  /** Unique event ID (UUID) for tracing and correlation */
+  eventId: string;
+  /** Sequence number within session for guaranteed ordering */
+  sequenceNumber: number;
+  /** Database persistence state (queued → persisted | failed) */
+  persistenceState: PersistenceState;
+  /** Correlation ID for linking related events (e.g., tool_use → tool_result) */
+  correlationId?: string;
+  /** Parent event ID for hierarchical relationships */
+  parentEventId?: string;
 }
 
 /**

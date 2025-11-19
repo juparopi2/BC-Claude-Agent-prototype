@@ -72,7 +72,8 @@
       "WebFetch(domain:playwright.dev)",
       "Bash(temp_html_sample.txt)",
       "Bash(nc:*)",
-      "Bash(npm run test)"
+      "Bash(npm run test)",
+      "Bash(sqlcmd:*)"
     ],
     "deny": [],
     "ask": []

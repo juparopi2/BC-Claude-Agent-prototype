@@ -7,6 +7,10 @@
  * @date 2025-11-19
  */
 
+-- Set required options for filtered indexes
+SET QUOTED_IDENTIFIER ON;
+GO
+
 -- Create message_events table
 CREATE TABLE message_events (
     -- Primary key

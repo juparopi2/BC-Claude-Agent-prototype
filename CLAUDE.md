@@ -19,9 +19,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 📚 CÓMO USAR LA DOCUMENTACIÓN
 
-**⚠️ NUEVA ESTRUCTURA DE DOCUMENTACIÓN** (2025-11-12):
+**⚠️ ESTRUCTURA DE DOCUMENTACIÓN ACTUAL** (2025-11-19):
 
-La documentación ha sido completamente reestructurada para reflejar el estado actual del proyecto y todas las decisiones arquitectónicas. **La documentación anterior se encuentra en `docs-old/` como referencia histórica.**
+La documentación está organizada por roles (**backend**, **frontend**, **common**) con **101 archivos markdown** que cubren todos los aspectos del sistema.
 
 ### Índice Maestro
 
@@ -31,55 +31,65 @@ La documentación ha sido completamente reestructurada para reflejar el estado a
 
 Antes de hacer cambios significativos, **SIEMPRE lee estos documentos**:
 
-1. **`docs/README.md`** - Índice completo, quick navigation, update protocol
-2. **`docs/04-direction-changes.md`** - 8 cambios arquitectónicos mayores, por qué se hicieron
-3. **`docs/02-sdk-first-philosophy.md`** - Principios SDK-first (PERMANENTE)
-4. **`docs/01-architecture.md`** - Arquitectura actual con diagramas Mermaid
-5. **`docs/03-database-schema.md`** - Schema completo (DDL + ER diagrams + queries)
-6. **`docs/05-deprecated/`** - 4 approaches deprecados (NO reimplementar)
+1. **`docs/README.md`** - Índice completo de los 101 archivos de documentación
+2. **`docs/backend/README.md`** - Backend quick start, arquitectura, deployment (16KB)
+3. **`docs/backend/architecture-deep-dive.md`** - Event sourcing, BullMQ queues, DirectAgentService (14KB)
+4. **`docs/backend/websocket-contract.md`** - Contrato completo de eventos WebSocket (17KB)
+5. **`docs/common/03-database-schema.md`** - Schema completo (DDL + ER diagrams + queries)
+6. **`docs/backend/authentication.md`** - Microsoft OAuth flow, token encryption (7KB)
 
 ### Cuándo Consultar Cada Sección
 
 | Tarea | Documentos a Leer |
 |-------|-------------------|
-| **Implementar agent features** | `docs/02-sdk-first-philosophy.md` |
-| **Cambiar base de datos** | `docs/03-database-schema.md` |
-| **Modificar autenticación** | `docs/05-deprecated/01-jwt-authentication.md` |
-| **Agregar endpoints** | `docs/01-architecture.md` (Backend section) |
-| **Entender decisiones pasadas** | `docs/04-direction-changes.md` |
+| **Implementar agent features** | `docs/backend/architecture-deep-dive.md` (DirectAgentService) |
+| **Cambiar base de datos** | `docs/common/03-database-schema.md` |
+| **Modificar autenticación** | `docs/backend/authentication.md` |
+| **Agregar endpoints REST** | `docs/backend/api-reference.md` |
+| **Agregar eventos WebSocket** | `docs/backend/websocket-contract.md` |
+| **Entender SDK messages** | `docs/backend/06-sdk-message-structures.md` (stop_reason pattern) |
+| **Implementar error handling** | `docs/backend/error-handling.md` |
+| **TypeScript types** | `docs/backend/types-reference.md` |
 
 ### Protocolo de Actualización de Documentación
 
 **CADA VEZ QUE HAGAS UN CAMBIO SIGNIFICATIVO**:
 
-1. ✅ **Actualiza el documento relevante** en `docs/`
-2. ✅ **Actualiza `docs/README.md`** si cambia la estructura
+1. ✅ **Actualiza el documento relevante** en `docs/backend/`, `docs/frontend/`, o `docs/common/`
+2. ✅ **Actualiza `docs/README.md`** si cambia la estructura de carpetas
 3. ✅ **Actualiza `TODO.md`** para reflejar progreso
-4. ✅ **Actualiza `CLAUDE.md`** si cambian las instrucciones generales
-5. ✅ **Agrega a `docs/04-direction-changes.md`** si es decisión arquitectónica
-6. ✅ **Agrega a `docs/05-deprecated/`** si deprecas un approach
+4. ✅ **Actualiza `CLAUDE.md`** si cambian las instrucciones generales para Claude Code
+5. ✅ **Documenta breaking changes** en el archivo correspondiente (ej: websocket-contract.md si cambias eventos)
 
-**Regla de Oro**: "Si hiciste un cambio arquitectónico y NO actualizaste `docs/04-direction-changes.md`, NO has terminado."
+**Regla de Oro**: "Si hiciste un breaking change y NO actualizaste la documentación correspondiente, NO has terminado."
 
-### Estructura de Carpetas docs/ (Simplificada)
+### Estructura de Carpetas docs/ (Organizada por Roles)
 
 ```
 docs/
 ├── README.md                           ⭐ ÍNDICE MAESTRO - LEE PRIMERO
-├── 01-architecture.md                  ⭐ Arquitectura completa + Mermaid diagrams
-├── 02-sdk-first-philosophy.md          ⭐ Principios SDK-first (PERMANENTE)
-├── 03-database-schema.md               ⭐ Schema completo (DDL + ER + queries)
-├── 04-direction-changes.md             ⭐ 8 pivots arquitectónicos documentados
-└── 05-deprecated/                      ⭐ Approaches deprecados (NO usar)
-    ├── 01-jwt-authentication.md        JWT → Microsoft OAuth
-    ├── 02-custom-orchestrator.md       Custom → SDK native routing
-    ├── 03-git-submodule-mcp.md         Git submodule → Vendored data
-    └── 04-global-bc-credentials.md     Global → Per-user BC tokens
-
-docs-old/                               📦 Backup (74 archivos históricos)
+├── backend/                            🔧 Backend API documentation (8 archivos)
+│   ├── README.md                       ⭐ Quick start, setup, deployment
+│   ├── architecture-deep-dive.md       ⭐ Event sourcing, BullMQ, DirectAgentService
+│   ├── websocket-contract.md           ⭐ Contrato completo de eventos WebSocket
+│   ├── api-reference.md                REST API endpoints
+│   ├── authentication.md               Microsoft OAuth flow, token encryption
+│   ├── error-handling.md               Error codes y estrategias
+│   ├── types-reference.md              TypeScript types reference
+│   ├── 06-sdk-message-structures.md    SDK message types, stop_reason pattern
+│   └── deprecated/                     (vacío, para futura referencia)
+├── frontend/                           🎨 Frontend documentation (1 archivo)
+│   └── README.md                       Frontend setup y arquitectura
+├── common/                             📚 Shared documentation (2 archivos)
+│   ├── 03-database-schema.md           ⭐ Complete DB schema (11/15 tables)
+│   └── 05-AZURE_NAMING_CONVENTIONS.md  Azure resource naming standards
+└── future-developments/                📅 Phase 3 planning (11 archivos)
+    ├── README.md                       Roadmap de features futuras
+    ├── rate-limiting/                  5 PRDs para rate limiting, caching
+    └── testing/                        6 documentos de testing strategy
 ```
 
-**Total**: 5 documentos + 4 deprecated = **9 archivos** (todos con contenido)
+**Total**: **101 archivos markdown** organizados por rol
 
 **⭐ = Alta prioridad, leer frecuentemente**
 
@@ -103,14 +113,14 @@ El backend será un servidor Express con TypeScript que incluye:
 ### Frontend
 **Ubicación**: `frontend/`
 
-**Estado**: Inicializado (Next.js 16 + React 19 + Tailwind CSS 4)
+**Estado**: Inicializado (Next.js 16.0.1 + React 19.2.0 + Tailwind CSS 4.1.17)
 
-Frontend Next.js con App Router que incluirá:
+Frontend Next.js con App Router que incluye:
 - Chat interface tipo Claude Code
 - Panel de aprobaciones (Human-in-the-Loop)
 - Panel de To-Do Lists
 - Source panel
-- WebSocket client
+- WebSocket client (Socket.IO 4.8.1)
 
 ### Infraestructura
 **Ubicación**: `infrastructure/`
@@ -131,10 +141,10 @@ Contiene scripts de deployment para Azure:
 
 ## 📚 Documentación
 
-**⚠️ ESTRUCTURA ACTUALIZADA (2025-11-12)**:
+**⚠️ ESTRUCTURA ACTUALIZADA (2025-11-19)**:
 
-- **`docs/`** - Nueva documentación (95% MVP, estado actual)
-- **`docs-old/`** - Backup (referencia histórica)
+- **`docs/`** - Documentación organizada por roles (backend/, frontend/, common/)
+- **101 archivos markdown** cubriendo arquitectura, API, WebSocket, testing, y Phase 3 planning
 
 **SIEMPRE lee `docs/README.md` PRIMERO** - Es el índice maestro con navegación completa.
 
@@ -142,21 +152,33 @@ Contiene scripts de deployment para Azure:
 
 **Lee estos ANTES de implementar cualquier feature**:
 
-1. **`docs/README.md`** ⭐ - Índice completo, quick navigation, cuándo leer qué
-2. **`docs/04-direction-changes.md`** ⭐ - 8 cambios arquitectónicos (por qué se hicieron)
-3. **`docs/02-sdk-first-philosophy.md`** ⭐ - Principios SDK-first (PERMANENTE)
-4. **`docs/01-architecture.md`** ⭐ - Arquitectura con diagramas Mermaid + DirectAgentService
-5. **`docs/03-database-schema.md`** ⭐ - Schema completo (DDL + ER + queries)
-6. **`docs/05-deprecated/`** ⭐ - Approaches deprecados (JWT, Orchestrator, Git Submodule, Global BC)
+1. **`docs/README.md`** ⭐ - Índice completo de los 101 archivos
+2. **`docs/backend/README.md`** ⭐ - Backend quick start, setup, deployment (16KB)
+3. **`docs/backend/architecture-deep-dive.md`** ⭐ - Event sourcing, BullMQ, DirectAgentService (14KB)
+4. **`docs/backend/websocket-contract.md`** ⭐ - Contrato completo de eventos WebSocket (17KB)
+5. **`docs/common/03-database-schema.md`** ⭐ - Schema completo (DDL + ER + queries)
+6. **`docs/backend/authentication.md`** ⭐ - Microsoft OAuth flow, token encryption (7KB)
 
-### Documentos (5 + 4 deprecated = 9 archivos)
+### Documentos Backend (8 archivos principales)
 
-- **`README.md`** ⭐ - Índice maestro, cuándo leer qué, update protocol
-- **`01-architecture.md`** ⭐ - System architecture, Mermaid diagrams, DirectAgentService, OAuth flow, deployment
-- **`02-sdk-first-philosophy.md`** ⭐ - SDK-first principles (PERMANENTE), what SDK provides, what we build
-- **`03-database-schema.md`** ⭐ - Complete DB schema (11/15 tables), DDL, ER diagrams, example queries
-- **`04-direction-changes.md`** ⭐ - 8 architectural pivots, timeline, impact, lessons learned
-- **`05-deprecated/`** ⭐ - 4 deprecated approaches (DO NOT REIMPLEMENT)
+- **`README.md`** ⭐ - Quick start, arquitectura general, deployment
+- **`architecture-deep-dive.md`** ⭐ - Event sourcing, BullMQ queues, DirectAgentService, stop_reason pattern
+- **`websocket-contract.md`** ⭐ - Contrato completo de eventos, discriminated unions
+- **`api-reference.md`** - REST API endpoints (sessions, messages, approvals)
+- **`authentication.md`** - Microsoft OAuth 2.0, token encryption, session management
+- **`error-handling.md`** - Error codes, estrategias de retry, logging
+- **`types-reference.md`** - TypeScript types reference
+- **`06-sdk-message-structures.md`** - SDK message types, stop_reason pattern (NEW)
+
+### Documentos Common (2 archivos)
+
+- **`03-database-schema.md`** ⭐ - Complete DB schema (11/15 tables functional)
+- **`05-AZURE_NAMING_CONVENTIONS.md`** - Azure resource naming standards
+
+### Future Developments (11 archivos)
+
+- **`future-developments/testing/`** - 6 documentos de testing strategy (Phase 3)
+- **`future-developments/rate-limiting/`** - 5 PRDs para rate limiting, caching, analytics
 
 **⭐ = Alta prioridad, leer frecuentemente**
 
@@ -173,13 +195,13 @@ npm run build       # Build de producción
 npm run lint        # Linter
 ```
 
-### Backend (Express - en construcción)
+### Backend (Express + TypeScript)
 ```bash
 cd backend
 npm install         # Instalar dependencias
-npm run dev         # Dev server (puerto 3001)
-npm run migrate     # Migrations de BD
-npm run seed        # Seed de datos demo
+npm run dev         # Dev server (puerto 3002)
+npm run migrate     # Migrations de BD (no implementado aún)
+npm run seed        # Seed de datos demo (no implementado aún)
 ```
 
 ### Infraestructura (Azure)
@@ -196,8 +218,8 @@ cd infrastructure
 
 **Frontend** (`.env.local`):
 ```
-NEXT_PUBLIC_API_URL=http://localhost:3001
-NEXT_PUBLIC_WS_URL=ws://localhost:3001
+NEXT_PUBLIC_API_URL=http://localhost:3002
+NEXT_PUBLIC_WS_URL=ws://localhost:3002
 ```
 
 **Backend** (`.env`):
@@ -235,28 +257,39 @@ MCP_SERVER_URL=https://app-erptools-mcp-dev.purplemushroom-befedc5f.westeurope.a
 
 ## 🏗️ Arquitectura Resumida
 
-**Sistema basado en Claude Agent SDK**:
-1. **Frontend**: Next.js con chat interface + WebSocket client
-2. **API Layer**: Express server con Socket.IO
-3. **Agent Layer**: Claude Agent SDK con specialized agents (via system prompts)
-   - QueryAgent: System prompt para queries
-   - WriteAgent: System prompt + approval hooks
-   - ValidationAgent: Read-only mode
-4. **Integration Layer**: SDK conecta automáticamente con MCP → Business Central API
-5. **Persistence**: Azure SQL + Redis
+**Sistema basado en DirectAgentService + Event Sourcing**:
 
-**Flujo típico de escritura con SDK**:
+1. **Frontend**: Next.js 16.0.1 con chat interface + WebSocket client (Socket.IO)
+2. **API Layer**: Express 5.1.0 + Socket.IO 4.8.1 para streaming en tiempo real
+3. **Agent Layer**: DirectAgentService con @anthropic-ai/sdk@0.68.0
+   - Manual agentic loop (Think → Act → Verify → Repeat)
+   - Tool calling con 7 tools vendoreados de MCP
+   - Approval hooks para write operations
+4. **Event Sourcing**: Append-only event log en `message_events`
+   - Atomic sequence numbers vía Redis INCR
+   - BullMQ 5.63.2 para async processing (3 queues)
+   - Rate limiting: 100 jobs/session/hour
+5. **Integration Layer**: Vendored MCP tools → Business Central API
+6. **Persistence**: Azure SQL (11/15 tables) + Redis para sessions/sequences
+
+**Flujo típico de escritura**:
 ```
-Usuario → Chat → WebSocket → Agent SDK query() →
-SDK detecta bc_create tool → onPreToolUse hook →
-Approval Request → Usuario Aprueba → SDK ejecuta tool automáticamente →
-MCP → Business Central → SDK streamea resultado → Usuario
+Usuario → Chat → WebSocket → DirectAgentService.processMessage() →
+Agentic Loop: SDK detecta tool_use → canUseTool() hook →
+Approval Request almacenado en BD → Usuario Aprueba →
+Tool ejecutado manualmente → Resultado → Event Store →
+BullMQ queue → Persistence → WebSocket → Usuario
 ```
+
+**Stop Reason Pattern** (migration 008):
+- `stop_reason='tool_use'` → Mensaje intermedio, continúa el loop
+- `stop_reason='end_turn'` → Respuesta final, termina el loop
 
 **Documentos de arquitectura detallada**:
-- [Agent SDK Usage Guide](docs/02-core-concepts/06-agent-sdk-usage.md) - **NUEVO**
-- [Agentic Loop with SDK](docs/03-agent-system/01-agentic-loop.md) - **ACTUALIZADO**
-- [Orchestration with SDK](docs/03-agent-system/02-orchestration.md) - **ACTUALIZADO**
+- [Backend Quick Start](docs/backend/README.md) - Setup, deployment, troubleshooting
+- [Architecture Deep Dive](docs/backend/architecture-deep-dive.md) - Event sourcing, BullMQ, DirectAgentService
+- [WebSocket Contract](docs/backend/websocket-contract.md) - Contrato completo de eventos
+- [SDK Message Structures](docs/backend/06-sdk-message-structures.md) - Stop reason pattern
 
 ---
 
@@ -265,184 +298,223 @@ MCP → Business Central → SDK streamea resultado → Usuario
 **Objetivo**: Crear un sistema de agentes AI (inspirado en Claude Code) que permite interactuar con Microsoft Business Central mediante lenguaje natural, con aprobaciones humanas para operaciones críticas, to-do lists automáticos, y streaming en tiempo real.
 
 **Tecnologías principales**:
-- **LLM**: **Claude Agent SDK** (@anthropic-ai/claude-agent-sdk) - Framework oficial con agentic loop, tool calling y streaming built-in
-- **Integration**: Model Context Protocol (MCP) con servidor pre-existente
-- **Frontend**: Next.js 15 + React 19 + Tailwind CSS 4 + shadcn/ui
-- **Backend**: Express + TypeScript + Socket.IO
-- **Database**: Azure SQL + Redis
-- **Cloud**: Azure (Container Apps, Key Vault, etc.)
+- **LLM**: **Anthropic SDK** (@anthropic-ai/sdk@0.68.0) - Direct API access con manual agentic loop
+- **Agent System**: DirectAgentService con tool calling y streaming
+- **Integration**: Vendored MCP tools (7 tools de Business Central)
+- **Frontend**: Next.js 16.0.1 + React 19.2.0 + Tailwind CSS 4.1.17 + shadcn/ui
+- **Backend**: Express 5.1.0 + TypeScript + Socket.IO 4.8.1
+- **Async Processing**: BullMQ 5.63.2 (3 queues: persistence, tools, events)
+- **Database**: Azure SQL (11/15 tables) + Redis (sessions, sequences, queues)
+- **Cloud**: Azure (Container Apps, Key Vault, SQL, Redis)
 
 **Timeline MVP**: 6-9 semanas divididas en 3 fases (ver TODO.md)
 
-**⚠️ IMPORTANTE**: Usamos Claude Agent SDK en lugar de construir un sistema de agentes desde cero. Esto ahorra ~1.5 semanas de desarrollo.
+**Estado actual**: Phase 2 - Week 7 (100% MVP Complete + UI/UX Polished)
 
 ---
 
 ## 📌 Recordatorios Importantes
 
 1. **TODO.md es la fuente de verdad** - Consúltalo y actualízalo constantemente
-2. **docs/README.md es el índice maestro** - Lee PRIMERO antes de cualquier feature. Navega la documentación desde ahí
-3. **Actualiza la documentación SIEMPRE** - Cambio arquitectónico → actualizar `docs/04-direction-changes.md`. Deprecar approach → agregar a `docs/05-deprecated/`
-4. **Claude Agent SDK** - NO construyas sistema de agentes custom. Usa el SDK oficial de Anthropic (ver `docs/02-sdk-first-philosophy.md`)
-5. **DirectAgentService es el workaround actual** - NO bypasear el SDK, este es SDK-compliant (ver `docs/01-architecture.md`)
-6. **MCP Server vendoreado** - 115 archivos en `backend/mcp-server/data/`. NO usar git submodule (deprecado, ver `docs/05-deprecated/03-git-submodule-mcp.md`)
-7. **Business Central** - Per-user tokens (delegated), NO global credentials (deprecado, ver `docs/05-deprecated/04-global-bc-credentials.md`)
-8. **Authentication** - Microsoft OAuth 2.0, NO JWT (deprecado, ver `docs/05-deprecated/01-jwt-authentication.md`)
-9. **Azure Secrets** - Todos los secrets en Key Vault, nunca en código
-10. **Database Schema** - Consulta `docs/03-database-schema.md` ANTES de modificar BD
-11. **Tests** - No hay tests todavía, se implementarán en Phase 3 (ver TODO.md)
-12. **Dependencias NPM** - **SIEMPRE usa versiones exactas** (sin `^` ni `~`) en package.json
+2. **docs/README.md es el índice maestro** - Lee PRIMERO antes de cualquier feature (101 archivos de docs)
+3. **Actualiza la documentación SIEMPRE** - Breaking change → actualizar el doc correspondiente (websocket-contract.md, api-reference.md, etc.)
+4. **DirectAgentService es la implementación actual** - Manual agentic loop con @anthropic-ai/sdk@0.68.0 (ver `docs/backend/architecture-deep-dive.md`)
+5. **Event Sourcing Pattern** - Append-only log en `message_events`, atomic sequences vía Redis INCR
+6. **Stop Reason Pattern** - `stop_reason='tool_use'` = intermedio, `stop_reason='end_turn'` = final (ver `docs/backend/06-sdk-message-structures.md`)
+7. **MCP Tools vendoreados** - 7 tools en `backend/src/services/tools/tool-definitions.ts`, NO git submodule
+8. **Business Central** - Per-user tokens (delegated), almacenados cifrados en BD con AES-256
+9. **Authentication** - Microsoft OAuth 2.0 con refresh tokens (ver `docs/backend/authentication.md`)
+10. **Azure Secrets** - Todos los secrets en Key Vault, nunca en código
+11. **Database Schema** - Consulta `docs/common/03-database-schema.md` ANTES de modificar BD (11/15 tables funcionales)
+12. **Tests** - Testing strategy documentada en `future-developments/testing/`, implementación en Phase 3
+13. **Dependencias NPM** - **SIEMPRE usa versiones exactas** (sin `^` ni `~`) en package.json
+14. **BullMQ Queues** - 3 queues (persistence, tools, events), rate limit 100 jobs/session/hour
+15. **Port Configuration** - Frontend: 3000, Backend: 3002 (configurable vía .env)
 
 ---
 
-## 🔥 Filosofía SDK-First - Escrito Sobre Piedra
+## 🔥 Filosofía de Arquitectura - DirectAgentService
 
-**⚠️ REGLA DE ORO**: El Claude Agent SDK es la **máxima prioridad** y **fuente de verdad** de este proyecto. NUNCA bypasees el SDK con soluciones custom.
+**⚠️ REGLA DE ORO**: Usamos el Anthropic SDK directo (@anthropic-ai/sdk) con **manual agentic loop** en lugar del Claude Agent SDK. Esta decisión está justificada y documentada.
 
 ### Principio Fundamental
 
-> "Si hay un problema con el SDK y tenemos que sacrificar nuestra lógica, nuestro código o nuestra implementación, con el beneficio de utilizar el SDK, estamos dispuestos a hacerlo. No debemos pasar por alto el SDK solo porque no funciona y crear una solución por nuestra cuenta."
+> "Implementamos un agentic loop manual porque nos da control total sobre tool calling, streaming, y event sourcing. El trade-off es aceptable dado los requerimientos de Business Central y human-in-the-loop."
 
-### Qué Proporciona el SDK (NO reconstruir)
+### Qué Proporciona DirectAgentService
 
-El SDK ya incluye estas capacidades **built-in**:
+DirectAgentService implementa estas capacidades **manualmente**:
 
-1. **Agentic Loop Automático** (Think → Act → Verify → Repeat)
-   - NO implementes loops manuales
-   - El SDK maneja iteraciones automáticamente
+1. **Manual Agentic Loop** (Think → Act → Verify → Repeat)
+   - Loop `while (shouldContinue)` controlado por `stop_reason`
+   - `stop_reason='tool_use'` → continúa el loop (mensaje intermedio)
+   - `stop_reason='end_turn'` → termina el loop (respuesta final)
+   - Max 20 turns como safety limit
 
-2. **Tool Calling Nativo**
-   - Descubrimiento automático de tools vía MCP
-   - Ejecución automática de tools
-   - Manejo de errores integrado
+2. **Tool Calling con Aprobaciones**
+   - 7 tools vendoreados de MCP en `tool-definitions.ts`
+   - Write operations requieren aprobación humana
+   - `canUseTool()` hook intercepta tools antes de ejecución
+   - Aprobaciones almacenadas en BD (`approval_requests` table)
 
-3. **Context Management**
-   - Session persistence vía `resume` parameter
-   - Automatic context window management
-   - Built-in memory across turns
+3. **Context Management Manual**
+   - Session persistence vía `conversation_history` table
+   - System prompt regenerado cada turn
+   - Context window management (100K tokens max)
+   - History management con partial messages
 
-4. **Streaming Built-in**
-   - Real-time event streaming
-   - Partial message support vía `includePartialMessages: true`
+4. **Streaming Nativo del SDK**
+   - SDK streaming con `stream: true`
+   - Eventos: `message_start`, `content_block_delta`, `message_delta`, `message_stop`
+   - WebSocket propagation vía Socket.IO
+   - Event sourcing en `message_events` table
 
-5. **Prompt Caching Automático**
-   - SDK cachea prompts automáticamente
-   - NO necesitas habilitar manualmente `promptCaching`
-   - Reducción de costos y latencia transparente
+5. **Prompt Caching Manual**
+   - Habilitado vía `ENABLE_PROMPT_CACHING=true`
+   - SDK maneja caching internamente
+   - Reducción de costos y latencia
 
-6. **TodoWrite Tool Nativo**
-   - SDK genera TODOs automáticamente para tareas complejas
-   - Intercepta eventos, no reimplementes la generación
+### Event Sourcing Pattern
 
-### Qué Construimos Nosotros (Capa de aplicación)
+**Append-Only Event Log**:
+- Tabla `message_events` almacena todos los eventos
+- Sequence numbers atómicos vía Redis INCR
+- BullMQ procesa eventos async (3 queues)
+- Rate limiting: 100 jobs/session/hour
 
-Nuestra responsabilidad es la **capa de aplicación** sobre el SDK:
+**3 Queues BullMQ**:
+1. **message-persistence**: Persiste mensajes completos en BD
+2. **tool-execution**: Ejecuta tools post-aprobación
+3. **event-processing**: Procesa eventos especiales (TodoWrite, errors)
 
-1. **Specialized Agents** (vía `agents` config)
-   - Descripciones concisas para routing
-   - System prompts específicos de dominio (Business Central)
-   - NO especifiques `tools` arrays - permite acceso a todos los tools
-
-2. **Human-in-the-Loop** (vía `canUseTool` hook)
-   - Intercepta write operations para aprobación
-   - Return `{ behavior: 'deny' }` si no hay aprobación
-   - NO bypasees el SDK ejecutando tools manualmente
-
-3. **Event Streaming** (vía query stream)
-   - Consume eventos del SDK (`agent:tool_use`, `agent:message_chunk`, etc.)
-   - Propaga eventos al frontend via WebSocket
-   - NO reimplementes el streaming
-
-4. **Database Persistence** (nuestra lógica)
-   - Intercepta eventos del SDK (`TodoWrite`, approvals)
-   - Persiste en Azure SQL
-   - NO reimplementes generación de datos que el SDK ya hace
-
-### Arquitectura SDK-Compliant
+### Arquitectura DirectAgentService
 
 ```typescript
-// ✅ CORRECTO - Usa SDK query() con configuración
-const result = query({
-  prompt,
-  options: {
-    mcpServers,              // MCP auto-discovery
-    model: 'claude-sonnet-4-5',
-    resume: sessionId,        // Session persistence
-    maxTurns: 20,            // Safety limit
-    agents: {                // Specialized routing
-      'bc-query': {
-        description: 'Query Business Central data',  // Conciso
-        prompt: `System prompt...`,
-        // NO tools array - permite MCP tools
-      }
-    },
-    canUseTool: async (...) => { /* Approval logic */ },
-  }
-});
+// ✅ CORRECTO - Manual Agentic Loop con DirectAgentService
+class DirectAgentService {
+  async processMessage(sessionId: string, userMessage: string) {
+    let shouldContinue = true;
+    let turnCount = 0;
 
-// ❌ INCORRECTO - Custom agentic loop
-while (shouldContinue) {
-  const response = await callClaude();  // NO hagas esto
-  if (needsTool) {
-    await executeTool();                // SDK lo hace automáticamente
+    while (shouldContinue && turnCount < 20) {
+      // 1. Build system prompt (regenerado cada turn)
+      const systemPrompt = this.buildSystemPrompt(session);
+
+      // 2. Call SDK con streaming
+      const response = await this.anthropicClient.messages.create({
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: 8192,
+        system: systemPrompt,
+        messages: conversationHistory,
+        tools: this.vendoredMcpTools,  // 7 tools vendoreados
+        stream: true
+      });
+
+      // 3. Stream eventos a WebSocket + Event Store
+      for await (const event of response) {
+        await this.eventStore.append(sessionId, event);
+        this.socket.emit('agent:event', event);
+      }
+
+      // 4. Check stop_reason
+      if (message.stop_reason === 'tool_use') {
+        // Tool call detected
+        const approval = await this.canUseTool(tool);
+        if (approval.approved) {
+          await this.executeTool(tool);
+          shouldContinue = true;  // Continuar loop
+        } else {
+          shouldContinue = false;  // Terminar loop
+        }
+      } else if (message.stop_reason === 'end_turn') {
+        shouldContinue = false;  // Respuesta final
+      }
+
+      turnCount++;
+    }
   }
 }
+
+// ❌ INCORRECTO - NO usar Agent SDK (no instalado)
+const result = await query({
+  prompt,
+  options: { agents: {...} }  // Este SDK NO está instalado
+});
 ```
 
-### Best Practices SDK
+### Best Practices DirectAgentService
 
-1. **Agents Configuration**
-   - ✅ Descriptions: Concisas (≤8 palabras) para routing
-   - ✅ Prompts: Detallados con instrucciones de dominio
-   - ❌ NO uses `tools: ['Read', 'Grep']` - bloquea MCP tools
-   - ✅ Omite `tools` array para acceso completo
+1. **Tool Definitions**
+   - ✅ 7 tools vendoreados en `tool-definitions.ts`
+   - ✅ Match exacto con MCP server schema
+   - ❌ NO agregar tools sin validar con MCP server
+   - ✅ Write tools requieren `requiresApproval: true`
 
-2. **Hook Callbacks**
-   - ✅ Usa `canUseTool` para control de permisos
-   - ✅ Return `PermissionResult` según la firma del SDK
-   - ❌ NO ejecutes tools manualmente fuera del SDK
-   - ✅ Usa `hooks: { PostToolUse }` para reaccionar a resultados
+2. **Approval Hooks**
+   - ✅ `canUseTool()` intercepta ANTES de ejecución
+   - ✅ Persiste approval request en BD
+   - ✅ WebSocket notifica al usuario
+   - ❌ NO ejecutar tool sin aprobación explícita
 
-3. **MCP Integration**
-   - ✅ Format: `{ 'server-name': { type: 'sse', url: '...' } }`
-   - ✅ SDK auto-discover tools con prefijo `mcp__server-name__tool`
-   - ❌ NO llames MCP directamente - deja que el SDK lo haga
-   - ✅ Confía en el SDK para ejecutar tools MCP
+3. **Event Sourcing**
+   - ✅ Append-only log en `message_events`
+   - ✅ Atomic sequences vía Redis INCR
+   - ✅ BullMQ para async processing
+   - ❌ NO escribir eventos directamente sin sequence number
 
-4. **Performance**
-   - ✅ Usa `maxTurns` para límites de seguridad
-   - ✅ Caching es automático (no configurable)
-   - ✅ System prompt es manejado internalmente por Claude Code
-   - ❌ NO intentes configurar caching manualmente
+4. **Stop Reason Pattern**
+   - ✅ `stop_reason='tool_use'` → continuar loop
+   - ✅ `stop_reason='end_turn'` → terminar loop
+   - ✅ `stop_reason='max_tokens'` → warning + terminar
+   - ❌ NO ignorar stop_reason (puede causar loops infinitos)
+
+### Performance y Rate Limiting
+
+**BullMQ Configuration**:
+- `QUEUE_MAX_JOBS_PER_SESSION=100` (rate limit)
+- `QUEUE_RATE_LIMIT_WINDOW_SECONDS=3600` (1 hora)
+- `QUEUE_MESSAGE_CONCURRENCY=10` (parallel messages)
+- `QUEUE_TOOL_CONCURRENCY=5` (parallel tools)
+
+**Prompt Caching**:
+- Habilitado vía `ENABLE_PROMPT_CACHING=true`
+- SDK maneja caching automáticamente
+- System prompt es marcado como cacheable
+
+**Context Management**:
+- `MAX_CONTEXT_TOKENS=100000` (100K limit)
+- Truncation automático de historia si excede
+- Partial messages incluidos en context
 
 ### Known Issues y Workarounds
 
-**ProcessTransport Error (v0.1.29)**
-- **Issue**: "Claude Code process exited with code 1"
-- **Causa**: Bug conocido con MCP servers vía SSE
-- **Fix**: Update a SDK v0.1.30+ donde fue resuelto
-- **GitHub**: Issues #176, #4619
+**Stop Reason Pattern (migration 008)**
+- **Issue**: Content-length heuristic era unreliable
+- **Fix**: Columna `stop_reason` en `assistant_messages` table
+- **Migration**: `008_add_stop_reason_to_assistant_messages.sql`
+- **Docs**: `docs/backend/06-sdk-message-structures.md`
 
-**Minimum SDK Version**
-- **Requerido**: `@anthropic-ai/claude-agent-sdk@0.1.30` o superior
-- **Razón**: Fixes critical ProcessTransport bugs con MCP
+**SDK Version**
+- **Current**: `@anthropic-ai/sdk@0.68.0`
+- **NOT using**: `@anthropic-ai/claude-agent-sdk` (no instalado)
 
-### Verificación de Compliance
+### Verificación de Arquitectura
 
 Antes de implementar cualquier feature, pregúntate:
 
-1. ¿Estoy reimplementando algo que el SDK ya hace?
-2. ¿Estoy bloqueando capacidades del SDK (como restricting tools)?
-3. ¿Estoy siguiendo las firmas de tipos del SDK exactamente?
-4. ¿Hay una manera de hacer esto MÁS alineada con el SDK?
+1. ¿Estoy respetando el manual agentic loop en DirectAgentService?
+2. ¿Estoy usando el stop_reason pattern correctamente?
+3. ¿Estoy persistiendo eventos en el event store?
+4. ¿Estoy usando BullMQ para async processing?
 
-**Si la respuesta a 1 o 2 es "sí", DETENTE y refactoriza para usar el SDK correctamente.**
+**Si la respuesta a cualquiera es "no", DETENTE y revisa la arquitectura.**
 
 ### Documentación de Referencia
 
-- SDK Official Docs: https://docs.claude.com/en/docs/agent-sdk/typescript
-- Agent SDK Usage Guide: `docs/02-core-concepts/06-agent-sdk-usage.md`
-- Agentic Loop with SDK: `docs/03-agent-system/01-agentic-loop.md`
+- [Backend Architecture Deep Dive](docs/backend/architecture-deep-dive.md) - DirectAgentService, Event Sourcing, BullMQ
+- [SDK Message Structures](docs/backend/06-sdk-message-structures.md) - Stop reason pattern, message types
+- [WebSocket Contract](docs/backend/websocket-contract.md) - Event streaming, discriminated unions
+- [API Reference](docs/backend/api-reference.md) - REST endpoints, error codes
 
 ---
 
@@ -463,20 +535,20 @@ Antes de implementar cualquier feature, pregúntate:
 // ✅ CORRECTO - Versiones exactas
 {
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "0.1.29",
     "@anthropic-ai/sdk": "0.68.0",
-    "zod": "3.25.76",
-    "express": "5.1.0"
+    "express": "5.1.0",
+    "bullmq": "5.63.2",
+    "socket.io": "4.8.1"
   }
 }
 
 // ❌ INCORRECTO - Versiones con rangos
 {
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.1.29",  // NO usar ^
-    "@anthropic-ai/sdk": "~0.68.0",               // NO usar ~
-    "zod": "^3.25.76",                            // NO usar ^
-    "express": ">=5.0.0"                          // NO usar >=
+    "@anthropic-ai/sdk": "^0.68.0",   // NO usar ^
+    "express": "~5.1.0",              // NO usar ~
+    "bullmq": "^5.63.2",              // NO usar ^
+    "socket.io": ">=4.0.0"            // NO usar >=
   }
 }
 ```
@@ -509,7 +581,12 @@ Cuando necesites actualizar una dependencia:
 
 ---
 
-**Última actualización**: 2025-11-10
-- Added SDK-First Philosophy section (permanent guidelines)
-- Updated to SDK v0.1.30 (fixes ProcessTransport bugs)
-- Never use any. Lint breaks because of that
+**Última actualización**: 2025-11-19
+- Updated documentation structure to reflect role-based organization (backend/, frontend/, common/)
+- Changed from Agent SDK to Direct SDK (@anthropic-ai/sdk@0.68.0)
+- Documented DirectAgentService manual agentic loop implementation
+- Added Event Sourcing pattern, BullMQ queues, and Stop Reason pattern
+- Updated all technology versions (Next.js 16.0.1, React 19.2.0, Express 5.1.0)
+- Fixed port configuration (Backend: 3002, Frontend: 3000)
+- Removed references to non-existent docs and deprecated approaches
+- Updated all documentation file paths to actual locations (101 markdown files)

@@ -216,6 +216,74 @@ docs-old/                               📦 Backup (74 archivos)
   - docs/04-direction-changes.md - Added Change #10 (Persistent Thinking Cascade)
   - Updated timeline summary and total changes (10 pivots tracked)
 
+**Week 7: Message Flow & UI State Bug Fixes** ✅ **COMPLETED** (2025-11-18)
+- ✅ **Bug Fix #1: Message Ordering** (HIGH PRIORITY) - Events arrive out of order:
+  - DirectAgentService.ts (lines 177-240): Process response.content[] IN ORDER
+  - Emit 'message' and 'tool_use' events as blocks appear (not grouped by type)
+  - Keep 600ms delay for tool execution (not emission)
+  - Expected: Text → Tool → Result (currently: Tool → Text) ✅ FIXED
+- ✅ **Bug Fix #2: Thinking Animation** (MEDIUM PRIORITY) - Animation not working:
+  - ThinkingIndicator.tsx (lines 31-43): Replace Tailwind animate-bounce with inline styles
+  - Added animationDelay via style prop: 0s, 0.15s, 0.3s
+  - 3 dots animate correctly ✅ FIXED
+- ✅ **Bug Fix #3: Badge Inconsistency** (MEDIUM PRIORITY) - "Running" vs "Processing":
+  - AgentProcessGroup.tsx (lines 82-114): Simplified to use stop_reason as source of truth
+  - Show only "Processing" (unified) until stop_reason='end_turn'
+  - Eliminated race condition with someToolsPending ✅ FIXED
+- ✅ **Testing**: Clean restart executed + lint/build passed successfully
+
+**Week 7: Native SDK stop_reason Support** ✅ **COMPLETED** (2025-11-17)
+- ✅ **Database Migration 008** - Added stop_reason column to messages table:
+  - Column: `stop_reason NVARCHAR(20) NULL`
+  - Constraint: SDK values only (`'end_turn'`, `'tool_use'`, `'max_tokens'`, `'stop_sequence'`, `'pause_turn'`, `'refusal'`)
+  - Filtered index: `idx_messages_stop_reason` (non-NULL only)
+  - Migration tested and executed successfully
+  - Backward compatible: NULL for legacy messages
+
+- ✅ **Backend Type Safety** - SDK as source of truth:
+  - Import `StopReason` from `@anthropic-ai/sdk/resources/messages` (agent.types.ts)
+  - Added stopReason to MessageEvent interface
+  - DirectAgentService emits stop_reason with messages
+  - Socket.IO handlers persist stop_reason to database
+  - messageHelpers.ts includes stop_reason in queries
+
+- ✅ **Frontend Type Safety** - SDK type replica:
+  - Created StopReason type replica in frontend/lib/types.ts
+  - Added stop_reason to BaseMessage interface
+  - Type-safe message grouping logic
+
+- ✅ **UI Message Grouping** - Eliminated content-length heuristic:
+  - MessageList.tsx: `isProcessMessage()` uses stop_reason='tool_use'
+  - AgentProcessGroup.tsx: Detects completion via stop_reason='end_turn'
+  - Intermediate messages (stop_reason='tool_use') grouped in collapsible
+  - Final messages (stop_reason='end_turn') displayed prominently
+
+- ✅ **Streaming Lifecycle Fix** - Multiple messages per query:
+  - `handleMessageComplete()` does NOT end streaming (only adds message)
+  - `handleComplete()` ends streaming (correct trigger)
+  - Input enabled at correct time (after agent:complete event)
+  - Fixed stale closure bug with useRef in useChat.ts
+
+- ✅ **Tool Use ID Mapping Fix** - Critical bug resolved:
+  - Created toolUseIdMap (SDK toolUseId → DB GUID mapping)
+  - Tool status updates now work correctly (pending → success/error)
+  - crypto.randomUUID() instead of Date.now() for proper GUID format
+
+- ✅ **Documentation** - Comprehensive updates:
+  - NEW: docs/06-sdk-message-structures.md (~2,000 lines - complete SDK types reference)
+  - NEW: future-developments/message-streaming-architecture.md (~1,500 lines - streaming deep dive)
+  - Updated: docs/01-architecture.md (Section 2.5 - Message Flow with stop_reason)
+  - Updated: docs/03-database-schema.md (messages table + stop_reason documentation)
+  - Updated: docs/04-direction-changes.md (Direction Change #11)
+  - Updated: docs/README.md (added doc 06, updated counts to 11 pivots)
+
+**Impact**:
+- +153 lines (backend + frontend + migration)
+- Eliminated fragile content-length heuristic
+- Matches Claude official desktop behavior
+- Type-safe throughout entire stack
+- Backward compatible (NULL for old messages)
+
 ---
 
 ### Phase 3: Testing & Production Readiness ⏳ IN PROGRESS (Weeks 8-9)
@@ -302,6 +370,27 @@ docs-old/                               📦 Backup (74 archivos)
   - [ ] `approval.spec.ts` - Write operation → approval dialog → approve/reject
   - [ ] `todo.spec.ts` - Complex task → auto-generated todos
   - [ ] `errors.spec.ts` - Network disconnect, session expiry
+
+**Fase 3.5: stop_reason Testing & Type Safety** ⏳ **PENDING** (8-10 horas)
+- [ ] **stop_reason Unit Tests** (4-5h):
+  - [ ] `MessageList.test.tsx` - Test `isProcessMessage()` with various stop_reason values
+  - [ ] `AgentProcessGroup.test.tsx` - Test completion detection (stop_reason='end_turn')
+  - [ ] `useChat.test.ts` - Test streaming lifecycle (message_complete vs complete events)
+  - [ ] Test message grouping (intermediate in collapsible, final outside)
+  - [ ] Test backward compatibility (NULL stop_reason for legacy messages)
+
+- [ ] **stop_reason Integration Tests** (3-4h):
+  - [ ] Test full message flow with stop_reason propagation (backend → DB → frontend)
+  - [ ] Test database persistence of stop_reason (query after insert)
+  - [ ] Test WebSocket event handling (agent:message_complete with stopReason)
+  - [ ] Test tool use ID mapping (SDK ID → DB GUID) with stop_reason
+
+- [ ] **Type Safety Improvements** (2-3h) - SDK-First:
+  - [ ] Add strict query result types (MessageInsertResult interface in server.ts)
+  - [ ] Remove type assertions where possible (use SDK types directly)
+  - [ ] Convert AgentEvent to discriminated union (agent.types.ts)
+  - [ ] Verify all SDK type imports are latest (@anthropic-ai/sdk@0.68.0+)
+  - [ ] Ensure no `any` types remain (lint should catch these)
 
 **Fase 4: Enforcement & Documentation Updates** (4-5 horas)
 - [ ] Configure Husky pre-push hook

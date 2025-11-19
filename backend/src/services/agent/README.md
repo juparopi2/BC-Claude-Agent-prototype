@@ -1,21 +1,31 @@
 # Agent Service
 
-Agent service using Claude Agent SDK for executing queries with automatic MCP tool integration.
+Direct implementation using Anthropic SDK for executing queries with Business Central integration.
 
 ## Overview
 
-The Agent Service wraps the official `@anthropic-ai/claude-agent-sdk` to provide:
-- Automatic MCP server integration
-- Tool discovery and calling
+The Direct Agent Service provides:
+- Direct Claude API integration via `@anthropic-ai/sdk`
+- Custom agentic loop implementation
+- Tool execution with Business Central data
 - Event streaming
 - Session management
-- Business Central operations via MCP
+- Local MCP data file integration
+
+## Architecture
+
+**DirectAgentService** is the production implementation that:
+1. Uses `@anthropic-ai/sdk` for direct Claude API calls
+2. Implements a custom agentic loop (Think → Act → Verify)
+3. Loads Business Central entity metadata from local JSON files
+4. Executes tool calls manually based on Claude's responses
+5. Streams events in real-time via callback
 
 ## Installation
 
-The Agent SDK is already installed:
+The core Anthropic SDK is installed:
 ```bash
-@anthropic-ai/claude-agent-sdk@0.1.29
+@anthropic-ai/sdk@0.68.0
 ```
 
 ## Configuration
@@ -24,7 +34,6 @@ Required environment variables:
 ```bash
 ANTHROPIC_API_KEY=sk-ant-...
 ANTHROPIC_MODEL=claude-3-5-sonnet-20241022
-MCP_SERVER_URL=https://app-erptools-mcp-dev...
 ```
 
 ## Usage
@@ -32,33 +41,27 @@ MCP_SERVER_URL=https://app-erptools-mcp-dev...
 ### Basic Query
 
 ```typescript
-import { getAgentService } from '@/services/agent';
+import { getDirectAgentService } from '@/services/agent';
 
-const agentService = getAgentService();
+const agentService = getDirectAgentService();
 
-const result = await agentService.executeQuery(
-  'List the first 5 customers from Business Central'
+const result = await agentService.executeQueryStreaming(
+  'List the first 5 customers from Business Central',
+  'user-123',
+  'session-456'
 );
 
 console.log(result.response);
 console.log('Tools used:', result.toolsUsed);
 ```
 
-### With Session ID
-
-```typescript
-const result = await agentService.executeQuery(
-  'Create a new customer named Acme Corp',
-  'session-123'
-);
-```
-
 ### With Event Streaming
 
 ```typescript
-const result = await agentService.executeQuery(
-  'Update customer X with new email',
-  'session-123',
+const result = await agentService.executeQueryStreaming(
+  'Create a new customer named Acme Corp',
+  'user-123',
+  'session-456',
   (event) => {
     switch (event.type) {
       case 'session_start':
@@ -93,42 +96,8 @@ Check agent configuration status.
   "configured": true,
   "config": {
     "hasApiKey": true,
-    "mcpConfigured": true,
     "model": "claude-3-5-sonnet-20241022"
-  },
-  "mcpServer": {
-    "url": "https://app-erptools-mcp-dev...",
-    "configured": true
   }
-}
-```
-
-### POST /api/agent/query
-
-Execute an agent query.
-
-**Request:**
-```json
-{
-  "prompt": "List the first 5 customers from Business Central",
-  "sessionId": "session-123" // optional
-}
-```
-
-**Response:**
-```json
-{
-  "sessionId": "session-123",
-  "response": "Here are the first 5 customers:\n1. Customer A\n2. Customer B...",
-  "messageId": "msg_...",
-  "tokenUsage": {
-    "inputTokens": 1234,
-    "outputTokens": 567,
-    "totalTokens": 1801
-  },
-  "toolsUsed": ["bc_query_entity"],
-  "durationMs": 2345,
-  "success": true
 }
 ```
 
@@ -137,13 +106,13 @@ Execute an agent query.
 ### Test Agent Status
 
 ```bash
-curl http://localhost:3001/api/agent/status | json_pp
+curl http://localhost:3002/api/agent/status | json_pp
 ```
 
 ### Test Simple Query
 
 ```bash
-curl -X POST http://localhost:3001/api/agent/query \
+curl -X POST http://localhost:3002/api/agent/query \
   -H "Content-Type: application/json" \
   -d '{
     "prompt": "What is 2+2?",
@@ -151,20 +120,9 @@ curl -X POST http://localhost:3001/api/agent/query \
   }' | json_pp
 ```
 
-### Test BC Integration (requires MCP connectivity)
-
-```bash
-curl -X POST http://localhost:3001/api/agent/query \
-  -H "Content-Type: application/json" \
-  -d '{
-    "prompt": "List the first 3 customers from Business Central",
-    "sessionId": "bc-test-123"
-  }' | json_pp
-```
-
 ## Agent Events
 
-The Agent SDK emits various event types:
+The DirectAgentService emits various event types:
 
 | Event Type | Description | Fields |
 |------------|-------------|--------|
@@ -177,51 +135,56 @@ The Agent SDK emits various event types:
 | `error` | Error occurred | error, code |
 | `session_end` | Session ends | reason |
 
-## MCP Integration
+## Business Central Integration
 
-The Agent SDK automatically:
-1. Connects to configured MCP servers
-2. Discovers available tools
-3. Calls tools based on user prompts
-4. Returns results
+The DirectAgentService:
+1. Loads entity metadata from `mcp-server/data/v1.0/*.json`
+2. Provides Business Central tools to Claude:
+   - `bc_query_entity` - Query entities (customers, vendors, items, etc.)
+   - `bc_create_entity` - Create new records
+   - `bc_update_entity` - Update existing records
+   - `bc_delete_entity` - Delete records
+3. Executes tool calls by making API requests to Business Central
+4. Returns results to Claude for formatting
 
 **Example flow:**
 ```
 User: "List customers"
   ↓
-Agent SDK analyzes prompt
+DirectAgentService creates system prompt with BC tools
   ↓
-Discovers bc_query_entity tool from MCP
+Claude API analyzes prompt
   ↓
-Calls bc_query_entity(entity: 'customers', top: 5)
+Claude responds with tool_use for bc_query_entity
   ↓
-MCP → Business Central API
+DirectAgentService executes tool manually
   ↓
-Returns customer data
+Loads entity schema from mcp-server/data/v1.0/customers.json
   ↓
-Agent formats response
+Business Central API call (via BCClient)
+  ↓
+Returns customer data to Claude
+  ↓
+Claude formats response
   ↓
 User receives: "Here are 5 customers: ..."
 ```
 
 ## Important Notes
 
-### MCP Server Connectivity
+### Local MCP Data Files
 
-**⚠️ Local Development Limitation:**
-- The MCP server is deployed in Azure Container Apps
-- NOT accessible from local network (timeouts expected)
-- **Will work when backend is deployed to Azure** (same network)
-
-**For local testing:**
-- Agent SDK basic queries work (no MCP tools)
-- MCP integration can only be tested in Azure deployment
+**✅ All entity data is vendored locally:**
+- Location: `backend/mcp-server/data/v1.0/`
+- 52 entity JSON files with full schemas
+- `bc_index.json` master index
+- No external MCP server dependency for metadata
 
 ### API Key Security
 
-The API key is set via environment variable:
+The API key is loaded from environment variables:
 ```typescript
-process.env.ANTHROPIC_API_KEY = this.apiKey;
+const apiKey = process.env.ANTHROPIC_API_KEY;
 ```
 
 Never commit API keys to code. Use Azure Key Vault in production.
@@ -229,7 +192,7 @@ Never commit API keys to code. Use Azure Key Vault in production.
 ## Error Handling
 
 ```typescript
-const result = await agentService.executeQuery(prompt);
+const result = await agentService.executeQueryStreaming(prompt, userId, sessionId);
 
 if (!result.success) {
   console.error('Query failed:', result.error);
@@ -239,15 +202,15 @@ if (!result.success) {
 
 Common errors:
 - `ANTHROPIC_API_KEY not configured` - Missing API key
-- `MCP server timeout` - MCP not accessible (expected in local dev)
 - `Tool execution failed` - BC operation error
+- `Entity not found` - Invalid entity name in tool call
 
 ## Configuration Status
 
-Check if Agent SDK is properly configured:
+Check if DirectAgentService is properly configured:
 
 ```typescript
-const agentService = getAgentService();
+const agentService = getDirectAgentService();
 
 if (!agentService.isConfigured()) {
   console.error('ANTHROPIC_API_KEY not set');
@@ -256,20 +219,34 @@ if (!agentService.isConfigured()) {
 
 const status = agentService.getConfigStatus();
 console.log('Has API Key:', status.hasApiKey);
-console.log('MCP Configured:', status.mcpConfigured);
 console.log('Model:', status.model);
 ```
 
+## Implementation Details
+
+**DirectAgentService** implements:
+- Custom agentic loop with max 10 iterations
+- Tool use detection via Claude's `tool_use` content blocks
+- Streaming support via `@anthropic-ai/sdk` MessageStream
+- Session persistence via resume/conversation tracking
+- Error handling with graceful degradation
+
+**vs. Agent SDK approach:**
+- Agent SDK required Claude Code CLI (not viable in Container Apps)
+- DirectAgentService uses direct API calls (deployable anywhere)
+- Manual tool execution gives more control
+- Local data files eliminate external dependencies
+
 ## Next Steps
 
-1. **Deploy to Azure** - Test MCP connectivity in production
-2. **Add Authentication** - Protect agent endpoints with JWT
-3. **Session Persistence** - Save conversations to database
-4. **WebSocket Streaming** - Real-time event streaming to frontend
-5. **Approval System** - Human-in-the-loop for write operations
+1. **Session Persistence** - Save conversations to database
+2. **WebSocket Streaming** - Real-time event streaming to frontend (✅ implemented)
+3. **Approval System** - Human-in-the-loop for write operations
+4. **Testing** - Unit tests for tool execution
+5. **Monitoring** - Token usage tracking and cost optimization
 
 ## References
 
-- [Claude Agent SDK Documentation](https://docs.claude.com/en/api/agent-sdk/typescript)
-- [MCP Integration](../mcp/README.md)
+- [Anthropic SDK Documentation](https://docs.anthropic.com/en/api/client-sdks)
 - [BC Client](../bc/README.md)
+- [DirectAgentService Implementation](./DirectAgentService.ts)

@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
-import { ChevronDown, ChevronRight, Brain } from 'lucide-react';
+import React from 'react';
+import { Brain } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ThinkingMessage as ThinkingMessageType } from '@/lib/types';
 
@@ -11,8 +11,6 @@ interface CollapsibleThinkingMessageProps {
 }
 
 export function CollapsibleThinkingMessage({ message, className }: CollapsibleThinkingMessageProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
-
   // Format duration to be more user-friendly
   const formatDuration = (durationMs?: number): string | null => {
     if (!durationMs) return null;
@@ -33,24 +31,9 @@ export function CollapsibleThinkingMessage({ message, className }: CollapsibleTh
   const duration = formatDuration(message.duration_ms);
 
   return (
-    <div className={cn('my-2 rounded-lg border bg-card text-card-foreground shadow-sm', className)}>
+    <div className={cn('my-2 rounded-lg border bg-muted/30 text-card-foreground shadow-sm', className)}>
       {/* Header - Always visible */}
-      <button
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full flex items-center gap-3 p-4 hover:bg-muted/50 transition-colors cursor-pointer rounded-t-lg"
-        disabled={!message.content} // Disable if no content to expand
-      >
-        {/* Expand/collapse icon (only show if there's content) */}
-        {message.content ? (
-          isExpanded ? (
-            <ChevronDown className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-          ) : (
-            <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-          )
-        ) : (
-          <div className="h-4 w-4 flex-shrink-0" /> // Spacer if no content
-        )}
-
+      <div className="w-full flex items-center gap-3 p-4">
         {/* Brain icon */}
         <div className="p-1.5 rounded-md bg-purple-100 dark:bg-purple-950/30">
           <Brain className="h-4 w-4 text-purple-600 dark:text-purple-400" />
@@ -67,10 +50,10 @@ export function CollapsibleThinkingMessage({ message, className }: CollapsibleTh
             {duration}
           </span>
         )}
-      </button>
+      </div>
 
-      {/* Expanded content */}
-      {isExpanded && message.content && (
+      {/* Content - Always visible if present */}
+      {message.content && (
         <div className="px-4 pb-4 border-t">
           <div className="text-sm text-muted-foreground mt-3 whitespace-pre-wrap">
             {message.content}

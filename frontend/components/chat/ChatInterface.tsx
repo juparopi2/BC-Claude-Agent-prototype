@@ -89,7 +89,7 @@ export function ChatInterface({ sessionId, className }: ChatInterfaceProps) {
   const displayError = messagesError || localError;
 
   return (
-    <div className={cn('flex flex-col h-full', className)}>
+    <div className={cn('flex-1 flex flex-col h-full overflow-hidden', className)}>
       {/* Error banner */}
       {displayError && (
         <div className="bg-red-50 dark:bg-red-950/30 border-b-2 border-red-200 dark:border-red-800 px-6 py-4 flex items-center justify-between shadow-sm">

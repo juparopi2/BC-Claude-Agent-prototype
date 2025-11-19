@@ -73,10 +73,42 @@ export function MessageList({
     );
   }
 
-  // Helper function to check if a message is a process message (thinking or tool)
-  const isProcessMessage = (msg: MessageType) => isThinkingMessage(msg) || isToolUseMessage(msg);
+  // Helper function to check if a message is a process message (thinking, tool, or intermediate)
+  // ⭐ Uses native SDK stop_reason to identify intermediate messages
+  const isProcessMessage = (msg: MessageType) => {
+    if (isThinkingMessage(msg) || isToolUseMessage(msg)) return true;
 
-  // Group consecutive thinking/tool messages together
+    // ⭐ Intermediate messages have stop_reason='tool_use' (from Anthropic SDK)
+    // These go in the thinking collapsible along with thinking and tool messages
+    if (!('type' in msg) && msg.role === 'assistant' && msg.stop_reason === 'tool_use') {
+      return true;
+    }
+
+    return false;
+  };
+
+  // Helper function to check if a message is a short intermediate assistant message
+  // ⚠️ DEPRECATED: Now using stop_reason instead of content length heuristic
+  // Keeping for backward compatibility with old messages without stop_reason
+  const isIntermediateMessage = (msg: MessageType) => {
+    // If message has stop_reason, use that (new behavior)
+    if (!('type' in msg) && 'stop_reason' in msg && msg.stop_reason !== undefined) {
+      return false; // Already handled by isProcessMessage
+    }
+
+    // Type guard: only standard messages have 'role' property
+    if ('type' in msg) {
+      return false; // ThinkingMessage or ToolUseMessage - not intermediate
+    }
+
+    // Fallback to old heuristic for messages without stop_reason
+    return msg.role === 'assistant' &&
+           !isProcessMessage(msg) &&
+           msg.content.length < 300; // Short messages are likely intermediate explanations
+  };
+
+  // ✅ FIX #5: Improved grouping - Group all agent process messages including intermediate text
+  // This groups thinking + tools + short assistant messages together into one collapsible
   const renderMessages = () => {
     const rendered: React.ReactElement[] = [];
     let i = 0;
@@ -84,28 +116,51 @@ export function MessageList({
     while (i < messages.length) {
       const message = messages[i];
 
-      // Check if this is a process message (thinking or tool)
+      // Check if this starts an agent process (thinking or tool)
       if (isProcessMessage(message)) {
-        // Collect all consecutive process messages
+        // Collect all messages that are part of this agent process
+        // Include: thinking, tools, AND short intermediate assistant messages
         const groupMessages: MessageType[] = [message];
         let j = i + 1;
 
-        while (j < messages.length && isProcessMessage(messages[j])) {
-          groupMessages.push(messages[j]);
-          j++;
+        while (j < messages.length) {
+          const nextMsg = messages[j];
+
+          // Include if it's a process message (thinking/tool)
+          if (isProcessMessage(nextMsg)) {
+            groupMessages.push(nextMsg);
+            j++;
+          }
+          // Also include short intermediate assistant messages (part of reasoning)
+          else if (isIntermediateMessage(nextMsg)) {
+            // Only include if there are more tools after this message
+            // (i.e., this is not the final response)
+            const hasMoreTools = messages.slice(j + 1).some(m => isProcessMessage(m));
+            if (hasMoreTools) {
+              groupMessages.push(nextMsg);
+              j++;
+            } else {
+              break; // Stop grouping, this is the final response
+            }
+          }
+          else {
+            break; // Stop grouping, found a non-process message
+          }
         }
 
-        // Render as a group
+        // Render as a group (only include process messages in the group, filter out intermediate text)
+        const processOnlyMessages = groupMessages.filter(m => isProcessMessage(m));
+
         rendered.push(
           <div key={`group-${message.id}`} className="animate-in fade-in duration-300">
-            <AgentProcessGroup messages={groupMessages} />
+            <AgentProcessGroup messages={processOnlyMessages} />
           </div>
         );
 
         // Skip the grouped messages
         i = j;
       } else {
-        // Regular message (user or assistant)
+        // Regular message (user or final assistant response)
         rendered.push(
           <div key={message.id} className="animate-in fade-in duration-300">
             <Message message={message} />

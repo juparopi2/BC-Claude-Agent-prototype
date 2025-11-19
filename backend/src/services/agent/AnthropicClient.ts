@@ -12,6 +12,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import type { MessageStreamEvent } from '@anthropic-ai/sdk/resources/messages';
 import type {
   IAnthropicClient,
   AnthropicClientConfig,
@@ -39,7 +40,7 @@ export class AnthropicClient implements IAnthropicClient {
   }
 
   /**
-   * Creates a chat completion with Claude
+   * Creates a chat completion with Claude (non-streaming)
    *
    * Delegates to the real Anthropic SDK's messages.create() method.
    *
@@ -64,6 +65,61 @@ export class AnthropicClient implements IAnthropicClient {
       // Re-throw with more context
       if (error instanceof Error) {
         throw new Error(`Anthropic API call failed: ${error.message}`);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Creates a chat completion with Claude using native streaming
+   *
+   * Delegates to the real Anthropic SDK's messages.stream() method.
+   * Yields MessageStreamEvent objects incrementally as Claude generates the response.
+   *
+   * Event types yielded:
+   * - message_start: Message begins (contains id, model, role)
+   * - content_block_start: New content block (text or tool_use)
+   * - content_block_delta: Incremental chunks (text_delta or input_json_delta)
+   * - content_block_stop: Content block completed
+   * - message_delta: Token usage and stop_reason updates
+   * - message_stop: Full message completed
+   *
+   * @param request - The chat completion request parameters
+   * @returns AsyncIterable yielding MessageStreamEvent objects
+   * @throws Error if the streaming API call fails
+   *
+   * @example
+   * ```typescript
+   * const stream = client.createChatCompletionStream({...});
+   * for await (const event of stream) {
+   *   if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+   *     process.stdout.write(event.delta.text); // Render incrementally
+   *   }
+   * }
+   * ```
+   */
+  async *createChatCompletionStream(
+    request: ChatCompletionRequest
+  ): AsyncIterable<MessageStreamEvent> {
+    try {
+      // Use SDK's native streaming method
+      const stream = this.client.messages.stream({
+        model: request.model,
+        max_tokens: request.max_tokens,
+        messages: request.messages,
+        tools: request.tools,
+        system: request.system,
+      });
+
+      // The SDK returns a MessageStream which is AsyncIterable
+      // We yield each event as it arrives from the API
+      for await (const event of stream) {
+        yield event;
+      }
+    } catch (error) {
+      // Re-throw with more context
+      if (error instanceof Error) {
+        throw new Error(`Anthropic streaming API call failed: ${error.message}`);
       }
       throw error;
     }

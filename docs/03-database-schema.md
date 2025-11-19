@@ -368,6 +368,8 @@ app.use(session({
 
 **⚠️ UPDATED (Migration 007 - 2025-11-15)**: Added `message_type` discriminator column for persistent thinking and tool use messages.
 
+**⚠️ UPDATED (Migration 008 - 2025-11-17)**: Added `stop_reason` column for native SDK message lifecycle support.
+
 ```sql
 CREATE TABLE messages (
     id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
@@ -376,6 +378,7 @@ CREATE TABLE messages (
     message_type NVARCHAR(20) NOT NULL,    -- 'standard', 'thinking', 'tool_use'
     content NVARCHAR(MAX) NOT NULL,        -- Text content (empty for thinking/tool_use)
     metadata NVARCHAR(MAX) NULL,           -- JSON metadata (thinking content, tool args/results)
+    stop_reason NVARCHAR(20) NULL,         -- Native SDK stop_reason (Migration 008)
     thinking_tokens INT DEFAULT 0,         -- Tokens used in extended thinking
     is_thinking BIT DEFAULT 0,             -- Is this a thinking block?
     created_at DATETIME2 DEFAULT GETDATE(),
@@ -385,7 +388,8 @@ CREATE TABLE messages (
 
     -- Constraints
     CONSTRAINT chk_messages_role CHECK (role IN ('user', 'assistant', 'system')),
-    CONSTRAINT chk_messages_type CHECK (message_type IN ('standard', 'thinking', 'tool_use'))
+    CONSTRAINT chk_messages_type CHECK (message_type IN ('standard', 'thinking', 'tool_use')),
+    CONSTRAINT chk_messages_stop_reason CHECK (stop_reason IN ('end_turn', 'tool_use', 'max_tokens', 'stop_sequence', 'pause_turn', 'refusal'))
 );
 
 -- Indexes
@@ -393,6 +397,7 @@ CREATE INDEX idx_messages_session_id ON messages(session_id);
 CREATE INDEX idx_messages_created_at ON messages(created_at DESC);
 CREATE INDEX idx_messages_type ON messages(message_type);
 CREATE INDEX idx_messages_session_type ON messages(session_id, message_type);
+CREATE INDEX idx_messages_stop_reason ON messages(stop_reason) WHERE stop_reason IS NOT NULL;  -- Filtered index
 ```
 
 **Key Features**:
@@ -400,6 +405,7 @@ CREATE INDEX idx_messages_session_type ON messages(session_id, message_type);
 - `message_type` discriminates between standard/thinking/tool_use messages
 - `content` stores text for standard messages (empty for thinking/tool_use)
 - `metadata` stores JSON for thinking content and tool args/results
+- `stop_reason` **[NEW]** native SDK stop_reason for message lifecycle (nullable for backward compatibility)
 - `thinking_tokens` tracks extended thinking cost
 - `is_thinking` flags thinking blocks (not shown to user)
 
@@ -408,6 +414,20 @@ CREATE INDEX idx_messages_session_type ON messages(session_id, message_type);
 - `thinking`: Agent reasoning blocks (content in `metadata.content`)
 - `tool_use`: Tool calls + results (tool details in `metadata.tool_name`, `metadata.tool_args`, `metadata.tool_result`)
 - Cascade delete when session deleted
+
+**stop_reason Values** (from Anthropic SDK):
+- `'end_turn'`: Final message in agentic loop (displayed prominently in UI)
+- `'tool_use'`: Intermediate message during tool execution (grouped in collapsible UI)
+- `'max_tokens'`: Response truncated due to token limit
+- `'stop_sequence'`: Custom stop sequence encountered
+- `'pause_turn'`: Turn paused (future SDK feature)
+- `'refusal'`: Request refused by model
+- `NULL`: Legacy messages (before Migration 008) or user messages (no stop_reason)
+
+**stop_reason Impact on UI**:
+- Messages with `stop_reason='tool_use'` are grouped in `<AgentProcessGroup>` collapsible component
+- Messages with `stop_reason='end_turn'` are displayed as final response bubbles
+- Frontend uses stop_reason to determine streaming state (ends on 'end_turn', not per message)
 
 **Message Persistence** (Bug #5 Fix - 2025-11-14):
 
@@ -873,21 +893,35 @@ SELECT id, created_at FROM sessions WHERE user_id = '<user-id>' ORDER BY created
 #### 4. Add Message to Session
 
 ```sql
--- User message
-INSERT INTO messages (session_id, role, content)
+-- User message (no stop_reason for user messages)
+INSERT INTO messages (session_id, role, message_type, content)
 VALUES (
     '<session-id>',
     'user',
+    'standard',
     'Show me all customers from London'
 );
 
--- Assistant response
-INSERT INTO messages (session_id, role, content, thinking_tokens)
+-- Assistant intermediate message (during tool execution)
+INSERT INTO messages (session_id, role, message_type, content, stop_reason, thinking_tokens)
 VALUES (
     '<session-id>',
     'assistant',
+    'standard',
+    'I will query the customers database for you...',
+    'tool_use',  -- Intermediate message
+    500
+);
+
+-- Assistant final response (end of turn)
+INSERT INTO messages (session_id, role, message_type, content, stop_reason, thinking_tokens)
+VALUES (
+    '<session-id>',
+    'assistant',
+    'standard',
     'Here are the customers from London: [list]',
-    1500  -- Thinking tokens used
+    'end_turn',  -- Final message
+    1000
 );
 
 -- Update session activity
@@ -1012,6 +1046,55 @@ SELECT
     (SELECT COUNT(*) FROM todos WHERE session_id = s.id AND status != 'completed') AS pending_todos
 FROM sessions s
 WHERE s.id = '<session-id>';
+```
+
+---
+
+#### 10.5. Query Messages by stop_reason (New - Migration 008)
+
+```sql
+-- Get all final messages (end of turn) for a session
+SELECT
+    id,
+    role,
+    content,
+    stop_reason,
+    created_at
+FROM messages
+WHERE session_id = '<session-id>'
+  AND stop_reason = 'end_turn'
+ORDER BY created_at ASC;
+
+-- Get all intermediate messages (during tool execution)
+SELECT
+    id,
+    role,
+    content,
+    stop_reason,
+    created_at
+FROM messages
+WHERE session_id = '<session-id>'
+  AND stop_reason = 'tool_use'
+ORDER BY created_at ASC;
+
+-- Count messages by stop_reason type
+SELECT
+    stop_reason,
+    COUNT(*) AS message_count
+FROM messages
+WHERE session_id = '<session-id>'
+GROUP BY stop_reason
+ORDER BY message_count DESC;
+
+-- Get conversation flow (final messages only, excludes intermediate reasoning)
+SELECT
+    role,
+    content,
+    created_at
+FROM messages
+WHERE session_id = '<session-id>'
+  AND (role = 'user' OR stop_reason = 'end_turn')
+ORDER BY created_at ASC;
 ```
 
 ---

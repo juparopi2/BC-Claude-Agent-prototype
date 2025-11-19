@@ -69,7 +69,10 @@
       "Bash(if exist \"frontend\\.next\\dev\\lock\" del /F \"frontend\\.next\\dev\\lock\")",
       "Bash(npm test:*)",
       "Bash(npm run test:coverage:*)",
-      "WebFetch(domain:playwright.dev)"
+      "WebFetch(domain:playwright.dev)",
+      "Bash(temp_html_sample.txt)",
+      "Bash(nc:*)",
+      "Bash(npm run test)"
     ],
     "deny": [],
     "ask": []

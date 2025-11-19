@@ -26,7 +26,11 @@ import type {
   ChatCompletionResponse,
   TokenUsage,
 } from './IAnthropicClient';
-import type { TextBlock, ToolUseBlock } from '@anthropic-ai/sdk/resources/messages';
+import type {
+  TextBlock,
+  ToolUseBlock,
+  MessageStreamEvent,
+} from '@anthropic-ai/sdk/resources/messages';
 
 /**
  * Configuration for a fake response
@@ -199,6 +203,193 @@ export class FakeAnthropicClient implements IAnthropicClient {
   }
 
   /**
+   * Creates a chat completion with Claude using streaming (fake implementation)
+   *
+   * Simulates streaming by yielding MessageStreamEvent objects incrementally
+   * with realistic delays (50-200ms per chunk).
+   *
+   * @param request - The chat completion request parameters
+   * @returns AsyncIterable yielding fake MessageStreamEvent objects
+   * @throws Error if configured to throw
+   */
+  async *createChatCompletionStream(
+    request: ChatCompletionRequest
+  ): AsyncIterable<MessageStreamEvent> {
+    // Check if we should throw
+    if (this.shouldThrow) {
+      const error = this.shouldThrow;
+      this.shouldThrow = null;
+      throw error;
+    }
+
+    // Get the next configured response
+    const fakeResponse = this.responses[this.responseIndex] || this.getDefaultResponse();
+    if (this.responseIndex < this.responses.length) {
+      this.responseIndex++;
+    }
+
+    const messageId = `fake_msg_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+
+    // ========== message_start ==========
+    yield {
+      type: 'message_start',
+      message: {
+        id: messageId,
+        type: 'message',
+        role: 'assistant',
+        content: [],
+        model: request.model,
+        stop_reason: null,
+        stop_sequence: null,
+        usage: { input_tokens: fakeResponse.usage?.input_tokens || 100, output_tokens: 0 },
+      },
+    } as unknown as MessageStreamEvent;
+
+    await this.delay(50); // Simulate initial latency
+
+    let contentBlockIndex = 0;
+
+    // ========== Stream text blocks ==========
+    if (fakeResponse.textBlocks) {
+      for (const text of fakeResponse.textBlocks) {
+        // content_block_start
+        yield {
+          type: 'content_block_start',
+          index: contentBlockIndex,
+          content_block: {
+            type: 'text',
+            text: '',
+          },
+        } as unknown as MessageStreamEvent;
+
+        await this.delay(30);
+
+        // Stream text in chunks (simulate typing)
+        const chunkSize = 5; // Words per chunk
+        const words = text.split(' ');
+        for (let i = 0; i < words.length; i += chunkSize) {
+          const chunk = words.slice(i, i + chunkSize).join(' ');
+          const addSpace = i + chunkSize < words.length ? ' ' : '';
+
+          yield {
+            type: 'content_block_delta',
+            index: contentBlockIndex,
+            delta: {
+              type: 'text_delta',
+              text: chunk + addSpace,
+            },
+          } as unknown as MessageStreamEvent;
+
+          await this.delay(100); // Simulate typing speed
+        }
+
+        // content_block_stop
+        yield {
+          type: 'content_block_stop',
+          index: contentBlockIndex,
+        } as unknown as MessageStreamEvent;
+
+        await this.delay(30);
+        contentBlockIndex++;
+      }
+    }
+
+    // ========== Stream tool use blocks ==========
+    if (fakeResponse.toolUseBlocks) {
+      for (const tool of fakeResponse.toolUseBlocks) {
+        // content_block_start
+        yield {
+          type: 'content_block_start',
+          index: contentBlockIndex,
+          content_block: {
+            type: 'tool_use',
+            id: tool.id,
+            name: tool.name,
+            input: {},
+          },
+        } as unknown as MessageStreamEvent;
+
+        await this.delay(50);
+
+        // Tool input delta (JSON chunks)
+        const inputStr = JSON.stringify(tool.input);
+        yield {
+          type: 'content_block_delta',
+          index: contentBlockIndex,
+          delta: {
+            type: 'input_json_delta',
+            partial_json: inputStr,
+          },
+        } as unknown as MessageStreamEvent;
+
+        await this.delay(100);
+
+        // content_block_stop
+        yield {
+          type: 'content_block_stop',
+          index: contentBlockIndex,
+        } as unknown as MessageStreamEvent;
+
+        await this.delay(30);
+        contentBlockIndex++;
+      }
+    }
+
+    // ========== message_delta (final token usage + stop_reason) ==========
+    const stopReason = fakeResponse.stopReason || (fakeResponse.toolUseBlocks ? 'tool_use' : 'end_turn');
+    yield {
+      type: 'message_delta',
+      delta: {
+        stop_reason: stopReason,
+        stop_sequence: null,
+      },
+      usage: {
+        output_tokens: fakeResponse.usage?.output_tokens || 50,
+      },
+    } as unknown as MessageStreamEvent;
+
+    await this.delay(30);
+
+    // ========== message_stop ==========
+    yield {
+      type: 'message_stop',
+    } as unknown as MessageStreamEvent;
+
+    // ========== Record the call (construct full response for call history) ==========
+    const content: Array<TextBlock | ToolUseBlock> = [];
+    if (fakeResponse.textBlocks) {
+      for (const text of fakeResponse.textBlocks) {
+        content.push({ type: 'text', text, citations: [] });
+      }
+    }
+    if (fakeResponse.toolUseBlocks) {
+      for (const tool of fakeResponse.toolUseBlocks) {
+        content.push({ type: 'tool_use', id: tool.id, name: tool.name, input: tool.input });
+      }
+    }
+
+    const response: ChatCompletionResponse = {
+      id: messageId,
+      type: 'message',
+      role: 'assistant',
+      content,
+      model: request.model,
+      stop_reason: stopReason,
+      stop_sequence: null,
+      usage: {
+        input_tokens: fakeResponse.usage?.input_tokens || 100,
+        output_tokens: fakeResponse.usage?.output_tokens || 50,
+      },
+    };
+
+    this.calls.push({
+      request,
+      response,
+      timestamp: new Date(),
+    });
+  }
+
+  /**
    * Gets a default response when none configured
    */
   private getDefaultResponse(): FakeResponse {
@@ -206,5 +397,14 @@ export class FakeAnthropicClient implements IAnthropicClient {
       textBlocks: ['This is a fake response from FakeAnthropicClient.'],
       stopReason: 'end_turn',
     };
+  }
+
+  /**
+   * Delay helper for simulating network/typing latency
+   *
+   * @param ms - Milliseconds to delay
+   */
+  private async delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 }

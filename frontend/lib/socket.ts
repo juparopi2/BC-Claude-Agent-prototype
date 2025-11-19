@@ -337,8 +337,8 @@ export const socketChatApi = {
   /**
    * Listen for tool results (backend emits agent:tool_result)
    */
-  onToolResult: (callback: EventHandler<{ toolName: string; result: unknown; success: boolean }>) => {
-    on<{ toolName: string; result: unknown; success: boolean }>(SocketEvent.TOOL_RESULT, callback);
+  onToolResult: (callback: EventHandler<{ toolName: string; result: unknown; success: boolean; toolUseId?: string }>) => {
+    on<{ toolName: string; result: unknown; success: boolean; toolUseId?: string }>(SocketEvent.TOOL_RESULT, callback);
   },
 
   /**

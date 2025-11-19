@@ -17,6 +17,8 @@ import crypto from 'crypto';
 import { executeQuery } from '../config/database';
 import { authenticateMicrosoft } from '../middleware/auth-oauth';
 import { logger } from '../utils/logger';
+// ✅ Import native SDK type (source of truth)
+import type { StopReason } from '@anthropic-ai/sdk/resources/messages';
 
 const router = Router();
 
@@ -80,6 +82,7 @@ function transformMessage(row: {
   content: string;
   metadata: string | null;
   token_count: number | null;
+  stop_reason: StopReason | null;  // ✅ Native SDK stop_reason
   created_at: Date;
 }) {
   // Base fields common to all message types
@@ -111,6 +114,7 @@ function transformMessage(row: {
         session_id: row.session_id,
         content: metadata.content as string || '',
         duration_ms: metadata.duration_ms as number | undefined,
+        stop_reason: row.stop_reason,  // ✅ Native SDK stop_reason
         created_at: row.created_at.toISOString(),
       };
 
@@ -125,6 +129,7 @@ function transformMessage(row: {
         tool_result: metadata.tool_result as unknown | undefined,
         status: (metadata.status as 'pending' | 'success' | 'error') || 'pending',
         error_message: metadata.error_message as string | undefined,
+        stop_reason: row.stop_reason,  // ✅ Native SDK stop_reason
         created_at: row.created_at.toISOString(),
       };
 
@@ -134,6 +139,7 @@ function transformMessage(row: {
       return {
         ...base,  // Includes role and message_type for standard messages
         content: row.content,
+        stop_reason: row.stop_reason,  // ✅ Native SDK stop_reason
         thinking_tokens: metadata.thinking_tokens as number | undefined,
         is_thinking: metadata.is_thinking as boolean | undefined,
       };
@@ -416,6 +422,7 @@ router.get('/:sessionId/messages', authenticateMicrosoft, async (req: Request, r
         message_type,
         content,
         metadata,
+        stop_reason,
         token_count,
         created_at
       FROM messages
@@ -432,6 +439,7 @@ router.get('/:sessionId/messages', authenticateMicrosoft, async (req: Request, r
       message_type: string;
       content: string;
       metadata: string | null;
+      stop_reason: StopReason | null;  // ✅ Native SDK stop_reason
       token_count: number | null;
       created_at: Date;
     }>(messagesQuery, { sessionId, offset, limit });

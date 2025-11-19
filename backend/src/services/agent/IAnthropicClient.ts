@@ -18,6 +18,7 @@ import type {
   MessageParam,
   TextBlock,
   ToolUseBlock,
+  MessageStreamEvent,
 } from '@anthropic-ai/sdk/resources/messages';
 
 /**
@@ -85,11 +86,39 @@ export interface ChatCompletionResponse {
  */
 export interface IAnthropicClient {
   /**
-   * Creates a chat completion with Claude
+   * Creates a chat completion with Claude (non-streaming)
    *
    * @param request - The chat completion request parameters
    * @returns Promise resolving to the completion response
    * @throws Error if the API call fails
    */
   createChatCompletion(request: ChatCompletionRequest): Promise<ChatCompletionResponse>;
+
+  /**
+   * Creates a chat completion with Claude using native streaming
+   *
+   * Streams events incrementally as Claude generates the response:
+   * - content_block_start: New content block begins (text or tool_use)
+   * - content_block_delta: Incremental text chunks or tool input
+   * - content_block_stop: Content block completed
+   * - message_delta: Token usage and stop_reason updates
+   * - message_stop: Full message completed
+   *
+   * @param request - The chat completion request parameters
+   * @returns AsyncIterable of MessageStreamEvent from Anthropic SDK
+   * @throws Error if the API call fails
+   *
+   * @example
+   * ```typescript
+   * const stream = client.createChatCompletionStream({...});
+   * for await (const event of stream) {
+   *   if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+   *     console.log(event.delta.text); // Incremental text chunk
+   *   }
+   * }
+   * ```
+   */
+  createChatCompletionStream(
+    request: ChatCompletionRequest
+  ): AsyncIterable<MessageStreamEvent>;
 }

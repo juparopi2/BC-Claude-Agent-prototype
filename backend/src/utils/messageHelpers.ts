@@ -90,7 +90,7 @@ export async function updateToolResultMessage(
   success: boolean,
   error?: string
 ): Promise<void> {
-  await executeQuery(`
+  const updateResult = await executeQuery(`
     UPDATE messages
     SET metadata = @metadata
     WHERE id = @toolUseId AND session_id = @sessionId
@@ -107,4 +107,10 @@ export async function updateToolResultMessage(
       error_message: error || null
     })
   });
+
+  // Check how many rows were affected - log error only if update fails
+  const rowsAffected = updateResult.rowsAffected?.[0] || 0;
+  if (rowsAffected === 0) {
+    console.error(`[messageHelpers] Tool message update failed: id '${toolUseId}' not found in database`);
+  }
 }

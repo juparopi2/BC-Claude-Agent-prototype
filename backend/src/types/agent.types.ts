@@ -5,6 +5,8 @@
  */
 
 import type { MCPServerConfig } from './mcp.types';
+// ✅ Import native SDK types (source of truth)
+import type { StopReason } from '@anthropic-ai/sdk/resources/messages';
 
 /**
  * Agent Options
@@ -106,6 +108,16 @@ export interface MessageEvent extends BaseAgentEvent {
   messageId: string;
   /** Role (user or assistant) */
   role: 'user' | 'assistant';
+  /**
+   * Native SDK stop_reason indicating message completion state
+   * - 'end_turn': Natural completion - final message
+   * - 'tool_use': Model wants to use a tool - intermediate message
+   * - 'max_tokens': Truncated due to token limit
+   * - 'stop_sequence': Hit custom stop sequence
+   * - 'pause_turn': Long turn paused
+   * - 'refusal': Policy violation
+   */
+  stopReason?: StopReason | null;  // ⭐ SDK returns null, not undefined
   /** Token usage for this message */
   tokenUsage?: {
     inputTokens: number;
@@ -136,6 +148,8 @@ export interface ToolResultEvent extends BaseAgentEvent {
   type: 'tool_result';
   /** Tool name */
   toolName: string;
+  /** Tool arguments (preserved from original tool_use) */
+  args?: Record<string, unknown>;
   /** Tool result */
   result: unknown;
   /** Whether tool succeeded */

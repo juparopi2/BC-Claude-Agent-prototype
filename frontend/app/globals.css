@@ -60,4 +60,11 @@
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
   }
+
+  /* Fix Radix UI ScrollArea display:table override */
+  /* Radix UI applies inline styles via JavaScript which override CSS classes */
+  /* This !important rule forces display:block to fix layout issues */
+  [data-radix-scroll-area-viewport] {
+    display: block !important;
+  }
 }

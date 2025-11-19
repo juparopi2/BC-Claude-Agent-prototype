@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useState } from 'react';
+import { useEffect, useCallback, useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSocket } from './useSocket';
 import { chatApi } from '@/lib/api';
@@ -7,7 +7,7 @@ import {
   SocketEvent,
   type ToolUseEventData,
 } from '@/lib/socket';
-import type { Message, Session, ToolUseMessage, ThinkingMessage } from '@/lib/types';
+import type { Message, Session, ToolUseMessage, ThinkingMessage, StopReason } from '@/lib/types';
 import { isToolUseMessage, isThinkingMessage } from '@/lib/types';
 
 /**
@@ -41,6 +41,14 @@ export const chatKeys = {
 export function useChat(sessionId?: string) {
   const queryClient = useQueryClient();
   const { socket, isConnected } = useSocket();
+
+  // ✅ FIX: Use ref to avoid stale closure issues with sessionId
+  const sessionIdRef = useRef<string | undefined>(sessionId);
+
+  // Update ref whenever sessionId changes
+  useEffect(() => {
+    sessionIdRef.current = sessionId;
+  }, [sessionId]);
 
   // Local UI state for streaming (not server state, so not in React Query)
   const [isStreaming, setIsStreaming] = useState(false);
@@ -131,12 +139,10 @@ export function useChat(sessionId?: string) {
   // Join session room when connected
   useEffect(() => {
     if (socket && isConnected && sessionId) {
-      console.log('[useChat] Joining session room:', sessionId);
-
       // Listen for join confirmation
       const handleJoined = (data: { sessionId: string }) => {
         if (data.sessionId === sessionId) {
-          console.log('[useChat] Successfully joined room:', sessionId);
+          // Successfully joined room
         }
       };
 
@@ -171,40 +177,59 @@ export function useChat(sessionId?: string) {
     const endStreaming = (message: Message) => {
       setIsStreaming(false);
       setStreamingMessage('');
+      // ✅ FIX: Use ref to get current sessionId (avoids stale closure)
+      const currentSessionId = sessionIdRef.current;
       // Manually add message to cache instead of invalidating (prevents flashing)
-      if (sessionId) {
+      if (currentSessionId) {
         queryClient.setQueryData<Message[]>(
-          chatKeys.messages(sessionId),
+          chatKeys.messages(currentSessionId),
           (old) => [...(old || []), message]
         );
       }
     };
 
     const addMessage = (message: Message) => {
+      // ✅ FIX: Use ref to get current sessionId (avoids stale closure)
+      const currentSessionId = sessionIdRef.current;
       // Optimistically update messages cache
-      if (sessionId) {
+      if (currentSessionId) {
         queryClient.setQueryData<Message[]>(
-          chatKeys.messages(sessionId),
+          chatKeys.messages(currentSessionId),
           (old) => [...(old || []), message]
         );
       }
     };
 
     // Complete message received (backend emits agent:message_complete)
-    const handleMessageComplete = (data: { id?: string; content: string; role: string }) => {
-      // ✅ FIX: Use server-sent ID if available, otherwise generate temporary ID
-      const messageId = data.id || `msg-${Date.now()}-${Math.random()}`;
+    // NOTE: Backend now emits MULTIPLE message_complete events (one per reasoning step)
+    // We should NOT end streaming here - only when agent:complete is received
+    const handleMessageComplete = (data: { id?: string; content: string; role: string; stopReason?: string }) => {
+
+      // ✅ FIX: Use ref to get current sessionId (avoids stale closure)
+      const currentSessionId = sessionIdRef.current;
+
+      // ✅ REFACTOR: Simply add message without ending streaming
+      // Streaming ends only when agent:complete event is received
+      const messageId = data.id || crypto.randomUUID();
 
       const message: Message = {
-        id: messageId,  // ✅ Use DB ID from server
-        session_id: sessionId || '',
+        id: messageId,
+        session_id: currentSessionId || '',
         role: data.role as 'user' | 'assistant',
         content: data.content,
+        stop_reason: (data.stopReason as StopReason | undefined) || null, // ⭐ Native SDK stop_reason (validated by DB constraint)
         created_at: new Date().toISOString(),
         thinking_tokens: 0,
         is_thinking: false,
       };
-      endStreaming(message);
+
+      // Add message directly to cache (don't call endStreaming)
+      if (currentSessionId) {
+        queryClient.setQueryData<Message[]>(
+          chatKeys.messages(currentSessionId),
+          (old) => [...(old || []), message]
+        );
+      }
     };
 
     // Thinking indicator (backend emits agent:thinking)
@@ -212,20 +237,42 @@ export function useChat(sessionId?: string) {
       const isThinkingNow = !!data.content || true;
       setIsThinking(isThinkingNow);
 
-      // Persist thinking as a message (for UI cascade display)
-      if (sessionId && isThinkingNow) {
-        const thinkingMessage: ThinkingMessage = {
-          id: `thinking-${Date.now()}`,
-          type: 'thinking',
-          session_id: sessionId,
-          content: data.content,
-          created_at: new Date().toISOString(),
-        };
+      // ✅ FIX: Use ref to get current sessionId (avoids stale closure)
+      const currentSessionId = sessionIdRef.current;
 
-        // Add thinking message to messages cache
+      // Persist thinking as a message (for UI cascade display)
+      if (currentSessionId && isThinkingNow) {
         queryClient.setQueryData<Message[]>(
-          chatKeys.messages(sessionId),
-          (old) => [...(old || []), thinkingMessage]
+          chatKeys.messages(currentSessionId),
+          (old) => {
+            // Check if there's already a thinking message (deduplicate)
+            const existingThinkingIndex = (old || []).findIndex(
+              msg => isThinkingMessage(msg) && msg.session_id === currentSessionId
+            );
+
+            if (existingThinkingIndex >= 0) {
+              // Update existing thinking message
+              const updated = [...(old || [])];
+              const existingMsg = updated[existingThinkingIndex];
+              if (isThinkingMessage(existingMsg)) {
+                updated[existingThinkingIndex] = {
+                  ...existingMsg,
+                  content: data.content,
+                };
+              }
+              return updated;
+            } else {
+              // Create new thinking message
+              const thinkingMessage: ThinkingMessage = {
+                id: crypto.randomUUID(),
+                type: 'thinking',
+                session_id: currentSessionId,
+                content: data.content,
+                created_at: new Date().toISOString(),
+              };
+              return [...(old || []), thinkingMessage];
+            }
+          }
         );
       }
 
@@ -235,14 +282,15 @@ export function useChat(sessionId?: string) {
 
     // Tool use (backend emits agent:tool_use)
     const handleToolUse = (data: ToolUseEventData) => {
-      console.log('[useChat] Tool use:', data.toolName, data.args);
+      // ✅ FIX: Use ref to get current sessionId (avoids stale closure)
+      const currentSessionId = sessionIdRef.current;
 
       // FIX BUG #4: Add tool use message to UI
-      if (sessionId) {
+      if (currentSessionId) {
         const toolMessage: ToolUseMessage = {
-          id: `tool-${Date.now()}-${data.toolName}`,
+          id: data.toolUseId || crypto.randomUUID(),  // Use backend-provided DB GUID (should always be provided)
           type: 'tool_use',
-          session_id: sessionId,
+          session_id: currentSessionId,
           tool_name: data.toolName,
           tool_args: data.args,
           status: 'pending',
@@ -251,33 +299,38 @@ export function useChat(sessionId?: string) {
 
         // Add tool message to messages cache
         queryClient.setQueryData<Message[]>(
-          chatKeys.messages(sessionId),
+          chatKeys.messages(currentSessionId),
           (old) => [...(old || []), toolMessage]
         );
       }
     };
 
     // Tool result (backend emits agent:tool_result)
-    const handleToolResult = (data: { toolName: string; result: unknown; success: boolean }) => {
-      console.log('[useChat] Tool result:', data.toolName, 'success:', data.success);
+    const handleToolResult = (data: { toolName: string; result: unknown; success: boolean; toolUseId?: string }) => {
+      // ✅ FIX: Use ref to get current sessionId (avoids stale closure)
+      const currentSessionId = sessionIdRef.current;
 
       // FIX BUG #4: Update tool use message with result
-      if (sessionId) {
+      if (currentSessionId && data.toolUseId) {
         queryClient.setQueryData<Message[]>(
-          chatKeys.messages(sessionId),
-          (old) => old?.map(msg => {
-            // Find pending tool message with matching tool name
-            if (isToolUseMessage(msg) && msg.tool_name === data.toolName && msg.status === 'pending') {
-              return {
-                ...msg,
-                // Type assertion: backend always sends valid JSON from MCP tools
-                tool_result: data.result as import('@/lib/json-utils').JSONValue,
-                status: data.success ? 'success' as const : 'error' as const,
-                error_message: data.success ? undefined : 'Tool execution failed',
-              };
-            }
-            return msg;
-          }) || []
+          chatKeys.messages(currentSessionId),
+          (old) => {
+            const updated = old?.map(msg => {
+              // Find pending tool message with matching toolUseId (NOT toolName)
+              if (isToolUseMessage(msg) && msg.id === data.toolUseId && msg.status === 'pending') {
+                return {
+                  ...msg,
+                  // Type assertion: backend always sends valid JSON from MCP tools
+                  tool_result: data.result as import('@/lib/json-utils').JSONValue,
+                  status: data.success ? 'success' as const : 'error' as const,
+                  error_message: data.success ? undefined : 'Tool execution failed',
+                };
+              }
+              return msg;
+            }) || [];
+
+            return updated;
+          }
         );
       }
     };
@@ -293,15 +346,33 @@ export function useChat(sessionId?: string) {
 
     // Completion (backend emits agent:complete)
     const handleComplete = (data: { reason: string }) => {
-      console.log('[useChat] Agent completed, reason:', data.reason);
+
+      // ✅ REFACTOR: End streaming state here (not in handleMessageComplete)
+      setIsStreaming(false);
+      setStreamingMessage('');
       setIsThinking(false);
+
+      // ✅ FIX: Use ref to get current sessionId (avoids stale closure)
+      const currentSessionId = sessionIdRef.current;
+
+      // ✅ FIX #3: Remove thinking message from cache when agent completes
+      // Thinking messages are temporary UI state, not persisted to database
+      if (currentSessionId) {
+        queryClient.setQueryData<Message[]>(
+          chatKeys.messages(currentSessionId),
+          (old) => {
+            // Filter out any thinking messages
+            return (old || []).filter(msg => !isThinkingMessage(msg));
+          }
+        );
+      }
 
       // ✅ FIX: Delay invalidation to allow database writes to complete
       // This prevents race condition where refetch happens before DB INSERT completes
       // With server-sent IDs (Fix #2), optimistic updates now match DB records exactly
-      if (sessionId) {
+      if (currentSessionId) {
         setTimeout(() => {
-          queryClient.invalidateQueries({ queryKey: chatKeys.messages(sessionId) });
+          queryClient.invalidateQueries({ queryKey: chatKeys.messages(currentSessionId) });
         }, 300);  // 300ms delay ensures DB writes complete
       }
     };
@@ -313,7 +384,6 @@ export function useChat(sessionId?: string) {
 
     // Session title updated (backend emits session:title_updated)
     const handleTitleUpdate = (data: { sessionId: string; title: string }) => {
-      console.log('[useChat] Session title updated:', data.title);
 
       // Update sessions cache
       queryClient.setQueryData<Session[]>(
@@ -352,7 +422,7 @@ export function useChat(sessionId?: string) {
       socket.off(SocketEvent.ERROR, handleError);
       socket.off('session:title_updated', handleTitleUpdate);
     };
-  }, [socket, isConnected, sessionId, queryClient]);
+  }, [socket, isConnected]); // ✅ FIX #4: Remove sessionId and queryClient from deps to prevent re-registration
 
   // Send message (UNCHANGED)
   const sendMessage = useCallback(
@@ -367,7 +437,7 @@ export function useChat(sessionId?: string) {
 
       // Add optimistic message to cache
       const tempMessage: Message = {
-        id: `temp-${Date.now()}`,
+        id: crypto.randomUUID(),
         session_id: sessionId,
         role: 'user',
         content,

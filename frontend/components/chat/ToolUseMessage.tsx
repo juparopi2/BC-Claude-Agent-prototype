@@ -60,6 +60,23 @@ export function ToolUseMessage({ message, className }: ToolUseMessageProps) {
       .join(' ');
   };
 
+  // Format arguments for preview (compact, inline format)
+  const formatArgsPreview = (args: Record<string, unknown> | undefined): string => {
+    if (!args || Object.keys(args).length === 0) {
+      return '';
+    }
+
+    try {
+      const argsStr = JSON.stringify(args);
+      // Truncate if too long (max 60 chars)
+      return argsStr.length > 60 ? argsStr.substring(0, 57) + '...' : argsStr;
+    } catch (error) {
+      return '{ ... }';
+    }
+  };
+
+  const argsPreview = formatArgsPreview(message.tool_args);
+
   return (
     <div className={cn('my-2 rounded-lg border bg-card text-card-foreground shadow-sm', className)}>
       {/* Header - Always visible */}
@@ -79,14 +96,20 @@ export function ToolUseMessage({ message, className }: ToolUseMessageProps) {
           <Wrench className="h-4 w-4 text-purple-600 dark:text-purple-400" />
         </div>
 
-        {/* Tool name */}
-        <span className="text-sm font-medium flex-1 text-left">
-          {formatToolName(message.tool_name)}
+        {/* Tool name and args preview */}
+        <span className="text-sm font-medium flex-1 text-left flex flex-col gap-0.5">
+          <span>{formatToolName(message.tool_name)}</span>
+          {argsPreview && (
+            <span className="text-xs font-mono font-normal text-muted-foreground truncate">
+              {argsPreview}
+            </span>
+          )}
         </span>
 
         {/* Status indicator */}
         <div className="flex items-center gap-2">
-          <StatusBadge status={message.status} />
+          {/* ⭐ Only show badge for pending and error, not for success (only icon) */}
+          {message.status !== 'success' && <StatusBadge status={message.status} />}
           <StatusIcon status={message.status} />
         </div>
       </button>

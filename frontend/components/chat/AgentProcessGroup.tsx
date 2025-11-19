@@ -9,19 +9,31 @@ import { CollapsibleThinkingMessage } from './CollapsibleThinkingMessage';
 import { ToolUseMessage } from './ToolUseMessage';
 
 interface AgentProcessGroupProps {
-  messages: Message[];  // Array of thinking + tool messages
+  messages: Message[];  // Array of thinking + tool + intermediate messages
   className?: string;
 }
 
 export function AgentProcessGroup({ messages, className }: AgentProcessGroupProps) {
   const [isExpanded, setIsExpanded] = useState(true);  // Expanded by default
 
-  // Filter only thinking and tool messages
-  const processMessages = messages.filter(m =>
-    isThinkingMessage(m) || isToolUseMessage(m)
-  );
+  // ⭐ Filter thinking, tool, AND intermediate messages (stop_reason='tool_use')
+  const processMessages = messages.filter(m => {
+    if (isThinkingMessage(m) || isToolUseMessage(m)) return true;
+
+    // Include intermediate assistant messages (native SDK stop_reason='tool_use')
+    if (!('type' in m) && m.role === 'assistant' && m.stop_reason === 'tool_use') {
+      return true;
+    }
+
+    return false;
+  });
 
   if (processMessages.length === 0) return null;
+
+  // ⭐ Check if agent has completed (received stop_reason='end_turn')
+  const hasCompletedTurn = messages.some(m =>
+    !('type' in m) && m.role === 'assistant' && m.stop_reason === 'end_turn'
+  );
 
   // Get summary info
   const toolMessages = processMessages.filter(isToolUseMessage);
@@ -96,14 +108,22 @@ export function AgentProcessGroup({ messages, className }: AgentProcessGroupProp
         {getStatusBadge()}
       </button>
 
-      {/* Expanded content - All thinking + tool messages */}
+      {/* Expanded content - All thinking + tool + intermediate messages */}
       {isExpanded && (
         <div className="px-3 pb-3 space-y-2">
+          {/* Render all process messages in chronological order */}
           {processMessages.map((msg) => {
             if (isThinkingMessage(msg)) {
               return <CollapsibleThinkingMessage key={msg.id} message={msg} />;
             } else if (isToolUseMessage(msg)) {
               return <ToolUseMessage key={msg.id} message={msg} />;
+            } else if (!('type' in msg) && msg.role === 'assistant') {
+              // ⭐ Render intermediate assistant message (stop_reason='tool_use')
+              return (
+                <div key={msg.id} className="text-sm text-muted-foreground bg-muted/20 p-3 rounded-md">
+                  {msg.content}
+                </div>
+              );
             }
             return null;
           })}

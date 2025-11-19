@@ -4,6 +4,21 @@
 
 import type { JSONValue, JSONObject } from './json-utils';
 
+/**
+ * Native Anthropic SDK StopReason type replica
+ * (Frontend doesn't have SDK installed, so we define type literal union)
+ *
+ * These values match @anthropic-ai/sdk/resources/messages StopReason type
+ * If SDK updates these values, TypeScript will alert us via backend type errors
+ */
+export type StopReason =
+  | 'end_turn'       // Natural completion - final message
+  | 'tool_use'       // Model wants to use a tool - intermediate message
+  | 'max_tokens'     // Truncated due to token limit
+  | 'stop_sequence'  // Hit custom stop sequence
+  | 'pause_turn'     // Long turn paused
+  | 'refusal';       // Policy violation
+
 export interface User {
   id: string;
   email: string;
@@ -30,6 +45,16 @@ export interface BaseMessage {
   session_id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
+  /**
+   * Native Anthropic SDK stop_reason indicating message completion state
+   * - 'end_turn': Natural completion - final message
+   * - 'tool_use': Model wants to use a tool - intermediate message (goes in thinking collapsible)
+   * - 'max_tokens': Truncated due to token limit
+   * - 'stop_sequence': Hit custom stop sequence
+   * - 'pause_turn': Long turn paused
+   * - 'refusal': Policy violation
+   */
+  stop_reason?: StopReason | null;
   thinking_tokens?: number;
   is_thinking?: boolean;
   created_at: string;

@@ -14,8 +14,8 @@
  * @module services/messages/MessageService
  */
 
-import { getEventStore, EventType } from '../events/EventStore';
-import { getMessageQueue, MessagePersistenceJob } from '../queue/MessageQueue';
+import { getEventStore } from '../events/EventStore';
+import { getMessageQueue } from '../queue/MessageQueue';
 import { logger } from '@/utils/logger';
 import { randomUUID } from 'crypto';
 import { executeQuery, SqlParams } from '@/config/database';
@@ -363,7 +363,8 @@ export class MessageService {
         return null;
       }
 
-      return parseMessageMetadata(result.recordset[0]);
+      // Safe to use non-null assertion since we checked length above
+      return parseMessageMetadata(result.recordset[0]!);
     } catch (error) {
       logger.error('Failed to get message by ID', { error, messageId });
       throw error;

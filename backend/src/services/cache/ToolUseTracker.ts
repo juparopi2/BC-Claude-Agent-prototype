@@ -2,13 +2,15 @@
  * Tool Use Tracker Service
  *
  * Manages mapping between SDK tool use IDs and database GUIDs using Redis.
- * This allows us to track tool executions across the SDK → Database boundary.
+ * Tracks tool executions across the SDK → Database boundary.
  *
- * Pattern:
+ * Architecture (Production-Safe):
  * - SDK generates tool use ID (string)
  * - We generate DB GUID (UNIQUEIDENTIFIER)
  * - Store mapping in Redis with TTL (5 minutes)
- * - Use mapping to update tool results in DB
+ * - Uses SCAN for key iteration (O(1) per call, non-blocking)
+ * - Automatic cleanup after tool result persistence
+ * - Supports horizontal scaling with shared Redis
  *
  * @module services/cache/ToolUseTracker
  */
@@ -191,7 +193,7 @@ export class ToolUseTracker {
   }
 
   /**
-   * Delete Mapping
+   * Delete Mapping (alias for cleanupMapping)
    *
    * Removes a mapping from Redis (useful for cleanup).
    *
@@ -202,13 +204,29 @@ export class ToolUseTracker {
     sessionId: string,
     sdkToolUseId: string
   ): Promise<void> {
+    return this.cleanupMapping(sessionId, sdkToolUseId);
+  }
+
+  /**
+   * Cleanup Mapping
+   *
+   * Removes a specific mapping from Redis after tool result is stored.
+   * Called by ChatMessageHandler after updating tool result in DB.
+   *
+   * @param sessionId - Session ID
+   * @param sdkToolUseId - Tool use ID from SDK
+   */
+  public async cleanupMapping(
+    sessionId: string,
+    sdkToolUseId: string
+  ): Promise<void> {
     try {
       const key = this.getRedisKey(sessionId, sdkToolUseId);
       await this.redis.del(key);
 
-      logger.debug('Tool use mapping deleted', { sessionId, sdkToolUseId });
+      logger.debug('Tool use mapping cleaned up', { sessionId, sdkToolUseId });
     } catch (error) {
-      logger.error('Failed to delete tool use mapping', {
+      logger.error('Failed to cleanup tool use mapping', {
         error,
         sessionId,
         sdkToolUseId,
@@ -219,7 +237,7 @@ export class ToolUseTracker {
   /**
    * Get All Mappings for Session
    *
-   * Returns all tool use mappings for a session.
+   * Returns all tool use mappings for a session using SCAN (O(1) per call).
    * Useful for debugging or cleanup.
    *
    * @param sessionId - Session ID
@@ -230,18 +248,20 @@ export class ToolUseTracker {
   ): Promise<ToolUseMapping[]> {
     try {
       const pattern = `${this.KEY_PREFIX}${sessionId}:*`;
-      const keys = await this.redis.keys(pattern);
-
-      if (keys.length === 0) {
-        return [];
-      }
-
       const mappings: ToolUseMapping[] = [];
 
-      for (const key of keys) {
-        const data = await this.redis.get(key);
-        if (data) {
-          mappings.push(JSON.parse(data) as ToolUseMapping);
+      // Use SCAN instead of KEYS for production safety (O(1) per iteration)
+      const stream = this.redis.scanStream({
+        match: pattern,
+        count: 100, // Process 100 keys per iteration
+      });
+
+      for await (const keys of stream) {
+        for (const key of keys) {
+          const data = await this.redis.get(key);
+          if (data) {
+            mappings.push(JSON.parse(data) as ToolUseMapping);
+          }
         }
       }
 
@@ -258,7 +278,7 @@ export class ToolUseTracker {
   /**
    * Cleanup Session Mappings
    *
-   * Deletes all mappings for a session.
+   * Deletes all mappings for a session using SCAN (O(1) per iteration).
    * Useful when a session ends or for cleanup.
    *
    * @param sessionId - Session ID
@@ -267,20 +287,31 @@ export class ToolUseTracker {
   public async cleanupSession(sessionId: string): Promise<number> {
     try {
       const pattern = `${this.KEY_PREFIX}${sessionId}:*`;
-      const keys = await this.redis.keys(pattern);
+      const keysToDelete: string[] = [];
 
-      if (keys.length === 0) {
+      // Use SCAN instead of KEYS for production safety
+      const stream = this.redis.scanStream({
+        match: pattern,
+        count: 100, // Process 100 keys per iteration
+      });
+
+      for await (const keys of stream) {
+        keysToDelete.push(...keys);
+      }
+
+      if (keysToDelete.length === 0) {
         return 0;
       }
 
-      await this.redis.del(...keys);
+      // Delete in batch
+      await this.redis.del(...keysToDelete);
 
       logger.info('Session mappings cleaned up', {
         sessionId,
-        deletedCount: keys.length,
+        deletedCount: keysToDelete.length,
       });
 
-      return keys.length;
+      return keysToDelete.length;
     } catch (error) {
       logger.error('Failed to cleanup session mappings', {
         error,

@@ -73,7 +73,8 @@
       "Bash(temp_html_sample.txt)",
       "Bash(nc:*)",
       "Bash(npm run test)",
-      "Bash(sqlcmd:*)"
+      "Bash(sqlcmd:*)",
+      "Bash(cut:*)"
     ],
     "deny": [],
     "ask": []

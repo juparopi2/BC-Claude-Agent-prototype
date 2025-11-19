@@ -1,13 +1,18 @@
 /**
- * Message Queue Service
+ * Message Queue Service (Multi-Tenant Safe)
  *
- * Implements message queue system using BullMQ for asynchronous processing.
+ * Implements message queue system using BullMQ with rate limiting.
  * Decouples message persistence from the main request/response flow.
  *
- * Queues:
- * - message-persistence: Persist messages to database
- * - tool-execution: Execute tool calls asynchronously
- * - event-processing: Process events from EventStore
+ * Architecture:
+ * - message-persistence: Persist messages to database (concurrency: 10)
+ * - tool-execution: Execute tool calls asynchronously (concurrency: 5)
+ * - event-processing: Process events from EventStore (concurrency: 10)
+ *
+ * Rate Limiting:
+ * - Max 100 jobs per session in message-persistence queue
+ * - Prevents single tenant from saturating the queue
+ * - Horizontal scaling ready
  *
  * @module services/queue/MessageQueue
  */
@@ -64,10 +69,14 @@ export interface EventProcessingJob {
 /**
  * Message Queue Manager Class
  *
- * Manages all queues and workers for asynchronous message processing.
+ * Manages all queues and workers with rate limiting for multi-tenant safety.
  */
 export class MessageQueue {
   private static instance: MessageQueue | null = null;
+
+  // Rate limiting constants
+  private static readonly MAX_JOBS_PER_SESSION = 100;
+  private static readonly RATE_LIMIT_WINDOW_SECONDS = 3600; // 1 hour
 
   private redisConnection: Redis;
   private queues: Map<QueueName, Queue>;
@@ -246,10 +255,55 @@ export class MessageQueue {
   }
 
   /**
-   * Add Message to Persistence Queue
+   * Check Rate Limit for Session
+   *
+   * Ensures a session doesn't exceed max jobs per hour (multi-tenant safety).
+   *
+   * @param sessionId - Session ID
+   * @returns True if within limit, false otherwise
+   */
+  private async checkRateLimit(sessionId: string): Promise<boolean> {
+    const key = `queue:ratelimit:${sessionId}`;
+
+    try {
+      // Increment counter and set expiry atomically
+      const count = await this.redisConnection.incr(key);
+
+      // Set TTL only on first increment
+      if (count === 1) {
+        await this.redisConnection.expire(
+          key,
+          MessageQueue.RATE_LIMIT_WINDOW_SECONDS
+        );
+      }
+
+      const withinLimit = count <= MessageQueue.MAX_JOBS_PER_SESSION;
+
+      if (!withinLimit) {
+        logger.warn('Rate limit exceeded for session', {
+          sessionId,
+          count,
+          limit: MessageQueue.MAX_JOBS_PER_SESSION,
+        });
+      }
+
+      return withinLimit;
+    } catch (error) {
+      logger.error('Failed to check rate limit', { error, sessionId });
+      // Fail open - allow job if rate limit check fails
+      return true;
+    }
+  }
+
+  /**
+   * Add Message to Persistence Queue (with rate limiting)
+   *
+   * Rate Limiting: Max 100 jobs per session per hour.
+   * Prevents single tenant from saturating the queue.
    *
    * @param data - Message data to persist
    * @returns Job ID
+   * @throws Error if rate limit exceeded
    */
   public async addMessagePersistence(
     data: MessagePersistenceJob
@@ -257,6 +311,14 @@ export class MessageQueue {
     const queue = this.queues.get(QueueName.MESSAGE_PERSISTENCE);
     if (!queue) {
       throw new Error('Message persistence queue not initialized');
+    }
+
+    // Check rate limit
+    const withinLimit = await this.checkRateLimit(data.sessionId);
+    if (!withinLimit) {
+      throw new Error(
+        `Rate limit exceeded for session ${data.sessionId}. Max ${MessageQueue.MAX_JOBS_PER_SESSION} jobs per hour.`
+      );
     }
 
     const job = await queue.add('persist-message', data, {
@@ -369,7 +431,7 @@ export class MessageQueue {
   private async processToolExecution(
     job: Job<ToolExecutionJob>
   ): Promise<void> {
-    const { sessionId, toolUseId, toolName, toolArgs } = job.data;
+    const { sessionId, toolUseId, toolName } = job.data;
 
     logger.info('Processing tool execution', {
       jobId: job.id,
@@ -393,7 +455,7 @@ export class MessageQueue {
    * @param job - BullMQ job
    */
   private async processEvent(job: Job<EventProcessingJob>): Promise<void> {
-    const { eventId, sessionId, eventType, data } = job.data;
+    const { eventId, sessionId, eventType } = job.data;
 
     logger.debug('Processing event', {
       jobId: job.id,
@@ -408,6 +470,41 @@ export class MessageQueue {
 
     // Additional event-specific processing can be added here
     // For example, triggering webhooks, notifications, etc.
+  }
+
+  /**
+   * Get Rate Limit Status for Session
+   *
+   * Returns current rate limit status for monitoring.
+   *
+   * @param sessionId - Session ID
+   * @returns Rate limit status
+   */
+  public async getRateLimitStatus(sessionId: string): Promise<{
+    count: number;
+    limit: number;
+    remaining: number;
+    withinLimit: boolean;
+  }> {
+    const key = `queue:ratelimit:${sessionId}`;
+
+    try {
+      const countStr = await this.redisConnection.get(key);
+      const count = countStr ? parseInt(countStr, 10) : 0;
+      const limit = MessageQueue.MAX_JOBS_PER_SESSION;
+      const remaining = Math.max(0, limit - count);
+      const withinLimit = count <= limit;
+
+      return { count, limit, remaining, withinLimit };
+    } catch (error) {
+      logger.error('Failed to get rate limit status', { error, sessionId });
+      return {
+        count: 0,
+        limit: MessageQueue.MAX_JOBS_PER_SESSION,
+        remaining: MessageQueue.MAX_JOBS_PER_SESSION,
+        withinLimit: true,
+      };
+    }
   }
 
   /**

@@ -1,20 +1,21 @@
 /**
  * Event Store Service
  *
- * Implements Event Sourcing pattern for message persistence.
+ * Implements Event Sourcing pattern with atomic sequence number generation.
  * All message-related events are stored as immutable append-only logs.
  *
- * Pattern:
+ * Architecture (Multi-Tenant Safe):
  * - Events are append-only (never updated or deleted)
- * - Each event has a sequence number for ordering
+ * - Sequence numbers generated via Redis INCR (atomic, prevents race conditions)
  * - Events can be replayed to reconstruct state
- * - Supports real-time streaming and historical replay
+ * - Supports horizontal scaling with distributed deployments
+ * - TTL-based cleanup for inactive sessions (7 days)
  *
  * @module services/events/EventStore
  */
 
 import { executeQuery, getDatabase, SqlParams } from '@/config/database';
-import { getRedisClient } from '@/config/redis';
+import { getRedis } from '@/config/redis';
 import { randomUUID } from 'crypto';
 import { logger } from '@/utils/logger';
 
@@ -123,6 +124,19 @@ export type MessageEvent =
   | BaseEvent;
 
 /**
+ * Database Row Interface for Event Queries
+ */
+interface EventDbRow {
+  id: string;
+  session_id: string;
+  event_type: string;
+  sequence_number: number;
+  timestamp: Date;
+  data: string; // JSON string
+  processed: boolean;
+}
+
+/**
  * Event Store Class
  *
  * Manages append-only event log with sequence numbers
@@ -147,13 +161,13 @@ export class EventStore {
   /**
    * Append Event to Store
    *
-   * Events are immutable and append-only.
-   * Sequence number is auto-generated based on session.
+   * Events are immutable and append-only with atomic sequence numbers.
+   * Uses Redis INCR for sequence generation (multi-tenant safe).
    *
    * @param sessionId - Session ID
    * @param eventType - Type of event
    * @param data - Event data (JSON-serializable)
-   * @returns Created event
+   * @returns Created event with guaranteed sequence number
    */
   public async appendEvent(
     sessionId: string,
@@ -253,7 +267,7 @@ export class EventStore {
 
       query += ' ORDER BY sequence_number ASC';
 
-      const result = await executeQuery(query, params);
+      const result = await executeQuery<EventDbRow>(query, params);
 
       return result.recordset.map((row) => ({
         id: row.id,
@@ -323,7 +337,7 @@ export class EventStore {
 
       query += ' ORDER BY timestamp ASC';
 
-      const result = await executeQuery(query, params);
+      const result = await executeQuery<EventDbRow>(query, params);
 
       return result.recordset.map((row) => ({
         id: row.id,
@@ -351,7 +365,12 @@ export class EventStore {
    */
   private async getNextSequenceNumber(sessionId: string): Promise<number> {
     try {
-      const redis = getRedisClient();
+      const redis = getRedis();
+      if (!redis) {
+        logger.warn('Redis not available, falling back to database for sequence number', { sessionId });
+        return this.fallbackToDatabase(sessionId);
+      }
+
       const key = `event:sequence:${sessionId}`;
 
       // Redis INCR is atomic - perfect for distributed systems
@@ -367,22 +386,32 @@ export class EventStore {
 
       // Fallback to database MAX+1 (slower, but guarantees correctness)
       logger.warn('Falling back to database for sequence number', { sessionId });
-      try {
-        const result = await executeQuery(
-          `
-          SELECT COALESCE(MAX(sequence_number), -1) + 1 AS next_seq
-          FROM message_events
-          WHERE session_id = @session_id
-          `,
-          { session_id: sessionId }
-        );
+      return this.fallbackToDatabase(sessionId);
+    }
+  }
 
-        return result.recordset[0]?.next_seq ?? 0;
-      } catch (dbError) {
-        logger.error('Fallback also failed', { dbError, sessionId });
-        // Last resort: use timestamp-based sequence (could have gaps)
-        return Date.now();
-      }
+  /**
+   * Fallback to database for sequence number generation
+   *
+   * Used when Redis is unavailable. Slower but guarantees correctness.
+   *
+   * @param sessionId - Session ID
+   * @returns Next sequence number from database
+   */
+  private async fallbackToDatabase(sessionId: string): Promise<number> {
+    try {
+      const result = await executeQuery<{ next_seq: number }>(
+        `SELECT COALESCE(MAX(sequence_number), -1) + 1 AS next_seq
+         FROM message_events
+         WHERE session_id = @session_id`,
+        { session_id: sessionId }
+      );
+
+      return result.recordset[0]?.next_seq ?? 0;
+    } catch (dbError) {
+      logger.error('Fallback to database also failed', { dbError, sessionId });
+      // Last resort: use timestamp-based sequence (could have gaps)
+      return Date.now();
     }
   }
 
@@ -418,7 +447,7 @@ export class EventStore {
    */
   public async getEventCount(sessionId: string): Promise<number> {
     try {
-      const result = await executeQuery(
+      const result = await executeQuery<{ count: number }>(
         `
         SELECT COUNT(*) AS count
         FROM message_events
@@ -445,7 +474,7 @@ export class EventStore {
    */
   public async getLastEventId(sessionId: string): Promise<string | null> {
     try {
-      const result = await executeQuery(
+      const result = await executeQuery<{ id: string }>(
         `
         SELECT TOP 1 id
         FROM message_events
@@ -473,7 +502,7 @@ export class EventStore {
    */
   public async getLastSequenceNumber(sessionId: string): Promise<number> {
     try {
-      const result = await executeQuery(
+      const result = await executeQuery<{ last_seq: number }>(
         `
         SELECT MAX(sequence_number) AS last_seq
         FROM message_events

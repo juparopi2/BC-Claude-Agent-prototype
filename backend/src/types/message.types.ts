@@ -22,8 +22,14 @@ export type MessageType =
   | 'error';
 
 /**
- * Message Database Record
- * Represents a message as stored in the database with Event Sourcing support
+ * Message Database Record (Enhanced with Event Sourcing)
+ *
+ * Represents a message as stored in the database with Event Sourcing support.
+ * Links to message_events table for complete event history.
+ *
+ * Enhanced Fields:
+ * - sequence_number: Replaces timestamp-based ordering (prevents race conditions)
+ * - event_id: Links to message_events for full event sourcing replay
  */
 export interface MessageDbRecord {
   id: string;
@@ -34,10 +40,10 @@ export interface MessageDbRecord {
   metadata: string; // JSON string
   created_at: Date;
 
-  // ⭐ Event Sourcing Fields (FASE 1 - Enhanced Contract)
-  /** Sequence number for guaranteed ordering (replaces timestamp ordering) */
+  // Event Sourcing Fields (Multi-Tenant Architecture)
+  /** Sequence number for guaranteed ordering (atomic via Redis INCR) */
   sequence_number: number | null;
-  /** Event ID linking to message_events table */
+  /** Event ID linking to message_events table for replay */
   event_id: string | null;
 }
 
@@ -63,8 +69,15 @@ export interface ToolUseMetadata {
 }
 
 /**
- * Parsed Message
- * Message with parsed metadata and Event Sourcing fields
+ * Parsed Message (Discriminated Union)
+ *
+ * Type-safe message representation with parsed metadata.
+ * Includes Event Sourcing fields for guaranteed ordering and replay.
+ *
+ * Frontend Rendering:
+ * - Use sequence_number for ordering (NOT created_at)
+ * - event_id available for event sourcing replay/debugging
+ * - Discriminated by message_type for type-safe access
  */
 export type ParsedMessage =
   | {

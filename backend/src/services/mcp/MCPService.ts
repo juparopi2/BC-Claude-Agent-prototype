@@ -160,7 +160,7 @@ export class MCPService {
             RetryPredicates.isNetworkError,
             RetryPredicates.isServerError
           ),
-          onRetry: (attempt, _error, nextDelay) => {
+          onRetry: (attempt, _unusedError, nextDelay) => {
             console.log(
               `[MCPService] Retry ${attempt}/3 after ${nextDelay}ms (cold start recovery)`
             );

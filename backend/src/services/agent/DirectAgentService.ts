@@ -24,11 +24,13 @@ import type {
   TextBlock,
 } from '@anthropic-ai/sdk/resources/messages';
 import { env } from '@/config';
-import type { AgentEvent, AgentExecutionResult } from '@/types';
+import type { AgentEvent, AgentExecutionResult, PersistenceState } from '@/types';
 import type { ApprovalManager } from '../approval/ApprovalManager';
 import type { TodoManager } from '../todo/TodoManager';
 import type { IAnthropicClient, ClaudeTool } from './IAnthropicClient';
 import { AnthropicClient } from './AnthropicClient';
+import { randomUUID } from 'crypto';
+import { getEventStore } from '../events/EventStore';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -116,6 +118,40 @@ export class DirectAgentService {
   }
 
   /**
+   * Generate Enhanced Contract Fields
+   *
+   * Creates eventId, sequenceNumber, and persistenceState for event sourcing.
+   * Uses Redis INCR for atomic sequence number generation (multi-tenant safe).
+   *
+   * @param sessionId - Session ID for sequence number generation
+   * @param correlationId - Optional correlation ID (links related events)
+   * @param parentEventId - Optional parent event ID (hierarchical relationships)
+   * @returns Object with enhanced contract fields
+   */
+  private async generateEnhancedFields(
+    sessionId: string,
+    correlationId?: string,
+    parentEventId?: string
+  ): Promise<{
+    eventId: string;
+    sequenceNumber: number;
+    persistenceState: PersistenceState;
+    correlationId?: string;
+    parentEventId?: string;
+  }> {
+    const eventStore = getEventStore();
+    const sequenceNumber = await eventStore['getNextSequenceNumber'](sessionId);
+
+    return {
+      eventId: randomUUID(),
+      sequenceNumber,
+      persistenceState: 'queued' as PersistenceState,
+      correlationId,
+      parentEventId,
+    };
+  }
+
+  /**
    * Execute Query with Direct API Calling
    *
    * Implements manual agentic loop:
@@ -181,11 +217,13 @@ export class DirectAgentService {
         content: prompt,
       });
 
-      // Send thinking event
-      if (onEvent) {
+      // Send thinking event with enhanced contract fields
+      if (onEvent && sessionId) {
+        const enhanced = await this.generateEnhancedFields(sessionId);
         onEvent({
           type: 'thinking',
           timestamp: new Date(),
+          ...enhanced,
         });
       }
 
@@ -248,13 +286,15 @@ export class DirectAgentService {
                 });
 
                 // Emit tool_use event immediately (UI shows pending tool)
-                if (onEvent) {
+                if (onEvent && sessionId) {
+                  const enhanced = await this.generateEnhancedFields(sessionId);
                   onEvent({
                     type: 'tool_use',
                     toolName: event.content_block.name,
                     toolUseId: event.content_block.id,
                     args: {}, // Will be populated in deltas
                     timestamp: new Date(),
+                    ...enhanced,
                   });
                 }
               }
@@ -276,11 +316,13 @@ export class DirectAgentService {
                 accumulatedText += chunk;
 
                 // ⭐ EMIT CHUNK IMMEDIATELY (real-time streaming)
-                if (onEvent && chunk) {
+                if (onEvent && chunk && sessionId) {
+                  const enhanced = await this.generateEnhancedFields(sessionId);
                   onEvent({
                     type: 'message_chunk',
                     content: chunk,
                     timestamp: new Date(),
+                    ...enhanced,
                   });
                 }
 
@@ -350,14 +392,16 @@ export class DirectAgentService {
 
         // ========== EMIT COMPLETE MESSAGE ==========
         // After streaming all chunks, emit the complete message
-        if (accumulatedText.trim() && onEvent) {
+        if (accumulatedText.trim() && onEvent && sessionId) {
+          const enhanced = await this.generateEnhancedFields(sessionId);
           onEvent({
             type: 'message',
-            messageId: messageId || crypto.randomUUID(),
+            messageId: messageId || randomUUID(),
             content: accumulatedText,
             role: 'assistant',
             stopReason: (stopReason as 'end_turn' | 'tool_use' | 'max_tokens') || undefined,
             timestamp: new Date(),
+            ...enhanced,
           });
 
           accumulatedResponses.push(accumulatedText);
@@ -416,7 +460,8 @@ export class DirectAgentService {
             try {
               const result = await this.executeMCPTool(toolUse.name, toolUse.input);
 
-              if (onEvent) {
+              if (onEvent && sessionId) {
+                const enhanced = await this.generateEnhancedFields(sessionId, toolUse.id);
                 onEvent({
                   type: 'tool_result',
                   toolName: toolUse.name,
@@ -425,6 +470,7 @@ export class DirectAgentService {
                   result: result,
                   success: true,
                   timestamp: new Date(),
+                  ...enhanced,
                 });
               }
 
@@ -436,7 +482,8 @@ export class DirectAgentService {
             } catch (error) {
               console.error(`[DirectAgentService] Tool execution failed:`, error);
 
-              if (onEvent) {
+              if (onEvent && sessionId) {
+                const enhanced = await this.generateEnhancedFields(sessionId, toolUse.id);
                 onEvent({
                   type: 'tool_result',
                   toolName: toolUse.name,
@@ -446,6 +493,7 @@ export class DirectAgentService {
                   success: false,
                   error: error instanceof Error ? error.message : String(error),
                   timestamp: new Date(),
+                  ...enhanced,
                 });
               }
 
@@ -466,13 +514,15 @@ export class DirectAgentService {
 
           // Continue loop
         } else if (stopReason === 'max_tokens') {
-          if (onEvent) {
+          if (onEvent && sessionId) {
+            const enhanced = await this.generateEnhancedFields(sessionId);
             onEvent({
               type: 'message',
-              messageId: crypto.randomUUID(),
+              messageId: randomUUID(),
               content: '[Response truncated - reached max tokens]',
               role: 'assistant',
               timestamp: new Date(),
+              ...enhanced,
             });
             accumulatedResponses.push('[Response truncated - reached max tokens]');
           }
@@ -484,13 +534,15 @@ export class DirectAgentService {
       }
 
       if (turnCount >= maxTurns) {
-        if (onEvent) {
+        if (onEvent && sessionId) {
+          const enhanced = await this.generateEnhancedFields(sessionId);
           onEvent({
             type: 'message',
-            messageId: crypto.randomUUID(),
+            messageId: randomUUID(),
             content: '[Execution stopped - reached maximum turns]',
             role: 'assistant',
             timestamp: new Date(),
+            ...enhanced,
           });
           accumulatedResponses.push('[Execution stopped - reached maximum turns]');
         }
@@ -499,11 +551,13 @@ export class DirectAgentService {
       const duration = Date.now() - startTime;
 
       // Send completion event
-      if (onEvent) {
+      if (onEvent && sessionId) {
+        const enhanced = await this.generateEnhancedFields(sessionId);
         onEvent({
           type: 'complete',
           reason: 'success',
           timestamp: new Date(),
+          ...enhanced,
         });
       }
 
@@ -521,11 +575,13 @@ export class DirectAgentService {
 
       console.error(`[DirectAgentService] Streaming query execution failed:`, error);
 
-      if (onEvent) {
+      if (onEvent && sessionId) {
+        const enhanced = await this.generateEnhancedFields(sessionId);
         onEvent({
           type: 'error',
           error: error instanceof Error ? error.message : String(error),
           timestamp: new Date(),
+          ...enhanced,
         });
       }
 

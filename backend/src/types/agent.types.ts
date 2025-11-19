@@ -51,28 +51,39 @@ export type AgentEventType =
 
 /**
  * Persistence State
- * Indicates the database persistence status of an event
+ *
+ * Indicates database persistence status for real-time frontend updates.
+ * Transitions: queued → persisted | failed
  */
 export type PersistenceState = 'queued' | 'persisted' | 'failed';
 
 /**
- * Base Agent Event
- * Base structure for all agent events with Event Sourcing support
+ * Base Agent Event (Enhanced Contract - Multi-Tenant)
+ *
+ * Base structure for all agent events with Event Sourcing support.
+ * Provides maximum information for flexible frontend rendering.
+ *
+ * Architecture:
+ * - eventId: Unique identifier for tracing and debugging
+ * - sequenceNumber: Guaranteed ordering (replaces timestamp-based sorting)
+ * - persistenceState: Real-time persistence status for optimistic UI
+ * - correlationId: Links related events (e.g., tool_use → tool_result)
+ * - parentEventId: Hierarchical event relationships
  */
 export interface BaseAgentEvent {
-  /** Event type */
+  /** Event type discriminator */
   type: AgentEventType;
   /** Session ID */
   sessionId?: string;
-  /** Timestamp */
+  /** Event timestamp */
   timestamp: Date;
 
-  // ⭐ Event Sourcing Fields (FASE 1 - Enhanced Contract)
+  // Enhanced Event Sourcing Fields (Multi-Tenant Architecture)
   /** Unique event ID (UUID) for tracing and correlation */
   eventId: string;
-  /** Sequence number within session for guaranteed ordering */
+  /** Sequence number for guaranteed ordering (atomic via Redis INCR) */
   sequenceNumber: number;
-  /** Database persistence state (queued → persisted | failed) */
+  /** Database persistence state for optimistic UI updates */
   persistenceState: PersistenceState;
   /** Correlation ID for linking related events (e.g., tool_use → tool_result) */
   correlationId?: string;

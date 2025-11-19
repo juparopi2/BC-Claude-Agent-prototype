@@ -13,7 +13,6 @@ import { Server as SocketIOServer } from 'socket.io';
 import cors from 'cors';
 import session from 'express-session';
 import RedisStore from 'connect-redis';
-import crypto from 'crypto';
 import { env, isProd, printConfig, validateRequiredSecrets } from './config/environment';
 import { loadSecretsFromKeyVault } from './config/keyvault';
 import { initDatabase, closeDatabase, checkDatabaseHealth, executeQuery } from './config/database';
@@ -25,7 +24,6 @@ import { getBCClient } from './services/bc';
 import { getDirectAgentService } from './services/agent';
 import { getApprovalManager } from './services/approval/ApprovalManager';
 import { getTodoManager } from './services/todo/TodoManager';
-import { saveThinkingMessage, saveToolUseMessage, updateToolResultMessage } from './utils/messageHelpers';
 import authMockRoutes from './routes/auth-mock';
 import authOAuthRoutes from './routes/auth-oauth';
 import sessionsRoutes from './routes/sessions';
@@ -41,13 +39,6 @@ declare module 'express-session' {
     microsoftOAuth?: MicrosoftOAuthSession;
     oauthState?: string;
   }
-}
-
-/**
- * Query result types for type-safe database operations
- */
-interface MessageInsertResult {
-  id: string;
 }
 
 /**
@@ -439,7 +430,7 @@ function configureRoutes(): void {
     }
   });
 
-  app.get('/api/bc/customers', async (req: Request, res: Response) => {
+  app.get('/api/bc/customers', async (req: Request, res: Response): Promise<void> => {
     try {
       const bcClient = getBCClient();
 
@@ -807,333 +798,10 @@ function configureSocketIO(): void {
     const userId = authSocket.userId;
     logger.info(`[Socket.IO] ✅ Client connected: ${socket.id} (User: ${userId})`);
 
-    // Map to track SDK toolUseId → DB GUID mapping for tool results
-    const toolUseIdMap = new Map<string, string>();
-
-    // Handler: Chat message
-    socket.on('chat:message', async (data: {
-      message: string;
-      sessionId: string;
-      userId: string;
-    }) => {
-      const { message, sessionId, userId } = data;
-
-      try {
-        logger.info(`[Socket.IO] [1/3] Received message from user ${userId} in session ${sessionId}`);
-
-        // Validate session ownership (basic check)
-        // In production, verify user owns the session via database query
-
-        // Join session room (safety measure, should already be joined via session:join)
-        socket.join(sessionId);
-
-        // Save user message to DB before executing agent
-        try {
-          const userMessageQuery = `
-            INSERT INTO messages (id, session_id, role, message_type, content, created_at)
-            VALUES (NEWID(), @sessionId, 'user', 'standard', @content, GETUTCDATE())
-          `;
-          await executeQuery(userMessageQuery, {
-            sessionId,
-            content: message,
-          });
-          logger.info(`[Socket.IO] [2/3] User message saved to database`);
-        } catch (dbError) {
-          logger.error('[Socket.IO] Failed to save user message:', dbError);
-          // Continue anyway - message is in frontend cache
-        }
-
-        // Execute agent query with streaming (using DirectAgentService)
-        logger.info(`[Socket.IO] [3/3] Starting agent execution for session ${sessionId} with STREAMING`);
-        const agentService = getDirectAgentService();
-        await agentService.executeQueryStreaming(
-          message,
-          sessionId,
-          async (event) => {
-            // Stream all events to session room
-            io.to(sessionId).emit('agent:event', event);
-
-            // Emit specific event types
-            switch (event.type) {
-              case 'thinking':
-                // Persist thinking message to database
-                try {
-                  await saveThinkingMessage(sessionId, event.content || '');
-                  logger.info(`[Socket.IO] Thinking message saved to database for session ${sessionId}`);
-                } catch (dbError) {
-                  logger.error('[Socket.IO] Failed to save thinking message:', dbError);
-                  // Continue streaming (DB error shouldn't break UX)
-                }
-
-                io.to(sessionId).emit('agent:thinking', {
-                  content: event.content,
-                });
-                break;
-
-              case 'message_partial':
-                io.to(sessionId).emit('agent:message_chunk', {
-                  content: event.content,
-                });
-                break;
-
-              case 'message_chunk':
-                // Real-time text streaming: emitted by DirectAgentService.executeQueryStreaming()
-                // This provides incremental chunks as Claude generates the response
-                io.to(sessionId).emit('agent:message_chunk', {
-                  content: event.content,
-                });
-                break;
-
-              case 'message':
-                // ========== DIAGNOSTIC LOGGING ==========
-                console.log(`\n[SERVER RECEIVED] 'message' event:`, {
-                  contentPreview: event.content?.substring(0, 50) + '...',
-                  stopReason: event.stopReason,
-                  role: event.role,
-                  timestamp: new Date().toISOString()
-                });
-                // ========== END DIAGNOSTIC LOGGING ==========
-
-                // FIX BUG #5: Guardar mensaje del assistant en BD
-                let assistantMessageId: string | undefined;
-                try {
-                  const assistantMessageQuery = `
-                    INSERT INTO messages (id, session_id, role, message_type, content, stop_reason, created_at)
-                    OUTPUT INSERTED.id
-                    VALUES (NEWID(), @sessionId, 'assistant', 'standard', @content, @stopReason, GETUTCDATE())
-                  `;
-                  const result = await executeQuery<MessageInsertResult>(assistantMessageQuery, {
-                    sessionId,
-                    content: event.content,
-                    stopReason: event.stopReason || null, // ⭐ Native SDK stop_reason
-                  });
-                  // ✅ Capture DB-generated ID (type-safe query result)
-                  assistantMessageId = result.recordset[0]?.id;
-                  logger.info(`[Socket.IO] Assistant message saved to database for session ${sessionId} with ID ${assistantMessageId} (stop_reason: ${event.stopReason || 'null'})`);
-                } catch (dbError) {
-                  logger.error('[Socket.IO] Failed to save assistant message:', dbError);
-                }
-
-                // ========== DIAGNOSTIC LOGGING ==========
-                console.log(`[SERVER EMIT] 'agent:message_complete' to frontend:`, {
-                  id: assistantMessageId,
-                  contentPreview: event.content?.substring(0, 50) + '...',
-                  stopReason: event.stopReason || null,
-                  timestamp: new Date().toISOString()
-                });
-                // ========== END DIAGNOSTIC LOGGING ==========
-
-                io.to(sessionId).emit('agent:message_complete', {
-                  id: assistantMessageId,  // ✅ SEND DB ID TO FRONTEND
-                  content: event.content,
-                  role: event.role,
-                  stopReason: event.stopReason || null, // ⭐ Pass stop_reason to frontend
-                });
-                break;
-
-              case 'tool_use':
-                // ========== DIAGNOSTIC LOGGING ==========
-                console.log(`\n[SERVER RECEIVED] 'tool_use' event:`, {
-                  toolName: event.toolName,
-                  toolUseId: event.toolUseId,
-                  argsKeys: event.args ? Object.keys(event.args) : [],
-                  timestamp: new Date().toISOString()
-                });
-                // ========== END DIAGNOSTIC LOGGING ==========
-
-                // Persist tool use message to database
-                let savedToolUseId: string;
-                try {
-                  savedToolUseId = await saveToolUseMessage(
-                    sessionId,
-                    event.toolName,
-                    event.args || {}
-                  );
-                } catch (dbError) {
-                  logger.error('[Socket.IO] Failed to save tool use message:', dbError);
-                  // Fallback ID if DB insert fails
-                  savedToolUseId = event.toolUseId || crypto.randomUUID();
-                }
-
-                // ✅ FIX: Map SDK toolUseId → DB GUID for tool_result matching
-                if (event.toolUseId) {
-                  toolUseIdMap.set(event.toolUseId, savedToolUseId);
-                }
-
-                // Intercept TodoWrite to sync todos to database (if SDK were used)
-                if (event.toolName === 'TodoWrite' && event.args?.todos) {
-                  const todoManager = getTodoManager();
-                  await todoManager.syncTodosFromSDK(
-                    sessionId,
-                    event.args.todos as Array<{ content: string; status: 'pending' | 'in_progress' | 'completed'; activeForm: string }>
-                  );
-                }
-
-                // ========== DIAGNOSTIC LOGGING ==========
-                console.log(`[SERVER EMIT] 'agent:tool_use' to frontend:`, {
-                  toolName: event.toolName,
-                  savedToolUseId,
-                  timestamp: new Date().toISOString()
-                });
-                // ========== END DIAGNOSTIC LOGGING ==========
-
-                io.to(sessionId).emit('agent:tool_use', {
-                  toolName: event.toolName,
-                  args: event.args,
-                  toolUseId: savedToolUseId,  // ✅ Always use DB GUID
-                });
-                break;
-
-              case 'tool_result':
-                // ========== DIAGNOSTIC LOGGING ==========
-                console.log(`\n[SERVER RECEIVED] 'tool_result' event:`, {
-                  toolName: event.toolName,
-                  toolUseId: event.toolUseId,
-                  success: event.success,
-                  resultPreview: typeof event.result === 'string'
-                    ? event.result.substring(0, 50) + '...'
-                    : typeof event.result,
-                  timestamp: new Date().toISOString()
-                });
-                // ========== END DIAGNOSTIC LOGGING ==========
-
-                // ✅ FIX: Lookup DB GUID from SDK toolUseId mapping
-                const dbToolUseId = event.toolUseId ? toolUseIdMap.get(event.toolUseId) : undefined;
-
-                // Update tool use message with result
-                if (dbToolUseId) {
-                  try {
-                    await updateToolResultMessage(
-                      sessionId,
-                      dbToolUseId,  // ✅ Use DB GUID, not SDK ID
-                      event.toolName,
-                      event.args || {}, // ✅ FIX: Preserve original tool arguments from DirectAgentService
-                      event.result,
-                      event.success !== false,
-                      event.error
-                    );
-
-                    // ✅ Cleanup: Remove mapping after use
-                    if (event.toolUseId) {
-                      toolUseIdMap.delete(event.toolUseId);
-                    }
-                  } catch (dbError) {
-                    logger.error('[Socket.IO] Failed to update tool result:', dbError);
-                    // Continue streaming (DB error shouldn't break UX)
-                  }
-                } else if (event.toolUseId) {
-                  logger.warn(`[Socket.IO] No DB GUID found for SDK toolUseId: ${event.toolUseId}`);
-                }
-
-                // ========== DIAGNOSTIC LOGGING ==========
-                console.log(`[SERVER EMIT] 'agent:tool_result' to frontend:`, {
-                  toolName: event.toolName,
-                  dbToolUseId: dbToolUseId || event.toolUseId,
-                  success: event.success,
-                  timestamp: new Date().toISOString()
-                });
-                // ========== END DIAGNOSTIC LOGGING ==========
-
-                io.to(sessionId).emit('agent:tool_result', {
-                  toolName: event.toolName,
-                  result: event.result,
-                  success: event.success,
-                  toolUseId: dbToolUseId || event.toolUseId,  // ✅ Prefer DB GUID
-                });
-                break;
-
-              case 'error':
-                io.to(sessionId).emit('agent:error', {
-                  error: event.error,
-                });
-                break;
-
-              case 'complete':
-                // ========== DIAGNOSTIC LOGGING ==========
-                console.log(`\n[SERVER RECEIVED] 'complete' event:`, {
-                  reason: event.reason,
-                  timestamp: new Date().toISOString()
-                });
-                console.log(`[SERVER EMIT] 'agent:complete' to frontend:`, {
-                  reason: event.reason,
-                  timestamp: new Date().toISOString()
-                });
-                // ========== END DIAGNOSTIC LOGGING ==========
-
-                // DirectAgentService uses 'complete' event
-                io.to(sessionId).emit('agent:complete', {
-                  reason: event.reason,
-                });
-                break;
-
-              case 'session_end':
-                io.to(sessionId).emit('agent:complete', {
-                  reason: event.reason,
-                });
-                break;
-            }
-          }
-        );
-
-        logger.info(`[Socket.IO] ✅ Chat message processing completed for session ${sessionId}`);
-
-        // Generate session title if this is the first user message
-        try {
-          // Check if this is the first user message (count messages in session)
-          const messageCountResult = await executeQuery<{ count: number }>(
-            'SELECT COUNT(*) as count FROM messages WHERE session_id = @sessionId AND role = @role',
-            { sessionId, role: 'user' }
-          );
-
-          // Extract count from result (mssql returns recordset array)
-          const userMessageCount = messageCountResult.recordset?.[0]?.count || 0;
-
-          // If this was the first user message, generate a title
-          if (userMessageCount === 1) {
-
-            // Generate title using Anthropic API
-            const Anthropic = (await import('@anthropic-ai/sdk')).default;
-            const anthropic = new Anthropic({
-              apiKey: env.ANTHROPIC_API_KEY,
-            });
-
-            const response = await anthropic.messages.create({
-              model: 'claude-sonnet-4-5-20250929',
-              max_tokens: 50,
-              messages: [{
-                role: 'user',
-                content: `Generate a short, concise title (maximum 6 words) for a conversation that starts with this message: "${message.slice(0, 200)}"`
-              }]
-            });
-
-            // Extract title from response (check if first content block is text)
-            const firstBlock = response.content[0];
-            const title = firstBlock && firstBlock.type === 'text'
-              ? firstBlock.text.trim().replace(/^["']|["']$/g, '')
-              : 'New conversation';
-
-            // Update session title in database
-            await executeQuery(
-              'UPDATE sessions SET title = @title WHERE id = @sessionId',
-              { title, sessionId }
-            );
-
-            // Emit event to update frontend
-            io.to(sessionId).emit('session:title_updated', {
-              sessionId,
-              title,
-            });
-          }
-        } catch (titleError) {
-          console.error('[Socket] Failed to generate session title:', titleError);
-          // Don't fail the entire message flow if title generation fails
-        }
-      } catch (error) {
-        console.error('[Socket] Chat message error:', error);
-        socket.emit('agent:error', {
-          error: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
+    // Handler: Chat message (TODO: Will be replaced with modular ChatMessageHandler in FASE 4)
+    socket.on('chat:message', async (_data: { message: string; sessionId: string; userId: string }) => {
+      // TODO FASE 4: Replace this with getChatMessageHandler(io).handle(data, socket)
+      socket.emit('agent:error', { error: 'Chat handler temporarily disabled during refactor' });
     });
 
     // Handler: Approval response

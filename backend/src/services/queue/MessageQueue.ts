@@ -121,7 +121,7 @@ export class MessageQueue {
     this.queues.set(
       QueueName.MESSAGE_PERSISTENCE,
       new Queue(QueueName.MESSAGE_PERSISTENCE, {
-        connection: this.redisConnection as any,  // ⭐ Type assertion for BullMQ compatibility
+        connection: this.redisConnection as Redis,  // ⭐ Type assertion for BullMQ compatibility
         defaultJobOptions: {
           attempts: 3,
           backoff: {
@@ -144,7 +144,7 @@ export class MessageQueue {
     this.queues.set(
       QueueName.TOOL_EXECUTION,
       new Queue(QueueName.TOOL_EXECUTION, {
-        connection: this.redisConnection as any,  // ⭐ Type assertion for BullMQ compatibility
+        connection: this.redisConnection as Redis,  // ⭐ Type assertion for BullMQ compatibility
         defaultJobOptions: {
           attempts: 2,
           backoff: {
@@ -159,7 +159,7 @@ export class MessageQueue {
     this.queues.set(
       QueueName.EVENT_PROCESSING,
       new Queue(QueueName.EVENT_PROCESSING, {
-        connection: this.redisConnection as any,  // ⭐ Type assertion for BullMQ compatibility
+        connection: this.redisConnection as Redis,  // ⭐ Type assertion for BullMQ compatibility
         defaultJobOptions: {
           attempts: 3,
           backoff: {
@@ -188,7 +188,7 @@ export class MessageQueue {
           return this.processMessagePersistence(job);
         },
         {
-          connection: this.redisConnection as any,  // ⭐ Type assertion for BullMQ compatibility
+          connection: this.redisConnection as Redis,  // ⭐ Type assertion for BullMQ compatibility
           concurrency: 10, // Process 10 messages in parallel
         }
       )
@@ -203,7 +203,7 @@ export class MessageQueue {
           return this.processToolExecution(job);
         },
         {
-          connection: this.redisConnection as any,  // ⭐ Type assertion for BullMQ compatibility
+          connection: this.redisConnection as Redis,  // ⭐ Type assertion for BullMQ compatibility
           concurrency: 5,
         }
       )
@@ -218,7 +218,7 @@ export class MessageQueue {
           return this.processEvent(job);
         },
         {
-          connection: this.redisConnection as any,  // ⭐ Type assertion for BullMQ compatibility
+          connection: this.redisConnection as Redis,  // ⭐ Type assertion for BullMQ compatibility
           concurrency: 10,
         }
       )
@@ -235,7 +235,7 @@ export class MessageQueue {
   private setupEventListeners(): void {
     Object.values(QueueName).forEach((queueName) => {
       const queueEvents = new QueueEvents(queueName, {
-        connection: this.redisConnection as any,  // ⭐ Type assertion for BullMQ compatibility
+        connection: this.redisConnection as Redis,  // ⭐ Type assertion for BullMQ compatibility
       });
 
       this.queueEvents.set(queueName, queueEvents);

@@ -5,7 +5,12 @@
  * These helpers create realistic MessageStreamEvent sequences that match the SDK's streaming behavior.
  */
 
-import type { MessageStreamEvent } from '@anthropic-ai/sdk/resources/messages';
+import type {
+  MessageStreamEvent,
+  Message,
+  ContentBlock,
+  MessageDeltaUsage
+} from '@anthropic-ai/sdk/resources/messages';
 
 /**
  * Creates a mock streaming response that properly implements AsyncIterable<MessageStreamEvent>
@@ -76,13 +81,18 @@ export function createSimpleTextStream(
         model: 'claude-sonnet-4',
         stop_reason: null,
         stop_sequence: null,
-        usage: { input_tokens: 100, output_tokens: 0 }
+        usage: {
+          input_tokens: 100,
+          output_tokens: 0,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 0
+        } as Message['usage']
       }
     },
     {
       type: 'content_block_start',
       index: 0,
-      content_block: { type: 'text', text: '' }
+      content_block: { type: 'text', text: '', citations: [] } as ContentBlock
     },
     {
       type: 'content_block_delta',
@@ -96,7 +106,12 @@ export function createSimpleTextStream(
     {
       type: 'message_delta',
       delta: { stop_reason: stopReason, stop_sequence: null },
-      usage: { output_tokens: Math.ceil(text.length / 4) } // Rough token estimate
+      usage: {
+        output_tokens: Math.ceil(text.length / 4),
+        input_tokens: 0,
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: 0
+      } as MessageDeltaUsage
     },
     {
       type: 'message_stop'
@@ -148,7 +163,12 @@ export function createToolUseStream(
         model: 'claude-sonnet-4',
         stop_reason: null,
         stop_sequence: null,
-        usage: { input_tokens: 120, output_tokens: 0 }
+        usage: {
+          input_tokens: 120,
+          output_tokens: 0,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 0
+        } as Message['usage']
       }
     },
     {
@@ -184,7 +204,12 @@ export function createToolUseStream(
     {
       type: 'message_delta',
       delta: { stop_reason: 'tool_use', stop_sequence: null },
-      usage: { output_tokens: 30 }
+      usage: {
+        output_tokens: 30,
+        input_tokens: 0,
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: 0
+      } as MessageDeltaUsage
     },
     {
       type: 'message_stop'
@@ -230,14 +255,19 @@ export function createThinkingStream(
         model: 'claude-sonnet-4',
         stop_reason: null,
         stop_sequence: null,
-        usage: { input_tokens: 150, output_tokens: 0 }
+        usage: {
+          input_tokens: 150,
+          output_tokens: 0,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 0
+        } as Message['usage']
       }
     },
     // Thinking block
     {
       type: 'content_block_start',
       index: 0,
-      content_block: { type: 'thinking', thinking: '' }
+      content_block: { type: 'thinking', thinking: '', signature: '' } as ContentBlock
     },
     {
       type: 'content_block_delta',
@@ -252,7 +282,7 @@ export function createThinkingStream(
     {
       type: 'content_block_start',
       index: 1,
-      content_block: { type: 'text', text: '' }
+      content_block: { type: 'text', text: '', citations: [] } as ContentBlock
     },
     {
       type: 'content_block_delta',
@@ -266,7 +296,12 @@ export function createThinkingStream(
     {
       type: 'message_delta',
       delta: { stop_reason: stopReason, stop_sequence: null },
-      usage: { output_tokens: Math.ceil((thinkingContent.length + textContent.length) / 4) }
+      usage: {
+        output_tokens: Math.ceil((thinkingContent.length + textContent.length) / 4),
+        input_tokens: 0,
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: 0
+      } as MessageDeltaUsage
     },
     {
       type: 'message_stop'
@@ -307,13 +342,18 @@ export function createChunkedTextStream(
         model: 'claude-sonnet-4',
         stop_reason: null,
         stop_sequence: null,
-        usage: { input_tokens: 100, output_tokens: 0 }
+        usage: {
+          input_tokens: 100,
+          output_tokens: 0,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 0
+        } as Message['usage']
       }
     },
     {
       type: 'content_block_start',
       index: 0,
-      content_block: { type: 'text', text: '' }
+      content_block: { type: 'text', text: '', citations: [] } as ContentBlock
     }
   ];
 
@@ -335,7 +375,12 @@ export function createChunkedTextStream(
     {
       type: 'message_delta',
       delta: { stop_reason: stopReason, stop_sequence: null },
-      usage: { output_tokens: Math.ceil(textChunks.join('').length / 4) }
+      usage: {
+        output_tokens: Math.ceil(textChunks.join('').length / 4),
+        input_tokens: 0,
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: 0
+      } as MessageDeltaUsage
     },
     {
       type: 'message_stop'
@@ -372,7 +417,12 @@ export async function* createErrorStream(errorMessage: string): AsyncIterable<Me
       model: 'claude-sonnet-4',
       stop_reason: null,
       stop_sequence: null,
-      usage: { input_tokens: 100, output_tokens: 0 }
+      usage: {
+        input_tokens: 100,
+        output_tokens: 0,
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: 0
+      } as Message['usage']
     }
   };
 
@@ -403,13 +453,18 @@ export function createMaxTokensStream(truncatedText: string): AsyncIterable<Mess
         model: 'claude-sonnet-4',
         stop_reason: null,
         stop_sequence: null,
-        usage: { input_tokens: 100, output_tokens: 0 }
+        usage: {
+          input_tokens: 100,
+          output_tokens: 0,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 0
+        } as Message['usage']
       }
     },
     {
       type: 'content_block_start',
       index: 0,
-      content_block: { type: 'text', text: '' }
+      content_block: { type: 'text', text: '', citations: [] } as ContentBlock
     },
     {
       type: 'content_block_delta',
@@ -423,7 +478,12 @@ export function createMaxTokensStream(truncatedText: string): AsyncIterable<Mess
     {
       type: 'message_delta',
       delta: { stop_reason: 'max_tokens', stop_sequence: null },
-      usage: { output_tokens: 4096 } // Hit the token limit
+      usage: {
+        output_tokens: 4096, // Hit the token limit
+        input_tokens: 0,
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: 0
+      } as MessageDeltaUsage
     },
     {
       type: 'message_stop'

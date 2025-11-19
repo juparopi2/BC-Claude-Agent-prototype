@@ -87,20 +87,78 @@ export function authenticateMicrosoft(req: Request, res: Response, next: NextFun
       return;
     }
 
-    // Check token expiration
+    // Check token expiration and auto-refresh if needed
     if (oauthSession.tokenExpiresAt && new Date(oauthSession.tokenExpiresAt) <= new Date()) {
-      logger.warn('Microsoft OAuth authentication failed: Token expired', {
+      logger.info('Access token expired, attempting auto-refresh', {
         path: req.path,
         method: req.method,
         userId: oauthSession.userId,
         expiresAt: oauthSession.tokenExpiresAt,
       });
 
-      res.status(401).json({
-        error: 'Unauthorized',
-        message: 'Access token expired. Please log in again.',
-      });
-      return;
+      // Attempt to refresh the token automatically
+      if (oauthSession.refreshToken) {
+        try {
+          const { createMicrosoftOAuthService } = await import('../services/auth/MicrosoftOAuthService');
+          const oauthService = createMicrosoftOAuthService();
+
+          logger.debug('Refreshing access token', { userId: oauthSession.userId });
+
+          const refreshed = await oauthService.refreshAccessToken(oauthSession.refreshToken);
+
+          // Update session with new tokens
+          req.session.microsoftOAuth = {
+            ...oauthSession,
+            accessToken: refreshed.accessToken,
+            refreshToken: refreshed.refreshToken,
+            tokenExpiresAt: refreshed.expiresAt.toISOString(),
+          };
+
+          // Save session (force save to ensure it's persisted)
+          await new Promise<void>((resolve, reject) => {
+            req.session.save((err) => {
+              if (err) reject(err);
+              else resolve();
+            });
+          });
+
+          logger.info('Access token refreshed successfully', {
+            userId: oauthSession.userId,
+            newExpiresAt: refreshed.expiresAt.toISOString(),
+          });
+
+          // Continue with refreshed token
+          req.microsoftSession = req.session.microsoftOAuth;
+          req.userId = oauthSession.userId;
+          req.userEmail = oauthSession.email;
+
+          next();
+          return;
+        } catch (error) {
+          logger.error('Failed to refresh access token', {
+            error,
+            userId: oauthSession.userId,
+          });
+
+          // Refresh failed, require re-login
+          res.status(401).json({
+            error: 'Unauthorized',
+            message: 'Failed to refresh access token. Please log in again.',
+          });
+          return;
+        }
+      } else {
+        // No refresh token available
+        logger.warn('No refresh token available for auto-refresh', {
+          userId: oauthSession.userId,
+        });
+
+        res.status(401).json({
+          error: 'Unauthorized',
+          message: 'Access token expired and no refresh token available. Please log in again.',
+        });
+        return;
+      }
     }
 
     // Attach session data to request

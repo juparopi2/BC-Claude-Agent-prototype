@@ -32,6 +32,8 @@ export type {
   BCValidationResult,
   BCEntity,
   BCEntityType,
+  BCResult,
+  BCSingleResult,
 } from './bc.types';
 
 // Agent Types

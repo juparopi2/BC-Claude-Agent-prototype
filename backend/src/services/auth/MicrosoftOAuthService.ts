@@ -108,7 +108,9 @@ export class MicrosoftOAuthService {
 
       // Note: MSAL Node may not expose refreshToken in the typed response,
       // but it may be present in the actual object. We'll extract it if available.
-      const refreshToken = (response as { refreshToken?: string }).refreshToken;
+      const refreshToken = 'refreshToken' in response && typeof response.refreshToken === 'string'
+        ? response.refreshToken
+        : undefined;
 
       return {
         access_token: response.accessToken,
@@ -150,7 +152,10 @@ export class MicrosoftOAuthService {
 
       // Reuse the input refresh token if no new one is provided
       // MSAL typically doesn't return a new refresh token on refresh operations
-      const newRefreshToken = (response as { refreshToken?: string }).refreshToken || refreshToken;
+      const newRefreshToken =
+        ('refreshToken' in response && typeof response.refreshToken === 'string')
+          ? response.refreshToken
+          : refreshToken;
 
       return {
         accessToken: response.accessToken,
@@ -251,7 +256,10 @@ export class MicrosoftOAuthService {
       });
 
       // Reuse the input refresh token if no new one is provided
-      const newRefreshToken = (response as { refreshToken?: string }).refreshToken || refreshToken;
+      const newRefreshToken =
+        ('refreshToken' in response && typeof response.refreshToken === 'string')
+          ? response.refreshToken
+          : refreshToken;
 
       return {
         accessToken: response.accessToken,

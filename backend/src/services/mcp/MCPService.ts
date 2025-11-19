@@ -89,10 +89,17 @@ export class MCPService {
   }
 
   /**
-   * Validate MCP Connection
+   * Validate MCP Connection with Retry Logic
    *
-   * Performs a simple health check to verify the MCP server is reachable.
+   * Performs a health check to verify the MCP server is reachable.
+   * Uses retry with exponential backoff to handle cold starts gracefully.
    * Uses GET request compatible with SSE endpoints instead of JSON-RPC POST.
+   *
+   * Retry strategy:
+   * - Attempt 1: Immediate
+   * - Attempt 2: After 1s
+   * - Attempt 3: After 2s
+   * - Attempt 4: After 4s
    *
    * Note: This is a lightweight health check. The actual MCP handshake happens
    * when the Agent SDK connects to the server for the first time.
@@ -100,51 +107,77 @@ export class MCPService {
    * @returns Health status of MCP connection
    */
   async validateMCPConnection(): Promise<MCPHealthStatus> {
+    const { retryWithBackoff, RetryPredicates } = await import('@/utils/retry');
+
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // Increased to 10s for cold starts
+      // Retry with exponential backoff (handles cold starts)
+      const result = await retryWithBackoff(
+        async () => {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-      // Simple GET request to check endpoint availability
-      // SSE endpoints typically accept GET with text/event-stream
-      const response = await fetch(this.mcpServerUrl, {
-        method: 'GET',
-        headers: {
-          'Accept': 'text/event-stream, application/json',
+          try {
+            // Simple GET request to check endpoint availability
+            const response = await fetch(this.mcpServerUrl, {
+              method: 'GET',
+              headers: {
+                'Accept': 'text/event-stream, application/json',
+              },
+              signal: controller.signal,
+            });
+
+            clearTimeout(timeoutId);
+
+            // Accept any 2xx status code as healthy
+            if (response.ok) {
+              return {
+                connected: true,
+                lastConnected: new Date(),
+              };
+            }
+
+            // Some SSE endpoints return 405 for GET (expecting POST)
+            // We still consider this "reachable" - the endpoint exists
+            if (response.status === 405) {
+              return {
+                connected: true,
+                lastConnected: new Date(),
+              };
+            }
+
+            // Non-2xx status code
+            throw new Error(`MCP server returned status ${response.status}`);
+          } catch (error) {
+            clearTimeout(timeoutId);
+            throw error;
+          }
         },
-        signal: controller.signal,
-      });
+        {
+          maxRetries: 3,
+          baseDelay: 1000,
+          maxDelay: 4000,
+          isRetryable: RetryPredicates.any(
+            RetryPredicates.isNetworkError,
+            RetryPredicates.isServerError
+          ),
+          onRetry: (attempt, _error, nextDelay) => {
+            console.log(
+              `[MCPService] Retry ${attempt}/3 after ${nextDelay}ms (cold start recovery)`
+            );
+          },
+        }
+      );
 
-      clearTimeout(timeoutId);
-
-      // Accept any 2xx status code as healthy
-      // SSE endpoints may return 200 or 204
-      if (response.ok) {
-        return {
-          connected: true,
-          lastConnected: new Date(),
-        };
-      }
-
-      // Some SSE endpoints return 405 for GET (expecting POST with specific headers)
-      // We still consider this "reachable" - the endpoint exists
-      if (response.status === 405) {
-        return {
-          connected: true,
-          lastConnected: new Date(),
-        };
-      }
-
-      return {
-        connected: false,
-        error: `MCP server returned status ${response.status}`,
-      };
+      return result;
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error';
 
+      console.error('[MCPService] Health check failed after retries:', errorMessage);
+
       return {
         connected: false,
-        error: `Failed to connect to MCP server: ${errorMessage}`,
+        error: `Failed to connect to MCP server after retries: ${errorMessage}`,
       };
     }
   }

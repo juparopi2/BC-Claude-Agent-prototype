@@ -208,6 +208,33 @@ export interface BCApiResponse<T> {
 }
 
 /**
+ * BC Result - Discriminated Union for type-safe error handling
+ *
+ * Success case: { success: true, data: BCApiResponse<T> }
+ * Error case: { success: false, error: BCApiError }
+ *
+ * Usage:
+ * ```typescript
+ * const result = await bcClient.query('customers');
+ * if (result.success) {
+ *   console.log(result.data.value); // ✅ TypeScript knows data exists
+ * } else {
+ *   console.log(result.error.message); // ✅ TypeScript knows error exists
+ * }
+ * ```
+ */
+export type BCResult<T> =
+  | { success: true; data: BCApiResponse<T> }
+  | { success: false; error: BCApiError };
+
+/**
+ * BC Single Entity Result - Discriminated Union for single entity operations
+ */
+export type BCSingleResult<T> =
+  | { success: true; data: BCSingleEntityResponse<T> }
+  | { success: false; error: BCApiError };
+
+/**
  * BC API Single Entity Response
  * Response for single entity operations (create, update, get by ID)
  */

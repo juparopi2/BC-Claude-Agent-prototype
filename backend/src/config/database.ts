@@ -212,15 +212,42 @@ export function getPool(): ConnectionPool {
 }
 
 /**
- * Execute a query with parameters
+ * SQL Parameter Value Types
+ * Supported types for SQL Server parameters
+ */
+export type SqlValue =
+  | string
+  | number
+  | boolean
+  | Date
+  | Buffer
+  | null
+  | undefined;
+
+/**
+ * Typed SQL Parameters
+ * Record of parameter names to SQL-compatible values
+ */
+export type SqlParams = Record<string, SqlValue>;
+
+/**
+ * Execute a query with type-safe parameters
  *
- * @param query - SQL query string
- * @param params - Query parameters
+ * @param query - SQL query string with @paramName placeholders
+ * @param params - Query parameters (Record<string, SqlValue>)
  * @returns Query result
+ *
+ * @example
+ * ```typescript
+ * const result = await executeQuery<Customer>(
+ *   'SELECT * FROM customers WHERE id = @id',
+ *   { id: '123e4567-e89b-12d3-a456-426614174000' }
+ * );
+ * ```
  */
 export async function executeQuery<T = unknown>(
   query: string,
-  params?: Record<string, unknown>
+  params?: SqlParams
 ): Promise<sql.IResult<T>> {
   try {
     const db = getDatabase();
@@ -231,9 +258,22 @@ export async function executeQuery<T = unknown>(
 
     const request = db.request();
 
-    // Add parameters to the request
+    // Add parameters to the request with type checking
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
+        // Validate parameter value type
+        if (value !== null && value !== undefined) {
+          const validTypes = ['string', 'number', 'boolean', 'object'];
+          const valueType = typeof value;
+
+          if (!validTypes.includes(valueType) && !(value instanceof Date) && !(value instanceof Buffer)) {
+            throw new Error(
+              `Invalid parameter type for '${key}': ${valueType}. ` +
+              `Expected string, number, boolean, Date, Buffer, null, or undefined.`
+            );
+          }
+        }
+
         request.input(key, value);
       });
     }
@@ -247,15 +287,23 @@ export async function executeQuery<T = unknown>(
 }
 
 /**
- * Execute a stored procedure
+ * Execute a stored procedure with type-safe parameters
  *
  * @param procedureName - Name of the stored procedure
- * @param params - Procedure parameters
+ * @param params - Procedure parameters (Record<string, SqlValue>)
  * @returns Procedure result
+ *
+ * @example
+ * ```typescript
+ * const result = await executeProcedure<Customer>(
+ *   'sp_GetCustomerById',
+ *   { customerId: '123e4567-e89b-12d3-a456-426614174000' }
+ * );
+ * ```
  */
 export async function executeProcedure<T = unknown>(
   procedureName: string,
-  params?: Record<string, unknown>
+  params?: SqlParams
 ): Promise<sql.IResult<T>> {
   try {
     const db = getDatabase();
@@ -266,9 +314,22 @@ export async function executeProcedure<T = unknown>(
 
     const request = db.request();
 
-    // Add parameters to the request
+    // Add parameters to the request with type checking
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
+        // Validate parameter value type
+        if (value !== null && value !== undefined) {
+          const validTypes = ['string', 'number', 'boolean', 'object'];
+          const valueType = typeof value;
+
+          if (!validTypes.includes(valueType) && !(value instanceof Date) && !(value instanceof Buffer)) {
+            throw new Error(
+              `Invalid parameter type for '${key}': ${valueType}. ` +
+              `Expected string, number, boolean, Date, Buffer, null, or undefined.`
+            );
+          }
+        }
+
         request.input(key, value);
       });
     }

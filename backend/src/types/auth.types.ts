@@ -5,10 +5,27 @@
  */
 
 /**
- * User Role
- * Role hierarchy: admin > editor > viewer
+ * User Role Enum
+ * Role hierarchy: ADMIN > EDITOR > VIEWER
+ *
+ * Usage:
+ * ```typescript
+ * if (user.role === UserRole.ADMIN) {
+ *   // Admin-only logic
+ * }
+ * ```
  */
-export type UserRole = 'admin' | 'editor' | 'viewer';
+export enum UserRole {
+  ADMIN = 'admin',
+  EDITOR = 'editor',
+  VIEWER = 'viewer'
+}
+
+/**
+ * @deprecated Use UserRole enum instead
+ * Legacy type alias for backward compatibility
+ */
+export type UserRoleString = 'admin' | 'editor' | 'viewer';
 
 /**
  * Register Request

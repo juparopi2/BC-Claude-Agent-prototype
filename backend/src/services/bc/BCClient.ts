@@ -18,6 +18,8 @@ import type {
   BCApiError,
   BCOAuthTokenResponse,
   BCEntityType,
+  BCResult,
+  BCSingleResult,
 } from '@/types';
 
 /**
@@ -155,20 +157,23 @@ export class BCClient {
   }
 
   /**
-   * Parse BC API error response
+   * Parse BC API error response to BCApiError object
    *
    * @param response - Fetch response object
-   * @returns Formatted error message
+   * @returns BCApiError object for discriminated unions
    */
-  private async parseError(response: Response): Promise<string> {
+  private async parseErrorToObject(response: Response): Promise<BCApiError> {
     try {
       const errorData = (await response.json()) as BCApiError;
-      const message = errorData.error.message;
-      const code = errorData.error.code;
-      return `BC API Error [${code}]: ${message}`;
+      return errorData;
     } catch {
-      // If parsing fails, return generic error
-      return `BC API Error: ${response.status} ${response.statusText}`;
+      // If parsing fails, return generic error object
+      return {
+        error: {
+          code: response.status.toString(),
+          message: `${response.status} ${response.statusText}`,
+        },
+      };
     }
   }
 
@@ -177,17 +182,22 @@ export class BCClient {
    *
    * @param entity - Entity type
    * @param options - Query options (filter, select, etc.)
-   * @returns API response with array of entities
+   * @returns BCResult with array of entities or error
    *
    * @example
    * ```typescript
    * const bcClient = new BCClient();
    *
    * // Get all customers
-   * const customers = await bcClient.query('customers');
+   * const result = await bcClient.query('customers');
+   * if (result.success) {
+   *   console.log('Customers:', result.data.value);
+   * } else {
+   *   console.error('Error:', result.error.error.message);
+   * }
    *
    * // Get customers with filter
-   * const activeCustomers = await bcClient.query('customers', {
+   * const activeCustomersResult = await bcClient.query('customers', {
    *   filter: "blocked eq ''",
    *   select: ['id', 'displayName', 'email'],
    *   top: 10,
@@ -197,8 +207,21 @@ export class BCClient {
   async query<T = unknown>(
     entity: BCEntityType,
     options?: BCQueryOptions
-  ): Promise<BCApiResponse<T>> {
-    await this.ensureAuthenticated();
+  ): Promise<BCResult<T>> {
+    try {
+      await this.ensureAuthenticated();
+    } catch (error) {
+      console.error(`[BCClient] Authentication failed for query ${entity}:`, error);
+      return {
+        success: false,
+        error: {
+          error: {
+            code: 'AUTH_FAILED',
+            message: error instanceof Error ? error.message : 'Authentication failed',
+          },
+        },
+      };
+    }
 
     const url = this.buildODataUrl(entity, options);
 
@@ -213,14 +236,23 @@ export class BCClient {
       });
 
       if (!response.ok) {
-        const errorMessage = await this.parseError(response);
-        throw new Error(errorMessage);
+        const error = await this.parseErrorToObject(response);
+        return { success: false, error };
       }
 
-      return (await response.json()) as BCApiResponse<T>;
+      const data = (await response.json()) as BCApiResponse<T>;
+      return { success: true, data };
     } catch (error) {
       console.error(`[BCClient] Query failed for ${entity}:`, error);
-      throw error;
+      return {
+        success: false,
+        error: {
+          error: {
+            code: 'FETCH_FAILED',
+            message: error instanceof Error ? error.message : 'Query request failed',
+          },
+        },
+      };
     }
   }
 
@@ -229,18 +261,36 @@ export class BCClient {
    *
    * @param entity - Entity type
    * @param id - Entity ID (GUID)
-   * @returns Single entity
+   * @returns BCSingleResult with entity or error
    *
    * @example
    * ```typescript
-   * const customer = await bcClient.getById('customers', 'some-guid');
+   * const result = await bcClient.getById('customers', 'some-guid');
+   * if (result.success) {
+   *   console.log('Customer:', result.data);
+   * } else {
+   *   console.error('Error:', result.error.error.message);
+   * }
    * ```
    */
   async getById<T = unknown>(
     entity: BCEntityType,
     id: string
-  ): Promise<BCSingleEntityResponse<T>> {
-    await this.ensureAuthenticated();
+  ): Promise<BCSingleResult<T>> {
+    try {
+      await this.ensureAuthenticated();
+    } catch (error) {
+      console.error(`[BCClient] Authentication failed for getById ${entity}/${id}:`, error);
+      return {
+        success: false,
+        error: {
+          error: {
+            code: 'AUTH_FAILED',
+            message: error instanceof Error ? error.message : 'Authentication failed',
+          },
+        },
+      };
+    }
 
     const url = `${this.baseUrl}/${entity}(${id})`;
 
@@ -255,14 +305,23 @@ export class BCClient {
       });
 
       if (!response.ok) {
-        const errorMessage = await this.parseError(response);
-        throw new Error(errorMessage);
+        const error = await this.parseErrorToObject(response);
+        return { success: false, error };
       }
 
-      return (await response.json()) as BCSingleEntityResponse<T>;
+      const data = (await response.json()) as BCSingleEntityResponse<T>;
+      return { success: true, data };
     } catch (error) {
       console.error(`[BCClient] GetById failed for ${entity}/${id}:`, error);
-      throw error;
+      return {
+        success: false,
+        error: {
+          error: {
+            code: 'FETCH_FAILED',
+            message: error instanceof Error ? error.message : 'GetById request failed',
+          },
+        },
+      };
     }
   }
 
@@ -271,21 +330,39 @@ export class BCClient {
    *
    * @param entity - Entity type
    * @param data - Entity data
-   * @returns Created entity
+   * @returns BCSingleResult with created entity or error
    *
    * @example
    * ```typescript
-   * const newCustomer = await bcClient.create('customers', {
+   * const result = await bcClient.create('customers', {
    *   displayName: 'Acme Corp',
    *   email: 'contact@acme.com',
    * });
+   * if (result.success) {
+   *   console.log('Created customer:', result.data);
+   * } else {
+   *   console.error('Error:', result.error.error.message);
+   * }
    * ```
    */
   async create<T = unknown>(
     entity: BCEntityType,
     data: Partial<T>
-  ): Promise<BCSingleEntityResponse<T>> {
-    await this.ensureAuthenticated();
+  ): Promise<BCSingleResult<T>> {
+    try {
+      await this.ensureAuthenticated();
+    } catch (error) {
+      console.error(`[BCClient] Authentication failed for create ${entity}:`, error);
+      return {
+        success: false,
+        error: {
+          error: {
+            code: 'AUTH_FAILED',
+            message: error instanceof Error ? error.message : 'Authentication failed',
+          },
+        },
+      };
+    }
 
     const url = `${this.baseUrl}/${entity}`;
 
@@ -301,14 +378,23 @@ export class BCClient {
       });
 
       if (!response.ok) {
-        const errorMessage = await this.parseError(response);
-        throw new Error(errorMessage);
+        const error = await this.parseErrorToObject(response);
+        return { success: false, error };
       }
 
-      return (await response.json()) as BCSingleEntityResponse<T>;
+      const responseData = (await response.json()) as BCSingleEntityResponse<T>;
+      return { success: true, data: responseData };
     } catch (error) {
       console.error(`[BCClient] Create failed for ${entity}:`, error);
-      throw error;
+      return {
+        success: false,
+        error: {
+          error: {
+            code: 'FETCH_FAILED',
+            message: error instanceof Error ? error.message : 'Create request failed',
+          },
+        },
+      };
     }
   }
 
@@ -319,13 +405,18 @@ export class BCClient {
    * @param id - Entity ID
    * @param data - Updated data
    * @param etag - Optional ETag for concurrency control
-   * @returns Updated entity
+   * @returns BCSingleResult with updated entity or error
    *
    * @example
    * ```typescript
-   * const updated = await bcClient.update('customers', 'some-guid', {
+   * const result = await bcClient.update('customers', 'some-guid', {
    *   email: 'newemail@acme.com',
    * });
+   * if (result.success) {
+   *   console.log('Updated customer:', result.data);
+   * } else {
+   *   console.error('Error:', result.error.error.message);
+   * }
    * ```
    */
   async update<T = unknown>(
@@ -333,8 +424,21 @@ export class BCClient {
     id: string,
     data: Partial<T>,
     etag?: string
-  ): Promise<BCSingleEntityResponse<T>> {
-    await this.ensureAuthenticated();
+  ): Promise<BCSingleResult<T>> {
+    try {
+      await this.ensureAuthenticated();
+    } catch (error) {
+      console.error(`[BCClient] Authentication failed for update ${entity}/${id}:`, error);
+      return {
+        success: false,
+        error: {
+          error: {
+            code: 'AUTH_FAILED',
+            message: error instanceof Error ? error.message : 'Authentication failed',
+          },
+        },
+      };
+    }
 
     const url = `${this.baseUrl}/${entity}(${id})`;
 
@@ -356,14 +460,23 @@ export class BCClient {
       });
 
       if (!response.ok) {
-        const errorMessage = await this.parseError(response);
-        throw new Error(errorMessage);
+        const error = await this.parseErrorToObject(response);
+        return { success: false, error };
       }
 
-      return (await response.json()) as BCSingleEntityResponse<T>;
+      const responseData = (await response.json()) as BCSingleEntityResponse<T>;
+      return { success: true, data: responseData };
     } catch (error) {
       console.error(`[BCClient] Update failed for ${entity}/${id}:`, error);
-      throw error;
+      return {
+        success: false,
+        error: {
+          error: {
+            code: 'FETCH_FAILED',
+            message: error instanceof Error ? error.message : 'Update request failed',
+          },
+        },
+      };
     }
   }
 
@@ -373,18 +486,37 @@ export class BCClient {
    * @param entity - Entity type
    * @param id - Entity ID
    * @param etag - Optional ETag for concurrency control
+   * @returns Result indicating success or error
    *
    * @example
    * ```typescript
-   * await bcClient.delete('customers', 'some-guid');
+   * const result = await bcClient.delete('customers', 'some-guid');
+   * if (result.success) {
+   *   console.log('Customer deleted successfully');
+   * } else {
+   *   console.error('Error:', result.error.error.message);
+   * }
    * ```
    */
   async delete(
     entity: BCEntityType,
     id: string,
     etag?: string
-  ): Promise<void> {
-    await this.ensureAuthenticated();
+  ): Promise<{ success: true } | { success: false; error: BCApiError }> {
+    try {
+      await this.ensureAuthenticated();
+    } catch (error) {
+      console.error(`[BCClient] Authentication failed for delete ${entity}/${id}:`, error);
+      return {
+        success: false,
+        error: {
+          error: {
+            code: 'AUTH_FAILED',
+            message: error instanceof Error ? error.message : 'Authentication failed',
+          },
+        },
+      };
+    }
 
     const url = `${this.baseUrl}/${entity}(${id})`;
 
@@ -403,12 +535,22 @@ export class BCClient {
       });
 
       if (!response.ok) {
-        const errorMessage = await this.parseError(response);
-        throw new Error(errorMessage);
+        const error = await this.parseErrorToObject(response);
+        return { success: false, error };
       }
+
+      return { success: true };
     } catch (error) {
       console.error(`[BCClient] Delete failed for ${entity}/${id}:`, error);
-      throw error;
+      return {
+        success: false,
+        error: {
+          error: {
+            code: 'FETCH_FAILED',
+            message: error instanceof Error ? error.message : 'Delete request failed',
+          },
+        },
+      };
     }
   }
 
@@ -416,16 +558,35 @@ export class BCClient {
    * Get entity schema/metadata
    *
    * @param entity - Entity type
-   * @returns Entity metadata
+   * @returns Result with entity metadata or error
    *
    * @example
    * ```typescript
-   * const schema = await bcClient.getEntitySchema('customers');
-   * console.log('Available fields:', schema);
+   * const result = await bcClient.getEntitySchema('customers');
+   * if (result.success) {
+   *   console.log('Available fields:', result.data);
+   * } else {
+   *   console.error('Error:', result.error.error.message);
+   * }
    * ```
    */
-  async getEntitySchema(entity: BCEntityType): Promise<unknown> {
-    await this.ensureAuthenticated();
+  async getEntitySchema(
+    entity: BCEntityType
+  ): Promise<{ success: true; data: unknown } | { success: false; error: BCApiError }> {
+    try {
+      await this.ensureAuthenticated();
+    } catch (error) {
+      console.error(`[BCClient] Authentication failed for getEntitySchema ${entity}:`, error);
+      return {
+        success: false,
+        error: {
+          error: {
+            code: 'AUTH_FAILED',
+            message: error instanceof Error ? error.message : 'Authentication failed',
+          },
+        },
+      };
+    }
 
     const url = `${this.baseUrl}/$metadata#${entity}`;
 
@@ -439,17 +600,23 @@ export class BCClient {
       });
 
       if (!response.ok) {
-        const errorMessage = await this.parseError(response);
-        throw new Error(errorMessage);
+        const error = await this.parseErrorToObject(response);
+        return { success: false, error };
       }
 
-      return await response.json();
+      const data = await response.json();
+      return { success: true, data };
     } catch (error) {
-      console.error(
-        `[BCClient] Get schema failed for ${entity}:`,
-        error
-      );
-      throw error;
+      console.error(`[BCClient] Get schema failed for ${entity}:`, error);
+      return {
+        success: false,
+        error: {
+          error: {
+            code: 'FETCH_FAILED',
+            message: error instanceof Error ? error.message : 'Get schema request failed',
+          },
+        },
+      };
     }
   }
 
@@ -481,12 +648,35 @@ export class BCClient {
    *
    * Attempts to query a simple entity to verify end-to-end connectivity
    *
-   * @returns True if connection test succeeds
+   * @returns Result indicating success or error with details
+   *
+   * @example
+   * ```typescript
+   * const result = await bcClient.testConnection();
+   * if (result.success) {
+   *   console.log('Connection successful');
+   * } else {
+   *   console.error('Connection failed:', result.error.error.message);
+   * }
+   * ```
    */
-  async testConnection(): Promise<boolean> {
+  async testConnection(): Promise<{ success: true } | { success: false; error: BCApiError }> {
     try {
       await this.ensureAuthenticated();
+    } catch (error) {
+      console.error('[BCClient] Authentication failed for testConnection:', error);
+      return {
+        success: false,
+        error: {
+          error: {
+            code: 'AUTH_FAILED',
+            message: error instanceof Error ? error.message : 'Authentication failed',
+          },
+        },
+      };
+    }
 
+    try {
       // Try to query customers with a limit of 1
       const url = this.buildODataUrl('customers', { top: 1 });
 
@@ -499,10 +689,23 @@ export class BCClient {
         },
       });
 
-      return response.ok;
+      if (!response.ok) {
+        const error = await this.parseErrorToObject(response);
+        return { success: false, error };
+      }
+
+      return { success: true };
     } catch (error) {
       console.error('[BCClient] Connection test failed:', error);
-      return false;
+      return {
+        success: false,
+        error: {
+          error: {
+            code: 'CONNECTION_FAILED',
+            message: error instanceof Error ? error.message : 'Connection test failed',
+          },
+        },
+      };
     }
   }
 

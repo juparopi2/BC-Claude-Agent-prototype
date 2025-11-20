@@ -48,4 +48,30 @@ export const handlers = [
       },
     });
   }),
+
+  // Mock Microsoft Graph API - User Profile
+  http.get('https://graph.microsoft.com/v1.0/me', () => {
+    return HttpResponse.json({
+      id: 'user-123',
+      displayName: 'Test User',
+      givenName: 'Test',
+      surname: 'User',
+      mail: 'test.user@example.com',
+      userPrincipalName: 'test.user@example.com',
+      jobTitle: 'Software Engineer',
+      officeLocation: 'Building 1',
+    });
+  }),
+
+  // Mock Microsoft OAuth Token Endpoint
+  http.post('https://login.microsoftonline.com/*/oauth2/v2.0/token', () => {
+    return HttpResponse.json({
+      access_token: 'mock-access-token',
+      refresh_token: 'mock-refresh-token',
+      id_token: 'mock-id-token',
+      token_type: 'Bearer',
+      expires_in: 3600,
+      scope: 'openid profile email User.Read',
+    });
+  }),
 ];

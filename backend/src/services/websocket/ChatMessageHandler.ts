@@ -81,9 +81,28 @@ export class ChatMessageHandler {
       // 2. Save user message with userId for audit trail
       logger.info('💾 Saving user message to database...', { sessionId, userId });
       const startSaveTime = Date.now();
-      await this.messageService.saveUserMessage(sessionId, userId, message);
-      const saveDuration = Date.now() - startSaveTime;
-      logger.info('✅ User message saved successfully', { sessionId, userId, saveDuration });
+
+      try {
+        await this.messageService.saveUserMessage(sessionId, userId, message);
+        const saveDuration = Date.now() - startSaveTime;
+        logger.info('✅ User message saved successfully', { sessionId, userId, saveDuration });
+      } catch (saveError) {
+        logger.error('❌ Failed to save user message', { error: saveError, sessionId, userId });
+
+        // ⭐ Emit specific error to frontend
+        socket.emit('agent:event', {
+          type: 'error',
+          error: {
+            code: 'MESSAGE_SAVE_FAILED',
+            message: 'Failed to save your message. Please try again.',
+            details: saveError instanceof Error ? saveError.message : 'Unknown error',
+          },
+          sessionId,
+        });
+
+        // Don't proceed with agent execution if message save failed
+        return;
+      }
 
       // 3. Execute agent with DirectAgentService (SDK-first)
       logger.info('🤖 About to call DirectAgentService.executeQueryStreaming', { sessionId, userId });
@@ -120,6 +139,18 @@ export class ChatMessageHandler {
         userId,
       });
 
+      // ⭐ Enhanced error emission to frontend
+      socket.emit('agent:event', {
+        type: 'error',
+        error: {
+          code: systemError?.code || 'HANDLER_ERROR',
+          message: error instanceof Error ? error.message : 'An unexpected error occurred',
+          details: systemError?.syscall ? `System call: ${systemError.syscall}` : undefined,
+        },
+        sessionId,
+      });
+
+      // Backward compatibility: also emit old format
       socket.emit('agent:error', {
         error: error instanceof Error ? error.message : 'Unknown error occurred',
         sessionId,

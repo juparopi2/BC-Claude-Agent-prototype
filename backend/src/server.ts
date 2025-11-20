@@ -29,7 +29,9 @@ import { getMessageQueue } from './services/queue/MessageQueue';
 import authMockRoutes from './routes/auth-mock';
 import authOAuthRoutes from './routes/auth-oauth';
 import sessionsRoutes from './routes/sessions';
+import logsRoutes from './routes/logs';
 import { authenticateMicrosoft } from './middleware/auth-oauth';
+import { httpLogger } from './middleware/logging';
 import { MicrosoftOAuthSession } from './types/microsoft.types';
 import { Socket } from 'socket.io';
 
@@ -258,22 +260,15 @@ function configureMiddleware(): void {
     credentials: true,
   }));
 
+  // HTTP request/response logging (Pino) - EARLY in middleware chain
+  app.use(httpLogger);
+
   // Session middleware (shared with Socket.IO)
   app.use(sessionMiddleware);
 
   // Body parsing
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
-
-  // Request logging (simple for now)
-  app.use((req: Request, res: Response, next: NextFunction) => {
-    const start = Date.now();
-    res.on('finish', () => {
-      const duration = Date.now() - start;
-      console.log(`${req.method} ${req.path} ${res.statusCode} - ${duration}ms`);
-    });
-    next();
-  });
 }
 
 /**
@@ -740,6 +735,9 @@ function configureRoutes(): void {
     app.use('/api/chat/sessions', sessionsRoutes);
   }
 
+  // Client log ingestion endpoint
+  app.use('/api', logsRoutes);
+
   // 404 handler
   app.use((req: Request, res: Response) => {
     res.status(404).json({
@@ -753,8 +751,9 @@ function configureRoutes(): void {
  * Configure error handling
  */
 function configureErrorHandling(): void {
-  app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-    console.error('❌ Unhandled error:', err);
+  app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
+    // Log error with full context (Pino automatically serializes Error objects)
+    (req as any).log.error({ err }, 'Unhandled error');
 
     // Don't leak error details in production
     const error = isProd

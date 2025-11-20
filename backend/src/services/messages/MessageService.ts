@@ -79,15 +79,60 @@ export class MessageService {
       // 2. Queue for DB persistence (async, non-blocking)
       logger.info('📝 Adding to message queue...', { sessionId, messageId });
       const queueStart = Date.now();
-      await this.messageQueue.addMessagePersistence({
-        sessionId,
-        messageId,
-        role: 'user',
-        messageType: 'text',
-        content,
-        metadata: { user_id: userId },
-      });
-      logger.info('✅ Added to queue', { sessionId, messageId, duration: Date.now() - queueStart });
+
+      try {
+        await this.messageQueue.addMessagePersistence({
+          sessionId,
+          messageId,
+          role: 'user',
+          messageType: 'text',
+          content,
+          metadata: { user_id: userId },
+        });
+        logger.info('✅ Added to queue', { sessionId, messageId, duration: Date.now() - queueStart });
+      } catch (queueError) {
+        // ⭐ FALLBACK: If MessageQueue fails, write directly to database
+        logger.error('❌ MessageQueue failed, falling back to direct DB write', {
+          error: queueError,
+          sessionId,
+          messageId,
+        });
+
+        try {
+          const params: SqlParams = {
+            id: messageId,
+            session_id: sessionId,
+            role: 'user',
+            message_type: 'text',
+            content,
+            metadata: JSON.stringify({ user_id: userId }),
+            created_at: new Date(),
+          };
+
+          await executeQuery(
+            `
+            INSERT INTO messages (id, session_id, role, message_type, content, metadata, created_at)
+            VALUES (@id, @session_id, @role, @message_type, @content, @metadata, @created_at)
+            `,
+            params
+          );
+
+          logger.warn('⚠️  Message persisted via fallback (direct DB write)', {
+            sessionId,
+            messageId,
+            reason: 'MessageQueue unavailable',
+          });
+        } catch (dbError) {
+          logger.error('❌ Fallback DB write also failed', {
+            queueError,
+            dbError,
+            sessionId,
+            messageId,
+          });
+          // Re-throw original queue error with context
+          throw new Error(`Message persistence failed: Queue error - ${queueError instanceof Error ? queueError.message : 'Unknown'}, DB fallback error - ${dbError instanceof Error ? dbError.message : 'Unknown'}`);
+        }
+      }
 
       logger.info('✅ User message saved', { sessionId, messageId, userId });
 
@@ -129,17 +174,49 @@ export class MessageService {
       });
 
       // 2. Queue for persistence
-      await this.messageQueue.addMessagePersistence({
-        sessionId,
-        messageId,
-        role: 'assistant',
-        messageType: 'text',
-        content,
-        metadata: {
-          stop_reason: stopReason,
-          user_id: userId,  // ⭐ Audit trail
-        },
-      });
+      try {
+        await this.messageQueue.addMessagePersistence({
+          sessionId,
+          messageId,
+          role: 'assistant',
+          messageType: 'text',
+          content,
+          metadata: {
+            stop_reason: stopReason,
+            user_id: userId,  // ⭐ Audit trail
+          },
+        });
+      } catch (queueError) {
+        // ⭐ FALLBACK: Direct DB write
+        logger.error('❌ MessageQueue failed for agent message, falling back to direct DB write', {
+          error: queueError,
+          sessionId,
+          messageId,
+        });
+
+        const params: SqlParams = {
+          id: messageId,
+          session_id: sessionId,
+          role: 'assistant',
+          message_type: 'text',
+          content,
+          metadata: JSON.stringify({
+            stop_reason: stopReason,
+            user_id: userId,
+          }),
+          created_at: new Date(),
+        };
+
+        await executeQuery(
+          `
+          INSERT INTO messages (id, session_id, role, message_type, content, metadata, created_at)
+          VALUES (@id, @session_id, @role, @message_type, @content, @metadata, @created_at)
+          `,
+          params
+        );
+
+        logger.warn('⚠️  Agent message persisted via fallback', { sessionId, messageId });
+      }
 
       logger.debug('Agent message saved', { sessionId, userId, messageId });
 

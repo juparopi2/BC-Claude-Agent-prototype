@@ -1,167 +1,197 @@
-# Database Schema - Complete Reference
+# Database Schema - Complete Reference (UPDATED 2025-11-20)
 
-> **Status**: 11/15 tables functional (4 observability tables missing, non-critical)
-> **Last Updated**: 2025-11-12
+> **Status**: 13/13 tables functional ✅ ALL TABLES EXIST
+> **Last Updated**: 2025-11-20 (After Schema Audit)
 > **Database**: sqldb-bcagent-dev (Azure SQL)
 > **Server**: sqlsrv-bcagent-dev.database.windows.net
+> **Resource Group**: rg-BCAgentPrototype-data-dev
 
 ---
 
 ## Overview
 
-The BC-Claude-Agent system uses **Azure SQL Database** for persistent state management. The schema supports chat sessions, user authentication, approvals, todos, audit logging, and performance tracking.
+The BC-Claude-Agent system uses **Azure SQL Database** for persistent state management. The schema supports:
+- Chat sessions with event sourcing
+- User authentication (Microsoft OAuth + password fallback)
+- Human-in-the-loop approvals
+- Todo tracking with hierarchical dependencies
+- Audit logging and performance metrics
 
 ### Schema Status
 
-**Functional Tables** (11/15):
-- ✅ Core (6): users, sessions, messages, approvals, checkpoints, audit_log
+**✅ ALL TABLES FUNCTIONAL (13/13)**:
+- ✅ Core (6): users, sessions, messages, message_events, approvals, checkpoints
 - ✅ Advanced (4): todos, tool_permissions, permission_presets, agent_executions
-- ✅ Observability (1): performance_metrics
+- ✅ Observability (2): audit_log, performance_metrics
+- ✅ Files (1): session_files
 
-**Missing Tables** (4/15) - **NON-CRITICAL**:
-- ❌ mcp_tool_calls (FK constraint error)
-- ❌ session_files (FK constraint error)
-- ❌ error_logs (FK constraint error)
-- ❌ Performance views (dependent on missing tables)
-
-**Impact**: System works without missing tables, only affects advanced debugging.
+**⚠️ Previous Documentation Errors**:
+- ❌ Documentation incorrectly stated `session_files` was missing - **IT EXISTS**
+- ❌ Documentation did NOT mention `message_events` table - **CRITICAL FOR EVENT SOURCING**
+- ❌ Many columns have been renamed or removed in production
 
 ---
 
-## Entity-Relationship Diagram
+## Entity-Relationship Diagram (UPDATED)
 
 ```mermaid
 erDiagram
     users ||--o{ sessions : "creates"
-    users ||--o{ approvals : "approves"
-    users ||--o{ todos : "owns"
+    users ||--o{ approvals : "decides"
     users ||--o{ tool_permissions : "has"
     users ||--o{ audit_log : "generates"
 
     sessions ||--o{ messages : "contains"
-    sessions ||--o{ approvals : "has"
+    sessions ||--o{ message_events : "streams"
+    sessions ||--o{ approvals : "requests"
     sessions ||--o{ todos : "tracks"
-    sessions ||--o{ checkpoints : "has"
+    sessions ||--o{ checkpoints : "snapshots"
     sessions ||--o{ agent_executions : "runs"
+    sessions ||--o{ session_files : "references"
+    sessions ||--o{ performance_metrics : "measures"
+
+    message_events ||--o{ messages : "materializes"
+    messages ||--o{ approvals : "triggers"
+    todos ||--o{ todos : "depends_on"
 
     permission_presets ||--o{ tool_permissions : "defines"
 
     users {
         uniqueidentifier id PK
-        nvarchar microsoft_user_id UK
-        nvarchar email
-        nvarchar display_name
+        nvarchar email UK
+        nvarchar password_hash NULL
+        nvarchar full_name
+        bit is_active
+        bit is_admin
         nvarchar role
+        nvarchar microsoft_id UK
+        nvarchar microsoft_email
+        nvarchar microsoft_tenant_id
+        datetime2 last_microsoft_login
         nvarchar bc_access_token_encrypted
         nvarchar bc_refresh_token_encrypted
         datetime2 bc_token_expires_at
-        nvarchar bc_tenant_id
-        nvarchar bc_environment
-        bit is_active
-        datetime2 last_login_at
         datetime2 created_at
+        datetime2 updated_at
     }
 
     sessions {
         uniqueidentifier id PK
         uniqueidentifier user_id FK
         nvarchar title
-        nvarchar status
-        nvarchar goal
         bit is_active
-        datetime2 last_activity_at
-        int token_count
         datetime2 created_at
         datetime2 updated_at
+    }
+
+    message_events {
+        uniqueidentifier id PK
+        uniqueidentifier session_id FK
+        nvarchar event_type
+        int sequence_number UK
+        datetime2 timestamp
+        nvarchar data
+        bit processed
     }
 
     messages {
         uniqueidentifier id PK
         uniqueidentifier session_id FK
+        uniqueidentifier event_id FK
         nvarchar role
         nvarchar content
-        int thinking_tokens
-        bit is_thinking
+        nvarchar metadata
+        int token_count
+        nvarchar message_type
+        nvarchar stop_reason
+        int sequence_number
         datetime2 created_at
     }
 
     approvals {
         uniqueidentifier id PK
         uniqueidentifier session_id FK
-        uniqueidentifier user_id FK
-        nvarchar operation_type
-        nvarchar entity_type
-        nvarchar operation_details
+        uniqueidentifier message_id FK
+        uniqueidentifier decided_by_user_id FK
+        nvarchar action_type
+        nvarchar action_description
+        nvarchar action_data
         nvarchar status
+        nvarchar tool_name
+        nvarchar tool_args
+        nvarchar rejection_reason
         nvarchar priority
         datetime2 expires_at
+        datetime2 decided_at
         datetime2 created_at
-        datetime2 responded_at
     }
 
     todos {
         uniqueidentifier id PK
         uniqueidentifier session_id FK
-        uniqueidentifier user_id FK
+        uniqueidentifier parent_todo_id FK
         nvarchar content
+        nvarchar activeForm
         nvarchar description
         nvarchar status
-        nvarchar priority
-        int order_index
+        int order
+        nvarchar dependencies
+        nvarchar metadata
         datetime2 created_at
+        datetime2 started_at
         datetime2 completed_at
     }
 
     checkpoints {
         uniqueidentifier id PK
         uniqueidentifier session_id FK
-        nvarchar state_snapshot
-        nvarchar description
-        datetime2 created_at
-    }
-
-    tool_permissions {
-        uniqueidentifier id PK
-        uniqueidentifier user_id FK
-        uniqueidentifier preset_id FK
-        nvarchar tool_name
-        nvarchar permission_level
-        datetime2 created_at
-        datetime2 updated_at
-    }
-
-    permission_presets {
-        uniqueidentifier id PK
-        nvarchar name
-        nvarchar description
-        nvarchar permissions_json
-        bit is_default
+        nvarchar checkpoint_name
+        nvarchar checkpoint_data
         datetime2 created_at
     }
 
     agent_executions {
         uniqueidentifier id PK
         uniqueidentifier session_id FK
-        uniqueidentifier user_id FK
         nvarchar agent_type
-        nvarchar prompt
-        int turn_count
+        nvarchar action
+        nvarchar input_data
+        nvarchar output_data
         nvarchar status
         nvarchar error_message
-        int total_tokens
+        nvarchar error_stack
+        int duration_ms
+        int tokens_used
         int thinking_tokens
-        datetime2 started_at
+        datetime2 created_at
         datetime2 completed_at
+    }
+
+    session_files {
+        uniqueidentifier id PK
+        uniqueidentifier session_id FK
+        nvarchar file_name
+        nvarchar file_path
+        nvarchar file_type
+        bigint file_size_bytes
+        nvarchar mime_type
+        nvarchar content_hash
+        bit is_active
+        nvarchar metadata
+        datetime2 created_at
+        datetime2 removed_at
     }
 
     audit_log {
         uniqueidentifier id PK
-        uniqueidentifier user_id
-        uniqueidentifier session_id
+        uniqueidentifier user_id FK
+        uniqueidentifier session_id FK
+        uniqueidentifier entity_id
         nvarchar action
         nvarchar entity_type
-        nvarchar entity_id
-        nvarchar changes_json
+        nvarchar event_type
+        nvarchar details
+        nvarchar event_data
         nvarchar ip_address
         nvarchar user_agent
         datetime2 created_at
@@ -170,10 +200,31 @@ erDiagram
     performance_metrics {
         uniqueidentifier id PK
         uniqueidentifier session_id FK
-        nvarchar operation_type
-        int duration_ms
-        int tokens_used
+        nvarchar metric_name
+        float metric_value
+        nvarchar metric_unit
+        nvarchar tags
         datetime2 created_at
+    }
+
+    tool_permissions {
+        uniqueidentifier id PK
+        uniqueidentifier user_id FK
+        nvarchar tool_name
+        bit is_allowed
+        bit requires_approval
+        datetime2 created_at
+        datetime2 updated_at
+    }
+
+    permission_presets {
+        uniqueidentifier id PK
+        nvarchar name UK
+        nvarchar description
+        nvarchar permissions
+        bit is_active
+        datetime2 created_at
+        datetime2 updated_at
     }
 ```
 
@@ -190,298 +241,159 @@ erDiagram
 ```sql
 CREATE TABLE users (
     id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
-    microsoft_user_id NVARCHAR(255) UNIQUE NOT NULL,  -- From Microsoft Entra ID
     email NVARCHAR(255) UNIQUE NOT NULL,
-    display_name NVARCHAR(255),
-    role NVARCHAR(20) DEFAULT 'viewer',  -- 'admin', 'editor', 'viewer' (Migration 003)
+    password_hash NVARCHAR(255) NULL,  -- Optional, for fallback auth
+    full_name NVARCHAR(255) NULL,
+    is_active BIT NOT NULL DEFAULT 1,
+    is_admin BIT NOT NULL DEFAULT 0,
+    role NVARCHAR(50) NOT NULL DEFAULT 'viewer',
 
-    -- BC token encryption (Migration 005)
-    bc_access_token_encrypted NVARCHAR(MAX),        -- AES-256-GCM encrypted
-    bc_refresh_token_encrypted NVARCHAR(MAX),       -- AES-256-GCM encrypted
-    bc_token_expires_at DATETIME2,                  -- Token expiry time
-    bc_tenant_id NVARCHAR(255),                     -- BC tenant ID (per-user)
-    bc_environment NVARCHAR(255),                   -- BC environment name
+    -- Microsoft OAuth (Migration 005)
+    microsoft_id NVARCHAR(255) UNIQUE NULL,  -- From Microsoft Entra ID
+    microsoft_email NVARCHAR(255) NULL,
+    microsoft_tenant_id NVARCHAR(255) NULL,
+    last_microsoft_login DATETIME2 NULL,
 
-    -- User state
-    is_active BIT DEFAULT 1,
-    last_login_at DATETIME2,
-    created_at DATETIME2 DEFAULT GETDATE(),
-    updated_at DATETIME2 DEFAULT GETDATE(),
+    -- BC token encryption (per-user tokens)
+    bc_access_token_encrypted NVARCHAR(MAX) NULL,  -- AES-256-GCM
+    bc_refresh_token_encrypted NVARCHAR(MAX) NULL,
+    bc_token_expires_at DATETIME2 NULL,
 
-    -- Constraints
-    CONSTRAINT chk_users_role CHECK (role IN ('admin', 'editor', 'viewer'))
+    -- Timestamps
+    created_at DATETIME2 NOT NULL DEFAULT GETDATE(),
+    updated_at DATETIME2 NOT NULL DEFAULT GETDATE()
 );
 
 -- Indexes
-CREATE INDEX idx_users_microsoft_id ON users(microsoft_user_id);
 CREATE INDEX idx_users_email ON users(email);
+CREATE INDEX idx_users_microsoft_id ON users(microsoft_id) WHERE microsoft_id IS NOT NULL;
 CREATE INDEX idx_users_is_active ON users(is_active);
 ```
 
-**Key Changes** (Migration 005):
-- ❌ Removed `password_hash` column (OAuth replaces password auth)
-- ✅ Added `microsoft_user_id` (unique identifier from Microsoft)
-- ✅ Added `bc_access_token_encrypted` (per-user BC token)
-- ✅ Added `bc_refresh_token_encrypted` (for token refresh)
-- ✅ Added `bc_token_expires_at` (auto-refresh before expiry)
+**Key Features**:
+- Hybrid authentication (Microsoft OAuth + optional password)
+- Per-user Business Central tokens (encrypted at rest)
+- Role-based access control (viewer/editor/admin)
 
 ---
 
 #### 2. sessions
 
-**Purpose**: Chat sessions with titles, goals, and activity tracking
+**Purpose**: Chat sessions metadata
 
 ```sql
 CREATE TABLE sessions (
     id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
     user_id UNIQUEIDENTIFIER NOT NULL,
-    title NVARCHAR(255) NOT NULL,
-    status NVARCHAR(20) DEFAULT 'active',  -- 'active', 'paused', 'completed', 'error'
-    goal NVARCHAR(MAX),                    -- User's goal for this session
-    is_active BIT DEFAULT 1,
-    last_activity_at DATETIME2 DEFAULT GETDATE(),
-    token_count INT DEFAULT 0,             -- Total tokens used in session
-    created_at DATETIME2 DEFAULT GETDATE(),
-    updated_at DATETIME2 DEFAULT GETDATE(),
+    title NVARCHAR(500) NOT NULL DEFAULT 'New Chat',
+    is_active BIT NOT NULL DEFAULT 1,
+    created_at DATETIME2 NOT NULL DEFAULT GETDATE(),
+    updated_at DATETIME2 NOT NULL DEFAULT GETDATE(),
 
     -- Foreign Keys
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-
-    -- Constraints
-    CONSTRAINT chk_sessions_status CHECK (status IN ('active', 'paused', 'completed', 'error'))
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 -- Indexes
 CREATE INDEX idx_sessions_user_id ON sessions(user_id);
 CREATE INDEX idx_sessions_is_active ON sessions(is_active);
-CREATE INDEX idx_sessions_last_activity ON sessions(last_activity_at DESC);
+CREATE INDEX idx_sessions_updated_at ON sessions(updated_at DESC);
 ```
 
 **Key Features**:
-- `title` auto-generated from first message or goal
-- `status` tracks session state
-- `is_active` for soft delete (user can archive sessions)
-- `token_count` for cost tracking
-
-**Session Persistence Strategy** (Updated 2025-11-13):
-
-The system uses **TWO storage layers** for sessions:
-
-#### 1. Redis Sessions (Authentication State)
-
-**Purpose**: Store express-session data (Microsoft OAuth tokens, user ID)
-**Technology**: `connect-redis@7.1.1` with `express-session`
-**TTL**: 24 hours (86400 seconds)
-
-**Storage Format**:
-```redis
-Key: sess:abc123def456...  (SHA256 hash of session ID)
-
-Value (JSON):
-{
-  "cookie": {
-    "originalMaxAge": 86400000,
-    "expires": "2025-11-15T10:30:00.000Z",
-    "httpOnly": true,
-    "secure": false,
-    "sameSite": "lax"
-  },
-  "microsoftOAuth": {
-    "userId": "a1b2c3d4-...",
-    "email": "user@example.com",
-    "displayName": "John Doe",
-    "accessToken": "eyJ0eXAi...",
-    "refreshToken": "0.AX8A...",
-    "expiresAt": "2025-11-14T11:30:00.000Z"
-  }
-}
-```
-
-**Why Redis**:
-- ✅ Sessions survive backend restarts
-- ✅ Supports horizontal scaling (multiple backend instances)
-- ✅ Fast access (< 1ms)
-- ✅ Automatic expiration via TTL
-- ✅ Users stay logged in across deployments
-
-**Configuration** (`backend/src/server.ts`):
-```typescript
-import RedisStore from 'connect-redis';
-import { getRedis } from './config/redis';
-
-app.use(session({
-  store: new RedisStore({
-    client: getRedis()!,
-    prefix: 'sess:',
-    ttl: 86400  // 24 hours
-  }),
-  secret: process.env.SESSION_SECRET,
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    maxAge: 24 * 60 * 60 * 1000  // 24 hours
-  }
-}));
-```
-
-#### 2. SQL Sessions (Chat Session Metadata)
-
-**Purpose**: Store chat session data (title, goal, messages, approvals)
-**Technology**: Azure SQL Database
-**Table**: `sessions` (this table)
-
-**Relationship**:
-- **Redis sessions** ↔ **SQL sessions** are independent
-- Redis stores **authentication state** (who is logged in)
-- SQL stores **chat history** (what conversations happened)
-- SQL `sessions.user_id` links to Redis session's `microsoftOAuth.userId`
-
-**Example Flow**:
-1. User logs in → Redis session created (contains Microsoft OAuth tokens)
-2. User starts chat → SQL session created (contains title, goal)
-3. User sends messages → SQL messages inserted (linked to SQL session)
-4. User closes browser → Redis session persists (24h TTL)
-5. User returns next day → Redis session still valid → Auto-logged in
-6. Backend restarts → Redis sessions persist → Users stay logged in ✅
-
-**Before RedisStore** (MemoryStore):
-- ❌ Sessions lost on backend restart
-- ❌ Users had to re-login after every deployment
-- ❌ No horizontal scaling support
-
-**After RedisStore**:
-- ✅ Sessions persist across restarts
-- ✅ Users stay logged in (24h TTL)
-- ✅ Horizontal scaling ready
-
-**Related Documents**:
-- RedisStore Migration: `docs/04-direction-changes.md` (Direction Change #9)
-- Session Architecture: `docs/01-architecture.md` (Section 6)
+- Simple session metadata (complex data in message_events)
+- Soft delete via `is_active` flag
+- Cascade delete removes all related data
 
 ---
 
-#### 3. messages
+#### 3. message_events ⭐ NEW - Event Sourcing
 
-**Purpose**: Chat history (user + assistant messages, thinking blocks, tool use events)
+**Purpose**: Append-only event log for message streaming (Event Sourcing pattern)
 
-**⚠️ UPDATED (Migration 007 - 2025-11-15)**: Added `message_type` discriminator column for persistent thinking and tool use messages.
+```sql
+CREATE TABLE message_events (
+    id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+    session_id UNIQUEIDENTIFIER NOT NULL,
+    event_type NVARCHAR(50) NOT NULL,  -- 'message_start', 'content_block_delta', 'message_stop', etc.
+    sequence_number INT NOT NULL,       -- Atomic sequence via Redis INCR
+    timestamp DATETIME2 NOT NULL DEFAULT GETDATE(),
+    data NVARCHAR(MAX) NOT NULL,        -- JSON event payload
+    processed BIT NOT NULL DEFAULT 0,   -- For async processing queue
 
-**⚠️ UPDATED (Migration 008 - 2025-11-17)**: Added `stop_reason` column for native SDK message lifecycle support.
+    -- Foreign Keys
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE,
+
+    -- Unique constraint on sequence per session
+    UNIQUE (session_id, sequence_number)
+);
+
+-- Indexes
+CREATE INDEX idx_message_events_session ON message_events(session_id, sequence_number);
+CREATE INDEX idx_message_events_processed ON message_events(processed) WHERE processed = 0;
+CREATE INDEX idx_message_events_type ON message_events(event_type);
+```
+
+**Key Features**:
+- Immutable event log (no updates, only inserts)
+- Atomic sequence numbers via Redis INCR
+- BullMQ async processing via `processed` flag
+- Foundation for CQRS pattern (events → materialized messages)
+
+**Event Types**:
+- `message_start` - Message initiated
+- `content_block_start` - Content block started
+- `content_block_delta` - Incremental content chunk
+- `content_block_stop` - Content block finished
+- `message_delta` - Message-level delta
+- `message_stop` - Message completed (includes stop_reason)
+
+---
+
+#### 4. messages
+
+**Purpose**: Materialized view of complete messages (built from message_events)
 
 ```sql
 CREATE TABLE messages (
     id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
     session_id UNIQUEIDENTIFIER NOT NULL,
-    role NVARCHAR(20) NOT NULL,            -- 'user', 'assistant', 'system'
-    message_type NVARCHAR(20) NOT NULL,    -- 'standard', 'thinking', 'tool_use'
-    content NVARCHAR(MAX) NOT NULL,        -- Text content (empty for thinking/tool_use)
-    metadata NVARCHAR(MAX) NULL,           -- JSON metadata (thinking content, tool args/results)
-    stop_reason NVARCHAR(20) NULL,         -- Native SDK stop_reason (Migration 008)
-    thinking_tokens INT DEFAULT 0,         -- Tokens used in extended thinking
-    is_thinking BIT DEFAULT 0,             -- Is this a thinking block?
-    created_at DATETIME2 DEFAULT GETDATE(),
+    event_id UNIQUEIDENTIFIER NULL,     -- FK to message_events (source event)
+    role NVARCHAR(50) NOT NULL,         -- 'user', 'assistant'
+    content NVARCHAR(MAX) NOT NULL,
+    metadata NVARCHAR(MAX) NULL,        -- JSON for tool calls, thinking, etc.
+    token_count INT NULL,
+    message_type NVARCHAR(20) NOT NULL DEFAULT 'text',  -- 'text', 'thinking', 'tool_use', 'tool_result'
+    stop_reason NVARCHAR(20) NULL,      -- 'end_turn', 'tool_use', 'max_tokens'
+    sequence_number INT NULL,           -- Links to message_events.sequence_number
+    created_at DATETIME2 NOT NULL DEFAULT GETDATE(),
 
     -- Foreign Keys
     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE,
+    FOREIGN KEY (event_id) REFERENCES message_events(id) ON DELETE NO ACTION,
 
     -- Constraints
-    CONSTRAINT chk_messages_role CHECK (role IN ('user', 'assistant', 'system')),
-    CONSTRAINT chk_messages_type CHECK (message_type IN ('standard', 'thinking', 'tool_use')),
-    CONSTRAINT chk_messages_stop_reason CHECK (stop_reason IN ('end_turn', 'tool_use', 'max_tokens', 'stop_sequence', 'pause_turn', 'refusal'))
+    CONSTRAINT chk_messages_role CHECK (role IN ('user', 'assistant')),
+    CONSTRAINT chk_messages_type CHECK (message_type IN ('text', 'thinking', 'tool_use', 'tool_result', 'error')),
+    CONSTRAINT chk_messages_stop_reason CHECK (stop_reason IN ('end_turn', 'tool_use', 'max_tokens', 'stop_sequence'))
 );
 
 -- Indexes
-CREATE INDEX idx_messages_session_id ON messages(session_id);
-CREATE INDEX idx_messages_created_at ON messages(created_at DESC);
+CREATE INDEX idx_messages_session ON messages(session_id, created_at);
+CREATE INDEX idx_messages_event ON messages(event_id) WHERE event_id IS NOT NULL;
 CREATE INDEX idx_messages_type ON messages(message_type);
-CREATE INDEX idx_messages_session_type ON messages(session_id, message_type);
-CREATE INDEX idx_messages_stop_reason ON messages(stop_reason) WHERE stop_reason IS NOT NULL;  -- Filtered index
+CREATE INDEX idx_messages_stop_reason ON messages(stop_reason) WHERE stop_reason IS NOT NULL;
 ```
 
 **Key Features**:
-- `role` identifies message sender
-- `message_type` discriminates between standard/thinking/tool_use messages
-- `content` stores text for standard messages (empty for thinking/tool_use)
-- `metadata` stores JSON for thinking content and tool args/results
-- `stop_reason` **[NEW]** native SDK stop_reason for message lifecycle (nullable for backward compatibility)
-- `thinking_tokens` tracks extended thinking cost
-- `is_thinking` flags thinking blocks (not shown to user)
-
-**Message Types**:
-- `standard`: Regular user/assistant text messages (content in `content` field)
-- `thinking`: Agent reasoning blocks (content in `metadata.content`)
-- `tool_use`: Tool calls + results (tool details in `metadata.tool_name`, `metadata.tool_args`, `metadata.tool_result`)
-- Cascade delete when session deleted
-
-**stop_reason Values** (from Anthropic SDK):
-- `'end_turn'`: Final message in agentic loop (displayed prominently in UI)
-- `'tool_use'`: Intermediate message during tool execution (grouped in collapsible UI)
-- `'max_tokens'`: Response truncated due to token limit
-- `'stop_sequence'`: Custom stop sequence encountered
-- `'pause_turn'`: Turn paused (future SDK feature)
-- `'refusal'`: Request refused by model
-- `NULL`: Legacy messages (before Migration 008) or user messages (no stop_reason)
-
-**stop_reason Impact on UI**:
-- Messages with `stop_reason='tool_use'` are grouped in `<AgentProcessGroup>` collapsible component
-- Messages with `stop_reason='end_turn'` are displayed as final response bubbles
-- Frontend uses stop_reason to determine streaming state (ends on 'end_turn', not per message)
-
-**Message Persistence** (Bug #5 Fix - 2025-11-14):
-
-✅ **CONFIRMED**: Assistant messages ARE saved to database
-
-**Implementation** (`backend/src/server.ts` lines 882-894):
-```typescript
-// Listen for agent:message_complete event
-socket.on('agent:message_complete', async (data) => {
-  // Save assistant message to database
-  await db.query(`
-    INSERT INTO messages (
-      id,
-      session_id,
-      role,
-      content,
-      created_at
-    ) VALUES (
-      @id,
-      @sessionId,
-      'assistant',
-      @content,
-      GETDATE()
-    )
-  `, {
-    id: data.id,
-    sessionId: socket.sessionId,
-    content: data.content
-  });
-});
-```
-
-**Flow**:
-1. DirectAgentService completes agent query
-2. Emits `agent:message_complete` event with final response
-3. Backend WebSocket handler receives event
-4. Inserts assistant message into `messages` table
-5. Frontend displays message (already in React Query cache from streaming)
-
-**Result**: Chat history persists across page reloads ✅
-
-**Before Bug Fix**:
-- ❌ Only user messages saved
-- ❌ Chat history incomplete after reload
-- ❌ Conversations lost
-
-**After Bug Fix**:
-- ✅ Both user and assistant messages saved
-- ✅ Complete chat history preserved
-- ✅ Conversations persist across sessions
+- Materialized from `message_events` (async via BullMQ)
+- `stop_reason` controls agentic loop (tool_use = continue, end_turn = stop)
+- `message_type` discriminates text/thinking/tool_use/tool_result
+- `metadata` stores structured data (tool args, thinking blocks)
 
 ---
 
-#### 4. approvals
+#### 5. approvals
 
 **Purpose**: Human-in-the-loop approval requests for write operations
 
@@ -489,224 +401,116 @@ socket.on('agent:message_complete', async (data) => {
 CREATE TABLE approvals (
     id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
     session_id UNIQUEIDENTIFIER NOT NULL,
-    user_id UNIQUEIDENTIFIER NOT NULL,
-    operation_type NVARCHAR(50) NOT NULL,  -- 'create', 'update', 'delete'
-    entity_type NVARCHAR(50),              -- 'customer', 'salesOrder', 'item', etc.
-    operation_details NVARCHAR(MAX),       -- JSON with parameters
-    status NVARCHAR(20) DEFAULT 'pending', -- 'pending', 'approved', 'rejected', 'expired'
-    priority NVARCHAR(20) DEFAULT 'medium', -- 'low', 'medium', 'high' (Migration 004)
-    expires_at DATETIME2,                   -- Expiry time (5 min default, Migration 004)
-    created_at DATETIME2 DEFAULT GETDATE(),
-    responded_at DATETIME2,                 -- When user responded
+    message_id UNIQUEIDENTIFIER NULL,             -- Message that triggered approval
+    decided_by_user_id UNIQUEIDENTIFIER NULL,     -- User who approved/rejected
+    action_type NVARCHAR(100) NOT NULL,           -- 'bc_create', 'bc_update', 'bc_delete'
+    action_description NVARCHAR(MAX) NOT NULL,    -- Human-readable description
+    action_data NVARCHAR(MAX) NULL,               -- JSON with parameters
+    tool_name NVARCHAR(100) NOT NULL,             -- Tool that requires approval
+    tool_args NVARCHAR(MAX) NULL,                 -- JSON tool arguments
+    status NVARCHAR(20) NOT NULL DEFAULT 'pending',  -- 'pending', 'approved', 'rejected', 'expired'
+    priority NVARCHAR(20) NOT NULL DEFAULT 'medium', -- 'low', 'medium', 'high'
+    rejection_reason NVARCHAR(MAX) NULL,
+    expires_at DATETIME2 NULL,                    -- Auto-expire after 5 minutes
+    decided_at DATETIME2 NULL,
+    created_at DATETIME2 NOT NULL DEFAULT GETDATE(),
 
     -- Foreign Keys
     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE NO ACTION,
+    FOREIGN KEY (decided_by_user_id) REFERENCES users(id) ON DELETE NO ACTION,
 
     -- Constraints
-    CONSTRAINT chk_approvals_operation CHECK (operation_type IN ('create', 'update', 'delete')),
     CONSTRAINT chk_approvals_status CHECK (status IN ('pending', 'approved', 'rejected', 'expired')),
     CONSTRAINT chk_approvals_priority CHECK (priority IN ('low', 'medium', 'high'))
 );
 
 -- Indexes
-CREATE INDEX idx_approvals_session_id ON approvals(session_id);
-CREATE INDEX idx_approvals_user_id ON approvals(user_id);
-CREATE INDEX idx_approvals_status ON approvals(status);
-CREATE INDEX idx_approvals_expires_at ON approvals(expires_at);  -- For auto-expiry cron
+CREATE INDEX idx_approvals_session ON approvals(session_id, created_at DESC);
+CREATE INDEX idx_approvals_status ON approvals(status) WHERE status = 'pending';
+CREATE INDEX idx_approvals_expires ON approvals(expires_at) WHERE status = 'pending';
+CREATE INDEX idx_approvals_message ON approvals(message_id) WHERE message_id IS NOT NULL;
 ```
 
-**Key Changes** (Migration 004):
-- ✅ Added `priority` column (low/medium/high)
-- ✅ Added `expires_at` column (5-minute default)
-- ✅ Added `expired` status
-- ✅ Updated CHECK constraint for new status
-
-**Approval Flow**:
-1. Agent detects write operation → Create approval (status=pending, expires_at=+5min)
-2. User approves → Update status=approved, responded_at=now
-3. User rejects → Update status=rejected
-4. Timeout (5 min) → Cron job updates status=expired
+**Key Features**:
+- Linked to specific message that triggered approval
+- Tool name + args for execution after approval
+- Auto-expiry via cron job (5-minute default)
+- Priority levels for UI sorting
 
 ---
 
-#### 5. checkpoints
+#### 6. checkpoints
 
-**Purpose**: State snapshots for rollback
+**Purpose**: Session state snapshots for rollback
 
 ```sql
 CREATE TABLE checkpoints (
     id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
     session_id UNIQUEIDENTIFIER NOT NULL,
-    state_snapshot NVARCHAR(MAX) NOT NULL,  -- JSON snapshot of conversation + context
-    description NVARCHAR(500),
-    created_at DATETIME2 DEFAULT GETDATE(),
+    checkpoint_name NVARCHAR(255) NOT NULL,
+    checkpoint_data NVARCHAR(MAX) NOT NULL,  -- JSON snapshot
+    created_at DATETIME2 NOT NULL DEFAULT GETDATE(),
 
     -- Foreign Keys
     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );
 
 -- Indexes
-CREATE INDEX idx_checkpoints_session_id ON checkpoints(session_id);
-CREATE INDEX idx_checkpoints_created_at ON checkpoints(created_at DESC);
+CREATE INDEX idx_checkpoints_session ON checkpoints(session_id, created_at DESC);
 ```
 
 **Key Features**:
-- `state_snapshot` contains JSON of conversation history, context, tool results
-- Checkpoints created before risky operations
-- User can rollback to previous checkpoint
+- Named checkpoints for user-triggered snapshots
+- JSON snapshot includes conversation history + context
+- Rollback restores session to checkpoint state
 
 ---
 
-#### 6. audit_log
-
-**Purpose**: Audit trail for all system actions
-
-```sql
-CREATE TABLE audit_log (
-    id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
-    user_id UNIQUEIDENTIFIER,              -- NULL for system actions
-    session_id UNIQUEIDENTIFIER,           -- NULL for user-level actions
-    action NVARCHAR(50) NOT NULL,          -- 'user.login', 'approval.approved', 'bc.create', etc.
-    entity_type NVARCHAR(50),              -- 'user', 'session', 'approval', 'bc.customer', etc.
-    entity_id NVARCHAR(255),               -- ID of affected entity
-    changes_json NVARCHAR(MAX),            -- JSON with before/after values
-    ip_address NVARCHAR(50),
-    user_agent NVARCHAR(500),
-    created_at DATETIME2 DEFAULT GETDATE()
-
-    -- NOTE: Foreign keys NOT created due to Migration 002 errors
-    -- FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
-    -- FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE SET NULL
-);
-
--- Indexes
-CREATE INDEX idx_audit_log_user_id ON audit_log(user_id);
-CREATE INDEX idx_audit_log_session_id ON audit_log(session_id);
-CREATE INDEX idx_audit_log_action ON audit_log(action);
-CREATE INDEX idx_audit_log_created_at ON audit_log(created_at DESC);
-```
-
-**Known Issue**: Foreign keys not created (Migration 002 error). Impact: LOW - orphaned records possible but audit log still functional.
-
-**Common Actions**:
-- `user.login`, `user.logout`
-- `session.create`, `session.delete`
-- `approval.requested`, `approval.approved`, `approval.rejected`
-- `bc.create`, `bc.update`, `bc.delete`
-- `error.critical`, `error.warning`
-
----
-
-### Advanced Tables (Migration 001)
+### Advanced Tables
 
 #### 7. todos
 
-**Purpose**: Todo items generated from agent plans
+**Purpose**: Hierarchical todo tracking with dependencies
 
 ```sql
 CREATE TABLE todos (
     id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
     session_id UNIQUEIDENTIFIER NOT NULL,
-    user_id UNIQUEIDENTIFIER NOT NULL,
-    content NVARCHAR(500) NOT NULL,        -- Todo text (e.g., "Create new customer")
-    description NVARCHAR(MAX),             -- Detailed description
-    status NVARCHAR(20) DEFAULT 'pending', -- 'pending', 'in_progress', 'completed'
-    priority NVARCHAR(20) DEFAULT 'medium',
-    order_index INT DEFAULT 0,             -- Display order
-    created_at DATETIME2 DEFAULT GETDATE(),
-    completed_at DATETIME2,
+    parent_todo_id UNIQUEIDENTIFIER NULL,        -- For hierarchical todos
+    content NVARCHAR(500) NOT NULL,              -- Imperative form ("Create customer")
+    activeForm NVARCHAR(500) NOT NULL,           -- Present continuous ("Creating customer")
+    description NVARCHAR(MAX) NULL,
+    status NVARCHAR(50) NOT NULL DEFAULT 'pending',  -- 'pending', 'in_progress', 'completed'
+    [order] INT NOT NULL DEFAULT 0,              -- Display order
+    dependencies NVARCHAR(MAX) NULL,             -- JSON array of todo IDs
+    metadata NVARCHAR(MAX) NULL,                 -- JSON for extra data
+    created_at DATETIME2 NOT NULL DEFAULT GETDATE(),
+    started_at DATETIME2 NULL,
+    completed_at DATETIME2 NULL,
 
     -- Foreign Keys
     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (parent_todo_id) REFERENCES todos(id) ON DELETE NO ACTION,
 
     -- Constraints
-    CONSTRAINT chk_todos_status CHECK (status IN ('pending', 'in_progress', 'completed')),
-    CONSTRAINT chk_todos_priority CHECK (priority IN ('low', 'medium', 'high'))
+    CONSTRAINT chk_todos_status CHECK (status IN ('pending', 'in_progress', 'completed'))
 );
 
 -- Indexes
-CREATE INDEX idx_todos_session_id ON todos(session_id);
-CREATE INDEX idx_todos_user_id ON todos(user_id);
+CREATE INDEX idx_todos_session ON todos(session_id, [order]);
 CREATE INDEX idx_todos_status ON todos(status);
-CREATE INDEX idx_todos_order_index ON todos(order_index);
+CREATE INDEX idx_todos_parent ON todos(parent_todo_id) WHERE parent_todo_id IS NOT NULL;
 ```
 
 **Key Features**:
-- Generated from agent plans (custom heuristics)
-- `order_index` for manual reordering
-- Real-time updates via WebSocket
+- Hierarchical structure (parent-child relationships)
+- Dependency tracking (JSON array of IDs)
+- Dual forms: content (command) + activeForm (UI display)
 
 ---
 
-#### 8. tool_permissions
-
-**Purpose**: Per-user tool permission overrides
-
-```sql
-CREATE TABLE tool_permissions (
-    id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
-    user_id UNIQUEIDENTIFIER NOT NULL,
-    preset_id UNIQUEIDENTIFIER,            -- NULL for custom permissions
-    tool_name NVARCHAR(100) NOT NULL,      -- 'bc_create_entity', 'bc_delete_entity', etc.
-    permission_level NVARCHAR(20) NOT NULL, -- 'allowed', 'require_approval', 'denied'
-    created_at DATETIME2 DEFAULT GETDATE(),
-    updated_at DATETIME2 DEFAULT GETDATE(),
-
-    -- Foreign Keys
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (preset_id) REFERENCES permission_presets(id) ON DELETE SET NULL,
-
-    -- Constraints
-    CONSTRAINT chk_tool_permissions_level CHECK (permission_level IN ('allowed', 'require_approval', 'denied')),
-    UNIQUE (user_id, tool_name)
-);
-
--- Indexes
-CREATE INDEX idx_tool_permissions_user_id ON tool_permissions(user_id);
-CREATE INDEX idx_tool_permissions_tool_name ON tool_permissions(tool_name);
-```
-
-**Key Features**:
-- Override default role permissions
-- Preset-based (admin/editor/viewer) or custom
-- Checked by `canUseTool` hook
-
----
-
-#### 9. permission_presets
-
-**Purpose**: Role-based permission templates
-
-```sql
-CREATE TABLE permission_presets (
-    id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
-    name NVARCHAR(100) UNIQUE NOT NULL,    -- 'admin', 'editor', 'viewer'
-    description NVARCHAR(500),
-    permissions_json NVARCHAR(MAX) NOT NULL, -- JSON array of tool permissions
-    is_default BIT DEFAULT 0,
-    created_at DATETIME2 DEFAULT GETDATE()
-);
-
--- Indexes
-CREATE INDEX idx_permission_presets_name ON permission_presets(name);
-CREATE INDEX idx_permission_presets_is_default ON permission_presets(is_default);
-```
-
-**Example permissions_json**:
-```json
-{
-  "bc_query_entities": "allowed",
-  "bc_create_entity": "require_approval",
-  "bc_update_entity": "require_approval",
-  "bc_delete_entity": "denied"
-}
-```
-
----
-
-#### 10. agent_executions
+#### 8. agent_executions
 
 **Purpose**: Agent execution metadata and performance tracking
 
@@ -714,591 +518,254 @@ CREATE INDEX idx_permission_presets_is_default ON permission_presets(is_default)
 CREATE TABLE agent_executions (
     id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
     session_id UNIQUEIDENTIFIER NOT NULL,
-    user_id UNIQUEIDENTIFIER NOT NULL,
-    agent_type NVARCHAR(50),               -- 'bc-query', 'bc-write', 'bc-validation', etc.
-    prompt NVARCHAR(MAX),                  -- User prompt
-    turn_count INT DEFAULT 0,              -- Number of agentic loop turns
-    status NVARCHAR(20),                   -- 'running', 'completed', 'error', 'timeout'
-    error_message NVARCHAR(MAX),
-    total_tokens INT DEFAULT 0,
-    thinking_tokens INT DEFAULT 0,
-    started_at DATETIME2 DEFAULT GETDATE(),
-    completed_at DATETIME2,
+    agent_type NVARCHAR(100) NULL,           -- 'bc-query', 'bc-write', etc.
+    action NVARCHAR(100) NOT NULL,           -- Action name
+    input_data NVARCHAR(MAX) NULL,           -- JSON input
+    output_data NVARCHAR(MAX) NULL,          -- JSON output
+    status NVARCHAR(50) NOT NULL,            -- 'running', 'completed', 'error'
+    error_message NVARCHAR(MAX) NULL,
+    error_stack NVARCHAR(MAX) NULL,
+    duration_ms INT NULL,
+    tokens_used INT NULL,
+    thinking_tokens INT NULL,
+    created_at DATETIME2 NOT NULL DEFAULT GETDATE(),
+    completed_at DATETIME2 NULL,
 
     -- Foreign Keys
     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
 
     -- Constraints
     CONSTRAINT chk_agent_executions_status CHECK (status IN ('running', 'completed', 'error', 'timeout'))
 );
 
 -- Indexes
-CREATE INDEX idx_agent_executions_session_id ON agent_executions(session_id);
-CREATE INDEX idx_agent_executions_user_id ON agent_executions(user_id);
+CREATE INDEX idx_agent_executions_session ON agent_executions(session_id, created_at DESC);
 CREATE INDEX idx_agent_executions_status ON agent_executions(status);
-CREATE INDEX idx_agent_executions_started_at ON agent_executions(started_at DESC);
 ```
 
 **Key Features**:
-- Track agent performance (turns, tokens, duration)
-- Error tracking for debugging
-- Per-agent-type metrics
+- Tracks DirectAgentService executions
+- Performance metrics (duration, tokens)
+- Error tracking with stack traces
 
 ---
 
-### Observability Tables (Partial - Migration 002)
+#### 9. tool_permissions
 
-#### 11. performance_metrics
+**Purpose**: Per-user tool permission overrides
 
-**Purpose**: Performance tracking for operations
+```sql
+CREATE TABLE tool_permissions (
+    id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+    user_id UNIQUEIDENTIFIER NOT NULL,
+    tool_name NVARCHAR(100) NOT NULL,
+    is_allowed BIT NOT NULL DEFAULT 1,
+    requires_approval BIT NOT NULL DEFAULT 0,
+    created_at DATETIME2 NOT NULL DEFAULT GETDATE(),
+    updated_at DATETIME2 NOT NULL DEFAULT GETDATE(),
+
+    -- Foreign Keys
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+
+    -- Unique constraint
+    UNIQUE (user_id, tool_name)
+);
+
+-- Indexes
+CREATE INDEX idx_tool_permissions_user ON tool_permissions(user_id);
+CREATE INDEX idx_tool_permissions_tool ON tool_permissions(tool_name);
+```
+
+**Key Features**:
+- Granular per-user tool permissions
+- Two-level control: is_allowed + requires_approval
+- Overrides role-based defaults
+
+---
+
+#### 10. permission_presets
+
+**Purpose**: Role-based permission templates
+
+```sql
+CREATE TABLE permission_presets (
+    id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+    name NVARCHAR(100) UNIQUE NOT NULL,
+    description NVARCHAR(500) NULL,
+    permissions NVARCHAR(MAX) NOT NULL,  -- JSON permissions map
+    is_active BIT NOT NULL DEFAULT 1,
+    created_at DATETIME2 NOT NULL DEFAULT GETDATE(),
+    updated_at DATETIME2 NOT NULL DEFAULT GETDATE()
+);
+
+-- Indexes
+CREATE INDEX idx_permission_presets_name ON permission_presets(name);
+CREATE INDEX idx_permission_presets_active ON permission_presets(is_active);
+```
+
+**Example permissions JSON**:
+```json
+{
+  "bc_query": { "allowed": true, "requiresApproval": false },
+  "bc_create": { "allowed": true, "requiresApproval": true },
+  "bc_update": { "allowed": true, "requiresApproval": true },
+  "bc_delete": { "allowed": false, "requiresApproval": false }
+}
+```
+
+---
+
+### Observability Tables
+
+#### 11. audit_log
+
+**Purpose**: Audit trail for all system actions
+
+```sql
+CREATE TABLE audit_log (
+    id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+    user_id UNIQUEIDENTIFIER NULL,
+    session_id UNIQUEIDENTIFIER NULL,
+    entity_id UNIQUEIDENTIFIER NULL,
+    action NVARCHAR(100) NOT NULL,
+    entity_type NVARCHAR(100) NULL,
+    event_type NVARCHAR(100) NOT NULL,
+    details NVARCHAR(MAX) NULL,      -- Human-readable description
+    event_data NVARCHAR(MAX) NULL,   -- JSON event payload
+    ip_address NVARCHAR(50) NULL,
+    user_agent NVARCHAR(500) NULL,
+    created_at DATETIME2 NOT NULL DEFAULT GETDATE(),
+
+    -- Foreign Keys
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE SET NULL
+);
+
+-- Indexes
+CREATE INDEX idx_audit_log_user ON audit_log(user_id, created_at DESC);
+CREATE INDEX idx_audit_log_session ON audit_log(session_id, created_at DESC);
+CREATE INDEX idx_audit_log_action ON audit_log(action);
+CREATE INDEX idx_audit_log_event_type ON audit_log(event_type);
+CREATE INDEX idx_audit_log_created ON audit_log(created_at DESC);
+```
+
+**Common event_type values**:
+- `user.login`, `user.logout`, `user.created`
+- `session.created`, `session.deleted`
+- `approval.requested`, `approval.approved`, `approval.rejected`
+- `bc.query`, `bc.create`, `bc.update`, `bc.delete`
+- `error.critical`, `error.warning`
+
+---
+
+#### 12. performance_metrics
+
+**Purpose**: Time-series performance metrics
 
 ```sql
 CREATE TABLE performance_metrics (
     id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
-    session_id UNIQUEIDENTIFIER,
-    operation_type NVARCHAR(100) NOT NULL, -- 'agent.query', 'bc.create', 'approval.request', etc.
-    duration_ms INT NOT NULL,              -- Operation duration in milliseconds
-    tokens_used INT DEFAULT 0,
-    created_at DATETIME2 DEFAULT GETDATE(),
+    session_id UNIQUEIDENTIFIER NULL,
+    metric_name NVARCHAR(100) NOT NULL,
+    metric_value FLOAT NOT NULL,
+    metric_unit NVARCHAR(50) NULL,      -- 'ms', 'tokens', 'bytes', etc.
+    tags NVARCHAR(MAX) NULL,            -- JSON for multi-dimensional metrics
+    created_at DATETIME2 NOT NULL DEFAULT GETDATE(),
 
     -- Foreign Keys
     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );
 
 -- Indexes
-CREATE INDEX idx_performance_metrics_session_id ON performance_metrics(session_id);
-CREATE INDEX idx_performance_metrics_operation_type ON performance_metrics(operation_type);
-CREATE INDEX idx_performance_metrics_created_at ON performance_metrics(created_at DESC);
+CREATE INDEX idx_performance_metrics_session ON performance_metrics(session_id, created_at);
+CREATE INDEX idx_performance_metrics_name ON performance_metrics(metric_name, created_at);
 ```
 
-**Key Features**:
-- Track latency (P50, P95, P99)
-- Identify slow operations
-- Token usage patterns
+**Example metrics**:
+- `agent.duration` (value: 1234, unit: 'ms')
+- `agent.tokens_used` (value: 5000, unit: 'tokens')
+- `api.latency` (value: 250, unit: 'ms')
+- `tool.execution_time` (value: 500, unit: 'ms')
 
----
-
-### Missing Tables (Migration 002 Failed)
-
-#### ❌ mcp_tool_calls
-
-**Purpose**: Log all MCP tool calls for debugging
-
-**Status**: **NOT CREATED** (FK constraint error)
-
-**Impact**: **LOW** - Use `audit_log` for basic tool call tracking
-
-**Planned DDL** (if created manually):
-```sql
-CREATE TABLE mcp_tool_calls (
-    id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
-    agent_execution_id UNIQUEIDENTIFIER,   -- Links to agent_executions
-    session_id UNIQUEIDENTIFIER NOT NULL,
-    tool_name NVARCHAR(100) NOT NULL,      -- 'bc_query_entities', etc.
-    tool_input NVARCHAR(MAX),              -- JSON input
-    tool_output NVARCHAR(MAX),             -- JSON output
-    status NVARCHAR(20),                   -- 'success', 'error'
-    error_message NVARCHAR(MAX),
-    duration_ms INT,
-    created_at DATETIME2 DEFAULT GETDATE()
-
-    -- Foreign keys would go here
-);
+**Example tags JSON**:
+```json
+{
+  "tool_name": "bc_query_customers",
+  "status": "success",
+  "agent_type": "bc-query"
+}
 ```
 
 ---
 
-#### ❌ session_files
+### File Management
+
+#### 13. session_files
 
 **Purpose**: Track files in session context
 
-**Status**: **NOT CREATED** (FK constraint error)
-
-**Impact**: **LOW** - File tracking not yet implemented in MVP
-
----
-
-#### ❌ error_logs
-
-**Purpose**: Centralized error logging
-
-**Status**: **NOT CREATED** (FK constraint error)
-
-**Impact**: **LOW** - Errors logged to `audit_log` with action=`error.*`
-
----
-
-## Example Queries
-
-### Common Operations
-
-#### 1. Create New User (Microsoft OAuth)
-
 ```sql
--- Insert new user from Microsoft OAuth callback
-INSERT INTO users (
-    microsoft_user_id,
-    email,
-    display_name,
-    role,
-    last_login_at
-)
-VALUES (
-    '00000000-0000-0000-0000-000000000001',  -- From Microsoft ID token
-    'user@example.com',
-    'John Doe',
-    'viewer',  -- Default role
-    GETDATE()
-);
-```
+CREATE TABLE session_files (
+    id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+    session_id UNIQUEIDENTIFIER NOT NULL,
+    file_name NVARCHAR(255) NOT NULL,
+    file_path NVARCHAR(500) NOT NULL,
+    file_type NVARCHAR(100) NOT NULL,
+    file_size_bytes BIGINT NULL,
+    mime_type NVARCHAR(100) NULL,
+    content_hash NVARCHAR(255) NULL,   -- SHA-256 hash for deduplication
+    is_active BIT NOT NULL DEFAULT 1,
+    metadata NVARCHAR(MAX) NULL,       -- JSON for extra data
+    created_at DATETIME2 NOT NULL DEFAULT GETDATE(),
+    removed_at DATETIME2 NULL,
 
----
-
-#### 2. Update BC Tokens (Encrypted)
-
-```sql
--- Store encrypted BC tokens after consent
-UPDATE users
-SET
-    bc_access_token_encrypted = '<AES-256-GCM encrypted token>',
-    bc_refresh_token_encrypted = '<AES-256-GCM encrypted refresh token>',
-    bc_token_expires_at = DATEADD(hour, 1, GETDATE()),  -- 1 hour expiry
-    bc_tenant_id = '1e9a7510-b103-463a-9ade-68951205e7bc',
-    bc_environment = 'Production',
-    updated_at = GETDATE()
-WHERE id = '<user-id>';
-```
-
----
-
-#### 3. Create New Chat Session
-
-```sql
--- Create session
-INSERT INTO sessions (user_id, title, goal, status)
-VALUES (
-    '<user-id>',
-    'New Chat',  -- Will be updated after first message
-    'Help me analyze customer data',
-    'active'
+    -- Foreign Keys
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );
 
--- Get session ID
-SELECT id, created_at FROM sessions WHERE user_id = '<user-id>' ORDER BY created_at DESC;
+-- Indexes
+CREATE INDEX idx_session_files_session ON session_files(session_id, is_active);
+CREATE INDEX idx_session_files_hash ON session_files(content_hash) WHERE content_hash IS NOT NULL;
 ```
 
----
-
-#### 4. Add Message to Session
-
-```sql
--- User message (no stop_reason for user messages)
-INSERT INTO messages (session_id, role, message_type, content)
-VALUES (
-    '<session-id>',
-    'user',
-    'standard',
-    'Show me all customers from London'
-);
-
--- Assistant intermediate message (during tool execution)
-INSERT INTO messages (session_id, role, message_type, content, stop_reason, thinking_tokens)
-VALUES (
-    '<session-id>',
-    'assistant',
-    'standard',
-    'I will query the customers database for you...',
-    'tool_use',  -- Intermediate message
-    500
-);
-
--- Assistant final response (end of turn)
-INSERT INTO messages (session_id, role, message_type, content, stop_reason, thinking_tokens)
-VALUES (
-    '<session-id>',
-    'assistant',
-    'standard',
-    'Here are the customers from London: [list]',
-    'end_turn',  -- Final message
-    1000
-);
-
--- Update session activity
-UPDATE sessions
-SET last_activity_at = GETDATE(),
-    token_count = token_count + 1500
-WHERE id = '<session-id>';
-```
+**Key Features**:
+- File metadata (no binary storage in DB)
+- Content hash for deduplication
+- Soft delete via `is_active` flag
 
 ---
 
-#### 5. Create Approval Request
+## Foreign Key Summary (15 total)
 
-```sql
--- Agent requests approval for BC write operation
-INSERT INTO approvals (
-    session_id,
-    user_id,
-    operation_type,
-    entity_type,
-    operation_details,
-    status,
-    priority,
-    expires_at
-)
-VALUES (
-    '<session-id>',
-    '<user-id>',
-    'create',
-    'customer',
-    '{"name": "New Customer Ltd", "email": "customer@example.com"}',
-    'pending',
-    'high',  -- High priority
-    DATEADD(minute, 5, GETDATE())  -- Expires in 5 minutes
-);
-```
+| Parent Table | Column | Referenced Table | Column | On Delete |
+|--------------|--------|------------------|--------|-----------|
+| agent_executions | session_id | sessions | id | CASCADE |
+| approvals | session_id | sessions | id | CASCADE |
+| approvals | message_id | messages | id | NO_ACTION |
+| approvals | decided_by_user_id | users | id | NO_ACTION |
+| audit_log | user_id | users | id | SET_NULL |
+| checkpoints | session_id | sessions | id | CASCADE |
+| message_events | session_id | sessions | id | CASCADE |
+| messages | session_id | sessions | id | CASCADE |
+| messages | event_id | message_events | id | NO_ACTION |
+| performance_metrics | session_id | sessions | id | CASCADE |
+| session_files | session_id | sessions | id | CASCADE |
+| sessions | user_id | users | id | CASCADE |
+| todos | session_id | sessions | id | CASCADE |
+| todos | parent_todo_id | todos | id | NO_ACTION |
+| tool_permissions | user_id | users | id | CASCADE |
 
 ---
 
-#### 6. User Approves Operation
-
-```sql
--- User clicks "Approve" in dialog
-UPDATE approvals
-SET
-    status = 'approved',
-    responded_at = GETDATE()
-WHERE id = '<approval-id>' AND status = 'pending';
-
--- Log approval to audit
-INSERT INTO audit_log (
-    user_id,
-    session_id,
-    action,
-    entity_type,
-    entity_id,
-    changes_json
-)
-VALUES (
-    '<user-id>',
-    '<session-id>',
-    'approval.approved',
-    'approval',
-    '<approval-id>',
-    '{"operation": "bc.create", "entity": "customer"}'
-);
-```
-
----
-
-#### 7. Auto-Expire Old Approvals (Cron Job)
-
-```sql
--- Run every minute to expire old pending approvals
-UPDATE approvals
-SET status = 'expired'
-WHERE status = 'pending'
-  AND expires_at < GETDATE();
-```
-
----
-
-#### 8. Generate Todos from Plan
-
-```sql
--- Agent generates todos from plan
-INSERT INTO todos (session_id, user_id, content, status, priority, order_index)
-VALUES
-    ('<session-id>', '<user-id>', 'Analyze customer data', 'pending', 'high', 0),
-    ('<session-id>', '<user-id>', 'Create summary report', 'pending', 'medium', 1),
-    ('<session-id>', '<user-id>', 'Send report to team', 'pending', 'low', 2);
-```
-
----
-
-#### 9. Mark Todo as Completed
-
-```sql
--- Agent marks todo as completed
-UPDATE todos
-SET
-    status = 'completed',
-    completed_at = GETDATE()
-WHERE id = '<todo-id>';
-```
-
----
-
-#### 10. Get Session Summary
-
-```sql
--- Get session with messages, approvals, todos
-SELECT
-    s.id AS session_id,
-    s.title,
-    s.goal,
-    s.status,
-    s.token_count,
-    s.created_at,
-    (SELECT COUNT(*) FROM messages WHERE session_id = s.id) AS message_count,
-    (SELECT COUNT(*) FROM approvals WHERE session_id = s.id AND status = 'pending') AS pending_approvals,
-    (SELECT COUNT(*) FROM todos WHERE session_id = s.id AND status != 'completed') AS pending_todos
-FROM sessions s
-WHERE s.id = '<session-id>';
-```
-
----
-
-#### 10.5. Query Messages by stop_reason (New - Migration 008)
-
-```sql
--- Get all final messages (end of turn) for a session
-SELECT
-    id,
-    role,
-    content,
-    stop_reason,
-    created_at
-FROM messages
-WHERE session_id = '<session-id>'
-  AND stop_reason = 'end_turn'
-ORDER BY created_at ASC;
-
--- Get all intermediate messages (during tool execution)
-SELECT
-    id,
-    role,
-    content,
-    stop_reason,
-    created_at
-FROM messages
-WHERE session_id = '<session-id>'
-  AND stop_reason = 'tool_use'
-ORDER BY created_at ASC;
-
--- Count messages by stop_reason type
-SELECT
-    stop_reason,
-    COUNT(*) AS message_count
-FROM messages
-WHERE session_id = '<session-id>'
-GROUP BY stop_reason
-ORDER BY message_count DESC;
-
--- Get conversation flow (final messages only, excludes intermediate reasoning)
-SELECT
-    role,
-    content,
-    created_at
-FROM messages
-WHERE session_id = '<session-id>'
-  AND (role = 'user' OR stop_reason = 'end_turn')
-ORDER BY created_at ASC;
-```
-
----
-
-### Analytics Queries
-
-#### 11. User Activity Report
-
-```sql
--- Users with most sessions and messages
-SELECT
-    u.email,
-    u.display_name,
-    COUNT(DISTINCT s.id) AS total_sessions,
-    COUNT(m.id) AS total_messages,
-    SUM(s.token_count) AS total_tokens,
-    MAX(u.last_login_at) AS last_login
-FROM users u
-LEFT JOIN sessions s ON u.id = s.user_id
-LEFT JOIN messages m ON s.id = m.session_id AND m.role = 'user'
-WHERE u.is_active = 1
-GROUP BY u.id, u.email, u.display_name, u.last_login_at
-ORDER BY total_sessions DESC;
-```
-
----
-
-#### 12. Approval Metrics
-
-```sql
--- Approval statistics
-SELECT
-    operation_type,
-    COUNT(*) AS total_requests,
-    SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) AS approved_count,
-    SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) AS rejected_count,
-    SUM(CASE WHEN status = 'expired' THEN 1 ELSE 0 END) AS expired_count,
-    AVG(DATEDIFF(second, created_at, responded_at)) AS avg_response_time_seconds
-FROM approvals
-WHERE created_at >= DATEADD(day, -7, GETDATE())  -- Last 7 days
-GROUP BY operation_type
-ORDER BY total_requests DESC;
-```
-
----
-
-#### 13. Performance Metrics
-
-```sql
--- P50, P95, P99 latency for operations
-SELECT
-    operation_type,
-    COUNT(*) AS total_operations,
-    AVG(duration_ms) AS avg_duration_ms,
-    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY duration_ms) OVER () AS p50_duration_ms,
-    PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY duration_ms) OVER () AS p95_duration_ms,
-    PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY duration_ms) OVER () AS p99_duration_ms
-FROM performance_metrics
-WHERE created_at >= DATEADD(day, -1, GETDATE())  -- Last 24 hours
-GROUP BY operation_type
-ORDER BY avg_duration_ms DESC;
-```
-
----
-
-#### 14. Token Usage by User
-
-```sql
--- Token usage for billing/monitoring
-SELECT
-    u.email,
-    u.display_name,
-    SUM(s.token_count) AS total_tokens,
-    COUNT(DISTINCT s.id) AS session_count,
-    AVG(s.token_count) AS avg_tokens_per_session,
-    SUM(s.token_count) * 0.000003 AS estimated_cost_usd  -- ~$3 per 1M tokens
-FROM users u
-JOIN sessions s ON u.id = s.user_id
-WHERE s.created_at >= DATEADD(month, -1, GETDATE())  -- Last month
-GROUP BY u.id, u.email, u.display_name
-ORDER BY total_tokens DESC;
-```
-
----
-
-## Migration History
-
-### Initial Schema (init-db.sql)
-
-**Date**: 2025-01-09 (Week 1)
-**Tables Created**: 7
-- users (with password_hash)
-- sessions
-- messages
-- approvals (without priority/expires_at)
-- checkpoints
-- refresh_tokens (for JWT)
-- audit_log
-
----
-
-### Migration 001 - Advanced Features
-
-**Date**: 2025-01-10 (Week 2)
-**Tables Created**: 4
-- todos
-- tool_permissions
-- permission_presets
-- agent_executions
-
-**Impact**: Enables todo tracking, permission system
-
----
-
-### Migration 002 - Observability Tables
-
-**Date**: 2025-01-11 (Week 2)
-**Tables Created**: 1/5 (PARTIAL FAILURE)
-- ✅ performance_metrics
-- ❌ mcp_tool_calls (FK error)
-- ❌ session_files (FK error)
-- ❌ error_logs (FK error)
-- ❌ Various views (FK error)
-
-**Impact**: LOW - Basic observability works with performance_metrics + audit_log
-
-**Known Issue**: Foreign key constraints failed on some tables. System works without them.
-
----
-
-### Migration 003 - Role-Based Access Control
-
-**Date**: 2025-01-11 (Week 2)
-**Change**: Added `role` column to `users` table
-```sql
-ALTER TABLE users ADD role NVARCHAR(20) DEFAULT 'viewer';
-ALTER TABLE users ADD CONSTRAINT chk_users_role CHECK (role IN ('admin', 'editor', 'viewer'));
-```
-
-**Impact**: Enables role-based permissions (admin/editor/viewer)
-
----
-
-### Migration 004 - Approval Priority + Expiration
-
-**Date**: 2025-11-10 (Week 7)
-**Changes**:
-```sql
-ALTER TABLE approvals ADD priority NVARCHAR(20) DEFAULT 'medium';
-ALTER TABLE approvals ADD expires_at DATETIME2;
-ALTER TABLE approvals ADD CONSTRAINT chk_approvals_priority CHECK (priority IN ('low', 'medium', 'high'));
-ALTER TABLE approvals DROP CONSTRAINT chk_approvals_status;
-ALTER TABLE approvals ADD CONSTRAINT chk_approvals_status CHECK (status IN ('pending', 'approved', 'rejected', 'expired'));
-```
-
-**Impact**: Better UX (priority levels), auto-expiry (5-minute default)
-
----
-
-### Migration 005 - Microsoft OAuth Integration
-
-**Date**: 2025-01-11 (Week 2.5)
-**Changes**:
-```sql
--- Add Microsoft OAuth columns
-ALTER TABLE users ADD microsoft_user_id NVARCHAR(255);
-ALTER TABLE users ADD CONSTRAINT uk_users_microsoft_id UNIQUE (microsoft_user_id);
-ALTER TABLE users ADD bc_access_token_encrypted NVARCHAR(MAX);
-ALTER TABLE users ADD bc_refresh_token_encrypted NVARCHAR(MAX);
-ALTER TABLE users ADD bc_token_expires_at DATETIME2;
-ALTER TABLE users ADD bc_tenant_id NVARCHAR(255);
-ALTER TABLE users ADD bc_environment NVARCHAR(255);
-
--- Drop password column
-ALTER TABLE users DROP COLUMN password_hash;
-```
-
-**Impact**: Microsoft OAuth replaces JWT, per-user BC tokens
-
----
-
-### Migration 006 - Drop refresh_tokens Table
-
-**Date**: 2025-01-11 (Week 2.5)
-**Change**:
-```sql
-DROP TABLE IF EXISTS refresh_tokens;
-```
-
-**Reason**: Session cookies replace JWT refresh tokens
-
-**Impact**: Simplified session management
-
----
-
-## Database Connection
+## Connection Configuration
 
 ### Connection String Format
 
 ```
-Server=sqlsrv-bcagent-dev.database.windows.net;
+Server=tcp:sqlsrv-bcagent-dev.database.windows.net,1433;
 Database=sqldb-bcagent-dev;
 User Id=bcagentadmin;
-Password=<from Azure Key Vault>;
+Password=<from .env>;
 Encrypt=true;
 TrustServerCertificate=false;
 Connection Timeout=30;
@@ -1307,7 +774,10 @@ Connection Timeout=30;
 ### Environment Variables
 
 ```env
-DATABASE_URL="mssql://bcagentadmin:<password>@sqlsrv-bcagent-dev.database.windows.net:1433/sqldb-bcagent-dev?encrypt=true"
+DATABASE_SERVER=sqlsrv-bcagent-dev.database.windows.net
+DATABASE_NAME=sqldb-bcagent-dev
+DATABASE_USER=bcagentadmin
+DATABASE_PASSWORD=<secret>
 ```
 
 ### Code Example (mssql package)
@@ -1316,236 +786,104 @@ DATABASE_URL="mssql://bcagentadmin:<password>@sqlsrv-bcagent-dev.database.window
 import sql from 'mssql';
 
 const config = {
-  server: 'sqlsrv-bcagent-dev.database.windows.net',
+  server: 'tcp:sqlsrv-bcagent-dev.database.windows.net',
   database: 'sqldb-bcagent-dev',
   user: 'bcagentadmin',
   password: process.env.DATABASE_PASSWORD,
   options: {
     encrypt: true,
     trustServerCertificate: false
+  },
+  pool: {
+    max: 10,
+    min: 1,
+    idleTimeoutMillis: 300000  // 5 minutes
   }
 };
 
 const pool = await sql.connect(config);
-const result = await pool.request()
-  .input('sessionId', sql.UniqueIdentifier, sessionId)
-  .query('SELECT * FROM messages WHERE session_id = @sessionId');
 ```
 
 ---
 
-## Connection Management
+## Key Architecture Patterns
 
-### Connection Pool Configuration
+### 1. Event Sourcing
 
-**Location**: `backend/src/config/database.ts`
+**Pattern**: Append-only event log → Materialized views
 
-**Pool Settings**:
-```typescript
-pool: {
-  max: 10,                     // Maximum 10 connections
-  min: 1,                      // Keep 1 connection always alive (prevents cold starts)
-  idleTimeoutMillis: 300000,   // 5 minutes (increased from 30s to prevent disconnections)
-  acquireTimeoutMillis: 10000  // 10 seconds to acquire connection from pool
-},
-connectionTimeout: 30000,      // 30 seconds - Overall connection establishment timeout
-requestTimeout: 30000          // 30 seconds - Individual query timeout
-```
+**Implementation**:
+- `message_events` = Immutable event log
+- `messages` = Materialized view (built async via BullMQ)
+- Atomic sequence numbers via Redis INCR
+- Full replay capability for debugging
 
-**Key Configuration Changes**:
-- **`min: 1`** (previously 0): Ensures at least one connection is always maintained to prevent cold starts
-- **`idleTimeoutMillis: 300000`** (previously 30000): Increased from 30 seconds to 5 minutes to prevent Azure SQL from closing idle connections
+**Benefits**:
+- Complete audit trail
+- Time-travel debugging
+- CQRS pattern support
+- Stream processing ready
 
----
+### 2. Human-in-the-Loop (HITL)
 
-### Database Keepalive Utility
+**Pattern**: Approval requests for high-risk operations
 
-**Purpose**: Maintain database connection alive during periods of inactivity by periodically executing lightweight queries.
+**Implementation**:
+- Agent detects write operation
+- Creates `approval` record (status=pending)
+- WebSocket notifies user
+- User approves/rejects via UI
+- Tool executed only if approved
 
-**Location**: `backend/src/utils/databaseKeepalive.ts`
+**Benefits**:
+- User control over destructive operations
+- Audit trail of all approvals
+- Timeout protection (auto-expire)
 
-**Configuration**:
-- **Interval**: 3 minutes (180,000 milliseconds)
-- **Query**: `SELECT 1 AS keepalive` (lightweight health check)
-- **Max consecutive errors**: 5 (stops keepalive after 5 failures)
+### 3. Hierarchical Todos
 
-**Features**:
+**Pattern**: Parent-child relationships + dependency tracking
 
-1. **Periodic Execution**: Executes immediately on start, then every 3 minutes
-2. **Auto-reconnection**: If pool is disconnected, attempts to reconnect via `initDatabase()`
-3. **Error Tracking**: Counts consecutive errors, stops after reaching max (5)
-4. **Recovery**: Resets error count on successful execution
-5. **Lifecycle Integration**: Starts on server init, stops on graceful shutdown
+**Implementation**:
+- `parent_todo_id` for tree structure
+- `dependencies` JSON array for cross-branch deps
+- `order` field for manual sorting
+- Dual forms: `content` + `activeForm`
 
-**API**:
-
-```typescript
-import {
-  startDatabaseKeepalive,
-  stopDatabaseKeepalive,
-  isKeepaliveRunning,
-  getKeepaliveErrorCount
-} from './utils/databaseKeepalive';
-
-// Start keepalive (called on server initialization)
-startDatabaseKeepalive();  // Returns NodeJS.Timeout
-
-// Stop keepalive (called on graceful shutdown)
-stopDatabaseKeepalive();
-
-// Check if running
-const isRunning = isKeepaliveRunning();  // boolean
-
-// Get error count
-const errorCount = getKeepaliveErrorCount();  // number
-```
-
-**Logs**:
-
-```
-🔄 Starting database keepalive (interval: 180s)
-✅ Database keepalive scheduled (next execution in 180s)
-⏰ Database keepalive interval triggered
-💚 Database keepalive: ping successful
-```
-
-**Error Handling**:
-
-```
-⚠️  Database keepalive: connection not available, attempting reconnection...
-✅ Database keepalive: reconnection successful
-❌ Database keepalive failed (error 1/5): Connection timeout
-✅ Database keepalive: recovered from previous errors
-❌ Database keepalive: too many consecutive errors, stopping keepalive
-```
-
-**Why Needed**: Azure SQL Database closes idle connections after approximately 5 minutes of inactivity. The keepalive mechanism prevents this by executing a lightweight query every 3 minutes (well within the idle timeout window).
-
----
-
-### Connection Retry Logic
-
-**Location**: `backend/src/config/database.ts` → `connectWithRetry()`
-
-**Features**:
-- **Max retries**: 10 attempts
-- **Exponential backoff**: 100ms, 200ms, 400ms, 800ms, 1600ms, 3200ms (capped at 3200ms)
-- **Connection verification**: Executes `SELECT 1 AS health` after connection to verify health
-- **Specific error detection**: Provides actionable error messages for common connection issues
-
-**Error Types Detected**:
-
-| Error Code | Description | Action |
-|------------|-------------|--------|
-| `ETIMEDOUT` | Connection timeout | Check network connectivity and Azure SQL firewall rules |
-| `ECONNREFUSED` | Connection refused | Check if Azure SQL server is running and accessible |
-| `ECONNRESET` | Connection was reset | Check SSL/TLS configuration and network stability |
-| `ELOGIN` / `Login failed` | Authentication failed | Check DATABASE_USER and DATABASE_PASSWORD |
-| `ENOTFOUND` | Server not found | Check DATABASE_SERVER hostname |
-| `EINSTLOOKUP` | Instance lookup failed | Check server name and port |
-
-**Code Flow**:
-
-```typescript
-// 1. Attempt connection with retry
-const pool = await connectWithRetry(config, 10);
-
-// 2. Verify connection health
-const isHealthy = await verifyConnection(pool);
-if (!isHealthy) {
-  await pool.close();
-  throw new Error('Connection established but verification failed');
-}
-
-// 3. Set up error handler for runtime disconnections
-pool.on('error', async (err: Error) => {
-  console.error('❌ Database connection error detected:');
-  handleDatabaseError(err);
-
-  // Mark pool as null to force reconnection
-  pool = null;
-
-  // Attempt to reconnect in background (5 seconds delay)
-  setTimeout(async () => {
-    try {
-      await initDatabase();
-      console.log('✅ Automatic reconnection successful');
-    } catch (reconnectError) {
-      console.error('❌ Automatic reconnection failed:', reconnectError);
-    }
-  }, 5000);
-});
-```
-
-**Retry Example Logs**:
-
-```
-🔌 Connecting to Azure SQL Database... (attempt 1/10)
-❌ Database client error: Connection timeout
-   Connection timeout. Check network connectivity and Azure SQL firewall rules.
-🔄 Retrying in 100ms... (attempt 1/10)
-🔌 Connecting to Azure SQL Database... (attempt 2/10)
-✅ Database connection verified (SELECT 1 successful)
-✅ Connected to Azure SQL Database
-```
-
-**Automatic Reconnection on Runtime Errors**:
-
-If the connection pool encounters an error during runtime (e.g., network interruption), the error handler will:
-1. Log the specific error type
-2. Mark the pool as `null` (forces reinitialization on next query)
-3. Wait 5 seconds
-4. Attempt reconnection in the background
-
-This ensures resilient connection handling without requiring server restart.
+**Benefits**:
+- Complex task breakdowns
+- Dependency resolution
+- Progress tracking
 
 ---
 
 ## Security Considerations
 
-### 1. BC Token Encryption
+### 1. Encryption at Rest
 
-**Algorithm**: AES-256-GCM
-**Implementation**: `EncryptionService.ts`
-
-```typescript
-// Encryption
-const { encrypted, iv } = await encryptionService.encrypt(bcAccessToken);
-await db.query(`
-  UPDATE users SET bc_access_token_encrypted = @encrypted WHERE id = @userId
-`, { encrypted, userId });
-
-// Decryption
-const encrypted = await db.query(`SELECT bc_access_token_encrypted FROM users WHERE id = @userId`);
-const bcToken = await encryptionService.decrypt(encrypted);
-```
-
-**Key Storage**: Azure Key Vault (`kv-bcagent-dev` → secret `encryption-key`)
-
----
+- BC tokens encrypted with AES-256-GCM
+- Encryption key stored in Azure Key Vault
+- Per-user token storage (not global credentials)
 
 ### 2. SQL Injection Prevention
 
-**Use parameterized queries ALWAYS**:
+**Always use parameterized queries**:
+
 ```typescript
-// ✅ CORRECT - Parameterized
+// ✅ CORRECT
 const result = await pool.request()
-  .input('email', sql.NVarChar, userEmail)
-  .query('SELECT * FROM users WHERE email = @email');
+  .input('userId', sql.UniqueIdentifier, userId)
+  .query('SELECT * FROM users WHERE id = @userId');
 
-// ❌ WRONG - SQL injection risk
-const result = await pool.request()
-  .query(`SELECT * FROM users WHERE email = '${userEmail}'`);
+// ❌ WRONG (SQL injection risk)
+const result = await pool.query(`SELECT * FROM users WHERE id = '${userId}'`);
 ```
-
----
 
 ### 3. Row-Level Security (Future)
 
-**Planned**: Implement RLS to ensure users can only access their own data
+Planned implementation:
 
 ```sql
--- Example RLS policy (not yet implemented)
 CREATE SECURITY POLICY users_rls_policy
 ADD FILTER PREDICATE dbo.fn_user_access(user_id) ON dbo.sessions,
 ADD FILTER PREDICATE dbo.fn_user_access(user_id) ON dbo.messages;
@@ -1553,38 +891,179 @@ ADD FILTER PREDICATE dbo.fn_user_access(user_id) ON dbo.messages;
 
 ---
 
-## Maintenance Tasks
+## Common Queries
 
-### Daily
+### 1. Get Session with Complete History
 
-1. **Monitor approval expiry**: Ensure cron job is expiring old pending approvals
-2. **Check token usage**: Monitor `sessions.token_count` for cost tracking
-3. **Review error logs**: Check `audit_log` for actions starting with `error.*`
+```sql
+-- Get session metadata + message count + approval count
+SELECT
+    s.id AS session_id,
+    s.title,
+    s.is_active,
+    s.created_at,
+    (SELECT COUNT(*) FROM messages WHERE session_id = s.id) AS message_count,
+    (SELECT COUNT(*) FROM approvals WHERE session_id = s.id AND status = 'pending') AS pending_approvals,
+    (SELECT COUNT(*) FROM todos WHERE session_id = s.id AND status != 'completed') AS pending_todos
+FROM sessions s
+WHERE s.id = @sessionId;
 
-### Weekly
+-- Get all messages in order
+SELECT
+    id,
+    role,
+    content,
+    message_type,
+    stop_reason,
+    created_at
+FROM messages
+WHERE session_id = @sessionId
+ORDER BY sequence_number ASC;
 
-1. **Archive old sessions**: Soft delete sessions older than 30 days (set `is_active = 0`)
-2. **Analyze performance**: Review `performance_metrics` for slow operations
-3. **Check BC token expiry**: Ensure auto-refresh is working (no expired tokens)
+-- Get all events for replay
+SELECT
+    id,
+    event_type,
+    sequence_number,
+    timestamp,
+    data
+FROM message_events
+WHERE session_id = @sessionId
+ORDER BY sequence_number ASC;
+```
 
-### Monthly
+### 2. Create Approval Request
 
-1. **Database backup**: Automated by Azure, verify backups exist
-2. **Review user activity**: Identify inactive users, consider cleanup
-3. **Token cost analysis**: Sum `token_count` by user for billing
+```sql
+-- Agent requests approval
+INSERT INTO approvals (
+    session_id,
+    message_id,
+    action_type,
+    action_description,
+    action_data,
+    tool_name,
+    tool_args,
+    status,
+    priority,
+    expires_at
+) VALUES (
+    @sessionId,
+    @messageId,
+    'bc_create',
+    'Create new customer: Acme Corp',
+    '{"name": "Acme Corp", "email": "contact@acme.com"}',
+    'bc_create_customer',
+    '{"name": "Acme Corp", "email": "contact@acme.com"}',
+    'pending',
+    'high',
+    DATEADD(minute, 5, GETDATE())
+);
+
+-- Auto-expire old approvals (cron job)
+UPDATE approvals
+SET status = 'expired'
+WHERE status = 'pending'
+  AND expires_at < GETDATE();
+```
+
+### 3. Event Sourcing: Append Event + Get Sequence
+
+```typescript
+// 1. Get next sequence number (atomic via Redis)
+const sequenceNumber = await redisClient.incr(`session:${sessionId}:sequence`);
+
+// 2. Append event (immutable)
+await pool.request()
+  .input('id', sql.UniqueIdentifier, newid())
+  .input('sessionId', sql.UniqueIdentifier, sessionId)
+  .input('eventType', sql.NVarChar, 'message_delta')
+  .input('sequenceNumber', sql.Int, sequenceNumber)
+  .input('data', sql.NVarChar, JSON.stringify(eventData))
+  .query(`
+    INSERT INTO message_events (id, session_id, event_type, sequence_number, data)
+    VALUES (@id, @sessionId, @eventType, @sequenceNumber, @data)
+  `);
+```
+
+### 4. Performance Metrics Query
+
+```sql
+-- P50, P95, P99 latency for agent operations
+SELECT
+    metric_name,
+    COUNT(*) AS total_operations,
+    AVG(metric_value) AS avg_value,
+    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY metric_value) AS p50,
+    PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY metric_value) AS p95,
+    PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY metric_value) AS p99
+FROM performance_metrics
+WHERE metric_name LIKE 'agent.%'
+  AND metric_unit = 'ms'
+  AND created_at >= DATEADD(day, -1, GETDATE())
+GROUP BY metric_name
+ORDER BY avg_value DESC;
+```
+
+---
+
+## Migration History
+
+### Initial Schema (init-db.sql)
+**Date**: 2025-01-09
+**Tables**: 7 (users, sessions, messages, approvals, checkpoints, refresh_tokens, audit_log)
+
+### Migration 001 - Advanced Features
+**Date**: 2025-01-10
+**Added**: todos, tool_permissions, permission_presets, agent_executions
+
+### Migration 002 - Observability
+**Date**: 2025-01-11
+**Added**: performance_metrics, session_files
+
+### Migration 003 - RBAC
+**Date**: 2025-01-11
+**Added**: `role` column to users
+
+### Migration 004 - Approval Priority
+**Date**: 2025-11-10
+**Added**: `priority`, `expires_at` to approvals
+
+### Migration 005 - Microsoft OAuth
+**Date**: 2025-01-11
+**Added**: `microsoft_id`, `microsoft_email`, `microsoft_tenant_id`, BC token columns
+**Removed**: `password_hash` (now nullable for hybrid auth)
+
+### Migration 006 - Drop Refresh Tokens
+**Date**: 2025-01-11
+**Removed**: `refresh_tokens` table (session cookies replace JWT)
+
+### Migration 007 - Message Types
+**Date**: 2025-11-15
+**Added**: `message_type` to messages
+
+### Migration 008 - Stop Reason
+**Date**: 2025-11-17
+**Added**: `stop_reason` to messages (native SDK lifecycle)
+
+### Migration 009 - Event Sourcing (UNDOCUMENTED UNTIL NOW)
+**Date**: Unknown (estimated 2025-11-18)
+**Added**: `message_events` table, `event_id` + `sequence_number` to messages
+**Purpose**: Implement Event Sourcing pattern for message streaming
 
 ---
 
 ## Related Documents
 
-- **System Architecture**: `docs/01-architecture/01-system-architecture.md`
-- **Microsoft OAuth**: `docs/07-security/06-microsoft-oauth-setup.md`
-- **Token Encryption**: `docs/07-security/08-token-encryption.md`
-- **Session Cookies**: `docs/08-state-persistence/09-session-cookies-vs-jwt.md`
+- **Backend Architecture**: `docs/backend/architecture-deep-dive.md`
+- **WebSocket Events**: `docs/backend/websocket-contract.md`
+- **SDK Messages**: `docs/backend/06-sdk-message-structures.md`
+- **Authentication**: `docs/backend/authentication.md`
 
 ---
 
-**Document Version**: 1.0
-**Last Updated**: 2025-11-12
-**Database Version**: 11/15 tables functional (4 missing, non-critical)
+**Document Version**: 2.0 (COMPLETE REWRITE)
+**Last Audited**: 2025-11-20
+**Database Version**: 13/13 tables functional ✅
+**Audit Script**: `backend/scripts/temp-audit-schema-v2.sql`
 **Maintainer**: BC-Claude-Agent Team

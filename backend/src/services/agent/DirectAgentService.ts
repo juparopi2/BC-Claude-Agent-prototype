@@ -41,7 +41,8 @@ import type { Tool } from '@anthropic-ai/sdk/resources/messages';  // ⭐ Use na
 import { AnthropicClient } from './AnthropicClient';
 import { randomUUID } from 'crypto';
 import { getEventStore } from '../events/EventStore';
-import { logger } from '@/utils/logger';
+import { createChildLogger } from '@/utils/logger';
+import type { Logger } from 'pino';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -110,6 +111,7 @@ export class DirectAgentService {
   private client: IAnthropicClient;
   private approvalManager?: ApprovalManager;
   private mcpDataPath: string;
+  private logger: Logger;
 
   constructor(
     approvalManager?: ApprovalManager,
@@ -126,6 +128,9 @@ export class DirectAgentService {
     // Setup MCP data path
     const mcpServerDir = path.join(process.cwd(), 'mcp-server');
     this.mcpDataPath = path.join(mcpServerDir, 'data', 'v1.0');
+
+    // Initialize child logger with service context
+    this.logger = createChildLogger({ service: 'DirectAgentService' });
   }
 
   /**
@@ -212,19 +217,19 @@ export class DirectAgentService {
     onEvent?: (event: AgentEvent) => void
   ): Promise<AgentExecutionResult> {
     // DIAGNOSTIC LOGGING - Entry point
-    logger.info('🚀 DirectAgentService.executeQueryStreaming CALLED', {
+    this.logger.info({
       sessionId,
       promptLength: prompt.length,
       promptPreview: prompt.substring(0, 50),
       hasApiKey: !!env.ANTHROPIC_API_KEY,
       apiKeyLength: env.ANTHROPIC_API_KEY?.length || 0,
       hasOnEvent: !!onEvent,
-    });
+    }, '🚀 DirectAgentService.executeQueryStreaming CALLED');
 
     // Validate API key
     if (!env.ANTHROPIC_API_KEY || env.ANTHROPIC_API_KEY.trim() === '') {
       const error = new Error('ANTHROPIC_API_KEY is missing or empty - cannot execute agent');
-      logger.error('❌ API Key validation failed', { error: error.message });
+      this.logger.error({ error: error.message }, '❌ API Key validation failed');
       throw error;
     }
 
@@ -266,7 +271,7 @@ export class DirectAgentService {
         console.log(`\n========== TURN ${turnCount} (STREAMING) ==========`);
 
         // ========== STREAM CLAUDE RESPONSE ==========
-        logger.info('📡 Creating Anthropic stream...', { sessionId, turnCount });
+        this.logger.info({ sessionId, turnCount }, '📡 Creating Anthropic stream...');
 
         let stream;
         try {
@@ -278,9 +283,9 @@ export class DirectAgentService {
             system: this.getSystemPrompt(),
           });
 
-          logger.info('✅ Stream created successfully', { sessionId, turnCount });
+          this.logger.info({ sessionId, turnCount }, '✅ Stream created successfully');
         } catch (streamError) {
-          logger.error('❌ Stream creation failed', {
+          this.logger.error({
             sessionId,
             turnCount,
             error: streamError instanceof Error ? streamError.message : String(streamError),
@@ -288,7 +293,7 @@ export class DirectAgentService {
             errorCode: (streamError as Error & { code?: string })?.code,
             errorSyscall: (streamError as Error & { syscall?: string })?.syscall,
             stack: streamError instanceof Error ? streamError.stack : undefined,
-          });
+          }, '❌ Stream creation failed');
           throw streamError;
         }
 

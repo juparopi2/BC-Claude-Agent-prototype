@@ -1,6 +1,0 @@
--- Check schema of tables with missing columns
-
-SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE, IS_NULLABLE
-FROM INFORMATION_SCHEMA.COLUMNS
-WHERE TABLE_NAME IN ('todos', 'approvals', 'audit_log')
-ORDER BY TABLE_NAME, ORDINAL_POSITION;

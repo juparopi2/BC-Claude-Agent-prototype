@@ -29,6 +29,7 @@ describe('messageHelpers', () => {
     mockExecuteQuery = executeQuery as Mock;
     mockRandomUUID = randomUUID as Mock;
     vi.clearAllMocks();
+    vi.resetAllMocks(); // Reset implementation mocks
   });
 
   describe('saveThinkingMessage', () => {
@@ -387,6 +388,119 @@ describe('messageHelpers', () => {
       await expect(
         updateToolResultMessage(sessionId, toolUseId, toolName, toolArgs, circularResult, true)
       ).rejects.toThrow();
+    });
+
+    it('should handle very large content (>10KB) in thinking message', async () => {
+      // Arrange
+      const sessionId = 'test-session-large-content';
+      const largeContent = 'a'.repeat(15000); // 15KB content
+      const mockUUID = 'thinking-large-uuid';
+
+      mockRandomUUID.mockReturnValueOnce(mockUUID);
+      mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
+
+      // Act
+      await saveThinkingMessage(sessionId, largeContent);
+
+      // Assert
+      expect(mockExecuteQuery).toHaveBeenCalledOnce();
+      const callArgs = mockExecuteQuery.mock.calls[0];
+      const metadata = JSON.parse(callArgs[1].metadata);
+      expect(metadata.content).toBe(largeContent);
+      expect(metadata.content.length).toBe(15000);
+    });
+
+    it('should handle null sessionId gracefully', async () => {
+      // Arrange
+      const nullSessionId = null as unknown as string;
+      const content = 'Thinking content';
+      const mockUUID = 'thinking-null-session-uuid';
+      const dbError = new Error('Cannot insert NULL value into column session_id');
+
+      mockRandomUUID.mockReturnValueOnce(mockUUID);
+      mockExecuteQuery.mockRejectedValueOnce(dbError);
+
+      // Act & Assert
+      // Database should reject NULL sessionId (NOT NULL constraint)
+      await expect(saveThinkingMessage(nullSessionId, content)).rejects.toThrow(
+        'Cannot insert NULL value into column session_id'
+      );
+      expect(mockExecuteQuery).toHaveBeenCalledOnce();
+    });
+
+    it('should handle SQL injection attempts in sessionId', async () => {
+      // Arrange
+      const maliciousSessionId = "'; DROP TABLE messages; --";
+      const content = 'Normal thinking content';
+      const mockUUID = 'thinking-sql-injection-uuid';
+
+      mockRandomUUID.mockReturnValueOnce(mockUUID);
+      mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
+
+      // Act
+      await saveThinkingMessage(maliciousSessionId, content);
+
+      // Assert
+      // Parameterized queries should prevent SQL injection
+      expect(mockExecuteQuery).toHaveBeenCalledOnce();
+      const callArgs = mockExecuteQuery.mock.calls[0];
+      expect(callArgs[1].sessionId).toBe(maliciousSessionId);
+      // Verify the query uses parameterized @sessionId (not string interpolation)
+      expect(callArgs[0]).toContain('@sessionId');
+      expect(callArgs[0]).not.toContain(maliciousSessionId);
+    });
+
+    it('should handle Unicode and emoji characters in tool arguments', async () => {
+      // Arrange
+      const sessionId = 'test-session-unicode';
+      const toolName = 'mcp__erptools__create_customer';
+      const toolArgs = {
+        name: 'José García 中文 日本語',
+        emoji: '🚀 ✨ 🎉',
+        special: 'Ñoño Zürich Москва'
+      };
+      const mockUUID = 'tool-unicode-uuid';
+
+      mockRandomUUID.mockReturnValueOnce(mockUUID);
+      mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
+
+      // Act
+      const result = await saveToolUseMessage(sessionId, toolName, toolArgs);
+
+      // Assert
+      expect(result).toBe(mockUUID);
+      const callArgs = mockExecuteQuery.mock.calls[0];
+      const metadata = JSON.parse(callArgs[1].metadata);
+      expect(metadata.tool_args).toEqual(toolArgs);
+      expect(metadata.tool_args.name).toBe('José García 中文 日本語');
+      expect(metadata.tool_args.emoji).toBe('🚀 ✨ 🎉');
+    });
+
+    it('should preserve update failure count when no rows affected', async () => {
+      // Arrange
+      const sessionId = 'test-session-no-match';
+      const toolUseId = 'nonexistent-tool-uuid';
+      const toolName = 'mcp__erptools__test_tool';
+      const toolArgs = { test: 'value' };
+      const result = { data: 'result' };
+
+      // Mock console.error to verify error logging
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [0] }); // No rows updated
+
+      // Act
+      await updateToolResultMessage(sessionId, toolUseId, toolName, toolArgs, result, true);
+
+      // Assert
+      expect(mockExecuteQuery).toHaveBeenCalledOnce();
+      // Verify error was logged with exact format from messageHelpers.ts:114
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        `[messageHelpers] Tool message update failed: id '${toolUseId}' not found in database`
+      );
+
+      // Cleanup
+      consoleErrorSpy.mockRestore();
     });
   });
 });

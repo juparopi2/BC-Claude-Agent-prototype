@@ -4,7 +4,7 @@ import React from 'react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { CheckCircle2, Circle, Clock, XCircle, Loader2 } from 'lucide-react';
-import type { Todo } from '@/lib/types';
+import type { Todo } from '@/types/api';
 import { cn } from '@/lib/utils';
 
 export interface TodoItemProps {

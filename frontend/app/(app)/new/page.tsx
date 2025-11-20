@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useChat } from '@/hooks';
-import { socketChatApi } from '@/lib/socket';
+import { useChat, useAuth } from '@/hooks';
 import { useWebSocket } from '@/contexts/websocket';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -12,7 +11,8 @@ import { MessageSquarePlus, Loader2, Send } from 'lucide-react';
 export default function NewChatPage() {
   const router = useRouter();
   const { createSession, currentSession, sessionsLoading } = useChat();
-  const { socket } = useWebSocket();
+  const { socket, joinSessionAndWait, sendMessage } = useWebSocket();
+  const { user } = useAuth();
   const [message, setMessage] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [creationStatus, setCreationStatus] = useState<string>('');
@@ -52,13 +52,14 @@ export default function NewChatPage() {
 
       // Step 2: Join room and wait for confirmation (Socket.IO with retry)
       console.log('[NewChatPage] [3/4] Joining room...');
-      await socketChatApi.joinSessionAndWait(session.id);
+      await joinSessionAndWait(session.id);
 
       console.log('[NewChatPage] [4/4] Sending initial message...');
       setCreationStatus('Sending message...');
 
       // Step 3: Send initial message (Socket.IO)
-      socketChatApi.sendMessage(session.id, messageToSend);
+      const userId = user?.id || 'guest';
+      sendMessage(session.id, messageToSend, userId);
 
       console.log('[NewChatPage] ✅ All steps complete, navigating to chat...');
 

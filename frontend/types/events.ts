@@ -5,7 +5,7 @@
  * Based on backend websocket-contract.md
  */
 
-import type { StopReason } from "./api";
+import type { StopReason } from "./sdk";
 
 export interface BaseAgentEvent {
   eventId: string;

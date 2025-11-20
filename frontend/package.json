@@ -48,6 +48,7 @@
     "zustand": "5.0.8"
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "0.68.0",
     "@tailwindcss/postcss": "4.1.17",
     "@testing-library/jest-dom": "6.6.3",
     "@testing-library/react": "16.1.0",

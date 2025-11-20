@@ -9,7 +9,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { ChevronDown, ListTodo } from 'lucide-react';
 import { useTodos } from '@/hooks';
 import { TodoItem } from './TodoItem';
-import type { Todo } from '@/lib/types';
+import type { Todo } from '@/types/api';
 import { cn } from '@/lib/utils';
 
 export interface TodoListProps {

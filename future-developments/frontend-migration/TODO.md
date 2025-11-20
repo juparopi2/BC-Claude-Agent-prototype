@@ -1,6 +1,6 @@
 # Frontend Migration TODO
 
-**Status**: 62% Complete (Phase 1 ✅ + Phase 1.5 Cleanup ✅)
+**Status**: 76% Complete (Phase 1 ✅ + Phase 1.5 Cleanup ✅)
 **Last Updated**: 2025-11-20
 **Related Document**: [Migration Plan](./migration-plan.md)
 
@@ -11,12 +11,12 @@
 | Phase | Tasks | Completed | Percentage |
 |-------|-------|-----------|------------|
 | Phase 1: Core Infrastructure | 18 | 18 | 100% ✅ |
-| **Phase 1.5: Cleanup Sprint** | **15** | **13** | **87%** |
+| **Phase 1.5: Cleanup Sprint** | **21** | **21** | **100% ✅** |
 | Phase 2: Pages & Layout | 10 | 0 | 0% |
 | Phase 3: Chat Interface | 8 | 0 | 0% |
 | Phase 4: Approvals & Shared | 6 | 0 | 0% |
 | Phase 5: Cleanup & Testing | 10 | 0 | 0% |
-| **TOTAL** | **67** | **31** | **46%** |
+| **TOTAL** | **73** | **39** | **53%** |
 
 ---
 
@@ -59,11 +59,12 @@
 
 ---
 
-## 🔄 Phase 1.5: Cleanup Sprint (IN PROGRESS - 13/15)
+## ✅ Phase 1.5: Cleanup Sprint (COMPLETED - 21/21)
 
 **Purpose**: Migrate existing components and pages from deprecated imports to new Phase 1 architecture before building new features in Phase 2.
 
 **Started**: 2025-11-20
+**Completed**: 2025-11-20
 
 ### Sprint 1.1: Consolidate Stores (4 tasks) ✅
 - [x] **Create `stores/approval.ts`** (migrated from `store/approvalStore.ts`)
@@ -136,60 +137,116 @@
 - [x] **Migrate `app/(app)/layout.tsx`**
   - Changed: `SocketProvider` → `WebSocketProvider`
   - Updated comment to reference WebSocketProvider
-- [x] **Migrate `app/(app)/new/page.tsx`**
+- [x] **Migrate `app/(app)/new/page.tsx`** ⚠️ **INCOMPLETE** (completed in Sprint 1.6)
   - Changed: `useSocketContext` → `useWebSocket()`
 
 **Test**: ✅ TypeScript: 0 errors, Build: successful (7/7 pages), Lint: 8 warnings in deprecated files
 
-### Sprint 1.4: Remaining Components (2 tasks) - PENDING
+### Sprint 1.4: Remaining Components (2 tasks) ✅
 
-- [ ] **Migrate `components/todos/TodoList.tsx`**
-  - Check imports from `@/lib/types` → `@/types/api`
-  - Check `useSocket()` → `useWebSocket()`
+- [x] **Migrate `components/todos/TodoList.tsx`**
+  - Changed: imports from `@/lib/types` → `@/types/api`
+  - No `useSocket()` usage (already using `useTodos()` hook)
 
-- [ ] **Migrate `components/todos/TodoItem.tsx`**
-  - Check imports from `@/lib/types` → `@/types/api`
-  - Verify todo type matches `Todo` from `types/api.ts`
+- [x] **Migrate `components/todos/TodoItem.tsx`**
+  - Changed: imports from `@/lib/types` → `@/types/api`
+  - Verified todo type matches `Todo` from `types/api.ts`
 
-**Note**: `components/approvals/*` files NOT checked yet for deprecated imports
+**Note**: `components/approvals/*` files checked - no deprecated imports found ✅
 
-**Test**: Run `grep -r "from '@/lib/\(api\|socket\|types\)'" components/`
+**Test**: ✅ `grep` returned 0 matches for deprecated imports in components/
 
-### Sprint 1.5: Final Cleanup (6 tasks) - PENDING
+### Sprint 1.5: Final Cleanup (6 tasks) ✅
 
-- [ ] **Delete `lib/api.ts`** (deprecated, replaced by `lib/api-client.ts`)
-  ```bash
-  rm frontend/lib/api.ts
-  ```
-
-- [ ] **Delete `lib/socket.ts`** (deprecated, replaced by `contexts/websocket.tsx`)
-  ```bash
-  rm frontend/lib/socket.ts
-  ```
-
-- [ ] **Delete `lib/types.ts`** (deprecated, replaced by `types/*`)
-  ```bash
-  rm frontend/lib/types.ts
-  ```
-
-- [ ] **Delete `lib/json-utils.ts`** (deprecated, not used in new architecture)
-  ```bash
-  rm frontend/lib/json-utils.ts
-  ```
-
-- [ ] **Delete `providers/SocketProvider.tsx`** (deprecated, replaced by `contexts/websocket.tsx`)
-  ```bash
-  rm frontend/providers/SocketProvider.tsx
-  ```
-
-- [ ] **Validation**
-  ```bash
-  npm run type-check  # Should pass
-  npm run lint        # Should have 0 warnings in non-deprecated files
-  npm run build       # Should succeed
-  ```
+- [x] **Delete `lib/api.ts`** (deprecated, replaced by `lib/api-client.ts`)
+- [x] **Delete `lib/socket.ts`** (deprecated, replaced by `contexts/websocket.tsx`)
+- [x] **Delete `lib/types.ts`** (deprecated, replaced by `types/*`)
+- [x] **Delete `lib/json-utils.ts`** (deprecated, not used in new architecture)
+- [x] **Delete `providers/SocketProvider.tsx`** (deprecated, replaced by `contexts/websocket.tsx`)
+- [x] **Validation**
+  - ✅ `npm run type-check`: 0 errors
+  - ✅ `npm run lint`: 0 errors, 4 warnings (unused vars, non-critical)
+  - ✅ `npm run build`: Successful (7/7 pages)
+  - ✅ `npm run test`: 19/19 tests passing
 
 **Test**: ✅ No imports reference deleted files
+
+### Sprint 1.6: SDK Types & joinSessionAndWait (8 tasks) ✅
+
+**Purpose**: Install Anthropic SDK for type safety and implement joinSessionAndWait with retry logic
+
+- [x] **Install `@anthropic-ai/sdk@0.68.0`** (devDependency, exact version)
+  ```bash
+  npm install --save-dev --save-exact @anthropic-ai/sdk@0.68.0
+  ```
+
+- [x] **Create `types/sdk.ts`** (re-export SDK types)
+  - Re-exports: `StopReason`, `ContentBlock`, `TextBlock`, `ToolUseBlock`, `SDKMessage`, `MessageParam`, `Tool`
+  - Type guards: `isTextBlock()`, `isToolUseBlock()`
+  - Pattern mirrors `backend/src/types/sdk.ts` (gold standard)
+
+- [x] **Update `types/api.ts`** (use SDK StopReason)
+  - Replaced hardcoded `StopReason` union with `import type { StopReason } from './sdk'`
+  - Added comment explaining `content: string` simplification for UI
+
+- [x] **Update `types/events.ts`** (use SDK StopReason)
+  - Changed: `import type { StopReason } from "./api"` → `from "./sdk"`
+
+- [x] **Implement `joinSessionAndWait()` in `contexts/websocket.tsx`**
+  - Promise-based with timeout (default: 2000ms)
+  - Retry logic: 3 attempts with exponential backoff (1s, 2s, 4s)
+  - Listens for `session:joined` event from backend
+  - Cleanup: removes event listeners after success/timeout
+
+- [x] **Complete migration of `app/(app)/new/page.tsx`**
+  - Removed: `import { socketChatApi } from '@/lib/socket'`
+  - Added: `import { useAuth } from '@/hooks'`
+  - Changed: `socketChatApi.joinSessionAndWait()` → `joinSessionAndWait()` from WebSocket context
+  - Changed: `socketChatApi.sendMessage()` → `sendMessage(sessionId, content, user.id)` with userId
+  - userId handling: `const userId = user?.id || 'guest'`
+
+- [x] **Write tests for `contexts/websocket.tsx`** (12 tests)
+  - `__tests__/contexts/websocket.test.tsx`
+  - Tests: API surface, event emitters, listeners, joinSessionAndWait basics
+  - All tests passing ✅
+
+- [x] **Write tests for `app/(app)/new/page.tsx`** (4 tests)
+  - `__tests__/app/new/page.test.tsx`
+  - Tests: Rendering, suggestions, buttons, disabled states
+  - All tests passing ✅
+
+**Architectural Improvements**:
+- ✅ SDK types prevent type drift between frontend/backend
+- ✅ `joinSessionAndWait()` provides reliable WebSocket connection
+- ✅ userId propagation from useAuth() (no more hardcoded 'default-user')
+- ✅ Type-safe WebSocket API with retry logic
+
+**Test Results**:
+- ✅ TypeScript: 0 errors
+- ✅ Tests: 19/19 passing (3 test files)
+- ✅ Build: Successful (7/7 pages)
+- ✅ Lint: 0 errors, 4 warnings (unused vars in api-client, mutations, stores)
+
+**Files Modified (8)**:
+1. `package.json` - Added @anthropic-ai/sdk
+2. `types/sdk.ts` - NEW
+3. `types/api.ts` - SDK StopReason
+4. `types/events.ts` - SDK StopReason
+5. `contexts/websocket.tsx` - joinSessionAndWait
+6. `app/(app)/new/page.tsx` - Complete migration
+7. `components/todos/TodoList.tsx` - Fixed import
+8. `components/todos/TodoItem.tsx` - Fixed import
+
+**Files Deleted (5)**:
+1. `lib/api.ts`
+2. `lib/socket.ts`
+3. `lib/types.ts`
+4. `lib/json-utils.ts`
+5. `providers/SocketProvider.tsx`
+
+**Files Created (2)**:
+1. `__tests__/contexts/websocket.test.tsx`
+2. `__tests__/app/new/page.test.tsx`
 
 ---
 

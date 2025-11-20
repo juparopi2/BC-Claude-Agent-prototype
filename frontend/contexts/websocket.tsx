@@ -32,6 +32,7 @@ interface WebSocketContextValue {
   isConnected: boolean;
   joinSession: (sessionId: string) => void;
   leaveSession: (sessionId: string) => void;
+  joinSessionAndWait: (sessionId: string, timeoutMs?: number) => Promise<void>;
   sendMessage: (sessionId: string, content: string, userId: string) => void;
   respondToApproval: (
     approvalId: string,
@@ -121,6 +122,81 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
     socketRef.current.emit("session:leave", { sessionId });
   }, []);
 
+  /**
+   * Join a session and wait for backend confirmation.
+   *
+   * Implements retry logic with exponential backoff (3 attempts max).
+   * Backend emits 'session:joined' event when the room join is successful.
+   *
+   * @param sessionId - Session to join
+   * @param timeoutMs - Timeout per attempt (default: 2000ms)
+   * @returns Promise that resolves when joined, rejects on timeout/error
+   *
+   * @example
+   * try {
+   *   await joinSessionAndWait(sessionId);
+   *   console.log('Successfully joined session');
+   * } catch (error) {
+   *   console.error('Failed to join session:', error);
+   *   // Show retry UI to user
+   * }
+   */
+  const joinSessionAndWait = useCallback(
+    (sessionId: string, timeoutMs = 2000): Promise<void> => {
+      return new Promise((resolve, reject) => {
+        if (!socketRef.current) {
+          reject(new Error("Socket not connected"));
+          return;
+        }
+
+        const maxRetries = 3;
+        let attemptCount = 0;
+
+        const attemptJoin = () => {
+          attemptCount++;
+          console.log(
+            `[WebSocket] Join attempt ${attemptCount}/${maxRetries} for session:`,
+            sessionId
+          );
+
+          const timeout = setTimeout(() => {
+            socketRef.current?.off("session:joined", handleJoined);
+
+            if (attemptCount < maxRetries) {
+              // Retry with exponential backoff
+              const retryDelay = Math.pow(2, attemptCount - 1) * 1000; // 1s, 2s, 4s
+              console.log(
+                `[WebSocket] Join timeout, retrying in ${retryDelay}ms...`
+              );
+              setTimeout(attemptJoin, retryDelay);
+            } else {
+              reject(
+                new Error(
+                  `Room join timeout after ${maxRetries} attempts (${timeoutMs}ms each)`
+                )
+              );
+            }
+          }, timeoutMs);
+
+          const handleJoined = (data: { sessionId: string }) => {
+            if (data.sessionId === sessionId) {
+              clearTimeout(timeout);
+              socketRef.current?.off("session:joined", handleJoined);
+              console.log("[WebSocket] Successfully joined session:", sessionId);
+              resolve();
+            }
+          };
+
+          socketRef.current?.once("session:joined", handleJoined);
+          socketRef.current?.emit("session:join", { sessionId });
+        };
+
+        attemptJoin();
+      });
+    },
+    []
+  );
+
   const sendMessage = useCallback(
     (sessionId: string, content: string, userId: string) => {
       if (!socketRef.current) return;
@@ -189,11 +265,11 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
   // Safe to access socketRef.current here as it's initialized once and never changes
   const value: WebSocketContextValue = useMemo(
     () => ({
-      // eslint-disable-next-line react-hooks/refs
       socket: socketRef.current,
       isConnected,
       joinSession,
       leaveSession,
+      joinSessionAndWait,
       sendMessage,
       respondToApproval,
       onAgentEvent,
@@ -204,6 +280,7 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
       isConnected,
       joinSession,
       leaveSession,
+      joinSessionAndWait,
       sendMessage,
       respondToApproval,
       onAgentEvent,
@@ -213,7 +290,6 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
   );
 
   return (
-    // eslint-disable-next-line react-hooks/refs
     <WebSocketContext.Provider value={value}>
       {children}
     </WebSocketContext.Provider>

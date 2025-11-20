@@ -4,13 +4,10 @@
  * Type definitions for HTTP API responses matching the backend contract.
  */
 
-export type StopReason =
-  | "end_turn"
-  | "tool_use"
-  | "max_tokens"
-  | "stop_sequence"
-  | "pause_turn"
-  | "refusal";
+import type { StopReason } from './sdk';
+
+// Re-export StopReason from SDK for convenience
+export type { StopReason };
 
 export interface User {
   id: string;
@@ -42,6 +39,14 @@ export interface Message {
   id: string;
   session_id: string;
   role: "user" | "assistant" | "system";
+  /**
+   * Simplified content representation for UI display.
+   *
+   * Note: The SDK uses ContentBlock[] for full structure, but the backend
+   * API flattens this to a string for frontend consumption. If you need
+   * to display tool_use blocks or other ContentBlock types, import them
+   * from './sdk' and parse accordingly.
+   */
   content: string;
   stop_reason?: StopReason | null;
   thinking_tokens?: number;

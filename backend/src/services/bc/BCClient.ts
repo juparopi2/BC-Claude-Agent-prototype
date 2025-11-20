@@ -20,7 +20,7 @@ import type {
   BCEntityType,
   BCResult,
   BCSingleResult,
-} from '@/types';
+} from '@/types/bc.types';
 
 /**
  * BC Client Class

@@ -28,7 +28,8 @@ import type { ChatMessageData } from '@/types/websocket.types';
 import { getDirectAgentService } from '../agent/DirectAgentService';
 import { getMessageService } from '../messages/MessageService';
 import { TOOL_NAMES } from '@/constants/tools';
-import { logger } from '@/utils/logger';
+import { createChildLogger } from '@/utils/logger';
+import type { Logger } from 'pino';
 
 /**
  * Chat Message Handler Class
@@ -38,6 +39,12 @@ import { logger } from '@/utils/logger';
  */
 export class ChatMessageHandler {
   private messageService = getMessageService();
+  private logger: Logger;
+
+  constructor() {
+    this.logger = createChildLogger({ service: 'ChatMessageHandler' });
+    this.logger.info('ChatMessageHandler singleton instance created');
+  }
 
   /**
    * Handle Incoming Chat Message
@@ -55,17 +62,17 @@ export class ChatMessageHandler {
   ): Promise<void> {
     const { message, sessionId, userId } = data;
 
-    logger.info('Chat message received', {
+    this.logger.info({
       sessionId,
       userId,
       messageLength: message?.length || 0,
       messagePreview: message?.substring(0, 100) || 'EMPTY',
       hasMessage: !!message,
-    });
+    }, 'Chat message received');
 
     // Validate message is not empty
     if (!message || message.trim().length === 0) {
-      logger.warn('Empty message received, rejecting', { sessionId, userId });
+      this.logger.warn('Empty message received, rejecting', { sessionId, userId });
       socket.emit('agent:error', {
         error: 'Empty message not allowed',
         sessionId,
@@ -79,15 +86,15 @@ export class ChatMessageHandler {
       await this.validateSessionOwnership(sessionId, userId);
 
       // 2. Save user message with userId for audit trail
-      logger.info('💾 Saving user message to database...', { sessionId, userId });
+      this.logger.info('💾 Saving user message to database...', { sessionId, userId });
       const startSaveTime = Date.now();
 
       try {
         await this.messageService.saveUserMessage(sessionId, userId, message);
         const saveDuration = Date.now() - startSaveTime;
-        logger.info('✅ User message saved successfully', { sessionId, userId, saveDuration });
+        this.logger.info('✅ User message saved successfully', { sessionId, userId, saveDuration });
       } catch (saveError) {
-        logger.error('❌ Failed to save user message', { error: saveError, sessionId, userId });
+        this.logger.error('❌ Failed to save user message', { error: saveError, sessionId, userId });
 
         // ⭐ Emit specific error to frontend
         socket.emit('agent:event', {
@@ -105,16 +112,16 @@ export class ChatMessageHandler {
       }
 
       // 3. Execute agent with DirectAgentService (SDK-first)
-      logger.info('🤖 About to call DirectAgentService.executeQueryStreaming', { sessionId, userId });
+      this.logger.info('🤖 About to call DirectAgentService.executeQueryStreaming', { sessionId, userId });
 
       const agentService = getDirectAgentService();
-      logger.info('✅ DirectAgentService instance obtained', {
+      this.logger.info('✅ DirectAgentService instance obtained', {
         hasAgentService: !!agentService,
         agentServiceType: agentService?.constructor?.name,
         hasExecuteMethod: typeof agentService?.executeQueryStreaming === 'function'
       });
 
-      logger.info('📞 Calling executeQueryStreaming...', { sessionId, messageLength: message.length });
+      this.logger.info('📞 Calling executeQueryStreaming...', { sessionId, messageLength: message.length });
 
       await agentService.executeQueryStreaming(
         message,
@@ -122,13 +129,13 @@ export class ChatMessageHandler {
         (event: AgentEvent) => this.handleAgentEvent(event, io, sessionId, userId)
       );
 
-      logger.info('✅ Chat message processed successfully (executeQueryStreaming completed)', { sessionId, userId });
+      this.logger.info('✅ Chat message processed successfully (executeQueryStreaming completed)', { sessionId, userId });
     } catch (error) {
       // Type for Node.js system errors with additional properties
       type NodeSystemError = Error & { code?: string; errno?: number; syscall?: string };
       const systemError = error as NodeSystemError;
 
-      logger.error('❌ Chat message handler error (DETAILED)', {
+      this.logger.error('❌ Chat message handler error (DETAILED)', {
         error: error instanceof Error ? error.message : String(error),
         errorType: error instanceof Error ? error.constructor.name : typeof error,
         errorCode: systemError?.code,
@@ -186,7 +193,7 @@ export class ChatMessageHandler {
       switch (event.type) {
         case 'session_start':
           // Session start - no persistence needed
-          logger.debug('Session started', { sessionId, userId });
+          this.logger.debug('Session started', { sessionId, userId });
           break;
 
         case 'thinking':
@@ -216,7 +223,7 @@ export class ChatMessageHandler {
 
         case 'session_end':
           // Session end - no persistence needed
-          logger.debug('Session ended', { sessionId, userId, reason: (event as SessionEndEvent).reason });
+          this.logger.debug('Session ended', { sessionId, userId, reason: (event as SessionEndEvent).reason });
           break;
 
         case 'complete':
@@ -225,12 +232,12 @@ export class ChatMessageHandler {
 
         case 'approval_requested':
           // Approval requested - handled by DirectAgentService
-          logger.debug('Approval requested', { sessionId, userId });
+          this.logger.debug('Approval requested', { sessionId, userId });
           break;
 
         case 'approval_resolved':
           // Approval resolved - handled by DirectAgentService
-          logger.debug('Approval resolved', { sessionId, userId });
+          this.logger.debug('Approval resolved', { sessionId, userId });
           break;
 
         case 'error':
@@ -240,10 +247,10 @@ export class ChatMessageHandler {
         default:
           // Exhaustiveness check - TypeScript will error if we miss a case
           const _exhaustiveCheck: never = event;
-          logger.warn('Unknown event type', { type: _exhaustiveCheck, sessionId });
+          this.logger.warn('Unknown event type', { type: _exhaustiveCheck, sessionId });
       }
     } catch (error) {
-      logger.error('Error handling agent event', {
+      this.logger.error('Error handling agent event', {
         error: error instanceof Error ? error.message : String(error),
         eventType: event.type,
         sessionId,
@@ -272,7 +279,7 @@ export class ChatMessageHandler {
       event.content || ''
     );
 
-    logger.debug('Thinking message saved', { sessionId, userId });
+    this.logger.debug('Thinking message saved', { sessionId, userId });
   }
 
   /**
@@ -297,7 +304,7 @@ export class ChatMessageHandler {
       event.stopReason || null
     );
 
-    logger.debug('Agent message saved', {
+    this.logger.debug('Agent message saved', {
       sessionId,
       userId,
       stopReason: event.stopReason,
@@ -321,7 +328,7 @@ export class ChatMessageHandler {
   ): Promise<void> {
     // Validate toolUseId (should always be present)
     if (!event.toolUseId) {
-      logger.warn('Tool use event missing toolUseId', { sessionId, toolName: event.toolName });
+      this.logger.warn('Tool use event missing toolUseId', { sessionId, toolName: event.toolName });
       return;
     }
 
@@ -335,14 +342,14 @@ export class ChatMessageHandler {
 
     // Handle TodoWrite special case (no persistence needed - SDK handles it)
     if (event.toolName === TOOL_NAMES.TODO_WRITE && event.args?.todos) {
-      logger.debug('TodoWrite tool detected', {
+      this.logger.debug('TodoWrite tool detected', {
         sessionId,
         userId,
         todoCount: Array.isArray(event.args.todos) ? event.args.todos.length : 0,
       });
     }
 
-    logger.debug('Tool use saved', {
+    this.logger.debug('Tool use saved', {
       sessionId,
       userId,
       toolName: event.toolName,
@@ -366,7 +373,7 @@ export class ChatMessageHandler {
   ): Promise<void> {
     // Validate toolUseId (should always be present)
     if (!event.toolUseId) {
-      logger.warn('Tool result event missing toolUseId', { sessionId, toolName: event.toolName });
+      this.logger.warn('Tool result event missing toolUseId', { sessionId, toolName: event.toolName });
       return;
     }
 
@@ -381,7 +388,7 @@ export class ChatMessageHandler {
       event.error
     );
 
-    logger.debug('Tool result saved', {
+    this.logger.debug('Tool result saved', {
       sessionId,
       userId,
       toolName: event.toolName,
@@ -405,7 +412,7 @@ export class ChatMessageHandler {
     sessionId: string,
     userId: string
   ): Promise<void> {
-    logger.info('Agent execution complete', {
+    this.logger.info('Agent execution complete', {
       sessionId,
       userId,
       reason: event.reason,
@@ -427,7 +434,7 @@ export class ChatMessageHandler {
     sessionId: string,
     userId: string
   ): Promise<void> {
-    logger.error('Agent error event received', {
+    this.logger.error('Agent error event received', {
       sessionId,
       userId,
       error: event.error,
@@ -452,7 +459,7 @@ export class ChatMessageHandler {
     // Query: SELECT user_id FROM sessions WHERE id = @sessionId
     // Throw error if user_id !== userId
 
-    logger.debug('Validating session ownership', { sessionId, userId });
+    this.logger.debug('Validating session ownership', { sessionId, userId });
 
     // For now, just log (sessions table doesn't have user_id FK yet)
     // In production, this MUST throw on mismatch:
@@ -476,7 +483,6 @@ let chatMessageHandlerInstance: ChatMessageHandler | null = null;
 export function getChatMessageHandler(): ChatMessageHandler {
   if (!chatMessageHandlerInstance) {
     chatMessageHandlerInstance = new ChatMessageHandler();
-    logger.info('ChatMessageHandler singleton instance created');
   }
   return chatMessageHandlerInstance;
 }

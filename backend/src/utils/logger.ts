@@ -41,48 +41,55 @@ const isDevelopment = process.env.NODE_ENV !== 'production';
 const logLevel = process.env.LOG_LEVEL || (isDevelopment ? 'debug' : 'info');
 
 // Transport configuration
-const transport = pino.transport({
-  targets: [
-    // Console output (pretty in dev, JSON in production)
-    {
-      level: logLevel,
-      target: isDevelopment ? 'pino-pretty' : 'pino/file',
-      options: isDevelopment
-        ? {
-            colorize: true,
-            translateTime: 'SYS:standard',
-            ignore: 'pid,hostname',
-            singleLine: false,
-            messageFormat: '{levelLabel} - {msg}',
-          }
-        : {
-            destination: 1, // stdout
-          },
+const targets = [];
+
+// Console output (pretty in dev, JSON in production)
+if (isDevelopment) {
+  targets.push({
+    level: logLevel,
+    target: 'pino-pretty',
+    options: {
+      colorize: true,
+      translateTime: 'SYS:standard',
+      ignore: 'pid,hostname',
+      singleLine: false,
+      messageFormat: '{levelLabel} - {msg}',
     },
-    // File output (production only, optional)
-    ...(process.env.ENABLE_FILE_LOGGING === 'true'
-      ? [
-          {
-            level: 'info',
-            target: 'pino/file',
-            options: {
-              destination: process.env.LOG_FILE_PATH || './logs/app.log',
-              mkdir: true,
-            },
-          },
-          // Error-only file
-          {
-            level: 'error',
-            target: 'pino/file',
-            options: {
-              destination: process.env.ERROR_LOG_FILE_PATH || './logs/error.log',
-              mkdir: true,
-            },
-          },
-        ]
-      : []),
-  ],
-});
+  });
+} else {
+  // Production: JSON to stdout
+  targets.push({
+    level: logLevel,
+    target: 'pino/file',
+    options: {
+      destination: 1, // stdout file descriptor
+    },
+  });
+}
+
+// File output (optional, for production persistence)
+if (process.env.ENABLE_FILE_LOGGING === 'true') {
+  targets.push({
+    level: 'info',
+    target: 'pino/file',
+    options: {
+      destination: process.env.LOG_FILE_PATH || './logs/app.log',
+      mkdir: true,
+    },
+  });
+
+  // Error-only file
+  targets.push({
+    level: 'error',
+    target: 'pino/file',
+    options: {
+      destination: process.env.ERROR_LOG_FILE_PATH || './logs/error.log',
+      mkdir: true,
+    },
+  });
+}
+
+const transport = pino.transport({ targets });
 
 // Create base logger
 export const logger = pino(
@@ -152,8 +159,8 @@ export const createChildLogger = (context: Record<string, unknown>) => {
 export const createRequestLogger = (req: Request) => {
   return logger.child({
     requestId: req.headers['x-request-id'] || generateRequestId(),
-    userId: (req as any).session?.userId,
-    sessionId: (req as any).session?.id,
+    userId: req.session?.microsoftOAuth?.userId,
+    sessionId: req.session?.id,
   });
 };
 

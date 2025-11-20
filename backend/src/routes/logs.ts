@@ -66,8 +66,8 @@ router.post('/logs', async (req: Request, res: Response) => {
         userAgent: log.userAgent,
         clientUrl: log.url,
         // Include request context if available
-        requestId: (req as any).id,
-        userId: (req as any).session?.userId,
+        requestId: req.id as string | undefined,
+        userId: req.session?.microsoftOAuth?.userId,
       };
 
       // Log with appropriate level

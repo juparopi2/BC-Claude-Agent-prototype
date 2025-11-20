@@ -218,6 +218,86 @@ For detailed architecture documentation, see [architecture-deep-dive.md](./archi
 
 ---
 
+## Event Sourcing Pattern
+
+The backend implements **Event Sourcing** with a dual-table architecture for optimal performance.
+
+### Two-Table Architecture
+
+The system uses **two tables** for message persistence:
+
+1. **`message_events`** - Append-only event log (source of truth)
+   - Every SDK event written **immediately** (synchronous, ~10ms)
+   - Atomic sequence numbers via Redis INCR
+   - Immutable - never updated or deleted
+   - Used for event replay, debugging, and audit trail
+
+2. **`messages`** - Materialized view (query optimization)
+   - Built **asynchronously** from `message_events` via BullMQ workers
+   - Used for fast frontend queries
+   - Can be rebuilt by replaying events
+   - Eventual consistency model
+
+### Why Two Tables?
+
+- **Fast writes**: Append-only log is extremely fast
+- **Fast reads**: Materialized view optimized for queries
+- **Complete audit trail**: Events never deleted
+- **Recovery capability**: Rebuild `messages` by replaying `message_events`
+- **Multi-tenant safe**: Atomic sequence numbers prevent race conditions
+
+### Event Flow
+
+```
+DirectAgentService emits SDK event
+  ↓
+EventStore.appendEvent() → message_events table (sync, ~10ms)
+  ↓ (non-blocking)
+MessageQueue.addMessagePersistence() → BullMQ job queued
+  ↓ (async worker)
+Worker processes job → messages table (eventual consistency)
+```
+
+### Frontend Usage
+
+**⚠️ CRITICAL**: Always use `sequence_number` for ordering, **NOT** `created_at`
+
+- `timestamp` / `created_at` can have collisions in distributed systems
+- `sequence_number` is atomic (Redis INCR) and guarantees correct order
+- Messages include both `sequence_number` and `event_id` for tracing
+
+### Database Schema
+
+```sql
+-- Source of truth (append-only)
+CREATE TABLE message_events (
+  id UNIQUEIDENTIFIER PRIMARY KEY,
+  session_id UNIQUEIDENTIFIER REFERENCES sessions(id),
+  event_type NVARCHAR(50) NOT NULL,
+  sequence_number INT NOT NULL,
+  data NVARCHAR(MAX) NOT NULL,
+  UNIQUE (session_id, sequence_number)
+);
+
+-- Materialized view (fast queries)
+CREATE TABLE messages (
+  id UNIQUEIDENTIFIER PRIMARY KEY,
+  session_id UNIQUEIDENTIFIER REFERENCES sessions(id),
+  event_id UNIQUEIDENTIFIER REFERENCES message_events(id),
+  role NVARCHAR(50) NOT NULL,
+  message_type NVARCHAR(20) NOT NULL,
+  content NVARCHAR(MAX) NOT NULL,
+  token_count INT NULL,
+  stop_reason NVARCHAR(20) NULL,
+  sequence_number INT NULL,
+  created_at DATETIME2 DEFAULT GETDATE()
+);
+```
+
+For complete schema documentation, see [database-schema.md](../common/03-database-schema.md).
+
+---
+
 ## Authentication
 
 The backend uses **Microsoft OAuth 2.0** with session-based authentication.

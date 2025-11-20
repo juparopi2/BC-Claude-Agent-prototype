@@ -314,38 +314,108 @@ return count <= 100;  // Max 100 jobs per session per hour
 
 ## Database Schema
 
+### Dual-Table Architecture (Event Sourcing + Materialized View)
+
+The backend uses **two tables** for message persistence to achieve both fast writes and fast reads:
+
+1. **message_events** - Append-only event log (source of truth)
+   - Every SDK event is written here **immediately** (synchronous)
+   - Atomic sequence numbers via Redis INCR prevent race conditions
+   - Immutable - never updated or deleted
+   - Used for event replay, debugging, and audit compliance
+
+2. **messages** - Materialized view (query optimization)
+   - Built **asynchronously** from message_events via BullMQ workers
+   - Used for fast frontend queries (no need to aggregate events)
+   - Can be rebuilt by replaying events
+   - Eventual consistency model
+
+**Event Flow**:
+```
+DirectAgentService emits SDK event
+  ↓
+EventStore.appendEvent() → message_events table (sync, ~10ms)
+  ↓
+MessageQueue.addMessagePersistence() → BullMQ job (async)
+  ↓
+Worker processes job → messages table (eventual consistency)
+```
+
 ### message_events (Event Sourcing)
+
+⭐ **CRITICAL TABLE** - Source of truth for all message events
 
 ```sql
 CREATE TABLE message_events (
-  id UNIQUEIDENTIFIER PRIMARY KEY,
-  session_id UNIQUEIDENTIFIER REFERENCES sessions(id) ON DELETE CASCADE,
-  event_type NVARCHAR(50) NOT NULL,
-  sequence_number INT NOT NULL,  -- Atomic (Redis INCR)
-  timestamp DATETIME2 NOT NULL,
-  data NVARCHAR(MAX) NOT NULL,  -- JSON event payload
-  processed BIT DEFAULT 0,
+  id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+  session_id UNIQUEIDENTIFIER NOT NULL,
+  event_type NVARCHAR(50) NOT NULL,  -- 'message_start', 'content_block_delta', 'message_stop', etc.
+  sequence_number INT NOT NULL,      -- Atomic sequence via Redis INCR
+  timestamp DATETIME2 NOT NULL DEFAULT GETDATE(),
+  data NVARCHAR(MAX) NOT NULL,       -- JSON event payload
+  processed BIT NOT NULL DEFAULT 0,  -- For async processing queue
+
+  FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE,
   UNIQUE (session_id, sequence_number)  -- Guarantee ordering
 );
+
+-- Indexes
+CREATE INDEX idx_message_events_session ON message_events(session_id, sequence_number);
+CREATE INDEX idx_message_events_processed ON message_events(processed) WHERE processed = 0;
+CREATE INDEX idx_message_events_type ON message_events(event_type);
 ```
 
-### messages (Eventual Consistency)
+**Event Types**:
+- `message_start` - Message initiated
+- `content_block_start` - Content block started
+- `content_block_delta` - Incremental content chunk
+- `content_block_stop` - Content block finished
+- `message_delta` - Message-level delta
+- `message_stop` - Message completed (includes stop_reason)
+
+**Why This Matters**:
+- Frontend ordering **MUST** use `sequence_number`, not `timestamp`
+- `timestamp` can have collisions in distributed systems
+- Event sourcing enables full replay for debugging
+- Complete audit trail for compliance
+
+### messages (Materialized View)
+
+Built from message_events for fast queries
 
 ```sql
 CREATE TABLE messages (
-  id UNIQUEIDENTIFIER PRIMARY KEY,
-  session_id UNIQUEIDENTIFIER REFERENCES sessions(id) ON DELETE CASCADE,
-  role NVARCHAR(50) NOT NULL,
-  message_type NVARCHAR(50) NOT NULL,
-  content NVARCHAR(MAX),
-  metadata NVARCHAR(MAX),  -- JSON
-  stop_reason NVARCHAR(50),  -- SDK stop_reason
-  token_count INT,
-  sequence_number INT,  -- Links to event sequence
-  event_id UNIQUEIDENTIFIER REFERENCES message_events(id),
-  created_at DATETIME2 DEFAULT GETUTCDATE()
+  id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+  session_id UNIQUEIDENTIFIER NOT NULL,
+  event_id UNIQUEIDENTIFIER NULL,     -- FK to message_events (source event)
+  role NVARCHAR(50) NOT NULL,         -- 'user', 'assistant'
+  message_type NVARCHAR(20) NOT NULL DEFAULT 'text',  -- 'text', 'thinking', 'tool_use', 'tool_result'
+  content NVARCHAR(MAX) NOT NULL,
+  metadata NVARCHAR(MAX) NULL,        -- JSON for tool calls, thinking, etc.
+  token_count INT NULL,
+  stop_reason NVARCHAR(20) NULL,      -- 'end_turn', 'tool_use', 'max_tokens'
+  sequence_number INT NULL,           -- Links to message_events.sequence_number
+  created_at DATETIME2 NOT NULL DEFAULT GETDATE(),
+
+  FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE,
+  FOREIGN KEY (event_id) REFERENCES message_events(id) ON DELETE NO ACTION,
+
+  CONSTRAINT chk_messages_role CHECK (role IN ('user', 'assistant')),
+  CONSTRAINT chk_messages_type CHECK (message_type IN ('text', 'thinking', 'tool_use', 'tool_result', 'error')),
+  CONSTRAINT chk_messages_stop_reason CHECK (stop_reason IN ('end_turn', 'tool_use', 'max_tokens', 'stop_sequence'))
 );
+
+-- Indexes
+CREATE INDEX idx_messages_session ON messages(session_id, created_at);
+CREATE INDEX idx_messages_event ON messages(event_id) WHERE event_id IS NOT NULL;
+CREATE INDEX idx_messages_stop_reason ON messages(stop_reason) WHERE stop_reason IS NOT NULL;
 ```
+
+**Key Features**:
+- `stop_reason='tool_use'` → Agentic loop continues (intermediate message)
+- `stop_reason='end_turn'` → Agentic loop terminates (final response)
+- `event_id` links back to message_events for event sourcing replay
+- `sequence_number` ensures correct ordering (NOT created_at)
 
 ---
 

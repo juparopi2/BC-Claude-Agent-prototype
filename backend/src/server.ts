@@ -753,7 +753,11 @@ function configureRoutes(): void {
 function configureErrorHandling(): void {
   app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
     // Log error with full context (Pino automatically serializes Error objects)
-    (req as any).log.error({ err }, 'Unhandled error');
+    if ('log' in req && typeof (req as { log?: { error: (context: unknown, message: string) => void } }).log?.error === 'function') {
+      (req as { log: { error: (context: unknown, message: string) => void } }).log.error({ err }, 'Unhandled error');
+    } else {
+      logger.error({ err }, 'Unhandled error');
+    }
 
     // Don't leak error details in production
     const error = isProd

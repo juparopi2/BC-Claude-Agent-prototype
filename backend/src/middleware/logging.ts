@@ -25,6 +25,7 @@
 import pinoHttp from 'pino-http';
 import { logger } from '../utils/logger';
 import { RequestHandler } from 'express';
+import type { IncomingMessage, ServerResponse } from 'http';
 
 /**
  * HTTP request/response logging middleware
@@ -37,12 +38,9 @@ import { RequestHandler } from 'express';
 export const httpLogger: RequestHandler = pinoHttp({
   logger,
 
-  // Automatically log request completion
-  autoLogging: true,
-
   // Custom request ID generator
   // Reuses existing X-Request-ID header or generates a new one
-  genReqId: (req, res) => {
+  genReqId: (req: IncomingMessage, res: ServerResponse) => {
     const existingId = req.headers['x-request-id'];
     if (existingId && typeof existingId === 'string') {
       return existingId;
@@ -55,7 +53,7 @@ export const httpLogger: RequestHandler = pinoHttp({
 
   // Customize log level based on status code
   // Errors (5xx) = error, Client errors (4xx) = warn, Success = info
-  customLogLevel: (req, res, err) => {
+  customLogLevel: (_req: IncomingMessage, res: ServerResponse, err?: Error) => {
     if (err || res.statusCode >= 500) return 'error';
     if (res.statusCode >= 400) return 'warn';
     if (res.statusCode >= 300) return 'info';
@@ -63,34 +61,40 @@ export const httpLogger: RequestHandler = pinoHttp({
   },
 
   // Custom success message format
-  customSuccessMessage: (req, res) => {
+  customSuccessMessage: (req: IncomingMessage, res: ServerResponse) => {
     return `${req.method} ${req.url} ${res.statusCode}`;
   },
 
   // Custom error message format
-  customErrorMessage: (req, res, err) => {
+  customErrorMessage: (req: IncomingMessage, res: ServerResponse, err: Error) => {
     return `${req.method} ${req.url} ${res.statusCode} - ${err.message}`;
   },
 
   // Customize request/response serialization
   serializers: {
-    req: (req) => ({
-      id: req.id,
-      method: req.method,
-      url: req.url,
-      path: req.raw.url,
-      query: req.raw.query,
-      params: (req.raw as any).params,
-      // Redact sensitive headers
-      headers: {
-        ...req.headers,
-        authorization: req.headers.authorization ? '[REDACTED]' : undefined,
-        cookie: req.headers.cookie ? '[REDACTED]' : undefined,
-      },
-      // Include session info if available
-      userId: (req.raw as any).session?.userId,
-      sessionId: (req.raw as any).session?.id,
-    }),
+    req: (req) => {
+      const expressReq = req.raw as Express.Request;
+      // Use type assertion for params since Express adds it dynamically
+      const reqParams = 'params' in expressReq ? (expressReq as Express.Request & { params: Record<string, string> }).params : {};
+
+      return {
+        id: req.id,
+        method: req.method,
+        url: req.url,
+        path: req.raw.url,
+        query: req.raw.query,
+        params: reqParams,
+        // Redact sensitive headers
+        headers: {
+          ...req.headers,
+          authorization: req.headers.authorization ? '[REDACTED]' : undefined,
+          cookie: req.headers.cookie ? '[REDACTED]' : undefined,
+        },
+        // Include session info if available
+        userId: expressReq.session?.microsoftOAuth?.userId,
+        sessionId: expressReq.session?.id,
+      };
+    },
     res: (res) => ({
       statusCode: res.statusCode,
       headers: res.getHeaders ? res.getHeaders() : {},
@@ -99,8 +103,8 @@ export const httpLogger: RequestHandler = pinoHttp({
 
   // Don't log health check endpoints (reduce noise)
   autoLogging: {
-    ignore: (req) => {
+    ignore: (req: IncomingMessage) => {
       return req.url === '/health' || req.url === '/ping';
     },
-  } as any,
+  },
 }) as RequestHandler;

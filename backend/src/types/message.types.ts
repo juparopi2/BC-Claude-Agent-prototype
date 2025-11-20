@@ -38,6 +38,8 @@ export interface MessageDbRecord {
   message_type: MessageType;
   content: string;
   metadata: string; // JSON string
+  token_count: number | null;
+  stop_reason: string | null;
   created_at: Date;
 
   // Event Sourcing Fields (Multi-Tenant Architecture)
@@ -86,6 +88,8 @@ export type ParsedMessage =
       role: MessageRole;
       message_type: 'text';
       content: string;
+      token_count: number | null;
+      stop_reason: string | null;
       created_at: Date;
       sequence_number: number | null;
       event_id: string | null;
@@ -97,6 +101,8 @@ export type ParsedMessage =
       message_type: 'thinking';
       content: string;
       metadata: ThinkingMetadata;
+      token_count: number | null;
+      stop_reason: string | null;
       created_at: Date;
       sequence_number: number | null;
       event_id: string | null;
@@ -108,6 +114,8 @@ export type ParsedMessage =
       message_type: 'tool_use' | 'tool_result';
       content: string;
       metadata: ToolUseMetadata;
+      token_count: number | null;
+      stop_reason: string | null;
       created_at: Date;
       sequence_number: number | null;
       event_id: string | null;
@@ -119,6 +127,8 @@ export type ParsedMessage =
       message_type: 'error';
       content: string;
       metadata?: { error: string };
+      token_count: number | null;
+      stop_reason: string | null;
       created_at: Date;
       sequence_number: number | null;
       event_id: string | null;
@@ -137,6 +147,8 @@ export function parseMessageMetadata(message: MessageDbRecord): ParsedMessage {
     role: message.role,
     message_type: message.message_type,
     content: message.content,
+    token_count: message.token_count,
+    stop_reason: message.stop_reason,
     created_at: message.created_at,
     sequence_number: message.sequence_number,
     event_id: message.event_id,

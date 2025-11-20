@@ -101,8 +101,8 @@ export interface UserDTO {
   isActive: boolean;
   /** Account creation timestamp */
   createdAt: string;
-  /** Last login timestamp */
-  lastLoginAt: string | null;
+  /** Last Microsoft login timestamp */
+  lastMicrosoftLogin: string | null;
 }
 
 /**
@@ -148,22 +148,34 @@ export interface UserRecord {
   id: string;
   /** User email */
   email: string;
-  /** Password hash (bcrypt) */
-  password_hash: string;
+  /** Password hash (bcrypt) - nullable for OAuth-only users */
+  password_hash: string | null;
   /** User full name */
-  full_name: string;
+  full_name: string | null;
   /** User role */
   role: UserRole;
   /** Is user active */
   is_active: boolean;
   /** Is user an admin */
   is_admin: boolean;
+  /** Microsoft OAuth ID (from Entra ID) */
+  microsoft_id: string | null;
+  /** Microsoft email */
+  microsoft_email: string | null;
+  /** Microsoft tenant ID */
+  microsoft_tenant_id: string | null;
+  /** Last Microsoft login timestamp */
+  last_microsoft_login: Date | null;
+  /** Encrypted Business Central access token */
+  bc_access_token_encrypted: string | null;
+  /** Encrypted Business Central refresh token */
+  bc_refresh_token_encrypted: string | null;
+  /** Business Central token expiration */
+  bc_token_expires_at: Date | null;
   /** Account creation timestamp */
   created_at: Date;
   /** Last update timestamp */
   updated_at: Date;
-  /** Last login timestamp */
-  last_login_at: Date | null;
 }
 
 /**

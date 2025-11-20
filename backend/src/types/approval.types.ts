@@ -14,14 +14,19 @@ export type ApprovalPriority = 'high' | 'medium' | 'low';
 export interface ApprovalRequest {
   id: string;
   session_id: string;
+  message_id: string | null;
+  decided_by_user_id: string | null;
+  action_type: string;
+  action_description: string;
+  action_data: Record<string, unknown> | null;
   tool_name: string;
   tool_args: Record<string, unknown>;
   status: ApprovalStatus;
   priority: ApprovalPriority;
+  rejection_reason: string | null;
   created_at: Date;
   expires_at: Date;
-  decided_at?: Date;
-  decided_by?: string;
+  decided_at: Date | null;
 }
 
 /**

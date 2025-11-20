@@ -113,19 +113,26 @@ export class ApprovalManager {
       const approvalId = this.generateApprovalId();
       const now = new Date();
       const expiresAt = new Date(now.getTime() + expiresInMs);
+      const actionType = this.getActionType(toolName);
 
       await db.request()
         .input('id', approvalId)
         .input('session_id', sessionId)
+        .input('message_id', null)  // Can be set later if needed
+        .input('decided_by_user_id', null)
+        .input('action_type', actionType)
+        .input('action_description', summary.description)
+        .input('action_data', JSON.stringify(toolArgs))
         .input('tool_name', toolName)
         .input('tool_args', JSON.stringify(toolArgs))
         .input('status', 'pending')
         .input('priority', priority)
+        .input('rejection_reason', null)
         .input('created_at', now)
         .input('expires_at', expiresAt)
         .query(`
-          INSERT INTO approvals (id, session_id, tool_name, tool_args, status, priority, created_at, expires_at)
-          VALUES (@id, @session_id, @tool_name, @tool_args, @status, @priority, @created_at, @expires_at)
+          INSERT INTO approvals (id, session_id, message_id, decided_by_user_id, action_type, action_description, action_data, tool_name, tool_args, status, priority, rejection_reason, created_at, expires_at)
+          VALUES (@id, @session_id, @message_id, @decided_by_user_id, @action_type, @action_description, @action_data, @tool_name, @tool_args, @status, @priority, @rejection_reason, @created_at, @expires_at)
         `);
 
       // Emit WebSocket event to client
@@ -205,10 +212,10 @@ export class ApprovalManager {
           .input('id', approvalId)
           .input('status', approved ? 'approved' : 'rejected')
           .input('decided_at', new Date())
-          .input('decided_by', userId)
+          .input('decided_by_user_id', userId)
           .query(`
             UPDATE approvals
-            SET status = @status, decided_at = @decided_at, decided_by = @decided_by
+            SET status = @status, decided_at = @decided_at, decided_by_user_id = @decided_by_user_id
             WHERE id = @id
           `);
       }
@@ -256,7 +263,8 @@ export class ApprovalManager {
       .input('session_id', sessionId)
       .input('status', 'pending')
       .query(`
-        SELECT id, session_id, tool_name, tool_args, status, priority, created_at, expires_at, decided_at, decided_by
+        SELECT id, session_id, message_id, decided_by_user_id, action_type, action_description, action_data,
+               tool_name, tool_args, status, priority, rejection_reason, created_at, expires_at, decided_at
         FROM approvals
         WHERE session_id = @session_id AND status = @status
         ORDER BY created_at DESC
@@ -265,14 +273,19 @@ export class ApprovalManager {
     return result.recordset.map((row) => ({
       id: row.id,
       session_id: row.session_id,
+      message_id: row.message_id,
+      decided_by_user_id: row.decided_by_user_id,
+      action_type: row.action_type,
+      action_description: row.action_description,
+      action_data: row.action_data ? JSON.parse(row.action_data) : null,
       tool_name: row.tool_name,
       tool_args: JSON.parse(row.tool_args),
       status: row.status as ApprovalStatus,
       priority: row.priority as ApprovalPriority,
+      rejection_reason: row.rejection_reason,
       created_at: row.created_at,
       expires_at: row.expires_at,
       decided_at: row.decided_at,
-      decided_by: row.decided_by,
     }));
   }
 
@@ -393,6 +406,25 @@ export class ApprovalManager {
     }
 
     return 'low';
+  }
+
+  /**
+   * Get action type for a tool
+   *
+   * @param toolName - Name of the tool
+   * @returns Action type
+   */
+  private getActionType(toolName: string): string {
+    if (toolName.includes('create')) {
+      return 'bc_create';
+    }
+    if (toolName.includes('update')) {
+      return 'bc_update';
+    }
+    if (toolName.includes('delete')) {
+      return 'bc_delete';
+    }
+    return 'bc_query';
   }
 
   /**

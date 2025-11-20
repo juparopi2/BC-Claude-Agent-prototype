@@ -2,15 +2,17 @@
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
+import { ThemeProvider } from 'next-themes';
 import { useState, type ReactNode } from 'react';
+import { Toaster } from '@/components/ui/sonner';
 
 interface ProvidersProps {
   children: ReactNode;
 }
 
 /**
- * Providers component for React Query
- * This wraps the app with QueryClientProvider for server state management
+ * Providers component for React Query, Theme, and Toast notifications
+ * This wraps the app with all global providers needed for the application
  */
 export function Providers({ children }: ProvidersProps) {
   // Create QueryClient inside component to avoid SSR hydration issues
@@ -36,11 +38,19 @@ export function Providers({ children }: ProvidersProps) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      {children}
-      {/* DevTools only in development */}
-      {process.env.NODE_ENV === 'development' && (
-        <ReactQueryDevtools initialIsOpen={false} />
-      )}
+      <ThemeProvider
+        attribute="class"
+        defaultTheme="dark"
+        enableSystem
+        disableTransitionOnChange
+      >
+        {children}
+        <Toaster />
+        {/* DevTools only in development */}
+        {process.env.NODE_ENV === 'development' && (
+          <ReactQueryDevtools initialIsOpen={false} />
+        )}
+      </ThemeProvider>
     </QueryClientProvider>
   );
 }

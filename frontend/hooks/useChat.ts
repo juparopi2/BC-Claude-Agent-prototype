@@ -3,16 +3,12 @@
  *
  * Comprehensive chat management hook integrating React Query, WebSocket, and local state.
  *
- * Migration note: Replaces deprecated imports with:
- * - useWebSocket from contexts/websocket.tsx (not hooks/useSocket.ts)
- * - apiClient from lib/api-client.ts (not lib/api.ts)
- * - Types from types/api.ts and types/events.ts (not lib/types.ts)
- * - queryKeys from queries/keys.ts (not local chatKeys)
- *
  * Architecture:
- * - React Query: Handles sessions and messages fetching/caching
- * - Local State: Handles streaming UI state (isStreaming, streamingMessage, etc.)
- * - WebSocket: Handles real-time events (message chunks, thinking, tool use)
+ * - React Query: Handles sessions and messages fetching/caching with automatic deduplication
+ * - Local State: Handles streaming UI state (isStreaming, streamingMessage, isThinking)
+ * - WebSocket: Unified 'agent:event' listener with discriminated union for type-safe event handling
+ * - Event Sourcing: Messages ordered by sequence_number (atomic Redis INCR) for correct ordering
+ * - Stop Reason Pattern: 'tool_use' = intermediate, 'end_turn' = final (from Anthropic SDK)
  */
 
 import { useEffect, useCallback, useState, useRef } from 'react';
@@ -20,7 +16,8 @@ import { useQuery, useMutation, useQueryClient, type UseQueryResult, type UseMut
 import { useWebSocket } from '@/contexts/websocket';
 import { apiClient } from '@/lib/api-client';
 import { queryKeys } from '@/queries/keys';
-import type { Message, Session, StopReason } from '@/types/api';
+import type { Message, Session } from '@/types/api';
+import type { AgentEvent } from '@/types/events';
 
 /**
  * JSON-serializable value type for tool arguments and results
@@ -213,181 +210,170 @@ export function useChat(sessionId?: string) {
     }
   }, [socket, isConnected, sessionId]);
 
-  // Set up WebSocket event listeners
+  // Set up WebSocket event listeners using unified agent:event
   useEffect(() => {
     if (!socket || !isConnected) return;
 
-    // Streaming state helper
-    const appendStreamChunk = (chunk: string) => {
-      setStreamingMessage((prev) => prev + chunk);
-    };
-
-    // Complete message received (backend emits agent:message_complete)
-    const handleMessageComplete = (data: { id?: string; content: string; role: string; stopReason?: string }) => {
+    // Unified agent event handler - discriminated union pattern
+    const handleAgentEvent = (event: AgentEvent) => {
       const currentSessionId = sessionIdRef.current;
 
-      // Add message directly to cache
-      const messageId = data.id || crypto.randomUUID();
+      switch (event.type) {
+        case 'message_chunk': {
+          // Streaming chunk received
+          setIsStreaming(true);
+          setStreamingMessage((prev) => prev + event.content);
+          break;
+        }
 
-      const message: Message = {
-        id: messageId,
-        session_id: currentSessionId || '',
-        role: data.role as 'user' | 'assistant',
-        content: data.content,
-        stop_reason: (data.stopReason as StopReason | undefined) || null,
-        created_at: new Date().toISOString(),
-        thinking_tokens: 0,
-        is_thinking: false,
-      };
+        case 'message': {
+          // Complete message received
+          const message: Message = {
+            id: crypto.randomUUID(),
+            session_id: currentSessionId || '',
+            role: 'assistant',
+            content: event.content,
+            stop_reason: event.stopReason || null,
+            created_at: new Date().toISOString(),
+            thinking_tokens: 0,
+            is_thinking: false,
+            sequence_number: event.sequenceNumber,
+          };
 
-      // Add message directly to cache
-      if (currentSessionId) {
-        queryClient.setQueryData<ChatMessage[]>(
-          queryKeys.messages.list(currentSessionId),
-          (old) => [...(old || []), message]
-        );
-      }
-    };
+          if (currentSessionId) {
+            queryClient.setQueryData<ChatMessage[]>(
+              queryKeys.messages.list(currentSessionId),
+              (old) => {
+                const updated = [...(old || []), message];
+                // Sort by sequenceNumber to ensure correct ordering
+                return updated.sort((a, b) => {
+                  const seqA = 'sequence_number' in a ? a.sequence_number : 0;
+                  const seqB = 'sequence_number' in b ? b.sequence_number : 0;
+                  return (seqA ?? 0) - (seqB ?? 0);
+                });
+              }
+            );
+          }
+          break;
+        }
 
-    // Thinking indicator (backend emits agent:thinking)
-    const handleThinking = (data: { content?: string }) => {
-      const isThinkingNow = !!data.content || true;
-      setIsThinking(isThinkingNow);
+        case 'thinking': {
+          // Thinking indicator
+          setIsThinking(true);
 
-      const currentSessionId = sessionIdRef.current;
+          if (currentSessionId) {
+            queryClient.setQueryData<ChatMessage[]>(
+              queryKeys.messages.list(currentSessionId),
+              (old) => {
+                const existingThinkingIndex = (old || []).findIndex(
+                  msg => isThinkingMessage(msg) && msg.session_id === currentSessionId
+                );
 
-      // Persist thinking as a message (for UI display)
-      if (currentSessionId && isThinkingNow) {
-        queryClient.setQueryData<ChatMessage[]>(
-          queryKeys.messages.list(currentSessionId),
-          (old) => {
-            // Check if there's already a thinking message (deduplicate)
-            const existingThinkingIndex = (old || []).findIndex(
-              msg => isThinkingMessage(msg) && msg.session_id === currentSessionId
+                if (existingThinkingIndex >= 0) {
+                  // Update existing thinking message
+                  const updated = [...(old || [])];
+                  const existingMsg = updated[existingThinkingIndex];
+                  if (isThinkingMessage(existingMsg)) {
+                    updated[existingThinkingIndex] = {
+                      ...existingMsg,
+                      content: event.content,
+                    };
+                  }
+                  return updated;
+                } else {
+                  // Create new thinking message
+                  const thinkingMessage: ThinkingMessage = {
+                    id: crypto.randomUUID(),
+                    type: 'thinking',
+                    session_id: currentSessionId,
+                    content: event.content,
+                    created_at: new Date().toISOString(),
+                  };
+                  return [...(old || []), thinkingMessage];
+                }
+              }
+            );
+          }
+          break;
+        }
+
+        case 'tool_use': {
+          // Tool call detected
+          if (currentSessionId) {
+            const toolMessage: ToolUseMessage = {
+              id: crypto.randomUUID(),
+              type: 'tool_use',
+              session_id: currentSessionId,
+              tool_name: event.toolName,
+              tool_args: event.toolArgs as Record<string, JSONValue>,
+              status: 'pending',
+              created_at: new Date().toISOString(),
+            };
+
+            queryClient.setQueryData<ChatMessage[]>(
+              queryKeys.messages.list(currentSessionId),
+              (old) => [...(old || []), toolMessage]
+            );
+          }
+          break;
+        }
+
+        case 'tool_result': {
+          // Tool result received
+          if (currentSessionId) {
+            queryClient.setQueryData<ChatMessage[]>(
+              queryKeys.messages.list(currentSessionId),
+              (old) => {
+                return old?.map(msg => {
+                  if (isToolUseMessage(msg) && msg.tool_name === event.toolName && msg.status === 'pending') {
+                    return {
+                      ...msg,
+                      tool_result: event.result as JSONValue,
+                      status: event.success ? ('success' as const) : ('error' as const),
+                      error_message: event.error,
+                    };
+                  }
+                  return msg;
+                }) || [];
+              }
+            );
+          }
+          break;
+        }
+
+        case 'complete': {
+          // Agent turn complete
+          setIsStreaming(false);
+          setStreamingMessage('');
+          setIsThinking(false);
+
+          if (currentSessionId) {
+            // Remove thinking messages
+            queryClient.setQueryData<ChatMessage[]>(
+              queryKeys.messages.list(currentSessionId),
+              (old) => (old || []).filter(msg => !isThinkingMessage(msg))
             );
 
-            if (existingThinkingIndex >= 0) {
-              // Update existing thinking message
-              const updated = [...(old || [])];
-              const existingMsg = updated[existingThinkingIndex];
-              if (isThinkingMessage(existingMsg)) {
-                updated[existingThinkingIndex] = {
-                  ...existingMsg,
-                  content: data.content,
-                };
-              }
-              return updated;
-            } else {
-              // Create new thinking message
-              const thinkingMessage: ThinkingMessage = {
-                id: crypto.randomUUID(),
-                type: 'thinking',
-                session_id: currentSessionId,
-                content: data.content,
-                created_at: new Date().toISOString(),
-              };
-              return [...(old || []), thinkingMessage];
-            }
+            // Invalidate to fetch persisted messages
+            setTimeout(() => {
+              queryClient.invalidateQueries({ queryKey: queryKeys.messages.list(currentSessionId) });
+            }, 300);
           }
-        );
+          break;
+        }
+
+        case 'error': {
+          // Agent error
+          console.error('[useChat] Agent error:', event.error, event.code);
+          setIsStreaming(false);
+          setIsThinking(false);
+          break;
+        }
       }
     };
 
-    // Tool use (backend emits agent:tool_use)
-    const handleToolUse = (data: { toolName: string; args: Record<string, JSONValue>; toolUseId?: string }) => {
-      const currentSessionId = sessionIdRef.current;
-
-      // Add tool use message to UI
-      if (currentSessionId) {
-        const toolMessage: ToolUseMessage = {
-          id: data.toolUseId || crypto.randomUUID(),
-          type: 'tool_use',
-          session_id: currentSessionId,
-          tool_name: data.toolName,
-          tool_args: data.args,
-          status: 'pending',
-          created_at: new Date().toISOString(),
-        };
-
-        // Add tool message to messages cache
-        queryClient.setQueryData<ChatMessage[]>(
-          queryKeys.messages.list(currentSessionId),
-          (old) => [...(old || []), toolMessage]
-        );
-      }
-    };
-
-    // Tool result (backend emits agent:tool_result)
-    const handleToolResult = (data: { toolName: string; result: JSONValue; success: boolean; toolUseId?: string }) => {
-      const currentSessionId = sessionIdRef.current;
-
-      // Update tool use message with result
-      if (currentSessionId && data.toolUseId) {
-        queryClient.setQueryData<ChatMessage[]>(
-          queryKeys.messages.list(currentSessionId),
-          (old) => {
-            const updated = old?.map(msg => {
-              // Find pending tool message with matching toolUseId
-              if (isToolUseMessage(msg) && msg.id === data.toolUseId && msg.status === 'pending') {
-                return {
-                  ...msg,
-                  tool_result: data.result,
-                  status: data.success ? ('success' as const) : ('error' as const),
-                  error_message: data.success ? undefined : 'Tool execution failed',
-                };
-              }
-              return msg;
-            }) || [];
-
-            return updated;
-          }
-        );
-      }
-    };
-
-    // Message chunk during streaming (backend emits agent:message_chunk)
-    const handleMessageChunk = (data: { content: string }) => {
-      // Always append chunk (startStreaming is idempotent via setIsStreaming)
-      setIsStreaming(true);
-      appendStreamChunk(data.content);
-    };
-
-    // Completion (backend emits agent:complete)
-    const handleComplete = () => {
-      // End streaming state
-      setIsStreaming(false);
-      setStreamingMessage('');
-      setIsThinking(false);
-
-      const currentSessionId = sessionIdRef.current;
-
-      // Remove thinking message from cache when agent completes
-      if (currentSessionId) {
-        queryClient.setQueryData<ChatMessage[]>(
-          queryKeys.messages.list(currentSessionId),
-          (old) => {
-            // Filter out any thinking messages
-            return (old || []).filter(msg => !isThinkingMessage(msg));
-          }
-        );
-      }
-
-      // Delay invalidation to allow database writes to complete
-      if (currentSessionId) {
-        setTimeout(() => {
-          queryClient.invalidateQueries({ queryKey: queryKeys.messages.list(currentSessionId) });
-        }, 300);
-      }
-    };
-
-    // Error (backend emits agent:error)
-    const handleError = (data: { error: string }) => {
-      console.error('[useChat] WebSocket error:', data.error);
-    };
-
-    // Session title updated (backend emits session:title_updated)
+    // Session title updated (separate event, not part of agent:event union)
     const handleTitleUpdate = (data: { sessionId: string; title: string }) => {
-      // Update sessions cache
       queryClient.setQueryData<Session[]>(
         queryKeys.sessions.lists(),
         (old) => old?.map(session =>
@@ -397,31 +383,18 @@ export function useChat(sessionId?: string) {
         ) || []
       );
 
-      // Update current session if it matches
       if (currentSession?.id === data.sessionId) {
         setCurrentSession(prev => prev ? { ...prev, title: data.title } : null);
       }
     };
 
-    // Register listeners
-    socket.on('agent:message_complete', handleMessageComplete);
-    socket.on('agent:thinking', handleThinking);
-    socket.on('agent:tool_use', handleToolUse);
-    socket.on('agent:tool_result', handleToolResult);
-    socket.on('agent:message_chunk', handleMessageChunk);
-    socket.on('agent:complete', handleComplete);
-    socket.on('agent:error', handleError);
+    // Register unified event listener
+    socket.on('agent:event', handleAgentEvent);
     socket.on('session:title_updated', handleTitleUpdate);
 
-    // Cleanup listeners
+    // Cleanup
     return () => {
-      socket.off('agent:message_complete', handleMessageComplete);
-      socket.off('agent:thinking', handleThinking);
-      socket.off('agent:tool_use', handleToolUse);
-      socket.off('agent:tool_result', handleToolResult);
-      socket.off('agent:message_chunk', handleMessageChunk);
-      socket.off('agent:complete', handleComplete);
-      socket.off('agent:error', handleError);
+      socket.off('agent:event', handleAgentEvent);
       socket.off('session:title_updated', handleTitleUpdate);
     };
   }, [socket, isConnected, queryClient, currentSession]);

@@ -49,6 +49,13 @@ export interface Message {
    */
   content: string;
   stop_reason?: StopReason | null;
+  /**
+   * Atomic sequence number for message ordering (from event sourcing).
+   *
+   * Generated via Redis INCR to guarantee correct ordering even in race
+   * conditions. Always sort by sequence_number, NOT by created_at timestamp.
+   */
+  sequence_number?: number;
   thinking_tokens?: number;
   is_thinking?: boolean;
   created_at: string;

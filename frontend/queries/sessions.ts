@@ -40,10 +40,12 @@ export function useMessages(
     queryKey: queryKeys.messages.list(sessionId),
     queryFn: async () => {
       const response = await apiClient.messages.list(sessionId);
-      return response.messages.sort(
-        (a, b) =>
-          new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-      );
+      // Sort by sequence_number for correct ordering (event sourcing)
+      return response.messages.sort((a, b) => {
+        const seqA = a.sequence_number ?? 0;
+        const seqB = b.sequence_number ?? 0;
+        return seqA - seqB;
+      });
     },
     enabled: !!sessionId,
     refetchInterval: false,

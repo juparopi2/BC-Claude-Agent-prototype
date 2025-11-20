@@ -83,6 +83,7 @@ function transformMessage(row: {
   metadata: string | null;
   token_count: number | null;
   stop_reason: StopReason | null;  // ✅ Native SDK stop_reason
+  sequence_number: number | null;  // ✅ Event sourcing sequence
   created_at: Date;
 }) {
   // Base fields common to all message types
@@ -115,6 +116,7 @@ function transformMessage(row: {
         content: metadata.content as string || '',
         duration_ms: metadata.duration_ms as number | undefined,
         stop_reason: row.stop_reason,  // ✅ Native SDK stop_reason
+        sequence_number: row.sequence_number,  // ✅ Event sourcing sequence
         created_at: row.created_at.toISOString(),
       };
 
@@ -130,6 +132,7 @@ function transformMessage(row: {
         status: (metadata.status as 'pending' | 'success' | 'error') || 'pending',
         error_message: metadata.error_message as string | undefined,
         stop_reason: row.stop_reason,  // ✅ Native SDK stop_reason
+        sequence_number: row.sequence_number,  // ✅ Event sourcing sequence
         created_at: row.created_at.toISOString(),
       };
 
@@ -140,6 +143,7 @@ function transformMessage(row: {
         ...base,  // Includes role and message_type for standard messages
         content: row.content,
         stop_reason: row.stop_reason,  // ✅ Native SDK stop_reason
+        sequence_number: row.sequence_number,  // ✅ Event sourcing sequence
         thinking_tokens: metadata.thinking_tokens as number | undefined,
         is_thinking: metadata.is_thinking as boolean | undefined,
       };
@@ -424,10 +428,11 @@ router.get('/:sessionId/messages', authenticateMicrosoft, async (req: Request, r
         metadata,
         stop_reason,
         token_count,
+        sequence_number,
         created_at
       FROM messages
       WHERE session_id = @sessionId
-      ORDER BY created_at ASC
+      ORDER BY sequence_number ASC
       OFFSET @offset ROWS
       FETCH NEXT @limit ROWS ONLY
     `;
@@ -441,6 +446,7 @@ router.get('/:sessionId/messages', authenticateMicrosoft, async (req: Request, r
       metadata: string | null;
       stop_reason: StopReason | null;  // ✅ Native SDK stop_reason
       token_count: number | null;
+      sequence_number: number | null;  // ✅ Event sourcing sequence
       created_at: Date;
     }>(messagesQuery, { sessionId, offset, limit });
 

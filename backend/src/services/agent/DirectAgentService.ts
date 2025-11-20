@@ -41,6 +41,7 @@ import type { Tool } from '@anthropic-ai/sdk/resources/messages';  // ⭐ Use na
 import { AnthropicClient } from './AnthropicClient';
 import { randomUUID } from 'crypto';
 import { getEventStore } from '../events/EventStore';
+import { logger } from '@/utils/logger';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -210,6 +211,23 @@ export class DirectAgentService {
     sessionId?: string,
     onEvent?: (event: AgentEvent) => void
   ): Promise<AgentExecutionResult> {
+    // DIAGNOSTIC LOGGING - Entry point
+    logger.info('🚀 DirectAgentService.executeQueryStreaming CALLED', {
+      sessionId,
+      promptLength: prompt.length,
+      promptPreview: prompt.substring(0, 50),
+      hasApiKey: !!env.ANTHROPIC_API_KEY,
+      apiKeyLength: env.ANTHROPIC_API_KEY?.length || 0,
+      hasOnEvent: !!onEvent,
+    });
+
+    // Validate API key
+    if (!env.ANTHROPIC_API_KEY || env.ANTHROPIC_API_KEY.trim() === '') {
+      const error = new Error('ANTHROPIC_API_KEY is missing or empty - cannot execute agent');
+      logger.error('❌ API Key validation failed', { error: error.message });
+      throw error;
+    }
+
     const startTime = Date.now();
     const conversationHistory: MessageParam[] = [];
     const toolsUsed: string[] = [];
@@ -248,13 +266,31 @@ export class DirectAgentService {
         console.log(`\n========== TURN ${turnCount} (STREAMING) ==========`);
 
         // ========== STREAM CLAUDE RESPONSE ==========
-        const stream = this.client.createChatCompletionStream({
-          model: env.ANTHROPIC_MODEL,
-          max_tokens: 4096,
-          messages: conversationHistory,
-          tools: tools,
-          system: this.getSystemPrompt(),
-        });
+        logger.info('📡 Creating Anthropic stream...', { sessionId, turnCount });
+
+        let stream;
+        try {
+          stream = this.client.createChatCompletionStream({
+            model: env.ANTHROPIC_MODEL,
+            max_tokens: 4096,
+            messages: conversationHistory,
+            tools: tools,
+            system: this.getSystemPrompt(),
+          });
+
+          logger.info('✅ Stream created successfully', { sessionId, turnCount });
+        } catch (streamError) {
+          logger.error('❌ Stream creation failed', {
+            sessionId,
+            turnCount,
+            error: streamError instanceof Error ? streamError.message : String(streamError),
+            errorType: streamError instanceof Error ? streamError.constructor.name : typeof streamError,
+            errorCode: (streamError as Error & { code?: string })?.code,
+            errorSyscall: (streamError as Error & { syscall?: string })?.syscall,
+            stack: streamError instanceof Error ? streamError.stack : undefined,
+          });
+          throw streamError;
+        }
 
         // Accumulators for this turn
         let accumulatedText = '';

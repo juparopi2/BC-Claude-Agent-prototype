@@ -14,6 +14,7 @@
 import { useEffect, useCallback, useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient, type UseQueryResult, type UseMutationResult } from '@tanstack/react-query';
 import { useWebSocket } from '@/contexts/websocket';
+import { useAuth } from '@/hooks/useAuth';
 import { apiClient } from '@/lib/api-client';
 import { queryKeys } from '@/queries/keys';
 import type { Message, Session } from '@/types/api';
@@ -88,6 +89,7 @@ export function isThinkingMessage(message: ChatMessage): message is ThinkingMess
 export function useChat(sessionId?: string) {
   const queryClient = useQueryClient();
   const { socket, isConnected } = useWebSocket();
+  const { user } = useAuth();
 
   // Use ref to avoid stale closure issues with sessionId
   const sessionIdRef = useRef<string | undefined>(sessionId);
@@ -367,6 +369,24 @@ export function useChat(sessionId?: string) {
           console.error('[useChat] Agent error:', event.error, event.code);
           setIsStreaming(false);
           setIsThinking(false);
+
+          // Display error message to user
+          if (currentSessionId) {
+            const errorMessage: Message = {
+              id: crypto.randomUUID(),
+              session_id: currentSessionId,
+              role: 'assistant',
+              content: `Error: ${event.error}`,
+              created_at: new Date().toISOString(),
+              thinking_tokens: 0,
+              is_thinking: false,
+            };
+
+            queryClient.setQueryData<ChatMessage[]>(
+              queryKeys.messages.list(currentSessionId),
+              (old) => [...(old || []), errorMessage]
+            );
+          }
           break;
         }
       }
@@ -410,6 +430,16 @@ export function useChat(sessionId?: string) {
         throw new Error('WebSocket not connected');
       }
 
+      // Get userId from auth context
+      const userId = user?.id || 'guest';
+
+      console.log('[useChat] Sending message:', {
+        sessionId,
+        userId,
+        contentLength: content.length,
+        contentPreview: content.substring(0, 100),
+      });
+
       // Add optimistic message to cache
       const tempMessage: Message = {
         id: crypto.randomUUID(),
@@ -427,10 +457,14 @@ export function useChat(sessionId?: string) {
         (old) => [...(old || []), tempMessage]
       );
 
-      // Send via WebSocket
-      socket?.emit('message:send', { sessionId, content });
+      // Send via WebSocket with correct event name and payload structure
+      socket?.emit('chat:message', {
+        message: content,  // Backend expects 'message' not 'content'
+        sessionId,
+        userId,
+      });
     },
-    [sessionId, isConnected, socket, queryClient]
+    [sessionId, isConnected, socket, queryClient, user]
   );
 
   // Wrapper functions for mutations

@@ -37,9 +37,15 @@ class ApiClient {
     this.client.interceptors.response.use(
       (response) => response,
       (error) => {
-        if (error.response?.status === 401) {
+        // Don't redirect for auth check - let useAuth handle it
+        const isAuthCheck = error.config?.url?.includes('/auth/me');
+        
+        if (error.response?.status === 401 && !isAuthCheck) {
           if (typeof window !== "undefined") {
-            window.location.href = "/login";
+            // Don't redirect if already on login page
+            if (window.location.pathname !== '/login') {
+              window.location.href = "/login";
+            }
           }
         }
         return Promise.reject(error);

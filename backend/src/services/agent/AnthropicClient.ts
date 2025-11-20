@@ -19,6 +19,7 @@ import type {
   ChatCompletionRequest,
   ChatCompletionResponse,
 } from './IAnthropicClient';
+import { logger } from '@/utils/logger';
 
 /**
  * Real Anthropic Client
@@ -117,6 +118,19 @@ export class AnthropicClient implements IAnthropicClient {
         yield event;
       }
     } catch (error) {
+      // Enhanced error logging for diagnostics
+      // Type for Node.js system errors (ECONNRESET, etc.)
+      type NodeSystemError = Error & { code?: string; syscall?: string };
+      const systemError = error as NodeSystemError;
+
+      logger.error('❌ Anthropic API streaming failed', {
+        error: error instanceof Error ? error.message : String(error),
+        errorCode: systemError?.code,
+        errorSyscall: systemError?.syscall,
+        isECONNRESET: systemError?.code === 'ECONNRESET',
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+
       // Re-throw with more context
       if (error instanceof Error) {
         throw new Error(`Anthropic streaming API call failed: ${error.message}`);

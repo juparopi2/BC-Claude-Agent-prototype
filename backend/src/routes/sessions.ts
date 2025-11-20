@@ -432,7 +432,12 @@ router.get('/:sessionId/messages', authenticateMicrosoft, async (req: Request, r
         created_at
       FROM messages
       WHERE session_id = @sessionId
-      ORDER BY sequence_number ASC
+      ORDER BY
+        CASE
+          WHEN sequence_number IS NULL THEN 999999999
+          ELSE sequence_number
+        END ASC,
+        created_at ASC
       OFFSET @offset ROWS
       FETCH NEXT @limit ROWS ONLY
     `;

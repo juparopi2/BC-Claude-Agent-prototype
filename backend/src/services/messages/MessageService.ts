@@ -64,14 +64,21 @@ export class MessageService {
     const messageId = randomUUID();
 
     try {
+      logger.info('📝 saveUserMessage START', { sessionId, messageId, userId });
+
       // 1. Append event to EventStore (fast, synchronous)
+      logger.info('📝 Appending event to EventStore...', { sessionId, messageId });
+      const eventStart = Date.now();
       await this.eventStore.appendEvent(sessionId, 'user_message_sent', {
         message_id: messageId,
         content,
         user_id: userId,
       });
+      logger.info('✅ Event appended', { sessionId, messageId, duration: Date.now() - eventStart });
 
       // 2. Queue for DB persistence (async, non-blocking)
+      logger.info('📝 Adding to message queue...', { sessionId, messageId });
+      const queueStart = Date.now();
       await this.messageQueue.addMessagePersistence({
         sessionId,
         messageId,
@@ -80,12 +87,13 @@ export class MessageService {
         content,
         metadata: { user_id: userId },
       });
+      logger.info('✅ Added to queue', { sessionId, messageId, duration: Date.now() - queueStart });
 
-      logger.debug('User message saved', { sessionId, messageId, userId });
+      logger.info('✅ User message saved', { sessionId, messageId, userId });
 
       return messageId;
     } catch (error) {
-      logger.error('Failed to save user message', {
+      logger.error('❌ Failed to save user message', {
         error,
         sessionId,
         userId,

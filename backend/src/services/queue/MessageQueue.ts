@@ -82,6 +82,9 @@ export class MessageQueue {
   private queues: Map<QueueName, Queue>;
   private workers: Map<QueueName, Worker>;
   private queueEvents: Map<QueueName, QueueEvents>;
+  // Connection state tracking (used in waitForReady() method)
+  private isReady: boolean = false;
+  private readyPromise: Promise<void>;
 
   private constructor() {
     // Create Redis connection for BullMQ
@@ -90,17 +93,40 @@ export class MessageQueue {
       port: env.REDIS_PORT || 6379,
       password: env.REDIS_PASSWORD,
       maxRetriesPerRequest: null, // Required for BullMQ
+      lazyConnect: false, // Connect immediately
+      enableReadyCheck: true,
     });
 
     this.queues = new Map();
     this.workers = new Map();
     this.queueEvents = new Map();
 
-    this.initializeQueues();
-    this.initializeWorkers();
-    this.setupEventListeners();
+    // Create promise that resolves when Redis is ready
+    this.readyPromise = new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('Redis connection timeout for BullMQ (10s)'));
+      }, 10000);
 
-    logger.info('MessageQueue initialized with BullMQ');
+      this.redisConnection.on('ready', () => {
+        clearTimeout(timeout);
+        this.isReady = true;
+        logger.info('✅ BullMQ Redis connection ready');
+
+        // Initialize queues/workers AFTER Redis is ready
+        this.initializeQueues();
+        this.initializeWorkers();
+        this.setupEventListeners();
+        logger.info('MessageQueue initialized with BullMQ');
+
+        resolve();
+      });
+
+      this.redisConnection.on('error', (error) => {
+        logger.error('❌ BullMQ Redis connection error', { error: error.message });
+        clearTimeout(timeout);
+        reject(error);
+      });
+    });
   }
 
   /**
@@ -111,6 +137,33 @@ export class MessageQueue {
       MessageQueue.instance = new MessageQueue();
     }
     return MessageQueue.instance;
+  }
+
+  /**
+   * Wait for MessageQueue to be ready
+   *
+   * MUST be called before using any queue methods to ensure Redis connection is established.
+   * This method is idempotent and safe to call multiple times.
+   *
+   * @throws Error if Redis connection fails or times out
+   */
+  public async waitForReady(): Promise<void> {
+    // Check if already ready (uses this.isReady)
+    if (this.isReady) {
+      return; // Already ready
+    }
+
+    logger.debug('Waiting for MessageQueue to be ready...');
+    // Wait for Redis connection (uses this.readyPromise)
+    await this.readyPromise;
+    logger.debug('MessageQueue is ready');
+  }
+
+  /**
+   * Check if MessageQueue is ready (for testing/debugging)
+   */
+  public getReadyStatus(): boolean {
+    return this.isReady;
   }
 
   /**
@@ -308,6 +361,9 @@ export class MessageQueue {
   public async addMessagePersistence(
     data: MessagePersistenceJob
   ): Promise<string> {
+    // ⭐ CRITICAL: Wait for Redis connection to be ready
+    await this.waitForReady();
+
     const queue = this.queues.get(QueueName.MESSAGE_PERSISTENCE);
     if (!queue) {
       throw new Error('Message persistence queue not initialized');
@@ -341,6 +397,9 @@ export class MessageQueue {
    * @returns Job ID
    */
   public async addToolExecution(data: ToolExecutionJob): Promise<string> {
+    // ⭐ CRITICAL: Wait for Redis connection to be ready
+    await this.waitForReady();
+
     const queue = this.queues.get(QueueName.TOOL_EXECUTION);
     if (!queue) {
       throw new Error('Tool execution queue not initialized');
@@ -365,6 +424,9 @@ export class MessageQueue {
    * @returns Job ID
    */
   public async addEventProcessing(data: EventProcessingJob): Promise<string> {
+    // ⭐ CRITICAL: Wait for Redis connection to be ready
+    await this.waitForReady();
+
     const queue = this.queues.get(QueueName.EVENT_PROCESSING);
     if (!queue) {
       throw new Error('Event processing queue not initialized');

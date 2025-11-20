@@ -105,6 +105,11 @@ async function initializeApp(): Promise<void> {
     // Step 2: Validate required secrets
     validateRequiredSecrets();
 
+    // Step 2.5: Log API key status for diagnostics
+    console.log('🔑 Environment variables loaded:');
+    console.log(`   ANTHROPIC_API_KEY: ${env.ANTHROPIC_API_KEY ? `✅ Present (${env.ANTHROPIC_API_KEY.length} chars, starts with "${env.ANTHROPIC_API_KEY.substring(0, 8)}...")` : '❌ MISSING'}`);
+    console.log('');
+
     // Step 3: Initialize database connection with retry
     let dbConnected = false;
     const maxDbRetries = 3;
@@ -802,6 +807,14 @@ function configureSocketIO(): void {
 
     // Handler: Chat message
     socket.on('chat:message', async (data: { message: string; sessionId: string; userId: string }) => {
+      logger.info('[WebSocket] chat:message event received', {
+        sessionId: data?.sessionId,
+        userId: data?.userId,
+        messageLength: data?.message?.length || 0,
+        hasMessage: !!data?.message,
+        messagePreview: data?.message?.substring(0, 50) || 'EMPTY',
+      });
+
       const chatHandler = getChatMessageHandler();
       await chatHandler.handle(data, socket, io);
     });
@@ -853,6 +866,27 @@ function configureSocketIO(): void {
     // Disconnect handler
     socket.on('disconnect', () => {
       logger.info(`[Socket.IO] ❌ Client disconnected: ${socket.id}`);
+    });
+
+    // Catch-all for unknown events (debugging only)
+    socket.onAny((eventName, ...args) => {
+      const knownEvents = [
+        'chat:message',
+        'approval:response',
+        'session:join',
+        'session:leave',
+        'disconnect',
+      ];
+
+      if (!knownEvents.includes(eventName)) {
+        logger.warn('[WebSocket] Unknown event received', {
+          eventName,
+          socketId: socket.id,
+          userId: authSocket.userId,
+          argsCount: args.length,
+          preview: JSON.stringify(args).substring(0, 200),
+        });
+      }
     });
 
     // Error handler
@@ -960,4 +994,5 @@ startServer();
  * Export Express app and Socket.IO for testing
  */
 export { app, io };
+
 

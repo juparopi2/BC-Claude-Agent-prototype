@@ -55,7 +55,23 @@ export class ChatMessageHandler {
   ): Promise<void> {
     const { message, sessionId, userId } = data;
 
-    logger.info('Chat message received', { sessionId, userId, messageLength: message.length });
+    logger.info('Chat message received', {
+      sessionId,
+      userId,
+      messageLength: message?.length || 0,
+      messagePreview: message?.substring(0, 100) || 'EMPTY',
+      hasMessage: !!message,
+    });
+
+    // Validate message is not empty
+    if (!message || message.trim().length === 0) {
+      logger.warn('Empty message received, rejecting', { sessionId, userId });
+      socket.emit('agent:error', {
+        error: 'Empty message not allowed',
+        sessionId,
+      });
+      return;
+    }
 
     try {
       // 1. Validate session ownership (multi-tenant safety)
@@ -63,10 +79,23 @@ export class ChatMessageHandler {
       await this.validateSessionOwnership(sessionId, userId);
 
       // 2. Save user message with userId for audit trail
+      logger.info('💾 Saving user message to database...', { sessionId, userId });
+      const startSaveTime = Date.now();
       await this.messageService.saveUserMessage(sessionId, userId, message);
+      const saveDuration = Date.now() - startSaveTime;
+      logger.info('✅ User message saved successfully', { sessionId, userId, saveDuration });
 
       // 3. Execute agent with DirectAgentService (SDK-first)
+      logger.info('🤖 About to call DirectAgentService.executeQueryStreaming', { sessionId, userId });
+
       const agentService = getDirectAgentService();
+      logger.info('✅ DirectAgentService instance obtained', {
+        hasAgentService: !!agentService,
+        agentServiceType: agentService?.constructor?.name,
+        hasExecuteMethod: typeof agentService?.executeQueryStreaming === 'function'
+      });
+
+      logger.info('📞 Calling executeQueryStreaming...', { sessionId, messageLength: message.length });
 
       await agentService.executeQueryStreaming(
         message,
@@ -74,10 +103,19 @@ export class ChatMessageHandler {
         (event: AgentEvent) => this.handleAgentEvent(event, io, sessionId, userId)
       );
 
-      logger.info('Chat message processed successfully', { sessionId, userId });
+      logger.info('✅ Chat message processed successfully (executeQueryStreaming completed)', { sessionId, userId });
     } catch (error) {
-      logger.error('Chat message handler error', {
+      // Type for Node.js system errors with additional properties
+      type NodeSystemError = Error & { code?: string; errno?: number; syscall?: string };
+      const systemError = error as NodeSystemError;
+
+      logger.error('❌ Chat message handler error (DETAILED)', {
         error: error instanceof Error ? error.message : String(error),
+        errorType: error instanceof Error ? error.constructor.name : typeof error,
+        errorCode: systemError?.code,
+        errorErrno: systemError?.errno,
+        errorSyscall: systemError?.syscall,
+        stack: error instanceof Error ? error.stack : undefined,
         sessionId,
         userId,
       });
@@ -392,6 +430,11 @@ export class ChatMessageHandler {
 }
 
 /**
+ * Singleton instance of ChatMessageHandler
+ */
+let chatMessageHandlerInstance: ChatMessageHandler | null = null;
+
+/**
  * Get Chat Message Handler Singleton
  *
  * Returns the singleton instance of ChatMessageHandler.
@@ -400,5 +443,9 @@ export class ChatMessageHandler {
  * @returns ChatMessageHandler instance
  */
 export function getChatMessageHandler(): ChatMessageHandler {
-  return new ChatMessageHandler();
+  if (!chatMessageHandlerInstance) {
+    chatMessageHandlerInstance = new ChatMessageHandler();
+    logger.info('ChatMessageHandler singleton instance created');
+  }
+  return chatMessageHandlerInstance;
 }

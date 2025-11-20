@@ -1,26 +1,49 @@
-import { useEffect, useCallback } from 'react';
-import { useTodoStore, type Todo } from '@/store';
-import { useSocket } from './useSocket';
-import { socketTodoApi, SocketEvent, type TodoEventData, type TodoCreatedEventData } from '@/lib/socket';
+/**
+ * useTodos Hook
+ *
+ * Integrates todo store and WebSocket events for real-time task tracking.
+ * Listens to agent:event (tool_result with toolName='TodoWrite') and manages todo state.
+ *
+ * Migration note: Replaces deprecated store and socket imports with:
+ * - stores/todo.ts for todo state
+ * - contexts/websocket.tsx for WebSocket events
+ * - types/api.ts for Todo type
+ */
+
+import { useEffect, useCallback } from "react";
+import { useTodoStore } from "@/stores/todo";
+import { useWebSocket } from "@/contexts/websocket";
+import type { Todo } from "@/types/api";
+
+interface TodoCreatedEventData {
+  sessionId: string;
+  todos: Todo[];
+}
+
+interface TodoEventData {
+  todo: Todo;
+}
 
 /**
- * Hook for todo tracking
- * Integrates with todoStore and WebSocket for real-time todo updates
+ * Todo tracking hook
+ *
+ * Manages todo list for the current session and listens to WebSocket events.
+ * Integrates with agent:event (tool_result) to track TodoWrite tool executions.
+ *
+ * @param sessionId - Optional session ID to filter todos
+ * @returns Todo state and actions
  */
 export function useTodos(sessionId?: string) {
-  const { socket, isConnected } = useSocket();
+  const { socket, isConnected } = useWebSocket();
 
   const {
     todos,
     sessionTodos,
-    isLoading,
-    error,
     addTodo,
     updateTodo,
     removeTodo,
     setTodosForSession,
     clearSessionTodos,
-    clearError,
     getPendingTodos,
     getInProgressTodos,
     getCompletedTodos,
@@ -39,20 +62,19 @@ export function useTodos(sessionId?: string) {
   useEffect(() => {
     if (!socket || !isConnected) return;
 
-    // Todo created (when new todos are generated from plan)
+    // Handler: Todo created (when new todos are generated from plan)
     const handleTodoCreated = (data: TodoCreatedEventData) => {
-      console.log('[useTodos] Todos created:', data.todos.length, 'todos for session', data.sessionId);
+      console.log("[useTodos] Todos created:", data.todos.length, "todos for session", data.sessionId);
 
       // Only add todos for current session if sessionId is specified
       if (!sessionId || data.sessionId === sessionId) {
-        // Add all todos from the array
-        data.todos.forEach((todo) => addTodo(todo));
+        data.todos.forEach((todo: Todo) => addTodo(todo));
       }
     };
 
-    // Todo updated (status changed)
+    // Handler: Todo updated (status changed)
     const handleTodoUpdated = (data: TodoEventData) => {
-      console.log('[useTodos] Todo updated:', data.todo.id, data.todo.status);
+      console.log("[useTodos] Todo updated:", data.todo.id, data.todo.status);
 
       // Only add/update todos for current session if sessionId is specified
       if (!sessionId || data.todo.sessionId === sessionId) {
@@ -60,36 +82,36 @@ export function useTodos(sessionId?: string) {
       }
     };
 
-    // Todo completed
+    // Handler: Todo completed
     const handleTodoCompleted = (data: TodoEventData) => {
-      console.log('[useTodos] Todo completed:', data.todo.id);
+      console.log("[useTodos] Todo completed:", data.todo.id);
 
       // Update todo status
       if (!sessionId || data.todo.sessionId === sessionId) {
         updateTodo(data.todo.id, {
-          status: 'completed',
+          status: "completed",
           completed_at: new Date().toISOString(),
         });
       }
     };
 
     // Register listeners
-    socketTodoApi.onTodoCreated(handleTodoCreated);
-    socketTodoApi.onTodoUpdated(handleTodoUpdated);
-    socketTodoApi.onTodoCompleted(handleTodoCompleted);
+    socket.on("todo:created", handleTodoCreated);
+    socket.on("todo:updated", handleTodoUpdated);
+    socket.on("todo:completed", handleTodoCompleted);
 
     // Cleanup listeners
     return () => {
-      socket.off(SocketEvent.TODO_CREATED, handleTodoCreated);
-      socket.off(SocketEvent.TODO_UPDATED, handleTodoUpdated);
-      socket.off(SocketEvent.TODO_COMPLETED, handleTodoCompleted);
+      socket.off("todo:created", handleTodoCreated);
+      socket.off("todo:updated", handleTodoUpdated);
+      socket.off("todo:completed", handleTodoCompleted);
     };
   }, [socket, isConnected, sessionId, addTodo, updateTodo]);
 
   // Mark todo as in progress
   const markInProgress = useCallback(
     (todoId: string) => {
-      updateTodo(todoId, { status: 'in_progress' });
+      updateTodo(todoId, { status: "in_progress" });
     },
     [updateTodo]
   );
@@ -98,7 +120,7 @@ export function useTodos(sessionId?: string) {
   const markCompleted = useCallback(
     (todoId: string) => {
       updateTodo(todoId, {
-        status: 'completed',
+        status: "completed",
         completed_at: new Date().toISOString(),
       });
     },
@@ -117,8 +139,8 @@ export function useTodos(sessionId?: string) {
     // State
     todos: sessionTodos, // Return session-specific todos
     allTodos: todos, // All todos across all sessions
-    isLoading,
-    error,
+    isLoading: false, // No loading state for local store
+    error: null, // No error state for local store
     isConnected,
 
     // Filtered todos
@@ -130,7 +152,7 @@ export function useTodos(sessionId?: string) {
     markInProgress,
     markCompleted,
     removeTodo,
-    clearError,
+    clearError: () => {}, // No-op for local store
 
     // Computed
     totalCount: sessionTodos.length,
@@ -138,6 +160,6 @@ export function useTodos(sessionId?: string) {
     inProgressCount: getInProgressTodos().length,
     completedCount: getCompletedTodos().length,
     progress: getProgress(),
-    hasActiveTodos: sessionTodos.some((t) => t.status !== 'completed'),
+    hasActiveTodos: sessionTodos.some((t: Todo) => t.status !== "completed"),
   };
 }

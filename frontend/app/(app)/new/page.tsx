@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useChat } from '@/hooks';
 import { socketChatApi } from '@/lib/socket';
-import { useSocketContext } from '@/providers/SocketProvider';
+import { useWebSocket } from '@/contexts/websocket';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { MessageSquarePlus, Loader2, Send } from 'lucide-react';
@@ -12,7 +12,7 @@ import { MessageSquarePlus, Loader2, Send } from 'lucide-react';
 export default function NewChatPage() {
   const router = useRouter();
   const { createSession, currentSession, sessionsLoading } = useChat();
-  const { socket } = useSocketContext();
+  const { socket } = useWebSocket();
   const [message, setMessage] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [creationStatus, setCreationStatus] = useState<string>('');

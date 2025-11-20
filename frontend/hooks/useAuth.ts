@@ -1,15 +1,24 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { authApi } from '@/lib/api';
-import type { User } from '@/lib/types';
+/**
+ * useAuth Hook
+ *
+ * React Query-based authentication hook.
+ * Replaces deprecated imports from @/lib/api and @/lib/types.
+ *
+ * Migration note:
+ * - Uses apiClient.auth from lib/api-client.ts (not lib/api.ts)
+ * - Uses User type from types/api.ts (not lib/types.ts)
+ * - Uses queryKeys from queries/keys.ts
+ */
+
+import { useQuery, useMutation, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
+import { apiClient } from '@/lib/api-client';
+import { queryKeys } from '@/queries/keys';
+import type { User } from '@/types/api';
 
 /**
- * Query keys for authentication
- * Used for cache management and invalidation
+ * Note: Query keys are now centralized in queries/keys.ts
+ * This hook uses queryKeys.auth from there.
  */
-export const authKeys = {
-  all: ['auth'] as const,
-  user: () => [...authKeys.all, 'user'] as const,
-};
 
 /**
  * Hook for authentication operations (React Query version)
@@ -48,11 +57,11 @@ export function useAuth() {
     isLoading,
     error,
     refetch
-  } = useQuery({
-    queryKey: authKeys.user(),
+  }: UseQueryResult<User | null, Error> = useQuery({
+    queryKey: queryKeys.auth.me(),
     queryFn: async () => {
       try {
-        return await authApi.me();
+        return await apiClient.auth.me();
       } catch (err) {
         // Return null if 401 (not authenticated)
         // This prevents redirect loops on login page
@@ -76,7 +85,7 @@ export function useAuth() {
 
   // Logout mutation
   const logoutMutation = useMutation({
-    mutationFn: authApi.logout,
+    mutationFn: apiClient.auth.logout,
     onSuccess: () => {
       // Clear all queries on logout
       queryClient.clear();
@@ -107,7 +116,7 @@ export function useAuth() {
     refetch, // Manually refetch user if needed
     clearError: () => {
       // React Query handles errors automatically, but we can reset the query if needed
-      queryClient.resetQueries({ queryKey: authKeys.user() });
+      queryClient.resetQueries({ queryKey: queryKeys.auth.me() });
     },
 
     // Helpers

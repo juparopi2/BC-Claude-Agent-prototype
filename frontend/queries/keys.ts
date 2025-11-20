@@ -31,6 +31,7 @@ export const queryKeys = {
     lists: () => [...queryKeys.approvals.all, "list"] as const,
     list: (filters?: { status?: string }) =>
       [...queryKeys.approvals.lists(), filters] as const,
+    pending: [...["approvals"], "pending"] as const,
   },
   health: {
     all: ["health"] as const,

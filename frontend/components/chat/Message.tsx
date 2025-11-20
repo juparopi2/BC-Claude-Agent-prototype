@@ -4,7 +4,7 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
-import type { Message as MessageType } from '@/lib/types';
+import type { ChatMessage as MessageType } from '@/hooks/useChat';
 
 interface MessageProps {
   message: MessageType;

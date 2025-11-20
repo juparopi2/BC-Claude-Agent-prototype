@@ -91,3 +91,12 @@ export interface MessagesResponse {
 export interface ApprovalsResponse {
   approvals: Approval[];
 }
+
+export interface Todo {
+  id: string;
+  sessionId: string;
+  content: string;
+  status: "pending" | "in_progress" | "completed" | "failed";
+  created_at?: string;
+  completed_at?: string;
+}

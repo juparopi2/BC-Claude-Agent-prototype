@@ -3,12 +3,55 @@
 import React, { useState } from 'react';
 import { ChevronDown, ChevronRight, Wrench, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { ToolUseMessage as ToolUseMessageType } from '@/lib/types';
-import { jsonToString } from '@/lib/json-utils';
+import type { ToolUseMessage as ToolUseMessageType, JSONValue } from '@/hooks/useChat';
 
 interface ToolUseMessageProps {
   message: ToolUseMessageType;
   className?: string;
+}
+
+// Helper to stringify JSON (replaces json-utils)
+function jsonToString(value: JSONValue): string {
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+// Expanded content component
+function ExpandedContent({ message }: { message: ToolUseMessageType }) {
+  return (
+    <div className="px-4 pb-4 space-y-3 border-t">
+      {/* Arguments */}
+      <div>
+        <h4 className="text-xs font-semibold text-muted-foreground mb-1.5 mt-3">Arguments:</h4>
+        <pre className="text-xs bg-muted p-3 rounded-md overflow-x-auto">
+          {jsonToString(message.tool_args)}
+        </pre>
+      </div>
+
+      {/* Result (only if status is success) */}
+      {message.status === 'success' && message.tool_result && (
+        <div>
+          <h4 className="text-xs font-semibold text-muted-foreground mb-1.5">Result:</h4>
+          <pre className="text-xs bg-muted p-3 rounded-md overflow-x-auto max-h-96">
+            {jsonToString(message.tool_result)}
+          </pre>
+        </div>
+      )}
+
+      {/* Error message (only if status is error) */}
+      {message.status === 'error' && message.error_message && (
+        <div>
+          <h4 className="text-xs font-semibold text-red-600 dark:text-red-400 mb-1.5">Error:</h4>
+          <div className="text-xs bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300 p-3 rounded-md">
+            {message.error_message}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // Status icon component - moved outside render to avoid recreation
@@ -61,7 +104,7 @@ export function ToolUseMessage({ message, className }: ToolUseMessageProps) {
   };
 
   // Format arguments for preview (compact, inline format)
-  const formatArgsPreview = (args: Record<string, unknown> | undefined): string => {
+  const formatArgsPreview = (args: Record<string, JSONValue> | undefined): string => {
     if (!args || Object.keys(args).length === 0) {
       return '';
     }
@@ -70,7 +113,7 @@ export function ToolUseMessage({ message, className }: ToolUseMessageProps) {
       const argsStr = JSON.stringify(args);
       // Truncate if too long (max 60 chars)
       return argsStr.length > 60 ? argsStr.substring(0, 57) + '...' : argsStr;
-    } catch (error) {
+    } catch {
       return '{ ... }';
     }
   };
@@ -115,37 +158,7 @@ export function ToolUseMessage({ message, className }: ToolUseMessageProps) {
       </button>
 
       {/* Expanded content */}
-      {isExpanded ? (
-        <div className="px-4 pb-4 space-y-3 border-t">
-          {/* Arguments */}
-          <div>
-            <h4 className="text-xs font-semibold text-muted-foreground mb-1.5 mt-3">Arguments:</h4>
-            <pre className="text-xs bg-muted p-3 rounded-md overflow-x-auto">
-              {jsonToString(message.tool_args)}
-            </pre>
-          </div>
-
-          {/* Result (only if status is success) */}
-          {message.status === 'success' && message.tool_result && (
-            <div>
-              <h4 className="text-xs font-semibold text-muted-foreground mb-1.5">Result:</h4>
-              <pre className="text-xs bg-muted p-3 rounded-md overflow-x-auto max-h-96">
-                {jsonToString(message.tool_result)}
-              </pre>
-            </div>
-          )}
-
-          {/* Error message (only if status is error) */}
-          {message.status === 'error' && message.error_message && (
-            <div>
-              <h4 className="text-xs font-semibold text-red-600 dark:text-red-400 mb-1.5">Error:</h4>
-              <div className="text-xs bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300 p-3 rounded-md">
-                {message.error_message}
-              </div>
-            </div>
-          )}
-        </div>
-      ) : null}
+      {isExpanded && <ExpandedContent message={message} />}
     </div>
   );
 }

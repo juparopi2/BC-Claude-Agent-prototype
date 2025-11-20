@@ -76,19 +76,23 @@ export type AgentEvent =
   | CompleteEvent
   | ErrorEvent;
 
+export interface ApprovalSummary {
+  title: string;
+  description: string;
+  changes: Record<string, unknown>;
+  impact: "high" | "medium" | "low";
+}
+
 export interface ApprovalRequestedEvent {
   approvalId: string;
   toolName: string;
-  summary: {
-    title: string;
-    description: string;
-    changes: Record<string, unknown>;
-    impact: "high" | "medium" | "low";
-  };
+  summary: ApprovalSummary;
   changes: Record<string, unknown>;
   priority: "high" | "medium" | "low";
   expiresAt: string;
 }
+
+export type ApprovalEventData = ApprovalRequestedEvent;
 
 export interface ApprovalResolvedEvent {
   approvalId: string;

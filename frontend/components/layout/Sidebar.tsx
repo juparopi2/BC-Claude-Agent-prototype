@@ -2,8 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { useChat } from '@/hooks';
-import { useSocket } from '@/hooks/useSocket';
-import { chatApi } from '@/lib/api';
+import { useWebSocket } from '@/contexts/websocket';
+import { apiClient } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -41,7 +41,7 @@ export function Sidebar({
   const [editedTitle, setEditedTitle] = useState<string>('');
 
   // Socket connection for real-time title updates
-  const { socket } = useSocket();
+  const { socket } = useWebSocket();
 
   // React Query automatically fetches sessions when useChat() is called
   // No need for manual useEffect - the data is cached and deduplicated automatically
@@ -111,7 +111,7 @@ export function Sidebar({
     }
 
     try {
-      await chatApi.updateSessionTitle(sessionId, trimmedTitle);
+      await apiClient.sessions.update(sessionId, trimmedTitle);
       fetchSessions(); // Refresh sessions list
       setEditingSessionId(null);
       setEditedTitle('');

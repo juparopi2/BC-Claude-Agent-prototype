@@ -1,7 +1,10 @@
-// Central exports for all custom React hooks
+/**
+ * Central exports for all custom React hooks
+ *
+ * Note: useSocket was removed. Use useWebSocket from @/contexts/websocket instead.
+ */
 
 export { useAuth } from './useAuth';
-export { useSocket } from './useSocket';
 export { useChat } from './useChat';
 export { useApprovals } from './useApprovals';
 export { useTodos } from './useTodos';

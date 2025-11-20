@@ -3,7 +3,7 @@
 import React from 'react';
 import { Brain } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { ThinkingMessage as ThinkingMessageType } from '@/lib/types';
+import type { ThinkingMessage as ThinkingMessageType } from '@/hooks/useChat';
 
 interface CollapsibleThinkingMessageProps {
   message: ThinkingMessageType;

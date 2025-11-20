@@ -1,125 +1,146 @@
-import { useEffect, useCallback } from 'react';
-import { useApprovalStore } from '@/store';
-import { useSocket } from './useSocket';
-import { socketApprovalApi, SocketEvent, type ApprovalEventData } from '@/lib/socket';
+/**
+ * useApprovals Hook
+ *
+ * Integrates approval queries, mutations, store, and WebSocket events.
+ * Provides a unified interface for approval management.
+ *
+ * Migration note: Replaces deprecated store and socket imports with:
+ * - stores/approval.ts for dialog state
+ * - queries/approvals.ts for data fetching
+ * - mutations/approvals.ts for actions
+ * - contexts/websocket.tsx for WebSocket events
+ */
+
+import { useEffect, useCallback } from "react";
+import { useApprovalStore } from "@/stores/approval";
+import { usePendingApprovals } from "@/queries/approvals";
+import { useApproveApproval, useRejectApproval } from "@/mutations/approvals";
+import { useWebSocket } from "@/contexts/websocket";
+import type { ApprovalEventData, ApprovalResolvedEvent } from "@/types/events";
 
 /**
- * Hook for approval management
- * Integrates with approvalStore and WebSocket for real-time approval events
+ * Approval management hook
+ *
+ * Combines React Query (server state), Zustand (dialog state), and WebSocket (real-time events).
+ *
+ * @param sessionId - Optional session ID to filter approvals (not implemented yet)
+ * @returns Approval state and actions
  */
 export function useApprovals(sessionId?: string) {
-  const { socket, isConnected } = useSocket();
+  const { socket, isConnected } = useWebSocket();
 
+  // Store: Current approval dialog state
+  const { currentApproval, setCurrentApproval, clearCurrentApproval } =
+    useApprovalStore();
+
+  // Query: Pending approvals list
   const {
-    approvals,
-    pendingApprovals,
-    currentApproval,
+    data: pendingApprovals = [],
     isLoading,
     error,
-    fetchPendingApprovals,
-    addApproval,
-    approveApproval,
-    rejectApproval,
-    setCurrentApproval,
-    clearError,
-  } = useApprovalStore();
+    refetch: fetchPendingApprovals,
+  } = usePendingApprovals();
 
-  // Set up WebSocket event listeners
+  // Mutations: Approve/reject actions
+  const approveMutation = useApproveApproval();
+  const rejectMutation = useRejectApproval();
+
+  // WebSocket: Listen to approval events
   useEffect(() => {
     if (!socket || !isConnected) return;
 
-    // Approval required
-    const handleApprovalRequired = (data: ApprovalEventData) => {
-      console.log('[useApprovals] Approval required:', data.approvalId);
-
-      // Auto-open approval dialog (set entire event data as current approval)
+    // Handler: Approval requested (open dialog)
+    const handleApprovalRequested = (data: ApprovalEventData) => {
+      console.log("[useApprovals] Approval requested:", data.approvalId);
       setCurrentApproval(data);
     };
 
-    // Approval resolved
-    const handleApprovalResolved = (data: ApprovalEventData) => {
-      console.log('[useApprovals] Approval resolved:', data.approvalId);
-
-      // Remove from current if it was open
+    // Handler: Approval resolved (close dialog if matches)
+    const handleApprovalResolved = (data: ApprovalResolvedEvent) => {
+      console.log("[useApprovals] Approval resolved:", data.approvalId);
       if (currentApproval?.approvalId === data.approvalId) {
-        setCurrentApproval(null);
+        clearCurrentApproval();
       }
     };
 
     // Register listeners
-    socketApprovalApi.onApprovalRequired(handleApprovalRequired);
-    socketApprovalApi.onApprovalResolved(handleApprovalResolved);
+    socket.on("approval:requested", handleApprovalRequested);
+    socket.on("approval:resolved", handleApprovalResolved);
 
-    // Cleanup listeners
+    // Cleanup
     return () => {
-      socket.off(SocketEvent.APPROVAL_REQUIRED, handleApprovalRequired);
-      socket.off(SocketEvent.APPROVAL_RESOLVED, handleApprovalResolved);
+      socket.off("approval:requested", handleApprovalRequested);
+      socket.off("approval:resolved", handleApprovalResolved);
     };
-  }, [socket, isConnected, sessionId, currentApproval, addApproval, setCurrentApproval]);
+  }, [socket, isConnected, sessionId, currentApproval, setCurrentApproval, clearCurrentApproval]);
 
-  // Fetch pending approvals on mount
-  useEffect(() => {
-    if (isConnected) {
-      fetchPendingApprovals().catch((err) => {
-        console.error('[useApprovals] Failed to fetch pending approvals:', err);
-      });
-    }
-  }, [isConnected, fetchPendingApprovals]);
-
-  // Approve handler
+  // Action: Approve approval
   const handleApprove = useCallback(
     async (approvalId: string) => {
       if (!isConnected) {
-        throw new Error('WebSocket not connected');
+        throw new Error("WebSocket not connected");
       }
 
       try {
-        // Send approval via WebSocket
-        socketApprovalApi.sendApprovalDecision(approvalId, 'approved');
+        // Send approval via REST API (mutation handles invalidation)
+        await approveMutation.mutateAsync(approvalId);
 
-        // Update store
-        await approveApproval(approvalId);
+        // Emit WebSocket event (backend may expect this)
+        socket?.emit("approval:respond", {
+          approvalId,
+          decision: "approved",
+        });
+
+        // Close dialog
+        clearCurrentApproval();
       } catch (err) {
-        console.error('[useApprovals] Failed to approve:', err);
+        console.error("[useApprovals] Failed to approve:", err);
         throw err;
       }
     },
-    [isConnected, approveApproval]
+    [isConnected, socket, approveMutation, clearCurrentApproval]
   );
 
-  // Reject handler
+  // Action: Reject approval
   const handleReject = useCallback(
     async (approvalId: string, reason?: string) => {
       if (!isConnected) {
-        throw new Error('WebSocket not connected');
+        throw new Error("WebSocket not connected");
       }
 
       try {
-        // Send rejection via WebSocket
-        socketApprovalApi.sendApprovalDecision(approvalId, 'rejected', reason);
+        // Send rejection via REST API (mutation handles invalidation)
+        await rejectMutation.mutateAsync({ approvalId, reason });
 
-        // Update store
-        await rejectApproval(approvalId, reason);
+        // Emit WebSocket event (backend may expect this)
+        socket?.emit("approval:respond", {
+          approvalId,
+          decision: "rejected",
+          reason,
+        });
+
+        // Close dialog
+        clearCurrentApproval();
       } catch (err) {
-        console.error('[useApprovals] Failed to reject:', err);
+        console.error("[useApprovals] Failed to reject:", err);
         throw err;
       }
     },
-    [isConnected, rejectApproval]
+    [isConnected, socket, rejectMutation, clearCurrentApproval]
   );
 
-  // Close approval dialog
+  // Action: Close approval dialog
   const closeApproval = useCallback(() => {
-    setCurrentApproval(null);
-  }, [setCurrentApproval]);
+    clearCurrentApproval();
+  }, [clearCurrentApproval]);
 
   return {
     // State
-    approvals,
-    pendingApprovals,
-    currentApproval,
-    isLoading,
-    error,
+    approvals: pendingApprovals, // All pending approvals
+    pendingApprovals, // Alias for consistency
+    currentApproval, // Current approval dialog state
+    isLoading: isLoading || approveMutation.isPending || rejectMutation.isPending,
+    error: error || approveMutation.error || rejectMutation.error,
     isConnected,
 
     // Actions
@@ -127,7 +148,7 @@ export function useApprovals(sessionId?: string) {
     reject: handleReject,
     closeApproval,
     fetchPendingApprovals,
-    clearError,
+    clearError: () => {}, // No-op for now (React Query handles errors)
 
     // Computed
     hasPendingApprovals: pendingApprovals.length > 0,

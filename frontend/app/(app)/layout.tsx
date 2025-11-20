@@ -12,7 +12,7 @@ import { Menu, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ApprovalDialog } from '@/components/approvals';
 import { SourcePanel } from '@/components/panels/SourcePanel';
-import { SocketProvider } from '@/providers/SocketProvider';
+import { WebSocketProvider } from '@/contexts/websocket';
 
 /**
  * Internal component that uses hooks requiring SocketProvider
@@ -189,13 +189,13 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * AppLayout wrapper that provides SocketProvider
+ * AppLayout wrapper that provides WebSocketProvider
  * This ensures socket is available before any child components mount
  */
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
-    <SocketProvider>
+    <WebSocketProvider>
       <AppLayoutContent>{children}</AppLayoutContent>
-    </SocketProvider>
+    </WebSocketProvider>
   );
 }

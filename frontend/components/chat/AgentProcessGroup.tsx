@@ -3,13 +3,13 @@
 import React, { useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { Message } from '@/lib/types';
-import { isThinkingMessage, isToolUseMessage } from '@/lib/types';
+import type { ChatMessage } from '@/hooks/useChat';
+import { isThinkingMessage, isToolUseMessage } from '@/hooks/useChat';
 import { CollapsibleThinkingMessage } from './CollapsibleThinkingMessage';
 import { ToolUseMessage } from './ToolUseMessage';
 
 interface AgentProcessGroupProps {
-  messages: Message[];  // Array of thinking + tool + intermediate messages
+  messages: ChatMessage[];  // Array of thinking + tool + intermediate messages
   className?: string;
 }
 
@@ -29,11 +29,6 @@ export function AgentProcessGroup({ messages, className }: AgentProcessGroupProp
   });
 
   if (processMessages.length === 0) return null;
-
-  // ⭐ Check if agent has completed (received stop_reason='end_turn')
-  const hasCompletedTurn = messages.some(m =>
-    !('type' in m) && m.role === 'assistant' && m.stop_reason === 'end_turn'
-  );
 
   // Get summary info
   const toolMessages = processMessages.filter(isToolUseMessage);

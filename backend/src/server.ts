@@ -25,6 +25,7 @@ import { getDirectAgentService } from './services/agent';
 import { getApprovalManager } from './services/approval/ApprovalManager';
 import { getTodoManager } from './services/todo/TodoManager';
 import { getChatMessageHandler } from './services/websocket/ChatMessageHandler';
+import { getMessageQueue } from './services/queue/MessageQueue';
 import authMockRoutes from './routes/auth-mock';
 import authOAuthRoutes from './routes/auth-oauth';
 import sessionsRoutes from './routes/sessions';
@@ -163,6 +164,19 @@ async function initializeApp(): Promise<void> {
       },
     });
     console.log('✅ Session middleware configured with RedisStore');
+    console.log('');
+
+    // Step 4.6: Initialize MessageQueue eagerly (fail fast if Redis unavailable)
+    console.log('🔌 Initializing MessageQueue (BullMQ)...');
+    try {
+      const messageQueue = getMessageQueue();
+      await messageQueue.waitForReady();
+      console.log('✅ MessageQueue initialized successfully');
+      console.log('   Queues: message-persistence, tool-execution, event-processing');
+    } catch (error) {
+      console.error('❌ MessageQueue initialization failed:', error instanceof Error ? error.message : 'Unknown error');
+      throw new Error('Critical: MessageQueue requires Redis connection for BullMQ');
+    }
     console.log('');
 
     // Step 5: Initialize MCP Service

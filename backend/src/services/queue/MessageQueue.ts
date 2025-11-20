@@ -95,6 +95,29 @@ export class MessageQueue {
       maxRetriesPerRequest: null, // Required for BullMQ
       lazyConnect: false, // Connect immediately
       enableReadyCheck: true,
+      // ⭐ TLS Configuration for Azure Redis Cache (port 6380 requires SSL)
+      tls: env.REDIS_PORT === 6380 ? {
+        rejectUnauthorized: true,
+      } : undefined,
+      // ⭐ Reconnection Strategy - Handle transient failures
+      reconnectOnError(err) {
+        const targetErrors = ['READONLY', 'ECONNRESET', 'ETIMEDOUT'];
+        if (targetErrors.some((targetError) => err.message.includes(targetError))) {
+          logger.warn('Redis reconnecting due to error', { error: err.message });
+          return true; // Reconnect
+        }
+        return false;
+      },
+      // ⭐ Retry Strategy - Exponential backoff
+      retryStrategy(times) {
+        if (times > 10) {
+          logger.error('Redis max retry attempts reached (10)', { attempts: times });
+          return null; // Stop retrying after 10 attempts
+        }
+        const delay = Math.min(times * 100, 3200); // 100ms, 200ms, 400ms, ..., max 3200ms
+        logger.info('Redis retry attempt', { attempt: times, delayMs: delay });
+        return delay;
+      },
     });
 
     this.queues = new Map();

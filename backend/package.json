@@ -43,7 +43,7 @@
     "dotenv": "17.2.3",
     "express": "5.1.0",
     "express-session": "1.18.1",
-    "ioredis": "5.4.1",
+    "ioredis": "5.8.2",
     "jsonwebtoken": "9.0.2",
     "mssql": "12.1.0",
     "redis": "5.9.0",

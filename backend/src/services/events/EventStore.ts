@@ -184,7 +184,35 @@ export class EventStore {
       const timestamp = new Date();
 
       // Get next sequence number for this session
-      const sequenceNumber = await this.getNextSequenceNumber(sessionId);
+      let sequenceNumber: number;
+      try {
+        sequenceNumber = await this.getNextSequenceNumber(sessionId);
+
+        // ⭐ CRITICAL: Validate sequence number is valid
+        if (sequenceNumber === undefined || sequenceNumber === null || isNaN(sequenceNumber)) {
+          throw new Error(`Invalid sequence number generated: ${sequenceNumber}`);
+        }
+
+        if (sequenceNumber < 0) {
+          logger.warn('Negative sequence number generated, using 0', { sequenceNumber, sessionId });
+          sequenceNumber = 0;
+        }
+      } catch (seqError) {
+        logger.error('Failed to get sequence number, using timestamp fallback', {
+          sessionId,
+          error: seqError
+        });
+
+        // ⭐ Last resort: use timestamp modulo to keep it reasonable
+        // This guarantees a valid number even if all other methods fail
+        sequenceNumber = Date.now() % 1000000;  // Modulo to keep it under 1 million
+
+        logger.warn('Using timestamp-based sequence number', {
+          sessionId,
+          sequenceNumber,
+          eventType
+        });
+      }
 
       const params: SqlParams = {
         id: eventId,
@@ -407,11 +435,23 @@ export class EventStore {
         { session_id: sessionId }
       );
 
-      return result.recordset[0]?.next_seq ?? 0;
+      const nextSeq = result.recordset[0]?.next_seq ?? 0;
+
+      logger.debug('Fallback to database successful', {
+        sessionId,
+        nextSequenceNumber: nextSeq
+      });
+
+      return nextSeq;
     } catch (dbError) {
       logger.error('Fallback to database also failed', { dbError, sessionId });
-      // Last resort: use timestamp-based sequence (could have gaps)
-      return Date.now();
+
+      // ⭐ Last resort: return 0 to start fresh sequence
+      // Using Date.now() would create huge gaps in sequence numbers
+      // Better to start from 0 and let the session rebuild
+      logger.warn('All sequence generation methods failed, starting from 0', { sessionId });
+
+      return 0;
     }
   }
 

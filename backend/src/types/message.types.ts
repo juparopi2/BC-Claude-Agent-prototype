@@ -47,6 +47,8 @@ export interface MessageDbRecord {
   sequence_number: number | null;
   /** Event ID linking to message_events table for replay */
   event_id: string | null;
+  /** Anthropic SDK tool_use block ID (e.g., toolu_01ABC123) for correlating tool_use and tool_result */
+  tool_use_id: string | null;
 }
 
 /**
@@ -93,6 +95,7 @@ export type ParsedMessage =
       created_at: Date;
       sequence_number: number | null;
       event_id: string | null;
+      tool_use_id: string | null;
     }
   | {
       id: string;
@@ -106,6 +109,7 @@ export type ParsedMessage =
       created_at: Date;
       sequence_number: number | null;
       event_id: string | null;
+      tool_use_id: string | null;
     }
   | {
       id: string;
@@ -119,6 +123,7 @@ export type ParsedMessage =
       created_at: Date;
       sequence_number: number | null;
       event_id: string | null;
+      tool_use_id: string | null;
     }
   | {
       id: string;
@@ -132,6 +137,7 @@ export type ParsedMessage =
       created_at: Date;
       sequence_number: number | null;
       event_id: string | null;
+      tool_use_id: string | null;
     };
 
 /**
@@ -152,6 +158,7 @@ export function parseMessageMetadata(message: MessageDbRecord): ParsedMessage {
     created_at: message.created_at,
     sequence_number: message.sequence_number,
     event_id: message.event_id,
+    tool_use_id: message.tool_use_id,
   };
 
   if (message.message_type === 'thinking') {
@@ -160,6 +167,7 @@ export function parseMessageMetadata(message: MessageDbRecord): ParsedMessage {
       ...base,
       message_type: 'thinking',
       metadata,
+      tool_use_id: message.tool_use_id,
     };
   }
 
@@ -169,6 +177,7 @@ export function parseMessageMetadata(message: MessageDbRecord): ParsedMessage {
       ...base,
       message_type: message.message_type,
       metadata,
+      tool_use_id: message.tool_use_id,
     };
   }
 
@@ -179,11 +188,13 @@ export function parseMessageMetadata(message: MessageDbRecord): ParsedMessage {
         ...base,
         message_type: 'error',
         metadata,
+        tool_use_id: message.tool_use_id,
       };
     } catch {
       return {
         ...base,
         message_type: 'error',
+        tool_use_id: message.tool_use_id,
       };
     }
   }
@@ -192,6 +203,7 @@ export function parseMessageMetadata(message: MessageDbRecord): ParsedMessage {
   return {
     ...base,
     message_type: 'text',
+    tool_use_id: message.tool_use_id,
   };
 }
 

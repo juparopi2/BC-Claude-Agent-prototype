@@ -444,7 +444,7 @@ export class DirectAgentService {
                 // ✅ STEP 3: Add to MessageQueue (reuse sequence from persisted event)
                 await messageQueue.addMessagePersistence({
                   sessionId,
-                  messageId: toolUseId,  // ⭐ Use validated ID
+                  messageId: randomUUID(),  // ⭐ FIX: Generate valid GUID for messages.id (tool_use_id stored in messages.tool_use_id column)
                   role: 'assistant',
                   messageType: 'tool_use',
                   content: '',
@@ -456,6 +456,7 @@ export class DirectAgentService {
                   },
                   sequenceNumber: toolUseEvent.sequence_number, // ⭐ REUSE sequence
                   eventId: toolUseEvent.id,
+                  toolUseId: toolUseId,  // ⭐ FIX: Pass toolUseId separately for messages.tool_use_id column
                 });
 
                 this.logger.info('✅ Tool use message queued for persistence', {

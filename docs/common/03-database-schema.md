@@ -105,6 +105,7 @@ erDiagram
         nvarchar message_type
         nvarchar stop_reason
         int sequence_number
+        nvarchar tool_use_id
         datetime2 created_at
     }
 
@@ -366,6 +367,7 @@ CREATE TABLE messages (
     message_type NVARCHAR(20) NOT NULL DEFAULT 'text',  -- 'text', 'thinking', 'tool_use', 'tool_result'
     stop_reason NVARCHAR(20) NULL,      -- 'end_turn', 'tool_use', 'max_tokens'
     sequence_number INT NULL,           -- Links to message_events.sequence_number
+    tool_use_id NVARCHAR(255) NULL,     -- Anthropic SDK tool_use block ID (e.g., toolu_01ABC123) for correlating tool_use and tool_result
     created_at DATETIME2 NOT NULL DEFAULT GETDATE(),
 
     -- Foreign Keys
@@ -383,6 +385,7 @@ CREATE INDEX idx_messages_session ON messages(session_id, created_at);
 CREATE INDEX idx_messages_event ON messages(event_id) WHERE event_id IS NOT NULL;
 CREATE INDEX idx_messages_type ON messages(message_type);
 CREATE INDEX idx_messages_stop_reason ON messages(stop_reason) WHERE stop_reason IS NOT NULL;
+CREATE INDEX idx_messages_tool_use_id ON messages(tool_use_id) WHERE tool_use_id IS NOT NULL;
 ```
 
 **Key Features**:
@@ -390,6 +393,8 @@ CREATE INDEX idx_messages_stop_reason ON messages(stop_reason) WHERE stop_reason
 - `stop_reason` controls agentic loop (tool_use = continue, end_turn = stop)
 - `message_type` discriminates text/thinking/tool_use/tool_result
 - `metadata` stores structured data (tool args, thinking blocks)
+- `tool_use_id` correlates tool_use messages with their tool_result messages (same ID for both)
+- `sequence_number` provides guaranteed ordering via Redis INCR (replaces timestamp-based ordering)
 
 ---
 

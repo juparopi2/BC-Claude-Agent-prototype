@@ -46,6 +46,8 @@ export interface MessagePersistenceJob {
   // ⭐ NEW: Sequence number and event ID from EventStore
   sequenceNumber?: number;
   eventId?: string;
+  // ⭐ FIX: Tool use ID for correlating tool_use and tool_result (stored in messages.tool_use_id column)
+  toolUseId?: string | null;
 }
 
 /**
@@ -513,7 +515,7 @@ export class MessageQueue {
   private async processMessagePersistence(
     job: Job<MessagePersistenceJob>
   ): Promise<void> {
-    const { sessionId, messageId, role, messageType, content, metadata, sequenceNumber, eventId } = job.data;
+    const { sessionId, messageId, role, messageType, content, metadata, sequenceNumber, eventId, toolUseId } = job.data;
 
     // ⭐ VALIDATION: Check for undefined messageId
     if (!messageId || messageId === 'undefined' || messageId.trim() === '') {
@@ -539,12 +541,14 @@ export class MessageQueue {
       hasSequenceNumber: !!sequenceNumber,
       sequenceNumber,
       hasEventId: !!eventId,
+      hasToolUseId: !!toolUseId,  // ⭐ FIX: Log toolUseId presence
+      toolUseId,  // ⭐ FIX: Log toolUseId value
       attemptNumber: job.attemptsMade,
     });
 
     try {
-      // ⭐ Extract tool_use_id from metadata if present (for tool use messages)
-      const toolUseId: string | null = (typeof metadata?.tool_use_id === 'string' ? metadata.tool_use_id : null);
+      // ⭐ FIX: Use toolUseId from job data directly (fallback to metadata for backwards compat)
+      const finalToolUseId: string | null = toolUseId || (typeof metadata?.tool_use_id === 'string' ? metadata.tool_use_id : null);
 
       const params: SqlParams = {
         id: messageId,
@@ -558,7 +562,7 @@ export class MessageQueue {
         event_id: eventId ?? null,
         token_count: null,
         stop_reason: null,
-        tool_use_id: toolUseId as string | null,  // ⭐ Extract from metadata
+        tool_use_id: finalToolUseId as string | null,  // ⭐ FIX: Use finalToolUseId from job data (not metadata)
         created_at: new Date(),
       };
 

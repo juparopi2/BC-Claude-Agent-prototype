@@ -41,12 +41,6 @@ vi.mock('@/services/approval/ApprovalManager', () => ({
   getApprovalManager: vi.fn(),
 }));
 
-vi.mock('@/utils/messageHelpers', () => ({
-  saveThinkingMessage: vi.fn(),
-  saveToolUseMessage: vi.fn(),
-  updateToolResultMessage: vi.fn(),
-}));
-
 vi.mock('@/services/todo/TodoManager', () => ({
   getTodoManager: vi.fn(() => ({
     syncTodosFromSDK: vi.fn(),

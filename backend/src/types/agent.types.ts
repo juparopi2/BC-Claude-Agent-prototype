@@ -47,7 +47,8 @@ export type AgentEventType =
   | 'session_end'
   | 'complete'
   | 'approval_requested'
-  | 'approval_resolved';
+  | 'approval_resolved'
+  | 'user_message_confirmed'; // ⭐ NEW: Emitted after user message is persisted with sequence_number
 
 /**
  * Persistence State
@@ -55,7 +56,7 @@ export type AgentEventType =
  * Indicates database persistence status for real-time frontend updates.
  * Transitions: queued → persisted | failed
  */
-export type PersistenceState = 'queued' | 'persisted' | 'failed';
+export type PersistenceState = 'queued' | 'persisted' | 'failed' | 'transient';
 
 /**
  * Base Agent Event (Enhanced Contract - Multi-Tenant)
@@ -81,8 +82,8 @@ export interface BaseAgentEvent {
   // Enhanced Event Sourcing Fields (Multi-Tenant Architecture)
   /** Unique event ID (UUID) for tracing and correlation */
   eventId: string;
-  /** Sequence number for guaranteed ordering (atomic via Redis INCR) */
-  sequenceNumber: number;
+  /** Sequence number for guaranteed ordering (atomic via Redis INCR). Optional for transient events (chunks, complete, error) */
+  sequenceNumber?: number;
   /** Database persistence state for optimistic UI updates */
   persistenceState: PersistenceState;
   /** Correlation ID for linking related events (e.g., tool_use → tool_result) */
@@ -271,6 +272,25 @@ export interface ApprovalResolvedEvent extends BaseAgentEvent {
 }
 
 /**
+ * User Message Confirmed Event
+ * Emitted after user message is successfully persisted with sequence_number.
+ * Frontend uses this to update optimistic message with correct sequence_number.
+ */
+export interface UserMessageConfirmedEvent extends BaseAgentEvent {
+  type: 'user_message_confirmed';
+  /** Message ID from database */
+  messageId: string;
+  /** User ID who sent the message */
+  userId: string;
+  /** Message content */
+  content: string;
+  /** Sequence number from EventStore (atomic via Redis INCR) */
+  sequenceNumber: number;
+  /** Event ID from EventStore for tracing */
+  eventId: string;
+}
+
+/**
  * Agent Event
  * Union of all possible agent event types
  */
@@ -286,7 +306,8 @@ export type AgentEvent =
   | SessionEndEvent
   | CompleteEvent
   | ApprovalRequestedEvent
-  | ApprovalResolvedEvent;
+  | ApprovalResolvedEvent
+  | UserMessageConfirmedEvent; // ⭐ NEW
 
 /**
  * Agent Execution Result

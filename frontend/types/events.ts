@@ -66,6 +66,15 @@ export interface ErrorEvent extends BaseAgentEvent {
   recoverable: boolean;
 }
 
+export interface UserMessageConfirmedEvent extends BaseAgentEvent {
+  type: "user_message_confirmed";
+  messageId: string;
+  userId: string;
+  content: string;
+  sequenceNumber: number;
+  eventId: string;
+}
+
 export type AgentEvent =
   | SessionStartEvent
   | ThinkingEvent
@@ -74,7 +83,8 @@ export type AgentEvent =
   | ToolUseEvent
   | ToolResultEvent
   | CompleteEvent
-  | ErrorEvent;
+  | ErrorEvent
+  | UserMessageConfirmedEvent;
 
 export interface ApprovalSummary {
   title: string;

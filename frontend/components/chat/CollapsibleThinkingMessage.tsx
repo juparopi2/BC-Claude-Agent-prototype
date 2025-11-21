@@ -30,6 +30,12 @@ export function CollapsibleThinkingMessage({ message, className }: CollapsibleTh
 
   const duration = formatDuration(message.duration_ms);
 
+  // ⭐ UI FIX: Filter out the generic placeholder message "Analyzing your request..."
+  // This is the initial thinking event sent by DirectAgentService (line 269)
+  // Real thinking messages from Claude should still be displayed
+  const isPlaceholderMessage = message.content === 'Analyzing your request...';
+  const shouldShowContent = message.content && !isPlaceholderMessage;
+
   return (
     <div className={cn('my-2 rounded-lg border bg-muted/30 text-card-foreground shadow-sm', className)}>
       {/* Header - Always visible */}
@@ -52,8 +58,9 @@ export function CollapsibleThinkingMessage({ message, className }: CollapsibleTh
         )}
       </div>
 
-      {/* Content - Always visible if present */}
-      {message.content && (
+      {/* Content - Show only if it's NOT the placeholder message */}
+      {/* Real thinking messages from Claude will be displayed here */}
+      {shouldShowContent && (
         <div className="px-4 pb-4 border-t">
           <div className="text-sm text-muted-foreground mt-3 whitespace-pre-wrap">
             {message.content}

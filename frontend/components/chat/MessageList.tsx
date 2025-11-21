@@ -80,7 +80,8 @@ export function MessageList({
 
     // ⭐ Check message_type for intermediate messages (backend sets message_type='thinking' for stop_reason='tool_use')
     if (!('type' in msg) && msg.role === 'assistant' && 'message_type' in msg) {
-      if ((msg as any).message_type === 'thinking') {
+      const messageWithType = msg as { message_type?: string };
+      if (messageWithType.message_type === 'thinking') {
         return true;
       }
     }
@@ -101,6 +102,17 @@ export function MessageList({
     const rendered: React.ReactElement[] = [];
     let i = 0;
 
+    // Track if this is the last process group (for streaming indicator)
+    const processGroupIndices: number[] = [];
+    for (let idx = 0; idx < messages.length; idx++) {
+      if (isProcessMessage(messages[idx])) {
+        processGroupIndices.push(idx);
+      }
+    }
+    const lastProcessGroupIndex = processGroupIndices.length > 0
+      ? processGroupIndices[processGroupIndices.length - 1]
+      : -1;
+
     while (i < messages.length) {
       const message = messages[i];
 
@@ -115,10 +127,17 @@ export function MessageList({
           j++;
         }
 
+        // ⭐ Check if this is the last process group AND streaming is active
+        const isLastGroup = i === lastProcessGroupIndex;
+        const shouldShowStreaming = isLastGroup && isStreaming;
+
         // Render as a group
         rendered.push(
           <div key={`group-${message.id}`} className="animate-in fade-in duration-300">
-            <AgentProcessGroup messages={groupMessages} />
+            <AgentProcessGroup
+              messages={groupMessages}
+              isStreaming={shouldShowStreaming}  // ⭐ Pass streaming state to last group
+            />
           </div>
         );
 

@@ -52,18 +52,18 @@ export class MessageService {
    * Save User Message
    *
    * Immediately appends event to EventStore and queues for DB persistence.
-   * Returns message ID synchronously without waiting for DB write.
+   * Returns message ID, sequence number, and event ID synchronously without waiting for DB write.
    *
    * @param sessionId - Session ID
    * @param userId - User ID
    * @param content - Message content
-   * @returns Message ID (synchronous)
+   * @returns Object with message ID, sequence number, and event ID
    */
   public async saveUserMessage(
     sessionId: string,
     userId: string,
     content: string
-  ): Promise<string> {
+  ): Promise<{ messageId: string; sequenceNumber: number; eventId: string }> {
     const messageId = randomUUID();
 
     try {
@@ -162,7 +162,12 @@ export class MessageService {
 
       this.logger.info('✅ User message saved', { sessionId, messageId, userId });
 
-      return messageId;
+      // ⭐ Return all necessary data for frontend confirmation
+      return {
+        messageId,
+        sequenceNumber: event.sequence_number,
+        eventId: event.id,
+      };
     } catch (error) {
       this.logger.error('❌ Failed to save user message', {
         error,
@@ -301,13 +306,22 @@ export class MessageService {
     const messageId = randomUUID();
 
     try {
-      await this.eventStore.appendEvent(sessionId, 'agent_thinking_started', {
+      // 1. Append event to EventStore (gets atomic sequence number)
+      const event = await this.eventStore.appendEvent(sessionId, 'agent_thinking_started', {
         message_id: messageId,
         content,
         started_at: new Date().toISOString(),
         user_id: userId,  // ⭐ Audit trail
       });
 
+      this.logger.info('✅ Thinking event appended to EventStore', {
+        sessionId,
+        messageId,
+        eventId: event.id,
+        sequenceNumber: event.sequence_number, // ⭐ CRITICAL: sequence from EventStore
+      });
+
+      // 2. Queue for DB persistence (with sequence number)
       await this.messageQueue.addMessagePersistence({
         sessionId,
         messageId,
@@ -319,9 +333,17 @@ export class MessageService {
           started_at: new Date().toISOString(),
           user_id: userId,  // ⭐ Audit trail
         },
+        // ⭐ CRITICAL FIX: Pass sequenceNumber and eventId from EventStore
+        sequenceNumber: event.sequence_number,
+        eventId: event.id,
       });
 
-      this.logger.debug('Thinking message saved', { sessionId, userId, messageId });
+      this.logger.info('✅ Thinking message queued for persistence', {
+        sessionId,
+        messageId,
+        sequenceNumber: event.sequence_number,
+        eventId: event.id,
+      });
 
       return messageId;
     } catch (error) {
@@ -347,16 +369,37 @@ export class MessageService {
     toolName: string,
     toolArgs: Record<string, unknown>
   ): Promise<string> {
+    // ⭐ VALIDATION: Check for undefined toolUseId
+    if (!toolUseId || toolUseId === 'undefined' || toolUseId.trim() === '') {
+      this.logger.error('❌ saveToolUseMessage called with invalid toolUseId', {
+        toolUseId,
+        toolName,
+        sessionId,
+        userId,
+      });
+      throw new Error(`Invalid toolUseId: ${toolUseId}. Cannot save tool use message.`);
+    }
+
     const messageId = toolUseId; // Use toolUseId as messageId for consistency
 
     try {
-      await this.eventStore.appendEvent(sessionId, 'tool_use_requested', {
+      // 1. Append event to EventStore (gets atomic sequence number)
+      const event = await this.eventStore.appendEvent(sessionId, 'tool_use_requested', {
         tool_use_id: toolUseId,
         tool_name: toolName,
         tool_args: toolArgs,
         user_id: userId,  // ⭐ Audit trail
       });
 
+      this.logger.info('✅ Tool use event appended to EventStore', {
+        sessionId,
+        toolUseId,
+        toolName,
+        eventId: event.id,
+        sequenceNumber: event.sequence_number, // ⭐ CRITICAL: sequence from EventStore
+      });
+
+      // 2. Queue for DB persistence (with sequence number)
       await this.messageQueue.addMessagePersistence({
         sessionId,
         messageId,
@@ -370,9 +413,18 @@ export class MessageService {
           status: 'pending',
           user_id: userId,  // ⭐ Audit trail
         },
+        // ⭐ CRITICAL FIX: Pass sequenceNumber and eventId from EventStore
+        sequenceNumber: event.sequence_number,
+        eventId: event.id,
       });
 
-      this.logger.debug('Tool use message saved', { sessionId, userId, toolUseId, toolName });
+      this.logger.info('✅ Tool use message queued for persistence', {
+        sessionId,
+        toolUseId,
+        toolName,
+        sequenceNumber: event.sequence_number,
+        eventId: event.id,
+      });
 
       return messageId;
     } catch (error) {
@@ -411,20 +463,51 @@ export class MessageService {
     success: boolean,
     error?: string
   ): Promise<void> {
-    try {
-      // 1. Append event
-      await this.eventStore.appendEvent(sessionId, 'tool_use_completed', {
-        tool_use_id: toolUseId,
-        tool_name: toolName,
-        tool_result: result,
+    // ⭐ VALIDATION: Check for undefined toolUseId
+    if (!toolUseId || toolUseId === 'undefined' || toolUseId.trim() === '') {
+      // 🚨 ENHANCED ERROR: Stack trace + detailed diagnostics
+      const stackTrace = new Error().stack;
+
+      this.logger.error('❌ updateToolResult called with invalid toolUseId', {
+        toolUseId,
+        toolUseIdType: typeof toolUseId,
+        toolUseIdValue: toolUseId,
+        toolUseIdLength: toolUseId?.length || 0,
+        toolName,
+        sessionId,
+        userId,
+        toolArgs: toolArgs,
         success,
-        error_message: error,
-        user_id: userId,  // ⭐ Audit trail
+        error,
+        stackTrace,
       });
 
-      // 2. Update DB directly (this is fast, no queue needed)
+      throw new Error(
+        `❌ INVALID TOOL USE ID ERROR:\n` +
+        `\n📋 Details:` +
+        `\n  - toolUseId: "${toolUseId}"` +
+        `\n  - Type: ${typeof toolUseId}` +
+        `\n  - Length: ${toolUseId?.length || 0}` +
+        `\n  - Tool Name: ${toolName}` +
+        `\n  - Session ID: ${sessionId}` +
+        `\n  - User ID: ${userId}` +
+        `\n\n🔍 Possible Causes:` +
+        `\n  1. SDK did not provide tool use ID in content_block_start` +
+        `\n  2. ID was lost during toolUses array push` +
+        `\n  3. ID corruption during tool execution loop` +
+        `\n  4. Caller passed undefined/null directly` +
+        `\n\n💡 Check TRACE logs [TRACE 1/8 through TRACE 7/8] to find where ID was lost` +
+        `\n\n📍 Stack Trace:\n${stackTrace}`
+      );
+    }
+
+    try {
+      // ✅ FIX PHASE 2: NO llamar a appendEvent() - evento ya persistido por DirectAgentService
+      // La llamada a appendEvent() generaba un NUEVO sequence, causando duplicados
+
+      // ✅ Actualizar messages table usando tool_use_id
       const params: SqlParams = {
-        id: toolUseId,
+        tool_use_id: toolUseId,  // ⬅️ FIXED: Use tool_use_id column, not id
         session_id: sessionId,
         metadata: JSON.stringify({
           tool_name: toolName,
@@ -442,7 +525,7 @@ export class MessageService {
         `
         UPDATE messages
         SET metadata = @metadata
-        WHERE id = @id AND session_id = @session_id
+        WHERE tool_use_id = @tool_use_id AND session_id = @session_id
         `,
         params
       );
@@ -655,3 +738,4 @@ export class MessageService {
 export function getMessageService(): MessageService {
   return MessageService.getInstance();
 }
+

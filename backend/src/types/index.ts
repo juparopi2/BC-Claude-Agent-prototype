@@ -54,6 +54,7 @@ export type {
   CompleteEvent,  // ⭐ Added missing export
   ApprovalRequestedEvent,
   ApprovalResolvedEvent,
+  UserMessageConfirmedEvent,  // ⭐ NEW: User message confirmation event
   AgentEvent,
   AgentExecutionResult,
   AgentType,

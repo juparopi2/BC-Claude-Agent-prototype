@@ -11,9 +11,10 @@ import { ToolUseMessage } from './ToolUseMessage';
 interface AgentProcessGroupProps {
   messages: ChatMessage[];  // Array of thinking + tool + intermediate messages
   className?: string;
+  isStreaming?: boolean;  // ⭐ NEW: Indicates if agent is currently streaming
 }
 
-export function AgentProcessGroup({ messages, className }: AgentProcessGroupProps) {
+export function AgentProcessGroup({ messages, className, isStreaming = false }: AgentProcessGroupProps) {
   const [isExpanded, setIsExpanded] = useState(true);  // Expanded by default
 
   // ⭐ Filter thinking, tool, AND intermediate messages (stop_reason='tool_use')
@@ -58,9 +59,23 @@ export function AgentProcessGroup({ messages, className }: AgentProcessGroupProp
 
   // Get status badge
   const getStatusBadge = () => {
+    // ⭐ Priority 1: Show animated "Claude is thinking" badge while streaming
+    if (isStreaming) {
+      return (
+        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 flex items-center gap-1.5 animate-pulse">
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-purple-500"></span>
+          </span>
+          Claude is thinking
+        </span>
+      );
+    }
+
+    // ⭐ Priority 2: Tool execution statuses
     if (someToolsPending) {
       return (
-        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300">
+        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 animate-pulse">
           Running
         </span>
       );

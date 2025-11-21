@@ -33,7 +33,7 @@ import type {
   TextBlock,
 } from '@anthropic-ai/sdk/resources/messages';
 import { env } from '@/config';
-import type { AgentEvent, AgentExecutionResult, PersistenceState } from '@/types';
+import type { AgentEvent, AgentExecutionResult, CompleteEvent, ErrorEvent } from '@/types';
 import type { ApprovalManager } from '../approval/ApprovalManager';
 import type { TodoManager } from '../todo/TodoManager';
 import type { IAnthropicClient } from './IAnthropicClient';
@@ -42,6 +42,7 @@ import { AnthropicClient } from './AnthropicClient';
 import { randomUUID } from 'crypto';
 import { getEventStore } from '../events/EventStore';
 import { getMessageService } from '../messages/MessageService';
+import { getMessageQueue } from '../queue/MessageQueue';
 import { createChildLogger } from '@/utils/logger';
 import type { Logger } from 'pino';
 import * as fs from 'fs';
@@ -135,40 +136,6 @@ export class DirectAgentService {
   }
 
   /**
-   * Generate Enhanced Contract Fields
-   *
-   * Creates eventId, sequenceNumber, and persistenceState for event sourcing.
-   * Uses Redis INCR for atomic sequence number generation (multi-tenant safe).
-   *
-   * @param sessionId - Session ID for sequence number generation
-   * @param correlationId - Optional correlation ID (links related events)
-   * @param parentEventId - Optional parent event ID (hierarchical relationships)
-   * @returns Object with enhanced contract fields
-   */
-  private async generateEnhancedFields(
-    sessionId: string,
-    correlationId?: string,
-    parentEventId?: string
-  ): Promise<{
-    eventId: string;
-    sequenceNumber: number;
-    persistenceState: PersistenceState;
-    correlationId?: string;
-    parentEventId?: string;
-  }> {
-    const eventStore = getEventStore();
-    const sequenceNumber = await eventStore['getNextSequenceNumber'](sessionId);
-
-    return {
-      eventId: randomUUID(),
-      sequenceNumber,
-      persistenceState: 'queued' as PersistenceState,
-      correlationId,
-      parentEventId,
-    };
-  }
-
-  /**
    * Execute Query with Direct API Calling
    *
    * Implements manual agentic loop:
@@ -243,6 +210,11 @@ export class DirectAgentService {
     let outputTokens = 0;
 
     try {
+      // Validate sessionId is provided (required for event tracking and sequence numbers)
+      if (!sessionId) {
+        throw new Error('sessionId is required for executeQueryStreaming');
+      }
+
       // Step 1: Get MCP tools and convert to Anthropic format
       const tools = await this.getMCPToolDefinitions();
 
@@ -252,28 +224,85 @@ export class DirectAgentService {
         content: prompt,
       });
 
-      // Send thinking event with enhanced contract fields
-      if (onEvent && sessionId) {
-        const enhanced = await this.generateEnhancedFields(sessionId);
+      // ⭐ Phase 4: Send thinking event ONCE per user message (NOT per turn)
+      // This event is emitted OUTSIDE the agentic loop to ensure it's sent only once
+      // ✅ FIX: Persist BEFORE emitting to ensure sequence consistency
+      const eventStore = getEventStore();
+      const messageQueue = getMessageQueue();
+
+      const thinkingEvent = await eventStore.appendEvent(
+        sessionId,
+        'agent_thinking_started',
+        {
+          content: 'Analyzing your request...',
+          started_at: new Date().toISOString(),
+        }
+      );
+      // ⭐ Redis INCR executed ONCE, event persisted in message_events
+
+      this.logger.info('✅ Thinking event appended to EventStore', {
+        sessionId,
+        eventId: thinkingEvent.id,
+        sequenceNumber: thinkingEvent.sequence_number,
+      });
+
+      // ✅ STEP 2: Emit AFTER with data from persisted event
+      if (onEvent) {
         onEvent({
           type: 'thinking',
-          timestamp: new Date(),
-          ...enhanced,
+          timestamp: new Date(thinkingEvent.timestamp),
+          content: 'Analyzing your request...',
+          eventId: thinkingEvent.id,
+          sequenceNumber: thinkingEvent.sequence_number,
+          persistenceState: 'persisted', // ⭐ Mark as already persisted
         });
       }
+
+      // ✅ STEP 3: Add to MessageQueue (reuse sequence from persisted event)
+      await messageQueue.addMessagePersistence({
+        sessionId,
+        messageId: thinkingEvent.id,
+        role: 'assistant',
+        messageType: 'thinking',
+        content: '',
+        metadata: {
+          content: 'Analyzing your request...',
+          started_at: new Date().toISOString(),
+        },
+        sequenceNumber: thinkingEvent.sequence_number, // ⭐ REUSE sequence
+        eventId: thinkingEvent.id,
+      });
+
+      this.logger.info('✅ Thinking message queued for persistence', {
+        sessionId,
+        sequenceNumber: thinkingEvent.sequence_number,
+        eventId: thinkingEvent.id,
+      });
 
       // Step 3: Agentic Loop with Streaming
       let continueLoop = true;
       let turnCount = 0;
       const maxTurns = 20; // Safety limit
+      let chunkCount = 0;
 
       while (continueLoop && turnCount < maxTurns) {
         turnCount++;
+        chunkCount = 0; // Reset chunk counter per turn
 
         console.log(`\n========== TURN ${turnCount} (STREAMING) ==========`);
 
+        // ✅ FIX PHASE 3: NO generar batch sequence
+        // Chunks serán emitidos SIN sequence (transient)
+        // Complete message será persistido PRIMERO con su propio sequence
+
         // ========== STREAM CLAUDE RESPONSE ==========
-        this.logger.info({ sessionId, turnCount }, '📡 Creating Anthropic stream...');
+        console.log(`📡 [SEQUENCE] Starting turn ${turnCount} | NO batch sequence (chunks transient)`);
+
+        this.logger.info('📡 [SEQUENCE] Starting stream for turn', {
+          sessionId,
+          turnCount,
+          timestamp: new Date().toISOString(),
+        });
 
         let stream;
         try {
@@ -329,54 +358,112 @@ export class DirectAgentService {
                   data: '', // Will accumulate in deltas
                 });
               } else if (event.content_block.type === 'tool_use') {
+                // ⭐ TRACING POINT 1: SDK proporciona el ID
+                let toolUseId = event.content_block.id;
+
+                this.logger.info({
+                  sessionId,
+                  turnCount,
+                  toolName: event.content_block.name,
+                  toolUseId,
+                  hasId: !!toolUseId,
+                  idType: typeof toolUseId,
+                  idValue: toolUseId,
+                  idLength: toolUseId?.length || 0,
+                  eventIndex: event.index,
+                }, '🔍 [TRACE 1/8] SDK content_block_start');
+
+                // ⭐ VALIDACIÓN: Asegurar que SDK proporcionó ID válido
+                if (!toolUseId || toolUseId === 'undefined' || typeof toolUseId !== 'string' || toolUseId.trim() === '') {
+                  // 🚨 FALLBACK: Generar UUID + log crítico
+                  toolUseId = `toolu_fallback_${randomUUID()}`;
+
+                  this.logger.error('🚨 SDK NO proporcionó tool use ID - usando fallback', {
+                    sessionId,
+                    turnCount,
+                    toolName: event.content_block.name,
+                    originalId: event.content_block.id,
+                    originalIdType: typeof event.content_block.id,
+                    fallbackId: toolUseId,
+                    sdkEventType: event.type,
+                    eventIndex: event.index,
+                  });
+                }
+
+                // ⭐ TRACING POINT 2: Guardando en contentBlocks Map
+                this.logger.info({
+                  sessionId,
+                  turnCount,
+                  eventIndex: event.index,
+                  toolUseId,
+                  toolName: event.content_block.name,
+                }, '🔍 [TRACE 2/8] Storing in contentBlocks Map');
+
                 contentBlocks.set(event.index, {
                   type: 'tool_use',
                   data: {
-                    id: event.content_block.id,
+                    id: toolUseId,  // ⭐ Ahora garantizado válido
                     name: event.content_block.name,
                     input: {}, // Will accumulate in deltas
                   },
                 });
 
-                // Emit tool_use event immediately (UI shows pending tool)
-                if (onEvent && sessionId) {
-                  const enhanced = await this.generateEnhancedFields(sessionId);
+                // ✅ FIX PHASE 2: Persist tool_use event BEFORE emitting
+                const toolUseEvent = await eventStore.appendEvent(
+                  sessionId,
+                  'tool_use_requested',
+                  {
+                    tool_use_id: toolUseId,  // ⭐ Use validated ID
+                    tool_name: event.content_block.name,
+                    tool_args: {}, // Will be updated in content_block_stop
+                  }
+                );
+
+                this.logger.info('✅ Tool use event appended to EventStore', {
+                  sessionId,
+                  toolUseId,  // ⭐ Use validated ID
+                  toolName: event.content_block.name,
+                  eventId: toolUseEvent.id,
+                  sequenceNumber: toolUseEvent.sequence_number,
+                });
+
+                // ✅ STEP 2: Emit AFTER with data from persisted event
+                if (onEvent) {
                   onEvent({
                     type: 'tool_use',
                     toolName: event.content_block.name,
-                    toolUseId: event.content_block.id,
+                    toolUseId: toolUseId,  // ⭐ Use validated ID
                     args: {}, // Will be populated in deltas
-                    timestamp: new Date(),
-                    ...enhanced,
+                    timestamp: new Date(toolUseEvent.timestamp),
+                    eventId: toolUseEvent.id,
+                    sequenceNumber: toolUseEvent.sequence_number,
+                    persistenceState: 'persisted',
                   });
-
-                  // ⭐ PERSIST TOOL USE MESSAGE (if userId available)
-                  if (userId) {
-                    try {
-                      const messageService = getMessageService();
-                      await messageService.saveToolUseMessage(
-                        sessionId,
-                        userId,
-                        event.content_block.id,
-                        event.content_block.name,
-                        {} // Args will be updated in content_block_stop
-                      );
-                      this.logger.debug('Tool use message persisted', {
-                        sessionId,
-                        userId,
-                        toolUseId: event.content_block.id,
-                        toolName: event.content_block.name,
-                      });
-                    } catch (persistError) {
-                      this.logger.error('Failed to persist tool use message', {
-                        error: persistError,
-                        sessionId,
-                        userId,
-                        toolUseId: event.content_block.id,
-                      });
-                    }
-                  }
                 }
+
+                // ✅ STEP 3: Add to MessageQueue (reuse sequence from persisted event)
+                await messageQueue.addMessagePersistence({
+                  sessionId,
+                  messageId: toolUseId,  // ⭐ Use validated ID
+                  role: 'assistant',
+                  messageType: 'tool_use',
+                  content: '',
+                  metadata: {
+                    tool_name: event.content_block.name,
+                    tool_args: {},
+                    tool_use_id: toolUseId,  // ⭐ Use validated ID
+                    status: 'pending',
+                  },
+                  sequenceNumber: toolUseEvent.sequence_number, // ⭐ REUSE sequence
+                  eventId: toolUseEvent.id,
+                });
+
+                this.logger.info('✅ Tool use message queued for persistence', {
+                  sessionId,
+                  toolUseId,  // ⭐ Use validated ID
+                  sequenceNumber: toolUseEvent.sequence_number,
+                  eventId: toolUseEvent.id,
+                });
               }
               break;
 
@@ -395,14 +482,27 @@ export class DirectAgentService {
                 block.data = (block.data as string) + chunk;
                 accumulatedText += chunk;
 
-                // ⭐ EMIT CHUNK IMMEDIATELY (real-time streaming)
-                if (onEvent && chunk && sessionId) {
-                  const enhanced = await this.generateEnhancedFields(sessionId);
+                // ✅ FIX PHASE 3: EMIT CHUNK IMMEDIATELY WITHOUT sequence (transient)
+                if (onEvent && chunk) {
+                  chunkCount++;
+
+                  console.log(`📦 [SEQUENCE] chunk (transient) | NO sequence, chunk=${chunkCount}`);
+
+                  this.logger.debug('📦 [SEQUENCE] Emitting message_chunk (transient)', {
+                    sessionId,
+                    turnCount,
+                    chunkIndex: chunkCount,
+                    chunkLength: chunk.length,
+                    timestamp: new Date().toISOString(),
+                  });
+
                   onEvent({
                     type: 'message_chunk',
                     content: chunk,
                     timestamp: new Date(),
-                    ...enhanced,
+                    // ✅ NO sequenceNumber (chunks son transient)
+                    eventId: randomUUID(), // ⭐ Unique eventId per chunk
+                    persistenceState: 'transient', // ⭐ Marca como transient
                   });
                 }
 
@@ -447,13 +547,55 @@ export class DirectAgentService {
                 console.log(`[STREAM] content_block_stop (text): index=${event.index}, text_len=${finalText.length}`);
               } else if (completedBlock.type === 'tool_use') {
                 const toolData = completedBlock.data as { id: string; name: string; input: Record<string, unknown> };
+
+                // ⭐ TRACING POINT 3: Recuperando toolUseId del Map antes de push
+                let validatedToolUseId = toolData.id;
+
+                this.logger.info({
+                  sessionId,
+                  turnCount,
+                  eventIndex: event.index,
+                  toolUseId: validatedToolUseId,
+                  toolName: toolData.name,
+                  hasId: !!validatedToolUseId,
+                  idType: typeof validatedToolUseId,
+                  idValue: validatedToolUseId,
+                  idLength: validatedToolUseId?.length || 0,
+                }, '🔍 [TRACE 3/8] Retrieved from contentBlocks Map (content_block_stop)');
+
+                // ⭐ VALIDACIÓN: Asegurar que el ID sigue siendo válido antes del push
+                if (!validatedToolUseId || validatedToolUseId === 'undefined' || typeof validatedToolUseId !== 'string' || validatedToolUseId.trim() === '') {
+                  // 🚨 FALLBACK: ID se corrompió entre content_block_start y content_block_stop
+                  validatedToolUseId = `toolu_fallback_${randomUUID()}`;
+
+                  this.logger.error('🚨 Tool use ID se corrompió antes de push - usando fallback', {
+                    sessionId,
+                    turnCount,
+                    toolName: toolData.name,
+                    originalId: toolData.id,
+                    originalIdType: typeof toolData.id,
+                    fallbackId: validatedToolUseId,
+                    eventIndex: event.index,
+                  });
+                }
+
+                // ⭐ TRACING POINT 4: Pushing to toolUses array con ID validado
+                this.logger.info({
+                  sessionId,
+                  turnCount,
+                  eventIndex: event.index,
+                  toolUseId: validatedToolUseId,
+                  toolName: toolData.name,
+                  inputKeys: Object.keys(toolData.input),
+                }, '🔍 [TRACE 4/8] Pushing to toolUses array');
+
                 toolUses.push({
                   type: 'tool_use',
-                  id: toolData.id,
+                  id: validatedToolUseId,  // ⭐ Use validated ID
                   name: toolData.name,
                   input: toolData.input,
                 });
-                console.log(`[STREAM] content_block_stop (tool_use): index=${event.index}, tool=${toolData.name}`);
+                console.log(`[STREAM] content_block_stop (tool_use): index=${event.index}, tool=${toolData.name}, id=${validatedToolUseId}`);
               }
               break;
 
@@ -482,17 +624,59 @@ export class DirectAgentService {
         console.log(`[STREAM] Stream completed: stop_reason=${stopReason}, text_blocks=${textBlocks.length}, tool_uses=${toolUses.length}`);
 
         // ========== EMIT COMPLETE MESSAGE ==========
-        // After streaming all chunks, emit the complete message
+        // ✅ FIX PHASE 3: Persist complete message FIRST, then emit
         if (accumulatedText.trim() && onEvent && sessionId) {
-          const enhanced = await this.generateEnhancedFields(sessionId);
+          // ✅ STEP 1: Persistir PRIMERO
+          const completeMessageEvent = await eventStore.appendEvent(
+            sessionId,
+            'agent_message_sent',
+            {
+              content: accumulatedText,
+              stop_reason: stopReason,
+            }
+          );
+
+          console.log(`✅ [SEQUENCE] complete message | seq=${completeMessageEvent.sequence_number}, chunks=${chunkCount}`);
+
+          this.logger.info('✅ Complete message event appended to EventStore', {
+            sessionId,
+            eventId: completeMessageEvent.id,
+            sequenceNumber: completeMessageEvent.sequence_number,
+            stopReason,
+          });
+
+          // ✅ STEP 2: Emitir DESPUÉS con datos del evento persistido
           onEvent({
             type: 'message',
             messageId: messageId || randomUUID(),
             content: accumulatedText,
             role: 'assistant',
             stopReason: (stopReason as 'end_turn' | 'tool_use' | 'max_tokens') || undefined,
-            timestamp: new Date(),
-            ...enhanced,
+            timestamp: new Date(completeMessageEvent.timestamp),
+            eventId: completeMessageEvent.id,
+            sequenceNumber: completeMessageEvent.sequence_number,
+            persistenceState: 'persisted',
+          });
+
+          // ✅ STEP 3: Agregar a MessageQueue (reusa sequence)
+          const messageType = stopReason === 'tool_use' ? 'thinking' : 'text';
+          await messageQueue.addMessagePersistence({
+            sessionId,
+            messageId: completeMessageEvent.id,
+            role: 'assistant',
+            messageType,
+            content: accumulatedText,
+            metadata: {
+              stop_reason: stopReason,
+            },
+            sequenceNumber: completeMessageEvent.sequence_number, // ⭐ REUSA sequence
+            eventId: completeMessageEvent.id,
+          });
+
+          this.logger.info('✅ Complete message queued for persistence', {
+            sessionId,
+            sequenceNumber: completeMessageEvent.sequence_number,
+            eventId: completeMessageEvent.id,
           });
 
           accumulatedResponses.push(accumulatedText);
@@ -526,6 +710,39 @@ export class DirectAgentService {
           for (const toolUse of toolUses) {
             toolsUsed.push(toolUse.name);
 
+            // ⭐ TRACING POINT 5: Inicio del tool execution loop
+            let validatedToolExecutionId = toolUse.id;
+
+            this.logger.info({
+              sessionId,
+              turnCount,
+              toolName: toolUse.name,
+              toolUseId: validatedToolExecutionId,
+              hasId: !!validatedToolExecutionId,
+              idType: typeof validatedToolExecutionId,
+              idValue: validatedToolExecutionId,
+              idLength: validatedToolExecutionId?.length || 0,
+              toolInput: toolUse.input,
+            }, '🔍 [TRACE 5/8] Tool execution loop start');
+
+            // ⭐ VALIDACIÓN: Asegurar que el ID sigue válido en el loop
+            if (!validatedToolExecutionId || validatedToolExecutionId === 'undefined' || typeof validatedToolExecutionId !== 'string' || validatedToolExecutionId.trim() === '') {
+              // 🚨 FALLBACK: ID se corrompió entre push y loop iteration
+              validatedToolExecutionId = `toolu_fallback_${randomUUID()}`;
+
+              this.logger.error('🚨 Tool use ID se corrompió en execution loop - usando fallback', {
+                sessionId,
+                turnCount,
+                toolName: toolUse.name,
+                originalId: toolUse.id,
+                originalIdType: typeof toolUse.id,
+                fallbackId: validatedToolExecutionId,
+              });
+
+              // Update toolUse.id para el resto del loop
+              toolUse.id = validatedToolExecutionId;
+            }
+
             // Check if tool needs approval
             const needsApproval = this.isWriteOperation(toolUse.name);
 
@@ -551,108 +768,173 @@ export class DirectAgentService {
             try {
               const result = await this.executeMCPTool(toolUse.name, toolUse.input);
 
-              if (onEvent && sessionId) {
-                const enhanced = await this.generateEnhancedFields(sessionId, toolUse.id);
+              // ⭐ TRACING POINT 6: Después de tool execution, antes de appendEvent
+              this.logger.info({
+                sessionId,
+                turnCount,
+                toolName: toolUse.name,
+                toolUseId: validatedToolExecutionId,
+                resultType: typeof result,
+                resultPreview: typeof result === 'string' ? result.substring(0, 100) : JSON.stringify(result).substring(0, 100),
+                success: true,
+              }, '🔍 [TRACE 6/8] Tool executed, before appendEvent');
+
+              // ✅ FIX PHASE 2: Persist tool_result event BEFORE emitting
+              const toolResultEvent = await eventStore.appendEvent(
+                sessionId,
+                'tool_use_completed',
+                {
+                  tool_use_id: validatedToolExecutionId,  // ⭐ Use validated ID
+                  tool_name: toolUse.name,
+                  tool_result: result,
+                  success: true,
+                  error_message: null,
+                }
+              );
+
+              this.logger.info('✅ Tool result event appended to EventStore', {
+                sessionId,
+                toolUseId: validatedToolExecutionId,  // ⭐ Use validated ID
+                toolName: toolUse.name,
+                success: true,
+                eventId: toolResultEvent.id,
+                sequenceNumber: toolResultEvent.sequence_number,
+              });
+
+              // ✅ STEP 2: Emit AFTER with data from persisted event
+              if (onEvent) {
                 onEvent({
                   type: 'tool_result',
                   toolName: toolUse.name,
-                  toolUseId: toolUse.id,
+                  toolUseId: validatedToolExecutionId,  // ⭐ Use validated ID
                   args: toolUse.input as Record<string, unknown>,
                   result: result,
                   success: true,
-                  timestamp: new Date(),
-                  ...enhanced,
+                  timestamp: new Date(toolResultEvent.timestamp),
+                  eventId: toolResultEvent.id,
+                  sequenceNumber: toolResultEvent.sequence_number,
+                  persistenceState: 'persisted',
                 });
+              }
 
-                // ⭐ PERSIST TOOL RESULT (if userId available)
-                if (userId) {
-                  try {
-                    const messageService = getMessageService();
-                    await messageService.updateToolResult(
-                      sessionId,
-                      userId,
-                      toolUse.id,
-                      toolUse.name,
-                      toolUse.input as Record<string, unknown>,
-                      result,
-                      true, // success
-                      undefined
-                    );
-                    this.logger.debug('Tool result persisted', {
-                      sessionId,
-                      userId,
-                      toolUseId: toolUse.id,
-                      toolName: toolUse.name,
-                      success: true,
-                    });
-                  } catch (persistError) {
-                    this.logger.error('Failed to persist tool result', {
-                      error: persistError,
-                      sessionId,
-                      userId,
-                      toolUseId: toolUse.id,
-                    });
-                  }
-                }
+              // ✅ STEP 3: Update messages table (NO generate new sequence)
+              if (userId) {
+                // ⭐ TRACING POINT 7: Antes de updateToolResult
+                this.logger.info({
+                  sessionId,
+                  turnCount,
+                  userId,
+                  toolUseId: validatedToolExecutionId,
+                  toolName: toolUse.name,
+                  hasToolUseId: !!validatedToolExecutionId,
+                  toolUseIdType: typeof validatedToolExecutionId,
+                  toolUseIdValue: validatedToolExecutionId,
+                  toolUseIdLength: validatedToolExecutionId?.length || 0,
+                  eventIdFromStore: toolResultEvent.id,
+                  sequenceNumber: toolResultEvent.sequence_number,
+                }, '🔍 [TRACE 7/8] Before MessageService.updateToolResult');
+
+                const messageService = getMessageService();
+                await messageService.updateToolResult(
+                  sessionId,
+                  userId,
+                  validatedToolExecutionId,  // ⭐ Use validated ID
+                  toolUse.name,
+                  toolUse.input as Record<string, unknown>,
+                  result,
+                  true, // success
+                  undefined
+                );
+
+                // ⭐ TRACING POINT 8: Después de updateToolResult (SUCCESS path)
+                this.logger.info({
+                  sessionId,
+                  turnCount,
+                  userId,
+                  toolUseId: validatedToolExecutionId,
+                  toolName: toolUse.name,
+                  updateSuccess: true,
+                }, '🔍 [TRACE 8/8] After MessageService.updateToolResult - SUCCESS');
               }
 
               toolResults.push({
                 type: 'tool_result',
-                tool_use_id: toolUse.id,
+                tool_use_id: validatedToolExecutionId,  // ⭐ Use validated ID
                 content: typeof result === 'string' ? result : JSON.stringify(result),
               });
             } catch (error) {
               console.error(`[DirectAgentService] Tool execution failed:`, error);
 
-              if (onEvent && sessionId) {
-                const enhanced = await this.generateEnhancedFields(sessionId, toolUse.id);
+              // ✅ FIX PHASE 2: Persist tool_result event BEFORE emitting (ERROR case)
+              const errorMessage = error instanceof Error ? error.message : String(error);
+              const toolResultEvent = await eventStore.appendEvent(
+                sessionId,
+                'tool_use_completed',
+                {
+                  tool_use_id: validatedToolExecutionId,  // ⭐ Use validated ID
+                  tool_name: toolUse.name,
+                  tool_result: null,
+                  success: false,
+                  error_message: errorMessage,
+                }
+              );
+
+              this.logger.error('❌ Tool result event (error) appended to EventStore', {
+                sessionId,
+                toolUseId: validatedToolExecutionId,  // ⭐ Use validated ID
+                toolName: toolUse.name,
+                success: false,
+                error: errorMessage,
+                eventId: toolResultEvent.id,
+                sequenceNumber: toolResultEvent.sequence_number,
+              });
+
+              // ✅ STEP 2: Emit AFTER with data from persisted event
+              if (onEvent) {
                 onEvent({
                   type: 'tool_result',
                   toolName: toolUse.name,
-                  toolUseId: toolUse.id,
+                  toolUseId: validatedToolExecutionId,  // ⭐ Use validated ID
                   args: toolUse.input as Record<string, unknown>,
                   result: null,
                   success: false,
-                  error: error instanceof Error ? error.message : String(error),
-                  timestamp: new Date(),
-                  ...enhanced,
+                  error: errorMessage,
+                  timestamp: new Date(toolResultEvent.timestamp),
+                  eventId: toolResultEvent.id,
+                  sequenceNumber: toolResultEvent.sequence_number,
+                  persistenceState: 'persisted',
                 });
+              }
 
-                // ⭐ PERSIST TOOL RESULT (error case, if userId available)
-                if (userId) {
-                  try {
-                    const messageService = getMessageService();
-                    await messageService.updateToolResult(
-                      sessionId,
-                      userId,
-                      toolUse.id,
-                      toolUse.name,
-                      toolUse.input as Record<string, unknown>,
-                      null,
-                      false, // success = false
-                      error instanceof Error ? error.message : String(error)
-                    );
-                    this.logger.debug('Tool result (error) persisted', {
-                      sessionId,
-                      userId,
-                      toolUseId: toolUse.id,
-                      toolName: toolUse.name,
-                      success: false,
-                    });
-                  } catch (persistError) {
-                    this.logger.error('Failed to persist tool result (error case)', {
-                      error: persistError,
-                      sessionId,
-                      userId,
-                      toolUseId: toolUse.id,
-                    });
-                  }
-                }
+              // ✅ STEP 3: Update messages table (NO generate new sequence)
+              if (userId) {
+                const messageService = getMessageService();
+                await messageService.updateToolResult(
+                  sessionId,
+                  userId,
+                  validatedToolExecutionId,  // ⭐ Use validated ID
+                  toolUse.name,
+                  toolUse.input as Record<string, unknown>,
+                  null,
+                  false, // success = false
+                  errorMessage
+                );
+
+                // ⭐ TRACING POINT 8: Después de updateToolResult (ERROR path)
+                this.logger.error({
+                  sessionId,
+                  turnCount,
+                  userId,
+                  toolUseId: validatedToolExecutionId,
+                  toolName: toolUse.name,
+                  updateSuccess: true,
+                  error: errorMessage,
+                }, '🔍 [TRACE 8/8] After MessageService.updateToolResult - ERROR');
               }
 
               toolResults.push({
                 type: 'tool_result',
-                tool_use_id: toolUse.id,
+                tool_use_id: validatedToolExecutionId,  // ⭐ Use validated ID
                 content: `Error: ${error instanceof Error ? error.message : String(error)}`,
                 is_error: true,
               });
@@ -667,15 +949,26 @@ export class DirectAgentService {
 
           // Continue loop
         } else if (stopReason === 'max_tokens') {
-          if (onEvent && sessionId) {
-            const enhanced = await this.generateEnhancedFields(sessionId);
+          // ✅ FIX PHASE 4: Persist warning message FIRST
+          const warningEvent = await eventStore.appendEvent(
+            sessionId,
+            'agent_message_sent',
+            {
+              content: '[Response truncated - reached max tokens]',
+              stop_reason: 'max_tokens',
+            }
+          );
+
+          if (onEvent) {
             onEvent({
               type: 'message',
               messageId: randomUUID(),
               content: '[Response truncated - reached max tokens]',
               role: 'assistant',
-              timestamp: new Date(),
-              ...enhanced,
+              timestamp: new Date(warningEvent.timestamp),
+              eventId: warningEvent.id,
+              sequenceNumber: warningEvent.sequence_number,
+              persistenceState: 'persisted',
             });
             accumulatedResponses.push('[Response truncated - reached max tokens]');
           }
@@ -687,15 +980,26 @@ export class DirectAgentService {
       }
 
       if (turnCount >= maxTurns) {
-        if (onEvent && sessionId) {
-          const enhanced = await this.generateEnhancedFields(sessionId);
+        // ✅ FIX PHASE 4: Persist warning message FIRST
+        const maxTurnsEvent = await eventStore.appendEvent(
+          sessionId,
+          'agent_message_sent',
+          {
+            content: '[Execution stopped - reached maximum turns]',
+            stop_reason: 'max_turns',
+          }
+        );
+
+        if (onEvent) {
           onEvent({
             type: 'message',
             messageId: randomUUID(),
             content: '[Execution stopped - reached maximum turns]',
             role: 'assistant',
-            timestamp: new Date(),
-            ...enhanced,
+            timestamp: new Date(maxTurnsEvent.timestamp),
+            eventId: maxTurnsEvent.id,
+            sequenceNumber: maxTurnsEvent.sequence_number,
+            persistenceState: 'persisted',
           });
           accumulatedResponses.push('[Execution stopped - reached maximum turns]');
         }
@@ -703,15 +1007,15 @@ export class DirectAgentService {
 
       const duration = Date.now() - startTime;
 
-      // Send completion event
-      if (onEvent && sessionId) {
-        const enhanced = await this.generateEnhancedFields(sessionId);
+      // ✅ FIX PHASE 4: Send completion event (transient - not persisted)
+      if (onEvent) {
         onEvent({
           type: 'complete',
           reason: 'success',
           timestamp: new Date(),
-          ...enhanced,
-        });
+          eventId: randomUUID(),
+          persistenceState: 'transient', // ⭐ System event, not persisted
+        } as CompleteEvent);
       }
 
       return {
@@ -728,14 +1032,15 @@ export class DirectAgentService {
 
       console.error(`[DirectAgentService] Streaming query execution failed:`, error);
 
+      // ✅ FIX PHASE 4: Send error event (transient - not persisted)
       if (onEvent && sessionId) {
-        const enhanced = await this.generateEnhancedFields(sessionId);
         onEvent({
           type: 'error',
           error: error instanceof Error ? error.message : String(error),
           timestamp: new Date(),
-          ...enhanced,
-        });
+          eventId: randomUUID(),
+          persistenceState: 'transient', // ⭐ System event, not persisted
+        } as ErrorEvent);
       }
 
       return {

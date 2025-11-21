@@ -7,13 +7,152 @@
  * @module config/database
  */
 
-import sql, { ConnectionPool, config as SqlConfig } from 'mssql';
+import sql, { ConnectionPool, config as SqlConfig, ISqlType } from 'mssql';
 import { env, isProd } from './environment';
 
 /**
  * Database connection pool
  */
 let pool: ConnectionPool | null = null;
+
+/**
+ * SQL parameter type mapping
+ *
+ * Maps JavaScript parameter names to SQL Server data types.
+ * This ensures that mssql library uses correct type binding
+ * instead of inferring types (which can fail for UUIDs).
+ *
+ * Reference: https://github.com/tediousjs/node-mssql#data-types
+ */
+const PARAMETER_TYPE_MAP: Record<string, ISqlType | (() => ISqlType)> = {
+  // UNIQUEIDENTIFIER columns (UUIDs)
+  'id': sql.UniqueIdentifier,
+  'session_id': sql.UniqueIdentifier,
+  'user_id': sql.UniqueIdentifier,
+  'event_id': sql.UniqueIdentifier,
+  'message_id': sql.UniqueIdentifier,
+  'decided_by_user_id': sql.UniqueIdentifier,
+  'parent_todo_id': sql.UniqueIdentifier,
+  'entity_id': sql.UniqueIdentifier,
+  'file_id': sql.UniqueIdentifier,
+
+  // INT columns
+  'sequence_number': sql.Int,
+  'token_count': sql.Int,
+  'thinking_tokens': sql.Int,
+  'tokens_used': sql.Int,
+  'duration_ms': sql.Int,
+  'order': sql.Int,
+
+  // BIGINT columns
+  'file_size_bytes': sql.BigInt,
+
+  // DATETIME2 columns
+  'created_at': sql.DateTime2,
+  'updated_at': sql.DateTime2,
+  'timestamp': sql.DateTime2,
+  'expires_at': sql.DateTime2,
+  'decided_at': sql.DateTime2,
+  'started_at': sql.DateTime2,
+  'completed_at': sql.DateTime2,
+  'removed_at': sql.DateTime2,
+  'last_microsoft_login': sql.DateTime2,
+  'bc_token_expires_at': sql.DateTime2,
+
+  // BIT columns (boolean)
+  'processed': sql.Bit,
+  'approved': sql.Bit,
+  'rejected': sql.Bit,
+  'completed': sql.Bit,
+  'removed': sql.Bit,
+  'success': sql.Bit,
+
+  // NVARCHAR columns (strings) - explicit for clarity
+  'event_type': sql.NVarChar,
+  'role': sql.NVarChar,
+  'message_type': sql.NVarChar,
+  'content': sql.NVarChar(sql.MAX),
+  'metadata': sql.NVarChar(sql.MAX),
+  'data': sql.NVarChar(sql.MAX),
+  'stop_reason': sql.NVarChar,
+  'tool_use_id': sql.NVarChar,  // Anthropic SDK tool_use block ID (e.g., toolu_01...)
+  'tool_name': sql.NVarChar,
+  'tool_args': sql.NVarChar(sql.MAX),
+  'tool_result': sql.NVarChar(sql.MAX),
+  'error_message': sql.NVarChar(sql.MAX),
+  'title': sql.NVarChar,
+  'description': sql.NVarChar,
+  'status': sql.NVarChar,
+  'type': sql.NVarChar,
+  'entity_type': sql.NVarChar,
+  'action_type': sql.NVarChar,
+  'file_name': sql.NVarChar,
+  'file_type': sql.NVarChar,
+  'file_path': sql.NVarChar,
+  'reasoning': sql.NVarChar(sql.MAX),
+  'context': sql.NVarChar(sql.MAX),
+  'decision': sql.NVarChar(sql.MAX),
+  'bc_company_id': sql.NVarChar,
+  'bc_environment': sql.NVarChar,
+  'microsoft_oid': sql.NVarChar,
+  'email': sql.NVarChar,
+  'display_name': sql.NVarChar,
+  'microsoft_access_token_encrypted': sql.NVarChar(sql.MAX),
+  'microsoft_refresh_token_encrypted': sql.NVarChar(sql.MAX),
+  'bc_access_token_encrypted': sql.NVarChar(sql.MAX),
+
+  // VARBINARY columns
+  'file_content': sql.VarBinary(sql.MAX),
+};
+
+/**
+ * Infer SQL type from parameter name and value
+ *
+ * Falls back to heuristics if parameter name is not in explicit mapping.
+ *
+ * @param key - Parameter name
+ * @param value - Parameter value
+ * @returns SQL type factory
+ */
+function inferSqlType(key: string, value: unknown): ISqlType | (() => ISqlType) {
+  // 1. Check explicit mapping first
+  if (PARAMETER_TYPE_MAP[key]) {
+    return PARAMETER_TYPE_MAP[key];
+  }
+
+  // 2. Heuristic fallbacks based on naming conventions
+  if (key.endsWith('_id') || key === 'id') {
+    return sql.UniqueIdentifier;
+  }
+
+  if (key.includes('count') || key.includes('number') || key.includes('tokens')) {
+    return sql.Int;
+  }
+
+  if (key.includes('_at') || key === 'timestamp') {
+    return sql.DateTime2;
+  }
+
+  // 3. Type-based fallbacks
+  if (typeof value === 'boolean') {
+    return sql.Bit;
+  }
+
+  if (typeof value === 'number') {
+    return Number.isInteger(value) ? sql.Int : sql.Float;
+  }
+
+  if (value instanceof Date) {
+    return sql.DateTime2;
+  }
+
+  if (value instanceof Buffer) {
+    return sql.VarBinary(sql.MAX);
+  }
+
+  // 4. Default to NVARCHAR for strings and unknowns
+  return sql.NVarChar(sql.MAX);
+}
 
 /**
  * Get database configuration
@@ -258,7 +397,7 @@ export async function executeQuery<T = unknown>(
 
     const request = db.request();
 
-    // Add parameters to the request with type checking
+    // Add parameters to the request with explicit type binding
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
         // Validate parameter value type
@@ -274,7 +413,11 @@ export async function executeQuery<T = unknown>(
           }
         }
 
-        request.input(key, value);
+        // ⭐ FIX TYPE 3: Infer SQL type and bind explicitly
+        const sqlType = inferSqlType(key, value);
+
+        // Bind parameter with explicit type
+        request.input(key, sqlType, value);
       });
     }
 
@@ -314,7 +457,7 @@ export async function executeProcedure<T = unknown>(
 
     const request = db.request();
 
-    // Add parameters to the request with type checking
+    // Add parameters to the request with explicit type binding
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
         // Validate parameter value type
@@ -330,7 +473,11 @@ export async function executeProcedure<T = unknown>(
           }
         }
 
-        request.input(key, value);
+        // ⭐ FIX TYPE 3: Infer SQL type and bind explicitly
+        const sqlType = inferSqlType(key, value);
+
+        // Bind parameter with explicit type
+        request.input(key, sqlType, value);
       });
     }
 

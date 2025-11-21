@@ -515,6 +515,19 @@ export class MessageQueue {
   ): Promise<void> {
     const { sessionId, messageId, role, messageType, content, metadata, sequenceNumber, eventId } = job.data;
 
+    // ⭐ VALIDATION: Check for undefined messageId
+    if (!messageId || messageId === 'undefined' || messageId.trim() === '') {
+      logger.error('❌ processMessagePersistence: Invalid messageId', {
+        jobId: job.id,
+        messageId,
+        sessionId,
+        role,
+        messageType,
+        metadata,
+      });
+      throw new Error(`Invalid messageId: ${messageId}. Cannot persist message.`);
+    }
+
     // ⭐ DIAGNOSTIC: Log worker pickup
     logger.info('🔨 Worker picked up message persistence job', {
       jobId: job.id,
@@ -530,6 +543,9 @@ export class MessageQueue {
     });
 
     try {
+      // ⭐ Extract tool_use_id from metadata if present (for tool use messages)
+      const toolUseId: string | null = (typeof metadata?.tool_use_id === 'string' ? metadata.tool_use_id : null);
+
       const params: SqlParams = {
         id: messageId,
         session_id: sessionId,
@@ -542,13 +558,14 @@ export class MessageQueue {
         event_id: eventId ?? null,
         token_count: null,
         stop_reason: null,
+        tool_use_id: toolUseId as string | null,  // ⭐ Extract from metadata
         created_at: new Date(),
       };
 
       await executeQuery(
         `
-        INSERT INTO messages (id, session_id, role, message_type, content, metadata, sequence_number, event_id, token_count, stop_reason, created_at)
-        VALUES (@id, @session_id, @role, @message_type, @content, @metadata, @sequence_number, @event_id, @token_count, @stop_reason, @created_at)
+        INSERT INTO messages (id, session_id, role, message_type, content, metadata, sequence_number, event_id, token_count, stop_reason, tool_use_id, created_at)
+        VALUES (@id, @session_id, @role, @message_type, @content, @metadata, @sequence_number, @event_id, @token_count, @stop_reason, @tool_use_id, @created_at)
         `,
         params
       );

@@ -105,6 +105,10 @@ export function useChat(sessionId?: string) {
   const [isThinking, setIsThinking] = useState(false);
   const [currentSession, setCurrentSession] = useState<Session | null>(null);
 
+  // ⭐ Phase 5: Sequence number validation state
+  const lastSequenceRef = useRef<number>(0); // Last processed sequence number
+  const eventBufferRef = useRef<Map<number, AgentEvent>>(new Map()); // Buffer for out-of-order events
+
   // Fetch all sessions - React Query handles deduplication automatically
   const {
     data: sessions = [],
@@ -269,15 +273,134 @@ export function useChat(sessionId?: string) {
     }
   }, [socket, isConnected, sessionId]);
 
+  // ⭐ Phase 5: Helper function to validate sequence numbers
+  const validateSequence = useCallback((event: AgentEvent): boolean => {
+    const sequenceNumber = event.sequenceNumber;
+    const lastSequence = lastSequenceRef.current;
+
+    // Allow events without sequence numbers (e.g., message_chunk, thinking)
+    if (typeof sequenceNumber !== 'number') {
+      return true;
+    }
+
+    // ⭐ BATCH SEQUENCE SUPPORT: Allow events with SAME sequence number
+    // This is expected when multiple events (chunks + complete message) share one sequence
+    if (sequenceNumber === lastSequence) {
+      console.debug(`[useChat] Batch sequence event: ${sequenceNumber} (same as last). Allowing.`, {
+        eventType: event.type,
+        sequenceNumber,
+        lastSequence,
+      });
+      return true; // ⭐ Allow same sequence (batch events)
+    }
+
+    // First event or sequence is next in order
+    if (lastSequence === 0 || sequenceNumber === lastSequence + 1) {
+      lastSequenceRef.current = sequenceNumber;
+      return true;
+    }
+
+    // Event is out of order (future event)
+    if (sequenceNumber > lastSequence + 1) {
+      console.warn(`[useChat] Out-of-order event detected: expected ${lastSequence + 1}, got ${sequenceNumber}. Buffering event.`, {
+        eventType: event.type,
+        expected: lastSequence + 1,
+        received: sequenceNumber,
+        gap: sequenceNumber - lastSequence - 1,
+      });
+      return false;
+    }
+
+    // Event is old (sequence < lastSequence - 1, definitely outdated)
+    if (sequenceNumber < lastSequence) {
+      console.warn(`[useChat] Old event detected: ${sequenceNumber} (last: ${lastSequence}). Skipping.`, {
+        eventType: event.type,
+        sequenceNumber,
+        lastSequence,
+      });
+      return false;
+    }
+
+    return true;
+  }, []);
+
+  // ⭐ Phase 5: Helper function to process buffered events
+  const processBufferedEvents = useCallback((handler: (event: AgentEvent) => void) => {
+    const buffer = eventBufferRef.current;
+    let processed = 0;
+
+    // Try to process events in order from buffer
+    while (true) {
+      const nextSeq = lastSequenceRef.current + 1;
+      const nextEvent = buffer.get(nextSeq);
+
+      if (!nextEvent) break; // No more consecutive events in buffer
+
+      // Process the event
+      console.log(`[useChat] Processing buffered event: seq=${nextSeq}, type=${nextEvent.type}`);
+      handler(nextEvent);
+      lastSequenceRef.current = nextSeq;
+      buffer.delete(nextSeq);
+      processed++;
+    }
+
+    if (processed > 0) {
+      console.log(`[useChat] Processed ${processed} buffered events. Buffer size: ${buffer.size}`);
+    }
+
+    // Warn if buffer is growing too large (possible missing events)
+    if (buffer.size > 10) {
+      console.error(`[useChat] Event buffer is too large (${buffer.size} events). Possible missing events!`, {
+        bufferedSequences: Array.from(buffer.keys()).sort((a, b) => a - b),
+        lastSequence: lastSequenceRef.current,
+      });
+    }
+  }, []);
+
   // Set up WebSocket event listeners using unified agent:event
   useEffect(() => {
     if (!socket || !isConnected) return;
 
-    // Unified agent event handler - discriminated union pattern
-    const handleAgentEvent = (event: AgentEvent) => {
+    // ⭐ Phase 5: Inner handler that processes events (called after validation)
+    const processEvent = (event: AgentEvent) => {
       const currentSessionId = sessionIdRef.current;
 
       switch (event.type) {
+        case 'user_message_confirmed': {
+          // ⭐ User message confirmed by backend with sequence_number
+          if (currentSessionId) {
+            const userMessage: Message = {
+              id: event.messageId,
+              session_id: currentSessionId,
+              role: 'user',
+              content: event.content,
+              created_at: new Date().toISOString(),
+              thinking_tokens: 0,
+              is_thinking: false,
+              sequence_number: event.sequenceNumber,
+            };
+
+            queryClient.setQueryData<ChatMessage[]>(
+              queryKeys.messages.list(currentSessionId),
+              (old) => {
+                const updated = [...(old || []), userMessage];
+                // Sort by sequenceNumber to ensure correct ordering
+                return updated.sort((a, b) => {
+                  const seqA = 'sequence_number' in a ? a.sequence_number : 0;
+                  const seqB = 'sequence_number' in b ? b.sequence_number : 0;
+                  return (seqA ?? 0) - (seqB ?? 0);
+                });
+              }
+            );
+
+            console.log('[useChat] User message confirmed:', {
+              messageId: event.messageId,
+              sequenceNumber: event.sequenceNumber,
+            });
+          }
+          break;
+        }
+
         case 'message_chunk': {
           // Streaming chunk received
           setIsStreaming(true);
@@ -317,6 +440,15 @@ export function useChat(sessionId?: string) {
         }
 
         case 'thinking': {
+          // Diagnostic logging
+          console.log('🧠 [useChat] Received thinking event:', {
+            sessionId: currentSessionId,
+            sequenceNumber: event.sequenceNumber,
+            eventId: event.eventId,
+            content: event.content,
+            lastSequence: lastSequenceRef.current,
+          });
+
           // Thinking indicator
           setIsThinking(true);
 
@@ -324,34 +456,24 @@ export function useChat(sessionId?: string) {
             queryClient.setQueryData<ChatMessage[]>(
               queryKeys.messages.list(currentSessionId),
               (old) => {
-                const existingThinkingIndex = (old || []).findIndex(
-                  msg => isThinkingMessage(msg) && msg.session_id === currentSessionId
-                );
+                // ⭐ Phase 2: Deduplicate thinking messages
+                // Remove ALL existing thinking messages first
+                const withoutThinking = (old || []).filter(msg => !isThinkingMessage(msg));
 
-                if (existingThinkingIndex >= 0) {
-                  // Update existing thinking message
-                  const updated = [...(old || [])];
-                  const existingMsg = updated[existingThinkingIndex];
-                  if (isThinkingMessage(existingMsg)) {
-                    updated[existingThinkingIndex] = {
-                      ...existingMsg,
-                      content: event.content,
-                    };
-                  }
-                  return updated;
-                } else {
-                  // Create new thinking message
-                  const thinkingMessage: ThinkingMessage = {
-                    id: crypto.randomUUID(),
-                    type: 'thinking',
-                    session_id: currentSessionId,
-                    content: event.content,
-                    created_at: new Date().toISOString(),
-                  };
-                  return [...(old || []), thinkingMessage];
-                }
+                // Create single new thinking message with consistent ID
+                const thinkingMessage: ThinkingMessage = {
+                  id: `thinking-${currentSessionId}`, // ⭐ Consistent ID for deduplication
+                  type: 'thinking',
+                  session_id: currentSessionId,
+                  content: event.content,
+                  created_at: new Date().toISOString(),
+                };
+
+                // Add single thinking message at the end
+                return [...withoutThinking, thinkingMessage];
               }
             );
+            console.log('✅ [useChat] Thinking message added to query cache');
           }
           break;
         }
@@ -407,13 +529,23 @@ export function useChat(sessionId?: string) {
           setIsThinking(false);
 
           if (currentSessionId) {
-            // Remove thinking messages
+            // ⭐ Phase 3: Preserve tool messages, remove ONLY thinking messages
             queryClient.setQueryData<ChatMessage[]>(
               queryKeys.messages.list(currentSessionId),
-              (old) => (old || []).filter(msg => !isThinkingMessage(msg))
+              (old) => {
+                return (old || []).filter(msg => {
+                  // Keep tool messages (they should persist with status badges)
+                  if (isToolUseMessage(msg)) return true;
+                  // Remove thinking messages (they're transient)
+                  if (isThinkingMessage(msg)) return false;
+                  // Keep all other messages (user, assistant)
+                  return true;
+                });
+              }
             );
 
-            // Invalidate to fetch persisted messages
+            // ⭐ Invalidate to fetch persisted messages (merge with existing tool messages)
+            // Note: Tool messages should already be in cache, this is just to sync with backend
             setTimeout(() => {
               queryClient.invalidateQueries({ queryKey: queryKeys.messages.list(currentSessionId) });
             }, 300);
@@ -449,6 +581,33 @@ export function useChat(sessionId?: string) {
       }
     };
 
+    // ⭐ Phase 5: Wrapper handler that validates sequence and buffers out-of-order events
+    const handleAgentEvent = (event: AgentEvent) => {
+      // Diagnostic: Log ALL incoming events
+      console.log(`📥 [useChat] Incoming event:`, {
+        type: event.type,
+        sequenceNumber: event.sequenceNumber,
+        lastSequence: lastSequenceRef.current,
+        bufferSize: eventBufferRef.current.size,
+      });
+
+      // Validate sequence number
+      if (validateSequence(event)) {
+        // Event is in order, process it immediately
+        processEvent(event);
+
+        // Try to process any buffered events that are now in order
+        processBufferedEvents(processEvent);
+      } else {
+        // Event is out of order, buffer it
+        const buffer = eventBufferRef.current;
+        if (typeof event.sequenceNumber === 'number') {
+          buffer.set(event.sequenceNumber, event);
+          console.log(`[useChat] Buffered event: seq=${event.sequenceNumber}, type=${event.type}. Buffer size: ${buffer.size}`);
+        }
+      }
+    };
+
     // Session title updated (separate event, not part of agent:event union)
     const handleTitleUpdate = (data: { sessionId: string; title: string }) => {
       queryClient.setQueryData<Session[]>(
@@ -473,8 +632,12 @@ export function useChat(sessionId?: string) {
     return () => {
       socket.off('agent:event', handleAgentEvent);
       socket.off('session:title_updated', handleTitleUpdate);
+
+      // ⭐ Phase 5: Clear event buffer on cleanup
+      eventBufferRef.current.clear();
+      lastSequenceRef.current = 0;
     };
-  }, [socket, isConnected, queryClient, currentSession]);
+  }, [socket, isConnected, queryClient, currentSession, validateSequence, processBufferedEvents]);
 
   // Send message
   const sendMessage = useCallback(
@@ -497,22 +660,9 @@ export function useChat(sessionId?: string) {
         contentPreview: content.substring(0, 100),
       });
 
-      // Add optimistic message to cache
-      const tempMessage: Message = {
-        id: crypto.randomUUID(),
-        session_id: sessionId,
-        role: 'user',
-        content,
-        created_at: new Date().toISOString(),
-        thinking_tokens: 0,
-        is_thinking: false,
-      };
-
-      // Optimistically update cache
-      queryClient.setQueryData<ChatMessage[]>(
-        queryKeys.messages.list(sessionId),
-        (old) => [...(old || []), tempMessage]
-      );
+      // ⭐ NO optimistic update - wait for backend confirmation
+      // The backend will emit 'user_message_confirmed' event with sequence_number
+      // and we'll add the message to cache when we receive that event
 
       // Send via WebSocket with correct event name and payload structure
       socket?.emit('chat:message', {
@@ -521,7 +671,7 @@ export function useChat(sessionId?: string) {
         userId,
       });
     },
-    [sessionId, isConnected, socket, queryClient, user]
+    [sessionId, isConnected, socket, user]
   );
 
   // Wrapper functions for mutations

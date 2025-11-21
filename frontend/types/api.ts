@@ -58,6 +58,11 @@ export interface Message {
   sequence_number?: number;
   thinking_tokens?: number;
   is_thinking?: boolean;
+  /**
+   * Optional metadata field for tool_use messages.
+   * Contains tool name, arguments, and result information.
+   */
+  metadata?: string | Record<string, unknown>;
   created_at: string;
 }
 

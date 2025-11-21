@@ -18,6 +18,7 @@ import type {
   AgentEvent,
   ThinkingEvent,
   MessageEvent,
+  MessageChunkEvent,
   ToolUseEvent,
   ToolResultEvent,
   SessionEndEvent,
@@ -89,10 +90,39 @@ export class ChatMessageHandler {
       this.logger.info('💾 Saving user message to database...', { sessionId, userId });
       const startSaveTime = Date.now();
 
+      let messageConfirmation: { messageId: string; sequenceNumber: number; eventId: string } | null = null;
+
       try {
-        await this.messageService.saveUserMessage(sessionId, userId, message);
+        messageConfirmation = await this.messageService.saveUserMessage(sessionId, userId, message);
         const saveDuration = Date.now() - startSaveTime;
-        this.logger.info('✅ User message saved successfully', { sessionId, userId, saveDuration });
+        this.logger.info('✅ User message saved successfully', {
+          sessionId,
+          userId,
+          saveDuration,
+          messageId: messageConfirmation.messageId,
+          sequenceNumber: messageConfirmation.sequenceNumber,
+          eventId: messageConfirmation.eventId,
+        });
+
+        // ⭐ Emit user_message_confirmed event to frontend
+        io.to(sessionId).emit('agent:event', {
+          type: 'user_message_confirmed',
+          sessionId,
+          messageId: messageConfirmation.messageId,
+          userId,
+          content: message,
+          sequenceNumber: messageConfirmation.sequenceNumber,
+          eventId: messageConfirmation.eventId,
+          timestamp: new Date(),
+          // Enhanced contract fields (required by BaseAgentEvent)
+          persistenceState: 'persisted' as const,
+        });
+
+        this.logger.info('✅ User message confirmation emitted to frontend', {
+          sessionId,
+          messageId: messageConfirmation.messageId,
+          sequenceNumber: messageConfirmation.sequenceNumber,
+        });
       } catch (saveError) {
         this.logger.error('❌ Failed to save user message', { error: saveError, sessionId, userId });
 
@@ -187,8 +217,23 @@ export class ChatMessageHandler {
     userId: string
   ): Promise<void> {
     try {
+      // Diagnostic logging for thinking event
+      if (event.type === 'thinking') {
+        console.log('📡 [ChatMessageHandler] Relaying thinking event to Socket.IO:', {
+          sessionId,
+          eventType: event.type,
+          sequenceNumber: event.sequenceNumber,
+          eventId: event.eventId,
+        });
+      }
+
       // Emit to frontend (single event type with enhanced contract)
       io.to(sessionId).emit('agent:event', event);
+
+      // Confirm emission for thinking event
+      if (event.type === 'thinking') {
+        console.log('✅ [ChatMessageHandler] Thinking event emitted to Socket.IO room:', sessionId);
+      }
 
       // Persist to database based on event type (type-safe discrimination)
       switch (event.type) {
@@ -198,7 +243,20 @@ export class ChatMessageHandler {
           break;
 
         case 'thinking':
-          await this.handleThinking(event as ThinkingEvent, sessionId, userId);
+          // ✅ SKIP persistence - event already persisted by DirectAgentService
+          if ((event as ThinkingEvent).persistenceState === 'persisted') {
+            this.logger.debug('✅ Thinking event already persisted by DirectAgentService', {
+              sequenceNumber: (event as ThinkingEvent).sequenceNumber,
+              eventId: (event as ThinkingEvent).eventId,
+            });
+          } else {
+            this.logger.error('❌ Thinking event NOT persisted by DirectAgentService', {
+              sequenceNumber: (event as ThinkingEvent).sequenceNumber,
+              eventId: (event as ThinkingEvent).eventId,
+            });
+            // ⚠️ FALLBACK: Persistir aquí si no está (solo para recovery)
+            await this.handleThinking(event as ThinkingEvent, sessionId, userId);
+          }
           break;
 
         case 'message_partial':
@@ -206,20 +264,65 @@ export class ChatMessageHandler {
           break;
 
         case 'message_chunk':
-          // No persistence needed - chunks are transient
-          // Complete message will be persisted in 'message' event
+          // ✅ Verificar que esté marcado como transient
+          if ((event as MessageChunkEvent).persistenceState !== 'transient') {
+            this.logger.warn('⚠️  Message chunk NOT marked as transient', {
+              sequenceNumber: (event as MessageChunkEvent).sequenceNumber,
+            });
+          }
+          this.logger.debug('📡 Message chunk received (transient, not persisted)', {
+            content: (event as MessageChunkEvent).content?.substring(0, 20),
+          });
           break;
 
         case 'message':
-          await this.handleMessage(event as MessageEvent, sessionId, userId);
+          // ✅ SKIP persistence - event already persisted by DirectAgentService
+          if ((event as MessageEvent).persistenceState === 'persisted') {
+            this.logger.debug('✅ Complete message already persisted by DirectAgentService', {
+              sequenceNumber: (event as MessageEvent).sequenceNumber,
+              eventId: (event as MessageEvent).eventId,
+            });
+          } else {
+            this.logger.error('❌ Complete message NOT persisted by DirectAgentService', {
+              sequenceNumber: (event as MessageEvent).sequenceNumber,
+            });
+            // ⚠️ FALLBACK: Persistir aquí si no está
+            await this.handleMessage(event as MessageEvent, sessionId, userId);
+          }
           break;
 
         case 'tool_use':
-          await this.handleToolUse(event as ToolUseEvent, sessionId, userId);
+          // ✅ SKIP persistence - event already persisted by DirectAgentService
+          if ((event as ToolUseEvent).persistenceState === 'persisted') {
+            this.logger.debug('✅ Tool use event already persisted by DirectAgentService', {
+              toolUseId: (event as ToolUseEvent).toolUseId,
+              sequenceNumber: (event as ToolUseEvent).sequenceNumber,
+              eventId: (event as ToolUseEvent).eventId,
+            });
+          } else {
+            this.logger.error('❌ Tool use event NOT persisted by DirectAgentService', {
+              toolUseId: (event as ToolUseEvent).toolUseId,
+            });
+            // ⚠️ FALLBACK: Persistir aquí si no está
+            await this.handleToolUse(event as ToolUseEvent, sessionId, userId);
+          }
           break;
 
         case 'tool_result':
-          await this.handleToolResult(event as ToolResultEvent, sessionId, userId);
+          // ✅ SKIP persistence - event already persisted by DirectAgentService
+          if ((event as ToolResultEvent).persistenceState === 'persisted') {
+            this.logger.debug('✅ Tool result event already persisted by DirectAgentService', {
+              toolUseId: (event as ToolResultEvent).toolUseId,
+              sequenceNumber: (event as ToolResultEvent).sequenceNumber,
+              eventId: (event as ToolResultEvent).eventId,
+            });
+          } else {
+            this.logger.error('❌ Tool result event NOT persisted by DirectAgentService', {
+              toolUseId: (event as ToolResultEvent).toolUseId,
+            });
+            // ⚠️ FALLBACK: Persistir aquí si no está
+            await this.handleToolResult(event as ToolResultEvent, sessionId, userId);
+          }
           break;
 
         case 'session_end':
@@ -243,6 +346,11 @@ export class ChatMessageHandler {
 
         case 'error':
           await this.handleError(event as ErrorEvent, sessionId, userId);
+          break;
+
+        case 'user_message_confirmed':
+          // User message confirmed - already emitted to frontend, no additional persistence needed
+          this.logger.debug('User message confirmed event', { sessionId, userId });
           break;
 
         default:

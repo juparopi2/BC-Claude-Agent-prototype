@@ -74,9 +74,16 @@ export function MessageList({
   }
 
   // Helper function to check if a message is a process message (thinking, tool, or intermediate)
-  // Uses native SDK stop_reason to identify intermediate messages
+  // Uses message_type and stop_reason to identify intermediate messages
   const isProcessMessage = (msg: MessageType) => {
     if (isThinkingMessage(msg) || isToolUseMessage(msg)) return true;
+
+    // ⭐ Check message_type for intermediate messages (backend sets message_type='thinking' for stop_reason='tool_use')
+    if (!('type' in msg) && msg.role === 'assistant' && 'message_type' in msg) {
+      if ((msg as any).message_type === 'thinking') {
+        return true;
+      }
+    }
 
     // Intermediate messages have stop_reason='tool_use' (from Anthropic SDK)
     // These go in the thinking collapsible along with thinking and tool messages

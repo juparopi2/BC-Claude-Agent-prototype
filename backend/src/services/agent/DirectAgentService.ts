@@ -41,6 +41,7 @@ import type { Tool } from '@anthropic-ai/sdk/resources/messages';  // ⭐ Use na
 import { AnthropicClient } from './AnthropicClient';
 import { randomUUID } from 'crypto';
 import { getEventStore } from '../events/EventStore';
+import { getMessageService } from '../messages/MessageService';
 import { createChildLogger } from '@/utils/logger';
 import type { Logger } from 'pino';
 import * as fs from 'fs';
@@ -214,7 +215,8 @@ export class DirectAgentService {
   async executeQueryStreaming(
     prompt: string,
     sessionId?: string,
-    onEvent?: (event: AgentEvent) => void
+    onEvent?: (event: AgentEvent) => void,
+    userId?: string
   ): Promise<AgentExecutionResult> {
     // DIAGNOSTIC LOGGING - Entry point
     this.logger.info({
@@ -347,6 +349,33 @@ export class DirectAgentService {
                     timestamp: new Date(),
                     ...enhanced,
                   });
+
+                  // ⭐ PERSIST TOOL USE MESSAGE (if userId available)
+                  if (userId) {
+                    try {
+                      const messageService = getMessageService();
+                      await messageService.saveToolUseMessage(
+                        sessionId,
+                        userId,
+                        event.content_block.id,
+                        event.content_block.name,
+                        {} // Args will be updated in content_block_stop
+                      );
+                      this.logger.debug('Tool use message persisted', {
+                        sessionId,
+                        userId,
+                        toolUseId: event.content_block.id,
+                        toolName: event.content_block.name,
+                      });
+                    } catch (persistError) {
+                      this.logger.error('Failed to persist tool use message', {
+                        error: persistError,
+                        sessionId,
+                        userId,
+                        toolUseId: event.content_block.id,
+                      });
+                    }
+                  }
                 }
               }
               break;
@@ -534,6 +563,37 @@ export class DirectAgentService {
                   timestamp: new Date(),
                   ...enhanced,
                 });
+
+                // ⭐ PERSIST TOOL RESULT (if userId available)
+                if (userId) {
+                  try {
+                    const messageService = getMessageService();
+                    await messageService.updateToolResult(
+                      sessionId,
+                      userId,
+                      toolUse.id,
+                      toolUse.name,
+                      toolUse.input as Record<string, unknown>,
+                      result,
+                      true, // success
+                      undefined
+                    );
+                    this.logger.debug('Tool result persisted', {
+                      sessionId,
+                      userId,
+                      toolUseId: toolUse.id,
+                      toolName: toolUse.name,
+                      success: true,
+                    });
+                  } catch (persistError) {
+                    this.logger.error('Failed to persist tool result', {
+                      error: persistError,
+                      sessionId,
+                      userId,
+                      toolUseId: toolUse.id,
+                    });
+                  }
+                }
               }
 
               toolResults.push({
@@ -557,6 +617,37 @@ export class DirectAgentService {
                   timestamp: new Date(),
                   ...enhanced,
                 });
+
+                // ⭐ PERSIST TOOL RESULT (error case, if userId available)
+                if (userId) {
+                  try {
+                    const messageService = getMessageService();
+                    await messageService.updateToolResult(
+                      sessionId,
+                      userId,
+                      toolUse.id,
+                      toolUse.name,
+                      toolUse.input as Record<string, unknown>,
+                      null,
+                      false, // success = false
+                      error instanceof Error ? error.message : String(error)
+                    );
+                    this.logger.debug('Tool result (error) persisted', {
+                      sessionId,
+                      userId,
+                      toolUseId: toolUse.id,
+                      toolName: toolUse.name,
+                      success: false,
+                    });
+                  } catch (persistError) {
+                    this.logger.error('Failed to persist tool result (error case)', {
+                      error: persistError,
+                      sessionId,
+                      userId,
+                      toolUseId: toolUse.id,
+                    });
+                  }
+                }
               }
 
               toolResults.push({

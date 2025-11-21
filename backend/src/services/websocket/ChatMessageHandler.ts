@@ -121,12 +121,13 @@ export class ChatMessageHandler {
         hasExecuteMethod: typeof agentService?.executeQueryStreaming === 'function'
       });
 
-      this.logger.info('📞 Calling executeQueryStreaming...', { sessionId, messageLength: message.length });
+      this.logger.info('📞 Calling executeQueryStreaming...', { sessionId, userId, messageLength: message.length });
 
       await agentService.executeQueryStreaming(
         message,
         sessionId,
-        (event: AgentEvent) => this.handleAgentEvent(event, io, sessionId, userId)
+        (event: AgentEvent) => this.handleAgentEvent(event, io, sessionId, userId),
+        userId // ⭐ Pass userId for tool persistence (optional 4th parameter)
       );
 
       this.logger.info('✅ Chat message processed successfully (executeQueryStreaming completed)', { sessionId, userId });

@@ -210,12 +210,15 @@ export class MessageService {
       });
 
       // 2. Queue for persistence
+      // ⭐ Implement stop_reason pattern: intermediate vs final messages
+      const messageType = stopReason === 'tool_use' ? 'thinking' : 'text';
+
       try {
         await this.messageQueue.addMessagePersistence({
           sessionId,
           messageId,
           role: 'assistant',
-          messageType: 'text',
+          messageType, // ⭐ 'thinking' for intermediate, 'text' for final
           content,
           metadata: {
             stop_reason: stopReason,
@@ -243,7 +246,7 @@ export class MessageService {
           id: messageId,
           session_id: sessionId,
           role: 'assistant',
-          message_type: 'text',
+          message_type: messageType, // ⭐ Use computed messageType
           content,
           metadata: JSON.stringify({
             stop_reason: stopReason,

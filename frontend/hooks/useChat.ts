@@ -132,7 +132,64 @@ export function useChat(sessionId?: string) {
     queryFn: async () => {
       if (!sessionId) return [];
       const response = await apiClient.messages.list(sessionId);
-      return response.messages || [];
+
+      // ⭐ Transform messages: convert message_type='tool_use' to ToolUseMessage objects
+      return (response.messages || []).map((msg): ChatMessage => {
+        // Check if this is a tool_use message from database
+        if ('message_type' in msg && msg.message_type === 'tool_use') {
+          // Parse metadata to extract tool information
+          let metadata: Record<string, JSONValue> = {};
+          try {
+            if (typeof msg.metadata === 'string') {
+              metadata = JSON.parse(msg.metadata);
+            } else if (msg.metadata) {
+              metadata = msg.metadata as Record<string, JSONValue>;
+            }
+          } catch (e) {
+            console.warn('[useChat] Failed to parse tool message metadata:', e);
+          }
+
+          // Reconstruct ToolUseMessage from database record
+          return {
+            id: msg.id,
+            type: 'tool_use',
+            session_id: msg.session_id,
+            tool_name: (metadata.tool_name as string) || 'unknown',
+            tool_args: (metadata.tool_args as Record<string, JSONValue>) || {},
+            tool_result: metadata.tool_result,
+            status: (metadata.status as 'pending' | 'success' | 'error') || 'pending',
+            error_message: metadata.error_message as string | undefined,
+            created_at: msg.created_at,
+          } as ToolUseMessage;
+        }
+
+        // Check if this is a thinking message from database
+        if ('message_type' in msg && msg.message_type === 'thinking' && msg.role === 'assistant') {
+          // Parse metadata for thinking content
+          let metadata: Record<string, JSONValue> = {};
+          try {
+            if (typeof msg.metadata === 'string') {
+              metadata = JSON.parse(msg.metadata);
+            } else if (msg.metadata) {
+              metadata = msg.metadata as Record<string, JSONValue>;
+            }
+          } catch (e) {
+            console.warn('[useChat] Failed to parse thinking message metadata:', e);
+          }
+
+          // Reconstruct ThinkingMessage from database record
+          return {
+            id: msg.id,
+            type: 'thinking',
+            session_id: msg.session_id,
+            content: (metadata.content as string) || msg.content,
+            created_at: msg.created_at,
+          } as ThinkingMessage;
+        }
+
+        // Return regular message as-is
+        return msg as Message;
+      });
     },
     enabled: !!sessionId, // Only fetch if sessionId exists
     staleTime: 10 * 1000, // Messages fresh for 10 seconds

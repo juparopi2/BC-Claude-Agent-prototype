@@ -43,6 +43,9 @@ export interface MessagePersistenceJob {
   messageType: 'text' | 'thinking' | 'tool_use' | 'tool_result' | 'error';
   content: string;
   metadata?: Record<string, unknown>;
+  // ⭐ NEW: Sequence number and event ID from EventStore
+  sequenceNumber?: number;
+  eventId?: string;
 }
 
 /**
@@ -124,13 +127,42 @@ export class MessageQueue {
     this.workers = new Map();
     this.queueEvents = new Map();
 
+    // ⭐ DIAGNOSTIC: Add connection event listeners for IORedis
+    this.redisConnection.on('connect', () => {
+      logger.info('🔌 BullMQ IORedis: connect event fired');
+    });
+
+    this.redisConnection.on('ready', () => {
+      logger.info('✅ BullMQ IORedis: ready event fired (connection fully established)');
+    });
+
+    this.redisConnection.on('error', (err) => {
+      logger.error('❌ BullMQ IORedis: error event', {
+        error: err.message,
+        stack: err.stack,
+        code: (err as NodeJS.ErrnoException).code
+      });
+    });
+
+    this.redisConnection.on('close', () => {
+      logger.warn('🔴 BullMQ IORedis: close event (connection closed)');
+    });
+
+    this.redisConnection.on('reconnecting', (timeToReconnect: number) => {
+      logger.warn('🔄 BullMQ IORedis: reconnecting...', { timeToReconnect });
+    });
+
+    this.redisConnection.on('end', () => {
+      logger.warn('🛑 BullMQ IORedis: end event (no more reconnections)');
+    });
+
     // Create promise that resolves when Redis is ready
     this.readyPromise = new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error('Redis connection timeout for BullMQ (10s)'));
       }, 10000);
 
-      this.redisConnection.on('ready', () => {
+      this.redisConnection.once('ready', () => {
         clearTimeout(timeout);
         this.isReady = true;
         logger.info('✅ BullMQ Redis connection ready');
@@ -139,13 +171,19 @@ export class MessageQueue {
         this.initializeQueues();
         this.initializeWorkers();
         this.setupEventListeners();
-        logger.info('MessageQueue initialized with BullMQ');
+        logger.info('MessageQueue initialized with BullMQ', {
+          queues: Array.from(this.queues.keys()),
+          workers: Array.from(this.workers.keys()),
+        });
 
         resolve();
       });
 
-      this.redisConnection.on('error', (error) => {
-        logger.error('❌ BullMQ Redis connection error', { error: error.message });
+      this.redisConnection.once('error', (error) => {
+        logger.error('❌ BullMQ Redis connection error during initialization', {
+          error: error.message,
+          stack: error.stack
+        });
         clearTimeout(timeout);
         reject(error);
       });
@@ -404,10 +442,15 @@ export class MessageQueue {
       priority: 1, // High priority for message persistence
     });
 
-    logger.debug('Message added to persistence queue', {
+    // ⭐ DIAGNOSTIC: Enhanced logging
+    logger.info('✅ Message job enqueued to BullMQ', {
       jobId: job.id,
       sessionId: data.sessionId,
+      messageId: data.messageId,
       messageType: data.messageType,
+      role: data.role,
+      contentLength: data.content?.length || 0,
+      hasMetadata: !!data.metadata,
     });
 
     return job.id || '';
@@ -470,7 +513,21 @@ export class MessageQueue {
   private async processMessagePersistence(
     job: Job<MessagePersistenceJob>
   ): Promise<void> {
-    const { sessionId, messageId, role, messageType, content, metadata } = job.data;
+    const { sessionId, messageId, role, messageType, content, metadata, sequenceNumber, eventId } = job.data;
+
+    // ⭐ DIAGNOSTIC: Log worker pickup
+    logger.info('🔨 Worker picked up message persistence job', {
+      jobId: job.id,
+      messageId,
+      sessionId,
+      role,
+      messageType,
+      contentLength: content?.length || 0,
+      hasSequenceNumber: !!sequenceNumber,
+      sequenceNumber,
+      hasEventId: !!eventId,
+      attemptNumber: job.attemptsMade,
+    });
 
     try {
       const params: SqlParams = {
@@ -480,29 +537,46 @@ export class MessageQueue {
         message_type: messageType,
         content,
         metadata: metadata ? JSON.stringify(metadata) : '{}',
+        // ⭐ CRITICAL: Include sequence_number and event_id
+        sequence_number: sequenceNumber ?? null,
+        event_id: eventId ?? null,
+        token_count: null,
+        stop_reason: null,
         created_at: new Date(),
       };
 
       await executeQuery(
         `
-        INSERT INTO messages (id, session_id, role, message_type, content, metadata, created_at)
-        VALUES (@id, @session_id, @role, @message_type, @content, @metadata, @created_at)
+        INSERT INTO messages (id, session_id, role, message_type, content, metadata, sequence_number, event_id, token_count, stop_reason, created_at)
+        VALUES (@id, @session_id, @role, @message_type, @content, @metadata, @sequence_number, @event_id, @token_count, @stop_reason, @created_at)
         `,
         params
       );
 
-      logger.debug('Message persisted successfully', {
+      // ⭐ DIAGNOSTIC: Enhanced success logging
+      logger.info('✅ Message persisted to database successfully', {
         jobId: job.id,
         messageId,
         sessionId,
         messageType,
+        role,
+        contentLength: content?.length || 0,
+        hasSequenceNumber: !!sequenceNumber,
+        sequenceNumber,
+        hasEventId: !!eventId,
+        eventId,
       });
     } catch (error) {
-      logger.error('Failed to persist message', {
-        error,
+      logger.error('❌ Failed to persist message to database', {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
         jobId: job.id,
         messageId,
         sessionId,
+        messageType,
+        sequenceNumber,
+        eventId,
+        attemptNumber: job.attemptsMade,
       });
       throw error; // Will trigger retry
     }

@@ -72,12 +72,19 @@ export class MessageService {
       // 1. Append event to EventStore (fast, synchronous)
       this.logger.info('📝 Appending event to EventStore...', { sessionId, messageId });
       const eventStart = Date.now();
-      await this.eventStore.appendEvent(sessionId, 'user_message_sent', {
+      const event = await this.eventStore.appendEvent(sessionId, 'user_message_sent', {
         message_id: messageId,
         content,
         user_id: userId,
       });
-      this.logger.info('✅ Event appended', { sessionId, messageId, duration: Date.now() - eventStart });
+      // ⭐ DIAGNOSTIC: Log the sequence number from EventStore
+      this.logger.info('✅ Event appended to EventStore', {
+        sessionId,
+        messageId,
+        eventId: event.id,
+        sequenceNumber: event.sequence_number, // ⭐ CRITICAL: This is the sequence number
+        duration: Date.now() - eventStart,
+      });
 
       // 2. Queue for DB persistence (async, non-blocking)
       this.logger.info('📝 Adding to message queue...', { sessionId, messageId });
@@ -91,8 +98,17 @@ export class MessageService {
           messageType: 'text',
           content,
           metadata: { user_id: userId },
+          // ⭐ CRITICAL: Pass sequenceNumber and eventId from EventStore
+          sequenceNumber: event.sequence_number,
+          eventId: event.id,
         });
-        this.logger.info('✅ Added to queue', { sessionId, messageId, duration: Date.now() - queueStart });
+        this.logger.info('✅ Added to queue with sequence', {
+          sessionId,
+          messageId,
+          sequenceNumber: event.sequence_number,
+          eventId: event.id,
+          duration: Date.now() - queueStart,
+        });
       } catch (queueError) {
         // ⭐ FALLBACK: If MessageQueue fails, write directly to database
         this.logger.error('❌ MessageQueue failed, falling back to direct DB write', {
@@ -111,8 +127,9 @@ export class MessageService {
             metadata: JSON.stringify({ user_id: userId }),
             token_count: null,
             stop_reason: null,
-            sequence_number: null,
-            event_id: null,
+            // ⭐ CRITICAL: Include sequence_number and event_id from EventStore
+            sequence_number: event.sequence_number,
+            event_id: event.id,
             created_at: new Date(),
           };
 
@@ -127,6 +144,8 @@ export class MessageService {
           this.logger.warn('⚠️  Message persisted via fallback (direct DB write)', {
             sessionId,
             messageId,
+            sequenceNumber: event.sequence_number,
+            eventId: event.id,
             reason: 'MessageQueue unavailable',
           });
         } catch (dbError) {
@@ -172,12 +191,22 @@ export class MessageService {
     const messageId = randomUUID();
 
     try {
+      this.logger.info('📝 saveAgentMessage START', { sessionId, messageId, userId });
+
       // 1. Append event
-      await this.eventStore.appendEvent(sessionId, 'agent_message_sent', {
+      const event = await this.eventStore.appendEvent(sessionId, 'agent_message_sent', {
         message_id: messageId,
         content,
         stop_reason: stopReason,
         user_id: userId,  // ⭐ Audit trail
+      });
+      // ⭐ DIAGNOSTIC: Log the sequence number from EventStore
+      this.logger.info('✅ Agent event appended to EventStore', {
+        sessionId,
+        messageId,
+        eventId: event.id,
+        sequenceNumber: event.sequence_number, // ⭐ CRITICAL: This is the sequence number
+        stopReason,
       });
 
       // 2. Queue for persistence
@@ -192,6 +221,15 @@ export class MessageService {
             stop_reason: stopReason,
             user_id: userId,  // ⭐ Audit trail
           },
+          // ⭐ CRITICAL: Pass sequenceNumber and eventId from EventStore
+          sequenceNumber: event.sequence_number,
+          eventId: event.id,
+        });
+        this.logger.info('✅ Agent message added to queue with sequence', {
+          sessionId,
+          messageId,
+          sequenceNumber: event.sequence_number,
+          eventId: event.id,
         });
       } catch (queueError) {
         // ⭐ FALLBACK: Direct DB write
@@ -213,8 +251,9 @@ export class MessageService {
           }),
           token_count: null,
           stop_reason: stopReason || null,
-          sequence_number: null,
-          event_id: null,
+          // ⭐ CRITICAL: Include sequence_number and event_id from EventStore
+          sequence_number: event.sequence_number,
+          event_id: event.id,
           created_at: new Date(),
         };
 
@@ -226,7 +265,12 @@ export class MessageService {
           params
         );
 
-        this.logger.warn('⚠️  Agent message persisted via fallback', { sessionId, messageId });
+        this.logger.warn('⚠️  Agent message persisted via fallback', {
+          sessionId,
+          messageId,
+          sequenceNumber: event.sequence_number,
+          eventId: event.id,
+        });
       }
 
       this.logger.debug('Agent message saved', { sessionId, userId, messageId });

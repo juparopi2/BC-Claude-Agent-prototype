@@ -48,6 +48,8 @@ export interface MessagePersistenceJob {
   eventId?: string;
   // ⭐ FIX: Tool use ID for correlating tool_use and tool_result (stored in messages.tool_use_id column)
   toolUseId?: string | null;
+  // ⭐ FIX: Stop reason from Anthropic SDK (for identifying intermediate vs final messages)
+  stopReason?: string | null;
 }
 
 /**
@@ -515,7 +517,7 @@ export class MessageQueue {
   private async processMessagePersistence(
     job: Job<MessagePersistenceJob>
   ): Promise<void> {
-    const { sessionId, messageId, role, messageType, content, metadata, sequenceNumber, eventId, toolUseId } = job.data;
+    const { sessionId, messageId, role, messageType, content, metadata, sequenceNumber, eventId, toolUseId, stopReason } = job.data;
 
     // ⭐ VALIDATION: Check for undefined messageId
     if (!messageId || messageId === 'undefined' || messageId.trim() === '') {
@@ -561,7 +563,7 @@ export class MessageQueue {
         sequence_number: sequenceNumber ?? null,
         event_id: eventId ?? null,
         token_count: null,
-        stop_reason: null,
+        stop_reason: stopReason ?? null,  // ⭐ FIX: Use stopReason from job data (identifies intermediate vs final messages)
         tool_use_id: finalToolUseId as string | null,  // ⭐ FIX: Use finalToolUseId from job data (not metadata)
         created_at: new Date(),
       };

@@ -232,6 +232,8 @@ export class MessageService {
           // ⭐ CRITICAL: Pass sequenceNumber and eventId from EventStore
           sequenceNumber: event.sequence_number,
           eventId: event.id,
+          // ⭐ FIX: Pass stopReason to persist in stop_reason column
+          stopReason: stopReason ?? null,
         });
         this.logger.info('✅ Agent message added to queue with sequence', {
           sessionId,

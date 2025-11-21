@@ -672,6 +672,7 @@ export class DirectAgentService {
             },
             sequenceNumber: completeMessageEvent.sequence_number, // ⭐ REUSA sequence
             eventId: completeMessageEvent.id,
+            stopReason: stopReason || null,  // ⭐ FIX: Pass stopReason as separate parameter for MessageQueue worker
           });
 
           this.logger.info('✅ Complete message queued for persistence', {

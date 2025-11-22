@@ -137,8 +137,24 @@ export function useChat(sessionId?: string) {
       if (!sessionId) return [];
       const response = await apiClient.messages.list(sessionId);
 
+      // ⭐ DIAGNOSTIC: Log raw response from backend API
+      console.log('🔍 [useChat] Raw messages from backend API:', {
+        sessionId,
+        messageCount: response.messages?.length || 0,
+        messages: response.messages?.map(msg => ({
+          id: msg.id,
+          role: msg.role,
+          message_type: 'message_type' in msg ? (msg as { message_type?: string }).message_type : 'N/A',
+          stop_reason: msg.stop_reason,
+          sequence_number: msg.sequence_number,
+          content_preview: msg.content ? msg.content.substring(0, 60) : '(empty)',
+          has_stop_reason: !!msg.stop_reason,
+          stop_reason_value: msg.stop_reason,
+        })),
+      });
+
       // ⭐ Transform messages: convert message_type='tool_use' to ToolUseMessage objects
-      return (response.messages || []).map((msg): ChatMessage => {
+      const transformedMessages = (response.messages || []).map((msg): ChatMessage => {
         // Check if this is a tool_use message from database
         if ('message_type' in msg && msg.message_type === 'tool_use') {
           // Parse metadata to extract tool information
@@ -194,6 +210,23 @@ export function useChat(sessionId?: string) {
         // Return regular message as-is
         return msg as Message;
       });
+
+      // ⭐ DIAGNOSTIC: Log transformed messages (after .map())
+      console.log('✅ [useChat] Transformed messages (after mapping):', {
+        sessionId,
+        messageCount: transformedMessages.length,
+        messages: transformedMessages.map(msg => ({
+          id: msg.id,
+          type: 'type' in msg ? msg.type : 'Message',
+          role: 'role' in msg ? msg.role : 'N/A',
+          stop_reason: 'stop_reason' in msg ? msg.stop_reason : 'N/A',
+          sequence_number: 'sequence_number' in msg ? msg.sequence_number : 'N/A',
+          content_preview: 'content' in msg && msg.content ? msg.content.substring(0, 60) : '(empty)',
+          has_stop_reason: 'stop_reason' in msg && !!msg.stop_reason,
+        })),
+      });
+
+      return transformedMessages;
     },
     enabled: !!sessionId, // Only fetch if sessionId exists
     staleTime: 10 * 1000, // Messages fresh for 10 seconds

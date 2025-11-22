@@ -329,9 +329,8 @@ export class MessageService {
         messageId,
         role: 'assistant',
         messageType: 'thinking',
-        content: '',
+        content,  // ✅ FIX: Store content in content column (SDK-compliant)
         metadata: {
-          content,
           started_at: new Date().toISOString(),
           user_id: userId,  // ⭐ Audit trail
         },

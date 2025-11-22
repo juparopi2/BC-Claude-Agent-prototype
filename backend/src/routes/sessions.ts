@@ -108,12 +108,12 @@ function transformMessage(row: {
   // Transform based on message type
   switch (row.message_type) {
     case 'thinking':
-      // Thinking message: content is in metadata
+      // ✅ FIX: Thinking message content is in content column (SDK-compliant)
       return {
         id: row.id,
         type: 'thinking' as const,  // ✅ ADD TYPE DISCRIMINATOR
         session_id: row.session_id,
-        content: metadata.content as string || '',
+        content: row.content || '',  // ✅ FIX: Read from content column
         duration_ms: metadata.duration_ms as number | undefined,
         stop_reason: row.stop_reason,  // ✅ Native SDK stop_reason
         sequence_number: row.sequence_number,  // ✅ Event sourcing sequence

@@ -1,1 +1,0 @@
-export { ConsentDialog } from './ConsentDialog';

@@ -857,6 +857,34 @@ export class DirectAgentService {
                   toolName: toolUse.name,
                   updateSuccess: true,
                 }, '🔍 [TRACE 8/8] After MessageService.updateToolResult - SUCCESS');
+
+                // ✅ FIX: Persist tool_result message (Issue #5 - Missing sequences)
+                // Create separate tool_result message to maintain 1:1 correspondence with message_events
+                await messageQueue.addMessagePersistence({
+                  sessionId,
+                  messageId: randomUUID(),
+                  role: 'assistant',
+                  messageType: 'tool_result',
+                  content: typeof result === 'string' ? result : JSON.stringify(result),
+                  metadata: {
+                    tool_name: toolUse.name,
+                    tool_args: toolUse.input,
+                    tool_result: result,
+                    tool_use_id: validatedToolExecutionId,
+                    status: 'success',
+                    success: true,
+                  },
+                  sequenceNumber: toolResultEvent.sequence_number, // ⭐ Reuse sequence from event
+                  eventId: toolResultEvent.id,
+                  toolUseId: validatedToolExecutionId,
+                });
+
+                this.logger.info('✅ Tool result message queued for persistence', {
+                  sessionId,
+                  toolUseId: validatedToolExecutionId,
+                  sequenceNumber: toolResultEvent.sequence_number,
+                  eventId: toolResultEvent.id,
+                });
               }
 
               toolResults.push({
@@ -932,6 +960,36 @@ export class DirectAgentService {
                   updateSuccess: true,
                   error: errorMessage,
                 }, '🔍 [TRACE 8/8] After MessageService.updateToolResult - ERROR');
+
+                // ✅ FIX: Persist tool_result message (Issue #5 - Missing sequences - ERROR case)
+                // Create separate tool_result message to maintain 1:1 correspondence with message_events
+                await messageQueue.addMessagePersistence({
+                  sessionId,
+                  messageId: randomUUID(),
+                  role: 'assistant',
+                  messageType: 'error', // Use 'error' type for failed tool executions
+                  content: `Error executing ${toolUse.name}: ${errorMessage}`,
+                  metadata: {
+                    tool_name: toolUse.name,
+                    tool_args: toolUse.input,
+                    tool_result: null,
+                    tool_use_id: validatedToolExecutionId,
+                    status: 'error',
+                    success: false,
+                    error_message: errorMessage,
+                  },
+                  sequenceNumber: toolResultEvent.sequence_number, // ⭐ Reuse sequence from event
+                  eventId: toolResultEvent.id,
+                  toolUseId: validatedToolExecutionId,
+                });
+
+                this.logger.error('❌ Tool result message (error) queued for persistence', {
+                  sessionId,
+                  toolUseId: validatedToolExecutionId,
+                  sequenceNumber: toolResultEvent.sequence_number,
+                  eventId: toolResultEvent.id,
+                  error: errorMessage,
+                });
               }
 
               toolResults.push({

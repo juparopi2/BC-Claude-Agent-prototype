@@ -3984,3 +3984,398 @@ These decisions form the foundation for all implementation phases that follow.
 - Architecture decisions documented (6 key decisions)
 - Early user validation every 4-8 hours
 - Reduced risk through incremental delivery
+
+---
+
+## 📋 DECISIONES Y FASES AGREGADAS (2025-11-24)
+
+### Sesión de Diagnóstico Exhaustivo
+
+Se realizó un diagnóstico completo del código vs documentación, identificando que la implementación avanzó más que los tests y la documentación en algunas áreas.
+
+---
+
+### NEW SPRINT: Mantenimiento y Actualización (PRIORIDAD ALTA)
+
+**Duración estimada**: 1-2 días
+**Impacto**: 🔴 CRÍTICO - Deuda técnica acumulada
+
+---
+
+#### Phase 2A: SDK Update (2-3 hrs) 🔴 NEW
+
+**Goal**: Actualizar `@anthropic-ai/sdk` de 0.68.0 a 0.71.0
+
+**Business Value**: Soporte para Claude Opus 4.5, nuevos stop reasons, mejoras de rendimiento
+
+**Acceptance Criteria**:
+- ✅ SDK actualizado a 0.71.0
+- ✅ Build compila sin errores
+- ✅ Tests existentes pasan
+- ✅ Nuevos stop reasons (`pause_turn`, `refusal`) identificados en tipos
+
+**Changes Required**:
+
+1. **Actualizar Dependencia** (15 min)
+```bash
+cd backend && npm update @anthropic-ai/sdk
+# o específicamente:
+npm install @anthropic-ai/sdk@0.71.0
+```
+
+2. **Verificar Breaking Changes** (30 min)
+- Revisar changelog de 0.69.0, 0.70.0, 0.70.1, 0.71.0
+- Verificar tipos de streaming events
+- Verificar ThinkingConfigParam interface
+
+3. **Actualizar Tipos Locales si Necesario** (1-2 hrs)
+```typescript
+// src/services/agent/IAnthropicClient.ts
+// Verificar que StopReason incluya todos los valores
+```
+
+4. **Run Tests** (30 min)
+```bash
+cd backend && npm test
+```
+
+**Deployment**: ✅ Safe - backwards compatible update
+
+---
+
+#### Phase 2B: Stop Reasons Explícitos (1-2 hrs) 🔴 NEW
+
+**Goal**: Manejar explícitamente `pause_turn` y `refusal` stop reasons
+
+**Business Value**: Forward compatibility, mejor handling de edge cases
+
+**Acceptance Criteria**:
+- ✅ `pause_turn` handling con log específico
+- ✅ `refusal` handling con evento de error apropiado
+- ✅ Tests unitarios para cada stop reason
+- ✅ Documentación actualizada
+
+**Changes Required**:
+
+1. **Actualizar DirectAgentService** (1 hr)
+```typescript
+// src/services/agent/DirectAgentService.ts
+
+// En el switch de stop_reason (después de line ~841):
+case 'message_delta':
+  if (event.delta.stop_reason) {
+    stopReason = event.delta.stop_reason;
+
+    // ⭐ NEW: Handle newer stop reasons explicitly
+    if (stopReason === 'pause_turn') {
+      this.logger.warn({
+        sessionId,
+        turnCount,
+        stopReason,
+      }, '⏸️ [PAUSE_TURN] Claude paused long turn - may resume');
+    } else if (stopReason === 'refusal') {
+      this.logger.warn({
+        sessionId,
+        turnCount,
+        stopReason,
+      }, '🚫 [REFUSAL] Claude refused to complete - policy violation');
+
+      // Emit error event for frontend
+      if (onEvent) {
+        onEvent({
+          type: 'error',
+          error: 'Claude declined to complete this request due to content policy.',
+          code: 'REFUSAL',
+          timestamp: new Date(),
+          eventId: randomUUID(),
+          persistenceState: 'transient',
+        });
+      }
+    }
+  }
+  break;
+```
+
+2. **Actualizar agent.types.ts** (15 min)
+```typescript
+// Verificar que StopReason sea del SDK (ya lo es)
+import type { StopReason } from '@anthropic-ai/sdk/resources/messages';
+```
+
+3. **Agregar Tests** (30 min)
+```typescript
+// src/__tests__/unit/agent/stop-reasons.test.ts
+describe('Stop Reason Handling', () => {
+  it('should handle pause_turn with warning log', async () => {
+    // ...
+  });
+
+  it('should handle refusal with error event', async () => {
+    // ...
+  });
+});
+```
+
+**Deployment**: ✅ Safe - additive change
+
+---
+
+#### Phase 2C: Eliminar thinking_tokens Estimación (1-2 hrs) 🔴 NEW
+
+**Goal**: Eliminar columna `thinking_tokens` que usa estimación imprecisa
+
+**Business Value**: Data integrity - no guardar datos estimados como reales
+
+**Decision Rationale**:
+- Anthropic NO reporta thinking tokens separadamente
+- Están incluidos en `output_tokens`
+- Estimación `Math.ceil(content.length / 4)` es imprecisa y confunde
+
+**Acceptance Criteria**:
+- ✅ Columna `thinking_tokens` eliminada de messages table
+- ✅ `MessagePersistenceJob.thinkingTokens` removido
+- ✅ `DirectAgentService` no calcula thinking tokens
+- ✅ `MessageEvent.tokenUsage.thinkingTokens` removido
+- ✅ Migración de rollback documentada
+
+**Changes Required**:
+
+1. **Migration Script** (15 min)
+```sql
+-- migrations/004-remove-thinking-tokens.sql
+-- ⚠️ IRREVERSIBLE - thinking_tokens data will be lost
+
+-- Remove index first
+IF EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_messages_thinking_tokens')
+    DROP INDEX IX_messages_thinking_tokens ON messages;
+
+-- Remove column
+IF EXISTS (SELECT * FROM sys.columns WHERE name = 'thinking_tokens' AND object_id = OBJECT_ID('messages'))
+    ALTER TABLE messages DROP COLUMN thinking_tokens;
+```
+
+2. **Update MessageQueue.ts** (15 min)
+```typescript
+// Remove thinkingTokens from MessagePersistenceJob
+export interface MessagePersistenceJob {
+  // ... existing fields
+  // thinkingTokens?: number;  // ❌ REMOVED
+}
+
+// Remove from processMessagePersistence
+// Remove from SQL INSERT
+```
+
+3. **Update DirectAgentService.ts** (30 min)
+```typescript
+// Remove thinkingTokens tracking
+// let thinkingTokens = 0;  // ❌ REMOVED
+
+// Remove from MessageEvent emission
+// thinkingTokens: thinkingTokens > 0 ? thinkingTokens : undefined,  // ❌ REMOVED
+```
+
+4. **Update agent.types.ts** (15 min)
+```typescript
+// Remove from tokenUsage interface
+tokenUsage?: {
+  inputTokens: number;
+  outputTokens: number;
+  // thinkingTokens?: number;  // ❌ REMOVED
+};
+```
+
+**Deployment**: ⚠️ Breaking change - requires migration
+
+---
+
+#### Phase 2D: Extended Thinking Runtime Config (3-4 hrs) 🟡 NEW
+
+**Goal**: Hacer Extended Thinking configurable por request/endpoint (no solo env var)
+
+**Business Value**: Usuarios controlan si usar thinking en cada interacción
+
+**Acceptance Criteria**:
+- ✅ `POST /api/chat/message` acepta `enableThinking` y `thinkingBudget`
+- ✅ WebSocket `chat:message` acepta mismos parámetros
+- ✅ Session puede tener preferencia default de thinking
+- ✅ Request override tiene precedencia sobre session default
+- ✅ Tests E2E validan configuración
+
+**Changes Required**:
+
+1. **Update Session Schema** (30 min)
+```sql
+-- migrations/005-session-thinking-preferences.sql
+ALTER TABLE sessions
+ADD enable_extended_thinking BIT DEFAULT 0,
+    thinking_budget_tokens INT DEFAULT 10000;
+```
+
+2. **Update WebSocket Handler** (1 hr)
+```typescript
+// src/services/websocket/ChatMessageHandler.ts
+
+interface ChatMessagePayload {
+  sessionId: string;
+  userId: string;
+  message: string;
+  // ⭐ NEW: Optional thinking config
+  enableThinking?: boolean;
+  thinkingBudget?: number;
+}
+
+async handleChatMessage(socket: Socket, payload: ChatMessagePayload) {
+  const { sessionId, userId, message, enableThinking, thinkingBudget } = payload;
+
+  // Get session defaults if not specified in request
+  const session = await this.sessionService.getSession(sessionId);
+  const finalEnableThinking = enableThinking ?? session.enable_extended_thinking ?? false;
+  const finalThinkingBudget = thinkingBudget ?? session.thinking_budget_tokens ?? 10000;
+
+  await this.agentService.executeQueryStreaming(
+    message,
+    sessionId,
+    onEvent,
+    {
+      userId,
+      enableThinking: finalEnableThinking,
+      thinkingBudget: finalThinkingBudget,
+    }
+  );
+}
+```
+
+3. **Update DirectAgentService** (1 hr)
+```typescript
+// Ensure executeQueryStreaming accepts thinking options
+async executeQueryStreaming(
+  prompt: string,
+  sessionId: string,
+  onEvent: (event: AgentEvent) => void,
+  options?: {
+    userId?: string;
+    enableThinking?: boolean;
+    thinkingBudget?: number;
+  }
+) {
+  // Use options.enableThinking instead of env.ENABLE_EXTENDED_THINKING
+}
+```
+
+4. **Add Session Preference Endpoint** (30 min)
+```typescript
+// src/routes/sessions.routes.ts
+
+router.patch('/api/sessions/:sessionId/preferences', requireAuth, async (req, res) => {
+  const { sessionId } = req.params;
+  const { enableThinking, thinkingBudget } = req.body;
+
+  await sessionService.updatePreferences(sessionId, {
+    enableThinking,
+    thinkingBudget,
+  });
+
+  res.json({ success: true });
+});
+```
+
+**Deployment**: ✅ Safe - additive change with backwards compatibility
+
+---
+
+#### Phase 2E: Tests de Regresión (2-3 hrs) 🟡 NEW
+
+**Goal**: Convertir tests de diagnóstico en tests de regresión que validen funcionalidad existente
+
+**Business Value**: Documentación ejecutable de qué funciona, prevención de regresiones
+
+**Acceptance Criteria**:
+- ✅ `diagnostic-validation.test.ts` refactorizado
+- ✅ 5 tests fallidos actualizados para esperar comportamiento correcto
+- ✅ Tests documentan qué SÍ funciona (no qué falta)
+- ✅ Todos los tests pasan (38/38)
+
+**Changes Required**:
+
+1. **Refactorizar diagnostic-validation.test.ts** (2 hrs)
+
+**Antes** (test fallido):
+```typescript
+it('CLAIM: ThinkingBlock is NOT handled ❌', () => {
+  const handlesThinking = serviceCode.includes('thinking_delta');
+  expect(handlesThinking).toBe(false); // ❌ FALLA - SÍ se maneja
+});
+```
+
+**Después** (test de regresión):
+```typescript
+it('REGRESSION: ThinkingBlock IS handled ✅', () => {
+  const handlesThinking = serviceCode.includes('thinking_delta');
+  expect(handlesThinking).toBe(true); // ✅ Confirma funcionalidad
+});
+```
+
+2. **Renombrar archivo** (opcional)
+```bash
+# Si se prefiere claridad semántica:
+mv diagnostic-validation.test.ts regression-validation.test.ts
+```
+
+3. **Actualizar 5 tests específicos**:
+- `CLAIM: message.model is NOT captured` → `REGRESSION: message.model IS captured`
+- `CLAIM: token_count is NOT captured in events` → `REGRESSION: token_count IS captured`
+- `CLAIM: ENABLE_EXTENDED_THINKING exists but is not used` → `REGRESSION: ENABLE_EXTENDED_THINKING IS used`
+- `CLAIM: thinking parameter is not in ChatCompletionRequest` → `REGRESSION: thinking parameter IS in ChatCompletionRequest`
+- `CLAIM: ThinkingBlock is NOT handled` → `REGRESSION: ThinkingBlock IS handled`
+
+**Deployment**: ✅ Test-only change
+
+---
+
+### Prioridad de Ejecución
+
+**ORDEN RECOMENDADO** (según dependencias):
+
+1. **Phase 2E: Tests de Regresión** (PRIMERO)
+   - Establece baseline de qué funciona
+   - No tiene dependencias
+   - Permite validar cambios posteriores
+
+2. **Phase 2A: SDK Update**
+   - Actualiza dependencias base
+   - Habilita nuevos stop reasons
+   - Bajo riesgo
+
+3. **Phase 2B: Stop Reasons Explícitos**
+   - Depende de Phase 2A
+   - Mejora handling de edge cases
+   - Bajo riesgo
+
+4. **Phase 2C: Eliminar thinking_tokens**
+   - Limpieza de deuda técnica
+   - Requiere migración DB
+   - Riesgo medio
+
+5. **Phase 2D: Extended Thinking Runtime Config**
+   - Feature nueva
+   - Requiere migración DB
+   - Complejidad media
+
+**NOTA**: Phase 2E debe ejecutarse PRIMERO para tener tests verdes antes de hacer cambios. Esto permite detectar regresiones inmediatamente.
+
+---
+
+### Tests Infrastructure (POSTERGADO)
+
+**Decisión**: Esperar a completar Phases 2A-2D antes de arreglar infraestructura de tests
+
+**Razón**:
+- Muchos tests fallan por Redis no disponible localmente
+- Phases 2A-2D modificarán código que tests validan
+- Arreglar tests ahora solo para que se rompan después es ineficiente
+
+**Plan para después de Phase 2D**:
+1. Agregar mocks de Redis para tests unitarios
+2. Separar tests: unitarios (sin Redis) vs E2E (con Redis)
+3. Configurar Redis en CI (GitHub Actions)

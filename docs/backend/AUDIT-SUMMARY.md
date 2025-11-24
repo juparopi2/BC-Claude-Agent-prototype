@@ -3,7 +3,35 @@
 **Fecha Inicial**: 2025-01-23
 **Última Actualización**: 2025-11-24
 **Alcance**: Flujo completo de datos Anthropic API → Persistencia → WebSocket
-**Status**: ✅ IMPLEMENTACIÓN COMPLETA (Phase 1A/1B, E2E Tests Validados)
+**Status**: ✅ IMPLEMENTACIÓN COMPLETA (Phase 1A/1B/1F, E2E Tests Validados)
+
+---
+
+## 📋 DECISIONES TOMADAS (2025-11-24)
+
+### Sesión de Diagnóstico y Entrevista
+
+Las siguientes decisiones fueron tomadas tras análisis exhaustivo del código y documentación:
+
+| # | Tema | Decisión | Acción Requerida |
+|---|------|----------|------------------|
+| 1 | **Tests Desactualizados** | Convertir a tests de regresión | Refactorizar `diagnostic-validation.test.ts` para documentar qué SÍ funciona |
+| 2 | **Citations** | Implementar según plan existente | Evaluar granularidad antes de ejecutar |
+| 3 | **Stop Reasons Nuevos** | Manejar explícitamente | Actualizar SDK 0.68→0.71, agregar `pause_turn`, `refusal` |
+| 4 | **Thinking Tokens** | Eliminar estimación imprecisa | Borrar columna `thinking_tokens`, guardar solo tokens reales del SDK |
+| 5 | **Extended Thinking Config** | Configurable por sesión/request | Actualizar endpoints para decisión en runtime |
+| 6 | **Tests Infrastructure** | Esperar cambios antes de arreglar | Estructurar mejora de tests después de implementaciones |
+
+### Hallazgos del Diagnóstico
+
+**5 Tests Fallando porque la IMPLEMENTACIÓN está MÁS ADELANTADA que los TESTS:**
+- ✅ `model` SÍ se captura (test decía que no)
+- ✅ `token_count` SÍ se captura en events (test decía que no)
+- ✅ `ENABLE_EXTENDED_THINKING` SÍ se usa (test decía que no)
+- ✅ `thinking` parameter SÍ está en ChatCompletionRequest (test decía que no)
+- ✅ `thinking_delta` SÍ se maneja en DirectAgentService (test decía que no)
+
+**Versión SDK**: `@anthropic-ai/sdk@0.68.0` → Disponible: `0.71.0` (incluye Claude Opus 4.5)
 
 ---
 
@@ -21,21 +49,32 @@
 | **Event Sourcing** | ✅ FUNCIONA | Sequence numbers atómicos (Redis INCR) | - |
 | **Streaming** | ✅ FUNCIONA | Real-time con message_chunk events | - |
 | **Tool Use** | ✅ FUNCIONA | Agentic loop con 115 BC entity tools | - |
+| **Extended Thinking** | ✅ IMPLEMENTADO | thinking_delta streaming, ThinkingConfigParam | ⚠️ Tests desactualizados |
+
+### 🟡 Pendientes (Prioridad Alta - Decisiones Tomadas)
+
+| Gap | Disponible en SDK | Estado | Decisión |
+|-----|-------------------|--------|----------|
+| **SDK Update** | 0.71.0 (Opus 4.5) | 🔴 PENDIENTE | Actualizar e integrar nuevos modelos |
+| **Thinking Runtime Config** | ✅ ThinkingConfigParam | 🟡 PARCIAL | Hacer configurable por endpoint/request |
+| **Newer Stop Reasons** | ✅ pause_turn, refusal | 🔴 PENDIENTE | Manejar explícitamente tras SDK update |
+| **Thinking Tokens Column** | ❌ Estimación imprecisa | 🔴 ELIMINAR | Borrar columna, usar solo tokens reales |
 
 ### 🟡 Pendientes (Prioridad Media)
 
 | Gap | Disponible en SDK | Estado | Impacto |
 |-----|-------------------|--------|---------|
-| **Extended Thinking** | ✅ thinking parameter | 🟡 PENDIENTE | Per-request configurable |
+| **Citations** | ✅ TextBlock.citations | ❌ No extraído | Seguir plan de implementación |
 | **Images** | ✅ ImageBlockParam | ❌ No soportado | Limita casos de uso |
 | **PDFs** | ✅ DocumentBlockParam | ❌ No soportado | Limita casos de uso |
 
-### 🔍 Pendientes (Prioridad Baja)
+### 🔧 Deuda Técnica Identificada
 
-| Gap | Disponible en SDK | Estado | Impacto |
-|-----|-------------------|--------|---------|
-| **Citations** | ✅ TextBlock.citations | ❌ No extraído | Información contextual perdida |
-| **Newer Stop Reasons** | ✅ pause_turn, refusal | ⚠️ No tipados localmente | Forward compatibility |
+| Item | Descripción | Prioridad |
+|------|-------------|-----------|
+| **Tests Desactualizados** | `diagnostic-validation.test.ts` tiene 5 tests que fallan porque el código avanzó | ALTA |
+| **Redis en Tests** | Muchos tests fallan por falta de Redis local | MEDIA (esperar cambios) |
+| **600ms Delay** | Hardcoded delay en tool execution (`DirectAgentService.ts:733`) | MEDIA |
 
 ---
 
@@ -43,9 +82,10 @@
 
 ### Fase 1: Tipos SDK
 - **MessageParam types**: 2/4 soportados (text ✅, tool_result ✅, image ❌, document ❌)
-- **ContentBlock types**: 2/3 manejados (text ✅, tool_use ✅, thinking 🟡 pendiente)
-- **StopReason values**: 4/6 tipados (end_turn, tool_use, max_tokens, stop_sequence ✅ | pause_turn, refusal ⚠️)
+- **ContentBlock types**: 3/3 manejados (text ✅, tool_use ✅, thinking ✅ **IMPLEMENTADO**)
+- **StopReason values**: 4/6 tipados (end_turn, tool_use, max_tokens, stop_sequence ✅ | pause_turn, refusal 🔴 **PENDIENTE SDK UPDATE**)
 - **Tests E2E**: 15/15 pasando ✅
+- **Tests Diagnóstico**: 33/38 pasando (5 desactualizados, código avanzó más que tests)
 
 ### Fase 2: Persistencia ✅ COMPLETADA
 - **EventStore events**: 10/10 tipos de eventos capturados ✅
@@ -53,14 +93,15 @@
 - **Message IDs**: ✅ Migrado a Anthropic IDs (NVARCHAR(255))
 - **Model tracking**: ✅ Columna `model` poblada
 - **Sequence integrity**: ✅ Redis INCR garantiza orden
+- **thinking_tokens**: ⚠️ **DECISIÓN: ELIMINAR** - Estimación imprecisa, solo guardar tokens reales
 
 ### Fase 3: Features Configuradas
-- **Extended Thinking**: 🟡 Pendiente (per-request configurable)
+- **Extended Thinking**: ✅ IMPLEMENTADO (backend) | 🟡 PENDIENTE (runtime config por endpoint)
 - **Prompt Caching**: ✅ COMPLETADO (cache_control: ephemeral enviado al SDK)
-- **ROI Remaining**: Extended Thinking único pendiente
+- **SDK Version**: 0.68.0 → 🔴 **ACTUALIZAR A 0.71.0** (Claude Opus 4.5)
 
 ### Fase 4: WebSocket Events ✅ COMPLETADA
-- **Event types**: 11/11 eventos documentados ✅
+- **Event types**: 12/12 eventos documentados ✅ (incluye `thinking_chunk`)
 - **tool_use_id correlation**: ✅ Funciona perfectamente
 - **Sequence numbers**: ✅ Atómicos vía Redis INCR
 - **Token usage**: ✅ Emitido al frontend (tokenUsage en MessageEvent)
@@ -123,11 +164,13 @@
 - ✅ `backend/src/config/database.ts` - Parameter type mapping
 - ✅ `backend/src/types/agent.types.ts` - MessageEvent interface
 
-#### 🟡 5. Extended Thinking - PENDIENTE
-   - Agregar `thinking` parameter a ChatCompletionRequest
-   - Hacer parámetro configurable por request (no solo env variable)
-   - Manejar ThinkingBlock en streaming (thinking_delta)
-   - Emitir thinking_chunk events al frontend
+#### ✅ 5. Extended Thinking (Phase 1F) - IMPLEMENTADO (Backend)
+   - ✅ `thinking` parameter agregado a ChatCompletionRequest (`IAnthropicClient.ts`)
+   - ✅ ThinkingBlock manejado en streaming (`DirectAgentService.ts:570-596`)
+   - ✅ `thinking_chunk` events emitidos al frontend (`agent.types.ts`)
+   - ✅ `thinking_tokens` estimados y guardados en DB
+   - 🟡 **PENDIENTE**: Hacer configurable por request/endpoint (actualmente solo env variable)
+   - 🔴 **DECISIÓN**: Eliminar columna `thinking_tokens` - estimación imprecisa
 
 ---
 

@@ -609,8 +609,113 @@ cd backend && npm test -- token-persistence.e2e.test.ts
 
 ### Remaining Work
 
-**Extended Thinking** (🟡 PENDIENTE):
-- Add `thinking` parameter to ChatCompletionRequest
-- Make configurable per-request (not just env variable)
-- Handle ThinkingBlock in streaming
-- Emit thinking_chunk events to frontend
+**Extended Thinking** (✅ IMPLEMENTADO - Backend):
+- ✅ `thinking` parameter added to ChatCompletionRequest
+- ✅ ThinkingBlock handled in streaming (`DirectAgentService.ts:570-596`)
+- ✅ `thinking_chunk` events emitted to frontend
+- 🟡 PENDIENTE: Runtime config per-request/endpoint (actualmente solo env variable)
+
+---
+
+## SDK Update Validation (2025-11-24)
+
+### SDK Version Upgrade ✅ COMPLETADO
+
+**Actualización**: `@anthropic-ai/sdk` 0.68.0 → 0.71.0
+
+**Validación**:
+- ✅ Type-check passed (0 errors)
+- ✅ Build passed (0 errors)
+- ✅ Regression tests: 33/33 passing
+
+### Nuevos Features Disponibles en SDK 0.71.0
+
+| Feature | Estado | Descripción |
+|---------|--------|-------------|
+| **Claude Opus 4.5** | ✅ Disponible | `claude-opus-4-5-20251101` |
+| **StopReason.pause_turn** | ✅ Disponible | Nuevo stop reason |
+| **StopReason.refusal** | ✅ Disponible | Nuevo stop reason |
+| **Structured Outputs (Beta)** | ✅ Disponible | JSON schema validation |
+| **Citations** | ✅ Tipos completos | `CitationCharLocation`, `CitationPageLocation`, etc. |
+| **Extended Thinking** | ✅ Tipos completos | `ThinkingConfigParam`, `ThinkingBlock`, `ThinkingDelta` |
+| **Computer Use v5** | ✅ Disponible | Nueva versión |
+| **Autocompaction** | ✅ Disponible | Context management |
+
+### StopReason Values Actualizados
+
+**SDK 0.71.0 `StopReason` type**:
+```typescript
+type StopReason = 'end_turn' | 'max_tokens' | 'stop_sequence' | 'tool_use' | 'pause_turn' | 'refusal';
+```
+
+| Value | Estado | Uso |
+|-------|--------|-----|
+| `end_turn` | ✅ Manejado | Turno completado normalmente |
+| `max_tokens` | ✅ Manejado | Límite de tokens alcanzado |
+| `stop_sequence` | ✅ Manejado | Secuencia de stop encontrada |
+| `tool_use` | ✅ Manejado | Claude quiere usar herramienta |
+| `pause_turn` | 🔴 PENDIENTE | **NUEVO** - Turno pausado (agentic) |
+| `refusal` | 🔴 PENDIENTE | **NUEVO** - Claude rechaza la solicitud |
+
+### Modelos Disponibles
+
+```typescript
+type Model =
+  | 'claude-opus-4-5-20251101' | 'claude-opus-4-5'        // ⭐ NUEVO Opus 4.5
+  | 'claude-sonnet-4-5-20250929' | 'claude-sonnet-4-5'    // Sonnet 4.5
+  | 'claude-sonnet-4-20250514' | 'claude-sonnet-4-0'      // Sonnet 4
+  | 'claude-opus-4-20250514' | 'claude-opus-4-0'          // Opus 4
+  | 'claude-haiku-4-5-20251001' | 'claude-haiku-4-5'      // Haiku 4.5
+  | 'claude-3-7-sonnet-20250219' | 'claude-3-7-sonnet-latest'
+  | ... // otros modelos legacy
+```
+
+---
+
+## Regression Tests Summary (2025-11-24)
+
+### Test File: `regression-validation.test.ts`
+
+**Ubicación**: `backend/src/__tests__/unit/audit/regression-validation.test.ts`
+
+**Propósito**: Validar que las features implementadas siguen funcionando. NO requiere DB/Redis.
+
+**Tests**: 33 total (33 passing)
+
+| Categoría | Tests | Estado |
+|-----------|-------|--------|
+| **Type Interfaces** (Phase 1A/1B) | 6 | ✅ Pass |
+| **Source Code Implementation** (Phase 1A-1F) | 14 | ✅ Pass |
+| **ID Format Patterns** | 5 | ✅ Pass |
+| **Stop Reason Handling** | 5 | ✅ Pass |
+| **Environment Configuration** | 3 | ✅ Pass |
+
+### E2E Test File: `e2e-token-persistence.test.ts`
+
+**Ubicación**: `backend/src/__tests__/unit/audit/e2e-token-persistence.test.ts`
+
+**Propósito**: Validar persistencia real a Azure SQL. REQUIERE base de datos.
+
+**Tests**: 15 total (requiere DB connection)
+
+---
+
+## Action Items Completados
+
+| Item | Estado | Fecha |
+|------|--------|-------|
+| Crear tests de regresión | ✅ COMPLETADO | 2025-11-24 |
+| Actualizar SDK a 0.71.0 | ✅ COMPLETADO | 2025-11-24 |
+| Validar type-check post-update | ✅ COMPLETADO | 2025-11-24 |
+| Validar build post-update | ✅ COMPLETADO | 2025-11-24 |
+| Ejecutar regression tests | ✅ COMPLETADO | 2025-11-24 |
+
+## Action Items Pendientes
+
+| Item | Prioridad | Esfuerzo Est. |
+|------|-----------|---------------|
+| Manejar `pause_turn` stop reason | ALTA | 1 hr |
+| Manejar `refusal` stop reason | ALTA | 1 hr |
+| Runtime config para Extended Thinking | MEDIA | 3-4 hrs |
+| Implementar Citations extraction | MEDIA | 4-6 hrs |
+| Eliminar columna `thinking_tokens` (estimación imprecisa) | MEDIA | 1 hr |

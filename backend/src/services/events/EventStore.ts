@@ -72,6 +72,9 @@ export interface AgentMessageEvent extends Omit<BaseEvent, 'event_type' | 'data'
     message_id: string;
     content: string;
     stop_reason?: string | null;
+    model?: string;                  // NEW: Claude model name (e.g., "claude-sonnet-4-5-20250929")
+    input_tokens?: number;           // NEW: Input token count
+    output_tokens?: number;          // NEW: Output token count
   };
 }
 

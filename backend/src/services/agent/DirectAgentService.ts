@@ -208,6 +208,7 @@ export class DirectAgentService {
     const accumulatedResponses: string[] = [];
     let inputTokens = 0;
     let outputTokens = 0;
+    let modelName: string | undefined; // NEW: Track Claude model name
 
     try {
       // Validate sessionId is provided (required for event tracking and sequence numbers)
@@ -342,10 +343,11 @@ export class DirectAgentService {
         for await (const event of stream) {
           switch (event.type) {
             case 'message_start':
-              // Message begins - capture ID and initial usage
+              // Message begins - capture ID, model, and initial usage
               messageId = event.message.id;
+              modelName = event.message.model;  // NEW: Capture model name
               inputTokens += event.message.usage.input_tokens;
-              console.log(`[STREAM] message_start: id=${messageId}, input_tokens=${event.message.usage.input_tokens}`);
+              console.log(`[STREAM] message_start: id=${messageId}, model=${modelName}, input_tokens=${event.message.usage.input_tokens}`);
               break;
 
             case 'content_block_start':
@@ -623,6 +625,17 @@ export class DirectAgentService {
         }
 
         console.log(`[STREAM] Stream completed: stop_reason=${stopReason}, text_blocks=${textBlocks.length}, tool_uses=${toolUses.length}`);
+
+        // ========== TOKEN TRACKING LOGGING (Phase 1A) ==========
+        console.log('[TOKEN TRACKING]', {
+          messageId,        // Anthropic ID (e.g., "msg_01ABC...")
+          model: modelName, // Model name (e.g., "claude-sonnet-4-5-20250929")
+          inputTokens,
+          outputTokens,
+          totalTokens: inputTokens + outputTokens,
+          sessionId,
+          turnCount,
+        });
 
         // ========== EMIT COMPLETE MESSAGE ==========
         // ✅ FIX PHASE 3: Persist complete message FIRST, then emit

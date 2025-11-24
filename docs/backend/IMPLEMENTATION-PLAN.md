@@ -188,9 +188,10 @@ All original audit claims were correct:
 
 ---
 
-#### Phase 1A: Token Tracking - Database + Logging (4-6 hrs) 🔴
+#### Phase 1A: Token Tracking - Database + Logging (4-6 hrs) ✅ COMPLETED
 
-**Date Updated**: 2025-01-24
+**Date Completed**: 2025-01-24
+**Status**: ✅ All acceptance criteria met, 9/9 tests passing
 **Note**: This phase adds token tracking columns. Phase 1B will migrate to using Anthropic message IDs as primary key (architectural decision).
 
 **Goal**: Add token tracking infrastructure and instrument code to LOG tokens (no persistence yet, no breaking changes)
@@ -198,9 +199,10 @@ All original audit claims were correct:
 **Business Value**: Foundation for billing, tokens visible in logs for immediate validation
 
 **Acceptance Criteria**:
-- ✅ Database columns exist (model, input_tokens, output_tokens)
-- ✅ DirectAgentService logs token counts to console
-- ✅ No breaking changes to existing functionality
+- ✅ Database columns exist (model, input_tokens, output_tokens) - Migration created: `001-add-token-tracking.sql`
+- ✅ DirectAgentService logs token counts to console - Logging implemented at line 629-638
+- ✅ No breaking changes to existing functionality - All existing tests still pass
+- ✅ Comprehensive test suite - 9/9 tests passing in `DirectAgentService-tokens.test.ts`
 
 **Changes Required**:
 
@@ -289,6 +291,43 @@ describe('Phase 1A: Token Logging', () => {
 ```
 
 **Deployment**: ✅ Safe to deploy (read-only changes, no side effects)
+
+**Implementation Summary** (Completed 2025-01-24):
+
+✅ **Files Created**:
+- `backend/migrations/001-add-token-tracking.sql` - Database migration script
+- `backend/src/__tests__/unit/agent/DirectAgentService-tokens.test.ts` - Comprehensive test suite (9 tests)
+
+✅ **Files Modified**:
+- `backend/src/services/events/EventStore.ts` - Added token fields to AgentMessageEvent interface
+- `backend/src/services/agent/DirectAgentService.ts` - Added modelName tracking (line 211), model capture (line 348), and token logging (lines 629-638)
+
+✅ **Test Results**:
+```bash
+✅ 9/9 tests passing
+- Token count capture (input, output, total)
+- Anthropic message ID capture
+- Model name capture
+- Logging format validation
+- Logging timing validation
+- Edge case handling
+```
+
+✅ **Verification**:
+Run the agent and check console logs for `[TOKEN TRACKING]` output with structure:
+```javascript
+{
+  messageId: "fake_msg_...",  // Will be Anthropic ID in production
+  model: "claude-sonnet-4-5-20250929",
+  inputTokens: 100,
+  outputTokens: 200,
+  totalTokens: 300,
+  sessionId: "...",
+  turnCount: 1
+}
+```
+
+**Next Phase**: Phase 1B will use these Anthropic message IDs as primary key (eliminate UUID generation).
 
 ---
 

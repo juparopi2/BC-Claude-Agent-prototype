@@ -33,6 +33,8 @@ The BC Claude Agent backend is a **TypeScript Express server** that provides an 
 - **Human-in-the-Loop**: Approval system for write operations with Promise-based pattern
 - **Queue System**: BullMQ-based async processing with rate limiting (100 jobs/session/hour)
 - **Microsoft OAuth 2.0**: Single Sign-On with delegated Business Central permissions
+- **✅ Token Tracking**: Captures and logs input/output tokens with model names (Phase 1A - 2025-01-24)
+- **✅ Prompt Caching**: Reduces latency and costs by ~90% with cache_control (2025-01-23)
 
 ### Technology Stack
 

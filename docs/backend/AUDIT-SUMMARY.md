@@ -88,16 +88,28 @@
 - Reducción esperada: ~90% latencia + ~90% costo en tokens cacheados
 - Tests: 8/14 pasando (mejora de 2/14 baseline + fix de userId en tests)
 
-#### 🟡 2. Extended Thinking - PENDIENTE
+#### ✅ 2. Token Count Logging - COMPLETADO (Phase 1A - 2025-01-24)
+**Tiempo real**: 4 horas
+
+**Cambios implementados**:
+- ✅ `backend/migrations/001-add-token-tracking.sql` - Migration para columnas token
+- ✅ `EventStore.ts:75-78` - Agregados campos `model`, `input_tokens`, `output_tokens` a AgentMessageEvent
+- ✅ `DirectAgentService.ts:211` - Agregada variable `modelName` tracking
+- ✅ `DirectAgentService.ts:348` - Captura de `modelName` desde `event.message.model`
+- ✅ `DirectAgentService.ts:629-638` - Logging completo de tokens después del stream
+- ✅ `DirectAgentService-tokens.test.ts` - 9 tests comprehensivos (100% passing)
+
+**Resultado**:
+- Sistema ahora captura y logea: messageId (Anthropic), model, inputTokens, outputTokens, totalTokens
+- Logs visibles en consola con formato `[TOKEN TRACKING]` para debugging inmediato
+- Infrastructure lista para Phase 1B-1E (persistencia + billing API)
+
+#### 🟡 3. Extended Thinking - PENDIENTE (Phases 1F-1H)
    - Agregar `thinking` parameter a ChatCompletionRequest
    - Hacer parámetro configurable por request (no solo env variable)
    - Manejar ThinkingBlock en streaming (thinking_delta)
    - Emitir thinking_chunk events al frontend
    - Test: Verificar que thinking mode funciona con streaming
-
-#### 🟡 3. Token Count - PENDIENTE
-   - Extraer usage de MessageStreamEvent (inputTokens/outputTokens ya capturados)
-   - Pasar tokenCount a MessageService.createMessageFromEvent()
    - Llenar messages.token_count en DB
    - Emitir tokenUsage al frontend en evento 'message'
    - Test: Verificar cálculo de costos

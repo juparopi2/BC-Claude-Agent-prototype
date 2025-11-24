@@ -30,7 +30,8 @@ const PARAMETER_TYPE_MAP: Record<string, ISqlType | (() => ISqlType)> = {
   'session_id': sql.UniqueIdentifier,
   'user_id': sql.UniqueIdentifier,
   'event_id': sql.UniqueIdentifier,
-  'message_id': sql.UniqueIdentifier,
+  // ⭐ PHASE 1B: message_id changed to NVARCHAR to support Anthropic IDs (msg_01...)
+  'message_id': sql.NVarChar(255),  // Was: sql.UniqueIdentifier
   'decided_by_user_id': sql.UniqueIdentifier,
   'parent_todo_id': sql.UniqueIdentifier,
   'entity_id': sql.UniqueIdentifier,

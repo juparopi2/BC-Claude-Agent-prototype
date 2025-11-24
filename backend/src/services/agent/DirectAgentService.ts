@@ -659,10 +659,20 @@ export class DirectAgentService {
             stopReason,
           });
 
+          // ⭐ PHASE 1B: Assert messageId is always captured from Anthropic SDK
+          // Anthropic SDK always emits message_start event with message.id
+          // If messageId is null here, it indicates a critical SDK issue
+          if (!messageId) {
+            throw new Error(
+              '[PHASE 1B] Message ID not captured from Anthropic SDK. ' +
+              'This should never happen - message_start event must fire before message completion.'
+            );
+          }
+
           // ✅ STEP 2: Emitir DESPUÉS con datos del evento persistido
           onEvent({
             type: 'message',
-            messageId: messageId || randomUUID(),
+            messageId: messageId,  // ⭐ PHASE 1B: Use Anthropic ID directly (no UUID fallback)
             content: accumulatedText,
             role: 'assistant',
             stopReason: (stopReason as 'end_turn' | 'tool_use' | 'max_tokens') || undefined,

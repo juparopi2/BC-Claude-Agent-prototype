@@ -190,9 +190,10 @@ All original audit claims were correct:
 
 #### Phase 1A: Token Tracking - Database + Logging (4-6 hrs) ✅ COMPLETED
 
-**Date Completed**: 2025-01-24
+**Date Completed**: 2025-11-24 (migration executed)
 **Status**: ✅ All acceptance criteria met, 9/9 tests passing
-**Note**: This phase adds token tracking columns. Phase 1B will migrate to using Anthropic message IDs as primary key (architectural decision).
+**Migration**: `001-add-token-tracking.sql` executed successfully on Azure SQL database
+**Note**: This phase adds token tracking columns. Phase 1B migrates to using Anthropic message IDs as primary key (architectural decision).
 
 **Goal**: Add token tracking infrastructure and instrument code to LOG tokens (no persistence yet, no breaking changes)
 
@@ -331,9 +332,11 @@ Run the agent and check console logs for `[TOKEN TRACKING]` output with structur
 
 ---
 
-#### Phase 1B: Migrate to Anthropic Message IDs as Primary Key (1-2 hrs) 🔴
+#### Phase 1B: Migrate to Anthropic Message IDs as Primary Key (1-2 hrs) ✅ COMPLETED
 
-**Date Added**: 2025-01-24
+**Date Completed**: 2025-11-24
+**Status**: ✅ All acceptance criteria met, 54/56 tests passing (2 skipped with explanations)
+**Migration**: `002-use-anthropic-message-ids-no-backup.sql` executed successfully on Azure SQL database
 **Goal**: Eliminate internal UUIDs, use Anthropic's message IDs directly as primary key
 
 **Business Value**:
@@ -606,6 +609,17 @@ Then revert code changes and redeploy.
 - ✅ Database queries work with NVARCHAR IDs
 - ✅ Correlation with Anthropic Console validated
 - ✅ No UUID generation for messages in codebase
+
+**Known Technical Debt**:
+- ⚠️ **600ms Delay in Tool Execution** (`DirectAgentService.ts:733`)
+  - **Issue**: Hardcoded 600ms delay before tool execution to allow database saves to complete
+  - **Location**: `await new Promise(resolve => setTimeout(resolve, 600));`
+  - **Context**: System uses EventStore (sync, ~10ms) + MessageQueue (async) to eliminate latency, but delay remains as workaround
+  - **Impact**: Adds 600ms perceived latency per tool execution turn
+  - **Root Cause**: MessageQueue async operations not completing before tool execution begins
+  - **Proposed Solution**: Eliminate delay once MessageQueue is fully tested and verified to handle all persistence correctly
+  - **Priority**: Medium (works correctly, but contradicts async architecture design)
+  - **Target**: Phase 2 or 3 (after MessageQueue comprehensive testing)
 
 ---
 

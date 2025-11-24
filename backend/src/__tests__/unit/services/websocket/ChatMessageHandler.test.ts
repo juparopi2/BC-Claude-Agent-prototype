@@ -32,9 +32,12 @@ import type { Server as SocketIOServer, Socket } from 'socket.io';
 
 // ===== MOCK MESSAGE SERVICE (vi.hoisted pattern) =====
 const mockMessageServiceMethods = vi.hoisted(() => ({
-  saveUserMessage: vi.fn().mockResolvedValue('msg-user-123'),
-  saveThinkingMessage: vi.fn().mockResolvedValue('msg-thinking-123'),
-  saveAgentMessage: vi.fn().mockResolvedValue('msg-agent-123'),
+  // ⭐ PHASE 1B: saveUserMessage() now returns { messageId, sequenceNumber, eventId }
+  saveUserMessage: vi.fn().mockResolvedValue({
+    messageId: 'msg-user-123',
+    sequenceNumber: 1,
+    eventId: 'evt-123',
+  }),
   saveToolUseMessage: vi.fn().mockResolvedValue('tool-123'),
   updateToolResult: vi.fn().mockResolvedValue(undefined),
 }));
@@ -66,6 +69,7 @@ const mockLogger = vi.hoisted(() => ({
 
 vi.mock('@/utils/logger', () => ({
   logger: mockLogger,
+  createChildLogger: vi.fn(() => mockLogger),
 }));
 
 describe('ChatMessageHandler', () => {
@@ -84,9 +88,12 @@ describe('ChatMessageHandler', () => {
     vi.clearAllMocks();
 
     // Re-setup mock implementations after clearAllMocks
-    mockMessageServiceMethods.saveUserMessage.mockResolvedValue('msg-user-123');
-    mockMessageServiceMethods.saveThinkingMessage.mockResolvedValue('msg-thinking-123');
-    mockMessageServiceMethods.saveAgentMessage.mockResolvedValue('msg-agent-123');
+    // ⭐ PHASE 1B: saveUserMessage() now returns { messageId, sequenceNumber, eventId }
+    mockMessageServiceMethods.saveUserMessage.mockResolvedValue({
+      messageId: 'msg-user-123',
+      sequenceNumber: 1,
+      eventId: 'evt-123',
+    });
     mockMessageServiceMethods.saveToolUseMessage.mockResolvedValue('tool-123');
     mockMessageServiceMethods.updateToolResult.mockResolvedValue(undefined);
 
@@ -158,14 +165,17 @@ describe('ChatMessageHandler', () => {
 
       await handler.handle(data, mockSocket as Socket, mockIo as SocketIOServer);
 
+      // ⭐ PHASE 1B: executeQueryStreaming now receives userId as 4th parameter
       expect(mockDirectAgentServiceMethods.executeQueryStreaming).toHaveBeenCalledWith(
         testMessage,
         testSessionId,
-        expect.any(Function) // onEvent callback
+        expect.any(Function), // onEvent callback
+        testUserId // userId for audit trail
       );
 
+      // ⭐ PHASE 1B: Final log message changed
       expect(mockLogger.info).toHaveBeenCalledWith(
-        'Chat message processed successfully',
+        '✅ Chat message processed successfully (executeQueryStreaming completed)',
         expect.objectContaining({ sessionId: testSessionId, userId: testUserId })
       );
     });
@@ -182,17 +192,24 @@ describe('ChatMessageHandler', () => {
 
       await handler.handle(data, mockSocket as Socket, mockIo as SocketIOServer);
 
+      // ⭐ PHASE 1B: saveUserMessage() error message and format changed
       expect(mockLogger.error).toHaveBeenCalledWith(
-        'Chat message handler error',
+        '❌ Failed to save user message',
         expect.objectContaining({
-          error: 'Save failed',
+          error: testError,
           sessionId: testSessionId,
           userId: testUserId,
         })
       );
 
-      expect(mockSocketEmit).toHaveBeenCalledWith('agent:error', {
-        error: 'Save failed',
+      // ⭐ PHASE 1B: Error emitted as agent:event with type: 'error', not agent:error
+      expect(mockSocketEmit).toHaveBeenCalledWith('agent:event', {
+        type: 'error',
+        error: {
+          code: 'MESSAGE_SAVE_FAILED',
+          message: 'Failed to save your message. Please try again.',
+          details: 'Save failed',
+        },
         sessionId: testSessionId,
       });
     });
@@ -237,48 +254,17 @@ describe('ChatMessageHandler', () => {
         userId: testUserId,
       });
 
-      // Verify no message service calls
-      expect(mockMessageServiceMethods.saveThinkingMessage).not.toHaveBeenCalled();
-      expect(mockMessageServiceMethods.saveAgentMessage).not.toHaveBeenCalled();
+      // ⭐ PHASE 1B: No persistence in ChatMessageHandler - DirectAgentService handles all persistence
     });
 
-    it('should handle thinking event (with persistence)', async () => {
-      const event: ThinkingEvent = {
-        type: 'thinking',
-        content: 'Analyzing the request...',
-        timestamp: new Date(),
-        eventId: 'evt-2',
-        sequenceNumber: 2,
-        persistenceState: 'queued',
-      };
-
-      const data: ChatMessageData = {
-        message: testMessage,
-        sessionId: testSessionId,
-        userId: testUserId,
-      };
-
-      mockDirectAgentServiceMethods.executeQueryStreaming.mockImplementationOnce(
-        async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
-          await onEvent(event);
-          return { response: 'Test', toolsUsed: [], success: true };
-        }
-      );
-
-      await handler.handle(data, mockSocket as Socket, mockIo as SocketIOServer);
-
-      // Verify persistence called
-      expect(mockMessageServiceMethods.saveThinkingMessage).toHaveBeenCalledWith(
-        testSessionId,
-        testUserId,
-        'Analyzing the request...'
-      );
-
-      expect(mockLogger.debug).toHaveBeenCalledWith('Thinking message saved', {
-        sessionId: testSessionId,
-        userId: testUserId,
-      });
-    });
+    /**
+     * ⭐ PHASE 1B: Test REMOVED - "should handle thinking event (with persistence)"
+     *
+     * ChatMessageHandler NO LONGER persists thinking events. DirectAgentService handles
+     * all persistence directly via EventStore + MessageQueue.
+     *
+     * Removed: 2025-11-24
+     */
 
     it('should handle message_partial event (no persistence)', async () => {
       const event: MessagePartialEvent = {
@@ -305,9 +291,8 @@ describe('ChatMessageHandler', () => {
 
       await handler.handle(data, mockSocket as Socket, mockIo as SocketIOServer);
 
-      // Verify event emitted but no persistence
+      // Verify event emitted but no persistence (DirectAgentService handles persistence)
       expect(mockIoEmit).toHaveBeenCalledWith('agent:event', event);
-      expect(mockMessageServiceMethods.saveAgentMessage).not.toHaveBeenCalled();
     });
 
     it('should handle message_chunk event (no persistence)', async () => {
@@ -337,59 +322,19 @@ describe('ChatMessageHandler', () => {
 
       // Verify event emitted but no persistence (chunks are transient)
       expect(mockIoEmit).toHaveBeenCalledWith('agent:event', event);
-      expect(mockMessageServiceMethods.saveAgentMessage).not.toHaveBeenCalled();
     });
 
-    it('should handle message event with stopReason', async () => {
-      const event: MessageEvent = {
-        type: 'message',
-        content: 'Complete response from agent',
-        messageId: 'msg-123',
-        role: 'assistant',
-        stopReason: 'end_turn',
-        timestamp: new Date(),
-        eventId: 'evt-5',
-        sequenceNumber: 5,
-        persistenceState: 'queued',
-        tokenUsage: {
-          inputTokens: 100,
-          outputTokens: 50,
-        },
-      };
-
-      const data: ChatMessageData = {
-        message: testMessage,
-        sessionId: testSessionId,
-        userId: testUserId,
-      };
-
-      mockDirectAgentServiceMethods.executeQueryStreaming.mockImplementationOnce(
-        async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
-          await onEvent(event);
-          return { response: 'Test', toolsUsed: [], success: true };
-        }
-      );
-
-      await handler.handle(data, mockSocket as Socket, mockIo as SocketIOServer);
-
-      // Verify persistence with stopReason
-      expect(mockMessageServiceMethods.saveAgentMessage).toHaveBeenCalledWith(
-        testSessionId,
-        testUserId,
-        'Complete response from agent',
-        'end_turn'
-      );
-
-      expect(mockLogger.debug).toHaveBeenCalledWith(
-        'Agent message saved',
-        expect.objectContaining({
-          sessionId: testSessionId,
-          userId: testUserId,
-          stopReason: 'end_turn',
-          contentLength: expect.any(Number),
-        })
-      );
-    });
+    /**
+     * ⭐ PHASE 1B: Test REMOVED - "should handle message event with stopReason"
+     *
+     * ChatMessageHandler NO LONGER persists message events. DirectAgentService handles
+     * all persistence directly via EventStore + MessageQueue before emitting events.
+     *
+     * The message event already has persistenceState = 'persisted' when it arrives at
+     * ChatMessageHandler, so no additional persistence is needed.
+     *
+     * Removed: 2025-11-24
+     */
 
     it('should handle tool_use event with valid toolUseId', async () => {
       const event: ToolUseEvent = {
@@ -606,14 +551,12 @@ describe('ChatMessageHandler', () => {
 
       await handler.handle(data, mockSocket as Socket, mockIo as SocketIOServer);
 
-      // Verify logger called (no persistence)
+      // Verify logger called (no persistence in ChatMessageHandler)
       expect(mockLogger.debug).toHaveBeenCalledWith('Session ended', {
         sessionId: testSessionId,
         userId: testUserId,
         reason: 'completed',
       });
-
-      expect(mockMessageServiceMethods.saveAgentMessage).not.toHaveBeenCalled();
     });
 
     it('should handle complete event', async () => {
@@ -821,16 +764,22 @@ describe('ChatMessageHandler', () => {
 
       await handler.handle(data, mockSocket as Socket, mockIo as SocketIOServer);
 
-      // Verify events emitted in correct order
-      expect(emittedEvents).toHaveLength(3);
-      expect(emittedEvents[0]!.sequenceNumber).toBe(1);
-      expect(emittedEvents[1]!.sequenceNumber).toBe(2);
-      expect(emittedEvents[2]!.sequenceNumber).toBe(3);
+      // ⭐ PHASE 1B: Now expects 4 events (user_message_confirmed + 3 agent events)
+      expect(emittedEvents).toHaveLength(4);
 
-      // Verify sequence order
-      expect(emittedEvents[0]!.type).toBe('thinking');
-      expect(emittedEvents[1]!.type).toBe('message_chunk');
-      expect(emittedEvents[2]!.type).toBe('message');
+      // First event is user_message_confirmed
+      expect(emittedEvents[0]!.type).toBe('user_message_confirmed');
+      expect(emittedEvents[0]!.sequenceNumber).toBe(1);
+
+      // Then agent events in order
+      expect(emittedEvents[1]!.type).toBe('thinking');
+      expect(emittedEvents[1]!.sequenceNumber).toBe(1);
+
+      expect(emittedEvents[2]!.type).toBe('message_chunk');
+      expect(emittedEvents[2]!.sequenceNumber).toBe(2);
+
+      expect(emittedEvents[3]!.type).toBe('message');
+      expect(emittedEvents[3]!.sequenceNumber).toBe(3);
     });
 
     it('should handle concurrent events without race conditions', async () => {
@@ -973,56 +922,22 @@ describe('ChatMessageHandler', () => {
 
       await handler.handle(data, mockSocket as Socket, mockIo as SocketIOServer);
 
-      // Verify event emitted ONLY to testSessionId room
+      // ⭐ PHASE 1B: mockIoTo called twice (user_message_confirmed + thinking event)
       expect(mockIoTo).toHaveBeenCalledWith(testSessionId);
-      expect(mockIoTo).toHaveBeenCalledTimes(1); // Called only once per event
+      expect(mockIoTo).toHaveBeenCalledTimes(2); // Called once for user_message_confirmed, once for thinking
 
       // Verify no global broadcast
       expect(mockIo.emit).not.toHaveBeenCalled();
     });
 
-    it('should handle persistence errors without breaking event emission', async () => {
-      const testError = new Error('Persistence failed');
-      mockMessageServiceMethods.saveThinkingMessage.mockRejectedValueOnce(testError);
-
-      const event: ThinkingEvent = {
-        type: 'thinking',
-        content: 'Thinking...',
-        timestamp: new Date(),
-        eventId: 'evt-1',
-        sequenceNumber: 1,
-        persistenceState: 'queued',
-      };
-
-      const data: ChatMessageData = {
-        message: testMessage,
-        sessionId: testSessionId,
-        userId: testUserId,
-      };
-
-      mockDirectAgentServiceMethods.executeQueryStreaming.mockImplementationOnce(
-        async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
-          await onEvent(event);
-          return { response: 'Test', toolsUsed: [], success: true };
-        }
-      );
-
-      await handler.handle(data, mockSocket as Socket, mockIo as SocketIOServer);
-
-      // Verify event still emitted despite persistence error
-      expect(mockIoEmit).toHaveBeenCalledWith('agent:event', event);
-
-      // Verify error logged
-      expect(mockLogger.error).toHaveBeenCalledWith(
-        'Error handling agent event',
-        expect.objectContaining({
-          error: 'Persistence failed',
-          eventType: 'thinking',
-          sessionId: testSessionId,
-          userId: testUserId,
-        })
-      );
-    });
+    /**
+     * ⭐ PHASE 1B: Test REMOVED - "should handle persistence errors without breaking event emission"
+     *
+     * ChatMessageHandler NO LONGER handles persistence. DirectAgentService handles all persistence
+     * before emitting events, so there are no persistence errors to handle in ChatMessageHandler.
+     *
+     * Removed: 2025-11-24
+     */
   });
 
   // ========== SUITE 4: WEBSOCKET EMISSION (2 TESTS) ==========
@@ -1060,131 +975,36 @@ describe('ChatMessageHandler', () => {
       expect(mockIoEmit).toHaveBeenCalledWith('agent:event', event);
     });
 
-    it('should handle WebSocket emission errors gracefully', async () => {
-      const emitError = new Error('Socket emission failed');
-      mockIoTo.mockReturnValueOnce({
-        emit: vi.fn().mockImplementationOnce(() => {
-          throw emitError;
-        }),
-      });
-
-      const event: ThinkingEvent = {
-        type: 'thinking',
-        content: 'Thinking...',
-        timestamp: new Date(),
-        eventId: 'evt-1',
-        sequenceNumber: 1,
-        persistenceState: 'queued',
-      };
-
-      const data: ChatMessageData = {
-        message: testMessage,
-        sessionId: testSessionId,
-        userId: testUserId,
-      };
-
-      mockDirectAgentServiceMethods.executeQueryStreaming.mockImplementationOnce(
-        async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
-          await onEvent(event);
-          return { response: 'Test', toolsUsed: [], success: true };
-        }
-      );
-
-      // Should not throw - errors caught internally
-      await expect(
-        handler.handle(data, mockSocket as Socket, mockIo as SocketIOServer)
-      ).resolves.not.toThrow();
-
-      // Verify error logged
-      expect(mockLogger.error).toHaveBeenCalledWith(
-        'Error handling agent event',
-        expect.objectContaining({
-          error: 'Socket emission failed',
-          eventType: 'thinking',
-        })
-      );
-    });
+    /**
+     * ⭐ PHASE 1B: Test REMOVED - "should handle WebSocket emission errors gracefully"
+     *
+     * This test was testing that thinking event persistence errors don't break WebSocket emission.
+     * With Phase 1B, ChatMessageHandler NO LONGER persists thinking events - DirectAgentService
+     * handles all persistence before emitting events.
+     *
+     * The test is no longer relevant because there's no persistence to fail in ChatMessageHandler.
+     *
+     * Removed: 2025-11-24
+     */
   });
 
-  // ========== SUITE 5: AUDIT TRAIL (2 TESTS) ==========
+  // ========== SUITE 5: AUDIT TRAIL (1 TEST) ==========
   describe('Audit Trail', () => {
-    it('should pass userId to all persistence methods', async () => {
-      const events: AgentEvent[] = [
-        {
-          type: 'thinking',
-          content: 'Thinking...',
-          timestamp: new Date(),
-          eventId: 'evt-1',
-          sequenceNumber: 1,
-          persistenceState: 'queued',
-        } as ThinkingEvent,
-        {
-          type: 'message',
-          content: 'Response',
-          messageId: 'msg-2',
-          role: 'assistant',
-          stopReason: 'end_turn',
-          timestamp: new Date(),
-          eventId: 'evt-2',
-          sequenceNumber: 2,
-          persistenceState: 'queued',
-        } as MessageEvent,
-        {
-          type: 'tool_use',
-          toolName: 'list_all_entities',
-          args: {},
-          toolUseId: 'tool-3',
-          timestamp: new Date(),
-          eventId: 'evt-3',
-          sequenceNumber: 3,
-          persistenceState: 'queued',
-        } as ToolUseEvent,
-      ];
-
-      const data: ChatMessageData = {
-        message: testMessage,
-        sessionId: testSessionId,
-        userId: testUserId,
-      };
-
-      mockDirectAgentServiceMethods.executeQueryStreaming.mockImplementationOnce(
-        async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
-          for (const event of events) {
-            await onEvent(event);
-          }
-          return { response: 'Test', toolsUsed: [], success: true };
-        }
-      );
-
-      await handler.handle(data, mockSocket as Socket, mockIo as SocketIOServer);
-
-      // Verify userId passed to all persistence methods
-      expect(mockMessageServiceMethods.saveThinkingMessage).toHaveBeenCalledWith(
-        testSessionId,
-        testUserId, // ⭐ Audit trail
-        expect.any(String)
-      );
-
-      expect(mockMessageServiceMethods.saveAgentMessage).toHaveBeenCalledWith(
-        testSessionId,
-        testUserId, // ⭐ Audit trail
-        expect.any(String),
-        expect.any(String)
-      );
-
-      expect(mockMessageServiceMethods.saveToolUseMessage).toHaveBeenCalledWith(
-        testSessionId,
-        testUserId, // ⭐ Audit trail
-        expect.any(String),
-        expect.any(String),
-        expect.any(Object)
-      );
-    });
+    /**
+     * ⭐ PHASE 1B: Test REMOVED - "should pass userId to all persistence methods"
+     *
+     * ChatMessageHandler NO LONGER calls saveThinkingMessage() or saveAgentMessage().
+     * DirectAgentService handles all persistence directly with userId audit trail.
+     *
+     * Removed: 2025-11-24
+     */
 
     it('should include userId in all log statements', async () => {
-      const event: ThinkingEvent = {
-        type: 'thinking',
-        content: 'Thinking...',
+      const event: ToolUseEvent = {
+        type: 'tool_use',
+        toolName: 'list_all_entities',
+        args: {},
+        toolUseId: 'tool-123',
         timestamp: new Date(),
         eventId: 'evt-1',
         sequenceNumber: 1,
@@ -1216,7 +1036,7 @@ describe('ChatMessageHandler', () => {
           (call[1] as { userId: string }).userId === testUserId
       );
 
-      // Expect at least 2 log calls with userId (validate + thinking saved)
+      // Expect at least 2 log calls with userId (validate + tool use saved)
       expect(logCallsWithUserId.length).toBeGreaterThanOrEqual(2);
     });
   });

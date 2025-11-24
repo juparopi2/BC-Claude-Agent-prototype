@@ -385,7 +385,8 @@ Built from message_events for fast queries
 
 ```sql
 CREATE TABLE messages (
-  id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+  -- Phase 1B (2025-11-24): Changed from UNIQUEIDENTIFIER to NVARCHAR(255) to use Anthropic message IDs
+  id NVARCHAR(255) PRIMARY KEY NOT NULL,  -- Anthropic message ID format: msg_01ABC...
   session_id UNIQUEIDENTIFIER NOT NULL,
   event_id UNIQUEIDENTIFIER NULL,     -- FK to message_events (source event)
   role NVARCHAR(50) NOT NULL,         -- 'user', 'assistant'
@@ -395,6 +396,14 @@ CREATE TABLE messages (
   token_count INT NULL,
   stop_reason NVARCHAR(20) NULL,      -- 'end_turn', 'tool_use', 'max_tokens'
   sequence_number INT NULL,           -- Links to message_events.sequence_number
+  tool_use_id NVARCHAR(255) NULL,     -- Anthropic SDK tool_use block ID (e.g., toolu_01ABC123)
+
+  -- Phase 1A (2025-11-24): Token tracking for billing and cost analysis
+  model NVARCHAR(100) NULL,           -- Claude model name (e.g., "claude-sonnet-4-5-20250929")
+  input_tokens INT NULL,              -- Input tokens from Anthropic API
+  output_tokens INT NULL,             -- Output tokens from Anthropic API
+  total_tokens AS (ISNULL(input_tokens, 0) + ISNULL(output_tokens, 0)) PERSISTED,
+
   created_at DATETIME2 NOT NULL DEFAULT GETDATE(),
 
   FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE,
@@ -409,6 +418,12 @@ CREATE TABLE messages (
 CREATE INDEX idx_messages_session ON messages(session_id, created_at);
 CREATE INDEX idx_messages_event ON messages(event_id) WHERE event_id IS NOT NULL;
 CREATE INDEX idx_messages_stop_reason ON messages(stop_reason) WHERE stop_reason IS NOT NULL;
+CREATE INDEX idx_messages_tool_use_id ON messages(tool_use_id) WHERE tool_use_id IS NOT NULL;
+
+-- Phase 1A: Token tracking index for billing queries
+CREATE NONCLUSTERED INDEX IX_messages_tokens
+ON messages(session_id, created_at)
+INCLUDE (input_tokens, output_tokens, model);
 ```
 
 **Key Features**:

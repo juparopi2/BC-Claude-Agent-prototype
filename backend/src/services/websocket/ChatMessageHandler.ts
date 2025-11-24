@@ -243,20 +243,19 @@ export class ChatMessageHandler {
           break;
 
         case 'thinking':
-          // ✅ SKIP persistence - event already persisted by DirectAgentService
-          if ((event as ThinkingEvent).persistenceState === 'persisted') {
-            this.logger.debug('✅ Thinking event already persisted by DirectAgentService', {
+          // ✅ PHASE 1B: Persistence handled by DirectAgentService
+          if ((event as ThinkingEvent).persistenceState !== 'persisted') {
+            this.logger.error('❌ CRITICAL: Thinking event NOT persisted by DirectAgentService', {
               sequenceNumber: (event as ThinkingEvent).sequenceNumber,
               eventId: (event as ThinkingEvent).eventId,
             });
-          } else {
-            this.logger.error('❌ Thinking event NOT persisted by DirectAgentService', {
-              sequenceNumber: (event as ThinkingEvent).sequenceNumber,
-              eventId: (event as ThinkingEvent).eventId,
-            });
-            // ⚠️ FALLBACK: Persistir aquí si no está (solo para recovery)
-            await this.handleThinking(event as ThinkingEvent, sessionId, userId);
+            throw new Error('Thinking persistence failed in DirectAgentService');
           }
+
+          this.logger.debug('✅ Thinking event already persisted by DirectAgentService', {
+            sequenceNumber: (event as ThinkingEvent).sequenceNumber,
+            eventId: (event as ThinkingEvent).eventId,
+          });
           break;
 
         case 'message_partial':
@@ -276,19 +275,23 @@ export class ChatMessageHandler {
           break;
 
         case 'message':
-          // ✅ SKIP persistence - event already persisted by DirectAgentService
-          if ((event as MessageEvent).persistenceState === 'persisted') {
-            this.logger.debug('✅ Complete message already persisted by DirectAgentService', {
+          // ✅ PHASE 1B: Persistence handled by DirectAgentService
+          // DirectAgentService writes directly to EventStore + MessageQueue
+          // No fallback needed - if persistenceState is not 'persisted', it's a critical bug
+          if ((event as MessageEvent).persistenceState !== 'persisted') {
+            this.logger.error('❌ CRITICAL: Complete message NOT persisted by DirectAgentService', {
+              messageId: (event as MessageEvent).messageId,
               sequenceNumber: (event as MessageEvent).sequenceNumber,
-              eventId: (event as MessageEvent).eventId,
+              errorContext: 'DirectAgentService must persist before emitting'
             });
-          } else {
-            this.logger.error('❌ Complete message NOT persisted by DirectAgentService', {
-              sequenceNumber: (event as MessageEvent).sequenceNumber,
-            });
-            // ⚠️ FALLBACK: Persistir aquí si no está
-            await this.handleMessage(event as MessageEvent, sessionId, userId);
+            throw new Error('Message persistence failed in DirectAgentService');
           }
+
+          this.logger.debug('✅ Complete message already persisted by DirectAgentService', {
+            messageId: (event as MessageEvent).messageId,
+            sequenceNumber: (event as MessageEvent).sequenceNumber,
+            eventId: (event as MessageEvent).eventId,
+          });
           break;
 
         case 'tool_use':
@@ -368,58 +371,10 @@ export class ChatMessageHandler {
     }
   }
 
-  /**
-   * Handle Thinking Event
-   *
-   * Persists thinking message to database with userId for audit trail.
-   *
-   * @param event - Thinking event (type assertion safe after switch)
-   * @param sessionId - Session ID
-   * @param userId - User ID (audit trail)
-   */
-  private async handleThinking(
-    event: ThinkingEvent,
-    sessionId: string,
-    userId: string
-  ): Promise<void> {
-    await this.messageService.saveThinkingMessage(
-      sessionId,
-      userId,  // ⭐ Updated signature
-      event.content || ''
-    );
-
-    this.logger.debug('Thinking message saved', { sessionId, userId });
-  }
-
-  /**
-   * Handle Message Event
-   *
-   * Persists complete agent message to database.
-   * This is called AFTER all message_chunk events have been emitted.
-   *
-   * @param event - Message event with full content
-   * @param sessionId - Session ID
-   * @param userId - User ID (audit trail)
-   */
-  private async handleMessage(
-    event: MessageEvent,
-    sessionId: string,
-    userId: string
-  ): Promise<void> {
-    await this.messageService.saveAgentMessage(
-      sessionId,
-      userId,
-      event.content,
-      event.stopReason || null
-    );
-
-    this.logger.debug('Agent message saved', {
-      sessionId,
-      userId,
-      stopReason: event.stopReason,
-      contentLength: event.content.length,
-    });
-  }
+  // ⭐ PHASE 1B: handleMessage() and handleThinking() REMOVED
+  // These methods were fallback duplicates - DirectAgentService now handles ALL persistence
+  // directly via EventStore + MessageQueue before emitting events.
+  // If persistenceState !== 'persisted', it's a critical bug (not a fallback scenario).
 
   /**
    * Handle Tool Use Event

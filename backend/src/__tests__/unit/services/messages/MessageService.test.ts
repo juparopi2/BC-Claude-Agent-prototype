@@ -16,7 +16,7 @@ import type { MessageDbRecord, ParsedMessage } from '@/types/message.types';
 
 // ===== MOCK EVENT STORE (vi.hoisted pattern) =====
 const mockEventStoreMethods = vi.hoisted(() => ({
-  appendEvent: vi.fn().mockResolvedValue(undefined),
+  appendEvent: vi.fn().mockResolvedValue({ id: 'evt-123', sequence_number: 1 }),
   replayEvents: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -52,6 +52,7 @@ const mockLogger = vi.hoisted(() => ({
 
 vi.mock('@/utils/logger', () => ({
   logger: mockLogger,
+  createChildLogger: vi.fn(() => mockLogger),
 }));
 
 // ===== MOCK crypto.randomUUID (vi.hoisted pattern) =====
@@ -71,7 +72,7 @@ describe('MessageService', () => {
     mockUuidCounter = 0; // Reset UUID counter
 
     // Re-setup mock implementations after clearAllMocks
-    mockEventStoreMethods.appendEvent.mockResolvedValue(undefined);
+    mockEventStoreMethods.appendEvent.mockResolvedValue({ id: 'evt-123', sequence_number: 1 });
     mockEventStoreMethods.replayEvents.mockResolvedValue(undefined);
 
     mockMessageQueueMethods.addMessagePersistence.mockResolvedValue({ id: 'job-123' });
@@ -85,20 +86,27 @@ describe('MessageService', () => {
 
   // ========== SUITE 1: SAVE USER MESSAGE (5 TESTS) ==========
   describe('saveUserMessage()', () => {
-    it('should generate UUID messageId', async () => {
-      const messageId = await messageService.saveUserMessage(
+    it('should generate UUID messageId and return event data', async () => {
+      const result = await messageService.saveUserMessage(
         testSessionId,
         testUserId,
         'Hello, world!'
       );
 
+      // Verify result structure
+      expect(result).toHaveProperty('messageId');
+      expect(result).toHaveProperty('sequenceNumber');
+      expect(result).toHaveProperty('eventId');
+
       // Verify UUID format (mock-uuid-N)
-      expect(messageId).toMatch(/^mock-uuid-\d+$/);
+      expect(result.messageId).toMatch(/^mock-uuid-\d+$/);
+      expect(result.sequenceNumber).toBe(1);
+      expect(result.eventId).toBe('evt-123');
     });
 
     it('should append event to EventStore', async () => {
       const testContent = 'Hello, world!';
-      const messageId = await messageService.saveUserMessage(
+      const result = await messageService.saveUserMessage(
         testSessionId,
         testUserId,
         testContent
@@ -108,7 +116,7 @@ describe('MessageService', () => {
         testSessionId,
         'user_message_sent',
         expect.objectContaining({
-          message_id: messageId,
+          message_id: result.messageId,
           content: testContent,
           user_id: testUserId,
         })
@@ -117,7 +125,7 @@ describe('MessageService', () => {
 
     it('should queue message for persistence', async () => {
       const testContent = 'Hello, world!';
-      const messageId = await messageService.saveUserMessage(
+      const result = await messageService.saveUserMessage(
         testSessionId,
         testUserId,
         testContent
@@ -126,25 +134,27 @@ describe('MessageService', () => {
       expect(mockMessageQueueMethods.addMessagePersistence).toHaveBeenCalledWith(
         expect.objectContaining({
           sessionId: testSessionId,
-          messageId: messageId,
+          messageId: result.messageId,
           role: 'user',
           messageType: 'text',
           content: testContent,
           metadata: expect.objectContaining({ user_id: testUserId }),
+          sequenceNumber: 1,
+          eventId: 'evt-123',
         })
       );
     });
 
-    it('should log debug message', async () => {
-      const messageId = await messageService.saveUserMessage(
+    it('should log success message', async () => {
+      const result = await messageService.saveUserMessage(
         testSessionId,
         testUserId,
         'Hello, world!'
       );
 
-      expect(mockLogger.debug).toHaveBeenCalledWith(
-        'User message saved',
-        expect.objectContaining({ sessionId: testSessionId, messageId, userId: testUserId })
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        '✅ User message saved',
+        expect.objectContaining({ sessionId: testSessionId, messageId: result.messageId, userId: testUserId })
       );
     });
 
@@ -157,7 +167,7 @@ describe('MessageService', () => {
       ).rejects.toThrow('EventStore error');
 
       expect(mockLogger.error).toHaveBeenCalledWith(
-        'Failed to save user message',
+        '❌ Failed to save user message',
         expect.objectContaining({
           error: testError,
           sessionId: testSessionId,
@@ -167,160 +177,25 @@ describe('MessageService', () => {
     });
   });
 
-  // ========== SUITE 2: SAVE AGENT MESSAGE (5 TESTS) ==========
-  describe('saveAgentMessage()', () => {
-    it('should save message with stopReason', async () => {
-      const testContent = 'Agent response';
-      const stopReason = 'end_turn';
-
-      const messageId = await messageService.saveAgentMessage(
-        testSessionId,
-        testUserId,
-        testContent,
-        stopReason
-      );
-
-      expect(mockEventStoreMethods.appendEvent).toHaveBeenCalledWith(
-        testSessionId,
-        'agent_message_sent',
-        expect.objectContaining({
-          message_id: messageId,
-          content: testContent,
-          stop_reason: stopReason,
-          user_id: testUserId,
-        })
-      );
-    });
-
-    it('should save message with null stopReason', async () => {
-      const testContent = 'Agent response';
-
-      const messageId = await messageService.saveAgentMessage(
-        testSessionId,
-        testUserId,
-        testContent,
-        null
-      );
-
-      expect(mockEventStoreMethods.appendEvent).toHaveBeenCalledWith(
-        testSessionId,
-        'agent_message_sent',
-        expect.objectContaining({
-          message_id: messageId,
-          content: testContent,
-          stop_reason: null,
-          user_id: testUserId,
-        })
-      );
-    });
-
-    it('should include userId in metadata', async () => {
-      const messageId = await messageService.saveAgentMessage(
-        testSessionId,
-        testUserId,
-        'Agent response',
-        'end_turn'
-      );
-
-      expect(mockMessageQueueMethods.addMessagePersistence).toHaveBeenCalledWith(
-        expect.objectContaining({
-          sessionId: testSessionId,
-          messageId,
-          role: 'assistant',
-          messageType: 'text',
-          metadata: expect.objectContaining({
-            stop_reason: 'end_turn',
-            user_id: testUserId, // ⭐ Audit trail
-          }),
-        })
-      );
-    });
-
-    it('should log debug with userId', async () => {
-      const messageId = await messageService.saveAgentMessage(
-        testSessionId,
-        testUserId,
-        'Agent response',
-        'end_turn'
-      );
-
-      expect(mockLogger.debug).toHaveBeenCalledWith(
-        'Agent message saved',
-        expect.objectContaining({ sessionId: testSessionId, userId: testUserId, messageId })
-      );
-    });
-
-    it('should throw error on queue failure', async () => {
-      const testError = new Error('Queue error');
-      mockMessageQueueMethods.addMessagePersistence.mockRejectedValueOnce(testError);
-
-      await expect(
-        messageService.saveAgentMessage(testSessionId, testUserId, 'Agent response')
-      ).rejects.toThrow('Queue error');
-
-      expect(mockLogger.error).toHaveBeenCalledWith(
-        'Failed to save agent message',
-        expect.objectContaining({ error: testError, sessionId: testSessionId, userId: testUserId })
-      );
-    });
-  });
-
-  // ========== SUITE 3: SAVE THINKING MESSAGE (3 TESTS) ==========
-  describe('saveThinkingMessage()', () => {
-    it('should save thinking with timestamp', async () => {
-      const testContent = 'Analyzing the request...';
-
-      await messageService.saveThinkingMessage(testSessionId, testUserId, testContent);
-
-      expect(mockEventStoreMethods.appendEvent).toHaveBeenCalledWith(
-        testSessionId,
-        'agent_thinking_started',
-        expect.objectContaining({
-          message_id: expect.stringMatching(/^mock-uuid-\d+$/),
-          content: testContent,
-          started_at: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/), // ISO 8601 format
-          user_id: testUserId,
-        })
-      );
-    });
-
-    it('should store content in metadata (not content field)', async () => {
-      const testContent = 'Analyzing the request...';
-
-      await messageService.saveThinkingMessage(testSessionId, testUserId, testContent);
-
-      expect(mockMessageQueueMethods.addMessagePersistence).toHaveBeenCalledWith(
-        expect.objectContaining({
-          role: 'assistant',
-          messageType: 'thinking',
-          content: '', // ⭐ Empty content field
-          metadata: expect.objectContaining({
-            content: testContent, // ⭐ Content in metadata
-            started_at: expect.any(String),
-            user_id: testUserId,
-          }),
-        })
-      );
-    });
-
-    it('should include userId in audit trail', async () => {
-      await messageService.saveThinkingMessage(testSessionId, testUserId, 'Thinking...');
-
-      // Verify userId in EventStore
-      expect(mockEventStoreMethods.appendEvent).toHaveBeenCalledWith(
-        testSessionId,
-        'agent_thinking_started',
-        expect.objectContaining({ user_id: testUserId })
-      );
-
-      // Verify userId in MessageQueue
-      expect(mockMessageQueueMethods.addMessagePersistence).toHaveBeenCalledWith(
-        expect.objectContaining({
-          metadata: expect.objectContaining({ user_id: testUserId }),
-        })
-      );
-    });
-  });
+  // ========== PHASE 1B: saveAgentMessage() and saveThinkingMessage() REMOVED ==========
+  /**
+   * ⭐ PHASE 1B: saveAgentMessage() and saveThinkingMessage() tests REMOVED
+   *
+   * These methods were deprecated and removed in Phase 1B.
+   *
+   * **Why removed?**
+   * - DirectAgentService now handles persistence directly via EventStore + MessageQueue
+   * - Eliminates redundant layer and ensures Anthropic message IDs flow correctly
+   * - ChatMessageHandler no longer calls these methods (fallback logic removed)
+   *
+   * **Migration path:**
+   * - Agent messages: Use DirectAgentService (writes to EventStore + MessageQueue)
+   * - User messages: Use saveUserMessage() (tested below)
+   * - Tool results: Use updateToolResult() (tested below)
+   *
+   * **Removed tests**: 8 tests (5 for saveAgentMessage, 3 for saveThinkingMessage)
+   * **Removed**: 2025-11-24
+   */
 
   // ========== SUITE 4: TOOL USE MESSAGES (6 TESTS) ==========
   describe('saveToolUseMessage() & updateToolResult()', () => {
@@ -388,10 +263,11 @@ describe('MessageService', () => {
         true // success
       );
 
+      // ⭐ PHASE 1B: updateToolResult uses tool_use_id in WHERE clause
       expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('UPDATE messages'),
+        expect.stringContaining('WHERE tool_use_id = @tool_use_id'),
         expect.objectContaining({
-          id: toolUseId,
+          tool_use_id: toolUseId,
           session_id: testSessionId,
           metadata: expect.stringMatching(/"status":"success"/),
         })
@@ -431,10 +307,11 @@ describe('MessageService', () => {
         errorMsg
       );
 
+      // ⭐ PHASE 1B: updateToolResult uses tool_use_id in WHERE clause
       expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('UPDATE messages'),
+        expect.stringContaining('WHERE tool_use_id = @tool_use_id'),
         expect.objectContaining({
-          id: toolUseId,
+          tool_use_id: toolUseId,
           session_id: testSessionId,
           metadata: expect.stringMatching(/"status":"error"/),
         })
@@ -452,35 +329,15 @@ describe('MessageService', () => {
       });
     });
 
-    it('should append event on tool completion', async () => {
-      const toolUseId = 'tool-789';
-      const toolName = 'list_all_entities';
-      const toolArgs = { entity: 'customer' };
-      const toolResult = { entities: [] };
-
-      await messageService.updateToolResult(
-        testSessionId,
-        testUserId,
-        toolUseId,
-        toolName,
-        toolArgs,
-        toolResult,
-        true
-      );
-
-      expect(mockEventStoreMethods.appendEvent).toHaveBeenCalledWith(
-        testSessionId,
-        'tool_use_completed',
-        expect.objectContaining({
-          tool_use_id: toolUseId,
-          tool_name: toolName,
-          tool_result: toolResult,
-          success: true,
-          error_message: undefined,
-          user_id: testUserId,
-        })
-      );
-    });
+    /**
+     * ⭐ PHASE 1B: updateToolResult() NO LONGER appends event
+     *
+     * The appendEvent() call was removed because DirectAgentService already persists
+     * the tool_result event. Calling appendEvent() here would create duplicate sequence numbers.
+     *
+     * Test removed: "should append event on tool completion"
+     * Removed: 2025-11-24
+     */
 
     it('should preserve tool args when updating result', async () => {
       const toolUseId = 'tool-999';

@@ -179,179 +179,35 @@ export class MessageService {
   }
 
   /**
-   * Save Agent Message
+   * ⭐ PHASE 1B: saveAgentMessage() REMOVED
    *
-   * @param sessionId - Session ID
-   * @param userId - User ID (audit trail)
-   * @param content - Message content
-   * @param stopReason - Optional stop reason from SDK
-   * @returns Message ID
+   * This method was deprecated and removed in Phase 1B.
+   *
+   * **Why removed?**
+   * - DirectAgentService now handles persistence directly via EventStore + MessageQueue
+   * - Eliminates redundant layer and ensures Anthropic message IDs flow correctly
+   * - ChatMessageHandler no longer calls this method (fallback logic removed)
+   *
+   * **Migration path:**
+   * - Agent messages: Use DirectAgentService (writes to EventStore + MessageQueue)
+   * - User messages: Use saveUserMessage() below
+   * - Tool results: Use updateToolResult() below
+   *
+   * **Removed**: 2025-11-24
    */
-  public async saveAgentMessage(
-    sessionId: string,
-    userId: string,
-    content: string,
-    stopReason?: string | null
-  ): Promise<string> {
-    const messageId = randomUUID();
-
-    try {
-      this.logger.info('📝 saveAgentMessage START', { sessionId, messageId, userId });
-
-      // 1. Append event
-      const event = await this.eventStore.appendEvent(sessionId, 'agent_message_sent', {
-        message_id: messageId,
-        content,
-        stop_reason: stopReason,
-        user_id: userId,  // ⭐ Audit trail
-      });
-      // ⭐ DIAGNOSTIC: Log the sequence number from EventStore
-      this.logger.info('✅ Agent event appended to EventStore', {
-        sessionId,
-        messageId,
-        eventId: event.id,
-        sequenceNumber: event.sequence_number, // ⭐ CRITICAL: This is the sequence number
-        stopReason,
-      });
-
-      // 2. Queue for persistence
-      // ⭐ Implement stop_reason pattern: intermediate vs final messages
-      const messageType = stopReason === 'tool_use' ? 'thinking' : 'text';
-
-      try {
-        await this.messageQueue.addMessagePersistence({
-          sessionId,
-          messageId,
-          role: 'assistant',
-          messageType, // ⭐ 'thinking' for intermediate, 'text' for final
-          content,
-          metadata: {
-            stop_reason: stopReason,
-            user_id: userId,  // ⭐ Audit trail
-          },
-          // ⭐ CRITICAL: Pass sequenceNumber and eventId from EventStore
-          sequenceNumber: event.sequence_number,
-          eventId: event.id,
-          // ⭐ FIX: Pass stopReason to persist in stop_reason column
-          stopReason: stopReason ?? null,
-        });
-        this.logger.info('✅ Agent message added to queue with sequence', {
-          sessionId,
-          messageId,
-          sequenceNumber: event.sequence_number,
-          eventId: event.id,
-        });
-      } catch (queueError) {
-        // ⭐ FALLBACK: Direct DB write
-        this.logger.error('❌ MessageQueue failed for agent message, falling back to direct DB write', {
-          error: queueError,
-          sessionId,
-          messageId,
-        });
-
-        const params: SqlParams = {
-          id: messageId,
-          session_id: sessionId,
-          role: 'assistant',
-          message_type: messageType, // ⭐ Use computed messageType
-          content,
-          metadata: JSON.stringify({
-            stop_reason: stopReason,
-            user_id: userId,
-          }),
-          token_count: null,
-          stop_reason: stopReason || null,
-          // ⭐ CRITICAL: Include sequence_number and event_id from EventStore
-          sequence_number: event.sequence_number,
-          event_id: event.id,
-          created_at: new Date(),
-        };
-
-        await executeQuery(
-          `
-          INSERT INTO messages (id, session_id, role, message_type, content, metadata, token_count, stop_reason, sequence_number, event_id, created_at)
-          VALUES (@id, @session_id, @role, @message_type, @content, @metadata, @token_count, @stop_reason, @sequence_number, @event_id, @created_at)
-          `,
-          params
-        );
-
-        this.logger.warn('⚠️  Agent message persisted via fallback', {
-          sessionId,
-          messageId,
-          sequenceNumber: event.sequence_number,
-          eventId: event.id,
-        });
-      }
-
-      this.logger.debug('Agent message saved', { sessionId, userId, messageId });
-
-      return messageId;
-    } catch (error) {
-      this.logger.error('Failed to save agent message', { error, sessionId, userId });
-      throw error;
-    }
-  }
 
   /**
-   * Save Thinking Message
+   * ⭐ PHASE 1B: saveThinkingMessage() REMOVED
    *
-   * @param sessionId - Session ID
-   * @param userId - User ID (audit trail)
-   * @param content - Thinking content
-   * @returns Message ID
+   * This method was deprecated and removed in Phase 1B.
+   *
+   * **Why removed?**
+   * - DirectAgentService now handles thinking persistence directly via EventStore + MessageQueue
+   * - Eliminates redundant layer
+   * - ChatMessageHandler no longer calls this method (fallback logic removed)
+   *
+   * **Removed**: 2025-11-24
    */
-  public async saveThinkingMessage(
-    sessionId: string,
-    userId: string,
-    content: string
-  ): Promise<string> {
-    const messageId = randomUUID();
-
-    try {
-      // 1. Append event to EventStore (gets atomic sequence number)
-      const event = await this.eventStore.appendEvent(sessionId, 'agent_thinking_started', {
-        message_id: messageId,
-        content,
-        started_at: new Date().toISOString(),
-        user_id: userId,  // ⭐ Audit trail
-      });
-
-      this.logger.info('✅ Thinking event appended to EventStore', {
-        sessionId,
-        messageId,
-        eventId: event.id,
-        sequenceNumber: event.sequence_number, // ⭐ CRITICAL: sequence from EventStore
-      });
-
-      // 2. Queue for DB persistence (with sequence number)
-      await this.messageQueue.addMessagePersistence({
-        sessionId,
-        messageId,
-        role: 'assistant',
-        messageType: 'thinking',
-        content,  // ✅ FIX: Store content in content column (SDK-compliant)
-        metadata: {
-          started_at: new Date().toISOString(),
-          user_id: userId,  // ⭐ Audit trail
-        },
-        // ⭐ CRITICAL FIX: Pass sequenceNumber and eventId from EventStore
-        sequenceNumber: event.sequence_number,
-        eventId: event.id,
-      });
-
-      this.logger.info('✅ Thinking message queued for persistence', {
-        sessionId,
-        messageId,
-        sequenceNumber: event.sequence_number,
-        eventId: event.id,
-      });
-
-      return messageId;
-    } catch (error) {
-      this.logger.error('Failed to save thinking message', { error, sessionId, userId });
-      throw error;
-    }
-  }
 
   /**
    * Save Tool Use Message

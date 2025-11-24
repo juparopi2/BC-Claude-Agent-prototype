@@ -294,6 +294,8 @@ socket.on('agent:event', (event: AgentEvent) => {
 ```typescript
 interface MessageEvent extends BaseAgentEvent {
   type: 'message';
+  messageId: string;          // Phase 1B: Anthropic message ID (format: msg_01ABC..., not UUID)
+  role: 'user' | 'assistant'; // Message role
   content: string;            // Full message content
   stopReason?: StopReason;    // Why the message ended
   tokenCount?: number;

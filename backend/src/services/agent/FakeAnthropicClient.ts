@@ -228,7 +228,14 @@ export class FakeAnthropicClient implements IAnthropicClient {
       this.responseIndex++;
     }
 
-    const messageId = `fake_msg_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    // ⭐ PHASE 1B: Generate Anthropic-format message ID (msg_01...)
+    // Format: msg_01 + 22 random base62 characters (matching Anthropic's format)
+    const randomChars = Array.from({ length: 22 }, () =>
+      'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'[
+        Math.floor(Math.random() * 62)
+      ]
+    ).join('');
+    const messageId = `msg_01${randomChars}`;
 
     // ========== message_start ==========
     yield {

@@ -95,7 +95,7 @@ erDiagram
     }
 
     messages {
-        uniqueidentifier id PK
+        nvarchar id PK
         uniqueidentifier session_id FK
         uniqueidentifier event_id FK
         nvarchar role
@@ -106,6 +106,10 @@ erDiagram
         nvarchar stop_reason
         int sequence_number
         nvarchar tool_use_id
+        nvarchar model
+        int input_tokens
+        int output_tokens
+        int total_tokens
         datetime2 created_at
     }
 
@@ -355,9 +359,14 @@ CREATE INDEX idx_message_events_type ON message_events(event_type);
 
 **Purpose**: Materialized view of complete messages (built from message_events)
 
+**Schema Changes**:
+- **Phase 1B (2025-11-24)**: Changed `id` from UNIQUEIDENTIFIER to NVARCHAR(255) to use Anthropic message IDs (msg_01...) as primary key
+- **Phase 1A (2025-11-24)**: Added token tracking columns (model, input_tokens, output_tokens, total_tokens)
+
 ```sql
 CREATE TABLE messages (
-    id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+    -- Phase 1B: Changed to NVARCHAR(255) to store Anthropic message IDs (msg_01ABC...)
+    id NVARCHAR(255) PRIMARY KEY NOT NULL,
     session_id UNIQUEIDENTIFIER NOT NULL,
     event_id UNIQUEIDENTIFIER NULL,     -- FK to message_events (source event)
     role NVARCHAR(50) NOT NULL,         -- 'user', 'assistant'
@@ -368,6 +377,13 @@ CREATE TABLE messages (
     stop_reason NVARCHAR(20) NULL,      -- 'end_turn', 'tool_use', 'max_tokens'
     sequence_number INT NULL,           -- Links to message_events.sequence_number
     tool_use_id NVARCHAR(255) NULL,     -- Anthropic SDK tool_use block ID (e.g., toolu_01ABC123) for correlating tool_use and tool_result
+
+    -- Phase 1A: Token tracking columns (added 2025-11-24)
+    model NVARCHAR(100) NULL,           -- Claude model name (e.g., "claude-sonnet-4-5-20250929")
+    input_tokens INT NULL,              -- Input tokens from Anthropic API
+    output_tokens INT NULL,             -- Output tokens from Anthropic API
+    total_tokens AS (ISNULL(input_tokens, 0) + ISNULL(output_tokens, 0)) PERSISTED,  -- Computed column
+
     created_at DATETIME2 NOT NULL DEFAULT GETDATE(),
 
     -- Foreign Keys
@@ -386,10 +402,17 @@ CREATE INDEX idx_messages_event ON messages(event_id) WHERE event_id IS NOT NULL
 CREATE INDEX idx_messages_type ON messages(message_type);
 CREATE INDEX idx_messages_stop_reason ON messages(stop_reason) WHERE stop_reason IS NOT NULL;
 CREATE INDEX idx_messages_tool_use_id ON messages(tool_use_id) WHERE tool_use_id IS NOT NULL;
+
+-- Phase 1A: Token tracking index for billing queries
+CREATE NONCLUSTERED INDEX IX_messages_tokens
+ON messages(session_id, created_at)
+INCLUDE (input_tokens, output_tokens, model);
 ```
 
 **Key Features**:
 - Materialized from `message_events` (async via BullMQ)
+- **Phase 1B**: `id` uses Anthropic message IDs (msg_01...) as primary key for direct correlation with Anthropic Console
+- **Phase 1A**: Token tracking columns (model, input_tokens, output_tokens, total_tokens) for billing and cost analysis
 - `stop_reason` controls agentic loop (tool_use = continue, end_turn = stop)
 - `message_type` discriminates text/thinking/tool_use/tool_result
 - `metadata` stores structured data (tool args, thinking blocks)

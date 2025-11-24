@@ -3,6 +3,11 @@
 -- Purpose: Add token tracking columns to messages table
 -- Phase: 1A (Token Tracking - Database + Logging)
 
+-- Required for Azure SQL DDL operations (computed columns, indexed views)
+SET QUOTED_IDENTIFIER ON;
+SET ANSI_NULLS ON;
+GO
+
 USE [sqldb-bcagent-dev];
 GO
 

@@ -67,7 +67,9 @@ export type AgentEventType =
   | 'complete'
   | 'approval_requested'
   | 'approval_resolved'
-  | 'user_message_confirmed'; // ⭐ NEW: Emitted after user message is persisted with sequence_number
+  | 'user_message_confirmed' // ⭐ NEW: Emitted after user message is persisted with sequence_number
+  | 'turn_paused'    // ⭐ SDK 0.71: Long agentic turn was paused
+  | 'content_refused'; // ⭐ SDK 0.71: Content refused due to policy violation
 
 /**
  * Persistence State
@@ -342,6 +344,37 @@ export interface UserMessageConfirmedEvent extends BaseAgentEvent {
 }
 
 /**
+ * Turn Paused Event (SDK 0.71+)
+ * Emitted when Claude pauses a long-running agentic turn.
+ * This can happen during complex multi-step operations.
+ * Frontend should inform the user that processing is paused.
+ */
+export interface TurnPausedEvent extends BaseAgentEvent {
+  type: 'turn_paused';
+  /** Partial content generated before pause */
+  content?: string;
+  /** Message ID from Anthropic */
+  messageId: string;
+  /** Reason for pause (if available from SDK) */
+  reason?: string;
+}
+
+/**
+ * Content Refused Event (SDK 0.71+)
+ * Emitted when Claude refuses to generate content due to policy violation.
+ * Frontend should display appropriate message to user.
+ */
+export interface ContentRefusedEvent extends BaseAgentEvent {
+  type: 'content_refused';
+  /** Message ID from Anthropic */
+  messageId: string;
+  /** Explanation of why content was refused (if available) */
+  reason?: string;
+  /** Partial content before refusal (may be empty) */
+  content?: string;
+}
+
+/**
  * Agent Event
  * Union of all possible agent event types
  */
@@ -359,7 +392,9 @@ export type AgentEvent =
   | CompleteEvent
   | ApprovalRequestedEvent
   | ApprovalResolvedEvent
-  | UserMessageConfirmedEvent;
+  | UserMessageConfirmedEvent
+  | TurnPausedEvent      // ⭐ SDK 0.71: Agentic turn paused
+  | ContentRefusedEvent; // ⭐ SDK 0.71: Content refused
 
 /**
  * Agent Execution Result

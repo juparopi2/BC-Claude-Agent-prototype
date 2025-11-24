@@ -366,6 +366,28 @@ export class ChatMessageHandler {
           });
           break;
 
+        case 'turn_paused':
+          // ⭐ SDK 0.71: Long agentic turn was paused
+          // Already persisted by DirectAgentService, just log
+          this.logger.info('Turn paused event', {
+            sessionId,
+            userId,
+            messageId: (event as { messageId?: string }).messageId,
+            reason: (event as { reason?: string }).reason,
+          });
+          break;
+
+        case 'content_refused':
+          // ⭐ SDK 0.71: Content refused due to policy violation
+          // Already persisted by DirectAgentService, just log
+          this.logger.warn('Content refused event', {
+            sessionId,
+            userId,
+            messageId: (event as { messageId?: string }).messageId,
+            reason: (event as { reason?: string }).reason,
+          });
+          break;
+
         default:
           // Exhaustiveness check - TypeScript will error if we miss a case
           const _exhaustiveCheck: never = event;

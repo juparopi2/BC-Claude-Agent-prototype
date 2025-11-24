@@ -1175,8 +1175,108 @@ export class DirectAgentService {
             accumulatedResponses.push('[Response truncated - reached max tokens]');
           }
           continueLoop = false;
+        } else if (stopReason === 'stop_sequence') {
+          // ⭐ SDK 0.71: Custom stop sequence was hit
+          this.logger.info({
+            sessionId,
+            turnCount,
+            stopReason,
+          }, '🛑 [STOP_SEQUENCE] Custom stop sequence reached');
+
+          const stopSeqEvent = await eventStore.appendEvent(
+            sessionId,
+            'agent_message_sent',
+            {
+              content: accumulatedText || '[Stopped at custom sequence]',
+              stop_reason: 'stop_sequence',
+            }
+          );
+
+          if (onEvent) {
+            onEvent({
+              type: 'message',
+              messageId: messageId || `system_stop_sequence_${stopSeqEvent.id}`,
+              content: accumulatedText || '[Stopped at custom sequence]',
+              role: 'assistant',
+              stopReason: 'stop_sequence',
+              timestamp: new Date(stopSeqEvent.timestamp),
+              eventId: stopSeqEvent.id,
+              sequenceNumber: stopSeqEvent.sequence_number,
+              persistenceState: 'persisted',
+            });
+          }
+          continueLoop = false;
+        } else if (stopReason === 'pause_turn') {
+          // ⭐ SDK 0.71: Long agentic turn was paused
+          this.logger.warn({
+            sessionId,
+            turnCount,
+            stopReason,
+            accumulatedTextLength: accumulatedText.length,
+          }, '⏸️ [PAUSE_TURN] Agentic turn paused by Claude');
+
+          const pauseEvent = await eventStore.appendEvent(
+            sessionId,
+            'agent_message_sent',
+            {
+              content: accumulatedText || '[Turn paused]',
+              stop_reason: 'pause_turn',
+            }
+          );
+
+          if (onEvent) {
+            // Emit specific turn_paused event for frontend handling
+            onEvent({
+              type: 'turn_paused',
+              messageId: messageId || `system_pause_turn_${pauseEvent.id}`,
+              content: accumulatedText,
+              reason: 'Long-running turn was paused by Claude. The conversation can be continued.',
+              timestamp: new Date(pauseEvent.timestamp),
+              eventId: pauseEvent.id,
+              sequenceNumber: pauseEvent.sequence_number,
+              persistenceState: 'persisted',
+            });
+          }
+          continueLoop = false;
+        } else if (stopReason === 'refusal') {
+          // ⭐ SDK 0.71: Claude refused to generate content due to policy
+          this.logger.warn({
+            sessionId,
+            turnCount,
+            stopReason,
+            accumulatedTextLength: accumulatedText.length,
+          }, '🚫 [REFUSAL] Content refused due to policy violation');
+
+          const refusalEvent = await eventStore.appendEvent(
+            sessionId,
+            'agent_message_sent',
+            {
+              content: accumulatedText || '[Content refused due to policy]',
+              stop_reason: 'refusal',
+            }
+          );
+
+          if (onEvent) {
+            // Emit specific content_refused event for frontend handling
+            onEvent({
+              type: 'content_refused',
+              messageId: messageId || `system_refusal_${refusalEvent.id}`,
+              content: accumulatedText,
+              reason: 'Claude declined to generate this content due to usage policies.',
+              timestamp: new Date(refusalEvent.timestamp),
+              eventId: refusalEvent.id,
+              sequenceNumber: refusalEvent.sequence_number,
+              persistenceState: 'persisted',
+            });
+          }
+          continueLoop = false;
         } else {
-          // Unknown stop reason
+          // Unknown stop reason - log and terminate safely
+          this.logger.warn({
+            sessionId,
+            turnCount,
+            stopReason,
+          }, '⚠️ [UNKNOWN_STOP_REASON] Unhandled stop reason, terminating loop');
           continueLoop = false;
         }
       }

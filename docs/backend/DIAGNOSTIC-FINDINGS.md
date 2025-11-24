@@ -709,13 +709,93 @@ type Model =
 | Validar type-check post-update | ✅ COMPLETADO | 2025-11-24 |
 | Validar build post-update | ✅ COMPLETADO | 2025-11-24 |
 | Ejecutar regression tests | ✅ COMPLETADO | 2025-11-24 |
+| **Manejar `pause_turn` stop reason** | ✅ COMPLETADO | 2025-11-24 |
+| **Manejar `refusal` stop reason** | ✅ COMPLETADO | 2025-11-24 |
+| **Manejar `stop_sequence` stop reason** | ✅ COMPLETADO | 2025-11-24 |
 
 ## Action Items Pendientes
 
 | Item | Prioridad | Esfuerzo Est. |
 |------|-----------|---------------|
-| Manejar `pause_turn` stop reason | ALTA | 1 hr |
-| Manejar `refusal` stop reason | ALTA | 1 hr |
 | Runtime config para Extended Thinking | MEDIA | 3-4 hrs |
-| Implementar Citations extraction | MEDIA | 4-6 hrs |
-| Eliminar columna `thinking_tokens` (estimación imprecisa) | MEDIA | 1 hr |
+| Implementar Citations extraction | **CRÍTICA** | 4-6 hrs |
+| Investigar `thinking_tokens` desde SDK | MEDIA | 1 hr |
+| Diseñar tabla `token_usage` para tracking histórico | MEDIA | 2-3 hrs |
+
+---
+
+## Stop Reasons Implementation (2025-11-24)
+
+### Cambios Realizados
+
+**Archivos Modificados:**
+1. `backend/src/types/agent.types.ts`
+   - Agregados nuevos event types: `turn_paused`, `content_refused`
+   - Agregadas interfaces: `TurnPausedEvent`, `ContentRefusedEvent`
+   - Actualizada union `AgentEvent` (ahora 16 tipos)
+
+2. `backend/src/services/agent/DirectAgentService.ts`
+   - Agregado manejo explícito para `stop_sequence` (líneas 1178-1208)
+   - Agregado manejo para `pause_turn` (líneas 1209-1240)
+   - Agregado manejo para `refusal` (líneas 1241-1272)
+   - Mejorado logging para stop reasons desconocidos (líneas 1273-1280)
+
+3. `backend/src/services/websocket/ChatMessageHandler.ts`
+   - Agregados cases para `turn_paused` y `content_refused` en switch
+
+**Test Suite Creada:**
+- `backend/src/__tests__/unit/agent/stop-reasons.test.ts`
+- **38 tests** cubriendo:
+  - Type definitions (4 tests)
+  - DirectAgentService implementation (12 tests)
+  - ChatMessageHandler integration (4 tests)
+  - Event persistence (3 tests)
+  - Edge cases (6 tests)
+  - SDK compatibility (1 test)
+  - Documentation sync (1 test)
+
+### Stop Reasons Handling Matrix
+
+| Stop Reason | Handled | Event Emitted | Loop Terminates | Persisted |
+|-------------|---------|---------------|-----------------|-----------|
+| `end_turn` | ✅ | `message` | ✅ | ✅ |
+| `tool_use` | ✅ | `tool_use` | ❌ (continues) | ✅ |
+| `max_tokens` | ✅ | `message` | ✅ | ✅ |
+| `stop_sequence` | ✅ **NEW** | `message` | ✅ | ✅ |
+| `pause_turn` | ✅ **NEW** | `turn_paused` | ✅ | ✅ |
+| `refusal` | ✅ **NEW** | `content_refused` | ✅ | ✅ |
+
+### Frontend Events Reference
+
+**New Event: `turn_paused`**
+```typescript
+interface TurnPausedEvent {
+  type: 'turn_paused';
+  messageId: string;      // Anthropic ID or system-generated
+  content?: string;       // Partial content before pause
+  reason?: string;        // Human-readable explanation
+  // ... BaseAgentEvent fields
+}
+```
+
+**New Event: `content_refused`**
+```typescript
+interface ContentRefusedEvent {
+  type: 'content_refused';
+  messageId: string;      // Anthropic ID or system-generated
+  content?: string;       // Partial content before refusal
+  reason?: string;        // Policy violation explanation
+  // ... BaseAgentEvent fields
+}
+```
+
+### Verificación
+
+```bash
+# Build passed
+npm run build  # ✅ Success
+
+# Tests passed
+npm test -- stop-reasons.test.ts
+# ✅ 38/38 tests passing
+```

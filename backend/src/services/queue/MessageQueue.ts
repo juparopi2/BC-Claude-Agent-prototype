@@ -35,6 +35,10 @@ export enum QueueName {
 
 /**
  * Message Persistence Job Data
+ *
+ * @description Contains all data needed to persist a message to the database.
+ * Phase 1A adds token tracking fields (model, inputTokens, outputTokens).
+ * Phase 1B uses Anthropic message IDs as primary key.
  */
 export interface MessagePersistenceJob {
   sessionId: string;
@@ -50,6 +54,12 @@ export interface MessagePersistenceJob {
   toolUseId?: string | null;
   // ⭐ FIX: Stop reason from Anthropic SDK (for identifying intermediate vs final messages)
   stopReason?: string | null;
+  // ⭐ PHASE 1A: Token tracking fields from Anthropic SDK
+  model?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  // ⭐ PHASE 1F: Extended Thinking token tracking
+  thinkingTokens?: number;
 }
 
 /**
@@ -517,7 +527,14 @@ export class MessageQueue {
   private async processMessagePersistence(
     job: Job<MessagePersistenceJob>
   ): Promise<void> {
-    const { sessionId, messageId, role, messageType, content, metadata, sequenceNumber, eventId, toolUseId, stopReason } = job.data;
+    const {
+      sessionId, messageId, role, messageType, content, metadata,
+      sequenceNumber, eventId, toolUseId, stopReason,
+      // ⭐ PHASE 1A: Token tracking fields
+      model, inputTokens, outputTokens,
+      // ⭐ PHASE 1F: Extended Thinking tokens
+      thinkingTokens
+    } = job.data;
 
     // ⭐ VALIDATION: Check for undefined messageId
     if (!messageId || messageId === 'undefined' || messageId.trim() === '') {
@@ -532,7 +549,7 @@ export class MessageQueue {
       throw new Error(`Invalid messageId: ${messageId}. Cannot persist message.`);
     }
 
-    // ⭐ DIAGNOSTIC: Log worker pickup
+    // ⭐ DIAGNOSTIC: Log worker pickup with token info
     logger.info('🔨 Worker picked up message persistence job', {
       jobId: job.id,
       messageId,
@@ -543,14 +560,25 @@ export class MessageQueue {
       hasSequenceNumber: !!sequenceNumber,
       sequenceNumber,
       hasEventId: !!eventId,
-      hasToolUseId: !!toolUseId,  // ⭐ FIX: Log toolUseId presence
-      toolUseId,  // ⭐ FIX: Log toolUseId value
+      hasToolUseId: !!toolUseId,
+      toolUseId,
+      // ⭐ PHASE 1A: Log token data
+      model,
+      inputTokens,
+      outputTokens,
+      // ⭐ PHASE 1F: Extended Thinking tokens
+      thinkingTokens,
       attemptNumber: job.attemptsMade,
     });
 
     try {
       // ⭐ FIX: Use toolUseId from job data directly (fallback to metadata for backwards compat)
       const finalToolUseId: string | null = toolUseId || (typeof metadata?.tool_use_id === 'string' ? metadata.tool_use_id : null);
+
+      // ⭐ PHASE 1A: Calculate total tokens if input and output are provided
+      const totalTokens = (inputTokens !== undefined && outputTokens !== undefined)
+        ? inputTokens + outputTokens
+        : null;
 
       const params: SqlParams = {
         id: messageId,
@@ -562,16 +590,23 @@ export class MessageQueue {
         // ⭐ CRITICAL: Include sequence_number and event_id
         sequence_number: sequenceNumber ?? null,
         event_id: eventId ?? null,
-        token_count: null,
-        stop_reason: stopReason ?? null,  // ⭐ FIX: Use stopReason from job data (identifies intermediate vs final messages)
-        tool_use_id: finalToolUseId as string | null,  // ⭐ FIX: Use finalToolUseId from job data (not metadata)
+        // ⭐ PHASE 1A: Token tracking - use total_tokens for legacy column, add new columns
+        token_count: totalTokens,
+        stop_reason: stopReason ?? null,
+        tool_use_id: finalToolUseId as string | null,
         created_at: new Date(),
+        // ⭐ PHASE 1A: New token tracking columns
+        model: model ?? null,
+        input_tokens: inputTokens ?? null,
+        output_tokens: outputTokens ?? null,
+        // ⭐ PHASE 1F: Extended Thinking tokens
+        thinking_tokens: thinkingTokens ?? null,
       };
 
       await executeQuery(
         `
-        INSERT INTO messages (id, session_id, role, message_type, content, metadata, sequence_number, event_id, token_count, stop_reason, tool_use_id, created_at)
-        VALUES (@id, @session_id, @role, @message_type, @content, @metadata, @sequence_number, @event_id, @token_count, @stop_reason, @tool_use_id, @created_at)
+        INSERT INTO messages (id, session_id, role, message_type, content, metadata, sequence_number, event_id, token_count, stop_reason, tool_use_id, created_at, model, input_tokens, output_tokens, thinking_tokens)
+        VALUES (@id, @session_id, @role, @message_type, @content, @metadata, @sequence_number, @event_id, @token_count, @stop_reason, @tool_use_id, @created_at, @model, @input_tokens, @output_tokens, @thinking_tokens)
         `,
         params
       );

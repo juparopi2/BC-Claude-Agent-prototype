@@ -20,6 +20,7 @@ import type {
   ToolUseBlock,
   MessageStreamEvent,
   Tool,
+  ThinkingConfigParam,
 } from '@anthropic-ai/sdk/resources/messages';
 
 /**
@@ -51,6 +52,14 @@ export interface ChatCompletionRequest {
   messages: MessageParam[];
   tools?: Tool[];
   system?: string | SystemPromptBlock[];
+  /**
+   * Extended Thinking configuration (Phase 1F)
+   * Uses native SDK type ThinkingConfigParam
+   * When enabled, Claude will show internal reasoning process
+   *
+   * @see https://platform.claude.com/docs/en/build-with-claude/extended-thinking
+   */
+  thinking?: ThinkingConfigParam;
 }
 
 /**

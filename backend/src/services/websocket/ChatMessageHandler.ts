@@ -356,6 +356,16 @@ export class ChatMessageHandler {
           this.logger.debug('User message confirmed event', { sessionId, userId });
           break;
 
+        case 'thinking_chunk':
+          // ⭐ Phase 1F: Extended Thinking chunks are transient (streamed, not persisted)
+          // Just log for debugging, no persistence needed
+          this.logger.debug('Thinking chunk event (transient)', {
+            sessionId,
+            userId,
+            contentLength: (event as { content?: string }).content?.length,
+          });
+          break;
+
         default:
           // Exhaustiveness check - TypeScript will error if we miss a case
           const _exhaustiveCheck: never = event;

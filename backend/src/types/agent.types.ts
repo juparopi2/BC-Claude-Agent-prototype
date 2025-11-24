@@ -29,6 +29,24 @@ export interface AgentOptions {
   temperature?: number;
   /** System prompt override */
   systemPrompt?: string;
+  /**
+   * Extended Thinking Configuration (Phase 1F)
+   *
+   * Enables Claude's extended thinking mode for complex reasoning tasks.
+   * When enabled, Claude will show its internal reasoning process.
+   *
+   * @example
+   * ```typescript
+   * { enableThinking: true, thinkingBudget: 10000 }
+   * ```
+   */
+  enableThinking?: boolean;
+  /**
+   * Budget tokens for extended thinking (minimum 1024, max varies by model)
+   * Only used when enableThinking is true.
+   * @default 10000
+   */
+  thinkingBudget?: number;
 }
 
 /**
@@ -38,6 +56,7 @@ export interface AgentOptions {
 export type AgentEventType =
   | 'session_start'
   | 'thinking'
+  | 'thinking_chunk'  // ⭐ Phase 1F: Extended Thinking streaming chunks
   | 'message_partial'
   | 'message'
   | 'message_chunk'
@@ -115,6 +134,23 @@ export interface ThinkingEvent extends BaseAgentEvent {
 }
 
 /**
+ * Thinking Chunk Event (Phase 1F: Extended Thinking)
+ * Emitted during streaming for incremental thinking content
+ *
+ * Extended Thinking provides real-time visibility into Claude's reasoning process.
+ * Chunks arrive as Claude thinks, providing immediate feedback to users.
+ *
+ * @see https://platform.claude.com/docs/en/build-with-claude/extended-thinking
+ */
+export interface ThinkingChunkEvent extends BaseAgentEvent {
+  type: 'thinking_chunk';
+  /** Chunk of thinking content */
+  content: string;
+  /** Index of the thinking content block (for multi-block responses) */
+  blockIndex?: number;
+}
+
+/**
  * Message Partial Event
  * Emitted during streaming for partial message content
  */
@@ -129,12 +165,19 @@ export interface MessagePartialEvent extends BaseAgentEvent {
 /**
  * Message Event
  * Emitted when a complete message is available
+ *
+ * @description Contains complete message data including token usage for billing.
+ * Phase 1A adds tokenUsage for admin visibility.
+ * Phase 1B uses Anthropic message IDs (format: msg_01ABC...) as messageId.
  */
 export interface MessageEvent extends BaseAgentEvent {
   type: 'message';
   /** Complete message content */
   content: string;
-  /** Message ID */
+  /**
+   * Message ID - uses Anthropic's native message ID format
+   * @example "msg_01QR8X3Z9KM2NP4JL6H5VYWT7S"
+   */
   messageId: string;
   /** Role (user or assistant) */
   role: 'user' | 'assistant';
@@ -147,13 +190,21 @@ export interface MessageEvent extends BaseAgentEvent {
    * - 'pause_turn': Long turn paused
    * - 'refusal': Policy violation
    */
-  stopReason?: StopReason | null;  // ⭐ SDK returns null, not undefined
-  /** Token usage for this message */
+  stopReason?: StopReason | null;
+  /**
+   * Token usage for this message (Phase 1A)
+   * Used for billing and admin visibility
+   */
   tokenUsage?: {
     inputTokens: number;
     outputTokens: number;
     thinkingTokens?: number;
   };
+  /**
+   * Claude model that generated this response (Phase 1A)
+   * @example "claude-sonnet-4-5-20250929"
+   */
+  model?: string;
 }
 
 /**
@@ -297,6 +348,7 @@ export interface UserMessageConfirmedEvent extends BaseAgentEvent {
 export type AgentEvent =
   | SessionStartEvent
   | ThinkingEvent
+  | ThinkingChunkEvent  // ⭐ Phase 1F: Extended Thinking streaming
   | MessagePartialEvent
   | MessageEvent
   | MessageChunkEvent
@@ -307,7 +359,7 @@ export type AgentEvent =
   | CompleteEvent
   | ApprovalRequestedEvent
   | ApprovalResolvedEvent
-  | UserMessageConfirmedEvent; // ⭐ NEW
+  | UserMessageConfirmedEvent;
 
 /**
  * Agent Execution Result

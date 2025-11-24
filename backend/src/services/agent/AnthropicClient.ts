@@ -51,12 +51,21 @@ export class AnthropicClient implements IAnthropicClient {
    */
   async createChatCompletion(request: ChatCompletionRequest): Promise<ChatCompletionResponse> {
     try {
+      // ⭐ Phase 1F: Log thinking config if enabled
+      if (request.thinking?.type === 'enabled') {
+        logger.info('🧠 Extended thinking ENABLED', {
+          budget_tokens: request.thinking.budget_tokens,
+        });
+      }
+
+      // Pass all params including optional thinking to SDK
       const response = await this.client.messages.create({
         model: request.model,
         max_tokens: request.max_tokens,
         messages: request.messages,
         tools: request.tools,
         system: request.system,
+        thinking: request.thinking,  // ⭐ Phase 1F: Native SDK support
       });
 
       // The SDK response already matches our interface structure
@@ -103,13 +112,21 @@ export class AnthropicClient implements IAnthropicClient {
     request: ChatCompletionRequest
   ): AsyncIterable<MessageStreamEvent> {
     try {
-      // Use SDK's native streaming method
+      // ⭐ Phase 1F: Log thinking config if enabled
+      if (request.thinking?.type === 'enabled') {
+        logger.info('🧠 Extended thinking ENABLED (streaming)', {
+          budget_tokens: request.thinking.budget_tokens,
+        });
+      }
+
+      // Use SDK's native streaming method with all params including thinking
       const stream = this.client.messages.stream({
         model: request.model,
         max_tokens: request.max_tokens,
         messages: request.messages,
         tools: request.tools,
         system: request.system,
+        thinking: request.thinking,  // ⭐ Phase 1F: Native SDK support
       });
 
       // The SDK returns a MessageStream which is AsyncIterable

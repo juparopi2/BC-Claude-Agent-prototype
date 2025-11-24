@@ -31,6 +31,7 @@ import type {
   ToolUseBlock,
   MessageStreamEvent,
   TextBlock,
+  ThinkingDelta,
 } from '@anthropic-ai/sdk/resources/messages';
 import { env } from '@/config';
 import type { AgentEvent, AgentExecutionResult, CompleteEvent, ErrorEvent } from '@/types';
@@ -102,6 +103,24 @@ interface WorkflowValidationResult {
   operation_type?: string;
   issues?: string[];
   dependencies?: string[];
+}
+
+/**
+ * Options for executeQueryStreaming (Phase 1F: Extended Thinking)
+ */
+export interface ExecuteStreamingOptions {
+  /**
+   * Enable Extended Thinking mode
+   * When enabled, Claude will show its internal reasoning process
+   * @default false (uses env.ENABLE_EXTENDED_THINKING as fallback)
+   */
+  enableThinking?: boolean;
+  /**
+   * Budget tokens for extended thinking (minimum 1024)
+   * Must be less than max_tokens
+   * @default 10000
+   */
+  thinkingBudget?: number;
 }
 
 /**
@@ -178,12 +197,16 @@ export class DirectAgentService {
    * - Real-time feedback to user ("typing" effect)
    * - Better UX (user sees progress immediately)
    * - Cancellable (can interrupt mid-generation)
+   *
+   * @param options.enableThinking - Enable Extended Thinking (Phase 1F)
+   * @param options.thinkingBudget - Budget tokens for extended thinking (default: 10000)
    */
   async executeQueryStreaming(
     prompt: string,
     sessionId?: string,
     onEvent?: (event: AgentEvent) => void,
-    userId?: string
+    userId?: string,
+    options?: ExecuteStreamingOptions
   ): Promise<AgentExecutionResult> {
     // DIAGNOSTIC LOGGING - Entry point
     this.logger.info({
@@ -208,6 +231,7 @@ export class DirectAgentService {
     const accumulatedResponses: string[] = [];
     let inputTokens = 0;
     let outputTokens = 0;
+    let thinkingTokens = 0; // ⭐ PHASE 1F: Track Extended Thinking tokens
     let modelName: string | undefined; // NEW: Track Claude model name
 
     try {
@@ -307,15 +331,34 @@ export class DirectAgentService {
 
         let stream;
         try {
+          // ⭐ Phase 1F: Build thinking config from options or env
+          const enableThinking = options?.enableThinking ?? (env.ENABLE_EXTENDED_THINKING === true);
+          const thinkingBudget = options?.thinkingBudget ?? 10000;
+
+          // Determine max_tokens - must be greater than thinkingBudget when thinking is enabled
+          const maxTokens = enableThinking
+            ? Math.max(16000, thinkingBudget + 4096)  // Ensure enough room for response
+            : 4096;
+
           stream = this.client.createChatCompletionStream({
             model: env.ANTHROPIC_MODEL,
-            max_tokens: 4096,
+            max_tokens: maxTokens,
             messages: conversationHistory,
             tools: tools,
             system: this.getSystemPromptWithCaching(),
+            // ⭐ Phase 1F: Extended Thinking configuration
+            thinking: enableThinking
+              ? { type: 'enabled' as const, budget_tokens: thinkingBudget }
+              : undefined,
           });
 
-          this.logger.info({ sessionId, turnCount }, '✅ Stream created successfully');
+          this.logger.info({
+            sessionId,
+            turnCount,
+            enableThinking,
+            thinkingBudget: enableThinking ? thinkingBudget : undefined,
+            maxTokens,
+          }, '✅ Stream created successfully');
         } catch (streamError) {
           this.logger.error({
             sessionId,
@@ -351,7 +394,7 @@ export class DirectAgentService {
               break;
 
             case 'content_block_start':
-              // New content block starts (text or tool_use)
+              // New content block starts (text, tool_use, or thinking)
               console.log(`[STREAM] content_block_start: index=${event.index}, type=${event.content_block.type}`);
 
               if (event.content_block.type === 'text') {
@@ -359,6 +402,18 @@ export class DirectAgentService {
                   type: 'text',
                   data: '', // Will accumulate in deltas
                 });
+              } else if (event.content_block.type === 'thinking') {
+                // ⭐ Phase 1F: Extended Thinking block starts
+                contentBlocks.set(event.index, {
+                  type: 'thinking',
+                  data: '', // Will accumulate thinking content in deltas
+                });
+
+                this.logger.info({
+                  sessionId,
+                  turnCount,
+                  eventIndex: event.index,
+                }, '🧠 [THINKING] Extended thinking block started');
               } else if (event.content_block.type === 'tool_use') {
                 // ⭐ TRACING POINT 1: SDK proporciona el ID
                 let toolUseId = event.content_block.id;
@@ -444,21 +499,23 @@ export class DirectAgentService {
                 }
 
                 // ✅ STEP 3: Add to MessageQueue (reuse sequence from persisted event)
+                // ⭐ PHASE 1B: Use Anthropic tool_use_id directly as message ID
+                // This maintains correlation with Anthropic's IDs and eliminates UUID generation
                 await messageQueue.addMessagePersistence({
                   sessionId,
-                  messageId: randomUUID(),  // ⭐ FIX: Generate valid GUID for messages.id (tool_use_id stored in messages.tool_use_id column)
+                  messageId: toolUseId,  // ⭐ PHASE 1B: Use Anthropic tool_use_id (format: toolu_...)
                   role: 'assistant',
                   messageType: 'tool_use',
                   content: '',
                   metadata: {
                     tool_name: event.content_block.name,
                     tool_args: {},
-                    tool_use_id: toolUseId,  // ⭐ Use validated ID
+                    tool_use_id: toolUseId,
                     status: 'pending',
                   },
-                  sequenceNumber: toolUseEvent.sequence_number, // ⭐ REUSE sequence
+                  sequenceNumber: toolUseEvent.sequence_number,
                   eventId: toolUseEvent.id,
-                  toolUseId: toolUseId,  // ⭐ FIX: Pass toolUseId separately for messages.tool_use_id column
+                  toolUseId: toolUseId,
                 });
 
                 this.logger.info('✅ Tool use message queued for persistence', {
@@ -510,6 +567,34 @@ export class DirectAgentService {
                 }
 
                 console.log(`[STREAM] text_delta: index=${event.index}, chunk_len=${chunk.length}`);
+              } else if (event.delta.type === 'thinking_delta') {
+                // ⭐ Phase 1F: Extended Thinking chunk arrived (using native SDK type)
+                const thinkingDelta = event.delta as ThinkingDelta;
+                const thinkingChunk = thinkingDelta.thinking;
+
+                if (block.type === 'thinking') {
+                  block.data = (block.data as string) + thinkingChunk;
+
+                  // Emit thinking_chunk event (transient, for real-time display)
+                  if (onEvent && thinkingChunk) {
+                    this.logger.debug('🧠 [THINKING] Emitting thinking_chunk (transient)', {
+                      sessionId,
+                      turnCount,
+                      chunkLength: thinkingChunk.length,
+                    });
+
+                    onEvent({
+                      type: 'thinking_chunk',
+                      content: thinkingChunk,
+                      blockIndex: event.index,
+                      timestamp: new Date(),
+                      eventId: randomUUID(),
+                      persistenceState: 'transient', // Thinking chunks are transient
+                    });
+                  }
+
+                  console.log(`[STREAM] thinking_delta: index=${event.index}, chunk_len=${thinkingChunk.length}`);
+                }
               } else if (event.delta.type === 'input_json_delta') {
                 // Tool input chunk (JSON partial) - accumulate the JSON string
                 const partialJson = event.delta.partial_json;
@@ -548,6 +633,25 @@ export class DirectAgentService {
                   });
                 }
                 console.log(`[STREAM] content_block_stop (text): index=${event.index}, text_len=${finalText.length}`);
+              } else if (completedBlock.type === 'thinking') {
+                // ⭐ Phase 1F: Extended Thinking block completed
+                const finalThinkingContent = completedBlock.data as string;
+
+                // Estimate thinking tokens (approximately 4 characters per token)
+                // Note: This is an estimate - actual tokens are counted as output_tokens by Anthropic
+                const estimatedThinkingTokens = Math.ceil(finalThinkingContent.length / 4);
+                thinkingTokens += estimatedThinkingTokens;
+
+                this.logger.info({
+                  sessionId,
+                  turnCount,
+                  eventIndex: event.index,
+                  thinkingContentLength: finalThinkingContent.length,
+                  estimatedThinkingTokens,
+                  totalThinkingTokens: thinkingTokens,
+                }, '🧠 [THINKING] Block completed');
+
+                console.log(`[STREAM] content_block_stop (thinking): index=${event.index}, content_len=${finalThinkingContent.length}, estimated_tokens=${estimatedThinkingTokens}`);
               } else if (completedBlock.type === 'tool_use') {
                 const toolData = completedBlock.data as { id: string; name: string; input: Record<string, unknown> };
 
@@ -626,12 +730,13 @@ export class DirectAgentService {
 
         console.log(`[STREAM] Stream completed: stop_reason=${stopReason}, text_blocks=${textBlocks.length}, tool_uses=${toolUses.length}`);
 
-        // ========== TOKEN TRACKING LOGGING (Phase 1A) ==========
+        // ========== TOKEN TRACKING LOGGING (Phase 1A + 1F) ==========
         console.log('[TOKEN TRACKING]', {
           messageId,        // Anthropic ID (e.g., "msg_01ABC...")
           model: modelName, // Model name (e.g., "claude-sonnet-4-5-20250929")
           inputTokens,
           outputTokens,
+          thinkingTokens,   // ⭐ PHASE 1F: Extended Thinking tokens (estimated)
           totalTokens: inputTokens + outputTokens,
           sessionId,
           turnCount,
@@ -670,6 +775,7 @@ export class DirectAgentService {
           }
 
           // ✅ STEP 2: Emitir DESPUÉS con datos del evento persistido
+          // ⭐ PHASE 1A: Include token usage and model for admin visibility
           onEvent({
             type: 'message',
             messageId: messageId,  // ⭐ PHASE 1B: Use Anthropic ID directly (no UUID fallback)
@@ -680,13 +786,20 @@ export class DirectAgentService {
             eventId: completeMessageEvent.id,
             sequenceNumber: completeMessageEvent.sequence_number,
             persistenceState: 'persisted',
+            // ⭐ PHASE 1A + 1F: Token usage and model for billing/admin visibility
+            tokenUsage: {
+              inputTokens,
+              outputTokens,
+              thinkingTokens: thinkingTokens > 0 ? thinkingTokens : undefined,  // ⭐ PHASE 1F
+            },
+            model: modelName,
           });
 
           // ✅ STEP 3: Agregar a MessageQueue (reusa sequence)
           const messageType = stopReason === 'tool_use' ? 'thinking' : 'text';
           await messageQueue.addMessagePersistence({
             sessionId,
-            messageId: completeMessageEvent.id,
+            messageId: messageId,  // ⭐ PHASE 1B: Use Anthropic message ID directly
             role: 'assistant',
             messageType,
             content: accumulatedText,
@@ -695,7 +808,12 @@ export class DirectAgentService {
             },
             sequenceNumber: completeMessageEvent.sequence_number, // ⭐ REUSA sequence
             eventId: completeMessageEvent.id,
-            stopReason: stopReason || null,  // ⭐ FIX: Pass stopReason as separate parameter for MessageQueue worker
+            stopReason: stopReason || null,
+            // ⭐ PHASE 1A + 1F: Token tracking - persist to database
+            model: modelName,
+            inputTokens,
+            outputTokens,
+            thinkingTokens: thinkingTokens > 0 ? thinkingTokens : undefined,  // ⭐ PHASE 1F
           });
 
           this.logger.info('✅ Complete message queued for persistence', {
@@ -882,10 +1000,10 @@ export class DirectAgentService {
                 }, '🔍 [TRACE 8/8] After MessageService.updateToolResult - SUCCESS');
 
                 // ✅ FIX: Persist tool_result message (Issue #5 - Missing sequences)
-                // Create separate tool_result message to maintain 1:1 correspondence with message_events
+                // ⭐ PHASE 1B: Use derived ID from tool_use_id to maintain Anthropic correlation
                 await messageQueue.addMessagePersistence({
                   sessionId,
-                  messageId: randomUUID(),
+                  messageId: `${validatedToolExecutionId}_result`,  // ⭐ PHASE 1B: Derived from Anthropic tool_use_id
                   role: 'assistant',
                   messageType: 'tool_result',
                   content: typeof result === 'string' ? result : JSON.stringify(result),
@@ -897,7 +1015,7 @@ export class DirectAgentService {
                     status: 'success',
                     success: true,
                   },
-                  sequenceNumber: toolResultEvent.sequence_number, // ⭐ Reuse sequence from event
+                  sequenceNumber: toolResultEvent.sequence_number,
                   eventId: toolResultEvent.id,
                   toolUseId: validatedToolExecutionId,
                 });
@@ -985,12 +1103,12 @@ export class DirectAgentService {
                 }, '🔍 [TRACE 8/8] After MessageService.updateToolResult - ERROR');
 
                 // ✅ FIX: Persist tool_result message (Issue #5 - Missing sequences - ERROR case)
-                // Create separate tool_result message to maintain 1:1 correspondence with message_events
+                // ⭐ PHASE 1B: Use derived ID from tool_use_id to maintain Anthropic correlation
                 await messageQueue.addMessagePersistence({
                   sessionId,
-                  messageId: randomUUID(),
+                  messageId: `${validatedToolExecutionId}_error`,  // ⭐ PHASE 1B: Derived from Anthropic tool_use_id
                   role: 'assistant',
-                  messageType: 'error', // Use 'error' type for failed tool executions
+                  messageType: 'error',
                   content: `Error executing ${toolUse.name}: ${errorMessage}`,
                   metadata: {
                     tool_name: toolUse.name,
@@ -1001,7 +1119,7 @@ export class DirectAgentService {
                     success: false,
                     error_message: errorMessage,
                   },
-                  sequenceNumber: toolResultEvent.sequence_number, // ⭐ Reuse sequence from event
+                  sequenceNumber: toolResultEvent.sequence_number,
                   eventId: toolResultEvent.id,
                   toolUseId: validatedToolExecutionId,
                 });
@@ -1043,9 +1161,10 @@ export class DirectAgentService {
           );
 
           if (onEvent) {
+            // ⭐ PHASE 1B: Use event ID as message ID for system-generated messages
             onEvent({
               type: 'message',
-              messageId: randomUUID(),
+              messageId: `system_max_tokens_${warningEvent.id}`,  // ⭐ PHASE 1B: Derived from event ID
               content: '[Response truncated - reached max tokens]',
               role: 'assistant',
               timestamp: new Date(warningEvent.timestamp),
@@ -1074,9 +1193,10 @@ export class DirectAgentService {
         );
 
         if (onEvent) {
+          // ⭐ PHASE 1B: Use event ID as message ID for system-generated messages
           onEvent({
             type: 'message',
-            messageId: randomUUID(),
+            messageId: `system_max_turns_${maxTurnsEvent.id}`,  // ⭐ PHASE 1B: Derived from event ID
             content: '[Execution stopped - reached maximum turns]',
             role: 'assistant',
             timestamp: new Date(maxTurnsEvent.timestamp),

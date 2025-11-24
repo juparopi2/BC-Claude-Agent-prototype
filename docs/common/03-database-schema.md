@@ -1,7 +1,7 @@
 # Database Schema - Complete Reference (UPDATED 2025-11-20)
 
 > **Status**: 13/13 tables functional ✅ ALL TABLES EXIST
-> **Last Updated**: 2025-11-20 (After Schema Audit)
+> **Last Updated**: 2025-11-24 (Phase 1F: Extended Thinking Token Tracking)
 > **Database**: sqldb-bcagent-dev (Azure SQL)
 > **Server**: sqlsrv-bcagent-dev.database.windows.net
 > **Resource Group**: rg-BCAgentPrototype-data-dev
@@ -109,6 +109,7 @@ erDiagram
         nvarchar model
         int input_tokens
         int output_tokens
+        int thinking_tokens
         int total_tokens
         datetime2 created_at
     }
@@ -360,6 +361,7 @@ CREATE INDEX idx_message_events_type ON message_events(event_type);
 **Purpose**: Materialized view of complete messages (built from message_events)
 
 **Schema Changes**:
+- **Phase 1F (2025-11-24)**: Added `thinking_tokens` column for Extended Thinking token tracking
 - **Phase 1B (2025-11-24)**: Changed `id` from UNIQUEIDENTIFIER to NVARCHAR(255) to use Anthropic message IDs (msg_01...) as primary key
 - **Phase 1A (2025-11-24)**: Added token tracking columns (model, input_tokens, output_tokens, total_tokens)
 
@@ -383,6 +385,9 @@ CREATE TABLE messages (
     input_tokens INT NULL,              -- Input tokens from Anthropic API
     output_tokens INT NULL,             -- Output tokens from Anthropic API
     total_tokens AS (ISNULL(input_tokens, 0) + ISNULL(output_tokens, 0)) PERSISTED,  -- Computed column
+
+    -- Phase 1F: Extended Thinking token tracking (added 2025-11-24)
+    thinking_tokens INT NULL,           -- Extended Thinking tokens (estimated from content length)
 
     created_at DATETIME2 NOT NULL DEFAULT GETDATE(),
 
@@ -413,6 +418,7 @@ INCLUDE (input_tokens, output_tokens, model);
 - Materialized from `message_events` (async via BullMQ)
 - **Phase 1B**: `id` uses Anthropic message IDs (msg_01...) as primary key for direct correlation with Anthropic Console
 - **Phase 1A**: Token tracking columns (model, input_tokens, output_tokens, total_tokens) for billing and cost analysis
+- **Phase 1F**: `thinking_tokens` tracks Extended Thinking token usage for cost analysis
 - `stop_reason` controls agentic loop (tool_use = continue, end_turn = stop)
 - `message_type` discriminates text/thinking/tool_use/tool_result
 - `metadata` stores structured data (tool args, thinking blocks)
@@ -1078,6 +1084,22 @@ ORDER BY avg_value DESC;
 **Date**: Unknown (estimated 2025-11-18)
 **Added**: `message_events` table, `event_id` + `sequence_number` to messages
 **Purpose**: Implement Event Sourcing pattern for message streaming
+
+### Migration 010 - Token Tracking (Phase 1A)
+**Date**: 2025-11-24
+**Added**: `model`, `input_tokens`, `output_tokens`, `total_tokens` columns to messages
+**Purpose**: Token tracking for billing and cost analysis
+
+### Migration 011 - Anthropic Message IDs (Phase 1B)
+**Date**: 2025-11-24
+**Changed**: `messages.id` from UNIQUEIDENTIFIER to NVARCHAR(255)
+**Purpose**: Use Anthropic message IDs (msg_01...) as primary key for direct correlation
+
+### Migration 012 - Extended Thinking Tokens (Phase 1F)
+**Date**: 2025-11-24
+**Added**: `thinking_tokens` column to messages table
+**Purpose**: Track Extended Thinking token usage for cost analysis
+**Script**: `backend/migrations/003-add-thinking-tokens.sql`
 
 ---
 

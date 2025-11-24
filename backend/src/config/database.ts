@@ -25,8 +25,11 @@ let pool: ConnectionPool | null = null;
  * Reference: https://github.com/tediousjs/node-mssql#data-types
  */
 const PARAMETER_TYPE_MAP: Record<string, ISqlType | (() => ISqlType)> = {
-  // UNIQUEIDENTIFIER columns (UUIDs)
-  'id': sql.UniqueIdentifier,
+  // ⭐ PHASE 1B: 'id' changed to NVARCHAR(255) for messages table
+  // Now supports Anthropic message IDs (msg_01...), tool IDs (toolu_01...), and system IDs
+  // Note: Other tables (sessions, users, etc.) still use UUID for 'id', but they use
+  // different parameter names (session_id, user_id) which remain as UniqueIdentifier
+  'id': sql.NVarChar(255),  // Was: sql.UniqueIdentifier - Changed for messages table Phase 1B
   'session_id': sql.UniqueIdentifier,
   'user_id': sql.UniqueIdentifier,
   'event_id': sql.UniqueIdentifier,
@@ -44,6 +47,9 @@ const PARAMETER_TYPE_MAP: Record<string, ISqlType | (() => ISqlType)> = {
   'tokens_used': sql.Int,
   'duration_ms': sql.Int,
   'order': sql.Int,
+  // ⭐ PHASE 1A: Token tracking columns
+  'input_tokens': sql.Int,
+  'output_tokens': sql.Int,
 
   // BIGINT columns
   'file_size_bytes': sql.BigInt,
@@ -78,6 +84,8 @@ const PARAMETER_TYPE_MAP: Record<string, ISqlType | (() => ISqlType)> = {
   'stop_reason': sql.NVarChar,
   'tool_use_id': sql.NVarChar,  // Anthropic SDK tool_use block ID (e.g., toolu_01...)
   'tool_name': sql.NVarChar,
+  // ⭐ PHASE 1A: Model name column
+  'model': sql.NVarChar(100),
   'tool_args': sql.NVarChar(sql.MAX),
   'tool_result': sql.NVarChar(sql.MAX),
   'error_message': sql.NVarChar(sql.MAX),

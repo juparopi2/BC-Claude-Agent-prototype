@@ -718,9 +718,108 @@ type Model =
 | Item | Prioridad | Esfuerzo Est. |
 |------|-----------|---------------|
 | Runtime config para Extended Thinking | MEDIA | 3-4 hrs |
-| Implementar Citations extraction | **CRÍTICA** | 4-6 hrs |
-| Investigar `thinking_tokens` desde SDK | MEDIA | 1 hr |
 | Diseñar tabla `token_usage` para tracking histórico | MEDIA | 2-3 hrs |
+| Fix JSON validation silenciosa en tool inputs | MEDIA | 1 hr |
+
+---
+
+## Citations Implementation (2025-11-24)
+
+### Hallazgo: SDK 0.71+ proporciona Citations completas
+
+**Tipos de Citation disponibles:**
+- `CitationCharLocation`: Ubicación por caracteres (texto plano)
+- `CitationPageLocation`: Ubicación por páginas (PDFs)
+- `CitationContentBlockLocation`: Ubicación por bloques de contenido
+- `CitationsWebSearchResultLocation`: Resultados de búsqueda web
+- `CitationsSearchResultLocation`: Resultados de búsqueda
+
+### Cambios Realizados
+
+**Archivos Modificados:**
+
+1. `backend/src/services/agent/DirectAgentService.ts`
+   - Agregados imports: `TextCitation`, `CitationsDelta` (líneas 35-36)
+   - Actualizada estructura de `contentBlocks` Map para incluir `citations?: TextCitation[]`
+   - Inicialización de array `citations: []` en bloques de texto (línea 414)
+   - Manejo de `citations_delta` en streaming (líneas 625-644)
+   - Uso de citations acumuladas en `content_block_stop` (líneas 657-679)
+   - Persistencia de citations en metadata (líneas 845-878)
+
+### Flujo de Citations
+
+```
+┌─────────────────────────────────────────┐
+│ SDK: content_block_start (text)         │
+│ → Initialize: citations: []             │
+└─────────────────────────────────────────┘
+                    ↓
+┌─────────────────────────────────────────┐
+│ SDK: citations_delta (0..N times)       │
+│ → Push citation to block.citations      │
+│ → Log: [CITATIONS] Citation received    │
+└─────────────────────────────────────────┘
+                    ↓
+┌─────────────────────────────────────────┐
+│ SDK: content_block_stop                 │
+│ → Extract: completedBlock.citations     │
+│ → Push to textBlocks with citations     │
+│ → Log if citations present              │
+└─────────────────────────────────────────┘
+                    ↓
+┌─────────────────────────────────────────┐
+│ Message Complete                        │
+│ → Collect: allCitations = flatMap()     │
+│ → Persist in metadata: {                │
+│     citations: [...],                   │
+│     citations_count: N                  │
+│   }                                     │
+└─────────────────────────────────────────┘
+```
+
+### Test Suite Creada
+
+- `backend/src/__tests__/unit/agent/citations.test.ts`
+- **33 tests** cubriendo:
+  - SDK type definitions (6 tests)
+  - DirectAgentService implementation (13 tests)
+  - Edge cases (5 tests)
+  - Console logging (2 tests)
+  - Metadata integration (2 tests)
+  - SDK compatibility (1 test)
+  - Data structure validation (4 tests)
+
+### Verificación
+
+```bash
+# Build passed
+npm run build  # ✅ Success
+
+# Tests passed
+npm test -- citations.test.ts
+# ✅ 33/33 tests passing
+```
+
+### Metadata Structure
+
+Las citations se guardan en el campo `metadata` de la tabla `messages`:
+
+```json
+{
+  "stop_reason": "end_turn",
+  "citations": [
+    {
+      "type": "char_location",
+      "cited_text": "referenced content",
+      "document_index": 0,
+      "document_title": "Source Document",
+      "start_char_index": 100,
+      "end_char_index": 150,
+      "file_id": "file_123"
+    }
+  ],
+  "citations_count": 1
+}
 
 ---
 

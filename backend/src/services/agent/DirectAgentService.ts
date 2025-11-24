@@ -32,6 +32,8 @@ import type {
   MessageStreamEvent,
   TextBlock,
   ThinkingDelta,
+  TextCitation,
+  CitationsDelta,
 } from '@anthropic-ai/sdk/resources/messages';
 import { env } from '@/config';
 import type { AgentEvent, AgentExecutionResult, CompleteEvent, ErrorEvent } from '@/types';
@@ -380,7 +382,14 @@ export class DirectAgentService {
         let messageId: string | null = null;
 
         // Track content blocks by index
-        const contentBlocks: Map<number, { type: string; data: unknown }> = new Map();
+        // For text blocks: data is string, citations is Array<TextCitation>
+        // For thinking blocks: data is string
+        // For tool_use blocks: data is { id, name, input, inputJson }
+        const contentBlocks: Map<number, {
+          type: string;
+          data: unknown;
+          citations?: TextCitation[];
+        }> = new Map();
 
         // Process stream events
         for await (const event of stream) {
@@ -398,9 +407,11 @@ export class DirectAgentService {
               console.log(`[STREAM] content_block_start: index=${event.index}, type=${event.content_block.type}`);
 
               if (event.content_block.type === 'text') {
+                // Initialize with empty citations array - will be populated by citations_delta events
                 contentBlocks.set(event.index, {
                   type: 'text',
                   data: '', // Will accumulate in deltas
+                  citations: [], // ⭐ Citations will be added via citations_delta
                 });
               } else if (event.content_block.type === 'thinking') {
                 // ⭐ Phase 1F: Extended Thinking block starts
@@ -611,6 +622,25 @@ export class DirectAgentService {
                   // JSON incomplete, will parse on next delta or at content_block_stop
                   console.log(`[STREAM] input_json_delta: index=${event.index}, json_len=${partialJson.length} (incomplete)`);
                 }
+              } else if (event.delta.type === 'citations_delta') {
+                // ⭐ Citations delta - accumulate citations for text blocks
+                const citationsDelta = event.delta as CitationsDelta;
+                const citation = citationsDelta.citation;
+
+                if (block.type === 'text' && block.citations) {
+                  block.citations.push(citation);
+
+                  this.logger.info({
+                    sessionId,
+                    turnCount,
+                    eventIndex: event.index,
+                    citationType: citation.type,
+                    citedText: citation.cited_text?.substring(0, 50) + (citation.cited_text?.length > 50 ? '...' : ''),
+                    totalCitations: block.citations.length,
+                  }, '📚 [CITATIONS] Citation received');
+
+                  console.log(`[STREAM] citations_delta: index=${event.index}, type=${citation.type}, total_citations=${block.citations.length}`);
+                }
               }
               break;
 
@@ -625,14 +655,28 @@ export class DirectAgentService {
 
               if (completedBlock.type === 'text') {
                 const finalText = completedBlock.data as string;
+                const citations = completedBlock.citations || [];
+
                 if (finalText.trim()) {
                   textBlocks.push({
                     type: 'text',
                     text: finalText,
-                    citations: [],
+                    citations: citations, // ⭐ Use accumulated citations from citations_delta events
                   });
+
+                  // Log citations if present
+                  if (citations.length > 0) {
+                    this.logger.info({
+                      sessionId,
+                      turnCount,
+                      eventIndex: event.index,
+                      textLength: finalText.length,
+                      citationsCount: citations.length,
+                      citationTypes: citations.map(c => c.type),
+                    }, '📚 [CITATIONS] Text block completed with citations');
+                  }
                 }
-                console.log(`[STREAM] content_block_stop (text): index=${event.index}, text_len=${finalText.length}`);
+                console.log(`[STREAM] content_block_stop (text): index=${event.index}, text_len=${finalText.length}, citations=${citations.length}`);
               } else if (completedBlock.type === 'thinking') {
                 // ⭐ Phase 1F: Extended Thinking block completed
                 const finalThinkingContent = completedBlock.data as string;
@@ -797,6 +841,10 @@ export class DirectAgentService {
 
           // ✅ STEP 3: Agregar a MessageQueue (reusa sequence)
           const messageType = stopReason === 'tool_use' ? 'thinking' : 'text';
+
+          // ⭐ Collect all citations from text blocks
+          const allCitations = textBlocks.flatMap(block => block.citations || []);
+
           await messageQueue.addMessagePersistence({
             sessionId,
             messageId: messageId,  // ⭐ PHASE 1B: Use Anthropic message ID directly
@@ -805,6 +853,9 @@ export class DirectAgentService {
             content: accumulatedText,
             metadata: {
               stop_reason: stopReason,
+              // ⭐ Citations for compliance/auditing
+              citations: allCitations.length > 0 ? allCitations : undefined,
+              citations_count: allCitations.length > 0 ? allCitations.length : undefined,
             },
             sequenceNumber: completeMessageEvent.sequence_number, // ⭐ REUSA sequence
             eventId: completeMessageEvent.id,
@@ -815,6 +866,16 @@ export class DirectAgentService {
             outputTokens,
             thinkingTokens: thinkingTokens > 0 ? thinkingTokens : undefined,  // ⭐ PHASE 1F
           });
+
+          // Log if citations were persisted
+          if (allCitations.length > 0) {
+            this.logger.info({
+              sessionId,
+              messageId,
+              citationsCount: allCitations.length,
+              citationTypes: [...new Set(allCitations.map(c => c.type))],
+            }, '📚 [CITATIONS] Persisted with message');
+          }
 
           this.logger.info('✅ Complete message queued for persistence', {
             sessionId,

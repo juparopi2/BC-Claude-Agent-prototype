@@ -30,7 +30,11 @@ import * as path from 'path';
 // Prevents "Database not connected" errors by mocking EventStore module
 vi.mock('@/services/events/EventStore', () => ({
   getEventStore: vi.fn(() => ({
-    appendEvent: vi.fn().mockResolvedValue(undefined),
+    appendEvent: vi.fn().mockResolvedValue({
+      id: 'event-' + Math.random().toString(36).substring(7),
+      sequence_number: Math.floor(Math.random() * 1000) + 1,
+      timestamp: new Date(),
+    }),
     getNextSequenceNumber: vi.fn().mockResolvedValue(1), // Atomic sequence via Redis INCR
     getEvents: vi.fn().mockResolvedValue([]),
   })),
@@ -96,7 +100,7 @@ describe('DirectAgentService', () => {
       vi.mocked(mockClient.createChatCompletionStream).mockReturnValueOnce(mockStream);
 
       // Act
-      const result = await service.executeQueryStreaming(prompt, 'session-123', mockOnEvent);
+      const result = await service.executeQueryStreaming(prompt, 'session-123', mockOnEvent, 'user-test-123');
 
       // Assert
       expect(result.success).toBe(true);
@@ -144,7 +148,7 @@ describe('DirectAgentService', () => {
         .mockReturnValueOnce(finalStream);
 
       // Act
-      const result = await service.executeQueryStreaming(prompt, 'session-tool', mockOnEvent);
+      const result = await service.executeQueryStreaming(prompt, 'session-tool', mockOnEvent, 'user-test-123');
 
       // Assert
       expect(result.success).toBe(true);
@@ -183,7 +187,7 @@ describe('DirectAgentService', () => {
         .mockImplementation(() => createToolUseStream('list_all_entities', {}));
 
       // Act
-      const result = await service.executeQueryStreaming(prompt, 'session-max-turns', mockOnEvent);
+      const result = await service.executeQueryStreaming(prompt, 'session-max-turns', mockOnEvent, 'user-test-123');
 
       // Assert
       expect(result.success).toBe(true);
@@ -213,7 +217,7 @@ describe('DirectAgentService', () => {
       vi.mocked(mockApprovalManager.request).mockResolvedValueOnce(true);
 
       // Act
-      const result = await service.executeQueryStreaming(prompt, 'session-approval', mockOnEvent);
+      const result = await service.executeQueryStreaming(prompt, 'session-approval', mockOnEvent, 'user-test-123');
 
       // Assert
       expect(result.success).toBe(true);
@@ -240,7 +244,7 @@ describe('DirectAgentService', () => {
       vi.mocked(mockApprovalManager.request).mockResolvedValueOnce(false);
 
       // Act
-      const result = await service.executeQueryStreaming(prompt, 'session-denied', mockOnEvent);
+      const result = await service.executeQueryStreaming(prompt, 'session-denied', mockOnEvent, 'user-test-123');
 
       // Assert
       expect(result.success).toBe(true);
@@ -278,7 +282,7 @@ describe('DirectAgentService', () => {
         .mockReturnValueOnce(finalStream);
 
       // Act
-      const result = await service.executeQueryStreaming(prompt, 'session-error', mockOnEvent);
+      const result = await service.executeQueryStreaming(prompt, 'session-error', mockOnEvent, 'user-test-123');
 
       // Assert
       expect(result.success).toBe(true); // Service recovers from tool error
@@ -308,7 +312,7 @@ describe('DirectAgentService', () => {
       vi.mocked(mockClient.createChatCompletionStream).mockReturnValueOnce(maxTokensStream);
 
       // Act
-      const result = await service.executeQueryStreaming(prompt, 'session-max-tokens', mockOnEvent);
+      const result = await service.executeQueryStreaming(prompt, 'session-max-tokens', mockOnEvent, 'user-test-123');
 
       // Assert
       expect(result.success).toBe(true);
@@ -333,7 +337,7 @@ describe('DirectAgentService', () => {
       });
 
       // Act
-      const result = await service.executeQueryStreaming(prompt, 'session-api-error', mockOnEvent);
+      const result = await service.executeQueryStreaming(prompt, 'session-api-error', mockOnEvent, 'user-test-123');
 
       // Assert
       expect(result.success).toBe(false);
@@ -358,7 +362,7 @@ describe('DirectAgentService', () => {
       vi.mocked(mockClient.createChatCompletionStream).mockReturnValueOnce(mockStream);
 
       // Act
-      await service.executeQueryStreaming(prompt, 'session-events', mockOnEvent);
+      await service.executeQueryStreaming(prompt, 'session-events', mockOnEvent, 'user-test-123');
 
       // Assert - Verify event sequence (thinking → message_chunk(s) → message → complete)
       const eventCalls = mockOnEvent.mock.calls.map(call => call[0].type);
@@ -424,7 +428,7 @@ describe('DirectAgentService', () => {
         vi.mocked(mockApprovalManager.request).mockResolvedValueOnce(true);
 
         // Act
-        await service.executeQueryStreaming('Test write', 'session-write', mockOnEvent);
+        await service.executeQueryStreaming('Test write', 'session-write', mockOnEvent, 'user-test-123');
 
         // Assert - Approval should be requested
         expect(mockApprovalManager.request).toHaveBeenCalled();
@@ -444,10 +448,98 @@ describe('DirectAgentService', () => {
         .mockReturnValueOnce(finalStream);
 
       // Act
-      await service.executeQueryStreaming('List entities', 'session-read', mockOnEvent);
+      await service.executeQueryStreaming('List entities', 'session-read', mockOnEvent, 'user-test-123');
 
       // Assert - Approval should NOT be requested
       expect(mockApprovalManager.request).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Prompt Caching', () => {
+    it('should use string system prompt when ENABLE_PROMPT_CACHING=false', async () => {
+      // Arrange
+      const originalEnv = process.env.ENABLE_PROMPT_CACHING;
+      process.env.ENABLE_PROMPT_CACHING = 'false';
+
+      const prompt = 'Test prompt';
+      const mockStream = createSimpleTextStream('Response', 'end_turn');
+      vi.mocked(mockClient.createChatCompletionStream).mockReturnValueOnce(mockStream);
+
+      // Act
+      await service.executeQueryStreaming(prompt, 'session-test', mockOnEvent, 'user-test-123');
+
+      // Assert - createChatCompletionStream should be called with string system
+      expect(mockClient.createChatCompletionStream).toHaveBeenCalledWith(
+        expect.objectContaining({
+          system: expect.any(String),
+        })
+      );
+
+      // Cleanup
+      if (originalEnv) {
+        process.env.ENABLE_PROMPT_CACHING = originalEnv;
+      } else {
+        delete process.env.ENABLE_PROMPT_CACHING;
+      }
+    });
+
+    it('should use array with cache_control when ENABLE_PROMPT_CACHING=true', async () => {
+      // Arrange
+      const originalEnv = process.env.ENABLE_PROMPT_CACHING;
+      process.env.ENABLE_PROMPT_CACHING = 'true';
+
+      const prompt = 'Test prompt';
+      const mockStream = createSimpleTextStream('Response', 'end_turn');
+      vi.mocked(mockClient.createChatCompletionStream).mockReturnValueOnce(mockStream);
+
+      // Act
+      await service.executeQueryStreaming(prompt, 'session-test', mockOnEvent, 'user-test-123');
+
+      // Assert - createChatCompletionStream should be called with array system with cache_control
+      const call = vi.mocked(mockClient.createChatCompletionStream).mock.calls[0]?.[0];
+      expect(call?.system).toBeInstanceOf(Array);
+      if (Array.isArray(call?.system)) {
+        expect(call.system[0]).toEqual(
+          expect.objectContaining({
+            type: 'text',
+            text: expect.any(String),
+            cache_control: { type: 'ephemeral' },
+          })
+        );
+      }
+
+      // Cleanup
+      if (originalEnv) {
+        process.env.ENABLE_PROMPT_CACHING = originalEnv;
+      } else {
+        delete process.env.ENABLE_PROMPT_CACHING;
+      }
+    });
+
+    it('should include cache_control with ephemeral type', async () => {
+      // Arrange
+      const originalEnv = process.env.ENABLE_PROMPT_CACHING;
+      process.env.ENABLE_PROMPT_CACHING = 'true';
+
+      const prompt = 'Test prompt';
+      const mockStream = createSimpleTextStream('Response', 'end_turn');
+      vi.mocked(mockClient.createChatCompletionStream).mockReturnValueOnce(mockStream);
+
+      // Act
+      await service.executeQueryStreaming(prompt, 'session-test', mockOnEvent, 'user-test-123');
+
+      // Assert - cache_control should be ephemeral type
+      const call = vi.mocked(mockClient.createChatCompletionStream).mock.calls[0]?.[0];
+      if (Array.isArray(call?.system)) {
+        expect(call.system[0]?.cache_control).toEqual({ type: 'ephemeral' });
+      }
+
+      // Cleanup
+      if (originalEnv) {
+        process.env.ENABLE_PROMPT_CACHING = originalEnv;
+      } else {
+        delete process.env.ENABLE_PROMPT_CACHING;
+      }
     });
   });
 });

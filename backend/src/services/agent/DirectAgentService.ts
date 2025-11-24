@@ -36,7 +36,7 @@ import { env } from '@/config';
 import type { AgentEvent, AgentExecutionResult, CompleteEvent, ErrorEvent } from '@/types';
 import type { ApprovalManager } from '../approval/ApprovalManager';
 import type { TodoManager } from '../todo/TodoManager';
-import type { IAnthropicClient } from './IAnthropicClient';
+import type { IAnthropicClient, SystemPromptBlock } from './IAnthropicClient';
 import type { Tool } from '@anthropic-ai/sdk/resources/messages';  // ⭐ Use native SDK type
 import { AnthropicClient } from './AnthropicClient';
 import { randomUUID } from 'crypto';
@@ -311,7 +311,7 @@ export class DirectAgentService {
             max_tokens: 4096,
             messages: conversationHistory,
             tools: tools,
-            system: this.getSystemPrompt(),
+            system: this.getSystemPromptWithCaching(),
           });
 
           this.logger.info({ sessionId, turnCount }, '✅ Stream created successfully');
@@ -1668,6 +1668,34 @@ Available tools:
 - get_endpoint_documentation: Get detailed API documentation
 
 Always use tools to provide accurate, up-to-date information from Business Central.`;
+  }
+
+  /**
+   * Get System Prompt with optional Prompt Caching
+   *
+   * When ENABLE_PROMPT_CACHING is true, returns the system prompt as an array
+   * with cache_control to enable Anthropic's prompt caching feature.
+   * This reduces latency by ~90% and cost by ~90% for cached prompts.
+   *
+   * @returns System prompt as string (no caching) or array with cache_control (caching enabled)
+   */
+  private getSystemPromptWithCaching(): string | SystemPromptBlock[] {
+    const promptText = this.getSystemPrompt();
+
+    if (!env.ENABLE_PROMPT_CACHING) {
+      return promptText;
+    }
+
+    // Return array with cache_control to enable prompt caching
+    return [
+      {
+        type: 'text',
+        text: promptText,
+        cache_control: {
+          type: 'ephemeral',
+        },
+      },
+    ];
   }
 }
 

@@ -32,6 +32,17 @@ export interface AnthropicClientConfig {
 }
 
 /**
+ * System prompt block with optional cache control for prompt caching
+ */
+export interface SystemPromptBlock {
+  type: 'text';
+  text: string;
+  cache_control?: {
+    type: 'ephemeral';
+  };
+}
+
+/**
  * Request parameters for chat completion
  */
 export interface ChatCompletionRequest {
@@ -39,7 +50,7 @@ export interface ChatCompletionRequest {
   max_tokens: number;
   messages: MessageParam[];
   tools?: Tool[];
-  system?: string;
+  system?: string | SystemPromptBlock[];
 }
 
 /**

@@ -60,6 +60,15 @@
 │  ├── Image Processing                     ❌ NO IMPLEMENTADO                │
 │  └── Multi-tenant Folder System           ❌ NO IMPLEMENTADO                │
 │                                                                             │
+│  SISTEMA DE TODOS (PLANIFICACIÓN)                                           │
+│  ├── TodoManager Service                  ✅ IMPLEMENTADO (100%)            │
+│  ├── Tabla 'todos' en BD                  ✅ EXISTE (Schema completo)       │
+│  ├── Endpoint GET /api/todos              ✅ IMPLEMENTADO (solo lectura)    │
+│  ├── Integración en Agent Loop            ❌ NO CONECTADO (código muerto)   │
+│  ├── Tool TodoWrite para Claude           ❌ NO EXISTE                      │
+│  ├── WebSocket events (todo:*)            ❌ NO IMPLEMENTADO                │
+│  └── Frontend UI de progreso              ❌ NO IMPLEMENTADO                │
+│                                                                             │
 │  TESTING                                                                    │
 │  ├── Unit Tests (Vitest)                  ✅ 27 archivos (~14% coverage)    │
 │  ├── Integration Tests                    ✅ 7 archivos                      │
@@ -85,8 +94,12 @@
 | WebSocket Streaming | 100% | CRÍTICA |
 | Sessions & Messages | 95% | ALTA |
 | Human-in-the-Loop | 100% | MEDIA |
+| **Sistema de ToDos** | **15%** | **CRÍTICA (Feature UX)** |
 | File Management | 10% | BAJA (futuro) |
 | Testing Infrastructure | 40% | CRÍTICA |
+
+> **NOTA IMPORTANTE**: El Sistema de ToDos tiene el servicio implementado (100%) pero NO está conectado al Agent Loop.
+> El 15% refleja: servicio (100%) + BD (100%) + endpoint lectura (100%) pero integración (0%) + tool (0%) + websocket (0%) + frontend (0%).
 
 ---
 
@@ -651,7 +664,7 @@ if (!ownershipResult.isOwner) {
 **Problema**: Cobertura actual ~14%, objetivo 70%
 
 **Servicios Sin Tests**:
-- `TodoManager` (0%)
+- `TodoManager` (0%) - **⚠️ CÓDIGO MUERTO - Ver GAP #8**
 - `AnthropicClient` (0%)
 - `tool-definitions.ts` (0%)
 - `BCValidator` (0%)
@@ -667,6 +680,453 @@ if (!ownershipResult.isOwner) {
 - [ ] 70% cobertura de líneas
 - [ ] Tests E2E para flujos críticos
 - [ ] Tests de integración para todas las rutas
+
+---
+
+### GAP #8: Sistema de ToDos NO Integrado en Agent Loop (CRÍTICO - CÓDIGO MUERTO)
+
+> **Estado**: ❌ **NO IMPLEMENTADO** - Código existe pero no está conectado
+>
+> **Fecha de Diagnóstico**: 2025-11-25
+>
+> **Severidad**: ALTA - Feature crítico para UX no funcional
+
+#### Descripción del Problema
+
+El sistema de ToDos (planificación de tareas del agente) está **completamente implementado como servicio** pero **nunca se ejecuta** durante el flujo normal del agente. Es código muerto que no aporta funcionalidad al usuario.
+
+**Lo que el usuario espera**:
+1. Enviar un mensaje al agente
+2. El agente analiza el problema y crea un plan de tareas
+3. El frontend muestra una lista de ToDos con progreso
+4. Cada tarea se marca como "en progreso" → "completada"
+5. El usuario ve el porcentaje de completitud en tiempo real
+6. La respuesta final asegura que todos los ToDos fueron completados
+
+**Lo que realmente sucede**:
+1. Usuario envía mensaje
+2. Agente responde directamente sin planificación
+3. No hay ToDos visibles
+4. No hay tracking de progreso
+5. El usuario no sabe qué está haciendo el agente
+
+#### Análisis Técnico Detallado
+
+##### 1. DirectAgentService - TodoManager Ignorado
+
+**Archivo**: `backend/src/services/agent/DirectAgentService.ts`
+
+```typescript
+// Líneas 146-164: El constructor acepta todoManager pero lo IGNORA
+constructor(
+  approvalManager?: ApprovalManager,
+  _todoManager?: TodoManager,  // ← UNDERSCORE = PARÁMETRO NO USADO
+  client?: IAnthropicClient
+) {
+  this.client = client || new AnthropicClient({...});
+  this.approvalManager = approvalManager;
+
+  // ❌ FALTA: this.todoManager = _todoManager;
+  // El parámetro se recibe pero NUNCA se almacena
+}
+```
+
+**Resultado**: TodoManager es pasado desde `server.ts` pero DirectAgentService lo descarta.
+
+##### 2. MCP_TOOLS - No hay TodoWrite Tool
+
+**Archivo**: `backend/src/services/agent/tool-definitions.ts`
+
+```typescript
+// Las 7 herramientas actuales (líneas 18-177):
+export const MCP_TOOLS = [
+  { name: 'list_all_entities', ... },
+  { name: 'search_entity_operations', ... },
+  { name: 'get_entity_details', ... },
+  { name: 'get_entity_relationships', ... },
+  { name: 'validate_workflow_structure', ... },
+  { name: 'build_knowledge_base_workflow', ... },
+  { name: 'get_endpoint_documentation', ... },
+];
+
+// ❌ NO EXISTE: { name: 'TodoWrite', ... }
+```
+
+**Resultado**: Claude no puede crear/actualizar ToDos porque la herramienta no existe.
+
+##### 3. ChatMessageHandler - Solo Logging
+
+**Archivo**: `backend/src/services/websocket/ChatMessageHandler.ts`
+
+```typescript
+// Líneas 522-528: Solo detecta y loguea, NO sincroniza
+if (event.toolName === TOOL_NAMES.TODO_WRITE && event.args?.todos) {
+  this.logger.debug('TodoWrite tool detected', {
+    sessionId,
+    userId,
+    todoCount: Array.isArray(event.args.todos) ? event.args.todos.length : 0,
+  });
+  // ❌ FALTA: await this.todoManager.syncTodosFromSDK(sessionId, event.args.todos);
+}
+```
+
+**Resultado**: Incluso si Claude usara TodoWrite, los ToDos no se guardarían.
+
+##### 4. TodoManager - Implementación Completa pero Sin Usar
+
+**Archivo**: `backend/src/services/todo/TodoManager.ts`
+
+El servicio está **100% implementado** y funcional:
+
+| Método | Implementado | Llamado desde Agent Loop |
+|--------|--------------|--------------------------|
+| `syncTodosFromSDK()` | ✅ Sí | ❌ Nunca |
+| `createManualTodo()` | ✅ Sí | ❌ Nunca |
+| `markInProgress()` | ✅ Sí | ❌ Nunca |
+| `markCompleted()` | ✅ Sí | ❌ Nunca |
+| `getTodosBySession()` | ✅ Sí | ✅ Solo lectura (endpoint) |
+
+##### 5. Endpoint REST - Solo Lectura
+
+**Archivo**: `backend/src/server.ts` (líneas 456-480)
+
+```typescript
+// El único endpoint de ToDos es GET (lectura)
+app.get('/api/todos/session/:sessionId', authenticateMicrosoft, async (req, res) => {
+  const todos = await todoManager.getTodosBySession(sessionId);
+  res.json({ todos });
+});
+
+// ❌ NO EXISTEN:
+// - POST /api/todos (crear)
+// - PATCH /api/todos/:id (actualizar estado)
+// - WebSocket events para actualizar progreso en tiempo real
+```
+
+#### Diagrama: Flujo Actual vs Flujo Esperado
+
+```
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                           FLUJO ACTUAL (INCOMPLETO)                          ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║                                                                              ║
+║  [Usuario]                                            [Backend]              ║
+║      │                                                    │                  ║
+║      │─── "Crea un cliente y una orden de venta" ───────► │                  ║
+║      │                                                    │                  ║
+║      │                                    DirectAgentService                 ║
+║      │                                    executeQueryStreaming()            ║
+║      │                                           │                           ║
+║      │                                           ▼                           ║
+║      │                               ┌─────────────────────┐                 ║
+║      │                               │ Claude responde     │                 ║
+║      │                               │ directamente SIN    │                 ║
+║      │                               │ planificación       │                 ║
+║      │                               └─────────────────────┘                 ║
+║      │                                           │                           ║
+║      │◄─── Respuesta completa sin progreso ──────┘                           ║
+║      │                                                                       ║
+║      │     ❌ Usuario NO VE:                                                 ║
+║      │        - Lista de tareas                                              ║
+║      │        - Progreso de cada tarea                                       ║
+║      │        - Porcentaje de completitud                                    ║
+║      │                                                                       ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                           FLUJO ESPERADO (A IMPLEMENTAR)                      ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║                                                                              ║
+║  [Usuario]                        [Frontend]                 [Backend]       ║
+║      │                                │                          │           ║
+║      │─── "Crea un cliente y        ──┼─────────────────────────►│           ║
+║      │     una orden de venta"        │                          │           ║
+║      │                                │                          │           ║
+║      │                                │           DirectAgentService         ║
+║      │                                │                  │                   ║
+║      │                                │                  ▼                   ║
+║      │                                │        ┌─────────────────┐           ║
+║      │                                │        │ FASE 1: PLANIF. │           ║
+║      │                                │        │ Claude analiza  │           ║
+║      │                                │        │ y crea plan     │           ║
+║      │                                │        └────────┬────────┘           ║
+║      │                                │                 │                    ║
+║      │                                │◄── todo:created ┘                    ║
+║      │                                │    [                                 ║
+║      │  ┌─────────────────────┐       │      { "Crear cliente", pending },   ║
+║      │  │ Panel de Progreso   │◄──────│      { "Crear orden", pending }      ║
+║      │  │                     │       │    ]                                 ║
+║      │  │ ☐ Crear cliente     │       │                                      ║
+║      │  │ ☐ Crear orden venta │       │                                      ║
+║      │  │ ─────────────────── │       │                                      ║
+║      │  │ Progreso: 0%        │       │                                      ║
+║      │  └─────────────────────┘       │                                      ║
+║      │                                │                  │                   ║
+║      │                                │                  ▼                   ║
+║      │                                │        ┌─────────────────┐           ║
+║      │                                │        │ FASE 2: EJECUC. │           ║
+║      │                                │        │ Ejecutar tarea 1│           ║
+║      │                                │        └────────┬────────┘           ║
+║      │                                │                 │                    ║
+║      │                                │◄── todo:updated ┘                    ║
+║      │  ┌─────────────────────┐       │    { todoId, status: 'in_progress' } ║
+║      │  │ Panel de Progreso   │◄──────│                                      ║
+║      │  │                     │       │                                      ║
+║      │  │ 🔄 Crear cliente    │       │                                      ║
+║      │  │ ☐ Crear orden venta │       │                                      ║
+║      │  │ ─────────────────── │       │                                      ║
+║      │  │ Progreso: 0%        │       │                                      ║
+║      │  └─────────────────────┘       │                                      ║
+║      │                                │                  │                   ║
+║      │                                │                  ▼                   ║
+║      │                                │        ┌─────────────────┐           ║
+║      │                                │        │ Tarea 1 completa│           ║
+║      │                                │        └────────┬────────┘           ║
+║      │                                │                 │                    ║
+║      │                                │◄── todo:completed                    ║
+║      │  ┌─────────────────────┐       │    { todoId, status: 'completed' }   ║
+║      │  │ Panel de Progreso   │◄──────│                                      ║
+║      │  │                     │       │                                      ║
+║      │  │ ✅ Crear cliente    │       │                                      ║
+║      │  │ 🔄 Crear orden venta│       │                                      ║
+║      │  │ ─────────────────── │       │                                      ║
+║      │  │ Progreso: 50%       │       │                                      ║
+║      │  └─────────────────────┘       │                                      ║
+║      │                                │                  │                   ║
+║      │            ... continúa hasta completar todas las tareas ...          ║
+║      │                                │                  │                   ║
+║      │  ┌─────────────────────┐       │                  │                   ║
+║      │  │ Panel de Progreso   │◄──────│◄── todo:completed (última)           ║
+║      │  │                     │       │                                      ║
+║      │  │ ✅ Crear cliente    │       │                                      ║
+║      │  │ ✅ Crear orden venta│       │                                      ║
+║      │  │ ─────────────────── │       │                                      ║
+║      │  │ Progreso: 100% ✓    │       │                                      ║
+║      │  └─────────────────────┘       │                                      ║
+║      │                                │                  │                   ║
+║      │◄─── Respuesta final con resumen de lo completado ─┘                   ║
+║                                                                              ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+```
+
+#### Plan de Implementación Detallado
+
+##### FASE 1: Backend - Integración del Agent Loop (Prioridad: CRÍTICA)
+
+| Paso | Archivo | Cambios Requeridos |
+|------|---------|-------------------|
+| 1.1 | `DirectAgentService.ts` | Almacenar `todoManager` como propiedad de clase |
+| 1.2 | `DirectAgentService.ts` | Agregar fase de planificación antes de ejecución |
+| 1.3 | `DirectAgentService.ts` | Llamar `markInProgress()` al iniciar cada tarea |
+| 1.4 | `DirectAgentService.ts` | Llamar `markCompleted()` al terminar cada tarea |
+| 1.5 | `tool-definitions.ts` | Agregar herramienta `TodoWrite` con schema |
+| 1.6 | `ChatMessageHandler.ts` | Sincronizar ToDos cuando Claude usa TodoWrite |
+
+**Código de ejemplo para DirectAgentService:**
+
+```typescript
+// 1.1 - Almacenar todoManager
+private todoManager: TodoManager | undefined;
+
+constructor(
+  approvalManager?: ApprovalManager,
+  todoManager?: TodoManager,  // Sin underscore
+  client?: IAnthropicClient
+) {
+  this.todoManager = todoManager;  // ← NUEVO
+  // ...
+}
+
+// 1.2 - Fase de planificación
+async executeQueryStreaming(options: ExecuteOptions): Promise<AgentResult> {
+  const { sessionId, userId, message } = options;
+
+  // FASE 1: Planificación (nuevo)
+  if (this.todoManager && this.shouldPlan(message)) {
+    const plan = await this.createPlan(sessionId, message);
+    await this.todoManager.syncTodosFromSDK(sessionId, plan.todos);
+    // Emitir evento de plan creado
+  }
+
+  // FASE 2: Ejecución (existente + tracking)
+  // ...
+}
+
+// 1.3 y 1.4 - Tracking de progreso
+private async executeWithTracking(
+  sessionId: string,
+  todoId: string,
+  task: () => Promise<unknown>
+): Promise<unknown> {
+  await this.todoManager?.markInProgress(sessionId, todoId);
+  try {
+    const result = await task();
+    await this.todoManager?.markCompleted(sessionId, todoId, true);
+    return result;
+  } catch (error) {
+    await this.todoManager?.markCompleted(sessionId, todoId, false);
+    throw error;
+  }
+}
+```
+
+##### FASE 2: Backend - Nuevos Endpoints y WebSocket Events
+
+| Endpoint/Event | Tipo | Descripción |
+|----------------|------|-------------|
+| `POST /api/sessions/:id/todos` | REST | Crear ToDo manual |
+| `PATCH /api/todos/:id` | REST | Actualizar estado de ToDo |
+| `todo:created` | WebSocket | Notificar nuevos ToDos |
+| `todo:updated` | WebSocket | Notificar cambio de estado |
+| `todo:completed` | WebSocket | Notificar tarea completada |
+| `todo:progress` | WebSocket | Notificar porcentaje global |
+
+**Contratos WebSocket:**
+
+```typescript
+// Evento: todo:created
+interface TodoCreatedEvent {
+  type: 'todo:created';
+  sessionId: string;
+  todos: Array<{
+    id: string;
+    content: string;       // "Crear cliente"
+    activeForm: string;    // "Creando cliente"
+    status: 'pending';
+    order: number;
+  }>;
+  totalCount: number;
+}
+
+// Evento: todo:updated
+interface TodoUpdatedEvent {
+  type: 'todo:updated';
+  sessionId: string;
+  todoId: string;
+  status: 'pending' | 'in_progress' | 'completed' | 'failed';
+  progress: {
+    completed: number;     // 1
+    total: number;         // 3
+    percentage: number;    // 33.33
+  };
+}
+
+// Evento: todo:progress (resumen)
+interface TodoProgressEvent {
+  type: 'todo:progress';
+  sessionId: string;
+  progress: {
+    completed: number;
+    failed: number;
+    inProgress: number;
+    pending: number;
+    total: number;
+    percentage: number;
+  };
+}
+```
+
+##### FASE 3: Frontend - Componentes de UI
+
+| Componente | Ubicación | Funcionalidad |
+|------------|-----------|---------------|
+| `<TodoPanel>` | Sidebar o panel flotante | Lista de tareas con estados |
+| `<TodoItem>` | Dentro de TodoPanel | Tarea individual con icono de estado |
+| `<ProgressBar>` | Header o footer del chat | Barra de progreso global |
+| `<TodoSkeleton>` | Loading state | Placeholder mientras se crea plan |
+
+**Mockup de UI:**
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  BC Claude Agent                              [User] [⚙️]   │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  ┌─────────────────────┐  ┌───────────────────────────────┐ │
+│  │ Sessions            │  │ Chat                          │ │
+│  │ ─────────────────── │  │                               │ │
+│  │ > Sales Report      │  │ [User]: Crea un cliente y     │ │
+│  │   Customer Query    │  │         una orden de venta    │ │
+│  │   Inventory Check   │  │                               │ │
+│  │                     │  │ [Agent]: Entendido, voy a     │ │
+│  │                     │  │ ejecutar las siguientes       │ │
+│  │                     │  │ tareas:                       │ │
+│  │                     │  │                               │ │
+│  ├─────────────────────┤  │ ┌───────────────────────────┐ │ │
+│  │ 📋 Tareas Actuales  │  │ │ 📋 Plan de Ejecución      │ │ │
+│  │ ─────────────────── │  │ │                           │ │ │
+│  │ ✅ Crear cliente    │  │ │ ✅ Crear cliente          │ │ │
+│  │    "Acme Corp"      │  │ │    Cliente ID: C-00123    │ │ │
+│  │                     │  │ │                           │ │ │
+│  │ 🔄 Crear orden      │  │ │ 🔄 Crear orden de venta   │ │ │
+│  │    (en progreso...) │  │ │    Procesando...          │ │ │
+│  │                     │  │ │                           │ │ │
+│  │ ─────────────────── │  │ │ ────────────────────────  │ │ │
+│  │ Progreso: 50%       │  │ │ Progreso: ████████░░ 50%  │ │ │
+│  │ ████████░░░░░░░░░░░ │  │ └───────────────────────────┘ │ │
+│  │                     │  │                               │ │
+│  └─────────────────────┘  │ [Escribir mensaje...]    [📎] │ │
+│                           └───────────────────────────────┘ │
+│                                                             │
+│  ────────────────── Progreso Global: 50% ─────────────────  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+##### FASE 4: Testing
+
+| Test | Tipo | Descripción |
+|------|------|-------------|
+| `TodoManager.integration.test.ts` | Integration | Flujo completo con DB real |
+| `todo-progress.e2e.spec.ts` | E2E | Usuario ve progreso en UI |
+| `todo-websocket.test.ts` | Unit | Eventos WebSocket correctos |
+
+#### Dependencias y Cambios de BD
+
+**No se requieren cambios de BD** - la tabla `todos` ya existe con el schema correcto:
+
+```sql
+-- Tabla existente (ya implementada)
+CREATE TABLE todos (
+  id UNIQUEIDENTIFIER PRIMARY KEY,
+  session_id UNIQUEIDENTIFIER REFERENCES sessions(id),
+  content NVARCHAR(MAX),
+  activeForm NVARCHAR(MAX),
+  status NVARCHAR(20),  -- 'pending' | 'in_progress' | 'completed' | 'failed'
+  [order] INT,
+  created_at DATETIME2,
+  started_at DATETIME2 NULL,
+  completed_at DATETIME2 NULL
+);
+```
+
+#### Estimación de Esfuerzo
+
+| Fase | Complejidad | Archivos a Modificar |
+|------|-------------|----------------------|
+| FASE 1: Backend Integration | ALTA | 4 archivos |
+| FASE 2: Endpoints + WebSocket | MEDIA | 2 archivos |
+| FASE 3: Frontend UI | ALTA | 4+ componentes nuevos |
+| FASE 4: Testing | MEDIA | 3 archivos de test |
+
+**Total estimado**: Feature completo de mediana-alta complejidad.
+
+#### Success Criteria
+
+- [ ] Usuario envía mensaje y ve plan de tareas
+- [ ] Cada tarea se marca como "en progreso" cuando inicia
+- [ ] Cada tarea se marca como "completada" o "fallida"
+- [ ] Frontend muestra progreso en tiempo real (WebSocket)
+- [ ] Porcentaje de completitud se actualiza automáticamente
+- [ ] Al refrescar página, se recupera estado de ToDos
+- [ ] Tests de integración y E2E pasan
+- [ ] Documentación de contrato frontend actualizada
+
+#### Prioridad y Recomendación
+
+**Prioridad**: ALTA - Esta es una funcionalidad core de UX que diferencia un "chatbot simple" de un "agente inteligente".
+
+**Recomendación**: Implementar ANTES de tests de TodoManager. Los tests actuales serían para código muerto. Primero integrar, luego testear.
 
 ---
 
@@ -1523,25 +1983,71 @@ class MessageBuffer {
 | F4-002 | Fix: Approval events unificados | GAP #3 | ✅ **COMPLETED** (2025-11-25) | Eventos con sequenceNumber + resilience fixes |
 | F4-003 | Audit: Multi-tenant | Verificar aislamiento | ✅ **COMPLETADO** (2025-11-25) | Un usuario no ve datos de otro |
 
-### FASE 5: Funcionalidades Nuevas (Prioridad: BAJA - Futuro)
+### FASE 5: Funcionalidades Nuevas (Prioridad: VARIABLE)
 
-| ID | Tarea | Descripción | Success Criteria |
-|----|-------|-------------|------------------|
-| F5-001 | Implementar FileStorageService | GAP #4 | Upload/download funciona |
-| F5-002 | Implementar selector de ambiente BC | GAP #5 | Usuario puede cambiar ambiente |
-| F5-003 | Implementar preferencias de usuario | GAP #6 | Preferencias se persisten |
-| F5-004 | Implementar sistema de carpetas | Multi-tenant folders | Carpetas por usuario/sesión |
+| ID | Tarea | Descripción | Prioridad | Success Criteria |
+|----|-------|-------------|-----------|------------------|
+| **F5-005** | **Integrar Sistema de ToDos en Agent Loop** | **GAP #8** | **CRÍTICA** | **Progreso visible en UI** |
+| F5-001 | Implementar FileStorageService | GAP #4 | BAJA | Upload/download funciona |
+| F5-002 | Implementar selector de ambiente BC | GAP #5 | BAJA | Usuario puede cambiar ambiente |
+| F5-003 | Implementar preferencias de usuario | GAP #6 | BAJA | Preferencias se persisten |
+| F5-004 | Implementar sistema de carpetas | Multi-tenant folders | BAJA | Carpetas por usuario/sesión |
+
+#### F5-005: Desglose de Sub-tareas (GAP #8)
+
+| Sub-ID | Tarea | Componente | Estado |
+|--------|-------|------------|--------|
+| F5-005.1 | Almacenar todoManager en DirectAgentService | Backend | ❌ Pendiente |
+| F5-005.2 | Agregar herramienta TodoWrite a MCP_TOOLS | Backend | ❌ Pendiente |
+| F5-005.3 | Implementar fase de planificación en agent loop | Backend | ❌ Pendiente |
+| F5-005.4 | Llamar markInProgress/markCompleted durante ejecución | Backend | ❌ Pendiente |
+| F5-005.5 | Sincronizar ToDos en ChatMessageHandler | Backend | ❌ Pendiente |
+| F5-005.6 | Agregar WebSocket events (todo:created, todo:updated) | Backend | ❌ Pendiente |
+| F5-005.7 | Agregar endpoints POST/PATCH para ToDos | Backend | ❌ Pendiente |
+| F5-005.8 | Componente `<TodoPanel>` | Frontend | ❌ Pendiente |
+| F5-005.9 | Componente `<ProgressBar>` | Frontend | ❌ Pendiente |
+| F5-005.10 | Integrar panel en layout principal | Frontend | ❌ Pendiente |
+| F5-005.11 | Tests de integración | Testing | ❌ Pendiente |
+| F5-005.12 | Tests E2E de progreso | Testing | ❌ Pendiente |
 
 ### FASE 6: Cobertura de Tests (Prioridad: MEDIA)
 
-| ID | Tarea | Descripción | Success Criteria |
-|----|-------|-------------|------------------|
-| F6-001 | Tests: TodoManager | Unit tests | 70% cobertura |
-| F6-002 | Tests: AnthropicClient | Unit tests | 70% cobertura |
-| F6-003 | Tests: tool-definitions | Unit tests | 70% cobertura |
-| F6-004 | Tests: Middleware | Unit tests | 70% cobertura |
-| F6-005 | Tests: Routes | Integration tests | Todos los endpoints |
-| F6-006 | Alcanzar 70% global | Completar gaps | npm run test:coverage ≥ 70% |
+| ID | Tarea | Descripción | Estado | Success Criteria |
+|----|-------|-------------|--------|------------------|
+| F6-001 | Tests: TodoManager | Unit tests | ⚠️ BLOQUEADO (código muerto - GAP #8) | 70% cobertura |
+| F6-002 | Tests: AnthropicClient | Unit tests | PENDIENTE | 70% cobertura |
+| **F6-003** | **Tests: tool-definitions** | **Unit tests** | **✅ IN TESTING** | **100% cobertura** |
+| F6-004 | Tests: Middleware | Unit tests | PENDIENTE | 70% cobertura |
+| F6-005 | Tests: Routes | Integration tests | PENDIENTE | Todos los endpoints |
+| F6-006 | Alcanzar 70% global | Completar gaps | PENDIENTE | npm run test:coverage ≥ 70% |
+
+#### F6-003: Detalle de Implementación (IN TESTING)
+
+> **Estado**: ✅ **IN TESTING** (2025-11-25)
+>
+> **QA Report**: Ver `docs/qa-reports/QA-REPORT-F6-003.md`
+
+**Cambios Realizados**:
+
+| Archivo | Acción | Justificación |
+|---------|--------|---------------|
+| `tool-schemas.ts` | **ELIMINADO** | Código muerto, desincronizado, nunca se importaba |
+| `tool-definitions.test.ts` | **CREADO** | 44 tests unitarios, 100% cobertura |
+
+**Resultados**:
+- 44 tests unitarios implementados
+- 100% cobertura de `tool-definitions.ts`
+- 563 tests totales del proyecto pasan
+- 0 errores de lint (15 warnings preexistentes)
+- Build compila exitosamente
+
+**Tests Implementados por Categoría**:
+1. MCP_TOOLS Structure (7 tests)
+2. Input Schema Validation (12 tests)
+3. Synchronization with TOOL_NAMES (4 tests)
+4. Helper Functions (12 tests)
+5. Edge Cases and Type Safety (5 tests)
+6. Anthropic SDK Compatibility (4 tests)
 
 ---
 
@@ -1687,5 +2193,18 @@ npm run test:e2e:debug
 
 *Documento generado automáticamente por diagnóstico de Claude*
 *Fecha de creación: 2025-11-24*
-*Última actualización: 2025-11-25 (F4-002 COMPLETED con QA Master Review Fixes)*
-*Versión: 1.5*
+*Última actualización: 2025-11-25 (F6-003 IN TESTING - Tests tool-definitions)*
+*Versión: 1.7*
+
+---
+
+## CHANGELOG
+
+| Versión | Fecha | Cambios |
+|---------|-------|---------|
+| 1.7 | 2025-11-25 | **F6-003 IN TESTING**: Tests para tool-definitions.ts. 44 tests unitarios, 100% cobertura. Eliminado `tool-schemas.ts` (código muerto desincronizado). |
+| 1.6 | 2025-11-25 | Agregado GAP #8: Sistema de ToDos no integrado en Agent Loop (código muerto). Incluye análisis técnico completo, diagramas de flujo esperado, plan de implementación por fases, contratos WebSocket, mockups de UI, y desglose de 12 sub-tareas. |
+| 1.5 | 2025-11-25 | F4-002 COMPLETED con QA Master Review Fixes |
+| 1.4 | 2025-11-25 | F4-003 Multi-Tenant Audit completado |
+| 1.3 | 2025-11-25 | F4-001 Ownership validation completado |
+| 1.0 | 2025-11-24 | Documento inicial creado |

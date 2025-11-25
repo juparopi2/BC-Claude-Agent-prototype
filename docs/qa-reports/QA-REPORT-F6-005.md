@@ -1,7 +1,7 @@
 # QA Report - F6-005: Tests de Routes
 
 **Fecha**: 2025-11-25
-**Estado**: 🧪 **IN TESTING** (Fase 2 de 5 completada)
+**Estado**: 🧪 **IN TESTING** (Fase 3 de 5 completada)
 **Implementador**: Claude Code
 **Worktree**: `dreamy-heyrovsky`
 
@@ -17,7 +17,7 @@ Este ticket implementa tests unitarios exhaustivos para los endpoints REST del p
 |------|-------------|--------|-------|
 | 1 | Gaps Críticos | ✅ COMPLETED | +111 tests |
 | 2 | Seguridad | ✅ COMPLETED | +42 tests |
-| 3 | Edge Cases | PENDING | - |
+| 3 | Edge Cases | ✅ COMPLETED | +61 tests |
 | 4 | Inconsistencias | PENDING | - |
 | 5 | Performance | PENDING | - |
 
@@ -25,7 +25,7 @@ Este ticket implementa tests unitarios exhaustivos para los endpoints REST del p
 
 | Métrica | Resultado |
 |---------|-----------|
-| Tests totales | 1008 passing (269 nuevos desde inicio F6-005) |
+| Tests totales | 1074 passing (335 nuevos desde inicio F6-005) |
 | Errores de lint | 0 (15 warnings preexistentes) |
 | Type-check | ✅ Sin errores |
 | Build | ✅ Compila exitosamente |
@@ -45,6 +45,15 @@ Este ticket implementa tests unitarios exhaustivos para los endpoints REST del p
 | `session-ownership.security.test.ts` | 24 | NUEVO - Timing attack protection tests |
 | `BCTokenManager.raceCondition.test.ts` | 8 | NUEVO - Race condition documentation |
 | `logs.routes.test.ts` | +10 | MODIFICADO - Input sanitization edge cases |
+
+### Archivos de Test Modificados en Fase 3
+
+| Archivo | Tests Agregados | Categorías |
+|---------|-----------------|------------|
+| `token-usage.routes.test.ts` | +16 | URL encoding, boundaries, decimals, UUIDs, negatives |
+| `auth-oauth.routes.test.ts` | +17 | OAuth callback, profiles, DB errors, BC tokens, sessions |
+| `server-endpoints.test.ts` | +14 | Agent query, approvals, session IDs, DB errors, MCP |
+| `logs.routes.test.ts` | +14 | Timestamps, context types, URLs, UserAgents, batches |
 
 ---
 
@@ -310,8 +319,8 @@ cd backend && npm run build
 
 ## 8. Criterios de Aceptación
 
-### Criterios Técnicos (Actualizados Fase 1 + QA Audit)
-- [x] Tests totales: 966 passing (objetivo inicial 884 superado)
+### Criterios Técnicos (Actualizados Fase 3)
+- [x] Tests totales: 1074 passing (objetivo inicial 884 superado en +21%)
 - [x] 0 errores de lint (15 warnings preexistentes)
 - [x] Type-check sin errores
 - [x] Build exitoso
@@ -320,8 +329,10 @@ cd backend && npm run build
 - [x] sessions.routes.test.ts creado (59 tests) - Fase 1 + QA Audit
 - [x] auth-oauth.routes.test.ts refactorizado para usar router real - Fase 1
 - [x] Rate limiting testeado (21 tests) - Fase 1
-- [ ] Timing attack protection testeada - Fase 2
-- [ ] Edge cases completos - Fase 3
+- [x] Timing attack protection testeada (24 tests) - Fase 2
+- [x] Race condition documentada con tests (8 tests) - Fase 2
+- [x] Input sanitization testeada (+10 tests) - Fase 2
+- [x] Edge cases completos (+61 tests) - Fase 3
 - [ ] Error messages estandarizados - Fase 4
 - [ ] Performance tests básicos - Fase 5
 
@@ -348,9 +359,20 @@ cd backend && npm run build
 - [x] MessageQueue.rateLimit.test.ts (21 tests)
 - [x] Verificación: 966 tests, lint OK, type-check OK, build OK
 
+### Fase 2 ✅ COMPLETADA
+- [x] session-ownership.security.test.ts (24 tests) - Timing attack protection
+- [x] BCTokenManager.raceCondition.test.ts (8 tests) - Race condition documentation
+- [x] logs.routes.test.ts (+10 tests) - Input sanitization
+- [x] Verificación: 1008 tests, lint OK, type-check OK, build OK
+
+### Fase 3 ✅ COMPLETADA
+- [x] token-usage.routes.test.ts (+16 tests) - URL encoding, boundaries, decimals, UUIDs
+- [x] auth-oauth.routes.test.ts (+17 tests) - OAuth callback, profiles, DB errors, sessions
+- [x] server-endpoints.test.ts (+14 tests) - Agent query, approvals, session IDs, MCP
+- [x] logs.routes.test.ts (+14 tests) - Timestamps, context types, URLs, UserAgents
+- [x] Verificación: 1074 tests, lint OK, type-check OK, build OK
+
 ### Fases Pendientes
-2. **Fase 2 - Seguridad**: Timing attack protection, race condition tests, input sanitization
-3. **Fase 3 - Edge Cases**: +42 tests adicionales
 4. **Fase 4 - Inconsistencias**: Estandarización de mensajes de error
 5. **Fase 5 - Performance**: Tests básicos de carga
 

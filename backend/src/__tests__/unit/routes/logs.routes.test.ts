@@ -867,4 +867,412 @@ describe('Logs Routes', () => {
       expect(mockChildLogger.info).toHaveBeenCalled();
     });
   });
+
+  // ============================================
+  // Additional Edge Cases (Phase 3)
+  // ============================================
+  describe('Additional Edge Cases (Phase 3)', () => {
+    describe('Timestamp Edge Cases', () => {
+      it('should handle timestamp at Unix epoch (1970-01-01)', async () => {
+        // Arrange
+        const epochLog = {
+          logs: [
+            {
+              timestamp: '1970-01-01T00:00:00.000Z',
+              level: 'info',
+              message: 'Epoch timestamp',
+            },
+          ],
+        };
+
+        // Act
+        await request(app)
+          .post('/api/logs')
+          .send(epochLog)
+          .expect(204);
+
+        // Assert
+        expect(mockChildLogger.info).toHaveBeenCalledWith(
+          expect.objectContaining({
+            clientTimestamp: '1970-01-01T00:00:00.000Z',
+          }),
+          'Epoch timestamp'
+        );
+      });
+
+      it('should handle timestamp with milliseconds precision', async () => {
+        // Arrange
+        const preciseTimestamp = {
+          logs: [
+            {
+              timestamp: '2024-01-15T10:00:00.123Z',
+              level: 'debug',
+              message: 'Precise timing',
+            },
+          ],
+        };
+
+        // Act
+        await request(app)
+          .post('/api/logs')
+          .send(preciseTimestamp)
+          .expect(204);
+
+        // Assert
+        expect(mockChildLogger.debug).toHaveBeenCalled();
+      });
+
+      it('should handle timestamp with timezone offset', async () => {
+        // Arrange
+        const timezoneLog = {
+          logs: [
+            {
+              timestamp: '2024-01-15T15:00:00+05:00',
+              level: 'info',
+              message: 'Timezone offset',
+            },
+          ],
+        };
+
+        // Act
+        await request(app)
+          .post('/api/logs')
+          .send(timezoneLog)
+          .expect(204);
+
+        // Assert
+        expect(mockChildLogger.info).toHaveBeenCalled();
+      });
+    });
+
+    describe('Context Edge Cases', () => {
+      it('should handle array values in context', async () => {
+        // Arrange
+        const arrayContext = {
+          logs: [
+            {
+              timestamp: '2024-01-15T10:00:00Z',
+              level: 'info',
+              message: 'Array in context',
+              context: {
+                items: [1, 2, 3, 'four', { five: 5 }],
+                tags: ['debug', 'production', 'v2'],
+              },
+            },
+          ],
+        };
+
+        // Act
+        await request(app)
+          .post('/api/logs')
+          .send(arrayContext)
+          .expect(204);
+
+        // Assert
+        expect(mockChildLogger.info).toHaveBeenCalledWith(
+          expect.objectContaining({
+            items: [1, 2, 3, 'four', { five: 5 }],
+          }),
+          'Array in context'
+        );
+      });
+
+      it('should handle boolean values in context', async () => {
+        // Arrange
+        const booleanContext = {
+          logs: [
+            {
+              timestamp: '2024-01-15T10:00:00Z',
+              level: 'info',
+              message: 'Boolean context',
+              context: {
+                isEnabled: true,
+                isDisabled: false,
+              },
+            },
+          ],
+        };
+
+        // Act
+        await request(app)
+          .post('/api/logs')
+          .send(booleanContext)
+          .expect(204);
+
+        // Assert
+        expect(mockChildLogger.info).toHaveBeenCalledWith(
+          expect.objectContaining({
+            isEnabled: true,
+            isDisabled: false,
+          }),
+          'Boolean context'
+        );
+      });
+
+      it('should handle null values in context', async () => {
+        // Arrange
+        const nullContext = {
+          logs: [
+            {
+              timestamp: '2024-01-15T10:00:00Z',
+              level: 'warn',
+              message: 'Null values',
+              context: {
+                userId: null,
+                sessionId: 'valid-session',
+                data: null,
+              },
+            },
+          ],
+        };
+
+        // Act
+        await request(app)
+          .post('/api/logs')
+          .send(nullContext)
+          .expect(204);
+
+        // Assert - context is spread, so sessionId and data are included
+        expect(mockChildLogger.warn).toHaveBeenCalledWith(
+          expect.objectContaining({
+            sessionId: 'valid-session',
+            data: null,
+          }),
+          'Null values'
+        );
+      });
+
+      it('should handle numeric values in context', async () => {
+        // Arrange
+        const numericContext = {
+          logs: [
+            {
+              timestamp: '2024-01-15T10:00:00Z',
+              level: 'info',
+              message: 'Numeric context',
+              context: {
+                integer: 42,
+                float: 3.14159,
+                negative: -100,
+                zero: 0,
+                maxSafe: Number.MAX_SAFE_INTEGER,
+              },
+            },
+          ],
+        };
+
+        // Act
+        await request(app)
+          .post('/api/logs')
+          .send(numericContext)
+          .expect(204);
+
+        // Assert
+        expect(mockChildLogger.info).toHaveBeenCalled();
+      });
+    });
+
+    describe('URL Edge Cases', () => {
+      it('should handle URL with query parameters', async () => {
+        // Arrange
+        const urlWithQuery = {
+          logs: [
+            {
+              timestamp: '2024-01-15T10:00:00Z',
+              level: 'info',
+              message: 'Page with params',
+              url: 'https://app.example.com/search?q=test&page=2&filter=active',
+            },
+          ],
+        };
+
+        // Act
+        await request(app)
+          .post('/api/logs')
+          .send(urlWithQuery)
+          .expect(204);
+
+        // Assert
+        expect(mockChildLogger.info).toHaveBeenCalledWith(
+          expect.objectContaining({
+            clientUrl: 'https://app.example.com/search?q=test&page=2&filter=active',
+          }),
+          'Page with params'
+        );
+      });
+
+      it('should handle URL with hash fragment', async () => {
+        // Arrange
+        const urlWithHash = {
+          logs: [
+            {
+              timestamp: '2024-01-15T10:00:00Z',
+              level: 'info',
+              message: 'Page with hash',
+              url: 'https://app.example.com/docs#section-3',
+            },
+          ],
+        };
+
+        // Act
+        await request(app)
+          .post('/api/logs')
+          .send(urlWithHash)
+          .expect(204);
+
+        // Assert
+        expect(mockChildLogger.info).toHaveBeenCalled();
+      });
+
+      it('should handle localhost URL', async () => {
+        // Arrange
+        const localhostUrl = {
+          logs: [
+            {
+              timestamp: '2024-01-15T10:00:00Z',
+              level: 'debug',
+              message: 'Local dev',
+              url: 'http://localhost:3000/dev',
+            },
+          ],
+        };
+
+        // Act
+        await request(app)
+          .post('/api/logs')
+          .send(localhostUrl)
+          .expect(204);
+
+        // Assert
+        expect(mockChildLogger.debug).toHaveBeenCalled();
+      });
+    });
+
+    describe('UserAgent Edge Cases', () => {
+      it('should handle mobile user agent', async () => {
+        // Arrange
+        const mobileUA = {
+          logs: [
+            {
+              timestamp: '2024-01-15T10:00:00Z',
+              level: 'info',
+              message: 'Mobile access',
+              userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+            },
+          ],
+        };
+
+        // Act
+        await request(app)
+          .post('/api/logs')
+          .send(mobileUA)
+          .expect(204);
+
+        // Assert
+        expect(mockChildLogger.info).toHaveBeenCalled();
+      });
+
+      it('should handle bot user agent', async () => {
+        // Arrange
+        const botUA = {
+          logs: [
+            {
+              timestamp: '2024-01-15T10:00:00Z',
+              level: 'info',
+              message: 'Bot detected',
+              userAgent: 'Googlebot/2.1 (+http://www.google.com/bot.html)',
+            },
+          ],
+        };
+
+        // Act
+        await request(app)
+          .post('/api/logs')
+          .send(botUA)
+          .expect(204);
+
+        // Assert
+        expect(mockChildLogger.info).toHaveBeenCalled();
+      });
+    });
+
+    describe('Batch Processing Edge Cases', () => {
+      it('should handle batch with mixed valid log levels', async () => {
+        // Arrange
+        const mixedBatch = {
+          logs: [
+            { timestamp: '2024-01-15T10:00:00Z', level: 'debug', message: 'Debug 1' },
+            { timestamp: '2024-01-15T10:00:01Z', level: 'info', message: 'Info 1' },
+            { timestamp: '2024-01-15T10:00:02Z', level: 'debug', message: 'Debug 2' },
+            { timestamp: '2024-01-15T10:00:03Z', level: 'warn', message: 'Warn 1' },
+            { timestamp: '2024-01-15T10:00:04Z', level: 'error', message: 'Error 1' },
+            { timestamp: '2024-01-15T10:00:05Z', level: 'info', message: 'Info 2' },
+          ],
+        };
+
+        // Act
+        await request(app)
+          .post('/api/logs')
+          .send(mixedBatch)
+          .expect(204);
+
+        // Assert
+        expect(mockChildLogger.debug).toHaveBeenCalledTimes(2);
+        expect(mockChildLogger.info).toHaveBeenCalledTimes(2);
+        expect(mockChildLogger.warn).toHaveBeenCalledTimes(1);
+        expect(mockChildLogger.error).toHaveBeenCalledTimes(1);
+      });
+
+      it('should handle single log entry (minimum batch)', async () => {
+        // Arrange
+        const singleLog = {
+          logs: [
+            { timestamp: '2024-01-15T10:00:00Z', level: 'info', message: 'Only one' },
+          ],
+        };
+
+        // Act
+        await request(app)
+          .post('/api/logs')
+          .send(singleLog)
+          .expect(204);
+
+        // Assert
+        expect(mockChildLogger.info).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    describe('Content-Type Edge Cases', () => {
+      it('should reject non-JSON content type', async () => {
+        // Act
+        const response = await request(app)
+          .post('/api/logs')
+          .set('Content-Type', 'text/plain')
+          .send('not json')
+          .expect(400);
+
+        // Assert
+        expect(response.status).toBe(400);
+      });
+
+      it('should accept application/json charset utf-8', async () => {
+        // Arrange
+        const validLog = {
+          logs: [
+            { timestamp: '2024-01-15T10:00:00Z', level: 'info', message: 'UTF-8 content' },
+          ],
+        };
+
+        // Act
+        await request(app)
+          .post('/api/logs')
+          .set('Content-Type', 'application/json; charset=utf-8')
+          .send(validLog)
+          .expect(204);
+
+        // Assert
+        expect(mockChildLogger.info).toHaveBeenCalled();
+      });
+    });
+  });
 });

@@ -726,4 +726,247 @@ describe('Token Usage Routes', () => {
       expect(response.body.error).toBe('Bad Request');
     });
   });
+
+  // ============================================
+  // Additional Edge Cases (Phase 3)
+  // ============================================
+  describe('Additional Edge Cases (Phase 3)', () => {
+    // URL Encoding edge cases
+    it('should handle userId with URL-encoded slashes', async () => {
+      // Arrange
+      const userId = 'user/with/slashes';
+      const encodedUserId = encodeURIComponent(userId);
+      mockTokenUsageService.getUserTotals.mockResolvedValueOnce(null);
+
+      // Act
+      const response = await request(app)
+        .get(`/api/token-usage/user/${encodedUserId}`)
+        .set('x-test-user-id', userId)
+        .expect(404);
+
+      // Assert - should decode and process correctly
+      expect(mockTokenUsageService.getUserTotals).toHaveBeenCalledWith(userId);
+    });
+
+    it('should handle sessionId with dots', async () => {
+      // Arrange
+      const sessionId = 'session.with.dots.123';
+      const userId = 'user-owner';
+
+      mockValidateSessionOwnership.mockResolvedValueOnce({ isOwner: true });
+      mockTokenUsageService.getSessionTotals.mockResolvedValueOnce({
+        sessionId,
+        totalTokens: 500,
+      });
+
+      // Act
+      const response = await request(app)
+        .get(`/api/token-usage/session/${sessionId}`)
+        .set('x-test-user-id', userId)
+        .expect(200);
+
+      // Assert
+      expect(response.body.sessionId).toBe(sessionId);
+    });
+
+    // Boundary values for months parameter
+    it('should accept months=1 (minimum boundary)', async () => {
+      // Arrange
+      const userId = 'user-min-months';
+      mockTokenUsageService.getMonthlyUsageByModel.mockResolvedValueOnce([]);
+
+      // Act
+      const response = await request(app)
+        .get(`/api/token-usage/user/${userId}/monthly?months=1`)
+        .set('x-test-user-id', userId)
+        .expect(200);
+
+      // Assert
+      expect(response.body.months).toBe(1);
+      expect(mockTokenUsageService.getMonthlyUsageByModel).toHaveBeenCalledWith(userId, 1);
+    });
+
+    it('should accept months=24 (maximum boundary)', async () => {
+      // Arrange
+      const userId = 'user-max-months';
+      mockTokenUsageService.getMonthlyUsageByModel.mockResolvedValueOnce([]);
+
+      // Act
+      const response = await request(app)
+        .get(`/api/token-usage/user/${userId}/monthly?months=24`)
+        .set('x-test-user-id', userId)
+        .expect(200);
+
+      // Assert
+      expect(response.body.months).toBe(24);
+      expect(mockTokenUsageService.getMonthlyUsageByModel).toHaveBeenCalledWith(userId, 24);
+    });
+
+    // Boundary values for limit parameter
+    it('should accept limit=1 (minimum boundary)', async () => {
+      // Arrange
+      const userId = 'user-min-limit';
+      mockTokenUsageService.getTopSessionsByUsage.mockResolvedValueOnce([]);
+
+      // Act
+      const response = await request(app)
+        .get(`/api/token-usage/user/${userId}/top-sessions?limit=1`)
+        .set('x-test-user-id', userId)
+        .expect(200);
+
+      // Assert
+      expect(response.body.limit).toBe(1);
+      expect(mockTokenUsageService.getTopSessionsByUsage).toHaveBeenCalledWith(userId, 1);
+    });
+
+    it('should accept limit=50 (maximum boundary)', async () => {
+      // Arrange
+      const userId = 'user-max-limit';
+      mockTokenUsageService.getTopSessionsByUsage.mockResolvedValueOnce([]);
+
+      // Act
+      const response = await request(app)
+        .get(`/api/token-usage/user/${userId}/top-sessions?limit=50`)
+        .set('x-test-user-id', userId)
+        .expect(200);
+
+      // Assert
+      expect(response.body.limit).toBe(50);
+      expect(mockTokenUsageService.getTopSessionsByUsage).toHaveBeenCalledWith(userId, 50);
+    });
+
+    // Decimal handling
+    it('should truncate months=1.9 to 1', async () => {
+      // Arrange
+      const userId = 'user-decimal-months-low';
+      mockTokenUsageService.getMonthlyUsageByModel.mockResolvedValueOnce([]);
+
+      // Act
+      const response = await request(app)
+        .get(`/api/token-usage/user/${userId}/monthly?months=1.9`)
+        .set('x-test-user-id', userId)
+        .expect(200);
+
+      // Assert
+      expect(response.body.months).toBe(1);
+    });
+
+    it('should truncate months=23.9 to 23', async () => {
+      // Arrange
+      const userId = 'user-decimal-months-high';
+      mockTokenUsageService.getMonthlyUsageByModel.mockResolvedValueOnce([]);
+
+      // Act
+      const response = await request(app)
+        .get(`/api/token-usage/user/${userId}/monthly?months=23.9`)
+        .set('x-test-user-id', userId)
+        .expect(200);
+
+      // Assert
+      expect(response.body.months).toBe(23);
+    });
+
+    // UUID format validation
+    it('should handle UUID v4 format sessionId', async () => {
+      // Arrange
+      const uuidV4SessionId = '550e8400-e29b-41d4-a716-446655440000';
+      const userId = 'user-owner';
+
+      mockValidateSessionOwnership.mockResolvedValueOnce({ isOwner: true });
+      mockTokenUsageService.getSessionTotals.mockResolvedValueOnce({
+        sessionId: uuidV4SessionId,
+        totalTokens: 1000,
+      });
+
+      // Act
+      const response = await request(app)
+        .get(`/api/token-usage/session/${uuidV4SessionId}`)
+        .set('x-test-user-id', userId)
+        .expect(200);
+
+      // Assert
+      expect(response.body.sessionId).toBe(uuidV4SessionId);
+    });
+
+    it('should handle UUID v7 format sessionId (future-proof)', async () => {
+      // UUID v7 has time-based prefix: 018e4d5d-e5f4-7xxx-xxxx-xxxxxxxxxxxx
+      const uuidV7SessionId = '018e4d5d-e5f4-7a00-8000-000000000001';
+      const userId = 'user-owner';
+
+      mockValidateSessionOwnership.mockResolvedValueOnce({ isOwner: true });
+      mockTokenUsageService.getSessionTotals.mockResolvedValueOnce({
+        sessionId: uuidV7SessionId,
+        totalTokens: 2000,
+      });
+
+      // Act
+      const response = await request(app)
+        .get(`/api/token-usage/session/${uuidV7SessionId}`)
+        .set('x-test-user-id', userId)
+        .expect(200);
+
+      // Assert
+      expect(response.body.sessionId).toBe(uuidV7SessionId);
+    });
+
+    // Negative cases
+    it('should return 400 for months=-1', async () => {
+      // Arrange
+      const userId = 'user-negative-months';
+
+      // Act
+      const response = await request(app)
+        .get(`/api/token-usage/user/${userId}/monthly?months=-1`)
+        .set('x-test-user-id', userId)
+        .expect(400);
+
+      // Assert
+      expect(response.body.error).toBe('Bad Request');
+    });
+
+    it('should return 400 for limit=-1', async () => {
+      // Arrange
+      const userId = 'user-negative-limit-edge';
+
+      // Act
+      const response = await request(app)
+        .get(`/api/token-usage/user/${userId}/top-sessions?limit=-1`)
+        .set('x-test-user-id', userId)
+        .expect(400);
+
+      // Assert
+      expect(response.body.error).toBe('Bad Request');
+    });
+
+    // Empty query parameters
+    it('should use default months when parameter is empty string', async () => {
+      // Arrange
+      const userId = 'user-empty-months';
+      mockTokenUsageService.getMonthlyUsageByModel.mockResolvedValueOnce([]);
+
+      // Act
+      const response = await request(app)
+        .get(`/api/token-usage/user/${userId}/monthly?months=`)
+        .set('x-test-user-id', userId)
+        .expect(200);
+
+      // Assert - should use default 12
+      expect(response.body.months).toBe(12);
+    });
+
+    it('should use default limit when parameter is empty string', async () => {
+      // Arrange
+      const userId = 'user-empty-limit';
+      mockTokenUsageService.getTopSessionsByUsage.mockResolvedValueOnce([]);
+
+      // Act
+      const response = await request(app)
+        .get(`/api/token-usage/user/${userId}/top-sessions?limit=`)
+        .set('x-test-user-id', userId)
+        .expect(200);
+
+      // Assert - should use default 10
+      expect(response.body.limit).toBe(10);
+    });
+  });
 });

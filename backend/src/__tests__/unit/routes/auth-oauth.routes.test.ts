@@ -904,5 +904,420 @@ describe('Auth OAuth Routes', () => {
       expect(response.body.isExpired).toBe(true);
       expect(response.body.hasAccess).toBe(false);
     });
+
+    it('should handle token expiring in 1 second (boundary valid)', async () => {
+      // Arrange
+      const app = createTestApp();
+      authenticateAs('user-1sec');
+
+      const oneSecondFromNow = new Date(Date.now() + 1000);
+      mockExecuteQuery.mockResolvedValueOnce({
+        recordset: [{
+          bc_access_token_encrypted: 'token',
+          bc_token_expires_at: oneSecondFromNow.toISOString(),
+        }],
+      });
+
+      // Act
+      const response = await request(app)
+        .get('/api/auth/bc-status')
+        .expect(200);
+
+      // Assert - 1 second in future is still valid
+      expect(response.body.hasAccess).toBe(true);
+      expect(response.body.isExpired).toBe(false);
+    });
+
+    it('should handle token expired 1 second ago', async () => {
+      // Arrange
+      const app = createTestApp();
+      authenticateAs('user-expired-1sec');
+
+      const oneSecondAgo = new Date(Date.now() - 1000);
+      mockExecuteQuery.mockResolvedValueOnce({
+        recordset: [{
+          bc_access_token_encrypted: 'token',
+          bc_token_expires_at: oneSecondAgo.toISOString(),
+        }],
+      });
+
+      // Act
+      const response = await request(app)
+        .get('/api/auth/bc-status')
+        .expect(200);
+
+      // Assert - 1 second ago is expired
+      expect(response.body.hasAccess).toBe(false);
+      expect(response.body.isExpired).toBe(true);
+    });
+
+    it('should handle null bc_token_expires_at gracefully', async () => {
+      // Arrange
+      const app = createTestApp();
+      authenticateAs('user-null-expiry');
+
+      mockExecuteQuery.mockResolvedValueOnce({
+        recordset: [{
+          bc_access_token_encrypted: 'token',
+          bc_token_expires_at: null,
+        }],
+      });
+
+      // Act
+      const response = await request(app)
+        .get('/api/auth/bc-status')
+        .expect(200);
+
+      // Assert - null expiry should be treated as no valid token
+      expect(response.body.hasAccess).toBe(false);
+    });
+  });
+
+  // ============================================
+  // Additional Edge Cases (Phase 3)
+  // ============================================
+  describe('Additional Edge Cases (Phase 3)', () => {
+    describe('OAuth Callback Edge Cases', () => {
+      it('should handle empty code parameter', async () => {
+        // Arrange
+        const app = createTestApp();
+
+        // Act
+        const response = await request(app)
+          .get('/api/auth/callback?code=&state=test-state')
+          .expect(302);
+
+        // Assert
+        expect(response.headers.location).toContain('error=');
+      });
+
+      it('should handle extremely long state parameter', async () => {
+        // Arrange
+        const app = createTestApp();
+        const longState = 'a'.repeat(1000);
+
+        // Act
+        const response = await request(app)
+          .get(`/api/auth/callback?code=test&state=${longState}`)
+          .expect(302);
+
+        // Assert - should reject as invalid state
+        expect(response.headers.location).toContain('error=');
+      });
+
+      it('should handle state with special characters', async () => {
+        // Arrange
+        const app = createTestApp();
+        const specialState = encodeURIComponent('<script>alert("xss")</script>');
+
+        // Act
+        const response = await request(app)
+          .get(`/api/auth/callback?code=test&state=${specialState}`)
+          .expect(302);
+
+        // Assert
+        expect(response.headers.location).toContain('error=');
+      });
+
+      it('should handle multiple error parameters in callback', async () => {
+        // Arrange
+        const app = createTestApp();
+
+        // Act
+        const response = await request(app)
+          .get('/api/auth/callback?error=access_denied&error=another_error&error_description=test')
+          .expect(302);
+
+        // Assert - first error should be used
+        expect(response.headers.location).toContain('error=access_denied');
+      });
+
+      it('should handle URL-encoded error_description', async () => {
+        // Arrange
+        const app = createTestApp();
+        const encodedDesc = encodeURIComponent('User denied access to the application');
+
+        // Act
+        const response = await request(app)
+          .get(`/api/auth/callback?error=consent_required&error_description=${encodedDesc}`)
+          .expect(302);
+
+        // Assert
+        expect(response.headers.location).toContain('error=consent_required');
+      });
+    });
+
+    describe('User Profile Edge Cases', () => {
+      it('should handle user with null email from Microsoft', async () => {
+        // Arrange
+        const app = createTestApp();
+        const agent = request.agent(app);
+
+        mockOAuthService.getAuthCodeUrl.mockImplementation(async (state: string) => {
+          return `https://login.microsoftonline.com/authorize?state=${state}`;
+        });
+
+        const loginResponse = await agent.get('/api/auth/login');
+        const stateMatch = loginResponse.headers.location.match(/state=([a-f0-9]+)/);
+        const state = stateMatch ? stateMatch[1] : '';
+
+        mockOAuthService.handleAuthCallback.mockResolvedValueOnce({
+          access_token: 'test-token',
+          refresh_token: 'test-refresh',
+          expires_in: 3600,
+        });
+
+        // Profile with null email
+        mockOAuthService.getUserProfile.mockResolvedValueOnce({
+          id: 'ms-null-email',
+          displayName: 'No Email User',
+          mail: null,
+          userPrincipalName: 'nomail@tenant.onmicrosoft.com',
+        });
+
+        mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
+        mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+        mockOAuthService.acquireBCToken.mockRejectedValueOnce(new Error('No BC'));
+
+        // Act
+        const response = await agent
+          .get(`/api/auth/callback?code=test&state=${state}`)
+          .expect(302);
+
+        // Assert - should handle gracefully
+        expect(response.headers.location).not.toContain('error=');
+      });
+
+      it('should handle user with very long display name', async () => {
+        // Arrange
+        const app = createTestApp();
+        authenticateAs('user-long-name');
+
+        const longName = 'A'.repeat(500);
+        mockExecuteQuery.mockResolvedValueOnce({
+          recordset: [{
+            id: 'user-long-name',
+            email: 'longname@example.com',
+            full_name: longName,
+            role: 'viewer',
+            microsoft_email: 'longname@example.com',
+            microsoft_id: 'ms-long',
+            last_microsoft_login: new Date(),
+            created_at: new Date(),
+            is_active: true,
+          }],
+        });
+
+        // Act
+        const response = await request(app)
+          .get('/api/auth/me')
+          .expect(200);
+
+        // Assert
+        expect(response.body.fullName).toBe(longName);
+      });
+
+      it('should handle special characters in display name', async () => {
+        // Arrange
+        const app = createTestApp();
+        authenticateAs('user-special-chars');
+
+        const specialName = 'José García-López <admin>';
+        mockExecuteQuery.mockResolvedValueOnce({
+          recordset: [{
+            id: 'user-special-chars',
+            email: 'jose@example.com',
+            full_name: specialName,
+            role: 'viewer',
+            microsoft_email: 'jose@example.com',
+            microsoft_id: 'ms-jose',
+            last_microsoft_login: new Date(),
+            created_at: new Date(),
+            is_active: true,
+          }],
+        });
+
+        // Act
+        const response = await request(app)
+          .get('/api/auth/me')
+          .expect(200);
+
+        // Assert - should return as-is (sanitization happens elsewhere)
+        expect(response.body.fullName).toBe(specialName);
+      });
+    });
+
+    describe('Database Error Handling', () => {
+      it('should handle database timeout on user lookup', async () => {
+        // Arrange
+        const app = createTestApp();
+        authenticateAs('user-timeout');
+
+        const timeoutError = new Error('Request timeout');
+        (timeoutError as NodeJS.ErrnoException).code = 'ETIMEDOUT';
+        mockExecuteQuery.mockRejectedValueOnce(timeoutError);
+
+        // Act
+        const response = await request(app)
+          .get('/api/auth/me')
+          .expect(500);
+
+        // Assert
+        expect(response.body.error).toBe('Internal Server Error');
+      });
+
+      it('should handle database connection pool exhaustion', async () => {
+        // Arrange
+        const app = createTestApp();
+        authenticateAs('user-pool-exhausted');
+
+        const poolError = new Error('Connection pool exhausted');
+        (poolError as NodeJS.ErrnoException).code = 'ECONNREFUSED';
+        mockExecuteQuery.mockRejectedValueOnce(poolError);
+
+        // Act
+        const response = await request(app)
+          .get('/api/auth/bc-status')
+          .expect(500);
+
+        // Assert
+        expect(response.body.error).toBe('Internal Server Error');
+      });
+
+      it('should handle concurrent database updates', async () => {
+        // Arrange - simulates deadlock retry scenario
+        const app = createTestApp();
+        const agent = request.agent(app);
+
+        mockOAuthService.getAuthCodeUrl.mockImplementation(async (state: string) => {
+          return `https://login.microsoftonline.com/authorize?state=${state}`;
+        });
+
+        const loginResponse = await agent.get('/api/auth/login');
+        const stateMatch = loginResponse.headers.location.match(/state=([a-f0-9]+)/);
+        const state = stateMatch ? stateMatch[1] : '';
+
+        mockOAuthService.handleAuthCallback.mockResolvedValueOnce({
+          access_token: 'test-token',
+          refresh_token: 'test-refresh',
+          expires_in: 3600,
+        });
+
+        mockOAuthService.getUserProfile.mockResolvedValueOnce({
+          id: 'ms-concurrent',
+          displayName: 'Concurrent User',
+          mail: 'concurrent@example.com',
+        });
+
+        // Deadlock error on first try
+        const deadlockError = new Error('Transaction deadlock');
+        (deadlockError as unknown as { number: number }).number = 1205;
+        mockExecuteQuery.mockRejectedValueOnce(deadlockError);
+
+        // Act
+        const response = await agent
+          .get(`/api/auth/callback?code=test&state=${state}`)
+          .expect(302);
+
+        // Assert - should redirect with error on DB failure
+        expect(response.headers.location).toContain('error=callback_failed');
+      });
+    });
+
+    describe('BC Token Edge Cases', () => {
+      it('should handle empty refresh token string', async () => {
+        // Arrange
+        const app = createTestApp();
+        authenticateAs('user-empty-refresh', { refreshToken: '' });
+
+        // Act
+        const response = await request(app)
+          .post('/api/auth/bc-consent')
+          .expect(400);
+
+        // Assert
+        expect(response.body.error).toBe('Bad Request');
+      });
+
+      it('should handle BC token with past expiry date', async () => {
+        // Arrange
+        const app = createTestApp();
+        authenticateAs('user-bc-past', { refreshToken: 'valid-token' });
+
+        const pastDate = new Date(Date.now() - 86400000); // 24 hours ago
+        const bcToken = {
+          accessToken: 'past-bc-token',
+          expiresAt: pastDate,
+        };
+        mockOAuthService.acquireBCToken.mockResolvedValueOnce(bcToken);
+
+        // Act - should still store it (might be refresh scenario)
+        const response = await request(app)
+          .post('/api/auth/bc-consent')
+          .expect(200);
+
+        // Assert
+        expect(response.body.success).toBe(true);
+        expect(mockBCTokenManager.storeBCToken).toHaveBeenCalled();
+      });
+
+      it('should handle BC token storage failure', async () => {
+        // Arrange
+        const app = createTestApp();
+        authenticateAs('user-storage-fail', { refreshToken: 'valid-token' });
+
+        const bcToken = {
+          accessToken: 'new-bc-token',
+          expiresAt: new Date(Date.now() + 3600000),
+        };
+        mockOAuthService.acquireBCToken.mockResolvedValueOnce(bcToken);
+        mockBCTokenManager.storeBCToken.mockRejectedValueOnce(new Error('Encryption failed'));
+
+        // Act
+        const response = await request(app)
+          .post('/api/auth/bc-consent')
+          .expect(500);
+
+        // Assert
+        expect(response.body.error).toBe('Internal Server Error');
+      });
+    });
+
+    describe('Session Edge Cases', () => {
+      it('should handle logout when session already destroyed', async () => {
+        // Arrange
+        const app = createTestApp();
+        authenticateAs('user-double-logout');
+
+        // First logout
+        await request(app).post('/api/auth/logout').expect(200);
+
+        // Second logout with fresh auth
+        authenticateAs('user-double-logout');
+        const response = await request(app)
+          .post('/api/auth/logout')
+          .expect(200);
+
+        // Assert
+        expect(response.body.success).toBe(true);
+      });
+
+      it('should handle concurrent logout requests', async () => {
+        // Arrange
+        const app = createTestApp();
+        authenticateAs('user-concurrent-logout');
+
+        // Act - fire multiple concurrent requests
+        const responses = await Promise.all([
+          request(app).post('/api/auth/logout'),
+          request(app).post('/api/auth/logout'),
+        ]);
+
+        // Assert - all should complete without error
+        responses.forEach((response) => {
+          expect([200, 401]).toContain(response.status);
+        });
+      });
+    });
   });
 });

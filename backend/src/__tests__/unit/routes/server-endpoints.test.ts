@@ -1053,4 +1053,290 @@ describe('Server Inline Endpoints', () => {
       expect([response1.status, response2.status]).toContain(409);
     });
   });
+
+  // ============================================
+  // Additional Edge Cases (Phase 3)
+  // ============================================
+  describe('Additional Edge Cases (Phase 3)', () => {
+    describe('Agent Query Edge Cases', () => {
+      it('should handle empty string prompt', async () => {
+        // Act
+        const response = await request(app)
+          .post('/api/agent/query')
+          .set('x-test-user-id', 'user-123')
+          .send({ prompt: '' })
+          .expect(400);
+
+        // Assert
+        expect(response.body.error).toBe('Invalid request');
+      });
+
+      it('should handle whitespace-only prompt', async () => {
+        // Act
+        const response = await request(app)
+          .post('/api/agent/query')
+          .set('x-test-user-id', 'user-123')
+          .send({ prompt: '   \n\t  ' })
+          .expect(200); // Whitespace is still a string, implementation decides
+
+        // Assert - verify it was passed to the service
+        expect(mockDirectAgentService.executeQuery).toHaveBeenCalled();
+      });
+
+      it('should handle very long prompt (10KB)', async () => {
+        // Arrange
+        const longPrompt = 'A'.repeat(10000);
+        mockDirectAgentService.executeQuery.mockResolvedValueOnce({ content: 'Response' });
+
+        // Act
+        const response = await request(app)
+          .post('/api/agent/query')
+          .set('x-test-user-id', 'user-123')
+          .send({ prompt: longPrompt })
+          .expect(200);
+
+        // Assert
+        expect(response.body.content).toBe('Response');
+      });
+
+      it('should handle prompt with Unicode characters', async () => {
+        // Arrange
+        const unicodePrompt = '你好世界 مرحبا שלום 🌍🚀';
+        mockDirectAgentService.executeQuery.mockResolvedValueOnce({ content: 'Hello!' });
+
+        // Act
+        const response = await request(app)
+          .post('/api/agent/query')
+          .set('x-test-user-id', 'user-123')
+          .send({ prompt: unicodePrompt })
+          .expect(200);
+
+        // Assert
+        expect(mockDirectAgentService.executeQuery).toHaveBeenCalledWith(unicodePrompt, undefined);
+      });
+
+      it('should handle prompt with HTML/script tags', async () => {
+        // Arrange
+        const xssPrompt = '<script>alert("xss")</script>';
+        mockDirectAgentService.executeQuery.mockResolvedValueOnce({ content: 'Safe response' });
+
+        // Act
+        const response = await request(app)
+          .post('/api/agent/query')
+          .set('x-test-user-id', 'user-123')
+          .send({ prompt: xssPrompt })
+          .expect(200);
+
+        // Assert - should pass through (Claude handles it)
+        expect(mockDirectAgentService.executeQuery).toHaveBeenCalledWith(xssPrompt, undefined);
+      });
+
+      it('should handle null sessionId gracefully', async () => {
+        // Arrange
+        mockDirectAgentService.executeQuery.mockResolvedValueOnce({ content: 'OK' });
+
+        // Act
+        const response = await request(app)
+          .post('/api/agent/query')
+          .set('x-test-user-id', 'user-123')
+          .send({ prompt: 'Hello', sessionId: null })
+          .expect(200);
+
+        // Assert
+        expect(mockDirectAgentService.executeQuery).toHaveBeenCalledWith('Hello', null);
+      });
+    });
+
+    describe('Approval Response Edge Cases', () => {
+      it('should handle missing decision field', async () => {
+        // Act
+        const response = await request(app)
+          .post('/api/approvals/approval-123/respond')
+          .set('x-test-user-id', 'user-123')
+          .send({ reason: 'No decision provided' })
+          .expect(400);
+
+        // Assert
+        expect(response.body.error).toBe('Invalid request');
+      });
+
+      it('should handle empty reason field', async () => {
+        // Arrange
+        mockApprovalManager.respondToApprovalAtomic.mockResolvedValueOnce({ success: true });
+
+        // Act
+        const response = await request(app)
+          .post('/api/approvals/approval-123/respond')
+          .set('x-test-user-id', 'user-123')
+          .send({ decision: 'approved', reason: '' })
+          .expect(200);
+
+        // Assert - empty reason is valid
+        expect(mockApprovalManager.respondToApprovalAtomic).toHaveBeenCalledWith(
+          'approval-123',
+          'approved',
+          'user-123',
+          ''
+        );
+      });
+
+      it('should handle reason with special characters', async () => {
+        // Arrange
+        const specialReason = 'Approved: <test> & "quotes" \'apostrophe\'';
+        mockApprovalManager.respondToApprovalAtomic.mockResolvedValueOnce({ success: true });
+
+        // Act
+        const response = await request(app)
+          .post('/api/approvals/approval-123/respond')
+          .set('x-test-user-id', 'user-123')
+          .send({ decision: 'approved', reason: specialReason })
+          .expect(200);
+
+        // Assert
+        expect(mockApprovalManager.respondToApprovalAtomic).toHaveBeenCalledWith(
+          'approval-123',
+          'approved',
+          'user-123',
+          specialReason
+        );
+      });
+
+      it('should return 404 for SESSION_NOT_FOUND error', async () => {
+        // Arrange
+        mockApprovalManager.respondToApprovalAtomic.mockResolvedValueOnce({
+          success: false,
+          error: 'SESSION_NOT_FOUND',
+        });
+
+        // Act
+        const response = await request(app)
+          .post('/api/approvals/orphan-approval/respond')
+          .set('x-test-user-id', 'user-123')
+          .send({ decision: 'approved' })
+          .expect(404);
+
+        // Assert
+        expect(response.body.message).toContain('Session associated with this approval');
+      });
+    });
+
+    describe('Session ID Format Edge Cases', () => {
+      it('should handle session ID with URL-encoded characters', async () => {
+        // Arrange
+        const encodedSessionId = 'session%2Fwith%2Fslashes';
+        mockValidateSessionOwnership.mockResolvedValueOnce({ isOwner: true });
+        mockTodoManager.getTodosBySession.mockResolvedValueOnce([]);
+
+        // Act
+        const response = await request(app)
+          .get(`/api/todos/session/${encodedSessionId}`)
+          .set('x-test-user-id', 'user-123')
+          .expect(200);
+
+        // Assert - Express decodes URL params
+        expect(mockValidateSessionOwnership).toHaveBeenCalled();
+      });
+
+      it('should handle very long session ID', async () => {
+        // Arrange
+        const longSessionId = 'sess-' + 'x'.repeat(200);
+        mockValidateSessionOwnership.mockResolvedValueOnce({ isOwner: true });
+        mockApprovalManager.getPendingApprovals.mockResolvedValueOnce([]);
+
+        // Act
+        const response = await request(app)
+          .get(`/api/approvals/session/${longSessionId}`)
+          .set('x-test-user-id', 'user-123')
+          .expect(200);
+
+        // Assert
+        expect(response.body.sessionId).toBe(longSessionId);
+      });
+    });
+
+    describe('Database Error Edge Cases', () => {
+      it('should handle database timeout on pending approvals', async () => {
+        // Arrange
+        const timeoutError = new Error('Request timeout');
+        (timeoutError as NodeJS.ErrnoException).code = 'ETIMEDOUT';
+        mockExecuteQuery.mockRejectedValueOnce(timeoutError);
+
+        // Act
+        const response = await request(app)
+          .get('/api/approvals/pending')
+          .set('x-test-user-id', 'user-123')
+          .expect(500);
+
+        // Assert
+        expect(response.body.error).toBe('Failed to get pending approvals');
+      });
+
+      it('should handle null recordset from database', async () => {
+        // Arrange
+        mockExecuteQuery.mockResolvedValueOnce({ recordset: null });
+
+        // Act
+        const response = await request(app)
+          .get('/api/approvals/pending')
+          .set('x-test-user-id', 'user-123')
+          .expect(200);
+
+        // Assert - should handle null as empty
+        expect(response.body.count).toBe(0);
+        expect(response.body.approvals).toEqual([]);
+      });
+    });
+
+    describe('MCP Health Edge Cases', () => {
+      it('should handle MCP service throwing error', async () => {
+        // Arrange - mock throws exception
+        mockMCPService.isConfigured.mockImplementationOnce(() => {
+          throw new Error('MCP internal error');
+        });
+
+        // Act
+        const response = await request(app)
+          .get('/api/mcp/health')
+          .expect(500);
+
+        // Assert
+        expect(response.body.status).toBe('error');
+      });
+    });
+
+    describe('Todo Manager Edge Cases', () => {
+      it('should handle todo manager throwing error', async () => {
+        // Arrange
+        mockValidateSessionOwnership.mockResolvedValueOnce({ isOwner: true });
+        mockTodoManager.getTodosBySession.mockRejectedValueOnce(new Error('Redis connection lost'));
+
+        // Act
+        const response = await request(app)
+          .get('/api/todos/session/session-123')
+          .set('x-test-user-id', 'user-123')
+          .expect(500);
+
+        // Assert
+        expect(response.body.error).toBe('Failed to get todos');
+      });
+
+      it('should handle todos with null properties', async () => {
+        // Arrange
+        mockValidateSessionOwnership.mockResolvedValueOnce({ isOwner: true });
+        mockTodoManager.getTodosBySession.mockResolvedValueOnce([
+          { id: 'todo-1', content: null, status: 'pending' },
+          { id: 'todo-2', content: 'Valid todo', status: null },
+        ]);
+
+        // Act
+        const response = await request(app)
+          .get('/api/todos/session/session-123')
+          .set('x-test-user-id', 'user-123')
+          .expect(200);
+
+        // Assert
+        expect(response.body.todos).toHaveLength(2);
+      });
+    });
+  });
 });

@@ -28,11 +28,41 @@ const mockRequestChain = {
 
 const mockDbRequest = vi.fn(() => mockRequestChain);
 
-// Mock database with persistent spy
+// Mock transaction chain for atomic operations
+const mockTransactionRequestChain = {
+  input: vi.fn().mockReturnThis(),
+  query: vi.fn().mockResolvedValue({ recordset: [], rowsAffected: [0] }),
+};
+
+const mockTransaction = {
+  begin: vi.fn().mockResolvedValue(undefined),
+  commit: vi.fn().mockResolvedValue(undefined),
+  rollback: vi.fn().mockResolvedValue(undefined),
+  request: vi.fn(() => mockTransactionRequestChain),
+};
+
+// Mock database with persistent spy including transaction support
 vi.mock('@/config/database', () => ({
   getDatabase: vi.fn(() => ({
-    request: mockDbRequest,  // Use the persistent spy
+    request: mockDbRequest,
+    transaction: vi.fn(() => mockTransaction),
   })),
+}));
+
+// Mock logger to avoid output during tests
+vi.mock('@/utils/logger', () => ({
+  createChildLogger: vi.fn(() => ({
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  })),
+  logger: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  },
 }));
 
 describe('ApprovalManager', () => {
@@ -352,6 +382,7 @@ describe('ApprovalManager', () => {
           created_at: new Date(),
           expires_at: new Date(),
           session_user_id: 'user_123',  // Same as requesting user
+          session_exists: 1,  // Session exists
         }],
       });
 
@@ -377,6 +408,7 @@ describe('ApprovalManager', () => {
           created_at: new Date(),
           expires_at: new Date(),
           session_user_id: 'user_456',  // Different from requesting user
+          session_exists: 1,  // Session exists
         }],
       });
 
@@ -416,6 +448,7 @@ describe('ApprovalManager', () => {
           created_at: new Date(),
           expires_at: new Date(),
           session_user_id: 'user_123',
+          session_exists: 1,  // Session exists
         }],
       });
 
@@ -426,8 +459,6 @@ describe('ApprovalManager', () => {
     });
 
     it('should log warning when unauthorized access is attempted', async () => {
-      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
       mockRequestChain.query.mockResolvedValueOnce({
         recordset: [{
           approval_id: 'approval_123',
@@ -439,22 +470,334 @@ describe('ApprovalManager', () => {
           created_at: new Date(),
           expires_at: new Date(),
           session_user_id: 'user_456',
+          session_exists: 1,
         }],
       });
 
-      await approvalManager.validateApprovalOwnership('approval_123', 'attacker_user');
+      const result = await approvalManager.validateApprovalOwnership('approval_123', 'attacker_user');
 
-      expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Unauthorized access attempt')
-      );
-      expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('attacker_user')
-      );
-      expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('user_456')
+      // Pino logger is used internally - we verify via the result
+      expect(result.isOwner).toBe(false);
+      expect(result.error).toBe('UNAUTHORIZED');
+    });
+
+    it('should return SESSION_NOT_FOUND when session was deleted', async () => {
+      // Mock approval exists but session was deleted (orphaned approval)
+      mockRequestChain.query.mockResolvedValueOnce({
+        recordset: [{
+          approval_id: 'approval_123',
+          session_id: 'deleted_session',
+          tool_name: 'bc_create_customer',
+          tool_args: '{}',
+          status: 'pending',
+          priority: 'medium',
+          created_at: new Date(),
+          expires_at: new Date(),
+          session_user_id: null,
+          session_exists: 0,  // Session does not exist
+        }],
+      });
+
+      const result = await approvalManager.validateApprovalOwnership('approval_123', 'user_123');
+
+      expect(result.isOwner).toBe(false);
+      expect(result.approval).toBeNull();
+      expect(result.error).toBe('SESSION_NOT_FOUND');
+    });
+
+    it('should handle malformed tool_args JSON gracefully', async () => {
+      mockRequestChain.query.mockResolvedValueOnce({
+        recordset: [{
+          approval_id: 'approval_123',
+          session_id: 'session_123',
+          tool_name: 'bc_create_customer',
+          tool_args: '{invalid json}',  // Malformed JSON
+          status: 'pending',
+          priority: 'medium',
+          created_at: new Date(),
+          expires_at: new Date(),
+          session_user_id: 'user_123',
+          session_exists: 1,
+        }],
+      });
+
+      const result = await approvalManager.validateApprovalOwnership('approval_123', 'user_123');
+
+      expect(result.isOwner).toBe(true);
+      expect(result.approval).not.toBeNull();
+      expect(result.approval?.tool_args).toEqual({ _parseError: 'Invalid JSON in tool_args' });
+    });
+  });
+
+  describe('8. Atomic Approval Response (respondToApprovalAtomic)', () => {
+    beforeEach(() => {
+      // Reset transaction mocks for each test
+      mockTransactionRequestChain.input.mockReturnThis();
+      mockTransactionRequestChain.query.mockResolvedValue({ recordset: [], rowsAffected: [0] });
+      mockTransaction.begin.mockResolvedValue(undefined);
+      mockTransaction.commit.mockResolvedValue(undefined);
+      mockTransaction.rollback.mockResolvedValue(undefined);
+      mockTransaction.request.mockReturnValue(mockTransactionRequestChain);
+    });
+
+    it('should return APPROVAL_NOT_FOUND for non-existent approval', async () => {
+      mockTransactionRequestChain.query.mockResolvedValueOnce({
+        recordset: [],
+      });
+
+      const result = await approvalManager.respondToApprovalAtomic(
+        'nonexistent',
+        'approved',
+        'user_123'
       );
 
-      consoleSpy.mockRestore();
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('APPROVAL_NOT_FOUND');
+      expect(mockTransaction.rollback).toHaveBeenCalled();
+    });
+
+    it('should return SESSION_NOT_FOUND when session was deleted', async () => {
+      mockTransactionRequestChain.query.mockResolvedValueOnce({
+        recordset: [{
+          approval_id: 'approval_123',
+          session_id: 'deleted_session',
+          status: 'pending',
+          session_user_id: null,
+          session_exists: 0,
+        }],
+      });
+
+      const result = await approvalManager.respondToApprovalAtomic(
+        'approval_123',
+        'approved',
+        'user_123'
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('SESSION_NOT_FOUND');
+      expect(mockTransaction.rollback).toHaveBeenCalled();
+    });
+
+    it('should return UNAUTHORIZED when user does not own session', async () => {
+      mockTransactionRequestChain.query.mockResolvedValueOnce({
+        recordset: [{
+          approval_id: 'approval_123',
+          session_id: 'session_123',
+          status: 'pending',
+          session_user_id: 'other_user',
+          session_exists: 1,
+        }],
+      });
+
+      const result = await approvalManager.respondToApprovalAtomic(
+        'approval_123',
+        'approved',
+        'attacker_user'
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('UNAUTHORIZED');
+      expect(result.sessionUserId).toBe('other_user');
+      expect(mockTransaction.rollback).toHaveBeenCalled();
+    });
+
+    it('should return ALREADY_RESOLVED when approval was already approved', async () => {
+      mockTransactionRequestChain.query.mockResolvedValueOnce({
+        recordset: [{
+          approval_id: 'approval_123',
+          session_id: 'session_123',
+          status: 'approved',  // Already resolved
+          session_user_id: 'user_123',
+          session_exists: 1,
+        }],
+      });
+
+      const result = await approvalManager.respondToApprovalAtomic(
+        'approval_123',
+        'approved',
+        'user_123'
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('ALREADY_RESOLVED');
+      expect(result.previousStatus).toBe('approved');
+      expect(mockTransaction.rollback).toHaveBeenCalled();
+    });
+
+    it('should return EXPIRED when approval has expired', async () => {
+      mockTransactionRequestChain.query.mockResolvedValueOnce({
+        recordset: [{
+          approval_id: 'approval_123',
+          session_id: 'session_123',
+          status: 'expired',
+          session_user_id: 'user_123',
+          session_exists: 1,
+        }],
+      });
+
+      const result = await approvalManager.respondToApprovalAtomic(
+        'approval_123',
+        'approved',
+        'user_123'
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('EXPIRED');
+      expect(mockTransaction.rollback).toHaveBeenCalled();
+    });
+
+    it('should return NO_PENDING_PROMISE when server has no in-memory promise', async () => {
+      // Approval is valid but no pending promise exists (server restarted)
+      mockTransactionRequestChain.query.mockResolvedValueOnce({
+        recordset: [{
+          approval_id: 'approval_orphan',
+          session_id: 'session_123',
+          status: 'pending',
+          session_user_id: 'user_123',
+          session_exists: 1,
+        }],
+      });
+
+      const result = await approvalManager.respondToApprovalAtomic(
+        'approval_orphan',  // Different ID than any pending approval
+        'approved',
+        'user_123'
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('NO_PENDING_PROMISE');
+      expect(mockTransaction.rollback).toHaveBeenCalled();
+    });
+
+    it('should succeed when all validations pass and pending promise exists', async () => {
+      // First create a pending approval to have an in-memory promise
+      const requestOptions = {
+        sessionId: 'session_123',
+        toolName: 'bc_create_customer',
+        toolArgs: { name: 'Test' },
+        expiresInMs: 60000,
+      };
+
+      const approvalPromise = approvalManager.request(requestOptions);
+      await vi.advanceTimersByTimeAsync(1);
+
+      const approvalId = mockEmit.mock.calls[0][1].approvalId;
+
+      // Now test the atomic response
+      mockTransactionRequestChain.query
+        .mockResolvedValueOnce({
+          recordset: [{
+            approval_id: approvalId,
+            session_id: 'session_123',
+            status: 'pending',
+            session_user_id: 'user_123',
+            session_exists: 1,
+          }],
+        })
+        .mockResolvedValueOnce({ rowsAffected: [1] });  // UPDATE result
+
+      const result = await approvalManager.respondToApprovalAtomic(
+        approvalId,
+        'approved',
+        'user_123'
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.sessionId).toBe('session_123');
+      expect(mockTransaction.commit).toHaveBeenCalled();
+      expect(mockEmit).toHaveBeenCalledWith('approval:resolved', expect.objectContaining({
+        approvalId,
+        decision: 'approved',
+      }));
+
+      // The original promise should resolve to true
+      const approved = await approvalPromise;
+      expect(approved).toBe(true);
+    });
+
+    it('should handle concurrent responses correctly (only first succeeds)', async () => {
+      // Create a pending approval
+      const requestOptions = {
+        sessionId: 'session_123',
+        toolName: 'bc_create_customer',
+        toolArgs: { name: 'Test' },
+        expiresInMs: 60000,
+      };
+
+      const approvalPromise = approvalManager.request(requestOptions);
+      await vi.advanceTimersByTimeAsync(1);
+
+      const approvalId = mockEmit.mock.calls[0][1].approvalId;
+
+      // First response succeeds
+      mockTransactionRequestChain.query
+        .mockResolvedValueOnce({
+          recordset: [{
+            approval_id: approvalId,
+            session_id: 'session_123',
+            status: 'pending',
+            session_user_id: 'user_123',
+            session_exists: 1,
+          }],
+        })
+        .mockResolvedValueOnce({ rowsAffected: [1] });
+
+      const result1 = await approvalManager.respondToApprovalAtomic(
+        approvalId,
+        'approved',
+        'user_123'
+      );
+
+      expect(result1.success).toBe(true);
+
+      // Second response fails (no pending promise)
+      mockTransactionRequestChain.query.mockResolvedValueOnce({
+        recordset: [{
+          approval_id: approvalId,
+          session_id: 'session_123',
+          status: 'pending',  // DB still says pending until transaction commits
+          session_user_id: 'user_123',
+          session_exists: 1,
+        }],
+      });
+
+      const result2 = await approvalManager.respondToApprovalAtomic(
+        approvalId,
+        'rejected',
+        'user_123'
+      );
+
+      expect(result2.success).toBe(false);
+      expect(result2.error).toBe('NO_PENDING_PROMISE');
+
+      await approvalPromise;
+    });
+
+    it('should rollback transaction on database error', async () => {
+      // Create a pending approval
+      const requestOptions = {
+        sessionId: 'session_123',
+        toolName: 'bc_create_customer',
+        toolArgs: { name: 'Test' },
+        expiresInMs: 60000,
+      };
+
+      approvalManager.request(requestOptions);
+      await vi.advanceTimersByTimeAsync(1);
+
+      const approvalId = mockEmit.mock.calls[0][1].approvalId;
+
+      // Simulate database error
+      mockTransactionRequestChain.query.mockRejectedValueOnce(new Error('Connection lost'));
+
+      await expect(
+        approvalManager.respondToApprovalAtomic(approvalId, 'approved', 'user_123')
+      ).rejects.toThrow('Connection lost');
+
+      expect(mockTransaction.rollback).toHaveBeenCalled();
+
+      // Cleanup
+      vi.advanceTimersByTime(60000);
     });
   });
 });

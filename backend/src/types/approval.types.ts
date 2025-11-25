@@ -93,7 +93,12 @@ export interface ApprovalResult {
 /**
  * Error codes for approval ownership validation
  */
-export type ApprovalOwnershipError = 'APPROVAL_NOT_FOUND' | 'SESSION_NOT_FOUND' | 'UNAUTHORIZED';
+export type ApprovalOwnershipError =
+  | 'APPROVAL_NOT_FOUND'
+  | 'SESSION_NOT_FOUND'
+  | 'UNAUTHORIZED'
+  | 'ALREADY_RESOLVED'
+  | 'EXPIRED';
 
 /**
  * Result of approval ownership validation
@@ -108,4 +113,21 @@ export interface ApprovalOwnershipResult {
   sessionUserId: string | null;
   /** Error code if validation failed */
   error?: ApprovalOwnershipError;
+}
+
+/**
+ * Result of atomic approval response with ownership validation
+ * Combines ownership check + state validation + response in single transaction
+ */
+export interface AtomicApprovalResponseResult {
+  /** Whether the response was successfully processed */
+  success: boolean;
+  /** Error code if operation failed */
+  error?: ApprovalOwnershipError | 'NO_PENDING_PROMISE';
+  /** The approval status before this operation */
+  previousStatus?: ApprovalStatus;
+  /** Session ID for WebSocket notification */
+  sessionId?: string;
+  /** Session owner user ID for audit */
+  sessionUserId?: string;
 }

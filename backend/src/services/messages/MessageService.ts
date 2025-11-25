@@ -422,9 +422,11 @@ export class MessageService {
     offset?: number
   ): Promise<ParsedMessage[]> {
     try {
+      // ⭐ UPDATED 2025-11-24: Added Phase 1A token tracking columns
       let query = `
         SELECT id, session_id, role, message_type, content, metadata,
-               token_count, stop_reason, sequence_number, event_id, created_at
+               token_count, stop_reason, sequence_number, event_id, tool_use_id,
+               model, input_tokens, output_tokens, created_at
         FROM messages
         WHERE session_id = @session_id
         ORDER BY
@@ -460,10 +462,12 @@ export class MessageService {
    */
   public async getMessageById(messageId: string): Promise<ParsedMessage | null> {
     try {
+      // ⭐ UPDATED 2025-11-24: Added Phase 1A token tracking columns
       const result = await executeQuery<MessageDbRecord>(
         `
         SELECT id, session_id, role, message_type, content, metadata,
-               token_count, stop_reason, sequence_number, event_id, created_at
+               token_count, stop_reason, sequence_number, event_id, tool_use_id,
+               model, input_tokens, output_tokens, created_at
         FROM messages
         WHERE id = @id
         `,

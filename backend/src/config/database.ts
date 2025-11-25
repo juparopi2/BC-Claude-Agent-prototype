@@ -43,7 +43,8 @@ const PARAMETER_TYPE_MAP: Record<string, ISqlType | (() => ISqlType)> = {
   // INT columns
   'sequence_number': sql.Int,
   'token_count': sql.Int,
-  'thinking_tokens': sql.Int,
+  // Note: thinking_tokens column removed from database (Option A - 2025-11-24)
+  // Thinking tokens are only available via WebSocket real-time events
   'tokens_used': sql.Int,
   'duration_ms': sql.Int,
   'order': sql.Int,

@@ -151,13 +151,27 @@ export class ChatMessageHandler {
         hasExecuteMethod: typeof agentService?.executeQueryStreaming === 'function'
       });
 
-      this.logger.info('📞 Calling executeQueryStreaming...', { sessionId, userId, messageLength: message.length });
+      // ⭐ Phase 1F: Extract Extended Thinking config from request
+      const thinkingConfig = data.thinking;
+      this.logger.info('📞 Calling executeQueryStreaming...', {
+        sessionId,
+        userId,
+        messageLength: message.length,
+        // Log thinking config if provided
+        enableThinking: thinkingConfig?.enableThinking,
+        thinkingBudget: thinkingConfig?.thinkingBudget,
+      });
 
       await agentService.executeQueryStreaming(
         message,
         sessionId,
         (event: AgentEvent) => this.handleAgentEvent(event, io, sessionId, userId),
-        userId // ⭐ Pass userId for tool persistence (optional 4th parameter)
+        userId, // ⭐ Pass userId for tool persistence
+        // ⭐ Phase 1F: Pass Extended Thinking config (per-request)
+        thinkingConfig ? {
+          enableThinking: thinkingConfig.enableThinking,
+          thinkingBudget: thinkingConfig.thinkingBudget,
+        } : undefined
       );
 
       this.logger.info('✅ Chat message processed successfully (executeQueryStreaming completed)', { sessionId, userId });

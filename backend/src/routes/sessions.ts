@@ -17,8 +17,8 @@ import crypto from 'crypto';
 import { executeQuery } from '../config/database';
 import { authenticateMicrosoft } from '../middleware/auth-oauth';
 import { logger } from '../utils/logger';
-// ✅ Import native SDK type (source of truth)
-import type { StopReason } from '@anthropic-ai/sdk/resources/messages';
+// ✅ Import native SDK types (source of truth)
+import type { StopReason, TextCitation } from '@anthropic-ai/sdk/resources/messages';
 
 const router = Router();
 
@@ -73,6 +73,8 @@ function transformSession(row: {
 /**
  * Transform database message row to frontend Message format
  * Handles 3 message types: standard, thinking, tool_use
+ *
+ * ⭐ UPDATED: Now includes token tracking columns (model, input_tokens, output_tokens)
  */
 function transformMessage(row: {
   id: string;
@@ -85,6 +87,12 @@ function transformMessage(row: {
   stop_reason: StopReason | null;  // ✅ Native SDK stop_reason
   sequence_number: number | null;  // ✅ Event sourcing sequence
   created_at: Date;
+  // ⭐ Token tracking columns
+  model: string | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  event_id: string | null;
+  tool_use_id: string | null;
 }) {
   // Base fields common to all message types
   const base = {
@@ -93,6 +101,12 @@ function transformMessage(row: {
     role: row.role as 'user' | 'assistant' | 'system',
     message_type: row.message_type as 'standard' | 'thinking' | 'tool_use',
     created_at: row.created_at.toISOString(),
+    // ⭐ Token tracking fields (exposed for E2E data flow)
+    model: row.model || undefined,
+    input_tokens: row.input_tokens ?? undefined,
+    output_tokens: row.output_tokens ?? undefined,
+    event_id: row.event_id || undefined,
+    tool_use_id: row.tool_use_id || undefined,
   };
 
   // Parse metadata JSON if present
@@ -118,6 +132,11 @@ function transformMessage(row: {
         stop_reason: row.stop_reason,  // ✅ Native SDK stop_reason
         sequence_number: row.sequence_number,  // ✅ Event sourcing sequence
         created_at: row.created_at.toISOString(),
+        // ⭐ Token tracking fields
+        model: row.model || undefined,
+        input_tokens: row.input_tokens ?? undefined,
+        output_tokens: row.output_tokens ?? undefined,
+        event_id: row.event_id || undefined,
       };
 
     case 'tool_use':
@@ -134,18 +153,26 @@ function transformMessage(row: {
         stop_reason: row.stop_reason,  // ✅ Native SDK stop_reason
         sequence_number: row.sequence_number,  // ✅ Event sourcing sequence
         created_at: row.created_at.toISOString(),
+        // ⭐ Token tracking fields
+        model: row.model || undefined,
+        tool_use_id: row.tool_use_id || undefined,
+        event_id: row.event_id || undefined,
       };
 
     case 'standard':
     default:
       // Standard message: content is in content field
+      // ⭐ base already includes token tracking fields
       return {
-        ...base,  // Includes role and message_type for standard messages
+        ...base,  // Includes role, message_type, model, input_tokens, output_tokens, event_id, tool_use_id
         content: row.content,
         stop_reason: row.stop_reason,  // ✅ Native SDK stop_reason
         sequence_number: row.sequence_number,  // ✅ Event sourcing sequence
-        thinking_tokens: metadata.thinking_tokens as number | undefined,
         is_thinking: metadata.is_thinking as boolean | undefined,
+        // ⭐ Citations from metadata (persisted by DirectAgentService)
+        // Using SDK TextCitation[] type for proper typing
+        citations: metadata.citations as TextCitation[] | undefined,
+        citations_count: metadata.citations_count as number | undefined,
       };
   }
 }
@@ -418,6 +445,7 @@ router.get('/:sessionId/messages', authenticateMicrosoft, async (req: Request, r
     }
 
     // Query messages for the session
+    // ⭐ UPDATED: Include all token tracking and model columns for E2E data flow
     const messagesQuery = `
       SELECT
         id,
@@ -429,7 +457,12 @@ router.get('/:sessionId/messages', authenticateMicrosoft, async (req: Request, r
         stop_reason,
         token_count,
         sequence_number,
-        created_at
+        created_at,
+        model,
+        input_tokens,
+        output_tokens,
+        event_id,
+        tool_use_id
       FROM messages
       WHERE session_id = @sessionId
       ORDER BY
@@ -453,6 +486,12 @@ router.get('/:sessionId/messages', authenticateMicrosoft, async (req: Request, r
       token_count: number | null;
       sequence_number: number | null;  // ✅ Event sourcing sequence
       created_at: Date;
+      // ⭐ Token tracking columns
+      model: string | null;
+      input_tokens: number | null;
+      output_tokens: number | null;
+      event_id: string | null;
+      tool_use_id: string | null;
     }>(messagesQuery, { sessionId, offset, limit });
 
     const messages = messagesResult.recordset.map(transformMessage);

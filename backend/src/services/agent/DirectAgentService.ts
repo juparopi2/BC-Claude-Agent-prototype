@@ -860,11 +860,12 @@ export class DirectAgentService {
             sequenceNumber: completeMessageEvent.sequence_number, // ⭐ REUSA sequence
             eventId: completeMessageEvent.id,
             stopReason: stopReason || null,
-            // ⭐ PHASE 1A + 1F: Token tracking - persist to database
+            // ⭐ PHASE 1A: Token tracking - persist to database
+            // Note: thinkingTokens removed from DB persistence (Option A - 2025-11-24)
+            // Thinking tokens are only shown in real-time WebSocket events
             model: modelName,
             inputTokens,
             outputTokens,
-            thinkingTokens: thinkingTokens > 0 ? thinkingTokens : undefined,  // ⭐ PHASE 1F
           });
 
           // Log if citations were persisted

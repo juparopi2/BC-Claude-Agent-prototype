@@ -58,8 +58,9 @@ export interface MessagePersistenceJob {
   model?: string;
   inputTokens?: number;
   outputTokens?: number;
-  // ⭐ PHASE 1F: Extended Thinking token tracking
-  thinkingTokens?: number;
+  // Note: thinkingTokens removed per Option A (2025-11-24)
+  // SDK doesn't provide thinking_tokens separately (included in output_tokens)
+  // Real-time estimation still available via WebSocket tokenUsage
 }
 
 /**
@@ -532,8 +533,7 @@ export class MessageQueue {
       sequenceNumber, eventId, toolUseId, stopReason,
       // ⭐ PHASE 1A: Token tracking fields
       model, inputTokens, outputTokens,
-      // ⭐ PHASE 1F: Extended Thinking tokens
-      thinkingTokens
+      // Note: thinkingTokens removed per Option A (2025-11-24)
     } = job.data;
 
     // ⭐ VALIDATION: Check for undefined messageId
@@ -566,8 +566,7 @@ export class MessageQueue {
       model,
       inputTokens,
       outputTokens,
-      // ⭐ PHASE 1F: Extended Thinking tokens
-      thinkingTokens,
+      // Note: thinkingTokens removed from DB per Option A (2025-11-24)
       attemptNumber: job.attemptsMade,
     });
 
@@ -599,14 +598,15 @@ export class MessageQueue {
         model: model ?? null,
         input_tokens: inputTokens ?? null,
         output_tokens: outputTokens ?? null,
-        // ⭐ PHASE 1F: Extended Thinking tokens
-        thinking_tokens: thinkingTokens ?? null,
+        // Note: thinking_tokens removed per Option A (2025-11-24)
+        // SDK doesn't provide thinking_tokens separately (included in output_tokens)
       };
 
+      // ⭐ UPDATED 2025-11-24: Removed thinking_tokens column per Option A
       await executeQuery(
         `
-        INSERT INTO messages (id, session_id, role, message_type, content, metadata, sequence_number, event_id, token_count, stop_reason, tool_use_id, created_at, model, input_tokens, output_tokens, thinking_tokens)
-        VALUES (@id, @session_id, @role, @message_type, @content, @metadata, @sequence_number, @event_id, @token_count, @stop_reason, @tool_use_id, @created_at, @model, @input_tokens, @output_tokens, @thinking_tokens)
+        INSERT INTO messages (id, session_id, role, message_type, content, metadata, sequence_number, event_id, token_count, stop_reason, tool_use_id, created_at, model, input_tokens, output_tokens)
+        VALUES (@id, @session_id, @role, @message_type, @content, @metadata, @sequence_number, @event_id, @token_count, @stop_reason, @tool_use_id, @created_at, @model, @input_tokens, @output_tokens)
         `,
         params
       );

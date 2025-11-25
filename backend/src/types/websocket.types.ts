@@ -10,6 +10,29 @@
 import type { AgentEvent } from './agent.types';
 
 /**
+ * Extended Thinking Configuration (Client → Server)
+ *
+ * Optional configuration for Claude's Extended Thinking feature.
+ * When provided, enables Claude to show its internal reasoning process.
+ *
+ * @see https://platform.claude.com/docs/en/build-with-claude/extended-thinking
+ */
+export interface ExtendedThinkingConfig {
+  /**
+   * Enable Extended Thinking mode for this request
+   * @default false (uses server env.ENABLE_EXTENDED_THINKING as fallback)
+   */
+  enableThinking?: boolean;
+
+  /**
+   * Budget tokens for extended thinking (minimum 1024)
+   * Only used when enableThinking is true.
+   * @default 10000
+   */
+  thinkingBudget?: number;
+}
+
+/**
  * Chat Message Data (Client → Server)
  *
  * User sends a chat message to the agent.
@@ -33,6 +56,25 @@ export interface ChatMessageData {
    * Required for multi-tenant audit trail.
    */
   userId: string;
+
+  /**
+   * Extended Thinking configuration (per-request)
+   *
+   * Allows frontend to enable/disable Extended Thinking for specific requests.
+   * If not provided, falls back to server environment configuration.
+   *
+   * @example
+   * ```typescript
+   * // Enable extended thinking with custom budget
+   * socket.emit('chat:message', {
+   *   message: 'Complex reasoning task...',
+   *   sessionId: 'uuid',
+   *   userId: 'user-uuid',
+   *   thinking: { enableThinking: true, thinkingBudget: 15000 }
+   * });
+   * ```
+   */
+  thinking?: ExtendedThinkingConfig;
 }
 
 /**

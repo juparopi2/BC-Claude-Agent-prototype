@@ -898,3 +898,144 @@ npm run build  # ✅ Success
 npm test -- stop-reasons.test.ts
 # ✅ 38/38 tests passing
 ```
+
+---
+
+## E2E Data Flow Verification (2025-11-24)
+
+### Verificación Completa del Flujo de Datos
+
+Se verificó que la información (citations, tokens, stop reasons) fluye correctamente desde el SDK hasta los endpoints REST.
+
+### Gaps Identificados y Corregidos
+
+**Problema**: El SELECT query en `sessions.ts` no incluía columnas críticas de tracking.
+
+**Solución Aplicada** (`backend/src/routes/sessions.ts`):
+
+1. **SELECT Query Actualizado** (líneas 421-448):
+```sql
+SELECT
+  id, session_id, role, message_type, content, metadata,
+  stop_reason, token_count, sequence_number, created_at,
+  model,           -- ⭐ AÑADIDO
+  input_tokens,    -- ⭐ AÑADIDO
+  output_tokens,   -- ⭐ AÑADIDO
+  event_id,        -- ⭐ AÑADIDO
+  tool_use_id      -- ⭐ AÑADIDO
+FROM messages
+```
+
+2. **Type Definitions Actualizadas** (líneas 451-467):
+```typescript
+const messagesResult = await executeQuery<{
+  // ... existing fields
+  model: string | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  event_id: string | null;
+  tool_use_id: string | null;
+}>(messagesQuery, { sessionId, offset, limit });
+```
+
+3. **transformMessage() Actualizada** (líneas 79-177):
+   - Import de `TextCitation` del SDK
+   - Base fields incluyen token tracking
+   - Citations expuestas con tipo correcto `TextCitation[]`
+   - No se usa `unknown` ni `any`
+
+### Imports del SDK Actualizados
+
+```typescript
+// ✅ Import native SDK types (source of truth)
+import type { StopReason, TextCitation } from '@anthropic-ai/sdk/resources/messages';
+```
+
+### Response Structure (Standard Messages)
+
+```typescript
+{
+  id: string;
+  session_id: string;
+  role: 'user' | 'assistant' | 'system';
+  message_type: 'standard' | 'thinking' | 'tool_use';
+  content: string;
+  stop_reason: StopReason | null;
+  sequence_number: number | null;
+  created_at: string;  // ISO 8601
+  // ⭐ Token tracking (E2E verified)
+  model: string | undefined;
+  input_tokens: number | undefined;
+  output_tokens: number | undefined;
+  event_id: string | undefined;
+  tool_use_id: string | undefined;
+  // ⭐ Citations (E2E verified)
+  citations: TextCitation[] | undefined;
+  citations_count: number | undefined;
+}
+```
+
+### Test Suite E2E Creada
+
+**Archivo**: `backend/src/__tests__/unit/agent/e2e-data-flow.test.ts`
+
+**38 tests** cubriendo:
+- Citations E2E Flow (11 tests)
+  - CAPTURE: DirectAgentService
+  - PERSIST: MessageQueue
+  - QUERY: REST Endpoint
+- Token Tracking E2E Flow (12 tests)
+  - CAPTURE: DirectAgentService
+  - PERSIST: MessageQueue
+  - QUERY: REST Endpoint
+- Stop Reasons E2E Flow (8 tests)
+- Event Sourcing Fields E2E Flow (5 tests)
+- Type Safety Verification (2 tests)
+
+### Verificación
+
+```bash
+# Type check passed
+npm run type-check  # ✅ Success
+
+# E2E Data Flow tests passed
+npm test -- e2e-data-flow.test.ts
+# ✅ 38/38 tests passing
+
+# All related tests passed
+npm test -- citations.test.ts stop-reasons.test.ts e2e-data-flow.test.ts
+# ✅ 109/109 tests passing (33 + 38 + 38)
+```
+
+### Data Flow Summary
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ 1. CAPTURE (DirectAgentService)                                 │
+│    - Citations via citations_delta events                       │
+│    - Tokens from message_delta.usage                            │
+│    - Model from message_start.message.model                     │
+│    - Stop reason from message_stop event                        │
+└─────────────────────────────────────────────────────────────────┘
+                           ↓
+┌─────────────────────────────────────────────────────────────────┐
+│ 2. TRANSMIT (WebSocket)                                         │
+│    - MessageEvent with tokenUsage, model                        │
+│    - TurnPausedEvent / ContentRefusedEvent for new stop reasons │
+│    - Citations in metadata for text blocks                      │
+└─────────────────────────────────────────────────────────────────┘
+                           ↓
+┌─────────────────────────────────────────────────────────────────┐
+│ 3. PERSIST (MessageQueue → Database)                            │
+│    - model, input_tokens, output_tokens columns                 │
+│    - metadata JSON with citations array                         │
+│    - stop_reason column                                         │
+└─────────────────────────────────────────────────────────────────┘
+                           ↓
+┌─────────────────────────────────────────────────────────────────┐
+│ 4. QUERY (REST /api/chat/sessions/:id/messages)                 │
+│    ✅ SELECT includes: model, input_tokens, output_tokens       │
+│    ✅ transformMessage exposes: citations (TextCitation[])      │
+│    ✅ Type safety: SDK types used (not unknown/any)             │
+└─────────────────────────────────────────────────────────────────┘
+```

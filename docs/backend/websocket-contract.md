@@ -13,7 +13,7 @@ This document defines the complete WebSocket contract between the BC Claude Agen
 ```typescript
 import { io, Socket } from 'socket.io-client';
 
-const socket: Socket = io('ws://localhost:3001', {
+const socket: Socket = io('ws://localhost:3002', {  // ⭐ Port 3002 (check .env)
   transports: ['websocket'],  // Force WebSocket (no polling fallback)
   withCredentials: true,       // Include session cookie
   reconnection: true,          // Auto-reconnect
@@ -107,26 +107,69 @@ socket.emit('session:leave', {
 
 **Payload**:
 ```typescript
+// ⭐ UPDATED 2025-11-24: Added Extended Thinking configuration
 interface ChatMessageData {
   message: string;    // User's message
   sessionId: string;  // UUID of the session
   userId: string;     // UUID of the user (for multi-tenant safety)
+
+  // ⭐ Extended Thinking configuration (per-request, optional)
+  thinking?: ExtendedThinkingConfig;
+}
+
+interface ExtendedThinkingConfig {
+  /**
+   * Enable Extended Thinking mode for this request
+   * @default false (falls back to server env.ENABLE_EXTENDED_THINKING)
+   */
+  enableThinking?: boolean;
+
+  /**
+   * Budget tokens for extended thinking (minimum 1024)
+   * Only used when enableThinking is true.
+   * @default 10000
+   */
+  thinkingBudget?: number;
 }
 ```
 
-**Example**:
+**Examples**:
+
 ```typescript
+// Basic message (no thinking)
 socket.emit('chat:message', {
   message: 'List all customers',
   sessionId: '123e4567-e89b-12d3-a456-426614174000',
   userId: '987fcdeb-51a3-12d3-b456-426614174111'
 });
+
+// ⭐ Message with Extended Thinking enabled
+socket.emit('chat:message', {
+  message: 'Analyze this complex business scenario...',
+  sessionId: '123e4567-e89b-12d3-a456-426614174000',
+  userId: '987fcdeb-51a3-12d3-b456-426614174111',
+  thinking: {
+    enableThinking: true,
+    thinkingBudget: 15000  // Custom budget (default: 10000)
+  }
+});
+
+// ⭐ Explicitly disable thinking (overrides server default)
+socket.emit('chat:message', {
+  message: 'Quick question...',
+  sessionId: '123e4567-e89b-12d3-a456-426614174000',
+  userId: '987fcdeb-51a3-12d3-b456-426614174111',
+  thinking: {
+    enableThinking: false
+  }
+});
 ```
 
 **What Happens Next**:
 1. Backend saves user message to database
-2. Backend executes agent query (DirectAgentService)
+2. Backend executes agent query (DirectAgentService with thinking config)
 3. Backend streams events back via `agent:event`
+4. If thinking enabled, `thinking_chunk` events stream reasoning in real-time
 
 ---
 
@@ -194,15 +237,24 @@ socket.emit('approval:respond', {
 
 **Payload**:
 ```typescript
+// ⭐ UPDATED 2025-11-24: 16 event types (SDK 0.71+)
 type AgentEvent =
   | SessionStartEvent
   | ThinkingEvent
+  | ThinkingChunkEvent       // Extended Thinking streaming
+  | MessagePartialEvent      // Partial message during streaming
   | MessageChunkEvent
   | MessageEvent
   | ToolUseEvent
   | ToolResultEvent
   | CompleteEvent
-  | ErrorEvent;
+  | ErrorEvent
+  | SessionEndEvent
+  | ApprovalRequestedEvent
+  | ApprovalResolvedEvent
+  | UserMessageConfirmedEvent // User message persisted with sequence_number
+  | TurnPausedEvent          // SDK 0.71: Long agentic turn paused
+  | ContentRefusedEvent;     // SDK 0.71: Content refused (policy violation)
 ```
 
 **All events include these base fields**:
@@ -292,21 +344,31 @@ socket.on('agent:event', (event: AgentEvent) => {
 
 **Payload**:
 ```typescript
+// ⭐ UPDATED 2025-11-24: Added tokenUsage, model, and new stop reasons
 interface MessageEvent extends BaseAgentEvent {
   type: 'message';
-  messageId: string;          // Phase 1B: Anthropic message ID (format: msg_01ABC..., not UUID)
+  messageId: string;          // Anthropic message ID (format: msg_01ABC..., NOT UUID)
   role: 'user' | 'assistant'; // Message role
   content: string;            // Full message content
-  stopReason?: StopReason;    // Why the message ended
-  tokenCount?: number;
+  stopReason?: StopReason;    // Why the message ended (SDK 0.71 native type)
+  // ⭐ Phase 1A: Token usage for billing/admin visibility
+  tokenUsage?: {
+    inputTokens: number;
+    outputTokens: number;
+    thinkingTokens?: number;  // Extended Thinking tokens (if enabled)
+  };
+  // ⭐ Phase 1A: Model that generated this response
+  model?: string;             // e.g., "claude-sonnet-4-5-20250929"
 }
 
+// ⭐ SDK 0.71 StopReason - 6 possible values
 type StopReason =
-  | 'end_turn'      // Agent finished normally
-  | 'tool_use'      // Agent wants to use a tool
-  | 'max_tokens'    // Hit max token limit
-  | 'stop_sequence' // Hit stop sequence
-  | null;
+  | 'end_turn'      // Agent finished normally - final message
+  | 'tool_use'      // Agent wants to use a tool - intermediate message
+  | 'max_tokens'    // Hit max token limit - may be truncated
+  | 'stop_sequence' // Hit custom stop sequence
+  | 'pause_turn'    // ⭐ NEW: Long agentic turn paused (can be resumed)
+  | 'refusal';      // ⭐ NEW: Content refused due to policy violation
 ```
 
 **Stop Reason Logic**:
@@ -317,6 +379,12 @@ if (event.stopReason === 'end_turn') {
 } else if (event.stopReason === 'tool_use') {
   // Agent wants to execute a tool, expect tool_use event
   showToolIndicator();
+} else if (event.stopReason === 'pause_turn') {
+  // ⭐ NEW: Long operation paused - inform user
+  showPausedIndicator('Operation paused. Resuming...');
+} else if (event.stopReason === 'refusal') {
+  // ⭐ NEW: Policy violation - show appropriate message
+  showWarning('Request could not be completed due to content policy.');
 }
 ```
 
@@ -409,6 +477,87 @@ interface ErrorEvent extends BaseAgentEvent {
 ```
 
 **UI Recommendation**: Show error message, offer retry if recoverable
+
+---
+
+#### 1.9 Turn Paused Event (SDK 0.71+)
+
+**Type**: `'turn_paused'`
+
+**When**: Claude pauses a long-running agentic turn
+
+**Payload**:
+```typescript
+interface TurnPausedEvent extends BaseAgentEvent {
+  type: 'turn_paused';
+  messageId: string;      // Anthropic message ID
+  content?: string;       // Partial content before pause
+  reason?: string;        // Why the turn was paused
+}
+```
+
+**UI Recommendation**: Show "Processing paused, will resume..." indicator
+
+---
+
+#### 1.10 Content Refused Event (SDK 0.71+)
+
+**Type**: `'content_refused'`
+
+**When**: Claude refuses to generate content due to policy violation
+
+**Payload**:
+```typescript
+interface ContentRefusedEvent extends BaseAgentEvent {
+  type: 'content_refused';
+  messageId: string;      // Anthropic message ID
+  reason?: string;        // Policy violation explanation
+  content?: string;       // Partial content before refusal (may be empty)
+}
+```
+
+**UI Recommendation**: Show appropriate warning message to user
+
+---
+
+#### 1.11 User Message Confirmed Event
+
+**Type**: `'user_message_confirmed'`
+
+**When**: User message has been persisted with sequence number
+
+**Payload**:
+```typescript
+interface UserMessageConfirmedEvent extends BaseAgentEvent {
+  type: 'user_message_confirmed';
+  messageId: string;      // Message ID from database
+  userId: string;         // User who sent the message
+  content: string;        // Message content
+  sequenceNumber: number; // Atomic sequence number (Redis INCR)
+  eventId: string;        // Event ID for tracing
+}
+```
+
+**Usage**: Update optimistic UI message with server-confirmed sequence number
+
+---
+
+#### 1.12 Thinking Chunk Event (Extended Thinking)
+
+**Type**: `'thinking_chunk'`
+
+**When**: During Extended Thinking streaming, one chunk per thinking fragment
+
+**Payload**:
+```typescript
+interface ThinkingChunkEvent extends BaseAgentEvent {
+  type: 'thinking_chunk';
+  content: string;        // Chunk of thinking content
+  blockIndex?: number;    // Index for multi-block responses
+}
+```
+
+**Usage**: Display real-time thinking process to user (if enabled)
 
 ---
 
@@ -782,4 +931,4 @@ if (event.type === 'error' && event.isRecoverable) {
 
 ---
 
-**Last Updated**: 2025-11-19
+**Last Updated**: 2025-11-24 (SDK 0.71, added TurnPausedEvent, ContentRefusedEvent, tokenUsage)

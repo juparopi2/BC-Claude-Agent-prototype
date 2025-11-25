@@ -1,7 +1,42 @@
 # Token Usage Tracking Design
 
 **Fecha**: 2025-11-24
-**Estado**: DISEÑO - Pendiente de aprobación
+**Estado**: ✅ OPTION A IMPLEMENTED (2025-11-24)
+
+---
+
+## ✅ IMPLEMENTED: Option A - Eliminate thinking_tokens Column
+
+**Decision Date**: 2025-11-24
+**Approved By**: User during CUA audit session
+
+### Migration Applied
+
+- **Migration**: `backend/migrations/004-remove-thinking-tokens.sql`
+- **Status**: ✅ Executed successfully against Azure SQL Database
+
+### Changes Made
+
+1. **Database**: `thinking_tokens` column and index dropped from `messages` table
+2. **MessageQueue.ts**: Removed `thinkingTokens` from `MessagePersistenceJob` interface
+3. **DirectAgentService.ts**: No longer persists `thinkingTokens` to database
+4. **database.ts**: Removed `'thinking_tokens': sql.Int` from parameter type map
+
+### Real-Time Support Maintained
+
+WebSocket events still include `thinkingTokens` in `MessageEvent.tokenUsage`:
+- **Location**: `agent.types.ts:200-204`
+- **Purpose**: Real-time display of estimated thinking tokens in UI
+- **Note**: This is an estimate (characters/4), not actual token count
+
+### Token Columns Remaining
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `model` | NVARCHAR(100) | Claude model name |
+| `input_tokens` | INT | Input tokens from Anthropic API |
+| `output_tokens` | INT | Output tokens (includes thinking) |
+| `total_tokens` | INT (computed) | input_tokens + output_tokens |
 
 ---
 

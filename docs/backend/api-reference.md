@@ -193,7 +193,7 @@ Get specific session
 Get all messages for session
 
 **Query Parameters**:
-- `limit` (number, optional) - Max messages (default: 100)
+- `limit` (number, optional) - Max messages (default: 50)
 - `offset` (number, optional) - Pagination offset (default: 0)
 
 **Response**: `200 OK`
@@ -201,26 +201,46 @@ Get all messages for session
 {
   "messages": [
     {
-      "id": "uuid",
+      "id": "msg_01ABC123...",
+      "session_id": "uuid",
       "role": "user",
-      "type": "standard",
+      "message_type": "standard",
       "content": "List customers",
-      "created_at": "2025-11-19T10:00:00Z",
-      "sequence_number": 1
+      "created_at": "2025-11-19T10:00:00.000Z",
+      "sequence_number": 1,
+      "stop_reason": null,
+      "model": null,
+      "input_tokens": null,
+      "output_tokens": null,
+      "event_id": "uuid",
+      "tool_use_id": null
     },
     {
-      "id": "uuid",
+      "id": "msg_01XYZ789...",
+      "session_id": "uuid",
       "role": "assistant",
-      "type": "standard",
+      "message_type": "standard",
       "content": "Here are the top customers...",
       "stop_reason": "end_turn",
-      "token_count": 150,
-      "created_at": "2025-11-19T10:00:05Z",
-      "sequence_number": 2
+      "created_at": "2025-11-19T10:00:05.000Z",
+      "sequence_number": 2,
+      "model": "claude-sonnet-4-5-20250929",
+      "input_tokens": 100,
+      "output_tokens": 150,
+      "event_id": "uuid",
+      "tool_use_id": null,
+      "citations": [],
+      "citations_count": 0
     }
   ]
 }
 ```
+
+**Message ID Formats**:
+- Messages: `msg_01ABC...` (Anthropic message ID)
+- Tool use: `toolu_01ABC...` (Anthropic tool use ID)
+- Tool results: `toolu_01ABC..._result` (derived from tool use)
+- System: `system_*_uuid` (internal system messages)
 
 ---
 
@@ -363,4 +383,4 @@ All errors follow this format:
 
 ---
 
-**Last Updated**: 2025-11-19
+**Last Updated**: 2025-11-24 (Added token tracking, citations, Anthropic message IDs)

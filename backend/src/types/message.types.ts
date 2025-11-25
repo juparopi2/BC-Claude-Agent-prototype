@@ -30,6 +30,8 @@ export type MessageType =
  * Enhanced Fields:
  * - sequence_number: Replaces timestamp-based ordering (prevents race conditions)
  * - event_id: Links to message_events for full event sourcing replay
+ *
+ * ⭐ UPDATED 2025-11-24: Added Phase 1A token tracking columns
  */
 export interface MessageDbRecord {
   id: string;
@@ -49,6 +51,15 @@ export interface MessageDbRecord {
   event_id: string | null;
   /** Anthropic SDK tool_use block ID (e.g., toolu_01ABC123) for correlating tool_use and tool_result */
   tool_use_id: string | null;
+
+  // ⭐ Phase 1A: Token Tracking Columns
+  /** Claude model that generated the response (e.g., "claude-sonnet-4-5-20250929") */
+  model: string | null;
+  /** Input tokens from Anthropic API */
+  input_tokens: number | null;
+  /** Output tokens from Anthropic API */
+  output_tokens: number | null;
+  // Note: total_tokens is a computed column in DB (input_tokens + output_tokens)
 }
 
 /**
@@ -73,6 +84,27 @@ export interface ToolUseMetadata {
 }
 
 /**
+ * Base fields common to all parsed message types
+ * ⭐ UPDATED 2025-11-24: Added Phase 1A token tracking fields
+ */
+interface ParsedMessageBase {
+  id: string;
+  session_id: string;
+  role: MessageRole;
+  content: string;
+  token_count: number | null;
+  stop_reason: string | null;
+  created_at: Date;
+  sequence_number: number | null;
+  event_id: string | null;
+  tool_use_id: string | null;
+  // ⭐ Phase 1A: Token Tracking
+  model: string | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+}
+
+/**
  * Parsed Message (Discriminated Union)
  *
  * Type-safe message representation with parsed metadata.
@@ -82,76 +114,41 @@ export interface ToolUseMetadata {
  * - Use sequence_number for ordering (NOT created_at)
  * - event_id available for event sourcing replay/debugging
  * - Discriminated by message_type for type-safe access
+ *
+ * ⭐ UPDATED 2025-11-24: Added token tracking fields to all variants
  */
 export type ParsedMessage =
-  | {
-      id: string;
-      session_id: string;
-      role: MessageRole;
+  | (ParsedMessageBase & {
       message_type: 'text';
-      content: string;
-      token_count: number | null;
-      stop_reason: string | null;
-      created_at: Date;
-      sequence_number: number | null;
-      event_id: string | null;
-      tool_use_id: string | null;
-    }
-  | {
-      id: string;
-      session_id: string;
-      role: MessageRole;
+    })
+  | (ParsedMessageBase & {
       message_type: 'thinking';
-      content: string;
       metadata: ThinkingMetadata;
-      token_count: number | null;
-      stop_reason: string | null;
-      created_at: Date;
-      sequence_number: number | null;
-      event_id: string | null;
-      tool_use_id: string | null;
-    }
-  | {
-      id: string;
-      session_id: string;
-      role: MessageRole;
+    })
+  | (ParsedMessageBase & {
       message_type: 'tool_use' | 'tool_result';
-      content: string;
       metadata: ToolUseMetadata;
-      token_count: number | null;
-      stop_reason: string | null;
-      created_at: Date;
-      sequence_number: number | null;
-      event_id: string | null;
-      tool_use_id: string | null;
-    }
-  | {
-      id: string;
-      session_id: string;
-      role: MessageRole;
+    })
+  | (ParsedMessageBase & {
       message_type: 'error';
-      content: string;
       metadata?: { error: string };
-      token_count: number | null;
-      stop_reason: string | null;
-      created_at: Date;
-      sequence_number: number | null;
-      event_id: string | null;
-      tool_use_id: string | null;
-    };
+    });
 
 /**
  * Parse message metadata based on message type
+ *
+ * ⭐ UPDATED 2025-11-24: Added token tracking fields to base object
  *
  * @param message - Database message record
  * @returns Parsed message with typed metadata
  */
 export function parseMessageMetadata(message: MessageDbRecord): ParsedMessage {
-  const base = {
+  // Base fields common to all message types
+  // ⭐ Now includes Phase 1A token tracking fields
+  const base: ParsedMessageBase = {
     id: message.id,
     session_id: message.session_id,
     role: message.role,
-    message_type: message.message_type,
     content: message.content,
     token_count: message.token_count,
     stop_reason: message.stop_reason,
@@ -159,6 +156,10 @@ export function parseMessageMetadata(message: MessageDbRecord): ParsedMessage {
     sequence_number: message.sequence_number,
     event_id: message.event_id,
     tool_use_id: message.tool_use_id,
+    // ⭐ Phase 1A: Token Tracking
+    model: message.model,
+    input_tokens: message.input_tokens,
+    output_tokens: message.output_tokens,
   };
 
   if (message.message_type === 'thinking') {
@@ -167,7 +168,6 @@ export function parseMessageMetadata(message: MessageDbRecord): ParsedMessage {
       ...base,
       message_type: 'thinking',
       metadata,
-      tool_use_id: message.tool_use_id,
     };
   }
 
@@ -177,7 +177,6 @@ export function parseMessageMetadata(message: MessageDbRecord): ParsedMessage {
       ...base,
       message_type: message.message_type,
       metadata,
-      tool_use_id: message.tool_use_id,
     };
   }
 
@@ -188,13 +187,11 @@ export function parseMessageMetadata(message: MessageDbRecord): ParsedMessage {
         ...base,
         message_type: 'error',
         metadata,
-        tool_use_id: message.tool_use_id,
       };
     } catch {
       return {
         ...base,
         message_type: 'error',
-        tool_use_id: message.tool_use_id,
       };
     }
   }
@@ -203,7 +200,6 @@ export function parseMessageMetadata(message: MessageDbRecord): ParsedMessage {
   return {
     ...base,
     message_type: 'text',
-    tool_use_id: message.tool_use_id,
   };
 }
 

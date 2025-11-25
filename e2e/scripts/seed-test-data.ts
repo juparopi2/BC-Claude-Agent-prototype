@@ -64,6 +64,13 @@ async function main(): Promise<void> {
   console.log(`  Database: ${process.env.DATABASE_SERVER}/${process.env.DATABASE_NAME}`);
   console.log('═══════════════════════════════════════════════════\n');
 
+  // Safety check for production
+  if (process.env.NODE_ENV === 'production') {
+    console.error('❌ Cannot seed test data in production environment!');
+    console.error('   This script only runs in development/test environments.');
+    process.exit(1);
+  }
+
   try {
     // Seed the data
     await seedTestData();

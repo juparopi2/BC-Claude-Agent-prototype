@@ -72,6 +72,18 @@ export class AnthropicClient implements IAnthropicClient {
       // We just need to return it with the correct type
       return response as ChatCompletionResponse;
     } catch (error) {
+      // Enhanced error logging for diagnostics (consistent with streaming)
+      type NodeSystemError = Error & { code?: string; syscall?: string };
+      const systemError = error as NodeSystemError;
+
+      logger.error('❌ Anthropic API call failed', {
+        error: error instanceof Error ? error.message : String(error),
+        errorCode: systemError?.code,
+        errorSyscall: systemError?.syscall,
+        isECONNRESET: systemError?.code === 'ECONNRESET',
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+
       // Re-throw with more context
       if (error instanceof Error) {
         throw new Error(`Anthropic API call failed: ${error.message}`);

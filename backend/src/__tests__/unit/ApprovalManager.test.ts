@@ -337,4 +337,124 @@ describe('ApprovalManager', () => {
       }).toThrow('Socket.IO server is required');
     });
   });
+
+  describe('7. Validate Approval Ownership (Security)', () => {
+    it('should return isOwner=true when user owns the session', async () => {
+      // Mock database response with matching user
+      mockRequestChain.query.mockResolvedValueOnce({
+        recordset: [{
+          approval_id: 'approval_123',
+          session_id: 'session_123',
+          tool_name: 'bc_create_customer',
+          tool_args: '{"name":"John Doe"}',
+          status: 'pending',
+          priority: 'medium',
+          created_at: new Date(),
+          expires_at: new Date(),
+          session_user_id: 'user_123',  // Same as requesting user
+        }],
+      });
+
+      const result = await approvalManager.validateApprovalOwnership('approval_123', 'user_123');
+
+      expect(result.isOwner).toBe(true);
+      expect(result.approval).not.toBeNull();
+      expect(result.approval?.id).toBe('approval_123');
+      expect(result.sessionUserId).toBe('user_123');
+      expect(result.error).toBeUndefined();
+    });
+
+    it('should return isOwner=false when user does not own the session', async () => {
+      // Mock database response with different user
+      mockRequestChain.query.mockResolvedValueOnce({
+        recordset: [{
+          approval_id: 'approval_123',
+          session_id: 'session_123',
+          tool_name: 'bc_create_customer',
+          tool_args: '{"name":"John Doe"}',
+          status: 'pending',
+          priority: 'medium',
+          created_at: new Date(),
+          expires_at: new Date(),
+          session_user_id: 'user_456',  // Different from requesting user
+        }],
+      });
+
+      const result = await approvalManager.validateApprovalOwnership('approval_123', 'user_123');
+
+      expect(result.isOwner).toBe(false);
+      expect(result.approval).not.toBeNull();
+      expect(result.sessionUserId).toBe('user_456');
+      expect(result.error).toBe('UNAUTHORIZED');
+    });
+
+    it('should return error when approval does not exist', async () => {
+      // Mock empty database response
+      mockRequestChain.query.mockResolvedValueOnce({
+        recordset: [],
+      });
+
+      const result = await approvalManager.validateApprovalOwnership('nonexistent_approval', 'user_123');
+
+      expect(result.isOwner).toBe(false);
+      expect(result.approval).toBeNull();
+      expect(result.sessionUserId).toBeNull();
+      expect(result.error).toBe('APPROVAL_NOT_FOUND');
+    });
+
+    it('should correctly parse tool_args JSON in approval object', async () => {
+      const toolArgs = { name: 'Acme Corp', email: 'acme@example.com', priority: 'high' };
+
+      mockRequestChain.query.mockResolvedValueOnce({
+        recordset: [{
+          approval_id: 'approval_123',
+          session_id: 'session_123',
+          tool_name: 'bc_create_customer',
+          tool_args: JSON.stringify(toolArgs),
+          status: 'pending',
+          priority: 'medium',
+          created_at: new Date(),
+          expires_at: new Date(),
+          session_user_id: 'user_123',
+        }],
+      });
+
+      const result = await approvalManager.validateApprovalOwnership('approval_123', 'user_123');
+
+      expect(result.isOwner).toBe(true);
+      expect(result.approval?.tool_args).toEqual(toolArgs);
+    });
+
+    it('should log warning when unauthorized access is attempted', async () => {
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      mockRequestChain.query.mockResolvedValueOnce({
+        recordset: [{
+          approval_id: 'approval_123',
+          session_id: 'session_123',
+          tool_name: 'bc_create_customer',
+          tool_args: '{}',
+          status: 'pending',
+          priority: 'medium',
+          created_at: new Date(),
+          expires_at: new Date(),
+          session_user_id: 'user_456',
+        }],
+      });
+
+      await approvalManager.validateApprovalOwnership('approval_123', 'attacker_user');
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Unauthorized access attempt')
+      );
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('attacker_user')
+      );
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('user_456')
+      );
+
+      consoleSpy.mockRestore();
+    });
+  });
 });

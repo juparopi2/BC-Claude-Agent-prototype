@@ -23,6 +23,7 @@ import {
   ApprovalRequestEvent,
   ApprovalResolvedEvent,
   CreateApprovalOptions,
+  ApprovalOwnershipResult,
 } from '../../types/approval.types';
 
 /**
@@ -287,6 +288,123 @@ export class ApprovalManager {
       expires_at: row.expires_at,
       decided_at: row.decided_at,
     }));
+  }
+
+  /**
+   * Validate that a user owns the session associated with an approval request
+   *
+   * This is a security check to prevent users from approving/rejecting
+   * approval requests for sessions they do not own.
+   *
+   * @param approvalId - ID of the approval request
+   * @param userId - ID of the user attempting to respond
+   * @returns Validation result with ownership status and error details
+   *
+   * @example
+   * const result = await approvalManager.validateApprovalOwnership(approvalId, userId);
+   * if (!result.isOwner) {
+   *   // Return 403 Forbidden
+   *   console.log(`Unauthorized: User ${userId} tried to access approval owned by ${result.sessionUserId}`);
+   * }
+   */
+  public async validateApprovalOwnership(
+    approvalId: string,
+    userId: string
+  ): Promise<ApprovalOwnershipResult> {
+    const db = getDatabase();
+    if (!db) {
+      throw new Error('Database connection not available');
+    }
+
+    try {
+      // Query approval with session ownership information
+      const result = await db.request()
+        .input('approvalId', approvalId)
+        .query<{
+          approval_id: string;
+          session_id: string;
+          tool_name: string;
+          tool_args: string;
+          status: string;
+          priority: string;
+          created_at: Date;
+          expires_at: Date;
+          session_user_id: string;
+        }>(`
+          SELECT
+            a.id AS approval_id,
+            a.session_id,
+            a.tool_name,
+            a.tool_args,
+            a.status,
+            a.priority,
+            a.created_at,
+            a.expires_at,
+            s.user_id AS session_user_id
+          FROM approvals a
+          INNER JOIN sessions s ON a.session_id = s.id
+          WHERE a.id = @approvalId
+        `);
+
+      // Check if approval exists
+      if (result.recordset.length === 0) {
+        console.warn(`[ApprovalManager] Approval not found: ${approvalId}`);
+        return {
+          isOwner: false,
+          approval: null,
+          sessionUserId: null,
+          error: 'APPROVAL_NOT_FOUND',
+        };
+      }
+
+      const row = result.recordset[0];
+      if (!row) {
+        return {
+          isOwner: false,
+          approval: null,
+          sessionUserId: null,
+          error: 'APPROVAL_NOT_FOUND',
+        };
+      }
+
+      // Check if user owns the session
+      const isOwner = row.session_user_id === userId;
+
+      if (!isOwner) {
+        console.warn(
+          `[ApprovalManager] Unauthorized access attempt: User ${userId} tried to access approval ${approvalId} owned by ${row.session_user_id}`
+        );
+      }
+
+      // Build partial approval object for response
+      const approval: ApprovalRequest = {
+        id: row.approval_id,
+        session_id: row.session_id,
+        message_id: null,
+        decided_by_user_id: null,
+        action_type: this.getActionType(row.tool_name),
+        action_description: '',
+        action_data: null,
+        tool_name: row.tool_name,
+        tool_args: JSON.parse(row.tool_args) as Record<string, unknown>,
+        status: row.status as ApprovalStatus,
+        priority: row.priority as ApprovalPriority,
+        rejection_reason: null,
+        created_at: row.created_at,
+        expires_at: row.expires_at,
+        decided_at: null,
+      };
+
+      return {
+        isOwner,
+        approval,
+        sessionUserId: row.session_user_id,
+        error: isOwner ? undefined : 'UNAUTHORIZED',
+      };
+    } catch (error) {
+      console.error('[ApprovalManager] Error validating approval ownership:', error);
+      throw error;
+    }
   }
 
   /**

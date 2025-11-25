@@ -401,38 +401,42 @@ ORDER BY
 
 ---
 
-### GAP #2: Validación de Ownership en Approvals (SEGURIDAD)
+### GAP #2: Validación de Ownership en Approvals (SEGURIDAD) - ✅ RESUELTO
 
-**Problema**: Un usuario podría aprobar solicitudes de otro usuario porque no se valida que el userId sea dueño del sessionId.
+> **Estado**: ✅ **RESUELTO** (2025-11-25)
+>
+> **Implementación**: Se agregó el método `validateApprovalOwnership()` en `ApprovalManager.ts` que valida ownership antes de permitir respuestas a approvals. El endpoint `POST /api/approvals/:id/respond` ahora retorna HTTP 403 si el usuario no es dueño de la sesión.
 
-**Ubicación del Bug**: `server.ts:577-578`
+**Problema Original**: Un usuario podría aprobar solicitudes de otro usuario porque no se validaba que el userId sea dueño del sessionId.
 
-**Código Actual (Vulnerable)**:
+**Ubicación del Fix**:
+- `backend/src/services/approval/ApprovalManager.ts:310-408` (nuevo método `validateApprovalOwnership`)
+- `backend/src/server.ts:579-604` (validación en endpoint)
+- `backend/src/types/approval.types.ts:93-111` (nuevos tipos)
+
+**Código Implementado**:
 ```typescript
-await approvalManager.respondToApproval(approvalId, decisionVerified, userIdVerified);
-// ❌ No verifica que userId es dueño de la sesión del approval
-```
+// ApprovalManager.validateApprovalOwnership()
+const ownershipResult = await approvalManager.validateApprovalOwnership(approvalId, userId);
 
-**Código Corregido**:
-```typescript
-// 1. Obtener sessionId del approval
-const approval = await getApprovalById(approvalId);
-if (!approval) throw new Error('Approval not found');
+if (!ownershipResult.isOwner) {
+  // Log unauthorized access attempt for security audit
+  console.warn(`Unauthorized approval access: User ${userId} attempted to respond...`);
 
-// 2. Verificar ownership
-const session = await getSessionById(approval.session_id);
-if (session.user_id !== userId) {
-  throw new Error('Unauthorized: You do not own this session');
+  if (ownershipResult.error === 'APPROVAL_NOT_FOUND') {
+    res.status(404).json({ error: 'Not Found', message: 'Approval request not found' });
+    return;
+  }
+
+  res.status(403).json({ error: 'Forbidden', message: 'You do not have permission...' });
+  return;
 }
-
-// 3. Proceder con aprobación
-await approvalManager.respondToApproval(approvalId, decision, userId);
 ```
 
-**Success Criteria**:
-- [ ] Test: Usuario A no puede aprobar solicitudes de Usuario B
-- [ ] HTTP 403 si intenta aprobar sesión ajena
-- [ ] Audit log registra intentos fallidos
+**Success Criteria**: ✅ TODOS CUMPLIDOS
+- [x] Test: Usuario A no puede aprobar solicitudes de Usuario B (5 tests unitarios)
+- [x] HTTP 403 si intenta aprobar sesión ajena
+- [x] Audit log registra intentos fallidos (console.warn con detalles)
 
 ---
 
@@ -1467,11 +1471,11 @@ class MessageBuffer {
 
 ### FASE 4: Fixes de Seguridad (Prioridad: ALTA)
 
-| ID | Tarea | Descripción | Success Criteria |
-|----|-------|-------------|------------------|
-| F4-001 | Fix: Ownership validation | GAP #2 | Tests de seguridad pasan |
-| F4-002 | Fix: Approval events unificados | GAP #3 | Eventos tienen sequenceNumber |
-| F4-003 | Audit: Multi-tenant | Verificar aislamiento | Un usuario no ve datos de otro |
+| ID | Tarea | Descripción | Estado | Success Criteria |
+|----|-------|-------------|--------|------------------|
+| F4-001 | Fix: Ownership validation | GAP #2 | ✅ **COMPLETADO** (2025-11-25) | Tests de seguridad pasan |
+| F4-002 | Fix: Approval events unificados | GAP #3 | PENDIENTE | Eventos tienen sequenceNumber |
+| F4-003 | Audit: Multi-tenant | Verificar aislamiento | PENDIENTE | Un usuario no ve datos de otro |
 
 ### FASE 5: Funcionalidades Nuevas (Prioridad: BAJA - Futuro)
 
@@ -1637,5 +1641,5 @@ npm run test:e2e:debug
 
 *Documento generado automáticamente por diagnóstico de Claude*
 *Fecha de creación: 2025-11-24*
-*Última actualización: 2025-11-25 (F1-003 implementado)*
-*Versión: 1.1*
+*Última actualización: 2025-11-25 (F4-001 Ownership Validation implementado)*
+*Versión: 1.2*

@@ -2018,7 +2018,7 @@ class MessageBuffer {
 | **F6-002** | **Tests: AnthropicClient** | **Unit tests** | **✅ COMPLETED** | **52 tests, 100% cobertura + QA Master Review** |
 | **F6-003** | **Tests: tool-definitions + Security Fixes** | **Unit tests + Sanitization** | **✅ COMPLETED** | **100% cobertura + Security** |
 | **F6-004** | **Tests: Middleware (auth-oauth + logging)** | **Unit tests** | **✅ COMPLETED** | **96 tests, 100% cobertura + QA Master Review** |
-| F6-005 | Tests: Routes | Integration tests | PENDIENTE | Todos los endpoints |
+| **F6-005** | **Tests: Routes** | **Unit tests** | **🧪 IN TESTING** | **145 tests, 4 route files + server endpoints** |
 | F6-006 | Alcanzar 70% global | Completar gaps | PENDIENTE | npm run test:coverage ≥ 70% |
 
 #### F6-003: Detalle de Implementación (COMPLETED)
@@ -2155,6 +2155,104 @@ vi.mock('pino-http', () => ({
   }),
 }));
 ```
+
+#### F6-005: Detalle de Implementación (IN TESTING)
+
+> **Estado**: 🧪 **IN TESTING** (2025-11-25)
+>
+> **QA Report**: Ver `docs/qa-reports/QA-REPORT-F6-005.md`
+
+**Archivos de Routes Testeados**:
+
+| Archivo | Endpoints | Tests | Descripción |
+|---------|-----------|-------|-------------|
+| `routes/auth-oauth.ts` | 6 | 29 | OAuth login/callback, logout, me, bc-status, bc-consent |
+| `routes/token-usage.ts` | 6 | 35 | User/session token totals, monthly, top-sessions, cache-efficiency |
+| `routes/logs.ts` | 1 | 25 | Client log ingestion |
+| `routes/sessions.ts` | 6 | 18 (existente) | Session CRUD, messages |
+| `server.ts` (inline) | 11 | 38 | MCP, BC, Agent, Approvals, Todos endpoints |
+| **Total** | **30** | **145** | **4 archivos de routes + endpoints inline** |
+
+**Archivos de Test Creados**:
+
+| Archivo de Test | Tests | Categorías |
+|-----------------|-------|------------|
+| `auth-oauth.routes.test.ts` | 29 | Login, callback, logout, me, bc-status, bc-consent, security, multi-tenant |
+| `token-usage.routes.test.ts` | 35 | User totals, session totals, monthly, top-sessions, cache-efficiency, multi-tenant |
+| `logs.routes.test.ts` | 25 | Log ingestion, batch, validation, log levels, edge cases |
+| `server-endpoints.test.ts` | 38 | MCP config/health, BC test/customers, Agent status/query, Approvals, Todos |
+
+**Categorías de Tests auth-oauth.routes.test.ts (29 tests)**:
+1. GET /login - OAuth redirect (3 tests)
+2. GET /callback - Code exchange, state validation (6 tests)
+3. POST /logout - Session destruction (1 test)
+4. GET /me - Current user data (3 tests)
+5. GET /bc-status - BC token status (4 tests)
+6. POST /bc-consent - BC token acquisition (3 tests)
+7. Security Edge Cases (3 tests) - Token leaks, SQL injection, CSRF state
+8. Multi-Tenant Isolation (2 tests)
+9. Token Expiration Edge Cases (4 tests) - null, boundary, invalid date
+
+**Categorías de Tests token-usage.routes.test.ts (35 tests)**:
+1. GET /user/:userId - User totals with multi-tenant validation (5 tests)
+2. GET /session/:sessionId - Session ownership validation (4 tests)
+3. GET /user/:userId/monthly - Month parameter validation (6 tests)
+4. GET /user/:userId/top-sessions - Limit parameter validation (5 tests)
+5. GET /user/:userId/cache-efficiency - Cache metrics (3 tests)
+6. GET /me - Convenience endpoint (3 tests)
+7. Multi-Tenant Security (3 tests) - Cross-user blocking
+8. Edge Cases (6 tests) - Empty userId, long IDs, special chars, concurrent
+
+**Categorías de Tests logs.routes.test.ts (25 tests)**:
+1. POST /api/logs - Basic functionality (4 tests)
+2. Log Level Handling (4 tests) - debug, info, warn, error
+3. Validation Errors (5 tests) - Missing fields, invalid level, JSON
+4. Optional Fields (3 tests) - Without context, userAgent, url
+5. Edge Cases (6 tests) - Long messages, complex context, large batch, special chars
+6. Security Considerations (3 tests) - No internal leaks, PII handling
+
+**Categorías de Tests server-endpoints.test.ts (38 tests)**:
+1. GET /api - Health check (1 test)
+2. GET /api/mcp/config - MCP configuration (1 test)
+3. GET /api/mcp/health - MCP health (2 tests)
+4. GET /api/bc/test - BC test (1 test)
+5. GET /api/bc/customers - Auth + DB (3 tests)
+6. GET /api/agent/status - Agent status (1 test)
+7. POST /api/agent/query - Agent execution (5 tests)
+8. POST /api/approvals/:id/respond - Atomic approval (8 tests)
+9. GET /api/approvals/pending - User approvals (3 tests)
+10. GET /api/approvals/session/:sessionId - Session approvals (3 tests)
+11. GET /api/todos/session/:sessionId - Session todos (4 tests)
+12. Multi-Tenant Security (3 tests) - Cross-tenant blocking, TOCTOU prevention
+13. Edge Cases (3 tests) - Special chars, UUID format, concurrent
+
+**Técnicas de Testing Utilizadas**:
+```typescript
+// vi.hoisted para evitar problemas de orden de mocks
+const { mockOAuthService, mockBCTokenManager } = vi.hoisted(() => ({
+  mockOAuthService: { getAuthCodeUrl: vi.fn(), ... },
+  mockBCTokenManager: { storeBCToken: vi.fn(), ... },
+}));
+
+// Supertest con Express app aislado
+function createTestApp(): Application {
+  const app = express();
+  app.use(express.json());
+  app.use('/api/route', router);
+  return app;
+}
+
+// Header-based auth injection for tests
+const response = await request(app)
+  .get('/api/token-usage/user/user-123')
+  .set('x-test-user-id', 'user-123');
+```
+
+**Resultados**:
+- 884 tests totales del proyecto pasan (145 nuevos de routes)
+- 0 errores de lint (15 warnings preexistentes)
+- Build compila exitosamente
+- Type-check sin errores
 
 **Verificación de Seguridad Multi-Tenant**:
 - ✅ User A no puede acceder a sesión de User B

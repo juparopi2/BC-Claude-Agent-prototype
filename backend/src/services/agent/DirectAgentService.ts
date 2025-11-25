@@ -115,6 +115,123 @@ interface WorkflowValidationResult {
 }
 
 /**
+ * Valid operation types in BC entities
+ * Matches the operations defined in bc_index.json
+ */
+const VALID_OPERATION_TYPES = ['list', 'get', 'create', 'update', 'delete'] as const;
+type ValidOperationType = typeof VALID_OPERATION_TYPES[number];
+
+/**
+ * Sanitizes and validates entity name input
+ *
+ * Security measures:
+ * 1. Converts to lowercase for case-insensitive matching
+ * 2. Prevents path traversal attacks (../, ..\, etc.)
+ * 3. Only allows alphanumeric characters and safe punctuation
+ * 4. Limits length to prevent DoS
+ *
+ * @param entityName - Raw entity name from user input
+ * @returns Sanitized entity name or throws error if invalid
+ */
+function sanitizeEntityName(entityName: unknown): string {
+  if (typeof entityName !== 'string') {
+    throw new Error('Entity name must be a string');
+  }
+
+  const name = entityName.trim().toLowerCase();
+
+  if (name.length === 0) {
+    throw new Error('Entity name cannot be empty');
+  }
+
+  if (name.length > 100) {
+    throw new Error('Entity name too long (max 100 characters)');
+  }
+
+  // Check for path traversal attempts
+  if (name.includes('..') || name.includes('/') || name.includes('\\')) {
+    throw new Error('Invalid entity name: path traversal not allowed');
+  }
+
+  // Only allow alphanumeric, underscore, and hyphen
+  // This matches BC entity naming conventions
+  if (!/^[a-z][a-z0-9_-]*$/i.test(name)) {
+    throw new Error('Invalid entity name: only alphanumeric characters, underscores, and hyphens allowed');
+  }
+
+  return name;
+}
+
+/**
+ * Sanitizes keyword input for search operations
+ *
+ * Security measures:
+ * 1. Removes potentially dangerous characters
+ * 2. Limits length to prevent DoS
+ * 3. Trims whitespace
+ *
+ * @param keyword - Raw keyword from user input
+ * @returns Sanitized keyword
+ */
+function sanitizeKeyword(keyword: unknown): string {
+  if (typeof keyword !== 'string') {
+    return '';
+  }
+
+  let sanitized = keyword.trim();
+
+  if (sanitized.length > 200) {
+    sanitized = sanitized.substring(0, 200);
+  }
+
+  // Remove characters that could be problematic in string matching
+  // Keep alphanumeric, spaces, and common punctuation
+  sanitized = sanitized.replace(/[^\w\s\-_.,']/g, '');
+
+  return sanitized.toLowerCase();
+}
+
+/**
+ * Validates operation type against allowed values
+ *
+ * @param operationType - Operation type to validate
+ * @returns true if valid, false otherwise
+ */
+function isValidOperationType(operationType: unknown): operationType is ValidOperationType {
+  return typeof operationType === 'string' &&
+    VALID_OPERATION_TYPES.includes(operationType as ValidOperationType);
+}
+
+/**
+ * Sanitizes operation_id input
+ *
+ * @param operationId - Raw operation ID from user input
+ * @returns Sanitized operation ID or throws error if invalid
+ */
+function sanitizeOperationId(operationId: unknown): string {
+  if (typeof operationId !== 'string') {
+    throw new Error('Operation ID must be a string');
+  }
+
+  const id = operationId.trim();
+
+  if (id.length === 0) {
+    throw new Error('Operation ID cannot be empty');
+  }
+
+  if (id.length > 100) {
+    throw new Error('Operation ID too long (max 100 characters)');
+  }
+
+  // Operation IDs follow camelCase convention (e.g., "postCustomer", "listSalesInvoices")
+  if (!/^[a-zA-Z][a-zA-Z0-9]*$/.test(id)) {
+    throw new Error('Invalid operation ID format');
+  }
+
+  return id;
+}
+
+/**
  * Options for executeQueryStreaming (Phase 1F: Extended Thinking)
  */
 export interface ExecuteStreamingOptions {
@@ -1546,10 +1663,17 @@ export class DirectAgentService {
 
     let entities = index.entities;
 
+    // Validate and filter by operations if provided
     if (args.filter_by_operations && Array.isArray(args.filter_by_operations)) {
-      entities = entities.filter((entity: BCIndexEntity) => {
-        return (args.filter_by_operations as string[]).every(op => entity.operations.includes(op));
-      });
+      // Validate each operation type
+      const validOperations = (args.filter_by_operations as unknown[])
+        .filter(isValidOperationType);
+
+      if (validOperations.length > 0) {
+        entities = entities.filter((entity: BCIndexEntity) => {
+          return validOperations.every(op => entity.operations.includes(op));
+        });
+      }
     }
 
     const allOperationTypes = new Set<string>();
@@ -1578,9 +1702,13 @@ export class DirectAgentService {
     const content = fs.readFileSync(indexPath, 'utf8');
     const index = JSON.parse(content);
 
-    const keyword = (args.keyword as string || '').toLowerCase();
+    // Sanitize keyword input to prevent injection and handle special characters
+    const keyword = sanitizeKeyword(args.keyword);
     const filterByRisk = args.filter_by_risk as string | undefined;
-    const filterByOperationType = args.filter_by_operation_type as string | undefined;
+    // Validate operation type filter
+    const filterByOperationType = isValidOperationType(args.filter_by_operation_type)
+      ? args.filter_by_operation_type
+      : undefined;
 
     const results: Array<{
       entity: string;
@@ -1652,11 +1780,16 @@ export class DirectAgentService {
 
   /**
    * Tool Implementation: get_entity_details
+   *
+   * Security: Uses sanitizeEntityName to prevent path traversal and normalize case
    */
   private async toolGetEntityDetails(args: Record<string, unknown>): Promise<string> {
-    const entityPath = path.join(this.mcpDataPath, 'entities', `${args.entity_name}.json`);
+    // Sanitize entity name: lowercase, path traversal protection, valid characters only
+    const entityName = sanitizeEntityName(args.entity_name);
+    const entityPath = path.join(this.mcpDataPath, 'entities', `${entityName}.json`);
+
     if (!fs.existsSync(entityPath)) {
-      throw new Error(`Entity ${args.entity_name} not found`);
+      throw new Error(`Entity '${entityName}' not found`);
     }
 
     const content = fs.readFileSync(entityPath, 'utf8');
@@ -1665,13 +1798,16 @@ export class DirectAgentService {
 
   /**
    * Tool Implementation: get_entity_relationships
+   *
+   * Security: Uses sanitizeEntityName to prevent path traversal and normalize case
    */
   private async toolGetEntityRelationships(args: Record<string, unknown>): Promise<string> {
-    const entityName = args.entity_name as string;
+    // Sanitize entity name: lowercase, path traversal protection, valid characters only
+    const entityName = sanitizeEntityName(args.entity_name);
     const entityPath = path.join(this.mcpDataPath, 'entities', `${entityName}.json`);
 
     if (!fs.existsSync(entityPath)) {
-      throw new Error(`Entity ${entityName} not found`);
+      throw new Error(`Entity '${entityName}' not found`);
     }
 
     const content = fs.readFileSync(entityPath, 'utf8');
@@ -1695,6 +1831,8 @@ export class DirectAgentService {
 
   /**
    * Tool Implementation: validate_workflow_structure
+   *
+   * Security: Validates and sanitizes operation_ids before processing
    */
   private async toolValidateWorkflowStructure(args: Record<string, unknown>): Promise<string> {
     const workflow = args.workflow as Array<{ operation_id: string; label?: string }>;
@@ -1720,19 +1858,37 @@ export class DirectAgentService {
       const issues: string[] = [];
       const dependencies: string[] = [];
 
+      // Sanitize operation_id to prevent injection
+      let sanitizedOperationId: string;
+      try {
+        sanitizedOperationId = sanitizeOperationId(step.operation_id);
+      } catch {
+        hasErrors = true;
+        validationResults.push({
+          step_number: stepNumber,
+          operation_id: String(step.operation_id || 'invalid'),
+          entity: 'unknown',
+          valid: false,
+          risk_level: 'HIGH',
+          requires_approval: true,
+          issues: ['Invalid operation ID format'],
+        });
+        continue;
+      }
+
       // Find entity for this operation_id
-      const entityName = index.operationIndex[step.operation_id];
+      const entityName = index.operationIndex[sanitizedOperationId];
 
       if (!entityName) {
         hasErrors = true;
         validationResults.push({
           step_number: stepNumber,
-          operation_id: step.operation_id,
+          operation_id: sanitizedOperationId,
           entity: 'unknown',
           valid: false,
           risk_level: 'HIGH',
           requires_approval: true,
-          issues: [`Operation ID "${step.operation_id}" not found in index`],
+          issues: [`Operation ID "${sanitizedOperationId}" not found in index`],
         });
         continue;
       }
@@ -1743,7 +1899,7 @@ export class DirectAgentService {
         hasErrors = true;
         validationResults.push({
           step_number: stepNumber,
-          operation_id: step.operation_id,
+          operation_id: sanitizedOperationId,
           entity: entityName,
           valid: false,
           risk_level: 'HIGH',
@@ -1756,19 +1912,19 @@ export class DirectAgentService {
       const entityContent = fs.readFileSync(entityPath, 'utf8');
       const entity = JSON.parse(entityContent) as BCIndexEntity;
 
-      // Find endpoint
-      const endpoint = entity.endpoints.find((ep: BCEndpoint) => ep.id === step.operation_id);
+      // Find endpoint using sanitized operation ID
+      const endpoint = entity.endpoints.find((ep: BCEndpoint) => ep.id === sanitizedOperationId);
 
       if (!endpoint) {
         hasErrors = true;
         validationResults.push({
           step_number: stepNumber,
-          operation_id: step.operation_id,
+          operation_id: sanitizedOperationId,
           entity: entityName,
           valid: false,
           risk_level: 'HIGH',
           requires_approval: true,
-          issues: [`Operation "${step.operation_id}" not found in entity "${entityName}"`],
+          issues: [`Operation "${sanitizedOperationId}" not found in entity "${entityName}"`],
         });
         continue;
       }
@@ -1790,7 +1946,7 @@ export class DirectAgentService {
 
       validationResults.push({
         step_number: stepNumber,
-        operation_id: step.operation_id,
+        operation_id: sanitizedOperationId,
         entity: entityName,
         entity_display_name: entity.displayName,
         valid,
@@ -1819,6 +1975,8 @@ export class DirectAgentService {
 
   /**
    * Tool Implementation: build_knowledge_base_workflow
+   *
+   * Security: Validates and sanitizes operation_ids before processing
    */
   private async toolBuildKnowledgeBaseWorkflow(args: Record<string, unknown>): Promise<string> {
     const workflowName = args.workflow_name as string;
@@ -1842,20 +2000,23 @@ export class DirectAgentService {
 
     for (const step of steps) {
       stepNumber++;
-      const entityName = index.operationIndex[step.operation_id];
+
+      // Sanitize operation_id to prevent injection
+      const sanitizedOperationId = sanitizeOperationId(step.operation_id);
+      const entityName = index.operationIndex[sanitizedOperationId];
 
       if (!entityName) {
-        throw new Error(`Operation ID "${step.operation_id}" not found`);
+        throw new Error(`Operation ID "${sanitizedOperationId}" not found`);
       }
 
       const entityPath = path.join(this.mcpDataPath, 'entities', `${entityName}.json`);
       const entityContent = fs.readFileSync(entityPath, 'utf8');
       const entity = JSON.parse(entityContent);
 
-      const endpoint = entity.endpoints.find((ep: Record<string, unknown>) => ep.id === step.operation_id);
+      const endpoint = entity.endpoints.find((ep: Record<string, unknown>) => ep.id === sanitizedOperationId);
 
       if (!endpoint) {
-        throw new Error(`Operation "${step.operation_id}" not found in entity "${entityName}"`);
+        throw new Error(`Operation "${sanitizedOperationId}" not found in entity "${entityName}"`);
       }
 
       // Find alternatives (same operation type, different endpoint)
@@ -1891,7 +2052,7 @@ export class DirectAgentService {
 
       enrichedSteps.push({
         step_number: stepNumber,
-        operation_id: step.operation_id,
+        operation_id: sanitizedOperationId,
         label: step.label || endpoint.summary,
         entity: entityName,
         entity_display_name: entity.displayName,
@@ -1928,13 +2089,12 @@ export class DirectAgentService {
 
   /**
    * Tool Implementation: get_endpoint_documentation
+   *
+   * Security: Validates and sanitizes operation_id before processing
    */
   private async toolGetEndpointDocumentation(args: Record<string, unknown>): Promise<string> {
-    const operationId = args.operation_id as string;
-
-    if (!operationId) {
-      throw new Error('operation_id is required');
-    }
+    // Sanitize operation_id to prevent injection
+    const sanitizedOperationId = sanitizeOperationId(args.operation_id);
 
     const indexPath = path.join(this.mcpDataPath, 'bc_index.json');
     if (!fs.existsSync(indexPath)) {
@@ -1944,20 +2104,20 @@ export class DirectAgentService {
     const indexContent = fs.readFileSync(indexPath, 'utf8');
     const index = JSON.parse(indexContent);
 
-    const entityName = index.operationIndex[operationId];
+    const entityName = index.operationIndex[sanitizedOperationId];
 
     if (!entityName) {
-      throw new Error(`Operation ID "${operationId}" not found`);
+      throw new Error(`Operation ID "${sanitizedOperationId}" not found`);
     }
 
     const entityPath = path.join(this.mcpDataPath, 'entities', `${entityName}.json`);
     const entityContent = fs.readFileSync(entityPath, 'utf8');
     const entity = JSON.parse(entityContent);
 
-    const endpoint = entity.endpoints.find((ep: Record<string, unknown>) => ep.id === operationId);
+    const endpoint = entity.endpoints.find((ep: Record<string, unknown>) => ep.id === sanitizedOperationId);
 
     if (!endpoint) {
-      throw new Error(`Operation "${operationId}" not found in entity "${entityName}"`);
+      throw new Error(`Operation "${sanitizedOperationId}" not found in entity "${entityName}"`);
     }
 
     const result = {
@@ -2066,3 +2226,15 @@ export function getDirectAgentService(
   }
   return directAgentServiceInstance;
 }
+
+/**
+ * Exported for testing purposes only
+ * These functions are used internally by MCP tool implementations
+ */
+export const __testExports = {
+  sanitizeEntityName,
+  sanitizeKeyword,
+  isValidOperationType,
+  sanitizeOperationId,
+  VALID_OPERATION_TYPES,
+};

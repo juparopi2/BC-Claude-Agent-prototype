@@ -2016,28 +2016,42 @@ class MessageBuffer {
 |----|-------|-------------|--------|------------------|
 | F6-001 | Tests: TodoManager | Unit tests | ⚠️ BLOQUEADO (código muerto - GAP #8) | 70% cobertura |
 | F6-002 | Tests: AnthropicClient | Unit tests | PENDIENTE | 70% cobertura |
-| **F6-003** | **Tests: tool-definitions** | **Unit tests** | **✅ IN TESTING** | **100% cobertura** |
+| **F6-003** | **Tests: tool-definitions + Security Fixes** | **Unit tests + Sanitization** | **✅ COMPLETED** | **100% cobertura + Security** |
 | F6-004 | Tests: Middleware | Unit tests | PENDIENTE | 70% cobertura |
 | F6-005 | Tests: Routes | Integration tests | PENDIENTE | Todos los endpoints |
 | F6-006 | Alcanzar 70% global | Completar gaps | PENDIENTE | npm run test:coverage ≥ 70% |
 
-#### F6-003: Detalle de Implementación (IN TESTING)
+#### F6-003: Detalle de Implementación (COMPLETED)
 
-> **Estado**: ✅ **IN TESTING** (2025-11-25)
+> **Estado**: ✅ **COMPLETED** (2025-11-25)
 >
 > **QA Report**: Ver `docs/qa-reports/QA-REPORT-F6-003.md`
 
-**Cambios Realizados**:
+**Cambios Realizados (Fase 1 - Tests)**:
 
 | Archivo | Acción | Justificación |
 |---------|--------|---------------|
 | `tool-schemas.ts` | **ELIMINADO** | Código muerto, desincronizado, nunca se importaba |
 | `tool-definitions.test.ts` | **CREADO** | 44 tests unitarios, 100% cobertura |
 
-**Resultados**:
-- 44 tests unitarios implementados
-- 100% cobertura de `tool-definitions.ts`
-- 563 tests totales del proyecto pasan
+**Cambios Realizados (Fase 2 - Security Fixes tras QA Master Review)**:
+
+| Archivo | Acción | Justificación |
+|---------|--------|---------------|
+| `tool-definitions.ts` | **MODIFICADO** | Eliminado 'action' del enum (no existe en datos MCP) |
+| `DirectAgentService.ts` | **MODIFICADO** | Agregadas 4 funciones de sanitización de inputs |
+| `input-sanitization.test.ts` | **CREADO** | 58 tests para edge cases de seguridad |
+
+**Funciones de Sanitización Agregadas**:
+- `sanitizeEntityName()`: Case-insensitive, path traversal protection, character validation
+- `sanitizeKeyword()`: Removes dangerous characters, length limits
+- `isValidOperationType()`: Validates against allowed operations (list, get, create, update, delete)
+- `sanitizeOperationId()`: Validates camelCase format
+
+**Resultados Finales**:
+- 102 tests totales para tool-definitions (44 estructura + 58 sanitización)
+- 100% cobertura de `tool-definitions.ts` y funciones de sanitización
+- 621 tests totales del proyecto pasan
 - 0 errores de lint (15 warnings preexistentes)
 - Build compila exitosamente
 
@@ -2048,6 +2062,15 @@ class MessageBuffer {
 4. Helper Functions (12 tests)
 5. Edge Cases and Type Safety (5 tests)
 6. Anthropic SDK Compatibility (4 tests)
+7. Entity Name Sanitization (20 tests)
+8. Keyword Sanitization (12 tests)
+9. Operation Type Validation (14 tests)
+10. Operation ID Sanitization (12 tests)
+
+**Hallazgos Adicionales (Documentados para futuro)**:
+- MCP tools son solo metadata (no ejecutan operaciones BC)
+- TOOL_NAMES incluye herramientas no implementadas (bc_query, bc_create, etc.)
+- Workflow duplicate validation pendiente
 
 ---
 
@@ -2193,8 +2216,8 @@ npm run test:e2e:debug
 
 *Documento generado automáticamente por diagnóstico de Claude*
 *Fecha de creación: 2025-11-24*
-*Última actualización: 2025-11-25 (F6-003 IN TESTING - Tests tool-definitions)*
-*Versión: 1.7*
+*Última actualización: 2025-11-25 (F6-003 COMPLETED - Tests + Security Fixes)*
+*Versión: 1.8*
 
 ---
 
@@ -2202,6 +2225,7 @@ npm run test:e2e:debug
 
 | Versión | Fecha | Cambios |
 |---------|-------|---------|
+| 1.8 | 2025-11-25 | **F6-003 COMPLETED**: Security fixes tras QA Master Review. Eliminado 'action' del enum, agregadas 4 funciones de sanitización (path traversal, case sensitivity, special chars), 58 tests adicionales. 621 tests totales pasan. |
 | 1.7 | 2025-11-25 | **F6-003 IN TESTING**: Tests para tool-definitions.ts. 44 tests unitarios, 100% cobertura. Eliminado `tool-schemas.ts` (código muerto desincronizado). |
 | 1.6 | 2025-11-25 | Agregado GAP #8: Sistema de ToDos no integrado en Agent Loop (código muerto). Incluye análisis técnico completo, diagramas de flujo esperado, plan de implementación por fases, contratos WebSocket, mockups de UI, y desglose de 12 sub-tareas. |
 | 1.5 | 2025-11-25 | F4-002 COMPLETED con QA Master Review Fixes |

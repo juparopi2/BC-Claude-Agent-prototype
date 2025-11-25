@@ -27,7 +27,7 @@ export const MCP_TOOLS: Tool[] = [
           type: 'array',
           items: {
             type: 'string',
-            enum: ['list', 'get', 'create', 'update', 'delete', 'action'],
+            enum: ['list', 'get', 'create', 'update', 'delete'],
           },
           description:
             'Optional: Filter entities that support specific operations',
@@ -55,7 +55,7 @@ export const MCP_TOOLS: Tool[] = [
         },
         filter_by_operation_type: {
           type: 'string',
-          enum: ['list', 'get', 'create', 'update', 'delete', 'action'],
+          enum: ['list', 'get', 'create', 'update', 'delete'],
           description: 'Optional: Filter by operation type',
         },
       },

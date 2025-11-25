@@ -48,10 +48,10 @@
 │  └── Sequence Numbers (Redis INCR)        ✅ IMPLEMENTADO (100%)            │
 │                                                                             │
 │  HUMAN-IN-THE-LOOP                                                          │
-│  ├── ApprovalManager (Promise-based)      ✅ IMPLEMENTADO (80%)             │
+│  ├── ApprovalManager (Promise-based)      ✅ IMPLEMENTADO (100%)            │
 │  ├── Approval Events (WebSocket)          ⚠️  PARCIAL (No unificado)        │
 │  ├── Approval Persistence (DB)            ✅ IMPLEMENTADO (100%)            │
-│  └── Session Ownership Validation         ❌ FALTA                          │
+│  └── Session Ownership Validation         ✅ IMPLEMENTADO (100%) - F4-003   │
 │                                                                             │
 │  ARCHIVOS E IMÁGENES                                                        │
 │  ├── session_files Table (Schema)         ✅ EXISTE (Schema only)           │
@@ -437,6 +437,54 @@ if (!ownershipResult.isOwner) {
 - [x] Test: Usuario A no puede aprobar solicitudes de Usuario B (5 tests unitarios)
 - [x] HTTP 403 si intenta aprobar sesión ajena
 - [x] Audit log registra intentos fallidos (console.warn con detalles)
+
+---
+
+### GAP #2.1: Audit Multi-Tenant (F4-003) - ✅ RESUELTO
+
+> **Estado**: ✅ **RESUELTO** (2025-11-25)
+>
+> **Implementación**: Se creó un módulo de utilidades `session-ownership.ts` con validación centralizada de ownership multi-tenant. Se corrigieron 6 vulnerabilidades críticas/altas en endpoints REST y WebSocket.
+
+**Vulnerabilidades Corregidas**:
+
+1. **Token Usage Routes** (`routes/token-usage.ts`):
+   - Agregado `authenticateMicrosoft` middleware a todos los endpoints
+   - Validación de `userId` match en `/user/:userId` endpoints
+   - Validación de session ownership en `/session/:sessionId` endpoint
+   - Nuevo endpoint `/me` para acceso directo a datos propios
+
+2. **ChatMessageHandler** (`services/websocket/ChatMessageHandler.ts`):
+   - Usa `authSocket.userId` del socket autenticado (NO del payload del cliente)
+   - Implementación real de `validateSessionOwnershipInternal()` que consulta BD
+   - Previene ataques de impersonación via WebSocket
+
+3. **Approvals & Todos Endpoints** (`server.ts`):
+   - `GET /api/approvals/session/:sessionId` ahora valida ownership
+   - `GET /api/todos/session/:sessionId` ahora valida ownership
+   - Retorna HTTP 403 con log de auditoría si intento no autorizado
+
+**Nuevo Módulo** (`utils/session-ownership.ts`):
+```typescript
+// Funciones disponibles:
+validateSessionOwnership(sessionId, userId) → Promise<SessionOwnershipResult>
+validateUserIdMatch(requestedUserId, authenticatedUserId) → boolean
+requireSessionOwnership(sessionId, userId) → Promise<void> // throws on failure
+requireSessionOwnershipMiddleware(paramName) → Express middleware
+```
+
+**Tests Agregados** (`__tests__/unit/session-ownership.test.ts`):
+- 24 tests unitarios cubriendo todos los casos de validación
+- Tests de escenarios de ataque multi-tenant
+- Tests de middleware Express
+
+**Success Criteria**: ✅ TODOS CUMPLIDOS
+- [x] Usuario A no puede acceder a sesiones de Usuario B
+- [x] Usuario A no puede acceder a token usage de Usuario B
+- [x] Usuario A no puede ver approvals de sesiones de Usuario B
+- [x] Usuario A no puede ver todos de sesiones de Usuario B
+- [x] Impersonación via WebSocket bloqueada
+- [x] 485 tests unitarios pasan (incluidos 24 nuevos de ownership)
 
 ---
 
@@ -1475,7 +1523,7 @@ class MessageBuffer {
 |----|-------|-------------|--------|------------------|
 | F4-001 | Fix: Ownership validation | GAP #2 | ✅ **COMPLETADO** (2025-11-25) | Tests de seguridad pasan |
 | F4-002 | Fix: Approval events unificados | GAP #3 | PENDIENTE | Eventos tienen sequenceNumber |
-| F4-003 | Audit: Multi-tenant | Verificar aislamiento | PENDIENTE | Un usuario no ve datos de otro |
+| F4-003 | Audit: Multi-tenant | Verificar aislamiento | ✅ **COMPLETADO** (2025-11-25) | Un usuario no ve datos de otro |
 
 ### FASE 5: Funcionalidades Nuevas (Prioridad: BAJA - Futuro)
 

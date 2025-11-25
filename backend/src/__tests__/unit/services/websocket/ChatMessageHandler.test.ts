@@ -59,6 +59,16 @@ vi.mock('@/services/agent/DirectAgentService', () => ({
   getDirectAgentService: vi.fn(() => mockDirectAgentServiceMethods),
 }));
 
+// ===== MOCK DATABASE FOR SESSION OWNERSHIP (added for F4-003) =====
+vi.mock('@config/database', () => ({
+  executeQuery: vi.fn().mockResolvedValue({
+    recordset: [{ user_id: 'test-user-456' }], // Default: user owns the session
+    rowsAffected: [1],
+    output: {},
+    recordsets: [],
+  }),
+}));
+
 // ===== MOCK LOGGER (vi.hoisted pattern) =====
 const mockLogger = vi.hoisted(() => ({
   info: vi.fn(),
@@ -104,9 +114,13 @@ describe('ChatMessageHandler', () => {
     });
 
     // Setup Socket.IO mocks
+    // ⭐ F4-003: Socket must have userId to pass multi-tenant validation
     mockSocketEmit = vi.fn();
     mockSocket = {
       emit: mockSocketEmit,
+      id: 'mock-socket-id',
+      userId: testUserId, // AuthenticatedSocket.userId - required for multi-tenant safety
+      userEmail: 'test@example.com', // AuthenticatedSocket.userEmail
     };
 
     mockIoEmit = vi.fn();

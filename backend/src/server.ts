@@ -447,7 +447,17 @@ function configureRoutes(): void {
     }
   });
 
-  app.get('/api/bc/customers', async (req: Request, res: Response): Promise<void> => {
+  // GET /api/bc/customers - List Business Central customers
+  // Security: Requires Microsoft OAuth authentication (multi-tenant safety)
+  app.get('/api/bc/customers', authenticateMicrosoft, async (req: Request, res: Response): Promise<void> => {
+    const userId = req.userId;
+
+    logger.info('[API] BC customers query requested', {
+      userId,
+      top: req.query.top,
+      filter: req.query.filter,
+    });
+
     try {
       const bcClient = getBCClient();
 
@@ -463,20 +473,31 @@ function configureRoutes(): void {
       });
 
       if (!result.success) {
-        console.error('[API] Query customers failed:', result.error);
+        logger.error('[API] Query customers failed', {
+          userId,
+          error: result.error,
+        });
         res.status(500).json({
           error: 'Query failed',
           details: result.error.error.message,
         });
-        return;  // ⭐ Return void instead of Response
+        return;
       }
+
+      logger.info('[API] BC customers query successful', {
+        userId,
+        count: result.data['@odata.count'],
+      });
 
       res.json({
         count: result.data['@odata.count'],
         customers: result.data.value,
       });
     } catch (error) {
-      console.error('[API] Query customers failed:', error);
+      logger.error('[API] Query customers failed', {
+        userId,
+        err: error,
+      });
       res.status(500).json({
         error: 'Query failed',
         message: error instanceof Error ? error.message : 'Unknown error',
@@ -972,25 +993,102 @@ function configureSocketIO(): void {
     });
 
     // Handler: Approval response
+    // Security: Uses authenticated userId from socket, NOT from client payload
+    // Uses atomic method to prevent TOCTOU race conditions
     socket.on('approval:response', async (data: {
       approvalId: string;
       decision: 'approved' | 'rejected';
-      userId: string;
+      userId?: string; // Ignored - we use authSocket.userId instead
       reason?: string;
     }) => {
-      const { approvalId, decision, userId, reason } = data;
+      const { approvalId, decision, reason } = data;
+
+      // Security: Get userId from authenticated socket, NOT from client payload
+      // This prevents impersonation attacks where attacker sends another user's ID
+      const authenticatedUserId = authSocket.userId;
+
+      if (!authenticatedUserId) {
+        logger.warn('[Socket] Approval response rejected: Socket not authenticated', {
+          socketId: socket.id,
+          approvalId,
+        });
+        socket.emit('approval:error', {
+          error: 'Socket not authenticated. Please reconnect.',
+        });
+        return;
+      }
+
+      // Validate decision is valid
+      if (!decision || !['approved', 'rejected'].includes(decision)) {
+        logger.warn('[Socket] Approval response rejected: Invalid decision', {
+          socketId: socket.id,
+          approvalId,
+          decision,
+          userId: authenticatedUserId,
+        });
+        socket.emit('approval:error', {
+          error: 'Invalid decision. Must be "approved" or "rejected".',
+        });
+        return;
+      }
 
       try {
-
         const approvalManager = getApprovalManager();
-        await approvalManager.respondToApproval(approvalId, decision, userId, reason);
+
+        // Security: Use atomic method that combines validation + response in single transaction
+        // This prevents TOCTOU (Time Of Check To Time Of Use) race conditions
+        const result = await approvalManager.respondToApprovalAtomic(
+          approvalId,
+          decision,
+          authenticatedUserId, // Use authenticated userId, not client-provided
+          reason
+        );
+
+        if (!result.success) {
+          // Map error codes to user-friendly messages
+          const errorMessages: Record<string, string> = {
+            'APPROVAL_NOT_FOUND': 'Approval request not found.',
+            'SESSION_NOT_FOUND': 'Session associated with this approval no longer exists.',
+            'UNAUTHORIZED': 'You do not have permission to respond to this approval.',
+            'ALREADY_RESOLVED': `This approval has already been ${result.previousStatus || 'resolved'}.`,
+            'EXPIRED': 'This approval request has expired.',
+            'NO_PENDING_PROMISE': 'Server state inconsistent. Please retry the operation.',
+          };
+
+          const errorMessage = errorMessages[result.error || ''] || 'An unexpected error occurred.';
+
+          logger.warn('[Socket] Approval response failed', {
+            socketId: socket.id,
+            approvalId,
+            userId: authenticatedUserId,
+            error: result.error,
+          });
+
+          socket.emit('approval:error', {
+            error: errorMessage,
+            code: result.error,
+          });
+          return;
+        }
+
+        logger.info('[Socket] Approval response processed successfully', {
+          socketId: socket.id,
+          approvalId,
+          decision,
+          userId: authenticatedUserId,
+        });
 
         socket.emit('approval:resolved', {
           approvalId,
           decision,
         });
       } catch (error) {
-        console.error('[Socket] Approval response error:', error);
+        logger.error('[Socket] Approval response error', {
+          err: error,
+          socketId: socket.id,
+          approvalId,
+          userId: authenticatedUserId,
+        });
         socket.emit('approval:error', {
           error: error instanceof Error ? error.message : 'Unknown error',
         });
@@ -998,19 +1096,99 @@ function configureSocketIO(): void {
     });
 
     // Handler: Join session
-    socket.on('session:join', (data: { sessionId: string }) => {
+    // Security: Validates user owns the session before allowing them to join the room
+    // This prevents users from receiving events from other users' sessions
+    socket.on('session:join', async (data: { sessionId: string }) => {
       const { sessionId } = data;
-      socket.join(sessionId);
-      logger.info(`[Socket.IO] ✅ Client ${socket.id} joined room: ${sessionId}`);
 
-      socket.emit('session:joined', { sessionId });
+      // Security: Get userId from authenticated socket
+      const authenticatedUserId = authSocket.userId;
+
+      if (!authenticatedUserId) {
+        logger.warn('[Socket] Session join rejected: Socket not authenticated', {
+          socketId: socket.id,
+          sessionId,
+        });
+        socket.emit('session:error', {
+          error: 'Socket not authenticated. Please reconnect.',
+          code: 'NOT_AUTHENTICATED',
+        });
+        return;
+      }
+
+      if (!sessionId) {
+        logger.warn('[Socket] Session join rejected: Missing sessionId', {
+          socketId: socket.id,
+          userId: authenticatedUserId,
+        });
+        socket.emit('session:error', {
+          error: 'Session ID is required.',
+          code: 'MISSING_SESSION_ID',
+        });
+        return;
+      }
+
+      try {
+        // Security: Validate user owns this session (multi-tenant safety)
+        const ownershipResult = await validateSessionOwnership(sessionId, authenticatedUserId);
+
+        if (!ownershipResult.isOwner) {
+          if (ownershipResult.error === 'SESSION_NOT_FOUND') {
+            logger.warn('[Socket] Session join rejected: Session not found', {
+              socketId: socket.id,
+              sessionId,
+              userId: authenticatedUserId,
+            });
+            socket.emit('session:error', {
+              error: 'Session not found.',
+              code: 'SESSION_NOT_FOUND',
+            });
+            return;
+          }
+
+          // Log unauthorized access attempt for security audit
+          logger.warn('[Socket] Session join rejected: Unauthorized access attempt', {
+            socketId: socket.id,
+            sessionId,
+            attemptedByUserId: authenticatedUserId,
+            error: ownershipResult.error,
+          });
+          socket.emit('session:error', {
+            error: 'You do not have access to this session.',
+            code: 'UNAUTHORIZED',
+          });
+          return;
+        }
+
+        // Ownership validated - allow joining the room
+        socket.join(sessionId);
+        logger.info(`[Socket.IO] Client ${socket.id} joined room: ${sessionId}`, {
+          userId: authenticatedUserId,
+        });
+
+        socket.emit('session:joined', { sessionId });
+      } catch (error) {
+        logger.error('[Socket] Session join error', {
+          err: error,
+          socketId: socket.id,
+          sessionId,
+          userId: authenticatedUserId,
+        });
+        socket.emit('session:error', {
+          error: 'Failed to join session. Please try again.',
+          code: 'INTERNAL_ERROR',
+        });
+      }
     });
 
     // Handler: Leave session
+    // Note: No ownership validation needed for leaving - users can always leave rooms
     socket.on('session:leave', (data: { sessionId: string }) => {
       const { sessionId } = data;
       socket.leave(sessionId);
-      logger.info(`[Socket.IO] Client ${socket.id} left room: ${sessionId}`);
+      logger.info(`[Socket.IO] Client ${socket.id} left room: ${sessionId}`, {
+        userId: authSocket.userId,
+      });
 
       socket.emit('session:left', { sessionId });
     });

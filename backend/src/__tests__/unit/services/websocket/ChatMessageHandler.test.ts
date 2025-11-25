@@ -166,11 +166,13 @@ describe('ChatMessageHandler', () => {
       await handler.handle(data, mockSocket as Socket, mockIo as SocketIOServer);
 
       // ⭐ PHASE 1B: executeQueryStreaming now receives userId as 4th parameter
+      // ⭐ PHASE 1F: Optional 5th parameter is thinkingConfig (undefined when not provided)
       expect(mockDirectAgentServiceMethods.executeQueryStreaming).toHaveBeenCalledWith(
         testMessage,
         testSessionId,
         expect.any(Function), // onEvent callback
-        testUserId // userId for audit trail
+        testUserId, // userId for audit trail
+        undefined // thinkingConfig (not provided in this test)
       );
 
       // ⭐ PHASE 1B: Final log message changed

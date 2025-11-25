@@ -1,84 +1,71 @@
 /**
- * Migration 002: Use Anthropic Message IDs as Primary Key
+ * Migration 002: Use Anthropic Message IDs (Simplified - No Backup)
  *
  * Date: 2025-11-24
  * Phase: 1B
  *
  * Description:
- * Migrates messages.id from UNIQUEIDENTIFIER (UUID) to NVARCHAR(255) to use
- * Anthropic's native message IDs (format: msg_01ABC...) as the primary key.
+ * Changes messages.id from UNIQUEIDENTIFIER (UUID) to NVARCHAR(255)
+ * to support Anthropic's native message ID format (msg_01...).
  *
- * Benefits:
- * - Direct correlation with Anthropic Console for debugging
- * - Simplified architecture (one ID system instead of two)
- * - Eliminates redundant anthropic_message_id column
- * - Enables audit trail from user → database → Anthropic logs
- *
- * Breaking Changes:
- * - messages.id type changes from UNIQUEIDENTIFIER to NVARCHAR(255)
- * - Foreign keys referencing messages.id must be updated
- * - Application code must pass Anthropic IDs instead of generating UUIDs
- *
- * Rollback:
- * See 002-rollback.sql for reversing this migration
+ * ⚠️ WARNING: NO BACKUP
+ * - This version does not create backup columns
+ * - Existing messages will be preserved during type conversion
+ * - Safe for test/development environments
  */
+
+-- Required for Azure SQL DDL operations
+SET QUOTED_IDENTIFIER ON;
+SET ANSI_NULLS ON;
 
 BEGIN TRANSACTION;
 
 PRINT '=== Migration 002: Use Anthropic Message IDs ===';
+PRINT '';
+
 PRINT 'Step 1: Verify current schema...';
 
--- Verify messages table exists
-IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'messages')
+-- Check current type
+DECLARE @CurrentType NVARCHAR(50);
+SELECT @CurrentType = t.name
+FROM sys.columns c
+INNER JOIN sys.types t ON c.system_type_id = t.system_type_id
+WHERE c.object_id = OBJECT_ID('messages')
+  AND c.name = 'id';
+
+PRINT '  Current type: ' + @CurrentType;
+
+IF @CurrentType = 'nvarchar'
 BEGIN
-    PRINT 'ERROR: messages table does not exist!';
+    PRINT '  ⚠ messages.id is already NVARCHAR (migration already applied)';
+    PRINT '  Nothing to do. Aborting.';
+    COMMIT TRANSACTION;
+    RETURN;
+END
+
+IF @CurrentType != 'uniqueidentifier'
+BEGIN
+    PRINT '  ⚠ Unexpected type: ' + @CurrentType;
+    PRINT '  Expected UNIQUEIDENTIFIER or NVARCHAR';
     ROLLBACK TRANSACTION;
     RETURN;
 END
 
--- Verify messages.id is currently UNIQUEIDENTIFIER
-IF NOT EXISTS (
-    SELECT * FROM sys.columns c
-    INNER JOIN sys.types t ON c.system_type_id = t.system_type_id
-    WHERE c.object_id = OBJECT_ID('messages')
-      AND c.name = 'id'
-      AND t.name = 'uniqueidentifier'
-)
-BEGIN
-    PRINT 'WARNING: messages.id is not UNIQUEIDENTIFIER. May have been migrated already.';
-    -- Continue anyway (idempotent)
-END
+PRINT 'Step 2: Drop foreign key constraints...';
 
-PRINT 'Step 2: Create temporary backup column...';
-
--- Add temporary column to preserve data during type change
-IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('messages') AND name = 'id_backup')
-BEGIN
-    ALTER TABLE messages ADD id_backup UNIQUEIDENTIFIER NULL;
-    PRINT '  ✓ Created id_backup column';
-END
-ELSE
-BEGIN
-    PRINT '  ⚠ id_backup column already exists (idempotent)';
-END
-
-PRINT 'Step 3: Backup existing message IDs...';
-
--- Copy existing IDs to backup column
-UPDATE messages
-SET id_backup = CAST(id AS UNIQUEIDENTIFIER)
-WHERE id_backup IS NULL;
-
-DECLARE @BackupCount INT = (SELECT COUNT(*) FROM messages WHERE id_backup IS NOT NULL);
-PRINT '  ✓ Backed up ' + CAST(@BackupCount AS NVARCHAR(10)) + ' message IDs';
-
-PRINT 'Step 4: Identify and drop foreign key constraints...';
-
--- Find all foreign keys referencing messages.id
+-- Find and drop FKs
 DECLARE @FK_Name NVARCHAR(255);
 DECLARE @FK_Table NVARCHAR(255);
 DECLARE @FK_Column NVARCHAR(255);
 DECLARE @SQL NVARCHAR(MAX);
+
+-- Create temp table to store FK definitions
+IF OBJECT_ID('tempdb..#FK_Backup') IS NOT NULL DROP TABLE #FK_Backup;
+CREATE TABLE #FK_Backup (
+    FK_Name NVARCHAR(255),
+    FK_Table NVARCHAR(255),
+    FK_Column NVARCHAR(255)
+);
 
 DECLARE fk_cursor CURSOR FOR
 SELECT
@@ -91,31 +78,13 @@ INNER JOIN sys.foreign_key_columns AS fkc
 WHERE fk.referenced_object_id = OBJECT_ID('messages')
   AND COL_NAME(fk.referenced_object_id, fkc.referenced_column_id) = 'id';
 
--- Store FK info for recreation
-IF OBJECT_ID('tempdb..#FK_Backup') IS NOT NULL DROP TABLE #FK_Backup;
-CREATE TABLE #FK_Backup (
-    FK_Name NVARCHAR(255),
-    FK_Table NVARCHAR(255),
-    FK_Column NVARCHAR(255),
-    FK_Definition NVARCHAR(MAX)
-);
-
 OPEN fk_cursor;
 FETCH NEXT FROM fk_cursor INTO @FK_Name, @FK_Table, @FK_Column;
 
 WHILE @@FETCH_STATUS = 0
 BEGIN
-    PRINT '  Found FK: ' + @FK_Name + ' (' + @FK_Table + '.' + @FK_Column + ')';
-
     -- Store FK definition
-    INSERT INTO #FK_Backup (FK_Name, FK_Table, FK_Column, FK_Definition)
-    VALUES (
-        @FK_Name,
-        @FK_Table,
-        @FK_Column,
-        'ALTER TABLE ' + @FK_Table + ' ADD CONSTRAINT ' + @FK_Name +
-        ' FOREIGN KEY (' + @FK_Column + ') REFERENCES messages(id)'
-    );
+    INSERT INTO #FK_Backup VALUES (@FK_Name, @FK_Table, @FK_Column);
 
     -- Drop FK
     SET @SQL = 'ALTER TABLE ' + @FK_Table + ' DROP CONSTRAINT ' + @FK_Name;
@@ -128,14 +97,12 @@ END
 CLOSE fk_cursor;
 DEALLOCATE fk_cursor;
 
-PRINT 'Step 5: Drop existing primary key constraint...';
+PRINT 'Step 3: Drop primary key...';
 
--- Drop PK constraint on messages.id
 DECLARE @PK_Name NVARCHAR(255);
 SELECT @PK_Name = name
 FROM sys.key_constraints
-WHERE type = 'PK'
-  AND parent_object_id = OBJECT_ID('messages');
+WHERE type = 'PK' AND parent_object_id = OBJECT_ID('messages');
 
 IF @PK_Name IS NOT NULL
 BEGIN
@@ -143,40 +110,42 @@ BEGIN
     EXEC sp_executesql @SQL;
     PRINT '  ✓ Dropped PK: ' + @PK_Name;
 END
+
+PRINT 'Step 4: Drop default constraint on id column...';
+
+DECLARE @DF_Name NVARCHAR(255);
+SELECT @DF_Name = dc.name
+FROM sys.default_constraints dc
+INNER JOIN sys.columns c ON dc.parent_object_id = c.object_id AND dc.parent_column_id = c.column_id
+WHERE c.object_id = OBJECT_ID('messages') AND c.name = 'id';
+
+IF @DF_Name IS NOT NULL
+BEGIN
+    SET @SQL = 'ALTER TABLE messages DROP CONSTRAINT ' + @DF_Name;
+    EXEC sp_executesql @SQL;
+    PRINT '  ✓ Dropped DEFAULT constraint: ' + @DF_Name;
+END
 ELSE
 BEGIN
-    PRINT '  ⚠ No PK found on messages table';
+    PRINT '  ℹ No DEFAULT constraint on id column';
 END
 
-PRINT 'Step 6: Change id column type to NVARCHAR(255)...';
+PRINT 'Step 5: Change id column type...';
 
--- Alter column type (data is preserved in id_backup)
--- Note: This will fail if there are still FKs or PKs (which we just dropped)
+-- Alter column type
 ALTER TABLE messages ALTER COLUMN id NVARCHAR(255) NOT NULL;
 PRINT '  ✓ Changed messages.id to NVARCHAR(255)';
 
-PRINT 'Step 7: Restore data from backup...';
+-- Note: SQL Server automatically converts UNIQUEIDENTIFIER values to string format
+-- Existing UUIDs like '123e4567-e89b-12d3-a456-426614174000' remain in the column
 
--- Convert UUIDs to string format for existing data
--- NOTE: This converts UUIDs to lowercase string format (8-4-4-4-12)
--- New Anthropic IDs will be in format msg_01ABC... (added by application)
-UPDATE messages
-SET id = LOWER(CAST(id_backup AS NVARCHAR(255)))
-WHERE id_backup IS NOT NULL;
+PRINT 'Step 6: Recreate primary key...';
 
-DECLARE @RestoreCount INT = (SELECT COUNT(*) FROM messages WHERE LEN(id) = 36);
-PRINT '  ✓ Restored ' + CAST(@RestoreCount AS NVARCHAR(10)) + ' message IDs (UUID format)';
-
-PRINT 'Step 8: Recreate primary key constraint...';
-
--- Add PK back with new column type
 ALTER TABLE messages ADD CONSTRAINT PK_messages PRIMARY KEY CLUSTERED (id);
 PRINT '  ✓ Recreated PK: PK_messages';
 
-PRINT 'Step 9: Update foreign key referencing columns to NVARCHAR...';
+PRINT 'Step 7: Update foreign key columns...';
 
--- Update FK columns in referencing tables to match new type
--- Example: approvals.message_id must also be NVARCHAR(255)
 DECLARE @RefTable NVARCHAR(255);
 DECLARE @RefColumn NVARCHAR(255);
 
@@ -188,26 +157,9 @@ FETCH NEXT FROM ref_cursor INTO @RefTable, @RefColumn;
 
 WHILE @@FETCH_STATUS = 0
 BEGIN
-    PRINT '  Updating ' + @RefTable + '.' + @RefColumn + ' to NVARCHAR(255)...';
-
-    -- Check current type
-    DECLARE @CurrentType NVARCHAR(50);
-    SELECT @CurrentType = t.name
-    FROM sys.columns c
-    INNER JOIN sys.types t ON c.system_type_id = t.system_type_id
-    WHERE c.object_id = OBJECT_ID(@RefTable)
-      AND c.name = @RefColumn;
-
-    IF @CurrentType = 'uniqueidentifier'
-    BEGIN
-        SET @SQL = 'ALTER TABLE ' + @RefTable + ' ALTER COLUMN ' + @RefColumn + ' NVARCHAR(255) NULL';
-        EXEC sp_executesql @SQL;
-        PRINT '    ✓ Updated ' + @RefTable + '.' + @RefColumn;
-    END
-    ELSE
-    BEGIN
-        PRINT '    ⚠ ' + @RefTable + '.' + @RefColumn + ' already NVARCHAR (idempotent)';
-    END
+    SET @SQL = 'ALTER TABLE ' + @RefTable + ' ALTER COLUMN ' + @RefColumn + ' NVARCHAR(255) NULL';
+    EXEC sp_executesql @SQL;
+    PRINT '  ✓ Updated ' + @RefTable + '.' + @RefColumn + ' to NVARCHAR(255)';
 
     FETCH NEXT FROM ref_cursor INTO @RefTable, @RefColumn;
 END
@@ -215,100 +167,67 @@ END
 CLOSE ref_cursor;
 DEALLOCATE ref_cursor;
 
-PRINT 'Step 10: Recreate foreign key constraints...';
-
--- Recreate FKs with new column types
-DECLARE @FK_Definition NVARCHAR(MAX);
+PRINT 'Step 8: Recreate foreign key constraints...';
 
 DECLARE fk_recreate_cursor CURSOR FOR
-SELECT FK_Definition FROM #FK_Backup;
+SELECT FK_Name, FK_Table, FK_Column FROM #FK_Backup;
 
 OPEN fk_recreate_cursor;
-FETCH NEXT FROM fk_recreate_cursor INTO @FK_Definition;
+FETCH NEXT FROM fk_recreate_cursor INTO @FK_Name, @FK_Table, @FK_Column;
 
 WHILE @@FETCH_STATUS = 0
 BEGIN
-    EXEC sp_executesql @FK_Definition;
-    PRINT '  ✓ Recreated FK: ' + @FK_Definition;
+    SET @SQL = 'ALTER TABLE ' + @FK_Table + ' ADD CONSTRAINT ' + @FK_Name +
+               ' FOREIGN KEY (' + @FK_Column + ') REFERENCES messages(id)';
+    EXEC sp_executesql @SQL;
+    PRINT '  ✓ Recreated FK: ' + @FK_Name;
 
-    FETCH NEXT FROM fk_recreate_cursor INTO @FK_Definition;
+    FETCH NEXT FROM fk_recreate_cursor INTO @FK_Name, @FK_Table, @FK_Column;
 END
 
 CLOSE fk_recreate_cursor;
 DEALLOCATE fk_recreate_cursor;
 
-PRINT 'Step 11: Drop temporary backup column...';
-
--- Drop backup column (data is now in messages.id with new type)
-ALTER TABLE messages DROP COLUMN id_backup;
-PRINT '  ✓ Dropped id_backup column';
-
--- Clean up temp table
 DROP TABLE #FK_Backup;
 
-PRINT 'Step 12: Verify migration...';
+PRINT 'Step 9: Verify migration...';
 
--- Verify final schema
-DECLARE @FinalType NVARCHAR(50);
-DECLARE @FinalMaxLength INT;
-
-SELECT
-    @FinalType = t.name,
-    @FinalMaxLength = c.max_length
+-- Verify final type (check user_type_id for proper type name)
+SELECT @CurrentType = t.name
 FROM sys.columns c
-INNER JOIN sys.types t ON c.system_type_id = t.system_type_id
+INNER JOIN sys.types t ON c.user_type_id = t.user_type_id
 WHERE c.object_id = OBJECT_ID('messages')
   AND c.name = 'id';
 
-IF @FinalType = 'nvarchar' AND @FinalMaxLength >= 510 -- (255 * 2 bytes for nvarchar)
+IF @CurrentType = 'nvarchar'
 BEGIN
-    PRINT '  ✓ Verification passed: messages.id is NVARCHAR(255)';
+    PRINT '  ✓ Verification passed: messages.id is NVARCHAR';
 END
 ELSE
 BEGIN
-    PRINT '  ✗ Verification FAILED: messages.id type is ' + @FinalType;
+    PRINT '  ✗ Verification FAILED: messages.id is ' + @CurrentType;
     ROLLBACK TRANSACTION;
     RETURN;
 END
 
--- Verify PK exists
-IF EXISTS (
-    SELECT * FROM sys.key_constraints
-    WHERE type = 'PK'
-      AND parent_object_id = OBJECT_ID('messages')
-      AND name = 'PK_messages'
-)
-BEGIN
-    PRINT '  ✓ Verification passed: PK_messages exists';
-END
-ELSE
-BEGIN
-    PRINT '  ✗ Verification FAILED: PK_messages not found';
-    ROLLBACK TRANSACTION;
-    RETURN;
-END
-
--- Count messages
-DECLARE @TotalMessages INT = (SELECT COUNT(*) FROM messages);
-PRINT '  ℹ Total messages in table: ' + CAST(@TotalMessages AS NVARCHAR(10));
+-- Count existing messages
+DECLARE @MessageCount INT = (SELECT COUNT(*) FROM messages);
+PRINT '  ℹ Total messages: ' + CAST(@MessageCount AS NVARCHAR(10));
 
 COMMIT TRANSACTION;
 
 PRINT '';
-PRINT '=== Migration 002 COMPLETED SUCCESSFULLY ===';
+PRINT '=== Migration 002 COMPLETED ===';
 PRINT '';
 PRINT 'Summary:';
 PRINT '  - messages.id type changed: UNIQUEIDENTIFIER → NVARCHAR(255)';
 PRINT '  - Primary key recreated: PK_messages';
-PRINT '  - Foreign keys updated and recreated';
-PRINT '  - Existing data preserved (UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)';
-PRINT '  - Ready for Anthropic message IDs (format: msg_01ABC...)';
+PRINT '  - Foreign keys recreated';
+PRINT '  - Existing messages preserved: ' + CAST(@MessageCount AS NVARCHAR(10));
 PRINT '';
 PRINT 'Next steps:';
-PRINT '  1. Deploy backend code changes (DirectAgentService, MessageService)';
-PRINT '  2. Verify new messages use Anthropic ID format in logs';
-PRINT '  3. Monitor query performance';
-PRINT '  4. Update documentation';
+PRINT '  1. Verify application code uses Anthropic message IDs';
+PRINT '  2. Run tests to ensure compatibility';
+PRINT '  3. Deploy backend changes';
 PRINT '';
-PRINT 'Rollback: Execute 002-rollback.sql if issues occur';
 PRINT '==========================================';

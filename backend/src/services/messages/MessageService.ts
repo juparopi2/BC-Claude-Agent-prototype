@@ -131,12 +131,16 @@ export class MessageService {
             sequence_number: event.sequence_number,
             event_id: event.id,
             created_at: new Date(),
+            // ⭐ Token tracking columns (null for user messages, populated for assistant)
+            model: null,
+            input_tokens: null,
+            output_tokens: null,
           };
 
           await executeQuery(
             `
-            INSERT INTO messages (id, session_id, role, message_type, content, metadata, token_count, stop_reason, sequence_number, event_id, created_at)
-            VALUES (@id, @session_id, @role, @message_type, @content, @metadata, @token_count, @stop_reason, @sequence_number, @event_id, @created_at)
+            INSERT INTO messages (id, session_id, role, message_type, content, metadata, token_count, stop_reason, sequence_number, event_id, created_at, model, input_tokens, output_tokens)
+            VALUES (@id, @session_id, @role, @message_type, @content, @metadata, @token_count, @stop_reason, @sequence_number, @event_id, @created_at, @model, @input_tokens, @output_tokens)
             `,
             params
           );

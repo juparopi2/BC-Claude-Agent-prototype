@@ -125,13 +125,19 @@ interface ExtendedThinkingConfig {
   enableThinking?: boolean;
 
   /**
-   * Budget tokens for extended thinking (minimum 1024)
+   * Budget tokens for extended thinking
    * Only used when enableThinking is true.
+   * @minimum 1024
+   * @maximum 100000
    * @default 10000
    */
   thinkingBudget?: number;
 }
 ```
+
+**Validation**:
+- `thinkingBudget` must be between 1024 and 100000 (Anthropic API limits)
+- If invalid budget is provided, the request will be rejected with an `agent:error` event
 
 **Examples**:
 

@@ -151,8 +151,30 @@ export class ChatMessageHandler {
         hasExecuteMethod: typeof agentService?.executeQueryStreaming === 'function'
       });
 
-      // ⭐ Phase 1F: Extract Extended Thinking config from request
+      // ⭐ Phase 1F: Extract and validate Extended Thinking config from request
       const thinkingConfig = data.thinking;
+
+      // Validate thinkingBudget if provided (Anthropic requires 1024 <= budget <= 100000)
+      if (thinkingConfig?.enableThinking && thinkingConfig.thinkingBudget !== undefined) {
+        const MIN_THINKING_BUDGET = 1024;
+        const MAX_THINKING_BUDGET = 100000;
+
+        if (thinkingConfig.thinkingBudget < MIN_THINKING_BUDGET || thinkingConfig.thinkingBudget > MAX_THINKING_BUDGET) {
+          this.logger.warn('Invalid thinkingBudget, rejecting request', {
+            sessionId,
+            userId,
+            thinkingBudget: thinkingConfig.thinkingBudget,
+            minAllowed: MIN_THINKING_BUDGET,
+            maxAllowed: MAX_THINKING_BUDGET,
+          });
+          socket.emit('agent:error', {
+            error: `Invalid thinkingBudget: must be between ${MIN_THINKING_BUDGET} and ${MAX_THINKING_BUDGET}`,
+            sessionId,
+          });
+          return;
+        }
+      }
+
       this.logger.info('📞 Calling executeQueryStreaming...', {
         sessionId,
         userId,

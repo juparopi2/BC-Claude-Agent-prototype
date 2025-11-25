@@ -12,6 +12,8 @@
     "migrate": "node -r ts-node/register scripts/migrate.ts",
     "seed": "node -r ts-node/register scripts/seed.ts",
     "test": "vitest run",
+    "test:unit": "vitest run --exclude '**/*.integration.test.ts'",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest run --coverage",

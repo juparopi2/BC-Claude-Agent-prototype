@@ -37,7 +37,15 @@ export default defineConfig({
       },
     },
     include: ['src/**/*.{test,spec}.ts'],
-    exclude: ['node_modules', 'dist', 'mcp-server'],
+    exclude: [
+      'node_modules',
+      'dist',
+      'mcp-server',
+      // Exclude integration tests from default test run
+      // Use npm run test:integration to run these
+      'src/**/*.integration.test.ts',
+      'src/**/*.integration.spec.ts',
+    ],
   },
   resolve: {
     alias: {

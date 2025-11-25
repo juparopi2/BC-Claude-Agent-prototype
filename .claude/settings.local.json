@@ -75,7 +75,9 @@
       "Bash(npm run test)",
       "Bash(sqlcmd:*)",
       "Bash(cut:*)",
-      "Bash(del nul 2)"
+      "Bash(del nul 2)",
+      "Bash(npx vitest run)",
+      "Bash(npx vitest:*)"
     ],
     "deny": [],
     "ask": []

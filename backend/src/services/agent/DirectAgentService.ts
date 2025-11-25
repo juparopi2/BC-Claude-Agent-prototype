@@ -46,6 +46,7 @@ import { randomUUID } from 'crypto';
 import { getEventStore } from '../events/EventStore';
 import { getMessageService } from '../messages/MessageService';
 import { getMessageQueue } from '../queue/MessageQueue';
+import { getTokenUsageService } from '../token-usage/TokenUsageService';
 import { createChildLogger } from '@/utils/logger';
 import type { Logger } from 'pino';
 import * as fs from 'fs';
@@ -79,7 +80,13 @@ interface BCIndexEntity {
   operations: string[];
   endpoints: BCEndpoint[];
   relationships?: BCRelationship[];
-  commonWorkflows?: unknown[];
+  commonWorkflows?: BCWorkflow[];
+}
+
+interface BCWorkflow {
+  name: string;
+  description?: string;
+  steps: Array<{ operation_id: string; label?: string }>;
 }
 
 interface BCIndex {
@@ -235,6 +242,10 @@ export class DirectAgentService {
     let outputTokens = 0;
     let thinkingTokens = 0; // ⭐ PHASE 1F: Track Extended Thinking tokens
     let modelName: string | undefined; // NEW: Track Claude model name
+    // ⭐ Cache token tracking for billing analytics
+    let cacheCreationInputTokens = 0;
+    let cacheReadInputTokens = 0;
+    let serviceTier: 'standard' | 'priority' | 'batch' | undefined;
 
     try {
       // Validate sessionId is provided (required for event tracking and sequence numbers)
@@ -399,7 +410,18 @@ export class DirectAgentService {
               messageId = event.message.id;
               modelName = event.message.model;  // NEW: Capture model name
               inputTokens += event.message.usage.input_tokens;
-              console.log(`[STREAM] message_start: id=${messageId}, model=${modelName}, input_tokens=${event.message.usage.input_tokens}`);
+              // ⭐ Capture cache tokens for billing analytics
+              if (event.message.usage.cache_creation_input_tokens) {
+                cacheCreationInputTokens += event.message.usage.cache_creation_input_tokens;
+              }
+              if (event.message.usage.cache_read_input_tokens) {
+                cacheReadInputTokens += event.message.usage.cache_read_input_tokens;
+              }
+              // ⭐ Capture service tier (affects pricing)
+              if (event.message.usage.service_tier) {
+                serviceTier = event.message.usage.service_tier as 'standard' | 'priority' | 'batch';
+              }
+              console.log(`[STREAM] message_start: id=${messageId}, model=${modelName}, input_tokens=${event.message.usage.input_tokens}, cache_read=${cacheReadInputTokens}, cache_create=${cacheCreationInputTokens}`);
               break;
 
             case 'content_block_start':
@@ -782,9 +804,37 @@ export class DirectAgentService {
           outputTokens,
           thinkingTokens,   // ⭐ PHASE 1F: Extended Thinking tokens (estimated)
           totalTokens: inputTokens + outputTokens,
+          cacheCreationInputTokens,
+          cacheReadInputTokens,
+          serviceTier,
           sessionId,
           turnCount,
         });
+
+        // ========== TOKEN USAGE PERSISTENCE (Billing Analytics) ==========
+        // Record token usage for billing analytics (non-blocking)
+        if (messageId && modelName && userId) {
+          const tokenUsageService = getTokenUsageService();
+          const thinkingWasEnabled = options?.enableThinking ?? (env.ENABLE_EXTENDED_THINKING === true);
+          const thinkingBudgetUsed = options?.thinkingBudget ?? 10000;
+          // Fire-and-forget - don't block the main flow
+          tokenUsageService.recordUsage({
+            userId,
+            sessionId,
+            messageId,
+            model: modelName,
+            inputTokens,
+            outputTokens,
+            cacheCreationInputTokens: cacheCreationInputTokens > 0 ? cacheCreationInputTokens : undefined,
+            cacheReadInputTokens: cacheReadInputTokens > 0 ? cacheReadInputTokens : undefined,
+            thinkingEnabled: thinkingWasEnabled,
+            thinkingBudget: thinkingWasEnabled ? thinkingBudgetUsed : undefined,
+            serviceTier,
+          }).catch((error) => {
+            // Log error but don't fail the request
+            this.logger.warn('Failed to record token usage', { error, messageId });
+          });
+        }
 
         // ========== EMIT COMPLETE MESSAGE ==========
         // ✅ FIX PHASE 3: Persist complete message FIRST, then emit

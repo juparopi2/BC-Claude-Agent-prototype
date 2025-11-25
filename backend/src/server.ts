@@ -30,6 +30,7 @@ import authMockRoutes from './routes/auth-mock';
 import authOAuthRoutes from './routes/auth-oauth';
 import sessionsRoutes from './routes/sessions';
 import logsRoutes from './routes/logs';
+import tokenUsageRoutes from './routes/token-usage';
 import { authenticateMicrosoft } from './middleware/auth-oauth';
 import { httpLogger } from './middleware/logging';
 import { MicrosoftOAuthSession } from './types/microsoft.types';
@@ -733,6 +734,8 @@ function configureRoutes(): void {
   // Chat sessions routes (requires database)
   if (isDatabaseAvailable) {
     app.use('/api/chat/sessions', sessionsRoutes);
+    // Token usage analytics endpoints (requires database)
+    app.use('/api/token-usage', tokenUsageRoutes);
   }
 
   // Client log ingestion endpoint

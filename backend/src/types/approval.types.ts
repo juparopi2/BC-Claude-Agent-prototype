@@ -50,6 +50,10 @@ export interface ChangeSummary {
 
 /**
  * Data sent to client when approval is requested
+ *
+ * @deprecated F4-002: Use ApprovalRequestedEvent from agent.types.ts instead.
+ * This type was used with the legacy 'approval:requested' WebSocket event.
+ * The server now emits via 'agent:event' with type 'approval_requested'.
  */
 export interface ApprovalRequestEvent {
   approvalId: string;
@@ -62,6 +66,10 @@ export interface ApprovalRequestEvent {
 
 /**
  * Data sent to client when approval is resolved
+ *
+ * @deprecated F4-002: Use ApprovalResolvedEvent from agent.types.ts instead.
+ * This type was used with the legacy 'approval:resolved' WebSocket event.
+ * The server now emits via 'agent:event' with type 'approval_resolved'.
  */
 export interface ApprovalResolvedEvent {
   approvalId: string;

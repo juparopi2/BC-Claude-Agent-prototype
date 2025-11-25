@@ -47,6 +47,31 @@ vi.mock('@/config/database', () => ({
     request: mockDbRequest,
     transaction: vi.fn(() => mockTransaction),
   })),
+  executeQuery: vi.fn().mockResolvedValue({ recordset: [], rowsAffected: [0] }),
+}));
+
+// Mock EventStore for F4-002: Approval events now use EventStore
+const mockEventStoreAppendEvent = vi.fn().mockResolvedValue({
+  id: 'mock-event-id',
+  session_id: 'session_123',
+  event_type: 'approval_requested',
+  sequence_number: 1,
+  timestamp: new Date(),
+  data: {},
+  processed: false,
+});
+
+vi.mock('@/services/events/EventStore', () => ({
+  getEventStore: vi.fn(() => ({
+    appendEvent: mockEventStoreAppendEvent,
+  })),
+  EventStore: class {
+    static getInstance() {
+      return {
+        appendEvent: mockEventStoreAppendEvent,
+      };
+    }
+  },
 }));
 
 // Mock logger to avoid output during tests
@@ -78,6 +103,17 @@ describe('ApprovalManager', () => {
     mockDbRequest.mockReturnValue(mockRequestChain);
     mockRequestChain.input.mockReturnThis();
     mockRequestChain.query.mockResolvedValue({ recordset: [], rowsAffected: [0] });
+
+    // Re-setup EventStore mock after clearAllMocks (F4-002)
+    mockEventStoreAppendEvent.mockResolvedValue({
+      id: 'mock-event-id',
+      session_id: 'session_123',
+      event_type: 'approval_requested',
+      sequence_number: 1,
+      timestamp: new Date(),
+      data: {},
+      processed: false,
+    });
 
     // ===== PHASE 2: FIX SOCKET.IO MOCK =====
     // Create persistent emit spy
@@ -118,13 +154,27 @@ describe('ApprovalManager', () => {
       // Assert - Database insert should be called
       expect(mockDbRequest).toHaveBeenCalled();
 
-      // Assert - WebSocket event should be emitted
-      expect(mockIo.to).toHaveBeenCalledWith('session_123');
-      expect(mockEmit).toHaveBeenCalledWith(
-        'approval:requested',
+      // Assert - EventStore.appendEvent should be called (F4-002)
+      expect(mockEventStoreAppendEvent).toHaveBeenCalledWith(
+        'session_123',
+        'approval_requested',
         expect.objectContaining({
           toolName: 'bc_create_customer',
+          priority: 'medium',
+        })
+      );
+
+      // Assert - WebSocket event should be emitted via agent:event (F4-002)
+      expect(mockIo.to).toHaveBeenCalledWith('session_123');
+      expect(mockEmit).toHaveBeenCalledWith(
+        'agent:event',
+        expect.objectContaining({
+          type: 'approval_requested',
+          toolName: 'bc_create_customer',
           priority: 'medium', // create operations are medium priority
+          sequenceNumber: 1,
+          eventId: 'mock-event-id',
+          persistenceState: 'persisted',
         })
       );
 
@@ -144,19 +194,12 @@ describe('ApprovalManager', () => {
       const approvalPromise = approvalManager.request(requestOptions);
       await vi.runOnlyPendingTimersAsync();
 
-      // Check emitted event has correct summary
+      // Check emitted event has correct summary (F4-002: via agent:event)
       expect(mockEmit).toHaveBeenCalledWith(
-        'approval:requested',
+        'agent:event',
         expect.objectContaining({
-          summary: expect.objectContaining({
-            title: 'Create New Customer',
-            description: 'Create a new customer record in Business Central',
-            changes: expect.objectContaining({
-              'Customer Name': 'Acme Corp',
-              'Email': 'acme@example.com',
-              'Phone': '555-0123',
-            }),
-          }),
+          type: 'approval_requested',
+          changeSummary: 'Create a new customer record in Business Central',
         })
       );
 
@@ -705,9 +748,14 @@ describe('ApprovalManager', () => {
       expect(result.success).toBe(true);
       expect(result.sessionId).toBe('session_123');
       expect(mockTransaction.commit).toHaveBeenCalled();
-      expect(mockEmit).toHaveBeenCalledWith('approval:resolved', expect.objectContaining({
+      // F4-002: Now emits via agent:event instead of approval:resolved
+      expect(mockEmit).toHaveBeenCalledWith('agent:event', expect.objectContaining({
+        type: 'approval_resolved',
         approvalId,
         decision: 'approved',
+        sequenceNumber: 1,
+        eventId: 'mock-event-id',
+        persistenceState: 'persisted',
       }));
 
       // The original promise should resolve to true
@@ -798,6 +846,309 @@ describe('ApprovalManager', () => {
 
       // Cleanup
       vi.advanceTimersByTime(60000);
+    });
+  });
+
+  // =====================================================================
+  // TEST-001 & TEST-002: QA Master Review Fixes
+  // Tests for EventStore failures and expiration events
+  // =====================================================================
+  describe('9. EventStore Failure Handling (FIX-001, FIX-002, FIX-003)', () => {
+    it('should continue in degraded mode when EventStore fails in request()', async () => {
+      // FIX-001: Test degraded mode when EventStore fails
+      mockEventStoreAppendEvent.mockRejectedValueOnce(new Error('Redis unavailable'));
+
+      const requestOptions = {
+        sessionId: 'session_123',
+        toolName: 'bc_create_customer',
+        toolArgs: { name: 'Test' },
+        expiresInMs: 10000,
+      };
+
+      const approvalPromise = approvalManager.request(requestOptions);
+      await vi.runOnlyPendingTimersAsync();
+
+      // Should still emit event but with degraded persistenceState
+      expect(mockEmit).toHaveBeenCalledWith(
+        'agent:event',
+        expect.objectContaining({
+          type: 'approval_requested',
+          persistenceState: 'failed',
+          // Should NOT have sequenceNumber when EventStore fails
+        })
+      );
+
+      // Verify the event does NOT have sequenceNumber (or has -1)
+      const emittedEvent = mockEmit.mock.calls[0][1];
+      expect(emittedEvent.sequenceNumber).toBeUndefined();
+      expect(emittedEvent.eventId).toMatch(/^fallback-/);
+
+      // Cleanup
+      vi.advanceTimersByTime(10000);
+      await approvalPromise;
+    });
+
+    it('should continue in degraded mode when EventStore fails in respondToApproval()', async () => {
+      // FIX-002: Test degraded mode when EventStore fails during response
+      // Reset EventStore mock to ensure clean state
+      mockEventStoreAppendEvent.mockReset();
+
+      // First call succeeds (for request)
+      mockEventStoreAppendEvent.mockResolvedValueOnce({
+        id: 'event-1',
+        session_id: 'session_123',
+        event_type: 'approval_requested',
+        sequence_number: 1,
+        timestamp: new Date(),
+        data: {},
+        processed: false,
+      });
+
+      const requestOptions = {
+        sessionId: 'session_123',
+        toolName: 'bc_create_customer',
+        toolArgs: { name: 'Test' },
+        expiresInMs: 60000,
+      };
+
+      const approvalPromise = approvalManager.request(requestOptions);
+      await vi.advanceTimersByTimeAsync(1);
+
+      const approvalId = mockEmit.mock.calls[0][1].approvalId;
+
+      // Second call fails (for response)
+      mockEventStoreAppendEvent.mockRejectedValueOnce(new Error('Redis unavailable'));
+
+      // respondToApproval does:
+      // 1. Update approval in DB (UPDATE query)
+      // 2. Get sessionId from DB (SELECT query)
+      // 3. Call EventStore.appendEvent (will fail)
+      // 4. Emit event
+      mockRequestChain.query
+        .mockResolvedValueOnce({ rowsAffected: [1] })  // UPDATE approvals
+        .mockResolvedValueOnce({ recordset: [{ session_id: 'session_123' }] });  // SELECT session_id
+
+      await approvalManager.respondToApproval(approvalId, 'approved', 'user_123');
+
+      // Promise should still resolve (FIX-002: guaranteed resolution)
+      const result = await approvalPromise;
+      expect(result).toBe(true);
+
+      // Should emit event with degraded state - find the approval_resolved event
+      const resolvedEventCalls = mockEmit.mock.calls.filter(
+        (call) => call[1]?.type === 'approval_resolved'
+      );
+      expect(resolvedEventCalls.length).toBeGreaterThan(0);
+
+      const lastResolvedEvent = resolvedEventCalls[resolvedEventCalls.length - 1][1];
+      expect(lastResolvedEvent).toMatchObject({
+        type: 'approval_resolved',
+        persistenceState: 'failed',
+      });
+    });
+
+    it('should resolve promise even when DB and EventStore fail in respondToApproval()', async () => {
+      // FIX-002: Ensure promise ALWAYS resolves even on complete failure
+      const requestOptions = {
+        sessionId: 'session_123',
+        toolName: 'bc_create_customer',
+        toolArgs: { name: 'Test' },
+        expiresInMs: 60000,
+      };
+
+      const approvalPromise = approvalManager.request(requestOptions);
+      await vi.advanceTimersByTimeAsync(1);
+
+      const approvalId = mockEmit.mock.calls[0][1].approvalId;
+
+      // Simulate complete failure: DB throws error
+      mockRequestChain.query.mockRejectedValueOnce(new Error('Database connection lost'));
+
+      await approvalManager.respondToApproval(approvalId, 'approved', 'user_123');
+
+      // Promise should STILL resolve (to false because of error) - agent doesn't hang
+      const result = await approvalPromise;
+      expect(result).toBe(false);
+    });
+
+    it('should handle EventStore failure after atomic commit gracefully', async () => {
+      // FIX-003: Test EventStore failure AFTER transaction commit
+      // Reset all mocks for clean state
+      mockEventStoreAppendEvent.mockReset();
+      mockTransactionRequestChain.input.mockReturnThis();
+      mockTransactionRequestChain.query.mockReset();
+      mockTransaction.begin.mockResolvedValue(undefined);
+      mockTransaction.commit.mockResolvedValue(undefined);
+      mockTransaction.rollback.mockResolvedValue(undefined);
+      mockTransaction.request.mockReturnValue(mockTransactionRequestChain);
+
+      // First EventStore call succeeds (for request)
+      mockEventStoreAppendEvent.mockResolvedValueOnce({
+        id: 'event-1',
+        session_id: 'session_123',
+        event_type: 'approval_requested',
+        sequence_number: 1,
+        timestamp: new Date(),
+        data: {},
+        processed: false,
+      });
+
+      const requestOptions = {
+        sessionId: 'session_123',
+        toolName: 'bc_create_customer',
+        toolArgs: { name: 'Test' },
+        expiresInMs: 60000,
+      };
+
+      const approvalPromise = approvalManager.request(requestOptions);
+      await vi.advanceTimersByTimeAsync(1);
+
+      const approvalId = mockEmit.mock.calls[0][1].approvalId;
+
+      // Setup: validation passes (transaction queries)
+      mockTransactionRequestChain.query
+        .mockResolvedValueOnce({
+          recordset: [{
+            approval_id: approvalId,
+            session_id: 'session_123',
+            status: 'pending',
+            session_user_id: 'user_123',
+            session_exists: 1,
+          }],
+        })
+        .mockResolvedValueOnce({ rowsAffected: [1] });  // UPDATE succeeds
+
+      // Second EventStore call fails AFTER commit (for atomic response)
+      mockEventStoreAppendEvent.mockRejectedValueOnce(new Error('Redis down after commit'));
+
+      const result = await approvalManager.respondToApprovalAtomic(
+        approvalId,
+        'approved',
+        'user_123'
+      );
+
+      // Operation should still succeed from user perspective
+      expect(result.success).toBe(true);
+      expect(mockTransaction.commit).toHaveBeenCalled();
+
+      // Promise should resolve (FIX-003: guaranteed resolution)
+      const approved = await approvalPromise;
+      expect(approved).toBe(true);
+
+      // Should emit event with degraded state - find the approval_resolved event
+      const resolvedEventCalls = mockEmit.mock.calls.filter(
+        (call) => call[1]?.type === 'approval_resolved'
+      );
+      expect(resolvedEventCalls.length).toBeGreaterThan(0);
+
+      const lastResolvedEvent = resolvedEventCalls[resolvedEventCalls.length - 1][1];
+      expect(lastResolvedEvent).toMatchObject({
+        type: 'approval_resolved',
+        persistenceState: 'failed',
+      });
+    });
+  });
+
+  describe('10. Approval Expiration Events (FIX-004)', () => {
+    it('should emit approval_resolved event when approval times out', async () => {
+      // FIX-004: Test that expiration emits event to frontend
+      const requestOptions = {
+        sessionId: 'session_123',
+        toolName: 'bc_create_customer',
+        toolArgs: { name: 'Test' },
+        expiresInMs: 5000, // 5 seconds
+      };
+
+      const approvalPromise = approvalManager.request(requestOptions);
+      await vi.runOnlyPendingTimersAsync();
+
+      // Clear the initial request event call
+      const initialEventCall = mockEmit.mock.calls[0];
+      expect(initialEventCall[1].type).toBe('approval_requested');
+
+      // Fast-forward past the timeout
+      vi.advanceTimersByTime(6000);
+
+      // Wait for async expiration to complete
+      await vi.runOnlyPendingTimersAsync();
+
+      // Should have emitted expiration event
+      const expirationCall = mockEmit.mock.calls[mockEmit.mock.calls.length - 1];
+      expect(expirationCall[0]).toBe('agent:event');
+      expect(expirationCall[1]).toMatchObject({
+        type: 'approval_resolved',
+        decision: 'rejected',
+        reason: 'Approval request timed out',
+      });
+
+      // Promise should resolve to false
+      const result = await approvalPromise;
+      expect(result).toBe(false);
+    });
+
+    it('should persist expiration event to EventStore', async () => {
+      // FIX-004: Test that expiration persists to EventStore
+      const requestOptions = {
+        sessionId: 'session_123',
+        toolName: 'bc_create_customer',
+        toolArgs: { name: 'Test' },
+        expiresInMs: 5000,
+      };
+
+      const approvalPromise = approvalManager.request(requestOptions);
+      await vi.runOnlyPendingTimersAsync();
+
+      // Fast-forward past the timeout
+      vi.advanceTimersByTime(6000);
+      await vi.runOnlyPendingTimersAsync();
+
+      // EventStore should have been called twice:
+      // 1. For approval_requested
+      // 2. For approval_completed (expiration)
+      expect(mockEventStoreAppendEvent).toHaveBeenCalledTimes(2);
+
+      const expirationCall = mockEventStoreAppendEvent.mock.calls[1];
+      expect(expirationCall[0]).toBe('session_123');
+      expect(expirationCall[1]).toBe('approval_completed');
+      expect(expirationCall[2]).toMatchObject({
+        decision: 'expired',
+        reason: 'Approval request timed out',
+      });
+
+      await approvalPromise;
+    });
+
+    it('should handle EventStore failure during expiration gracefully', async () => {
+      // FIX-004: Test degraded mode during expiration
+      const requestOptions = {
+        sessionId: 'session_123',
+        toolName: 'bc_create_customer',
+        toolArgs: { name: 'Test' },
+        expiresInMs: 5000,
+      };
+
+      // First call succeeds (request), second call fails (expiration)
+      mockEventStoreAppendEvent
+        .mockResolvedValueOnce({ id: 'event-1', sequence_number: 1 })
+        .mockRejectedValueOnce(new Error('Redis down'));
+
+      const approvalPromise = approvalManager.request(requestOptions);
+      await vi.runOnlyPendingTimersAsync();
+
+      // Fast-forward past the timeout
+      vi.advanceTimersByTime(6000);
+      await vi.runOnlyPendingTimersAsync();
+
+      // Should still emit event with degraded state
+      const lastEmitCall = mockEmit.mock.calls[mockEmit.mock.calls.length - 1];
+      expect(lastEmitCall[1]).toMatchObject({
+        type: 'approval_resolved',
+        persistenceState: 'failed',
+      });
+
+      // Promise should still resolve
+      const result = await approvalPromise;
+      expect(result).toBe(false);
     });
   });
 });

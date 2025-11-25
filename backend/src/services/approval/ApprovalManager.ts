@@ -5,7 +5,8 @@
  * Uses Promise-based pattern with WebSocket events for real-time approval requests.
  *
  * Pattern based on Claude Agent SDK documentation:
- * - Emit approval:requested event to client
+ * - Persist approval events to EventStore with sequenceNumber
+ * - Emit via unified agent:event contract
  * - Wait for user response via Promise
  * - Resume agent execution after approval/rejection
  *
@@ -14,6 +15,16 @@
  * - Structured audit logging via Pino
  * - State validation (pending/expired/already-resolved)
  *
+ * Event Sourcing (F4-002):
+ * - All approval events persisted to message_events table
+ * - Events have sequenceNumber for guaranteed ordering
+ * - Events emitted via agent:event (unified contract)
+ *
+ * Resilience (F4-002 QA Master Review Fixes):
+ * - Graceful degradation when EventStore fails
+ * - Guaranteed Promise resolution in all code paths
+ * - Expiration events emitted for frontend awareness
+ *
  * @module services/approval/ApprovalManager
  */
 
@@ -21,13 +32,16 @@ import { Server as SocketServer } from 'socket.io';
 import crypto from 'crypto';
 import { getDatabase } from '../../config/database';
 import { createChildLogger } from '../../utils/logger';
+import { getEventStore, EventStore } from '../events/EventStore';
+import type {
+  ApprovalRequestedEvent as AgentApprovalRequestedEvent,
+  ApprovalResolvedEvent as AgentApprovalResolvedEvent,
+} from '../../types/agent.types';
 import {
   ApprovalRequest,
   ApprovalStatus,
   ApprovalPriority,
   ChangeSummary,
-  ApprovalRequestEvent,
-  ApprovalResolvedEvent,
   CreateApprovalOptions,
   ApprovalOwnershipResult,
   AtomicApprovalResponseResult,
@@ -50,18 +64,24 @@ interface PendingApproval {
  *
  * Manages approval workflows for agent operations
  * Uses a Map of pending Promises instead of EventEmitter for simpler, more explicit flow
+ *
+ * F4-002: Events are now persisted to EventStore and emitted via agent:event
  */
 export class ApprovalManager {
   private io: SocketServer;
   private pendingApprovals: Map<string, PendingApproval>;
+  private eventStore: EventStore;
   private static instance: ApprovalManager | null = null;
 
   private constructor(io: SocketServer) {
     this.io = io;
     this.pendingApprovals = new Map();
+    this.eventStore = getEventStore();
 
     // Start background job to expire old approvals
     this.startExpirationJob();
+
+    logger.info('ApprovalManager initialized with EventStore integration (F4-002)');
   }
 
   /**
@@ -146,27 +166,82 @@ export class ApprovalManager {
           VALUES (@id, @session_id, @message_id, @decided_by_user_id, @action_type, @action_description, @action_data, @tool_name, @tool_args, @status, @priority, @rejection_reason, @created_at, @expires_at)
         `);
 
-      // Emit WebSocket event to client
-      const requestEvent: ApprovalRequestEvent = {
+      // ⭐ F4-002: Persist to EventStore FIRST for guaranteed ordering
+      // FIX-001: Handle EventStore failure gracefully with degraded mode
+      let storedEvent: { id: string; sequence_number: number } | null = null;
+      let persistenceState: 'persisted' | 'failed' = 'persisted';
+
+      try {
+        storedEvent = await this.eventStore.appendEvent(
+          sessionId,
+          'approval_requested',
+          {
+            approvalId,
+            toolName,
+            args: toolArgs,
+            changeSummary: summary.description,
+            priority,
+            expiresAt: expiresAt.toISOString(),
+          }
+        );
+      } catch (eventStoreError) {
+        // FIX-001: Degraded mode - continue without EventStore
+        // The approval is already in the approvals table, so we can proceed
+        // Frontend will still receive the event, just without sequenceNumber
+        logger.error(
+          {
+            err: eventStoreError,
+            approvalId,
+            sessionId,
+            toolName,
+          },
+          'EventStore failed during approval request - continuing in degraded mode'
+        );
+        persistenceState = 'failed';
+        // Generate a fallback eventId for tracing
+        storedEvent = {
+          id: `fallback-${approvalId}`,
+          sequence_number: -1, // Indicates no sequence number available
+        };
+      }
+
+      // ⭐ F4-002: Emit via unified agent:event contract (NOT approval:requested)
+      const agentEvent: AgentApprovalRequestedEvent = {
+        type: 'approval_requested',
+        sessionId,
+        timestamp: now,
+        eventId: storedEvent.id,
+        // FIX-001: Only include sequenceNumber if we have a valid one
+        ...(storedEvent.sequence_number >= 0 && { sequenceNumber: storedEvent.sequence_number }),
+        persistenceState,
         approvalId,
         toolName,
-        summary,
-        changes: toolArgs,
+        args: toolArgs,
+        changeSummary: summary.description,
         priority,
         expiresAt,
       };
 
-      this.io.to(sessionId).emit('approval:requested', requestEvent);
+      this.io.to(sessionId).emit('agent:event', agentEvent);
 
-      logger.info({ approvalId, toolName, sessionId, priority }, 'Approval requested');
+      logger.info({
+        approvalId,
+        toolName,
+        sessionId,
+        priority,
+        eventId: storedEvent.id,
+        sequenceNumber: storedEvent.sequence_number,
+        persistenceState,
+      }, 'Approval requested (F4-002: persisted + agent:event)');
 
       // Return Promise that resolves when user responds
       return new Promise<boolean>((resolve, reject) => {
         // Set timeout to auto-reject
+        // FIX-004: Now emits expiration event to notify frontend
         const timeout = setTimeout(async () => {
           logger.info({ approvalId, sessionId }, 'Approval timeout - auto-expiring');
           this.pendingApprovals.delete(approvalId);
-          await this.expireApproval(approvalId);
+          await this.expireApprovalWithEvent(approvalId, sessionId);
           resolve(false);
         }, expiresInMs);
 
@@ -198,7 +273,7 @@ export class ApprovalManager {
     approvalId: string,
     decision: 'approved' | 'rejected',
     userId: string,
-    _reason?: string
+    reason?: string
   ): Promise<void> {
     const pending = this.pendingApprovals.get(approvalId);
 
@@ -207,13 +282,17 @@ export class ApprovalManager {
       return;
     }
 
-    // Clear timeout
+    // Clear timeout first to prevent race conditions
     clearTimeout(pending.timeout);
 
     // Remove from pending map
     this.pendingApprovals.delete(approvalId);
 
     const approved = decision === 'approved';
+
+    // FIX-002: Use try/finally to GUARANTEE pending.resolve() is always called
+    // This prevents agent from hanging indefinitely if EventStore or DB fails
+    let promiseResolved = false;
 
     try {
       // Update database
@@ -231,30 +310,91 @@ export class ApprovalManager {
           `);
       }
 
-      // Emit resolved event (get sessionId from database)
+      // Get sessionId from database for event emission
       const result = await db?.request()
         .input('id', approvalId)
         .query('SELECT session_id FROM approvals WHERE id = @id');
 
       if (result && result.recordset[0]) {
-        const sessionId = result.recordset[0].session_id;
-        const resolvedEvent: ApprovalResolvedEvent = {
+        const sessionId = result.recordset[0].session_id as string;
+
+        // FIX-002: Handle EventStore failure gracefully
+        let storedEvent: { id: string; sequence_number: number } | null = null;
+        let persistenceState: 'persisted' | 'failed' = 'persisted';
+
+        try {
+          // ⭐ F4-002: Persist to EventStore FIRST for guaranteed ordering
+          storedEvent = await this.eventStore.appendEvent(
+            sessionId,
+            'approval_completed',
+            {
+              approvalId,
+              decision,
+              reason,
+            }
+          );
+        } catch (eventStoreError) {
+          // FIX-002: Continue in degraded mode if EventStore fails
+          logger.error(
+            {
+              err: eventStoreError,
+              approvalId,
+              sessionId,
+              decision,
+            },
+            'EventStore failed during approval response - continuing in degraded mode'
+          );
+          persistenceState = 'failed';
+          storedEvent = {
+            id: `fallback-${approvalId}-resolved`,
+            sequence_number: -1,
+          };
+        }
+
+        // ⭐ F4-002: Emit via unified agent:event contract (NOT approval:resolved)
+        const agentEvent: AgentApprovalResolvedEvent = {
+          type: 'approval_resolved',
+          sessionId,
+          timestamp: new Date(),
+          eventId: storedEvent.id,
+          // FIX-002: Only include sequenceNumber if valid
+          ...(storedEvent.sequence_number >= 0 && { sequenceNumber: storedEvent.sequence_number }),
+          persistenceState,
           approvalId,
-          decision: approved ? 'approved' : 'rejected',
-          decidedBy: userId,
-          decidedAt: new Date(),
+          decision,
+          reason,
         };
 
-        this.io.to(sessionId).emit('approval:resolved', resolvedEvent);
+        this.io.to(sessionId).emit('agent:event', agentEvent);
+
+        logger.info({
+          approvalId,
+          decision,
+          userId,
+          eventId: storedEvent.id,
+          sequenceNumber: storedEvent.sequence_number,
+          persistenceState,
+        }, `Approval ${approved ? 'approved' : 'rejected'} (F4-002: persisted + agent:event)`);
       }
 
-      logger.info({ approvalId, decision, userId }, `Approval ${approved ? 'approved' : 'rejected'}`);
-
-      // Resolve the Promise
+      // Resolve the Promise - success path
       pending.resolve(approved);
+      promiseResolved = true;
     } catch (error) {
       logger.error({ err: error, approvalId, userId }, 'Failed to process approval response');
-      pending.reject(error instanceof Error ? error : new Error('Unknown error'));
+      // FIX-002: Still resolve the Promise even on error to unblock the agent
+      // The agent can then handle the approval as rejected
+      pending.resolve(false);
+      promiseResolved = true;
+    } finally {
+      // FIX-002: GUARANTEE Promise resolution - absolute last resort
+      if (!promiseResolved) {
+        logger.error(
+          { approvalId, userId, decision },
+          'Promise was not resolved in normal flow - forcing resolution'
+        );
+        pending.resolve(approved);
+      }
     }
   }
 
@@ -405,24 +545,81 @@ export class ApprovalManager {
       await transaction.commit();
 
       // Step 4: Clear timeout and resolve promise (outside transaction)
+      // FIX-003: CRITICAL - These operations are OUTSIDE the transaction
+      // If anything fails after commit, we MUST still resolve the Promise
       clearTimeout(pending.timeout);
       this.pendingApprovals.delete(approvalId);
 
-      // Emit WebSocket event
-      const resolvedEvent: ApprovalResolvedEvent = {
+      const sessionId = row.session_id!;
+
+      // FIX-003: Handle EventStore failure after commit gracefully
+      // At this point, the DB is committed - we cannot rollback
+      // We must resolve the Promise regardless of EventStore status
+      let storedEvent: { id: string; sequence_number: number } | null = null;
+      let persistenceState: 'persisted' | 'failed' = 'persisted';
+
+      try {
+        // ⭐ F4-002: Persist to EventStore for guaranteed ordering
+        storedEvent = await this.eventStore.appendEvent(
+          sessionId,
+          'approval_completed',
+          {
+            approvalId,
+            decision,
+            reason,
+          }
+        );
+      } catch (eventStoreError) {
+        // FIX-003: Critical - EventStore failed AFTER DB commit
+        // Log as critical but continue - DB state is already committed
+        logger.error(
+          {
+            err: eventStoreError,
+            approvalId,
+            sessionId,
+            decision,
+            userId,
+            criticalWarning: 'EventStore failed AFTER transaction commit - DB and EventStore may be inconsistent',
+          },
+          'CRITICAL: EventStore failure after atomic commit - continuing in degraded mode'
+        );
+        persistenceState = 'failed';
+        storedEvent = {
+          id: `fallback-atomic-${approvalId}`,
+          sequence_number: -1,
+        };
+      }
+
+      // ⭐ F4-002: Emit via unified agent:event contract (NOT approval:resolved)
+      const agentEvent: AgentApprovalResolvedEvent = {
+        type: 'approval_resolved',
+        sessionId,
+        timestamp: new Date(),
+        eventId: storedEvent.id,
+        // FIX-003: Only include sequenceNumber if valid
+        ...(storedEvent.sequence_number >= 0 && { sequenceNumber: storedEvent.sequence_number }),
+        persistenceState,
         approvalId,
-        decision: approved ? 'approved' : 'rejected',
-        decidedBy: userId,
-        decidedAt: new Date(),
+        decision,
+        reason,
       };
-      this.io.to(row.session_id!).emit('approval:resolved', resolvedEvent);
+
+      this.io.to(sessionId).emit('agent:event', agentEvent);
 
       logger.info(
-        { approvalId, decision, userId, sessionId: row.session_id },
-        `Approval ${decision} atomically`
+        {
+          approvalId,
+          decision,
+          userId,
+          sessionId,
+          eventId: storedEvent.id,
+          sequenceNumber: storedEvent.sequence_number,
+          persistenceState,
+        },
+        `Approval ${decision} atomically (F4-002: persisted + agent:event)`
       );
 
-      // Resolve the Promise
+      // FIX-003: GUARANTEE Promise resolution - this MUST happen
       pending.resolve(approved);
 
       return {
@@ -431,7 +628,17 @@ export class ApprovalManager {
         sessionUserId: row.session_user_id ?? undefined,
       };
     } catch (error) {
-      await transaction.rollback();
+      // FIX-003: Only rollback if we haven't committed yet
+      // The transaction.commit() call throws if it fails
+      try {
+        await transaction.rollback();
+      } catch (rollbackError) {
+        // Rollback may fail if transaction already committed or was never started
+        logger.warn(
+          { err: rollbackError, approvalId },
+          'Transaction rollback failed (may have already committed)'
+        );
+      }
       logger.error({ err: error, approvalId, userId }, 'Failed to process atomic approval response');
       throw error;
     }
@@ -775,17 +982,23 @@ export class ApprovalManager {
   }
 
   /**
-   * Expire an approval request
+   * Expire an approval request and emit event to frontend
+   *
+   * FIX-004: This method ensures the frontend is notified when an approval expires.
+   * Without this, the frontend would not know the approval timed out until it tries
+   * to respond and gets an error.
    *
    * @param approvalId - ID of the approval to expire
+   * @param sessionId - Session ID for event emission
    */
-  private async expireApproval(approvalId: string): Promise<void> {
+  private async expireApprovalWithEvent(approvalId: string, sessionId: string): Promise<void> {
     const db = getDatabase();
     if (!db) {
       return;
     }
 
     try {
+      // Update database status
       await db.request()
         .input('id', approvalId)
         .input('status', 'expired')
@@ -794,8 +1007,61 @@ export class ApprovalManager {
           SET status = @status
           WHERE id = @id AND status = 'pending'
         `);
+
+      // FIX-004: Persist expiration event to EventStore
+      let storedEvent: { id: string; sequence_number: number } | null = null;
+      let persistenceState: 'persisted' | 'failed' = 'persisted';
+
+      try {
+        storedEvent = await this.eventStore.appendEvent(
+          sessionId,
+          'approval_completed',
+          {
+            approvalId,
+            decision: 'expired',
+            reason: 'Approval request timed out',
+          }
+        );
+      } catch (eventStoreError) {
+        logger.error(
+          { err: eventStoreError, approvalId, sessionId },
+          'EventStore failed during approval expiration - continuing in degraded mode'
+        );
+        persistenceState = 'failed';
+        storedEvent = {
+          id: `fallback-expired-${approvalId}`,
+          sequence_number: -1,
+        };
+      }
+
+      // FIX-004: Emit expiration event to frontend via agent:event
+      // Using 'approval_resolved' with decision 'expired' for consistency
+      const agentEvent: AgentApprovalResolvedEvent = {
+        type: 'approval_resolved',
+        sessionId,
+        timestamp: new Date(),
+        eventId: storedEvent.id,
+        ...(storedEvent.sequence_number >= 0 && { sequenceNumber: storedEvent.sequence_number }),
+        persistenceState,
+        approvalId,
+        decision: 'rejected', // Map 'expired' to 'rejected' for type compatibility
+        reason: 'Approval request timed out',
+      };
+
+      this.io.to(sessionId).emit('agent:event', agentEvent);
+
+      logger.info(
+        {
+          approvalId,
+          sessionId,
+          eventId: storedEvent.id,
+          sequenceNumber: storedEvent.sequence_number,
+          persistenceState,
+        },
+        'Approval expired with event notification (FIX-004)'
+      );
     } catch (error) {
-      logger.error({ err: error, approvalId }, 'Failed to expire approval');
+      logger.error({ err: error, approvalId, sessionId }, 'Failed to expire approval with event');
     }
   }
 

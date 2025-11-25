@@ -1078,10 +1078,9 @@ function configureSocketIO(): void {
           userId: authenticatedUserId,
         });
 
-        socket.emit('approval:resolved', {
-          approvalId,
-          decision,
-        });
+        // F4-002: The ApprovalManager now emits via agent:event with type 'approval_resolved'
+        // No need to emit approval:resolved here - it's handled by respondToApprovalAtomic()
+        // which persists to EventStore and emits agent:event with sequenceNumber
       } catch (error) {
         logger.error('[Socket] Approval response error', {
           err: error,

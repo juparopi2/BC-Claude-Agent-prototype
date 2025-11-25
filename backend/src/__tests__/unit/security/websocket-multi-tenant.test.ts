@@ -159,7 +159,17 @@ describe('WebSocket Multi-Tenant Security (F4-003)', () => {
             return;
           }
 
-          socket.emit('approval:resolved', { approvalId, decision });
+          // F4-002: Now emit via agent:event instead of approval:resolved
+          socket.emit('agent:event', {
+            type: 'approval_resolved',
+            approvalId,
+            decision,
+            sessionId: data.sessionId || 'session_123',
+            timestamp: new Date(),
+            eventId: 'mock-event-id',
+            sequenceNumber: 1,
+            persistenceState: 'persisted',
+          });
         } catch (error) {
           socket.emit('approval:error', {
             error: error instanceof Error ? error.message : 'Unknown error',
@@ -276,8 +286,13 @@ describe('WebSocket Multi-Tenant Security (F4-003)', () => {
         sessionId: TEST_SESSION_A_ID,
       });
 
-      const promise = new Promise<{ approvalId: string }>((resolve) => {
-        clientSocket.on('approval:resolved', resolve);
+      // F4-002: Now listen for agent:event instead of approval:resolved
+      const promise = new Promise<{ type: string; approvalId: string }>((resolve) => {
+        clientSocket.on('agent:event', (event: { type: string; approvalId: string }) => {
+          if (event.type === 'approval_resolved') {
+            resolve(event);
+          }
+        });
       });
 
       // Act: Send approval with User B's ID (impersonation attempt)
@@ -576,8 +591,13 @@ describe('WebSocket Multi-Tenant Security (F4-003)', () => {
         sessionId: TEST_SESSION_A_ID,
       });
 
-      const promise = new Promise<{ approvalId: string; decision: string }>((resolve) => {
-        clientSocket.on('approval:resolved', resolve);
+      // F4-002: Now listen for agent:event instead of approval:resolved
+      const promise = new Promise<{ type: string; decision: string }>((resolve) => {
+        clientSocket.on('agent:event', (event: { type: string; decision: string }) => {
+          if (event.type === 'approval_resolved') {
+            resolve(event);
+          }
+        });
       });
 
       // Act
@@ -604,8 +624,13 @@ describe('WebSocket Multi-Tenant Security (F4-003)', () => {
         sessionId: TEST_SESSION_A_ID,
       });
 
-      const promise = new Promise<{ approvalId: string }>((resolve) => {
-        clientSocket.on('approval:resolved', resolve);
+      // F4-002: Now listen for agent:event instead of approval:resolved
+      const promise = new Promise<{ type: string; approvalId: string }>((resolve) => {
+        clientSocket.on('agent:event', (event: { type: string; approvalId: string }) => {
+          if (event.type === 'approval_resolved') {
+            resolve(event);
+          }
+        });
       });
 
       // Act
@@ -947,8 +972,13 @@ describe('WebSocket Multi-Tenant Security (F4-003)', () => {
       expect(joinResult.sessionId).toBe(TEST_SESSION_A_ID);
 
       // Test 2: Respond to own approval
-      const approvalPromise = new Promise<{ decision: string }>((resolve) => {
-        clientSocket.on('approval:resolved', resolve);
+      // F4-002: Now listen for agent:event instead of approval:resolved
+      const approvalPromise = new Promise<{ type: string; decision: string }>((resolve) => {
+        clientSocket.on('agent:event', (event: { type: string; decision: string }) => {
+          if (event.type === 'approval_resolved') {
+            resolve(event);
+          }
+        });
       });
       clientSocket.emit('approval:response', {
         approvalId: 'my-approval',

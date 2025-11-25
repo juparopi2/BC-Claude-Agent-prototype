@@ -211,6 +211,10 @@ export interface WebSocketEvents {
    *
    * This is the ONLY agent event type emitted to frontend.
    * Legacy events (agent:thinking, agent:message_chunk, etc.) are deprecated.
+   *
+   * F4-002: Approval events now use this unified contract:
+   * - type: 'approval_requested' (replaces legacy 'approval:requested')
+   * - type: 'approval_resolved' (replaces legacy 'approval:resolved')
    */
   'agent:event': (event: AgentEvent) => void;
 
@@ -221,6 +225,10 @@ export interface WebSocketEvents {
 
   /**
    * Approval requested (Human-in-the-Loop)
+   *
+   * @deprecated F4-002: Use agent:event with type 'approval_requested' instead.
+   * This event is no longer emitted by the server.
+   * Kept for backward compatibility with older frontends.
    */
   'approval:requested': (data: ApprovalRequestData) => void;
 }

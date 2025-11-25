@@ -1436,13 +1436,13 @@ class MessageBuffer {
 
 ### FASE 1: Fundamentos de Testing (Prioridad: CRÍTICA)
 
-| ID | Tarea | Descripción | Success Criteria |
-|----|-------|-------------|------------------|
-| F1-001 | Configurar Playwright correctamente | Setup con auth persistente | Tests pueden login una vez y reutilizar sesión |
-| F1-002 | Crear helpers de test E2E | `loginAsTestUser()`, `sendMessage()`, etc. | Helpers disponibles y documentados |
-| F1-003 | Crear fixtures de BD para tests | Usuario de prueba, sesión de prueba | Tests usan datos consistentes |
-| F1-004 | Configurar CI para E2E | GitHub Actions con Playwright | E2E corre en cada PR |
-| F1-005 | Documentar proceso de testing | README en `/e2e/` | Desarrolladores saben cómo ejecutar tests |
+| ID | Tarea | Descripción | Estado | Success Criteria |
+|----|-------|-------------|--------|------------------|
+| F1-001 | Configurar Playwright correctamente | Setup con auth persistente | PENDIENTE | Tests pueden login una vez y reutilizar sesión |
+| F1-002 | Crear helpers de test E2E | `loginAsTestUser()`, `sendMessage()`, etc. | PENDIENTE | Helpers disponibles y documentados |
+| F1-003 | Crear fixtures de BD para tests | Usuario de prueba, sesión de prueba | **EN TESTING** | Tests usan datos consistentes |
+| F1-004 | Configurar CI para E2E | GitHub Actions con Playwright | PENDIENTE | E2E corre en cada PR |
+| F1-005 | Documentar proceso de testing | README en `/e2e/` | **EN TESTING** | Desarrolladores saben cómo ejecutar tests |
 
 ### FASE 2: Tests E2E Core (Prioridad: ALTA)
 
@@ -1560,22 +1560,30 @@ backend/
 ├── vitest.integration.config.ts      ← Config integration tests
 └── package.json                      ← Scripts de test
 
-e2e/                                  ← A CREAR
+e2e/                                  ← PARCIALMENTE IMPLEMENTADO (F1-003)
+├── README.md                         ✅ CREADO - Documentación E2E
+├── tsconfig.json                     ✅ CREADO - Config TypeScript E2E
 ├── fixtures/
-│   └── auth.ts                       ← Login helpers
-├── support/
-│   ├── commands.ts                   ← Custom commands
-│   └── helpers.ts                    ← Utility functions
-├── auth/
-│   └── login.spec.ts
-├── chat/
-│   ├── new-session.spec.ts
-│   ├── persistence.spec.ts
-│   ├── approvals.spec.ts
-│   └── websocket.spec.ts
-└── playwright.config.ts              ← Ya existe en raíz
+│   ├── test-data.ts                  ✅ CREADO - Constantes de prueba (usuarios, sesiones, mensajes)
+│   └── db-helpers.ts                 ✅ CREADO - Funciones seed/clean BD
+├── scripts/
+│   ├── seed-test-data.ts             ✅ CREADO - npm run e2e:seed
+│   └── clean-test-data.ts            ✅ CREADO - npm run e2e:clean
+├── support/                          ← PENDIENTE (F1-002)
+│   ├── api-client.ts                 ← A crear
+│   ├── ws-client.ts                  ← A crear
+│   └── auth.helpers.ts               ← A crear
+├── auth/                             ← PENDIENTE (F2-001)
+│   └── login.spec.ts                 ← A crear
+├── chat/                             ← PENDIENTE (F2-002 a F2-006)
+│   ├── new-session.spec.ts           ← A crear
+│   ├── persistence.spec.ts           ← A crear
+│   ├── approvals.spec.ts             ← A crear
+│   └── websocket.spec.ts             ← A crear
+└── example.spec.ts                   ← Existía (placeholder)
 
 playwright.config.ts                  ← Config E2E (ya existe)
+package.json                          ← Scripts e2e:seed, e2e:clean agregados
 ```
 
 ---
@@ -1595,6 +1603,23 @@ cd backend && npm run test:coverage
 # Integration tests (requiere DB + Redis)
 cd backend && npm run test:integration
 
+# ═══════════════════════════════════════════════════
+# E2E Test Data Management (F1-003 - IMPLEMENTADO)
+# ═══════════════════════════════════════════════════
+
+# Sembrar datos de prueba E2E en la BD
+npm run e2e:seed
+
+# Limpiar datos de prueba E2E de la BD
+npm run e2e:clean
+
+# Alias para e2e:seed
+npm run e2e:setup
+
+# ═══════════════════════════════════════════════════
+# E2E Tests (Playwright)
+# ═══════════════════════════════════════════════════
+
 # E2E tests
 npm run test:e2e
 
@@ -1611,5 +1636,6 @@ npm run test:e2e:debug
 ---
 
 *Documento generado automáticamente por diagnóstico de Claude*
-*Fecha: 2025-11-24*
-*Versión: 1.0*
+*Fecha de creación: 2025-11-24*
+*Última actualización: 2025-11-25 (F1-003 implementado)*
+*Versión: 1.1*

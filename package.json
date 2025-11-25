@@ -10,9 +10,18 @@
     "test:e2e:debug": "playwright test --debug",
     "test:e2e:chromium": "playwright test --project=chromium",
     "test:e2e:firefox": "playwright test --project=firefox",
+    "e2e:seed": "npx ts-node e2e/scripts/seed-test-data.ts",
+    "e2e:clean": "npx ts-node e2e/scripts/clean-test-data.ts",
+    "e2e:setup": "npm run e2e:seed",
     "prepare": "husky"
   },
   "devDependencies": {
-    "@playwright/test": "1.49.1"
+    "@playwright/test": "1.49.1",
+    "@types/mssql": "9.1.5",
+    "@types/node": "20.10.0",
+    "dotenv": "16.4.5",
+    "mssql": "11.0.1",
+    "ts-node": "10.9.2",
+    "typescript": "5.3.3"
   }
 }

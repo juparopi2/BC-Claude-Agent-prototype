@@ -9,12 +9,18 @@
  * - Wait for user response via Promise
  * - Resume agent execution after approval/rejection
  *
+ * Security Features (F4-001):
+ * - Atomic ownership validation to prevent TOCTOU race conditions
+ * - Structured audit logging via Pino
+ * - State validation (pending/expired/already-resolved)
+ *
  * @module services/approval/ApprovalManager
  */
 
 import { Server as SocketServer } from 'socket.io';
 import crypto from 'crypto';
 import { getDatabase } from '../../config/database';
+import { createChildLogger } from '../../utils/logger';
 import {
   ApprovalRequest,
   ApprovalStatus,
@@ -24,7 +30,11 @@ import {
   ApprovalResolvedEvent,
   CreateApprovalOptions,
   ApprovalOwnershipResult,
+  AtomicApprovalResponseResult,
 } from '../../types/approval.types';
+
+// Structured logger for approval operations
+const logger = createChildLogger({ service: 'ApprovalManager' });
 
 /**
  * Pending approval promise handlers
@@ -148,13 +158,13 @@ export class ApprovalManager {
 
       this.io.to(sessionId).emit('approval:requested', requestEvent);
 
-      console.log(`📋 Approval requested: ${approvalId} (${toolName})`);
+      logger.info({ approvalId, toolName, sessionId, priority }, 'Approval requested');
 
       // Return Promise that resolves when user responds
       return new Promise<boolean>((resolve, reject) => {
         // Set timeout to auto-reject
         const timeout = setTimeout(async () => {
-          console.log(`⏰ Approval timeout: ${approvalId}`);
+          logger.info({ approvalId, sessionId }, 'Approval timeout - auto-expiring');
           this.pendingApprovals.delete(approvalId);
           await this.expireApproval(approvalId);
           resolve(false);
@@ -168,7 +178,7 @@ export class ApprovalManager {
         });
       });
     } catch (error) {
-      console.error('❌ Failed to create approval request:', error);
+      logger.error({ err: error, sessionId, toolName }, 'Failed to create approval request');
       throw error;
     }
   }
@@ -193,7 +203,7 @@ export class ApprovalManager {
     const pending = this.pendingApprovals.get(approvalId);
 
     if (!pending) {
-      console.warn(`⚠️  No pending approval found for ID: ${approvalId}`);
+      logger.warn({ approvalId, userId }, 'No pending approval promise found - may have been processed already');
       return;
     }
 
@@ -238,13 +248,192 @@ export class ApprovalManager {
         this.io.to(sessionId).emit('approval:resolved', resolvedEvent);
       }
 
-      console.log(`${approved ? '✅' : '❌'} Approval ${approved ? 'approved' : 'rejected'}: ${approvalId}`);
+      logger.info({ approvalId, decision, userId }, `Approval ${approved ? 'approved' : 'rejected'}`);
 
       // Resolve the Promise
       pending.resolve(approved);
     } catch (error) {
-      console.error('❌ Failed to process approval response:', error);
+      logger.error({ err: error, approvalId, userId }, 'Failed to process approval response');
       pending.reject(error instanceof Error ? error : new Error('Unknown error'));
+    }
+  }
+
+  /**
+   * Atomically respond to an approval request with ownership validation
+   *
+   * This method combines ownership check + state validation + response in a single
+   * atomic operation to prevent TOCTOU (Time Of Check To Time Of Use) race conditions.
+   *
+   * Security: Uses database transaction to ensure no race condition between
+   * validation and response.
+   *
+   * @param approvalId - ID of the approval request
+   * @param decision - 'approved' or 'rejected'
+   * @param userId - ID of the user making the decision
+   * @param reason - Optional reason for decision
+   * @returns Result indicating success or specific error
+   */
+  public async respondToApprovalAtomic(
+    approvalId: string,
+    decision: 'approved' | 'rejected',
+    userId: string,
+    reason?: string
+  ): Promise<AtomicApprovalResponseResult> {
+    const db = getDatabase();
+    if (!db) {
+      throw new Error('Database connection not available');
+    }
+
+    const transaction = db.transaction();
+
+    try {
+      await transaction.begin();
+
+      // Step 1: Atomic query with row lock to prevent concurrent modifications
+      // Uses LEFT JOIN to differentiate between "approval not found" and "session not found"
+      const validationResult = await transaction.request()
+        .input('approvalId', approvalId)
+        .input('userId', userId)
+        .query<{
+          approval_id: string | null;
+          session_id: string | null;
+          status: string | null;
+          session_user_id: string | null;
+          session_exists: number;
+        }>(`
+          SELECT
+            a.id AS approval_id,
+            a.session_id,
+            a.status,
+            s.user_id AS session_user_id,
+            CASE WHEN s.id IS NOT NULL THEN 1 ELSE 0 END AS session_exists
+          FROM approvals a WITH (UPDLOCK, ROWLOCK)
+          LEFT JOIN sessions s ON a.session_id = s.id
+          WHERE a.id = @approvalId
+        `);
+
+      const row = validationResult.recordset[0];
+
+      // Case 1: Approval not found
+      if (!row || !row.approval_id) {
+        await transaction.rollback();
+        logger.warn({ approvalId, userId }, 'Approval not found during atomic response');
+        return {
+          success: false,
+          error: 'APPROVAL_NOT_FOUND',
+        };
+      }
+
+      // Case 2: Session was deleted (orphaned approval)
+      if (!row.session_exists) {
+        await transaction.rollback();
+        logger.warn({ approvalId, userId, sessionId: row.session_id }, 'Session not found for approval');
+        return {
+          success: false,
+          error: 'SESSION_NOT_FOUND',
+          sessionId: row.session_id ?? undefined,
+        };
+      }
+
+      // Case 3: User doesn't own the session
+      if (row.session_user_id !== userId) {
+        await transaction.rollback();
+        logger.warn(
+          {
+            approvalId,
+            attemptedByUserId: userId,
+            actualOwnerId: row.session_user_id,
+            sessionId: row.session_id,
+          },
+          'Unauthorized approval access attempt'
+        );
+        return {
+          success: false,
+          error: 'UNAUTHORIZED',
+          sessionId: row.session_id ?? undefined,
+          sessionUserId: row.session_user_id ?? undefined,
+        };
+      }
+
+      // Case 4: Approval already resolved
+      if (row.status !== 'pending') {
+        await transaction.rollback();
+        logger.warn(
+          { approvalId, userId, currentStatus: row.status },
+          'Approval already resolved'
+        );
+        return {
+          success: false,
+          error: row.status === 'expired' ? 'EXPIRED' : 'ALREADY_RESOLVED',
+          previousStatus: row.status as 'approved' | 'rejected' | 'expired',
+          sessionId: row.session_id ?? undefined,
+        };
+      }
+
+      // Step 2: Check if we have a pending promise (in-memory)
+      const pending = this.pendingApprovals.get(approvalId);
+      if (!pending) {
+        await transaction.rollback();
+        logger.warn(
+          { approvalId, userId },
+          'No pending promise for approval - server may have restarted'
+        );
+        return {
+          success: false,
+          error: 'NO_PENDING_PROMISE',
+          sessionId: row.session_id ?? undefined,
+        };
+      }
+
+      // Step 3: All validations passed - update the approval atomically
+      const approved = decision === 'approved';
+      await transaction.request()
+        .input('id', approvalId)
+        .input('status', approved ? 'approved' : 'rejected')
+        .input('decided_at', new Date())
+        .input('decided_by_user_id', userId)
+        .input('rejection_reason', reason ?? null)
+        .query(`
+          UPDATE approvals
+          SET status = @status,
+              decided_at = @decided_at,
+              decided_by_user_id = @decided_by_user_id,
+              rejection_reason = @rejection_reason
+          WHERE id = @id AND status = 'pending'
+        `);
+
+      await transaction.commit();
+
+      // Step 4: Clear timeout and resolve promise (outside transaction)
+      clearTimeout(pending.timeout);
+      this.pendingApprovals.delete(approvalId);
+
+      // Emit WebSocket event
+      const resolvedEvent: ApprovalResolvedEvent = {
+        approvalId,
+        decision: approved ? 'approved' : 'rejected',
+        decidedBy: userId,
+        decidedAt: new Date(),
+      };
+      this.io.to(row.session_id!).emit('approval:resolved', resolvedEvent);
+
+      logger.info(
+        { approvalId, decision, userId, sessionId: row.session_id },
+        `Approval ${decision} atomically`
+      );
+
+      // Resolve the Promise
+      pending.resolve(approved);
+
+      return {
+        success: true,
+        sessionId: row.session_id ?? undefined,
+        sessionUserId: row.session_user_id ?? undefined,
+      };
+    } catch (error) {
+      await transaction.rollback();
+      logger.error({ err: error, approvalId, userId }, 'Failed to process atomic approval response');
+      throw error;
     }
   }
 
@@ -296,6 +485,9 @@ export class ApprovalManager {
    * This is a security check to prevent users from approving/rejecting
    * approval requests for sessions they do not own.
    *
+   * Note: For atomic operations (preventing TOCTOU race conditions), use
+   * respondToApprovalAtomic() instead which combines validation and response.
+   *
    * @param approvalId - ID of the approval request
    * @param userId - ID of the user attempting to respond
    * @returns Validation result with ownership status and error details
@@ -304,7 +496,7 @@ export class ApprovalManager {
    * const result = await approvalManager.validateApprovalOwnership(approvalId, userId);
    * if (!result.isOwner) {
    *   // Return 403 Forbidden
-   *   console.log(`Unauthorized: User ${userId} tried to access approval owned by ${result.sessionUserId}`);
+   *   logger.warn({ userId, approvalId }, 'Unauthorized access attempt');
    * }
    */
   public async validateApprovalOwnership(
@@ -318,18 +510,20 @@ export class ApprovalManager {
 
     try {
       // Query approval with session ownership information
+      // Uses LEFT JOIN to differentiate "approval not found" vs "session not found"
       const result = await db.request()
         .input('approvalId', approvalId)
         .query<{
-          approval_id: string;
-          session_id: string;
-          tool_name: string;
-          tool_args: string;
-          status: string;
-          priority: string;
-          created_at: Date;
-          expires_at: Date;
-          session_user_id: string;
+          approval_id: string | null;
+          session_id: string | null;
+          tool_name: string | null;
+          tool_args: string | null;
+          status: string | null;
+          priority: string | null;
+          created_at: Date | null;
+          expires_at: Date | null;
+          session_user_id: string | null;
+          session_exists: number;
         }>(`
           SELECT
             a.id AS approval_id,
@@ -340,15 +534,16 @@ export class ApprovalManager {
             a.priority,
             a.created_at,
             a.expires_at,
-            s.user_id AS session_user_id
+            s.user_id AS session_user_id,
+            CASE WHEN s.id IS NOT NULL THEN 1 ELSE 0 END AS session_exists
           FROM approvals a
-          INNER JOIN sessions s ON a.session_id = s.id
+          LEFT JOIN sessions s ON a.session_id = s.id
           WHERE a.id = @approvalId
         `);
 
       // Check if approval exists
       if (result.recordset.length === 0) {
-        console.warn(`[ApprovalManager] Approval not found: ${approvalId}`);
+        logger.warn({ approvalId, userId }, 'Approval not found');
         return {
           isOwner: false,
           approval: null,
@@ -358,7 +553,7 @@ export class ApprovalManager {
       }
 
       const row = result.recordset[0];
-      if (!row) {
+      if (!row || !row.approval_id) {
         return {
           isOwner: false,
           approval: null,
@@ -367,31 +562,65 @@ export class ApprovalManager {
         };
       }
 
+      // Check if session exists (approval exists but session was deleted)
+      if (!row.session_exists) {
+        logger.warn(
+          { approvalId, userId, sessionId: row.session_id },
+          'Session not found for approval (orphaned approval)'
+        );
+        return {
+          isOwner: false,
+          approval: null,
+          sessionUserId: null,
+          error: 'SESSION_NOT_FOUND',
+        };
+      }
+
       // Check if user owns the session
       const isOwner = row.session_user_id === userId;
 
       if (!isOwner) {
-        console.warn(
-          `[ApprovalManager] Unauthorized access attempt: User ${userId} tried to access approval ${approvalId} owned by ${row.session_user_id}`
+        logger.warn(
+          {
+            approvalId,
+            attemptedByUserId: userId,
+            actualOwnerId: row.session_user_id,
+            sessionId: row.session_id,
+          },
+          'Unauthorized approval access attempt'
         );
+      }
+
+      // Parse tool_args safely
+      let parsedToolArgs: Record<string, unknown> = {};
+      if (row.tool_args) {
+        try {
+          parsedToolArgs = JSON.parse(row.tool_args) as Record<string, unknown>;
+        } catch (parseError) {
+          logger.error(
+            { err: parseError, approvalId, rawToolArgs: row.tool_args },
+            'Failed to parse tool_args JSON'
+          );
+          parsedToolArgs = { _parseError: 'Invalid JSON in tool_args' };
+        }
       }
 
       // Build partial approval object for response
       const approval: ApprovalRequest = {
         id: row.approval_id,
-        session_id: row.session_id,
+        session_id: row.session_id!,
         message_id: null,
         decided_by_user_id: null,
-        action_type: this.getActionType(row.tool_name),
+        action_type: this.getActionType(row.tool_name ?? ''),
         action_description: '',
         action_data: null,
-        tool_name: row.tool_name,
-        tool_args: JSON.parse(row.tool_args) as Record<string, unknown>,
+        tool_name: row.tool_name ?? '',
+        tool_args: parsedToolArgs,
         status: row.status as ApprovalStatus,
         priority: row.priority as ApprovalPriority,
         rejection_reason: null,
-        created_at: row.created_at,
-        expires_at: row.expires_at,
+        created_at: row.created_at!,
+        expires_at: row.expires_at!,
         decided_at: null,
       };
 
@@ -402,7 +631,7 @@ export class ApprovalManager {
         error: isOwner ? undefined : 'UNAUTHORIZED',
       };
     } catch (error) {
-      console.error('[ApprovalManager] Error validating approval ownership:', error);
+      logger.error({ err: error, approvalId, userId }, 'Error validating approval ownership');
       throw error;
     }
   }
@@ -566,7 +795,7 @@ export class ApprovalManager {
           WHERE id = @id AND status = 'pending'
         `);
     } catch (error) {
-      console.error(`❌ Failed to expire approval ${approvalId}:`, error);
+      logger.error({ err: error, approvalId }, 'Failed to expire approval');
     }
   }
 
@@ -600,10 +829,10 @@ export class ApprovalManager {
 
       const rowsAffected = result.rowsAffected?.[0] ?? 0;
       if (rowsAffected > 0) {
-        console.log(`⏰ Expired ${rowsAffected} old approval(s)`);
+        logger.info({ expiredCount: rowsAffected }, 'Expired old approvals');
       }
     } catch (error) {
-      console.error('❌ Failed to expire old approvals:', error);
+      logger.error({ err: error }, 'Failed to expire old approvals');
     }
   }
 

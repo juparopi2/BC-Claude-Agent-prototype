@@ -548,6 +548,7 @@ function configureRoutes(): void {
 
   // Approval endpoints
   // POST /api/approvals/:id/respond - Respond to an approval request
+  // Uses atomic validation to prevent TOCTOU race conditions (F4-001 security fix)
   app.post('/api/approvals/:id/respond', authenticateMicrosoft, async (req: Request, res: Response): Promise<void> => {
     try {
       const approvalId = req.params.id as string;
@@ -576,34 +577,68 @@ function configureRoutes(): void {
 
       const approvalManager = getApprovalManager();
 
-      // SECURITY: Validate that user owns the session associated with this approval
-      const ownershipResult = await approvalManager.validateApprovalOwnership(approvalId, userIdVerified);
+      // SECURITY: Use atomic method that combines validation + response in single transaction
+      // This prevents TOCTOU (Time Of Check To Time Of Use) race conditions
+      const result = await approvalManager.respondToApprovalAtomic(
+        approvalId,
+        decisionVerified,
+        userIdVerified,
+        reason
+      );
 
-      if (!ownershipResult.isOwner) {
-        // Log unauthorized access attempt for security audit
-        console.warn(
-          `[API] Unauthorized approval access: User ${userIdVerified} attempted to respond to approval ${approvalId} ` +
-          `(owned by ${ownershipResult.sessionUserId ?? 'unknown'}). Error: ${ownershipResult.error ?? 'UNKNOWN'}`
-        );
-
+      if (!result.success) {
         // Return appropriate error based on the failure reason
-        if (ownershipResult.error === 'APPROVAL_NOT_FOUND') {
-          res.status(404).json({
-            error: 'Not Found',
-            message: 'Approval request not found',
-          });
-          return;
+        switch (result.error) {
+          case 'APPROVAL_NOT_FOUND':
+            res.status(404).json({
+              error: 'Not Found',
+              message: 'Approval request not found',
+            });
+            return;
+
+          case 'SESSION_NOT_FOUND':
+            res.status(404).json({
+              error: 'Not Found',
+              message: 'Session associated with this approval no longer exists',
+            });
+            return;
+
+          case 'UNAUTHORIZED':
+            res.status(403).json({
+              error: 'Forbidden',
+              message: 'You do not have permission to respond to this approval request',
+            });
+            return;
+
+          case 'ALREADY_RESOLVED':
+            res.status(409).json({
+              error: 'Conflict',
+              message: `This approval has already been ${result.previousStatus}`,
+            });
+            return;
+
+          case 'EXPIRED':
+            res.status(410).json({
+              error: 'Gone',
+              message: 'This approval request has expired',
+            });
+            return;
+
+          case 'NO_PENDING_PROMISE':
+            res.status(503).json({
+              error: 'Service Unavailable',
+              message: 'Server state inconsistent - please retry the operation',
+            });
+            return;
+
+          default:
+            res.status(500).json({
+              error: 'Internal Server Error',
+              message: 'An unexpected error occurred',
+            });
+            return;
         }
-
-        // UNAUTHORIZED or SESSION_NOT_FOUND
-        res.status(403).json({
-          error: 'Forbidden',
-          message: 'You do not have permission to respond to this approval request',
-        });
-        return;
       }
-
-      await approvalManager.respondToApproval(approvalId, decisionVerified, userIdVerified, reason);
 
       res.json({
         success: true,
@@ -611,7 +646,7 @@ function configureRoutes(): void {
         decision,
       });
     } catch (error) {
-      console.error('[API] Approval response failed:', error);
+      logger.error({ err: error, path: req.path }, 'Approval response failed');
       res.status(500).json({
         error: 'Approval response failed',
         message: error instanceof Error ? error.message : 'Unknown error',

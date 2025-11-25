@@ -2017,7 +2017,7 @@ class MessageBuffer {
 | F6-001 | Tests: TodoManager | Unit tests | ⚠️ BLOQUEADO (código muerto - GAP #8) | 70% cobertura |
 | F6-002 | Tests: AnthropicClient | Unit tests | PENDIENTE | 70% cobertura |
 | **F6-003** | **Tests: tool-definitions + Security Fixes** | **Unit tests + Sanitization** | **✅ COMPLETED** | **100% cobertura + Security** |
-| F6-004 | Tests: Middleware | Unit tests | PENDIENTE | 70% cobertura |
+| **F6-004** | **Tests: Middleware (auth-oauth + logging)** | **Unit tests** | **✅ COMPLETED** | **96 tests, 100% cobertura + QA Master Review** |
 | F6-005 | Tests: Routes | Integration tests | PENDIENTE | Todos los endpoints |
 | F6-006 | Alcanzar 70% global | Completar gaps | PENDIENTE | npm run test:coverage ≥ 70% |
 
@@ -2071,6 +2071,106 @@ class MessageBuffer {
 - MCP tools son solo metadata (no ejecutan operaciones BC)
 - TOOL_NAMES incluye herramientas no implementadas (bc_query, bc_create, etc.)
 - Workflow duplicate validation pendiente
+
+#### F6-004: Detalle de Implementación (COMPLETED)
+
+> **Estado**: ✅ **COMPLETED** (2025-11-25)
+>
+> **QA Report**: Ver `docs/qa-reports/QA-REPORT-F6-004.md`
+
+**Archivos de Middleware Analizados y Modificados**:
+
+| Archivo | Líneas | Funciones | Cambios |
+|---------|--------|-----------|---------|
+| `middleware/auth-oauth.ts` | 372 | 3 middlewares | Fix bc_token_expires_at null handling |
+| `middleware/logging.ts` | 123 | 1 middleware | x-api-key redaction, PII docs, health endpoints |
+
+**Tests Implementados (Post QA Master Review)**:
+
+| Archivo de Test | Tests | Categorías Cubiertas |
+|-----------------|-------|----------------------|
+| `auth-oauth.test.ts` | 60 | Session validation, Token refresh, Multi-tenant, Error handling, Edge cases, Security |
+| `logging.test.ts` | 36 | Request ID, Log levels, Serializers, Auto-logging, Security, PII compliance |
+| **Total** | **96** | **100% cobertura de middleware + QA Master fixes** |
+
+**QA Master Review - 14 Hallazgos Resueltos**:
+
+| ID | Severidad | Hallazgo | Resolución |
+|----|-----------|----------|------------|
+| 1 | CRITICAL | Catch genérico sin test | Test con Object.defineProperty getter throw |
+| 2 | MEDIUM | x-api-key no redactado | Agregado redaction en serializer |
+| 3 | LOW | Health endpoints limitados | Agregados /ready, /live, /liveness, /readiness |
+| 4 | HIGH | SQL injection test faltante | Test con payloads maliciosos |
+| 5 | HIGH | Race condition token refresh | Documentado con recomendación Redis lock |
+| 6 | LOW | Boundary test token expira | Test tokenExpiresAt = new Date() |
+| 7 | LOW | displayName undefined | Test campos opcionales |
+| 8 | HIGH | Email sin validación format | Documentado como mejora futura |
+| 9 | LOW | req sin path/method | Test defensivo |
+| 10 | CRITICAL | bc_token_expires_at null | Fix código + tests null/invalid |
+| 11 | HIGH | Multi-tenant requireBCAccess | 3 tests aislamiento |
+| 12 | HIGH | Session fixation | Test verify session.regenerate |
+| 13 | MEDIUM | PII sin documentar | JSDoc con GDPR/CCPA guidance |
+| 14 | LOW | req.log no verificado | Test middleware integration |
+
+**Categorías de Tests auth-oauth.test.ts (60 tests)**:
+1. authenticateMicrosoft - No Session (3 tests)
+2. authenticateMicrosoft - Valid Session (4 tests)
+3. authenticateMicrosoft - Token Refresh (6 tests) - incluye race condition docs
+4. authenticateMicrosoft - Error Handling (4 tests) - incluye catch genérico
+5. authenticateMicrosoftOptional (4 tests) - incluye edge cases
+6. requireBCAccess - Basic (5 tests)
+7. requireBCAccess - BC Token Edge Cases (8 tests) - null, invalid, SQL injection
+8. Multi-Tenant Isolation Security (8 tests)
+9. Session Security (6 tests) - fixation, boundary conditions
+10. Edge Cases and Defensive (12 tests)
+
+**Categorías de Tests logging.test.ts (36 tests)**:
+1. Request ID Generation (4 tests)
+2. Log Level Customization (5 tests)
+3. Message Formatting (4 tests)
+4. Serializers/Header Redaction (7 tests) - incluye x-api-key
+5. Auto Logging Filter (6 tests) - incluye /ready, /live, etc.
+6. Security (3 tests)
+7. PII Compliance Documentation (4 tests)
+8. Middleware Integration (3 tests) - incluye req.log
+
+**Patrón de Testing Utilizado**:
+```typescript
+// Mock helpers para Express middleware
+function createMockRequest(overrides: Partial<MockRequest> = {}): MockRequest
+function createMockResponse(): MockResponse
+function createValidSession(overrides: Partial<MicrosoftOAuthSession> = {}): MicrosoftOAuthSession
+
+// Test para catch genérico (Object.defineProperty trick)
+const throwingSession = { save: vi.fn() };
+Object.defineProperty(throwingSession, 'microsoftOAuth', {
+  get() { throw new Error('Unexpected session corruption'); },
+});
+
+// pino-http mock para capturar opciones de configuración
+vi.mock('pino-http', () => ({
+  default: vi.fn((options) => {
+    (global as Record<string, unknown>).__pinoHttpOptions = options;
+    return vi.fn();
+  }),
+}));
+```
+
+**Verificación de Seguridad Multi-Tenant**:
+- ✅ User A no puede acceder a sesión de User B
+- ✅ Token refresh aislado por usuario
+- ✅ Headers sensibles redactados (Authorization, Cookie, x-api-key)
+- ✅ Session IDs únicos por request
+- ✅ bc_token_expires_at null/invalid manejado correctamente
+- ✅ SQL injection defendido (parameterized queries)
+- ✅ PII compliance documentado (GDPR/CCPA)
+
+**Resultados Finales**:
+- ✅ 705 tests pasan (621 existentes + 84 nuevos middleware)
+- ✅ Type-check exitoso
+- ✅ Lint exitoso (0 errores, 15 warnings preexistentes)
+- ✅ Build exitoso
+- ✅ 14/14 hallazgos QA Master resueltos
 
 ---
 

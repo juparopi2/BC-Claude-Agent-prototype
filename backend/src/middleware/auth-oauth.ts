@@ -256,9 +256,41 @@ export async function requireBCAccess(req: Request, res: Response, next: NextFun
       return;
     }
 
+    // Check if BC token expiration date is valid
+    const expiresAtRaw = user.bc_token_expires_at;
+    if (!expiresAtRaw) {
+      logger.warn('Business Central token expires_at is missing', {
+        userId: req.userId,
+        path: req.path,
+      });
+
+      res.status(403).json({
+        error: 'Business Central Token Invalid',
+        message: 'Token expiration date not found. Please re-authorize.',
+        consentUrl: '/api/auth/bc-consent',
+      });
+      return;
+    }
+
     // Check if BC token is expired
-    const expiresAt = new Date(user.bc_token_expires_at as string);
+    const expiresAt = new Date(expiresAtRaw as string);
     const now = new Date();
+
+    // Handle invalid date (e.g., empty string, malformed date)
+    if (isNaN(expiresAt.getTime())) {
+      logger.warn('Business Central token has invalid expiration date', {
+        userId: req.userId,
+        expiresAtRaw,
+        path: req.path,
+      });
+
+      res.status(403).json({
+        error: 'Business Central Token Invalid',
+        message: 'Token has invalid expiration date. Please re-authorize.',
+        consentUrl: '/api/auth/bc-consent',
+      });
+      return;
+    }
 
     if (expiresAt <= now) {
       logger.warn('Business Central token expired', {

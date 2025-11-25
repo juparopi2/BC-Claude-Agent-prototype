@@ -5,8 +5,17 @@
  * - Automatic request/response logging with duration
  * - Request ID generation and propagation (X-Request-ID header)
  * - Dynamic log level based on response status code
- * - Automatic redaction of sensitive headers (authorization, cookie)
+ * - Automatic redaction of sensitive headers (authorization, cookie, x-api-key)
  * - Correlation with user session data
+ *
+ * Security Notes:
+ * - Headers containing secrets are redacted: Authorization, Cookie, X-API-Key
+ * - PII Compliance: userId and sessionId are logged for debugging purposes.
+ *   In production environments subject to GDPR/CCPA, ensure logs are:
+ *   1. Encrypted at rest
+ *   2. Access-controlled
+ *   3. Retained only as long as necessary
+ *   4. Anonymized if exported for analytics
  *
  * Usage:
  * ```typescript
@@ -84,11 +93,12 @@ export const httpLogger: RequestHandler = pinoHttp({
         path: req.raw.url,
         query: req.raw.query,
         params: reqParams,
-        // Redact sensitive headers
+        // Redact sensitive headers (security: prevent secret leakage in logs)
         headers: {
           ...req.headers,
           authorization: req.headers.authorization ? '[REDACTED]' : undefined,
           cookie: req.headers.cookie ? '[REDACTED]' : undefined,
+          'x-api-key': req.headers['x-api-key'] ? '[REDACTED]' : undefined,
         },
         // Include session info if available
         userId: expressReq.session?.microsoftOAuth?.userId,
@@ -101,10 +111,12 @@ export const httpLogger: RequestHandler = pinoHttp({
     }),
   },
 
-  // Don't log health check endpoints (reduce noise)
+  // Don't log health check endpoints (reduce noise in logs)
+  // Includes common Kubernetes probes and monitoring endpoints
   autoLogging: {
     ignore: (req: IncomingMessage) => {
-      return req.url === '/health' || req.url === '/ping';
+      const healthEndpoints = ['/health', '/ping', '/ready', '/live', '/liveness', '/readiness'];
+      return healthEndpoints.includes(req.url || '');
     },
   },
 }) as RequestHandler;

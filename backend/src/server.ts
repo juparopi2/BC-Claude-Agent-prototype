@@ -575,6 +575,34 @@ function configureRoutes(): void {
       const decisionVerified: 'approved' | 'rejected' = decision as 'approved' | 'rejected';
 
       const approvalManager = getApprovalManager();
+
+      // SECURITY: Validate that user owns the session associated with this approval
+      const ownershipResult = await approvalManager.validateApprovalOwnership(approvalId, userIdVerified);
+
+      if (!ownershipResult.isOwner) {
+        // Log unauthorized access attempt for security audit
+        console.warn(
+          `[API] Unauthorized approval access: User ${userIdVerified} attempted to respond to approval ${approvalId} ` +
+          `(owned by ${ownershipResult.sessionUserId ?? 'unknown'}). Error: ${ownershipResult.error ?? 'UNKNOWN'}`
+        );
+
+        // Return appropriate error based on the failure reason
+        if (ownershipResult.error === 'APPROVAL_NOT_FOUND') {
+          res.status(404).json({
+            error: 'Not Found',
+            message: 'Approval request not found',
+          });
+          return;
+        }
+
+        // UNAUTHORIZED or SESSION_NOT_FOUND
+        res.status(403).json({
+          error: 'Forbidden',
+          message: 'You do not have permission to respond to this approval request',
+        });
+        return;
+      }
+
       await approvalManager.respondToApproval(approvalId, decisionVerified, userIdVerified, reason);
 
       res.json({

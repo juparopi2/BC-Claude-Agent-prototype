@@ -89,3 +89,23 @@ export interface ApprovalResult {
   reason?: string;
   timedOut: boolean;
 }
+
+/**
+ * Error codes for approval ownership validation
+ */
+export type ApprovalOwnershipError = 'APPROVAL_NOT_FOUND' | 'SESSION_NOT_FOUND' | 'UNAUTHORIZED';
+
+/**
+ * Result of approval ownership validation
+ * Used to verify that a user owns the session associated with an approval request
+ */
+export interface ApprovalOwnershipResult {
+  /** Whether the user is the owner of the session */
+  isOwner: boolean;
+  /** The approval request if found */
+  approval: ApprovalRequest | null;
+  /** The user ID that owns the session (for audit logging) */
+  sessionUserId: string | null;
+  /** Error code if validation failed */
+  error?: ApprovalOwnershipError;
+}

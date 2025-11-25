@@ -33,6 +33,7 @@ import logsRoutes from './routes/logs';
 import tokenUsageRoutes from './routes/token-usage';
 import { authenticateMicrosoft } from './middleware/auth-oauth';
 import { httpLogger } from './middleware/logging';
+import { validateSessionOwnership } from './utils/session-ownership';
 import { MicrosoftOAuthSession } from './types/microsoft.types';
 import { Socket } from 'socket.io';
 
@@ -741,9 +742,43 @@ function configureRoutes(): void {
   });
 
   // GET /api/approvals/session/:sessionId - Get pending approvals for a session
+  // Security: Validates user owns the session (multi-tenant safety)
   app.get('/api/approvals/session/:sessionId', authenticateMicrosoft, async (req: Request, res: Response): Promise<void> => {
     try {
       const sessionId = req.params.sessionId as string;
+      const userId = req.userId;
+
+      if (!userId) {
+        res.status(401).json({
+          error: 'Unauthorized',
+          message: 'User not authenticated',
+        });
+        return;
+      }
+
+      // Multi-tenant validation: User must own the session
+      const ownershipResult = await validateSessionOwnership(sessionId, userId);
+      if (!ownershipResult.isOwner) {
+        if (ownershipResult.error === 'SESSION_NOT_FOUND') {
+          res.status(404).json({
+            error: 'Not Found',
+            message: 'Session not found',
+          });
+          return;
+        }
+
+        logger.warn('Unauthorized approvals access attempt blocked', {
+          sessionId,
+          attemptedByUserId: userId,
+          error: ownershipResult.error,
+        });
+
+        res.status(403).json({
+          error: 'Forbidden',
+          message: 'You do not have access to this session',
+        });
+        return;
+      }
 
       const approvalManager = getApprovalManager();
       const pendingApprovals = await approvalManager.getPendingApprovals(sessionId);
@@ -765,9 +800,43 @@ function configureRoutes(): void {
 
   // Todo endpoints
   // GET /api/todos/session/:sessionId - Get todos for a session
+  // Security: Validates user owns the session (multi-tenant safety)
   app.get('/api/todos/session/:sessionId', authenticateMicrosoft, async (req: Request, res: Response): Promise<void> => {
     try {
       const sessionId = req.params.sessionId as string;
+      const userId = req.userId;
+
+      if (!userId) {
+        res.status(401).json({
+          error: 'Unauthorized',
+          message: 'User not authenticated',
+        });
+        return;
+      }
+
+      // Multi-tenant validation: User must own the session
+      const ownershipResult = await validateSessionOwnership(sessionId, userId);
+      if (!ownershipResult.isOwner) {
+        if (ownershipResult.error === 'SESSION_NOT_FOUND') {
+          res.status(404).json({
+            error: 'Not Found',
+            message: 'Session not found',
+          });
+          return;
+        }
+
+        logger.warn('Unauthorized todos access attempt blocked', {
+          sessionId,
+          attemptedByUserId: userId,
+          error: ownershipResult.error,
+        });
+
+        res.status(403).json({
+          error: 'Forbidden',
+          message: 'You do not have access to this session',
+        });
+        return;
+      }
 
       const todoManager = getTodoManager();
       const todos = await todoManager.getTodosBySession(sessionId);

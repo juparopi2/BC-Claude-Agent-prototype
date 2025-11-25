@@ -11,6 +11,7 @@
  * @module utils/session-ownership
  */
 
+import { timingSafeEqual } from 'crypto';
 import { executeQuery } from '@config/database';
 import { createChildLogger } from '@/utils/logger';
 
@@ -97,8 +98,8 @@ export async function validateSessionOwnership(
       };
     }
 
-    // Validate ownership
-    if (sessionOwner.user_id !== userId) {
+    // Validate ownership using timing-safe comparison
+    if (!timingSafeCompare(sessionOwner.user_id, userId)) {
       logger.warn('Session ownership validation failed - user does not own session', {
         sessionId,
         requestingUserId: userId,
@@ -247,6 +248,9 @@ export function requireSessionOwnershipMiddleware(sessionIdParam: string = 'sess
  * Use this to ensure a requested userId matches the authenticated user.
  * Prevents users from accessing other users' data directly.
  *
+ * Security: Uses timing-safe comparison to prevent timing attacks.
+ * An attacker cannot infer the correct user ID by measuring response times.
+ *
  * @param requestedUserId - User ID from request params
  * @param authenticatedUserId - User ID from session/token
  * @returns boolean - true if IDs match
@@ -266,5 +270,42 @@ export function validateUserIdMatch(
   if (!authenticatedUserId || !requestedUserId) {
     return false;
   }
-  return requestedUserId === authenticatedUserId;
+  return timingSafeCompare(requestedUserId, authenticatedUserId);
+}
+
+/**
+ * Timing-safe string comparison
+ *
+ * Compares two strings in constant time to prevent timing attacks.
+ * Uses crypto.timingSafeEqual under the hood with proper buffer handling.
+ *
+ * @param a - First string to compare
+ * @param b - Second string to compare
+ * @returns boolean - true if strings are equal
+ *
+ * @internal
+ */
+export function timingSafeCompare(a: string, b: string): boolean {
+  // If lengths differ, we still need to do a constant-time comparison
+  // to avoid leaking length information
+  const aBuffer = Buffer.from(a, 'utf8');
+  const bBuffer = Buffer.from(b, 'utf8');
+
+  // For different lengths, pad the shorter one to match
+  // This ensures constant-time comparison regardless of length
+  if (aBuffer.length !== bBuffer.length) {
+    // Create buffers of equal length for comparison
+    const maxLength = Math.max(aBuffer.length, bBuffer.length);
+    const paddedA = Buffer.alloc(maxLength, 0);
+    const paddedB = Buffer.alloc(maxLength, 0);
+    aBuffer.copy(paddedA);
+    bBuffer.copy(paddedB);
+
+    // Compare padded buffers (will always be false due to different content)
+    // but we do it to avoid timing leaks
+    timingSafeEqual(paddedA, paddedB);
+    return false;
+  }
+
+  return timingSafeEqual(aBuffer, bBuffer);
 }

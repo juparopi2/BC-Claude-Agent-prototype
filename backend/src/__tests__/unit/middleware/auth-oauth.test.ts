@@ -41,6 +41,7 @@ import {
 } from '@/middleware/auth-oauth';
 import { logger } from '@/utils/logger';
 import { executeQuery } from '@/config/database';
+import { ErrorCode } from '@/constants/errors';
 
 // ===== TEST HELPERS =====
 
@@ -389,7 +390,7 @@ describe('authenticateMicrosoft', () => {
       expect(mockRes.json).toHaveBeenCalledWith(
         expect.objectContaining({
           error: 'Internal Server Error',
-          message: 'Authentication failed due to server error',
+          code: ErrorCode.SERVICE_ERROR,
         })
       );
       expect(logger.error).toHaveBeenCalledWith(
@@ -619,7 +620,7 @@ describe('requireBCAccess', () => {
       expect(mockRes.json).toHaveBeenCalledWith(
         expect.objectContaining({
           error: 'Unauthorized',
-          message: 'User not authenticated',
+          code: ErrorCode.UNAUTHORIZED,
         })
       );
       expect(mockNext).not.toHaveBeenCalled();
@@ -643,14 +644,15 @@ describe('requireBCAccess', () => {
       expect(mockRes.status).toHaveBeenCalledWith(404);
       expect(mockRes.json).toHaveBeenCalledWith(
         expect.objectContaining({
-          error: 'User Not Found',
+          error: 'Not Found',
+          code: ErrorCode.USER_NOT_FOUND,
         })
       );
     });
   });
 
   describe('BC token validation', () => {
-    it('should return 403 with consentUrl when BC token is not present', async () => {
+    it('should return 503 with consentUrl when BC token is not present', async () => {
       mockReq = createMockRequest();
       mockReq.userId = 'user-123';
 
@@ -663,16 +665,20 @@ describe('requireBCAccess', () => {
 
       await requireBCAccess(mockReq as Request, mockRes, mockNext);
 
-      expect(mockRes.status).toHaveBeenCalledWith(403);
+      // BC_UNAVAILABLE returns 503
+      expect(mockRes.status).toHaveBeenCalledWith(503);
       expect(mockRes.json).toHaveBeenCalledWith(
         expect.objectContaining({
-          error: 'Business Central Access Required',
-          consentUrl: '/api/auth/bc-consent',
+          error: 'Service Unavailable',
+          code: ErrorCode.BC_UNAVAILABLE,
+          details: expect.objectContaining({
+            consentUrl: '/api/auth/bc-consent',
+          }),
         })
       );
     });
 
-    it('should return 403 when BC token is expired', async () => {
+    it('should return 401 when BC token is expired', async () => {
       mockReq = createMockRequest();
       mockReq.userId = 'user-123';
 
@@ -688,11 +694,15 @@ describe('requireBCAccess', () => {
 
       await requireBCAccess(mockReq as Request, mockRes, mockNext);
 
-      expect(mockRes.status).toHaveBeenCalledWith(403);
+      // SESSION_EXPIRED returns 401
+      expect(mockRes.status).toHaveBeenCalledWith(401);
       expect(mockRes.json).toHaveBeenCalledWith(
         expect.objectContaining({
-          error: 'Business Central Token Expired',
-          consentUrl: '/api/auth/bc-consent',
+          error: 'Unauthorized',
+          code: ErrorCode.SESSION_EXPIRED,
+          details: expect.objectContaining({
+            consentUrl: '/api/auth/bc-consent',
+          }),
         })
       );
     });
@@ -867,7 +877,7 @@ describe('requireBCAccess', () => {
       mockNext = vi.fn();
     });
 
-    it('should return 403 when bc_token_expires_at is null in database', async () => {
+    it('should return 401 when bc_token_expires_at is null in database', async () => {
       mockReq = createMockRequest();
       mockReq.userId = 'user-123';
 
@@ -883,18 +893,21 @@ describe('requireBCAccess', () => {
 
       await requireBCAccess(mockReq as Request, mockRes, mockNext);
 
-      // Should treat null expires_at as expired/invalid
-      expect(mockRes.status).toHaveBeenCalledWith(403);
+      // INVALID_TOKEN returns 401 - null expires_at is treated as invalid token
+      expect(mockRes.status).toHaveBeenCalledWith(401);
       expect(mockRes.json).toHaveBeenCalledWith(
         expect.objectContaining({
-          error: 'Business Central Token Invalid',
-          consentUrl: '/api/auth/bc-consent',
+          error: 'Unauthorized',
+          code: ErrorCode.INVALID_TOKEN,
+          details: expect.objectContaining({
+            consentUrl: '/api/auth/bc-consent',
+          }),
         })
       );
       expect(mockNext).not.toHaveBeenCalled();
     });
 
-    it('should return 403 when bc_token_expires_at is undefined', async () => {
+    it('should return 401 when bc_token_expires_at is undefined', async () => {
       mockReq = createMockRequest();
       mockReq.userId = 'user-123';
 
@@ -910,11 +923,11 @@ describe('requireBCAccess', () => {
 
       await requireBCAccess(mockReq as Request, mockRes, mockNext);
 
-      // Should treat missing expires_at as expired/invalid
-      expect(mockRes.status).toHaveBeenCalledWith(403);
+      // INVALID_TOKEN returns 401 - missing expires_at is invalid
+      expect(mockRes.status).toHaveBeenCalledWith(401);
     });
 
-    it('should return 403 when bc_token_expires_at is empty string', async () => {
+    it('should return 401 when bc_token_expires_at is empty string', async () => {
       mockReq = createMockRequest();
       mockReq.userId = 'user-123';
 
@@ -930,11 +943,11 @@ describe('requireBCAccess', () => {
 
       await requireBCAccess(mockReq as Request, mockRes, mockNext);
 
-      // Empty string creates Invalid Date, should be treated as expired
-      expect(mockRes.status).toHaveBeenCalledWith(403);
+      // INVALID_TOKEN returns 401 - empty string creates Invalid Date
+      expect(mockRes.status).toHaveBeenCalledWith(401);
     });
 
-    it('should return 403 when bc_token_expires_at is invalid date string', async () => {
+    it('should return 401 when bc_token_expires_at is invalid date string', async () => {
       mockReq = createMockRequest();
       mockReq.userId = 'user-123';
 
@@ -950,8 +963,8 @@ describe('requireBCAccess', () => {
 
       await requireBCAccess(mockReq as Request, mockRes, mockNext);
 
-      // Invalid date string creates Invalid Date, should be treated as expired
-      expect(mockRes.status).toHaveBeenCalledWith(403);
+      // INVALID_TOKEN returns 401 - invalid date is treated as invalid token
+      expect(mockRes.status).toHaveBeenCalledWith(401);
     });
 
     it('should accept valid future bc_token_expires_at', async () => {

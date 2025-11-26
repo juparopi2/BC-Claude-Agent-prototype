@@ -10,6 +10,13 @@
 import { Request, Response, NextFunction } from 'express';
 import { MicrosoftOAuthSession } from '../types/microsoft.types';
 import { logger } from '../utils/logger';
+import { ErrorCode } from '../constants/errors';
+import {
+  sendError,
+  sendUnauthorized,
+  sendNotFound,
+  sendInternalError,
+} from '../utils/error-response';
 
 /**
  * Extend Express Request to include Microsoft OAuth session
@@ -47,10 +54,7 @@ export async function authenticateMicrosoft(req: Request, res: Response, next: N
         method: req.method,
       });
 
-      res.status(401).json({
-        error: 'Unauthorized',
-        message: 'Microsoft OAuth session not found. Please log in.',
-      });
+      sendError(res, ErrorCode.UNAUTHORIZED, 'Microsoft OAuth session not found. Please log in.');
       return;
     }
 
@@ -65,10 +69,7 @@ export async function authenticateMicrosoft(req: Request, res: Response, next: N
         hasMicrosoftId: !!oauthSession.microsoftId,
       });
 
-      res.status(401).json({
-        error: 'Unauthorized',
-        message: 'Invalid Microsoft OAuth session. Please log in again.',
-      });
+      sendError(res, ErrorCode.UNAUTHORIZED, 'Invalid Microsoft OAuth session. Please log in again.');
       return;
     }
 
@@ -80,10 +81,7 @@ export async function authenticateMicrosoft(req: Request, res: Response, next: N
         userId: oauthSession.userId,
       });
 
-      res.status(401).json({
-        error: 'Unauthorized',
-        message: 'Access token missing. Please log in again.',
-      });
+      sendError(res, ErrorCode.INVALID_TOKEN, 'Access token missing. Please log in again.');
       return;
     }
 
@@ -143,10 +141,7 @@ export async function authenticateMicrosoft(req: Request, res: Response, next: N
           });
 
           // Refresh failed, require re-login
-          res.status(401).json({
-            error: 'Unauthorized',
-            message: 'Failed to refresh access token. Please log in again.',
-          });
+          sendError(res, ErrorCode.SESSION_EXPIRED, 'Failed to refresh access token. Please log in again.');
           return;
         }
       } else {
@@ -155,10 +150,7 @@ export async function authenticateMicrosoft(req: Request, res: Response, next: N
           userId: oauthSession.userId,
         });
 
-        res.status(401).json({
-          error: 'Unauthorized',
-          message: 'Access token expired and no refresh token available. Please log in again.',
-        });
+        sendError(res, ErrorCode.SESSION_EXPIRED, 'Access token expired and no refresh token available. Please log in again.');
         return;
       }
     }
@@ -183,10 +175,7 @@ export async function authenticateMicrosoft(req: Request, res: Response, next: N
       method: req.method,
     });
 
-    res.status(500).json({
-      error: 'Internal Server Error',
-      message: 'Authentication failed due to server error',
-    });
+    sendInternalError(res, ErrorCode.SERVICE_ERROR);
   }
 }
 
@@ -211,10 +200,7 @@ export async function requireBCAccess(req: Request, res: Response, next: NextFun
   try {
     // Ensure user is authenticated first
     if (!req.userId) {
-      res.status(401).json({
-        error: 'Unauthorized',
-        message: 'User not authenticated',
-      });
+      sendUnauthorized(res);
       return;
     }
 
@@ -232,10 +218,7 @@ export async function requireBCAccess(req: Request, res: Response, next: NextFun
     );
 
     if (!result.recordset || result.recordset.length === 0) {
-      res.status(404).json({
-        error: 'User Not Found',
-        message: 'User record not found',
-      });
+      sendNotFound(res, ErrorCode.USER_NOT_FOUND);
       return;
     }
 
@@ -248,11 +231,7 @@ export async function requireBCAccess(req: Request, res: Response, next: NextFun
         path: req.path,
       });
 
-      res.status(403).json({
-        error: 'Business Central Access Required',
-        message: 'You have not granted access to Business Central. Please visit /api/auth/bc-consent to authorize.',
-        consentUrl: '/api/auth/bc-consent',
-      });
+      sendError(res, ErrorCode.BC_UNAVAILABLE, 'You have not granted access to Business Central. Please visit /api/auth/bc-consent to authorize.', { consentUrl: '/api/auth/bc-consent' });
       return;
     }
 
@@ -264,11 +243,7 @@ export async function requireBCAccess(req: Request, res: Response, next: NextFun
         path: req.path,
       });
 
-      res.status(403).json({
-        error: 'Business Central Token Invalid',
-        message: 'Token expiration date not found. Please re-authorize.',
-        consentUrl: '/api/auth/bc-consent',
-      });
+      sendError(res, ErrorCode.INVALID_TOKEN, 'Token expiration date not found. Please re-authorize.', { consentUrl: '/api/auth/bc-consent' });
       return;
     }
 
@@ -284,11 +259,7 @@ export async function requireBCAccess(req: Request, res: Response, next: NextFun
         path: req.path,
       });
 
-      res.status(403).json({
-        error: 'Business Central Token Invalid',
-        message: 'Token has invalid expiration date. Please re-authorize.',
-        consentUrl: '/api/auth/bc-consent',
-      });
+      sendError(res, ErrorCode.INVALID_TOKEN, 'Token has invalid expiration date. Please re-authorize.', { consentUrl: '/api/auth/bc-consent' });
       return;
     }
 
@@ -299,11 +270,7 @@ export async function requireBCAccess(req: Request, res: Response, next: NextFun
         path: req.path,
       });
 
-      res.status(403).json({
-        error: 'Business Central Token Expired',
-        message: 'Your Business Central access token has expired. Token will be refreshed automatically on next request, or visit /api/auth/bc-consent.',
-        consentUrl: '/api/auth/bc-consent',
-      });
+      sendError(res, ErrorCode.SESSION_EXPIRED, 'Your Business Central access token has expired. Token will be refreshed automatically on next request, or visit /api/auth/bc-consent.', { consentUrl: '/api/auth/bc-consent' });
       return;
     }
 
@@ -320,10 +287,7 @@ export async function requireBCAccess(req: Request, res: Response, next: NextFun
       path: req.path,
     });
 
-    res.status(500).json({
-      error: 'Internal Server Error',
-      message: 'Failed to verify Business Central access',
-    });
+    sendInternalError(res, ErrorCode.SERVICE_ERROR);
   }
 }
 

@@ -13,15 +13,17 @@
 | 1 | Gaps Críticos | 3 | ~75 tests | ✅ COMPLETED |
 | 2 | Seguridad | 3 | ~42 tests | ✅ COMPLETED |
 | 3 | Edge Cases | 23+ | ~61 tests | ✅ COMPLETED |
-| 4 | Inconsistencias | 2 | ~5 tests | ✅ COMPLETED |
+| 4 | Inconsistencias | 2 | ~78 tests | ✅ COMPLETED |
+| 4.5 | Error Adoption | 2 | ~0 tests (refactoring) | ✅ COMPLETED |
 | 5 | Performance | 2 | ~5 tests | [ ] PENDING |
-| **TOTAL** | | **33+** | **~188 tests nuevos** | |
+| **TOTAL** | | **35+** | **~261 tests nuevos** | |
 
 **Target final**: 884 actuales + 188 nuevos = **~1072 tests**
 **Actual después de Fase 1 + QA Audit**: 966 tests (82 nuevos en Fase 1)
 **Actual después de Fase 2**: 1008 tests (+42 nuevos en Fase 2)
 **Actual después de Fase 3**: 1074 tests (+66 nuevos en Fase 3)
 **Actual después de Fase 4**: 1152 tests (+78 nuevos en Fase 4 - error standardization)
+**Actual después de Fase 4.5**: 1152 tests (0 nuevos - refactoring only, same coverage)
 
 ---
 
@@ -734,6 +736,48 @@ Al pasar verificación:
 1. Marcar `[x]` en Success Criteria arriba
 2. Actualizar `QA-REPORT-F6-005.md` - sección de consistencia
 3. Actualizar `QA-MASTER-REVIEW-F6-005.md` - marcar gaps P4 como resueltos
+
+---
+
+## FASE 4.5: Error Standardization Completion (QA Master Audit)
+
+### Estado: ✅ COMPLETED (2025-11-25)
+
+### Background:
+QA Master Audit (QA-MASTER-AUDIT-F6-005-PHASE4.md) identified that Phase 4's error standardization infrastructure was excellent, but adoption was only 27.6% (21/76 error responses). Key files `server.ts` and `middleware/auth-oauth.ts` still used the old `res.status().json()` pattern.
+
+### Success Criteria Fase 4.5:
+- [x] `server.ts` refactored: All 33 error responses use sendError()
+- [x] `middleware/auth-oauth.ts` refactored: All 10 error responses use sendError()
+- [x] `server-endpoints.test.ts` updated: 13 assertions fixed for new error format
+- [x] `auth-oauth.test.ts` updated: 9 assertions fixed for new error format
+- [x] npm test: 1152 tests passing (maintained baseline)
+- [x] npm run lint: 0 errors
+- [x] npm run type-check: OK
+- [x] npm run build: OK
+
+### Files Refactored:
+| File | Error Responses | Change |
+|------|-----------------|--------|
+| `server.ts` | 33 | All now use sendError(), sendBadRequest(), etc. |
+| `middleware/auth-oauth.ts` | 10 | All now use sendError() with ErrorCode enum |
+
+### Test Files Updated:
+| File | Tests Updated | Notes |
+|------|---------------|-------|
+| `server-endpoints.test.ts` | 13 | Updated assertions for new {error, message, code} format |
+| `auth-oauth.test.ts` | 9 | Updated for status code changes (SESSION_EXPIRED→401, BC_UNAVAILABLE→503) |
+
+### Breaking Changes Applied:
+1. **BC_UNAVAILABLE** now returns 503 (was 403/500) - indicates service unavailable
+2. **SESSION_EXPIRED** now returns 401 (was 400/403) - indicates re-authentication needed
+3. **INVALID_TOKEN** now returns 401 (was 403) - consistent with auth errors
+4. All error responses now include `code` field with ErrorCode enum value
+
+### Adoption After Phase 4.5:
+- **Before**: 27.6% (21/76 error responses)
+- **After**: ~95% (routes + server.ts + middleware refactored)
+- Only `auth-mock.ts` (dev-only) remains non-standardized
 
 ---
 

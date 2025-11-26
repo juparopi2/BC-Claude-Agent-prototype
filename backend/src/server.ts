@@ -36,6 +36,17 @@ import { httpLogger } from './middleware/logging';
 import { validateSessionOwnership } from './utils/session-ownership';
 import { MicrosoftOAuthSession } from './types/microsoft.types';
 import { Socket } from 'socket.io';
+import { ErrorCode } from './constants/errors';
+import {
+  sendError,
+  sendBadRequest,
+  sendUnauthorized,
+  sendForbidden,
+  sendNotFound,
+  sendConflict,
+  sendInternalError,
+  sendServiceUnavailable,
+} from './utils/error-response';
 
 /**
  * Extend express-session types to include Microsoft OAuth session data
@@ -366,10 +377,7 @@ function configureRoutes(): void {
     const mcpService = getMCPService();
 
     if (!mcpService.isConfigured()) {
-      res.status(503).json({
-        error: 'MCP not configured',
-        message: 'MCP_SERVER_URL is not set',
-      });
+      sendError(res, ErrorCode.MCP_UNAVAILABLE, 'MCP_SERVER_URL is not set');
       return;
     }
 
@@ -389,10 +397,7 @@ function configureRoutes(): void {
     const mcpService = getMCPService();
 
     if (!mcpService.isConfigured()) {
-      res.status(503).json({
-        connected: false,
-        error: 'MCP not configured',
-      });
+      sendError(res, ErrorCode.MCP_UNAVAILABLE, 'MCP not configured');
       return;
     }
 
@@ -410,20 +415,14 @@ function configureRoutes(): void {
       // Test authentication
       const authValid = await bcClient.validateCredentials();
       if (!authValid) {
-        res.status(401).json({
-          error: 'Authentication failed',
-          message: 'BC credentials are invalid',
-        });
+        sendUnauthorized(res, ErrorCode.INVALID_TOKEN);
         return;
       }
 
       // Test connection
       const connected = await bcClient.testConnection();
       if (!connected) {
-        res.status(503).json({
-          error: 'Connection failed',
-          message: 'Unable to connect to BC API',
-        });
+        sendServiceUnavailable(res, ErrorCode.BC_UNAVAILABLE);
         return;
       }
 
@@ -440,10 +439,7 @@ function configureRoutes(): void {
       });
     } catch (error) {
       console.error('[API] BC test failed:', error);
-      res.status(500).json({
-        error: 'Test failed',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      });
+      sendInternalError(res, ErrorCode.SERVICE_ERROR);
     }
   });
 
@@ -477,10 +473,7 @@ function configureRoutes(): void {
           userId,
           error: result.error,
         });
-        res.status(500).json({
-          error: 'Query failed',
-          details: result.error.error.message,
-        });
+        sendInternalError(res, ErrorCode.SERVICE_ERROR);
         return;
       }
 
@@ -498,10 +491,7 @@ function configureRoutes(): void {
         userId,
         err: error,
       });
-      res.status(500).json({
-        error: 'Query failed',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      });
+      sendInternalError(res, ErrorCode.SERVICE_ERROR);
     }
   });
 
@@ -538,20 +528,14 @@ function configureRoutes(): void {
       const agentService = getDirectAgentService();
 
       if (!env.ANTHROPIC_API_KEY) {
-        res.status(503).json({
-          error: 'Agent not configured',
-          message: 'ANTHROPIC_API_KEY is not set',
-        });
+        sendServiceUnavailable(res, ErrorCode.SERVICE_UNAVAILABLE);
         return;
       }
 
       const { prompt, sessionId } = req.body;
 
       if (!prompt || typeof prompt !== 'string') {
-        res.status(400).json({
-          error: 'Invalid request',
-          message: 'prompt is required and must be a string',
-        });
+        sendBadRequest(res, 'prompt is required and must be a string', 'prompt');
         return;
       }
 
@@ -561,10 +545,7 @@ function configureRoutes(): void {
       res.json(result);
     } catch (error) {
       console.error('[API] Agent query failed:', error);
-      res.status(500).json({
-        error: 'Query failed',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      });
+      sendInternalError(res, ErrorCode.MESSAGE_PROCESSING_ERROR);
     }
   });
 
@@ -578,18 +559,12 @@ function configureRoutes(): void {
       const userId = req.userId;
 
       if (!userId) {
-        res.status(401).json({
-          error: 'Unauthorized',
-          message: 'User ID not found in token',
-        });
+        sendUnauthorized(res, ErrorCode.USER_ID_NOT_IN_SESSION);
         return;
       }
 
       if (!decision || !['approved', 'rejected'].includes(decision)) {
-        res.status(400).json({
-          error: 'Invalid request',
-          message: 'decision must be either "approved" or "rejected"',
-        });
+        sendError(res, ErrorCode.INVALID_DECISION);
         return;
       }
 
@@ -612,52 +587,31 @@ function configureRoutes(): void {
         // Return appropriate error based on the failure reason
         switch (result.error) {
           case 'APPROVAL_NOT_FOUND':
-            res.status(404).json({
-              error: 'Not Found',
-              message: 'Approval request not found',
-            });
+            sendNotFound(res, ErrorCode.APPROVAL_NOT_FOUND);
             return;
 
           case 'SESSION_NOT_FOUND':
-            res.status(404).json({
-              error: 'Not Found',
-              message: 'Session associated with this approval no longer exists',
-            });
+            sendNotFound(res, ErrorCode.SESSION_NOT_FOUND);
             return;
 
           case 'UNAUTHORIZED':
-            res.status(403).json({
-              error: 'Forbidden',
-              message: 'You do not have permission to respond to this approval request',
-            });
+            sendForbidden(res, ErrorCode.APPROVAL_ACCESS_DENIED);
             return;
 
           case 'ALREADY_RESOLVED':
-            res.status(409).json({
-              error: 'Conflict',
-              message: `This approval has already been ${result.previousStatus}`,
-            });
+            sendConflict(res, ErrorCode.ALREADY_RESOLVED);
             return;
 
           case 'EXPIRED':
-            res.status(410).json({
-              error: 'Gone',
-              message: 'This approval request has expired',
-            });
+            sendError(res, ErrorCode.APPROVAL_EXPIRED);
             return;
 
           case 'NO_PENDING_PROMISE':
-            res.status(503).json({
-              error: 'Service Unavailable',
-              message: 'Server state inconsistent - please retry the operation',
-            });
+            sendServiceUnavailable(res, ErrorCode.APPROVAL_NOT_READY);
             return;
 
           default:
-            res.status(500).json({
-              error: 'Internal Server Error',
-              message: 'An unexpected error occurred',
-            });
+            sendInternalError(res);
             return;
         }
       }
@@ -669,10 +623,7 @@ function configureRoutes(): void {
       });
     } catch (error) {
       logger.error({ err: error, path: req.path }, 'Approval response failed');
-      res.status(500).json({
-        error: 'Approval response failed',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      });
+      sendInternalError(res);
     }
   });
 
@@ -682,10 +633,7 @@ function configureRoutes(): void {
       const userId = req.userId;
 
       if (!userId) {
-        res.status(401).json({
-          error: 'Unauthorized',
-          message: 'User ID not found in token',
-        });
+        sendUnauthorized(res, ErrorCode.USER_ID_NOT_IN_SESSION);
         return;
       }
 
@@ -755,10 +703,7 @@ function configureRoutes(): void {
       });
     } catch (error) {
       console.error('[API] Get pending approvals failed:', error);
-      res.status(500).json({
-        error: 'Failed to get pending approvals',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      });
+      sendInternalError(res, ErrorCode.DATABASE_ERROR);
     }
   });
 
@@ -770,10 +715,7 @@ function configureRoutes(): void {
       const userId = req.userId;
 
       if (!userId) {
-        res.status(401).json({
-          error: 'Unauthorized',
-          message: 'User not authenticated',
-        });
+        sendUnauthorized(res);
         return;
       }
 
@@ -781,10 +723,7 @@ function configureRoutes(): void {
       const ownershipResult = await validateSessionOwnership(sessionId, userId);
       if (!ownershipResult.isOwner) {
         if (ownershipResult.error === 'SESSION_NOT_FOUND') {
-          res.status(404).json({
-            error: 'Not Found',
-            message: 'Session not found',
-          });
+          sendNotFound(res, ErrorCode.SESSION_NOT_FOUND);
           return;
         }
 
@@ -794,10 +733,7 @@ function configureRoutes(): void {
           error: ownershipResult.error,
         });
 
-        res.status(403).json({
-          error: 'Forbidden',
-          message: 'You do not have access to this session',
-        });
+        sendForbidden(res, ErrorCode.SESSION_ACCESS_DENIED);
         return;
       }
 
@@ -811,10 +747,7 @@ function configureRoutes(): void {
       });
     } catch (error) {
       console.error('[API] Get pending approvals failed:', error);
-      res.status(500).json({
-        error: 'Failed to get pending approvals',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      });
+      sendInternalError(res, ErrorCode.DATABASE_ERROR);
     }
   });
 
@@ -828,10 +761,7 @@ function configureRoutes(): void {
       const userId = req.userId;
 
       if (!userId) {
-        res.status(401).json({
-          error: 'Unauthorized',
-          message: 'User not authenticated',
-        });
+        sendUnauthorized(res);
         return;
       }
 
@@ -839,10 +769,7 @@ function configureRoutes(): void {
       const ownershipResult = await validateSessionOwnership(sessionId, userId);
       if (!ownershipResult.isOwner) {
         if (ownershipResult.error === 'SESSION_NOT_FOUND') {
-          res.status(404).json({
-            error: 'Not Found',
-            message: 'Session not found',
-          });
+          sendNotFound(res, ErrorCode.SESSION_NOT_FOUND);
           return;
         }
 
@@ -852,10 +779,7 @@ function configureRoutes(): void {
           error: ownershipResult.error,
         });
 
-        res.status(403).json({
-          error: 'Forbidden',
-          message: 'You do not have access to this session',
-        });
+        sendForbidden(res, ErrorCode.SESSION_ACCESS_DENIED);
         return;
       }
 
@@ -869,10 +793,7 @@ function configureRoutes(): void {
       });
     } catch (error) {
       console.error('[API] Get todos failed:', error);
-      res.status(500).json({
-        error: 'Failed to get todos',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      });
+      sendInternalError(res, ErrorCode.DATABASE_ERROR);
     }
   });
 
@@ -896,10 +817,7 @@ function configureRoutes(): void {
 
   // 404 handler
   app.use((req: Request, res: Response) => {
-    res.status(404).json({
-      error: 'Not Found',
-      message: `Route ${req.method} ${req.path} not found`,
-    });
+    sendError(res, ErrorCode.NOT_FOUND, `Route ${req.method} ${req.path} not found`);
   });
 }
 
@@ -915,15 +833,13 @@ function configureErrorHandling(): void {
       logger.error({ err }, 'Unhandled error');
     }
 
-    // Don't leak error details in production
-    const error = isProd
-      ? { message: 'Internal Server Error' }
-      : { message: err.message, stack: err.stack };
-
-    res.status(500).json({
-      error: 'Internal Server Error',
-      details: error,
-    });
+    // Use standardized error response - don't leak error details in production
+    if (isProd) {
+      sendInternalError(res);
+    } else {
+      // In development, include error details for debugging
+      sendError(res, ErrorCode.INTERNAL_ERROR, err.message, { stack: err.stack || 'No stack trace' });
+    }
   });
 }
 

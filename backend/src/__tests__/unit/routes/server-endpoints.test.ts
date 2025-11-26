@@ -25,6 +25,17 @@ import request from 'supertest';
 import express, { Application, Request, Response, NextFunction } from 'express';
 import { executeQuery } from '@/config/database';
 import { validateSessionOwnership } from '@/utils/session-ownership';
+import { ErrorCode } from '@/constants/errors';
+import {
+  sendError,
+  sendBadRequest,
+  sendUnauthorized,
+  sendForbidden,
+  sendNotFound,
+  sendConflict,
+  sendInternalError,
+  sendServiceUnavailable,
+} from '@/utils/error-response';
 
 // ============================================
 // Mock Dependencies
@@ -94,14 +105,14 @@ function createServerApp(): Application {
   const app = express();
   app.use(express.json());
 
-  // Mock auth middleware
+  // Mock auth middleware - uses standardized error format
   const authenticateMicrosoft = (req: Request, res: Response, next: NextFunction): void => {
     const testUserId = req.headers['x-test-user-id'] as string;
     if (testUserId) {
       req.userId = testUserId;
       next();
     } else {
-      res.status(401).json({ error: 'Unauthorized', message: 'User not authenticated' });
+      sendUnauthorized(res);
     }
   };
 
@@ -129,37 +140,37 @@ function createServerApp(): Application {
     });
   });
 
-  // GET /api/mcp/health
+  // GET /api/mcp/health - uses standardized error format
   app.get('/api/mcp/health', async (_req: Request, res: Response) => {
     try {
       const isConfigured = mockMCPService.isConfigured();
       if (!isConfigured) {
-        res.status(503).json({ status: 'unhealthy', message: 'MCP not configured' });
+        sendError(res, ErrorCode.MCP_UNAVAILABLE, 'MCP not configured');
         return;
       }
       res.json({ status: 'healthy', mcpUrl: mockMCPService.getMCPServerUrl() });
     } catch {
-      res.status(500).json({ status: 'error', message: 'Health check failed' });
+      sendInternalError(res, ErrorCode.SERVICE_ERROR);
     }
   });
 
-  // GET /api/bc/test
+  // GET /api/bc/test - uses standardized error format
   app.get('/api/bc/test', async (_req: Request, res: Response) => {
     try {
       // Simulate BC connection test
       res.json({ status: 'ok', message: 'BC connection test' });
     } catch {
-      res.status(500).json({ error: 'BC test failed' });
+      sendInternalError(res, ErrorCode.SERVICE_ERROR);
     }
   });
 
-  // GET /api/bc/customers (auth required)
+  // GET /api/bc/customers (auth required) - uses standardized error format
   app.get('/api/bc/customers', authenticateMicrosoft, async (req: Request, res: Response) => {
     try {
       const result = await executeQuery('SELECT TOP 10 * FROM customers', {});
       res.json({ customers: result.recordset || [] });
     } catch {
-      res.status(500).json({ error: 'Failed to fetch customers' });
+      sendInternalError(res, ErrorCode.SERVICE_ERROR);
     }
   });
 
@@ -187,32 +198,29 @@ function createServerApp(): Application {
     });
   });
 
-  // POST /api/agent/query (auth required)
+  // POST /api/agent/query (auth required) - uses standardized error format
   app.post('/api/agent/query', authenticateMicrosoft, async (req: Request, res: Response) => {
     try {
       if (!env.ANTHROPIC_API_KEY) {
-        res.status(503).json({ error: 'Agent not configured', message: 'ANTHROPIC_API_KEY is not set' });
+        sendServiceUnavailable(res, ErrorCode.SERVICE_UNAVAILABLE);
         return;
       }
 
       const { prompt, sessionId } = req.body;
 
       if (!prompt || typeof prompt !== 'string') {
-        res.status(400).json({ error: 'Invalid request', message: 'prompt is required and must be a string' });
+        sendBadRequest(res, 'prompt is required and must be a string', 'prompt');
         return;
       }
 
       const result = await mockDirectAgentService.executeQuery(prompt, sessionId);
       res.json(result);
-    } catch (error) {
-      res.status(500).json({
-        error: 'Query failed',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      });
+    } catch {
+      sendInternalError(res, ErrorCode.MESSAGE_PROCESSING_ERROR);
     }
   });
 
-  // POST /api/approvals/:id/respond (auth + ownership via atomic)
+  // POST /api/approvals/:id/respond (auth + ownership via atomic) - uses standardized error format
   app.post('/api/approvals/:id/respond', authenticateMicrosoft, async (req: Request, res: Response) => {
     try {
       const approvalId = req.params.id as string;
@@ -220,12 +228,12 @@ function createServerApp(): Application {
       const userId = req.userId;
 
       if (!userId) {
-        res.status(401).json({ error: 'Unauthorized', message: 'User ID not found in token' });
+        sendUnauthorized(res, ErrorCode.USER_ID_NOT_IN_SESSION);
         return;
       }
 
       if (!decision || !['approved', 'rejected'].includes(decision)) {
-        res.status(400).json({ error: 'Invalid request', message: 'decision must be either "approved" or "rejected"' });
+        sendError(res, ErrorCode.INVALID_DECISION);
         return;
       }
 
@@ -239,45 +247,42 @@ function createServerApp(): Application {
       if (!result.success) {
         switch (result.error) {
           case 'APPROVAL_NOT_FOUND':
-            res.status(404).json({ error: 'Not Found', message: 'Approval request not found' });
+            sendNotFound(res, ErrorCode.APPROVAL_NOT_FOUND);
             return;
           case 'SESSION_NOT_FOUND':
-            res.status(404).json({ error: 'Not Found', message: 'Session associated with this approval no longer exists' });
+            sendNotFound(res, ErrorCode.SESSION_NOT_FOUND);
             return;
           case 'UNAUTHORIZED':
-            res.status(403).json({ error: 'Forbidden', message: 'You do not have permission to respond to this approval request' });
+            sendForbidden(res, ErrorCode.APPROVAL_ACCESS_DENIED);
             return;
           case 'ALREADY_RESOLVED':
-            res.status(409).json({ error: 'Conflict', message: `This approval has already been ${result.previousStatus}` });
+            sendConflict(res, ErrorCode.ALREADY_RESOLVED);
             return;
           case 'EXPIRED':
-            res.status(410).json({ error: 'Gone', message: 'This approval request has expired' });
+            sendError(res, ErrorCode.APPROVAL_EXPIRED);
             return;
           case 'NO_PENDING_PROMISE':
-            res.status(503).json({ error: 'Service Unavailable', message: 'Server state inconsistent - please retry the operation' });
+            sendServiceUnavailable(res, ErrorCode.APPROVAL_NOT_READY);
             return;
           default:
-            res.status(500).json({ error: 'Internal Server Error', message: 'An unexpected error occurred' });
+            sendInternalError(res);
             return;
         }
       }
 
       res.json({ success: true, approvalId, decision });
-    } catch (error) {
-      res.status(500).json({
-        error: 'Approval response failed',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      });
+    } catch {
+      sendInternalError(res);
     }
   });
 
-  // GET /api/approvals/pending (auth + ownership)
+  // GET /api/approvals/pending (auth + ownership) - uses standardized error format
   app.get('/api/approvals/pending', authenticateMicrosoft, async (req: Request, res: Response) => {
     try {
       const userId = req.userId;
 
       if (!userId) {
-        res.status(401).json({ error: 'Unauthorized', message: 'User ID not found in token' });
+        sendUnauthorized(res, ErrorCode.USER_ID_NOT_IN_SESSION);
         return;
       }
 
@@ -294,73 +299,64 @@ function createServerApp(): Application {
       }));
 
       res.json({ count: approvals.length, approvals });
-    } catch (error) {
-      res.status(500).json({
-        error: 'Failed to get pending approvals',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      });
+    } catch {
+      sendInternalError(res, ErrorCode.DATABASE_ERROR);
     }
   });
 
-  // GET /api/approvals/session/:sessionId (auth + ownership)
+  // GET /api/approvals/session/:sessionId (auth + ownership) - uses standardized error format
   app.get('/api/approvals/session/:sessionId', authenticateMicrosoft, async (req: Request, res: Response) => {
     try {
       const sessionId = req.params.sessionId as string;
       const userId = req.userId;
 
       if (!userId) {
-        res.status(401).json({ error: 'Unauthorized', message: 'User not authenticated' });
+        sendUnauthorized(res);
         return;
       }
 
       const ownershipResult = await validateSessionOwnership(sessionId, userId);
       if (!ownershipResult.isOwner) {
         if (ownershipResult.error === 'SESSION_NOT_FOUND') {
-          res.status(404).json({ error: 'Not Found', message: 'Session not found' });
+          sendNotFound(res, ErrorCode.SESSION_NOT_FOUND);
           return;
         }
-        res.status(403).json({ error: 'Forbidden', message: 'You do not have access to this session' });
+        sendForbidden(res, ErrorCode.SESSION_ACCESS_DENIED);
         return;
       }
 
       const pendingApprovals = await mockApprovalManager.getPendingApprovals(sessionId);
       res.json({ sessionId, count: pendingApprovals.length, approvals: pendingApprovals });
-    } catch (error) {
-      res.status(500).json({
-        error: 'Failed to get pending approvals',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      });
+    } catch {
+      sendInternalError(res, ErrorCode.DATABASE_ERROR);
     }
   });
 
-  // GET /api/todos/session/:sessionId (auth + ownership)
+  // GET /api/todos/session/:sessionId (auth + ownership) - uses standardized error format
   app.get('/api/todos/session/:sessionId', authenticateMicrosoft, async (req: Request, res: Response) => {
     try {
       const sessionId = req.params.sessionId as string;
       const userId = req.userId;
 
       if (!userId) {
-        res.status(401).json({ error: 'Unauthorized', message: 'User not authenticated' });
+        sendUnauthorized(res);
         return;
       }
 
       const ownershipResult = await validateSessionOwnership(sessionId, userId);
       if (!ownershipResult.isOwner) {
         if (ownershipResult.error === 'SESSION_NOT_FOUND') {
-          res.status(404).json({ error: 'Not Found', message: 'Session not found' });
+          sendNotFound(res, ErrorCode.SESSION_NOT_FOUND);
           return;
         }
-        res.status(403).json({ error: 'Forbidden', message: 'You do not have access to this session' });
+        sendForbidden(res, ErrorCode.SESSION_ACCESS_DENIED);
         return;
       }
 
       const todos = await mockTodoManager.getTodosBySession(sessionId);
       res.json({ sessionId, count: todos.length, todos });
-    } catch (error) {
-      res.status(500).json({
-        error: 'Failed to get todos',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      });
+    } catch {
+      sendInternalError(res, ErrorCode.DATABASE_ERROR);
     }
   });
 
@@ -443,8 +439,9 @@ describe('Server Inline Endpoints', () => {
         .get('/api/mcp/health')
         .expect(503);
 
-      // Assert
-      expect(response.body.status).toBe('unhealthy');
+      // Assert - standardized error format uses error/message/code structure
+      expect(response.body.error).toBe('Service Unavailable');
+      expect(response.body.code).toBe(ErrorCode.MCP_UNAVAILABLE);
     });
   });
 
@@ -506,8 +503,9 @@ describe('Server Inline Endpoints', () => {
         .set('x-test-user-id', 'user-123')
         .expect(500);
 
-      // Assert
-      expect(response.body.error).toBe('Failed to fetch customers');
+      // Assert - standardized error format
+      expect(response.body.error).toBe('Internal Server Error');
+      expect(response.body.code).toBe(ErrorCode.SERVICE_ERROR);
     });
   });
 
@@ -560,8 +558,8 @@ describe('Server Inline Endpoints', () => {
         .send({ sessionId: 'session-123' })
         .expect(400);
 
-      // Assert
-      expect(response.body.error).toBe('Invalid request');
+      // Assert - standardized error format uses 'Bad Request' from HTTP status names
+      expect(response.body.error).toBe('Bad Request');
       expect(response.body.message).toContain('prompt is required');
     });
 
@@ -573,8 +571,8 @@ describe('Server Inline Endpoints', () => {
         .send({ prompt: 123 })
         .expect(400);
 
-      // Assert
-      expect(response.body.error).toBe('Invalid request');
+      // Assert - standardized error format
+      expect(response.body.error).toBe('Bad Request');
     });
 
     it('should return 401 without authentication', async () => {
@@ -599,8 +597,9 @@ describe('Server Inline Endpoints', () => {
         .send({ prompt: 'Hello' })
         .expect(500);
 
-      // Assert
-      expect(response.body.error).toBe('Query failed');
+      // Assert - standardized error format
+      expect(response.body.error).toBe('Internal Server Error');
+      expect(response.body.code).toBe(ErrorCode.MESSAGE_PROCESSING_ERROR);
     });
   });
 
@@ -648,9 +647,9 @@ describe('Server Inline Endpoints', () => {
         .send({ decision: 'maybe' })
         .expect(400);
 
-      // Assert
-      expect(response.body.error).toBe('Invalid request');
-      expect(response.body.message).toContain('approved');
+      // Assert - standardized error format
+      expect(response.body.error).toBe('Bad Request');
+      expect(response.body.code).toBe(ErrorCode.INVALID_DECISION);
     });
 
     it('should return 404 when approval not found', async () => {
@@ -704,9 +703,10 @@ describe('Server Inline Endpoints', () => {
         .send({ decision: 'rejected' })
         .expect(409);
 
-      // Assert
+      // Assert - standardized error format
       expect(response.body.error).toBe('Conflict');
-      expect(response.body.message).toContain('already been approved');
+      expect(response.body.code).toBe(ErrorCode.ALREADY_RESOLVED);
+      expect(response.body.message).toContain('already been processed');
     });
 
     it('should return 410 when expired', async () => {
@@ -1067,8 +1067,8 @@ describe('Server Inline Endpoints', () => {
           .send({ prompt: '' })
           .expect(400);
 
-        // Assert
-        expect(response.body.error).toBe('Invalid request');
+        // Assert - standardized error format
+        expect(response.body.error).toBe('Bad Request');
       });
 
       it('should handle whitespace-only prompt', async () => {
@@ -1156,8 +1156,9 @@ describe('Server Inline Endpoints', () => {
           .send({ reason: 'No decision provided' })
           .expect(400);
 
-        // Assert
-        expect(response.body.error).toBe('Invalid request');
+        // Assert - standardized error format
+        expect(response.body.error).toBe('Bad Request');
+        expect(response.body.code).toBe(ErrorCode.INVALID_DECISION);
       });
 
       it('should handle empty reason field', async () => {
@@ -1215,8 +1216,10 @@ describe('Server Inline Endpoints', () => {
           .send({ decision: 'approved' })
           .expect(404);
 
-        // Assert
-        expect(response.body.message).toContain('Session associated with this approval');
+        // Assert - standardized error format
+        expect(response.body.error).toBe('Not Found');
+        expect(response.body.code).toBe(ErrorCode.SESSION_NOT_FOUND);
+        expect(response.body.message).toContain('Session not found');
       });
     });
 
@@ -1267,8 +1270,9 @@ describe('Server Inline Endpoints', () => {
           .set('x-test-user-id', 'user-123')
           .expect(500);
 
-        // Assert
-        expect(response.body.error).toBe('Failed to get pending approvals');
+        // Assert - standardized error format
+        expect(response.body.error).toBe('Internal Server Error');
+        expect(response.body.code).toBe(ErrorCode.DATABASE_ERROR);
       });
 
       it('should handle null recordset from database', async () => {
@@ -1299,8 +1303,9 @@ describe('Server Inline Endpoints', () => {
           .get('/api/mcp/health')
           .expect(500);
 
-        // Assert
-        expect(response.body.status).toBe('error');
+        // Assert - standardized error format
+        expect(response.body.error).toBe('Internal Server Error');
+        expect(response.body.code).toBe(ErrorCode.SERVICE_ERROR);
       });
     });
 
@@ -1316,8 +1321,9 @@ describe('Server Inline Endpoints', () => {
           .set('x-test-user-id', 'user-123')
           .expect(500);
 
-        // Assert
-        expect(response.body.error).toBe('Failed to get todos');
+        // Assert - standardized error format
+        expect(response.body.error).toBe('Internal Server Error');
+        expect(response.body.code).toBe(ErrorCode.DATABASE_ERROR);
       });
 
       it('should handle todos with null properties', async () => {

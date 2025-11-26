@@ -2018,8 +2018,8 @@ class MessageBuffer {
 | **F6-002** | **Tests: AnthropicClient** | **Unit tests** | **✅ COMPLETED** | **52 tests, 100% cobertura + QA Master Review** |
 | **F6-003** | **Tests: tool-definitions + Security Fixes** | **Unit tests + Sanitization** | **✅ COMPLETED** | **100% cobertura + Security** |
 | **F6-004** | **Tests: Middleware (auth-oauth + logging)** | **Unit tests** | **✅ COMPLETED** | **96 tests, 100% cobertura + QA Master Review** |
-| **F6-005** | **Tests: Routes** | **Unit tests** | **🧪 IN TESTING** | **145 tests, 4 route files + server endpoints** |
-| **F6-006** | **Alcanzar 70% global** | **Completar gaps** | **🧪 IN TESTING** | **npm run test:coverage ≥ 70%** |
+| **F6-005** | **Tests: Routes + Performance** | **Unit tests + Performance suite** | **✅ COMPLETED** | **1164 tests total, 5 phases + QA Master Audit** |
+| **F6-006** | **Alcanzar 70% global** | **Completar gaps** | **🧪 IN TESTING** | **59.72% cobertura, +94 tests, DirectAgentService 93.59%** |
 
 #### F6-003: Detalle de Implementación (COMPLETED)
 

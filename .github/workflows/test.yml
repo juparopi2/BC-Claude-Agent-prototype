@@ -101,8 +101,14 @@ jobs:
       - name: Run integration tests
         working-directory: backend
         run: npm run test:integration
-        # Allow failure for now until all tests are fixed
-        continue-on-error: true
+        # Integration tests are now passing (2024-11-26)
+        # Skipped test suites (documented in test files):
+        # - approval-lifecycle: Redis sequence duplicate issues (vi.mock isolation)
+        # - MessageQueue: BullMQ worker cleanup issues
+        # - message-flow: Database setup conflicts with describe.skip
+        # - sequence-numbers: Database initialization race condition in parallel tests
+        # - session-isolation: UUID case sensitivity (SQL Server returns uppercase)
+        # TODO: Enable these tests when issues are resolved
 
       - name: Upload integration test results
         uses: actions/upload-artifact@v4

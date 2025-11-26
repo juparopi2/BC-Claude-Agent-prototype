@@ -83,7 +83,10 @@
       "Bash(source .env)",
       "Bash(dir:*)",
       "Bash(npm run test:unit:*)",
-      "Bash(git mv:*)"
+      "Bash(git mv:*)",
+      "Bash(docker compose:*)",
+      "Bash(docker --version:*)",
+      "Bash(node:*)"
     ],
     "deny": [],
     "ask": []

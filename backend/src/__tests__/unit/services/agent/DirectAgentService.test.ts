@@ -48,6 +48,18 @@ vi.mock('@/config/database', () => ({
   initDatabase: vi.fn().mockResolvedValue(undefined),
 }));
 
+// ===== MOCK MESSAGE QUEUE (uses Redis) =====
+// Prevents "getaddrinfo ENOTFOUND redis-bcagent-dev" errors by mocking MessageQueue module
+vi.mock('@/services/queue/MessageQueue', () => ({
+  getMessageQueue: vi.fn(() => ({
+    addMessagePersistence: vi.fn().mockResolvedValue({
+      id: 'job-' + Math.random().toString(36).substring(7),
+      data: {},
+    }),
+    getQueueStats: vi.fn().mockResolvedValue({ waiting: 0, active: 0, completed: 0, failed: 0 }),
+  })),
+}));
+
 // ===== MOCK FILE SYSTEM FOR MCP TOOLS =====
 vi.mock('fs');
 vi.mock('path');

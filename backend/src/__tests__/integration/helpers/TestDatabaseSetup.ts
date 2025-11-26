@@ -22,11 +22,68 @@
 
 import { beforeAll, afterAll } from 'vitest';
 import { initDatabase, closeDatabase, executeQuery } from '@/config/database';
+import { initRedis, closeRedis } from '@/config/redis';
+import { REDIS_TEST_CONFIG } from '../setup.integration';
 
 /**
  * Database connection status
  */
 let isDatabaseInitialized = false;
+
+/**
+ * Redis connection status
+ */
+let isRedisInitialized = false;
+
+/**
+ * Initializes Redis for integration tests using local Docker config
+ * Overrides environment variables to use test Redis (localhost:6399)
+ *
+ * IMPORTANT: This function MUST close any existing Redis connection first,
+ * because the production .env may have already initialized a connection to
+ * Azure Redis. We need to reconnect to the local test Redis (Docker).
+ */
+export async function initRedisForTests(): Promise<void> {
+  // FIRST: Close any existing Redis connection
+  // This is critical because the .env file may have already caused a connection
+  // to Azure Redis, but tests need to use local Docker Redis (localhost:6399)
+  try {
+    await closeRedis();
+  } catch {
+    // Ignore errors - connection might not exist yet
+  }
+
+  // Override environment variables to use local Docker Redis
+  process.env.REDIS_HOST = REDIS_TEST_CONFIG.host;
+  process.env.REDIS_PORT = String(REDIS_TEST_CONFIG.port);
+  process.env.REDIS_PASSWORD = ''; // Docker Redis has no password
+
+  // Clear connection string to force use of individual parameters
+  delete process.env.REDIS_CONNECTION_STRING;
+
+  try {
+    await initRedis();
+    isRedisInitialized = true;
+    console.log(`✅ Redis initialized for tests (${REDIS_TEST_CONFIG.host}:${REDIS_TEST_CONFIG.port})`);
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Redis not available for integration tests. ` +
+        `Make sure Redis is running: docker compose -f docker-compose.test.yml up -d\n` +
+        `Original error: ${errorMessage}`
+    );
+  }
+}
+
+/**
+ * Closes Redis connection for tests
+ */
+export async function closeRedisForTests(): Promise<void> {
+  if (isRedisInitialized) {
+    await closeRedis();
+    isRedisInitialized = false;
+  }
+}
 
 /**
  * Ensures database is available for integration tests
@@ -89,15 +146,25 @@ export async function closeDatabaseConnection(): Promise<void> {
 export function setupDatabaseForTests(options: {
   /** Timeout for database initialization in ms (default: 30000) */
   timeout?: number;
+  /** Skip Redis initialization (default: false) */
+  skipRedis?: boolean;
 } = {}) {
   const timeout = options.timeout || 30000;
+  const skipRedis = options.skipRedis || false;
 
   beforeAll(async () => {
+    // Initialize Redis FIRST if not skipped (TestSessionFactory depends on it)
+    if (!skipRedis) {
+      await initRedisForTests();
+    }
     await ensureDatabaseAvailable();
   }, timeout);
 
   afterAll(async () => {
     await closeDatabaseConnection();
+    if (!skipRedis) {
+      await closeRedisForTests();
+    }
   }, timeout);
 
   return {
@@ -105,6 +172,10 @@ export function setupDatabaseForTests(options: {
      * Check if database is ready
      */
     isReady: () => isDatabaseInitialized,
+    /**
+     * Check if Redis is ready
+     */
+    isRedisReady: () => isRedisInitialized,
   };
 }
 
@@ -135,25 +206,22 @@ export function setupFullIntegrationTest(options: {
 } = {}) {
   const timeout = options.timeout || 30000;
 
-  // Import Redis setup dynamically to avoid circular dependencies
-  const { setupIntegrationTest } = require('../setup.integration');
-
-  // Setup Redis
-  const redisSetup = setupIntegrationTest({ keyPrefix: options.keyPrefix });
-
-  // Setup Database
+  // Setup Database and Redis (production client for TestSessionFactory compatibility)
   beforeAll(async () => {
+    // Initialize Redis FIRST (TestSessionFactory depends on it)
+    await initRedisForTests();
+    // Then Database
     await ensureDatabaseAvailable();
   }, timeout);
 
   afterAll(async () => {
     await closeDatabaseConnection();
+    await closeRedisForTests();
   }, timeout);
 
   return {
-    getRedis: redisSetup.getRedis,
-    getRedisConfig: redisSetup.getConfig,
     isDatabaseReady: () => isDatabaseInitialized,
+    isRedisReady: () => isRedisInitialized,
   };
 }
 

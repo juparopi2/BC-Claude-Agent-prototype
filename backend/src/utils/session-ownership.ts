@@ -279,6 +279,10 @@ export function validateUserIdMatch(
  * Compares two strings in constant time to prevent timing attacks.
  * Uses crypto.timingSafeEqual under the hood with proper buffer handling.
  *
+ * NOTE: UUIDs are compared case-insensitively because SQL Server
+ * returns UUIDs in uppercase while JavaScript generates lowercase.
+ * Both are normalized to lowercase before comparison.
+ *
  * @param a - First string to compare
  * @param b - Second string to compare
  * @returns boolean - true if strings are equal
@@ -286,10 +290,15 @@ export function validateUserIdMatch(
  * @internal
  */
 export function timingSafeCompare(a: string, b: string): boolean {
+  // Normalize to lowercase for case-insensitive UUID comparison
+  // SQL Server returns UUIDs in uppercase, JavaScript generates lowercase
+  const normalizedA = a.toLowerCase();
+  const normalizedB = b.toLowerCase();
+
   // If lengths differ, we still need to do a constant-time comparison
   // to avoid leaking length information
-  const aBuffer = Buffer.from(a, 'utf8');
-  const bBuffer = Buffer.from(b, 'utf8');
+  const aBuffer = Buffer.from(normalizedA, 'utf8');
+  const bBuffer = Buffer.from(normalizedB, 'utf8');
 
   // For different lengths, pad the shorter one to match
   // This ensures constant-time comparison regardless of length

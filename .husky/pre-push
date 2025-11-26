@@ -24,8 +24,50 @@ fi
 # Backend integration tests
 echo ""
 echo "🔗 Running backend integration tests..."
+
+# Check if Docker is available
+if command -v docker >/dev/null 2>&1; then
+  # Check if Redis test container is running
+  if ! docker ps --format '{{.Names}}' | grep -q 'bc-agent-redis-test'; then
+    echo "🐳 Starting Redis test container..."
+    docker-compose -f docker-compose.test.yml up -d
+
+    # Wait for Redis to be ready
+    echo "⏳ Waiting for Redis to be ready..."
+    timeout=30
+    while [ $timeout -gt 0 ]; do
+      if docker exec bc-agent-redis-test redis-cli ping >/dev/null 2>&1; then
+        echo "✅ Redis is ready"
+        break
+      fi
+      sleep 1
+      timeout=$((timeout - 1))
+    done
+
+    if [ $timeout -eq 0 ]; then
+      echo "⚠️  Redis container failed to start. Integration tests may fail."
+    fi
+
+    STARTED_REDIS=true
+  else
+    echo "✅ Redis test container already running"
+    STARTED_REDIS=false
+  fi
+else
+  echo "⚠️  Docker not available. Using existing Redis (if configured)."
+  STARTED_REDIS=false
+fi
+
 npm run test:integration
-if [ $? -ne 0 ]; then
+INTEGRATION_RESULT=$?
+
+# Clean up Redis container if we started it
+if [ "$STARTED_REDIS" = true ]; then
+  echo "🧹 Stopping Redis test container..."
+  docker-compose -f docker-compose.test.yml down >/dev/null 2>&1
+fi
+
+if [ $INTEGRATION_RESULT -ne 0 ]; then
   echo "❌ Backend integration tests failed. Push aborted."
   exit 1
 fi

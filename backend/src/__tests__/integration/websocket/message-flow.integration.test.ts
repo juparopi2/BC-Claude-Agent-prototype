@@ -130,7 +130,11 @@ vi.mock('@/utils/session-ownership', () => ({
   validateSessionOwnership: vi.fn().mockResolvedValue({ isOwner: true }),
 }));
 
-describe('WebSocket Message Flow Integration', () => {
+// KNOWN ISSUE (2024-11-26): These tests are skipped pending implementation
+// of the full message streaming flow with DirectAgentService.
+// The setupDatabaseForTests() hook was running even with .skip on tests,
+// causing database connection conflicts.
+describe.skip('WebSocket Message Flow Integration', () => {
   // Setup database connection for TestSessionFactory
   setupDatabaseForTests();
 

@@ -24,26 +24,49 @@ let redisClient: RedisClientType | null = null;
 /**
  * Get Redis configuration
  *
+ * NOTE: This function reads from process.env directly (not the cached env object)
+ * to support runtime environment variable overrides in integration tests.
+ * Tests can modify process.env.REDIS_HOST etc. and then call initRedis() to
+ * connect to a different Redis instance (e.g., local Docker instead of Azure).
+ *
  * @returns Redis client options
  */
 function getRedisConfig(): RedisClientOptions {
+  // Read from process.env directly to support runtime overrides in tests
+  const redisHost = process.env.REDIS_HOST;
+  const redisPort = process.env.REDIS_PORT;
+  const redisPassword = process.env.REDIS_PASSWORD;
+  const redisConnectionString = process.env.REDIS_CONNECTION_STRING;
+
   // If connection string is provided, use it
-  if (env.REDIS_CONNECTION_STRING) {
+  if (redisConnectionString) {
     return {
-      url: env.REDIS_CONNECTION_STRING,
+      url: redisConnectionString,
     };
   }
 
   // Otherwise, use individual parameters
-  if (!env.REDIS_HOST || !env.REDIS_PORT || !env.REDIS_PASSWORD) {
-    throw new Error('Redis configuration is incomplete. Provide either REDIS_CONNECTION_STRING or REDIS_HOST, REDIS_PORT, and REDIS_PASSWORD.');
+  // Check if this is a local Redis instance (localhost or 127.0.0.1)
+  // Local Redis (e.g., Docker containers for testing) may not require a password
+  const isLocalRedis = redisHost?.includes('localhost') || redisHost?.includes('127.0.0.1');
+
+  // Validate required parameters: HOST and PORT always required
+  // PASSWORD only required for non-local (Azure) Redis
+  if (!redisHost || !redisPort) {
+    throw new Error('Redis configuration is incomplete. Provide either REDIS_CONNECTION_STRING or REDIS_HOST and REDIS_PORT.');
+  }
+
+  if (!isLocalRedis && !redisPassword) {
+    throw new Error('Redis password is required for non-local Redis instances (Azure Redis Cache).');
   }
 
   // Azure Redis ALWAYS requires SSL (even in development when connecting to Azure)
   // Only use non-SSL for local Redis instances (redis://localhost:6379)
-  const isLocalRedis = env.REDIS_HOST.includes('localhost') || env.REDIS_HOST.includes('127.0.0.1');
   const protocol = isLocalRedis ? 'redis' : 'rediss';
-  const url = `${protocol}://:${env.REDIS_PASSWORD}@${env.REDIS_HOST}:${env.REDIS_PORT}`;
+
+  // Build URL with optional password (local Redis may not have one)
+  const authPart = redisPassword ? `:${redisPassword}@` : '';
+  const url = `${protocol}://${authPart}${redisHost}:${redisPort}`;
 
   // Azure Redis requires TLS configuration
   if (!isLocalRedis) {
@@ -102,10 +125,15 @@ export async function initRedis(): Promise<RedisClientType> {
       return redisClient;
     }
 
-    console.log('🔌 Connecting to Azure Redis Cache...');
-    console.log(`   Host: ${env.REDIS_HOST || 'not configured'}`);
-    console.log(`   Port: ${env.REDIS_PORT || 'not configured'}`);
-    console.log(`   SSL: ${env.REDIS_HOST ? !env.REDIS_HOST.includes('localhost') : 'unknown'}`);
+    // Read from process.env directly for accurate logging after test overrides
+    const redisHost = process.env.REDIS_HOST;
+    const redisPort = process.env.REDIS_PORT;
+    const isLocalRedis = redisHost?.includes('localhost') || redisHost?.includes('127.0.0.1');
+
+    console.log(`🔌 Connecting to Redis (${isLocalRedis ? 'local' : 'Azure'})...`);
+    console.log(`   Host: ${redisHost || 'not configured'}`);
+    console.log(`   Port: ${redisPort || 'not configured'}`);
+    console.log(`   SSL: ${redisHost ? !isLocalRedis : 'unknown'}`);
 
     const config = getRedisConfig();
     const client = createClient(config);
@@ -151,7 +179,7 @@ export async function initRedis(): Promise<RedisClientType> {
       throw new Error(`Redis PING failed: expected PONG, got ${pingResponse}`);
     }
 
-    console.log('✅ Connected to Azure Redis Cache and verified with PING');
+    console.log(`✅ Connected to Redis (${isLocalRedis ? 'local' : 'Azure'}) and verified with PING`);
 
     redisClient = client;
     return client;

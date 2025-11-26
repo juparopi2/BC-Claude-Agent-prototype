@@ -476,7 +476,8 @@ export class ApprovalManager {
       }
 
       // Case 3: User doesn't own the session
-      if (row.session_user_id !== userId) {
+      // Use case-insensitive comparison: SQL Server returns uppercase UUIDs, JavaScript generates lowercase
+      if (row.session_user_id?.toLowerCase() !== userId.toLowerCase()) {
         await transaction.rollback();
         logger.warn(
           {
@@ -784,7 +785,8 @@ export class ApprovalManager {
       }
 
       // Check if user owns the session
-      const isOwner = row.session_user_id === userId;
+      // Use case-insensitive comparison: SQL Server returns uppercase UUIDs, JavaScript generates lowercase
+      const isOwner = row.session_user_id?.toLowerCase() === userId.toLowerCase();
 
       if (!isOwner) {
         logger.warn(

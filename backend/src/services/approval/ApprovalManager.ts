@@ -965,20 +965,26 @@ export class ApprovalManager {
   /**
    * Get action type for a tool
    *
+   * Action types must match the database constraint chk_approvals_action_type:
+   * - 'create': For tools that create new records
+   * - 'update': For tools that modify existing records
+   * - 'delete': For tools that remove records
+   * - 'custom': For other operations (query, etc.)
+   *
    * @param toolName - Name of the tool
-   * @returns Action type
+   * @returns Action type matching database constraint values
    */
-  private getActionType(toolName: string): string {
+  private getActionType(toolName: string): 'create' | 'update' | 'delete' | 'custom' {
     if (toolName.includes('create')) {
-      return 'bc_create';
+      return 'create';
     }
     if (toolName.includes('update')) {
-      return 'bc_update';
+      return 'update';
     }
     if (toolName.includes('delete')) {
-      return 'bc_delete';
+      return 'delete';
     }
-    return 'bc_query';
+    return 'custom';
   }
 
   /**

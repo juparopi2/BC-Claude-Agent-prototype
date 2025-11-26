@@ -66,8 +66,8 @@ export default defineConfig({
       'node_modules',
       'dist',
       'mcp-server',
-      // Exclude integration tests from default test run
-      // Use npm run test:integration to run these
+      // Exclude integration tests - they require real Redis/SQL connections
+      // and conflict with MSW mocking. Run separately with: npm run test:integration
       'src/**/*.integration.test.ts',
       'src/**/*.integration.spec.ts',
     ],

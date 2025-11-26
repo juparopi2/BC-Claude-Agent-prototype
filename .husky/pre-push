@@ -12,12 +12,21 @@ if [ $? -ne 0 ]; then
   exit 1
 fi
 
-# Backend tests
+# Backend unit tests
 echo ""
-echo "🧪 Running backend tests..."
+echo "🧪 Running backend unit tests..."
 npm test
 if [ $? -ne 0 ]; then
-  echo "❌ Backend tests failed. Push aborted."
+  echo "❌ Backend unit tests failed. Push aborted."
+  exit 1
+fi
+
+# Backend integration tests
+echo ""
+echo "🔗 Running backend integration tests..."
+npm run test:integration
+if [ $? -ne 0 ]; then
+  echo "❌ Backend integration tests failed. Push aborted."
   exit 1
 fi
 

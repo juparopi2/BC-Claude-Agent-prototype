@@ -78,7 +78,9 @@
       "Bash(del nul 2)",
       "Bash(npx vitest run)",
       "Bash(npx vitest:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(npm run test:integration:*)",
+      "Bash(source .env)"
     ],
     "deny": [],
     "ask": []

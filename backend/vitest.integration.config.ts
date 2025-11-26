@@ -19,8 +19,10 @@ export default defineConfig({
     setupFiles: './src/__tests__/setup.integration.ts',
     testTimeout: 30000, // Longer timeout for real DB operations
     hookTimeout: 30000,
-    // Only run integration tests (files with .integration.test.ts)
-    include: ['src/**/*.integration.test.ts'],
+    // Only run integration tests from the integration directory
+    // Note: Some unit tests have .integration.test.ts naming but use mocks
+    // Those should stay in unit/ and run with the normal vitest config
+    include: ['src/__tests__/integration/**/*.integration.test.ts'],
     exclude: ['node_modules', 'dist', 'mcp-server'],
     // Sequence tests to avoid conflicts
     sequence: {
@@ -37,6 +39,12 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      '@config': path.resolve(__dirname, './src/config'),
+      '@services': path.resolve(__dirname, './src/services'),
+      '@models': path.resolve(__dirname, './src/models'),
+      '@middleware': path.resolve(__dirname, './src/middleware'),
+      '@types': path.resolve(__dirname, './src/types'),
+      '@routes': path.resolve(__dirname, './src/routes'),
     },
   },
 });

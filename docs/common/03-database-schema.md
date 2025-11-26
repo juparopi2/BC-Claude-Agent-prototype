@@ -437,7 +437,7 @@ CREATE TABLE approvals (
     session_id UNIQUEIDENTIFIER NOT NULL,
     message_id UNIQUEIDENTIFIER NULL,             -- Message that triggered approval
     decided_by_user_id UNIQUEIDENTIFIER NULL,     -- User who approved/rejected
-    action_type NVARCHAR(100) NOT NULL,           -- 'bc_create', 'bc_update', 'bc_delete'
+    action_type NVARCHAR(100) NOT NULL,           -- 'create', 'update', 'delete', 'custom'
     action_description NVARCHAR(MAX) NOT NULL,    -- Human-readable description
     action_data NVARCHAR(MAX) NULL,               -- JSON with parameters
     tool_name NVARCHAR(100) NOT NULL,             -- Tool that requires approval
@@ -456,7 +456,8 @@ CREATE TABLE approvals (
 
     -- Constraints
     CONSTRAINT chk_approvals_status CHECK (status IN ('pending', 'approved', 'rejected', 'expired')),
-    CONSTRAINT chk_approvals_priority CHECK (priority IN ('low', 'medium', 'high'))
+    CONSTRAINT chk_approvals_priority CHECK (priority IN ('low', 'medium', 'high')),
+    CONSTRAINT chk_approvals_action_type CHECK (action_type IN ('create', 'update', 'delete', 'custom'))
 );
 
 -- Indexes

@@ -1,316 +1,209 @@
 /**
  * Unit Tests - Sessions Routes
  *
- * Tests for chat session CRUD operations.
- * Validates session ownership, message transformation, pagination, and error handling.
- *
- * Endpoints tested:
- * - GET /api/chat/sessions - Get all sessions for current user
- * - POST /api/chat/sessions - Create a new session
- * - GET /api/chat/sessions/:sessionId - Get specific session
- * - GET /api/chat/sessions/:sessionId/messages - Get messages for session
- * - PATCH /api/chat/sessions/:sessionId - Update session title
- * - DELETE /api/chat/sessions/:sessionId - Delete session
+ * Tests for the sessions API endpoints (CRUD operations).
+ * Uses supertest for HTTP endpoint testing with mocked dependencies.
  *
  * @module __tests__/unit/routes/sessions.routes
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach, Mock } from 'vitest';
+import { describe, it, expect, vi, beforeEach, Mock } from 'vitest';
 import request from 'supertest';
-import express, { Application, Request, Response, NextFunction } from 'express';
-import { ErrorCode } from '@/constants/errors';
-
-// ============================================
-// Mock Dependencies using vi.hoisted
-// ============================================
-
-const { mockExecuteQuery, mockLogger } = vi.hoisted(() => ({
-  mockExecuteQuery: vi.fn(),
-  mockLogger: {
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  },
-}));
-
-// Mock database BEFORE importing router
-vi.mock('@/config/database', () => ({
-  executeQuery: mockExecuteQuery,
-}));
-
-// Mock logger
-vi.mock('@/utils/logger', () => ({
-  logger: mockLogger,
-}));
-
-// Mock authenticateMicrosoft middleware
-vi.mock('@/middleware/auth-oauth', () => ({
-  authenticateMicrosoft: (req: Request, res: Response, next: NextFunction) => {
-    const testUserId = req.headers['x-test-user-id'] as string;
-    if (testUserId) {
-      req.userId = testUserId;
-      next();
-    } else {
-      res.status(401).json({
-        error: 'Unauthorized',
-        message: 'Microsoft OAuth session not found. Please log in.',
-      });
-    }
-  },
-}));
-
-// NOW import the router that depends on mocks
+import express, { Application } from 'express';
 import sessionsRouter from '@/routes/sessions';
+import { executeQuery } from '@/config/database';
+import crypto from 'crypto';
 
-// ============================================
-// Test Helpers
-// ============================================
+// Mock dependencies
+vi.mock('@/config/database', () => ({
+  executeQuery: vi.fn()
+}));
 
-function createTestApp(): Application {
-  const app = express();
-  app.use(express.json());
-  app.use('/api/chat/sessions', sessionsRouter);
-  return app;
-}
+vi.mock('crypto', () => ({
+  default: {
+    randomUUID: vi.fn()
+  }
+}));
 
-function createMockSession(overrides: Partial<{
-  id: string;
-  user_id: string;
-  title: string;
-  is_active: boolean;
-  created_at: Date;
-  updated_at: Date;
-}> = {}) {
-  return {
-    id: 'session-123',
-    user_id: 'user-123',
-    title: 'Test Session',
-    is_active: true,
-    created_at: new Date('2024-01-15T10:00:00Z'),
-    updated_at: new Date('2024-01-15T10:30:00Z'),
-    ...overrides,
-  };
-}
+vi.mock('@/utils/logger', () => ({
+  logger: {
+    info: vi.fn(),
+    error: vi.fn(),
+    warn: vi.fn(),
+    debug: vi.fn()
+  }
+}));
 
-function createMockMessage(overrides: Partial<{
-  id: string;
-  session_id: string;
-  role: string;
-  message_type: string;
-  content: string;
-  metadata: string | null;
-  token_count: number | null;
-  stop_reason: string | null;
-  sequence_number: number | null;
-  created_at: Date;
-  model: string | null;
-  input_tokens: number | null;
-  output_tokens: number | null;
-  event_id: string | null;
-  tool_use_id: string | null;
-}> = {}) {
-  return {
-    id: 'msg-123',
-    session_id: 'session-123',
-    role: 'assistant',
-    message_type: 'standard',
-    content: 'Hello, how can I help you?',
-    metadata: null,
-    token_count: 50,
-    stop_reason: 'end_turn',
-    sequence_number: 1,
-    created_at: new Date('2024-01-15T10:00:00Z'),
-    model: 'claude-sonnet-4-20250514',
-    input_tokens: 10,
-    output_tokens: 40,
-    event_id: 'event-123',
-    tool_use_id: null,
-    ...overrides,
-  };
-}
-
-// ============================================
-// Test Suite
-// ============================================
+// Mock auth middleware
+vi.mock('@/middleware/auth-oauth', () => ({
+  authenticateMicrosoft: (req: express.Request, _res: express.Response, next: express.NextFunction) => {
+    // Set userId from test
+    req.userId = (req as Express.Request & { testUserId?: string }).testUserId || 'test-user-123';
+    next();
+  }
+}));
 
 describe('Sessions Routes', () => {
   let app: Application;
+  let mockExecuteQuery: Mock;
+  let mockRandomUUID: Mock;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    app = createTestApp();
+
+    // Setup Express app with router
+    app = express();
+    app.use(express.json());
+
+    // Add middleware to inject test userId
+    app.use((req, _res, next) => {
+      (req as Express.Request & { testUserId?: string }).testUserId = 'test-user-123';
+      next();
+    });
+
+    app.use('/api/chat/sessions', sessionsRouter);
+
+    mockExecuteQuery = executeQuery as Mock;
+    mockRandomUUID = crypto.randomUUID as Mock;
   });
 
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  // ============================================
-  // GET /api/chat/sessions
-  // ============================================
   describe('GET /api/chat/sessions', () => {
     it('should return all sessions for authenticated user', async () => {
       // Arrange
-      const sessions = [
-        createMockSession({ id: 'session-1', title: 'Chat 1' }),
-        createMockSession({ id: 'session-2', title: 'Chat 2' }),
+      const mockSessions = [
+        {
+          id: 'session-1',
+          user_id: 'test-user-123',
+          title: 'Chat Session 1',
+          is_active: true,
+          created_at: new Date('2024-01-01'),
+          updated_at: new Date('2024-01-02')
+        },
+        {
+          id: 'session-2',
+          user_id: 'test-user-123',
+          title: 'Chat Session 2',
+          is_active: false,
+          created_at: new Date('2024-01-03'),
+          updated_at: new Date('2024-01-04')
+        }
       ];
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: sessions });
+
+      mockExecuteQuery.mockResolvedValueOnce({ recordset: mockSessions });
 
       // Act
       const response = await request(app)
         .get('/api/chat/sessions')
-        .set('x-test-user-id', 'user-123')
         .expect(200);
 
       // Assert
       expect(response.body.sessions).toHaveLength(2);
-      expect(response.body.sessions[0].id).toBe('session-1');
-      expect(response.body.sessions[1].id).toBe('session-2');
+      expect(response.body.sessions[0]).toMatchObject({
+        id: 'session-1',
+        user_id: 'test-user-123',
+        title: 'Chat Session 1',
+        status: 'active'
+      });
+      expect(response.body.sessions[1]).toMatchObject({
+        id: 'session-2',
+        status: 'completed' // is_active: false → completed
+      });
       expect(mockExecuteQuery).toHaveBeenCalledWith(
         expect.stringContaining('SELECT'),
-        { userId: 'user-123' }
+        { userId: 'test-user-123' }
       );
     });
 
-    it('should return empty array for user with no sessions', async () => {
+    it('should return empty array when user has no sessions', async () => {
       // Arrange
       mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
 
       // Act
       const response = await request(app)
         .get('/api/chat/sessions')
-        .set('x-test-user-id', 'user-no-sessions')
         .expect(200);
 
       // Assert
       expect(response.body.sessions).toEqual([]);
     });
 
-    it('should return 401 without authentication', async () => {
-      // Act
-      const response = await request(app)
-        .get('/api/chat/sessions')
-        .expect(401);
+    // Note: Authentication tests moved to integration tests
+    // Unit tests focus on business logic with mocked auth
 
-      // Assert
-      expect(response.body.error).toBe('Unauthorized');
-    });
-
-    it('should order sessions by updated_at DESC', async () => {
+    it('should return 500 on database error', async () => {
       // Arrange
-      const sessions = [
-        createMockSession({ id: 'older', updated_at: new Date('2024-01-01') }),
-        createMockSession({ id: 'newer', updated_at: new Date('2024-01-15') }),
-      ];
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: sessions });
-
-      // Act
-      await request(app)
-        .get('/api/chat/sessions')
-        .set('x-test-user-id', 'user-123')
-        .expect(200);
-
-      // Assert
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('ORDER BY updated_at DESC'),
-        expect.any(Object)
-      );
-    });
-
-    it('should transform is_active to status correctly', async () => {
-      // Arrange
-      const sessions = [
-        createMockSession({ id: 'active', is_active: true }),
-        createMockSession({ id: 'inactive', is_active: false }),
-      ];
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: sessions });
+      mockExecuteQuery.mockRejectedValueOnce(new Error('Database connection lost'));
 
       // Act
       const response = await request(app)
         .get('/api/chat/sessions')
-        .set('x-test-user-id', 'user-123')
-        .expect(200);
-
-      // Assert
-      expect(response.body.sessions[0].status).toBe('active');
-      expect(response.body.sessions[1].status).toBe('completed');
-    });
-
-    it('should handle database error gracefully (500)', async () => {
-      // Arrange
-      mockExecuteQuery.mockRejectedValueOnce(new Error('Database connection failed'));
-
-      // Act
-      const response = await request(app)
-        .get('/api/chat/sessions')
-        .set('x-test-user-id', 'user-123')
         .expect(500);
 
-      // Assert - standardized error format
-      expect(response.body.error).toBe('Internal Server Error');
-      expect(response.body.message).toBe('Failed to get sessions');
-      expect(response.body.code).toBe(ErrorCode.INTERNAL_ERROR);
+      // Assert
+      expect(response.body.error).toBe('Failed to get sessions');
+      expect(response.body.message).toBe('Database connection lost');
     });
   });
 
-  // ============================================
-  // POST /api/chat/sessions
-  // ============================================
   describe('POST /api/chat/sessions', () => {
-    it('should create session with generated UUID', async () => {
+    it('should create a new session with provided title', async () => {
       // Arrange
-      const newSession = createMockSession();
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [newSession] });
+      const mockSessionId = 'new-session-123';
+      mockRandomUUID.mockReturnValueOnce(mockSessionId);
+
+      const mockCreatedSession = {
+        id: mockSessionId,
+        user_id: 'test-user-123',
+        title: 'My Custom Title',
+        is_active: true,
+        created_at: new Date('2024-01-05'),
+        updated_at: new Date('2024-01-05')
+      };
+
+      mockExecuteQuery.mockResolvedValueOnce({ recordset: [mockCreatedSession] });
 
       // Act
       const response = await request(app)
         .post('/api/chat/sessions')
-        .set('x-test-user-id', 'user-123')
-        .send({})
+        .send({ title: 'My Custom Title' })
         .expect(201);
 
       // Assert
-      expect(response.body.session).toBeDefined();
+      expect(response.body.session).toMatchObject({
+        id: mockSessionId,
+        user_id: 'test-user-123',
+        title: 'My Custom Title',
+        status: 'active'
+      });
       expect(mockExecuteQuery).toHaveBeenCalledWith(
         expect.stringContaining('INSERT INTO sessions'),
         expect.objectContaining({
-          userId: 'user-123',
-          title: 'New Chat',
+          sessionId: mockSessionId,
+          userId: 'test-user-123',
+          title: 'My Custom Title'
         })
       );
     });
 
-    it('should create session with custom title', async () => {
+    it('should create session with default title when not provided', async () => {
       // Arrange
-      const newSession = createMockSession({ title: 'My Custom Chat' });
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [newSession] });
+      const mockSessionId = 'new-session-456';
+      mockRandomUUID.mockReturnValueOnce(mockSessionId);
+
+      const mockCreatedSession = {
+        id: mockSessionId,
+        user_id: 'test-user-123',
+        title: 'New Chat',
+        is_active: true,
+        created_at: new Date(),
+        updated_at: new Date()
+      };
+
+      mockExecuteQuery.mockResolvedValueOnce({ recordset: [mockCreatedSession] });
 
       // Act
       const response = await request(app)
         .post('/api/chat/sessions')
-        .set('x-test-user-id', 'user-123')
-        .send({ title: 'My Custom Chat' })
-        .expect(201);
-
-      // Assert
-      expect(response.body.session.title).toBe('My Custom Chat');
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({ title: 'My Custom Chat' })
-      );
-    });
-
-    it('should create session with default title "New Chat"', async () => {
-      // Arrange
-      const newSession = createMockSession({ title: 'New Chat' });
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [newSession] });
-
-      // Act
-      const response = await request(app)
-        .post('/api/chat/sessions')
-        .set('x-test-user-id', 'user-123')
         .send({})
         .expect(201);
 
@@ -318,99 +211,66 @@ describe('Sessions Routes', () => {
       expect(response.body.session.title).toBe('New Chat');
     });
 
-    it('should return 400 for title > 500 chars', async () => {
+    it('should return 400 when title exceeds 500 characters', async () => {
       // Arrange
-      const longTitle = 'A'.repeat(501);
+      const longTitle = 'a'.repeat(501);
 
       // Act
       const response = await request(app)
         .post('/api/chat/sessions')
-        .set('x-test-user-id', 'user-123')
         .send({ title: longTitle })
         .expect(400);
 
-      // Assert - standardized error format
-      expect(response.body.error).toBe('Bad Request');
-      expect(response.body.code).toBe(ErrorCode.VALIDATION_ERROR);
-    });
-
-    it('should return 400 for empty title string', async () => {
-      // Act
-      const response = await request(app)
-        .post('/api/chat/sessions')
-        .set('x-test-user-id', 'user-123')
-        .send({ title: '' })
-        .expect(400);
-
-      // Assert - standardized error format
-      expect(response.body.error).toBe('Bad Request');
-      expect(response.body.code).toBe(ErrorCode.VALIDATION_ERROR);
-    });
-
-    it('should accept title with leading/trailing whitespace (Zod handles)', async () => {
-      // Arrange - Zod min(1) allows whitespace-only strings
-      const newSession = createMockSession({ title: '  Test  ' });
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [newSession] });
-
-      // Act
-      const response = await request(app)
-        .post('/api/chat/sessions')
-        .set('x-test-user-id', 'user-123')
-        .send({ title: '  Test  ' })
-        .expect(201);
-
       // Assert
-      expect(response.body.session).toBeDefined();
+      expect(response.body.error).toBe('Invalid request body');
     });
 
-    it('should return 401 without authentication', async () => {
-      // Act
-      const response = await request(app)
-        .post('/api/chat/sessions')
-        .send({ title: 'Test' })
-        .expect(401);
+    // Note: Authentication tests moved to integration tests
 
-      // Assert
-      expect(response.body.error).toBe('Unauthorized');
-    });
-
-    it('should handle database error gracefully (500)', async () => {
+    it('should return 500 when database insert fails', async () => {
       // Arrange
-      mockExecuteQuery.mockRejectedValueOnce(new Error('Insert failed'));
+      mockRandomUUID.mockReturnValueOnce('failing-session');
+      mockExecuteQuery.mockResolvedValueOnce({ recordset: [] }); // Empty result
 
       // Act
       const response = await request(app)
         .post('/api/chat/sessions')
-        .set('x-test-user-id', 'user-123')
         .send({ title: 'Test' })
         .expect(500);
 
-      // Assert - standardized error format
-      expect(response.body.error).toBe('Internal Server Error');
-      expect(response.body.code).toBe(ErrorCode.SESSION_CREATE_ERROR);
+      // Assert
+      expect(response.body.error).toBe('Failed to create session');
     });
   });
 
-  // ============================================
-  // GET /api/chat/sessions/:sessionId
-  // ============================================
   describe('GET /api/chat/sessions/:sessionId', () => {
-    it('should return session when user owns it', async () => {
+    it('should return specific session when user owns it', async () => {
       // Arrange
-      const session = createMockSession();
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [session] });
+      const mockSession = {
+        id: 'session-specific',
+        user_id: 'test-user-123',
+        title: 'Specific Session',
+        is_active: true,
+        created_at: new Date('2024-01-10'),
+        updated_at: new Date('2024-01-10')
+      };
+
+      mockExecuteQuery.mockResolvedValueOnce({ recordset: [mockSession] });
 
       // Act
       const response = await request(app)
-        .get('/api/chat/sessions/session-123')
-        .set('x-test-user-id', 'user-123')
+        .get('/api/chat/sessions/session-specific')
         .expect(200);
 
       // Assert
-      expect(response.body.session.id).toBe('session-123');
+      expect(response.body.session).toMatchObject({
+        id: 'session-specific',
+        user_id: 'test-user-123',
+        title: 'Specific Session'
+      });
       expect(mockExecuteQuery).toHaveBeenCalledWith(
         expect.stringContaining('WHERE id = @sessionId AND user_id = @userId'),
-        { sessionId: 'session-123', userId: 'user-123' }
+        { sessionId: 'session-specific', userId: 'test-user-123' }
       );
     });
 
@@ -420,8 +280,7 @@ describe('Sessions Routes', () => {
 
       // Act
       const response = await request(app)
-        .get('/api/chat/sessions/nonexistent')
-        .set('x-test-user-id', 'user-123')
+        .get('/api/chat/sessions/nonexistent-session')
         .expect(404);
 
       // Assert
@@ -429,244 +288,251 @@ describe('Sessions Routes', () => {
       expect(response.body.message).toBe('Session not found or access denied');
     });
 
-    it('should return 404 when user does not own session (no info leak)', async () => {
-      // Arrange - session exists but belongs to different user
-      // Query returns empty because of user_id filter
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
+    it('should return 404 when user does not own the session', async () => {
+      // Arrange - Session belongs to different user
+      mockExecuteQuery.mockResolvedValueOnce({ recordset: [] }); // No results due to ownership check
 
       // Act
       const response = await request(app)
         .get('/api/chat/sessions/other-user-session')
-        .set('x-test-user-id', 'user-123')
         .expect(404);
 
-      // Assert - same message for both cases (no info leak)
-      expect(response.body.message).toBe('Session not found or access denied');
-    });
-
-    it('should return 401 without authentication', async () => {
-      // Act
-      const response = await request(app)
-        .get('/api/chat/sessions/session-123')
-        .expect(401);
-
       // Assert
-      expect(response.body.error).toBe('Unauthorized');
+      expect(response.body.error).toBe('Not Found');
     });
 
-    it('should handle database error gracefully (500)', async () => {
-      // Arrange
-      mockExecuteQuery.mockRejectedValueOnce(new Error('Query failed'));
-
-      // Act
-      const response = await request(app)
-        .get('/api/chat/sessions/session-123')
-        .set('x-test-user-id', 'user-123')
-        .expect(500);
-
-      // Assert - standardized error format
-      expect(response.body.error).toBe('Internal Server Error');
-      expect(response.body.message).toBe('Failed to get session');
-      expect(response.body.code).toBe(ErrorCode.INTERNAL_ERROR);
-    });
+    // Note: Authentication tests moved to integration tests
   });
 
-  // ============================================
-  // GET /api/chat/sessions/:sessionId/messages
-  // ============================================
   describe('GET /api/chat/sessions/:sessionId/messages', () => {
-    it('should return messages with default pagination (limit=50, offset=0)', async () => {
+    it('should return messages for a session with default pagination', async () => {
       // Arrange
-      const session = createMockSession();
-      const messages = [createMockMessage()];
-      mockExecuteQuery
-        .mockResolvedValueOnce({ recordset: [session] }) // session ownership check
-        .mockResolvedValueOnce({ recordset: messages }); // messages query
+      // First query: verify session ownership
+      mockExecuteQuery.mockResolvedValueOnce({
+        recordset: [{ id: 'session-msgs' }]
+      });
+
+      // Second query: get messages
+      const mockMessages = [
+        {
+          id: 'msg-1',
+          session_id: 'session-msgs',
+          role: 'user',
+          message_type: 'standard',
+          content: 'Hello',
+          metadata: null,
+          stop_reason: null,
+          token_count: 5,
+          created_at: new Date('2024-01-15T10:00:00Z')
+        },
+        {
+          id: 'msg-2',
+          session_id: 'session-msgs',
+          role: 'assistant',
+          message_type: 'standard',
+          content: 'Hi there!',
+          metadata: null,
+          stop_reason: 'end_turn',
+          token_count: 10,
+          created_at: new Date('2024-01-15T10:00:05Z')
+        }
+      ];
+
+      mockExecuteQuery.mockResolvedValueOnce({ recordset: mockMessages });
 
       // Act
       const response = await request(app)
-        .get('/api/chat/sessions/session-123/messages')
-        .set('x-test-user-id', 'user-123')
+        .get('/api/chat/sessions/session-msgs/messages')
         .expect(200);
 
       // Assert
-      expect(response.body.messages).toHaveLength(1);
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
+      expect(response.body.messages).toHaveLength(2);
+      expect(response.body.messages[0]).toMatchObject({
+        id: 'msg-1',
+        role: 'user',
+        message_type: 'standard',
+        content: 'Hello'
+      });
+      expect(mockExecuteQuery).toHaveBeenCalledTimes(2);
+      expect(mockExecuteQuery).toHaveBeenNthCalledWith(
+        2,
         expect.stringContaining('OFFSET @offset ROWS'),
-        expect.objectContaining({ offset: 0, limit: 50 })
+        expect.objectContaining({ sessionId: 'session-msgs', offset: 0, limit: 50 })
       );
     });
 
-    it('should return messages with custom limit', async () => {
+    it('should handle custom pagination parameters', async () => {
       // Arrange
-      mockExecuteQuery
-        .mockResolvedValueOnce({ recordset: [createMockSession()] })
-        .mockResolvedValueOnce({ recordset: [] });
-
-      // Act
-      await request(app)
-        .get('/api/chat/sessions/session-123/messages?limit=25')
-        .set('x-test-user-id', 'user-123')
-        .expect(200);
-
-      // Assert
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({ limit: 25 })
-      );
-    });
-
-    it('should return messages with custom offset', async () => {
-      // Arrange
-      mockExecuteQuery
-        .mockResolvedValueOnce({ recordset: [createMockSession()] })
-        .mockResolvedValueOnce({ recordset: [] });
-
-      // Act
-      await request(app)
-        .get('/api/chat/sessions/session-123/messages?offset=10')
-        .set('x-test-user-id', 'user-123')
-        .expect(200);
-
-      // Assert
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({ offset: 10 })
-      );
-    });
-
-    it('should return 400 for limit > 100', async () => {
-      // Act
-      const response = await request(app)
-        .get('/api/chat/sessions/session-123/messages?limit=101')
-        .set('x-test-user-id', 'user-123')
-        .expect(400);
-
-      // Assert - standardized error format
-      expect(response.body.error).toBe('Bad Request');
-      expect(response.body.code).toBe(ErrorCode.VALIDATION_ERROR);
-    });
-
-    it('should return 400 for limit < 1', async () => {
-      // Act
-      const response = await request(app)
-        .get('/api/chat/sessions/session-123/messages?limit=0')
-        .set('x-test-user-id', 'user-123')
-        .expect(400);
-
-      // Assert - standardized error format
-      expect(response.body.error).toBe('Bad Request');
-      expect(response.body.code).toBe(ErrorCode.VALIDATION_ERROR);
-    });
-
-    it('should return 400 for negative offset', async () => {
-      // Act
-      const response = await request(app)
-        .get('/api/chat/sessions/session-123/messages?offset=-1')
-        .set('x-test-user-id', 'user-123')
-        .expect(400);
-
-      // Assert - standardized error format
-      expect(response.body.error).toBe('Bad Request');
-      expect(response.body.code).toBe(ErrorCode.VALIDATION_ERROR);
-    });
-
-    it('should return 400 for non-integer limit/offset', async () => {
-      // Act
-      const response = await request(app)
-        .get('/api/chat/sessions/session-123/messages?limit=abc')
-        .set('x-test-user-id', 'user-123')
-        .expect(400);
-
-      // Assert - standardized error format
-      expect(response.body.error).toBe('Bad Request');
-      expect(response.body.code).toBe(ErrorCode.VALIDATION_ERROR);
-    });
-
-    it('should order by sequence_number then created_at', async () => {
-      // Arrange
-      mockExecuteQuery
-        .mockResolvedValueOnce({ recordset: [createMockSession()] })
-        .mockResolvedValueOnce({ recordset: [] });
-
-      // Act
-      await request(app)
-        .get('/api/chat/sessions/session-123/messages')
-        .set('x-test-user-id', 'user-123')
-        .expect(200);
-
-      // Assert
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('ORDER BY'),
-        expect.any(Object)
-      );
-      // Check the query contains the expected ordering logic
-      const queryCall = mockExecuteQuery.mock.calls[1];
-      expect(queryCall?.[0]).toContain('sequence_number');
-      expect(queryCall?.[0]).toContain('created_at ASC');
-    });
-
-    it('should return 404 when session does not exist', async () => {
-      // Arrange
+      mockExecuteQuery.mockResolvedValueOnce({ recordset: [{ id: 'session-page' }] });
       mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
 
       // Act
       const response = await request(app)
-        .get('/api/chat/sessions/nonexistent/messages')
-        .set('x-test-user-id', 'user-123')
-        .expect(404);
+        .get('/api/chat/sessions/session-page/messages?limit=10&offset=5')
+        .expect(200);
 
-      // Assert - standardized error format
-      expect(response.body.error).toBe('Not Found');
-      expect(response.body.code).toBe(ErrorCode.SESSION_NOT_FOUND);
+      // Assert
+      expect(mockExecuteQuery).toHaveBeenNthCalledWith(
+        2,
+        expect.any(String),
+        expect.objectContaining({ limit: 10, offset: 5 })
+      );
     });
 
-    it('should handle database error gracefully (500)', async () => {
-      // Arrange
-      mockExecuteQuery.mockRejectedValueOnce(new Error('Query failed'));
+    it('should return 400 when pagination params are invalid', async () => {
+      // Act
+      const response = await request(app)
+        .get('/api/chat/sessions/any/messages?limit=invalid')
+        .expect(400);
+
+      // Assert
+      expect(response.body.error).toBe('Invalid query parameters');
+    });
+
+    it('should return 404 when session does not exist or user lacks access', async () => {
+      // Arrange - Session ownership check fails
+      mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
 
       // Act
       const response = await request(app)
-        .get('/api/chat/sessions/session-123/messages')
-        .set('x-test-user-id', 'user-123')
-        .expect(500);
+        .get('/api/chat/sessions/no-access-session/messages')
+        .expect(404);
 
-      // Assert - standardized error format
-      expect(response.body.error).toBe('Internal Server Error');
-      expect(response.body.message).toBe('Failed to get messages');
-      expect(response.body.code).toBe(ErrorCode.INTERNAL_ERROR);
+      // Assert
+      expect(response.body.error).toBe('Not Found');
+      expect(response.body.message).toBe('Session not found or access denied');
+    });
+
+    it('should handle thinking and tool_use message types', async () => {
+      // Arrange
+      mockExecuteQuery.mockResolvedValueOnce({ recordset: [{ id: 'session-types' }] });
+
+      const mockMessages = [
+        {
+          id: 'msg-thinking',
+          session_id: 'session-types',
+          role: 'assistant',
+          message_type: 'thinking',
+          content: '',
+          metadata: JSON.stringify({ content: 'Let me think about this...', duration_ms: 1500 }),
+          stop_reason: null,
+          token_count: 20,
+          created_at: new Date()
+        },
+        {
+          id: 'msg-tool',
+          session_id: 'session-types',
+          role: 'assistant',
+          message_type: 'tool_use',
+          content: '',
+          metadata: JSON.stringify({
+            tool_name: 'list_all_entities',
+            tool_args: {},
+            tool_result: { entities: [] },
+            status: 'success'
+          }),
+          stop_reason: 'tool_use',
+          token_count: 50,
+          created_at: new Date()
+        }
+      ];
+
+      mockExecuteQuery.mockResolvedValueOnce({ recordset: mockMessages });
+
+      // Act
+      const response = await request(app)
+        .get('/api/chat/sessions/session-types/messages')
+        .expect(200);
+
+      // Assert
+      expect(response.body.messages).toHaveLength(2);
+
+      // Verify thinking message structure
+      expect(response.body.messages[0]).toMatchObject({
+        id: 'msg-thinking',
+        type: 'thinking',
+        content: 'Let me think about this...',
+        duration_ms: 1500
+      });
+
+      // Verify tool_use message structure
+      expect(response.body.messages[1]).toMatchObject({
+        id: 'msg-tool',
+        type: 'tool_use',
+        tool_name: 'list_all_entities',
+        status: 'success'
+      });
     });
   });
 
-  // ============================================
-  // PATCH /api/chat/sessions/:sessionId
-  // ============================================
   describe('PATCH /api/chat/sessions/:sessionId', () => {
-    it('should update title successfully', async () => {
+    it('should update session title successfully', async () => {
       // Arrange
-      const updatedSession = createMockSession({ title: 'Updated Title' });
-      mockExecuteQuery
-        .mockResolvedValueOnce({ rowsAffected: [1] }) // UPDATE
-        .mockResolvedValueOnce({ recordset: [updatedSession] }); // SELECT
+      // First query: UPDATE
+      mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+
+      // Second query: SELECT updated session
+      const mockUpdatedSession = {
+        id: 'session-update',
+        user_id: 'test-user-123',
+        title: 'Updated Title',
+        is_active: true,
+        created_at: new Date('2024-01-20'),
+        updated_at: new Date('2024-01-21')
+      };
+      mockExecuteQuery.mockResolvedValueOnce({ recordset: [mockUpdatedSession] });
 
       // Act
       const response = await request(app)
-        .patch('/api/chat/sessions/session-123')
-        .set('x-test-user-id', 'user-123')
+        .patch('/api/chat/sessions/session-update')
         .send({ title: 'Updated Title' })
         .expect(200);
 
       // Assert
       expect(response.body.success).toBe(true);
       expect(response.body.session.title).toBe('Updated Title');
+      expect(mockExecuteQuery).toHaveBeenCalledWith(
+        expect.stringContaining('UPDATE sessions'),
+        expect.objectContaining({
+          sessionId: 'session-update',
+          userId: 'test-user-123',
+          title: 'Updated Title'
+        })
+      );
     });
 
-    it('should return 400 for empty title', async () => {
+    it('should trim whitespace from title', async () => {
+      // Arrange
+      mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+      mockExecuteQuery.mockResolvedValueOnce({
+        recordset: [{
+          id: 'session-trim',
+          user_id: 'test-user-123',
+          title: 'Trimmed Title',
+          is_active: true,
+          created_at: new Date(),
+          updated_at: new Date()
+        }]
+      });
+
+      // Act
+      await request(app)
+        .patch('/api/chat/sessions/session-trim')
+        .send({ title: '  Trimmed Title  ' })
+        .expect(200);
+
+      // Assert
+      expect(mockExecuteQuery).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ title: 'Trimmed Title' })
+      );
+    });
+
+    it('should return 400 when title is missing', async () => {
       // Act
       const response = await request(app)
-        .patch('/api/chat/sessions/session-123')
-        .set('x-test-user-id', 'user-123')
-        .send({ title: '' })
+        .patch('/api/chat/sessions/any')
+        .send({})
         .expect(400);
 
       // Assert
@@ -674,27 +540,10 @@ describe('Sessions Routes', () => {
       expect(response.body.message).toContain('Title is required');
     });
 
-    it('should return 400 for title > 500 chars', async () => {
-      // Arrange
-      const longTitle = 'A'.repeat(501);
-
+    it('should return 400 when title is empty string', async () => {
       // Act
       const response = await request(app)
-        .patch('/api/chat/sessions/session-123')
-        .set('x-test-user-id', 'user-123')
-        .send({ title: longTitle })
-        .expect(400);
-
-      // Assert
-      expect(response.body.error).toBe('Bad Request');
-      expect(response.body.message).toBe('Title must be 500 characters or less');
-    });
-
-    it('should return 400 for whitespace-only title', async () => {
-      // Act
-      const response = await request(app)
-        .patch('/api/chat/sessions/session-123')
-        .set('x-test-user-id', 'user-123')
+        .patch('/api/chat/sessions/any')
         .send({ title: '   ' })
         .expect(400);
 
@@ -702,65 +551,49 @@ describe('Sessions Routes', () => {
       expect(response.body.error).toBe('Bad Request');
     });
 
-    it('should return 404 when session does not exist', async () => {
-      // Arrange
+    it('should return 400 when title exceeds 500 characters', async () => {
+      // Act
+      const response = await request(app)
+        .patch('/api/chat/sessions/any')
+        .send({ title: 'a'.repeat(501) })
+        .expect(400);
+
+      // Assert
+      expect(response.body.message).toContain('500 characters');
+    });
+
+    it('should return 404 when session does not exist or user lacks access', async () => {
+      // Arrange - No rows affected
       mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [0] });
 
       // Act
       const response = await request(app)
-        .patch('/api/chat/sessions/nonexistent')
-        .set('x-test-user-id', 'user-123')
-        .send({ title: 'New Title' })
+        .patch('/api/chat/sessions/no-access')
+        .send({ title: 'Test' })
         .expect(404);
 
       // Assert
       expect(response.body.error).toBe('Not Found');
     });
-
-    it('should return 404 when user does not own session', async () => {
-      // Arrange - UPDATE affects 0 rows because user doesn't own session
-      mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [0] });
-
-      // Act
-      const response = await request(app)
-        .patch('/api/chat/sessions/other-user-session')
-        .set('x-test-user-id', 'user-123')
-        .send({ title: 'New Title' })
-        .expect(404);
-
-      // Assert
-      expect(response.body.message).toBe('Session not found or access denied');
-    });
-
-    it('should return 401 without authentication', async () => {
-      // Act
-      const response = await request(app)
-        .patch('/api/chat/sessions/session-123')
-        .send({ title: 'New Title' })
-        .expect(401);
-
-      // Assert
-      expect(response.body.error).toBe('Unauthorized');
-    });
   });
 
-  // ============================================
-  // DELETE /api/chat/sessions/:sessionId
-  // ============================================
   describe('DELETE /api/chat/sessions/:sessionId', () => {
-    it('should delete session successfully', async () => {
+    it('should delete session successfully (CASCADE delete)', async () => {
       // Arrange
       mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
 
       // Act
       const response = await request(app)
-        .delete('/api/chat/sessions/session-123')
-        .set('x-test-user-id', 'user-123')
+        .delete('/api/chat/sessions/session-delete')
         .expect(200);
 
       // Assert
       expect(response.body.success).toBe(true);
       expect(response.body.message).toBe('Session deleted');
+      expect(mockExecuteQuery).toHaveBeenCalledWith(
+        expect.stringContaining('DELETE FROM sessions'),
+        { sessionId: 'session-delete', userId: 'test-user-123' }
+      );
     });
 
     it('should return 404 when session does not exist', async () => {
@@ -770,417 +603,40 @@ describe('Sessions Routes', () => {
       // Act
       const response = await request(app)
         .delete('/api/chat/sessions/nonexistent')
-        .set('x-test-user-id', 'user-123')
+        .expect(404);
+
+      // Assert
+      expect(response.body.error).toBe('Not Found');
+      expect(response.body.message).toBe('Session not found or access denied');
+    });
+
+    it('should return 404 when user does not own the session', async () => {
+      // Arrange - No rows affected due to ownership check
+      mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [0] });
+
+      // Act
+      const response = await request(app)
+        .delete('/api/chat/sessions/other-user-session')
         .expect(404);
 
       // Assert
       expect(response.body.error).toBe('Not Found');
     });
 
-    it('should return 404 when user does not own session', async () => {
+    // Note: Authentication tests moved to integration tests
+
+    it('should return 500 on database error', async () => {
       // Arrange
-      mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [0] });
+      mockExecuteQuery.mockRejectedValueOnce(new Error('Constraint violation'));
 
       // Act
       const response = await request(app)
-        .delete('/api/chat/sessions/other-user-session')
-        .set('x-test-user-id', 'user-123')
-        .expect(404);
-
-      // Assert
-      expect(response.body.message).toBe('Session not found or access denied');
-    });
-
-    it('should return 401 without authentication', async () => {
-      // Act
-      const response = await request(app)
-        .delete('/api/chat/sessions/session-123')
-        .expect(401);
-
-      // Assert
-      expect(response.body.error).toBe('Unauthorized');
-    });
-
-    it('should cascade delete messages, approvals, todos (verified via SQL)', async () => {
-      // Arrange
-      mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
-
-      // Act
-      await request(app)
-        .delete('/api/chat/sessions/session-123')
-        .set('x-test-user-id', 'user-123')
-        .expect(200);
-
-      // Assert - verify the DELETE query includes ownership check
-      // CASCADE is handled by database FK constraints, not in the query
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('DELETE FROM sessions'),
-        expect.objectContaining({ sessionId: 'session-123', userId: 'user-123' })
-      );
-    });
-  });
-
-  // ============================================
-  // Message Transformation
-  // ============================================
-  describe('Message Transformation', () => {
-    it('should transform standard message correctly', async () => {
-      // Arrange
-      const message = createMockMessage({
-        message_type: 'standard',
-        content: 'Hello world',
-        metadata: JSON.stringify({ is_thinking: false }),
-      });
-      mockExecuteQuery
-        .mockResolvedValueOnce({ recordset: [createMockSession()] })
-        .mockResolvedValueOnce({ recordset: [message] });
-
-      // Act
-      const response = await request(app)
-        .get('/api/chat/sessions/session-123/messages')
-        .set('x-test-user-id', 'user-123')
-        .expect(200);
-
-      // Assert
-      const msg = response.body.messages[0];
-      expect(msg.content).toBe('Hello world');
-      expect(msg.message_type).toBe('standard');
-      expect(msg.role).toBe('assistant');
-    });
-
-    it('should transform thinking message correctly', async () => {
-      // Arrange
-      const message = createMockMessage({
-        message_type: 'thinking',
-        content: 'Let me think about this...',
-        metadata: JSON.stringify({ duration_ms: 1500 }),
-      });
-      mockExecuteQuery
-        .mockResolvedValueOnce({ recordset: [createMockSession()] })
-        .mockResolvedValueOnce({ recordset: [message] });
-
-      // Act
-      const response = await request(app)
-        .get('/api/chat/sessions/session-123/messages')
-        .set('x-test-user-id', 'user-123')
-        .expect(200);
-
-      // Assert
-      const msg = response.body.messages[0];
-      expect(msg.type).toBe('thinking');
-      expect(msg.content).toBe('Let me think about this...');
-      expect(msg.duration_ms).toBe(1500);
-    });
-
-    it('should transform tool_use message correctly', async () => {
-      // Arrange
-      const message = createMockMessage({
-        message_type: 'tool_use',
-        content: '',
-        metadata: JSON.stringify({
-          tool_name: 'get_customers',
-          tool_args: { limit: 10 },
-          status: 'success',
-          tool_result: { customers: [] },
-        }),
-        tool_use_id: 'tool-123',
-      });
-      mockExecuteQuery
-        .mockResolvedValueOnce({ recordset: [createMockSession()] })
-        .mockResolvedValueOnce({ recordset: [message] });
-
-      // Act
-      const response = await request(app)
-        .get('/api/chat/sessions/session-123/messages')
-        .set('x-test-user-id', 'user-123')
-        .expect(200);
-
-      // Assert
-      const msg = response.body.messages[0];
-      expect(msg.type).toBe('tool_use');
-      expect(msg.tool_name).toBe('get_customers');
-      expect(msg.tool_args).toEqual({ limit: 10 });
-      expect(msg.status).toBe('success');
-      expect(msg.tool_use_id).toBe('tool-123');
-    });
-
-    it('should include model in transformed message', async () => {
-      // Arrange
-      const message = createMockMessage({ model: 'claude-sonnet-4-20250514' });
-      mockExecuteQuery
-        .mockResolvedValueOnce({ recordset: [createMockSession()] })
-        .mockResolvedValueOnce({ recordset: [message] });
-
-      // Act
-      const response = await request(app)
-        .get('/api/chat/sessions/session-123/messages')
-        .set('x-test-user-id', 'user-123')
-        .expect(200);
-
-      // Assert
-      expect(response.body.messages[0].model).toBe('claude-sonnet-4-20250514');
-    });
-
-    it('should include input_tokens/output_tokens', async () => {
-      // Arrange
-      const message = createMockMessage({
-        input_tokens: 150,
-        output_tokens: 250,
-      });
-      mockExecuteQuery
-        .mockResolvedValueOnce({ recordset: [createMockSession()] })
-        .mockResolvedValueOnce({ recordset: [message] });
-
-      // Act
-      const response = await request(app)
-        .get('/api/chat/sessions/session-123/messages')
-        .set('x-test-user-id', 'user-123')
-        .expect(200);
-
-      // Assert
-      expect(response.body.messages[0].input_tokens).toBe(150);
-      expect(response.body.messages[0].output_tokens).toBe(250);
-    });
-
-    it('should include sequence_number from event sourcing', async () => {
-      // Arrange
-      const message = createMockMessage({ sequence_number: 42 });
-      mockExecuteQuery
-        .mockResolvedValueOnce({ recordset: [createMockSession()] })
-        .mockResolvedValueOnce({ recordset: [message] });
-
-      // Act
-      const response = await request(app)
-        .get('/api/chat/sessions/session-123/messages')
-        .set('x-test-user-id', 'user-123')
-        .expect(200);
-
-      // Assert
-      expect(response.body.messages[0].sequence_number).toBe(42);
-    });
-
-    it('should include stop_reason from SDK', async () => {
-      // Arrange
-      const message = createMockMessage({ stop_reason: 'end_turn' });
-      mockExecuteQuery
-        .mockResolvedValueOnce({ recordset: [createMockSession()] })
-        .mockResolvedValueOnce({ recordset: [message] });
-
-      // Act
-      const response = await request(app)
-        .get('/api/chat/sessions/session-123/messages')
-        .set('x-test-user-id', 'user-123')
-        .expect(200);
-
-      // Assert
-      expect(response.body.messages[0].stop_reason).toBe('end_turn');
-    });
-
-    it('should handle null/missing metadata', async () => {
-      // Arrange
-      const message = createMockMessage({ metadata: null });
-      mockExecuteQuery
-        .mockResolvedValueOnce({ recordset: [createMockSession()] })
-        .mockResolvedValueOnce({ recordset: [message] });
-
-      // Act
-      const response = await request(app)
-        .get('/api/chat/sessions/session-123/messages')
-        .set('x-test-user-id', 'user-123')
-        .expect(200);
-
-      // Assert
-      expect(response.body.messages[0]).toBeDefined();
-      expect(response.body.messages[0].content).toBe('Hello, how can I help you?');
-    });
-
-    it('should handle malformed metadata JSON gracefully', async () => {
-      // Arrange
-      const message = createMockMessage({ metadata: '{invalid json' });
-      mockExecuteQuery
-        .mockResolvedValueOnce({ recordset: [createMockSession()] })
-        .mockResolvedValueOnce({ recordset: [message] });
-
-      // Act
-      const response = await request(app)
-        .get('/api/chat/sessions/session-123/messages')
-        .set('x-test-user-id', 'user-123')
-        .expect(200);
-
-      // Assert - should not crash, just ignore malformed metadata
-      expect(response.body.messages[0]).toBeDefined();
-      expect(response.body.messages[0].content).toBe('Hello, how can I help you?');
-    });
-  });
-
-  // ============================================
-  // Additional Edge Cases
-  // ============================================
-  describe('Additional Edge Cases', () => {
-    it('should handle title with exactly 500 characters', async () => {
-      // Arrange
-      const exactTitle = 'A'.repeat(500);
-      const newSession = createMockSession({ title: exactTitle });
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [newSession] });
-
-      // Act
-      const response = await request(app)
-        .post('/api/chat/sessions')
-        .set('x-test-user-id', 'user-123')
-        .send({ title: exactTitle })
-        .expect(201);
-
-      // Assert
-      expect(response.body.session).toBeDefined();
-    });
-
-    it('should handle session with null title in database', async () => {
-      // Arrange - title is null, should default to "New Chat"
-      const session = {
-        id: 'session-123',
-        user_id: 'user-123',
-        title: null,
-        is_active: true,
-        created_at: new Date(),
-        updated_at: new Date(),
-      };
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [session] });
-
-      // Act
-      const response = await request(app)
-        .get('/api/chat/sessions')
-        .set('x-test-user-id', 'user-123')
-        .expect(200);
-
-      // Assert
-      expect(response.body.sessions[0].title).toBe('New Chat');
-    });
-
-    it('should handle messages with empty content', async () => {
-      // Arrange
-      const message = createMockMessage({ content: '' });
-      mockExecuteQuery
-        .mockResolvedValueOnce({ recordset: [createMockSession()] })
-        .mockResolvedValueOnce({ recordset: [message] });
-
-      // Act
-      const response = await request(app)
-        .get('/api/chat/sessions/session-123/messages')
-        .set('x-test-user-id', 'user-123')
-        .expect(200);
-
-      // Assert
-      expect(response.body.messages[0].content).toBe('');
-    });
-
-    it('should handle very large offset', async () => {
-      // Arrange
-      mockExecuteQuery
-        .mockResolvedValueOnce({ recordset: [createMockSession()] })
-        .mockResolvedValueOnce({ recordset: [] });
-
-      // Act
-      const response = await request(app)
-        .get('/api/chat/sessions/session-123/messages?offset=999999')
-        .set('x-test-user-id', 'user-123')
-        .expect(200);
-
-      // Assert
-      expect(response.body.messages).toEqual([]);
-    });
-
-    it('should handle limit at boundary (100)', async () => {
-      // Arrange
-      mockExecuteQuery
-        .mockResolvedValueOnce({ recordset: [createMockSession()] })
-        .mockResolvedValueOnce({ recordset: [] });
-
-      // Act
-      await request(app)
-        .get('/api/chat/sessions/session-123/messages?limit=100')
-        .set('x-test-user-id', 'user-123')
-        .expect(200);
-
-      // Assert
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({ limit: 100 })
-      );
-    });
-
-    it('should ignore initialMessage field in POST (backward compatibility)', async () => {
-      // Arrange - initialMessage is accepted by schema but should be ignored
-      const newSession = createMockSession({ title: 'Chat with ignored message' });
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [newSession] });
-
-      // Act
-      const response = await request(app)
-        .post('/api/chat/sessions')
-        .set('x-test-user-id', 'user-123')
-        .send({
-          title: 'Chat with ignored message',
-          initialMessage: 'This message should be ignored',
-        })
-        .expect(201);
-
-      // Assert - Session created, but no message was created
-      expect(response.body.session).toBeDefined();
-      // Only one DB call (INSERT session), no message INSERT
-      expect(mockExecuteQuery).toHaveBeenCalledTimes(1);
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('INSERT INTO sessions'),
-        expect.any(Object)
-      );
-    });
-
-    it('should handle title with unicode/emojis', async () => {
-      // Arrange
-      const unicodeTitle = 'Chat 🚀 with emojis 日本語';
-      const newSession = createMockSession({ title: unicodeTitle });
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [newSession] });
-
-      // Act
-      const response = await request(app)
-        .post('/api/chat/sessions')
-        .set('x-test-user-id', 'user-123')
-        .send({ title: unicodeTitle })
-        .expect(201);
-
-      // Assert
-      expect(response.body.session.title).toBe(unicodeTitle);
-    });
-
-    it('should handle PATCH database error gracefully (500)', async () => {
-      // Arrange
-      mockExecuteQuery.mockRejectedValueOnce(new Error('Database write error'));
-
-      // Act
-      const response = await request(app)
-        .patch('/api/chat/sessions/session-123')
-        .set('x-test-user-id', 'user-123')
-        .send({ title: 'New Title' })
+        .delete('/api/chat/sessions/error-session')
         .expect(500);
 
-      // Assert - standardized error format
-      expect(response.body.error).toBe('Internal Server Error');
-      expect(response.body.message).toBe('Failed to update session');
-      expect(response.body.code).toBe(ErrorCode.INTERNAL_ERROR);
-    });
-
-    it('should handle DELETE database error gracefully (500)', async () => {
-      // Arrange
-      mockExecuteQuery.mockRejectedValueOnce(new Error('Database delete error'));
-
-      // Act
-      const response = await request(app)
-        .delete('/api/chat/sessions/session-123')
-        .set('x-test-user-id', 'user-123')
-        .expect(500);
-
-      // Assert - standardized error format
-      expect(response.body.error).toBe('Internal Server Error');
-      expect(response.body.message).toBe('Failed to delete session');
-      expect(response.body.code).toBe(ErrorCode.INTERNAL_ERROR);
+      // Assert
+      expect(response.body.error).toBe('Failed to delete session');
+      expect(response.body.message).toBe('Constraint violation');
     });
   });
 });

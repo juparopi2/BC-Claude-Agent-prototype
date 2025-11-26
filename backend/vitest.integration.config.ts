@@ -16,7 +16,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    setupFiles: './src/__tests__/setup.integration.ts',
+    // No global setup needed - each test file uses setupIntegrationTest()
     testTimeout: 30000, // Longer timeout for real DB operations
     hookTimeout: 30000,
     // Only run integration tests from the integration directory

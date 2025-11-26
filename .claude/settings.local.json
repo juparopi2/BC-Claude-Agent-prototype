@@ -80,7 +80,9 @@
       "Bash(npx vitest:*)",
       "Bash(git add:*)",
       "Bash(npm run test:integration:*)",
-      "Bash(source .env)"
+      "Bash(source .env)",
+      "Bash(dir:*)",
+      "Bash(npm run test:unit:*)"
     ],
     "deny": [],
     "ask": []

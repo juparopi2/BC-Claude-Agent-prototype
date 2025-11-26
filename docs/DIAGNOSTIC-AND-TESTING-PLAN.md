@@ -1949,7 +1949,7 @@ class MessageBuffer {
 | ID | Tarea | Descripción | Estado | Success Criteria |
 |----|-------|-------------|--------|------------------|
 | F1-001 | Configurar Playwright correctamente | Setup con auth persistente | PENDIENTE | Tests pueden login una vez y reutilizar sesión |
-| F1-002 | Crear helpers de test E2E | `loginAsTestUser()`, `sendMessage()`, etc. | PENDIENTE | Helpers disponibles y documentados |
+| F1-002 | Tests de Integración WebSocket | Tests con Redis/SQL reales | **EN CORRECCIÓN** | 38 tests, 25 pasando, 13 requieren fix (ver QA-REPORT-F1-002.md) |
 | F1-003 | Crear fixtures de BD para tests | Usuario de prueba, sesión de prueba | **EN TESTING** | Tests usan datos consistentes |
 | F1-004 | Configurar CI para E2E | GitHub Actions con Playwright | PENDIENTE | E2E corre en cada PR |
 | F1-005 | Documentar proceso de testing | README en `/e2e/` | **EN TESTING** | Desarrolladores saben cómo ejecutar tests |

@@ -221,9 +221,9 @@ export class TestSocketClient {
         }
       };
 
-      this.socket.on('session:joined', onJoined);
-      this.socket.on('session:error', onError);
-      this.socket.emit('session:join', { sessionId });
+      this.socket?.on('session:joined', onJoined);
+      this.socket?.on('session:error', onError);
+      this.socket?.emit('session:join', { sessionId });
     });
   }
 

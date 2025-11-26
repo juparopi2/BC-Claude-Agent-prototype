@@ -232,3 +232,6 @@ export interface WebSocketEvents {
    */
   'approval:requested': (data: ApprovalRequestData) => void;
 }
+
+// Re-export AgentEvent for convenience
+export type { AgentEvent };

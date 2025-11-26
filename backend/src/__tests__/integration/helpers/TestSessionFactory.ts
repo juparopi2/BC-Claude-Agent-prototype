@@ -21,8 +21,6 @@ import {
   TEST_SESSION_SECRET,
   TEST_PREFIX,
   TEST_EMAIL_DOMAIN,
-  TEST_SESSION_COOKIE,
-  REDIS_SESSION_PREFIX,
 } from './constants';
 
 // Re-export constants for backward compatibility
@@ -185,6 +183,9 @@ export class TestSessionFactory {
     email: string
   ): Promise<{ sessionId: string; cookie: string }> {
     const redis = getRedis();
+    if (!redis) {
+      throw new Error('Redis not initialized');
+    }
     const sessionId = `${TEST_PREFIX}sess_${Date.now()}_${Math.random().toString(36).substring(7)}`;
 
     // Session data matching express-session format
@@ -208,7 +209,7 @@ export class TestSessionFactory {
 
     // Store in Redis with session prefix (matches express-session default)
     const redisKey = `sess:${sessionId}`;
-    await redis.set(redisKey, sessionData, 'EX', 86400); // 24 hour expiry
+    await redis.set(redisKey, sessionData, { EX: 86400 }); // 24 hour expiry
 
     this.createdRedisKeys.push(redisKey);
 
@@ -232,6 +233,9 @@ export class TestSessionFactory {
     email: string
   ): Promise<{ sessionId: string; cookie: string }> {
     const redis = getRedis();
+    if (!redis) {
+      throw new Error('Redis not initialized');
+    }
     const sessionId = `${TEST_PREFIX}expired_${Date.now()}`;
 
     // Session data with past expiry
@@ -254,7 +258,7 @@ export class TestSessionFactory {
     });
 
     const redisKey = `sess:${sessionId}`;
-    await redis.set(redisKey, sessionData, 'EX', 1); // Very short expiry
+    await redis.set(redisKey, sessionData, { EX: 1 }); // Very short expiry
 
     this.createdRedisKeys.push(redisKey);
 
@@ -414,6 +418,9 @@ export class TestSessionFactory {
     );
 
     const redis = getRedis();
+    if (!redis) {
+      throw new Error('Redis not initialized');
+    }
     const redisKeys = await redis.keys(`sess:${TEST_PREFIX}*`);
 
     return {
@@ -430,6 +437,9 @@ export class TestSessionFactory {
    */
   async cleanup(): Promise<void> {
     const redis = getRedis();
+    if (!redis) {
+      throw new Error('Redis not initialized');
+    }
 
     // Clean up Redis sessions
     for (const key of this.createdRedisKeys) {

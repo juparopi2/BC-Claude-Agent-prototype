@@ -123,12 +123,15 @@ export async function cleanupAllTestData(prefix?: string): Promise<CleanupResult
 
     // 7. Clean Redis test keys
     const redis = getRedis();
+    if (!redis) {
+      throw new Error('Redis not initialized');
+    }
     const testSessionKeys = await redis.keys(`sess:${cleanupPrefix}*`);
     const testDataKeys = await redis.keys(`test:*`);
     const allTestKeys = [...testSessionKeys, ...testDataKeys];
 
     if (allTestKeys.length > 0) {
-      await redis.del(...allTestKeys);
+      await redis.del(allTestKeys);
       result.redisKeysDeleted = allTestKeys.length;
     }
 
@@ -232,6 +235,9 @@ export async function cleanupUser(userId: string): Promise<{
  */
 export async function cleanupRedisTestKeys(pattern?: string): Promise<number> {
   const redis = getRedis();
+  if (!redis) {
+    throw new Error('Redis not initialized');
+  }
   const keyPattern = pattern || `sess:${TEST_PREFIX}*`;
 
   const keys = await redis.keys(keyPattern);
@@ -239,7 +245,7 @@ export async function cleanupRedisTestKeys(pattern?: string): Promise<number> {
     return 0;
   }
 
-  await redis.del(...keys);
+  await redis.del(keys);
   return keys.length;
 }
 
@@ -284,6 +290,9 @@ export async function verifyNoTestData(_prefix?: string): Promise<{
   );
 
   const redis = getRedis();
+  if (!redis) {
+    throw new Error('Redis not initialized');
+  }
   const redisKeys = await redis.keys(`sess:${TEST_PREFIX}*`);
 
   const remaining = {

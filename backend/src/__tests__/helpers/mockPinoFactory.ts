@@ -149,60 +149,6 @@ export function createTestLogger(config: TestLoggerConfig = {}): TestLoggerResul
 }
 
 /**
- * Creates a mock logger object for use with vi.mock()
- *
- * This creates a minimal mock that tracks calls without actual Pino.
- * Use this when you don't need to verify log content, just that logs were called.
- *
- * @param vi - Vitest vi object for creating mocks
- * @returns Mock logger object with all log methods
- *
- * @example
- * ```typescript
- * import { vi } from 'vitest';
- * import { createMockLoggerObject } from '../helpers/mockPinoFactory';
- *
- * const mockLogger = createMockLoggerObject(vi);
- *
- * vi.mock('@/utils/logger', () => ({
- *   logger: mockLogger,
- *   createChildLogger: vi.fn(() => mockLogger),
- * }));
- *
- * // In test:
- * expect(mockLogger.info).toHaveBeenCalledWith(expect.any(Object), 'message');
- * ```
- */
-export function createMockLoggerObject(vi: typeof import('vitest').vi) {
-  return {
-    trace: vi.fn(),
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    fatal: vi.fn(),
-    child: vi.fn().mockReturnThis(),
-  };
-}
-
-/**
- * Gets the log level name from a numeric level using official Pino labels
- *
- * @param level - Numeric log level
- * @returns Level name or 'unknown'
- */
-export function getLevelName(level: number): string {
-  // Use official Pino level labels (number -> string mapping)
-  return pino.levels.labels[level] || 'unknown';
-}
-
-/**
  * Re-export Pino types for convenience in tests
  */
 export type { Logger, Level, LoggerOptions } from 'pino';
-
-/**
- * Export Pino levels for direct access in tests
- * This allows tests to use pino.levels.values without importing pino directly
- */
-export const pinoLevels = pino.levels;

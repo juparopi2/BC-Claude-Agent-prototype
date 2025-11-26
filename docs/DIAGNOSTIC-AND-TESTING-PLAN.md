@@ -96,10 +96,13 @@
 | Human-in-the-Loop | 100% | MEDIA |
 | **Sistema de ToDos** | **15%** | **CRÍTICA (Feature UX)** |
 | File Management | 10% | BAJA (futuro) |
-| Testing Infrastructure | 40% | CRÍTICA |
+| Testing Infrastructure | **35%** | **CRÍTICA - EN CORRECCIÓN** |
 
 > **NOTA IMPORTANTE**: El Sistema de ToDos tiene el servicio implementado (100%) pero NO está conectado al Agent Loop.
 > El 15% refleja: servicio (100%) + BD (100%) + endpoint lectura (100%) pero integración (0%) + tool (0%) + websocket (0%) + frontend (0%).
+
+> **NOTA AUDITORÍA (2025-11-26)**: Testing Infrastructure bajó de 40% a 35% después de auditoría QA Master.
+> F1-002 tiene issues críticos no resueltos. Ver `docs/qa-reports/QA-MASTER-AUDIT-F1.md`.
 
 ---
 
@@ -253,6 +256,45 @@ backend/src/services/
   poolOptions: { forks: { singleFork: true } }  // Tests seriales
 }
 ```
+
+#### Prerequisitos para Tests de Integración (Agregado 2025-11-26)
+
+> **IMPORTANTE**: Los tests de integración requieren servicios reales, NO mocks.
+
+##### Desarrollo Local (Windows)
+
+1. **Docker Desktop** instalado y corriendo
+2. **Redis container** iniciado:
+   ```bash
+   cd backend
+   docker-compose -f docker-compose.test.yml up -d
+   ```
+3. **Variables de entorno** en `.env`:
+   ```env
+   REDIS_HOST=localhost
+   REDIS_PORT=6399
+   DATABASE_SERVER=sqlsrv-bcagent-dev.database.windows.net
+   DATABASE_NAME=sqldb-bcagent-dev
+   DATABASE_USER=<tu-usuario>
+   DATABASE_PASSWORD=<tu-password>
+   ```
+4. **Ejecutar tests**:
+   ```bash
+   npm run test:integration
+   ```
+
+##### GitHub Actions (CI)
+
+Los tests de integración requieren configurar secrets en el repositorio:
+
+| Secret | Descripción | Valor |
+|--------|-------------|-------|
+| `DATABASE_SERVER` | Servidor Azure SQL | `sqlsrv-bcagent-dev.database.windows.net` |
+| `DATABASE_NAME` | Base de datos | `sqldb-bcagent-dev` |
+| `DATABASE_USER` | Usuario de BD | (configurar) |
+| `DATABASE_PASSWORD` | Password de BD | (configurar) |
+
+El workflow debe incluir service container de Redis en puerto 6399.
 
 #### Cobertura por Servicio
 
@@ -1946,13 +1988,29 @@ class MessageBuffer {
 
 ### FASE 1: Fundamentos de Testing (Prioridad: CRÍTICA)
 
+> **AUDITORÍA 2025-11-26**: Esta tabla fue actualizada tras auditoría QA Master.
+> Ver `docs/qa-reports/QA-MASTER-AUDIT-F1.md` para detalles completos.
+
 | ID | Tarea | Descripción | Estado | Success Criteria |
 |----|-------|-------------|--------|------------------|
 | F1-001 | Configurar Playwright correctamente | Setup con auth persistente | PENDIENTE | Tests pueden login una vez y reutilizar sesión |
-| F1-002 | Tests de Integración WebSocket | Tests con Redis/SQL reales | **EN CORRECCIÓN** | 38 tests, 25 pasando, 13 requieren fix (ver QA-REPORT-F1-002.md) |
-| F1-003 | Crear fixtures de BD para tests | Usuario de prueba, sesión de prueba | **EN TESTING** | Tests usan datos consistentes |
+| F1-002 | Tests de Integración WebSocket | Tests con Redis/SQL reales | **⚠️ EN CORRECCIÓN** | 162 tests, correcciones parciales completadas (ver issues abajo) |
+| F1-003 | Crear fixtures de BD para tests | Usuario de prueba, sesión de prueba | **✅ COMPLETADO** | Verificado en auditoría QA Master |
 | F1-004 | Configurar CI para E2E | GitHub Actions con Playwright | PENDIENTE | E2E corre en cada PR |
 | F1-005 | Documentar proceso de testing | README en `/e2e/` | **EN TESTING** | Desarrolladores saben cómo ejecutar tests |
+
+#### Issues Identificados en Auditoría F1-002 (Estado actualizado 2025-11-26):
+
+**✅ RESUELTOS:**
+- ✅ Archivos ya estaban correctamente nombrados (información original incorrecta)
+- ✅ Tests de integración con `setupDatabaseForTests()` - Nuevo helper creado
+- ✅ Puerto Redis unificado a 6399 via `REDIS_TEST_CONFIG`
+- ✅ Código muerto eliminado (3 archivos + 3 funciones)
+- ✅ GitHub Actions con job `backend-integration-tests` y Redis service
+
+**❌ PENDIENTES:**
+- ❌ Mock de Redis incompleto (falta `.on()`)
+- ❌ Logger tests con spy incorrecto
 
 ### FASE 2: Tests E2E Core (Prioridad: ALTA)
 

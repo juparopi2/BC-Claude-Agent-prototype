@@ -10,3 +10,4 @@ export * from './constants';
 export * from './TestSocketClient';
 export * from './TestSessionFactory';
 export * from './TestDataCleanup';
+export * from './TestDatabaseSetup';

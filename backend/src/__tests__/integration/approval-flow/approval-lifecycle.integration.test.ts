@@ -21,7 +21,9 @@ import {
   TestSocketClient,
   TestSessionFactory,
   TEST_SESSION_SECRET,
+  setupDatabaseForTests,
 } from '../helpers';
+import { REDIS_TEST_CONFIG } from '../setup.integration';
 import { getApprovalManager, ApprovalManager } from '@/services/approval/ApprovalManager';
 
 // Use real ApprovalManager but with short timeout for testing
@@ -43,6 +45,9 @@ vi.mock('@/services/approval/ApprovalManager', async (importOriginal) => {
 // 2. Concurrent approval race conditions returning 0 successes
 // 3. ApprovalManager.request() may need real Socket.IO room setup
 describe('Approval Flow Integration', () => {
+  // Setup database connection for TestSessionFactory
+  setupDatabaseForTests();
+
   let httpServer: HttpServer;
   let io: SocketIOServer;
   let testPort: number;
@@ -53,18 +58,12 @@ describe('Approval Flow Integration', () => {
   const clients: TestSocketClient[] = [];
 
   beforeAll(async () => {
-    // Create Redis client
-    const redisHost = process.env.REDIS_HOST || 'localhost';
-    const redisPort = process.env.REDIS_PORT || '6379';
-    const redisPassword = process.env.REDIS_PASSWORD;
-
+    // Create Redis client using test config
     redisClient = createRedisClient({
       socket: {
-        host: redisHost,
-        port: parseInt(redisPort, 10),
-        tls: redisPassword ? true : false,
+        host: REDIS_TEST_CONFIG.host,
+        port: REDIS_TEST_CONFIG.port,
       },
-      password: redisPassword,
     });
 
     await redisClient.connect();

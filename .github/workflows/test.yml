@@ -50,6 +50,68 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
 
+  backend-integration-tests:
+    name: Backend Integration Tests
+    runs-on: ubuntu-latest
+    needs: [backend-tests]
+
+    # Redis service container for integration tests
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6399:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      # Redis config for tests (maps to docker port 6399)
+      REDIS_TEST_HOST: localhost
+      REDIS_TEST_PORT: 6399
+      # Database config (from secrets)
+      DATABASE_SERVER: ${{ secrets.DATABASE_SERVER }}
+      DATABASE_NAME: ${{ secrets.DATABASE_NAME }}
+      DATABASE_USER: ${{ secrets.DATABASE_USER }}
+      DATABASE_PASSWORD: ${{ secrets.DATABASE_PASSWORD }}
+      # General test config
+      NODE_ENV: test
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Wait for Redis
+        run: |
+          timeout 30 bash -c 'until redis-cli -h localhost -p 6399 ping; do sleep 1; done'
+
+      - name: Run integration tests
+        working-directory: backend
+        run: npm run test:integration
+        # Allow failure for now until all tests are fixed
+        continue-on-error: true
+
+      - name: Upload integration test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: integration-test-results
+          path: backend/coverage/
+          retention-days: 7
+
   frontend-tests:
     name: Frontend Tests
     runs-on: ubuntu-latest

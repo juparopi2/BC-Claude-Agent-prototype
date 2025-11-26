@@ -21,7 +21,9 @@ import {
   TestSocketClient,
   TestSessionFactory,
   TEST_SESSION_SECRET,
+  setupDatabaseForTests,
 } from '../helpers';
+import { REDIS_TEST_CONFIG } from '../setup.integration';
 // Import the real validateSessionOwnership - no mock needed since we use the real implementation
 import { validateSessionOwnership } from '@/utils/session-ownership';
 
@@ -31,6 +33,9 @@ import { validateSessionOwnership } from '@/utils/session-ownership';
 // Investigation needed: How TestSessionFactory.createTestUser() cookie relates to
 // the actual Redis session and userId validation in validateSessionOwnership().
 describe('Multi-Tenant Session Isolation', () => {
+  // Setup database connection for TestSessionFactory
+  setupDatabaseForTests();
+
   let httpServer: HttpServer;
   let io: SocketIOServer;
   let testPort: number;
@@ -41,18 +46,12 @@ describe('Multi-Tenant Session Isolation', () => {
   const clients: TestSocketClient[] = [];
 
   beforeAll(async () => {
-    // Create Redis client
-    const redisHost = process.env.REDIS_HOST || 'localhost';
-    const redisPort = process.env.REDIS_PORT || '6379';
-    const redisPassword = process.env.REDIS_PASSWORD;
-
+    // Create Redis client using test config
     redisClient = createRedisClient({
       socket: {
-        host: redisHost,
-        port: parseInt(redisPort, 10),
-        tls: redisPassword ? true : false,
+        host: REDIS_TEST_CONFIG.host,
+        port: REDIS_TEST_CONFIG.port,
       },
-      password: redisPassword,
     });
 
     await redisClient.connect();

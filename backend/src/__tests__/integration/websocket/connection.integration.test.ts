@@ -21,9 +21,14 @@ import {
   TestSocketClient,
   TestSessionFactory,
   TEST_SESSION_SECRET,
+  setupDatabaseForTests,
 } from '../helpers';
+import { REDIS_TEST_CONFIG } from '../setup.integration';
 
 describe('WebSocket Connection Integration', () => {
+  // Setup database connection for TestSessionFactory
+  setupDatabaseForTests();
+
   let httpServer: HttpServer;
   let io: SocketIOServer;
   let testPort: number;
@@ -34,18 +39,12 @@ describe('WebSocket Connection Integration', () => {
   let redisClient: ReturnType<typeof createRedisClient>;
 
   beforeAll(async () => {
-    // Create Redis client for session store
-    const redisHost = process.env.REDIS_HOST || 'localhost';
-    const redisPort = process.env.REDIS_PORT || '6379';
-    const redisPassword = process.env.REDIS_PASSWORD;
-
+    // Create Redis client for session store using test config
     redisClient = createRedisClient({
       socket: {
-        host: redisHost,
-        port: parseInt(redisPort, 10),
-        tls: redisPassword ? true : false,
+        host: REDIS_TEST_CONFIG.host,
+        port: REDIS_TEST_CONFIG.port,
       },
-      password: redisPassword,
     });
 
     await redisClient.connect();

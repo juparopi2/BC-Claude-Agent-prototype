@@ -82,7 +82,8 @@
       "Bash(npm run test:integration:*)",
       "Bash(source .env)",
       "Bash(dir:*)",
-      "Bash(npm run test:unit:*)"
+      "Bash(npm run test:unit:*)",
+      "Bash(git mv:*)"
     ],
     "deny": [],
     "ask": []

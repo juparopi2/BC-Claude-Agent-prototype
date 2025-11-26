@@ -2,9 +2,10 @@
 
 **Fecha de Implementación**: 2025-11-26
 **Fecha de QA**: 2025-11-26
+**Fecha de Auditoría QA Master**: 2025-11-26
 **QA Engineer**: Claude (Automated QA)
 **Versión de Referencia**: DIAGNOSTIC-AND-TESTING-PLAN.md v1.1
-**Estado**: FALLANDO - Requiere corrección de lógica
+**Estado**: ❌ FALLANDO - EN CORRECCIÓN (Ver QA-MASTER-AUDIT-F1.md)
 
 ---
 
@@ -15,13 +16,15 @@ Crear tests de integración para validar el funcionamiento del sistema WebSocket
 
 ### Resultado General
 
-| Métrica | Valor |
-|---------|-------|
-| Tests Creados | 38 |
-| Tests Pasando | 25 (65.8%) |
-| Tests Fallando | 13 (34.2%) |
-| Archivos de Test | 5 |
-| Helpers Creados | 4 |
+> **⚠️ NOTA DE AUDITORÍA (2025-11-26)**: Las métricas originales eran incorrectas. Ver sección "QA MASTER AUDIT" al final.
+
+| Métrica | Valor Original | Valor Real (Auditoría) |
+|---------|----------------|------------------------|
+| Tests Totales | 38 | **162** |
+| Tests Pasando | 25 (65.8%) | **98 (60.5%)** |
+| Tests Fallando | 13 (34.2%) | **62 (38.3%)** |
+| Archivos de Test | 5 | **12** |
+| Helpers Creados | 4 | 4 (correcto) |
 
 ### Distribución por Suite
 
@@ -474,8 +477,14 @@ cd backend && npm run test:integration
 - `backend/.husky/pre-push` - Agregado paso de integration tests
 
 ### Archivos Renombrados
-- `logger.integration.test.ts` → `logger.test.ts` (era unit test mal nombrado)
-- `MessageQueue.integration.test.ts` → `MessageQueue.test.ts` (era unit test mal nombrado)
+
+> **❌ AUDITORÍA 2025-11-26**: Estos renombrados fueron DOCUMENTADOS pero NO EJECUTADOS.
+> Los archivos aún tienen nombres `.integration.test.ts` y causan fallos en la suite.
+
+- `logger.integration.test.ts` → `logger.test.ts` - **❌ NO EJECUTADO**
+- `MessageQueue.integration.test.ts` → `MessageQueue.test.ts` - **❌ NO EJECUTADO**
+
+**Acción requerida**: Ejecutar los renombrados pendientes.
 
 ### Archivos Corregidos (Bugs Encontrados)
 - `backend/src/services/approval/ApprovalManager.ts:977-988` - getActionType() valores correctos
@@ -508,4 +517,94 @@ Creado: 2025-10-29 00:23:12 (descubierto via `sys.check_constraints`)
 
 ---
 
+## 8. QA MASTER AUDIT - 2025-11-26
+
+> **Este reporte fue auditado por un QA Master el 2025-11-26. Se encontraron discrepancias significativas.**
+>
+> **Documento de auditoría completo**: `docs/qa-reports/QA-MASTER-AUDIT-F1.md`
+
+### 8.1 Hallazgos de Auditoría
+
+| Hallazgo | Severidad | Estado |
+|----------|-----------|--------|
+| Archivos documentados como renombrados NO fueron renombrados | 🔴 CRÍTICO | Pendiente |
+| Métricas de tests incorrectas (38 vs 162 reales) | 🔴 CRÍTICO | Corregido en este documento |
+| Mock de Redis incompleto (falta `.on()`) | 🔴 CRÍTICO | Pendiente |
+| Logger tests fallan por spy incorrecto | 🔴 CRÍTICO | Pendiente |
+| Tests de integración sin `initDatabase()` | 🟡 ALTO | Pendiente |
+| Puerto Redis inconsistente (6379 vs 6399) | 🟡 ALTO | Pendiente |
+| Código muerto identificado (6+ elementos) | 🟡 ALTO | Pendiente |
+
+### 8.2 Estado Corregido
+
+| Métrica | Valor Reportado | Valor Real | Diferencia |
+|---------|-----------------|------------|------------|
+| Tests Totales | 38 | 162 | +326% |
+| Tests Pasando | 25 (65.8%) | 98 (60.5%) | -5.3pp |
+| Tests Fallando | 13 | 62 | +377% |
+| Archivos de Test | 5 | 12 | +140% |
+
+### 8.3 Errores Principales Identificados
+
+```
+1. TypeError: this.redisConnection.on is not a function
+   ❯ new MessageQueue src/services/queue/MessageQueue.ts:146:26
+
+2. SyntaxError: "undefined" is not valid JSON
+   ❯ src/__tests__/unit/utils/logger.integration.test.ts:119:51
+
+3. Error: UNAUTHORIZED
+   ❯ validateSessionOwnership (tests de WebSocket)
+```
+
+### 8.4 Acciones Requeridas y Estado (Actualizado 2025-11-26)
+
+#### ✅ COMPLETADAS (Sesión 2025-11-26):
+
+1. **Renombrar archivos** - **YA ESTABAN CORRECTOS**:
+   - `logger.test.ts` ya existe correctamente en `unit/utils/`
+   - `MessageQueue.integration.test.ts` está correctamente en `integration/services/queue/`
+   - ⚠️ El reporte original tenía información incorrecta sobre ubicaciones
+
+2. **Limpieza de código muerto** - **✅ 100% COMPLETADO**:
+   - ✅ Eliminado `setup.integration.ts` (raíz de __tests__)
+   - ✅ Eliminado directorio `message-lifecycle/`
+   - ✅ Eliminado `example.test.ts`
+   - ✅ Limpiadas funciones no usadas en `mockPinoFactory.ts`:
+     - `createMockLoggerObject()`, `getLevelName()`, `pinoLevels`
+
+3. **Inicialización de BD** - **✅ COMPLETADO**:
+   - ✅ Creado nuevo helper `TestDatabaseSetup.ts` con `setupDatabaseForTests()`
+   - ✅ Actualizado `connection.integration.test.ts`
+   - ✅ Actualizado `message-flow.integration.test.ts`
+   - ✅ Actualizado `session-isolation.integration.test.ts`
+   - ✅ Actualizado `approval-lifecycle.integration.test.ts`
+
+4. **Puerto Redis unificado** - **✅ COMPLETADO**:
+   - ✅ Todos los tests usan `REDIS_TEST_CONFIG` (puerto 6399)
+
+5. **GitHub Actions** - **✅ COMPLETADO**:
+   - ✅ Nuevo job `backend-integration-tests` con Redis service container
+
+#### ❌ PENDIENTES:
+
+1. **Corregir mocks**:
+   - ❌ Agregar método `.on()` al mock de IORedis
+   - ❌ Ajustar captura de output en logger tests
+
+2. **Re-ejecutar tests** para validar correcciones
+
+### 8.5 Decisiones del Usuario
+
+| Aspecto | Decisión |
+|---------|----------|
+| Prioridad | Corregir TODO antes de Fase 2 |
+| Tests con Redis | Docker obligatorio + servicios reales |
+| Threshold cobertura | Mantener 59% |
+| Compatibilidad | Windows local + GitHub Actions |
+
+---
+
 **Fin del QA Report**
+
+*Última actualización: 2025-11-26 (QA Master Audit)*

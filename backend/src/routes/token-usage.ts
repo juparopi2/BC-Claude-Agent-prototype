@@ -18,6 +18,8 @@ import {
   validateSessionOwnership,
   validateUserIdMatch,
 } from '@/utils/session-ownership';
+import { ErrorCode } from '@/constants/errors';
+import { sendError } from '@/utils/error-response';
 
 const router = Router();
 const logger = createChildLogger({ route: 'token-usage' });
@@ -38,10 +40,7 @@ router.get('/user/:userId', authenticateMicrosoft, async (req: Request, res: Res
 
   // Validate userId is provided
   if (!userId) {
-    res.status(400).json({
-      error: 'Bad Request',
-      message: 'userId parameter is required',
-    });
+    sendError(res, ErrorCode.MISSING_REQUIRED_FIELD, 'userId parameter is required');
     return;
   }
 
@@ -52,10 +51,7 @@ router.get('/user/:userId', authenticateMicrosoft, async (req: Request, res: Res
       authenticatedUserId,
       endpoint: '/user/:userId',
     });
-    res.status(403).json({
-      error: 'Forbidden',
-      message: 'You can only access your own token usage data',
-    });
+    sendError(res, ErrorCode.OWN_DATA_ONLY);
     return;
   }
 
@@ -64,20 +60,14 @@ router.get('/user/:userId', authenticateMicrosoft, async (req: Request, res: Res
     const totals = await tokenUsageService.getUserTotals(userId);
 
     if (!totals) {
-      res.status(404).json({
-        error: 'Not Found',
-        message: `No token usage found for user ${userId}`,
-      });
+      sendError(res, ErrorCode.TOKEN_USAGE_NOT_FOUND);
       return;
     }
 
     res.json(totals);
   } catch (error) {
     logger.error('Failed to get user token totals', { error, userId });
-    res.status(500).json({
-      error: 'Internal Server Error',
-      message: 'Failed to retrieve token usage',
-    });
+    sendError(res, ErrorCode.INTERNAL_ERROR, 'Failed to retrieve token usage');
   }
 });
 
@@ -97,10 +87,7 @@ router.get('/session/:sessionId', authenticateMicrosoft, async (req: Request, re
 
   // Validate sessionId is provided
   if (!sessionId) {
-    res.status(400).json({
-      error: 'Bad Request',
-      message: 'sessionId parameter is required',
-    });
+    sendError(res, ErrorCode.MISSING_REQUIRED_FIELD, 'sessionId parameter is required');
     return;
   }
 
@@ -108,10 +95,7 @@ router.get('/session/:sessionId', authenticateMicrosoft, async (req: Request, re
   const ownershipResult = await validateSessionOwnership(sessionId, userId ?? '');
   if (!ownershipResult.isOwner) {
     if (ownershipResult.error === 'SESSION_NOT_FOUND') {
-      res.status(404).json({
-        error: 'Not Found',
-        message: 'Session not found',
-      });
+      sendError(res, ErrorCode.SESSION_NOT_FOUND);
       return;
     }
 
@@ -121,10 +105,7 @@ router.get('/session/:sessionId', authenticateMicrosoft, async (req: Request, re
       error: ownershipResult.error,
     });
 
-    res.status(403).json({
-      error: 'Forbidden',
-      message: 'You do not have access to this session',
-    });
+    sendError(res, ErrorCode.SESSION_ACCESS_DENIED);
     return;
   }
 
@@ -133,20 +114,14 @@ router.get('/session/:sessionId', authenticateMicrosoft, async (req: Request, re
     const totals = await tokenUsageService.getSessionTotals(sessionId);
 
     if (!totals) {
-      res.status(404).json({
-        error: 'Not Found',
-        message: `No token usage found for session ${sessionId}`,
-      });
+      sendError(res, ErrorCode.TOKEN_USAGE_NOT_FOUND);
       return;
     }
 
     res.json(totals);
   } catch (error) {
     logger.error('Failed to get session token totals', { error, sessionId });
-    res.status(500).json({
-      error: 'Internal Server Error',
-      message: 'Failed to retrieve token usage',
-    });
+    sendError(res, ErrorCode.INTERNAL_ERROR, 'Failed to retrieve token usage');
   }
 });
 
@@ -168,10 +143,7 @@ router.get('/user/:userId/monthly', authenticateMicrosoft, async (req: Request, 
 
   // Validate userId is provided
   if (!userId) {
-    res.status(400).json({
-      error: 'Bad Request',
-      message: 'userId parameter is required',
-    });
+    sendError(res, ErrorCode.MISSING_REQUIRED_FIELD, 'userId parameter is required');
     return;
   }
 
@@ -182,10 +154,7 @@ router.get('/user/:userId/monthly', authenticateMicrosoft, async (req: Request, 
       authenticatedUserId,
       endpoint: '/user/:userId/monthly',
     });
-    res.status(403).json({
-      error: 'Forbidden',
-      message: 'You can only access your own token usage data',
-    });
+    sendError(res, ErrorCode.OWN_DATA_ONLY);
     return;
   }
 
@@ -194,9 +163,10 @@ router.get('/user/:userId/monthly', authenticateMicrosoft, async (req: Request, 
   if (monthsParam) {
     const parsed = parseInt(monthsParam as string, 10);
     if (isNaN(parsed) || parsed < 1 || parsed > 24) {
-      res.status(400).json({
-        error: 'Bad Request',
-        message: 'months must be a number between 1 and 24',
+      sendError(res, ErrorCode.PARAMETER_OUT_OF_RANGE, 'months must be a number between 1 and 24', {
+        field: 'months',
+        min: 1,
+        max: 24,
       });
       return;
     }
@@ -214,10 +184,7 @@ router.get('/user/:userId/monthly', authenticateMicrosoft, async (req: Request, 
     });
   } catch (error) {
     logger.error('Failed to get monthly token usage', { error, userId, months });
-    res.status(500).json({
-      error: 'Internal Server Error',
-      message: 'Failed to retrieve monthly token usage',
-    });
+    sendError(res, ErrorCode.INTERNAL_ERROR, 'Failed to retrieve monthly token usage');
   }
 });
 
@@ -239,10 +206,7 @@ router.get('/user/:userId/top-sessions', authenticateMicrosoft, async (req: Requ
 
   // Validate userId is provided
   if (!userId) {
-    res.status(400).json({
-      error: 'Bad Request',
-      message: 'userId parameter is required',
-    });
+    sendError(res, ErrorCode.MISSING_REQUIRED_FIELD, 'userId parameter is required');
     return;
   }
 
@@ -253,10 +217,7 @@ router.get('/user/:userId/top-sessions', authenticateMicrosoft, async (req: Requ
       authenticatedUserId,
       endpoint: '/user/:userId/top-sessions',
     });
-    res.status(403).json({
-      error: 'Forbidden',
-      message: 'You can only access your own token usage data',
-    });
+    sendError(res, ErrorCode.OWN_DATA_ONLY);
     return;
   }
 
@@ -265,9 +226,10 @@ router.get('/user/:userId/top-sessions', authenticateMicrosoft, async (req: Requ
   if (limitParam) {
     const parsed = parseInt(limitParam as string, 10);
     if (isNaN(parsed) || parsed < 1 || parsed > 50) {
-      res.status(400).json({
-        error: 'Bad Request',
-        message: 'limit must be a number between 1 and 50',
+      sendError(res, ErrorCode.PARAMETER_OUT_OF_RANGE, 'limit must be a number between 1 and 50', {
+        field: 'limit',
+        min: 1,
+        max: 50,
       });
       return;
     }
@@ -285,10 +247,7 @@ router.get('/user/:userId/top-sessions', authenticateMicrosoft, async (req: Requ
     });
   } catch (error) {
     logger.error('Failed to get top sessions', { error, userId, limit });
-    res.status(500).json({
-      error: 'Internal Server Error',
-      message: 'Failed to retrieve top sessions',
-    });
+    sendError(res, ErrorCode.INTERNAL_ERROR, 'Failed to retrieve top sessions');
   }
 });
 
@@ -309,10 +268,7 @@ router.get('/user/:userId/cache-efficiency', authenticateMicrosoft, async (req: 
 
   // Validate userId is provided
   if (!userId) {
-    res.status(400).json({
-      error: 'Bad Request',
-      message: 'userId parameter is required',
-    });
+    sendError(res, ErrorCode.MISSING_REQUIRED_FIELD, 'userId parameter is required');
     return;
   }
 
@@ -323,10 +279,7 @@ router.get('/user/:userId/cache-efficiency', authenticateMicrosoft, async (req: 
       authenticatedUserId,
       endpoint: '/user/:userId/cache-efficiency',
     });
-    res.status(403).json({
-      error: 'Forbidden',
-      message: 'You can only access your own token usage data',
-    });
+    sendError(res, ErrorCode.OWN_DATA_ONLY);
     return;
   }
 
@@ -340,10 +293,7 @@ router.get('/user/:userId/cache-efficiency', authenticateMicrosoft, async (req: 
     });
   } catch (error) {
     logger.error('Failed to get cache efficiency', { error, userId });
-    res.status(500).json({
-      error: 'Internal Server Error',
-      message: 'Failed to retrieve cache efficiency',
-    });
+    sendError(res, ErrorCode.INTERNAL_ERROR, 'Failed to retrieve cache efficiency');
   }
 });
 
@@ -361,10 +311,7 @@ router.get('/me', authenticateMicrosoft, async (req: Request, res: Response) => 
   const userId = req.userId;
 
   if (!userId) {
-    res.status(401).json({
-      error: 'Unauthorized',
-      message: 'User not authenticated',
-    });
+    sendError(res, ErrorCode.USER_ID_NOT_IN_SESSION);
     return;
   }
 
@@ -373,20 +320,14 @@ router.get('/me', authenticateMicrosoft, async (req: Request, res: Response) => 
     const totals = await tokenUsageService.getUserTotals(userId);
 
     if (!totals) {
-      res.status(404).json({
-        error: 'Not Found',
-        message: 'No token usage found for your account',
-      });
+      sendError(res, ErrorCode.TOKEN_USAGE_NOT_FOUND, 'No token usage found for your account');
       return;
     }
 
     res.json(totals);
   } catch (error) {
     logger.error('Failed to get user token totals (me)', { error, userId });
-    res.status(500).json({
-      error: 'Internal Server Error',
-      message: 'Failed to retrieve token usage',
-    });
+    sendError(res, ErrorCode.INTERNAL_ERROR, 'Failed to retrieve token usage');
   }
 });
 

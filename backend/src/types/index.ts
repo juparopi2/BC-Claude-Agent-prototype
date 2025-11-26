@@ -80,3 +80,13 @@ export type {
 } from './auth.types';
 
 export { AuthenticationError, AuthorizationError } from './auth.types';
+
+// Error Types
+export type {
+  ApiErrorResponse,
+  ErrorResponseWithStatus,
+  ValidationErrorDetail,
+  RangeErrorDetail,
+} from './error.types';
+
+export { isApiErrorResponse, isValidErrorCode } from './error.types';

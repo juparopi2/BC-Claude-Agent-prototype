@@ -17,6 +17,8 @@ import crypto from 'crypto';
 import { executeQuery } from '../config/database';
 import { authenticateMicrosoft } from '../middleware/auth-oauth';
 import { logger } from '../utils/logger';
+import { ErrorCode } from '@/constants/errors';
+import { sendError } from '@/utils/error-response';
 // ✅ Import native SDK types (source of truth)
 import type { StopReason, TextCitation } from '@anthropic-ai/sdk/resources/messages';
 
@@ -190,10 +192,7 @@ router.get('/', authenticateMicrosoft, async (req: Request, res: Response): Prom
     const userId = req.userId;
 
     if (!userId) {
-      res.status(401).json({
-        error: 'Unauthorized',
-        message: 'User ID not found in session',
-      });
+      sendError(res, ErrorCode.USER_ID_NOT_IN_SESSION);
       return;
     }
 
@@ -232,10 +231,7 @@ router.get('/', authenticateMicrosoft, async (req: Request, res: Response): Prom
     });
   } catch (error) {
     logger.error('[Sessions] Get sessions failed:', error);
-    res.status(500).json({
-      error: 'Failed to get sessions',
-      message: error instanceof Error ? error.message : 'Unknown error',
-    });
+    sendError(res, ErrorCode.INTERNAL_ERROR, 'Failed to get sessions');
   }
 });
 
@@ -248,20 +244,14 @@ router.post('/', authenticateMicrosoft, async (req: Request, res: Response): Pro
     const userId = req.userId;
 
     if (!userId) {
-      res.status(401).json({
-        error: 'Unauthorized',
-        message: 'User ID not found in session',
-      });
+      sendError(res, ErrorCode.USER_ID_NOT_IN_SESSION);
       return;
     }
 
     // Validate request body
     const validation = createSessionSchema.safeParse(req.body);
     if (!validation.success) {
-      res.status(400).json({
-        error: 'Invalid request body',
-        message: validation.error.errors[0]?.message || 'Validation failed',
-      });
+      sendError(res, ErrorCode.VALIDATION_ERROR, validation.error.errors[0]?.message || 'Validation failed');
       return;
     }
 
@@ -294,12 +284,14 @@ router.post('/', authenticateMicrosoft, async (req: Request, res: Response): Pro
     });
 
     if (result.recordset.length === 0 || !result.recordset[0]) {
-      throw new Error('Failed to create session');
+      logger.error('[Sessions] Create session failed: No result returned');
+      sendError(res, ErrorCode.SESSION_CREATE_ERROR);
+      return;
     }
 
     const session = transformSession(result.recordset[0]);
 
-    logger.info(`[Sessions] ✅ Session ${sessionId} created successfully (messages will be sent via Socket.IO)`);
+    logger.info(`[Sessions] Session ${sessionId} created successfully (messages will be sent via Socket.IO)`);
 
     // NOTE: Initial message processing REMOVED
     // Messages are now sent via Socket.IO events (chat:message) after room join
@@ -310,10 +302,7 @@ router.post('/', authenticateMicrosoft, async (req: Request, res: Response): Pro
     });
   } catch (error) {
     logger.error('[Sessions] Create session failed:', error);
-    res.status(500).json({
-      error: 'Failed to create session',
-      message: error instanceof Error ? error.message : 'Unknown error',
-    });
+    sendError(res, ErrorCode.SESSION_CREATE_ERROR);
   }
 });
 
@@ -327,18 +316,12 @@ router.get('/:sessionId', authenticateMicrosoft, async (req: Request, res: Respo
     const { sessionId } = req.params;
 
     if (!userId) {
-      res.status(401).json({
-        error: 'Unauthorized',
-        message: 'User ID not found in session',
-      });
+      sendError(res, ErrorCode.USER_ID_NOT_IN_SESSION);
       return;
     }
 
     if (!sessionId) {
-      res.status(400).json({
-        error: 'Bad Request',
-        message: 'Session ID is required',
-      });
+      sendError(res, ErrorCode.MISSING_REQUIRED_FIELD, 'Session ID is required');
       return;
     }
 
@@ -367,10 +350,7 @@ router.get('/:sessionId', authenticateMicrosoft, async (req: Request, res: Respo
     }>(query, { sessionId, userId });
 
     if (result.recordset.length === 0 || !result.recordset[0]) {
-      res.status(404).json({
-        error: 'Not Found',
-        message: 'Session not found or access denied',
-      });
+      sendError(res, ErrorCode.SESSION_NOT_FOUND, 'Session not found or access denied');
       return;
     }
 
@@ -383,10 +363,7 @@ router.get('/:sessionId', authenticateMicrosoft, async (req: Request, res: Respo
     });
   } catch (error) {
     logger.error('[Sessions] Get session failed:', error);
-    res.status(500).json({
-      error: 'Failed to get session',
-      message: error instanceof Error ? error.message : 'Unknown error',
-    });
+    sendError(res, ErrorCode.INTERNAL_ERROR, 'Failed to get session');
   }
 });
 
@@ -400,28 +377,19 @@ router.get('/:sessionId/messages', authenticateMicrosoft, async (req: Request, r
     const { sessionId } = req.params;
 
     if (!userId) {
-      res.status(401).json({
-        error: 'Unauthorized',
-        message: 'User ID not found in session',
-      });
+      sendError(res, ErrorCode.USER_ID_NOT_IN_SESSION);
       return;
     }
 
     if (!sessionId) {
-      res.status(400).json({
-        error: 'Bad Request',
-        message: 'Session ID is required',
-      });
+      sendError(res, ErrorCode.MISSING_REQUIRED_FIELD, 'Session ID is required');
       return;
     }
 
     // Validate query params
     const validation = getMessagesSchema.safeParse(req.query);
     if (!validation.success) {
-      res.status(400).json({
-        error: 'Invalid query parameters',
-        message: validation.error.errors[0]?.message || 'Validation failed',
-      });
+      sendError(res, ErrorCode.VALIDATION_ERROR, validation.error.errors[0]?.message || 'Invalid query parameters');
       return;
     }
 
@@ -437,10 +405,7 @@ router.get('/:sessionId/messages', authenticateMicrosoft, async (req: Request, r
     const sessionResult = await executeQuery<{ id: string }>(sessionQuery, { sessionId, userId });
 
     if (sessionResult.recordset.length === 0) {
-      res.status(404).json({
-        error: 'Not Found',
-        message: 'Session not found or access denied',
-      });
+      sendError(res, ErrorCode.SESSION_NOT_FOUND, 'Session not found or access denied');
       return;
     }
 
@@ -503,10 +468,7 @@ router.get('/:sessionId/messages', authenticateMicrosoft, async (req: Request, r
     });
   } catch (error) {
     logger.error('[Sessions] Get messages failed:', error);
-    res.status(500).json({
-      error: 'Failed to get messages',
-      message: error instanceof Error ? error.message : 'Unknown error',
-    });
+    sendError(res, ErrorCode.INTERNAL_ERROR, 'Failed to get messages');
   }
 });
 
@@ -521,34 +483,22 @@ router.patch('/:sessionId', authenticateMicrosoft, async (req: Request, res: Res
     const { title } = req.body;
 
     if (!userId) {
-      res.status(401).json({
-        error: 'Unauthorized',
-        message: 'User ID not found in session',
-      });
+      sendError(res, ErrorCode.USER_ID_NOT_IN_SESSION);
       return;
     }
 
     if (!sessionId) {
-      res.status(400).json({
-        error: 'Bad Request',
-        message: 'Session ID is required',
-      });
+      sendError(res, ErrorCode.MISSING_REQUIRED_FIELD, 'Session ID is required');
       return;
     }
 
     if (!title || typeof title !== 'string' || title.trim().length === 0) {
-      res.status(400).json({
-        error: 'Bad Request',
-        message: 'Title is required and must be a non-empty string',
-      });
+      sendError(res, ErrorCode.VALIDATION_ERROR, 'Title is required and must be a non-empty string');
       return;
     }
 
     if (title.length > 500) {
-      res.status(400).json({
-        error: 'Bad Request',
-        message: 'Title must be 500 characters or less',
-      });
+      sendError(res, ErrorCode.VALIDATION_ERROR, 'Title must be 500 characters or less');
       return;
     }
 
@@ -565,10 +515,7 @@ router.patch('/:sessionId', authenticateMicrosoft, async (req: Request, res: Res
 
     // Check if session was updated
     if (result.rowsAffected[0] === 0) {
-      res.status(404).json({
-        error: 'Not Found',
-        message: 'Session not found or access denied',
-      });
+      sendError(res, ErrorCode.SESSION_NOT_FOUND, 'Session not found or access denied');
       return;
     }
 
@@ -588,10 +535,7 @@ router.patch('/:sessionId', authenticateMicrosoft, async (req: Request, res: Res
     const sessionData = updatedSession.recordset?.[0];
 
     if (!sessionData) {
-      res.status(404).json({
-        error: 'Not Found',
-        message: 'Session not found',
-      });
+      sendError(res, ErrorCode.SESSION_NOT_FOUND);
       return;
     }
 
@@ -603,10 +547,7 @@ router.patch('/:sessionId', authenticateMicrosoft, async (req: Request, res: Res
     });
   } catch (error) {
     logger.error('[Sessions] Update title error:', error);
-    res.status(500).json({
-      error: 'Internal Server Error',
-      message: error instanceof Error ? error.message : 'Unknown error',
-    });
+    sendError(res, ErrorCode.INTERNAL_ERROR, 'Failed to update session');
   }
 });
 
@@ -620,18 +561,12 @@ router.delete('/:sessionId', authenticateMicrosoft, async (req: Request, res: Re
     const { sessionId } = req.params;
 
     if (!userId) {
-      res.status(401).json({
-        error: 'Unauthorized',
-        message: 'User ID not found in session',
-      });
+      sendError(res, ErrorCode.USER_ID_NOT_IN_SESSION);
       return;
     }
 
     if (!sessionId) {
-      res.status(400).json({
-        error: 'Bad Request',
-        message: 'Session ID is required',
-      });
+      sendError(res, ErrorCode.MISSING_REQUIRED_FIELD, 'Session ID is required');
       return;
     }
 
@@ -647,10 +582,7 @@ router.delete('/:sessionId', authenticateMicrosoft, async (req: Request, res: Re
 
     // Check if session was deleted
     if (result.rowsAffected[0] === 0) {
-      res.status(404).json({
-        error: 'Not Found',
-        message: 'Session not found or access denied',
-      });
+      sendError(res, ErrorCode.SESSION_NOT_FOUND, 'Session not found or access denied');
       return;
     }
 
@@ -662,10 +594,7 @@ router.delete('/:sessionId', authenticateMicrosoft, async (req: Request, res: Re
     });
   } catch (error) {
     logger.error('[Sessions] Delete session failed:', error);
-    res.status(500).json({
-      error: 'Failed to delete session',
-      message: error instanceof Error ? error.message : 'Unknown error',
-    });
+    sendError(res, ErrorCode.INTERNAL_ERROR, 'Failed to delete session');
   }
 });
 

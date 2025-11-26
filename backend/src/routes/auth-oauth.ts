@@ -20,6 +20,8 @@ import { createBCTokenManager } from '../services/auth/BCTokenManager';
 import { authenticateMicrosoft } from '../middleware/auth-oauth';
 import { MicrosoftOAuthSession } from '../types/microsoft.types';
 import { logger } from '../utils/logger';
+import { ErrorCode } from '@/constants/errors';
+import { sendError } from '@/utils/error-response';
 
 const router = Router();
 
@@ -52,10 +54,7 @@ router.get('/login', async (req: Request, res: Response) => {
     res.redirect(authUrl);
   } catch (error) {
     logger.error('Failed to start Microsoft login', { error });
-    res.status(500).json({
-      error: 'Internal Server Error',
-      message: 'Failed to start Microsoft login',
-    });
+    sendError(res, ErrorCode.INTERNAL_ERROR, 'Failed to start Microsoft login');
   }
 });
 
@@ -232,10 +231,7 @@ router.post('/logout', authenticateMicrosoft, async (req: Request, res: Response
     });
   } catch (error) {
     logger.error('Logout error', { error });
-    res.status(500).json({
-      error: 'Internal Server Error',
-      message: 'Failed to logout',
-    });
+    sendError(res, ErrorCode.INTERNAL_ERROR, 'Failed to logout');
   }
 });
 
@@ -260,15 +256,13 @@ router.get('/me', authenticateMicrosoft, async (req: Request, res: Response) => 
     );
 
     if (!result.recordset || result.recordset.length === 0) {
-      return res.status(404).json({
-        error: 'User Not Found',
-        message: 'User record not found',
-      });
+      sendError(res, ErrorCode.USER_NOT_FOUND, 'User record not found');
+      return;
     }
 
     const user = result.recordset[0] as Record<string, unknown>;
 
-    return res.json({
+    res.json({
       id: user.id,
       email: user.email,
       fullName: user.full_name,
@@ -281,10 +275,7 @@ router.get('/me', authenticateMicrosoft, async (req: Request, res: Response) => 
     });
   } catch (error) {
     logger.error('Failed to get current user', { error, userId: req.userId });
-    return res.status(500).json({
-      error: 'Internal Server Error',
-      message: 'Failed to get user information',
-    });
+    sendError(res, ErrorCode.INTERNAL_ERROR, 'Failed to get user information');
   }
 });
 
@@ -309,27 +300,26 @@ router.get('/bc-status', authenticateMicrosoft, async (req: Request, res: Respon
     );
 
     if (!result.recordset || result.recordset.length === 0) {
-      return res.status(404).json({
-        error: 'User Not Found',
-        message: 'User record not found',
-      });
+      sendError(res, ErrorCode.USER_NOT_FOUND, 'User record not found');
+      return;
     }
 
     const user = result.recordset[0] as Record<string, unknown>;
 
     if (!user.bc_access_token_encrypted) {
-      return res.json({
+      res.json({
         hasAccess: false,
         message: 'Business Central access not granted',
         consentUrl: '/api/auth/bc-consent',
       });
+      return;
     }
 
     const expiresAt = new Date(user.bc_token_expires_at as string);
     const now = new Date();
     const isExpired = expiresAt <= now;
 
-    return res.json({
+    res.json({
       hasAccess: !isExpired,
       expiresAt: expiresAt.toISOString(),
       isExpired,
@@ -338,10 +328,7 @@ router.get('/bc-status', authenticateMicrosoft, async (req: Request, res: Respon
     });
   } catch (error) {
     logger.error('Failed to check BC status', { error, userId: req.userId });
-    return res.status(500).json({
-      error: 'Internal Server Error',
-      message: 'Failed to check Business Central status',
-    });
+    sendError(res, ErrorCode.INTERNAL_ERROR, 'Failed to check Business Central status');
   }
 });
 
@@ -357,10 +344,8 @@ router.post('/bc-consent', authenticateMicrosoft, async (req: Request, res: Resp
     const refreshToken = req.microsoftSession?.refreshToken;
 
     if (!refreshToken) {
-      return res.status(400).json({
-        error: 'Bad Request',
-        message: 'Refresh token not found in session. Please log in again.',
-      });
+      sendError(res, ErrorCode.SESSION_EXPIRED, 'Refresh token not found in session. Please log in again.');
+      return;
     }
 
     // Acquire Business Central token
@@ -371,17 +356,14 @@ router.post('/bc-consent', authenticateMicrosoft, async (req: Request, res: Resp
 
     logger.info('Business Central consent granted', { userId });
 
-    return res.json({
+    res.json({
       success: true,
       message: 'Business Central access granted successfully',
       expiresAt: bcToken.expiresAt.toISOString(),
     });
   } catch (error) {
     logger.error('Failed to grant Business Central consent', { error, userId: req.userId });
-    return res.status(500).json({
-      error: 'Internal Server Error',
-      message: 'Failed to grant Business Central access. You may need to grant admin consent for the Financials.ReadWrite.All permission.',
-    });
+    sendError(res, ErrorCode.BC_UNAVAILABLE, 'Failed to grant Business Central access. You may need to grant admin consent for the Financials.ReadWrite.All permission.');
   }
 });
 

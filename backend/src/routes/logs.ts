@@ -26,6 +26,8 @@
 import { Router, Request, Response } from 'express';
 import { logger } from '../utils/logger';
 import { z } from 'zod';
+import { ErrorCode } from '@/constants/errors';
+import { sendError } from '@/utils/error-response';
 
 const router = Router();
 
@@ -93,10 +95,10 @@ router.post('/logs', async (req: Request, res: Response) => {
     // Log validation errors
     if (error instanceof z.ZodError) {
       logger.warn({ error: error.errors }, 'Invalid client logs received');
-      res.status(400).json({ error: 'Invalid log format', details: error.errors });
+      sendError(res, ErrorCode.VALIDATION_ERROR, 'Invalid log format');
     } else {
       logger.error({ err: error }, 'Failed to process client logs');
-      res.status(500).json({ error: 'Internal server error' });
+      sendError(res, ErrorCode.INTERNAL_ERROR);
     }
   }
 });

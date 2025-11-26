@@ -77,7 +77,8 @@
       "Bash(cut:*)",
       "Bash(del nul 2)",
       "Bash(npx vitest run)",
-      "Bash(npx vitest:*)"
+      "Bash(npx vitest:*)",
+      "Bash(git add:*)"
     ],
     "deny": [],
     "ask": []

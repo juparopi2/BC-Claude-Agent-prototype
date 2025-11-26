@@ -2018,8 +2018,8 @@ class MessageBuffer {
 | **F6-002** | **Tests: AnthropicClient** | **Unit tests** | **✅ COMPLETED** | **52 tests, 100% cobertura + QA Master Review** |
 | **F6-003** | **Tests: tool-definitions + Security Fixes** | **Unit tests + Sanitization** | **✅ COMPLETED** | **100% cobertura + Security** |
 | **F6-004** | **Tests: Middleware (auth-oauth + logging)** | **Unit tests** | **✅ COMPLETED** | **96 tests, 100% cobertura + QA Master Review** |
-| **F6-005** | **Tests: Routes + Performance** | **Unit tests + Performance suite** | **✅ COMPLETED** | **1164 tests total, 5 phases + QA Master Audit** |
-| F6-006 | Alcanzar 70% global | Completar gaps | PENDIENTE | npm run test:coverage ≥ 70% |
+| **F6-005** | **Tests: Routes** | **Unit tests** | **🧪 IN TESTING** | **145 tests, 4 route files + server endpoints** |
+| **F6-006** | **Alcanzar 70% global** | **Completar gaps** | **🧪 IN TESTING** | **npm run test:coverage ≥ 70%** |
 
 #### F6-003: Detalle de Implementación (COMPLETED)
 
@@ -2156,13 +2156,11 @@ vi.mock('pino-http', () => ({
 }));
 ```
 
-#### F6-005: Detalle de Implementación (COMPLETED)
+#### F6-005: Detalle de Implementación (IN TESTING)
 
-> **Estado**: ✅ **COMPLETED** (2025-11-25)
+> **Estado**: 🧪 **IN TESTING** (2025-11-25)
 >
-> **QA Report**: Ver `docs/plans/QA-REPORT-F6-005-PHASE5.md`
-> **Remediation Plan**: Ver `docs/plans/F6-005-REMEDIATION-PLAN.md`
-> **QA Master Audit**: Ver `docs/plans/QA-MASTER-AUDIT-F6-005-PHASE5.md`
+> **QA Report**: Ver `docs/qa-reports/QA-REPORT-F6-005.md`
 
 **Archivos de Routes Testeados**:
 
@@ -2265,14 +2263,12 @@ const response = await request(app)
 - ✅ SQL injection defendido (parameterized queries)
 - ✅ PII compliance documentado (GDPR/CCPA)
 
-**Resultados Finales F6-005 (Post QA Master Final Validation)**:
-- ✅ **1164 tests pasan** (superó objetivo de 1072 por 92 tests)
+**Resultados Finales**:
+- ✅ 705 tests pasan (621 existentes + 84 nuevos middleware)
 - ✅ Type-check exitoso
 - ✅ Lint exitoso (0 errores, 15 warnings preexistentes)
 - ✅ Build exitoso
-- ✅ 5 fases internas completadas con QA Master Audit remediation
-- ✅ Performance suite: P95/P99 percentiles, RSS monitoring, multi-tenant isolation
-- ✅ Error standardization: ~95% adoption de sendError()
+- ✅ 14/14 hallazgos QA Master resueltos
 
 #### F6-002: Detalle de Implementación (COMPLETED)
 
@@ -2358,6 +2354,400 @@ Se agregó error logging a `createChatCompletion` para mantener consistencia con
 
 **Cobertura del Archivo**:
 - `AnthropicClient.ts`: ~100% (todos los paths cubiertos)
+
+---
+
+#### F6-006: Plan Exhaustivo para Alcanzar 70% Cobertura Global (IN TESTING)
+
+> **Estado**: 🧪 **IN TESTING** (2025-11-25)
+>
+> **Cobertura Actual**: 46.17% | **Objetivo**: 70% | **Gap a Cerrar**: 23.83%
+>
+> **QA Report**: Ver `docs/qa-reports/QA-REPORT-F6-006.md`
+
+---
+
+##### A. DIAGNÓSTICO DE ESTADO ACTUAL
+
+**Resultados de `npm run test:coverage` (2025-11-25)**:
+
+| Módulo | Cobertura Actual | Líneas | Estado |
+|--------|------------------|--------|--------|
+| AnthropicClient.ts | 100% | 183 | ✅ Completo |
+| tool-definitions.ts | 100% | 159 | ✅ Completo |
+| auth-oauth.ts (middleware) | 99.48% | 372 | ✅ Completo |
+| logging.ts (middleware) | 100% | 123 | ✅ Completo |
+| auth-oauth.ts (routes) | 97.69% | 221 | ✅ Completo |
+| TokenUsageService.ts | 100% | 371 | ✅ Completo |
+| BCTokenManager.ts | 94.16% | 257 | ✅ Adecuado |
+| MCPService.ts | 96.11% | 167 | ✅ Adecuado |
+| session-ownership.ts | 95.27% | 163 | ✅ Adecuado |
+| ApprovalManager.ts | 84.15% | 1102 | ⚠️ Bueno |
+| BCClient.ts | 66.88% | 709 | ⚠️ Mejorable |
+| **DirectAgentService.ts** | **4.09%** | **2240** | **🔴 CRÍTICO** |
+| **server.ts** | **0%** | **1236** | **🔴 CRÍTICO** |
+| **TodoManager.ts** | **0%** | **350** | **🔴 CRÍTICO** |
+| config/*.ts | ~20% | ~1200 | ⚠️ Bajo |
+
+**Tests Actuales**: 1152 tests pasan (1 skipped)
+
+---
+
+##### B. ANÁLISIS DE IMPACTO POR MÓDULO
+
+**Tier 1 - IMPACTO CRÍTICO (Prioridad Máxima)**:
+
+| Módulo | Líneas | Impact Est. | Esfuerzo | Complejidad |
+|--------|--------|-------------|----------|-------------|
+| DirectAgentService.ts | 2240 (solo 91 testeadas) | +8-10% | 12-16h | Alta |
+| server.ts | 1236 | +6-8% | 8-12h | Media |
+| TodoManager.ts | 350 | +2-3% | 2-3h | Baja |
+| **Subtotal Tier 1** | **3826** | **+16-21%** | **22-31h** | - |
+
+**Tier 2 - IMPACTO ALTO (Prioridad Secundaria)**:
+
+| Módulo | Líneas | Impact Est. | Esfuerzo | Complejidad |
+|--------|--------|-------------|----------|-------------|
+| BCValidator.ts | 371 | +2-3% | 2-3h | Baja |
+| ToolUseTracker.ts | 380 | +1-2% | 3-4h | Media |
+| config/*.ts | 1200 | +3-5% | 6-8h | Alta |
+| **Subtotal Tier 2** | **1951** | **+6-10%** | **11-15h** | - |
+
+**Proyección**:
+- Solo Tier 1: 46% → 62-67% (≈ +16-21 puntos)
+- Tier 1 + Tier 2: 46% → 68-77% (✅ **SUPERA 70%**)
+
+---
+
+##### C. PLAN DE IMPLEMENTACIÓN FASE 1: DirectAgentService (4% → 70%+)
+
+**Estado Actual de Tests**:
+- Archivo: `DirectAgentService.integration.test.ts`
+- Tests existentes: 12 tests (executeQueryStreaming básico)
+- Cobertura: Solo funciones `sanitize*` están cubiertas (91 líneas)
+
+**Gaps Identificados**:
+
+| Área | Líneas Aprox | Estado | Prioridad |
+|------|--------------|--------|-----------|
+| Agentic Loop (while continueLoop) | 800+ | ❌ No testeado | CRÍTICA |
+| Tool Execution (executeMCPTool) | 400+ | ❌ No testeado | CRÍTICA |
+| Extended Thinking handling | 200+ | ❌ No testeado | ALTA |
+| Stop Reason handling | 150+ | ⚠️ Parcial | ALTA |
+| Event persistence (EventStore) | 150+ | ⚠️ Mock only | MEDIA |
+| Token tracking | 100+ | ⚠️ Mock only | MEDIA |
+| MCP Tools loading | 200+ | ⚠️ Mock only | BAJA |
+
+**Tests a Implementar (Estimado: 40-60 tests nuevos)**:
+
+```
+DirectAgentService.test.ts
+├── Agentic Loop Tests (15 tests)
+│   ├── should complete loop on end_turn stop reason
+│   ├── should continue loop on tool_use stop reason
+│   ├── should enforce maxTurns (20) safety limit
+│   ├── should handle multiple sequential tool calls
+│   ├── should handle parallel tool calls in same turn
+│   ├── should accumulate text across content blocks
+│   ├── should handle mixed text and tool_use blocks
+│   ├── should emit events in correct order per turn
+│   ├── should track inputTokens across turns
+│   ├── should track outputTokens across turns
+│   ├── should track thinkingTokens separately
+│   ├── should track cacheCreationInputTokens
+│   ├── should track cacheReadInputTokens
+│   ├── should record serviceTier from usage
+│   └── should handle stream errors mid-loop
+│
+├── Tool Execution Tests (12 tests)
+│   ├── executeMCPTool - list_all_entities
+│   ├── executeMCPTool - get_entity_details
+│   ├── executeMCPTool - search_entities
+│   ├── executeMCPTool - get_operation_details
+│   ├── executeMCPTool - validate_workflow
+│   ├── executeMCPTool - build_knowledge_base_workflow
+│   ├── executeMCPTool - unknown tool returns error
+│   ├── should require approval for write operations
+│   ├── should skip execution when approval denied
+│   ├── should emit tool_result after execution
+│   ├── should update message with tool result
+│   └── should handle tool execution exceptions
+│
+├── Extended Thinking Tests (8 tests)
+│   ├── should emit thinking_chunk events during stream
+│   ├── should accumulate thinking content in block
+│   ├── should track thinkingTokens from thinking blocks
+│   ├── should persist thinking content to message_events
+│   ├── should handle thinking budget configuration
+│   ├── should pass thinking config to Claude API
+│   ├── should handle thinking blocks with signatures
+│   └── should not emit thinking when disabled
+│
+├── Stop Reason Tests (8 tests)
+│   ├── end_turn - should complete successfully
+│   ├── tool_use - should continue loop
+│   ├── max_tokens - should emit truncation message
+│   ├── stop_sequence - should handle custom stops
+│   ├── content_filter - should emit filtered message
+│   ├── null stop_reason - should handle gracefully
+│   ├── unknown stop_reason - should log warning
+│   └── should include stopReason in message event
+│
+├── Event Persistence Tests (10 tests)
+│   ├── should persist thinking event BEFORE emit
+│   ├── should persist tool_use event with sequence
+│   ├── should persist tool_result event
+│   ├── should persist message event with tokens
+│   ├── should persist complete event
+│   ├── should reuse sequence from persisted event
+│   ├── should queue message for async DB write
+│   ├── should use Anthropic messageId as ID
+│   ├── should use Anthropic tool_use_id as ID
+│   └── should handle persistence failures gracefully
+│
+└── Error Handling Tests (7 tests)
+    ├── should catch stream creation errors
+    ├── should catch stream iteration errors
+    ├── should emit error event on failure
+    ├── should return success=false on error
+    ├── should include error message in result
+    ├── should log errors with full context
+    └── should handle missing sessionId
+```
+
+**Dependencias de Test**:
+- Usar `FakeAnthropicClient` existente para streaming mock
+- Extender `AnthropicResponseFactory` para Extended Thinking
+- Mock `EventStore.appendEvent` para verificar persistence
+- Mock `MessageQueue.addMessagePersistence` para async writes
+
+**Breaking Changes Requeridos**: Ninguno
+
+---
+
+##### D. PLAN DE IMPLEMENTACIÓN FASE 2: server.ts (0% → 50%+)
+
+**Estado Actual**:
+- Archivo: 1236 líneas
+- Tests existentes: 0 (solo server.socket.test.ts con 10 tests para Socket.IO)
+- Cobertura: 0%
+
+**Gaps Identificados**:
+
+| Área | Líneas Aprox | Estado | Prioridad |
+|------|--------------|--------|-----------|
+| Initialization (initializeApp) | 150 | ❌ No testeado | ALTA |
+| Middleware configuration | 100 | ❌ No testeado | MEDIA |
+| Route configuration | 80 | ⚠️ Parcial (routes tests) | MEDIA |
+| WebSocket authentication | 100 | ⚠️ Parcial | ALTA |
+| Approval endpoints | 150 | ❌ No testeado | ALTA |
+| Todo endpoints | 80 | ❌ No testeado | MEDIA |
+| Error handling middleware | 100 | ❌ No testeado | ALTA |
+| Graceful shutdown | 50 | ❌ No testeado | BAJA |
+
+**Tests a Implementar (Estimado: 30-40 tests nuevos)**:
+
+```
+server.integration.test.ts
+├── Initialization Tests (8 tests)
+│   ├── should initialize database connection
+│   ├── should initialize Redis connection
+│   ├── should initialize MCP service
+│   ├── should initialize BC client
+│   ├── should handle database connection failure
+│   ├── should handle Redis connection failure
+│   ├── should log initialization progress
+│   └── should set READY flag after init complete
+│
+├── Middleware Tests (6 tests)
+│   ├── should apply CORS headers
+│   ├── should parse JSON body
+│   ├── should attach request ID
+│   ├── should attach session
+│   ├── should reject oversized bodies
+│   └── should handle malformed JSON
+│
+├── WebSocket Authentication Tests (8 tests)
+│   ├── should authenticate socket with session
+│   ├── should reject socket without session
+│   ├── should reject expired session
+│   ├── should validate session ownership on join
+│   ├── should prevent cross-session access
+│   ├── should use authSocket.userId (not payload)
+│   ├── should emit error on auth failure
+│   └── should disconnect on repeated failures
+│
+├── Approval Endpoints Tests (10 tests)
+│   ├── POST /api/approvals/:id/respond - approved
+│   ├── POST /api/approvals/:id/respond - denied
+│   ├── POST /api/approvals/:id/respond - invalid ID
+│   ├── POST /api/approvals/:id/respond - not found
+│   ├── POST /api/approvals/:id/respond - not owner
+│   ├── POST /api/approvals/:id/respond - atomic TOCTOU
+│   ├── GET /api/approvals/pending - own approvals
+│   ├── GET /api/approvals/pending - empty list
+│   ├── GET /api/approvals/session/:id - own session
+│   └── GET /api/approvals/session/:id - not owner
+│
+├── Error Handling Tests (5 tests)
+│   ├── should catch unhandled route errors
+│   ├── should log errors with context
+│   ├── should return 500 with error ID
+│   ├── should not leak stack traces in prod
+│   └── should handle async errors in routes
+│
+└── Graceful Shutdown Tests (3 tests)
+    ├── should handle SIGTERM
+    ├── should handle SIGINT
+    └── should close connections before exit
+```
+
+**Técnica de Testing**:
+- Crear instancia de Express app aislada
+- Usar supertest para HTTP requests
+- Mock servicios con vi.mock()
+- Inyectar mocks de database/redis
+
+**Breaking Changes Requeridos**: Ninguno
+
+---
+
+##### E. PLAN DE IMPLEMENTACIÓN FASE 3: TodoManager (0% → 70%+)
+
+**Estado Actual**:
+- Archivo: 350 líneas
+- Tests existentes: 0
+- Cobertura: 0%
+- Estado: Código ACTIVO (usado en server.ts línea 239)
+
+**Tests a Implementar (Estimado: 20-25 tests)**:
+
+```
+TodoManager.test.ts
+├── Singleton Pattern Tests (3 tests)
+│   ├── should throw if no Socket.IO on first call
+│   ├── should return same instance on subsequent calls
+│   └── should work without Socket.IO after init
+│
+├── syncTodosFromSDK Tests (5 tests)
+│   ├── should create todos from SDK array
+│   ├── should emit todo:created event
+│   ├── should persist to database
+│   ├── should handle empty array
+│   └── should handle database errors
+│
+├── createManualTodo Tests (5 tests)
+│   ├── should create todo with given order
+│   ├── should auto-increment order if not provided
+│   ├── should emit todo:created event
+│   ├── should throw if database unavailable
+│   └── should use correct session room
+│
+├── Status Transition Tests (6 tests)
+│   ├── markInProgress - should update status
+│   ├── markInProgress - should set started_at
+│   ├── markCompleted(true) - should set completed
+│   ├── markCompleted(false) - should set failed
+│   ├── markCompleted - should emit todo:completed
+│   └── markCompleted - should set completed_at
+│
+├── getTodosBySession Tests (3 tests)
+│   ├── should return todos ordered by order
+│   ├── should return empty array for no todos
+│   └── should throw if database unavailable
+│
+└── toActiveForm Tests (3 tests)
+    ├── should convert "create" to "creating"
+    ├── should convert "update" to "updating"
+    └── should handle edge cases
+```
+
+**Dependencias de Test**:
+- Mock Socket.IO server
+- Mock database connection
+- Mock getDatabase() function
+
+**Breaking Changes Requeridos**: Ninguno
+
+---
+
+##### F. IDENTIFICACIÓN DE BREAKING CHANGES
+
+**Después del análisis, NO se requieren breaking changes** para alcanzar 70% cobertura.
+
+Los módulos a testear son:
+1. **DirectAgentService**: Ya tiene interfaces definidas (`IAnthropicClient`), soporta inyección de dependencias
+2. **server.ts**: Puede testearse con supertest sin modificar código
+3. **TodoManager**: Ya tiene singleton pattern testeable
+
+**Mejoras Opcionales (No Breaking)**:
+- Extraer funciones inline de server.ts a módulos separados para mejor testabilidad
+- Agregar interface `ITodoManager` para inyección de dependencias
+- Mover endpoints de server.ts a archivos de routes separados
+
+---
+
+##### G. MÉTRICAS DE ÉXITO
+
+| Métrica | Antes | Después (Target) | Verificación |
+|---------|-------|------------------|--------------|
+| Cobertura Global | 46.17% | ≥70% | `npm run test:coverage` |
+| Tests Totales | 1152 | ~1250+ | `npm test` |
+| DirectAgentService | 4.09% | ≥70% | Cobertura específica |
+| server.ts | 0% | ≥50% | Cobertura específica |
+| TodoManager.ts | 0% | ≥70% | Cobertura específica |
+| Tests Skipped | 1 | ≤2 | No agregar más |
+| Flaky Tests | 0 | 0 | Mantener estabilidad |
+
+---
+
+##### H. FASES DE EJECUCIÓN
+
+**Fase 1 - DirectAgentService (12-16 horas)**
+1. Extender streaming mock helpers
+2. Implementar tests de Agentic Loop (15 tests)
+3. Implementar tests de Tool Execution (12 tests)
+4. Implementar tests de Extended Thinking (8 tests)
+5. Implementar tests de Stop Reason (8 tests)
+6. Implementar tests de Event Persistence (10 tests)
+7. Implementar tests de Error Handling (7 tests)
+8. Verificar cobertura: Target ≥70%
+
+**Fase 2 - server.ts (8-12 horas)**
+1. Crear setup de test con Express aislado
+2. Implementar tests de Initialization (8 tests)
+3. Implementar tests de WebSocket Auth (8 tests)
+4. Implementar tests de Approval Endpoints (10 tests)
+5. Implementar tests de Error Handling (5 tests)
+6. Implementar tests de Graceful Shutdown (3 tests)
+7. Verificar cobertura: Target ≥50%
+
+**Fase 3 - TodoManager (2-3 horas)**
+1. Crear mocks de Socket.IO y Database
+2. Implementar todos los tests (20-25 tests)
+3. Verificar cobertura: Target ≥70%
+
+**Fase 4 - Verificación y Documentación (2-3 horas)**
+1. Ejecutar `npm run test:coverage` completo
+2. Verificar ≥70% global
+3. Ejecutar `npm run lint` y `npm run build`
+4. Crear QA Report
+5. Actualizar DIAGNOSTIC.md
+
+---
+
+##### I. VERIFICACIÓN POST-IMPLEMENTACIÓN
+
+**Checklist Obligatorio**:
+- [ ] `npm run test` - 0 failing tests
+- [ ] `npm run test:coverage` - ≥70% global
+- [ ] `npm run lint` - 0 errors
+- [ ] `npm run type-check` - 0 errors
+- [ ] `npm run build` - successful
+- [ ] Cobertura DirectAgentService ≥70%
+- [ ] Cobertura server.ts ≥50%
+- [ ] Cobertura TodoManager ≥70%
+- [ ] No tests skipped nuevos
 
 ---
 
@@ -2503,8 +2893,8 @@ npm run test:e2e:debug
 
 *Documento generado automáticamente por diagnóstico de Claude*
 *Fecha de creación: 2025-11-24*
-*Última actualización: 2025-11-25 (F6-005 COMPLETED - Routes + Performance, 1164 tests, QA Master Final Validation)*
-*Versión: 1.9*
+*Última actualización: 2025-11-25 (F6-003 COMPLETED - Tests + Security Fixes)*
+*Versión: 1.8*
 
 ---
 
@@ -2512,7 +2902,6 @@ npm run test:e2e:debug
 
 | Versión | Fecha | Cambios |
 |---------|-------|---------|
-| 1.9 | 2025-11-25 | **F6-005 COMPLETED**: QA Master Final Validation passed. 5 fases internas (Gaps Críticos, Seguridad, Edge Cases, Error Standardization, Performance). 1164 tests totales. Performance suite con P95/P99, RSS monitoring, multi-tenant isolation. |
 | 1.8 | 2025-11-25 | **F6-003 COMPLETED**: Security fixes tras QA Master Review. Eliminado 'action' del enum, agregadas 4 funciones de sanitización (path traversal, case sensitivity, special chars), 58 tests adicionales. 621 tests totales pasan. |
 | 1.7 | 2025-11-25 | **F6-003 IN TESTING**: Tests para tool-definitions.ts. 44 tests unitarios, 100% cobertura. Eliminado `tool-schemas.ts` (código muerto desincronizado). |
 | 1.6 | 2025-11-25 | Agregado GAP #8: Sistema de ToDos no integrado en Agent Loop (código muerto). Incluye análisis técnico completo, diagramas de flujo esperado, plan de implementación por fases, contratos WebSocket, mockups de UI, y desglose de 12 sub-tareas. |

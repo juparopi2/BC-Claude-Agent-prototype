@@ -49,17 +49,16 @@ export default defineConfig({
         'src/schemas/request.schemas.ts',
         'src/services/todo/TodoManager.ts',  // Will be heavily refactored - skip tests
       ],
-      // TEMPORARY: Lowered from 70% to 10% for Phase 2→3 transition
-      // MVP (Phase 2) has 2 core services tested (DirectAgentService ~60%, ApprovalManager ~66%)
-      // Current overall coverage: ~14% (due to many untested supporting services)
-      // 10% threshold provides safety net against regressions in tested code
-      // Phase 3 will implement comprehensive testing to reach 70% threshold
-      // See TODO.md Phase 3: Week 8 (Testing Infrastructure)
+      // F6-006: Coverage threshold set to 59% (current baseline: 59.72%)
+      // DirectAgentService: 93.59% (up from 4%)
+      // server.ts: 0% (requires integration tests - excluded from unit test coverage)
+      // Phase 3 goal: Reach 70% by adding integration tests for server.ts
+      // Last updated: 2025-11-25
       thresholds: {
-        branches: 10,
-        functions: 10,
-        lines: 10,
-        statements: 10,
+        branches: 59,
+        functions: 59,
+        lines: 59,
+        statements: 59,
       },
     },
     include: ['src/**/*.{test,spec}.ts'],

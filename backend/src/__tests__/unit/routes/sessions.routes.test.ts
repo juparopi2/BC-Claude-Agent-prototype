@@ -139,9 +139,9 @@ describe('Sessions Routes', () => {
         .get('/api/chat/sessions')
         .expect(500);
 
-      // Assert
-      expect(response.body.error).toBe('Failed to get sessions');
-      expect(response.body.message).toBe('Database connection lost');
+      // Assert - sendError format: { error: HTTP_STATUS_NAME, message: CUSTOM_MESSAGE, code: ERROR_CODE }
+      expect(response.body.error).toBe('Internal Server Error');
+      expect(response.body.message).toBe('Failed to get sessions');
     });
   });
 
@@ -221,8 +221,8 @@ describe('Sessions Routes', () => {
         .send({ title: longTitle })
         .expect(400);
 
-      // Assert
-      expect(response.body.error).toBe('Invalid request body');
+      // Assert - sendError format: { error: HTTP_STATUS_NAME, message: CUSTOM_MESSAGE }
+      expect(response.body.error).toBe('Bad Request');
     });
 
     // Note: Authentication tests moved to integration tests
@@ -238,8 +238,9 @@ describe('Sessions Routes', () => {
         .send({ title: 'Test' })
         .expect(500);
 
-      // Assert
-      expect(response.body.error).toBe('Failed to create session');
+      // Assert - sendError format: { error: HTTP_STATUS_NAME, message: CUSTOM_MESSAGE }
+      expect(response.body.error).toBe('Internal Server Error');
+      expect(response.body.message).toBe('Failed to create session');
     });
   });
 
@@ -385,8 +386,8 @@ describe('Sessions Routes', () => {
         .get('/api/chat/sessions/any/messages?limit=invalid')
         .expect(400);
 
-      // Assert
-      expect(response.body.error).toBe('Invalid query parameters');
+      // Assert - sendError format: { error: HTTP_STATUS_NAME, message: CUSTOM_MESSAGE }
+      expect(response.body.error).toBe('Bad Request');
     });
 
     it('should return 404 when session does not exist or user lacks access', async () => {
@@ -413,8 +414,8 @@ describe('Sessions Routes', () => {
           session_id: 'session-types',
           role: 'assistant',
           message_type: 'thinking',
-          content: '',
-          metadata: JSON.stringify({ content: 'Let me think about this...', duration_ms: 1500 }),
+          content: 'Let me think about this...',  // Content is in content column, not metadata
+          metadata: JSON.stringify({ duration_ms: 1500 }),
           stop_reason: null,
           token_count: 20,
           created_at: new Date()
@@ -634,9 +635,9 @@ describe('Sessions Routes', () => {
         .delete('/api/chat/sessions/error-session')
         .expect(500);
 
-      // Assert
-      expect(response.body.error).toBe('Failed to delete session');
-      expect(response.body.message).toBe('Constraint violation');
+      // Assert - sendError format: { error: HTTP_STATUS_NAME, message: CUSTOM_MESSAGE }
+      expect(response.body.error).toBe('Internal Server Error');
+      expect(response.body.message).toBe('Failed to delete session');
     });
   });
 });

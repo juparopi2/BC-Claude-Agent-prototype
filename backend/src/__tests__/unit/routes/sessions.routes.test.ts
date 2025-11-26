@@ -18,6 +18,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach, Mock } from 'vitest';
 import request from 'supertest';
 import express, { Application, Request, Response, NextFunction } from 'express';
+import { ErrorCode } from '@/constants/errors';
 
 // ============================================
 // Mock Dependencies using vi.hoisted
@@ -247,8 +248,10 @@ describe('Sessions Routes', () => {
         .set('x-test-user-id', 'user-123')
         .expect(500);
 
-      // Assert
-      expect(response.body.error).toBe('Failed to get sessions');
+      // Assert - standardized error format
+      expect(response.body.error).toBe('Internal Server Error');
+      expect(response.body.message).toBe('Failed to get sessions');
+      expect(response.body.code).toBe(ErrorCode.INTERNAL_ERROR);
     });
   });
 
@@ -326,8 +329,9 @@ describe('Sessions Routes', () => {
         .send({ title: longTitle })
         .expect(400);
 
-      // Assert
-      expect(response.body.error).toBe('Invalid request body');
+      // Assert - standardized error format
+      expect(response.body.error).toBe('Bad Request');
+      expect(response.body.code).toBe(ErrorCode.VALIDATION_ERROR);
     });
 
     it('should return 400 for empty title string', async () => {
@@ -338,8 +342,9 @@ describe('Sessions Routes', () => {
         .send({ title: '' })
         .expect(400);
 
-      // Assert
-      expect(response.body.error).toBe('Invalid request body');
+      // Assert - standardized error format
+      expect(response.body.error).toBe('Bad Request');
+      expect(response.body.code).toBe(ErrorCode.VALIDATION_ERROR);
     });
 
     it('should accept title with leading/trailing whitespace (Zod handles)', async () => {
@@ -380,8 +385,9 @@ describe('Sessions Routes', () => {
         .send({ title: 'Test' })
         .expect(500);
 
-      // Assert
-      expect(response.body.error).toBe('Failed to create session');
+      // Assert - standardized error format
+      expect(response.body.error).toBe('Internal Server Error');
+      expect(response.body.code).toBe(ErrorCode.SESSION_CREATE_ERROR);
     });
   });
 
@@ -458,8 +464,10 @@ describe('Sessions Routes', () => {
         .set('x-test-user-id', 'user-123')
         .expect(500);
 
-      // Assert
-      expect(response.body.error).toBe('Failed to get session');
+      // Assert - standardized error format
+      expect(response.body.error).toBe('Internal Server Error');
+      expect(response.body.message).toBe('Failed to get session');
+      expect(response.body.code).toBe(ErrorCode.INTERNAL_ERROR);
     });
   });
 
@@ -534,8 +542,9 @@ describe('Sessions Routes', () => {
         .set('x-test-user-id', 'user-123')
         .expect(400);
 
-      // Assert
-      expect(response.body.error).toBe('Invalid query parameters');
+      // Assert - standardized error format
+      expect(response.body.error).toBe('Bad Request');
+      expect(response.body.code).toBe(ErrorCode.VALIDATION_ERROR);
     });
 
     it('should return 400 for limit < 1', async () => {
@@ -545,8 +554,9 @@ describe('Sessions Routes', () => {
         .set('x-test-user-id', 'user-123')
         .expect(400);
 
-      // Assert
-      expect(response.body.error).toBe('Invalid query parameters');
+      // Assert - standardized error format
+      expect(response.body.error).toBe('Bad Request');
+      expect(response.body.code).toBe(ErrorCode.VALIDATION_ERROR);
     });
 
     it('should return 400 for negative offset', async () => {
@@ -556,8 +566,9 @@ describe('Sessions Routes', () => {
         .set('x-test-user-id', 'user-123')
         .expect(400);
 
-      // Assert
-      expect(response.body.error).toBe('Invalid query parameters');
+      // Assert - standardized error format
+      expect(response.body.error).toBe('Bad Request');
+      expect(response.body.code).toBe(ErrorCode.VALIDATION_ERROR);
     });
 
     it('should return 400 for non-integer limit/offset', async () => {
@@ -567,8 +578,9 @@ describe('Sessions Routes', () => {
         .set('x-test-user-id', 'user-123')
         .expect(400);
 
-      // Assert
-      expect(response.body.error).toBe('Invalid query parameters');
+      // Assert - standardized error format
+      expect(response.body.error).toBe('Bad Request');
+      expect(response.body.code).toBe(ErrorCode.VALIDATION_ERROR);
     });
 
     it('should order by sequence_number then created_at', async () => {
@@ -604,8 +616,9 @@ describe('Sessions Routes', () => {
         .set('x-test-user-id', 'user-123')
         .expect(404);
 
-      // Assert
+      // Assert - standardized error format
       expect(response.body.error).toBe('Not Found');
+      expect(response.body.code).toBe(ErrorCode.SESSION_NOT_FOUND);
     });
 
     it('should handle database error gracefully (500)', async () => {
@@ -618,8 +631,10 @@ describe('Sessions Routes', () => {
         .set('x-test-user-id', 'user-123')
         .expect(500);
 
-      // Assert
-      expect(response.body.error).toBe('Failed to get messages');
+      // Assert - standardized error format
+      expect(response.body.error).toBe('Internal Server Error');
+      expect(response.body.message).toBe('Failed to get messages');
+      expect(response.body.code).toBe(ErrorCode.INTERNAL_ERROR);
     });
   });
 
@@ -1146,9 +1161,10 @@ describe('Sessions Routes', () => {
         .send({ title: 'New Title' })
         .expect(500);
 
-      // Assert
+      // Assert - standardized error format
       expect(response.body.error).toBe('Internal Server Error');
-      expect(response.body.message).toBe('Database write error');
+      expect(response.body.message).toBe('Failed to update session');
+      expect(response.body.code).toBe(ErrorCode.INTERNAL_ERROR);
     });
 
     it('should handle DELETE database error gracefully (500)', async () => {
@@ -1161,8 +1177,10 @@ describe('Sessions Routes', () => {
         .set('x-test-user-id', 'user-123')
         .expect(500);
 
-      // Assert
-      expect(response.body.error).toBe('Failed to delete session');
+      // Assert - standardized error format
+      expect(response.body.error).toBe('Internal Server Error');
+      expect(response.body.message).toBe('Failed to delete session');
+      expect(response.body.code).toBe(ErrorCode.INTERNAL_ERROR);
     });
   });
 });

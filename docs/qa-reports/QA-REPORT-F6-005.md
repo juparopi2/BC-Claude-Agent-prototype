@@ -1,7 +1,7 @@
 # QA Report - F6-005: Tests de Routes
 
 **Fecha**: 2025-11-25
-**Estado**: 🧪 **IN TESTING** (Fase 3 de 5 completada)
+**Estado**: 🧪 **IN TESTING** (Fase 4 de 5 completada)
 **Implementador**: Claude Code
 **Worktree**: `dreamy-heyrovsky`
 
@@ -18,14 +18,14 @@ Este ticket implementa tests unitarios exhaustivos para los endpoints REST del p
 | 1 | Gaps Críticos | ✅ COMPLETED | +111 tests |
 | 2 | Seguridad | ✅ COMPLETED | +42 tests |
 | 3 | Edge Cases | ✅ COMPLETED | +61 tests |
-| 4 | Inconsistencias | PENDING | - |
+| 4 | Inconsistencias | ✅ COMPLETED | +78 tests |
 | 5 | Performance | PENDING | - |
 
 ### Resultados Actuales de Build
 
 | Métrica | Resultado |
 |---------|-----------|
-| Tests totales | 1074 passing (335 nuevos desde inicio F6-005) |
+| Tests totales | 1152 passing (413 nuevos desde inicio F6-005) |
 | Errores de lint | 0 (15 warnings preexistentes) |
 | Type-check | ✅ Sin errores |
 | Build | ✅ Compila exitosamente |
@@ -54,6 +54,30 @@ Este ticket implementa tests unitarios exhaustivos para los endpoints REST del p
 | `auth-oauth.routes.test.ts` | +17 | OAuth callback, profiles, DB errors, BC tokens, sessions |
 | `server-endpoints.test.ts` | +14 | Agent query, approvals, session IDs, DB errors, MCP |
 | `logs.routes.test.ts` | +14 | Timestamps, context types, URLs, UserAgents, batches |
+
+### Archivos Creados/Modificados en Fase 4 (Error Standardization)
+
+| Archivo | Estado | Descripción |
+|---------|--------|-------------|
+| `constants/errors.ts` | ✅ NUEVO | 35 ErrorCode values + ERROR_MESSAGES + ERROR_STATUS_CODES |
+| `types/error.types.ts` | ✅ NUEVO | ApiErrorResponse interface + type guards (isApiErrorResponse, isValidErrorCode) |
+| `utils/error-response.ts` | ✅ NUEVO | sendError() helper + HTTP_STATUS_NAMES |
+| `routes/logs.ts` | ✅ REFACTORIZADO | Usa sendError() para errores |
+| `routes/token-usage.ts` | ✅ REFACTORIZADO | Usa sendError() para errores |
+| `routes/sessions.ts` | ✅ REFACTORIZADO | Usa sendError() para errores |
+| `routes/auth-oauth.ts` | ✅ REFACTORIZADO | Usa sendError() para errores |
+
+### Tests Nuevos/Actualizados en Fase 4
+
+| Archivo | Tests | Estado |
+|---------|-------|--------|
+| `errors.test.ts` | 10 | ✅ NUEVO - Tests de ErrorCode enum |
+| `error-response.test.ts` | 22 | ✅ NUEVO - Tests de sendError() |
+| `error.types.test.ts` | 15 | ✅ NUEVO - Tests de type guards |
+| `sessions.routes.test.ts` | ACTUALIZADO | Usa ErrorCode enum (no magic strings) |
+| `token-usage.routes.test.ts` | ACTUALIZADO | Usa ErrorCode enum |
+| `logs.routes.test.ts` | ACTUALIZADO | Usa ErrorCode enum |
+| `auth-oauth.routes.test.ts` | ACTUALIZADO | Usa ErrorCode enum + status codes corregidos |
 
 ---
 
@@ -319,8 +343,8 @@ cd backend && npm run build
 
 ## 8. Criterios de Aceptación
 
-### Criterios Técnicos (Actualizados Fase 3)
-- [x] Tests totales: 1074 passing (objetivo inicial 884 superado en +21%)
+### Criterios Técnicos (Actualizados Fase 4)
+- [x] Tests totales: 1152 passing (objetivo inicial 884 superado en +30%)
 - [x] 0 errores de lint (15 warnings preexistentes)
 - [x] Type-check sin errores
 - [x] Build exitoso
@@ -333,7 +357,7 @@ cd backend && npm run build
 - [x] Race condition documentada con tests (8 tests) - Fase 2
 - [x] Input sanitization testeada (+10 tests) - Fase 2
 - [x] Edge cases completos (+61 tests) - Fase 3
-- [ ] Error messages estandarizados - Fase 4
+- [x] Error messages estandarizados (+78 tests + ErrorCode enum + sendError()) - Fase 4
 - [ ] Performance tests básicos - Fase 5
 
 ### Validación Manual
@@ -372,8 +396,22 @@ cd backend && npm run build
 - [x] logs.routes.test.ts (+14 tests) - Timestamps, context types, URLs, UserAgents
 - [x] Verificación: 1074 tests, lint OK, type-check OK, build OK
 
+### Fase 4 ✅ COMPLETADA (Error Standardization)
+- [x] constants/errors.ts (ErrorCode enum con 35 valores)
+- [x] types/error.types.ts (ApiErrorResponse + type guards)
+- [x] utils/error-response.ts (sendError() helper)
+- [x] 4 rutas refactorizadas (logs, token-usage, sessions, auth-oauth)
+- [x] Tests actualizados para usar ErrorCode enum (no magic strings)
+- [x] +78 tests nuevos (errors.test, error-response.test, error.types.test)
+- [x] Verificación: 1152 tests, lint OK, type-check OK, build OK
+
+**Breaking Changes Fase 4 (Justificados):**
+1. Agregado campo `code` a todas las respuestas de error (machine-readable)
+2. Campo `error` ahora contiene HTTP status name (e.g., "Bad Request")
+3. SESSION_EXPIRED retorna 401 (no 400) - semánticamente correcto
+4. BC_UNAVAILABLE retorna 503 (no 500) - indica service unavailable
+
 ### Fases Pendientes
-4. **Fase 4 - Inconsistencias**: Estandarización de mensajes de error
 5. **Fase 5 - Performance**: Tests básicos de carga
 
 ### Después de Fase 5

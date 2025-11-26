@@ -15,11 +15,12 @@ He realizado una revisión exhaustiva del ticket F6-005 (Tests de Routes) con es
 
 | Aspecto | Calificación | Notas |
 |---------|--------------|-------|
-| Cobertura de funcionalidad básica | ✅ Excelente | 1074 tests cubren happy paths + edge cases |
+| Cobertura de funcionalidad básica | ✅ Excelente | 1152 tests cubren happy paths + edge cases |
 | Seguridad multi-tenant | ✅ **RESUELTO** | Timing attack protection implementada (Fase 2) |
 | Edge cases | ✅ **RESUELTO** | 61 edge cases agregados (Fase 3) |
 | Integración con sessions.ts | ✅ **RESUELTO** | 59 tests creados (Fase 1) |
 | Error handling | ✅ **RESUELTO** | DB errors, timeouts, null handling (Fase 3) |
+| Error standardization | ✅ **RESUELTO** | ErrorCode enum, sendError(), ApiErrorResponse (Fase 4) |
 | Performance/Stress | ⚠️ Pendiente | Fase 5 |
 
 ### Progreso de Remediación
@@ -29,10 +30,10 @@ He realizado una revisión exhaustiva del ticket F6-005 (Tests de Routes) con es
 | 1 - Gaps Críticos | ✅ COMPLETED | 2025-11-25 | +111 tests |
 | 2 - Seguridad | ✅ COMPLETED | 2025-11-25 | +42 tests |
 | 3 - Edge Cases | ✅ COMPLETED | 2025-11-25 | +61 tests |
-| 4 - Inconsistencias | PENDING | - | - |
+| 4 - Inconsistencias | ✅ COMPLETED | 2025-11-25 | +78 tests |
 | 5 - Performance | PENDING | - | - |
 
-**Total tests agregados**: 214 tests nuevos (de 860 inicial a 1074)
+**Total tests agregados**: 292 tests nuevos (de 860 inicial a 1152)
 
 ---
 
@@ -278,10 +279,10 @@ it('should not leak memory after processing 10000 log batches', async () => {});
 6. ~~Tests de Unicode/encoding en todos los inputs~~ ✅ (incluidos en Fase 3)
 7. ~~Documentar race conditions conocidos con tests~~ ✅ (8 tests)
 
-### Prioridad 3 (Media) - ✅ PARCIALMENTE COMPLETADO (Fase 3)
+### Prioridad 3 (Media) - ✅ COMPLETADO (Fases 3-4)
 
 8. ~~Edge cases completos~~ ✅ (61 tests - Fase 3)
-9. Estandarizar mensajes de error - PENDIENTE Fase 4
+9. ~~Estandarizar mensajes de error~~ ✅ (78 tests + implementación completa - Fase 4)
 10. Tests de performance básicos - PENDIENTE Fase 5
 
 ---
@@ -293,27 +294,28 @@ Antes de aprobar, QA debe verificar manualmente:
 - [x] `sessions.routes.test.ts` existe y tiene 40+ tests ✅ (59 tests - Fase 1)
 - [x] Auth tests usan `app.use('/api/auth', authOAuthRouter)` ✅ (Refactorizado - Fase 1)
 - [x] Rate limiting tests existen ✅ (21 tests - Fase 1)
-- [x] Total tests > 920 ✅ (actual: 1074 tests)
+- [x] Total tests > 920 ✅ (actual: 1152 tests)
 - [x] No hay tests que dupliquen lógica del router ✅ (auth-oauth corregido)
 - [x] Timing attack protection implementada ✅ (24 tests - Fase 2)
 - [x] Input sanitization tests ✅ (+10 tests - Fase 2)
 - [x] Edge cases cubiertos ✅ (+61 tests - Fase 3)
-- [ ] Error messages estandarizados - Fase 4
+- [x] Error messages estandarizados ✅ (+78 tests + ErrorCode enum + sendError() - Fase 4)
 - [ ] Performance tests básicos - Fase 5
 
 ---
 
 ## 8. Conclusión
 
-**Estado recomendado**: 🔄 **IN PROGRESS** (Fase 3 de 5 completada)
+**Estado recomendado**: 🔄 **IN TESTING** (Fase 4 de 5 completada)
 
 ### Progreso actual:
 - ✅ **Fase 1 COMPLETADA**: +111 tests (sessions, auth-oauth, rate limiting)
 - ✅ **Fase 2 COMPLETADA**: +42 tests (timing attack, race condition, sanitization)
 - ✅ **Fase 3 COMPLETADA**: +61 tests (edge cases en 4 archivos de rutas)
-- ⏳ **Fases 4-5 PENDIENTES**: Inconsistencias, Performance
+- ✅ **Fase 4 COMPLETADA**: +78 tests (error standardization, ErrorCode enum, sendError())
+- ⏳ **Fase 5 PENDIENTE**: Performance tests
 
-### Gaps resueltos (Fases 1-3):
+### Gaps resueltos (Fases 1-4):
 1. ~~Sessions routes (componente más complejo sin tests)~~ → 59 tests creados
 2. ~~Tests de auth que no validan el código real~~ → 48 tests (31 refactorizados + 17 edge cases)
 3. ~~Rate limiting sin tests~~ → 21 tests creados
@@ -321,15 +323,22 @@ Antes de aprobar, QA debe verificar manualmente:
 5. ~~Race condition no documentada~~ → 8 tests documentando comportamiento
 6. ~~Input sanitization gaps~~ → 10 tests XSS/injection prevention
 7. ~~23 edge cases identificados~~ → 61 tests cubriendo todos los casos
+8. ~~Error messages inconsistentes~~ → 78 tests + arquitectura completa (Fase 4)
 
-### Gaps pendientes para Fases 4-5:
-1. Estandarización de mensajes de error
-2. Tests de performance básicos
+### Implementación Fase 4:
+- `constants/errors.ts`: 35 ErrorCode values con ERROR_MESSAGES y ERROR_STATUS_CODES
+- `types/error.types.ts`: ApiErrorResponse interface con type guards
+- `utils/error-response.ts`: sendError() helper con HTTP status mapping
+- 4 rutas refactorizadas: logs, token-usage, sessions, auth-oauth
+- Tests sin magic strings (usan ErrorCode enum)
+- Breaking changes justificados: `code` field, HTTP status names, 401/503 corrections
+
+### Gaps pendientes para Fase 5:
+1. Tests de performance básicos
 
 **Próximos pasos**:
-1. Continuar con Fase 4 (Estandarización de mensajes de error)
-2. Completar Fase 5 (Performance tests)
-3. Solicitar revisión QA final tras Fase 5
+1. Completar Fase 5 (Performance tests)
+2. Solicitar revisión QA final
 
 ---
 
@@ -339,6 +348,6 @@ Antes de aprobar, QA debe verificar manualmente:
 |-------|-------|
 | Revisor | QA Master Review |
 | Fecha | 2025-11-25 |
-| Decisión | 🔄 IN PROGRESS - Fases 1-3 Aprobadas |
-| Tests actuales | 1074 passing |
+| Decisión | 🔄 IN TESTING - Fases 1-4 Aprobadas |
+| Tests actuales | 1152 passing |
 | Próxima revisión | Después de completar Fase 5 |

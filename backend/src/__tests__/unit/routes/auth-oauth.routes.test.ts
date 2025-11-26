@@ -23,6 +23,7 @@ import request from 'supertest';
 import express, { Application, Request, Response, NextFunction } from 'express';
 import session from 'express-session';
 import type { MicrosoftOAuthSession } from '@/types/microsoft.types';
+import { ErrorCode } from '@/constants/errors';
 
 // ============================================
 // Mock Dependencies using vi.hoisted to ensure proper hoisting
@@ -548,8 +549,10 @@ describe('Auth OAuth Routes', () => {
         .get('/api/auth/me')
         .expect(404);
 
-      // Assert
-      expect(response.body.error).toBe('User Not Found');
+      // Assert - standardized error format
+      expect(response.body.error).toBe('Not Found');
+      expect(response.body.message).toBe('User record not found');
+      expect(response.body.code).toBe(ErrorCode.USER_NOT_FOUND);
     });
 
     it('should return 500 on database error', async () => {
@@ -665,8 +668,10 @@ describe('Auth OAuth Routes', () => {
         .get('/api/auth/bc-status')
         .expect(404);
 
-      // Assert
-      expect(response.body.error).toBe('User Not Found');
+      // Assert - standardized error format
+      expect(response.body.error).toBe('Not Found');
+      expect(response.body.message).toBe('User record not found');
+      expect(response.body.code).toBe(ErrorCode.USER_NOT_FOUND);
     });
 
     it('should return 401 if not authenticated', async () => {
@@ -709,7 +714,7 @@ describe('Auth OAuth Routes', () => {
       expect(mockBCTokenManager.storeBCToken).toHaveBeenCalledWith('user-bc-consent', bcToken);
     });
 
-    it('should return 400 if refresh token is missing', async () => {
+    it('should return 401 if refresh token is missing (session expired)', async () => {
       // Arrange
       const app = createTestApp();
       authenticateAs('user-no-refresh', { refreshToken: undefined });
@@ -717,14 +722,15 @@ describe('Auth OAuth Routes', () => {
       // Act
       const response = await request(app)
         .post('/api/auth/bc-consent')
-        .expect(400);
+        .expect(401);
 
-      // Assert
-      expect(response.body.error).toBe('Bad Request');
+      // Assert - standardized error format
+      expect(response.body.error).toBe('Unauthorized');
       expect(response.body.message).toContain('Refresh token not found');
+      expect(response.body.code).toBe(ErrorCode.SESSION_EXPIRED);
     });
 
-    it('should return 500 if BC token acquisition fails', async () => {
+    it('should return 503 if BC token acquisition fails', async () => {
       // Arrange
       const app = createTestApp();
       authenticateAs('user-bc-fail', { refreshToken: 'valid-token' });
@@ -734,11 +740,12 @@ describe('Auth OAuth Routes', () => {
       // Act
       const response = await request(app)
         .post('/api/auth/bc-consent')
-        .expect(500);
+        .expect(503);
 
-      // Assert
-      expect(response.body.error).toBe('Internal Server Error');
+      // Assert - standardized error format
+      expect(response.body.error).toBe('Service Unavailable');
       expect(response.body.message).toContain('admin consent');
+      expect(response.body.code).toBe(ErrorCode.BC_UNAVAILABLE);
     });
 
     it('should return 401 if not authenticated', async () => {
@@ -1225,7 +1232,7 @@ describe('Auth OAuth Routes', () => {
     });
 
     describe('BC Token Edge Cases', () => {
-      it('should handle empty refresh token string', async () => {
+      it('should handle empty refresh token string (session expired)', async () => {
         // Arrange
         const app = createTestApp();
         authenticateAs('user-empty-refresh', { refreshToken: '' });
@@ -1233,10 +1240,11 @@ describe('Auth OAuth Routes', () => {
         // Act
         const response = await request(app)
           .post('/api/auth/bc-consent')
-          .expect(400);
+          .expect(401);
 
-        // Assert
-        expect(response.body.error).toBe('Bad Request');
+        // Assert - standardized error format (empty string is falsy)
+        expect(response.body.error).toBe('Unauthorized');
+        expect(response.body.code).toBe(ErrorCode.SESSION_EXPIRED);
       });
 
       it('should handle BC token with past expiry date', async () => {
@@ -1276,10 +1284,11 @@ describe('Auth OAuth Routes', () => {
         // Act
         const response = await request(app)
           .post('/api/auth/bc-consent')
-          .expect(500);
+          .expect(503);
 
-        // Assert
-        expect(response.body.error).toBe('Internal Server Error');
+        // Assert - standardized error format (BC_UNAVAILABLE for BC-related failures)
+        expect(response.body.error).toBe('Service Unavailable');
+        expect(response.body.code).toBe(ErrorCode.BC_UNAVAILABLE);
       });
     });
 

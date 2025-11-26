@@ -14,6 +14,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
 import express, { Application } from 'express';
 import logsRouter from '@/routes/logs';
+import { ErrorCode } from '@/constants/errors';
 
 // ============================================
 // Mock Dependencies
@@ -249,9 +250,10 @@ describe('Logs Routes', () => {
         .send(invalidPayload)
         .expect(400);
 
-      // Assert
-      expect(response.body.error).toBe('Invalid log format');
-      expect(response.body.details).toBeDefined();
+      // Assert - standardized error format
+      expect(response.body.error).toBe('Bad Request');
+      expect(response.body.message).toBe('Invalid log format');
+      expect(response.body.code).toBe(ErrorCode.VALIDATION_ERROR);
     });
 
     it('should return 400 for invalid level value', async () => {
@@ -268,8 +270,9 @@ describe('Logs Routes', () => {
         .send(invalidLevel)
         .expect(400);
 
-      // Assert
-      expect(response.body.error).toBe('Invalid log format');
+      // Assert - standardized error format
+      expect(response.body.error).toBe('Bad Request');
+      expect(response.body.code).toBe(ErrorCode.VALIDATION_ERROR);
     });
 
     it('should return 400 for missing required fields', async () => {
@@ -286,8 +289,9 @@ describe('Logs Routes', () => {
         .send(missingMessage)
         .expect(400);
 
-      // Assert
-      expect(response.body.error).toBe('Invalid log format');
+      // Assert - standardized error format
+      expect(response.body.error).toBe('Bad Request');
+      expect(response.body.code).toBe(ErrorCode.VALIDATION_ERROR);
     });
 
     it('should return 400 for missing timestamp', async () => {
@@ -304,8 +308,9 @@ describe('Logs Routes', () => {
         .send(missingTimestamp)
         .expect(400);
 
-      // Assert
-      expect(response.body.error).toBe('Invalid log format');
+      // Assert - standardized error format
+      expect(response.body.error).toBe('Bad Request');
+      expect(response.body.code).toBe(ErrorCode.VALIDATION_ERROR);
     });
 
     it('should return 400 for logs not being an array', async () => {
@@ -320,8 +325,9 @@ describe('Logs Routes', () => {
         .send(notArray)
         .expect(400);
 
-      // Assert
-      expect(response.body.error).toBe('Invalid log format');
+      // Assert - standardized error format
+      expect(response.body.error).toBe('Bad Request');
+      expect(response.body.code).toBe(ErrorCode.VALIDATION_ERROR);
     });
 
     it('should return 400 for invalid JSON', async () => {

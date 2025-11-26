@@ -13,7 +13,7 @@
 | 1 | Gaps Críticos | 3 | ~75 tests | ✅ COMPLETED |
 | 2 | Seguridad | 3 | ~42 tests | ✅ COMPLETED |
 | 3 | Edge Cases | 23+ | ~61 tests | ✅ COMPLETED |
-| 4 | Inconsistencias | 2 | ~5 tests | [ ] PENDING |
+| 4 | Inconsistencias | 2 | ~5 tests | ✅ COMPLETED |
 | 5 | Performance | 2 | ~5 tests | [ ] PENDING |
 | **TOTAL** | | **33+** | **~188 tests nuevos** | |
 
@@ -21,6 +21,7 @@
 **Actual después de Fase 1 + QA Audit**: 966 tests (82 nuevos en Fase 1)
 **Actual después de Fase 2**: 1008 tests (+42 nuevos en Fase 2)
 **Actual después de Fase 3**: 1074 tests (+66 nuevos en Fase 3)
+**Actual después de Fase 4**: 1152 tests (+78 nuevos en Fase 4 - error standardization)
 
 ---
 
@@ -593,16 +594,38 @@ Al pasar verificación:
 
 ## FASE 4: Inconsistencias (P4)
 
-### Estado: [ ] PENDING
+### Estado: ✅ COMPLETED (2025-11-25)
 
 ### Success Criteria Fase 4:
-- [ ] `constants/errors.ts` creado con mensajes estandarizados
-- [ ] Routes actualizados para usar constantes
-- [ ] Tests de consistencia agregados (~5 tests)
-- [ ] npm test: ~1021 tests passing
-- [ ] npm run lint: 0 errors
-- [ ] npm run type-check: OK
-- [ ] npm run build: OK
+- [x] `constants/errors.ts` creado con ErrorCode enum y ERROR_MESSAGES
+- [x] `types/error.types.ts` creado con ApiErrorResponse y type guards
+- [x] `utils/error-response.ts` creado con sendError() helper
+- [x] Routes actualizados para usar nuevas constantes (4 archivos)
+- [x] Tests actualizados para usar ErrorCode enum (no magic strings)
+- [x] Tests de error types creados (15 tests)
+- [x] npm test: 1152 tests passing (superó objetivo)
+- [x] npm run lint: 0 errors (15 warnings preexistentes)
+- [x] npm run type-check: OK
+- [x] npm run build: OK
+
+### Resultados Fase 4:
+| Archivo | Estado | Notas |
+|---------|--------|-------|
+| constants/errors.ts | ✅ NUEVO | 35 ErrorCode values + messages + status codes |
+| types/error.types.ts | ✅ NUEVO | ApiErrorResponse + type guards |
+| utils/error-response.ts | ✅ NUEVO | sendError() + HTTP status mapping |
+| routes/logs.ts | ✅ REFACTORIZADO | Usa sendError() |
+| routes/token-usage.ts | ✅ REFACTORIZADO | Usa sendError() |
+| routes/sessions.ts | ✅ REFACTORIZADO | Usa sendError() |
+| routes/auth-oauth.ts | ✅ REFACTORIZADO | Usa sendError() |
+| **Tests actualizados** | 4 archivos | sessions, token-usage, logs, auth-oauth |
+| **Tests nuevos** | +78 | error.types.test, error-response.test, errors.test |
+
+### Breaking Changes (Justificados):
+1. **Added `code` field** to all error responses (machine-readable)
+2. **Standardized `error` field** to HTTP status name (e.g., "Bad Request")
+3. **SESSION_EXPIRED** returns 401 (not 400) - semantically correct
+4. **BC_UNAVAILABLE** returns 503 (not 500) - indicates service unavailable
 
 ---
 

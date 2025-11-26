@@ -19,6 +19,7 @@ import { describe, it, expect, vi, beforeEach, Mock } from 'vitest';
 import request from 'supertest';
 import express, { Application, Request, Response, NextFunction } from 'express';
 import tokenUsageRouter from '@/routes/token-usage';
+import { ErrorCode } from '@/constants/errors';
 import { getTokenUsageService } from '@/services/token-usage';
 import { validateSessionOwnership, validateUserIdMatch } from '@/utils/session-ownership';
 
@@ -151,7 +152,7 @@ describe('Token Usage Routes', () => {
 
       // Assert
       expect(response.body.error).toBe('Not Found');
-      expect(response.body.message).toContain(userId);
+      expect(response.body.code).toBe(ErrorCode.TOKEN_USAGE_NOT_FOUND);
     });
 
     it('should return 401 without authentication', async () => {
@@ -266,7 +267,7 @@ describe('Token Usage Routes', () => {
 
       // Assert
       expect(response.body.error).toBe('Not Found');
-      expect(response.body.message).toContain(sessionId);
+      expect(response.body.code).toBe(ErrorCode.TOKEN_USAGE_NOT_FOUND);
     });
   });
 

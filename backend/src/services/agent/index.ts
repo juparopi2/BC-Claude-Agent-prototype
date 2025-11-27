@@ -2,4 +2,8 @@
  * Agent Service Exports
  */
 
-export { DirectAgentService, getDirectAgentService } from './DirectAgentService';
+export {
+  DirectAgentService,
+  getDirectAgentService,
+  __resetDirectAgentService,
+} from './DirectAgentService';

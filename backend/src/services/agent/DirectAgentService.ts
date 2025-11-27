@@ -2219,12 +2219,22 @@ let directAgentServiceInstance: DirectAgentService | null = null;
 
 export function getDirectAgentService(
   approvalManager?: ApprovalManager,
-  todoManager?: TodoManager
+  todoManager?: TodoManager,
+  client?: IAnthropicClient
 ): DirectAgentService {
   if (!directAgentServiceInstance) {
-    directAgentServiceInstance = new DirectAgentService(approvalManager, todoManager);
+    directAgentServiceInstance = new DirectAgentService(approvalManager, todoManager, client);
   }
   return directAgentServiceInstance;
+}
+
+/**
+ * Reset DirectAgentService singleton for testing
+ * Allows injecting FakeAnthropicClient via getDirectAgentService()
+ * @internal Only for integration tests - DO NOT use in production
+ */
+export function __resetDirectAgentService(): void {
+  directAgentServiceInstance = null;
 }
 
 /**

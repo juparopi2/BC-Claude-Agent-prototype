@@ -4,44 +4,56 @@ import path from 'path';
 /**
  * Integration Test Configuration
  *
- * Runs tests that require external services (Redis, Azure SQL).
- * These tests connect to REAL infrastructure and should be run:
- * - In CI/CD with proper service connections
- * - Locally when services are available
+ * Runs tests that require REAL external services (Redis, Azure SQL).
+ * These tests connect to actual infrastructure and verify end-to-end behavior.
+ *
+ * IMPORTANT: Tests that mock infrastructure (database, redis) should NOT be
+ * in this suite. Those are functional tests and belong in unit/ or functional/.
  *
  * Usage:
  *   npm run test:integration
+ *
+ * Prerequisites:
+ *   - Docker Redis: docker compose -f docker-compose.test.yml up -d
+ *   - Azure SQL: DATABASE_* environment variables configured
  */
 export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
 
-    // Load .env file with absolute path
-    env: {
-      // This ensures the .env file is loaded from the backend directory
-    },
+    // Global setup/teardown for infrastructure lifecycle
+    // Runs ONCE before/after ALL test files (not per-file)
+    globalSetup: path.resolve(__dirname, 'src/__tests__/integration/globalSetup.ts'),
 
-    // Longer timeouts for real DB operations
+    // Load .env file for test configuration
+    setupFiles: [path.resolve(__dirname, 'src/__tests__/integration/setup.env.ts')],
+
+    // Longer timeouts for real DB/Redis operations
     testTimeout: 60000,
     hookTimeout: 60000,
 
-    // Setup file that loads environment variables
-    setupFiles: [path.resolve(__dirname, 'src/__tests__/integration/setup.env.ts')],
-    // Only run integration tests from the integration directory
-    // Note: Some unit tests have .integration.test.ts naming but use mocks
-    // Those should stay in unit/ and run with the normal vitest config
+    // Include only true integration tests (no infrastructure mocks)
     include: ['src/__tests__/integration/**/*.integration.test.ts'],
-    exclude: ['node_modules', 'dist', 'mcp-server'],
-    // Sequence tests to avoid conflicts
+
+    // Exclude tests that mock infrastructure - these are NOT integration tests
+    exclude: [
+      'node_modules',
+      'dist',
+      'mcp-server',
+    ],
+
+    // Run tests sequentially to avoid DB/Redis race conditions
     sequence: {
       shuffle: false,
     },
-    // Pool configuration for integration tests
+
+    // Single fork ensures clean module cache per file
+    // This prevents vi.mock contamination between test files
     pool: 'forks',
     poolOptions: {
       forks: {
-        singleFork: true, // Run tests serially to avoid DB conflicts
+        singleFork: true,
       },
     },
   },

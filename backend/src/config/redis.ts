@@ -8,7 +8,9 @@
  */
 
 import { createClient } from 'redis';
-import { env } from './environment';
+// Note: env import is kept for potential future use, but we read process.env directly
+// to support runtime overrides in integration tests
+import { env as _env } from './environment';
 
 /**
  * Type definitions using ReturnType to avoid generic conflicts

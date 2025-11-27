@@ -61,18 +61,7 @@ export async function cleanupAllTestData(prefix?: string): Promise<CleanupResult
     // Identify test users by email domain (since IDs are valid UUIDs)
     const testEmailPattern = `%${TEST_EMAIL_DOMAIN}`;
 
-    // 1. Delete message_events for sessions owned by test users
-    const messageEventsResult = await executeQuery(
-      `DELETE FROM message_events WHERE session_id IN (
-        SELECT s.id FROM sessions s
-        JOIN users u ON s.user_id = u.id
-        WHERE u.email LIKE @emailPattern
-      )`,
-      { emailPattern: testEmailPattern }
-    );
-    result.messageEventsDeleted = messageEventsResult.rowsAffected[0] || 0;
-
-    // 2. Delete messages for sessions owned by test users
+    // 1. Delete messages FIRST (has FK to message_events via event_id)
     const messagesResult = await executeQuery(
       `DELETE FROM messages WHERE session_id IN (
         SELECT s.id FROM sessions s
@@ -82,6 +71,17 @@ export async function cleanupAllTestData(prefix?: string): Promise<CleanupResult
       { emailPattern: testEmailPattern }
     );
     result.messagesDeleted = messagesResult.rowsAffected[0] || 0;
+
+    // 2. Delete message_events AFTER messages (messages.event_id references message_events)
+    const messageEventsResult = await executeQuery(
+      `DELETE FROM message_events WHERE session_id IN (
+        SELECT s.id FROM sessions s
+        JOIN users u ON s.user_id = u.id
+        WHERE u.email LIKE @emailPattern
+      )`,
+      { emailPattern: testEmailPattern }
+    );
+    result.messageEventsDeleted = messageEventsResult.rowsAffected[0] || 0;
 
     // 3. Delete approvals for sessions owned by test users
     const approvalsResult = await executeQuery(
@@ -157,14 +157,14 @@ export async function cleanupSession(sessionId: string): Promise<{
   todos: number;
   session: boolean;
 }> {
-  // Delete in correct order
-  const messageEventsResult = await executeQuery(
-    `DELETE FROM message_events WHERE session_id = @sessionId`,
+  // Delete in correct order (messages BEFORE message_events due to FK constraint)
+  const messagesResult = await executeQuery(
+    `DELETE FROM messages WHERE session_id = @sessionId`,
     { sessionId }
   );
 
-  const messagesResult = await executeQuery(
-    `DELETE FROM messages WHERE session_id = @sessionId`,
+  const messageEventsResult = await executeQuery(
+    `DELETE FROM message_events WHERE session_id = @sessionId`,
     { sessionId }
   );
 

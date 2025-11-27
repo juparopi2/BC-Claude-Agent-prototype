@@ -14,25 +14,37 @@ import {
   createTestSessionFactory,
   cleanupAllTestData,
   TestSessionFactory,
-  setupDatabaseForTests,
+  initRedisForTests,
+  ensureDatabaseAvailable,
+  closeDatabaseConnection,
+  closeRedisForTests,
 } from '../helpers';
 
 describe('Event Ordering with Real Redis', () => {
-  // Setup database AND Redis for tests
-  setupDatabaseForTests();
+  // NOTE: US-002 FIX - Explicit initialization instead of setupDatabaseForTests()
+  // The singleFork: true config in Vitest causes timing issues with the hook-based
+  // setup. Explicit initialization ensures database is ready before tests run.
 
   let factory: TestSessionFactory;
   let eventStore: EventStore;
 
   beforeAll(async () => {
-    // Database and Redis are initialized by setupDatabaseForTests()
+    // Initialize Redis FIRST (TestSessionFactory depends on it)
+    await initRedisForTests();
+
+    // Initialize Database
+    await ensureDatabaseAvailable();
+
+    // Now safe to create factory and event store
     factory = createTestSessionFactory();
     eventStore = getEventStore();
   }, 60000);
 
   afterAll(async () => {
     await cleanupAllTestData();
-    // Database and Redis are closed by setupDatabaseForTests()
+    // Close connections explicitly
+    await closeDatabaseConnection();
+    await closeRedisForTests();
   }, 30000);
 
   // NOTE: We don't clean up Redis keys in beforeEach because:

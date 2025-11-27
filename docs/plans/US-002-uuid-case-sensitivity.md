@@ -1,304 +1,421 @@
 # US-002: Corregir Aislamiento de Sesiones Redis (UUID Case Sensitivity)
 
 **Epic**: Multi-tenant Security
-**Prioridad**: P0 - Crítica
-**Afecta**: session-isolation.integration.test.ts
-**Tests a Rehabilitar**: 7 tests
-**Estimación**: 75 minutos
+**Prioridad**: P0 - Critica
+**Afecta**: session-isolation.integration.test.ts, sequence-numbers.integration.test.ts
+**Tests a Rehabilitar**: 7 tests (session-isolation) + 8 tests (sequence-numbers)
+**Estimacion Original**: 75 minutos
+**Estimacion Revisada**: 3-4 horas (incluye fixes de infraestructura)
 **Estado**: ✅ COMPLETADO (2024-11-26)
 
 ---
 
-## Resultado
+## IMPLEMENTACION COMPLETADA (2024-11-26)
 
-**Los 7 tests de seguridad multi-tenant ahora pasan.** La corrección de UUID case sensitivity ya existía en:
-- `session-ownership.ts:292-320` - `timingSafeCompare()` normaliza a lowercase
-- `ApprovalManager.ts:480` y `ApprovalManager.ts:789` - usan `.toLowerCase()`
+### Fixes Aplicados
 
-Solo se necesitó remover el `describe.skip` obsoleto del archivo de tests.
+| # | Archivo | Linea | Cambio |
+|---|---------|-------|--------|
+| 1 | `ChatMessageHandler.ts` | 95-97 | Agregado `.toLowerCase()` a comparación UUID (CÓDIGO PRODUCCIÓN) |
+| 2 | `session-isolation.integration.test.ts` | 87-89 | Agregado `.toLowerCase()` al asignar socket.userId |
+| 3 | `TestSessionFactory.ts` | 191-204 | Agregado `.toLowerCase()` a microsoftOAuth.userId |
+| 4 | `sequence-numbers.integration.test.ts` | 10-47 | Cambio a inicialización explícita de DB/Redis |
 
----
+### Resultados Post-Fix
 
-## Descripción
-
-Como **desarrollador de seguridad**, necesito que la validación de ownership de sesiones funcione correctamente independientemente del case del UUID, para garantizar el aislamiento multi-tenant.
-
----
-
-## Problema Actual
-
-### Síntomas
-- Tests fallan con: `validateSessionOwnership returning UNAUTHORIZED`
-- User válido no puede acceder a su propia sesión
-- Comparación de userId falla silenciosamente
-
-### Causa Raíz
-1. SQL Server retorna UUIDs en mayúsculas: `'322A1BAC-77DB-4A15-B1F0-48A51604642B'`
-2. JavaScript genera UUIDs en minúsculas: `'322a1bac-77db-4a15-b1f0-48a51604642b'`
-3. `TestSessionFactory` crea sesiones en Redis sin vincular correctamente el userId
-4. Socket middleware no encuentra `microsoftOAuth.userId` en la sesión Redis
-5. Comparación estricta falla: `'ABC' !== 'abc'`
-
-### Archivo Afectado
-- `backend/src/__tests__/integration/multi-tenant/session-isolation.integration.test.ts`
-- Línea 41: `describe.skip('Multi-Tenant Session Isolation', ...)`
-
----
-
-## Criterios de Aceptación
-
-### Para Desarrollador
-
-| # | Criterio | Verificación |
-|---|----------|--------------|
-| D1 | User A NO puede unirse a sesión de User B | Test "prevent User A from joining" |
-| D2 | User A NO puede enviar mensajes a sesión de User B | Test "prevent sending messages" |
-| D3 | Eventos de sesión A NO se filtran a User B | Test "should not leak events" |
-| D4 | Comparación de UUIDs es case-insensitive | Test con UUIDs mixtos |
-
-### Para QA
-
-| # | Criterio | Comando de Verificación |
-|---|----------|-------------------------|
-| Q1 | Intentar acceso cross-tenant → UNAUTHORIZED | Ejecutar suite |
-| Q2 | Tests de connection.integration siguen pasando | grep connection |
-| Q3 | UUID lowercase, UPPERCASE, MiXeD funcionan | Tests específicos |
-
----
-
-## Solución Técnica
-
-### Archivo 1: `backend/src/__tests__/integration/helpers/TestSessionFactory.ts`
-
-Asegurar que la sesión Redis contiene microsoftOAuth.userId correctamente:
-
-```typescript
-import { randomBytes } from 'crypto';
-import { getRedis } from '@/config/redis';
-import cookie from 'cookie-signature';
-
-const TEST_PREFIX = 'test_';
-const TEST_SESSION_SECRET = 'test-secret-for-integration-tests';
-
-interface SessionCookieResult {
-  sessionId: string;
-  sessionCookie: string;
-}
-
-class TestSessionFactory {
-  /**
-   * Crea una cookie de sesión con userId vinculado en Redis
-   */
-  async createSessionCookie(userId: string, email: string): Promise<SessionCookieResult> {
-    const redis = getRedis();
-    if (!redis) {
-      throw new Error('Redis not initialized');
-    }
-
-    const sessionId = `${TEST_PREFIX}sess_${Date.now()}_${randomBytes(8).toString('hex')}`;
-
-    // Estructura compatible con express-session + connect-redis
-    const sessionData = {
-      cookie: {
-        originalMaxAge: 86400000,
-        expires: new Date(Date.now() + 86400000).toISOString(),
-        httpOnly: true,
-        secure: false,
-        path: '/',
-      },
-      microsoftOAuth: {
-        userId: userId.toLowerCase(), // CRÍTICO: Normalizar a minúsculas
-        email,
-        accessToken: `test_token_${Date.now()}`,
-      },
-    };
-
-    // Guardar en Redis con el formato correcto de connect-redis
-    // Formato: sess:{sessionId}
-    await redis.set(`sess:${sessionId}`, JSON.stringify(sessionData), { EX: 86400 });
-
-    // Generar cookie firmada compatible con express-session
-    const signedCookie = cookie.sign(sessionId, TEST_SESSION_SECRET);
-
-    return {
-      sessionId,
-      sessionCookie: `connect.sid=s%3A${signedCookie}`,
-    };
-  }
-
-  /**
-   * Crea un usuario de prueba con sesión Redis vinculada
-   */
-  async createTestUser(options: { prefix?: string } = {}): Promise<TestUser> {
-    const prefix = options.prefix || 'test_';
-    const userId = `${prefix}${randomBytes(16).toString('hex')}`.toLowerCase();
-    const email = `${prefix}user@test.com`;
-
-    // Crear usuario en base de datos
-    const dbUser = await this.createUserInDatabase(userId, email);
-
-    // Crear sesión en Redis vinculada al userId
-    const { sessionId, sessionCookie } = await this.createSessionCookie(
-      dbUser.id, // Usar el ID de la DB (puede ser uppercase)
-      email
-    );
-
-    return {
-      id: dbUser.id.toLowerCase(), // Normalizar para comparaciones
-      email,
-      sessionId,
-      sessionCookie,
-    };
-  }
-}
 ```
+session-isolation.integration.test.ts: 7/7 passed ✅
+sequence-numbers.integration.test.ts: 8/8 passed ✅
 
-### Archivo 2: `backend/src/services/approval/ApprovalManager.ts`
-
-Verificar comparación case-insensitive (línea ~480):
-
-```typescript
-// En el método validateSessionOwnership o similar
-private isOwner(sessionOwnerId: string, requestUserId: string): boolean {
-  // CRÍTICO: Comparación case-insensitive para UUIDs
-  return sessionOwnerId.toLowerCase() === requestUserId.toLowerCase();
-}
-```
-
-### Archivo 3: `backend/src/utils/session-ownership.ts`
-
-Verificar normalización en validateSessionOwnership:
-
-```typescript
-export async function validateSessionOwnership(
-  sessionId: string,
-  userId: string
-): Promise<{ isOwner: boolean; reason?: string }> {
-  // Obtener owner de la sesión desde DB
-  const session = await getSessionById(sessionId);
-
-  if (!session) {
-    return { isOwner: false, reason: 'SESSION_NOT_FOUND' };
-  }
-
-  // CRÍTICO: Comparación case-insensitive
-  const normalizedUserId = userId.toLowerCase();
-  const normalizedOwnerId = session.userId.toLowerCase();
-
-  if (normalizedUserId !== normalizedOwnerId) {
-    return { isOwner: false, reason: 'UNAUTHORIZED' };
-  }
-
-  return { isOwner: true };
-}
-```
-
-### Archivo 4: Remover describe.skip
-
-```typescript
-// ANTES (línea 41):
-describe.skip('Multi-Tenant Session Isolation', () => {
-
-// DESPUÉS:
-describe('Multi-Tenant Session Isolation', () => {
+Full suite: 65 passed, 6 skipped (71 total)
+3 consecutive successful runs verified
 ```
 
 ---
 
-## Tareas de Implementación
+## AUDITORIA QA PREVIA (2024-11-26)
 
-| # | Tarea | Archivo | Estimación |
-|---|-------|---------|------------|
-| 2.1 | Revisar estructura de sesión actual | TestSessionFactory.ts | 15 min |
-| 2.2 | Implementar formato compatible con express-session | TestSessionFactory.ts | 30 min |
-| 2.3 | Verificar comparación UUID en ApprovalManager | ApprovalManager.ts | 10 min |
-| 2.4 | Verificar session-ownership.ts | session-ownership.ts | 5 min |
-| 2.5 | Remover describe.skip | session-isolation.integration.test.ts | 5 min |
-| 2.6 | Ejecutar tests de seguridad | - | 10 min |
+### Veredicto: NO ACEPTADO (resuelto)
 
-**Total**: 75 minutos
+La documentacion decia "COMPLETADO" pero la ejecucion real de tests muestra:
+
+| Suite | Esperado | Real | Estado |
+|-------|----------|------|--------|
+| session-isolation | 7/7 pass | 3/7 pass, 4/7 fail | **FALLA** |
+| sequence-numbers | 8/8 pass | 0/8 pass | **FALLA CRITICA** |
+
+### Resultados de Tests (2024-11-26 17:46 EST)
+
+```
+session-isolation.integration.test.ts (7 tests | 4 failed)
+  Session Access Control
+    [PASS] should prevent User A from joining User B session (1595ms)
+    [FAIL] should allow User B to join their own session (997ms)
+           -> Error: UNAUTHORIZED
+    [PASS] should prevent User A from sending messages to User B session (2017ms)
+  Event Isolation
+    [FAIL] should not leak events between users (1677ms)
+           -> Error: UNAUTHORIZED
+    [FAIL] should use authenticated userId, not payload userId (1011ms)
+           -> Error: UNAUTHORIZED
+  Cross-Tenant Attack Prevention
+    [PASS] should reject session enumeration attempts (1877ms)
+    [FAIL] should not allow access to sessions by guessing IDs (1904ms)
+           -> Error: UNAUTHORIZED
+
+sequence-numbers.integration.test.ts (8 tests | 8 failed)
+  [FAIL] ALL TESTS
+         -> Error: Database not connected. Call initDatabase() first.
+```
 
 ---
 
-## Validación
+## Problema 1: UUID Case Sensitivity (PARCIALMENTE RESUELTO)
 
-### Comando de Ejecución
+### Diagnostico
 
+La correccion en `session-ownership.ts` existe pero **no se aplica consistentemente**:
+
+**Log de error real:**
+```
+attemptedByUserId: "322a1bac-77db-4a15-b1f0-48a51604642b"  (lowercase)
+actualOwnerId: "322A1BAC-77DB-4A15-B1F0-48A51604642B"      (UPPERCASE)
+```
+
+### Donde esta el fix correcto (YA EXISTE):
+
+**`backend/src/utils/session-ownership.ts:292-320`**
+```typescript
+export function timingSafeCompare(a: string, b: string): boolean {
+  // Normalize to lowercase for case-insensitive UUID comparison
+  const normalizedA = a.toLowerCase();
+  const normalizedB = b.toLowerCase();
+  // ... resto del codigo
+}
+```
+
+### Donde FALTA la normalizacion:
+
+1. **`session-isolation.integration.test.ts:87-88`** - El socket middleware:
+   ```typescript
+   // ACTUAL (sin normalizacion):
+   (socket as Socket & { userId?: string }).userId = sessionData.microsoftOAuth.userId;
+
+   // DEBERIA SER:
+   (socket as Socket & { userId?: string }).userId = sessionData.microsoftOAuth.userId?.toLowerCase();
+   ```
+
+2. **`TestSessionFactory.ts:201-202`** - Al crear sessionData:
+   ```typescript
+   // ACTUAL:
+   microsoftOAuth: {
+     userId,  // NO normalizado
+     email,
+     // ...
+   }
+
+   // DEBERIA SER:
+   microsoftOAuth: {
+     userId: userId.toLowerCase(),  // NORMALIZADO
+     email,
+     // ...
+   }
+   ```
+
+---
+
+## Problema 2: Database Initialization (CRITICO - BLOQUEANTE)
+
+### Diagnostico
+
+Los 8 tests de `sequence-numbers` fallan con:
+```
+Error: Database not connected. Call initDatabase() first.
+```
+
+### Causa Raiz
+
+**`backend/src/__tests__/integration/helpers/TestDatabaseSetup.ts:31-36`**
+
+```typescript
+// PROBLEMA: Variables globales de estado
+let isDatabaseInitialized = false;
+let isRedisInitialized = false;
+```
+
+Vitest ejecuta tests en **workers separados**. El estado del singleton NO se comparte entre workers.
+
+### Flujo del Bug:
+
+```
+Worker 1 (e2e-token-persistence)     Worker 2 (sequence-numbers)
+    |                                      |
+    v                                      v
+setupDatabaseForTests()              setupDatabaseForTests()
+    |                                      |
+    v                                      v
+beforeAll() ejecuta                  beforeAll() NO ejecuta
+isDatabaseInitialized = true         (ya se "ejecuto" en otro worker?)
+    |                                      |
+    v                                      v
+Tests PASAN                          Tests FALLAN: "Database not connected"
+```
+
+### Solucion Requerida
+
+**Opcion A: Forzar ejecucion serial** (Rapido, menos ideal)
+
+```typescript
+// vitest.integration.config.ts
+export default defineConfig({
+  test: {
+    pool: 'forks',
+    poolOptions: {
+      forks: { singleFork: true }
+    },
+  }
+});
+```
+
+**Opcion B: Inicializacion por worker** (Correcto, mas trabajo)
+
+```typescript
+// TestDatabaseSetup.ts
+const workerState = new Map<string, { db: boolean; redis: boolean }>();
+
+function getWorkerKey(): string {
+  return `${process.pid}_${process.env.VITEST_POOL_ID || 'main'}`;
+}
+
+export async function ensureDatabaseAvailable(): Promise<void> {
+  const key = getWorkerKey();
+  if (workerState.get(key)?.db) return;
+
+  await initDatabase();
+  workerState.set(key, { ...workerState.get(key), db: true });
+}
+```
+
+---
+
+## Criterios de Aceptacion (ACTUALIZADOS)
+
+### Para que US-002 sea ACEPTADA:
+
+| # | Criterio | Verificacion | Estado Actual |
+|---|----------|--------------|---------------|
+| 1 | 7/7 tests de session-isolation PASAN | `npm run test:integration -- session-isolation` | 3/7 |
+| 2 | 8/8 tests de sequence-numbers PASAN | `npm run test:integration -- sequence-numbers` | 0/8 |
+| 3 | Sin `describe.skip` en tests habilitados | grep -r "describe.skip" | OK |
+| 4 | 3 ejecuciones consecutivas sin fallas | Ejecutar 3 veces seguidas | NO |
+| 5 | Tests de connection siguen pasando | `npm run test:integration -- connection` | OK (9/9) |
+
+### Matriz de Tests Especificos:
+
+```
+session-isolation (7 tests):
+[ ] should prevent User A from joining User B session
+[ ] should allow User B to join their own session          <- FALLA
+[ ] should prevent User A from sending messages to User B session
+[ ] should not leak events between users                   <- FALLA
+[ ] should use authenticated userId, not payload userId    <- FALLA
+[ ] should reject session enumeration attempts
+[ ] should not allow access to sessions by guessing IDs    <- FALLA
+
+sequence-numbers (8 tests):
+[ ] should generate sequential sequence numbers            <- FALLA (DB)
+[ ] should handle concurrent event appends atomically      <- FALLA (DB)
+[ ] should isolate sequence numbers per session            <- FALLA (DB)
+[ ] should allow reconstruction of conversation order      <- FALLA (DB)
+[ ] should use correct Redis key format                    <- FALLA (DB)
+[ ] should persist sequence across multiple append calls   <- FALLA (DB)
+[ ] should handle very high sequence numbers               <- FALLA (DB)
+[ ] should handle rapid sequential appends                 <- FALLA (DB)
+```
+
+---
+
+## Tareas de Implementacion (REVISADAS)
+
+### Fase 1: Fix Database Initialization (BLOQUEANTE)
+
+| # | Tarea | Archivo | Tiempo |
+|---|-------|---------|--------|
+| 1.1 | Elegir estrategia (serial vs per-worker) | - | 15 min |
+| 1.2 | Implementar fix de inicializacion | TestDatabaseSetup.ts | 45 min |
+| 1.3 | Verificar sequence-numbers pasan | - | 10 min |
+
+**Tiempo Fase 1**: ~70 minutos
+
+### Fase 2: Fix UUID Normalization
+
+| # | Tarea | Archivo | Tiempo |
+|---|-------|---------|--------|
+| 2.1 | Agregar `.toLowerCase()` en socket middleware | session-isolation.integration.test.ts:87 | 5 min |
+| 2.2 | Agregar `.toLowerCase()` en TestSessionFactory | TestSessionFactory.ts:201 | 5 min |
+| 2.3 | Verificar session-isolation pasan | - | 10 min |
+
+**Tiempo Fase 2**: ~20 minutos
+
+### Fase 3: Validacion QA
+
+| # | Tarea | Tiempo |
+|---|-------|--------|
+| 3.1 | Ejecutar suite completa 3 veces | 15 min |
+| 3.2 | Verificar no regresiones en connection/token-persistence | 5 min |
+| 3.3 | Documentar resultados | 10 min |
+
+**Tiempo Fase 3**: ~30 minutos
+
+**Tiempo Total Revisado**: ~2 horas
+
+---
+
+## Archivos a Modificar
+
+### 1. `backend/src/__tests__/integration/helpers/TestDatabaseSetup.ts`
+
+**Problema**: Singleton state no funciona con workers de Vitest.
+
+**Lineas afectadas**: 31-36, 92-111
+
+**Cambio requerido**: Implementar tracking de estado per-worker o forzar ejecucion serial.
+
+### 2. `backend/src/__tests__/integration/multi-tenant/session-isolation.integration.test.ts`
+
+**Problema**: Socket middleware no normaliza userId.
+
+**Lineas afectadas**: 87-88
+
+**Cambio requerido**:
+```typescript
+// Linea 87-88 ANTES:
+(socket as Socket & { userId?: string }).userId = sessionData.microsoftOAuth.userId;
+
+// DESPUES:
+(socket as Socket & { userId?: string }).userId = sessionData.microsoftOAuth.userId?.toLowerCase();
+```
+
+### 3. `backend/src/__tests__/integration/helpers/TestSessionFactory.ts`
+
+**Problema**: userId no normalizado al crear session en Redis.
+
+**Lineas afectadas**: 201-202
+
+**Cambio requerido**:
+```typescript
+// Linea 201-202 ANTES:
+microsoftOAuth: {
+  userId,
+
+// DESPUES:
+microsoftOAuth: {
+  userId: userId.toLowerCase(),
+```
+
+### 4. (OPCIONAL) `backend/vitest.integration.config.ts`
+
+**Si se elige Opcion A (ejecucion serial)**:
+```typescript
+export default defineConfig({
+  test: {
+    pool: 'forks',
+    poolOptions: { forks: { singleFork: true } },
+  }
+});
+```
+
+---
+
+## Comandos de Verificacion
+
+### Verificar estado actual:
 ```bash
-cd backend && npm run test:integration -- --grep "session-isolation"
+cd backend && npm run test:integration
 ```
 
-### Tests de Seguridad Específicos
-
+### Verificar solo session-isolation:
 ```bash
-# Test de acceso cruzado
-npm run test:integration -- --grep "prevent User A from joining"
-
-# Test de eventos
-npm run test:integration -- --grep "should not leak events"
-
-# Test de userId autenticado
-npm run test:integration -- --grep "should use authenticated userId"
+cd backend && npx vitest run --config vitest.integration.config.ts src/__tests__/integration/multi-tenant/session-isolation.integration.test.ts
 ```
 
-### Resultado Esperado
-
+### Verificar solo sequence-numbers:
+```bash
+cd backend && npx vitest run --config vitest.integration.config.ts src/__tests__/integration/event-ordering/sequence-numbers.integration.test.ts
 ```
-✓ should prevent User A from joining User B session
-✓ should allow User B to join their own session
-✓ should prevent User A from sending messages to User B session
-✓ should not leak events between users
-✓ should use authenticated userId, not payload userId
-✓ should reject session enumeration attempts
-✓ should not allow access to sessions by guessing IDs
 
-Test Files  1 passed (1)
-Tests       7 passed (7)
+### Verificar 3 ejecuciones consecutivas:
+```bash
+cd backend
+for i in 1 2 3; do echo "=== Run $i ===" && npm run test:integration && echo "PASS" || echo "FAIL"; done
 ```
+
+---
+
+## Success Criteria (DEFINICION DE DONE)
+
+US-002 estara **COMPLETADA** cuando:
+
+1. **Tests Pasan**:
+   ```
+   session-isolation.integration.test.ts: 7 passed (7)
+   sequence-numbers.integration.test.ts: 8 passed (8)
+   ```
+
+2. **Sin Fallas Intermitentes**:
+   - 3 ejecuciones consecutivas exitosas
+   - No hay "flaky tests"
+
+3. **Sin Regresiones**:
+   - connection.integration.test.ts: 9 passed
+   - e2e-token-persistence.integration.test.ts: 15 passed
+   - MessageQueue.integration.test.ts: 18 passed
+
+4. **Codigo Limpio**:
+   - Sin `describe.skip` en tests rehabilitados
+   - Sin `// TODO` relacionados a UUID case sensitivity
+
+5. **Documentacion**:
+   - Este documento actualizado con estado COMPLETADO
+   - PRD-INTEGRATION-TESTS.md actualizado
 
 ---
 
 ## Dependencias
 
-- **Requiere**: US-001 (Database initialization fix)
-- **Habilita**: US-005 (Validación Final)
+| Dependencia | Tipo | Estado |
+|-------------|------|--------|
+| US-001 (Database race condition) | Requiere | COMPLETADO |
+| Docker Redis (localhost:6399) | Infraestructura | Requerido |
+| Azure SQL Database | Infraestructura | Requerido |
 
 ---
 
-## Riesgos
+## Riesgos Identificados
 
-| Riesgo | Probabilidad | Impacto | Mitigación |
+| Riesgo | Probabilidad | Impacto | Mitigacion |
 |--------|--------------|---------|------------|
-| UUID edge cases no cubiertos | Baja | Medio | Añadir tests con formatos mixtos |
-| Regresión en connection tests | Media | Alto | Ejecutar suite completa |
-| Performance de toLowerCase() | Muy Baja | Bajo | Insignificante para strings cortos |
+| Fix de DB initialization rompe otros tests | Media | Alto | Ejecutar suite completa despues de cambios |
+| Workers de Vitest tienen comportamiento diferente en CI | Media | Alto | Probar en CI antes de merge |
+| toLowerCase() no cubre todos los code paths | Baja | Alto | Buscar todas las comparaciones de userId |
 
 ---
 
-## Consideraciones de Seguridad
+## Historial de Cambios
 
-### Por qué es Crítico
-
-Este fix es esencial para la seguridad multi-tenant:
-
-1. **Aislamiento de Datos**: Un usuario nunca debe ver datos de otro
-2. **Prevención de IDOR**: Impide acceso a sesiones por ID conocido
-3. **Spoofing Prevention**: Ignora userId en payload, usa solo el autenticado
-
-### Validación de Seguridad Recomendada
-
-```
-[ ] Penetration test: Intentar acceder a sesión de otro usuario
-[ ] Fuzzing: Probar con UUIDs malformados
-[ ] Enumeration: Verificar que respuestas no revelan existencia de sesiones
-```
+| Fecha | Version | Cambio |
+|-------|---------|--------|
+| 2024-11-26 | 1.0 | PRD inicial |
+| 2024-11-26 | 1.1 | Marcado como COMPLETADO (erroneo) |
+| 2024-11-26 | 2.0 | **AUDITORIA QA**: Rechazado. Documentados problemas reales de DB init y UUID normalization. Criterios de aceptacion actualizados. |
 
 ---
 
 ## Referencias
 
 - Test file: `backend/src/__tests__/integration/multi-tenant/session-isolation.integration.test.ts`
+- Test file: `backend/src/__tests__/integration/event-ordering/sequence-numbers.integration.test.ts`
 - Session factory: `backend/src/__tests__/integration/helpers/TestSessionFactory.ts`
-- Approval manager: `backend/src/services/approval/ApprovalManager.ts`
+- Database setup: `backend/src/__tests__/integration/helpers/TestDatabaseSetup.ts`
 - Session ownership: `backend/src/utils/session-ownership.ts`
 - PRD: [PRD-INTEGRATION-TESTS.md](PRD-INTEGRATION-TESTS.md)

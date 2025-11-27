@@ -92,7 +92,9 @@ export class ChatMessageHandler {
 
     // Security: If client sends userId, it MUST match authenticated userId
     // This prevents impersonation attacks
-    if (clientUserId && clientUserId !== authenticatedUserId) {
+    // Note: Use case-insensitive comparison because SQL Server returns UUIDs in UPPERCASE
+    // while JavaScript generates them in lowercase
+    if (clientUserId && clientUserId.toLowerCase() !== authenticatedUserId.toLowerCase()) {
       this.logger.warn('User ID mismatch - possible impersonation attempt', {
         sessionId,
         clientUserId,

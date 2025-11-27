@@ -189,6 +189,8 @@ export class TestSessionFactory {
     const sessionId = `${TEST_PREFIX}sess_${Date.now()}_${Math.random().toString(36).substring(7)}`;
 
     // Session data matching express-session format
+    // Note: Normalize userId to lowercase because SQL Server returns UUIDs in UPPERCASE
+    // but JavaScript generates them in lowercase. This ensures consistent comparison.
     const sessionData = JSON.stringify({
       cookie: {
         originalMaxAge: 86400000, // 24 hours
@@ -199,7 +201,7 @@ export class TestSessionFactory {
         path: '/',
       },
       microsoftOAuth: {
-        userId,
+        userId: userId.toLowerCase(),
         email,
         accessToken: `test_access_token_${Date.now()}`,
         refreshToken: `test_refresh_token_${Date.now()}`,

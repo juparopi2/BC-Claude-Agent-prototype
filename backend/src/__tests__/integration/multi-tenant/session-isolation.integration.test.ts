@@ -84,7 +84,9 @@ describe('Multi-Tenant Session Isolation', () => {
 
         const sessionData = (req as { session?: { microsoftOAuth?: { userId?: string; email?: string } } }).session;
         if (sessionData?.microsoftOAuth?.userId) {
-          (socket as Socket & { userId?: string; userEmail?: string }).userId = sessionData.microsoftOAuth.userId;
+          // Normalize to lowercase for case-insensitive UUID comparison
+          // (SQL Server returns UPPERCASE, JavaScript generates lowercase)
+          (socket as Socket & { userId?: string; userEmail?: string }).userId = sessionData.microsoftOAuth.userId.toLowerCase();
           (socket as Socket & { userId?: string; userEmail?: string }).userEmail = sessionData.microsoftOAuth.email;
           next();
         } else {

@@ -1,8 +1,9 @@
 # Auditoría: Uso de Mocks en Tests de Integración
 
 **Fecha**: 2024-11-26
+**Última Actualización**: 2024-11-26 (US-001.5 COMPLETADA)
 **Auditor**: Claude (QA Master)
-**Resultado**: HALLAZGOS CRÍTICOS IDENTIFICADOS
+**Resultado**: HALLAZGOS CRÍTICOS - 1 DE 2 RESUELTOS
 
 ---
 
@@ -12,14 +13,16 @@ Se auditaron **7 archivos** de tests de integración para verificar el cumplimie
 
 > **Tests de integración deben usar infraestructura REAL (Redis, Azure SQL), NO mocks de servicios.**
 
-### Resultados Generales
+### Resultados Generales (Actualizado Post-US-001.5)
 
 | Categoría | Archivos | Tests | Estado |
 |-----------|----------|-------|--------|
-| Sin mocks (CORRECTOS) | 4 | 39 | PASANDO/SKIP |
+| Sin mocks (CORRECTOS) | 5 | 47 | ✅ PASANDO/SKIP |
 | Con mocks de config (ACEPTABLE) | 1 | 6 | SKIP |
-| Con mocks de infra (PROBLEMÁTICO) | 2 | 26 | EXCLUIDO/SKIP |
+| Con mocks de infra (PROBLEMÁTICO) | 1 | 18 | SKIP |
 | **TOTAL** | **7** | **71** | - |
+
+> **✅ US-001.5 COMPLETADA**: `message-flow` reescrito usando FakeAnthropicClient via DI (0 mocks)
 
 ---
 
@@ -51,19 +54,23 @@ const service = new DirectAgentService(eventStore, approvalManager, fakeClient);
 
 ## Análisis Detallado por Archivo
 
-### 1. message-flow.integration.test.ts
+### 1. message-flow.integration.test.ts ✅ RESUELTO
 
-**Estado**: EXCLUIDO de suite (ya documentado en US-001.5)
-**Mocks**: 4 (infraestructura crítica)
+**Estado**: ✅ PASANDO (8 tests) - Reescrito en US-001.5
+**Mocks**: 0 (todos eliminados)
 
-| Mock | Línea | Impacto |
-|------|-------|---------|
-| `@/services/agent/DirectAgentService` | 32-104 | Simula agente completo |
-| `@/config/database` | 109-122 | Mock de executeQuery |
-| `@/services/messages/MessageService` | 125-135 | Mock de persistencia |
-| `@/utils/session-ownership` | 138-140 | Mock de validación |
+| Cambio | Antes | Después |
+|--------|-------|---------|
+| DirectAgentService | vi.mock | FakeAnthropicClient via DI |
+| Database | vi.mock | setupDatabaseForTests() (Azure SQL real) |
+| MessageService | vi.mock | Servicio real |
+| Session ownership | vi.mock | Validación real |
 
-**Solución**: US-001.5 - Reescribir usando FakeAnthropicClient via DI
+**Solución Aplicada (US-001.5)**:
+1. Agregado `__resetDirectAgentService()` para resetear singleton entre tests
+2. `getDirectAgentService()` ahora acepta `client?: IAnthropicClient` para inyección
+3. Test usa `FakeAnthropicClient` via DI - no hay `vi.mock`
+4. Infraestructura real: Azure SQL + Redis Docker (puerto 6399)
 
 ---
 
@@ -199,7 +206,7 @@ export const APPROVAL_TIMEOUT = parseInt(process.env.APPROVAL_TIMEOUT_MS || '300
 
 | Archivo | DB Mock | EventStore Mock | Service Mock | Logger Mock | Cumple Principio |
 |---------|---------|-----------------|--------------|-------------|------------------|
-| message-flow | SI | - | SI (2) | - | NO |
+| message-flow | ~~SI~~ ❌→✅ | - | ~~SI (2)~~ ❌→✅ | - | ✅ **SÍ** (US-001.5) |
 | MessageQueue | SI | SI | - | SI | NO |
 | approval-lifecycle | - | - | CONFIG | - | SI (marginal) |
 | e2e-token-persistence | - | - | - | - | SI |
@@ -213,8 +220,8 @@ export const APPROVAL_TIMEOUT = parseInt(process.env.APPROVAL_TIMEOUT_MS || '300
 
 ### Acción Inmediata
 
-1. **Crear US-001.6**: Reescribir `MessageQueue.integration.test.ts` sin mocks de database/EventStore
-2. **Completar US-001.5**: Reescribir `message-flow.integration.test.ts` sin mocks
+1. ✅ ~~**Completar US-001.5**: Reescribir `message-flow.integration.test.ts` sin mocks~~ **HECHO**
+2. **Completar US-001.6**: Reescribir `MessageQueue.integration.test.ts` sin mocks de database/EventStore
 
 ### Corto Plazo
 
@@ -254,9 +261,9 @@ export const APPROVAL_TIMEOUT = parseInt(process.env.APPROVAL_TIMEOUT_MS || '300
 
 ### Nuevo Orden de User Stories
 
-1. US-001 - Database Race Condition (PARCIAL)
-2. **US-001.5** - Message Flow True Integration (NUEVO)
-3. **US-001.6** - MessageQueue True Integration (NUEVO - hallazgo de auditoría)
+1. ✅ US-001 - Database Race Condition (COMPLETADO - sequence-numbers 8/8)
+2. ✅ **US-001.5** - Message Flow True Integration (**COMPLETADO** - 8/8 tests)
+3. **US-001.6** - MessageQueue True Integration (PENDIENTE - hallazgo de auditoría)
 4. US-002 - UUID Case Sensitivity
 5. US-003 - EventStore Sequence Fix
 6. US-004 - BullMQ Worker Cleanup
@@ -264,15 +271,19 @@ export const APPROVAL_TIMEOUT = parseInt(process.env.APPROVAL_TIMEOUT_MS || '300
 
 ---
 
-## Conclusión
+## Conclusión (Actualizada Post-US-001.5)
 
 De los 7 archivos de tests de integración:
 
-- **4 archivos (57%)** cumplen el principio de infraestructura real
+- **5 archivos (71%)** cumplen el principio de infraestructura real ✅
 - **1 archivo (14%)** tiene mock aceptable (solo config)
-- **2 archivos (29%)** requieren reescritura
+- **1 archivo (14%)** requiere reescritura (`MessageQueue`)
 
-El proyecto tiene una base sólida con tests como `e2e-token-persistence`, `connection`, y `sequence-numbers` que son ejemplos correctos a seguir. Los archivos problemáticos (`message-flow` y `MessageQueue`) deben reescribirse usando inyección de dependencia en lugar de `vi.mock`.
+El proyecto tiene una base sólida con tests como `e2e-token-persistence`, `connection`, `sequence-numbers`, y ahora `message-flow` que son ejemplos correctos a seguir.
+
+**Progreso**:
+- ✅ `message-flow` reescrito en US-001.5 usando FakeAnthropicClient via DI
+- 🔲 `MessageQueue` pendiente en US-001.6 (18 tests)
 
 ---
 
@@ -291,3 +302,4 @@ El proyecto tiene una base sólida con tests como `e2e-token-persistence`, `conn
 | Fecha | Versión | Cambio |
 |-------|---------|--------|
 | 2024-11-26 | 1.0 | Auditoría inicial completa |
+| 2024-11-26 | 1.1 | US-001.5 COMPLETADA - message-flow reescrito sin mocks (8/8) |

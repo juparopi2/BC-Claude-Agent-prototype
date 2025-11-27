@@ -1,11 +1,11 @@
 # PRD: Rehabilitación de Tests de Integración Omitidos
 
 **Proyecto**: BC Claude Agent - Integration Test Rehabilitation
-**Versión**: 1.2
+**Versión**: 1.3
 **Fecha**: 2024-11-26
-**Última Actualización**: 2024-11-26 (Auditoría completa - US-001.6 agregada)
+**Última Actualización**: 2024-11-26 (US-001.5 COMPLETADA)
 **PM**: Claude (AI Project Manager)
-**Estado**: En Progreso - US-001 Parcialmente Completada
+**Estado**: En Progreso - US-001.5 Completada, US-001.6 Pendiente
 
 ---
 
@@ -75,7 +75,7 @@ vi.mock('@/services/agent/DirectAgentService', () => ({...}));
 | 1 | e2e-token-persistence | 15 | PASANDO | - | - |
 | 2 | connection | 9 | PASANDO | - | - |
 | 3 | sequence-numbers | 8 | REHABILITADO | Race condition resuelto | [US-001](US-001-database-race-condition.md) |
-| 4 | message-flow | 8 | EXCLUIDO | **4 mocks de infra** | [US-001.5](US-001.5-message-flow-true-integration.md) |
+| 4 | message-flow | 8 | ✅ PASANDO | Reescrito sin mocks | [US-001.5](US-001.5-message-flow-true-integration.md) |
 | 5 | MessageQueue | 18 | describe.skip | **4 mocks de infra** | [US-001.6](US-001.6-messagequeue-true-integration.md) |
 | 6 | approval-lifecycle | 6 | describe.skip | Redis sequence + UUID | [US-003](US-003-eventstore-sequence.md) |
 | 7 | session-isolation | 7 | describe.skip | UUID case sensitivity | [US-002](US-002-uuid-case-sensitivity.md) |
@@ -90,7 +90,7 @@ vi.mock('@/services/agent/DirectAgentService', () => ({...}));
 
 | Test File | vi.mock Count | Mocks Críticos | Cumple Principio |
 |-----------|---------------|----------------|------------------|
-| message-flow | 4 | database, MessageService | **NO** |
+| message-flow | 0 | ✅ Ninguno (reescrito) | **SÍ** |
 | MessageQueue | 4 | database, EventStore | **NO** |
 | approval-lifecycle | 1 | Solo config (timeout) | SI |
 | e2e-token-persistence | 0 | - | SI |
@@ -105,7 +105,7 @@ vi.mock('@/services/agent/DirectAgentService', () => ({...}));
 | Fase | Descripción | User Stories | Tests | Estado |
 |------|-------------|--------------|-------|--------|
 | **Fase 1a** | Infraestructura Base | US-001 (parcial) | 8 | COMPLETADO |
-| **Fase 1b** | Reescritura message-flow | US-001.5 | 8 | PENDIENTE |
+| **Fase 1b** | Reescritura message-flow | US-001.5 | 8 | ✅ COMPLETADO |
 | **Fase 1c** | Reescritura MessageQueue | **US-001.6** | 18 | **NUEVO** |
 | **Fase 2** | Quick Wins | US-003 | 6 | PENDIENTE |
 | **Fase 3** | Sesiones | US-002 | 7 | PENDIENTE |
@@ -114,7 +114,7 @@ vi.mock('@/services/agent/DirectAgentService', () => ({...}));
 
 ### Progreso Actual
 ```
-[=========>                              ] 32/71 tests (45%)
+[==============>                         ] 40/71 tests (56%)
 ```
 
 ---
@@ -126,7 +126,7 @@ vi.mock('@/services/agent/DirectAgentService', () => ({...}));
 | Orden | ID | Nombre | Archivo | Estimación | Estado |
 |-------|-----|--------|---------|------------|--------|
 | 1 | US-001 | Database Race Condition | [US-001-database-race-condition.md](US-001-database-race-condition.md) | 35 min | PARCIAL |
-| 2 | **US-001.5** | Message Flow True Integration | [US-001.5-message-flow-true-integration.md](US-001.5-message-flow-true-integration.md) | 3.5 hrs | PENDIENTE |
+| 2 | **US-001.5** | Message Flow True Integration | [US-001.5-message-flow-true-integration.md](US-001.5-message-flow-true-integration.md) | 3.5 hrs | ✅ COMPLETADO |
 | 3 | **US-001.6** | **MessageQueue True Integration** | [US-001.6-messagequeue-true-integration.md](US-001.6-messagequeue-true-integration.md) | **2.5 hrs** | **NUEVO** |
 | 4 | US-002 | UUID Case Sensitivity | [US-002-uuid-case-sensitivity.md](US-002-uuid-case-sensitivity.md) | 75 min | PENDIENTE |
 | 5 | US-003 | EventStore Sequence Fix | [US-003-eventstore-sequence.md](US-003-eventstore-sequence.md) | 65 min | PENDIENTE |
@@ -166,7 +166,7 @@ vi.mock('@/services/agent/DirectAgentService', () => ({...}));
 | User Story | Archivos Fuente | Test Files | Dependencias | Estado |
 |------------|-----------------|------------|--------------|--------|
 | US-001 | vitest.integration.config.ts | sequence-numbers | Ninguna | PARCIAL |
-| **US-001.5** | message-flow.integration.test.ts, ChatMessageHandler.ts | message-flow | US-001 | PENDIENTE |
+| **US-001.5** | message-flow.integration.test.ts, DirectAgentService.ts | message-flow | US-001 | ✅ COMPLETADO |
 | **US-001.6** | MessageQueue.integration.test.ts | MessageQueue | US-001 | **NUEVO** |
 | US-002 | TestSessionFactory.ts, ApprovalManager.ts | session-isolation | US-001.5 | PENDIENTE |
 | US-003 | EventStore.ts | approval-lifecycle | US-001.6 | PENDIENTE |
@@ -181,29 +181,29 @@ vi.mock('@/services/agent/DirectAgentService', () => ({...}));
 COMPLETADO:
 ✅ US-001 Parcial (sequence-numbers) - 35 min
    → Resultado: 8 tests rehabilitados (32/71 total)
+✅ US-001.5 (message-flow rewrite) - 2024-11-26
+   → Resultado: 8 tests más (40/71 total)
+   → Cambios: DirectAgentService DI + __resetDirectAgentService()
 
 PRÓXIMOS PASOS:
-Sesión 1: US-001.5 (message-flow rewrite) - 3.5 hrs
-          → Resultado: 8 tests más (40/71 total)
-
-Sesión 2: US-001.6 (MessageQueue rewrite) - 2.5 hrs  ← NUEVO
+Sesión 1: US-001.6 (MessageQueue rewrite) - 2.5 hrs
           → Resultado: 18 tests más (58/71 total)
 
-Sesión 3: US-002 (UUID Case) - 75 min
+Sesión 2: US-002 (UUID Case) - 75 min
           US-003 (EventStore) - 65 min
           → Resultado: 13 tests más (71/71 total)
 
-Sesión 4: US-004 (BullMQ cleanup) - 85 min
+Sesión 3: US-004 (BullMQ cleanup) - 85 min
           → Resultado: Estabilidad mejorada
 
-Sesión 5: US-005 (Validación QA) - 120 min
+Sesión 4: US-005 (Validación QA) - 120 min
           Documentación final - 30 min
           → Resultado: 71/71 tests validados y documentados
 ```
 
 ### Estimación Actualizada
-- **Completado**: 35 min
-- **Pendiente**: ~12.5 horas
+- **Completado**: ~4 hrs (US-001 + US-001.5)
+- **Pendiente**: ~9 horas
 - **Total Original**: ~7 horas
 - **Nuevo Total Post-Auditoría**: ~13 horas (+6 hrs por US-001.5 y US-001.6)
 
@@ -263,3 +263,4 @@ Una User Story se considera **DONE** cuando:
 | 2024-11-26 | 1.0 | PRD inicial |
 | 2024-11-26 | 1.1 | US-001.5 agregada (hallazgo QA) |
 | 2024-11-26 | 1.2 | US-001.6 agregada + Auditoría completa |
+| 2024-11-26 | 1.3 | US-001.5 COMPLETADA - message-flow reescrito sin mocks (8/8 tests) |

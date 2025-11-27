@@ -10,6 +10,7 @@
 import { executeQuery } from '@/config/database';
 import { getRedis } from '@/config/redis';
 import { TEST_PREFIX, TEST_EMAIL_DOMAIN } from './TestSessionFactory';
+import { REDIS_CLEANUP_PATTERNS } from './constants';
 
 /**
  * Cleanup result summary
@@ -183,18 +184,39 @@ export async function cleanupAllTestData(prefix?: string): Promise<CleanupResult
     );
     result.usersDeleted = usersResult.rowsAffected[0] || 0;
 
-    // 7. Clean Redis test keys
+    // 7. Clean Redis test keys (including BullMQ, queues, sequences)
     const redis = getRedis();
     if (!redis) {
       throw new Error('Redis not initialized');
     }
-    const testSessionKeys = await redis.keys(`sess:${cleanupPrefix}*`);
-    const testDataKeys = await redis.keys(`test:*`);
-    const allTestKeys = [...testSessionKeys, ...testDataKeys];
 
-    if (allTestKeys.length > 0) {
-      await redis.del(allTestKeys);
-      result.redisKeysDeleted = allTestKeys.length;
+    // Collect all test-related Redis keys
+    const keyPatterns = [
+      `sess:${cleanupPrefix}*`,            // Session keys with test prefix
+      REDIS_CLEANUP_PATTERNS.SESSIONS,     // All session keys (sess:*)
+      REDIS_CLEANUP_PATTERNS.TEST_DATA,    // Test data keys (test:*)
+      REDIS_CLEANUP_PATTERNS.BULLMQ,       // BullMQ keys (bull:*)
+      REDIS_CLEANUP_PATTERNS.QUEUES,       // Queue keys (queue:*)
+      REDIS_CLEANUP_PATTERNS.SEQUENCES,    // Sequence keys (seq:*)
+    ];
+
+    const allTestKeys: string[] = [];
+    for (const pattern of keyPatterns) {
+      const keys = await redis.keys(pattern);
+      allTestKeys.push(...keys);
+    }
+
+    // Remove duplicates
+    const uniqueKeys = [...new Set(allTestKeys)];
+
+    if (uniqueKeys.length > 0) {
+      // Delete in batches to avoid Redis memory issues with large key sets
+      const batchSize = 100;
+      for (let i = 0; i < uniqueKeys.length; i += batchSize) {
+        const batch = uniqueKeys.slice(i, i + batchSize);
+        await redis.del(batch);
+      }
+      result.redisKeysDeleted = uniqueKeys.length;
     }
 
   } catch (error) {

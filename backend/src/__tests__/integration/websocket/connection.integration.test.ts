@@ -4,136 +4,42 @@
  * Tests WebSocket connection handling with real Redis sessions.
  * Validates authentication, session management, and error handling.
  *
+ * REFACTORED: Uses SocketIOServerFactory to eliminate duplicated setup code.
+ *
  * @module __tests__/integration/websocket/connection.integration.test.ts
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
-import { Server as HttpServer, createServer } from 'http';
-import { Server as SocketIOServer } from 'socket.io';
-import express from 'express';
-import session from 'express-session';
-import { createClient as createRedisClient } from 'redis';
-import RedisStore from 'connect-redis';
 import {
   createTestSocketClient,
   createTestSessionFactory,
   cleanupAllTestData,
+  createTestSocketIOServer,
   TestSocketClient,
   TestSessionFactory,
-  TEST_SESSION_SECRET,
+  SocketIOServerResult,
+  TEST_TIMEOUTS,
   setupDatabaseForTests,
 } from '../helpers';
-import { REDIS_TEST_CONFIG } from '../setup.integration';
 
 describe('WebSocket Connection Integration', () => {
   // Setup database connection for TestSessionFactory
   setupDatabaseForTests();
 
-  let httpServer: HttpServer;
-  let io: SocketIOServer;
-  let testPort: number;
+  let serverResult: SocketIOServerResult;
   let factory: TestSessionFactory;
   let client: TestSocketClient | null = null;
 
-  // Redis client for session store
-  let redisClient: ReturnType<typeof createRedisClient>;
-
   beforeAll(async () => {
-    // Create Redis client for session store using test config
-    redisClient = createRedisClient({
-      socket: {
-        host: REDIS_TEST_CONFIG.host,
-        port: REDIS_TEST_CONFIG.port,
-      },
-    });
-
-    await redisClient.connect();
-
-    // Create Express app with session middleware
-    const app = express();
-
-    const sessionMiddleware = session({
-      store: new RedisStore({ client: redisClient }),
-      secret: TEST_SESSION_SECRET,
-      resave: false,
-      saveUninitialized: false,
-      cookie: {
-        secure: false,
-        httpOnly: true,
-        maxAge: 86400000, // 24 hours
-      },
-    });
-
-    app.use(sessionMiddleware);
-
-    // Create HTTP server
-    httpServer = createServer(app);
-
-    // Create Socket.IO server
-    io = new SocketIOServer(httpServer, {
-      cors: {
-        origin: '*',
-        methods: ['GET', 'POST'],
-        credentials: true,
-      },
-    });
-
-    // Wrap session middleware for Socket.IO
-    io.use((socket, next) => {
-      const req = socket.request as express.Request;
-      const res = {} as express.Response;
-
-      sessionMiddleware(req, res, (err) => {
-        if (err) {
-          return next(new Error('Session error'));
-        }
-
-        // Extract user from session
-        const sessionData = (req as { session?: { microsoftOAuth?: { userId?: string; email?: string } } }).session;
-        if (sessionData?.microsoftOAuth?.userId) {
-          (socket as { userId?: string; userEmail?: string }).userId = sessionData.microsoftOAuth.userId;
-          (socket as { userId?: string; userEmail?: string }).userEmail = sessionData.microsoftOAuth.email;
-          next();
-        } else {
-          next(new Error('Authentication required'));
-        }
-      });
-    });
-
-    // Socket.IO event handlers
-    io.on('connection', (socket) => {
-      const userId = (socket as { userId?: string }).userId;
-
-      socket.emit('connected', { userId, socketId: socket.id });
-
-      socket.on('session:join', (data: { sessionId: string }) => {
-        socket.join(data.sessionId);
-        socket.emit('session:joined', { sessionId: data.sessionId });
-      });
-
-      socket.on('session:leave', (data: { sessionId: string }) => {
-        socket.leave(data.sessionId);
-        socket.emit('session:left', { sessionId: data.sessionId });
-      });
-
-      socket.on('ping', () => {
-        socket.emit('pong', { userId, timestamp: Date.now() });
-      });
-    });
-
-    // Start server on random available port
-    await new Promise<void>((resolve) => {
-      httpServer.listen(0, () => {
-        const address = httpServer.address();
-        testPort = typeof address === 'object' && address ? address.port : 3099;
-        console.log(`Test server listening on port ${testPort}`);
-        resolve();
-      });
-    });
+    // Create Socket.IO server using the factory - no custom handlers needed
+    // The factory provides default handlers for session:join, session:leave, ping
+    serverResult = await createTestSocketIOServer();
 
     // Create test factory
     factory = createTestSessionFactory();
-  }, 60000);
+
+    console.log(`Test server listening on port ${serverResult.port}`);
+  }, TEST_TIMEOUTS.BEFORE_ALL);
 
   afterAll(async () => {
     // Cleanup test data
@@ -144,10 +50,9 @@ describe('WebSocket Connection Integration', () => {
       await client.disconnect();
     }
 
-    io.close();
-    httpServer.close();
-    await redisClient.quit();
-  }, 30000);
+    // Use the cleanup function from the factory
+    await serverResult.cleanup();
+  }, TEST_TIMEOUTS.AFTER_ALL);
 
   beforeEach(() => {
     // Reset client
@@ -169,9 +74,9 @@ describe('WebSocket Connection Integration', () => {
 
       // Create socket client
       client = createTestSocketClient({
-        port: testPort,
+        port: serverResult.port,
         sessionCookie: testUser.sessionCookie,
-        defaultTimeout: 10000,
+        defaultTimeout: TEST_TIMEOUTS.SOCKET_CONNECTION,
       });
 
       // Connect should succeed
@@ -185,8 +90,8 @@ describe('WebSocket Connection Integration', () => {
     it('should reject connection without session', async () => {
       // Create socket client without session cookie
       client = createTestSocketClient({
-        port: testPort,
-        defaultTimeout: 5000,
+        port: serverResult.port,
+        defaultTimeout: TEST_TIMEOUTS.EVENT_WAIT,
       });
 
       // Connect should fail
@@ -199,9 +104,9 @@ describe('WebSocket Connection Integration', () => {
     it('should reject connection with invalid session cookie', async () => {
       // Create socket client with invalid session
       client = createTestSocketClient({
-        port: testPort,
+        port: serverResult.port,
         sessionCookie: 'connect.sid=s%3Ainvalid_session_id.fake-signature',
-        defaultTimeout: 5000,
+        defaultTimeout: TEST_TIMEOUTS.EVENT_WAIT,
       });
 
       // Connect should fail (session not found in Redis)
@@ -214,7 +119,7 @@ describe('WebSocket Connection Integration', () => {
 
       // Create and connect socket
       client = createTestSocketClient({
-        port: testPort,
+        port: serverResult.port,
         sessionCookie: testUser.sessionCookie,
       });
 
@@ -223,7 +128,7 @@ describe('WebSocket Connection Integration', () => {
       // Send ping and verify response contains userId
       client.emitRaw('ping', {});
 
-      const pongEvent = await client.waitForEvent('pong', 5000);
+      const pongEvent = await client.waitForEvent('pong', TEST_TIMEOUTS.EVENT_WAIT);
       expect(pongEvent).toBeDefined();
       // Note: pong event includes userId from server
     });
@@ -237,7 +142,7 @@ describe('WebSocket Connection Integration', () => {
 
       // Connect socket
       client = createTestSocketClient({
-        port: testPort,
+        port: serverResult.port,
         sessionCookie: testUser.sessionCookie,
       });
 
@@ -259,7 +164,7 @@ describe('WebSocket Connection Integration', () => {
 
       // Connect and join
       client = createTestSocketClient({
-        port: testPort,
+        port: serverResult.port,
         sessionCookie: testUser.sessionCookie,
       });
 
@@ -270,7 +175,7 @@ describe('WebSocket Connection Integration', () => {
       await client.leaveSession(testSession.id);
 
       // Wait for left event
-      const leftEvent = await client.waitForEvent('session:left', 5000);
+      const leftEvent = await client.waitForEvent('session:left', TEST_TIMEOUTS.EVENT_WAIT);
       expect(leftEvent).toBeDefined();
     });
 
@@ -284,12 +189,12 @@ describe('WebSocket Connection Integration', () => {
 
       // Connect both users
       const clientA = createTestSocketClient({
-        port: testPort,
+        port: serverResult.port,
         sessionCookie: userA.sessionCookie,
       });
 
       const clientB = createTestSocketClient({
-        port: testPort,
+        port: serverResult.port,
         sessionCookie: userB.sessionCookie,
       });
 
@@ -303,14 +208,14 @@ describe('WebSocket Connection Integration', () => {
       await clientB.joinSession(sessionB.id);
 
       // Emit event to session A room
-      io.to(sessionA.id).emit('agent:event', {
+      serverResult.io.to(sessionA.id).emit('agent:event', {
         type: 'test_event',
         sessionId: sessionA.id,
         data: 'for_session_a',
       });
 
       // Wait a bit for event propagation
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.EVENT_PROPAGATION));
 
       // User A should receive the event
       const eventsA = clientA.getEventsByType('test_event');
@@ -333,7 +238,7 @@ describe('WebSocket Connection Integration', () => {
 
       // Connect
       client = createTestSocketClient({
-        port: testPort,
+        port: serverResult.port,
         sessionCookie: testUser.sessionCookie,
       });
 
@@ -351,7 +256,7 @@ describe('WebSocket Connection Integration', () => {
 
       // First connection
       client = createTestSocketClient({
-        port: testPort,
+        port: serverResult.port,
         sessionCookie: testUser.sessionCookie,
       });
 
@@ -365,7 +270,7 @@ describe('WebSocket Connection Integration', () => {
 
       // Reconnect (create new client)
       client = createTestSocketClient({
-        port: testPort,
+        port: serverResult.port,
         sessionCookie: testUser.sessionCookie,
       });
 

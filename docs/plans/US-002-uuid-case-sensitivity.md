@@ -16,10 +16,16 @@
 
 | # | Archivo | Linea | Cambio |
 |---|---------|-------|--------|
-| 1 | `ChatMessageHandler.ts` | 95-97 | Agregado `.toLowerCase()` a comparación UUID (CÓDIGO PRODUCCIÓN) |
-| 2 | `session-isolation.integration.test.ts` | 87-89 | Agregado `.toLowerCase()` al asignar socket.userId |
-| 3 | `TestSessionFactory.ts` | 191-204 | Agregado `.toLowerCase()` a microsoftOAuth.userId |
-| 4 | `sequence-numbers.integration.test.ts` | 10-47 | Cambio a inicialización explícita de DB/Redis |
+| 1 | `ChatMessageHandler.ts` | 97 | Usa `normalizeUUID()` para comparación case-insensitive |
+| 2 | `session-isolation.integration.test.ts` | 90 | Usa `normalizeUUID()` al asignar socket.userId |
+| 3 | `TestSessionFactory.ts` | 205 | Usa `normalizeUUID()` para microsoftOAuth.userId |
+| 4 | `sequence-numbers.integration.test.ts` | 23-48 | Inicialización explícita de DB/Redis |
+
+**Nota**: Se usa `normalizeUUID()` (función centralizada en `@/utils/uuid`) en lugar de `.toLowerCase()` directo.
+Esto es MÁS ROBUSTO porque:
+- Función centralizada y reutilizable
+- Maneja null/undefined elegantemente
+- Más fácil de mantener
 
 ### Resultados Post-Fix
 

@@ -274,3 +274,4 @@ Una User Story se considera **DONE** cuando:
 | 2024-11-26 | 1.5 | US-002 marcada como COMPLETADA (erroneo - no verificado con ejecucion real) |
 | 2024-11-26 | 1.6 | AUDITORIA QA: US-002 RECHAZADA. 12 tests fallando (sequence-numbers 8/8, session-isolation 4/7). |
 | 2024-11-26 | **1.7** | **US-002 COMPLETADA**: 15 tests rehabilitados. Fixes: ChatMessageHandler UUID normalization (producción), TestSessionFactory/session-isolation UUID normalization, sequence-numbers explicit DB init. Progreso: 65/71 (92%) |
+| 2024-11-27 | **1.8** | **MEJORAS ARQUITECTURALES P0**: SocketIOServerFactory creado (elimina 100+ líneas duplicadas en 3 tests), constants.ts expandido con TEST_TIMEOUTS y REDIS_CLEANUP_PATTERNS, TestDataCleanup.ts mejorado para incluir cleanup de BullMQ/queue/seq keys. Tests refactorizados: connection, session-isolation, message-flow. |

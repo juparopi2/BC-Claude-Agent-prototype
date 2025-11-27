@@ -86,7 +86,8 @@
       "Bash(git mv:*)",
       "Bash(docker compose:*)",
       "Bash(docker --version:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(docker info:*)"
     ],
     "deny": [],
     "ask": []

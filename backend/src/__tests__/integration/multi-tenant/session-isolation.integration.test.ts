@@ -4,29 +4,26 @@
  * Tests that users cannot access other users' sessions.
  * Validates security boundaries between tenants.
  *
+ * REFACTORED: Uses SocketIOServerFactory to eliminate duplicated setup code.
+ *
  * @module __tests__/integration/multi-tenant/session-isolation.integration.test.ts
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
-import { Server as HttpServer, createServer } from 'http';
-import { Server as SocketIOServer, Socket } from 'socket.io';
-import express from 'express';
-import session from 'express-session';
-import { createClient as createRedisClient } from 'redis';
-import RedisStore from 'connect-redis';
 import {
   createTestSocketClient,
   createTestSessionFactory,
   cleanupAllTestData,
+  createTestSocketIOServer,
   TestSocketClient,
   TestSessionFactory,
-  TEST_SESSION_SECRET,
+  SocketIOServerResult,
+  AuthenticatedSocket,
+  TEST_TIMEOUTS,
   setupDatabaseForTests,
 } from '../helpers';
-import { REDIS_TEST_CONFIG } from '../setup.integration';
 // Import the real validateSessionOwnership - no mock needed since we use the real implementation
 import { validateSessionOwnership } from '@/utils/session-ownership';
-import { normalizeUUID } from '@/utils/uuid';
 
 // US-002 FIXED (2024-11-26): UUID case sensitivity issue resolved.
 // The timingSafeCompare() function in session-ownership.ts normalizes UUIDs to lowercase
@@ -36,140 +33,84 @@ describe('Multi-Tenant Session Isolation', () => {
   // Setup database connection for TestSessionFactory
   setupDatabaseForTests();
 
-  let httpServer: HttpServer;
-  let io: SocketIOServer;
-  let testPort: number;
+  let serverResult: SocketIOServerResult;
   let factory: TestSessionFactory;
-  let redisClient: ReturnType<typeof createRedisClient>;
 
   // Track clients for cleanup
   const clients: TestSocketClient[] = [];
 
   beforeAll(async () => {
-    // Create Redis client using test config
-    redisClient = createRedisClient({
-      socket: {
-        host: REDIS_TEST_CONFIG.host,
-        port: REDIS_TEST_CONFIG.port,
+    // Create Socket.IO server with custom handlers for session ownership validation
+    serverResult = await createTestSocketIOServer({
+      handlers: {
+        // Session join with ownership validation
+        onSessionJoin: async (socket: AuthenticatedSocket, data: { sessionId: string }) => {
+          const userId = socket.userId || '';
+
+          try {
+            // Validate that the user owns the session
+            const result = await validateSessionOwnership(data.sessionId, userId);
+
+            if (!result.isOwner) {
+              socket.emit('session:error', {
+                error: 'UNAUTHORIZED',
+                message: 'You do not have permission to access this session',
+                sessionId: data.sessionId,
+              });
+              return;
+            }
+
+            socket.join(data.sessionId);
+            socket.emit('session:joined', { sessionId: data.sessionId });
+          } catch (error) {
+            socket.emit('session:error', {
+              error: 'VALIDATION_FAILED',
+              message: error instanceof Error ? error.message : 'Failed to validate session ownership',
+              sessionId: data.sessionId,
+            });
+          }
+        },
+
+        // Chat message with ownership validation
+        onChatMessage: async (
+          socket: AuthenticatedSocket,
+          data: { sessionId: string; message: string },
+          io
+        ) => {
+          const userId = socket.userId || '';
+
+          try {
+            // Validate ownership
+            const result = await validateSessionOwnership(data.sessionId, userId);
+
+            if (!result.isOwner) {
+              socket.emit('agent:error', {
+                error: 'You do not have permission to send messages to this session',
+                sessionId: data.sessionId,
+              });
+              return;
+            }
+
+            // Emit confirmation (simplified for this test)
+            io.to(data.sessionId).emit('agent:event', {
+              type: 'user_message_confirmed',
+              sessionId: data.sessionId,
+              userId,
+              content: data.message,
+              timestamp: new Date(),
+            });
+          } catch (error) {
+            socket.emit('agent:error', {
+              error: error instanceof Error ? error.message : 'Failed to process message',
+              sessionId: data.sessionId,
+            });
+          }
+        },
       },
     });
 
-    await redisClient.connect();
-
-    // Create Express app
-    const app = express();
-
-    const sessionMiddleware = session({
-      store: new RedisStore({ client: redisClient }),
-      secret: TEST_SESSION_SECRET,
-      resave: false,
-      saveUninitialized: false,
-      cookie: { secure: false, httpOnly: true, maxAge: 86400000 },
-    });
-
-    app.use(sessionMiddleware);
-
-    httpServer = createServer(app);
-
-    io = new SocketIOServer(httpServer, {
-      cors: { origin: '*', methods: ['GET', 'POST'], credentials: true },
-    });
-
-    // Authentication middleware
-    io.use((socket, next) => {
-      const req = socket.request as express.Request;
-      const res = {} as express.Response;
-
-      sessionMiddleware(req, res, (err) => {
-        if (err) return next(new Error('Session error'));
-
-        const sessionData = (req as { session?: { microsoftOAuth?: { userId?: string; email?: string } } }).session;
-        if (sessionData?.microsoftOAuth?.userId) {
-          // Uses normalizeUUID() for case-insensitive UUID comparison
-          // (SQL Server returns UPPERCASE, JavaScript generates lowercase)
-          (socket as Socket & { userId?: string; userEmail?: string }).userId = normalizeUUID(sessionData.microsoftOAuth.userId);
-          (socket as Socket & { userId?: string; userEmail?: string }).userEmail = sessionData.microsoftOAuth.email;
-          next();
-        } else {
-          next(new Error('Authentication required'));
-        }
-      });
-    });
-
-    // Socket handlers with session ownership validation
-    io.on('connection', (socket) => {
-      const authSocket = socket as Socket & { userId?: string };
-      const userId = authSocket.userId;
-
-      socket.emit('connected', { userId, socketId: socket.id });
-
-      // Session join with ownership validation
-      socket.on('session:join', async (data: { sessionId: string }) => {
-        try {
-          // Validate that the user owns the session
-          const result = await validateSessionOwnership(data.sessionId, userId || '');
-
-          if (!result.isOwner) {
-            socket.emit('session:error', {
-              error: 'UNAUTHORIZED',
-              message: 'You do not have permission to access this session',
-              sessionId: data.sessionId,
-            });
-            return;
-          }
-
-          socket.join(data.sessionId);
-          socket.emit('session:joined', { sessionId: data.sessionId });
-        } catch (error) {
-          socket.emit('session:error', {
-            error: 'VALIDATION_FAILED',
-            message: error instanceof Error ? error.message : 'Failed to validate session ownership',
-            sessionId: data.sessionId,
-          });
-        }
-      });
-
-      // Chat message with ownership validation
-      socket.on('chat:message', async (data: { sessionId: string; message: string }) => {
-        try {
-          // Validate ownership
-          const result = await validateSessionOwnership(data.sessionId, userId || '');
-
-          if (!result.isOwner) {
-            socket.emit('agent:error', {
-              error: 'You do not have permission to send messages to this session',
-              sessionId: data.sessionId,
-            });
-            return;
-          }
-
-          // Emit confirmation (simplified for this test)
-          io.to(data.sessionId).emit('agent:event', {
-            type: 'user_message_confirmed',
-            sessionId: data.sessionId,
-            userId,
-            content: data.message,
-            timestamp: new Date(),
-          });
-        } catch (error) {
-          socket.emit('agent:error', {
-            error: error instanceof Error ? error.message : 'Failed to process message',
-            sessionId: data.sessionId,
-          });
-        }
-      });
-    });
-
-    await new Promise<void>((resolve) => {
-      httpServer.listen(0, () => {
-        const address = httpServer.address();
-        testPort = typeof address === 'object' && address ? address.port : 3097;
-        resolve();
-      });
-    });
-
     factory = createTestSessionFactory();
-  }, 60000);
+  }, TEST_TIMEOUTS.BEFORE_ALL);
 
   afterAll(async () => {
     await cleanupAllTestData();
@@ -178,10 +119,8 @@ describe('Multi-Tenant Session Isolation', () => {
       await client.disconnect();
     }
 
-    io.close();
-    httpServer.close();
-    await redisClient.quit();
-  }, 30000);
+    await serverResult.cleanup();
+  }, TEST_TIMEOUTS.AFTER_ALL);
 
   beforeEach(() => {
     clients.length = 0;
@@ -205,7 +144,7 @@ describe('Multi-Tenant Session Isolation', () => {
 
       // User A tries to connect and join User B's session
       const clientA = createTestSocketClient({
-        port: testPort,
+        port: serverResult.port,
         sessionCookie: userA.sessionCookie,
       });
       clients.push(clientA);
@@ -229,7 +168,7 @@ describe('Multi-Tenant Session Isolation', () => {
 
       // User B connects and joins their own session
       const clientB = createTestSocketClient({
-        port: testPort,
+        port: serverResult.port,
         sessionCookie: userB.sessionCookie,
       });
       clients.push(clientB);
@@ -255,7 +194,7 @@ describe('Multi-Tenant Session Isolation', () => {
 
       // User A connects
       const clientA = createTestSocketClient({
-        port: testPort,
+        port: serverResult.port,
         sessionCookie: userA.sessionCookie,
       });
       clients.push(clientA);
@@ -266,7 +205,7 @@ describe('Multi-Tenant Session Isolation', () => {
       await clientA.sendMessage(sessionB.id, 'Unauthorized message');
 
       // Wait for error
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.MESSAGE_CLEANUP));
 
       // Should receive error
       const events = clientA.getReceivedEvents();
@@ -286,11 +225,11 @@ describe('Multi-Tenant Session Isolation', () => {
 
       // Both users connect and join their own sessions
       const clientA = createTestSocketClient({
-        port: testPort,
+        port: serverResult.port,
         sessionCookie: userA.sessionCookie,
       });
       const clientB = createTestSocketClient({
-        port: testPort,
+        port: serverResult.port,
         sessionCookie: userB.sessionCookie,
       });
       clients.push(clientA, clientB);
@@ -306,7 +245,7 @@ describe('Multi-Tenant Session Isolation', () => {
       clientB.clearEvents();
 
       // Emit event to User A's session
-      io.to(sessionA.id).emit('agent:event', {
+      serverResult.io.to(sessionA.id).emit('agent:event', {
         type: 'test_private_event',
         sessionId: sessionA.id,
         userId: userA.id,
@@ -314,7 +253,7 @@ describe('Multi-Tenant Session Isolation', () => {
       });
 
       // Wait for event propagation
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.EVENT_PROPAGATION));
 
       // User A should receive the event
       const eventsA = clientA.getReceivedEvents();
@@ -332,7 +271,7 @@ describe('Multi-Tenant Session Isolation', () => {
 
       // Connect
       const client = createTestSocketClient({
-        port: testPort,
+        port: serverResult.port,
         sessionCookie: realUser.sessionCookie,
       });
       clients.push(client);
@@ -349,7 +288,7 @@ describe('Multi-Tenant Session Isolation', () => {
       });
 
       // Wait for response
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.MESSAGE_CLEANUP));
 
       // Check that the user_message_confirmed uses the real authenticated userId
       const events = client.getReceivedEvents();
@@ -372,7 +311,7 @@ describe('Multi-Tenant Session Isolation', () => {
 
       // Connect
       const client = createTestSocketClient({
-        port: testPort,
+        port: serverResult.port,
         sessionCookie: user.sessionCookie,
       });
       clients.push(client);
@@ -395,7 +334,7 @@ describe('Multi-Tenant Session Isolation', () => {
         client.emitRaw('session:join', { sessionId });
 
         // Wait for response
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.ASYNC_OPERATION));
 
         // Should get error without revealing session existence
         const events = client.getReceivedEvents();
@@ -417,7 +356,7 @@ describe('Multi-Tenant Session Isolation', () => {
 
       // Attacker connects
       const attackerClient = createTestSocketClient({
-        port: testPort,
+        port: serverResult.port,
         sessionCookie: userA.sessionCookie,
       });
       clients.push(attackerClient);
@@ -428,7 +367,7 @@ describe('Multi-Tenant Session Isolation', () => {
       attackerClient.emitRaw('session:join', { sessionId: sessionB.id });
 
       // Wait for response
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.ASYNC_OPERATION));
 
       // Should be rejected
       const events = attackerClient.getReceivedEvents();
@@ -437,7 +376,7 @@ describe('Multi-Tenant Session Isolation', () => {
 
       // Verify User B's session was not compromised - they can still access it
       const victimClient = createTestSocketClient({
-        port: testPort,
+        port: serverResult.port,
         sessionCookie: userB.sessionCookie,
       });
       clients.push(victimClient);

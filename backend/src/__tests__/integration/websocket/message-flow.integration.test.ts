@@ -6,28 +6,26 @@
  * to avoid real Anthropic API calls while using REAL infrastructure
  * (Azure SQL, Redis) for everything else.
  *
+ * REFACTORED: Uses SocketIOServerFactory to eliminate duplicated setup code.
+ *
  * @module __tests__/integration/websocket/message-flow.integration.test.ts
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
-import { Server as HttpServer, createServer } from 'http';
-import { Server as SocketIOServer } from 'socket.io';
-import express from 'express';
-import session from 'express-session';
-import { createClient as createRedisClient } from 'redis';
-import RedisStore from 'connect-redis';
 
 // Test helpers - using REAL database and Redis
 import {
   createTestSocketClient,
   createTestSessionFactory,
   cleanupAllTestData,
+  createTestSocketIOServer,
   TestSocketClient,
   TestSessionFactory,
-  TEST_SESSION_SECRET,
+  SocketIOServerResult,
+  AuthenticatedSocket,
+  TEST_TIMEOUTS,
   setupDatabaseForTests,
 } from '../helpers';
-import { REDIS_TEST_CONFIG } from '../setup.integration';
 
 // Real services with DI support
 import { FakeAnthropicClient } from '@/services/agent/FakeAnthropicClient';
@@ -41,12 +39,9 @@ describe('WebSocket Message Flow Integration', () => {
   // Setup REAL database + Redis connection
   setupDatabaseForTests();
 
-  let httpServer: HttpServer;
-  let io: SocketIOServer;
-  let testPort: number;
+  let serverResult: SocketIOServerResult;
   let factory: TestSessionFactory;
   let client: TestSocketClient | null = null;
-  let redisClient: ReturnType<typeof createRedisClient>;
   let fakeAnthropicClient: FakeAnthropicClient;
 
   beforeAll(async () => {
@@ -57,86 +52,21 @@ describe('WebSocket Message Flow Integration', () => {
     __resetDirectAgentService();
     getDirectAgentService(undefined, undefined, fakeAnthropicClient);
 
-    // 3. Create Redis client using test config (for session store)
-    redisClient = createRedisClient({
-      socket: {
-        host: REDIS_TEST_CONFIG.host,
-        port: REDIS_TEST_CONFIG.port,
+    // 3. Get chat message handler - uses REAL services with injected FakeAnthropicClient
+    const chatHandler = getChatMessageHandler();
+
+    // 4. Create Socket.IO server with custom chat:message handler
+    serverResult = await createTestSocketIOServer({
+      handlers: {
+        onChatMessage: async (socket: AuthenticatedSocket, data, io) => {
+          await chatHandler.handle(data, socket, io);
+        },
       },
     });
 
-    await redisClient.connect();
-
-    // 4. Create Express app with session middleware
-    const app = express();
-
-    const sessionMiddleware = session({
-      store: new RedisStore({ client: redisClient }),
-      secret: TEST_SESSION_SECRET,
-      resave: false,
-      saveUninitialized: false,
-      cookie: { secure: false, httpOnly: true, maxAge: 86400000 },
-    });
-
-    app.use(sessionMiddleware);
-
-    // 5. Create HTTP server
-    httpServer = createServer(app);
-
-    // 6. Create Socket.IO server
-    io = new SocketIOServer(httpServer, {
-      cors: { origin: '*', methods: ['GET', 'POST'], credentials: true },
-    });
-
-    // 7. Authentication middleware
-    io.use((socket, next) => {
-      const req = socket.request as express.Request;
-      const res = {} as express.Response;
-
-      sessionMiddleware(req, res, (err) => {
-        if (err) return next(new Error('Session error'));
-
-        const sessionData = (req as { session?: { microsoftOAuth?: { userId?: string; email?: string } } }).session;
-        if (sessionData?.microsoftOAuth?.userId) {
-          (socket as { userId?: string; userEmail?: string }).userId = sessionData.microsoftOAuth.userId;
-          (socket as { userId?: string; userEmail?: string }).userEmail = sessionData.microsoftOAuth.email;
-          next();
-        } else {
-          next(new Error('Authentication required'));
-        }
-      });
-    });
-
-    // 8. Message handler - uses REAL services with injected FakeAnthropicClient
-    const chatHandler = getChatMessageHandler();
-
-    io.on('connection', (socket) => {
-      const userId = (socket as { userId?: string }).userId;
-
-      socket.emit('connected', { userId, socketId: socket.id });
-
-      socket.on('session:join', (data: { sessionId: string }) => {
-        socket.join(data.sessionId);
-        socket.emit('session:joined', { sessionId: data.sessionId });
-      });
-
-      socket.on('chat:message', async (data) => {
-        await chatHandler.handle(data, socket, io);
-      });
-    });
-
-    // 9. Start server on random available port
-    await new Promise<void>((resolve) => {
-      httpServer.listen(0, () => {
-        const address = httpServer.address();
-        testPort = typeof address === 'object' && address ? address.port : 3098;
-        resolve();
-      });
-    });
-
-    // 10. Create test session factory
+    // 5. Create test session factory
     factory = createTestSessionFactory();
-  }, 60000);
+  }, TEST_TIMEOUTS.BEFORE_ALL);
 
   afterAll(async () => {
     // Reset DirectAgentService singleton to avoid affecting other tests
@@ -144,10 +74,9 @@ describe('WebSocket Message Flow Integration', () => {
 
     await cleanupAllTestData();
     if (client) await client.disconnect();
-    io.close();
-    httpServer.close();
-    await redisClient.quit();
-  }, 30000);
+
+    await serverResult.cleanup();
+  }, TEST_TIMEOUTS.AFTER_ALL);
 
   beforeEach(() => {
     client = null;
@@ -176,7 +105,7 @@ describe('WebSocket Message Flow Integration', () => {
       const testSession = await factory.createChatSession(testUser.id);
 
       client = createTestSocketClient({
-        port: testPort,
+        port: serverResult.port,
         sessionCookie: testUser.sessionCookie,
       });
 
@@ -187,7 +116,7 @@ describe('WebSocket Message Flow Integration', () => {
       await client.sendMessage(testSession.id, 'Hello, test message');
 
       // Wait for user_message_confirmed
-      const confirmedEvent = await client.waitForAgentEvent('user_message_confirmed', 10000);
+      const confirmedEvent = await client.waitForAgentEvent('user_message_confirmed', TEST_TIMEOUTS.SOCKET_CONNECTION);
 
       expect(confirmedEvent).toBeDefined();
       expect(confirmedEvent.type).toBe('user_message_confirmed');
@@ -206,7 +135,7 @@ describe('WebSocket Message Flow Integration', () => {
       const testSession = await factory.createChatSession(testUser.id);
 
       client = createTestSocketClient({
-        port: testPort,
+        port: serverResult.port,
         sessionCookie: testUser.sessionCookie,
       });
 
@@ -234,7 +163,7 @@ describe('WebSocket Message Flow Integration', () => {
       const testSession = await factory.createChatSession(testUser.id);
 
       client = createTestSocketClient({
-        port: testPort,
+        port: serverResult.port,
         sessionCookie: testUser.sessionCookie,
       });
 
@@ -259,7 +188,7 @@ describe('WebSocket Message Flow Integration', () => {
       const testSession = await factory.createChatSession(testUser.id);
 
       client = createTestSocketClient({
-        port: testPort,
+        port: serverResult.port,
         sessionCookie: testUser.sessionCookie,
       });
 
@@ -282,7 +211,7 @@ describe('WebSocket Message Flow Integration', () => {
       const testSession = await factory.createChatSession(testUser.id);
 
       client = createTestSocketClient({
-        port: testPort,
+        port: serverResult.port,
         sessionCookie: testUser.sessionCookie,
       });
 
@@ -308,7 +237,7 @@ describe('WebSocket Message Flow Integration', () => {
       const testSession = await factory.createChatSession(testUser.id);
 
       client = createTestSocketClient({
-        port: testPort,
+        port: serverResult.port,
         sessionCookie: testUser.sessionCookie,
       });
 
@@ -345,7 +274,7 @@ describe('WebSocket Message Flow Integration', () => {
       const testSession = await factory.createChatSession(testUser.id);
 
       client = createTestSocketClient({
-        port: testPort,
+        port: serverResult.port,
         sessionCookie: testUser.sessionCookie,
       });
 
@@ -356,7 +285,7 @@ describe('WebSocket Message Flow Integration', () => {
       await client.sendMessage(testSession.id, '');
 
       // Wait for error event
-      const errorEvent = await client.waitForEvent('agent:error', 5000);
+      const errorEvent = await client.waitForEvent('agent:error', TEST_TIMEOUTS.EVENT_WAIT);
 
       expect(errorEvent).toBeDefined();
     });
@@ -366,7 +295,7 @@ describe('WebSocket Message Flow Integration', () => {
       const testSession = await factory.createChatSession(testUser.id);
 
       client = createTestSocketClient({
-        port: testPort,
+        port: serverResult.port,
         sessionCookie: testUser.sessionCookie,
       });
 
@@ -377,7 +306,7 @@ describe('WebSocket Message Flow Integration', () => {
       await client.sendMessage(testSession.id, 'Test without join');
 
       // Wait a bit
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.MESSAGE_CLEANUP));
 
       // Should not receive events since not in room
       const events = client.getEventsByType('message');

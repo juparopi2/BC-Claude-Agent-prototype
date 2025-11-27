@@ -17,6 +17,8 @@
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest run --coverage",
+    "cache:clear": "powershell -Command \"Remove-Item -Recurse -Force -ErrorAction SilentlyContinue 'node_modules/.vite'; Remove-Item -Recurse -Force -ErrorAction SilentlyContinue 'node_modules/.vitest'\"",
+    "test:integration:clean": "npm run cache:clear && npm run test:integration",
     "lint": "eslint src/**/*.ts",
     "type-check": "tsc --noEmit",
     "verify": "npm run type-check",

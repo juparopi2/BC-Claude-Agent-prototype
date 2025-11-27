@@ -31,6 +31,7 @@ import { getMessageService } from '../messages/MessageService';
 import { TOOL_NAMES } from '@/constants/tools';
 import { createChildLogger } from '@/utils/logger';
 import { validateSessionOwnership } from '@/utils/session-ownership';
+import { normalizeUUID } from '@/utils/uuid';
 import type { Logger } from 'pino';
 
 /**
@@ -92,9 +93,8 @@ export class ChatMessageHandler {
 
     // Security: If client sends userId, it MUST match authenticated userId
     // This prevents impersonation attacks
-    // Note: Use case-insensitive comparison because SQL Server returns UUIDs in UPPERCASE
-    // while JavaScript generates them in lowercase
-    if (clientUserId && clientUserId.toLowerCase() !== authenticatedUserId.toLowerCase()) {
+    // Note: Uses normalizeUUID() for case-insensitive comparison (SQL Server UPPERCASE vs JavaScript lowercase)
+    if (clientUserId && normalizeUUID(clientUserId) !== normalizeUUID(authenticatedUserId)) {
       this.logger.warn('User ID mismatch - possible impersonation attempt', {
         sessionId,
         clientUserId,

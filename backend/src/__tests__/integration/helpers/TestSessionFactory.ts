@@ -17,6 +17,7 @@ import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
 import { executeQuery } from '@/config/database';
 import { getRedis } from '@/config/redis';
+import { normalizeUUID } from '@/utils/uuid';
 import {
   TEST_SESSION_SECRET,
   TEST_PREFIX,
@@ -189,8 +190,8 @@ export class TestSessionFactory {
     const sessionId = `${TEST_PREFIX}sess_${Date.now()}_${Math.random().toString(36).substring(7)}`;
 
     // Session data matching express-session format
-    // Note: Normalize userId to lowercase because SQL Server returns UUIDs in UPPERCASE
-    // but JavaScript generates them in lowercase. This ensures consistent comparison.
+    // Note: Uses normalizeUUID() to ensure consistent case comparison
+    // (SQL Server returns UPPERCASE, JavaScript generates lowercase)
     const sessionData = JSON.stringify({
       cookie: {
         originalMaxAge: 86400000, // 24 hours
@@ -201,7 +202,7 @@ export class TestSessionFactory {
         path: '/',
       },
       microsoftOAuth: {
-        userId: userId.toLowerCase(),
+        userId: normalizeUUID(userId),
         email,
         accessToken: `test_access_token_${Date.now()}`,
         refreshToken: `test_refresh_token_${Date.now()}`,
@@ -450,15 +451,15 @@ export class TestSessionFactory {
 
     // Clean up database in correct order (respecting foreign keys)
     for (const sessionId of this.createdSessions) {
-      // Delete message_events first
+      // Delete messages FIRST (messages.event_id references message_events.id)
       await executeQuery(
-        `DELETE FROM message_events WHERE session_id = @sessionId`,
+        `DELETE FROM messages WHERE session_id = @sessionId`,
         { sessionId }
       );
 
-      // Delete messages
+      // Delete message_events AFTER messages
       await executeQuery(
-        `DELETE FROM messages WHERE session_id = @sessionId`,
+        `DELETE FROM message_events WHERE session_id = @sessionId`,
         { sessionId }
       );
 

@@ -14,6 +14,7 @@
 import { timingSafeEqual } from 'crypto';
 import { executeQuery } from '@config/database';
 import { createChildLogger } from '@/utils/logger';
+import { normalizeUUID } from '@/utils/uuid';
 
 const logger = createChildLogger({ module: 'session-ownership' });
 
@@ -290,10 +291,10 @@ export function validateUserIdMatch(
  * @internal
  */
 export function timingSafeCompare(a: string, b: string): boolean {
-  // Normalize to lowercase for case-insensitive UUID comparison
-  // SQL Server returns UUIDs in uppercase, JavaScript generates lowercase
-  const normalizedA = a.toLowerCase();
-  const normalizedB = b.toLowerCase();
+  // Normalize UUIDs for case-insensitive comparison
+  // Uses centralized normalizeUUID() - SQL Server returns UPPERCASE, JavaScript generates lowercase
+  const normalizedA = normalizeUUID(a);
+  const normalizedB = normalizeUUID(b);
 
   // If lengths differ, we still need to do a constant-time comparison
   // to avoid leaking length information

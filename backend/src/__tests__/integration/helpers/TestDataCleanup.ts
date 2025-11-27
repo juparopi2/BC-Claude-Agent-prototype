@@ -62,7 +62,21 @@ export async function cleanupAllTestData(prefix?: string): Promise<CleanupResult
     const testEmailPattern = `%${TEST_EMAIL_DOMAIN}`;
 
     // 1. Delete messages FIRST (has FK to message_events via event_id)
-    const messagesResult = await executeQuery(
+    // Delete messages that reference test session's message_events
+    // This handles messages that may have event_id pointing to test message_events
+    const messagesWithEventIdResult = await executeQuery(
+      `DELETE FROM messages WHERE event_id IN (
+        SELECT me.id FROM message_events me
+        JOIN sessions s ON me.session_id = s.id
+        JOIN users u ON s.user_id = u.id
+        WHERE u.email LIKE @emailPattern
+      )`,
+      { emailPattern: testEmailPattern }
+    );
+    result.messagesDeleted = messagesWithEventIdResult.rowsAffected[0] || 0;
+
+    // Also delete messages by session_id (for messages without event_id)
+    const messagesBySessionResult = await executeQuery(
       `DELETE FROM messages WHERE session_id IN (
         SELECT s.id FROM sessions s
         JOIN users u ON s.user_id = u.id
@@ -70,7 +84,33 @@ export async function cleanupAllTestData(prefix?: string): Promise<CleanupResult
       )`,
       { emailPattern: testEmailPattern }
     );
-    result.messagesDeleted = messagesResult.rowsAffected[0] || 0;
+    result.messagesDeleted += messagesBySessionResult.rowsAffected[0] || 0;
+
+    // Verify no FK violations will occur before deleting message_events
+    const potentialFKViolations = await executeQuery<{ count: number }>(
+      `SELECT COUNT(*) as count FROM messages m
+       WHERE m.event_id IN (
+         SELECT me.id FROM message_events me
+         JOIN sessions s ON me.session_id = s.id
+         JOIN users u ON s.user_id = u.id
+         WHERE u.email LIKE @emailPattern
+       )`,
+      { emailPattern: testEmailPattern }
+    );
+
+    if (potentialFKViolations.recordset[0]?.count && potentialFKViolations.recordset[0].count > 0) {
+      console.warn(`[Cleanup] Warning: ${potentialFKViolations.recordset[0].count} messages still reference test event_ids - forcing delete`);
+      // Force delete any remaining messages with FK references
+      await executeQuery(
+        `DELETE FROM messages WHERE event_id IN (
+          SELECT me.id FROM message_events me
+          JOIN sessions s ON me.session_id = s.id
+          JOIN users u ON s.user_id = u.id
+          WHERE u.email LIKE @emailPattern
+        )`,
+        { emailPattern: testEmailPattern }
+      );
+    }
 
     // 2. Delete message_events AFTER messages (messages.event_id references message_events)
     const messageEventsResult = await executeQuery(

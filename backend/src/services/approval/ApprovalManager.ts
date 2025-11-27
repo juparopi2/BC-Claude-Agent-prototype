@@ -46,6 +46,7 @@ import {
   ApprovalOwnershipResult,
   AtomicApprovalResponseResult,
 } from '../../types/approval.types';
+import { normalizeUUID } from '../../utils/uuid';
 
 // Structured logger for approval operations
 const logger = createChildLogger({ service: 'ApprovalManager' });
@@ -476,8 +477,8 @@ export class ApprovalManager {
       }
 
       // Case 3: User doesn't own the session
-      // Use case-insensitive comparison: SQL Server returns uppercase UUIDs, JavaScript generates lowercase
-      if (row.session_user_id?.toLowerCase() !== userId.toLowerCase()) {
+      // Uses normalizeUUID() for case-insensitive comparison (SQL Server UPPERCASE vs JavaScript lowercase)
+      if (normalizeUUID(row.session_user_id) !== normalizeUUID(userId)) {
         await transaction.rollback();
         logger.warn(
           {
@@ -785,8 +786,8 @@ export class ApprovalManager {
       }
 
       // Check if user owns the session
-      // Use case-insensitive comparison: SQL Server returns uppercase UUIDs, JavaScript generates lowercase
-      const isOwner = row.session_user_id?.toLowerCase() === userId.toLowerCase();
+      // Uses normalizeUUID() for case-insensitive comparison (SQL Server UPPERCASE vs JavaScript lowercase)
+      const isOwner = normalizeUUID(row.session_user_id) === normalizeUUID(userId);
 
       if (!isOwner) {
         logger.warn(

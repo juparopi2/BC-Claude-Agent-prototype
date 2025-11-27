@@ -2,42 +2,32 @@
  * MessageQueue Integration Tests
  *
  * Tests BullMQ integration, rate limiting, and queue management
- * using REAL Redis (no mocks for ioredis or BullMQ).
+ * using REAL Redis and Azure SQL database (no mocks for infrastructure).
  *
  * Requirements:
  *   - Docker Redis running on port 6399 (docker-compose -f docker-compose.test.yml up -d)
+ *   - Azure SQL database connection configured in .env
  *   - OR GitHub Actions with Redis service container
  *
- * KNOWN ISSUE (2024-11-26): Tests cause "Connection is closed" and "Redis connection
- * timeout" errors due to BullMQ worker cleanup issues. BullMQ maintains background
- * connections that fire events after tests complete. These are cleanup issues, not
- * actual test failures - all 18 tests pass individually.
- * TODO: Investigate proper BullMQ worker shutdown in test environment.
+ * US-001.6: Rewritten to eliminate infrastructure mocks following the audit principle:
+ * "Tests de integración deben usar infraestructura REAL (Redis, Azure SQL), NO mocks."
  *
  * @module __tests__/integration/services/queue/MessageQueue.integration.test
  */
 
 import { describe, it, expect, beforeEach, afterEach, afterAll, beforeAll, vi } from 'vitest';
 import IORedis from 'ioredis';
-import { REDIS_TEST_CONFIG, ensureRedisAvailable, clearRedisKeys } from '../../setup.integration';
+import crypto from 'crypto';
 
-// ===== MOCK ONLY DATABASE (not Redis/BullMQ) =====
-const mockDbQuery = vi.fn().mockResolvedValue({ recordset: [], rowsAffected: [1] });
+// Test infrastructure helpers
+import { REDIS_TEST_CONFIG, clearRedisKeys } from '../../setup.integration';
+import {
+  setupDatabaseForTests,
+  createTestSessionFactory,
+} from '../../helpers';
+import type { TestSessionFactory, TestUser, TestChatSession } from '../../helpers';
 
-vi.mock('@/config/database', () => ({
-  executeQuery: (...args: unknown[]) => mockDbQuery(...args),
-}));
-
-// Mock EventStore (uses database)
-const mockEventStoreMarkAsProcessed = vi.fn().mockResolvedValue(undefined);
-
-vi.mock('@/services/events/EventStore', () => ({
-  getEventStore: vi.fn(() => ({
-    markAsProcessed: mockEventStoreMarkAsProcessed,
-  })),
-}));
-
-// Mock logger to avoid noise in tests
+// ONLY mock logger (acceptable per audit)
 vi.mock('@/utils/logger', () => ({
   logger: {
     info: vi.fn(),
@@ -47,58 +37,82 @@ vi.mock('@/utils/logger', () => ({
   },
 }));
 
-// Mock config to use test Redis
-vi.mock('@/config', () => ({
-  env: {
-    REDIS_HOST: process.env.REDIS_TEST_HOST || 'localhost',
-    REDIS_PORT: parseInt(process.env.REDIS_TEST_PORT || '6399', 10),
-    REDIS_PASSWORD: undefined,
-  },
-}));
-
 // Import AFTER mocks are set up
-import { MessageQueue, getMessageQueue, QueueName } from '@/services/queue/MessageQueue';
-import type { MessagePersistenceJob, ToolExecutionJob, EventProcessingJob } from '@/services/queue/MessageQueue';
+import {
+  MessageQueue,
+  getMessageQueue,
+  __resetMessageQueue,
+  QueueName,
+} from '@/services/queue/MessageQueue';
+import type {
+  MessagePersistenceJob,
+  ToolExecutionJob,
+  EventProcessingJob,
+} from '@/services/queue/MessageQueue';
 
-describe.skip('MessageQueue Integration Tests', () => {
+// REAL dependencies for DI
+import { executeQuery } from '@/config/database';
+import { getEventStore } from '@/services/events/EventStore';
+import { logger } from '@/utils/logger';
+
+describe('MessageQueue Integration Tests', () => {
+  // Initialize DB + Redis REAL infrastructure with extended timeout
+  setupDatabaseForTests({ timeout: 60000 });
+
   let redis: IORedis;
   let messageQueue: MessageQueue;
+  let factory: TestSessionFactory;
+  let testUser: TestUser;
+  let testSession: TestChatSession;
 
   beforeAll(async () => {
-    // Ensure Redis is available
-    await ensureRedisAvailable();
-
-    // Create Redis connection for cleanup
+    // Redis for BullMQ and direct manipulation
     redis = new IORedis({
       ...REDIS_TEST_CONFIG,
+      maxRetriesPerRequest: null, // Required for BullMQ
       lazyConnect: true,
     });
     await redis.connect();
-  });
+
+    // Factory for creating real test data
+    factory = createTestSessionFactory();
+
+    // Create ONE user for all tests (efficiency)
+    testUser = await factory.createTestUser({ prefix: 'msgqueue_' });
+  }, 60000);
 
   afterAll(async () => {
-    // Clean up all BullMQ keys
-    await clearRedisKeys(redis, 'bull:*');
-    await clearRedisKeys(redis, 'queue:*');
-
-    // Give BullMQ time to clean up internal connections before closing Redis
-    // BullMQ maintains background event listeners that may fire after close()
-    await new Promise(resolve => setTimeout(resolve, 500));
-
+    // 1. Reset singleton first (closes internal connections)
     try {
-      await redis.quit();
-    } catch {
-      // Ignore errors during final cleanup - connection may already be closed
-    }
-  });
+      __resetMessageQueue();
+    } catch { /* ignore */ }
+
+    // 2. Wait for BullMQ cleanup (critical for avoiding "Connection is closed" errors)
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // 3. Clean up Redis keys
+    try {
+      await clearRedisKeys(redis, 'bull:*');
+      await clearRedisKeys(redis, 'queue:*');
+    } catch { /* ignore */ }
+
+    // 4. Clean up test data in DB
+    try {
+      await factory.cleanup();
+    } catch { /* ignore */ }
+
+    // 5. Close Redis connection LAST
+    try { await redis.quit(); } catch { /* ignore */ }
+  }, 60000);
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    mockDbQuery.mockResolvedValue({ recordset: [], rowsAffected: [1] });
-    mockEventStoreMarkAsProcessed.mockResolvedValue(undefined);
 
-    // Reset singleton instance before each test
-    (MessageQueue as unknown as { instance: MessageQueue | null }).instance = null;
+    // Reset singleton for fresh instance with DI
+    __resetMessageQueue();
+
+    // Create unique session per test (isolation)
+    testSession = await factory.createChatSession(testUser.id);
 
     // Clean up rate limit keys from previous tests
     await clearRedisKeys(redis, 'queue:ratelimit:*');
@@ -110,24 +124,34 @@ describe.skip('MessageQueue Integration Tests', () => {
       if (messageQueue) {
         await messageQueue.close();
         // Give BullMQ time to clean up workers and event listeners
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, 300));
       }
-    } catch {
-      // Ignore errors during cleanup
-    }
+    } catch { /* ignore */ }
   });
+
+  /**
+   * Helper to create MessageQueue with REAL dependencies via DI
+   */
+  function createMessageQueueWithDI(): MessageQueue {
+    return getMessageQueue({
+      redis: new IORedis({ ...REDIS_TEST_CONFIG, maxRetriesPerRequest: null }),
+      executeQuery,           // Real database
+      eventStore: getEventStore(),  // Real EventStore
+      logger,                 // Real logger (mocked at module level)
+    });
+  }
 
   // ========== INITIALIZATION TESTS ==========
   describe('Initialization', () => {
     it('should return singleton instance', () => {
-      messageQueue = getMessageQueue();
+      messageQueue = createMessageQueueWithDI();
       const instance2 = getMessageQueue();
 
       expect(messageQueue).toBe(instance2);
     });
 
     it('should be ready after waitForReady()', async () => {
-      messageQueue = getMessageQueue();
+      messageQueue = createMessageQueueWithDI();
 
       // Initially may not be ready
       await messageQueue.waitForReady();
@@ -136,7 +160,7 @@ describe.skip('MessageQueue Integration Tests', () => {
     });
 
     it('should connect to test Redis', async () => {
-      messageQueue = getMessageQueue();
+      messageQueue = createMessageQueueWithDI();
       await messageQueue.waitForReady();
 
       // Verify we can get queue stats (requires working Redis)
@@ -151,12 +175,12 @@ describe.skip('MessageQueue Integration Tests', () => {
   // ========== RATE LIMITING TESTS ==========
   describe('Rate Limiting', () => {
     it('should allow jobs within rate limit', async () => {
-      messageQueue = getMessageQueue();
+      messageQueue = createMessageQueueWithDI();
       await messageQueue.waitForReady();
 
       const job: MessagePersistenceJob = {
-        sessionId: 'test-session-rate-1',
-        messageId: 'msg-1',
+        sessionId: testSession.id,  // Real session ID
+        messageId: crypto.randomUUID(),
         role: 'user',
         messageType: 'text',
         content: 'Hello',
@@ -170,13 +194,12 @@ describe.skip('MessageQueue Integration Tests', () => {
     });
 
     it('should track job count per session using Redis INCR', async () => {
-      messageQueue = getMessageQueue();
+      messageQueue = createMessageQueueWithDI();
       await messageQueue.waitForReady();
 
-      const sessionId = 'test-session-track';
       const job: MessagePersistenceJob = {
-        sessionId,
-        messageId: 'msg-1',
+        sessionId: testSession.id,  // Real session ID
+        messageId: crypto.randomUUID(),
         role: 'user',
         messageType: 'text',
         content: 'Hello',
@@ -185,18 +208,17 @@ describe.skip('MessageQueue Integration Tests', () => {
       await messageQueue.addMessagePersistence(job);
 
       // Verify Redis key was created
-      const count = await redis.get(`queue:ratelimit:${sessionId}`);
+      const count = await redis.get(`queue:ratelimit:${testSession.id}`);
       expect(count).toBe('1');
     });
 
     it('should set TTL on rate limit key', async () => {
-      messageQueue = getMessageQueue();
+      messageQueue = createMessageQueueWithDI();
       await messageQueue.waitForReady();
 
-      const sessionId = 'test-session-ttl';
       const job: MessagePersistenceJob = {
-        sessionId,
-        messageId: 'msg-1',
+        sessionId: testSession.id,
+        messageId: crypto.randomUUID(),
         role: 'user',
         messageType: 'text',
         content: 'Hello',
@@ -205,26 +227,29 @@ describe.skip('MessageQueue Integration Tests', () => {
       await messageQueue.addMessagePersistence(job);
 
       // Verify TTL was set (should be around 3600 seconds)
-      const ttl = await redis.ttl(`queue:ratelimit:${sessionId}`);
+      const ttl = await redis.ttl(`queue:ratelimit:${testSession.id}`);
       expect(ttl).toBeGreaterThan(3500); // Allow some tolerance
       expect(ttl).toBeLessThanOrEqual(3600);
     });
 
     it('should rate limit per session (not globally)', async () => {
-      messageQueue = getMessageQueue();
+      // Create second session for isolation test
+      const secondSession = await factory.createChatSession(testUser.id);
+
+      messageQueue = createMessageQueueWithDI();
       await messageQueue.waitForReady();
 
       const job1: MessagePersistenceJob = {
-        sessionId: 'session-a',
-        messageId: 'msg-1',
+        sessionId: testSession.id,
+        messageId: crypto.randomUUID(),
         role: 'user',
         messageType: 'text',
         content: 'Hello',
       };
 
       const job2: MessagePersistenceJob = {
-        sessionId: 'session-b',
-        messageId: 'msg-2',
+        sessionId: secondSession.id,
+        messageId: crypto.randomUUID(),
         role: 'user',
         messageType: 'text',
         content: 'Hello',
@@ -234,31 +259,29 @@ describe.skip('MessageQueue Integration Tests', () => {
       await messageQueue.addMessagePersistence(job2);
 
       // Verify separate counters
-      const countA = await redis.get('queue:ratelimit:session-a');
-      const countB = await redis.get('queue:ratelimit:session-b');
+      const countA = await redis.get(`queue:ratelimit:${testSession.id}`);
+      const countB = await redis.get(`queue:ratelimit:${secondSession.id}`);
 
       expect(countA).toBe('1');
       expect(countB).toBe('1');
     });
 
     it('should return rate limit status for session', async () => {
-      messageQueue = getMessageQueue();
+      messageQueue = createMessageQueueWithDI();
       await messageQueue.waitForReady();
-
-      const sessionId = 'test-session-status';
 
       // Add some jobs
       for (let i = 0; i < 5; i++) {
         await messageQueue.addMessagePersistence({
-          sessionId,
-          messageId: `msg-${i}`,
+          sessionId: testSession.id,
+          messageId: crypto.randomUUID(),
           role: 'user',
           messageType: 'text',
           content: 'Hello',
         });
       }
 
-      const status = await messageQueue.getRateLimitStatus(sessionId);
+      const status = await messageQueue.getRateLimitStatus(testSession.id);
 
       expect(status.count).toBe(5);
       expect(status.limit).toBe(100);
@@ -267,10 +290,12 @@ describe.skip('MessageQueue Integration Tests', () => {
     });
 
     it('should return zero count for new session', async () => {
-      messageQueue = getMessageQueue();
+      const newSession = await factory.createChatSession(testUser.id);
+
+      messageQueue = createMessageQueueWithDI();
       await messageQueue.waitForReady();
 
-      const status = await messageQueue.getRateLimitStatus('brand-new-session');
+      const status = await messageQueue.getRateLimitStatus(newSession.id);
 
       expect(status.count).toBe(0);
       expect(status.remaining).toBe(100);
@@ -281,12 +306,12 @@ describe.skip('MessageQueue Integration Tests', () => {
   // ========== MESSAGE PERSISTENCE QUEUE TESTS ==========
   describe('Message Persistence Queue', () => {
     it('should add job to message-persistence queue', async () => {
-      messageQueue = getMessageQueue();
+      messageQueue = createMessageQueueWithDI();
       await messageQueue.waitForReady();
 
       const job: MessagePersistenceJob = {
-        sessionId: 'test-session-persist',
-        messageId: 'msg-persist-1',
+        sessionId: testSession.id,
+        messageId: crypto.randomUUID(),
         role: 'user',
         messageType: 'text',
         content: 'Hello world',
@@ -300,16 +325,16 @@ describe.skip('MessageQueue Integration Tests', () => {
     });
 
     it('should include job metadata', async () => {
-      messageQueue = getMessageQueue();
+      messageQueue = createMessageQueueWithDI();
       await messageQueue.waitForReady();
 
       const job: MessagePersistenceJob = {
-        sessionId: 'test-session-meta',
-        messageId: 'msg-meta-1',
+        sessionId: testSession.id,
+        messageId: crypto.randomUUID(),
         role: 'user',
         messageType: 'text',
         content: 'Hello',
-        metadata: { user_id: 'user-456', timestamp: Date.now() },
+        metadata: { user_id: testUser.id, timestamp: Date.now() },
       };
 
       const jobId = await messageQueue.addMessagePersistence(job);
@@ -319,20 +344,20 @@ describe.skip('MessageQueue Integration Tests', () => {
     });
 
     it('should support different message types', async () => {
-      messageQueue = getMessageQueue();
+      messageQueue = createMessageQueueWithDI();
       await messageQueue.waitForReady();
 
       const textJob: MessagePersistenceJob = {
-        sessionId: 'test-session-types',
-        messageId: 'msg-text-1',
+        sessionId: testSession.id,
+        messageId: crypto.randomUUID(),
         role: 'user',
         messageType: 'text',
         content: 'Hello',
       };
 
       const thinkingJob: MessagePersistenceJob = {
-        sessionId: 'test-session-types',
-        messageId: 'msg-thinking-1',
+        sessionId: testSession.id,
+        messageId: crypto.randomUUID(),
         role: 'assistant',
         messageType: 'thinking',
         content: 'Analyzing...',
@@ -350,15 +375,15 @@ describe.skip('MessageQueue Integration Tests', () => {
   // ========== TOOL EXECUTION QUEUE TESTS ==========
   describe('Tool Execution Queue', () => {
     it('should add job to tool-execution queue', async () => {
-      messageQueue = getMessageQueue();
+      messageQueue = createMessageQueueWithDI();
       await messageQueue.waitForReady();
 
       const job: ToolExecutionJob = {
-        sessionId: 'test-session-tool',
-        toolUseId: 'tool-456',
+        sessionId: testSession.id,
+        toolUseId: crypto.randomUUID(),
         toolName: 'list_all_entities',
         toolArgs: { entity: 'customer' },
-        userId: 'user-789',
+        userId: testUser.id,
       };
 
       const jobId = await messageQueue.addToolExecution(job);
@@ -368,23 +393,23 @@ describe.skip('MessageQueue Integration Tests', () => {
     });
 
     it('should support different tool names', async () => {
-      messageQueue = getMessageQueue();
+      messageQueue = createMessageQueueWithDI();
       await messageQueue.waitForReady();
 
       const job1: ToolExecutionJob = {
-        sessionId: 'test-session-tools',
-        toolUseId: 'tool-1',
+        sessionId: testSession.id,
+        toolUseId: crypto.randomUUID(),
         toolName: 'list_all_entities',
         toolArgs: {},
-        userId: 'user-1',
+        userId: testUser.id,
       };
 
       const job2: ToolExecutionJob = {
-        sessionId: 'test-session-tools',
-        toolUseId: 'tool-2',
+        sessionId: testSession.id,
+        toolUseId: crypto.randomUUID(),
         toolName: 'get_entity_by_id',
         toolArgs: { entity: 'customer', id: '123' },
-        userId: 'user-1',
+        userId: testUser.id,
       };
 
       const jobId1 = await messageQueue.addToolExecution(job1);
@@ -398,14 +423,14 @@ describe.skip('MessageQueue Integration Tests', () => {
   // ========== EVENT PROCESSING QUEUE TESTS ==========
   describe('Event Processing Queue', () => {
     it('should add job to event-processing queue', async () => {
-      messageQueue = getMessageQueue();
+      messageQueue = createMessageQueueWithDI();
       await messageQueue.waitForReady();
 
       const job: EventProcessingJob = {
-        eventId: 'evt-123',
-        sessionId: 'test-session-event',
+        eventId: crypto.randomUUID(),
+        sessionId: testSession.id,
         eventType: 'user_message_sent',
-        data: { message_id: 'msg-789', content: 'Hello' },
+        data: { message_id: crypto.randomUUID(), content: 'Hello' },
       };
 
       const jobId = await messageQueue.addEventProcessing(job);
@@ -418,7 +443,7 @@ describe.skip('MessageQueue Integration Tests', () => {
   // ========== QUEUE MANAGEMENT TESTS ==========
   describe('Queue Management', () => {
     it('should get queue statistics', async () => {
-      messageQueue = getMessageQueue();
+      messageQueue = createMessageQueueWithDI();
       await messageQueue.waitForReady();
 
       const stats = await messageQueue.getQueueStats(QueueName.MESSAGE_PERSISTENCE);
@@ -433,7 +458,7 @@ describe.skip('MessageQueue Integration Tests', () => {
     });
 
     it('should pause and resume queue', async () => {
-      messageQueue = getMessageQueue();
+      messageQueue = createMessageQueueWithDI();
       await messageQueue.waitForReady();
 
       // Pause should not throw
@@ -444,7 +469,7 @@ describe.skip('MessageQueue Integration Tests', () => {
     });
 
     it('should throw error for non-existent queue', async () => {
-      messageQueue = getMessageQueue();
+      messageQueue = createMessageQueueWithDI();
       await messageQueue.waitForReady();
 
       await expect(

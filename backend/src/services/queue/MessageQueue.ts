@@ -23,6 +23,12 @@ import { env } from '@/config';
 import { logger } from '@/utils/logger';
 import { executeQuery, SqlParams } from '@/config/database';
 import { getEventStore, EventType } from '../events/EventStore';
+import type {
+  IMessageQueueDependencies,
+  IEventStoreMinimal,
+  ILoggerMinimal,
+  ExecuteQueryFn,
+} from './IMessageQueueDependencies';
 
 /**
  * Queue Names
@@ -104,39 +110,60 @@ export class MessageQueue {
   private isReady: boolean = false;
   private readyPromise: Promise<void>;
 
-  private constructor() {
-    // Create Redis connection for BullMQ
-    this.redisConnection = new Redis({
-      host: env.REDIS_HOST || 'localhost',
-      port: env.REDIS_PORT || 6379,
-      password: env.REDIS_PASSWORD,
-      maxRetriesPerRequest: null, // Required for BullMQ
-      lazyConnect: false, // Connect immediately
-      enableReadyCheck: true,
-      // ⭐ TLS Configuration for Azure Redis Cache (port 6380 requires SSL)
-      tls: env.REDIS_PORT === 6380 ? {
-        rejectUnauthorized: true,
-      } : undefined,
-      // ⭐ Reconnection Strategy - Handle transient failures
-      reconnectOnError(err) {
-        const targetErrors = ['READONLY', 'ECONNRESET', 'ETIMEDOUT'];
-        if (targetErrors.some((targetError) => err.message.includes(targetError))) {
-          logger.warn('Redis reconnecting due to error', { error: err.message });
-          return true; // Reconnect
-        }
-        return false;
-      },
-      // ⭐ Retry Strategy - Exponential backoff
-      retryStrategy(times) {
-        if (times > 10) {
-          logger.error('Redis max retry attempts reached (10)', { attempts: times });
-          return null; // Stop retrying after 10 attempts
-        }
-        const delay = Math.min(times * 100, 3200); // 100ms, 200ms, 400ms, ..., max 3200ms
-        logger.info('Redis retry attempt', { attempt: times, delayMs: delay });
-        return delay;
-      },
-    });
+  // Injected dependencies (DI support for testing)
+  private executeQueryFn: ExecuteQueryFn;
+  private eventStoreGetter: () => IEventStoreMinimal;
+  private log: ILoggerMinimal;
+
+  /**
+   * Private constructor with optional dependency injection
+   *
+   * @param dependencies - Optional dependencies for testing
+   */
+  private constructor(dependencies?: IMessageQueueDependencies) {
+    // Store injected dependencies (with defaults from module imports)
+    this.executeQueryFn = dependencies?.executeQuery ?? executeQuery;
+    this.eventStoreGetter = dependencies?.eventStore
+      ? () => dependencies.eventStore!
+      : () => getEventStore();
+    this.log = dependencies?.logger ?? logger;
+
+    // Create Redis connection for BullMQ (use injected or create default)
+    if (dependencies?.redis) {
+      this.redisConnection = dependencies.redis;
+    } else {
+      this.redisConnection = new Redis({
+        host: env.REDIS_HOST || 'localhost',
+        port: env.REDIS_PORT || 6379,
+        password: env.REDIS_PASSWORD,
+        maxRetriesPerRequest: null, // Required for BullMQ
+        lazyConnect: false, // Connect immediately
+        enableReadyCheck: true,
+        // ⭐ TLS Configuration for Azure Redis Cache (port 6380 requires SSL)
+        tls: env.REDIS_PORT === 6380 ? {
+          rejectUnauthorized: true,
+        } : undefined,
+        // ⭐ Reconnection Strategy - Handle transient failures
+        reconnectOnError: (err) => {
+          const targetErrors = ['READONLY', 'ECONNRESET', 'ETIMEDOUT'];
+          if (targetErrors.some((targetError) => err.message.includes(targetError))) {
+            this.log.warn('Redis reconnecting due to error', { error: err.message });
+            return true; // Reconnect
+          }
+          return false;
+        },
+        // ⭐ Retry Strategy - Exponential backoff
+        retryStrategy: (times) => {
+          if (times > 10) {
+            this.log.error('Redis max retry attempts reached (10)', { attempts: times });
+            return null; // Stop retrying after 10 attempts
+          }
+          const delay = Math.min(times * 100, 3200); // 100ms, 200ms, 400ms, ..., max 3200ms
+          this.log.info('Redis retry attempt', { attempt: times, delayMs: delay });
+          return delay;
+        },
+      });
+    }
 
     this.queues = new Map();
     this.workers = new Map();
@@ -144,15 +171,15 @@ export class MessageQueue {
 
     // ⭐ DIAGNOSTIC: Add connection event listeners for IORedis
     this.redisConnection.on('connect', () => {
-      logger.info('🔌 BullMQ IORedis: connect event fired');
+      this.log.info('🔌 BullMQ IORedis: connect event fired');
     });
 
     this.redisConnection.on('ready', () => {
-      logger.info('✅ BullMQ IORedis: ready event fired (connection fully established)');
+      this.log.info('✅ BullMQ IORedis: ready event fired (connection fully established)');
     });
 
     this.redisConnection.on('error', (err) => {
-      logger.error('❌ BullMQ IORedis: error event', {
+      this.log.error('❌ BullMQ IORedis: error event', {
         error: err.message,
         stack: err.stack,
         code: (err as NodeJS.ErrnoException).code
@@ -160,15 +187,15 @@ export class MessageQueue {
     });
 
     this.redisConnection.on('close', () => {
-      logger.warn('🔴 BullMQ IORedis: close event (connection closed)');
+      this.log.warn('🔴 BullMQ IORedis: close event (connection closed)');
     });
 
     this.redisConnection.on('reconnecting', (timeToReconnect: number) => {
-      logger.warn('🔄 BullMQ IORedis: reconnecting...', { timeToReconnect });
+      this.log.warn('🔄 BullMQ IORedis: reconnecting...', { timeToReconnect });
     });
 
     this.redisConnection.on('end', () => {
-      logger.warn('🛑 BullMQ IORedis: end event (no more reconnections)');
+      this.log.warn('🛑 BullMQ IORedis: end event (no more reconnections)');
     });
 
     // Create promise that resolves when Redis is ready
@@ -180,13 +207,13 @@ export class MessageQueue {
       this.redisConnection.once('ready', () => {
         clearTimeout(timeout);
         this.isReady = true;
-        logger.info('✅ BullMQ Redis connection ready');
+        this.log.info('✅ BullMQ Redis connection ready');
 
         // Initialize queues/workers AFTER Redis is ready
         this.initializeQueues();
         this.initializeWorkers();
         this.setupEventListeners();
-        logger.info('MessageQueue initialized with BullMQ', {
+        this.log.info('MessageQueue initialized with BullMQ', {
           queues: Array.from(this.queues.keys()),
           workers: Array.from(this.workers.keys()),
         });
@@ -195,7 +222,7 @@ export class MessageQueue {
       });
 
       this.redisConnection.once('error', (error) => {
-        logger.error('❌ BullMQ Redis connection error during initialization', {
+        this.log.error('❌ BullMQ Redis connection error during initialization', {
           error: error.message,
           stack: error.stack
         });
@@ -206,13 +233,29 @@ export class MessageQueue {
   }
 
   /**
-   * Get singleton instance
+   * Get singleton instance with optional dependency injection
+   *
+   * @param dependencies - Optional dependencies (only used when creating new instance)
    */
-  public static getInstance(): MessageQueue {
+  public static getInstance(dependencies?: IMessageQueueDependencies): MessageQueue {
     if (!MessageQueue.instance) {
-      MessageQueue.instance = new MessageQueue();
+      MessageQueue.instance = new MessageQueue(dependencies);
     }
     return MessageQueue.instance;
+  }
+
+  /**
+   * Reset singleton instance for testing
+   *
+   * @internal Only for integration tests - DO NOT use in production
+   */
+  public static __resetInstance(): void {
+    if (MessageQueue.instance) {
+      MessageQueue.instance.close().catch(() => {
+        // Ignore errors during reset cleanup
+      });
+    }
+    MessageQueue.instance = null;
   }
 
   /**
@@ -229,10 +272,10 @@ export class MessageQueue {
       return; // Already ready
     }
 
-    logger.debug('Waiting for MessageQueue to be ready...');
+    this.log.debug('Waiting for MessageQueue to be ready...');
     // Wait for Redis connection (uses this.readyPromise)
     await this.readyPromise;
-    logger.debug('MessageQueue is ready');
+    this.log.debug('MessageQueue is ready');
   }
 
   /**
@@ -299,7 +342,7 @@ export class MessageQueue {
       })
     );
 
-    logger.info('All queues initialized', {
+    this.log.info('All queues initialized', {
       queues: Array.from(this.queues.keys()),
     });
   }
@@ -353,7 +396,7 @@ export class MessageQueue {
       )
     );
 
-    logger.info('All workers initialized', {
+    this.log.info('All workers initialized', {
       workers: Array.from(this.workers.keys()),
     });
   }
@@ -370,15 +413,15 @@ export class MessageQueue {
       this.queueEvents.set(queueName, queueEvents);
 
       queueEvents.on('completed', ({ jobId }) => {
-        logger.debug(`Job completed in ${queueName}`, { jobId });
+        this.log.debug(`Job completed in ${queueName}`, { jobId });
       });
 
       queueEvents.on('failed', ({ jobId, failedReason }) => {
-        logger.error(`Job failed in ${queueName}`, { jobId, failedReason });
+        this.log.error(`Job failed in ${queueName}`, { jobId, failedReason });
       });
 
       queueEvents.on('stalled', ({ jobId }) => {
-        logger.warn(`Job stalled in ${queueName}`, { jobId });
+        this.log.warn(`Job stalled in ${queueName}`, { jobId });
       });
     });
   }
@@ -409,7 +452,7 @@ export class MessageQueue {
       const withinLimit = count <= MessageQueue.MAX_JOBS_PER_SESSION;
 
       if (!withinLimit) {
-        logger.warn('Rate limit exceeded for session', {
+        this.log.warn('Rate limit exceeded for session', {
           sessionId,
           count,
           limit: MessageQueue.MAX_JOBS_PER_SESSION,
@@ -418,7 +461,7 @@ export class MessageQueue {
 
       return withinLimit;
     } catch (error) {
-      logger.error('Failed to check rate limit', { error, sessionId });
+      this.log.error('Failed to check rate limit', { error, sessionId });
       // Fail open - allow job if rate limit check fails
       return true;
     }
@@ -458,7 +501,7 @@ export class MessageQueue {
     });
 
     // ⭐ DIAGNOSTIC: Enhanced logging
-    logger.info('✅ Message job enqueued to BullMQ', {
+    this.log.info('✅ Message job enqueued to BullMQ', {
       jobId: job.id,
       sessionId: data.sessionId,
       messageId: data.messageId,
@@ -490,7 +533,7 @@ export class MessageQueue {
       priority: 2,
     });
 
-    logger.debug('Tool execution added to queue', {
+    this.log.debug('Tool execution added to queue', {
       jobId: job.id,
       toolName: data.toolName,
     });
@@ -538,7 +581,7 @@ export class MessageQueue {
 
     // ⭐ VALIDATION: Check for undefined messageId
     if (!messageId || messageId === 'undefined' || messageId.trim() === '') {
-      logger.error('❌ processMessagePersistence: Invalid messageId', {
+      this.log.error('❌ processMessagePersistence: Invalid messageId', {
         jobId: job.id,
         messageId,
         sessionId,
@@ -550,7 +593,7 @@ export class MessageQueue {
     }
 
     // ⭐ DIAGNOSTIC: Log worker pickup with token info
-    logger.info('🔨 Worker picked up message persistence job', {
+    this.log.info('🔨 Worker picked up message persistence job', {
       jobId: job.id,
       messageId,
       sessionId,
@@ -603,7 +646,7 @@ export class MessageQueue {
       };
 
       // ⭐ UPDATED 2025-11-24: Removed thinking_tokens column per Option A
-      await executeQuery(
+      await this.executeQueryFn(
         `
         INSERT INTO messages (id, session_id, role, message_type, content, metadata, sequence_number, event_id, token_count, stop_reason, tool_use_id, created_at, model, input_tokens, output_tokens)
         VALUES (@id, @session_id, @role, @message_type, @content, @metadata, @sequence_number, @event_id, @token_count, @stop_reason, @tool_use_id, @created_at, @model, @input_tokens, @output_tokens)
@@ -612,7 +655,7 @@ export class MessageQueue {
       );
 
       // ⭐ DIAGNOSTIC: Enhanced success logging
-      logger.info('✅ Message persisted to database successfully', {
+      this.log.info('✅ Message persisted to database successfully', {
         jobId: job.id,
         messageId,
         sessionId,
@@ -625,7 +668,7 @@ export class MessageQueue {
         eventId,
       });
     } catch (error) {
-      logger.error('❌ Failed to persist message to database', {
+      this.log.error('❌ Failed to persist message to database', {
         error: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined,
         jobId: job.id,
@@ -650,7 +693,7 @@ export class MessageQueue {
   ): Promise<void> {
     const { sessionId, toolUseId, toolName } = job.data;
 
-    logger.info('Processing tool execution', {
+    this.log.info('Processing tool execution', {
       jobId: job.id,
       toolName,
       toolUseId,
@@ -660,7 +703,7 @@ export class MessageQueue {
     // TODO: Implement actual tool execution logic
     // This would call DirectAgentService.executeMCPTool() or similar
 
-    logger.debug('Tool execution completed', {
+    this.log.debug('Tool execution completed', {
       jobId: job.id,
       toolName,
     });
@@ -674,15 +717,15 @@ export class MessageQueue {
   private async processEvent(job: Job<EventProcessingJob>): Promise<void> {
     const { eventId, sessionId, eventType } = job.data;
 
-    logger.debug('Processing event', {
+    this.log.debug('Processing event', {
       jobId: job.id,
       eventId,
       eventType,
       sessionId,
     });
 
-    // Mark event as processed in EventStore
-    const eventStore = getEventStore();
+    // Mark event as processed in EventStore (use injected dependency)
+    const eventStore = this.eventStoreGetter();
     await eventStore.markAsProcessed(eventId);
 
     // Additional event-specific processing can be added here
@@ -714,7 +757,7 @@ export class MessageQueue {
 
       return { count, limit, remaining, withinLimit };
     } catch (error) {
-      logger.error('Failed to get rate limit status', { error, sessionId });
+      this.log.error('Failed to get rate limit status', { error, sessionId });
       return {
         count: 0,
         limit: MessageQueue.MAX_JOBS_PER_SESSION,
@@ -765,7 +808,7 @@ export class MessageQueue {
     }
 
     await queue.pause();
-    logger.info(`Queue ${queueName} paused`);
+    this.log.info(`Queue ${queueName} paused`);
   }
 
   /**
@@ -780,7 +823,7 @@ export class MessageQueue {
     }
 
     await queue.resume();
-    logger.info(`Queue ${queueName} resumed`);
+    this.log.info(`Queue ${queueName} resumed`);
   }
 
   /**
@@ -789,36 +832,53 @@ export class MessageQueue {
    * Graceful shutdown - waits for active jobs to complete.
    */
   public async close(): Promise<void> {
-    logger.info('Closing MessageQueue...');
+    this.log.info('Closing MessageQueue...');
 
     // Close all workers first (wait for active jobs)
     for (const [name, worker] of this.workers.entries()) {
-      logger.info(`Closing worker: ${name}`);
+      this.log.info(`Closing worker: ${name}`);
       await worker.close();
     }
 
     // Close all queue events
     for (const [name, queueEvents] of this.queueEvents.entries()) {
-      logger.info(`Closing queue events: ${name}`);
+      this.log.info(`Closing queue events: ${name}`);
       await queueEvents.close();
     }
 
     // Close all queues
     for (const [name, queue] of this.queues.entries()) {
-      logger.info(`Closing queue: ${name}`);
+      this.log.info(`Closing queue: ${name}`);
       await queue.close();
     }
 
     // Close Redis connection
     await this.redisConnection.quit();
 
-    logger.info('MessageQueue closed successfully');
+    // Reset ready state
+    this.isReady = false;
+
+    this.log.info('MessageQueue closed successfully');
   }
 }
 
 /**
  * Get MessageQueue singleton instance
+ *
+ * @param dependencies - Optional dependencies for DI (only used on first call)
  */
-export function getMessageQueue(): MessageQueue {
-  return MessageQueue.getInstance();
+export function getMessageQueue(dependencies?: IMessageQueueDependencies): MessageQueue {
+  return MessageQueue.getInstance(dependencies);
+}
+
+/**
+ * Reset MessageQueue singleton for testing
+ *
+ * Closes the current instance (if any) and clears the singleton.
+ * Allows tests to create fresh instances with different dependencies.
+ *
+ * @internal Only for integration tests - DO NOT use in production
+ */
+export function __resetMessageQueue(): void {
+  MessageQueue.__resetInstance();
 }

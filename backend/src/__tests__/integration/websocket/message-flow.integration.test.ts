@@ -104,11 +104,20 @@ vi.mock('@/services/agent/DirectAgentService', async (importOriginal) => {
 });
 
 // Mock database for message persistence
+// Note: We don't mock initDatabase/closeDatabase to allow real DB connection
+// but we mock executeQuery to return appropriate responses
 vi.mock('@/config/database', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/config/database')>();
   return {
     ...original,
-    executeQuery: vi.fn().mockResolvedValue({ recordset: [], rowsAffected: [1] }),
+    executeQuery: vi.fn().mockImplementation(async (query: string) => {
+      // Allow connection verification query to pass through
+      if (query.includes('SELECT 1')) {
+        return { recordset: [{ result: 1 }], rowsAffected: [1] };
+      }
+      // Mock other queries
+      return { recordset: [], rowsAffected: [1] };
+    }),
   };
 });
 
@@ -130,11 +139,7 @@ vi.mock('@/utils/session-ownership', () => ({
   validateSessionOwnership: vi.fn().mockResolvedValue({ isOwner: true }),
 }));
 
-// KNOWN ISSUE (2024-11-26): These tests are skipped pending implementation
-// of the full message streaming flow with DirectAgentService.
-// The setupDatabaseForTests() hook was running even with .skip on tests,
-// causing database connection conflicts.
-describe.skip('WebSocket Message Flow Integration', () => {
+describe('WebSocket Message Flow Integration', () => {
   // Setup database connection for TestSessionFactory
   setupDatabaseForTests();
 

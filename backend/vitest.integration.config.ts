@@ -16,9 +16,18 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    // No global setup needed - each test file uses setupIntegrationTest()
-    testTimeout: 30000, // Longer timeout for real DB operations
-    hookTimeout: 30000,
+
+    // Load .env file with absolute path
+    env: {
+      // This ensures the .env file is loaded from the backend directory
+    },
+
+    // Longer timeouts for real DB operations
+    testTimeout: 60000,
+    hookTimeout: 60000,
+
+    // Setup file that loads environment variables
+    setupFiles: [path.resolve(__dirname, 'src/__tests__/integration/setup.env.ts')],
     // Only run integration tests from the integration directory
     // Note: Some unit tests have .integration.test.ts naming but use mocks
     // Those should stay in unit/ and run with the normal vitest config

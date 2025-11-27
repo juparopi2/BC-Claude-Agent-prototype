@@ -17,12 +17,7 @@ import {
   setupDatabaseForTests,
 } from '../helpers';
 
-// KNOWN ISSUE (2024-11-26): Tests fail with "Database not connected" error.
-// The setupDatabaseForTests() hook is not initializing the database in time
-// when running in parallel with other test suites. This appears to be a
-// vitest parallelization issue with async beforeAll hooks.
-// TODO: Investigate proper database initialization order for parallel tests.
-describe.skip('Event Ordering with Real Redis', () => {
+describe('Event Ordering with Real Redis', () => {
   // Setup database AND Redis for tests
   setupDatabaseForTests();
 

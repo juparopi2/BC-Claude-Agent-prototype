@@ -17,7 +17,7 @@
  * @module services/queue/MessageQueue
  */
 
-import { Queue, Worker, Job, QueueEvents, ConnectionOptions } from 'bullmq';
+import { Queue, Worker, Job, QueueEvents, type RedisOptions } from 'bullmq';
 import { Redis } from 'ioredis';
 import { env } from '@/config';
 import { logger } from '@/utils/logger';
@@ -103,6 +103,7 @@ export class MessageQueue {
   private static readonly RATE_LIMIT_WINDOW_SECONDS = 3600; // 1 hour
 
   private redisConnection: Redis;
+  private ownsRedisConnection: boolean = false;  // Track if we created the connection
   private queues: Map<QueueName, Queue>;
   private workers: Map<QueueName, Worker>;
   private queueEvents: Map<QueueName, QueueEvents>;
@@ -131,6 +132,7 @@ export class MessageQueue {
     // Create Redis connection for BullMQ (use injected or create default)
     if (dependencies?.redis) {
       this.redisConnection = dependencies.redis;
+      this.ownsRedisConnection = false;  // Injected - don't close it
     } else {
       this.redisConnection = new Redis({
         host: env.REDIS_HOST || 'localhost',
@@ -163,6 +165,7 @@ export class MessageQueue {
           return delay;
         },
       });
+      this.ownsRedisConnection = true;  // We created it - we close it
     }
 
     this.queues = new Map();
@@ -249,11 +252,9 @@ export class MessageQueue {
    *
    * @internal Only for integration tests - DO NOT use in production
    */
-  public static __resetInstance(): void {
+  public static async __resetInstance(): Promise<void> {
     if (MessageQueue.instance) {
-      MessageQueue.instance.close().catch(() => {
-        // Ignore errors during reset cleanup
-      });
+      await MessageQueue.instance.close();
     }
     MessageQueue.instance = null;
   }
@@ -286,6 +287,53 @@ export class MessageQueue {
   }
 
   /**
+   * Get Redis connection configuration for BullMQ components.
+   *
+   * BullMQ will create independent connections from this config,
+   * avoiding shared connection reference issues during cleanup.
+   *
+   * Extracts configuration from the existing connection to ensure
+   * test and production environments use consistent settings.
+   *
+   * @returns Redis connection configuration object
+   */
+  private getRedisConnectionConfig(): RedisOptions {
+    // Extract configuration from existing IORedis connection
+    const options = this.redisConnection.options;
+
+    return {
+      host: options.host || 'localhost',
+      port: options.port || 6379,
+      password: options.password,
+      maxRetriesPerRequest: null, // Required for BullMQ
+      enableReadyCheck: true,
+      // Copy TLS settings from existing connection
+      tls: options.tls ? {
+        rejectUnauthorized: typeof options.tls === 'object' ? options.tls.rejectUnauthorized : true,
+      } : undefined,
+      // Reconnection strategy (same as main connection)
+      reconnectOnError: (err) => {
+        const targetErrors = ['READONLY', 'ECONNRESET', 'ETIMEDOUT'];
+        if (targetErrors.some((targetError) => err.message.includes(targetError))) {
+          this.log.warn('Redis reconnecting due to error', { error: err.message });
+          return true;
+        }
+        return false;
+      },
+      // Retry strategy with exponential backoff
+      retryStrategy: (times) => {
+        if (times > 10) {
+          this.log.error('Redis max retry attempts reached (10)', { attempts: times });
+          return null;
+        }
+        const delay = Math.min(times * 100, 3200);
+        this.log.info('Redis retry attempt', { attempt: times, delayMs: delay });
+        return delay;
+      },
+    };
+  }
+
+  /**
    * Initialize all queues
    */
   private initializeQueues(): void {
@@ -293,7 +341,7 @@ export class MessageQueue {
     this.queues.set(
       QueueName.MESSAGE_PERSISTENCE,
       new Queue(QueueName.MESSAGE_PERSISTENCE, {
-        connection: this.redisConnection as ConnectionOptions,  // ⭐ Type assertion for BullMQ compatibility
+        connection: this.getRedisConnectionConfig(),
         defaultJobOptions: {
           attempts: 3,
           backoff: {
@@ -316,7 +364,7 @@ export class MessageQueue {
     this.queues.set(
       QueueName.TOOL_EXECUTION,
       new Queue(QueueName.TOOL_EXECUTION, {
-        connection: this.redisConnection as ConnectionOptions,  // ⭐ Type assertion for BullMQ compatibility
+        connection: this.getRedisConnectionConfig(),
         defaultJobOptions: {
           attempts: 2,
           backoff: {
@@ -331,7 +379,7 @@ export class MessageQueue {
     this.queues.set(
       QueueName.EVENT_PROCESSING,
       new Queue(QueueName.EVENT_PROCESSING, {
-        connection: this.redisConnection as ConnectionOptions,  // ⭐ Type assertion for BullMQ compatibility
+        connection: this.getRedisConnectionConfig(),
         defaultJobOptions: {
           attempts: 3,
           backoff: {
@@ -360,7 +408,7 @@ export class MessageQueue {
           return this.processMessagePersistence(job);
         },
         {
-          connection: this.redisConnection as ConnectionOptions,  // ⭐ Type assertion for BullMQ compatibility
+          connection: this.getRedisConnectionConfig(),
           concurrency: 10, // Process 10 messages in parallel
         }
       )
@@ -375,7 +423,7 @@ export class MessageQueue {
           return this.processToolExecution(job);
         },
         {
-          connection: this.redisConnection as ConnectionOptions,  // ⭐ Type assertion for BullMQ compatibility
+          connection: this.getRedisConnectionConfig(),
           concurrency: 5,
         }
       )
@@ -390,7 +438,7 @@ export class MessageQueue {
           return this.processEvent(job);
         },
         {
-          connection: this.redisConnection as ConnectionOptions,  // ⭐ Type assertion for BullMQ compatibility
+          connection: this.getRedisConnectionConfig(),
           concurrency: 10,
         }
       )
@@ -407,7 +455,7 @@ export class MessageQueue {
   private setupEventListeners(): void {
     Object.values(QueueName).forEach((queueName) => {
       const queueEvents = new QueueEvents(queueName, {
-        connection: this.redisConnection as ConnectionOptions,  // ⭐ Type assertion for BullMQ compatibility
+        connection: this.getRedisConnectionConfig(),
       });
 
       this.queueEvents.set(queueName, queueEvents);
@@ -829,73 +877,84 @@ export class MessageQueue {
   /**
    * Close all queues and workers
    *
-   * Graceful shutdown - waits for active jobs to complete with timeout protection.
-   * Uses parallel close operations for efficiency while ensuring cleanup even on errors.
+   * Graceful shutdown with sequential close pattern to avoid IORedis race conditions.
+   * Closes components in phases to ensure each connection completes before the next begins.
+   *
+   * @see US-004 Phase 2: Sequential Close Pattern eliminates "Connection is closed" errors
    */
   public async close(): Promise<void> {
-    this.log.info('Initiating MessageQueue shutdown...');
+    this.log.info('Initiating MessageQueue shutdown with sequential close...');
 
-    const closePromises: Promise<void>[] = [];
-
-    // Close all workers first (have event loops activos)
+    // ===== PHASE 1: CLOSE WORKERS SEQUENTIALLY (One at a time) =====
+    this.log.debug('Phase 1: Closing workers sequentially');
     for (const [name, worker] of this.workers.entries()) {
-      this.log.debug('Closing worker', { worker: name });
-      closePromises.push(
-        worker.close().catch(err => {
-          this.log.warn('Error closing worker', { err, worker: name });
-        })
-      );
+      try {
+        this.log.debug('Closing worker...', { worker: name });
+        await worker.close(); // ✅ SEQUENTIAL - wait for each to finish
+        this.log.debug('Worker closed', { worker: name });
+        // Delay between each worker to allow connection cleanup
+        await new Promise(resolve => setTimeout(resolve, 200));
+      } catch (err) {
+        this.log.warn('Error closing worker', { err, worker: name });
+      }
     }
+    this.log.debug('All workers closed, waiting for connection cleanup (500ms)');
+    await new Promise(resolve => setTimeout(resolve, 500));
 
-    // Close all queue events
+    // ===== PHASE 2: CLOSE QUEUE EVENTS (After workers are stable) =====
+    this.log.debug('Phase 2: Closing queue events');
     for (const [name, events] of this.queueEvents.entries()) {
-      this.log.debug('Closing queue events', { queue: name });
-      closePromises.push(
-        events.close().catch(err => {
-          this.log.warn('Error closing queue events', { err, queue: name });
-        })
-      );
+      try {
+        this.log.debug('Closing queue events...', { queue: name });
+        await events.close(); // ✅ SEQUENTIAL
+        this.log.debug('Queue events closed', { queue: name });
+        await new Promise(resolve => setTimeout(resolve, 200));
+      } catch (err) {
+        this.log.warn('Error closing queue events', { err, queue: name });
+      }
     }
+    this.log.debug('All queue events closed, waiting for connection cleanup (500ms)');
+    await new Promise(resolve => setTimeout(resolve, 500));
 
-    // Close all queues
+    // ===== PHASE 3: CLOSE QUEUES (After events) =====
+    this.log.debug('Phase 3: Closing queues');
     for (const [name, queue] of this.queues.entries()) {
-      this.log.debug('Closing queue', { queue: name });
-      closePromises.push(
-        queue.close().catch(err => {
-          this.log.warn('Error closing queue', { err, queue: name });
-        })
-      );
+      try {
+        this.log.debug('Closing queue...', { queue: name });
+        await queue.close(); // ✅ SEQUENTIAL
+        this.log.debug('Queue closed', { queue: name });
+        await new Promise(resolve => setTimeout(resolve, 200));
+      } catch (err) {
+        this.log.warn('Error closing queue', { err, queue: name });
+      }
     }
 
-    // Wait with timeout of 5 seconds
-    await Promise.race([
-      Promise.all(closePromises),
-      new Promise<void>(resolve => setTimeout(() => {
-        this.log.warn('MessageQueue close timeout reached (5s)');
-        resolve();
-      }, 5000)),
-    ]);
-
-    // Clear references
+    // ===== CLEAR REFERENCES (After all components closed) =====
+    this.log.debug('Clearing component references');
     this.workers.clear();
     this.queueEvents.clear();
     this.queues.clear();
 
-    // ⭐ CRITICAL: Wait for BullMQ internal Redis connections to fully close
-    // Workers/Queues create their own connections that take time to cleanup
-    await new Promise(resolve => setTimeout(resolve, 100));
+    // ===== PHASE 4: WAIT FOR FINAL SOCKET CLEANUP =====
+    this.log.debug('Phase 4: Waiting for final IORedis socket cleanup (1000ms)');
+    await new Promise(resolve => setTimeout(resolve, 1000));
 
-    // Close Redis connection
-    try {
-      await this.redisConnection.quit();
-    } catch (err) {
-      this.log.warn('Error closing Redis connection', { err });
+    // ===== PHASE 5: CLOSE MAIN REDIS CONNECTION (Last, only if we own it) =====
+    if (this.ownsRedisConnection) {
+      try {
+        this.log.debug('Phase 5: Closing main Redis connection');
+        await this.redisConnection.quit();
+        this.log.debug('Main Redis connection closed');
+      } catch (err) {
+        this.log.warn('Error closing main Redis connection', { err });
+      }
+    } else {
+      this.log.debug('Phase 5: Skipping main Redis close (injected connection)');
     }
 
-    // Reset ready state
+    // ===== FINALIZATION =====
     this.isReady = false;
-
-    this.log.info('MessageQueue closed successfully');
+    this.log.info('✅ MessageQueue closed successfully (sequential pattern)');
   }
 }
 
@@ -916,6 +975,6 @@ export function getMessageQueue(dependencies?: IMessageQueueDependencies): Messa
  *
  * @internal Only for integration tests - DO NOT use in production
  */
-export function __resetMessageQueue(): void {
-  MessageQueue.__resetInstance();
+export async function __resetMessageQueue(): Promise<void> {
+  await MessageQueue.__resetInstance();
 }

@@ -84,11 +84,11 @@ describe('MessageQueue Integration Tests', () => {
   afterAll(async () => {
     // 1. Reset singleton first (closes internal connections)
     try {
-      __resetMessageQueue();
+      await __resetMessageQueue();
     } catch { /* ignore */ }
 
-    // 2. Wait for BullMQ cleanup (reduced to 1s due to new close() timeout guarantee)
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    // 2. Wait for BullMQ cleanup (increased due to sequential close delays)
+    await new Promise(resolve => setTimeout(resolve, 2000));
 
     // 3. Clean up Redis keys
     try {
@@ -103,13 +103,13 @@ describe('MessageQueue Integration Tests', () => {
 
     // 5. Close Redis connection LAST
     try { await redis.quit(); } catch { /* ignore */ }
-  }, 30000);
+  }, 60000);
 
   beforeEach(async () => {
     vi.clearAllMocks();
 
     // Reset singleton for fresh instance with DI
-    __resetMessageQueue();
+    await __resetMessageQueue();
 
     // Create unique session per test (isolation)
     testSession = await factory.createChatSession(testUser.id);
@@ -123,8 +123,8 @@ describe('MessageQueue Integration Tests', () => {
     try {
       if (messageQueue) {
         await messageQueue.close();
-        // Increased from 300ms to 500ms for graceful shutdown
-        await new Promise(resolve => setTimeout(resolve, 500));
+        // Extended delay for IORedis async cleanup to complete
+        await new Promise(resolve => setTimeout(resolve, 1500));
       }
     } catch { /* ignore */ }
   });

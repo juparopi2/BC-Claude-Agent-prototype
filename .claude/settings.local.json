@@ -87,7 +87,11 @@
       "Bash(docker compose:*)",
       "Bash(docker --version:*)",
       "Bash(node:*)",
-      "Bash(docker info:*)"
+      "Bash(docker info:*)",
+      "Bash(tee:*)",
+      "Bash(for:*)",
+      "Bash(do echo \"=== RUN $i/5 ===\")",
+      "Bash(done)"
     ],
     "deny": [],
     "ask": []

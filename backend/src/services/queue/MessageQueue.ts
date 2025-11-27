@@ -829,31 +829,68 @@ export class MessageQueue {
   /**
    * Close all queues and workers
    *
-   * Graceful shutdown - waits for active jobs to complete.
+   * Graceful shutdown - waits for active jobs to complete with timeout protection.
+   * Uses parallel close operations for efficiency while ensuring cleanup even on errors.
    */
   public async close(): Promise<void> {
-    this.log.info('Closing MessageQueue...');
+    this.log.info('Initiating MessageQueue shutdown...');
 
-    // Close all workers first (wait for active jobs)
+    const closePromises: Promise<void>[] = [];
+
+    // Close all workers first (have event loops activos)
     for (const [name, worker] of this.workers.entries()) {
-      this.log.info(`Closing worker: ${name}`);
-      await worker.close();
+      this.log.debug('Closing worker', { worker: name });
+      closePromises.push(
+        worker.close().catch(err => {
+          this.log.warn('Error closing worker', { err, worker: name });
+        })
+      );
     }
 
     // Close all queue events
-    for (const [name, queueEvents] of this.queueEvents.entries()) {
-      this.log.info(`Closing queue events: ${name}`);
-      await queueEvents.close();
+    for (const [name, events] of this.queueEvents.entries()) {
+      this.log.debug('Closing queue events', { queue: name });
+      closePromises.push(
+        events.close().catch(err => {
+          this.log.warn('Error closing queue events', { err, queue: name });
+        })
+      );
     }
 
     // Close all queues
     for (const [name, queue] of this.queues.entries()) {
-      this.log.info(`Closing queue: ${name}`);
-      await queue.close();
+      this.log.debug('Closing queue', { queue: name });
+      closePromises.push(
+        queue.close().catch(err => {
+          this.log.warn('Error closing queue', { err, queue: name });
+        })
+      );
     }
 
+    // Wait with timeout of 5 seconds
+    await Promise.race([
+      Promise.all(closePromises),
+      new Promise<void>(resolve => setTimeout(() => {
+        this.log.warn('MessageQueue close timeout reached (5s)');
+        resolve();
+      }, 5000)),
+    ]);
+
+    // Clear references
+    this.workers.clear();
+    this.queueEvents.clear();
+    this.queues.clear();
+
+    // ⭐ CRITICAL: Wait for BullMQ internal Redis connections to fully close
+    // Workers/Queues create their own connections that take time to cleanup
+    await new Promise(resolve => setTimeout(resolve, 100));
+
     // Close Redis connection
-    await this.redisConnection.quit();
+    try {
+      await this.redisConnection.quit();
+    } catch (err) {
+      this.log.warn('Error closing Redis connection', { err });
+    }
 
     // Reset ready state
     this.isReady = false;

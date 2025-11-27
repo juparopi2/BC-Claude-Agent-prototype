@@ -129,7 +129,7 @@ export class ApprovalManager {
       toolName,
       toolArgs,
       priority = this.calculatePriority(toolName),
-      expiresInMs = 5 * 60 * 1000, // Default: 5 minutes
+      expiresInMs = process.env.APPROVAL_TIMEOUT ? parseInt(process.env.APPROVAL_TIMEOUT, 10) : 5 * 60 * 1000, // Default: 5 minutes
     } = options;
 
     const db = getDatabase();

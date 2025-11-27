@@ -87,8 +87,8 @@ describe('MessageQueue Integration Tests', () => {
       __resetMessageQueue();
     } catch { /* ignore */ }
 
-    // 2. Wait for BullMQ cleanup (critical for avoiding "Connection is closed" errors)
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    // 2. Wait for BullMQ cleanup (reduced to 1s due to new close() timeout guarantee)
+    await new Promise(resolve => setTimeout(resolve, 1000));
 
     // 3. Clean up Redis keys
     try {
@@ -103,7 +103,7 @@ describe('MessageQueue Integration Tests', () => {
 
     // 5. Close Redis connection LAST
     try { await redis.quit(); } catch { /* ignore */ }
-  }, 60000);
+  }, 30000);
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -123,8 +123,8 @@ describe('MessageQueue Integration Tests', () => {
     try {
       if (messageQueue) {
         await messageQueue.close();
-        // Give BullMQ time to clean up workers and event listeners
-        await new Promise(resolve => setTimeout(resolve, 300));
+        // Increased from 300ms to 500ms for graceful shutdown
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
     } catch { /* ignore */ }
   });

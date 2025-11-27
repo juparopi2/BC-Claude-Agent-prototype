@@ -27,30 +27,11 @@ import { REDIS_TEST_CONFIG } from '../setup.integration';
 import { getApprovalManager, ApprovalManager } from '@/services/approval/ApprovalManager';
 import { resetEventStore } from '@/services/events/EventStore';
 
-// Use real ApprovalManager but with short timeout for testing
-vi.mock('@/services/approval/ApprovalManager', async (importOriginal) => {
-  const original = await importOriginal<typeof import('@/services/approval/ApprovalManager')>();
 
-  // Return modified module with shorter timeout for tests
-  return {
-    ...original,
-    APPROVAL_TIMEOUT: 5000, // 5 seconds for tests instead of 5 minutes
-  };
-});
 
 // F1-002: Approval Flow Integration Tests
 // Fixed: chk_approvals_action_type constraint now documented in 03-database-schema.md
 // ApprovalManager.getActionType() updated to return correct values: 'create', 'update', 'delete', 'custom'
-// TODO F1-002: Several tests fail due to:
-// 1. Session-cookie-userId linkage issues (same as multi-tenant tests)
-// 2. Concurrent approval race conditions returning 0 successes
-// 3. ApprovalManager.request() may need real Socket.IO room setup
-//
-// KNOWN ISSUE (2024-11-26): Tests fail with duplicate sequence number errors.
-// The EventStore is getting sequence 0 twice for the same session, causing
-// "Cannot insert duplicate key row" errors. This appears to be related to
-// vi.mock() module isolation or Redis client connection issues.
-// Investigation needed: Check if vi.mock() affects EventStore/Redis singleton.
 describe('Approval Flow Integration', () => {
   // Setup database connection for TestSessionFactory
   setupDatabaseForTests();
@@ -65,6 +46,9 @@ describe('Approval Flow Integration', () => {
   const clients: TestSocketClient[] = [];
 
   beforeAll(async () => {
+    // Configure timeout for tests
+    process.env.APPROVAL_TIMEOUT = '5000';
+
     // Create Redis client using test config
     redisClient = createRedisClient({
       socket: {
@@ -172,6 +156,7 @@ describe('Approval Flow Integration', () => {
     io.close();
     httpServer.close();
     await redisClient.quit();
+    delete process.env.APPROVAL_TIMEOUT;
   }, 30000);
 
   beforeEach(() => {

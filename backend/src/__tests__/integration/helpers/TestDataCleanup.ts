@@ -113,6 +113,28 @@ export async function cleanupAllTestData(prefix?: string): Promise<CleanupResult
     }
 
     // 2. Delete message_events AFTER messages (messages.event_id references message_events)
+    // First, get the IDs of message_events we want to delete
+    const messageEventIds = await executeQuery<{ id: string }>(
+      `SELECT id FROM message_events WHERE session_id IN (
+        SELECT s.id FROM sessions s
+        JOIN users u ON s.user_id = u.id
+        WHERE u.email LIKE @emailPattern
+      )`,
+      { emailPattern: testEmailPattern }
+    );
+
+    // If there are message_events to delete, ensure all referencing messages are deleted first
+    if (messageEventIds.recordset.length > 0) {
+      const eventIdList = messageEventIds.recordset.map(r => `'${r.id}'`).join(',');
+
+      // Force delete any messages that reference these event IDs
+      await executeQuery(
+        `DELETE FROM messages WHERE event_id IN (${eventIdList})`,
+        {}
+      );
+    }
+
+    // Now safe to delete message_events
     const messageEventsResult = await executeQuery(
       `DELETE FROM message_events WHERE session_id IN (
         SELECT s.id FROM sessions s

@@ -162,6 +162,25 @@ export class EventStore {
   }
 
   /**
+   * Reset singleton instance (FOR TESTING ONLY)
+   */
+  public static reset(): void {
+    EventStore.instance = null;
+  }
+
+  /**
+   * Reset sequence number for a session (FOR TESTING ONLY)
+   *
+   * @param sessionId - Session ID
+   */
+  public async resetSessionSequence(sessionId: string): Promise<void> {
+    const redis = getRedis();
+    if (redis) {
+      await redis.del(`event:sequence:${sessionId}`);
+    }
+  }
+
+  /**
    * Append Event to Store
    *
    * Events are immutable and append-only with atomic sequence numbers.
@@ -568,3 +587,11 @@ export class EventStore {
 export function getEventStore(): EventStore {
   return EventStore.getInstance();
 }
+
+/**
+ * Reset EventStore singleton (FOR TESTING ONLY)
+ */
+export function resetEventStore(): void {
+  EventStore.reset();
+}
+

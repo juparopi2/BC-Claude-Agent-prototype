@@ -25,6 +25,7 @@ import {
 } from '../helpers';
 import { REDIS_TEST_CONFIG } from '../setup.integration';
 import { getApprovalManager, ApprovalManager } from '@/services/approval/ApprovalManager';
+import { resetEventStore } from '@/services/events/EventStore';
 
 // Use real ApprovalManager but with short timeout for testing
 vi.mock('@/services/approval/ApprovalManager', async (importOriginal) => {
@@ -50,7 +51,7 @@ vi.mock('@/services/approval/ApprovalManager', async (importOriginal) => {
 // "Cannot insert duplicate key row" errors. This appears to be related to
 // vi.mock() module isolation or Redis client connection issues.
 // Investigation needed: Check if vi.mock() affects EventStore/Redis singleton.
-describe.skip('Approval Flow Integration', () => {
+describe('Approval Flow Integration', () => {
   // Setup database connection for TestSessionFactory
   setupDatabaseForTests();
 
@@ -175,7 +176,16 @@ describe.skip('Approval Flow Integration', () => {
 
   beforeEach(() => {
     clients.length = 0;
+    resetEventStore();
     vi.clearAllMocks();
+  });
+
+  afterEach(async () => {
+    // Clean up sequence keys to prevent duplicate key errors
+    const keys = await redisClient.keys('event:sequence:*');
+    if (keys.length > 0) {
+      await redisClient.del(keys);
+    }
   });
 
   describe('Approval Request Lifecycle', () => {

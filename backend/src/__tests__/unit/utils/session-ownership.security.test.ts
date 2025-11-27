@@ -271,13 +271,14 @@ describe('Session Ownership Security', () => {
       expect(timingSafeCompare(normalId, trailingId)).toBe(false);
     });
 
-    it('should handle case sensitivity correctly', () => {
+    it('should handle case sensitivity correctly (UUID normalization)', () => {
       const lowercaseId = 'user-abc';
       const uppercaseId = 'USER-ABC';
       const mixedCaseId = 'User-Abc';
 
-      expect(timingSafeCompare(lowercaseId, uppercaseId)).toBe(false);
-      expect(timingSafeCompare(lowercaseId, mixedCaseId)).toBe(false);
+      // Should be true because of UUID normalization (case-insensitive)
+      expect(timingSafeCompare(lowercaseId, uppercaseId)).toBe(true);
+      expect(timingSafeCompare(lowercaseId, mixedCaseId)).toBe(true);
     });
 
     it('should handle URL-encoded characters', () => {

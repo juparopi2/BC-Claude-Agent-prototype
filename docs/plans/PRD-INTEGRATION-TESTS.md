@@ -1,11 +1,11 @@
 # PRD: Rehabilitación de Tests de Integración Omitidos
 
 **Proyecto**: BC Claude Agent - Integration Test Rehabilitation
-**Versión**: 1.4
+**Versión**: 1.5
 **Fecha**: 2024-11-26
-**Última Actualización**: 2024-11-26 (US-001.5 + US-001.6 COMPLETADAS)
+**Última Actualización**: 2024-11-26 (US-001.5 + US-001.6 + US-002 COMPLETADAS)
 **PM**: Claude (AI Project Manager)
-**Estado**: En Progreso - US-001.5 y US-001.6 Completadas
+**Estado**: En Progreso - US-001.5, US-001.6 y US-002 Completadas
 
 ---
 
@@ -78,7 +78,7 @@ vi.mock('@/services/agent/DirectAgentService', () => ({...}));
 | 4 | message-flow | 8 | ✅ PASANDO | Reescrito sin mocks | [US-001.5](US-001.5-message-flow-true-integration.md) |
 | 5 | MessageQueue | 18 | ✅ PASANDO | Reescrito con DI pattern | [US-001.6](US-001.6-messagequeue-true-integration.md) |
 | 6 | approval-lifecycle | 6 | describe.skip | Redis sequence + UUID | [US-003](US-003-eventstore-sequence.md) |
-| 7 | session-isolation | 7 | describe.skip | UUID case sensitivity | [US-002](US-002-uuid-case-sensitivity.md) |
+| 7 | session-isolation | 7 | ✅ REHABILITADO | UUID case sensitivity resuelto | [US-002](US-002-uuid-case-sensitivity.md) |
 
 ### Leyenda de Estados
 - **PASANDO**: Test activo y funcionando
@@ -108,13 +108,13 @@ vi.mock('@/services/agent/DirectAgentService', () => ({...}));
 | **Fase 1b** | Reescritura message-flow | US-001.5 | 8 | ✅ COMPLETADO |
 | **Fase 1c** | Reescritura MessageQueue | US-001.6 | 18 | ✅ COMPLETADO |
 | **Fase 2** | Quick Wins | US-003 | 6 | PENDIENTE |
-| **Fase 3** | Sesiones | US-002 | 7 | PENDIENTE |
+| **Fase 3** | Sesiones | US-002 | 7 | ✅ COMPLETADO |
 | **Fase 4** | BullMQ Cleanup | US-004 | - | PENDIENTE |
 | **Fase 5** | Validación | US-005 | - | PENDIENTE |
 
 ### Progreso Actual
 ```
-[=========================>              ] 58/71 tests (82%)
+[================================>       ] 65/71 tests (92%)
 ```
 
 ---
@@ -128,7 +128,7 @@ vi.mock('@/services/agent/DirectAgentService', () => ({...}));
 | 1 | US-001 | Database Race Condition | [US-001-database-race-condition.md](US-001-database-race-condition.md) | 35 min | ✅ COMPLETADO |
 | 2 | US-001.5 | Message Flow True Integration | [US-001.5-message-flow-true-integration.md](US-001.5-message-flow-true-integration.md) | 3.5 hrs | ✅ COMPLETADO |
 | 3 | US-001.6 | MessageQueue True Integration | [US-001.6-messagequeue-true-integration.md](US-001.6-messagequeue-true-integration.md) | 2.5 hrs | ✅ COMPLETADO |
-| 4 | US-002 | UUID Case Sensitivity | [US-002-uuid-case-sensitivity.md](US-002-uuid-case-sensitivity.md) | 75 min | PENDIENTE |
+| 4 | US-002 | UUID Case Sensitivity | [US-002-uuid-case-sensitivity.md](US-002-uuid-case-sensitivity.md) | 75 min | ✅ COMPLETADO |
 | 5 | US-003 | EventStore Sequence Fix | [US-003-eventstore-sequence.md](US-003-eventstore-sequence.md) | 65 min | PENDIENTE |
 | 6 | US-004 | BullMQ Worker Cleanup | [US-004-bullmq-cleanup.md](US-004-bullmq-cleanup.md) | 85 min | PENDIENTE |
 | 7 | US-005 | QA Validation | [US-005-qa-validation.md](US-005-qa-validation.md) | 120 min | PENDIENTE |
@@ -168,14 +168,14 @@ vi.mock('@/services/agent/DirectAgentService', () => ({...}));
 | US-001 | vitest.integration.config.ts | sequence-numbers | Ninguna | ✅ COMPLETADO |
 | US-001.5 | message-flow.integration.test.ts, DirectAgentService.ts | message-flow | US-001 | ✅ COMPLETADO |
 | US-001.6 | MessageQueue.integration.test.ts, MessageQueue.ts | MessageQueue | US-001 | ✅ COMPLETADO |
-| US-002 | TestSessionFactory.ts, ApprovalManager.ts | session-isolation | US-001.6 | PENDIENTE |
+| US-002 | session-isolation.integration.test.ts | session-isolation | US-001.6 | ✅ COMPLETADO |
 | US-003 | EventStore.ts | approval-lifecycle | US-001.6 | PENDIENTE |
 | US-004 | MessageQueue.ts | MessageQueue | US-001.6 | PENDIENTE |
 | US-005 | - | Todos | US-001 a US-004 | PENDIENTE |
 
 ---
 
-## Cronograma (Revisado Post-Auditoría)
+## Cronograma (Revisado Post-US-002)
 
 ```
 COMPLETADO:
@@ -184,28 +184,29 @@ COMPLETADO:
 ✅ US-001.5 (message-flow rewrite) - 2024-11-26
    → Resultado: 8 tests más (40/71 total)
    → Cambios: DirectAgentService DI + __resetDirectAgentService()
+✅ US-001.6 (MessageQueue rewrite) - 2024-11-26
+   → Resultado: 18 tests más (58/71 total)
+✅ US-002 (UUID Case) - 2024-11-26
+   → Resultado: 7 tests más (65/71 total)
+   → Cambio: Removido describe.skip obsoleto (fix ya existía en session-ownership.ts)
 
 PRÓXIMOS PASOS:
-Sesión 1: US-001.6 (MessageQueue rewrite) - 2.5 hrs
-          → Resultado: 18 tests más (58/71 total)
+Sesión 1: US-003 (EventStore Sequence) - 65 min
+          → Resultado: 6 tests más (71/71 total)
 
-Sesión 2: US-002 (UUID Case) - 75 min
-          US-003 (EventStore) - 65 min
-          → Resultado: 13 tests más (71/71 total)
-
-Sesión 3: US-004 (BullMQ cleanup) - 85 min
+Sesión 2: US-004 (BullMQ cleanup) - 85 min
           → Resultado: Estabilidad mejorada
 
-Sesión 4: US-005 (Validación QA) - 120 min
+Sesión 3: US-005 (Validación QA) - 120 min
           Documentación final - 30 min
           → Resultado: 71/71 tests validados y documentados
 ```
 
 ### Estimación Actualizada
-- **Completado**: ~4 hrs (US-001 + US-001.5)
-- **Pendiente**: ~9 horas
+- **Completado**: ~7 hrs (US-001 + US-001.5 + US-001.6 + US-002)
+- **Pendiente**: ~4.5 horas (US-003 + US-004 + US-005)
 - **Total Original**: ~7 horas
-- **Nuevo Total Post-Auditoría**: ~13 horas (+6 hrs por US-001.5 y US-001.6)
+- **Nuevo Total Post-Auditoría**: ~11.5 horas
 
 ---
 
@@ -264,3 +265,5 @@ Una User Story se considera **DONE** cuando:
 | 2024-11-26 | 1.1 | US-001.5 agregada (hallazgo QA) |
 | 2024-11-26 | 1.2 | US-001.6 agregada + Auditoría completa |
 | 2024-11-26 | 1.3 | US-001.5 COMPLETADA - message-flow reescrito sin mocks (8/8 tests) |
+| 2024-11-26 | 1.4 | US-001.6 COMPLETADA - MessageQueue reescrito con DI pattern (18/18 tests) |
+| 2024-11-26 | 1.5 | US-002 COMPLETADA - session-isolation rehabilitado (7/7 tests seguridad multi-tenant) |

@@ -27,18 +27,11 @@ import { REDIS_TEST_CONFIG } from '../setup.integration';
 // Import the real validateSessionOwnership - no mock needed since we use the real implementation
 import { validateSessionOwnership } from '@/utils/session-ownership';
 
-// TODO F1-002: Some tests fail due to validateSessionOwnership returning UNAUTHORIZED
-// even for valid user-session pairs. This suggests the TestSessionFactory creates
-// sessions that don't properly link userId in Redis session store.
-// Investigation needed: How TestSessionFactory.createTestUser() cookie relates to
-// the actual Redis session and userId validation in validateSessionOwnership().
-//
-// KNOWN ISSUE (2024-11-26): Tests fail due to UUID case sensitivity mismatch.
-// SQL Server returns uppercase UUIDs (e.g., '322A1BAC-77DB-4A15-B1F0-48A51604642B')
-// but JavaScript generates lowercase UUIDs (e.g., '322a1bac-77db-4a15-b1f0-48a51604642b').
-// The ApprovalManager comparison fails because userId.toLowerCase() !== ownerId (uppercase).
-// A fix was applied to session-ownership.ts but ApprovalManager needs the same fix.
-describe.skip('Multi-Tenant Session Isolation', () => {
+// US-002 FIXED (2024-11-26): UUID case sensitivity issue resolved.
+// The timingSafeCompare() function in session-ownership.ts normalizes UUIDs to lowercase
+// before comparison, handling the SQL Server uppercase vs JavaScript lowercase mismatch.
+// ApprovalManager also applies .toLowerCase() at lines 480 and 789.
+describe('Multi-Tenant Session Isolation', () => {
   // Setup database connection for TestSessionFactory
   setupDatabaseForTests();
 

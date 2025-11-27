@@ -5,6 +5,17 @@
 **Afecta**: session-isolation.integration.test.ts
 **Tests a Rehabilitar**: 7 tests
 **Estimación**: 75 minutos
+**Estado**: ✅ COMPLETADO (2024-11-26)
+
+---
+
+## Resultado
+
+**Los 7 tests de seguridad multi-tenant ahora pasan.** La corrección de UUID case sensitivity ya existía en:
+- `session-ownership.ts:292-320` - `timingSafeCompare()` normaliza a lowercase
+- `ApprovalManager.ts:480` y `ApprovalManager.ts:789` - usan `.toLowerCase()`
+
+Solo se necesitó remover el `describe.skip` obsoleto del archivo de tests.
 
 ---
 

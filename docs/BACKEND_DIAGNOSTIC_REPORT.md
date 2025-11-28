@@ -621,7 +621,7 @@ socket.on('client:lastSeen', (lastSequence: number) => {
 | 02-session-management.e2e.test.ts | 21 | CRUD, ownership, multi-tenant | Pendiente |
 | 03-message-flow-basic.e2e.test.ts | 17 | Send, confirm, sequence, persist | **17/17 ✓** |
 | 04-streaming-flow.e2e.test.ts | 26 | Chunks, deltas, completion | **24/26 ✓** (2 skipped) |
-| 05-extended-thinking.e2e.test.ts | 16 | Thinking events, content | Pendiente |
+| 05-extended-thinking.e2e.test.ts | 13 | Thinking events, content | **13/13 ✓** |
 | 06-tool-execution.e2e.test.ts | 22 | tool_use, tool_result, correlation | Pendiente |
 | 07-approval-flow.e2e.test.ts | 16 | approve/reject, timeout, broadcast | Pendiente |
 | 09-session-recovery.e2e.test.ts | 14 | Refresh, reconnect, state preservation | Pendiente |
@@ -639,6 +639,7 @@ socket.on('client:lastSeen', (lastSequence: number) => {
 | 2025-11-28 | E2E-12 Sequence Reordering Suite | Nuevo test suite con 11 tests | 2/11 passing (9 afectados por DB transient) |
 | 2025-11-28 | SequenceValidator null check bug | Robust null checking en `validateSequenceOrder()` | Elimina `Cannot read properties of undefined` |
 | 2025-11-28 | E2E-04 Extended Thinking compatibility | Filtros para `thinking_chunk`, fix event ordering | 24/26 tests passing (92%) |
+| 2025-11-28 | E2E-05 Anthropic thinking block requirement | Thinking blocks en conversation history + API endpoints | **13/13 tests passing (100%)** |
 
 #### Detalle: E2E-04 Streaming Flow Extended Thinking (2025-11-28)
 
@@ -693,6 +694,48 @@ const hasThinkingOrMessage = eventTypes.some(
 - `should emit session_start with session metadata` - Same reason
 
 **Results**: 24/26 tests passing (92%) ✅
+
+---
+
+#### Detalle: E2E-05 Extended Thinking Tests (2025-11-28)
+
+**Issue**: 5 tests failing initially (eventId, sequenceNumber, ordering, multi-turn, security), then 3 different tests failing after prompt optimization
+
+**Root Cause Analysis**:
+1. **Anthropic API Requirement**: When Extended Thinking is enabled, assistant messages in conversation history MUST start with thinking blocks. Backend was NOT including thinking blocks in `conversationHistory`.
+2. **Wrong API Endpoint**: Persistence tests calling `/api/chat/sessions/:id` instead of `/api/chat/sessions/:id/messages`
+3. **Insufficient Event Collection**: "Support messages without extended thinking" test had only 10 events/30s timeout
+
+**Fixes Applied**:
+
+| Fix | Description | File |
+|-----|-------------|------|
+| ThinkingBlock Import | Import `ThinkingBlock`, `SignatureDelta` from Anthropic SDK | `DirectAgentService.ts` |
+| Thinking Accumulator | Add `thinkingBlocks: ThinkingBlock[]` array | `DirectAgentService.ts` |
+| Signature Delta Handler | Handle `signature_delta` event to capture signatures | `DirectAgentService.ts` |
+| History Fix | Include thinking blocks FIRST in contentArray | `DirectAgentService.ts` |
+| API Endpoints | Fix 2 persistence tests to use `/messages` suffix | `05-extended-thinking.e2e.test.ts` |
+| Event Limits | Increase from 10 to 500 events, 30s to 45s timeout | `05-extended-thinking.e2e.test.ts` |
+
+**Code Changes (DirectAgentService.ts)**:
+
+```typescript
+// Critical fix: Include thinking blocks FIRST in conversation history
+const contentArray: Array<ThinkingBlock | TextBlock | ToolUseBlock> = [
+  ...thinkingBlocks,  // MUST come first per Anthropic API
+  ...textBlocks,
+  ...toolUses,
+];
+
+conversationHistory.push({
+  role: 'assistant',
+  content: contentArray,
+});
+```
+
+**Results**:
+- Before: 8/13 tests passing (62%)
+- After: **13/13 tests passing (100%)** ✅
 
 ---
 
@@ -1146,4 +1189,4 @@ export default defineConfig({
 ---
 
 **Documento generado automaticamente por BC Claude Agent Diagnostic Tool**
-**Ultima actualizacion:** 2025-11-28 - Fixed E2E-04 Streaming Flow (24/26 passing)
+**Ultima actualizacion:** 2025-11-28 - Fixed E2E-05 Extended Thinking (13/13 passing)

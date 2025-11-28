@@ -19,10 +19,10 @@ This QA audit identified **critical infrastructure failures** in the E2E test su
 | Type Check | PASS | No type errors |
 | Unit Tests | PASS | **43 files, 1,294 tests passed** |
 | Integration Tests | PASS | **9 files, 71 tests passed** |
-| E2E Tests | **PARTIAL** | **71+ passed** (auth: 19/20, message-flow: 17/17, streaming: 24/26, sequence: 2/11*) |
+| E2E Tests | **PARTIAL** | **84+ passed** (auth: 19/20, message-flow: 17/17, streaming: 24/26, extended-thinking: 13/13, sequence: 2/11*) |
 | Coverage Threshold | 59% | Configured baseline met |
 
-> **Last Updated**: 2025-11-28 - Fixed 04-streaming-flow.e2e.test.ts (24/26 passing). *Sequence tests affected by transient Azure SQL connectivity
+> **Last Updated**: 2025-11-28 - Fixed 05-extended-thinking.e2e.test.ts (13/13 passing). *Sequence tests affected by transient Azure SQL connectivity
 
 ---
 
@@ -145,7 +145,7 @@ Tests: 16 passed | 4 failed (80% pass rate)
 2. `02-session-management.e2e.test.ts` - 21 tests (needs verification)
 3. `03-message-flow-basic.e2e.test.ts` - **17/17 passing** (100%) ✅ ALL FIXED
 4. `04-streaming-flow.e2e.test.ts` - **24/26 passing** (92%) ✅ ALL FIXED (2 skipped)
-5. `05-extended-thinking.e2e.test.ts` - 16 tests (needs verification)
+5. `05-extended-thinking.e2e.test.ts` - **13/13 passing** (100%) ✅ ALL FIXED
 6. `06-tool-execution.e2e.test.ts` - 22 tests (needs verification)
 7. `07-approval-flow.e2e.test.ts` - 16 tests (needs verification)
 8. `09-session-recovery.e2e.test.ts` - 14 tests (needs verification)
@@ -399,6 +399,71 @@ expect(hasThinkingOrMessage).toBe(true);
 | `thinking-state-transitions.integration.test.ts` | 10 integration tests for Extended Thinking |
 
 **Test Run Results**: 10/10 tests passing (100%)
+
+---
+
+#### 2025-11-28: Fix All 13 E2E Tests in 05-extended-thinking.e2e.test.ts
+
+**Issue**: 5 tests failing initially, then 3 different tests failing after prompt optimization
+
+**Root Cause Analysis**:
+1. **Anthropic API Thinking Block Requirement**: When Extended Thinking is enabled, assistant messages in conversation history MUST start with thinking blocks. The backend was NOT including thinking blocks in `conversationHistory`.
+2. **Wrong API Endpoint**: Persistence tests were calling `/api/chat/sessions/:id` instead of `/api/chat/sessions/:id/messages`
+3. **Insufficient Event Collection**: "Support messages without extended thinking" test had only 10 events/30s timeout, insufficient when thinking is enabled globally
+
+**Fixes Applied**:
+
+| Component | Fix | File |
+|-----------|-----|------|
+| Thinking Blocks in History | Import `ThinkingBlock`, `SignatureDelta` from SDK; accumulate thinking blocks with signatures; include FIRST in contentArray | `DirectAgentService.ts` |
+| Signature Handling | Handle `signature_delta` event to capture thinking block signatures | `DirectAgentService.ts` |
+| API Endpoint | Changed to `/api/chat/sessions/:id/messages` (2 tests) | `05-extended-thinking.e2e.test.ts` |
+| Event Collection | Increased from 10 to 500 events, timeout 30s to 45s | `05-extended-thinking.e2e.test.ts` |
+
+**Code Changes (DirectAgentService.ts)**:
+
+```typescript
+// 1. Import ThinkingBlock and SignatureDelta types
+import type {
+  ThinkingBlock,
+  SignatureDelta,
+} from '@anthropic-ai/sdk/resources/messages';
+
+// 2. Add thinkingBlocks accumulator
+const thinkingBlocks: ThinkingBlock[] = [];
+
+// 3. Handle signature_delta event
+} else if (event.delta.type === 'signature_delta') {
+  const signatureDelta = event.delta as SignatureDelta;
+  block.signature = signatureDelta.signature;
+}
+
+// 4. Push completed thinking blocks
+if (finalThinkingContent.trim() && signature) {
+  thinkingBlocks.push({
+    type: 'thinking',
+    thinking: finalThinkingContent,
+    signature: signature,
+  });
+}
+
+// 5. Include thinking blocks FIRST in conversation history
+const contentArray: Array<ThinkingBlock | TextBlock | ToolUseBlock> = [
+  ...thinkingBlocks,  // MUST come first per Anthropic API
+  ...textBlocks,
+  ...toolUses,
+];
+```
+
+**Results**:
+- Before: 8/13 tests passing (62%)
+- After: **13/13 tests passing (100%)** ✅
+
+**Files Modified**:
+| File | Change |
+|------|--------|
+| `DirectAgentService.ts` | Added thinking block accumulation and conversation history fix |
+| `05-extended-thinking.e2e.test.ts` | Fixed API endpoints and event collection limits |
 
 ---
 

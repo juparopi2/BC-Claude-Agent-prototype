@@ -31,9 +31,11 @@ import type {
   ToolUseBlock,
   MessageStreamEvent,
   TextBlock,
+  ThinkingBlock,
   ThinkingDelta,
   TextCitation,
   CitationsDelta,
+  SignatureDelta,
 } from '@anthropic-ai/sdk/resources/messages';
 import { env } from '@/config';
 import type { AgentEvent, AgentExecutionResult, CompleteEvent, ErrorEvent } from '@/types';
@@ -487,18 +489,20 @@ export class DirectAgentService {
         // Accumulators for this turn
         let accumulatedText = '';
         const textBlocks: TextBlock[] = [];
+        const thinkingBlocks: ThinkingBlock[] = [];
         const toolUses: ToolUseBlock[] = [];
         let stopReason: string | null = null;
         let messageId: string | null = null;
 
         // Track content blocks by index
         // For text blocks: data is string, citations is Array<TextCitation>
-        // For thinking blocks: data is string
+        // For thinking blocks: data is string, signature is string
         // For tool_use blocks: data is { id, name, input, inputJson }
         const contentBlocks: Map<number, {
           type: string;
           data: unknown;
           citations?: TextCitation[];
+          signature?: string;  // ⭐ For thinking blocks - signature from signature_delta
         }> = new Map();
 
         // Process stream events
@@ -539,6 +543,7 @@ export class DirectAgentService {
                 contentBlocks.set(event.index, {
                   type: 'thinking',
                   data: '', // Will accumulate thinking content in deltas
+                  signature: '', // ⭐ Will be set by signature_delta
                 });
 
                 this.logger.info({
@@ -762,6 +767,23 @@ export class DirectAgentService {
 
                   console.log(`[STREAM] citations_delta: index=${event.index}, type=${citation.type}, total_citations=${block.citations.length}`);
                 }
+              } else if (event.delta.type === 'signature_delta') {
+                // ⭐ Signature for thinking blocks (required for conversation history)
+                const signatureDelta = event.delta as SignatureDelta;
+                const signature = signatureDelta.signature;
+
+                if (block.type === 'thinking') {
+                  block.signature = signature;
+
+                  this.logger.debug({
+                    sessionId,
+                    turnCount,
+                    eventIndex: event.index,
+                    signatureLength: signature.length,
+                  }, '🧠 [THINKING] Signature received for thinking block');
+
+                  console.log(`[STREAM] signature_delta: index=${event.index}, sig_len=${signature.length}`);
+                }
               }
               break;
 
@@ -801,22 +823,42 @@ export class DirectAgentService {
               } else if (completedBlock.type === 'thinking') {
                 // ⭐ Phase 1F: Extended Thinking block completed
                 const finalThinkingContent = completedBlock.data as string;
+                const signature = completedBlock.signature || '';
 
                 // Estimate thinking tokens (approximately 4 characters per token)
                 // Note: This is an estimate - actual tokens are counted as output_tokens by Anthropic
                 const estimatedThinkingTokens = Math.ceil(finalThinkingContent.length / 4);
                 thinkingTokens += estimatedThinkingTokens;
 
-                this.logger.info({
-                  sessionId,
-                  turnCount,
-                  eventIndex: event.index,
-                  thinkingContentLength: finalThinkingContent.length,
-                  estimatedThinkingTokens,
-                  totalThinkingTokens: thinkingTokens,
-                }, '🧠 [THINKING] Block completed');
+                // ⭐ Push to thinkingBlocks for conversation history
+                // Anthropic requires thinking blocks to be included in subsequent assistant messages
+                if (finalThinkingContent.trim() && signature) {
+                  thinkingBlocks.push({
+                    type: 'thinking',
+                    thinking: finalThinkingContent,
+                    signature: signature,
+                  });
 
-                console.log(`[STREAM] content_block_stop (thinking): index=${event.index}, content_len=${finalThinkingContent.length}, estimated_tokens=${estimatedThinkingTokens}`);
+                  this.logger.info({
+                    sessionId,
+                    turnCount,
+                    eventIndex: event.index,
+                    thinkingContentLength: finalThinkingContent.length,
+                    hasSignature: !!signature,
+                    estimatedThinkingTokens,
+                    totalThinkingTokens: thinkingTokens,
+                  }, '🧠 [THINKING] Block completed and added to history');
+                } else {
+                  this.logger.warn({
+                    sessionId,
+                    turnCount,
+                    eventIndex: event.index,
+                    hasContent: !!finalThinkingContent.trim(),
+                    hasSignature: !!signature,
+                  }, '🧠 [THINKING] Block completed but NOT added to history (missing content or signature)');
+                }
+
+                console.log(`[STREAM] content_block_stop (thinking): index=${event.index}, content_len=${finalThinkingContent.length}, has_sig=${!!signature}, estimated_tokens=${estimatedThinkingTokens}`);
               } else if (completedBlock.type === 'tool_use') {
                 const toolData = completedBlock.data as { id: string; name: string; input: Record<string, unknown> };
 
@@ -893,7 +935,7 @@ export class DirectAgentService {
           }
         }
 
-        console.log(`[STREAM] Stream completed: stop_reason=${stopReason}, text_blocks=${textBlocks.length}, tool_uses=${toolUses.length}`);
+        console.log(`[STREAM] Stream completed: stop_reason=${stopReason}, thinking_blocks=${thinkingBlocks.length}, text_blocks=${textBlocks.length}, tool_uses=${toolUses.length}`);
 
         // ========== TOKEN TRACKING LOGGING (Phase 1A + 1F) ==========
         console.log('[TOKEN TRACKING]', {
@@ -1037,11 +1079,24 @@ export class DirectAgentService {
         }
 
         // ========== ADD TO CONVERSATION HISTORY ==========
-        // Build content array (text blocks + tool uses) for history
-        const contentArray: Array<TextBlock | ToolUseBlock> = [
+        // Build content array for history
+        // ⭐ CRITICAL: Anthropic requires thinking blocks FIRST in assistant messages
+        // When extended thinking is enabled, subsequent API calls expect:
+        // [thinking_blocks..., text_blocks..., tool_uses...]
+        const contentArray: Array<ThinkingBlock | TextBlock | ToolUseBlock> = [
+          ...thinkingBlocks,  // ⭐ Thinking blocks MUST come first
           ...textBlocks,
           ...toolUses,
         ];
+
+        this.logger.debug({
+          sessionId,
+          turnCount,
+          thinkingBlocksCount: thinkingBlocks.length,
+          textBlocksCount: textBlocks.length,
+          toolUsesCount: toolUses.length,
+          totalBlocks: contentArray.length,
+        }, '📝 [HISTORY] Adding assistant message to conversation history');
 
         conversationHistory.push({
           role: 'assistant',

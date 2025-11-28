@@ -1259,14 +1259,48 @@ process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 /**
- * Start the application
+ * Create and configure the Express app for testing
+ * This is used by E2E tests to get a configured app instance
  */
-startServer();
+export async function createApp(): Promise<typeof app> {
+  // Initialize app (database, redis, secrets)
+  await initializeApp();
+
+  // Configure middleware
+  configureMiddleware();
+
+  // Configure routes
+  configureRoutes();
+
+  // Configure error handling
+  configureErrorHandling();
+
+  // Configure Socket.IO
+  configureSocketIO();
+
+  return app;
+}
+
+/**
+ * Get the HTTP server instance for testing
+ * This is used by E2E tests to start the server on a custom port
+ */
+export function getHttpServer(): typeof httpServer {
+  return httpServer;
+}
+
+/**
+ * Start the application (only when not imported for testing)
+ * Check if this module is being run directly or imported
+ */
+if (require.main === module || process.env.NODE_ENV !== 'test') {
+  startServer();
+}
 
 /**
  * Export Express app and Socket.IO for testing
  */
-export { app, io };
+export { app, io, httpServer };
 
 
 

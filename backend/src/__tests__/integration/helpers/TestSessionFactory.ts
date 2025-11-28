@@ -125,7 +125,7 @@ export class TestSessionFactory {
     this.createdUsers.push(userId);
 
     // Create Redis session for WebSocket authentication
-    const { sessionId, cookie } = await this.createSessionCookie(userId, email);
+    const { sessionId, cookie } = await this.createSessionCookie(userId, email, microsoftId);
 
     return {
       id: userId,
@@ -177,11 +177,13 @@ export class TestSessionFactory {
    *
    * @param userId - User ID to associate with session
    * @param email - User email
+   * @param microsoftId - Optional Microsoft ID (defaults to test value)
    * @returns Session ID and cookie string
    */
   async createSessionCookie(
     userId: string,
-    email: string
+    email: string,
+    microsoftId?: string
   ): Promise<{ sessionId: string; cookie: string }> {
     const redis = getRedis();
     if (!redis) {
@@ -203,6 +205,7 @@ export class TestSessionFactory {
       },
       microsoftOAuth: {
         userId: normalizeUUID(userId),
+        microsoftId: microsoftId || `ms_test_${Date.now()}`,
         email,
         accessToken: `test_access_token_${Date.now()}`,
         refreshToken: `test_refresh_token_${Date.now()}`,
@@ -253,6 +256,7 @@ export class TestSessionFactory {
       },
       microsoftOAuth: {
         userId,
+        microsoftId: `ms_expired_${Date.now()}`,
         email,
         accessToken: 'expired_token',
         refreshToken: 'expired_refresh',

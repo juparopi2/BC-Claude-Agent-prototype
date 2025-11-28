@@ -96,7 +96,9 @@
       "Bash(echo:*)",
       "Bash(if [ $PIPESTATUS[0] -ne 0 ])",
       "Bash(then echo \"❌ FAILED at run $i\")",
-      "Bash(exit 1)"
+      "Bash(exit 1)",
+      "Bash(npm run test:e2e:*)",
+      "Bash(NODE_OPTIONS='--max-old-space-size=4096' npm run test:e2e:*)"
     ],
     "deny": [],
     "ask": []

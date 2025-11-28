@@ -70,11 +70,21 @@ export default defineConfig({
       // and conflict with MSW mocking. Run separately with: npm run test:integration
       'src/**/*.integration.test.ts',
       'src/**/*.integration.spec.ts',
+      // Exclude E2E tests - they require full server stack running
+      // Run separately with: npm run test:e2e
+      'src/__tests__/e2e/**/*.test.ts',
+      'src/__tests__/e2e/**/*.e2e.test.ts',
     ],
   },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      '@config': path.resolve(__dirname, './src/config'),
+      '@services': path.resolve(__dirname, './src/services'),
+      '@models': path.resolve(__dirname, './src/models'),
+      '@middleware': path.resolve(__dirname, './src/middleware'),
+      '@types': path.resolve(__dirname, './src/types'),
+      '@routes': path.resolve(__dirname, './src/routes'),
     },
   },
 });

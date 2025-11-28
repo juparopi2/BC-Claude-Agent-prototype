@@ -31,6 +31,17 @@ export interface DatabaseMessage {
 }
 
 /**
+ * Database event from message_events table
+ */
+export interface DatabaseEvent {
+  id: string;
+  event_type: string;
+  sequence_number: number;
+  data?: Record<string, unknown>;
+  timestamp?: Date;
+}
+
+/**
  * SequenceValidator - Validates event ordering
  */
 export class SequenceValidator {
@@ -44,14 +55,19 @@ export class SequenceValidator {
     // Extract events with sequence numbers
     const eventsWithSequence = events
       .map(e => {
-        const event = 'data' in e ? e.data : e;
+        // Handle both E2EReceivedEvent (with data property) and direct AgentEvent
+        const event = 'data' in e && e.data != null ? e.data : ('type' in e ? e : null);
+        if (!event || typeof event !== 'object' || !('type' in event)) {
+          return null; // Skip non-AgentEvent events
+        }
+        const agentEvent = event as AgentEvent & { sequenceNumber?: number };
         return {
-          type: event.type,
-          sequenceNumber: 'sequenceNumber' in event ? (event as AgentEvent & { sequenceNumber?: number }).sequenceNumber : undefined,
+          type: agentEvent.type,
+          sequenceNumber: agentEvent.sequenceNumber,
           timestamp: 'timestamp' in e ? e.timestamp : new Date(),
         };
       })
-      .filter(e => e.sequenceNumber !== undefined);
+      .filter((e): e is NonNullable<typeof e> => e !== null && e.sequenceNumber !== undefined);
 
     if (eventsWithSequence.length === 0) {
       warnings.push('No events with sequence numbers found');
@@ -253,6 +269,164 @@ export class SequenceValidator {
     for (const [toolUseId, _toolResult] of toolResults) {
       if (!toolUses.has(toolUseId)) {
         warnings.push(`tool_result ${toolUseId} has no corresponding tool_use`);
+      }
+    }
+
+    return {
+      valid: errors.length === 0,
+      errors,
+      warnings,
+    };
+  }
+
+  /**
+   * Compare WebSocket events with database events for source of truth verification
+   * @param wsEvents - Events received via WebSocket
+   * @param dbEvents - Events queried from message_events table
+   * @returns Comparison result with matched, ws-only, and db-only events
+   */
+  static compareWebSocketWithDatabase(
+    wsEvents: AgentEvent[],
+    dbEvents: DatabaseEvent[]
+  ): {
+    matched: number;
+    wsOnly: AgentEvent[];
+    dbOnly: DatabaseEvent[];
+    sequenceMismatches: Array<{ eventId: string; wsSequence?: number; dbSequence: number }>;
+  } {
+    // Only consider WS events that have sequence numbers (persisted events)
+    const persistedWsEvents = wsEvents.filter(e => {
+      const event = e as AgentEvent & { sequenceNumber?: number; eventId?: string };
+      return event.sequenceNumber !== undefined && event.eventId !== undefined;
+    });
+
+    // Create maps for efficient lookup
+    const wsEventMap = new Map<string, AgentEvent & { sequenceNumber: number; eventId: string }>();
+    for (const event of persistedWsEvents) {
+      const e = event as AgentEvent & { sequenceNumber: number; eventId: string };
+      wsEventMap.set(e.eventId, e);
+    }
+
+    const dbEventMap = new Map<string, DatabaseEvent>();
+    for (const dbEvent of dbEvents) {
+      dbEventMap.set(dbEvent.id, dbEvent);
+    }
+
+    // Find matches and mismatches
+    let matched = 0;
+    const sequenceMismatches: Array<{ eventId: string; wsSequence?: number; dbSequence: number }> = [];
+
+    for (const [eventId, wsEvent] of wsEventMap) {
+      const dbEvent = dbEventMap.get(eventId);
+      if (dbEvent) {
+        matched++;
+        // Check if sequence numbers match
+        if (wsEvent.sequenceNumber !== dbEvent.sequence_number) {
+          sequenceMismatches.push({
+            eventId,
+            wsSequence: wsEvent.sequenceNumber,
+            dbSequence: dbEvent.sequence_number,
+          });
+        }
+      }
+    }
+
+    // Find WS-only events (in WS but not in DB)
+    const wsOnly = persistedWsEvents.filter(e => {
+      const event = e as AgentEvent & { eventId?: string };
+      return event.eventId && !dbEventMap.has(event.eventId);
+    });
+
+    // Find DB-only events (in DB but not in WS)
+    const dbOnly = dbEvents.filter(dbEvent => !wsEventMap.has(dbEvent.id));
+
+    return {
+      matched,
+      wsOnly,
+      dbOnly,
+      sequenceMismatches,
+    };
+  }
+
+  /**
+   * Validate that events have correct persistenceState based on their type
+   *
+   * Transient events (no sequenceNumber): message_chunk, thinking_chunk, complete, error, session_start, session_end
+   * Persisted events (with sequenceNumber): user_message_confirmed, thinking, message, tool_use, tool_result,
+   *                                         approval_requested, approval_resolved, turn_paused, content_refused
+   */
+  static validatePersistenceStates(events: AgentEvent[]): ValidationResult {
+    const errors: string[] = [];
+    const warnings: string[] = [];
+
+    const TRANSIENT_TYPES = [
+      'message_chunk',
+      'thinking_chunk',
+      'complete',
+      'error',
+      'session_start',
+      'session_end',
+    ];
+
+    const PERSISTED_TYPES = [
+      'user_message_confirmed',
+      'thinking',
+      'message',
+      'tool_use',
+      'tool_result',
+      'approval_requested',
+      'approval_resolved',
+      'turn_paused',
+      'content_refused',
+    ];
+
+    for (const event of events) {
+      const eventWithState = event as AgentEvent & {
+        persistenceState?: string;
+        sequenceNumber?: number
+      };
+
+      const eventType = event.type;
+      const persistenceState = eventWithState.persistenceState;
+      const sequenceNumber = eventWithState.sequenceNumber;
+
+      // Check transient events
+      if (TRANSIENT_TYPES.includes(eventType)) {
+        if (persistenceState !== 'transient') {
+          errors.push(
+            `Event type '${eventType}' should have persistenceState='transient' ` +
+            `but has '${persistenceState}'`
+          );
+        }
+        if (sequenceNumber !== undefined) {
+          errors.push(
+            `Event type '${eventType}' is transient and should not have sequenceNumber, ` +
+            `but has sequenceNumber=${sequenceNumber}`
+          );
+        }
+      }
+
+      // Check persisted events
+      if (PERSISTED_TYPES.includes(eventType)) {
+        if (persistenceState !== 'persisted') {
+          errors.push(
+            `Event type '${eventType}' should have persistenceState='persisted' ` +
+            `but has '${persistenceState}'`
+          );
+        }
+        if (sequenceNumber === undefined) {
+          errors.push(
+            `Event type '${eventType}' is persisted and should have sequenceNumber, ` +
+            `but sequenceNumber is undefined`
+          );
+        }
+      }
+
+      // Warn about unknown event types
+      if (!TRANSIENT_TYPES.includes(eventType) && !PERSISTED_TYPES.includes(eventType)) {
+        warnings.push(
+          `Unknown event type '${eventType}' - cannot validate persistence state`
+        );
       }
     }
 

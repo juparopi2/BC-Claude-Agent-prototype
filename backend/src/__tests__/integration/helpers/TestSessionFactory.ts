@@ -372,6 +372,43 @@ export class TestSessionFactory {
   }
 
   /**
+   * Get events from the message_events table (event sourcing log)
+   * This is the source of truth for event ordering via sequence_number
+   *
+   * @param sessionId - Session ID
+   * @returns Array of events ordered by sequence_number
+   */
+  async getSessionEvents(sessionId: string): Promise<Array<{
+    id: string;
+    eventType: string;
+    sequenceNumber: number;
+    data: Record<string, unknown>;
+    createdAt: Date;
+  }>> {
+    const result = await executeQuery<{
+      id: string;
+      event_type: string;
+      sequence_number: number;
+      data: string;
+      created_at: Date;
+    }>(
+      `SELECT id, event_type, sequence_number, data, created_at
+       FROM message_events
+       WHERE session_id = @sessionId
+       ORDER BY sequence_number ASC`,
+      { sessionId }
+    );
+
+    return result.recordset.map(row => ({
+      id: row.id,
+      eventType: row.event_type,
+      sequenceNumber: row.sequence_number,
+      data: row.data ? JSON.parse(row.data) : {},
+      createdAt: row.created_at,
+    }));
+  }
+
+  /**
    * Get pending approvals for a session
    *
    * @param sessionId - Session ID

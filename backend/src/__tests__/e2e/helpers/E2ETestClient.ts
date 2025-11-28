@@ -511,10 +511,12 @@ export class E2ETestClient {
     options?: {
       eventType?: string;
       timeout?: number;
+      stopOnEventType?: string;
     }
   ): Promise<AgentEvent[]> {
     const timeout = options?.timeout || this.defaultTimeout;
     const eventType = options?.eventType;
+    const stopOnEventType = options?.stopOnEventType;
 
     return new Promise((resolve, reject) => {
       const collected: AgentEvent[] = [];
@@ -529,6 +531,14 @@ export class E2ETestClient {
       for (const event of this.receivedEvents) {
         if (!eventType || event.type === eventType || event.data.type === eventType) {
           collected.push(event.data);
+
+          // Check if this is the stop event
+          if (stopOnEventType && (event.type === stopOnEventType || event.data.type === stopOnEventType)) {
+            clearTimeout(timeoutHandle);
+            resolve(collected);
+            return;
+          }
+
           if (collected.length >= count) {
             clearTimeout(timeoutHandle);
             resolve(collected);
@@ -542,6 +552,15 @@ export class E2ETestClient {
       const waiter = {
         resolve: (event: AgentEvent) => {
           collected.push(event);
+
+          // Check if this is the stop event
+          if (stopOnEventType && event.type === stopOnEventType) {
+            clearTimeout(timeoutHandle);
+            this.eventWaiters.delete(key);
+            resolve(collected);
+            return;
+          }
+
           if (collected.length >= count) {
             clearTimeout(timeoutHandle);
             this.eventWaiters.delete(key);

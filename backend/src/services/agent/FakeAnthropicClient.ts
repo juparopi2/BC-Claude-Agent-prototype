@@ -38,6 +38,8 @@ import type {
 interface FakeResponse {
   /** Text content blocks */
   textBlocks?: string[];
+  /** Thinking content blocks (Extended Thinking feature) */
+  thinkingBlocks?: string[];
   /** Tool use blocks */
   toolUseBlocks?: Array<{
     id: string;
@@ -45,9 +47,11 @@ interface FakeResponse {
     input: Record<string, unknown>;
   }>;
   /** Stop reason */
-  stopReason?: 'end_turn' | 'max_tokens' | 'stop_sequence' | 'tool_use';
+  stopReason?: 'end_turn' | 'max_tokens' | 'stop_sequence' | 'tool_use' | 'pause_turn' | 'refusal';
   /** Custom token usage */
   usage?: Partial<TokenUsage>;
+  /** Estimated thinking tokens (for token tracking) */
+  thinkingTokens?: number;
 }
 
 /**
@@ -149,7 +153,19 @@ export class FakeAnthropicClient implements IAnthropicClient {
     }
 
     // Build content array
+    // Note: We use 'as unknown as TextBlock' for thinking blocks because TypeScript SDK
+    // doesn't have explicit typing for thinking blocks yet
     const content: Array<TextBlock | ToolUseBlock> = [];
+
+    // Add thinking blocks (Extended Thinking feature)
+    if (fakeResponse.thinkingBlocks) {
+      for (const thinking of fakeResponse.thinkingBlocks) {
+        content.push({
+          type: 'thinking',
+          thinking,
+        } as unknown as TextBlock);
+      }
+    }
 
     // Add text blocks
     if (fakeResponse.textBlocks) {
@@ -178,13 +194,15 @@ export class FakeAnthropicClient implements IAnthropicClient {
     const stopReason = fakeResponse.stopReason || (fakeResponse.toolUseBlocks ? 'tool_use' : 'end_turn');
 
     // Build response
+    // Note: Cast stop_reason to support extended stop reasons (pause_turn, refusal)
+    // that may not be in the strict SDK type yet
     const response: ChatCompletionResponse = {
       id: `fake_msg_${Date.now()}_${Math.random().toString(36).substring(7)}`,
       type: 'message',
       role: 'assistant',
       content,
       model: request.model,
-      stop_reason: stopReason,
+      stop_reason: stopReason as ChatCompletionResponse['stop_reason'],
       stop_sequence: null,
       usage: {
         input_tokens: fakeResponse.usage?.input_tokens || 100,
@@ -255,6 +273,51 @@ export class FakeAnthropicClient implements IAnthropicClient {
     await this.delay(50); // Simulate initial latency
 
     let contentBlockIndex = 0;
+
+    // ========== Stream thinking blocks (Extended Thinking) ==========
+    if (fakeResponse.thinkingBlocks) {
+      for (const thinking of fakeResponse.thinkingBlocks) {
+        // content_block_start for thinking
+        yield {
+          type: 'content_block_start',
+          index: contentBlockIndex,
+          content_block: {
+            type: 'thinking',
+            thinking: '',
+          },
+        } as unknown as MessageStreamEvent;
+
+        await this.delay(30);
+
+        // Stream thinking in chunks (simulate thinking process)
+        const chunkSize = 10; // Words per thinking chunk
+        const words = thinking.split(' ');
+        for (let i = 0; i < words.length; i += chunkSize) {
+          const chunk = words.slice(i, i + chunkSize).join(' ');
+          const addSpace = i + chunkSize < words.length ? ' ' : '';
+
+          yield {
+            type: 'content_block_delta',
+            index: contentBlockIndex,
+            delta: {
+              type: 'thinking_delta',
+              thinking: chunk + addSpace,
+            },
+          } as unknown as MessageStreamEvent;
+
+          await this.delay(80); // Simulate thinking speed (faster than typing)
+        }
+
+        // content_block_stop for thinking
+        yield {
+          type: 'content_block_stop',
+          index: contentBlockIndex,
+        } as unknown as MessageStreamEvent;
+
+        await this.delay(30);
+        contentBlockIndex++;
+      }
+    }
 
     // ========== Stream text blocks ==========
     if (fakeResponse.textBlocks) {
@@ -364,6 +427,12 @@ export class FakeAnthropicClient implements IAnthropicClient {
 
     // ========== Record the call (construct full response for call history) ==========
     const content: Array<TextBlock | ToolUseBlock> = [];
+    // Add thinking blocks to call record
+    if (fakeResponse.thinkingBlocks) {
+      for (const thinking of fakeResponse.thinkingBlocks) {
+        content.push({ type: 'thinking', thinking } as unknown as TextBlock);
+      }
+    }
     if (fakeResponse.textBlocks) {
       for (const text of fakeResponse.textBlocks) {
         content.push({ type: 'text', text, citations: [] });
@@ -381,7 +450,7 @@ export class FakeAnthropicClient implements IAnthropicClient {
       role: 'assistant',
       content,
       model: request.model,
-      stop_reason: stopReason,
+      stop_reason: stopReason as ChatCompletionResponse['stop_reason'],
       stop_sequence: null,
       usage: {
         input_tokens: fakeResponse.usage?.input_tokens || 100,

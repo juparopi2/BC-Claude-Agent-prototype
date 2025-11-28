@@ -107,8 +107,12 @@ const mockBCClient = {
 };
 
 const mockDirectAgentService = {
-  executeQuery: vi.fn().mockResolvedValue({ success: true, response: 'Test response' }),
-  executeQueryStreaming: vi.fn().mockResolvedValue({ success: true, response: 'Test' }),
+  // NOTE: DirectAgentService only has executeQueryStreaming, not executeQuery
+  executeQueryStreaming: vi.fn().mockResolvedValue({
+    success: true,
+    response: 'Test response',
+    tokenUsage: { inputTokens: 100, outputTokens: 50 },
+  }),
 };
 
 const mockApprovalManager = {
@@ -335,16 +339,17 @@ function createTestApp(): Application {
       return;
     }
 
-    const { query, sessionId } = req.body;
+    // NOTE: Production uses `prompt`, not `query` (server.ts:535)
+    const { prompt, sessionId } = req.body;
 
-    if (!query || !sessionId) {
-      sendBadRequest(res, ErrorCode.VALIDATION_ERROR, 'query and sessionId are required');
+    if (!prompt || typeof prompt !== 'string') {
+      sendBadRequest(res, ErrorCode.VALIDATION_ERROR, 'prompt is required and must be a string');
       return;
     }
 
     try {
       const result = await mockDirectAgentService.executeQueryStreaming(
-        query,
+        prompt,
         sessionId,
         undefined, // onEvent not used for REST endpoint
         userId
@@ -668,15 +673,16 @@ describe('Server Endpoints - Comprehensive Tests', () => {
     });
 
     it('POST /api/agent/query should execute query when valid', async () => {
-      mockDirectAgentService.executeQuery.mockResolvedValueOnce({
+      mockDirectAgentService.executeQueryStreaming.mockResolvedValueOnce({
         success: true,
         response: 'Query result',
+        tokenUsage: { inputTokens: 100, outputTokens: 50 },
       });
 
       const response = await request(app)
         .post('/api/agent/query')
         .set('x-test-user-id', 'user-123')
-        .send({ query: 'List customers', sessionId: 'session-1' });
+        .send({ prompt: 'List customers', sessionId: 'session-1' });
 
       expect(response.status).toBe(200);
       expect(response.body).toMatchObject({
@@ -685,12 +691,12 @@ describe('Server Endpoints - Comprehensive Tests', () => {
     });
 
     it('POST /api/agent/query should handle errors', async () => {
-      mockDirectAgentService.executeQuery.mockRejectedValueOnce(new Error('Agent error'));
+      mockDirectAgentService.executeQueryStreaming.mockRejectedValueOnce(new Error('Agent error'));
 
       const response = await request(app)
         .post('/api/agent/query')
         .set('x-test-user-id', 'user-123')
-        .send({ query: 'Test', sessionId: 'session-1' });
+        .send({ prompt: 'Test', sessionId: 'session-1' });
 
       expect(response.status).toBe(500);
     });

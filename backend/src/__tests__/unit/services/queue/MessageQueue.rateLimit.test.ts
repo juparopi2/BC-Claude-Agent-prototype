@@ -40,6 +40,17 @@ const { mockRedis, mockQueue, mockWorker, mockQueueEvents, mockLogger, mockExecu
         const existing = rateLimitStore.get(key);
         return existing ? String(existing.count) : null;
       }),
+      // ⭐ Redis connection options (required by MessageQueue.initializeQueues → getRedisConnectionConfig)
+      options: {
+        host: 'localhost',
+        port: 6379,
+        password: undefined,
+        maxRetriesPerRequest: null,
+        lazyConnect: false,
+        enableReadyCheck: true,
+        retryStrategy: undefined,
+        reconnectOnError: undefined,
+      },
       // Event emitter methods
       on: vi.fn(),
       once: vi.fn((event: string, callback: () => void) => {

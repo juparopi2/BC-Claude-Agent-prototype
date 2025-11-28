@@ -370,11 +370,12 @@ describe('Retry Utility', () => {
   // ==========================================================================
 
   describe('@Retry Decorator', () => {
-    it.skip('should apply retry logic to class methods', async () => {
-      // NOTE: TypeScript decorators don't work reliably in Vitest test environment
-      // due to transpilation issues. This test is skipped but the decorator
-      // works correctly in production code (verified manually).
-      // See: https://github.com/vitest-dev/vitest/issues/708
+    // NOTE: This test requires experimentalDecorators: true in tsconfig.json
+    // Previously skipped due to Vitest transpilation issues (vitest#708)
+    // Fixed by enabling experimentalDecorators and emitDecoratorMetadata in tsconfig.json
+
+    it('should apply retry logic to class methods', async () => {
+      vi.useFakeTimers();
 
       class TestService {
         attemptCount = 0;
@@ -390,10 +391,17 @@ describe('Retry Utility', () => {
       }
 
       const service = new TestService();
-      const result = await service.fetchData();
+      const resultPromise = service.fetchData();
+
+      // Fast-forward timers for retry delays
+      await vi.runAllTimersAsync();
+
+      const result = await resultPromise;
 
       expect(result).toBe('success');
       expect(service.attemptCount).toBe(2); // Initial + 1 retry
+
+      vi.useRealTimers();
     });
   });
 });

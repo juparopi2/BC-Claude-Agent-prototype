@@ -56,7 +56,12 @@ const mockMCPService = {
 };
 
 const mockDirectAgentService = {
-  executeQuery: vi.fn(),
+  // NOTE: DirectAgentService only has executeQueryStreaming, not executeQuery
+  executeQueryStreaming: vi.fn().mockResolvedValue({
+    success: true,
+    response: 'Test response',
+    tokenUsage: { inputTokens: 100, outputTokens: 50 },
+  }),
 };
 
 const mockApprovalManager = {
@@ -539,9 +544,10 @@ describe('Server Inline Endpoints', () => {
   describe('POST /api/agent/query', () => {
     it('should execute agent query for authenticated user', async () => {
       // Arrange
-      mockDirectAgentService.executeQuery.mockResolvedValueOnce({
-        content: 'Hello! How can I help you?',
-        model: 'claude-3-sonnet',
+      mockDirectAgentService.executeQueryStreaming.mockResolvedValueOnce({
+        success: true,
+        response: 'Hello! How can I help you?',
+        tokenUsage: { inputTokens: 100, outputTokens: 50 },
       });
 
       // Act
@@ -552,8 +558,8 @@ describe('Server Inline Endpoints', () => {
         .expect(200);
 
       // Assert
-      expect(response.body.content).toBe('Hello! How can I help you?');
-      expect(mockDirectAgentService.executeQuery).toHaveBeenCalledWith('Hello', 'session-123');
+      expect(response.body.response).toBe('Hello! How can I help you?');
+      expect(mockDirectAgentService.executeQueryStreaming).toHaveBeenCalled();
     });
 
     it('should return 400 when prompt is missing', async () => {
@@ -594,7 +600,7 @@ describe('Server Inline Endpoints', () => {
 
     it('should return 500 on agent error', async () => {
       // Arrange
-      mockDirectAgentService.executeQuery.mockRejectedValueOnce(new Error('Claude API error'));
+      mockDirectAgentService.executeQueryStreaming.mockRejectedValueOnce(new Error('Claude API error'));
 
       // Act
       const response = await request(app)
@@ -1085,14 +1091,18 @@ describe('Server Inline Endpoints', () => {
           .send({ prompt: '   \n\t  ' })
           .expect(200); // Whitespace is still a string, implementation decides
 
-        // Assert - verify it was passed to the service
-        expect(mockDirectAgentService.executeQuery).toHaveBeenCalled();
+        // Assert - verify it was passed to the service (endpoint uses executeQueryStreaming)
+        expect(mockDirectAgentService.executeQueryStreaming).toHaveBeenCalled();
       });
 
       it('should handle very long prompt (10KB)', async () => {
         // Arrange
         const longPrompt = 'A'.repeat(10000);
-        mockDirectAgentService.executeQuery.mockResolvedValueOnce({ content: 'Response' });
+        mockDirectAgentService.executeQueryStreaming.mockResolvedValueOnce({
+          success: true,
+          response: 'Response',
+          tokenUsage: { inputTokens: 100, outputTokens: 50 },
+        });
 
         // Act
         const response = await request(app)
@@ -1102,13 +1112,17 @@ describe('Server Inline Endpoints', () => {
           .expect(200);
 
         // Assert
-        expect(response.body.content).toBe('Response');
+        expect(response.body.response).toBe('Response');
       });
 
       it('should handle prompt with Unicode characters', async () => {
         // Arrange
         const unicodePrompt = '你好世界 مرحبا שלום 🌍🚀';
-        mockDirectAgentService.executeQuery.mockResolvedValueOnce({ content: 'Hello!' });
+        mockDirectAgentService.executeQueryStreaming.mockResolvedValueOnce({
+          success: true,
+          response: 'Hello!',
+          tokenUsage: { inputTokens: 100, outputTokens: 50 },
+        });
 
         // Act
         const response = await request(app)
@@ -1117,14 +1131,20 @@ describe('Server Inline Endpoints', () => {
           .send({ prompt: unicodePrompt })
           .expect(200);
 
-        // Assert
-        expect(mockDirectAgentService.executeQuery).toHaveBeenCalledWith(unicodePrompt, undefined);
+        // Assert - verify unicode prompt was passed to service
+        expect(mockDirectAgentService.executeQueryStreaming).toHaveBeenCalled();
+        const call = mockDirectAgentService.executeQueryStreaming.mock.calls[0];
+        expect(call[0]).toBe(unicodePrompt);
       });
 
       it('should handle prompt with HTML/script tags', async () => {
         // Arrange
         const xssPrompt = '<script>alert("xss")</script>';
-        mockDirectAgentService.executeQuery.mockResolvedValueOnce({ content: 'Safe response' });
+        mockDirectAgentService.executeQueryStreaming.mockResolvedValueOnce({
+          success: true,
+          response: 'Safe response',
+          tokenUsage: { inputTokens: 100, outputTokens: 50 },
+        });
 
         // Act
         const response = await request(app)
@@ -1134,12 +1154,18 @@ describe('Server Inline Endpoints', () => {
           .expect(200);
 
         // Assert - should pass through (Claude handles it)
-        expect(mockDirectAgentService.executeQuery).toHaveBeenCalledWith(xssPrompt, undefined);
+        expect(mockDirectAgentService.executeQueryStreaming).toHaveBeenCalled();
+        const call = mockDirectAgentService.executeQueryStreaming.mock.calls[0];
+        expect(call[0]).toBe(xssPrompt);
       });
 
       it('should handle null sessionId gracefully', async () => {
         // Arrange
-        mockDirectAgentService.executeQuery.mockResolvedValueOnce({ content: 'OK' });
+        mockDirectAgentService.executeQueryStreaming.mockResolvedValueOnce({
+          success: true,
+          response: 'OK',
+          tokenUsage: { inputTokens: 100, outputTokens: 50 },
+        });
 
         // Act
         const response = await request(app)
@@ -1149,7 +1175,10 @@ describe('Server Inline Endpoints', () => {
           .expect(200);
 
         // Assert
-        expect(mockDirectAgentService.executeQuery).toHaveBeenCalledWith('Hello', null);
+        expect(mockDirectAgentService.executeQueryStreaming).toHaveBeenCalled();
+        const call = mockDirectAgentService.executeQueryStreaming.mock.calls[0];
+        expect(call[0]).toBe('Hello');
+        expect(call[1]).toBeNull();
       });
     });
 

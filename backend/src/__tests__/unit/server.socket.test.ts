@@ -90,9 +90,9 @@ describe('Socket.IO Server', () => {
     mockExecuteQuery = executeQuery as Mock;
     mockExecuteQuery.mockResolvedValue({ recordset: [{ id: 'test-id' }] });
 
-    // Mock DirectAgentService
+    // Mock DirectAgentService (only executeQueryStreaming exists in production)
     mockDirectAgentService = {
-      executeQuery: vi.fn(),
+      executeQueryStreaming: vi.fn(),
     };
     (getDirectAgentService as Mock).mockReturnValue(mockDirectAgentService);
 
@@ -285,7 +285,7 @@ describe('Socket.IO Server', () => {
       const message = 'Hello, agent!';
 
       // Mock agent to emit events
-      (mockDirectAgentService.executeQuery as Mock).mockImplementation(
+      (mockDirectAgentService.executeQueryStreaming as Mock).mockImplementation(
         async (_prompt: string, _sessionId: string, onEvent: (event: { type: string; content?: string }) => void) => {
           onEvent({ type: 'thinking', content: 'Processing...' });
           onEvent({ type: 'message', content: 'Hello! How can I help?' });
@@ -318,7 +318,7 @@ describe('Socket.IO Server', () => {
       const sessionId = 'test-session-tool';
       const message = 'List all entities';
 
-      (mockDirectAgentService.executeQuery as Mock).mockImplementation(
+      (mockDirectAgentService.executeQueryStreaming as Mock).mockImplementation(
         async (_prompt: string, _sessionId: string, onEvent: (event: { type: string; toolName?: string; args?: Record<string, unknown> }) => void) => {
           onEvent({
             type: 'tool_use',
@@ -346,7 +346,7 @@ describe('Socket.IO Server', () => {
       const sessionId = 'test-session-error';
       const message = 'This will fail';
 
-      (mockDirectAgentService.executeQuery as Mock).mockImplementation(
+      (mockDirectAgentService.executeQueryStreaming as Mock).mockImplementation(
         async (_prompt: string, _sessionId: string, onEvent: (event: { type: string; error?: string }) => void) => {
           onEvent({ type: 'error', error: 'Agent execution failed' });
           return { success: false, error: 'Agent execution failed', response: '', toolsUsed: [], duration: 50 };

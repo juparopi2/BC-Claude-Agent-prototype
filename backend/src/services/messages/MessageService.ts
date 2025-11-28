@@ -582,18 +582,14 @@ export class MessageService {
   public async replayMessages(sessionId: string): Promise<void> {
     this.logger.info('Replaying messages from EventStore', { sessionId });
 
-    await this.eventStore.replayEvents(sessionId, async (event) => {
-      // Process each event and reconstruct messages
-      this.logger.debug('Replaying event', {
-        eventType: event.event_type,
-        sequenceNumber: event.sequence_number,
-      });
-
-      // TODO: Implement event replay logic
-      // This would reconstruct the messages table from events
-    });
-
-    this.logger.info('Message replay completed', { sessionId });
+    // Feature not implemented - messages are persisted via MessageQueue, not replayed from events
+    // This method exists for future event-sourcing replay support
+    throw new Error(
+      'Message replay is not implemented. ' +
+      'Messages are materialized via MessageQueue.processMessagePersistence(). ' +
+      'Event replay would be used for rebuilding messages table from event log, ' +
+      'but this is not currently needed.'
+    );
   }
 }
 

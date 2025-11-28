@@ -207,13 +207,19 @@ function createServerApp(): Application {
       }
 
       const { prompt, sessionId } = req.body;
+      const userId = req.userId;
 
       if (!prompt || typeof prompt !== 'string') {
         sendBadRequest(res, 'prompt is required and must be a string', 'prompt');
         return;
       }
 
-      const result = await mockDirectAgentService.executeQuery(prompt, sessionId);
+      const result = await mockDirectAgentService.executeQueryStreaming(
+        prompt,
+        sessionId,
+        undefined, // onEvent not used for REST endpoint
+        userId
+      );
       res.json(result);
     } catch {
       sendInternalError(res, ErrorCode.MESSAGE_PROCESSING_ERROR);

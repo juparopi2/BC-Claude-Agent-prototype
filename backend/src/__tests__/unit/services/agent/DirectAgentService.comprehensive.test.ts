@@ -1349,17 +1349,6 @@ describe('DirectAgentService - Comprehensive Tests', () => {
   });
 
   // =========================================================================
-  // SECTION 10: Deprecated executeQuery
-  // =========================================================================
-  describe('Deprecated executeQuery', () => {
-    it('should throw deprecation error when calling executeQuery', async () => {
-      await expect(
-        service.executeQuery('test', 'session', mockOnEvent)
-      ).rejects.toThrow('executeQuery() has been deprecated');
-    });
-  });
-
-  // =========================================================================
   // SECTION 11: Input Sanitization (via __testExports)
   // =========================================================================
   describe('Input Sanitization', () => {

@@ -533,14 +533,25 @@ function configureRoutes(): void {
       }
 
       const { prompt, sessionId } = req.body;
+      const userId = req.userId;
 
       if (!prompt || typeof prompt !== 'string') {
         sendBadRequest(res, 'prompt is required and must be a string', 'prompt');
         return;
       }
 
-      // Execute query
-      const result = await agentService.executeQuery(prompt, sessionId);
+      if (!userId) {
+        sendBadRequest(res, 'userId is required (missing from session)', 'userId');
+        return;
+      }
+
+      // Execute query with streaming (REST endpoint doesn't stream to client)
+      const result = await agentService.executeQueryStreaming(
+        prompt,
+        sessionId,
+        undefined, // onEvent - not used for REST endpoint
+        userId
+      );
 
       res.json(result);
     } catch (error) {

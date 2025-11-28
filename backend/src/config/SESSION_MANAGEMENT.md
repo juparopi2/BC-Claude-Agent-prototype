@@ -229,15 +229,23 @@ Currently, multi-turn conversations are **not fully implemented**. Each query is
 
 ```typescript
 // First turn
-const result1 = await agentService.executeQuery(
+const result1 = await agentService.executeQueryStreaming(
   'Create a customer named Acme Corp',
-  sessionId // This becomes the SDK session ID
+  sessionId, // This becomes the session ID
+  (event) => {
+    // Handle streaming events
+  },
+  userId
 );
 
 // Second turn (resumes conversation)
-const result2 = await agentService.executeQuery(
+const result2 = await agentService.executeQueryStreaming(
   'Add their email as acme@example.com',
-  sessionId // Same sessionId = SDK resumes context
+  sessionId, // Same sessionId = resumes context
+  (event) => {
+    // Handle streaming events
+  },
+  userId
 );
 ```
 
@@ -254,18 +262,18 @@ const result2 = await agentService.executeQuery(
 
 ### Issue: Context lost between messages
 
-**Cause**: Not using SDK `resume` parameter
+**Cause**: Not using sessionId consistently
 
 **Solution**:
 ```typescript
-// In AgentService.executeQuery()
-const result = query({
+// In AgentService.executeQueryStreaming()
+// Ensure the same sessionId is used across turns
+const result = await agentService.executeQueryStreaming(
   prompt,
-  options: {
-    resume: sessionId, // ✅ Add this!
-    mcpServers,
-  }
-});
+  sessionId, // ✅ Use same sessionId for context!
+  onEvent,
+  userId
+);
 ```
 
 ### Issue: Redis session expired but conversation active

@@ -289,24 +289,6 @@ export class DirectAgentService {
    * 3. Send tool result back to Claude
    * 4. Repeat until Claude provides final answer
    */
-  /**
-   * Execute Query (Non-streaming) - DEPRECATED
-   *
-   * This method has been removed in favor of executeQueryStreaming().
-   * All queries now use streaming for better real-time UX and performance.
-   *
-   * @deprecated Use executeQueryStreaming() instead
-   */
-  async executeQuery(
-    _prompt: string,
-    _sessionId?: string,
-    _onEvent?: (event: AgentEvent) => void
-  ): Promise<AgentExecutionResult> {
-    throw new Error(
-      'executeQuery() has been deprecated. Use executeQueryStreaming() instead. ' +
-      'Streaming provides better real-time UX and eliminates the 600ms delay.'
-    );
-  }
 
   /**
    * Execute Query with Native Streaming

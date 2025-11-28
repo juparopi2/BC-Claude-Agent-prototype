@@ -343,7 +343,12 @@ function createTestApp(): Application {
     }
 
     try {
-      const result = await mockDirectAgentService.executeQuery(query, sessionId, userId);
+      const result = await mockDirectAgentService.executeQueryStreaming(
+        query,
+        sessionId,
+        undefined, // onEvent not used for REST endpoint
+        userId
+      );
       res.json(result);
     } catch (error) {
       sendInternalError(res, ErrorCode.INTERNAL_ERROR, error instanceof Error ? error.message : 'Query failed');

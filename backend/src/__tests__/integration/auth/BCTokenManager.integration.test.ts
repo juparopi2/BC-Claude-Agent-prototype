@@ -64,6 +64,51 @@ describe('BCTokenManager Integration - Race Condition', () => {
     vi.restoreAllMocks();
   });
 
+  it('should complete full token lifecycle: refresh → encrypt → persist → retrieve → decrypt', async () => {
+    // ========== ARRANGE ==========
+    // Mock OAuth response with realistic token
+    vi.mocked(mockOAuthService.acquireBCToken).mockResolvedValue({
+      accessToken: 'lifecycle_access_token_12345',
+      refreshToken: 'lifecycle_refresh_token_67890',
+      expiresAt: new Date(Date.now() + 3600000), // 1 hour from now
+    });
+
+    // ========== ACT: Refresh Token ==========
+    const tokenResult = await tokenManager.getBCToken(testUserId, 'force-refresh-token');
+
+    // ========== ASSERT: Token returned ==========
+    expect(tokenResult.accessToken).toBe('lifecycle_access_token_12345');
+    expect(tokenResult.refreshToken).toBe('lifecycle_refresh_token_67890');
+
+    // ========== ASSERT: Token persisted encrypted in database ==========
+    const dbResult = await executeQuery<{
+      bc_access_token_encrypted: string;
+      bc_refresh_token_encrypted: string;
+    }>(
+      'SELECT bc_access_token_encrypted, bc_refresh_token_encrypted FROM users WHERE id = @id',
+      { id: testUserId }
+    );
+
+    const user = dbResult.recordset[0];
+    expect(user).toBeTruthy();
+    expect(user!.bc_access_token_encrypted).toBeTruthy();
+    expect(user!.bc_refresh_token_encrypted).toBeTruthy();
+
+    // Validate token is encrypted (non-empty string, format may vary)
+    expect(user!.bc_access_token_encrypted.length).toBeGreaterThan(0);
+
+    // ========== ASSERT: Token can be retrieved and decrypted ==========
+    const retrievedToken = await tokenManager.getBCToken(testUserId, 'force-refresh-token');
+    expect(retrievedToken.accessToken).toBe('lifecycle_access_token_12345');
+    expect(retrievedToken.refreshToken).toBe('lifecycle_refresh_token_67890');
+
+    // ========== ASSERT: Calling again returns cached token (no new OAuth call) ==========
+    vi.mocked(mockOAuthService.acquireBCToken).mockClear();
+    const cachedToken = await tokenManager.getBCToken(testUserId, 'force-refresh-token');
+    expect(cachedToken.accessToken).toBe('lifecycle_access_token_12345');
+    expect(mockOAuthService.acquireBCToken).not.toHaveBeenCalled();
+  });
+
   it('should deduplicate concurrent refreshes with REAL database', async () => {
     // Arrange: Mock OAuth response
     let callCount = 0;
@@ -112,5 +157,94 @@ describe('BCTokenManager Integration - Race Condition', () => {
     const storedToken = await newTokenManager.getBCToken(testUserId, 'force-refresh-token');
     expect(storedToken.accessToken).toBe('real-db-token-1');
     expect(mockOAuthService.acquireBCToken).not.toHaveBeenCalled();
+  });
+
+  it('should handle encryption/decryption errors gracefully', async () => {
+    // ========== ARRANGE ==========
+    // First, store a valid token
+    vi.mocked(mockOAuthService.acquireBCToken).mockResolvedValue({
+      accessToken: 'valid_token',
+      refreshToken: 'valid_refresh',
+      expiresAt: new Date(Date.now() + 3600000),
+    });
+
+    await tokenManager.getBCToken(testUserId, 'force-refresh-token');
+
+    // ========== ACT: Corrupt the encrypted token in database ==========
+    await executeQuery(
+      'UPDATE users SET bc_access_token_encrypted = @corruptToken WHERE id = @id',
+      { corruptToken: 'INVALID_HEX_STRING_NOT_ENCRYPTED', id: testUserId }
+    );
+
+    // ========== ASSERT: Should handle decryption error gracefully ==========
+    // Create new token manager to clear any caches
+    const newTokenManager = new BCTokenManager(testEncryptionKey, mockOAuthService);
+
+    // The manager should throw an error when encountering corrupted data
+    await expect(newTokenManager.getBCToken(testUserId, 'force-refresh-token')).rejects.toThrow(
+      /Failed to retrieve Business Central token/
+    );
+
+    // ========== ASSERT: System recovers after fixing token ==========
+    // Delete corrupted user and create fresh one
+    await executeQuery('DELETE FROM users WHERE id = @id', { id: testUserId });
+    await executeQuery(
+      `INSERT INTO users (id, email, full_name, created_at, updated_at)
+       VALUES (@id, 'test-recovery@example.com', 'Test Recovery User', GETDATE(), GETDATE())`,
+      { id: testUserId }
+    );
+
+    // Mock new token response
+    vi.mocked(mockOAuthService.acquireBCToken).mockResolvedValue({
+      accessToken: 'recovered_token',
+      refreshToken: 'recovered_refresh',
+      expiresAt: new Date(Date.now() + 3600000),
+    });
+
+    // This should work now with fresh user
+    const recoveredToken = await newTokenManager.getBCToken(testUserId, 'force-refresh-token');
+    expect(recoveredToken.accessToken).toBe('recovered_token');
+  });
+
+  it('should handle token expiration and automatic refresh', async () => {
+    // ========== ARRANGE: Store an expired token ==========
+    // First store a token with very short expiry
+    vi.mocked(mockOAuthService.acquireBCToken).mockResolvedValue({
+      accessToken: 'expired_token',
+      refreshToken: 'expired_refresh',
+      expiresAt: new Date(Date.now() - 1000), // Already expired (1 second ago)
+    });
+
+    // Store the expired token
+    await tokenManager.getBCToken(testUserId, 'force-refresh-token');
+
+    // ========== ACT: Request token (should auto-refresh) ==========
+    // Mock new token response
+    vi.mocked(mockOAuthService.acquireBCToken).mockResolvedValue({
+      accessToken: 'fresh_token_after_expiry',
+      refreshToken: 'fresh_refresh',
+      expiresAt: new Date(Date.now() + 3600000), // 1 hour from now
+    });
+
+    // Request token - should detect expiration and refresh automatically
+    const refreshedToken = await tokenManager.getBCToken(testUserId, 'force-refresh-token');
+
+    // ========== ASSERT: New token returned ==========
+    expect(refreshedToken.accessToken).toBe('fresh_token_after_expiry');
+
+    // ========== ASSERT: New token persisted in database ==========
+    const dbResult = await executeQuery<{
+      bc_access_token_encrypted: string;
+    }>(
+      'SELECT bc_access_token_encrypted FROM users WHERE id = @id',
+      { id: testUserId }
+    );
+
+    expect(dbResult.recordset[0]?.bc_access_token_encrypted).toBeTruthy();
+
+    // Verify we can decrypt the new token
+    const newTokenManager = new BCTokenManager(testEncryptionKey, mockOAuthService);
+    const decryptedToken = await newTokenManager.getBCToken(testUserId, 'force-refresh-token');
+    expect(decryptedToken.accessToken).toBe('fresh_token_after_expiry');
   });
 });

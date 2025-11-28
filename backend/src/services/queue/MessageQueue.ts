@@ -747,20 +747,20 @@ export class MessageQueue {
   ): Promise<void> {
     const { sessionId, toolUseId, toolName } = job.data;
 
-    this.log.info('Processing tool execution', {
+    this.log.error('Tool execution queue not implemented', {
       jobId: job.id,
       toolName,
       toolUseId,
       sessionId,
     });
 
-    // TODO: Implement actual tool execution logic
-    // This would call DirectAgentService.executeMCPTool() or similar
-
-    this.log.debug('Tool execution completed', {
-      jobId: job.id,
-      toolName,
-    });
+    // Feature not implemented - tool execution happens synchronously in DirectAgentService
+    // This queue worker exists for future async tool execution support
+    throw new Error(
+      'Tool execution queue is not implemented. ' +
+      'Tools are executed synchronously in DirectAgentService.executeMCPTool(). ' +
+      'This worker should not be called in production.'
+    );
   }
 
   /**

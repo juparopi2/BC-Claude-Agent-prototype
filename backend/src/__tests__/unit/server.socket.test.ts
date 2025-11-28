@@ -139,8 +139,8 @@ describe('Socket.IO Server', () => {
 
         // Execute agent
         const agentService = mockDirectAgentService as DirectAgentService;
-        if (agentService.executeQuery) {
-          await agentService.executeQuery(data.message, data.sessionId, async (event) => {
+        if (agentService.executeQueryStreaming) {
+          await agentService.executeQueryStreaming(data.message, data.sessionId, async (event) => {
             io.to(data.sessionId).emit('agent:event', event);
 
             // Emit specific event types

@@ -615,18 +615,45 @@ socket.on('client:lastSeen', (lastSequence: number) => {
 
 ### 7.3 Tests E2E Creados (10 archivos)
 
-| Archivo | Tests | Cobertura Funcional |
-|---------|-------|---------------------|
-| 01-authentication.e2e.test.ts | 12 | OAuth flow, session validation |
-| 02-session-management.e2e.test.ts | 18 | CRUD, ownership, multi-tenant |
-| 03-message-flow-basic.e2e.test.ts | 22 | Send, confirm, sequence, persist |
-| 04-streaming-flow.e2e.test.ts | 20 | Chunks, deltas, completion |
-| 05-extended-thinking.e2e.test.ts | 15 | Thinking events, content |
-| 06-tool-execution.e2e.test.ts | 25 | tool_use, tool_result, correlation |
-| 07-approval-flow.e2e.test.ts | 18 | approve/reject, timeout, broadcast |
-| 09-session-recovery.e2e.test.ts | 16 | Refresh, reconnect, state preservation |
-| 10-multi-tenant-isolation.e2e.test.ts | 20 | User isolation, IDOR prevention |
-| 11-error-handling.e2e.test.ts | 25 | 400/401/403/404/429/500, WebSocket |
+| Archivo | Tests | Cobertura Funcional | Estado |
+|---------|-------|---------------------|--------|
+| 01-authentication.e2e.test.ts | 20 | OAuth flow, session validation | 16/20 ✓ |
+| 02-session-management.e2e.test.ts | 21 | CRUD, ownership, multi-tenant | Pendiente |
+| 03-message-flow-basic.e2e.test.ts | 17 | Send, confirm, sequence, persist | **12/17 ✓** |
+| 04-streaming-flow.e2e.test.ts | 21 | Chunks, deltas, completion | Pendiente |
+| 05-extended-thinking.e2e.test.ts | 16 | Thinking events, content | Pendiente |
+| 06-tool-execution.e2e.test.ts | 22 | tool_use, tool_result, correlation | Pendiente |
+| 07-approval-flow.e2e.test.ts | 16 | approve/reject, timeout, broadcast | Pendiente |
+| 09-session-recovery.e2e.test.ts | 14 | Refresh, reconnect, state preservation | Pendiente |
+| 10-multi-tenant-isolation.e2e.test.ts | 40 | User isolation, IDOR prevention | Pendiente |
+| 11-error-handling.e2e.test.ts | 35 | 400/401/403/404/429/500, WebSocket | Pendiente |
+
+### 7.4 Historial de Correcciones E2E
+
+| Fecha | Issue | Fix Aplicado | Resultado |
+|-------|-------|--------------|-----------|
+| 2025-11-28 | FK constraint race condition (`fk_messages_session`) | `drainMessageQueue()` en `setup.e2e.ts` | 12/17 tests passing en message-flow-basic |
+
+#### Detalle: Race Condition en MessageQueue (2025-11-28)
+
+**Problema Identificado**: Los tests E2E fallaban con violaciones de FK constraint porque:
+1. `afterAll` del test ejecutaba `factory.cleanup()` eliminando sesiones
+2. Workers de BullMQ seguían procesando jobs asincrónicamente
+3. Workers intentaban INSERT en `messages` con `session_id` eliminado
+
+**Solución Implementada**:
+- Nueva función `drainMessageQueue()` exportada desde `setup.e2e.ts`
+- Espera hasta 10 segundos para que todos los jobs de `MESSAGE_PERSISTENCE` completen
+- Se invoca ANTES de `factory.cleanup()` en cada test suite
+
+**Archivos Modificados**:
+- `backend/src/__tests__/e2e/setup.e2e.ts` (líneas 256-302)
+- `backend/src/__tests__/e2e/flows/03-message-flow-basic.e2e.test.ts`
+
+**Issues Pendientes** (no relacionados con FK):
+- Database connection timeout en tests largos
+- Timing de persistencia asíncrona
+- Broadcasting de eventos WebSocket entre clientes
 
 ---
 

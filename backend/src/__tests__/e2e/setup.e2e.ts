@@ -16,6 +16,12 @@
 // This prevents dotenv from overwriting with .env values
 process.env.SESSION_SECRET = 'test-secret-for-integration-test';
 process.env.NODE_ENV = 'test';
+process.env.LOG_LEVEL = 'warn'; // Reduce log verbosity during tests
+// Set Redis config for E2E tests (must be before imports)
+process.env.REDIS_HOST = 'localhost';
+process.env.REDIS_PORT = '6399';
+process.env.REDIS_PASSWORD = '';
+delete process.env.REDIS_CONNECTION_STRING;
 
 import { beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import type { Server } from 'http';
@@ -236,6 +242,63 @@ export function setupE2ETestLightweight() {
     getWsUrl: () => E2E_CONFIG.wsUrl,
     getServerPort: () => E2E_CONFIG.serverPort,
   };
+}
+
+/**
+ * Drain MessageQueue before test cleanup
+ *
+ * CRITICAL: Call this in test file's afterAll BEFORE factory.cleanup()
+ * to prevent FK violations from async job processing.
+ *
+ * This function waits for all active and waiting jobs to complete before
+ * test cleanup deletes sessions from the database.
+ */
+export async function drainMessageQueue(): Promise<void> {
+  try {
+    const { getMessageQueue, QueueName } = await import('@/services/queue/MessageQueue');
+    const messageQueue = getMessageQueue();
+
+    // Wait for queue to be ready first
+    await messageQueue.waitForReady();
+
+    // Get stats to check if there are pending jobs
+    const stats = await messageQueue.getQueueStats(QueueName.MESSAGE_PERSISTENCE);
+
+    if (stats.active > 0 || stats.waiting > 0) {
+      console.log(`[E2E] Waiting for ${stats.active} active + ${stats.waiting} waiting jobs to complete...`);
+
+      // Wait up to 10 seconds for jobs to complete
+      const maxWait = 10000;
+      const checkInterval = 500;
+      let elapsed = 0;
+
+      while (elapsed < maxWait) {
+        const currentStats = await messageQueue.getQueueStats(QueueName.MESSAGE_PERSISTENCE);
+        if (currentStats.active === 0 && currentStats.waiting === 0) {
+          console.log('[E2E] All MessageQueue jobs completed');
+          break;
+        }
+        await new Promise(resolve => setTimeout(resolve, checkInterval));
+        elapsed += checkInterval;
+      }
+
+      // Final check
+      const finalStats = await messageQueue.getQueueStats(QueueName.MESSAGE_PERSISTENCE);
+      if (finalStats.active > 0 || finalStats.waiting > 0) {
+        console.warn(
+          `[E2E] MessageQueue still has pending jobs after ${maxWait}ms: ` +
+          `${finalStats.active} active, ${finalStats.waiting} waiting`
+        );
+      }
+    } else {
+      console.log('[E2E] MessageQueue has no pending jobs');
+    }
+
+    console.log('[E2E] MessageQueue drained');
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.warn('[E2E] Failed to drain MessageQueue:', errorMessage);
+  }
 }
 
 /**

@@ -108,6 +108,7 @@ export class E2ETestClient {
       body?: unknown;
       headers?: Record<string, string>;
       query?: Record<string, string>;
+      redirect?: RequestRedirect;
     }
   ): Promise<E2EHttpResponse<T>> {
     let url = `${this.baseUrl}${path}`;
@@ -135,6 +136,7 @@ export class E2ETestClient {
       headers,
       body: options?.body ? JSON.stringify(options.body) : undefined,
       credentials: 'include',
+      redirect: options?.redirect,
     });
 
     // Parse response body
@@ -347,15 +349,15 @@ export class E2ETestClient {
   /**
    * Join a session room
    */
-  async joinSession(sessionId: string): Promise<void> {
+  async joinSession(sessionId: string, timeoutMs?: number): Promise<void> {
     if (!this.socket) {
       throw new Error('Not connected to WebSocket');
     }
 
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
-        reject(new Error(`Join session timeout after ${this.defaultTimeout}ms`));
-      }, this.defaultTimeout);
+        reject(new Error(`Join session timeout after ${timeoutMs || this.defaultTimeout}ms`));
+      }, timeoutMs || this.defaultTimeout);
 
       const onJoined = (data: { sessionId: string }) => {
         if (data.sessionId === sessionId) {

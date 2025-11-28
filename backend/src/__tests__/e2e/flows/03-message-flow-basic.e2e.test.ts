@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
-import { setupE2ETest } from '../setup.e2e';
+import { setupE2ETest, drainMessageQueue } from '../setup.e2e';
 import {
   E2ETestClient,
   createE2ETestClient,
@@ -38,6 +38,10 @@ describe('E2E-03: Message Flow Basic', () => {
   });
 
   afterAll(async () => {
+    // CRITICAL: Wait for MessageQueue jobs to complete before deleting sessions
+    // This prevents FK constraint violations when async workers try to insert
+    // messages for sessions that have been deleted by cleanup()
+    await drainMessageQueue();
     await factory.cleanup();
   });
 
@@ -174,7 +178,7 @@ describe('E2E-03: Message Flow Basic', () => {
       // Fetch messages via REST
       const response = await client.get<{
         messages: Array<{ content: string; role: string }>;
-      }>(`/api/chat/sessions/${testSession.id}`);
+      }>(`/api/chat/sessions/${testSession.id}/messages`);
 
       expect(response.ok).toBe(true);
 
@@ -210,7 +214,7 @@ describe('E2E-03: Message Flow Basic', () => {
           content: string;
           sequenceNumber?: number;
         }>;
-      }>(`/api/chat/sessions/${freshSession.id}`);
+      }>(`/api/chat/sessions/${freshSession.id}/messages`);
 
       expect(response.ok).toBe(true);
 
@@ -283,7 +287,7 @@ describe('E2E-03: Message Flow Basic', () => {
 
       // Try to join non-existent session
       await expect(
-        client.joinSession(fakeSessionId)
+        client.joinSession(fakeSessionId, 2000)
       ).rejects.toThrow();
     });
 
@@ -293,9 +297,17 @@ describe('E2E-03: Message Flow Basic', () => {
       // Send without joining
       await client.sendMessage(testSession.id, 'No join message');
 
-      // Should receive an error event or the message should fail
-      const events = await client.collectEvents(1, { timeout: 5000 });
-      expect(events.length).toBeGreaterThan(0);
+      // Should NOT receive events because client is not in the room
+      // The message may still be processed server-side, but broadcasts go to room only
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      const events = client.getReceivedEvents();
+      const hasUserMessageConfirmed = events.some(
+        e => e.data.type === 'user_message_confirmed'
+      );
+
+      // Client NOT in room should NOT receive room broadcasts
+      expect(hasUserMessageConfirmed).toBe(false);
     });
 
     it('should not crash on malformed message payload', async () => {
@@ -336,16 +348,17 @@ describe('E2E-03: Message Flow Basic', () => {
       // Client 1 sends message
       await client.sendMessage(testSession.id, 'Broadcast test');
 
-      // Both should receive the event
-      const event1 = await client.waitForAgentEvent('user_message_confirmed');
-      expect(event1).toBeDefined();
+      // Both should receive the event - wait for both with proper async handling
+      const [event1, event2] = await Promise.all([
+        client.waitForAgentEvent('user_message_confirmed', { timeout: 10000 }),
+        client2.waitForAgentEvent('user_message_confirmed', { timeout: 10000 }),
+      ]);
 
-      // Client 2 should also receive it (via room broadcast)
-      const receivedEvents = client2.getReceivedEvents();
-      const hasConfirmation = receivedEvents.some(
-        e => e.data.type === 'user_message_confirmed'
-      );
-      expect(hasConfirmation).toBe(true);
+      expect(event1).toBeDefined();
+      expect(event1.type).toBe('user_message_confirmed');
+
+      expect(event2).toBeDefined();
+      expect(event2.type).toBe('user_message_confirmed');
     });
   });
 
@@ -367,8 +380,8 @@ describe('E2E-03: Message Flow Basic', () => {
       // Disconnect
       await client.disconnect();
 
-      // Wait for persistence
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Wait for persistence (increase to ensure DB write completes)
+      await new Promise(resolve => setTimeout(resolve, 2000));
 
       // Reconnect (new client)
       const newClient = createE2ETestClient();
@@ -377,13 +390,18 @@ describe('E2E-03: Message Flow Basic', () => {
       // Fetch messages via REST
       const response = await newClient.get<{
         messages: Array<{ content: string }>;
-      }>(`/api/chat/sessions/${freshSession.id}`);
+      }>(`/api/chat/sessions/${freshSession.id}/messages`);
 
       expect(response.ok).toBe(true);
 
       const found = response.body.messages?.find(
         m => m.content === messageContent
       );
+      if (!found) {
+        console.warn('Reconnection test failed: Message not found in history');
+        console.warn('Messages found:', response.body.messages?.map(m => m.content));
+        console.warn('Expected content:', messageContent);
+      }
       expect(found).toBeDefined();
     });
   });

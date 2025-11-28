@@ -98,7 +98,8 @@
       "Bash(then echo \"❌ FAILED at run $i\")",
       "Bash(exit 1)",
       "Bash(npm run test:e2e:*)",
-      "Bash(NODE_OPTIONS='--max-old-space-size=4096' npm run test:e2e:*)"
+      "Bash(NODE_OPTIONS='--max-old-space-size=4096' npm run test:e2e:*)",
+      "Bash(cd:*)"
     ],
     "deny": [],
     "ask": []

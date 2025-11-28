@@ -85,7 +85,7 @@ describe('E2E-01: Authentication', () => {
     });
 
     it('should return 401 for token usage endpoint without auth', async () => {
-      const response = await client.get('/api/token-usage/summary');
+      const response = await client.get('/api/token-usage/me');
 
       expect(response.status).toBe(401);
     });
@@ -93,17 +93,13 @@ describe('E2E-01: Authentication', () => {
 
   describe('OAuth Flow', () => {
     it('should redirect to Microsoft login', async () => {
-      // Note: In E2E tests, we can't follow the full OAuth redirect
-      // because it requires actual Microsoft login.
-      // Instead, we verify the redirect is initiated correctly.
       const response = await client.request('GET', '/api/auth/login', {
         headers: {
-          // Don't follow redirects
           'Accept': 'text/html',
         },
+        redirect: 'manual',
       });
 
-      // Should be a redirect to Microsoft
       expect([302, 303, 307]).toContain(response.status);
     });
 
@@ -135,7 +131,6 @@ describe('E2E-01: Authentication', () => {
     });
 
     it('should return user sessions', async () => {
-      // Create a test session first
       const session = await factory.createChatSession(testUser.id);
 
       const response = await client.get<{
@@ -145,8 +140,9 @@ describe('E2E-01: Authentication', () => {
       expect(response.ok).toBe(true);
       expect(Array.isArray(response.body.sessions)).toBe(true);
 
-      // Find our test session
-      const foundSession = response.body.sessions.find(s => s.id === session.id);
+      const foundSession = response.body.sessions.find(
+        s => s.id.toLowerCase() === session.id.toLowerCase()
+      );
       expect(foundSession).toBeDefined();
     });
 

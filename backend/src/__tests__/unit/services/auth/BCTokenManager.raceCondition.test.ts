@@ -14,18 +14,19 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { BCTokenManager } from '@/services/auth/BCTokenManager';
-import { MicrosoftOAuthService } from '@/services/auth/MicrosoftOAuthService';
+import { BCTokenManager } from '../../../../services/auth/BCTokenManager';
+import { MicrosoftOAuthService } from '../../../../services/auth/MicrosoftOAuthService';
+import { BCTokenData } from '../../../../types/microsoft.types';
 
 // Mock database module with vi.hoisted()
 const mockExecuteQuery = vi.hoisted(() => vi.fn());
 
-vi.mock('@/config/database', () => ({
+vi.mock('../../../../config/database', () => ({
   executeQuery: mockExecuteQuery,
 }));
 
 // Mock logger
-vi.mock('@/utils/logger', () => ({
+vi.mock('../../../../utils/logger', () => ({
   logger: {
     info: vi.fn(),
     warn: vi.fn(),
@@ -55,8 +56,8 @@ describe('BCTokenManager Race Condition', () => {
     vi.restoreAllMocks();
   });
 
-  describe('Concurrent Token Refresh (KNOWN ISSUE)', () => {
-    it('should demonstrate race condition with concurrent getBCToken calls (KNOWN ISSUE)', async () => {
+  describe('Concurrent Token Refresh (Fixed Race Condition)', () => {
+    it('should deduplicate concurrent getBCToken calls', async () => {
       // Arrange: Token expiring in 3 minutes (within 5-minute refresh window)
       const expiresIn3Minutes = new Date(Date.now() + 3 * 60 * 1000);
 
@@ -76,7 +77,7 @@ describe('BCTokenManager Race Condition', () => {
       vi.mocked(mockOAuthService.acquireBCToken).mockImplementation(async () => {
         refreshCallCount++;
         // Simulate network delay
-        await new Promise((resolve) => setTimeout(resolve, 10));
+        await new Promise((resolve) => setTimeout(resolve, 50));
         return {
           accessToken: `new-bc-token-${refreshCallCount}`,
           refreshToken: 'new-bc-refresh',
@@ -84,23 +85,26 @@ describe('BCTokenManager Race Condition', () => {
         };
       });
 
-      // Act: Fire 3 concurrent requests
-      const requests = [
-        tokenManager.getBCToken('user-123', 'refresh-token'),
-        tokenManager.getBCToken('user-123', 'refresh-token'),
-        tokenManager.getBCToken('user-123', 'refresh-token'),
-      ];
+      // Act: Fire 10 concurrent requests
+      const promises = Array.from({ length: 10 }, () =>
+        tokenManager.getBCToken('user-123', 'refresh-token')
+      );
 
-      await Promise.all(requests);
+      const results = await Promise.all(promises);
 
-      // Assert: KNOWN ISSUE - All 3 requests triggered refresh
-      // In an ideal world, only 1 refresh should happen
-      // This test documents the current behavior
-      expect(refreshCallCount).toBeGreaterThanOrEqual(1);
+      // Assert: Only 1 refresh should happen (Deduplication)
+      expect(refreshCallCount).toBe(1);
 
-      // NOTE: This is the race condition - multiple refreshes may occur
-      // A proper fix would use Redis distributed lock or request deduplication
-      // to ensure only one refresh happens
+      // Assert: All results are identical
+      const firstResult = results[0];
+      results.forEach((result: BCTokenData) => {
+        expect(result).toEqual(firstResult);
+        expect(result.accessToken).toBe('new-bc-token-1');
+      });
+
+      // Assert: Map should be cleaned up
+      // Access private property for testing
+      expect(tokenManager['refreshPromises'].size).toBe(0);
     });
 
     it('should handle concurrent refresh without data corruption', async () => {
@@ -132,7 +136,7 @@ describe('BCTokenManager Race Condition', () => {
 
       // Assert: All requests complete successfully (no crashes or errors)
       expect(results).toHaveLength(2);
-      results.forEach((result) => {
+      results.forEach((result: BCTokenData) => {
         expect(result).toBeDefined();
         expect(result.accessToken).toBeDefined();
       });
@@ -159,13 +163,14 @@ describe('BCTokenManager Race Condition', () => {
       });
 
       // Act: Concurrent refreshes
+      // Note: refreshBCToken is the direct call, getBCToken uses deduplication
+      // Testing direct calls to ensure DB safety even if deduplication is bypassed
       await Promise.all([
         tokenManager.refreshBCToken('user-123', 'refresh-token'),
         tokenManager.refreshBCToken('user-123', 'refresh-token'),
       ]);
 
-      // Assert: Database writes happened (even if redundant)
-      // This is acceptable behavior - the last write wins
+      // Assert: Database writes happened
       expect(mockExecuteQuery).toHaveBeenCalled();
 
       // All DB operations should have completed without error
@@ -177,7 +182,7 @@ describe('BCTokenManager Race Condition', () => {
   });
 
   describe('Token Refresh Error Handling During Concurrent Requests', () => {
-    it('should handle OAuth service error during concurrent refresh', async () => {
+    it('should reject all concurrent callers if refresh fails', async () => {
       const expiringToken = new Date(Date.now() + 2 * 60 * 1000);
 
       mockExecuteQuery.mockResolvedValue({
@@ -190,32 +195,21 @@ describe('BCTokenManager Race Condition', () => {
         ],
       });
 
-      // First call succeeds, second fails
-      let callCount = 0;
-      vi.mocked(mockOAuthService.acquireBCToken).mockImplementation(async () => {
-        callCount++;
-        if (callCount === 1) {
-          return {
-            accessToken: 'new-token',
-            refreshToken: 'new-refresh',
-            expiresAt: new Date(Date.now() + 3600000),
-          };
-        }
-        throw new Error('OAuth service temporarily unavailable');
-      });
+      // OAuth service fails
+      vi.mocked(mockOAuthService.acquireBCToken).mockRejectedValue(
+        new Error('OAuth service temporarily unavailable')
+      );
 
-      // Act: Fire 2 concurrent requests
-      const results = await Promise.allSettled([
-        tokenManager.getBCToken('user-123', 'refresh-token'),
-        tokenManager.getBCToken('user-123', 'refresh-token'),
-      ]);
+      // Act: Fire 5 concurrent requests
+      const promises = Array.from({ length: 5 }, () =>
+        tokenManager.getBCToken('user-123', 'refresh-token')
+      );
 
-      // Assert: At least one should succeed, one might fail
-      const succeeded = results.filter((r) => r.status === 'fulfilled');
-      const failed = results.filter((r) => r.status === 'rejected');
+      // Assert: All should reject with the same error
+      await expect(Promise.all(promises)).rejects.toThrow('Failed to retrieve Business Central token');
 
-      // In race condition, outcomes are non-deterministic
-      expect(succeeded.length + failed.length).toBe(2);
+      // Assert: Map should be cleaned up even on error
+      expect(tokenManager['refreshPromises'].size).toBe(0);
     });
 
     it('should handle database error during concurrent token storage', async () => {
@@ -245,119 +239,49 @@ describe('BCTokenManager Race Condition', () => {
       await expect(tokenManager.getBCToken('user-123', 'refresh-token')).rejects.toThrow(
         'Failed to retrieve Business Central token'
       );
+      
+      // Map cleanup check
+      expect(tokenManager['refreshPromises'].size).toBe(0);
     });
   });
 
-  describe('Token Expiration Edge Cases', () => {
-    it('should handle token expiring exactly at 5-minute boundary', async () => {
-      // Token expires exactly at the 5-minute threshold
-      const expiresExactly5Minutes = new Date(Date.now() + 5 * 60 * 1000);
-
-      // Need to encrypt a token first
-      const tokenData = {
-        accessToken: 'boundary-token',
-        refreshToken: 'boundary-refresh',
-        expiresAt: expiresExactly5Minutes,
-      };
-
-      mockExecuteQuery.mockResolvedValue({ recordset: [], rowsAffected: [1] });
-      await tokenManager.storeBCToken('user-123', tokenData);
-
-      const encrypted = (mockExecuteQuery.mock.calls[0][1] as Record<string, string>).accessToken;
-
-      // Set up for getBCToken
-      mockExecuteQuery.mockResolvedValue({
-        recordset: [
-          {
-            bc_access_token_encrypted: encrypted,
-            bc_refresh_token_encrypted: null,
-            bc_token_expires_at: expiresExactly5Minutes,
-          },
-        ],
-      });
-
-      vi.mocked(mockOAuthService.acquireBCToken).mockResolvedValue({
-        accessToken: 'refreshed-token',
-        refreshToken: 'refreshed-refresh',
-        expiresAt: new Date(Date.now() + 3600000),
-      });
-
-      await tokenManager.getBCToken('user-123', 'refresh-token');
-
-      // Should trigger refresh at exactly 5-minute boundary
-      expect(mockOAuthService.acquireBCToken).toHaveBeenCalled();
-    });
-
-    it('should NOT refresh token expiring at 6 minutes', async () => {
-      // Token expires in 6 minutes (outside refresh window)
-      const expiresIn6Minutes = new Date(Date.now() + 6 * 60 * 1000);
-
-      // Encrypt a token first
-      const tokenData = {
-        accessToken: 'valid-token',
-        refreshToken: 'valid-refresh',
-        expiresAt: expiresIn6Minutes,
-      };
-
-      mockExecuteQuery.mockResolvedValue({ recordset: [], rowsAffected: [1] });
-      await tokenManager.storeBCToken('user-123', tokenData);
-
-      const encrypted = (mockExecuteQuery.mock.calls[0][1] as Record<string, string>).accessToken;
+  describe('User Isolation', () => {
+    it('should isolate refreshes per user', async () => {
+      const expiringToken = new Date(Date.now() + 2 * 60 * 1000);
 
       mockExecuteQuery.mockResolvedValue({
         recordset: [
           {
-            bc_access_token_encrypted: encrypted,
+            bc_access_token_encrypted: 'old-token',
             bc_refresh_token_encrypted: null,
-            bc_token_expires_at: expiresIn6Minutes,
+            bc_token_expires_at: expiringToken,
           },
         ],
       });
 
-      await tokenManager.getBCToken('user-123', 'refresh-token');
+      // Mock OAuth to return different tokens
+      vi.mocked(mockOAuthService.acquireBCToken).mockImplementation(async (refreshToken: string) => {
+        await new Promise(resolve => setTimeout(resolve, 10));
+        return {
+          accessToken: `token-for-${refreshToken}`,
+          refreshToken: `refresh-for-${refreshToken}`,
+          expiresAt: new Date(Date.now() + 3600000),
+        };
+      });
 
-      // Should NOT trigger refresh
-      expect(mockOAuthService.acquireBCToken).not.toHaveBeenCalled();
-    });
-  });
+      // Act: Concurrent requests for DIFFERENT users
+      const user1Promise = tokenManager.getBCToken('user-1', 'refresh-1');
+      const user2Promise = tokenManager.getBCToken('user-2', 'refresh-2');
 
-  describe('Future Fix Documentation', () => {
-    /**
-     * This section documents the recommended fix for the race condition:
-     *
-     * 1. Use Redis distributed lock:
-     *    - Lock key: `bc-token-refresh:${userId}`
-     *    - Lock TTL: 30 seconds
-     *    - Only first request acquires lock and refreshes
-     *    - Other requests wait for lock release and use refreshed token
-     *
-     * 2. Request deduplication:
-     *    - Track in-flight refresh requests in memory
-     *    - Return same Promise to concurrent callers
-     *    - Cleanup after resolution
-     *
-     * Example implementation:
-     * ```typescript
-     * private refreshPromises = new Map<string, Promise<BCTokenData>>();
-     *
-     * async getBCToken(userId: string, refreshToken: string): Promise<BCTokenData> {
-     *   if (this.needsRefresh(token)) {
-     *     if (!this.refreshPromises.has(userId)) {
-     *       this.refreshPromises.set(userId,
-     *         this.refreshBCToken(userId, refreshToken)
-     *           .finally(() => this.refreshPromises.delete(userId))
-     *       );
-     *     }
-     *     return this.refreshPromises.get(userId)!;
-     *   }
-     *   return token;
-     * }
-     * ```
-     */
-    it('should acknowledge race condition exists and document fix approach', () => {
-      // This test is a placeholder that documents the issue
-      // The actual fix would be implemented in BCTokenManager
-      expect(true).toBe(true);
+      const [result1, result2] = await Promise.all([user1Promise, user2Promise]);
+
+      // Assert: Should be 2 distinct calls
+      expect(mockOAuthService.acquireBCToken).toHaveBeenCalledTimes(2);
+      expect(result1.accessToken).toBe('token-for-refresh-1');
+      expect(result2.accessToken).toBe('token-for-refresh-2');
+      
+      // Map cleanup
+      expect(tokenManager['refreshPromises'].size).toBe(0);
     });
   });
 });

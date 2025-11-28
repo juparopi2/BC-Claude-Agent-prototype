@@ -61,6 +61,7 @@ describe('MessageQueue Integration Tests', () => {
 
   let redis: IORedis;
   let messageQueue: MessageQueue;
+  let injectedRedis: IORedis | undefined;  // Track injected Redis for proper cleanup
   let factory: TestSessionFactory;
   let testUser: TestUser;
   let testSession: TestChatSession;
@@ -119,39 +120,63 @@ describe('MessageQueue Integration Tests', () => {
   });
 
   afterEach(async () => {
-    // Close MessageQueue instance (cleans up workers/connections)
+    // Close MessageQueue instance and injected Redis connection
     try {
+      // 1. Close MessageQueue first (doesn't close injected Redis)
       if (messageQueue) {
         await messageQueue.close();
-        // Extended delay for IORedis async cleanup to complete
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        messageQueue = undefined as any;
       }
+
+      // 2. Wait for BullMQ internal connections to fully close
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      // 3. Close injected Redis explicitly
+      if (injectedRedis) {
+        await injectedRedis.quit();
+        injectedRedis = undefined;
+      }
+
+      // 4. Final delay for full cleanup
+      await new Promise(resolve => setTimeout(resolve, 300));
     } catch { /* ignore */ }
   });
 
   /**
    * Helper to create MessageQueue with REAL dependencies via DI
+   * Returns both the queue and injected Redis for proper cleanup
    */
-  function createMessageQueueWithDI(): MessageQueue {
-    return getMessageQueue({
-      redis: new IORedis({ ...REDIS_TEST_CONFIG, maxRetriesPerRequest: null }),
+  function createMessageQueueWithDI(): { queue: MessageQueue; injectedRedis: IORedis } {
+    const injectedRedis = new IORedis({
+      ...REDIS_TEST_CONFIG,
+      maxRetriesPerRequest: null
+    });
+
+    const queue = getMessageQueue({
+      redis: injectedRedis,
       executeQuery,           // Real database
       eventStore: getEventStore(),  // Real EventStore
       logger,                 // Real logger (mocked at module level)
     });
+
+    return { queue, injectedRedis };
   }
 
   // ========== INITIALIZATION TESTS ==========
   describe('Initialization', () => {
     it('should return singleton instance', () => {
-      messageQueue = createMessageQueueWithDI();
+      const result = createMessageQueueWithDI();
+      messageQueue = result.queue;
+      injectedRedis = result.injectedRedis;
       const instance2 = getMessageQueue();
 
       expect(messageQueue).toBe(instance2);
     });
 
     it('should be ready after waitForReady()', async () => {
-      messageQueue = createMessageQueueWithDI();
+      const result = createMessageQueueWithDI();
+      messageQueue = result.queue;
+      injectedRedis = result.injectedRedis;
 
       // Initially may not be ready
       await messageQueue.waitForReady();
@@ -160,7 +185,9 @@ describe('MessageQueue Integration Tests', () => {
     });
 
     it('should connect to test Redis', async () => {
-      messageQueue = createMessageQueueWithDI();
+      const result = createMessageQueueWithDI();
+      messageQueue = result.queue;
+      injectedRedis = result.injectedRedis;
       await messageQueue.waitForReady();
 
       // Verify we can get queue stats (requires working Redis)
@@ -175,7 +202,9 @@ describe('MessageQueue Integration Tests', () => {
   // ========== RATE LIMITING TESTS ==========
   describe('Rate Limiting', () => {
     it('should allow jobs within rate limit', async () => {
-      messageQueue = createMessageQueueWithDI();
+      const result = createMessageQueueWithDI();
+      messageQueue = result.queue;
+      injectedRedis = result.injectedRedis;
       await messageQueue.waitForReady();
 
       const job: MessagePersistenceJob = {
@@ -194,7 +223,9 @@ describe('MessageQueue Integration Tests', () => {
     });
 
     it('should track job count per session using Redis INCR', async () => {
-      messageQueue = createMessageQueueWithDI();
+      const result = createMessageQueueWithDI();
+      messageQueue = result.queue;
+      injectedRedis = result.injectedRedis;
       await messageQueue.waitForReady();
 
       const job: MessagePersistenceJob = {
@@ -213,7 +244,9 @@ describe('MessageQueue Integration Tests', () => {
     });
 
     it('should set TTL on rate limit key', async () => {
-      messageQueue = createMessageQueueWithDI();
+      const result = createMessageQueueWithDI();
+      messageQueue = result.queue;
+      injectedRedis = result.injectedRedis;
       await messageQueue.waitForReady();
 
       const job: MessagePersistenceJob = {
@@ -236,7 +269,9 @@ describe('MessageQueue Integration Tests', () => {
       // Create second session for isolation test
       const secondSession = await factory.createChatSession(testUser.id);
 
-      messageQueue = createMessageQueueWithDI();
+      const result = createMessageQueueWithDI();
+      messageQueue = result.queue;
+      injectedRedis = result.injectedRedis;
       await messageQueue.waitForReady();
 
       const job1: MessagePersistenceJob = {
@@ -267,7 +302,9 @@ describe('MessageQueue Integration Tests', () => {
     });
 
     it('should return rate limit status for session', async () => {
-      messageQueue = createMessageQueueWithDI();
+      const result = createMessageQueueWithDI();
+      messageQueue = result.queue;
+      injectedRedis = result.injectedRedis;
       await messageQueue.waitForReady();
 
       // Add some jobs
@@ -292,7 +329,9 @@ describe('MessageQueue Integration Tests', () => {
     it('should return zero count for new session', async () => {
       const newSession = await factory.createChatSession(testUser.id);
 
-      messageQueue = createMessageQueueWithDI();
+      const result = createMessageQueueWithDI();
+      messageQueue = result.queue;
+      injectedRedis = result.injectedRedis;
       await messageQueue.waitForReady();
 
       const status = await messageQueue.getRateLimitStatus(newSession.id);
@@ -306,7 +345,9 @@ describe('MessageQueue Integration Tests', () => {
   // ========== MESSAGE PERSISTENCE QUEUE TESTS ==========
   describe('Message Persistence Queue', () => {
     it('should add job to message-persistence queue', async () => {
-      messageQueue = createMessageQueueWithDI();
+      const result = createMessageQueueWithDI();
+      messageQueue = result.queue;
+      injectedRedis = result.injectedRedis;
       await messageQueue.waitForReady();
 
       const job: MessagePersistenceJob = {
@@ -325,7 +366,9 @@ describe('MessageQueue Integration Tests', () => {
     });
 
     it('should include job metadata', async () => {
-      messageQueue = createMessageQueueWithDI();
+      const result = createMessageQueueWithDI();
+      messageQueue = result.queue;
+      injectedRedis = result.injectedRedis;
       await messageQueue.waitForReady();
 
       const job: MessagePersistenceJob = {
@@ -344,7 +387,9 @@ describe('MessageQueue Integration Tests', () => {
     });
 
     it('should support different message types', async () => {
-      messageQueue = createMessageQueueWithDI();
+      const result = createMessageQueueWithDI();
+      messageQueue = result.queue;
+      injectedRedis = result.injectedRedis;
       await messageQueue.waitForReady();
 
       const textJob: MessagePersistenceJob = {
@@ -375,7 +420,9 @@ describe('MessageQueue Integration Tests', () => {
   // ========== TOOL EXECUTION QUEUE TESTS ==========
   describe('Tool Execution Queue', () => {
     it('should add job to tool-execution queue', async () => {
-      messageQueue = createMessageQueueWithDI();
+      const result = createMessageQueueWithDI();
+      messageQueue = result.queue;
+      injectedRedis = result.injectedRedis;
       await messageQueue.waitForReady();
 
       const job: ToolExecutionJob = {
@@ -393,7 +440,9 @@ describe('MessageQueue Integration Tests', () => {
     });
 
     it('should support different tool names', async () => {
-      messageQueue = createMessageQueueWithDI();
+      const result = createMessageQueueWithDI();
+      messageQueue = result.queue;
+      injectedRedis = result.injectedRedis;
       await messageQueue.waitForReady();
 
       const job1: ToolExecutionJob = {
@@ -423,7 +472,9 @@ describe('MessageQueue Integration Tests', () => {
   // ========== EVENT PROCESSING QUEUE TESTS ==========
   describe('Event Processing Queue', () => {
     it('should add job to event-processing queue', async () => {
-      messageQueue = createMessageQueueWithDI();
+      const result = createMessageQueueWithDI();
+      messageQueue = result.queue;
+      injectedRedis = result.injectedRedis;
       await messageQueue.waitForReady();
 
       const job: EventProcessingJob = {
@@ -443,7 +494,9 @@ describe('MessageQueue Integration Tests', () => {
   // ========== QUEUE MANAGEMENT TESTS ==========
   describe('Queue Management', () => {
     it('should get queue statistics', async () => {
-      messageQueue = createMessageQueueWithDI();
+      const result = createMessageQueueWithDI();
+      messageQueue = result.queue;
+      injectedRedis = result.injectedRedis;
       await messageQueue.waitForReady();
 
       const stats = await messageQueue.getQueueStats(QueueName.MESSAGE_PERSISTENCE);
@@ -458,7 +511,9 @@ describe('MessageQueue Integration Tests', () => {
     });
 
     it('should pause and resume queue', async () => {
-      messageQueue = createMessageQueueWithDI();
+      const result = createMessageQueueWithDI();
+      messageQueue = result.queue;
+      injectedRedis = result.injectedRedis;
       await messageQueue.waitForReady();
 
       // Pause should not throw
@@ -469,7 +524,9 @@ describe('MessageQueue Integration Tests', () => {
     });
 
     it('should throw error for non-existent queue', async () => {
-      messageQueue = createMessageQueueWithDI();
+      const result = createMessageQueueWithDI();
+      messageQueue = result.queue;
+      injectedRedis = result.injectedRedis;
       await messageQueue.waitForReady();
 
       await expect(

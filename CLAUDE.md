@@ -186,6 +186,32 @@ const fakeClient = new FakeAnthropicClient();
 const service = new DirectAgentService(undefined, undefined, fakeClient);
 ```
 
+### MessageQueue Graceful Shutdown
+
+The MessageQueue service requires proper shutdown to avoid connection leaks and ensure all BullMQ jobs complete:
+
+**Production Usage** (server.ts graceful shutdown):
+```typescript
+const messageQueue = getMessageQueue();
+await messageQueue.close(); // Drains active jobs, closes connections
+```
+
+**Test Usage** (with dependency injection):
+```typescript
+// Create with injected Redis
+const injectedRedis = new IORedis({ ...TEST_CONFIG });
+const queue = getMessageQueue({ redis: injectedRedis });
+
+// Cleanup
+await queue.close();           // Closes BullMQ components
+await injectedRedis.quit();    // Close injected connection explicitly
+```
+
+**Key Principles**:
+- `worker.close()` drains active jobs automatically (follows BullMQ best practices)
+- Only closes Redis connections it creates (`ownsRedisConnection` flag)
+- Tests must close injected Redis connections explicitly
+
 ## Testing Strategy
 
 ### Test Structure

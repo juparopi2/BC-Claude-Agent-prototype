@@ -9,6 +9,12 @@
  * - tool-execution: Execute tool calls asynchronously (concurrency: 5)
  * - event-processing: Process events from EventStore (concurrency: 10)
  *
+ * Graceful Shutdown:
+ * - Follows BullMQ official pattern (docs.bullmq.io/guide/workers/graceful-shutdown)
+ * - Workers close first (drain active jobs), then queues, then Redis
+ * - Production: Called from server.ts gracefulShutdown()
+ * - Tests: Must close injected Redis connections explicitly
+ *
  * Rate Limiting:
  * - Max 100 jobs per session in message-persistence queue
  * - Prevents single tenant from saturating the queue
@@ -875,86 +881,108 @@ export class MessageQueue {
   }
 
   /**
-   * Close all queues and workers
+   * Close all queues and workers with proper BullMQ shutdown pattern
    *
-   * Graceful shutdown with sequential close pattern to avoid IORedis race conditions.
-   * Closes components in phases to ensure each connection completes before the next begins.
+   * BullMQ Best Practice Pattern:
+   * 1. Close workers FIRST (stops accepting jobs, drains active jobs)
+   * 2. Close queue events
+   * 3. Close queues
+   * 4. Close main Redis connection (only if owned)
    *
-   * @see US-004 Phase 2: Sequential Close Pattern eliminates "Connection is closed" errors
+   * Key Principles:
+   * - worker.close() marks worker as closing AND waits for active jobs to complete
+   * - No artificial timeouts needed - worker.close() handles the wait
+   * - Close workers sequentially to avoid connection race conditions
+   * - Only close connections we created (check ownsRedisConnection flag)
+   *
+   * @see https://docs.bullmq.io/guide/workers/graceful-shutdown
    */
   public async close(): Promise<void> {
-    this.log.info('Initiating MessageQueue shutdown with sequential close...');
+    this.log.info('Initiating MessageQueue graceful shutdown...');
+    const errors: Error[] = [];
 
-    // ===== PHASE 1: CLOSE WORKERS SEQUENTIALLY (One at a time) =====
-    this.log.debug('Phase 1: Closing workers sequentially');
+    // ===== PHASE 1: CLOSE WORKERS (Most Important - Do This First) =====
+    this.log.debug('Phase 1: Closing workers...');
     for (const [name, worker] of this.workers.entries()) {
       try {
-        this.log.debug('Closing worker...', { worker: name });
-        await worker.close(); // ✅ SEQUENTIAL - wait for each to finish
-        this.log.debug('Worker closed', { worker: name });
-        // Delay between each worker to allow connection cleanup
-        await new Promise(resolve => setTimeout(resolve, 200));
+        this.log.debug(`Closing worker: ${name}`);
+        // BullMQ Best Practice: worker.close() does TWO things:
+        // 1. Marks worker as closing (no new jobs accepted)
+        // 2. Waits for ALL active jobs to complete or fail
+        // No timeout by default - jobs must finalize properly
+        await worker.close();
+        this.log.debug(`Worker closed successfully: ${name}`);
       } catch (err) {
-        this.log.warn('Error closing worker', { err, worker: name });
+        const error = err instanceof Error ? err : new Error(String(err));
+        this.log.error(`Failed to close worker: ${name}`, { error: error.message });
+        errors.push(error);
       }
     }
-    this.log.debug('All workers closed, waiting for connection cleanup (500ms)');
-    await new Promise(resolve => setTimeout(resolve, 500));
 
-    // ===== PHASE 2: CLOSE QUEUE EVENTS (After workers are stable) =====
-    this.log.debug('Phase 2: Closing queue events');
+    // Small delay for BullMQ internal Redis connection cleanup
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // ===== PHASE 2: CLOSE QUEUE EVENTS =====
+    this.log.debug('Phase 2: Closing queue events...');
     for (const [name, events] of this.queueEvents.entries()) {
       try {
-        this.log.debug('Closing queue events...', { queue: name });
-        await events.close(); // ✅ SEQUENTIAL
-        this.log.debug('Queue events closed', { queue: name });
-        await new Promise(resolve => setTimeout(resolve, 200));
+        this.log.debug(`Closing queue events: ${name}`);
+        await events.close();
+        this.log.debug(`Queue events closed: ${name}`);
       } catch (err) {
-        this.log.warn('Error closing queue events', { err, queue: name });
+        const error = err instanceof Error ? err : new Error(String(err));
+        this.log.error(`Failed to close queue events: ${name}`, { error: error.message });
+        errors.push(error);
       }
     }
-    this.log.debug('All queue events closed, waiting for connection cleanup (500ms)');
-    await new Promise(resolve => setTimeout(resolve, 500));
 
-    // ===== PHASE 3: CLOSE QUEUES (After events) =====
-    this.log.debug('Phase 3: Closing queues');
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // ===== PHASE 3: CLOSE QUEUES =====
+    this.log.debug('Phase 3: Closing queues...');
     for (const [name, queue] of this.queues.entries()) {
       try {
-        this.log.debug('Closing queue...', { queue: name });
-        await queue.close(); // ✅ SEQUENTIAL
-        this.log.debug('Queue closed', { queue: name });
-        await new Promise(resolve => setTimeout(resolve, 200));
+        this.log.debug(`Closing queue: ${name}`);
+        await queue.close();
+        this.log.debug(`Queue closed: ${name}`);
       } catch (err) {
-        this.log.warn('Error closing queue', { err, queue: name });
+        const error = err instanceof Error ? err : new Error(String(err));
+        this.log.error(`Failed to close queue: ${name}`, { error: error.message });
+        errors.push(error);
       }
     }
 
-    // ===== CLEAR REFERENCES (After all components closed) =====
-    this.log.debug('Clearing component references');
+    // ===== CLEAR REFERENCES =====
     this.workers.clear();
     this.queueEvents.clear();
     this.queues.clear();
 
-    // ===== PHASE 4: WAIT FOR FINAL SOCKET CLEANUP =====
-    this.log.debug('Phase 4: Waiting for final IORedis socket cleanup (1000ms)');
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
-    // ===== PHASE 5: CLOSE MAIN REDIS CONNECTION (Last, only if we own it) =====
+    // ===== PHASE 4: CLOSE MAIN REDIS CONNECTION (Only if we own it) =====
     if (this.ownsRedisConnection) {
       try {
-        this.log.debug('Phase 5: Closing main Redis connection');
+        this.log.debug('Phase 4: Closing main Redis connection (owned by MessageQueue)');
         await this.redisConnection.quit();
         this.log.debug('Main Redis connection closed');
       } catch (err) {
-        this.log.warn('Error closing main Redis connection', { err });
+        const error = err instanceof Error ? err : new Error(String(err));
+        this.log.error('Failed to close main Redis connection', { error: error.message });
+        errors.push(error);
       }
     } else {
-      this.log.debug('Phase 5: Skipping main Redis close (injected connection)');
+      this.log.debug('Phase 4: Skipping main Redis close (injected connection - caller owns it)');
     }
 
     // ===== FINALIZATION =====
     this.isReady = false;
-    this.log.info('✅ MessageQueue closed successfully (sequential pattern)');
+
+    if (errors.length > 0) {
+      this.log.warn(`MessageQueue closed with ${errors.length} error(s)`, {
+        errors: errors.map(e => e.message)
+      });
+      // Don't throw - allow graceful degradation
+    } else {
+      this.log.info('MessageQueue closed successfully');
+    }
   }
 }
 

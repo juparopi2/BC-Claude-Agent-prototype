@@ -1184,23 +1184,40 @@ async function gracefulShutdown(signal: string): Promise<void> {
   console.log(`\n⚠️  ${signal} received, shutting down gracefully...`);
 
   try {
-    // Close HTTP server
-    httpServer.close(() => {
-      console.log('✅ HTTP server closed');
+    // 1. Close HTTP server (stop accepting new requests)
+    await new Promise<void>((resolve) => {
+      httpServer.close(() => {
+        console.log('✅ HTTP server closed');
+        resolve();
+      });
     });
 
-    // Close Socket.IO
-    io.close(() => {
-      console.log('✅ Socket.IO server closed');
+    // 2. Close Socket.IO (disconnect clients)
+    await new Promise<void>((resolve) => {
+      io.close(() => {
+        console.log('✅ Socket.IO server closed');
+        resolve();
+      });
     });
 
-    // Stop database keepalive
+    // 3. Close MessageQueue (CRITICAL - drain active jobs before DB closes)
+    console.log('🔄 Closing MessageQueue (draining active jobs)...');
+    try {
+      const messageQueue = getMessageQueue();
+      await messageQueue.close();
+      console.log('✅ MessageQueue closed');
+    } catch (error) {
+      console.error('⚠️  MessageQueue close error:', error);
+      // Continue shutdown even if MessageQueue fails
+    }
+
+    // 4. Stop database keepalive
     stopDatabaseKeepalive();
 
-    // Close database connection
+    // 5. Close database connection
     await closeDatabase();
 
-    // Close Redis connection
+    // 6. Close Redis connection (do this AFTER MessageQueue closes)
     await closeRedis();
 
     console.log('✅ All connections closed, exiting...');

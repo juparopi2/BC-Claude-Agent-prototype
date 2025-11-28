@@ -22,6 +22,9 @@ export class BCTokenManager {
   private encryptionKey: Buffer;
   private oauthService: MicrosoftOAuthService;
 
+  // Map to store in-flight refresh promises for deduplication
+  private refreshPromises = new Map<string, Promise<BCTokenData>>();
+
   constructor(encryptionKey: string, oauthService: MicrosoftOAuthService) {
     // Derive 32-byte key from base64 encryption key
     this.encryptionKey = Buffer.from(encryptionKey, 'base64');
@@ -161,7 +164,7 @@ export class BCTokenManager {
       // If no BC token stored, acquire new one
       if (!record.bc_access_token_encrypted) {
         logger.info('No BC token stored for user, acquiring new token', { userId });
-        return await this.refreshBCToken(userId, userRefreshToken);
+        return await this._getOrCreateRefreshPromise(userId, userRefreshToken);
       }
 
       const expiresAt = new Date(record.bc_token_expires_at as string);
@@ -170,7 +173,7 @@ export class BCTokenManager {
       // If token expired or expires in next 5 minutes, refresh it
       if (expiresAt <= new Date(now.getTime() + 5 * 60 * 1000)) {
         logger.info('BC token expired or expiring soon, refreshing', { userId, expiresAt });
-        return await this.refreshBCToken(userId, userRefreshToken);
+        return await this._getOrCreateRefreshPromise(userId, userRefreshToken);
       }
 
       // Decrypt and return token
@@ -186,6 +189,41 @@ export class BCTokenManager {
       logger.error('Failed to get BC token', { error, userId });
       throw new Error('Failed to retrieve Business Central token');
     }
+  }
+
+  /**
+   * Get existing refresh promise or create new one (deduplication)
+   *
+   * @param userId - User ID
+   * @param userRefreshToken - User's Microsoft refresh token
+   * @returns BC token data
+   */
+  private async _getOrCreateRefreshPromise(userId: string, userRefreshToken: string): Promise<BCTokenData> {
+    const key = `refresh:${userId}`;
+
+    // Check if refresh already in progress
+    if (this.refreshPromises.has(key)) {
+      logger.debug('BCTokenManager: Reusing existing refresh promise', { userId });
+      return this.refreshPromises.get(key)!;
+    }
+
+    // Create new refresh promise
+    logger.debug('BCTokenManager: Creating new refresh promise', { userId });
+    
+    // Create new refresh promise
+    logger.debug('BCTokenManager: Creating new refresh promise', { userId });
+    
+    const promise = this.refreshBCToken(userId, userRefreshToken)
+      .finally(() => {
+        // CRITICAL: Always cleanup, even on error
+        this.refreshPromises.delete(key);
+        logger.debug('BCTokenManager: Refresh promise cleaned up', { userId });
+      });
+
+    // Store promise in map
+    this.refreshPromises.set(key, promise);
+
+    return promise;
   }
 
   /**

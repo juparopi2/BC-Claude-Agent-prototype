@@ -91,7 +91,12 @@
       "Bash(tee:*)",
       "Bash(for:*)",
       "Bash(do echo \"=== RUN $i/5 ===\")",
-      "Bash(done)"
+      "Bash(done)",
+      "WebFetch(domain:docs.bullmq.io)",
+      "Bash(echo:*)",
+      "Bash(if [ $PIPESTATUS[0] -ne 0 ])",
+      "Bash(then echo \"❌ FAILED at run $i\")",
+      "Bash(exit 1)"
     ],
     "deny": [],
     "ask": []

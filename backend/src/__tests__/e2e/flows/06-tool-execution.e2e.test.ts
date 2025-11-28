@@ -73,15 +73,15 @@ describe('E2E-06: Tool Execution', () => {
       });
 
       // Check for tool_use event
-      const toolUseEvents = events.filter(e => e.data.type === 'tool_use');
+      const toolUseEvents = events.filter(e => e.type === 'tool_use');
 
       // If agent uses tools, should have tool_use events
       if (toolUseEvents.length > 0) {
-        expect(toolUseEvents[0]!.data.type).toBe('tool_use');
+        expect(toolUseEvents[0]!.type).toBe('tool_use');
       }
 
       // Should complete regardless
-      const hasComplete = events.some(e => e.data.type === 'complete');
+      const hasComplete = events.some(e => e.type === 'complete');
       expect(hasComplete).toBe(true);
     });
 
@@ -99,10 +99,10 @@ describe('E2E-06: Tool Execution', () => {
         stopOnEventType: 'complete',
       });
 
-      const toolUseEvents = events.filter(e => e.data.type === 'tool_use');
+      const toolUseEvents = events.filter(e => e.type === 'tool_use');
 
       for (const event of toolUseEvents) {
-        const toolData = event.data as AgentEvent & { name?: string };
+        const toolData = event as AgentEvent & { name?: string };
         expect(toolData.name).toBeDefined();
         expect(typeof toolData.name).toBe('string');
         expect(toolData.name!.length).toBeGreaterThan(0);
@@ -123,10 +123,10 @@ describe('E2E-06: Tool Execution', () => {
         stopOnEventType: 'complete',
       });
 
-      const toolUseEvents = events.filter(e => e.data.type === 'tool_use');
+      const toolUseEvents = events.filter(e => e.type === 'tool_use');
 
       for (const event of toolUseEvents) {
-        const toolData = event.data as AgentEvent & { input?: Record<string, unknown> };
+        const toolData = event as AgentEvent & { input?: Record<string, unknown> };
         expect(toolData.input).toBeDefined();
         expect(typeof toolData.input).toBe('object');
         expect(toolData.input).not.toBeNull();
@@ -147,10 +147,10 @@ describe('E2E-06: Tool Execution', () => {
         stopOnEventType: 'complete',
       });
 
-      const toolUseEvents = events.filter(e => e.data.type === 'tool_use');
+      const toolUseEvents = events.filter(e => e.type === 'tool_use');
 
       for (const event of toolUseEvents) {
-        const toolData = event.data as AgentEvent & { toolUseId?: string };
+        const toolData = event as AgentEvent & { toolUseId?: string };
         expect(toolData.toolUseId).toBeDefined();
         expect(typeof toolData.toolUseId).toBe('string');
       }
@@ -176,7 +176,7 @@ describe('E2E-06: Tool Execution', () => {
       const validation = SequenceValidator.validateToolCorrelation(agentEvents);
 
       // If tool_use exists, correlation should be valid
-      if (events.filter(e => e.data.type === 'tool_use').length > 0) {
+      if (events.filter(e => e.type === 'tool_use').length > 0) {
         expect(validation.valid).toBe(true);
         expect(validation.errors).toHaveLength(0);
       }
@@ -196,10 +196,10 @@ describe('E2E-06: Tool Execution', () => {
         stopOnEventType: 'complete',
       });
 
-      const toolResultEvents = events.filter(e => e.data.type === 'tool_result');
+      const toolResultEvents = events.filter(e => e.type === 'tool_result');
 
       for (const event of toolResultEvents) {
-        const resultData = event.data as AgentEvent & {
+        const resultData = event as AgentEvent & {
           content?: unknown;
           result?: unknown;
           output?: unknown;
@@ -252,7 +252,7 @@ describe('E2E-06: Tool Execution', () => {
         stopOnEventType: 'complete',
       });
 
-      const eventTypes = events.map(e => e.data.type);
+      const eventTypes = events.map(e => e.type);
 
       // Find pairs of tool_use and tool_result
       for (let i = 0; i < eventTypes.length; i++) {
@@ -305,8 +305,8 @@ describe('E2E-06: Tool Execution', () => {
         stopOnEventType: 'complete',
       });
 
-      const toolUseEvents = events.filter(e => e.data.type === 'tool_use');
-      const toolResultEvents = events.filter(e => e.data.type === 'tool_result');
+      const toolUseEvents = events.filter(e => e.type === 'tool_use');
+      const toolResultEvents = events.filter(e => e.type === 'tool_result');
 
       // If multiple tools used, results should match
       if (toolUseEvents.length > 1) {
@@ -314,7 +314,7 @@ describe('E2E-06: Tool Execution', () => {
       }
 
       // Should complete
-      const hasComplete = events.some(e => e.data.type === 'complete');
+      const hasComplete = events.some(e => e.type === 'complete');
       expect(hasComplete).toBe(true);
     });
 
@@ -368,7 +368,7 @@ describe('E2E-06: Tool Execution', () => {
       });
 
       // Should complete even with errors
-      const hasComplete = events.some(e => e.data.type === 'complete');
+      const hasComplete = events.some(e => e.type === 'complete');
       expect(hasComplete).toBe(true);
     });
 
@@ -387,10 +387,10 @@ describe('E2E-06: Tool Execution', () => {
         stopOnEventType: 'complete',
       });
 
-      const toolResultEvents = events.filter(e => e.data.type === 'tool_result');
+      const toolResultEvents = events.filter(e => e.type === 'tool_result');
 
       for (const event of toolResultEvents) {
-        const resultData = event.data as AgentEvent & {
+        const resultData = event as AgentEvent & {
           is_error?: boolean;
           isError?: boolean;
           error?: unknown;
@@ -403,7 +403,7 @@ describe('E2E-06: Tool Execution', () => {
           resultData.isError !== undefined ||
           resultData.error !== undefined ||
           resultData.success !== undefined ||
-          (event.data as AgentEvent & { content?: unknown }).content !== undefined;
+          (event as AgentEvent & { content?: unknown }).content !== undefined;
 
         expect(hasStatusOrContent).toBe(true);
       }
@@ -425,11 +425,11 @@ describe('E2E-06: Tool Execution', () => {
         stopOnEventType: 'complete',
       });
 
-      const toolUseEvents = events.filter(e => e.data.type === 'tool_use');
+      const toolUseEvents = events.filter(e => e.type === 'tool_use');
 
       // Tool inputs should be displayable (not encrypted/hidden)
       for (const event of toolUseEvents) {
-        const toolData = event.data as AgentEvent & {
+        const toolData = event as AgentEvent & {
           input?: Record<string, unknown>;
         };
 
@@ -457,11 +457,11 @@ describe('E2E-06: Tool Execution', () => {
       });
 
       const toolEvents = events.filter(
-        e => e.data.type === 'tool_use' || e.data.type === 'tool_result'
+        e => e.type === 'tool_use' || e.type === 'tool_result'
       );
 
       for (const event of toolEvents) {
-        const data = event.data as AgentEvent & { eventId?: string };
+        const data = event as AgentEvent & { eventId?: string };
         expect(data.eventId).toBeDefined();
       }
     });
@@ -481,11 +481,11 @@ describe('E2E-06: Tool Execution', () => {
       });
 
       const toolEvents = events.filter(
-        e => e.data.type === 'tool_use' || e.data.type === 'tool_result'
+        e => e.type === 'tool_use' || e.type === 'tool_result'
       );
 
       for (const event of toolEvents) {
-        const data = event.data as AgentEvent & {
+        const data = event as AgentEvent & {
           timestamp?: string | number;
           createdAt?: string;
         };
@@ -513,10 +513,10 @@ describe('E2E-06: Tool Execution', () => {
         stopOnEventType: 'complete',
       });
 
-      const toolResultEvents = events.filter(e => e.data.type === 'tool_result');
+      const toolResultEvents = events.filter(e => e.type === 'tool_result');
 
       for (const event of toolResultEvents) {
-        const resultData = event.data as AgentEvent & {
+        const resultData = event as AgentEvent & {
           content?: unknown;
         };
 
@@ -541,7 +541,7 @@ describe('E2E-06: Tool Execution', () => {
         stopOnEventType: 'complete',
       });
 
-      const toolResultEvents = events.filter(e => e.data.type === 'tool_result');
+      const toolResultEvents = events.filter(e => e.type === 'tool_result');
 
       // Results should be processable
       expect(toolResultEvents.length).toBeGreaterThanOrEqual(0);
@@ -642,7 +642,7 @@ describe('E2E-06: Tool Execution', () => {
 
       // Should NOT have approval_requested for read
       const approvalEvents = events.filter(
-        e => e.data.type === 'approval_requested'
+        e => e.type === 'approval_requested'
       );
 
       expect(approvalEvents.length).toBe(0);
@@ -666,15 +666,15 @@ describe('E2E-06: Tool Execution', () => {
       // Should have approval_requested for write
       // Note: This depends on implementation
       const approvalEvents = events.filter(
-        e => e.data.type === 'approval_requested'
+        e => e.type === 'approval_requested'
       );
 
       // Approval might be required - just check the flow completes
       const hasTerminal = events.some(
         e =>
-          e.data.type === 'complete' ||
-          e.data.type === 'approval_requested' ||
-          e.data.type === 'error'
+          e.type === 'complete' ||
+          e.type === 'approval_requested' ||
+          e.type === 'error'
       );
 
       expect(hasTerminal).toBe(true);

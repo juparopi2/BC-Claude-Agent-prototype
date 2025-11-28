@@ -54,6 +54,7 @@ export class SequenceValidator {
 
     // Extract events with sequence numbers
     const eventsWithSequence = events
+      .filter((e): e is NonNullable<typeof e> => e != null)
       .map(e => {
         // Handle both E2EReceivedEvent (with data property) and direct AgentEvent
         const event = 'data' in e && e.data != null ? e.data : ('type' in e ? e : null);
@@ -247,6 +248,9 @@ export class SequenceValidator {
     const toolResults = new Map<string, AgentEvent>();
 
     for (const event of events) {
+      if (!event || typeof event !== 'object' || !('type' in event)) {
+        continue; // Skip undefined/invalid events
+      }
       const eventWithToolId = event as AgentEvent & { toolUseId?: string };
 
       if (event.type === 'tool_use' && eventWithToolId.toolUseId) {

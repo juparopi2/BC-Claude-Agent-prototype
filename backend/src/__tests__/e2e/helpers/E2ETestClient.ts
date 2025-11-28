@@ -535,11 +535,11 @@ export class E2ETestClient {
 
       // Check existing events
       for (const event of this.receivedEvents) {
-        if (!eventType || event.type === eventType || event.data.type === eventType) {
+        if (!eventType || event.type === eventType || event.data?.type === eventType) {
           collected.push(event.data);
 
           // Check if this is the stop event
-          if (stopOnEventType && (event.type === stopOnEventType || event.data.type === stopOnEventType)) {
+          if (stopOnEventType && (event.type === stopOnEventType || event.data?.type === stopOnEventType)) {
             clearTimeout(timeoutHandle);
             resolve(collected);
             return;
@@ -592,7 +592,7 @@ export class E2ETestClient {
    */
   getEventsByType(eventType: string): AgentEvent[] {
     return this.receivedEvents
-      .filter(e => e.type === eventType || e.data.type === eventType)
+      .filter(e => e.type === eventType || e.data?.type === eventType)
       .map(e => e.data);
   }
 
@@ -611,7 +611,7 @@ export class E2ETestClient {
       return this.receivedEvents[this.receivedEvents.length - 1];
     }
     const filtered = this.receivedEvents.filter(
-      e => e.type === eventType || e.data.type === eventType
+      e => e.type === eventType || e.data?.type === eventType
     );
     return filtered[filtered.length - 1];
   }
@@ -629,9 +629,10 @@ export class E2ETestClient {
     this.receivedEvents.push(event);
 
     // Resolve waiters
+    // Note: data.type may be undefined for non-agent events (session:joined, agent:error, etc.)
     const keysToCheck = [
       socketEventType,
-      `agent:${data.type}`,
+      ...(data?.type ? [`agent:${data.type}`] : []),
       ...Array.from(this.eventWaiters.keys()).filter(k => k.startsWith('collect:')),
     ];
 
@@ -665,9 +666,10 @@ export class E2ETestClient {
     filter?: (event: AgentEvent) => boolean
   ): E2EReceivedEvent | undefined {
     return this.receivedEvents.find(e => {
+      // Use optional chaining since non-agent events may not have data.type
       const typeMatch = e.type === eventType ||
-        e.data.type === eventType ||
-        (eventType.startsWith('agent:') && e.data.type === eventType.replace('agent:', ''));
+        e.data?.type === eventType ||
+        (eventType.startsWith('agent:') && e.data?.type === eventType.replace('agent:', ''));
 
       if (!typeMatch) return false;
       if (filter && !filter(e.data)) return false;

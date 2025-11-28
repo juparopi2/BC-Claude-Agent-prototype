@@ -396,6 +396,12 @@ export class E2ETestClient {
 
   /**
    * Send a chat message
+   *
+   * @param sessionId - Session ID
+   * @param message - Message content
+   * @param options.userId - Optional user ID override
+   * @param options.enableThinking - Enable extended thinking
+   * @param options.thinkingBudget - Budget for thinking tokens
    */
   async sendMessage(
     sessionId: string,

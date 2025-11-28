@@ -58,7 +58,7 @@ export class AnthropicClient implements IAnthropicClient {
         });
       }
 
-      // Pass all params including optional thinking to SDK
+      // Pass all params including optional thinking and tool_choice to SDK
       const response = await this.client.messages.create({
         model: request.model,
         max_tokens: request.max_tokens,
@@ -66,6 +66,7 @@ export class AnthropicClient implements IAnthropicClient {
         tools: request.tools,
         system: request.system,
         thinking: request.thinking,  // ⭐ Phase 1F: Native SDK support
+        tool_choice: request.tool_choice,  // ⭐ Force tool usage if specified
       });
 
       // The SDK response already matches our interface structure
@@ -131,7 +132,7 @@ export class AnthropicClient implements IAnthropicClient {
         });
       }
 
-      // Use SDK's native streaming method with all params including thinking
+      // Use SDK's native streaming method with all params including thinking and tool_choice
       const stream = this.client.messages.stream({
         model: request.model,
         max_tokens: request.max_tokens,
@@ -139,6 +140,7 @@ export class AnthropicClient implements IAnthropicClient {
         tools: request.tools,
         system: request.system,
         thinking: request.thinking,  // ⭐ Phase 1F: Native SDK support
+        tool_choice: request.tool_choice,  // ⭐ Force tool usage if specified
       });
 
       // The SDK returns a MessageStream which is AsyncIterable

@@ -2219,7 +2219,12 @@ Available tools:
 - build_knowledge_base_workflow: Build comprehensive workflow documentation
 - get_endpoint_documentation: Get detailed API documentation
 
-Always use tools to provide accurate, up-to-date information from Business Central.`;
+CRITICAL INSTRUCTIONS:
+- You MUST use the available tools for ALL Business Central queries
+- NEVER respond from memory or general knowledge about Business Central
+- ALWAYS call the appropriate tool first, then format the results for the user
+- For ANY question about BC entities, operations, or data, use the tools
+- Do not make assumptions - use tools to get accurate, current information`;
   }
 
   /**

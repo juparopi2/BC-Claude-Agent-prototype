@@ -21,7 +21,18 @@ import type {
   MessageStreamEvent,
   Tool,
   ThinkingConfigParam,
+  ToolChoiceAny,
+  ToolChoiceAuto,
+  ToolChoiceTool,
 } from '@anthropic-ai/sdk/resources/messages';
+
+/**
+ * Tool choice configuration type from Anthropic SDK
+ * - ToolChoiceAuto: Claude decides whether to use tools (default)
+ * - ToolChoiceAny: Force Claude to use one of the provided tools
+ * - ToolChoiceTool: Force specific tool by name
+ */
+export type ToolChoice = ToolChoiceAuto | ToolChoiceAny | ToolChoiceTool;
 
 /**
  * Configuration for creating an Anthropic client
@@ -52,6 +63,13 @@ export interface ChatCompletionRequest {
   messages: MessageParam[];
   tools?: Tool[];
   system?: string | SystemPromptBlock[];
+  /**
+   * Tool choice configuration (uses SDK types)
+   * - { type: 'auto' }: Claude decides whether to use tools (default)
+   * - { type: 'any' }: Force Claude to use one of the provided tools
+   * - { type: 'tool', name: 'tool_name' }: Force specific tool
+   */
+  tool_choice?: ToolChoice;
   /**
    * Extended Thinking configuration (Phase 1F)
    * Uses native SDK type ThinkingConfigParam

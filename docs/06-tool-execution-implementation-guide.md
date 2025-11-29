@@ -367,11 +367,11 @@ After implementation:
 
 ## 8. Implementation Checklist
 
-- [ ] Import `drainMessageQueue` from setup.e2e.ts
-- [ ] Add `drainMessageQueue()` to `afterAll` block
+- [x] Import `drainMessageQueue` from setup.e2e.ts
+- [x] Add `drainMessageQueue()` to `afterAll` block
 - [ ] Rewrite 18 prompts to match tool capabilities
-- [ ] Add `.skip()` to `Tool Error Handling` describe block with documentation
-- [ ] Add `.skip()` to `Read vs Write Operations` describe block with documentation
+- [x] Add `.skip()` to `Tool Error Handling` describe block with documentation
+- [x] Add `.skip()` to `Read vs Write Operations` describe block with documentation
 - [ ] Standardize all tool ID checks to use `toolUseId`
 - [ ] Replace count-based correlation with `SequenceValidator.validateToolCorrelation()`
 - [ ] Add type validation for tool name (string, non-empty)

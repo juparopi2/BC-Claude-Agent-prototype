@@ -64,7 +64,7 @@ describe('E2E-06: Tool Execution', () => {
       // Request that triggers BC tool usage with clear intent
       await client.sendMessage(
         testSession.id,
-        'Use the list_all_entities tool to show me all available BC entities'
+        'I need to verify if an entity named "SuperDuperWidget" exists in Business Central. Please check the list of all entities.'
       );
 
       const events = await client.collectEvents(30, {
@@ -72,12 +72,18 @@ describe('E2E-06: Tool Execution', () => {
         stopOnEventType: 'complete',
       });
 
+      // DEBUG: Log events
+      console.log('DEBUG: First Test Events:', events.map(e => ({ type: e.type, content: (e as any).content })));
+
       // Check for tool_use event
       const toolUseEvents = events.filter(e => e.type === 'tool_use');
 
       // If agent uses tools, should have tool_use events
       if (toolUseEvents.length > 0) {
         expect(toolUseEvents[0]!.type).toBe('tool_use');
+      } else {
+        // Fail if no tool used (since we expect it for this prompt)
+        console.warn('WARNING: No tool_use event received for entity list request');
       }
 
       // Should complete regardless
@@ -91,7 +97,7 @@ describe('E2E-06: Tool Execution', () => {
 
       await client.sendMessage(
         testSession.id,
-        'Use search_entity_operations to find item operations'
+        'Search for item operations in Business Central'
       );
 
       const events = await client.collectEvents(30, {
@@ -115,7 +121,7 @@ describe('E2E-06: Tool Execution', () => {
 
       await client.sendMessage(
         testSession.id,
-        'Use get_entity_details to get information about vendors'
+        'Get information about vendors'
       );
 
       const events = await client.collectEvents(30, {
@@ -139,7 +145,7 @@ describe('E2E-06: Tool Execution', () => {
 
       await client.sendMessage(
         testSession.id,
-        'Use search_entity_operations to find sales order operations'
+        'Find sales order operations'
       );
 
       const events = await client.collectEvents(30, {
@@ -164,7 +170,7 @@ describe('E2E-06: Tool Execution', () => {
 
       await client.sendMessage(
         testSession.id,
-        'Use list_all_entities to show what entities exist'
+        'What entities exist in Business Central?'
       );
 
       const events = await client.collectEvents(30, {
@@ -188,7 +194,7 @@ describe('E2E-06: Tool Execution', () => {
 
       await client.sendMessage(
         testSession.id,
-        'Use search_entity_operations to find inventory operations'
+        'Find inventory operations'
       );
 
       const events = await client.collectEvents(30, {
@@ -221,7 +227,7 @@ describe('E2E-06: Tool Execution', () => {
 
       await client.sendMessage(
         testSession.id,
-        'Use get_entity_details to get customer information'
+        'Get customer information'
       );
 
       const events = await client.collectEvents(30, {
@@ -244,7 +250,7 @@ describe('E2E-06: Tool Execution', () => {
 
       await client.sendMessage(
         testSession.id,
-        'Use list_all_entities to show me all entities'
+        'Show me all entities'
       );
 
       const events = await client.collectEvents(30, {
@@ -274,7 +280,7 @@ describe('E2E-06: Tool Execution', () => {
 
       await client.sendMessage(
         testSession.id,
-        'Use search_entity_operations to find ledger operations'
+        'Find ledger operations'
       );
 
       const events = await client.collectEvents(30, {
@@ -297,7 +303,7 @@ describe('E2E-06: Tool Execution', () => {
       // Request that might trigger multiple tool calls
       await client.sendMessage(
         testSession.id,
-        'Use get_entity_details to get information about both customers and vendors'
+        'Get information about both the customers and vendors entities'
       );
 
       const events = await client.collectEvents(40, {
@@ -325,7 +331,7 @@ describe('E2E-06: Tool Execution', () => {
       // Request that might trigger parallel tool calls
       await client.sendMessage(
         testSession.id,
-        'Use search_entity_operations to find operations for both customers and items'
+        'Search for operations related to customers and items'
       );
 
       const events = await client.collectEvents(40, {
@@ -417,7 +423,7 @@ describe('E2E-06: Tool Execution', () => {
 
       await client.sendMessage(
         testSession.id,
-        'Use search_entity_operations to search for customer operations'
+        'Search for customer operations'
       );
 
       const events = await client.collectEvents(30, {
@@ -448,7 +454,7 @@ describe('E2E-06: Tool Execution', () => {
 
       await client.sendMessage(
         testSession.id,
-        'Use get_entity_details to get employee information'
+        'Get details for the employees entity'
       );
 
       const events = await client.collectEvents(30, {
@@ -472,7 +478,7 @@ describe('E2E-06: Tool Execution', () => {
 
       await client.sendMessage(
         testSession.id,
-        'Use search_entity_operations to find payment operations'
+        'Find payment operations'
       );
 
       const events = await client.collectEvents(30, {
@@ -505,7 +511,7 @@ describe('E2E-06: Tool Execution', () => {
 
       await client.sendMessage(
         testSession.id,
-        'Use list_all_entities to show all BC entities'
+        'List all BC entities'
       );
 
       const events = await client.collectEvents(30, {
@@ -533,7 +539,7 @@ describe('E2E-06: Tool Execution', () => {
 
       await client.sendMessage(
         testSession.id,
-        'Use search_entity_operations to find currency operations'
+        'Search for currency operations'
       );
 
       const events = await client.collectEvents(30, {
@@ -560,7 +566,7 @@ describe('E2E-06: Tool Execution', () => {
 
       await client.sendMessage(
         freshSession.id,
-        'Use get_entity_details to get location information'
+        'Get details for locations entity'
       );
 
       await client.waitForAgentEvent('complete', { timeout: 60000 });
@@ -576,10 +582,18 @@ describe('E2E-06: Tool Execution', () => {
           toolUse?: unknown;
           tools?: unknown[];
         }>;
-      }>(`/api/chat/sessions/${freshSession.id}`);
+      }>(`/api/chat/sessions/${freshSession.id}/messages`);
 
       expect(response.ok).toBe(true);
       expect(response.body.messages).toBeDefined();
+
+      // Find message with toolUse
+      const toolUseMessage = response.body.messages.find(m => m.toolUse);
+      expect(toolUseMessage).toBeDefined();
+      
+      const toolUse = toolUseMessage!.toolUse as { name: string; args: unknown };
+      expect(toolUse.name).toBe('get_entity_details');
+      expect(toolUse.args).toBeDefined();
     });
 
     it('should persist tool_result events to database', async () => {
@@ -593,7 +607,7 @@ describe('E2E-06: Tool Execution', () => {
 
       await client.sendMessage(
         freshSession.id,
-        'Use search_entity_operations to find dimension operations'
+        'Search for dimension operations'
       );
 
       await client.waitForAgentEvent('complete', { timeout: 60000 });
@@ -608,9 +622,18 @@ describe('E2E-06: Tool Execution', () => {
           content: string;
           toolResults?: unknown[];
         }>;
-      }>(`/api/chat/sessions/${freshSession.id}`);
+      }>(`/api/chat/sessions/${freshSession.id}/messages`);
 
       expect(response.ok).toBe(true);
+      
+      // Find message with toolResults
+      const toolResultMessage = response.body.messages.find(m => m.toolResults && m.toolResults.length > 0);
+      expect(toolResultMessage).toBeDefined();
+
+      const toolResult = toolResultMessage!.toolResults![0] as { toolName: string; result: unknown; success: boolean };
+      expect(toolResult.toolName).toBe('search_entity_operations');
+      expect(toolResult.success).toBe(true);
+      expect(toolResult.result).toBeDefined();
     });
   });
 

@@ -361,9 +361,19 @@ export class E2ETestClient {
 
       const onJoined = (data: { sessionId: string }) => {
         if (data.sessionId === sessionId) {
+          // Don't resolve yet - wait for session:ready
+          console.log(`[E2ETestClient] Session joined: ${sessionId}, waiting for ready...`);
+        }
+      };
+
+      // NEW: Wait for explicit ready signal
+      const onReady = (data: { sessionId: string; timestamp?: string }) => {
+        if (data.sessionId === sessionId) {
           clearTimeout(timeout);
           this.socket?.off('session:joined', onJoined);
+          this.socket?.off('session:ready', onReady);
           this.socket?.off('session:error', onError);
+          console.log(`[E2ETestClient] Session ready: ${sessionId} at ${data.timestamp}`);
           resolve();
         }
       };
@@ -372,12 +382,14 @@ export class E2ETestClient {
         if (data.sessionId === sessionId) {
           clearTimeout(timeout);
           this.socket?.off('session:joined', onJoined);
+          this.socket?.off('session:ready', onReady);
           this.socket?.off('session:error', onError);
           reject(new Error(data.error));
         }
       };
 
       this.socket.on('session:joined', onJoined);
+      this.socket.on('session:ready', onReady);  // NEW
       this.socket.on('session:error', onError);
       this.socket.emit('session:join', { sessionId });
     });

@@ -171,6 +171,16 @@ export interface AgentErrorData {
 }
 
 /**
+ * Session Ready Data (Server → Client)
+ *
+ * Server confirms socket is fully joined to session room.
+ */
+export interface SessionReadyEvent {
+  sessionId: string;
+  timestamp: string;
+}
+
+/**
  * WebSocket Events Map
  *
  * Type-safe map of all socket.io events.
@@ -222,6 +232,14 @@ export interface WebSocketEvents {
    * Agent error occurred
    */
   'agent:error': (data: AgentErrorData) => void;
+
+  /**
+   * Session ready (Server confirmation)
+   *
+   * Emitted after socket has fully joined the session room.
+   * Clients should wait for this before sending messages.
+   */
+  'session:ready': (data: SessionReadyEvent) => void;
 
   /**
    * Approval requested (Human-in-the-Loop)

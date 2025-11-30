@@ -317,6 +317,12 @@ export class ChatMessageHandler {
       // Emit to frontend (single event type with enhanced contract)
       io.to(sessionId).emit('agent:event', event);
 
+      // DEBUG: Trace all events emitted to socket
+      console.log(`[SOCKET_EMIT] Type: ${event.type}, Session: ${sessionId}, Seq: ${(event as any).sequenceNumber}`);
+      if (event.type === 'tool_use') {
+         console.log('[SOCKET_EMIT] TOOL_USE DETECTED:', JSON.stringify(event, null, 2));
+      }
+
       // Confirm emission for thinking event
       if (event.type === 'thinking') {
         console.log('✅ [ChatMessageHandler] Thinking event emitted to Socket.IO room:', sessionId);

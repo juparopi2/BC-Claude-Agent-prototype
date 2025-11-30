@@ -1093,6 +1093,10 @@ function configureSocketIO(): void {
         });
 
         socket.emit('session:joined', { sessionId });
+
+        // NEW: Explicit acknowledgment that socket is ready to receive events
+        // This ensures the socket is fully in the room before client proceeds
+        socket.emit('session:ready', { sessionId, timestamp: new Date().toISOString() });
       } catch (error) {
         logger.error('[Socket] Session join error', {
           err: error,

@@ -22,7 +22,8 @@ import {
   type TestUser,
   type TestChatSession,
 } from '../helpers';
-import type { AgentEvent } from '@/types/websocket.types';
+import type { AgentEvent } from '../../../types/websocket.types';
+import type { ToolUseEvent } from '../../../types/agent.types';
 
 describe('E2E-06: Tool Execution', () => {
   const { getBaseUrl } = setupE2ETest();
@@ -67,7 +68,7 @@ describe('E2E-06: Tool Execution', () => {
         'I need to verify if an entity named "SuperDuperWidget" exists in Business Central. Please check the list of all entities.'
       );
 
-      const events = await client.collectEvents(30, {
+      const events = await client.collectEvents(200, {
         timeout: 60000,
         stopOnEventType: 'complete',
       });
@@ -100,7 +101,7 @@ describe('E2E-06: Tool Execution', () => {
         'Search for item operations in Business Central'
       );
 
-      const events = await client.collectEvents(30, {
+      const events = await client.collectEvents(200, {
         timeout: 60000,
         stopOnEventType: 'complete',
       });
@@ -108,10 +109,10 @@ describe('E2E-06: Tool Execution', () => {
       const toolUseEvents = events.filter(e => e.type === 'tool_use');
 
       for (const event of toolUseEvents) {
-        const toolData = event as AgentEvent & { name?: string };
-        expect(toolData.name).toBeDefined();
-        expect(typeof toolData.name).toBe('string');
-        expect(toolData.name!.length).toBeGreaterThan(0);
+        const toolData = event as ToolUseEvent;
+        expect(toolData.toolName).toBeDefined();
+        expect(typeof toolData.toolName).toBe('string');
+        expect(toolData.toolName.length).toBeGreaterThan(0);
       }
     });
 
@@ -124,7 +125,7 @@ describe('E2E-06: Tool Execution', () => {
         'Get information about vendors'
       );
 
-      const events = await client.collectEvents(30, {
+      const events = await client.collectEvents(200, {
         timeout: 60000,
         stopOnEventType: 'complete',
       });
@@ -132,10 +133,10 @@ describe('E2E-06: Tool Execution', () => {
       const toolUseEvents = events.filter(e => e.type === 'tool_use');
 
       for (const event of toolUseEvents) {
-        const toolData = event as AgentEvent & { input?: Record<string, unknown> };
-        expect(toolData.input).toBeDefined();
-        expect(typeof toolData.input).toBe('object');
-        expect(toolData.input).not.toBeNull();
+        const toolData = event as ToolUseEvent;
+        expect(toolData.args).toBeDefined();
+        expect(typeof toolData.args).toBe('object');
+        expect(toolData.args).not.toBeNull();
       }
     });
 
@@ -148,7 +149,7 @@ describe('E2E-06: Tool Execution', () => {
         'Find sales order operations'
       );
 
-      const events = await client.collectEvents(30, {
+      const events = await client.collectEvents(200, {
         timeout: 60000,
         stopOnEventType: 'complete',
       });
@@ -173,7 +174,7 @@ describe('E2E-06: Tool Execution', () => {
         'What entities exist in Business Central?'
       );
 
-      const events = await client.collectEvents(30, {
+      const events = await client.collectEvents(200, {
         timeout: 60000,
         stopOnEventType: 'complete',
       });
@@ -197,7 +198,7 @@ describe('E2E-06: Tool Execution', () => {
         'Find inventory operations'
       );
 
-      const events = await client.collectEvents(30, {
+      const events = await client.collectEvents(200, {
         timeout: 60000,
         stopOnEventType: 'complete',
       });
@@ -230,7 +231,7 @@ describe('E2E-06: Tool Execution', () => {
         'Get customer information'
       );
 
-      const events = await client.collectEvents(30, {
+      const events = await client.collectEvents(200, {
         timeout: 60000,
         stopOnEventType: 'complete',
       });
@@ -253,7 +254,7 @@ describe('E2E-06: Tool Execution', () => {
         'Show me all entities'
       );
 
-      const events = await client.collectEvents(30, {
+      const events = await client.collectEvents(200, {
         timeout: 60000,
         stopOnEventType: 'complete',
       });
@@ -283,7 +284,7 @@ describe('E2E-06: Tool Execution', () => {
         'Find ledger operations'
       );
 
-      const events = await client.collectEvents(30, {
+      const events = await client.collectEvents(200, {
         timeout: 60000,
         stopOnEventType: 'complete',
       });
@@ -306,7 +307,7 @@ describe('E2E-06: Tool Execution', () => {
         'Get information about both the customers and vendors entities'
       );
 
-      const events = await client.collectEvents(40, {
+      const events = await client.collectEvents(200, {
         timeout: 90000,
         stopOnEventType: 'complete',
       });
@@ -334,7 +335,7 @@ describe('E2E-06: Tool Execution', () => {
         'Search for operations related to customers and items'
       );
 
-      const events = await client.collectEvents(40, {
+      const events = await client.collectEvents(200, {
         timeout: 90000,
         stopOnEventType: 'complete',
       });
@@ -368,7 +369,7 @@ describe('E2E-06: Tool Execution', () => {
         'Get the item with ID "nonexistent-12345" from Business Central'
       );
 
-      const events = await client.collectEvents(30, {
+      const events = await client.collectEvents(200, {
         timeout: 60000,
         stopOnEventType: 'complete',
       });
@@ -388,7 +389,7 @@ describe('E2E-06: Tool Execution', () => {
         'Delete customer 99999999 from Business Central'
       );
 
-      const events = await client.collectEvents(30, {
+      const events = await client.collectEvents(200, {
         timeout: 60000,
         stopOnEventType: 'complete',
       });
@@ -426,7 +427,7 @@ describe('E2E-06: Tool Execution', () => {
         'Search for customer operations'
       );
 
-      const events = await client.collectEvents(30, {
+      const events = await client.collectEvents(200, {
         timeout: 60000,
         stopOnEventType: 'complete',
       });
@@ -457,7 +458,7 @@ describe('E2E-06: Tool Execution', () => {
         'Get details for the employees entity'
       );
 
-      const events = await client.collectEvents(30, {
+      const events = await client.collectEvents(200, {
         timeout: 60000,
         stopOnEventType: 'complete',
       });
@@ -481,7 +482,7 @@ describe('E2E-06: Tool Execution', () => {
         'Find payment operations'
       );
 
-      const events = await client.collectEvents(30, {
+      const events = await client.collectEvents(200, {
         timeout: 60000,
         stopOnEventType: 'complete',
       });
@@ -514,7 +515,7 @@ describe('E2E-06: Tool Execution', () => {
         'List all BC entities'
       );
 
-      const events = await client.collectEvents(30, {
+      const events = await client.collectEvents(200, {
         timeout: 60000,
         stopOnEventType: 'complete',
       });
@@ -542,7 +543,7 @@ describe('E2E-06: Tool Execution', () => {
         'Search for currency operations'
       );
 
-      const events = await client.collectEvents(30, {
+      const events = await client.collectEvents(200, {
         timeout: 60000,
         stopOnEventType: 'complete',
       });
@@ -658,7 +659,7 @@ describe('E2E-06: Tool Execution', () => {
         'List customers in Business Central'
       );
 
-      const events = await client.collectEvents(30, {
+      const events = await client.collectEvents(200, {
         timeout: 60000,
         stopOnEventType: 'complete',
       });
@@ -681,7 +682,7 @@ describe('E2E-06: Tool Execution', () => {
         'Create a new customer named "Test Customer" in Business Central'
       );
 
-      const events = await client.collectEvents(30, {
+      const events = await client.collectEvents(200, {
         timeout: 60000,
         stopOnEventType: 'complete',
       });

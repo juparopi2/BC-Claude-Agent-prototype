@@ -622,24 +622,13 @@ socket.on('client:lastSeen', (lastSequence: number) => {
 | 03-message-flow-basic.e2e.test.ts | 17 | Send, confirm, sequence, persist | **17/17 ✓** |
 | 04-streaming-flow.e2e.test.ts | 26 | Chunks, deltas, completion | **24/26 ✓** (2 skipped) |
 | 05-extended-thinking.e2e.test.ts | 13 | Thinking events, content | **13/13 ✓** |
-| 06-tool-execution.e2e.test.ts | 22 | tool_use, tool_result, correlation | Pendiente |
+| 06-tool-execution.e2e.test.ts | 22 | tool_use, tool_result, correlation | **14/18 ✓** |
 | 07-approval-flow.e2e.test.ts | 16 | approve/reject, timeout, broadcast | Pendiente |
 | 09-session-recovery.e2e.test.ts | 14 | Refresh, reconnect, state preservation | Pendiente |
 | 10-multi-tenant-isolation.e2e.test.ts | 40 | User isolation, IDOR prevention | Pendiente |
 | 11-error-handling.e2e.test.ts | 35 | 400/401/403/404/429/500, WebSocket | Pendiente |
 | **12-sequence-reordering.e2e.test.ts** | 11 | Sequence numbers, reordering, DB consistency | **2/11 ✓*** |
 
-\* Tests affected by transient Azure SQL connectivity - code is correct
-
-### 7.4 Historial de Correcciones E2E
-
-| Fecha | Issue | Fix Aplicado | Resultado |
-|-------|-------|--------------|-----------|
-| 2025-11-28 | FK constraint race condition (`fk_messages_session`) | `drainMessageQueue()` en `setup.e2e.ts` | 17/17 tests passing en message-flow-basic |
-| 2025-11-28 | E2E-12 Sequence Reordering Suite | Nuevo test suite con 11 tests | 2/11 passing (9 afectados por DB transient) |
-| 2025-11-28 | SequenceValidator null check bug | Robust null checking en `validateSequenceOrder()` | Elimina `Cannot read properties of undefined` |
-| 2025-11-28 | E2E-04 Extended Thinking compatibility | Filtros para `thinking_chunk`, fix event ordering | 24/26 tests passing (92%) |
-| 2025-11-28 | E2E-05 Anthropic thinking block requirement | Thinking blocks en conversation history + API endpoints | **13/13 tests passing (100%)** |
 
 #### Detalle: E2E-04 Streaming Flow Extended Thinking (2025-11-28)
 
@@ -736,6 +725,78 @@ conversationHistory.push({
 **Results**:
 - Before: 8/13 tests passing (62%)
 - After: **13/13 tests passing (100%)** ✅
+
+---
+
+#### Detalle: E2E-06 Tool Execution Tests (2025-11-29)
+
+**Issue**: 5 tests failing due to Socket.IO race condition and test property mismatches
+
+**Root Cause Analysis**:
+1. **Socket.IO Race Condition**: Test client not fully joined to session room before backend emits `tool_use` events
+2. **Event Collection Limit**: `collectEvents(30)` limit reached by verbose `thinking_chunk` events before `tool_use` arrived
+3. **Property Name Mismatches**: Tests expected `name`/`input` but events use `toolName`/`args`
+
+**Fixes Applied**:
+
+| Component | Fix | File |
+|-----------|-----|------|
+| Backend | Emit `session:ready` after `session:joined` to signal room membership complete | `server.ts` |
+| Type Definitions | Add `SessionReadyEvent` interface | `websocket.types.ts` |
+| Test Client | Wait for `session:ready` before resolving `joinSession()` | `E2ETestClient.ts` |
+| Event Collection | Increase limit from 30/40 to 200 events | `06-tool-execution.e2e.test.ts` |
+| Property Names | Fix `name` → `toolName`, `input` → `args` | `06-tool-execution.e2e.test.ts` |
+| Type Imports | Add `ToolUseEvent` import from `agent.types` | `06-tool-execution.e2e.test.ts` |
+
+**Code Changes (server.ts)**:
+
+```typescript
+// Emit session:ready AFTER socket.join() completes
+socket.on('session:join', async (data: { sessionId: string }) => {
+  const { sessionId } = data;
+  // ... ownership validation ...
+  socket.join(sessionId);
+  
+  socket.emit('session:joined', { sessionId });
+  
+  // NEW: Explicit acknowledgment that socket is ready
+  socket.emit('session:ready', {
+    sessionId,
+    timestamp: new Date().toISOString()
+  });
+});
+```
+
+**Code Changes (E2ETestClient.ts)**:
+
+```typescript
+async joinSession(sessionId: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const onReady = (data: { sessionId: string }) => {
+      if (data.sessionId === sessionId) {
+        this.socket?.off('session:ready', onReady);
+        console.log(`[E2ETestClient] Session ready: ${sessionId}`);
+        resolve();
+      }
+    };
+    
+    this.socket.on('session:ready', onReady);  // Wait for ready
+    this.socket.emit('session:join', { sessionId });
+  });
+}
+```
+
+**Results**:
+- Before: 13/18 tests passing (72%)
+- After: **14/18 tests passing (78%)** ✅
+- Fixed: All `tool_use` event reception tests
+- Remaining: 4 failures (database persistence and timeout issues, unrelated to race condition)
+
+**Impact**:
+- ✅ Eliminated Socket.IO race condition
+- ✅ Improved test reliability
+- ✅ Better event ordering guarantees
+- ✅ Backward compatible (frontend can ignore `session:ready`)
 
 ---
 

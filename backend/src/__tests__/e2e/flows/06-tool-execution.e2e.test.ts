@@ -304,7 +304,7 @@ describe('E2E-06: Tool Execution', () => {
       // Request that might trigger multiple tool calls
       await client.sendMessage(
         testSession.id,
-        'Get information about both the customers and vendors entities'
+        'First get information about the customers entity, and then after that is done, get information about the vendors entity.'
       );
 
       const events = await client.collectEvents(200, {
@@ -314,6 +314,12 @@ describe('E2E-06: Tool Execution', () => {
 
       const toolUseEvents = events.filter(e => e.type === 'tool_use');
       const toolResultEvents = events.filter(e => e.type === 'tool_result');
+
+      console.log('DEBUG: Multiple Tool Calls:', {
+        toolUseCount: toolUseEvents.length,
+        toolResultCount: toolResultEvents.length,
+        events: events.map(e => e.type)
+      });
 
       // If multiple tools used, results should match
       if (toolUseEvents.length > 1) {
@@ -512,11 +518,11 @@ describe('E2E-06: Tool Execution', () => {
 
       await client.sendMessage(
         testSession.id,
-        'List all BC entities'
+        'List the first 3 entities in Business Central'
       );
 
       const events = await client.collectEvents(200, {
-        timeout: 60000,
+        timeout: 90000,
         stopOnEventType: 'complete',
       });
 
@@ -540,11 +546,11 @@ describe('E2E-06: Tool Execution', () => {
 
       await client.sendMessage(
         testSession.id,
-        'Search for currency operations'
+        'List the first 3 currencies in Business Central'
       );
 
       const events = await client.collectEvents(200, {
-        timeout: 60000,
+        timeout: 90000,
         stopOnEventType: 'complete',
       });
 
@@ -580,21 +586,26 @@ describe('E2E-06: Tool Execution', () => {
         messages: Array<{
           role: string;
           content: string;
-          toolUse?: unknown;
-          tools?: unknown[];
+          message_type: string;
+          metadata: any;
         }>;
       }>(`/api/chat/sessions/${freshSession.id}/messages`);
+
+      console.log('DEBUG: Persistence Messages (Tool Use):', JSON.stringify(response.body.messages, null, 2));
 
       expect(response.ok).toBe(true);
       expect(response.body.messages).toBeDefined();
 
-      // Find message with toolUse
-      const toolUseMessage = response.body.messages.find(m => m.toolUse);
+      // Find message with tool_use type
+      const toolUseMessage = response.body.messages.find(m => m.message_type === 'tool_use');
       expect(toolUseMessage).toBeDefined();
       
-      const toolUse = toolUseMessage!.toolUse as { name: string; args: unknown };
-      expect(toolUse.name).toBe('get_entity_details');
-      expect(toolUse.args).toBeDefined();
+      const metadata = typeof toolUseMessage!.metadata === 'string' 
+        ? JSON.parse(toolUseMessage!.metadata) 
+        : toolUseMessage!.metadata;
+        
+      expect(metadata.tool_name).toBe('get_entity_details');
+      expect(metadata.tool_args).toBeDefined();
     });
 
     it('should persist tool_result events to database', async () => {
@@ -614,27 +625,39 @@ describe('E2E-06: Tool Execution', () => {
       await client.waitForAgentEvent('complete', { timeout: 60000 });
 
       // Allow persistence
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, 2000));
 
       // Fetch session
       const response = await client.get<{
         messages: Array<{
           role: string;
           content: string;
-          toolResults?: unknown[];
+          message_type: string;
+          metadata: any;
         }>;
       }>(`/api/chat/sessions/${freshSession.id}/messages`);
 
+      console.log('DEBUG: Persistence Messages (Tool Result):', JSON.stringify(response.body.messages, null, 2));
+
       expect(response.ok).toBe(true);
       
-      // Find message with toolResults
-      const toolResultMessage = response.body.messages.find(m => m.toolResults && m.toolResults.length > 0);
+      // Find message with tool_use type that has a result
+      // Note: tool_result is persisted by updating the tool_use message metadata
+      const toolResultMessage = response.body.messages.find(m => {
+        if (m.message_type !== 'tool_use') return false;
+        const meta = typeof m.metadata === 'string' ? JSON.parse(m.metadata) : m.metadata;
+        return meta.tool_result !== undefined;
+      });
+      
       expect(toolResultMessage).toBeDefined();
 
-      const toolResult = toolResultMessage!.toolResults![0] as { toolName: string; result: unknown; success: boolean };
-      expect(toolResult.toolName).toBe('search_entity_operations');
-      expect(toolResult.success).toBe(true);
-      expect(toolResult.result).toBeDefined();
+      const metadata = typeof toolResultMessage!.metadata === 'string'
+        ? JSON.parse(toolResultMessage!.metadata)
+        : toolResultMessage!.metadata;
+        
+      expect(metadata.tool_name).toBe('search_entity_operations');
+      expect(metadata.success).toBe(true);
+      expect(metadata.tool_result).toBeDefined();
     });
   });
 

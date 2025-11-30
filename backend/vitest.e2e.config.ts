@@ -21,10 +21,13 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
+    env: {
+      E2E_TEST: 'true',
+    },
     // E2E tests have their own setup file
     setupFiles: './src/__tests__/e2e/setup.e2e.ts',
     // E2E tests need more time (server startup, real API calls)
-    testTimeout: 60000,
+    testTimeout: 90000,
     hookTimeout: 120000,
     // Only run E2E test files
     include: [

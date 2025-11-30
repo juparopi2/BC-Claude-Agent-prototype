@@ -810,19 +810,23 @@ async joinSession(sessionId: string): Promise<void> {
 - `backend/src/__tests__/e2e/helpers/E2ETestClient.ts` (fix `collectEvents`)
 - `backend/src/__tests__/integration/helpers/TestSessionFactory.ts` (nuevo `getSessionEvents`)
 
-**Tests Implementados**:
-- Core: Consecutive sequence numbers (Redis INCR) ✓
-- Core: New session starts at 0 ✓
-- Core: WebSocket = Database consistency
-- Core: Reordering works (shuffle + sort)
-- Core: Transient events (no sequenceNumber)
-- Core: Persisted events (with sequenceNumber)
-- Edge: Multi-client broadcast
-- Edge: Sequence continuity after reconnect
-- Edge: Gap detection
-- Edge: Independent session sequences
+**Tests Implementados** (11 total):
+- Core: Consecutive sequence numbers (Redis INCR) ✅
+- Core: New session starts at 0 ✅
+- Core: WebSocket = Database consistency ✅
+- Core: Reordering works (shuffle + sort) ✅
+- Core: Transient events (no sequenceNumber) ✅
+- Core: Persisted events (with sequenceNumber) ✅
+- Edge: Multi-client broadcast ✅
+- Edge: Sequence continuity after reconnect ✅
+- Edge: Gap detection ✅
+- Edge: Independent session sequences ✅
 
-**Bug Fix**: `SequenceValidator.validateSequenceOrder()` ahora filtra correctamente eventos que no tienen estructura AgentEvent (como `session:joined`).
+**Estado**: **11/11 tests passing (100%)** ✅
+
+**Bug Fix (2025-11-28)**: `SequenceValidator.validateSequenceOrder()` ahora filtra correctamente eventos que no tienen estructura AgentEvent (como `session:joined`).
+
+**Infrastructure Fix (2025-11-30 - TASK-002)**: Implementado retry logic para Azure SQL transient errors. Los 9 tests que fallaban por problemas de conectividad ahora pasan consistentemente.
 
 #### Detalle: Race Condition en MessageQueue (2025-11-28)
 

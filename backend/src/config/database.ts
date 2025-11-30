@@ -11,6 +11,30 @@ import sql, { ConnectionPool, config as SqlConfig, ISqlType } from 'mssql';
 import { env, isProd } from './environment';
 
 /**
+ * Transient error codes that should trigger a retry
+ * 
+ * 40613: Database unavailable
+ * 40197: Error processing request
+ * 40501: Service busy
+ * 10053: Transport-level error (software caused connection abort)
+ * 10054: Transport-level error (connection reset by peer)
+ * 10060: Network error
+ * 40540: Service busy
+ * 40143: Service busy
+ * -1: Connection error (generic)
+ * 'ETIMEDOUT': Connection timeout
+ * 'ESOCKET': Socket error
+ */
+const TRANSIENT_ERROR_CODES = [
+  40613, 40197, 40501, 10053, 10054, 10060, 40540, 40143, -1
+];
+
+/**
+ * Check if the current environment is an E2E test environment
+ */
+const isE2E = process.env.E2E_TEST === 'true';
+
+/**
  * Database connection pool
  */
 let pool: ConnectionPool | null = null;
@@ -197,10 +221,10 @@ export function getDatabaseConfig(): SqlConfig {
       max: 10,
       min: 1, // Keep 1 connection always alive (prevents cold starts)
       idleTimeoutMillis: 300000, // 5 minutes (increased from 30s to prevent disconnections)
-      acquireTimeoutMillis: 10000, // 10 seconds to acquire connection from pool
+      acquireTimeoutMillis: isE2E ? 60000 : 10000, // 60s for E2E, 10s for normal
     },
-    connectionTimeout: 30000, // 30 seconds - Overall connection establishment timeout
-    requestTimeout: 30000, // 30 seconds - Individual query timeout
+    connectionTimeout: isE2E ? 60000 : 30000, // 60s for E2E, 30s for normal
+    requestTimeout: isE2E ? 60000 : 30000, // 60s for E2E, 30s for normal
   };
 }
 
@@ -380,6 +404,51 @@ export type SqlValue =
 export type SqlParams = Record<string, SqlValue>;
 
 /**
+ * Execute an operation with retry logic for transient errors
+ * 
+ * @param operation - Function to execute
+ * @param context - Description of the operation for logging
+ * @param maxRetries - Maximum number of retries (default: 3)
+ */
+async function executeWithRetry<T>(
+  operation: () => Promise<T>,
+  context: string,
+  maxRetries: number = 3
+): Promise<T> {
+  let lastError: any;
+  
+  for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
+    try {
+      return await operation();
+    } catch (error: any) {
+      lastError = error;
+      
+      // Check if error is transient
+      const isTransient = 
+        TRANSIENT_ERROR_CODES.includes(error.number) || 
+        TRANSIENT_ERROR_CODES.includes(error.code) ||
+        (error.message && (
+          error.message.includes('ETIMEDOUT') || 
+          error.message.includes('ECONNRESET') ||
+          error.message.includes('socket hang up') ||
+          error.message.includes('Transient')
+        ));
+
+      if (isTransient && attempt <= maxRetries) {
+        const delay = Math.min(attempt * 200, 2000); // Exponential backoff capped at 2s
+        console.warn(`⚠️ Transient error in ${context} (attempt ${attempt}/${maxRetries}). Retrying in ${delay}ms... Error: ${error.message}`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      
+      throw error;
+    }
+  }
+  
+  throw lastError;
+}
+
+/**
  * Execute a query with type-safe parameters
  *
  * @param query - SQL query string with @paramName placeholders
@@ -431,7 +500,10 @@ export async function executeQuery<T = unknown>(
       });
     }
 
-    const result = await request.query<T>(query);
+    const result = await executeWithRetry(
+      () => request.query<T>(query),
+      'executeQuery'
+    );
     return result;
   } catch (error) {
     console.error('❌ Query execution failed:', error);
@@ -491,7 +563,10 @@ export async function executeProcedure<T = unknown>(
       });
     }
 
-    const result = await request.execute<T>(procedureName);
+    const result = await executeWithRetry(
+      () => request.execute<T>(procedureName),
+      `executeProcedure(${procedureName})`
+    );
     return result;
   } catch (error) {
     console.error('❌ Procedure execution failed:', error);

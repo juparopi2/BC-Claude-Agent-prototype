@@ -679,7 +679,7 @@ function configureRoutes(): void {
       }>(query, { userId });
 
       // Transform backend format to frontend format
-      const approvals = result.recordset.map((row) => {
+      const approvals = (result.recordset || []).map((row) => {
         // Parse tool_args JSON
         let actionData: Record<string, unknown> = {};
         try {

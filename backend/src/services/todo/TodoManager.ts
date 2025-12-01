@@ -196,7 +196,7 @@ export class TodoManager {
         ORDER BY [order] ASC
       `);
 
-    return result.recordset.map((row) => ({
+    return (result.recordset || []).map((row) => ({
       id: row.id,
       session_id: row.session_id,
       content: row.content,

@@ -83,7 +83,7 @@ describe('E2E-09: Session Recovery', () => {
       // Fetch message history via REST
       const response = await newClient.get<{
         messages: Array<{ content: string; role: string }>;
-      }>(`/api/chat/sessions/${freshSession.id}`);
+      }>(`/api/chat/sessions/${freshSession.id}/messages`);
 
       expect(response.ok).toBe(true);
 
@@ -125,12 +125,12 @@ describe('E2E-09: Session Recovery', () => {
 
       const response = await newClient.get<{
         messages: Array<{ content: string; sequenceNumber?: number }>;
-      }>(`/api/chat/sessions/${freshSession.id}`);
+      }>(`/api/chat/sessions/${freshSession.id}/messages`);
 
       expect(response.ok).toBe(true);
 
       const orderMessages = response.body.messages?.filter(
-        m => m.content.startsWith('Order test')
+        m => m.content?.startsWith('Order test')
       ) || [];
 
       // Should be in correct order
@@ -161,7 +161,7 @@ describe('E2E-09: Session Recovery', () => {
 
       const response = await newClient.get<{
         messages: Array<{ content: string; role: string }>;
-      }>(`/api/chat/sessions/${freshSession.id}`);
+      }>(`/api/chat/sessions/${freshSession.id}/messages`);
 
       expect(response.ok).toBe(true);
 
@@ -226,7 +226,7 @@ describe('E2E-09: Session Recovery', () => {
       });
 
       expect(events.length).toBeGreaterThan(0);
-      const hasComplete = events.some(e => e.data.type === 'complete');
+      const hasComplete = events.some(e => e.type === 'complete');
       expect(hasComplete).toBe(true);
     });
 
@@ -326,7 +326,7 @@ describe('E2E-09: Session Recovery', () => {
 
       const response = await newClient.get<{
         messages: Array<{ content: string; role: string }>;
-      }>(`/api/chat/sessions/${freshSession.id}`);
+      }>(`/api/chat/sessions/${freshSession.id}/messages`);
 
       expect(response.ok).toBe(true);
 
@@ -368,7 +368,7 @@ describe('E2E-09: Session Recovery', () => {
       });
 
       // Should complete
-      const hasComplete = events.some(e => e.data.type === 'complete');
+      const hasComplete = events.some(e => e.type === 'complete');
       expect(hasComplete).toBe(true);
     });
 
@@ -391,14 +391,16 @@ describe('E2E-09: Session Recovery', () => {
       newClient.setSessionCookie(testUser.sessionCookie);
 
       const response = await newClient.get<{
-        id: string;
-        title: string;
-        createdAt: string;
+        session: {
+          id: string;
+          title: string;
+          created_at: string;
+        };
       }>(`/api/chat/sessions/${freshSession.id}`);
 
       expect(response.ok).toBe(true);
-      expect(response.body.title).toBe('Metadata Preservation Test');
-      expect(response.body.createdAt).toBeDefined();
+      expect(response.body.session.title).toBe('Metadata Preservation Test');
+      expect(response.body.session.created_at).toBeDefined();
     });
   });
 
@@ -435,11 +437,11 @@ describe('E2E-09: Session Recovery', () => {
 
       const response1 = await newClient.get<{
         messages: Array<{ content: string }>;
-      }>(`/api/chat/sessions/${session1.id}`);
+      }>(`/api/chat/sessions/${session1.id}/messages`);
 
       const response2 = await newClient.get<{
         messages: Array<{ content: string }>;
-      }>(`/api/chat/sessions/${session2.id}`);
+      }>(`/api/chat/sessions/${session2.id}/messages`);
 
       expect(response1.ok).toBe(true);
       expect(response2.ok).toBe(true);
@@ -517,7 +519,7 @@ describe('E2E-09: Session Recovery', () => {
           content: string;
           sequenceNumber?: number;
         }>;
-      }>(`/api/chat/sessions/${freshSession.id}`);
+      }>(`/api/chat/sessions/${freshSession.id}/messages`);
 
       expect(response.ok).toBe(true);
 

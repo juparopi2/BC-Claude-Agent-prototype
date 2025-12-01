@@ -538,8 +538,10 @@ export class E2ETestClient {
 
     return new Promise((resolve, reject) => {
       const collected: AgentEvent[] = [];
+      const key = `collect:${Date.now()}`;
 
       const timeoutHandle = setTimeout(() => {
+        this.eventWaiters.delete(key);  // Clean up waiter on timeout
         reject(new Error(
           `Timeout collecting ${count} events (got ${collected.length}) after ${timeout}ms`
         ));
@@ -557,7 +559,8 @@ export class E2ETestClient {
             return;
           }
 
-          if (collected.length >= count) {
+          // Only resolve on count if stopOnEventType is NOT specified
+          if (!stopOnEventType && collected.length >= count) {
             clearTimeout(timeoutHandle);
             resolve(collected);
             return;
@@ -565,8 +568,7 @@ export class E2ETestClient {
         }
       }
 
-      // Set up collector
-      const key = `collect:${Date.now()}`;
+      // Set up collector (key defined above for timeout cleanup)
       const waiter = {
         resolve: (event: AgentEvent) => {
           collected.push(event);
@@ -579,7 +581,8 @@ export class E2ETestClient {
             return;
           }
 
-          if (collected.length >= count) {
+          // Only resolve on count if stopOnEventType is NOT specified
+          if (!stopOnEventType && collected.length >= count) {
             clearTimeout(timeoutHandle);
             this.eventWaiters.delete(key);
             resolve(collected);

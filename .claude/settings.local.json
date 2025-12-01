@@ -99,7 +99,8 @@
       "Bash(exit 1)",
       "Bash(npm run test:e2e:*)",
       "Bash(NODE_OPTIONS='--max-old-space-size=4096' npm run test:e2e:*)",
-      "Bash(cd:*)"
+      "Bash(cd:*)",
+      "Bash(docker ps:*)"
     ],
     "deny": [],
     "ask": []

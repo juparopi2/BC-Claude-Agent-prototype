@@ -10,8 +10,8 @@
 import dotenv from 'dotenv';
 import { z } from 'zod';
 
-// Load .env file
-dotenv.config();
+// Load .env file (override: false preserves existing env vars for testing)
+dotenv.config({ override: false });
 
 /**
  * Environment variables schema for validation

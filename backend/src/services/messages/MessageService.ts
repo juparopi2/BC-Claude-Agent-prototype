@@ -451,7 +451,7 @@ export class MessageService {
 
       const result = await executeQuery<MessageDbRecord>(query, params);
 
-      return result.recordset.map((row) => parseMessageMetadata(row));
+      return (result.recordset || []).map((row) => parseMessageMetadata(row));
     } catch (error) {
       this.logger.error('Failed to get messages by session', { error, sessionId });
       throw error;
@@ -478,7 +478,7 @@ export class MessageService {
         { id: messageId }
       );
 
-      if (result.recordset.length === 0) {
+      if (!result.recordset || result.recordset.length === 0) {
         return null;
       }
 

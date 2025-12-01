@@ -669,7 +669,7 @@ export class ApprovalManager {
         ORDER BY created_at DESC
       `);
 
-    return result.recordset.map((row) => ({
+    return (result.recordset || []).map((row) => ({
       id: row.id,
       session_id: row.session_id,
       message_id: row.message_id,

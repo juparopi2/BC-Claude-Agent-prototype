@@ -279,7 +279,7 @@ class TokenUsageService {
       { user_id: userId, months }
     );
 
-    return result.recordset.map((row) => ({
+    return (result.recordset || []).map((row) => ({
       model: row.model,
       year: row.year,
       month: row.month,
@@ -320,7 +320,7 @@ class TokenUsageService {
       { user_id: userId, limit }
     );
 
-    return result.recordset.map((row) => ({
+    return (result.recordset || []).map((row) => ({
       sessionId: row.session_id,
       userId: row.user_id,
       totalRequests: row.total_requests,

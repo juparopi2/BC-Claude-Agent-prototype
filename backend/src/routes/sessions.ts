@@ -222,7 +222,7 @@ router.get('/', authenticateMicrosoft, async (req: Request, res: Response): Prom
     }>(query, { userId });
 
     // Transform backend format to frontend format
-    const sessions = result.recordset.map(transformSession);
+    const sessions = (result.recordset || []).map(transformSession);
 
     logger.info(`[Sessions] Found ${sessions.length} sessions for user ${userId}`);
 
@@ -459,7 +459,7 @@ router.get('/:sessionId/messages', authenticateMicrosoft, async (req: Request, r
       tool_use_id: string | null;
     }>(messagesQuery, { sessionId, offset, limit });
 
-    const messages = messagesResult.recordset.map(transformMessage);
+    const messages = (messagesResult.recordset || []).map(transformMessage);
 
     logger.info(`[Sessions] Found ${messages.length} messages for session ${sessionId}`);
 

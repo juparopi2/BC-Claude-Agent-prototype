@@ -319,7 +319,7 @@ export class EventStore {
 
       const result = await executeQuery<EventDbRow>(query, params);
 
-      return result.recordset.map((row) => ({
+      return (result.recordset || []).map((row) => ({
         id: row.id,
         session_id: row.session_id,
         event_type: row.event_type as EventType,
@@ -389,7 +389,7 @@ export class EventStore {
 
       const result = await executeQuery<EventDbRow>(query, params);
 
-      return result.recordset.map((row) => ({
+      return (result.recordset || []).map((row) => ({
         id: row.id,
         session_id: row.session_id,
         event_type: row.event_type as EventType,

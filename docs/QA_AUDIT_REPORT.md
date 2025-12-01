@@ -19,10 +19,10 @@ This QA audit identified **critical infrastructure failures** in the E2E test su
 | Type Check | PASS | No type errors |
 | Unit Tests | PASS | **43 files, 1,294 tests passed** |
 | Integration Tests | PASS | **9 files, 71 tests passed** |
-| E2E Tests | **PARTIAL** | **98+ passed** (auth: 19/20, message-flow: 17/17, streaming: 24/26, extended-thinking: 13/13, tool-execution: 14/18, sequence: 11/11) |
+| E2E Tests | **PARTIAL** | **112+ passed** (auth: 19/20, message-flow: 17/17, streaming: 24/26, extended-thinking: 13/13, tool-execution: 14/18, **session-recovery: 14/14**, sequence: 11/11) |
 | Coverage Threshold | 59% | Configured baseline met |
 
-> **Last Updated**: 2025-11-30 - Fixed E2E-06 tool execution persistence tests (TASK-001). Tests now correctly validate API response structure.
+> **Last Updated**: 2025-12-01 - Fixed E2E-09 session recovery tests (14/14 passing). Fixed critical bug in E2ETestClient.ts collectEvents() method.
 
 ---
 
@@ -165,7 +165,7 @@ Tests: 16 passed | 4 failed (80% pass rate)
 5. `05-extended-thinking.e2e.test.ts` - **13/13 passing** (100%) ✅ ALL FIXED
 6. `06-tool-execution.e2e.test.ts` - **14/18 passing** (78%) ✅ PERSISTENCE TESTS FIXED
 7. `07-approval-flow.e2e.test.ts` - 16 tests (needs verification)
-8. `09-session-recovery.e2e.test.ts` - 14 tests (needs verification)
+8. `09-session-recovery.e2e.test.ts` - **14/14 passing** (100%) ✅ ALL FIXED
 9. `10-multi-tenant-isolation.e2e.test.ts` - 40 tests (needs verification)
 10. `11-error-handling.e2e.test.ts` - 35 tests (needs verification)
 11. `12-sequence-reordering.e2e.test.ts` - **11/11 passing** (100%) ✅ ALL FIXED
@@ -681,6 +681,70 @@ expect(metadata.tool_args).toBeDefined();
 | File | Change |
 |------|--------|
 | `06-tool-execution.e2e.test.ts` | Fixed persistence test expectations, increased timeouts, improved prompts |
+
+---
+
+#### 2025-12-01: Fix E2E-09 Session Recovery Tests - collectEvents Bug
+
+**Issue**: 8 tests failing initially (6/14 passing at baseline), improved to 12/14 after initial backend fixes, then 2 remaining failures at lines 229-230 and 371-372
+
+**Root Cause Analysis**:
+1. **Line 133 TypeError**: Missing null check on `message.content` before calling `.startsWith()`
+2. **Critical Bug in collectEvents()**: The method was resolving when `count` was reached, even when `stopOnEventType` parameter was specified. With 50+ streaming chunks from Claude API, the count (10 or 20) was hit before the 'complete' event arrived, causing early resolution without capturing the complete event.
+3. **Missing Timeout Cleanup**: Event waiters were not cleaned up on timeout, causing potential memory leaks
+
+**Fixes Applied**:
+
+| Component | Fix | File |
+|-----------|-----|------|
+| Null Safety | Added optional chaining `m.content?.startsWith()` | `09-session-recovery.e2e.test.ts` line 133 |
+| Event Collection Logic | Only resolve on count if `stopOnEventType` is NOT specified | `E2ETestClient.ts` lines 560-564, 583-588 |
+| Timeout Cleanup | Added `this.eventWaiters.delete(key)` on timeout | `E2ETestClient.ts` lines 541-548 |
+
+**Code Changes (E2ETestClient.ts)**:
+
+```typescript
+// Fix 1: Check existing events (lines 560-564)
+// Only resolve on count if stopOnEventType is NOT specified
+if (!stopOnEventType && collected.length >= count) {
+  clearTimeout(timeoutHandle);
+  resolve(collected);
+  return;
+}
+
+// Fix 2: Waiter callback (lines 583-588)
+// Only resolve on count if stopOnEventType is NOT specified
+if (!stopOnEventType && collected.length >= count) {
+  clearTimeout(timeoutHandle);
+  this.eventWaiters.delete(key);
+  resolve(collected);
+}
+
+// Fix 3: Timeout cleanup (lines 541-548)
+const key = `collect:${Date.now()}`;
+const timeoutHandle = setTimeout(() => {
+  this.eventWaiters.delete(key);  // Added cleanup
+  reject(new Error(...));
+}, timeout);
+```
+
+**Results**:
+- Before: 6/14 tests passing (43%) - baseline
+- After backend fixes: 12/14 tests passing (86%)
+- After line 133 fix: 13/14 tests passing (93%)
+- After collectEvents fix: **14/14 tests passing (100%)** ✅
+
+**Impact**:
+- ✅ Fixed critical race condition in event collection
+- ✅ Improved reliability for all E2E tests using `collectEvents()` with `stopOnEventType`
+- ✅ Proper memory management with timeout cleanup
+- ✅ Session recovery functionality fully validated
+
+**Files Modified**:
+| File | Change |
+|------|--------|
+| `E2ETestClient.ts` | Fixed collectEvents logic, added timeout cleanup |
+| `09-session-recovery.e2e.test.ts` | Added null check for message.content |
 
 ---
 

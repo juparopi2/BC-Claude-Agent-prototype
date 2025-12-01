@@ -649,10 +649,10 @@ Cada cambio, por pequeño que sea, debe validarse con la siguiente secuencia de 
 | 05-extended-thinking.e2e.test.ts | 13 | Thinking events, content | **13/13 ✓** |
 | 06-tool-execution.e2e.test.ts | 22 | tool_use, tool_result, correlation | **14/18 ✓** |
 | 07-approval-flow.e2e.test.ts | 16 | approve/reject, timeout, broadcast | Pendiente |
-| 09-session-recovery.e2e.test.ts | 14 | Refresh, reconnect, state preservation | Pendiente |
+| 09-session-recovery.e2e.test.ts | 14 | Refresh, reconnect, state preservation | **14/14 ✓** |
 | 10-multi-tenant-isolation.e2e.test.ts | 40 | User isolation, IDOR prevention | Pendiente |
 | 11-error-handling.e2e.test.ts | 35 | 400/401/403/404/429/500, WebSocket | Pendiente |
-| **12-sequence-reordering.e2e.test.ts** | 11 | Sequence numbers, reordering, DB consistency | **2/11 ✓*** |
+| **12-sequence-reordering.e2e.test.ts** | 11 | Sequence numbers, reordering, DB consistency | **11/11 ✓** |
 
 
 #### Detalle: E2E-04 Streaming Flow Extended Thinking (2025-11-28)
@@ -1343,4 +1343,4 @@ export default defineConfig({
 ---
 
 **Documento generado automaticamente por BC Claude Agent Diagnostic Tool**
-**Ultima actualizacion:** 2025-11-28 - Fixed E2E-05 Extended Thinking (13/13 passing)
+**Ultima actualizacion:** 2025-12-01 - Fixed E2E-09 Session Recovery (14/14 passing) - collectEvents bug fixed

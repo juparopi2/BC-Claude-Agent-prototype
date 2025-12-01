@@ -26,6 +26,7 @@
     "lint": "eslint src/**/*.ts",
     "type-check": "tsc --noEmit",
     "verify": "npm run type-check",
+    "verify:all": "npm run build && npm run lint && npm run type-check && npm run test:all",
     "prepush": "npm run verify"
   },
   "keywords": [

@@ -10,8 +10,12 @@
   ],
   "scripts": {
     "build:shared": "npm run -w @bc-agent/shared build",
-    "type-check": "npm run -w @bc-agent/shared type-check && npm run -w backend type-check",
+    "type-check": "npm run -w @bc-agent/shared type-check && npm run -w backend type-check && npm run -w bc-agent-frontend type-check",
     "verify:types": "npm run build:shared && npm run type-check",
+    "test:shared": "npm run -w @bc-agent/shared test --if-present",
+    "test:backend": "npm run -w backend test",
+    "test:frontend": "npm run -w bc-agent-frontend test",
+    "verify:all": "npm run verify:types && npm run test:backend && npm run test:frontend",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",

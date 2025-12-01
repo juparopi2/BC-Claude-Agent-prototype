@@ -15,7 +15,7 @@
 5. [Capacidades Actuales vs Requerimientos Frontend](#5-capacidades-actuales-vs-requerimientos-frontend)
 6. [Analisis de Gaps](#6-analisis-de-gaps)
 7. [Estado de Pruebas Existentes](#7-estado-de-pruebas-existentes)
-8. [Plan de Testing E2E](#8-plan-de-testing-e2e)
+8. [Protocolo de Verificación Estricto](#8-protocolo-de-verificacion-estricto)
 9. [Recomendaciones y Proximos Pasos](#9-recomendaciones-y-proximos-pasos)
 
 ---
@@ -568,7 +568,32 @@ socket.on('client:lastSeen', (lastSequence: number) => {
 
 ---
 
-## 7. Estado de Pruebas Existentes
+---
+
+## 8. Protocolo de Verificación Estricto
+
+**REQUISITO OBLIGATORIO**: Para garantizar la estabilidad del sistema y evitar regresiones, se ha establecido un protocolo estricto de verificación. **Ninguna tarea se considera terminada hasta que se ejecute exitosamente la suite completa de pruebas.**
+
+### Flujo de Verificación
+Cada cambio, por pequeño que sea, debe validarse con la siguiente secuencia de comandos:
+
+1.  **Build**: `npm run build`
+    *   *Objetivo*: Verificar que no hay errores de compilación TypeScript.
+2.  **Lint**: `npm run lint`
+    *   *Objetivo*: Asegurar calidad de código y estándares.
+3.  **Unit Tests**: `npm run test:unit`
+    *   *Objetivo*: Validar lógica aislada de servicios y utilidades.
+4.  **Integration Tests**: `npm run test:integration`
+    *   *Objetivo*: Validar interacción con Redis, Azure SQL y BullMQ.
+5.  **E2E Tests**: `npm run test:e2e`
+    *   *Objetivo*: Validar flujos completos de usuario final.
+
+> [!WARNING]
+> Si alguna de estas etapas falla, el cambio **NO** debe ser integrado ni la tarea marcada como completada. Se debe corregir el error y reiniciar el ciclo de verificación completo.
+
+---
+
+## 9. Recomendaciones y Proximos Pasos
 
 ### 7.1 Resumen de Cobertura
 

@@ -415,28 +415,29 @@ async function executeWithRetry<T>(
   context: string,
   maxRetries: number = 3
 ): Promise<T> {
-  let lastError: any;
+  let lastError: unknown;
   
   for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
     try {
       return await operation();
-    } catch (error: any) {
+    } catch (error) {
       lastError = error;
       
       // Check if error is transient
+      const err = error as { number?: number; code?: string | number; message?: string };
       const isTransient = 
-        TRANSIENT_ERROR_CODES.includes(error.number) || 
-        TRANSIENT_ERROR_CODES.includes(error.code) ||
-        (error.message && (
-          error.message.includes('ETIMEDOUT') || 
-          error.message.includes('ECONNRESET') ||
-          error.message.includes('socket hang up') ||
-          error.message.includes('Transient')
+        (err.number && TRANSIENT_ERROR_CODES.includes(err.number)) || 
+        (err.code && typeof err.code === 'number' && TRANSIENT_ERROR_CODES.includes(err.code)) ||
+        (err.message && (
+          err.message.includes('ETIMEDOUT') || 
+          err.message.includes('ECONNRESET') ||
+          err.message.includes('socket hang up') ||
+          err.message.includes('Transient')
         ));
 
       if (isTransient && attempt <= maxRetries) {
         const delay = Math.min(attempt * 200, 2000); // Exponential backoff capped at 2s
-        console.warn(`⚠️ Transient error in ${context} (attempt ${attempt}/${maxRetries}). Retrying in ${delay}ms... Error: ${error.message}`);
+        console.warn(`⚠️ Transient error in ${context} (attempt ${attempt}/${maxRetries}). Retrying in ${delay}ms... Error: ${err.message}`);
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;
       }

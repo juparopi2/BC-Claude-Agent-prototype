@@ -26,6 +26,23 @@ This QA audit identified **critical infrastructure failures** in the E2E test su
 
 ---
 
+## Verification Protocol (STRICT)
+
+**CRITICAL**: No task is considered "Done" until the **ENTIRE** verification suite passes. This ensures no regressions are introduced by isolated changes.
+
+Before confirming any task completion, you **MUST** execute and pass:
+
+1. **Build**: `npm run build` (Ensures compilation validity)
+2. **Lint**: `npm run lint` (Ensures code style/quality)
+3. **Unit Tests**: `npm run test:unit` (Verifies logic isolation)
+4. **Integration Tests**: `npm run test:integration` (Verifies component interaction)
+5. **E2E Tests**: `npm run test:e2e` (Verifies full system flows)
+
+> [!IMPORTANT]
+> If ANY step fails, the task is **NOT COMPLETE**. Fix the regression and restart the full suite.
+
+---
+
 ## Critical Issues Found
 
 ### 1. E2E Tests Have Never Been Functional
@@ -774,18 +791,6 @@ vitest.e2e.config.ts      → E2E tests (BROKEN - full server stack)
 ```
 
 ### Expected E2E Flow
-
-```
-1. setupE2ETest() called in beforeAll
-2. initRedisForE2E() → Connect to Docker Redis (localhost:6399)
-3. initDatabaseForE2E() → Connect to Azure SQL
-4. startServer() → Create Express app, start HTTP server ← FAILS HERE
-5. Test execution with real HTTP/WebSocket calls
-6. stopServer() → Graceful shutdown
-7. closeDatabase() / closeRedis() → Cleanup
-```
-
-### Actual E2E Flow
 
 ```
 1. setupE2ETest() called

@@ -318,7 +318,7 @@ export class ChatMessageHandler {
       io.to(sessionId).emit('agent:event', event);
 
       // DEBUG: Trace all events emitted to socket
-      console.log(`[SOCKET_EMIT] Type: ${event.type}, Session: ${sessionId}, Seq: ${(event as any).sequenceNumber}`);
+      console.log(`[SOCKET_EMIT] Type: ${event.type}, Session: ${sessionId}, Seq: ${(event as { sequenceNumber?: number }).sequenceNumber}`);
       if (event.type === 'tool_use') {
          console.log('[SOCKET_EMIT] TOOL_USE DETECTED:', JSON.stringify(event, null, 2));
       }

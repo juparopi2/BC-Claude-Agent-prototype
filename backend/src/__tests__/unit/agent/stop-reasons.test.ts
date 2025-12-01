@@ -387,8 +387,9 @@ describe('Stop Reasons - Comprehensive Test Suite', () => {
   // ========================================================================
   describe('7. Documentation Sync', () => {
     it('should document all 6 stop reasons in agent.types.ts comments', () => {
-      const typesPath = path.join(process.cwd(), 'src/types/agent.types.ts');
-      const typesCode = fs.readFileSync(typesPath, 'utf-8');
+      // Types are now in the shared package - check source of truth
+      const sharedTypesPath = path.join(process.cwd(), '../packages/shared/src/types/agent.types.ts');
+      const typesCode = fs.readFileSync(sharedTypesPath, 'utf-8');
 
       const documentsEndTurn = typesCode.includes("'end_turn': Natural completion");
       const documentsToolUse = typesCode.includes("'tool_use': Model wants to use a tool");

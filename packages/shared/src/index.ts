@@ -1,0 +1,100 @@
+/**
+ * @bc-agent/shared
+ *
+ * Shared TypeScript definitions for BC Claude Agent.
+ * This package is the single source of truth for types used by both
+ * frontend and backend applications.
+ *
+ * @module @bc-agent/shared
+ *
+ * @example
+ * ```typescript
+ * // Import types
+ * import type { AgentEvent, ChatMessageData, ApiErrorResponse } from '@bc-agent/shared';
+ *
+ * // Import constants
+ * import { ErrorCode, getErrorMessage } from '@bc-agent/shared';
+ *
+ * // Import schemas
+ * import { chatMessageSchema, validateSafe } from '@bc-agent/shared/schemas';
+ * ```
+ */
+
+// ============================================
+// Types - All type definitions
+// ============================================
+export type {
+  // Agent event types
+  StopReason,
+  AgentEventType,
+  PersistenceState,
+  BaseAgentEvent,
+  SessionStartEvent,
+  ThinkingEvent,
+  ThinkingChunkEvent,
+  MessagePartialEvent,
+  MessageEvent,
+  MessageChunkEvent,
+  ToolUseEvent,
+  ToolResultEvent,
+  ErrorEvent,
+  SessionEndEvent,
+  CompleteEvent,
+  ApprovalRequestedEvent,
+  ApprovalResolvedEvent,
+  UserMessageConfirmedEvent,
+  TurnPausedEvent,
+  ContentRefusedEvent,
+  AgentEvent,
+  AgentExecutionResult,
+
+  // WebSocket types
+  ExtendedThinkingConfig,
+  ChatMessageData,
+  StopAgentData,
+  ApprovalResponseData,
+  ApprovalRequestData,
+  AgentErrorData,
+  SessionReadyEvent,
+  SessionJoinedEvent,
+  WebSocketEvents,
+
+  // Approval types
+  ApprovalStatus,
+  ApprovalPriority,
+  ApprovalRequest,
+  ApprovalResponse,
+  ChangeSummary,
+  CreateApprovalOptions,
+  ApprovalResult,
+  ApprovalOwnershipError,
+
+  // Error types
+  ApiErrorResponse,
+  ErrorResponseWithStatus,
+  ValidationErrorDetail,
+  RangeErrorDetail,
+} from './types';
+
+// Type guards (runtime functions, not types)
+export { isApiErrorResponse, isValidErrorCode } from './types';
+
+// ============================================
+// Constants - Error codes, messages, mappings
+// ============================================
+export {
+  ErrorCode,
+  HTTP_STATUS_NAMES,
+  ERROR_MESSAGES,
+  ERROR_STATUS_CODES,
+  getHttpStatusName,
+  getErrorMessage,
+  getErrorStatusCode,
+  validateErrorConstants,
+} from './constants';
+
+// ============================================
+// Schemas - Exported from separate entry point
+// ============================================
+// Note: Schemas are exported from '@bc-agent/shared/schemas'
+// to allow tree-shaking of Zod dependency when only types are needed

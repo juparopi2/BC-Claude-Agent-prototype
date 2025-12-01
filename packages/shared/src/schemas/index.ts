@@ -4,16 +4,8 @@
  * Zod schemas for validating HTTP request bodies and WebSocket events.
  * Provides type-safe input validation with clear error messages.
  *
- * Shared schemas are imported from @bc-agent/shared.
- *
- * @module schemas/request
+ * @module @bc-agent/shared/schemas
  */
-
-// ============================================
-// Shared schemas (re-implemented locally for CommonJS compatibility)
-// The shared package schemas are for ESM frontends.
-// Backend uses CommonJS, so we define schemas here.
-// ============================================
 
 import { z } from 'zod';
 
@@ -27,7 +19,7 @@ export const chatMessageSchema = z.object({
   userId: z.string().uuid('Invalid user ID format'),
 });
 
-export type ChatMessageData = z.infer<typeof chatMessageSchema>;
+export type ChatMessageInput = z.infer<typeof chatMessageSchema>;
 
 /**
  * Agent Query Schema
@@ -41,7 +33,7 @@ export const agentQuerySchema = z.object({
   maxTurns: z.number().int().min(1).max(50).default(20),
 });
 
-export type AgentQueryRequest = z.infer<typeof agentQuerySchema>;
+export type AgentQueryInput = z.infer<typeof agentQuerySchema>;
 
 /**
  * Approval Response Schema
@@ -56,7 +48,7 @@ export const approvalResponseSchema = z.object({
   reason: z.string().max(500, 'Reason too long (max 500 chars)').optional(),
 });
 
-export type ApprovalResponseData = z.infer<typeof approvalResponseSchema>;
+export type ApprovalResponseInput = z.infer<typeof approvalResponseSchema>;
 
 /**
  * Session Join Schema
@@ -67,7 +59,7 @@ export const sessionJoinSchema = z.object({
   userId: z.string().uuid('Invalid user ID'),
 });
 
-export type SessionJoinData = z.infer<typeof sessionJoinSchema>;
+export type SessionJoinInput = z.infer<typeof sessionJoinSchema>;
 
 /**
  * Session Leave Schema
@@ -77,7 +69,7 @@ export const sessionLeaveSchema = z.object({
   sessionId: z.string().uuid('Invalid session ID'),
 });
 
-export type SessionLeaveData = z.infer<typeof sessionLeaveSchema>;
+export type SessionLeaveInput = z.infer<typeof sessionLeaveSchema>;
 
 /**
  * Todo Create Schema
@@ -90,7 +82,7 @@ export const todoCreateSchema = z.object({
   order: z.number().int().min(0).optional(),
 });
 
-export type TodoCreateRequest = z.infer<typeof todoCreateSchema>;
+export type TodoCreateInput = z.infer<typeof todoCreateSchema>;
 
 /**
  * BC Query Schema
@@ -107,10 +99,58 @@ export const bcQuerySchema = z.object({
   count: z.boolean().optional(),
 });
 
-export type BCQueryRequest = z.infer<typeof bcQuerySchema>;
+export type BCQueryInput = z.infer<typeof bcQuerySchema>;
+
+/**
+ * Extended Thinking Config Schema
+ * Validates extended thinking configuration per request
+ */
+export const extendedThinkingConfigSchema = z.object({
+  enableThinking: z.boolean().optional(),
+  thinkingBudget: z.number().int().min(1024).optional(),
+});
+
+export type ExtendedThinkingConfigInput = z.infer<typeof extendedThinkingConfigSchema>;
+
+/**
+ * Full Chat Message with Thinking Schema
+ * Combines chat message with optional thinking config
+ */
+export const fullChatMessageSchema = chatMessageSchema.extend({
+  thinking: extendedThinkingConfigSchema.optional(),
+});
+
+export type FullChatMessageInput = z.infer<typeof fullChatMessageSchema>;
+
+/**
+ * Stop Agent Schema
+ * Validates stop agent requests
+ */
+export const stopAgentSchema = z.object({
+  sessionId: z.string().uuid('Invalid session ID'),
+  userId: z.string().uuid('Invalid user ID'),
+});
+
+export type StopAgentInput = z.infer<typeof stopAgentSchema>;
 
 /**
  * Validation Helper - Parse with detailed error messages
+ *
+ * @param schema - Zod schema
+ * @param data - Data to validate
+ * @returns Validated data or throws ZodError
+ *
+ * @example
+ * ```typescript
+ * try {
+ *   const validated = validateOrThrow(chatMessageSchema, req.body);
+ *   // Use validated data (fully typed)
+ * } catch (error) {
+ *   if (error instanceof z.ZodError) {
+ *     return res.status(400).json({ errors: error.errors });
+ *   }
+ * }
+ * ```
  */
 export function validateOrThrow<T extends z.ZodType>(
   schema: T,
@@ -121,6 +161,20 @@ export function validateOrThrow<T extends z.ZodType>(
 
 /**
  * Validation Helper - Safe parse with Result type
+ *
+ * @param schema - Zod schema
+ * @param data - Data to validate
+ * @returns { success: true, data } or { success: false, error }
+ *
+ * @example
+ * ```typescript
+ * const result = validateSafe(chatMessageSchema, req.body);
+ * if (result.success) {
+ *   console.log(result.data.message); // Typed
+ * } else {
+ *   console.log(result.error.errors); // Zod errors array
+ * }
+ * ```
  */
 export function validateSafe<T extends z.ZodType>(
   schema: T,
@@ -133,4 +187,7 @@ export function validateSafe<T extends z.ZodType>(
   return { success: false, error: result.error };
 }
 
+/**
+ * Re-export Zod for consumers who need to extend schemas
+ */
 export { z };

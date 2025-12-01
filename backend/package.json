@@ -40,6 +40,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@bc-agent/shared": "*",
     "@anthropic-ai/sdk": "^0.71.0",
     "@azure/identity": "4.13.0",
     "@azure/keyvault-secrets": "4.10.0",

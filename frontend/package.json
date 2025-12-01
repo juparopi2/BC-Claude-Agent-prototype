@@ -1,26 +1,40 @@
 {
-  "name": "frontend",
+  "name": "bc-agent-frontend",
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "type-check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@bc-agent/shared": "*",
     "next": "16.0.6",
     "react": "19.2.0",
-    "react-dom": "19.2.0"
+    "react-dom": "19.2.0",
+    "socket.io-client": "4.8.1",
+    "zustand": "5.0.2",
+    "zod": "3.25.76"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "eslint": "^9",
+    "@anthropic-ai/sdk": "0.71.0",
+    "@tailwindcss/postcss": "4",
+    "@testing-library/react": "16.1.0",
+    "@types/node": "20",
+    "@types/react": "19",
+    "@types/react-dom": "19",
+    "@vitest/coverage-v8": "2.1.8",
+    "eslint": "9",
     "eslint-config-next": "16.0.6",
-    "tailwindcss": "^4",
-    "typescript": "^5"
+    "happy-dom": "15.11.7",
+    "msw": "2.6.0",
+    "tailwindcss": "4",
+    "typescript": "5",
+    "vitest": "2.1.8"
   }
 }

@@ -3,7 +3,15 @@
   "version": "1.0.0",
   "description": "BC Claude Agent - Full Stack Application",
   "private": true,
+  "workspaces": [
+    "packages/*",
+    "backend",
+    "frontend"
+  ],
   "scripts": {
+    "build:shared": "npm run -w @bc-agent/shared build",
+    "type-check": "npm run -w @bc-agent/shared type-check && npm run -w backend type-check",
+    "verify:types": "npm run build:shared && npm run type-check",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",

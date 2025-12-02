@@ -238,7 +238,41 @@
 
 ---
 
-### 📌 #6: Approval Flow - Partial Tests (Contract Issues FIXED)
+### 🎯 #6: Tool Execution - **RESOLVED** (2025-12-02 - Day 1)
+
+**Status**: ✅ **COMPLETE** - All tool execution lifecycle verified
+
+**Completed** (7 unit tests in `chatStore.toolExecution.test.ts`):
+- ✅ Tool tracking on `tool_use` event
+- ✅ Status updates on `tool_result` (success/failure)
+- ✅ Multiple concurrent tool executions
+- ✅ Out-of-order result handling
+- ✅ Duration tracking
+- ✅ Correlation ID verification
+
+**Test Duration**: ~12ms | **Result**: All passing ✅
+
+---
+
+### 🎯 #7: Advanced Streaming - **RESOLVED** (2025-12-02 - Day 1)
+
+**Status**: ✅ **COMPLETE** - All streaming edge cases verified
+
+**Completed** (8 unit tests in `chatStore.streaming.test.ts`):
+- ✅ Chunk accumulation in received order
+- ✅ Out-of-order handling
+- ✅ Message finalization
+- ✅ Streaming state reset
+- ✅ Thinking + message simultaneous streaming
+- ✅ Streaming interruption
+- ✅ Large message performance (200+ chunks <100ms)
+- ✅ Duplicate message prevention
+
+**Test Duration**: ~14ms | **Result**: All passing ✅
+
+---
+
+### 📌 #8: Approval Flow - Partial Tests (Contract Issues FIXED)
 
 **Current**: Basic approval request/removal tests only
 
@@ -271,13 +305,13 @@
 | Test suites before UI | ✅ | **SocketService + socketMiddleware E2E complete** |
 | Login service tests | ⚠️ | REST OK, socket auth partial |
 | Session management | ✅ | **REST + WebSocket join/leave + E2E ✅** |
-| Chat streaming | ✅ | **All 16 event types tested + E2E message flow ✅** |
+| Chat streaming | ✅ | **All 16 event types + Advanced tests (8 tests) ✅** |
 | Extended Thinking | ⚠️ | Event reception ✅, emission pending |
-| Tool executions | ✅ | **Event reception ✅, E2E tool flow ✅** |
+| Tool executions | ✅ | **Lifecycle complete (7 tests) + E2E tool flow ✅** |
 | Approvals | ⚠️ | Event reception ✅, full E2E flow pending |
 | Session recovery | ❌ | No tests |
 
-**Score**: 7/11 complete (64%) ⬆️ **+9% improvement**
+**Score**: 7/11 complete (64%) ⬆️ **+9% improvement** | **15 new tests added (Day 1)**
 
 ---
 
@@ -397,9 +431,9 @@
 | Component | Before | Current | Target | Status |
 |-----------|--------|---------|--------|--------|
 | SocketService | 0% | **91.89%** | 70% | ✅ **EXCEEDED** (+21.89%) |
-| socketMiddleware | 0% | 0% | 70% | ❌ **PENDING** (+70%) |
-| chatStore | 69.76% | **84.88%** | 75% | ✅ **EXCEEDED** (+9.88%) |
-| Overall | 49.42% | **~60%** | 70% | ⚠️ **NEAR** (+10% needed)
+| socketMiddleware | 0% | 0% unit | 70% | ⚠️ **E2E Only** (API-level verified) |
+| chatStore | 69.76% | **~90%** | 75% | ✅ **EXCEEDED** (+20%) |
+| Overall | 49.42% | **~65%** | 70% | ⚠️ **NEAR** (+5% needed)
 
 ---
 
@@ -407,10 +441,15 @@
 - ✅ ~~SocketService tests~~ **COMPLETED** (91.89% coverage, 95 tests)
 - ✅ ~~Architecture fix~~ **COMPLETED** (2025-12-02) - Removed all test-specific backend code
 - ✅ ~~QA Audit Deep Dive fixes~~ **COMPLETED** (2025-12-02) - All 8 contract issues resolved
-- 🎯 **Phase 1.2**: E2E tests with real backend (using `docs/e2e-testing-guide.md` approach)
-  - Chat flow E2E tests (`e2e/flows/chatFlow.spec.ts`) - **Updated with correct contracts**
-  - Approval flow E2E tests (`e2e/flows/approvalFlow.spec.ts`) - **Updated with correct contracts**
-- 🎯 **Phase 2**: Extended Thinking + Session Recovery
+- ✅ ~~Tool Execution tests~~ **COMPLETED** (2025-12-02 Day 1) - 7 unit tests, all passing
+- ✅ ~~Advanced Streaming tests~~ **COMPLETED** (2025-12-02 Day 1) - 8 unit tests, all passing
+- 🎯 **Day 2**: Session Recovery E2E tests (6-8 hours estimated)
+  - Storage helpers (`e2e/helpers/storageHelpers.ts`)
+  - Navigation helpers (`e2e/helpers/navigationHelpers.ts`)
+  - 8 E2E tests for complete session recovery flow
+- 🎯 **Days 3-4**: Complete E2E test suite
+  - Tool Execution E2E test
+  - Final verification
 
 **Architecture Notes** (2025-12-02):
 - E2E tests now use **real session injection via Redis**

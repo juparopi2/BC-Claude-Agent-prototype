@@ -108,7 +108,8 @@
       "Bash(where:*)",
       "Bash(npm run:*)",
       "Bash(npm ls:*)",
-      "Bash(npx eslint:*)"
+      "Bash(npx eslint:*)",
+      "Bash(python:*)"
     ],
     "deny": [],
     "ask": []

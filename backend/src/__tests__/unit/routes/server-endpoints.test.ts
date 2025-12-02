@@ -50,11 +50,6 @@ vi.mock('@/utils/session-ownership', () => ({
 }));
 
 // Mock services
-const mockMCPService = {
-  getMCPServerUrl: vi.fn(() => 'http://localhost:4000'),
-  isConfigured: vi.fn(() => true),
-};
-
 const mockDirectAgentService = {
   // NOTE: DirectAgentService only has executeQueryStreaming, not executeQuery
   executeQueryStreaming: vi.fn().mockResolvedValue({
@@ -73,10 +68,6 @@ const mockApprovalManager = {
 const mockTodoManager = {
   getTodosBySession: vi.fn(),
 };
-
-vi.mock('@/services/mcp/MCPService', () => ({
-  getMCPService: () => mockMCPService,
-}));
 
 vi.mock('@/services/agent', () => ({
   getDirectAgentService: () => mockDirectAgentService,
@@ -136,29 +127,6 @@ function createServerApp(): Application {
     });
   });
 
-  // GET /api/mcp/config
-  app.get('/api/mcp/config', (_req: Request, res: Response) => {
-    res.json({
-      mcpServerUrl: mockMCPService.getMCPServerUrl(),
-      isConfigured: mockMCPService.isConfigured(),
-      toolsType: 'vendored',
-    });
-  });
-
-  // GET /api/mcp/health - uses standardized error format
-  app.get('/api/mcp/health', async (_req: Request, res: Response) => {
-    try {
-      const isConfigured = mockMCPService.isConfigured();
-      if (!isConfigured) {
-        sendError(res, ErrorCode.MCP_UNAVAILABLE, 'MCP not configured');
-        return;
-      }
-      res.json({ status: 'healthy', mcpUrl: mockMCPService.getMCPServerUrl() });
-    } catch {
-      sendInternalError(res, ErrorCode.SERVICE_ERROR);
-    }
-  });
-
   // GET /api/bc/test - uses standardized error format
   app.get('/api/bc/test', async (_req: Request, res: Response) => {
     try {
@@ -191,8 +159,8 @@ function createServerApp(): Application {
         toolsAvailable: 7,
       },
       mcpServer: {
-        url: mockMCPService.getMCPServerUrl(),
-        configured: mockMCPService.isConfigured(),
+        url: 'vendored',
+        configured: true,
         type: 'in-process-data-files',
       },
       implementation: {
@@ -404,55 +372,6 @@ describe('Server Inline Endpoints', () => {
       expect(response.body.status).toBe('ok');
       expect(response.body.message).toBe('BC Claude Agent API');
       expect(response.body.version).toBeDefined();
-    });
-  });
-
-  // ============================================
-  // GET /api/mcp/config
-  // ============================================
-  describe('GET /api/mcp/config', () => {
-    it('should return MCP configuration', async () => {
-      // Act
-      const response = await request(app)
-        .get('/api/mcp/config')
-        .expect(200);
-
-      // Assert
-      expect(response.body.mcpServerUrl).toBe('http://localhost:4000');
-      expect(response.body.isConfigured).toBe(true);
-      expect(response.body.toolsType).toBe('vendored');
-    });
-  });
-
-  // ============================================
-  // GET /api/mcp/health
-  // ============================================
-  describe('GET /api/mcp/health', () => {
-    it('should return healthy when MCP is configured', async () => {
-      // Arrange
-      mockMCPService.isConfigured.mockReturnValueOnce(true);
-
-      // Act
-      const response = await request(app)
-        .get('/api/mcp/health')
-        .expect(200);
-
-      // Assert
-      expect(response.body.status).toBe('healthy');
-    });
-
-    it('should return unhealthy when MCP is not configured', async () => {
-      // Arrange
-      mockMCPService.isConfigured.mockReturnValueOnce(false);
-
-      // Act
-      const response = await request(app)
-        .get('/api/mcp/health')
-        .expect(503);
-
-      // Assert - standardized error format uses error/message/code structure
-      expect(response.body.error).toBe('Service Unavailable');
-      expect(response.body.code).toBe(ErrorCode.MCP_UNAVAILABLE);
     });
   });
 
@@ -1323,24 +1242,6 @@ describe('Server Inline Endpoints', () => {
         // Assert - should handle null as empty
         expect(response.body.count).toBe(0);
         expect(response.body.approvals).toEqual([]);
-      });
-    });
-
-    describe('MCP Health Edge Cases', () => {
-      it('should handle MCP service throwing error', async () => {
-        // Arrange - mock throws exception
-        mockMCPService.isConfigured.mockImplementationOnce(() => {
-          throw new Error('MCP internal error');
-        });
-
-        // Act
-        const response = await request(app)
-          .get('/api/mcp/health')
-          .expect(500);
-
-        // Assert - standardized error format
-        expect(response.body.error).toBe('Internal Server Error');
-        expect(response.body.code).toBe(ErrorCode.SERVICE_ERROR);
       });
     });
 

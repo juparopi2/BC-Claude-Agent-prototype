@@ -26,4 +26,3 @@ process.env.MICROSOFT_CLIENT_SECRET = 'mock-client-secret';
 process.env.MICROSOFT_TENANT_ID = 'common';
 process.env.MICROSOFT_REDIRECT_URI = 'http://localhost:3002/api/auth/callback';
 process.env.BC_API_URL = 'https://api.businesscentral.dynamics.com/v2.0';
-process.env.MCP_SERVER_URL = 'http://localhost:3003/mcp';

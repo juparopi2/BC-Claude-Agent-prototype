@@ -51,8 +51,6 @@ const envSchema = z.object({
   BC_CLIENT_SECRET: z.string().optional(),
   BC_ENVIRONMENT: z.string().default('production'),
 
-  // MCP Server
-  MCP_SERVER_URL: z.string().url().default('https://app-erptools-mcp-dev.purplemushroom-befedc5f.westeurope.azurecontainerapps.io/mcp'),
 
   // JWT (deprecated - use Microsoft OAuth)
   JWT_SECRET: z.string().optional(),
@@ -120,10 +118,6 @@ export const isProd = env.NODE_ENV === 'production';
  */
 export const isDev = env.NODE_ENV === 'development';
 
-/**
- * Check if running in test
- */
-export const isTest = env.NODE_ENV === 'test';
 
 /**
  * Validate that required secrets are present
@@ -156,7 +150,6 @@ export function printConfig(): void {
   console.log('📋 Configuration:');
   console.log(`   Environment: ${env.NODE_ENV}`);
   console.log(`   Port: ${env.PORT}`);
-  console.log(`   MCP Server: ${env.MCP_SERVER_URL}`);
   console.log(`   BC API: ${env.BC_API_URL}`);
   console.log(`   CORS Origin: ${env.CORS_ORIGIN}`);
   console.log(`   Log Level: ${env.LOG_LEVEL}`);

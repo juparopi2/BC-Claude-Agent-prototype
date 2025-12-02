@@ -133,7 +133,6 @@ jobs:
               STORAGE_CONNECTION_STRING=secretref:storage-connection-string \
               BC_API_URL=https://api.businesscentral.dynamics.com/v2.0 \
               BC_ENVIRONMENT=production \
-              MCP_SERVER_URL=https://app-erptools-mcp-dev.purplemushroom-befedc5f.westeurope.azurecontainerapps.io/mcp \
               LOG_LEVEL=info \
               ENABLE_PROMPT_CACHING=true \
               ENABLE_EXTENDED_THINKING=true

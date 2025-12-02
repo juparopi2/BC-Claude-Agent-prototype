@@ -19,7 +19,6 @@ import { initDatabase, closeDatabase, checkDatabaseHealth, executeQuery } from '
 import { initRedis, closeRedis, checkRedisHealth, getRedis } from './config/redis';
 import { startDatabaseKeepalive, stopDatabaseKeepalive } from './utils/databaseKeepalive';
 import { logger } from './utils/logger';
-import { getMCPService } from './services/mcp';
 import { getBCClient } from './services/bc';
 import { getDirectAgentService } from './services/agent';
 import { getApprovalManager } from './services/approval/ApprovalManager';
@@ -193,30 +192,7 @@ async function initializeApp(): Promise<void> {
     }
     console.log('');
 
-    // Step 5: Initialize MCP Service
-    const mcpService = getMCPService();
-    if (mcpService.isConfigured()) {
-      console.log('🔌 Initializing MCP Service...');
-      try {
-        const mcpHealth = await mcpService.validateMCPConnection();
-        if (mcpHealth.connected) {
-          console.log(`✅ MCP Service connected: ${mcpService.getMCPServerUrl()}`);
-        } else {
-          console.warn(`⚠️  MCP Service not reachable: ${mcpHealth.error}`);
-          console.warn('   Server will continue without MCP health check validation');
-        }
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        console.warn(`⚠️  MCP health check failed: ${errorMessage}`);
-        console.warn('   Server will continue initialization anyway');
-      }
-      console.log('');
-    } else {
-      console.warn('⚠️  MCP Service not configured (MCP_SERVER_URL missing)');
-      console.log('');
-    }
-
-    // Step 6: Initialize BC Client (validate credentials)
+    // Step 5: Initialize BC Client (validate credentials)
     console.log('🔑 Validating Business Central credentials...');
     const bcClient = getBCClient();
     const bcValid = await bcClient.validateCredentials();
@@ -227,19 +203,19 @@ async function initializeApp(): Promise<void> {
     }
     console.log('');
 
-    // Step 7: Initialize Approval Manager (requires Socket.IO)
+    // Step 6: Initialize Approval Manager (requires Socket.IO)
     console.log('📋 Initializing Approval Manager...');
     const approvalManager = getApprovalManager(io);
     console.log('✅ Approval Manager initialized');
     console.log('');
 
-    // Step 9: Initialize Todo Manager (requires Socket.IO)
+    // Step 7: Initialize Todo Manager (requires Socket.IO)
     console.log('✅ Initializing Todo Manager...');
     const todoManager = getTodoManager(io);
     console.log('✅ Todo Manager initialized');
     console.log('');
 
-    // Step 10: Initialize Direct Agent Service (bypasses ProcessTransport bug)
+    // Step 8: Initialize Direct Agent Service (bypasses ProcessTransport bug)
     console.log('🤖 Initializing Direct Agent Service (workaround)...');
     // Initialize singleton (will be used by routes/socket handlers)
     getDirectAgentService(approvalManager, todoManager);
@@ -247,7 +223,7 @@ async function initializeApp(): Promise<void> {
       console.log('✅ Direct Agent Service initialized');
       console.log(`   Model: ${env.ANTHROPIC_MODEL}`);
       console.log(`   Strategy: Direct API (bypasses Agent SDK bug)`);
-      console.log(`   MCP Tools: 7 (loaded from data files)`);
+      console.log(`   Tools: 115 BC entities (vendored from data files)`);
     } else {
       console.warn('⚠️  Direct Agent Service: ANTHROPIC_API_KEY not configured');
     }
@@ -295,25 +271,13 @@ function configureRoutes(): void {
     });
   });
 
-  // Health check endpoint - checks all services
+  // Health check endpoint - checks critical services only (DB + Redis)
   app.get('/health', async (_req: Request, res: Response) => {
     const dbHealth = await checkDatabaseHealth();
     const redisHealth = await checkRedisHealth();
 
-    // Check MCP health
-    const mcpService = getMCPService();
-    let mcpHealth = 'not_configured';
-    if (mcpService.isConfigured()) {
-      const mcpStatus = await mcpService.validateMCPConnection();
-      mcpHealth = mcpStatus.connected ? 'up' : 'down';
-    }
-
-    // Check BC health
-    const bcClient = getBCClient();
-    const bcConnected = await bcClient.testConnection();
-    const bcHealth = bcConnected ? 'up' : 'down';
-
-    const allHealthy = dbHealth && redisHealth && mcpHealth !== 'down' && bcHealth === 'up';
+    // Critical services: Database and Redis (required for core functionality)
+    const allHealthy = dbHealth && redisHealth;
 
     const health = {
       status: allHealthy ? 'healthy' : 'unhealthy',
@@ -321,8 +285,6 @@ function configureRoutes(): void {
       services: {
         database: dbHealth ? 'up' : 'down',
         redis: redisHealth ? 'up' : 'down',
-        mcp: mcpHealth,
-        businessCentral: bcHealth,
       },
     };
 
@@ -348,10 +310,6 @@ function configureRoutes(): void {
           me: '/api/auth/me',
           status: '/api/auth/status',
         },
-        mcp: {
-          config: '/api/mcp/config',
-          health: '/api/mcp/health',
-        },
         bc: {
           test: '/api/bc/test',
           customers: '/api/bc/customers',
@@ -369,41 +327,6 @@ function configureRoutes(): void {
         },
       },
     });
-  });
-
-  // MCP endpoints
-  app.get('/api/mcp/config', (_req: Request, res: Response): void => {
-    const mcpService = getMCPService();
-
-    if (!mcpService.isConfigured()) {
-      sendError(res, ErrorCode.MCP_UNAVAILABLE, 'MCP_SERVER_URL is not set');
-      return;
-    }
-
-    const config = mcpService.getMCPServerConfig();
-    res.json({
-      configured: true,
-      serverUrl: mcpService.getMCPServerUrl(),
-      serverName: mcpService.getMCPServerName(),
-      config: {
-        type: config.type,
-        name: config.name,
-      },
-    });
-  });
-
-  app.get('/api/mcp/health', async (_req: Request, res: Response): Promise<void> => {
-    const mcpService = getMCPService();
-
-    if (!mcpService.isConfigured()) {
-      sendError(res, ErrorCode.MCP_UNAVAILABLE, 'MCP not configured');
-      return;
-    }
-
-    const health = await mcpService.validateMCPConnection();
-    const statusCode = health.connected ? 200 : 503;
-
-    res.status(statusCode).json(health);
   });
 
   // BC endpoints
@@ -496,8 +419,6 @@ function configureRoutes(): void {
 
   // Agent endpoints
   app.get('/api/agent/status', (_req: Request, res: Response): void => {
-    const mcpService = getMCPService();
-
     const status = {
       configured: !!env.ANTHROPIC_API_KEY,
       config: {
@@ -505,12 +426,12 @@ function configureRoutes(): void {
         model: env.ANTHROPIC_MODEL,
         strategy: 'direct-api',
         mcpConfigured: true,
-        toolsAvailable: 7,
+        toolsAvailable: 115,
       },
-      mcpServer: {
-        url: mcpService.getMCPServerUrl(),
-        configured: mcpService.isConfigured(),
-        type: 'in-process-data-files',
+      toolsSource: {
+        type: 'vendored-json-files',
+        location: 'backend/mcp-server/data/v1.0/',
+        count: 115,
       },
       implementation: {
         type: 'DirectAgentService',

@@ -55,7 +55,6 @@ vi.mock('@/config/environment', () => ({
     PORT: 3002,
     CORS_ORIGIN: 'http://localhost:3000',
     ANTHROPIC_API_KEY: 'test-key',
-    MCP_SERVER_URL: 'http://localhost:4000',
     DATABASE_SERVER: 'test-server',
     DATABASE_NAME: 'test-db',
     DATABASE_USER: 'test-user',
@@ -91,15 +90,6 @@ vi.mock('@/utils/session-ownership', () => ({
 }));
 
 // Mock services
-const mockMCPService = {
-  getMCPServerUrl: vi.fn(() => 'http://localhost:4000'),
-  isConfigured: vi.fn(() => true),
-  loadTools: vi.fn().mockResolvedValue([]),
-  getToolDefinitions: vi.fn().mockReturnValue([]),
-  connect: vi.fn().mockResolvedValue(undefined),
-  callTool: vi.fn().mockResolvedValue({ result: 'test' }),
-};
-
 const mockBCClient = {
   testConnection: vi.fn().mockResolvedValue(true),
   getCustomers: vi.fn().mockResolvedValue([]),
@@ -140,10 +130,6 @@ const mockMessageQueue = {
   addMessagePersistence: vi.fn().mockResolvedValue(undefined),
   getQueueStats: vi.fn().mockResolvedValue({ waiting: 0, active: 0 }),
 };
-
-vi.mock('@/services/mcp', () => ({
-  getMCPService: () => mockMCPService,
-}));
 
 vi.mock('@/services/bc', () => ({
   getBCClient: () => mockBCClient,
@@ -270,29 +256,6 @@ function createTestApp(): Application {
     });
   });
 
-  // ========== MCP Endpoints ==========
-  app.get('/api/mcp/config', (_req: Request, res: Response): void => {
-    res.json({
-      serverUrl: mockMCPService.getMCPServerUrl(),
-      configured: mockMCPService.isConfigured(),
-    });
-  });
-
-  app.get('/api/mcp/health', async (_req: Request, res: Response): Promise<void> => {
-    const isConfigured = mockMCPService.isConfigured();
-    if (!isConfigured) {
-      res.status(503).json({
-        status: 'unconfigured',
-        message: 'MCP server URL not configured',
-      });
-      return;
-    }
-    res.json({
-      status: 'healthy',
-      serverUrl: mockMCPService.getMCPServerUrl(),
-    });
-  });
-
   // ========== BC Endpoints ==========
   app.get('/api/bc/test', async (_req: Request, res: Response): Promise<void> => {
     try {
@@ -328,7 +291,7 @@ function createTestApp(): Application {
     res.json({
       status: 'operational',
       extended_thinking: false,
-      mcp_configured: mockMCPService.isConfigured(),
+      mcp_configured: true,
     });
   });
 
@@ -548,42 +511,7 @@ describe('Server Endpoints - Comprehensive Tests', () => {
   });
 
   // =========================================================================
-  // SECTION 3: MCP Endpoints
-  // =========================================================================
-  describe('MCP Endpoints', () => {
-    it('GET /api/mcp/config should return MCP configuration', async () => {
-      const response = await request(app).get('/api/mcp/config');
-
-      expect(response.status).toBe(200);
-      expect(response.body).toEqual({
-        serverUrl: 'http://localhost:4000',
-        configured: true,
-      });
-    });
-
-    it('GET /api/mcp/health should return healthy when configured', async () => {
-      const response = await request(app).get('/api/mcp/health');
-
-      expect(response.status).toBe(200);
-      expect(response.body).toMatchObject({
-        status: 'healthy',
-      });
-    });
-
-    it('GET /api/mcp/health should return 503 when not configured', async () => {
-      mockMCPService.isConfigured.mockReturnValueOnce(false);
-
-      const response = await request(app).get('/api/mcp/health');
-
-      expect(response.status).toBe(503);
-      expect(response.body).toMatchObject({
-        status: 'unconfigured',
-      });
-    });
-  });
-
-  // =========================================================================
-  // SECTION 4: BC Endpoints
+  // SECTION 3: BC Endpoints
   // =========================================================================
   describe('BC Endpoints', () => {
     it('GET /api/bc/test should return connected status', async () => {
@@ -641,7 +569,7 @@ describe('Server Endpoints - Comprehensive Tests', () => {
   });
 
   // =========================================================================
-  // SECTION 5: Agent Endpoints
+  // SECTION 4: Agent Endpoints
   // =========================================================================
   describe('Agent Endpoints', () => {
     it('GET /api/agent/status should return agent status', async () => {
@@ -703,7 +631,7 @@ describe('Server Endpoints - Comprehensive Tests', () => {
   });
 
   // =========================================================================
-  // SECTION 6: Approvals Endpoints
+  // SECTION 5: Approvals Endpoints
   // =========================================================================
   describe('Approvals Endpoints', () => {
     const validUUID = '12345678-1234-1234-1234-123456789abc';
@@ -857,7 +785,7 @@ describe('Server Endpoints - Comprehensive Tests', () => {
   });
 
   // =========================================================================
-  // SECTION 7: Todos Endpoints
+  // SECTION 6: Todos Endpoints
   // =========================================================================
   describe('Todos Endpoints', () => {
     it('GET /api/todos/session/:sessionId should require authentication', async () => {
@@ -903,7 +831,7 @@ describe('Server Endpoints - Comprehensive Tests', () => {
   });
 
   // =========================================================================
-  // SECTION 8: Multi-tenant Security
+  // SECTION 7: Multi-tenant Security
   // =========================================================================
   describe('Multi-tenant Security', () => {
     it('should not allow User A to access User B session approvals', async () => {
@@ -943,7 +871,7 @@ describe('Server Endpoints - Comprehensive Tests', () => {
   });
 
   // =========================================================================
-  // SECTION 9: Edge Cases
+  // SECTION 8: Edge Cases
   // =========================================================================
   describe('Edge Cases', () => {
     it('should handle empty recordsets gracefully', async () => {

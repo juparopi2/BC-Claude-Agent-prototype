@@ -15,42 +15,8 @@
  * @module e2e/scripts/seed-test-data
  */
 
-import path from 'path';
-import fs from 'fs';
-import dotenv from 'dotenv';
-
-// Load environment from backend/.env BEFORE importing db-helpers
-const envPath = path.resolve(__dirname, '../../backend/.env');
-const envExamplePath = path.resolve(__dirname, '../../backend/.env.example');
-
-// Check if .env file exists
-if (!fs.existsSync(envPath)) {
-  console.error('═══════════════════════════════════════════════════');
-  console.error('  ❌ ERROR: backend/.env file not found');
-  console.error('═══════════════════════════════════════════════════');
-  console.error('');
-  console.error('  The E2E scripts require database credentials.');
-  console.error('');
-  console.error('  To fix this:');
-  console.error('  1. Copy backend/.env.example to backend/.env');
-  console.error('  2. Fill in the database credentials:');
-  console.error('     - DATABASE_SERVER');
-  console.error('     - DATABASE_NAME');
-  console.error('     - DATABASE_USER');
-  console.error('     - DATABASE_PASSWORD');
-  console.error('');
-  console.error(`  Example path: ${envExamplePath}`);
-  console.error(`  Target path:  ${envPath}`);
-  console.error('');
-  process.exit(1);
-}
-
-const result = dotenv.config({ path: envPath });
-
-if (result.error) {
-  console.error('Failed to parse .env file:', result.error.message);
-  process.exit(1);
-}
+// Load environment variables using centralized loader
+import '../setup/loadEnv';
 
 // Dynamic import to ensure env is loaded first
 async function main(): Promise<void> {

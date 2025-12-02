@@ -1,5 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
+// Load environment variables BEFORE config export
+import './e2e/setup/loadEnv';
+
 /**
  * Playwright Configuration for BC Claude Agent E2E Tests
  *
@@ -10,6 +13,7 @@ import { defineConfig, devices } from '@playwright/test';
  * - Retries in CI only (local debugging is faster without retries)
  */
 export default defineConfig({
+  globalSetup: require.resolve('./e2e/setup/globalSetup.ts'),
   testDir: './e2e',
   fullyParallel: false,  // Sessions are stateful, disable parallel execution
   workers: 1,            // Single worker to avoid session conflicts

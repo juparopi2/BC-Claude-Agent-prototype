@@ -7,7 +7,6 @@
  * Backend-specific types are defined here.
  */
 
-import type { MCPServerConfig } from './mcp.types';
 
 // ============================================
 // Re-export ALL shared types for consumers
@@ -102,8 +101,6 @@ export interface AgentConfig {
   type: AgentType;
   /** System prompt for this agent */
   systemPrompt: string;
-  /** MCP servers to connect to */
-  mcpServers: MCPServerConfig[];
   /** Model to use */
   model?: string;
   /** Max tokens */

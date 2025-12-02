@@ -7,13 +7,11 @@
 
 // MCP Types
 export type {
-  MCPServerConfig,
   MCPTool,
   MCPToolCall,
   MCPToolResult,
   MCPResource,
   MCPPrompt,
-  MCPHealthStatus,
 } from './mcp.types';
 
 // Business Central Types

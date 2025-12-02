@@ -12,7 +12,6 @@ export {
   env,
   isProd,
   isDev,
-  isTest,
   validateRequiredSecrets,
   printConfig,
 } from './environment';

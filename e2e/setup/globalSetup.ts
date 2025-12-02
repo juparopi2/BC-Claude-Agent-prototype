@@ -15,16 +15,26 @@ import Redis from 'ioredis';
 import * as fs from 'fs';
 import * as path from 'path';
 
+// Load environment variables
+import './loadEnv';
+
 // Configuration
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3002';
 
-// Redis configuration (DEV environment)
+// Redis configuration (DEV environment) - NO DEFAULT VALUES, MUST BE IN .env
 const REDIS_CONFIG = {
-  host: process.env.REDIS_HOST || 'redis-bcagent-dev.redis.cache.windows.net',
+  host: process.env.REDIS_HOST,
   port: parseInt(process.env.REDIS_PORT || '6380', 10),
   password: process.env.REDIS_PASSWORD,
   tls: { rejectUnauthorized: false }, // Azure Redis requires TLS
 };
+
+// Validate Redis configuration
+if (!REDIS_CONFIG.host || !REDIS_CONFIG.password) {
+  throw new Error(
+    'Redis configuration is incomplete. Ensure REDIS_HOST and REDIS_PASSWORD are set in backend/.env'
+  );
+}
 
 // Test user data (matches e2e/fixtures/test-data.ts and seed-database.sql)
 const TEST_USER = {

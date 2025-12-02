@@ -130,28 +130,6 @@ export const handlers = [
     return new HttpResponse(null, { status: 204 });
   }),
 
-  // Mock MCP Server - POST (tool calls)
-  http.post('http://localhost:3003/mcp', () => {
-    return HttpResponse.json({
-      result: {
-        content: [
-          {
-            type: 'text',
-            text: 'MCP tool result',
-          },
-        ],
-      },
-    });
-  }),
-
-  // Mock MCP Server - GET (health check)
-  http.get('http://localhost:3003/mcp', () => {
-    return HttpResponse.json({
-      status: 'ok',
-      server: 'bc-mcp',
-    });
-  }),
-
   // Mock Microsoft Graph API - User Profile
   http.get('https://graph.microsoft.com/v1.0/me', () => {
     return HttpResponse.json({

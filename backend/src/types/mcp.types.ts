@@ -6,6 +6,15 @@
  */
 
 /**
+ * NOTE: MCPServerConfig and MCPHealthStatus are DEPRECATED.
+ * The project uses vendored MCP tools from backend/mcp-server/data/v1.0/
+ * instead of an external HTTP MCP service.
+ *
+ * MCPTool, MCPToolCall, MCPToolResult types are still used by DirectAgentService
+ * for parsing and working with vendored tool definitions.
+ */
+
+/**
  * MCP Server Configuration for Agent SDK
  * Defines how the Agent SDK connects to an MCP server
  */

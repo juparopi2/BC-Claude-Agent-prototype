@@ -7,6 +7,9 @@
  * @module e2e/fixtures/db-helpers
  */
 
+// Load environment variables FIRST
+import '../setup/loadEnv';
+
 import sql from 'mssql';
 import {
   TEST_USER,

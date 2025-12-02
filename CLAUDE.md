@@ -299,7 +299,7 @@ The backend requires a `.env` file. Copy `backend/.env.example` to `backend/.env
 **Important Notes**:
 - JWT authentication is **DEPRECATED** - use Microsoft OAuth 2.0 instead
 - Business Central tokens are per-user and encrypted in the database
-- MCP_SERVER_URL points to the vendored MCP server (not an external service)
+- Vendored MCP tools are loaded from backend/mcp-server/data/v1.0/ (115 BC entity JSON files)
 
 ### Azure Key Vault Integration
 
@@ -561,8 +561,8 @@ logger.error({ err, context }, 'Operation failed');
 # Check database connectivity
 cd backend && npm run verify
 
-# Test MCP tool loading
-cd backend && node -e "require('./dist/services/mcp/MCPService.js').getMCPService().loadTools().then(t => console.log(t.length))"
+# Test vendored MCP tool loading
+cd backend && node -e "const { loadVendoredTools } = require('./dist/services/agent/tool-definitions.js'); console.log('Vendored tools:', loadVendoredTools().length)"
 
 # Check Redis connection
 redis-cli -h <REDIS_HOST> -p 6380 -a <REDIS_PASSWORD> --tls ping

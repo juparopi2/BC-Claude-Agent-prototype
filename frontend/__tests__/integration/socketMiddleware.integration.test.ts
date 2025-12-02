@@ -27,7 +27,9 @@ import { getSocketService, resetSocketService } from '@/lib/services/socket';
 const mockUser = {
   id: 'test-user-id',
   email: 'test@example.com',
-  displayName: 'Test User',
+  display_name: 'Test User',
+  avatar_url: null,
+  created_at: new Date().toISOString(),
   role: 'editor' as const,
 };
 
@@ -43,7 +45,8 @@ describe('Socket Middleware Integration', () => {
       streaming: {
         isStreaming: false,
         content: '',
-        messageId: null,
+        thinking: '',
+        messageId: undefined,
       },
       pendingApprovals: new Map(),
       toolExecutions: new Map(),

@@ -1,6 +1,9 @@
 import { beforeAll, afterAll, afterEach } from 'vitest';
 import { server } from './mocks/server';
 
+// Reduce log verbosity during tests (improves performance)
+process.env.LOG_LEVEL = 'warn';
+
 // MSW Server setup
 beforeAll(() => {
   server.listen({ onUnhandledRequest: 'warn' });

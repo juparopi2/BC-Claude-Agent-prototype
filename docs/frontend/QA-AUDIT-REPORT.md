@@ -1,0 +1,994 @@
+# Frontend QA Audit Report
+
+**Date**: 2025-12-01
+**Auditor**: QA Engineering
+**Scope**: BC Claude Agent Frontend Test Coverage & Integration Verification
+**Version**: Initial Implementation
+
+---
+
+## Executive Summary
+
+### Overall Assessment: ⚠️ **NEEDS IMPROVEMENT**
+
+While the type system, services layer, and state management are well-designed, the test coverage has **critical gaps** that prevent verification of the success criteria. The frontend is **NOT production-ready** without addressing these issues.
+
+### Coverage Metrics
+
+| Component | Coverage | Status | Risk Level |
+|-----------|----------|--------|------------|
+| ApiClient | 80.67% | ✅ Good | Low |
+| AuthStore | 96.42% | ✅ Excellent | Low |
+| SessionStore | 90.67% | ✅ Good | Low |
+| ChatStore | 69.76% | ⚠️ Acceptable | Medium |
+| **SocketService** | **0%** | ❌ **Critical** | **CRITICAL** |
+| **socketMiddleware** | **0%** | ❌ **Critical** | **CRITICAL** |
+| **Overall** | **49.42%** | ❌ **Insufficient** | **HIGH** |
+
+---
+
+## Success Criteria Verification
+
+### Original Requirements (from initial request)
+
+1. ✅ **Deep investigation of backend tests/types** - Completed
+2. ✅ **Shared typing strategy verifiable via CI/CD** - Completed
+3. ✅ **Detailed documentation in docs/frontend/** - Completed
+4. ⚠️ **Test suites BEFORE UI development** - Partially completed (critical gaps)
+5. ❌ **Login service with cookie/token handling** - No socket authentication tests
+6. ⚠️ **Session management (list/modify/delete)** - REST tests only, no WebSocket recovery
+7. ❌ **Chat streaming** - No streaming tests
+8. ❌ **Extended Thinking** - No Extended Thinking tests
+9. ❌ **Tool executions** - Basic tests only, no real-time updates
+10. ❌ **Approvals** - Basic tests only, no approval flow validation
+11. ❌ **Session recovery on page refresh** - No tests
+
+### Verdict
+
+**4/11 requirements fully satisfied** (36% completion)
+
+---
+
+## Critical Gaps
+
+### 🚨 Gap #1: ZERO SocketService Test Coverage (BLOCKER)
+
+**Risk**: The most critical component for backend communication has no tests.
+
+**What's Missing**:
+- Connection/disconnection lifecycle
+- Session join/leave validation
+- Message emission with correct payload structure
+- Error handling for network failures
+- Reconnection behavior (5 attempts with 1s delay)
+- Credential handling (`withCredentials: true`)
+- Socket.IO event listener registration
+- Handler invocation verification
+
+**Impact**: Cannot verify frontend will correctly communicate with backend WebSocket server.
+
+**Example Missing Test**:
+```typescript
+describe('SocketService', () => {
+  it('should emit chat:message with correct payload structure', () => {
+    const mockSocket = createMockSocket();
+    const service = new SocketService('ws://test', {}, mockSocket);
+
+    service.sendMessage({
+      message: 'Hello',
+      sessionId: 'session-1',
+      userId: 'user-1',
+      thinking: {
+        enableThinking: true,
+        thinkingBudget: 15000
+      }
+    });
+
+    expect(mockSocket.emit).toHaveBeenCalledWith('chat:message', {
+      message: 'Hello',
+      sessionId: 'session-1',
+      userId: 'user-1',
+      thinking: { enableThinking: true, thinkingBudget: 15000 }
+    });
+  });
+
+  it('should reconnect 5 times with 1s delay on disconnect', async () => {
+    // Verify reconnection attempts match backend expectations
+  });
+});
+```
+
+---
+
+### 🚨 Gap #2: ZERO socketMiddleware Test Coverage (BLOCKER)
+
+**Risk**: The integration layer between WebSocket and Zustand stores is completely untested.
+
+**What's Missing**:
+- `useSocket` hook initialization
+- Auto-connect on mount behavior
+- Session ID changes triggering `joinSession`
+- Optimistic message creation before server response
+- Integration with auth store (user ID extraction)
+- Integration with chat store (event handling)
+- Connection status tracking (`isConnectedRef`)
+- Handler callback invocation
+- User validation before sending messages
+
+**Impact**: Cannot verify that WebSocket events correctly update Zustand stores.
+
+**Example Missing Test**:
+```typescript
+describe('useSocket hook', () => {
+  it('should create optimistic message before sending to server', () => {
+    const { result } = renderHook(() => useSocket({ sessionId: 's1' }), {
+      wrapper: createTestWrapper()
+    });
+
+    act(() => {
+      result.current.sendMessage('Hello');
+    });
+
+    // Verify optimistic message was added to chatStore
+    const optimisticMessages = useChatStore.getState().optimisticMessages;
+    expect(optimisticMessages.size).toBe(1);
+    expect(Array.from(optimisticMessages.values())[0]?.content).toBe('Hello');
+  });
+
+  it('should auto-connect and join session on mount', () => {
+    const mockSocket = createMockSocketService();
+
+    renderHook(() => useSocket({ sessionId: 's1', autoConnect: true }));
+
+    expect(mockSocket.connect).toHaveBeenCalled();
+    expect(mockSocket.joinSession).toHaveBeenCalledWith('s1');
+  });
+});
+```
+
+---
+
+### 🚨 Gap #3: No AgentEvent Flow Tests (BLOCKER)
+
+**Risk**: Only 4 of 16 AgentEvent types are tested. Backend emits 16 event types.
+
+**Tested Events** (4/16):
+- ✅ `message_chunk`
+- ✅ `thinking_chunk`
+- ✅ `approval_requested`
+- ✅ `error`
+
+**Untested Events** (12/16):
+- ❌ `session_start` - Agent execution begins
+- ❌ `thinking` - Agent is thinking (non-chunk)
+- ❌ `message_partial` - Partial message during streaming
+- ❌ `message` - Complete message event
+- ❌ `tool_use` - Tool execution request
+- ❌ `tool_result` - Tool execution result
+- ❌ `complete` - Agent finished (with `stopReason`)
+- ❌ `session_end` - Session ended
+- ❌ `approval_resolved` - Approval was resolved
+- ❌ `user_message_confirmed` - User message persisted with sequence number
+- ❌ `turn_paused` - Long agentic turn paused (SDK 0.71+)
+- ❌ `content_refused` - Content refused (policy violation)
+
+**Impact**: Cannot verify frontend handles all backend event types correctly.
+
+**Example Missing Test**:
+```typescript
+describe('chatStore.handleAgentEvent', () => {
+  it('should handle complete event with stopReason=end_turn', () => {
+    const event: AgentEvent = {
+      type: 'complete',
+      eventId: 'evt-1',
+      timestamp: new Date(),
+      persistenceState: 'persisted',
+      stopReason: 'end_turn'
+    };
+
+    act(() => {
+      useChatStore.getState().handleAgentEvent(event);
+    });
+
+    const state = useChatStore.getState();
+    expect(state.isAgentBusy).toBe(false);
+    expect(state.streaming.isStreaming).toBe(false);
+  });
+
+  it('should handle tool_use and tool_result sequence', () => {
+    // Test tool execution flow
+  });
+
+  it('should handle user_message_confirmed and replace optimistic message', () => {
+    // Test optimistic update confirmation
+  });
+});
+```
+
+---
+
+### 🚨 Gap #4: No Extended Thinking Tests (HIGH PRIORITY)
+
+**Risk**: Extended Thinking is a key feature explicitly mentioned in requirements.
+
+**What's Missing**:
+- No tests for `thinking` config in `sendMessage`
+- No validation of `thinkingBudget` range (1024-100000)
+- No tests for `thinking_chunk` streaming accumulation
+- No tests for `tokenUsage.thinkingTokens` in message events
+- No tests for server rejection of invalid budgets
+
+**Impact**: Cannot verify Extended Thinking integration works.
+
+**Example Missing Test**:
+```typescript
+describe('Extended Thinking', () => {
+  it('should send thinking config with message', () => {
+    const mockSocket = createMockSocket();
+    const { result } = renderHook(() => useSocket({ sessionId: 's1' }));
+
+    act(() => {
+      result.current.sendMessage('Complex question', {
+        enableThinking: true,
+        thinkingBudget: 15000
+      });
+    });
+
+    expect(mockSocket.emit).toHaveBeenCalledWith('chat:message',
+      expect.objectContaining({
+        thinking: {
+          enableThinking: true,
+          thinkingBudget: 15000
+        }
+      })
+    );
+  });
+
+  it('should accumulate thinking_chunk events separately from message_chunk', () => {
+    // Test thinking content vs message content separation
+  });
+
+  it('should display thinkingTokens in message metadata', () => {
+    // Test token usage display
+  });
+});
+```
+
+---
+
+### 🚨 Gap #5: No Session Recovery Tests (HIGH PRIORITY)
+
+**Risk**: Session recovery on page refresh is an explicit requirement.
+
+**What's Missing**:
+- No tests for auth state persistence (localStorage)
+- No tests for automatic `checkAuth()` on mount
+- No tests for session list restoration from API
+- No tests for WebSocket reconnection after page reload
+- No tests for message history reload
+- No tests for pending approval restoration
+- No tests for in-progress streaming state handling
+
+**Impact**: Cannot verify users won't lose context on page refresh.
+
+**Example Missing Test**:
+```typescript
+describe('Session Recovery', () => {
+  it('should restore auth from localStorage on page load', () => {
+    // Mock localStorage with persisted user
+    localStorage.setItem('auth-storage', JSON.stringify({
+      state: {
+        user: mockUser,
+        isAuthenticated: true
+      }
+    }));
+
+    const { result } = renderHook(() => useAuthStore());
+
+    expect(result.current.isAuthenticated).toBe(true);
+    expect(result.current.user).toEqual(mockUser);
+  });
+
+  it('should verify auth with server after localStorage restore', async () => {
+    // Test checkAuth() is called automatically
+  });
+
+  it('should restore messages when selecting previous session', async () => {
+    // Test message history reload from API
+  });
+
+  it('should reconnect WebSocket and rejoin session after page refresh', () => {
+    // Test socket reconnection with session join
+  });
+});
+```
+
+---
+
+### 🚨 Gap #6: No Approval Flow Validation (MEDIUM)
+
+**Risk**: Human-in-the-loop approvals are critical for BC write operations.
+
+**What's Missing**:
+- No test for approval request timeout (5 minutes default)
+- No test for approval response via WebSocket
+- No test for `approval_resolved` event handling
+- No test for multiple pending approvals (priority ordering)
+- No test for approval rejection with reason
+- No test for agent resumption after approval
+
+**Impact**: Cannot verify approval workflow functions correctly.
+
+**Example Missing Test**:
+```typescript
+describe('Approval Flow', () => {
+  it('should handle full approval request and response cycle', async () => {
+    const mockSocket = createMockSocket();
+
+    // Simulate approval_requested event
+    const approvalEvent: AgentEvent = {
+      type: 'approval_requested',
+      approvalId: 'a1',
+      toolName: 'createCustomer',
+      args: { name: 'Acme' },
+      changeSummary: 'Create customer: Acme',
+      priority: 'high',
+      eventId: 'evt-1',
+      timestamp: new Date(),
+      persistenceState: 'persisted'
+    };
+
+    act(() => {
+      useChatStore.getState().handleAgentEvent(approvalEvent);
+    });
+
+    expect(useChatStore.getState().pendingApprovals.size).toBe(1);
+
+    // User approves
+    const { result } = renderHook(() => useSocket());
+    act(() => {
+      result.current.respondToApproval('a1', true);
+    });
+
+    expect(mockSocket.emit).toHaveBeenCalledWith('approval:respond', {
+      approvalId: 'a1',
+      approved: true,
+      userId: 'user-1'
+    });
+
+    // Simulate approval_resolved event
+    const resolvedEvent: AgentEvent = {
+      type: 'approval_resolved',
+      approvalId: 'a1',
+      approved: true,
+      eventId: 'evt-2',
+      timestamp: new Date(),
+      persistenceState: 'persisted'
+    };
+
+    act(() => {
+      useChatStore.getState().handleAgentEvent(resolvedEvent);
+    });
+
+    expect(useChatStore.getState().pendingApprovals.size).toBe(0);
+  });
+});
+```
+
+---
+
+### 🚨 Gap #7: No Tool Execution Real-Time Tests (MEDIUM)
+
+**Risk**: Tool executions are core functionality for BC integration.
+
+**What's Missing**:
+- No test for `tool_use` event creating tool execution tracking
+- No test for `tool_result` event updating tool status
+- No test for multiple concurrent tool executions
+- No test for tool execution duration tracking
+- No test for tool execution correlation IDs
+- No test for tool error handling
+
+**Impact**: Cannot verify tool execution UI updates work correctly.
+
+**Example Missing Test**:
+```typescript
+describe('Tool Execution Flow', () => {
+  it('should track tool_use and tool_result events', () => {
+    // Test tool_use event
+    const toolUseEvent: AgentEvent = {
+      type: 'tool_use',
+      toolUseId: 't1',
+      toolName: 'listCustomers',
+      args: { limit: 10 },
+      eventId: 'evt-1',
+      correlationId: 'corr-1',
+      timestamp: new Date(),
+      persistenceState: 'persisted'
+    };
+
+    act(() => {
+      useChatStore.getState().handleAgentEvent(toolUseEvent);
+    });
+
+    let state = useChatStore.getState();
+    let tool = state.toolExecutions.get('t1');
+    expect(tool?.status).toBe('running');
+    expect(tool?.toolName).toBe('listCustomers');
+
+    // Test tool_result event
+    const toolResultEvent: AgentEvent = {
+      type: 'tool_result',
+      toolUseId: 't1',
+      result: { customers: [...] },
+      isError: false,
+      eventId: 'evt-2',
+      correlationId: 'corr-1',
+      timestamp: new Date(),
+      persistenceState: 'persisted'
+    };
+
+    act(() => {
+      useChatStore.getState().handleAgentEvent(toolResultEvent);
+    });
+
+    state = useChatStore.getState();
+    tool = state.toolExecutions.get('t1');
+    expect(tool?.status).toBe('completed');
+    expect(tool?.result).toBeDefined();
+  });
+});
+```
+
+---
+
+### ⚠️ Gap #8: Insufficient Streaming Tests (MEDIUM)
+
+**Risk**: Streaming is the primary UX for chat interface.
+
+**What's Missing**:
+- No test for accumulating multiple `message_chunk` events
+- No test for handling out-of-order chunks (sequence numbers)
+- No test for message finalization on `message` event
+- No test for streaming state reset between messages
+- No test for simultaneous thinking and message streaming
+- No test for streaming interruption via `chat:stop`
+
+**Impact**: Cannot verify smooth streaming experience.
+
+**Example Missing Test**:
+```typescript
+describe('Streaming Flow', () => {
+  it('should accumulate message chunks in order', () => {
+    const chunks = [
+      { content: 'Hello ', delta: 'Hello ' },
+      { content: 'Hello World', delta: 'World' },
+      { content: 'Hello World!', delta: '!' }
+    ];
+
+    chunks.forEach(chunk => {
+      const event: AgentEvent = {
+        type: 'message_chunk',
+        content: chunk.content,
+        eventId: `evt-${Date.now()}`,
+        timestamp: new Date(),
+        persistenceState: 'transient'
+      };
+
+      act(() => {
+        useChatStore.getState().handleAgentEvent(event);
+      });
+    });
+
+    const state = useChatStore.getState();
+    expect(state.streaming.content).toBe('Hello World!');
+    expect(state.streaming.isStreaming).toBe(true);
+  });
+
+  it('should finalize streaming on message event', () => {
+    // Start streaming
+    act(() => {
+      useChatStore.getState().startStreaming('msg-1');
+      useChatStore.getState().appendStreamContent('Final content');
+    });
+
+    // Receive complete message event
+    const messageEvent: AgentEvent = {
+      type: 'message',
+      messageId: 'msg-1',
+      role: 'assistant',
+      content: 'Final content',
+      stopReason: 'end_turn',
+      eventId: 'evt-1',
+      timestamp: new Date(),
+      persistenceState: 'persisted'
+    };
+
+    act(() => {
+      useChatStore.getState().handleAgentEvent(messageEvent);
+    });
+
+    const state = useChatStore.getState();
+    expect(state.streaming.isStreaming).toBe(false);
+    expect(state.messages.find(m => m.id === 'msg-1')).toBeDefined();
+  });
+});
+```
+
+---
+
+### ⚠️ Gap #9: No Error Handling Integration Tests (MEDIUM)
+
+**Risk**: Error scenarios are critical for production reliability.
+
+**What's Missing**:
+- No test for WebSocket connection errors
+- No test for session join errors
+- No test for message send errors (no user/session)
+- No test for approval timeout errors
+- No test for network disconnection during streaming
+- No test for authentication errors during WebSocket connection
+
+**Impact**: Cannot verify graceful error handling.
+
+**Example Missing Test**:
+```typescript
+describe('Error Handling', () => {
+  it('should handle WebSocket connection error', () => {
+    const mockSocket = createMockSocket({ shouldFailConnection: true });
+    const onError = vi.fn();
+
+    const { result } = renderHook(() =>
+      useSocket({
+        onConnectionChange: (connected) => {
+          if (!connected) onError();
+        }
+      })
+    );
+
+    expect(onError).toHaveBeenCalled();
+  });
+
+  it('should prevent sending messages without user/session', () => {
+    const { result } = renderHook(() => useSocket());
+
+    // No user or session set
+    act(() => {
+      result.current.sendMessage('Hello');
+    });
+
+    // Should not emit, should log error
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining('Cannot send message')
+    );
+  });
+
+  it('should handle agent:error event', () => {
+    const errorEvent: AgentEvent = {
+      type: 'error',
+      error: 'Rate limit exceeded',
+      eventId: 'evt-1',
+      timestamp: new Date(),
+      persistenceState: 'transient'
+    };
+
+    act(() => {
+      useChatStore.getState().handleAgentEvent(errorEvent);
+    });
+
+    const state = useChatStore.getState();
+    expect(state.error).toBe('Rate limit exceeded');
+    expect(state.isAgentBusy).toBe(false);
+  });
+});
+```
+
+---
+
+### ⚠️ Gap #10: No Sequence Number Validation (LOW)
+
+**Risk**: Out-of-order events could break message ordering.
+
+**What's Missing**:
+- No test for message sorting by `sequence_number`
+- No test for handling late-arriving events
+- No test for duplicate sequence numbers
+- No test for sequence number gaps
+
+**Impact**: May have subtle ordering bugs in production.
+
+**Example Missing Test**:
+```typescript
+describe('Sequence Number Ordering', () => {
+  it('should sort messages by sequence_number even if received out of order', () => {
+    const msg1 = createMessage({ sequence_number: 3 });
+    const msg2 = createMessage({ sequence_number: 1 });
+    const msg3 = createMessage({ sequence_number: 2 });
+
+    act(() => {
+      useChatStore.getState().addMessage(msg1);
+      useChatStore.getState().addMessage(msg2);
+      useChatStore.getState().addMessage(msg3);
+    });
+
+    const state = useChatStore.getState();
+    expect(state.messages[0]?.sequence_number).toBe(1);
+    expect(state.messages[1]?.sequence_number).toBe(2);
+    expect(state.messages[2]?.sequence_number).toBe(3);
+  });
+});
+```
+
+---
+
+## Mock Quality Issues
+
+### Issue #1: MSW Handlers Too Simple
+
+Current mocks return static data without validation:
+
+```typescript
+// Current (too simple)
+http.post(`${API_URL}/api/sessions`, async ({ request }) => {
+  const body = await request.json();
+  return HttpResponse.json({
+    id: `session-${Date.now()}`,
+    title: body?.title || null,
+    // ... static response
+  });
+});
+```
+
+**Problem**: No validation of request structure, no error simulation scenarios.
+
+**Recommendation**: Add request validation and error variants:
+
+```typescript
+// Improved
+http.post(`${API_URL}/api/sessions`, async ({ request }) => {
+  const body = await request.json();
+
+  // Validate structure
+  if (!body || typeof body !== 'object') {
+    return HttpResponse.json(
+      { error: 'Bad Request', code: 'VALIDATION_ERROR' },
+      { status: 400 }
+    );
+  }
+
+  // Simulate various responses based on request
+  if (body.title && body.title.length > 200) {
+    return HttpResponse.json(
+      { error: 'Validation Error', message: 'Title too long', code: 'VALIDATION_ERROR' },
+      { status: 400 }
+    );
+  }
+
+  return HttpResponse.json(createSession(body));
+});
+```
+
+---
+
+### Issue #2: No WebSocket Mock
+
+There's no mock for Socket.IO connections.
+
+**Recommendation**: Create a mock socket factory:
+
+```typescript
+// __tests__/mocks/mockSocket.ts
+export function createMockSocket(options = {}) {
+  const listeners = new Map();
+
+  return {
+    on: vi.fn((event, handler) => {
+      listeners.set(event, handler);
+    }),
+    off: vi.fn(),
+    emit: vi.fn(),
+    connect: vi.fn(),
+    disconnect: vi.fn(),
+    connected: false,
+
+    // Test helper to simulate incoming events
+    _simulateEvent: (event, data) => {
+      const handler = listeners.get(event);
+      if (handler) handler(data);
+    }
+  };
+}
+```
+
+---
+
+### Issue #3: No Realistic Event Sequences
+
+Tests verify individual events but not realistic sequences.
+
+**Recommendation**: Create event sequence fixtures:
+
+```typescript
+// __tests__/fixtures/eventSequences.ts
+export const TYPICAL_CHAT_FLOW: AgentEvent[] = [
+  { type: 'session_start', sessionId: 's1', ... },
+  { type: 'user_message_confirmed', messageId: 'm1', ... },
+  { type: 'thinking', content: 'Let me help...', ... },
+  { type: 'message_chunk', content: 'Hello', ... },
+  { type: 'message_chunk', content: ' there!', ... },
+  { type: 'message', messageId: 'm2', content: 'Hello there!', stopReason: 'end_turn', ... },
+  { type: 'complete', stopReason: 'end_turn', ... }
+];
+
+export const TOOL_EXECUTION_FLOW: AgentEvent[] = [
+  { type: 'tool_use', toolUseId: 't1', toolName: 'listCustomers', ... },
+  { type: 'tool_result', toolUseId: 't1', result: {...}, ... },
+  { type: 'message', content: 'Here are the customers...', ... }
+];
+
+export const APPROVAL_FLOW: AgentEvent[] = [
+  { type: 'approval_requested', approvalId: 'a1', ... },
+  // User approves via UI
+  { type: 'approval_resolved', approvalId: 'a1', approved: true, ... },
+  { type: 'tool_use', toolUseId: 't1', ... },
+  { type: 'tool_result', toolUseId: 't1', ... }
+];
+```
+
+---
+
+## Architectural Concerns
+
+### Concern #1: Singleton Pattern Risk
+
+Both `ApiClient` and `SocketService` use singletons, which can cause test pollution.
+
+**Current**:
+```typescript
+let instance: ApiClient | null = null;
+
+export function getApiClient(): ApiClient {
+  if (!instance) {
+    instance = new ApiClient(API_URL);
+  }
+  return instance;
+}
+```
+
+**Recommendation**: Ensure `resetApiClient()` is called in global test setup:
+
+```typescript
+// vitest.setup.ts
+afterEach(() => {
+  resetApiClient();
+  resetSocketService(); // Add this
+});
+```
+
+---
+
+### Concern #2: No Type Validation at Runtime
+
+Types are compile-time only. No runtime validation of WebSocket payloads.
+
+**Recommendation**: Add Zod schemas for WebSocket events:
+
+```typescript
+// In @bc-agent/shared/schemas
+import { z } from 'zod';
+
+export const chatMessageSchema = z.object({
+  message: z.string().min(1),
+  sessionId: z.string().uuid(),
+  userId: z.string().uuid(),
+  thinking: z.object({
+    enableThinking: z.boolean().optional(),
+    thinkingBudget: z.number().int().min(1024).max(100000).optional()
+  }).optional()
+});
+
+// In SocketService
+sendMessage(data: ChatMessageData) {
+  const validated = chatMessageSchema.parse(data); // Throws on invalid
+  this.socket.emit('chat:message', validated);
+}
+```
+
+---
+
+### Concern #3: Error Handling Not Defensive
+
+Code assumes happy path. Example from `socketMiddleware.ts:178`:
+
+```typescript
+sendMessage: (message, opts) => {
+  if (!user?.id || !currentSessionRef.current) {
+    console.error('[useSocket] Cannot send message');
+    return; // Silent failure
+  }
+  // ...
+}
+```
+
+**Recommendation**: Throw errors or emit error events:
+
+```typescript
+sendMessage: (message, opts) => {
+  if (!user?.id) {
+    const error = new Error('Cannot send message: User not authenticated');
+    setError(error.message);
+    throw error;
+  }
+  if (!currentSessionRef.current) {
+    const error = new Error('Cannot send message: No session selected');
+    setError(error.message);
+    throw error;
+  }
+  // ...
+}
+```
+
+---
+
+## Recommended Action Plan
+
+### Phase 1: Critical Blockers (Must Have for Production)
+
+1. **SocketService Tests** (2-3 days)
+   - Connection lifecycle tests
+   - Event emission tests
+   - Reconnection behavior tests
+   - Error handling tests
+
+2. **socketMiddleware Tests** (2-3 days)
+   - useSocket hook tests
+   - Store integration tests
+   - Optimistic update tests
+   - Auto-connect behavior tests
+
+3. **AgentEvent Flow Tests** (2-3 days)
+   - All 16 event types
+   - Event sequence tests
+   - Real-time update tests
+
+### Phase 2: High Priority (Should Have)
+
+4. **Extended Thinking Tests** (1 day)
+   - Thinking config validation
+   - thinking_chunk streaming tests
+   - Token usage tests
+
+5. **Session Recovery Tests** (1-2 days)
+   - Auth persistence tests
+   - WebSocket reconnection tests
+   - Message history restoration tests
+
+6. **Approval Flow Tests** (1 day)
+   - Full approval cycle tests
+   - Multiple approvals tests
+   - Timeout tests
+
+### Phase 3: Medium Priority (Nice to Have)
+
+7. **Tool Execution Tests** (1 day)
+   - tool_use/tool_result flow tests
+   - Concurrent tool execution tests
+
+8. **Streaming Tests** (1 day)
+   - Multi-chunk accumulation tests
+   - Out-of-order handling tests
+   - Streaming interruption tests
+
+9. **Error Handling Tests** (1 day)
+   - All error scenarios
+   - Network failure recovery
+
+### Phase 4: Polish (Can Have)
+
+10. **Mock Quality Improvements** (1 day)
+    - Add request validation to MSW handlers
+    - Create WebSocket mock factory
+    - Build event sequence fixtures
+
+11. **Architectural Improvements** (2 days)
+    - Add Zod runtime validation
+    - Improve error handling
+    - Fix singleton test pollution
+
+---
+
+## Success Criteria for Test Completion
+
+### Minimum for Production Sign-Off
+
+- [ ] SocketService coverage ≥ 70%
+- [ ] socketMiddleware coverage ≥ 70%
+- [ ] All 16 AgentEvent types have tests
+- [ ] Overall frontend coverage ≥ 70%
+- [ ] Extended Thinking flow verified
+- [ ] Session recovery flow verified
+- [ ] Approval flow verified
+- [ ] All CI/CD checks passing
+
+### Gold Standard
+
+- [ ] All above criteria met
+- [ ] SocketService coverage ≥ 90%
+- [ ] socketMiddleware coverage ≥ 90%
+- [ ] Overall frontend coverage ≥ 85%
+- [ ] Event sequence integration tests
+- [ ] WebSocket mock infrastructure
+- [ ] Runtime Zod validation
+- [ ] Comprehensive error scenario coverage
+
+---
+
+## Conclusion
+
+The current implementation has a **solid foundation** with excellent type safety, clean architecture, and good documentation. However, the **test coverage has critical gaps** that prevent verification of the core WebSocket functionality.
+
+**The frontend is NOT production-ready** until SocketService and socketMiddleware have comprehensive test coverage and all 16 AgentEvent types are verified.
+
+**Estimated effort to reach production readiness**: 8-10 days
+
+**Estimated effort to reach gold standard**: 12-15 days
+
+---
+
+## Appendix A: Coverage Details
+
+### Current Coverage by File
+
+```
+lib/services/api.ts          80.67% ✅
+lib/services/socket.ts        0.00% ❌
+lib/stores/authStore.ts      96.42% ✅
+lib/stores/sessionStore.ts   90.67% ✅
+lib/stores/chatStore.ts      69.76% ⚠️
+lib/stores/socketMiddleware   0.00% ❌
+lib/config/env.ts           100.00% ✅
+```
+
+### Test Count
+
+- Total test files: 4
+- Total tests: 53
+- Test suites: ApiClient (17), AuthStore (11), SessionStore (12), ChatStore (13)
+- Missing test suites: SocketService (0), socketMiddleware (0)
+
+---
+
+## Appendix B: Reference Backend Contracts
+
+### WebSocket Events (Server → Client)
+
+All events emitted via `agent:event` with discriminated union:
+
+1. `session_start` - Agent execution begins
+2. `thinking` - Agent is thinking
+3. `thinking_chunk` - Extended Thinking streaming
+4. `message_partial` - Partial message during streaming
+5. `message` - Complete message
+6. `message_chunk` - Streaming text delta
+7. `tool_use` - Tool execution request
+8. `tool_result` - Tool execution result
+9. `error` - Error occurred
+10. `session_end` - Session ended
+11. `complete` - Agent finished
+12. `approval_requested` - Approval needed
+13. `approval_resolved` - Approval resolved
+14. `user_message_confirmed` - User message persisted
+15. `turn_paused` - Long agentic turn paused
+16. `content_refused` - Content refused
+
+### WebSocket Events (Client → Server)
+
+1. `session:join` - Join session room
+2. `session:leave` - Leave session room
+3. `chat:message` - Send user message (with optional Extended Thinking config)
+4. `chat:stop` - Stop agent execution
+5. `approval:respond` - Respond to approval request
+
+---
+
+**End of Report**

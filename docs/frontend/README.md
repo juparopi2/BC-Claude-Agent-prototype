@@ -2,13 +2,37 @@
 
 BC Claude Agent Frontend - Next.js application for the conversational AI interface.
 
+## 🚨 IMPORTANT: Quality Assurance Reports
+
+**Status**: ⚠️ **NOT PRODUCTION READY** - Critical test coverage gaps identified
+
+- **[QA Audit Report](./QA-AUDIT-REPORT.md)** - Comprehensive 20-page audit with detailed gap analysis
+- **[Critical Gaps Summary](./CRITICAL-GAPS-SUMMARY.md)** - Executive summary (4/11 success criteria met)
+
+**Key Findings**:
+- SocketService: 0% coverage (BLOCKER)
+- socketMiddleware: 0% coverage (BLOCKER)
+- AgentEvent coverage: 4/16 event types tested
+- Overall coverage: 49.42% (target: 70%)
+
+**Production Readiness**: 12 days of test development required
+
+---
+
 ## Table of Contents
+
+### Implementation Documentation
 
 1. [Architecture Overview](./01-architecture.md)
 2. [Type System](./02-type-system.md)
 3. [Services](./03-services.md)
 4. [State Management](./04-state-management.md)
 5. [Testing](./05-testing.md)
+
+### Quality Assurance
+
+6. [QA Audit Report](./QA-AUDIT-REPORT.md) - Full audit with recommendations
+7. [Critical Gaps Summary](./CRITICAL-GAPS-SUMMARY.md) - Executive summary
 
 ## Quick Start
 

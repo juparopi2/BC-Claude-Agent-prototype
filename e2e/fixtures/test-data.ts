@@ -298,7 +298,7 @@ export const API_ENDPOINTS = {
     `/api/chat/sessions/${sessionId}/approvals/${approvalId}`,
 
   // Health
-  health: '/api/health',
+  health: '/health',
 } as const;
 
 /**

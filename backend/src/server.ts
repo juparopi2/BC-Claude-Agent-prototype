@@ -26,7 +26,6 @@ import { getApprovalManager } from './services/approval/ApprovalManager';
 import { getTodoManager } from './services/todo/TodoManager';
 import { getChatMessageHandler } from './services/websocket/ChatMessageHandler';
 import { getMessageQueue } from './services/queue/MessageQueue';
-import authMockRoutes from './routes/auth-mock';
 import authOAuthRoutes from './routes/auth-oauth';
 import sessionsRoutes from './routes/sessions';
 import logsRoutes from './routes/logs';
@@ -810,10 +809,9 @@ function configureRoutes(): void {
 
   // Auth routes - Microsoft OAuth (requires database)
   if (isDatabaseAvailable) {
-    // app.use('/api/auth', authRoutes); // JWT DEPRECATED - removed
     app.use('/api/auth', authOAuthRoutes);
   } else {
-    app.use('/api/auth', authMockRoutes);
+    logger.warn('Auth routes not available - database is required for authentication');
   }
 
   // Chat sessions routes (requires database)

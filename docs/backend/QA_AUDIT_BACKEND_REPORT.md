@@ -22,7 +22,24 @@ This QA audit identified **critical infrastructure failures** in the E2E test su
 | E2E Tests | **PARTIAL** | **112+ passed** (auth: 19/20, message-flow: 17/17, streaming: 24/26, extended-thinking: 13/13, tool-execution: 14/18, **session-recovery: 14/14**, sequence: 11/11) |
 | Coverage Threshold | 59% | Configured baseline met |
 
-> **Last Updated**: 2025-12-01 - Fixed E2E-09 session recovery tests (14/14 passing). Fixed critical bug in E2ETestClient.ts collectEvents() method.
+> **Last Updated**: 2025-12-02 - **CRITICAL ARCHITECTURE FIX COMPLETE** ✅
+>
+> **Removed ALL test-specific backend code**:
+> - ❌ Deleted `backend/src/middleware/testAuth.ts` (hardcoded admin bypass)
+> - ❌ Deleted `backend/src/routes/auth-mock.ts` (mock authentication routes)
+> - ❌ Deleted `backend/test.env` (test-specific environment)
+> - ❌ Removed `TEST_AUTH_ENABLED` from `environment.ts` schema
+> - ❌ Removed testAuth middleware from `server.ts`
+> - ❌ Removed TEST_USER handling from `auth-oauth.ts`
+> - ❌ Removed testAuth detection from `auth-oauth.ts` middleware
+>
+> **E2E tests now use proper architecture**:
+> - ✅ Real session injection via Redis (Azure Redis DEV environment)
+> - ✅ SQL seed script for test data (`e2e/setup/seed-database.sql`)
+> - ✅ Same authentication flow as production
+> - ✅ Backend code identical for DEV/TEST/PROD
+>
+> See `docs/e2e-testing-guide.md` for complete E2E testing architecture.
 
 ---
 

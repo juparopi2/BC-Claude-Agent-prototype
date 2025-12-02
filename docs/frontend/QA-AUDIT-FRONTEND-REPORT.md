@@ -30,6 +30,30 @@ While the type system, services layer, and state management are well-designed, t
 
 ---
 
+## ✅ CRITICAL ARCHITECTURE FIX COMPLETE (2025-12-02)
+
+> [!IMPORTANT]
+> **Phase 1.1 Limitation - Mock-Based Testing**: Phase 1.1 tests (SocketService) used **vi.mock** to mock socket.io-client. While this achieved 91.89% coverage, these tests **DO NOT verify real backend communication**.
+>
+> **Mandatory Requirement for Phase 1.2 and ALL FUTURE PHASES**: ALL integration and E2E tests **MUST use real backend**. No mocks allowed for verifying WebSocket communication, database persistence, or event flows.
+>
+> **2025-12-02 ARCHITECTURE CHANGES**:
+> - ✅ **Removed test auth token injection** from `frontend/lib/services/api.ts` (lines 151-157)
+> - ✅ **Removed test auth token injection** from `frontend/lib/services/socket.ts` (lines 91-98)
+> - ✅ **E2E tests now use real session injection via Redis** (not mock auth tokens)
+> - ✅ **Backend code is now identical** for DEV/TEST/PROD (no test bypasses)
+>
+> **Rationale**: Mock-based tests cannot catch:
+> - Real network issues
+> - Backend event emission bugs
+> - Database persistence failures
+> - Event sequence ordering problems
+> - WebSocket reconnection edge cases
+>
+> See `docs/e2e-testing-guide.md` for the proper E2E testing architecture.
+
+---
+
 ## Success Criteria Verification
 
 ### Original Requirements (from initial request)
@@ -83,6 +107,20 @@ While the type system, services layer, and state management are well-designed, t
 
 **Coverage**: 91.89% statements | 89.39% branch | 100% functions
 
+> [!WARNING]
+> **Phase 1.1 Architecture Limitation**: These tests use **vi.mock(socket.io-client)** and do NOT connect to a real backend. They verify:
+> - ✅ SocketService API correctness (methods, parameters)
+> - ✅ Event handler registration
+> - ✅ Error handling logic
+>
+> They do NOT verify:
+> - ❌ Real WebSocket connection behavior
+> - ❌ Backend event emission
+> - ❌ Database persistence
+> - ❌ Network failure scenarios
+>
+> **Action Required**: Phase 1.2 must implement real backend integration tests to verify actual communication.
+
 ---
 
 ### 🚨 Gap #2: ZERO socketMiddleware Test Coverage (BLOCKER)
@@ -101,6 +139,13 @@ While the type system, services layer, and state management are well-designed, t
 - User validation before sending messages
 
 **Impact**: Cannot verify that WebSocket events correctly update Zustand stores.
+
+> [!NOTE]
+> **2025-12-02 Architecture Update**: socketMiddleware tests should now use the **real backend E2E approach** documented in `docs/e2e-testing-guide.md`. This means:
+> - ✅ Session injection via Redis (not mock auth tokens)
+> - ✅ Real WebSocket connections to backend
+> - ✅ Tests verify actual frontend↔backend communication
+> - ❌ No test-specific code modifications to backend
 
 **Example Missing Test**:
 ```typescript

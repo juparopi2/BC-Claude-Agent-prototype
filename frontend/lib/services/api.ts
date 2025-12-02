@@ -144,11 +144,13 @@ export class ApiClient {
     const url = `${this.baseUrl}${path}`;
 
     try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+
       const response = await fetch(url, {
         method,
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         credentials: 'include', // Include cookies for session auth
         body: body ? JSON.stringify(body) : undefined,
       });

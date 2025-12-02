@@ -1,7 +1,7 @@
 # Frontend Critical Test Gaps - Executive Summary
 
 **Status**: ⚠️ **PHASE 1.1 COMPLETE** - Production blockers partially resolved
-**Date**: 2025-12-01 (Updated after Phase 1.1 completion)
+**Date**: 2025-12-02 (Updated after architecture fix)
 **Overall Coverage**: 49.42% → **~60%** (Target: 70%)
 
 ---
@@ -15,6 +15,23 @@
 **Remaining Risk**: socketMiddleware (251 lines) still at 0% coverage - frontend→backend message emission not fully verified.
 
 **Verdict**: WebSocket **reception** is now verified. WebSocket **emission** and UI state integration need testing (Phase 1.2).
+
+> [!IMPORTANT]
+> **2025-12-02 ARCHITECTURE FIX COMPLETE** ✅
+>
+> The following security vulnerabilities and architectural problems have been **FIXED**:
+> - ✅ Removed test auth token injection from `api.ts` (lines 151-157)
+> - ✅ Removed test auth token injection from `socket.ts` (lines 91-98)
+> - ✅ Deleted `testAuth.ts`, `auth-mock.ts`, `test.env` from backend
+> - ✅ Removed `TEST_AUTH_ENABLED` environment variable
+>
+> **New E2E Testing Architecture**:
+> - ✅ Real session injection via Redis (Azure Redis DEV)
+> - ✅ SQL seed script for test data (`e2e/setup/seed-database.sql`)
+> - ✅ Backend code identical for DEV/TEST/PROD
+> - ✅ Same authentication flow as production
+>
+> See `docs/e2e-testing-guide.md` for complete documentation.
 
 ---
 
@@ -45,6 +62,15 @@
 
 **Coverage**: 91.89% statements | 89.39% branch | 100% functions
 
+> [!WARNING]
+> **Mock-Based Testing Limitation**: Phase 1.1 tests use **vi.mock(socket.io-client)** and do NOT verify:
+> - ❌ Real backend communication
+> - ❌ Database persistence
+> - ❌ Network failures
+> - ❌ Event ordering with real latency
+>
+> **Phase 1.2 Requirement**: Must implement real backend integration tests.
+
 ---
 
 ### 🚨 #2: socketMiddleware (useSocket) - 0% Coverage
@@ -64,6 +90,13 @@
 - ✅ Connection status tracking
 
 **Consequence**: Cannot verify that streaming messages appear in UI.
+
+> [!NOTE]
+> **2025-12-02 Testing Approach**: socketMiddleware tests must use the **real backend E2E architecture**:
+> - Session injection via Redis (not mock auth tokens)
+> - Real WebSocket connections to backend
+> - Browser-based Playwright tests for UI verification
+> - See `docs/e2e-testing-guide.md`
 
 ---
 
@@ -290,5 +323,14 @@
 
 **Next Steps**:
 - ✅ ~~SocketService tests~~ **COMPLETED** (91.89% coverage, 95 tests)
-- 🎯 **Phase 1.2**: socketMiddleware tests (Day 4-6) - useSocket hook + optimistic updates
-- 🎯 **Phase 2**: Extended Thinking + Session Recovery (Day 9-11)
+- ✅ ~~Architecture fix~~ **COMPLETED** (2025-12-02) - Removed all test-specific backend code
+- 🎯 **Phase 1.2**: E2E tests with real backend (using `docs/e2e-testing-guide.md` approach)
+  - Chat flow E2E tests (`e2e/flows/chatFlow.spec.ts`)
+  - Approval flow E2E tests (`e2e/flows/approvalFlow.spec.ts`)
+- 🎯 **Phase 2**: Extended Thinking + Session Recovery
+
+**Architecture Notes** (2025-12-02):
+- E2E tests now use **real session injection via Redis**
+- Test data seeded via SQL script (`e2e/setup/seed-database.sql`)
+- Backend code is identical for DEV/TEST/PROD
+- See `docs/e2e-testing-guide.md` for complete testing architecture

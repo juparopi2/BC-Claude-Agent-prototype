@@ -183,6 +183,17 @@ export function useSocket(options: UseSocketOptions = {}): UseSocketReturn {
         return;
       }
 
+      // NEW: Validate thinkingBudget before emission
+      if (opts?.enableThinking && opts?.thinkingBudget !== undefined) {
+        if (opts.thinkingBudget < 1024 || opts.thinkingBudget > 100000) {
+          const error = new Error(
+            'thinkingBudget must be between 1024 and 100000'
+          );
+          console.error('[useSocket] Invalid thinking budget:', opts.thinkingBudget);
+          throw error;
+        }
+      }
+
       const socket = getSocketService();
 
       // Add optimistic message

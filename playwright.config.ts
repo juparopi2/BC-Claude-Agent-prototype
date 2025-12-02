@@ -53,7 +53,9 @@ export default defineConfig({
       reuseExistingServer: !process.env.CI,  // Reuse local servers, fresh in CI
     },
     {
-      command: 'cd frontend && npm run dev',
+      command: process.platform === 'win32'
+        ? 'cd frontend && set PORT=3000&& npm run dev'  // Windows: set PORT before command
+        : 'cd frontend && PORT=3000 npm run dev',        // Unix: inline environment variable
       port: 3000,
       timeout: 120000,  // 2 minutes to start frontend
       reuseExistingServer: !process.env.CI,

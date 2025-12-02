@@ -14,6 +14,7 @@ import { FullConfig } from '@playwright/test';
 import Redis from 'ioredis';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as crypto from 'crypto';
 
 // Load environment variables
 import './loadEnv';
@@ -79,6 +80,18 @@ function createMicrosoftOAuthSession(user: typeof TEST_USER) {
     // Token expires in 24 hours
     tokenExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
   };
+}
+
+/**
+ * Sign a session ID using the SESSION_SECRET (compatible with cookie-signature library)
+ * Express-session uses HMAC-SHA256 for signing cookies
+ */
+function signSessionId(sessionId: string): string {
+  const secret = process.env.SESSION_SECRET || 'development-secret-change-in-production';
+  const hmac = crypto.createHmac('sha256', secret);
+  hmac.update(sessionId);
+  const signature = hmac.digest('base64').replace(/=+$/, ''); // Remove trailing '='
+  return `s:${sessionId}.${signature}`;
 }
 
 /**
@@ -150,13 +163,13 @@ async function globalSetup(_config: FullConfig) {
         sessionId: E2E_SESSION_ID,
         userId: TEST_USER.id,
         email: TEST_USER.email,
-        cookieValue: `s:${E2E_SESSION_ID}`, // express-session cookie format
+        cookieValue: signSessionId(E2E_SESSION_ID), // Properly signed express-session cookie format
       },
       adminUser: {
         sessionId: E2E_ADMIN_SESSION_ID,
         userId: TEST_ADMIN_USER.id,
         email: TEST_ADMIN_USER.email,
-        cookieValue: `s:${E2E_ADMIN_SESSION_ID}`,
+        cookieValue: signSessionId(E2E_ADMIN_SESSION_ID), // Properly signed express-session cookie format
       },
     };
 

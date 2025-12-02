@@ -437,3 +437,108 @@ export const TEST_APPROVALS = {
   approved: 'e2e30002-0000-0000-0000-000000000002',
   rejected: 'e2e30003-0000-0000-0000-000000000003',
 } as const;
+
+// ============================================================================
+// Thinking Event Helpers
+// ============================================================================
+
+/**
+ * Agent event types
+ */
+export const AGENT_EVENT_TYPES = {
+  sessionStart: 'session_start',
+  thinking: 'thinking',
+  thinkingChunk: 'thinking_chunk',
+  messageChunk: 'message_chunk',
+  message: 'message',
+  toolUse: 'tool_use',
+  toolResult: 'tool_result',
+  approvalRequested: 'approval_requested',
+  approvalResolved: 'approval_resolved',
+  complete: 'complete',
+  error: 'error',
+  userMessageConfirmed: 'user_message_confirmed',
+} as const;
+
+/**
+ * WebSocket event names
+ */
+export const WS_EVENTS = {
+  agentEvent: 'agent:event',
+  chatMessage: 'chat:message',
+} as const;
+
+/**
+ * Wait for thinking chunk events from agent
+ *
+ * Collects thinking_chunk events until the minimum number is reached.
+ * Useful for testing that extended thinking is producing output.
+ *
+ * @param socket - Authenticated socket connection
+ * @param minChunks - Minimum number of chunks to wait for
+ * @param timeout - Timeout in milliseconds
+ * @returns Promise with array of thinking chunk events
+ *
+ * @throws Error if timeout occurs before minimum chunks received
+ *
+ * @example
+ * ```typescript
+ * const chunks = await waitForThinkingChunks(socket, 5);
+ * expect(chunks.length).toBeGreaterThanOrEqual(5);
+ * expect(chunks[0].type).toBe('thinking_chunk');
+ * ```
+ */
+export async function waitForThinkingChunks(
+  socket: Socket,
+  minChunks: number = 1,
+  timeout: number = TIMEOUTS.long
+): Promise<any[]> {
+  const chunks: any[] = [];
+
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(
+        `Timeout waiting for ${minChunks} thinking chunks (received ${chunks.length})`
+      ));
+    }, timeout);
+
+    const handler = (event: any) => {
+      if (event.type === 'thinking_chunk') {
+        chunks.push(event);
+        if (chunks.length >= minChunks) {
+          clearTimeout(timer);
+          socket.off(WS_EVENTS.agentEvent, handler);
+          resolve(chunks);
+        }
+      }
+    };
+
+    socket.on(WS_EVENTS.agentEvent, handler);
+  });
+}
+
+/**
+ * Wait for complete thinking block event
+ *
+ * Waits for the 'thinking' event which contains the complete thinking block
+ * after all thinking_chunk events have been emitted.
+ *
+ * @param socket - Authenticated socket connection
+ * @param timeout - Timeout in milliseconds
+ * @returns Promise with thinking event data
+ *
+ * @throws Error if timeout occurs before event is received
+ *
+ * @example
+ * ```typescript
+ * const thinkingEvent = await waitForThinkingComplete(socket);
+ * expect(thinkingEvent.type).toBe('thinking');
+ * expect(thinkingEvent.content).toBeDefined();
+ * ```
+ */
+export async function waitForThinkingComplete(
+  socket: Socket,
+  timeout: number = TIMEOUTS.long
+): Promise<any> {
+  return waitForAgentEvent(socket, AGENT_EVENT_TYPES.thinking, timeout);
+}

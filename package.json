@@ -25,6 +25,9 @@
     "e2e:seed": "npx ts-node e2e/scripts/seed-test-data.ts",
     "e2e:clean": "npx ts-node e2e/scripts/clean-test-data.ts",
     "e2e:setup": "npm run e2e:seed",
+    "docker:test:up": "docker-compose -f docker-compose.test.yml up -d",
+    "docker:test:down": "docker-compose -f docker-compose.test.yml down",
+    "docker:test:logs": "docker-compose -f docker-compose.test.yml logs -f",
     "prepare": "husky"
   },
   "devDependencies": {

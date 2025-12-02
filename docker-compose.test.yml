@@ -1,0 +1,75 @@
+# Docker Compose for Local E2E Testing
+#
+# This configuration provides a local Redis instance for E2E tests.
+# The SQL database uses Azure DEV environment (not containerized).
+#
+# Usage:
+#   docker-compose -f docker-compose.test.yml up -d
+#   npm run test:e2e
+#   docker-compose -f docker-compose.test.yml down
+#
+# For CI/CD:
+#   GitHub Actions connects directly to Azure Redis (redis-bcagent-dev)
+
+version: '3.8'
+
+services:
+  # Redis for local session storage
+  # In CI/CD, Azure Redis (redis-bcagent-dev) is used instead
+  redis:
+    image: redis:7-alpine
+    container_name: bcagent-redis-test
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --requirepass localdevpassword
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "localdevpassword", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - bcagent-test
+
+  # Redis Commander (optional - for debugging Redis)
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: bcagent-redis-commander
+    environment:
+      - REDIS_HOSTS=local:redis:6379:0:localdevpassword
+    ports:
+      - "8081:8081"
+    depends_on:
+      redis:
+        condition: service_healthy
+    profiles:
+      - debug
+    networks:
+      - bcagent-test
+
+volumes:
+  redis-data:
+    name: bcagent-redis-test-data
+
+networks:
+  bcagent-test:
+    name: bcagent-test-network
+
+# =============================================================================
+# Environment Variables for Local Testing
+# =============================================================================
+# When using local Redis (this docker-compose), set these in your .env:
+#
+#   REDIS_HOST=localhost
+#   REDIS_PORT=6379
+#   REDIS_PASSWORD=localdevpassword
+#   REDIS_TLS=false
+#
+# When using Azure Redis (CI/CD or testing against DEV), use:
+#
+#   REDIS_HOST=redis-bcagent-dev.redis.cache.windows.net
+#   REDIS_PORT=6380
+#   REDIS_PASSWORD=<from Azure Key Vault>
+#   REDIS_TLS=true
+# =============================================================================

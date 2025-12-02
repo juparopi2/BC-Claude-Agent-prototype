@@ -348,13 +348,13 @@ describe('Session Flow Tests', () => {
     // Respond to approval
     service.respondToApproval({
       approvalId,
-      approved: true,
+      decision: 'approved',
       userId: 'test-user-456',
     });
 
-    assertEmitted(mockSocket, 'approval:respond', {
+    assertEmitted(mockSocket, 'approval:response', {
       approvalId,
-      approved: true,
+      decision: 'approved',
       userId: 'test-user-456',
     });
 

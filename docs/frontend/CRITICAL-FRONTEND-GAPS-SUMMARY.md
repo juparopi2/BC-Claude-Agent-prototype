@@ -1,20 +1,42 @@
 # Frontend Critical Test Gaps - Executive Summary
 
-**Status**: ⚠️ **PHASE 1.1 COMPLETE** - Production blockers partially resolved
-**Date**: 2025-12-02 (Updated after architecture fix)
+**Status**: ✅ **PHASE 1.2 IN PROGRESS** - Contract mismatches resolved, E2E infrastructure complete
+**Date**: 2025-12-02 (Updated after QA Audit Deep Dive fixes)
 **Overall Coverage**: 49.42% → **~60%** (Target: 70%)
 
 ---
 
 ## The Bottom Line
 
-**5 out of 11 success criteria are met (45% completion)** ⬆️ +9%
+**6 out of 11 success criteria are met (55% completion)** ⬆️ +18%
 
 ✅ **Phase 1.1 Milestone Achieved (2025-12-01)**: SocketService now has **91.89% coverage** (16 event types + integration tests).
 
+✅ **QA Audit Deep Dive Fixes Complete (2025-12-02)**: All 8 contract mismatches fixed, E2E infrastructure ready.
+
 **Remaining Risk**: socketMiddleware (251 lines) still at 0% coverage - frontend→backend message emission not fully verified.
 
-**Verdict**: WebSocket **reception** is now verified. WebSocket **emission** and UI state integration need testing (Phase 1.2).
+**Verdict**: WebSocket **reception** verified. Frontend↔Backend **contracts aligned**. E2E testing infrastructure **ready**.
+
+> [!SUCCESS]
+> **2025-12-02 QA AUDIT DEEP DIVE FIXES COMPLETE** ✅
+>
+> **8 Issues Resolved** (4 CRITICAL, 2 HIGH, 2 MEDIUM):
+>
+> | # | Priority | Issue | Fix |
+> |---|----------|-------|-----|
+> | 1 | CRITICAL | ErrorEvent structure mismatch | Backend emits `error: string` (not object) |
+> | 2 | CRITICAL | WebSocket event name mismatch | `approval:respond` → `approval:response` |
+> | 3 | CRITICAL | Approval field name mismatch | `approved: boolean` → `decision: enum` |
+> | 4 | CRITICAL | TEST_AUTH_TOKEN bypass | Replaced with Redis session injection |
+> | 5 | HIGH | E2E event name mismatch | `error` → `agent:error` |
+> | 6 | HIGH | Duplicate error emission | Removed `agent:error` emission |
+> | 7 | MEDIUM | Transient event validation | AgentEventFactory strips `sequenceNumber` |
+> | 8 | MEDIUM | Message chunk field name | `delta` → `content` in E2E tests |
+>
+> **Files Modified**: 10 files across backend, frontend, shared types, and E2E tests
+>
+> See `docs/frontend/QA-AUDIT-PHASE-1-DEEP-DIVE.md` for complete analysis.
 
 > [!IMPORTANT]
 > **2025-12-02 ARCHITECTURE FIX COMPLETE** ✅
@@ -30,6 +52,8 @@
 > - ✅ SQL seed script for test data (`e2e/setup/seed-database.sql`)
 > - ✅ Backend code identical for DEV/TEST/PROD
 > - ✅ Same authentication flow as production
+> - ✅ GitHub Actions E2E workflow (`.github/workflows/e2e-tests.yml`)
+> - ✅ Docker Compose for local Redis (`docker-compose.test.yml`)
 >
 > See `docs/e2e-testing-guide.md` for complete documentation.
 
@@ -48,12 +72,13 @@
 **Completed tests** (95 total):
 - ✅ Connection/disconnection lifecycle (36 unit tests)
 - ✅ `chat:message` emission with correct structure (Zod validation)
-- ✅ `approval:respond` emission (integration tests)
+- ✅ `approval:response` emission (integration tests) - **Fixed 2025-12-02** (was `approval:respond`)
 - ✅ Reconnection behavior (5 attempts, 1s delay)
 - ✅ Session join/leave (session management)
 - ✅ Event listener registration (all 16 AgentEvent types)
 - ✅ Store integration (chatStore, authStore, sessionStore)
 - ✅ Contract validation (Zod schemas from @bc-agent/shared)
+- ✅ `decision: enum` field (replaced `approved: boolean`) - **Fixed 2025-12-02**
 
 **Test Files Created**:
 - `__tests__/services/socket.test.ts` - 36 unit tests
@@ -164,9 +189,17 @@
 
 ---
 
-### 📌 #6: Approval Flow - Partial Tests
+### 📌 #6: Approval Flow - Partial Tests (Contract Issues FIXED)
 
 **Current**: Basic approval request/removal tests only
+
+> [!NOTE]
+> **2025-12-02 Contract Fixes Applied**:
+> - ✅ Event name: `approval:respond` → `approval:response`
+> - ✅ Field name: `approved: boolean` → `decision: 'approved' | 'rejected'`
+> - ✅ Types updated in `packages/shared/src/types/websocket.types.ts`
+> - ✅ Frontend updated in `socket.ts` and `socketMiddleware.ts`
+> - ✅ E2E tests updated in `approvalFlow.spec.ts`
 
 **Missing tests**:
 - Full approval request → response → resolution cycle
@@ -175,7 +208,7 @@
 - Multiple pending approvals (priority ordering)
 - Agent resumption after approval
 
-**Consequence**: Cannot verify approval workflow functions end-to-end.
+**Consequence**: Cannot verify approval workflow functions end-to-end (but contract is now correct).
 
 ---
 
@@ -284,12 +317,12 @@
 
 ## What's Missing
 
-❌ **WebSocket Tests**: 0% coverage (CRITICAL)
-❌ **Real-Time Event Tests**: Only 4/16 event types tested
-❌ **Integration Tests**: No tests for service ↔ store integration
-❌ **Flow Tests**: No tests for complete user flows (send message → streaming → complete)
-❌ **Error Scenarios**: No tests for network failures, reconnections, timeouts
-❌ **Runtime Validation**: No Zod schemas for WebSocket payloads
+✅ ~~**WebSocket Tests**: 0% coverage (CRITICAL)~~ **FIXED** - 91.89% coverage
+✅ ~~**Real-Time Event Tests**: Only 4/16 event types tested~~ **FIXED** - All 16 types tested
+✅ ~~**Integration Tests**: No tests for service ↔ store integration~~ **FIXED** - 25 integration tests
+✅ ~~**Runtime Validation**: No Zod schemas for WebSocket payloads~~ **FIXED** - Contract validation added
+⚠️ **Flow Tests**: No tests for complete user flows (send message → streaming → complete) - **E2E infrastructure ready**
+⚠️ **Error Scenarios**: No tests for network failures, reconnections, timeouts - **Unit tests added, E2E pending**
 
 ---
 
@@ -324,13 +357,26 @@
 **Next Steps**:
 - ✅ ~~SocketService tests~~ **COMPLETED** (91.89% coverage, 95 tests)
 - ✅ ~~Architecture fix~~ **COMPLETED** (2025-12-02) - Removed all test-specific backend code
+- ✅ ~~QA Audit Deep Dive fixes~~ **COMPLETED** (2025-12-02) - All 8 contract issues resolved
 - 🎯 **Phase 1.2**: E2E tests with real backend (using `docs/e2e-testing-guide.md` approach)
-  - Chat flow E2E tests (`e2e/flows/chatFlow.spec.ts`)
-  - Approval flow E2E tests (`e2e/flows/approvalFlow.spec.ts`)
+  - Chat flow E2E tests (`e2e/flows/chatFlow.spec.ts`) - **Updated with correct contracts**
+  - Approval flow E2E tests (`e2e/flows/approvalFlow.spec.ts`) - **Updated with correct contracts**
 - 🎯 **Phase 2**: Extended Thinking + Session Recovery
 
 **Architecture Notes** (2025-12-02):
 - E2E tests now use **real session injection via Redis**
 - Test data seeded via SQL script (`e2e/setup/seed-database.sql`)
 - Backend code is identical for DEV/TEST/PROD
+- GitHub Actions workflow for CI/CD (`.github/workflows/e2e-tests.yml`)
+- Docker Compose for local Redis (`docker-compose.test.yml`)
 - See `docs/e2e-testing-guide.md` for complete testing architecture
+
+**QA Audit Deep Dive Summary** (2025-12-02):
+- **CRITICAL**: ErrorEvent structure (error as string, not object)
+- **CRITICAL**: WebSocket event name (`approval:response`, not `approval:respond`)
+- **CRITICAL**: Approval field name (`decision: enum`, not `approved: boolean`)
+- **CRITICAL**: Auth bypass removed (Redis session injection instead of TEST_AUTH_TOKEN)
+- **HIGH**: E2E event name (`agent:error`, not `error`)
+- **HIGH**: Duplicate error emission removed
+- **MEDIUM**: Transient event validation (no sequenceNumber on transient events)
+- **MEDIUM**: Message chunk field (`content`, not `delta`)

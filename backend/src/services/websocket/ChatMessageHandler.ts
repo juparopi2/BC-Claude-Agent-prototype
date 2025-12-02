@@ -174,14 +174,11 @@ export class ChatMessageHandler {
       } catch (saveError) {
         this.logger.error('❌ Failed to save user message', { error: saveError, sessionId, userId });
 
-        // ⭐ Emit specific error to frontend
+        // ⭐ Emit specific error to frontend (error must be string per type definition)
         socket.emit('agent:event', {
           type: 'error',
-          error: {
-            code: 'MESSAGE_SAVE_FAILED',
-            message: 'Failed to save your message. Please try again.',
-            details: saveError instanceof Error ? saveError.message : 'Unknown error',
-          },
+          error: 'Failed to save your message. Please try again.',
+          code: 'MESSAGE_SAVE_FAILED',
           sessionId,
         });
 
@@ -264,20 +261,12 @@ export class ChatMessageHandler {
         userId,
       });
 
-      // ⭐ Enhanced error emission to frontend
+      // ⭐ Emit error to frontend (error must be string per type definition)
+      // NOTE: Removed duplicate agent:error emission - using single agent:event format
       socket.emit('agent:event', {
         type: 'error',
-        error: {
-          code: systemError?.code || 'HANDLER_ERROR',
-          message: error instanceof Error ? error.message : 'An unexpected error occurred',
-          details: systemError?.syscall ? `System call: ${systemError.syscall}` : undefined,
-        },
-        sessionId,
-      });
-
-      // Backward compatibility: also emit old format
-      socket.emit('agent:error', {
-        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        error: error instanceof Error ? error.message : 'An unexpected error occurred',
+        code: systemError?.code || 'HANDLER_ERROR',
         sessionId,
       });
     }

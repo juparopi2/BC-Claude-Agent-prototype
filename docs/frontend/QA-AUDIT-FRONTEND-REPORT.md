@@ -1,20 +1,22 @@
 # Frontend QA Audit Report
 
-**Date**: 2025-12-01 (Updated after Phase 1.1 completion)
+**Date**: 2025-12-02 (Updated after QA Audit Deep Dive fixes)
 **Auditor**: QA Engineering
 **Scope**: BC Claude Agent Frontend Test Coverage & Integration Verification
-**Version**: Phase 1.1 Complete
-**Status**: ✅ **PHASE 1.1 COMPLETE** - Critical blockers partially resolved
+**Version**: Phase 1.2 In Progress
+**Status**: ✅ **PHASE 1.2 IN PROGRESS** - Contract mismatches resolved, E2E infrastructure ready
 
 ---
 
 ## Executive Summary
 
-### Overall Assessment: ⚠️ **IMPROVING** → Production blockers being addressed
+### Overall Assessment: ✅ **GOOD** → Contract mismatches resolved, E2E infrastructure ready
 
 **Phase 1.1 Achievement (2025-12-01)**: SocketService now has **91.89% coverage** with 95 comprehensive tests covering all 16 AgentEvent types.
 
-While the type system, services layer, and state management are well-designed, the test coverage had **critical gaps**. **Phase 1.1 has resolved 2 of 3 critical blockers**, with socketMiddleware remaining.
+**Phase 1.2 Achievement (2025-12-02)**: All 8 contract mismatches from QA Audit Deep Dive fixed. E2E testing infrastructure ready with GitHub Actions and Docker Compose.
+
+While the type system, services layer, and state management are well-designed, the test coverage had **critical gaps**. **Phase 1.1 resolved 2 of 3 critical blockers. Phase 1.2 resolved all contract issues**, with socketMiddleware coverage remaining.
 
 ### Coverage Metrics
 
@@ -51,6 +53,38 @@ While the type system, services layer, and state management are well-designed, t
 > - WebSocket reconnection edge cases
 >
 > See `docs/e2e-testing-guide.md` for the proper E2E testing architecture.
+
+---
+
+## ✅ QA AUDIT DEEP DIVE FIXES COMPLETE (2025-12-02)
+
+> [!SUCCESS]
+> **All 8 issues from QA-AUDIT-PHASE-1-DEEP-DIVE.md have been resolved.**
+>
+> **CRITICAL Fixes (4)**:
+> | # | Issue | Fix | Files Modified |
+> |---|-------|-----|----------------|
+> | 1 | ErrorEvent emits object instead of string | Changed to `error: string` with separate `code` field | `ChatMessageHandler.ts` |
+> | 2 | WebSocket event name mismatch | Changed `approval:respond` → `approval:response` | `websocket.types.ts`, `socket.ts` |
+> | 3 | Approval field name mismatch | Changed `approved: boolean` → `decision: enum` | `websocket.types.ts`, `socket.ts`, `socketMiddleware.ts` |
+> | 4 | E2E tests use TEST_AUTH_TOKEN bypass | Replaced with Redis session injection | `chatFlow.spec.ts`, `approvalFlow.spec.ts` |
+>
+> **HIGH Priority Fixes (2)**:
+> | # | Issue | Fix | Files Modified |
+> |---|-------|-----|----------------|
+> | 5 | E2E tests listen for wrong event name | Changed `error` → `agent:error` in WS_EVENTS | `test-data.ts` |
+> | 6 | Backend emits duplicate error events | Removed `agent:error`, kept only `agent:event` | `ChatMessageHandler.ts` |
+>
+> **MEDIUM Priority Fixes (2)**:
+> | # | Issue | Fix | Files Modified |
+> |---|-------|-----|----------------|
+> | 7 | Transient events can have sequenceNumber | Added validation to strip sequenceNumber from overrides | `AgentEventFactory.ts` |
+> | 8 | E2E tests use wrong field name | Changed `event.data.delta` → `event.content` | `chatFlow.spec.ts` |
+>
+> **Infrastructure Created**:
+> - `.github/workflows/e2e-tests.yml` - GitHub Actions workflow for E2E tests with Azure DEV database
+> - `docker-compose.test.yml` - Local Redis for E2E testing
+> - `package.json` - Added `docker:test:up/down/logs` scripts
 
 ---
 

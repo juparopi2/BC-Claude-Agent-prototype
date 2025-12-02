@@ -78,8 +78,8 @@ export interface ApprovalResponseData {
   /** Approval request ID */
   approvalId: string;
 
-  /** True if approved, false if rejected */
-  approved: boolean;
+  /** User's decision - must be 'approved' or 'rejected' */
+  decision: 'approved' | 'rejected';
 
   /** User ID (authorization check) */
   userId: string;
@@ -163,7 +163,7 @@ export interface WebSocketEvents {
   'chat:stop': (data: StopAgentData) => void;
 
   /** User responds to approval request */
-  'approval:respond': (data: ApprovalResponseData) => void;
+  'approval:response': (data: ApprovalResponseData) => void;
 
   /** User joins a session room */
   'session:join': (data: { sessionId: string }) => void;

@@ -193,13 +193,13 @@ export class SocketService {
   /**
    * Respond to an approval request
    */
-  respondToApproval(data: Omit<ApprovalResponseData, 'approved'> & { approved: boolean }): void {
+  respondToApproval(data: ApprovalResponseData): void {
     if (!this.socket?.connected) {
       console.error('[SocketService] Cannot respond to approval: not connected');
       return;
     }
 
-    this.socket.emit('approval:respond', data);
+    this.socket.emit('approval:response', data);
   }
 
   /**

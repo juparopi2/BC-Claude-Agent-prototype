@@ -230,7 +230,7 @@ export function useSocket(options: UseSocketOptions = {}): UseSocketReturn {
       const socket = getSocketService();
       socket.respondToApproval({
         approvalId,
-        approved,
+        decision: approved ? 'approved' : 'rejected',
         userId: user.id,
         reason,
       });

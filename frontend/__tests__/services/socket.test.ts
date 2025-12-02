@@ -402,20 +402,20 @@ describe('SocketService', () => {
       consoleSpy.restore();
     });
 
-    it('should emit approval:respond with data when respondToApproval() is called', () => {
+    it('should emit approval:response with data when respondToApproval() is called', () => {
       const service = new SocketService();
       service.connect();
       mockSocket.connected = true;
 
       const approvalData = {
         approvalId: 'approval-123',
-        approved: true,
+        decision: 'approved' as const,
         userId: 'test-user-456',
       };
 
       service.respondToApproval(approvalData);
 
-      assertEmitted(mockSocket, 'approval:respond', approvalData);
+      assertEmitted(mockSocket, 'approval:response', approvalData);
     });
 
     it('should error and return early if not connected when responding to approval', () => {
@@ -425,7 +425,7 @@ describe('SocketService', () => {
 
       service.respondToApproval({
         approvalId: 'approval-123',
-        approved: true,
+        decision: 'approved',
         userId: 'test-user-456',
       });
 

@@ -181,14 +181,17 @@ export class AgentEventFactory {
 
   /**
    * Create thinking_chunk event (streaming, transient)
+   * NOTE: Transient events MUST NOT have sequenceNumber - we strip it from overrides
    */
   static thinkingChunk(overrides?: Partial<ThinkingChunkEvent>): ThinkingChunkEvent {
+    // Remove sequenceNumber from overrides if present (transient events shouldn't have one)
+    const { sequenceNumber: _ignored, ...safeOverrides } = overrides ?? {};
     return {
       type: 'thinking_chunk',
-      content: overrides?.content ?? 'Let me think about this...',
-      blockIndex: overrides?.blockIndex ?? 0,
+      content: safeOverrides?.content ?? 'Let me think about this...',
+      blockIndex: safeOverrides?.blockIndex ?? 0,
       ...this.transientBaseEvent(),
-      ...overrides,
+      ...safeOverrides,
     };
   }
 
@@ -198,26 +201,32 @@ export class AgentEventFactory {
 
   /**
    * Create message_partial event (streaming, transient)
+   * NOTE: Transient events MUST NOT have sequenceNumber - we strip it from overrides
    */
   static messagePartial(overrides?: Partial<MessagePartialEvent>): MessagePartialEvent {
+    // Remove sequenceNumber from overrides if present (transient events shouldn't have one)
+    const { sequenceNumber: _ignored, ...safeOverrides } = overrides ?? {};
     return {
       type: 'message_partial',
-      content: overrides?.content ?? 'Partial message content...',
-      messageId: overrides?.messageId ?? generateMessageId(),
+      content: safeOverrides?.content ?? 'Partial message content...',
+      messageId: safeOverrides?.messageId ?? generateMessageId(),
       ...this.transientBaseEvent(),
-      ...overrides,
+      ...safeOverrides,
     };
   }
 
   /**
    * Create message_chunk event (streaming, transient)
+   * NOTE: Transient events MUST NOT have sequenceNumber - we strip it from overrides
    */
   static messageChunk(overrides?: Partial<MessageChunkEvent>): MessageChunkEvent {
+    // Remove sequenceNumber from overrides if present (transient events shouldn't have one)
+    const { sequenceNumber: _ignored, ...safeOverrides } = overrides ?? {};
     return {
       type: 'message_chunk',
-      content: overrides?.content ?? 'chunk ',
+      content: safeOverrides?.content ?? 'chunk ',
       ...this.transientBaseEvent(),
-      ...overrides,
+      ...safeOverrides,
     };
   }
 
@@ -361,14 +370,17 @@ export class AgentEventFactory {
 
   /**
    * Create error event (transient)
+   * NOTE: Transient events MUST NOT have sequenceNumber - we strip it from overrides
    */
   static error(overrides?: Partial<ErrorEvent>): ErrorEvent {
+    // Remove sequenceNumber from overrides if present (transient events shouldn't have one)
+    const { sequenceNumber: _ignored, ...safeOverrides } = overrides ?? {};
     return {
       type: 'error',
-      error: overrides?.error ?? 'An error occurred',
-      code: overrides?.code ?? 'INTERNAL_ERROR',
+      error: safeOverrides?.error ?? 'An error occurred',
+      code: safeOverrides?.code ?? 'INTERNAL_ERROR',
       ...this.transientBaseEvent(),
-      ...overrides,
+      ...safeOverrides,
     };
   }
 

@@ -311,7 +311,7 @@ export const WS_EVENTS = {
 
   // Server -> Client
   agentEvent: 'agent:event',
-  error: 'error',
+  agentError: 'agent:error',  // Changed from 'error' to match backend emission
   connect: 'connect',
   disconnect: 'disconnect',
 } as const;

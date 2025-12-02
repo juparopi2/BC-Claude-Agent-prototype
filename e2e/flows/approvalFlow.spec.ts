@@ -13,14 +13,17 @@
  *
  * Prerequisites:
  * - Backend running on http://localhost:3002
- * - TEST_AUTH_ENABLED=true in backend/.env or backend/test.env
+ * - Redis accessible for session injection
  * - Database accessible with test data seeded
+ *
+ * IMPORTANT: Uses REAL session cookies from Redis, NOT test auth tokens.
+ * Sessions are injected by globalSetup.ts.
  *
  * @module e2e/flows/approvalFlow.spec
  */
 
 import { test, expect, APIRequestContext } from '@playwright/test';
-import { io, Socket } from 'socket.io-client';
+import { Socket } from 'socket.io-client';
 import {
   TEST_USER,
   TEST_SESSIONS,
@@ -30,29 +33,29 @@ import {
   WS_EVENTS,
   AGENT_EVENT_TYPES,
 } from '../fixtures/test-data';
-
-// Backend configuration
-const BACKEND_URL = 'http://localhost:3002';
-const TEST_AUTH_TOKEN = 'test-auth-token-12345';
+import {
+  createApiContext,
+  connectSocket as connectAuthenticatedSocket,
+  waitForAgentEvent,
+  waitForEvent,
+  getTestUserSession,
+} from '../setup/testHelpers';
 
 /**
  * Test Suite: Approval Flow - API Level
  *
  * These tests verify the human-in-the-loop approval workflow by directly
  * calling the backend API and WebSocket endpoints, bypassing the frontend UI.
+ *
+ * IMPORTANT: Uses real session cookies injected into Redis by globalSetup.ts.
  */
 test.describe('Approval Flow - API Level', () => {
   let apiContext: APIRequestContext;
   let socket: Socket | null = null;
 
-  // Create API context with test auth header before all tests
+  // Create API context with real session cookie before all tests
   test.beforeAll(async ({ playwright }) => {
-    apiContext = await playwright.request.newContext({
-      baseURL: BACKEND_URL,
-      extraHTTPHeaders: {
-        'x-test-auth-token': TEST_AUTH_TOKEN,
-      },
-    });
+    apiContext = await createApiContext(playwright, 'test');
   });
 
   // Clean up API context and socket connections after all tests
@@ -391,87 +394,12 @@ test.describe('Approval Flow - API Level', () => {
 // ============================================================================
 // Helper Functions
 // ============================================================================
+// Most helper functions are now imported from testHelpers.ts
 
 /**
- * Connect to WebSocket with test auth token
- * @returns Promise that resolves to connected Socket
+ * Connect to WebSocket with real session authentication
+ * Wraps connectAuthenticatedSocket from testHelpers
  */
 function connectSocket(): Promise<Socket> {
-  return new Promise((resolve, reject) => {
-    const socket = io(BACKEND_URL, {
-      transports: ['websocket'],
-      extraHeaders: {
-        'x-test-auth-token': TEST_AUTH_TOKEN,
-      },
-    });
-
-    const timeout = setTimeout(() => {
-      socket.disconnect();
-      reject(new Error('WebSocket connection timeout'));
-    }, TIMEOUTS.medium);
-
-    socket.on('connect', () => {
-      clearTimeout(timeout);
-      resolve(socket);
-    });
-
-    socket.on('connect_error', (error) => {
-      clearTimeout(timeout);
-      socket.disconnect();
-      reject(error);
-    });
-  });
-}
-
-/**
- * Wait for a specific agent event type
- * @param socket Socket.IO socket
- * @param eventType Agent event type to wait for
- * @param timeout Timeout in milliseconds
- * @returns Promise that resolves to the event data
- */
-function waitForAgentEvent(
-  socket: Socket,
-  eventType: string,
-  timeout: number = TIMEOUTS.medium
-): Promise<any> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      reject(new Error(`Timeout waiting for agent event: ${eventType}`));
-    }, timeout);
-
-    const handler = (event: any) => {
-      if (event.type === eventType) {
-        clearTimeout(timer);
-        socket.off(WS_EVENTS.agentEvent, handler);
-        resolve(event);
-      }
-    };
-
-    socket.on(WS_EVENTS.agentEvent, handler);
-  });
-}
-
-/**
- * Wait for any event (not just agent events)
- * @param socket Socket.IO socket
- * @param eventName Event name to wait for
- * @param timeout Timeout in milliseconds
- * @returns Promise that resolves to the event data
- */
-function waitForEvent(
-  socket: Socket,
-  eventName: string,
-  timeout: number = TIMEOUTS.medium
-): Promise<any> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      reject(new Error(`Timeout waiting for event: ${eventName}`));
-    }, timeout);
-
-    socket.once(eventName, (data) => {
-      clearTimeout(timer);
-      resolve(data);
-    });
-  });
+  return connectAuthenticatedSocket('test', TIMEOUTS.medium);
 }

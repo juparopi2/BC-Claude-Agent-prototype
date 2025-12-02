@@ -217,15 +217,22 @@ export async function createApiContext(
  * Establishes a Socket.IO connection to the backend with session cookie
  * authentication. Returns a promise that resolves when the connection is established.
  *
+ * IMPORTANT: If autoJoinSession is provided, the socket will automatically join
+ * the specified session room before resolving. This is REQUIRED for receiving
+ * events that are broadcast to session rooms (e.g., user_message_confirmed,
+ * agent:event with thinking/message events).
+ *
  * @param user - Which user to connect as ('test' or 'admin')
  * @param timeout - Connection timeout in milliseconds (default: 15s)
+ * @param autoJoinSession - Optional session ID to auto-join after connection
  * @returns Promise that resolves to connected Socket
  *
  * @throws Error if connection times out or fails
  *
  * @example
  * ```typescript
- * const socket = await connectSocket('test');
+ * // Connect and auto-join session (RECOMMENDED for message tests)
+ * const socket = await connectSocket('test', TIMEOUTS.medium, TEST_SESSIONS.empty);
  * expect(socket.connected).toBeTruthy();
  *
  * socket.emit('chat:message', { sessionId, userId, message });
@@ -236,10 +243,18 @@ export async function createApiContext(
  */
 export function connectSocket(
   user: 'test' | 'admin' = 'test',
-  timeout: number = TIMEOUTS.medium
+  timeout: number = TIMEOUTS.medium,
+  autoJoinSession?: string
 ): Promise<Socket> {
   return new Promise((resolve, reject) => {
     const sessionUser = user === 'admin' ? getAdminUserSession() : getTestUserSession();
+
+    console.log('[E2E] Connecting socket with session:', {
+      sessionId: sessionUser.sessionId,
+      userId: sessionUser.userId,
+      cookieValue: sessionUser.cookieValue.substring(0, 20) + '...',
+      autoJoinSession: autoJoinSession || 'none',
+    });
 
     const socket = io(BACKEND_URL, {
       transports: ['websocket'],
@@ -249,19 +264,54 @@ export function connectSocket(
     });
 
     const timer = setTimeout(() => {
+      console.error('[E2E] Socket connection timeout');
       socket.disconnect();
       reject(new Error('WebSocket connection timeout'));
     }, timeout);
 
-    socket.on('connect', () => {
+    socket.on('connect', async () => {
+      console.log('[E2E] Socket connected, socket.id:', socket.id);
       clearTimeout(timer);
+
+      // AUTO-JOIN SESSION IF PROVIDED (CRITICAL for receiving room broadcasts)
+      if (autoJoinSession) {
+        try {
+          console.log('[E2E] Auto-joining session:', autoJoinSession);
+          socket.emit('session:join', { sessionId: autoJoinSession });
+
+          // Wait for join confirmation with timeout
+          await new Promise<void>((resolveJoin, rejectJoin) => {
+            const joinTimer = setTimeout(() => {
+              rejectJoin(new Error(`Timeout waiting for session:joined event for ${autoJoinSession}`));
+            }, 5000);
+
+            socket.once('session:joined', (data: { sessionId: string }) => {
+              clearTimeout(joinTimer);
+              console.log('[E2E] Session joined successfully:', data.sessionId);
+              resolveJoin();
+            });
+          });
+        } catch (joinError) {
+          console.error('[E2E] Failed to join session:', joinError);
+          socket.disconnect();
+          reject(joinError);
+          return;
+        }
+      }
+
       resolve(socket);
     });
 
     socket.on('connect_error', (error) => {
+      console.error('[E2E] Socket connection error:', error.message);
       clearTimeout(timer);
       socket.disconnect();
       reject(error);
+    });
+
+    // Listen for agent errors (helps debug validation failures)
+    socket.on('agent:error', (error) => {
+      console.error('[E2E] Agent error received:', error);
     });
   });
 }

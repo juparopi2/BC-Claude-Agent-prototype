@@ -65,7 +65,7 @@ test.describe('Socket Middleware - API Level', () => {
    * Verifies message sending and receiving user_message_confirmed event
    */
   test('should send message and receive user_message_confirmed', async () => {
-    socket = await connectAuthenticatedSocket('test', TIMEOUTS.medium);
+    socket = await connectAuthenticatedSocket('test', TIMEOUTS.medium, TEST_SESSIONS.empty.id);
 
     const sessionId = TEST_SESSIONS.empty.id;
     const messageContent = 'Test message for confirmation';
@@ -97,7 +97,7 @@ test.describe('Socket Middleware - API Level', () => {
    * Verifies tool_use event is received with correct tool metadata
    */
   test('should receive tool_use event with tool metadata', async () => {
-    socket = await connectAuthenticatedSocket('test', TIMEOUTS.medium);
+    socket = await connectAuthenticatedSocket('test', TIMEOUTS.medium, TEST_SESSIONS.empty.id);
 
     const sessionId = TEST_SESSIONS.empty.id;
     const messageContent = 'List my customers';
@@ -131,7 +131,7 @@ test.describe('Socket Middleware - API Level', () => {
    * Verifies that multiple event types are received during a complete agent response cycle
    */
   test('should receive multiple streaming events in correct order', async () => {
-    socket = await connectAuthenticatedSocket('test', TIMEOUTS.medium);
+    socket = await connectAuthenticatedSocket('test', TIMEOUTS.medium, TEST_SESSIONS.empty.id);
 
     const sessionId = TEST_SESSIONS.empty.id;
     const messageContent = 'What is Business Central?';

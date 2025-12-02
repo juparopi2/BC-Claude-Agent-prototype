@@ -6,7 +6,7 @@
  * @module __tests__/helpers/socketTestHelpers
  */
 
-import { vi } from 'vitest';
+import { vi, expect } from 'vitest';
 import type { AgentEvent, AgentEventType } from '@bc-agent/shared';
 import { SocketService, resetSocketService, type SocketEventHandlers } from '@/lib/services/socket';
 import {
@@ -90,15 +90,15 @@ export function createTestContext(options: TestContextOptions = {}): TestContext
     useAuthStore.setState({
       user: {
         id: userId,
-        microsoftId: 'ms-' + userId,
         email: 'test@example.com',
-        displayName: 'Test User',
-        createdAt: new Date().toISOString(),
-        lastLoginAt: new Date().toISOString(),
+        display_name: 'Test User',
+        avatar_url: null,
+        created_at: new Date().toISOString(),
       },
       isAuthenticated: true,
       isLoading: false,
       error: null,
+      lastChecked: null,
     });
   }
 
@@ -159,7 +159,11 @@ export function resetStores(): void {
   useChatStore.setState({
     messages: [],
     optimisticMessages: new Map(),
-    streaming: null,
+    streaming: {
+      content: '',
+      thinking: '',
+      isStreaming: false,
+    },
     pendingApprovals: new Map(),
     toolExecutions: new Map(),
     isLoading: false,

@@ -124,6 +124,8 @@ export interface ChatActions {
   // Session
   setCurrentSession: (sessionId: string | null) => void;
   clearChat: () => void;
+  /** Reset store to initial state (for testing) */
+  reset: () => void;
 
   // Event handling
   handleAgentEvent: (event: AgentEvent) => void;
@@ -301,6 +303,8 @@ export const useChatStore = create<ChatStore>()(
         ...initialState,
         currentSessionId: get().currentSessionId,
       }),
+
+    reset: () => set(initialState),
 
     // ========================================
     // Event handling

@@ -46,6 +46,8 @@ export interface AuthActions {
   getLoginUrl: () => string;
   /** Get logout URL */
   getLogoutUrl: () => string;
+  /** Reset store to initial state (for testing) */
+  reset: () => void;
 }
 
 export type AuthStore = AuthState & AuthActions;
@@ -122,6 +124,8 @@ export const useAuthStore = create<AuthStore>()(
           const api = getApiClient();
           return api.getLogoutUrl();
         },
+
+        reset: () => set({ ...initialState, isLoading: false }),
       }),
       {
         name: 'bc-agent-auth',

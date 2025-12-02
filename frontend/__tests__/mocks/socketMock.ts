@@ -7,7 +7,7 @@
  * @module __tests__/mocks/socketMock
  */
 
-import { vi, type Mock } from 'vitest';
+import { vi, expect, type Mock } from 'vitest';
 
 type EventCallback = (...args: unknown[]) => void;
 

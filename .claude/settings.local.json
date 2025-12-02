@@ -105,7 +105,10 @@
       "Bash(npm run test:frontend:*)",
       "Bash(npx playwright test:*)",
       "Bash(curl.exe:*)",
-      "Bash(where:*)"
+      "Bash(where:*)",
+      "Bash(npm run:*)",
+      "Bash(npm ls:*)",
+      "Bash(npx eslint:*)"
     ],
     "deny": [],
     "ask": []

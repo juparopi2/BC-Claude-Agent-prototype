@@ -218,14 +218,12 @@ describe('ChatMessageHandler', () => {
         })
       );
 
-      // ⭐ PHASE 1B: Error emitted as agent:event with type: 'error', not agent:error
+      // ⭐ PHASE 1B: Error emitted as agent:event with type: 'error'
+      // Per QA Audit Deep Dive fix: error is a string, code is a separate field
       expect(mockSocketEmit).toHaveBeenCalledWith('agent:event', {
         type: 'error',
-        error: {
-          code: 'MESSAGE_SAVE_FAILED',
-          message: 'Failed to save your message. Please try again.',
-          details: 'Save failed',
-        },
+        error: 'Failed to save your message. Please try again.',
+        code: 'MESSAGE_SAVE_FAILED',
         sessionId: testSessionId,
       });
     });

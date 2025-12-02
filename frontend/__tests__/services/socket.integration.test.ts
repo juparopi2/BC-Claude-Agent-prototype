@@ -397,15 +397,15 @@ describe('Store Integration (Real Stores)', () => {
     useAuthStore.setState({
       user: {
         id: 'test-user-456',
-        microsoftId: 'ms-test-user',
         email: 'test@example.com',
-        displayName: 'Test User',
-        createdAt: new Date().toISOString(),
-        lastLoginAt: new Date().toISOString(),
+        display_name: 'Test User',
+        avatar_url: null,
+        created_at: new Date().toISOString(),
       },
       isAuthenticated: true,
       isLoading: false,
       error: null,
+      lastChecked: null,
     });
 
     mockSocket = createMockSocket({ connected: true });
@@ -551,10 +551,8 @@ describe('Store Integration (Real Stores)', () => {
       session_id: 'session-123',
       role: 'user',
       content: 'Hello agent!',
-      message_type: 'text',
       sequence_number: 0,
       created_at: new Date().toISOString(),
-      metadata: null,
     });
 
     expect(useChatStore.getState().optimisticMessages.size).toBe(1);

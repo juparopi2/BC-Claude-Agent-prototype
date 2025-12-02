@@ -124,9 +124,10 @@ describe('useSocket Hook', () => {
       result.current.respondToApproval('approval-1', true, 'reason');
     });
     
+    // Per QA Audit Deep Dive fix: decision is enum, not approved: boolean
     expect(mockRespondToApproval).toHaveBeenCalledWith({
       approvalId: 'approval-1',
-      approved: true,
+      decision: 'approved',
       userId: 'test-user-id',
       reason: 'reason',
     });

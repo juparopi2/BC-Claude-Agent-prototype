@@ -7,7 +7,7 @@
  * @module lib/stores/socketMiddleware
  */
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
 import { getSocketService, type SocketEventHandlers } from '../services/socket';
 import { useChatStore } from './chatStore';
 import { useAuthStore } from './authStore';
@@ -93,31 +93,34 @@ export function useSocket(options: UseSocketOptions = {}): UseSocketReturn {
   const user = useAuthStore((state) => state.user);
 
   // Track connection state
-  const isConnectedRef = useRef(false);
+  const [isConnected, setIsConnected] = useState(false);
   const currentSessionRef = useRef<string | null>(sessionId || null);
 
-  // Create handlers that integrate with stores
-  const handlers: SocketEventHandlers = {
-    onAgentEvent: (event) => {
-      // Update store
-      handleAgentEvent(event);
-      // Call custom handler
-      onAgentEvent?.(event);
-    },
-    onAgentError: (error) => {
-      setError(error.error);
-      setAgentBusy(false);
-      onError?.(error);
-    },
-    onSessionReady: (data) => {
-      setCurrentSession(data.sessionId);
-      onSessionReady?.(data);
-    },
-    onConnectionChange: (connected) => {
-      isConnectedRef.current = connected;
-      onConnectionChange?.(connected);
-    },
-  };
+  // Create handlers that integrate with stores (memoized to prevent re-creation)
+  const handlers: SocketEventHandlers = useMemo(
+    () => ({
+      onAgentEvent: (event) => {
+        // Update store
+        handleAgentEvent(event);
+        // Call custom handler
+        onAgentEvent?.(event);
+      },
+      onAgentError: (error) => {
+        setError(error.error);
+        setAgentBusy(false);
+        onError?.(error);
+      },
+      onSessionReady: (data) => {
+        setCurrentSession(data.sessionId);
+        onSessionReady?.(data);
+      },
+      onConnectionChange: (connected) => {
+        setIsConnected(connected);
+        onConnectionChange?.(connected);
+      },
+    }),
+    [handleAgentEvent, setAgentBusy, setError, setCurrentSession, onAgentEvent, onError, onSessionReady, onConnectionChange]
+  );
 
   // Initialize socket
   useEffect(() => {
@@ -131,29 +134,29 @@ export function useSocket(options: UseSocketOptions = {}): UseSocketReturn {
       // Don't disconnect on unmount - let the singleton persist
       // socket.disconnect();
     };
-  }, []);
+  }, [autoConnect, handlers]);
 
   // Handle session changes
   useEffect(() => {
     const socket = getSocketService();
 
-    if (sessionId && isConnectedRef.current) {
+    if (sessionId && isConnected) {
       socket.joinSession(sessionId);
       currentSessionRef.current = sessionId;
     }
-  }, [sessionId]);
+  }, [sessionId, isConnected]);
 
   // Connect function
   const connect = useCallback(() => {
     const socket = getSocketService(handlers);
     socket.connect();
-  }, []);
+  }, [handlers]);
 
   // Disconnect function
   const disconnect = useCallback(() => {
     const socket = getSocketService();
     socket.disconnect();
-    isConnectedRef.current = false;
+    setIsConnected(false);
   }, []);
 
   // Join session function
@@ -204,7 +207,7 @@ export function useSocket(options: UseSocketOptions = {}): UseSocketReturn {
         } : undefined,
       });
     },
-    [user?.id, addOptimisticMessage]
+    [user, addOptimisticMessage]
   );
 
   // Stop agent function
@@ -218,7 +221,7 @@ export function useSocket(options: UseSocketOptions = {}): UseSocketReturn {
       sessionId: currentSessionRef.current,
       userId: user.id,
     });
-  }, [user?.id]);
+  }, [user]);
 
   // Respond to approval function
   const respondToApproval = useCallback(
@@ -235,7 +238,7 @@ export function useSocket(options: UseSocketOptions = {}): UseSocketReturn {
         reason,
       });
     },
-    [user?.id]
+    [user]
   );
 
   return {
@@ -246,6 +249,6 @@ export function useSocket(options: UseSocketOptions = {}): UseSocketReturn {
     sendMessage,
     stopAgent,
     respondToApproval,
-    isConnected: isConnectedRef.current,
+    isConnected,
   };
 }

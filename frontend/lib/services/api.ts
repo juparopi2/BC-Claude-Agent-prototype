@@ -255,35 +255,51 @@ export class ApiClient {
    * Get all sessions for current user
    */
   async getSessions(): Promise<ApiResponse<Session[]>> {
-    return this.request<Session[]>('GET', '/api/sessions');
+    const result = await this.request<{ sessions: Session[] }>('GET', '/api/chat/sessions');
+    if (result.success) {
+      return { success: true, data: result.data.sessions };
+    }
+    return result;
   }
 
   /**
    * Get a single session by ID
    */
   async getSession(sessionId: string): Promise<ApiResponse<Session>> {
-    return this.request<Session>('GET', `/api/sessions/${sessionId}`);
+    const result = await this.request<{ session: Session }>('GET', `/api/chat/sessions/${sessionId}`);
+    if (result.success) {
+      return { success: true, data: result.data.session };
+    }
+    return result;
   }
 
   /**
    * Create a new session
    */
   async createSession(data?: CreateSessionRequest): Promise<ApiResponse<Session>> {
-    return this.request<Session>('POST', '/api/sessions', data);
+    const result = await this.request<{ session: Session }>('POST', '/api/chat/sessions', data);
+    if (result.success) {
+      return { success: true, data: result.data.session };
+    }
+    return result;
   }
 
   /**
    * Update a session
    */
   async updateSession(sessionId: string, data: UpdateSessionRequest): Promise<ApiResponse<Session>> {
-    return this.request<Session>('PATCH', `/api/sessions/${sessionId}`, data);
+    const result = await this.request<{ success: boolean; session: Session }>('PATCH', `/api/chat/sessions/${sessionId}`, data);
+    if (result.success) {
+      return { success: true, data: result.data.session };
+    }
+    return result;
   }
 
   /**
    * Delete a session
    */
   async deleteSession(sessionId: string): Promise<ApiResponse<{ success: boolean }>> {
-    return this.request<{ success: boolean }>('DELETE', `/api/sessions/${sessionId}`);
+    return this.request<{ success: boolean }>('DELETE', `/api/chat/sessions/${sessionId}`);
   }
 
   // ============================================
@@ -307,15 +323,19 @@ export class ApiClient {
     if (options?.after) params.set('after', options.after.toString());
 
     const query = params.toString();
-    const path = `/api/sessions/${sessionId}/messages${query ? `?${query}` : ''}`;
-    return this.request<Message[]>('GET', path);
+    const path = `/api/chat/sessions/${sessionId}/messages${query ? `?${query}` : ''}`;
+    const result = await this.request<{ messages: Message[] }>('GET', path);
+    if (result.success) {
+      return { success: true, data: result.data.messages };
+    }
+    return result;
   }
 
   /**
    * Get a single message by ID
    */
   async getMessage(sessionId: string, messageId: string): Promise<ApiResponse<Message>> {
-    return this.request<Message>('GET', `/api/sessions/${sessionId}/messages/${messageId}`);
+    return this.request<Message>('GET', `/api/chat/sessions/${sessionId}/messages/${messageId}`);
   }
 
   // ============================================
@@ -326,7 +346,7 @@ export class ApiClient {
    * Get token usage for a session
    */
   async getSessionTokenUsage(sessionId: string): Promise<ApiResponse<TokenUsage>> {
-    return this.request<TokenUsage>('GET', `/api/sessions/${sessionId}/token-usage`);
+    return this.request<TokenUsage>('GET', `/api/chat/sessions/${sessionId}/token-usage`);
   }
 
   /**

@@ -42,7 +42,7 @@ describe('AuthStore', () => {
       expect(state.lastChecked).toBeDefined();
     });
 
-    it('should handle unauthorized response', async () => {
+    it('should handle unauthorized response gracefully', async () => {
       server.use(errorHandlers.unauthorized);
 
       await act(async () => {
@@ -53,7 +53,10 @@ describe('AuthStore', () => {
       const state = useAuthStore.getState();
       expect(state.isAuthenticated).toBe(false);
       expect(state.user).toBeNull();
-      expect(state.error).toBeTruthy();
+      // Note: 401 is treated as "not authenticated" (not an error)
+      // This is intentional - auth check doesn't "fail", it just returns not authenticated
+      expect(state.error).toBeNull();
+      expect(state.isLoading).toBe(false);
     });
   });
 

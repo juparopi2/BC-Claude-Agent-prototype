@@ -96,16 +96,16 @@ export const handlers = [
     return HttpResponse.json(mockUser);
   }),
 
-  // Get sessions
-  http.get(`${API_URL}/api/sessions`, () => {
-    return HttpResponse.json(mockSessions);
+  // Get sessions (wrapped in { sessions: [...] })
+  http.get(`${API_URL}/api/chat/sessions`, () => {
+    return HttpResponse.json({ sessions: mockSessions });
   }),
 
-  // Get single session
-  http.get(`${API_URL}/api/sessions/:sessionId`, ({ params }) => {
+  // Get single session (wrapped in { session: {...} })
+  http.get(`${API_URL}/api/chat/sessions/:sessionId`, ({ params }) => {
     const session = mockSessions.find((s) => s.id === params.sessionId);
     if (session) {
-      return HttpResponse.json(session);
+      return HttpResponse.json({ session });
     }
     return HttpResponse.json(
       { error: 'Not Found', message: 'Session not found', code: 'SESSION_NOT_FOUND' },
@@ -113,8 +113,8 @@ export const handlers = [
     );
   }),
 
-  // Create session
-  http.post(`${API_URL}/api/sessions`, async ({ request }) => {
+  // Create session (wrapped in { session: {...} })
+  http.post(`${API_URL}/api/chat/sessions`, async ({ request }) => {
     const body = (await request.json()) as { title?: string } | null;
     const newSession: Session = {
       id: `session-${Date.now()}`,
@@ -125,19 +125,20 @@ export const handlers = [
       is_active: true,
       message_count: 0,
     };
-    return HttpResponse.json(newSession, { status: 201 });
+    return HttpResponse.json({ session: newSession }, { status: 201 });
   }),
 
-  // Update session
-  http.patch(`${API_URL}/api/sessions/:sessionId`, async ({ params, request }) => {
+  // Update session (wrapped in { success: true, session: {...} })
+  http.patch(`${API_URL}/api/chat/sessions/:sessionId`, async ({ params, request }) => {
     const body = (await request.json()) as { title?: string; is_active?: boolean };
     const session = mockSessions.find((s) => s.id === params.sessionId);
     if (session) {
-      return HttpResponse.json({
+      const updatedSession = {
         ...session,
         ...body,
         updated_at: new Date().toISOString(),
-      });
+      };
+      return HttpResponse.json({ success: true, session: updatedSession });
     }
     return HttpResponse.json(
       { error: 'Not Found', message: 'Session not found', code: 'SESSION_NOT_FOUND' },
@@ -146,7 +147,7 @@ export const handlers = [
   }),
 
   // Delete session
-  http.delete(`${API_URL}/api/sessions/:sessionId`, ({ params }) => {
+  http.delete(`${API_URL}/api/chat/sessions/:sessionId`, ({ params }) => {
     const session = mockSessions.find((s) => s.id === params.sessionId);
     if (session) {
       return HttpResponse.json({ success: true });
@@ -157,14 +158,14 @@ export const handlers = [
     );
   }),
 
-  // Get messages
-  http.get(`${API_URL}/api/sessions/:sessionId/messages`, ({ params }) => {
+  // Get messages (wrapped in { messages: [...] })
+  http.get(`${API_URL}/api/chat/sessions/:sessionId/messages`, ({ params }) => {
     const messages = mockMessages.filter((m) => m.session_id === params.sessionId);
-    return HttpResponse.json(messages);
+    return HttpResponse.json({ messages });
   }),
 
   // Get token usage for session
-  http.get(`${API_URL}/api/sessions/:sessionId/token-usage`, () => {
+  http.get(`${API_URL}/api/chat/sessions/:sessionId/token-usage`, () => {
     return HttpResponse.json(mockTokenUsage);
   }),
 
@@ -178,21 +179,22 @@ export const handlers = [
  * Error handlers for testing error scenarios
  */
 export const errorHandlers = {
-  unauthorized: http.get(`${API_URL}/api/auth/status`, () => {
+  // Note: checkAuth() uses /api/auth/me directly, not /api/auth/status
+  unauthorized: http.get(`${API_URL}/api/auth/me`, () => {
     return HttpResponse.json(
       { error: 'Unauthorized', message: 'Authentication required', code: 'UNAUTHORIZED' },
       { status: 401 }
     );
   }),
 
-  serverError: http.get(`${API_URL}/api/sessions`, () => {
+  serverError: http.get(`${API_URL}/api/chat/sessions`, () => {
     return HttpResponse.json(
       { error: 'Internal Server Error', message: 'An unexpected error occurred', code: 'INTERNAL_ERROR' },
       { status: 500 }
     );
   }),
 
-  networkError: http.get(`${API_URL}/api/sessions`, () => {
+  networkError: http.get(`${API_URL}/api/chat/sessions`, () => {
     return HttpResponse.error();
   }),
 };

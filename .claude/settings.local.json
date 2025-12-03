@@ -111,7 +111,9 @@
       "Bash(npx eslint:*)",
       "Bash(python:*)",
       "Bash(npx shadcn@latest init:*)",
-      "Bash(test:*)"
+      "Bash(test:*)",
+      "Bash(del /F \"D:\\Documents\\BC-Claude-Agent-prototype\\frontend\\.next\\dev\\lock\")",
+      "Bash(if exist \"D:\\Documents\\BC-Claude-Agent-prototype\\frontend\\.next\\dev\\lock\" del /F \"D:\\Documents\\BC-Claude-Agent-prototype\\frontend\\.next\\dev\\lock\")"
     ],
     "deny": [],
     "ask": []

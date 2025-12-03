@@ -50,14 +50,17 @@ describe('ApiClient', () => {
       }
     });
 
-    it('should handle unauthorized error', async () => {
+    it('should handle unauthorized response gracefully', async () => {
       server.use(errorHandlers.unauthorized);
 
       const result = await api.checkAuth();
 
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(result.error.code).toBe('UNAUTHORIZED');
+      // 401 is treated as "not authenticated" (success), not an error
+      // This is intentional UX design - auth check doesn't "fail", it just returns not authenticated
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.authenticated).toBe(false);
+        expect(result.data.user).toBeUndefined();
       }
     });
   });

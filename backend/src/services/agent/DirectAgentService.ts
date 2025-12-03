@@ -585,55 +585,33 @@ export class DirectAgentService {
                   },
                 });
 
-                // ✅ FIX PHASE 2: Persist tool_use event BEFORE emitting
-                const toolUseEvent = await eventStore.appendEvent(
-                  sessionId,
-                  'tool_use_requested',
-                  {
-                    tool_use_id: toolUseId,  // ⭐ Use validated ID
-                    tool_name: event.content_block.name,
-                    tool_args: {}, // Will be updated in content_block_stop
-                  }
-                );
-
-                this.logger.info('✅ Tool use event appended to EventStore', {
-                  sessionId,
-                  toolUseId,  // ⭐ Use validated ID
-                  toolName: event.content_block.name,
-                  eventId: toolUseEvent.id,
-                  sequenceNumber: toolUseEvent.sequence_number,
-                });
-
-                // Get sequence number NOW to preserve ordering
-                const sequenceNumber = toolUseEvent.sequence_number;
-
-                // Initialize accumulator - DON'T persist message yet (will persist in content_block_stop)
+                // ⭐ NEW FIX: DON'T persist yet - wait for message_delta to persist in correct order
+                // Initialize accumulator to track args during streaming
                 this.toolDataAccumulators.set(event.index, {
                   name: event.content_block.name,
                   id: toolUseId,
                   args: '', // Will accumulate JSON string in input_json_delta
-                  sequenceNumber,
+                  sequenceNumber: -1, // ⭐ Will be assigned in message_delta based on index order
                 });
 
-                this.logger.info('✅ Tool data accumulator initialized', {
+                this.logger.info('✅ Tool data accumulator initialized (pending persistence)', {
                   sessionId,
                   toolUseId,
                   toolName: event.content_block.name,
                   eventIndex: event.index,
-                  sequenceNumber,
                 });
 
-                // ✅ STEP 2: Emit AFTER with data from persisted event (for real-time WebSocket feedback)
+                // ⭐ NEW FIX: Emit with persistenceState: 'pending' (not persisted yet)
                 if (onEvent) {
                   onEvent({
                     type: 'tool_use',
                     toolName: event.content_block.name,
                     toolUseId: toolUseId,  // ⭐ Use validated ID
                     args: {}, // Will be populated in deltas
-                    timestamp: new Date(toolUseEvent.timestamp),
-                    eventId: toolUseEvent.id,
-                    sequenceNumber: toolUseEvent.sequence_number,
-                    persistenceState: 'persisted',
+                    timestamp: new Date(),
+                    eventId: randomUUID(),
+                    // ⭐ NO sequenceNumber yet - will be assigned in message_delta
+                    persistenceState: 'pending',
                   });
                 }
 
@@ -912,10 +890,10 @@ export class DirectAgentService {
                   });
                 }
 
-                // ⭐ NOW PERSIST with complete data from accumulator
+                // ⭐ NEW FIX: Parse args but DON'T persist yet - will persist in message_delta
                 const accumulatorData = this.toolDataAccumulators.get(event.index);
                 if (accumulatorData) {
-                  // Parse the accumulated JSON args
+                  // Parse the accumulated JSON args for logging
                   let parsedArgs = {};
                   try {
                     if (accumulatorData.args) {
@@ -928,7 +906,7 @@ export class DirectAgentService {
                         toolName: accumulatorData.name,
                         argsLength: accumulatorData.args.length,
                         parsedArgsKeys: Object.keys(parsedArgs),
-                      }, '✅ [TOOL_ARGS] Successfully parsed complete tool arguments');
+                      }, '✅ [TOOL_ARGS] Successfully parsed complete tool arguments (pending persistence)');
                     }
                   } catch (e) {
                     this.logger.warn({
@@ -941,33 +919,8 @@ export class DirectAgentService {
                     }, '⚠️ [TOOL_ARGS] Failed to parse tool args');
                   }
 
-                  // NOW persist with complete data (this was previously at content_block_start with empty args)
-                  await messageQueue.addMessagePersistence({
-                    sessionId,
-                    messageId: validatedToolUseId,  // ⭐ PHASE 1B: Use Anthropic tool_use_id (format: toolu_...)
-                    role: 'assistant',
-                    messageType: 'tool_use',
-                    content: '',
-                    metadata: {
-                      tool_name: accumulatorData.name,
-                      tool_args: parsedArgs,  // ⭐ NOW COMPLETE!
-                      tool_use_id: validatedToolUseId,
-                      status: 'pending',
-                    },
-                    sequenceNumber: accumulatorData.sequenceNumber,
-                    eventId: undefined, // Event was already created at content_block_start
-                    toolUseId: validatedToolUseId,
-                  });
-
-                  this.logger.info('✅ Tool use message queued for persistence with COMPLETE args', {
-                    sessionId,
-                    toolUseId: validatedToolUseId,
-                    sequenceNumber: accumulatorData.sequenceNumber,
-                    parsedArgsKeys: Object.keys(parsedArgs),
-                  });
-
-                  // Clean up accumulator
-                  this.toolDataAccumulators.delete(event.index);
+                  // ⭐ NEW FIX: DON'T delete accumulator yet - we'll need it in message_delta
+                  // to persist in correct order by index
                 } else {
                   this.logger.warn({
                     sessionId,
@@ -1021,6 +974,172 @@ export class DirectAgentService {
 
         console.log(`[STREAM] Stream completed: stop_reason=${stopReason}, thinking_blocks=${thinkingBlocks.length}, text_blocks=${textBlocks.length}, tool_uses=${toolUses.length}`);
 
+        // ========== NEW FIX: BATCH PERSISTENCE IN CORRECT ORDER ==========
+        // ⭐ Only persist if stream completed successfully (has stop_reason)
+        if (stopReason && sessionId) {
+          // Sort content blocks by index to get correct logical order
+          const sortedBlocks = Array.from(contentBlocks.entries())
+            .sort(([indexA], [indexB]) => indexA - indexB);
+
+          this.logger.info({
+            sessionId,
+            turnCount,
+            totalBlocks: sortedBlocks.length,
+            blockTypes: sortedBlocks.map(([idx, block]) => `${idx}:${block.type}`),
+          }, '🔄 [BATCH_PERSIST] Starting batch persistence in index order');
+
+          // Persist each block in index order
+          for (const [blockIndex, block] of sortedBlocks) {
+            if (block.type === 'text') {
+              const textContent = block.data as string;
+              if (textContent.trim()) {
+                // Persist text block
+                const textEvent = await eventStore.appendEvent(
+                  sessionId,
+                  'agent_message_sent',
+                  {
+                    content: textContent,
+                    block_index: blockIndex,
+                    stop_reason: stopReason,
+                  }
+                );
+
+                // Collect citations for this text block
+                const citations = block.citations || [];
+
+                await messageQueue.addMessagePersistence({
+                  sessionId,
+                  messageId: messageId || `text_${textEvent.id}`,
+                  role: 'assistant',
+                  messageType: 'text',
+                  content: textContent,
+                  metadata: {
+                    stop_reason: stopReason,
+                    block_index: blockIndex,
+                    citations: citations.length > 0 ? citations : undefined,
+                    citations_count: citations.length > 0 ? citations.length : undefined,
+                  },
+                  sequenceNumber: textEvent.sequence_number,
+                  eventId: textEvent.id,
+                  stopReason: stopReason || null,
+                  model: modelName,
+                  inputTokens,
+                  outputTokens,
+                });
+
+                this.logger.info({
+                  sessionId,
+                  blockIndex,
+                  sequenceNumber: textEvent.sequence_number,
+                  contentLength: textContent.length,
+                }, '✅ [BATCH_PERSIST] Text block persisted');
+
+                // Emit WebSocket event with persistence confirmation
+                if (onEvent) {
+                  onEvent({
+                    type: 'message',
+                    messageId: messageId || `text_${textEvent.id}`,
+                    content: textContent,
+                    role: 'assistant',
+                    stopReason: (stopReason as 'end_turn' | 'tool_use' | 'max_tokens') || undefined,
+                    timestamp: new Date(textEvent.timestamp),
+                    eventId: textEvent.id,
+                    sequenceNumber: textEvent.sequence_number,
+                    persistenceState: 'persisted',
+                    tokenUsage: {
+                      inputTokens,
+                      outputTokens,
+                      thinkingTokens: thinkingTokens > 0 ? thinkingTokens : undefined,
+                    },
+                    model: modelName,
+                  });
+                }
+              }
+            } else if (block.type === 'tool_use') {
+              const toolData = block.data as { id: string; name: string; input: Record<string, unknown> };
+              const accumulatorData = this.toolDataAccumulators.get(blockIndex);
+
+              if (accumulatorData) {
+                // Parse args from accumulator
+                let parsedArgs = {};
+                try {
+                  if (accumulatorData.args) {
+                    parsedArgs = JSON.parse(accumulatorData.args);
+                  }
+                } catch (e) {
+                  this.logger.warn({
+                    sessionId,
+                    blockIndex,
+                    toolUseId: toolData.id,
+                    error: e instanceof Error ? e.message : String(e),
+                  }, '⚠️ [BATCH_PERSIST] Failed to parse tool args');
+                }
+
+                // Persist tool_use block
+                const toolEvent = await eventStore.appendEvent(
+                  sessionId,
+                  'tool_use_requested',
+                  {
+                    tool_use_id: toolData.id,
+                    tool_name: toolData.name,
+                    tool_args: parsedArgs,
+                    block_index: blockIndex,
+                  }
+                );
+
+                await messageQueue.addMessagePersistence({
+                  sessionId,
+                  messageId: toolData.id,
+                  role: 'assistant',
+                  messageType: 'tool_use',
+                  content: '',
+                  metadata: {
+                    tool_name: toolData.name,
+                    tool_args: parsedArgs,
+                    tool_use_id: toolData.id,
+                    status: 'pending',
+                    block_index: blockIndex,
+                  },
+                  sequenceNumber: toolEvent.sequence_number,
+                  eventId: toolEvent.id,
+                  toolUseId: toolData.id,
+                });
+
+                this.logger.info({
+                  sessionId,
+                  blockIndex,
+                  sequenceNumber: toolEvent.sequence_number,
+                  toolName: toolData.name,
+                  toolUseId: toolData.id,
+                }, '✅ [BATCH_PERSIST] Tool use block persisted');
+
+                // Emit WebSocket event with persistence confirmation
+                if (onEvent) {
+                  onEvent({
+                    type: 'tool_use',
+                    toolName: toolData.name,
+                    toolUseId: toolData.id,
+                    args: parsedArgs,
+                    timestamp: new Date(toolEvent.timestamp),
+                    eventId: toolEvent.id,
+                    sequenceNumber: toolEvent.sequence_number,
+                    persistenceState: 'persisted',
+                  });
+                }
+
+                // Clean up accumulator
+                this.toolDataAccumulators.delete(blockIndex);
+              }
+            }
+          }
+
+          this.logger.info({
+            sessionId,
+            turnCount,
+            blocksPersisted: sortedBlocks.length,
+          }, '🎉 [BATCH_PERSIST] Batch persistence completed successfully');
+        }
+
         // ========== TOKEN TRACKING LOGGING (Phase 1A + 1F) ==========
         console.log('[TOKEN TRACKING]', {
           messageId,        // Anthropic ID (e.g., "msg_01ABC...")
@@ -1061,104 +1180,22 @@ export class DirectAgentService {
           });
         }
 
-        // ========== EMIT COMPLETE MESSAGE ==========
-        // ✅ FIX PHASE 3: Persist complete message FIRST, then emit
-        if (accumulatedText.trim() && onEvent && sessionId) {
-          // ✅ STEP 1: Persistir PRIMERO
-          const completeMessageEvent = await eventStore.appendEvent(
+        // ========== NEW FIX: Accumulate text in contentBlocks, persist later ==========
+        // Store text content in contentBlocks for batch persistence in message_delta
+        if (accumulatedText.trim()) {
+          // Find text block index (assuming index 0 for now, could be multiple text blocks)
+          const textBlockIndices = Array.from(contentBlocks.entries())
+            .filter(([_, block]) => block.type === 'text')
+            .map(([index, _]) => index);
+
+          this.logger.info({
             sessionId,
-            'agent_message_sent',
-            {
-              content: accumulatedText,
-              stop_reason: stopReason,
-            }
-          );
+            turnCount,
+            textBlockIndices,
+            textLength: accumulatedText.length,
+          }, '📝 [TEXT] Text content accumulated (pending persistence)');
 
-          console.log(`✅ [SEQUENCE] complete message | seq=${completeMessageEvent.sequence_number}, chunks=${chunkCount}`);
-
-          this.logger.info('✅ Complete message event appended to EventStore', {
-            sessionId,
-            eventId: completeMessageEvent.id,
-            sequenceNumber: completeMessageEvent.sequence_number,
-            stopReason,
-          });
-
-          // ⭐ PHASE 1B: Assert messageId is always captured from Anthropic SDK
-          // Anthropic SDK always emits message_start event with message.id
-          // If messageId is null here, it indicates a critical SDK issue
-          if (!messageId) {
-            throw new Error(
-              '[PHASE 1B] Message ID not captured from Anthropic SDK. ' +
-              'This should never happen - message_start event must fire before message completion.'
-            );
-          }
-
-          // ✅ STEP 2: Emitir DESPUÉS con datos del evento persistido
-          // ⭐ PHASE 1A: Include token usage and model for admin visibility
-          onEvent({
-            type: 'message',
-            messageId: messageId,  // ⭐ PHASE 1B: Use Anthropic ID directly (no UUID fallback)
-            content: accumulatedText,
-            role: 'assistant',
-            stopReason: (stopReason as 'end_turn' | 'tool_use' | 'max_tokens') || undefined,
-            timestamp: new Date(completeMessageEvent.timestamp),
-            eventId: completeMessageEvent.id,
-            sequenceNumber: completeMessageEvent.sequence_number,
-            persistenceState: 'persisted',
-            // ⭐ PHASE 1A + 1F: Token usage and model for billing/admin visibility
-            tokenUsage: {
-              inputTokens,
-              outputTokens,
-              thinkingTokens: thinkingTokens > 0 ? thinkingTokens : undefined,  // ⭐ PHASE 1F
-            },
-            model: modelName,
-          });
-
-          // ✅ STEP 3: Agregar a MessageQueue (reusa sequence)
-          const messageType = stopReason === 'tool_use' ? 'tool_use' : 'text';
-
-          // ⭐ Collect all citations from text blocks
-          const allCitations = textBlocks.flatMap(block => block.citations || []);
-
-          await messageQueue.addMessagePersistence({
-            sessionId,
-            messageId: messageId,  // ⭐ PHASE 1B: Use Anthropic message ID directly
-            role: 'assistant',
-            messageType,
-            content: accumulatedText,
-            metadata: {
-              stop_reason: stopReason,
-              // ⭐ Citations for compliance/auditing
-              citations: allCitations.length > 0 ? allCitations : undefined,
-              citations_count: allCitations.length > 0 ? allCitations.length : undefined,
-            },
-            sequenceNumber: completeMessageEvent.sequence_number, // ⭐ REUSA sequence
-            eventId: completeMessageEvent.id,
-            stopReason: stopReason || null,
-            // ⭐ PHASE 1A: Token tracking - persist to database
-            // Note: thinkingTokens removed from DB persistence (Option A - 2025-11-24)
-            // Thinking tokens are only shown in real-time WebSocket events
-            model: modelName,
-            inputTokens,
-            outputTokens,
-          });
-
-          // Log if citations were persisted
-          if (allCitations.length > 0) {
-            this.logger.info({
-              sessionId,
-              messageId,
-              citationsCount: allCitations.length,
-              citationTypes: [...new Set(allCitations.map(c => c.type))],
-            }, '📚 [CITATIONS] Persisted with message');
-          }
-
-          this.logger.info('✅ Complete message queued for persistence', {
-            sessionId,
-            sequenceNumber: completeMessageEvent.sequence_number,
-            eventId: completeMessageEvent.id,
-          });
-
+          // ⭐ Accumulate in accumulatedResponses for return value
           accumulatedResponses.push(accumulatedText);
         }
 
@@ -2374,3 +2411,4 @@ export const __testExports = {
   sanitizeOperationId,
   VALID_OPERATION_TYPES,
 };
+//

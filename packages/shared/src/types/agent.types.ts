@@ -39,9 +39,15 @@ export type AgentEventType =
  * Persistence State
  *
  * Indicates database persistence status for real-time frontend updates.
- * Transitions: queued -> persisted | failed
+ * Transitions: pending -> persisted | failed
+ *
+ * - 'pending': Event emitted during streaming, not yet persisted to database
+ * - 'queued': Event queued for async persistence (legacy state)
+ * - 'persisted': Event successfully written to database with sequence number
+ * - 'failed': Persistence operation failed
+ * - 'transient': Temporary event not intended for persistence (e.g., thinking chunks)
  */
-export type PersistenceState = 'queued' | 'persisted' | 'failed' | 'transient';
+export type PersistenceState = 'pending' | 'queued' | 'persisted' | 'failed' | 'transient';
 
 /**
  * Base Agent Event (Enhanced Contract - Multi-Tenant)

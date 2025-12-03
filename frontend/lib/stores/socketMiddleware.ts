@@ -126,6 +126,11 @@ export function useSocket(options: UseSocketOptions = {}): UseSocketReturn {
       },
       onConnectionChange: (connected) => {
         setIsConnected(connected);
+        // FIX #6: Si se desconecta, limpiar estado de busy para evitar bloqueo permanente
+        // El usuario puede volver a enviar mensajes cuando reconecte
+        if (!connected) {
+          setAgentBusy(false);
+        }
         onConnectionChange?.(connected);
       },
     }),

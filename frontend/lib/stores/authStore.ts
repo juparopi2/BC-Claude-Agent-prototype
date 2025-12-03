@@ -143,8 +143,8 @@ export const useAuthStore = create<AuthStore>()(
  * Selector for user display name
  */
 export const selectUserDisplayName = (state: AuthStore): string => {
-  if (state.user?.display_name) {
-    return state.user.display_name;
+  if (state.user?.fullName) {
+    return state.user.fullName;
   }
   if (state.user?.email) {
     return state.user.email.split('@')[0] || 'User';

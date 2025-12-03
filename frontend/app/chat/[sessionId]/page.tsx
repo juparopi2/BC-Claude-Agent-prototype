@@ -15,6 +15,7 @@ export default function ChatPage() {
   const router = useRouter();
   const sessionId = params.sessionId as string;
   const initialMessage = searchParams.get('initialMessage');
+  const enableThinking = searchParams.get('enableThinking') === 'true';
 
   const [leftPanelVisible, setLeftPanelVisible] = useState(true);
   const [rightPanelVisible, setRightPanelVisible] = useState(true);
@@ -71,13 +72,16 @@ export default function ChatPage() {
     if (initialMessage && isSessionReady && !initialMessageSentRef.current && !isLoading) {
       initialMessageSentRef.current = true;
 
-      // Send the message
-      sendMessage(initialMessage);
+      // Send the message with thinking options if specified
+      const options = enableThinking
+        ? { enableThinking: true, thinkingBudget: 10000 }
+        : undefined;
+      sendMessage(initialMessage, options);
 
       // Clear the URL parameter to prevent re-sending on refresh
       router.replace(`/chat/${sessionId}`, { scroll: false });
     }
-  }, [initialMessage, isSessionReady, sessionId, router, sendMessage, isLoading]);
+  }, [initialMessage, isSessionReady, sessionId, router, sendMessage, isLoading, enableThinking]);
 
   return (
     <MainLayout

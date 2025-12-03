@@ -8,22 +8,35 @@
  * Includes suggestion buttons and chat input to start new sessions.
  */
 
-import { useState } from 'react';
+import { useState, useRef, useEffect, KeyboardEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { MainLayout, Header, LeftPanel, RightPanel } from '@/components/layout';
 import { useSessionStore } from '@/lib/stores/sessionStore';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { MessageSquare, Send, Users, Image, FileText } from 'lucide-react';
+import { Toggle } from '@/components/ui/toggle';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { MessageSquare, Send, Users, Image, FileText, Brain, Mic, Paperclip, Globe } from 'lucide-react';
 
 export default function Home() {
   const [leftPanelVisible, setLeftPanelVisible] = useState(true);
   const [rightPanelVisible, setRightPanelVisible] = useState(true);
   const [message, setMessage] = useState('');
   const [isCreating, setIsCreating] = useState(false);
+  const [enableThinking, setEnableThinking] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const router = useRouter();
   const createSession = useSessionStore((s) => s.createSession);
+
+  // Auto-resize textarea based on content
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (textarea) {
+      textarea.style.height = 'auto';
+      textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`;
+    }
+  }, [message]);
 
   const toggleLeftPanel = () => setLeftPanelVisible((prev) => !prev);
   const toggleRightPanel = () => setRightPanelVisible((prev) => !prev);
@@ -36,7 +49,13 @@ export default function Home() {
     try {
       const session = await createSession();
       if (session) {
-        router.push(`/chat/${session.id}?initialMessage=${encodeURIComponent(text.trim())}`);
+        const params = new URLSearchParams({
+          initialMessage: text.trim(),
+        });
+        if (enableThinking) {
+          params.set('enableThinking', 'true');
+        }
+        router.push(`/chat/${session.id}?${params.toString()}`);
       }
     } catch (error) {
       console.error('Failed to create session:', error);
@@ -120,9 +139,75 @@ export default function Home() {
 
         {/* Input area at bottom */}
         <div className="border-t bg-background">
-          <div className="max-w-3xl mx-auto px-4 py-3">
+          <div className="max-w-3xl mx-auto px-4 py-3 space-y-3">
+            {/* Options Row */}
+            <div className="flex items-center gap-2">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Toggle
+                      pressed={enableThinking}
+                      onPressedChange={setEnableThinking}
+                      size="sm"
+                      className="gap-1.5 data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+                      disabled={isCreating}
+                    >
+                      <Brain className="size-3.5" />
+                      <span className="text-xs">Extended Thinking</span>
+                    </Toggle>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="text-xs">Enable Claude&apos;s extended thinking for complex queries</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+
+              <div className="flex items-center gap-1 ml-auto">
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="ghost" size="sm" disabled className="gap-1.5">
+                        <Mic className="size-3.5" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="text-xs">Voice input (coming soon)</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="ghost" size="sm" disabled className="gap-1.5">
+                        <Paperclip className="size-3.5" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="text-xs">Attach files (coming soon)</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="ghost" size="sm" disabled className="gap-1.5">
+                        <Globe className="size-3.5" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="text-xs">Web search (coming soon)</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+            </div>
+
+            {/* Input Row */}
             <div className="flex items-end gap-2">
               <Textarea
+                ref={textareaRef}
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 onKeyDown={handleKeyDown}

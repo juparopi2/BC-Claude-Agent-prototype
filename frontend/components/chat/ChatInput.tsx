@@ -73,7 +73,7 @@ export default function ChatInput({ sessionId }: ChatInputProps) {
                   pressed={enableThinking}
                   onPressedChange={setEnableThinking}
                   size="sm"
-                  className="gap-1.5"
+                  className="gap-1.5 data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
                   disabled={isAgentBusy}
                 >
                   <Brain className="size-3.5" />

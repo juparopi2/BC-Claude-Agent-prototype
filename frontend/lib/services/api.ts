@@ -52,13 +52,18 @@ export interface Message {
 
 /**
  * User profile from backend
+ * Note: Field names match backend /api/auth/me response (camelCase)
  */
 export interface UserProfile {
   id: string;
   email: string;
-  display_name: string | null;
-  avatar_url: string | null;
-  created_at: string;
+  fullName: string | null;
+  role: string;
+  microsoftEmail: string | null;
+  microsoftId: string | null;
+  lastLogin: string | null;
+  createdAt: string;
+  isActive: boolean;
 }
 
 /**

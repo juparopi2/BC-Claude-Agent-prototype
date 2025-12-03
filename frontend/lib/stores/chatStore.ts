@@ -181,7 +181,21 @@ export const useChatStore = create<ChatStore>()(
     confirmOptimisticMessage: (tempId, confirmedMessage) =>
       set((state) => {
         const newOptimistic = new Map(state.optimisticMessages);
-        newOptimistic.delete(tempId);
+
+        // FIX #4: Primero intentar eliminar por tempId
+        if (newOptimistic.has(tempId)) {
+          newOptimistic.delete(tempId);
+        } else {
+          // Si no encuentra por ID, buscar por contenido (fallback robusto)
+          // Esto maneja el caso donde el tempId del frontend no coincide con el eventId del backend
+          for (const [key, msg] of newOptimistic.entries()) {
+            if (msg.content === confirmedMessage.content && msg.role === 'user') {
+              newOptimistic.delete(key);
+              break;
+            }
+          }
+        }
+
         return {
           optimisticMessages: newOptimistic,
           messages: [...state.messages, confirmedMessage].sort(

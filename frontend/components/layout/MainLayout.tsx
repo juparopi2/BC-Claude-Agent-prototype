@@ -135,7 +135,7 @@ export function MainLayout({
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex">
+      <div className="flex-1 flex overflow-hidden">
         {/* Left Panel - Fixed Width */}
         {leftPanelVisible && (
           <div className="w-[280px] border-r bg-muted/30 flex-shrink-0">
@@ -160,7 +160,7 @@ export function MainLayout({
             minSize={40}
             className="bg-background"
           >
-          <div className="h-full overflow-auto">
+          <div className="h-full overflow-hidden">
             {children || (
               <div className="p-4">
                 <h2 className="text-sm font-semibold mb-2">Main Chat Area</h2>

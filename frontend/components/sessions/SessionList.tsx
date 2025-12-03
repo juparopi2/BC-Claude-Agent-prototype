@@ -24,7 +24,6 @@ export default function SessionList() {
   const isLoading = useSessionStore((s) => s.isLoading);
   const error = useSessionStore((s) => s.error);
   const fetchSessions = useSessionStore((s) => s.fetchSessions);
-  const createSession = useSessionStore((s) => s.createSession);
 
   // Extract current sessionId from pathname (/chat/xxx)
   const currentSessionId = pathname?.startsWith('/chat/') ? pathname.split('/')[2] : null;
@@ -33,11 +32,10 @@ export default function SessionList() {
     fetchSessions();
   }, [fetchSessions]);
 
-  const handleNewChat = async () => {
-    const session = await createSession();
-    if (session) {
-      router.push(`/chat/${session.id}`);
-    }
+  const handleNewChat = () => {
+    // Navigate to /new page instead of creating empty session
+    // Session will be created when user sends first message
+    router.push('/new');
   };
 
   const handleRetry = () => {

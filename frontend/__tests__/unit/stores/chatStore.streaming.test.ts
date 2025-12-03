@@ -87,9 +87,12 @@ describe('ChatStore - Advanced Streaming', () => {
 
       // Verify message is added to messages array
       expect(state.messages.length).toBe(1);
-      expect(state.messages[0].id).toBe(messageId);
-      expect(state.messages[0].content).toBe('Complete message');
-      expect(state.messages[0].role).toBe('assistant');
+      expect(state.messages[0]?.id).toBe(messageId);
+      expect(state.messages[0]?.type).toBe('standard');
+      if (state.messages[0]?.type === 'standard') {
+        expect(state.messages[0].content).toBe('Complete message');
+        expect(state.messages[0].role).toBe('assistant');
+      }
     });
   });
 
@@ -121,7 +124,9 @@ describe('ChatStore - Advanced Streaming', () => {
       expect(state.streaming.isStreaming).toBe(false);
       expect(state.streaming.content).toBe('First'); // endStreaming preserves content
       expect(state.messages.length).toBe(1);
-      expect(state.messages[0].content).toBe('First');
+      if (state.messages[0]?.type === 'standard') {
+        expect(state.messages[0].content).toBe('First');
+      }
 
       // Start streaming second message
       act(() => {
@@ -171,10 +176,12 @@ describe('ChatStore - Advanced Streaming', () => {
       // If deduplication is needed, it should be implemented in handleAgentEvent.
       const state = useChatStore.getState();
       expect(state.messages.length).toBe(2);
-      expect(state.messages[0].id).toBe('msg_duplicate');
-      expect(state.messages[1].id).toBe('msg_duplicate');
-      expect(state.messages[0].content).toBe('Test content');
-      expect(state.messages[1].content).toBe('Test content');
+      expect(state.messages[0]?.id).toBe('msg_duplicate');
+      expect(state.messages[1]?.id).toBe('msg_duplicate');
+      if (state.messages[0]?.type === 'standard' && state.messages[1]?.type === 'standard') {
+        expect(state.messages[0].content).toBe('Test content');
+        expect(state.messages[1].content).toBe('Test content');
+      }
     });
   });
 

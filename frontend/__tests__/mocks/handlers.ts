@@ -14,9 +14,13 @@ const API_URL = 'http://localhost:3002';
 export const mockUser: UserProfile = {
   id: 'user-123',
   email: 'test@example.com',
-  display_name: 'Test User',
-  avatar_url: null,
-  created_at: '2024-01-01T00:00:00Z',
+  fullName: 'Test User',
+  role: 'user',
+  microsoftEmail: 'test@example.com',
+  microsoftId: 'ms-123',
+  lastLogin: '2024-01-01T00:00:00Z',
+  createdAt: '2024-01-01T00:00:00Z',
+  isActive: true,
 };
 
 export const mockSessions: Session[] = [
@@ -42,6 +46,7 @@ export const mockSessions: Session[] = [
 
 export const mockMessages: Message[] = [
   {
+    type: 'standard',
     id: 'msg-1',
     session_id: 'session-1',
     role: 'user',
@@ -50,6 +55,7 @@ export const mockMessages: Message[] = [
     created_at: '2024-01-01T10:00:00Z',
   },
   {
+    type: 'standard',
     id: 'msg-2',
     session_id: 'session-1',
     role: 'assistant',

@@ -108,7 +108,7 @@ describe('AuthStore', () => {
     it('selectUserDisplayName should fallback to email when no display name', () => {
       act(() => {
         useAuthStore.setState({
-          user: { ...mockUser, display_name: null },
+          user: { ...mockUser, fullName: null },
           isAuthenticated: true,
         });
       });
@@ -134,7 +134,7 @@ describe('AuthStore', () => {
     it('selectUserInitials should return first 2 chars when single word', () => {
       act(() => {
         useAuthStore.setState({
-          user: { ...mockUser, display_name: 'Admin' },
+          user: { ...mockUser, fullName: 'Admin' },
           isAuthenticated: true,
         });
       });

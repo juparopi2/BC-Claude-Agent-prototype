@@ -96,7 +96,7 @@ export default function TestSocketPage() {
         <div className="h-64 overflow-y-auto border p-2 mb-2" data-testid="message-list">
           {allMessages.map((msg) => (
             <div key={msg.id} className={`mb-2 ${msg.id.startsWith('optimistic') ? 'opacity-50' : ''}`}>
-              <span className="font-bold">{msg.role}:</span> {msg.content}
+              <span className="font-bold">{msg.role}:</span> {msg.type === 'standard' || msg.type === 'thinking' ? msg.content : ''}
               {msg.id.startsWith('optimistic') && <span className="text-xs ml-2">(sending...)</span>}
             </div>
           ))}

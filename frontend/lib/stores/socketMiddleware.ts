@@ -218,6 +218,7 @@ export function useSocket(options: UseSocketOptions = {}): UseSocketReturn {
       // Add optimistic message
       const tempId = `optimistic-${Date.now()}`;
       addOptimisticMessage(tempId, {
+        type: 'standard',
         id: tempId,
         session_id: currentSessionRef.current,
         role: 'user',

@@ -189,7 +189,12 @@ export const useChatStore = create<ChatStore>()(
           // Si no encuentra por ID, buscar por contenido (fallback robusto)
           // Esto maneja el caso donde el tempId del frontend no coincide con el eventId del backend
           for (const [key, msg] of newOptimistic.entries()) {
-            if (msg.content === confirmedMessage.content && msg.role === 'user') {
+            if (
+              msg.type === 'standard' &&
+              confirmedMessage.type === 'standard' &&
+              msg.content === confirmedMessage.content &&
+              msg.role === 'user'
+            ) {
               newOptimistic.delete(key);
               break;
             }
@@ -354,6 +359,7 @@ export const useChatStore = create<ChatStore>()(
           const msgEvent = event as MessageEvent;
           actions.endStreaming();
           actions.addMessage({
+            type: 'standard',
             id: msgEvent.messageId,
             session_id: event.sessionId || '',
             role: msgEvent.role,
@@ -363,7 +369,6 @@ export const useChatStore = create<ChatStore>()(
             token_usage: msgEvent.tokenUsage ? {
               input_tokens: msgEvent.tokenUsage.inputTokens,
               output_tokens: msgEvent.tokenUsage.outputTokens,
-              thinking_tokens: msgEvent.tokenUsage.thinkingTokens,
             } : undefined,
             stop_reason: msgEvent.stopReason || undefined,
             model: msgEvent.model,
@@ -377,6 +382,7 @@ export const useChatStore = create<ChatStore>()(
           actions.confirmOptimisticMessage(
             `optimistic-${confirmedEvent.eventId}`,
             {
+              type: 'standard',
               id: confirmedEvent.messageId,
               session_id: event.sessionId || '',
               role: 'user',

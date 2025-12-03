@@ -397,26 +397,6 @@ export class DirectAgentService {
         });
       }
 
-      // ✅ STEP 3: Add to MessageQueue (reuse sequence from persisted event)
-      await messageQueue.addMessagePersistence({
-        sessionId,
-        messageId: thinkingEvent.id,
-        role: 'assistant',
-        messageType: 'thinking',
-        content: '',
-        metadata: {
-          content: 'Analyzing your request...',
-          started_at: new Date().toISOString(),
-        },
-        sequenceNumber: thinkingEvent.sequence_number, // ⭐ REUSE sequence
-        eventId: thinkingEvent.id,
-      });
-
-      this.logger.info('✅ Thinking message queued for persistence', {
-        sessionId,
-        sequenceNumber: thinkingEvent.sequence_number,
-        eventId: thinkingEvent.id,
-      });
 
       // Step 3: Agentic Loop with Streaming
       let continueLoop = true;
@@ -859,6 +839,35 @@ export class DirectAgentService {
                 }
 
                 console.log(`[STREAM] content_block_stop (thinking): index=${event.index}, content_len=${finalThinkingContent.length}, has_sig=${!!signature}, estimated_tokens=${estimatedThinkingTokens}`);
+
+                // Phase 4.5: Persist thinking content to database
+                if (finalThinkingContent.trim()) {
+                  const thinkingPersistEvent = await eventStore.appendEvent(
+                    sessionId,
+                    'agent_thinking_completed',
+                    { content_length: finalThinkingContent.length }
+                  );
+
+                  await messageQueue.addMessagePersistence({
+                    sessionId,
+                    messageId: `thinking_${thinkingPersistEvent.id}`,
+                    role: 'assistant',
+                    messageType: 'thinking',
+                    content: finalThinkingContent,  // ACTUAL CONTENT in correct column
+                    metadata: {
+                      has_signature: !!signature,
+                      event_index: event.index,
+                    },
+                    sequenceNumber: thinkingPersistEvent.sequence_number,
+                    eventId: thinkingPersistEvent.id,
+                  });
+
+                  this.logger.info({
+                    sessionId,
+                    contentLength: finalThinkingContent.length,
+                    sequenceNumber: thinkingPersistEvent.sequence_number,
+                  }, '💾 [THINKING] Content persisted to database');
+                }
               } else if (completedBlock.type === 'tool_use') {
                 const toolData = completedBlock.data as { id: string; name: string; input: Record<string, unknown> };
 
@@ -1031,7 +1040,7 @@ export class DirectAgentService {
           });
 
           // ✅ STEP 3: Agregar a MessageQueue (reusa sequence)
-          const messageType = stopReason === 'tool_use' ? 'thinking' : 'text';
+          const messageType = stopReason === 'tool_use' ? 'tool_use' : 'text';
 
           // ⭐ Collect all citations from text blocks
           const allCitations = textBlocks.flatMap(block => block.citations || []);

@@ -40,6 +40,7 @@ describe('ChatStore', () => {
   describe('Message Management', () => {
     it('should add messages and sort by sequence number', () => {
       const msg1: Message = {
+        type: 'standard',
         id: 'msg-1',
         session_id: 'session-1',
         role: 'user',
@@ -48,6 +49,7 @@ describe('ChatStore', () => {
         created_at: '2024-01-01T00:00:00Z',
       };
       const msg2: Message = {
+        type: 'standard',
         id: 'msg-2',
         session_id: 'session-1',
         role: 'assistant',
@@ -71,6 +73,7 @@ describe('ChatStore', () => {
     it('should handle optimistic messages', () => {
       const tempId = 'temp-123';
       const optimisticMsg: Message = {
+        type: 'standard',
         id: tempId,
         session_id: 'session-1',
         role: 'user',
@@ -291,6 +294,7 @@ describe('ChatStore', () => {
   describe('Selectors', () => {
     it('selectAllMessages should combine persisted and optimistic messages', () => {
       const msg1: Message = {
+        type: 'standard',
         id: 'msg-1',
         session_id: 'session-1',
         role: 'assistant',
@@ -299,6 +303,7 @@ describe('ChatStore', () => {
         created_at: '2024-01-01T00:00:00Z',
       };
       const optimisticMsg: Message = {
+        type: 'standard',
         id: 'temp-1',
         session_id: 'session-1',
         role: 'user',

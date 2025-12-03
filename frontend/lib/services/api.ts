@@ -32,22 +32,61 @@ export interface Session {
 }
 
 /**
- * Message from backend
+ * Message from backend - Discriminated Union
  */
-export interface Message {
+
+// Base fields shared by all messages
+interface BaseMessage {
   id: string;
   session_id: string;
-  role: 'user' | 'assistant';
-  content: string;
   sequence_number: number;
   created_at: string;
+  event_id?: string;
+}
+
+// Standard user/assistant text messages
+export interface StandardMessage extends BaseMessage {
+  type: 'standard';
+  role: 'user' | 'assistant';
+  content: string;
   token_usage?: {
     input_tokens: number;
-    output_tokens: number;
-    thinking_tokens?: number;
+    output_tokens: number;  // Includes thinking tokens per Anthropic API
   };
   stop_reason?: string;
   model?: string;
+}
+
+// Extended thinking content (persisted)
+export interface ThinkingMessage extends BaseMessage {
+  type: 'thinking';
+  role: 'assistant';
+  content: string;  // The actual thinking content
+}
+
+// Tool execution (for Phase 6)
+export interface ToolUseMessage extends BaseMessage {
+  type: 'tool_use';
+  role: 'assistant';
+  tool_name: string;
+  tool_args: Record<string, unknown>;
+  status: 'pending' | 'success' | 'error';
+  result?: unknown;
+  error_message?: string;
+}
+
+// Union type
+export type Message = StandardMessage | ThinkingMessage | ToolUseMessage;
+
+// Type guards
+export function isThinkingMessage(msg: Message): msg is ThinkingMessage {
+  return msg.type === 'thinking';
+}
+export function isStandardMessage(msg: Message): msg is StandardMessage {
+  return msg.type === 'standard';
+}
+export function isToolUseMessage(msg: Message): msg is ToolUseMessage {
+  return msg.type === 'tool_use';
 }
 
 /**

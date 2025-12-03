@@ -398,9 +398,13 @@ describe('Store Integration (Real Stores)', () => {
       user: {
         id: 'test-user-456',
         email: 'test@example.com',
-        display_name: 'Test User',
-        avatar_url: null,
-        created_at: new Date().toISOString(),
+        fullName: 'Test User',
+        role: 'user',
+        microsoftEmail: 'test@example.com',
+        microsoftId: 'ms-123',
+        lastLogin: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        isActive: true,
       },
       isAuthenticated: true,
       isLoading: false,
@@ -547,6 +551,7 @@ describe('Store Integration (Real Stores)', () => {
     // First add an optimistic message
     const tempId = 'temp-123';
     useChatStore.getState().addOptimisticMessage(tempId, {
+      type: 'standard',
       id: tempId,
       session_id: 'session-123',
       role: 'user',

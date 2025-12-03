@@ -199,9 +199,38 @@ export class ApiClient {
 
   /**
    * Check if user is authenticated
+   * Uses /api/auth/me and treats 401 as "not authenticated" (not an error)
    */
   async checkAuth(): Promise<ApiResponse<{ authenticated: boolean; user?: UserProfile }>> {
-    return this.request('GET', '/api/auth/status');
+    try {
+      const response = await fetch(`${this.baseUrl}/api/auth/me`, {
+        credentials: 'include',
+      });
+
+      // 401 = not authenticated (treat as success with authenticated: false)
+      if (response.status === 401) {
+        return {
+          success: true,
+          data: { authenticated: false, user: undefined },
+        };
+      }
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const user = await response.json();
+      return {
+        success: true,
+        data: { authenticated: true, user },
+      };
+    } catch {
+      // Network errors or other issues - treat as not authenticated
+      return {
+        success: true,
+        data: { authenticated: false, user: undefined },
+      };
+    }
   }
 
   /**

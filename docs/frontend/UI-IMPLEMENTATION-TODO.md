@@ -233,7 +233,7 @@ Implementar flujo de login con Microsoft OAuth usando authStore existente.
 
 ### Tareas
 
-- [ ] **2.1 Crear pagina de login**
+- [x] **2.1 Crear pagina de login**
   - Archivo: `frontend/app/login/page.tsx`
   - Card centrado con:
     - Logo BC Agent
@@ -245,7 +245,7 @@ Implementar flujo de login con Microsoft OAuth usando authStore existente.
     - Redirect a `/` si ya autenticado
     - `handleLogin()` navega a `getLoginUrl()`
 
-- [ ] **2.2 Crear AuthProvider**
+- [x] **2.2 Crear AuthProvider**
   - Archivo: `frontend/components/providers/AuthProvider.tsx`
   - Rutas publicas: `/login`, `/landing`, `/`
   - Logica:
@@ -253,17 +253,17 @@ Implementar flujo de login con Microsoft OAuth usando authStore existente.
     - Mostrar loader mientras `isLoading`
     - Redirect a `/login` si no autenticado en ruta protegida
 
-- [ ] **2.3 Integrar AuthProvider en layout**
+- [x] **2.3 Integrar AuthProvider en layout**
   - Archivo: `frontend/app/layout.tsx`
   - Envolver children con `<AuthProvider>`
   - Agregar `<Toaster />` para notificaciones
 
-- [ ] **2.4 Crear componente de carga**
+- [x] **2.4 Crear componente de carga**
   - Loader con spinner Lucide `Loader2`
   - Texto "Loading..."
   - Centrado en pantalla
 
-- [ ] **2.5 Implementar logout en Header**
+- [x] **2.5 Implementar logout en Header**
   - Menu dropdown con opciones:
     - Settings (disabled por ahora)
     - Separator

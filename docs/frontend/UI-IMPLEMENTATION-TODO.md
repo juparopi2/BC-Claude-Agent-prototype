@@ -32,7 +32,7 @@ Configurar el sistema de componentes shadcn/ui con Tailwind CSS 4 y establecer l
 
 ### Tareas
 
-- [ ] **0.1 Inicializar shadcn/ui**
+- [x] **0.1 Inicializar shadcn/ui** *(Completado 2024-12-02)*
   - Ejecutar `npx shadcn@latest init` en `/frontend`
   - Configuracion:
     - Style: `new-york`
@@ -42,15 +42,16 @@ Configurar el sistema de componentes shadcn/ui con Tailwind CSS 4 y establecer l
     - Components: `@/components`
     - Utils: `@/lib/utils`
 
-- [ ] **0.2 Instalar componentes base**
+- [x] **0.2 Instalar componentes base** *(Completado 2024-12-02)*
   ```bash
   npx shadcn@latest add button input textarea card avatar \
     dropdown-menu dialog toast skeleton scroll-area \
     collapsible tooltip badge separator sheet resizable \
     tabs slider popover progress alert-dialog toggle
   ```
+  - 22 componentes instalados en `frontend/components/ui/`
 
-- [ ] **0.3 Configurar variables CSS de tema**
+- [x] **0.3 Configurar variables CSS de tema** *(Completado 2024-12-02)*
   - Archivo: `frontend/app/globals.css`
   - Variables requeridas:
     - `--primary`: Azul BC (221.2 83.2% 53.3%)
@@ -59,7 +60,7 @@ Configurar el sistema de componentes shadcn/ui con Tailwind CSS 4 y establecer l
     - `--thinking-bg`: Fondo de thinking (45 100% 96%)
     - `--tool-bg`: Fondo de tools (210 100% 97%)
 
-- [ ] **0.4 Crear archivo de utilidades**
+- [x] **0.4 Crear archivo de utilidades** *(Completado 2024-12-02)*
   - Archivo: `frontend/lib/utils.ts`
   - Funcion `cn()` para merge de clases
 
@@ -100,7 +101,7 @@ Crear el layout de 3 columnas con paneles colapsables y redimensionables.
 
 ### Tareas
 
-- [ ] **1.1 Crear estructura de carpetas**
+- [x] **1.1 Crear estructura de carpetas** *(Completado 2024-12-02)*
   ```
   frontend/components/
   ├── layout/
@@ -113,14 +114,16 @@ Crear el layout de 3 columnas con paneles colapsables y redimensionables.
       └── index.ts
   ```
 
-- [ ] **1.2 Implementar MainLayout**
+- [x] **1.2 Implementar MainLayout** *(Completado 2024-12-02)*
   - Archivo: `frontend/components/layout/MainLayout.tsx`
   - Componente cliente (`'use client'`)
   - Estado para visibilidad de paneles: `leftPanelVisible`, `rightPanelVisible`
-  - Usar `ResizablePanelGroup` de shadcn
-  - Props: `children: React.ReactNode`
+  - **Panel izquierdo**: Ancho fijo de 280px (no redimensionable)
+  - **Panel derecho**: Redimensionable con `ResizablePanelGroup` de shadcn
+  - Props: `children: React.ReactNode`, `header`, `leftPanel`, `rightPanel`
+  - **Sincronización mejorada**: Estado sincronizado entre drag y toggle buttons
 
-- [ ] **1.3 Implementar Header**
+- [x] **1.3 Implementar Header** *(Completado 2024-12-02)*
   - Archivo: `frontend/components/layout/Header.tsx`
   - Altura fija: 64px (`h-16`)
   - Secciones:
@@ -130,63 +133,87 @@ Crear el layout de 3 columnas con paneles colapsables y redimensionables.
   - Integracion con `useAuthStore`:
     - `user`, `logout()`, `selectUserDisplayName`, `selectUserInitials`
 
-- [ ] **1.4 Implementar LeftPanel (placeholder)**
+- [x] **1.4 Implementar LeftPanel (placeholder)** *(Completado 2024-12-02)*
   - Archivo: `frontend/components/layout/LeftPanel.tsx`
-  - Boton "New Chat" (placeholder)
-  - Mensaje: "Sessions will appear here"
+  - Boton "New Chat" con data-testid="new-chat-button"
+  - Mensaje: "No conversations yet"
 
-- [ ] **1.5 Implementar RightPanel (placeholder)**
+- [x] **1.5 Implementar RightPanel (placeholder)** *(Completado 2024-12-02)*
   - Archivo: `frontend/components/layout/RightPanel.tsx`
   - Tabs: Files, Entities, Connections
   - Contenido placeholder para cada tab
+  - Connections muestra BC, SharePoint, D365, Power BI
 
-- [ ] **1.6 Exportar componentes**
+- [x] **1.6 Exportar componentes** *(Completado 2024-12-02)*
   - Archivo: `frontend/components/layout/index.ts`
   - Exportar: MainLayout, Header, LeftPanel, RightPanel
 
-- [ ] **1.7 Actualizar app/layout.tsx**
-  - Importar fuente (Inter o personalizada)
-  - Metadata del sitio
-  - Estructura HTML base
+- [x] **1.7 Actualizar app/layout.tsx** *(Completado 2024-12-02)*
+  - Usa fuente Geist
+  - Metadata: "BC Agent - AI Copilot for Business Central"
+  - Toaster de sonner integrado
+
+- [x] **1.8 Refinamientos post-implementación** *(Completado 2024-12-02)*
+  - **Bug Fix**: Sincronización drag-estado para panel derecho
+  - **Bug Fix**: Eliminada interferencia entre paneles
+  - **Mejora UX**: Panel izquierdo ahora es ancho fijo (280px), solo colapsable
+  - **Mejora visual**: Handle con hover effect para mejor visibilidad
 
 ### Success Criteria
 
-| ID | Criterio | Verificacion | Comando/Accion |
-|----|----------|--------------|----------------|
-| 1.1 | Archivos creados | 5 archivos en layout/ | `ls frontend/components/layout/` |
-| 1.2 | MainLayout renderiza | 3 columnas visibles | Abrir http://localhost:3000 |
-| 1.3 | Header muestra logo | "BC Agent" visible | Visual check |
-| 1.4 | Toggle izquierdo | Panel se oculta/muestra | Click boton `PanelLeftIcon` |
-| 1.5 | Toggle derecho | Panel se oculta/muestra | Click boton `PanelRightIcon` |
-| 1.6 | Resize funciona | Handles arrastrables | Drag `ResizableHandle` |
-| 1.7 | Min/max respetados | Panel no menor a minSize | Intentar reducir mas del minimo |
-| 1.8 | Build exitoso | Sin errores | `npm run build` |
-| 1.9 | Types correctos | Sin errores | `npm run type-check` |
+| ID | Criterio | Verificacion | Estado |
+|----|----------|--------------|--------|
+| 1.1 | Archivos creados | 5 archivos en layout/ | ✅ PASS |
+| 1.2 | MainLayout renderiza | 3 areas visibles | ✅ PASS |
+| 1.3 | Header muestra logo | "BC Agent" visible | ✅ PASS |
+| 1.4 | Toggle izquierdo | Panel se oculta/muestra | ✅ PASS |
+| 1.5 | Toggle derecho | Panel se oculta/muestra | ✅ PASS |
+| 1.6 | Resize derecho | Handle arrastrable solo para panel derecho | ✅ PASS |
+| 1.7 | Panel izquierdo fijo | 280px ancho fijo, no redimensionable | ✅ PASS |
+| 1.8 | Sincronización | Drag y toggle sincronizados correctamente | ✅ PASS |
+| 1.9 | Build exitoso | Sin errores | ✅ PASS |
+| 1.10 | Types correctos | Sin errores | ✅ PASS |
+| 1.11 | Lint | 0 errores | ✅ PASS |
 
 ### Verificacion Final Fase 1
 
 ```bash
 # Build y verificacion
 cd frontend
-npm run build && npm run type-check
+npm run lint && npm run type-check && npm run build
 
 # Verificacion visual
 npm run dev
 # Abrir http://localhost:3000
 ```
 
-**Tests Manuales**:
-1. [ ] Layout muestra 3 columnas
-2. [ ] Click toggle izquierdo oculta panel
-3. [ ] Click toggle derecho oculta panel
-4. [ ] Drag handle redimensiona paneles
-5. [ ] Minimos respetados (240px izq, 280px der)
-6. [ ] Tabs del panel derecho cambian contenido
+**Resultado (2024-12-02)**:
+- ✅ Lint: 0 errors, 18 warnings (solo advertencias pre-existentes)
+- ✅ Type-check: Sin errores
+- ✅ Build: Compilación exitosa
 
-**Tipos Esperados**:
+**Tests Manuales**: *(Verificado 2024-12-02)*
+1. [x] Layout muestra 3 areas (izquierda fija, centro, derecha redimensionable)
+2. [x] Click toggle izquierdo oculta/muestra panel
+3. [x] Click toggle derecho oculta/muestra panel
+4. [x] Drag handle panel derecho funciona correctamente
+5. [x] Panel izquierdo mantiene ancho fijo de 280px
+6. [x] Handles se ocultan cuando paneles colapsados
+7. [x] Tabs del panel derecho cambian contenido
+8. [x] Drag para colapsar panel derecho + toggle sincronizado
+9. [x] Sin interferencia entre paneles izquierdo y derecho
+
+**Tipos Implementados**:
 ```typescript
 interface MainLayoutProps {
   children: React.ReactNode;
+  header?: React.ReactNode;
+  leftPanel?: React.ReactNode;
+  rightPanel?: React.ReactNode;
+  onToggleLeftPanel?: () => void;
+  onToggleRightPanel?: () => void;
+  leftPanelVisible: boolean;
+  rightPanelVisible: boolean;
 }
 
 interface HeaderProps {
@@ -1222,8 +1249,8 @@ Crear landing page con propuesta de valor.
 
 | Fase | Build | Types | Lint | Unit Tests | E2E Ready | Manual QA |
 |------|-------|-------|------|------------|-----------|-----------|
-| 0 | [ ] | [ ] | [ ] | N/A | N/A | [ ] |
-| 1 | [ ] | [ ] | [ ] | N/A | N/A | [ ] |
+| 0 | [x] | [x] | [x] | N/A | N/A | [x] |
+| 1 | [x] | [x] | [x] | N/A | N/A | [x] |
 | 2 | [ ] | [ ] | [ ] | authStore | N/A | [ ] |
 | 3 | [ ] | [ ] | [ ] | sessionStore | N/A | [ ] |
 | 4 | [ ] | [ ] | [ ] | chatStore | [ ] | [ ] |
@@ -1271,7 +1298,7 @@ npm run dev
 [ ] approval-request
 [ ] tool-execution
 [ ] session-item (multiple)
-[ ] new-chat-button
+[x] new-chat-button (Fase 1)
 ```
 
 ---
@@ -1337,6 +1364,8 @@ npm run dev
 ---
 
 **Documento Generado**: 2024-12-02
-**Version**: 1.0
+**Version**: 1.1
+**Ultima Actualizacion**: 2024-12-02 (Fase 0-1 completadas)
 **Total Tareas**: 73
+**Tareas Completadas**: 11 (Fase 0: 4, Fase 1: 7)
 **Total Criterios de Exito**: 97

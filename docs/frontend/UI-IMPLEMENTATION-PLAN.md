@@ -192,7 +192,7 @@ DEFINIR variables CSS para tema oscuro:
 ## Fase 1: Layout Principal
 
 ### Objetivo
-Crear el layout de 3 columnas con paneles colapsables.
+Crear el layout con header fijo, panel izquierdo de ancho fijo colapsable, área central flexible, y panel derecho redimensionable.
 
 ### Estructura de Layout
 
@@ -204,7 +204,8 @@ Crear el layout de 3 columnas con paneles colapsables.
 |          |                                        |               |
 |  Left    |                                        |    Right      |
 |  Panel   |           Main Content                 |    Panel      |
-| (280px)  |           (flexible)                   |  (320-480px)  |
+| (280px)  |           (flexible)                   | (resizable)   |
+| FIJO     |                                        |  15-35%       |
 |          |                                        |               |
 | Sessions |                Chat                    |   Files/      |
 |  List    |               Area                     |   Entities    |
@@ -212,9 +213,12 @@ Crear el layout de 3 columnas con paneles colapsables.
 +----------+----------------------------------------+---------------+
 ```
 
+**Nota**: El panel izquierdo es de ancho fijo (280px) y solo puede ocultarse/mostrarse.
+Solo el panel derecho es redimensionable mediante drag.
+
 ### Tareas
 
-#### 1.1 Crear Estructura de Carpetas
+#### 1.1 Crear Estructura de Carpetas ✅
 ```
 frontend/components/
 ├── layout/
@@ -227,27 +231,92 @@ frontend/components/
 └── index.ts
 ```
 
-#### 1.2 MainLayout Component
+#### 1.2 MainLayout Component ✅
 
-**Pseudocodigo**:
-```
-COMPONENTE MainLayout(children):
-  ESTADO leftPanelVisible = true
-  ESTADO rightPanelVisible = true
-
-  FUNCION toggleLeftPanel:
-    INVERTIR leftPanelVisible
-
-  FUNCION toggleRightPanel:
-    INVERTIR rightPanelVisible
-
+**Implementación Real**:
+```typescript
+COMPONENTE MainLayout(props):
+  // Estado manejado externamente en page.tsx
+  PROPS:
+    - leftPanelVisible: boolean (required)
+    - rightPanelVisible: boolean (required)
+    - onToggleLeftPanel: () => void
+    - onToggleRightPanel: () => void
+    - leftPanel, rightPanel, children, header
+  
+  REF rightPanelRef para control imperativo
+  
+  EFECTO sync con rightPanelVisible:
+    SI rightPanelVisible: expand panel
+    SINO: collapse panel
+  
   RENDERIZAR:
     - Contenedor vertical altura completa
     - Header con callbacks de toggle
-    - Grupo de paneles redimensionables horizontal:
+    - Contenedor flex horizontal:
       - SI leftPanelVisible:
-        - Panel izquierdo (min 15%, max 30%, default 20%)
-        - Handle de redimension
+        - Div fijo 280px con leftPanel content
+      - ResizablePanelGroup (solo centro + derecho):
+        - Panel central (min 40%, flexible)
+        - SI rightPanelVisible:
+          - ResizableHandle con hover effect
+          - Panel derecho (min 15%, max 35%, default 20%)
+            con callbacks onCollapse/onExpand
+```
+
+**Sincronización Estado**:
+- Estado vive en `page.tsx`
+- Drag en panel derecho → callback → actualiza estado en parent
+- Toggle button → actualiza estado en parent → useEffect → sync con panel
+- Flags `isToggling` previenen loops infinitos
+
+#### 1.3 Header Component ✅
+
+**Implementación**:
+- Altura fija: 64px (`h-16`)
+- Layout de 3 secciones con flexbox
+- Sección izquierda: Toggle left + Logo "BC Agent" + Badge "Prototype"
+- Sección centro: Placeholder "Environment Selector"
+- Sección derecha: Toggle right + User dropdown menu
+- Integración con `useAuthStore` para user info y logout
+
+#### 1.4 LeftPanel (Placeholder) ✅
+
+- Ancho fijo: 280px
+- No redimensionable
+- Solo colapsable/expandible con botón de toggle
+- Content: "New Chat" button y mensaje placeholder
+
+#### 1.5 RightPanel (Placeholder) ✅
+
+- Redimensionable (15-35%)
+- Tabs: Files, Entities, Connections
+- Content placeholder para cada tab
+
+### Verificacion Fase 1
+
+| Check | Metodo | Esperado | Estado |
+|-------|--------|----------|--------|
+| Layout renderiza | Visual | 3 areas visibles | ✅ PASS |
+| Paneles colapsan | Click toggle buttons | Paneles se ocultan/muestran | ✅ PASS |
+| Resize derecho funciona | Drag handle | Panel derecho cambia tamaño | ✅ PASS |
+| Panel izquierdo fijo | Hover borde | Sin handle, ancho 280px constante | ✅ PASS |
+| Sincronización | Drag + toggle | Estado sincronizado | ✅ PASS |
+| Sin interferencia | Toggle uno, verificar otro | Paneles independientes | ✅ PASS |
+| Build exitoso | `npm run build` | Sin errores | ✅ PASS |
+| Type-check | `npm run type-check` | Sin errores | ✅ PASS |
+| Lint | `npm run lint` | 0 errors | ✅ PASS |
+
+**Completado**: 2024-12-02
+
+**Refinamientos Implementados**:
+1. ✅ Panel izquierdo convertido a ancho fijo (simplicidad UX)
+2. ✅ Sincronización bidireccional drag ↔ toggle
+3. ✅ Eliminada interferencia entre paneles
+4. ✅ Hover effect en handle para mejor visibilidad
+5. ✅ Handles se ocultan completamente cuando panel colapsado
+
+
       - Panel central (min 40%, flexible)
       - SI rightPanelVisible:
         - Handle de redimension

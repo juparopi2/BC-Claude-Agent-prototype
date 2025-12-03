@@ -110,7 +110,8 @@
       "Bash(npm ls:*)",
       "Bash(npx eslint:*)",
       "Bash(python:*)",
-      "Bash(npx shadcn@latest init:*)"
+      "Bash(npx shadcn@latest init:*)",
+      "Bash(test:*)"
     ],
     "deny": [],
     "ask": []

@@ -10,6 +10,7 @@ import MessageBubble from './MessageBubble';
 import StreamingMessage from './StreamingMessage';
 import { ThinkingDisplay } from './ThinkingDisplay';
 import { ToolExecutionCard } from './ToolExecutionCard';
+import { StreamingToolCard } from './StreamingToolCard';
 
 export default function ChatContainer() {
   const persistedMessages = useChatStore((s) => s.messages || []);
@@ -25,6 +26,12 @@ export default function ChatContainer() {
   const streaming = useChatStore((s) => s.streaming);
   const isLoading = useChatStore((s) => s.isLoading);
   const isAgentBusy = useChatStore((s) => s.isAgentBusy);
+  const toolExecutionsMap = useChatStore((s) => s.toolExecutions);
+
+  // Convert Map to array with stable reference (useMemo prevents infinite loop)
+  const toolExecutions = useMemo(() => {
+    return Array.from(toolExecutionsMap.values());
+  }, [toolExecutionsMap]);
 
   // Build tool results map for correlation
   const toolResultsMap = useMemo(() => {
@@ -42,7 +49,7 @@ export default function ChatContainer() {
   // Auto-scroll to bottom when new messages arrive or streaming updates
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streaming.content, streaming.thinking]);
+  }, [messages, streaming.content, streaming.thinking, toolExecutionsMap]);
 
   if (isLoading) {
     return (
@@ -105,6 +112,15 @@ export default function ChatContainer() {
             content={streaming.content}
             thinking={streaming.thinking}
           />
+        )}
+
+        {/* Render tool executions during streaming */}
+        {streaming.isStreaming && toolExecutions.length > 0 && (
+          <div className="space-y-2">
+            {toolExecutions.map(tool => (
+              <StreamingToolCard key={tool.id} tool={tool} />
+            ))}
+          </div>
         )}
 
         {/* Captured thinking from previous turn */}

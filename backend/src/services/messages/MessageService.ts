@@ -427,18 +427,15 @@ export class MessageService {
   ): Promise<ParsedMessage[]> {
     try {
       // ⭐ UPDATED 2025-11-24: Added Phase 1A token tracking columns
+      // ⭐ CRITICAL: ORDER BY sequence_number ASC ensures correct message ordering
+      // (fallback to created_at for any NULL sequence_numbers, though these should not exist)
       let query = `
         SELECT id, session_id, role, message_type, content, metadata,
                token_count, stop_reason, sequence_number, event_id, tool_use_id,
                model, input_tokens, output_tokens, created_at
         FROM messages
         WHERE session_id = @session_id
-        ORDER BY
-          CASE
-            WHEN sequence_number IS NULL THEN 999999999
-            ELSE sequence_number
-          END ASC,
-          created_at ASC
+        ORDER BY sequence_number ASC, created_at ASC
       `;
 
       const params: SqlParams = { session_id: sessionId };

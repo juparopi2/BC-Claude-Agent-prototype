@@ -421,6 +421,8 @@ router.get('/:sessionId/messages', authenticateMicrosoft, async (req: Request, r
 
     // Query messages for the session
     // ⭐ UPDATED: Include all token tracking and model columns for E2E data flow
+    // ⭐ CRITICAL: ORDER BY sequence_number ASC ensures correct message ordering
+    // (fallback to created_at for any NULL sequence_numbers, though these should not exist)
     const messagesQuery = `
       SELECT
         id,
@@ -440,12 +442,7 @@ router.get('/:sessionId/messages', authenticateMicrosoft, async (req: Request, r
         tool_use_id
       FROM messages
       WHERE session_id = @sessionId
-      ORDER BY
-        CASE
-          WHEN sequence_number IS NULL THEN 999999999
-          ELSE sequence_number
-        END ASC,
-        created_at ASC
+      ORDER BY sequence_number ASC, created_at ASC
       OFFSET @offset ROWS
       FETCH NEXT @limit ROWS ONLY
     `;

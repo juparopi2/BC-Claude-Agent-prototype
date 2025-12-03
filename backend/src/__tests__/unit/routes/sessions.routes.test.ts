@@ -351,7 +351,7 @@ describe('Sessions Routes', () => {
       expect(response.body.messages[0]).toMatchObject({
         id: 'msg-1',
         role: 'user',
-        message_type: 'standard',
+        type: 'standard',
         content: 'Hello'
       });
       expect(mockExecuteQuery).toHaveBeenCalledTimes(2);

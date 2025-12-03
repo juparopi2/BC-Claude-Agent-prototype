@@ -261,6 +261,8 @@ export class DirectAgentService {
   private approvalManager?: ApprovalManager;
   private mcpDataPath: string;
   private logger: Logger;
+  // Accumulator for tool data during streaming - prevents premature persistence with empty args
+  private toolDataAccumulators: Map<number, { name: string; id: string; args: string; sequenceNumber: number }> = new Map();
 
   constructor(
     approvalManager?: ApprovalManager,
@@ -407,6 +409,7 @@ export class DirectAgentService {
       while (continueLoop && turnCount < maxTurns) {
         turnCount++;
         chunkCount = 0; // Reset chunk counter per turn
+        this.toolDataAccumulators.clear(); // Clear accumulator for clean state per turn
 
         console.log(`\n========== TURN ${turnCount} (STREAMING) ==========`);
 
@@ -601,7 +604,26 @@ export class DirectAgentService {
                   sequenceNumber: toolUseEvent.sequence_number,
                 });
 
-                // ✅ STEP 2: Emit AFTER with data from persisted event
+                // Get sequence number NOW to preserve ordering
+                const sequenceNumber = toolUseEvent.sequence_number;
+
+                // Initialize accumulator - DON'T persist message yet (will persist in content_block_stop)
+                this.toolDataAccumulators.set(event.index, {
+                  name: event.content_block.name,
+                  id: toolUseId,
+                  args: '', // Will accumulate JSON string in input_json_delta
+                  sequenceNumber,
+                });
+
+                this.logger.info('✅ Tool data accumulator initialized', {
+                  sessionId,
+                  toolUseId,
+                  toolName: event.content_block.name,
+                  eventIndex: event.index,
+                  sequenceNumber,
+                });
+
+                // ✅ STEP 2: Emit AFTER with data from persisted event (for real-time WebSocket feedback)
                 if (onEvent) {
                   onEvent({
                     type: 'tool_use',
@@ -615,32 +637,7 @@ export class DirectAgentService {
                   });
                 }
 
-                // ✅ STEP 3: Add to MessageQueue (reuse sequence from persisted event)
-                // ⭐ PHASE 1B: Use Anthropic tool_use_id directly as message ID
-                // This maintains correlation with Anthropic's IDs and eliminates UUID generation
-                await messageQueue.addMessagePersistence({
-                  sessionId,
-                  messageId: toolUseId,  // ⭐ PHASE 1B: Use Anthropic tool_use_id (format: toolu_...)
-                  role: 'assistant',
-                  messageType: 'tool_use',
-                  content: '',
-                  metadata: {
-                    tool_name: event.content_block.name,
-                    tool_args: {},
-                    tool_use_id: toolUseId,
-                    status: 'pending',
-                  },
-                  sequenceNumber: toolUseEvent.sequence_number,
-                  eventId: toolUseEvent.id,
-                  toolUseId: toolUseId,
-                });
-
-                this.logger.info('✅ Tool use message queued for persistence', {
-                  sessionId,
-                  toolUseId,  // ⭐ Use validated ID
-                  sequenceNumber: toolUseEvent.sequence_number,
-                  eventId: toolUseEvent.id,
-                });
+                // ⭐ NOTE: Message persistence moved to content_block_stop to ensure complete tool_args
               }
               break;
 
@@ -717,8 +714,21 @@ export class DirectAgentService {
                 const partialJson = event.delta.partial_json;
                 const toolBlock = block.data as { id: string; name: string; input: Record<string, unknown>; inputJson?: string };
 
-                // Accumulate JSON string (will parse when complete)
+                // Accumulate JSON string in contentBlocks (will parse when complete)
                 toolBlock.inputJson = (toolBlock.inputJson || '') + partialJson;
+
+                // Also accumulate in toolDataAccumulators for final persistence
+                const toolData = this.toolDataAccumulators.get(event.index);
+                if (toolData) {
+                  toolData.args += partialJson;
+                  this.logger.debug({
+                    sessionId,
+                    turnCount,
+                    eventIndex: event.index,
+                    partialJsonLength: partialJson.length,
+                    accumulatedLength: toolData.args.length,
+                  }, '🔧 [TOOL_ARGS] Accumulating input_json_delta');
+                }
 
                 // Try to parse accumulated JSON (may be incomplete)
                 try {
@@ -900,6 +910,71 @@ export class DirectAgentService {
                     fallbackId: validatedToolUseId,
                     eventIndex: event.index,
                   });
+                }
+
+                // ⭐ NOW PERSIST with complete data from accumulator
+                const accumulatorData = this.toolDataAccumulators.get(event.index);
+                if (accumulatorData) {
+                  // Parse the accumulated JSON args
+                  let parsedArgs = {};
+                  try {
+                    if (accumulatorData.args) {
+                      parsedArgs = JSON.parse(accumulatorData.args);
+                      this.logger.info({
+                        sessionId,
+                        turnCount,
+                        eventIndex: event.index,
+                        toolUseId: validatedToolUseId,
+                        toolName: accumulatorData.name,
+                        argsLength: accumulatorData.args.length,
+                        parsedArgsKeys: Object.keys(parsedArgs),
+                      }, '✅ [TOOL_ARGS] Successfully parsed complete tool arguments');
+                    }
+                  } catch (e) {
+                    this.logger.warn({
+                      sessionId,
+                      turnCount,
+                      eventIndex: event.index,
+                      toolUseId: validatedToolUseId,
+                      args: accumulatorData.args,
+                      error: e instanceof Error ? e.message : String(e),
+                    }, '⚠️ [TOOL_ARGS] Failed to parse tool args');
+                  }
+
+                  // NOW persist with complete data (this was previously at content_block_start with empty args)
+                  await messageQueue.addMessagePersistence({
+                    sessionId,
+                    messageId: validatedToolUseId,  // ⭐ PHASE 1B: Use Anthropic tool_use_id (format: toolu_...)
+                    role: 'assistant',
+                    messageType: 'tool_use',
+                    content: '',
+                    metadata: {
+                      tool_name: accumulatorData.name,
+                      tool_args: parsedArgs,  // ⭐ NOW COMPLETE!
+                      tool_use_id: validatedToolUseId,
+                      status: 'pending',
+                    },
+                    sequenceNumber: accumulatorData.sequenceNumber,
+                    eventId: undefined, // Event was already created at content_block_start
+                    toolUseId: validatedToolUseId,
+                  });
+
+                  this.logger.info('✅ Tool use message queued for persistence with COMPLETE args', {
+                    sessionId,
+                    toolUseId: validatedToolUseId,
+                    sequenceNumber: accumulatorData.sequenceNumber,
+                    parsedArgsKeys: Object.keys(parsedArgs),
+                  });
+
+                  // Clean up accumulator
+                  this.toolDataAccumulators.delete(event.index);
+                } else {
+                  this.logger.warn({
+                    sessionId,
+                    turnCount,
+                    eventIndex: event.index,
+                    toolUseId: validatedToolUseId,
+                  }, '⚠️ [TOOL_ARGS] No accumulator data found - this should not happen');
                 }
 
                 // ⭐ TRACING POINT 4: Pushing to toolUses array con ID validado

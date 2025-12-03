@@ -170,17 +170,11 @@ export const useChatStore = create<ChatStore>()(
     setMessages: (messages) => set({ messages }),
 
     addMessage: (message) =>
-      set((state) => {
-        const clearCaptured = message.type === 'thinking';
-        return {
-          messages: [...state.messages, message].sort(
-            (a, b) => a.sequence_number - b.sequence_number
-          ),
-          streaming: clearCaptured
-            ? { ...state.streaming, capturedThinking: null }
-            : state.streaming,
-        };
-      }),
+      set((state) => ({
+        messages: [...state.messages, message].sort(
+          (a, b) => a.sequence_number - b.sequence_number
+        ),
+      })),
 
     addOptimisticMessage: (tempId, message) =>
       set((state) => {
@@ -231,13 +225,13 @@ export const useChatStore = create<ChatStore>()(
     // Streaming
     // ========================================
     startStreaming: (messageId) =>
-      set((state) => ({
+      set(() => ({
         streaming: {
           content: '',
           thinking: '',
           isStreaming: true,
           messageId,
-          capturedThinking: state.streaming.capturedThinking,
+          capturedThinking: null,
         },
         isAgentBusy: true,
       })),

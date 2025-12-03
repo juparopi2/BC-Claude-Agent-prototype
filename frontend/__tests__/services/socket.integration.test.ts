@@ -99,6 +99,7 @@ import {
   generateTestUserId,
 } from '../helpers/socketTestHelpers';
 import { AgentEventFactory } from '../fixtures/AgentEventFactory';
+import { SocketLogMessages } from '@/lib/constants/logMessages';
 
 type MockSocket = ReturnType<typeof createMockSocket>;
 
@@ -645,8 +646,8 @@ describe('Error Scenarios', () => {
       userId: generateTestUserId(),
     });
 
-    expect(consoleSpy.error).toHaveBeenCalledWith(
-      '[SocketService] Cannot send message: not connected'
+    expect(consoleSpy.warn).toHaveBeenCalledWith(
+      SocketLogMessages.SEND_MESSAGE_NOT_CONNECTED
     );
     expect(mockSocket.emit).not.toHaveBeenCalled();
 
@@ -662,7 +663,7 @@ describe('Error Scenarios', () => {
     service.joinSession('test-session');
 
     expect(consoleSpy.warn).toHaveBeenCalledWith(
-      '[SocketService] Cannot join session: not connected'
+      SocketLogMessages.JOIN_SESSION_NOT_CONNECTED
     );
     expect(mockSocket.emit).not.toHaveBeenCalled();
 

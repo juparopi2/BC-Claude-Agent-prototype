@@ -25,6 +25,7 @@ const mockLeaveSession = vi.fn();
 const mockSendMessage = vi.fn();
 const mockStopAgent = vi.fn();
 const mockRespondToApproval = vi.fn();
+const mockSetPendingChangeHandler = vi.fn();
 
 const mockSocketService = {
   connect: mockConnect,
@@ -34,6 +35,7 @@ const mockSocketService = {
   sendMessage: mockSendMessage,
   stopAgent: mockStopAgent,
   respondToApproval: mockRespondToApproval,
+  setPendingChangeHandler: mockSetPendingChangeHandler,
   isConnected: false,
 };
 

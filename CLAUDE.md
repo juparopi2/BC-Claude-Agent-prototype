@@ -453,6 +453,29 @@ Current coverage threshold: **10%** (temporary, was 70% pre-Phase 3)
 - Core services tested: `DirectAgentService` (~60%), `ApprovalManager` (~66%)
 - Phase 3 goal: Increase to 70% comprehensive coverage
 
+### Log Message Constants Pattern
+
+**Important**: Use constants for log messages that are asserted in tests. Hardcoded strings in both source code and tests create fragile coupling - changing a log message breaks tests.
+
+**Constants File**: `frontend/lib/constants/logMessages.ts`
+
+```typescript
+// ❌ Don't hardcode strings in source and tests
+console.log('[Socket] Cannot join session: not connected');
+expect(consoleSpy).toHaveBeenCalledWith('[Socket] Cannot join session: not connected');
+
+// ✅ Use shared constants
+import { SocketLogMessages } from '@/lib/constants/logMessages';
+console.log(SocketLogMessages.JOIN_SESSION_NOT_CONNECTED);
+expect(consoleSpy).toHaveBeenCalledWith(SocketLogMessages.JOIN_SESSION_NOT_CONNECTED);
+```
+
+**Benefits**:
+- Tests don't break when log message wording changes
+- Single source of truth for message strings
+- Ready for i18n if needed later
+- IDE autocomplete for available messages
+
 ## WebSocket Architecture
 
 ### Connection Flow

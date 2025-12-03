@@ -18,6 +18,7 @@ import type {
   ExtendedThinkingConfig,
 } from '@bc-agent/shared';
 import { env } from '../config/env';
+import { SocketLogMessages } from '../constants/logMessages';
 
 /**
  * Socket event handlers
@@ -172,7 +173,7 @@ export class SocketService {
    */
   joinSession(sessionId: string): void {
     if (!this.socket?.connected) {
-      console.warn('[SocketService] Cannot join session: not connected, queuing');
+      console.warn(SocketLogMessages.JOIN_SESSION_NOT_CONNECTED);
       // Queue the session join
       this.pendingSessionJoins.push({ sessionId });
       this.onPendingChange?.(true);
@@ -207,7 +208,7 @@ export class SocketService {
    */
   sendMessage(data: Omit<ChatMessageData, 'thinking'> & { thinking?: ExtendedThinkingConfig }): void {
     if (!this.socket?.connected) {
-      console.warn('[SocketService] Cannot send message: not connected, queuing');
+      console.warn(SocketLogMessages.SEND_MESSAGE_NOT_CONNECTED);
       // Queue the message with a promise
       const pendingMessage: PendingMessage = {
         data,
@@ -227,7 +228,7 @@ export class SocketService {
    */
   stopAgent(data: StopAgentData): void {
     if (!this.socket?.connected) {
-      console.error('[SocketService] Cannot stop agent: not connected');
+      console.error(SocketLogMessages.STOP_AGENT_NOT_CONNECTED);
       return;
     }
 
@@ -239,7 +240,7 @@ export class SocketService {
    */
   respondToApproval(data: ApprovalResponseData): void {
     if (!this.socket?.connected) {
-      console.error('[SocketService] Cannot respond to approval: not connected');
+      console.error(SocketLogMessages.APPROVAL_RESPONSE_NOT_CONNECTED);
       return;
     }
 
@@ -288,7 +289,7 @@ export class SocketService {
     // Connection events
     this.socket.on('connect', () => {
       if (env.debug) {
-        console.log('[SocketService] Connected');
+        console.log(SocketLogMessages.CONNECTED);
       }
       this.handlers.onConnectionChange?.(true);
 
@@ -303,13 +304,13 @@ export class SocketService {
 
     this.socket.on('disconnect', (reason) => {
       if (env.debug) {
-        console.log('[SocketService] Disconnected:', reason);
+        console.log(SocketLogMessages.DISCONNECTED, reason);
       }
       this.handlers.onConnectionChange?.(false);
     });
 
     this.socket.on('connect_error', (error) => {
-      console.error('[SocketService] Connection error:', error.message);
+      console.error(SocketLogMessages.CONNECTION_ERROR, error.message);
       this.handlers.onConnectionChange?.(false);
     });
 

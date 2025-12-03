@@ -104,6 +104,7 @@ import {
 } from '@/lib/services/socket';
 import { resetTestEnvironment, createConsoleSpy } from '../helpers/socketTestHelpers';
 import { AgentEventFactory } from '../fixtures/AgentEventFactory';
+import { SocketLogMessages } from '@/lib/constants/logMessages';
 
 type MockSocket = ReturnType<typeof createMockSocket>;
 
@@ -242,7 +243,7 @@ describe('SocketService', () => {
       service.joinSession('test-session-123');
 
       expect(consoleSpy.warn).toHaveBeenCalledWith(
-        '[SocketService] Cannot join session: not connected'
+        SocketLogMessages.JOIN_SESSION_NOT_CONNECTED
       );
       expect(mockSocket.emit).not.toHaveBeenCalled();
 
@@ -361,8 +362,8 @@ describe('SocketService', () => {
         userId: 'test-user-456',
       });
 
-      expect(consoleSpy.error).toHaveBeenCalledWith(
-        '[SocketService] Cannot send message: not connected'
+      expect(consoleSpy.warn).toHaveBeenCalledWith(
+        SocketLogMessages.SEND_MESSAGE_NOT_CONNECTED
       );
       expect(mockSocket.emit).not.toHaveBeenCalled();
 
@@ -395,7 +396,7 @@ describe('SocketService', () => {
       });
 
       expect(consoleSpy.error).toHaveBeenCalledWith(
-        '[SocketService] Cannot stop agent: not connected'
+        SocketLogMessages.STOP_AGENT_NOT_CONNECTED
       );
       expect(mockSocket.emit).not.toHaveBeenCalled();
 
@@ -430,7 +431,7 @@ describe('SocketService', () => {
       });
 
       expect(consoleSpy.error).toHaveBeenCalledWith(
-        '[SocketService] Cannot respond to approval: not connected'
+        SocketLogMessages.APPROVAL_RESPONSE_NOT_CONNECTED
       );
       expect(mockSocket.emit).not.toHaveBeenCalled();
 

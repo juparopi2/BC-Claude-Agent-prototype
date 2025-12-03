@@ -156,7 +156,7 @@ export function MainLayout({
         <ResizablePanelGroup direction="horizontal" className="flex-1">
           {/* Center Panel */}
           <ResizablePanel
-            defaultSize={60}
+            defaultSize={rightPanelVisible ? 75 : 100}
             minSize={40}
             className="bg-background"
           >
@@ -182,7 +182,7 @@ export function MainLayout({
             {/* Right Panel */}
             <ResizablePanel
               ref={rightPanelRef}
-              defaultSize={20}
+              defaultSize={25}
               minSize={15}
               maxSize={35}
               collapsible={true}

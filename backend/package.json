@@ -41,7 +41,7 @@
   "license": "MIT",
   "dependencies": {
     "@bc-agent/shared": "*",
-    "@anthropic-ai/sdk": "^0.71.0",
+    "@anthropic-ai/sdk": "0.71.0",
     "@azure/identity": "4.13.0",
     "@azure/keyvault-secrets": "4.10.0",
     "@azure/msal-node": "3.8.1",
@@ -75,7 +75,7 @@
     "@types/node": "24.10.0",
     "@types/pino": "7.0.5",
     "@types/supertest": "6.0.2",
-    "@types/uuid": "^10.0.0",
+    "@types/uuid": "10.0.0",
     "@typescript-eslint/eslint-plugin": "8.46.4",
     "@typescript-eslint/parser": "8.46.4",
     "@vitest/coverage-v8": "2.1.8",

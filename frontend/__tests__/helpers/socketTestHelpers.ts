@@ -167,6 +167,7 @@ export function resetStores(): void {
       content: '',
       thinking: '',
       isStreaming: false,
+      capturedThinking: null,
     },
     pendingApprovals: new Map(),
     toolExecutions: new Map(),

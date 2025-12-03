@@ -12,7 +12,7 @@
  */
 
 import { ThinkingDisplay } from './ThinkingDisplay';
-import { isThinkingMessage, isStandardMessage, type Message } from '@bc-agent/shared';
+import { isThinkingMessage, isStandardMessage, isToolResultMessage, type Message } from '@bc-agent/shared';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { User, Bot } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -34,9 +34,14 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
     );
   }
 
-  // Handle tool_use messages (skip for now, will be Phase 6)
+  // Handle tool_result messages - these are rendered in ChatContainer with tool_use
+  if (isToolResultMessage(message)) {
+    return null;
+  }
+
+  // Handle tool_use messages - these are rendered in ChatContainer
   if (!isStandardMessage(message)) {
-    // Tool use messages - render nothing for now
+    // Tool use messages - rendered in ChatContainer
     return null;
   }
 

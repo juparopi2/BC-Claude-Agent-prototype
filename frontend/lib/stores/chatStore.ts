@@ -34,6 +34,8 @@ export interface StreamingState {
   isStreaming: boolean;
   /** Message ID being streamed */
   messageId?: string;
+  /** Captured thinking from previous turn (preserved for display) */
+  capturedThinking: string | null;
 }
 
 /**
@@ -145,6 +147,7 @@ const initialState: ChatState = {
     content: '',
     thinking: '',
     isStreaming: false,
+    capturedThinking: null,
   },
   pendingApprovals: new Map(),
   toolExecutions: new Map(),
@@ -167,11 +170,17 @@ export const useChatStore = create<ChatStore>()(
     setMessages: (messages) => set({ messages }),
 
     addMessage: (message) =>
-      set((state) => ({
-        messages: [...state.messages, message].sort(
-          (a, b) => a.sequence_number - b.sequence_number
-        ),
-      })),
+      set((state) => {
+        const clearCaptured = message.type === 'thinking';
+        return {
+          messages: [...state.messages, message].sort(
+            (a, b) => a.sequence_number - b.sequence_number
+          ),
+          streaming: clearCaptured
+            ? { ...state.streaming, capturedThinking: null }
+            : state.streaming,
+        };
+      }),
 
     addOptimisticMessage: (tempId, message) =>
       set((state) => {
@@ -222,15 +231,16 @@ export const useChatStore = create<ChatStore>()(
     // Streaming
     // ========================================
     startStreaming: (messageId) =>
-      set({
+      set((state) => ({
         streaming: {
           content: '',
           thinking: '',
           isStreaming: true,
           messageId,
+          capturedThinking: state.streaming.capturedThinking,
         },
         isAgentBusy: true,
-      }),
+      })),
 
     appendStreamContent: (content) =>
       set((state) => ({
@@ -253,6 +263,7 @@ export const useChatStore = create<ChatStore>()(
         streaming: {
           ...state.streaming,
           isStreaming: false,
+          capturedThinking: state.streaming.thinking || null,
         },
         isAgentBusy: false,
       })),
@@ -263,6 +274,7 @@ export const useChatStore = create<ChatStore>()(
           content: '',
           thinking: '',
           isStreaming: false,
+          capturedThinking: null,
         },
       }),
 

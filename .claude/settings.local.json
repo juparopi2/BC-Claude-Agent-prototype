@@ -114,7 +114,8 @@
       "Bash(test:*)",
       "Bash(del /F \"D:\\Documents\\BC-Claude-Agent-prototype\\frontend\\.next\\dev\\lock\")",
       "Bash(if exist \"D:\\Documents\\BC-Claude-Agent-prototype\\frontend\\.next\\dev\\lock\" del /F \"D:\\Documents\\BC-Claude-Agent-prototype\\frontend\\.next\\dev\\lock\")",
-      "WebFetch(domain:platform.claude.com)"
+      "WebFetch(domain:platform.claude.com)",
+      "Bash(grep:*)"
     ],
     "deny": [],
     "ask": []

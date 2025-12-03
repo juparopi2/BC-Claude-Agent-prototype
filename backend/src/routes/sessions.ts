@@ -154,6 +154,21 @@ function transformMessage(row: DbMessageRow) {
         tool_use_id: row.tool_use_id || undefined,
       };
 
+    case 'tool_result':
+      // Tool execution result (separate from request)
+      return {
+        ...base,
+        type: 'tool_result' as const,
+        role: 'assistant' as const,
+        tool_name: (metadata.tool_name as string) || '',
+        tool_args: (metadata.tool_args as Record<string, unknown>) || {},
+        success: (metadata.success as boolean) ?? true,
+        result: metadata.tool_result,
+        error_message: metadata.error_message as string | undefined,
+        tool_use_id: row.tool_use_id || undefined,
+        duration_ms: metadata.duration_ms as number | undefined,
+      };
+
     case 'text':
     case 'standard':
     default:

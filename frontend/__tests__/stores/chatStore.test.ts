@@ -26,6 +26,7 @@ describe('ChatStore', () => {
           content: '',
           thinking: '',
           isStreaming: false,
+          capturedThinking: null,
         },
         pendingApprovals: new Map(),
         toolExecutions: new Map(),

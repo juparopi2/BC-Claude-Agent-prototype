@@ -152,12 +152,46 @@ export interface ToolUseMessage extends BaseMessage {
 }
 
 /**
+ * Tool execution result (separate from request).
+ *
+ * Represents the result of a tool execution, distinct from the original tool use message.
+ */
+export interface ToolResultMessage extends BaseMessage {
+  /** Discriminator - ALWAYS 'tool_result' */
+  type: 'tool_result';
+
+  /** Always assistant for tool results */
+  role: 'assistant';
+
+  /** Tool name that was executed */
+  tool_name: string;
+
+  /** Tool arguments that were passed */
+  tool_args: Record<string, unknown>;
+
+  /** Whether execution succeeded */
+  success: boolean;
+
+  /** Tool result data (if success) */
+  result?: unknown;
+
+  /** Error message (if failed) */
+  error_message?: string;
+
+  /** Correlation to original tool_use */
+  tool_use_id?: string;
+
+  /** Execution duration in ms */
+  duration_ms?: number;
+}
+
+/**
  * Union type for all message types.
  *
- * Use type guards (isStandardMessage, isThinkingMessage, isToolUseMessage)
+ * Use type guards (isStandardMessage, isThinkingMessage, isToolUseMessage, isToolResultMessage)
  * to narrow the type safely.
  */
-export type Message = StandardMessage | ThinkingMessage | ToolUseMessage;
+export type Message = StandardMessage | ThinkingMessage | ToolUseMessage | ToolResultMessage;
 
 /**
  * Type guard for standard messages.
@@ -196,4 +230,17 @@ export function isThinkingMessage(msg: Message): msg is ThinkingMessage {
  */
 export function isToolUseMessage(msg: Message): msg is ToolUseMessage {
   return msg.type === 'tool_use';
+}
+
+/**
+ * Type guard for tool result messages.
+ *
+ * @example
+ * if (isToolResultMessage(msg)) {
+ *   console.log(msg.tool_name); // Safe access to tool_name
+ *   console.log(msg.success);   // true | false
+ * }
+ */
+export function isToolResultMessage(msg: Message): msg is ToolResultMessage {
+  return msg.type === 'tool_result';
 }

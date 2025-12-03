@@ -82,6 +82,7 @@ export type {
   StandardMessage,
   ThinkingMessage,
   ToolUseMessage,
+  ToolResultMessage,
   Message,
 } from './types';
 
@@ -93,6 +94,7 @@ export {
   isStandardMessage,
   isThinkingMessage,
   isToolUseMessage,
+  isToolResultMessage,
 } from './types';
 
 // ============================================

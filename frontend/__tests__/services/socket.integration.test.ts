@@ -386,7 +386,7 @@ describe('Store Integration (Real Stores)', () => {
     useChatStore.setState({
       messages: [],
       optimisticMessages: new Map(),
-      streaming: { content: '', thinking: '', isStreaming: false },
+      streaming: { content: '', thinking: '', isStreaming: false, capturedThinking: null },
       pendingApprovals: new Map(),
       toolExecutions: new Map(),
       isLoading: false,

@@ -48,6 +48,10 @@ export interface UseSocketReturn {
   respondToApproval: (approvalId: string, approved: boolean, reason?: string) => void;
   /** Connection status */
   isConnected: boolean;
+  /** Session ready status (connected + joined room) */
+  isSessionReady: boolean;
+  /** Reconnecting status (pending messages waiting) */
+  isReconnecting: boolean;
 }
 
 /**
@@ -94,6 +98,8 @@ export function useSocket(options: UseSocketOptions = {}): UseSocketReturn {
 
   // Track connection state
   const [isConnected, setIsConnected] = useState(false);
+  const [isSessionReady, setIsSessionReady] = useState(false);
+  const [isReconnecting, setIsReconnecting] = useState(false);
   const currentSessionRef = useRef<string | null>(sessionId || null);
 
   // Create handlers that integrate with stores (memoized to prevent re-creation)
@@ -111,6 +117,10 @@ export function useSocket(options: UseSocketOptions = {}): UseSocketReturn {
         onError?.(error);
       },
       onSessionReady: (data) => {
+        // Only set ready if this is the current session
+        if (data.sessionId === currentSessionRef.current) {
+          setIsSessionReady(true);
+        }
         setCurrentSession(data.sessionId);
         onSessionReady?.(data);
       },
@@ -125,6 +135,7 @@ export function useSocket(options: UseSocketOptions = {}): UseSocketReturn {
   // Initialize socket
   useEffect(() => {
     const socket = getSocketService(handlers);
+    socket.setPendingChangeHandler(setIsReconnecting);
 
     if (autoConnect) {
       socket.connect();
@@ -139,6 +150,9 @@ export function useSocket(options: UseSocketOptions = {}): UseSocketReturn {
   // Handle session changes
   useEffect(() => {
     const socket = getSocketService();
+
+    // Reset session ready state when session changes
+    setIsSessionReady(false);
 
     if (sessionId && isConnected) {
       socket.joinSession(sessionId);
@@ -261,5 +275,7 @@ export function useSocket(options: UseSocketOptions = {}): UseSocketReturn {
     stopAgent,
     respondToApproval,
     isConnected,
+    isSessionReady,
+    isReconnecting,
   };
 }

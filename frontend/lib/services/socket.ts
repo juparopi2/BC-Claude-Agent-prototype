@@ -40,6 +40,22 @@ export interface SocketEventHandlers {
 }
 
 /**
+ * Pending message queued when socket is not connected
+ */
+interface PendingMessage {
+  data: Omit<ChatMessageData, 'thinking'> & { thinking?: ExtendedThinkingConfig };
+  resolve: () => void;
+  reject: (err: Error) => void;
+}
+
+/**
+ * Pending session join queued when socket is not connected
+ */
+interface PendingSessionJoin {
+  sessionId: string;
+}
+
+/**
  * Socket Service Class
  *
  * Manages WebSocket connection and provides type-safe event handling.
@@ -75,6 +91,9 @@ export class SocketService {
   private socket: Socket | null = null;
   private handlers: SocketEventHandlers;
   private currentSessionId: string | null = null;
+  private pendingMessages: PendingMessage[] = [];
+  private pendingSessionJoins: PendingSessionJoin[] = [];
+  private onPendingChange?: (hasPending: boolean) => void;
 
   constructor(handlers: SocketEventHandlers = {}) {
     this.handlers = handlers;
@@ -128,6 +147,13 @@ export class SocketService {
   }
 
   /**
+   * Check if there are pending messages
+   */
+  get hasPendingMessages(): boolean {
+    return this.pendingMessages.length > 0 || this.pendingSessionJoins.length > 0;
+  }
+
+  /**
    * Update event handlers
    */
   setHandlers(handlers: Partial<SocketEventHandlers>): void {
@@ -135,11 +161,21 @@ export class SocketService {
   }
 
   /**
+   * Set callback for pending state changes
+   */
+  setPendingChangeHandler(handler: (hasPending: boolean) => void): void {
+    this.onPendingChange = handler;
+  }
+
+  /**
    * Join a session room
    */
   joinSession(sessionId: string): void {
     if (!this.socket?.connected) {
-      console.warn('[SocketService] Cannot join session: not connected');
+      console.warn('[SocketService] Cannot join session: not connected, queuing');
+      // Queue the session join
+      this.pendingSessionJoins.push({ sessionId });
+      this.onPendingChange?.(true);
       return;
     }
 
@@ -171,7 +207,15 @@ export class SocketService {
    */
   sendMessage(data: Omit<ChatMessageData, 'thinking'> & { thinking?: ExtendedThinkingConfig }): void {
     if (!this.socket?.connected) {
-      console.error('[SocketService] Cannot send message: not connected');
+      console.warn('[SocketService] Cannot send message: not connected, queuing');
+      // Queue the message with a promise
+      const pendingMessage: PendingMessage = {
+        data,
+        resolve: () => {},
+        reject: () => {},
+      };
+      this.pendingMessages.push(pendingMessage);
+      this.onPendingChange?.(true);
       return;
     }
 
@@ -203,6 +247,39 @@ export class SocketService {
   }
 
   /**
+   * Flush pending messages when socket connects
+   */
+  private flushPendingMessages(): void {
+    if (!this.socket?.connected) {
+      return;
+    }
+
+    // Flush pending session joins first
+    while (this.pendingSessionJoins.length > 0) {
+      const pendingJoin = this.pendingSessionJoins.shift();
+      if (pendingJoin) {
+        console.log('[SocketService] Flushing pending session join:', pendingJoin.sessionId);
+        this.joinSession(pendingJoin.sessionId);
+      }
+    }
+
+    // Flush pending messages
+    while (this.pendingMessages.length > 0) {
+      const pendingMessage = this.pendingMessages.shift();
+      if (pendingMessage) {
+        console.log('[SocketService] Flushing pending message');
+        this.socket.emit('chat:message', pendingMessage.data);
+        pendingMessage.resolve();
+      }
+    }
+
+    // Clear arrays and notify
+    this.pendingMessages = [];
+    this.pendingSessionJoins = [];
+    this.onPendingChange?.(false);
+  }
+
+  /**
    * Set up Socket.IO event listeners
    */
   private setupEventListeners(): void {
@@ -219,6 +296,9 @@ export class SocketService {
       if (this.currentSessionId) {
         this.joinSession(this.currentSessionId);
       }
+
+      // Flush any pending messages/session joins
+      this.flushPendingMessages();
     });
 
     this.socket.on('disconnect', (reason) => {

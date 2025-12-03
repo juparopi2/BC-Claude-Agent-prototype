@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Toggle } from '@/components/ui/toggle';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Send, Square, Brain, WifiOff, Mic, Paperclip, Globe } from 'lucide-react';
+import { Send, Square, Brain, WifiOff, Mic, Paperclip, Globe, Loader2 } from 'lucide-react';
 
 interface ChatInputProps {
   sessionId: string;
@@ -18,7 +18,7 @@ export default function ChatInput({ sessionId }: ChatInputProps) {
   const [enableThinking, setEnableThinking] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const { sendMessage, stopAgent, isConnected } = useSocket({ sessionId, autoConnect: true });
+  const { sendMessage, stopAgent, isConnected, isReconnecting } = useSocket({ sessionId, autoConnect: true });
   const isAgentBusy = useChatStore((s) => s.isAgentBusy);
   const streaming = useChatStore((s) => s.streaming);
 
@@ -164,10 +164,16 @@ export default function ChatInput({ sessionId }: ChatInputProps) {
         </div>
 
         {/* Connection Status */}
-        {!isConnected && (
+        {!isConnected && !isReconnecting && (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <WifiOff className="size-3.5" />
             <span>Connecting to server...</span>
+          </div>
+        )}
+        {isReconnecting && (
+          <div className="flex items-center gap-2 text-xs text-amber-500">
+            <Loader2 className="size-3.5 animate-spin" />
+            <span>Reconnecting...</span>
           </div>
         )}
       </div>

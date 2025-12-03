@@ -33,7 +33,7 @@ export default function ChatPage() {
   const selectSession = useSessionStore((s) => s.selectSession);
 
   // Initialize socket and get sendMessage function
-  const { sendMessage, isConnected } = useSocket({ sessionId, autoConnect: true });
+  const { sendMessage, isConnected, isSessionReady } = useSocket({ sessionId, autoConnect: true });
 
   useEffect(() => {
     async function loadSession() {
@@ -65,10 +65,10 @@ export default function ChatPage() {
   useEffect(() => {
     // Only send if:
     // 1. We have an initial message
-    // 2. Socket is connected
+    // 2. Session is FULLY ready (connected + joined room)
     // 3. We haven't already sent it
     // 4. Session is loaded (not loading)
-    if (initialMessage && isConnected && !initialMessageSentRef.current && !isLoading) {
+    if (initialMessage && isSessionReady && !initialMessageSentRef.current && !isLoading) {
       initialMessageSentRef.current = true;
 
       // Send the message
@@ -77,7 +77,7 @@ export default function ChatPage() {
       // Clear the URL parameter to prevent re-sending on refresh
       router.replace(`/chat/${sessionId}`, { scroll: false });
     }
-  }, [initialMessage, isConnected, sessionId, router, sendMessage, isLoading]);
+  }, [initialMessage, isSessionReady, sessionId, router, sendMessage, isLoading]);
 
   return (
     <MainLayout

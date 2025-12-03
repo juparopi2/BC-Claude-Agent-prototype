@@ -11,6 +11,34 @@ import type { ApiErrorResponse } from '@bc-agent/shared';
 import { isApiErrorResponse, ErrorCode } from '@bc-agent/shared';
 import { env } from '../config/env';
 
+// ============================================
+// Message Types - Import from shared package
+// ============================================
+// PHASE 4.6: Single source of truth for message types
+// Re-export for backward compatibility with existing imports
+
+import type {
+  Message,
+  StandardMessage,
+  ThinkingMessage,
+  ToolUseMessage,
+  TokenUsage as MessageTokenUsage,
+} from '@bc-agent/shared';
+
+import {
+  isStandardMessage,
+  isThinkingMessage,
+  isToolUseMessage,
+} from '@bc-agent/shared';
+
+// Re-export message types for components that import from api.ts
+export type { Message, StandardMessage, ThinkingMessage, ToolUseMessage };
+export { isStandardMessage, isThinkingMessage, isToolUseMessage };
+
+// ============================================
+// API Response Types
+// ============================================
+
 /**
  * API Response wrapper
  */
@@ -29,64 +57,6 @@ export interface Session {
   updated_at: string;
   is_active: boolean;
   message_count?: number;
-}
-
-/**
- * Message from backend - Discriminated Union
- */
-
-// Base fields shared by all messages
-interface BaseMessage {
-  id: string;
-  session_id: string;
-  sequence_number: number;
-  created_at: string;
-  event_id?: string;
-}
-
-// Standard user/assistant text messages
-export interface StandardMessage extends BaseMessage {
-  type: 'standard';
-  role: 'user' | 'assistant';
-  content: string;
-  token_usage?: {
-    input_tokens: number;
-    output_tokens: number;  // Includes thinking tokens per Anthropic API
-  };
-  stop_reason?: string;
-  model?: string;
-}
-
-// Extended thinking content (persisted)
-export interface ThinkingMessage extends BaseMessage {
-  type: 'thinking';
-  role: 'assistant';
-  content: string;  // The actual thinking content
-}
-
-// Tool execution (for Phase 6)
-export interface ToolUseMessage extends BaseMessage {
-  type: 'tool_use';
-  role: 'assistant';
-  tool_name: string;
-  tool_args: Record<string, unknown>;
-  status: 'pending' | 'success' | 'error';
-  result?: unknown;
-  error_message?: string;
-}
-
-// Union type
-export type Message = StandardMessage | ThinkingMessage | ToolUseMessage;
-
-// Type guards
-export function isThinkingMessage(msg: Message): msg is ThinkingMessage {
-  return msg.type === 'thinking';
-}
-export function isStandardMessage(msg: Message): msg is StandardMessage {
-  return msg.type === 'standard';
-}
-export function isToolUseMessage(msg: Message): msg is ToolUseMessage {
-  return msg.type === 'tool_use';
 }
 
 /**

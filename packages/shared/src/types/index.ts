@@ -67,3 +67,20 @@ export type {
 
 // Type guards
 export { isApiErrorResponse, isValidErrorCode } from './error.types';
+
+// Message types (API contract between Backend and Frontend)
+export type {
+  BaseMessage,
+  TokenUsage,
+  StandardMessage,
+  ThinkingMessage,
+  ToolUseMessage,
+  Message,
+} from './message.types';
+
+// Message type guards
+export {
+  isStandardMessage,
+  isThinkingMessage,
+  isToolUseMessage,
+} from './message.types';

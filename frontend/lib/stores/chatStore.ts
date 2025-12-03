@@ -17,8 +17,10 @@ import type {
   ApprovalRequestedEvent,
   ThinkingChunkEvent,
   MessageChunkEvent,
+  // PHASE 4.6: Message types from shared package (single source of truth)
+  Message,
+  StandardMessage,
 } from '@bc-agent/shared';
-import type { Message } from '../services/api';
 
 /**
  * Streaming state for real-time message display

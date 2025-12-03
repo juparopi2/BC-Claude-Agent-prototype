@@ -74,10 +74,26 @@ export type {
   ErrorResponseWithStatus,
   ValidationErrorDetail,
   RangeErrorDetail,
+
+  // Message types (API contract between Backend and Frontend)
+  // PHASE 4.6: Single source of truth for message structure
+  BaseMessage,
+  TokenUsage,
+  StandardMessage,
+  ThinkingMessage,
+  ToolUseMessage,
+  Message,
 } from './types';
 
 // Type guards (runtime functions, not types)
-export { isApiErrorResponse, isValidErrorCode } from './types';
+export {
+  isApiErrorResponse,
+  isValidErrorCode,
+  // Message type guards
+  isStandardMessage,
+  isThinkingMessage,
+  isToolUseMessage,
+} from './types';
 
 // ============================================
 // Constants - Error codes, messages, mappings

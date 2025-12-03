@@ -76,9 +76,13 @@ function transformSession(row: {
  * Transform database message row to frontend Message format
  * Handles 3 message types: standard, thinking, tool_use
  *
- * ⭐ UPDATED: Now includes token tracking columns (model, input_tokens, output_tokens)
+ * ⭐ PHASE 4.6: Uses shared types from @bc-agent/shared for contract enforcement.
+ * CRITICAL: Returns `type` field (not `message_type`) for discriminated union.
+ * CRITICAL: Token fields MUST be nested in `token_usage` object.
  */
-function transformMessage(row: {
+
+// Database row type
+interface DbMessageRow {
   id: string;
   session_id: string;
   role: string;
@@ -86,31 +90,17 @@ function transformMessage(row: {
   content: string;
   metadata: string | null;
   token_count: number | null;
-  stop_reason: StopReason | null;  // ✅ Native SDK stop_reason
-  sequence_number: number | null;  // ✅ Event sourcing sequence
+  stop_reason: StopReason | null;
+  sequence_number: number | null;
   created_at: Date;
-  // ⭐ Token tracking columns
   model: string | null;
   input_tokens: number | null;
   output_tokens: number | null;
   event_id: string | null;
   tool_use_id: string | null;
-}) {
-  // Base fields common to all message types
-  const base = {
-    id: row.id,
-    session_id: row.session_id,
-    role: row.role as 'user' | 'assistant' | 'system',
-    message_type: row.message_type as 'standard' | 'thinking' | 'tool_use',
-    created_at: row.created_at.toISOString(),
-    // ⭐ Token tracking fields (exposed for E2E data flow)
-    model: row.model || undefined,
-    input_tokens: row.input_tokens ?? undefined,
-    output_tokens: row.output_tokens ?? undefined,
-    event_id: row.event_id || undefined,
-    tool_use_id: row.tool_use_id || undefined,
-  };
+}
 
+function transformMessage(row: DbMessageRow) {
   // Parse metadata JSON if present
   let metadata: Record<string, unknown> = {};
   if (row.metadata) {
@@ -121,58 +111,63 @@ function transformMessage(row: {
     }
   }
 
+  // Build token_usage if present (NESTED structure per shared types contract)
+  const token_usage = (row.input_tokens != null && row.output_tokens != null)
+    ? { input_tokens: row.input_tokens, output_tokens: row.output_tokens }
+    : undefined;
+
+  // Base fields shared by all message types
+  const base = {
+    id: row.id,
+    session_id: row.session_id,
+    sequence_number: row.sequence_number ?? 0,
+    created_at: row.created_at.toISOString(),
+    event_id: row.event_id || undefined,
+  };
+
   // Transform based on message type
   switch (row.message_type) {
     case 'thinking':
-      // ✅ FIX: Thinking message content is in content column (SDK-compliant)
+      // Extended thinking message
+      // CRITICAL: content is in DB `content` column, NOT metadata.content
       return {
-        id: row.id,
-        type: 'thinking' as const,  // ✅ ADD TYPE DISCRIMINATOR
-        session_id: row.session_id,
-        content: row.content || '',  // ✅ FIX: Read from content column
+        ...base,
+        type: 'thinking' as const,        // ✅ Discriminator for union
+        role: 'assistant' as const,       // ✅ ADD MISSING ROLE
+        content: row.content || '',       // ✅ From content column
         duration_ms: metadata.duration_ms as number | undefined,
-        stop_reason: row.stop_reason,  // ✅ Native SDK stop_reason
-        sequence_number: row.sequence_number,  // ✅ Event sourcing sequence
-        created_at: row.created_at.toISOString(),
-        // ⭐ Token tracking fields
         model: row.model || undefined,
-        input_tokens: row.input_tokens ?? undefined,
-        output_tokens: row.output_tokens ?? undefined,
-        event_id: row.event_id || undefined,
+        token_usage,                      // ✅ Nested structure
       };
 
     case 'tool_use':
-      // Tool use message: tool details in metadata
+      // Tool execution message
       return {
-        id: row.id,
-        type: 'tool_use' as const,  // ✅ ADD TYPE DISCRIMINATOR
-        session_id: row.session_id,
-        tool_name: metadata.tool_name as string,
+        ...base,
+        type: 'tool_use' as const,        // ✅ Discriminator for union
+        role: 'assistant' as const,       // ✅ Always assistant
+        tool_name: metadata.tool_name as string || '',
         tool_args: (metadata.tool_args as Record<string, unknown>) || {},
-        tool_result: metadata.tool_result as unknown | undefined,
         status: (metadata.status as 'pending' | 'success' | 'error') || 'pending',
+        result: metadata.tool_result,
         error_message: metadata.error_message as string | undefined,
-        stop_reason: row.stop_reason,  // ✅ Native SDK stop_reason
-        sequence_number: row.sequence_number,  // ✅ Event sourcing sequence
-        created_at: row.created_at.toISOString(),
-        // ⭐ Token tracking fields
-        model: row.model || undefined,
         tool_use_id: row.tool_use_id || undefined,
-        event_id: row.event_id || undefined,
       };
 
+    case 'text':
     case 'standard':
     default:
-      // Standard message: content is in content field
-      // ⭐ base already includes token tracking fields
+      // Standard text message (user or assistant)
+      // CRITICAL: Must return `type: 'standard'` not `message_type: 'text'`
       return {
-        ...base,  // Includes role, message_type, model, input_tokens, output_tokens, event_id, tool_use_id
-        content: row.content,
-        stop_reason: row.stop_reason,  // ✅ Native SDK stop_reason
-        sequence_number: row.sequence_number,  // ✅ Event sourcing sequence
-        is_thinking: metadata.is_thinking as boolean | undefined,
-        // ⭐ Citations from metadata (persisted by DirectAgentService)
-        // Using SDK TextCitation[] type for proper typing
+        ...base,
+        type: 'standard' as const,        // ✅ ADD TYPE DISCRIMINATOR
+        role: row.role as 'user' | 'assistant',
+        content: row.content || '',       // ✅ From content column
+        token_usage,                      // ✅ Nested structure
+        stop_reason: row.stop_reason || undefined,
+        model: row.model || undefined,
+        // Citations (if present in metadata)
         citations: metadata.citations as TextCitation[] | undefined,
         citations_count: metadata.citations_count as number | undefined,
       };

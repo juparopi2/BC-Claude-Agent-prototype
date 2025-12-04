@@ -65,7 +65,7 @@ export default function ChatContainer() {
 
   return (
     <ScrollArea className="h-full" data-testid="chat-container">
-      <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
+      <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
         {messages.map((message) => {
           // Render thinking messages
           if (isThinkingMessage(message)) {

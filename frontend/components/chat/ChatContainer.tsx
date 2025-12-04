@@ -41,21 +41,6 @@ export default function ChatContainer() {
   const isLoading = useChatStore((s) => s.isLoading);
   const isAgentBusy = useChatStore((s) => s.isAgentBusy);
 
-  // DEBUG LOG: Track component renders
-  console.log('[DEBUG LOG] [ChatContainer] 🎨 Render:', {
-    persistedCount: persistedMessages.length,
-    optimisticCount: optimisticMessages.size,
-    combinedCount: messages.length,
-    streamingActive: streaming.isStreaming,
-    streamingContentLength: streaming.content?.length || 0,
-    streamingThinkingLength: streaming.thinking?.length || 0,
-    thinkingMessagesCount: messages.filter(m => m.type === 'thinking').length,
-    toolMessagesCount: messages.filter(m => m.type === 'tool_use').length,
-    standardMessagesCount: messages.filter(m => m.type === 'standard').length,
-    isLoading,
-    isAgentBusy,
-    timestamp: new Date().toISOString(),
-  });
 
   const bottomRef = useRef<HTMLDivElement>(null);
 

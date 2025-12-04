@@ -145,16 +145,6 @@ export const useChatStore = create<ChatStore>()(
     // Message management
     // ========================================
     setMessages: (messages) => {
-      // DEBUG LOG: Track message setting
-      console.log('[DEBUG LOG] [ChatStore] 📨 setMessages:', {
-        incomingCount: messages.length,
-        toolUseMessages: messages.filter(m => m.type === 'tool_use').map(m => ({
-          id: m.id,
-          tool_name: (m as any).tool_name,
-          sequence_number: m.sequence_number,
-        })),
-      });
-
       set({ messages });
     },
 
@@ -273,19 +263,8 @@ export const useChatStore = create<ChatStore>()(
       })),
 
     appendThinkingContent: (content) => {
-      // DEBUG LOG: Track thinking content appending and check for undefined
-      console.log('[DEBUG LOG] [ChatStore] 📝 appendThinkingContent:', {
-        incoming: content,
-        incomingType: typeof content,
-        isUndefined: content === undefined,
-        isNull: content === null,
-        current: get().streaming.thinking.substring(0, 50) + '...',
-        currentLength: get().streaming.thinking.length,
-      });
-      
       // Validate content before appending
       if (content === undefined || content === null) {
-        console.warn('[DEBUG LOG] [ChatStore] ⚠️ Ignoring undefined/null thinking content');
         return;
       }
       
@@ -362,34 +341,14 @@ export const useChatStore = create<ChatStore>()(
     handleAgentEvent: (event) => {
       const actions = get();
 
-      // DEBUG LOG: Track all events and current state
-      console.log('[DEBUG LOG] [ChatStore] 🎯 handleAgentEvent:', {
-        type: event.type,
-        sessionId: event.sessionId,
-        sequenceNumber: event.sequenceNumber,
-        eventId: event.eventId,
-        currentStreaming: {
-          isStreaming: actions.streaming.isStreaming,
-          contentLength: actions.streaming.content.length,
-          thinkingLength: actions.streaming.thinking.length,
-        },
-        currentMessagesCount: actions.messages.length,
-        currentToolMessages: actions.messages.filter(m => m.type === 'tool_use').length,
-      });
-
       switch (event.type) {
         case 'session_start':
-          console.log('[DEBUG LOG] [ChatStore] 🚀 session_start');
           actions.clearStreaming();
           actions.setAgentBusy(true);
           break;
 
         case 'thinking': {
           const thinkingEvent = event;
-          console.log('[DEBUG LOG] [ChatStore] 🧠 thinking event:', {
-            eventId: thinkingEvent.eventId,
-            sequenceNumber: thinkingEvent.sequenceNumber,
-          });
 
           // Create a thinking message with sequence_number
           actions.addMessage({
@@ -411,15 +370,6 @@ export const useChatStore = create<ChatStore>()(
 
         case 'thinking_chunk': {
           const thinkingEvent = event as ThinkingChunkEvent;
-          // DEBUG LOG: Track thinking chunks and check for undefined
-          console.log('[DEBUG LOG] [ChatStore] 💭 thinking_chunk:', {
-            content: thinkingEvent.content,
-            contentType: typeof thinkingEvent.content,
-            contentLength: thinkingEvent.content?.length,
-            isUndefined: thinkingEvent.content === undefined,
-            isNull: thinkingEvent.content === null,
-            currentThinking: actions.streaming.thinking.substring(0, 50) + '...',
-          });
           if (!actions.streaming.isStreaming) {
             actions.startStreaming();
           }
@@ -440,11 +390,6 @@ export const useChatStore = create<ChatStore>()(
 
         case 'message_chunk': {
           const chunkEvent = event as MessageChunkEvent;
-          // DEBUG LOG: Track message chunks
-          console.log('[DEBUG LOG] [ChatStore] 📝 message_chunk:', {
-            content: chunkEvent.content?.substring(0, 50),
-            contentLength: chunkEvent.content?.length,
-          });
           if (!actions.streaming.isStreaming) {
             actions.startStreaming();
           }
@@ -454,13 +399,6 @@ export const useChatStore = create<ChatStore>()(
 
         case 'message': {
           const msgEvent = event as MessageEvent;
-          // DEBUG LOG: Track complete messages
-          console.log('[DEBUG LOG] [ChatStore] 💬 message:', {
-            messageId: msgEvent.messageId,
-            role: msgEvent.role,
-            contentLength: msgEvent.content?.length,
-            sequenceNumber: event.sequenceNumber,
-          });
           actions.endStreaming();
           actions.addMessage({
             type: 'standard',
@@ -483,13 +421,6 @@ export const useChatStore = create<ChatStore>()(
         case 'user_message_confirmed': {
           // Update optimistic message with confirmed data
           const confirmedEvent = event;
-          // DEBUG LOG: Track message confirmation
-          console.log('[DEBUG LOG] [ChatStore] ✅ user_message_confirmed:', {
-            eventId: confirmedEvent.eventId,
-            messageId: confirmedEvent.messageId,
-            tempId: `optimistic-${confirmedEvent.eventId}`,
-            sequenceNumber: confirmedEvent.sequenceNumber,
-          });
           actions.confirmOptimisticMessage(
             `optimistic-${confirmedEvent.eventId}`,
             {
@@ -507,15 +438,6 @@ export const useChatStore = create<ChatStore>()(
 
         case 'tool_use': {
           const toolEvent = event as ToolUseEvent;
-          // DEBUG LOG: Track tool execution start
-          console.log('[DEBUG LOG] [ChatStore] 🔧 tool_use:', {
-            toolUseId: toolEvent.toolUseId,
-            eventId: toolEvent.eventId,
-            toolName: toolEvent.toolName,
-            args: toolEvent.args,
-            sequenceNumber: event.sequenceNumber,
-            currentMessagesCount: actions.messages.length,
-          });
 
           // Add as a MESSAGE (not toolExecution) with sequence_number
           actions.addMessage({
@@ -537,48 +459,24 @@ export const useChatStore = create<ChatStore>()(
           const resultEvent = event as ToolResultEvent;
           const toolId = resultEvent.toolUseId || resultEvent.correlationId;
 
-          // DEBUG LOG: Track tool execution completion
-          console.log('[DEBUG LOG] [ChatStore] ✅ tool_result:', {
-            toolUseId: resultEvent.toolUseId,
-            correlationId: resultEvent.correlationId,
-            resolvedToolId: toolId,
-            success: resultEvent.success,
-            sequenceNumber: event.sequenceNumber,
-          });
-
           // Find the tool_use message and update it
           const toolMessage = actions.messages.find(
             m => m.type === 'tool_use' && m.tool_use_id === toolId
           );
 
           if (toolMessage) {
-            console.log('[DEBUG LOG] [ChatStore] 🔄 Updating tool message:', {
-              messageId: toolMessage.id,
-              previousStatus: (toolMessage as any).status,
-              newStatus: resultEvent.success ? 'success' : 'error',
-            });
-
             actions.updateMessage(toolMessage.id, {
               status: resultEvent.success ? 'success' : 'error',
               result: resultEvent.result,
               error_message: resultEvent.error,
               duration_ms: resultEvent.durationMs,
             } as Partial<Message>);
-          } else {
-            console.warn('[DEBUG LOG] [ChatStore] ⚠️ tool_result received but tool_use message not found:', {
-              toolId,
-              availableMessages: actions.messages.map(m => ({ id: m.id, type: m.type, tool_use_id: (m as any).tool_use_id })),
-            });
           }
           break;
         }
 
         case 'approval_requested': {
           const approvalEvent = event as ApprovalRequestedEvent;
-          console.log('[DEBUG LOG] [ChatStore] 🔔 approval_requested:', {
-            approvalId: approvalEvent.approvalId,
-            toolName: approvalEvent.toolName,
-          });
           actions.addPendingApproval({
             id: approvalEvent.approvalId,
             toolName: approvalEvent.toolName,
@@ -592,35 +490,26 @@ export const useChatStore = create<ChatStore>()(
         }
 
         case 'approval_resolved':
-          console.log('[DEBUG LOG] [ChatStore] ✅ approval_resolved:', {
-            approvalId: event.approvalId,
-          });
           actions.removePendingApproval(event.approvalId);
           break;
 
         case 'error':
-          console.log('[DEBUG LOG] [ChatStore] ❌ error:', {
-            error: event.error,
-          });
           actions.setError(event.error);
           actions.endStreaming();
           break;
 
         case 'complete':
         case 'session_end':
-          console.log('[DEBUG LOG] [ChatStore] 🏁 complete/session_end');
           actions.endStreaming();
           actions.setAgentBusy(false);
           break;
 
         case 'turn_paused':
-          console.log('[DEBUG LOG] [ChatStore] ⏸️ turn_paused');
           // Agent paused - keep busy but stop streaming
           actions.endStreaming();
           break;
 
         case 'content_refused':
-          console.log('[DEBUG LOG] [ChatStore] 🚫 content_refused');
           actions.setError('Content was refused due to policy violation');
           actions.endStreaming();
           break;

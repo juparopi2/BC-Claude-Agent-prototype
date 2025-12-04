@@ -442,6 +442,131 @@ export class SequenceValidator {
   }
 
   /**
+   * Validate multi-tool ordering - tool results should preserve Anthropic array order
+   *
+   * When Claude requests multiple tools in one response, the tool_use events are
+   * emitted in Anthropic's array order. The corresponding tool_result events should
+   * maintain the same order, regardless of how long each tool takes to execute.
+   *
+   * This is validated by checking that:
+   * 1. tool_use events have monotonically increasing sequence numbers
+   * 2. tool_result events have monotonically increasing sequence numbers
+   * 3. Each tool_result sequence is greater than its corresponding tool_use sequence
+   * 4. The tool_result order matches the tool_use order (by toolUseId)
+   */
+  static validateMultiToolOrdering(events: AgentEvent[]): ValidationResult & {
+    toolUseSequences: number[];
+    toolResultSequences: number[];
+    ordering: Array<{ toolUseId: string; toolUseSeq: number; toolResultSeq: number }>;
+  } {
+    const errors: string[] = [];
+    const warnings: string[] = [];
+
+    // Extract tool events with sequences
+    const toolUseEvents: Array<{ toolUseId: string; sequenceNumber: number; index: number }> = [];
+    const toolResultEvents: Array<{ toolUseId: string; sequenceNumber: number; index: number }> = [];
+
+    events.forEach((event, index) => {
+      const eventWithData = event as AgentEvent & { toolUseId?: string; sequenceNumber?: number };
+
+      if (event.type === 'tool_use' && eventWithData.toolUseId && eventWithData.sequenceNumber !== undefined) {
+        toolUseEvents.push({
+          toolUseId: eventWithData.toolUseId,
+          sequenceNumber: eventWithData.sequenceNumber,
+          index,
+        });
+      }
+
+      if (event.type === 'tool_result' && eventWithData.toolUseId && eventWithData.sequenceNumber !== undefined) {
+        toolResultEvents.push({
+          toolUseId: eventWithData.toolUseId,
+          sequenceNumber: eventWithData.sequenceNumber,
+          index,
+        });
+      }
+    });
+
+    const toolUseSequences = toolUseEvents.map(e => e.sequenceNumber);
+    const toolResultSequences = toolResultEvents.map(e => e.sequenceNumber);
+
+    // Validation 1: tool_use events have monotonically increasing sequences
+    for (let i = 1; i < toolUseEvents.length; i++) {
+      const prev = toolUseEvents[i - 1];
+      const curr = toolUseEvents[i];
+      if (prev && curr && curr.sequenceNumber <= prev.sequenceNumber) {
+        errors.push(
+          `tool_use sequence out of order: tool[${i}] has seq=${curr.sequenceNumber} ` +
+          `but tool[${i-1}] has seq=${prev.sequenceNumber}`
+        );
+      }
+    }
+
+    // Validation 2: tool_result events have monotonically increasing sequences
+    for (let i = 1; i < toolResultEvents.length; i++) {
+      const prev = toolResultEvents[i - 1];
+      const curr = toolResultEvents[i];
+      if (prev && curr && curr.sequenceNumber <= prev.sequenceNumber) {
+        errors.push(
+          `tool_result sequence out of order: result[${i}] has seq=${curr.sequenceNumber} ` +
+          `but result[${i-1}] has seq=${prev.sequenceNumber}`
+        );
+      }
+    }
+
+    // Build ordering map: match tool_use to tool_result by toolUseId
+    const ordering: Array<{ toolUseId: string; toolUseSeq: number; toolResultSeq: number }> = [];
+
+    for (const toolUse of toolUseEvents) {
+      const matchingResult = toolResultEvents.find(r => r.toolUseId === toolUse.toolUseId);
+      if (matchingResult) {
+        ordering.push({
+          toolUseId: toolUse.toolUseId,
+          toolUseSeq: toolUse.sequenceNumber,
+          toolResultSeq: matchingResult.sequenceNumber,
+        });
+
+        // Validation 3: tool_result sequence > tool_use sequence
+        if (matchingResult.sequenceNumber <= toolUse.sequenceNumber) {
+          errors.push(
+            `tool_result (seq=${matchingResult.sequenceNumber}) should have greater sequence ` +
+            `than its tool_use (seq=${toolUse.sequenceNumber}) for toolUseId=${toolUse.toolUseId}`
+          );
+        }
+      } else {
+        warnings.push(`tool_use ${toolUse.toolUseId} has no matching tool_result`);
+      }
+    }
+
+    // Validation 4: tool_result order matches tool_use order
+    // Sort both by their sequence numbers and check if toolUseId order matches
+    const toolUseOrder = [...toolUseEvents].sort((a, b) => a.sequenceNumber - b.sequenceNumber);
+    const toolResultOrder = [...toolResultEvents].sort((a, b) => a.sequenceNumber - b.sequenceNumber);
+
+    if (toolUseOrder.length === toolResultOrder.length && toolUseOrder.length > 1) {
+      for (let i = 0; i < toolUseOrder.length; i++) {
+        const expectedToolUseId = toolUseOrder[i]?.toolUseId;
+        const actualToolUseId = toolResultOrder[i]?.toolUseId;
+        if (expectedToolUseId !== actualToolUseId) {
+          errors.push(
+            `tool_result order mismatch at position ${i}: ` +
+            `expected toolUseId=${expectedToolUseId} but got ${actualToolUseId}. ` +
+            `This indicates a tool execution ordering bug.`
+          );
+        }
+      }
+    }
+
+    return {
+      valid: errors.length === 0,
+      errors,
+      warnings,
+      toolUseSequences,
+      toolResultSequences,
+      ordering,
+    };
+  }
+
+  /**
    * Get a summary of event types in order
    */
   static getEventSummary(events: AgentEvent[]): string[] {

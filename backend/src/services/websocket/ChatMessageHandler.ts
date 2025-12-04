@@ -317,6 +317,11 @@ export class ChatMessageHandler {
         console.log('✅ [ChatMessageHandler] Thinking event emitted to Socket.IO room:', sessionId);
       }
 
+      // DEBUG: Log message_chunk events to verify structure
+      if (event.type === 'message_chunk') {
+        console.log('[SOCKET_EMIT] MESSAGE_CHUNK:', JSON.stringify(event, null, 2));
+      }
+
       // Persist to database based on event type (type-safe discrimination)
       switch (event.type) {
         case 'session_start':

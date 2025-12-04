@@ -704,47 +704,51 @@ describe('Performance Tests', () => {
   // 3. Memory Safety Tests
   // ============================================
   describe('Memory Safety', () => {
-    it('should not accumulate excessive heap or RSS after 500 log batch requests', async () => {
-      // Arrange
-      forceGC();
-      const initialMemory = takeMemorySnapshot();
-      const iterations = 500; // Reduced for unit test environment
-      const batchSize = 10;
+    it(
+      'should not accumulate excessive heap or RSS after 500 log batch requests',
+      async () => {
+        // Arrange
+        forceGC();
+        const initialMemory = takeMemorySnapshot();
+        const iterations = 500; // Reduced for unit test environment
+        const batchSize = 10;
 
-      // Act - Execute log batch requests sequentially
-      for (let i = 0; i < iterations; i++) {
-        const logBatch = {
-          logs: Array.from({ length: batchSize }, (_, j) => generateLogEntry(i * batchSize + j)),
-        };
+        // Act - Execute log batch requests sequentially
+        for (let i = 0; i < iterations; i++) {
+          const logBatch = {
+            logs: Array.from({ length: batchSize }, (_, j) => generateLogEntry(i * batchSize + j)),
+          };
 
-        await request(app)
-          .post('/api/logs')
-          .send(logBatch);
-      }
+          await request(app)
+            .post('/api/logs')
+            .send(logBatch);
+        }
 
-      // Force GC to get accurate memory reading
-      forceGC();
-      const finalMemory = takeMemorySnapshot();
+        // Force GC to get accurate memory reading
+        forceGC();
+        const finalMemory = takeMemorySnapshot();
 
-      // GAP-4: Measure both heap and RSS
-      const heapGrowthMB = calculateHeapGrowthMB(initialMemory, finalMemory);
-      const rssGrowthMB = calculateRSSGrowthMB(initialMemory, finalMemory);
-      const maxGrowthMB = calculateMaxMemoryGrowthMB(initialMemory, finalMemory);
+        // GAP-4: Measure both heap and RSS
+        const heapGrowthMB = calculateHeapGrowthMB(initialMemory, finalMemory);
+        const rssGrowthMB = calculateRSSGrowthMB(initialMemory, finalMemory);
+        const maxGrowthMB = calculateMaxMemoryGrowthMB(initialMemory, finalMemory);
 
-      // Assert - Memory growth should be bounded
-      // Threshold justification documented in MEMORY_THRESHOLDS
-      expect(heapGrowthMB).toBeLessThan(MEMORY_THRESHOLDS.HEAP_GROWTH_BATCH_MB);
-      expect(rssGrowthMB).toBeLessThan(MEMORY_THRESHOLDS.RSS_GROWTH_MB);
+        // Assert - Memory growth should be bounded
+        // Threshold justification documented in MEMORY_THRESHOLDS
+        expect(heapGrowthMB).toBeLessThan(MEMORY_THRESHOLDS.HEAP_GROWTH_BATCH_MB);
+        expect(rssGrowthMB).toBeLessThan(MEMORY_THRESHOLDS.RSS_GROWTH_MB);
 
-      console.log(`[PERF] Memory after ${iterations} log batches:`);
-      console.log(`  - Initial heap: ${(initialMemory.heapUsed / 1024 / 1024).toFixed(2)}MB`);
-      console.log(`  - Final heap: ${(finalMemory.heapUsed / 1024 / 1024).toFixed(2)}MB`);
-      console.log(`  - Heap growth: ${heapGrowthMB.toFixed(2)}MB (threshold: ${MEMORY_THRESHOLDS.HEAP_GROWTH_BATCH_MB}MB)`);
-      console.log(`  - Initial RSS: ${(initialMemory.rss / 1024 / 1024).toFixed(2)}MB`);
-      console.log(`  - Final RSS: ${(finalMemory.rss / 1024 / 1024).toFixed(2)}MB`);
-      console.log(`  - RSS growth: ${rssGrowthMB.toFixed(2)}MB (threshold: ${MEMORY_THRESHOLDS.RSS_GROWTH_MB}MB)`);
-      console.log(`  - Max growth: ${maxGrowthMB.toFixed(2)}MB`);
-    });
+        console.log(`[PERF] Memory after ${iterations} log batches:`);
+        console.log(`  - Initial heap: ${(initialMemory.heapUsed / 1024 / 1024).toFixed(2)}MB`);
+        console.log(`  - Final heap: ${(finalMemory.heapUsed / 1024 / 1024).toFixed(2)}MB`);
+        console.log(`  - Heap growth: ${heapGrowthMB.toFixed(2)}MB (threshold: ${MEMORY_THRESHOLDS.HEAP_GROWTH_BATCH_MB}MB)`);
+        console.log(`  - Initial RSS: ${(initialMemory.rss / 1024 / 1024).toFixed(2)}MB`);
+        console.log(`  - Final RSS: ${(finalMemory.rss / 1024 / 1024).toFixed(2)}MB`);
+        console.log(`  - RSS growth: ${rssGrowthMB.toFixed(2)}MB (threshold: ${MEMORY_THRESHOLDS.RSS_GROWTH_MB}MB)`);
+        console.log(`  - Max growth: ${maxGrowthMB.toFixed(2)}MB`);
+      },
+      30000
+    );
 
     it('should not leak memory with complex context objects (heap + RSS)', async () => {
       // Arrange

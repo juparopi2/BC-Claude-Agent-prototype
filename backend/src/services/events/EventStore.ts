@@ -277,6 +277,84 @@ export class EventStore {
   }
 
   /**
+   * Append Event with Pre-Assigned Sequence
+   *
+   * Used when sequences have been pre-reserved via MessageOrderingService.
+   * This guarantees ordering even when async operations complete out-of-order.
+   *
+   * @param sessionId - Session ID
+   * @param eventType - Type of event
+   * @param data - Event data
+   * @param preAssignedSequence - Pre-reserved sequence number
+   * @returns Created event
+   */
+  public async appendEventWithSequence(
+    sessionId: string,
+    eventType: EventType,
+    data: Record<string, unknown>,
+    preAssignedSequence: number
+  ): Promise<BaseEvent> {
+    const db = getDatabase();
+    if (!db) {
+      throw new Error('Database not available');
+    }
+
+    try {
+      const eventId = randomUUID();
+      const timestamp = new Date();
+
+      logger.info({
+        sessionId,
+        eventType,
+        preAssignedSequence,
+      }, 'Appending event with pre-assigned sequence');
+
+      const params: SqlParams = {
+        id: eventId,
+        session_id: sessionId,
+        event_type: eventType,
+        sequence_number: preAssignedSequence,
+        timestamp: timestamp,
+        data: JSON.stringify(data),
+        processed: false,
+      };
+
+      await executeQuery(
+        `
+        INSERT INTO message_events (id, session_id, event_type, sequence_number, timestamp, data, processed)
+        VALUES (@id, @session_id, @event_type, @sequence_number, @timestamp, @data, @processed)
+        `,
+        params
+      );
+
+      logger.debug('Event appended with pre-assigned sequence', {
+        eventId,
+        sessionId,
+        eventType,
+        preAssignedSequence,
+      });
+
+      return {
+        id: eventId,
+        session_id: sessionId,
+        event_type: eventType,
+        sequence_number: preAssignedSequence,
+        timestamp,
+        data,
+        processed: false,
+      };
+    } catch (error) {
+      logger.error('Failed to append event with pre-assigned sequence', {
+        error,
+        sessionId,
+        eventType,
+        preAssignedSequence,
+      });
+      throw error;
+    }
+  }
+
+  /**
    * Get Events for Session
    *
    * Returns all events for a session, ordered by sequence number.

@@ -38,7 +38,7 @@ import type {
   SignatureDelta,
 } from '@anthropic-ai/sdk/resources/messages';
 import { env } from '@/config';
-import type { AgentEvent, AgentExecutionResult, CompleteEvent, ErrorEvent } from '@/types';
+import type { AgentEvent, AgentExecutionResult } from '@/types';
 import type { ApprovalManager } from '../approval/ApprovalManager';
 import type { TodoManager } from '../todo/TodoManager';
 import type { IAnthropicClient, SystemPromptBlock } from './IAnthropicClient';
@@ -49,6 +49,7 @@ import { getEventStore } from '../events/EventStore';
 import { getMessageService } from '../messages/MessageService';
 import { getMessageQueue } from '../queue/MessageQueue';
 import { getTokenUsageService } from '../token-usage/TokenUsageService';
+import { getMessageOrderingService, getMessageEmitter, type IMessageEmitter } from './messages';
 import { createChildLogger } from '@/utils/logger';
 import type { Logger } from 'pino';
 import * as fs from 'fs';
@@ -261,8 +262,13 @@ export class DirectAgentService {
   private approvalManager?: ApprovalManager;
   private mcpDataPath: string;
   private logger: Logger;
-  // Accumulator for tool data during streaming - prevents premature persistence with empty args
-  private toolDataAccumulators: Map<number, { name: string; id: string; args: string; sequenceNumber: number }> = new Map();
+  private emitter: IMessageEmitter;
+  private toolDataAccumulators: Map<number, {
+    name: string;
+    id: string;
+    args: string;
+    sequenceNumber?: number;
+  }> = new Map();
 
   constructor(
     approvalManager?: ApprovalManager,
@@ -282,6 +288,9 @@ export class DirectAgentService {
 
     // Initialize child logger with service context
     this.logger = createChildLogger({ service: 'DirectAgentService' });
+
+    // Initialize message emitter
+    this.emitter = getMessageEmitter();
   }
 
   /**
@@ -356,6 +365,12 @@ export class DirectAgentService {
         throw new Error('sessionId is required for executeQueryStreaming');
       }
 
+      // Set event callback for MessageEmitter
+      if (onEvent) {
+        // Cast AgentEvent callback to EmittableEvent callback - they are structurally compatible
+        this.emitter.setEventCallback(onEvent as (event: import('./messages').EmittableEvent) => void);
+      }
+
       // Step 1: Get MCP tools and convert to Anthropic format
       const tools = await this.getMCPToolDefinitions();
 
@@ -388,16 +403,11 @@ export class DirectAgentService {
       });
 
       // ✅ STEP 2: Emit AFTER with data from persisted event
-      if (onEvent) {
-        onEvent({
-          type: 'thinking',
-          timestamp: new Date(thinkingEvent.timestamp),
-          content: 'Analyzing your request...',
-          eventId: thinkingEvent.id,
-          sequenceNumber: thinkingEvent.sequence_number,
-          persistenceState: 'persisted', // ⭐ Mark as already persisted
-        });
-      }
+      this.emitter.emitThinking({
+        content: 'Analyzing your request...',
+        eventId: thinkingEvent.id,
+        sequenceNumber: thinkingEvent.sequence_number,
+      });
 
 
       // Step 3: Agentic Loop with Streaming
@@ -409,7 +419,6 @@ export class DirectAgentService {
       while (continueLoop && turnCount < maxTurns) {
         turnCount++;
         chunkCount = 0; // Reset chunk counter per turn
-        this.toolDataAccumulators.clear(); // Clear accumulator for clean state per turn
 
         console.log(`\n========== TURN ${turnCount} (STREAMING) ==========`);
 
@@ -602,18 +611,11 @@ export class DirectAgentService {
                 });
 
                 // ⭐ NEW FIX: Emit with persistenceState: 'pending' (not persisted yet)
-                if (onEvent) {
-                  onEvent({
-                    type: 'tool_use',
-                    toolName: event.content_block.name,
-                    toolUseId: toolUseId,  // ⭐ Use validated ID
-                    args: {}, // Will be populated in deltas
-                    timestamp: new Date(),
-                    eventId: randomUUID(),
-                    // ⭐ NO sequenceNumber yet - will be assigned in message_delta
-                    persistenceState: 'pending',
-                  });
-                }
+                this.emitter.emitToolUsePending({
+                  toolName: event.content_block.name,
+                  toolUseId: toolUseId,  // ⭐ Use validated ID
+                  blockIndex: event.index,
+                });
 
                 // ⭐ NOTE: Message persistence moved to content_block_stop to ensure complete tool_args
               }
@@ -648,14 +650,7 @@ export class DirectAgentService {
                     timestamp: new Date().toISOString(),
                   });
 
-                  onEvent({
-                    type: 'message_chunk',
-                    content: chunk,
-                    timestamp: new Date(),
-                    // ✅ NO sequenceNumber (chunks son transient)
-                    eventId: randomUUID(), // ⭐ Unique eventId per chunk
-                    persistenceState: 'transient', // ⭐ Marca como transient
-                  });
+                  this.emitter.emitMessageChunk(chunk, event.index);
                 }
 
                 console.log(`[STREAM] text_delta: index=${event.index}, chunk_len=${chunk.length}`);
@@ -668,21 +663,14 @@ export class DirectAgentService {
                   block.data = (block.data as string) + thinkingChunk;
 
                   // Emit thinking_chunk event (transient, for real-time display)
-                  if (onEvent && thinkingChunk) {
+                  if (thinkingChunk) {
                     this.logger.debug('🧠 [THINKING] Emitting thinking_chunk (transient)', {
                       sessionId,
                       turnCount,
                       chunkLength: thinkingChunk.length,
                     });
 
-                    onEvent({
-                      type: 'thinking_chunk',
-                      content: thinkingChunk,
-                      blockIndex: event.index,
-                      timestamp: new Date(),
-                      eventId: randomUUID(),
-                      persistenceState: 'transient', // Thinking chunks are transient
-                    });
+                    this.emitter.emitThinkingChunk(thinkingChunk, event.index);
                   }
 
                   console.log(`[STREAM] thinking_delta: index=${event.index}, chunk_len=${thinkingChunk.length}`);
@@ -1035,25 +1023,21 @@ export class DirectAgentService {
                 }, '✅ [BATCH_PERSIST] Text block persisted');
 
                 // Emit WebSocket event with persistence confirmation
-                if (onEvent) {
-                  onEvent({
-                    type: 'message',
-                    messageId: messageId || `text_${textEvent.id}`,
-                    content: textContent,
-                    role: 'assistant',
-                    stopReason: (stopReason as 'end_turn' | 'tool_use' | 'max_tokens') || undefined,
-                    timestamp: new Date(textEvent.timestamp),
-                    eventId: textEvent.id,
-                    sequenceNumber: textEvent.sequence_number,
-                    persistenceState: 'persisted',
-                    tokenUsage: {
-                      inputTokens,
-                      outputTokens,
-                      thinkingTokens: thinkingTokens > 0 ? thinkingTokens : undefined,
-                    },
-                    model: modelName,
-                  });
-                }
+                this.emitter.emitMessage({
+                  messageId: messageId || `text_${textEvent.id}`,
+                  content: textContent,
+                  role: 'assistant',
+                  stopReason: (stopReason as 'end_turn' | 'tool_use' | 'max_tokens') || undefined,
+                  eventId: textEvent.id,
+                  sequenceNumber: textEvent.sequence_number,
+                  tokenUsage: {
+                    inputTokens,
+                    outputTokens,
+                    cacheCreationInputTokens: cacheCreationInputTokens > 0 ? cacheCreationInputTokens : undefined,
+                    cacheReadInputTokens: cacheReadInputTokens > 0 ? cacheReadInputTokens : undefined,
+                  },
+                  model: modelName,
+                });
               }
             } else if (block.type === 'tool_use') {
               const toolData = block.data as { id: string; name: string; input: Record<string, unknown> };
@@ -1114,18 +1098,14 @@ export class DirectAgentService {
                 }, '✅ [BATCH_PERSIST] Tool use block persisted');
 
                 // Emit WebSocket event with persistence confirmation
-                if (onEvent) {
-                  onEvent({
-                    type: 'tool_use',
-                    toolName: toolData.name,
-                    toolUseId: toolData.id,
-                    args: parsedArgs,
-                    timestamp: new Date(toolEvent.timestamp),
-                    eventId: toolEvent.id,
-                    sequenceNumber: toolEvent.sequence_number,
-                    persistenceState: 'persisted',
-                  });
-                }
+                this.emitter.emitToolUse({
+                  toolName: toolData.name,
+                  toolUseId: toolData.id,
+                  args: parsedArgs,
+                  blockIndex: blockIndex,
+                  eventId: toolEvent.id,
+                  sequenceNumber: toolEvent.sequence_number,
+                });
 
                 // Clean up accumulator
                 this.toolDataAccumulators.delete(blockIndex);
@@ -1234,10 +1214,28 @@ export class DirectAgentService {
           // Execute all tool calls
           const toolResults: ToolResult[] = [];
 
+          // ⭐ FIX: Pre-reserve sequences BEFORE tool execution to guarantee ordering
+          // This ensures tool results appear in the correct order regardless of execution time
+          const orderingService = getMessageOrderingService();
+          const reservedSequences = await orderingService.reserveSequenceBatch(
+            sessionId,
+            toolUses.length
+          );
+
+          this.logger.info({
+            sessionId,
+            turnCount,
+            toolCount: toolUses.length,
+            reservedSequences: reservedSequences.sequences,
+          }, '🔢 [ORDERING] Pre-reserved sequences for tool results');
+
           // Delay to allow DB saves to complete
           await new Promise(resolve => setTimeout(resolve, 600));
 
-          for (const toolUse of toolUses) {
+          for (let toolIndex = 0; toolIndex < toolUses.length; toolIndex++) {
+            const toolUse = toolUses[toolIndex]!;
+            const preAssignedSequence = reservedSequences.sequences[toolIndex]!;
+
             toolsUsed.push(toolUse.name);
 
             // ⭐ TRACING POINT 5: Inicio del tool execution loop
@@ -1307,10 +1305,12 @@ export class DirectAgentService {
                 resultType: typeof result,
                 resultPreview: typeof result === 'string' ? result.substring(0, 100) : JSON.stringify(result).substring(0, 100),
                 success: true,
+                preAssignedSequence,
+                toolIndex,
               }, '🔍 [TRACE 6/8] Tool executed, before appendEvent');
 
-              // ✅ FIX PHASE 2: Persist tool_result event BEFORE emitting
-              const toolResultEvent = await eventStore.appendEvent(
+              // ⭐ FIX: Use pre-assigned sequence for correct ordering
+              const toolResultEvent = await eventStore.appendEventWithSequence(
                 sessionId,
                 'tool_use_completed',
                 {
@@ -1319,8 +1319,17 @@ export class DirectAgentService {
                   tool_result: result,
                   success: true,
                   error_message: null,
-                }
+                },
+                preAssignedSequence  // ⭐ Use pre-assigned sequence!
               );
+
+              this.logger.info({
+                sessionId,
+                toolUseId: validatedToolExecutionId,
+                toolName: toolUse.name,
+                sequenceNumber: preAssignedSequence,
+                toolIndex,
+              }, '🔢 [ORDERING] Tool result using pre-assigned sequence');
 
               this.logger.info('✅ Tool result event appended to EventStore', {
                 sessionId,
@@ -1332,20 +1341,15 @@ export class DirectAgentService {
               });
 
               // ✅ STEP 2: Emit AFTER with data from persisted event
-              if (onEvent) {
-                onEvent({
-                  type: 'tool_result',
-                  toolName: toolUse.name,
-                  toolUseId: validatedToolExecutionId,  // ⭐ Use validated ID
-                  args: toolUse.input as Record<string, unknown>,
-                  result: result,
-                  success: true,
-                  timestamp: new Date(toolResultEvent.timestamp),
-                  eventId: toolResultEvent.id,
-                  sequenceNumber: toolResultEvent.sequence_number,
-                  persistenceState: 'persisted',
-                });
-              }
+              this.emitter.emitToolResult({
+                toolName: toolUse.name,
+                toolUseId: validatedToolExecutionId,  // ⭐ Use validated ID
+                args: toolUse.input as Record<string, unknown>,
+                result: result,
+                success: true,
+                eventId: toolResultEvent.id,
+                sequenceNumber: toolResultEvent.sequence_number,
+              });
 
               // ✅ STEP 3: Update messages table (NO generate new sequence)
               if (userId) {
@@ -1423,9 +1427,9 @@ export class DirectAgentService {
             } catch (error) {
               console.error(`[DirectAgentService] Tool execution failed:`, error);
 
-              // ✅ FIX PHASE 2: Persist tool_result event BEFORE emitting (ERROR case)
+              // ⭐ FIX: Use pre-assigned sequence even for errors!
               const errorMessage = error instanceof Error ? error.message : String(error);
-              const toolResultEvent = await eventStore.appendEvent(
+              const toolResultEvent = await eventStore.appendEventWithSequence(
                 sessionId,
                 'tool_use_completed',
                 {
@@ -1434,7 +1438,8 @@ export class DirectAgentService {
                   tool_result: null,
                   success: false,
                   error_message: errorMessage,
-                }
+                },
+                preAssignedSequence  // ⭐ Use pre-assigned sequence even for errors!
               );
 
               this.logger.error('❌ Tool result event (error) appended to EventStore', {
@@ -1444,25 +1449,30 @@ export class DirectAgentService {
                 success: false,
                 error: errorMessage,
                 eventId: toolResultEvent.id,
-                sequenceNumber: toolResultEvent.sequence_number,
+                sequenceNumber: preAssignedSequence,
+                toolIndex,
               });
 
+              this.logger.info({
+                sessionId,
+                toolUseId: validatedToolExecutionId,
+                toolName: toolUse.name,
+                sequenceNumber: preAssignedSequence,
+                toolIndex,
+                error: errorMessage,
+              }, '🔢 [ORDERING] Tool error using pre-assigned sequence');
+
               // ✅ STEP 2: Emit AFTER with data from persisted event
-              if (onEvent) {
-                onEvent({
-                  type: 'tool_result',
-                  toolName: toolUse.name,
-                  toolUseId: validatedToolExecutionId,  // ⭐ Use validated ID
-                  args: toolUse.input as Record<string, unknown>,
-                  result: null,
-                  success: false,
-                  error: errorMessage,
-                  timestamp: new Date(toolResultEvent.timestamp),
-                  eventId: toolResultEvent.id,
-                  sequenceNumber: toolResultEvent.sequence_number,
-                  persistenceState: 'persisted',
-                });
-              }
+              this.emitter.emitToolResult({
+                toolName: toolUse.name,
+                toolUseId: validatedToolExecutionId,  // ⭐ Use validated ID
+                args: toolUse.input as Record<string, unknown>,
+                result: null,
+                success: false,
+                error: errorMessage,
+                eventId: toolResultEvent.id,
+                sequenceNumber: toolResultEvent.sequence_number,
+              });
 
               // ✅ STEP 3: Update messages table (NO generate new sequence)
               if (userId) {
@@ -1547,20 +1557,18 @@ export class DirectAgentService {
             }
           );
 
-          if (onEvent) {
-            // ⭐ PHASE 1B: Use event ID as message ID for system-generated messages
-            onEvent({
-              type: 'message',
-              messageId: `system_max_tokens_${warningEvent.id}`,  // ⭐ PHASE 1B: Derived from event ID
-              content: '[Response truncated - reached max tokens]',
-              role: 'assistant',
-              timestamp: new Date(warningEvent.timestamp),
-              eventId: warningEvent.id,
-              sequenceNumber: warningEvent.sequence_number,
-              persistenceState: 'persisted',
-            });
-            accumulatedResponses.push('[Response truncated - reached max tokens]');
-          }
+          // ⭐ PHASE 1B: Use event ID as message ID for system-generated messages
+          this.emitter.emitMessage({
+            messageId: `system_max_tokens_${warningEvent.id}`,  // ⭐ PHASE 1B: Derived from event ID
+            content: '[Response truncated - reached max tokens]',
+            role: 'assistant',
+            eventId: warningEvent.id,
+            sequenceNumber: warningEvent.sequence_number,
+            metadata: {
+              type: 'max_tokens_warning',
+            },
+          });
+          accumulatedResponses.push('[Response truncated - reached max tokens]');
           continueLoop = false;
         } else if (stopReason === 'stop_sequence') {
           // ⭐ SDK 0.71: Custom stop sequence was hit
@@ -1579,19 +1587,17 @@ export class DirectAgentService {
             }
           );
 
-          if (onEvent) {
-            onEvent({
-              type: 'message',
-              messageId: messageId || `system_stop_sequence_${stopSeqEvent.id}`,
-              content: accumulatedText || '[Stopped at custom sequence]',
-              role: 'assistant',
-              stopReason: 'stop_sequence',
-              timestamp: new Date(stopSeqEvent.timestamp),
-              eventId: stopSeqEvent.id,
-              sequenceNumber: stopSeqEvent.sequence_number,
-              persistenceState: 'persisted',
-            });
-          }
+          this.emitter.emitMessage({
+            messageId: messageId || `system_stop_sequence_${stopSeqEvent.id}`,
+            content: accumulatedText || '[Stopped at custom sequence]',
+            role: 'assistant',
+            stopReason: 'stop_sequence',
+            eventId: stopSeqEvent.id,
+            sequenceNumber: stopSeqEvent.sequence_number,
+            metadata: {
+              type: 'stop_sequence',
+            },
+          });
           continueLoop = false;
         } else if (stopReason === 'pause_turn') {
           // ⭐ SDK 0.71: Long agentic turn was paused
@@ -1611,19 +1617,13 @@ export class DirectAgentService {
             }
           );
 
-          if (onEvent) {
-            // Emit specific turn_paused event for frontend handling
-            onEvent({
-              type: 'turn_paused',
-              messageId: messageId || `system_pause_turn_${pauseEvent.id}`,
-              content: accumulatedText,
-              reason: 'Long-running turn was paused by Claude. The conversation can be continued.',
-              timestamp: new Date(pauseEvent.timestamp),
-              eventId: pauseEvent.id,
-              sequenceNumber: pauseEvent.sequence_number,
-              persistenceState: 'persisted',
-            });
-          }
+          // Emit specific turn_paused event for frontend handling
+          this.emitter.emitTurnPaused({
+            reason: 'Long-running turn was paused by Claude. The conversation can be continued.',
+            turnCount: turnCount,
+            eventId: pauseEvent.id,
+            sequenceNumber: pauseEvent.sequence_number,
+          });
           continueLoop = false;
         } else if (stopReason === 'refusal') {
           // ⭐ SDK 0.71: Claude refused to generate content due to policy
@@ -1643,19 +1643,12 @@ export class DirectAgentService {
             }
           );
 
-          if (onEvent) {
-            // Emit specific content_refused event for frontend handling
-            onEvent({
-              type: 'content_refused',
-              messageId: messageId || `system_refusal_${refusalEvent.id}`,
-              content: accumulatedText,
-              reason: 'Claude declined to generate this content due to usage policies.',
-              timestamp: new Date(refusalEvent.timestamp),
-              eventId: refusalEvent.id,
-              sequenceNumber: refusalEvent.sequence_number,
-              persistenceState: 'persisted',
-            });
-          }
+          // Emit specific content_refused event for frontend handling
+          this.emitter.emitContentRefused({
+            reason: 'Claude declined to generate this content due to usage policies.',
+            eventId: refusalEvent.id,
+            sequenceNumber: refusalEvent.sequence_number,
+          });
           continueLoop = false;
         } else {
           // Unknown stop reason - log and terminate safely
@@ -1679,34 +1672,29 @@ export class DirectAgentService {
           }
         );
 
-        if (onEvent) {
-          // ⭐ PHASE 1B: Use event ID as message ID for system-generated messages
-          onEvent({
-            type: 'message',
-            messageId: `system_max_turns_${maxTurnsEvent.id}`,  // ⭐ PHASE 1B: Derived from event ID
-            content: '[Execution stopped - reached maximum turns]',
-            role: 'assistant',
-            timestamp: new Date(maxTurnsEvent.timestamp),
-            eventId: maxTurnsEvent.id,
-            sequenceNumber: maxTurnsEvent.sequence_number,
-            persistenceState: 'persisted',
-          });
-          accumulatedResponses.push('[Execution stopped - reached maximum turns]');
-        }
+        // ⭐ PHASE 1B: Use event ID as message ID for system-generated messages
+        this.emitter.emitMessage({
+          messageId: `system_max_turns_${maxTurnsEvent.id}`,  // ⭐ PHASE 1B: Derived from event ID
+          content: '[Execution stopped - reached maximum turns]',
+          role: 'assistant',
+          eventId: maxTurnsEvent.id,
+          sequenceNumber: maxTurnsEvent.sequence_number,
+          metadata: {
+            type: 'max_turns_warning',
+          },
+        });
+        accumulatedResponses.push('[Execution stopped - reached maximum turns]');
       }
 
       const duration = Date.now() - startTime;
 
       // ✅ FIX PHASE 4: Send completion event (transient - not persisted)
-      if (onEvent) {
-        onEvent({
-          type: 'complete',
-          reason: 'success',
-          timestamp: new Date(),
-          eventId: randomUUID(),
-          persistenceState: 'transient', // ⭐ System event, not persisted
-        } as CompleteEvent);
-      }
+      this.emitter.emitComplete('end_turn', {
+        inputTokens,
+        outputTokens,
+        cacheCreationInputTokens: cacheCreationInputTokens > 0 ? cacheCreationInputTokens : undefined,
+        cacheReadInputTokens: cacheReadInputTokens > 0 ? cacheReadInputTokens : undefined,
+      });
 
       return {
         success: true,
@@ -1723,15 +1711,10 @@ export class DirectAgentService {
       console.error(`[DirectAgentService] Streaming query execution failed:`, error);
 
       // ✅ FIX PHASE 4: Send error event (transient - not persisted)
-      if (onEvent && sessionId) {
-        onEvent({
-          type: 'error',
-          error: error instanceof Error ? error.message : String(error),
-          timestamp: new Date(),
-          eventId: randomUUID(),
-          persistenceState: 'transient', // ⭐ System event, not persisted
-        } as ErrorEvent);
-      }
+      this.emitter.emitError(
+        error instanceof Error ? error.message : String(error),
+        'EXECUTION_ERROR'
+      );
 
       return {
         success: false,
@@ -1742,6 +1725,9 @@ export class DirectAgentService {
         inputTokens,
         outputTokens,
       };
+    } finally {
+      // Always clear the event callback when done
+      this.emitter.clearEventCallback();
     }
   }
 

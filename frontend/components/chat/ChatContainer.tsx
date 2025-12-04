@@ -109,10 +109,10 @@ export default function ChatContainer() {
           return <MessageBubble key={message.id} message={message} />;
         })}
 
-        {streaming.isStreaming && (
+        {streaming.isStreaming && streaming.content.length > 0 && (
           <StreamingMessage
             content={streaming.content}
-            thinking={streaming.thinking}
+            thinking=""
           />
         )}
 

@@ -1,27 +1,46 @@
 'use client';
 
+import { useState, useEffect, useRef } from 'react';
 import { Folder, Database, Link, Upload, Cloud } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 
 export default function RightPanel() {
+  const [panelWidth, setPanelWidth] = useState<number>(Infinity);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!panelRef.current) return;
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setPanelWidth(entry.contentRect.width);
+      }
+    });
+
+    observer.observe(panelRef.current);
+    return () => observer.disconnect();
+  }, []); 
+
+  const isNarrow = panelWidth < 280;
+
   return (
-    <div className="h-full flex flex-col">
+    <div ref={panelRef} className="h-full flex flex-col">
       <Tabs defaultValue="files" className="flex-1 flex flex-col">
         {/* Tabs Navigation */}
         <TabsList className="w-full">
           <TabsTrigger value="files" className="flex-1">
             <Folder />
-            Files
+            {!isNarrow && 'Files'}
           </TabsTrigger>
           <TabsTrigger value="entities" className="flex-1">
             <Database />
-            Entities
+            {!isNarrow && 'Entities'}
           </TabsTrigger>
           <TabsTrigger value="connections" className="flex-1">
             <Link />
-            Connections
+            {!isNarrow && 'Connections'}
           </TabsTrigger>
         </TabsList>
 

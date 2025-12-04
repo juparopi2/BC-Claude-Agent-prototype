@@ -6,6 +6,37 @@ import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Wrench, ChevronRight, ChevronDown, Clock, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import JsonView from '@uiw/react-json-view';
+import { lightTheme } from '@uiw/react-json-view/light';
+import { darkTheme } from '@uiw/react-json-view/dark';
+import { useTheme } from 'next-themes';
+
+/**
+ * Try to parse JSON strings recursively
+ * @param value - Value to parse (can be string, object, or primitive)
+ * @returns Parsed object or wrapped value
+ */
+function tryParseJSON(value: unknown): object {
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      // If parsed is an object, return it
+      if (parsed && typeof parsed === 'object') {
+        return parsed;
+      }
+    } catch {
+      // Not valid JSON, will wrap below
+    }
+  }
+
+  // If value is already an object, return it
+  if (typeof value === 'object' && value !== null) {
+    return value;
+  }
+
+  // Wrap primitives or invalid JSON strings in object
+  return { result: value };
+}
 
 interface ToolCardProps {
   toolName: string;
@@ -25,6 +56,7 @@ export function ToolCard({
   durationMs,
 }: ToolCardProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const { theme } = useTheme();
 
   // Extract values
   const displayName = toolName;
@@ -117,9 +149,14 @@ export function ToolCard({
             {Object.keys(displayArgs).length > 0 && (
               <div className="p-2 bg-muted rounded-lg">
                 <div className="text-xs font-medium text-muted-foreground mb-1">Input</div>
-                <pre className="text-xs overflow-auto max-h-32">
-                  {JSON.stringify(displayArgs, null, 2)}
-                </pre>
+                <JsonView
+                  value={displayArgs}
+                  style={theme === 'dark' ? darkTheme : lightTheme}
+                  collapsed={Object.keys(displayArgs).length > 10}
+                  displayDataTypes={false}
+                  displayObjectSize={true}
+                  enableClipboard={true}
+                />
               </div>
             )}
 
@@ -127,9 +164,14 @@ export function ToolCard({
             {displayStatus === 'completed' && displayResult !== undefined && (
               <div className="p-2 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 rounded-lg">
                 <div className="text-xs font-medium text-emerald-700 dark:text-emerald-300 mb-1">Result</div>
-                <pre className="text-xs overflow-auto max-h-48">
-                  {typeof displayResult === 'string' ? displayResult : JSON.stringify(displayResult, null, 2)}
-                </pre>
+                <JsonView
+                  value={tryParseJSON(displayResult)}
+                  style={theme === 'dark' ? darkTheme : lightTheme}
+                  collapsed={2}
+                  displayDataTypes={false}
+                  displayObjectSize={true}
+                  enableClipboard={true}
+                />
               </div>
             )}
 

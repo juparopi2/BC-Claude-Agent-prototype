@@ -12,16 +12,32 @@
  */
 
 import { ThinkingDisplay } from './ThinkingDisplay';
+import { MarkdownRenderer } from './MarkdownRenderer';
 import { isThinkingMessage, isStandardMessage, isToolResultMessage, type Message } from '@bc-agent/shared';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { User, Bot } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAuthStore, selectUserInitials } from '@/lib/stores/authStore';
+
+/**
+ * Format token count with K suffix for thousands
+ * @param count - Token count to format
+ * @returns Formatted string (e.g., "1.2K" or "123")
+ */
+function formatTokenCount(count: number): string {
+  if (count >= 1000) {
+    return `${(count / 1000).toFixed(1)}K`;
+  }
+  return count.toString();
+}
 
 interface MessageBubbleProps {
   message: Message;
 }
 
 export default function MessageBubble({ message }: MessageBubbleProps) {
+  const userInitials = useAuthStore(selectUserInitials);
+
   // Handle thinking messages with unified ThinkingDisplay component
   // PHASE 4.6: Consistent amber styling for both streaming and persisted
   if (isThinkingMessage(message)) {
@@ -63,7 +79,11 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
             isUser ? 'bg-primary text-primary-foreground' : 'bg-muted'
           )}
         >
-          {isUser ? <User className="size-4" /> : <Bot className="size-4" />}
+          {isUser ? (
+            <span className="text-xs font-semibold">{userInitials}</span>
+          ) : (
+            <Bot className="size-4" />
+          )}
         </AvatarFallback>
       </Avatar>
 
@@ -74,15 +94,17 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
             isUser ? 'bg-primary text-primary-foreground' : 'bg-muted'
           )}
         >
-          <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+          <MarkdownRenderer content={message.content} />
         </div>
 
         {/* Token usage display for assistant messages */}
         {!isUser && message.token_usage && (
           <div className="flex items-center gap-2 px-2 text-xs text-muted-foreground">
             <span>
-              {message.token_usage.input_tokens} in •{' '}
-              {message.token_usage.output_tokens} out
+              {formatTokenCount(
+                message.token_usage.input_tokens + message.token_usage.output_tokens
+              )}{' '}
+              Tokens
             </span>
           </div>
         )}

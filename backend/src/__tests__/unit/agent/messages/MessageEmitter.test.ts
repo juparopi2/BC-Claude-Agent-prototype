@@ -89,7 +89,7 @@ describe('MessageEmitter', () => {
       expect(capturedEvents).toHaveLength(1);
       const event = capturedEvents[0];
       expect(event.type).toBe('thinking_chunk');
-      expect(event.chunk).toBe('Thinking...');
+      expect(event.content).toBe('Thinking...'); // Use 'content' to match ThinkingChunkEvent interface
       expect(event.blockIndex).toBe(1);
       expect(event.persistenceState).toBe('transient');
       expect(event.sequenceNumber).toBeUndefined();

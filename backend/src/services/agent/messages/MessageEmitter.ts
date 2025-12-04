@@ -160,7 +160,7 @@ export class MessageEmitter implements IMessageEmitter {
    */
   emitThinkingChunk(chunk: string, blockIndex: number): void {
     const event = this.createTransientEvent('thinking_chunk', {
-      chunk,
+      content: chunk,
       blockIndex,
     });
     logger.trace({ blockIndex, chunkLength: chunk.length }, 'Emitting thinking chunk');

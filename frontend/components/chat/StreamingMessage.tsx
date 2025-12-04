@@ -34,7 +34,7 @@ export default function StreamingMessage({ content, thinking }: StreamingMessage
       {/* Thinking content - use unified ThinkingDisplay with amber styling */}
       {hasThinking && (
         <ThinkingDisplay
-          content={thinking}
+          content={thinking ?? ''}
           isStreaming={true}
           defaultOpen={true}
         />

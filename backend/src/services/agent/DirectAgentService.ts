@@ -1229,8 +1229,9 @@ export class DirectAgentService {
             reservedSequences: reservedSequences.sequences,
           }, '🔢 [ORDERING] Pre-reserved sequences for tool results');
 
-          // Delay to allow DB saves to complete
-          await new Promise(resolve => setTimeout(resolve, 600));
+          // Delay to allow DB saves to complete (increased from 600ms to 1000ms for better reliability)
+          // This ensures MessageQueue worker has enough time to persist messages before frontend queries
+          await new Promise(resolve => setTimeout(resolve, 1000));
 
           for (let toolIndex = 0; toolIndex < toolUses.length; toolIndex++) {
             const toolUse = toolUses[toolIndex]!;

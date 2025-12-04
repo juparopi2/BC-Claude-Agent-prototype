@@ -85,7 +85,7 @@ export function ThinkingDisplay({
         <CollapsibleContent>
           <div className="mt-2 p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg max-h-96 overflow-y-auto">
             <pre className="text-sm whitespace-pre-wrap font-mono text-amber-900 dark:text-amber-100">
-              {content}
+              {content || ''}
               {isStreaming && (
                 <span className="inline-block w-0.5 h-4 bg-amber-500 ml-0.5 animate-pulse">
                   |

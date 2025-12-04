@@ -167,13 +167,41 @@ export const useChatStore = create<ChatStore>()(
     // ========================================
     // Message management
     // ========================================
-    setMessages: (messages) => set({ messages }),
+    setMessages: (messages) => {
+      // Clear streaming tools if persisted messages contain tool_use messages
+      // This prevents duplicates - once tools are persisted, remove from streaming state
+      const hasToolUseMessages = messages.some(
+        (m) => m.type === 'tool_use' || m.type === 'tool_result'
+      );
+
+      set((state) => ({
+        messages,
+        // Only clear toolExecutions if we have persisted tool messages
+        toolExecutions: hasToolUseMessages ? new Map() : state.toolExecutions,
+      }));
+    },
 
     addMessage: (message) =>
       set((state) => ({
-        messages: [...state.messages, message].sort(
-          (a, b) => a.sequence_number - b.sequence_number
-        ),
+        messages: [...state.messages, message].sort((a, b) => {
+          // Primary sort: sequence_number (if both have valid values)
+          const seqA = a.sequence_number ?? 0;
+          const seqB = b.sequence_number ?? 0;
+
+          // If both have real sequence numbers (> 0), sort by them
+          if (seqA > 0 && seqB > 0) {
+            return seqA - seqB;
+          }
+
+          // If only one has a real sequence number, prioritize it
+          if (seqA > 0) return 1;  // a goes after b
+          if (seqB > 0) return -1; // b goes after a
+
+          // Both are optimistic (sequence 0 or undefined) - sort by timestamp
+          const timeA = new Date(a.created_at).getTime();
+          const timeB = new Date(b.created_at).getTime();
+          return timeA - timeB;
+        }),
       })),
 
     addOptimisticMessage: (tempId, message) =>
@@ -208,9 +236,25 @@ export const useChatStore = create<ChatStore>()(
 
         return {
           optimisticMessages: newOptimistic,
-          messages: [...state.messages, confirmedMessage].sort(
-            (a, b) => a.sequence_number - b.sequence_number
-          ),
+          messages: [...state.messages, confirmedMessage].sort((a, b) => {
+            // Primary sort: sequence_number (if both have valid values)
+            const seqA = a.sequence_number ?? 0;
+            const seqB = b.sequence_number ?? 0;
+
+            // If both have real sequence numbers (> 0), sort by them
+            if (seqA > 0 && seqB > 0) {
+              return seqA - seqB;
+            }
+
+            // If only one has a real sequence number, prioritize it
+            if (seqA > 0) return 1;  // a goes after b
+            if (seqB > 0) return -1; // b goes after a
+
+            // Both are optimistic (sequence 0 or undefined) - sort by timestamp
+            const timeA = new Date(a.created_at).getTime();
+            const timeB = new Date(b.created_at).getTime();
+            return timeA - timeB;
+          }),
         };
       }),
 
@@ -477,9 +521,25 @@ export const useChatStore = create<ChatStore>()(
  */
 export const selectAllMessages = (state: ChatStore): Message[] => {
   const optimisticArray = Array.from(state.optimisticMessages.values());
-  return [...state.messages, ...optimisticArray].sort(
-    (a, b) => a.sequence_number - b.sequence_number
-  );
+  return [...state.messages, ...optimisticArray].sort((a, b) => {
+    // Primary sort: sequence_number (if both have valid values)
+    const seqA = a.sequence_number ?? 0;
+    const seqB = b.sequence_number ?? 0;
+
+    // If both have real sequence numbers (> 0), sort by them
+    if (seqA > 0 && seqB > 0) {
+      return seqA - seqB;
+    }
+
+    // If only one has a real sequence number, prioritize it
+    if (seqA > 0) return 1;  // a goes after b
+    if (seqB > 0) return -1; // b goes after a
+
+    // Both are optimistic (sequence 0 or undefined) - sort by timestamp
+    const timeA = new Date(a.created_at).getTime();
+    const timeB = new Date(b.created_at).getTime();
+    return timeA - timeB;
+  });
 };
 
 /**

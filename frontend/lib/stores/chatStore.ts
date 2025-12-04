@@ -52,21 +52,6 @@ export interface PendingApproval {
 }
 
 /**
- * Tool execution state
- */
-export interface ToolExecution {
-  id: string;
-  toolName: string;
-  args: Record<string, unknown>;
-  status: 'pending' | 'running' | 'completed' | 'failed';
-  result?: unknown;
-  error?: string;
-  startedAt: Date;
-  completedAt?: Date;
-  durationMs?: number;
-}
-
-/**
  * Chat store state
  */
 export interface ChatState {
@@ -79,9 +64,6 @@ export interface ChatState {
 
   // Approvals
   pendingApprovals: Map<string, PendingApproval>;
-
-  // Tools
-  toolExecutions: Map<string, ToolExecution>;
 
   // Status
   isLoading: boolean;
@@ -99,6 +81,7 @@ export interface ChatActions {
   // Message management
   setMessages: (messages: Message[]) => void;
   addMessage: (message: Message) => void;
+  updateMessage: (messageId: string, updates: Partial<Message>) => void;
   addOptimisticMessage: (tempId: string, message: Message) => void;
   confirmOptimisticMessage: (tempId: string, confirmedMessage: Message) => void;
   removeOptimisticMessage: (tempId: string) => void;
@@ -114,11 +97,6 @@ export interface ChatActions {
   addPendingApproval: (approval: PendingApproval) => void;
   removePendingApproval: (approvalId: string) => void;
   clearPendingApprovals: () => void;
-
-  // Tools
-  addToolExecution: (tool: ToolExecution) => void;
-  updateToolExecution: (id: string, update: Partial<ToolExecution>) => void;
-  clearToolExecutions: () => void;
 
   // Status
   setLoading: (loading: boolean) => void;
@@ -150,7 +128,6 @@ const initialState: ChatState = {
     capturedThinking: null,
   },
   pendingApprovals: new Map(),
-  toolExecutions: new Map(),
   isLoading: false,
   isAgentBusy: false,
   error: null,
@@ -168,17 +145,17 @@ export const useChatStore = create<ChatStore>()(
     // Message management
     // ========================================
     setMessages: (messages) => {
-      // Clear streaming tools if persisted messages contain tool_use messages
-      // This prevents duplicates - once tools are persisted, remove from streaming state
-      const hasToolUseMessages = messages.some(
-        (m) => m.type === 'tool_use' || m.type === 'tool_result'
-      );
+      // DEBUG LOG: Track message setting
+      console.log('[DEBUG LOG] [ChatStore] 📨 setMessages:', {
+        incomingCount: messages.length,
+        toolUseMessages: messages.filter(m => m.type === 'tool_use').map(m => ({
+          id: m.id,
+          tool_name: (m as any).tool_name,
+          sequence_number: m.sequence_number,
+        })),
+      });
 
-      set((state) => ({
-        messages,
-        // Only clear toolExecutions if we have persisted tool messages
-        toolExecutions: hasToolUseMessages ? new Map() : state.toolExecutions,
-      }));
+      set({ messages });
     },
 
     addMessage: (message) =>
@@ -265,6 +242,13 @@ export const useChatStore = create<ChatStore>()(
         return { optimisticMessages: newMap };
       }),
 
+    updateMessage: (messageId, updates) =>
+      set((state) => ({
+        messages: state.messages.map(m =>
+          m.id === messageId ? ({ ...m, ...updates } as Message) : m
+        ),
+      })),
+
     // ========================================
     // Streaming
     // ========================================
@@ -288,13 +272,30 @@ export const useChatStore = create<ChatStore>()(
         },
       })),
 
-    appendThinkingContent: (content) =>
+    appendThinkingContent: (content) => {
+      // DEBUG LOG: Track thinking content appending and check for undefined
+      console.log('[DEBUG LOG] [ChatStore] 📝 appendThinkingContent:', {
+        incoming: content,
+        incomingType: typeof content,
+        isUndefined: content === undefined,
+        isNull: content === null,
+        current: get().streaming.thinking.substring(0, 50) + '...',
+        currentLength: get().streaming.thinking.length,
+      });
+      
+      // Validate content before appending
+      if (content === undefined || content === null) {
+        console.warn('[DEBUG LOG] [ChatStore] ⚠️ Ignoring undefined/null thinking content');
+        return;
+      }
+      
       set((state) => ({
         streaming: {
           ...state.streaming,
           thinking: state.streaming.thinking + content,
         },
-      })),
+      }));
+    },
 
     endStreaming: () =>
       set((state) => ({
@@ -336,28 +337,6 @@ export const useChatStore = create<ChatStore>()(
     clearPendingApprovals: () => set({ pendingApprovals: new Map() }),
 
     // ========================================
-    // Tools
-    // ========================================
-    addToolExecution: (tool) =>
-      set((state) => {
-        const newMap = new Map(state.toolExecutions);
-        newMap.set(tool.id, tool);
-        return { toolExecutions: newMap };
-      }),
-
-    updateToolExecution: (id, update) =>
-      set((state) => {
-        const newMap = new Map(state.toolExecutions);
-        const existing = newMap.get(id);
-        if (existing) {
-          newMap.set(id, { ...existing, ...update });
-        }
-        return { toolExecutions: newMap };
-      }),
-
-    clearToolExecutions: () => set({ toolExecutions: new Map() }),
-
-    // ========================================
     // Status
     // ========================================
     setLoading: (isLoading) => set({ isLoading }),
@@ -383,23 +362,89 @@ export const useChatStore = create<ChatStore>()(
     handleAgentEvent: (event) => {
       const actions = get();
 
+      // DEBUG LOG: Track all events and current state
+      console.log('[DEBUG LOG] [ChatStore] 🎯 handleAgentEvent:', {
+        type: event.type,
+        sessionId: event.sessionId,
+        sequenceNumber: event.sequenceNumber,
+        eventId: event.eventId,
+        currentStreaming: {
+          isStreaming: actions.streaming.isStreaming,
+          contentLength: actions.streaming.content.length,
+          thinkingLength: actions.streaming.thinking.length,
+        },
+        currentMessagesCount: actions.messages.length,
+        currentToolMessages: actions.messages.filter(m => m.type === 'tool_use').length,
+      });
+
       switch (event.type) {
         case 'session_start':
+          console.log('[DEBUG LOG] [ChatStore] 🚀 session_start');
           actions.clearStreaming();
           actions.setAgentBusy(true);
           break;
 
-        case 'thinking_chunk': {
-          const thinkingEvent = event as ThinkingChunkEvent;
+        case 'thinking': {
+          const thinkingEvent = event;
+          console.log('[DEBUG LOG] [ChatStore] 🧠 thinking event:', {
+            eventId: thinkingEvent.eventId,
+            sequenceNumber: thinkingEvent.sequenceNumber,
+          });
+
+          // Create a thinking message with sequence_number
+          actions.addMessage({
+            type: 'thinking',
+            id: thinkingEvent.eventId,
+            session_id: event.sessionId || '',
+            role: 'assistant',
+            content: '', // Will be filled by thinking_chunks
+            sequence_number: event.sequenceNumber || 0,
+            created_at: new Date().toISOString(),
+          });
+
+          // Start streaming for thinking_chunks
           if (!actions.streaming.isStreaming) {
             actions.startStreaming();
           }
+          break;
+        }
+
+        case 'thinking_chunk': {
+          const thinkingEvent = event as ThinkingChunkEvent;
+          // DEBUG LOG: Track thinking chunks and check for undefined
+          console.log('[DEBUG LOG] [ChatStore] 💭 thinking_chunk:', {
+            content: thinkingEvent.content,
+            contentType: typeof thinkingEvent.content,
+            contentLength: thinkingEvent.content?.length,
+            isUndefined: thinkingEvent.content === undefined,
+            isNull: thinkingEvent.content === null,
+            currentThinking: actions.streaming.thinking.substring(0, 50) + '...',
+          });
+          if (!actions.streaming.isStreaming) {
+            actions.startStreaming();
+          }
+
+          // Accumulate in streaming state for real-time display
           actions.appendThinkingContent(thinkingEvent.content);
+
+          // Also update the thinking message
+          const thinkingMessage = actions.messages.find(m => m.type === 'thinking' && m.content !== undefined);
+          if (thinkingMessage) {
+            const updatedContent = (thinkingMessage.content || '') + (thinkingEvent.content || '');
+            actions.updateMessage(thinkingMessage.id, {
+              content: updatedContent,
+            });
+          }
           break;
         }
 
         case 'message_chunk': {
           const chunkEvent = event as MessageChunkEvent;
+          // DEBUG LOG: Track message chunks
+          console.log('[DEBUG LOG] [ChatStore] 📝 message_chunk:', {
+            content: chunkEvent.content?.substring(0, 50),
+            contentLength: chunkEvent.content?.length,
+          });
           if (!actions.streaming.isStreaming) {
             actions.startStreaming();
           }
@@ -409,6 +454,13 @@ export const useChatStore = create<ChatStore>()(
 
         case 'message': {
           const msgEvent = event as MessageEvent;
+          // DEBUG LOG: Track complete messages
+          console.log('[DEBUG LOG] [ChatStore] 💬 message:', {
+            messageId: msgEvent.messageId,
+            role: msgEvent.role,
+            contentLength: msgEvent.content?.length,
+            sequenceNumber: event.sequenceNumber,
+          });
           actions.endStreaming();
           actions.addMessage({
             type: 'standard',
@@ -431,6 +483,13 @@ export const useChatStore = create<ChatStore>()(
         case 'user_message_confirmed': {
           // Update optimistic message with confirmed data
           const confirmedEvent = event;
+          // DEBUG LOG: Track message confirmation
+          console.log('[DEBUG LOG] [ChatStore] ✅ user_message_confirmed:', {
+            eventId: confirmedEvent.eventId,
+            messageId: confirmedEvent.messageId,
+            tempId: `optimistic-${confirmedEvent.eventId}`,
+            sequenceNumber: confirmedEvent.sequenceNumber,
+          });
           actions.confirmOptimisticMessage(
             `optimistic-${confirmedEvent.eventId}`,
             {
@@ -448,12 +507,28 @@ export const useChatStore = create<ChatStore>()(
 
         case 'tool_use': {
           const toolEvent = event as ToolUseEvent;
-          actions.addToolExecution({
-            id: toolEvent.toolUseId || toolEvent.eventId,
+          // DEBUG LOG: Track tool execution start
+          console.log('[DEBUG LOG] [ChatStore] 🔧 tool_use:', {
+            toolUseId: toolEvent.toolUseId,
+            eventId: toolEvent.eventId,
             toolName: toolEvent.toolName,
             args: toolEvent.args,
-            status: 'running',
-            startedAt: new Date(),
+            sequenceNumber: event.sequenceNumber,
+            currentMessagesCount: actions.messages.length,
+          });
+
+          // Add as a MESSAGE (not toolExecution) with sequence_number
+          actions.addMessage({
+            type: 'tool_use' as const,
+            id: toolEvent.eventId,
+            session_id: event.sessionId || '',
+            role: 'assistant' as const,
+            tool_name: toolEvent.toolName,
+            tool_args: toolEvent.args,
+            status: 'pending',
+            tool_use_id: toolEvent.toolUseId,
+            sequence_number: event.sequenceNumber || 0,
+            created_at: new Date().toISOString(),
           });
           break;
         }
@@ -461,13 +536,38 @@ export const useChatStore = create<ChatStore>()(
         case 'tool_result': {
           const resultEvent = event as ToolResultEvent;
           const toolId = resultEvent.toolUseId || resultEvent.correlationId;
-          if (toolId) {
-            actions.updateToolExecution(toolId, {
-              status: resultEvent.success ? 'completed' : 'failed',
+
+          // DEBUG LOG: Track tool execution completion
+          console.log('[DEBUG LOG] [ChatStore] ✅ tool_result:', {
+            toolUseId: resultEvent.toolUseId,
+            correlationId: resultEvent.correlationId,
+            resolvedToolId: toolId,
+            success: resultEvent.success,
+            sequenceNumber: event.sequenceNumber,
+          });
+
+          // Find the tool_use message and update it
+          const toolMessage = actions.messages.find(
+            m => m.type === 'tool_use' && m.tool_use_id === toolId
+          );
+
+          if (toolMessage) {
+            console.log('[DEBUG LOG] [ChatStore] 🔄 Updating tool message:', {
+              messageId: toolMessage.id,
+              previousStatus: (toolMessage as any).status,
+              newStatus: resultEvent.success ? 'success' : 'error',
+            });
+
+            actions.updateMessage(toolMessage.id, {
+              status: resultEvent.success ? 'success' : 'error',
               result: resultEvent.result,
-              error: resultEvent.error,
-              completedAt: new Date(),
-              durationMs: resultEvent.durationMs,
+              error_message: resultEvent.error,
+              duration_ms: resultEvent.durationMs,
+            } as Partial<Message>);
+          } else {
+            console.warn('[DEBUG LOG] [ChatStore] ⚠️ tool_result received but tool_use message not found:', {
+              toolId,
+              availableMessages: actions.messages.map(m => ({ id: m.id, type: m.type, tool_use_id: (m as any).tool_use_id })),
             });
           }
           break;
@@ -475,6 +575,10 @@ export const useChatStore = create<ChatStore>()(
 
         case 'approval_requested': {
           const approvalEvent = event as ApprovalRequestedEvent;
+          console.log('[DEBUG LOG] [ChatStore] 🔔 approval_requested:', {
+            approvalId: approvalEvent.approvalId,
+            toolName: approvalEvent.toolName,
+          });
           actions.addPendingApproval({
             id: approvalEvent.approvalId,
             toolName: approvalEvent.toolName,
@@ -488,26 +592,35 @@ export const useChatStore = create<ChatStore>()(
         }
 
         case 'approval_resolved':
+          console.log('[DEBUG LOG] [ChatStore] ✅ approval_resolved:', {
+            approvalId: event.approvalId,
+          });
           actions.removePendingApproval(event.approvalId);
           break;
 
         case 'error':
+          console.log('[DEBUG LOG] [ChatStore] ❌ error:', {
+            error: event.error,
+          });
           actions.setError(event.error);
           actions.endStreaming();
           break;
 
         case 'complete':
         case 'session_end':
+          console.log('[DEBUG LOG] [ChatStore] 🏁 complete/session_end');
           actions.endStreaming();
           actions.setAgentBusy(false);
           break;
 
         case 'turn_paused':
+          console.log('[DEBUG LOG] [ChatStore] ⏸️ turn_paused');
           // Agent paused - keep busy but stop streaming
           actions.endStreaming();
           break;
 
         case 'content_refused':
+          console.log('[DEBUG LOG] [ChatStore] 🚫 content_refused');
           actions.setError('Content was refused due to policy violation');
           actions.endStreaming();
           break;
@@ -547,11 +660,4 @@ export const selectAllMessages = (state: ChatStore): Message[] => {
  */
 export const selectPendingApprovals = (state: ChatStore): PendingApproval[] => {
   return Array.from(state.pendingApprovals.values());
-};
-
-/**
- * Selector for tool executions as array
- */
-export const selectToolExecutions = (state: ChatStore): ToolExecution[] => {
-  return Array.from(state.toolExecutions.values());
 };

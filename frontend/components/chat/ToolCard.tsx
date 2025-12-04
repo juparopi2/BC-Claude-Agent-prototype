@@ -6,22 +6,17 @@ import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Wrench, ChevronRight, ChevronDown, Clock, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { ToolExecution } from '@/lib/stores/chatStore';
 
 interface ToolCardProps {
-  // For streaming tools
-  tool?: ToolExecution;
-  // For persisted tools (from database)
-  toolName?: string;
-  toolArgs?: Record<string, unknown>;
+  toolName: string;
+  toolArgs: Record<string, unknown>;
   result?: unknown;
   error?: string;
-  status?: 'pending' | 'running' | 'completed' | 'failed';
+  status: 'pending' | 'running' | 'completed' | 'failed';
   durationMs?: number;
 }
 
 export function ToolCard({
-  tool,
   toolName,
   toolArgs,
   result,
@@ -31,13 +26,13 @@ export function ToolCard({
 }: ToolCardProps) {
   const [isOpen, setIsOpen] = useState(false);
 
-  // Extract values (prefer tool prop if available)
-  const displayName = tool?.toolName || toolName || 'Unknown Tool';
-  const displayArgs = tool?.args || toolArgs || {};
-  const displayResult = tool?.result || result;
-  const displayError = tool?.error || error;
-  const displayStatus = tool?.status || status || 'pending';
-  const displayDuration = tool?.durationMs || durationMs;
+  // Extract values
+  const displayName = toolName;
+  const displayArgs = toolArgs;
+  const displayResult = result;
+  const displayError = error;
+  const displayStatus = status;
+  const displayDuration = durationMs;
 
   // Status configuration with color-coding
   const statusConfig = {

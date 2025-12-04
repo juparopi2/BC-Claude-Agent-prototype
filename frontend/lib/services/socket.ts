@@ -172,8 +172,17 @@ export class SocketService {
    * Join a session room
    */
   joinSession(sessionId: string): void {
+    // DEBUG LOG: Track session join attempts
+    console.log('[DEBUG LOG] [Socket] 🚪 joinSession called:', {
+      sessionId,
+      isConnected: this.socket?.connected,
+      currentSessionId: this.currentSessionId,
+      timestamp: new Date().toISOString(),
+    });
+    
     if (!this.socket?.connected) {
       console.warn(SocketLogMessages.JOIN_SESSION_NOT_CONNECTED);
+      console.warn('[DEBUG LOG] [Socket] ⚠️ joinSession queued (not connected):', sessionId);
       // Queue the session join
       this.pendingSessionJoins.push({ sessionId });
       this.onPendingChange?.(true);
@@ -185,6 +194,7 @@ export class SocketService {
       this.leaveSession(this.currentSessionId);
     }
 
+    console.log('[DEBUG LOG] [Socket] 📤 Emitting session:join:', sessionId);
     this.socket.emit('session:join', { sessionId });
     this.currentSessionId = sessionId;
   }
@@ -193,10 +203,20 @@ export class SocketService {
    * Leave a session room
    */
   leaveSession(sessionId: string): void {
+    // DEBUG LOG: Track session leave attempts
+    console.log('[DEBUG LOG] [Socket] 👋 leaveSession called:', {
+      sessionId,
+      isConnected: this.socket?.connected,
+      currentSessionId: this.currentSessionId,
+      timestamp: new Date().toISOString(),
+    });
+    
     if (!this.socket?.connected) {
+      console.warn('[DEBUG LOG] [Socket] ⚠️ leaveSession failed (not connected):', sessionId);
       return;
     }
 
+    console.log('[DEBUG LOG] [Socket] 📤 Emitting session:leave:', sessionId);
     this.socket.emit('session:leave', { sessionId });
     if (this.currentSessionId === sessionId) {
       this.currentSessionId = null;
@@ -288,6 +308,10 @@ export class SocketService {
 
     // Connection events
     this.socket.on('connect', () => {
+      console.log('[DEBUG LOG] [Socket] 🔌 connect:', {
+        socketId: this.socket?.id,
+        timestamp: new Date().toISOString(),
+      });
       if (env.debug) {
         console.log(SocketLogMessages.CONNECTED);
       }
@@ -316,6 +340,14 @@ export class SocketService {
 
     // Agent events (single event type for all agent activities)
     this.socket.on('agent:event', (event: AgentEvent) => {
+      // DEBUG LOG: Track all incoming WebSocket events
+      console.log('[DEBUG LOG] [Socket] 📥 agent:event received:', {
+        type: event.type,
+        sessionId: event.sessionId,
+        sequenceNumber: event.sequenceNumber,
+        eventId: event.eventId,
+        timestamp: new Date().toISOString(),
+      });
       if (env.debug) {
         console.log('[SocketService] Agent event:', event.type);
       }
@@ -330,6 +362,10 @@ export class SocketService {
 
     // Session events
     this.socket.on('session:ready', (data: SessionReadyEvent) => {
+      console.log('[DEBUG LOG] [Socket] ✅ session:ready:', {
+        sessionId: data.sessionId,
+        timestamp: new Date().toISOString(),
+      });
       if (env.debug) {
         console.log('[SocketService] Session ready:', data.sessionId);
       }

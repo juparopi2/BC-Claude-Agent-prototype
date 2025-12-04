@@ -11,13 +11,11 @@ export {
   useChatStore,
   selectAllMessages,
   selectPendingApprovals,
-  selectToolExecutions,
   type ChatState,
   type ChatActions,
   type ChatStore,
   type StreamingState,
   type PendingApproval,
-  type ToolExecution,
 } from './chatStore';
 
 // Session store

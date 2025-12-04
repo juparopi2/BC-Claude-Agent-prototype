@@ -149,6 +149,9 @@ export interface ToolUseMessage extends BaseMessage {
 
   /** Anthropic tool_use_id for correlation */
   tool_use_id?: string;
+
+  /** Execution duration in milliseconds (set when tool completes) */
+  duration_ms?: number;
 }
 
 /**

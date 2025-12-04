@@ -117,6 +117,14 @@ export function useSocket(options: UseSocketOptions = {}): UseSocketReturn {
         onError?.(error);
       },
       onSessionReady: (data) => {
+        // DEBUG LOG: Track session ready events
+        console.log('[DEBUG LOG] [useSocket] ✅ onSessionReady:', {
+          sessionId: data.sessionId,
+          currentSessionRef: currentSessionRef.current,
+          willSetReady: data.sessionId === currentSessionRef.current,
+          timestamp: new Date().toISOString(),
+        });
+        
         // Only set ready if this is the current session
         if (data.sessionId === currentSessionRef.current) {
           setIsSessionReady(true);
@@ -156,10 +164,20 @@ export function useSocket(options: UseSocketOptions = {}): UseSocketReturn {
   useEffect(() => {
     const socket = getSocketService();
 
+    // DEBUG LOG: Track session changes
+    console.log('[DEBUG LOG] [useSocket] 🔄 Session change effect:', {
+      sessionId,
+      isConnected,
+      currentSessionRef: currentSessionRef.current,
+      previousSessionReady: isSessionReady,
+      timestamp: new Date().toISOString(),
+    });
+
     // Reset session ready state when session changes
     setIsSessionReady(false);
 
     if (sessionId && isConnected) {
+      console.log('[DEBUG LOG] [useSocket] 🚪 Joining session:', sessionId);
       socket.joinSession(sessionId);
       currentSessionRef.current = sessionId;
     }
@@ -197,8 +215,23 @@ export function useSocket(options: UseSocketOptions = {}): UseSocketReturn {
   // Send message function
   const sendMessage = useCallback(
     (message: string, opts?: { enableThinking?: boolean; thinkingBudget?: number }) => {
+      // DEBUG LOG: Track message sending attempts
+      console.log('[DEBUG LOG] [useSocket] 📤 sendMessage called:', {
+        message: message.substring(0, 50) + (message.length > 50 ? '...' : ''),
+        userId: user?.id,
+        sessionId: currentSessionRef.current,
+        isConnected,
+        isSessionReady,
+        options: opts,
+        timestamp: new Date().toISOString(),
+      });
+      
       if (!user?.id || !currentSessionRef.current) {
         console.error('[useSocket] Cannot send message: no user or session');
+        console.error('[DEBUG LOG] [useSocket] ❌ sendMessage blocked:', {
+          hasUser: !!user?.id,
+          hasSession: !!currentSessionRef.current,
+        });
         return;
       }
 
@@ -217,6 +250,7 @@ export function useSocket(options: UseSocketOptions = {}): UseSocketReturn {
 
       // Add optimistic message
       const tempId = `optimistic-${Date.now()}`;
+      console.log('[DEBUG LOG] [useSocket] 📝 Adding optimistic message:', tempId);
       addOptimisticMessage(tempId, {
         type: 'standard',
         id: tempId,
@@ -228,6 +262,7 @@ export function useSocket(options: UseSocketOptions = {}): UseSocketReturn {
       });
 
       // Send to server
+      console.log('[DEBUG LOG] [useSocket] 📤 Emitting chat:message');
       socket.sendMessage({
         message,
         sessionId: currentSessionRef.current,
@@ -238,7 +273,7 @@ export function useSocket(options: UseSocketOptions = {}): UseSocketReturn {
         } : undefined,
       });
     },
-    [user, addOptimisticMessage]
+    [user, addOptimisticMessage, isConnected, isSessionReady]
   );
 
   // Stop agent function

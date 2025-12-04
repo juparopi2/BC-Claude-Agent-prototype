@@ -4,8 +4,7 @@ import { useEffect, useRef, useMemo } from 'react';
 import { useChatStore } from '@/lib/stores/chatStore';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Loader2 } from 'lucide-react';
-import { isToolUseMessage, isToolResultMessage } from '@bc-agent/shared';
-import type { ToolResultMessage } from '@bc-agent/shared';
+import { isToolUseMessage, isToolResultMessage, isThinkingMessage } from '@bc-agent/shared';
 import MessageBubble from './MessageBubble';
 import StreamingMessage from './StreamingMessage';
 import { ThinkingDisplay } from './ThinkingDisplay';
@@ -41,35 +40,29 @@ export default function ChatContainer() {
   const streaming = useChatStore((s) => s.streaming);
   const isLoading = useChatStore((s) => s.isLoading);
   const isAgentBusy = useChatStore((s) => s.isAgentBusy);
-  const toolExecutionsMap = useChatStore((s) => s.toolExecutions);
 
-  // Convert Map to array with stable reference (useMemo prevents infinite loop)
-  const toolExecutions = useMemo(() => {
-    return Array.from(toolExecutionsMap.values());
-  }, [toolExecutionsMap]);
-
-  // Create a Set of streaming tool IDs for duplicate detection
-  const streamingToolIds = useMemo(() => {
-    return new Set(toolExecutions.map(t => t.id));
-  }, [toolExecutions]);
-
-  // Build tool results map for correlation
-  const toolResultsMap = useMemo(() => {
-    const map = new Map<string, ToolResultMessage>();
-    messages.forEach((msg) => {
-      if (isToolResultMessage(msg) && msg.tool_use_id) {
-        map.set(msg.tool_use_id, msg);
-      }
-    });
-    return map;
-  }, [messages]);
+  // DEBUG LOG: Track component renders
+  console.log('[DEBUG LOG] [ChatContainer] 🎨 Render:', {
+    persistedCount: persistedMessages.length,
+    optimisticCount: optimisticMessages.size,
+    combinedCount: messages.length,
+    streamingActive: streaming.isStreaming,
+    streamingContentLength: streaming.content?.length || 0,
+    streamingThinkingLength: streaming.thinking?.length || 0,
+    thinkingMessagesCount: messages.filter(m => m.type === 'thinking').length,
+    toolMessagesCount: messages.filter(m => m.type === 'tool_use').length,
+    standardMessagesCount: messages.filter(m => m.type === 'standard').length,
+    isLoading,
+    isAgentBusy,
+    timestamp: new Date().toISOString(),
+  });
 
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when new messages arrive or streaming updates
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streaming.content, streaming.thinking, toolExecutionsMap]);
+  }, [messages, streaming.content, streaming.thinking]);
 
   if (isLoading) {
     return (
@@ -89,37 +82,35 @@ export default function ChatContainer() {
     <ScrollArea className="h-full" data-testid="chat-container">
       <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
         {messages.map((message) => {
-          // Render tool_use with its correlated tool_result
+          // Render thinking messages
+          if (isThinkingMessage(message)) {
+            return (
+              <div key={message.id} className="space-y-3">
+                <ThinkingDisplay
+                  content={message.content}
+                  isStreaming={streaming.isStreaming && streaming.thinking.length > 0}
+                />
+              </div>
+            );
+          }
+
+          // Render tool_use messages
           if (isToolUseMessage(message)) {
-            // Skip tool_use messages that are already displayed in streaming toolExecutions
-            // This prevents duplicates during the transition from streaming to persisted
-            if (message.tool_use_id && streamingToolIds.has(message.tool_use_id)) {
-              return null;
-            }
-
-            const toolResult = message.tool_use_id
-              ? toolResultsMap.get(message.tool_use_id)
-              : undefined;
-
             return (
               <ToolCard
                 key={message.id}
                 toolName={message.tool_name}
                 toolArgs={message.tool_args}
                 status={
-                  toolResult
-                    ? toolResult.success
-                      ? 'completed'
-                      : 'failed'
-                    : message.status === 'error'
+                  message.status === 'error'
                     ? 'failed'
                     : message.status === 'success'
                     ? 'completed'
                     : 'pending'
                 }
-                result={toolResult?.result ?? message.result}
-                error={toolResult?.error_message ?? message.error_message}
-                durationMs={toolResult?.duration_ms}
+                result={message.result}
+                error={message.error_message}
+                durationMs={message.duration_ms}
               />
             );
           }
@@ -129,7 +120,7 @@ export default function ChatContainer() {
             return null;
           }
 
-          // Render standard and thinking messages
+          // Render standard messages
           return <MessageBubble key={message.id} message={message} />;
         })}
 
@@ -138,25 +129,6 @@ export default function ChatContainer() {
             content={streaming.content}
             thinking={streaming.thinking}
           />
-        )}
-
-        {/* Render tool executions (visible during and after streaming until persisted) */}
-        {toolExecutions.length > 0 && (
-          <div className="space-y-2">
-            {toolExecutions.map(tool => (
-              <ToolCard key={tool.id} tool={tool} />
-            ))}
-          </div>
-        )}
-
-        {/* Captured thinking from previous turn */}
-        {!streaming.isStreaming && streaming.capturedThinking && (
-          <div className="space-y-3">
-            <ThinkingDisplay
-              content={streaming.capturedThinking}
-              isStreaming={false}
-            />
-          </div>
         )}
 
         {isAgentBusy && !streaming.isStreaming && (

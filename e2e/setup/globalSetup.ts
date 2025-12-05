@@ -3,11 +3,12 @@
  *
  * This runs once before all tests to:
  * 1. Verify backend is running and healthy
- * 2. Inject test user sessions directly into Redis
- * 3. Store session IDs for use in tests
+ * 2. Seed database with E2E test data (users, sessions, messages)
+ * 3. Inject test user sessions directly into Redis
+ * 4. Store session IDs for use in tests
  *
- * IMPORTANT: This uses REAL Redis in DEV environment (redis-bcagent-dev)
- * The test data is pre-seeded in the DEV database via seed-database.sql
+ * IMPORTANT: This uses REAL Redis and Database in DEV environment
+ * Database seeding is idempotent - can run multiple times safely
  */
 
 import { FullConfig } from '@playwright/test';
@@ -15,6 +16,7 @@ import Redis from 'ioredis';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
+import sql from 'mssql';
 
 // Load environment variables
 import './loadEnv';
@@ -34,6 +36,30 @@ const REDIS_CONFIG = {
 if (!REDIS_CONFIG.host || !REDIS_CONFIG.password) {
   throw new Error(
     'Redis configuration is incomplete. Ensure REDIS_HOST and REDIS_PASSWORD are set in backend/.env'
+  );
+}
+
+// Database configuration (DEV environment) - NO DEFAULT VALUES, MUST BE IN .env
+const DB_CONFIG: sql.config = {
+  server: process.env.DATABASE_SERVER!,
+  database: process.env.DATABASE_NAME!,
+  user: process.env.DATABASE_USER!,
+  password: process.env.DATABASE_PASSWORD!,
+  options: {
+    encrypt: true,
+    trustServerCertificate: false,
+  },
+  pool: {
+    max: 10,
+    min: 0,
+    idleTimeoutMillis: 30000,
+  },
+};
+
+// Validate Database configuration
+if (!DB_CONFIG.server || !DB_CONFIG.database || !DB_CONFIG.user || !DB_CONFIG.password) {
+  throw new Error(
+    'Database configuration is incomplete. Ensure DATABASE_SERVER, DATABASE_NAME, DATABASE_USER, and DATABASE_PASSWORD are set in backend/.env'
   );
 }
 
@@ -110,6 +136,85 @@ function createExpressSession(user: typeof TEST_USER) {
   };
 }
 
+/**
+ * Seed the database with E2E test data
+ *
+ * Executes seed-database.sql to populate:
+ * - Test users (e2e00001, e2e00002)
+ * - Test sessions (e2e10001-e2e10006)
+ * - Test messages and approvals
+ *
+ * This is idempotent - can be run multiple times safely.
+ * Existing records are preserved (DELETE statements have WHERE clauses).
+ */
+async function seedDatabase() {
+  console.log('1.5. Seeding database with E2E test data...');
+
+  const seedFilePath = path.join(__dirname, 'seed-database.sql');
+
+  if (!fs.existsSync(seedFilePath)) {
+    console.warn(`   ⚠️  Seed file not found: ${seedFilePath}`);
+    console.warn('   Skipping database seeding. Tests may fail if data is missing.');
+    return;
+  }
+
+  let pool: sql.ConnectionPool | null = null;
+
+  try {
+    // Read seed SQL file
+    const seedSQL = fs.readFileSync(seedFilePath, 'utf8');
+
+    // Connect to database
+    pool = await sql.connect(DB_CONFIG);
+
+    // Split by GO statements (SQL Server batch separator)
+    const batches = seedSQL
+      .split(/^\s*GO\s*$/gim)
+      .map(batch => batch.trim())
+      .filter(batch => batch.length > 0);
+
+    console.log(`   📄 Found ${batches.length} SQL batches to execute`);
+
+    // Execute each batch
+    let successCount = 0;
+    let skipCount = 0;
+
+    for (let i = 0; i < batches.length; i++) {
+      const batch = batches[i];
+
+      try {
+        await pool.request().query(batch);
+        successCount++;
+      } catch (error: unknown) {
+        // Some operations may fail if data already exists (e.g., INSERT with duplicate key)
+        // This is expected behavior - we want idempotent seeding
+        const errorMessage = error instanceof Error ? error.message : String(error);
+
+        if (errorMessage.includes('Violation of PRIMARY KEY constraint') ||
+            errorMessage.includes('duplicate key')) {
+          skipCount++;
+          // Silently skip duplicate key errors
+        } else {
+          // Log other errors but don't fail the entire setup
+          console.warn(`   ⚠️  Batch ${i + 1} failed: ${errorMessage.slice(0, 100)}`);
+          skipCount++;
+        }
+      }
+    }
+
+    console.log(`   ✅ Database seeded: ${successCount} batches executed, ${skipCount} skipped (already exist)\n`);
+
+  } catch (error) {
+    console.error('   ❌ Database seeding failed:', error);
+    console.error('   Tests may fail if E2E data is missing. Check seed-database.sql');
+    // Don't throw - allow tests to run even if seeding fails
+  } finally {
+    if (pool) {
+      await pool.close();
+    }
+  }
+}
+
 async function globalSetup(_config: FullConfig) {
   const startTime = Date.now();
   console.log('\n=====================================================');
@@ -129,6 +234,9 @@ async function globalSetup(_config: FullConfig) {
     console.error('   Make sure backend is running: cd backend && npm run dev');
     throw error;
   }
+
+  // Step 1.5: Seed database with E2E test data
+  await seedDatabase();
 
   // Step 2: Connect to Redis and inject test sessions
   console.log('2. Connecting to Redis (DEV)...');

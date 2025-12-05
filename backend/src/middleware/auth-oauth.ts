@@ -47,8 +47,24 @@ declare global {
  */
 export async function authenticateMicrosoft(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
+    // [E2E-DEBUG] Log authentication attempt
+    console.log('[E2E-DEBUG] authenticateMicrosoft called:', {
+      path: req.path,
+      method: req.method,
+      hasSession: !!req.session,
+      sessionKeys: req.session ? Object.keys(req.session) : [],
+      hasCookie: !!req.headers.cookie,
+      cookieHeader: req.headers.cookie?.slice(0, 100) + '...',
+    });
+
     // Check if session exists
     if (!req.session || !req.session.microsoftOAuth) {
+      console.log('[E2E-DEBUG] authenticateMicrosoft failed: No session or microsoftOAuth', {
+        hasSession: !!req.session,
+        hasMicrosoftOAuth: !!(req.session && req.session.microsoftOAuth),
+        sessionId: req.session?.id,
+      });
+
       logger.warn('Microsoft OAuth authentication failed: No session', {
         path: req.path,
         method: req.method,
@@ -159,6 +175,13 @@ export async function authenticateMicrosoft(req: Request, res: Response, next: N
     req.microsoftSession = oauthSession;
     req.userId = oauthSession.userId;
     req.userEmail = oauthSession.email;
+
+    console.log('[E2E-DEBUG] authenticateMicrosoft SUCCESS:', {
+      path: req.path,
+      method: req.method,
+      userId: oauthSession.userId,
+      email: oauthSession.email,
+    });
 
     logger.debug('Microsoft OAuth authentication successful', {
       path: req.path,

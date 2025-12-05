@@ -38,6 +38,8 @@ export interface SocketEventHandlers {
   onSessionLeft?: (data: { sessionId: string }) => void;
   /** Handle session errors */
   onSessionError?: (error: { error: string; sessionId?: string }) => void;
+  /** Handle session title update */
+  onSessionTitleUpdated?: (data: { sessionId: string; title: string }) => void;
 }
 
 /**
@@ -354,6 +356,13 @@ export class SocketService {
     this.socket.on('session:error', (error: { error: string; sessionId?: string }) => {
       console.error('[SocketService] Session error:', error);
       this.handlers.onSessionError?.(error);
+    });
+
+    this.socket.on('session:title_updated', (data: { sessionId: string; title: string }) => {
+      if (env.debug) {
+        console.log('[SocketService] Session title updated:', data);
+      }
+      this.handlers.onSessionTitleUpdated?.(data);
     });
   }
 }

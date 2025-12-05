@@ -3,6 +3,7 @@
 import { useEffect, useMemo } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useSessionStore } from '@/lib/stores/sessionStore';
+import { getSocketService } from '@/lib/services/socket';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -24,13 +25,21 @@ export default function SessionList() {
   const isLoading = useSessionStore((s) => s.isLoading);
   const error = useSessionStore((s) => s.error);
   const fetchSessions = useSessionStore((s) => s.fetchSessions);
+  const setSessionTitle = useSessionStore((s) => s.setSessionTitle);
 
   // Extract current sessionId from pathname (/chat/xxx)
   const currentSessionId = pathname?.startsWith('/chat/') ? pathname.split('/')[2] : null;
 
   useEffect(() => {
     fetchSessions();
-  }, [fetchSessions]);
+
+    const socket = getSocketService();
+    socket.setHandlers({
+      onSessionTitleUpdated: (data) => {
+        setSessionTitle(data.sessionId, data.title);
+      },
+    });
+  }, [fetchSessions, setSessionTitle]);
 
   const handleNewChat = () => {
     // Navigate to /new page instead of creating empty session

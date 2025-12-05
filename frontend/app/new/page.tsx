@@ -33,7 +33,7 @@ export default function Home() {
     setIsCreating(true);
 
     try {
-      const session = await createSession();
+      const session = await createSession(undefined, text.trim());
       if (session) {
         const params = new URLSearchParams({
           initialMessage: text.trim(),

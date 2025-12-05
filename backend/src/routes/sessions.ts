@@ -21,6 +21,7 @@ import { ErrorCode } from '@/constants/errors';
 import { sendError } from '@/utils/error-response';
 // ✅ Import native SDK types (source of truth)
 import type { StopReason, TextCitation } from '@anthropic-ai/sdk/resources/messages';
+import { getSessionTitleGenerator } from '../services/sessions/SessionTitleGenerator';
 
 const router = Router();
 
@@ -30,8 +31,7 @@ const router = Router();
 
 const createSessionSchema = z.object({
   title: z.string().min(1).max(500).optional(),
-  // NOTE: initialMessage removed - messages should be sent via Socket.IO after room join
-  // Keeping schema field for backward compatibility, but it will be ignored
+  // initialMessage is now used for title generation
   initialMessage: z.string().min(1).max(10000).optional(),
 });
 
@@ -265,11 +265,30 @@ router.post('/', authenticateMicrosoft, async (req: Request, res: Response): Pro
       return;
     }
 
-    const { title } = validation.data;
-
     // Generate new session ID
+    const { title } = validation.data;
     const sessionId = crypto.randomUUID();
-    const sessionTitle = title || 'New Chat';
+    let sessionTitle = title || 'New Chat';
+
+    // Phase 2.5: Generate Title from Initial Message (if provided and no explicit title)
+    if (!title && validation.data.initialMessage) {
+      try {
+        const titleGenerator = getSessionTitleGenerator();
+        // Await title generation to ensure session starts with correct title
+        // Latency is acceptable for better UX
+        const generatedTitle = await titleGenerator.generateTitle(validation.data.initialMessage);
+        
+        // Ensure title is not empty after generation/fallback
+        if (generatedTitle && generatedTitle.trim().length > 0) {
+          sessionTitle = generatedTitle;
+        }
+        
+        logger.info(`[Sessions] Generated title "${sessionTitle}" from initial message`);
+      } catch (error) {
+        logger.error('[Sessions] Failed to generate title from initial message:', error);
+        // Fallback to 'New Chat' is already set
+      }
+    }
 
     logger.info(`[Sessions] Creating session ${sessionId} for user ${userId}`);
 
@@ -302,10 +321,6 @@ router.post('/', authenticateMicrosoft, async (req: Request, res: Response): Pro
     const session = transformSession(result.recordset[0]);
 
     logger.info(`[Sessions] Session ${sessionId} created successfully (messages will be sent via Socket.IO)`);
-
-    // NOTE: Initial message processing REMOVED
-    // Messages are now sent via Socket.IO events (chat:message) after room join
-    // This eliminates the race condition where backend emits events before frontend is ready
 
     res.status(201).json({
       session,

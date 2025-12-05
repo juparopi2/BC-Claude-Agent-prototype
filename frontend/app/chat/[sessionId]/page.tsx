@@ -39,7 +39,10 @@ export default function ChatPage() {
   const selectSession = useSessionStore((s) => s.selectSession);
 
   // Initialize socket and get sendMessage function
-  const { sendMessage, isSessionReady } = useSocket({ sessionId, autoConnect: true });
+  const { sendMessage, isSessionReady, isConnected, isReconnecting, stopAgent } = useSocket({
+    sessionId,
+    autoConnect: true
+  });
 
   useEffect(() => {
     async function loadSession() {
@@ -110,7 +113,13 @@ export default function ChatPage() {
           <ChatContainer />
         </div>
 
-        <ChatInput sessionId={sessionId} />
+        <ChatInput
+          sessionId={sessionId}
+          isConnected={isConnected}
+          isReconnecting={isReconnecting}
+          sendMessage={sendMessage}
+          stopAgent={stopAgent}
+        />
       </div>
     </MainLayout>
   );

@@ -13,19 +13,39 @@ export interface ChatInputProps {
   sessionId?: string;
   onSend?: (message: string, options?: { enableThinking: boolean }) => void;
   disabled?: boolean;
+  // Socket state from parent (avoids duplicate useSocket calls)
+  isConnected?: boolean;
+  isReconnecting?: boolean;
+  sendMessage?: (message: string, options?: { enableThinking?: boolean; thinkingBudget?: number }) => void;
+  stopAgent?: () => void;
 }
 
-export default function ChatInput({ sessionId, onSend, disabled }: ChatInputProps) {
+export default function ChatInput({
+  sessionId,
+  onSend,
+  disabled,
+  isConnected: propsIsConnected,
+  isReconnecting: propsIsReconnecting,
+  sendMessage: propsSendMessage,
+  stopAgent: propsStopAgent,
+}: ChatInputProps) {
   const [message, setMessage] = useState('');
   const [enableThinking, setEnableThinking] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Only use socket if we have a sessionId
-  const { sendMessage, stopAgent, isConnected, isReconnecting } = useSocket({ 
-    sessionId: sessionId || '', 
-    autoConnect: !!sessionId 
+  // Use socket from parent if provided, otherwise create local instance
+  const shouldUseLocalSocket = !propsIsConnected && !onSend && sessionId;
+  const localSocket = useSocket({
+    sessionId: sessionId || '',
+    autoConnect: !!shouldUseLocalSocket
   });
-  
+
+  // Prefer props over local socket (avoids duplicate calls)
+  const isConnected = propsIsConnected ?? localSocket.isConnected;
+  const isReconnecting = propsIsReconnecting ?? localSocket.isReconnecting;
+  const sendMessage = propsSendMessage ?? localSocket.sendMessage;
+  const stopAgent = propsStopAgent ?? localSocket.stopAgent;
+
   const isAgentBusy = useChatStore((s) => s.isAgentBusy);
   const streaming = useChatStore((s) => s.streaming);
 
@@ -156,8 +176,8 @@ export default function ChatInput({ sessionId, onSend, disabled }: ChatInputProp
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={isConnected ? "Ask about Business Central..." : "Connecting..."}
-            disabled={!isConnected || isAgentBusy}
+            placeholder={effectiveIsConnected ? "Ask about Business Central..." : "Connecting..."}
+            disabled={!effectiveIsConnected || effectiveIsBusy || disabled}
             className="min-h-[44px] max-h-[200px] resize-none"
             rows={1}
           />
@@ -185,13 +205,13 @@ export default function ChatInput({ sessionId, onSend, disabled }: ChatInputProp
         </div>
 
         {/* Connection Status */}
-        {!isConnected && !isReconnecting && (
+        {sessionId && !isConnected && !isReconnecting && (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <WifiOff className="size-3.5" />
             <span>Connecting to server...</span>
           </div>
         )}
-        {isReconnecting && (
+        {sessionId && isReconnecting && (
           <div className="flex items-center gap-2 text-xs text-amber-500">
             <Loader2 className="size-3.5 animate-spin" />
             <span>Reconnecting...</span>

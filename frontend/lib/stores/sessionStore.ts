@@ -37,8 +37,9 @@ export interface SessionActions {
   fetchSession: (sessionId: string) => Promise<Session | null>;
 
   // Session management
-  createSession: (title?: string) => Promise<Session | null>;
+  createSession: (title?: string, initialMessage?: string) => Promise<Session | null>;
   updateSession: (sessionId: string, title: string) => Promise<void>;
+  setSessionTitle: (sessionId: string, title: string) => void;
   deleteSession: (sessionId: string) => Promise<void>;
 
   // Current session
@@ -115,11 +116,11 @@ export const useSessionStore = create<SessionStore>()(
     // ========================================
     // Session management
     // ========================================
-    createSession: async (title) => {
+    createSession: async (title, initialMessage) => {
       set({ isLoading: true, error: null });
 
       const api = getApiClient();
-      const result = await api.createSession({ title });
+      const result = await api.createSession({ title, initialMessage });
 
       if (result.success) {
         set((state) => ({
@@ -154,6 +155,18 @@ export const useSessionStore = create<SessionStore>()(
       } else {
         set({ error: result.error.message });
       }
+    },
+
+    setSessionTitle: (sessionId, title) => {
+      set((state) => ({
+        sessions: state.sessions.map((s) =>
+          s.id === sessionId ? { ...s, title } : s
+        ),
+        currentSession:
+          state.currentSession?.id === sessionId
+            ? { ...state.currentSession, title }
+            : state.currentSession,
+      }));
     },
 
     deleteSession: async (sessionId) => {

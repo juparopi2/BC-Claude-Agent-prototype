@@ -91,6 +91,7 @@ export interface TokenUsage {
  */
 export interface CreateSessionRequest {
   title?: string;
+  initialMessage?: string;
 }
 
 /**

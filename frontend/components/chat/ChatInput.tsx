@@ -9,21 +9,33 @@ import { Toggle } from '@/components/ui/toggle';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Send, Square, Brain, WifiOff, Mic, Paperclip, Globe, Loader2 } from 'lucide-react';
 
-interface ChatInputProps {
-  sessionId: string;
+export interface ChatInputProps {
+  sessionId?: string;
+  onSend?: (message: string, options?: { enableThinking: boolean }) => void;
+  disabled?: boolean;
 }
 
-export default function ChatInput({ sessionId }: ChatInputProps) {
+export default function ChatInput({ sessionId, onSend, disabled }: ChatInputProps) {
   const [message, setMessage] = useState('');
   const [enableThinking, setEnableThinking] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const { sendMessage, stopAgent, isConnected, isReconnecting } = useSocket({ sessionId, autoConnect: true });
+  // Only use socket if we have a sessionId
+  const { sendMessage, stopAgent, isConnected, isReconnecting } = useSocket({ 
+    sessionId: sessionId || '', 
+    autoConnect: !!sessionId 
+  });
+  
   const isAgentBusy = useChatStore((s) => s.isAgentBusy);
   const streaming = useChatStore((s) => s.streaming);
 
-  const canSend = message.trim().length > 0 && isConnected && !isAgentBusy;
-  const showStopButton = isAgentBusy || streaming.isStreaming;
+  // If we're in "new session" mode (no sessionId), we're always "connected" in UI terms
+  // unless explicitly disabled.
+  const effectiveIsConnected = sessionId ? isConnected : true;
+  const effectiveIsBusy = sessionId ? isAgentBusy : false;
+  
+  const canSend = message.trim().length > 0 && effectiveIsConnected && !effectiveIsBusy && !disabled;
+  const showStopButton = (effectiveIsBusy || streaming.isStreaming) && !!sessionId;
 
   // Auto-resize textarea based on content
   useEffect(() => {
@@ -37,11 +49,15 @@ export default function ChatInput({ sessionId }: ChatInputProps) {
   const handleSend = () => {
     if (!canSend) return;
 
-    const options = enableThinking
-      ? { enableThinking: true, thinkingBudget: 10000 }
-      : undefined;
-
-    sendMessage(message, options);
+    if (onSend) {
+      onSend(message, { enableThinking });
+    } else {
+      const options = enableThinking
+        ? { enableThinking: true, thinkingBudget: 10000 }
+        : undefined;
+      sendMessage(message, options);
+    }
+    
     setMessage('');
 
     // Reset textarea height
@@ -58,8 +74,13 @@ export default function ChatInput({ sessionId }: ChatInputProps) {
   };
 
   const handleStop = () => {
-    stopAgent();
+    if (sessionId) stopAgent();
   };
+
+  // Determine toggle styles based on state manually to ensure visibility
+  const toggleClasses = enableThinking
+    ? "gap-1.5 bg-amber-500 text-white hover:bg-amber-600 hover:text-white dark:bg-amber-600 dark:hover:bg-amber-700 dark:hover:text-white"
+    : "gap-1.5";
 
   return (
     <div className="border-t bg-background" data-testid="chat-input">
@@ -73,15 +94,15 @@ export default function ChatInput({ sessionId }: ChatInputProps) {
                   pressed={enableThinking}
                   onPressedChange={setEnableThinking}
                   size="sm"
-                  className="gap-1.5 data-[state=on]:bg-amber-500 data-[state=on]:text-white dark:data-[state=on]:bg-amber-600 transition-colors"
-                  disabled={isAgentBusy}
+                  className={toggleClasses}
+                  disabled={effectiveIsBusy || disabled}
                 >
                   <Brain className="size-3.5" />
-                  <span className="text-xs">Extended Thinking</span>
+                  <span className="text-xs">Thinking</span>
                 </Toggle>
               </TooltipTrigger>
               <TooltipContent>
-                <p className="text-xs">Enable Claude&apos;s extended thinking for complex queries</p>
+                <p className="text-xs">Enable extended thinking for complex queries</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>

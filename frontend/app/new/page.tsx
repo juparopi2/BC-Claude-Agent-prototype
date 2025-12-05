@@ -8,40 +8,26 @@
  * Includes suggestion buttons and chat input to start new sessions.
  */
 
-import { useState, useRef, useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { MainLayout, Header, LeftPanel, RightPanel } from '@/components/layout';
 import { useSessionStore } from '@/lib/stores/sessionStore';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
-import { Toggle } from '@/components/ui/toggle';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { MessageSquare, Send, Users, Image as ImageIcon, FileText, Brain, Mic, Paperclip, Globe } from 'lucide-react';
+import { MessageSquare, Users, Image as ImageIcon, FileText } from 'lucide-react';
+import ChatInput from '@/components/chat/ChatInput';
 
 export default function Home() {
   const [leftPanelVisible, setLeftPanelVisible] = useState(true);
   const [rightPanelVisible, setRightPanelVisible] = useState(true);
-  const [message, setMessage] = useState('');
   const [isCreating, setIsCreating] = useState(false);
-  const [enableThinking, setEnableThinking] = useState(false);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const router = useRouter();
   const createSession = useSessionStore((s) => s.createSession);
 
-  // Auto-resize textarea based on content
-  useEffect(() => {
-    const textarea = textareaRef.current;
-    if (textarea) {
-      textarea.style.height = 'auto';
-      textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`;
-    }
-  }, [message]);
-
   const toggleLeftPanel = () => setLeftPanelVisible((prev) => !prev);
   const toggleRightPanel = () => setRightPanelVisible((prev) => !prev);
 
-  const handleSend = async (text: string) => {
+  const handleSend = async (text: string, options?: { enableThinking: boolean }) => {
     if (!text.trim() || isCreating) return;
 
     setIsCreating(true);
@@ -52,7 +38,7 @@ export default function Home() {
         const params = new URLSearchParams({
           initialMessage: text.trim(),
         });
-        if (enableThinking) {
+        if (options?.enableThinking) {
           params.set('enableThinking', 'true');
         }
         router.push(`/chat/${session.id}?${params.toString()}`);
@@ -65,13 +51,6 @@ export default function Home() {
 
   const handleSuggestion = (suggestion: string) => {
     handleSend(suggestion);
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend(message);
-    }
   };
 
   return (
@@ -138,95 +117,10 @@ export default function Home() {
         </div>
 
         {/* Input area at bottom */}
-        <div className="border-t bg-background">
-          <div className="max-w-3xl mx-auto px-4 py-3 space-y-3">
-            {/* Options Row */}
-            <div className="flex items-center gap-2">
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Toggle
-                      pressed={enableThinking}
-                      onPressedChange={setEnableThinking}
-                      size="sm"
-                      className="gap-1.5 data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
-                      disabled={isCreating}
-                    >
-                      <Brain className="size-3.5" />
-                      <span className="text-xs">Extended Thinking</span>
-                    </Toggle>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p className="text-xs">Enable Claude&apos;s extended thinking for complex queries</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-
-              <div className="flex items-center gap-1 ml-auto">
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="ghost" size="sm" disabled className="gap-1.5">
-                        <Mic className="size-3.5" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p className="text-xs">Voice input (coming soon)</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="ghost" size="sm" disabled className="gap-1.5">
-                        <Paperclip className="size-3.5" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p className="text-xs">Attach files (coming soon)</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="ghost" size="sm" disabled className="gap-1.5">
-                        <Globe className="size-3.5" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p className="text-xs">Web search (coming soon)</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </div>
-            </div>
-
-            {/* Input Row */}
-            <div className="flex items-end gap-2">
-              <Textarea
-                ref={textareaRef}
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Ask about Business Central..."
-                className="min-h-[44px] max-h-[200px] resize-none"
-                rows={1}
-                disabled={isCreating}
-              />
-              <Button
-                onClick={() => handleSend(message)}
-                disabled={!message.trim() || isCreating}
-                size="icon"
-                className="shrink-0"
-              >
-                <Send className="size-4" />
-              </Button>
-            </div>
-          </div>
-        </div>
+        <ChatInput 
+          onSend={handleSend}
+          disabled={isCreating}
+        />
       </div>
     </MainLayout>
   );

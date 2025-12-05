@@ -95,8 +95,8 @@ export function useSocket(options: UseSocketOptions = {}): UseSocketReturn {
 
   const user = useAuthStore((state) => state.user);
 
-  // Track connection state
-  const [isConnected, setIsConnected] = useState(false);
+  // Track connection state - initialize from actual socket state (singleton may already be connected)
+  const [isConnected, setIsConnected] = useState(() => getSocketService().isConnected);
   const [isSessionReady, setIsSessionReady] = useState(false);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const currentSessionRef = useRef<string | null>(sessionId || null);
@@ -209,9 +209,11 @@ export function useSocket(options: UseSocketOptions = {}): UseSocketReturn {
 
     if (sessionId && isConnected) {
       console.log('[DEBUG-SOCKET] Joining session:', sessionId);
-      socket.joinSession(sessionId);
+      // CRITICAL: Update ref BEFORE join to prevent race condition
+      // The session:ready event handler checks currentSessionRef.current
       currentSessionRef.current = sessionId;
       console.log('[DEBUG-SOCKET] currentSessionRef updated to:', currentSessionRef.current);
+      socket.joinSession(sessionId);
     }
 
     // Update ref for next render

@@ -23,6 +23,11 @@ export default function ChatPage() {
   // Track if we've already sent the initial message
   const initialMessageSentRef = useRef(false);
 
+  // Reset the ref when sessionId changes to allow new initial messages
+  useEffect(() => {
+    initialMessageSentRef.current = false;
+  }, [sessionId]);
+
   const toggleLeftPanel = () => setLeftPanelVisible((prev) => !prev);
   const toggleRightPanel = () => setRightPanelVisible((prev) => !prev);
 

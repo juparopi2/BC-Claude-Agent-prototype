@@ -320,7 +320,6 @@ export const useChatStore = create<ChatStore>()(
     // ========================================
     setLoading: (isLoading) => set({ isLoading }),
     setAgentBusy: (isAgentBusy) => {
-      console.log('[DEBUG-SOCKET] chatStore.setAgentBusy:', isAgentBusy);
       set({ isAgentBusy });
     },
     setError: (error) => set({ error }),
@@ -329,7 +328,6 @@ export const useChatStore = create<ChatStore>()(
     // Session
     // ========================================
     setCurrentSession: (currentSessionId) => {
-      console.log('[DEBUG-SOCKET] chatStore.setCurrentSession:', currentSessionId);
       set({ currentSessionId });
     },
 
@@ -351,20 +349,8 @@ export const useChatStore = create<ChatStore>()(
       const shouldFilter = event.sessionId && state.currentSessionId &&
                           event.sessionId !== state.currentSessionId;
 
-      console.log('[DEBUG-SOCKET] chatStore.handleAgentEvent:', {
-        eventType: event.type,
-        eventSession: event.sessionId,
-        storeSession: state.currentSessionId,
-        shouldFilter
-      });
-
       // CRITICAL: Validate event belongs to current session (prevents cross-session leakage)
       if (shouldFilter) {
-        console.warn('[DEBUG-SOCKET] ⚠️ chatStore FILTERING event:', {
-          event: event.type,
-          eventSession: event.sessionId,
-          storeSession: state.currentSessionId
-        });
         return;
       }
 

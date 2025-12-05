@@ -64,12 +64,24 @@ export default function ChatPage() {
 
   // Auto-send initial message from URL parameter
   useEffect(() => {
+    console.log('[DEBUG-SOCKET] ChatPage initialMessage effect:', {
+      hasInitialMessage: !!initialMessage,
+      isSessionReady,
+      alreadySent: initialMessageSentRef.current,
+      isLoading,
+      sessionId
+    });
+
     // Only send if:
     // 1. We have an initial message
     // 2. Session is FULLY ready (connected + joined room)
     // 3. We haven't already sent it
     // 4. Session is loaded (not loading)
     if (initialMessage && isSessionReady && !initialMessageSentRef.current && !isLoading) {
+      console.log('[DEBUG-SOCKET] ✅ Sending initial message:', {
+        sessionId,
+        message: initialMessage.substring(0, 50) + '...'
+      });
       initialMessageSentRef.current = true;
 
       // Send the message with thinking options if specified
@@ -79,6 +91,7 @@ export default function ChatPage() {
       sendMessage(initialMessage, options);
 
       // Clear the URL parameter to prevent re-sending on refresh
+      console.log('[DEBUG-SOCKET] Clearing initialMessage from URL');
       router.replace(`/chat/${sessionId}`, { scroll: false });
     }
   }, [initialMessage, isSessionReady, sessionId, router, sendMessage, isLoading, enableThinking]);

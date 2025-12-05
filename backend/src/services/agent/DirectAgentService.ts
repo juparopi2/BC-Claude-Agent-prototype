@@ -407,6 +407,7 @@ export class DirectAgentService {
         content: 'Analyzing your request...',
         eventId: thinkingEvent.id,
         sequenceNumber: thinkingEvent.sequence_number,
+        sessionId,
       });
 
 
@@ -650,7 +651,7 @@ export class DirectAgentService {
                     timestamp: new Date().toISOString(),
                   });
 
-                  this.emitter.emitMessageChunk(chunk, event.index);
+                  this.emitter.emitMessageChunk(chunk, event.index, sessionId);
                 }
 
                 console.log(`[STREAM] text_delta: index=${event.index}, chunk_len=${chunk.length}`);
@@ -670,7 +671,7 @@ export class DirectAgentService {
                       chunkLength: thinkingChunk.length,
                     });
 
-                    this.emitter.emitThinkingChunk(thinkingChunk, event.index);
+                    this.emitter.emitThinkingChunk(thinkingChunk, event.index, sessionId);
                   }
 
                   console.log(`[STREAM] thinking_delta: index=${event.index}, chunk_len=${thinkingChunk.length}`);
@@ -1037,6 +1038,7 @@ export class DirectAgentService {
                     cacheReadInputTokens: cacheReadInputTokens > 0 ? cacheReadInputTokens : undefined,
                   },
                   model: modelName,
+                  sessionId,
                 });
               }
             } else if (block.type === 'tool_use') {
@@ -1105,6 +1107,7 @@ export class DirectAgentService {
                   blockIndex: blockIndex,
                   eventId: toolEvent.id,
                   sequenceNumber: toolEvent.sequence_number,
+                  sessionId,
                 });
 
                 // Clean up accumulator
@@ -1350,6 +1353,7 @@ export class DirectAgentService {
                 success: true,
                 eventId: toolResultEvent.id,
                 sequenceNumber: toolResultEvent.sequence_number,
+                sessionId,
               });
 
               // ✅ STEP 3: Update messages table (NO generate new sequence)
@@ -1473,6 +1477,7 @@ export class DirectAgentService {
                 error: errorMessage,
                 eventId: toolResultEvent.id,
                 sequenceNumber: toolResultEvent.sequence_number,
+                sessionId,
               });
 
               // ✅ STEP 3: Update messages table (NO generate new sequence)
@@ -1568,6 +1573,7 @@ export class DirectAgentService {
             metadata: {
               type: 'max_tokens_warning',
             },
+            sessionId,
           });
           accumulatedResponses.push('[Response truncated - reached max tokens]');
           continueLoop = false;
@@ -1595,6 +1601,7 @@ export class DirectAgentService {
             stopReason: 'stop_sequence',
             eventId: stopSeqEvent.id,
             sequenceNumber: stopSeqEvent.sequence_number,
+            sessionId,
             metadata: {
               type: 'stop_sequence',
             },
@@ -1624,6 +1631,7 @@ export class DirectAgentService {
             turnCount: turnCount,
             eventId: pauseEvent.id,
             sequenceNumber: pauseEvent.sequence_number,
+            sessionId,
           });
           continueLoop = false;
         } else if (stopReason === 'refusal') {
@@ -1649,6 +1657,7 @@ export class DirectAgentService {
             reason: 'Claude declined to generate this content due to usage policies.',
             eventId: refusalEvent.id,
             sequenceNumber: refusalEvent.sequence_number,
+            sessionId,
           });
           continueLoop = false;
         } else {
@@ -1683,6 +1692,7 @@ export class DirectAgentService {
           metadata: {
             type: 'max_turns_warning',
           },
+          sessionId,
         });
         accumulatedResponses.push('[Execution stopped - reached maximum turns]');
       }
@@ -1695,7 +1705,7 @@ export class DirectAgentService {
         outputTokens,
         cacheCreationInputTokens: cacheCreationInputTokens > 0 ? cacheCreationInputTokens : undefined,
         cacheReadInputTokens: cacheReadInputTokens > 0 ? cacheReadInputTokens : undefined,
-      });
+      }, sessionId);
 
       return {
         success: true,
@@ -1714,7 +1724,8 @@ export class DirectAgentService {
       // ✅ FIX PHASE 4: Send error event (transient - not persisted)
       this.emitter.emitError(
         error instanceof Error ? error.message : String(error),
-        'EXECUTION_ERROR'
+        'EXECUTION_ERROR',
+        sessionId
       );
 
       return {

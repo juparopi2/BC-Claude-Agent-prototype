@@ -106,6 +106,24 @@ export function useSocket(options: UseSocketOptions = {}): UseSocketReturn {
   const handlers: SocketEventHandlers = useMemo(
     () => ({
       onAgentEvent: (event) => {
+        const shouldFilter = event.sessionId && event.sessionId !== currentSessionRef.current;
+        console.log('[DEBUG-SOCKET] Event received:', {
+          type: event.type,
+          eventSessionId: event.sessionId,
+          currentSession: currentSessionRef.current,
+          shouldFilter,
+          timestamp: new Date().toISOString()
+        });
+
+        // CRITICAL: Only process events for current session (prevents cross-session leakage)
+        if (shouldFilter) {
+          console.warn('[DEBUG-SOCKET] ⚠️ FILTERING EVENT - Session mismatch!', {
+            event: event.type,
+            eventSession: event.sessionId,
+            currentSession: currentSessionRef.current
+          });
+          return;
+        }
         // Update store
         handleAgentEvent(event);
         // Call custom handler
@@ -117,9 +135,21 @@ export function useSocket(options: UseSocketOptions = {}): UseSocketReturn {
         onError?.(error);
       },
       onSessionReady: (data) => {
+        console.log('[DEBUG-SOCKET] Session ready event:', {
+          readySession: data.sessionId,
+          currentSession: currentSessionRef.current,
+          match: data.sessionId === currentSessionRef.current
+        });
+
         // Only set ready if this is the current session
         if (data.sessionId === currentSessionRef.current) {
           setIsSessionReady(true);
+          console.log('[DEBUG-SOCKET] ✅ Session marked as ready:', data.sessionId);
+        } else {
+          console.warn('[DEBUG-SOCKET] ⚠️ Session ready mismatch:', {
+            ready: data.sessionId,
+            current: currentSessionRef.current
+          });
         }
         setCurrentSession(data.sessionId);
         onSessionReady?.(data);
@@ -158,16 +188,30 @@ export function useSocket(options: UseSocketOptions = {}): UseSocketReturn {
     const socket = getSocketService();
     const sessionChanged = prevSessionRef.current !== sessionId;
 
+    console.log('[DEBUG-SOCKET] Session effect:', {
+      sessionChanged,
+      prevSession: prevSessionRef.current,
+      newSession: sessionId,
+      isConnected
+    });
+
     // Reset ready state when switching sessions - use startTransition to avoid cascading renders
     if (sessionChanged && prevSessionRef.current !== undefined) {
       startTransition(() => {
         setIsSessionReady(false);
       });
+      // CRITICAL: Explicitly leave previous session before joining new one (prevents cross-session events)
+      if (prevSessionRef.current) {
+        console.log('[DEBUG-SOCKET] Leaving session:', prevSessionRef.current);
+        socket.leaveSession(prevSessionRef.current);
+      }
     }
 
     if (sessionId && isConnected) {
+      console.log('[DEBUG-SOCKET] Joining session:', sessionId);
       socket.joinSession(sessionId);
       currentSessionRef.current = sessionId;
+      console.log('[DEBUG-SOCKET] currentSessionRef updated to:', currentSessionRef.current);
     }
 
     // Update ref for next render
@@ -206,8 +250,18 @@ export function useSocket(options: UseSocketOptions = {}): UseSocketReturn {
   // Send message function
   const sendMessage = useCallback(
     (message: string, opts?: { enableThinking?: boolean; thinkingBudget?: number }) => {
+      console.log('[DEBUG-SOCKET] sendMessage called:', {
+        hasUser: !!user?.id,
+        currentSession: currentSessionRef.current,
+        isConnected,
+        message: message.substring(0, 50) + '...'
+      });
+
       if (!user?.id || !currentSessionRef.current) {
-        console.error('[useSocket] Cannot send message: no user or session');
+        console.error('[DEBUG-SOCKET] ❌ Cannot send - missing user or session:', {
+          hasUser: !!user?.id,
+          currentSession: currentSessionRef.current
+        });
         return;
       }
 
@@ -245,6 +299,12 @@ export function useSocket(options: UseSocketOptions = {}): UseSocketReturn {
           enableThinking: opts.enableThinking,
           thinkingBudget: opts.thinkingBudget,
         } : undefined,
+      });
+
+      console.log('[DEBUG-SOCKET] ✅ Message sent via socket:', {
+        sessionId: currentSessionRef.current,
+        userId: user.id,
+        tempId
       });
     },
     [user, addOptimisticMessage]

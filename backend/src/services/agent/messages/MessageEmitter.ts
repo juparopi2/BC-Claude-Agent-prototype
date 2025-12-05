@@ -43,19 +43,19 @@ export interface IMessageEmitter {
   // ============================================================================
 
   /** Emit a message chunk during streaming */
-  emitMessageChunk(chunk: string, blockIndex: number): void;
+  emitMessageChunk(chunk: string, blockIndex: number, sessionId?: string): void;
 
   /** Emit a thinking chunk during streaming */
-  emitThinkingChunk(chunk: string, blockIndex: number): void;
+  emitThinkingChunk(chunk: string, blockIndex: number, sessionId?: string): void;
 
   /** Emit tool use pending state (early signal before persistence) */
   emitToolUsePending(data: ToolUsePendingData): void;
 
   /** Emit completion event */
-  emitComplete(stopReason: StopReason, tokenUsage?: TokenUsage): void;
+  emitComplete(stopReason: StopReason, tokenUsage?: TokenUsage, sessionId?: string): void;
 
   /** Emit error event */
-  emitError(error: string, code?: string): void;
+  emitError(error: string, code?: string, sessionId?: string): void;
 
   // ============================================================================
   // Persisted Events (require sequence number from EventStore)
@@ -146,10 +146,11 @@ export class MessageEmitter implements IMessageEmitter {
   /**
    * Emit a message chunk during streaming
    */
-  emitMessageChunk(chunk: string, blockIndex: number): void {
+  emitMessageChunk(chunk: string, blockIndex: number, sessionId?: string): void {
     const event = this.createTransientEvent('message_chunk', {
       content: chunk, // Use 'content' to match MessageChunkEvent interface
       blockIndex,
+      sessionId,
     });
     logger.trace({ blockIndex, chunkLength: chunk.length }, 'Emitting message chunk');
     this.emit(event);
@@ -158,10 +159,11 @@ export class MessageEmitter implements IMessageEmitter {
   /**
    * Emit a thinking chunk during streaming
    */
-  emitThinkingChunk(chunk: string, blockIndex: number): void {
+  emitThinkingChunk(chunk: string, blockIndex: number, sessionId?: string): void {
     const event = this.createTransientEvent('thinking_chunk', {
       content: chunk,
       blockIndex,
+      sessionId,
     });
     logger.trace({ blockIndex, chunkLength: chunk.length }, 'Emitting thinking chunk');
     this.emit(event);
@@ -186,7 +188,7 @@ export class MessageEmitter implements IMessageEmitter {
   /**
    * Emit completion event
    */
-  emitComplete(stopReason: StopReason, tokenUsage?: TokenUsage): void {
+  emitComplete(stopReason: StopReason, tokenUsage?: TokenUsage, sessionId?: string): void {
     // Map Anthropic stop_reason to CompleteEvent reason format
     let reason: 'success' | 'error' | 'max_turns' | 'user_cancelled' = 'success';
 
@@ -205,6 +207,7 @@ export class MessageEmitter implements IMessageEmitter {
       reason, // Use 'reason' to match CompleteEvent interface
       stopReason, // Keep stopReason for backward compatibility
       tokenUsage,
+      sessionId,
     });
     logger.debug({ reason, stopReason }, 'Emitting complete');
     this.emit(event);
@@ -213,10 +216,11 @@ export class MessageEmitter implements IMessageEmitter {
   /**
    * Emit error event
    */
-  emitError(error: string, code?: string): void {
+  emitError(error: string, code?: string, sessionId?: string): void {
     const event = this.createTransientEvent('error', {
       error,
       code,
+      sessionId,
     });
     logger.error({ error, code }, 'Emitting error');
     this.emit(event);
@@ -237,6 +241,7 @@ export class MessageEmitter implements IMessageEmitter {
       persistenceState: 'persisted',
       sequenceNumber: data.sequenceNumber,
       content: data.content,
+      sessionId: data.sessionId,
     };
     logger.debug(
       { sequenceNumber: data.sequenceNumber, contentLength: data.content.length },
@@ -262,6 +267,7 @@ export class MessageEmitter implements IMessageEmitter {
       tokenUsage: data.tokenUsage,
       model: data.model,
       metadata: data.metadata,
+      sessionId: data.sessionId,
     };
     logger.debug(
       {
@@ -289,6 +295,7 @@ export class MessageEmitter implements IMessageEmitter {
       toolName: data.toolName,
       args: data.args,
       blockIndex: data.blockIndex,
+      sessionId: data.sessionId,
     };
     logger.debug(
       {
@@ -318,6 +325,7 @@ export class MessageEmitter implements IMessageEmitter {
       success: data.success,
       error: data.error,
       durationMs: data.durationMs,
+      sessionId: data.sessionId,
     };
     logger.debug(
       {
@@ -344,6 +352,7 @@ export class MessageEmitter implements IMessageEmitter {
       sequenceNumber: data.sequenceNumber,
       reason: data.reason,
       turnCount: data.turnCount,
+      sessionId: data.sessionId,
     };
     logger.debug(
       { sequenceNumber: data.sequenceNumber, reason: data.reason, turnCount: data.turnCount },
@@ -363,6 +372,7 @@ export class MessageEmitter implements IMessageEmitter {
       persistenceState: 'persisted',
       sequenceNumber: data.sequenceNumber,
       reason: data.reason,
+      sessionId: data.sessionId,
     };
     logger.debug(
       { sequenceNumber: data.sequenceNumber, reason: data.reason },

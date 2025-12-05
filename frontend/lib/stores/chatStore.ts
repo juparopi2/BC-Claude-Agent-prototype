@@ -319,13 +319,19 @@ export const useChatStore = create<ChatStore>()(
     // Status
     // ========================================
     setLoading: (isLoading) => set({ isLoading }),
-    setAgentBusy: (isAgentBusy) => set({ isAgentBusy }),
+    setAgentBusy: (isAgentBusy) => {
+      console.log('[DEBUG-SOCKET] chatStore.setAgentBusy:', isAgentBusy);
+      set({ isAgentBusy });
+    },
     setError: (error) => set({ error }),
 
     // ========================================
     // Session
     // ========================================
-    setCurrentSession: (currentSessionId) => set({ currentSessionId }),
+    setCurrentSession: (currentSessionId) => {
+      console.log('[DEBUG-SOCKET] chatStore.setCurrentSession:', currentSessionId);
+      set({ currentSessionId });
+    },
 
     clearChat: () =>
       set({
@@ -340,6 +346,27 @@ export const useChatStore = create<ChatStore>()(
     // ========================================
     handleAgentEvent: (event) => {
       const actions = get();
+      const state = get();
+
+      const shouldFilter = event.sessionId && state.currentSessionId &&
+                          event.sessionId !== state.currentSessionId;
+
+      console.log('[DEBUG-SOCKET] chatStore.handleAgentEvent:', {
+        eventType: event.type,
+        eventSession: event.sessionId,
+        storeSession: state.currentSessionId,
+        shouldFilter
+      });
+
+      // CRITICAL: Validate event belongs to current session (prevents cross-session leakage)
+      if (shouldFilter) {
+        console.warn('[DEBUG-SOCKET] ⚠️ chatStore FILTERING event:', {
+          event: event.type,
+          eventSession: event.sessionId,
+          storeSession: state.currentSessionId
+        });
+        return;
+      }
 
       switch (event.type) {
         case 'session_start':

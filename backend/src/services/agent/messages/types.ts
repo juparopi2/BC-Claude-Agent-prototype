@@ -195,6 +195,7 @@ export interface ThinkingEventData {
   content: string;
   sequenceNumber: number;
   eventId: string;
+  sessionId?: string;
 }
 
 /**
@@ -209,6 +210,7 @@ export interface MessageEventData {
   model?: string;
   sequenceNumber: number;
   eventId: string;
+  sessionId?: string;
   /** Optional metadata for special message types */
   metadata?: {
     type?: 'max_tokens_warning' | 'stop_sequence' | 'max_turns_warning';
@@ -226,6 +228,7 @@ export interface ToolUseEventData {
   blockIndex: number;
   sequenceNumber: number;
   eventId: string;
+  sessionId?: string;
 }
 
 /**
@@ -239,6 +242,7 @@ export interface ToolResultEventData {
   success: boolean;
   sequenceNumber: number;
   eventId: string;
+  sessionId?: string;
   /** Error message if success is false */
   error?: string;
   /** Execution duration in milliseconds */
@@ -253,6 +257,7 @@ export interface TurnPausedEventData {
   turnCount: number;
   sequenceNumber: number;
   eventId: string;
+  sessionId?: string;
 }
 
 /**
@@ -262,6 +267,7 @@ export interface ContentRefusedEventData {
   reason: string;
   sequenceNumber: number;
   eventId: string;
+  sessionId?: string;
 }
 
 /**

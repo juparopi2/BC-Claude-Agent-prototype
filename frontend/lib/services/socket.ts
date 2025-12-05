@@ -172,7 +172,14 @@ export class SocketService {
    * Join a session room
    */
   joinSession(sessionId: string): void {
+    console.log('[DEBUG-SOCKET] socket.joinSession called:', {
+      sessionId,
+      isConnected: this.socket?.connected,
+      currentSessionId: this.currentSessionId
+    });
+
     if (!this.socket?.connected) {
+      console.warn('[DEBUG-SOCKET] ⚠️ Cannot join - not connected, queuing');
       console.warn(SocketLogMessages.JOIN_SESSION_NOT_CONNECTED);
       // Queue the session join
       this.pendingSessionJoins.push({ sessionId });
@@ -182,9 +189,11 @@ export class SocketService {
 
     // Leave current session if different
     if (this.currentSessionId && this.currentSessionId !== sessionId) {
+      console.log('[DEBUG-SOCKET] Leaving previous session:', this.currentSessionId);
       this.leaveSession(this.currentSessionId);
     }
 
+    console.log('[DEBUG-SOCKET] Emitting session:join for:', sessionId);
     this.socket.emit('session:join', { sessionId });
     this.currentSessionId = sessionId;
   }
@@ -193,13 +202,19 @@ export class SocketService {
    * Leave a session room
    */
   leaveSession(sessionId: string): void {
+    console.log('[DEBUG-SOCKET] socket.leaveSession called:', sessionId);
+
     if (!this.socket?.connected) {
+      console.warn('[DEBUG-SOCKET] ⚠️ Cannot leave - not connected');
       return;
     }
 
+    console.log('[DEBUG-SOCKET] Emitting session:leave for:', sessionId);
     this.socket.emit('session:leave', { sessionId });
+
     if (this.currentSessionId === sessionId) {
       this.currentSessionId = null;
+      console.log('[DEBUG-SOCKET] currentSessionId cleared');
     }
   }
 
@@ -207,7 +222,14 @@ export class SocketService {
    * Send a chat message
    */
   sendMessage(data: Omit<ChatMessageData, 'thinking'> & { thinking?: ExtendedThinkingConfig }): void {
+    console.log('[DEBUG-SOCKET] socket.sendMessage called:', {
+      sessionId: data.sessionId,
+      isConnected: this.socket?.connected,
+      hasPendingMessages: this.pendingMessages.length > 0
+    });
+
     if (!this.socket?.connected) {
+      console.warn('[DEBUG-SOCKET] ⚠️ Not connected, queuing message');
       console.warn(SocketLogMessages.SEND_MESSAGE_NOT_CONNECTED);
       // Queue the message with a promise
       const pendingMessage: PendingMessage = {
@@ -220,6 +242,10 @@ export class SocketService {
       return;
     }
 
+    console.log('[DEBUG-SOCKET] Emitting chat:message:', {
+      sessionId: data.sessionId,
+      userId: data.userId
+    });
     this.socket.emit('chat:message', data);
   }
 

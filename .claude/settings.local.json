@@ -117,7 +117,8 @@
       "WebFetch(domain:platform.claude.com)",
       "Bash(grep:*)",
       "Bash(do echo \"=== Run $i ===\")",
-      "Bash(git log:*)"
+      "Bash(git log:*)",
+      "WebFetch(domain:azure.microsoft.com)"
     ],
     "deny": [],
     "ask": []

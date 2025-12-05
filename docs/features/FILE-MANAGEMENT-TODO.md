@@ -1,0 +1,882 @@
+# Sistema de Gestión de Archivos - Plan de Implementación
+
+## Resumen del Proyecto
+
+| Campo | Valor |
+|-------|-------|
+| **Proyecto** | Sistema de Gestión de Archivos |
+| **Versión** | 1.0 |
+| **Fecha Inicio** | TBD |
+| **Duración Estimada** | 6 Fases |
+| **Prioridad** | Alta |
+
+---
+
+## Fases de Implementación
+
+### FASE 1: Infraestructura Base y Almacenamiento
+
+**Objetivo**: Establecer la base de datos, storage y servicios core para CRUD de archivos.
+
+#### Entregables
+
+| # | Entregable | Tipo | Prioridad |
+|---|------------|------|-----------|
+| 1.1 | Migración SQL para tablas `files`, `file_chunks`, `message_file_attachments` | Database | Alta |
+| 1.2 | Configuración de container `user-files` en Blob Storage | Azure | Alta |
+| 1.3 | `FileService` - CRUD de archivos y carpetas | Backend | Alta |
+| 1.4 | `FileUploadService` - Upload a Azure Blob | Backend | Alta |
+| 1.5 | Endpoints REST básicos (`/api/files/*`) | Backend | Alta |
+| 1.6 | Tests unitarios para servicios | Testing | Media |
+
+#### Tareas Detalladas
+
+```
+[ ] 1.1.1 Crear script de migración: backend/scripts/migrations/003-create-files-tables.sql
+[ ] 1.1.2 Agregar tabla `files` con campos: id, user_id, parent_folder_id, name, mime_type, etc.
+[ ] 1.1.3 Agregar tabla `file_chunks` para chunks de embeddings
+[ ] 1.1.4 Agregar tabla `message_file_attachments` para relación mensaje-archivo
+[ ] 1.1.5 Crear índices para queries frecuentes
+[ ] 1.1.6 Ejecutar migración en desarrollo
+
+[ ] 1.2.1 Crear container `user-files` en storage account existente (sabcagentdev)
+[ ] 1.2.2 Configurar access policy (private)
+[ ] 1.2.3 Agregar secrets de conexión a Key Vault
+
+[ ] 1.3.1 Crear backend/src/services/files/FileService.ts
+[ ] 1.3.2 Implementar getFiles(userId, folderId?)
+[ ] 1.3.3 Implementar getFile(userId, fileId)
+[ ] 1.3.4 Implementar createFolder(userId, name, parentId?)
+[ ] 1.3.5 Implementar deleteFile(userId, fileId) con cascade
+[ ] 1.3.6 Implementar updateFile(userId, fileId, updates)
+[ ] 1.3.7 Implementar toggleFavorite(userId, fileId)
+[ ] 1.3.8 Implementar moveFile(userId, fileId, newParentId)
+
+[ ] 1.4.1 Crear backend/src/services/files/FileUploadService.ts
+[ ] 1.4.2 Implementar generateBlobPath(userId, parentPath, fileName)
+[ ] 1.4.3 Implementar uploadToBlob(buffer, blobPath, contentType)
+[ ] 1.4.4 Implementar generateSasToken(userId, permissions)
+[ ] 1.4.5 Implementar validateFileType(mimeType)
+[ ] 1.4.6 Implementar validateFileSize(size)
+
+[ ] 1.5.1 Crear backend/src/routes/files.ts
+[ ] 1.5.2 POST /api/files/upload (multipart/form-data)
+[ ] 1.5.3 POST /api/files/folders
+[ ] 1.5.4 GET /api/files (query: folderId, sortBy, favorites)
+[ ] 1.5.5 GET /api/files/:id
+[ ] 1.5.6 GET /api/files/:id/download
+[ ] 1.5.7 DELETE /api/files/:id
+[ ] 1.5.8 PATCH /api/files/:id
+[ ] 1.5.9 Registrar routes en index.ts
+
+[ ] 1.6.1 Tests para FileService (CRUD operations)
+[ ] 1.6.2 Tests para FileUploadService (blob operations)
+[ ] 1.6.3 Tests para validaciones de ownership
+```
+
+#### Criterios de Éxito
+
+| Criterio | Métrica | Target |
+|----------|---------|--------|
+| Tablas creadas correctamente | Migración exitosa | 100% |
+| Blob container accesible | Upload/download funcional | Si |
+| CRUD operaciones | Tests pasando | >90% |
+| Aislamiento multi-tenant | Query siempre incluye userId | 100% |
+| Tiempo de upload | Archivo 10MB | <5s |
+
+#### Dependencias
+
+- Azure Storage Account existente (`sabcagentdev`)
+- Azure SQL Database existente (`sqldb-bcagent-dev`)
+- Patterns de servicios del proyecto (singleton, dependency injection)
+
+#### Riesgos
+
+| Riesgo | Probabilidad | Impacto | Mitigación |
+|--------|--------------|---------|------------|
+| Límites de Blob Storage | Baja | Alto | Monitorear quotas |
+| Race conditions en delete | Media | Medio | Transacciones SQL |
+
+---
+
+### FASE 1.5: Sistema de Tracking, Auditoría y Billing
+
+**Objetivo**: Establecer la infraestructura de tracking desde el inicio para garantizar trazabilidad completa de todas las operaciones y habilitar facturación basada en uso.
+
+> ⚠️ **CRÍTICO**: Esta fase debe implementarse en paralelo con Fase 1, ya que todo el sistema de archivos debe trackear uso desde el día 1.
+
+#### Entregables
+
+| # | Entregable | Tipo | Prioridad |
+|---|------------|------|-----------|
+| 1.5.1 | Migración SQL para tablas de tracking | Database | Alta |
+| 1.5.2 | `UsageTrackingService` - Core de tracking | Backend | Alta |
+| 1.5.3 | `QuotaValidatorService` - Validación de límites | Backend | Alta |
+| 1.5.4 | `UsageAggregationWorker` - Agregación async | Backend | Alta |
+| 1.5.5 | `BillingService` - Generación de facturas | Backend | Media |
+| 1.5.6 | Endpoints REST de uso y billing | Backend | Alta |
+| 1.5.7 | Eventos WebSocket de uso en tiempo real | Backend | Alta |
+| 1.5.8 | Dashboard de uso (Frontend) | Frontend | Media |
+
+#### Tareas Detalladas
+
+```
+[ ] 1.5.1.1 Crear script: backend/scripts/migrations/002-create-tracking-tables.sql
+[ ] 1.5.1.2 Tabla `usage_events` (event log append-only)
+[ ] 1.5.1.3 Tabla `user_quotas` (límites por usuario/plan)
+[ ] 1.5.1.4 Tabla `usage_aggregates` (rollups por período)
+[ ] 1.5.1.5 Tabla `billing_records` (facturas mensuales)
+[ ] 1.5.1.6 Tabla `quota_alerts` (alertas de cuota)
+[ ] 1.5.1.7 Crear índices optimizados para queries frecuentes
+[ ] 1.5.1.8 Ejecutar migración en desarrollo
+
+[ ] 1.5.2.1 Crear backend/src/services/tracking/UsageTrackingService.ts
+[ ] 1.5.2.2 Implementar trackEvent(userId, category, type, quantity, unit, metadata)
+[ ] 1.5.2.3 Implementar trackFileUpload(userId, fileId, sizeBytes)
+[ ] 1.5.2.4 Implementar trackTextExtraction(userId, fileId, pagesCount)
+[ ] 1.5.2.5 Implementar trackEmbedding(userId, fileId, tokensOrImages, type)
+[ ] 1.5.2.6 Implementar trackVectorSearch(userId, queryTokens)
+[ ] 1.5.2.7 Implementar trackClaudeUsage(userId, sessionId, inputTokens, outputTokens)
+[ ] 1.5.2.8 Implementar trackToolExecution(userId, sessionId, toolName)
+[ ] 1.5.2.9 Calcular costos automáticamente basados en pricing config
+[ ] 1.5.2.10 Emitir eventos WebSocket post-tracking
+
+[ ] 1.5.3.1 Crear backend/src/services/tracking/QuotaValidatorService.ts
+[ ] 1.5.3.2 Implementar getCurrentUsage(userId, quotaType)
+[ ] 1.5.3.3 Implementar getQuotaLimits(userId)
+[ ] 1.5.3.4 Implementar validateQuota(userId, quotaType, requestedAmount)
+[ ] 1.5.3.5 Implementar canProceed(userId, quotaType, amount) → { allowed, reason, payg }
+[ ] 1.5.3.6 Implementar checkAllQuotas(userId) → QuotaStatus[]
+[ ] 1.5.3.7 Manejar lógica de Pay As You Go
+[ ] 1.5.3.8 Crear QuotaExceededError con detalles de upgrade
+
+[ ] 1.5.4.1 Agregar cola 'usage-aggregation' a MessageQueue
+[ ] 1.5.4.2 Crear backend/src/services/tracking/UsageAggregationWorker.ts
+[ ] 1.5.4.3 Implementar aggregateHourly(userId)
+[ ] 1.5.4.4 Implementar aggregateDaily(userId)
+[ ] 1.5.4.5 Implementar aggregateMonthly(userId)
+[ ] 1.5.4.6 Implementar checkAlertThresholds(userId)
+[ ] 1.5.4.7 Crear quota_alerts cuando se alcance 80%, 90%, 100%
+[ ] 1.5.4.8 Scheduled job para agregación periódica (cada hora)
+
+[ ] 1.5.5.1 Crear backend/src/services/billing/BillingService.ts
+[ ] 1.5.5.2 Implementar generateMonthlyInvoice(userId, month)
+[ ] 1.5.5.3 Implementar calculatePlanCost(planId)
+[ ] 1.5.5.4 Implementar calculatePaygCost(userId, month)
+[ ] 1.5.5.5 Implementar getUsageBreakdown(userId, month) → JSON detallado
+[ ] 1.5.5.6 Implementar enablePayg(userId, spendingLimit)
+[ ] 1.5.5.7 Implementar disablePayg(userId)
+[ ] 1.5.5.8 Implementar updatePaygLimit(userId, newLimit)
+[ ] 1.5.5.9 Scheduled job para generar facturas el día 1 de cada mes
+
+[ ] 1.5.6.1 Crear backend/src/routes/usage.ts
+[ ] 1.5.6.2 GET /api/usage/current - Uso actual del período
+[ ] 1.5.6.3 GET /api/usage/history - Histórico por período
+[ ] 1.5.6.4 GET /api/usage/quotas - Límites del usuario
+[ ] 1.5.6.5 GET /api/usage/breakdown - Desglose detallado
+[ ] 1.5.6.6 Crear backend/src/routes/billing.ts
+[ ] 1.5.6.7 GET /api/billing/current - Factura actual (draft)
+[ ] 1.5.6.8 GET /api/billing/history - Historial de facturas
+[ ] 1.5.6.9 GET /api/billing/invoice/:id - Detalle de factura
+[ ] 1.5.6.10 POST /api/billing/payg/enable - Habilitar PAYG
+[ ] 1.5.6.11 POST /api/billing/payg/disable - Deshabilitar PAYG
+[ ] 1.5.6.12 PUT /api/billing/payg/limit - Actualizar límite PAYG
+[ ] 1.5.6.13 Registrar routes en index.ts
+
+[ ] 1.5.7.1 Emitir 'usage:updated' después de cada operación trackeada
+[ ] 1.5.7.2 Emitir 'usage:alert' cuando se alcancen thresholds
+[ ] 1.5.7.3 Emitir 'usage:quota_exceeded' cuando se bloquee operación
+[ ] 1.5.7.4 Incluir percentageUsed y upgradeUrl en eventos
+
+[ ] 1.5.8.1 Crear frontend/lib/stores/usageStore.ts
+[ ] 1.5.8.2 Crear frontend/components/usage/UsageDashboard.tsx
+[ ] 1.5.8.3 Crear frontend/components/usage/QuotaProgressBar.tsx
+[ ] 1.5.8.4 Crear frontend/components/usage/UsageChart.tsx (histórico)
+[ ] 1.5.8.5 Crear frontend/components/usage/BillingHistory.tsx
+[ ] 1.5.8.6 Crear frontend/components/usage/PaygSettings.tsx
+[ ] 1.5.8.7 Mostrar alertas de cuota en UI principal
+[ ] 1.5.8.8 Modal de "Límite alcanzado" con opciones de upgrade
+```
+
+#### Integración con Otros Servicios
+
+**Puntos de integración obligatorios**:
+
+```typescript
+// FileUploadService.ts - DEBE trackear después de upload exitoso
+async uploadFile(userId, file) {
+  const result = await this.uploadToBlob(file);
+  await usageTrackingService.trackFileUpload(userId, result.fileId, file.size);
+  return result;
+}
+
+// FileProcessingService.ts - DEBE trackear extracción de texto
+async processFile(userId, fileId) {
+  const pages = await this.extractText(fileId);
+  await usageTrackingService.trackTextExtraction(userId, fileId, pages.length);
+}
+
+// EmbeddingService.ts - DEBE trackear generación de embeddings
+async embedText(userId, fileId, text) {
+  const tokens = this.countTokens(text);
+  await usageTrackingService.trackEmbedding(userId, fileId, tokens, 'text');
+  return this.generateEmbedding(text);
+}
+
+// VectorSearchService.ts - DEBE trackear búsquedas
+async searchFiles(userId, query) {
+  await usageTrackingService.trackVectorSearch(userId, this.countTokens(query));
+  return this.executeSearch(query);
+}
+
+// DirectAgentService.ts - DEBE trackear uso de Claude
+async processMessage(userId, sessionId, message) {
+  const response = await this.callClaude(message);
+  await usageTrackingService.trackClaudeUsage(
+    userId, sessionId,
+    response.usage.input_tokens,
+    response.usage.output_tokens
+  );
+  return response;
+}
+```
+
+#### Criterios de Éxito
+
+| Criterio | Métrica | Target |
+|----------|---------|--------|
+| Todas las operaciones trackeadas | Cobertura de tracking | 100% |
+| Latencia de tracking | Overhead por operación | <10ms |
+| Agregaciones precisas | Diferencia vs eventos raw | <1% |
+| Quotas en tiempo real | Actualización de uso | <1 segundo |
+| Alertas enviadas | Al alcanzar 80%, 90%, 100% | 100% |
+| Facturas generadas | Día 1 de cada mes | Automático |
+| PAYG funcional | Bloqueo/allow correcto | 100% |
+
+#### Dependencias
+
+- Redis para contadores en tiempo real (ya existe)
+- BullMQ para workers de agregación (ya existe)
+- Tablas de usuarios y sesiones (ya existen)
+
+#### Riesgos
+
+| Riesgo | Probabilidad | Impacto | Mitigación |
+|--------|--------------|---------|------------|
+| Race conditions en contadores | Media | Alto | Usar Redis INCR atómico |
+| Pérdida de eventos | Baja | Alto | Transacciones + retry |
+| Agregaciones incorrectas | Media | Alto | Reconciliación periódica |
+| Latencia de validación | Baja | Medio | Caché de quotas en Redis |
+
+---
+
+### FASE 2: UI de Navegación de Archivos
+
+**Objetivo**: Crear la interfaz de usuario para navegar, subir y gestionar archivos.
+
+#### Entregables
+
+| # | Entregable | Tipo | Prioridad |
+|---|------------|------|-----------|
+| 2.1 | `fileStore` - Estado de archivos (Zustand) | Frontend | Alta |
+| 2.2 | `FileExplorer` - Componente principal | Frontend | Alta |
+| 2.3 | `FileTree` - Árbol de navegación | Frontend | Alta |
+| 2.4 | `FileUploadZone` - Drag & drop | Frontend | Alta |
+| 2.5 | Integración en RightPanel (tab Files) | Frontend | Alta |
+| 2.6 | Sistema de favoritos UI | Frontend | Media |
+| 2.7 | Ordenamiento (nombre/fecha) | Frontend | Media |
+
+#### Tareas Detalladas
+
+```
+[ ] 2.1.1 Crear frontend/lib/stores/fileStore.ts
+[ ] 2.1.2 Definir FileState interface (files, currentFolder, selectedFiles, etc.)
+[ ] 2.1.3 Definir FileActions interface
+[ ] 2.1.4 Implementar fetchFiles action
+[ ] 2.1.5 Implementar uploadFiles action con progress tracking
+[ ] 2.1.6 Implementar createFolder action
+[ ] 2.1.7 Implementar deleteFiles action
+[ ] 2.1.8 Implementar toggleFavorite action
+[ ] 2.1.9 Implementar sorting actions
+
+[ ] 2.2.1 Crear frontend/components/files/FileExplorer.tsx
+[ ] 2.2.2 Layout con sidebar (tree) + main (list)
+[ ] 2.2.3 Breadcrumb de navegación
+[ ] 2.2.4 Toolbar (crear carpeta, upload, sort)
+[ ] 2.2.5 Empty state para carpetas vacías
+
+[ ] 2.3.1 Crear frontend/components/files/FileTree.tsx
+[ ] 2.3.2 Componente recursivo para carpetas
+[ ] 2.3.3 Expand/collapse de carpetas
+[ ] 2.3.4 Indicador de carpeta seleccionada
+[ ] 2.3.5 Drag & drop para mover archivos
+
+[ ] 2.4.1 Crear frontend/components/files/FileUploadZone.tsx
+[ ] 2.4.2 Área de drop con feedback visual
+[ ] 2.4.3 Input file como fallback
+[ ] 2.4.4 Progress bar durante upload
+[ ] 2.4.5 Validación de tipos/tamaños
+[ ] 2.4.6 Multi-file upload
+
+[ ] 2.5.1 Modificar frontend/components/layout/RightPanel.tsx
+[ ] 2.5.2 Integrar FileExplorer en tab "Files"
+[ ] 2.5.3 Ajustar responsive behavior
+
+[ ] 2.6.1 Crear frontend/components/files/FileItem.tsx
+[ ] 2.6.2 Icono de favorito (star)
+[ ] 2.6.3 Vista de favoritos separada
+[ ] 2.6.4 Toggle "Show favorites only"
+
+[ ] 2.7.1 Crear frontend/components/files/FileSortControls.tsx
+[ ] 2.7.2 Dropdown para sortBy (name, date, size)
+[ ] 2.7.3 Toggle para sortOrder (asc/desc)
+```
+
+#### Criterios de Éxito
+
+| Criterio | Métrica | Target |
+|----------|---------|--------|
+| Navegación funcional | Click en carpeta muestra contenido | Si |
+| Upload drag & drop | Archivos se suben correctamente | Si |
+| Progress feedback | Usuario ve progreso de upload | Si |
+| Responsive | Funciona en panel estrecho (<300px) | Si |
+| Performance | Lista de 100 archivos | <100ms render |
+
+#### Dependencias
+
+- Fase 1 completada (API backend)
+- Componentes Radix UI existentes
+- Lucide icons
+
+#### Riesgos
+
+| Riesgo | Probabilidad | Impacto | Mitigación |
+|--------|--------------|---------|------------|
+| Drag & drop no funciona en móvil | Media | Bajo | Fallback con input |
+| Lista muy grande | Media | Medio | Virtualización |
+
+---
+
+### FASE 3: Procesamiento de Documentos
+
+**Objetivo**: Extraer texto de diferentes tipos de archivos para indexación.
+
+#### Entregables
+
+| # | Entregable | Tipo | Prioridad |
+|---|------------|------|-----------|
+| 3.1 | Worker de procesamiento (BullMQ) | Backend | Alta |
+| 3.2 | Procesador PDF | Backend | Alta |
+| 3.3 | Procesador DOCX | Backend | Media |
+| 3.4 | Procesador Excel/CSV | Backend | Media |
+| 3.5 | Eventos de progreso (WebSocket) | Backend | Media |
+
+#### Tareas Detalladas
+
+```
+[ ] 3.1.1 Agregar cola 'file-processing' a MessageQueue
+[ ] 3.1.2 Crear backend/src/services/files/FileProcessingService.ts
+[ ] 3.1.3 Implementar worker para procesar jobs
+[ ] 3.1.4 Manejo de errores y retry logic
+[ ] 3.1.5 Rate limiting per user
+
+[ ] 3.2.1 Evaluar: pdf-parse vs Azure Document Intelligence
+[ ] 3.2.2 Implementar extractPdfText(buffer)
+[ ] 3.2.3 Manejar PDFs escaneados (OCR si necesario)
+[ ] 3.2.4 Extraer metadata (páginas, título, autor)
+
+[ ] 3.3.1 Instalar mammoth.js
+[ ] 3.3.2 Implementar extractDocxText(buffer)
+[ ] 3.3.3 Preservar estructura básica (headers, párrafos)
+
+[ ] 3.4.1 Instalar xlsx library
+[ ] 3.4.2 Implementar extractExcelText(buffer)
+[ ] 3.4.3 Convertir tablas a Markdown
+[ ] 3.4.4 Manejar múltiples sheets
+
+[ ] 3.5.1 Emitir evento 'file:processing_status' al iniciar
+[ ] 3.5.2 Emitir evento al completar
+[ ] 3.5.3 Emitir evento en caso de error
+[ ] 3.5.4 Frontend: mostrar estado de procesamiento
+```
+
+#### Criterios de Éxito
+
+| Criterio | Métrica | Target |
+|----------|---------|--------|
+| PDF text extraction | Texto extraído correctamente | >95% docs |
+| DOCX extraction | Texto legible | Si |
+| Excel extraction | Tablas en Markdown | Si |
+| Processing time | Documento 10 páginas | <10s |
+| Error handling | Errores no bloquean sistema | Si |
+
+#### Dependencias
+
+- Fase 1 completada
+- BullMQ workers existentes
+- npm packages: pdf-parse, mammoth, xlsx
+
+#### Riesgos
+
+| Riesgo | Probabilidad | Impacto | Mitigación |
+|--------|--------------|---------|------------|
+| PDFs escaneados sin OCR | Alta | Medio | Azure Document Intelligence |
+| Documentos corruptos | Baja | Bajo | Try/catch, marcar como failed |
+| Memory overflow en docs grandes | Media | Alto | Stream processing |
+
+---
+
+### FASE 4: Embeddings y Búsqueda Semántica
+
+**Objetivo**: Generar embeddings y habilitar búsqueda vectorial sobre archivos.
+
+#### Entregables
+
+| # | Entregable | Tipo | Prioridad |
+|---|------------|------|-----------|
+| 4.1 | Provisionar Azure AI Search | Azure | Alta |
+| 4.2 | Provisionar Azure OpenAI (embeddings) | Azure | Alta |
+| 4.3 | Provisionar Azure Computer Vision | Azure | Alta |
+| 4.4 | `EmbeddingService` | Backend | Alta |
+| 4.5 | `VectorSearchService` | Backend | Alta |
+| 4.6 | Estrategias de chunking | Backend | Alta |
+| 4.7 | Indexación automática post-procesamiento | Backend | Media |
+
+#### Tareas Detalladas
+
+```
+[ ] 4.1.1 Crear script infrastructure/deploy-search-service.sh
+[ ] 4.1.2 Provisionar Azure AI Search (Basic SKU)
+[ ] 4.1.3 Crear índice 'file-chunks-index'
+[ ] 4.1.4 Configurar vector search profile (HNSW, cosine)
+[ ] 4.1.5 Agregar connection string a Key Vault
+
+[ ] 4.2.1 Crear script infrastructure/deploy-openai-embeddings.sh
+[ ] 4.2.2 Provisionar Azure OpenAI Service
+[ ] 4.2.3 Deploy modelo text-embedding-3-small
+[ ] 4.2.4 Agregar API key a Key Vault
+
+[ ] 4.3.1 Crear script infrastructure/deploy-computer-vision.sh
+[ ] 4.3.2 Provisionar Azure Computer Vision (S1)
+[ ] 4.3.3 Verificar disponibilidad de multimodal embeddings en región
+[ ] 4.3.4 Agregar API key a Key Vault
+
+[ ] 4.4.1 Crear backend/src/services/embeddings/EmbeddingService.ts
+[ ] 4.4.2 Implementar embedText(text) con Azure OpenAI
+[ ] 4.4.3 Implementar embedImage(imageBuffer) con Computer Vision
+[ ] 4.4.4 Batch embedding para múltiples chunks
+[ ] 4.4.5 Caché de embeddings frecuentes
+
+[ ] 4.5.1 Crear backend/src/services/embeddings/VectorSearchService.ts
+[ ] 4.5.2 Implementar searchFiles(userId, query, options)
+[ ] 4.5.3 Implementar searchInFolder(userId, folderId, query)
+[ ] 4.5.4 Hybrid search (texto + vector)
+[ ] 4.5.5 Filtrado por userId (multi-tenant)
+[ ] 4.5.6 Agrupar resultados por archivo
+
+[ ] 4.6.1 Crear backend/src/services/processing/ChunkingStrategy.ts
+[ ] 4.6.2 Implementar semanticChunking(text)
+[ ] 4.6.3 Implementar recursiveChunking(text)
+[ ] 4.6.4 Implementar rowBasedChunking(csv)
+[ ] 4.6.5 Configurar chunk size (512 tokens) y overlap (50 tokens)
+
+[ ] 4.7.1 Agregar cola 'embedding-generation' a MessageQueue
+[ ] 4.7.2 Trigger automático post-procesamiento de archivo
+[ ] 4.7.3 Actualizar embedding_status en DB
+[ ] 4.7.4 Indexar chunks en Azure AI Search
+```
+
+#### Criterios de Éxito
+
+| Criterio | Métrica | Target |
+|----------|---------|--------|
+| Azure Search funcionando | Queries retornan resultados | Si |
+| Text embeddings | Documentos indexados | Si |
+| Image embeddings | Imágenes buscables por texto | Si |
+| Search accuracy | Query relevante encuentra archivo | >80% |
+| Search latency | Tiempo de búsqueda | <500ms |
+| Cost per embedding | Text 1000 docs | <$0.02 |
+
+#### Dependencias
+
+- Fase 3 completada (texto extraído)
+- Subscription Azure con permisos
+- Región con Computer Vision multimodal
+
+#### Riesgos
+
+| Riesgo | Probabilidad | Impacto | Mitigación |
+|--------|--------------|---------|------------|
+| Región sin Computer Vision multimodal | Media | Alto | Verificar antes |
+| Costos de embeddings | Baja | Medio | Monitorear usage |
+| Rate limits Azure OpenAI | Media | Medio | Implementar backoff |
+
+---
+
+### FASE 5: Integración con Chat
+
+**Objetivo**: Permitir usar archivos como contexto en conversaciones.
+
+#### Entregables
+
+| # | Entregable | Tipo | Prioridad |
+|---|------------|------|-----------|
+| 5.1 | Extender ChatInput con drop zone | Frontend | Alta |
+| 5.2 | `FileAttachmentChip` componente | Frontend | Alta |
+| 5.3 | Backend: preparar archivos para Anthropic | Backend | Alta |
+| 5.4 | Búsqueda semántica automática (sin adjuntos) | Backend | Alta |
+| 5.5 | Sistema de citations | Backend + Frontend | Alta |
+| 5.6 | `CitationLink` componente | Frontend | Alta |
+
+#### Tareas Detalladas
+
+```
+[ ] 5.1.1 Modificar frontend/components/chat/ChatInput.tsx
+[ ] 5.1.2 Agregar onDragOver, onDragLeave, onDrop handlers
+[ ] 5.1.3 Visual feedback durante drag (border highlight)
+[ ] 5.1.4 Aceptar archivos del FileExplorer
+[ ] 5.1.5 Habilitar botón de paperclip existente
+
+[ ] 5.2.1 Crear frontend/components/chat/FileAttachmentChip.tsx
+[ ] 5.2.2 Mostrar nombre de archivo + icono por tipo
+[ ] 5.2.3 Botón X para remover
+[ ] 5.2.4 Click para preview
+[ ] 5.2.5 Mostrar múltiples chips (max 20)
+
+[ ] 5.3.1 Extender chat:message para incluir attachments[]
+[ ] 5.3.2 Validar ownership de archivos
+[ ] 5.3.3 Descargar archivos de Blob
+[ ] 5.3.4 Si < 30MB y soportado → incluir directo en request
+[ ] 5.3.5 Si > 30MB → usar extracted_text o chunks relevantes
+[ ] 5.3.6 Construir contexto para prompt
+
+[ ] 5.4.1 Detectar mensajes sin attachments manuales
+[ ] 5.4.2 Llamar VectorSearchService.searchFiles()
+[ ] 5.4.3 Si score > threshold → incluir como contexto
+[ ] 5.4.4 Agregar metadata para citations
+
+[ ] 5.5.1 Definir formato de citations en respuesta
+[ ] 5.5.2 Instruir a Claude para citar fuentes
+[ ] 5.5.3 Parsear citations de la respuesta
+[ ] 5.5.4 Guardar en message_file_attachments
+
+[ ] 5.6.1 Crear frontend/components/chat/CitationLink.tsx
+[ ] 5.6.2 Renderizar como link clickeable
+[ ] 5.6.3 Click abre archivo en nuevo tab o modal
+[ ] 5.6.4 Tooltip con nombre de archivo
+```
+
+#### Criterios de Éxito
+
+| Criterio | Métrica | Target |
+|----------|---------|--------|
+| Drag & drop a chat | Archivo aparece como chip | Si |
+| Archivos enviados a Claude | Respuesta menciona contenido | Si |
+| Búsqueda automática | Encuentra archivo relevante | >70% casos |
+| Citations renderizadas | Links clickeables en respuesta | Si |
+| Max 20 archivos | Validación frontend y backend | Si |
+
+#### Dependencias
+
+- Fase 4 completada (búsqueda semántica)
+- DirectAgentService existente
+
+#### Riesgos
+
+| Riesgo | Probabilidad | Impacto | Mitigación |
+|--------|--------------|---------|------------|
+| Archivos muy grandes para API | Media | Alto | Usar chunks/resumen |
+| Citations incorrectas | Media | Medio | Mejorar prompt |
+| Performance con 20 archivos | Baja | Medio | Paralelizar descarga |
+
+---
+
+### FASE 6: Optimización y Polish
+
+**Objetivo**: Mejorar UX, performance y añadir features secundarios.
+
+#### Entregables
+
+| # | Entregable | Tipo | Prioridad |
+|---|------------|------|-----------|
+| 6.1 | Vista previa de archivos | Frontend | Media |
+| 6.2 | Thumbnails para imágenes | Backend + Frontend | Media |
+| 6.3 | Caché de búsquedas (Redis) | Backend | Media |
+| 6.4 | Compresión de imágenes | Backend | Baja |
+| 6.5 | Métricas y logging | Backend | Media |
+| 6.6 | Documentación de usuario | Docs | Baja |
+| 6.7 | Tests E2E | Testing | Media |
+
+#### Tareas Detalladas
+
+```
+[ ] 6.1.1 Modal de preview para imágenes
+[ ] 6.1.2 Preview de PDF (embed o iframe)
+[ ] 6.1.3 Preview de texto/código
+[ ] 6.1.4 Fallback para tipos no soportados
+
+[ ] 6.2.1 Generar thumbnails al subir imágenes
+[ ] 6.2.2 Almacenar thumbnails en Blob (path separado)
+[ ] 6.2.3 Servir thumbnails en listado de archivos
+[ ] 6.2.4 Lazy loading de thumbnails
+
+[ ] 6.3.1 Cachear resultados de búsqueda por query hash
+[ ] 6.3.2 TTL de 5 minutos
+[ ] 6.3.3 Invalidar al subir/eliminar archivos
+
+[ ] 6.4.1 Comprimir imágenes antes de subir (client-side)
+[ ] 6.4.2 Límite de 2000px de ancho máximo
+[ ] 6.4.3 Preservar aspect ratio
+
+[ ] 6.5.1 Logging de operaciones de archivo
+[ ] 6.5.2 Métricas de uploads por usuario
+[ ] 6.5.3 Alertas de quotas
+
+[ ] 6.6.1 Guía de usuario para sistema de archivos
+[ ] 6.6.2 FAQ de tipos soportados
+[ ] 6.6.3 Troubleshooting común
+
+[ ] 6.7.1 Test E2E: upload archivo
+[ ] 6.7.2 Test E2E: crear carpeta
+[ ] 6.7.3 Test E2E: adjuntar a chat
+[ ] 6.7.4 Test E2E: búsqueda semántica
+```
+
+#### Criterios de Éxito
+
+| Criterio | Métrica | Target |
+|----------|---------|--------|
+| Preview funciona | Imágenes y PDFs visibles | Si |
+| Thumbnails rápidos | Load time | <200ms |
+| Caché efectivo | Hit rate | >60% |
+| Tests E2E pasando | Coverage flows críticos | >80% |
+
+---
+
+## Matriz de Dependencias entre Fases
+
+```
+Fase 1 (Infraestructura) ◄────────────────────┐
+    │                                          │
+    ├──► Fase 1.5 (Tracking & Billing) ───────┘ (paralelo)
+    │         │
+    │         │ (tracking debe estar listo)
+    │         ▼
+    ├──► Fase 2 (UI Archivos)
+    │         │
+    │         └──► Fase 2.5 (UI de Uso) ← Dashboard de quotas
+    │
+    └──► Fase 3 (Procesamiento) ← Tracking de extracción
+              │
+              └──► Fase 4 (Embeddings) ← Tracking de embeddings
+                        │
+                        └──► Fase 5 (Chat Integration) ← Tracking de Claude
+                                  │
+                                  └──► Fase 6 (Polish)
+
+Leyenda:
+  ──► Dependencia secuencial (A debe completarse antes de B)
+  ◄── Integración requerida (tracking debe integrarse en cada fase)
+```
+
+### Notas de Integración de Tracking
+
+| Fase | Operaciones a Trackear | Quotas Afectadas |
+|------|------------------------|------------------|
+| Fase 1 | `file_upload`, `file_delete` | `storage_limit_bytes` |
+| Fase 3 | `text_extraction`, `ocr_processing` | `documents_limit` |
+| Fase 4 | `text_embedding`, `image_embedding`, `vector_search` | `*_embedding*_limit`, `vector_searches_limit` |
+| Fase 5 | `claude_input_tokens`, `claude_output_tokens`, `tool_execution` | `claude_*_tokens_limit` |
+
+---
+
+## Recursos Azure a Provisionar
+
+| Fase | Recurso | Nombre | Script |
+|------|---------|--------|--------|
+| 1 | Blob Container | `user-files` en `sabcagentdev` | `setup-blob-containers.sh` |
+| 4 | Azure AI Search | `search-bcagent-dev` | `deploy-search-service.sh` |
+| 4 | Azure OpenAI | `openai-bcagent-dev` | `deploy-openai-embeddings.sh` |
+| 4 | Azure Computer Vision | `cv-bcagent-dev` | `deploy-computer-vision.sh` |
+
+---
+
+## Archivos del Proyecto
+
+### Backend (Nuevos)
+
+```
+backend/
+├── scripts/migrations/
+│   ├── 002-create-tracking-tables.sql    # Fase 1.5
+│   └── 003-create-files-tables.sql       # Fase 1
+├── src/
+│   ├── routes/
+│   │   ├── files.ts                      # Fase 1
+│   │   ├── usage.ts                      # Fase 1.5
+│   │   └── billing.ts                    # Fase 1.5
+│   ├── services/
+│   │   ├── files/
+│   │   │   ├── FileService.ts
+│   │   │   ├── FileUploadService.ts
+│   │   │   ├── FileProcessingService.ts
+│   │   │   └── index.ts
+│   │   ├── tracking/                     # Fase 1.5 - NUEVO
+│   │   │   ├── UsageTrackingService.ts
+│   │   │   ├── QuotaValidatorService.ts
+│   │   │   ├── UsageAggregationWorker.ts
+│   │   │   ├── pricing.config.ts         # Configuración de precios
+│   │   │   └── index.ts
+│   │   ├── billing/                      # Fase 1.5 - NUEVO
+│   │   │   ├── BillingService.ts
+│   │   │   ├── InvoiceGenerator.ts
+│   │   │   └── index.ts
+│   │   ├── embeddings/
+│   │   │   ├── EmbeddingService.ts
+│   │   │   ├── VectorSearchService.ts
+│   │   │   └── index.ts
+│   │   └── processing/
+│   │       ├── DocumentProcessor.ts
+│   │       ├── ImageProcessor.ts
+│   │       └── ChunkingStrategy.ts
+│   └── types/
+│       ├── file.types.ts
+│       ├── usage.types.ts                # Fase 1.5 - NUEVO
+│       └── billing.types.ts              # Fase 1.5 - NUEVO
+```
+
+### Backend (Modificar)
+
+```
+backend/src/routes/index.ts              # Agregar file routes
+backend/src/services/agent/DirectAgentService.ts  # Integrar archivos
+backend/src/config/database.ts           # Nuevos tipos SQL
+backend/src/services/queue/MessageQueue.ts  # Nuevas colas
+```
+
+### Frontend (Nuevos)
+
+```
+frontend/
+├── components/
+│   ├── files/
+│   │   ├── FileExplorer.tsx
+│   │   ├── FileTree.tsx
+│   │   ├── FileList.tsx
+│   │   ├── FileItem.tsx
+│   │   ├── FileUploadZone.tsx
+│   │   ├── FolderCreateDialog.tsx
+│   │   ├── FileContextMenu.tsx
+│   │   └── FileSortControls.tsx
+│   ├── usage/                            # Fase 1.5 - NUEVO
+│   │   ├── UsageDashboard.tsx
+│   │   ├── QuotaProgressBar.tsx
+│   │   ├── UsageChart.tsx
+│   │   ├── BillingHistory.tsx
+│   │   ├── PaygSettings.tsx
+│   │   ├── QuotaAlertBanner.tsx
+│   │   └── UpgradeModal.tsx
+│   └── chat/
+│       ├── FileAttachmentChip.tsx
+│       └── CitationLink.tsx
+├── lib/
+│   ├── stores/
+│   │   ├── fileStore.ts
+│   │   └── usageStore.ts                 # Fase 1.5 - NUEVO
+│   └── services/
+│       ├── fileApi.ts
+│       ├── usageApi.ts                   # Fase 1.5 - NUEVO
+│       └── billingApi.ts                 # Fase 1.5 - NUEVO
+```
+
+### Frontend (Modificar)
+
+```
+frontend/components/layout/RightPanel.tsx   # Integrar FileExplorer
+frontend/components/chat/ChatInput.tsx      # Agregar drop zone
+frontend/lib/stores/chatStore.ts            # Agregar attachments
+```
+
+### Infraestructura (Nuevos)
+
+```
+infrastructure/
+├── setup-blob-containers.sh
+├── deploy-search-service.sh
+├── deploy-openai-embeddings.sh
+└── deploy-computer-vision.sh
+```
+
+---
+
+## Estimación de Esfuerzo
+
+| Fase | Complejidad | Story Points (ref) | Notas |
+|------|-------------|-------------------|-------|
+| Fase 1 | Media | 13 | Infraestructura base |
+| **Fase 1.5** | **Alta** | **21** | **Tracking & Billing - CRÍTICO** |
+| Fase 2 | Alta | 21 | UI de archivos |
+| Fase 3 | Media | 13 | Procesamiento de docs |
+| Fase 4 | Alta | 21 | Embeddings y búsqueda |
+| Fase 5 | Alta | 21 | Integración con chat |
+| Fase 6 | Media | 13 | Optimización y polish |
+| **Total** | | **~123 SP** | +21 SP por Fase 1.5 |
+
+### Priorización de Tracking
+
+La Fase 1.5 tiene **prioridad alta** porque:
+
+1. **Requisito de negocio**: Sin tracking no hay billing, sin billing no hay revenue
+2. **Auditoría desde día 1**: Imposible añadir tracking retroactivo a operaciones pasadas
+3. **Enforcement de límites**: Protege contra abuso y controla costos de Azure
+4. **Transparencia al usuario**: Genera confianza mostrar uso en tiempo real
+
+---
+
+## Checklist de Lanzamiento
+
+### Pre-Launch
+
+- [ ] Todas las fases completadas (incluyendo Fase 1.5)
+- [ ] Tests unitarios pasando (>80% coverage)
+- [ ] Tests E2E pasando
+- [ ] Security review completado
+- [ ] Performance testing (load test)
+- [ ] Documentación actualizada
+- [ ] Secrets en Key Vault (no hardcoded)
+
+### Tracking & Billing (NUEVO)
+
+- [ ] Todas las operaciones trackean uso correctamente
+- [ ] Quotas se validan antes de cada operación
+- [ ] Alertas de 80%, 90%, 100% funcionan
+- [ ] Pay As You Go bloquea/permite correctamente
+- [ ] Dashboard de uso muestra datos en tiempo real
+- [ ] Facturas se generan automáticamente
+- [ ] Precios configurados correctamente
+- [ ] Tests de reconciliación: eventos vs agregados
+
+### Monitoring
+
+- [ ] Alertas de errores configuradas
+- [ ] Dashboard de métricas de uso por usuario
+- [ ] Logs centralizados
+- [ ] Quotas de Azure monitoreadas
+- [ ] Alertas de billing anomalías
+- [ ] Dashboard de revenue (uso agregado * precios)
+
+### Rollback Plan
+
+- [ ] Feature flag para deshabilitar tracking
+- [ ] Scripts de rollback de DB
+- [ ] Backup de datos existentes
+- [ ] Plan de migración de datos de uso si falla
+
+---
+
+## Changelog
+
+| Fecha | Versión | Cambios |
+|-------|---------|---------|
+| TBD | 0.1 | Documento inicial creado |
+| 2025-12-05 | 0.2 | Agregada Fase 1.5: Sistema de Tracking, Auditoría y Billing |

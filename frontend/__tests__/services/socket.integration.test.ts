@@ -388,7 +388,6 @@ describe('Store Integration (Real Stores)', () => {
       optimisticMessages: new Map(),
       streaming: { content: '', thinking: '', isStreaming: false, capturedThinking: null },
       pendingApprovals: new Map(),
-      toolExecutions: new Map(),
       isLoading: false,
       isAgentBusy: false,
       error: null,
@@ -491,10 +490,10 @@ describe('Store Integration (Real Stores)', () => {
     expect(approval?.priority).toBe('high');
   });
 
-  it('should update chatStore.toolExecutions on tool_use/tool_result', () => {
+  it('should add tool_use and tool_result messages to chatStore.messages', () => {
     const toolUseId = 'toolu-store-test';
 
-    // Tool use
+    // Tool use event
     mockSocket._trigger(
       'agent:event',
       AgentEventFactory.toolUse({
@@ -505,15 +504,23 @@ describe('Store Integration (Real Stores)', () => {
     );
 
     let state = useChatStore.getState();
-    expect(state.toolExecutions.size).toBe(1);
-    expect(state.toolExecutions.has(toolUseId)).toBe(true);
 
-    const toolExecution = state.toolExecutions.get(toolUseId);
-    expect(toolExecution?.toolName).toBe('list_customers');
-    // chatStore sets status to 'running' when tool_use event is received
-    expect(toolExecution?.status).toBe('running');
+    // Find tool_use message in messages array
+    const toolUseMessage = state.messages.find(
+      m => m.type === 'tool_use' && m.tool_use_id === toolUseId
+    );
 
-    // Tool result
+    expect(toolUseMessage).toBeDefined();
+    expect(toolUseMessage?.type).toBe('tool_use');
+
+    // Use type narrowing for safe property access
+    if (toolUseMessage?.type === 'tool_use') {
+      expect(toolUseMessage.tool_name).toBe('list_customers');
+      expect(toolUseMessage.status).toBe('pending');
+      expect(toolUseMessage.tool_args).toEqual({ filter: 'active' });
+    }
+
+    // Tool result event
     mockSocket._trigger(
       'agent:event',
       AgentEventFactory.toolResult({
@@ -526,9 +533,20 @@ describe('Store Integration (Real Stores)', () => {
     );
 
     state = useChatStore.getState();
-    const updatedExecution = state.toolExecutions.get(toolUseId);
-    expect(updatedExecution?.status).toBe('completed');
-    expect(updatedExecution?.durationMs).toBe(150);
+
+    // Verify the tool_use message was updated with result
+    const updatedMessage = state.messages.find(
+      m => m.type === 'tool_use' && m.tool_use_id === toolUseId
+    );
+
+    expect(updatedMessage?.type).toBe('tool_use');
+
+    // Use type narrowing for safe property access
+    if (updatedMessage?.type === 'tool_use') {
+      expect(updatedMessage.status).toBe('success');
+      expect(updatedMessage.result).toEqual({ customers: [] });
+      expect(updatedMessage.duration_ms).toBe(150);
+    }
   });
 
   it('should set chatStore.isAgentBusy on session_start/complete', () => {

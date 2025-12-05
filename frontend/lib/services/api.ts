@@ -22,7 +22,6 @@ import type {
   StandardMessage,
   ThinkingMessage,
   ToolUseMessage,
-  TokenUsage as MessageTokenUsage,
 } from '@bc-agent/shared';
 
 import {

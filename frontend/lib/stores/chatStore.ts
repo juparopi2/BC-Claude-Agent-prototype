@@ -19,8 +19,8 @@ import type {
   MessageChunkEvent,
   // PHASE 4.6: Message types from shared package (single source of truth)
   Message,
-  StandardMessage,
 } from '@bc-agent/shared';
+import { isThinkingMessage } from '@bc-agent/shared';
 
 /**
  * Streaming state for real-time message display
@@ -377,10 +377,10 @@ export const useChatStore = create<ChatStore>()(
           // Accumulate in streaming state for real-time display
           actions.appendThinkingContent(thinkingEvent.content);
 
-          // Also update the thinking message
-          const thinkingMessage = actions.messages.find(m => m.type === 'thinking' && m.content !== undefined);
+          // Also update the thinking message using type guard
+          const thinkingMessage = actions.messages.find(isThinkingMessage);
           if (thinkingMessage) {
-            const updatedContent = (thinkingMessage.content || '') + (thinkingEvent.content || '');
+            const updatedContent = thinkingMessage.content + (thinkingEvent.content || '');
             actions.updateMessage(thinkingMessage.id, {
               content: updatedContent,
             });

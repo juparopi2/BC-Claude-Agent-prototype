@@ -42,10 +42,8 @@ export function ThinkingDisplay({
   content,
   isStreaming = false,
   defaultOpen = false,
-  charCount,
 }: ThinkingDisplayProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen || isStreaming);
-  const displayCharCount = charCount ?? content.length;
 
   return (
     <div

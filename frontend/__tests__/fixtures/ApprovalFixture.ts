@@ -12,7 +12,7 @@
  * ```
  */
 
-import type { ApprovalRequestedEvent, ApprovalResolvedEvent, AgentEvent } from '@bc-agent/shared';
+import type { ApprovalRequestedEvent, ApprovalResolvedEvent } from '@bc-agent/shared';
 
 export class ApprovalRequestedBuilder {
   private event: Partial<ApprovalRequestedEvent> = {

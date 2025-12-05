@@ -69,7 +69,7 @@ const initialState: AuthState = {
 export const useAuthStore = create<AuthStore>()(
   subscribeWithSelector(
     persist(
-      (set, get) => ({
+      (set) => ({
         ...initialState,
 
         checkAuth: async () => {

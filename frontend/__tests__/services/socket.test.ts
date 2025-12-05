@@ -8,7 +8,6 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import type { AgentEvent } from '@bc-agent/shared';
 
 // Create mock socket factory inline for vi.mock hoisting
 const { mockIo, createMockSocket, setMockSocket, assertEmitted, getEmittedEvents, getRegisteredListeners } = vi.hoisted(() => {

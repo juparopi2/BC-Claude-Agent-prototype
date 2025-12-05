@@ -115,7 +115,7 @@ export function MarkdownRenderer({ content, className }: MarkdownRendererProps) 
 
     // Code (keep existing code renderer but update styling)
     code(props) {
-      const { node, className, children, ...rest } = props;
+      const { className, children, ...rest } = props;
       const match = /language-(\w+)/.exec(className || '');
       const isCodeBlock = match && String(children).includes('\n');
 

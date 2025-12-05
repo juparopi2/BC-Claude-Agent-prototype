@@ -185,6 +185,7 @@ export class AgentEventFactory {
    */
   static thinkingChunk(overrides?: Partial<ThinkingChunkEvent>): ThinkingChunkEvent {
     // Remove sequenceNumber from overrides if present (transient events shouldn't have one)
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { sequenceNumber: _ignored, ...safeOverrides } = overrides ?? {};
     return {
       type: 'thinking_chunk',
@@ -205,6 +206,7 @@ export class AgentEventFactory {
    */
   static messagePartial(overrides?: Partial<MessagePartialEvent>): MessagePartialEvent {
     // Remove sequenceNumber from overrides if present (transient events shouldn't have one)
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { sequenceNumber: _ignored, ...safeOverrides } = overrides ?? {};
     return {
       type: 'message_partial',
@@ -221,6 +223,7 @@ export class AgentEventFactory {
    */
   static messageChunk(overrides?: Partial<MessageChunkEvent>): MessageChunkEvent {
     // Remove sequenceNumber from overrides if present (transient events shouldn't have one)
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { sequenceNumber: _ignored, ...safeOverrides } = overrides ?? {};
     return {
       type: 'message_chunk',
@@ -374,6 +377,7 @@ export class AgentEventFactory {
    */
   static error(overrides?: Partial<ErrorEvent>): ErrorEvent {
     // Remove sequenceNumber from overrides if present (transient events shouldn't have one)
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { sequenceNumber: _ignored, ...safeOverrides } = overrides ?? {};
     return {
       type: 'error',

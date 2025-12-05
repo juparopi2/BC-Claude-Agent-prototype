@@ -7,7 +7,7 @@
  * @module lib/stores/socketMiddleware
  */
 
-import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
+import { useEffect, useRef, useCallback, useState, useMemo, startTransition } from 'react';
 import { getSocketService, type SocketEventHandlers } from '../services/socket';
 import { useChatStore } from './chatStore';
 import { useAuthStore } from './authStore';
@@ -92,7 +92,6 @@ export function useSocket(options: UseSocketOptions = {}): UseSocketReturn {
   const setError = useChatStore((state) => state.setError);
   const setCurrentSession = useChatStore((state) => state.setCurrentSession);
   const addOptimisticMessage = useChatStore((state) => state.addOptimisticMessage);
-  const streaming = useChatStore((state) => state.streaming);
 
   const user = useAuthStore((state) => state.user);
 
@@ -101,6 +100,7 @@ export function useSocket(options: UseSocketOptions = {}): UseSocketReturn {
   const [isSessionReady, setIsSessionReady] = useState(false);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const currentSessionRef = useRef<string | null>(sessionId || null);
+  const prevSessionRef = useRef<string | undefined>(undefined);
 
   // Create handlers that integrate with stores (memoized to prevent re-creation)
   const handlers: SocketEventHandlers = useMemo(
@@ -130,6 +130,7 @@ export function useSocket(options: UseSocketOptions = {}): UseSocketReturn {
         // El usuario puede volver a enviar mensajes cuando reconecte
         if (!connected) {
           setAgentBusy(false);
+          setIsSessionReady(false);
         }
         onConnectionChange?.(connected);
       },
@@ -152,17 +153,25 @@ export function useSocket(options: UseSocketOptions = {}): UseSocketReturn {
     };
   }, [autoConnect, handlers]);
 
-  // Handle session changes
+  // Handle session changes - reset ready state when session changes
   useEffect(() => {
     const socket = getSocketService();
+    const sessionChanged = prevSessionRef.current !== sessionId;
 
-    // Reset session ready state when session changes
-    setIsSessionReady(false);
+    // Reset ready state when switching sessions - use startTransition to avoid cascading renders
+    if (sessionChanged && prevSessionRef.current !== undefined) {
+      startTransition(() => {
+        setIsSessionReady(false);
+      });
+    }
 
     if (sessionId && isConnected) {
       socket.joinSession(sessionId);
       currentSessionRef.current = sessionId;
     }
+
+    // Update ref for next render
+    prevSessionRef.current = sessionId;
   }, [sessionId, isConnected]);
 
   // Connect function
@@ -238,7 +247,7 @@ export function useSocket(options: UseSocketOptions = {}): UseSocketReturn {
         } : undefined,
       });
     },
-    [user, addOptimisticMessage, isConnected, isSessionReady]
+    [user, addOptimisticMessage]
   );
 
   // Stop agent function

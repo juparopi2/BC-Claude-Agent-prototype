@@ -8,7 +8,7 @@
  * Includes suggestion buttons and chat input to start new sessions.
  */
 
-import { useState, useRef, useEffect, KeyboardEvent } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { MainLayout, Header, LeftPanel, RightPanel } from '@/components/layout';
 import { useSessionStore } from '@/lib/stores/sessionStore';
@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Toggle } from '@/components/ui/toggle';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { MessageSquare, Send, Users, Image, FileText, Brain, Mic, Paperclip, Globe } from 'lucide-react';
+import { MessageSquare, Send, Users, Image as ImageIcon, FileText, Brain, Mic, Paperclip, Globe } from 'lucide-react';
 
 export default function Home() {
   const [leftPanelVisible, setLeftPanelVisible] = useState(true);
@@ -121,7 +121,7 @@ export default function Home() {
                 onClick={() => handleSuggestion('Analyze this image')}
                 disabled={isCreating}
               >
-                <Image className="size-4" />
+                <ImageIcon className="size-4" />
                 Analyze this image
               </Button>
               <Button

@@ -7,7 +7,7 @@
  * @module __tests__/unit/hooks/useSocket.test
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useSocket } from '@/lib/stores/socketMiddleware';
 

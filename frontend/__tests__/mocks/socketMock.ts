@@ -83,7 +83,7 @@ export function createMockSocket(
       return socket;
     }),
 
-    emit: vi.fn((_event: string, ..._args: unknown[]) => {
+    emit: vi.fn(() => {
       return socket;
     }),
 
@@ -151,7 +151,7 @@ export function createMockSocket(
  * Mock io() function from socket.io-client
  * Returns a MockSocket that can be configured for testing
  */
-export const mockIo = vi.fn((_url?: string, _options?: unknown) => {
+export const mockIo = vi.fn(() => {
   return createMockSocket();
 });
 

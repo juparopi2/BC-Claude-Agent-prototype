@@ -10,7 +10,7 @@ import {
   useChatStore,
   selectAllMessages,
   selectPendingApprovals,
-  selectToolExecutions,
+  // selectToolExecutions removed - tool executions now tracked in messages array
 } from '../../lib/stores/chatStore';
 import type { Message } from '../../lib/services/api';
 import type { AgentEvent } from '@bc-agent/shared';
@@ -29,7 +29,7 @@ describe('ChatStore', () => {
           capturedThinking: null,
         },
         pendingApprovals: new Map(),
-        toolExecutions: new Map(),
+        // toolExecutions removed - now tracked in messages array
         isLoading: false,
         isAgentBusy: false,
         error: null,
@@ -184,34 +184,64 @@ describe('ChatStore', () => {
   });
 
   describe('Tool Executions', () => {
-    it('should track tool executions', () => {
-      const tool = {
-        id: 'tool-1',
+    it('should track tool executions via messages', () => {
+      // Tool executions are now tracked as messages with type 'tool_use'
+      const toolUseEvent: AgentEvent = {
+        type: 'tool_use',
         toolName: 'list_customers',
+        toolUseId: 'tool-1',
         args: {},
-        status: 'running' as const,
-        startedAt: new Date(),
+        eventId: 'evt-tool-1',
+        timestamp: new Date(),
+        persistenceState: 'persisted',
+        sequenceNumber: 1,
+        sessionId: 'session-1',
       };
 
       act(() => {
-        useChatStore.getState().addToolExecution(tool);
+        useChatStore.getState().handleAgentEvent(toolUseEvent);
       });
 
       let state = useChatStore.getState();
-      expect(state.toolExecutions.has('tool-1')).toBe(true);
+      const toolMessages = state.messages.filter(m => m.type === 'tool_use');
+      expect(toolMessages).toHaveLength(1);
+
+      // Type guard to safely access tool_use message properties
+      const toolMsg = toolMessages[0];
+      if (toolMsg && toolMsg.type === 'tool_use') {
+        expect(toolMsg.tool_name).toBe('list_customers');
+        expect(toolMsg.status).toBe('pending');
+      }
+
+      // Update tool with result
+      const toolResultEvent: AgentEvent = {
+        type: 'tool_result',
+        toolName: 'list_customers',
+        success: true,
+        result: { customers: [] },
+        durationMs: 100,
+        eventId: 'evt-result-1',
+        timestamp: new Date(),
+        persistenceState: 'persisted',
+        sequenceNumber: 2,
+        sessionId: 'session-1',
+        toolUseId: 'tool-1',
+      };
 
       act(() => {
-        useChatStore.getState().updateToolExecution('tool-1', {
-          status: 'completed',
-          result: { customers: [] },
-          completedAt: new Date(),
-        });
+        useChatStore.getState().handleAgentEvent(toolResultEvent);
       });
 
       state = useChatStore.getState();
-      const updatedTool = state.toolExecutions.get('tool-1');
-      expect(updatedTool?.status).toBe('completed');
-      expect(updatedTool?.result).toEqual({ customers: [] });
+      const updatedToolMessage = state.messages.find(
+        m => m.type === 'tool_use' && m.tool_use_id === 'tool-1'
+      );
+
+      // Type guard to safely access properties
+      if (updatedToolMessage && updatedToolMessage.type === 'tool_use') {
+        expect(updatedToolMessage.status).toBe('success');
+        expect(updatedToolMessage.result).toEqual({ customers: [] });
+      }
     });
   });
 
@@ -348,19 +378,7 @@ describe('ChatStore', () => {
       expect(approvals).toHaveLength(2);
     });
 
-    it('selectToolExecutions should return array of tool executions', () => {
-      act(() => {
-        useChatStore.getState().addToolExecution({
-          id: 't1',
-          toolName: 'tool1',
-          args: {},
-          status: 'running',
-          startedAt: new Date(),
-        });
-      });
-
-      const tools = selectToolExecutions(useChatStore.getState());
-      expect(tools).toHaveLength(1);
-    });
+    // selectToolExecutions removed - tool executions are now tracked as messages with type 'tool_use'
+    // See 'Tool Executions' test suite above for message-based tool execution tests
   });
 });

@@ -34,7 +34,7 @@ export default function ChatPage() {
   const selectSession = useSessionStore((s) => s.selectSession);
 
   // Initialize socket and get sendMessage function
-  const { sendMessage, isConnected, isSessionReady } = useSocket({ sessionId, autoConnect: true });
+  const { sendMessage, isSessionReady } = useSocket({ sessionId, autoConnect: true });
 
   useEffect(() => {
     async function loadSession() {

@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useSocket } from '@/lib/stores/socketMiddleware';
 import { useChatStore } from '@/lib/stores/chatStore';
 import { useAuthStore } from '@/lib/stores/authStore';

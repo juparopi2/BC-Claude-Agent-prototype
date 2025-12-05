@@ -15,7 +15,7 @@ import { ThinkingDisplay } from './ThinkingDisplay';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { isThinkingMessage, isStandardMessage, isToolResultMessage, type Message } from '@bc-agent/shared';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { User, Bot } from 'lucide-react';
+import { Bot } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore, selectUserInitials } from '@/lib/stores/authStore';
 

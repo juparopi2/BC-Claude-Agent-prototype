@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { ApiClient, getApiClient, resetApiClient } from '../../lib/services/api';
 import { server } from '../../vitest.setup';
-import { errorHandlers, mockUser, mockSessions, mockMessages } from '../mocks/handlers';
+import { errorHandlers, mockUser, mockSessions } from '../mocks/handlers';
 
 describe('ApiClient', () => {
   let api: ApiClient;

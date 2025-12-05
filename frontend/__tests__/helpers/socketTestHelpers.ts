@@ -77,7 +77,6 @@ export function createTestContext(options: TestContextOptions = {}): TestContext
     handlers = {},
     setupAuth = true,
     userId = 'test-user-456',
-    sessionId = 'test-session-123',
   } = options;
 
   // Reset previous state
@@ -170,7 +169,7 @@ export function resetStores(): void {
       capturedThinking: null,
     },
     pendingApprovals: new Map(),
-    toolExecutions: new Map(),
+    // toolExecutions removed - tool tracking is now done via messages (type: 'tool_use' and 'tool_result')
     isLoading: false,
     isAgentBusy: false,
     error: null,
@@ -311,13 +310,16 @@ export async function simulateAndWaitForComplete(
 
 /**
  * Assert chat store state matches expected values
+ *
+ * Note: Tool execution tracking was removed. To verify tool executions,
+ * check messages array directly for messages with type 'tool_use' and 'tool_result'.
  */
 export function assertChatStoreState(expected: {
   messageCount?: number;
   isAgentBusy?: boolean;
   hasError?: boolean;
   pendingApprovalCount?: number;
-  toolExecutionCount?: number;
+  // toolExecutionCount removed - use messageCount and filter messages by type instead
 }): void {
   const state = useChatStore.getState();
 
@@ -341,9 +343,8 @@ export function assertChatStoreState(expected: {
     expect(state.pendingApprovals.size).toBe(expected.pendingApprovalCount);
   }
 
-  if (expected.toolExecutionCount !== undefined) {
-    expect(state.toolExecutions.size).toBe(expected.toolExecutionCount);
-  }
+  // toolExecutionCount check removed - tests should verify messages array directly
+  // To check tool executions, filter state.messages for type 'tool_use' or 'tool_result'
 }
 
 /**

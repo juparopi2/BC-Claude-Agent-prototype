@@ -118,7 +118,16 @@
       "Bash(grep:*)",
       "Bash(do echo \"=== Run $i ===\")",
       "Bash(git log:*)",
-      "WebFetch(domain:azure.microsoft.com)"
+      "WebFetch(domain:azure.microsoft.com)",
+      "Bash(LOG_LEVEL=invalid node:*)",
+      "Bash(ENABLE_PROMPT_CACHING=1 node:*)",
+      "Bash(ENABLE_PROMPT_CACHING=yes node:*)",
+      "Bash(ENABLE_FILE_LOGGING=true node:*)",
+      "Bash(ENABLE_EXTENDED_THINKING=false node:*)",
+      "Bash(MAX_CONTEXT_TOKENS=not-a-number node:*)",
+      "Bash(LOG_LEVEL=trace node:*)",
+      "Bash(LOG_LEVEL=ERROR node:*)",
+      "Bash(NODE_ENV=production node:*)"
     ],
     "deny": [],
     "ask": []

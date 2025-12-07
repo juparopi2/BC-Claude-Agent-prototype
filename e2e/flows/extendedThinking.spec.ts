@@ -32,6 +32,7 @@ import {
   TIMEOUTS,
 } from '../fixtures/test-data';
 import type { Socket } from 'socket.io-client';
+import { shouldRunClaudeTests } from '../setup/testConfig';
 
 /**
  * Test Suite: Extended Thinking - Real Backend
@@ -171,8 +172,12 @@ test.describe('Extended Thinking E2E - Real Backend', () => {
   /**
    * Test Group 2: Thinking Chunk Streaming
    * Tests that verify thinking chunks are received and accumulated correctly
+   *
+   * @claude-api This section requires Claude API and only runs in production environment
    */
   test.describe('2. Thinking Chunk Streaming', () => {
+    test.skip(!shouldRunClaudeTests(), 'Claude API tests - only run in production environment');
+
     /**
      * Test 2.1: Receive thinking_chunk events with valid budget
      */
@@ -287,8 +292,12 @@ test.describe('Extended Thinking E2E - Real Backend', () => {
   /**
    * Test Group 3: Token Usage Tracking
    * Tests that verify token usage is tracked correctly for thinking
+   *
+   * @claude-api This section requires Claude API and only runs in production environment
    */
   test.describe('3. Token Usage Tracking', () => {
+    test.skip(!shouldRunClaudeTests(), 'Claude API tests - only run in production environment');
+
     /**
      * Test 3.1: Include thinkingTokens in final message
      */
@@ -356,8 +365,12 @@ test.describe('Extended Thinking E2E - Real Backend', () => {
   /**
    * Test Group 4: Complete Flow
    * Tests that verify the complete end-to-end thinking flow
+   *
+   * @claude-api This section requires Claude API and only runs in production environment
    */
   test.describe('4. Complete Flow', () => {
+    test.skip(!shouldRunClaudeTests(), 'Claude API tests - only run in production environment');
+
     /**
      * Test 4.1: Handle complete thinking flow: chunks → thinking → message
      */

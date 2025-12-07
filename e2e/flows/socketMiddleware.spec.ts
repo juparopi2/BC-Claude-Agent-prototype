@@ -29,6 +29,7 @@ import {
   waitForAgentEvent,
   sleep,
 } from '../setup/testHelpers';
+import { shouldRunClaudeTests } from '../setup/testConfig';
 
 /**
  * Test Suite: Socket Middleware - API Level
@@ -95,8 +96,12 @@ test.describe('Socket Middleware - API Level', () => {
   /**
    * Test 3: Tool Execution Flow
    * Verifies tool_use event is received with correct tool metadata
+   *
+   * @claude-api This test requires Claude API and only runs in production environment
    */
   test('should receive tool_use event with tool metadata', async () => {
+    test.skip(!shouldRunClaudeTests(), 'Claude API test - only runs in production environment');
+
     socket = await connectAuthenticatedSocket('test', TIMEOUTS.medium, TEST_SESSIONS.empty.id);
 
     const sessionId = TEST_SESSIONS.empty.id;
@@ -129,8 +134,12 @@ test.describe('Socket Middleware - API Level', () => {
   /**
    * Test 4: Multiple Events Streaming
    * Verifies that multiple event types are received during a complete agent response cycle
+   *
+   * @claude-api This test requires Claude API and only runs in production environment
    */
   test('should receive multiple streaming events in correct order', async () => {
+    test.skip(!shouldRunClaudeTests(), 'Claude API test - only runs in production environment');
+
     socket = await connectAuthenticatedSocket('test', TIMEOUTS.medium, TEST_SESSIONS.empty.id);
 
     const sessionId = TEST_SESSIONS.empty.id;

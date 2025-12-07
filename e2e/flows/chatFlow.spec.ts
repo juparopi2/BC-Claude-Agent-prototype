@@ -33,6 +33,7 @@ import {
   waitForCondition,
   getTestUserSession,
 } from '../setup/testHelpers';
+import { shouldRunClaudeTests } from '../setup/testConfig';
 
 /**
  * Test Suite: Chat Flow - API Level
@@ -256,8 +257,12 @@ test.describe('Chat Flow - API Level', () => {
   /**
    * Test 10: Agent Response Flow
    * Verifies complete agent response cycle with streaming events
+   *
+   * @claude-api This test requires Claude API and only runs in production environment
    */
   test('should receive agent response with streaming events', async () => {
+    test.skip(!shouldRunClaudeTests(), 'Claude API test - only runs in production environment');
+
     socket = await connectSocket();
 
     const sessionId = TEST_SESSIONS.empty.id;

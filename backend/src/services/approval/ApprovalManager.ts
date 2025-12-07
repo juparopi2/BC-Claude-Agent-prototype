@@ -30,6 +30,7 @@
 
 import { Server as SocketServer } from 'socket.io';
 import crypto from 'crypto';
+import sql from 'mssql';
 import { getDatabase } from '../../config/database';
 import { createChildLogger } from '../../utils/logger';
 import { getEventStore, EventStore } from '../events/EventStore';
@@ -433,8 +434,8 @@ export class ApprovalManager {
       // Step 1: Atomic query with row lock to prevent concurrent modifications
       // Uses LEFT JOIN to differentiate between "approval not found" and "session not found"
       const validationResult = await transaction.request()
-        .input('approvalId', approvalId)
-        .input('userId', userId)
+        .input('approvalId', sql.UniqueIdentifier, approvalId)
+        .input('userId', sql.UniqueIdentifier, userId)
         .query<{
           approval_id: string | null;
           session_id: string | null;
@@ -530,10 +531,10 @@ export class ApprovalManager {
       // Step 3: All validations passed - update the approval atomically
       const approved = decision === 'approved';
       await transaction.request()
-        .input('id', approvalId)
+        .input('id', sql.UniqueIdentifier, approvalId)
         .input('status', approved ? 'approved' : 'rejected')
         .input('decided_at', new Date())
-        .input('decided_by_user_id', userId)
+        .input('decided_by_user_id', sql.UniqueIdentifier, userId)
         .input('rejection_reason', reason ?? null)
         .query(`
           UPDATE approvals

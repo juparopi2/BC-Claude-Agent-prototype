@@ -155,7 +155,11 @@ function inferSqlType(key: string, value: unknown): ISqlType | (() => ISqlType) 
   }
 
   // 2. Heuristic fallbacks based on naming conventions
-  if (key.endsWith('_id') || key === 'id') {
+  // Detect UUID parameters in both snake_case and camelCase:
+  // - snake_case: session_id, user_id, etc.
+  // - camelCase: sessionId, userId, etc.
+  // - exact match: id
+  if (key.endsWith('_id') || key === 'id' || key.endsWith('Id')) {
     return sql.UniqueIdentifier;
   }
 

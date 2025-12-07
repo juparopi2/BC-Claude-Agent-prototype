@@ -22,6 +22,7 @@ import {
   TIMEOUTS,
   FRONTEND_URL,
 } from '../setup/testHelpers';
+import { shouldRunClaudeTests } from '../setup/testConfig';
 
 test.describe('Socket Middleware - UI Level', () => {
   
@@ -102,8 +103,12 @@ test.describe('Socket Middleware - UI Level', () => {
   /**
    * Test 4: Store Integration (via UI)
    * Verifies that incoming events update the UI
+   *
+   * @claude-api This test requires Claude API and only runs in production environment
    */
   test('should update UI when receiving agent events', async ({ page }) => {
+    test.skip(!shouldRunClaudeTests(), 'Claude API test - only runs in production environment');
+
     await authenticateContext(page.context(), 'test');
     await page.goto(FRONTEND_URL + '/test-socket');
     

@@ -9,6 +9,7 @@
 
 import sql, { ConnectionPool, config as SqlConfig, ISqlType } from 'mssql';
 import { env, isProd } from './environment';
+import { isValidUUID } from '@/utils/uuid';
 
 /**
  * Transient error codes that should trigger a retry
@@ -143,10 +144,12 @@ const PARAMETER_TYPE_MAP: Record<string, ISqlType | (() => ISqlType)> = {
  * Infer SQL type from parameter name and value
  *
  * Falls back to heuristics if parameter name is not in explicit mapping.
+ * For UUID parameters (detected by naming convention), validates format before binding.
  *
  * @param key - Parameter name
  * @param value - Parameter value
  * @returns SQL type factory
+ * @throws Error if UUID parameter has invalid format
  */
 function inferSqlType(key: string, value: unknown): ISqlType | (() => ISqlType) {
   // 1. Check explicit mapping first
@@ -160,6 +163,19 @@ function inferSqlType(key: string, value: unknown): ISqlType | (() => ISqlType) 
   // - camelCase: sessionId, userId, etc.
   // - exact match: id
   if (key.endsWith('_id') || key === 'id' || key.endsWith('Id')) {
+    // Validate UUID format before attempting SQL binding
+    if (typeof value !== 'string') {
+      throw new Error(
+        `Invalid UUID parameter '${key}': expected string, got ${typeof value}`
+      );
+    }
+
+    if (!isValidUUID(value)) {
+      throw new Error(
+        `Invalid UUID format for parameter '${key}': ${value}`
+      );
+    }
+
     return sql.UniqueIdentifier;
   }
 

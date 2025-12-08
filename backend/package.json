@@ -5,7 +5,7 @@
   "main": "dist/server.js",
   "scripts": {
     "dev": "nodemon --exec ts-node src/server.ts",
-    "build": "tsc",
+    "build": "tsc && tsc-alias",
     "build:mcp": "cd mcp-server && npm run build",
     "build:all": "npm run build && npm run build:mcp",
     "start": "node dist/server.js",
@@ -40,11 +40,11 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@bc-agent/shared": "*",
     "@anthropic-ai/sdk": "0.71.0",
     "@azure/identity": "4.13.0",
     "@azure/keyvault-secrets": "4.10.0",
     "@azure/msal-node": "3.8.1",
+    "@bc-agent/shared": "*",
     "bcrypt": "6.0.0",
     "bcryptjs": "2.4.3",
     "bullmq": "5.63.2",
@@ -86,6 +86,7 @@
     "nodemon": "3.1.10",
     "supertest": "7.0.0",
     "ts-node": "10.9.2",
+    "tsc-alias": "^1.8.16",
     "tsconfig-paths": "4.2.0",
     "typescript": "5.9.3",
     "vitest": "2.1.8"

@@ -30,7 +30,6 @@
 
 import { Server as SocketServer } from 'socket.io';
 import crypto from 'crypto';
-import sql from 'mssql';
 import { getDatabase } from '../../config/database';
 import { uuidInput, applyUuidInputs } from '../../config/database-helpers';
 import { createChildLogger } from '../../utils/logger';

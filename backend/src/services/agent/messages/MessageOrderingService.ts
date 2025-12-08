@@ -110,7 +110,7 @@ export class MessageOrderingService {
       // Atomic batch reservation using INCRBY
       // If current value is 5 and we INCRBY 3, we get 8
       // Our reserved sequences are: 5, 6, 7 (values before the increment)
-      const endValue = await redis.incrBy(key, count);
+      const endValue = await redis.incrby(key, count);
 
       // Set TTL to 7 days (matches EventStore pattern)
       await redis.expire(key, 7 * 24 * 60 * 60);

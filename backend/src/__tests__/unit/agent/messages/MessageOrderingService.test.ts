@@ -13,7 +13,7 @@ import { MessageOrderingService, getMessageOrderingService } from '@services/age
 
 // Mock Redis
 const mockRedis = {
-  incrBy: vi.fn(),
+  incrby: vi.fn(), // ioredis uses lowercase
   incr: vi.fn(),
   expire: vi.fn(),
   get: vi.fn(),
@@ -73,7 +73,7 @@ describe('MessageOrderingService', () => {
     it('should reserve consecutive sequences from Redis', async () => {
       // Redis INCRBY returns the NEW value after increment
       // If we reserve 3 and current is 5, INCRBY returns 8
-      mockRedis.incrBy.mockResolvedValue(8);
+      mockRedis.incrby.mockResolvedValue(8);
       mockRedis.expire.mockResolvedValue(1);
 
       const result = await service.reserveSequenceBatch('session-123', 3);
@@ -83,12 +83,12 @@ describe('MessageOrderingService', () => {
       expect(result.sequences).toEqual([5, 6, 7]);
       expect(result.reservedAt).toBeInstanceOf(Date);
 
-      expect(mockRedis.incrBy).toHaveBeenCalledWith('event:sequence:session-123', 3);
+      expect(mockRedis.incrby).toHaveBeenCalledWith('event:sequence:session-123', 3);
       expect(mockRedis.expire).toHaveBeenCalledWith('event:sequence:session-123', 604800); // 7 days
     });
 
     it('should reserve single sequence correctly', async () => {
-      mockRedis.incrBy.mockResolvedValue(1);
+      mockRedis.incrby.mockResolvedValue(1);
       mockRedis.expire.mockResolvedValue(1);
 
       const result = await service.reserveSequenceBatch('session-123', 1);
@@ -98,7 +98,7 @@ describe('MessageOrderingService', () => {
     });
 
     it('should handle first reservation (counter starts at 0)', async () => {
-      mockRedis.incrBy.mockResolvedValue(5); // First batch of 5
+      mockRedis.incrby.mockResolvedValue(5); // First batch of 5
       mockRedis.expire.mockResolvedValue(1);
 
       const result = await service.reserveSequenceBatch('new-session', 5);
@@ -117,7 +117,7 @@ describe('MessageOrderingService', () => {
 
     it('should fallback to database when Redis unavailable', async () => {
       // Make Redis fail
-      mockRedis.incrBy.mockRejectedValue(new Error('Redis connection failed'));
+      mockRedis.incrby.mockRejectedValue(new Error('Redis connection failed'));
 
       // Database returns max sequence
       mockExecuteQuery.mockResolvedValue({
@@ -131,7 +131,7 @@ describe('MessageOrderingService', () => {
     });
 
     it('should handle empty database (no events yet)', async () => {
-      mockRedis.incrBy.mockRejectedValue(new Error('Redis unavailable'));
+      mockRedis.incrby.mockRejectedValue(new Error('Redis unavailable'));
       mockExecuteQuery.mockResolvedValue({
         recordset: [{ max_seq: null }],
       });
@@ -145,13 +145,13 @@ describe('MessageOrderingService', () => {
 
   describe('getNextSequence', () => {
     it('should return single sequence', async () => {
-      mockRedis.incrBy.mockResolvedValue(5);
+      mockRedis.incrby.mockResolvedValue(5);
       mockRedis.expire.mockResolvedValue(1);
 
       const sequence = await service.getNextSequence('session-123');
 
       expect(sequence).toBe(4); // 5 - 1 = 4
-      expect(mockRedis.incrBy).toHaveBeenCalledWith('event:sequence:session-123', 1);
+      expect(mockRedis.incrby).toHaveBeenCalledWith('event:sequence:session-123', 1);
     });
   });
 
@@ -174,11 +174,11 @@ describe('MessageOrderingService', () => {
       expect(result.timestamp).toBeInstanceOf(Date);
 
       // Should NOT call Redis since sequence was pre-assigned
-      expect(mockRedis.incrBy).not.toHaveBeenCalled();
+      expect(mockRedis.incrby).not.toHaveBeenCalled();
     });
 
     it('should generate new sequence if not pre-assigned', async () => {
-      mockRedis.incrBy.mockResolvedValue(10);
+      mockRedis.incrby.mockResolvedValue(10);
       mockRedis.expire.mockResolvedValue(1);
 
       const result = await service.createOrderedEvent(
@@ -191,7 +191,7 @@ describe('MessageOrderingService', () => {
       );
 
       expect(result.sequenceNumber).toBe(9); // 10 - 1 = 9
-      expect(mockRedis.incrBy).toHaveBeenCalled();
+      expect(mockRedis.incrby).toHaveBeenCalled();
     });
   });
 
@@ -295,7 +295,7 @@ describe('MessageOrderingService', () => {
     it('should guarantee non-overlapping sequences for concurrent reservations', async () => {
       // Simulate concurrent calls by tracking call order
       let callCount = 0;
-      mockRedis.incrBy.mockImplementation(async (_key: string, count: number) => {
+      mockRedis.incrby.mockImplementation(async (_key: string, count: number) => {
         callCount++;
         // Each call gets the next batch
         return callCount * count;

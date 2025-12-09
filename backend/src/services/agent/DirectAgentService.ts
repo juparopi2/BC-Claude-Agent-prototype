@@ -49,6 +49,7 @@ import { getEventStore } from '../events/EventStore';
 import { getMessageService } from '../messages/MessageService';
 import { getMessageQueue } from '../queue/MessageQueue';
 import { getTokenUsageService } from '../token-usage/TokenUsageService';
+import { getUsageTrackingService } from '../tracking/UsageTrackingService';
 import { getMessageOrderingService, getMessageEmitter, type IMessageEmitter } from './messages';
 import { createChildLogger } from '@/utils/logger';
 import type { Logger } from 'pino';
@@ -1161,6 +1162,32 @@ export class DirectAgentService {
             // Log error but don't fail the request
             this.logger.warn('Failed to record token usage', { error, messageId });
           });
+
+          // ========== USAGE TRACKING INTEGRATION (Phase 1.5) ==========
+          // Track Claude API usage in usage tracking system (fire-and-forget)
+          const usageTrackingService = getUsageTrackingService();
+          const apiCallEndTime = Date.now();
+          const apiCallDuration = apiCallEndTime - startTime;
+
+          usageTrackingService.trackClaudeUsage(
+            userId,
+            sessionId,
+            inputTokens,
+            outputTokens,
+            modelName,
+            {
+              cache_write_tokens: cacheCreationInputTokens > 0 ? cacheCreationInputTokens : undefined,
+              cache_read_tokens: cacheReadInputTokens > 0 ? cacheReadInputTokens : undefined,
+              durationMs: apiCallDuration,
+              stopReason: stopReason || undefined,
+              thinking_enabled: thinkingWasEnabled,
+              thinking_budget: thinkingWasEnabled ? thinkingBudgetUsed : undefined,
+              service_tier: serviceTier,
+              turn_count: turnCount,
+            }
+          ).catch((err) => {
+            this.logger.warn({ err, userId, sessionId }, 'Failed to track Claude usage');
+          });
         }
 
         // ========== NEW FIX: Accumulate text in contentBlocks, persist later ==========
@@ -1297,8 +1324,12 @@ export class DirectAgentService {
             }
 
             // Execute the tool
+            // ========== TOOL EXECUTION TIMING (Phase 1.5) ==========
+            const toolStartTime = Date.now();
             try {
               const result = await this.executeMCPTool(toolUse.name, toolUse.input);
+              const toolEndTime = Date.now();
+              const toolDuration = toolEndTime - toolStartTime;
 
               // ⭐ TRACING POINT 6: Después de tool execution, antes de appendEvent
               this.logger.info({
@@ -1311,7 +1342,29 @@ export class DirectAgentService {
                 success: true,
                 preAssignedSequence,
                 toolIndex,
+                toolDuration,
               }, '🔍 [TRACE 6/8] Tool executed, before appendEvent');
+
+              // ========== USAGE TRACKING - TOOL EXECUTION (Phase 1.5) ==========
+              // Track tool execution in usage tracking system (fire-and-forget)
+              if (userId) {
+                const usageTrackingService = getUsageTrackingService();
+                usageTrackingService.trackToolExecution(
+                  userId,
+                  sessionId,
+                  toolUse.name,
+                  toolDuration,
+                  {
+                    success: true,
+                    result_size: result ? JSON.stringify(result).length : 0,
+                    tool_use_id: validatedToolExecutionId,
+                    turn_count: turnCount,
+                    tool_index: toolIndex,
+                  }
+                ).catch((err) => {
+                  this.logger.warn({ err, userId, sessionId, toolName: toolUse.name }, 'Failed to track tool execution');
+                });
+              }
 
               // ⭐ FIX: Use pre-assigned sequence for correct ordering
               const toolResultEvent = await eventStore.appendEventWithSequence(
@@ -1432,8 +1485,33 @@ export class DirectAgentService {
             } catch (error) {
               console.error(`[DirectAgentService] Tool execution failed:`, error);
 
+              // Calculate tool duration for error case
+              const toolEndTime = Date.now();
+              const toolDuration = toolEndTime - toolStartTime;
+
               // ⭐ FIX: Use pre-assigned sequence even for errors!
               const errorMessage = error instanceof Error ? error.message : String(error);
+
+              // ========== USAGE TRACKING - TOOL EXECUTION ERROR (Phase 1.5) ==========
+              // Track failed tool execution in usage tracking system (fire-and-forget)
+              if (userId) {
+                const usageTrackingService = getUsageTrackingService();
+                usageTrackingService.trackToolExecution(
+                  userId,
+                  sessionId,
+                  toolUse.name,
+                  toolDuration,
+                  {
+                    success: false,
+                    error_message: errorMessage,
+                    tool_use_id: validatedToolExecutionId,
+                    turn_count: turnCount,
+                    tool_index: toolIndex,
+                  }
+                ).catch((err) => {
+                  this.logger.warn({ err, userId, sessionId, toolName: toolUse.name }, 'Failed to track tool execution error');
+                });
+              }
               const toolResultEvent = await eventStore.appendEventWithSequence(
                 sessionId,
                 'tool_use_completed',

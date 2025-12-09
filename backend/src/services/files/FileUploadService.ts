@@ -1,6 +1,7 @@
 import { BlobServiceClient, ContainerClient, BlobSASPermissions, generateBlobSASQueryParameters, StorageSharedKeyCredential } from '@azure/storage-blob';
 import { env } from '@/config/environment';
 import { createChildLogger } from '@/utils/logger';
+import { getUsageTrackingService } from '@services/tracking/UsageTrackingService';
 import type { Logger } from 'pino';
 
 // File type whitelist
@@ -155,9 +156,18 @@ export class FileUploadService {
    * @param buffer - File buffer to upload
    * @param blobPath - Blob path in container
    * @param contentType - MIME type for Content-Type header
+   * @param userId - Optional user ID for usage tracking
+   * @param fileId - Optional file ID for usage tracking
    */
-  public async uploadToBlob(buffer: Buffer, blobPath: string, contentType: string): Promise<void> {
+  public async uploadToBlob(
+    buffer: Buffer,
+    blobPath: string,
+    contentType: string,
+    userId?: string,
+    fileId?: string
+  ): Promise<void> {
     const blockBlobClient = this.containerClient.getBlockBlobClient(blobPath);
+    let uploadStrategy: 'single-put' | 'block-upload';
 
     try {
       // Single-put for small files (cost-effective, one API call)
@@ -165,27 +175,46 @@ export class FileUploadService {
         await blockBlobClient.upload(buffer, buffer.length, {
           blobHTTPHeaders: { blobContentType: contentType }
         });
-        this.logger.info({ blobPath, size: buffer.length, strategy: 'single-put' }, 'File uploaded');
-        return;
+        uploadStrategy = 'single-put';
+        this.logger.info({ blobPath, size: buffer.length, strategy: uploadStrategy }, 'File uploaded');
+      } else {
+        // Block upload for large files (4 MB chunks, parallel upload)
+        const blockIds: string[] = [];
+
+        for (let offset = 0; offset < buffer.length; offset += BLOCK_SIZE) {
+          const blockId = Buffer.from(`block-${offset}`).toString('base64');
+          const chunkSize = Math.min(BLOCK_SIZE, buffer.length - offset);
+          const chunk = buffer.subarray(offset, offset + chunkSize);
+
+          await blockBlobClient.stageBlock(blockId, chunk, chunkSize);
+          blockIds.push(blockId);
+        }
+
+        await blockBlobClient.commitBlockList(blockIds, {
+          blobHTTPHeaders: { blobContentType: contentType }
+        });
+
+        uploadStrategy = 'block-upload';
+        this.logger.info({ blobPath, size: buffer.length, blocks: blockIds.length, strategy: uploadStrategy }, 'File uploaded');
       }
 
-      // Block upload for large files (4 MB chunks, parallel upload)
-      const blockIds: string[] = [];
+      // Track file upload usage (fire-and-forget)
+      if (userId && fileId) {
+        const usageTrackingService = getUsageTrackingService();
 
-      for (let offset = 0; offset < buffer.length; offset += BLOCK_SIZE) {
-        const blockId = Buffer.from(`block-${offset}`).toString('base64');
-        const chunkSize = Math.min(BLOCK_SIZE, buffer.length - offset);
-        const chunk = buffer.subarray(offset, offset + chunkSize);
+        // Extract fileName from blobPath
+        const fileName = blobPath.split('/').pop() || 'unknown';
 
-        await blockBlobClient.stageBlock(blockId, chunk, chunkSize);
-        blockIds.push(blockId);
+        usageTrackingService.trackFileUpload(userId, fileId, buffer.length, {
+          mimeType: contentType,
+          uploadStrategy,
+          fileName,
+          blobPath
+        }).catch((err) => {
+          // Fire-and-forget: log but don't fail the upload
+          this.logger.warn({ err, userId, fileId, blobPath }, 'Failed to track file upload');
+        });
       }
-
-      await blockBlobClient.commitBlockList(blockIds, {
-        blobHTTPHeaders: { blobContentType: contentType }
-      });
-
-      this.logger.info({ blobPath, size: buffer.length, blocks: blockIds.length, strategy: 'block-upload' }, 'File uploaded');
     } catch (error) {
       this.logger.error({ error, blobPath, size: buffer.length }, 'Failed to upload file to blob');
       throw error;

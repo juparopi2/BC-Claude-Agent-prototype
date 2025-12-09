@@ -19,6 +19,7 @@ import multer from 'multer';
 import { authenticateMicrosoft } from '@middleware/auth-oauth';
 import { getFileService } from '@services/files';
 import { getFileUploadService } from '@services/files';
+import { getUsageTrackingService } from '@services/tracking/UsageTrackingService';
 import { sendError } from '@/utils/error-response';
 import { ErrorCode } from '@/constants/errors';
 import { logger } from '@/utils/logger';
@@ -150,6 +151,17 @@ router.post(
             sizeBytes: file.size,
             blobPath,
             parentFolderId,
+          });
+
+          // Track file upload usage (fire-and-forget)
+          const usageTrackingService = getUsageTrackingService();
+          usageTrackingService.trackFileUpload(userId, fileId, file.size, {
+            mimeType: file.mimetype,
+            fileName: file.originalname,
+            blobPath
+          }).catch((err) => {
+            // Fire-and-forget: log but don't fail the upload
+            logger.warn({ err, userId, fileId, fileName: file.originalname }, 'Failed to track file upload');
           });
 
           // Get created file metadata

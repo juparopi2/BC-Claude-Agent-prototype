@@ -22,6 +22,13 @@ vi.mock('@/config/environment', () => ({
   },
 }));
 
+// Mock UsageTrackingService to prevent Redis initialization
+vi.mock('@services/tracking/UsageTrackingService', () => ({
+  getUsageTrackingService: vi.fn(() => ({
+    trackFileUpload: vi.fn().mockResolvedValue(undefined),
+  })),
+}));
+
 // DO NOT mock Azure SDK - causes memory leaks
 // Tests that need Azure SDK will be skipped
 

@@ -1081,3 +1081,85 @@ export function parseQuotaAlert(record: QuotaAlertDbRow): QuotaAlert {
     acknowledgedAt: record.acknowledged_at ? record.acknowledged_at.toISOString() : null,
   };
 }
+
+// =====================================================================
+// AGGREGATION & BILLING SERVICE TYPES (Phase 1.6)
+// =====================================================================
+
+/**
+ * Job data for usage aggregation BullMQ jobs
+ */
+export interface UsageAggregationJobData {
+  type: 'hourly' | 'daily' | 'monthly' | 'monthly-invoices' | 'quota-reset';
+  userId?: string;  // Optional: process specific user, or all users if omitted
+  periodStart?: string;  // ISO 8601 date string
+  force?: boolean;  // Force re-aggregation even if already exists
+}
+
+/**
+ * Parameters for upserting an aggregate record
+ */
+export interface UpsertAggregateParams {
+  userId: string;
+  periodType: PeriodType;
+  periodStart: Date;
+  totalEvents: number;
+  totalTokens: number;
+  totalApiCalls: number;
+  totalCost: number;
+  categoryBreakdown: Record<OperationCategory, number>;
+}
+
+/**
+ * Parameters for creating a quota alert
+ */
+export interface CreateAlertParams {
+  userId: string;
+  quotaType: QuotaType;
+  thresholdPercent: number;
+  thresholdValue: number;
+}
+
+/**
+ * PAYG (Pay-As-You-Go) settings for a user
+ */
+export interface PaygSettings {
+  enabled: boolean;
+  spendingLimit: number;
+  currentOverage: number;
+}
+
+/**
+ * Invoice preview (before finalization)
+ */
+export interface InvoicePreview {
+  userId: string;
+  billingPeriodStart: string;
+  billingPeriodEnd: string;
+  totalTokens: number;
+  totalApiCalls: number;
+  totalStorageBytes: number;
+  baseCost: number;
+  usageCost: number;
+  overageCost: number;
+  totalCost: number;
+  breakdown: UsageBreakdown;
+  isPreview: true;
+}
+
+/**
+ * Alert thresholds configuration
+ */
+export const ALERT_THRESHOLDS = [50, 80, 90, 100] as const;
+export type AlertThreshold = (typeof ALERT_THRESHOLDS)[number];
+
+/**
+ * WebSocket alert event payload
+ */
+export interface UsageAlertEvent {
+  alertType: 'warning_50' | 'warning_80' | 'warning_90' | 'limit_reached';
+  quotaType: QuotaType;
+  thresholdPercent: number;
+  currentValue: number;
+  message: string;
+}

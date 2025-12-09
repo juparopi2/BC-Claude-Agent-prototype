@@ -218,37 +218,37 @@ See Fase 2 (UI), Fase 3 (Processing), Fase 4 (Search), Fase 5 (Chat Integration)
 [x] 1.5.3.7 Manejar lógica de Pay As You Go - Implemented with allow_overage flag
 [x] 1.5.3.8 Crear QuotaExceededError - Returns structured results, never throws
 
-[~] 1.5.4.1 Agregar cola 'usage-aggregation' a MessageQueue - Deferred to Phase 1.6 (background workers)
-[~] 1.5.4.2 Crear backend/src/services/tracking/UsageAggregationWorker.ts - Deferred to Phase 1.6
-[~] 1.5.4.3 Implementar aggregateHourly(userId) - Deferred to Phase 1.6
-[~] 1.5.4.4 Implementar aggregateDaily(userId) - Deferred to Phase 1.6
-[~] 1.5.4.5 Implementar aggregateMonthly(userId) - Deferred to Phase 1.6
-[~] 1.5.4.6 Implementar checkAlertThresholds(userId) - Deferred to Phase 1.6
-[~] 1.5.4.7 Crear quota_alerts cuando se alcance 80%, 90%, 100% - Deferred to Phase 1.6
-[~] 1.5.4.8 Scheduled job para agregación periódica (cada hora) - Deferred to Phase 1.6
+[x] 1.5.4.1 Agregar cola 'usage-aggregation' a MessageQueue - Completed in Phase 1.6 (Dec 9, 2025)
+[x] 1.5.4.2 Crear backend/src/services/tracking/UsageAggregationService.ts - Completed (850 lines, 28 tests)
+[x] 1.5.4.3 Implementar aggregateHourly(periodStart, userId?) - Completed
+[x] 1.5.4.4 Implementar aggregateDaily(periodStart, userId?) - Completed
+[x] 1.5.4.5 Implementar aggregateMonthly(periodStart, userId?) - Completed
+[x] 1.5.4.6 Implementar checkAlertThresholds(userId) - Completed (50%, 80%, 90%, 100%)
+[x] 1.5.4.7 Crear quota_alerts cuando se alcance 50%, 80%, 90%, 100% - Completed
+[x] 1.5.4.8 Scheduled jobs para agregación periódica - Completed (hourly/daily/monthly cron jobs)
 
-[~] 1.5.5.1 Crear backend/src/services/billing/BillingService.ts - Deferred to Phase 1.6
-[~] 1.5.5.2 Implementar generateMonthlyInvoice(userId, month) - Deferred to Phase 1.6
-[~] 1.5.5.3 Implementar calculatePlanCost(planId) - Deferred to Phase 1.6
-[~] 1.5.5.4 Implementar calculatePaygCost(userId, month) - Deferred to Phase 1.6
-[~] 1.5.5.5 Implementar getUsageBreakdown(userId, month) → JSON detallado - Deferred to Phase 1.6
-[~] 1.5.5.6 Implementar enablePayg(userId, spendingLimit) - Deferred to Phase 1.6
-[~] 1.5.5.7 Implementar disablePayg(userId) - Deferred to Phase 1.6
-[~] 1.5.5.8 Implementar updatePaygLimit(userId, newLimit) - Deferred to Phase 1.6
-[~] 1.5.5.9 Scheduled job para generar facturas el día 1 de cada mes - Deferred to Phase 1.6
+[x] 1.5.5.1 Crear backend/src/services/billing/BillingService.ts - Completed (700+ lines, 33 tests)
+[x] 1.5.5.2 Implementar generateMonthlyInvoice(userId, periodStart) - Completed
+[x] 1.5.5.3 Implementar calculatePlanCost(planTier) - Completed (uses PRICING_PLANS)
+[x] 1.5.5.4 Implementar calculateOverageCost(userId, periodStart, periodEnd) - Completed
+[x] 1.5.5.5 Implementar getCurrentPeriodPreview(userId) → JSON detallado - Completed
+[x] 1.5.5.6 Implementar enablePayg(userId, spendingLimit) - Completed
+[x] 1.5.5.7 Implementar disablePayg(userId) - Completed
+[x] 1.5.5.8 Implementar updatePaygLimit(userId, newLimit) - Completed
+[x] 1.5.5.9 Scheduled job para generar facturas el día 1 de cada mes - Completed (cron: 30 0 1 * *)
 
 [x] 1.5.6.1 Crear backend/src/routes/usage.ts (4 endpoints implemented)
 [x] 1.5.6.2 GET /api/usage/current - Uso actual del período
 [x] 1.5.6.3 GET /api/usage/history - Histórico por período
 [x] 1.5.6.4 GET /api/usage/quotas - Límites del usuario
 [x] 1.5.6.5 GET /api/usage/breakdown - Desglose detallado
-[~] 1.5.6.6 Crear backend/src/routes/billing.ts - Deferred to Phase 1.6 (billing service dependency)
-[~] 1.5.6.7 GET /api/billing/current - Deferred to Phase 1.6
-[~] 1.5.6.8 GET /api/billing/history - Deferred to Phase 1.6
-[~] 1.5.6.9 GET /api/billing/invoice/:id - Deferred to Phase 1.6
-[~] 1.5.6.10 POST /api/billing/payg/enable - Deferred to Phase 1.6
-[~] 1.5.6.11 POST /api/billing/payg/disable - Deferred to Phase 1.6
-[~] 1.5.6.12 PUT /api/billing/payg/limit - Deferred to Phase 1.6
+[x] 1.5.6.6 Crear backend/src/routes/billing.ts - Completed in Phase 1.6 (355 lines, 7 endpoints)
+[x] 1.5.6.7 GET /api/billing/current - Completed (current period invoice preview)
+[x] 1.5.6.8 GET /api/billing/history - Completed (paginated invoice list)
+[x] 1.5.6.9 GET /api/billing/invoice/:id - Completed (validates user ownership)
+[x] 1.5.6.10 POST /api/billing/payg/enable - Completed (with spendingLimit validation)
+[x] 1.5.6.11 POST /api/billing/payg/disable - Completed
+[x] 1.5.6.12 PUT /api/billing/payg/limit - Completed (with newLimit validation)
 [x] 1.5.6.13 Registrar routes en server.ts (usage routes registered)
 
 [~] 1.5.7.1 Emitir 'usage:updated' después de cada operación trackeada - Deferred to Phase 2 (UI)
@@ -431,11 +431,124 @@ The following components are deferred to Phase 1.6 as they require more complex 
 
 ### Next Steps
 
-1. **Phase 1.6**: Implement background workers and billing service
-2. **Phase 2**: Build frontend usage dashboard
-3. **Phase 3**: Add document processing tracking
-4. **Phase 4**: Add embeddings and search tracking
-5. **Phase 5**: Full chat integration with file context tracking
+See Phase 1.6 below (now complete).
+
+---
+
+## Fase 1.6: Background Workers & Billing Service ✅
+
+**Completion Date**: December 9, 2025
+
+### What Was Implemented
+
+1. **UsageAggregationService** (850 lines, 28 tests)
+   - `aggregateHourly(periodStart, userId?)` - Aggregates usage events into hourly rollups
+   - `aggregateDaily(periodStart, userId?)` - Aggregates into daily rollups
+   - `aggregateMonthly(periodStart, userId?)` - Aggregates into monthly rollups
+   - `checkAlertThresholds(userId)` - Creates alerts at 50%, 80%, 90%, 100%
+   - `resetExpiredQuotas()` - Resets user quotas at billing period end
+   - Uses SQL MERGE for idempotent upserts (same aggregation = same result)
+   - Singleton + DI pattern for testability
+
+2. **BillingService** (700+ lines, 33 tests)
+   - `generateMonthlyInvoice(userId, periodStart)` - Creates billing_records
+   - `generateAllMonthlyInvoices(periodStart)` - Batch invoice generation
+   - `getInvoice(invoiceId, userId)` - Get specific invoice (validates ownership)
+   - `getInvoiceHistory(userId, limit?)` - Get paginated invoice list
+   - `getCurrentPeriodPreview(userId)` - Preview current period costs
+   - `calculatePlanCost(planTier)` - Returns plan price from config
+   - PAYG management: `enablePayg()`, `disablePayg()`, `updatePaygLimit()`, `getPaygSettings()`
+   - Uses PRICING_PLANS and PAYG_RATES from pricing.config.ts
+
+3. **MessageQueue Extension** (USAGE_AGGREGATION queue)
+   - Added `QueueName.USAGE_AGGREGATION` enum value
+   - Added `UsageAggregationJob` interface
+   - Concurrency: 1 (sequential batch processing)
+   - Backoff: 5 seconds exponential
+   - Scheduled jobs via cron patterns:
+     - Hourly aggregation: `5 * * * *` (every hour at :05)
+     - Daily aggregation: `15 0 * * *` (daily at 00:15 UTC)
+     - Monthly invoices: `30 0 1 * *` (1st of month at 00:30 UTC)
+     - Quota reset: `10 0 * * *` (daily at 00:10 UTC)
+   - Public method: `addUsageAggregationJob(data)`
+
+4. **Billing Routes** (/api/billing) - 7 endpoints
+   - `GET /api/billing/current` - Current period invoice preview
+   - `GET /api/billing/history` - Historical invoices (paginated)
+   - `GET /api/billing/invoice/:id` - Specific invoice by ID
+   - `GET /api/billing/payg` - Get PAYG settings
+   - `POST /api/billing/payg/enable` - Enable PAYG with spending limit
+   - `POST /api/billing/payg/disable` - Disable PAYG
+   - `PUT /api/billing/payg/limit` - Update PAYG limit
+
+5. **Type System Extensions** (usage.types.ts)
+   - `UsageAggregationJobData` - Job data for BullMQ
+   - `UpsertAggregateParams` - Parameters for upsert operations
+   - `CreateAlertParams` - Parameters for alert creation
+   - `PaygSettings` - PAYG configuration interface
+   - `InvoicePreview` - Preview invoice structure
+   - `UsageAlertEvent` - WebSocket alert payload
+   - `ALERT_THRESHOLDS` constant: [50, 80, 90, 100]
+
+6. **Testing**
+   - UsageAggregationService: 28 tests passing
+   - BillingService: 33 tests passing
+   - MessageQueue.close test updated for 4 queues
+   - Full test suite: 1560+ tests passed (15 skipped)
+   - Zero ESLint errors, zero TypeScript `any` types
+
+### Key Achievements
+
+- ✅ **Automated aggregation** - Scheduled jobs for hourly/daily/monthly rollups
+- ✅ **Invoice generation** - Monthly invoices created automatically (status='pending')
+- ✅ **Quota alerts** - Alerts at 50%, 80%, 90%, 100% thresholds
+- ✅ **Quota reset** - Automatic reset at billing period end
+- ✅ **PAYG management** - Enable/disable/update spending limits
+- ✅ **Type-safe** - All new types in usage.types.ts
+- ✅ **Testable** - 61 new tests covering all functionality
+- ✅ **Build passing** - Type-check, lint, build all successful
+
+### Design Decisions
+
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| Job Strategy | Single job for all users | Simpler for <1000 users, can refactor later |
+| Alert Delivery | Database + WebSocket ready | Full real-time alerts via `usage:alert` event |
+| Invoice Scope | DB records only | Stripe integration deferred until business entity created |
+
+### Deferred to Future Work
+
+- **Stripe Integration**: billing_records have `status='pending'`. When Stripe is ready:
+  1. Add Stripe webhook endpoint
+  2. Update invoice `status` to `paid` when payment confirmed
+  3. Add `payment_method` and `paid_at` timestamps
+
+- **WebSocket Alert Emission**: SocketService integration ready in code but requires frontend listener
+
+### Files Created/Modified
+
+**New Files:**
+- `backend/src/services/tracking/UsageAggregationService.ts`
+- `backend/src/services/billing/BillingService.ts`
+- `backend/src/services/billing/index.ts`
+- `backend/src/routes/billing.ts`
+- `backend/src/__tests__/unit/services/tracking/UsageAggregationService.test.ts`
+- `backend/src/__tests__/unit/services/billing/BillingService.test.ts`
+
+**Modified Files:**
+- `backend/src/types/usage.types.ts` - Added Phase 1.6 interfaces
+- `backend/src/services/queue/MessageQueue.ts` - Added USAGE_AGGREGATION queue
+- `backend/src/server.ts` - Registered billing routes
+- `backend/src/__tests__/unit/services/queue/MessageQueue.close.test.ts` - Updated for 4 queues
+
+### Next Steps
+
+1. **Phase 2**: Build frontend usage dashboard
+2. **Phase 3**: Add document processing tracking
+3. **Phase 4**: Add embeddings and search tracking
+4. **Phase 5**: Full chat integration with file context tracking
+
+---
 
 ### Manual Testing
 
@@ -1075,3 +1188,4 @@ La Fase 1.5 tiene **prioridad alta** porque:
 |-------|---------|---------|
 | TBD | 0.1 | Documento inicial creado |
 | 2025-12-05 | 0.2 | Agregada Fase 1.5: Sistema de Tracking, Auditoría y Billing |
+| 2025-12-09 | 0.3 | Fase 1.6 Complete: Background Workers & Billing Service - UsageAggregationService (28 tests), BillingService (33 tests), MessageQueue USAGE_AGGREGATION queue, /api/billing routes (7 endpoints) |

@@ -43,6 +43,7 @@ export enum QueueName {
   MESSAGE_PERSISTENCE = 'message-persistence',
   TOOL_EXECUTION = 'tool-execution',
   EVENT_PROCESSING = 'event-processing',
+  USAGE_AGGREGATION = 'usage-aggregation',
 }
 
 /**
@@ -94,6 +95,21 @@ export interface EventProcessingJob {
   sessionId: string;
   eventType: EventType;
   data: Record<string, unknown>;
+}
+
+/**
+ * Usage Aggregation Job Data
+ *
+ * Used by background workers for:
+ * - Hourly/daily/monthly aggregation
+ * - Monthly invoice generation
+ * - Quota reset processing
+ */
+export interface UsageAggregationJob {
+  type: 'hourly' | 'daily' | 'monthly' | 'monthly-invoices' | 'quota-reset';
+  userId?: string;  // Optional: process specific user, or all users if omitted
+  periodStart?: string;  // ISO 8601 date string
+  force?: boolean;  // Force re-aggregation even if already exists
 }
 
 /**
@@ -213,7 +229,7 @@ export class MessageQueue {
         reject(new Error('Redis connection timeout for BullMQ (10s)'));
       }, 10000);
 
-      this.redisConnection.once('ready', () => {
+      this.redisConnection.once('ready', async () => {
         clearTimeout(timeout);
         this.isReady = true;
         this.log.info('✅ BullMQ Redis connection ready');
@@ -222,6 +238,7 @@ export class MessageQueue {
         this.initializeQueues();
         this.initializeWorkers();
         this.setupEventListeners();
+        await this.initializeScheduledJobs();
         this.log.info('MessageQueue initialized with BullMQ', {
           queues: Array.from(this.queues.keys()),
           workers: Array.from(this.workers.keys()),
@@ -396,6 +413,29 @@ export class MessageQueue {
       })
     );
 
+    // Usage Aggregation Queue (low concurrency - batch processing)
+    this.queues.set(
+      QueueName.USAGE_AGGREGATION,
+      new Queue(QueueName.USAGE_AGGREGATION, {
+        connection: this.getRedisConnectionConfig(),
+        defaultJobOptions: {
+          attempts: 3,
+          backoff: {
+            type: 'exponential',
+            delay: 5000,  // Start with 5s for aggregation jobs
+          },
+          removeOnComplete: {
+            count: 50,
+            age: 3600,  // 1 hour
+          },
+          removeOnFail: {
+            count: 100,
+            age: 86400,  // 24 hours
+          },
+        },
+      })
+    );
+
     this.log.info('All queues initialized', {
       queues: Array.from(this.queues.keys()),
     });
@@ -450,6 +490,21 @@ export class MessageQueue {
       )
     );
 
+    // Usage Aggregation Worker (concurrency: 1 - sequential batch processing)
+    this.workers.set(
+      QueueName.USAGE_AGGREGATION,
+      new Worker(
+        QueueName.USAGE_AGGREGATION,
+        async (job: Job<UsageAggregationJob>) => {
+          return this.processUsageAggregation(job);
+        },
+        {
+          connection: this.getRedisConnectionConfig(),
+          concurrency: 1,  // Process one aggregation job at a time
+        }
+      )
+    );
+
     this.log.info('All workers initialized', {
       workers: Array.from(this.workers.keys()),
     });
@@ -478,6 +533,80 @@ export class MessageQueue {
         this.log.warn(`Job stalled in ${queueName}`, { jobId });
       });
     });
+  }
+
+  /**
+   * Initialize Scheduled Jobs for Usage Aggregation
+   *
+   * Sets up recurring jobs for:
+   * - Hourly aggregation: Every hour at :05
+   * - Daily aggregation: Every day at 00:15 UTC
+   * - Monthly invoices: 1st of month at 00:30 UTC
+   * - Quota reset: Every day at 00:10 UTC
+   */
+  private async initializeScheduledJobs(): Promise<void> {
+    const queue = this.queues.get(QueueName.USAGE_AGGREGATION);
+    if (!queue) {
+      this.log.warn('Usage aggregation queue not available for scheduled jobs');
+      return;
+    }
+
+    try {
+      // Remove any existing repeatable jobs first (prevents duplicates on restart)
+      const existingJobs = await queue.getRepeatableJobs();
+      for (const job of existingJobs) {
+        await queue.removeRepeatableByKey(job.key);
+      }
+
+      // Hourly aggregation (every hour at :05)
+      await queue.add(
+        'scheduled-hourly-aggregation',
+        { type: 'hourly' as const },
+        {
+          repeat: { pattern: '5 * * * *' },
+          jobId: 'scheduled-hourly-aggregation',
+        }
+      );
+
+      // Daily aggregation (every day at 00:15 UTC)
+      await queue.add(
+        'scheduled-daily-aggregation',
+        { type: 'daily' as const },
+        {
+          repeat: { pattern: '15 0 * * *' },
+          jobId: 'scheduled-daily-aggregation',
+        }
+      );
+
+      // Monthly invoice generation (1st of month at 00:30 UTC)
+      await queue.add(
+        'scheduled-monthly-invoices',
+        { type: 'monthly-invoices' as const },
+        {
+          repeat: { pattern: '30 0 1 * *' },
+          jobId: 'scheduled-monthly-invoices',
+        }
+      );
+
+      // Quota reset check (every day at 00:10 UTC)
+      await queue.add(
+        'scheduled-quota-reset',
+        { type: 'quota-reset' as const },
+        {
+          repeat: { pattern: '10 0 * * *' },
+          jobId: 'scheduled-quota-reset',
+        }
+      );
+
+      this.log.info('Scheduled jobs initialized for usage aggregation', {
+        jobs: ['hourly-aggregation', 'daily-aggregation', 'monthly-invoices', 'quota-reset'],
+      });
+    } catch (error) {
+      this.log.error('Failed to initialize scheduled jobs', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      // Don't throw - scheduled jobs are optional, queue can still work for manual jobs
+    }
   }
 
   /**
@@ -612,6 +741,36 @@ export class MessageQueue {
 
     const job = await queue.add('process-event', data, {
       priority: 3,
+    });
+
+    return job.id || '';
+  }
+
+  /**
+   * Add Usage Aggregation Job to Queue
+   *
+   * @param data - Aggregation job data
+   * @returns Job ID
+   */
+  public async addUsageAggregationJob(
+    data: UsageAggregationJob
+  ): Promise<string> {
+    await this.waitForReady();
+
+    const queue = this.queues.get(QueueName.USAGE_AGGREGATION);
+    if (!queue) {
+      throw new Error('Usage aggregation queue not initialized');
+    }
+
+    const job = await queue.add(`aggregation-${data.type}`, data, {
+      priority: 5,  // Lower priority than message persistence
+    });
+
+    this.log.info('Usage aggregation job added to queue', {
+      jobId: job.id,
+      type: data.type,
+      userId: data.userId || 'all-users',
+      periodStart: data.periodStart,
     });
 
     return job.id || '';
@@ -784,6 +943,113 @@ export class MessageQueue {
 
     // Additional event-specific processing can be added here
     // For example, triggering webhooks, notifications, etc.
+  }
+
+  /**
+   * Process Usage Aggregation Job
+   *
+   * Routes aggregation jobs to the appropriate service methods.
+   * Supports hourly/daily/monthly aggregation, invoice generation, and quota resets.
+   *
+   * @param job - BullMQ job containing aggregation type and parameters
+   */
+  private async processUsageAggregation(
+    job: Job<UsageAggregationJob>
+  ): Promise<void> {
+    const { type, userId, periodStart } = job.data;
+
+    this.log.info('Processing usage aggregation job', {
+      jobId: job.id,
+      type,
+      userId: userId || 'all-users',
+      periodStart,
+      attemptNumber: job.attemptsMade,
+    });
+
+    try {
+      // Dynamic import to avoid circular dependencies
+      const { getUsageAggregationService } = await import('../tracking/UsageAggregationService');
+      const { getBillingService } = await import('../billing');
+
+      const aggregationService = getUsageAggregationService();
+      const billingService = getBillingService();
+
+      switch (type) {
+        case 'hourly': {
+          const hourStart = periodStart ? new Date(periodStart) : this.getLastHourStart();
+          const count = await aggregationService.aggregateHourly(hourStart, userId);
+          this.log.info('Hourly aggregation completed', { jobId: job.id, usersProcessed: count });
+          break;
+        }
+        case 'daily': {
+          const dayStart = periodStart ? new Date(periodStart) : this.getYesterdayStart();
+          const count = await aggregationService.aggregateDaily(dayStart, userId);
+          this.log.info('Daily aggregation completed', { jobId: job.id, usersProcessed: count });
+          break;
+        }
+        case 'monthly': {
+          const monthStart = periodStart ? new Date(periodStart) : this.getLastMonthStart();
+          const count = await aggregationService.aggregateMonthly(monthStart, userId);
+          this.log.info('Monthly aggregation completed', { jobId: job.id, usersProcessed: count });
+          break;
+        }
+        case 'monthly-invoices': {
+          const invoiceMonth = periodStart ? new Date(periodStart) : this.getLastMonthStart();
+          const count = await billingService.generateAllMonthlyInvoices(invoiceMonth);
+          this.log.info('Monthly invoices generated', { jobId: job.id, invoicesCreated: count });
+          break;
+        }
+        case 'quota-reset': {
+          const count = await aggregationService.resetExpiredQuotas();
+          this.log.info('Expired quotas reset', { jobId: job.id, usersReset: count });
+          break;
+        }
+        default:
+          this.log.error('Unknown aggregation job type', { jobId: job.id, type });
+          throw new Error(`Unknown aggregation job type: ${type}`);
+      }
+    } catch (error) {
+      this.log.error('Usage aggregation job failed', {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        jobId: job.id,
+        type,
+        userId,
+        attemptNumber: job.attemptsMade,
+      });
+      throw error;  // Will trigger retry
+    }
+  }
+
+  /**
+   * Get the start of the last completed hour
+   */
+  private getLastHourStart(): Date {
+    const now = new Date();
+    now.setMinutes(0, 0, 0);
+    now.setHours(now.getHours() - 1);
+    return now;
+  }
+
+  /**
+   * Get the start of yesterday (UTC)
+   */
+  private getYesterdayStart(): Date {
+    const now = new Date();
+    now.setUTCHours(0, 0, 0, 0);
+    now.setUTCDate(now.getUTCDate() - 1);
+    return now;
+  }
+
+  /**
+   * Get the start of last month (UTC)
+   */
+  private getLastMonthStart(): Date {
+    const now = new Date();
+    now.setUTCDate(1);
+    now.setUTCHours(0, 0, 0, 0);
+    now.setUTCMonth(now.getUTCMonth() - 1);
+    return now;
   }
 
   /**

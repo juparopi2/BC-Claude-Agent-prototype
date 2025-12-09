@@ -31,6 +31,7 @@ import logsRoutes from './routes/logs';
 import tokenUsageRoutes from './routes/token-usage';
 import fileRoutes from './routes/files';
 import usageRoutes from './routes/usage';
+import billingRoutes from './routes/billing';
 import { authenticateMicrosoft } from './middleware/auth-oauth';
 import { httpLogger } from './middleware/logging';
 import { validateSessionOwnership } from './utils/session-ownership';
@@ -746,6 +747,8 @@ function configureRoutes(): void {
     app.use('/api/files', fileRoutes);
     // Usage tracking and quota endpoints (requires database)
     app.use('/api/usage', usageRoutes);
+    // Billing and invoice endpoints (requires database)
+    app.use('/api/billing', billingRoutes);
   }
 
   // Client log ingestion endpoint

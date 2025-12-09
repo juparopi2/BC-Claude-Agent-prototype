@@ -1,0 +1,10 @@
+{
+  "blobHost": "127.0.0.1",
+  "blobPort": 10000,
+  "queueHost": "127.0.0.1",
+  "queuePort": 10001,
+  "location": "./azurite-data",
+  "silent": false,
+  "loose": false,
+  "skipApiVersionCheck": false
+}

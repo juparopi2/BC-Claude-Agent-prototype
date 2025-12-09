@@ -127,7 +127,8 @@
       "Bash(MAX_CONTEXT_TOKENS=not-a-number node:*)",
       "Bash(LOG_LEVEL=trace node:*)",
       "Bash(LOG_LEVEL=ERROR node:*)",
-      "Bash(NODE_ENV=production node:*)"
+      "Bash(NODE_ENV=production node:*)",
+      "Bash(xargs:*)"
     ],
     "deny": [],
     "ask": []

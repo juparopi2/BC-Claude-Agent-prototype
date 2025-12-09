@@ -28,16 +28,16 @@ El Sistema de Gestión de Archivos es una funcionalidad core de BC Claude Agent 
 
 ### Phase 1: Infrastructure Base ✅ COMPLETE
 
-**Status**: Production-ready
-**Completion**: December 2025
-**Test Coverage**: 48 tests passing (31 FileService + 17 FileUploadService)
+**Status**: Production-ready (100% complete)
+**Completion**: December 8, 2025
+**Test Coverage**: 33 tests passing (17 unit + 16 integration with Azurite)
 
 #### Implemented Components
 
 **Database Layer**:
-- Tables: `files`, `file_chunks`, `message_file_attachments`
+- Tables: `files`, `file_chunks`, `message_file_attachments` (✅ migrated to Azure SQL DEV on December 8, 2025)
 - Migration: `backend/migrations/003-create-files-tables.sql`
-- Indexes: 7 performance-optimized indexes
+- Indexes: 7 performance-optimized indexes (verified in production)
 
 **Service Layer**:
 - `FileService` (`backend/src/services/files/FileService.ts`)
@@ -48,7 +48,7 @@ El Sistema de Gestión de Archivos es una funcionalidad core de BC Claude Agent 
 - `FileUploadService` (`backend/src/services/files/FileUploadService.ts`)
   - 8 methods: generateBlobPath, validateFileType, validateFileSize, uploadToBlob, downloadFromBlob, deleteFromBlob, generateSasToken, blobExists
   - Smart upload strategy: single-put < 256MB, block upload >= 256MB
-  - 48% test coverage (17 tests on validation logic)
+  - 17 unit tests (validation logic) + 16 integration tests (Azurite)
 
 **API Layer**:
 - Routes: `backend/src/routes/files.ts` (7 endpoints)
@@ -62,10 +62,17 @@ El Sistema de Gestión de Archivos es una funcionalidad core de BC Claude Agent 
 - Dual system: DB (snake_case) ↔ API (camelCase)
 
 **Azure Infrastructure**:
-- Container: `user-files` in `sabcagentdev` storage account
-- Lifecycle policy: `infrastructure/blob-lifecycle-policy.json`
+- Container: `user-files` in `sabcagentdev` storage account (✅ verified functional December 8, 2025)
+- Lifecycle policy: `infrastructure/blob-lifecycle-policy.json` (✅ applied with Hot→Cool→Archive tiering)
 - Setup script: `infrastructure/setup-file-storage.sh`
 - Cost optimization: Hot→Cool→Archive tiering
+
+**Development Environment**:
+- **Azurite** configured for local Blob Storage emulation (eliminates Azure SDK mocking issues)
+- Dual environment variables:
+  - `STORAGE_CONNECTION_STRING_TEST` - Azurite connection for local development
+  - `STORAGE_CONNECTION_STRING` - Production Azure Blob Storage for CI/CD
+- Integration tests use fallback strategy: TEST → production → hardcoded Azurite
 
 #### File Locations
 
@@ -76,17 +83,27 @@ El Sistema de Gestión de Archivos es una funcionalidad core de BC Claude Agent 
 - Migration: `backend/migrations/003-create-files-tables.sql`
 
 **Testing**:
-- FileService tests: `backend/src/__tests__/unit/services/files/FileService.test.ts`
-- FileUploadService tests: `backend/src/__tests__/unit/services/files/FileUploadService.test.ts`
+- FileService tests: `backend/src/__tests__/unit/services/files/FileService.test.ts` (31 tests)
+- FileUploadService unit tests: `backend/src/__tests__/unit/services/files/FileUploadService.test.ts` (17 validation tests)
+- FileUploadService integration tests: `backend/src/__tests__/integration/files/FileUploadService.integration.test.ts` (16 Azurite tests)
 - Fixtures: `backend/src/__tests__/fixtures/FileFixture.ts`
 
 **Infrastructure**:
 - Lifecycle policy: `infrastructure/blob-lifecycle-policy.json`
 - Setup script: `infrastructure/setup-file-storage.sh`
 
-#### Pending Items
+#### Phase 1 Completion Summary (December 8, 2025)
 
-- [ ] Execute migration in dev database (manual step)
+**Completed Items** ✅:
+- [x] Database migration executed in Azure SQL DEV
+- [x] Azure Blob Storage configured with lifecycle policy
+- [x] Azurite configured for local development and CI/CD
+- [x] Integration tests migrated from unit tests (16 tests with Azurite)
+- [x] Dual environment variable strategy implemented (TEST + production)
+- [x] All tests passing: 17 unit + 16 integration = 33 total tests
+- [x] No .env.test file (consolidated into single .env with dual variables)
+
+**Next Phases**:
 - [ ] Fase 2: UI Components (FileExplorer, drag-and-drop)
 - [ ] Fase 3: Document Processing (PDF, DOCX text extraction)
 - [ ] Fase 4: Embeddings & Vector Search (Azure AI Search)

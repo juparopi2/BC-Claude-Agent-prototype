@@ -37,7 +37,7 @@
 [x] 1.1.3 Agregar tabla `file_chunks` para chunks de embeddings
 [x] 1.1.4 Agregar tabla `message_file_attachments` para relación mensaje-archivo
 [x] 1.1.5 Crear índices para queries frecuentes (7 índices optimizados)
-[ ] 1.1.6 Ejecutar migración en desarrollo (manual step - pending)
+[x] 1.1.6 Ejecutar migración en desarrollo (completed: December 8, 2025)
 
 [x] 1.2.1 Crear container `user-files` en storage account existente (sabcagentdev)
 [x] 1.2.2 Configurar access policy (private) + lifecycle policy (Hot→Cool→Archive)

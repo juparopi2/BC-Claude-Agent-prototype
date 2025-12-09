@@ -33,6 +33,9 @@ vi.mock('@/services/auth/MicrosoftOAuthService', () => ({
   createMicrosoftOAuthService: vi.fn(),
 }));
 
+// DON'T mock @/utils/error-response, it should work with the real implementation
+// Instead,ensure @bc-agent/shared is properly available (it should be by default)
+
 // Import after mocking
 import {
   authenticateMicrosoft,
@@ -55,6 +58,7 @@ interface MockRequest extends Partial<Request> {
   session: MockSession;
   path: string;
   method: string;
+  headers: Record<string, string | string[] | undefined>;
   microsoftSession?: MicrosoftOAuthSession;
   userId?: string;
   userEmail?: string;
@@ -62,6 +66,9 @@ interface MockRequest extends Partial<Request> {
 
 /**
  * Creates a mock Express Request object
+ *
+ * NOTE: Must include `headers` property because auth-oauth.ts accesses
+ * `req.headers.cookie` for E2E debug logging. Without it, TypeError occurs.
  */
 function createMockRequest(overrides: Partial<MockRequest> = {}): MockRequest {
   return {
@@ -71,6 +78,7 @@ function createMockRequest(overrides: Partial<MockRequest> = {}): MockRequest {
     },
     path: '/api/test',
     method: 'GET',
+    headers: {}, // Required: auth-oauth.ts accesses req.headers.cookie
     ...overrides,
   } as MockRequest;
 }
@@ -409,6 +417,7 @@ describe('authenticateMicrosoft', () => {
           save: vi.fn((cb: (err?: Error) => void) => cb()),
           microsoftOAuth: undefined,
         },
+        headers: {}, // Required: auth-oauth.ts accesses req.headers.cookie
         // Deliberately omit path and method
       } as unknown as MockRequest;
 

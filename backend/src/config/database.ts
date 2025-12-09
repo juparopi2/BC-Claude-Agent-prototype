@@ -64,8 +64,11 @@ const PARAMETER_TYPE_MAP: Record<string, ISqlType | (() => ISqlType)> = {
   'parent_todo_id': sql.UniqueIdentifier,
   'entity_id': sql.UniqueIdentifier,
   'file_id': sql.UniqueIdentifier,
+  'parent_folder_id': sql.UniqueIdentifier,
 
   // INT columns
+  'chunk_index': sql.Int,
+  'chunk_tokens': sql.Int,
   'sequence_number': sql.Int,
   'token_count': sql.Int,
   // Note: thinking_tokens column removed from database (Option A - 2025-11-24)
@@ -79,6 +82,7 @@ const PARAMETER_TYPE_MAP: Record<string, ISqlType | (() => ISqlType)> = {
 
   // BIGINT columns
   'file_size_bytes': sql.BigInt,
+  'size_bytes': sql.BigInt,
 
   // DATETIME2 columns
   'created_at': sql.DateTime2,
@@ -99,6 +103,8 @@ const PARAMETER_TYPE_MAP: Record<string, ISqlType | (() => ISqlType)> = {
   'completed': sql.Bit,
   'removed': sql.Bit,
   'success': sql.Bit,
+  'is_folder': sql.Bit,
+  'is_favorite': sql.Bit,
 
   // NVARCHAR columns (strings) - explicit for clarity
   'event_type': sql.NVarChar,
@@ -135,6 +141,18 @@ const PARAMETER_TYPE_MAP: Record<string, ISqlType | (() => ISqlType)> = {
   'microsoft_access_token_encrypted': sql.NVarChar(sql.MAX),
   'microsoft_refresh_token_encrypted': sql.NVarChar(sql.MAX),
   'bc_access_token_encrypted': sql.NVarChar(sql.MAX),
+  // File-related columns
+  'blob_path': sql.NVarChar(1000),
+  'mime_type': sql.NVarChar(255),
+  'processing_status': sql.NVarChar(50),
+  'embedding_status': sql.NVarChar(50),
+  'extracted_text': sql.NVarChar(sql.MAX),
+  'chunk_text': sql.NVarChar(sql.MAX),
+  'search_document_id': sql.NVarChar(255),
+  'usage_type': sql.NVarChar(50),
+
+  // FLOAT columns
+  'relevance_score': sql.Float,
 
   // VARBINARY columns
   'file_content': sql.VarBinary(sql.MAX),

@@ -29,6 +29,7 @@ import authOAuthRoutes from './routes/auth-oauth';
 import sessionsRoutes from './routes/sessions';
 import logsRoutes from './routes/logs';
 import tokenUsageRoutes from './routes/token-usage';
+import fileRoutes from './routes/files';
 import { authenticateMicrosoft } from './middleware/auth-oauth';
 import { httpLogger } from './middleware/logging';
 import { validateSessionOwnership } from './utils/session-ownership';
@@ -740,6 +741,8 @@ function configureRoutes(): void {
     app.use('/api/chat/sessions', sessionsRoutes);
     // Token usage analytics endpoints (requires database)
     app.use('/api/token-usage', tokenUsageRoutes);
+    // File upload/download endpoints (requires database)
+    app.use('/api/files', fileRoutes);
   }
 
   // Client log ingestion endpoint

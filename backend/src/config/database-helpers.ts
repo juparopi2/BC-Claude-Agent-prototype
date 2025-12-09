@@ -34,7 +34,7 @@ import { isValidUUID, normalizeUUID } from '@/utils/uuid';
  * Type definition for SQL parameter tuple
  * Represents the three arguments needed for request.input()
  */
-export type SqlParameterTuple = [string, any, string | null];
+export type SqlParameterTuple = [string, sql.ISqlTypeFactoryWithNoParams | sql.ISqlType, string | null];
 
 /**
  * Helper to add a UUID input parameter to a SQL request.

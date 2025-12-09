@@ -88,3 +88,21 @@ export type {
 } from './error.types';
 
 export { isApiErrorResponse, isValidErrorCode } from './error.types';
+
+// File Types
+export type {
+  ProcessingStatus,
+  EmbeddingStatus,
+  FileUsageType,
+  FileSortBy,
+  FileDbRecord,
+  FileChunkDbRecord,
+  MessageFileAttachmentDbRecord,
+  ParsedFile,
+  ParsedFileChunk,
+  GetFilesOptions,
+  CreateFileOptions,
+  UpdateFileOptions,
+} from './file.types';
+
+export { parseFile, parseFileChunk } from './file.types';

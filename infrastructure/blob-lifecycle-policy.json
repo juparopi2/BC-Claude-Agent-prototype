@@ -1,0 +1,28 @@
+{
+  "rules": [
+    {
+      "enabled": true,
+      "name": "optimize-file-storage-costs",
+      "type": "Lifecycle",
+      "definition": {
+        "filters": {
+          "blobTypes": ["blockBlob"],
+          "prefixMatch": ["users/"]
+        },
+        "actions": {
+          "baseBlob": {
+            "tierToCool": {
+              "daysAfterModificationGreaterThan": 30
+            },
+            "tierToArchive": {
+              "daysAfterModificationGreaterThan": 90
+            },
+            "delete": {
+              "daysAfterModificationGreaterThan": 730
+            }
+          }
+        }
+      }
+    }
+  ]
+}

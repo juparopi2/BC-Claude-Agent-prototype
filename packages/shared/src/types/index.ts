@@ -86,3 +86,28 @@ export {
   isToolUseMessage,
   isToolResultMessage,
 } from './message.types';
+
+// File types (Phase 2: File Management)
+export type {
+  ProcessingStatus,
+  EmbeddingStatus,
+  FileUsageType,
+  FileSortBy,
+  SortOrder,
+  ParsedFile,
+  ParsedFileChunk,
+  GetFilesOptions,
+  CreateFolderRequest,
+  UpdateFileRequest,
+  FilesListResponse,
+  FileResponse,
+  FolderResponse,
+  UploadFilesResponse,
+  AllowedMimeType,
+} from './file.types';
+
+// File constants
+export { FILE_UPLOAD_LIMITS, ALLOWED_MIME_TYPES } from './file.types';
+
+// File type guards
+export { isAllowedMimeType } from './file.types';

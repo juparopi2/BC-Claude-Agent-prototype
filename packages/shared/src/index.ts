@@ -84,6 +84,23 @@ export type {
   ToolUseMessage,
   ToolResultMessage,
   Message,
+
+  // File types (Phase 2: File Management)
+  ProcessingStatus,
+  EmbeddingStatus,
+  FileUsageType,
+  FileSortBy,
+  SortOrder,
+  ParsedFile,
+  ParsedFileChunk,
+  GetFilesOptions,
+  CreateFolderRequest,
+  UpdateFileRequest,
+  FilesListResponse,
+  FileResponse,
+  FolderResponse,
+  UploadFilesResponse,
+  AllowedMimeType,
 } from './types';
 
 // Type guards (runtime functions, not types)
@@ -95,7 +112,12 @@ export {
   isThinkingMessage,
   isToolUseMessage,
   isToolResultMessage,
+  // File type guards
+  isAllowedMimeType,
 } from './types';
+
+// File constants
+export { FILE_UPLOAD_LIMITS, ALLOWED_MIME_TYPES } from './types';
 
 // ============================================
 // Constants - Error codes, messages, mappings

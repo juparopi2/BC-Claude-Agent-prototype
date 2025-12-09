@@ -578,7 +578,9 @@ curl -H "Cookie: connect.sid=<your-session-cookie>" \
 
 ---
 
-### FASE 2: UI de Navegación de Archivos
+### FASE 2: UI de Navegación de Archivos ✅
+
+**Completion Date**: December 9, 2025
 
 **Objetivo**: Crear la interfaz de usuario para navegar, subir y gestionar archivos.
 
@@ -597,48 +599,123 @@ curl -H "Cookie: connect.sid=<your-session-cookie>" \
 #### Tareas Detalladas
 
 ```
-[ ] 2.1.1 Crear frontend/lib/stores/fileStore.ts
-[ ] 2.1.2 Definir FileState interface (files, currentFolder, selectedFiles, etc.)
-[ ] 2.1.3 Definir FileActions interface
-[ ] 2.1.4 Implementar fetchFiles action
-[ ] 2.1.5 Implementar uploadFiles action con progress tracking
-[ ] 2.1.6 Implementar createFolder action
-[ ] 2.1.7 Implementar deleteFiles action
-[ ] 2.1.8 Implementar toggleFavorite action
-[ ] 2.1.9 Implementar sorting actions
+[x] 2.1.1 Crear frontend/lib/stores/fileStore.ts
+[x] 2.1.2 Definir FileState interface (files, currentFolder, selectedFiles, etc.)
+[x] 2.1.3 Definir FileActions interface
+[x] 2.1.4 Implementar fetchFiles action
+[x] 2.1.5 Implementar uploadFiles action con progress tracking
+[x] 2.1.6 Implementar createFolder action
+[x] 2.1.7 Implementar deleteFiles action
+[x] 2.1.8 Implementar toggleFavorite action
+[x] 2.1.9 Implementar sorting actions
 
-[ ] 2.2.1 Crear frontend/components/files/FileExplorer.tsx
-[ ] 2.2.2 Layout con sidebar (tree) + main (list)
-[ ] 2.2.3 Breadcrumb de navegación
-[ ] 2.2.4 Toolbar (crear carpeta, upload, sort)
-[ ] 2.2.5 Empty state para carpetas vacías
+[x] 2.2.1 Crear frontend/components/files/FileExplorer.tsx
+[x] 2.2.2 Layout con sidebar (tree) + main (list)
+[x] 2.2.3 Breadcrumb de navegación
+[x] 2.2.4 Toolbar (crear carpeta, upload, sort)
+[x] 2.2.5 Empty state para carpetas vacías
 
-[ ] 2.3.1 Crear frontend/components/files/FileTree.tsx
-[ ] 2.3.2 Componente recursivo para carpetas
-[ ] 2.3.3 Expand/collapse de carpetas
-[ ] 2.3.4 Indicador de carpeta seleccionada
-[ ] 2.3.5 Drag & drop para mover archivos
+[x] 2.3.1 Crear frontend/components/files/FolderTree.tsx
+[x] 2.3.2 Componente recursivo para carpetas (FolderTreeItem.tsx)
+[x] 2.3.3 Expand/collapse de carpetas
+[x] 2.3.4 Indicador de carpeta seleccionada
+[ ] 2.3.5 Drag & drop para mover archivos (deferred to Phase 6)
 
-[ ] 2.4.1 Crear frontend/components/files/FileUploadZone.tsx
-[ ] 2.4.2 Área de drop con feedback visual
-[ ] 2.4.3 Input file como fallback
-[ ] 2.4.4 Progress bar durante upload
-[ ] 2.4.5 Validación de tipos/tamaños
-[ ] 2.4.6 Multi-file upload
+[x] 2.4.1 Crear frontend/components/files/FileUploadZone.tsx
+[x] 2.4.2 Área de drop con feedback visual
+[x] 2.4.3 Input file como fallback (useFileUploadTrigger hook)
+[x] 2.4.4 Progress bar durante upload
+[x] 2.4.5 Validación de tipos/tamaños
+[x] 2.4.6 Multi-file upload
 
-[ ] 2.5.1 Modificar frontend/components/layout/RightPanel.tsx
-[ ] 2.5.2 Integrar FileExplorer en tab "Files"
-[ ] 2.5.3 Ajustar responsive behavior
+[x] 2.5.1 Modificar frontend/components/layout/RightPanel.tsx
+[x] 2.5.2 Integrar FileExplorer en tab "Files"
+[x] 2.5.3 Ajustar responsive behavior (isNarrow prop)
 
-[ ] 2.6.1 Crear frontend/components/files/FileItem.tsx
-[ ] 2.6.2 Icono de favorito (star)
-[ ] 2.6.3 Vista de favoritos separada
-[ ] 2.6.4 Toggle "Show favorites only"
+[x] 2.6.1 Crear frontend/components/files/FileItem.tsx
+[x] 2.6.2 Icono de favorito (star)
+[x] 2.6.3 Vista de favoritos separada
+[x] 2.6.4 Toggle "Show favorites only"
 
-[ ] 2.7.1 Crear frontend/components/files/FileSortControls.tsx
-[ ] 2.7.2 Dropdown para sortBy (name, date, size)
-[ ] 2.7.3 Toggle para sortOrder (asc/desc)
+[x] 2.7.1 Crear frontend/components/files/FileSortControls.tsx
+[x] 2.7.2 Dropdown para sortBy (name, date, size)
+[x] 2.7.3 Toggle para sortOrder (asc/desc)
 ```
+
+#### What Was Implemented
+
+1. **Shared Types** (`packages/shared/src/types/file.types.ts`)
+   - ParsedFile, FileSortBy, SortOrder types
+   - FILE_UPLOAD_LIMITS, ALLOWED_MIME_TYPES constants
+   - Type-safe validation with isAllowedMimeType()
+
+2. **File API Service** (`frontend/lib/services/fileApi.ts`)
+   - Full CRUD operations (getFiles, getFile, createFolder, updateFile, deleteFile)
+   - Upload with XMLHttpRequest progress tracking
+   - Download with Blob response
+   - Singleton pattern
+
+3. **Zustand Store** (`frontend/lib/stores/fileStore.ts`)
+   - File state management (files, currentFolderId, selectedFileIds)
+   - Upload queue with progress tracking
+   - Sort/filter state (sortBy, sortOrder, showFavoritesOnly)
+   - Folder navigation with breadcrumb path
+   - Optimistic updates for favorites
+
+4. **UI Components** (`frontend/components/files/`)
+   - FileExplorer: Main container with resizable sidebar
+   - FileToolbar: Upload button, new folder, sort, favorites filter, refresh
+   - FileBreadcrumb: Navigation path from root to current folder
+   - FileList: Grid of files with loading/empty states
+   - FileItem: Individual file with icon, name, size, date, favorite star
+   - FileUploadZone: Drag-drop with react-dropzone
+   - FolderTree/FolderTreeItem: Collapsible folder tree sidebar
+   - FileSortControls: Dropdown for sort field and order
+   - CreateFolderDialog: Modal for new folder creation
+   - FileContextMenu: Right-click menu (download, rename, favorite, delete)
+
+5. **Integration**
+   - FileExplorer integrated in RightPanel "Files" tab
+   - Responsive design with isNarrow prop
+   - TooltipProvider wrapper for all tooltips
+
+#### Key Achievements
+
+- ✅ **Type-safe** - Shared types in @bc-agent/shared, no `any` types
+- ✅ **Upload progress tracking** - Real-time percentage with XMLHttpRequest
+- ✅ **Drag-and-drop** - react-dropzone with visual feedback
+- ✅ **Responsive** - Narrow layout without sidebar for small screens
+- ✅ **Optimistic updates** - Favorites toggle updates instantly
+- ✅ **Build passing** - TypeScript, ESLint, Next.js build all green
+- ✅ **Modular** - 11 components with barrel export
+
+#### Files Created
+
+```
+packages/shared/src/types/file.types.ts          # Shared types
+frontend/lib/services/fileApi.ts                  # API client
+frontend/lib/stores/fileStore.ts                  # Zustand store
+frontend/components/files/FileExplorer.tsx        # Main container
+frontend/components/files/FileToolbar.tsx         # Toolbar actions
+frontend/components/files/FileBreadcrumb.tsx      # Navigation path
+frontend/components/files/FileList.tsx            # File grid
+frontend/components/files/FileItem.tsx            # Single file
+frontend/components/files/FileUploadZone.tsx      # Drag-drop zone
+frontend/components/files/FolderTree.tsx          # Tree sidebar
+frontend/components/files/FolderTreeItem.tsx      # Tree node
+frontend/components/files/FileSortControls.tsx    # Sort dropdown
+frontend/components/files/CreateFolderDialog.tsx  # New folder modal
+frontend/components/files/FileContextMenu.tsx     # Right-click menu
+frontend/components/files/index.ts                # Barrel export
+```
+
+#### Deferred to Phase 6 (Polish)
+
+- Drag & drop for moving files between folders
+- File preview modal (images, PDFs)
+- Thumbnails for images
+
+---
 
 #### Criterios de Éxito
 
@@ -1189,3 +1266,4 @@ La Fase 1.5 tiene **prioridad alta** porque:
 | TBD | 0.1 | Documento inicial creado |
 | 2025-12-05 | 0.2 | Agregada Fase 1.5: Sistema de Tracking, Auditoría y Billing |
 | 2025-12-09 | 0.3 | Fase 1.6 Complete: Background Workers & Billing Service - UsageAggregationService (28 tests), BillingService (33 tests), MessageQueue USAGE_AGGREGATION queue, /api/billing routes (7 endpoints) |
+| 2025-12-09 | 0.4 | Fase 2 Complete: UI de Navegación de Archivos - 11 components (FileExplorer, FileList, FileItem, FolderTree, FileUploadZone, etc.), fileStore (Zustand), fileApi service, shared types, RightPanel integration |

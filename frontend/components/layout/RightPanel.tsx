@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Folder, Database, Link, Upload, Cloud } from 'lucide-react';
+import { Folder, Database, Link, Cloud } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
+import { FileExplorer } from '@/components/files';
 
 export default function RightPanel() {
   const [panelWidth, setPanelWidth] = useState<number>(Infinity);
@@ -45,15 +46,8 @@ export default function RightPanel() {
         </TabsList>
 
         {/* Files Tab */}
-        <TabsContent value="files" className="flex-1">
-          <ScrollArea className="h-full">
-            <div className="flex flex-col items-center justify-center h-full p-6">
-              <Upload className="size-12 text-muted-foreground/50 mb-3" />
-              <p className="text-sm text-muted-foreground text-center">
-                No files yet
-              </p>
-            </div>
-          </ScrollArea>
+        <TabsContent value="files" className="flex-1 overflow-hidden">
+          <FileExplorer isNarrow={isNarrow} className="h-full" />
         </TabsContent>
 
         {/* Entities Tab */}

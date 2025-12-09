@@ -53,7 +53,7 @@ vi.mock('@/config/database', () => ({
 // Mock EventStore for F4-002: Approval events now use EventStore
 const mockEventStoreAppendEvent = vi.fn().mockResolvedValue({
   id: 'mock-event-id',
-  session_id: 'session_123',
+  session_id: 'a1b2c3d4-e5f6-4a7b-8c9d-ae1f2a3b4c5d',
   event_type: 'approval_requested',
   sequence_number: 1,
   timestamp: new Date(),
@@ -107,7 +107,7 @@ describe('ApprovalManager', () => {
     // Re-setup EventStore mock after clearAllMocks (F4-002)
     mockEventStoreAppendEvent.mockResolvedValue({
       id: 'mock-event-id',
-      session_id: 'session_123',
+      session_id: 'a1b2c3d4-e5f6-4a7b-8c9d-ae1f2a3b4c5d',
       event_type: 'approval_requested',
       sequence_number: 1,
       timestamp: new Date(),
@@ -138,7 +138,7 @@ describe('ApprovalManager', () => {
     it('should create approval request and emit WebSocket event', async () => {
       // Arrange
       const requestOptions = {
-        sessionId: 'session_123',
+        sessionId: 'a1b2c3d4-e5f6-4a7b-8c9d-ae1f2a3b4c5d',
         toolName: 'bc_create_customer',
         toolArgs: { name: 'John Doe', email: 'john@example.com' },
         expiresInMs: 10000, // 10 seconds to avoid timeout during test
@@ -156,7 +156,7 @@ describe('ApprovalManager', () => {
 
       // Assert - EventStore.appendEvent should be called (F4-002)
       expect(mockEventStoreAppendEvent).toHaveBeenCalledWith(
-        'session_123',
+        'a1b2c3d4-e5f6-4a7b-8c9d-ae1f2a3b4c5d',
         'approval_requested',
         expect.objectContaining({
           toolName: 'bc_create_customer',
@@ -165,7 +165,7 @@ describe('ApprovalManager', () => {
       );
 
       // Assert - WebSocket event should be emitted via agent:event (F4-002)
-      expect(mockIo.to).toHaveBeenCalledWith('session_123');
+      expect(mockIo.to).toHaveBeenCalledWith('a1b2c3d4-e5f6-4a7b-8c9d-ae1f2a3b4c5d');
       expect(mockEmit).toHaveBeenCalledWith(
         'agent:event',
         expect.objectContaining({
@@ -185,7 +185,7 @@ describe('ApprovalManager', () => {
 
     it('should generate correct change summary for create_customer tool', async () => {
       const requestOptions = {
-        sessionId: 'session_123',
+        sessionId: 'a1b2c3d4-e5f6-4a7b-8c9d-ae1f2a3b4c5d',
         toolName: 'bc_create_customer',
         toolArgs: { name: 'Acme Corp', email: 'acme@example.com', phoneNumber: '555-0123' },
         expiresInMs: 10000,
@@ -211,7 +211,7 @@ describe('ApprovalManager', () => {
   describe('2. Respond to Approval', () => {
     it('should resolve promise with true when approved', async () => {
       const requestOptions = {
-        sessionId: 'session_123',
+        sessionId: 'a1b2c3d4-e5f6-4a7b-8c9d-ae1f2a3b4c5d',
         toolName: 'bc_create_customer',
         toolArgs: { name: 'John Doe' },
         expiresInMs: 10000, // 10 seconds to avoid timeout during test
@@ -228,11 +228,11 @@ describe('ApprovalManager', () => {
 
       // Mock database query to return session_id
       mockRequestChain.query.mockResolvedValueOnce({
-        recordset: [{ session_id: 'session_123' }],
+        recordset: [{ session_id: 'a1b2c3d4-e5f6-4a7b-8c9d-ae1f2a3b4c5d' }],
       });
 
       // Respond with approval
-      await approvalManager.respondToApproval(approvalId, 'approved', 'user_123');
+      await approvalManager.respondToApproval(approvalId, 'approved', 'b2c3d4e5-f6a7-4b8c-9d0e-af2a3b4c5d6e');
 
       // Promise should resolve to true
       const result = await approvalPromise;
@@ -241,7 +241,7 @@ describe('ApprovalManager', () => {
 
     it('should resolve promise with false when rejected', async () => {
       const requestOptions = {
-        sessionId: 'session_123',
+        sessionId: 'a1b2c3d4-e5f6-4a7b-8c9d-ae1f2a3b4c5d',
         toolName: 'bc_create_customer',
         toolArgs: { name: 'John Doe' },
         expiresInMs: 10000, // 10 seconds to avoid timeout during test
@@ -255,10 +255,10 @@ describe('ApprovalManager', () => {
       const approvalId = mockEmit.mock.calls[0][1].approvalId;
 
       mockRequestChain.query.mockResolvedValueOnce({
-        recordset: [{ session_id: 'session_123' }],
+        recordset: [{ session_id: 'a1b2c3d4-e5f6-4a7b-8c9d-ae1f2a3b4c5d' }],
       });
 
-      await approvalManager.respondToApproval(approvalId, 'rejected', 'user_123');
+      await approvalManager.respondToApproval(approvalId, 'rejected', 'b2c3d4e5-f6a7-4b8c-9d0e-af2a3b4c5d6e');
 
       const result = await approvalPromise;
       expect(result).toBe(false);
@@ -266,7 +266,7 @@ describe('ApprovalManager', () => {
 
     it('should update database with decision', async () => {
       const requestOptions = {
-        sessionId: 'session_123',
+        sessionId: 'a1b2c3d4-e5f6-4a7b-8c9d-ae1f2a3b4c5d',
         toolName: 'bc_create_customer',
         toolArgs: { name: 'John Doe' },
         expiresInMs: 10000, // 10 seconds to avoid timeout during test
@@ -280,10 +280,10 @@ describe('ApprovalManager', () => {
       const approvalId = mockEmit.mock.calls[0][1].approvalId;
 
       mockRequestChain.query.mockResolvedValueOnce({
-        recordset: [{ session_id: 'session_123' }],
+        recordset: [{ session_id: 'a1b2c3d4-e5f6-4a7b-8c9d-ae1f2a3b4c5d' }],
       });
 
-      await approvalManager.respondToApproval(approvalId, 'approved', 'user_123');
+      await approvalManager.respondToApproval(approvalId, 'approved', 'b2c3d4e5-f6a7-4b8c-9d0e-af2a3b4c5d6e');
 
       // Check database UPDATE was called
       expect(mockDbRequest).toHaveBeenCalledTimes(3); // INSERT + UPDATE + SELECT
@@ -300,7 +300,7 @@ describe('ApprovalManager', () => {
   describe('3. Timeout Handling', () => {
     it('should auto-reject after timeout expires', async () => {
       const requestOptions = {
-        sessionId: 'session_123',
+        sessionId: 'a1b2c3d4-e5f6-4a7b-8c9d-ae1f2a3b4c5d',
         toolName: 'bc_create_customer',
         toolArgs: { name: 'John Doe' },
         expiresInMs: 5000, // 5 seconds for test
@@ -319,7 +319,7 @@ describe('ApprovalManager', () => {
 
     it('should not timeout if responded before expiration', async () => {
       const requestOptions = {
-        sessionId: 'session_123',
+        sessionId: 'a1b2c3d4-e5f6-4a7b-8c9d-ae1f2a3b4c5d',
         toolName: 'bc_create_customer',
         toolArgs: { name: 'John Doe' },
         expiresInMs: 10000, // 10 seconds
@@ -333,12 +333,12 @@ describe('ApprovalManager', () => {
       const approvalId = mockEmit.mock.calls[0][1].approvalId;
 
       mockRequestChain.query.mockResolvedValueOnce({
-        recordset: [{ session_id: 'session_123' }],
+        recordset: [{ session_id: 'a1b2c3d4-e5f6-4a7b-8c9d-ae1f2a3b4c5d' }],
       });
 
       // Respond before timeout (advance 2 seconds, still within 10 second window)
       vi.advanceTimersByTime(2000);
-      await approvalManager.respondToApproval(approvalId, 'approved', 'user_123');
+      await approvalManager.respondToApproval(approvalId, 'approved', 'b2c3d4e5-f6a7-4b8c-9d0e-af2a3b4c5d6e');
 
       // Promise should resolve to true (approved)
       const result = await approvalPromise;
@@ -351,7 +351,7 @@ describe('ApprovalManager', () => {
       const mockApprovals = [
         {
           id: 'approval_1',
-          session_id: 'session_123',
+          session_id: 'a1b2c3d4-e5f6-4a7b-8c9d-ae1f2a3b4c5d',
           tool_name: 'bc_create_customer',
           tool_args: '{"name":"John Doe"}',
           status: 'pending',
@@ -367,12 +367,12 @@ describe('ApprovalManager', () => {
         recordset: mockApprovals,
       });
 
-      const result = await approvalManager.getPendingApprovals('session_123');
+      const result = await approvalManager.getPendingApprovals('a1b2c3d4-e5f6-4a7b-8c9d-ae1f2a3b4c5d');
 
       expect(result).toHaveLength(1);
       expect(result[0]).toMatchObject({
         id: 'approval_1',
-        session_id: 'session_123',
+        session_id: 'a1b2c3d4-e5f6-4a7b-8c9d-ae1f2a3b4c5d',
         tool_name: 'bc_create_customer',
         tool_args: { name: 'John Doe' },
       });
@@ -416,25 +416,25 @@ describe('ApprovalManager', () => {
       // Mock database response with matching user
       mockRequestChain.query.mockResolvedValueOnce({
         recordset: [{
-          approval_id: 'approval_123',
-          session_id: 'session_123',
+          approval_id: 'c3d4e5f6-a7b8-4c9d-8e1f-2a3b4c5d6e7f',
+          session_id: 'a1b2c3d4-e5f6-4a7b-8c9d-ae1f2a3b4c5d',
           tool_name: 'bc_create_customer',
           tool_args: '{"name":"John Doe"}',
           status: 'pending',
           priority: 'medium',
           created_at: new Date(),
           expires_at: new Date(),
-          session_user_id: 'user_123',  // Same as requesting user
+          session_user_id: 'b2c3d4e5-f6a7-4b8c-9d0e-af2a3b4c5d6e',  // Same as requesting user
           session_exists: 1,  // Session exists
         }],
       });
 
-      const result = await approvalManager.validateApprovalOwnership('approval_123', 'user_123');
+      const result = await approvalManager.validateApprovalOwnership('c3d4e5f6-a7b8-4c9d-8e1f-2a3b4c5d6e7f', 'b2c3d4e5-f6a7-4b8c-9d0e-af2a3b4c5d6e');
 
       expect(result.isOwner).toBe(true);
       expect(result.approval).not.toBeNull();
-      expect(result.approval?.id).toBe('approval_123');
-      expect(result.sessionUserId).toBe('user_123');
+      expect(result.approval?.id).toBe('c3d4e5f6-a7b8-4c9d-8e1f-2a3b4c5d6e7f');
+      expect(result.sessionUserId).toBe('b2c3d4e5-f6a7-4b8c-9d0e-af2a3b4c5d6e');
       expect(result.error).toBeUndefined();
     });
 
@@ -442,8 +442,8 @@ describe('ApprovalManager', () => {
       // Mock database response with different user
       mockRequestChain.query.mockResolvedValueOnce({
         recordset: [{
-          approval_id: 'approval_123',
-          session_id: 'session_123',
+          approval_id: 'c3d4e5f6-a7b8-4c9d-8e1f-2a3b4c5d6e7f',
+          session_id: 'a1b2c3d4-e5f6-4a7b-8c9d-ae1f2a3b4c5d',
           tool_name: 'bc_create_customer',
           tool_args: '{"name":"John Doe"}',
           status: 'pending',
@@ -455,7 +455,7 @@ describe('ApprovalManager', () => {
         }],
       });
 
-      const result = await approvalManager.validateApprovalOwnership('approval_123', 'user_123');
+      const result = await approvalManager.validateApprovalOwnership('c3d4e5f6-a7b8-4c9d-8e1f-2a3b4c5d6e7f', 'b2c3d4e5-f6a7-4b8c-9d0e-af2a3b4c5d6e');
 
       expect(result.isOwner).toBe(false);
       expect(result.approval).not.toBeNull();
@@ -469,7 +469,7 @@ describe('ApprovalManager', () => {
         recordset: [],
       });
 
-      const result = await approvalManager.validateApprovalOwnership('nonexistent_approval', 'user_123');
+      const result = await approvalManager.validateApprovalOwnership('00000000-0000-4000-a000-000000000000', 'b2c3d4e5-f6a7-4b8c-9d0e-af2a3b4c5d6e');
 
       expect(result.isOwner).toBe(false);
       expect(result.approval).toBeNull();
@@ -482,20 +482,20 @@ describe('ApprovalManager', () => {
 
       mockRequestChain.query.mockResolvedValueOnce({
         recordset: [{
-          approval_id: 'approval_123',
-          session_id: 'session_123',
+          approval_id: 'c3d4e5f6-a7b8-4c9d-8e1f-2a3b4c5d6e7f',
+          session_id: 'a1b2c3d4-e5f6-4a7b-8c9d-ae1f2a3b4c5d',
           tool_name: 'bc_create_customer',
           tool_args: JSON.stringify(toolArgs),
           status: 'pending',
           priority: 'medium',
           created_at: new Date(),
           expires_at: new Date(),
-          session_user_id: 'user_123',
+          session_user_id: 'b2c3d4e5-f6a7-4b8c-9d0e-af2a3b4c5d6e',
           session_exists: 1,  // Session exists
         }],
       });
 
-      const result = await approvalManager.validateApprovalOwnership('approval_123', 'user_123');
+      const result = await approvalManager.validateApprovalOwnership('c3d4e5f6-a7b8-4c9d-8e1f-2a3b4c5d6e7f', 'b2c3d4e5-f6a7-4b8c-9d0e-af2a3b4c5d6e');
 
       expect(result.isOwner).toBe(true);
       expect(result.approval?.tool_args).toEqual(toolArgs);
@@ -504,8 +504,8 @@ describe('ApprovalManager', () => {
     it('should log warning when unauthorized access is attempted', async () => {
       mockRequestChain.query.mockResolvedValueOnce({
         recordset: [{
-          approval_id: 'approval_123',
-          session_id: 'session_123',
+          approval_id: 'c3d4e5f6-a7b8-4c9d-8e1f-2a3b4c5d6e7f',
+          session_id: 'a1b2c3d4-e5f6-4a7b-8c9d-ae1f2a3b4c5d',
           tool_name: 'bc_create_customer',
           tool_args: '{}',
           status: 'pending',
@@ -517,7 +517,7 @@ describe('ApprovalManager', () => {
         }],
       });
 
-      const result = await approvalManager.validateApprovalOwnership('approval_123', 'attacker_user');
+      const result = await approvalManager.validateApprovalOwnership('c3d4e5f6-a7b8-4c9d-8e1f-2a3b4c5d6e7f', '11111111-1111-4111-a111-111111111111');
 
       // Pino logger is used internally - we verify via the result
       expect(result.isOwner).toBe(false);
@@ -528,7 +528,7 @@ describe('ApprovalManager', () => {
       // Mock approval exists but session was deleted (orphaned approval)
       mockRequestChain.query.mockResolvedValueOnce({
         recordset: [{
-          approval_id: 'approval_123',
+          approval_id: 'c3d4e5f6-a7b8-4c9d-8e1f-2a3b4c5d6e7f',
           session_id: 'deleted_session',
           tool_name: 'bc_create_customer',
           tool_args: '{}',
@@ -541,7 +541,7 @@ describe('ApprovalManager', () => {
         }],
       });
 
-      const result = await approvalManager.validateApprovalOwnership('approval_123', 'user_123');
+      const result = await approvalManager.validateApprovalOwnership('c3d4e5f6-a7b8-4c9d-8e1f-2a3b4c5d6e7f', 'b2c3d4e5-f6a7-4b8c-9d0e-af2a3b4c5d6e');
 
       expect(result.isOwner).toBe(false);
       expect(result.approval).toBeNull();
@@ -551,20 +551,20 @@ describe('ApprovalManager', () => {
     it('should handle malformed tool_args JSON gracefully', async () => {
       mockRequestChain.query.mockResolvedValueOnce({
         recordset: [{
-          approval_id: 'approval_123',
-          session_id: 'session_123',
+          approval_id: 'c3d4e5f6-a7b8-4c9d-8e1f-2a3b4c5d6e7f',
+          session_id: 'a1b2c3d4-e5f6-4a7b-8c9d-ae1f2a3b4c5d',
           tool_name: 'bc_create_customer',
           tool_args: '{invalid json}',  // Malformed JSON
           status: 'pending',
           priority: 'medium',
           created_at: new Date(),
           expires_at: new Date(),
-          session_user_id: 'user_123',
+          session_user_id: 'b2c3d4e5-f6a7-4b8c-9d0e-af2a3b4c5d6e',
           session_exists: 1,
         }],
       });
 
-      const result = await approvalManager.validateApprovalOwnership('approval_123', 'user_123');
+      const result = await approvalManager.validateApprovalOwnership('c3d4e5f6-a7b8-4c9d-8e1f-2a3b4c5d6e7f', 'b2c3d4e5-f6a7-4b8c-9d0e-af2a3b4c5d6e');
 
       expect(result.isOwner).toBe(true);
       expect(result.approval).not.toBeNull();
@@ -589,9 +589,9 @@ describe('ApprovalManager', () => {
       });
 
       const result = await approvalManager.respondToApprovalAtomic(
-        'nonexistent',
+        '33333333-3333-4333-a333-333333333333', // UUID that doesn't exist in DB
         'approved',
-        'user_123'
+        'b2c3d4e5-f6a7-4b8c-9d0e-af2a3b4c5d6e'
       );
 
       expect(result.success).toBe(false);
@@ -602,7 +602,7 @@ describe('ApprovalManager', () => {
     it('should return SESSION_NOT_FOUND when session was deleted', async () => {
       mockTransactionRequestChain.query.mockResolvedValueOnce({
         recordset: [{
-          approval_id: 'approval_123',
+          approval_id: 'c3d4e5f6-a7b8-4c9d-8e1f-2a3b4c5d6e7f',
           session_id: 'deleted_session',
           status: 'pending',
           session_user_id: null,
@@ -611,9 +611,9 @@ describe('ApprovalManager', () => {
       });
 
       const result = await approvalManager.respondToApprovalAtomic(
-        'approval_123',
+        'c3d4e5f6-a7b8-4c9d-8e1f-2a3b4c5d6e7f',
         'approved',
-        'user_123'
+        'b2c3d4e5-f6a7-4b8c-9d0e-af2a3b4c5d6e'
       );
 
       expect(result.success).toBe(false);
@@ -624,8 +624,8 @@ describe('ApprovalManager', () => {
     it('should return UNAUTHORIZED when user does not own session', async () => {
       mockTransactionRequestChain.query.mockResolvedValueOnce({
         recordset: [{
-          approval_id: 'approval_123',
-          session_id: 'session_123',
+          approval_id: 'c3d4e5f6-a7b8-4c9d-8e1f-2a3b4c5d6e7f',
+          session_id: 'a1b2c3d4-e5f6-4a7b-8c9d-ae1f2a3b4c5d',
           status: 'pending',
           session_user_id: 'other_user',
           session_exists: 1,
@@ -633,9 +633,9 @@ describe('ApprovalManager', () => {
       });
 
       const result = await approvalManager.respondToApprovalAtomic(
-        'approval_123',
+        'c3d4e5f6-a7b8-4c9d-8e1f-2a3b4c5d6e7f',
         'approved',
-        'attacker_user'
+        '11111111-1111-4111-a111-111111111111'
       );
 
       expect(result.success).toBe(false);
@@ -647,18 +647,18 @@ describe('ApprovalManager', () => {
     it('should return ALREADY_RESOLVED when approval was already approved', async () => {
       mockTransactionRequestChain.query.mockResolvedValueOnce({
         recordset: [{
-          approval_id: 'approval_123',
-          session_id: 'session_123',
+          approval_id: 'c3d4e5f6-a7b8-4c9d-8e1f-2a3b4c5d6e7f',
+          session_id: 'a1b2c3d4-e5f6-4a7b-8c9d-ae1f2a3b4c5d',
           status: 'approved',  // Already resolved
-          session_user_id: 'user_123',
+          session_user_id: 'b2c3d4e5-f6a7-4b8c-9d0e-af2a3b4c5d6e',
           session_exists: 1,
         }],
       });
 
       const result = await approvalManager.respondToApprovalAtomic(
-        'approval_123',
+        'c3d4e5f6-a7b8-4c9d-8e1f-2a3b4c5d6e7f',
         'approved',
-        'user_123'
+        'b2c3d4e5-f6a7-4b8c-9d0e-af2a3b4c5d6e'
       );
 
       expect(result.success).toBe(false);
@@ -670,18 +670,18 @@ describe('ApprovalManager', () => {
     it('should return EXPIRED when approval has expired', async () => {
       mockTransactionRequestChain.query.mockResolvedValueOnce({
         recordset: [{
-          approval_id: 'approval_123',
-          session_id: 'session_123',
+          approval_id: 'c3d4e5f6-a7b8-4c9d-8e1f-2a3b4c5d6e7f',
+          session_id: 'a1b2c3d4-e5f6-4a7b-8c9d-ae1f2a3b4c5d',
           status: 'expired',
-          session_user_id: 'user_123',
+          session_user_id: 'b2c3d4e5-f6a7-4b8c-9d0e-af2a3b4c5d6e',
           session_exists: 1,
         }],
       });
 
       const result = await approvalManager.respondToApprovalAtomic(
-        'approval_123',
+        'c3d4e5f6-a7b8-4c9d-8e1f-2a3b4c5d6e7f',
         'approved',
-        'user_123'
+        'b2c3d4e5-f6a7-4b8c-9d0e-af2a3b4c5d6e'
       );
 
       expect(result.success).toBe(false);
@@ -693,18 +693,18 @@ describe('ApprovalManager', () => {
       // Approval is valid but no pending promise exists (server restarted)
       mockTransactionRequestChain.query.mockResolvedValueOnce({
         recordset: [{
-          approval_id: 'approval_orphan',
-          session_id: 'session_123',
+          approval_id: '22222222-2222-4222-a222-222222222222',
+          session_id: 'a1b2c3d4-e5f6-4a7b-8c9d-ae1f2a3b4c5d',
           status: 'pending',
-          session_user_id: 'user_123',
+          session_user_id: 'b2c3d4e5-f6a7-4b8c-9d0e-af2a3b4c5d6e',
           session_exists: 1,
         }],
       });
 
       const result = await approvalManager.respondToApprovalAtomic(
-        'approval_orphan',  // Different ID than any pending approval
+        '22222222-2222-4222-a222-222222222222',  // Different ID than any pending approval
         'approved',
-        'user_123'
+        'b2c3d4e5-f6a7-4b8c-9d0e-af2a3b4c5d6e'
       );
 
       expect(result.success).toBe(false);
@@ -715,7 +715,7 @@ describe('ApprovalManager', () => {
     it('should succeed when all validations pass and pending promise exists', async () => {
       // First create a pending approval to have an in-memory promise
       const requestOptions = {
-        sessionId: 'session_123',
+        sessionId: 'a1b2c3d4-e5f6-4a7b-8c9d-ae1f2a3b4c5d',
         toolName: 'bc_create_customer',
         toolArgs: { name: 'Test' },
         expiresInMs: 60000,
@@ -731,9 +731,9 @@ describe('ApprovalManager', () => {
         .mockResolvedValueOnce({
           recordset: [{
             approval_id: approvalId,
-            session_id: 'session_123',
+            session_id: 'a1b2c3d4-e5f6-4a7b-8c9d-ae1f2a3b4c5d',
             status: 'pending',
-            session_user_id: 'user_123',
+            session_user_id: 'b2c3d4e5-f6a7-4b8c-9d0e-af2a3b4c5d6e',
             session_exists: 1,
           }],
         })
@@ -742,11 +742,11 @@ describe('ApprovalManager', () => {
       const result = await approvalManager.respondToApprovalAtomic(
         approvalId,
         'approved',
-        'user_123'
+        'b2c3d4e5-f6a7-4b8c-9d0e-af2a3b4c5d6e'
       );
 
       expect(result.success).toBe(true);
-      expect(result.sessionId).toBe('session_123');
+      expect(result.sessionId).toBe('a1b2c3d4-e5f6-4a7b-8c9d-ae1f2a3b4c5d');
       expect(mockTransaction.commit).toHaveBeenCalled();
       // F4-002: Now emits via agent:event instead of approval:resolved
       expect(mockEmit).toHaveBeenCalledWith('agent:event', expect.objectContaining({
@@ -766,7 +766,7 @@ describe('ApprovalManager', () => {
     it('should handle concurrent responses correctly (only first succeeds)', async () => {
       // Create a pending approval
       const requestOptions = {
-        sessionId: 'session_123',
+        sessionId: 'a1b2c3d4-e5f6-4a7b-8c9d-ae1f2a3b4c5d',
         toolName: 'bc_create_customer',
         toolArgs: { name: 'Test' },
         expiresInMs: 60000,
@@ -782,9 +782,9 @@ describe('ApprovalManager', () => {
         .mockResolvedValueOnce({
           recordset: [{
             approval_id: approvalId,
-            session_id: 'session_123',
+            session_id: 'a1b2c3d4-e5f6-4a7b-8c9d-ae1f2a3b4c5d',
             status: 'pending',
-            session_user_id: 'user_123',
+            session_user_id: 'b2c3d4e5-f6a7-4b8c-9d0e-af2a3b4c5d6e',
             session_exists: 1,
           }],
         })
@@ -793,7 +793,7 @@ describe('ApprovalManager', () => {
       const result1 = await approvalManager.respondToApprovalAtomic(
         approvalId,
         'approved',
-        'user_123'
+        'b2c3d4e5-f6a7-4b8c-9d0e-af2a3b4c5d6e'
       );
 
       expect(result1.success).toBe(true);
@@ -802,9 +802,9 @@ describe('ApprovalManager', () => {
       mockTransactionRequestChain.query.mockResolvedValueOnce({
         recordset: [{
           approval_id: approvalId,
-          session_id: 'session_123',
+          session_id: 'a1b2c3d4-e5f6-4a7b-8c9d-ae1f2a3b4c5d',
           status: 'pending',  // DB still says pending until transaction commits
-          session_user_id: 'user_123',
+          session_user_id: 'b2c3d4e5-f6a7-4b8c-9d0e-af2a3b4c5d6e',
           session_exists: 1,
         }],
       });
@@ -812,7 +812,7 @@ describe('ApprovalManager', () => {
       const result2 = await approvalManager.respondToApprovalAtomic(
         approvalId,
         'rejected',
-        'user_123'
+        'b2c3d4e5-f6a7-4b8c-9d0e-af2a3b4c5d6e'
       );
 
       expect(result2.success).toBe(false);
@@ -824,7 +824,7 @@ describe('ApprovalManager', () => {
     it('should rollback transaction on database error', async () => {
       // Create a pending approval
       const requestOptions = {
-        sessionId: 'session_123',
+        sessionId: 'a1b2c3d4-e5f6-4a7b-8c9d-ae1f2a3b4c5d',
         toolName: 'bc_create_customer',
         toolArgs: { name: 'Test' },
         expiresInMs: 60000,
@@ -839,7 +839,7 @@ describe('ApprovalManager', () => {
       mockTransactionRequestChain.query.mockRejectedValueOnce(new Error('Connection lost'));
 
       await expect(
-        approvalManager.respondToApprovalAtomic(approvalId, 'approved', 'user_123')
+        approvalManager.respondToApprovalAtomic(approvalId, 'approved', 'b2c3d4e5-f6a7-4b8c-9d0e-af2a3b4c5d6e')
       ).rejects.toThrow('Connection lost');
 
       expect(mockTransaction.rollback).toHaveBeenCalled();
@@ -859,7 +859,7 @@ describe('ApprovalManager', () => {
       mockEventStoreAppendEvent.mockRejectedValueOnce(new Error('Redis unavailable'));
 
       const requestOptions = {
-        sessionId: 'session_123',
+        sessionId: 'a1b2c3d4-e5f6-4a7b-8c9d-ae1f2a3b4c5d',
         toolName: 'bc_create_customer',
         toolArgs: { name: 'Test' },
         expiresInMs: 10000,
@@ -896,7 +896,7 @@ describe('ApprovalManager', () => {
       // First call succeeds (for request)
       mockEventStoreAppendEvent.mockResolvedValueOnce({
         id: 'event-1',
-        session_id: 'session_123',
+        session_id: 'a1b2c3d4-e5f6-4a7b-8c9d-ae1f2a3b4c5d',
         event_type: 'approval_requested',
         sequence_number: 1,
         timestamp: new Date(),
@@ -905,7 +905,7 @@ describe('ApprovalManager', () => {
       });
 
       const requestOptions = {
-        sessionId: 'session_123',
+        sessionId: 'a1b2c3d4-e5f6-4a7b-8c9d-ae1f2a3b4c5d',
         toolName: 'bc_create_customer',
         toolArgs: { name: 'Test' },
         expiresInMs: 60000,
@@ -926,9 +926,9 @@ describe('ApprovalManager', () => {
       // 4. Emit event
       mockRequestChain.query
         .mockResolvedValueOnce({ rowsAffected: [1] })  // UPDATE approvals
-        .mockResolvedValueOnce({ recordset: [{ session_id: 'session_123' }] });  // SELECT session_id
+        .mockResolvedValueOnce({ recordset: [{ session_id: 'a1b2c3d4-e5f6-4a7b-8c9d-ae1f2a3b4c5d' }] });  // SELECT session_id
 
-      await approvalManager.respondToApproval(approvalId, 'approved', 'user_123');
+      await approvalManager.respondToApproval(approvalId, 'approved', 'b2c3d4e5-f6a7-4b8c-9d0e-af2a3b4c5d6e');
 
       // Promise should still resolve (FIX-002: guaranteed resolution)
       const result = await approvalPromise;
@@ -950,7 +950,7 @@ describe('ApprovalManager', () => {
     it('should resolve promise even when DB and EventStore fail in respondToApproval()', async () => {
       // FIX-002: Ensure promise ALWAYS resolves even on complete failure
       const requestOptions = {
-        sessionId: 'session_123',
+        sessionId: 'a1b2c3d4-e5f6-4a7b-8c9d-ae1f2a3b4c5d',
         toolName: 'bc_create_customer',
         toolArgs: { name: 'Test' },
         expiresInMs: 60000,
@@ -964,7 +964,7 @@ describe('ApprovalManager', () => {
       // Simulate complete failure: DB throws error
       mockRequestChain.query.mockRejectedValueOnce(new Error('Database connection lost'));
 
-      await approvalManager.respondToApproval(approvalId, 'approved', 'user_123');
+      await approvalManager.respondToApproval(approvalId, 'approved', 'b2c3d4e5-f6a7-4b8c-9d0e-af2a3b4c5d6e');
 
       // Promise should STILL resolve (to false because of error) - agent doesn't hang
       const result = await approvalPromise;
@@ -985,7 +985,7 @@ describe('ApprovalManager', () => {
       // First EventStore call succeeds (for request)
       mockEventStoreAppendEvent.mockResolvedValueOnce({
         id: 'event-1',
-        session_id: 'session_123',
+        session_id: 'a1b2c3d4-e5f6-4a7b-8c9d-ae1f2a3b4c5d',
         event_type: 'approval_requested',
         sequence_number: 1,
         timestamp: new Date(),
@@ -994,7 +994,7 @@ describe('ApprovalManager', () => {
       });
 
       const requestOptions = {
-        sessionId: 'session_123',
+        sessionId: 'a1b2c3d4-e5f6-4a7b-8c9d-ae1f2a3b4c5d',
         toolName: 'bc_create_customer',
         toolArgs: { name: 'Test' },
         expiresInMs: 60000,
@@ -1010,9 +1010,9 @@ describe('ApprovalManager', () => {
         .mockResolvedValueOnce({
           recordset: [{
             approval_id: approvalId,
-            session_id: 'session_123',
+            session_id: 'a1b2c3d4-e5f6-4a7b-8c9d-ae1f2a3b4c5d',
             status: 'pending',
-            session_user_id: 'user_123',
+            session_user_id: 'b2c3d4e5-f6a7-4b8c-9d0e-af2a3b4c5d6e',
             session_exists: 1,
           }],
         })
@@ -1024,7 +1024,7 @@ describe('ApprovalManager', () => {
       const result = await approvalManager.respondToApprovalAtomic(
         approvalId,
         'approved',
-        'user_123'
+        'b2c3d4e5-f6a7-4b8c-9d0e-af2a3b4c5d6e'
       );
 
       // Operation should still succeed from user perspective
@@ -1053,7 +1053,7 @@ describe('ApprovalManager', () => {
     it('should emit approval_resolved event when approval times out', async () => {
       // FIX-004: Test that expiration emits event to frontend
       const requestOptions = {
-        sessionId: 'session_123',
+        sessionId: 'a1b2c3d4-e5f6-4a7b-8c9d-ae1f2a3b4c5d',
         toolName: 'bc_create_customer',
         toolArgs: { name: 'Test' },
         expiresInMs: 5000, // 5 seconds
@@ -1089,7 +1089,7 @@ describe('ApprovalManager', () => {
     it('should persist expiration event to EventStore', async () => {
       // FIX-004: Test that expiration persists to EventStore
       const requestOptions = {
-        sessionId: 'session_123',
+        sessionId: 'a1b2c3d4-e5f6-4a7b-8c9d-ae1f2a3b4c5d',
         toolName: 'bc_create_customer',
         toolArgs: { name: 'Test' },
         expiresInMs: 5000,
@@ -1108,7 +1108,7 @@ describe('ApprovalManager', () => {
       expect(mockEventStoreAppendEvent).toHaveBeenCalledTimes(2);
 
       const expirationCall = mockEventStoreAppendEvent.mock.calls[1];
-      expect(expirationCall[0]).toBe('session_123');
+      expect(expirationCall[0]).toBe('a1b2c3d4-e5f6-4a7b-8c9d-ae1f2a3b4c5d');
       expect(expirationCall[1]).toBe('approval_completed');
       expect(expirationCall[2]).toMatchObject({
         decision: 'expired',
@@ -1121,7 +1121,7 @@ describe('ApprovalManager', () => {
     it('should handle EventStore failure during expiration gracefully', async () => {
       // FIX-004: Test degraded mode during expiration
       const requestOptions = {
-        sessionId: 'session_123',
+        sessionId: 'a1b2c3d4-e5f6-4a7b-8c9d-ae1f2a3b4c5d',
         toolName: 'bc_create_customer',
         toolArgs: { name: 'Test' },
         expiresInMs: 5000,

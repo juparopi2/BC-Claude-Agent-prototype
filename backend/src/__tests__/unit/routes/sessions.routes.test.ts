@@ -31,7 +31,16 @@ vi.mock('@/utils/logger', () => ({
     error: vi.fn(),
     warn: vi.fn(),
     debug: vi.fn()
-  }
+  },
+  createChildLogger: vi.fn(() => ({
+    info: vi.fn(),
+    error: vi.fn(),
+    warn: vi.fn(),
+    debug: vi.fn(),
+    trace: vi.fn(),
+    fatal: vi.fn(),
+    child: vi.fn()
+  }))
 }));
 
 // Mock auth middleware

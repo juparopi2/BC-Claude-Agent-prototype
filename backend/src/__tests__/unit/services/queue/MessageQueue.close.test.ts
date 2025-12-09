@@ -102,8 +102,9 @@ const {
   };
 });
 
-// Mock ioredis
+// Mock ioredis - need both default and named export since code uses `import Redis from 'ioredis'`
 vi.mock('ioredis', () => ({
+  default: vi.fn(() => mockRedis),
   Redis: vi.fn(() => mockRedis),
 }));
 
@@ -117,6 +118,7 @@ vi.mock('bullmq', () => ({
 // Mock logger
 vi.mock('@/utils/logger', () => ({
   logger: mockLogger,
+  createChildLogger: vi.fn(() => mockLogger),
 }));
 
 // Mock database

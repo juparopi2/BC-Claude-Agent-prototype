@@ -131,7 +131,8 @@
       "Bash(xargs:*)",
       "Bash(REDIS_TEST_HOST=localhost REDIS_TEST_PORT=6399 npm run test:integration:*)",
       "WebFetch(domain:www.npmjs.com)",
-      "Bash(npx tsx test-file-types.ts)"
+      "Bash(npx tsx test-file-types.ts)",
+      "Bash(if not exist \"__tests__\\components\\files\" mkdir \"__tests__\\components\\files\")"
     ],
     "deny": [],
     "ask": []

@@ -1,0 +1,58 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+echo "🔍 Running pre-commit checks..."
+echo ""
+
+# Get staged backend TypeScript files (relative to repo root)
+STAGED_BACKEND_FILES=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^backend/.*\.(ts|tsx)$' | grep -v 'node_modules')
+
+# Get staged frontend TypeScript files (relative to repo root)
+STAGED_FRONTEND_FILES=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^frontend/.*\.(ts|tsx)$' | grep -v 'node_modules')
+
+# Backend ESLint (staged files only)
+if [ -n "$STAGED_BACKEND_FILES" ]; then
+  echo "🧹 Running backend ESLint on staged files..."
+
+  # Convert paths to be relative to backend directory
+  BACKEND_FILES_RELATIVE=$(echo "$STAGED_BACKEND_FILES" | sed 's|^backend/||' | tr '\n' ' ')
+
+  cd backend && npx eslint $BACKEND_FILES_RELATIVE
+  if [ $? -ne 0 ]; then
+    echo ""
+    echo "❌ Backend ESLint failed on staged files."
+    echo "💡 This includes the SQL NULL comparison check."
+    echo "   Fix the errors and try again."
+    cd ..
+    exit 1
+  fi
+  echo "✅ Backend ESLint passed"
+  cd ..
+else
+  echo "⏭️  No staged backend files to lint"
+fi
+
+# Frontend ESLint (staged files only)
+if [ -n "$STAGED_FRONTEND_FILES" ]; then
+  echo ""
+  echo "🧹 Running frontend ESLint on staged files..."
+
+  # Convert paths to be relative to frontend directory
+  FRONTEND_FILES_RELATIVE=$(echo "$STAGED_FRONTEND_FILES" | sed 's|^frontend/||' | tr '\n' ' ')
+
+  cd frontend && npx eslint $FRONTEND_FILES_RELATIVE
+  if [ $? -ne 0 ]; then
+    echo ""
+    echo "❌ Frontend ESLint failed on staged files."
+    echo "   Fix the errors and try again."
+    cd ..
+    exit 1
+  fi
+  echo "✅ Frontend ESLint passed"
+  cd ..
+else
+  echo "⏭️  No staged frontend files to lint"
+fi
+
+echo ""
+echo "✅ Pre-commit checks passed. Committing..."

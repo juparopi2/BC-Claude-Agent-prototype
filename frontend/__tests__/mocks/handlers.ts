@@ -6,6 +6,7 @@
 
 import { http, HttpResponse } from 'msw';
 import type { Session, Message, UserProfile, TokenUsage } from '../../lib/services/api';
+import type { ParsedFile } from '@bc-agent/shared';
 
 // Base URL for mocking
 const API_URL = 'http://localhost:3002';
@@ -76,6 +77,41 @@ export const mockTokenUsage: TokenUsage = {
   total_thinking_tokens: 200,
   message_count: 50,
 };
+
+export const mockFiles: ParsedFile[] = [
+  {
+    id: 'file-1',
+    userId: 'user-123',
+    parentFolderId: null,
+    name: 'document.pdf',
+    mimeType: 'application/pdf',
+    sizeBytes: 1024000,
+    blobPath: 'users/user-123/files/document.pdf',
+    isFolder: false,
+    isFavorite: false,
+    processingStatus: 'completed',
+    embeddingStatus: 'completed',
+    hasExtractedText: true,
+    createdAt: '2024-01-15T10:30:00.000Z',
+    updatedAt: '2024-01-15T10:30:00.000Z',
+  },
+  {
+    id: 'folder-1',
+    userId: 'user-123',
+    parentFolderId: null,
+    name: 'My Folder',
+    mimeType: 'inode/directory',
+    sizeBytes: 0,
+    blobPath: '',
+    isFolder: true,
+    isFavorite: false,
+    processingStatus: 'completed',
+    embeddingStatus: 'completed',
+    hasExtractedText: false,
+    createdAt: '2024-01-14T10:00:00.000Z',
+    updatedAt: '2024-01-14T10:00:00.000Z',
+  },
+];
 
 /**
  * Default API handlers
@@ -178,6 +214,46 @@ export const handlers = [
   // Get user token usage
   http.get(`${API_URL}/api/users/me/token-usage`, () => {
     return HttpResponse.json(mockTokenUsage);
+  }),
+
+  // Get files
+  http.get(`${API_URL}/api/files`, ({ request }) => {
+    const url = new URL(request.url);
+    const folderId = url.searchParams.get('folderId');
+
+    // Filter files by folderId
+    const files = mockFiles.filter((f) => f.parentFolderId === folderId);
+
+    return HttpResponse.json({
+      files,
+      pagination: {
+        total: files.length,
+        limit: 50,
+        offset: 0,
+      },
+    });
+  }),
+
+  // Create folder
+  http.post(`${API_URL}/api/files/folders`, async ({ request }) => {
+    const body = (await request.json()) as { name: string; parentFolderId?: string };
+    const newFolder: ParsedFile = {
+      id: `folder-${Date.now()}`,
+      userId: 'user-123',
+      parentFolderId: body.parentFolderId || null,
+      name: body.name,
+      mimeType: 'inode/directory',
+      sizeBytes: 0,
+      blobPath: '',
+      isFolder: true,
+      isFavorite: false,
+      processingStatus: 'completed',
+      embeddingStatus: 'completed',
+      hasExtractedText: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    return HttpResponse.json({ folder: newFolder }, { status: 201 });
   }),
 ];
 

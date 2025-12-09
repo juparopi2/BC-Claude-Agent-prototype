@@ -10,6 +10,7 @@
 import sql, { ConnectionPool, config as SqlConfig, ISqlType } from 'mssql';
 import { env, isProd } from './environment';
 import { isValidUUID } from '@/utils/uuid';
+import { validateQuery } from '@/utils/sql/validators';
 
 /**
  * Transient error codes that should trigger a retry
@@ -511,6 +512,9 @@ export async function executeQuery<T = unknown>(
   params?: SqlParams
 ): Promise<sql.IResult<T>> {
   try {
+    // ⭐ Validate query in development/test (zero overhead in production)
+    validateQuery(query, params);
+
     const db = getDatabase();
 
     if (!db || !db.connected) {

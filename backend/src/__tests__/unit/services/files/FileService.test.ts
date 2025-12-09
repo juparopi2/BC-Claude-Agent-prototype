@@ -184,6 +184,102 @@ describe('FileService', () => {
     });
   });
 
+  // ========== SUITE 12: SQL NULL COMPARISON SAFETY (5 TESTS) ==========
+  describe('SQL NULL Comparison Safety', () => {
+    /**
+     * CRITICAL: Test SQL NULL handling pattern
+     *
+     * SQL Behavior:
+     * - `column = NULL` → always FALSE (incorrect)
+     * - `column IS NULL` → correct
+     *
+     * This suite verifies that FileService constructs queries correctly
+     * when filtering by NULL parent_folder_id (root-level files).
+     */
+
+    describe('getFiles() with NULL parent_folder_id', () => {
+      it('should use IS NULL when folderId is undefined (all files)', async () => {
+        mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
+
+        await fileService.getFiles({ userId: testUserId });
+
+        // Verify query uses IS NULL operator (NOT "= @parent_folder_id")
+        const queryCall = mockExecuteQuery.mock.calls[0];
+        const query = queryCall?.[0] as string;
+        const params = queryCall?.[1] as Record<string, unknown>;
+
+        // Critical assertions:
+        expect(query).toContain('AND parent_folder_id IS NULL');
+        expect(query).not.toContain('parent_folder_id = @parent_folder_id');
+        expect(params).not.toHaveProperty('parent_folder_id');
+      });
+
+      it('should use IS NULL when folderId is explicitly null (root files)', async () => {
+        mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
+
+        await fileService.getFiles({ userId: testUserId, folderId: null });
+
+        const queryCall = mockExecuteQuery.mock.calls[0];
+        const query = queryCall?.[0] as string;
+        const params = queryCall?.[1] as Record<string, unknown>;
+
+        expect(query).toContain('AND parent_folder_id IS NULL');
+        expect(query).not.toContain('parent_folder_id = @parent_folder_id');
+        expect(params).not.toHaveProperty('parent_folder_id');
+      });
+
+      it('should use parameterized query when folderId is UUID string', async () => {
+        const folderId = 'folder-uuid-123';
+        mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
+
+        await fileService.getFiles({ userId: testUserId, folderId });
+
+        const queryCall = mockExecuteQuery.mock.calls[0];
+        const query = queryCall?.[0] as string;
+        const params = queryCall?.[1] as Record<string, unknown>;
+
+        expect(query).toContain('AND parent_folder_id = @parent_folder_id');
+        expect(query).not.toContain('IS NULL');
+        expect(params).toHaveProperty('parent_folder_id', folderId);
+      });
+    });
+
+    describe('getFileCount() with NULL parent_folder_id', () => {
+      it('should exclude parent_folder_id filter when folderId is undefined', async () => {
+        mockExecuteQuery.mockResolvedValueOnce({ recordset: [{ count: 42 }] });
+
+        const count = await fileService.getFileCount(testUserId);
+
+        const queryCall = mockExecuteQuery.mock.calls[0];
+        const query = queryCall?.[0] as string;
+        const params = queryCall?.[1] as Record<string, unknown>;
+
+        expect(query).not.toContain('parent_folder_id');
+        expect(params).not.toHaveProperty('parent_folder_id');
+        expect(count).toBe(42);
+      });
+
+      it('should use IS NULL when folderId is explicitly null', async () => {
+        // BUG DETECTION: This test will FAIL with current implementation
+        // Current code at line 471-474 uses `folderId !== undefined`,
+        // which is TRUE when folderId=null, causing params.parent_folder_id = null
+        mockExecuteQuery.mockResolvedValueOnce({ recordset: [{ count: 15 }] });
+
+        const count = await fileService.getFileCount(testUserId, null);
+
+        const queryCall = mockExecuteQuery.mock.calls[0];
+        const query = queryCall?.[0] as string;
+        const params = queryCall?.[1] as Record<string, unknown>;
+
+        // These assertions will FAIL with current buggy implementation:
+        expect(query).toContain('AND parent_folder_id IS NULL');
+        expect(query).not.toContain('parent_folder_id = @parent_folder_id');
+        expect(params).not.toHaveProperty('parent_folder_id');
+        expect(count).toBe(15);
+      });
+    });
+  });
+
   // ========== SUITE 2: GET FILE (3 TESTS) ==========
   describe('getFile()', () => {
     it('should return parsed file when found', async () => {

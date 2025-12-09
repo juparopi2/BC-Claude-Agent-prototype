@@ -48,8 +48,13 @@ export class FileService {
       // Build WHERE clause
       let whereClause = 'WHERE user_id = @user_id';
 
-      // Always filter by parent_folder_id (if undefined, filter by NULL to get root folders only)
-      whereClause += ' AND parent_folder_id = @parent_folder_id';
+      // Handle NULL parent_folder_id correctly with IS NULL operator
+      // SQL: column = NULL always returns FALSE, must use IS NULL
+      if (folderId === undefined || folderId === null) {
+        whereClause += ' AND parent_folder_id IS NULL';
+      } else {
+        whereClause += ' AND parent_folder_id = @parent_folder_id';
+      }
 
       if (favorites) {
         whereClause += ' AND is_favorite = 1';
@@ -80,10 +85,14 @@ export class FileService {
 
       const params: SqlParams = {
         user_id: userId,
-        parent_folder_id: folderId || null, // If undefined, use null to filter root folders
         offset,
         limit,
       };
+
+      // Only add parent_folder_id parameter if not NULL
+      if (folderId !== undefined && folderId !== null) {
+        params.parent_folder_id = folderId;
+      }
 
       const result = await executeQuery<FileDbRecord>(query, params);
 
@@ -459,9 +468,15 @@ export class FileService {
         user_id: userId,
       };
 
+      // Handle NULL parent_folder_id correctly with IS NULL operator
+      // SQL: column = NULL always returns FALSE, must use IS NULL
       if (folderId !== undefined) {
-        whereClause += ' AND parent_folder_id = @parent_folder_id';
-        params.parent_folder_id = folderId || null;
+        if (folderId === null) {
+          whereClause += ' AND parent_folder_id IS NULL';
+        } else {
+          whereClause += ' AND parent_folder_id = @parent_folder_id';
+          params.parent_folder_id = folderId;
+        }
       }
 
       const query = `

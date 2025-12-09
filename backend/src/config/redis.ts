@@ -186,7 +186,8 @@ export function createRedisClient(profile: RedisProfile = getDefaultProfile()): 
   const baseConfig: RedisOptions = {
     host: redisHost,
     port: redisPort,
-    password: redisPassword,
+    // Only include password if it's non-empty (empty string causes AUTH command which fails on Redis without auth)
+    ...(redisPassword ? { password: redisPassword } : {}),
     lazyConnect: false, // Connect immediately
     // TLS for Azure Redis (port 6380)
     ...(redisPort === 6380 ? { tls: {} } : {}),

@@ -13,7 +13,7 @@ import { Server as SocketIOServer, Socket } from 'socket.io';
 import express from 'express';
 import session from 'express-session';
 import { createClient as createRedisClient } from 'redis';
-import RedisStore from 'connect-redis';
+import { RedisStore } from 'connect-redis';
 import {
   createTestSocketClient,
   createTestSessionFactory,
@@ -50,11 +50,13 @@ describe('Approval Flow Integration', () => {
     process.env.APPROVAL_TIMEOUT = '5000';
 
     // Create Redis client using test config
+    // IMPORTANT: legacyMode is required for connect-redis compatibility with redis@5.x
     redisClient = createRedisClient({
       socket: {
         host: REDIS_TEST_CONFIG.host,
         port: REDIS_TEST_CONFIG.port,
       },
+      legacyMode: true,
     });
 
     await redisClient.connect();

@@ -128,7 +128,9 @@
       "Bash(LOG_LEVEL=trace node:*)",
       "Bash(LOG_LEVEL=ERROR node:*)",
       "Bash(NODE_ENV=production node:*)",
-      "Bash(xargs:*)"
+      "Bash(xargs:*)",
+      "Bash(REDIS_TEST_HOST=localhost REDIS_TEST_PORT=6399 npm run test:integration:*)",
+      "WebFetch(domain:www.npmjs.com)"
     ],
     "deny": [],
     "ask": []

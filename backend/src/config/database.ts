@@ -66,6 +66,10 @@ const PARAMETER_TYPE_MAP: Record<string, ISqlType | (() => ISqlType)> = {
   'file_id': sql.UniqueIdentifier,
   'parent_folder_id': sql.UniqueIdentifier,
 
+  // NVARCHAR columns that end in 'Id' but are NOT UUIDs (Microsoft OAuth IDs)
+  'microsoftId': sql.NVarChar(255),
+  'microsoft_id': sql.NVarChar(255),
+
   // INT columns
   'chunk_index': sql.Int,
   'chunk_tokens': sql.Int,

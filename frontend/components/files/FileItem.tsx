@@ -75,9 +75,18 @@ function FileIcon({ file, className }: { file: ParsedFile; className?: string })
  * Format file size for display
  */
 function formatFileSize(bytes: number): string {
+  // Handle invalid input types
+  if (typeof bytes !== 'number' || isNaN(bytes) || bytes < 0) {
+    return '—';
+  }
   if (bytes === 0) return '—';
+
   const units = ['B', 'KB', 'MB', 'GB'];
   const i = Math.floor(Math.log(bytes) / Math.log(1024));
+
+  // Extra safety check for array bounds
+  if (i < 0 || i >= units.length) return '—';
+
   return `${(bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0)} ${units[i]}`;
 }
 
@@ -85,7 +94,19 @@ function formatFileSize(bytes: number): string {
  * Format date for display
  */
 function formatDate(isoDate: string): string {
-  return new Date(isoDate).toLocaleDateString(undefined, {
+  // Handle invalid input
+  if (!isoDate || typeof isoDate !== 'string') {
+    return '—';
+  }
+
+  const date = new Date(isoDate);
+
+  // Check if date is valid
+  if (isNaN(date.getTime())) {
+    return '—';
+  }
+
+  return date.toLocaleDateString(undefined, {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
@@ -195,13 +216,13 @@ export const FileItem = memo(function FileItem({
         <TooltipContent side="bottom">{file.name}</TooltipContent>
       </Tooltip>
 
-      {/* Size */}
-      <span className="text-xs text-muted-foreground w-16 text-right">
+      {/* Size - hide on very narrow widths */}
+      <span className="text-xs text-muted-foreground w-16 text-right hidden md:block">
         {formatFileSize(file.sizeBytes)}
       </span>
 
-      {/* Date */}
-      <span className="text-xs text-muted-foreground w-20 text-right hidden sm:block">
+      {/* Date - hide on narrow widths */}
+      <span className="text-xs text-muted-foreground w-20 text-right hidden lg:block">
         {formatDate(file.updatedAt)}
       </span>
 

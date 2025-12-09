@@ -23,6 +23,20 @@ import { logger } from '../utils/logger';
 import { ErrorCode } from '@/constants/errors';
 import { sendError } from '@/utils/error-response';
 
+/**
+ * Extract tenant ID from client_info base64 string
+ * client_info contains: { uid: user_id, utid: tenant_id }
+ */
+function extractTenantIdFromClientInfo(clientInfo: string | undefined): string | null {
+  if (!clientInfo) return null;
+  try {
+    const decoded = JSON.parse(Buffer.from(clientInfo, 'base64').toString('utf8'));
+    return decoded.utid || null;
+  } catch {
+    return null;
+  }
+}
+
 const router = Router();
 
 // Initialize services
@@ -66,7 +80,7 @@ router.get('/login', async (req: Request, res: Response) => {
  */
 router.get('/callback', async (req: Request, res: Response) => {
   try {
-    const { code, state, error: oauthError, error_description } = req.query;
+    const { code, state, error: oauthError, error_description, client_info } = req.query;
 
     // Check for OAuth errors
     if (oauthError) {
@@ -96,6 +110,10 @@ router.get('/callback', async (req: Request, res: Response) => {
 
     // Get user profile from Microsoft Graph
     const userProfile = await oauthService.getUserProfile(tokenResponse.access_token);
+
+    // Extract real tenant ID from client_info (for multi-tenant apps using "common" authority)
+    const realTenantId = extractTenantIdFromClientInfo(client_info as string | undefined);
+    logger.info('Extracted tenant ID from client_info', { realTenantId, hasClientInfo: !!client_info });
 
     // Calculate token expiration
     const expiresAt = new Date(Date.now() + tokenResponse.expires_in * 1000);
@@ -131,7 +149,7 @@ router.get('/callback', async (req: Request, res: Response) => {
           userId,
           microsoftId: userProfile.id,
           microsoftEmail: userProfile.mail,
-          tenantId: oauthService.getConfig().tenantId,
+          tenantId: realTenantId,  // Use actual tenant ID from token, not config
         }
       );
 
@@ -157,7 +175,7 @@ router.get('/callback', async (req: Request, res: Response) => {
           fullName: userProfile.displayName,
           microsoftId: userProfile.id,
           microsoftEmail: userProfile.mail,
-          tenantId: oauthService.getConfig().tenantId,
+          tenantId: realTenantId,  // Use actual tenant ID from token, not config
         }
       );
 

@@ -192,8 +192,10 @@ export class FileApiClient {
   async getFiles(options?: GetFilesOptions): Promise<ApiResponse<FilesListResponse>> {
     const params = new URLSearchParams();
 
-    if (options?.folderId !== undefined) {
-      params.set('folderId', options.folderId === null ? 'null' : options.folderId);
+    // Only include folderId if it's a valid string (not null/undefined)
+    // Omitting folderId means "list root folder"
+    if (options?.folderId !== undefined && options.folderId !== null) {
+      params.set('folderId', options.folderId);
     }
     if (options?.sortBy) {
       params.set('sortBy', options.sortBy);

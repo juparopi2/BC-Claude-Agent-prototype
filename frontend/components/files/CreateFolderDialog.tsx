@@ -81,19 +81,16 @@ export function CreateFolderDialog({ trigger }: CreateFolderDialogProps) {
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Create New Folder</DialogTitle>
-          <DialogDescription>
-            Enter a name for the new folder.
-          </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
           <div className="grid gap-2">
-            <Label htmlFor="folder-name">Folder name</Label>
+            <Label htmlFor="folder-name">What are you saving here?</Label>
             <Input
               id="folder-name"
               value={folderName}
               onChange={(e) => setFolderName(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="My Folder"
+              placeholder="e.g. My Documents"
               autoFocus
               disabled={isCreating}
             />

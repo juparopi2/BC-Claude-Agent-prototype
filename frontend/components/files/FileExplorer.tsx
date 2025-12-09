@@ -3,11 +3,6 @@
 import { useEffect, useCallback, useState } from 'react';
 import type { ParsedFile } from '@bc-agent/shared';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import {
-  ResizablePanelGroup,
-  ResizablePanel,
-  ResizableHandle,
-} from '@/components/ui/resizable';
 import { cn } from '@/lib/utils';
 import { useFileStore } from '@/lib/stores/fileStore';
 import { FileToolbar } from './FileToolbar';
@@ -23,7 +18,7 @@ interface FileExplorerProps {
 }
 
 export function FileExplorer({ className, isNarrow = false }: FileExplorerProps) {
-  const { fetchFiles, currentFolderId } = useFileStore();
+  const { fetchFiles, currentFolderId, isSidebarVisible } = useFileStore();
   const [contextMenuFile, setContextMenuFile] = useState<ParsedFile | null>(null);
 
   // Load files on mount and when folder changes
@@ -69,29 +64,22 @@ export function FileExplorer({ className, isNarrow = false }: FileExplorerProps)
       <div className={cn('flex flex-col h-full', className)}>
         <FileToolbar />
 
-        <ResizablePanelGroup direction="horizontal" className="flex-1">
-          {/* Sidebar with folder tree */}
-          <ResizablePanel
-            defaultSize={25}
-            minSize={15}
-            maxSize={40}
-            className="border-r"
-          >
-            <FolderTree className="h-full" />
-          </ResizablePanel>
-
-          <ResizableHandle withHandle />
-
-          {/* Main content */}
-          <ResizablePanel defaultSize={75} minSize={50}>
-            <div className="flex flex-col h-full">
-              <FileBreadcrumb />
-              <FileUploadZone className="flex-1 overflow-hidden">
-                <FileList onContextMenu={handleContextMenu} />
-              </FileUploadZone>
+        <div className="flex flex-1 overflow-hidden">
+          {/* Fixed-width sidebar (150px) - conditionally rendered */}
+          {isSidebarVisible && (
+            <div className="w-[150px] border-r flex-shrink-0">
+              <FolderTree className="h-full" />
             </div>
-          </ResizablePanel>
-        </ResizablePanelGroup>
+          )}
+
+          {/* Main content area */}
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <FileBreadcrumb />
+            <FileUploadZone className="flex-1 overflow-hidden">
+              <FileList onContextMenu={handleContextMenu} />
+            </FileUploadZone>
+          </div>
+        </div>
 
         {/* Context menu */}
         {contextMenuFile && (

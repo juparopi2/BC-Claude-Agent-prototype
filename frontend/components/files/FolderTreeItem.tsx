@@ -5,6 +5,7 @@ import type { ParsedFile } from '@bc-agent/shared';
 import { Folder, ChevronRight, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface FolderTreeItemProps {
   folder: ParsedFile;
@@ -25,17 +26,20 @@ export const FolderTreeItem = memo(function FolderTreeItem({
 }: FolderTreeItemProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [hasLoadedChildren, setHasLoadedChildren] = useState(false);
 
   const hasChildren = subfolders.length > 0;
 
   const handleToggle = useCallback(async () => {
-    if (!isExpanded && !hasChildren && onLoadChildren) {
+    // Only load children if we haven't loaded them yet and we're expanding
+    if (!isExpanded && !hasLoadedChildren && onLoadChildren) {
       setIsLoading(true);
       await onLoadChildren(folder.id);
+      setHasLoadedChildren(true); // Mark as loaded
       setIsLoading(false);
     }
     setIsExpanded(!isExpanded);
-  }, [isExpanded, hasChildren, onLoadChildren, folder.id]);
+  }, [isExpanded, hasLoadedChildren, onLoadChildren, folder.id]);
 
   const handleSelect = useCallback(() => {
     onSelect(folder.id);
@@ -76,7 +80,12 @@ export const FolderTreeItem = memo(function FolderTreeItem({
             'size-4 flex-shrink-0',
             isExpanded ? 'text-amber-600' : 'text-amber-500'
           )} />
-          <span className="text-sm truncate">{folder.name}</span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="text-sm truncate">{folder.name}</span>
+            </TooltipTrigger>
+            <TooltipContent side="right">{folder.name}</TooltipContent>
+          </Tooltip>
         </button>
       </div>
 

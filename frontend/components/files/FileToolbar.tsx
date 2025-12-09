@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback } from 'react';
-import { Upload, Star, RefreshCw } from 'lucide-react';
+import { Upload, Star, RefreshCw, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Toggle } from '@/components/ui/toggle';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -19,8 +19,9 @@ interface FileToolbarProps {
 export function FileToolbar({ className, isNarrow = false }: FileToolbarProps) {
   const { openFilePicker, isUploading } = useFileUploadTrigger();
   const showFavoritesOnly = useFileStore(state => state.showFavoritesOnly);
+  const isSidebarVisible = useFileStore(state => state.isSidebarVisible);
   const isLoading = useFileStore(state => state.isLoading);
-  const { toggleFavoritesFilter, refreshCurrentFolder } = useFileStore();
+  const { toggleFavoritesFilter, toggleSidebar, refreshCurrentFolder } = useFileStore();
 
   const handleRefresh = useCallback(() => {
     refreshCurrentFolder();
@@ -29,7 +30,7 @@ export function FileToolbar({ className, isNarrow = false }: FileToolbarProps) {
   return (
     <div className={cn(
       'flex items-center gap-1 px-2 py-1.5 border-b',
-      isNarrow && 'flex-wrap',
+      'flex-wrap sm:flex-nowrap', // Wrap on mobile, single row on desktop
       className
     )}>
       {/* Upload button */}
@@ -43,7 +44,7 @@ export function FileToolbar({ className, isNarrow = false }: FileToolbarProps) {
             disabled={isUploading}
           >
             <Upload className="size-4" />
-            {!isNarrow && <span>Upload</span>}
+            <span className="hidden sm:inline">Upload</span>
           </Button>
         </TooltipTrigger>
         <TooltipContent>Upload files</TooltipContent>
@@ -52,7 +53,32 @@ export function FileToolbar({ className, isNarrow = false }: FileToolbarProps) {
       {/* New Folder button */}
       <CreateFolderDialog />
 
-      <div className="flex-1" />
+      {/* Sidebar toggle button - only show when not in narrow mode */}
+      {!isNarrow && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8"
+              onClick={toggleSidebar}
+              aria-label={isSidebarVisible ? 'Hide sidebar' : 'Show sidebar'}
+            >
+              {isSidebarVisible ? (
+                <PanelLeftClose className="size-4" />
+              ) : (
+                <PanelLeftOpen className="size-4" />
+              )}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            {isSidebarVisible ? 'Hide sidebar' : 'Show sidebar'}
+          </TooltipContent>
+        </Tooltip>
+      )}
+
+      {/* Spacer - min-w-0 allows flex to shrink */}
+      <div className="flex-1 min-w-0" />
 
       {/* Favorites filter toggle */}
       <Tooltip>

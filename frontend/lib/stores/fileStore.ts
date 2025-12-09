@@ -13,6 +13,16 @@ import type { ParsedFile, FileSortBy, SortOrder } from '@bc-agent/shared';
 import { getFileApiClient } from '../services/fileApi';
 import { nanoid } from 'nanoid';
 
+// Memoization cache for selectors
+let cachedSortedFiles: ParsedFile[] = [];
+let cachedSortedFilesKey = '';
+
+let cachedFolders: ParsedFile[] = [];
+let cachedFoldersKey = '';
+
+let cachedSelectedFiles: ParsedFile[] = [];
+let cachedSelectedFilesKey = '';
+
 /**
  * Upload item in queue
  */
@@ -45,6 +55,7 @@ export interface FileState {
   // UI state
   isLoading: boolean;
   error: string | null;
+  isSidebarVisible: boolean;
 
   // Sort/filter
   sortBy: FileSortBy;
@@ -93,6 +104,9 @@ export interface FileActions {
   toggleSortOrder: () => void;
   toggleFavoritesFilter: () => void;
 
+  // UI actions
+  toggleSidebar: () => void;
+
   // State management
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
@@ -112,6 +126,7 @@ const initialState: FileState = {
   uploadProgress: 0,
   isLoading: false,
   error: null,
+  isSidebarVisible: true,
   sortBy: 'date',
   sortOrder: 'desc',
   showFavoritesOnly: false,
@@ -584,6 +599,15 @@ export const useFileStore = create<FileStore>()(
     },
 
     // ========================================
+    // UI Actions
+    // ========================================
+    toggleSidebar: () => {
+      set((state) => ({
+        isSidebarVisible: !state.isSidebarVisible,
+      }));
+    },
+
+    // ========================================
     // State Management
     // ========================================
     setLoading: (isLoading) => set({ isLoading }),
@@ -598,12 +622,22 @@ export const useFileStore = create<FileStore>()(
  *
  * Applies client-side sorting (folders first, then by sortBy field).
  * Server already handles favorites filter and primary sort.
+ *
+ * IMPORTANT: This selector is memoized to prevent infinite loops with useSyncExternalStore.
+ * The result is cached and only recalculated when the underlying data changes.
  */
 export const selectSortedFiles = (state: FileStore): ParsedFile[] => {
+  // Create a cache key from the relevant state
+  const cacheKey = `${state.files.map(f => f.id + f.updatedAt).join(',')}|${state.sortBy}|${state.sortOrder}`;
+
+  if (cacheKey === cachedSortedFilesKey) {
+    return cachedSortedFiles;
+  }
+
   const filtered = state.files;
 
   // Sort: folders first, then apply sortBy
-  return [...filtered].sort((a, b) => {
+  const sorted = [...filtered].sort((a, b) => {
     // Folders always first
     if (a.isFolder && !b.isFolder) return -1;
     if (!a.isFolder && b.isFolder) return 1;
@@ -624,20 +658,52 @@ export const selectSortedFiles = (state: FileStore): ParsedFile[] => {
 
     return state.sortOrder === 'asc' ? comparison : -comparison;
   });
+
+  // Update cache
+  cachedSortedFilesKey = cacheKey;
+  cachedSortedFiles = sorted;
+
+  return sorted;
 };
 
 /**
  * Selector: Get only folders (for tree view)
+ * Memoized to prevent infinite loops.
  */
 export const selectFolders = (state: FileStore): ParsedFile[] => {
-  return state.files.filter((f) => f.isFolder);
+  const cacheKey = state.files.filter(f => f.isFolder).map(f => f.id).join(',');
+
+  if (cacheKey === cachedFoldersKey) {
+    return cachedFolders;
+  }
+
+  const folders = state.files.filter((f) => f.isFolder);
+
+  cachedFoldersKey = cacheKey;
+  cachedFolders = folders;
+
+  return folders;
 };
 
 /**
  * Selector: Get selected files
+ * Memoized to prevent infinite loops.
  */
 export const selectSelectedFiles = (state: FileStore): ParsedFile[] => {
-  return state.files.filter((f) => state.selectedFileIds.has(f.id));
+  const selectedIds = Array.from(state.selectedFileIds).sort().join(',');
+  const fileIds = state.files.map(f => f.id).join(',');
+  const cacheKey = `${selectedIds}|${fileIds}`;
+
+  if (cacheKey === cachedSelectedFilesKey) {
+    return cachedSelectedFiles;
+  }
+
+  const selected = state.files.filter((f) => state.selectedFileIds.has(f.id));
+
+  cachedSelectedFilesKey = cacheKey;
+  cachedSelectedFiles = selected;
+
+  return selected;
 };
 
 /**

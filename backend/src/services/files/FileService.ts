@@ -48,9 +48,8 @@ export class FileService {
       // Build WHERE clause
       let whereClause = 'WHERE user_id = @user_id';
 
-      if (folderId !== undefined) {
-        whereClause += ' AND parent_folder_id = @parent_folder_id';
-      }
+      // Always filter by parent_folder_id (if undefined, filter by NULL to get root folders only)
+      whereClause += ' AND parent_folder_id = @parent_folder_id';
 
       if (favorites) {
         whereClause += ' AND is_favorite = 1';
@@ -81,13 +80,10 @@ export class FileService {
 
       const params: SqlParams = {
         user_id: userId,
+        parent_folder_id: folderId || null, // If undefined, use null to filter root folders
         offset,
         limit,
       };
-
-      if (folderId !== undefined) {
-        params.parent_folder_id = folderId || null;
-      }
 
       const result = await executeQuery<FileDbRecord>(query, params);
 

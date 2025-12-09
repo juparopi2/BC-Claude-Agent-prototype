@@ -82,10 +82,19 @@ export function validateQuery(query: string, params?: SqlParams): void {
 
 /**
  * Extract all @paramName references from SQL query
+ * IGNORES @params inside string literals to avoid false positives
+ * (e.g., 'user@example.com' should NOT match @example)
  */
 function extractParamNames(query: string): string[] {
+  // Remove string literals first to avoid false positives
+  // Handles both 'single quotes' and "double quotes"
+  const queryWithoutStrings = query
+    .replace(/'[^']*'/g, "''")  // Replace 'string' with ''
+    .replace(/"[^"]*"/g, '""'); // Replace "string" with ""
+
+  // Now extract @params only from the query without string literals
   const paramPattern = /@(\w+)/g;
-  const matches = query.matchAll(paramPattern);
+  const matches = queryWithoutStrings.matchAll(paramPattern);
   const params = new Set<string>();
 
   for (const match of matches) {

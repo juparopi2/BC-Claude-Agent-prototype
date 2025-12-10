@@ -84,7 +84,7 @@ function formatFileSize(bytes: number | string): string {
   }
   if (parsedBytes === 0) return '—';
 
-  const units = ['B', 'KB', 'MB', 'GB'];
+  const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
   const i = Math.floor(Math.log(parsedBytes) / Math.log(1024));
 
   // Extra safety check for array bounds
@@ -196,7 +196,7 @@ export const FileItem = memo(forwardRef<HTMLDivElement, FileItemProps>(function 
     <div
       ref={ref}
       className={cn(
-        'group flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-colors',
+        'group flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-colors',
         'hover:bg-accent/50',
         isSelected && 'bg-accent ring-1 ring-primary/20',
         className
@@ -216,18 +216,18 @@ export const FileItem = memo(forwardRef<HTMLDivElement, FileItemProps>(function 
       {/* Name */}
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className="flex-1 truncate text-sm">{file.name}</span>
+          <span className="flex-1 min-w-0 truncate text-sm">{file.name}</span>
         </TooltipTrigger>
         <TooltipContent side="bottom">{file.name}</TooltipContent>
       </Tooltip>
 
       {/* Size - hide on very narrow widths */}
-      <span className="text-xs text-muted-foreground w-16 text-right hidden md:block shrink-0">
+      <span className="text-xs text-muted-foreground w-12 text-right hidden md:block shrink-0">
         {formatFileSize(file.sizeBytes)}
       </span>
 
       {/* Date - hide on narrow widths */}
-      <span className="text-xs text-muted-foreground w-20 text-right hidden lg:block shrink-0">
+      <span className="text-xs text-muted-foreground w-18 text-right hidden lg:block shrink-0">
         {formatDate(file.updatedAt)}
       </span>
 
@@ -235,7 +235,7 @@ export const FileItem = memo(forwardRef<HTMLDivElement, FileItemProps>(function 
       <button
         onClick={handleFavoriteClick}
         className={cn(
-          'p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity',
+          'p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity shrink-0',
           'hover:bg-accent',
           file.isFavorite && 'opacity-100'
         )}

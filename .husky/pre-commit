@@ -9,19 +9,22 @@ BACKEND_FILES=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^bac
 
 if [ -n "$BACKEND_FILES" ]; then
   echo "🧹 Running backend ESLint on staged files..."
-  echo "$BACKEND_FILES" | while read -r file; do
-    if [ -n "$file" ] && [ -f "$file" ]; then
-      # Run ESLint on each file from repo root
-      npx eslint "$file"
-      if [ $? -ne 0 ]; then
-        echo ""
-        echo "❌ Backend ESLint failed on: $file"
-        echo "💡 This includes the SQL NULL comparison check."
-        echo "   Fix the errors and try again."
-        exit 1
-      fi
-    fi
-  done
+
+  # Convert full paths to relative paths from backend directory
+  RELATIVE_FILES=$(echo "$BACKEND_FILES" | sed 's|^backend/||')
+
+  # Run ESLint from backend directory
+  cd backend && npx eslint $RELATIVE_FILES
+  ESLINT_EXIT=$?
+  cd ..
+
+  if [ $ESLINT_EXIT -ne 0 ]; then
+    echo ""
+    echo "❌ Backend ESLint failed on staged files."
+    echo "💡 This includes the SQL NULL comparison check."
+    echo "   Fix the errors and try again."
+    exit 1
+  fi
   echo "✅ Backend ESLint passed"
 else
   echo "⏭️  No staged backend files to lint"
@@ -33,18 +36,21 @@ FRONTEND_FILES=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^fr
 if [ -n "$FRONTEND_FILES" ]; then
   echo ""
   echo "🧹 Running frontend ESLint on staged files..."
-  echo "$FRONTEND_FILES" | while read -r file; do
-    if [ -n "$file" ] && [ -f "$file" ]; then
-      # Run ESLint on each file from repo root
-      npx eslint "$file"
-      if [ $? -ne 0 ]; then
-        echo ""
-        echo "❌ Frontend ESLint failed on: $file"
-        echo "   Fix the errors and try again."
-        exit 1
-      fi
-    fi
-  done
+
+  # Convert full paths to relative paths from frontend directory
+  RELATIVE_FILES=$(echo "$FRONTEND_FILES" | sed 's|^frontend/||')
+
+  # Run ESLint from frontend directory
+  cd frontend && npx eslint $RELATIVE_FILES
+  ESLINT_EXIT=$?
+  cd ..
+
+  if [ $ESLINT_EXIT -ne 0 ]; then
+    echo ""
+    echo "❌ Frontend ESLint failed on staged files."
+    echo "   Fix the errors and try again."
+    exit 1
+  fi
   echo "✅ Frontend ESLint passed"
 else
   echo "⏭️  No staged frontend files to lint"

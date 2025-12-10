@@ -41,7 +41,7 @@ export function PDFComingSoonModal({
           </div>
           <h3 className="text-lg font-semibold">Coming Soon</h3>
           <p className="text-muted-foreground text-sm max-w-[80%]">
-            We're building a powerful PDF visualizer for you. Check back later!
+            We&apos;re building a powerful PDF visualizer for you. Check back later!
           </p>
         </div>
 

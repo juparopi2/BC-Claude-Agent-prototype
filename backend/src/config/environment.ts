@@ -91,6 +91,10 @@ const envSchema = z.object({
   // Storage
   STORAGE_CONNECTION_STRING: z.string().optional(),
   STORAGE_CONTAINER_NAME: z.string().default('agent-files'),
+
+  // Azure Document Intelligence (OCR)
+  AZURE_DI_ENDPOINT: z.string().url().optional(),
+  AZURE_DI_KEY: z.string().optional(),
 });
 
 /**

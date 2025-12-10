@@ -20,6 +20,7 @@ import { authenticateMicrosoft } from '@middleware/auth-oauth';
 import { getFileService } from '@services/files';
 import { getFileUploadService } from '@services/files';
 import { getUsageTrackingService } from '@services/tracking/UsageTrackingService';
+import { getMessageQueue } from '@services/queue/MessageQueue';
 import { sendError } from '@/utils/error-response';
 import { ErrorCode } from '@/constants/errors';
 import { logger } from '@/utils/logger';
@@ -46,6 +47,7 @@ const upload = multer({
 
 const uploadFileSchema = z.object({
   parentFolderId: z.string().uuid().optional(),
+  sessionId: z.string().uuid().optional(), // For WebSocket progress events
 });
 
 const createFolderSchema = z.object({
@@ -157,7 +159,7 @@ router.post(
         return;
       }
 
-      const { parentFolderId } = validation.data;
+      const { parentFolderId, sessionId } = validation.data;
 
       // Get services
       const fileService = getFileService();
@@ -223,6 +225,21 @@ router.post(
           }).catch((err) => {
             // Fire-and-forget: log but don't fail the upload
             logger.warn({ err, userId, fileId, fileName: file.originalname }, 'Failed to track file upload');
+          });
+
+          // Enqueue file processing job (fire-and-forget)
+          // This triggers text extraction via BullMQ worker
+          const messageQueue = getMessageQueue();
+          messageQueue.addFileProcessingJob({
+            fileId,
+            userId,
+            sessionId,
+            mimeType: file.mimetype,
+            blobPath,
+            fileName: fixedFilename,
+          }).catch((err) => {
+            // Fire-and-forget: log but don't fail the upload
+            logger.warn({ err, userId, fileId, fileName: file.originalname }, 'Failed to enqueue file processing job');
           });
 
           // Get created file metadata

@@ -742,48 +742,75 @@ frontend/components/files/index.ts                # Barrel export
 
 ---
 
-### FASE 3: Procesamiento de Documentos
+### FASE 3: Procesamiento de Documentos ✅
+
+**Completion Date**: December 10, 2025
 
 **Objetivo**: Extraer texto de diferentes tipos de archivos para indexación.
 
 #### Entregables
 
-| # | Entregable | Tipo | Prioridad |
-|---|------------|------|-----------|
-| 3.1 | Worker de procesamiento (BullMQ) | Backend | Alta |
-| 3.2 | Procesador PDF | Backend | Alta |
-| 3.3 | Procesador DOCX | Backend | Media |
-| 3.4 | Procesador Excel/CSV | Backend | Media |
-| 3.5 | Eventos de progreso (WebSocket) | Backend | Media |
+| # | Entregable | Tipo | Prioridad | Estado |
+|---|------------|------|-----------|--------|
+| 3.1 | Worker de procesamiento (BullMQ) | Backend | Alta | ✅ Completado |
+| 3.2 | Procesador PDF (Azure Document Intelligence + OCR) | Backend | Alta | ✅ Completado |
+| 3.3 | Procesador DOCX (mammoth.js) | Backend | Media | ✅ Completado |
+| 3.4 | Procesador Excel/CSV (xlsx) | Backend | Media | ✅ Completado |
+| 3.5 | Eventos de progreso (WebSocket) | Backend | Media | ✅ Completado |
 
 #### Tareas Detalladas
 
 ```
-[ ] 3.1.1 Agregar cola 'file-processing' a MessageQueue
-[ ] 3.1.2 Crear backend/src/services/files/FileProcessingService.ts
-[ ] 3.1.3 Implementar worker para procesar jobs
-[ ] 3.1.4 Manejo de errores y retry logic
-[ ] 3.1.5 Rate limiting per user
+[x] 3.1.1 Agregar cola 'file-processing' a MessageQueue (QueueName.FILE_PROCESSING)
+[x] 3.1.2 Crear backend/src/services/files/FileProcessingService.ts (singleton pattern)
+[x] 3.1.3 Implementar worker para procesar jobs (concurrency: 3)
+[x] 3.1.4 Manejo de errores y retry logic (attempts: 2, exponential backoff: 5s)
+[x] 3.1.5 Rate limiting per user (100 jobs/hour via file:${userId} key)
 
-[ ] 3.2.1 Evaluar: pdf-parse vs Azure Document Intelligence
-[ ] 3.2.2 Implementar extractPdfText(buffer)
-[ ] 3.2.3 Manejar PDFs escaneados (OCR si necesario)
-[ ] 3.2.4 Extraer metadata (páginas, título, autor)
+[x] 3.2.1 Evaluar: Azure Document Intelligence (selected for OCR support)
+[x] 3.2.2 Implementar PdfProcessor.extractText(buffer) usando prebuilt-read model
+[x] 3.2.3 OCR integrado via DocumentStyle.isHandwritten detection
+[x] 3.2.4 Extraer metadata (pages, languages, ocrUsed, apiVersion, modelId)
 
-[ ] 3.3.1 Instalar mammoth.js
-[ ] 3.3.2 Implementar extractDocxText(buffer)
-[ ] 3.3.3 Preservar estructura básica (headers, párrafos)
+[x] 3.3.1 Instalar mammoth.js (v1.11.0)
+[x] 3.3.2 Implementar DocxProcessor.extractText(buffer) usando extractRawText
+[x] 3.3.3 Preservar estructura básica + log warnings de mammoth
 
-[ ] 3.4.1 Instalar xlsx library
-[ ] 3.4.2 Implementar extractExcelText(buffer)
-[ ] 3.4.3 Convertir tablas a Markdown
-[ ] 3.4.4 Manejar múltiples sheets
+[x] 3.4.1 Instalar xlsx library (v0.18.5)
+[x] 3.4.2 Implementar ExcelProcessor.extractText(buffer)
+[x] 3.4.3 Convertir tablas a CSV con headers "## Sheet: Name"
+[x] 3.4.4 Manejar múltiples sheets con separadores
 
-[ ] 3.5.1 Emitir evento 'file:processing_status' al iniciar
-[ ] 3.5.2 Emitir evento al completar
-[ ] 3.5.3 Emitir evento en caso de error
-[ ] 3.5.4 Frontend: mostrar estado de procesamiento
+[x] 3.5.1 Emitir evento 'file:processing' type='file:processing_progress' (0-100%)
+[x] 3.5.2 Emitir evento 'file:processing' type='file:processing_completed' con stats
+[x] 3.5.3 Emitir evento 'file:processing' type='file:processing_failed' con error
+[ ] 3.5.4 Frontend: mostrar estado de procesamiento (deferred to Phase 5)
 ```
+
+#### Arquitectura Implementada
+
+**Processor Types (Source of Truth):**
+- Types derived from `@azure/ai-form-recognizer` SDK (AnalyzeResult, DocumentStyle, DocumentPage)
+- `fromAzureAnalyzeResult()` canonical converter function
+- `ExtractionResult` interface compatible con todos los procesadores
+
+**Files Created:**
+- `backend/src/services/files/processors/types.ts` - Tipos con SDK imports
+- `backend/src/services/files/processors/PdfProcessor.ts` - Azure Document Intelligence
+- `backend/src/services/files/processors/DocxProcessor.ts` - mammoth.js
+- `backend/src/services/files/processors/ExcelProcessor.ts` - xlsx library
+- `backend/src/services/files/processors/TextProcessor.ts` - UTF-8 text
+- `backend/src/services/files/processors/index.ts` - Barrel export
+- `backend/src/services/files/FileProcessingService.ts` - Orchestrator
+- `backend/src/services/websocket/SocketService.ts` - Socket.IO singleton
+- `infrastructure/setup-document-intelligence.sh` - Azure provisioning
+
+**Files Modified:**
+- `backend/src/services/queue/MessageQueue.ts` - FILE_PROCESSING queue
+- `backend/src/services/files/FileService.ts` - updateProcessingStatus() method
+- `backend/src/routes/files.ts` - sessionId param + enqueue processing job
+- `backend/src/config/environment.ts` - AZURE_DI_ENDPOINT, AZURE_DI_KEY
+- `backend/.env.example` - Document new env vars
 
 #### Criterios de Éxito
 
@@ -1267,3 +1294,4 @@ La Fase 1.5 tiene **prioridad alta** porque:
 | 2025-12-05 | 0.2 | Agregada Fase 1.5: Sistema de Tracking, Auditoría y Billing |
 | 2025-12-09 | 0.3 | Fase 1.6 Complete: Background Workers & Billing Service - UsageAggregationService (28 tests), BillingService (33 tests), MessageQueue USAGE_AGGREGATION queue, /api/billing routes (7 endpoints) |
 | 2025-12-09 | 0.4 | Fase 2 Complete: UI de Navegación de Archivos - 11 components (FileExplorer, FileList, FileItem, FolderTree, FileUploadZone, etc.), fileStore (Zustand), fileApi service, shared types, RightPanel integration |
+| 2025-12-10 | 0.5 | Fase 3 Complete: Procesamiento de Documentos - PdfProcessor (Azure Document Intelligence + OCR), DocxProcessor (mammoth.js), ExcelProcessor (xlsx), TextProcessor, FileProcessingService orchestrator, SocketService singleton, FILE_PROCESSING BullMQ queue, WebSocket progress events, types from Azure SDK as source of truth |

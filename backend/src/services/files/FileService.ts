@@ -482,7 +482,58 @@ export class FileService {
   }
 
   /**
-   * 9. Get file count in folder (for UI badges)
+   * 9. Update file processing status (for background workers)
+   *
+   * @param userId - User ID (for ownership check)
+   * @param fileId - File ID
+   * @param status - New processing status
+   * @param extractedText - Optional extracted text content
+   */
+  public async updateProcessingStatus(
+    userId: string,
+    fileId: string,
+    status: 'pending' | 'processing' | 'completed' | 'failed',
+    extractedText?: string
+  ): Promise<void> {
+    this.logger.info({ userId, fileId, status, hasText: !!extractedText }, 'Updating processing status');
+
+    try {
+      const setClauses: string[] = [
+        'processing_status = @status',
+        'updated_at = GETUTCDATE()',
+      ];
+      const params: SqlParams = {
+        id: fileId,
+        user_id: userId,
+        status,
+      };
+
+      if (extractedText !== undefined) {
+        setClauses.push('extracted_text = @extracted_text');
+        params.extracted_text = extractedText;
+      }
+
+      const query = `
+        UPDATE files
+        SET ${setClauses.join(', ')}
+        WHERE id = @id AND user_id = @user_id
+      `;
+
+      const result = await executeQuery(query, params);
+
+      if (result.rowsAffected[0] === 0) {
+        throw new Error('File not found or unauthorized');
+      }
+
+      this.logger.info({ userId, fileId, status }, 'Processing status updated');
+    } catch (error) {
+      this.logger.error({ error, userId, fileId, status }, 'Failed to update processing status');
+      throw error;
+    }
+  }
+
+  /**
+   * 10. Get file count in folder (for UI badges)
    *
    * @param userId - User ID
    * @param folderId - Folder ID (undefined for root)

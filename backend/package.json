@@ -44,6 +44,7 @@
   "license": "MIT",
   "dependencies": {
     "@anthropic-ai/sdk": "0.71.0",
+    "@azure/ai-form-recognizer": "5.1.0",
     "@azure/identity": "4.13.0",
     "@azure/keyvault-secrets": "4.10.0",
     "@azure/msal-node": "3.8.1",
@@ -59,6 +60,7 @@
     "express-session": "1.18.1",
     "ioredis": "5.8.2",
     "jsonwebtoken": "9.0.2",
+    "mammoth": "1.11.0",
     "mssql": "12.1.0",
     "multer": "2.0.2",
     "pino": "9.6.0",
@@ -67,6 +69,7 @@
     "redis": "5.9.0",
     "socket.io": "4.8.1",
     "socket.io-client": "4.8.1",
+    "xlsx": "0.18.5",
     "zod": "3.25.76"
   },
   "devDependencies": {

@@ -44,6 +44,7 @@ export enum QueueName {
   TOOL_EXECUTION = 'tool-execution',
   EVENT_PROCESSING = 'event-processing',
   USAGE_AGGREGATION = 'usage-aggregation',
+  FILE_PROCESSING = 'file-processing',
 }
 
 /**
@@ -110,6 +111,30 @@ export interface UsageAggregationJob {
   userId?: string;  // Optional: process specific user, or all users if omitted
   periodStart?: string;  // ISO 8601 date string
   force?: boolean;  // Force re-aggregation even if already exists
+}
+
+/**
+ * File Processing Job Data
+ *
+ * Used by background workers for document text extraction:
+ * - PDF (Azure Document Intelligence with OCR)
+ * - DOCX (mammoth.js)
+ * - XLSX (xlsx library)
+ * - Plain text (txt, csv, md)
+ */
+export interface FileProcessingJob {
+  /** File ID from database */
+  fileId: string;
+  /** User ID for multi-tenant isolation */
+  userId: string;
+  /** Session ID for WebSocket events (optional) */
+  sessionId?: string;
+  /** MIME type to determine processor */
+  mimeType: string;
+  /** Azure Blob path for downloading */
+  blobPath: string;
+  /** Original filename for logging */
+  fileName: string;
 }
 
 /**
@@ -436,6 +461,29 @@ export class MessageQueue {
       })
     );
 
+    // File Processing Queue (limited concurrency for Azure DI API)
+    this.queues.set(
+      QueueName.FILE_PROCESSING,
+      new Queue(QueueName.FILE_PROCESSING, {
+        connection: this.getRedisConnectionConfig(),
+        defaultJobOptions: {
+          attempts: 2,  // External API calls - limited retries
+          backoff: {
+            type: 'exponential',
+            delay: 5000,  // Start with 5s for external API retries
+          },
+          removeOnComplete: {
+            count: 100,
+            age: 3600,  // 1 hour
+          },
+          removeOnFail: {
+            count: 200,
+            age: 86400,  // 24 hours
+          },
+        },
+      })
+    );
+
     this.log.info('All queues initialized', {
       queues: Array.from(this.queues.keys()),
     });
@@ -501,6 +549,21 @@ export class MessageQueue {
         {
           connection: this.getRedisConnectionConfig(),
           concurrency: 1,  // Process one aggregation job at a time
+        }
+      )
+    );
+
+    // File Processing Worker (concurrency: 3 - limited for Azure DI API)
+    this.workers.set(
+      QueueName.FILE_PROCESSING,
+      new Worker(
+        QueueName.FILE_PROCESSING,
+        async (job: Job<FileProcessingJob>) => {
+          return this.processFileProcessingJob(job);
+        },
+        {
+          connection: this.getRedisConnectionConfig(),
+          concurrency: 3,  // Limited concurrency for external API calls
         }
       )
     );
@@ -771,6 +834,50 @@ export class MessageQueue {
       type: data.type,
       userId: data.userId || 'all-users',
       periodStart: data.periodStart,
+    });
+
+    return job.id || '';
+  }
+
+  /**
+   * Add File Processing Job to Queue
+   *
+   * Enqueues a file for background text extraction. Rate limited per user
+   * to prevent queue saturation in multi-tenant environment.
+   *
+   * @param data - File processing job data
+   * @returns Job ID
+   * @throws Error if rate limit exceeded
+   */
+  public async addFileProcessingJob(
+    data: FileProcessingJob
+  ): Promise<string> {
+    // Wait for Redis connection to be ready
+    await this.waitForReady();
+
+    const queue = this.queues.get(QueueName.FILE_PROCESSING);
+    if (!queue) {
+      throw new Error('File processing queue not initialized');
+    }
+
+    // Check rate limit (per user, not per session)
+    const withinLimit = await this.checkRateLimit(`file:${data.userId}`);
+    if (!withinLimit) {
+      throw new Error(
+        `Rate limit exceeded for user ${data.userId}. Max ${MessageQueue.MAX_JOBS_PER_SESSION} file processing jobs per hour.`
+      );
+    }
+
+    const job = await queue.add('process-file', data, {
+      priority: 3,  // Lower priority than message persistence, higher than aggregation
+    });
+
+    this.log.info('File processing job added to queue', {
+      jobId: job.id,
+      fileId: data.fileId,
+      userId: data.userId,
+      mimeType: data.mimeType,
+      fileName: data.fileName,
     });
 
     return job.id || '';
@@ -1050,6 +1157,57 @@ export class MessageQueue {
     now.setUTCHours(0, 0, 0, 0);
     now.setUTCMonth(now.getUTCMonth() - 1);
     return now;
+  }
+
+  /**
+   * Process File Processing Job
+   *
+   * Extracts text from uploaded documents using appropriate processors:
+   * - PDF: Azure Document Intelligence with OCR
+   * - DOCX: mammoth.js for Word documents
+   * - XLSX: xlsx library for Excel files
+   * - Plain text: Direct UTF-8 reading
+   *
+   * @param job - BullMQ job containing file processing data
+   */
+  private async processFileProcessingJob(
+    job: Job<FileProcessingJob>
+  ): Promise<void> {
+    const { fileId, userId, sessionId: _sessionId, mimeType, fileName } = job.data;
+
+    this.log.info('Processing file', {
+      jobId: job.id,
+      fileId,
+      userId,
+      mimeType,
+      fileName,
+      attemptNumber: job.attemptsMade,
+    });
+
+    try {
+      // Dynamic import to avoid circular dependencies
+      const { getFileProcessingService } = await import('../files/FileProcessingService');
+      const fileProcessingService = getFileProcessingService();
+
+      await fileProcessingService.processFile(job.data);
+
+      this.log.info('File processing completed', {
+        jobId: job.id,
+        fileId,
+        userId,
+      });
+    } catch (error) {
+      this.log.error('File processing job failed', {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        jobId: job.id,
+        fileId,
+        userId,
+        mimeType,
+        attemptNumber: job.attemptsMade,
+      });
+      throw error;  // Will trigger retry
+    }
   }
 
   /**

@@ -8,7 +8,7 @@
  */
 
 import { create } from 'zustand';
-import { subscribeWithSelector } from 'zustand/middleware';
+import { subscribeWithSelector, persist } from 'zustand/middleware';
 import type { ParsedFile, FileSortBy, SortOrder } from '@bc-agent/shared';
 import { getFileApiClient } from '../services/fileApi';
 import { nanoid } from 'nanoid';
@@ -55,7 +55,10 @@ export interface FileState {
   // UI state
   isLoading: boolean;
   error: string | null;
+
   isSidebarVisible: boolean;
+  expandedFolderIds: string[]; // Persisted expanded folders
+  treeFolders: Record<string, ParsedFile[]>; // Cached tree structure (parentId -> children)
 
   // Sort/filter
   sortBy: FileSortBy;
@@ -105,7 +108,10 @@ export interface FileActions {
   toggleFavoritesFilter: () => void;
 
   // UI actions
+
   toggleSidebar: () => void;
+  toggleFolderExpanded: (folderId: string) => Promise<void>;
+  initFolderTree: () => Promise<void>;
 
   // State management
   setLoading: (loading: boolean) => void;
@@ -127,6 +133,8 @@ const initialState: FileState = {
   isLoading: false,
   error: null,
   isSidebarVisible: true,
+  expandedFolderIds: [],
+  treeFolders: {},
   sortBy: 'date',
   sortOrder: 'desc',
   showFavoritesOnly: false,
@@ -137,7 +145,9 @@ const initialState: FileState = {
 };
 
 export const useFileStore = create<FileStore>()(
-  subscribeWithSelector((set, get) => ({
+  subscribeWithSelector(
+    persist(
+      (set, get) => ({
     ...initialState,
 
     // ========================================
@@ -607,6 +617,50 @@ export const useFileStore = create<FileStore>()(
       }));
     },
 
+    toggleFolderExpanded: async (folderId) => {
+      const state = get();
+      const isExpanded = state.expandedFolderIds.includes(folderId);
+      
+      if (isExpanded) {
+        // Collapse
+        set({ expandedFolderIds: state.expandedFolderIds.filter(id => id !== folderId) });
+      } else {
+        // Expand
+        set({ expandedFolderIds: [...state.expandedFolderIds, folderId] });
+        
+        // Fetch children if not already loaded (and not root, which is loaded via init)
+        // Root is handled by 'root' key, but folderId here is actual UUID.
+        if (!state.treeFolders[folderId]) {
+             const api = getFileApiClient();
+             const result = await api.getFiles({ folderId });
+             if (result.success) {
+               const folders = result.data.files.filter(f => f.isFolder);
+               set(state => ({
+                 treeFolders: {
+                   ...state.treeFolders,
+                   [folderId]: folders
+                 }
+               }));
+             }
+        }
+      }
+    },
+
+    initFolderTree: async () => {
+      // Load root folders
+      const api = getFileApiClient();
+      const result = await api.getFiles({ folderId: null });
+      if (result.success) {
+        const folders = result.data.files.filter(f => f.isFolder);
+        set(state => ({
+          treeFolders: {
+            ...state.treeFolders,
+            'root': folders
+          }
+        }));
+      }
+    },
+
     // ========================================
     // State Management
     // ========================================
@@ -614,7 +668,17 @@ export const useFileStore = create<FileStore>()(
     setError: (error) => set({ error }),
     clearUploadQueue: () => set({ uploadQueue: [], isUploading: false, uploadProgress: 0 }),
     reset: () => set(initialState),
-  }))
+  }),
+  {
+    name: 'bc-agent-file-store',
+    partialize: (state) => ({
+      // Persist only UI preferences
+      isSidebarVisible: state.isSidebarVisible,
+      expandedFolderIds: state.expandedFolderIds,
+    }),
+  }
+  )
+  )
 );
 
 /**
@@ -711,4 +775,29 @@ export const selectSelectedFiles = (state: FileStore): ParsedFile[] => {
  */
 export const selectHasSelection = (state: FileStore): boolean => {
   return state.selectedFileIds.size > 0;
+};
+
+// Memoization cache for root folders selector
+let cachedRootFolders: ParsedFile[] = [];
+let cachedRootFoldersKey = '';
+
+/**
+ * Selector: Get root folders for tree view
+ * Memoized to prevent infinite loops with useSyncExternalStore.
+ */
+export const selectRootFolders = (state: FileStore): ParsedFile[] => {
+  const rootFolders = state.treeFolders['root'];
+  
+  // Create cache key from root folder IDs
+  const cacheKey = rootFolders?.map(f => f.id).join(',') || '';
+  
+  if (cacheKey === cachedRootFoldersKey) {
+    return cachedRootFolders;
+  }
+  
+  const result = rootFolders || [];
+  cachedRootFoldersKey = cacheKey;
+  cachedRootFolders = result;
+  
+  return result;
 };

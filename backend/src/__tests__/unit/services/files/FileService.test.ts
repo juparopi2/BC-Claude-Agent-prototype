@@ -613,7 +613,7 @@ describe('FileService', () => {
 
   // ========== SUITE 8: DELETE FILE (2 TESTS) ==========
   describe('deleteFile()', () => {
-    it('should return blob_path for file deletion', async () => {
+    it('should return blob_path array for file deletion', async () => {
       const blobPath = 'users/test-user/files/invoice.pdf';
 
       // First SELECT to get blob_path
@@ -623,9 +623,10 @@ describe('FileService', () => {
       // Then DELETE
       mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
 
-      const returnedBlobPath = await fileService.deleteFile(testUserId, testFileId);
+      const returnedBlobPaths = await fileService.deleteFile(testUserId, testFileId);
 
-      expect(returnedBlobPath).toBe(blobPath);
+      // Implementation returns array of blob paths to delete
+      expect(returnedBlobPaths).toEqual([blobPath]);
 
       // Verify SELECT and DELETE queries
       expect(mockExecuteQuery).toHaveBeenNthCalledWith(
@@ -641,21 +642,26 @@ describe('FileService', () => {
       );
     });
 
-    it('should return null blob_path for folder deletion', async () => {
-      // First SELECT to get blob_path
+    it('should return empty array for folder deletion (no blob to clean up)', async () => {
+      // First SELECT to get blob_path (folder has no blob)
       mockExecuteQuery.mockResolvedValueOnce({
         recordset: [{ blob_path: '', is_folder: true }],
       });
-      // Then DELETE
+      // Second SELECT to get children (empty folder)
+      mockExecuteQuery.mockResolvedValueOnce({
+        recordset: [],
+      });
+      // Then DELETE the folder
       mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
 
-      const returnedBlobPath = await fileService.deleteFile(testUserId, testFileId);
+      const returnedBlobPaths = await fileService.deleteFile(testUserId, testFileId);
 
-      expect(returnedBlobPath).toBeNull(); // No blob to clean up
+      // Empty folder returns empty array (no blobs to clean up)
+      expect(returnedBlobPaths).toEqual([]);
 
       expect(mockLogger.info).toHaveBeenCalledWith(
         expect.objectContaining({ fileId: testFileId, isFolder: true }),
-        'File deleted from DB'
+        'Record deleted from DB'
       );
     });
   });

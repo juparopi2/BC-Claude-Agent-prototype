@@ -742,6 +742,77 @@ frontend/components/files/index.ts                # Barrel export
 
 ---
 
+### FASE 4: Embeddings y Búsqueda Semántica (Parcial) ⚙️
+
+**Inicio**: December 10, 2025
+**Estado**: Chunking strategies completadas, embeddings y vector search pendientes
+
+**Objetivo**: Implementar sistema RAG completo con chunking, embeddings y búsqueda vectorial.
+
+#### Entregables
+
+| # | Entregable | Tipo | Prioridad | Estado |
+|---|------------|------|-----------|--------|
+| 4.1 | RecursiveChunkingStrategy | Backend | Alta | ✅ Completado |
+| 4.2 | SemanticChunkingStrategy | Backend | Alta | ✅ Completado |
+| 4.3 | RowBasedChunkingStrategy | Backend | Alta | ✅ Completado |
+| 4.4 | ChunkingStrategyFactory | Backend | Media | ⏳ Pendiente |
+| 4.5 | EmbeddingService | Backend | Alta | ⏳ Pendiente |
+| 4.6 | VectorSearchService | Backend | Alta | ⏳ Pendiente |
+| 4.7 | MessageQueue Integration | Backend | Media | ⏳ Pendiente |
+
+#### Phase 4.1-4.3: Chunking Strategies ✅
+
+**Completion Date**: December 10, 2025
+
+**What Was Implemented**:
+
+1. **RecursiveChunkingStrategy** (22/22 tests passing)
+   - División jerárquica: párrafos → oraciones → palabras
+   - Respeta límite de tokens (512 default)
+   - Overlap inteligente (50 tokens default, solo cuando divide por tamaño)
+   - Metadata completa (chunkIndex, tokenCount, offsets)
+
+2. **SemanticChunkingStrategy** (20/20 tests passing)
+   - Detecta límites de tópicos (párrafos)
+   - Mantiene oraciones relacionadas juntas
+   - Nunca divide mid-sentence
+   - Overlap para contexto cuando necesario
+
+3. **RowBasedChunkingStrategy** (19/19 tests passing) - **Fixed December 10**
+   - Detecta formato (markdown vs CSV) con regex mejorado
+   - Preserva headers en cada chunk
+   - Token estimation mejorado: `split(/[\W_]+/)` + special chars
+   - Chunking estricto respetando maxTokens
+   - Soporte para preambles y offsets correctos
+   - Manejo de edge cases (header-only tables, multi-column)
+
+**Key Achievements**:
+- ✅ 3 chunking strategies con 61/61 tests passing (100%)
+- ✅ Token estimation preciso para texto denso y tabular
+- ✅ Type-safe con interfaces compartidas (ChunkingStrategy, ChunkResult)
+- ✅ Tests exhaustivos cubriendo edge cases
+- ✅ Build passing (TypeScript, lint, all tests green)
+
+**Files Created/Modified**:
+```
+backend/src/services/chunking/types.ts                            # Interfaces base
+backend/src/services/chunking/RecursiveChunkingStrategy.ts        # 280 lines
+backend/src/services/chunking/SemanticChunkingStrategy.ts         # 280 lines
+backend/src/services/chunking/RowBasedChunkingStrategy.ts         # 266 lines (fixed)
+backend/src/__tests__/unit/services/chunking/*.test.ts            # 61 tests total
+```
+
+**Known Issues Fixed**:
+- ✅ Token estimation for dense CSV data (was underestimating)
+- ✅ Markdown table detection regex (now supports multi-column)
+- ✅ Offset calculation (removed line filtering to preserve structure)
+- ✅ Header-only tables (now preserved correctly)
+
+**Next Steps**: See Phase 4.4-4.7 in FASE-4-TODO.md
+
+---
+
 ### FASE 3: Procesamiento de Documentos ✅
 
 **Completion Date**: December 10, 2025

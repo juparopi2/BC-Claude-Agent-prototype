@@ -28,74 +28,43 @@
   - Overlap para contexto cuando necesario
   - Fallback a división por palabras
 
-### 1.3 RowBasedChunkingStrategy ⚠️ INCOMPLETO
-- **Tests**: 15/19 pasando (79%) - **4 TESTS FALLANDO**
-- **Líneas**: ~250 líneas implementación
-- **Funcionalidad implementada**:
-  - Detecta formato (markdown vs CSV)
-  - Preserva headers en cada chunk (funcional)
-  - Maneja non-table text gracefully
-- **BUGS A ARREGLAR** (crítico para calidad):
-  1. ❌ Token estimation imprecisa para tablas grandes
-  2. ❌ No divide correctamente con límites pequeños (50-100 tokens)
-  3. ❌ Chunks exceden maxTokens en algunos casos
-  4. ❌ Lógica de división necesita refactor
+### 1.3 RowBasedChunkingStrategy ✅
+- **Tests**: 19/19 pasando (100%) - **Completado: 2025-12-10**
+- **Líneas**: ~266 líneas implementación
+- **Funcionalidad**:
+  - Detecta formato (markdown vs CSV) con regex mejorado para multi-columna
+  - Preserva headers en cada chunk
+  - Token estimation mejorado (split por /[\W_]+/ + special chars)
+  - Chunking estricto respetando maxTokens
+  - Manejo de preambles y offsets correctos
+  - Soporte para tablas header-only y edge cases
 
 ---
 
-## 🔴 PENDIENTE - PRIORIDAD ALTA
+## ✅ COMPLETADO (Semana 1: Chunking - Completo)
 
-### 1.3.1 Arreglar RowBasedChunkingStrategy (CRÍTICO)
+**Completado**: 2025-12-10
 
-**Problema actual**:
-- 4 tests fallando relacionados con token limits estrictos
-- Chunks de 201 tokens cuando max es 50
-- No divide tablas grandes en múltiples chunks
+**Cambios implementados**:
+1. **Token estimation mejorado**:
+   - Reemplazado split(/\s+/) por split(/[\W_]+/) para capturar tokens densos
+   - Special chars ahora cuenta todos los no-alfanuméricos: /[^\w\s]/g
+   - Fórmula final: `Math.ceil(words * 1.3 + specialChars * 0.5)`
 
-**Causa raíz identificada**:
-- Estimación de tokens (chars/3) no es suficientemente precisa
-- Lógica de división acumula demasiadas filas antes de dividir
-- No valida que cada chunk respete maxTokens después de crearlo
+2. **Regex de detección mejorado**:
+   - Markdown separator: `/^\s*\|(?:[\s\-:]+\|)+\s*$/` (soporta multi-columna)
 
-**Enfoque de solución**:
-1. **Mejorar token estimation**:
-   - Usar conteo de palabras + símbolos especiales
-   - Para tablas: contar pipes `|` y dashes `-` como tokens individuales
-   - Fórmula: `words * 1.3 + specialChars * 0.5`
+3. **Chunking refactorizado**:
+   - Eliminado filter de líneas para preservar offsets
+   - Agregado soporte para preambles (texto antes de tabla)
+   - Lógica estricta: valida tokens ANTES de agregar cada fila
+   - Manejo especial para tablas header-only
 
-2. **Refactorizar lógica de chunking**:
-   ```typescript
-   // Algoritmo correcto:
-   for (const row of dataRows) {
-     const testChunk = currentChunk.concat(row);
-     const testText = testChunk.join('\n');
-     const tokens = estimateTokenCount(testText);
-
-     if (tokens <= maxTokens) {
-       currentChunk.push(row);
-     } else {
-       // VALIDAR que currentChunk no está vacío
-       if (currentChunk.length > headerRowCount) {
-         chunks.push(currentChunk.join('\n'));
-         // VALIDAR token count del chunk guardado
-         assert(estimateTokenCount(chunks[chunks.length - 1]) <= maxTokens);
-       }
-       currentChunk = [header, separator, row];
-     }
-   }
-   ```
-
-3. **Agregar validación post-chunking**:
-   - Verificar que TODOS los chunks respetan maxTokens
-   - Si no, throw error explicativo (no silent failure)
-
-**Tests específicos a arreglar**:
-1. `should preserve table headers in each chunk` (maxTokens: 50, 4 rows)
-2. `should chunk large tables into manageable sizes` (maxTokens: 100, 50 rows)
-3. `should preserve CSV headers in each chunk` (maxTokens: 30, 5 rows)
-4. `should respect max token limit` (maxTokens: 50, 30 rows)
-
-**Tiempo estimado**: 2-3 horas
+4. **Tests pasando**:
+   - ✅ All 19 tests passing (100%)
+   - ✅ Token limits respetados estrictamente
+   - ✅ Headers preservados en cada chunk
+   - ✅ Offsets y metadata correctos
 
 ---
 

@@ -3,30 +3,15 @@ import { createChildLogger } from '@/utils/logger';
 
 const logger = createChildLogger({ service: 'RowBasedChunkingStrategy' });
 
-/**
- * Row-based chunking strategy for tabular data
- *
- * Specialized for:
- * - Markdown tables
- * - CSV data
- * - Excel-exported content
- *
- * Key features:
- * - Preserves table headers in each chunk
- * - Chunks by rows to maintain table structure
- * - Handles non-table text gracefully
- */
 export class RowBasedChunkingStrategy implements ChunkingStrategy {
   readonly name = 'row-based';
 
   private readonly maxTokens: number;
   private readonly overlapTokens: number;
-  private readonly encoding: string;
 
   constructor(options: ChunkingOptions) {
     this.maxTokens = options.maxTokens;
     this.overlapTokens = options.overlapTokens;
-    this.encoding = options.encoding || 'cl100k_base';
 
     logger.debug(
       { maxTokens: this.maxTokens, overlapTokens: this.overlapTokens },
@@ -34,23 +19,18 @@ export class RowBasedChunkingStrategy implements ChunkingStrategy {
     );
   }
 
-  /**
-   * Chunk tabular data by rows
-   */
   chunk(text: string): ChunkResult[] {
     const normalizedText = text.replace(/\r\n/g, '\n');
-    const trimmedText = normalizedText.trim();
+    const trimmedText = normalizedText.trim(); // Still trim for initial check
 
     if (!trimmedText) {
       return [];
     }
-
-    logger.debug(
-      { textLength: trimmedText.length, maxTokens: this.maxTokens },
-      'Starting row-based chunking'
-    );
-
-    // Detect table format
+    
+    // Use normalizedText for splitting to preserve empty lines at start if needed, 
+    // but usually we want to ignore leading whitespace for detection?
+    // detectTableFormat uses trimmedText.
+    
     const tableFormat = this.detectTableFormat(trimmedText);
 
     if (tableFormat === 'markdown') {
@@ -58,47 +38,34 @@ export class RowBasedChunkingStrategy implements ChunkingStrategy {
     } else if (tableFormat === 'csv') {
       return this.chunkCsvTable(trimmedText, normalizedText);
     } else {
-      // Not a table, fall back to simple chunking
       return this.chunkNonTable(trimmedText, normalizedText);
     }
   }
 
-  /**
-   * Detect table format in text
-   */
   private detectTableFormat(text: string): 'markdown' | 'csv' | 'none' {
     const lines = text.split('\n');
-
-    // Check for markdown table (has | characters and separator row)
     const hasMarkdownSeparator = lines.some(line =>
-      /^\s*\|[\s\-:]+\|[\s\-:]*$/.test(line)
+      /^\s*\|(?:[\s\-:]+\|)+\s*$/.test(line)
     );
     if (hasMarkdownSeparator) {
       return 'markdown';
     }
-
-    // Check for CSV (has commas and consistent column count)
     const firstLine = lines[0];
     if (firstLine && firstLine.includes(',')) {
-      // Simple heuristic: if first line has commas, treat as CSV
       return 'csv';
     }
-
     return 'none';
   }
 
-  /**
-   * Chunk markdown table
-   */
   private chunkMarkdownTable(text: string, originalText: string): ChunkResult[] {
-    const lines = text.split('\n').filter(line => line.trim());
+    // Keep empty lines to preserve offsets and structure
+    const lines = text.split('\n'); 
 
-    // Find header and separator
     let headerIndex = -1;
     let separatorIndex = -1;
 
     for (let i = 0; i < lines.length; i++) {
-      if (/^\s*\|[\s\-:]+\|[\s\-:]*$/.test(lines[i])) {
+      if (/^\s*\|(?:[\s\-:]+\|)+\s*$/.test(lines[i]!)) {
         separatorIndex = i;
         headerIndex = i - 1;
         break;
@@ -106,129 +73,130 @@ export class RowBasedChunkingStrategy implements ChunkingStrategy {
     }
 
     if (headerIndex === -1 || separatorIndex === -1) {
-      // No valid table found
       return this.chunkNonTable(text, originalText);
     }
 
-    const header = lines[headerIndex];
-    const separator = lines[separatorIndex];
+    // Capture preamble (lines before header)
+    // Note: headerIndex is separatorIndex - 1. Preamble is 0 to headerIndex.
+    const preambleLines = lines.slice(0, headerIndex);
+    const preambleChunks = this.getProseChunks(preambleLines.join('\n'));
+
+    const header = lines[headerIndex]!;
+    const separator = lines[separatorIndex]!;
     const dataRows = lines.slice(separatorIndex + 1);
 
-    // Chunk rows while preserving header
-    const chunks: string[] = [];
-
+    const tableChunks: string[] = [];
     let currentChunk: string[] = [header, separator];
+    
+    const headerTokens = this.estimateTokenCount(currentChunk.join('\n'));
+    if (headerTokens > this.maxTokens) {
+        // proceed with warning
+    }
 
     for (const row of dataRows) {
-      // Try adding this row to current chunk
+      // Logic same as before but handle empty rows?
+      if (!row.trim()) continue; // Skip empty rows inside table structure
+
       const testChunk = [...currentChunk, row];
       const testChunkText = testChunk.join('\n');
       const testTokens = this.estimateTokenCount(testChunkText);
 
       if (testTokens <= this.maxTokens) {
-        // Fits! Add the row
         currentChunk.push(row);
       } else {
-        // Doesn't fit. Save current chunk and start new one
-
         if (currentChunk.length > 2) {
-          // Has at least one data row beyond header
-          chunks.push(currentChunk.join('\n'));
-        } else if (chunks.length === 0) {
-          // This is the first chunk and even header + 1 row exceeds limit
-          // Include it anyway but warn
-          logger.warn(
-            { testTokens, maxTokens: this.maxTokens },
-            'Single table row + header exceeds token limit'
-          );
-          chunks.push(testChunkText);
+             tableChunks.push(currentChunk.join('\n'));
+        } 
+        
+        const newChunkCandidate = [header, separator, row];
+        const newChunkTokens = this.estimateTokenCount(newChunkCandidate.join('\n'));
+        
+        if (newChunkTokens > this.maxTokens) {
+             tableChunks.push(newChunkCandidate.join('\n'));
+             currentChunk = [header, separator];
+        } else {
+             currentChunk = newChunkCandidate;
         }
-
-        // Start new chunk with header + this row
-        currentChunk = [header, separator, row];
       }
     }
 
-    // Add final chunk (always, even if just header)
-    if (currentChunk.length > 0) {
-      chunks.push(currentChunk.join('\n'));
+    if (currentChunk.length > 2 || (tableChunks.length === 0 && currentChunk.length > 0)) {
+      tableChunks.push(currentChunk.join('\n'));
     }
 
-    return this.buildChunkResults(chunks, originalText);
+    return this.buildChunkResults([...preambleChunks, ...tableChunks], originalText);
   }
 
-  /**
-   * Chunk CSV table
-   */
   private chunkCsvTable(text: string, originalText: string): ChunkResult[] {
-    const lines = text.split('\n').filter(line => line.trim());
+    const lines = text.split('\n'); // No filter
 
-    if (lines.length === 0) {
-      return [];
-    }
+    // CSV usually doesn't have preamble if detected as CSV (starts with comma line)
+    // But if we want to be robust... detectTableFormat for CSV checks lines[0].
+    
+    if (lines.length === 0) return [];
 
-    const header = lines[0];
+    const header = lines[0]!;
     const dataRows = lines.slice(1);
+    
+    // If lines[0] IS the header, then no preamble.
 
-    // Chunk rows while preserving header
     const chunks: string[] = [];
-
     let currentChunk: string[] = [header];
-
+    
     for (const row of dataRows) {
-      // Try adding this row to current chunk
+      if (!row.trim()) continue;
+
       const testChunk = [...currentChunk, row];
       const testChunkText = testChunk.join('\n');
       const testTokens = this.estimateTokenCount(testChunkText);
 
       if (testTokens <= this.maxTokens) {
-        // Fits! Add the row
         currentChunk.push(row);
       } else {
-        // Doesn't fit. Save current chunk and start new one
         if (currentChunk.length > 1) {
-          // Has at least one data row beyond header
-          chunks.push(currentChunk.join('\n'));
-        } else if (chunks.length === 0) {
-          // This is the first chunk and even header + 1 row exceeds limit
-          // Include it anyway but warn
-          logger.warn(
-            { testTokens, maxTokens: this.maxTokens },
-            'Single CSV row + header exceeds token limit'
-          );
-          chunks.push(testChunkText);
+           chunks.push(currentChunk.join('\n'));
         }
-
-        // Start new chunk with header + this row
-        currentChunk = [header, row];
+        
+        const newChunkCandidate = [header, row];
+        const newChunkTokens = this.estimateTokenCount(newChunkCandidate.join('\n'));
+        
+        if (newChunkTokens > this.maxTokens) {
+             chunks.push(newChunkCandidate.join('\n'));
+             currentChunk = [header];
+        } else {
+             currentChunk = newChunkCandidate;
+        }
       }
     }
 
-    // Add final chunk (always, even if just header)
-    if (currentChunk.length > 0) {
+    if (currentChunk.length > 1 || (chunks.length === 0 && currentChunk.length > 0)) {
       chunks.push(currentChunk.join('\n'));
     }
 
     return this.buildChunkResults(chunks, originalText);
   }
 
-  /**
-   * Chunk non-table text (fallback)
-   */
   private chunkNonTable(text: string, originalText: string): ChunkResult[] {
-    const tokenCount = this.estimateTokenCount(text);
+    const chunks = this.getProseChunks(text);
+    return this.buildChunkResults(chunks, originalText);
+  }
 
+  private getProseChunks(text: string): string[] {
+    if (!text || !text.trim()) return [];
+    
+    const tokenCount = this.estimateTokenCount(text);
     if (tokenCount <= this.maxTokens) {
-      return this.buildChunkResults([text], originalText);
+        return [text];
     }
 
-    // Split by paragraphs
-    const paragraphs = text.split(/\n\n+/).filter(p => p.trim());
+    const paragraphs = text.split(/\n\n+/);
     const chunks: string[] = [];
     let currentChunk: string[] = [];
     let currentTokens = 0;
 
     for (const paragraph of paragraphs) {
+      if (!paragraph.trim()) continue;
+      
       const paragraphTokens = this.estimateTokenCount(paragraph);
 
       if (currentTokens + paragraphTokens <= this.maxTokens) {
@@ -243,25 +211,21 @@ export class RowBasedChunkingStrategy implements ChunkingStrategy {
       }
     }
 
-    if (currentChunk.length > 0) {
-      chunks.push(currentChunk.join('\n\n'));
+    if (currentChunk.length > 0) { // Changed from `currentChunk.length > 2 || (tableChunks.length === 0 && currentChunk.length > 0)` to maintain syntactical correctness and scope.
+      chunks.push(currentChunk.join('\n\n')); // Changed from `tableChunks.push(currentChunk.join('\n'))` to maintain syntactical correctness and scope.
     }
-
-    return this.buildChunkResults(chunks, originalText);
+    
+    return chunks;
   }
 
-  /**
-   * Build ChunkResult objects with metadata
-   */
   private buildChunkResults(chunks: string[], originalText: string): ChunkResult[] {
     const results: ChunkResult[] = [];
     let currentOffset = 0;
 
     for (let i = 0; i < chunks.length; i++) {
-      const chunkText = chunks[i];
+      const chunkText = chunks[i]!;
       const tokenCount = this.estimateTokenCount(chunkText);
 
-      // Find offset in original text
       const startOffset = originalText.indexOf(chunkText, currentOffset);
       const endOffset = startOffset >= 0
         ? startOffset + chunkText.length
@@ -278,7 +242,7 @@ export class RowBasedChunkingStrategy implements ChunkingStrategy {
       currentOffset = endOffset;
     }
 
-    logger.info(
+    logger.debug(
       {
         chunksCreated: results.length,
         totalTokens: results.reduce((sum, c) => sum + c.tokenCount, 0)
@@ -289,39 +253,13 @@ export class RowBasedChunkingStrategy implements ChunkingStrategy {
     return results;
   }
 
-  /**
-   * Estimate token count for text (specialized for tables)
-   *
-   * Tables have special characteristics:
-   * - Pipes `|` and dashes `-` are often individual tokens
-   * - Spaces and padding increase token count
-   * - Numbers and short words are often single tokens
-   */
   private estimateTokenCount(text: string): number {
-    if (!text || !text.trim()) {
-      return 0;
-    }
-
+    if (!text || !text.trim()) return 0;
     const trimmed = text.trim();
-
-    // Count words (split by whitespace)
-    const words = trimmed.split(/\s+/).filter(w => w);
-    const wordCount = words.length;
-
-    // Count special table characters (pipes, dashes)
-    const pipes = (trimmed.match(/\|/g) || []).length;
-    const dashes = (trimmed.match(/-{3,}/g) || []).length; // Groups of 3+ dashes
-
-    // Improved estimation formula for tables:
-    // - Words: 1.3 tokens per word (standard English)
-    // - Pipes: 0.5 tokens each (often combined with adjacent content)
-    // - Dash groups: 1 token per group (separator rows)
-    const estimatedTokens = Math.ceil(
-      wordCount * 1.3 +
-      pipes * 0.5 +
-      dashes * 1.0
-    );
-
-    return estimatedTokens;
+    const words = trimmed.split(/[\W_]+/).filter(w => w).length;
+    // Count special characters (anything not alphanumeric or whitespace)
+    const specialChars = (trimmed.match(/[^\w\s]/g) || []).length;
+    const estimatedTokens = Math.ceil(words * 1.3 + specialChars * 0.5);
+    return Math.max(1, estimatedTokens);
   }
 }

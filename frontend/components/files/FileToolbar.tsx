@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, useState, useEffect, useRef } from 'react';
 import { Upload, Star, RefreshCw, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Toggle } from '@/components/ui/toggle';
@@ -23,105 +23,132 @@ export function FileToolbar({ className, isNarrow = false }: FileToolbarProps) {
   const isLoading = useFileStore(state => state.isLoading);
   const { toggleFavoritesFilter, toggleSidebar, refreshCurrentFolder } = useFileStore();
 
+  const [toolbarWidth, setToolbarWidth] = useState<number>(Infinity);
+  const toolbarRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!toolbarRef.current) return;
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setToolbarWidth(entry.contentRect.width);
+      }
+    });
+
+    observer.observe(toolbarRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  const isCompact = toolbarWidth < 485;
+
   const handleRefresh = useCallback(() => {
     refreshCurrentFolder();
   }, [refreshCurrentFolder]);
 
   return (
-    <div className={cn(
-      'flex items-center gap-1 px-2 py-1.5 border-b',
-      'flex-wrap sm:flex-nowrap', // Wrap on mobile, single row on desktop
-      className
-    )}>
-      {/* Upload button */}
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 gap-1"
-            onClick={openFilePicker}
-            disabled={isUploading}
-          >
-            <Upload className="size-4" />
-            <span className="hidden sm:inline">Upload</span>
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>Upload files</TooltipContent>
-      </Tooltip>
+    <div
+      ref={toolbarRef}
+      className={cn(
+        'flex items-center gap-1 px-2 py-1.5 border-b',
+        'flex-wrap sm:flex-nowrap justify-between', // Wrap on mobile, single row on desktop
+        className
+      )}
+    >
 
-      {/* New Folder button */}
-      <CreateFolderDialog />
+      <div className="flex items-center gap-0">
+        
+        {/* Sidebar toggle button - first position, only show when not in narrow mode */}
+        {!isNarrow && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 gap-1"
+                onClick={toggleSidebar}
+                aria-label={isSidebarVisible ? 'Hide sidebar' : 'Show sidebar'}
+              >
+                {isSidebarVisible ? (
+                  <PanelLeftClose className="size-4" />
+                ) : (
+                  <PanelLeftOpen className="size-4" />
+                )}
+                {!isCompact && (
+                  <span>{isSidebarVisible ? 'Hide' : 'Show'}</span>
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {isSidebarVisible ? 'Hide sidebar' : 'Show sidebar'}
+            </TooltipContent>
+          </Tooltip>
+        )}
 
-      {/* Sidebar toggle button - only show when not in narrow mode */}
-      {!isNarrow && (
+        {/* Upload button */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 gap-1"
+              onClick={openFilePicker}
+              disabled={isUploading}
+            >
+              <Upload className="size-4" />
+              {!isCompact && <span>Upload</span>}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Upload files</TooltipContent>
+        </Tooltip>
+
+        {/* New Folder button */}
+        <CreateFolderDialog isCompact={isCompact} />
+
+      </div>
+      <div className="flex items-center gap-0">
+        {/* Favorites filter toggle */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Toggle
+              size="sm"
+              pressed={showFavoritesOnly}
+              onPressedChange={toggleFavoritesFilter}
+              className="h-8"
+              aria-label="Show favorites only"
+            >
+              <Star className={cn(
+                'size-4',
+                showFavoritesOnly && 'fill-amber-400 text-amber-400'
+              )} />
+            </Toggle>
+          </TooltipTrigger>
+          <TooltipContent>
+            {showFavoritesOnly ? 'Show all files' : 'Show favorites only'}
+          </TooltipContent>
+        </Tooltip>
+
+        {/* Sort controls */}
+        <FileSortControls isCompact={isCompact} />
+
+        {/* Refresh button */}
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
               variant="ghost"
               size="sm"
               className="h-8"
-              onClick={toggleSidebar}
-              aria-label={isSidebarVisible ? 'Hide sidebar' : 'Show sidebar'}
+              onClick={handleRefresh}
+              disabled={isLoading}
             >
-              {isSidebarVisible ? (
-                <PanelLeftClose className="size-4" />
-              ) : (
-                <PanelLeftOpen className="size-4" />
-              )}
+              <RefreshCw className={cn(
+                'size-4',
+                isLoading && 'animate-spin'
+              )} />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>
-            {isSidebarVisible ? 'Hide sidebar' : 'Show sidebar'}
-          </TooltipContent>
+          <TooltipContent>Refresh</TooltipContent>
         </Tooltip>
-      )}
-
-      {/* Spacer - min-w-0 allows flex to shrink */}
-      <div className="flex-1 min-w-0" />
-
-      {/* Favorites filter toggle */}
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Toggle
-            size="sm"
-            pressed={showFavoritesOnly}
-            onPressedChange={toggleFavoritesFilter}
-            className="h-8"
-            aria-label="Show favorites only"
-          >
-            <Star className={cn(
-              'size-4',
-              showFavoritesOnly && 'fill-amber-400 text-amber-400'
-            )} />
-          </Toggle>
-        </TooltipTrigger>
-        <TooltipContent>
-          {showFavoritesOnly ? 'Show all files' : 'Show favorites only'}
-        </TooltipContent>
-      </Tooltip>
-
-      {/* Sort controls */}
-      <FileSortControls />
-
-      {/* Refresh button */}
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8"
-            onClick={handleRefresh}
-            disabled={isLoading}
-          >
-            <RefreshCw className={cn(
-              'size-4',
-              isLoading && 'animate-spin'
-            )} />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>Refresh</TooltipContent>
-      </Tooltip>
+      </div>
     </div>
   );
 }

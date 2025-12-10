@@ -19,9 +19,10 @@ import { toast } from 'sonner';
 
 interface CreateFolderDialogProps {
   trigger?: React.ReactNode;
+  isCompact?: boolean;
 }
 
-export function CreateFolderDialog({ trigger }: CreateFolderDialogProps) {
+export function CreateFolderDialog({ trigger, isCompact = false }: CreateFolderDialogProps) {
   const [open, setOpen] = useState(false);
   const [folderName, setFolderName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
@@ -74,7 +75,7 @@ export function CreateFolderDialog({ trigger }: CreateFolderDialogProps) {
         {trigger || (
           <Button variant="ghost" size="sm" className="h-8 gap-1">
             <FolderPlus className="size-4" />
-            <span className="hidden sm:inline">New Folder</span>
+            {!isCompact && <span className="hidden sm:inline">New Folder</span> }
           </Button>
         )}
       </DialogTrigger>

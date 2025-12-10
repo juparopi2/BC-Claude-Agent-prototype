@@ -19,7 +19,7 @@ const SORT_OPTIONS: { value: FileSortBy; label: string }[] = [
   { value: 'size', label: 'Size' },
 ];
 
-export function FileSortControls() {
+export function FileSortControls({ isCompact = false }: { isCompact?: boolean }) {
   const sortBy = useFileStore(state => state.sortBy);
   const sortOrder = useFileStore(state => state.sortOrder);
   const { setSort, toggleSortOrder } = useFileStore();
@@ -36,7 +36,7 @@ export function FileSortControls() {
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" size="sm" className="h-8 gap-1">
             <ArrowUpDown className="size-4" />
-            <span className="hidden sm:inline">{currentLabel}</span>
+            {!isCompact && <span className="hidden sm:inline">{currentLabel}</span>}
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">

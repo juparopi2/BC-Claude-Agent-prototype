@@ -214,6 +214,12 @@ export class FileService {
     const fileId = randomUUID();
     const { userId, name, mimeType, sizeBytes, blobPath, parentFolderId } = options;
 
+    // Prevent storing blob path as name (catches bugs early)
+    if (name.match(/^\d{13}-/) || name.includes('users/')) {
+      this.logger.error({ name, blobPath }, 'Invalid file name: looks like blob path');
+      throw new Error('File name cannot be a blob path. Use original filename.');
+    }
+
     this.logger.info({ userId, name, sizeBytes, fileId }, 'Creating file record');
 
     try {

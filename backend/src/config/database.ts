@@ -149,6 +149,7 @@ const PARAMETER_TYPE_MAP: Record<string, ISqlType | (() => ISqlType)> = {
   // File-related columns
   'blob_path': sql.NVarChar(1000),
   'mime_type': sql.NVarChar(255),
+  'name': sql.NVarChar(500),
   'processing_status': sql.NVarChar(50),
   'embedding_status': sql.NVarChar(50),
   'extracted_text': sql.NVarChar(sql.MAX),

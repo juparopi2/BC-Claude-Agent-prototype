@@ -350,10 +350,17 @@ export class FileUploadService {
   }
 
   /**
-   * Sanitize filename to remove unsafe characters
+   * Sanitize filename for Azure Blob Storage paths
    *
-   * @param fileName - Original filename
-   * @returns Sanitized filename
+   * ⚠️ WARNING: This function STRIPS ALL Unicode characters (æøå, emoji, –, •, etc.)
+   *
+   * Use ONLY for generating blob_path for Azure Storage.
+   * DO NOT use for the database 'name' field - that should preserve Unicode.
+   *
+   * @param fileName - Original filename with Unicode characters
+   * @returns ASCII-only filename safe for Azure Blob Storage
+   * @example
+   * sanitizeFileName('Test – æøå.pdf') // Returns: 'Test-.pdf'
    */
   private sanitizeFileName(fileName: string): string {
     // Remove path traversal attempts

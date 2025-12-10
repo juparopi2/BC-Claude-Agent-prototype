@@ -106,14 +106,31 @@ router.post(
       // Get userId from authenticated request
       const userId = getUserId(req);
 
-      // Validate query params
-      const validation = uploadFileSchema.safeParse(req.query);
+      // Validate body params (Multer puts non-file FormData fields in req.body)
+      const validation = uploadFileSchema.safeParse(req.body);
       if (!validation.success) {
-        sendError(res, ErrorCode.VALIDATION_ERROR, validation.error.errors[0]?.message || 'Invalid query parameters');
+        sendError(res, ErrorCode.VALIDATION_ERROR, validation.error.errors[0]?.message || 'Invalid body parameters');
         return;
       }
 
       const { parentFolderId } = validation.data;
+
+      // Get services
+      const fileService = getFileService();
+      const fileUploadService = getFileUploadService();
+
+      // Validate parent folder if provided
+      if (parentFolderId) {
+        const parentFolder = await fileService.getFile(userId, parentFolderId);
+        if (!parentFolder) {
+          sendError(res, ErrorCode.NOT_FOUND, 'Parent folder not found');
+          return;
+        }
+        if (!parentFolder.isFolder) {
+          sendError(res, ErrorCode.VALIDATION_ERROR, 'Parent must be a folder');
+          return;
+        }
+      }
 
       // Validate files array exists and not empty
       const files = req.files as Express.Multer.File[] | undefined;
@@ -123,9 +140,6 @@ router.post(
       }
 
       logger.info({ userId, fileCount: files.length, parentFolderId }, 'Uploading files');
-
-      const fileUploadService = getFileUploadService();
-      const fileService = getFileService();
       const uploadedFiles: ParsedFile[] = [];
 
       // Loop through files and upload each one
@@ -427,7 +441,12 @@ router.get('/:id/download', authenticateMicrosoft, async (req: Request, res: Res
 
     // Set Content-Type and Content-Disposition headers
     res.setHeader('Content-Type', file.mimeType);
-    res.setHeader('Content-Disposition', `attachment; filename="${file.name}"`);
+
+    // RFC 5987 encoding for filename with UTF-8 support (for international characters)
+    // Format: filename*=UTF-8''encoded_filename
+    const encodedFilename = encodeURIComponent(file.name).replace(/['()]/g, escape).replace(/\*/g, '%2A');
+    res.setHeader('Content-Disposition', `attachment; filename="${file.name}"; filename*=UTF-8''${encodedFilename}`);
+
     res.setHeader('Content-Length', buffer.length.toString());
 
     // Send buffer

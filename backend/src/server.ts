@@ -257,9 +257,15 @@ function configureMiddleware(): void {
   // Session middleware (shared with Socket.IO)
   app.use(sessionMiddleware);
 
-  // Body parsing
-  app.use(express.json());
-  app.use(express.urlencoded({ extended: true }));
+  // Body parsing with explicit UTF-8 charset
+  app.use(express.json({ type: 'application/json' }));
+  app.use(express.urlencoded({ extended: true, type: 'application/x-www-form-urlencoded' }));
+
+  // Ensure all JSON responses have UTF-8 charset
+  app.use((_req, res, next) => {
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    next();
+  });
 }
 
 /**

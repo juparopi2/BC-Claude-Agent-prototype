@@ -74,20 +74,23 @@ function FileIcon({ file, className }: { file: ParsedFile; className?: string })
 /**
  * Format file size for display
  */
-function formatFileSize(bytes: number): string {
+function formatFileSize(bytes: number | string): string {
+  // Parse bytes to number
+  const parsedBytes = typeof bytes === 'string' ? Number(bytes) : bytes;
+  
   // Handle invalid input types
-  if (typeof bytes !== 'number' || isNaN(bytes) || bytes < 0) {
+  if (typeof parsedBytes !== 'number' || isNaN(parsedBytes) || parsedBytes < 0) {
     return '—';
   }
-  if (bytes === 0) return '—';
+  if (parsedBytes === 0) return '—';
 
   const units = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  const i = Math.floor(Math.log(parsedBytes) / Math.log(1024));
 
   // Extra safety check for array bounds
   if (i < 0 || i >= units.length) return '—';
 
-  return `${(bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0)} ${units[i]}`;
+  return `${(parsedBytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0)} ${units[i]}`;
 }
 
 /**
@@ -206,7 +209,7 @@ export const FileItem = memo(function FileItem({
       aria-label={`${file.isFolder ? 'Folder' : 'File'}: ${file.name}`}
     >
       {/* Icon */}
-      <FileIcon file={file} />
+      <FileIcon className="shrink-0" file={file} />
 
       {/* Name */}
       <Tooltip>
@@ -217,12 +220,12 @@ export const FileItem = memo(function FileItem({
       </Tooltip>
 
       {/* Size - hide on very narrow widths */}
-      <span className="text-xs text-muted-foreground w-16 text-right hidden md:block">
+      <span className="text-xs text-muted-foreground w-16 text-right hidden md:block shrink-0">
         {formatFileSize(file.sizeBytes)}
       </span>
 
       {/* Date - hide on narrow widths */}
-      <span className="text-xs text-muted-foreground w-20 text-right hidden lg:block">
+      <span className="text-xs text-muted-foreground w-20 text-right hidden lg:block shrink-0">
         {formatDate(file.updatedAt)}
       </span>
 

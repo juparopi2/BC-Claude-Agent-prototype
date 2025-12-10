@@ -27,13 +27,17 @@ export class TextProcessor implements DocumentProcessor {
    * @throws {Error} If UTF-8 decoding fails or buffer is empty
    */
   async extractText(buffer: Buffer, fileName: string): Promise<ExtractionResult> {
+    // Validate buffer first (before accessing .length)
+    if (!buffer || buffer.length === 0) {
+      logger.error({ fileName }, 'Buffer is empty or undefined');
+      throw new Error(
+        `Failed to extract text from ${fileName}: Buffer is empty or undefined`
+      );
+    }
+
     logger.info({ fileName, fileSize: buffer.length }, 'Starting text extraction');
 
     try {
-      // Validate buffer
-      if (!buffer || buffer.length === 0) {
-        throw new Error('Buffer is empty or undefined');
-      }
 
       // Decode UTF-8 text
       const text = buffer.toString('utf-8');

@@ -957,11 +957,13 @@ backend/src/__tests__/unit/services/chunking/*.test.ts            # 61 tests tot
 [ ] 4.5.5 Filtrado por userId (multi-tenant)
 [ ] 4.5.6 Agrupar resultados por archivo
 
-[ ] 4.6.1 Crear backend/src/services/processing/ChunkingStrategy.ts
-[ ] 4.6.2 Implementar semanticChunking(text)
-[ ] 4.6.3 Implementar recursiveChunking(text)
-[ ] 4.6.4 Implementar rowBasedChunking(csv)
-[ ] 4.6.5 Configurar chunk size (512 tokens) y overlap (50 tokens)
+[x] 4.6.1 Crear backend/src/services/chunking/ChunkingStrategy.ts
+[x] 4.6.2 Implementar semanticChunking(text) - SemanticChunkingStrategy (20/20 tests)
+[x] 4.6.3 Implementar recursiveChunking(text) - RecursiveChunkingStrategy (22/22 tests)
+[x] 4.6.4 Implementar rowBasedChunking(csv) - RowBasedChunkingStrategy (19/19 tests)
+[x] 4.6.5 Configurar chunk size (512 tokens) y overlap (50 tokens)
+[x] 4.6.6 Implementar ChunkingStrategyFactory para selección automática (10/10 tests)
+[x] 4.6.7 Crear ChunkFixture para tests (completed: December 10, 2025)
 
 [ ] 4.7.1 Agregar cola 'embedding-generation' a MessageQueue
 [ ] 4.7.2 Trigger automático post-procesamiento de archivo
@@ -993,6 +995,31 @@ backend/src/__tests__/unit/services/chunking/*.test.ts            # 61 tests tot
 | Región sin Computer Vision multimodal | Media | Alto | Verificar antes |
 | Costos de embeddings | Baja | Medio | Monitorear usage |
 | Rate limits Azure OpenAI | Media | Medio | Implementar backoff |
+
+
+---
+
+#### FASE 4.6: Estrategias de Chunking ✅ (COMPLETADA)
+
+**Completion Date**: December 10, 2025  
+**Tests**: 71/71 passing (100% coverage)
+
+**Archivos Creados**:
+- `backend/src/services/chunking/RecursiveChunkingStrategy.ts` (22 tests)
+- `backend/src/services/chunking/SemanticChunkingStrategy.ts` (20 tests)
+- `backend/src/services/chunking/RowBasedChunkingStrategy.ts` (19 tests)
+- `backend/src/services/chunking/ChunkingStrategyFactory.ts` (10 tests)
+- `backend/src/__tests__/fixtures/ChunkFixture.ts`
+- `backend/src/types/session.types.ts`
+
+**Key Achievements**:
+- ✅ 3 chunking strategies with different approaches (hierarchical, semantic, row-based)
+- ✅ Factory pattern for automatic strategy selection by MIME type
+- ✅ Configurable chunk size (512 tokens) and overlap (50 tokens)
+- ✅ Type-safe implementation (no `any` types)
+- ✅ 100% test coverage on all strategies
+
+**Next Steps**: Implement `EmbeddingService` for text embeddings (Phase 4.4)
 
 ---
 
@@ -1366,3 +1393,4 @@ La Fase 1.5 tiene **prioridad alta** porque:
 | 2025-12-09 | 0.3 | Fase 1.6 Complete: Background Workers & Billing Service - UsageAggregationService (28 tests), BillingService (33 tests), MessageQueue USAGE_AGGREGATION queue, /api/billing routes (7 endpoints) |
 | 2025-12-09 | 0.4 | Fase 2 Complete: UI de Navegación de Archivos - 11 components (FileExplorer, FileList, FileItem, FolderTree, FileUploadZone, etc.), fileStore (Zustand), fileApi service, shared types, RightPanel integration |
 | 2025-12-10 | 0.5 | Fase 3 Complete: Procesamiento de Documentos - PdfProcessor (Azure Document Intelligence + OCR), DocxProcessor (mammoth.js), ExcelProcessor (xlsx), TextProcessor, FileProcessingService orchestrator, SocketService singleton, FILE_PROCESSING BullMQ queue, WebSocket progress events, types from Azure SDK as source of truth |
+| 2025-12-10 | 0.6 | Fase 4.6 Complete: Chunking Infrastructure - RecursiveChunkingStrategy (22 tests), SemanticChunkingStrategy (20 tests), RowBasedChunkingStrategy (19 tests), ChunkingStrategyFactory (10 tests), ChunkFixture, session.types.ts, 71/71 tests passing |

@@ -1,5 +1,6 @@
 import type { ChunkingStrategy, ChunkingOptions, ChunkResult } from './types';
-import { createChildLogger } from '@/utils/logger';
+
+import { createChildLogger } from '../../utils/logger';
 
 const logger = createChildLogger({ service: 'RecursiveChunkingStrategy' });
 
@@ -71,6 +72,7 @@ export class RecursiveChunkingStrategy implements ChunkingStrategy {
 
     for (let i = 0; i < chunks.length; i++) {
       const chunkText = chunks[i];
+      if (!chunkText) continue;
       const tokenCount = this.estimateTokenCount(chunkText);
 
       // Find offset in original text
@@ -215,11 +217,16 @@ export class RecursiveChunkingStrategy implements ChunkingStrategy {
       return chunks;
     }
 
-    const overlappedChunks: string[] = [chunks[0]]; // First chunk unchanged
+    const firstChunk = chunks[0];
+    if (!firstChunk) return chunks;
+
+    const overlappedChunks: string[] = [firstChunk]; // First chunk unchanged
 
     for (let i = 1; i < chunks.length; i++) {
       const currentChunk = chunks[i];
       const previousChunk = chunks[i - 1];
+
+      if (!currentChunk || !previousChunk) continue;
 
       // Get last N words from previous chunk for overlap
       const overlapText = this.getOverlapText(previousChunk, this.overlapTokens);

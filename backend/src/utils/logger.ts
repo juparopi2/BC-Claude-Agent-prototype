@@ -35,6 +35,7 @@
 
 import pino from 'pino';
 import { Request } from 'express';
+import '../types/session.types';
 
 // Environment-based configuration
 const isDevelopment = process.env.NODE_ENV !== 'production';

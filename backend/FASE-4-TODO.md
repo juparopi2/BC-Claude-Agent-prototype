@@ -68,95 +68,53 @@
 
 ---
 
-### 1.4 ChunkingStrategyFactory + ChunkFixture
+### 1.4 ChunkingStrategyFactory + ChunkFixture ✅
 
-**Objetivo**: Factory pattern para crear estrategias + fixture para tests
+**Completado**: 2025-12-10
+**Tests**: 10/10 pasando (100%)
 
-**Archivos a crear**:
-1. `backend/src/services/chunking/ChunkingStrategyFactory.ts`
-2. `backend/src/__tests__/fixtures/ChunkFixture.ts`
-3. `backend/src/__tests__/unit/services/chunking/ChunkingStrategyFactory.test.ts`
+**Archivos creados**:
+1. ✅ `backend/src/services/chunking/ChunkingStrategyFactory.ts`
+2. ✅ `backend/src/__tests__/fixtures/ChunkFixture.ts`
+3. ✅ `backend/src/__tests__/unit/services/chunking/ChunkingStrategyFactory.test.ts`
+4. ✅ `backend/src/types/session.types.ts` (type augmentation for express-session)
 
-**Factory Pattern**:
-```typescript
-export class ChunkingStrategyFactory {
-  static create(
-    type: ChunkingStrategyType,
-    options: ChunkingOptions
-  ): ChunkingStrategy {
-    switch (type) {
-      case 'recursive':
-        return new RecursiveChunkingStrategy(options);
-      case 'semantic':
-        return new SemanticChunkingStrategy(options);
-      case 'row-based':
-        return new RowBasedChunkingStrategy(options);
-      default:
-        throw new Error(`Unknown chunking strategy: ${type}`);
-    }
-  }
+**Funcionalidad implementada**:
 
-  static createForFileType(mimeType: string): ChunkingStrategy {
-    // Heurística inteligente:
-    // - text/csv, application/vnd.ms-excel → row-based
-    // - text/markdown, text/plain → semantic
-    // - default → recursive
-  }
-}
-```
+**ChunkingStrategyFactory**:
+- `create(type, options)` - Crea estrategia por tipo explícito
+- `createForFileType(mimeType, options)` - Detecta estrategia por MIME type
+- `getStrategyTypeForMimeType(mimeType)` - Helper para mapeo MIME→Strategy
+- Heurística inteligente:
+  - `text/csv`, `application/vnd.ms-excel`, spreadsheets → `row-based`
+  - `text/markdown`, `text/plain` → `semantic`
+  - Default (PDFs, Word docs, etc.) → `recursive`
 
-**Fixture Pattern** (siguiendo FileFixture):
-```typescript
-export class ChunkFixture {
-  static createChunk(overrides?: Partial<ChunkResult>): ChunkResult {
-    return {
-      text: 'Sample chunk text with multiple sentences.',
-      chunkIndex: 0,
-      tokenCount: 12,
-      startOffset: 0,
-      endOffset: 42,
-      ...overrides
-    };
-  }
+**ChunkFixture**:
+- `createChunk(overrides?)` - Crea chunk individual con metadata completa
+- `createMultipleChunks(count)` - Genera chunks secuenciales
+- Presets: `shortParagraph`, `longDocument`, `tableRows`
 
-  static createMultipleChunks(count: number): ChunkResult[] {
-    return Array.from({ length: count }, (_, i) =>
-      ChunkFixture.createChunk({
-        chunkIndex: i,
-        text: `Chunk ${i} content with some text.`,
-        startOffset: i * 50,
-        endOffset: (i + 1) * 50
-      })
-    );
-  }
+**Tests validados**:
+- ✅ Factory crea RecursiveChunkingStrategy correctamente
+- ✅ Factory crea SemanticChunkingStrategy correctamente
+- ✅ Factory crea RowBasedChunkingStrategy correctamente
+- ✅ Factory rechaza tipos desconocidos (error handling)
+- ✅ createForFileType detecta CSV → row-based
+- ✅ createForFileType detecta Excel → row-based
+- ✅ createForFileType detecta Markdown → semantic
+- ✅ createForFileType detecta Plain Text → semantic
+- ✅ createForFileType detecta PDF → recursive (default)
+- ✅ createForFileType maneja tipos desconocidos → recursive (fallback)
 
-  // Presets para casos comunes
-  static Presets = {
-    shortParagraph: () => ChunkFixture.createChunk({
-      text: 'This is a short paragraph.',
-      tokenCount: 7
-    }),
+**Mejoras adicionales**:
+- Fixed session type augmentation to avoid using `any`
+- Resolved strict null checks in chunking strategies
+- Updated logger.ts to import session types properly
 
-    longDocument: () => ChunkFixture.createMultipleChunks(10),
+---
 
-    tableRows: () => ChunkFixture.createChunk({
-      text: '| Name | Age |\n|------|-----|\n| John | 30 |',
-      tokenCount: 15
-    })
-  };
-}
-```
-
-**Tests a escribir** (mínimo 10 tests):
-1. Factory crea estrategia correcta por tipo
-2. Factory valida opciones requeridas
-3. Factory detecta tipo por MIME type
-4. Factory rechaza tipos inválidos
-5. Fixture crea chunk válido
-6. Fixture crea múltiples chunks con índices correctos
-7. Fixture presets funcionan correctamente
-
-**Tiempo estimado**: 2-3 horas
+## 🎯 RESUMEN FASE 1: CHUNKING (100% COMPLETO)
 
 ---
 
@@ -882,8 +840,9 @@ SKIP_EXPENSIVE_TESTS: z.string().default('false').transform(v => v === 'true'),
    - Verificar 19/19 tests pasando
 
 ### HOY (Prioridad 2)
-3. 🔴 **Implementar ChunkingStrategyFactory**
-   - Escribir tests (RED)
+- [x] Implement `ChunkFixture` class for testing
+- [x] Implement `ChunkingStrategyFactory` class
+- [x] Unit/Integration Tests for Factory(RED)
    - Implementar factory (GREEN)
    - Crear ChunkFixture
    - Verificar todos los tests pasan

@@ -302,11 +302,32 @@ export const useFileStore = create<FileStore>()(
       const folder = result.data.folder;
 
       // Add to files list
-      set((state) => ({
-        files: [folder, ...state.files],
-        totalFiles: state.totalFiles + 1,
-        isLoading: false,
-      }));
+      // Add to files list and update tree if applicable
+      set((state) => {
+        const newFiles = [folder, ...state.files];
+        const newTotal = state.totalFiles + 1;
+        
+        // Update tree folders
+        let newTreeFolders = state.treeFolders;
+        
+        // We only update the tree if we have the parent folder loaded in the tree
+        // The parent is either the currentFolderId or 'root' if null
+        const parentKey = currentFolderId || 'root';
+        
+        if (state.treeFolders[parentKey]) {
+          newTreeFolders = {
+            ...state.treeFolders,
+            [parentKey]: [folder, ...state.treeFolders[parentKey]]
+          };
+        }
+
+        return {
+          files: newFiles,
+          totalFiles: newTotal,
+          isLoading: false,
+          treeFolders: newTreeFolders
+        };
+      });
 
       return folder;
     },
@@ -408,11 +429,31 @@ export const useFileStore = create<FileStore>()(
       const success = results.every((r) => r.success);
       if (success) {
         // Remove from files list
-        set((state) => ({
-          files: state.files.filter((f) => !fileIds.includes(f.id)),
-          totalFiles: state.totalFiles - fileIds.length,
-          selectedFileIds: new Set(),
-        }));
+        // Remove from files list and tree structure
+        set((state) => {
+          const newFiles = state.files.filter((f) => !fileIds.includes(f.id));
+          
+          // Update tree structure: remove these files (folders) from any cached tree nodes
+          const newTreeFolders = { ...state.treeFolders };
+          let treeUpdated = false;
+          
+          Object.keys(newTreeFolders).forEach(key => {
+            const originalLength = newTreeFolders[key].length;
+            const filteredChildren = newTreeFolders[key].filter(f => !fileIds.includes(f.id));
+            
+            if (filteredChildren.length !== originalLength) {
+              newTreeFolders[key] = filteredChildren;
+              treeUpdated = true;
+            }
+          });
+          
+          return {
+            files: newFiles,
+            totalFiles: state.totalFiles - fileIds.length,
+            selectedFileIds: new Set(),
+            treeFolders: treeUpdated ? newTreeFolders : state.treeFolders
+          };
+        });
       } else {
         set({ error: 'Failed to delete some files' });
       }
@@ -429,12 +470,47 @@ export const useFileStore = create<FileStore>()(
         return false;
       }
 
-      // Update in files list
-      set((state) => ({
-        files: state.files.map((f) =>
-          f.id === fileId ? result.data.file : f
-        ),
-      }));
+      const updatedFile = result.data.file;
+
+      // Update in files list and tree structure
+      set((state) => {
+        // 1. Update main files list
+        const newFiles = state.files.map((f) =>
+          f.id === fileId ? updatedFile : f
+        );
+
+        // 2. If it's a folder, update it in the tree cache to reflect name change in sidebar
+        let newTreeFolders = state.treeFolders;
+        if (updatedFile.isFolder) {
+          // It could be in 'root' or any parent's children list
+          let treeUpdated = false;
+          // Create shallow copy to mutate
+          const nextTreeFolders = { ...state.treeFolders };
+
+          Object.keys(nextTreeFolders).forEach((parentId) => {
+            const children = nextTreeFolders[parentId];
+            if (!children) return;
+            
+            const childIndex = children.findIndex((c) => c.id === fileId);
+            if (childIndex !== -1) {
+              // Found it, update the specific item
+              const newChildren = [...children];
+              newChildren[childIndex] = updatedFile;
+              nextTreeFolders[parentId] = newChildren;
+              treeUpdated = true;
+            }
+          });
+
+          if (treeUpdated) {
+            newTreeFolders = nextTreeFolders;
+          }
+        }
+
+        return {
+          files: newFiles,
+          treeFolders: newTreeFolders
+        };
+      });
       return true;
     },
 
@@ -478,13 +554,26 @@ export const useFileStore = create<FileStore>()(
       const file = state.files.find((f) => f.id === fileId);
       if (!file) return;
 
-      // Optimistic update
       const newFavoriteStatus = !file.isFavorite;
-      set((state) => ({
-        files: state.files.map((f) =>
-          f.id === fileId ? { ...f, isFavorite: newFavoriteStatus } : f
-        ),
-      }));
+
+      // Optimistic update
+      set((state) => {
+        // If we are currently showing ONLY favorites, and we are UN-favoriting this file,
+        // we should remove it from the view immediately.
+        if (state.showFavoritesOnly && !newFavoriteStatus) {
+           return {
+             files: state.files.filter(f => f.id !== fileId),
+             totalFiles: Math.max(0, state.totalFiles - 1)
+           };
+        }
+
+        // Normal case: just update the status
+        return {
+          files: state.files.map((f) =>
+            f.id === fileId ? { ...f, isFavorite: newFavoriteStatus } : f
+          ),
+        };
+      });
 
       // API call
       const api = getFileApiClient();
@@ -492,12 +581,11 @@ export const useFileStore = create<FileStore>()(
 
       if (result.success === false) {
         // Revert on error
-        set((state) => ({
-          files: state.files.map((f) =>
-            f.id === fileId ? { ...f, isFavorite: !newFavoriteStatus } : f
-          ),
-          error: result.error.message,
-        }));
+        set((state) => {
+           // Simplest fallback: refresh the folder to get true state
+           get().refreshCurrentFolder();
+           return { error: result.error.message };
+        });
       }
     },
 
@@ -648,11 +736,8 @@ export const useFileStore = create<FileStore>()(
                  newLoading.delete(folderId);
                  return { loadingFolderIds: newLoading };
              });
-
-             console.log('[FileStore] toggleFolderExpanded result', { folderId, success: result.success, itemCount: result.success ? result.data.files.length : 'error' });
              if (result.success) {
                const folders = result.data.files.filter(f => f.isFolder);
-               console.log('[FileStore] toggleFolderExpanded found folders', folders.length);
                set(state => ({
                  treeFolders: {
                    ...state.treeFolders,
@@ -753,7 +838,11 @@ export const selectSortedFiles = (state: FileStore): ParsedFile[] => {
  * Memoized to prevent infinite loops.
  */
 export const selectFolders = (state: FileStore): ParsedFile[] => {
-  const cacheKey = state.files.filter(f => f.isFolder).map(f => f.id).join(',');
+  // Use id + updatedAt to detect changes
+  const cacheKey = state.files
+    .filter(f => f.isFolder)
+    .map(f => `${f.id}-${f.updatedAt}`)
+    .join(',');
 
   if (cacheKey === cachedFoldersKey) {
     return cachedFolders;
@@ -806,8 +895,8 @@ let cachedRootFoldersKey = '';
 export const selectRootFolders = (state: FileStore): ParsedFile[] => {
   const rootFolders = state.treeFolders['root'];
   
-  // Create cache key from root folder IDs
-  const cacheKey = rootFolders?.map(f => f.id).join(',') || '';
+  // Create cache key from root folder IDs + timestamps
+  const cacheKey = rootFolders?.map(f => `${f.id}-${f.updatedAt}`).join(',') || '';
   
   if (cacheKey === cachedRootFoldersKey) {
     return cachedRootFolders;

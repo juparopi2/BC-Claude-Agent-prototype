@@ -1,13 +1,17 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import type { ParsedFile } from '@bc-agent/shared';
 import { Folder, Upload } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
+import { toast } from 'sonner';
 import { FileItem } from './FileItem';
 import { FileContextMenu } from './FileContextMenu';
 import { useFileStore, selectSortedFiles } from '@/lib/stores/fileStore';
+import { getFileApiClient } from '@/lib/services/fileApi';
+import { triggerDownload } from '@/lib/download';
+import { PDFComingSoonModal } from '@/components/modals/PDFComingSoonModal';
 
 export function FileList() {
   const files = useFileStore(selectSortedFiles);
@@ -15,13 +19,51 @@ export function FileList() {
   const selectedFileIds = useFileStore(state => state.selectedFileIds);
   const { selectFile, navigateToFolder, toggleFavorite } = useFileStore();
 
+  const [pdfModalOpen, setPdfModalOpen] = useState(false);
+  const [activePdfFile, setActivePdfFile] = useState<ParsedFile | null>(null);
+
   const handleSelect = useCallback((fileId: string, multi: boolean) => {
     selectFile(fileId, multi);
   }, [selectFile]);
 
-  const handleDoubleClick = useCallback((file: ParsedFile) => {
+  const handleDoubleClick = useCallback(async (file: ParsedFile) => {
     if (file.isFolder) {
       navigateToFolder(file.id);
+      return;
+    }
+
+    // Handle PDF files with the "Coming Soon" modal
+    if (file.mimeType === 'application/pdf') {
+      setActivePdfFile(file);
+      setPdfModalOpen(true);
+      return;
+    }
+
+    // Handle other files by downloading them
+    try {
+      const fileApi = getFileApiClient();
+      
+      toast.message('Downloading file', {
+        description: `Downloading ${file.name}...`,
+      });
+
+      const response = await fileApi.downloadFile(file.id);
+      
+      if (response.success) {
+        triggerDownload(response.data, file.name);
+        toast.success('Download started', {
+          description: `${file.name} is downloading.`,
+        });
+      } else {
+        toast.error('Download failed', {
+          description: response.error.message || 'Could not download file',
+        });
+      }
+    } catch (error) {
+      toast.error('Download failed', {
+        description: 'An unexpected error occurred',
+      });
+      console.error('Download exception:', error);
     }
   }, [navigateToFolder]);
 
@@ -65,6 +107,7 @@ export function FileList() {
 
   // File list
   return (
+    <>
     <ScrollArea className="h-full">
       <div className="p-2 space-y-0.5">
         {files.map(file => (
@@ -80,5 +123,11 @@ export function FileList() {
         ))}
       </div>
     </ScrollArea>
+    <PDFComingSoonModal
+        isOpen={pdfModalOpen}
+        onClose={() => setPdfModalOpen(false)}
+        fileName={activePdfFile?.name || ''}
+      />
+    </>
   );
 }

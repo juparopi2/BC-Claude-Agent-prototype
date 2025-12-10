@@ -162,9 +162,7 @@ export const FileItem = memo(forwardRef<HTMLDivElement, FileItemProps>(function 
   );
 
   const handleDoubleClick = useCallback(() => {
-    if (file.isFolder) {
-      onDoubleClick(file);
-    }
+    onDoubleClick(file);
   }, [file, onDoubleClick]);
 
   const handleFavoriteClick = useCallback(

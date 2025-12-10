@@ -83,6 +83,11 @@ export class FileApiClient {
         body: body ? JSON.stringify(body) : undefined,
       });
 
+      // Handle 204 No Content (successful delete with no body)
+      if (response.status === 204) {
+        return { success: true, data: {} as T };
+      }
+
       const data = await response.json();
 
       if (!response.ok) {

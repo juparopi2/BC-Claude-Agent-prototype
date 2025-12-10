@@ -505,7 +505,13 @@ router.get('/:id/download', authenticateMicrosoft, async (req: Request, res: Res
     // Send buffer
     res.send(buffer);
   } catch (error) {
-    logger.error({ error, userId: req.userId, fileId: req.params.id }, 'Download file failed');
+    logger.error({ 
+      error, 
+      errorMessage: error instanceof Error ? error.message : String(error),
+      errorStack: error instanceof Error ? error.stack : undefined,
+      userId: req.userId, 
+      fileId: req.params.id 
+    }, 'Download file failed');
 
     if (error instanceof ZodError) {
       sendError(res, ErrorCode.VALIDATION_ERROR, error.errors[0]?.message || 'Validation failed');
@@ -515,6 +521,12 @@ router.get('/:id/download', authenticateMicrosoft, async (req: Request, res: Res
     if (error instanceof Error && error.message === 'User not authenticated') {
       sendError(res, ErrorCode.UNAUTHORIZED, 'User not authenticated');
       return;
+    }
+
+    // Pass through specific blob storage errors if safe
+    if (error instanceof Error && error.message.includes('BlobNotFound')) {
+       sendError(res, ErrorCode.NOT_FOUND, 'File content not found in storage');
+       return;
     }
 
     sendError(res, ErrorCode.INTERNAL_ERROR, 'Failed to download file');
@@ -619,20 +631,25 @@ router.delete('/:id', authenticateMicrosoft, async (req: Request, res: Response)
 
     logger.info({ userId, fileId: id }, 'Deleting file');
 
-    // Delete file from database (returns blob_path for cleanup)
+    // Delete file from database (returns list of blob_paths for cleanup)
     const fileService = getFileService();
-    const blobPath = await fileService.deleteFile(userId, id);
+    const blobPaths = await fileService.deleteFile(userId, id);
 
-    // If blob_path exists, delete from blob storage
-    if (blobPath) {
-      try {
-        const fileUploadService = getFileUploadService();
-        await fileUploadService.deleteFromBlob(blobPath);
-        logger.info({ userId, fileId: id, blobPath }, 'File deleted from blob storage');
-      } catch (blobError) {
-        // Log error but don't fail the request (DB record already deleted)
-        logger.error({ error: blobError, userId, fileId: id, blobPath }, 'Failed to delete blob (DB record already deleted)');
-      }
+    // Helper to delete a single blob safely
+    const deleteBlobSafely = async (path: string) => {
+        try {
+            const fileUploadService = getFileUploadService();
+            await fileUploadService.deleteFromBlob(path);
+            logger.info({ userId, blobPath: path }, 'File deleted from blob storage');
+        } catch (blobError) {
+            // Log error but don't fail the request (DB record already deleted)
+            logger.error({ error: blobError, userId, blobPath: path }, 'Failed to delete blob (DB record already deleted)');
+        }
+    };
+
+    // Delete all blobs in parallel
+    if (blobPaths.length > 0) {
+        await Promise.all(blobPaths.map(path => deleteBlobSafely(path)));
     }
 
     logger.info({ userId, fileId: id }, 'File deleted successfully');

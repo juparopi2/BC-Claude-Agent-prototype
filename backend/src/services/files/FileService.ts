@@ -405,22 +405,25 @@ export class FileService {
   }
 
   /**
-   * 8. Delete file/folder (returns blob_path for cleanup)
+   * 8. Delete file/folder recursively (returns list of blob_paths for cleanup)
    *
    * @param userId - User ID (for ownership check)
    * @param fileId - File ID
-   * @returns Blob path for cleanup (or null if folder)
+   * @returns Array of blob paths to cleanup
    */
-  public async deleteFile(userId: string, fileId: string): Promise<string | null> {
-    this.logger.info({ userId, fileId }, 'Deleting file');
+  public async deleteFile(userId: string, fileId: string): Promise<string[]> {
+    this.logger.info({ userId, fileId }, 'Deleting file/folder');
+
+    // Collect all blob paths to delete
+    const blobsToDelete: string[] = [];
 
     try {
-      // First, get file to retrieve blob_path
+      // 1. Get file metadata
       const query = `
         SELECT blob_path, is_folder
         FROM files
         WHERE id = @id AND user_id = @user_id
-      `;
+        `;
 
       const params: SqlParams = {
         id: fileId,
@@ -430,17 +433,38 @@ export class FileService {
       const result = await executeQuery<{ blob_path: string; is_folder: boolean }>(query, params);
 
       if (result.recordset.length === 0) {
-        throw new Error('File not found or unauthorized');
+        // Idempotent: if not found, assume deleted
+        return [];
       }
 
       const record = result.recordset[0];
       if (!record) {
-        throw new Error('File not found or unauthorized');
+          return [];
       }
-
       const { blob_path, is_folder } = record;
 
-      // Delete from database
+      // 2. If folder, recursively delete children first
+      if (is_folder) {
+        const childrenQuery = `
+          SELECT id
+          FROM files
+          WHERE parent_folder_id = @id AND user_id = @user_id
+        `;
+        
+        const childrenResult = await executeQuery<{ id: string }>(childrenQuery, params);
+        
+        for (const child of childrenResult.recordset) {
+          const childBlobs = await this.deleteFile(userId, child.id);
+          blobsToDelete.push(...childBlobs);
+        }
+      } else {
+        // If file, add its blob path
+        if (blob_path) {
+          blobsToDelete.push(blob_path);
+        }
+      }
+
+      // 3. Delete current record from database
       const deleteQuery = `
         DELETE FROM files
         WHERE id = @id AND user_id = @user_id
@@ -448,10 +472,9 @@ export class FileService {
 
       await executeQuery(deleteQuery, params);
 
-      this.logger.info({ userId, fileId, isFolder: is_folder }, 'File deleted from DB');
+      this.logger.info({ userId, fileId, isFolder: is_folder }, 'Record deleted from DB');
 
-      // Return blob_path for cleanup (null for folders)
-      return is_folder ? null : blob_path;
+      return blobsToDelete;
     } catch (error) {
       this.logger.error({ error, userId, fileId }, 'Failed to delete file');
       throw error;

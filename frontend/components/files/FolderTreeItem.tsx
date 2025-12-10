@@ -27,11 +27,11 @@ export const FolderTreeItem = memo(function FolderTreeItem({
   const isSelected = currentFolderId === folder.id;
   const subfolders = treeFolders[folder.id] || [];
   
-  // Auto-fetch: If expanded but no children and not loading, trigger fetch
+  // Auto-collapse: If expanded but no children and not loading, force collapse
+  // This prevents recursive auto-expansion of deep folders after reload if data is missing.
   useEffect(() => {
     if (isExpanded && subfolders.length === 0 && !isLoading) {
-      // Toggle again will trigger fetch if missing
-      toggleFolderExpanded(folder.id);
+      toggleFolderExpanded(folder.id, false);
     }
   }, [isExpanded, subfolders.length, isLoading, folder.id, toggleFolderExpanded]);
 

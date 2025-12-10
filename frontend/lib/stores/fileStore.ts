@@ -112,7 +112,7 @@ export interface FileActions {
   // UI actions
 
   toggleSidebar: () => void;
-  toggleFolderExpanded: (folderId: string) => Promise<void>;
+  toggleFolderExpanded: (folderId: string, forceState?: boolean) => Promise<void>;
   initFolderTree: () => Promise<void>;
 
   // State management
@@ -620,16 +620,21 @@ export const useFileStore = create<FileStore>()(
       }));
     },
 
-    toggleFolderExpanded: async (folderId) => {
+    toggleFolderExpanded: async (folderId, forceState) => {
       const state = get();
-      const isExpanded = state.expandedFolderIds.includes(folderId);
+      const isCurrentlyExpanded = state.expandedFolderIds.includes(folderId);
+      const shouldExpand = forceState !== undefined ? forceState : !isCurrentlyExpanded;
       
-      if (isExpanded) {
+      if (!shouldExpand) {
         // Collapse
-        set({ expandedFolderIds: state.expandedFolderIds.filter(id => id !== folderId) });
+        if (isCurrentlyExpanded) {
+           set({ expandedFolderIds: state.expandedFolderIds.filter(id => id !== folderId) });
+        }
       } else {
         // Expand
-        set({ expandedFolderIds: [...state.expandedFolderIds, folderId] });
+        if (!isCurrentlyExpanded) {
+           set({ expandedFolderIds: [...state.expandedFolderIds, folderId] });
+        }
         
         // Fetch children if not already loaded (and not root, which is loaded via init)
         if (!state.treeFolders[folderId]) {

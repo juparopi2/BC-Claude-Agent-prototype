@@ -16,7 +16,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
 import { executeQuery } from '@/config/database';
-import { getRedis } from '@/config/redis';
+import { getRedisClient } from '@/config/redis-client'; // Use redis package client (not ioredis)
 import { normalizeUUID } from '@/utils/uuid';
 import {
   TEST_SESSION_SECRET,
@@ -101,13 +101,14 @@ export class TestSessionFactory {
    * Create a test user in the database
    *
    * @param options - Optional overrides
+   * @param redisClient - Optional Redis client (uses global singleton if not provided)
    * @returns Created test user with session cookie
    */
   async createTestUser(options?: {
     prefix?: string;
     email?: string;
     displayName?: string;
-  }): Promise<TestUser> {
+  }, redisClient?: ReturnType<typeof getRedisClient>): Promise<TestUser> {
     const prefix = options?.prefix || '';
     const userId = this.generateTestId();
     const microsoftId = `ms_${TEST_PREFIX}${Date.now()}_${Math.random().toString(36).substring(7)}`;
@@ -125,7 +126,7 @@ export class TestSessionFactory {
     this.createdUsers.push(userId);
 
     // Create Redis session for WebSocket authentication
-    const { sessionId, cookie } = await this.createSessionCookie(userId, email, microsoftId);
+    const { sessionId, cookie } = await this.createSessionCookie(userId, email, microsoftId, redisClient);
 
     return {
       id: userId,
@@ -178,14 +179,16 @@ export class TestSessionFactory {
    * @param userId - User ID to associate with session
    * @param email - User email
    * @param microsoftId - Optional Microsoft ID (defaults to test value)
+   * @param redisClient - Optional Redis client (uses global singleton if not provided)
    * @returns Session ID and cookie string
    */
   async createSessionCookie(
     userId: string,
     email: string,
-    microsoftId?: string
+    microsoftId?: string,
+    redisClient?: ReturnType<typeof getRedisClient>
   ): Promise<{ sessionId: string; cookie: string }> {
-    const redis = getRedis();
+    const redis = redisClient || getRedisClient();
     if (!redis) {
       throw new Error('Redis not initialized');
     }
@@ -232,13 +235,15 @@ export class TestSessionFactory {
    *
    * @param userId - User ID
    * @param email - User email
+   * @param redisClient - Optional Redis client (uses global singleton if not provided)
    * @returns Expired session details
    */
   async createExpiredSession(
     userId: string,
-    email: string
+    email: string,
+    redisClient?: ReturnType<typeof getRedisClient>
   ): Promise<{ sessionId: string; cookie: string }> {
-    const redis = getRedis();
+    const redis = redisClient || getRedisClient();
     if (!redis) {
       throw new Error('Redis not initialized');
     }
@@ -440,9 +445,10 @@ export class TestSessionFactory {
   /**
    * Verify test data exists
    *
+   * @param redisClient - Optional Redis client (uses global singleton if not provided)
    * @returns Summary of created test data
    */
-  async verifyTestData(): Promise<{
+  async verifyTestData(redisClient?: ReturnType<typeof getRedisClient>): Promise<{
     users: number;
     sessions: number;
     redisKeys: number;
@@ -461,7 +467,7 @@ export class TestSessionFactory {
       { emailPattern: testEmailPattern }
     );
 
-    const redis = getRedis();
+    const redis = redisClient || getRedisClient();
     if (!redis) {
       throw new Error('Redis not initialized');
     }
@@ -478,9 +484,10 @@ export class TestSessionFactory {
    * Cleanup all test data created by this factory
    *
    * Should be called in afterEach or afterAll hooks.
+   * @param redisClient - Optional Redis client (uses global singleton if not provided)
    */
-  async cleanup(): Promise<void> {
-    const redis = getRedis();
+  async cleanup(redisClient?: ReturnType<typeof getRedisClient>): Promise<void> {
+    const redis = redisClient || getRedisClient();
     if (!redis) {
       throw new Error('Redis not initialized');
     }

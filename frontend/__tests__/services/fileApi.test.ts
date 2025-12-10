@@ -266,8 +266,8 @@ describe('FileApiClient - Parameter Serialization', () => {
 
       // Verify parentFolderId is NOT in FormData
       expect(capturedFormData).not.toBeNull();
-      expect(capturedFormData?.has('parentFolderId')).toBe(false);
-      expect(capturedFormData?.has('files')).toBe(true);
+      expect(capturedFormData!.has('parentFolderId')).toBe(false);
+      expect(capturedFormData!.has('files')).toBe(true);
     });
 
     it('Test 9: should INCLUDE parentFolderId when uploading to subfolder', async () => {
@@ -293,9 +293,9 @@ describe('FileApiClient - Parameter Serialization', () => {
 
       // Verify parentFolderId IS in FormData
       expect(capturedFormData).not.toBeNull();
-      expect(capturedFormData?.has('parentFolderId')).toBe(true);
-      expect(capturedFormData?.get('parentFolderId')).toBe('folder-upload');
-      expect(capturedFormData?.has('files')).toBe(true);
+      expect(capturedFormData!.has('parentFolderId')).toBe(true);
+      expect(capturedFormData!.get('parentFolderId')).toBe('folder-upload');
+      expect(capturedFormData!.has('files')).toBe(true);
     });
   });
 

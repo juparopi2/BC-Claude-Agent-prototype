@@ -12,8 +12,8 @@ import { Server as HttpServer, createServer } from 'http';
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import express from 'express';
 import session from 'express-session';
-import { createClient as createRedisClient } from 'redis';
-import { RedisStore } from 'connect-redis';
+import { createClient, RedisClientType } from 'redis';
+import RedisStore from 'connect-redis';
 import {
   createTestSocketClient,
   createTestSessionFactory,
@@ -41,7 +41,7 @@ describe('Approval Flow Integration', () => {
   let testPort: number;
   let factory: TestSessionFactory;
   let approvalManager: ApprovalManager;
-  let redisClient: ReturnType<typeof createRedisClient>;
+  let redisClient: RedisClientType;
 
   const clients: TestSocketClient[] = [];
 
@@ -50,13 +50,12 @@ describe('Approval Flow Integration', () => {
     process.env.APPROVAL_TIMEOUT = '5000';
 
     // Create Redis client using test config
-    // IMPORTANT: legacyMode is required for connect-redis compatibility with redis@5.x
-    redisClient = createRedisClient({
+    // NOTE: connect-redis@7 requires redis package (not ioredis)
+    redisClient = createClient({
       socket: {
         host: REDIS_TEST_CONFIG.host,
         port: REDIS_TEST_CONFIG.port,
       },
-      legacyMode: true,
     });
 
     await redisClient.connect();
@@ -65,7 +64,11 @@ describe('Approval Flow Integration', () => {
     const app = express();
 
     const sessionMiddleware = session({
-      store: new RedisStore({ client: redisClient }),
+      store: new RedisStore({
+        client: redisClient,
+        prefix: 'sess:',
+        ttl: 86400, // 24 hours
+      }),
       secret: TEST_SESSION_SECRET,
       resave: false,
       saveUninitialized: false,
@@ -178,7 +181,7 @@ describe('Approval Flow Integration', () => {
   describe('Approval Request Lifecycle', () => {
     it('should create approval via request() method', async () => {
       // Create test user and session
-      const user = await factory.createTestUser({ prefix: 'appr_create_' });
+      const user = await factory.createTestUser({ prefix: 'appr_create_' }, redisClient);
       const session = await factory.createChatSession(user.id);
 
       // Connect client to receive events
@@ -219,7 +222,7 @@ describe('Approval Flow Integration', () => {
 
     it('should return true when user approves', async () => {
       // Create user and session
-      const user = await factory.createTestUser({ prefix: 'appr_approve_' });
+      const user = await factory.createTestUser({ prefix: 'appr_approve_' }, redisClient);
       const session = await factory.createChatSession(user.id);
 
       // Connect client
@@ -255,7 +258,7 @@ describe('Approval Flow Integration', () => {
 
     it('should return false when user rejects', async () => {
       // Create user and session
-      const user = await factory.createTestUser({ prefix: 'appr_deny_' });
+      const user = await factory.createTestUser({ prefix: 'appr_deny_' }, redisClient);
       const session = await factory.createChatSession(user.id);
 
       // Connect client
@@ -293,8 +296,8 @@ describe('Approval Flow Integration', () => {
   describe('Approval Security', () => {
     it('should prevent User A from responding to User B approval', async () => {
       // Create two users
-      const userA = await factory.createTestUser({ prefix: 'appr_sec_a_' });
-      const userB = await factory.createTestUser({ prefix: 'appr_sec_b_' });
+      const userA = await factory.createTestUser({ prefix: 'appr_sec_a_' }, redisClient);
+      const userB = await factory.createTestUser({ prefix: 'appr_sec_b_' }, redisClient);
       const sessionB = await factory.createChatSession(userB.id);
 
       // Connect both users
@@ -340,7 +343,7 @@ describe('Approval Flow Integration', () => {
 
     it('should use authenticated userId from socket, not payload', async () => {
       // Create user
-      const user = await factory.createTestUser({ prefix: 'appr_auth_' });
+      const user = await factory.createTestUser({ prefix: 'appr_auth_' }, redisClient);
       const session = await factory.createChatSession(user.id);
 
       // Connect
@@ -383,7 +386,7 @@ describe('Approval Flow Integration', () => {
   describe('Concurrent Approvals', () => {
     it('should handle first response and reject subsequent responses', async () => {
       // Create user
-      const user = await factory.createTestUser({ prefix: 'appr_race_' });
+      const user = await factory.createTestUser({ prefix: 'appr_race_' }, redisClient);
       const session = await factory.createChatSession(user.id);
 
       // Connect client

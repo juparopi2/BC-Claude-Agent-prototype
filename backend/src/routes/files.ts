@@ -76,6 +76,50 @@ const updateFileSchema = z.object({
 // ============================================
 
 /**
+ * Detect and fix mojibake in filenames from multer
+ *
+ * Multer receives filenames from Content-Disposition headers which are
+ * encoded as Latin-1 (ISO-8859-1) per HTTP RFC. When the browser sends
+ * UTF-8 characters, they get misinterpreted as Latin-1, causing mojibake.
+ *
+ * This function detects common mojibake patterns and reverses them.
+ *
+ * @param filename - Potentially corrupted filename from multer
+ * @returns Fixed filename with proper UTF-8 characters
+ * @example
+ * fixFilenameMojibake('Order received â proâ¢duhkâ¢tiv.pdf')
+ * // Returns: 'Order received – pro•duhk•tiv.pdf'
+ */
+export function fixFilenameMojibake(filename: string): string {
+  try {
+    // Check if filename contains mojibake markers
+    const hasMojibake = /[â€¢™'""–—Ã]/.test(filename);
+
+    if (!hasMojibake) {
+      // No mojibake detected, return as-is
+      return filename;
+    }
+
+    // Convert the corrupted string back to UTF-8
+    // The mojibake happened because UTF-8 bytes were interpreted as Latin-1
+    // We reverse it by converting back: Latin-1 → bytes → UTF-8
+    const latin1Buffer = Buffer.from(filename, 'latin1');
+    const utf8String = latin1Buffer.toString('utf8');
+
+    logger.debug({
+      original: filename,
+      fixed: utf8String
+    }, 'Fixed mojibake in filename');
+
+    return utf8String;
+  } catch (error) {
+    // If conversion fails, return original
+    logger.warn({ filename, error }, 'Failed to fix mojibake, using original filename');
+    return filename;
+  }
+}
+
+/**
  * Extract userId from authenticated request
  *
  * @param req - Express request with auth
@@ -157,10 +201,13 @@ router.post(
           // Upload to blob storage
           await fileUploadService.uploadToBlob(file.buffer, blobPath, file.mimetype);
 
+          // Fix mojibake in filename before storing
+          const fixedFilename = fixFilenameMojibake(file.originalname);
+
           // Create file record in database
           const fileId = await fileService.createFileRecord({
             userId,
-            name: file.originalname,
+            name: fixedFilename,
             mimeType: file.mimetype,
             sizeBytes: file.size,
             blobPath,
@@ -184,7 +231,13 @@ router.post(
             uploadedFiles.push(createdFile);
           }
 
-          logger.info({ userId, fileId, fileName: file.originalname }, 'File uploaded successfully');
+          logger.info({
+            userId,
+            fileId,
+            originalName: file.originalname,
+            fixedName: fixedFilename,
+            fileName: file.originalname
+          }, 'File uploaded successfully');
         } catch (fileError) {
           // Log error but continue with other files
           logger.error({ error: fileError, userId, fileName: file.originalname }, 'Failed to upload file');

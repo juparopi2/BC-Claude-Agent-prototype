@@ -101,7 +101,7 @@ describe('WebSocket Message Flow Integration', () => {
 
   describe('Chat Message Flow', () => {
     it('should emit user_message_confirmed after chat:message', async () => {
-      const testUser = await factory.createTestUser({ prefix: 'msg_confirm_' });
+      const testUser = await factory.createTestUser({ prefix: 'msg_confirm_' }, serverResult.redisClient);
       const testSession = await factory.createChatSession(testUser.id);
 
       client = createTestSocketClient({
@@ -149,7 +149,7 @@ describe('WebSocket Message Flow Integration', () => {
         usage: { input_tokens: 100, output_tokens: 75 },
       });
 
-      const testUser = await factory.createTestUser({ prefix: 'msg_chunks_' });
+      const testUser = await factory.createTestUser({ prefix: 'msg_chunks_' }, serverResult.redisClient);
       const testSession = await factory.createChatSession(testUser.id);
 
       client = createTestSocketClient({
@@ -180,7 +180,7 @@ describe('WebSocket Message Flow Integration', () => {
     });
 
     it('should emit final message event with content', async () => {
-      const testUser = await factory.createTestUser({ prefix: 'msg_final_' });
+      const testUser = await factory.createTestUser({ prefix: 'msg_final_' }, serverResult.redisClient);
       const testSession = await factory.createChatSession(testUser.id);
 
       client = createTestSocketClient({
@@ -205,7 +205,7 @@ describe('WebSocket Message Flow Integration', () => {
     });
 
     it('should emit complete event at end', async () => {
-      const testUser = await factory.createTestUser({ prefix: 'msg_complete_' });
+      const testUser = await factory.createTestUser({ prefix: 'msg_complete_' }, serverResult.redisClient);
       const testSession = await factory.createChatSession(testUser.id);
 
       client = createTestSocketClient({
@@ -228,7 +228,7 @@ describe('WebSocket Message Flow Integration', () => {
     });
 
     it('should emit thinking event when enabled', async () => {
-      const testUser = await factory.createTestUser({ prefix: 'msg_thinking_' });
+      const testUser = await factory.createTestUser({ prefix: 'msg_thinking_' }, serverResult.redisClient);
       const testSession = await factory.createChatSession(testUser.id);
 
       client = createTestSocketClient({
@@ -254,7 +254,7 @@ describe('WebSocket Message Flow Integration', () => {
     });
 
     it('should emit events in correct order', async () => {
-      const testUser = await factory.createTestUser({ prefix: 'msg_order_' });
+      const testUser = await factory.createTestUser({ prefix: 'msg_order_' }, serverResult.redisClient);
       const testSession = await factory.createChatSession(testUser.id);
 
       client = createTestSocketClient({
@@ -291,7 +291,7 @@ describe('WebSocket Message Flow Integration', () => {
 
   describe('Error Handling', () => {
     it('should reject empty message', async () => {
-      const testUser = await factory.createTestUser({ prefix: 'msg_empty_' });
+      const testUser = await factory.createTestUser({ prefix: 'msg_empty_' }, serverResult.redisClient);
       const testSession = await factory.createChatSession(testUser.id);
 
       client = createTestSocketClient({
@@ -312,7 +312,7 @@ describe('WebSocket Message Flow Integration', () => {
     });
 
     it('should handle message to non-joined session gracefully', async () => {
-      const testUser = await factory.createTestUser({ prefix: 'msg_nojoin_' });
+      const testUser = await factory.createTestUser({ prefix: 'msg_nojoin_' }, serverResult.redisClient);
       const testSession = await factory.createChatSession(testUser.id);
 
       client = createTestSocketClient({

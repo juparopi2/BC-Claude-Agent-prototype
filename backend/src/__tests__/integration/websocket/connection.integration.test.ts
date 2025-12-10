@@ -70,7 +70,7 @@ describe('WebSocket Connection Integration', () => {
   describe('Connection Flow', () => {
     it('should accept connection with valid session cookie', async () => {
       // Create test user with valid session
-      const testUser = await factory.createTestUser({ prefix: 'conn_valid_' });
+      const testUser = await factory.createTestUser({ prefix: 'conn_valid_' }, serverResult.redisClient);
 
       // Create socket client
       client = createTestSocketClient({
@@ -115,7 +115,7 @@ describe('WebSocket Connection Integration', () => {
 
     it('should set userId on authenticated socket', async () => {
       // Create test user
-      const testUser = await factory.createTestUser({ prefix: 'conn_userid_' });
+      const testUser = await factory.createTestUser({ prefix: 'conn_userid_' }, serverResult.redisClient);
 
       // Create and connect socket
       client = createTestSocketClient({
@@ -137,7 +137,7 @@ describe('WebSocket Connection Integration', () => {
   describe('Session Room Management', () => {
     it('should allow joining a session room', async () => {
       // Create test user and session
-      const testUser = await factory.createTestUser({ prefix: 'room_join_' });
+      const testUser = await factory.createTestUser({ prefix: 'room_join_' }, serverResult.redisClient);
       const testSession = await factory.createChatSession(testUser.id);
 
       // Connect socket
@@ -159,7 +159,7 @@ describe('WebSocket Connection Integration', () => {
 
     it('should allow leaving a session room', async () => {
       // Create test user and session
-      const testUser = await factory.createTestUser({ prefix: 'room_leave_' });
+      const testUser = await factory.createTestUser({ prefix: 'room_leave_' }, serverResult.redisClient);
       const testSession = await factory.createChatSession(testUser.id);
 
       // Connect and join
@@ -181,8 +181,8 @@ describe('WebSocket Connection Integration', () => {
 
     it('should isolate events to session rooms', async () => {
       // Create two test users with separate sessions
-      const userA = await factory.createTestUser({ prefix: 'room_iso_a_' });
-      const userB = await factory.createTestUser({ prefix: 'room_iso_b_' });
+      const userA = await factory.createTestUser({ prefix: 'room_iso_a_' }, serverResult.redisClient);
+      const userB = await factory.createTestUser({ prefix: 'room_iso_b_' }, serverResult.redisClient);
 
       const sessionA = await factory.createChatSession(userA.id);
       const sessionB = await factory.createChatSession(userB.id);
@@ -234,7 +234,7 @@ describe('WebSocket Connection Integration', () => {
   describe('Error Handling', () => {
     it('should handle server disconnect gracefully', async () => {
       // Create test user
-      const testUser = await factory.createTestUser({ prefix: 'err_disconnect_' });
+      const testUser = await factory.createTestUser({ prefix: 'err_disconnect_' }, serverResult.redisClient);
 
       // Connect
       client = createTestSocketClient({
@@ -252,7 +252,7 @@ describe('WebSocket Connection Integration', () => {
 
     it('should handle reconnection after disconnect', async () => {
       // Create test user
-      const testUser = await factory.createTestUser({ prefix: 'err_reconnect_' });
+      const testUser = await factory.createTestUser({ prefix: 'err_reconnect_' }, serverResult.redisClient);
 
       // First connection
       client = createTestSocketClient({

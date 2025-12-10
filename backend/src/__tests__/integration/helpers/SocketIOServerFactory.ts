@@ -11,8 +11,8 @@ import { Server as HttpServer, createServer } from 'http';
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import express, { Request, Response, NextFunction } from 'express';
 import session from 'express-session';
-import { createClient as createRedisClient, RedisClientType } from 'redis';
-import { RedisStore } from 'connect-redis';
+import { createClient, RedisClientType } from 'redis';
+import RedisStore from 'connect-redis';
 import { TEST_SESSION_SECRET, TEST_SESSION_COOKIE } from './constants';
 import { REDIS_TEST_CONFIG } from '../setup.integration';
 import { normalizeUUID } from '@/utils/uuid';
@@ -167,14 +167,13 @@ export async function createTestSocketIOServer(
   const { handlers = {}, normalizeUUIDs = true, corsOrigin = '*' } = options;
 
   // 1. Create Redis client for session store
-  // IMPORTANT: legacyMode is required for connect-redis compatibility with redis@5.x
-  const redisClient = createRedisClient({
+  // NOTE: connect-redis@7 requires redis package (not ioredis)
+  const redisClient = createClient({
     socket: {
       host: REDIS_TEST_CONFIG.host,
       port: REDIS_TEST_CONFIG.port,
     },
-    legacyMode: true,
-  }) as RedisClientType;
+  });
 
   await redisClient.connect();
 
@@ -185,7 +184,11 @@ export async function createTestSocketIOServer(
   const sessionMiddleware =
     options.sessionMiddleware ||
     session({
-      store: new RedisStore({ client: redisClient }),
+      store: new RedisStore({
+        client: redisClient,
+        prefix: 'sess:',
+        ttl: 86400, // 24 hours
+      }),
       secret: TEST_SESSION_SECRET,
       resave: false,
       saveUninitialized: false,

@@ -59,8 +59,8 @@
   "exclude": [
     "node_modules",
     "dist",
-    "scripts/**/*",
-    "src/__tests__/**/*"
+    "src/__tests__/**/*",
+    "scripts/**/*"
   ],
   "ts-node": {
     "require": ["tsconfig-paths/register"],

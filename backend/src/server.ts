@@ -16,7 +16,8 @@ import RedisStore from 'connect-redis';
 import { env, isProd, printConfig, validateRequiredSecrets } from './config/environment';
 import { loadSecretsFromKeyVault } from './config/keyvault';
 import { initDatabase, closeDatabase, checkDatabaseHealth, executeQuery } from './config/database';
-import { initRedis, closeRedis, checkRedisHealth, getRedis } from './config/redis';
+import { initRedis, closeRedis, checkRedisHealth } from './config/redis'; // ioredis for BullMQ only
+import { initRedisClient, closeRedisClient, getRedisClient } from './config/redis-client'; // redis package for sessions
 import { startDatabaseKeepalive, stopDatabaseKeepalive } from './utils/databaseKeepalive';
 import { logger } from './utils/logger';
 import { getBCClient } from './services/bc';
@@ -158,14 +159,24 @@ async function initializeApp(): Promise<void> {
       }
     }
 
-    // Step 4: Initialize Redis connection
+    // Step 4: Initialize Redis connections
+    // 4a. Redis client (redis package) for sessions - compatible with connect-redis@7
+    await initRedisClient();
+    console.log('');
+
+    // 4b. ioredis client for BullMQ (MessageQueue)
     await initRedis();
     console.log('');
 
     // Step 4.5: Initialize session middleware with RedisStore
+    const redisClient = getRedisClient();
+    if (!redisClient) {
+      throw new Error('Redis client not initialized for session store');
+    }
+
     sessionMiddleware = session({
       store: new RedisStore({
-        client: getRedis()!,
+        client: redisClient,
         prefix: 'sess:',
         ttl: 86400, // 24 hours in seconds
       }),
@@ -1211,8 +1222,9 @@ async function gracefulShutdown(signal: string): Promise<void> {
     // 5. Close database connection
     await closeDatabase();
 
-    // 6. Close Redis connection (do this AFTER MessageQueue closes)
-    await closeRedis();
+    // 6. Close Redis connections (do this AFTER MessageQueue closes)
+    await closeRedisClient(); // Session client (redis package)
+    await closeRedis(); // BullMQ client (ioredis)
 
     console.log('✅ All connections closed, exiting...');
     process.exit(0);

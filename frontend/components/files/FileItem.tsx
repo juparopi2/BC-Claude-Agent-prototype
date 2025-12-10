@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useCallback } from 'react';
+import { memo, useCallback, forwardRef } from 'react';
 import type { ParsedFile } from '@bc-agent/shared';
 import {
   Folder,
@@ -116,13 +116,12 @@ function formatDate(isoDate: string): string {
   });
 }
 
-interface FileItemProps {
+interface FileItemProps extends Omit<React.HTMLAttributes<HTMLDivElement>, 'onSelect' | 'onDoubleClick'> {
   file: ParsedFile;
-  isSelected: boolean;
+  isSelected?: boolean;
   onSelect: (fileId: string, multi: boolean) => void;
   onDoubleClick: (file: ParsedFile) => void;
   onFavoriteToggle: (fileId: string) => void;
-  onContextMenu?: (e: React.MouseEvent, file: ParsedFile) => void;
 }
 
 /**
@@ -141,19 +140,25 @@ interface FileItemProps {
  *
  * Optimized with React.memo for performance with large file lists.
  */
-export const FileItem = memo(function FileItem({
+export const FileItem = memo(forwardRef<HTMLDivElement, FileItemProps>(function FileItem({
   file,
   isSelected,
   onSelect,
   onDoubleClick,
   onFavoriteToggle,
-  onContextMenu,
-}: FileItemProps) {
+  className,
+  onClick,
+  onKeyDown,
+  ...props
+}, ref) {
   const handleClick = useCallback(
-    (e: React.MouseEvent) => {
-      onSelect(file.id, e.ctrlKey || e.metaKey);
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      onClick?.(e);
+      if (!e.defaultPrevented) {
+        onSelect(file.id, e.ctrlKey || e.metaKey);
+      }
     },
-    [file.id, onSelect]
+    [file.id, onSelect, onClick]
   );
 
   const handleDoubleClick = useCallback(() => {
@@ -170,16 +175,13 @@ export const FileItem = memo(function FileItem({
     [file.id, onFavoriteToggle]
   );
 
-  const handleContextMenu = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      onContextMenu?.(e, file);
-    },
-    [file, onContextMenu]
-  );
+
 
   const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      onKeyDown?.(e);
+      if (e.defaultPrevented) return;
+      
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
         if (e.key === 'Enter' && file.isFolder) {
@@ -189,24 +191,26 @@ export const FileItem = memo(function FileItem({
         }
       }
     },
-    [file, onSelect, onDoubleClick]
+    [file, onSelect, onDoubleClick, onKeyDown]
   );
 
   return (
     <div
+      ref={ref}
       className={cn(
         'group flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-colors',
         'hover:bg-accent/50',
-        isSelected && 'bg-accent ring-1 ring-primary/20'
+        isSelected && 'bg-accent ring-1 ring-primary/20',
+        className
       )}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
-      onContextMenu={handleContextMenu}
       onKeyDown={handleKeyDown}
       role="button"
       tabIndex={0}
       aria-pressed={isSelected}
       aria-label={`${file.isFolder ? 'Folder' : 'File'}: ${file.name}`}
+      {...props}
     >
       {/* Icon */}
       <FileIcon className="shrink-0" file={file} />
@@ -248,4 +252,4 @@ export const FileItem = memo(function FileItem({
       </button>
     </div>
   );
-});
+}));

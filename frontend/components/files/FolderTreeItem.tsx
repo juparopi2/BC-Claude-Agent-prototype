@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useFileStore, selectIsFolderLoading } from '@/lib/stores/fileStore';
+import { FileContextMenu } from './FileContextMenu';
 
 interface FolderTreeItemProps {
   folder: ParsedFile;
@@ -35,11 +36,6 @@ export const FolderTreeItem = memo(function FolderTreeItem({
     }
   }, [isExpanded, subfolders.length, isLoading, folder.id, toggleFolderExpanded]);
 
-  const handleToggle = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    toggleFolderExpanded(folder.id);
-  }, [toggleFolderExpanded, folder.id]);
-
   const handleSelect = useCallback(() => {
     if (onSelect) {
       onSelect(folder.id);
@@ -50,45 +46,47 @@ export const FolderTreeItem = memo(function FolderTreeItem({
 
   return (
     <Collapsible open={isExpanded} onOpenChange={() => toggleFolderExpanded(folder.id)}>
-      <div
-        className={cn(
-          'flex items-center gap-1 py-1 px-2 rounded cursor-pointer hover:bg-accent/50 transition-colors',
-          isSelected && 'bg-accent'
-        )}
-        style={{ paddingLeft: `${level * 12 + 8}px` }}
-        onClick={handleSelect}
-      >
-        {/* Expand/collapse button */}
-        <CollapsibleTrigger asChild>
-          <button
-            onClick={(e) => e.stopPropagation()}
-            className="p-0.5 hover:bg-accent rounded"
-            aria-label={isExpanded ? 'Collapse' : 'Expand'}
-          >
-             {isLoading ? (
-               <Loader2 className="size-4 text-muted-foreground animate-spin" />
-             ) : isExpanded ? (
-              <ChevronDown className="size-4 text-muted-foreground" />
-            ) : (
-              <ChevronRight className="size-4 text-muted-foreground" />
-            )}
-          </button>
-        </CollapsibleTrigger>
+      <FileContextMenu file={folder}>
+        <div
+          className={cn(
+            'flex items-center gap-1 py-1 px-2 rounded cursor-pointer hover:bg-accent/50 transition-colors',
+            isSelected && 'bg-accent'
+          )}
+          style={{ paddingLeft: `${level * 12 + 8}px` }}
+          onClick={handleSelect}
+        >
+          {/* Expand/collapse button */}
+          <CollapsibleTrigger asChild>
+            <button
+              onClick={(e) => e.stopPropagation()}
+              className="p-0.5 hover:bg-accent rounded"
+              aria-label={isExpanded ? 'Collapse' : 'Expand'}
+            >
+               {isLoading ? (
+                 <Loader2 className="size-4 text-muted-foreground animate-spin" />
+               ) : isExpanded ? (
+                <ChevronDown className="size-4 text-muted-foreground" />
+              ) : (
+                <ChevronRight className="size-4 text-muted-foreground" />
+              )}
+            </button>
+          </CollapsibleTrigger>
 
-        {/* Folder icon and name */}
-        <div className="flex items-center gap-2 flex-1 truncate">
-          <Folder className={cn(
-            'size-4 flex-shrink-0',
-            isExpanded ? 'text-amber-600' : 'text-amber-500'
-          )} />
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="text-sm truncate">{folder.name}</span>
-            </TooltipTrigger>
-            <TooltipContent side="right">{folder.name}</TooltipContent>
-          </Tooltip>
+          {/* Folder icon and name */}
+          <div className="flex items-center gap-2 flex-1 truncate">
+            <Folder className={cn(
+              'size-4 flex-shrink-0',
+              isExpanded ? 'text-amber-600' : 'text-amber-500'
+            )} />
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="text-sm truncate">{folder.name}</span>
+              </TooltipTrigger>
+              <TooltipContent side="right">{folder.name}</TooltipContent>
+            </Tooltip>
+          </div>
         </div>
-      </div>
+      </FileContextMenu>
 
       {/* Subfolders */}
       <CollapsibleContent>

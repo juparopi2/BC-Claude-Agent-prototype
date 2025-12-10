@@ -6,13 +6,10 @@ import { Folder, Upload } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { FileItem } from './FileItem';
+import { FileContextMenu } from './FileContextMenu';
 import { useFileStore, selectSortedFiles } from '@/lib/stores/fileStore';
 
-interface FileListProps {
-  onContextMenu?: (e: React.MouseEvent, file: ParsedFile) => void;
-}
-
-export function FileList({ onContextMenu }: FileListProps) {
+export function FileList() {
   const files = useFileStore(selectSortedFiles);
   const isLoading = useFileStore(state => state.isLoading);
   const selectedFileIds = useFileStore(state => state.selectedFileIds);
@@ -71,15 +68,15 @@ export function FileList({ onContextMenu }: FileListProps) {
     <ScrollArea className="h-full">
       <div className="p-2 space-y-0.5">
         {files.map(file => (
-          <FileItem
-            key={file.id}
-            file={file}
-            isSelected={selectedFileIds.has(file.id)}
-            onSelect={handleSelect}
-            onDoubleClick={handleDoubleClick}
-            onFavoriteToggle={handleFavoriteToggle}
-            onContextMenu={onContextMenu}
-          />
+          <FileContextMenu key={file.id} file={file}>
+            <FileItem
+              file={file}
+              isSelected={selectedFileIds.has(file.id)}
+              onSelect={handleSelect}
+              onDoubleClick={handleDoubleClick}
+              onFavoriteToggle={handleFavoriteToggle}
+            />
+          </FileContextMenu>
         ))}
       </div>
     </ScrollArea>

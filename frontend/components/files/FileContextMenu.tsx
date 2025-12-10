@@ -11,12 +11,12 @@ import {
   Copy,
 } from 'lucide-react';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu';
 import {
   Dialog,
   DialogContent,
@@ -39,8 +39,10 @@ interface FileContextMenuProps {
 
 export function FileContextMenu({ file, children, onOpenChange }: FileContextMenuProps) {
   const [renameOpen, setRenameOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [newName, setNewName] = useState(file.name);
   const [isRenaming, setIsRenaming] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const {
     downloadFile,
@@ -79,13 +81,15 @@ export function FileContextMenu({ file, children, onOpenChange }: FileContextMen
   }, [file.id, toggleFavorite]);
 
   const handleDelete = useCallback(async () => {
-    if (confirm(`Delete "${file.name}"? ${file.isFolder ? 'This will delete all contents.' : ''}`)) {
-      const success = await deleteFiles([file.id]);
-      if (success) {
-        toast.success(`"${file.name}" deleted`);
-      } else {
-        toast.error('Failed to delete');
-      }
+    setIsDeleting(true);
+    const success = await deleteFiles([file.id]);
+    setIsDeleting(false);
+    
+    if (success) {
+      toast.success(`"${file.name}" deleted`);
+      setDeleteOpen(false);
+    } else {
+      toast.error('Failed to delete');
     }
   }, [file, deleteFiles]);
 
@@ -96,27 +100,27 @@ export function FileContextMenu({ file, children, onOpenChange }: FileContextMen
 
   return (
     <>
-      <DropdownMenu onOpenChange={onOpenChange}>
-        <DropdownMenuTrigger asChild>
+      <ContextMenu onOpenChange={onOpenChange}>
+        <ContextMenuTrigger asChild>
           {children}
-        </DropdownMenuTrigger>
-        <DropdownMenuContent className="w-48">
+        </ContextMenuTrigger>
+        <ContextMenuContent className="w-48">
           {!file.isFolder && (
-            <DropdownMenuItem onClick={handleDownload}>
+            <ContextMenuItem onClick={handleDownload}>
               <Download className="size-4 mr-2" />
               Download
-            </DropdownMenuItem>
+            </ContextMenuItem>
           )}
 
-          <DropdownMenuItem onClick={() => {
+          <ContextMenuItem onClick={() => {
             setNewName(file.name);
             setRenameOpen(true);
           }}>
             <Pencil className="size-4 mr-2" />
             Rename
-          </DropdownMenuItem>
+          </ContextMenuItem>
 
-          <DropdownMenuItem onClick={handleToggleFavorite}>
+          <ContextMenuItem onClick={handleToggleFavorite}>
             {file.isFavorite ? (
               <>
                 <StarOff className="size-4 mr-2" />
@@ -128,24 +132,24 @@ export function FileContextMenu({ file, children, onOpenChange }: FileContextMen
                 Add to favorites
               </>
             )}
-          </DropdownMenuItem>
+          </ContextMenuItem>
 
-          <DropdownMenuItem onClick={handleCopyPath}>
+          <ContextMenuItem onClick={handleCopyPath}>
             <Copy className="size-4 mr-2" />
             Copy path
-          </DropdownMenuItem>
+          </ContextMenuItem>
 
-          <DropdownMenuSeparator />
+          <ContextMenuSeparator />
 
-          <DropdownMenuItem
-            onClick={handleDelete}
+          <ContextMenuItem
+            onClick={() => setDeleteOpen(true)}
             className="text-destructive focus:text-destructive"
           >
             <Trash2 className="size-4 mr-2" />
             Delete
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
 
       {/* Rename Dialog */}
       <Dialog open={renameOpen} onOpenChange={setRenameOpen}>
@@ -175,6 +179,35 @@ export function FileContextMenu({ file, children, onOpenChange }: FileContextMen
             </Button>
             <Button onClick={handleRename} disabled={isRenaming || !newName.trim()}>
               {isRenaming ? 'Renaming...' : 'Rename'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete {file.isFolder ? 'Folder' : 'File'}</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete &ldquo;{file.name}&rdquo;?
+              {file.isFolder && (
+                <span className="block mt-2 text-destructive font-semibold">
+                  This will permanently delete all contents inside this folder and its subfolders.
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteOpen(false)} disabled={isDeleting}>
+              Cancel
+            </Button>
+            <Button 
+              variant="destructive" 
+              onClick={handleDelete} 
+              disabled={isDeleting}
+            >
+              {isDeleting ? 'Deleting...' : 'Delete'}
             </Button>
           </DialogFooter>
         </DialogContent>

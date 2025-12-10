@@ -10,7 +10,6 @@ import { FileBreadcrumb } from './FileBreadcrumb';
 import { FileUploadZone } from './FileUploadZone';
 import { FileList } from './FileList';
 import { FolderTree } from './FolderTree';
-import { FileContextMenu } from './FileContextMenu';
 
 interface FileExplorerProps {
   className?: string;
@@ -19,17 +18,11 @@ interface FileExplorerProps {
 
 export function FileExplorer({ className, isNarrow = false }: FileExplorerProps) {
   const { fetchFiles, currentFolderId, isSidebarVisible } = useFileStore();
-  const [contextMenuFile, setContextMenuFile] = useState<ParsedFile | null>(null);
 
   // Load files on mount and when folder changes
   useEffect(() => {
     fetchFiles(currentFolderId);
   }, [fetchFiles, currentFolderId]);
-
-  // Context menu handler
-  const handleContextMenu = useCallback((_e: React.MouseEvent, file: ParsedFile) => {
-    setContextMenuFile(file);
-  }, []);
 
   // Narrow layout (no sidebar)
   if (isNarrow) {
@@ -39,20 +32,8 @@ export function FileExplorer({ className, isNarrow = false }: FileExplorerProps)
           <FileToolbar isNarrow />
           <FileBreadcrumb />
           <FileUploadZone className="flex-1 overflow-hidden">
-            <FileList onContextMenu={handleContextMenu} />
+            <FileList />
           </FileUploadZone>
-
-          {/* Context menu */}
-          {contextMenuFile && (
-            <FileContextMenu
-              file={contextMenuFile}
-              onOpenChange={(open) => {
-                if (!open) setContextMenuFile(null);
-              }}
-            >
-              <span className="sr-only">File options</span>
-            </FileContextMenu>
-          )}
         </div>
       </TooltipProvider>
     );
@@ -76,22 +57,10 @@ export function FileExplorer({ className, isNarrow = false }: FileExplorerProps)
           <div className="flex-1 flex flex-col overflow-hidden">
             <FileBreadcrumb />
             <FileUploadZone className="flex-1 overflow-hidden">
-              <FileList onContextMenu={handleContextMenu} />
+              <FileList />
             </FileUploadZone>
           </div>
         </div>
-
-        {/* Context menu */}
-        {contextMenuFile && (
-          <FileContextMenu
-            file={contextMenuFile}
-            onOpenChange={(open) => {
-              if (!open) setContextMenuFile(null);
-            }}
-          >
-            <span className="sr-only">File options</span>
-          </FileContextMenu>
-        )}
       </div>
     </TooltipProvider>
   );

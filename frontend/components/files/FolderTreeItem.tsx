@@ -1,12 +1,10 @@
-'use client';
-
-import { useCallback, memo } from 'react';
+import { useCallback, memo, useEffect } from 'react';
 import type { ParsedFile } from '@bc-agent/shared';
-import { Folder, ChevronRight, ChevronDown } from 'lucide-react';
+import { Folder, ChevronRight, ChevronDown, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { useFileStore } from '@/lib/stores/fileStore';
+import { useFileStore, selectIsFolderLoading } from '@/lib/stores/fileStore';
 
 interface FolderTreeItemProps {
   folder: ParsedFile;
@@ -22,24 +20,20 @@ export const FolderTreeItem = memo(function FolderTreeItem({
   const currentFolderId = useFileStore(state => state.currentFolderId);
   const expandedFolderIds = useFileStore(state => state.expandedFolderIds);
   const treeFolders = useFileStore(state => state.treeFolders);
+  const isLoading = useFileStore(state => selectIsFolderLoading(state, folder.id));
   const { toggleFolderExpanded, navigateToFolder } = useFileStore();
 
   const isExpanded = expandedFolderIds.includes(folder.id);
   const isSelected = currentFolderId === folder.id;
   const subfolders = treeFolders[folder.id] || [];
   
-
-  // Determine if we are loading: if expanded but no children and not specifically empty array (though we init with empty array in toggle... 
-  // actually toggleFolderExpanded sets empty array? No, it sets nothing until fetch success. but we default to [] above. 
-  // We need a way to know if we are 'loading'. 
-  // Store doesn't have granular loading state per folder yet. 
-  // Simple heuristic: if expanded and subfolders length is 0, we *might* be loading or it's empty.
-  // Ideally, store should track loading. But for now, user said "iterative manner", sticking to simple is better.
-  // The 'loading' spinner in the original code was based on local state.
-  // We can add a simple local state "isLocallyToggling" to show spinner? OR add loading to store.
-  // Let's rely on global isLoading? No, that locks the whole UI.
-  // Let's just show chevron for now. If user clicks and it takes time, we rely on async action.
-  // Improvement: Add loading state to store future.
+  // Auto-fetch: If expanded but no children and not loading, trigger fetch
+  useEffect(() => {
+    if (isExpanded && subfolders.length === 0 && !isLoading) {
+      // Toggle again will trigger fetch if missing
+      toggleFolderExpanded(folder.id);
+    }
+  }, [isExpanded, subfolders.length, isLoading, folder.id, toggleFolderExpanded]);
 
   const handleToggle = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -71,7 +65,9 @@ export const FolderTreeItem = memo(function FolderTreeItem({
             className="p-0.5 hover:bg-accent rounded"
             aria-label={isExpanded ? 'Collapse' : 'Expand'}
           >
-             {isExpanded ? (
+             {isLoading ? (
+               <Loader2 className="size-4 text-muted-foreground animate-spin" />
+             ) : isExpanded ? (
               <ChevronDown className="size-4 text-muted-foreground" />
             ) : (
               <ChevronRight className="size-4 text-muted-foreground" />

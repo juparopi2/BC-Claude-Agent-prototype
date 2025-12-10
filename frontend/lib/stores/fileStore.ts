@@ -57,7 +57,9 @@ export interface FileState {
   error: string | null;
 
   isSidebarVisible: boolean;
+
   expandedFolderIds: string[]; // Persisted expanded folders
+  loadingFolderIds: Set<string>; // Folders currently fetching children
   treeFolders: Record<string, ParsedFile[]>; // Cached tree structure (parentId -> children)
 
   // Sort/filter
@@ -134,6 +136,7 @@ const initialState: FileState = {
   error: null,
   isSidebarVisible: true,
   expandedFolderIds: [],
+  loadingFolderIds: new Set(),
   treeFolders: {},
   sortBy: 'date',
   sortOrder: 'desc',
@@ -629,12 +632,22 @@ export const useFileStore = create<FileStore>()(
         set({ expandedFolderIds: [...state.expandedFolderIds, folderId] });
         
         // Fetch children if not already loaded (and not root, which is loaded via init)
-        // Root is handled by 'root' key, but folderId here is actual UUID.
         if (!state.treeFolders[folderId]) {
+             set(state => ({ loadingFolderIds: new Set(state.loadingFolderIds).add(folderId) }));
              const api = getFileApiClient();
              const result = await api.getFiles({ folderId });
+             
+             // Clear loading state
+             set(state => {
+                 const newLoading = new Set(state.loadingFolderIds);
+                 newLoading.delete(folderId);
+                 return { loadingFolderIds: newLoading };
+             });
+
+             console.log('[FileStore] toggleFolderExpanded result', { folderId, success: result.success, itemCount: result.success ? result.data.files.length : 'error' });
              if (result.success) {
                const folders = result.data.files.filter(f => f.isFolder);
+               console.log('[FileStore] toggleFolderExpanded found folders', folders.length);
                set(state => ({
                  treeFolders: {
                    ...state.treeFolders,
@@ -800,4 +813,9 @@ export const selectRootFolders = (state: FileStore): ParsedFile[] => {
   cachedRootFolders = result;
   
   return result;
+};
+
+// Memoized selector for loading state
+export const selectIsFolderLoading = (state: FileStore, folderId: string): boolean => {
+    return state.loadingFolderIds.has(folderId);
 };

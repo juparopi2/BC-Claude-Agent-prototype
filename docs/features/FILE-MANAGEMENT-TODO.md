@@ -758,8 +758,8 @@ frontend/components/files/index.ts                # Barrel export
 | 4.3 | RowBasedChunkingStrategy | Backend | Alta | ✅ Completado |
 | 4.4 | ChunkingStrategyFactory | Backend | Media | ✅ Completado |
 | 4.5 | EmbeddingService | Backend | Alta | ✅ Completado |
-| 4.6 | VectorSearchService | Backend | Alta | ⏳ Pendiente |
-| 4.7 | MessageQueue Integration | Backend | Media | ⏳ Pendiente |
+| 4.6 | VectorSearchService | Backend | Alta | ✅ Completado |
+| 4.7 | MessageQueue Integration | Backend | Media | ✅ Completado |
 
 #### Phase 4.1-4.3: Chunking Strategies ✅
 

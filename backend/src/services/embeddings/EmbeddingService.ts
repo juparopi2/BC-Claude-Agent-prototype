@@ -167,4 +167,104 @@ export class EmbeddingService {
       };
   }
 
+  /**
+   * Generates vector embeddings for a batch of texts.
+   * optimized with Redis caching - only generates embeddings for non-cached texts.
+   * @param texts Array of texts to embed
+   * @param userId User ID for tracking
+   * @returns Array of TextEmbedding objects in the same order as input
+   */
+  async generateTextEmbeddingsBatch(texts: string[], userId: string): Promise<TextEmbedding[]> {
+    if (!texts || texts.length === 0) {
+      return [];
+    }
+
+    const cache = this.getCache();
+    const results: (TextEmbedding | null)[] = new Array(texts.length).fill(null);
+    
+    // 1. Check cache for all texts
+    const cacheKeys = texts.map(text => this.getCacheKey(text));
+    
+    try {
+      // Use mget to fetch all keys at once
+      const cachedValues = await cache.mget(...cacheKeys);
+      
+      cachedValues.forEach((value, index) => {
+        if (value) {
+          const embedding = JSON.parse(value) as TextEmbedding;
+          embedding.createdAt = new Date(embedding.createdAt);
+          results[index] = embedding;
+        }
+      });
+    } catch (error) {
+      console.error('Error reading from cache (batch):', error);
+      // Continue without cache on error
+    }
+
+    // 2. Identify missing indices
+    const missingIndices = results
+      .map((val, index) => val === null ? index : -1)
+      .filter(index => index !== -1);
+
+    if (missingIndices.length === 0) {
+      return results as TextEmbedding[];
+    }
+
+    // 3. Generate embeddings for missing texts
+    const client = this.getClient();
+    const textsToEmbed = missingIndices.map(index => texts[index]);
+
+    // OpenAI Limits: 2048 dimensions max, but we use strict chunks.
+    // Batch size limit is typically large enough, but we should be safe.
+    // If array is huge, we might need to chunk the API calls, but for "chunks" of a file,
+    // usually we process 10-100 at a time.
+    
+    try {
+      const apiResult = await client.embeddings.create({
+        input: textsToEmbed,
+        model: this.config.deploymentName
+      });
+
+      // 4. Merge results and update cache
+      if (!apiResult.data) {
+        throw new Error('No data returned from batch embedding generation');
+      }
+
+      const pipeline = cache.pipeline();
+
+      apiResult.data.forEach((item, i) => {
+        const originalIndex = missingIndices[i];
+        
+        const embeddingResult: TextEmbedding = {
+          embedding: item.embedding,
+          model: this.config.deploymentName,
+          tokenCount: 0, // In batch, sometimes total_tokens is aggregated. We can estimate or use total / count
+          userId,
+          createdAt: new Date(),
+          raw: apiResult // Store full response ref if needed, but might be heavy
+        };
+
+        // Distribute token usage approximation if provided globally
+        if (apiResult.usage && apiResult.usage.total_tokens) {
+           // This is rough approximation for individual tracking, 
+           // but accurate enough for aggregate costs if we track the batch call.
+           // Ideally we'd tokenize locally to be precise, but for now:
+           embeddingResult.tokenCount = Math.ceil(apiResult.usage.total_tokens / apiResult.data.length);
+        }
+
+        results[originalIndex] = embeddingResult;
+
+        // Cache the new result
+        pipeline.set(cacheKeys[originalIndex], JSON.stringify(embeddingResult), 'EX', 604800);
+      });
+
+      await pipeline.exec();
+
+    } catch (error) {
+       console.error('Error in batch embedding generation:', error);
+       throw error;
+    }
+
+    return results as TextEmbedding[];
+  }
 }

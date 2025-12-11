@@ -9,6 +9,16 @@ import { cleanup } from '@testing-library/react';
 import { setupServer } from 'msw/node';
 import { handlers } from './__tests__/mocks/handlers';
 import '@testing-library/jest-dom/vitest';
+import crypto from 'crypto';
+
+// Polyfill crypto.randomUUID for happy-dom
+Object.defineProperty(window, 'crypto', {
+  writable: true,
+  value: {
+    randomUUID: () => crypto.randomUUID(),
+    getRandomValues: (buffer: Uint8Array | Int8Array | Uint16Array | Int16Array | Uint32Array | Int32Array | BigInt64Array | BigUint64Array) => crypto.getRandomValues(buffer),
+  },
+});
 
 // Set up MSW server
 export const server = setupServer(...handlers);

@@ -8,6 +8,7 @@ vi.mock('@/lib/services/fileApi', () => ({
   getFileApiClient: vi.fn(),
 }));
 
+
 vi.mock('@/lib/stores/socketMiddleware', () => ({
   useSocket: vi.fn(() => ({
     isConnected: true,

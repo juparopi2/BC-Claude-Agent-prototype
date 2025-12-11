@@ -1396,12 +1396,18 @@ export class MessageQueue {
       for (let i = 0; i < chunks.length; i++) {
          // Safe access with fallback or check
          const searchId = searchDocIds[i];
+         const chunkId = chunks[i]?.id;
+
+         if (!chunkId) {
+            logger.warn({ fileId, i }, 'Missing chunk ID during update');
+            continue;
+         }
          
          await this.executeQueryFn(
              'UPDATE file_chunks SET search_document_id = @searchId WHERE id = @chunkId',
              {
                  searchId: searchId || null,
-                 chunkId: chunks[i].id
+                 chunkId: chunkId
              }
          );
       }

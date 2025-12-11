@@ -1,7 +1,6 @@
 import { env } from '@/config/environment';
 import { EmbeddingConfig, TextEmbedding, ImageEmbedding } from './types';
-// TODO: Fix import - AzureOpenAI not exported in current @azure/openai version
-// import { AzureOpenAI } from '@azure/openai';
+import { OpenAI } from 'openai';
 import Redis from 'ioredis';
 import { createRedisClient } from '@/config/redis';
 import crypto from 'crypto';
@@ -9,8 +8,7 @@ import crypto from 'crypto';
 export class EmbeddingService {
   private static instance?: EmbeddingService;
   private config: EmbeddingConfig;
-  // @ts-expect-error - AzureOpenAI type not available in @azure/openai@2.0.0, needs upgrade
-  private client?: AzureOpenAI;
+  private client?: OpenAI;
   private cache?: Redis;
 
   private constructor() {
@@ -38,15 +36,13 @@ export class EmbeddingService {
     return EmbeddingService.instance;
   }
 
-  // @ts-expect-error - Return type AzureOpenAI not available in @azure/openai@2.0.0
-  private getClient(): AzureOpenAI {
+  private getClient(): OpenAI {
     if (!this.client) {
-      // @ts-expect-error - AzureOpenAI constructor not available, needs SDK upgrade
-      this.client = new AzureOpenAI({
-        endpoint: this.config.endpoint,
+      this.client = new OpenAI({
         apiKey: this.config.apiKey,
-        apiVersion: '2024-06-01',
-        deployment: this.config.deploymentName,
+        baseURL: `${this.config.endpoint}/openai/deployments/${this.config.deploymentName}`,
+        defaultQuery: { 'api-version': '2024-06-01' },
+        defaultHeaders: { 'api-key': this.config.apiKey },
         maxRetries: 3
       });
     }
@@ -107,6 +103,9 @@ export class EmbeddingService {
     }
 
     const embeddingData = result.data[0];
+    if (!embeddingData) {
+      throw new Error('No embedding data in response');
+    }
 
     const finalResult: TextEmbedding = {
       embedding: embeddingData.embedding,

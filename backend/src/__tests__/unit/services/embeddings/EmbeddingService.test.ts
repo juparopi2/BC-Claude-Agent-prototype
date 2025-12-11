@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EmbeddingService } from '@/services/embeddings/EmbeddingService';
 import { env } from '@/config/environment';
-import { AzureOpenAI } from '@azure/openai';
+import { OpenAI } from 'openai';
 
 // Mock dependencies
 vi.mock('@/config/environment', async (importOriginal) => {
@@ -17,14 +17,16 @@ vi.mock('@/config/environment', async (importOriginal) => {
   };
 });
 
-vi.mock('@azure/openai', () => {
-    const MockAzureOpenAI = vi.fn();
-    MockAzureOpenAI.prototype.embeddings = {
+vi.mock('openai', () => {
+    const MockOpenAI = vi.fn();
+    MockOpenAI.prototype.embeddings = {
         create: vi.fn()
     };
-    return { AzureOpenAI: MockAzureOpenAI };
+    return { OpenAI: MockOpenAI };
 });
 
+// TODO: Re-enable tests after upgrading @azure/openai SDK
+// Tests were skipped because AzureOpenAI is not exported in @azure/openai@2.0.0
 describe('EmbeddingService', () => {
   const defaultEnv = { ...env };
 
@@ -78,7 +80,7 @@ describe('EmbeddingService', () => {
 
       // Mock the instance method of the mocked class
       // @ts-ignore
-      AzureOpenAI.prototype.embeddings.create = mockCreate;
+      OpenAI.prototype.embeddings.create = mockCreate;
 
       const result = await service.generateTextEmbedding('test text', 'user-123');
       
@@ -119,7 +121,7 @@ describe('EmbeddingService', () => {
       // Mock OpenAI to ensure it's NOT called
       const mockCreate = vi.fn();
       // @ts-ignore
-      AzureOpenAI.prototype.embeddings.create = mockCreate;
+      OpenAI.prototype.embeddings.create = mockCreate;
 
       const result = await service.generateTextEmbedding('cached text', 'user-123');
 
@@ -145,7 +147,7 @@ describe('EmbeddingService', () => {
             usage: { total_tokens: 15 }
         });
         // @ts-ignore
-        AzureOpenAI.prototype.embeddings.create = mockCreate;
+        OpenAI.prototype.embeddings.create = mockCreate;
 
         await service.generateTextEmbedding('new text', 'user-123');
 
@@ -167,7 +169,7 @@ describe('EmbeddingService', () => {
 
       const error = new Error('API Error');
       // @ts-ignore
-      AzureOpenAI.prototype.embeddings.create = vi.fn().mockRejectedValue(error);
+      OpenAI.prototype.embeddings.create = vi.fn().mockRejectedValue(error);
 
       await expect(service.generateTextEmbedding('fail text', 'user-123'))
         .rejects.toThrow('API Error');
@@ -194,7 +196,7 @@ describe('EmbeddingService', () => {
         // Access private client creation by calling generateTextEmbedding
         const mockCreate = vi.fn().mockResolvedValue({data: [{embedding: []}], usage: {total_tokens: 0}});
          // @ts-ignore
-        AzureOpenAI.prototype.embeddings.create = mockCreate;
+        OpenAI.prototype.embeddings.create = mockCreate;
         // @ts-ignore
         service.getCacheKey = () => 'key';
         // @ts-ignore
@@ -209,7 +211,7 @@ describe('EmbeddingService', () => {
         // We can verify calls to AzureOpenAI.
         // But 'AzureOpenAI' imported here IS the mock class.
         
-        expect(AzureOpenAI).toHaveBeenCalledWith(expect.objectContaining({
+        expect(OpenAI).toHaveBeenCalledWith(expect.objectContaining({
             maxRetries: 3 // We demand 3 retries
         }));
     });

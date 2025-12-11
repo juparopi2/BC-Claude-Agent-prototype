@@ -25,6 +25,7 @@ export const chatMessageSchema = z.object({
   message: z.string().min(1, 'Message cannot be empty').max(10000, 'Message too long (max 10000 chars)'),
   sessionId: z.string().uuid('Invalid session ID format'),
   userId: z.string().uuid('Invalid user ID format'),
+  attachments: z.array(z.string().uuid('Invalid attachment file ID')).max(20, 'Maximum 20 attachments allowed').optional(),
 });
 
 export type ChatMessageData = z.infer<typeof chatMessageSchema>;

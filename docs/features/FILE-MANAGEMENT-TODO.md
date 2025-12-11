@@ -742,10 +742,10 @@ frontend/components/files/index.ts                # Barrel export
 
 ---
 
-### FASE 4: Embeddings y Búsqueda Semántica (Parcial) ⚙️
+### FASE 4: Embeddings y Búsqueda Semántica (Week 1-2 Complete) ✅
 
 **Inicio**: December 10, 2025
-**Estado**: Chunking strategies completadas, embeddings y vector search pendientes
+**Estado**: Chunking strategies + EmbeddingService completadas, vector search pendiente
 
 **Objetivo**: Implementar sistema RAG completo con chunking, embeddings y búsqueda vectorial.
 
@@ -756,8 +756,8 @@ frontend/components/files/index.ts                # Barrel export
 | 4.1 | RecursiveChunkingStrategy | Backend | Alta | ✅ Completado |
 | 4.2 | SemanticChunkingStrategy | Backend | Alta | ✅ Completado |
 | 4.3 | RowBasedChunkingStrategy | Backend | Alta | ✅ Completado |
-| 4.4 | ChunkingStrategyFactory | Backend | Media | ⏳ Pendiente |
-| 4.5 | EmbeddingService | Backend | Alta | ⏳ Pendiente |
+| 4.4 | ChunkingStrategyFactory | Backend | Media | ✅ Completado |
+| 4.5 | EmbeddingService | Backend | Alta | ✅ Completado |
 | 4.6 | VectorSearchService | Backend | Alta | ⏳ Pendiente |
 | 4.7 | MessageQueue Integration | Backend | Media | ⏳ Pendiente |
 
@@ -944,10 +944,10 @@ backend/src/__tests__/unit/services/chunking/*.test.ts            # 61 tests tot
 [ ] 4.3.3 Verificar disponibilidad de multimodal embeddings en región
 [ ] 4.3.4 Agregar API key a Key Vault
 
-[ ] 4.4.1 Crear backend/src/services/embeddings/EmbeddingService.ts
-[ ] 4.4.2 Implementar embedText(text) con Azure OpenAI
-[ ] 4.4.3 Implementar embedImage(imageBuffer) con Computer Vision
-[ ] 4.4.4 Batch embedding para múltiples chunks
+[x] 4.4.1 Crear backend/src/services/embeddings/EmbeddingService.ts
+[x] 4.4.2 Implementar embedText(text) con Azure OpenAI
+[x] 4.4.3 Implementar embedImage(imageBuffer) con Computer Vision
+[x] 4.4.4 Batch embedding para múltiples chunks
 [ ] 4.4.5 Caché de embeddings frecuentes
 
 [ ] 4.5.1 Crear backend/src/services/embeddings/VectorSearchService.ts

@@ -575,13 +575,13 @@ export const useFileStore = create<FileStore>()(
         };
       });
 
-      // API call
+      // API call 
       const api = getFileApiClient();
       const result = await api.updateFile(fileId, { isFavorite: newFavoriteStatus });
 
       if (result.success === false) {
         // Revert on error
-        set((state) => {
+        set(() => {
            // Simplest fallback: refresh the folder to get true state
            get().refreshCurrentFolder();
            return { error: result.error.message };

@@ -37,9 +37,9 @@ describe('ChatInput Attachments', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    (getFileApiClient as any).mockReturnValue({
+    vi.mocked(getFileApiClient).mockReturnValue({
       uploadFiles: mockUploadFiles,
-    });
+    } as ReturnType<typeof getFileApiClient>);
   });
 
   it('uploads file and adds attachment chip on selection', async () => {
@@ -58,27 +58,7 @@ describe('ChatInput Attachments', () => {
       />
     );
 
-    // Find hidden input
-    // Note: Since input is hidden, we might need to target by labels or use container query if available, 
-    // but standard way is often just getting the input directly even if hidden for testing events.
-    // However, the component renders a button that triggers the input.
-    // Let's try to query the input directly first.
-    // Since it has no label, we might need to rely on the container.
-    // Actually, looking at the code, the input has `className="hidden"`.
-    // We can use `container.querySelector('input[type="file"]')`.
-    
-    const { container } = render(
-      <ChatInput 
-        sessionId="session-1" 
-        isConnected={true} 
-        sendMessage={mockSendMessage}
-      />
-    );
-    
-    // Cleaning up the previous render to avoid duplicates
-    // Actually testing-library cleanup happens automatically.
-
-    // Re-render to capture the container correctly
+    // Test is incomplete - skipping for now
   });
 
   it('handles file upload and sending correctly', async () => {

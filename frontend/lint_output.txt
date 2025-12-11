@@ -1,0 +1,42 @@
+﻿
+> bc-agent-frontend@0.1.0 lint
+> eslint
+
+
+D:\Documents\BC-Claude-Agent-prototype\frontend\__tests__\components\chat\ChatInput.test.tsx
+  40:26  error    Unexpected any. Specify a different type        @typescript-eslint/no-explicit-any
+  70:13  warning  'container' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+D:\Documents\BC-Claude-Agent-prototype\frontend\__tests__\components\files\FileExplorer.test.tsx
+    9:18  warning  'screen' is defined but never used          @typescript-eslint/no-unused-vars
+  217:13  warning  'state' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+D:\Documents\BC-Claude-Agent-prototype\frontend\__tests__\services\fileApi.test.ts
+   9:44  warning  'vi' is defined but never used              @typescript-eslint/no-unused-vars
+  19:3   warning  'FolderResponse' is defined but never used  @typescript-eslint/no-unused-vars
+
+D:\Documents\BC-Claude-Agent-prototype\frontend\__tests__\stores\fileStore.test.ts
+  7:44  warning  'vi' is defined but never used  @typescript-eslint/no-unused-vars
+
+D:\Documents\BC-Claude-Agent-prototype\frontend\components\files\CreateFolderDialog.tsx
+  8:3  warning  'DialogDescription' is defined but never used  @typescript-eslint/no-unused-vars
+
+D:\Documents\BC-Claude-Agent-prototype\frontend\lib\stores\fileStore.ts
+  584:14  warning  'state' is defined but never used  @typescript-eslint/no-unused-vars
+
+Γ£û 9 problems (1 error, 8 warnings)
+
+node.exe : npm error Lifecycle script `lint` failed with error:
+En C:\nvm4w\nodejs\npm.ps1: 16 Carácter: 5
++     & "$basedir/node$exe"  "$basedir/node_modules/npm/bin/npm-cli.js" ...
++     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (npm error Lifec...led with error 
+   ::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+npm error code 1
+npm error path D:\Documents\BC-Claude-Agent-prototype\frontend
+npm error workspace bc-agent-frontend@0.1.0
+npm error location D:\Documents\BC-Claude-Agent-prototype\frontend
+npm error command failed
+npm error command C:\WINDOWS\system32\cmd.exe /d /s /c eslint

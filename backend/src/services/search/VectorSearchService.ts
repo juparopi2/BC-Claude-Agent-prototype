@@ -56,14 +56,17 @@ export class VectorSearchService {
     if (!this.indexClient) {
       await this.initializeClients();
     }
+    if (!this.indexClient) {
+      throw new Error('Failed to initialize index client');
+    }
 
     try {
-      await this.indexClient!.getIndex(INDEX_NAME);
+      await this.indexClient.getIndex(INDEX_NAME);
       logger.info(`Index '${INDEX_NAME}' already exists.`);
     } catch (error: any) {
       if (error.statusCode === 404) {
         logger.info(`Index '${INDEX_NAME}' not found. Creating...`);
-        await this.indexClient!.createIndex(indexSchema);
+        await this.indexClient.createIndex(indexSchema);
         logger.info(`Index '${INDEX_NAME}' created successfully.`);
       } else {
         logger.error({ error }, 'Error checking/creating index');
@@ -76,9 +79,12 @@ export class VectorSearchService {
     if (!this.indexClient) {
       await this.initializeClients();
     }
+    if (!this.indexClient) {
+      throw new Error('Failed to initialize index client');
+    }
 
     try {
-      await this.indexClient!.deleteIndex(INDEX_NAME);
+      await this.indexClient.deleteIndex(INDEX_NAME);
       logger.info(`Index '${INDEX_NAME}' deleted successfully.`);
     } catch (error: any) {
        // If index doesn't exist, we consider it "deleted" (idempotent)
@@ -95,8 +101,11 @@ export class VectorSearchService {
     if (!this.searchClient) {
       await this.initializeClients();
     }
+    if (!this.searchClient) {
+      throw new Error('Failed to initialize search client');
+    }
 
-    const count = await this.searchClient!.getDocumentsCount();
+    const count = await this.searchClient.getDocumentsCount();
     
     // Note: To get true storage size, we would need to list indexes via IndexClient and find ours.
     // However, listIndexes returns limited info in some SDK versions/tiers.
@@ -106,14 +115,8 @@ export class VectorSearchService {
     let storageSize = 0;
     
     if (this.indexClient) {
-        try {
-            // We can try getting the index statistics if the method exists or list it.
-            // getServiceStatistics is for the service.
-            // Some SDK versions expose usage in retrieve.
-            // For now, keeping it simple as per TDD test expectation (mock only tested doc count).
-        } catch (e) {
-            // usage ignored
-        }
+        // Note: Storage size would require additional API calls
+        // For now, returning 0 as per test expectations
     }
 
     return {
@@ -124,12 +127,18 @@ export class VectorSearchService {
 
   async indexChunk(chunk: FileChunkWithEmbedding): Promise<string> {
     const results = await this.indexChunksBatch([chunk]);
-    return results[0]!; // We know we sent one chunk and batch throws on error
+    if (results.length === 0) {
+      throw new Error('No results returned from batch indexing');
+    }
+    return results[0];
   }
 
   async indexChunksBatch(chunks: FileChunkWithEmbedding[]): Promise<string[]> {
     if (!this.searchClient) {
       await this.initializeClients();
+    }
+    if (!this.searchClient) {
+      throw new Error('Failed to initialize search client');
     }
 
     const documents = chunks.map(chunk => ({
@@ -144,20 +153,23 @@ export class VectorSearchService {
       createdAt: chunk.createdAt
     }));
 
-    const result = await this.searchClient!.uploadDocuments(documents);
+    const result = await this.searchClient.uploadDocuments(documents);
     
     const failed = result.results.filter(r => !r.succeeded);
     if (failed.length > 0) {
       logger.error({ failedCount: failed.length, errors: failed }, 'Failed to index some documents');
-      throw new Error(`Failed to index documents: ${failed.map(f => f.errorMessage).join(', ')}`);
+      throw new Error(`Failed to index documents: ${failed.map(f => f.errorMessage || 'Unknown error').join(', ')}`);
     }
 
-    return result.results.map(r => r.key);
+    return result.results.map(r => r.key).filter((key): key is string => key !== undefined);
   }
 
   async search(query: SearchQuery): Promise<SearchResult[]> {
     if (!this.searchClient) {
       await this.initializeClients();
+    }
+    if (!this.searchClient) {
+      throw new Error('Failed to initialize search client');
     }
 
     const { embedding, userId, top = 10, filter } = query;
@@ -167,7 +179,7 @@ export class VectorSearchService {
       ? `(userId eq '${userId}') and (${filter})`
       : `userId eq '${userId}'`;
 
-    const searchOptions: any = {
+    const searchOptions: Record<string, unknown> = {
       filter: searchFilter,
       top,
       vectorSearchOptions: {
@@ -182,7 +194,7 @@ export class VectorSearchService {
       }
     };
 
-    const searchResults = await this.searchClient!.search('*', searchOptions);
+    const searchResults = await this.searchClient.search('*', searchOptions);
     
     const results: SearchResult[] = [];
     for await (const result of searchResults.results) {
@@ -203,13 +215,16 @@ export class VectorSearchService {
     if (!this.searchClient) {
       await this.initializeClients();
     }
+    if (!this.searchClient) {
+      throw new Error('Failed to initialize search client');
+    }
 
     const { text, embedding, userId, top = 10 } = query;
 
     // Security: Always enforce userId filter
     const searchFilter = `userId eq '${userId}'`;
 
-    const searchOptions: any = {
+    const searchOptions: Record<string, unknown> = {
       filter: searchFilter,
       top,
       vectorSearchOptions: {
@@ -224,7 +239,7 @@ export class VectorSearchService {
       }
     };
 
-    const searchResults = await this.searchClient!.search(text, searchOptions);
+    const searchResults = await this.searchClient.search(text, searchOptions);
     
     const results: SearchResult[] = [];
     for await (const result of searchResults.results) {
@@ -245,9 +260,12 @@ export class VectorSearchService {
     if (!this.searchClient) {
       await this.initializeClients();
     }
+    if (!this.searchClient) {
+      throw new Error('Failed to initialize search client');
+    }
     
     // Deletion by key is efficient and specific
-    const result = await this.searchClient!.deleteDocuments('chunkId', [chunkId]);
+    const result = await this.searchClient.deleteDocuments('chunkId', [chunkId]);
     
     const failed = result.results.filter(r => !r.succeeded);
     if (failed.length > 0) {
@@ -259,6 +277,9 @@ export class VectorSearchService {
   async deleteChunksForFile(fileId: string, userId: string): Promise<void> {
     if (!this.searchClient) {
       await this.initializeClients();
+    }
+    if (!this.searchClient) {
+      throw new Error('Failed to initialize search client');
     }
 
     // 1. Find chunks first 
@@ -275,6 +296,9 @@ export class VectorSearchService {
     if (!this.searchClient) {
       await this.initializeClients();
     }
+    if (!this.searchClient) {
+      throw new Error('Failed to initialize search client');
+    }
 
     const options = {
         filter: `userId eq '${userId}'`,
@@ -284,14 +308,18 @@ export class VectorSearchService {
     await this.deleteByQuery(options);
   }
 
-  private async deleteByQuery(searchOptions: any): Promise<void> {
+  private async deleteByQuery(searchOptions: Record<string, unknown>): Promise<void> {
+    if (!this.searchClient) {
+      throw new Error('Search client not initialized');
+    }
+    
     // Helper to perform search-then-delete
-    const searchResults = await this.searchClient!.search('*', searchOptions);
+    const searchResults = await this.searchClient.search('*', searchOptions);
     
     const chunkIds: string[] = [];
     for await (const result of searchResults.results) {
         // Safe casting as we selected chunkId
-        const doc = result.document as any;
+        const doc = result.document as { chunkId?: string };
         if (doc.chunkId) {
             chunkIds.push(doc.chunkId);
         }
@@ -307,12 +335,12 @@ export class VectorSearchService {
     // For this implementation scope, simple call is sufficient, SDK often handles batching logic or throws if too large,
     // requiring manual batching. Given strict TDD scope, simple is good.
     
-    const result = await this.searchClient!.deleteDocuments('chunkId', chunkIds);
+    const result = await this.searchClient.deleteDocuments('chunkId', chunkIds);
     
     const failed = result.results.filter(r => !r.succeeded);
     if (failed.length > 0) {
         logger.error({ failedCount: failed.length, errors: failed }, 'Failed to delete some chunks');
-        throw new Error(`Failed to delete chunks: ${failed.map(f => f.errorMessage).join(', ')}`);
+        throw new Error(`Failed to delete chunks: ${failed.map(f => f.errorMessage || 'Unknown error').join(', ')}`);
     }
   }
 }

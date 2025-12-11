@@ -106,7 +106,9 @@ El Sistema de Gestión de Archivos es una funcionalidad core de BC Claude Agent 
 **Next Phases**:
 - [ ] Fase 2: UI Components (FileExplorer, drag-and-drop)
 - [ ] Fase 3: Document Processing (PDF, DOCX text extraction)
-- [ ] Fase 4: Embeddings & Vector Search (Azure AI Search)
+- [x] Fase 4 Week 1: Chunking Strategies ✅ (December 10, 2025)
+- [x] Fase 4 Week 2: EmbeddingService ✅ (December 10, 2025)
+- [ ] Fase 4 Week 3-4: Vector Search (Azure AI Search integration)
 - [ ] Fase 5: Chat Integration (attach files to messages)
 
 ---

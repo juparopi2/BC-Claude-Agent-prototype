@@ -1,7 +1,6 @@
 'use client';
 
-import { useEffect, useCallback, useState } from 'react';
-import type { ParsedFile } from '@bc-agent/shared';
+import { useEffect } from 'react';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { useFileStore } from '@/lib/stores/fileStore';

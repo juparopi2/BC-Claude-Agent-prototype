@@ -128,7 +128,8 @@ export class VectorSearchService {
     if (results.length === 0) {
       throw new Error('No results returned from batch indexing');
     }
-    return results[0];
+    // Safe to assert non-null because we just checked length > 0
+    return results[0] as string;
   }
 
   async indexChunksBatch(chunks: FileChunkWithEmbedding[]): Promise<string[]> {
@@ -268,7 +269,8 @@ export class VectorSearchService {
     const failed = result.results.filter(r => !r.succeeded);
     if (failed.length > 0) {
        logger.error({ failed }, 'Failed to delete chunk');
-       throw new Error(`Failed to delete chunk: ${failed[0].errorMessage || 'Unknown error'}`);
+       const errorMsg = failed[0]?.errorMessage || 'Unknown error';
+       throw new Error(`Failed to delete chunk: ${errorMsg}`);
     }
   }
 

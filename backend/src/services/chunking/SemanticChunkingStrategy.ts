@@ -19,10 +19,12 @@ export class SemanticChunkingStrategy implements ChunkingStrategy {
 
   private readonly maxTokens: number;
   private readonly overlapTokens: number;
-  private readonly encoding: string;
+  // @ts-expect-error - Reserved for future use with actual tokenization (tiktoken)
+  private readonly _encoding: string;
 
   // Transition words that often signal topic changes
-  private readonly transitionWords = new Set([
+  // @ts-expect-error - Reserved for future semantic analysis
+  private readonly _transitionWords = new Set([
     'however',
     'furthermore',
     'moreover',
@@ -38,7 +40,7 @@ export class SemanticChunkingStrategy implements ChunkingStrategy {
   constructor(options: ChunkingOptions) {
     this.maxTokens = options.maxTokens;
     this.overlapTokens = options.overlapTokens;
-    this.encoding = options.encoding || 'cl100k_base';
+    this._encoding = options.encoding || 'cl100k_base';
 
     logger.debug(
       { maxTokens: this.maxTokens, overlapTokens: this.overlapTokens },

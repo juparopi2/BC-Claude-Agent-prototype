@@ -19,7 +19,8 @@ export class RecursiveChunkingStrategy implements ChunkingStrategy {
 
   private readonly maxTokens: number;
   private readonly overlapTokens: number;
-  private readonly encoding: string;
+  // @ts-expect-error - Reserved for future use with actual tokenization (tiktoken)
+  private readonly _encoding: string;
 
   // Hierarchical separators (try in order)
   private readonly separators = [
@@ -37,7 +38,7 @@ export class RecursiveChunkingStrategy implements ChunkingStrategy {
   constructor(options: ChunkingOptions) {
     this.maxTokens = options.maxTokens;
     this.overlapTokens = options.overlapTokens;
-    this.encoding = options.encoding || 'cl100k_base';
+    this._encoding = options.encoding || 'cl100k_base';
 
     logger.debug(
       { maxTokens: this.maxTokens, overlapTokens: this.overlapTokens },

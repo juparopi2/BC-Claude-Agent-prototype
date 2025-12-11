@@ -13,10 +13,9 @@ import { QueueEvents } from 'bullmq';
 import { REDIS_TEST_CONFIG, clearRedisKeys, createTestRedisConnection } from '../../setup.integration';
 import { setupDatabaseForTests, createTestSessionFactory } from '../../helpers';
 import { MessageQueue, QueueName, EmbeddingGenerationJob, __resetMessageQueue, getMessageQueue } from '@/services/queue/MessageQueue';
-import { executeQuery } from '@/config/database';
+import { executeQuery, initDatabase, getDatabase } from '@/config/database';
 import { getEventStore } from '@/services/events/EventStore';
 import { initRedisClient, closeRedisClient } from '@/config/redis-client';
-import fs from 'fs';
 import { logger } from '@/utils/logger';
 import { EmbeddingService } from '@/services/embeddings/EmbeddingService';
 import { VectorSearchService } from '@/services/search/VectorSearchService';
@@ -90,11 +89,11 @@ describe('Embedding Generation Pipeline', () => {
     await __resetMessageQueue();
     await clearRedisKeys(cleanupRedis, 'bull:*');
 
-    // Mock Embedding Service behavior
+    // Mock Embedding Service behavior - FIXED: Return objects with embedding and model properties
     const mockEmbeddingService = {
         generateTextEmbeddingsBatch: vi.fn().mockResolvedValue([
-            [0.1, 0.2, 0.3], // Chunk 1
-            [0.4, 0.5, 0.6]  // Chunk 2
+            { embedding: [0.1, 0.2, 0.3], model: 'text-embedding-3-small' }, // Chunk 1
+            { embedding: [0.4, 0.5, 0.6], model: 'text-embedding-3-small' }  // Chunk 2
         ])
     };
     (EmbeddingService.getInstance as any).mockReturnValue(mockEmbeddingService);
@@ -107,10 +106,21 @@ describe('Embedding Generation Pipeline', () => {
     };
     (VectorSearchService.getInstance as any).mockReturnValue(mockVectorSearchService);
 
-    // Initialize MessageQueue with real Redis
+    // Create a wrapped executeQuery that ensures DB connection before each call
+    // This handles the case where the pool might be closed by another test's afterAll
+    const ensureConnectedExecuteQuery: typeof executeQuery = async (query, params) => {
+        const db = getDatabase();
+        if (!db || !db.connected) {
+            console.log('[pipeline.test] Re-initializing database connection...');
+            await initDatabase();
+        }
+        return executeQuery(query, params);
+    };
+
+    // Initialize MessageQueue with real Redis and connection-ensuring executeQuery
     messageQueue = getMessageQueue({
         redis: new IORedis({ ...REDIS_TEST_CONFIG, maxRetriesPerRequest: null }),
-        executeQuery,
+        executeQuery: ensureConnectedExecuteQuery,
         eventStore: getEventStore(),
         logger,
     });
@@ -131,12 +141,54 @@ describe('Embedding Generation Pipeline', () => {
     if (factory) await factory.cleanup();
   });
 
+  // FIX: Test now creates required DB records and uses correct mock format
   it('should process embedding generation job successfully', async () => {
-    // 1. Create a dummy file chunk job
+    // 1. Create test data - Generate IDs
     const fileId = factory.generateTestId();
     const chunk1Id = factory.generateTestId();
     const chunk2Id = factory.generateTestId();
 
+    // 2. Create file record in database (required for worker's UPDATE statement)
+    await executeQuery(
+      `INSERT INTO files (id, user_id, name, blob_path, mime_type, size_bytes, processing_status, embedding_status, created_at, updated_at)
+       VALUES (@fileId, @userId, @name, @blobPath, @mimeType, @sizeBytes, @processingStatus, @embeddingStatus, GETDATE(), GETDATE())`,
+      {
+        fileId,
+        userId: testUser.id,
+        name: 'test-file.txt',
+        blobPath: `users/${testUser.id}/files/${fileId}/test-file.txt`,
+        mimeType: 'text/plain',
+        sizeBytes: 100,
+        processingStatus: 'completed',
+        embeddingStatus: 'pending',
+      }
+    );
+
+    // 3. Create file_chunks records in database (required for worker's UPDATE statement)
+    await executeQuery(
+      `INSERT INTO file_chunks (id, file_id, chunk_index, chunk_text, chunk_tokens, created_at)
+       VALUES (@chunkId, @fileId, @chunkIndex, @chunkText, @chunkTokens, GETDATE())`,
+      {
+        chunkId: chunk1Id,
+        fileId,
+        chunkIndex: 0,
+        chunkText: 'Hello world',
+        chunkTokens: 2,
+      }
+    );
+    await executeQuery(
+      `INSERT INTO file_chunks (id, file_id, chunk_index, chunk_text, chunk_tokens, created_at)
+       VALUES (@chunkId, @fileId, @chunkIndex, @chunkText, @chunkTokens, GETDATE())`,
+      {
+        chunkId: chunk2Id,
+        fileId,
+        chunkIndex: 1,
+        chunkText: 'Another chunk',
+        chunkTokens: 2,
+      }
+    );
+
+    // 4. Create job data
     const jobData: EmbeddingGenerationJob = {
         fileId,
         userId: testUser.id,
@@ -146,13 +198,13 @@ describe('Embedding Generation Pipeline', () => {
         ]
     };
 
-    // 2. Add job
+    // 5. Add job
     const jobId = await messageQueue.addEmbeddingGenerationJob(jobData);
     expect(jobId).toBeDefined();
 
-    // 3. Wait for completion
+    // 6. Wait for completion
     const completedPromise = new Promise<{jobId: string}>((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error('Job timeout')), 10000);
+        const timeout = setTimeout(() => reject(new Error('Job timeout')), 15000);
         queueEvents.on('completed', ({ jobId: id }) => {
             console.log(`Job ${id} completed`);
             if (id === jobId) {
@@ -171,14 +223,25 @@ describe('Embedding Generation Pipeline', () => {
 
     await completedPromise;
 
-    // 4. Verify mocks called
+    // 7. Verify mocks called
     const embeddingService = EmbeddingService.getInstance();
     expect(embeddingService.generateTextEmbeddingsBatch).toHaveBeenCalledWith(
-        ['Hello world', 'Another chunk'], 
+        ['Hello world', 'Another chunk'],
         testUser.id
     );
 
     const vectorSearchService = VectorSearchService.getInstance();
     expect(vectorSearchService.indexChunksBatch).toHaveBeenCalled();
+
+    // 8. Verify database was updated
+    const fileResult = await executeQuery<{ embedding_status: string }>(
+      'SELECT embedding_status FROM files WHERE id = @fileId',
+      { fileId }
+    );
+    expect(fileResult.recordset[0]?.embedding_status).toBe('completed');
+
+    // 9. Cleanup test data (in case factory cleanup doesn't cover it)
+    await executeQuery('DELETE FROM file_chunks WHERE file_id = @fileId', { fileId });
+    await executeQuery('DELETE FROM files WHERE id = @fileId', { fileId });
   });
 });

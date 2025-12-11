@@ -168,7 +168,31 @@ export async function cleanupAllTestData(prefix?: string): Promise<CleanupResult
     );
     result.todosDeleted = todosResult.rowsAffected[0] || 0;
 
-    // 5. Delete sessions owned by test users
+    // 5. Delete usage_events for test users (has FK to users)
+    await executeQuery(
+      `DELETE FROM usage_events WHERE user_id IN (
+        SELECT id FROM users WHERE email LIKE @emailPattern
+      )`,
+      { emailPattern: testEmailPattern }
+    );
+
+    // 6. Delete token_usage for test users (has FK to users)
+    await executeQuery(
+      `DELETE FROM token_usage WHERE user_id IN (
+        SELECT id FROM users WHERE email LIKE @emailPattern
+      )`,
+      { emailPattern: testEmailPattern }
+    );
+
+    // 7. Delete files for test users (has FK to users)
+    await executeQuery(
+      `DELETE FROM files WHERE user_id IN (
+        SELECT id FROM users WHERE email LIKE @emailPattern
+      )`,
+      { emailPattern: testEmailPattern }
+    );
+
+    // 8. Delete sessions owned by test users
     const sessionsResult = await executeQuery(
       `DELETE FROM sessions WHERE user_id IN (
         SELECT id FROM users WHERE email LIKE @emailPattern
@@ -177,14 +201,14 @@ export async function cleanupAllTestData(prefix?: string): Promise<CleanupResult
     );
     result.sessionsDeleted = sessionsResult.rowsAffected[0] || 0;
 
-    // 6. Delete test users (identified by email domain)
+    // 9. Delete test users (identified by email domain)
     const usersResult = await executeQuery(
       `DELETE FROM users WHERE email LIKE @emailPattern`,
       { emailPattern: testEmailPattern }
     );
     result.usersDeleted = usersResult.rowsAffected[0] || 0;
 
-    // 7. Clean Redis test keys (including BullMQ, queues, sequences)
+    // 10. Clean Redis test keys (including BullMQ, queues, sequences)
     const redis = getRedis();
     if (!redis) {
       throw new Error('Redis not initialized');

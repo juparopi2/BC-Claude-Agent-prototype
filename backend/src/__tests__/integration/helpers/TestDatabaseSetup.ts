@@ -23,6 +23,7 @@
 import { beforeAll, afterAll } from 'vitest';
 import { initDatabase, closeDatabase, executeQuery } from '@/config/database';
 import { initRedis, closeRedis } from '@/config/redis';
+import { initRedisClient, closeRedisClient } from '@/config/redis-client';
 import { REDIS_TEST_CONFIG } from '../setup.integration';
 
 /**
@@ -31,9 +32,14 @@ import { REDIS_TEST_CONFIG } from '../setup.integration';
 let isDatabaseInitialized = false;
 
 /**
- * Redis connection status
+ * Redis connection status (ioredis for BullMQ)
  */
 let isRedisInitialized = false;
+
+/**
+ * Redis client connection status (redis package for sessions/TestSessionFactory)
+ */
+let isRedisClientInitialized = false;
 
 /**
  * Initializes Redis for integration tests using local Docker config
@@ -62,9 +68,15 @@ export async function initRedisForTests(): Promise<void> {
   delete process.env.REDIS_CONNECTION_STRING;
 
   try {
+    // Initialize ioredis (for BullMQ)
     await initRedis();
     isRedisInitialized = true;
-    console.log(`✅ Redis initialized for tests (${REDIS_TEST_CONFIG.host}:${REDIS_TEST_CONFIG.port})`);
+    console.log(`✅ Redis (ioredis) initialized for tests (${REDIS_TEST_CONFIG.host}:${REDIS_TEST_CONFIG.port})`);
+
+    // Initialize redis-client (for sessions/TestSessionFactory)
+    await initRedisClient();
+    isRedisClientInitialized = true;
+    console.log(`✅ Redis client (redis package) initialized for tests`);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     throw new Error(
@@ -76,9 +88,16 @@ export async function initRedisForTests(): Promise<void> {
 }
 
 /**
- * Closes Redis connection for tests
+ * Closes Redis connections for tests (both ioredis and redis package)
  */
 export async function closeRedisForTests(): Promise<void> {
+  // Close redis-client (redis package for sessions)
+  if (isRedisClientInitialized) {
+    await closeRedisClient();
+    isRedisClientInitialized = false;
+  }
+
+  // Close ioredis (for BullMQ)
   if (isRedisInitialized) {
     await closeRedis();
     isRedisInitialized = false;
@@ -173,9 +192,13 @@ export function setupDatabaseForTests(options: {
      */
     isReady: () => isDatabaseInitialized,
     /**
-     * Check if Redis is ready
+     * Check if Redis (ioredis) is ready
      */
     isRedisReady: () => isRedisInitialized,
+    /**
+     * Check if Redis client (redis package) is ready for TestSessionFactory
+     */
+    isRedisClientReady: () => isRedisClientInitialized,
   };
 }
 
@@ -222,6 +245,7 @@ export function setupFullIntegrationTest(options: {
   return {
     isDatabaseReady: () => isDatabaseInitialized,
     isRedisReady: () => isRedisInitialized,
+    isRedisClientReady: () => isRedisClientInitialized,
   };
 }
 

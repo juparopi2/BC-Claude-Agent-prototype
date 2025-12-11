@@ -110,7 +110,20 @@ El Sistema de Gestión de Archivos es una funcionalidad core de BC Claude Agent 
 - [x] Fase 4 Week 2: EmbeddingService ✅ (December 10, 2025)
 - [x] Fase 4 Week 3: Vector Search (Azure AI Search integration) ✅ (December 10, 2025)
 - [x] Fase 4 Week 4: MessageQueue Integration ✅ (December 11, 2025)
-- [ ] Fase 5: Chat Integration (attach files to messages)
+- [~] Fase 5: Chat Integration 🟡 IN PROGRESS (~75% Ciclo 1)
+
+#### Fase 5 Progress Detail (Updated December 11, 2025)
+
+**Ciclo 1: Attachment Flow (~75% Complete)**
+- ✅ Frontend: `FileAttachmentChip.tsx` component with upload progress
+- ✅ Frontend: `ChatInput.tsx` integrated with attachments state
+- ✅ Frontend: `socketMiddleware.ts` sends attachments to backend
+- ✅ Backend: `ChatMessageHandler.ts` receives `data.attachments`
+- ✅ Backend: `DirectAgentService.ts` validates file ownership
+- ❌ Backend: Zod schema update for `SendMessageSchema` (minor)
+- ❌ Context injection into LLM prompts (Ciclo 2/3)
+
+**Next Steps**: Ciclo 2 (Context Strategy) and Ciclo 3 (Context Injection)
 
 ---
 

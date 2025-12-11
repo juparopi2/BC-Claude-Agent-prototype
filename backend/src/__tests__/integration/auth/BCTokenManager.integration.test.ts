@@ -37,29 +37,34 @@ describe('BCTokenManager Integration - Race Condition', () => {
 
   let tokenManager: BCTokenManager;
   const testEncryptionKey = crypto.randomBytes(32).toString('base64');
+  // Generate unique testUserId for each test file run
   const testUserId = crypto.randomUUID();
+  // Generate unique email to avoid conflicts with parallel tests
+  const testEmail = `test-race-${Date.now()}-${Math.random().toString(36).substring(7)}@bcagent.test`;
 
   beforeEach(async () => {
     // Initialize service with real encryption key
     tokenManager = new BCTokenManager(testEncryptionKey, mockOAuthService);
-    
-    // Clean up test user if exists
+
+    // Clean up test user if exists (including usage_events references)
+    await executeQuery('DELETE FROM usage_events WHERE user_id = @id', { id: testUserId });
     await executeQuery('DELETE FROM users WHERE id = @id', { id: testUserId });
-    
-    // Create test user
+
+    // Create test user with unique email
     // Note: Omitting 'role' as it causes truncation issues in test DB environment
     await executeQuery(
       `INSERT INTO users (id, email, full_name, created_at, updated_at)
-       VALUES (@id, 'test-race@example.com', 'Test Race User', GETDATE(), GETDATE())`,
-      { id: testUserId }
+       VALUES (@id, @email, 'Test Race User', GETDATE(), GETDATE())`,
+      { id: testUserId, email: testEmail }
     );
-    
+
     vi.clearAllMocks();
   });
 
 
   afterEach(async () => {
-    // Cleanup
+    // Cleanup - delete usage_events first to avoid FK constraint
+    await executeQuery('DELETE FROM usage_events WHERE user_id = @id', { id: testUserId });
     await executeQuery('DELETE FROM users WHERE id = @id', { id: testUserId });
     vi.restoreAllMocks();
   });

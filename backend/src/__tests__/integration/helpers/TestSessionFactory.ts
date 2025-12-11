@@ -544,25 +544,31 @@ export class TestSessionFactory {
 
     // Clean up users (after sessions due to foreign key)
     for (const userId of this.createdUsers) {
-      // Delete any remaining sessions for this user
-      await executeQuery(
-        `DELETE FROM sessions WHERE user_id = @userId`,
-        { userId }
-      );
-
-      // Delete any remaining usage events for this user
+      // 1. Delete usage_events FIRST (has FK to both users and sessions)
       await executeQuery(
         `DELETE FROM usage_events WHERE user_id = @userId`,
         { userId }
       );
 
-      // Delete any remaining token usage for this user
+      // 2. Delete token_usage (has FK to users)
       await executeQuery(
         `DELETE FROM token_usage WHERE user_id = @userId`,
         { userId }
       );
 
-      // Delete user
+      // 3. Delete any remaining sessions for this user
+      await executeQuery(
+        `DELETE FROM sessions WHERE user_id = @userId`,
+        { userId }
+      );
+
+      // 4. Delete any files for this user (file management)
+      await executeQuery(
+        `DELETE FROM files WHERE user_id = @userId`,
+        { userId }
+      );
+
+      // 5. Delete user (after all FKs are cleared)
       await executeQuery(
         `DELETE FROM users WHERE id = @userId`,
         { userId }

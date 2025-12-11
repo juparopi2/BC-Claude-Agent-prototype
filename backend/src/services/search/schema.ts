@@ -41,7 +41,7 @@ export const indexSchema: SearchIndex = {
       filterable: false,
       sortable: false,
       facetable: false,
-      analyzerName: 'standard.lucence' // Good default for general text
+      analyzerName: 'standard.lucene' // Good default for general text
     },
     {
       name: 'contentVector',

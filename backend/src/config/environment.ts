@@ -95,6 +95,20 @@ const envSchema = z.object({
   // Azure Document Intelligence (OCR)
   AZURE_DI_ENDPOINT: z.string().url().optional(),
   AZURE_DI_KEY: z.string().optional(),
+
+  // Azure OpenAI (Embeddings)
+  AZURE_OPENAI_ENDPOINT: z.string().url().optional(),
+  AZURE_OPENAI_KEY: z.string().optional(),
+  AZURE_OPENAI_EMBEDDING_DEPLOYMENT: z.string().default('text-embedding-3-small'),
+
+  // Azure AI Search (Vector Store)
+  AZURE_SEARCH_ENDPOINT: z.string().url().optional(),
+  AZURE_SEARCH_KEY: z.string().optional(),
+  AZURE_SEARCH_INDEX_NAME: z.string().default('file-chunks-index'),
+
+  // Azure Computer Vision (Image Embeddings)
+  AZURE_VISION_ENDPOINT: z.string().url().optional(),
+  AZURE_VISION_KEY: z.string().optional(),
 });
 
 /**

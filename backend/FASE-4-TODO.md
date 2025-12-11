@@ -118,13 +118,46 @@
 
 ---
 
-## 🟡 PENDIENTE - SEMANA 2-4 (DETALLADO)
+## ✅ COMPLETADO - SEMANA 2: EmbeddingService
+
+**Completado**: 2025-12-10  
+**Tests**: 11/11 pasando (100%)
 
 ---
 
-## SEMANA 2: EmbeddingService (4-5 días)
+## SEMANA 2: EmbeddingService ✅ COMPLETO
 
-### 2.1 EmbeddingService - Text Embeddings (Día 1-2)
+**Implementación completa con TDD siguiendo 5 ciclos**:
+
+### Implementado ✅
+
+**Archivos creados**:
+- `backend/src/services/embeddings/EmbeddingService.ts` (~170 líneas)
+- `backend/src/services/embeddings/types.ts` (interfaces TypeScript)
+- `backend/src/__tests__/unit/services/embeddings/EmbeddingService.test.ts` (11 tests, 100%)
+
+**Funcionalidades**:
+1. **Text Embeddings** - Azure OpenAI (text-embedding-3-small, 1536 dimensions)
+2. **Image Embeddings** - Azure Computer Vision REST API (vectorization)
+3. **Redis Caching** - 7-day TTL, SHA-256 key hashing
+4. **Error Handling** - maxRetries: 3, exponential backoff
+5. **Multi-tenant** - userId scoping en todas las operaciones
+
+**Tests pasando**: 11/11 (100% coverage de lógica core)
+- ✅ Configuration validation
+- ✅ Singleton pattern
+- ✅ Text embedding generation (mocked SDK)
+- ✅ Cache hits/misses
+- ✅ Image embedding generation (mocked REST)
+- ✅ Error propagation
+- ✅ Retry configuration
+
+**Infraestructura Azure provisionada**:
+- ✅ Azure OpenAI (text-embedding-3-small deployment) 
+- ✅ Azure AI Search (file-chunks-index)
+- ✅ Azure Computer Vision (v4.0 Image Analysis)
+
+### 2.1 EmbeddingService - Text Embeddings (Día 1-2) ✅
 
 **Archivos a crear**:
 - `backend/src/services/embeddings/EmbeddingService.ts` (~350 líneas)

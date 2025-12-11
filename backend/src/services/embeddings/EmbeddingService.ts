@@ -221,7 +221,7 @@ export class EmbeddingService {
     
     try {
       const apiResult = await client.embeddings.create({
-        input: textsToEmbed,
+        input: textsToEmbed as string[],
         model: this.config.deploymentName
       });
 
@@ -234,6 +234,7 @@ export class EmbeddingService {
 
       apiResult.data.forEach((item, i) => {
         const originalIndex = missingIndices[i];
+        if (originalIndex === undefined) return;
         
         const embeddingResult: TextEmbedding = {
           embedding: item.embedding,
@@ -254,8 +255,11 @@ export class EmbeddingService {
 
         results[originalIndex] = embeddingResult;
 
+        const key = cacheKeys[originalIndex];
+        if (!key) return;
+
         // Cache the new result
-        pipeline.set(cacheKeys[originalIndex], JSON.stringify(embeddingResult), 'EX', 604800);
+        pipeline.set(key, JSON.stringify(embeddingResult), 'EX', 604800);
       });
 
       await pipeline.exec();

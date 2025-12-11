@@ -1656,9 +1656,4 @@ export async function __resetMessageQueue(): Promise<void> {
   await MessageQueue.__resetInstance();
 }
 
-/**
- * Format vector for pgvector input
- */
-function _pgVector(embedding: number[]): string {
-  return JSON.stringify(embedding);
-}
+

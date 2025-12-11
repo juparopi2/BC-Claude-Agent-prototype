@@ -39,7 +39,7 @@ describe('ChatInput Attachments', () => {
     vi.clearAllMocks();
     vi.mocked(getFileApiClient).mockReturnValue({
       uploadFiles: mockUploadFiles,
-    } as ReturnType<typeof getFileApiClient>);
+    } as unknown as ReturnType<typeof getFileApiClient>);
   });
 
   it('uploads file and adds attachment chip on selection', async () => {

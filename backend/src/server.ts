@@ -472,11 +472,16 @@ function configureRoutes(): void {
         return;
       }
 
-      const { prompt, sessionId } = req.body;
+      const { prompt, sessionId, attachments } = req.body;
       const userId = req.userId;
 
       if (!prompt || typeof prompt !== 'string') {
         sendBadRequest(res, 'prompt is required and must be a string', 'prompt');
+        return;
+      }
+
+      if (attachments && (!Array.isArray(attachments) || !attachments.every((id: unknown) => typeof id === 'string'))) {
+        sendBadRequest(res, 'attachments must be an array of string file IDs', 'attachments');
         return;
       }
 
@@ -490,7 +495,10 @@ function configureRoutes(): void {
         prompt,
         sessionId,
         undefined, // onEvent - not used for REST endpoint
-        userId
+        userId,
+        {
+          attachments: attachments as string[]
+        }
       );
 
       res.json(result);

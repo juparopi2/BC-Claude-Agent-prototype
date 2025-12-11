@@ -10,9 +10,14 @@
  * Coverage Target: 80%+ (MessageService.ts is 508 lines)
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { MessageService, getMessageService } from '@/services/messages/MessageService';
-import type { MessageDbRecord, ParsedMessage } from '@/types/message.types';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { MessageService, getMessageService } from '../../../../services/messages/MessageService';
+import { getEventStore } from '../../../../services/events/EventStore';
+import { getMessageQueue } from '../../../../services/queue/MessageQueue';
+import { createChildLogger } from '../../../../utils/logger';
+import { executeQuery } from '../../../../config/database';
+import { ParsedMessage, MessageDbRecord } from '../../../../types/message.types';
+import { randomUUID } from 'crypto';
 
 // ===== MOCK EVENT STORE (vi.hoisted pattern) =====
 const mockEventStoreMethods = vi.hoisted(() => ({
@@ -416,7 +421,7 @@ describe('MessageService', () => {
     });
 
     it('should get message by ID', async () => {
-      const mockMessage: MessageDbRecord = {
+      const mockMessage = {
         id: 'msg-123',
         session_id: testSessionId,
         role: 'user',
@@ -426,7 +431,7 @@ describe('MessageService', () => {
         created_at: new Date(),
         sequence_number: 1,
         event_id: 'evt-1',
-      };
+      } as unknown as MessageDbRecord;
 
       mockExecuteQuery.mockResolvedValueOnce({ recordset: [mockMessage] });
 
@@ -585,62 +590,12 @@ describe('MessageService', () => {
    * Fecha: 2025-11-27
    * Referencia: TASK-004 diagnostic plan (delightful-hatching-shore.md)
    */
-  describe.skip('replayMessages()', () => {
-    it('should replay events from EventStore', async () => {
-      const mockEvents = [
-        { event_type: 'user_message_sent', sequence_number: 0, event_data: {} },
-        { event_type: 'agent_message_sent', sequence_number: 1, event_data: {} },
-        { event_type: 'tool_use_requested', sequence_number: 2, event_data: {} },
-      ];
-
-      // Mock replayEvents to call handler for each event
-      mockEventStoreMethods.replayEvents.mockImplementationOnce(
-        async (
-          sessionId: string,
-          handler: (event: { event_type: string; sequence_number: number }) => Promise<void>
-        ) => {
-          for (const event of mockEvents) {
-            await handler(event);
-          }
-        }
-      );
-
-      await messageService.replayMessages(testSessionId);
-
-      // Verify replayEvents called with correct sessionId
-      expect(mockEventStoreMethods.replayEvents).toHaveBeenCalledWith(
-        testSessionId,
-        expect.any(Function)
-      );
-
-      // Verify completion logged
-      expect(mockLogger.info).toHaveBeenCalledWith('Message replay completed', {
-        sessionId: testSessionId,
-      });
-    });
-
-    it('should log each event during replay', async () => {
-      const mockEvent = { event_type: 'user_message_sent', sequence_number: 0, event_data: {} };
-
-      mockEventStoreMethods.replayEvents.mockImplementationOnce(
-        async (
-          sessionId: string,
-          handler: (event: { event_type: string; sequence_number: number }) => Promise<void>
-        ) => {
-          await handler(mockEvent);
-        }
-      );
-
-      await messageService.replayMessages(testSessionId);
-
-      // Verify each event logged during replay
-      expect(mockLogger.debug).toHaveBeenCalledWith(
-        'Replaying event',
-        expect.objectContaining({
-          eventType: 'user_message_sent',
-          sequenceNumber: 0,
-        })
+  describe('replayMessages()', () => {
+    it('should throw "Not implemented" error', async () => {
+      await expect(messageService.replayMessages('session-123')).rejects.toThrow(
+        'Message replay is not implemented'
       );
     });
   });
+
 });

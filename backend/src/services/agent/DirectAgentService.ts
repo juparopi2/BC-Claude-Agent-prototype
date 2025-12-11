@@ -55,6 +55,7 @@ import { createChildLogger } from '@/utils/logger';
 import type { Logger } from 'pino';
 import * as fs from 'fs';
 import * as path from 'path';
+import { getFileService } from '../files/FileService';
 
 /**
  * Type Definitions for BC Index and MCP Tools
@@ -250,7 +251,17 @@ export interface ExecuteStreamingOptions {
    * Must be less than max_tokens
    * @default 10000
    */
+  /**
+   * Budget tokens for extended thinking (minimum 1024)
+   * Must be less than max_tokens
+   * @default 10000
+   */
   thinkingBudget?: number;
+  /**
+   * List of file IDs to attach to the message context
+   * @default undefined
+   */
+  attachments?: string[];
 }
 
 /**
@@ -370,6 +381,25 @@ export class DirectAgentService {
       if (onEvent) {
         // Cast AgentEvent callback to EmittableEvent callback - they are structurally compatible
         this.emitter.setEventCallback(onEvent as (event: import('./messages').EmittableEvent) => void);
+      }
+
+      // Validate attachments (Phase 5 - Chat Integration)
+      if (options?.attachments && options.attachments.length > 0) {
+        if (!userId) {
+          throw new Error('UserId required for attachment validation');
+        }
+        this.logger.info({ userId, count: options.attachments.length }, 'Validating attachments');
+        
+        const fileService = getFileService();
+        for (const fileId of options.attachments) {
+          // Validate ownership and existence
+          const file = await fileService.getFile(userId, fileId);
+          if (!file) {
+            this.logger.warn({ userId, fileId }, 'Invalid attachment or access denied');
+            throw new Error(`Access denied or file not found: ${fileId}`);
+          }
+        }
+        this.logger.info('✅ Attachments validated successfully');
       }
 
       // Step 1: Get MCP tools and convert to Anthropic format
@@ -1264,8 +1294,16 @@ export class DirectAgentService {
           await new Promise(resolve => setTimeout(resolve, 1000));
 
           for (let toolIndex = 0; toolIndex < toolUses.length; toolIndex++) {
-            const toolUse = toolUses[toolIndex]!;
-            const preAssignedSequence = reservedSequences.sequences[toolIndex]!;
+            const toolUse = toolUses[toolIndex];
+            if (!toolUse) {
+                 this.logger.error({ toolIndex, totalParams: toolUses.length }, '❌ Missing tool use at index');
+                 continue;
+            }
+            
+            const preAssignedSequence = reservedSequences.sequences[toolIndex];
+            if (!preAssignedSequence) {
+                 throw new Error(`Missing pre-assigned sequence for tool index ${toolIndex}`);
+            }
 
             toolsUsed.push(toolUse.name);
 

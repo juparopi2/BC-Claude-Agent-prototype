@@ -523,6 +523,18 @@ export class TestSessionFactory {
         { sessionId }
       );
 
+      // Delete usage events for this session
+      await executeQuery(
+        `DELETE FROM usage_events WHERE session_id = @sessionId`,
+        { sessionId }
+      );
+      
+      // Delete token usage for this session
+      await executeQuery(
+        `DELETE FROM token_usage WHERE session_id = @sessionId`,
+        { sessionId }
+      );
+
       // Delete session
       await executeQuery(
         `DELETE FROM sessions WHERE id = @sessionId`,
@@ -535,6 +547,18 @@ export class TestSessionFactory {
       // Delete any remaining sessions for this user
       await executeQuery(
         `DELETE FROM sessions WHERE user_id = @userId`,
+        { userId }
+      );
+
+      // Delete any remaining usage events for this user
+      await executeQuery(
+        `DELETE FROM usage_events WHERE user_id = @userId`,
+        { userId }
+      );
+
+      // Delete any remaining token usage for this user
+      await executeQuery(
+        `DELETE FROM token_usage WHERE user_id = @userId`,
         { userId }
       );
 

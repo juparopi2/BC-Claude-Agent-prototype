@@ -229,18 +229,21 @@ export class ChatMessageHandler {
         thinkingBudget: thinkingConfig?.thinkingBudget,
       });
 
-      // Build options object with thinking configuration if provided
-      const streamingOptions = thinkingConfig ? {
-        enableThinking: thinkingConfig.enableThinking,
-        thinkingBudget: thinkingConfig.thinkingBudget,
-      } : undefined;
+      // Build options object with thinking and attachments
+      const streamingOptions = {
+        ...(thinkingConfig ? {
+          enableThinking: thinkingConfig.enableThinking,
+          thinkingBudget: thinkingConfig.thinkingBudget,
+        } : {}),
+        attachments: data.attachments,
+      };
 
       await agentService.executeQueryStreaming(
         message,
         sessionId,
         (event: AgentEvent) => this.handleAgentEvent(event, io, sessionId, userId),
         userId, // ⭐ Pass userId for tool persistence
-        // ⭐ Pass thinking options if configured
+        // ⭐ Pass options (thinking + attachments)
         streamingOptions
       );
 

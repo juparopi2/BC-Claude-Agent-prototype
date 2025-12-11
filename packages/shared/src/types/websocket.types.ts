@@ -54,6 +54,12 @@ export interface ChatMessageData {
    * Allows frontend to enable/disable Extended Thinking for specific requests.
    */
   thinking?: ExtendedThinkingConfig;
+
+  /**
+   * List of file IDs to attach to the message
+   * Array of UUIDs corresponding to uploaded files.
+   */
+  attachments?: string[];
 }
 
 /**

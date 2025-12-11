@@ -41,7 +41,7 @@ export interface UseSocketReturn {
   /** Leave a session */
   leaveSession: (sessionId: string) => void;
   /** Send a message */
-  sendMessage: (message: string, options?: { enableThinking?: boolean; thinkingBudget?: number }) => void;
+  sendMessage: (message: string, options?: { enableThinking?: boolean; thinkingBudget?: number; attachments?: string[] }) => void;
   /** Stop the agent */
   stopAgent: () => void;
   /** Respond to approval */
@@ -217,7 +217,7 @@ export function useSocket(options: UseSocketOptions = {}): UseSocketReturn {
 
   // Send message function
   const sendMessage = useCallback(
-    (message: string, opts?: { enableThinking?: boolean; thinkingBudget?: number }) => {
+    (message: string, opts?: { enableThinking?: boolean; thinkingBudget?: number; attachments?: string[] }) => {
       if (!user?.id || !currentSessionRef.current) {
         return;
       }
@@ -245,6 +245,8 @@ export function useSocket(options: UseSocketOptions = {}): UseSocketReturn {
         content: message,
         sequence_number: Date.now(), // Temporary, will be updated
         created_at: new Date().toISOString(),
+        // Note: attachments are not optimistically displayed in the message thread yet,
+        // but would be handled here if needed in future
       });
 
       // Send to server
@@ -252,10 +254,11 @@ export function useSocket(options: UseSocketOptions = {}): UseSocketReturn {
         message,
         sessionId: currentSessionRef.current,
         userId: user.id,
-        thinking: opts ? {
+        thinking: opts?.enableThinking !== undefined ? {
           enableThinking: opts.enableThinking,
           thinkingBudget: opts.thinkingBudget,
         } : undefined,
+        attachments: opts?.attachments, // Pass attachments to server
       });
     },
     [user, addOptimisticMessage]

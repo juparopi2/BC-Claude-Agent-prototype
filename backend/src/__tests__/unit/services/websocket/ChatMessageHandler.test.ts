@@ -186,7 +186,7 @@ describe('ChatMessageHandler', () => {
         testSessionId,
         expect.any(Function), // onEvent callback
         testUserId, // userId for audit trail
-        undefined // thinkingConfig (not provided in this test)
+        { attachments: undefined } // options object with attachments
       );
 
       // ⭐ PHASE 1B: Final log message changed

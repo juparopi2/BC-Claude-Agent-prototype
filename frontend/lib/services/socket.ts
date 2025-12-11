@@ -46,7 +46,7 @@ export interface SocketEventHandlers {
  * Pending message queued when socket is not connected
  */
 interface PendingMessage {
-  data: Omit<ChatMessageData, 'thinking'> & { thinking?: ExtendedThinkingConfig };
+  data: Omit<ChatMessageData, 'thinking'> & { thinking?: ExtendedThinkingConfig; attachments?: string[] };
   resolve: () => void;
   reject: (err: Error) => void;
 }
@@ -209,7 +209,7 @@ export class SocketService {
   /**
    * Send a chat message
    */
-  sendMessage(data: Omit<ChatMessageData, 'thinking'> & { thinking?: ExtendedThinkingConfig }): void {
+  sendMessage(data: Omit<ChatMessageData, 'thinking'> & { thinking?: ExtendedThinkingConfig; attachments?: string[] }): void {
     if (!this.socket?.connected) {
       console.warn(SocketLogMessages.SEND_MESSAGE_NOT_CONNECTED);
       // Queue the message with a promise

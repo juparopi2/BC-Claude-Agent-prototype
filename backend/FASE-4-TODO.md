@@ -379,6 +379,74 @@ export class EmbeddingFixture {
 
 ## SEMANA 3: VectorSearchService (4-5 días)
 
+## ✅ COMPLETADO (Semana 3: VectorSearchService)
+
+**Fecha completado**: 2025-12-10
+**Tests**: 15/15 pasando (100%)
+**Cobertura**: Unit tests completos, Integration test skeleton creado
+
+**Archivos creados**:
+- ✅ `backend/src/services/search/VectorSearchService.ts` (~320 líneas)
+- ✅ `backend/src/services/search/types.ts` (interfaces SDK-aligned)
+- ✅ `backend/src/services/search/schema.ts` (Azure AI Search index con HNSW)
+- ✅ `backend/src/__tests__/unit/services/search/VectorSearchService.test.ts` (15 tests)
+- ✅ `backend/src/__tests__/integration/search/VectorSearchService.integration.test.ts` (skeleton)
+
+**Funcionalidad implementada**:
+
+**Index Management**:
+- ✅ `ensureIndexExists()` - Crea índice con configuración HNSW si no existe
+- ✅ `deleteIndex()` - Eliminación idempotente de índice
+- ✅ `getIndexStats()` - Retorna document count y storage size
+- ✅ Lazy initialization de SearchClient e IndexClient
+- ✅ Configuración HNSW: m=4, efConstruction=400, efSearch=500, metric='cosine'
+- ✅ Campo `embeddingModel` agregado al schema para cost tracking
+
+**Document Indexing**:
+- ✅ `indexChunk()` - Indexa chunk individual con embedding
+- ✅ `indexChunksBatch()` - Batch indexing de múltiples chunks
+- ✅ Mapping automático: `embedding` → `contentVector`
+- ✅ Validación de resultados y error handling
+- ✅ Metadata completa: chunkId, fileId, userId, chunkIndex, tokenCount, embeddingModel
+
+**Search Functionality**:
+- ✅ `search()` - Vector search puro
+- ✅ `hybridSearch()` - Búsqueda híbrida (vector + texto)
+- ✅ **Multi-tenant isolation**: userId filtering obligatorio en todas las búsquedas
+- ✅ Combinación de filtros custom con userId filter
+- ✅ Configuración vectorSearchOptions con kNearestNeighborsCount
+- ✅ Resultados ordenados por score descendente
+
+**Deletion**:
+- ✅ `deleteChunk()` - Eliminación por chunkId
+- ✅ `deleteChunksForFile()` - Eliminación por fileId + userId
+- ✅ `deleteChunksForUser()` - Eliminación por userId
+- ✅ Patrón search-then-delete para queries complejas
+- ✅ Validación de operaciones con manejo de errores
+
+**Tests validados**:
+- ✅ Index Management (5 tests): create, skip if exists, error handling, delete, stats
+- ✅ Document Indexing (3 tests): single chunk, batch, error on failure
+- ✅ Search Functionality (3 tests): vector search, hybrid search, filter combination
+- ✅ Deletion (4 tests): single delete, delete by file, delete by user, empty results
+
+**Schema Azure AI Search**:
+```typescript
+{
+  name: 'file-chunks-index',
+  fields: [
+    'chunkId' (key), 'fileId', 'userId', 'content',
+    'contentVector' (1536 dims, HNSW, no stored),
+    'chunkIndex', 'tokenCount', 'embeddingModel', 'createdAt'
+  ],
+  vectorSearch: HNSW (m=4, efConstruction=400, efSearch=500, cosine)
+}
+```
+
+**Próximos pasos**: Integración con FileProcessingService para embedding pipeline completo
+
+---
+
 ### 3.1 VectorSearchService - Index Management (Día 1-2)
 
 **Archivos a crear**:

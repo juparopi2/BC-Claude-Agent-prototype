@@ -1023,6 +1023,41 @@ backend/src/__tests__/unit/services/chunking/*.test.ts            # 61 tests tot
 
 ---
 
+#### FASE 4.7: VectorSearchService ✅ (COMPLETADA)
+
+**Completion Date**: December 10, 2025  
+**Tests**: 15/15 passing (100% unit test coverage)
+
+**Archivos Creados**:
+- `backend/src/services/search/VectorSearchService.ts` (~320 líneas)
+- `backend/src/services/search/types.ts` (interfaces SDK-aligned)
+- `backend/src/services/search/schema.ts` (Azure AI Search index schema)
+- `backend/src/__tests__/unit/services/search/VectorSearchService.test.ts` (15 tests)
+- `backend/src/__tests__/integration/search/VectorSearchService.integration.test.ts` (skeleton)
+
+**Key Achievements**:
+- ✅ **Index Management**: `ensureIndexExists`, `deleteIndex`, `getIndexStats` con lazy initialization
+- ✅ **Document Indexing**: `indexChunk`, `indexChunksBatch` con mapping `embedding` → `contentVector`
+- ✅ **Vector Search**: `search()` para búsqueda vectorial pura
+- ✅ **Hybrid Search**: `hybridSearch()` combinando vector + texto (BM25)
+- ✅ **Multi-tenant Isolation**: userId filtering obligatorio en todas las operaciones
+- ✅ **Deletion**: `deleteChunk`, `deleteChunksForFile`, `deleteChunksForUser` con pattern search-then-delete
+- ✅ **Azure AI Search Schema**: HNSW configuration (m=4, efConstruction=400, efSearch=500, cosine metric)
+- ✅ **Cost tracking**: Campo `embeddingModel` agregado al schema
+- ✅ **Security**: userId filter mandatory en todos los search y delete operations
+
+**Schema Configuration**:
+```typescript
+Index: 'file-chunks-index'
+Fields: chunkId (key), fileId, userId, content, contentVector (1536 dims, HNSW),
+        chunkIndex, tokenCount, embeddingModel, createdAt
+Vector Search: HNSW algorithm (cosine similarity, optimized for recall)
+```
+
+**Next Steps**: Integración completa del embedding pipeline con FileProcessingService
+
+---
+
 ### FASE 5: Integración con Chat
 
 **Objetivo**: Permitir usar archivos como contexto en conversaciones.

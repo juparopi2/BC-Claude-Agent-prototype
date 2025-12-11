@@ -6,7 +6,7 @@ import { IndexStats, FileChunkWithEmbedding, SearchQuery, HybridSearchQuery, Sea
 
 export class VectorSearchService {
   private static instance?: VectorSearchService;
-  private searchClient?: SearchClient<any>;
+  private searchClient?: SearchClient<Record<string, unknown>>;
   private indexClient?: SearchIndexClient;
 
   private constructor() {}
@@ -24,7 +24,7 @@ export class VectorSearchService {
    */
   async initializeClients(
     indexClientOverride?: SearchIndexClient,
-    searchClientOverride?: SearchClient<any>
+    searchClientOverride?: SearchClient<Record<string, unknown>>
   ): Promise<void> {
     if (indexClientOverride) {
       this.indexClient = indexClientOverride;
@@ -63,8 +63,8 @@ export class VectorSearchService {
     try {
       await this.indexClient.getIndex(INDEX_NAME);
       logger.info(`Index '${INDEX_NAME}' already exists.`);
-    } catch (error: any) {
-      if (error.statusCode === 404) {
+    } catch (error: unknown) {
+      if (error && typeof error === 'object' && 'statusCode' in error && error.statusCode === 404) {
         logger.info(`Index '${INDEX_NAME}' not found. Creating...`);
         await this.indexClient.createIndex(indexSchema);
         logger.info(`Index '${INDEX_NAME}' created successfully.`);
@@ -86,9 +86,9 @@ export class VectorSearchService {
     try {
       await this.indexClient.deleteIndex(INDEX_NAME);
       logger.info(`Index '${INDEX_NAME}' deleted successfully.`);
-    } catch (error: any) {
+    } catch (error: unknown) {
        // If index doesn't exist, we consider it "deleted" (idempotent)
-       if (error.statusCode === 404) {
+       if (error && typeof error === 'object' && 'statusCode' in error && error.statusCode === 404) {
            logger.info(`Index '${INDEX_NAME}' not found during deletion.`);
            return;
        }
@@ -112,12 +112,10 @@ export class VectorSearchService {
     // For now, we will return 0 for storageSize or try to fetch if we can.
     // Let's implement a best-effort approach using the indexClient if initialized.
     
-    let storageSize = 0;
+    const storageSize = 0;
     
-    if (this.indexClient) {
-        // Note: Storage size would require additional API calls
-        // For now, returning 0 as per test expectations
-    }
+    // Note: Storage size would require additional API calls
+    // For now, returning 0 as per test expectations
 
     return {
       documentCount: count,
@@ -198,7 +196,7 @@ export class VectorSearchService {
     
     const results: SearchResult[] = [];
     for await (const result of searchResults.results) {
-      const doc = result.document as any;
+      const doc = result.document as { chunkId: string; fileId: string; content: string; chunkIndex: number };
       results.push({
         chunkId: doc.chunkId,
         fileId: doc.fileId,
@@ -243,7 +241,7 @@ export class VectorSearchService {
     
     const results: SearchResult[] = [];
     for await (const result of searchResults.results) {
-      const doc = result.document as any;
+      const doc = result.document as { chunkId: string; fileId: string; content: string; chunkIndex: number };
       results.push({
         chunkId: doc.chunkId,
         fileId: doc.fileId,

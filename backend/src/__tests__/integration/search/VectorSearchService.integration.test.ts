@@ -12,8 +12,13 @@ describe.skipIf(!runIntegrationTests)('VectorSearchService Integration', () => {
     const testFileId = 'integration-test-file';
 
     beforeAll(async () => {
-        service = VectorSearchService.getInstance();
-        await service.ensureIndexExists();
+        try {
+            service = VectorSearchService.getInstance();
+            await service.ensureIndexExists();
+        } catch (error) {
+            console.error('VectorSearchService initialization failed:', error);
+            throw error;
+        }
     });
 
     afterAll(async () => {

@@ -28,6 +28,15 @@ vi.mock('@/utils/logger', () => ({
   createChildLogger: vi.fn(() => mockLogger),
 }));
 
+// Mock xlsx module to allow spying/mocking of 'read'
+vi.mock('xlsx', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('xlsx')>();
+  return {
+    ...mod,
+    read: vi.fn((...args) => mod.read(...args)),
+  };
+});
+
 describe('ExcelProcessor', () => {
   let processor: ExcelProcessor;
 
@@ -258,34 +267,66 @@ describe('ExcelProcessor', () => {
       );
     });
 
-    it.skip('should throw error with invalid Excel buffer (cannot mock xlsx.read)', async () => {
-      // Note: xlsx library is very forgiving and its properties are non-configurable
-      // We cannot easily mock XLSX.read to test parsing failure
-      // This test documents the limitation - xlsx will parse almost any buffer
-      // The error handling code path is tested indirectly through empty buffer test
+    it('should throw error with invalid Excel buffer', async () => {
+      const invalidBuffer = Buffer.from('invalid-data');
 
-      // Skipped: xlsx.read cannot be mocked reliably (non-configurable properties)
-      // Error handling is still tested via empty buffer and no sheets tests
+      // Mock XLSX.read to throw error
+      vi.mocked(XLSX.read).mockImplementationOnce(() => {
+        throw new Error('File not found');
+      });
+
+      // Expect the outer error message
+      await expect(processor.extractText(invalidBuffer, 'invalid.xlsx')).rejects.toThrow(
+        'Failed to parse Excel file'
+      );
     });
 
+    it('should throw error when workbook has no sheets', async () => {
+       const buffer = Buffer.from('fake-excel');
+       
+       // Mock read to return empty workbook
+       vi.mocked(XLSX.read).mockReturnValueOnce({
+           SheetNames: [],
+           Sheets: {},
+           Props: {}, 
+           AppVersion: '1.0',
+           Strings: [],
+           SSF: {},
+           Workbook: {}
+       } as any);
 
-    it.skip('should throw error when workbook has no sheets (cannot mock xlsx.read)', async () => {
-      // Note: Cannot mock XLSX.read as properties are non-configurable
-      // XLSX.write() also throws error if trying to write workbook with no sheets
-      // This test documents the limitation - we cannot create a no-sheets workbook
-      // The validation code exists in implementation but cannot be tested without mocking
-
-      // Skipped: xlsx.read/write cannot be mocked reliably (non-configurable properties)
-      // The validation logic at line 51-53 is present but not testable
+       await expect(processor.extractText(buffer, 'nosheets.xlsx')).rejects.toThrow(
+           'Excel file contains no sheets'
+       );
     });
 
-    it.skip('should handle corrupted sheet gracefully with warning (cannot mock xlsx.read)', async () => {
-      // Note: Cannot mock XLSX.read to test corrupted sheet scenario
-      // The defensive code at lines 60-64 handles missing sheets
-      // This test documents the limitation - xlsx library always creates valid workbooks
+    it('should handle corrupted sheet gracefully with warning', async () => {
+        const buffer = Buffer.from('fake-excel');
 
-      // Skipped: xlsx.read cannot be mocked reliably (non-configurable properties)
-      // The validation logic exists but cannot be tested without mocking
+        // Mock read to return workbook with sheet name but no sheet data
+        vi.mocked(XLSX.read).mockReturnValueOnce({
+            SheetNames: ['Sheet1'],
+            Sheets: {}, // Missing Sheet1 data
+            Props: {},
+            AppVersion: '1.0',
+            Strings: [],
+            SSF: {},
+            Workbook: {} 
+        } as any);
+
+        // Should not throw, but log warning
+        const result = await processor.extractText(buffer, 'corrupted.xlsx');
+        
+        // Sheet1 header is skipped if sheet is missing
+        expect(result.text).not.toContain('Sheet1'); 
+        
+        expect(mockLogger.warn).toHaveBeenCalledWith(
+            expect.objectContaining({
+                fileName: 'corrupted.xlsx',
+                sheetName: 'Sheet1'
+            }),
+            'Sheet not found in workbook, skipping'
+        );
     });
 
     it('should handle sheet conversion failure gracefully', async () => {

@@ -17,10 +17,12 @@ import type {
   ApprovalRequestedEvent,
   ThinkingChunkEvent,
   MessageChunkEvent,
+  CompleteEvent,
   // PHASE 4.6: Message types from shared package (single source of truth)
   Message,
 } from '@bc-agent/shared';
 import { isThinkingMessage } from '@bc-agent/shared';
+import type { CitationFileMap } from '@/lib/types/citation.types';
 
 /**
  * Streaming state for real-time message display
@@ -64,6 +66,10 @@ export interface ChatState {
 
   // Approvals
   pendingApprovals: Map<string, PendingApproval>;
+
+  // Citations
+  /** Map of fileName -> fileId from complete event citedFiles */
+  citationFileMap: CitationFileMap;
 
   // Status
   isLoading: boolean;
@@ -128,6 +134,7 @@ const initialState: ChatState = {
     capturedThinking: null,
   },
   pendingApprovals: new Map(),
+  citationFileMap: new Map(),
   isLoading: false,
   isAgentBusy: false,
   error: null,
@@ -511,7 +518,26 @@ export const useChatStore = create<ChatStore>()(
           actions.endStreaming();
           break;
 
-        case 'complete':
+        case 'complete': {
+          const completeEvent = event as CompleteEvent;
+          actions.endStreaming();
+          actions.setAgentBusy(false);
+
+          // Update citationFileMap from citedFiles if present
+          if (completeEvent.citedFiles && completeEvent.citedFiles.length > 0) {
+            const newMap: CitationFileMap = new Map();
+            for (const file of completeEvent.citedFiles) {
+              newMap.set(file.fileName, file.fileId);
+            }
+            set({ citationFileMap: newMap });
+          } else if (completeEvent.citedFiles) {
+            // Empty array clears the map
+            set({ citationFileMap: new Map() });
+          }
+          // If citedFiles is undefined, keep existing map
+          break;
+        }
+
         case 'session_end':
           actions.endStreaming();
           actions.setAgentBusy(false);

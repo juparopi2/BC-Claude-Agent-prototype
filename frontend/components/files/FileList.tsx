@@ -11,7 +11,36 @@ import { FileContextMenu } from './FileContextMenu';
 import { useFileStore, selectSortedFiles } from '@/lib/stores/fileStore';
 import { getFileApiClient } from '@/lib/services/fileApi';
 import { triggerDownload } from '@/lib/download';
-import { PDFComingSoonModal } from '@/components/modals/PDFComingSoonModal';
+import { FilePreviewModal } from '@/components/modals/FilePreviewModal';
+
+/**
+ * Check if a file type can be previewed
+ */
+function isPreviewableFile(mimeType: string): boolean {
+  // PDF files
+  if (mimeType === 'application/pdf') return true;
+
+  // Image files
+  if (mimeType.startsWith('image/')) return true;
+
+  // Text-based files
+  const textTypes = [
+    'text/plain',
+    'text/javascript',
+    'text/typescript',
+    'text/css',
+    'text/html',
+    'text/xml',
+    'text/markdown',
+    'text/csv',
+    'application/json',
+    'application/javascript',
+    'application/xml',
+  ];
+  if (textTypes.includes(mimeType) || mimeType.startsWith('text/')) return true;
+
+  return false;
+}
 
 export function FileList() {
   const files = useFileStore(selectSortedFiles);
@@ -19,8 +48,8 @@ export function FileList() {
   const selectedFileIds = useFileStore(state => state.selectedFileIds);
   const { selectFile, navigateToFolder, toggleFavorite } = useFileStore();
 
-  const [pdfModalOpen, setPdfModalOpen] = useState(false);
-  const [activePdfFile, setActivePdfFile] = useState<ParsedFile | null>(null);
+  const [previewModalOpen, setPreviewModalOpen] = useState(false);
+  const [activePreviewFile, setActivePreviewFile] = useState<ParsedFile | null>(null);
 
   const handleSelect = useCallback((fileId: string, multi: boolean) => {
     selectFile(fileId, multi);
@@ -32,23 +61,23 @@ export function FileList() {
       return;
     }
 
-    // Handle PDF files with the "Coming Soon" modal
-    if (file.mimeType === 'application/pdf') {
-      setActivePdfFile(file);
-      setPdfModalOpen(true);
+    // Handle previewable files with the preview modal
+    if (isPreviewableFile(file.mimeType)) {
+      setActivePreviewFile(file);
+      setPreviewModalOpen(true);
       return;
     }
 
     // Handle other files by downloading them
     try {
       const fileApi = getFileApiClient();
-      
+
       toast.message('Downloading file', {
         description: `Downloading ${file.name}...`,
       });
 
       const response = await fileApi.downloadFile(file.id);
-      
+
       if (response.success) {
         triggerDownload(response.data, file.name);
         toast.success('Download started', {
@@ -123,11 +152,15 @@ export function FileList() {
         ))}
       </div>
     </ScrollArea>
-    <PDFComingSoonModal
-        isOpen={pdfModalOpen}
-        onClose={() => setPdfModalOpen(false)}
-        fileName={activePdfFile?.name || ''}
-      />
+    {activePreviewFile && (
+        <FilePreviewModal
+          isOpen={previewModalOpen}
+          onClose={() => setPreviewModalOpen(false)}
+          fileId={activePreviewFile.id}
+          fileName={activePreviewFile.name}
+          mimeType={activePreviewFile.mimeType}
+        />
+      )}
     </>
   );
 }

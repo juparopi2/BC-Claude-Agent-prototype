@@ -12,6 +12,7 @@
 
 import { randomUUID } from 'crypto';
 import { createChildLogger } from '@/utils/logger';
+import type { CitedFile } from '@bc-agent/shared';
 import type {
   EventCallback,
   EmittableEvent,
@@ -52,7 +53,7 @@ export interface IMessageEmitter {
   emitToolUsePending(data: ToolUsePendingData): void;
 
   /** Emit completion event */
-  emitComplete(stopReason: StopReason, tokenUsage?: TokenUsage, sessionId?: string): void;
+  emitComplete(stopReason: StopReason, tokenUsage?: TokenUsage, sessionId?: string, citedFiles?: CitedFile[]): void;
 
   /** Emit error event */
   emitError(error: string, code?: string, sessionId?: string): void;
@@ -188,7 +189,7 @@ export class MessageEmitter implements IMessageEmitter {
   /**
    * Emit completion event
    */
-  emitComplete(stopReason: StopReason, tokenUsage?: TokenUsage, sessionId?: string): void {
+  emitComplete(stopReason: StopReason, tokenUsage?: TokenUsage, sessionId?: string, citedFiles?: CitedFile[]): void {
     // Map Anthropic stop_reason to CompleteEvent reason format
     let reason: 'success' | 'error' | 'max_turns' | 'user_cancelled' = 'success';
 
@@ -208,8 +209,9 @@ export class MessageEmitter implements IMessageEmitter {
       stopReason, // Keep stopReason for backward compatibility
       tokenUsage,
       sessionId,
+      citedFiles: citedFiles && citedFiles.length > 0 ? citedFiles : undefined,
     });
-    logger.debug({ reason, stopReason }, 'Emitting complete');
+    logger.debug({ reason, stopReason, citedFilesCount: citedFiles?.length ?? 0 }, 'Emitting complete');
     this.emit(event);
   }
 

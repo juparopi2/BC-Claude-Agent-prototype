@@ -18,6 +18,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Bot } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore, selectUserInitials } from '@/lib/stores/authStore';
+import type { CitationFileMap } from '@/lib/types/citation.types';
 
 /**
  * Format token count with K suffix for thousands
@@ -33,9 +34,17 @@ function formatTokenCount(count: number): string {
 
 interface MessageBubbleProps {
   message: Message;
+  /** Map of fileName -> fileId for citation matching */
+  citationFileMap?: CitationFileMap;
+  /** Callback when a citation is clicked */
+  onCitationOpen?: (fileId: string) => void;
 }
 
-export default function MessageBubble({ message }: MessageBubbleProps) {
+export default function MessageBubble({
+  message,
+  citationFileMap,
+  onCitationOpen,
+}: MessageBubbleProps) {
   const userInitials = useAuthStore(selectUserInitials);
 
   // Handle thinking messages with unified ThinkingDisplay component
@@ -94,7 +103,11 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
             isUser ? 'bg-primary text-primary-foreground' : 'bg-muted'
           )}
         >
-          <MarkdownRenderer content={message.content} />
+          <MarkdownRenderer
+            content={message.content}
+            citationFileMap={citationFileMap}
+            onCitationOpen={onCitationOpen}
+          />
         </div>
 
         {/* Token usage display for assistant messages */}

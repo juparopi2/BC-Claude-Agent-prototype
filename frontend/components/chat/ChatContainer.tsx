@@ -1,7 +1,9 @@
 'use client';
 
-import { useEffect, useRef, useMemo } from 'react';
+import { useEffect, useRef, useMemo, useCallback } from 'react';
 import { useChatStore } from '@/lib/stores/chatStore';
+import { useFileStore } from '@/lib/stores/fileStore';
+import { useFilePreviewStore } from '@/lib/stores/filePreviewStore';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Loader2 } from 'lucide-react';
 import { isToolUseMessage, isToolResultMessage, isThinkingMessage } from '@bc-agent/shared';
@@ -13,6 +15,13 @@ import { ToolCard } from './ToolCard';
 export default function ChatContainer() {
   const persistedMessages = useChatStore((s) => s.messages || []);
   const optimisticMessages = useChatStore((s) => s.optimisticMessages || new Map());
+  const citationFileMap = useChatStore((s) => s.citationFileMap);
+
+  // File store for looking up file metadata
+  const files = useFileStore((s) => s.files);
+
+  // File preview store for opening previews
+  const openPreview = useFilePreviewStore((s) => s.openPreview);
 
   // Combine persisted and optimistic messages, sorted by sequence_number
   const messages = useMemo(() => {
@@ -40,6 +49,22 @@ export default function ChatContainer() {
   const streaming = useChatStore((s) => s.streaming);
   const isLoading = useChatStore((s) => s.isLoading);
   const isAgentBusy = useChatStore((s) => s.isAgentBusy);
+
+  /**
+   * Handle citation click - lookup file and open preview modal
+   */
+  const handleCitationOpen = useCallback((fileId: string) => {
+    // Look up file metadata from fileStore
+    const file = files.find(f => f.id === fileId);
+
+    if (file) {
+      openPreview(fileId, file.name, file.mimeType);
+    } else {
+      // File not found in store - still try to open with minimal info
+      // The preview modal will handle the case where file content can't be loaded
+      console.warn(`Citation clicked for file ${fileId} but file not found in store`);
+    }
+  }, [files, openPreview]);
 
 
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -106,7 +131,14 @@ export default function ChatContainer() {
           }
 
           // Render standard messages
-          return <MessageBubble key={message.id} message={message} />;
+          return (
+            <MessageBubble
+              key={message.id}
+              message={message}
+              citationFileMap={citationFileMap}
+              onCitationOpen={handleCitationOpen}
+            />
+          );
         })}
 
         {streaming.isStreaming && streaming.content.length > 0 && (

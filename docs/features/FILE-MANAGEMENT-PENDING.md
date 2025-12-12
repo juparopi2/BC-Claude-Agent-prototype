@@ -1,9 +1,9 @@
 # Sistema de Archivos - Trabajo Pendiente
 
-**Última actualización**: December 11, 2025
-**Estado actual**: 1968 tests passing
+**Última actualización**: December 12, 2025
+**Estado actual**: 2039 tests passing (backend), 288 tests passing (frontend)
 
-Este documento consolida el trabajo pendiente del sistema de archivos. Las fases 1-5 (backend) están completas.
+Este documento consolida el trabajo pendiente del sistema de archivos. Las fases 1-5 están completas.
 
 ---
 
@@ -16,8 +16,9 @@ Este documento consolida el trabajo pendiente del sistema de archivos. Las fases
 | Fase 2: UI Archivos | ✅ Completo | FileExplorer funcional |
 | Fase 3: Procesamiento | ✅ Completo | PDF, DOCX, Excel, Text |
 | Fase 4: Embeddings | ✅ Completo | Chunking, Search, FileChunkingService |
-| Fase 5: Chat Integration | ✅ Backend completo | Búsqueda automática + CitationLink pendientes |
-| Fase 6: Polish | ❌ No iniciado | Preview, thumbnails, cache |
+| Fase 5: Chat Integration | ✅ Completo | SemanticSearchService + CitationLink implementados |
+| Fase 5.5: Sprint 1 | ✅ Completo | Citations end-to-end + FilePreviewModal |
+| Fase 6: Polish | ❌ No iniciado | Thumbnails, cache |
 
 ---
 
@@ -48,50 +49,50 @@ Este documento consolida el trabajo pendiente del sistema de archivos. Las fases
 
 ---
 
-### 2. Búsqueda Semántica Automática (Sin Adjuntos)
+### 2. ✅ Búsqueda Semántica Automática (UseMyContext) - COMPLETADO
 
-**Prioridad**: Alta
-**Ubicación**: `DirectAgentService.ts`
+**Commit**: `88831e1` (December 12, 2025)
+**Ubicación**: `DirectAgentService.ts`, `SemanticSearchService.ts`
 
-Cuando el usuario envía un mensaje SIN adjuntos manuales, el sistema debería:
-1. Detectar que no hay `attachments[]`
-2. Llamar `VectorSearchService.searchFiles(userId, query)`
-3. Si `score > threshold` → incluir chunks como contexto
-4. Agregar metadata para citations automáticas
+**Implementado**:
+- `SemanticSearchService` busca archivos relevantes por query
+- `DirectAgentService` llama automáticamente cuando `enableAutoSemanticSearch: true`
+- Threshold configurable (default: 0.7)
+- Prioriza attachments manuales sobre búsqueda automática
+- 12 tests unitarios en `DirectAgentService.semanticSearch.test.ts`
 
+**API**:
 ```typescript
-// Pseudocódigo en DirectAgentService.executeQueryStreaming()
-if (!attachments || attachments.length === 0) {
-  const relevantFiles = await vectorSearchService.searchFiles(userId, prompt);
-  if (relevantFiles.some(f => f.score > SEMANTIC_THRESHOLD)) {
-    // Incluir como contexto
-  }
-}
-```
-
-**Tareas**:
-```
-[ ] Definir SEMANTIC_THRESHOLD (sugerido: 0.7)
-[ ] Implementar lógica en DirectAgentService
-[ ] Tests unitarios para búsqueda automática
-[ ] Tests de integración E2E
+await agentService.executeQueryStreaming({
+  prompt: "¿Qué dice el contrato sobre pagos?",
+  enableAutoSemanticSearch: true,  // Activa búsqueda semántica
+  semanticThreshold: 0.7,          // Score mínimo (opcional)
+  maxSemanticFiles: 3              // Máximo archivos (opcional)
+});
 ```
 
 ---
 
-### 3. Frontend: CitationLink Component
+### 3. ✅ Frontend: CitationLink Component - COMPLETADO
 
-**Prioridad**: Media
-**Dependencia**: Backend ya parsea y persiste citations
+**Commit**: `88831e1` (December 12, 2025)
+**Ubicación**: `frontend/components/chat/CitationLink.tsx`
 
+**Implementado**:
+- Renderiza `[filename.ext]` como botones clickeables
+- Iconos por tipo: PDF, Excel, imágenes, código, archivos comprimidos
+- Tooltip con nombre completo
+- Estado disabled para archivos no encontrados
+- Integración lista con `MarkdownRenderer`
+
+**Uso**:
+```tsx
+<CitationLink
+  fileName="contrato.pdf"
+  fileId="uuid-123"
+  onOpen={(fileId) => openFilePreview(fileId)}
+/>
 ```
-[ ] CitationLink.tsx - Renderiza [filename.ext] como link clickeable
-[ ] Click abre archivo en nuevo tab o modal
-[ ] Tooltip con nombre completo del archivo
-[ ] Estilo visual distintivo (color, icono)
-```
-
-**Regex para detectar**: `/\[([^\]]+\.[^\]]+)\]/g`
 
 ---
 
@@ -112,12 +113,12 @@ if (!attachments || attachments.length === 0) {
 
 **Prioridad**: Baja (post-MVP)
 
-#### Vista Previa de Archivos
+#### ✅ Vista Previa de Archivos - COMPLETADO
 ```
-[ ] Modal de preview para imágenes
-[ ] Preview de PDF (embed o iframe)
-[ ] Preview de texto/código
-[ ] Fallback para tipos no soportados
+[x] Modal de preview para imágenes
+[x] Preview de PDF (embed o iframe)
+[x] Preview de texto/código (syntax highlight)
+[x] Fallback para tipos no soportados (download)
 ```
 
 #### Thumbnails
@@ -177,9 +178,114 @@ Si necesitas contexto sobre la arquitectura implementada:
 
 ---
 
+## Orden de Implementación Propuesto
+
+### ✅ Sprint 1: Integración Frontend Chat - COMPLETADO
+**Objetivo**: Hacer que la búsqueda semántica y citations funcionen end-to-end
+**Fecha**: December 12, 2025
+
+| # | Tarea | Estado |
+|---|-------|--------|
+| 1.1 | Backend: `citedFiles` en evento `complete` | ✅ Completo |
+| 1.2 | Frontend: `citationFileMap` en chatStore | ✅ Completo |
+| 1.3 | Frontend: MessageBubble → MarkdownRenderer wiring | ✅ Completo |
+| 1.4 | Frontend: FilePreviewModal (PDF, images, text/code) | ✅ Completo |
+| 1.5 | Frontend: Citation click → FilePreviewModal integration | ✅ Completo |
+
+**Archivos modificados/creados**:
+- `packages/shared/src/types/agent.types.ts` - CitedFile interface, CompleteEvent.citedFiles
+- `backend/src/services/agent/DirectAgentService.ts` - Build citedFiles from fileContext
+- `backend/src/services/agent/messages/MessageEmitter.ts` - emitComplete with citedFiles
+- `frontend/lib/stores/chatStore.ts` - citationFileMap state + complete event handler
+- `frontend/lib/stores/filePreviewStore.ts` - NEW: Zustand store for preview modal
+- `frontend/components/modals/FilePreviewModal.tsx` - NEW: Preview modal component
+- `frontend/components/chat/MessageBubble.tsx` - citationFileMap/onCitationOpen props
+- `frontend/components/chat/ChatContainer.tsx` - handleCitationOpen → openPreview
+- `frontend/components/files/FileList.tsx` - Uses FilePreviewModal
+
+**Tests**: 59 new tests (8 backend citedFiles + 16 MessageBubble + 33 FilePreview + 6 integration)
+
+**Entregable**: ✅ Usuario puede chatear, el agente usa archivos relevantes, las citations son clickeables y abren preview.
+
+---
+
+### Sprint 2: Dashboard de Uso (Media prioridad, Valor de negocio)
+**Objetivo**: Visibilidad de consumo y quotas para usuarios
+
+| # | Tarea | Esfuerzo | Dependencia |
+|---|-------|----------|-------------|
+| 2.1 | `usageStore.ts` - Zustand store con fetch inicial | 3h | Backend API existe |
+| 2.2 | `UsageDashboard.tsx` - Vista con métricas principales | 4h | 2.1 |
+| 2.3 | `QuotaProgressBar.tsx` - Barras de progreso por tipo | 2h | 2.1 |
+| 2.4 | WebSocket listener para `usage:updated` y `usage:alert` | 3h | 2.1 |
+| 2.5 | `QuotaAlertBanner.tsx` - Banner global de alertas | 2h | 2.4 |
+
+**Entregable**: Usuario ve su consumo en tiempo real con alertas de cuota.
+
+---
+
+### ✅ Sprint 3: Preview de Archivos - COMPLETADO (merged into Sprint 1)
+**Objetivo**: Ver contenido de archivos sin descargar
+**Fecha**: December 12, 2025
+
+| # | Tarea | Estado |
+|---|-------|--------|
+| 3.1 | `FilePreviewModal.tsx` - Modal contenedor | ✅ Completo |
+| 3.2 | Preview de imágenes (inline) | ✅ Completo |
+| 3.3 | Preview de PDF (embed/iframe) | ✅ Completo |
+| 3.4 | Preview de texto/código (syntax highlight) | ✅ Completo |
+| 3.5 | Fallback para tipos no soportados (download) | ✅ Completo |
+
+**Entregable**: ✅ Click en archivo abre modal con preview del contenido.
+
+---
+
+### Sprint 4: UX FileExplorer (Baja prioridad, Nice-to-have)
+**Objetivo**: Mejorar experiencia de gestión de archivos
+
+| # | Tarea | Esfuerzo | Dependencia |
+|---|-------|----------|-------------|
+| 4.1 | Drag & drop para mover archivos entre carpetas | 6h | - |
+| 4.2 | Estado de procesamiento en tiempo real | 4h | - |
+| 4.3 | Aceptar archivos desde FileExplorer al ChatInput | 4h | Sprint 1 |
+| 4.4 | Click en chip de adjunto para preview | 2h | Sprint 3 |
+
+---
+
+### Sprint 5: Optimización (Post-MVP)
+**Objetivo**: Performance y escalabilidad
+
+| # | Tarea | Esfuerzo | Dependencia |
+|---|-------|----------|-------------|
+| 5.1 | Thumbnails para imágenes (generar + Blob storage) | 6h | - |
+| 5.2 | Caché de búsquedas (Redis, TTL 5min) | 4h | - |
+| 5.3 | Lazy loading de thumbnails en FileExplorer | 3h | 5.1 |
+| 5.4 | Tests E2E completos (upload, folder, chat, search) | 8h | Todo |
+
+---
+
+## Recomendación de Orden
+
+```
+Sprint 1 (1-2 días)   → ✅ COMPLETO - MVP funcional con citations
+Sprint 2 (2-3 días)   → Valor de negocio (billing visibility)
+Sprint 3 (1-2 días)   → ✅ COMPLETO (merged into Sprint 1) - UX mejorada (preview)
+Sprint 4 (2-3 días)   → Nice-to-have
+Sprint 5 (2-3 días)   → Post-MVP optimización
+```
+
+**Completado**: Sprint 1 + Sprint 3
+**Siguiente recomendado**: Sprint 2 (Dashboard de Uso) o Sprint 4 (UX FileExplorer)
+
+---
+
 ## Changelog
 
 | Fecha | Cambio |
 |-------|--------|
+| 2025-12-12 | **Sprint 1 COMPLETO**: citedFiles backend, citationFileMap frontend, FilePreviewModal, citation→preview integration |
+| 2025-12-12 | **Sprint 3 COMPLETO** (merged into Sprint 1): FilePreviewModal con soporte PDF, images, text/code |
+| 2025-12-12 | SemanticSearchService y CitationLink implementados (commit 88831e1) |
+| 2025-12-12 | Reorganizado pendientes con orden de implementación propuesto |
 | 2025-12-11 | Documento creado consolidando trabajo pendiente |
 | 2025-12-11 | FileChunkingService implementado (eslabón perdido del pipeline) |

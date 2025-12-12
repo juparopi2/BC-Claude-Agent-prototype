@@ -1693,13 +1693,21 @@ export class DirectAgentService {
           .catch((err) => this.logger.warn({ err, lastMessageId }, 'Failed to record file usage'));
       }
 
+      // Build citedFiles from fileContext.fileMap for frontend citation support
+      const citedFiles = fileContext.fileMap.size > 0
+        ? Array.from(fileContext.fileMap.entries()).map(([fileName, fileId]) => ({
+            fileName,
+            fileId,
+          }))
+        : undefined;
+
       // ✅ FIX PHASE 4: Send completion event (transient - not persisted)
       this.emitter.emitComplete('end_turn', {
         inputTokens,
         outputTokens,
         cacheCreationInputTokens: cacheCreationInputTokens > 0 ? cacheCreationInputTokens : undefined,
         cacheReadInputTokens: cacheReadInputTokens > 0 ? cacheReadInputTokens : undefined,
-      }, sessionId);
+      }, sessionId, citedFiles);
 
       return {
         success: true,

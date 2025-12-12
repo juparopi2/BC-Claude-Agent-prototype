@@ -247,6 +247,17 @@ export interface SessionEndEvent extends BaseAgentEvent {
 }
 
 /**
+ * Cited File
+ * Represents a file that was used/cited during agent execution
+ */
+export interface CitedFile {
+  /** File name for display */
+  fileName: string;
+  /** File ID for lookup/preview */
+  fileId: string;
+}
+
+/**
  * Complete Event
  * Emitted when agent execution completes (terminal event)
  */
@@ -254,6 +265,12 @@ export interface CompleteEvent extends BaseAgentEvent {
   type: 'complete';
   /** Completion reason */
   reason: 'success' | 'error' | 'max_turns' | 'user_cancelled';
+  /**
+   * Files that were used/cited during agent execution.
+   * Frontend uses this to enable clickable citations after streaming completes.
+   * Undefined when no files were used.
+   */
+  citedFiles?: CitedFile[];
 }
 
 /**

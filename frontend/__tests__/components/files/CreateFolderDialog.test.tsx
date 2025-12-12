@@ -192,10 +192,10 @@ describe('CreateFolderDialog', () => {
       const createButton = screen.getByRole('button', { name: /^create$/i });
       await user.click(createButton);
 
-      // Should show validation error
+      // Should show validation error (updated to include commas and periods for Danish business names)
       await waitFor(() => {
         expect(toast.error).toHaveBeenCalledWith(
-          'Folder name can only contain letters, numbers, spaces, hyphens, and underscores'
+          'Folder name can only contain letters, numbers, spaces, hyphens, underscores, commas, and periods'
         );
       });
 

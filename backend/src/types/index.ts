@@ -58,6 +58,9 @@ export type {
   AgentType,
   AgentConfig,
   AgentSessionContext,
+  // Phase 5: File Context Types
+  ImageContent,
+  FileContextResult,
 } from './agent.types';
 
 // Auth Types

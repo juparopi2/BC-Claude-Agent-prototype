@@ -189,3 +189,38 @@ export interface AgentHooks {
   /** Called when session ends */
   onSessionEnd?: (sessionId: string, reason?: string) => Promise<void>;
 }
+
+// ============================================
+// File Context Types (Phase 5 Chat Integration)
+// ============================================
+
+/**
+ * Image content for Claude Vision API
+ * Used when files include images that should be processed visually
+ */
+export interface ImageContent {
+  /** MIME type of the image (e.g., 'image/png', 'image/jpeg') */
+  mimeType: string;
+  /** Base64-encoded image data */
+  data: string;
+}
+
+/**
+ * Result of preparing file context for injection into LLM prompts
+ *
+ * Contains all the information needed to:
+ * 1. Inject document content into the user message (documentContext)
+ * 2. Extend the system prompt with citation instructions (systemInstructions)
+ * 3. Add images for Claude Vision API (images)
+ * 4. Track which files were cited in responses (fileMap)
+ */
+export interface FileContextResult {
+  /** XML-formatted document content to inject into user message */
+  documentContext: string;
+  /** System prompt instructions for citing documents */
+  systemInstructions: string;
+  /** Image contents for Claude Vision API (base64 encoded) */
+  images: ImageContent[];
+  /** Map of fileName → fileId for citation parsing */
+  fileMap: Map<string, string>;
+}

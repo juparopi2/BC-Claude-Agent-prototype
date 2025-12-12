@@ -56,6 +56,11 @@ import type { Logger } from 'pino';
 import * as fs from 'fs';
 import * as path from 'path';
 import { getFileService } from '../files/FileService';
+import { getContextRetrievalService } from '../files/context/ContextRetrievalService';
+import { getFileContextPromptBuilder } from '../files/context/PromptBuilder';
+import { getCitationParser } from '../files/citations/CitationParser';
+import { getMessageFileAttachmentService } from '../files/MessageFileAttachmentService';
+import type { FileContextResult, ParsedFile } from '@/types';
 
 /**
  * Type Definitions for BC Index and MCP Tools
@@ -383,13 +388,21 @@ export class DirectAgentService {
         this.emitter.setEventCallback(onEvent as (event: import('./messages').EmittableEvent) => void);
       }
 
-      // Validate attachments (Phase 5 - Chat Integration)
+      // Validate attachments and prepare file context (Phase 5 - Chat Integration)
+      const validatedFiles: ParsedFile[] = [];
+      let fileContext: FileContextResult = {
+        documentContext: '',
+        systemInstructions: '',
+        images: [],
+        fileMap: new Map<string, string>(),
+      };
+
       if (options?.attachments && options.attachments.length > 0) {
         if (!userId) {
           throw new Error('UserId required for attachment validation');
         }
         this.logger.info({ userId, count: options.attachments.length }, 'Validating attachments');
-        
+
         const fileService = getFileService();
         for (const fileId of options.attachments) {
           // Validate ownership and existence
@@ -398,17 +411,29 @@ export class DirectAgentService {
             this.logger.warn({ userId, fileId }, 'Invalid attachment or access denied');
             throw new Error(`Access denied or file not found: ${fileId}`);
           }
+          validatedFiles.push(file);
         }
         this.logger.info('✅ Attachments validated successfully');
+
+        // Prepare file context for injection into prompt
+        fileContext = await this.prepareFileContext(userId, validatedFiles, prompt);
+        this.logger.info({
+          fileCount: validatedFiles.length,
+          hasDocContext: fileContext.documentContext.length > 0,
+          hasImages: fileContext.images.length > 0,
+        }, '✅ File context prepared');
       }
 
       // Step 1: Get MCP tools and convert to Anthropic format
       const tools = await this.getMCPToolDefinitions();
 
-      // Step 2: Add user message to history
+      // Step 2: Add user message to history (with document context if available)
+      const userMessageContent = fileContext.documentContext
+        ? `${fileContext.documentContext}\n\n${prompt}`
+        : prompt;
       conversationHistory.push({
         role: 'user',
-        content: prompt,
+        content: userMessageContent,
       });
 
       // ⭐ Phase 4: Send thinking event ONCE per user message (NOT per turn)
@@ -447,6 +472,7 @@ export class DirectAgentService {
       let turnCount = 0;
       const maxTurns = 20; // Safety limit
       let chunkCount = 0;
+      let lastMessageId: string | null = null; // Track messageId for file usage recording
 
       while (continueLoop && turnCount < maxTurns) {
         turnCount++;
@@ -535,6 +561,7 @@ export class DirectAgentService {
             case 'message_start':
               // Message begins - capture ID, model, and initial usage
               messageId = event.message.id;
+              lastMessageId = messageId; // Track for file usage recording
               modelName = event.message.model;  // NEW: Capture model name
               inputTokens += event.message.usage.input_tokens;
               // ⭐ Capture cache tokens for billing analytics
@@ -1814,6 +1841,13 @@ export class DirectAgentService {
       }
 
       const duration = Date.now() - startTime;
+      const finalResponse = accumulatedResponses.join('\n\n');
+
+      // Phase 5: Record file usage (fire-and-forget)
+      if (options?.attachments && options.attachments.length > 0 && lastMessageId) {
+        this.recordFileUsage(lastMessageId, finalResponse, fileContext.fileMap, options.attachments)
+          .catch((err) => this.logger.warn({ err, lastMessageId }, 'Failed to record file usage'));
+      }
 
       // ✅ FIX PHASE 4: Send completion event (transient - not persisted)
       this.emitter.emitComplete('end_turn', {
@@ -1825,7 +1859,7 @@ export class DirectAgentService {
 
       return {
         success: true,
-        response: accumulatedResponses.join('\n\n'),
+        response: finalResponse,
         toolsUsed,
         duration,
         inputTokens,
@@ -2488,6 +2522,150 @@ CRITICAL INSTRUCTIONS:
         },
       },
     ];
+  }
+
+  // ============================================
+  // Phase 5: File Context Integration Methods
+  // ============================================
+
+  /**
+   * Prepares file context for injection into LLM prompt
+   *
+   * Retrieves file content using appropriate strategy (direct, extracted text, or RAG)
+   * and formats it for injection into the user message and system prompt.
+   *
+   * @param userId - User ID for access control
+   * @param files - Validated file objects to include
+   * @param userQuery - User's question (used for RAG relevance scoring)
+   * @returns FileContextResult with document context, instructions, images, and file map
+   */
+  private async prepareFileContext(
+    userId: string,
+    files: ParsedFile[],
+    userQuery: string
+  ): Promise<FileContextResult> {
+    // Return empty context if no files
+    if (files.length === 0) {
+      return {
+        documentContext: '',
+        systemInstructions: '',
+        images: [],
+        fileMap: new Map<string, string>(),
+      };
+    }
+
+    try {
+      // Retrieve content using appropriate strategy for each file
+      const retrievalService = getContextRetrievalService();
+      const retrievalResult = await retrievalService.retrieveMultiple(userId, files, {
+        userQuery,
+        maxTotalTokens: 50000, // ~200KB of text
+      });
+
+      // Log retrieval results
+      this.logger.info({
+        successCount: retrievalResult.contents.length,
+        failureCount: retrievalResult.failures.length,
+        totalTokens: retrievalResult.totalTokens,
+        truncated: retrievalResult.truncated,
+      }, 'File retrieval completed');
+
+      // Log any failures for debugging
+      for (const failure of retrievalResult.failures) {
+        this.logger.warn({
+          fileId: failure.fileId,
+          fileName: failure.fileName,
+          reason: failure.reason,
+        }, 'File retrieval failed');
+      }
+
+      // Build document context and instructions
+      const promptBuilder = getFileContextPromptBuilder();
+      const documentContext = promptBuilder.buildDocumentContext(retrievalResult.contents);
+      const fileNames = retrievalResult.contents.map(c => c.fileName);
+      const systemInstructions = promptBuilder.buildSystemInstructions(fileNames);
+      const images = promptBuilder.getImageContents(retrievalResult.contents);
+
+      // Build file map for citation parsing (fileName -> fileId)
+      const fileMap = new Map<string, string>();
+      for (const file of files) {
+        fileMap.set(file.name, file.id);
+      }
+
+      return {
+        documentContext,
+        systemInstructions,
+        images,
+        fileMap,
+      };
+    } catch (error) {
+      this.logger.error({ error, userId, fileCount: files.length }, 'Failed to prepare file context');
+      // Return empty context on error - don't fail the entire request
+      return {
+        documentContext: '',
+        systemInstructions: '',
+        images: [],
+        fileMap: new Map<string, string>(),
+      };
+    }
+  }
+
+  /**
+   * Records file usage after a message is completed
+   *
+   * Parses citations from the response text and records:
+   * - Direct attachments (files the user attached)
+   * - Citation attachments (files Claude referenced in response)
+   *
+   * This is a fire-and-forget operation - errors are logged but don't fail the response.
+   *
+   * @param messageId - ID of the assistant message
+   * @param responseText - Claude's response text
+   * @param fileMap - Map of fileName -> fileId for citation parsing
+   * @param attachmentIds - IDs of files the user attached
+   */
+  private async recordFileUsage(
+    messageId: string,
+    responseText: string,
+    fileMap: Map<string, string>,
+    attachmentIds: string[]
+  ): Promise<void> {
+    try {
+      const attachmentService = getMessageFileAttachmentService();
+
+      // Record direct attachments (user explicitly attached these)
+      if (attachmentIds.length > 0) {
+        await attachmentService.recordAttachments(messageId, attachmentIds, 'direct');
+        this.logger.debug({ messageId, count: attachmentIds.length }, 'Recorded direct attachments');
+      }
+
+      // Parse citations from response
+      const citationParser = getCitationParser();
+      const citationResult = citationParser.parseCitations(responseText, fileMap);
+
+      // Record citation attachments (excluding files already in direct)
+      if (citationResult.matchedFileIds.length > 0) {
+        // Filter out files that are already recorded as direct attachments
+        const citationOnlyIds = citationResult.matchedFileIds.filter(
+          (id) => !attachmentIds.includes(id)
+        );
+
+        if (citationOnlyIds.length > 0) {
+          await attachmentService.recordAttachments(messageId, citationOnlyIds, 'citation');
+          this.logger.debug({ messageId, count: citationOnlyIds.length }, 'Recorded citation attachments');
+        }
+      }
+
+      this.logger.info({
+        messageId,
+        directCount: attachmentIds.length,
+        citationCount: citationResult.matchedFileIds.length,
+        totalCitations: citationResult.citations.length,
+      }, 'File usage recorded');
+    } catch (error) {
+      // Fire-and-forget - log but don't propagate
+      this.logger.warn({ error, messageId }, 'Failed to record file usage');
+    }
   }
 }
 

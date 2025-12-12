@@ -477,4 +477,192 @@ describe('FileService - SQL NULL Comparison Integration', () => {
       expect(deepFiles[0]?.id.toLowerCase()).toBe(deepFileId.toLowerCase());
     });
   });
+
+  describe('GDPR-Compliant Deletion Cascade', () => {
+    /**
+     * GDPR Article 17 - Right to Erasure
+     * Tests verify cascading deletion across database tables
+     * Note: AI Search cleanup is tested in unit tests (requires mocking)
+     */
+
+    it('should delete file and create audit record', async () => {
+      // Create a file
+      const fileId = await fileService.createFileRecord({
+        userId: testUserId,
+        name: 'gdpr-test-file.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 1024,
+        blobPath: `users/${testUserId}/files/gdpr-test-file.pdf`,
+      });
+      createdFileIds.push(fileId);
+
+      // Delete the file
+      const blobPaths = await fileService.deleteFile(testUserId, fileId);
+
+      // Verify file is deleted
+      const fileAfterDelete = await fileService.getFile(testUserId, fileId);
+      expect(fileAfterDelete).toBeNull();
+
+      // Verify blob path returned
+      expect(blobPaths).toHaveLength(1);
+      expect(blobPaths[0]).toContain('gdpr-test-file.pdf');
+
+      // Verify audit record was created
+      const auditResult = await executeQuery<{ count: number }>(
+        `SELECT COUNT(*) as count FROM deletion_audit_log WHERE resource_id = @resourceId`,
+        { resourceId: fileId }
+      );
+      expect(auditResult.recordset[0]?.count).toBeGreaterThanOrEqual(1);
+
+      // Clean up audit record
+      await executeQuery('DELETE FROM deletion_audit_log WHERE resource_id = @resourceId', { resourceId: fileId });
+    });
+
+    it('should cascade delete folder with children and track child count', async () => {
+      // Create folder structure
+      const folderId = randomUUID();
+      const child1Id = randomUUID();
+      const child2Id = randomUUID();
+
+      await insertFileDirectly({
+        id: folderId,
+        user_id: testUserId,
+        parent_folder_id: null,
+        name: 'GDPR-Test-Folder',
+        is_folder: true,
+      });
+
+      await insertFileDirectly({
+        id: child1Id,
+        user_id: testUserId,
+        parent_folder_id: folderId,
+        name: 'child-1.pdf',
+        is_folder: false,
+      });
+
+      await insertFileDirectly({
+        id: child2Id,
+        user_id: testUserId,
+        parent_folder_id: folderId,
+        name: 'child-2.pdf',
+        is_folder: false,
+      });
+
+      // Delete the folder (should cascade to children)
+      const blobPaths = await fileService.deleteFile(testUserId, folderId);
+
+      // Verify all items deleted
+      const folderAfterDelete = await fileService.getFile(testUserId, folderId);
+      const child1AfterDelete = await fileService.getFile(testUserId, child1Id);
+      const child2AfterDelete = await fileService.getFile(testUserId, child2Id);
+
+      expect(folderAfterDelete).toBeNull();
+      expect(child1AfterDelete).toBeNull();
+      expect(child2AfterDelete).toBeNull();
+
+      // Verify 2 blob paths returned (children only, folder has no blob)
+      expect(blobPaths).toHaveLength(2);
+
+      // Verify audit record exists for parent folder only
+      const auditResult = await executeQuery<{ resource_type: string }>(
+        `SELECT resource_type FROM deletion_audit_log WHERE resource_id = @resourceId`,
+        { resourceId: folderId }
+      );
+      expect(auditResult.recordset[0]?.resource_type).toBe('folder');
+
+      // Clean up audit records
+      await executeQuery('DELETE FROM deletion_audit_log WHERE resource_id = @resourceId', { resourceId: folderId });
+    });
+
+    it('should support skipAudit option for recursive child deletions', async () => {
+      // Create single file
+      const fileId = await fileService.createFileRecord({
+        userId: testUserId,
+        name: 'skip-audit-test.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 512,
+        blobPath: `users/${testUserId}/files/skip-audit-test.pdf`,
+      });
+      createdFileIds.push(fileId);
+
+      // Delete with skipAudit=true
+      await fileService.deleteFile(testUserId, fileId, { skipAudit: true });
+
+      // Verify file deleted
+      const fileAfterDelete = await fileService.getFile(testUserId, fileId);
+      expect(fileAfterDelete).toBeNull();
+
+      // Verify NO audit record was created
+      const auditResult = await executeQuery<{ count: number }>(
+        `SELECT COUNT(*) as count FROM deletion_audit_log WHERE resource_id = @resourceId`,
+        { resourceId: fileId }
+      );
+      expect(auditResult.recordset[0]?.count).toBe(0);
+    });
+
+    it('should track deletion reason in audit', async () => {
+      const fileId = await fileService.createFileRecord({
+        userId: testUserId,
+        name: 'gdpr-erasure-test.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 256,
+        blobPath: `users/${testUserId}/files/gdpr-erasure-test.pdf`,
+      });
+      createdFileIds.push(fileId);
+
+      // Delete with specific reason
+      await fileService.deleteFile(testUserId, fileId, { deletionReason: 'gdpr_erasure' });
+
+      // Verify audit record has correct reason
+      const auditResult = await executeQuery<{ deletion_reason: string }>(
+        `SELECT deletion_reason FROM deletion_audit_log WHERE resource_id = @resourceId`,
+        { resourceId: fileId }
+      );
+      expect(auditResult.recordset[0]?.deletion_reason).toBe('gdpr_erasure');
+
+      // Clean up
+      await executeQuery('DELETE FROM deletion_audit_log WHERE resource_id = @resourceId', { resourceId: fileId });
+    });
+
+    it('should mark audit as completed with correct status', async () => {
+      const fileId = await fileService.createFileRecord({
+        userId: testUserId,
+        name: 'status-test.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 128,
+        blobPath: `users/${testUserId}/files/status-test.pdf`,
+      });
+      createdFileIds.push(fileId);
+
+      // Delete file
+      await fileService.deleteFile(testUserId, fileId);
+
+      // Verify audit record has correct status and completion time
+      const auditResult = await executeQuery<{
+        status: string;
+        deleted_from_db: boolean;
+        completed_at: Date | null;
+      }>(
+        `SELECT status, deleted_from_db, completed_at FROM deletion_audit_log WHERE resource_id = @resourceId`,
+        { resourceId: fileId }
+      );
+
+      expect(auditResult.recordset[0]?.status).toBe('completed');
+      expect(auditResult.recordset[0]?.deleted_from_db).toBe(true);
+      expect(auditResult.recordset[0]?.completed_at).not.toBeNull();
+
+      // Clean up
+      await executeQuery('DELETE FROM deletion_audit_log WHERE resource_id = @resourceId', { resourceId: fileId });
+    });
+
+    it('should return empty array for non-existent file (idempotent)', async () => {
+      const nonExistentFileId = randomUUID();
+
+      // Delete non-existent file should not throw
+      const blobPaths = await fileService.deleteFile(testUserId, nonExistentFileId);
+
+      // Verify empty array returned
+      expect(blobPaths).toEqual([]);
+    });
+  });
 });

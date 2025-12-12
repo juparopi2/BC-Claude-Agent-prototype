@@ -37,6 +37,31 @@ vi.mock('@/utils/logger', () => ({
   createChildLogger: vi.fn(() => mockLogger),
 }));
 
+// ===== MOCK DELETION AUDIT SERVICE (vi.hoisted pattern) =====
+const mockAuditService = vi.hoisted(() => ({
+  logDeletionRequest: vi.fn().mockResolvedValue('audit-id-123'),
+  updateStorageStatus: vi.fn().mockResolvedValue(undefined),
+  markCompleted: vi.fn().mockResolvedValue(undefined),
+}));
+
+// Mock using the path that matches the import in FileService.ts: './DeletionAuditService'
+// Vitest resolves relative paths from the source file, so we use the full path
+vi.mock('@services/files/DeletionAuditService', () => ({
+  getDeletionAuditService: vi.fn(() => mockAuditService),
+}));
+
+// ===== MOCK VECTOR SEARCH SERVICE (vi.hoisted pattern) =====
+const mockVectorSearchService = vi.hoisted(() => ({
+  deleteChunksForFile: vi.fn().mockResolvedValue(undefined),
+}));
+
+// Mock using the exact path from FileService.ts import: '@services/search/VectorSearchService'
+vi.mock('@services/search/VectorSearchService', () => ({
+  VectorSearchService: {
+    getInstance: vi.fn(() => mockVectorSearchService),
+  },
+}));
+
 // ===== MOCK crypto.randomUUID (vi.hoisted pattern) =====
 let mockUuidCounter = 0;
 vi.mock('crypto', () => ({
@@ -55,6 +80,14 @@ describe('FileService', () => {
 
     // Re-setup mock implementations after clearAllMocks
     mockExecuteQuery.mockResolvedValue({ recordset: [], rowsAffected: [1] });
+
+    // Re-setup audit service mocks
+    mockAuditService.logDeletionRequest.mockResolvedValue('audit-id-123');
+    mockAuditService.updateStorageStatus.mockResolvedValue(undefined);
+    mockAuditService.markCompleted.mockResolvedValue(undefined);
+
+    // Re-setup vector search service mocks
+    mockVectorSearchService.deleteChunksForFile.mockResolvedValue(undefined);
 
     // Reset singleton instance
     (FileService as any).instance = null;
@@ -761,6 +794,466 @@ describe('FileService', () => {
         }),
         'Failed to get file count'
       );
+    });
+  });
+
+  // ========== SUITE 13: GDPR-COMPLIANT DELETION CASCADE (15 TESTS) ==========
+  describe('GDPR-Compliant Deletion Cascade', () => {
+    /**
+     * GDPR Article 17 - Right to Erasure
+     * Tests for cascading deletion across all storage locations:
+     * - Database (files, file_chunks via CASCADE)
+     * - Azure Blob Storage (returned paths)
+     * - Azure AI Search (vector embeddings)
+     * - Audit logging for compliance
+     */
+
+    describe('Audit Logging', () => {
+      it('should create audit record before deletion', async () => {
+        const blobPath = 'users/test-user/files/invoice.pdf';
+
+        // SELECT to get file metadata
+        mockExecuteQuery.mockResolvedValueOnce({
+          recordset: [{
+            blob_path: blobPath,
+            is_folder: false,
+            name: 'invoice.pdf',
+            mime_type: 'application/pdf',
+            size_bytes: 1024,
+          }],
+        });
+        // DELETE from files
+        mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+
+        await fileService.deleteFile(testUserId, testFileId);
+
+        // Verify audit record was created
+        expect(mockAuditService.logDeletionRequest).toHaveBeenCalledWith({
+          userId: testUserId,
+          resourceType: 'file',
+          resourceId: testFileId,
+          resourceName: 'invoice.pdf',
+          deletionReason: 'user_request',
+          metadata: {
+            mimeType: 'application/pdf',
+            sizeBytes: 1024,
+            isFolder: false,
+          },
+        });
+      });
+
+      it('should create audit record with folder resourceType for folders', async () => {
+        // SELECT to get folder metadata
+        mockExecuteQuery.mockResolvedValueOnce({
+          recordset: [{
+            blob_path: '',
+            is_folder: true,
+            name: 'Documents',
+            mime_type: 'inode/directory',
+            size_bytes: 0,
+          }],
+        });
+        // SELECT children (empty folder)
+        mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
+        // DELETE folder
+        mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+
+        await fileService.deleteFile(testUserId, testFileId);
+
+        expect(mockAuditService.logDeletionRequest).toHaveBeenCalledWith(
+          expect.objectContaining({
+            resourceType: 'folder',
+          })
+        );
+      });
+
+      it('should use custom deletionReason when provided', async () => {
+        mockExecuteQuery.mockResolvedValueOnce({
+          recordset: [{
+            blob_path: 'test.pdf',
+            is_folder: false,
+            name: 'test.pdf',
+            mime_type: 'application/pdf',
+            size_bytes: 100,
+          }],
+        });
+        mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+
+        await fileService.deleteFile(testUserId, testFileId, { deletionReason: 'gdpr_erasure' });
+
+        expect(mockAuditService.logDeletionRequest).toHaveBeenCalledWith(
+          expect.objectContaining({
+            deletionReason: 'gdpr_erasure',
+          })
+        );
+      });
+
+      it('should skip audit when skipAudit option is true', async () => {
+        mockExecuteQuery.mockResolvedValueOnce({
+          recordset: [{
+            blob_path: 'test.pdf',
+            is_folder: false,
+            name: 'test.pdf',
+            mime_type: 'application/pdf',
+            size_bytes: 100,
+          }],
+        });
+        mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+
+        await fileService.deleteFile(testUserId, testFileId, { skipAudit: true });
+
+        expect(mockAuditService.logDeletionRequest).not.toHaveBeenCalled();
+      });
+
+      it('should update audit record after DB deletion success', async () => {
+        mockExecuteQuery.mockResolvedValueOnce({
+          recordset: [{
+            blob_path: 'test.pdf',
+            is_folder: false,
+            name: 'test.pdf',
+            mime_type: 'application/pdf',
+            size_bytes: 100,
+          }],
+        });
+        mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+
+        await fileService.deleteFile(testUserId, testFileId);
+
+        // Verify DB deletion status was updated
+        expect(mockAuditService.updateStorageStatus).toHaveBeenCalledWith(
+          'audit-id-123',
+          expect.objectContaining({
+            deletedFromDb: true,
+          })
+        );
+      });
+
+      it('should mark audit as completed after successful deletion', async () => {
+        mockExecuteQuery.mockResolvedValueOnce({
+          recordset: [{
+            blob_path: 'test.pdf',
+            is_folder: false,
+            name: 'test.pdf',
+            mime_type: 'application/pdf',
+            size_bytes: 100,
+          }],
+        });
+        mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+
+        await fileService.deleteFile(testUserId, testFileId);
+
+        expect(mockAuditService.markCompleted).toHaveBeenCalledWith('audit-id-123', 'completed');
+      });
+
+      it('should mark audit as partial if AI Search cleanup fails', async () => {
+        mockExecuteQuery.mockResolvedValueOnce({
+          recordset: [{
+            blob_path: 'test.pdf',
+            is_folder: false,
+            name: 'test.pdf',
+            mime_type: 'application/pdf',
+            size_bytes: 100,
+          }],
+        });
+        mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+
+        // AI Search cleanup fails
+        mockVectorSearchService.deleteChunksForFile.mockRejectedValueOnce(
+          new Error('AI Search unavailable')
+        );
+
+        await fileService.deleteFile(testUserId, testFileId);
+
+        expect(mockAuditService.markCompleted).toHaveBeenCalledWith('audit-id-123', 'partial');
+      });
+
+      it('should continue deletion even if audit logging fails', async () => {
+        mockExecuteQuery.mockResolvedValueOnce({
+          recordset: [{
+            blob_path: 'test.pdf',
+            is_folder: false,
+            name: 'test.pdf',
+            mime_type: 'application/pdf',
+            size_bytes: 100,
+          }],
+        });
+        mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+
+        // Audit logging fails
+        mockAuditService.logDeletionRequest.mockRejectedValueOnce(new Error('Audit DB error'));
+
+        const blobPaths = await fileService.deleteFile(testUserId, testFileId);
+
+        // Deletion should still succeed
+        expect(blobPaths).toEqual(['test.pdf']);
+        expect(mockLogger.warn).toHaveBeenCalledWith(
+          expect.objectContaining({ fileId: testFileId }),
+          'Failed to create deletion audit record'
+        );
+      });
+    });
+
+    describe('AI Search Cleanup', () => {
+      it('should delete AI Search embeddings for file', async () => {
+        mockExecuteQuery.mockResolvedValueOnce({
+          recordset: [{
+            blob_path: 'test.pdf',
+            is_folder: false,
+            name: 'test.pdf',
+            mime_type: 'application/pdf',
+            size_bytes: 100,
+          }],
+        });
+        mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+
+        await fileService.deleteFile(testUserId, testFileId);
+
+        expect(mockVectorSearchService.deleteChunksForFile).toHaveBeenCalledWith(
+          testFileId,
+          testUserId
+        );
+      });
+
+      it('should NOT call AI Search for folder deletion', async () => {
+        mockExecuteQuery.mockResolvedValueOnce({
+          recordset: [{
+            blob_path: '',
+            is_folder: true,
+            name: 'Documents',
+            mime_type: 'inode/directory',
+            size_bytes: 0,
+          }],
+        });
+        mockExecuteQuery.mockResolvedValueOnce({ recordset: [] }); // No children
+        mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+
+        await fileService.deleteFile(testUserId, testFileId);
+
+        // VectorSearchService should not be called for empty folder
+        expect(mockVectorSearchService.deleteChunksForFile).not.toHaveBeenCalled();
+      });
+
+      it('should continue deletion if AI Search cleanup fails (eventual consistency)', async () => {
+        mockExecuteQuery.mockResolvedValueOnce({
+          recordset: [{
+            blob_path: 'important.pdf',
+            is_folder: false,
+            name: 'important.pdf',
+            mime_type: 'application/pdf',
+            size_bytes: 5000,
+          }],
+        });
+        mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+
+        mockVectorSearchService.deleteChunksForFile.mockRejectedValueOnce(
+          new Error('AI Search timeout')
+        );
+
+        const blobPaths = await fileService.deleteFile(testUserId, testFileId);
+
+        // Deletion succeeds despite AI Search failure
+        expect(blobPaths).toEqual(['important.pdf']);
+
+        // Warning logged for later cleanup
+        expect(mockLogger.warn).toHaveBeenCalledWith(
+          expect.objectContaining({ fileId: testFileId }),
+          'Failed to delete AI Search embeddings (will be cleaned by orphan cleanup job)'
+        );
+      });
+
+      it('should log success when AI Search embeddings deleted', async () => {
+        mockExecuteQuery.mockResolvedValueOnce({
+          recordset: [{
+            blob_path: 'test.pdf',
+            is_folder: false,
+            name: 'test.pdf',
+            mime_type: 'application/pdf',
+            size_bytes: 100,
+          }],
+        });
+        mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+
+        await fileService.deleteFile(testUserId, testFileId);
+
+        expect(mockLogger.info).toHaveBeenCalledWith(
+          expect.objectContaining({ userId: testUserId, fileId: testFileId }),
+          'AI Search embeddings deleted'
+        );
+      });
+    });
+
+    describe('Recursive Folder Deletion', () => {
+      it('should delete child files with AI Search cleanup', async () => {
+        const childFileId = 'child-file-456';
+        const childBlobPath = 'users/test-user/files/child.pdf';
+
+        // Parent folder query
+        mockExecuteQuery.mockResolvedValueOnce({
+          recordset: [{
+            blob_path: '',
+            is_folder: true,
+            name: 'Documents',
+            mime_type: 'inode/directory',
+            size_bytes: 0,
+          }],
+        });
+
+        // Children query - one child file
+        mockExecuteQuery.mockResolvedValueOnce({
+          recordset: [{ id: childFileId }],
+        });
+
+        // Child file query (recursive call)
+        mockExecuteQuery.mockResolvedValueOnce({
+          recordset: [{
+            blob_path: childBlobPath,
+            is_folder: false,
+            name: 'child.pdf',
+            mime_type: 'application/pdf',
+            size_bytes: 2000,
+          }],
+        });
+
+        // Child file delete
+        mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+
+        // Parent folder delete
+        mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+
+        const blobPaths = await fileService.deleteFile(testUserId, testFileId);
+
+        // Should return child blob path
+        expect(blobPaths).toContain(childBlobPath);
+
+        // AI Search should be called for child file
+        expect(mockVectorSearchService.deleteChunksForFile).toHaveBeenCalledWith(
+          childFileId,
+          testUserId
+        );
+      });
+
+      it('should skip audit for recursive child deletions', async () => {
+        const childFileId = 'child-file-789';
+
+        // Parent folder query
+        mockExecuteQuery.mockResolvedValueOnce({
+          recordset: [{
+            blob_path: '',
+            is_folder: true,
+            name: 'Parent',
+            mime_type: 'inode/directory',
+            size_bytes: 0,
+          }],
+        });
+
+        // Children query
+        mockExecuteQuery.mockResolvedValueOnce({
+          recordset: [{ id: childFileId }],
+        });
+
+        // Child file query
+        mockExecuteQuery.mockResolvedValueOnce({
+          recordset: [{
+            blob_path: 'child.pdf',
+            is_folder: false,
+            name: 'child.pdf',
+            mime_type: 'application/pdf',
+            size_bytes: 500,
+          }],
+        });
+
+        // Child delete
+        mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+
+        // Parent delete
+        mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+
+        await fileService.deleteFile(testUserId, testFileId);
+
+        // Only ONE audit record for parent folder (not for child)
+        expect(mockAuditService.logDeletionRequest).toHaveBeenCalledTimes(1);
+        expect(mockAuditService.logDeletionRequest).toHaveBeenCalledWith(
+          expect.objectContaining({
+            resourceId: testFileId, // Parent ID, not child
+            resourceType: 'folder',
+          })
+        );
+      });
+
+      it('should track childFilesDeleted count in audit', async () => {
+        // Parent folder
+        mockExecuteQuery.mockResolvedValueOnce({
+          recordset: [{
+            blob_path: '',
+            is_folder: true,
+            name: 'Folder',
+            mime_type: 'inode/directory',
+            size_bytes: 0,
+          }],
+        });
+
+        // 3 children
+        mockExecuteQuery.mockResolvedValueOnce({
+          recordset: [{ id: 'child-1' }, { id: 'child-2' }, { id: 'child-3' }],
+        });
+
+        // Child 1 query and delete
+        mockExecuteQuery.mockResolvedValueOnce({
+          recordset: [{ blob_path: 'c1.pdf', is_folder: false, name: 'c1.pdf', mime_type: 'application/pdf', size_bytes: 100 }],
+        });
+        mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+
+        // Child 2 query and delete
+        mockExecuteQuery.mockResolvedValueOnce({
+          recordset: [{ blob_path: 'c2.pdf', is_folder: false, name: 'c2.pdf', mime_type: 'application/pdf', size_bytes: 200 }],
+        });
+        mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+
+        // Child 3 query and delete
+        mockExecuteQuery.mockResolvedValueOnce({
+          recordset: [{ blob_path: 'c3.pdf', is_folder: false, name: 'c3.pdf', mime_type: 'application/pdf', size_bytes: 300 }],
+        });
+        mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+
+        // Parent delete
+        mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+
+        await fileService.deleteFile(testUserId, testFileId);
+
+        // Verify childFilesDeleted was tracked
+        expect(mockAuditService.updateStorageStatus).toHaveBeenCalledWith(
+          'audit-id-123',
+          expect.objectContaining({
+            deletedFromDb: true,
+            childFilesDeleted: 3,
+          })
+        );
+      });
+    });
+
+    describe('Error Handling', () => {
+      it('should mark audit as failed when deletion throws', async () => {
+        mockExecuteQuery.mockResolvedValueOnce({
+          recordset: [{
+            blob_path: 'test.pdf',
+            is_folder: false,
+            name: 'test.pdf',
+            mime_type: 'application/pdf',
+            size_bytes: 100,
+          }],
+        });
+
+        // DELETE fails
+        mockExecuteQuery.mockRejectedValueOnce(new Error('FK violation'));
+
+        await expect(fileService.deleteFile(testUserId, testFileId)).rejects.toThrow('FK violation');
+
+        expect(mockAuditService.markCompleted).toHaveBeenCalledWith(
+          'audit-id-123',
+          'failed',
+          'Error: FK violation'
+        );
+      });
     });
   });
 });

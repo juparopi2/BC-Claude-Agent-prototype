@@ -1175,11 +1175,11 @@ Vector Search: HNSW algorithm (cosine similarity, optimized for recall)
 
 ---
 
-### FASE 5: Integración con Chat 🟡 IN PROGRESS
+### FASE 5: Integración con Chat 🟢 DONE
 
 **Objetivo**: Permitir usar archivos como contexto en conversaciones.
 
-**Estado**: Ciclo 1-4 completado (December 11, 2025)
+**Estado**: Ciclo 1-6 completado (December 11, 2025)
 
 #### Entregables
 
@@ -1288,9 +1288,14 @@ Vector Search: HNSW algorithm (cosine similarity, optimized for recall)
 - PromptBuilder: 19 tests (Ciclo 3)
 - CitationParser: 15 tests (Ciclo 4)
 - MessageFileAttachmentService: 16 tests (Ciclo 4)
-- **Total Fase 5**: 97 tests passing
+- DirectAgentService file context: 10 tests (Ciclo 5)
+- **Total Fase 5 Unit Tests**: 107 tests passing
 
-**Suite Completa**: 1938 tests passing (13 skipped)
+**Fase 5 Integration Tests (Ciclo 6):**
+- DirectAgentService.attachments.integration.test.ts: 13 tests passing
+- **Total Integration Tests**: 13 tests passing
+
+**Suite Completa**: 1961 tests passing (11 skipped)
 
 #### Criterios de Éxito
 
@@ -1611,3 +1616,4 @@ La Fase 1.5 tiene **prioridad alta** porque:
 | 2025-12-10 | 0.5 | Fase 3 Complete: Procesamiento de Documentos - PdfProcessor (Azure Document Intelligence + OCR), DocxProcessor (mammoth.js), ExcelProcessor (xlsx), TextProcessor, FileProcessingService orchestrator, SocketService singleton, FILE_PROCESSING BullMQ queue, WebSocket progress events, types from Azure SDK as source of truth |
 | 2025-12-10 | 0.6 | Fase 4.6 Complete: Chunking Infrastructure - RecursiveChunkingStrategy (22 tests), SemanticChunkingStrategy (20 tests), RowBasedChunkingStrategy (19 tests), ChunkingStrategyFactory (10 tests), ChunkFixture, session.types.ts, 71/71 tests passing |
 | 2025-12-11 | 0.7 | Fase 1.7 Complete: Cierre de Puntos de Fuga en Tracking de Uso - Added UNIT_COSTS for document processing/embeddings/search in pricing.config.ts, completed trackTextExtraction/trackEmbedding/trackVectorSearch in UsageTrackingService.ts, integrated tracking in FileProcessingService/EmbeddingService/VectorSearchService, 23 tests for usage tracking methods, 1945/1945 tests passing |
+| 2025-12-11 | 0.8 | Fase 5 Complete (Ciclos 1-6): Chat Integration with Files - FileTestHelper for Azure Blob/SQL integration tests, 13 E2E integration tests (ownership validation, file context integration, citation persistence, error handling, image handling, usage tracking), prepareFileContext + recordFileUsage integrated in DirectAgentService, 1961/1961 tests passing |

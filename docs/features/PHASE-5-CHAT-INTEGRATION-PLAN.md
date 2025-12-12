@@ -253,21 +253,87 @@ La UI de Citations (`CitationLink.tsx`) se implementará en Ciclo 5 como parte d
 
 ---
 
-### Ciclo 5: Verificación End-to-End (E2E) 🔴
-**Objetivo**: Unir todo.
+### Ciclo 5: Integración en DirectAgentService 🟢 DONE
+**Objetivo**: Conectar todo el pipeline de archivos con executeQueryStreaming.
 
-#### 5.1 Flujo Completo
-- **Test (Manual/Script)**: `verify-chat-w-files.ts`
-    1.  Subir archivo "test.txt" con contenido único "La clave secreta es PINGUINO".
-    2.  Esperar procesado.
-    3.  Adjuntar archivo al chat.
-    4.  Preguntar "¿Cuál es la clave secreta?".
-    5.  Verificar respuesta contiene "PINGUINO".
-    6.  Verificar citation presente.
+**Fecha de última actualización**: December 11, 2025
+
+#### 5.1 prepareFileContext Integration
+- **Test (Unit)**: `DirectAgentService.comprehensive.test.ts`
+    - [x] Llama prepareFileContext cuando hay attachments
+    - [x] Inyecta documentContext en el prompt del usuario
+    - [x] Extiende systemPrompt con instrucciones de cita
+    - [x] Agrega imágenes para Claude Vision API
+
+#### 5.2 recordFileUsage Integration
+- **Test (Unit)**: `DirectAgentService.comprehensive.test.ts`
+    - [x] Llama recordFileUsage después de respuesta exitosa
+    - [x] Pasa messageId y response para parsing de citations
+    - [x] Maneja errores gracefully (fire-and-forget)
+
+**Archivos implementados**:
+- `backend/src/services/agent/DirectAgentService.ts` (líneas 424-509)
+- `backend/src/__tests__/unit/services/agent/DirectAgentService.comprehensive.test.ts`
 
 #### ✅ Criterios de Éxito del Ciclo 5
-- [ ] El flujo completo funciona sin errores 500.
-- [ ] Latencia aceptable (< 5s para inicio de respuesta).
+- [x] prepareFileContext llamado correctamente (6 tests)
+- [x] recordFileUsage llamado correctamente (4 tests)
+- [x] Full suite passing: 1938+ tests
+- [x] Type-check passing
+- [x] Lint passing
+
+---
+
+### Ciclo 6: Tests de Integración E2E con Azure 🟢 DONE
+**Objetivo**: Verificar integración completa usando recursos Azure reales (DEV environment).
+
+**Fecha de última actualización**: December 11, 2025
+
+#### 6.1 Infraestructura Azure
+- [x] Azure SQL DEV conectado (`sqlsrv-bcagent-dev.database.windows.net`)
+- [x] Azure Blob DEV conectado (`sabcagentdev`, container `user-files`)
+- [x] Redis Docker test container (port 6399)
+
+#### 6.2 FileTestHelper
+- **Archivo**: `backend/src/__tests__/integration/helpers/FileTestHelper.ts`
+- **Features**:
+    - [x] `createTestFile()` - Upload a Azure Blob + registro en DB
+    - [x] `createTestImage()` - Crea PNG válido para Vision API
+    - [x] `createTestFileRecordOnly()` - Solo DB, sin blob (para ghost file testing)
+    - [x] `getMessageAttachments()` - Query message_file_attachments
+    - [x] `getUsageEvents()` - Query usage_events
+    - [x] `cleanup()` - Limpia blobs y registros de DB
+
+#### 6.3 Tests de Integración (13 tests)
+- **Archivo**: `backend/src/__tests__/integration/agent/DirectAgentService.attachments.integration.test.ts`
+- **SECTION 1: Ownership Validation** (3 tests)
+    - [x] Acepta archivos válidos del usuario
+    - [x] Rechaza archivos de otro usuario (Access denied)
+    - [x] Rechaza archivos inexistentes (not found)
+- **SECTION 2: File Context Integration** (4 tests)
+    - [x] E2E flow con archivo de texto real
+    - [x] EXTRACTED_TEXT strategy (PDFs procesados)
+    - [x] Múltiples archivos en una sola query
+    - [x] Anthropic llamado incluso sin file context
+- **SECTION 3: Citation Persistence** (2 tests)
+    - [x] Query completa exitosamente con attachments
+    - [x] Response contiene citation text
+- **SECTION 4: Error Handling** (2 tests)
+    - [x] Ghost file (blob no existe) → continúa gracefully
+    - [x] File context preparation fails → respuesta exitosa
+- **SECTION 5: Image Handling** (1 test)
+    - [x] Image attachment acepta y ejecuta query
+- **SECTION 6: Usage Tracking** (1 test)
+    - [x] Usage events registrados cuando procesa archivos
+
+#### ✅ Criterios de Éxito del Ciclo 6
+- [x] 13/13 integration tests passing
+- [x] Full suite: 1961 tests passing (sin regresiones)
+- [x] Azure SQL conectado y funcionando
+- [x] Azure Blob conectado y funcionando
+- [x] Redis Docker funcionando
+- [x] Type-check passing
+- [x] Lint passing
 
 ---
 

@@ -110,20 +110,40 @@ El Sistema de Gestión de Archivos es una funcionalidad core de BC Claude Agent 
 - [x] Fase 4 Week 2: EmbeddingService ✅ (December 10, 2025)
 - [x] Fase 4 Week 3: Vector Search (Azure AI Search integration) ✅ (December 10, 2025)
 - [x] Fase 4 Week 4: MessageQueue Integration ✅ (December 11, 2025)
-- [~] Fase 5: Chat Integration 🟡 IN PROGRESS (~75% Ciclo 1)
+- [x] Fase 5: Chat Integration ✅ COMPLETE (December 11, 2025)
 
-#### Fase 5 Progress Detail (Updated December 11, 2025)
+#### Fase 5 Complete (December 11, 2025)
 
-**Ciclo 1: Attachment Flow (~75% Complete)**
+**Ciclo 1: Attachment Flow** ✅
 - ✅ Frontend: `FileAttachmentChip.tsx` component with upload progress
 - ✅ Frontend: `ChatInput.tsx` integrated with attachments state
 - ✅ Frontend: `socketMiddleware.ts` sends attachments to backend
 - ✅ Backend: `ChatMessageHandler.ts` receives `data.attachments`
 - ✅ Backend: `DirectAgentService.ts` validates file ownership
-- ❌ Backend: Zod schema update for `SendMessageSchema` (minor)
-- ❌ Context injection into LLM prompts (Ciclo 2/3)
+- ✅ Backend: Zod schema validation for attachments
 
-**Next Steps**: Ciclo 2 (Context Strategy) and Ciclo 3 (Context Injection)
+**Ciclo 2-3: Context Strategy & Retrieval** ✅
+- ✅ `ContextStrategyFactory` - Strategy selection (DIRECT_CONTENT, EXTRACTED_TEXT, RAG_CHUNKS)
+- ✅ `ContextRetrievalService` - Content retrieval by strategy
+- ✅ `PromptBuilder` - XML context formatting, system instructions
+
+**Ciclo 4: Citations** ✅
+- ✅ `CitationParser` - Parse [filename.ext] citations from response
+- ✅ `MessageFileAttachmentService` - Persist attachments to DB
+
+**Ciclo 5: DirectAgentService Integration** ✅
+- ✅ `prepareFileContext()` integrated in executeQueryStreaming
+- ✅ `recordFileUsage()` integrated with fire-and-forget pattern
+
+**Ciclo 6: E2E Integration Tests** ✅
+- ✅ `FileTestHelper` for Azure Blob/SQL integration tests
+- ✅ 13 integration tests (ownership, context, citations, errors, images, usage)
+- ✅ Full suite: 1961 tests passing
+
+**Test Coverage**:
+- 107 unit tests (Fase 5)
+- 13 integration tests (Ciclo 6)
+- Total: 120 tests for chat integration feature
 
 ---
 

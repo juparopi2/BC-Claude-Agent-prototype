@@ -283,9 +283,22 @@ Sprint 5 (2-3 días)   → Post-MVP optimización
 
 | Fecha | Cambio |
 |-------|--------|
+| 2025-12-12 | Integración con Direct Agent Orchestrator (LangGraph) - RAG Agent usa SemanticSearchService |
 | 2025-12-12 | **Sprint 1 COMPLETO**: citedFiles backend, citationFileMap frontend, FilePreviewModal, citation→preview integration |
 | 2025-12-12 | **Sprint 3 COMPLETO** (merged into Sprint 1): FilePreviewModal con soporte PDF, images, text/code |
 | 2025-12-12 | SemanticSearchService y CitationLink implementados (commit 88831e1) |
 | 2025-12-12 | Reorganizado pendientes con orden de implementación propuesto |
 | 2025-12-11 | Documento creado consolidando trabajo pendiente |
 | 2025-12-11 | FileChunkingService implementado (eslabón perdido del pipeline) |
+
+---
+
+## Integración con Agent Orchestrator
+
+El sistema de archivos está integrado con el nuevo **LangGraph Agent Orchestrator**:
+
+- **RAG Agent** (`modules/agents/rag-knowledge/`) usa `SemanticSearchService` para búsqueda semántica
+- **Tool**: `search_knowledge_base` permite al agente buscar archivos relevantes por query
+- **Flujo**: Usuario pregunta → Router detecta intent RAG → RAG Agent busca archivos → Respuesta con citations
+
+Ver `docs/features/DIRECT-AGENT-ORCHESTRATOR-PRD.md` para detalles del orchestrator.

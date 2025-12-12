@@ -35,7 +35,7 @@ import type {
   TextCitation,
 } from '@anthropic-ai/sdk/resources/messages';
 import { env } from '@/config';
-import type { AgentEvent, AgentExecutionResult } from '@/types';
+import type { AgentEvent, AgentExecutionResult, UsageEvent } from '@/types';
 import type { ApprovalManager } from '../approval/ApprovalManager';
 import type { TodoManager } from '../todo/TodoManager';
 import type { IAnthropicClient, SystemPromptBlock } from './IAnthropicClient';
@@ -60,6 +60,9 @@ import { getCitationParser } from '../files/citations/CitationParser';
 import { getMessageFileAttachmentService } from '../files/MessageFileAttachmentService';
 import { getSemanticSearchService } from '@/services/search/semantic';
 import type { FileContextResult, ParsedFile } from '@/types';
+import { orchestratorGraph } from '@/modules/agents/orchestrator/graph';
+import { HumanMessage } from '@langchain/core/messages';
+import { StreamAdapter } from '@/core/langchain/StreamAdapter';
 
 /**
  * Type Definitions for BC Index and MCP Tools
@@ -1766,6 +1769,7 @@ export class DirectAgentService {
   /**
    * Execute MCP Tool
    *
+   * @deprecated Replaced by src/modules/agents/business-central/tools.ts
    * Implements MCP tool logic directly (bypassing SDK MCP server)
    */
   private async executeMCPTool(toolName: string, input: unknown): Promise<unknown> {
@@ -1809,6 +1813,7 @@ export class DirectAgentService {
 
   /**
    * Tool Implementation: list_all_entities
+   * @deprecated
    */
   private async toolListAllEntities(args: Record<string, unknown>): Promise<string> {
     const indexPath = path.join(this.mcpDataPath, 'bc_index.json');
@@ -1850,6 +1855,7 @@ export class DirectAgentService {
 
   /**
    * Tool Implementation: search_entity_operations
+   * @deprecated
    */
   private async toolSearchEntityOperations(args: Record<string, unknown>): Promise<string> {
     const indexPath = path.join(this.mcpDataPath, 'bc_index.json');
@@ -2518,6 +2524,140 @@ CRITICAL INSTRUCTIONS:
       // Fire-and-forget - log but don't propagate
       this.logger.warn({ error, messageId }, 'Failed to record file usage');
     }
+  }
+
+  /**
+   * Execute Agent with LangGraph Orchestrator
+   * 
+   * @param prompt - User input
+   * @param sessionId - Session ID
+   * @param onEvent - Event callback
+   */
+  async runGraph(
+      userId: string,
+      prompt: string,
+      sessionId: string,
+      onEvent?: (event: AgentEvent) => void
+  ): Promise<AgentExecutionResult> {
+      this.logger.info({ sessionId }, '🚀 Running LangGraph Orchestrator');
+      
+      const streamAdapter = new StreamAdapter(sessionId);
+
+      // Wrapper for event emission
+      const emitEvent = (event: AgentEvent | null) => {
+          if (event && onEvent) onEvent(event);
+      };
+
+      const inputs = {
+          messages: [new HumanMessage(prompt)],
+          activeAgent: "orchestrator",
+          sessionId: sessionId,
+          context: { userId } // Inject userId into state
+      };
+
+      // Stream the graph execution with granular events
+      const eventStream = await orchestratorGraph.streamEvents(inputs, {
+          version: 'v2',
+          recursionLimit: 50
+      });
+
+      const toolsUsed: string[] = [];
+      const eventStore = getEventStore(); // Get singleton
+
+      // Initial persistence for user message
+      await eventStore.appendEvent({
+          type: 'message_chunk',
+          content: prompt,
+          timestamp: new Date(),
+          eventId: sessionId, // Using sessionId as eventId for the prompt trigger context
+          persistenceState: 'persisted'
+      });
+
+      // Track final response content
+      const finalResponseChunks: string[] = [];
+      let finalResponse = '';
+
+      for await (const event of eventStream) {
+           // Process event via adapter
+           const agentEvent = streamAdapter.processChunk(event);
+
+           // Capture final state from on_chain_end event
+           if (event.event === 'on_chain_end' && event.name === '__end__') {
+               const output = event.data?.output;
+               if (output?.messages && Array.isArray(output.messages) && output.messages.length > 0) {
+                   const lastMessage = output.messages[output.messages.length - 1];
+                   // Extract content from AIMessage
+                   if (lastMessage && typeof lastMessage.content === 'string') {
+                       finalResponse = lastMessage.content;
+                   } else if (lastMessage?.content) {
+                       finalResponse = String(lastMessage.content);
+                   }
+               }
+           }
+
+           // Also accumulate message chunks for streaming responses
+           if (agentEvent && agentEvent.type === 'message_chunk' && agentEvent.content) {
+               finalResponseChunks.push(agentEvent.content);
+           }
+
+           if (agentEvent) {
+               // Emit to live socket (exclude usage events if they aren't standard AgentEvents)
+               if (agentEvent.type !== 'usage') {
+                   emitEvent(agentEvent);
+               }
+
+               // Handle Usage Tracking
+               if (agentEvent.type === 'usage') {
+                   const usage = (agentEvent as unknown as UsageEvent).usage;
+                   const trackingService = getUsageTrackingService();
+                   await trackingService.trackOperation({
+                       userId: userId,
+                       operationType: 'agent_interaction',
+                       model: 'claude-3-5-sonnet', // Default for now, ideally extracted from metadata
+                       tokensInput: usage.input_tokens || usage.promptTokens || 0,
+                       tokensOutput: usage.output_tokens || usage.completionTokens || 0,
+                       metadata: {
+                           sessionId,
+                           source: 'langgraph'
+                       }
+                   });
+                   this.logger.debug({ usage }, '💰 Usage tracked');
+                   continue; // Don't persist 'usage' event to eventStore as it is not a standard event type
+               }
+
+               // Persist to database (Audit/History)
+               if (agentEvent.persistenceState === 'transient') {
+                   // Transient events (like tokens) aren't historically persisted individually usually,
+                   // but MessageChunks might be aggregated.
+                   // For now, let's persist tool usage and significant events.
+               }
+
+               if (agentEvent.type === 'tool_use' || agentEvent.type === 'tool_result' || agentEvent.type === 'error') {
+                   // Ensure persistenceState is set to persisted before saving
+                   await eventStore.appendEvent({
+                       ...agentEvent,
+                       persistenceState: 'persisted'
+                   });
+               }
+
+               // Track tools
+               if (agentEvent.type === 'tool_use') {
+                   toolsUsed.push(agentEvent.toolName);
+               }
+           }
+      }
+
+      // Use final response from graph state, or fallback to accumulated chunks
+      const responseContent = finalResponse || finalResponseChunks.join('') || 'No response generated';
+
+      this.logger.info({ sessionId, responseLength: responseContent.length, toolsUsed }, '✅ Graph execution complete');
+
+      return {
+          response: responseContent,
+          success: true,
+          toolsUsed: toolsUsed,
+          sessionId
+      };
   }
 }
 

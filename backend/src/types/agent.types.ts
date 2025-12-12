@@ -40,6 +40,18 @@ export type {
 // Backend-Specific Types (not shared with frontend)
 // ============================================
 
+export interface UsageEvent {
+    type: 'usage';
+    usage: {
+        input_tokens: number;
+        output_tokens: number;
+        total_tokens?: number;
+    };
+    timestamp: Date;
+    eventId: string;
+    persistenceState: 'transient';
+}
+
 /**
  * Agent Options
  * Configuration options for agent execution

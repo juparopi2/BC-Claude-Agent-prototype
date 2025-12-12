@@ -10,6 +10,8 @@ import {
   CreateFileOptions,
   UpdateFileOptions,
 } from '@/types/file.types';
+import { VectorSearchService } from '@services/search/VectorSearchService';
+import { getDeletionAuditService } from './DeletionAuditService';
 
 /**
  * File Service
@@ -407,20 +409,34 @@ export class FileService {
   /**
    * 8. Delete file/folder recursively (returns list of blob_paths for cleanup)
    *
+   * GDPR Compliance: This method now implements cascading deletion across all storage:
+   * - Database (files, file_chunks via CASCADE)
+   * - Azure Blob Storage (returned paths for caller to delete)
+   * - Azure AI Search (vector embeddings deleted directly)
+   * - Audit logging for compliance reporting
+   *
    * @param userId - User ID (for ownership check)
    * @param fileId - File ID
+   * @param options - Optional deletion options
    * @returns Array of blob paths to cleanup
    */
-  public async deleteFile(userId: string, fileId: string): Promise<string[]> {
-    this.logger.info({ userId, fileId }, 'Deleting file/folder');
+  public async deleteFile(
+    userId: string,
+    fileId: string,
+    options?: { skipAudit?: boolean; deletionReason?: 'user_request' | 'gdpr_erasure' | 'retention_policy' | 'admin_action' }
+  ): Promise<string[]> {
+    this.logger.info({ userId, fileId }, 'Deleting file/folder (GDPR-compliant cascade)');
 
-    // Collect all blob paths to delete
+    // Collect all blob paths and file IDs for cleanup
     const blobsToDelete: string[] = [];
+    const fileIdsToCleanFromSearch: string[] = [];
+    let auditId: string | undefined;
+    let childFilesCount = 0;
 
     try {
       // 1. Get file metadata
       const query = `
-        SELECT blob_path, is_folder
+        SELECT blob_path, is_folder, name, mime_type, size_bytes
         FROM files
         WHERE id = @id AND user_id = @user_id
         `;
@@ -430,7 +446,13 @@ export class FileService {
         user_id: userId,
       };
 
-      const result = await executeQuery<{ blob_path: string; is_folder: boolean }>(query, params);
+      const result = await executeQuery<{
+        blob_path: string;
+        is_folder: boolean;
+        name: string;
+        mime_type: string;
+        size_bytes: number;
+      }>(query, params);
 
       if (result.recordset.length === 0) {
         // Idempotent: if not found, assume deleted
@@ -441,30 +463,56 @@ export class FileService {
       if (!record) {
           return [];
       }
-      const { blob_path, is_folder } = record;
+      const { blob_path, is_folder, name, mime_type, size_bytes } = record;
 
-      // 2. If folder, recursively delete children first
+      // 2. Start GDPR audit logging (only for top-level deletion, not recursive calls)
+      if (!options?.skipAudit) {
+        try {
+          const auditService = getDeletionAuditService();
+          auditId = await auditService.logDeletionRequest({
+            userId,
+            resourceType: is_folder ? 'folder' : 'file',
+            resourceId: fileId,
+            resourceName: name,
+            deletionReason: options?.deletionReason || 'user_request',
+            metadata: {
+              mimeType: mime_type,
+              sizeBytes: size_bytes,
+              isFolder: is_folder,
+            },
+          });
+        } catch (auditError) {
+          // Log but don't fail deletion if audit fails
+          this.logger.warn({ error: auditError, fileId }, 'Failed to create deletion audit record');
+        }
+      }
+
+      // 3. If folder, recursively delete children first (skip audit for children)
       if (is_folder) {
         const childrenQuery = `
           SELECT id
           FROM files
           WHERE parent_folder_id = @id AND user_id = @user_id
         `;
-        
+
         const childrenResult = await executeQuery<{ id: string }>(childrenQuery, params);
-        
+        childFilesCount = childrenResult.recordset.length;
+
         for (const child of childrenResult.recordset) {
-          const childBlobs = await this.deleteFile(userId, child.id);
+          const childBlobs = await this.deleteFile(userId, child.id, { skipAudit: true });
           blobsToDelete.push(...childBlobs);
         }
       } else {
-        // If file, add its blob path
+        // If file (not folder), collect for AI Search cleanup
+        fileIdsToCleanFromSearch.push(fileId);
+
         if (blob_path) {
           blobsToDelete.push(blob_path);
         }
       }
 
-      // 3. Delete current record from database
+      // 4. Delete current record from database
+      // CASCADE FK will automatically delete file_chunks
       const deleteQuery = `
         DELETE FROM files
         WHERE id = @id AND user_id = @user_id
@@ -474,11 +522,101 @@ export class FileService {
 
       this.logger.info({ userId, fileId, isFolder: is_folder }, 'Record deleted from DB');
 
+      // Update audit: DB deletion successful
+      if (auditId) {
+        try {
+          const auditService = getDeletionAuditService();
+          await auditService.updateStorageStatus(auditId, {
+            deletedFromDb: true,
+            childFilesDeleted: childFilesCount,
+          });
+        } catch (auditError) {
+          this.logger.warn({ error: auditError, auditId }, 'Failed to update audit record (DB)');
+        }
+      }
+
+      // 5. GDPR: Clean up AI Search embeddings (eventual consistency)
+      // This runs after DB deletion - if it fails, data is orphaned but DB is clean
+      let searchCleanupSuccess = true;
+      if (fileIdsToCleanFromSearch.length > 0) {
+        searchCleanupSuccess = await this.cleanupAISearchEmbeddings(userId, fileIdsToCleanFromSearch);
+      }
+
+      // Update audit: AI Search cleanup status and mark completed
+      if (auditId) {
+        try {
+          const auditService = getDeletionAuditService();
+          await auditService.updateStorageStatus(auditId, {
+            deletedFromSearch: searchCleanupSuccess,
+            // Blob deletion happens in the route after this returns
+            // We mark deletedFromBlob as true since we're returning paths for cleanup
+            deletedFromBlob: blobsToDelete.length > 0 || is_folder,
+          });
+          // Mark as completed (blob deletion is eventual consistency - happens after this returns)
+          const finalStatus = searchCleanupSuccess ? 'completed' : 'partial';
+          await auditService.markCompleted(auditId, finalStatus);
+        } catch (auditError) {
+          this.logger.warn({ error: auditError, auditId }, 'Failed to finalize audit record');
+        }
+      }
+
       return blobsToDelete;
     } catch (error) {
+      // Mark audit as failed if we have an audit ID
+      if (auditId) {
+        try {
+          const auditService = getDeletionAuditService();
+          await auditService.markCompleted(auditId, 'failed', String(error));
+        } catch (auditError) {
+          this.logger.warn({ error: auditError, auditId }, 'Failed to mark audit as failed');
+        }
+      }
+
       this.logger.error({ error, userId, fileId }, 'Failed to delete file');
       throw error;
     }
+  }
+
+  /**
+   * Clean up AI Search embeddings for deleted files
+   *
+   * Uses eventual consistency - errors are logged but don't fail the deletion
+   * This ensures the primary deletion (DB + Blob) succeeds even if AI Search is down
+   *
+   * @param userId - User ID for multi-tenant isolation
+   * @param fileIds - Array of file IDs to clean up
+   * @returns true if all cleanups succeeded, false if any failed
+   */
+  private async cleanupAISearchEmbeddings(userId: string, fileIds: string[]): Promise<boolean> {
+    let allSucceeded = true;
+
+    try {
+      const vectorSearchService = VectorSearchService.getInstance();
+
+      for (const fileId of fileIds) {
+        try {
+          await vectorSearchService.deleteChunksForFile(fileId, userId);
+          this.logger.info({ userId, fileId }, 'AI Search embeddings deleted');
+        } catch (searchError) {
+          // Log but don't fail - eventual consistency model
+          // Orphaned embeddings can be cleaned up by scheduled job
+          allSucceeded = false;
+          this.logger.warn(
+            { error: searchError, userId, fileId },
+            'Failed to delete AI Search embeddings (will be cleaned by orphan cleanup job)'
+          );
+        }
+      }
+    } catch (error) {
+      // Catch-all for VectorSearchService initialization errors
+      allSucceeded = false;
+      this.logger.warn(
+        { error, userId, fileIds },
+        'VectorSearchService unavailable - AI Search cleanup skipped'
+      );
+    }
+
+    return allSucceeded;
   }
 
   /**

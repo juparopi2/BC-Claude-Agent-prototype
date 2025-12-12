@@ -33,6 +33,7 @@ import tokenUsageRoutes from './routes/token-usage';
 import fileRoutes from './routes/files';
 import usageRoutes from './routes/usage';
 import billingRoutes from './routes/billing';
+import gdprRoutes from './routes/gdpr';
 import { authenticateMicrosoft } from './middleware/auth-oauth';
 import { httpLogger } from './middleware/logging';
 import { validateSessionOwnership } from './utils/session-ownership';
@@ -774,6 +775,8 @@ function configureRoutes(): void {
     app.use('/api/usage', usageRoutes);
     // Billing and invoice endpoints (requires database)
     app.use('/api/billing', billingRoutes);
+    // GDPR compliance endpoints (requires database)
+    app.use('/api/gdpr', gdprRoutes);
   }
 
   // Client log ingestion endpoint

@@ -1062,7 +1062,7 @@ Vector Search: HNSW algorithm (cosine similarity, optimized for recall)
 
 **Objetivo**: Permitir usar archivos como contexto en conversaciones.
 
-**Estado**: Ciclo 1 ~75% completado (December 11, 2025)
+**Estado**: Ciclo 1+2 completado, Ciclo 3 en progreso (December 11, 2025)
 
 #### Entregables
 
@@ -1113,7 +1113,7 @@ Vector Search: HNSW algorithm (cosine similarity, optimized for recall)
 [ ] 5.6.4 Tooltip con nombre de archivo
 ```
 
-#### Archivos Implementados (Ciclo 1)
+#### Archivos Implementados (Ciclo 1 - Attachment Flow)
 
 **Frontend:**
 - `frontend/components/chat/FileAttachmentChip.tsx` - Visual chip component
@@ -1123,9 +1123,32 @@ Vector Search: HNSW algorithm (cosine similarity, optimized for recall)
 **Backend:**
 - `backend/src/services/websocket/ChatMessageHandler.ts` - Receives attachments (line 238)
 - `backend/src/services/agent/DirectAgentService.ts` - Ownership validation (lines 386-403)
+- `backend/src/schemas/request.schemas.ts` - Zod schema con campo `attachments`
 
 **Tests:**
+- `backend/src/__tests__/unit/schemas/chatMessageSchema.test.ts` (13 tests)
 - `backend/src/__tests__/integration/agent/DirectAgentService.attachments.integration.test.ts`
+
+#### Archivos Implementados (Ciclo 2 - Context Strategy)
+
+**Backend - Context Strategy Module:**
+- `backend/src/services/files/context/types.ts` - ContextStrategy, FileForStrategy, StrategyResult
+- `backend/src/services/files/context/ContextStrategyFactory.ts` - Lógica de selección
+- `backend/src/services/files/context/index.ts` - Barrel export
+
+**Tests:**
+- `backend/src/__tests__/unit/services/files/ContextStrategyFactory.test.ts` (21 tests)
+
+#### Archivos Implementados (Ciclo 3 - Context Retrieval + Prompt Builder)
+
+**Backend - Retrieval & Prompt Building:**
+- `backend/src/services/files/context/retrieval.types.ts` - RetrievedContent, FileContent, ChunkContent, RetrievalOptions
+- `backend/src/services/files/context/ContextRetrievalService.ts` - Retrieval por estrategia
+- `backend/src/services/files/context/PromptBuilder.ts` - XML formatting, system instructions
+
+**Tests:**
+- `backend/src/__tests__/unit/services/files/ContextRetrievalService.test.ts` (13 tests)
+- `backend/src/__tests__/unit/services/files/PromptBuilder.test.ts` (19 tests)
 
 #### Estado de Tests (December 11, 2025)
 

@@ -28,6 +28,7 @@ import { createChildLogger } from '@/utils/logger';
 import { FileService } from './FileService';
 import { getFileUploadService } from './FileUploadService';
 import { getSocketIO, isSocketServiceInitialized } from '@services/websocket/SocketService';
+import { getUsageTrackingService } from '@services/tracking/UsageTrackingService';
 import { TextProcessor } from './processors/TextProcessor';
 import { PdfProcessor } from './processors/PdfProcessor';
 import { DocxProcessor } from './processors/DocxProcessor';
@@ -173,6 +174,11 @@ export class FileProcessingService {
         },
         'Text extraction completed'
       );
+
+      // Step 4.5: Track usage for billing (fire-and-forget)
+      this.trackExtractionUsage(userId, fileId, mimeType, result).catch((err) => {
+        logger.warn({ err, fileId, userId }, 'Failed to track text extraction usage');
+      });
 
       // Step 5: Update database with extracted text and 'completed' status (emit 90% progress)
       await this.updateStatus(userId, fileId, 'completed', result.text);
@@ -351,6 +357,69 @@ export class FileProcessingService {
     } catch (error) {
       logger.error({ error, sessionId, fileId }, 'Failed to emit error event');
       // Don't throw - WebSocket errors should not fail the job
+    }
+  }
+
+  /**
+   * Track text extraction usage for billing
+   *
+   * Maps MIME type to processor type and calls UsageTrackingService.
+   * This is fire-and-forget - errors are logged but don't fail the job.
+   *
+   * @param userId - User ID for usage attribution
+   * @param fileId - File ID for tracking
+   * @param mimeType - MIME type to determine processor cost
+   * @param result - Extraction result with metadata
+   */
+  private async trackExtractionUsage(
+    userId: string,
+    fileId: string,
+    mimeType: string,
+    result: ExtractionResult
+  ): Promise<void> {
+    const usageTrackingService = getUsageTrackingService();
+
+    // Map MIME type to processor type for cost calculation
+    const processorType = this.getProcessorTypeFromMimeType(mimeType);
+
+    const pageCount = result.metadata.pageCount || 1;
+    const metadata: Record<string, unknown> = {
+      processor_type: processorType,
+      ocr_used: result.metadata.ocrUsed || false,
+      text_length: result.text.length,
+      mime_type: mimeType,
+    };
+
+    // For Excel, add sheet count if available
+    if (processorType === 'excel' && result.metadata.sheetCount) {
+      metadata.sheet_count = result.metadata.sheetCount;
+    }
+
+    await usageTrackingService.trackTextExtraction(userId, fileId, pageCount, metadata);
+
+    logger.debug(
+      { userId, fileId, processorType, pageCount, ocrUsed: metadata.ocr_used },
+      'Text extraction usage tracked'
+    );
+  }
+
+  /**
+   * Map MIME type to processor type for cost calculation
+   *
+   * @param mimeType - File MIME type
+   * @returns Processor type: 'pdf' | 'docx' | 'excel' | 'text'
+   */
+  private getProcessorTypeFromMimeType(mimeType: string): 'pdf' | 'docx' | 'excel' | 'text' {
+    switch (mimeType) {
+      case 'application/pdf':
+        return 'pdf';
+      case 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
+        return 'docx';
+      case 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
+        return 'excel';
+      default:
+        // All text-based formats (text/*, application/json, etc.)
+        return 'text';
     }
   }
 }

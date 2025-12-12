@@ -81,6 +81,58 @@ export const UNIT_COSTS = {
    * First 5GB free, then $0.087/GB
    */
   network_egress_gb: 0.087,
+
+  // ===== Document Processing Costs =====
+  /**
+   * Azure Document Intelligence - text extraction per page
+   * $0.01 per page (prebuilt-read model)
+   */
+  document_intelligence_page: 0.01,
+
+  /**
+   * Azure Document Intelligence - OCR per page
+   * $0.015 per page (when OCR is needed for scanned docs)
+   */
+  document_intelligence_ocr_page: 0.015,
+
+  /**
+   * Local document processing (DOCX via mammoth)
+   * Minimal cost for compute - $0.001 per document
+   */
+  docx_processing: 0.001,
+
+  /**
+   * Local document processing (Excel via xlsx)
+   * Minimal cost for compute - $0.001 per sheet
+   */
+  excel_sheet_processing: 0.001,
+
+  // ===== Embedding Costs =====
+  /**
+   * Azure OpenAI text-embedding-3-small
+   * $0.02 per 1M tokens = $0.00000002 per token
+   */
+  text_embedding_token: 0.02 / 1_000_000,
+
+  /**
+   * Azure Computer Vision - image embedding
+   * $0.10 per 1,000 images = $0.0001 per image
+   */
+  image_embedding: 0.0001,
+
+  // ===== Vector Search Costs =====
+  /**
+   * Azure AI Search - vector search query
+   * Prorated from Basic tier ($73/mo) assuming 100K queries
+   * $0.00073 per query (conservative estimate)
+   */
+  vector_search_query: 0.00073,
+
+  /**
+   * Azure AI Search - hybrid search query (vector + text)
+   * Slightly higher due to dual index lookup
+   */
+  hybrid_search_query: 0.001,
 } as const;
 
 /**
@@ -301,6 +353,20 @@ export const PAYG_RATES = {
    * $0.01 per call (estimated based on infrastructure allocation)
    */
   api_call: 0.01,
+
+  // Document Processing PAYG
+  document_intelligence_page: UNIT_COSTS.document_intelligence_page * 1.25,
+  document_intelligence_ocr_page: UNIT_COSTS.document_intelligence_ocr_page * 1.25,
+  docx_processing: UNIT_COSTS.docx_processing * 1.25,
+  excel_sheet_processing: UNIT_COSTS.excel_sheet_processing * 1.25,
+
+  // Embedding PAYG
+  text_embedding_token: UNIT_COSTS.text_embedding_token * 1.25,
+  image_embedding: UNIT_COSTS.image_embedding * 1.25,
+
+  // Search PAYG
+  vector_search_query: UNIT_COSTS.vector_search_query * 1.25,
+  hybrid_search_query: UNIT_COSTS.hybrid_search_query * 1.25,
 } as const;
 
 /**

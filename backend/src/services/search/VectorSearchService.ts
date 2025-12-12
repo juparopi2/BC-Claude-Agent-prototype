@@ -1,8 +1,11 @@
 import { SearchClient, SearchIndexClient, AzureKeyCredential } from '@azure/search-documents';
 import { env } from '../../config/environment';
-import { logger } from '../../utils/logger';
+import { createChildLogger } from '../../utils/logger';
 import { indexSchema, INDEX_NAME } from './schema';
 import { IndexStats, FileChunkWithEmbedding, SearchQuery, HybridSearchQuery, SearchResult } from './types';
+import { getUsageTrackingService } from '@services/tracking/UsageTrackingService';
+
+const logger = createChildLogger({ service: 'VectorSearchService' });
 
 export class VectorSearchService {
   private static instance?: VectorSearchService;
@@ -207,6 +210,12 @@ export class VectorSearchService {
       });
     }
 
+    // Track usage for billing (fire-and-forget)
+    // Query embedding cost is tracked separately in EmbeddingService
+    this.trackSearchUsage(userId, 'vector', results.length, top).catch((err) => {
+      logger.warn({ err, userId, resultCount: results.length }, 'Failed to track vector search usage');
+    });
+
     return results;
   }
 
@@ -239,7 +248,7 @@ export class VectorSearchService {
     };
 
     const searchResults = await this.searchClient.search(text, searchOptions);
-    
+
     const results: SearchResult[] = [];
     for await (const result of searchResults.results) {
       const doc = result.document as { chunkId: string; fileId: string; content: string; chunkIndex: number };
@@ -251,6 +260,12 @@ export class VectorSearchService {
         chunkIndex: doc.chunkIndex
       });
     }
+
+    // Track usage for billing (fire-and-forget)
+    // Query embedding cost is tracked separately in EmbeddingService
+    this.trackSearchUsage(userId, 'hybrid', results.length, top).catch((err) => {
+      logger.warn({ err, userId, resultCount: results.length }, 'Failed to track hybrid search usage');
+    });
 
     return results;
   }
@@ -331,16 +346,46 @@ export class VectorSearchService {
 
     // Azure Search batch size limit is typically 1000 actions.
     // For safety, we process in batches of 1000 if needed, but SDK handles batches well usually.
-    // We'll trust SDK or implement simple slicing if robust. 
+    // We'll trust SDK or implement simple slicing if robust.
     // For this implementation scope, simple call is sufficient, SDK often handles batching logic or throws if too large,
     // requiring manual batching. Given strict TDD scope, simple is good.
-    
+
     const result = await this.searchClient.deleteDocuments('chunkId', chunkIds);
-    
+
     const failed = result.results.filter(r => !r.succeeded);
     if (failed.length > 0) {
         logger.error({ failedCount: failed.length, errors: failed }, 'Failed to delete some chunks');
         throw new Error(`Failed to delete chunks: ${failed.map(f => f.errorMessage || 'Unknown error').join(', ')}`);
     }
+  }
+
+  /**
+   * Track search usage for billing (helper method)
+   *
+   * @param userId User ID for usage attribution
+   * @param searchType Type of search performed ('vector' | 'hybrid')
+   * @param resultCount Number of results returned
+   * @param topK The top_k parameter used in the search
+   */
+  private async trackSearchUsage(
+    userId: string,
+    searchType: 'vector' | 'hybrid',
+    resultCount: number,
+    topK: number
+  ): Promise<void> {
+    const usageTrackingService = getUsageTrackingService();
+
+    // QueryTokens is 0 because query embedding is tracked separately in EmbeddingService
+    // when the user's query is embedded before calling search
+    await usageTrackingService.trackVectorSearch(userId, 0, {
+      search_type: searchType,
+      result_count: resultCount,
+      top_k: topK,
+    });
+
+    logger.debug(
+      { userId, searchType, resultCount, topK },
+      'Vector search usage tracked'
+    );
   }
 }

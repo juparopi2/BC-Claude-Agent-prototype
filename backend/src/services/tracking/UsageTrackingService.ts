@@ -340,15 +340,25 @@ export class UsageTrackingService {
   }
 
   /**
-   * Track text extraction event (Future implementation)
+   * Track text extraction event
    *
-   * Records OCR or text parsing from document.
-   * Placeholder for Phase 2: Document Processing.
+   * Records document processing with Azure Document Intelligence or local parsing.
+   * Supports different processor types with varying costs.
    *
    * @param userId - User ID
    * @param fileId - File ID
    * @param pagesCount - Number of pages processed
-   * @param metadata - Optional metadata (ocr_engine, confidence, etc.)
+   * @param metadata - Metadata including processor_type, ocr_used, text_length
+   *
+   * @example
+   * ```typescript
+   * await trackTextExtraction(
+   *   'user-123',
+   *   'file-456',
+   *   10,
+   *   { processor_type: 'pdf', ocr_used: true, text_length: 50000 }
+   * );
+   * ```
    */
   async trackTextExtraction(
     userId: string,
@@ -357,26 +367,72 @@ export class UsageTrackingService {
     metadata?: Record<string, unknown>
   ): Promise<void> {
     try {
-      // Future implementation - cost TBD
-      const cost = 0;
+      // Determine processor type and calculate cost accordingly
+      const processorType = (metadata?.processor_type as string) || 'pdf';
+      const ocrUsed = (metadata?.ocr_used as boolean) || false;
 
+      let cost: number;
+      let eventType: string;
+
+      switch (processorType) {
+        case 'pdf':
+          // Azure Document Intelligence pricing
+          cost = ocrUsed
+            ? pagesCount * UNIT_COSTS.document_intelligence_ocr_page
+            : pagesCount * UNIT_COSTS.document_intelligence_page;
+          eventType = ocrUsed ? 'document_ocr' : 'document_extraction';
+          break;
+        case 'docx':
+          // Local mammoth processing (minimal cost)
+          cost = UNIT_COSTS.docx_processing;
+          eventType = 'docx_extraction';
+          break;
+        case 'excel':
+          // Local xlsx processing per sheet
+          const sheetCount = (metadata?.sheet_count as number) || 1;
+          cost = sheetCount * UNIT_COSTS.excel_sheet_processing;
+          eventType = 'excel_extraction';
+          break;
+        case 'text':
+          // Plain text - no processing cost
+          cost = 0;
+          eventType = 'text_extraction';
+          break;
+        default:
+          cost = pagesCount * UNIT_COSTS.document_intelligence_page;
+          eventType = 'document_extraction';
+      }
+
+      // Log event
       this.logger.info({
         userId,
         fileId,
         pagesCount,
+        processorType,
+        ocrUsed,
+        cost,
         metadata,
-      }, 'Tracking text extraction (stub)');
+      }, 'Tracking text extraction');
 
+      // Insert into database
       await this.insertUsageEvent(
         userId,
         fileId,
         'processing',
-        'text_extraction',
+        eventType,
         pagesCount,
         'pages',
         cost,
-        metadata
+        { ...metadata, processor_type: processorType, ocr_used: ocrUsed }
       );
+
+      // Increment Redis counter for pages processed
+      await this.incrementRedisCounter(userId, 'pages_processed', pagesCount);
+
+      // Increment separate counter for OCR if used
+      if (ocrUsed) {
+        await this.incrementRedisCounter(userId, 'ocr_pages', pagesCount);
+      }
 
     } catch (error) {
       this.logger.error({
@@ -389,16 +445,31 @@ export class UsageTrackingService {
   }
 
   /**
-   * Track embedding generation event (Future implementation)
+   * Track embedding generation event
    *
-   * Records vector embedding generation for search.
-   * Placeholder for Phase 2: Semantic Search.
+   * Records vector embedding generation for semantic search.
+   * Supports text embeddings (Azure OpenAI) and image embeddings (Computer Vision).
    *
    * @param userId - User ID
    * @param fileId - File ID
-   * @param tokens - Number of tokens embedded
+   * @param tokens - Number of tokens/images embedded
    * @param type - Embedding type ('text' or 'image')
-   * @param metadata - Optional metadata (model, dimensions, etc.)
+   * @param metadata - Metadata including model, dimensions, batch_size
+   *
+   * @example
+   * ```typescript
+   * // Text embedding
+   * await trackEmbedding('user-123', 'file-456', 1500, 'text', {
+   *   model: 'text-embedding-3-small',
+   *   dimensions: 1536
+   * });
+   *
+   * // Image embedding
+   * await trackEmbedding('user-123', 'file-456', 1, 'image', {
+   *   model: 'computer-vision-multimodal',
+   *   dimensions: 1024
+   * });
+   * ```
    */
   async trackEmbedding(
     userId: string,
@@ -408,27 +479,51 @@ export class UsageTrackingService {
     metadata?: Record<string, unknown>
   ): Promise<void> {
     try {
-      // Future implementation - cost TBD
-      const cost = 0;
+      // Calculate cost based on embedding type
+      let cost: number;
+      let unit: string;
+      let eventType: string;
 
+      if (type === 'text') {
+        // Azure OpenAI text-embedding-3-small pricing
+        cost = tokens * UNIT_COSTS.text_embedding_token;
+        unit = 'tokens';
+        eventType = 'text_embedding';
+      } else {
+        // Azure Computer Vision image embedding pricing
+        cost = tokens * UNIT_COSTS.image_embedding; // tokens = image count for images
+        unit = 'images';
+        eventType = 'image_embedding';
+      }
+
+      // Log event
       this.logger.info({
         userId,
         fileId,
         tokens,
         type,
+        cost,
         metadata,
-      }, 'Tracking embedding generation (stub)');
+      }, 'Tracking embedding generation');
 
+      // Insert into database
       await this.insertUsageEvent(
         userId,
         fileId,
         'embeddings',
-        'embedding_generation',
+        eventType,
         tokens,
-        'tokens',
+        unit,
         cost,
         { ...metadata, embedding_type: type }
       );
+
+      // Increment Redis counters based on type
+      if (type === 'text') {
+        await this.incrementRedisCounter(userId, 'embedding_tokens', tokens);
+      } else {
+        await this.incrementRedisCounter(userId, 'image_embeddings', tokens);
+      }
 
     } catch (error) {
       this.logger.error({
@@ -442,14 +537,24 @@ export class UsageTrackingService {
   }
 
   /**
-   * Track vector search event (Future implementation)
+   * Track vector search event
    *
-   * Records semantic search query execution.
-   * Placeholder for Phase 2: Semantic Search.
+   * Records semantic search query execution on Azure AI Search.
+   * Supports vector search and hybrid search (vector + text).
    *
    * @param userId - User ID
-   * @param queryTokens - Number of tokens in query
-   * @param metadata - Optional metadata (results_count, search_type, etc.)
+   * @param queryTokens - Number of tokens in query (for embedding)
+   * @param metadata - Metadata including search_type, result_count, top_k
+   *
+   * @example
+   * ```typescript
+   * await trackVectorSearch('user-123', 50, {
+   *   search_type: 'hybrid',
+   *   result_count: 10,
+   *   top_k: 20,
+   *   filter_used: true
+   * });
+   * ```
    */
   async trackVectorSearch(
     userId: string,
@@ -457,28 +562,57 @@ export class UsageTrackingService {
     metadata?: Record<string, unknown>
   ): Promise<void> {
     try {
-      // Future implementation - cost TBD
-      const cost = 0;
+      // Determine search type and calculate cost
+      const searchType = (metadata?.search_type as string) || 'vector';
 
+      let cost: number;
+      let eventType: string;
+
+      if (searchType === 'hybrid') {
+        cost = UNIT_COSTS.hybrid_search_query;
+        eventType = 'hybrid_search';
+      } else {
+        cost = UNIT_COSTS.vector_search_query;
+        eventType = 'vector_search';
+      }
+
+      // Add query embedding cost (the query itself needs to be embedded)
+      const embeddingCost = queryTokens * UNIT_COSTS.text_embedding_token;
+      const totalCost = cost + embeddingCost;
+
+      // Log event
       this.logger.info({
         userId,
         queryTokens,
+        searchType,
+        searchCost: cost,
+        embeddingCost,
+        totalCost,
         metadata,
-      }, 'Tracking vector search (stub)');
+      }, 'Tracking vector search');
 
-      // Generate a session ID for search query
-      const searchSessionId = `search_${Date.now()}`;
+      // Generate a unique session ID for this search
+      const searchSessionId = (metadata?.session_id as string) || `search_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
+      // Insert into database
       await this.insertUsageEvent(
         userId,
         searchSessionId,
         'search',
-        'semantic_search',
+        eventType,
         queryTokens,
         'tokens',
-        cost,
-        metadata
+        totalCost,
+        { ...metadata, search_type: searchType, query_tokens: queryTokens }
       );
+
+      // Increment Redis counters
+      await this.incrementRedisCounter(userId, 'searches', 1);
+
+      // Track embedding tokens for the query separately if significant
+      if (queryTokens > 0) {
+        await this.incrementRedisCounter(userId, 'search_embedding_tokens', queryTokens);
+      }
 
     } catch (error) {
       this.logger.error({

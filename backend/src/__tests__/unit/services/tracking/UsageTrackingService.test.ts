@@ -280,20 +280,104 @@ describe('UsageTrackingService', () => {
     });
   });
 
-  describe('Future Methods (Stubs)', () => {
-    it('should track text extraction', async () => {
+  describe('trackTextExtraction', () => {
+    it('should track PDF extraction with correct cost', async () => {
       const userId = '123e4567-e89b-12d3-a456-426614174000';
       const fileId = '987fcdeb-51a2-43d7-8765-ba9876543210';
       const pagesCount = 5;
 
-      await service.trackTextExtraction(userId, fileId, pagesCount);
+      await service.trackTextExtraction(userId, fileId, pagesCount, {
+        processor_type: 'pdf',
+        ocr_used: false,
+      });
 
       expect(mockPool.request).toHaveBeenCalledTimes(1);
       expect(mockRequest.input).toHaveBeenCalledWith('category', 'processing');
-      expect(mockRequest.input).toHaveBeenCalledWith('event_type', 'text_extraction');
+      expect(mockRequest.input).toHaveBeenCalledWith('event_type', 'document_extraction');
+      expect(mockRequest.input).toHaveBeenCalledWith('quantity', pagesCount);
+      expect(mockRequest.input).toHaveBeenCalledWith('unit', 'pages');
+      expect(mockRequest.input).toHaveBeenCalledWith(
+        'cost',
+        pagesCount * UNIT_COSTS.document_intelligence_page
+      );
+
+      // Verify Redis counter
+      expect(mockRedis.incrby).toHaveBeenCalledWith(
+        expect.stringMatching(/^usage:counter:.+:pages_processed:\d{4}-\d{2}$/),
+        pagesCount
+      );
     });
 
-    it('should track embedding generation', async () => {
+    it('should track PDF extraction with OCR at higher cost', async () => {
+      const userId = '123e4567-e89b-12d3-a456-426614174000';
+      const fileId = '987fcdeb-51a2-43d7-8765-ba9876543210';
+      const pagesCount = 3;
+
+      await service.trackTextExtraction(userId, fileId, pagesCount, {
+        processor_type: 'pdf',
+        ocr_used: true,
+      });
+
+      expect(mockRequest.input).toHaveBeenCalledWith('event_type', 'document_ocr');
+      expect(mockRequest.input).toHaveBeenCalledWith(
+        'cost',
+        pagesCount * UNIT_COSTS.document_intelligence_ocr_page
+      );
+
+      // Verify OCR-specific Redis counter
+      expect(mockRedis.incrby).toHaveBeenCalledWith(
+        expect.stringMatching(/^usage:counter:.+:ocr_pages:\d{4}-\d{2}$/),
+        pagesCount
+      );
+    });
+
+    it('should track DOCX extraction with minimal cost', async () => {
+      const userId = '123e4567-e89b-12d3-a456-426614174000';
+      const fileId = '987fcdeb-51a2-43d7-8765-ba9876543210';
+      const pagesCount = 10;
+
+      await service.trackTextExtraction(userId, fileId, pagesCount, {
+        processor_type: 'docx',
+      });
+
+      expect(mockRequest.input).toHaveBeenCalledWith('event_type', 'docx_extraction');
+      expect(mockRequest.input).toHaveBeenCalledWith('cost', UNIT_COSTS.docx_processing);
+    });
+
+    it('should track Excel extraction with per-sheet cost', async () => {
+      const userId = '123e4567-e89b-12d3-a456-426614174000';
+      const fileId = '987fcdeb-51a2-43d7-8765-ba9876543210';
+      const pagesCount = 1;
+      const sheetCount = 5;
+
+      await service.trackTextExtraction(userId, fileId, pagesCount, {
+        processor_type: 'excel',
+        sheet_count: sheetCount,
+      });
+
+      expect(mockRequest.input).toHaveBeenCalledWith('event_type', 'excel_extraction');
+      expect(mockRequest.input).toHaveBeenCalledWith(
+        'cost',
+        sheetCount * UNIT_COSTS.excel_sheet_processing
+      );
+    });
+
+    it('should track text extraction with zero cost', async () => {
+      const userId = '123e4567-e89b-12d3-a456-426614174000';
+      const fileId = '987fcdeb-51a2-43d7-8765-ba9876543210';
+      const pagesCount = 1;
+
+      await service.trackTextExtraction(userId, fileId, pagesCount, {
+        processor_type: 'text',
+      });
+
+      expect(mockRequest.input).toHaveBeenCalledWith('event_type', 'text_extraction');
+      expect(mockRequest.input).toHaveBeenCalledWith('cost', 0);
+    });
+  });
+
+  describe('trackEmbedding', () => {
+    it('should track text embedding with token cost', async () => {
       const userId = '123e4567-e89b-12d3-a456-426614174000';
       const fileId = '987fcdeb-51a2-43d7-8765-ba9876543210';
       const tokens = 1000;
@@ -302,18 +386,101 @@ describe('UsageTrackingService', () => {
 
       expect(mockPool.request).toHaveBeenCalledTimes(1);
       expect(mockRequest.input).toHaveBeenCalledWith('category', 'embeddings');
-      expect(mockRequest.input).toHaveBeenCalledWith('event_type', 'embedding_generation');
+      expect(mockRequest.input).toHaveBeenCalledWith('event_type', 'text_embedding');
+      expect(mockRequest.input).toHaveBeenCalledWith('quantity', tokens);
+      expect(mockRequest.input).toHaveBeenCalledWith('unit', 'tokens');
+      expect(mockRequest.input).toHaveBeenCalledWith(
+        'cost',
+        tokens * UNIT_COSTS.text_embedding_token
+      );
+
+      // Verify Redis counter
+      expect(mockRedis.incrby).toHaveBeenCalledWith(
+        expect.stringMatching(/^usage:counter:.+:embedding_tokens:\d{4}-\d{2}$/),
+        tokens
+      );
     });
 
-    it('should track vector search', async () => {
+    it('should track image embedding with per-image cost', async () => {
+      const userId = '123e4567-e89b-12d3-a456-426614174000';
+      const fileId = '987fcdeb-51a2-43d7-8765-ba9876543210';
+      const imageCount = 3;
+
+      await service.trackEmbedding(userId, fileId, imageCount, 'image');
+
+      expect(mockRequest.input).toHaveBeenCalledWith('event_type', 'image_embedding');
+      expect(mockRequest.input).toHaveBeenCalledWith('quantity', imageCount);
+      expect(mockRequest.input).toHaveBeenCalledWith('unit', 'images');
+      expect(mockRequest.input).toHaveBeenCalledWith(
+        'cost',
+        imageCount * UNIT_COSTS.image_embedding
+      );
+
+      // Verify Redis counter
+      expect(mockRedis.incrby).toHaveBeenCalledWith(
+        expect.stringMatching(/^usage:counter:.+:image_embeddings:\d{4}-\d{2}$/),
+        imageCount
+      );
+    });
+  });
+
+  describe('trackVectorSearch', () => {
+    it('should track vector search with correct cost', async () => {
       const userId = '123e4567-e89b-12d3-a456-426614174000';
       const queryTokens = 50;
 
-      await service.trackVectorSearch(userId, queryTokens);
+      await service.trackVectorSearch(userId, queryTokens, {
+        search_type: 'vector',
+        result_count: 10,
+      });
 
       expect(mockPool.request).toHaveBeenCalledTimes(1);
       expect(mockRequest.input).toHaveBeenCalledWith('category', 'search');
-      expect(mockRequest.input).toHaveBeenCalledWith('event_type', 'semantic_search');
+      expect(mockRequest.input).toHaveBeenCalledWith('event_type', 'vector_search');
+      // The implementation stores queryTokens as quantity with 'tokens' unit
+      expect(mockRequest.input).toHaveBeenCalledWith('quantity', queryTokens);
+      expect(mockRequest.input).toHaveBeenCalledWith('unit', 'tokens');
+
+      // Cost = search query + query embedding
+      const expectedCost = UNIT_COSTS.vector_search_query +
+        (queryTokens * UNIT_COSTS.text_embedding_token);
+      expect(mockRequest.input).toHaveBeenCalledWith('cost', expectedCost);
+
+      // Verify Redis counter (counts searches, not tokens)
+      expect(mockRedis.incrby).toHaveBeenCalledWith(
+        expect.stringMatching(/^usage:counter:.+:searches:\d{4}-\d{2}$/),
+        1
+      );
+    });
+
+    it('should track hybrid search with higher cost', async () => {
+      const userId = '123e4567-e89b-12d3-a456-426614174000';
+      const queryTokens = 100;
+
+      await service.trackVectorSearch(userId, queryTokens, {
+        search_type: 'hybrid',
+        result_count: 5,
+      });
+
+      expect(mockRequest.input).toHaveBeenCalledWith('event_type', 'hybrid_search');
+
+      // Cost = hybrid search query + query embedding
+      const expectedCost = UNIT_COSTS.hybrid_search_query +
+        (queryTokens * UNIT_COSTS.text_embedding_token);
+      expect(mockRequest.input).toHaveBeenCalledWith('cost', expectedCost);
+    });
+
+    it('should track search embedding tokens separately', async () => {
+      const userId = '123e4567-e89b-12d3-a456-426614174000';
+      const queryTokens = 75;
+
+      await service.trackVectorSearch(userId, queryTokens);
+
+      // Verify search embedding tokens counter
+      expect(mockRedis.incrby).toHaveBeenCalledWith(
+        expect.stringMatching(/^usage:counter:.+:search_embedding_tokens:\d{4}-\d{2}$/),
+        queryTokens
+      );
     });
   });
 

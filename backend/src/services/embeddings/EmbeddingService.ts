@@ -4,6 +4,10 @@ import { OpenAI } from 'openai';
 import Redis from 'ioredis';
 import { createRedisClient } from '@/config/redis';
 import crypto from 'crypto';
+import { getUsageTrackingService } from '@services/tracking/UsageTrackingService';
+import { createChildLogger } from '@/utils/logger';
+
+const logger = createChildLogger({ service: 'EmbeddingService' });
 
 export class EmbeddingService {
   private static instance?: EmbeddingService;
@@ -67,9 +71,10 @@ export class EmbeddingService {
    * Generates a vector embedding for a single text string.
    * @param text The text to embed
    * @param userId The ID of the user requesting the embedding
+   * @param fileId Optional file ID for tracking (defaults to 'direct')
    * @returns The text embedding result
    */
-  async generateTextEmbedding(text: string, userId: string): Promise<TextEmbedding> {
+  async generateTextEmbedding(text: string, userId: string, fileId = 'direct'): Promise<TextEmbedding> {
     if (!text || text.trim().length === 0) {
       throw new Error('Text cannot be empty');
     }
@@ -120,8 +125,13 @@ export class EmbeddingService {
     try {
       await cache.set(cacheKey, JSON.stringify(finalResult), 'EX', 604800);
     } catch (error) {
-       console.error('Error writing to cache:', error);
+       logger.error({ err: error }, 'Error writing to cache');
     }
+
+    // Track usage for billing (fire-and-forget)
+    this.trackTextEmbeddingUsage(userId, fileId, finalResult.tokenCount).catch((err) => {
+      logger.warn({ err, userId, fileId, tokenCount: finalResult.tokenCount }, 'Failed to track text embedding usage');
+    });
 
     return finalResult;
   }
@@ -131,8 +141,9 @@ export class EmbeddingService {
    * Uses Azure Computer Vision "Vectorize Image" API.
    * @param imageBuffer The image binary data
    * @param userId The ID of the user requesting the embedding
+   * @param fileId Optional file ID for tracking (defaults to 'direct')
    */
-  async generateImageEmbedding(imageBuffer: Buffer, userId: string): Promise<ImageEmbedding> {
+  async generateImageEmbedding(imageBuffer: Buffer, userId: string, fileId = 'direct'): Promise<ImageEmbedding> {
       if (!this.config.visionEndpoint || !this.config.visionKey) {
           throw new Error('Azure Vision not configured');
       }
@@ -156,7 +167,13 @@ export class EmbeddingService {
       }
 
       const data = await response.json() as { vector: number[]; modelVersion: string };
-      
+
+      // Track usage for billing (fire-and-forget)
+      // For images, we track count=1 as the "tokens" parameter
+      this.trackImageEmbeddingUsage(userId, fileId, imageBuffer.length).catch((err) => {
+        logger.warn({ err, userId, fileId }, 'Failed to track image embedding usage');
+      });
+
       // Response format: { "vector": [...], "modelVersion": "..." }
       return {
           embedding: data.vector,
@@ -172,9 +189,10 @@ export class EmbeddingService {
    * optimized with Redis caching - only generates embeddings for non-cached texts.
    * @param texts Array of texts to embed
    * @param userId User ID for tracking
+   * @param fileId Optional file ID for tracking (defaults to 'direct')
    * @returns Array of TextEmbedding objects in the same order as input
    */
-  async generateTextEmbeddingsBatch(texts: string[], userId: string): Promise<TextEmbedding[]> {
+  async generateTextEmbeddingsBatch(texts: string[], userId: string, fileId = 'direct'): Promise<TextEmbedding[]> {
     if (!texts || texts.length === 0) {
       return [];
     }
@@ -264,11 +282,72 @@ export class EmbeddingService {
 
       await pipeline.exec();
 
+      // Track usage for billing (fire-and-forget)
+      // Only track tokens for newly generated embeddings (not cached)
+      if (apiResult.usage?.total_tokens) {
+        this.trackTextEmbeddingUsage(userId, fileId, apiResult.usage.total_tokens, {
+          batch_size: missingIndices.length,
+          cached_count: texts.length - missingIndices.length,
+        }).catch((err) => {
+          logger.warn({ err, userId, fileId, tokenCount: apiResult.usage?.total_tokens }, 'Failed to track batch embedding usage');
+        });
+      }
+
     } catch (error) {
-       console.error('Error in batch embedding generation:', error);
+       logger.error({ err: error }, 'Error in batch embedding generation');
        throw error;
     }
 
     return results as TextEmbedding[];
+  }
+
+  /**
+   * Track text embedding usage for billing (helper method)
+   *
+   * @param userId User ID for usage attribution
+   * @param fileId File ID for tracking
+   * @param tokenCount Number of tokens used
+   * @param metadata Optional metadata
+   */
+  private async trackTextEmbeddingUsage(
+    userId: string,
+    fileId: string,
+    tokenCount: number,
+    metadata?: Record<string, unknown>
+  ): Promise<void> {
+    const usageTrackingService = getUsageTrackingService();
+    await usageTrackingService.trackEmbedding(userId, fileId, tokenCount, 'text', {
+      model: this.config.deploymentName,
+      ...metadata,
+    });
+
+    logger.debug(
+      { userId, fileId, tokenCount, model: this.config.deploymentName },
+      'Text embedding usage tracked'
+    );
+  }
+
+  /**
+   * Track image embedding usage for billing (helper method)
+   *
+   * @param userId User ID for usage attribution
+   * @param fileId File ID for tracking
+   * @param imageSize Size of the image in bytes
+   */
+  private async trackImageEmbeddingUsage(
+    userId: string,
+    fileId: string,
+    imageSize: number
+  ): Promise<void> {
+    const usageTrackingService = getUsageTrackingService();
+    // For images, tokens parameter is the count (1 per image)
+    await usageTrackingService.trackEmbedding(userId, fileId, 1, 'image', {
+      image_size: imageSize,
+    });
+
+    logger.debug(
+      { userId, fileId, imageSize },
+      'Image embedding usage tracked'
+    );
   }
 }

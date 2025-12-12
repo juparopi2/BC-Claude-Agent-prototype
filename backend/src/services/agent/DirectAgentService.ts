@@ -32,10 +32,7 @@ import type {
   MessageStreamEvent,
   TextBlock,
   ThinkingBlock,
-  ThinkingDelta,
   TextCitation,
-  CitationsDelta,
-  SignatureDelta,
 } from '@anthropic-ai/sdk/resources/messages';
 import { env } from '@/config';
 import type { AgentEvent, AgentExecutionResult } from '@/types';
@@ -51,6 +48,7 @@ import { getMessageQueue } from '../queue/MessageQueue';
 import { getTokenUsageService } from '../token-usage/TokenUsageService';
 import { getUsageTrackingService } from '../tracking/UsageTrackingService';
 import { getMessageOrderingService, getMessageEmitter, type IMessageEmitter } from './messages';
+import { StreamProcessor } from './messages/StreamProcessor';
 import { createChildLogger } from '@/utils/logger';
 import type { Logger } from 'pino';
 import * as fs from 'fs';
@@ -60,6 +58,7 @@ import { getContextRetrievalService } from '../files/context/ContextRetrievalSer
 import { getFileContextPromptBuilder } from '../files/context/PromptBuilder';
 import { getCitationParser } from '../files/citations/CitationParser';
 import { getMessageFileAttachmentService } from '../files/MessageFileAttachmentService';
+import { getSemanticSearchService } from '@/services/search/semantic';
 import type { FileContextResult, ParsedFile } from '@/types';
 
 /**
@@ -267,6 +266,22 @@ export interface ExecuteStreamingOptions {
    * @default undefined
    */
   attachments?: string[];
+  /**
+   * Enable automatic semantic file search when no attachments provided.
+   * Set to true to use "Use My Context" feature that searches user's files.
+   * @default false
+   */
+  enableAutoSemanticSearch?: boolean;
+  /**
+   * Semantic search relevance threshold (0.0 to 1.0)
+   * @default 0.7
+   */
+  semanticThreshold?: number;
+  /**
+   * Maximum files from semantic search
+   * @default 3
+   */
+  maxSemanticFiles?: number;
 }
 
 /**
@@ -308,6 +323,231 @@ export class DirectAgentService {
 
     // Initialize message emitter
     this.emitter = getMessageEmitter();
+  }
+
+  /**
+   * Process a stream using StreamProcessor and emit WebSocket events
+   *
+   * This method integrates StreamProcessor (pure stream processing) with
+   * MessageEmitter (WebSocket emission) to avoid duplicating stream processing logic.
+   *
+   * @param stream - Anthropic MessageStreamEvent async iterable
+   * @param sessionId - Session ID for logging and emission
+   * @param turnCount - Turn number for logging
+   * @returns Object containing processed blocks, token usage, and metadata
+   * @private
+   */
+  private async processStreamWithProcessor(
+    stream: AsyncIterable<MessageStreamEvent>,
+    sessionId: string,
+    turnCount: number
+  ): Promise<{
+    messageId: string | null;
+    model: string | null;
+    stopReason: string | null;
+    textBlocks: TextBlock[];
+    thinkingBlocks: ThinkingBlock[];
+    toolUses: ToolUseBlock[];
+    inputTokens: number;
+    outputTokens: number;
+    cacheCreationInputTokens: number;
+    cacheReadInputTokens: number;
+    contentBlocks: Map<number, {
+      type: string;
+      data: unknown;
+      citations?: TextCitation[];
+      signature?: string;
+    }>;
+  }> {
+    // Initialize StreamProcessor
+    const processor = new StreamProcessor({ sessionId, turnCount });
+
+    // Tracking variables for backward compatibility
+    let chunkCount = 0;
+    const contentBlocks: Map<number, {
+      type: string;
+      data: unknown;
+      citations?: TextCitation[];
+      signature?: string;
+    }> = new Map();
+
+    // Process the stream and translate StreamEvents to MessageEmitter calls
+    for await (const event of processor.processStream(stream)) {
+      switch (event.type) {
+        case 'message_start':
+          // Log message start (already logged by StreamProcessor)
+          console.log(`[STREAM] message_start: id=${event.messageId}, model=${event.model}, input_tokens=${event.inputTokens}, cache_read=${event.cacheTokens?.read || 0}, cache_create=${event.cacheTokens?.creation || 0}`);
+          break;
+
+        case 'text_chunk':
+          // Emit message chunk (transient, no sequence number)
+          chunkCount++;
+          console.log(`📦 [SEQUENCE] chunk (transient) | NO sequence, chunk=${chunkCount}`);
+
+          this.logger.debug('📦 [SEQUENCE] Emitting message_chunk (transient)', {
+            sessionId,
+            turnCount,
+            chunkIndex: chunkCount,
+            chunkLength: event.chunk.length,
+            timestamp: new Date().toISOString(),
+          });
+
+          this.emitter.emitMessageChunk(event.chunk, event.index, sessionId);
+          console.log(`[STREAM] text_delta: index=${event.index}, chunk_len=${event.chunk.length}`);
+          break;
+
+        case 'thinking_chunk':
+          // Emit thinking chunk (transient)
+          this.logger.debug('🧠 [THINKING] Emitting thinking_chunk (transient)', {
+            sessionId,
+            turnCount,
+            chunkLength: event.chunk.length,
+          });
+
+          this.emitter.emitThinkingChunk(event.chunk, event.index, sessionId);
+          console.log(`[STREAM] thinking_delta: index=${event.index}, chunk_len=${event.chunk.length}`);
+          break;
+
+        case 'tool_start':
+          // Emit tool use pending (transient)
+          this.logger.info({
+            sessionId,
+            turnCount,
+            toolName: event.toolName,
+            toolUseId: event.toolId,
+            hasId: !!event.toolId,
+            idType: typeof event.toolId,
+            idValue: event.toolId,
+            idLength: event.toolId?.length || 0,
+            eventIndex: event.index,
+          }, '🔍 [TRACE 1/8] SDK content_block_start');
+
+          this.emitter.emitToolUsePending({
+            toolName: event.toolName,
+            toolUseId: event.toolId,
+            blockIndex: event.index,
+          });
+
+          // Initialize tool data accumulator for batch persistence
+          this.toolDataAccumulators.set(event.index, {
+            name: event.toolName,
+            id: event.toolId,
+            args: '', // Will be accumulated via tool_input_chunk events
+            sequenceNumber: -1,
+          });
+
+          this.logger.info('✅ Tool data accumulator initialized (pending persistence)', {
+            sessionId,
+            toolUseId: event.toolId,
+            toolName: event.toolName,
+            eventIndex: event.index,
+          });
+
+          console.log(`[STREAM] content_block_start: index=${event.index}, type=tool_use`);
+          break;
+
+        case 'tool_input_chunk':
+          // Accumulate tool args in toolDataAccumulators
+          const toolData = this.toolDataAccumulators.get(event.index);
+          if (toolData) {
+            toolData.args += event.partialJson;
+            this.logger.debug({
+              sessionId,
+              turnCount,
+              eventIndex: event.index,
+              partialJsonLength: event.partialJson.length,
+              accumulatedLength: toolData.args.length,
+            }, '🔧 [TOOL_ARGS] Accumulating input_json_delta');
+          }
+          break;
+
+        case 'block_complete':
+          // Block completed - track in contentBlocks for batch persistence
+          const completedBlock = event.block;
+
+          if (completedBlock.content.type === 'text') {
+            contentBlocks.set(completedBlock.anthropicIndex, {
+              type: 'text',
+              data: completedBlock.content.text,
+              citations: completedBlock.content.citations,
+            });
+            console.log(`[STREAM] content_block_stop (text): index=${completedBlock.anthropicIndex}, text_len=${completedBlock.content.text.length}, citations=${completedBlock.content.citations.length}`);
+          } else if (completedBlock.content.type === 'thinking') {
+            contentBlocks.set(completedBlock.anthropicIndex, {
+              type: 'thinking',
+              data: completedBlock.content.thinking,
+              signature: completedBlock.content.signature,
+            });
+            console.log(`[STREAM] content_block_stop (thinking): index=${completedBlock.anthropicIndex}, content_len=${completedBlock.content.thinking.length}, has_sig=${!!completedBlock.content.signature}`);
+          } else if (completedBlock.content.type === 'tool_use') {
+            contentBlocks.set(completedBlock.anthropicIndex, {
+              type: 'tool_use',
+              data: {
+                id: completedBlock.content.id,
+                name: completedBlock.content.name,
+                input: completedBlock.content.input,
+              },
+            });
+            console.log(`[STREAM] content_block_stop (tool_use): index=${completedBlock.anthropicIndex}, tool=${completedBlock.content.name}, id=${completedBlock.content.id}`);
+          }
+          break;
+
+        case 'message_delta':
+          console.log(`[STREAM] message_delta: stop_reason=${event.stopReason}, output_tokens=${event.outputTokens}`);
+          break;
+
+        case 'message_stop':
+          console.log(`[STREAM] message_stop`);
+          break;
+      }
+    }
+
+    // Get final turn result from processor
+    const turnResult = processor.getTurnResult();
+
+    // Convert blocks to Anthropic format for backward compatibility
+    const textBlocks: TextBlock[] = [];
+    const thinkingBlocks: ThinkingBlock[] = [];
+    const toolUses: ToolUseBlock[] = [];
+
+    for (const block of turnResult.blocks) {
+      if (block.content.type === 'text') {
+        textBlocks.push({
+          type: 'text',
+          text: block.content.text,
+          citations: block.content.citations,
+        });
+      } else if (block.content.type === 'thinking') {
+        thinkingBlocks.push({
+          type: 'thinking',
+          thinking: block.content.thinking,
+          signature: block.content.signature,
+        });
+      } else if (block.content.type === 'tool_use') {
+        toolUses.push({
+          type: 'tool_use',
+          id: block.content.id,
+          name: block.content.name,
+          input: block.content.input,
+        });
+      }
+    }
+
+    console.log(`[STREAM] Stream completed: stop_reason=${turnResult.stopReason}, thinking_blocks=${thinkingBlocks.length}, text_blocks=${textBlocks.length}, tool_uses=${toolUses.length}`);
+
+    return {
+      messageId: turnResult.messageId,
+      model: turnResult.model,
+      stopReason: turnResult.stopReason,
+      textBlocks,
+      thinkingBlocks,
+      toolUses,
+      inputTokens: turnResult.usage.inputTokens,
+      outputTokens: turnResult.usage.outputTokens,
+      cacheCreationInputTokens: turnResult.usage.cacheCreationInputTokens || 0,
+      cacheReadInputTokens: turnResult.usage.cacheReadInputTokens || 0,
+      contentBlocks,
+    };
   }
 
   /**
@@ -422,6 +662,59 @@ export class DirectAgentService {
           hasDocContext: fileContext.documentContext.length > 0,
           hasImages: fileContext.images.length > 0,
         }, '✅ File context prepared');
+      } else if (options?.enableAutoSemanticSearch === true && userId) {
+        // ========== SEMANTIC SEARCH (Phase 2 - Auto Context) ==========
+        // When enableAutoSemanticSearch is TRUE and no manual attachments, search for relevant files
+        try {
+          const semanticSearchService = getSemanticSearchService();
+          const searchResults = await semanticSearchService.searchRelevantFiles({
+            userId,
+            query: prompt,
+            threshold: options?.semanticThreshold,
+            maxFiles: options?.maxSemanticFiles ?? 3,
+          });
+
+          if (searchResults.results.length > 0) {
+            this.logger.info({
+              userId,
+              queryPreview: prompt.substring(0, 50),
+              matchedFiles: searchResults.results.length,
+              topScore: searchResults.results[0]?.relevanceScore,
+            }, '🔍 Semantic search found relevant files');
+
+            // Convert search results to ParsedFile format for prepareFileContext
+            const fileService = getFileService();
+            for (const result of searchResults.results) {
+              const file = await fileService.getFile(userId, result.fileId);
+              if (file) {
+                validatedFiles.push(file);
+              }
+            }
+
+            if (validatedFiles.length > 0) {
+              // Prepare file context with semantically matched files
+              fileContext = await this.prepareFileContext(userId, validatedFiles, prompt);
+              this.logger.info({
+                fileCount: validatedFiles.length,
+                hasDocContext: fileContext.documentContext.length > 0,
+                source: 'semantic_search',
+              }, '✅ Semantic file context prepared');
+            }
+          } else {
+            this.logger.debug({
+              userId,
+              queryPreview: prompt.substring(0, 50),
+              threshold: options?.semanticThreshold ?? 0.7,
+            }, 'No semantically relevant files found');
+          }
+        } catch (error) {
+          // Don't fail the request if semantic search fails - just log and continue
+          this.logger.warn({
+            error,
+            userId,
+            queryPreview: prompt.substring(0, 50)
+          }, 'Semantic search failed, continuing without file context');
+        }
       }
 
       // Step 1: Get MCP tools and convert to Anthropic format
@@ -471,13 +764,10 @@ export class DirectAgentService {
       let continueLoop = true;
       let turnCount = 0;
       const maxTurns = 20; // Safety limit
-      let chunkCount = 0;
       let lastMessageId: string | null = null; // Track messageId for file usage recording
 
       while (continueLoop && turnCount < maxTurns) {
         turnCount++;
-        chunkCount = 0; // Reset chunk counter per turn
-
         console.log(`\n========== TURN ${turnCount} (STREAMING) ==========`);
 
         // ✅ FIX PHASE 3: NO generar batch sequence
@@ -536,490 +826,44 @@ export class DirectAgentService {
           throw streamError;
         }
 
-        // Accumulators for this turn
-        let accumulatedText = '';
-        const textBlocks: TextBlock[] = [];
-        const thinkingBlocks: ThinkingBlock[] = [];
-        const toolUses: ToolUseBlock[] = [];
-        let stopReason: string | null = null;
-        let messageId: string | null = null;
+        // ========== USE STREAMPROCESSOR TO HANDLE STREAM EVENTS ==========
+        // Process stream using StreamProcessor (eliminates duplicated switch-case logic)
+        const streamResult = await this.processStreamWithProcessor(stream, sessionId, turnCount);
 
-        // Track content blocks by index
-        // For text blocks: data is string, citations is Array<TextCitation>
-        // For thinking blocks: data is string, signature is string
-        // For tool_use blocks: data is { id, name, input, inputJson }
-        const contentBlocks: Map<number, {
-          type: string;
-          data: unknown;
-          citations?: TextCitation[];
-          signature?: string;  // ⭐ For thinking blocks - signature from signature_delta
-        }> = new Map();
+        // Extract results from StreamProcessor
+        const textBlocks = streamResult.textBlocks;
+        const thinkingBlocks = streamResult.thinkingBlocks;
+        const toolUses = streamResult.toolUses;
+        const stopReason = streamResult.stopReason;
+        const messageId = streamResult.messageId;
+        const contentBlocks = streamResult.contentBlocks;
 
-        // Process stream events
-        for await (const event of stream) {
-          switch (event.type) {
-            case 'message_start':
-              // Message begins - capture ID, model, and initial usage
-              messageId = event.message.id;
-              lastMessageId = messageId; // Track for file usage recording
-              modelName = event.message.model;  // NEW: Capture model name
-              inputTokens += event.message.usage.input_tokens;
-              // ⭐ Capture cache tokens for billing analytics
-              if (event.message.usage.cache_creation_input_tokens) {
-                cacheCreationInputTokens += event.message.usage.cache_creation_input_tokens;
-              }
-              if (event.message.usage.cache_read_input_tokens) {
-                cacheReadInputTokens += event.message.usage.cache_read_input_tokens;
-              }
-              // ⭐ Capture service tier (affects pricing)
-              if (event.message.usage.service_tier) {
-                serviceTier = event.message.usage.service_tier as 'standard' | 'priority' | 'batch';
-              }
-              console.log(`[STREAM] message_start: id=${messageId}, model=${modelName}, input_tokens=${event.message.usage.input_tokens}, cache_read=${cacheReadInputTokens}, cache_create=${cacheCreationInputTokens}`);
-              break;
+        // Reconstruct accumulatedText from textBlocks for backward compatibility
+        const accumulatedText = textBlocks.map(block => block.text).join('');
 
-            case 'content_block_start':
-              // New content block starts (text, tool_use, or thinking)
-              console.log(`[STREAM] content_block_start: index=${event.index}, type=${event.content_block.type}`);
+        // Estimate thinking tokens from thinkingBlocks (approximately 4 characters per token)
+        const estimatedThinkingTokens = thinkingBlocks.reduce((sum, block) => {
+          return sum + Math.ceil(block.thinking.length / 4);
+        }, 0);
+        thinkingTokens += estimatedThinkingTokens;
 
-              if (event.content_block.type === 'text') {
-                // Initialize with empty citations array - will be populated by citations_delta events
-                contentBlocks.set(event.index, {
-                  type: 'text',
-                  data: '', // Will accumulate in deltas
-                  citations: [], // ⭐ Citations will be added via citations_delta
-                });
-              } else if (event.content_block.type === 'thinking') {
-                // ⭐ Phase 1F: Extended Thinking block starts
-                contentBlocks.set(event.index, {
-                  type: 'thinking',
-                  data: '', // Will accumulate thinking content in deltas
-                  signature: '', // ⭐ Will be set by signature_delta
-                });
-
-                this.logger.info({
-                  sessionId,
-                  turnCount,
-                  eventIndex: event.index,
-                }, '🧠 [THINKING] Extended thinking block started');
-              } else if (event.content_block.type === 'tool_use') {
-                // ⭐ TRACING POINT 1: SDK proporciona el ID
-                let toolUseId = event.content_block.id;
-
-                this.logger.info({
-                  sessionId,
-                  turnCount,
-                  toolName: event.content_block.name,
-                  toolUseId,
-                  hasId: !!toolUseId,
-                  idType: typeof toolUseId,
-                  idValue: toolUseId,
-                  idLength: toolUseId?.length || 0,
-                  eventIndex: event.index,
-                }, '🔍 [TRACE 1/8] SDK content_block_start');
-
-                // ⭐ VALIDACIÓN: Asegurar que SDK proporcionó ID válido
-                if (!toolUseId || toolUseId === 'undefined' || typeof toolUseId !== 'string' || toolUseId.trim() === '') {
-                  // 🚨 FALLBACK: Generar UUID + log crítico
-                  toolUseId = `toolu_fallback_${randomUUID()}`;
-
-                  this.logger.error('🚨 SDK NO proporcionó tool use ID - usando fallback', {
-                    sessionId,
-                    turnCount,
-                    toolName: event.content_block.name,
-                    originalId: event.content_block.id,
-                    originalIdType: typeof event.content_block.id,
-                    fallbackId: toolUseId,
-                    sdkEventType: event.type,
-                    eventIndex: event.index,
-                  });
-                }
-
-                // ⭐ TRACING POINT 2: Guardando en contentBlocks Map
-                this.logger.info({
-                  sessionId,
-                  turnCount,
-                  eventIndex: event.index,
-                  toolUseId,
-                  toolName: event.content_block.name,
-                }, '🔍 [TRACE 2/8] Storing in contentBlocks Map');
-
-                contentBlocks.set(event.index, {
-                  type: 'tool_use',
-                  data: {
-                    id: toolUseId,  // ⭐ Ahora garantizado válido
-                    name: event.content_block.name,
-                    input: {}, // Will accumulate in deltas
-                  },
-                });
-
-                // ⭐ NEW FIX: DON'T persist yet - wait for message_delta to persist in correct order
-                // Initialize accumulator to track args during streaming
-                this.toolDataAccumulators.set(event.index, {
-                  name: event.content_block.name,
-                  id: toolUseId,
-                  args: '', // Will accumulate JSON string in input_json_delta
-                  sequenceNumber: -1, // ⭐ Will be assigned in message_delta based on index order
-                });
-
-                this.logger.info('✅ Tool data accumulator initialized (pending persistence)', {
-                  sessionId,
-                  toolUseId,
-                  toolName: event.content_block.name,
-                  eventIndex: event.index,
-                });
-
-                // ⭐ NEW FIX: Emit with persistenceState: 'pending' (not persisted yet)
-                this.emitter.emitToolUsePending({
-                  toolName: event.content_block.name,
-                  toolUseId: toolUseId,  // ⭐ Use validated ID
-                  blockIndex: event.index,
-                });
-
-                // ⭐ NOTE: Message persistence moved to content_block_stop to ensure complete tool_args
-              }
-              break;
-
-            case 'content_block_delta':
-              // Incremental content arrives
-              const block = contentBlocks.get(event.index);
-
-              if (!block) {
-                console.warn(`[STREAM] content_block_delta for unknown index ${event.index}`);
-                break;
-              }
-
-              if (event.delta.type === 'text_delta') {
-                // Text chunk arrived
-                const chunk = event.delta.text;
-                block.data = (block.data as string) + chunk;
-                accumulatedText += chunk;
-
-                // ✅ FIX PHASE 3: EMIT CHUNK IMMEDIATELY WITHOUT sequence (transient)
-                if (onEvent && chunk) {
-                  chunkCount++;
-
-                  console.log(`📦 [SEQUENCE] chunk (transient) | NO sequence, chunk=${chunkCount}`);
-
-                  this.logger.debug('📦 [SEQUENCE] Emitting message_chunk (transient)', {
-                    sessionId,
-                    turnCount,
-                    chunkIndex: chunkCount,
-                    chunkLength: chunk.length,
-                    timestamp: new Date().toISOString(),
-                  });
-
-                  this.emitter.emitMessageChunk(chunk, event.index, sessionId);
-                }
-
-                console.log(`[STREAM] text_delta: index=${event.index}, chunk_len=${chunk.length}`);
-              } else if (event.delta.type === 'thinking_delta') {
-                // ⭐ Phase 1F: Extended Thinking chunk arrived (using native SDK type)
-                const thinkingDelta = event.delta as ThinkingDelta;
-                const thinkingChunk = thinkingDelta.thinking;
-
-                if (block.type === 'thinking') {
-                  block.data = (block.data as string) + thinkingChunk;
-
-                  // Emit thinking_chunk event (transient, for real-time display)
-                  if (thinkingChunk) {
-                    this.logger.debug('🧠 [THINKING] Emitting thinking_chunk (transient)', {
-                      sessionId,
-                      turnCount,
-                      chunkLength: thinkingChunk.length,
-                    });
-
-                    this.emitter.emitThinkingChunk(thinkingChunk, event.index, sessionId);
-                  }
-
-                  console.log(`[STREAM] thinking_delta: index=${event.index}, chunk_len=${thinkingChunk.length}`);
-                }
-              } else if (event.delta.type === 'input_json_delta') {
-                // Tool input chunk (JSON partial) - accumulate the JSON string
-                const partialJson = event.delta.partial_json;
-                const toolBlock = block.data as { id: string; name: string; input: Record<string, unknown>; inputJson?: string };
-
-                // Accumulate JSON string in contentBlocks (will parse when complete)
-                toolBlock.inputJson = (toolBlock.inputJson || '') + partialJson;
-
-                // Also accumulate in toolDataAccumulators for final persistence
-                const toolData = this.toolDataAccumulators.get(event.index);
-                if (toolData) {
-                  toolData.args += partialJson;
-                  this.logger.debug({
-                    sessionId,
-                    turnCount,
-                    eventIndex: event.index,
-                    partialJsonLength: partialJson.length,
-                    accumulatedLength: toolData.args.length,
-                  }, '🔧 [TOOL_ARGS] Accumulating input_json_delta');
-                }
-
-                // Try to parse accumulated JSON (may be incomplete)
-                try {
-                  toolBlock.input = JSON.parse(toolBlock.inputJson);
-                  console.log(`[STREAM] input_json_delta: index=${event.index}, parsed_input=${JSON.stringify(toolBlock.input)}`);
-                } catch {
-                  // JSON incomplete, will parse on next delta or at content_block_stop
-                  console.log(`[STREAM] input_json_delta: index=${event.index}, json_len=${partialJson.length} (incomplete)`);
-                }
-              } else if (event.delta.type === 'citations_delta') {
-                // ⭐ Citations delta - accumulate citations for text blocks
-                const citationsDelta = event.delta as CitationsDelta;
-                const citation = citationsDelta.citation;
-
-                if (block.type === 'text' && block.citations) {
-                  block.citations.push(citation);
-
-                  this.logger.info({
-                    sessionId,
-                    turnCount,
-                    eventIndex: event.index,
-                    citationType: citation.type,
-                    citedText: citation.cited_text?.substring(0, 50) + (citation.cited_text?.length > 50 ? '...' : ''),
-                    totalCitations: block.citations.length,
-                  }, '📚 [CITATIONS] Citation received');
-
-                  console.log(`[STREAM] citations_delta: index=${event.index}, type=${citation.type}, total_citations=${block.citations.length}`);
-                }
-              } else if (event.delta.type === 'signature_delta') {
-                // ⭐ Signature for thinking blocks (required for conversation history)
-                const signatureDelta = event.delta as SignatureDelta;
-                const signature = signatureDelta.signature;
-
-                if (block.type === 'thinking') {
-                  block.signature = signature;
-
-                  this.logger.debug({
-                    sessionId,
-                    turnCount,
-                    eventIndex: event.index,
-                    signatureLength: signature.length,
-                  }, '🧠 [THINKING] Signature received for thinking block');
-
-                  console.log(`[STREAM] signature_delta: index=${event.index}, sig_len=${signature.length}`);
-                }
-              }
-              break;
-
-            case 'content_block_stop':
-              // Content block completed
-              const completedBlock = contentBlocks.get(event.index);
-
-              if (!completedBlock) {
-                console.warn(`[STREAM] content_block_stop for unknown index ${event.index}`);
-                break;
-              }
-
-              if (completedBlock.type === 'text') {
-                const finalText = completedBlock.data as string;
-                const citations = completedBlock.citations || [];
-
-                if (finalText.trim()) {
-                  textBlocks.push({
-                    type: 'text',
-                    text: finalText,
-                    citations: citations, // ⭐ Use accumulated citations from citations_delta events
-                  });
-
-                  // Log citations if present
-                  if (citations.length > 0) {
-                    this.logger.info({
-                      sessionId,
-                      turnCount,
-                      eventIndex: event.index,
-                      textLength: finalText.length,
-                      citationsCount: citations.length,
-                      citationTypes: citations.map(c => c.type),
-                    }, '📚 [CITATIONS] Text block completed with citations');
-                  }
-                }
-                console.log(`[STREAM] content_block_stop (text): index=${event.index}, text_len=${finalText.length}, citations=${citations.length}`);
-              } else if (completedBlock.type === 'thinking') {
-                // ⭐ Phase 1F: Extended Thinking block completed
-                const finalThinkingContent = completedBlock.data as string;
-                const signature = completedBlock.signature || '';
-
-                // Estimate thinking tokens (approximately 4 characters per token)
-                // Note: This is an estimate - actual tokens are counted as output_tokens by Anthropic
-                const estimatedThinkingTokens = Math.ceil(finalThinkingContent.length / 4);
-                thinkingTokens += estimatedThinkingTokens;
-
-                // ⭐ Push to thinkingBlocks for conversation history
-                // Anthropic requires thinking blocks to be included in subsequent assistant messages
-                if (finalThinkingContent.trim() && signature) {
-                  thinkingBlocks.push({
-                    type: 'thinking',
-                    thinking: finalThinkingContent,
-                    signature: signature,
-                  });
-
-                  this.logger.info({
-                    sessionId,
-                    turnCount,
-                    eventIndex: event.index,
-                    thinkingContentLength: finalThinkingContent.length,
-                    hasSignature: !!signature,
-                    estimatedThinkingTokens,
-                    totalThinkingTokens: thinkingTokens,
-                  }, '🧠 [THINKING] Block completed and added to history');
-                } else {
-                  this.logger.warn({
-                    sessionId,
-                    turnCount,
-                    eventIndex: event.index,
-                    hasContent: !!finalThinkingContent.trim(),
-                    hasSignature: !!signature,
-                  }, '🧠 [THINKING] Block completed but NOT added to history (missing content or signature)');
-                }
-
-                console.log(`[STREAM] content_block_stop (thinking): index=${event.index}, content_len=${finalThinkingContent.length}, has_sig=${!!signature}, estimated_tokens=${estimatedThinkingTokens}`);
-
-                // Phase 4.5: Persist thinking content to database
-                if (finalThinkingContent.trim()) {
-                  const thinkingPersistEvent = await eventStore.appendEvent(
-                    sessionId,
-                    'agent_thinking_completed',
-                    { content_length: finalThinkingContent.length }
-                  );
-
-                  await messageQueue.addMessagePersistence({
-                    sessionId,
-                    messageId: `thinking_${thinkingPersistEvent.id}`,
-                    role: 'assistant',
-                    messageType: 'thinking',
-                    content: finalThinkingContent,  // ACTUAL CONTENT in correct column
-                    metadata: {
-                      has_signature: !!signature,
-                      event_index: event.index,
-                    },
-                    sequenceNumber: thinkingPersistEvent.sequence_number,
-                    eventId: thinkingPersistEvent.id,
-                  });
-
-                  this.logger.info({
-                    sessionId,
-                    contentLength: finalThinkingContent.length,
-                    sequenceNumber: thinkingPersistEvent.sequence_number,
-                  }, '💾 [THINKING] Content persisted to database');
-                }
-              } else if (completedBlock.type === 'tool_use') {
-                const toolData = completedBlock.data as { id: string; name: string; input: Record<string, unknown> };
-
-                // ⭐ TRACING POINT 3: Recuperando toolUseId del Map antes de push
-                let validatedToolUseId = toolData.id;
-
-                this.logger.info({
-                  sessionId,
-                  turnCount,
-                  eventIndex: event.index,
-                  toolUseId: validatedToolUseId,
-                  toolName: toolData.name,
-                  hasId: !!validatedToolUseId,
-                  idType: typeof validatedToolUseId,
-                  idValue: validatedToolUseId,
-                  idLength: validatedToolUseId?.length || 0,
-                }, '🔍 [TRACE 3/8] Retrieved from contentBlocks Map (content_block_stop)');
-
-                // ⭐ VALIDACIÓN: Asegurar que el ID sigue siendo válido antes del push
-                if (!validatedToolUseId || validatedToolUseId === 'undefined' || typeof validatedToolUseId !== 'string' || validatedToolUseId.trim() === '') {
-                  // 🚨 FALLBACK: ID se corrompió entre content_block_start y content_block_stop
-                  validatedToolUseId = `toolu_fallback_${randomUUID()}`;
-
-                  this.logger.error('🚨 Tool use ID se corrompió antes de push - usando fallback', {
-                    sessionId,
-                    turnCount,
-                    toolName: toolData.name,
-                    originalId: toolData.id,
-                    originalIdType: typeof toolData.id,
-                    fallbackId: validatedToolUseId,
-                    eventIndex: event.index,
-                  });
-                }
-
-                // ⭐ NEW FIX: Parse args but DON'T persist yet - will persist in message_delta
-                const accumulatorData = this.toolDataAccumulators.get(event.index);
-                if (accumulatorData) {
-                  // Parse the accumulated JSON args for logging
-                  let parsedArgs = {};
-                  try {
-                    if (accumulatorData.args) {
-                      parsedArgs = JSON.parse(accumulatorData.args);
-                      this.logger.info({
-                        sessionId,
-                        turnCount,
-                        eventIndex: event.index,
-                        toolUseId: validatedToolUseId,
-                        toolName: accumulatorData.name,
-                        argsLength: accumulatorData.args.length,
-                        parsedArgsKeys: Object.keys(parsedArgs),
-                      }, '✅ [TOOL_ARGS] Successfully parsed complete tool arguments (pending persistence)');
-                    }
-                  } catch (e) {
-                    this.logger.warn({
-                      sessionId,
-                      turnCount,
-                      eventIndex: event.index,
-                      toolUseId: validatedToolUseId,
-                      args: accumulatorData.args,
-                      error: e instanceof Error ? e.message : String(e),
-                    }, '⚠️ [TOOL_ARGS] Failed to parse tool args');
-                  }
-
-                  // ⭐ NEW FIX: DON'T delete accumulator yet - we'll need it in message_delta
-                  // to persist in correct order by index
-                } else {
-                  this.logger.warn({
-                    sessionId,
-                    turnCount,
-                    eventIndex: event.index,
-                    toolUseId: validatedToolUseId,
-                  }, '⚠️ [TOOL_ARGS] No accumulator data found - this should not happen');
-                }
-
-                // ⭐ TRACING POINT 4: Pushing to toolUses array con ID validado
-                this.logger.info({
-                  sessionId,
-                  turnCount,
-                  eventIndex: event.index,
-                  toolUseId: validatedToolUseId,
-                  toolName: toolData.name,
-                  inputKeys: Object.keys(toolData.input),
-                }, '🔍 [TRACE 4/8] Pushing to toolUses array');
-
-                toolUses.push({
-                  type: 'tool_use',
-                  id: validatedToolUseId,  // ⭐ Use validated ID
-                  name: toolData.name,
-                  input: toolData.input,
-                });
-                console.log(`[STREAM] content_block_stop (tool_use): index=${event.index}, tool=${toolData.name}, id=${validatedToolUseId}`);
-              }
-              break;
-
-            case 'message_delta':
-              // Final token usage and stop_reason
-              if (event.delta.stop_reason) {
-                stopReason = event.delta.stop_reason;
-                console.log(`[STREAM] message_delta: stop_reason=${stopReason}`);
-              }
-              if (event.usage) {
-                outputTokens += event.usage.output_tokens;
-                console.log(`[STREAM] message_delta: output_tokens=${event.usage.output_tokens}`);
-              }
-              break;
-
-            case 'message_stop':
-              // Message completed
-              console.log(`[STREAM] message_stop`);
-              break;
-
-            default:
-              console.log(`[STREAM] Unknown event type: ${(event as MessageStreamEvent).type}`);
-          }
+        // Update token tracking from stream result
+        inputTokens += streamResult.inputTokens;
+        outputTokens += streamResult.outputTokens;
+        cacheCreationInputTokens += streamResult.cacheCreationInputTokens;
+        cacheReadInputTokens += streamResult.cacheReadInputTokens;
+        if (streamResult.model) {
+          modelName = streamResult.model;
+        }
+        if (messageId) {
+          lastMessageId = messageId; // Track for file usage recording
         }
 
-        console.log(`[STREAM] Stream completed: stop_reason=${stopReason}, thinking_blocks=${thinkingBlocks.length}, text_blocks=${textBlocks.length}, tool_uses=${toolUses.length}`);
+        // ========== OLD DUPLICATED CODE REMOVED (lines 786-1247) ==========
+        // The entire switch(event.type) block has been replaced with StreamProcessor
+        // This eliminates ~460 lines of duplicated stream processing logic
+
+        // (Old duplicated switch-case code removed - now using StreamProcessor)
 
         // ========== NEW FIX: BATCH PERSISTENCE IN CORRECT ORDER ==========
         // ⭐ Only persist if stream completed successfully (has stop_reason)

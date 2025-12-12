@@ -25,36 +25,40 @@ describe('E2E Data Flow - Comprehensive Test Suite', () => {
   // SECTION 1: Citations E2E Flow
   // ========================================================================
   describe('1. Citations E2E Flow', () => {
-    describe('1.1 CAPTURE - DirectAgentService', () => {
-      let serviceCode: string;
+    describe('1.1 CAPTURE - StreamProcessor (refactored from DirectAgentService)', () => {
+      let streamProcessorCode: string;
+      let accumulatorCode: string;
 
       beforeEach(() => {
-        const servicePath = path.join(
+        // Citations handling has been refactored to StreamProcessor and ContentBlockAccumulator
+        const streamProcessorPath = path.join(
           process.cwd(),
-          'src/services/agent/DirectAgentService.ts'
+          'src/services/agent/messages/StreamProcessor.ts'
         );
-        serviceCode = fs.readFileSync(servicePath, 'utf-8');
-      });
-
-      it('should import TextCitation from SDK', () => {
-        expect(serviceCode).toContain('TextCitation');
+        const accumulatorPath = path.join(
+          process.cwd(),
+          'src/services/agent/messages/ContentBlockAccumulator.ts'
+        );
+        streamProcessorCode = fs.readFileSync(streamProcessorPath, 'utf-8');
+        accumulatorCode = fs.readFileSync(accumulatorPath, 'utf-8');
       });
 
       it('should import CitationsDelta from SDK', () => {
-        expect(serviceCode).toContain('CitationsDelta');
+        expect(streamProcessorCode).toContain('CitationsDelta');
       });
 
       it('should handle citations_delta event', () => {
-        expect(serviceCode).toContain("event.delta.type === 'citations_delta'");
+        // StreamProcessor delegates to accumulator with 'citations_delta' type
+        expect(streamProcessorCode).toContain("delta.type === 'citations_delta'");
       });
 
-      it('should accumulate citations in contentBlocks Map', () => {
-        expect(serviceCode).toContain('block.citations.push(citation)');
+      it('should accumulate citations in ContentBlockAccumulator', () => {
+        // ContentBlockAccumulator handles citations accumulation
+        expect(accumulatorCode).toContain('block.citations.push');
       });
 
-      // ⚠️ SKIPPED: Old implementation pattern - now uses `citations` variable instead of `allCitations`
-      it.skip('should include citations in persistence metadata', () => {
-        expect(serviceCode).toContain('citations: allCitations.length > 0 ? allCitations : undefined');
+      it('should import TextCitation type in accumulator', () => {
+        expect(accumulatorCode).toContain('TextCitation');
       });
     });
 

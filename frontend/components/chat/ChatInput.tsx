@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Toggle } from '@/components/ui/toggle';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Send, Square, Brain, WifiOff, Mic, Paperclip, Globe, Loader2 } from 'lucide-react';
+import { Send, Square, Brain, WifiOff, Mic, Paperclip, Globe, Loader2, FolderSearch } from 'lucide-react';
 import { FileAttachmentChip } from '@/components/chat/FileAttachmentChip';
 import { getFileApiClient } from '@/lib/services/fileApi';
 import { toast } from 'sonner';
@@ -19,7 +19,7 @@ export interface ChatInputProps {
   // Socket state from parent (avoids duplicate useSocket calls)
   isConnected?: boolean;
   isReconnecting?: boolean;
-  sendMessage?: (message: string, options?: { enableThinking?: boolean; thinkingBudget?: number }) => void;
+  sendMessage?: (message: string, options?: { enableThinking?: boolean; thinkingBudget?: number; attachments?: string[]; enableAutoSemanticSearch?: boolean }) => void;
   stopAgent?: () => void;
 }
 
@@ -34,6 +34,7 @@ export default function ChatInput({
 }: ChatInputProps) {
   const [message, setMessage] = useState('');
   const [enableThinking, setEnableThinking] = useState(false);
+  const [useMyContext, setUseMyContext] = useState(false);
   const [attachments, setAttachments] = useState<Array<{ id: string; file: File; status: 'uploading' | 'completed' | 'error'; progress: number; error?: string }>>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -84,14 +85,15 @@ export default function ChatInput({
       .map(a => a.id);
 
     if (onSend) {
-      // Note: onSend currently doesn't support attachments in the interface, 
+      // Note: onSend currently doesn't support attachments in the interface,
       // but we'll assume it might be updated or ignored for now in simple mode.
       onSend(message, { enableThinking });
     } else {
       const options = {
         enableThinking,
         thinkingBudget: enableThinking ? 10000 : undefined,
-        attachments: validAttachmentIds.length > 0 ? validAttachmentIds : undefined
+        attachments: validAttachmentIds.length > 0 ? validAttachmentIds : undefined,
+        enableAutoSemanticSearch: useMyContext,
       };
       sendMessage(message, options);
     }
@@ -177,8 +179,12 @@ export default function ChatInput({
   };
 
   // Determine toggle styles based on state manually to ensure visibility
-  const toggleClasses = enableThinking
+  const thinkingToggleClasses = enableThinking
     ? "gap-1.5 bg-amber-500 text-white hover:bg-amber-600 hover:text-white dark:bg-amber-600 dark:hover:bg-amber-700 dark:hover:text-white"
+    : "gap-1.5";
+
+  const contextToggleClasses = useMyContext
+    ? "gap-1.5 bg-emerald-500 text-white hover:bg-emerald-600 hover:text-white dark:bg-emerald-600 dark:hover:bg-emerald-700 dark:hover:text-white"
     : "gap-1.5";
 
   return (
@@ -220,7 +226,7 @@ export default function ChatInput({
                   pressed={enableThinking}
                   onPressedChange={setEnableThinking}
                   size="sm"
-                  className={toggleClasses}
+                  className={thinkingToggleClasses}
                   disabled={effectiveIsBusy || disabled}
                 >
                   <Brain className="size-3.5" />
@@ -229,6 +235,26 @@ export default function ChatInput({
               </TooltipTrigger>
               <TooltipContent>
                 <p className="text-xs">Enable extended thinking for complex queries</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Toggle
+                  pressed={useMyContext}
+                  onPressedChange={setUseMyContext}
+                  size="sm"
+                  className={contextToggleClasses}
+                  disabled={effectiveIsBusy || disabled}
+                >
+                  <FolderSearch className="size-3.5" />
+                  <span className="text-xs">My Files</span>
+                </Toggle>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p className="text-xs">Search your uploaded files for relevant context</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>

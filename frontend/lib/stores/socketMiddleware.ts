@@ -41,7 +41,7 @@ export interface UseSocketReturn {
   /** Leave a session */
   leaveSession: (sessionId: string) => void;
   /** Send a message */
-  sendMessage: (message: string, options?: { enableThinking?: boolean; thinkingBudget?: number; attachments?: string[] }) => void;
+  sendMessage: (message: string, options?: { enableThinking?: boolean; thinkingBudget?: number; attachments?: string[]; enableAutoSemanticSearch?: boolean }) => void;
   /** Stop the agent */
   stopAgent: () => void;
   /** Respond to approval */
@@ -217,7 +217,7 @@ export function useSocket(options: UseSocketOptions = {}): UseSocketReturn {
 
   // Send message function
   const sendMessage = useCallback(
-    (message: string, opts?: { enableThinking?: boolean; thinkingBudget?: number; attachments?: string[] }) => {
+    (message: string, opts?: { enableThinking?: boolean; thinkingBudget?: number; attachments?: string[]; enableAutoSemanticSearch?: boolean }) => {
       if (!user?.id || !currentSessionRef.current) {
         return;
       }
@@ -259,6 +259,7 @@ export function useSocket(options: UseSocketOptions = {}): UseSocketReturn {
           thinkingBudget: opts.thinkingBudget,
         } : undefined,
         attachments: opts?.attachments, // Pass attachments to server
+        enableAutoSemanticSearch: opts?.enableAutoSemanticSearch, // Pass semantic search flag
       });
     },
     [user, addOptimisticMessage]

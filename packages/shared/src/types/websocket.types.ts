@@ -60,6 +60,13 @@ export interface ChatMessageData {
    * Array of UUIDs corresponding to uploaded files.
    */
   attachments?: string[];
+
+  /**
+   * Enable automatic semantic search for user's files when no attachments provided.
+   * When true, the system will search user's uploaded files for relevant context.
+   * @default false
+   */
+  enableAutoSemanticSearch?: boolean;
 }
 
 /**

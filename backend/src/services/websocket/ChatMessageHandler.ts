@@ -229,13 +229,14 @@ export class ChatMessageHandler {
         thinkingBudget: thinkingConfig?.thinkingBudget,
       });
 
-      // Build options object with thinking and attachments
+      // Build options object with thinking, attachments, and enableAutoSemanticSearch
       const streamingOptions = {
         ...(thinkingConfig ? {
           enableThinking: thinkingConfig.enableThinking,
           thinkingBudget: thinkingConfig.thinkingBudget,
         } : {}),
         attachments: data.attachments,
+        enableAutoSemanticSearch: data.enableAutoSemanticSearch,
       };
 
       await agentService.executeQueryStreaming(

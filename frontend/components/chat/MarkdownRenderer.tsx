@@ -1,5 +1,6 @@
 'use client';
 
+import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
@@ -9,14 +10,50 @@ import { oneLight } from 'react-syntax-highlighter/dist/cjs/styles/prism';
 import { useTheme } from 'next-themes';
 import { cn } from '@/lib/utils';
 import type { Components } from 'react-markdown';
+import { CitationLink } from './CitationLink';
+import { parseCitations, hasCitations } from '@/lib/utils/citationParser';
+import type { CitationFileMap } from '@/lib/types/citation.types';
 
 interface MarkdownRendererProps {
   content: string;
   className?: string;
+  /** Map of fileName -> fileId for citation matching */
+  citationFileMap?: CitationFileMap;
+  /** Callback when a citation is clicked */
+  onCitationOpen?: (fileId: string) => void;
 }
 
-export function MarkdownRenderer({ content, className }: MarkdownRendererProps) {
+export function MarkdownRenderer({
+  content,
+  className,
+  citationFileMap,
+  onCitationOpen,
+}: MarkdownRendererProps) {
   const { theme } = useTheme();
+
+  /**
+   * Render text content with citation links
+   * Parses [filename.ext] patterns and renders as CitationLink components
+   */
+  const renderTextWithCitations = (text: string): React.ReactNode => {
+    if (!hasCitations(text)) {
+      return text;
+    }
+
+    const segments = parseCitations(text, citationFileMap);
+    return segments.map((segment, idx) =>
+      segment.type === 'citation' ? (
+        <CitationLink
+          key={`citation-${idx}`}
+          fileName={segment.content}
+          fileId={segment.fileId ?? null}
+          onOpen={onCitationOpen}
+        />
+      ) : (
+        <span key={`text-${idx}`}>{segment.content}</span>
+      )
+    );
+  };
 
   const components: Components = {
     // Headings with distinct sizes
@@ -40,9 +77,20 @@ export function MarkdownRenderer({ content, className }: MarkdownRendererProps) 
     ),
 
     // Paragraphs
-    p: ({ children }) => (
-      <p className="text-sm leading-7">{children}</p>
-    ),
+    p: ({ children }) => {
+      const processChildren = (child: React.ReactNode): React.ReactNode => {
+        if (typeof child === 'string') {
+          return renderTextWithCitations(child);
+        }
+        return child;
+      };
+
+      return (
+        <p className="text-sm leading-7 [&:not(:first-child)]:mt-4">
+          {React.Children.map(children, processChildren)}
+        </p>
+      );
+    },
 
     // Lists with bullets/numbers
     ul: ({ children }) => (
@@ -51,9 +99,20 @@ export function MarkdownRenderer({ content, className }: MarkdownRendererProps) 
     ol: ({ children }) => (
       <ol className="my-2 ml-4 list-decimal space-y-2 text-sm">{children}</ol>
     ),
-    li: ({ children }) => (
-      <li className="text-foreground">{children}</li>
-    ),
+    li: ({ children }) => {
+      const processChildren = (child: React.ReactNode): React.ReactNode => {
+        if (typeof child === 'string') {
+          return renderTextWithCitations(child);
+        }
+        return child;
+      };
+
+      return (
+        <li className="mt-2">
+          {React.Children.map(children, processChildren)}
+        </li>
+      );
+    },
 
     // Blockquotes
     blockquote: ({ children }) => (
@@ -79,22 +138,64 @@ export function MarkdownRenderer({ content, className }: MarkdownRendererProps) 
     tr: ({ children }) => (
       <tr className="border-b border-border">{children}</tr>
     ),
-    th: ({ children }) => (
-      <th className="px-4 py-2 text-left font-semibold border border-border">
-        {children}
-      </th>
-    ),
-    td: ({ children }) => (
-      <td className="px-4 py-2 border border-border">{children}</td>
-    ),
+    th: ({ children }) => {
+      const processChildren = (child: React.ReactNode): React.ReactNode => {
+        if (typeof child === 'string') {
+          return renderTextWithCitations(child);
+        }
+        return child;
+      };
+
+      return (
+        <th className="px-4 py-2 text-left font-semibold border border-border">
+          {React.Children.map(children, processChildren)}
+        </th>
+      );
+    },
+    td: ({ children }) => {
+      const processChildren = (child: React.ReactNode): React.ReactNode => {
+        if (typeof child === 'string') {
+          return renderTextWithCitations(child);
+        }
+        return child;
+      };
+
+      return (
+        <td className="px-4 py-2 border border-border">
+          {React.Children.map(children, processChildren)}
+        </td>
+      );
+    },
 
     // Text formatting
-    strong: ({ children }) => (
-      <strong className="font-semibold text-foreground">{children}</strong>
-    ),
-    em: ({ children }) => (
-      <em className="italic text-foreground">{children}</em>
-    ),
+    strong: ({ children }) => {
+      const processChildren = (child: React.ReactNode): React.ReactNode => {
+        if (typeof child === 'string') {
+          return renderTextWithCitations(child);
+        }
+        return child;
+      };
+
+      return (
+        <strong className="font-semibold text-foreground">
+          {React.Children.map(children, processChildren)}
+        </strong>
+      );
+    },
+    em: ({ children }) => {
+      const processChildren = (child: React.ReactNode): React.ReactNode => {
+        if (typeof child === 'string') {
+          return renderTextWithCitations(child);
+        }
+        return child;
+      };
+
+      return (
+        <em className="italic text-foreground">
+          {React.Children.map(children, processChildren)}
+        </em>
+      );
+    },
 
     // Horizontal rule
     hr: () => (

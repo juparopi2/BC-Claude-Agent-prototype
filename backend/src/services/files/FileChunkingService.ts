@@ -1,0 +1,309 @@
+/**
+ * File Chunking Service
+ *
+ * Orchestrates the chunking of extracted text from files:
+ * - Reads extracted_text from files with processing_status='completed'
+ * - Applies appropriate chunking strategy based on MIME type
+ * - Inserts chunks into file_chunks table
+ * - Enqueues EmbeddingGenerationJob for vector indexing
+ * - Updates embedding_status to 'queued'
+ *
+ * This service bridges the gap between text extraction (FileProcessingService)
+ * and embedding generation (EmbeddingService via MessageQueue).
+ *
+ * @module services/files/FileChunkingService
+ */
+
+import { v4 as uuidv4 } from 'uuid';
+import { executeQuery, SqlParams } from '@/config/database';
+import { logger as rootLogger } from '@/utils/logger';
+import { ChunkingStrategyFactory } from '../chunking/ChunkingStrategyFactory';
+import type { ChunkingOptions } from '../chunking/types';
+import type { FileChunkingJob, EmbeddingGenerationJob } from '../queue/MessageQueue';
+
+// Child logger for this service
+const logger = rootLogger.child({ service: 'FileChunkingService' });
+
+/**
+ * Default chunking options
+ * - 512 tokens max per chunk (optimal for embeddings)
+ * - 50 token overlap for context continuity
+ */
+const DEFAULT_CHUNKING_OPTIONS: ChunkingOptions = {
+  maxTokens: 512,
+  overlapTokens: 50,
+};
+
+/**
+ * Result of chunking operation
+ */
+export interface ChunkingResult {
+  fileId: string;
+  chunkCount: number;
+  totalTokens: number;
+  embeddingJobId?: string;
+}
+
+/**
+ * File data needed for chunking
+ */
+interface FileForChunking {
+  id: string;
+  userId: string;
+  mimeType: string;
+  extractedText: string | null;
+  processingStatus: string;
+  embeddingStatus: string;
+}
+
+/**
+ * File Chunking Service Class
+ *
+ * Singleton service that chunks extracted text and prepares for embedding.
+ */
+export class FileChunkingService {
+  private static instance: FileChunkingService | null = null;
+
+  private constructor() {
+    logger.info('FileChunkingService initialized');
+  }
+
+  /**
+   * Get singleton instance
+   */
+  public static getInstance(): FileChunkingService {
+    if (!FileChunkingService.instance) {
+      FileChunkingService.instance = new FileChunkingService();
+    }
+    return FileChunkingService.instance;
+  }
+
+  /**
+   * Reset singleton (for testing)
+   */
+  public static resetInstance(): void {
+    FileChunkingService.instance = null;
+  }
+
+  /**
+   * Process file chunks
+   *
+   * Main entry point called by MessageQueue worker.
+   *
+   * @param jobData - File chunking job data
+   * @returns Chunking result
+   */
+  public async processFileChunks(jobData: FileChunkingJob): Promise<ChunkingResult> {
+    const { fileId, userId, mimeType } = jobData;
+
+    logger.info({ fileId, userId, mimeType }, 'Starting file chunking');
+
+    // 1. Get file with extracted_text
+    const file = await this.getFileForChunking(fileId, userId);
+
+    if (!file) {
+      throw new Error(`File not found: ${fileId}`);
+    }
+
+    if (!file.extractedText) {
+      logger.warn({ fileId }, 'No extracted text found, skipping chunking');
+      return {
+        fileId,
+        chunkCount: 0,
+        totalTokens: 0,
+      };
+    }
+
+    // 2. Validate processing status
+    if (file.processingStatus !== 'completed') {
+      throw new Error(`File processing not completed: ${file.processingStatus}`);
+    }
+
+    // 3. Update embedding status to 'processing'
+    await this.updateEmbeddingStatus(fileId, 'processing');
+
+    try {
+      // 4. Select chunking strategy based on MIME type
+      const strategy = ChunkingStrategyFactory.createForFileType(mimeType, DEFAULT_CHUNKING_OPTIONS);
+
+      // 5. Generate chunks
+      const chunks = strategy.chunk(file.extractedText);
+
+      logger.info({ fileId, chunkCount: chunks.length }, 'Generated chunks');
+
+      // 6. Insert chunks into database
+      const chunkRecords = await this.insertChunks(fileId, userId, chunks);
+
+      // 7. Calculate total tokens
+      const totalTokens = chunks.reduce((sum, chunk) => sum + chunk.tokenCount, 0);
+
+      // 8. Enqueue embedding generation job
+      const embeddingJobId = await this.enqueueEmbeddingJob(fileId, userId, chunkRecords);
+
+      // 9. Update embedding status to 'queued'
+      await this.updateEmbeddingStatus(fileId, 'queued');
+
+      logger.info({
+        fileId,
+        chunkCount: chunks.length,
+        totalTokens,
+        embeddingJobId,
+      }, 'File chunking completed successfully');
+
+      return {
+        fileId,
+        chunkCount: chunks.length,
+        totalTokens,
+        embeddingJobId,
+      };
+    } catch (error) {
+      // Revert status on failure
+      await this.updateEmbeddingStatus(fileId, 'failed');
+      throw error;
+    }
+  }
+
+  /**
+   * Get file data for chunking
+   *
+   * @param fileId - File ID
+   * @param userId - User ID (for multi-tenant isolation)
+   * @returns File data or null if not found
+   */
+  private async getFileForChunking(fileId: string, userId: string): Promise<FileForChunking | null> {
+    const result = await executeQuery<{
+      id: string;
+      user_id: string;
+      mime_type: string;
+      extracted_text: string | null;
+      processing_status: string;
+      embedding_status: string;
+    }>(
+      `SELECT id, user_id, mime_type, extracted_text, processing_status, embedding_status
+       FROM files
+       WHERE id = @fileId AND user_id = @userId`,
+      { fileId, userId }
+    );
+
+    const row = result.recordset[0];
+    if (!row) {
+      return null;
+    }
+
+    return {
+      id: row.id,
+      userId: row.user_id,
+      mimeType: row.mime_type,
+      extractedText: row.extracted_text,
+      processingStatus: row.processing_status,
+      embeddingStatus: row.embedding_status,
+    };
+  }
+
+  /**
+   * Update embedding status
+   *
+   * @param fileId - File ID
+   * @param status - New embedding status
+   */
+  private async updateEmbeddingStatus(
+    fileId: string,
+    status: 'pending' | 'processing' | 'queued' | 'completed' | 'failed'
+  ): Promise<void> {
+    await executeQuery(
+      `UPDATE files SET embedding_status = @status, updated_at = GETUTCDATE() WHERE id = @fileId`,
+      { fileId, status }
+    );
+
+    logger.debug({ fileId, status }, 'Updated embedding status');
+  }
+
+  /**
+   * Insert chunks into database
+   *
+   * @param fileId - File ID
+   * @param userId - User ID
+   * @param chunks - Chunks from chunking strategy
+   * @returns Array of chunk records with IDs
+   */
+  private async insertChunks(
+    fileId: string,
+    userId: string,
+    chunks: Array<{ text: string; chunkIndex: number; tokenCount: number; metadata?: Record<string, unknown> }>
+  ): Promise<Array<{ id: string; text: string; chunkIndex: number; tokenCount: number }>> {
+    const chunkRecords: Array<{ id: string; text: string; chunkIndex: number; tokenCount: number }> = [];
+
+    for (const chunk of chunks) {
+      const chunkId = uuidv4();
+
+      const params: SqlParams = {
+        id: chunkId,
+        fileId,
+        userId,
+        content: chunk.text,
+        chunkIndex: chunk.chunkIndex,
+        tokenCount: chunk.tokenCount,
+        metadata: chunk.metadata ? JSON.stringify(chunk.metadata) : null,
+      };
+
+      await executeQuery(
+        `INSERT INTO file_chunks (id, file_id, user_id, content, chunk_index, token_count, metadata, created_at)
+         VALUES (@id, @fileId, @userId, @content, @chunkIndex, @tokenCount, @metadata, GETUTCDATE())`,
+        params
+      );
+
+      chunkRecords.push({
+        id: chunkId,
+        text: chunk.text,
+        chunkIndex: chunk.chunkIndex,
+        tokenCount: chunk.tokenCount,
+      });
+    }
+
+    logger.info({ fileId, insertedCount: chunkRecords.length }, 'Inserted chunks into database');
+
+    return chunkRecords;
+  }
+
+  /**
+   * Enqueue embedding generation job
+   *
+   * @param fileId - File ID
+   * @param userId - User ID
+   * @param chunks - Chunk records with IDs
+   * @returns Job ID
+   */
+  private async enqueueEmbeddingJob(
+    fileId: string,
+    userId: string,
+    chunks: Array<{ id: string; text: string; chunkIndex: number; tokenCount: number }>
+  ): Promise<string> {
+    // Dynamic import to avoid circular dependencies
+    const { getMessageQueue } = await import('../queue/MessageQueue');
+    const messageQueue = getMessageQueue();
+
+    const jobData: EmbeddingGenerationJob = {
+      fileId,
+      userId,
+      chunks: chunks.map(chunk => ({
+        id: chunk.id,
+        text: chunk.text,
+        chunkIndex: chunk.chunkIndex,
+        tokenCount: chunk.tokenCount,
+      })),
+    };
+
+    const jobId = await messageQueue.addEmbeddingGenerationJob(jobData);
+
+    logger.info({ fileId, jobId, chunkCount: chunks.length }, 'Enqueued embedding generation job');
+
+    return jobId;
+  }
+}
+
+/**
+ * Get FileChunkingService singleton
+ */
+export function getFileChunkingService(): FileChunkingService {
+  return FileChunkingService.getInstance();
+}

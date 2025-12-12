@@ -184,6 +184,12 @@ export class FileProcessingService {
       await this.updateStatus(userId, fileId, 'completed', result.text);
       this.emitProgress(sessionId, fileId, 90, 'processing');
 
+      // Step 5.5: Enqueue file chunking job (fire-and-forget)
+      // This triggers the chunking → embedding → AI Search indexing pipeline
+      this.enqueueChunkingJob(userId, fileId, sessionId, mimeType).catch((err) => {
+        logger.warn({ err, fileId, userId }, 'Failed to enqueue chunking job');
+      });
+
       // Step 6: Emit completion event (100% progress)
       this.emitCompletion(sessionId, fileId, result);
       logger.info({ fileId, userId }, 'File processing completed successfully');
@@ -421,6 +427,40 @@ export class FileProcessingService {
         // All text-based formats (text/*, application/json, etc.)
         return 'text';
     }
+  }
+
+  /**
+   * Enqueue file chunking job
+   *
+   * Triggers the chunking → embedding → AI Search indexing pipeline.
+   * This is a fire-and-forget operation - errors are logged but don't fail processing.
+   *
+   * @param userId - User ID
+   * @param fileId - File ID
+   * @param sessionId - Session ID (optional)
+   * @param mimeType - File MIME type
+   */
+  private async enqueueChunkingJob(
+    userId: string,
+    fileId: string,
+    sessionId: string | undefined,
+    mimeType: string
+  ): Promise<void> {
+    // Dynamic import to avoid circular dependencies
+    const { getMessageQueue } = await import('../queue/MessageQueue');
+    const messageQueue = getMessageQueue();
+
+    const jobId = await messageQueue.addFileChunkingJob({
+      fileId,
+      userId,
+      sessionId,
+      mimeType,
+    });
+
+    logger.info(
+      { fileId, userId, jobId, mimeType },
+      'File chunking job enqueued'
+    );
   }
 }
 

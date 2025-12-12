@@ -45,6 +45,7 @@ export enum QueueName {
   EVENT_PROCESSING = 'event-processing',
   USAGE_AGGREGATION = 'usage-aggregation',
   FILE_PROCESSING = 'file-processing',
+  FILE_CHUNKING = 'file-chunking',
   EMBEDDING_GENERATION = 'embedding-generation',
 }
 
@@ -151,6 +152,26 @@ export interface EmbeddingGenerationJob {
     chunkIndex: number;
     tokenCount: number;
   }>;
+}
+
+/**
+ * File Chunking Job Data
+ *
+ * Used by background workers to chunk extracted text and prepare for embedding:
+ * - Read extracted_text from file
+ * - Apply chunking strategy based on MIME type
+ * - Insert chunks into file_chunks table
+ * - Enqueue EmbeddingGenerationJob
+ */
+export interface FileChunkingJob {
+  /** File ID from database */
+  fileId: string;
+  /** User ID for multi-tenant isolation */
+  userId: string;
+  /** Session ID for WebSocket events (optional) */
+  sessionId?: string;
+  /** MIME type to determine chunking strategy */
+  mimeType: string;
 }
 
 /**
@@ -506,24 +527,24 @@ export class MessageQueue {
       })
     );
 
-    // Embedding Generation Queue
+    // File Chunking Queue (chunks text and prepares for embedding)
     this.queues.set(
-      QueueName.EMBEDDING_GENERATION,
-      new Queue(QueueName.EMBEDDING_GENERATION, {
+      QueueName.FILE_CHUNKING,
+      new Queue(QueueName.FILE_CHUNKING, {
         connection: this.getRedisConnectionConfig(),
         defaultJobOptions: {
-          attempts: 3,
+          attempts: 2,  // Limited retries for chunking
           backoff: {
             type: 'exponential',
             delay: 2000,
           },
           removeOnComplete: {
             count: 100,
-            age: 3600, 
+            age: 3600,  // 1 hour
           },
           removeOnFail: {
             count: 200,
-            age: 86400,
+            age: 86400,  // 24 hours
           },
         },
       })
@@ -542,7 +563,7 @@ export class MessageQueue {
           },
           removeOnComplete: {
             count: 100,
-            age: 3600, 
+            age: 3600,
           },
           removeOnFail: {
             count: 200,
@@ -632,6 +653,21 @@ export class MessageQueue {
         {
           connection: this.getRedisConnectionConfig(),
           concurrency: 3,  // Limited concurrency for external API calls
+        }
+      )
+    );
+
+    // File Chunking Worker (concurrency: 5 - CPU-bound text processing)
+    this.workers.set(
+      QueueName.FILE_CHUNKING,
+      new Worker(
+        QueueName.FILE_CHUNKING,
+        async (job: Job<FileChunkingJob>) => {
+          return this.processFileChunkingJob(job);
+        },
+        {
+          connection: this.getRedisConnectionConfig(),
+          concurrency: 5,
         }
       )
     );
@@ -993,6 +1029,49 @@ export class MessageQueue {
       userId: data.userId,
       mimeType: data.mimeType,
       fileName: data.fileName,
+    });
+
+    return job.id || '';
+  }
+
+  /**
+   * Add File Chunking Job
+   *
+   * Enqueues a file for chunking after text extraction completes.
+   * Rate limited per user to prevent queue saturation.
+   *
+   * @param data - File chunking job data
+   * @returns Job ID
+   * @throws Error if rate limit exceeded
+   */
+  public async addFileChunkingJob(
+    data: FileChunkingJob
+  ): Promise<string> {
+    // Wait for Redis connection to be ready
+    await this.waitForReady();
+
+    const queue = this.queues.get(QueueName.FILE_CHUNKING);
+    if (!queue) {
+      throw new Error('File chunking queue not initialized');
+    }
+
+    // Check rate limit (per user)
+    const withinLimit = await this.checkRateLimit(`chunking:${data.userId}`);
+    if (!withinLimit) {
+      throw new Error(
+        `Rate limit exceeded for user ${data.userId}. Max ${MessageQueue.MAX_JOBS_PER_SESSION} chunking jobs per hour.`
+      );
+    }
+
+    const job = await queue.add('chunk-file', data, {
+      priority: 3,  // Same priority as file processing
+    });
+
+    this.log.info('File chunking job added to queue', {
+      jobId: job.id,
+      fileId: data.fileId,
+      userId: data.userId,
+      mimeType: data.mimeType,
     });
 
     return job.id || '';
@@ -1432,6 +1511,52 @@ export class MessageQueue {
         userId
       });
       throw error;
+    }
+  }
+
+  /**
+   * Process File Chunking Job
+   *
+   * Chunks extracted text and prepares for embedding generation.
+   *
+   * @param job - BullMQ job containing file to chunk
+   */
+  private async processFileChunkingJob(
+    job: Job<FileChunkingJob>
+  ): Promise<void> {
+    const { fileId, userId, mimeType } = job.data;
+
+    this.log.info('Processing file chunking job', {
+      jobId: job.id,
+      fileId,
+      userId,
+      mimeType,
+      attemptNumber: job.attemptsMade,
+    });
+
+    try {
+      // Dynamic import to avoid circular dependencies
+      const { getFileChunkingService } = await import('../files/FileChunkingService');
+      const fileChunkingService = getFileChunkingService();
+
+      await fileChunkingService.processFileChunks(job.data);
+
+      this.log.info('File chunking completed', {
+        jobId: job.id,
+        fileId,
+        userId,
+      });
+    } catch (error) {
+      this.log.error('File chunking job failed', {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        jobId: job.id,
+        fileId,
+        userId,
+        mimeType,
+        attemptNumber: job.attemptsMade,
+      });
+      throw error;  // Will trigger retry
     }
   }
 

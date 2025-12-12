@@ -265,19 +265,24 @@ export class FileChunkingService {
     for (const chunk of chunks) {
       const chunkId = uuidv4();
 
+      // Table schema (after migration 004):
+      // - chunk_text (not content)
+      // - chunk_tokens (not token_count)
+      // - user_id (for multi-tenant security)
+      // - metadata (for debugging/traceability)
       const params: SqlParams = {
         id: chunkId,
-        fileId,
-        userId,
-        content: chunk.text,
-        chunkIndex: chunk.chunkIndex,
-        tokenCount: chunk.tokenCount,
+        file_id: fileId,
+        user_id: userId,
+        chunk_text: chunk.text,
+        chunk_index: chunk.chunkIndex,
+        chunk_tokens: chunk.tokenCount,
         metadata: chunk.metadata ? JSON.stringify(chunk.metadata) : null,
       };
 
       await executeQuery(
-        `INSERT INTO file_chunks (id, file_id, user_id, content, chunk_index, token_count, metadata, created_at)
-         VALUES (@id, @fileId, @userId, @content, @chunkIndex, @tokenCount, @metadata, GETUTCDATE())`,
+        `INSERT INTO file_chunks (id, file_id, user_id, chunk_index, chunk_text, chunk_tokens, metadata, created_at)
+         VALUES (@id, @file_id, @user_id, @chunk_index, @chunk_text, @chunk_tokens, @metadata, GETUTCDATE())`,
         params
       );
 

@@ -28,6 +28,7 @@ import {
   FileQuestion,
   X,
 } from 'lucide-react';
+import { env } from '@/lib/config/env';
 import { Light as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { atomOneDark } from 'react-syntax-highlighter/dist/esm/styles/hljs';
 
@@ -41,9 +42,10 @@ interface FilePreviewModalProps {
 
 /**
  * Get the file content URL for API calls
+ * Uses full backend URL to avoid relative URL resolution issues
  */
 function getFileContentUrl(fileId: string): string {
-  return `/api/files/${fileId}/content`;
+  return `${env.apiUrl}/api/files/${fileId}/content`;
 }
 
 /**

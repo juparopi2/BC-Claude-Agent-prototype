@@ -1,4 +1,4 @@
-/**
+ /**
  * Comprehensive Tests - DirectAgentService
  *
  * Goal: Achieve 100% coverage of DirectAgentService.ts
@@ -9,10 +9,15 @@
  * 3. Stop Reasons (all 6 types)
  * 4. Citations handling
  * 5. Token tracking (cache tokens, service tier)
- * 6. Event persistence flow
- * 7. Error handling paths
+ * 6. Error handling paths
+ * 7. Approval Flow
  * 8. System prompt caching
  * 9. Singleton pattern
+ * 10. Input Sanitization
+ * 11. Tool Use ID Validation (fallback IDs)
+ * 12. Max Turns Safety
+ *
+ * Note: Fallback messageId behavior is tested in StreamProcessor.test.ts
  *
  * @module __tests__/unit/services/agent/DirectAgentService.comprehensive
  */
@@ -856,39 +861,6 @@ describe('DirectAgentService - Comprehensive Tests', () => {
           type: 'thinking_chunk',
           content: 'Let me analyze this carefully...',
           persistenceState: 'transient',
-        })
-      );
-    });
-
-    // ⚠️ SKIPPED: thinkingTokens are tracked internally but not emitted in message events
-    // They are logged and available in the token tracking logs but not in tokenUsage field
-    // See DirectAgentService.ts:1129 for where they're tracked
-    it.skip('should track thinking tokens separately', async () => {
-      const thinkingStream = createThinkingStream(
-        'Deep reasoning about the problem...',
-        'Final answer',
-        'end_turn'
-      );
-
-      vi.mocked(mockClient.createChatCompletionStream).mockReturnValueOnce(thinkingStream);
-
-      const result = await service.executeQueryStreaming(
-        'Deep question',
-        'session-thinking-tokens',
-        mockOnEvent,
-        'user-123',
-        { enableThinking: true }
-      );
-
-      expect(result.success).toBe(true);
-
-      // Verify message event includes thinkingTokens
-      expect(mockOnEvent).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: 'message',
-          tokenUsage: expect.objectContaining({
-            thinkingTokens: expect.any(Number),
-          }),
         })
       );
     });
@@ -1750,63 +1722,4 @@ describe('DirectAgentService - Comprehensive Tests', () => {
     }, 60000); // Increase timeout for this test
   });
 
-  // =========================================================================
-  // SECTION 14: Message ID Assertion
-  // =========================================================================
-  describe('Message ID Assertion', () => {
-    // ⚠️ SKIPPED: DirectAgentService uses fallback IDs (e.g., `text_${textEvent.id}`)
-    // when messageId is null instead of throwing an error. It gracefully handles missing IDs.
-    // See DirectAgentService.ts:1000 and 1562 for fallback ID patterns
-    it.skip('should throw error if messageId is not captured from SDK', async () => {
-      // Create a stream where message_start doesn't have id
-      const noIdStream = createMockStreamingResponse([
-        {
-          type: 'message_start',
-          message: {
-            id: null as unknown as string, // Force null ID
-            type: 'message',
-            role: 'assistant',
-            content: [],
-            model: 'claude-sonnet-4',
-            stop_reason: null,
-            stop_sequence: null,
-            usage: { input_tokens: 100, output_tokens: 0 } as Message['usage'],
-          },
-        },
-        {
-          type: 'content_block_start',
-          index: 0,
-          content_block: { type: 'text', text: '', citations: [] } as ContentBlock,
-        },
-        {
-          type: 'content_block_delta',
-          index: 0,
-          delta: { type: 'text_delta', text: 'Response without ID' },
-        },
-        {
-          type: 'content_block_stop',
-          index: 0,
-        },
-        {
-          type: 'message_delta',
-          delta: { stop_reason: 'end_turn', stop_sequence: null },
-          usage: { output_tokens: 10 } as MessageDeltaUsage,
-        },
-        { type: 'message_stop' },
-      ]);
-
-      vi.mocked(mockClient.createChatCompletionStream).mockReturnValueOnce(noIdStream);
-
-      const result = await service.executeQueryStreaming(
-        'No ID test',
-        'session-no-id',
-        mockOnEvent,
-        'user-123'
-      );
-
-      // Should fail with error about missing message ID
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('Message ID not captured');
-    });
-  });
 });

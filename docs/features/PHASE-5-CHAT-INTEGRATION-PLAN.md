@@ -173,32 +173,83 @@ Desglosamos la fase en 5 ciclos incrementales. Cada ciclo debe completarse (Gree
 
 ---
 
-### Ciclo 4: Citations y Respuesta 🔴
-**Objetivo**: Que el modelo cite sus fuentes y el frontend las muestre.
+### Ciclo 4: Citations y Respuesta 🟢 DONE
+**Objetivo**: Que el modelo cite sus fuentes y persistir las relaciones archivo-mensaje en la base de datos.
 
-#### 4.1 Parsing de Respuesta
-- **Test (Unit)**: `CitationParser.test.ts`
-    - [ ] Input: "Según el documento [doc1], el valor es X."
-    - [ ] Output: Identificar `[doc1]` y mapearlo al `fileId` original.
-    - [ ] Input: XML tags de citation (si usamos tool calling).
+**Fecha de última actualización**: December 11, 2025
+
+#### 4.1 Tipos de Citations
+- **Archivo**: `citations/types.ts`
+    - [x] `ParsedCitation` interface con rawText, fileName, fileId, startIndex, endIndex
+    - [x] `CitationParseResult` interface con originalText, processedText, citations, matchedFileIds
+    - [x] `FileUsageType` union type: `'direct' | 'citation' | 'semantic_match'`
+    - [x] `CitationRecord` interface para persistencia en DB
+    - [x] `MessageAttachmentInfo` interface para lectura de DB
+
+#### 4.2 Parsing de Respuesta
+- **Test (Unit)**: `CitationParser.test.ts` (15 tests)
+    - [x] Parse single citation `[filename.ext]`
+    - [x] Parse multiple different citations
+    - [x] Handle citations not in context (unmatched)
+    - [x] Not match numeric references like `[1]` or `[42]`
+    - [x] Not match text without extension like `[example]`
+    - [x] Handle duplicate citations with same file
+    - [x] Handle empty text
+    - [x] Handle text with no citations
+    - [x] Preserve original text in result
+    - [x] Handle various file extensions (pdf, xlsx, png, docx)
+    - [x] Handle filenames with multiple dots
+    - [x] Handle filenames with spaces
+    - [x] Handle mixed matched and unmatched citations
+    - [x] Handle citation at start/end of text
 - **Implementación**:
-    - Definir formato de citas (prompt engineering).
-    - Implementar parser en backend o frontend (decidir location, idealmente backend para normalizar).
+    - [x] `CitationParser` class con regex pattern `/\[([^\]]+\.[^\]]+)\]/g`
+    - [x] `parseCitations()` method maps citations to file IDs
+    - [x] `buildFileMap()` helper method
+    - [x] Singleton getter `getCitationParser()`
 
-#### 4.2 Persistencia de Relación
-- **Test (Integration)**: `MessageAttachments.test.ts`
-    - [ ] Al recibir respuesta, guardar en `message_file_attachments`.
-    - [ ] Verificar que `usage_type` se marca correctamente ('citation' vs 'context').
-
-#### 4.3 UI de Citations
-- **Test (Component)**: `CitationLink.test.tsx`
-    - [ ] Click en cita navega al archivo o abre preview.
+#### 4.3 Persistencia de Relación
+- **Test (Unit)**: `MessageFileAttachmentService.test.ts` (16 tests)
+    - [x] Insert direct attachments with correct SQL
+    - [x] Insert citations with `usage_type=citation`
+    - [x] Insert semantic_match with correct usage_type
+    - [x] Handle empty fileIds array without calling database
+    - [x] Generate unique IDs for each attachment record
+    - [x] Include relevanceScore when provided
+    - [x] Set relevanceScore to null when not provided
+    - [x] Handle database errors gracefully
+    - [x] Return attachments for a message
+    - [x] Query with correct message_id parameter
+    - [x] Return empty array when no attachments found
+    - [x] Filter by usage_type when provided
+    - [x] Delete all attachments for a message
+    - [x] Return 0 when no attachments deleted
+    - [x] Record both direct and citation attachments in separate calls
+    - [x] Skip empty arrays in bulk operation
 - **Implementación**:
-    - Componente `CitationLink` en Frontend.
+    - [x] `MessageFileAttachmentService` class con DI para executeQuery
+    - [x] `recordAttachments()` inserta registros con usage_type
+    - [x] `getAttachmentsForMessage()` recupera attachments con filtro opcional
+    - [x] `deleteAttachmentsForMessage()` elimina attachments
+    - [x] `recordMultipleUsageTypes()` bulk operation para direct + citations
+    - [x] Singleton getter `getMessageFileAttachmentService()`
+
+**Archivos implementados**:
+- `backend/src/services/files/citations/types.ts`
+- `backend/src/services/files/citations/CitationParser.ts`
+- `backend/src/services/files/citations/index.ts`
+- `backend/src/services/files/MessageFileAttachmentService.ts`
+- `backend/src/__tests__/unit/services/files/CitationParser.test.ts` (15 tests)
+- `backend/src/__tests__/unit/services/files/MessageFileAttachmentService.test.ts` (16 tests)
 
 #### ✅ Criterios de Éxito del Ciclo 4
-- [ ] DB refleja qué archivos se usaron para generar la respuesta.
-- [ ] UI muestra links clickeables en el mensaje de respuesta.
+- [x] 31/31 tests passing (15 CitationParser + 16 MessageFileAttachmentService)
+- [x] Type-check passing
+- [x] Lint passing (0 errors)
+- [x] Full suite passing: 1938 tests
+
+#### Nota sobre UI de Citations
+La UI de Citations (`CitationLink.tsx`) se implementará en Ciclo 5 como parte de la verificación E2E.
 
 ---
 

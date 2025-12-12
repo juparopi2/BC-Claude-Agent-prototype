@@ -1062,7 +1062,7 @@ Vector Search: HNSW algorithm (cosine similarity, optimized for recall)
 
 **Objetivo**: Permitir usar archivos como contexto en conversaciones.
 
-**Estado**: Ciclo 1+2 completado, Ciclo 3 en progreso (December 11, 2025)
+**Estado**: Ciclo 1-4 completado (December 11, 2025)
 
 #### Entregables
 
@@ -1070,9 +1070,9 @@ Vector Search: HNSW algorithm (cosine similarity, optimized for recall)
 |---|------------|------|-----------|--------|
 | 5.1 | Extender ChatInput con drop zone | Frontend | Alta | ✅ Done |
 | 5.2 | `FileAttachmentChip` componente | Frontend | Alta | ✅ Done |
-| 5.3 | Backend: preparar archivos para Anthropic | Backend | Alta | 🟡 Partial |
+| 5.3 | Backend: preparar archivos para Anthropic | Backend | Alta | ✅ Done |
 | 5.4 | Búsqueda semántica automática (sin adjuntos) | Backend | Alta | 🔴 Pending |
-| 5.5 | Sistema de citations | Backend + Frontend | Alta | 🔴 Pending |
+| 5.5 | Sistema de citations | Backend + Frontend | Alta | 🟡 Backend Done |
 | 5.6 | `CitationLink` componente | Frontend | Alta | 🔴 Pending |
 
 #### Tareas Detalladas
@@ -1092,20 +1092,20 @@ Vector Search: HNSW algorithm (cosine similarity, optimized for recall)
 
 [x] 5.3.1 Extender chat:message para incluir attachments[]
 [x] 5.3.2 Validar ownership de archivos (DirectAgentService.ts:386-403)
-[ ] 5.3.3 Descargar archivos de Blob (Ciclo 2/3)
-[ ] 5.3.4 Si < 30MB y soportado → incluir directo en request (Ciclo 2/3)
-[ ] 5.3.5 Si > 30MB → usar extracted_text o chunks relevantes (Ciclo 2/3)
-[ ] 5.3.6 Construir contexto para prompt (Ciclo 2/3)
+[x] 5.3.3 Descargar archivos de Blob (Ciclo 3 - ContextRetrievalService)
+[x] 5.3.4 Si < 30MB y soportado → incluir directo en request (Ciclo 2/3 - ContextStrategyFactory)
+[x] 5.3.5 Si > 30MB → usar extracted_text o chunks relevantes (Ciclo 2/3 - ContextRetrievalService)
+[x] 5.3.6 Construir contexto para prompt (Ciclo 3 - PromptBuilder)
 
 [ ] 5.4.1 Detectar mensajes sin attachments manuales
 [ ] 5.4.2 Llamar VectorSearchService.searchFiles()
 [ ] 5.4.3 Si score > threshold → incluir como contexto
 [ ] 5.4.4 Agregar metadata para citations
 
-[ ] 5.5.1 Definir formato de citations en respuesta
-[ ] 5.5.2 Instruir a Claude para citar fuentes
-[ ] 5.5.3 Parsear citations de la respuesta
-[ ] 5.5.4 Guardar en message_file_attachments
+[x] 5.5.1 Definir formato de citations en respuesta (Ciclo 4 - [filename.ext])
+[x] 5.5.2 Instruir a Claude para citar fuentes (Ciclo 3 - PromptBuilder.buildSystemInstructions)
+[x] 5.5.3 Parsear citations de la respuesta (Ciclo 4 - CitationParser)
+[x] 5.5.4 Guardar en message_file_attachments (Ciclo 4 - MessageFileAttachmentService)
 
 [ ] 5.6.1 Crear frontend/components/chat/CitationLink.tsx
 [ ] 5.6.2 Renderizar como link clickeable
@@ -1150,11 +1150,30 @@ Vector Search: HNSW algorithm (cosine similarity, optimized for recall)
 - `backend/src/__tests__/unit/services/files/ContextRetrievalService.test.ts` (13 tests)
 - `backend/src/__tests__/unit/services/files/PromptBuilder.test.ts` (19 tests)
 
+#### Archivos Implementados (Ciclo 4 - Citations)
+
+**Backend - Citations Module:**
+- `backend/src/services/files/citations/types.ts` - ParsedCitation, CitationParseResult, FileUsageType, CitationRecord
+- `backend/src/services/files/citations/CitationParser.ts` - Regex parsing de [filename.ext]
+- `backend/src/services/files/citations/index.ts` - Barrel export
+- `backend/src/services/files/MessageFileAttachmentService.ts` - DB persistence para attachments
+
+**Tests:**
+- `backend/src/__tests__/unit/services/files/CitationParser.test.ts` (15 tests)
+- `backend/src/__tests__/unit/services/files/MessageFileAttachmentService.test.ts` (16 tests)
+
 #### Estado de Tests (December 11, 2025)
 
-Tests existen pero algunos fallan por **setup obsoleto** (no bugs de lógica):
-- Error "Redis not initialized": Setup no actualizado al nuevo patrón Redis
-- El código de producción funciona (pre-push pasa)
+**Fase 5 Unit Tests - All Passing:**
+- Schema validation: 13 tests (Ciclo 1)
+- ContextStrategyFactory: 21 tests (Ciclo 2)
+- ContextRetrievalService: 13 tests (Ciclo 3)
+- PromptBuilder: 19 tests (Ciclo 3)
+- CitationParser: 15 tests (Ciclo 4)
+- MessageFileAttachmentService: 16 tests (Ciclo 4)
+- **Total Fase 5**: 97 tests passing
+
+**Suite Completa**: 1938 tests passing (13 skipped)
 
 #### Criterios de Éxito
 

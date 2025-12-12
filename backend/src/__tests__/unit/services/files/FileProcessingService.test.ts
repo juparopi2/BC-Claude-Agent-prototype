@@ -280,21 +280,23 @@ describe('FileProcessingService', () => {
     });
 
     it('should throw error for unsupported MIME type', async () => {
+      // Note: image/* types are now supported via ImageProcessor
+      // Using video/mp4 as an example of truly unsupported MIME type
       const job = createMockJob({
-        mimeType: 'image/png',
-        fileName: 'screenshot.png',
+        mimeType: 'video/mp4',
+        fileName: 'video.mp4',
       });
 
       await expect(service.processFile(job)).rejects.toThrow(
-        'No processor found for MIME type: image/png'
+        'No processor found for MIME type: video/mp4'
       );
 
       // Verify error logging
       expect(mockLogger.error).toHaveBeenCalledWith(
         expect.objectContaining({
-          error: 'No processor found for MIME type: image/png',
+          error: 'No processor found for MIME type: video/mp4',
           fileId: 'test-file-123',
-          mimeType: 'image/png',
+          mimeType: 'video/mp4',
         }),
         'File processing failed'
       );

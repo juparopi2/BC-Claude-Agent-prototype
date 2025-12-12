@@ -30,6 +30,7 @@ export type {
   ContentRefusedEvent,
   AgentEvent,
   AgentExecutionResult,
+  CitedFile,
 } from './agent.types';
 
 // WebSocket types

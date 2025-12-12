@@ -50,8 +50,23 @@ const uploadFileSchema = z.object({
   sessionId: z.string().uuid().optional(), // For WebSocket progress events
 });
 
+/**
+ * Regex pattern for valid folder/file names.
+ *
+ * Allows: Unicode letters (\p{L}), numbers (\p{N}), spaces, hyphens, underscores, commas, periods.
+ * Supports Danish characters (æ, ø, å), German (ü, ß), and other European diacritics.
+ */
+const FOLDER_NAME_REGEX = /^[\p{L}\p{N}\s\-_,.]+$/u;
+
 const createFolderSchema = z.object({
-  name: z.string().min(1).max(255),
+  name: z
+    .string()
+    .min(1, 'Folder name is required')
+    .max(255, 'Folder name must be 255 characters or less')
+    .regex(
+      FOLDER_NAME_REGEX,
+      'Folder name can only contain letters, numbers, spaces, hyphens, underscores, commas, and periods'
+    ),
   parentFolderId: z.string().uuid().optional(),
 });
 
@@ -68,7 +83,15 @@ const fileIdSchema = z.object({
 });
 
 const updateFileSchema = z.object({
-  name: z.string().min(1).max(255).optional(),
+  name: z
+    .string()
+    .min(1, 'File name is required')
+    .max(255, 'File name must be 255 characters or less')
+    .regex(
+      FOLDER_NAME_REGEX,
+      'File name can only contain letters, numbers, spaces, hyphens, underscores, commas, and periods'
+    )
+    .optional(),
   parentFolderId: z.string().uuid().nullable().optional(),
   isFavorite: z.boolean().optional(),
 });
@@ -547,6 +570,96 @@ router.get('/:id/download', authenticateMicrosoft, async (req: Request, res: Res
     }
 
     sendError(res, ErrorCode.INTERNAL_ERROR, 'Failed to download file');
+  }
+});
+
+/**
+ * GET /api/files/:id/content
+ * Stream file content for inline preview (images, PDFs, text)
+ *
+ * Similar to /download but with Content-Disposition: inline for browser preview.
+ * Used by FilePreviewModal to display files without triggering a download.
+ */
+router.get('/:id/content', authenticateMicrosoft, async (req: Request, res: Response): Promise<void> => {
+  try {
+    // Get userId from authenticated request
+    const userId = getUserId(req);
+
+    // Validate params
+    const validation = fileIdSchema.safeParse(req.params);
+    if (!validation.success) {
+      sendError(res, ErrorCode.VALIDATION_ERROR, validation.error.errors[0]?.message || 'Invalid file ID');
+      return;
+    }
+
+    const { id } = validation.data;
+
+    logger.info({ userId, fileId: id }, 'Serving file content for preview');
+
+    // Get file metadata (ownership check)
+    const fileService = getFileService();
+    const file = await fileService.getFile(userId, id);
+
+    if (!file) {
+      logger.info({ userId, fileId: id }, 'File not found or access denied');
+      sendError(res, ErrorCode.NOT_FOUND, 'File not found or access denied');
+      return;
+    }
+
+    // Check if it's a folder (folders cannot be previewed)
+    if (file.isFolder) {
+      logger.warn({ userId, fileId: id }, 'Cannot preview folder');
+      sendError(res, ErrorCode.VALIDATION_ERROR, 'Cannot preview a folder');
+      return;
+    }
+
+    // Download blob from storage
+    const fileUploadService = getFileUploadService();
+    const buffer = await fileUploadService.downloadFromBlob(file.blobPath);
+
+    logger.info({ userId, fileId: id, size: buffer.length }, 'File content served successfully');
+
+    // Set Content-Type header
+    res.setHeader('Content-Type', file.mimeType);
+
+    // Set Content-Disposition: inline (for preview, not download)
+    // This tells the browser to display the content inline if possible
+    const encodedFilename = encodeURIComponent(file.name).replace(/['()]/g, escape).replace(/\*/g, '%2A');
+    res.setHeader('Content-Disposition', `inline; filename="${file.name}"; filename*=UTF-8''${encodedFilename}`);
+
+    res.setHeader('Content-Length', buffer.length.toString());
+
+    // Enable CORS for image preview (some browsers require this)
+    res.setHeader('Cache-Control', 'private, max-age=3600'); // Cache for 1 hour
+
+    // Send buffer
+    res.send(buffer);
+  } catch (error) {
+    logger.error({
+      error,
+      errorMessage: error instanceof Error ? error.message : String(error),
+      errorStack: error instanceof Error ? error.stack : undefined,
+      userId: req.userId,
+      fileId: req.params.id
+    }, 'Serve file content failed');
+
+    if (error instanceof ZodError) {
+      sendError(res, ErrorCode.VALIDATION_ERROR, error.errors[0]?.message || 'Validation failed');
+      return;
+    }
+
+    if (error instanceof Error && error.message === 'User not authenticated') {
+      sendError(res, ErrorCode.UNAUTHORIZED, 'User not authenticated');
+      return;
+    }
+
+    // Pass through specific blob storage errors if safe
+    if (error instanceof Error && error.message.includes('BlobNotFound')) {
+      sendError(res, ErrorCode.NOT_FOUND, 'File content not found in storage');
+      return;
+    }
+
+    sendError(res, ErrorCode.INTERNAL_ERROR, 'Failed to serve file content');
   }
 });
 

@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useFileStore } from '@/lib/stores/fileStore';
+import { validateFolderName } from '@/lib/utils/validation';
 import { toast } from 'sonner';
 
 interface CreateFolderDialogProps {
@@ -38,14 +39,10 @@ export function CreateFolderDialog({ trigger, isCompact = false }: CreateFolderD
   const handleCreate = useCallback(async () => {
     const trimmedName = folderName.trim();
 
-    if (!trimmedName) {
-      toast.error('Please enter a folder name');
-      return;
-    }
-
-    // Validate folder name (no special characters)
-    if (!/^[a-zA-Z0-9\s\-_]+$/.test(trimmedName)) {
-      toast.error('Folder name can only contain letters, numbers, spaces, hyphens, and underscores');
+    // Use shared validation utility (supports Danish characters æ, ø, å, etc.)
+    const validation = validateFolderName(trimmedName);
+    if (!validation.valid) {
+      toast.error(validation.error);
       return;
     }
 

@@ -47,6 +47,7 @@ export type {
   ContentRefusedEvent,
   AgentEvent,
   AgentExecutionResult,
+  CitedFile,
 
   // WebSocket types
   ExtendedThinkingConfig,

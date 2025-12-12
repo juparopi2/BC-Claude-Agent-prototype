@@ -33,6 +33,7 @@ import { TextProcessor } from './processors/TextProcessor';
 import { PdfProcessor } from './processors/PdfProcessor';
 import { DocxProcessor } from './processors/DocxProcessor';
 import { ExcelProcessor } from './processors/ExcelProcessor';
+import { ImageProcessor } from './processors/ImageProcessor';
 import type { DocumentProcessor, ExtractionResult } from './processors/types';
 import type { FileProcessingJob } from '@services/queue/MessageQueue';
 import type { ProcessingStatus } from '@/types/file.types';
@@ -106,6 +107,19 @@ export class FileProcessingService {
 
     textMimeTypes.forEach((mimeType) => {
       this.processors.set(mimeType, textProcessor);
+    });
+
+    // Image Processor (Azure Computer Vision for embeddings)
+    const imageProcessor = new ImageProcessor();
+    const imageMimeTypes = [
+      'image/jpeg',
+      'image/png',
+      'image/gif',
+      'image/webp',
+    ];
+
+    imageMimeTypes.forEach((mimeType) => {
+      this.processors.set(mimeType, imageProcessor);
     });
 
     logger.info(

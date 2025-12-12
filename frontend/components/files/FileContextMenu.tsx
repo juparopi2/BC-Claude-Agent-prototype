@@ -29,6 +29,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useFileStore } from '@/lib/stores/fileStore';
+import { validateFolderName, validateFileName } from '@/lib/utils/validation';
 import { toast } from 'sonner';
 
 interface FileContextMenuProps {
@@ -59,8 +60,20 @@ export function FileContextMenu({ file, children, onOpenChange }: FileContextMen
 
   const handleRename = useCallback(async () => {
     const trimmedName = newName.trim();
+
+    // No change - close dialog
     if (!trimmedName || trimmedName === file.name) {
       setRenameOpen(false);
+      return;
+    }
+
+    // Validate name (supports Danish characters æ, ø, å, etc.)
+    const validation = file.isFolder
+      ? validateFolderName(trimmedName)
+      : validateFileName(trimmedName);
+
+    if (!validation.valid) {
+      toast.error(validation.error);
       return;
     }
 
@@ -69,10 +82,10 @@ export function FileContextMenu({ file, children, onOpenChange }: FileContextMen
     setIsRenaming(false);
 
     if (success) {
-      toast.success('File renamed');
+      toast.success(`${file.isFolder ? 'Folder' : 'File'} renamed`);
       setRenameOpen(false);
     } else {
-      toast.error('Failed to rename file');
+      toast.error(`Failed to rename ${file.isFolder ? 'folder' : 'file'}`);
     }
   }, [file, newName, renameFile]);
 

@@ -1,6 +1,7 @@
 import { Annotation, messagesStateReducer } from '@langchain/langgraph';
 import { BaseMessage } from '@langchain/core/messages';
 import { ModelConfig } from '../../../core/langchain/ModelFactory';
+import type { FileContextResult } from '@/types/agent.types';
 
 /**
  * Shared State Schema for the Agent Graph
@@ -34,6 +35,18 @@ export const AgentStateAnnotation = Annotation.Root({
     userId?: string;
     sessionId?: string;
     modelPreferences?: ModelConfig;
+    options?: {
+      /** Enable Claude's extended thinking mode */
+      enableThinking?: boolean;
+      /** Token budget for extended thinking (min 1024) */
+      thinkingBudget?: number;
+      /** Array of file IDs to attach to the conversation */
+      attachments?: string[];
+      /** Enable automatic semantic search for relevant chunks */
+      enableAutoSemanticSearch?: boolean;
+    };
+    /** File context prepared for injection into prompts */
+    fileContext?: FileContextResult;
   }>({
     reducer: (x, y) => ({ ...x, ...y }),
     default: () => ({}),

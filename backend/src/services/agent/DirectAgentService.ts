@@ -379,36 +379,52 @@ export class DirectAgentService {
       switch (event.type) {
         case 'message_start':
           // Log message start (already logged by StreamProcessor)
-          console.log(`[STREAM] message_start: id=${event.messageId}, model=${event.model}, input_tokens=${event.inputTokens}, cache_read=${event.cacheTokens?.read || 0}, cache_create=${event.cacheTokens?.creation || 0}`);
+          this.logger.debug({
+            messageId: event.messageId,
+            model: event.model,
+            inputTokens: event.inputTokens,
+            cacheRead: event.cacheTokens?.read || 0,
+            cacheCreate: event.cacheTokens?.creation || 0,
+          }, 'Stream message start');
           break;
 
         case 'text_chunk':
           // Emit message chunk (transient, no sequence number)
           chunkCount++;
-          console.log(`📦 [SEQUENCE] chunk (transient) | NO sequence, chunk=${chunkCount}`);
+          this.logger.debug({
+            sessionId,
+            turnCount,
+            chunkIndex: chunkCount,
+          }, 'Sequence chunk transient - no sequence');
 
-          this.logger.debug('📦 [SEQUENCE] Emitting message_chunk (transient)', {
+          this.logger.debug({
             sessionId,
             turnCount,
             chunkIndex: chunkCount,
             chunkLength: event.chunk.length,
             timestamp: new Date().toISOString(),
-          });
+          }, 'Emitting message_chunk (transient)');
 
           this.emitter.emitMessageChunk(event.chunk, event.index, sessionId);
-          console.log(`[STREAM] text_delta: index=${event.index}, chunk_len=${event.chunk.length}`);
+          this.logger.debug({
+            index: event.index,
+            chunkLength: event.chunk.length,
+          }, 'Stream text_delta');
           break;
 
         case 'thinking_chunk':
           // Emit thinking chunk (transient)
-          this.logger.debug('🧠 [THINKING] Emitting thinking_chunk (transient)', {
+          this.logger.debug({
             sessionId,
             turnCount,
             chunkLength: event.chunk.length,
-          });
+          }, 'Emitting thinking_chunk (transient)');
 
           this.emitter.emitThinkingChunk(event.chunk, event.index, sessionId);
-          console.log(`[STREAM] thinking_delta: index=${event.index}, chunk_len=${event.chunk.length}`);
+          this.logger.debug({
+            index: event.index,
+            chunkLength: event.chunk.length,
+          }, 'Stream thinking_delta');
           break;
 
         case 'tool_start':
@@ -446,7 +462,10 @@ export class DirectAgentService {
             eventIndex: event.index,
           });
 
-          console.log(`[STREAM] content_block_start: index=${event.index}, type=tool_use`);
+          this.logger.debug({
+            index: event.index,
+            type: 'tool_use',
+          }, 'Stream content_block_start');
           break;
 
         case 'tool_input_chunk':
@@ -474,14 +493,22 @@ export class DirectAgentService {
               data: completedBlock.content.text,
               citations: completedBlock.content.citations,
             });
-            console.log(`[STREAM] content_block_stop (text): index=${completedBlock.anthropicIndex}, text_len=${completedBlock.content.text.length}, citations=${completedBlock.content.citations.length}`);
+            this.logger.debug({
+              index: completedBlock.anthropicIndex,
+              textLength: completedBlock.content.text.length,
+              citationsCount: completedBlock.content.citations.length,
+            }, 'Stream content_block_stop (text)');
           } else if (completedBlock.content.type === 'thinking') {
             contentBlocks.set(completedBlock.anthropicIndex, {
               type: 'thinking',
               data: completedBlock.content.thinking,
               signature: completedBlock.content.signature,
             });
-            console.log(`[STREAM] content_block_stop (thinking): index=${completedBlock.anthropicIndex}, content_len=${completedBlock.content.thinking.length}, has_sig=${!!completedBlock.content.signature}`);
+            this.logger.debug({
+              index: completedBlock.anthropicIndex,
+              contentLength: completedBlock.content.thinking.length,
+              hasSignature: !!completedBlock.content.signature,
+            }, 'Stream content_block_stop (thinking)');
           } else if (completedBlock.content.type === 'tool_use') {
             contentBlocks.set(completedBlock.anthropicIndex, {
               type: 'tool_use',
@@ -491,16 +518,23 @@ export class DirectAgentService {
                 input: completedBlock.content.input,
               },
             });
-            console.log(`[STREAM] content_block_stop (tool_use): index=${completedBlock.anthropicIndex}, tool=${completedBlock.content.name}, id=${completedBlock.content.id}`);
+            this.logger.debug({
+              index: completedBlock.anthropicIndex,
+              toolName: completedBlock.content.name,
+              toolId: completedBlock.content.id,
+            }, 'Stream content_block_stop (tool_use)');
           }
           break;
 
         case 'message_delta':
-          console.log(`[STREAM] message_delta: stop_reason=${event.stopReason}, output_tokens=${event.outputTokens}`);
+          this.logger.debug({
+            stopReason: event.stopReason,
+            outputTokens: event.outputTokens,
+          }, 'Stream message_delta');
           break;
 
         case 'message_stop':
-          console.log(`[STREAM] message_stop`);
+          this.logger.debug('Stream message_stop');
           break;
       }
     }
@@ -536,7 +570,12 @@ export class DirectAgentService {
       }
     }
 
-    console.log(`[STREAM] Stream completed: stop_reason=${turnResult.stopReason}, thinking_blocks=${thinkingBlocks.length}, text_blocks=${textBlocks.length}, tool_uses=${toolUses.length}`);
+    this.logger.debug({
+      stopReason: turnResult.stopReason,
+      thinkingBlocksCount: thinkingBlocks.length,
+      textBlocksCount: textBlocks.length,
+      toolUsesCount: toolUses.length,
+    }, 'Stream completed');
 
     return {
       messageId: turnResult.messageId,
@@ -771,14 +810,17 @@ export class DirectAgentService {
 
       while (continueLoop && turnCount < maxTurns) {
         turnCount++;
-        console.log(`\n========== TURN ${turnCount} (STREAMING) ==========`);
+        this.logger.debug({ turnCount }, 'Turn starting (streaming)');
 
         // ✅ FIX PHASE 3: NO generar batch sequence
         // Chunks serán emitidos SIN sequence (transient)
         // Complete message será persistido PRIMERO con su propio sequence
 
         // ========== STREAM CLAUDE RESPONSE ==========
-        console.log(`📡 [SEQUENCE] Starting turn ${turnCount} | NO batch sequence (chunks transient)`);
+        this.logger.debug({
+          turnCount,
+          sessionId,
+        }, 'Starting turn - no batch sequence (chunks transient)');
 
         this.logger.info('📡 [SEQUENCE] Starting stream for turn', {
           sessionId,
@@ -1029,7 +1071,7 @@ export class DirectAgentService {
         }
 
         // ========== TOKEN TRACKING LOGGING (Phase 1A + 1F) ==========
-        console.log('[TOKEN TRACKING]', {
+        this.logger.debug({
           messageId,        // Anthropic ID (e.g., "msg_01ABC...")
           model: modelName, // Model name (e.g., "claude-sonnet-4-5-20250929")
           inputTokens,
@@ -1041,7 +1083,7 @@ export class DirectAgentService {
           serviceTier,
           sessionId,
           turnCount,
-        });
+        }, 'Token tracking');
 
         // ========== TOKEN USAGE PERSISTENCE (Billing Analytics) ==========
         // Record token usage for billing analytics (non-blocking)
@@ -1773,7 +1815,7 @@ export class DirectAgentService {
    * Implements MCP tool logic directly (bypassing SDK MCP server)
    */
   private async executeMCPTool(toolName: string, input: unknown): Promise<unknown> {
-    console.log(`[DirectAgentService] Executing MCP tool: ${toolName}`);
+    this.logger.debug({ toolName }, 'Executing MCP tool');
 
     const args = input as Record<string, unknown>;
 
@@ -2528,19 +2570,28 @@ CRITICAL INSTRUCTIONS:
 
   /**
    * Execute Agent with LangGraph Orchestrator
-   * 
+   * Supports Extended Thinking, File Attachments, and Semantic Search
+   *
    * @param prompt - User input
    * @param sessionId - Session ID
-   * @param onEvent - Event callback
+   * @param onEvent - Event callback for streaming
+   * @param userId - User ID (optional for backwards compatibility)
+   * @param options - Execution options (thinking, attachments, semantic search)
    */
   async runGraph(
-      userId: string,
       prompt: string,
       sessionId: string,
-      onEvent?: (event: AgentEvent) => void
+      onEvent?: (event: AgentEvent) => void,
+      userId?: string,
+      options?: ExecuteStreamingOptions
   ): Promise<AgentExecutionResult> {
-      this.logger.info({ sessionId }, '🚀 Running LangGraph Orchestrator');
-      
+      this.logger.info({ sessionId, userId }, '🚀 Running LangGraph Orchestrator');
+
+      // Validate userId for file operations
+      if ((options?.attachments?.length || options?.enableAutoSemanticSearch) && !userId) {
+        throw new Error('UserId required for file attachments or semantic search');
+      }
+
       const streamAdapter = new StreamAdapter(sessionId);
 
       // Wrapper for event emission
@@ -2548,12 +2599,131 @@ CRITICAL INSTRUCTIONS:
           if (event && onEvent) onEvent(event);
       };
 
+      // ========== FILE CONTEXT PREPARATION ==========
+      // Validate attachments and prepare file context
+      const validatedFiles: ParsedFile[] = [];
+      let fileContext: FileContextResult = {
+        documentContext: '',
+        systemInstructions: '',
+        images: [],
+        fileMap: new Map<string, string>(),
+      };
+
+      if (options?.attachments && options.attachments.length > 0 && userId) {
+        // Manual attachments provided
+        this.logger.info({ userId, count: options.attachments.length }, 'Validating attachments for graph');
+
+        const fileService = getFileService();
+        for (const fileId of options.attachments) {
+          // Validate ownership and existence
+          const file = await fileService.getFile(userId, fileId);
+          if (!file) {
+            this.logger.warn({ userId, fileId }, 'Invalid attachment or access denied');
+            throw new Error(`Access denied or file not found: ${fileId}`);
+          }
+          validatedFiles.push(file);
+        }
+        this.logger.info('✅ Graph attachments validated successfully');
+
+        // Prepare file context for injection into prompt
+        fileContext = await this.prepareFileContext(userId, validatedFiles, prompt);
+        this.logger.info({
+          fileCount: validatedFiles.length,
+          hasDocContext: fileContext.documentContext.length > 0,
+          hasImages: fileContext.images.length > 0,
+        }, '✅ File context prepared for graph');
+      } else if (options?.enableAutoSemanticSearch === true && userId) {
+        // ========== SEMANTIC SEARCH (Auto Context) ==========
+        // When enableAutoSemanticSearch is TRUE and no manual attachments, search for relevant files
+        try {
+          const semanticSearchService = getSemanticSearchService();
+          const searchResults = await semanticSearchService.searchRelevantFiles({
+            userId,
+            query: prompt,
+            threshold: options?.semanticThreshold,
+            maxFiles: options?.maxSemanticFiles ?? 3,
+          });
+
+          if (searchResults.results.length > 0) {
+            this.logger.info({
+              userId,
+              queryPreview: prompt.substring(0, 50),
+              matchedFiles: searchResults.results.length,
+              topScore: searchResults.results[0]?.relevanceScore,
+            }, '🔍 Semantic search found relevant files for graph');
+
+            // Convert search results to ParsedFile format for prepareFileContext
+            const fileService = getFileService();
+            for (const result of searchResults.results) {
+              const file = await fileService.getFile(userId, result.fileId);
+              if (file) {
+                validatedFiles.push(file);
+              }
+            }
+
+            if (validatedFiles.length > 0) {
+              // Prepare file context with semantically matched files
+              fileContext = await this.prepareFileContext(userId, validatedFiles, prompt);
+              this.logger.info({
+                fileCount: validatedFiles.length,
+                hasDocContext: fileContext.documentContext.length > 0,
+                source: 'semantic_search',
+              }, '✅ Semantic file context prepared for graph');
+            }
+          } else {
+            this.logger.debug({
+              userId,
+              queryPreview: prompt.substring(0, 50),
+              threshold: options?.semanticThreshold ?? 0.7,
+            }, 'No semantically relevant files found for graph');
+          }
+        } catch (error) {
+          // Don't fail the request if semantic search fails - just log and continue
+          this.logger.warn({
+            error,
+            userId,
+            queryPreview: prompt.substring(0, 50)
+          }, 'Semantic search failed for graph, continuing without file context');
+        }
+      }
+
+      // ========== EXTENDED THINKING ==========
+      // Extract thinking options
+      const enableThinking = options?.enableThinking ?? false;
+      const thinkingBudget = options?.thinkingBudget ?? 10000;
+
+      // Enhanced prompt with file context if available
+      const enhancedPrompt = fileContext.documentContext
+        ? `${fileContext.documentContext}\n\n${prompt}`
+        : prompt;
+
+      // Build graph inputs with context
       const inputs = {
-          messages: [new HumanMessage(prompt)],
+          messages: [new HumanMessage(enhancedPrompt)],
           activeAgent: "orchestrator",
           sessionId: sessionId,
-          context: { userId } // Inject userId into state
+          context: {
+            userId,
+            fileContext,
+            options: {
+              enableThinking,
+              thinkingBudget,
+              attachments: options?.attachments,
+              enableAutoSemanticSearch: options?.enableAutoSemanticSearch,
+              validatedFiles: validatedFiles.length > 0 ? validatedFiles.map(f => ({ id: f.id, name: f.name })) : undefined,
+            }
+          }
       };
+
+      this.logger.info({
+        sessionId,
+        userId,
+        enableThinking,
+        thinkingBudget: enableThinking ? thinkingBudget : undefined,
+        hasFileContext: fileContext.documentContext.length > 0,
+        fileCount: validatedFiles.length,
+        semanticSearch: options?.enableAutoSemanticSearch,
+      }, '✅ Graph inputs prepared with enhanced context');
 
       // Stream the graph execution with granular events
       const eventStream = await orchestratorGraph.streamEvents(inputs, {
@@ -2564,10 +2734,10 @@ CRITICAL INSTRUCTIONS:
       const toolsUsed: string[] = [];
       const eventStore = getEventStore(); // Get singleton
 
-      // Initial persistence for user message
+      // Initial persistence for user message (use enhanced prompt for persistence)
       await eventStore.appendEvent({
           type: 'message_chunk',
-          content: prompt,
+          content: prompt, // Store original prompt, not enhanced
           timestamp: new Date(),
           eventId: sessionId, // Using sessionId as eventId for the prompt trigger context
           persistenceState: 'persisted'
@@ -2611,14 +2781,17 @@ CRITICAL INSTRUCTIONS:
                    const usage = (agentEvent as unknown as UsageEvent).usage;
                    const trackingService = getUsageTrackingService();
                    await trackingService.trackOperation({
-                       userId: userId,
+                       userId: userId || 'unknown',
                        operationType: 'agent_interaction',
                        model: 'claude-3-5-sonnet', // Default for now, ideally extracted from metadata
                        tokensInput: usage.input_tokens || usage.promptTokens || 0,
                        tokensOutput: usage.output_tokens || usage.completionTokens || 0,
                        metadata: {
                            sessionId,
-                           source: 'langgraph'
+                           source: 'langgraph',
+                           enableThinking,
+                           thinkingBudget: enableThinking ? thinkingBudget : undefined,
+                           fileCount: validatedFiles.length,
                        }
                    });
                    this.logger.debug({ usage }, '💰 Usage tracked');
@@ -2650,7 +2823,13 @@ CRITICAL INSTRUCTIONS:
       // Use final response from graph state, or fallback to accumulated chunks
       const responseContent = finalResponse || finalResponseChunks.join('') || 'No response generated';
 
-      this.logger.info({ sessionId, responseLength: responseContent.length, toolsUsed }, '✅ Graph execution complete');
+      this.logger.info({
+        sessionId,
+        responseLength: responseContent.length,
+        toolsUsed,
+        enableThinking,
+        fileCount: validatedFiles.length,
+      }, '✅ Graph execution complete');
 
       return {
           response: responseContent,

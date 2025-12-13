@@ -187,13 +187,13 @@ export class ChatMessageHandler {
       }
 
       // 3. Execute agent with DirectAgentService (SDK-first)
-      this.logger.info('🤖 About to call DirectAgentService.executeQueryStreaming', { sessionId, userId });
+      this.logger.info('🤖 About to call DirectAgentService.runGraph', { sessionId, userId });
 
       const agentService = getDirectAgentService();
       this.logger.info('✅ DirectAgentService instance obtained', {
         hasAgentService: !!agentService,
         agentServiceType: agentService?.constructor?.name,
-        hasExecuteMethod: typeof agentService?.executeQueryStreaming === 'function'
+        hasExecuteMethod: typeof agentService?.runGraph === 'function'
       });
 
       // ⭐ Phase 1F: Extract and validate Extended Thinking config from request
@@ -220,7 +220,7 @@ export class ChatMessageHandler {
         }
       }
 
-      this.logger.info('📞 Calling executeQueryStreaming...', {
+      this.logger.info('📞 Calling runGraph...', {
         sessionId,
         userId,
         messageLength: message.length,
@@ -239,7 +239,7 @@ export class ChatMessageHandler {
         enableAutoSemanticSearch: data.enableAutoSemanticSearch,
       };
 
-      await agentService.executeQueryStreaming(
+      await agentService.runGraph(
         message,
         sessionId,
         (event: AgentEvent) => this.handleAgentEvent(event, io, sessionId, userId),
@@ -248,7 +248,7 @@ export class ChatMessageHandler {
         streamingOptions
       );
 
-      this.logger.info('✅ Chat message processed successfully (executeQueryStreaming completed)', { sessionId, userId });
+      this.logger.info('✅ Chat message processed successfully (runGraph completed)', { sessionId, userId });
     } catch (error) {
       // Type for Node.js system errors with additional properties
       type NodeSystemError = Error & { code?: string; errno?: number; syscall?: string };
@@ -299,31 +299,36 @@ export class ChatMessageHandler {
     try {
       // Diagnostic logging for thinking event
       if (event.type === 'thinking') {
-        console.log('📡 [ChatMessageHandler] Relaying thinking event to Socket.IO:', {
+        this.logger.debug({
           sessionId,
           eventType: event.type,
           sequenceNumber: event.sequenceNumber,
           eventId: event.eventId,
-        });
+        }, 'Relaying thinking event to Socket.IO');
       }
 
       // Emit to frontend (single event type with enhanced contract)
       io.to(sessionId).emit('agent:event', event);
 
       // DEBUG: Trace all events emitted to socket
-      console.log(`[SOCKET_EMIT] Type: ${event.type}, Session: ${sessionId}, Seq: ${(event as { sequenceNumber?: number }).sequenceNumber}`);
+      this.logger.debug({
+        eventType: event.type,
+        sessionId,
+        sequenceNumber: (event as { sequenceNumber?: number }).sequenceNumber,
+      }, 'Socket emit');
+
       if (event.type === 'tool_use') {
-         console.log('[SOCKET_EMIT] TOOL_USE DETECTED:', JSON.stringify(event, null, 2));
+        this.logger.debug({ event }, 'Tool use detected');
       }
 
       // Confirm emission for thinking event
       if (event.type === 'thinking') {
-        console.log('✅ [ChatMessageHandler] Thinking event emitted to Socket.IO room:', sessionId);
+        this.logger.debug({ sessionId }, 'Thinking event emitted to Socket.IO room');
       }
 
       // DEBUG: Log message_chunk events to verify structure
       if (event.type === 'message_chunk') {
-        console.log('[SOCKET_EMIT] MESSAGE_CHUNK:', JSON.stringify(event, null, 2));
+        this.logger.debug({ event }, 'Message chunk emitted');
       }
 
       // Persist to database based on event type (type-safe discrimination)

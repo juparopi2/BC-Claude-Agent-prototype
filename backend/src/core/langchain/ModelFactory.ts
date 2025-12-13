@@ -12,6 +12,25 @@ export interface ModelConfig {
   temperature?: number;
   maxTokens?: number;
   streaming?: boolean;
+  /**
+   * Enable prompt caching for Anthropic models.
+   * When enabled, cache control breakpoints can be set on system prompts and tools
+   * to reduce costs and latency for repeated content.
+   * @see https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching
+   */
+  enableCaching?: boolean;
+  /**
+   * Enable extended thinking for Anthropic models.
+   * When enabled, Claude uses internal reasoning before responding.
+   * @see https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking
+   */
+  enableThinking?: boolean;
+  /**
+   * Budget for extended thinking in tokens.
+   * Only used when enableThinking is true.
+   * Must be >= 1024 and less than maxTokens.
+   */
+  thinkingBudget?: number;
 }
 
 export class ModelFactory {
@@ -19,17 +38,59 @@ export class ModelFactory {
    * Creates a configured ChatModel instance based on the provider
    */
   static create(config: ModelConfig): BaseChatModel {
-    const { provider, modelName, temperature = 0.7, maxTokens, streaming = true } = config;
+    const {
+      provider,
+      modelName,
+      temperature = 0.7,
+      maxTokens,
+      streaming = true,
+      enableCaching = false,
+      enableThinking = false,
+      thinkingBudget,
+    } = config;
 
     switch (provider) {
-      case 'anthropic':
+      case 'anthropic': {
+        // Prepare thinking configuration
+        let thinkingConfig: { type: 'enabled'; budget_tokens: number } | { type: 'disabled' } | undefined;
+
+        if (enableThinking) {
+          // Validate thinking budget
+          const budget = thinkingBudget ?? 2048; // Default to 2048 tokens
+          if (budget < 1024) {
+            throw new Error('Thinking budget must be at least 1024 tokens');
+          }
+          if (maxTokens && budget >= maxTokens) {
+            throw new Error('Thinking budget must be less than maxTokens');
+          }
+
+          thinkingConfig = {
+            type: 'enabled',
+            budget_tokens: budget,
+          };
+        } else {
+          thinkingConfig = { type: 'disabled' };
+        }
+
+        // Prepare client options for caching
+        const clientOptions = enableCaching
+          ? {
+              defaultHeaders: {
+                'anthropic-beta': 'prompt-caching-2024-07-31',
+              },
+            }
+          : undefined;
+
         return new ChatAnthropic({
           modelName,
           temperature,
           maxTokens,
           streaming,
           apiKey: env.ANTHROPIC_API_KEY,
+          thinking: thinkingConfig,
+          clientOptions,
         });
+      }
 
       case 'google':
         // Ensure Google credentials are set in env or via ADC

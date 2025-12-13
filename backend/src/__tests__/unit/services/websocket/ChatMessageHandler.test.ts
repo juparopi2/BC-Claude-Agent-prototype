@@ -48,7 +48,7 @@ vi.mock('@/services/messages/MessageService', () => ({
 
 // ===== MOCK DIRECT AGENT SERVICE (vi.hoisted pattern) =====
 const mockDirectAgentServiceMethods = vi.hoisted(() => ({
-  executeQueryStreaming: vi.fn().mockResolvedValue({
+  runGraph: vi.fn().mockResolvedValue({
     response: 'Test response',
     toolsUsed: [],
     success: true,
@@ -107,7 +107,7 @@ describe('ChatMessageHandler', () => {
     mockMessageServiceMethods.saveToolUseMessage.mockResolvedValue('tool-123');
     mockMessageServiceMethods.updateToolResult.mockResolvedValue(undefined);
 
-    mockDirectAgentServiceMethods.executeQueryStreaming.mockResolvedValue({
+    mockDirectAgentServiceMethods.runGraph.mockResolvedValue({
       response: 'Test response',
       toolsUsed: [],
       success: true,
@@ -179,9 +179,9 @@ describe('ChatMessageHandler', () => {
 
       await handler.handle(data, mockSocket as Socket, mockIo as SocketIOServer);
 
-      // ⭐ PHASE 1B: executeQueryStreaming now receives userId as 4th parameter
+      // ⭐ PHASE 1B: runGraph now receives userId as 4th parameter
       // ⭐ PHASE 1F: Optional 5th parameter is thinkingConfig (undefined when not provided)
-      expect(mockDirectAgentServiceMethods.executeQueryStreaming).toHaveBeenCalledWith(
+      expect(mockDirectAgentServiceMethods.runGraph).toHaveBeenCalledWith(
         testMessage,
         testSessionId,
         expect.any(Function), // onEvent callback
@@ -191,7 +191,7 @@ describe('ChatMessageHandler', () => {
 
       // ⭐ PHASE 1B: Final log message changed
       expect(mockLogger.info).toHaveBeenCalledWith(
-        '✅ Chat message processed successfully (executeQueryStreaming completed)',
+        '✅ Chat message processed successfully (runGraph completed)',
         expect.objectContaining({ sessionId: testSessionId, userId: testUserId })
       );
     });
@@ -249,7 +249,7 @@ describe('ChatMessageHandler', () => {
       };
 
       // Simulate agent calling the event handler
-      mockDirectAgentServiceMethods.executeQueryStreaming.mockImplementationOnce(
+      mockDirectAgentServiceMethods.runGraph.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           await onEvent(event);
           return { response: 'Test', toolsUsed: [], success: true };
@@ -296,7 +296,7 @@ describe('ChatMessageHandler', () => {
         userId: testUserId,
       };
 
-      mockDirectAgentServiceMethods.executeQueryStreaming.mockImplementationOnce(
+      mockDirectAgentServiceMethods.runGraph.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           await onEvent(event);
           return { response: 'Test', toolsUsed: [], success: true };
@@ -325,7 +325,7 @@ describe('ChatMessageHandler', () => {
         userId: testUserId,
       };
 
-      mockDirectAgentServiceMethods.executeQueryStreaming.mockImplementationOnce(
+      mockDirectAgentServiceMethods.runGraph.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           await onEvent(event);
           return { response: 'Test', toolsUsed: [], success: true };
@@ -368,7 +368,7 @@ describe('ChatMessageHandler', () => {
         userId: testUserId,
       };
 
-      mockDirectAgentServiceMethods.executeQueryStreaming.mockImplementationOnce(
+      mockDirectAgentServiceMethods.runGraph.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           await onEvent(event);
           return { response: 'Test', toolsUsed: [], success: true };
@@ -415,7 +415,7 @@ describe('ChatMessageHandler', () => {
         userId: testUserId,
       };
 
-      mockDirectAgentServiceMethods.executeQueryStreaming.mockImplementationOnce(
+      mockDirectAgentServiceMethods.runGraph.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           await onEvent(event);
           return { response: 'Test', toolsUsed: [], success: true };
@@ -454,7 +454,7 @@ describe('ChatMessageHandler', () => {
         userId: testUserId,
       };
 
-      mockDirectAgentServiceMethods.executeQueryStreaming.mockImplementationOnce(
+      mockDirectAgentServiceMethods.runGraph.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           await onEvent(event);
           return { response: 'Test', toolsUsed: [], success: true };
@@ -510,7 +510,7 @@ describe('ChatMessageHandler', () => {
         userId: testUserId,
       };
 
-      mockDirectAgentServiceMethods.executeQueryStreaming.mockImplementationOnce(
+      mockDirectAgentServiceMethods.runGraph.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           await onEvent(event);
           return { response: 'Test', toolsUsed: [], success: true };
@@ -556,7 +556,7 @@ describe('ChatMessageHandler', () => {
         userId: testUserId,
       };
 
-      mockDirectAgentServiceMethods.executeQueryStreaming.mockImplementationOnce(
+      mockDirectAgentServiceMethods.runGraph.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           await onEvent(event);
           return { response: 'Test', toolsUsed: [], success: true };
@@ -589,7 +589,7 @@ describe('ChatMessageHandler', () => {
         userId: testUserId,
       };
 
-      mockDirectAgentServiceMethods.executeQueryStreaming.mockImplementationOnce(
+      mockDirectAgentServiceMethods.runGraph.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           await onEvent(event);
           return { response: 'Test', toolsUsed: [], success: true };
@@ -629,7 +629,7 @@ describe('ChatMessageHandler', () => {
         userId: testUserId,
       };
 
-      mockDirectAgentServiceMethods.executeQueryStreaming.mockImplementationOnce(
+      mockDirectAgentServiceMethods.runGraph.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           await onEvent(event);
           return { response: 'Test', toolsUsed: [], success: true };
@@ -663,7 +663,7 @@ describe('ChatMessageHandler', () => {
         userId: testUserId,
       };
 
-      mockDirectAgentServiceMethods.executeQueryStreaming.mockImplementationOnce(
+      mockDirectAgentServiceMethods.runGraph.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           await onEvent(event);
           return { response: 'Test', toolsUsed: [], success: true };
@@ -696,7 +696,7 @@ describe('ChatMessageHandler', () => {
         userId: testUserId,
       };
 
-      mockDirectAgentServiceMethods.executeQueryStreaming.mockImplementationOnce(
+      mockDirectAgentServiceMethods.runGraph.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           await onEvent(event);
           return { response: 'Test', toolsUsed: [], success: true };
@@ -766,7 +766,7 @@ describe('ChatMessageHandler', () => {
         }),
       });
 
-      mockDirectAgentServiceMethods.executeQueryStreaming.mockImplementationOnce(
+      mockDirectAgentServiceMethods.runGraph.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           // Emit events sequentially
           for (const event of events) {
@@ -835,7 +835,7 @@ describe('ChatMessageHandler', () => {
         }
       );
 
-      mockDirectAgentServiceMethods.executeQueryStreaming.mockImplementationOnce(
+      mockDirectAgentServiceMethods.runGraph.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           // Emit events concurrently (simulate race condition)
           await Promise.all(events.map((event) => onEvent(event)));
@@ -896,7 +896,7 @@ describe('ChatMessageHandler', () => {
         callOrder.push('updateToolResult');
       });
 
-      mockDirectAgentServiceMethods.executeQueryStreaming.mockImplementationOnce(
+      mockDirectAgentServiceMethods.runGraph.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           for (const event of events) {
             await onEvent(event);
@@ -927,7 +927,7 @@ describe('ChatMessageHandler', () => {
         userId: testUserId,
       };
 
-      mockDirectAgentServiceMethods.executeQueryStreaming.mockImplementationOnce(
+      mockDirectAgentServiceMethods.runGraph.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           await onEvent(event);
           return { response: 'Test', toolsUsed: [], success: true };
@@ -975,7 +975,7 @@ describe('ChatMessageHandler', () => {
         userId: testUserId,
       };
 
-      mockDirectAgentServiceMethods.executeQueryStreaming.mockImplementationOnce(
+      mockDirectAgentServiceMethods.runGraph.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           await onEvent(event);
           return { response: 'Test', toolsUsed: [], success: true };
@@ -1031,7 +1031,7 @@ describe('ChatMessageHandler', () => {
         userId: testUserId,
       };
 
-      mockDirectAgentServiceMethods.executeQueryStreaming.mockImplementationOnce(
+      mockDirectAgentServiceMethods.runGraph.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           await onEvent(event);
           return { response: 'Test', toolsUsed: [], success: true };

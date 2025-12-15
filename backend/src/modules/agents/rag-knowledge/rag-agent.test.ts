@@ -47,7 +47,7 @@ describe('RAGAgent', () => {
   it('should return error if userId is missing', async () => {
     const s = { ...mockState, context: {} };
     const result = await agent.invoke(s);
-    expect(result.messages![0].content).toContain('Error: No user context');
+    expect(result.messages?.[0]?.content).toContain('Error: No user context');
   });
 
   it('should bind tools and invoke model', async () => {
@@ -55,6 +55,6 @@ describe('RAGAgent', () => {
     // Agent returns Partial<AgentState> with messages array
     expect(result).toHaveProperty('messages');
     expect(result.messages).toHaveLength(1);
-    expect(result.messages![0].content).toBe('Mock RAG Response');
+    expect(result.messages?.[0]?.content).toBe('Mock RAG Response');
   });
 });

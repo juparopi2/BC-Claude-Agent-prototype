@@ -41,6 +41,6 @@ describe('BusinessCentralAgent', () => {
     // Agent returns Partial<AgentState> with messages array
     expect(result).toHaveProperty('messages');
     expect(result.messages).toHaveLength(1);
-    expect(result.messages![0].content).toBe('Mock BC Response');
+    expect(result.messages?.[0]?.content).toBe('Mock BC Response');
   });
 });

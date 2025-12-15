@@ -555,10 +555,14 @@ export class BCToolService {
 
 // ============================================
 // LangChain Tool Definitions
+// Note: @ts-expect-error comments suppress "Type instantiation is excessively deep"
+// This is a known TypeScript limitation with LangChain's tool() generic inference
+// and complex Zod schemas. The tools work correctly at runtime.
 // ============================================
 
 const toolService = new BCToolService();
 
+// @ts-expect-error - Type instantiation depth limit with tool() generic
 export const listAllEntitiesTool = tool(
   async (input) => {
     const { filter_by_operations } = input;
@@ -573,6 +577,7 @@ export const listAllEntitiesTool = tool(
   }
 );
 
+// @ts-expect-error - Type instantiation depth limit with tool() generic
 export const searchEntityOperationsTool = tool(
   async (input) => {
     const { keyword, filter_by_risk, filter_by_operation_type } = input;
@@ -589,6 +594,7 @@ export const searchEntityOperationsTool = tool(
   }
 );
 
+// @ts-expect-error - Type instantiation depth limit with tool() generic
 export const getEntityDetailsTool = tool(
   async (input) => {
     const { entity_name } = input;
@@ -604,6 +610,7 @@ export const getEntityDetailsTool = tool(
   }
 );
 
+// @ts-expect-error - Type instantiation depth limit with tool() generic
 export const getEntityRelationshipsTool = tool(
   async (input) => {
     const { entity_name } = input;
@@ -618,6 +625,7 @@ export const getEntityRelationshipsTool = tool(
   }
 );
 
+// @ts-expect-error - Type instantiation depth limit with tool() generic
 export const validateWorkflowStructureTool = tool(
   async (input) => {
     const { workflow } = input;
@@ -640,6 +648,7 @@ export const validateWorkflowStructureTool = tool(
   }
 );
 
+// @ts-expect-error - Type instantiation depth limit with tool() generic
 export const buildKnowledgeBaseWorkflowTool = tool(
   async (input) => {
     const { workflow_name, steps, workflow_description } = input;
@@ -664,6 +673,7 @@ export const buildKnowledgeBaseWorkflowTool = tool(
   }
 );
 
+// @ts-expect-error - Type instantiation depth limit with tool() generic
 export const getEndpointDocumentationTool = tool(
   async (input) => {
     const { operation_id } = input;

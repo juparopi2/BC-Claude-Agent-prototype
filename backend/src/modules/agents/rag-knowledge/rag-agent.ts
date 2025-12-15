@@ -34,7 +34,12 @@ export class RAGAgent extends BaseAgent {
 
      // Create tool instance bound to the current user
      const searchTool = createKnowledgeSearchTool(userId);
-     
+
+     // Ensure model supports tool binding (all Anthropic models do)
+     if (!model.bindTools) {
+       throw new Error('Model does not support tool binding');
+     }
+
      // Bind tools to the model
      const modelWithTools = model.bindTools([searchTool]);
      

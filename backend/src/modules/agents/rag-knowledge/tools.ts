@@ -9,6 +9,7 @@ import { getSemanticSearchService } from '@/services/search/semantic';
  * @param userId - The ID of the user performing the search
  */
 export const createKnowledgeSearchTool = (userId: string) => {
+  // @ts-expect-error - Type instantiation depth limit with tool() generic
   return tool(
     async ({ query }) => {
       try {
@@ -25,9 +26,11 @@ export const createKnowledgeSearchTool = (userId: string) => {
         }
 
         // Format results for the agent
-        const formattedResults = results.results.map(r => 
-            `[Source: ${r.fileName} (Score: ${r.relevanceScore.toFixed(2)})]\n${r.content}`
-        ).join("\n\n---\n\n");
+        const formattedResults = results.results.map(r => {
+            // Concatenate content from top chunks for this file
+            const contentSummary = r.topChunks.map(chunk => chunk.content).join('\n\n');
+            return `[Source: ${r.fileName} (Score: ${r.relevanceScore.toFixed(2)})]\n${contentSummary}`;
+        }).join("\n\n---\n\n");
 
         return `Found ${results.results.length} relevant documents:\n\n${formattedResults}`;
 

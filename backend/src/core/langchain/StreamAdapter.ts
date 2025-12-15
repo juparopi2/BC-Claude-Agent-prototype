@@ -7,10 +7,9 @@ import { v4 as uuidv4 } from 'uuid';
  * This ensures the frontend doesn't need to change immediately.
  */
 export class StreamAdapter {
-  private sessionId: string;
-
-  constructor(sessionId: string) {
-    this.sessionId = sessionId;
+  // sessionId parameter reserved for future event tracking with session context
+  constructor(_sessionId: string) {
+    // Session context can be used for future enhancements
   }
 
   processChunk(event: StreamEvent): AgentEvent | UsageEvent | null {

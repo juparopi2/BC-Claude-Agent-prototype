@@ -71,11 +71,16 @@ export class BusinessCentralAgent extends BaseAgent {
       buildKnowledgeBaseWorkflowTool,
       getEndpointDocumentationTool,
     ];
+
+    // Ensure model supports tool binding (all Anthropic models do)
+    if (!model.bindTools) {
+      throw new Error('Model does not support tool binding');
+    }
     const modelWithTools = model.bindTools(tools);
 
     // Prepend system message if not present
     const messages = state.messages;
-    const hasSystemMessage = messages.length > 0 && messages[0]._getType?.() === 'system';
+    const hasSystemMessage = messages.length > 0 && messages[0]?._getType?.() === 'system';
 
     const messagesWithSystem = hasSystemMessage
       ? messages

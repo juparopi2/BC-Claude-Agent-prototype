@@ -61,6 +61,8 @@ export type {
   // Phase 5: File Context Types
   ImageContent,
   FileContextResult,
+  // LangGraph Orchestrator Types
+  UsageEvent,
 } from './agent.types';
 
 // Auth Types

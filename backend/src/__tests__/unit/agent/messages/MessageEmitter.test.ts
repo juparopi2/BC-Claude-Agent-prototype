@@ -80,7 +80,9 @@ describe('MessageEmitter', () => {
       expect(event.persistenceState).toBe('transient');
       expect(event.sequenceNumber).toBeUndefined();
       expect(event.eventId).toBeDefined();
-      expect(event.timestamp).toBeInstanceOf(Date);
+      // Timestamp is now ISO 8601 string (not Date object) for Socket.IO serialization
+      expect(typeof event.timestamp).toBe('string');
+      expect(new Date(event.timestamp).toISOString()).toBe(event.timestamp);
     });
 
     it('should emit thinking_chunk event', () => {
@@ -188,7 +190,9 @@ describe('MessageEmitter', () => {
       expect(event.sequenceNumber).toBe(10);
       expect(event.eventId).toBe('evt_thinking_123');
       expect(event.persistenceState).toBe('persisted');
-      expect(event.timestamp).toBeInstanceOf(Date);
+      // Timestamp is now ISO 8601 string (not Date object) for Socket.IO serialization
+      expect(typeof event.timestamp).toBe('string');
+      expect(new Date(event.timestamp).toISOString()).toBe(event.timestamp);
     });
 
     it('should emit message event with all fields', () => {
@@ -397,9 +401,12 @@ describe('MessageEmitter', () => {
 
       expect(capturedEvents).toHaveLength(1);
       const timestamp = capturedEvents[0]?.timestamp;
-      expect(timestamp).toBeInstanceOf(Date);
-      expect(timestamp.getTime()).toBeGreaterThanOrEqual(before.getTime());
-      expect(timestamp.getTime()).toBeLessThanOrEqual(after.getTime());
+      // Timestamp is now ISO 8601 string (not Date object) for Socket.IO serialization
+      expect(typeof timestamp).toBe('string');
+      const timestampDate = new Date(timestamp);
+      expect(timestampDate.toISOString()).toBe(timestamp);
+      expect(timestampDate.getTime()).toBeGreaterThanOrEqual(before.getTime());
+      expect(timestampDate.getTime()).toBeLessThanOrEqual(after.getTime());
     });
   });
 });

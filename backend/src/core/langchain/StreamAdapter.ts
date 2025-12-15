@@ -26,7 +26,7 @@ export class StreamAdapter {
                     return {
                         type: 'thinking',
                         content: block.thinking,
-                        timestamp: new Date(),
+                        timestamp: new Date().toISOString(),
                         eventId: uuidv4(),
                         persistenceState: 'transient'
                     } as AgentEvent;
@@ -36,7 +36,7 @@ export class StreamAdapter {
                     return {
                         type: 'message_chunk',
                         content: block.text,
-                        timestamp: new Date(),
+                        timestamp: new Date().toISOString(),
                         eventId: uuidv4(),
                         persistenceState: 'transient'
                     };
@@ -45,11 +45,20 @@ export class StreamAdapter {
         }
 
         // Check for content (standard text)
+        // Handle different content types: string, array, or object
         if (chunk.content) {
+            const contentText = typeof chunk.content === 'string'
+                ? chunk.content
+                : Array.isArray(chunk.content)
+                    ? chunk.content.map((c: unknown) =>
+                        typeof c === 'string' ? c : (c as { text?: string }).text || ''
+                      ).join('')
+                    : String(chunk.content);
+
             return {
                 type: 'message_chunk',
-                content: chunk.content.toString(),
-                timestamp: new Date(),
+                content: contentText,
+                timestamp: new Date().toISOString(),
                 eventId: uuidv4(),
                 persistenceState: 'transient'
             };
@@ -63,7 +72,7 @@ export class StreamAdapter {
             toolName: event.name,
             args: event.data.input,
             toolUseId: event.run_id,
-            timestamp: new Date(),
+            timestamp: new Date().toISOString(),
             eventId: uuidv4(),
             persistenceState: 'pending'
         };
@@ -72,8 +81,8 @@ export class StreamAdapter {
     // 3. Tool End
     if (eventType === 'on_tool_end') {
          // Output can be a string or object. legacy expects string usually.
-         const output = typeof event.data.output === 'string' 
-            ? event.data.output 
+         const output = typeof event.data.output === 'string'
+            ? event.data.output
             : JSON.stringify(event.data.output);
 
         return {
@@ -82,7 +91,7 @@ export class StreamAdapter {
             result: output,
             success: true, // Assuming success if we reached here
             toolUseId: event.run_id,
-            timestamp: new Date(),
+            timestamp: new Date().toISOString(),
             eventId: uuidv4(),
             persistenceState: 'pending'
         };
@@ -95,7 +104,7 @@ export class StreamAdapter {
             return {
                 type: 'usage', // Custom internal type, cast to any in service if needed or handle explicitly
                 usage: output.llmOutput.usage,
-                timestamp: new Date(),
+                timestamp: new Date().toISOString(),
                 eventId: uuidv4(),
                 persistenceState: 'transient'
             } as UsageEvent;

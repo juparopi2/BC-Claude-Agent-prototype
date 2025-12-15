@@ -49,7 +49,8 @@ export interface PendingApproval {
   args: Record<string, unknown>;
   changeSummary: string;
   priority: 'low' | 'medium' | 'high';
-  expiresAt?: Date;
+  /** ISO 8601 timestamp string from the event */
+  expiresAt?: string;
   createdAt: Date;
 }
 

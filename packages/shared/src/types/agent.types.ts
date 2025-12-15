@@ -67,8 +67,8 @@ export interface BaseAgentEvent {
   type: AgentEventType;
   /** Session ID */
   sessionId?: string;
-  /** Event timestamp */
-  timestamp: Date;
+  /** Event timestamp (ISO 8601 string) */
+  timestamp: string;
 
   // Enhanced Event Sourcing Fields (Multi-Tenant Architecture)
   /** Unique event ID (UUID) for tracing and correlation */
@@ -289,8 +289,8 @@ export interface ApprovalRequestedEvent extends BaseAgentEvent {
   changeSummary: string;
   /** Priority level */
   priority: 'low' | 'medium' | 'high';
-  /** Expiration time */
-  expiresAt?: Date;
+  /** Expiration time (ISO 8601 string) */
+  expiresAt?: string;
 }
 
 /**

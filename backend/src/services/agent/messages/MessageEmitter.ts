@@ -133,7 +133,7 @@ export class MessageEmitter implements IMessageEmitter {
   ): EmittableEvent {
     return {
       type,
-      timestamp: new Date(),
+      timestamp: new Date().toISOString(),
       eventId: randomUUID(),
       persistenceState: 'transient',
       ...data,
@@ -238,7 +238,7 @@ export class MessageEmitter implements IMessageEmitter {
   emitThinking(data: ThinkingEventData): void {
     const event: EmittableEvent = {
       type: 'thinking',
-      timestamp: new Date(),
+      timestamp: new Date().toISOString(),
       eventId: data.eventId,
       persistenceState: 'persisted',
       sequenceNumber: data.sequenceNumber,
@@ -258,7 +258,7 @@ export class MessageEmitter implements IMessageEmitter {
   emitMessage(data: MessageEventData): void {
     const event: EmittableEvent = {
       type: 'message',
-      timestamp: new Date(),
+      timestamp: new Date().toISOString(),
       eventId: data.eventId,
       persistenceState: 'persisted',
       sequenceNumber: data.sequenceNumber,
@@ -289,7 +289,7 @@ export class MessageEmitter implements IMessageEmitter {
   emitToolUse(data: ToolUseEventData): void {
     const event: EmittableEvent = {
       type: 'tool_use',
-      timestamp: new Date(),
+      timestamp: new Date().toISOString(),
       eventId: data.eventId,
       persistenceState: 'persisted',
       sequenceNumber: data.sequenceNumber,
@@ -316,7 +316,7 @@ export class MessageEmitter implements IMessageEmitter {
   emitToolResult(data: ToolResultEventData): void {
     const event: EmittableEvent = {
       type: 'tool_result',
-      timestamp: new Date(),
+      timestamp: new Date().toISOString(),
       eventId: data.eventId,
       persistenceState: 'persisted',
       sequenceNumber: data.sequenceNumber,
@@ -348,7 +348,7 @@ export class MessageEmitter implements IMessageEmitter {
   emitTurnPaused(data: TurnPausedEventData): void {
     const event: EmittableEvent = {
       type: 'turn_paused',
-      timestamp: new Date(),
+      timestamp: new Date().toISOString(),
       eventId: data.eventId,
       persistenceState: 'persisted',
       sequenceNumber: data.sequenceNumber,
@@ -369,7 +369,7 @@ export class MessageEmitter implements IMessageEmitter {
   emitContentRefused(data: ContentRefusedEventData): void {
     const event: EmittableEvent = {
       type: 'content_refused',
-      timestamp: new Date(),
+      timestamp: new Date().toISOString(),
       eventId: data.eventId,
       persistenceState: 'persisted',
       sequenceNumber: data.sequenceNumber,

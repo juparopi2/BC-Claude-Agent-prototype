@@ -8,6 +8,7 @@ import { getApiClient } from '@/lib/services/api';
 import { MainLayout, Header, LeftPanel, RightPanel } from '@/components/layout';
 import { ChatContainer, ChatInput } from '@/components/chat';
 import { useSocket } from '@/lib/stores/socketMiddleware';
+import { useUIPreferencesStore } from '@/lib/stores/uiPreferencesStore';
 
 export default function ChatPage() {
   const params = useParams();
@@ -16,6 +17,7 @@ export default function ChatPage() {
   const sessionId = params.sessionId as string;
   const initialMessage = searchParams.get('initialMessage');
   const enableThinking = searchParams.get('enableThinking') === 'true';
+  const useMyContext = searchParams.get('useMyContext') === 'true';
 
   const [leftPanelVisible, setLeftPanelVisible] = useState(true);
   const [rightPanelVisible, setRightPanelVisible] = useState(true);
@@ -37,6 +39,10 @@ export default function ChatPage() {
   const setLoading = useChatStore((s) => s.setLoading);
   const isLoading = useChatStore((s) => s.isLoading);
   const selectSession = useSessionStore((s) => s.selectSession);
+
+  // UI preferences from store
+  const setEnableThinking = useUIPreferencesStore((s) => s.setEnableThinking);
+  const setUseMyContext = useUIPreferencesStore((s) => s.setUseMyContext);
 
   // Initialize socket and get sendMessage function
   const { sendMessage, isSessionReady, isConnected, isReconnecting, stopAgent } = useSocket({
@@ -70,6 +76,15 @@ export default function ChatPage() {
     loadSession();
   }, [sessionId, setMessages, setCurrentSession, clearChat, setLoading, selectSession]);
 
+  // Sync URL preferences to store when navigating with initialMessage
+  useEffect(() => {
+    if (initialMessage) {
+      // Only update store if coming from /new with URL params
+      if (enableThinking) setEnableThinking(true);
+      if (useMyContext) setUseMyContext(true);
+    }
+  }, [initialMessage, enableThinking, useMyContext, setEnableThinking, setUseMyContext]);
+
   // Auto-send initial message from URL parameter
   useEffect(() => {
     // Only send if:
@@ -80,16 +95,18 @@ export default function ChatPage() {
     if (initialMessage && isSessionReady && !initialMessageSentRef.current && !isLoading) {
       initialMessageSentRef.current = true;
 
-      // Send the message with thinking options if specified
-      const options = enableThinking
-        ? { enableThinking: true, thinkingBudget: 10000 }
-        : undefined;
+      // Send the message with options if specified
+      const options = (enableThinking || useMyContext) ? {
+        enableThinking: enableThinking || undefined,
+        thinkingBudget: enableThinking ? 10000 : undefined,
+        enableAutoSemanticSearch: useMyContext || undefined,
+      } : undefined;
       sendMessage(initialMessage, options);
 
       // Clear the URL parameter to prevent re-sending on refresh
       router.replace(`/chat/${sessionId}`, { scroll: false });
     }
-  }, [initialMessage, isSessionReady, sessionId, router, sendMessage, isLoading, enableThinking]);
+  }, [initialMessage, isSessionReady, sessionId, router, sendMessage, isLoading, enableThinking, useMyContext]);
 
   return (
     <MainLayout

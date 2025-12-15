@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, KeyboardEvent } from 'react';
 import { useSocket } from '@/lib/stores/socketMiddleware';
 import { useChatStore } from '@/lib/stores/chatStore';
+import { useUIPreferencesStore } from '@/lib/stores/uiPreferencesStore';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Toggle } from '@/components/ui/toggle';
@@ -14,7 +15,7 @@ import { toast } from 'sonner';
 
 export interface ChatInputProps {
   sessionId?: string;
-  onSend?: (message: string, options?: { enableThinking: boolean }) => void;
+  onSend?: (message: string, options?: { enableThinking: boolean; useMyContext: boolean }) => void;
   disabled?: boolean;
   // Socket state from parent (avoids duplicate useSocket calls)
   isConnected?: boolean;
@@ -33,14 +34,17 @@ export default function ChatInput({
   stopAgent: propsStopAgent,
 }: ChatInputProps) {
   const [message, setMessage] = useState('');
-  const [enableThinking, setEnableThinking] = useState(false);
-  const [useMyContext, setUseMyContext] = useState(false);
+  // Use persistent UI preferences from store
+  const enableThinking = useUIPreferencesStore((s) => s.enableThinking);
+  const setEnableThinking = useUIPreferencesStore((s) => s.setEnableThinking);
+  const useMyContext = useUIPreferencesStore((s) => s.useMyContext);
+  const setUseMyContext = useUIPreferencesStore((s) => s.setUseMyContext);
   const [attachments, setAttachments] = useState<Array<{ id: string; file: File; status: 'uploading' | 'completed' | 'error'; progress: number; error?: string }>>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Use socket from parent if provided, otherwise create local instance
-  const shouldUseLocalSocket = !propsIsConnected && !onSend && sessionId;
+  const shouldUseLocalSocket = propsIsConnected === undefined && !onSend && !!sessionId; // FIX: Check if prop was PROVIDED
   const localSocket = useSocket({
     sessionId: sessionId || '',
     autoConnect: !!shouldUseLocalSocket
@@ -87,7 +91,7 @@ export default function ChatInput({
     if (onSend) {
       // Note: onSend currently doesn't support attachments in the interface,
       // but we'll assume it might be updated or ignored for now in simple mode.
-      onSend(message, { enableThinking });
+      onSend(message, { enableThinking, useMyContext });
     } else {
       const options = {
         enableThinking,

@@ -27,7 +27,7 @@ export default function Home() {
   const toggleLeftPanel = () => setLeftPanelVisible((prev) => !prev);
   const toggleRightPanel = () => setRightPanelVisible((prev) => !prev);
 
-  const handleSend = async (text: string, options?: { enableThinking: boolean }) => {
+  const handleSend = async (text: string, options?: { enableThinking: boolean; useMyContext: boolean }) => {
     if (!text.trim() || isCreating) return;
 
     setIsCreating(true);
@@ -40,6 +40,9 @@ export default function Home() {
         });
         if (options?.enableThinking) {
           params.set('enableThinking', 'true');
+        }
+        if (options?.useMyContext) {
+          params.set('useMyContext', 'true');
         }
         router.push(`/chat/${session.id}?${params.toString()}`);
       }

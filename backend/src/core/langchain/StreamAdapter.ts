@@ -18,6 +18,32 @@ export class StreamAdapter {
     // 1. Text Generation (Tokens)
     if (eventType === 'on_chat_model_stream') {
         const chunk = event.data.chunk;
+
+        // Handle thinking blocks in content array (Extended Thinking)
+        if (Array.isArray(chunk.content)) {
+            for (const block of chunk.content) {
+                if (block.type === 'thinking' && block.thinking) {
+                    return {
+                        type: 'thinking',
+                        content: block.thinking,
+                        timestamp: new Date(),
+                        eventId: uuidv4(),
+                        persistenceState: 'transient'
+                    } as AgentEvent;
+                }
+                // Handle text blocks within content array
+                if (block.type === 'text' && block.text) {
+                    return {
+                        type: 'message_chunk',
+                        content: block.text,
+                        timestamp: new Date(),
+                        eventId: uuidv4(),
+                        persistenceState: 'transient'
+                    };
+                }
+            }
+        }
+
         // Check for content (standard text)
         if (chunk.content) {
             return {

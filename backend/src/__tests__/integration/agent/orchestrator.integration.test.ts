@@ -42,6 +42,7 @@ vi.mock('@/services/events/EventStore', () => ({
 vi.mock('@/services/tracking/UsageTrackingService', () => ({
   getUsageTrackingService: vi.fn(() => ({
     trackOperation: vi.fn().mockResolvedValue(undefined),
+    trackClaudeUsage: vi.fn().mockResolvedValue(undefined),
   })),
 }));
 
@@ -93,7 +94,7 @@ describe('LangGraph Orchestrator Integration', () => {
       });
 
       // ACT: Call runGraph with thinking enabled
-      await service.runGraph(testUserId, 'Test prompt', testSessionId, undefined);
+      await service.runGraph('Test prompt', testSessionId, undefined, testUserId);
 
       // ASSERT: Verify ModelFactory was NOT called (because it's not used in runGraph yet)
       // This test will FAIL until Extended Thinking is implemented in runGraph
@@ -155,21 +156,17 @@ describe('LangGraph Orchestrator Integration', () => {
       const capturedEvents: (AgentEvent | UsageEvent)[] = [];
 
       // ACT: Call runGraph with event callback
-      await service.runGraph(testUserId, 'Complex problem', testSessionId, (event) => {
+      await service.runGraph('Complex problem', testSessionId, (event) => {
         capturedEvents.push(event);
-      });
+      }, testUserId);
 
-      // ASSERT: This will FAIL until StreamAdapter handles thinking events
-      // TODO: Once implemented, verify thinking events are emitted
+      // ASSERT: Verify thinking events are emitted by StreamAdapter
       const thinkingEvents = capturedEvents.filter((e) => e.type === 'thinking');
-      expect(thinkingEvents.length).toBe(0); // Currently 0, should be > 0 after implementation
-
-      // EXPECTED BEHAVIOR (after implementation):
-      // expect(thinkingEvents.length).toBeGreaterThan(0);
-      // expect(thinkingEvents[0]).toMatchObject({
-      //   type: 'thinking',
-      //   content: expect.stringContaining('analyze'),
-      // });
+      expect(thinkingEvents.length).toBeGreaterThan(0);
+      expect(thinkingEvents[0]).toMatchObject({
+        type: 'thinking',
+        content: expect.stringContaining('analyze'),
+      });
     });
 
     it('should NOT pass thinking config when disabled', async () => {
@@ -193,7 +190,7 @@ describe('LangGraph Orchestrator Integration', () => {
       });
 
       // ACT: Call runGraph without thinking options
-      await service.runGraph(testUserId, 'Simple prompt', testSessionId, undefined);
+      await service.runGraph('Simple prompt', testSessionId, undefined, testUserId);
 
       // ASSERT: ModelFactory should not be called (or called without thinking config)
       expect(mockModelCreate).not.toHaveBeenCalled();
@@ -229,7 +226,7 @@ describe('LangGraph Orchestrator Integration', () => {
 
       // ACT: This will FAIL - runGraph doesn't accept thinking options yet
       // TODO: Update runGraph signature to accept AgentOptions
-      await service.runGraph(testUserId, 'Complex task', testSessionId, undefined);
+      await service.runGraph('Complex task', testSessionId, undefined, testUserId);
 
       // ASSERT: This test documents the expected API
       // EXPECTED BEHAVIOR (after implementation):
@@ -286,7 +283,7 @@ describe('LangGraph Orchestrator Integration', () => {
       });
 
       // ACT: Send /bc command
-      const result = await service.runGraph(testUserId, '/bc list customers', testSessionId);
+      const result = await service.runGraph('/bc list customers', testSessionId, undefined, testUserId);
 
       // ASSERT: Verify routing occurred
       expect(result.success).toBe(true);
@@ -343,7 +340,7 @@ describe('LangGraph Orchestrator Integration', () => {
       });
 
       // ACT: Send /search command
-      const result = await service.runGraph(testUserId, '/search sales documentation', testSessionId);
+      const result = await service.runGraph('/search sales documentation', testSessionId, undefined, testUserId);
 
       // ASSERT: Verify routing occurred
       expect(result.success).toBe(true);
@@ -397,7 +394,7 @@ describe('LangGraph Orchestrator Integration', () => {
       });
 
       // ACT: Send general message (no command prefix)
-      const result = await service.runGraph(testUserId, 'What is Business Central?', testSessionId);
+      const result = await service.runGraph('What is Business Central?', testSessionId, undefined, testUserId);
 
       // ASSERT: Verify default routing
       expect(result.success).toBe(true);
@@ -455,9 +452,9 @@ describe('LangGraph Orchestrator Integration', () => {
       const capturedEvents: (AgentEvent | UsageEvent)[] = [];
 
       // ACT: Stream events
-      await service.runGraph(testUserId, 'Say hello', testSessionId, (event) => {
+      await service.runGraph('Say hello', testSessionId, (event) => {
         capturedEvents.push(event);
-      });
+      }, testUserId);
 
       // ASSERT: Verify event sequence
       expect(capturedEvents.length).toBeGreaterThan(0);
@@ -520,9 +517,9 @@ describe('LangGraph Orchestrator Integration', () => {
       const capturedEvents: (AgentEvent | UsageEvent)[] = [];
 
       // ACT: Execute with tool
-      await service.runGraph(testUserId, 'List entities', testSessionId, (event) => {
+      await service.runGraph('List entities', testSessionId, (event) => {
         capturedEvents.push(event);
-      });
+      }, testUserId);
 
       // ASSERT: Verify tool events
       const toolUseEvents = capturedEvents.filter((e) => e.type === 'tool_use');
@@ -587,9 +584,9 @@ describe('LangGraph Orchestrator Integration', () => {
       const capturedEvents: (AgentEvent | UsageEvent)[] = [];
 
       // ACT: Execute and capture events
-      await service.runGraph(testUserId, 'Test usage', testSessionId, (event) => {
+      await service.runGraph('Test usage', testSessionId, (event) => {
         capturedEvents.push(event);
-      });
+      }, testUserId);
 
       // ASSERT: Verify usage event (note: usage events are NOT emitted via onEvent callback)
       // They are handled internally for tracking
@@ -621,7 +618,7 @@ describe('LangGraph Orchestrator Integration', () => {
 
       // ACT & ASSERT: Should not throw, should return error result
       await expect(
-        service.runGraph(testUserId, 'Failing prompt', testSessionId)
+        service.runGraph('Failing prompt', testSessionId, undefined, testUserId)
       ).rejects.toThrow('Graph execution failed');
     });
 
@@ -656,9 +653,9 @@ describe('LangGraph Orchestrator Integration', () => {
       const capturedEvents: (AgentEvent | UsageEvent)[] = [];
 
       // ACT: Execute with error
-      await service.runGraph(testUserId, 'Error test', testSessionId, (event) => {
+      await service.runGraph('Error test', testSessionId, (event) => {
         capturedEvents.push(event);
-      });
+      }, testUserId);
 
       // ASSERT: This will FAIL until StreamAdapter handles error events
       const errorEvents = capturedEvents.filter((e) => e.type === 'error');
@@ -697,7 +694,7 @@ describe('LangGraph Orchestrator Integration', () => {
       });
 
       // ACT: Execute
-      await service.runGraph(testUserId, 'Test context', testSessionId);
+      await service.runGraph('Test context', testSessionId, undefined, testUserId);
 
       // ASSERT: Verify context was passed
       expect(mockStreamEvents).toHaveBeenCalledWith(
@@ -731,7 +728,7 @@ describe('LangGraph Orchestrator Integration', () => {
       });
 
       // ACT: Execute
-      await service.runGraph(testUserId, 'Test session', testSessionId);
+      await service.runGraph('Test session', testSessionId, undefined, testUserId);
 
       // ASSERT: Verify sessionId was passed
       expect(mockStreamEvents).toHaveBeenCalledWith(

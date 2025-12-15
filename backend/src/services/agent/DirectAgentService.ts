@@ -2735,13 +2735,15 @@ CRITICAL INSTRUCTIONS:
       const eventStore = getEventStore(); // Get singleton
 
       // Initial persistence for user message (use enhanced prompt for persistence)
-      await eventStore.appendEvent({
-          type: 'message_chunk',
-          content: prompt, // Store original prompt, not enhanced
-          timestamp: new Date(),
-          eventId: sessionId, // Using sessionId as eventId for the prompt trigger context
-          persistenceState: 'persisted'
-      });
+      await eventStore.appendEvent(
+          sessionId,
+          'user_message_sent',
+          {
+              content: prompt, // Store original prompt, not enhanced
+              timestamp: new Date().toISOString(),
+              persistenceState: 'persisted'
+          }
+      );
 
       // Track final response content
       const finalResponseChunks: string[] = [];
@@ -2780,20 +2782,19 @@ CRITICAL INSTRUCTIONS:
                if (agentEvent.type === 'usage') {
                    const usage = (agentEvent as unknown as UsageEvent).usage;
                    const trackingService = getUsageTrackingService();
-                   await trackingService.trackOperation({
-                       userId: userId || 'unknown',
-                       operationType: 'agent_interaction',
-                       model: 'claude-3-5-sonnet', // Default for now, ideally extracted from metadata
-                       tokensInput: usage.input_tokens || usage.promptTokens || 0,
-                       tokensOutput: usage.output_tokens || usage.completionTokens || 0,
-                       metadata: {
-                           sessionId,
+                   await trackingService.trackClaudeUsage(
+                       userId || 'unknown',
+                       sessionId,
+                       usage.input_tokens || 0,
+                       usage.output_tokens || 0,
+                       'claude-3-5-sonnet', // Default for now, ideally extracted from metadata
+                       {
                            source: 'langgraph',
                            enableThinking,
                            thinkingBudget: enableThinking ? thinkingBudget : undefined,
                            fileCount: validatedFiles.length,
                        }
-                   });
+                   );
                    this.logger.debug({ usage }, '💰 Usage tracked');
                    continue; // Don't persist 'usage' event to eventStore as it is not a standard event type
                }
@@ -2806,11 +2807,22 @@ CRITICAL INSTRUCTIONS:
                }
 
                if (agentEvent.type === 'tool_use' || agentEvent.type === 'tool_result' || agentEvent.type === 'error') {
+                   // Map agent event types to EventStore event types
+                   const eventTypeMap = {
+                       'tool_use': 'tool_use_requested',
+                       'tool_result': 'tool_use_completed',
+                       'error': 'error_occurred'
+                   } as const;
+                   const mappedEventType = eventTypeMap[agentEvent.type as keyof typeof eventTypeMap];
                    // Ensure persistenceState is set to persisted before saving
-                   await eventStore.appendEvent({
-                       ...agentEvent,
-                       persistenceState: 'persisted'
-                   });
+                   await eventStore.appendEvent(
+                       sessionId,
+                       mappedEventType,
+                       {
+                           ...agentEvent,
+                           persistenceState: 'persisted'
+                       }
+                   );
                }
 
                // Track tools
@@ -2830,6 +2842,32 @@ CRITICAL INSTRUCTIONS:
         enableThinking,
         fileCount: validatedFiles.length,
       }, '✅ Graph execution complete');
+
+      // ========== EMIT TERMINAL EVENTS ==========
+      // The frontend expects 'message' and 'complete' events to finalize the response
+      // These were previously emitted by executeQueryStreaming via this.emitter
+      if (onEvent) {
+        // Emit final message event with accumulated content
+        onEvent({
+          type: 'message',
+          content: responseContent,
+          messageId: randomUUID(),
+          role: 'assistant',
+          stopReason: 'end_turn',
+          timestamp: new Date(),
+          eventId: randomUUID(),
+          persistenceState: 'persisted'
+        } as AgentEvent);
+
+        // Emit complete event to signal end of execution
+        onEvent({
+          type: 'complete',
+          reason: 'success',
+          timestamp: new Date(),
+          eventId: randomUUID(),
+          persistenceState: 'transient'
+        } as AgentEvent);
+      }
 
       return {
           response: responseContent,

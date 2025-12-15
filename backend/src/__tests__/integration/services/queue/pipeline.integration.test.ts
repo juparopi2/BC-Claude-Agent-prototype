@@ -166,22 +166,24 @@ describe('Embedding Generation Pipeline', () => {
 
     // 3. Create file_chunks records in database (required for worker's UPDATE statement)
     await executeQuery(
-      `INSERT INTO file_chunks (id, file_id, chunk_index, chunk_text, chunk_tokens, created_at)
-       VALUES (@chunkId, @fileId, @chunkIndex, @chunkText, @chunkTokens, GETDATE())`,
+      `INSERT INTO file_chunks (id, file_id, user_id, chunk_index, chunk_text, chunk_tokens, created_at)
+       VALUES (@chunkId, @fileId, @userId, @chunkIndex, @chunkText, @chunkTokens, GETDATE())`,
       {
         chunkId: chunk1Id,
         fileId,
+        userId: testUser.id,
         chunkIndex: 0,
         chunkText: 'Hello world',
         chunkTokens: 2,
       }
     );
     await executeQuery(
-      `INSERT INTO file_chunks (id, file_id, chunk_index, chunk_text, chunk_tokens, created_at)
-       VALUES (@chunkId, @fileId, @chunkIndex, @chunkText, @chunkTokens, GETDATE())`,
+      `INSERT INTO file_chunks (id, file_id, user_id, chunk_index, chunk_text, chunk_tokens, created_at)
+       VALUES (@chunkId, @fileId, @userId, @chunkIndex, @chunkText, @chunkTokens, GETDATE())`,
       {
         chunkId: chunk2Id,
         fileId,
+        userId: testUser.id,
         chunkIndex: 1,
         chunkText: 'Another chunk',
         chunkTokens: 2,

@@ -2,26 +2,40 @@
   "compilerOptions": {
     /* Language and Environment */
     "target": "ES2022",
-    "lib": ["ES2022"],
+    "lib": [
+      "ES2022"
+    ],
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
-
     /* Modules */
     "module": "commonjs",
     "rootDir": "./src",
     "moduleResolution": "node",
     "baseUrl": "./",
     "paths": {
-      "@/*": ["src/*"],
-      "@config/*": ["src/config/*"],
-      "@services/*": ["src/services/*"],
-      "@models/*": ["src/models/*"],
-      "@middleware/*": ["src/middleware/*"],
-      "@types/*": ["src/types/*"],
-      "@routes/*": ["src/routes/*"]
+      "@/*": [
+        "src/*"
+      ],
+      "@config/*": [
+        "src/config/*"
+      ],
+      "@services/*": [
+        "src/services/*"
+      ],
+      "@models/*": [
+        "src/models/*"
+      ],
+      "@middleware/*": [
+        "src/middleware/*"
+      ],
+      "@types/*": [
+        "src/types/*"
+      ],
+      "@routes/*": [
+        "src/routes/*"
+      ]
     },
     "resolveJsonModule": true,
-
     /* Emit */
     "outDir": "./dist",
     "removeComments": true,
@@ -30,7 +44,6 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
-
     /* Type Checking */
     "strict": true,
     "noImplicitAny": true,
@@ -49,8 +62,8 @@
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
     "noPropertyAccessFromIndexSignature": false,
-
     /* Completeness */
+    "incremental": true,
     "skipLibCheck": true
   },
   "include": [
@@ -63,7 +76,9 @@
     "scripts/**/*"
   ],
   "ts-node": {
-    "require": ["tsconfig-paths/register"],
+    "require": [
+      "tsconfig-paths/register"
+    ],
     "compilerOptions": {
       "module": "commonjs"
     }

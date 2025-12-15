@@ -138,7 +138,8 @@
       "Bash(Select-Object -First 100)",
       "Bash(Select-Object -Last 50)",
       "Bash(npm --version)",
-      "Bash(NODE_OPTIONS='--max-old-space-size=8192' npm run build:*)"
+      "Bash(NODE_OPTIONS='--max-old-space-size=8192' npm run build:*)",
+      "Bash(NODE_OPTIONS='--max-old-space-size=8192' npm run type-check:*)"
     ],
     "deny": [],
     "ask": []

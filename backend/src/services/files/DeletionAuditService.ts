@@ -284,18 +284,23 @@ export class DeletionAuditService {
   ): Promise<void> {
     logger.info({ auditId, status }, 'Marking deletion as completed');
 
-    const params: SqlParams = {
-      id: auditId,
-      status,
-      error_details: errorDetails || null,
-    };
-
-    await executeQuery(
-      `UPDATE deletion_audit_log
-       SET status = @status, completed_at = GETUTCDATE(), error_details = @error_details
-       WHERE id = @id`,
-      params
-    );
+    // Use conditional SQL to handle NULL error_details properly
+    // T-SQL: "column = NULL" always returns FALSE, must use "column IS NULL" or explicit NULL assignment
+    if (errorDetails) {
+      await executeQuery(
+        `UPDATE deletion_audit_log
+         SET status = @status, completed_at = GETUTCDATE(), error_details = @error_details
+         WHERE id = @id`,
+        { id: auditId, status, error_details: errorDetails }
+      );
+    } else {
+      await executeQuery(
+        `UPDATE deletion_audit_log
+         SET status = @status, completed_at = GETUTCDATE(), error_details = NULL
+         WHERE id = @id`,
+        { id: auditId, status }
+      );
+    }
 
     logger.info({ auditId, status }, 'Deletion marked as completed');
   }

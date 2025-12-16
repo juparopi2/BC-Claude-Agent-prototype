@@ -13,6 +13,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { SessionTitleGenerator, getSessionTitleGenerator } from '@/services/sessions/SessionTitleGenerator';
 import type { TextBlock } from '@/types/sdk';
+import { getModelName } from '@/config/models';
 
 // ============================================================================
 // MOCKS SETUP
@@ -119,7 +120,7 @@ describe('SessionTitleGenerator', () => {
 
       expect(title).toBe(expectedTitle);
       expect(mockAnthropicCreate).toHaveBeenCalledWith({
-        model: 'claude-3-5-sonnet-20241022',
+        model: getModelName('session_title'), // Centralized config - changes propagate automatically
         max_tokens: 100,
         temperature: 0.3,
         system: expect.stringContaining('Maximum 50 characters'),

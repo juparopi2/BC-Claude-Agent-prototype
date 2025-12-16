@@ -51,6 +51,17 @@ export class StreamAdapter {
             logger.debug({ blockCount: chunk.content.length }, 'StreamAdapter: Processing content array');
 
             for (const block of chunk.content) {
+                // [DEBUG-AGENT] Log all content blocks for debugging tool_use visibility
+                console.log('[DEBUG-AGENT] Content block received:', {
+                    type: block.type,
+                    hasThinking: !!block.thinking,
+                    hasText: !!block.text,
+                    hasName: !!block.name,
+                    hasId: !!block.id,
+                    hasInput: !!block.input,
+                    blockPreview: JSON.stringify(block).substring(0, 200)
+                });
+
                 logger.debug({
                   blockType: block.type,
                   hasThinking: !!block.thinking,
@@ -66,6 +77,17 @@ export class StreamAdapter {
                 }
 
                 // Handle thinking blocks (Extended Thinking)
+                // [DEBUG-AGENT] Log thinking block structure for debugging
+                if (block.type === 'thinking') {
+                    console.log('[DEBUG-AGENT] Thinking block received:', {
+                        type: block.type,
+                        hasThinking: !!block.thinking,
+                        thinkingLength: block.thinking?.length || 0,
+                        thinkingPreview: block.thinking?.substring?.(0, 100) || 'N/A',
+                        blockKeys: Object.keys(block),
+                        fullBlock: JSON.stringify(block).substring(0, 300)
+                    });
+                }
                 if (block.type === 'thinking' && block.thinking) {
                     return {
                         type: 'thinking',
@@ -88,7 +110,17 @@ export class StreamAdapter {
                 }
 
                 // Handle tool_use blocks in content array
+                // FIX: Emit tool_use from content blocks since LangGraph doesn't emit on_tool_start
+                // events when tools are bound to agents. The block.id is used as toolUseId.
                 if (block.type === 'tool_use' && block.name) {
+                    // [DEBUG-AGENT] Emit tool_use from content block
+                    console.log('[DEBUG-AGENT] Emitting tool_use from content block:', {
+                        toolName: block.name,
+                        blockId: block.id,
+                        blockInput: block.input
+                    });
+                    logger.debug({ toolName: block.name, blockId: block.id },
+                        'StreamAdapter: Emitting tool_use from content block');
                     return {
                         type: 'tool_use',
                         toolName: block.name,
@@ -142,6 +174,13 @@ export class StreamAdapter {
 
     // 2. Tool Start
     if (eventType === 'on_tool_start') {
+        // [DEBUG-AGENT] Log on_tool_start events
+        console.log('[DEBUG-AGENT] on_tool_start event received:', {
+            toolName: event.name,
+            runId: event.run_id,
+            input: event.data?.input
+        });
+
         logger.debug({
           toolName: event.name,
           argsPreview: JSON.stringify(event.data.input)?.substring(0, 200)

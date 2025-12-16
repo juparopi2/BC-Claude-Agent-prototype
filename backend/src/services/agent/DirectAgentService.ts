@@ -2740,6 +2740,7 @@ CRITICAL INSTRUCTIONS:
 
       const toolsUsed: string[] = [];
       const eventStore = getEventStore(); // Get singleton
+      const messageQueue = getMessageQueue(); // Get MessageQueue singleton for persistence to messages table
 
       // Initial persistence for user message (use enhanced prompt for persistence)
       await eventStore.appendEvent(
@@ -2752,12 +2753,48 @@ CRITICAL INSTRUCTIONS:
           }
       );
 
-      // Track final response content
+      // ========== EXTENDED THINKING INITIAL EVENT ==========
+      // Emit initial thinking event ONCE per user message (similar to executeQueryStreaming)
+      // This signals to the frontend that Claude is processing with extended thinking enabled
+      if (enableThinking && onEvent) {
+          const thinkingStartEvent = await eventStore.appendEvent(
+              sessionId,
+              'agent_thinking_started',
+              {
+                  content: 'Analyzing your request...',
+                  started_at: new Date().toISOString(),
+                  thinking_budget: thinkingBudget,
+              }
+          );
+
+          onEvent({
+              type: 'thinking',
+              content: 'Analyzing your request...',
+              eventId: thinkingStartEvent.id,
+              sequenceNumber: thinkingStartEvent.sequence_number,
+              timestamp: new Date(),
+              persistenceState: 'persisted',
+          } as AgentEvent);
+
+          this.logger.info({ sessionId, thinkingBudget }, '🧠 Extended Thinking enabled - initial thinking event emitted');
+      }
+
+      // Track final response content and stop reason
       const finalResponseChunks: string[] = [];
       let finalResponse = '';
+      let capturedStopReason = 'end_turn'; // Default stop reason
 
       try {
           for await (const event of eventStream) {
+               // [DEBUG-AGENT] Log ALL LangGraph events for debugging tool_use visibility
+               console.log('[DEBUG-AGENT] RAW LangGraph event:', {
+                   event: event.event,
+                   name: event.name,
+                   runId: event.run_id,
+                   dataKeys: Object.keys(event.data || {}),
+                   dataPreview: JSON.stringify(event.data).substring(0, 300)
+               });
+
                // Log all events received from LangGraph
                this.logger.debug({
                  eventType: event.event,
@@ -2796,11 +2833,91 @@ CRITICAL INSTRUCTIONS:
                            finalResponse = String(lastMessage.content);
                        }
 
+                       // Extract stop_reason from response_metadata (LangChain format)
+                       const responseMetadata = lastMessage?.response_metadata as Record<string, unknown> | undefined;
+                       if (responseMetadata?.stop_reason) {
+                           capturedStopReason = String(responseMetadata.stop_reason);
+                       }
+
                        this.logger.debug({
                          hasFinalResponse: !!finalResponse,
                          finalResponseLength: finalResponse.length,
-                         messageCount: output.messages.length
+                         messageCount: output.messages.length,
+                         stopReason: capturedStopReason
                        }, 'DirectAgentService: Captured final response from chain end');
+                   }
+
+                   // ========== PROCESS TOOL EXECUTIONS FROM AGENTS ==========
+                   // Agents track tool executions in their ReAct loops and return them in state.
+                   // We need to emit and persist tool_result events for each execution.
+                   if (output?.toolExecutions && Array.isArray(output.toolExecutions) && output.toolExecutions.length > 0) {
+                       this.logger.info({
+                           sessionId,
+                           toolExecutionsCount: output.toolExecutions.length,
+                       }, '🔧 Processing tool executions from agent state');
+
+                       for (const exec of output.toolExecutions) {
+                           // Create tool_result event
+                           const toolResultAgentEvent = {
+                               type: 'tool_result' as const,
+                               toolName: exec.toolName,
+                               toolUseId: exec.toolUseId,
+                               args: exec.args,
+                               result: exec.result,
+                               success: exec.success,
+                               error: exec.error,
+                               timestamp: new Date(),
+                               eventId: randomUUID(),
+                               persistenceState: 'persisted' as const,
+                           };
+
+                           this.logger.debug({
+                               toolUseId: exec.toolUseId,
+                               toolName: exec.toolName,
+                               success: exec.success,
+                           }, '🔧 Emitting tool_result event from agent execution');
+
+                           // 1. Persist to EventStore (audit log)
+                           const toolResultDbEvent = await eventStore.appendEvent(
+                               sessionId,
+                               'tool_use_completed',
+                               {
+                                   ...toolResultAgentEvent,
+                                   persistenceState: 'persisted'
+                               }
+                           );
+
+                           // 2. Enqueue to MessageQueue for messages table persistence
+                           await messageQueue.addMessagePersistence({
+                               sessionId,
+                               messageId: `${exec.toolUseId}_result`,
+                               role: 'assistant',
+                               messageType: 'tool_result',
+                               content: exec.result,
+                               metadata: {
+                                   tool_name: exec.toolName,
+                                   tool_use_id: exec.toolUseId,
+                                   success: exec.success,
+                                   error_message: exec.error,
+                               },
+                               sequenceNumber: toolResultDbEvent.sequence_number,
+                               eventId: toolResultDbEvent.id,
+                               toolUseId: exec.toolUseId,
+                           });
+
+                           this.logger.info({
+                               toolUseId: exec.toolUseId,
+                               toolName: exec.toolName,
+                               success: exec.success,
+                               sequenceNumber: toolResultDbEvent.sequence_number,
+                           }, '💾 Tool result persisted from agent execution');
+
+                           // 3. Emit to socket for live UI update
+                           emitEvent(toolResultAgentEvent);
+
+                           // Track tools used
+                           toolsUsed.push(exec.toolName);
+                       }
                    }
                }
 
@@ -2827,12 +2944,16 @@ CRITICAL INSTRUCTIONS:
                    // Handle Usage Tracking
                    if (agentEvent.type === 'usage') {
                        const usage = (agentEvent as unknown as UsageEvent).usage;
+                       const inputTokens = usage.input_tokens || 0;
+                       const outputTokens = usage.output_tokens || 0;
+
+                       // 1. Track via UsageTrackingService (analytics)
                        const trackingService = getUsageTrackingService();
                        await trackingService.trackClaudeUsage(
                            userId || 'unknown',
                            sessionId,
-                           usage.input_tokens || 0,
-                           usage.output_tokens || 0,
+                           inputTokens,
+                           outputTokens,
                            'claude-3-5-sonnet', // Default for now, ideally extracted from metadata
                            {
                                source: 'langgraph',
@@ -2841,7 +2962,25 @@ CRITICAL INSTRUCTIONS:
                                fileCount: validatedFiles.length,
                            }
                        );
-                       this.logger.debug({ usage }, '💰 Usage tracked');
+
+                       // 2. Record via TokenUsageService (billing analytics)
+                       if (userId) {
+                           const tokenUsageService = getTokenUsageService();
+                           tokenUsageService.recordUsage({
+                               userId,
+                               sessionId,
+                               messageId: `graph_${sessionId}_${Date.now()}`,
+                               model: 'claude-3-5-sonnet', // TODO: Extract from response metadata
+                               inputTokens,
+                               outputTokens,
+                               thinkingEnabled: enableThinking,
+                               thinkingBudget: enableThinking ? thinkingBudget : undefined,
+                           }).catch((error) => {
+                               this.logger.warn({ error, sessionId }, 'Failed to record token usage via TokenUsageService');
+                           });
+                       }
+
+                       this.logger.debug({ usage, inputTokens, outputTokens }, '💰 Usage tracked via both services');
                        continue; // Don't persist 'usage' event to eventStore as it is not a standard event type
                    }
 
@@ -2852,28 +2991,87 @@ CRITICAL INSTRUCTIONS:
                        // For now, let's persist tool usage and significant events.
                    }
 
-                   if (agentEvent.type === 'tool_use' || agentEvent.type === 'tool_result' || agentEvent.type === 'error') {
-                       // Map agent event types to EventStore event types
-                       const eventTypeMap = {
-                           'tool_use': 'tool_use_requested',
-                           'tool_result': 'tool_use_completed',
-                           'error': 'error_occurred'
-                       } as const;
-                       const mappedEventType = eventTypeMap[agentEvent.type as keyof typeof eventTypeMap];
-                       // Ensure persistenceState is set to persisted before saving
-                       await eventStore.appendEvent(
+                   // ========== TOOL_USE PERSISTENCE ==========
+                   if (agentEvent.type === 'tool_use') {
+                       // 1. Persist to EventStore (audit log)
+                       const toolUseEvent = await eventStore.appendEvent(
                            sessionId,
-                           mappedEventType,
+                           'tool_use_requested',
                            {
                                ...agentEvent,
                                persistenceState: 'persisted'
                            }
                        );
+
+                       // 2. Enqueue to MessageQueue for messages table persistence
+                       await messageQueue.addMessagePersistence({
+                           sessionId,
+                           messageId: agentEvent.toolUseId,
+                           role: 'assistant',
+                           messageType: 'tool_use',
+                           content: '', // Tool use content is in metadata
+                           metadata: {
+                               tool_name: agentEvent.toolName,
+                               tool_args: agentEvent.args,
+                               tool_use_id: agentEvent.toolUseId,
+                               status: 'pending',
+                           },
+                           sequenceNumber: toolUseEvent.sequence_number,
+                           eventId: toolUseEvent.id,
+                           toolUseId: agentEvent.toolUseId,
+                       });
+                       this.logger.debug({ toolUseId: agentEvent.toolUseId, toolName: agentEvent.toolName },
+                           '💾 Tool use persisted to EventStore and queued to MessageQueue');
+
+                       // Track tools used
+                       toolsUsed.push(agentEvent.toolName);
                    }
 
-                   // Track tools
-                   if (agentEvent.type === 'tool_use') {
-                       toolsUsed.push(agentEvent.toolName);
+                   // ========== TOOL_RESULT PERSISTENCE ==========
+                   if (agentEvent.type === 'tool_result') {
+                       // 1. Persist to EventStore (audit log)
+                       const toolResultEvent = await eventStore.appendEvent(
+                           sessionId,
+                           'tool_use_completed',
+                           {
+                               ...agentEvent,
+                               persistenceState: 'persisted'
+                           }
+                       );
+
+                       // 2. Enqueue to MessageQueue for messages table persistence
+                       await messageQueue.addMessagePersistence({
+                           sessionId,
+                           messageId: `${agentEvent.toolUseId}_result`,
+                           role: 'assistant',
+                           messageType: 'tool_result',
+                           content: typeof agentEvent.result === 'string'
+                               ? agentEvent.result
+                               : JSON.stringify(agentEvent.result),
+                           metadata: {
+                               tool_name: agentEvent.toolName,
+                               tool_use_id: agentEvent.toolUseId,
+                               success: agentEvent.success,
+                               error_message: agentEvent.error,
+                           },
+                           sequenceNumber: toolResultEvent.sequence_number,
+                           eventId: toolResultEvent.id,
+                           toolUseId: agentEvent.toolUseId,
+                       });
+                       this.logger.debug({ toolUseId: agentEvent.toolUseId, success: agentEvent.success },
+                           '💾 Tool result persisted to EventStore and queued to MessageQueue');
+                   }
+
+                   // ========== ERROR PERSISTENCE ==========
+                   if (agentEvent.type === 'error') {
+                       await eventStore.appendEvent(
+                           sessionId,
+                           'error_occurred',
+                           {
+                               ...agentEvent,
+                               persistenceState: 'persisted'
+                           }
+                       );
                    }
                }
           }
@@ -2905,26 +3103,89 @@ CRITICAL INSTRUCTIONS:
       // The frontend expects 'message' and 'complete' events to finalize the response
       // These were previously emitted by executeQueryStreaming via this.emitter
       if (onEvent) {
-        // Emit final message event with accumulated content
-        onEvent({
+        // Use captured stop_reason from graph execution
+        const effectiveStopReason = capturedStopReason as 'end_turn' | 'tool_use' | 'max_tokens' | 'stop_sequence' | 'pause_turn' | 'refusal';
+
+        // ✨ FIXED: Explicitly persist the final message event
+        const finalMessageEvent: AgentEvent = {
           type: 'message',
           content: responseContent,
           messageId: randomUUID(),
           role: 'assistant',
-          stopReason: 'end_turn',
+          stopReason: effectiveStopReason,
           timestamp: new Date(),
           eventId: randomUUID(),
           persistenceState: 'persisted'
-        } as AgentEvent);
+        };
+
+        // 1. Persist to EventStore FIRST (using snake_case data properties for EventStore)
+        const finalMessageDbEvent = await eventStore.appendEvent(
+            sessionId,
+            'agent_message_sent',
+            {
+                message_id: finalMessageEvent.messageId,
+                content: finalMessageEvent.content,
+                stop_reason: effectiveStopReason,
+                timestamp: finalMessageEvent.timestamp,
+                persistenceState: 'persisted'
+            }
+        );
+
+        // 2. Enqueue to MessageQueue for messages table persistence
+        await messageQueue.addMessagePersistence({
+            sessionId,
+            messageId: finalMessageEvent.messageId,
+            role: 'assistant',
+            messageType: 'text',
+            content: finalMessageEvent.content,
+            metadata: {
+                stop_reason: effectiveStopReason,
+            },
+            sequenceNumber: finalMessageDbEvent.sequence_number,
+            eventId: finalMessageDbEvent.id,
+            stopReason: effectiveStopReason,
+        });
+        this.logger.info({ sessionId, messageId: finalMessageEvent.messageId, stopReason: effectiveStopReason },
+            '💾 Final message persisted to EventStore and queued to MessageQueue');
+
+        // Then emit to frontend (using camelCase AgentEvent)
+        onEvent(finalMessageEvent);
+
+        // ========== HANDLE SPECIAL STOP REASONS ==========
+        // Emit warnings for non-standard completion scenarios
+        if (effectiveStopReason === 'max_tokens') {
+            this.logger.warn({ sessionId }, '⚠️ Response truncated due to max_tokens');
+            // The frontend should display a warning to the user
+        } else if (effectiveStopReason === 'pause_turn') {
+            this.logger.info({ sessionId }, '⏸️ Turn paused (extended thinking long turn)');
+        } else if (effectiveStopReason === 'refusal') {
+            this.logger.warn({ sessionId }, '🚫 Content refused by model');
+        }
 
         // Emit complete event to signal end of execution
-        onEvent({
+        const completeReason = effectiveStopReason === 'max_tokens' ? 'max_turns' :
+                               effectiveStopReason === 'refusal' ? 'error' : 'success';
+        const completeEvent: AgentEvent = {
           type: 'complete',
-          reason: 'success',
+          reason: completeReason as 'success' | 'error' | 'max_turns' | 'user_cancelled',
           timestamp: new Date(),
           eventId: randomUUID(),
           persistenceState: 'transient'
-        } as AgentEvent);
+        };
+
+        // Optional: Persist completion event for audit
+        await eventStore.appendEvent(
+            sessionId,
+            'session_ended',
+            {
+                reason: completeReason,
+                stop_reason: effectiveStopReason,
+                timestamp: completeEvent.timestamp,
+                persistenceState: 'persisted'
+            }
+        );
+
+        onEvent(completeEvent);
       }
 
       return {

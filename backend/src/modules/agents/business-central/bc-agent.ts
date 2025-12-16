@@ -1,5 +1,5 @@
 
-import { AgentState } from '../orchestrator/state';
+import { AgentState, ToolExecution } from '../orchestrator/state';
 import { BaseAgent } from '../core/AgentFactory';
 import { ModelFactory } from '../../../core/langchain/ModelFactory';
 import { getModelConfig } from '../../../config/models';
@@ -13,8 +13,9 @@ import {
   buildKnowledgeBaseWorkflowTool,
   getEndpointDocumentationTool,
 } from './tools';
-import { SystemMessage } from '@langchain/core/messages';
+import { SystemMessage, ToolMessage, BaseMessage } from '@langchain/core/messages';
 import { createChildLogger } from '@/utils/logger';
+import { StructuredToolInterface } from '@langchain/core/tools';
 
 const logger = createChildLogger({ service: 'BCAgent' });
 
@@ -69,7 +70,7 @@ export class BusinessCentralAgent extends BaseAgent {
     const model = ModelFactory.create(bcConfig);
 
     // Bind all 7 BC meta-tools to the model
-    const tools = [
+    const tools: StructuredToolInterface[] = [
       listAllEntitiesTool,
       searchEntityOperationsTool,
       getEntityDetailsTool,
@@ -78,6 +79,12 @@ export class BusinessCentralAgent extends BaseAgent {
       buildKnowledgeBaseWorkflowTool,
       getEndpointDocumentationTool,
     ];
+
+    // Create tool map for lookup during execution
+    const toolsMap = new Map<string, StructuredToolInterface>();
+    for (const t of tools) {
+      toolsMap.set(t.name, t);
+    }
 
     logger.debug({
       toolCount: tools.length,
@@ -100,21 +107,149 @@ export class BusinessCentralAgent extends BaseAgent {
       ? messages
       : [new SystemMessage(BC_AGENT_SYSTEM_PROMPT), ...messages];
 
-    // Invoke model
-    logger.debug({ totalMessages: messagesWithSystem.length }, 'BCAgent: Invoking model with tools');
+    // ReAct Loop: invoke model, execute tools, repeat until done
+    const MAX_ITERATIONS = 10; // Higher limit for BC agent due to multiple tool calls
+    let iteration = 0;
+    const newMessages: BaseMessage[] = [];
+    const toolExecutions: ToolExecution[] = []; // Track tool executions for event emission
+    let currentMessages = [...messagesWithSystem];
 
-    const response = await modelWithTools.invoke(messagesWithSystem, config);
+    while (iteration < MAX_ITERATIONS) {
+      iteration++;
+      logger.debug({ iteration, messageCount: currentMessages.length }, 'BCAgent: Invoking model (iteration)');
+
+      // [DEBUG-AGENT] Log ReAct loop iteration
+      console.log('[DEBUG-AGENT] BCAgent ReAct loop iteration:', {
+        iteration,
+        messageCount: currentMessages.length
+      });
+
+      const response = await modelWithTools.invoke(currentMessages, config);
+      newMessages.push(response);
+      currentMessages = [...currentMessages, response];
+
+      // Check for tool calls
+      const toolCalls = (response as { tool_calls?: Array<{ name: string; args: Record<string, unknown>; id: string }> }).tool_calls;
+
+      logger.info({
+        responseType: response._getType?.() || 'unknown',
+        hasContent: !!(response as { content?: unknown }).content,
+        hasToolCalls: !!toolCalls?.length,
+        toolCallCount: toolCalls?.length || 0,
+        iteration
+      }, 'BCAgent: Model response received');
+
+      // [DEBUG-AGENT] Log tool calls
+      console.log('[DEBUG-AGENT] BCAgent response:', {
+        iteration,
+        hasToolCalls: !!toolCalls?.length,
+        toolCallCount: toolCalls?.length || 0,
+        toolNames: toolCalls?.map(tc => tc.name) || []
+      });
+
+      // If no tool calls, we're done
+      if (!toolCalls || toolCalls.length === 0) {
+        logger.debug({ iteration }, 'BCAgent: No more tool calls, finishing');
+        break;
+      }
+
+      // Execute each tool call
+      for (const toolCall of toolCalls) {
+        const toolName = toolCall.name;
+        const toolArgs = toolCall.args;
+        const toolCallId = toolCall.id;
+
+        logger.debug({ toolName, toolCallId, args: toolArgs }, 'BCAgent: Executing tool');
+
+        // [DEBUG-AGENT] Log tool execution
+        console.log('[DEBUG-AGENT] BCAgent executing tool:', {
+          toolName,
+          toolCallId,
+          args: toolArgs
+        });
+
+        const tool = toolsMap.get(toolName);
+        if (!tool) {
+          logger.warn({ toolName }, 'BCAgent: Unknown tool requested');
+          const errorMessage = new ToolMessage({
+            content: `Error: Unknown tool "${toolName}"`,
+            tool_call_id: toolCallId
+          });
+          newMessages.push(errorMessage);
+          currentMessages = [...currentMessages, errorMessage];
+          continue;
+        }
+
+        try {
+          // Execute the tool
+          const result = await tool.invoke(toolArgs);
+          const resultStr = typeof result === 'string' ? result : JSON.stringify(result);
+
+          logger.info({ toolName, toolCallId, resultLength: resultStr.length }, 'BCAgent: Tool executed successfully');
+
+          // [DEBUG-AGENT] Log tool result
+          console.log('[DEBUG-AGENT] BCAgent tool result:', {
+            toolName,
+            toolCallId,
+            resultLength: resultStr.length,
+            resultPreview: resultStr.substring(0, 200)
+          });
+
+          // Track tool execution for event emission
+          toolExecutions.push({
+            toolUseId: toolCallId,
+            toolName: toolName,
+            args: toolArgs,
+            result: resultStr,
+            success: true,
+          });
+
+          // Create ToolMessage with result
+          const toolMessage = new ToolMessage({
+            content: resultStr,
+            tool_call_id: toolCallId
+          });
+          newMessages.push(toolMessage);
+          currentMessages = [...currentMessages, toolMessage];
+
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          logger.error({ toolName, toolCallId, error: errorMsg }, 'BCAgent: Tool execution failed');
+
+          // Track failed tool execution for event emission
+          toolExecutions.push({
+            toolUseId: toolCallId,
+            toolName: toolName,
+            args: toolArgs,
+            result: errorMsg,
+            success: false,
+            error: errorMsg,
+          });
+
+          const errorMessage = new ToolMessage({
+            content: `Error executing tool ${toolName}: ${errorMsg}`,
+            tool_call_id: toolCallId
+          });
+          newMessages.push(errorMessage);
+          currentMessages = [...currentMessages, errorMessage];
+        }
+      }
+    }
+
+    if (iteration >= MAX_ITERATIONS) {
+      logger.warn({ maxIterations: MAX_ITERATIONS }, 'BCAgent: Max iterations reached');
+    }
 
     logger.info({
-      responseType: response._getType?.() || 'unknown',
-      hasContent: !!(response as { content?: unknown }).content,
-      hasToolCalls: !!(response as { tool_calls?: unknown[] }).tool_calls?.length,
-      toolCallCount: (response as { tool_calls?: unknown[] }).tool_calls?.length || 0
-    }, 'BCAgent: Model response received');
+      totalNewMessages: newMessages.length,
+      iterations: iteration,
+      toolExecutionsCount: toolExecutions.length
+    }, 'BCAgent: Invocation complete');
 
     // Return the response as a partial state update (appending to messages)
     return {
-      messages: [response],
+      messages: newMessages,
+      toolExecutions: toolExecutions, // Return tool executions for event emission
     };
   }
 }

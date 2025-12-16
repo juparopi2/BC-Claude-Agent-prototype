@@ -1,12 +1,13 @@
 
-import { AgentState } from '../orchestrator/state';
+import { AgentState, ToolExecution } from '../orchestrator/state';
 import { BaseAgent } from '../core/AgentFactory';
 import { ModelFactory } from '../../../core/langchain/ModelFactory';
 import { getModelConfig } from '../../../config/models';
 import { RunnableConfig } from '@langchain/core/runnables';
-import { AIMessage } from '@langchain/core/messages';
+import { AIMessage, ToolMessage, BaseMessage } from '@langchain/core/messages';
 import { createKnowledgeSearchTool } from './tools';
 import { createChildLogger } from '@/utils/logger';
+import { StructuredToolInterface } from '@langchain/core/tools';
 
 const logger = createChildLogger({ service: 'RAGAgent' });
 
@@ -43,6 +44,7 @@ export class RAGAgent extends BaseAgent {
 
      // Create tool instance bound to the current user
      const searchTool = createKnowledgeSearchTool(userId);
+     const toolsMap = new Map<string, StructuredToolInterface>([[searchTool.name, searchTool]]);
 
      logger.debug({ userId, toolName: searchTool.name }, 'RAGAgent: Created knowledge search tool');
 
@@ -56,20 +58,148 @@ export class RAGAgent extends BaseAgent {
 
      logger.debug({ toolCount: 1 }, 'RAGAgent: Bound tools to model');
 
-     // Invoke model
-     logger.debug({ messageCount: state.messages.length }, 'RAGAgent: Invoking model with tools');
+     // ReAct Loop: invoke model, execute tools, repeat until done
+     const MAX_ITERATIONS = 5;
+     let iteration = 0;
+     const newMessages: BaseMessage[] = [];
+     const toolExecutions: ToolExecution[] = []; // Track tool executions for event emission
+     let currentMessages = [...state.messages];
 
-     const response = await modelWithTools.invoke(state.messages, config);
+     while (iteration < MAX_ITERATIONS) {
+       iteration++;
+       logger.debug({ iteration, messageCount: currentMessages.length }, 'RAGAgent: Invoking model (iteration)');
+
+       // [DEBUG-AGENT] Log ReAct loop iteration
+       console.log('[DEBUG-AGENT] RAGAgent ReAct loop iteration:', {
+         iteration,
+         messageCount: currentMessages.length
+       });
+
+       const response = await modelWithTools.invoke(currentMessages, config);
+       newMessages.push(response);
+       currentMessages = [...currentMessages, response];
+
+       // Check for tool calls
+       const toolCalls = (response as { tool_calls?: Array<{ name: string; args: Record<string, unknown>; id: string }> }).tool_calls;
+
+       logger.info({
+         responseType: response._getType?.() || 'unknown',
+         hasContent: !!(response as { content?: unknown }).content,
+         hasToolCalls: !!toolCalls?.length,
+         toolCallCount: toolCalls?.length || 0,
+         iteration
+       }, 'RAGAgent: Model response received');
+
+       // [DEBUG-AGENT] Log tool calls
+       console.log('[DEBUG-AGENT] RAGAgent response:', {
+         iteration,
+         hasToolCalls: !!toolCalls?.length,
+         toolCallCount: toolCalls?.length || 0,
+         toolNames: toolCalls?.map(tc => tc.name) || []
+       });
+
+       // If no tool calls, we're done
+       if (!toolCalls || toolCalls.length === 0) {
+         logger.debug({ iteration }, 'RAGAgent: No more tool calls, finishing');
+         break;
+       }
+
+       // Execute each tool call
+       for (const toolCall of toolCalls) {
+         const toolName = toolCall.name;
+         const toolArgs = toolCall.args;
+         const toolCallId = toolCall.id;
+
+         logger.debug({ toolName, toolCallId, args: toolArgs }, 'RAGAgent: Executing tool');
+
+         // [DEBUG-AGENT] Log tool execution
+         console.log('[DEBUG-AGENT] RAGAgent executing tool:', {
+           toolName,
+           toolCallId,
+           args: toolArgs
+         });
+
+         const tool = toolsMap.get(toolName);
+         if (!tool) {
+           logger.warn({ toolName }, 'RAGAgent: Unknown tool requested');
+           const errorMessage = new ToolMessage({
+             content: `Error: Unknown tool "${toolName}"`,
+             tool_call_id: toolCallId
+           });
+           newMessages.push(errorMessage);
+           currentMessages = [...currentMessages, errorMessage];
+           continue;
+         }
+
+         try {
+           // Execute the tool
+           const result = await tool.invoke(toolArgs);
+           const resultStr = typeof result === 'string' ? result : JSON.stringify(result);
+
+           logger.info({ toolName, toolCallId, resultLength: resultStr.length }, 'RAGAgent: Tool executed successfully');
+
+           // [DEBUG-AGENT] Log tool result
+           console.log('[DEBUG-AGENT] RAGAgent tool result:', {
+             toolName,
+             toolCallId,
+             resultLength: resultStr.length,
+             resultPreview: resultStr.substring(0, 200)
+           });
+
+           // Track tool execution for event emission
+           toolExecutions.push({
+             toolUseId: toolCallId,
+             toolName: toolName,
+             args: toolArgs,
+             result: resultStr,
+             success: true,
+           });
+
+           // Create ToolMessage with result
+           const toolMessage = new ToolMessage({
+             content: resultStr,
+             tool_call_id: toolCallId
+           });
+           newMessages.push(toolMessage);
+           currentMessages = [...currentMessages, toolMessage];
+
+         } catch (error) {
+           const errorMsg = error instanceof Error ? error.message : String(error);
+           logger.error({ toolName, toolCallId, error: errorMsg }, 'RAGAgent: Tool execution failed');
+
+           // Track failed tool execution for event emission
+           toolExecutions.push({
+             toolUseId: toolCallId,
+             toolName: toolName,
+             args: toolArgs,
+             result: errorMsg,
+             success: false,
+             error: errorMsg,
+           });
+
+           const errorMessage = new ToolMessage({
+             content: `Error executing tool ${toolName}: ${errorMsg}`,
+             tool_call_id: toolCallId
+           });
+           newMessages.push(errorMessage);
+           currentMessages = [...currentMessages, errorMessage];
+         }
+       }
+     }
+
+     if (iteration >= MAX_ITERATIONS) {
+       logger.warn({ maxIterations: MAX_ITERATIONS }, 'RAGAgent: Max iterations reached');
+     }
 
      logger.info({
-       responseType: response._getType?.() || 'unknown',
-       hasContent: !!(response as { content?: unknown }).content,
-       hasToolCalls: !!(response as { tool_calls?: unknown[] }).tool_calls?.length,
-       toolCallCount: (response as { tool_calls?: unknown[] }).tool_calls?.length || 0
-     }, 'RAGAgent: Model response received');
+       totalNewMessages: newMessages.length,
+       iterations: iteration,
+       toolExecutionsCount: toolExecutions.length
+     }, 'RAGAgent: Invocation complete');
 
      return {
-        messages: [response]
+        messages: newMessages,
+        toolExecutions: toolExecutions, // Return tool executions for event emission
      };
   }
 }

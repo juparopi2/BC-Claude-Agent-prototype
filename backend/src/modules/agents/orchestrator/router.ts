@@ -79,7 +79,32 @@ export async function routeIntent(state: AgentState): Promise<Partial<AgentState
     return { activeAgent: 'rag-knowledge' };
   }
 
-  // 2. Hard route to RAG if files are explicitly attached (My Files button)
+  // 2. Keyword-based routing for Business Central (before LLM to avoid "BC" ambiguity)
+  // "BC" can mean "British Columbia" to LLM, so we detect domain-specific patterns
+  const lowerInput = input.toLowerCase();
+  const bcDomainWords = ['customer', 'customers', 'invoice', 'invoices', 'vendor', 'vendors',
+    'inventory', 'sales', 'purchase', 'order', 'orders', 'item', 'items', 'entity', 'entities',
+    'ledger', 'account', 'accounts', 'payment', 'payments', 'erp'];
+
+  const hasBcKeyword = lowerInput.includes('business central') ||
+    lowerInput.includes('dynamics 365') ||
+    lowerInput.includes('dynamics365');
+
+  const hasBcAbbrev = /\bbc\b/.test(lowerInput); // Word boundary to match "bc" but not "abc"
+  const hasDomainWord = bcDomainWords.some(word => lowerInput.includes(word));
+
+  if (hasBcKeyword || (hasBcAbbrev && hasDomainWord)) {
+    logger.info({
+      targetAgent: 'business-central',
+      reason: hasBcKeyword ? 'Business Central keyword detected' : 'BC abbreviation with domain context',
+      hasBcKeyword,
+      hasBcAbbrev,
+      hasDomainWord
+    }, 'Router: Keyword-based routing to Business Central');
+    return { activeAgent: 'business-central' };
+  }
+
+  // 3. Hard route to RAG if files are explicitly attached (My Files button)
   // This ensures file context is always used when user activates file mode
   if (filesAreActive) {
     logger.info({
@@ -90,7 +115,7 @@ export async function routeIntent(state: AgentState): Promise<Partial<AgentState
     return { activeAgent: 'rag-knowledge' };
   }
 
-  // 3. Use LLM for Soft Routing (using centralized config)
+  // 4. Use LLM for Soft Routing (using centralized config)
   const routerConfig = getModelConfig('router');
   const model = ModelFactory.create(routerConfig).withStructuredOutput(RouterOutputSchema);
 

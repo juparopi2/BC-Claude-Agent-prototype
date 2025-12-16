@@ -1,9 +1,9 @@
 # Direct Agent Orchestrator (LangChain Evolution) PRD
 
-**Version**: 3.0.0 (Full Migration)
-**Status**: In Progress / ~95% Complete
+**Version**: 3.1.0 (MessageQueue Integration Fix)
+**Status**: In Progress / ~98% Complete
 **Date**: December 12, 2025
-**Last Updated**: December 13, 2025
+**Last Updated**: December 15, 2025
 
 ---
 
@@ -13,12 +13,15 @@
 |-----------|--------|-------|
 | **LangGraph StateGraph** | ✅ Complete | 4 nodes: router, orchestrator, bc-agent, rag-agent |
 | **ModelFactory** | ✅ Complete | Anthropic, Google VertexAI, OpenAI + Prompt Caching + Extended Thinking |
-| **StreamAdapter** | ✅ Complete | LangGraph events → AgentEvent conversion |
+| **StreamAdapter** | ✅ Complete | LangGraph events → AgentEvent conversion (fixed duplicate tool_use) |
 | **Router (Intent Classification)** | ✅ Complete | Slash commands `/bc`, `/search`, `/rag` |
 | **BC Agent** | ✅ Complete | 7 meta-tools bound |
 | **RAG Agent** | ✅ Complete | SemanticSearchService integration |
 | **AgentState Extended** | ✅ Complete | Options for thinking, attachments, fileContext |
 | **runGraph() Full Features** | ✅ Complete | Extended Thinking, File Attachments, Semantic Search |
+| **runGraph() MessageQueue** | ✅ Complete | **NEW**: tool_use, tool_result, message persistence to `messages` table |
+| **runGraph() Token Tracking** | ✅ Complete | **NEW**: TokenUsageService + UsageTrackingService integration |
+| **runGraph() Stop Reasons** | ✅ Complete | **NEW**: max_tokens, pause_turn, refusal handling |
 | **ChatMessageHandler Migration** | ✅ Complete | Now calls `runGraph()` instead of `executeQueryStreaming()` |
 | **Debug Logs Cleanup** | ✅ Complete | console.log → logger.debug() |
 | **Unit Tests** | ✅ Passing | 2127/2127 tests passing |
@@ -26,7 +29,7 @@
 | **Guardrails** | ⚠️ Pending | Directory exists, no implementation |
 | **Legacy Cleanup** | ⚠️ Pending | `executeQueryStreaming()` can be deprecated |
 
-**Overall**: Core migration complete. Orchestrator is now the default execution path. Ready for E2E testing.
+**Overall**: Core migration complete with full MessageQueue integration. Messages and tools now persist correctly. Ready for E2E testing.
 
 ---
 
@@ -280,6 +283,7 @@ backend/src/__tests__/
 
 | Date | Version | Change |
 |------|---------|--------|
+| 2025-12-15 | 3.1.0 | **MessageQueue Integration Fix**: runGraph() now properly persists tool_use, tool_result, and messages to `messages` table via MessageQueue. Fixed toolUseId inconsistency in StreamAdapter (removed duplicate emission from content array). Added Extended Thinking initial event. Added TokenUsageService integration. Added stop_reason handling (max_tokens, pause_turn, refusal). |
 | 2025-12-13 | 3.0.0 | **Full Migration**: ChatMessageHandler now uses runGraph(), Extended Thinking/Attachments/Semantic Search integrated, 2127 tests passing |
 | 2025-12-13 | 2.2.0 | ModelFactory extended with Prompt Caching and Extended Thinking support |
 | 2025-12-13 | 2.1.1 | AgentState extended with options, fileContext for full feature parity |

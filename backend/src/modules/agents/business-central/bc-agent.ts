@@ -61,7 +61,7 @@ export class BusinessCentralAgent extends BaseAgent {
   async invoke(state: AgentState, config?: RunnableConfig): Promise<Partial<AgentState>> {
     logger.info({
       messageCount: state.messages.length,
-      sessionId: state.sessionId
+      sessionId: state.context.sessionId
     }, 'BCAgent: Starting invocation');
 
     // Use centralized model configuration for BC Agent role

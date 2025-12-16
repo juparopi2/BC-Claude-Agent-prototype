@@ -151,10 +151,11 @@ export interface TurnResult {
 
 /**
  * Event ready for emission (either transient or persisted)
+ * Note: timestamp is ISO 8601 string to match shared contract with frontend
  */
 export interface EmittableEvent {
   type: string;
-  timestamp: Date;
+  timestamp: string;
   eventId: string;
   persistenceState: PersistenceState;
   sequenceNumber?: number;

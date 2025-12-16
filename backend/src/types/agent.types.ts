@@ -47,7 +47,8 @@ export interface UsageEvent {
         output_tokens: number;
         total_tokens?: number;
     };
-    timestamp: Date;
+    /** ISO 8601 timestamp string to match shared contract */
+    timestamp: string;
     eventId: string;
     persistenceState: 'transient';
 }

@@ -328,3 +328,250 @@ export function printModelSummary(sessionsPerMonth: number = 1000): void {
 
   console.log(`=== TOTAL ESTIMATED MONTHLY COST: $${totalMonthlyCost.toFixed(2)} ===\n`);
 }
+
+// =============================================================================
+// AZURE AI SERVICES CONFIGURATION
+// Centralized configuration for Azure Vision, Document Intelligence, and Embeddings
+// =============================================================================
+
+/**
+ * Azure OpenAI Embedding Models
+ * @see https://learn.microsoft.com/en-us/azure/ai-services/openai/concepts/models
+ */
+export const AzureEmbeddingModels = {
+  // Text Embedding Models
+  TEXT_EMBEDDING_3_SMALL: 'text-embedding-3-small',  // 1536 dims, $0.02/1M tokens
+  TEXT_EMBEDDING_3_LARGE: 'text-embedding-3-large',  // 3072 dims, $0.13/1M tokens
+  TEXT_EMBEDDING_ADA_002: 'text-embedding-ada-002',  // 1536 dims, legacy
+} as const;
+
+export type AzureEmbeddingModelId = (typeof AzureEmbeddingModels)[keyof typeof AzureEmbeddingModels];
+
+/**
+ * Azure Computer Vision API Versions
+ * Different versions have different capabilities for image understanding
+ * @see https://learn.microsoft.com/en-us/azure/ai-services/computer-vision/
+ */
+export const AzureVisionModels = {
+  // Image Vectorization (Embeddings)
+  VECTORIZE_2023_04_15: '2023-04-15',    // 1024 dims, standard
+  VECTORIZE_2024_02_01: '2024-02-01',    // Latest stable, better semantic understanding
+} as const;
+
+export type AzureVisionModelId = (typeof AzureVisionModels)[keyof typeof AzureVisionModels];
+
+/**
+ * Azure Document Intelligence Models
+ * @see https://learn.microsoft.com/en-us/azure/ai-services/document-intelligence/
+ */
+export const AzureDocumentModels = {
+  // Prebuilt Models
+  PREBUILT_READ: 'prebuilt-read',           // Basic OCR, text extraction
+  PREBUILT_LAYOUT: 'prebuilt-layout',       // Tables, structure, selection marks
+  PREBUILT_DOCUMENT: 'prebuilt-document',   // Key-value pairs, entities
+  PREBUILT_INVOICE: 'prebuilt-invoice',     // Invoice-specific extraction
+  PREBUILT_RECEIPT: 'prebuilt-receipt',     // Receipt-specific extraction
+} as const;
+
+export type AzureDocumentModelId = (typeof AzureDocumentModels)[keyof typeof AzureDocumentModels];
+
+/**
+ * Azure AI Services Pricing (per unit)
+ * @see https://azure.microsoft.com/en-us/pricing/details/cognitive-services/
+ */
+export interface AzureServicePricing {
+  pricePerUnit: number;
+  unit: string;
+  tier: 'free' | 'standard' | 'premium';
+}
+
+export const AzureEmbeddingPricing: Record<AzureEmbeddingModelId, AzureServicePricing> = {
+  [AzureEmbeddingModels.TEXT_EMBEDDING_3_SMALL]: {
+    pricePerUnit: 0.02,
+    unit: '1M tokens',
+    tier: 'standard',
+  },
+  [AzureEmbeddingModels.TEXT_EMBEDDING_3_LARGE]: {
+    pricePerUnit: 0.13,
+    unit: '1M tokens',
+    tier: 'premium',
+  },
+  [AzureEmbeddingModels.TEXT_EMBEDDING_ADA_002]: {
+    pricePerUnit: 0.10,
+    unit: '1M tokens',
+    tier: 'standard',
+  },
+};
+
+export const AzureVisionPricing: Record<AzureVisionModelId, AzureServicePricing> = {
+  [AzureVisionModels.VECTORIZE_2023_04_15]: {
+    pricePerUnit: 1.0,
+    unit: '1K images',
+    tier: 'standard',
+  },
+  [AzureVisionModels.VECTORIZE_2024_02_01]: {
+    pricePerUnit: 1.0,
+    unit: '1K images',
+    tier: 'standard',
+  },
+};
+
+export const AzureDocumentPricing: Record<AzureDocumentModelId, AzureServicePricing> = {
+  [AzureDocumentModels.PREBUILT_READ]: {
+    pricePerUnit: 1.5,
+    unit: '1K pages',
+    tier: 'standard',
+  },
+  [AzureDocumentModels.PREBUILT_LAYOUT]: {
+    pricePerUnit: 10.0,
+    unit: '1K pages',
+    tier: 'premium',
+  },
+  [AzureDocumentModels.PREBUILT_DOCUMENT]: {
+    pricePerUnit: 10.0,
+    unit: '1K pages',
+    tier: 'premium',
+  },
+  [AzureDocumentModels.PREBUILT_INVOICE]: {
+    pricePerUnit: 10.0,
+    unit: '1K pages',
+    tier: 'premium',
+  },
+  [AzureDocumentModels.PREBUILT_RECEIPT]: {
+    pricePerUnit: 10.0,
+    unit: '1K pages',
+    tier: 'premium',
+  },
+};
+
+// =============================================================================
+// AZURE AI SERVICE ROLES
+// =============================================================================
+
+/**
+ * Azure service roles for different use cases
+ */
+export type AzureServiceRole =
+  | 'text_embedding'      // Text to vector for semantic search
+  | 'image_embedding'     // Image to vector for visual search
+  | 'document_ocr'        // PDF/document text extraction
+  | 'document_structure'; // Document layout and table extraction
+
+/**
+ * Azure service configuration with role metadata
+ */
+export interface AzureServiceConfig {
+  role: AzureServiceRole;
+  description: string;
+  modelId: string;
+  apiVersion: string;
+  dimensions?: number;
+  tier: 'free' | 'standard' | 'premium';
+}
+
+/**
+ * Central configuration for Azure AI Services
+ * Change these to swap models across the entire application
+ */
+export const AzureServiceConfigs: Record<AzureServiceRole, AzureServiceConfig> = {
+  text_embedding: {
+    role: 'text_embedding',
+    description: 'Convert text queries to vectors for semantic search',
+    modelId: AzureEmbeddingModels.TEXT_EMBEDDING_3_SMALL,
+    apiVersion: '2024-06-01',
+    dimensions: 1536,
+    tier: 'standard',
+  },
+
+  image_embedding: {
+    role: 'image_embedding',
+    description: 'Convert images to vectors for visual similarity search',
+    modelId: 'vectorize-image', // Azure Vision endpoint
+    apiVersion: AzureVisionModels.VECTORIZE_2024_02_01,
+    dimensions: 1024,
+    tier: 'standard',
+  },
+
+  document_ocr: {
+    role: 'document_ocr',
+    description: 'Extract text from PDFs and scanned documents',
+    modelId: AzureDocumentModels.PREBUILT_READ,
+    apiVersion: '2024-02-29-preview',
+    tier: 'standard',
+  },
+
+  document_structure: {
+    role: 'document_structure',
+    description: 'Extract tables, structure, and layout from documents',
+    modelId: AzureDocumentModels.PREBUILT_LAYOUT,
+    apiVersion: '2024-02-29-preview',
+    tier: 'premium',
+  },
+};
+
+/**
+ * Get Azure service configuration by role
+ */
+export function getAzureServiceConfig(role: AzureServiceRole): AzureServiceConfig {
+  const config = AzureServiceConfigs[role];
+  if (!config) {
+    throw new Error(`Unknown Azure service role: ${role}`);
+  }
+  return config;
+}
+
+/**
+ * Get Azure model ID by role
+ */
+export function getAzureModelId(role: AzureServiceRole): string {
+  return AzureServiceConfigs[role].modelId;
+}
+
+/**
+ * Get Azure API version by role
+ */
+export function getAzureApiVersion(role: AzureServiceRole): string {
+  return AzureServiceConfigs[role].apiVersion;
+}
+
+// =============================================================================
+// PREMIUM TIER CONFIGURATIONS (for high-value customers)
+// =============================================================================
+
+/**
+ * Premium configuration overrides for customers requiring higher accuracy
+ * Use these when standard tier doesn't meet quality requirements
+ */
+export const PremiumAzureServiceConfigs: Partial<Record<AzureServiceRole, AzureServiceConfig>> = {
+  text_embedding: {
+    role: 'text_embedding',
+    description: 'Premium text embeddings with 3072 dimensions for better semantic accuracy',
+    modelId: AzureEmbeddingModels.TEXT_EMBEDDING_3_LARGE,
+    apiVersion: '2024-06-01',
+    dimensions: 3072,
+    tier: 'premium',
+  },
+
+  document_ocr: {
+    role: 'document_ocr',
+    description: 'Premium document extraction with table and structure support',
+    modelId: AzureDocumentModels.PREBUILT_LAYOUT,
+    apiVersion: '2024-02-29-preview',
+    tier: 'premium',
+  },
+};
+
+/**
+ * Get configuration for a specific tier
+ * @param role - Azure service role
+ * @param tier - 'standard' or 'premium'
+ */
+export function getAzureServiceConfigByTier(
+  role: AzureServiceRole,
+  tier: 'standard' | 'premium' = 'standard'
+): AzureServiceConfig {
+  if (tier === 'premium' && PremiumAzureServiceConfigs[role]) {
+    return PremiumAzureServiceConfigs[role]!;
+  }
+  return AzureServiceConfigs[role];
+}

@@ -26,7 +26,7 @@ export class RAGAgent extends BaseAgent {
      logger.info({
        userId,
        messageCount: state.messages.length,
-       sessionId: state.sessionId
+       sessionId: state.context.sessionId
      }, 'RAGAgent: Starting invocation');
 
      if (!userId) {

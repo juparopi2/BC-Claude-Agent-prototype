@@ -96,7 +96,7 @@ export class StreamAdapter {
                         toolUseId: block.id || uuidv4(),
                         timestamp: new Date().toISOString(),
                         eventId: uuidv4(),
-                        persistenceState: 'pending'
+                        persistenceState: 'persisted'
                     };
                 }
             }
@@ -154,7 +154,7 @@ export class StreamAdapter {
             toolUseId: event.run_id,
             timestamp: new Date().toISOString(),
             eventId: uuidv4(),
-            persistenceState: 'pending'
+            persistenceState: 'persisted'
         };
     }
 
@@ -179,7 +179,7 @@ export class StreamAdapter {
             toolUseId: event.run_id,
             timestamp: new Date().toISOString(),
             eventId: uuidv4(),
-            persistenceState: 'pending'
+            persistenceState: 'persisted'
         };
     }
 

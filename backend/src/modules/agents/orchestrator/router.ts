@@ -17,20 +17,28 @@ Your job is to route the user's request to the specialized agent best suited to 
 
 AVAILABLE AGENTS:
 1. 'business-central' (BC Agent):
-   - Use for: Microsoft Business Central operations, ERP data, finance, consumers, vendors, transactions.
-   - Triggers: "Find customer X", "Create invoice", "Check inventory", "BC status".
+   - Use for: Microsoft Business Central operations, ERP data, finance, customers, vendors, transactions, invoices.
+   - Triggers: "Find customer X", "Create invoice", "Check inventory", "BC status", "Show vendors".
+   - DO NOT use for: File analysis, document search, image recognition.
 
 2. 'rag-knowledge' (Knowledge Agent):
-   - Use for: Semantic search, document analysis, "finding information in files", analyzing PDFs/Images.
-   - Triggers: "Search for contracts", "Summarize this PDF", "Find images of...", "What does the policy say?".
+   - Use for: Semantic search, document analysis, finding information in user's files, analyzing PDFs/Images.
+   - Triggers: "Search for contracts", "Summarize this PDF", "Find images of...", "What does the policy say?", "Look in my files", "Search my documents".
+   - REQUIRED when: User has uploaded files or activated "My Files" mode (see CONTEXT below).
+   - Capabilities: Vector similarity search, image analysis, PDF text extraction, file content retrieval.
 
 3. 'orchestrator' (Self):
-   - Use for: General chit-chat, clarifications, or when the request is unclear and needs more info.
-   - Triggers: "Hello", "Refine my request", "Who are you?".
+   - Use for: General chit-chat, clarifications, or when the request is ambiguous and needs more context from the user.
+   - Triggers: "Hello", "Help me", "What can you do?", "I'm not sure what I need".
 
-RULES:
-- If we are ALREADY in a specific agent's context (e.g. user previously asked for BC), try to stick to it unless intent clearly changes.
-- Look for explicit 'Slash Commands' like '/bc' or '/search' in the input text to force routing.
+ROUTING RULES:
+1. If CONTEXT shows FILES_ATTACHED=true, you MUST route to 'rag-knowledge' first.
+   - The user explicitly activated file search mode.
+   - After RAG processes, other agents (like BC) may be called if needed.
+2. If user mentions "files", "documents", "images", "PDFs", or "search my..." → route to 'rag-knowledge'.
+3. If user mentions "customer", "invoice", "inventory", "BC", "Business Central" → route to 'business-central'.
+4. If the request is unclear, ask for clarification by routing to 'orchestrator'.
+5. Slash commands like '/bc' or '/search' override all other routing logic.
 `;
 
 export async function routeIntent(state: AgentState): Promise<Partial<AgentState>> {
@@ -47,9 +55,18 @@ export async function routeIntent(state: AgentState): Promise<Partial<AgentState
 
   const input = lastMessage.content.toString();
 
+  // Detect file context from state
+  const hasAttachments = (state.context?.options?.attachments?.length ?? 0) > 0;
+  const hasFileContext = !!state.context?.fileContext;
+  const filesAreActive = hasAttachments || hasFileContext;
+  const fileCount = state.context?.options?.attachments?.length ?? 0;
+
   logger.debug({
     messageCount: messages.length,
-    lastMessagePreview: input.substring(0, 100)
+    lastMessagePreview: input.substring(0, 100),
+    filesAreActive,
+    fileCount,
+    hasFileContext
   }, 'Router: Starting intent routing');
 
   // 1. Check for Slash Commands (Hard Override)
@@ -62,15 +79,34 @@ export async function routeIntent(state: AgentState): Promise<Partial<AgentState
     return { activeAgent: 'rag-knowledge' };
   }
 
-  // 2. Use LLM for Soft Routing (using centralized config)
+  // 2. Hard route to RAG if files are explicitly attached (My Files button)
+  // This ensures file context is always used when user activates file mode
+  if (filesAreActive) {
+    logger.info({
+      targetAgent: 'rag-knowledge',
+      reason: 'Files attached by user',
+      fileCount
+    }, 'Router: Auto-routing to RAG due to file context');
+    return { activeAgent: 'rag-knowledge' };
+  }
+
+  // 3. Use LLM for Soft Routing (using centralized config)
   const routerConfig = getModelConfig('router');
   const model = ModelFactory.create(routerConfig).withStructuredOutput(RouterOutputSchema);
+
+  // Build context-aware system prompt
+  const contextSignals = `
+CONTEXT (current request):
+- FILES_ATTACHED: ${filesAreActive}
+- FILE_COUNT: ${fileCount}
+`;
+  const enhancedSystemPrompt = ROUTER_SYSTEM_PROMPT + contextSignals;
 
   try {
     logger.debug({ inputPreview: input.substring(0, 100) }, 'Router: Invoking LLM for routing decision');
 
     const result = await model.invoke([
-      new SystemMessage(ROUTER_SYSTEM_PROMPT),
+      new SystemMessage(enhancedSystemPrompt),
       lastMessage
     ]);
 

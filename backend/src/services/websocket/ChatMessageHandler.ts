@@ -161,7 +161,7 @@ export class ChatMessageHandler {
           content: message,
           sequenceNumber: messageConfirmation.sequenceNumber,
           eventId: messageConfirmation.eventId,
-          timestamp: new Date(),
+          timestamp: new Date().toISOString(),
           // Enhanced contract fields (required by BaseAgentEvent)
           persistenceState: 'persisted' as const,
         });

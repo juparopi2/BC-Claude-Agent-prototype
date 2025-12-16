@@ -251,6 +251,7 @@ backend/src/__tests__/
 |------|-------------|--------|
 | **E2E Manual Testing** | Test full flow with frontend: `/bc`, `/search`, attachments | 2-4 hours |
 | **Guardrails Implementation** | Input validation, output sanitization in `core/guards/` | 4-6 hours |
+| **Smart Slash Commands** | Backend discovery endpoint + Frontend autocomplete/styling (TDD) | 6-8 hours |
 
 ### Medium Priority (P1)
 | Task | Description | Effort |
@@ -306,14 +307,41 @@ cd backend && npm run lint
 - `/search <query>` - Routes to RAG Knowledge Agent
 - `/rag <query>` - Alias for semantic search
 
-### Enable Extended Thinking (WebSocket)
-```json
-{
-  "message": "Complex reasoning task",
-  "sessionId": "...",
-  "thinking": {
-    "enableThinking": true,
-    "thinkingBudget": 10000
   }
 }
 ```
+
+---
+
+## 12. Specification: Smart Slash Commands (TDD)
+
+**Objective**: enhance discoverability and UX of agent capabilities using TDD.
+
+### 12.1 Requirements
+1.  **Backend Metadata Endpoint**:
+    -   `GET /api/agents/commands`
+    -   Return: `[{ command: "/bc", description: "Business Central", agentId: "bc-agent", color: "blue" }, ...]`
+2.  **Frontend Autocomplete**:
+    -   Detect `/` in `ChatInput`.
+    -   Show popup/dropdown with available commands.
+    -   Filter as user types (e.g., `/b` -> `/bc`).
+3.  **Visual Styling**:
+    -   Render selected command as a "chip" or colored text in the input.
+    -   Color-code based on the agent (e.g., BC=Green, RAG=Blue).
+
+### 12.2 TDD Implementation Plan
+
+#### Cycle 1: Backend Metadata (TDD)
+1.  **Red**: Write test `GET /api/agents/commands` -> Expect 404 (does not exist).
+2.  **Green**: Implement simple route returning hardcoded list.
+3.  **Refactor**: standardise the `AgentRegistry` to dynamically return bound tools/agents.
+
+#### Cycle 2: Frontend Command Logic (TDD)
+1.  **Red**: Create `CommandSuggester.test.ts`. `detectCommand('/')` should return true.
+2.  **Green**: Implement detection logic.
+3.  **Refactor**: Extract to custom hook `useCommandSuggestions`.
+
+#### Cycle 3: Components (Component Testing)
+-   Test `CommandPopup` renders list.
+-   Test clicking item inserts text.
+

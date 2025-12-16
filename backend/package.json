@@ -27,7 +27,7 @@
     "test:integration:clean": "npm run cache:clear && npm run test:integration",
     "test:e2e:clean": "npm run cache:clear && npm run test:e2e",
     "lint": "eslint src/**/*.ts",
-    "type-check": "tsc --noEmit",
+    "type-check": "node --max-old-space-size=8192 ./node_modules/typescript/bin/tsc --noEmit",
     "verify": "npm run type-check",
     "verify:all": "npm run build && npm run lint && npm run type-check && npm run test:all",
     "prepush": "npm run verify"

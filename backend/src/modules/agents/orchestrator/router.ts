@@ -1,7 +1,11 @@
 import { AgentState } from './state';
 import { ModelFactory } from '../../../core/langchain/ModelFactory';
+import { getModelConfig } from '../../../config/models';
 import { SystemMessage } from '@langchain/core/messages';
 import { z } from 'zod';
+import { createChildLogger } from '@/utils/logger';
+
+const logger = createChildLogger({ service: 'RouterNode' });
 
 const RouterOutputSchema = z.object({
   target_agent: z.enum(['business-central', 'rag-knowledge', 'orchestrator']),
@@ -35,7 +39,7 @@ export async function routeIntent(state: AgentState): Promise<Partial<AgentState
     return { activeAgent: 'orchestrator' };
   }
   const lastMessage = messages[messages.length - 1];
-  
+
   // Safety check for TS
   if (!lastMessage) {
      return { activeAgent: 'orchestrator' };
@@ -43,30 +47,44 @@ export async function routeIntent(state: AgentState): Promise<Partial<AgentState
 
   const input = lastMessage.content.toString();
 
+  logger.debug({
+    messageCount: messages.length,
+    lastMessagePreview: input.substring(0, 100)
+  }, 'Router: Starting intent routing');
+
   // 1. Check for Slash Commands (Hard Override)
   if (input.startsWith('/bc')) {
+    logger.info({ command: 'bc', targetAgent: 'business-central' }, 'Router: Slash command detected');
     return { activeAgent: 'business-central' };
   }
   if (input.startsWith('/search') || input.startsWith('/rag')) {
+    logger.info({ command: 'search/rag', targetAgent: 'rag-knowledge' }, 'Router: Slash command detected');
     return { activeAgent: 'rag-knowledge' };
   }
 
-  // 2. Use LLM for Soft Routing
-  const model = ModelFactory.create({
-    provider: 'anthropic', // Use fast model for routing
-    modelName: 'claude-3-5-haiku-20241022', 
-    temperature: 0,
-  }).withStructuredOutput(RouterOutputSchema);
+  // 2. Use LLM for Soft Routing (using centralized config)
+  const routerConfig = getModelConfig('router');
+  const model = ModelFactory.create(routerConfig).withStructuredOutput(RouterOutputSchema);
 
   try {
+    logger.debug({ inputPreview: input.substring(0, 100) }, 'Router: Invoking LLM for routing decision');
+
     const result = await model.invoke([
       new SystemMessage(ROUTER_SYSTEM_PROMPT),
       lastMessage
     ]);
 
+    logger.info({
+      targetAgent: result.target_agent,
+      reasoning: result.reasoning
+    }, 'Router: LLM selected agent');
+
     return { activeAgent: result.target_agent };
   } catch (error) {
-    console.error("Router LLM failed, defaulting to orchestrator", error);
+    logger.error({
+      error: (error as Error).message,
+      stack: (error as Error).stack
+    }, 'Router: LLM routing failed, defaulting to orchestrator');
     return { activeAgent: 'orchestrator' };
   }
 }

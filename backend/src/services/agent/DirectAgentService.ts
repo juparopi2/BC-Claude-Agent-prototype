@@ -2726,6 +2726,13 @@ CRITICAL INSTRUCTIONS:
       }, '✅ Graph inputs prepared with enhanced context');
 
       // Stream the graph execution with granular events
+      this.logger.info({
+        sessionId,
+        recursionLimit: 50,
+        hasEnhancedPrompt: fileContext.documentContext.length > 0,
+        inputMessageCount: inputs.messages.length
+      }, 'Starting LangGraph stream execution');
+
       const eventStream = await orchestratorGraph.streamEvents(inputs, {
           version: 'v2',
           recursionLimit: 50
@@ -2749,87 +2756,138 @@ CRITICAL INSTRUCTIONS:
       const finalResponseChunks: string[] = [];
       let finalResponse = '';
 
-      for await (const event of eventStream) {
-           // Process event via adapter
-           const agentEvent = streamAdapter.processChunk(event);
+      try {
+          for await (const event of eventStream) {
+               // Log all events received from LangGraph
+               this.logger.debug({
+                 eventType: event.event,
+                 eventName: event.name,
+                 runId: event.run_id
+               }, 'DirectAgentService: Received stream event from LangGraph');
 
-           // Capture final state from on_chain_end event
-           if (event.event === 'on_chain_end' && event.name === '__end__') {
-               const output = event.data?.output;
-               if (output?.messages && Array.isArray(output.messages) && output.messages.length > 0) {
-                   const lastMessage = output.messages[output.messages.length - 1];
-                   // Extract content from AIMessage
-                   if (lastMessage && typeof lastMessage.content === 'string') {
-                       finalResponse = lastMessage.content;
-                   } else if (lastMessage?.content) {
-                       finalResponse = String(lastMessage.content);
+               // Process event via adapter
+               const agentEvent = streamAdapter.processChunk(event);
+
+               // Log adapter output
+               if (agentEvent) {
+                 this.logger.debug({
+                   agentEventType: agentEvent.type,
+                   hasContent: !!(agentEvent as { content?: string }).content,
+                   contentLength: typeof (agentEvent as { content?: string }).content === 'string'
+                     ? (agentEvent as { content?: string }).content?.length
+                     : undefined
+                 }, 'DirectAgentService: StreamAdapter produced event');
+               } else {
+                 this.logger.debug({
+                   eventType: event.event,
+                   eventName: event.name
+                 }, 'DirectAgentService: StreamAdapter returned null');
+               }
+
+               // Capture final state from on_chain_end event
+               if (event.event === 'on_chain_end' && event.name === '__end__') {
+                   const output = event.data?.output;
+                   if (output?.messages && Array.isArray(output.messages) && output.messages.length > 0) {
+                       const lastMessage = output.messages[output.messages.length - 1];
+                       // Extract content from AIMessage
+                       if (lastMessage && typeof lastMessage.content === 'string') {
+                           finalResponse = lastMessage.content;
+                       } else if (lastMessage?.content) {
+                           finalResponse = String(lastMessage.content);
+                       }
+
+                       this.logger.debug({
+                         hasFinalResponse: !!finalResponse,
+                         finalResponseLength: finalResponse.length,
+                         messageCount: output.messages.length
+                       }, 'DirectAgentService: Captured final response from chain end');
                    }
                }
-           }
 
-           // Also accumulate message chunks for streaming responses
-           if (agentEvent && agentEvent.type === 'message_chunk' && agentEvent.content) {
-               finalResponseChunks.push(agentEvent.content);
-           }
-
-           if (agentEvent) {
-               // Emit to live socket (exclude usage events if they aren't standard AgentEvents)
-               if (agentEvent.type !== 'usage') {
-                   emitEvent(agentEvent);
+               // Also accumulate message chunks for streaming responses
+               if (agentEvent && agentEvent.type === 'message_chunk' && agentEvent.content) {
+                   finalResponseChunks.push(agentEvent.content);
+                   this.logger.debug({
+                     chunkContent: agentEvent.content,
+                     chunkLength: agentEvent.content.length,
+                     totalChunks: finalResponseChunks.length
+                   }, 'DirectAgentService: Accumulated message chunk');
                }
 
-               // Handle Usage Tracking
-               if (agentEvent.type === 'usage') {
-                   const usage = (agentEvent as unknown as UsageEvent).usage;
-                   const trackingService = getUsageTrackingService();
-                   await trackingService.trackClaudeUsage(
-                       userId || 'unknown',
-                       sessionId,
-                       usage.input_tokens || 0,
-                       usage.output_tokens || 0,
-                       'claude-3-5-sonnet', // Default for now, ideally extracted from metadata
-                       {
-                           source: 'langgraph',
-                           enableThinking,
-                           thinkingBudget: enableThinking ? thinkingBudget : undefined,
-                           fileCount: validatedFiles.length,
-                       }
-                   );
-                   this.logger.debug({ usage }, '💰 Usage tracked');
-                   continue; // Don't persist 'usage' event to eventStore as it is not a standard event type
-               }
+               if (agentEvent) {
+                   // Emit to live socket (exclude usage events if they aren't standard AgentEvents)
+                   if (agentEvent.type !== 'usage') {
+                       this.logger.debug({
+                         eventType: agentEvent.type,
+                         willEmit: !!onEvent
+                       }, 'DirectAgentService: Emitting event to WebSocket');
+                       emitEvent(agentEvent);
+                   }
 
-               // Persist to database (Audit/History)
-               if (agentEvent.persistenceState === 'transient') {
-                   // Transient events (like tokens) aren't historically persisted individually usually,
-                   // but MessageChunks might be aggregated.
-                   // For now, let's persist tool usage and significant events.
-               }
+                   // Handle Usage Tracking
+                   if (agentEvent.type === 'usage') {
+                       const usage = (agentEvent as unknown as UsageEvent).usage;
+                       const trackingService = getUsageTrackingService();
+                       await trackingService.trackClaudeUsage(
+                           userId || 'unknown',
+                           sessionId,
+                           usage.input_tokens || 0,
+                           usage.output_tokens || 0,
+                           'claude-3-5-sonnet', // Default for now, ideally extracted from metadata
+                           {
+                               source: 'langgraph',
+                               enableThinking,
+                               thinkingBudget: enableThinking ? thinkingBudget : undefined,
+                               fileCount: validatedFiles.length,
+                           }
+                       );
+                       this.logger.debug({ usage }, '💰 Usage tracked');
+                       continue; // Don't persist 'usage' event to eventStore as it is not a standard event type
+                   }
 
-               if (agentEvent.type === 'tool_use' || agentEvent.type === 'tool_result' || agentEvent.type === 'error') {
-                   // Map agent event types to EventStore event types
-                   const eventTypeMap = {
-                       'tool_use': 'tool_use_requested',
-                       'tool_result': 'tool_use_completed',
-                       'error': 'error_occurred'
-                   } as const;
-                   const mappedEventType = eventTypeMap[agentEvent.type as keyof typeof eventTypeMap];
-                   // Ensure persistenceState is set to persisted before saving
-                   await eventStore.appendEvent(
-                       sessionId,
-                       mappedEventType,
-                       {
-                           ...agentEvent,
-                           persistenceState: 'persisted'
-                       }
-                   );
-               }
+                   // Persist to database (Audit/History)
+                   if (agentEvent.persistenceState === 'transient') {
+                       // Transient events (like tokens) aren't historically persisted individually usually,
+                       // but MessageChunks might be aggregated.
+                       // For now, let's persist tool usage and significant events.
+                   }
 
-               // Track tools
-               if (agentEvent.type === 'tool_use') {
-                   toolsUsed.push(agentEvent.toolName);
+                   if (agentEvent.type === 'tool_use' || agentEvent.type === 'tool_result' || agentEvent.type === 'error') {
+                       // Map agent event types to EventStore event types
+                       const eventTypeMap = {
+                           'tool_use': 'tool_use_requested',
+                           'tool_result': 'tool_use_completed',
+                           'error': 'error_occurred'
+                       } as const;
+                       const mappedEventType = eventTypeMap[agentEvent.type as keyof typeof eventTypeMap];
+                       // Ensure persistenceState is set to persisted before saving
+                       await eventStore.appendEvent(
+                           sessionId,
+                           mappedEventType,
+                           {
+                               ...agentEvent,
+                               persistenceState: 'persisted'
+                           }
+                       );
+                   }
+
+                   // Track tools
+                   if (agentEvent.type === 'tool_use') {
+                       toolsUsed.push(agentEvent.toolName);
+                   }
                }
-           }
+          }
+      } catch (streamError) {
+          // Log comprehensive error details before propagating
+          this.logger.error({
+              error: streamError instanceof Error ? streamError.message : String(streamError),
+              stack: streamError instanceof Error ? streamError.stack : undefined,
+              errorType: streamError?.constructor?.name || typeof streamError,
+              sessionId,
+              userId,
+              additionalProps: streamError instanceof Error ? Object.keys(streamError).filter(k => k !== 'message' && k !== 'stack') : undefined
+          }, 'DirectAgentService: Error during graph stream processing');
+          throw streamError; // Re-throw to propagate to ChatMessageHandler
       }
 
       // Use final response from graph state, or fallback to accumulated chunks

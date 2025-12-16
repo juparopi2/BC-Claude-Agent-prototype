@@ -2,6 +2,7 @@
 import { AgentState } from '../orchestrator/state';
 import { BaseAgent } from '../core/AgentFactory';
 import { ModelFactory } from '../../../core/langchain/ModelFactory';
+import { getModelConfig } from '../../../config/models';
 import { RunnableConfig } from '@langchain/core/runnables';
 import {
   listAllEntitiesTool,
@@ -13,6 +14,9 @@ import {
   getEndpointDocumentationTool,
 } from './tools';
 import { SystemMessage } from '@langchain/core/messages';
+import { createChildLogger } from '@/utils/logger';
+
+const logger = createChildLogger({ service: 'BCAgent' });
 
 // System prompt for the Business Central agent
 const BC_AGENT_SYSTEM_PROMPT = `You are a specialized Business Central assistant with access to tools for querying BC entities and operations.
@@ -55,11 +59,14 @@ export class BusinessCentralAgent extends BaseAgent {
   description = 'Specialized agent for Microsoft Business Central ERP operations.';
 
   async invoke(state: AgentState, config?: RunnableConfig): Promise<Partial<AgentState>> {
-    const model = ModelFactory.create({
-      provider: 'anthropic',
-      modelName: 'claude-3-5-sonnet-20241022',
-      temperature: 0.1,
-    });
+    logger.info({
+      messageCount: state.messages.length,
+      sessionId: state.sessionId
+    }, 'BCAgent: Starting invocation');
+
+    // Use centralized model configuration for BC Agent role
+    const bcConfig = getModelConfig('bc_agent');
+    const model = ModelFactory.create(bcConfig);
 
     // Bind all 7 BC meta-tools to the model
     const tools = [
@@ -72,6 +79,11 @@ export class BusinessCentralAgent extends BaseAgent {
       getEndpointDocumentationTool,
     ];
 
+    logger.debug({
+      toolCount: tools.length,
+      toolNames: tools.map(t => t.name)
+    }, 'BCAgent: Binding tools to model');
+
     // Ensure model supports tool binding (all Anthropic models do)
     if (!model.bindTools) {
       throw new Error('Model does not support tool binding');
@@ -82,12 +94,23 @@ export class BusinessCentralAgent extends BaseAgent {
     const messages = state.messages;
     const hasSystemMessage = messages.length > 0 && messages[0]?._getType?.() === 'system';
 
+    logger.debug({ hasSystemMessage }, 'BCAgent: System message handling');
+
     const messagesWithSystem = hasSystemMessage
       ? messages
       : [new SystemMessage(BC_AGENT_SYSTEM_PROMPT), ...messages];
 
     // Invoke model
+    logger.debug({ totalMessages: messagesWithSystem.length }, 'BCAgent: Invoking model with tools');
+
     const response = await modelWithTools.invoke(messagesWithSystem, config);
+
+    logger.info({
+      responseType: response._getType?.() || 'unknown',
+      hasContent: !!(response as { content?: unknown }).content,
+      hasToolCalls: !!(response as { tool_calls?: unknown[] }).tool_calls?.length,
+      toolCallCount: (response as { tool_calls?: unknown[] }).tool_calls?.length || 0
+    }, 'BCAgent: Model response received');
 
     // Return the response as a partial state update (appending to messages)
     return {

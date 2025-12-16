@@ -3,6 +3,7 @@ import { ChatAnthropic } from '@langchain/anthropic';
 import { ChatVertexAI } from '@langchain/google-vertexai';
 import { ChatOpenAI } from '@langchain/openai';
 import { env } from '../../config';
+import { getModelConfig } from '../../config/models';
 
 export type ModelProvider = 'anthropic' | 'google' | 'openai';
 
@@ -117,10 +118,11 @@ export class ModelFactory {
     }
   }
 
+  /**
+   * Create default model using centralized configuration
+   */
   static createDefault(): BaseChatModel {
-    return this.create({
-        provider: 'anthropic',
-        modelName: 'claude-3-5-sonnet-20241022'
-    });
+    // Use 'default' role from centralized config
+    return this.create(getModelConfig('default'));
   }
 }

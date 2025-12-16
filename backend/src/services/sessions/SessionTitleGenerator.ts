@@ -9,6 +9,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { env } from '@/config';
+import { getModelName } from '@/config/models';
 import { logger } from '@/utils/logger';
 import { executeQuery, SqlParams } from '@/config/database';
 
@@ -81,8 +82,9 @@ Title: "Q3 2024 Revenue Report"
 
 Now generate a title for the user's message:`;
 
+      // Use centralized model configuration for session titles (economic model)
       const response = await this.anthropic.messages.create({
-        model: env.ANTHROPIC_MODEL || 'claude-3-5-sonnet-20241022',
+        model: getModelName('session_title'),
         max_tokens: 100,
         temperature: 0.3, // Lower temperature for more consistent titles
         system: systemPrompt,

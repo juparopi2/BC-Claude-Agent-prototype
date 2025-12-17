@@ -90,7 +90,7 @@ Luego ejecuta las tareas del TODO en orden, siguiendo los principios establecido
 | 0.5 | Abstracción Provider | ✅ | Normalizar eventos para multi-provider |
 | 1 | Limpieza Tests | ✅ | Establecer baseline de tests |
 | **2** | **Tests Unitarios** | **🟡 Parcial** | **Coverage del pipeline (SC-3,4,5 deferred)** |
-| **2.5** | **Pre-Refactor Stabilization** | **🔴 Nueva** | **Golden snapshots, API contracts** |
+| **2.5** | **Pre-Refactor Stabilization** | **✅** | **Golden snapshots, API contracts** |
 | 3 | Tests Integración | 🔴 | Validar servicios juntos |
 | 4 | Tests E2E | 🔴 | Postman/Newman collection |
 | 5 | Refactoring | 🔴 | Separar responsabilidades |

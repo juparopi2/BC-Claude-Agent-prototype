@@ -24,6 +24,7 @@ export default [
       'node_modules/**',
       'coverage/**',
       '*.config.js',
+      '*.config.ts',       // Vitest config files not in tsconfig project
       'src/__tests__/**',  // Ignore test files (excluded from tsconfig)
       'scripts/**',        // Ignore standalone diagnostic scripts (not in tsconfig project)
     ],

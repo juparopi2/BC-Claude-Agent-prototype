@@ -12,10 +12,10 @@ if [ $? -ne 0 ]; then
   exit 1
 fi
 
-# Backend unit tests
+# Backend unit tests (only unit, not integration - those run separately below)
 echo ""
 echo "🧪 Running backend unit tests..."
-npm test
+npm run test:unit
 if [ $? -ne 0 ]; then
   echo "❌ Backend unit tests failed. Push aborted."
   exit 1
@@ -25,37 +25,43 @@ fi
 echo ""
 echo "🔗 Running backend integration tests..."
 
-# Check if Docker is available
+# Try to manage Docker Redis, but don't fail if Docker CLI has issues
+# NOTE: Docker CLI may return 500 errors on Windows when Docker Desktop has API issues
+# We handle this gracefully and assume Redis is available on the configured port
+STARTED_REDIS=false
 if command -v docker >/dev/null 2>&1; then
-  # Check if Redis test container is running
-  if ! docker ps --format '{{.Names}}' | grep -q 'bc-agent-redis-test'; then
-    echo "🐳 Starting Redis test container..."
-    docker-compose -f docker-compose.test.yml up -d
-
-    # Wait for Redis to be ready
-    echo "⏳ Waiting for Redis to be ready..."
-    timeout=30
-    while [ $timeout -gt 0 ]; do
-      if docker exec bc-agent-redis-test redis-cli ping >/dev/null 2>&1; then
-        echo "✅ Redis is ready"
-        break
-      fi
-      sleep 1
-      timeout=$((timeout - 1))
-    done
-
-    if [ $timeout -eq 0 ]; then
-      echo "⚠️  Redis container failed to start. Integration tests may fail."
-    fi
-
-    STARTED_REDIS=true
-  else
+  # Check if Redis test container is running (handle Docker CLI errors gracefully)
+  # The || true prevents script exit if Docker CLI fails (e.g., 500 errors)
+  DOCKER_PS_OUTPUT=$(docker ps --format '{{.Names}}' 2>&1 || true)
+  if echo "$DOCKER_PS_OUTPUT" | grep -q 'bc-agent-redis-test'; then
     echo "✅ Redis test container already running"
-    STARTED_REDIS=false
+  elif echo "$DOCKER_PS_OUTPUT" | grep -q 'Error\|error\|500\|request returned'; then
+    echo "⚠️  Docker CLI error detected. Assuming Redis is available on configured port."
+  else
+    echo "🐳 Starting Redis test container..."
+    if docker-compose -f docker-compose.test.yml up -d 2>/dev/null; then
+      # Wait for Redis to be ready
+      echo "⏳ Waiting for Redis to be ready..."
+      timeout=30
+      while [ $timeout -gt 0 ]; do
+        if docker exec bc-agent-redis-test redis-cli ping >/dev/null 2>&1; then
+          echo "✅ Redis is ready"
+          break
+        fi
+        sleep 1
+        timeout=$((timeout - 1))
+      done
+
+      if [ $timeout -eq 0 ]; then
+        echo "⚠️  Redis container failed to start. Integration tests may fail."
+      fi
+      STARTED_REDIS=true
+    else
+      echo "⚠️  Failed to start Docker Redis. Using existing Redis (if configured)."
+    fi
   fi
 else
   echo "⚠️  Docker not available. Using existing Redis (if configured)."
-  STARTED_REDIS=false
 fi
 
 # NOTE: Temporarily allow integration tests to pass even with skipped tests

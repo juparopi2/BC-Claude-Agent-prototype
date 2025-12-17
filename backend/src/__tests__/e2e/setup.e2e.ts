@@ -32,6 +32,22 @@ import { REDIS_TEST_CONFIG } from '../integration/setup.integration';
 import { TEST_SESSION_SECRET } from '../integration/helpers/constants';
 
 /**
+ * E2E API Mode Configuration
+ *
+ * Controls whether E2E tests use real Claude API or FakeAnthropicClient:
+ * - E2E_USE_REAL_API=true: Use real Claude API (expensive, slow)
+ * - E2E_USE_REAL_API=false (default): Use FakeAnthropicClient (fast, free)
+ */
+export const E2E_API_MODE = {
+  /** Whether to use real Claude API */
+  useRealApi: process.env.E2E_USE_REAL_API === 'true',
+  /** Get mode description */
+  get description(): string {
+    return this.useRealApi ? 'Real Claude API' : 'FakeAnthropicClient (Mock)';
+  },
+};
+
+/**
  * E2E Test Environment Configuration
  */
 export const E2E_CONFIG = {
@@ -49,6 +65,8 @@ export const E2E_CONFIG = {
   defaultTimeout: 30000,
   /** Timeout for server startup (ms) */
   serverStartupTimeout: 60000,
+  /** API mode (real or mock) */
+  apiMode: E2E_API_MODE,
 };
 
 /**
@@ -57,6 +75,83 @@ export const E2E_CONFIG = {
 let server: Server | null = null;
 let app: Express | null = null;
 let isServerRunning = false;
+
+/**
+ * Global initialization state tracking
+ *
+ * In single-fork mode (singleFork: true), all E2E test files run in the
+ * same process sequentially. We use globalThis to ensure state is truly
+ * global across ALL module loads (vitest may invalidate module caches).
+ *
+ * This prevents:
+ * - Multiple server startups on the same port
+ * - Database/Redis being closed while workers still need them
+ */
+declare global {
+  // eslint-disable-next-line no-var
+  var __e2eGlobalInitialized: boolean | undefined;
+  // eslint-disable-next-line no-var
+  var __e2eCleanupRegistered: boolean | undefined;
+  // eslint-disable-next-line no-var
+  var __e2eServer: Server | null | undefined;
+  // eslint-disable-next-line no-var
+  var __e2eApp: Express | null | undefined;
+  // eslint-disable-next-line no-var
+  var __e2eIsServerRunning: boolean | undefined;
+}
+
+// Use globalThis to ensure state persists across module reloads
+const getGlobalState = () => ({
+  get initialized() { return globalThis.__e2eGlobalInitialized ?? false; },
+  set initialized(v: boolean) { globalThis.__e2eGlobalInitialized = v; },
+  get cleanupRegistered() { return globalThis.__e2eCleanupRegistered ?? false; },
+  set cleanupRegistered(v: boolean) { globalThis.__e2eCleanupRegistered = v; },
+  get server() { return globalThis.__e2eServer ?? null; },
+  set server(v: Server | null) { globalThis.__e2eServer = v; },
+  get app() { return globalThis.__e2eApp ?? null; },
+  set app(v: Express | null) { globalThis.__e2eApp = v; },
+  get isServerRunning() { return globalThis.__e2eIsServerRunning ?? false; },
+  set isServerRunning(v: boolean) { globalThis.__e2eIsServerRunning = v; },
+});
+
+const globalState = getGlobalState();
+
+/**
+ * Register cleanup handler for process exit
+ * This ensures resources are cleaned up when all tests complete
+ */
+function registerCleanupOnExit(): void {
+  if (globalState.cleanupRegistered) return;
+  globalState.cleanupRegistered = true;
+
+  // Use beforeExit which fires when the event loop is empty
+  process.on('beforeExit', async () => {
+    if (globalState.initialized) {
+      console.log('[E2E] Process exiting - cleaning up shared resources...');
+      try {
+        // Stop server first
+        if (globalState.server && globalState.isServerRunning) {
+          await new Promise<void>((resolve) => {
+            globalState.server!.close(() => {
+              globalState.isServerRunning = false;
+              console.log('[E2E] Server stopped on exit');
+              resolve();
+            });
+          });
+        }
+        // Close database
+        await closeDatabase();
+        console.log('[E2E] Database closed on exit');
+        // Close Redis
+        await closeRedis();
+        console.log('[E2E] Redis closed on exit');
+      } catch (error) {
+        console.error('[E2E] Error during cleanup on exit:', error);
+      }
+      globalState.initialized = false;
+    }
+  });
+}
 
 /**
  * Initialize Redis for E2E tests using local Docker config
@@ -112,6 +207,12 @@ async function initDatabaseForE2E(): Promise<void> {
  * Start the Express server for E2E tests
  */
 async function startServer(): Promise<{ server: Server; app: Express }> {
+  // Check if server is already running (globalThis persists across module reloads)
+  if (globalState.isServerRunning && globalState.server) {
+    console.log('[E2E] Server already running, reusing existing instance');
+    return { server: globalState.server, app: globalState.app! };
+  }
+
   // Override the port for E2E tests BEFORE importing server
   process.env.PORT = String(E2E_CONFIG.serverPort);
 
@@ -120,24 +221,29 @@ async function startServer(): Promise<{ server: Server; app: Express }> {
   const { createApp, getHttpServer } = await import('@/server');
 
   // Create and configure the app (this initializes everything)
-  app = await createApp();
+  const appInstance = await createApp();
+  globalState.app = appInstance;
+  app = appInstance;
 
   // Get the HTTP server instance
-  server = getHttpServer();
+  const serverInstance = getHttpServer();
+  globalState.server = serverInstance;
+  server = serverInstance;
 
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
       reject(new Error(`[E2E] Server failed to start within ${E2E_CONFIG.serverStartupTimeout}ms`));
     }, E2E_CONFIG.serverStartupTimeout);
 
-    server!.listen(E2E_CONFIG.serverPort, () => {
+    serverInstance.listen(E2E_CONFIG.serverPort, () => {
       clearTimeout(timeout);
+      globalState.isServerRunning = true;
       isServerRunning = true;
       console.log(`[E2E] Server started on port ${E2E_CONFIG.serverPort}`);
-      resolve({ server: server!, app: app! });
+      resolve({ server: serverInstance, app: appInstance });
     });
 
-    server!.on('error', (error) => {
+    serverInstance.on('error', (error) => {
       clearTimeout(timeout);
       reject(new Error(`[E2E] Server startup failed: ${error.message}`));
     });
@@ -189,29 +295,44 @@ export function setupE2ETest(options: {
   const timeout = options.timeout || E2E_CONFIG.serverStartupTimeout;
 
   beforeAll(async () => {
-    // 1. Initialize Redis
-    await initRedisForE2E();
+    // Only initialize on FIRST test file (using globalThis to persist across module reloads)
+    if (!globalState.initialized) {
+      console.log(`[E2E] API Mode: ${E2E_CONFIG.apiMode.description}`);
+      console.log('[E2E] Initializing shared resources (first test file)...');
 
-    // 2. Initialize Database
-    await initDatabaseForE2E();
+      // Register cleanup handler for process exit
+      registerCleanupOnExit();
 
-    // 3. Start Server (if not skipped)
-    if (!options.skipServerStartup) {
-      await startServer();
+      // 1. Initialize Redis
+      await initRedisForE2E();
+
+      // 2. Initialize Database
+      await initDatabaseForE2E();
+
+      // 3. Start Server (if not skipped)
+      if (!options.skipServerStartup) {
+        await startServer();
+      }
+
+      globalState.initialized = true;
+      console.log('[E2E] Shared resources initialized');
+    } else {
+      console.log('[E2E] Reusing shared resources (already initialized)');
+      // Sync local variables with global state
+      server = globalState.server;
+      app = globalState.app;
+      isServerRunning = globalState.isServerRunning;
     }
   }, timeout);
 
   afterAll(async () => {
-    // 1. Stop Server
-    if (!options.skipServerStartup) {
-      await stopServer();
-    }
-
-    // 2. Close Database
-    await closeDatabase();
-
-    // 3. Close Redis
-    await closeRedis();
+    // In single-fork mode, we DO NOT cleanup resources here.
+    // Resources are kept alive for all test files and cleaned up
+    // on process exit via the beforeExit handler.
+    //
+    // This prevents the database from being closed while BullMQ
+    // workers are still processing jobs from this or previous test files.
+    console.log('[E2E] Test file complete (resources kept alive for next file)');
   }, timeout);
 
   return {

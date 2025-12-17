@@ -59,8 +59,17 @@ export default defineConfig({
     coverage: {
       enabled: false,
     },
-    // Report test names clearly
-    reporters: ['verbose'],
+    // Report test names clearly with HTML output
+    reporters: [
+      'verbose',
+      ['html', {
+        outputFile: './test-results/e2e-report.html',
+      }],
+    ],
+    // Output directory configuration
+    outputFile: {
+      html: './test-results/e2e-report.html',
+    },
   },
   resolve: {
     alias: {

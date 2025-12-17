@@ -32,7 +32,7 @@ docs/plans/
 │   ├── README.md
 │   └── TODO.md
 │
-├── phase-4/                    # Tests E2E con Postman
+├── phase-4/                    # Tests E2E (Vitest) ✅ COMPLETADA
 │   ├── README.md
 │   └── TODO.md
 │
@@ -92,7 +92,7 @@ Luego ejecuta las tareas del TODO en orden, siguiendo los principios establecido
 | **2** | **Tests Unitarios** | **🟡 Parcial** | **Coverage del pipeline (SC-3,4,5 deferred)** |
 | **2.5** | **Pre-Refactor Stabilization** | **✅** | **Golden snapshots, API contracts** |
 | **3** | **Tests Integración** | **✅ Auditada** | **Validar servicios juntos** |
-| 4 | Tests E2E | 🔴 | Postman/Newman collection |
+| **4** | **Tests E2E** | **✅ Completada** | **Vitest E2E (52 endpoints, 12+ WS events, 5 golden flows)** |
 | 5 | Refactoring | 🔴 | Separar responsabilidades |
 | 5.5 | Unit Tests Post-Refactor | 🔴 | Unit tests de servicios refactorizados |
 | 6 | Documentación | 🔴 | Documentar el sistema |

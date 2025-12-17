@@ -56,41 +56,10 @@ describe('E2E-04: Streaming Flow', () => {
     }
   });
 
-  describe('Session Start Event', () => {
-    // Note: DirectAgentService does not emit session_start events
-    // These tests are skipped as the backend implementation doesn't include this event type
-    it.skip('should receive session_start event when agent begins', async () => {
-      await client.connect();
-      await client.joinSession(testSession.id);
-
-      await client.sendMessage(testSession.id, 'Hello');
-
-      // First event should be session_start
-      const sessionStart = await client.waitForAgentEvent('session_start', {
-        timeout: 15000,
-      });
-
-      expect(sessionStart).toBeDefined();
-      expect(sessionStart.type).toBe('session_start');
-    });
-
-    it.skip('should include session metadata in session_start', async () => {
-      await client.connect();
-      await client.joinSession(testSession.id);
-
-      await client.sendMessage(testSession.id, 'Test metadata');
-
-      const event = await client.waitForAgentEvent('session_start');
-
-      // Session start should have relevant metadata
-      const eventData = event as AgentEvent & {
-        sessionId?: string;
-        messageId?: string;
-      };
-
-      expect(eventData.sessionId || eventData.messageId).toBeDefined();
-    });
-  });
+  // NOTE: session_start tests were removed (2025-12-17)
+  // The backend does NOT emit session_start events by design.
+  // Frontend uses socket.io 'session:ready' event instead.
+  // See: docs/plans/TECHNICAL_DEBT_REGISTRY.md - D7
 
   describe('Message Chunk Streaming', () => {
     it('should receive message_chunk events during streaming', async () => {

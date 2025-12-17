@@ -27,6 +27,29 @@ export {
   type StandardErrorResponse,
 } from './ErrorValidator';
 
+// Golden flow configurations
+export {
+  configureGoldenFlow,
+  configureSimpleTextResponse,
+  configureThinkingResponse,
+  configureToolUseResponse,
+  configureApprovalResponse,
+  configureErrorResponse,
+  type GoldenFlowType,
+} from './GoldenResponses';
+
+// Test data factories
+export {
+  createTestBillingData,
+  createTestFileData,
+  createTestUsageData,
+  createTestDataBatch,
+  type TestBillingData,
+  type TestFileData,
+  type TestUsageData,
+  type TestDataBatch,
+} from './TestDataFactory';
+
 // Re-export test session factory from integration helpers
 // (can be reused in E2E tests)
 export {

@@ -150,7 +150,8 @@
       "Bash(NODE_OPTIONS='--max-old-space-size=16384' npm run build:*)",
       "WebFetch(domain:docs.anthropic.com)",
       "WebFetch(domain:docs.claude.com)",
-      "Bash(npx tsx:*)"
+      "Bash(npx tsx:*)",
+      "Bash(Select-Object -First 80)"
     ],
     "deny": [],
     "ask": []

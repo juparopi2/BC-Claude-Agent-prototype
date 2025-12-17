@@ -52,6 +52,11 @@ interface FakeResponse {
   usage?: Partial<TokenUsage>;
   /** Estimated thinking tokens (for token tracking) */
   thinkingTokens?: number;
+  /**
+   * If true, skip automatic thinking generation even when request.thinking is enabled.
+   * Useful when you want to test the "no thinking" case explicitly.
+   */
+  suppressAutoThinking?: boolean;
 }
 
 /**
@@ -158,8 +163,20 @@ export class FakeAnthropicClient implements IAnthropicClient {
     const content: Array<TextBlock | ToolUseBlock> = [];
 
     // Add thinking blocks (Extended Thinking feature)
-    if (fakeResponse.thinkingBlocks) {
-      for (const thinking of fakeResponse.thinkingBlocks) {
+    // Support dynamic thinking: if request.thinking is enabled and no explicit
+    // thinkingBlocks were configured, generate auto-thinking content
+    let effectiveThinkingBlocks = fakeResponse.thinkingBlocks;
+    if (
+      !effectiveThinkingBlocks &&
+      !fakeResponse.suppressAutoThinking &&
+      this.isThinkingEnabled(request)
+    ) {
+      const budget = this.getThinkingBudget(request);
+      effectiveThinkingBlocks = [this.generateAutoThinking(budget)];
+    }
+
+    if (effectiveThinkingBlocks) {
+      for (const thinking of effectiveThinkingBlocks) {
         content.push({
           type: 'thinking',
           thinking,
@@ -275,8 +292,20 @@ export class FakeAnthropicClient implements IAnthropicClient {
     let contentBlockIndex = 0;
 
     // ========== Stream thinking blocks (Extended Thinking) ==========
-    if (fakeResponse.thinkingBlocks) {
-      for (const thinking of fakeResponse.thinkingBlocks) {
+    // Support dynamic thinking: if request.thinking is enabled and no explicit
+    // thinkingBlocks were configured, generate auto-thinking content
+    let effectiveThinkingBlocks = fakeResponse.thinkingBlocks;
+    if (
+      !effectiveThinkingBlocks &&
+      !fakeResponse.suppressAutoThinking &&
+      this.isThinkingEnabled(request)
+    ) {
+      const budget = this.getThinkingBudget(request);
+      effectiveThinkingBlocks = [this.generateAutoThinking(budget)];
+    }
+
+    if (effectiveThinkingBlocks) {
+      for (const thinking of effectiveThinkingBlocks) {
         // content_block_start for thinking
         yield {
           type: 'content_block_start',
@@ -427,9 +456,9 @@ export class FakeAnthropicClient implements IAnthropicClient {
 
     // ========== Record the call (construct full response for call history) ==========
     const content: Array<TextBlock | ToolUseBlock> = [];
-    // Add thinking blocks to call record
-    if (fakeResponse.thinkingBlocks) {
-      for (const thinking of fakeResponse.thinkingBlocks) {
+    // Add thinking blocks to call record (use effectiveThinkingBlocks for dynamic thinking)
+    if (effectiveThinkingBlocks) {
+      for (const thinking of effectiveThinkingBlocks) {
         content.push({ type: 'thinking', thinking } as unknown as TextBlock);
       }
     }
@@ -473,6 +502,69 @@ export class FakeAnthropicClient implements IAnthropicClient {
       textBlocks: ['This is a fake response from FakeAnthropicClient.'],
       stopReason: 'end_turn',
     };
+  }
+
+  /**
+   * Checks if thinking is enabled in the request
+   *
+   * @param request - The chat completion request
+   * @returns true if thinking is enabled
+   */
+  private isThinkingEnabled(request: ChatCompletionRequest): boolean {
+    // ThinkingConfigParam can be { type: 'enabled', budget_tokens: N } or { type: 'disabled' }
+    const thinking = request.thinking as { type?: string; budget_tokens?: number } | undefined;
+    return thinking?.type === 'enabled';
+  }
+
+  /**
+   * Gets the thinking budget from request, or returns a default
+   *
+   * @param request - The chat completion request
+   * @returns Budget tokens or default of 1024
+   */
+  private getThinkingBudget(request: ChatCompletionRequest): number {
+    const thinking = request.thinking as { type?: string; budget_tokens?: number } | undefined;
+    return thinking?.budget_tokens || 1024;
+  }
+
+  /**
+   * Generates automatic thinking content when thinking is enabled.
+   * The content is proportional to the budget (roughly 1 word per 10 tokens).
+   *
+   * @param budget - The thinking budget in tokens
+   * @returns Generated thinking content
+   */
+  private generateAutoThinking(budget: number): string {
+    // Generate roughly proportional thinking content
+    // Assume ~10 tokens per word (conservative estimate)
+    const wordCount = Math.max(10, Math.min(200, Math.floor(budget / 10)));
+
+    const thinkingPhrases = [
+      'Let me analyze this request.',
+      'I need to consider the context here.',
+      'Breaking down the problem into steps.',
+      'First, I should identify the key requirements.',
+      'Looking at the available tools and data.',
+      'Considering the best approach for this task.',
+      'I need to ensure accuracy in my response.',
+      'Evaluating the possible solutions.',
+      'The user is asking for specific information.',
+      'I should structure my response clearly.',
+    ];
+
+    // Build thinking content up to word limit
+    const words: string[] = [];
+    let phraseIndex = 0;
+
+    while (words.length < wordCount && phraseIndex < 100) {
+      const phrase = thinkingPhrases[phraseIndex % thinkingPhrases.length];
+      if (phrase) {
+        words.push(...phrase.split(' '));
+      }
+      phraseIndex++;
+    }
+
+    return words.slice(0, wordCount).join(' ');
   }
 
   /**

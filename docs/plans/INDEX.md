@@ -19,9 +19,14 @@ docs/plans/
 │   ├── README.md
 │   └── TODO.md
 │
-├── phase-2/                    # Tests Unitarios
+├── phase-2/                    # Tests Unitarios (PARCIALMENTE COMPLETADA)
 │   ├── README.md
-│   └── TODO.md
+│   ├── TODO.md
+│   └── coverage-report.md      # Reporte de cobertura
+│
+├── phase-2.5/                  # Pre-Refactor Stabilization (NUEVA)
+│   ├── README.md               # Golden snapshots, API contracts
+│   └── TODO.md                 # ~8 horas de trabajo
 │
 ├── phase-3/                    # Tests de Integración
 │   ├── README.md
@@ -34,6 +39,9 @@ docs/plans/
 ├── phase-5/                    # Refactoring Estructural
 │   ├── README.md
 │   └── TODO.md
+│
+├── phase-5.5/                  # Unit Tests Post-Refactor (PLANIFICADA)
+│   └── (se creará en Fase 5)
 │
 └── phase-6/                    # Documentación
     ├── README.md
@@ -76,16 +84,18 @@ Luego ejecuta las tareas del TODO en orden, siguiendo los principios establecido
 
 ## Resumen de Fases
 
-| Fase | Nombre | Objetivo Principal |
-|------|--------|-------------------|
-| 0 | Diagnóstico | Entender respuesta cruda de Claude |
-| **0.5** | **Abstracción Provider** | **Normalizar eventos para multi-provider** |
-| 1 | Limpieza Tests | Establecer baseline de tests |
-| 2 | Tests Unitarios | Coverage del pipeline |
-| 3 | Tests Integración | Validar servicios juntos |
-| 4 | Tests E2E | Postman/Newman collection |
-| 5 | Refactoring | Separar responsabilidades |
-| 6 | Documentación | Documentar el sistema |
+| Fase | Nombre | Estado | Objetivo Principal |
+|------|--------|--------|-------------------|
+| 0 | Diagnóstico | ✅ | Entender respuesta cruda de Claude |
+| 0.5 | Abstracción Provider | ✅ | Normalizar eventos para multi-provider |
+| 1 | Limpieza Tests | ✅ | Establecer baseline de tests |
+| **2** | **Tests Unitarios** | **🟡 Parcial** | **Coverage del pipeline (SC-3,4,5 deferred)** |
+| **2.5** | **Pre-Refactor Stabilization** | **🔴 Nueva** | **Golden snapshots, API contracts** |
+| 3 | Tests Integración | 🔴 | Validar servicios juntos |
+| 4 | Tests E2E | 🔴 | Postman/Newman collection |
+| 5 | Refactoring | 🔴 | Separar responsabilidades |
+| 5.5 | Unit Tests Post-Refactor | 🔴 | Unit tests de servicios refactorizados |
+| 6 | Documentación | 🔴 | Documentar el sistema |
 
 ---
 
@@ -109,17 +119,23 @@ Fase 0 ──diagnóstico Claude──▶ Fase 0.5 (interfaces normalizadas)
 
 Fase 0.5 ──interfaces/adapters──▶ Fase 1 (tests contra nueva arquitectura)
     │
-    └──AnthropicStreamAdapter──▶ Fase 2 (tests unitarios)
+    └──AnthropicStreamAdapter──▶ Fase 2 (tests unitarios parciales)
 
 Fase 1 ──baseline tests────▶ Fase 2
 
-Fase 2 ──coverage report───▶ Fase 3
+Fase 2 ──coverage parcial───▶ Fase 2.5 (golden snapshots, API contracts)
+    │
+    └──SC-3,4,5 deferred────▶ Fase 5.5 (post-refactor)
+
+Fase 2.5 ──stabilization────▶ Fase 3 (tests integración)
 
 Fase 3 ──gaps de integración──▶ Fase 4
 
 Fase 4 ──validación E2E────▶ Fase 5 (safety net para refactor)
 
-Fase 5 ──nueva arquitectura──▶ Fase 6 (documentar)
+Fase 5 ──nueva arquitectura──▶ Fase 5.5 (unit tests post-refactor)
+
+Fase 5.5 ──coverage completo──▶ Fase 6 (documentar)
 ```
 
 ---
@@ -161,4 +177,4 @@ Antes de pasar a la siguiente fase, verificar:
 
 ---
 
-*Última actualización: 2025-12-16*
+*Última actualización: 2025-12-17*

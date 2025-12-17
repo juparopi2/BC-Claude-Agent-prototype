@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { StreamAdapterFactory } from '../StreamAdapterFactory';
-import { AnthropicStreamAdapter } from '../AnthropicStreamAdapter';
+import { StreamAdapterFactory } from '@/core/providers/adapters/StreamAdapterFactory';
+import { AnthropicStreamAdapter } from '@/core/providers/adapters/AnthropicStreamAdapter';
 
 describe('StreamAdapterFactory', () => {
   it('should create Anthropic adapter', () => {

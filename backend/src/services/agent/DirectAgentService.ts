@@ -41,8 +41,6 @@ import { getMessageQueue } from '../queue/MessageQueue';
 import { getTokenUsageService } from '../token-usage/TokenUsageService';
 import { getUsageTrackingService } from '../tracking/UsageTrackingService';
 import { getMessageEmitter, type IMessageEmitter } from './messages';
-// Note: StreamProcessor was used by executeQueryStreaming (removed)
-// runGraph uses StreamAdapter from core/langchain/ instead
 import { createChildLogger } from '@/utils/logger';
 import type { Logger } from 'pino';
 import * as path from 'path';
@@ -570,12 +568,12 @@ export class DirectAgentService {
                    contentLength: typeof (agentEvent as { content?: string }).content === 'string'
                      ? (agentEvent as { content?: string }).content?.length
                      : undefined
-                 }, 'DirectAgentService: StreamAdapter produced event');
+                 }, 'DirectAgentService: stream adapter produced event');
                } else {
                  this.logger.debug({
                    eventType: event.event,
                    eventName: event.name
-                 }, 'DirectAgentService: StreamAdapter returned null');
+                 }, 'DirectAgentService: stream adapter returned null');
                }
 
                // Emit accumulated chunks as a separate message when a NEW model turn starts
@@ -917,7 +915,7 @@ export class DirectAgentService {
 
                if (agentEvent) {
                    // Emit to live socket (exclude usage events if they aren't standard AgentEvents)
-                   // FIX: We ENABLE tool_use events from StreamAdapter to provide real-time tool visibility.
+                   // FIX: We ENABLE tool_use events from stream adapter to provide real-time tool visibility.
                    // The risk of ID mismatch with on_chain_end events is acceptable vs showing nothing.
                    // Frontend should deduplicate or update based on toolUseId if possible.
                    // Note: UsageEvent is backend-only type, not in AgentEvent union
@@ -982,13 +980,12 @@ export class DirectAgentService {
                    }
 
                    // ========== TOOL_USE PERSISTENCE ==========
-                   // NOTE: In orchestrator flow (runGraph), tool_use events from StreamAdapter are SKIPPED.
+                   // NOTE: In orchestrator flow (runGraph), tool_use events from stream adapter are SKIPPED.
                    // We only persist tool_use from toolExecutions at on_chain_end (with consistent IDs).
-                   // This block is kept for backwards compatibility with executeQueryStreaming (non-orchestrator flow).
                    if (agentEvent.type === 'tool_use') {
                        // Skip persistence in orchestrator flow - will be handled by toolExecutions
                        this.logger.debug({ toolUseId: agentEvent.toolUseId, toolName: agentEvent.toolName },
-                           '⏭️ Skipping tool_use persistence from StreamAdapter (will persist from toolExecutions)');
+                           '⏭️ Skipping tool_use persistence (will persist from toolExecutions)');
                    }
 
                    // ========== TOOL_RESULT PERSISTENCE ==========

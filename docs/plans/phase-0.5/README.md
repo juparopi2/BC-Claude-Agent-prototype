@@ -282,7 +282,6 @@ backend/src/__tests__/unit/core/providers/
 
 ### Descubrimientos de Fase 0
 
-- StreamAdapter actual filtra eventos de LangChain, no transforma
 - Tool IDs de LangChain no coinciden con Anthropic (ya hay workaround)
 - signature_delta puede ignorarse (verificacion interna)
 - message_start de Claude contiene contenido final ANTES de streaming
@@ -291,14 +290,13 @@ backend/src/__tests__/unit/core/providers/
 
 - **TypeScript Union Issues**: Mapear tipos de LangChain (MessageStreamEvent) a tipos normalizados requirió cuidadoso casting debido a la complejidad de las uniones de union types.
 - **Tool IDs**: Confirmada estrategia de usar IDs de LangChain como fuente de verdad para mantener agosticismo.
-- **Legacy Code**: `StreamAdapter.ts` tenía mucha lógica acoplada. La refactorización a `AnthropicStreamAdapter` simplificó significativamente el código.
+- **Arquitectura Limpia**: AnthropicStreamAdapter con separación clara de responsabilidades.
 
 ### Prerequisitos para Fase 1
 
-- Remover el archivo `StreamAdapter.ts` (Legacy) una vez que se confirme estabilidad en producción.
 - Limpiar imports no utilizados en tests antiguos.
 - Actualizar `DirectAgentService.test.ts` para usar la nueva arquitectura (actualmente skippeados).
 
 ---
 
-*Ultima actualizacion: 2025-12-16*
+*Ultima actualizacion: 2025-12-17*

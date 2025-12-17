@@ -372,7 +372,7 @@ export enum AgentErrorCode {
 ```typescript
 import { createChildLogger } from '@/utils/logger';
 
-const logger = createChildLogger({ service: 'StreamAdapter' });
+const logger = createChildLogger({ service: 'MyService' });
 
 // ✅ Correcto - structured con contexto
 logger.info({ sessionId, eventType, chunkSize }, 'Processing chunk');
@@ -399,11 +399,11 @@ logger.info('Processing chunk for session ' + sessionId);
 
 | Elemento | Convención | Ejemplo |
 |----------|------------|---------|
-| Clases | PascalCase | `StreamAdapter` |
+| Clases | PascalCase | `EventEmitter` |
 | Interfaces | I + PascalCase | `IEventEmitter` |
 | Funciones | camelCase | `processChunk` |
 | Constantes | UPPER_SNAKE | `MAX_RETRIES` |
-| Archivos | kebab-case o PascalCase | `stream-adapter.ts` |
+| Archivos | kebab-case o PascalCase | `event-emitter.ts` |
 
 ### 7.2 Documentación en Código
 
@@ -433,11 +433,11 @@ processChunk(event: StreamEvent): INormalizedStreamEvent | null
 
 ```typescript
 // ✅ Correcto
-import { StreamAdapter } from '@/core/langchain';
+import { StreamAdapterFactory } from '@/core/providers/adapters';
 import { EventTypes } from '@/constants';
 
 // ❌ Evitar
-import StreamAdapter from '../../../core/langchain/StreamAdapter';
+import MyService from '../../../services/MyService';
 ```
 
 ---

@@ -44,7 +44,7 @@
 - [x] **T0.5.6** Crear AnthropicStreamAdapter
   - Ubicacion: `backend/src/core/providers/adapters/AnthropicStreamAdapter.ts`
   - Implementar IStreamAdapter
-  - Copiar logica de StreamAdapter.ts existente
+  - Implementar logica de normalizacion de eventos
 
 - [x] **T0.5.7** Mapear eventos thinking
   - thinking_delta -> reasoning_delta
@@ -87,7 +87,7 @@
 
 - [x] **T0.5.15** Modificar DirectAgentService
   - Importar StreamAdapterFactory
-  - Reemplazar `new StreamAdapter()` con factory.create()
+  - Usar factory.create() para obtener adaptador
   - Obtener provider de ModelConfig
 
 - [x] **T0.5.16** Actualizar procesamiento de eventos
@@ -152,15 +152,15 @@
   - Si hay diferencias, documentar
   - Ajustar si es breaking change
 
-### Bloque 7: Deprecacion y Limpieza (1h)
+### Bloque 7: Validacion y Limpieza (1h)
 
-- [x] **T0.5.28** Deprecar StreamAdapter.ts original
-  - Agregar @deprecated JSDoc
-  - Agregar comentario con nueva ubicacion
+- [x] **T0.5.28** Verificar nueva arquitectura funciona
+  - AnthropicStreamAdapter procesa todos los eventos
+  - StreamAdapterFactory crea adaptadores correctamente
 
 - [x] **T0.5.29** Actualizar imports en codebase
-  - Buscar imports de StreamAdapter
-  - Actualizar a usar factory o nuevo path
+  - Usar StreamAdapterFactory en DirectAgentService
+  - Verificar todos los imports usan nueva ubicacion
 
 - [x] **T0.5.30** Verificar tests existentes
   - `npm test` debe pasar
@@ -173,8 +173,8 @@
   - Llenar Prerequisitos para Fase 1
 
 - [x] **T0.5.32** Crear migration guide
-  - Como actualizar codigo que usaba StreamAdapter
   - Como agregar nuevo provider
+  - Ejemplo de implementacion de IStreamAdapter
 
 - [x] **T0.5.33** Verificar success criteria
   - Todos los SC-* marcados

@@ -103,23 +103,17 @@ backend/src/__tests__/unit/agent/stop-reasons.test.ts
 - FakeAnthropicClient debe simular streaming real
 - Tests deben validar orden de eventos
 
-### Sobre Tests de StreamAdapter
+### Sobre Tests de Stream Adapters
 
 **Estado Actual** (Post-Fase 0.5):
-- StreamAdapter.ts está DEPRECADO
 - Usar AnthropicStreamAdapter de `core/providers/adapters/`
 - Tests deben usar INormalizedStreamEvent types
-
-**Archivos a Actualizar**:
-```
-backend/src/core/langchain/StreamAdapter.test.ts  # DEPRECAR
-backend/src/__tests__/unit/core/providers/AnthropicStreamAdapter.test.ts  # NUEVO
-```
+- Ubicacion de tests: `backend/src/__tests__/unit/core/providers/`
 
 ### Sobre Tests de Tools
 
 **Consideraciones**:
-- Tool events tienen múltiples fuentes (StreamAdapter vs toolExecutions)
+- Tool events tienen múltiples fuentes (stream adapter vs toolExecutions)
 - Deduplicación debe ser testeada
 - IDs deben mantenerse consistentes
 

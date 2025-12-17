@@ -1,34 +1,106 @@
 # Provider Abstraction Layer
 
 ## Overview
+
 This layer abstracts the specific implementation details of Large Language Model (LLM) providers (like Anthropic, OpenAI, etc.) to provide a normalized event stream to the DirectAgentService.
+
+**Key Principle**: Business logic should NEVER depend on provider-specific event types. All events are normalized to `INormalizedStreamEvent`.
 
 ## Architecture
 
+```
+┌─────────────────────────────────────────────────────────┐
+│      BUSINESS LOGIC (Provider-Agnostic)                 │
+│      DirectAgentService, MessageEmitter, etc.           │
+├─────────────────────────────────────────────────────────┤
+│      NORMALIZED EVENTS                                  │
+│      INormalizedStreamEvent                             │
+├─────────────────────────────────────────────────────────┤
+│      ADAPTERS (Provider-Specific)                       │
+│      AnthropicStreamAdapter, (future: AzureOpenAI...)   │
+├─────────────────────────────────────────────────────────┤
+│      LANGCHAIN WRAPPERS                                 │
+│      ChatAnthropic, AzureChatOpenAI                     │
+└─────────────────────────────────────────────────────────┘
+```
+
 ### Interfaces (`/interfaces`)
-- **`IStreamAdapter`**: The core interface that all provider adapters must implement. It defines the `processChunk(event: any): INormalizedStreamEvent | null` method.
-- **`INormalizedStreamEvent`**: The standardized event format used by the backend business logic. It normalizes distinct provider events (thinking, text, tool use) into a consistent schema.
-- **`IProviderCapabilities`**: (Planned) Defines what features a provider supports (e.g., native thinking, streaming, vision).
+
+- **`IStreamAdapter`**: Core interface for all provider adapters
+  - `processChunk(event: StreamEvent): INormalizedStreamEvent | null`
+  - `reset(): void`
+  - `getCurrentBlockIndex(): number`
+
+- **`INormalizedStreamEvent`**: Standardized event format
+  - Types: `reasoning_delta`, `content_delta`, `tool_call`, `citation`, `usage`
+  - Provider-agnostic metadata: `blockIndex`, `messageId`, `isStreaming`, `isFinal`
+
+- **`IProviderCapabilities`**: Feature matrix per provider
+  - `streaming`, `tools`, `vision`, `reasoning`, `citations`, `webSearch`
 
 ### Adapters (`/adapters`)
-- **`AnthropicStreamAdapter`**: Implementation for Anthropic's Claude models. Handles mapping of LangChain/Anthropic specific events to the normalized format.
-- **`StreamAdapterFactory`**: The Factory pattern used to instantiate the correct adapter based on configuration.
+
+- **`AnthropicStreamAdapter`**: Claude models implementation
+- **`StreamAdapterFactory`**: Factory pattern for adapter instantiation
 
 ## Usage
-
-Instead of instantiating an adapter directly, use the factory:
 
 ```typescript
 import { StreamAdapterFactory } from '@/core/providers/adapters';
 
-const adapter = StreamAdapterFactory.create({
-  provider: 'anthropic',
-  model: 'claude-3-5-sonnet-latest',
-  sessionId: '...'
-});
+// Create adapter via factory (NOT direct instantiation)
+const adapter = StreamAdapterFactory.create('anthropic', sessionId);
 
-const normalizedEvent = adapter.processChunk(rawStreamEvent);
+// Process LangChain stream events
+const normalizedEvent = adapter.processChunk(langchainStreamEvent);
+
+if (normalizedEvent?.type === 'reasoning_delta') {
+  // Handle thinking/reasoning content
+}
 ```
 
+## Event Normalization
+
+| Provider Event | Normalized Event | Description |
+|----------------|------------------|-------------|
+| `thinking_delta` (Anthropic) | `reasoning_delta` | Extended thinking content |
+| `text_delta` (Anthropic) | `content_delta` | Visible response text |
+| `tool_use` (Anthropic) | `tool_call` | Tool execution request |
+| `citations_delta` (Anthropic) | `citation` | RAG source attribution |
+| `usage` (LangChain) | `usage` | Token counts (camelCase) |
+
+## Testing
+
+**Test Location**: `backend/src/__tests__/unit/core/providers/`
+
+Tests are centralized in the main test directory, not co-located with source files.
+
+```bash
+# Run provider tests
+npm test -- AnthropicStreamAdapter StreamAdapterFactory
+
+# Run with coverage
+npm run test:coverage -- --include="**/providers/**/*.ts"
+```
+
+**Test Files**:
+- `AnthropicStreamAdapter.test.ts` - Adapter unit tests
+- `StreamAdapterFactory.test.ts` - Factory pattern tests
+
+## Adding a New Provider
+
+1. Create adapter in `/adapters/` implementing `IStreamAdapter`
+2. Add provider capabilities to `IProviderCapabilities`
+3. Update `StreamAdapterFactory.create()` switch statement
+4. Add tests in `__tests__/unit/core/providers/`
+
 ## Legacy Code & Deprecation
-- **Legacy `StreamAdapter.ts`** (`src/core/langchain/StreamAdapter.ts`): This class is **DEPRECATED**. It was tightly coupled to Anthropic and lacked proper normalization for future providers. Do not use it.
+
+- **`StreamAdapter.ts`** (`src/core/langchain/`): **DEPRECATED**
+  - Tightly coupled to Anthropic
+  - No normalization for multi-provider support
+  - Will be removed in future phase
+
+---
+
+*Last updated: 2025-12-17*

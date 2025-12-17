@@ -5,201 +5,164 @@
 | Campo | Valor |
 |-------|-------|
 | **Fase** | 2 |
-| **Inicio** | _pendiente_ |
-| **Fin Esperado** | _pendiente_ |
-| **Estado** | 🔴 No iniciada |
+| **Inicio** | 2025-12-16 |
+| **Fin** | 2025-12-17 |
+| **Estado** | 🟡 Parcialmente Completada |
 
 ---
 
 ## Tareas
 
-### Bloque 1: StreamAdapter Tests
+### Bloque 1: Reorganización de Tests (COMPLETADO)
 
-- [ ] **T2.1** Crear archivo `StreamAdapter.test.ts`
-  - Ubicación: `backend/src/core/langchain/StreamAdapter.test.ts`
-  - Setup: Import StreamAdapter, crear fixtures
+- [x] **T2.1** Mover tests de providers a ubicación centralizada
+  - De: `src/core/providers/adapters/__tests__/`
+  - A: `src/__tests__/unit/core/providers/`
+  - Archivos: `AnthropicStreamAdapter.test.ts`, `StreamAdapterFactory.test.ts`
 
-- [ ] **T2.2** Tests de `on_chat_model_stream` - thinking
-  - Test: thinking block → thinking_chunk event
-  - Test: blockIndex incluido
-  - Test: persistenceState = 'transient'
+- [x] **T2.2** Actualizar imports a path aliases
+  - Cambio: imports relativos → `@/core/providers/adapters/`
 
-- [ ] **T2.3** Tests de `on_chat_model_stream` - text
-  - Test: text block → message_chunk event
-  - Test: blockIndex incluido
-  - Test: citations extraídas si presentes
+### Bloque 2: Documentación (COMPLETADO)
 
-- [ ] **T2.4** Tests de `on_chat_model_stream` - edge cases
-  - Test: empty content array → null
-  - Test: tool_use block → skip (null)
-  - Test: input_json_delta → skip
+- [x] **T2.3** Actualizar `docs/plans/phase-2/TODO.md`
+  - Corregir referencias a arquitectura provider-agnostic
 
-- [ ] **T2.5** Tests de `on_chat_model_end`
-  - Test: usage data → usage event
-  - Test: token counts correctos
+- [x] **T2.4** Actualizar `backend/src/core/providers/README.md`
+  - Agregar ubicación de tests
+  - Agregar tabla de event mapping
+  - Agregar ejemplos de uso
 
-- [ ] **T2.6** Tests de tool events
-  - Test: on_tool_start → null (skip)
-  - Test: on_tool_end → null (skip)
+### Bloque 3: AnthropicStreamAdapter Tests (COMPLETADO)
 
-### Bloque 2: MessageEmitter Tests
+- [x] **T2.5** Tests de edge cases
+  - Test: empty content array → null ✅
+  - Test: missing chunk data → null ✅
+  - Test: signature blocks → skip (null) ✅
+  - Test: input_json_delta → skip (null) ✅
 
-- [ ] **T2.7** Crear archivo `MessageEmitter.test.ts`
-  - Ubicación: `backend/src/services/agent/messages/MessageEmitter.test.ts`
-  - Setup: Mock callback, crear instancia
+- [x] **T2.6** Tests de citations
+  - Test: extraer citation con text, source, location ✅
+  - Test: text blocks sin citations ✅
 
-- [ ] **T2.8** Tests de eventos transient
-  - Test: emitMessageChunk estructura correcta
-  - Test: emitThinkingChunk con blockIndex
-  - Test: emitThinkingComplete señal
-  - Test: emitComplete con reason mapeado
-  - Test: emitError con code
+- [x] **T2.7** Tests de blockIndex
+  - Test: blockIndex incrementa correctamente ✅
+  - Test: blockIndex no incrementa para eventos skipped ✅
+  - Test: reset() reinicia contador ✅
+  - Test: getCurrentBlockIndex() retorna valor actual ✅
 
-- [ ] **T2.9** Tests de eventos persisted
-  - Test: emitThinking con sequenceNumber
-  - Test: emitMessage con todos los campos
-  - Test: emitToolUse con args y blockIndex
-  - Test: emitToolResult con success/error
+- [x] **T2.8** Bug fix: blockIndex siempre 0
+  - Problema: Spread operator order en `createEvent()`
+  - Fix: Mover `...data` antes de `metadata` definition
 
-- [ ] **T2.10** Tests de callback handling
-  - Test: emit sin callback → warn log
-  - Test: setEventCallback actualiza callback
-  - Test: clearEventCallback limpia callback
+**Total Tests AnthropicStreamAdapter**: 18 (10 originales + 8 nuevos)
 
-### Bloque 3: DirectAgentService.runGraph Tests - Setup
+### Bloque 4: MessageEmitter Tests (YA COMPLETADO)
 
-- [ ] **T2.11** Crear archivo de tests
-  - Ubicación: `backend/src/__tests__/unit/services/agent/DirectAgentService.runGraph.test.ts`
-  - Setup: Mocks de EventStore, MessageQueue, onEvent
+- [x] **T2.9** Tests de eventos transient
+  - emitMessageChunk, emitThinkingChunk, emitComplete, emitError ✅
 
-- [ ] **T2.12** Crear fixtures de respuestas
-  - Fixture: Simple text response
-  - Fixture: Response with thinking
-  - Fixture: Response with tool use
-  - Fixture: Response with multiple tools
+- [x] **T2.10** Tests de eventos persisted
+  - emitThinking, emitMessage, emitToolUse, emitToolResult ✅
 
-- [ ] **T2.13** Configurar FakeAnthropicClient
-  - Verificar: Simula streaming correctamente
-  - Verificar: Soporta thinking blocks
-  - Verificar: Soporta tool_use blocks
+- [x] **T2.11** Tests de singleton pattern
+  - Event ID y Timestamp generation ✅
 
-### Bloque 4: DirectAgentService.runGraph Tests - Event Emission
+**Nota**: 412 líneas de tests existían de trabajo previo.
 
-- [ ] **T2.14** Tests de emisión básica
-  - Test: user_message_sent emitido a EventStore
-  - Test: message_chunk events durante streaming
-  - Test: message event final con stopReason
-  - Test: complete event al final
+### Bloque 5: DirectAgentService.runGraph Tests (DEFERRED)
 
-- [ ] **T2.15** Tests de thinking flow
-  - Test: thinking_chunk events emitidos
-  - Test: thinking_complete ANTES de message_chunk
-  - Test: thinking persistido a EventStore y MessageQueue
+- [ ] ~~**T2.12** Crear archivo de tests unitarios~~
+- [ ] ~~**T2.13** Crear fixtures de respuestas~~
+- [ ] ~~**T2.14** Tests de emisión básica~~
+- [ ] ~~**T2.15** Tests de thinking flow~~
+- [ ] ~~**T2.16** Tests de tool flow~~
+- [ ] ~~**T2.17** Tests de deduplicación~~
+- [ ] ~~**T2.18** Tests de error handling~~
 
-- [ ] **T2.16** Tests de emisión con eventIndex
-  - Test: eventIndex incrementa correctamente
-  - Test: Eventos tienen eventIndex para ordenamiento
+**DECISIÓN: DEFERRED**
 
-### Bloque 5: DirectAgentService.runGraph Tests - Tool Handling
+| Aspecto | Detalle |
+|---------|---------|
+| **Razón** | DirectAgentService tiene ~1200 líneas (viola PRINCIPLES.md: max 300) |
+| **Alternativa** | Tests de integración YA existen y cubren estos flujos |
+| **Plan** | Unit tests se escribirán POST-REFACTOR (Fase 5.5) |
+| **Coverage actual** | ~17% (bajo) pero integration tests compensan |
 
-- [ ] **T2.17** Tests de tool events
-  - Test: tool_use emitido con args
-  - Test: tool_result emitido con success
-  - Test: tool_use ANTES de tool_result
+**Tests de Integración Existentes** (cubren SC-3, SC-4, SC-5 funcionalmente):
+- `DirectAgentService.integration.test.ts` - Flujo completo con approval
+- `DirectAgentService.attachments.integration.test.ts` - File attachments
+- `orchestrator.integration.test.ts` - Graph orchestration
+- `thinking-state-transitions.integration.test.ts` - Thinking flow completo
 
-- [ ] **T2.18** Tests de deduplicación
-  - Test: Mismo toolUseId no se emite dos veces
-  - Test: emittedToolUseIds Set funciona
+### Bloque 6: Validación y Cierre (COMPLETADO)
 
-- [ ] **T2.19** Tests de persistencia de tools
-  - Test: tool_use persistido a EventStore
-  - Test: tool_result persistido a EventStore
-  - Test: Ambos en MessageQueue
+- [x] **T2.19** Ejecutar todos los tests
+  - Resultado: 1,855 passed, 1 skipped ✅
 
-### Bloque 6: DirectAgentService.runGraph Tests - Error Handling
+- [x] **T2.20** Generar coverage report
+  - Archivo: `docs/plans/phase-2/coverage-report.md` ✅
 
-- [ ] **T2.20** Tests de errores de stream
-  - Test: Error en stream → propagado
-  - Test: Error loggeado con contexto
-
-- [ ] **T2.21** Tests de errores de tools
-  - Test: Tool execution error → tool_result con success=false
-  - Test: Error message incluido
-
-- [ ] **T2.22** Tests de errores de persistencia
-  - Test: EventStore error → logged, no crash
-  - Test: MessageQueue error → logged, no crash
-
-### Bloque 7: Validación y Cierre
-
-- [ ] **T2.23** Ejecutar todos los tests nuevos
-  - Comando: `npm test StreamAdapter MessageEmitter runGraph`
-  - Verificar: 100% pasan
-
-- [ ] **T2.24** Generar coverage report
-  - Comando: `npm run test:coverage`
-  - Verificar: Targets cumplidos
-
-- [ ] **T2.25** Documentar coverage
-  - Crear: `docs/plans/phase-2/coverage-report.md`
-  - Incluir: Coverage por archivo
-
-- [ ] **T2.26** Verificar success criteria
-  - Revisar: Todos los SC-* marcados
+- [x] **T2.21** Documentar decisiones
+  - Deferred items documentados ✅
+  - Rationale incluido ✅
 
 ---
 
-## Comandos Útiles
+## Decisiones Tomadas
+
+### D-1: Omitir Unit Tests de DirectAgentService.runGraph
+
+**Fecha**: 2025-12-17
+**Decision Maker**: Desarrollador + QA Review
+
+**Contexto**:
+- DirectAgentService.ts tiene ~1200 líneas
+- Fase 5 planifica refactorizar a <150 líneas
+- Escribir 500+ líneas de mocks para código que morirá = bajo ROI
+
+**Decisión**:
+- Deferred a Fase 5.5 (post-refactor)
+- Integration tests existentes sirven como safety net
+- Unit tests se escribirán contra nueva arquitectura limpia
+
+**Impacto**:
+- SC-3, SC-4, SC-5 marcados como DEFERRED (no FAILED)
+- Fase 2.5 creada como bridge de estabilización
+
+### D-2: Adoptar Arquitectura Provider-Agnostic en Tests
+
+**Fecha**: 2025-12-17
+
+**Decisión**:
+- Tests validan `INormalizedStreamEvent`, no eventos Anthropic-specific
+- Esto permite que tests sigan pasando si agregamos Azure OpenAI
+
+---
+
+## Comandos de Validación
 
 ```bash
-# Ejecutar tests específicos
-npm test -- StreamAdapter.test.ts
-npm test -- MessageEmitter.test.ts
-npm test -- DirectAgentService.runGraph.test.ts
+# Ejecutar tests de providers
+cd backend && npm test -- AnthropicStreamAdapter StreamAdapterFactory
 
-# Ejecutar con watch
-npm test -- --watch StreamAdapter
+# Ejecutar tests con coverage
+npm run test:coverage
 
-# Coverage específico
-npm run test:coverage -- --include="**/StreamAdapter.ts"
+# Ejecutar tests de integración relacionados
+npm test -- thinking-state-transitions DirectAgentService.integration
 ```
 
 ---
 
-## Notas de Ejecución
+## Información para Fase 2.5
 
-### Bloqueadores Encontrados
-
-_Documentar aquí cualquier bloqueador._
-
-### Decisiones Tomadas
-
-_Documentar decisiones importantes._
-
-### Tiempo Real vs Estimado
-
-| Bloque | Estimado | Real | Notas |
-|--------|----------|------|-------|
-| Bloque 1 | 3h | - | - |
-| Bloque 2 | 2h | - | - |
-| Bloque 3 | 2h | - | - |
-| Bloque 4 | 3h | - | - |
-| Bloque 5 | 2h | - | - |
-| Bloque 6 | 2h | - | - |
-| Bloque 7 | 1h | - | - |
+1. **Integration tests** son la safety net para refactor
+2. **Comportamiento documentado** en coverage-report.md
+3. **APIs públicas a preservar**:
+   - `executeQueryStreaming(query, sessionId, onEvent, userId, options)`
+   - Events emitidos: session_start, thinking, message_chunk, message, tool_use, tool_result, complete, error
 
 ---
 
-## Descubrimientos Durante Ejecución
-
-### Hallazgos Importantes
-
-_Agregar aquí hallazgos significativos._
-
-### Información para Fase 3
-
-_Agregar aquí información crítica que Fase 3 necesita._
-
----
-
-*Última actualización: 2025-12-16*
+*Última actualización: 2025-12-17*

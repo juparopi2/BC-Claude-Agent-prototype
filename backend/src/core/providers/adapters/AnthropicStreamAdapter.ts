@@ -173,22 +173,24 @@ export class AnthropicStreamAdapter implements IStreamAdapter {
   }
 
   private createEvent(
-    type: INormalizedStreamEvent['type'], 
+    type: INormalizedStreamEvent['type'],
     data: Partial<INormalizedStreamEvent>
   ): INormalizedStreamEvent {
     const blockIndex = this.getNextBlockIndex();
-    
+
+    // Spread data first, then override with calculated metadata
+    // This ensures blockIndex is correctly incremented
     return {
       type,
       provider: this.provider,
       timestamp: new Date(),
+      ...data,
       metadata: {
         blockIndex,
         messageId: data.metadata?.messageId,
         isStreaming: data.metadata?.isStreaming ?? true,
-        isFinal: false
-      },
-      ...data
+        isFinal: data.metadata?.isFinal ?? false
+      }
     } as INormalizedStreamEvent;
   }
 }

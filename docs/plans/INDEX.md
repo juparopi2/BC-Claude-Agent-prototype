@@ -91,7 +91,7 @@ Luego ejecuta las tareas del TODO en orden, siguiendo los principios establecido
 | 1 | Limpieza Tests | ✅ | Establecer baseline de tests |
 | **2** | **Tests Unitarios** | **🟡 Parcial** | **Coverage del pipeline (SC-3,4,5 deferred)** |
 | **2.5** | **Pre-Refactor Stabilization** | **✅** | **Golden snapshots, API contracts** |
-| 3 | Tests Integración | 🔴 | Validar servicios juntos |
+| **3** | **Tests Integración** | **✅ Auditada** | **Validar servicios juntos** |
 | 4 | Tests E2E | 🔴 | Postman/Newman collection |
 | 5 | Refactoring | 🔴 | Separar responsabilidades |
 | 5.5 | Unit Tests Post-Refactor | 🔴 | Unit tests de servicios refactorizados |
@@ -127,7 +127,7 @@ Fase 2 ──coverage parcial───▶ Fase 2.5 (golden snapshots, API contra
     │
     └──SC-3,4,5 deferred────▶ Fase 5.5 (post-refactor)
 
-Fase 2.5 ──stabilization────▶ Fase 3 (tests integración)
+Fase 2.5 ──stabilization────▶ Fase 3 (tests integración) ✅
 
 Fase 3 ──gaps de integración──▶ Fase 4
 

@@ -107,9 +107,34 @@ export async function closeRedisForTests(): Promise<void> {
 /**
  * Ensures database is available for integration tests
  * Throws descriptive error if database connection fails
+ *
+ * NOTE: This function now handles reconnection for consecutive test runs.
+ * The database module may cache a closed pool, so we verify connectivity
+ * and force reinit if needed.
  */
 export async function ensureDatabaseAvailable(): Promise<void> {
   try {
+    // First, try to use existing connection
+    try {
+      const result = await executeQuery<{ result: number }>('SELECT 1 as result');
+      if (result.recordset[0]?.result === 1) {
+        isDatabaseInitialized = true;
+        console.log('✅ Database connection already active');
+        return;
+      }
+    } catch {
+      // Connection not available, need to reinit
+      console.log('⚠️ Database connection not active, reinitializing...');
+    }
+
+    // Force close any stale connection before reinit
+    try {
+      await closeDatabase();
+    } catch {
+      // Ignore close errors
+    }
+
+    // Initialize fresh connection
     await initDatabase();
 
     // Verify connection with simple query
@@ -119,6 +144,7 @@ export async function ensureDatabaseAvailable(): Promise<void> {
     }
 
     isDatabaseInitialized = true;
+    console.log('✅ Database connection established for tests');
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     throw new Error(

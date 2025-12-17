@@ -526,6 +526,27 @@ export class EventStore {
    *
    * @param sessionId - Session ID
    * @returns Next sequence number from database
+   *
+   * @warning TECHNICAL DEBT (QA Audit 2025-12-17):
+   * This fallback is NOT ATOMIC and can cause DUPLICATE sequence numbers under concurrent load.
+   *
+   * Race condition scenario:
+   * 1. Request A: SELECT MAX(sequence_number) -> 5
+   * 2. Request B: SELECT MAX(sequence_number) -> 5 (before A's INSERT)
+   * 3. Request A: INSERT with sequence_number = 6
+   * 4. Request B: INSERT with sequence_number = 6 <- DUPLICATE!
+   *
+   * This happens when:
+   * - Redis is temporarily unavailable (Azure maintenance, network timeout)
+   * - High concurrency during Redis recovery
+   *
+   * Fix options for Phase 5:
+   * - Option A: Use SERIALIZABLE isolation with UPDLOCK hint
+   * - Option B: Use INSERT with OUTPUT to atomically get next sequence
+   * - Option C: Implement optimistic locking with retry
+   *
+   * @see docs/plans/phase-3/README.md for full analysis
+   * @todo Implement atomic fallback in Phase 5 refactoring
    */
   private async fallbackToDatabase(sessionId: string): Promise<number> {
     try {

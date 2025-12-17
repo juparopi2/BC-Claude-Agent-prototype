@@ -232,4 +232,87 @@ _Información que Fase 6 necesita._
 
 ---
 
-*Última actualización: 2025-12-16*
+## Deuda Tecnica Identificada (QA Audit Fase 3 - 2025-12-17)
+
+### DT-1: Fallback de Sequence Numbers NO ATOMICO (CRITICO)
+
+**Ubicacion**: `backend/src/services/events/EventStore.ts:551` - metodo `fallbackToDatabase()`
+
+**Problema**: Cuando Redis no esta disponible, el fallback a database usa:
+```sql
+SELECT COALESCE(MAX(sequence_number), -1) + 1 AS next_seq FROM message_events WHERE session_id = @session_id
+```
+
+Esto NO es atomico - puede causar sequence numbers duplicados bajo carga concurrente.
+
+**Race Condition**:
+1. Request A: SELECT MAX -> 5
+2. Request B: SELECT MAX -> 5 (antes del INSERT de A)
+3. Request A: INSERT sequence=6
+4. Request B: INSERT sequence=6 <- DUPLICADO
+
+**Fix Propuesto**:
+- Option A: Usar SERIALIZABLE isolation con UPDLOCK hint
+- Option B: Usar INSERT con OUTPUT para atomicidad
+- Option C: Optimistic locking con retry
+
+**Impacto**: Puede causar problemas de ordenamiento de mensajes en produccion cuando Redis falla.
+
+---
+
+### DT-2: Cleanup de Tests - FK Constraints
+
+**Ubicacion**: `backend/src/__tests__/integration/helpers/TestDatabaseSetup.ts`
+
+**Problema**: Durante el cleanup de tests, aparecen errores:
+- `FK_messages_session` - Intentando insertar mensaje para sesion eliminada
+- `FK_usage_events_user` - Intentando eliminar usuario con usage_events asociados
+
+**Causa Raiz**: El orden de eliminacion no respeta las FK constraints. Las tablas deben eliminarse en orden de dependencia:
+1. Eliminar `usage_events` primero
+2. Eliminar `messages`
+3. Eliminar `sessions`
+4. Eliminar `users`
+
+**Fix Propuesto**: Actualizar `cleanupTestUser()` para eliminar en orden correcto o usar CASCADE DELETE en las FK.
+
+---
+
+### DT-3: FakeAnthropicClient - Limitaciones de Mock
+
+**Ubicacion**: `backend/src/services/agent/FakeAnthropicClient.ts`
+
+**Problema**: El mock no soporta correctamente:
+1. `enableThinking: true` - No emite eventos de thinking correctamente
+2. `throwOnNextCall()` - Errores no se propagan al WebSocket
+3. Timing de eventos - No simula delays realistas
+
+**Tests Afectados** (skipped):
+- `should emit thinking event when enabled` - message-flow.integration.test.ts
+- `should emit error event on agent failure` - chatmessagehandler-agent.integration.test.ts
+
+**Opciones de Fix**:
+- Option A: Mejorar FakeAnthropicClient para soportar thinking
+- Option B: Usar MSW para mockear HTTP y usar cliente real
+- Option C: Crear mock de LangChain que emita eventos correctos
+
+**Recomendacion**: Option B (MSW) es mas realista pero requiere mas setup. Option A es mas rapido.
+
+---
+
+### DT-4: Tests de Integracion Dependen de Redis
+
+**Ubicacion**: `backend/src/__tests__/integration/event-ordering/sequence-numbers.integration.test.ts`
+
+**Problema**: Los 8 tests criticos de sequence numbers se skipean completamente si Redis no esta disponible (`describe.skipIf(!isRedisAvailable)`).
+
+**Impacto**: En CI/CD sin Docker o pre-push hook sin Redis, no se valida la logica de ordenamiento.
+
+**Fix Propuesto**:
+- Agregar Redis como servicio requerido en CI/CD
+- O crear tests unitarios que mockeen Redis
+
+---
+
+*Ultima actualizacion: 2025-12-17*
+*Deuda tecnica documentada: QA Audit Fase 3*

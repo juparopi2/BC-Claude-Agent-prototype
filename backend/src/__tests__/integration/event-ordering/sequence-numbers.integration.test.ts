@@ -8,6 +8,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import IORedis from 'ioredis';
 import { getRedis } from '@/config/redis';
 import { getEventStore, EventStore, EventType } from '@/services/events/EventStore';
 import {
@@ -19,16 +20,35 @@ import {
   closeDatabaseConnection,
   closeRedisForTests,
 } from '../helpers';
+import { REDIS_TEST_CONFIG } from '../setup.integration';
 
-// TODO: Fix Redis connection issues in CI/CD environment
-// ISSUE: Tests failing with "ERR syntax error" when Redis commands are executed
-// CAUSE: Redis test container not available or configured incorrectly in pre-push hook
-// SOLUTION: Either:
-//   1. Configure Docker/Redis in pre-push hook (like integration tests do)
-//   2. Set up proper test Redis instance for CI/CD
-//   3. Use conditional skip based on Redis availability
-// RELATED: Pre-push hook at .husky/pre-push
-describe.skip('Event Ordering with Real Redis', () => {
+/**
+ * Check Redis availability with quick timeout.
+ * This allows the tests to be conditionally skipped when Redis is not running
+ * (e.g., in pre-push hook or CI/CD without Docker).
+ */
+const isRedisAvailable = await (async () => {
+  try {
+    const redis = new IORedis({
+      host: REDIS_TEST_CONFIG.host,
+      port: REDIS_TEST_CONFIG.port,
+      connectTimeout: 2000,
+      maxRetriesPerRequest: 0,
+      lazyConnect: true,
+    });
+    await redis.connect();
+    await redis.ping();
+    await redis.quit();
+    console.log('✅ Redis availability check passed - running sequence number tests');
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.log(`⚠️ Redis not available (${message}) - skipping sequence number tests`);
+    return false;
+  }
+})();
+
+describe.skipIf(!isRedisAvailable)('Event Ordering with Real Redis', () => {
   // NOTE: US-002 FIX - Explicit initialization instead of setupDatabaseForTests()
   // The singleFork: true config in Vitest causes timing issues with the hook-based
   // setup. Explicit initialization ensures database is ready before tests run.

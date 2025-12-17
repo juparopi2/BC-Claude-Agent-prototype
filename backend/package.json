@@ -13,7 +13,7 @@
     "migrate": "node -r ts-node/register scripts/migrate.ts",
     "seed": "node -r ts-node/register scripts/seed.ts",
     "capture:websocket": "tsx scripts/capture-websocket-events.ts",
-    "test": "vitest run",
+    "test": "vitest run && npm run test:integration",
     "test:unit": "vitest run --exclude '**/*.integration.test.ts'",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:integration:files": "vitest run --config vitest.integration.config.ts src/__tests__/integration/files/",

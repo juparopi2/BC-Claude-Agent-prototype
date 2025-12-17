@@ -94,7 +94,7 @@ import { executeQuery } from '@/config/database';
 import { getEventStore } from '@/services/events/EventStore';
 import { logger } from '@/utils/logger';
 
-describe.skip('MessageQueue Integration Tests', () => {
+describe('MessageQueue Integration Tests', () => {
   // Initialize DB + Redis REAL infrastructure with extended timeout
   setupDatabaseForTests({ timeout: 60000 });
 

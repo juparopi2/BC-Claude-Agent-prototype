@@ -13,7 +13,8 @@ out/
 coverage/
 .nyc_output/
 playwright-report/
-test-results/
+test-results/*
+!test-results/.gitkeep
 *.log
 
 # Environment variables

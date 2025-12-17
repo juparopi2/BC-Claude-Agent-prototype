@@ -41,8 +41,8 @@
     "removeComments": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
-    "declaration": true,
-    "declarationMap": true,
+    "declaration": false,
+    "declarationMap": false,
     "sourceMap": true,
     /* Type Checking */
     "strict": true,
@@ -64,7 +64,11 @@
     "noPropertyAccessFromIndexSignature": false,
     /* Completeness */
     "incremental": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    /* Performance optimizations */
+    "isolatedModules": true,
+    "disableSourceOfProjectReferenceRedirect": true,
+    "disableSolutionSearching": true
   },
   "include": [
     "src/**/*"

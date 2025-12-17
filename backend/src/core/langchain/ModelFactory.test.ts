@@ -61,28 +61,32 @@ describe('ModelFactory', () => {
       expect(() => ModelFactory.create(config)).not.toThrow();
     });
 
-    it('should throw error if thinking budget is less than 1024', () => {
+    // NOTE: ModelFactory now auto-adjusts invalid thinkingBudget values instead of throwing
+    // This is more robust behavior that prevents runtime errors
+    it('should auto-adjust thinking budget if less than 1024', () => {
       const config: ModelConfig = {
         provider: 'anthropic',
         modelName: 'claude-3-5-sonnet-20241022',
         enableThinking: true,
-        thinkingBudget: 500,
+        thinkingBudget: 500, // Less than 1024 minimum
         maxTokens: 4096,
       };
 
-      expect(() => ModelFactory.create(config)).toThrow('Thinking budget must be at least 1024 tokens');
+      // Should NOT throw - ModelFactory auto-adjusts to 1024
+      expect(() => ModelFactory.create(config)).not.toThrow();
     });
 
-    it('should throw error if thinking budget is greater than maxTokens', () => {
+    it('should auto-adjust thinking budget if greater than maxTokens', () => {
       const config: ModelConfig = {
         provider: 'anthropic',
         modelName: 'claude-3-5-sonnet-20241022',
         enableThinking: true,
-        thinkingBudget: 5000,
+        thinkingBudget: 5000, // Greater than maxTokens
         maxTokens: 4096,
       };
 
-      expect(() => ModelFactory.create(config)).toThrow('Thinking budget must be less than maxTokens');
+      // Should NOT throw - ModelFactory auto-adjusts to maxTokens * 0.95
+      expect(() => ModelFactory.create(config)).not.toThrow();
     });
   });
 

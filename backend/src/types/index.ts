@@ -45,6 +45,7 @@ export type {
   MessagePartialEvent,
   MessageEvent,
   MessageChunkEvent,  // ⭐ Added missing export
+  Citation,  // ⭐ RAG source attribution
   ToolUseEvent,
   ToolResultEvent,
   ErrorEvent,

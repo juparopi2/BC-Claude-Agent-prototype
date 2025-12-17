@@ -45,6 +45,17 @@ const getMessagesSchema = z.object({
 // ============================================
 
 /**
+ * Try to parse a JSON string, return the original string if parsing fails
+ */
+function tryParseJSON(str: string): unknown {
+  try {
+    return JSON.parse(str);
+  } catch {
+    return str;
+  }
+}
+
+/**
  * Transform database session row to frontend Session format
  */
 function transformSession(row: {
@@ -156,6 +167,7 @@ function transformMessage(row: DbMessageRow) {
 
     case 'tool_result':
       // Tool execution result (separate from request)
+      // FIX: Result data is stored in content column, not metadata.tool_result
       return {
         ...base,
         type: 'tool_result' as const,
@@ -163,7 +175,8 @@ function transformMessage(row: DbMessageRow) {
         tool_name: (metadata.tool_name as string) || '',
         tool_args: (metadata.tool_args as Record<string, unknown>) || {},
         success: (metadata.success as boolean) ?? true,
-        result: metadata.tool_result,
+        // FIX: Read from content column, try JSON.parse for objects
+        result: row.content ? tryParseJSON(row.content) : undefined,
         error_message: metadata.error_message as string | undefined,
         tool_use_id: row.tool_use_id || undefined,
         duration_ms: metadata.duration_ms as number | undefined,

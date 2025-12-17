@@ -32,6 +32,7 @@ export type {
   SessionStartEvent,
   ThinkingEvent,
   ThinkingChunkEvent,
+  ThinkingCompleteEvent,
   MessagePartialEvent,
   MessageEvent,
   MessageChunkEvent,

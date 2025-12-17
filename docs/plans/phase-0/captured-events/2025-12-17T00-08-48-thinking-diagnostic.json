@@ -1,0 +1,334 @@
+{
+  "startTime": 1765930125574,
+  "endTime": 1765930128438,
+  "model": "claude-sonnet-4-20250514",
+  "options": {
+    "thinking": true,
+    "vision": false
+  },
+  "prompt": "What is 2+2?",
+  "events": [
+    {
+      "timestamp": 1765930127585,
+      "eventType": "message_start",
+      "rawEvent": {
+        "type": "message_start",
+        "message": {
+          "model": "claude-sonnet-4-20250514",
+          "id": "msg_01EaZkLgbCEBL76f826VjHZH",
+          "type": "message",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "thinking",
+              "thinking": "This is a very straightforward math question. 2 + 2 = 4. This is basic arithmetic.",
+              "signature": "EvoBCkYIChgCKkBwMTYnjwUqhdDFfZHyYB1PYUXQiS6Gy/+17t4yhItrCyem919BknBbcnwyWTEvGyffvtpgvHD3jcZ3dIwRlnRqEgwMmFOPJL3IxOChxj4aDBHtfZnqgHwdD2MQBSIwFE+0c6/7hNr0Q2EOUIHyC7yosYr9ZJilKXJMBCZ2NE1XxLXGONH3BNtAfOp+n4wUKmLZShS0x74gztz8dDOLoI2vhbj6kxNA6evBgphjzXvwVLBiECGbr0gcqlVMLCMeHOSNirhLWlyYESzMRBjnziEui3Cm0ThSrKkuy5LPEKDplm15ISemHAmjz3S7OkjOIew6bRgB"
+            },
+            {
+              "type": "text",
+              "text": "2 + 2 = 4"
+            }
+          ],
+          "stop_reason": "end_turn",
+          "stop_sequence": null,
+          "usage": {
+            "input_tokens": 43,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "output_tokens": 45,
+            "service_tier": "standard"
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1765930127586,
+      "eventType": "content_block_start",
+      "rawEvent": {
+        "type": "content_block_start",
+        "index": 0,
+        "content_block": {
+          "type": "thinking",
+          "thinking": "",
+          "signature": ""
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930127587,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": "This"
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930127918,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " is a very"
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930127927,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " straight"
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930127928,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": "forward math"
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930127942,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " question. "
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930127952,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": "2 "
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930128219,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": "+ 2 = 4."
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930128219,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " This"
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930128223,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " is basic"
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930128338,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " arithmetic."
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930128360,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": ""
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930128364,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "signature_delta",
+          "signature": "EvoBCkYIChgCKkBwMTYnjwUqhdDFfZHyYB1PYUXQiS6Gy/+17t4yhItrCyem919BknBbcnwyWTEvGyffvtpgvHD3jcZ3dIwRlnRqEgwMmFOPJL3IxOChxj4aDBHtfZnqgHwdD2MQBSIwFE+0c6/7hNr0Q2EOUIHyC7yosYr9ZJilKXJMBCZ2NE1XxLXGONH3BNtAfOp+n4wUKmLZShS0x74gztz8dDOLoI2vhbj6kxNA6evBgphjzXvwVLBiECGbr0gcqlVMLCMeHOSNirhLWlyYESzMRBjnziEui3Cm0ThSrKkuy5LPEKDplm15ISemHAmjz3S7OkjOIew6bRgB"
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930128364,
+      "eventType": "content_block_stop",
+      "rawEvent": {
+        "type": "content_block_stop",
+        "index": 0
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930128365,
+      "eventType": "content_block_start",
+      "rawEvent": {
+        "type": "content_block_start",
+        "index": 1,
+        "content_block": {
+          "type": "text",
+          "text": ""
+        }
+      },
+      "index": 1
+    },
+    {
+      "timestamp": 1765930128365,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": "2 + 2 "
+        }
+      },
+      "index": 1
+    },
+    {
+      "timestamp": 1765930128370,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": "= 4"
+        }
+      },
+      "index": 1
+    },
+    {
+      "timestamp": 1765930128371,
+      "eventType": "content_block_stop",
+      "rawEvent": {
+        "type": "content_block_stop",
+        "index": 1
+      },
+      "index": 1
+    },
+    {
+      "timestamp": 1765930128416,
+      "eventType": "message_delta",
+      "rawEvent": {
+        "type": "message_delta",
+        "delta": {
+          "stop_reason": "end_turn",
+          "stop_sequence": null
+        },
+        "usage": {
+          "input_tokens": 43,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "output_tokens": 45
+        }
+      }
+    },
+    {
+      "timestamp": 1765930128417,
+      "eventType": "message_stop",
+      "rawEvent": {
+        "type": "message_stop"
+      }
+    }
+  ],
+  "finalMessage": {
+    "model": "claude-sonnet-4-20250514",
+    "id": "msg_01EaZkLgbCEBL76f826VjHZH",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "This is a very straightforward math question. 2 + 2 = 4. This is basic arithmetic.",
+        "signature": "EvoBCkYIChgCKkBwMTYnjwUqhdDFfZHyYB1PYUXQiS6Gy/+17t4yhItrCyem919BknBbcnwyWTEvGyffvtpgvHD3jcZ3dIwRlnRqEgwMmFOPJL3IxOChxj4aDBHtfZnqgHwdD2MQBSIwFE+0c6/7hNr0Q2EOUIHyC7yosYr9ZJilKXJMBCZ2NE1XxLXGONH3BNtAfOp+n4wUKmLZShS0x74gztz8dDOLoI2vhbj6kxNA6evBgphjzXvwVLBiECGbr0gcqlVMLCMeHOSNirhLWlyYESzMRBjnziEui3Cm0ThSrKkuy5LPEKDplm15ISemHAmjz3S7OkjOIew6bRgB"
+      },
+      {
+        "type": "text",
+        "text": "2 + 2 = 4"
+      }
+    ],
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "usage": {
+      "input_tokens": 43,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 45,
+      "service_tier": "standard"
+    }
+  },
+  "usage": {
+    "input_tokens": 43,
+    "output_tokens": 45
+  }
+}

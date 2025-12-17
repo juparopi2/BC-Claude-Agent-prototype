@@ -3,6 +3,16 @@ import { RAGAgent } from './rag-agent';
 import { AgentState } from '../orchestrator/state';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
+vi.mock('openai', () => {
+  return {
+    OpenAI: class {
+      embeddings = {
+        create: vi.fn()
+      }
+    }
+  };
+});
+
 // Mock dependencies - factory must be self-contained (vi.mock is hoisted)
 vi.mock('../../../core/langchain/ModelFactory', () => ({
   ModelFactory: {

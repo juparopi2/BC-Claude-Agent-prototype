@@ -22,6 +22,7 @@ export type {
   MessagePartialEvent,
   MessageEvent,
   MessageChunkEvent,
+  Citation,  // RAG source attribution
   ToolUseEvent,
   ToolResultEvent,
   ErrorEvent,

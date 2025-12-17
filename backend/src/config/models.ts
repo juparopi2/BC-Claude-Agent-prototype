@@ -25,16 +25,16 @@ import { ModelConfig, ModelProvider } from '../core/langchain/ModelFactory';
  * Using const assertion for type safety while allowing string extensibility.
  */
 export const AnthropicModels = {
-  // Claude 4.5 Series (Latest)
+  // Claude 4.5 Series (2025)
   OPUS_4_5: 'claude-opus-4-5-20250929',
   SONNET_4_5: 'claude-sonnet-4-5-20250929',
 
-  // Claude 3.5 Series
-  SONNET_3_5: 'claude-3-5-sonnet-latest',
-  HAIKU_3_5: 'claude-3-5-haiku-latest',
+  // Claude 3.5 Series (Legacy 2024)
+  SONNET_3_5: 'claude-3-5-sonnet-20241022',
+  HAIKU_3_5: 'claude-3-5-haiku-20241022',
 
   // Claude 3 Series (Legacy)
-  OPUS_3: 'claude-3-opus-latest',
+  OPUS_3: 'claude-3-opus-20240229',
   SONNET_3: 'claude-3-sonnet-20240229',
   HAIKU_3: 'claude-3-haiku-20240307',
 } as const;
@@ -132,13 +132,13 @@ export const ModelRoleConfigs: Record<ModelRole, RoleModelConfig> = {
     provider: 'anthropic' as ModelProvider,
     modelName: AnthropicModels.OPUS_4_5,
     temperature: 0.7,
-    maxTokens: 16384,
+    maxTokens: 32000, // Increased for deep thinking workflows
     streaming: true,
     enableThinking: true,
-    thinkingBudget: 4096,
+    thinkingBudget: 16000,
     estimatedTokensPerCall: {
       input: 2000,
-      output: 1000,
+      output: 2000,
     },
   },
 
@@ -162,26 +162,28 @@ export const ModelRoleConfigs: Record<ModelRole, RoleModelConfig> = {
     provider: 'anthropic' as ModelProvider,
     modelName: AnthropicModels.SONNET_4_5,
     temperature: 0.3, // More deterministic for BC operations
-    maxTokens: 8192,
+    maxTokens: 32000, // Increased to support long tool sequences
     streaming: true,
     enableCaching: true, // Cache BC tool definitions
+    enableThinking: true, // Enable thinking for complex BC logic
+    thinkingBudget: 4096,
     estimatedTokensPerCall: {
       input: 3000,
-      output: 2000,
+      output: 4000,
     },
   },
 
   rag_agent: {
     role: 'rag_agent',
-    description: 'RAG retrieval and knowledge synthesis - economic model',
+    description: 'RAG retrieval and knowledge synthesis - smarter model for reasoning',
     provider: 'anthropic' as ModelProvider,
-    modelName: AnthropicModels.HAIKU_3_5, // Economic for retrieval
+    modelName: AnthropicModels.SONNET_4_5, // Upgraded to Sonnet 4.5 as requested
     temperature: 0.5,
-    maxTokens: 4096,
+    maxTokens: 16384, // Increased for document synthesis
     streaming: true,
     estimatedTokensPerCall: {
-      input: 1000,
-      output: 500,
+      input: 2000,
+      output: 1000,
     },
   },
 

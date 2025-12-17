@@ -16,6 +16,16 @@ import { ContextRetrievalService } from '@/services/files/context/ContextRetriev
 import type { ParsedFile } from '@/types/file.types';
 import type { SearchResult } from '@/services/search/types';
 
+vi.mock('openai', () => {
+  return {
+    OpenAI: class {
+      embeddings = {
+        create: vi.fn()
+      }
+    }
+  };
+});
+
 describe('ContextRetrievalService', () => {
   let service: ContextRetrievalService;
   let mockFileService: {

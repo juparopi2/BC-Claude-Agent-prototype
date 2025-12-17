@@ -197,6 +197,8 @@ export interface ThinkingEventData {
   sequenceNumber: number;
   eventId: string;
   sessionId?: string;
+  signature?: string;
+  messageId?: string;
 }
 
 /**

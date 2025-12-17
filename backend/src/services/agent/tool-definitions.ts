@@ -1,4 +1,6 @@
 /**
+ * @deprecated Tool definitions are now located in src/modules/agents/business-central/tools.ts
+ *
  * MCP Tool Definitions
  *
  * Claude-compatible tool definitions for MCP server operations.

@@ -831,20 +831,6 @@ function configureSocketIO(): void {
 
     const oauthSession = req.session.microsoftOAuth as MicrosoftOAuthSession;
 
-    // [E2E-DEBUG] Log session structure
-    console.log('[E2E-DEBUG] Socket.IO auth middleware:', {
-      hasSession: !!req.session,
-      hasMicrosoftOAuth: !!(req.session && req.session.microsoftOAuth),
-      sessionKeys: req.session ? Object.keys(req.session) : [],
-    });
-
-    console.log('[E2E-DEBUG] OAuth session data:', {
-      hasUserId: !!oauthSession.userId,
-      userId: oauthSession.userId,
-      email: oauthSession.email,
-      oauthKeys: Object.keys(oauthSession),
-    });
-
     // Verify session has userId
     if (!oauthSession.userId) {
       console.warn('[Socket.IO] Connection rejected: No userId in session', {
@@ -866,12 +852,6 @@ function configureSocketIO(): void {
     const authSocket = socket as AuthenticatedSocket;
     authSocket.userId = oauthSession.userId;
     authSocket.userEmail = oauthSession.email;
-
-    console.log('[E2E-DEBUG] Socket authenticated:', {
-      userId: authSocket.userId,
-      userEmail: authSocket.userEmail,
-      socketId: socket.id,
-    });
 
     next();
   });
@@ -1006,15 +986,6 @@ function configureSocketIO(): void {
       // Security: Get userId from authenticated socket
       const authenticatedUserId = authSocket.userId;
 
-      // [E2E-DEBUG] Log session:join handler invocation
-      console.log('[E2E-DEBUG] session:join handler called:', {
-        sessionId,
-        authenticatedUserId,
-        hasAuthenticatedUserId: !!authenticatedUserId,
-        socketId: socket.id,
-        timestamp: new Date().toISOString(),
-      });
-
       if (!authenticatedUserId) {
         logger.warn('[Socket] Session join rejected: Socket not authenticated', {
           socketId: socket.id,
@@ -1041,24 +1012,10 @@ function configureSocketIO(): void {
 
       try {
         // Security: Validate user owns this session (multi-tenant safety)
-        console.log('[E2E-DEBUG] About to validate ownership:', {
-          sessionId,
-          authenticatedUserId,
-        });
-
         const ownershipResult = await validateSessionOwnership(sessionId, authenticatedUserId);
-
-        console.log('[E2E-DEBUG] Ownership validation result:', {
-          isOwner: ownershipResult.isOwner,
-          error: ownershipResult.error,
-          actualOwner: ownershipResult.actualOwner,
-          sessionId,
-          authenticatedUserId,
-        });
 
         if (!ownershipResult.isOwner) {
           if (ownershipResult.error === 'SESSION_NOT_FOUND') {
-            console.log('[E2E-DEBUG] Emitting session:error - SESSION_NOT_FOUND');
             logger.warn('[Socket] Session join rejected: Session not found', {
               socketId: socket.id,
               sessionId,
@@ -1071,8 +1028,6 @@ function configureSocketIO(): void {
             return;
           }
 
-          // Log unauthorized access attempt for security audit
-          console.log('[E2E-DEBUG] Emitting session:error - UNAUTHORIZED');
           logger.warn('[Socket] Session join rejected: Unauthorized access attempt', {
             socketId: socket.id,
             sessionId,
@@ -1092,7 +1047,6 @@ function configureSocketIO(): void {
           userId: authenticatedUserId,
         });
 
-        console.log('[E2E-DEBUG] SUCCESS - About to emit session:joined:', { sessionId });
         socket.emit('session:joined', { sessionId });
 
         // NEW: Explicit acknowledgment that socket is ready to receive events

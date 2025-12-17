@@ -26,6 +26,7 @@ export type EventType =
   | 'user_message_sent'
   | 'agent_thinking_started'
   | 'agent_thinking_completed'
+  | 'agent_thinking_block'
   | 'agent_message_sent'
   | 'agent_message_chunk'
   | 'tool_use_requested'

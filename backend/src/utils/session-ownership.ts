@@ -72,38 +72,15 @@ export async function validateSessionOwnership(
       error: 'INVALID_INPUT',
     };
   }
-
-  // [E2E-DEBUG] Log function invocation
-  console.log('[E2E-DEBUG] validateSessionOwnership called:', {
-    sessionId,
-    userId,
-    sessionIdType: typeof sessionId,
-    userIdType: typeof userId,
-  });
-
   try {
     const result = await executeQuery<SessionOwnerRow>(
       `SELECT user_id FROM sessions WHERE id = @sessionId`,
       { sessionId }
     );
 
-    // [E2E-DEBUG] Log database query result
-    console.log('[E2E-DEBUG] Database query result:', {
-      hasRecordset: !!result.recordset,
-      recordsetLength: result.recordset?.length || 0,
-      firstRow: result.recordset?.[0],
-      sessionId,
-      userId,
-    });
-
     // Session not found
     if (!result.recordset || result.recordset.length === 0) {
       logger.debug('Session not found during ownership validation', { sessionId });
-      console.log('[E2E-DEBUG] validateSessionOwnership returning:', {
-        result: 'SESSION_NOT_FOUND',
-        sessionId,
-        userId,
-      });
       return {
         isOwner: false,
         error: 'SESSION_NOT_FOUND',
@@ -115,11 +92,6 @@ export async function validateSessionOwnership(
     // Additional safety check (TypeScript noUncheckedIndexedAccess)
     if (!sessionOwner) {
       logger.debug('Session not found during ownership validation (empty row)', { sessionId });
-      console.log('[E2E-DEBUG] validateSessionOwnership returning:', {
-        result: 'SESSION_NOT_FOUND (empty row)',
-        sessionId,
-        userId,
-      });
       return {
         isOwner: false,
         error: 'SESSION_NOT_FOUND',
@@ -134,12 +106,6 @@ export async function validateSessionOwnership(
         // Don't log actual owner for security, but include for debugging if needed
         ownershipMismatch: true,
       });
-      console.log('[E2E-DEBUG] validateSessionOwnership returning:', {
-        result: 'NOT_OWNER',
-        sessionId,
-        userId,
-        actualOwner: sessionOwner.user_id,
-      });
       return {
         isOwner: false,
         error: 'NOT_OWNER',
@@ -148,11 +114,6 @@ export async function validateSessionOwnership(
     }
 
     logger.debug('Session ownership validated successfully', { sessionId, userId });
-    console.log('[E2E-DEBUG] validateSessionOwnership returning:', {
-      result: 'SUCCESS',
-      sessionId,
-      userId,
-    });
     return {
       isOwner: true,
     };

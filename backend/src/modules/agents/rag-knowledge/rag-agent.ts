@@ -39,8 +39,21 @@ export class RAGAgent extends BaseAgent {
      }
 
      // Use centralized model configuration for RAG Agent role (economic model)
+     // Read enableThinking from state.context.options (passed from user's frontend toggle)
+     const enableThinking = state.context?.options?.enableThinking ?? false;
+     const thinkingBudget = state.context?.options?.thinkingBudget ?? 2048;
+
      const ragConfig = getModelConfig('rag_agent');
-     const model = ModelFactory.create(ragConfig);
+     const model = ModelFactory.create({
+       ...ragConfig,
+       enableThinking,
+       thinkingBudget,
+     });
+
+     logger.debug({
+       enableThinking,
+       thinkingBudget: enableThinking ? thinkingBudget : undefined,
+     }, 'RAGAgent: Model config with thinking settings');
 
      // Create tool instance bound to the current user
      const searchTool = createKnowledgeSearchTool(userId);
@@ -69,12 +82,6 @@ export class RAGAgent extends BaseAgent {
        iteration++;
        logger.debug({ iteration, messageCount: currentMessages.length }, 'RAGAgent: Invoking model (iteration)');
 
-       // [DEBUG-AGENT] Log ReAct loop iteration
-       console.log('[DEBUG-AGENT] RAGAgent ReAct loop iteration:', {
-         iteration,
-         messageCount: currentMessages.length
-       });
-
        const response = await modelWithTools.invoke(currentMessages, config);
        newMessages.push(response);
        currentMessages = [...currentMessages, response];
@@ -90,14 +97,6 @@ export class RAGAgent extends BaseAgent {
          iteration
        }, 'RAGAgent: Model response received');
 
-       // [DEBUG-AGENT] Log tool calls
-       console.log('[DEBUG-AGENT] RAGAgent response:', {
-         iteration,
-         hasToolCalls: !!toolCalls?.length,
-         toolCallCount: toolCalls?.length || 0,
-         toolNames: toolCalls?.map(tc => tc.name) || []
-       });
-
        // If no tool calls, we're done
        if (!toolCalls || toolCalls.length === 0) {
          logger.debug({ iteration }, 'RAGAgent: No more tool calls, finishing');
@@ -111,13 +110,6 @@ export class RAGAgent extends BaseAgent {
          const toolCallId = toolCall.id;
 
          logger.debug({ toolName, toolCallId, args: toolArgs }, 'RAGAgent: Executing tool');
-
-         // [DEBUG-AGENT] Log tool execution
-         console.log('[DEBUG-AGENT] RAGAgent executing tool:', {
-           toolName,
-           toolCallId,
-           args: toolArgs
-         });
 
          const tool = toolsMap.get(toolName);
          if (!tool) {
@@ -137,14 +129,6 @@ export class RAGAgent extends BaseAgent {
            const resultStr = typeof result === 'string' ? result : JSON.stringify(result);
 
            logger.info({ toolName, toolCallId, resultLength: resultStr.length }, 'RAGAgent: Tool executed successfully');
-
-           // [DEBUG-AGENT] Log tool result
-           console.log('[DEBUG-AGENT] RAGAgent tool result:', {
-             toolName,
-             toolCallId,
-             resultLength: resultStr.length,
-             resultPreview: resultStr.substring(0, 200)
-           });
 
            // Track tool execution for event emission
            toolExecutions.push({

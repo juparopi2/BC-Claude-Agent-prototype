@@ -37,8 +37,9 @@ export default function ChatContainer() {
       }
 
       // If only one has a real sequence number, prioritize it
-      if (seqA > 0) return 1;  // a goes after b
-      if (seqB > 0) return -1; // b goes after a
+      // FIX: Persisted messages (with sequence_number) should come BEFORE unpersisted
+      if (seqA > 0) return -1;  // a is persisted, comes first
+      if (seqB > 0) return 1;   // b is persisted, comes first
 
       // Both are optimistic (sequence 0 or undefined) - sort by timestamp
       const timeA = new Date(a.created_at).getTime();
@@ -46,6 +47,15 @@ export default function ChatContainer() {
       return timeA - timeB;
     });
   }, [persistedMessages, optimisticMessages]);
+
+  // DEBUG: Log sorted messages when they change
+  console.log('[ChatContainer] Messages sorted:', messages.map(m => ({
+    id: m.id,
+    type: m.type,
+    seq: m.sequence_number,
+    role: 'role' in m ? m.role : undefined,
+  })));
+
   const streaming = useChatStore((s) => s.streaming);
   const isLoading = useChatStore((s) => s.isLoading);
   const isAgentBusy = useChatStore((s) => s.isAgentBusy);

@@ -4,6 +4,15 @@ import { env } from '@/config/environment';
 import { OpenAI } from 'openai';
 
 // Mock dependencies
+vi.mock('openai', () => {
+  return {
+    OpenAI: class {
+      embeddings = {
+        create: vi.fn()
+      }
+    }
+  };
+});
 vi.mock('@/config/environment', async (importOriginal) => {
   const actual = await importOriginal();
   return {

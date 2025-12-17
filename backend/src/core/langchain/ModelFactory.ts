@@ -57,12 +57,21 @@ export class ModelFactory {
 
         if (enableThinking) {
           // Validate thinking budget
-          const budget = thinkingBudget ?? 2048; // Default to 2048 tokens
+          let budget = thinkingBudget ?? 2048; // Default to 2048 tokens
+          
           if (budget < 1024) {
-            throw new Error('Thinking budget must be at least 1024 tokens');
+             budget = 1024; // Minimum required by Anthropic
           }
+          
+          // Safety: Ensure budget doesn't exceed maxTokens
           if (maxTokens && budget >= maxTokens) {
-            throw new Error('Thinking budget must be less than maxTokens');
+             // AUTO-FIX: Clamp budget to 80% of maxTokens to prevent crash
+             budget = Math.floor(maxTokens * 0.8);
+             if (budget < 1024) budget = 1024; // Hard floor
+          }
+
+          if (maxTokens && budget >= maxTokens) {
+             throw new Error(`Thinking budget (${budget}) must be less than maxTokens (${maxTokens})`);
           }
 
           thinkingConfig = {
@@ -84,7 +93,8 @@ export class ModelFactory {
 
         return new ChatAnthropic({
           modelName,
-          temperature,
+          // Temperature must be omitted/undefined when thinking is enabled
+          temperature: enableThinking ? undefined : temperature,
           maxTokens,
           streaming,
           apiKey: env.ANTHROPIC_API_KEY,

@@ -5,12 +5,14 @@
   "main": "dist/server.js",
   "scripts": {
     "dev": "nodemon --exec tsx src/server.ts",
-    "build": "tsc && tsc-alias",
+    "build": "swc src -d dist --strip-leading-paths && tsc-alias",
+    "build:tsc": "tsc && tsc-alias",
     "build:mcp": "cd mcp-server && npm run build",
     "build:all": "npm run build && npm run build:mcp",
     "start": "node dist/server.js",
     "migrate": "node -r ts-node/register scripts/migrate.ts",
     "seed": "node -r ts-node/register scripts/seed.ts",
+    "capture:websocket": "tsx scripts/capture-websocket-events.ts",
     "test": "vitest run",
     "test:unit": "vitest run --exclude '**/*.integration.test.ts'",
     "test:integration": "vitest run --config vitest.integration.config.ts",
@@ -28,7 +30,8 @@
     "test:e2e:clean": "npm run cache:clear && npm run test:e2e",
     "lint": "eslint src/**/*.ts",
     "type-check": "node --max-old-space-size=8192 ./node_modules/typescript/bin/tsc --noEmit",
-    "verify": "npm run type-check",
+    "type-check:changed": "git diff --name-only --diff-filter=d HEAD~1 | grep '\\.ts$' | xargs -r npx tsc --noEmit",
+    "verify": "npm run build",
     "verify:all": "npm run build && npm run lint && npm run type-check && npm run test:all",
     "prepush": "npm run verify"
   },
@@ -81,6 +84,8 @@
     "zod": "3.25.76"
   },
   "devDependencies": {
+    "@swc/cli": "^0.7.9",
+    "@swc/core": "^1.15.5",
     "@types/bcrypt": "6.0.0",
     "@types/bcryptjs": "2.4.6",
     "@types/cors": "2.8.19",

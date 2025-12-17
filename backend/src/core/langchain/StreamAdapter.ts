@@ -1,6 +1,6 @@
 import { StreamEvent } from '@langchain/core/tracers/log_stream';
 import { AIMessageChunk } from '@langchain/core/messages';
-import { AgentEvent, UsageEvent } from '../../types';
+import { AgentEvent, UsageEvent, Citation } from '../../types';
 import { v4 as uuidv4 } from 'uuid';
 import { createChildLogger } from '@/utils/logger';
 
@@ -9,11 +9,40 @@ const logger = createChildLogger({ service: 'StreamAdapter' });
 /**
  * Adapter to convert LangChain stream events to our legacy AgentEvent format.
  * This ensures the frontend doesn't need to change immediately.
+ *
+ * FIX 2: Added blockIndex tracking for proper message ordering during streaming.
+ * The blockIndex is used by the frontend to sort transient events before
+ * they get their final sequence_number from persistence.
+ *
+ * @deprecated Use StreamAdapterFactory and AnthropicStreamAdapter instead.
+ * This class is maintained for backward compatibility and reference but will be removed.
  */
 export class StreamAdapter {
   // sessionId parameter reserved for future event tracking with session context
-  constructor(_sessionId: string) {
-    // Session context can be used for future enhancements
+  private _sessionId: string;
+
+  // FIX 2: Block counter for ordering events during streaming
+  // Each content block (thinking, text, tool_use) gets a unique index
+  // This allows the frontend to sort events correctly before persistence completes
+  private blockCounter = 0;
+
+  constructor(sessionId: string) {
+    this._sessionId = sessionId;
+  }
+
+  /**
+   * Reset the block counter (call when starting a new message/turn)
+   */
+  resetBlockCounter(): void {
+    this.blockCounter = 0;
+    logger.debug('StreamAdapter: Block counter reset');
+  }
+
+  /**
+   * Get the current block index and increment for next use
+   */
+  private getNextBlockIndex(): number {
+    return this.blockCounter++;
   }
 
   processChunk(event: StreamEvent): AgentEvent | UsageEvent | null {
@@ -51,23 +80,14 @@ export class StreamAdapter {
             logger.debug({ blockCount: chunk.content.length }, 'StreamAdapter: Processing content array');
 
             for (const block of chunk.content) {
-                // [DEBUG-AGENT] Log all content blocks for debugging tool_use visibility
-                console.log('[DEBUG-AGENT] Content block received:', {
-                    type: block.type,
-                    hasThinking: !!block.thinking,
-                    hasText: !!block.text,
-                    hasName: !!block.name,
-                    hasId: !!block.id,
-                    hasInput: !!block.input,
-                    blockPreview: JSON.stringify(block).substring(0, 200)
-                });
-
                 logger.debug({
                   blockType: block.type,
                   hasThinking: !!block.thinking,
                   hasText: !!block.text,
                   hasInput: !!block.input,
-                  hasName: !!block.name
+                  hasName: !!block.name,
+                  hasCitations: !!block.citations,
+                  citationsCount: block.citations?.length
                 }, 'StreamAdapter: Processing content block');
 
                 // Skip tool input streaming (not user-visible)
@@ -77,59 +97,53 @@ export class StreamAdapter {
                 }
 
                 // Handle thinking blocks (Extended Thinking)
-                // [DEBUG-AGENT] Log thinking block structure for debugging
-                if (block.type === 'thinking') {
-                    console.log('[DEBUG-AGENT] Thinking block received:', {
-                        type: block.type,
-                        hasThinking: !!block.thinking,
-                        thinkingLength: block.thinking?.length || 0,
-                        thinkingPreview: block.thinking?.substring?.(0, 100) || 'N/A',
-                        blockKeys: Object.keys(block),
-                        fullBlock: JSON.stringify(block).substring(0, 300)
-                    });
-                }
                 if (block.type === 'thinking' && block.thinking) {
+                    // FIX 2: Include blockIndex for proper ordering during streaming
+                    const blockIndex = this.getNextBlockIndex();
                     return {
-                        type: 'thinking',
+                        type: 'thinking_chunk',
                         content: block.thinking,
-                        timestamp: new Date().toISOString(),
+                        blockIndex,  // FIX 2: Added for frontend sorting
+                        timestamp: new Date(),
                         eventId: uuidv4(),
-                        persistenceState: 'transient'
-                    } as AgentEvent;
+                        persistenceState: 'transient',
+                        messageId: (chunk.id || event.run_id)?.toString()
+                    } as unknown as AgentEvent;
                 }
 
                 // Handle text blocks (both 'text' and 'text_delta')
+                // Also extract citations when present (for RAG source attribution)
                 if ((block.type === 'text' || block.type === 'text_delta') && block.text) {
+                    // FIX 2: Include blockIndex for proper ordering during streaming
+                    const blockIndex = this.getNextBlockIndex();
+
+                    // Extract citations if present (from Anthropic's citations_delta)
+                    const citations = block.citations as Citation[] | undefined;
+                    if (citations && citations.length > 0) {
+                        logger.info({
+                            citationsCount: citations.length,
+                            blockIndex,
+                        }, 'StreamAdapter: Citations found in text block');
+                    }
+
                     return {
                         type: 'message_chunk',
                         content: block.text,
-                        timestamp: new Date().toISOString(),
+                        citations,  // Include citations for RAG source attribution
+                        blockIndex,  // FIX 2: Added for frontend sorting
+                        timestamp: new Date(),
                         eventId: uuidv4(),
-                        persistenceState: 'transient'
-                    };
+                        persistenceState: 'transient',
+                        messageId: (chunk.id || event.run_id)?.toString()
+                    } as unknown as AgentEvent;
                 }
 
-                // Handle tool_use blocks in content array
-                // FIX: Emit tool_use from content blocks since LangGraph doesn't emit on_tool_start
-                // events when tools are bound to agents. The block.id is used as toolUseId.
-                if (block.type === 'tool_use' && block.name) {
-                    // [DEBUG-AGENT] Emit tool_use from content block
-                    console.log('[DEBUG-AGENT] Emitting tool_use from content block:', {
-                        toolName: block.name,
-                        blockId: block.id,
-                        blockInput: block.input
-                    });
+                // Skip tool_use blocks in content array - they will be handled by on_tool_start
+                // Emitting here caused duplicate tool_use events (one from streaming, one from tool start)
+                if (block.type === 'tool_use') {
                     logger.debug({ toolName: block.name, blockId: block.id },
-                        'StreamAdapter: Emitting tool_use from content block');
-                    return {
-                        type: 'tool_use',
-                        toolName: block.name,
-                        args: block.input || {},
-                        toolUseId: block.id || uuidv4(),
-                        timestamp: new Date().toISOString(),
-                        eventId: uuidv4(),
-                        persistenceState: 'persisted'
-                    };
+                        'StreamAdapter: Skipping tool_use from content block (will be handled by on_tool_start)');
+                    continue;
                 }
             }
 
@@ -156,13 +170,17 @@ export class StreamAdapter {
               extractedPreview: contentText.substring(0, 100)
             }, 'StreamAdapter: Extracted content from chunk');
 
+            // FIX 2: Include blockIndex for proper ordering during streaming
+            const blockIndex = this.getNextBlockIndex();
             return {
                 type: 'message_chunk',
                 content: contentText,
-                timestamp: new Date().toISOString(),
+                blockIndex,  // FIX 2: Added for frontend sorting
+                timestamp: new Date(),
                 eventId: uuidv4(),
-                persistenceState: 'transient'
-            };
+                persistenceState: 'transient',
+                messageId: (chunk.id || event.run_id)?.toString()
+            } as unknown as AgentEvent;
         }
 
         // Log when no content is found
@@ -172,54 +190,33 @@ export class StreamAdapter {
         }, 'StreamAdapter: No content extracted from on_chat_model_stream');
     }
 
-    // 2. Tool Start
+    // 2. Tool Start - SKIP (handled by agent's toolExecutions with correct Anthropic IDs)
+    // Note: LangGraph's run_id doesn't match Anthropic's toolCall.id, causing ID mismatches.
+    // The agent's toolExecutions array has the correct IDs and is processed at chain end.
     if (eventType === 'on_tool_start') {
-        // [DEBUG-AGENT] Log on_tool_start events
-        console.log('[DEBUG-AGENT] on_tool_start event received:', {
-            toolName: event.name,
-            runId: event.run_id,
-            input: event.data?.input
-        });
-
         logger.debug({
           toolName: event.name,
-          argsPreview: JSON.stringify(event.data.input)?.substring(0, 200)
-        }, 'StreamAdapter: Tool started');
-
-        return {
-            type: 'tool_use',
-            toolName: event.name,
-            args: event.data.input,
-            toolUseId: event.run_id,
-            timestamp: new Date().toISOString(),
-            eventId: uuidv4(),
-            persistenceState: 'persisted'
-        };
+          runId: event.run_id,
+        }, 'StreamAdapter: Skipping tool_start (will be handled by agent toolExecutions)');
+        return null;
     }
 
-    // 3. Tool End
+    // 3. Tool End - SKIP (handled by agent's toolExecutions)
     if (eventType === 'on_tool_end') {
-         // Output can be a string or object. legacy expects string usually.
-         const output = typeof event.data.output === 'string'
-            ? event.data.output
-            : JSON.stringify(event.data.output);
-
         logger.debug({
           toolName: event.name,
-          success: true,
-          outputLength: output.length
-        }, 'StreamAdapter: Tool completed');
+          runId: event.run_id,
+        }, 'StreamAdapter: Skipping tool_end (will be handled by agent toolExecutions)');
+        return null;
+    }
 
-        return {
-            type: 'tool_result',
-            toolName: event.name,
-            result: output,
-            success: true, // Assuming success if we reached here
-            toolUseId: event.run_id,
-            timestamp: new Date().toISOString(),
-            eventId: uuidv4(),
-            persistenceState: 'persisted'
-        };
+    // 3b. Tool Error - SKIP (handled by agent's toolExecutions)
+    if (eventType === 'on_tool_error') {
+        logger.debug({
+          toolName: event.name,
+          runId: event.run_id,
+        }, 'StreamAdapter: Skipping tool_error (will be handled by agent toolExecutions)');
+        return null;
     }
 
     // 4. Chain End (Final Answer or Model End)

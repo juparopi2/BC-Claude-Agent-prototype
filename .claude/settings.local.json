@@ -141,7 +141,16 @@
       "Bash(NODE_OPTIONS='--max-old-space-size=8192' npm run build:*)",
       "Bash(NODE_OPTIONS='--max-old-space-size=8192' npm run type-check:*)",
       "Bash(NODE_OPTIONS='--max-old-space-size=8192' npm run dev:*)",
-      "Bash(NODE_OPTIONS='--max-old-space-size=8192' TS_NODE_DEBUG=true npm run dev:*)"
+      "Bash(NODE_OPTIONS='--max-old-space-size=8192' TS_NODE_DEBUG=true npm run dev:*)",
+      "Bash(Select-Object -First 40)",
+      "Bash(NODE_OPTIONS='--max-old-space-size=8192' npx tsc:*)",
+      "Bash(export NODE_OPTIONS=\"--max-old-space-size=8192\")",
+      "Bash(time npm run build:*)",
+      "Bash(git rm:*)",
+      "Bash(NODE_OPTIONS='--max-old-space-size=16384' npm run build:*)",
+      "WebFetch(domain:docs.anthropic.com)",
+      "WebFetch(domain:docs.claude.com)",
+      "Bash(npx tsx:*)"
     ],
     "deny": [],
     "ask": []

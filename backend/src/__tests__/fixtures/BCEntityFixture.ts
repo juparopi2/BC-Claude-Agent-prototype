@@ -25,7 +25,36 @@
  * ```
  */
 
-import type { BCEntity, BCEndpoint, BCRelationship } from '@/services/agent/IBCDataStore';
+/**
+ * BC Type definitions for test fixtures
+ * (Originally from IBCDataStore.ts, now defined inline for test independence)
+ */
+export interface BCEndpoint {
+  id: string;
+  method: string;
+  path?: string;
+  summary: string;
+  operationType: string;
+  riskLevel: string;
+  requiresHumanApproval?: boolean;
+  requiredFields?: string[];
+  optionalFields?: string[];
+}
+
+export interface BCRelationship {
+  entity: string;
+  type?: string;
+}
+
+export interface BCEntity {
+  entity: string;
+  displayName: string;
+  description: string;
+  operations: string[];
+  endpoints: BCEndpoint[];
+  relationships?: BCRelationship[];
+  commonWorkflows?: unknown[];
+}
 
 /**
  * Builder for creating BC endpoint test data

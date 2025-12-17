@@ -66,8 +66,21 @@ export class BusinessCentralAgent extends BaseAgent {
     }, 'BCAgent: Starting invocation');
 
     // Use centralized model configuration for BC Agent role
+    // Read enableThinking from state.context.options (passed from user's frontend toggle)
+    const enableThinking = state.context?.options?.enableThinking ?? false;
+    const thinkingBudget = state.context?.options?.thinkingBudget ?? 10000;
+
     const bcConfig = getModelConfig('bc_agent');
-    const model = ModelFactory.create(bcConfig);
+    const model = ModelFactory.create({
+      ...bcConfig,
+      enableThinking,
+      thinkingBudget,
+    });
+
+    logger.debug({
+      enableThinking,
+      thinkingBudget: enableThinking ? thinkingBudget : undefined,
+    }, 'BCAgent: Model config with thinking settings');
 
     // Bind all 7 BC meta-tools to the model
     const tools: StructuredToolInterface[] = [
@@ -118,12 +131,6 @@ export class BusinessCentralAgent extends BaseAgent {
       iteration++;
       logger.debug({ iteration, messageCount: currentMessages.length }, 'BCAgent: Invoking model (iteration)');
 
-      // [DEBUG-AGENT] Log ReAct loop iteration
-      console.log('[DEBUG-AGENT] BCAgent ReAct loop iteration:', {
-        iteration,
-        messageCount: currentMessages.length
-      });
-
       const response = await modelWithTools.invoke(currentMessages, config);
       newMessages.push(response);
       currentMessages = [...currentMessages, response];
@@ -139,14 +146,6 @@ export class BusinessCentralAgent extends BaseAgent {
         iteration
       }, 'BCAgent: Model response received');
 
-      // [DEBUG-AGENT] Log tool calls
-      console.log('[DEBUG-AGENT] BCAgent response:', {
-        iteration,
-        hasToolCalls: !!toolCalls?.length,
-        toolCallCount: toolCalls?.length || 0,
-        toolNames: toolCalls?.map(tc => tc.name) || []
-      });
-
       // If no tool calls, we're done
       if (!toolCalls || toolCalls.length === 0) {
         logger.debug({ iteration }, 'BCAgent: No more tool calls, finishing');
@@ -160,13 +159,6 @@ export class BusinessCentralAgent extends BaseAgent {
         const toolCallId = toolCall.id;
 
         logger.debug({ toolName, toolCallId, args: toolArgs }, 'BCAgent: Executing tool');
-
-        // [DEBUG-AGENT] Log tool execution
-        console.log('[DEBUG-AGENT] BCAgent executing tool:', {
-          toolName,
-          toolCallId,
-          args: toolArgs
-        });
 
         const tool = toolsMap.get(toolName);
         if (!tool) {
@@ -186,14 +178,6 @@ export class BusinessCentralAgent extends BaseAgent {
           const resultStr = typeof result === 'string' ? result : JSON.stringify(result);
 
           logger.info({ toolName, toolCallId, resultLength: resultStr.length }, 'BCAgent: Tool executed successfully');
-
-          // [DEBUG-AGENT] Log tool result
-          console.log('[DEBUG-AGENT] BCAgent tool result:', {
-            toolName,
-            toolCallId,
-            resultLength: resultStr.length,
-            resultPreview: resultStr.substring(0, 200)
-          });
 
           // Track tool execution for event emission
           toolExecutions.push({

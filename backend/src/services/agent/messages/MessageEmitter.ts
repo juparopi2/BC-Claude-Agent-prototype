@@ -44,10 +44,13 @@ export interface IMessageEmitter {
   // ============================================================================
 
   /** Emit a message chunk during streaming */
-  emitMessageChunk(chunk: string, blockIndex: number, sessionId?: string): void;
+  emitMessageChunk(chunk: string, blockIndex: number, sessionId?: string, messageId?: string): void;
 
   /** Emit a thinking chunk during streaming */
-  emitThinkingChunk(chunk: string, blockIndex: number, sessionId?: string): void;
+  emitThinkingChunk(chunk: string, blockIndex: number, sessionId?: string, messageId?: string): void;
+
+  /** Emit thinking complete signal (before text starts) */
+  emitThinkingComplete(content: string, blockIndex: number, sessionId?: string, messageId?: string): void;
 
   /** Emit tool use pending state (early signal before persistence) */
   emitToolUsePending(data: ToolUsePendingData): void;
@@ -147,11 +150,12 @@ export class MessageEmitter implements IMessageEmitter {
   /**
    * Emit a message chunk during streaming
    */
-  emitMessageChunk(chunk: string, blockIndex: number, sessionId?: string): void {
+  emitMessageChunk(chunk: string, blockIndex: number, sessionId?: string, messageId?: string): void {
     const event = this.createTransientEvent('message_chunk', {
       content: chunk, // Use 'content' to match MessageChunkEvent interface
       blockIndex,
       sessionId,
+      messageId,
     });
     logger.trace({ blockIndex, chunkLength: chunk.length }, 'Emitting message chunk');
     this.emit(event);
@@ -160,13 +164,29 @@ export class MessageEmitter implements IMessageEmitter {
   /**
    * Emit a thinking chunk during streaming
    */
-  emitThinkingChunk(chunk: string, blockIndex: number, sessionId?: string): void {
+  emitThinkingChunk(chunk: string, blockIndex: number, sessionId?: string, messageId?: string): void {
     const event = this.createTransientEvent('thinking_chunk', {
       content: chunk,
       blockIndex,
       sessionId,
+      messageId,
     });
     logger.trace({ blockIndex, chunkLength: chunk.length }, 'Emitting thinking chunk');
+    this.emit(event);
+  }
+
+  /**
+   * Emit thinking complete signal (before text content starts)
+   * This tells the frontend to finalize/collapse the thinking block
+   */
+  emitThinkingComplete(content: string, blockIndex: number, sessionId?: string, messageId?: string): void {
+    const event = this.createTransientEvent('thinking_complete', {
+      content,
+      blockIndex,
+      sessionId,
+      messageId,
+    });
+    logger.debug({ blockIndex, contentLength: content.length }, 'Emitting thinking complete');
     this.emit(event);
   }
 
@@ -244,9 +264,11 @@ export class MessageEmitter implements IMessageEmitter {
       sequenceNumber: data.sequenceNumber,
       content: data.content,
       sessionId: data.sessionId,
+      signature: data.signature,
+      messageId: data.messageId,
     };
     logger.debug(
-      { sequenceNumber: data.sequenceNumber, contentLength: data.content.length },
+      { sequenceNumber: data.sequenceNumber, contentLength: data.content.length, messageId: data.messageId },
       'Emitting thinking'
     );
     this.emit(event);

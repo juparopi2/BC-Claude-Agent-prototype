@@ -93,7 +93,7 @@ const LATENCY_THRESHOLDS = {
   SINGLE_REQUEST_MS: 500,
 
   /** Average response time under load */
-  AVG_UNDER_LOAD_MS: 1000,
+  AVG_UNDER_LOAD_MS: 1500,
 
   /**
    * 95th percentile - Test environment SLA

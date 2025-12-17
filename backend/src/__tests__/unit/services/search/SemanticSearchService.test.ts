@@ -12,6 +12,15 @@ import type { ParsedFile } from '@/types/file.types';
 vi.mock('@/services/embeddings/EmbeddingService');
 vi.mock('@/services/search/VectorSearchService');
 vi.mock('@/services/files/FileService');
+vi.mock('openai', () => {
+  return {
+    OpenAI: class {
+      embeddings = {
+        create: vi.fn()
+      }
+    }
+  };
+});
 
 describe('SemanticSearchService', () => {
   let service: SemanticSearchService;

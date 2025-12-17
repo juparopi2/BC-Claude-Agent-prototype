@@ -21,6 +21,7 @@ export type AgentEventType =
   | 'session_start'
   | 'thinking'
   | 'thinking_chunk'
+  | 'thinking_complete'
   | 'message_partial'
   | 'message'
   | 'message_chunk'
@@ -75,6 +76,12 @@ export interface BaseAgentEvent {
   eventId: string;
   /** Sequence number for guaranteed ordering (atomic via Redis INCR). Optional for transient events */
   sequenceNumber?: number;
+  /**
+   * Local event index for ordering during streaming.
+   * Used as fallback when sequence numbers are not available (transient events).
+   * Incremented for each event emitted in a session.
+   */
+  eventIndex?: number;
   /** Database persistence state for optimistic UI updates */
   persistenceState: PersistenceState;
   /** Correlation ID for linking related events (e.g., tool_use -> tool_result) */
@@ -118,6 +125,25 @@ export interface ThinkingChunkEvent extends BaseAgentEvent {
   content: string;
   /** Index of the thinking content block (for multi-block responses) */
   blockIndex?: number;
+  /** Message ID to link chunk to specific message */
+  messageId?: string;
+}
+
+/**
+ * Thinking Complete Event
+ * Emitted when the thinking block is complete (before text content starts)
+ *
+ * This signals the frontend to collapse/finalize the thinking block,
+ * ensuring it appears at the beginning of the response rather than the end.
+ */
+export interface ThinkingCompleteEvent extends BaseAgentEvent {
+  type: 'thinking_complete';
+  /** Full thinking content */
+  content: string;
+  /** Index of the thinking content block */
+  blockIndex?: number;
+  /** Message ID to link to specific message */
+  messageId?: string;
 }
 
 /**
@@ -176,6 +202,28 @@ export interface MessageEvent extends BaseAgentEvent {
 }
 
 /**
+ * Citation from Anthropic API
+ * Used when Claude references documents in RAG responses
+ * See: https://docs.anthropic.com/en/docs/build-with-claude/citations
+ */
+export interface Citation {
+  /** Citation type */
+  type: 'char_location' | 'page_location' | 'content_block_location';
+  /** The text that was cited */
+  cited_text?: string;
+  /** Index of the document being cited */
+  document_index?: number;
+  /** Title of the cited document */
+  document_title?: string;
+  /** Start character index in the document */
+  start_char_index?: number;
+  /** End character index in the document */
+  end_char_index?: number;
+  /** Page number (for PDF documents) */
+  page_number?: number;
+}
+
+/**
  * Message Chunk Event
  * Emitted during streaming for incremental message content
  */
@@ -183,6 +231,10 @@ export interface MessageChunkEvent extends BaseAgentEvent {
   type: 'message_chunk';
   /** Chunk of message content */
   content: string;
+  /** Message ID to link chunk to specific message */
+  messageId?: string;
+  /** Citations for RAG source attribution */
+  citations?: Citation[];
 }
 
 /**
@@ -379,6 +431,7 @@ export type AgentEvent =
   | SessionStartEvent
   | ThinkingEvent
   | ThinkingChunkEvent
+  | ThinkingCompleteEvent
   | MessagePartialEvent
   | MessageEvent
   | MessageChunkEvent

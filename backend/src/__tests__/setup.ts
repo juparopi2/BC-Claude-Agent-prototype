@@ -1,5 +1,21 @@
-import { beforeAll, afterAll, afterEach } from 'vitest';
+import { beforeAll, afterAll, afterEach, vi } from 'vitest';
 import { server } from './mocks/server';
+
+// Mock OpenAI globally to prevent load errors in all tests (unit & integration)
+vi.mock('openai', () => {
+  return {
+    OpenAI: class {
+      embeddings = {
+        create: vi.fn()
+      };
+      chat = {
+        completions: {
+          create: vi.fn()
+        }
+      };
+    }
+  };
+});
 
 // Reduce log verbosity during tests (improves performance)
 process.env.LOG_LEVEL = 'warn';
@@ -21,6 +37,8 @@ afterAll(() => {
 process.env.NODE_ENV = 'test';
 process.env.DATABASE_URL = 'mock-database-url';
 process.env.REDIS_URL = 'mock-redis-url';
+process.env.REDIS_HOST = 'localhost';
+process.env.REDIS_PORT = '6379';
 process.env.ANTHROPIC_API_KEY = 'mock-api-key';
 process.env.ENCRYPTION_KEY = '0123456789abcdef0123456789abcdef'; // 32 bytes for AES-256
 process.env.SESSION_SECRET = 'test-session-secret-for-testing-only';

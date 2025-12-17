@@ -1,0 +1,573 @@
+{
+  "startTime": 1765930562109,
+  "endTime": 1765930566395,
+  "model": "claude-sonnet-4-20250514",
+  "options": {
+    "vision": true
+  },
+  "prompt": "Describe what you see in this image",
+  "events": [
+    {
+      "timestamp": 1765930564221,
+      "eventType": "message_start",
+      "rawEvent": {
+        "type": "message_start",
+        "message": {
+          "model": "claude-sonnet-4-20250514",
+          "id": "msg_01PU7eA8UCtLecEsXBDmJWED",
+          "type": "message",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "I can see a simple image with text that reads \"ERROR 403 FORBIDDEN\" displayed against what appears to be a light gray or white background. This looks like a standard HTTP error message that typically appears when a user tries to access a web page or resource that they don't have permission to view. The text appears to be in a basic, plain font style."
+            }
+          ],
+          "stop_reason": "end_turn",
+          "stop_sequence": null,
+          "usage": {
+            "input_tokens": 19,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "output_tokens": 78,
+            "service_tier": "standard"
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1765930564222,
+      "eventType": "content_block_start",
+      "rawEvent": {
+        "type": "content_block_start",
+        "index": 0,
+        "content_block": {
+          "type": "text",
+          "text": ""
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930564222,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": "I can"
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930564389,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": " see a simple"
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930564398,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": " image"
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930564411,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": " with"
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930564549,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": " text that reads"
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930564563,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": " \"ERROR"
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930564587,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": " "
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930564644,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": "403"
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930564739,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": " "
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930564835,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": "FORBIDDEN\" displaye"
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930564836,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": "d against"
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930564881,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": " what"
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930565089,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": " appears to be a light"
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930565091,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": " gray or"
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930565157,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": " white background. This"
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930565157,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": " looks"
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930565210,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": " like a"
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930565239,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": " standar"
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930565328,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": "d HTTP error"
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930565357,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": " message"
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930565414,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": " that"
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930565471,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": " typically"
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930565531,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": " appears"
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930565825,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": " when a user tries to access a web"
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930565826,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": " page or"
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930565827,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": " resource"
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930565828,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": " that they"
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930566009,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": " don't have permission to view."
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930566010,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": " The text appears"
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930566010,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": " to be in"
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930566010,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": " a"
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930566072,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": " basic"
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930566124,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": ","
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930566183,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": " plain"
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930566297,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": " font style."
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930566364,
+      "eventType": "content_block_stop",
+      "rawEvent": {
+        "type": "content_block_stop",
+        "index": 0
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930566389,
+      "eventType": "message_delta",
+      "rawEvent": {
+        "type": "message_delta",
+        "delta": {
+          "stop_reason": "end_turn",
+          "stop_sequence": null
+        },
+        "usage": {
+          "input_tokens": 19,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "output_tokens": 78
+        }
+      }
+    },
+    {
+      "timestamp": 1765930566392,
+      "eventType": "message_stop",
+      "rawEvent": {
+        "type": "message_stop"
+      }
+    }
+  ],
+  "finalMessage": {
+    "model": "claude-sonnet-4-20250514",
+    "id": "msg_01PU7eA8UCtLecEsXBDmJWED",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+      {
+        "type": "text",
+        "text": "I can see a simple image with text that reads \"ERROR 403 FORBIDDEN\" displayed against what appears to be a light gray or white background. This looks like a standard HTTP error message that typically appears when a user tries to access a web page or resource that they don't have permission to view. The text appears to be in a basic, plain font style."
+      }
+    ],
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "usage": {
+      "input_tokens": 19,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 78,
+      "service_tier": "standard"
+    }
+  },
+  "usage": {
+    "input_tokens": 19,
+    "output_tokens": 78
+  }
+}

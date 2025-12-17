@@ -16,6 +16,7 @@ import type {
   ToolResultEvent,
   ApprovalRequestedEvent,
   ThinkingChunkEvent,
+  ThinkingCompleteEvent,
   MessageChunkEvent,
   CompleteEvent,
   // PHASE 4.6: Message types from shared package (single source of truth)
@@ -23,6 +24,60 @@ import type {
 } from '@bc-agent/shared';
 import { isThinkingMessage } from '@bc-agent/shared';
 import type { CitationFileMap } from '@/lib/types/citation.types';
+
+// ============================================================================
+// Message Sorting Utility
+// ============================================================================
+
+/**
+ * Extended message type for sorting that includes transient event properties.
+ * Uses type intersection instead of interface extension because Message
+ * may be a type alias with dynamically computed members.
+ */
+type SortableMessage = Message & {
+  eventIndex?: number;
+  blockIndex?: number;
+};
+
+/**
+ * Improved message sorting algorithm
+ *
+ * Handles three states:
+ * 1. Persisted messages (sequence_number > 0) - sorted by sequence_number
+ * 2. Transient/streaming messages (no sequence_number) - sorted by blockIndex/eventIndex
+ * 3. Fallback - sorted by timestamp
+ *
+ * @param a - First message to compare
+ * @param b - Second message to compare
+ * @returns Negative if a < b, positive if a > b, zero if equal
+ */
+function sortMessages(a: SortableMessage, b: SortableMessage): number {
+  const seqA = a.sequence_number;
+  const seqB = b.sequence_number;
+
+  // State 1: Both have valid sequence numbers (persisted) - sort by sequence
+  if (seqA && seqA > 0 && seqB && seqB > 0) {
+    return seqA - seqB;
+  }
+
+  // State 2: One is persisted, one isn't
+  // Persisted messages should come BEFORE unpersisted (they have their final position)
+  if (seqA && seqA > 0) return -1;  // a is persisted, comes first
+  if (seqB && seqB > 0) return 1;   // b is persisted, comes first
+
+  // State 3: Both are unpersisted (transient/streaming) - use blockIndex or eventIndex
+  const indexA = a.blockIndex ?? a.eventIndex ?? -1;
+  const indexB = b.blockIndex ?? b.eventIndex ?? -1;
+
+  if (indexA >= 0 && indexB >= 0 && indexA !== indexB) {
+    return indexA - indexB;
+  }
+
+  // Fallback: timestamp
+  const timeA = new Date(a.created_at).getTime();
+  const timeB = new Date(b.created_at).getTime();
+  return timeA - timeB;
+}
 
 /**
  * Streaming state for real-time message display
@@ -153,31 +208,70 @@ export const useChatStore = create<ChatStore>()(
     // Message management
     // ========================================
     setMessages: (messages) => {
-      set({ messages });
+      // DEBUG: Log raw messages from API to trace data issues
+      console.log('[ChatStore] setMessages RAW:', messages.map(m => ({
+        id: m.id,
+        type: m.type,
+        seq: m.sequence_number,
+        role: 'role' in m ? m.role : undefined,
+        hasResult: m.type === 'tool_result' ? !!(m as unknown as {result?: unknown}).result : undefined,
+        hasContent: m.type === 'tool_result' || m.type === 'standard'
+          ? !!('content' in m && m.content)
+          : undefined,
+        toolUseId: 'tool_use_id' in m ? m.tool_use_id : undefined,
+      })));
+
+      // FIX: Merge tool_result data into corresponding tool_use messages
+      // This ensures tools show correct status after page refresh
+      const toolResults = new Map<string, Message>();
+
+      // Collect tool_result messages
+      for (const msg of messages) {
+        if (msg.type === 'tool_result' && 'tool_use_id' in msg && msg.tool_use_id) {
+          toolResults.set(msg.tool_use_id, msg);
+        }
+      }
+
+      // Merge tool_result into tool_use and filter out tool_result messages
+      const mergedMessages = messages
+        .filter(m => m.type !== 'tool_result')
+        .map(m => {
+          if (m.type === 'tool_use' && 'tool_use_id' in m && m.tool_use_id) {
+            const result = toolResults.get(m.tool_use_id);
+            if (result && result.type === 'tool_result') {
+              // Merge result data into tool_use message
+              return {
+                ...m,
+                status: result.success ? 'success' : 'error',
+                result: result.result,
+                error_message: result.error_message,
+              } as Message;
+            }
+          }
+          return m;
+        });
+
+      console.log('[ChatStore] setMessages:', {
+        original: messages.length,
+        merged: mergedMessages.length,
+        toolResultsFound: toolResults.size,
+      });
+
+      set({ messages: mergedMessages.sort(sortMessages) });
     },
 
-    addMessage: (message) =>
+    addMessage: (message) => {
+      // DEBUG: Log message being added
+      console.log('[ChatStore] addMessage:', message.type, {
+        id: message.id,
+        sequenceNumber: message.sequence_number,
+        role: 'role' in message ? message.role : undefined,
+      });
       set((state) => ({
-        messages: [...state.messages, message].sort((a, b) => {
-          // Primary sort: sequence_number (if both have valid values)
-          const seqA = a.sequence_number ?? 0;
-          const seqB = b.sequence_number ?? 0;
-
-          // If both have real sequence numbers (> 0), sort by them
-          if (seqA > 0 && seqB > 0) {
-            return seqA - seqB;
-          }
-
-          // If only one has a real sequence number, prioritize it
-          if (seqA > 0) return 1;  // a goes after b
-          if (seqB > 0) return -1; // b goes after a
-
-          // Both are optimistic (sequence 0 or undefined) - sort by timestamp
-          const timeA = new Date(a.created_at).getTime();
-          const timeB = new Date(b.created_at).getTime();
-          return timeA - timeB;
-        }),
-      })),
+        // FIX 3: Use improved sorting algorithm that handles transient events correctly
+        messages: [...state.messages, message].sort(sortMessages),
+      }));
+    },
 
     addOptimisticMessage: (tempId, message) =>
       set((state) => {
@@ -211,25 +305,8 @@ export const useChatStore = create<ChatStore>()(
 
         return {
           optimisticMessages: newOptimistic,
-          messages: [...state.messages, confirmedMessage].sort((a, b) => {
-            // Primary sort: sequence_number (if both have valid values)
-            const seqA = a.sequence_number ?? 0;
-            const seqB = b.sequence_number ?? 0;
-
-            // If both have real sequence numbers (> 0), sort by them
-            if (seqA > 0 && seqB > 0) {
-              return seqA - seqB;
-            }
-
-            // If only one has a real sequence number, prioritize it
-            if (seqA > 0) return 1;  // a goes after b
-            if (seqB > 0) return -1; // b goes after a
-
-            // Both are optimistic (sequence 0 or undefined) - sort by timestamp
-            const timeA = new Date(a.created_at).getTime();
-            const timeB = new Date(b.created_at).getTime();
-            return timeA - timeB;
-          }),
+          // FIX 3: Use improved sorting algorithm
+          messages: [...state.messages, confirmedMessage].sort(sortMessages),
         };
       }),
 
@@ -240,12 +317,15 @@ export const useChatStore = create<ChatStore>()(
         return { optimisticMessages: newMap };
       }),
 
-    updateMessage: (messageId, updates) =>
+    updateMessage: (messageId, updates) => {
+      // DEBUG: Log message being updated
+      console.log('[ChatStore] updateMessage:', messageId, updates);
       set((state) => ({
         messages: state.messages.map(m =>
           m.id === messageId ? ({ ...m, ...updates } as Message) : m
         ),
-      })),
+      }));
+    },
 
     // ========================================
     // Streaming
@@ -351,6 +431,15 @@ export const useChatStore = create<ChatStore>()(
     // Event handling
     // ========================================
     handleAgentEvent: (event) => {
+      // DEBUG: Log all incoming events
+      console.log('[ChatStore] Event received:', event.type, {
+        eventId: event.eventId,
+        sequenceNumber: event.sequenceNumber,
+        sessionId: event.sessionId,
+        eventIndex: (event as { eventIndex?: number }).eventIndex,
+        blockIndex: (event as { blockIndex?: number }).blockIndex,
+      });
+
       const actions = get();
       const state = get();
 
@@ -406,6 +495,33 @@ export const useChatStore = create<ChatStore>()(
               content: updatedContent,
             });
           }
+          break;
+        }
+
+        case 'thinking_complete': {
+          // Thinking block is finalized - mark it complete before text starts
+          // This ensures thinking appears at the beginning, not the end
+          const thinkingCompleteEvent = event as ThinkingCompleteEvent;
+
+          // Clear streaming thinking content (it's now finalized in the message)
+          set((state) => ({
+            streaming: {
+              ...state.streaming,
+              thinkingContent: '', // Clear streaming accumulator
+            },
+          }));
+
+          // Update the thinking message with final content and mark complete
+          const thinkingMsg = actions.messages.find(isThinkingMessage);
+          if (thinkingMsg) {
+            actions.updateMessage(thinkingMsg.id, {
+              content: thinkingCompleteEvent.content,
+            });
+          }
+
+          console.log('[ChatStore] Thinking block finalized', {
+            contentLength: thinkingCompleteEvent.content.length,
+          });
           break;
         }
 
@@ -480,19 +596,38 @@ export const useChatStore = create<ChatStore>()(
           const resultEvent = event as ToolResultEvent;
           const toolId = resultEvent.toolUseId || resultEvent.correlationId;
 
+          // FIX: Validate toolUseId before attempting to update
+          if (!toolId) {
+            console.warn('[ChatStore] tool_result missing toolUseId:', resultEvent);
+            break;
+          }
+
           // Find the tool_use message and update it
           const toolMessage = actions.messages.find(
             m => m.type === 'tool_use' && m.tool_use_id === toolId
           );
 
-          if (toolMessage) {
-            actions.updateMessage(toolMessage.id, {
-              status: resultEvent.success ? 'success' : 'error',
-              result: resultEvent.result,
-              error_message: resultEvent.error,
-              duration_ms: resultEvent.durationMs,
-            } as Partial<Message>);
+          if (!toolMessage) {
+            console.warn('[ChatStore] No matching tool_use for tool_result:', {
+              toolId,
+              existingToolIds: actions.messages
+                .filter(m => m.type === 'tool_use')
+                .map(m => (m as { tool_use_id?: string }).tool_use_id),
+            });
+            break;
           }
+
+          console.log('[ChatStore] Updating tool_use with result:', {
+            toolId,
+            success: resultEvent.success,
+          });
+
+          actions.updateMessage(toolMessage.id, {
+            status: resultEvent.success ? 'success' : 'error',
+            result: resultEvent.result,
+            error_message: resultEvent.error,
+            duration_ms: resultEvent.durationMs,
+          } as Partial<Message>);
           break;
         }
 
@@ -563,25 +698,8 @@ export const useChatStore = create<ChatStore>()(
  */
 export const selectAllMessages = (state: ChatStore): Message[] => {
   const optimisticArray = Array.from(state.optimisticMessages.values());
-  return [...state.messages, ...optimisticArray].sort((a, b) => {
-    // Primary sort: sequence_number (if both have valid values)
-    const seqA = a.sequence_number ?? 0;
-    const seqB = b.sequence_number ?? 0;
-
-    // If both have real sequence numbers (> 0), sort by them
-    if (seqA > 0 && seqB > 0) {
-      return seqA - seqB;
-    }
-
-    // If only one has a real sequence number, prioritize it
-    if (seqA > 0) return 1;  // a goes after b
-    if (seqB > 0) return -1; // b goes after a
-
-    // Both are optimistic (sequence 0 or undefined) - sort by timestamp
-    const timeA = new Date(a.created_at).getTime();
-    const timeB = new Date(b.created_at).getTime();
-    return timeA - timeB;
-  });
+  // FIX 3: Use improved sorting algorithm that handles transient events correctly
+  return [...state.messages, ...optimisticArray].sort(sortMessages);
 };
 
 /**

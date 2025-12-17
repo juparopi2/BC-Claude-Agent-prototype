@@ -179,11 +179,11 @@ export class BCToolService {
 
     const safeKeyword = sanitizeKeyword(keyword);
 
-    // Search entities matching keyword
+    // Search entities matching keyword (with null safety for entity fields)
     const results = index.entities.filter((e: BCIndexEntity) =>
-      e.entity.toLowerCase().includes(safeKeyword) ||
-      e.displayName.toLowerCase().includes(safeKeyword) ||
-      e.description.toLowerCase().includes(safeKeyword)
+      (e.entity?.toLowerCase() ?? '').includes(safeKeyword) ||
+      (e.displayName?.toLowerCase() ?? '').includes(safeKeyword) ||
+      (e.description?.toLowerCase() ?? '').includes(safeKeyword)
     );
 
     // Apply filters if provided

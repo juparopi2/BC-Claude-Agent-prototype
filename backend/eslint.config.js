@@ -25,6 +25,7 @@ export default [
       'coverage/**',
       '*.config.js',
       'src/__tests__/**',  // Ignore test files (excluded from tsconfig)
+      'scripts/**',        // Ignore standalone diagnostic scripts (not in tsconfig project)
     ],
   },
   {

@@ -32,6 +32,7 @@ import { UNIT_COSTS, calculateTokenCost } from '@config/pricing.config';
 import type { OperationCategory } from '@/types/usage.types';
 import { createChildLogger } from '@/utils/logger';
 import type { Logger } from 'pino';
+import crypto from 'crypto';
 
 /**
  * Usage Tracking Service
@@ -592,7 +593,8 @@ export class UsageTrackingService {
       }, 'Tracking vector search');
 
       // Generate a unique session ID for this search
-      const searchSessionId = (metadata?.session_id as string) || `search_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      // Must be a valid UUID for the database
+      const searchSessionId = (metadata?.session_id as string) || crypto.randomUUID();
 
       // Insert into database
       await this.insertUsageEvent(
@@ -653,6 +655,35 @@ export class UsageTrackingService {
         throw new Error('Database pool not initialized');
       }
 
+      // Ensure sessionId is a valid UUID
+      // The database schema strictly requires uniqueidentifier (UUID)
+      let validSessionId = sessionId;
+      let finalMetadata = metadata;
+
+      console.log(`[UsageTrackingService] Validating sessionId: ${sessionId}`);
+
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      
+      if (!uuidRegex.test(sessionId)) {
+        // Generate a new UUID for the session ID column
+        validSessionId = crypto.randomUUID();
+        
+        // Store the original non-UUID session ID in metadata for traceability
+        // This handles cases like 'direct' fileId or legacy session strings
+        finalMetadata = {
+          ...metadata,
+          original_session_id: sessionId,
+          is_generated_session_uuid: true
+        };
+
+        this.logger.warn({
+          userId,
+          originalSessionId: sessionId,
+          newSessionId: validSessionId,
+          category
+        }, 'Replaced invalid session UUID with generated one');
+      }
+
       const query = `
         INSERT INTO usage_events (
           user_id,
@@ -681,18 +712,18 @@ export class UsageTrackingService {
       const result = await this.pool
         .request()
         .input('user_id', userId)
-        .input('session_id', sessionId)
+        .input('session_id', validSessionId)
         .input('category', category)
         .input('event_type', eventType)
         .input('quantity', quantity)
         .input('unit', unit)
         .input('cost', cost)
-        .input('metadata', metadata ? JSON.stringify(metadata) : null)
+        .input('metadata', finalMetadata ? JSON.stringify(finalMetadata) : null)
         .query(query);
 
       this.logger.debug({
         userId,
-        sessionId,
+        sessionId: validSessionId,
         category,
         eventType,
         quantity,

@@ -1,0 +1,305 @@
+{
+  "startTime": 1765930140072,
+  "endTime": 1765930145130,
+  "model": "claude-sonnet-4-20250514",
+  "options": {
+    "tools": true,
+    "vision": false
+  },
+  "prompt": "What time is it?",
+  "events": [
+    {
+      "timestamp": 1765930142069,
+      "eventType": "message_start",
+      "rawEvent": {
+        "type": "message_start",
+        "message": {
+          "model": "claude-sonnet-4-20250514",
+          "id": "msg_01Gsm8XJGdyENUmMrHg6izwz",
+          "type": "message",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "I'll get the current time for you."
+            },
+            {
+              "type": "tool_use",
+              "id": "toolu_01Ao2QxVajRW868Yy9TFR33N",
+              "name": "get_current_time",
+              "input": {}
+            }
+          ],
+          "stop_reason": "tool_use",
+          "stop_sequence": null,
+          "usage": {
+            "input_tokens": 421,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "output_tokens": 48,
+            "service_tier": "standard"
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1765930142070,
+      "eventType": "content_block_start",
+      "rawEvent": {
+        "type": "content_block_start",
+        "index": 0,
+        "content_block": {
+          "type": "text",
+          "text": ""
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930142071,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": "I'll get"
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930142362,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": " the current time for you."
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930142397,
+      "eventType": "content_block_stop",
+      "rawEvent": {
+        "type": "content_block_stop",
+        "index": 0
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930142398,
+      "eventType": "content_block_start",
+      "rawEvent": {
+        "type": "content_block_start",
+        "index": 1,
+        "content_block": {
+          "type": "tool_use",
+          "id": "toolu_01Ao2QxVajRW868Yy9TFR33N",
+          "name": "get_current_time",
+          "input": {}
+        }
+      },
+      "index": 1
+    },
+    {
+      "timestamp": 1765930142399,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "input_json_delta",
+          "partial_json": ""
+        }
+      },
+      "index": 1
+    },
+    {
+      "timestamp": 1765930142485,
+      "eventType": "content_block_stop",
+      "rawEvent": {
+        "type": "content_block_stop",
+        "index": 1
+      },
+      "index": 1
+    },
+    {
+      "timestamp": 1765930142525,
+      "eventType": "message_delta",
+      "rawEvent": {
+        "type": "message_delta",
+        "delta": {
+          "stop_reason": "tool_use",
+          "stop_sequence": null
+        },
+        "usage": {
+          "input_tokens": 421,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "output_tokens": 48
+        }
+      }
+    },
+    {
+      "timestamp": 1765930142526,
+      "eventType": "message_stop",
+      "rawEvent": {
+        "type": "message_stop"
+      }
+    },
+    {
+      "timestamp": 1765930144808,
+      "eventType": "message_start",
+      "rawEvent": {
+        "type": "message_start",
+        "message": {
+          "model": "claude-sonnet-4-20250514",
+          "id": "msg_019hej7VfxpZ3ca5zwFoGJFf",
+          "type": "message",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "The current time is **December 17, 2025 at 12:09:02 AM UTC**."
+            }
+          ],
+          "stop_reason": "end_turn",
+          "stop_sequence": null,
+          "usage": {
+            "input_tokens": 512,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "output_tokens": 27,
+            "service_tier": "standard"
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1765930144817,
+      "eventType": "content_block_start",
+      "rawEvent": {
+        "type": "content_block_start",
+        "index": 0,
+        "content_block": {
+          "type": "text",
+          "text": ""
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930144831,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": "The current time is **December 17"
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930144929,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": ", 2025 at 12"
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930145024,
+      "eventType": "content_block_delta",
+      "rawEvent": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": ":09:02 AM UTC**."
+        }
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930145029,
+      "eventType": "content_block_stop",
+      "rawEvent": {
+        "type": "content_block_stop",
+        "index": 0
+      },
+      "index": 0
+    },
+    {
+      "timestamp": 1765930145121,
+      "eventType": "message_delta",
+      "rawEvent": {
+        "type": "message_delta",
+        "delta": {
+          "stop_reason": "end_turn",
+          "stop_sequence": null
+        },
+        "usage": {
+          "input_tokens": 512,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "output_tokens": 27
+        }
+      }
+    },
+    {
+      "timestamp": 1765930145121,
+      "eventType": "message_stop",
+      "rawEvent": {
+        "type": "message_stop"
+      }
+    }
+  ],
+  "finalMessage": {
+    "model": "claude-sonnet-4-20250514",
+    "id": "msg_019hej7VfxpZ3ca5zwFoGJFf",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+      {
+        "type": "text",
+        "text": "The current time is **December 17, 2025 at 12:09:02 AM UTC**."
+      }
+    ],
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "usage": {
+      "input_tokens": 512,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 27,
+      "service_tier": "standard"
+    }
+  },
+  "usage": {
+    "input_tokens": 512,
+    "output_tokens": 27
+  }
+}

@@ -17,6 +17,7 @@ import {
 import { E2ETestClient, createE2ETestClient } from './E2ETestClient';
 import { E2E_API_MODE } from '../setup.e2e';
 import { executeQuery } from '@/config/database';
+import { normalizeUUID } from '@/utils/uuid';
 
 /** Event from WebSocket collected during scenario execution */
 export interface AgentEvent {
@@ -266,10 +267,29 @@ export class ResponseScenarioRegistry {
       const collectedEvents = await eventPromise;
 
       // Transform to AgentEvent format
+      // Note: collectedEvents is AgentEvent[] from E2ETestClient.collectEvents()
+      // Each AgentEvent has a .type property from the discriminated union
       for (const event of collectedEvents) {
+        // Extract type from event - handle multiple possible structures
+        const eventRecord = event as unknown as Record<string, unknown>;
+        const eventType =
+          (eventRecord.type as string) ||  // Direct property access
+          ((eventRecord.data as Record<string, unknown>)?.type as string) ||  // Nested in data
+          'unknown';
+
+        // Debug: Log if we're falling back to 'unknown'
+        if (eventType === 'unknown') {
+          console.warn('[ResponseScenarioRegistry] Event has no type:', {
+            keys: Object.keys(eventRecord),
+            hasType: 'type' in eventRecord,
+            typeValue: eventRecord.type,
+            event: JSON.stringify(event, null, 2).slice(0, 500),
+          });
+        }
+
         events.push({
-          type: (event.type as string) || 'unknown',
-          data: (event as unknown as Record<string, unknown>),
+          type: eventType,
+          data: eventRecord,
           sequenceNumber: (event as { sequenceNumber?: number }).sequenceNumber,
           timestamp: Date.now(),
         });
@@ -326,7 +346,7 @@ export class ResponseScenarioRegistry {
 
     const dbMessages: ScenarioDatabaseMessage[] = messagesResult.recordset.map(row => ({
       id: row.id,
-      sessionId: row.session_id,
+      sessionId: normalizeUUID(row.session_id),  // Normalize to lowercase (SQL Server returns UPPERCASE)
       role: row.role as 'user' | 'assistant',
       content: row.content,
       sequenceNumber: row.sequence_number ?? undefined,
@@ -351,7 +371,7 @@ export class ResponseScenarioRegistry {
 
     const dbEvents: ScenarioDatabaseEvent[] = eventsResult.recordset.map(row => ({
       id: row.id,
-      sessionId: row.session_id,
+      sessionId: normalizeUUID(row.session_id),  // Normalize to lowercase (SQL Server returns UPPERCASE)
       eventType: row.event_type,
       eventData: typeof row.data === 'string' ? JSON.parse(row.data) : row.data,
       sequenceNumber: row.sequence_number,

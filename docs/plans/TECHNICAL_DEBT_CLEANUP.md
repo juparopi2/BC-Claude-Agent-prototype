@@ -2,9 +2,9 @@
 
 **Objetivo**: Resolver la deuda técnica crítica y de alta prioridad acumulada durante la Fase 4 para estabilizar el sistema antes de iniciar la Fase 5 (Refactor).
 
-**Estado**: BLOQUE A COMPLETADO ✅
+**Estado**: BLOQUE A COMPLETADO ✅ | BLOQUE B EN PROGRESO
 **Fecha**: 2025-12-17
-**Última actualización**: 2025-12-18
+**Última actualización**: 2025-12-18 (E2E Test Run con Real API)
 
 ---
 
@@ -221,3 +221,73 @@ return timestamp comparison;  // ❌ NO USA blockIndex/eventIndex
 ## Notas Adicionales / Riesgos
 - **Riesgo**: Al reactivar los tests deprecados (D16), podríamos descubrir bugs reales en `runGraph` que requieran fix en `DirectAgentService`.
 - **Mitigación**: Si los fixes son complejos, crear nuevos items de deuda técnica, pero priorizar tener los tests corriendo (aunque fallen) para visibilidad.
+
+---
+
+## 6. E2E Test Run Results (2025-12-18)
+
+### Resultados del Test Run con Real API
+
+| Métrica | Valor |
+|---------|-------|
+| **Tests** | 98 failed \| 211 passed \| 75 skipped |
+| **Archivos** | 15 failed \| 7 passed \| 2 skipped |
+| **Duración** | 917.56s (~15 min) |
+| **Modelo** | `claude-sonnet-4-20250514` |
+| **API Calls** | ~4-8 llamadas a Claude |
+
+### Verificación de Items del Bloque A
+
+| ID | Descripción | Estado en Tests |
+|----|-------------|-----------------|
+| **D4** | Health Endpoint | ✅ **PASANDO** - Todos los tests de health verdes |
+| **D5** | Sequence Numbers | ✅ **PASANDO** - 4/4 tests de sequence verdes |
+| **D12** | Timeout Constants | ✅ **PASANDO** - Sin errores de timeout |
+| **D17** | Null Check runGraph | ✅ **PASANDO** - Sin crashes |
+| **D18** | FK Cleanup Order | ✅ **PASANDO** - Cleanup funciona |
+
+### Nuevos Problemas Descubiertos
+
+| ID | Descripción | Impacto |
+|----|-------------|---------|
+| **D22** | Session ID Undefined | 20+ tests fallan porque sessionId es `undefined` |
+| **D20** | Event Type 'unknown' | ~20 tests fallan por tipo de evento incorrecto |
+| **D3** | PK Violations | 10+ tests fallan por `toolu_*` duplicados |
+
+### Análisis de Costos del Modelo
+
+**Modelo Actual**: `claude-sonnet-4-20250514`
+- Input: $3.00/MTok, Output: $15.00/MTok
+
+**Modelo Recomendado para Tests**: `claude-3-5-haiku-20241022`
+- Input: $0.80/MTok, Output: $4.00/MTok
+- **Ahorro**: ~73%
+
+**Justificación**: Haiku soporta tool use, streaming, y extended thinking - suficiente para E2E tests.
+
+---
+
+## 7. Próximos Pasos Inmediatos
+
+### Prioridad Alta (Bloquea E2E Tests)
+
+1. **D22 - Session ID Undefined**
+   - Investigar TestSessionFactory.createSession()
+   - Verificar que session.id se propaga correctamente
+   - Estimado: 2-4 horas
+
+2. **D20 - Event Type 'unknown'**
+   - El fix aplicado no funcionó completamente
+   - Revisar estructura de eventos en E2ETestClient.collectEvents()
+   - Estimado: 1-2 horas
+
+### Prioridad Media
+
+3. **D3 - PK Violations**
+   - Implementar upsert pattern o limpieza de BD
+   - Estimado: 2-4 horas
+
+4. **Migrar a Haiku para Tests**
+   - Cambiar `ANTHROPIC_MODEL` en `.env` para E2E
+   - Verificar que todos los scenarios funcionan
+   - Estimado: 1 hora

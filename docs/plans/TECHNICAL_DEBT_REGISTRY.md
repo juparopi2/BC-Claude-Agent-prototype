@@ -3,15 +3,15 @@
 **Created**: 2025-12-17
 **Last Updated**: 2025-12-18
 **QA Evaluation**: Phase 4 E2E Testing Framework
-**Status**: Phase 4.7 COMPLETE - 9 items resolved, 1 improved, 8 pending
+**Status**: Phase 4.8 IN PROGRESS - 9 items resolved, 1 improved, 12 pending
 
 This document tracks technical debt identified during QA evaluations. Each item includes root cause analysis, impact assessment, and recommended fix approach.
 
 ## Table of Contents
 
 - [Critical Priority](#critical-priority) - D1, D2
-- [High Priority](#high-priority) - D3, D4, D5, D6
-- [Medium Priority](#medium-priority) - D7, D8, D9, D10, D11, D19, TD-E2E-005
+- [High Priority](#high-priority) - D3, D4, D5, D6, D20
+- [Medium Priority](#medium-priority) - D7, D8, D9, D10, D11, D19, D21, TD-E2E-005
 - [Low Priority](#low-priority) - D12, D13, D16, D17, D18
 - [Resolved](#resolved) - D14, D15
 - [E2E Test Failures Analysis](#e2e-test-failures-analysis-16-failures-with-real-api)
@@ -347,6 +347,113 @@ ApprovalManager architecture needs to be designed to handle:
 5. Re-enable and update E2E tests
 
 **Target Phase**: Phase 5 or Later
+
+---
+
+### D20: Event Type Parsing Returns 'unknown' in ResponseScenarioRegistry
+
+**ID**: D20
+**Created**: 2025-12-18
+**Category**: Test Infrastructure Bug
+**Priority**: High
+**Status**: Pending
+
+**Location**: `backend/src/__tests__/e2e/helpers/ResponseScenarioRegistry.ts:268-276`
+
+**Description**:
+When transforming collected WebSocket events in ResponseScenarioRegistry, the event type falls back to `'unknown'` instead of extracting the actual type from the event object.
+
+**Error Pattern**:
+```
+expected 'unknown' to be 'user_message_confirmed'
+```
+
+**Root Cause**:
+The transformation at lines 268-276 creates a new object structure but fails to properly extract the `type` property from the incoming events. The `collectedEvents` from `E2ETestClient.collectEvents()` returns `AgentEvent[]` which should have proper types.
+
+**Impact**:
+- All scenario tests that check event types fail
+- ~20+ test failures in pattern scenario tests
+- Violates 0.0-PRINCIPLES.md prohibition on 'unknown' fallbacks
+
+**Resolution Path**:
+1. Add debugging to see actual runtime event structure
+2. Fix transformation to properly extract event.type
+3. Remove `|| 'unknown'` fallback after fix
+
+**Target Phase**: Immediate (blocking E2E tests)
+
+---
+
+### D21: UUID Case Mismatch in E2E Test Database Queries
+
+**ID**: D21
+**Created**: 2025-12-18
+**Category**: Test Infrastructure Bug
+**Priority**: Medium
+**Status**: Fix Applied - Awaiting Verification
+
+**Location**: `backend/src/__tests__/e2e/helpers/ResponseScenarioRegistry.ts:327-334, 352-359`
+
+**Description**:
+SQL Server returns UUIDs in UPPERCASE, but JavaScript generates them in lowercase. Direct comparison fails when checking database persistence in E2E tests.
+
+**Error Pattern**:
+```
+expected '5182D881-2280-4354-AF2C-FCF08D0AB16F' to be '5182d881-2280-4354-af2c-fcf08d0ab16f'
+```
+
+**Root Cause**:
+`fetchDatabaseState()` doesn't normalize UUIDs when mapping database rows. The utility `normalizeUUID()` exists in `@/utils/uuid.ts` but isn't used in the E2E test infrastructure.
+
+**Fix Applied** (2025-12-18):
+- ✅ Imported `normalizeUUID` from `@/utils/uuid`
+- ✅ Normalized `row.session_id` in dbMessages mapping (line 349)
+- ✅ Normalized `row.session_id` in dbEvents mapping (line 374)
+
+**Verification Status**:
+- Test run 2025-12-18: No UUID case mismatch errors observed
+- Error pattern shifted to "sessionId: undefined" (separate issue D22)
+
+**Target Phase**: Resolved (pending final verification)
+
+---
+
+### D22: Session ID Undefined in E2E Test Factory
+
+**ID**: D22
+**Created**: 2025-12-18
+**Category**: Test Infrastructure Bug
+**Priority**: High
+**Status**: Pending
+
+**Location**: Multiple E2E test files using TestSessionFactory
+
+**Description**:
+Many E2E tests fail because `sessionId` is `undefined` when making API calls or database queries. The TestSessionFactory or test setup is not properly propagating session IDs.
+
+**Error Pattern**:
+```
+❌ Query execution failed: Error: Invalid UUID format for parameter 'sessionId': undefined
+```
+
+**Impact**:
+- 20+ test failures across multiple E2E test files
+- Affects: sessions.api.test.ts, session-rooms.ws.test.ts, and others
+- Tests cannot verify database persistence without valid session IDs
+
+**Root Cause Hypotheses**:
+1. TestSessionFactory.createSession() not returning sessionId properly
+2. Race condition between session creation and test execution
+3. Session cookie not being passed correctly to subsequent requests
+
+**Resolution Path**:
+1. Add debug logging to TestSessionFactory.createSession()
+2. Verify session creation response includes id field
+3. Ensure test setup waits for session creation to complete
+4. Check if session cookie is being properly stored and reused
+
+**Target Phase**: Immediate (blocking E2E tests)
 
 ---
 
@@ -819,12 +926,88 @@ E2E_USE_REAL_API=true npm run test:e2e
 | Priority | Total | Resolved | Improved | Pending |
 |----------|-------|----------|----------|---------|
 | Critical | 2 | 0 | 1 | 1 |
-| High | 4 | 3 | 0 | 1 |
-| Medium | 7 | 1 | 0 | 6 |
+| High | 6 | 3 | 0 | 3 |
+| Medium | 8 | 1 | 1 | 6 |
 | Low | 5 | 3 | 0 | 2 |
-| **Total** | **20** | **9** | **1** | **10** |
+| **Total** | **23** | **9** | **2** | **12** |
 
-*Updated 2025-12-18: D4, D12, D18 verified as resolved, TD-E2E-005 and D19 added*
+*Updated 2025-12-18: D22 (Session ID Undefined) added, D21 fix applied*
+
+---
+
+## E2E Test Run Results (2025-12-18)
+
+### Latest Run Summary
+
+| Metric | Value |
+|--------|-------|
+| **Tests** | 98 failed \| 211 passed \| 75 skipped (384 total) |
+| **Files** | 15 failed \| 7 passed \| 2 skipped (24 total) |
+| **Duration** | 917.56s (~15 min) |
+| **API Mode** | Real Claude API |
+| **Model** | `claude-sonnet-4-20250514` |
+
+### API Calls Analysis
+
+| Scenario | Events | Duration | Estimated API Calls |
+|----------|--------|----------|---------------------|
+| multi-tool-with-thinking | (incomplete) | - | ~1-2 |
+| single-tool-no-thinking | 58 | 13.9s | ~2-4 |
+| error-api | 36 | 6.8s | ~1-2 |
+| **Total** | - | ~21s | **~4-8 calls** |
+
+### Items Verified in This Run
+
+| ID | Description | Status |
+|----|-------------|--------|
+| D4 | Health Endpoint | ✅ **PASSING** - All health tests green |
+| D5 | Sequence Numbers | ✅ **PASSING** - 4/4 sequence tests green |
+| D12 | Timeout Constants | ✅ **PASSING** - No timeout issues |
+| D3 | PK Violations | ❌ **FAILING** - `toolu_*` duplicates |
+| D20 | Event Type 'unknown' | ❌ **FAILING** - Still showing 'unknown' |
+| D21 | UUID Case Mismatch | ⚠️ **IMPROVED** - No case errors, but sessionId undefined |
+| D22 | Session ID Undefined | ❌ **NEW** - 20+ failures |
+
+---
+
+## Model Cost Analysis
+
+### Current Model
+
+**Model**: `claude-sonnet-4-20250514`
+**Pricing** (per million tokens):
+- Input: $3.00
+- Output: $15.00
+
+### Recommended Alternative for E2E Tests
+
+**Model**: `claude-3-5-haiku-20241022`
+**Pricing** (per million tokens):
+- Input: $0.80
+- Output: $4.00
+
+**Cost Savings**: ~73% reduction
+
+### Why Haiku is Sufficient for E2E Tests
+
+1. **Tool Use Support**: ✅ Haiku supports tool/function calling
+2. **Streaming**: ✅ Full streaming support
+3. **Extended Thinking**: ✅ Supported (with smaller budget_tokens)
+4. **Response Quality**: Adequate for testing event flow and persistence
+5. **Latency**: Faster responses = quicker test execution
+
+### Migration Path
+
+```bash
+# .env change for E2E tests
+# ANTHROPIC_MODEL=claude-sonnet-4-20250514
+ANTHROPIC_MODEL=claude-3-5-haiku-20241022
+```
+
+**Considerations**:
+- Haiku may produce shorter/simpler responses
+- Some complex reasoning scenarios may differ
+- Recommend keeping Sonnet for production, Haiku for tests
 
 ---
 

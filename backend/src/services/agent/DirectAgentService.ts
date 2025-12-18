@@ -581,48 +581,94 @@ export class DirectAgentService {
                if (event.event === 'on_chat_model_start' && event.name === 'ChatAnthropic' && finalResponseChunks.length > 0) {
                    const accumulatedText = finalResponseChunks.join('');
                    if (accumulatedText.trim()) {
-                       const turnEndMessage: AgentEvent = {
-                           type: 'message',
-                           content: accumulatedText,
-                           messageId: randomUUID(),
-                           role: 'assistant',
-                           stopReason: 'tool_use', // Indicates this turn ended for tool use
+                       // D5 FIX: Generate IDs first, persist FIRST, then create event WITH sequenceNumber
+                       const turnEndMessageId = randomUUID();
+                       const turnEndEventId = randomUUID();
+                       const turnEndTimestamp = new Date().toISOString();
+
+                       try {
+                         // 1. Persist FIRST to get sequence_number
+                         const turnEndDbEvent = await eventStore.appendEvent(
+                             sessionId,
+                             'agent_message_sent',
+                             {
+                                 message_id: turnEndMessageId,
+                                 content: accumulatedText,
+                                 stop_reason: 'tool_use',
+                                 timestamp: turnEndTimestamp,
+                                 persistenceState: 'persisted'
+                             }
+                         );
+
+                         // Validate sequence_number
+                         if (turnEndDbEvent.sequence_number === undefined || turnEndDbEvent.sequence_number === null) {
+                           throw new Error(
+                             `Turn-end event persisted without sequence_number: ${turnEndDbEvent.sequence_number}, turnEndDbEvent: ${turnEndDbEvent}`
+                           );
+                         }
+
+                         // 2. Enqueue to MessageQueue
+                         await messageQueue.addMessagePersistence({
+                             sessionId,
+                             messageId: turnEndMessageId,
+                             role: 'assistant',
+                             messageType: 'text',
+                             content: accumulatedText,
+                             metadata: { stop_reason: 'tool_use' },
+                             sequenceNumber: turnEndDbEvent.sequence_number,
+                             eventId: turnEndDbEvent.id,
+                             stopReason: 'tool_use',
+                         });
+
+                         // 3. Create event WITH sequenceNumber and emit
+                         const turnEndMessage: AgentEvent = {
+                             type: 'message',
+                             content: accumulatedText,
+                             messageId: turnEndMessageId,
+                             role: 'assistant',
+                             stopReason: 'tool_use',
+                             timestamp: turnEndTimestamp,
+                             eventId: turnEndEventId,
+                             sequenceNumber: turnEndDbEvent.sequence_number, // D5 FIX: Include sequenceNumber
+                             persistenceState: 'persisted'
+                         };
+
+                         emitEvent(turnEndMessage);
+                         this.logger.info({
+                             sessionId,
+                             messageId: turnEndMessageId,
+                             contentLength: accumulatedText.length,
+                             sequenceNumber: turnEndDbEvent.sequence_number
+                         }, '📝✅ Emitted turn-end message with sequenceNumber');
+
+                       } catch (persistError) {
+                         // D5 FIX: Robust error handling with traceability
+                         const errorDetails = {
+                           error: persistError,
+                           errorName: persistError instanceof Error ? persistError.name : 'Unknown',
+                           errorMessage: persistError instanceof Error ? persistError.message : String(persistError),
+                           sessionId,
+                           messageId: turnEndMessageId,
+                           phase: 'turn_end_persistence',
+                           contentLength: accumulatedText.length,
+                           possibleCauses: this.analyzePersistenceError(persistError)
+                         };
+
+                         this.logger.error(errorDetails, '❌ CRITICAL: Failed to persist turn-end message');
+
+                         // Emit error event to frontend (ErrorEvent interface)
+                         emitEvent({
+                           type: 'error',
+                           sessionId,
+                           error: `Failed to persist turn-end message: ${errorDetails.errorMessage}`,
+                           code: 'PERSISTENCE_FAILED',
                            timestamp: new Date().toISOString(),
                            eventId: randomUUID(),
-                           persistenceState: 'persisted'
-                       };
+                           persistenceState: 'failed'
+                         });
 
-                       // Persist the intermediate message
-                       const turnEndDbEvent = await eventStore.appendEvent(
-                           sessionId,
-                           'agent_message_sent',
-                           {
-                               message_id: turnEndMessage.messageId,
-                               content: turnEndMessage.content,
-                               stop_reason: 'tool_use',
-                               timestamp: turnEndMessage.timestamp,
-                               persistenceState: 'persisted'
-                           }
-                       );
-
-                       await messageQueue.addMessagePersistence({
-                           sessionId,
-                           messageId: turnEndMessage.messageId,
-                           role: 'assistant',
-                           messageType: 'text',
-                           content: turnEndMessage.content,
-                           metadata: { stop_reason: 'tool_use' },
-                           sequenceNumber: turnEndDbEvent.sequence_number,
-                           eventId: turnEndDbEvent.id,
-                           stopReason: 'tool_use',
-                       });
-
-                       emitEvent(turnEndMessage);
-                       this.logger.info({
-                           sessionId,
-                           contentLength: accumulatedText.length,
-                           sequenceNumber: turnEndDbEvent.sequence_number
-                       }, '📝 Emitted turn-end message before new model call (separating text blocks)');
+                         throw persistError;
+                       }
 
                        // Clear chunks for the new turn
                        finalResponseChunks.length = 0;
@@ -808,48 +854,93 @@ export class DirectAgentService {
                    if (output?.toolExecutions?.length > 0 && finalResponseChunks.length > 0) {
                        const intermediateText = finalResponseChunks.join('');
                        if (intermediateText.trim()) {
-                           const intermediateMessageEvent: AgentEvent = {
-                               type: 'message',
-                               content: intermediateText,
-                               messageId: randomUUID(),
-                               role: 'assistant',
-                               stopReason: 'tool_use', // Indicates more to come
+                           // D5 AUDIT FIX: Persist FIRST, then create event WITH sequenceNumber
+                           const intermediateMessageId = randomUUID();
+                           const intermediateEventId = randomUUID();
+                           const intermediateTimestamp = new Date().toISOString();
+
+                           try {
+                             // 1. Persist FIRST to get sequence_number
+                             const intermediateDbEvent = await eventStore.appendEvent(
+                                 sessionId,
+                                 'agent_message_sent',
+                                 {
+                                     message_id: intermediateMessageId,
+                                     content: intermediateText,
+                                     stop_reason: 'tool_use',
+                                     timestamp: intermediateTimestamp,
+                                     persistenceState: 'persisted'
+                                 }
+                             );
+
+                             // Validate sequence_number
+                             if (intermediateDbEvent.sequence_number === undefined || intermediateDbEvent.sequence_number === null) {
+                               throw new Error(
+                                 `Intermediate message persisted without sequence_number: ${intermediateDbEvent.sequence_number}, intermediateDbEvent: ${intermediateDbEvent}`
+                               );
+                             }
+
+                             // 2. Enqueue to MessageQueue
+                             await messageQueue.addMessagePersistence({
+                                 sessionId,
+                                 messageId: intermediateMessageId,
+                                 role: 'assistant',
+                                 messageType: 'text',
+                                 content: intermediateText,
+                                 metadata: { stop_reason: 'tool_use' },
+                                 sequenceNumber: intermediateDbEvent.sequence_number,
+                                 eventId: intermediateDbEvent.id,
+                                 stopReason: 'tool_use',
+                             });
+
+                             // 3. Create event WITH sequenceNumber and emit
+                             const intermediateMessageEvent: AgentEvent = {
+                                 type: 'message',
+                                 content: intermediateText,
+                                 messageId: intermediateMessageId,
+                                 role: 'assistant',
+                                 stopReason: 'tool_use',
+                                 timestamp: intermediateTimestamp,
+                                 eventId: intermediateEventId,
+                                 sequenceNumber: intermediateDbEvent.sequence_number, // D5 AUDIT FIX
+                                 persistenceState: 'persisted'
+                             };
+
+                             emitEvent(intermediateMessageEvent);
+                             this.logger.info({
+                                 sessionId,
+                                 messageId: intermediateMessageId,
+                                 contentLength: intermediateText.length,
+                                 sequenceNumber: intermediateDbEvent.sequence_number
+                             }, '📝✅ Emitted intermediate text message with sequenceNumber');
+
+                           } catch (persistError) {
+                             const errorDetails = {
+                               error: persistError,
+                               errorName: persistError instanceof Error ? persistError.name : 'Unknown',
+                               errorMessage: persistError instanceof Error ? persistError.message : String(persistError),
+                               sessionId,
+                               messageId: intermediateMessageId,
+                               phase: 'intermediate_message_persistence',
+                               contentLength: intermediateText.length,
+                               possibleCauses: this.analyzePersistenceError(persistError)
+                             };
+
+                             this.logger.error(errorDetails, '❌ CRITICAL: Failed to persist intermediate message');
+
+                             // Emit error event to frontend (ErrorEvent interface)
+                             emitEvent({
+                               type: 'error',
+                               sessionId,
+                               error: `Failed to persist intermediate message: ${errorDetails.errorMessage}`,
+                               code: 'PERSISTENCE_FAILED',
                                timestamp: new Date().toISOString(),
                                eventId: randomUUID(),
-                               persistenceState: 'persisted'
-                           };
+                               persistenceState: 'failed'
+                             });
 
-                           // Persist intermediate message
-                           const intermediateDbEvent = await eventStore.appendEvent(
-                               sessionId,
-                               'agent_message_sent',
-                               {
-                                   message_id: intermediateMessageEvent.messageId,
-                                   content: intermediateMessageEvent.content,
-                                   stop_reason: 'tool_use',
-                                   timestamp: intermediateMessageEvent.timestamp,
-                                   persistenceState: 'persisted'
-                               }
-                           );
-
-                           await messageQueue.addMessagePersistence({
-                               sessionId,
-                               messageId: intermediateMessageEvent.messageId,
-                               role: 'assistant',
-                               messageType: 'text',
-                               content: intermediateMessageEvent.content,
-                               metadata: { stop_reason: 'tool_use' },
-                               sequenceNumber: intermediateDbEvent.sequence_number,
-                               eventId: intermediateDbEvent.id,
-                               stopReason: 'tool_use',
-                           });
-
-                           emitEvent(intermediateMessageEvent);
-                           this.logger.info({
-                               sessionId,
-                               contentLength: intermediateText.length,
-                               sequenceNumber: intermediateDbEvent.sequence_number
-                           }, '📝 Emitted intermediate text message before tools');
+                             throw persistError;
+                           }
 
                            // Clear accumulated chunks so they don't appear again in final message
                            finalResponseChunks.length = 0;
@@ -1073,96 +1164,192 @@ export class DirectAgentService {
             const thinkingContent = thinkingChunks.join('');
             const thinkingMessageId = randomUUID();
             const thinkingEventId = randomUUID();
+            const thinkingTimestamp = new Date().toISOString();
 
-            // 1. Persist thinking to EventStore
-            const thinkingDbEvent = await eventStore.appendEvent(
-                sessionId,
-                'agent_thinking_block',
-                {
-                    message_id: thinkingMessageId,
-                    content: thinkingContent,
-                    timestamp: new Date().toISOString(),
-                    persistenceState: 'persisted'
-                }
-            );
+            try {
+              // 1. Persist thinking to EventStore
+              const thinkingDbEvent = await eventStore.appendEvent(
+                  sessionId,
+                  'agent_thinking_block',
+                  {
+                      message_id: thinkingMessageId,
+                      content: thinkingContent,
+                      timestamp: thinkingTimestamp,
+                      persistenceState: 'persisted'
+                  }
+              );
 
-            // 2. Enqueue thinking to MessageQueue for messages table persistence
-            await messageQueue.addMessagePersistence({
+              // Validate sequence_number
+              if (thinkingDbEvent.sequence_number === undefined || thinkingDbEvent.sequence_number === null) {
+                throw new Error(
+                  `Thinking event persisted without sequence_number: ${thinkingDbEvent.sequence_number}, thinkingDbEvent: ${thinkingDbEvent}`
+                );
+              }
+
+              // 2. Enqueue thinking to MessageQueue for messages table persistence
+              await messageQueue.addMessagePersistence({
+                  sessionId,
+                  messageId: thinkingMessageId,
+                  role: 'assistant',
+                  messageType: 'thinking',
+                  content: thinkingContent,
+                  metadata: {},
+                  sequenceNumber: thinkingDbEvent.sequence_number,
+                  eventId: thinkingEventId,
+              });
+
+              // 3. Emit persisted thinking event to frontend
+              emitEvent({
+                  type: 'thinking',
+                  content: thinkingContent,
+                  messageId: thinkingMessageId,
+                  timestamp: thinkingTimestamp,
+                  eventId: thinkingEventId,
+                  persistenceState: 'persisted' as const,
+                  sequenceNumber: thinkingDbEvent.sequence_number,
+              } as AgentEvent);
+
+              this.logger.info({
+                  sessionId,
+                  messageId: thinkingMessageId,
+                  thinkingLength: thinkingContent.length,
+                  sequenceNumber: thinkingDbEvent.sequence_number
+              }, '💭✅ Thinking persisted to EventStore and MessageQueue');
+
+            } catch (persistError) {
+              const errorDetails = {
+                error: persistError,
+                errorName: persistError instanceof Error ? persistError.name : 'Unknown',
+                errorMessage: persistError instanceof Error ? persistError.message : String(persistError),
                 sessionId,
                 messageId: thinkingMessageId,
-                role: 'assistant',
-                messageType: 'thinking',
-                content: thinkingContent,
-                metadata: {},
-                sequenceNumber: thinkingDbEvent.sequence_number,
-                eventId: thinkingEventId,
-            });
+                phase: 'thinking_persistence',
+                contentLength: thinkingContent.length,
+                possibleCauses: this.analyzePersistenceError(persistError)
+              };
 
-            // 3. Emit persisted thinking event to frontend
-            emitEvent({
-                type: 'thinking',
-                content: thinkingContent,
-                messageId: thinkingMessageId,
+              this.logger.error(errorDetails, '❌ CRITICAL: Failed to persist thinking event');
+
+              // Emit error event to frontend (ErrorEvent interface)
+              emitEvent({
+                type: 'error',
+                sessionId,
+                error: `Failed to persist thinking content: ${errorDetails.errorMessage}`,
+                code: 'PERSISTENCE_FAILED',
                 timestamp: new Date().toISOString(),
-                eventId: thinkingEventId,
-                persistenceState: 'persisted' as const,
-                sequenceNumber: thinkingDbEvent.sequence_number,
-            } as AgentEvent);
+                eventId: randomUUID(),
+                persistenceState: 'failed'
+              });
 
-            this.logger.info({
-                sessionId,
-                thinkingLength: thinkingContent.length,
-                sequenceNumber: thinkingDbEvent.sequence_number
-            }, '💭💾 Thinking persisted to EventStore and MessageQueue');
+              // Re-throw to propagate
+              throw persistError;
+            }
         }
 
-        // ✨ FIXED: Explicitly persist the final message event
+        // ✨ FIXED: Explicitly persist the final message event with robust error handling (D17)
         const finalMessageId = randomUUID();
         const finalEventId = randomUUID();
 
-        // 1. Persist to EventStore FIRST (using snake_case data properties for EventStore)
-        const finalMessageDbEvent = await eventStore.appendEvent(
-            sessionId,
-            'agent_message_sent',
-            {
-                message_id: finalMessageId,
-                content: responseContent,
-                stop_reason: effectiveStopReason,
-                timestamp: new Date().toISOString(),
-                persistenceState: 'persisted'
-            }
-        );
+        try {
+          // 1. Persist to EventStore FIRST (using snake_case data properties for EventStore)
+          const finalMessageDbEvent = await eventStore.appendEvent(
+              sessionId,
+              'agent_message_sent',
+              {
+                  message_id: finalMessageId,
+                  content: responseContent,
+                  stop_reason: effectiveStopReason,
+                  timestamp: new Date().toISOString(),
+                  persistenceState: 'persisted'
+              }
+          );
 
-        // 2. Enqueue to MessageQueue for messages table persistence
-        await messageQueue.addMessagePersistence({
+          // Validate that we got a valid sequence_number
+          if (finalMessageDbEvent.sequence_number === undefined || finalMessageDbEvent.sequence_number === null) {
+            throw new Error(
+              `Event persistence succeeded but sequence_number is invalid: ${finalMessageDbEvent.sequence_number}, finalMessageDbEvent: ${finalMessageDbEvent}`
+            );
+          }
+
+          // 2. Enqueue to MessageQueue for messages table persistence
+          await messageQueue.addMessagePersistence({
+              sessionId,
+              messageId: finalMessageId,
+              role: 'assistant',
+              messageType: 'text',
+              content: responseContent,
+              metadata: {
+                  stop_reason: effectiveStopReason,
+              },
+              sequenceNumber: finalMessageDbEvent.sequence_number,
+              eventId: finalMessageDbEvent.id,
+              stopReason: effectiveStopReason,
+          });
+
+          this.logger.info({
             sessionId,
             messageId: finalMessageId,
-            role: 'assistant',
-            messageType: 'text',
-            content: responseContent,
-            metadata: {
-                stop_reason: effectiveStopReason,
-            },
             sequenceNumber: finalMessageDbEvent.sequence_number,
             eventId: finalMessageDbEvent.id,
-            stopReason: effectiveStopReason,
-        });
-        this.logger.info({ sessionId, messageId: finalMessageId, stopReason: effectiveStopReason },
-            '💾 Final message persisted to EventStore and queued to MessageQueue');
+            stopReason: effectiveStopReason
+          }, '💾✅ Final message persisted to EventStore and queued to MessageQueue');
 
-        // FIX: Use emitEvent with all required fields for frontend ordering
-        emitEvent({
-          type: 'message',
-          content: responseContent,
-          messageId: finalMessageId,
-          role: 'assistant',
-          stopReason: effectiveStopReason,
-          timestamp: new Date().toISOString(),
-          eventId: finalEventId,
-          sessionId,
-          sequenceNumber: finalMessageDbEvent.sequence_number,
-          persistenceState: 'persisted'
-        } as AgentEvent);
+          // 3. Emit persisted event with sequence_number to frontend
+          emitEvent({
+            type: 'message',
+            content: responseContent,
+            messageId: finalMessageId,
+            role: 'assistant',
+            stopReason: effectiveStopReason,
+            timestamp: new Date().toISOString(),
+            eventId: finalEventId,
+            sessionId,
+            sequenceNumber: finalMessageDbEvent.sequence_number,
+            persistenceState: 'persisted'
+          } as AgentEvent);
+
+        } catch (persistError) {
+          // TRAZABILIDAD COMPLETA para debugging (D17 fix)
+          const errorDetails = {
+            // Error information
+            error: persistError,
+            errorName: persistError instanceof Error ? persistError.name : 'Unknown',
+            errorMessage: persistError instanceof Error ? persistError.message : String(persistError),
+            errorStack: persistError instanceof Error ? persistError.stack : undefined,
+
+            // Operation context
+            sessionId,
+            messageId: finalMessageId,
+            phase: 'final_message_persistence',
+
+            // Message metadata for debugging
+            messageMetadata: {
+              contentPreview: responseContent?.substring(0, 500),
+              contentLength: responseContent?.length,
+              stopReason: effectiveStopReason,
+              timestamp: new Date().toISOString()
+            },
+
+            // Detected possible causes
+            possibleCauses: this.analyzePersistenceError(persistError)
+          };
+
+          this.logger.error(errorDetails, '❌ CRITICAL: Failed to persist final message event');
+
+          // Emit error event to frontend (ErrorEvent interface)
+          emitEvent({
+            type: 'error',
+            sessionId,
+            error: `Failed to persist final message: ${errorDetails.errorMessage}`,
+            code: 'PERSISTENCE_FAILED',
+            timestamp: new Date().toISOString(),
+            eventId: randomUUID(),
+            persistenceState: 'failed'
+          });
+
+          // Re-throw to propagate to caller
+          throw persistError;
+        }
 
         // ========== HANDLE SPECIAL STOP REASONS ==========
         // Emit warnings for non-standard completion scenarios
@@ -1208,6 +1395,46 @@ export class DirectAgentService {
           toolsUsed: toolsUsed,
           sessionId
       };
+  }
+
+  /**
+   * Analyzes persistence errors to identify root causes for debugging.
+   * Returns an array of human-readable cause descriptions.
+   *
+   * @param error - The error thrown during persistence
+   * @returns Array of identified possible causes
+   */
+  private analyzePersistenceError(error: unknown): string[] {
+    const causes: string[] = [];
+    const errorMsg = error instanceof Error ? error.message : String(error);
+
+    if (errorMsg.includes('duplicate key') || errorMsg.includes('PRIMARY KEY')) {
+      causes.push('DUPLICATE_ID: El ID del mensaje ya existe en la base de datos');
+    }
+    if (errorMsg.includes('FOREIGN KEY') || errorMsg.includes('FK_')) {
+      causes.push('FK_VIOLATION: Referencia a sesión o usuario que no existe');
+    }
+    if (errorMsg.includes('sequence_number')) {
+      causes.push('SEQUENCE_CONFLICT: Conflicto en el número de secuencia (posible race condition D1)');
+    }
+    if (errorMsg.includes('timeout') || errorMsg.includes('ETIMEDOUT')) {
+      causes.push('DB_TIMEOUT: La base de datos no respondió a tiempo');
+    }
+    if (errorMsg.includes('Redis') || errorMsg.includes('redis')) {
+      causes.push('REDIS_ERROR: Problema con Redis al obtener sequence number');
+    }
+    if (errorMsg.includes('connection') || errorMsg.includes('ECONNREFUSED')) {
+      causes.push('CONNECTION_ERROR: No se pudo conectar a la base de datos');
+    }
+    if (errorMsg.includes('Database not available')) {
+      causes.push('DB_UNAVAILABLE: El servicio de base de datos no está disponible');
+    }
+
+    if (causes.length === 0) {
+      causes.push('UNKNOWN: Error no categorizado - revisar logs completos');
+    }
+
+    return causes;
   }
 }
 

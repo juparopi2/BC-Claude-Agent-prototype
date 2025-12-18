@@ -3,7 +3,7 @@
 **Created**: 2025-12-17
 **Last Updated**: 2025-12-17
 **QA Evaluation**: Phase 4 E2E Testing Framework
-**Status**: Phase 4.7 partially complete - 6 items resolved/improved, 10 pending
+**Status**: Phase 4.7 substantially complete - 6 items resolved, 1 improved, 11 pending
 
 This document tracks technical debt identified during QA evaluations. Each item includes root cause analysis, impact assessment, and recommended fix approach.
 
@@ -142,34 +142,54 @@ expect(response.body).toBe('OK');
 
 ---
 
-### D5: Sequence Numbers Not Set on Some Events
+### [RESOLVED] D5: Sequence Numbers Not Set on Some Events
 
-**Location**: `backend/src/__tests__/e2e/flows/04-streaming-flow.e2e.test.ts:764`
+**Location**: `backend/src/services/agent/DirectAgentService.ts`
 
-**Description**: Test expects all persisted events to have `sequenceNumber`, but some events are missing this field.
+**Description**: Events marked as `persistenceState: 'persisted'` were emitted WITHOUT `sequenceNumber` because the event object was created BEFORE persisting to the database.
 
-**Root Cause**:
+---
+
+#### Resolución (2025-12-17)
+
+**Causa raíz identificada**:
 ```typescript
-// Test expects:
-expect(msgData.sequenceNumber).toBeDefined();
-
-// But message events from real API don't always have sequenceNumber
+// ANTES (bug): Objeto creado ANTES de persistir
+const turnEndMessage = { type: 'message', persistenceState: 'persisted' }; // SIN sequenceNumber
+const dbEvent = await eventStore.appendEvent(...);
+emitEvent(turnEndMessage); // ❌ Emitía objeto SIN sequenceNumber
 ```
 
-This may indicate:
-- Events being emitted before persistence completes
-- Race condition between event emission and sequence assignment
-- Some event types intentionally don't get sequence numbers
+**Solución implementada**:
+```typescript
+// DESPUÉS (fix): Persistir PRIMERO, crear objeto DESPUÉS
+const dbEvent = await eventStore.appendEvent(...);
+const turnEndMessage = {
+    type: 'message',
+    sequenceNumber: dbEvent.sequence_number, // ✅ Incluido
+    persistenceState: 'persisted'
+};
+emitEvent(turnEndMessage);
+```
 
-**Impact**: 1 test failure
+**Puntos corregidos** (4 lugares en DirectAgentService.ts):
+1. ✅ Turn-end message (líneas 584-678)
+2. ✅ Intermediate message before tools (líneas 863-959)
+3. ✅ Thinking block (líneas 1172-1263)
+4. ✅ Final message (líneas 1265-1330)
 
-**Recommended Fix**:
-- Investigate which events should have sequence numbers
-- Update test to check only relevant event types
-- OR fix event emission to always include sequence number when persisted
+**Patrón establecido**:
+- Generar IDs primero (messageId, eventId, timestamp)
+- Persistir PRIMERO para obtener sequence_number
+- Validar que sequence_number existe
+- Crear objeto de evento CON sequenceNumber
+- Emitir evento completo
 
-**Status**: Test assertion failure
-**Target Phase**: Phase 4.7 (investigation needed)
+**Documentación creada**:
+- `docs/plans/SEQUENCE_NUMBER_ARCHITECTURE.md` - Arquitectura completa del sistema
+
+**Resolved Date**: 2025-12-17
+**Resolution**: Refactorizado flujo de emisión en 4 puntos para persistir PRIMERO
 
 ---
 
@@ -406,38 +426,46 @@ agentService.runGraph(prompt, sessionId, onEvent?, userId?, options?)
 
 ---
 
-### D17: Null Check Missing in DirectAgentService.runGraph()
+### [RESOLVED] D17: Null Check Missing in DirectAgentService.runGraph()
 
-**Location**: `backend/src/services/agent/DirectAgentService.ts:1146`
+**Location**: `backend/src/services/agent/DirectAgentService.ts:1265-1330`
 
-**Description**: The `runGraph()` method accesses `finalMessageDbEvent.sequence_number` without null checking, causing crashes when event persistence fails or is mocked incorrectly.
+**Description**: The `runGraph()` method accessed `finalMessageDbEvent.sequence_number` without null checking, causing crashes when event persistence failed.
 
-**Root Cause**:
-```typescript
-// Line 1146 - no null check
-sequenceNumber: finalMessageDbEvent.sequence_number,
-```
+---
 
-When `finalMessageDbEvent` is undefined (e.g., EventStore mock returns undefined, or DB persistence fails), this line throws:
-```
-TypeError: Cannot read properties of undefined (reading 'sequence_number')
-```
+#### Resolución (2025-12-17)
 
-**Impact**:
-- 5 integration tests failing in `orchestrator.integration.test.ts`
-- Tests skipped temporarily
+**Cambios implementados**:
 
-**Recommended Fix**:
-```typescript
-// Add null check with fallback
-sequenceNumber: finalMessageDbEvent?.sequence_number ?? -1,
-```
+1. ✅ **Try-catch robusto** en 4 puntos de persistencia:
+   - Final message persistence (líneas 1265-1330)
+   - Turn-end message (líneas 584-678)
+   - Intermediate message (líneas 863-959)
+   - Thinking block (líneas 1172-1263)
 
-Or better, ensure EventStore always returns a valid event object.
+2. ✅ **Método `analyzePersistenceError()`** (líneas 1366-1395):
+   - Detecta: PK violations, FK violations, sequence conflicts, timeouts, Redis errors, connection errors
+   - Retorna array de causas posibles para debugging
 
-**Status**: Skipped with TODO comment (2025-12-17)
-**Target Phase**: Phase 5
-**Estimated Effort**: 15-30 minutes
+3. ✅ **Trazabilidad completa**:
+   - Logging con: sessionId, messageId, phase, contentLength, possibleCauses
+   - Error stack trace incluido
+
+4. ✅ **Notificación al frontend**:
+   - Emite evento `type: 'error'` con `persistenceState: 'failed'`
+   - Incluye `debugInfo` con errorType, errorMessage, possibleCauses
+
+5. ✅ **Tests unitarios** (20 tests):
+   - `DirectAgentService.persistence-errors.test.ts`
+   - Cobertura de todos los patrones de error detectables
+
+**Archivos modificados**:
+- `backend/src/services/agent/DirectAgentService.ts`
+- `backend/src/__tests__/unit/services/agent/DirectAgentService.persistence-errors.test.ts` (nuevo)
+
+**Resolved Date**: 2025-12-17
+**Resolution**: Try-catch robusto con trazabilidad y método analyzePersistenceError()
 
 ---
 
@@ -663,10 +691,10 @@ E2E_USE_REAL_API=true npm run test:e2e
 | Priority | Total | Resolved | Improved | Pending |
 |----------|-------|----------|----------|---------|
 | Critical | 2 | 0 | 1 | 1 |
-| High | 4 | 1 | 0 | 3 |
+| High | 4 | 2 | 0 | 2 |
 | Medium | 5 | 1 | 0 | 4 |
-| Low | 5 | 0 | 0 | 5 |
-| **Total** | **18** | **4** | **1** | **13** |
+| Low | 5 | 1 | 0 | 4 |
+| **Total** | **18** | **6** | **1** | **11** |
 
 ---
 
@@ -674,18 +702,19 @@ E2E_USE_REAL_API=true npm run test:e2e
 
 ### Phase 4.7 (Immediate - This Sprint)
 - D4: Health endpoint response format
-- D5: Sequence number investigation
+- ~~D5: Sequence number investigation~~ ✅ RESOLVED (2025-12-17)
 - ~~D6: Input sanitization test reconnection~~ ✅ RESOLVED
 - ~~D7: Remove session_start tests~~ ✅ RESOLVED
+- ~~D17: Null check missing in DirectAgentService.runGraph()~~ ✅ RESOLVED (2025-12-17)
 
 ### Phase 5 (Next Sprint)
-- D1: EventStore atomic fallback
+- D1: EventStore atomic fallback (race condition en DB fallback)
 - D2: FakeAnthropicClient enableThinking
 - D3: Database PK violation handling
 - D13: Redis chaos tests
 - D16: Integration tests using deprecated executeQueryStreaming
-- D17: Null check missing in DirectAgentService.runGraph()
 - D18: Integration test cleanup FK constraint violation
+- Frontend: Unificar ordenamiento de mensajes (ver PHASE_5_SEQUENCE_REFACTOR.md)
 
 ### Phase 6 (Backlog)
 - D8: Dynamic model selection

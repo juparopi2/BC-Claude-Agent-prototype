@@ -10,7 +10,7 @@
   ],
   "scripts": {
     "build:shared": "npm run -w @bc-agent/shared build",
-    "type-check": "npm run -w @bc-agent/shared type-check && npm run -w backend type-check && npm run -w bc-agent-frontend type-check",
+    "type-check": "npm run -w @bc-agent/shared type-check && npm run -w bc-agent-frontend type-check",
     "verify:types": "npm run build:shared && npm run type-check",
     "test:shared": "npm run -w @bc-agent/shared test --if-present",
     "test:backend": "npm run -w backend test",

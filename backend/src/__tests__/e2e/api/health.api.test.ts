@@ -26,9 +26,9 @@ describe('E2E API: Health Endpoints', () => {
       const response = await client.get<{
         status: string;
         timestamp: string;
-        checks: {
-          database: { status: string };
-          redis: { status: string };
+        services: {
+          database: string;
+          redis: string;
         };
       }>('/health');
 
@@ -36,15 +36,15 @@ describe('E2E API: Health Endpoints', () => {
       expect(response.status).toBe(200);
       expect(response.body).toHaveProperty('status');
       expect(response.body).toHaveProperty('timestamp');
-      expect(response.body).toHaveProperty('checks');
+      expect(response.body).toHaveProperty('services');
 
-      // Verify database check exists
-      expect(response.body.checks).toHaveProperty('database');
-      expect(response.body.checks.database).toHaveProperty('status');
+      // Verify database service status exists
+      expect(response.body.services).toHaveProperty('database');
+      expect(['up', 'down']).toContain(response.body.services.database);
 
-      // Verify redis check exists
-      expect(response.body.checks).toHaveProperty('redis');
-      expect(response.body.checks.redis).toHaveProperty('status');
+      // Verify redis service status exists
+      expect(response.body.services).toHaveProperty('redis');
+      expect(['up', 'down']).toContain(response.body.services.redis);
     });
 
     it('should return valid timestamp', async () => {
@@ -64,20 +64,20 @@ describe('E2E API: Health Endpoints', () => {
 
     it('should have healthy database status', async () => {
       const response = await client.get<{
-        checks: { database: { status: string } };
+        services: { database: string };
       }>('/health');
 
       expect(response.ok).toBe(true);
-      expect(response.body.checks.database.status).toBe('healthy');
+      expect(response.body.services.database).toBe('up');
     });
 
     it('should have healthy redis status', async () => {
       const response = await client.get<{
-        checks: { redis: { status: string } };
+        services: { redis: string };
       }>('/health');
 
       expect(response.ok).toBe(true);
-      expect(response.body.checks.redis.status).toBe('healthy');
+      expect(response.body.services.redis).toBe('up');
     });
   });
 

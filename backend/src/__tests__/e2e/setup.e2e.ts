@@ -28,6 +28,7 @@ import type { Server } from 'http';
 import type { Express } from 'express';
 import { initDatabase, closeDatabase } from '@/config/database';
 import { initRedis, closeRedis } from '@/config/redis';
+import { initRedisClient, closeRedisClient } from '@/config/redis-client';
 import { REDIS_TEST_CONFIG } from '../integration/setup.integration';
 import { TEST_SESSION_SECRET } from '../integration/helpers/constants';
 
@@ -142,9 +143,10 @@ function registerCleanupOnExit(): void {
         // Close database
         await closeDatabase();
         console.log('[E2E] Database closed on exit');
-        // Close Redis
+        // Close Redis (both clients)
         await closeRedis();
-        console.log('[E2E] Redis closed on exit');
+        await closeRedisClient();
+        console.log('[E2E] Redis closed on exit (both ioredis and redis-client)');
       } catch (error) {
         console.error('[E2E] Error during cleanup on exit:', error);
       }
@@ -176,8 +178,13 @@ async function initRedisForE2E(): Promise<void> {
   process.env.SESSION_SECRET = TEST_SESSION_SECRET;
 
   try {
+    // Initialize ioredis client (used by most services)
     await initRedis();
-    console.log(`[E2E] Redis initialized (${REDIS_TEST_CONFIG.host}:${REDIS_TEST_CONFIG.port})`);
+
+    // Initialize redis package client (used by TestSessionFactory for session cookies)
+    await initRedisClient();
+
+    console.log(`[E2E] Redis initialized - both ioredis and redis-client (${REDIS_TEST_CONFIG.host}:${REDIS_TEST_CONFIG.port})`);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     throw new Error(

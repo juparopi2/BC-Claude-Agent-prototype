@@ -36,10 +36,17 @@ const TRANSIENT_ERROR_CODES = [
  */
 const isE2E = process.env.E2E_TEST === 'true';
 
-/**
- * Database connection pool
- */
-let pool: ConnectionPool | null = null;
+declare global {
+  var __databasePool: ConnectionPool | null | undefined;
+}
+
+function _getPoolInternal(): ConnectionPool | null {
+  return globalThis.__databasePool ?? null;
+}
+
+function _setPoolInternal(p: ConnectionPool | null): void {
+  globalThis.__databasePool = p;
+}
 
 /**
  * SQL parameter type mapping
@@ -366,27 +373,25 @@ async function connectWithRetry(config: SqlConfig, maxRetries: number = 10): Pro
  */
 export async function initDatabase(): Promise<ConnectionPool> {
   try {
-    if (pool && pool.connected) {
+    const existingPool = _getPoolInternal();
+    if (existingPool && existingPool.connected) {
       console.log('✅ Database connection pool already initialized');
-      return pool;
+      return existingPool;
     }
 
     const config = getDatabaseConfig();
 
-    // Connect with retry logic and exponential backoff
-    pool = await connectWithRetry(config, 10);
+    const newPool = await connectWithRetry(config, 10);
+    _setPoolInternal(newPool);
 
     console.log('✅ Connected to Azure SQL Database');
 
-    // Enhanced error handler with specific error types and reconnection attempt
-    pool.on('error', async (err: Error) => {
+    newPool.on('error', async (err: Error) => {
       console.error('❌ Database connection error detected:');
       handleDatabaseError(err);
 
-      // Mark pool as null to force reconnection on next query
-      pool = null;
+      _setPoolInternal(null);
 
-      // Attempt to reconnect in background (don't block)
       console.log('🔄 Attempting automatic reconnection in 5 seconds...');
       setTimeout(async () => {
         try {
@@ -398,7 +403,7 @@ export async function initDatabase(): Promise<ConnectionPool> {
       }, 5000);
     });
 
-    return pool;
+    return newPool;
   } catch (error) {
     console.error('❌ Failed to initialize database after all retries');
     throw error;
@@ -411,7 +416,7 @@ export async function initDatabase(): Promise<ConnectionPool> {
  * @returns Connection pool or null if not initialized
  */
 export function getDatabase(): ConnectionPool | null {
-  return pool;
+  return _getPoolInternal();
 }
 
 /**
@@ -422,6 +427,7 @@ export function getDatabase(): ConnectionPool | null {
  * @throws Error if pool is not initialized
  */
 export function getPool(): ConnectionPool {
+  const pool = _getPoolInternal();
   if (!pool) {
     throw new Error('[Database] Pool not initialized. Call initDatabase() first.');
   }
@@ -627,9 +633,10 @@ export async function executeProcedure<T = unknown>(
  */
 export async function closeDatabase(): Promise<void> {
   try {
+    const pool = _getPoolInternal();
     if (pool) {
       await pool.close();
-      pool = null;
+      _setPoolInternal(null);
       console.log('✅ Database connection closed');
     }
   } catch (error) {
@@ -664,9 +671,3 @@ export async function checkDatabaseHealth(): Promise<boolean> {
  * SQL Server data types for type-safe queries
  */
 export { sql };
-
-/**
- * Export pool for direct access (use with caution - may be null)
- * Prefer using getPool() which throws if not initialized
- */
-export { pool };

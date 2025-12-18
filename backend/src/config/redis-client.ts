@@ -21,15 +21,26 @@ const logger = createChildLogger({ service: 'RedisClient' });
  */
 export type RedisClientProfile = 'SESSION' | 'CACHE' | 'TEST';
 
-/**
- * Redis client instance for sessions and general cache
- */
-let _redisClient: RedisClientType | null = null;
+declare global {
+  var __redisPackageClient: RedisClientType | null | undefined;
+  var __redisPackageTestClient: RedisClientType | null | undefined;
+}
 
-/**
- * Test Redis client instance
- */
-let _testRedisClient: RedisClientType | null = null;
+function _getRedisClientInternal(): RedisClientType | null {
+  return globalThis.__redisPackageClient ?? null;
+}
+
+function _setRedisClientInternal(client: RedisClientType | null): void {
+  globalThis.__redisPackageClient = client;
+}
+
+function _getTestRedisClientInternal(): RedisClientType | null {
+  return globalThis.__redisPackageTestClient ?? null;
+}
+
+function _setTestRedisClientInternal(client: RedisClientType | null): void {
+  globalThis.__redisPackageTestClient = client;
+}
 
 /**
  * Create Redis client using official 'redis' package
@@ -146,7 +157,7 @@ export function createRedisClient(profile: RedisClientProfile = 'SESSION'): Redi
  * @returns Redis client instance
  */
 export function getRedisClient(): RedisClientType | null {
-  return _redisClient;
+  return _getRedisClientInternal();
 }
 
 /**
@@ -155,18 +166,19 @@ export function getRedisClient(): RedisClientType | null {
  * @returns Promise that resolves to the Redis client
  */
 export async function initRedisClient(): Promise<RedisClientType> {
-  if (_redisClient && _redisClient.isOpen) {
+  const existing = _getRedisClientInternal();
+  if (existing && existing.isOpen) {
     logger.info('Redis client already initialized');
-    return _redisClient;
+    return existing;
   }
 
   const profile = Environment.isTest() ? 'TEST' : 'SESSION';
-  _redisClient = createRedisClient(profile);
+  const client = createRedisClient(profile);
 
-  // Connect to Redis
-  await _redisClient.connect();
+  await client.connect();
+  _setRedisClientInternal(client);
 
-  return _redisClient;
+  return client;
 }
 
 /**
@@ -175,7 +187,7 @@ export async function initRedisClient(): Promise<RedisClientType> {
  * @returns Test Redis client
  */
 export function getTestRedisClient(): RedisClientType | null {
-  return _testRedisClient;
+  return _getTestRedisClientInternal();
 }
 
 /**
@@ -184,15 +196,17 @@ export function getTestRedisClient(): RedisClientType | null {
  * @returns Promise that resolves to test Redis client
  */
 export async function initTestRedisClient(): Promise<RedisClientType> {
-  if (_testRedisClient && _testRedisClient.isOpen) {
+  const existing = _getTestRedisClientInternal();
+  if (existing && existing.isOpen) {
     logger.info('Test Redis client already initialized');
-    return _testRedisClient;
+    return existing;
   }
 
-  _testRedisClient = createRedisClient('TEST');
-  await _testRedisClient.connect();
+  const client = createRedisClient('TEST');
+  await client.connect();
+  _setTestRedisClientInternal(client);
 
-  return _testRedisClient;
+  return client;
 }
 
 /**
@@ -201,7 +215,7 @@ export async function initTestRedisClient(): Promise<RedisClientType> {
  * @param client - Optional specific client to close (uses default if not provided)
  */
 export async function closeRedisClient(client?: RedisClientType): Promise<void> {
-  const targetClient = client || _redisClient;
+  const targetClient = client || _getRedisClientInternal();
 
   if (!targetClient) {
     logger.warn('No Redis client to close');
@@ -213,17 +227,15 @@ export async function closeRedisClient(client?: RedisClientType): Promise<void> 
       await targetClient.quit();
       logger.info('Redis client connection closed gracefully');
 
-      // Clear singleton reference if closing default client
-      if (targetClient === _redisClient) {
-        _redisClient = null;
+      if (targetClient === _getRedisClientInternal()) {
+        _setRedisClientInternal(null);
       }
-      if (targetClient === _testRedisClient) {
-        _testRedisClient = null;
+      if (targetClient === _getTestRedisClientInternal()) {
+        _setTestRedisClientInternal(null);
       }
     }
   } catch (error) {
     logger.error({ error }, 'Failed to close Redis client gracefully');
-    // Force disconnect if quit fails
     await targetClient.disconnect();
   }
 }
@@ -235,7 +247,7 @@ export async function closeRedisClient(client?: RedisClientType): Promise<void> 
  * @returns true if Redis is healthy, false otherwise
  */
 export async function checkRedisClientHealth(client?: RedisClientType): Promise<boolean> {
-  const targetClient = client || _redisClient;
+  const targetClient = client || _getRedisClientInternal();
 
   if (!targetClient) {
     logger.warn('No Redis client to check health');

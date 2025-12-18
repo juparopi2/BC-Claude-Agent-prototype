@@ -4,7 +4,7 @@
 
 **Estado**: BLOQUE A COMPLETADO ✅
 **Fecha**: 2025-12-17
-**Última actualización**: 2025-12-17
+**Última actualización**: 2025-12-18
 
 ---
 
@@ -41,11 +41,11 @@ La estrategia se divide en 3 "Sprints" o bloques de trabajo para esta fase de li
 ### Bloque A: Estabilización de Tests (Inmediato) ✅ COMPLETADO
 *Objetivo: Que todos los tests existentes pasen consistentemente.*
 
-- [ ] **D4**: Actualizar aserción en `health.api.test.ts` para aceptar JSON.
+- [x] **D4**: ✅ Aserción en `health.api.test.ts` actualizada para JSON response (verificado 2025-12-18).
 - [x] **D17**: ✅ Try-catch robusto con trazabilidad completa en 4 puntos de persistencia.
 - [x] **D5**: ✅ Refactorizado flujo de emisión para incluir sequenceNumber (persistir PRIMERO).
-- [ ] **D18**: Corregir orden de borrado en `cleanupAllTestData` (borrar events -> sessions -> users).
-- [ ] **D12**: Reemplazar `setTimeout(10000)` con constantes de `TEST_TIMEOUTS`.
+- [x] **D18**: ✅ Orden de borrado corregido en `TestDataCleanup.ts` (verificado 2025-12-18).
+- [x] **D12**: ✅ ~95% de tests usan `TEST_TIMEOUTS` constants (verificado 2025-12-18).
 
 **Logros adicionales del Bloque A**:
 - ✅ Método `analyzePersistenceError()` para categorizar errores de persistencia

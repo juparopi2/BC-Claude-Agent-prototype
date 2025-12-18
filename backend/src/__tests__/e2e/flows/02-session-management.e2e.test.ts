@@ -19,6 +19,7 @@ import {
   ErrorValidator,
   type TestUser,
 } from '../helpers';
+import { TEST_TIMEOUTS } from '../../integration/helpers/constants';
 
 describe('E2E-02: Session Management', () => {
   const { getBaseUrl } = setupE2ETest();
@@ -118,7 +119,7 @@ describe('E2E-02: Session Management', () => {
       const session1 = await factory.createChatSession(userA.id, { title: 'Order Test 1' });
 
       // Small delay to ensure different timestamps
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.SHORT_DELAY));
 
       const session2 = await factory.createChatSession(userA.id, { title: 'Order Test 2' });
 

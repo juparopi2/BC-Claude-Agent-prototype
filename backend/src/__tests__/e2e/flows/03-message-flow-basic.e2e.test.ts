@@ -20,6 +20,7 @@ import {
   type TestUser,
   type TestChatSession,
 } from '../helpers';
+import { TEST_TIMEOUTS } from '../../integration/helpers/constants';
 import type { AgentEvent } from '@/types/websocket.types';
 
 describe('E2E-03: Message Flow Basic', () => {
@@ -173,7 +174,7 @@ describe('E2E-03: Message Flow Basic', () => {
       await client.waitForAgentEvent('user_message_confirmed');
 
       // Allow some time for async persistence
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.ASYNC_OPERATION));
 
       // Fetch messages via REST
       const response = await client.get<{
@@ -206,7 +207,7 @@ describe('E2E-03: Message Flow Basic', () => {
       }
 
       // Allow persistence
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.MESSAGE_CLEANUP));
 
       // Fetch messages
       const response = await client.get<{
@@ -299,7 +300,7 @@ describe('E2E-03: Message Flow Basic', () => {
 
       // Should NOT receive events because client is not in the room
       // The message may still be processed server-side, but broadcasts go to room only
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.LONG_ASYNC_OPERATION));
 
       const events = client.getReceivedEvents();
       const hasUserMessageConfirmed = events.some(
@@ -318,7 +319,7 @@ describe('E2E-03: Message Flow Basic', () => {
       client.emitRaw('chat:message', { invalid: 'payload' });
 
       // Connection should still be alive
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.MESSAGE_CLEANUP));
       expect(client.isConnected()).toBe(true);
     });
   });
@@ -381,7 +382,7 @@ describe('E2E-03: Message Flow Basic', () => {
       await client.disconnect();
 
       // Wait for persistence (increase to ensure DB write completes)
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.LONG_ASYNC_OPERATION));
 
       // Reconnect (new client)
       const newClient = createE2ETestClient();

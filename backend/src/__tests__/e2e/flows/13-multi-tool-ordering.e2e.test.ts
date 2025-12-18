@@ -21,6 +21,7 @@ import {
   type TestUser,
   type TestChatSession,
 } from '../helpers';
+import { TEST_TIMEOUTS } from '../../integration/helpers/constants';
 import type { AgentEvent } from '@/types/websocket.types';
 import { executeQuery } from '@/config/database';
 
@@ -231,7 +232,7 @@ describe('E2E-13: Multi-Tool Ordering', () => {
       await client.waitForAgentEvent('complete', { timeout: 90000 });
 
       // Wait for async persistence
-      await new Promise(resolve => setTimeout(resolve, 5000));
+      await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.EVENT_WAIT));
 
       // Query database for tool events
       const dbResult = await executeQuery<{
@@ -337,7 +338,7 @@ describe('E2E-13: Multi-Tool Ordering', () => {
       await client.waitForAgentEvent('complete', { timeout: 90000 });
 
       // Wait for persistence
-      await new Promise(resolve => setTimeout(resolve, 5000));
+      await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.EVENT_WAIT));
 
       // Get WebSocket events
       const wsEvents = client.getReceivedEvents()

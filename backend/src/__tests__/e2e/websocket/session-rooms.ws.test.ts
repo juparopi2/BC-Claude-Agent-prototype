@@ -10,6 +10,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from
 import { setupE2ETest } from '../setup.e2e';
 import { createE2ETestClient, E2ETestClient } from '../helpers/E2ETestClient';
 import { TestSessionFactory } from '../../integration/helpers/TestSessionFactory';
+import { TEST_TIMEOUTS } from '../../integration/helpers/constants';
 
 describe('E2E: WebSocket Session Rooms', () => {
   setupE2ETest();
@@ -144,7 +145,7 @@ describe('E2E: WebSocket Session Rooms', () => {
       await client2.sendMessage(sessionId2, 'Message to session 2');
 
       // Wait a bit to ensure no events leak
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.MESSAGE_CLEANUP));
 
       // First client should not receive events from session 2
       const events = client.getReceivedEvents();

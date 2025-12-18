@@ -89,11 +89,14 @@ describe('E2E API: Health Endpoints', () => {
       expect(response.ok).toBe(true);
     });
 
-    it('should return OK text', async () => {
-      const response = await client.get<string>('/health/liveness');
+    it('should return alive status JSON', async () => {
+      const response = await client.get<{ status: string; timestamp: string }>('/health/liveness');
 
       expect(response.ok).toBe(true);
-      expect(response.body).toBe('OK');
+      expect(response.body).toEqual({
+        status: 'alive',
+        timestamp: expect.any(String),
+      });
     });
 
     it('should respond quickly (< 100ms)', async () => {

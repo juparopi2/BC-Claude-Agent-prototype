@@ -21,6 +21,7 @@ import {
   type TestUser,
   type TestChatSession,
 } from '../helpers';
+import { TEST_TIMEOUTS } from '../../integration/helpers/constants';
 
 describe('E2E-11: Comprehensive Error Handling', () => {
   const { getBaseUrl } = setupE2ETest();
@@ -241,7 +242,7 @@ describe('E2E-11: Comprehensive Error Handling', () => {
       client.emitRaw('chat:message', { missing: 'required fields' });
 
       // Connection should remain stable
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.MESSAGE_CLEANUP));
       expect(client.isConnected()).toBe(true);
     });
 
@@ -435,7 +436,7 @@ describe('E2E-11: Comprehensive Error Handling', () => {
       client.emitRaw('invalid:event', { bad: 'data' });
 
       // Wait a bit
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.ASYNC_OPERATION));
 
       // Should still be connected
       expect(client.isConnected()).toBe(true);

@@ -55,9 +55,9 @@ export class EmbeddingService {
 
   private getCache(): Redis {
     if (!this.cache) {
-      // Use PRODUCTION profile for reliability, or env based if needed. 
-      // Using default profile which auto-detects Test/E2E/Prod
-      this.cache = createRedisClient();
+      // Use PRODUCTION profile for reliability - enables offline queue
+      // to handle transient connection issues gracefully
+      this.cache = createRedisClient('PRODUCTION');
     }
     return this.cache;
   }

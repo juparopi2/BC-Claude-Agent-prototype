@@ -48,7 +48,7 @@ export default defineConfig({
   webServer: [
     {
       command: 'cd backend && npm run dev',
-      port: 3002,
+      port: 3001,
       timeout: 120000,  // 2 minutes to start backend
       reuseExistingServer: !process.env.CI,  // Reuse local servers, fresh in CI
     },

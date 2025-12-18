@@ -20,6 +20,7 @@ import {
   type TestUser,
   type TestChatSession,
 } from '../helpers';
+import { TEST_TIMEOUTS } from '../../integration/helpers/constants';
 import type { AgentEvent } from '@/types/websocket.types';
 
 describe('E2E-07: Approval Flow', () => {
@@ -623,7 +624,7 @@ describe('E2E-07: Approval Flow', () => {
           }).catch(() => null);
 
           // Give time for broadcast
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.MESSAGE_CLEANUP));
 
           const client2Events = client2.getReceivedEvents();
           const client2HasResolved = client2Events.some(
@@ -753,7 +754,7 @@ describe('E2E-07: Approval Flow', () => {
           await client.waitForAgentEvent('complete', { timeout: 60000 });
 
           // Allow persistence
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.MESSAGE_CLEANUP));
 
           // Fetch session to verify persistence
           const response = await client.get<{

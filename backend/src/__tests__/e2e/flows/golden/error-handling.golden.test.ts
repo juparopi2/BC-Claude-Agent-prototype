@@ -22,6 +22,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from
 import { setupE2ETest, E2E_CONFIG, drainMessageQueue } from '../../setup.e2e';
 import { createE2ETestClient, E2ETestClient } from '../../helpers/E2ETestClient';
 import { TestSessionFactory } from '../../../integration/helpers/TestSessionFactory';
+import { TEST_TIMEOUTS } from '../../../integration/helpers/constants';
 import { configureGoldenFlow } from '../../helpers/GoldenResponses';
 import { FakeAnthropicClient } from '@/services/agent/FakeAnthropicClient';
 import { getDirectAgentService, __resetDirectAgentService } from '@/services/agent';
@@ -73,7 +74,7 @@ describe('E2E: Golden Flow - Error Handling', () => {
     await client.sendMessage(session.id, 'This will trigger an error');
 
     // Wait for error or complete
-    await new Promise(resolve => setTimeout(resolve, 10000));
+    await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.SOCKET_CONNECTION));
 
     const events = client.getReceivedEvents();
     const agentEvents = events.filter(e => e.data?.type);
@@ -99,7 +100,7 @@ describe('E2E: Golden Flow - Error Handling', () => {
     await client.sendMessage(session.id, 'Trigger error scenario');
 
     // Wait for events
-    await new Promise(resolve => setTimeout(resolve, 10000));
+    await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.SOCKET_CONNECTION));
 
     const events = client.getReceivedEvents();
     const agentEvents = events.filter(e => e.data?.type);
@@ -124,7 +125,7 @@ describe('E2E: Golden Flow - Error Handling', () => {
     await client.sendMessage(session.id, 'API error test');
 
     // Wait for events
-    await new Promise(resolve => setTimeout(resolve, 10000));
+    await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.SOCKET_CONNECTION));
 
     const events = client.getReceivedEvents();
     const agentEvents = events.filter(e => e.data?.type);
@@ -148,7 +149,7 @@ describe('E2E: Golden Flow - Error Handling', () => {
     await client.sendMessage(session.id, 'Force error condition');
 
     // Wait for events
-    await new Promise(resolve => setTimeout(resolve, 10000));
+    await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.SOCKET_CONNECTION));
 
     const events = client.getReceivedEvents();
     const agentEvents = events.filter(e => e.data?.type);
@@ -173,7 +174,7 @@ describe('E2E: Golden Flow - Error Handling', () => {
     await client.sendMessage(session.id, 'Generate detailed error');
 
     // Wait for events
-    await new Promise(resolve => setTimeout(resolve, 10000));
+    await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.SOCKET_CONNECTION));
 
     const events = client.getReceivedEvents();
     const agentEvents = events.filter(e => e.data?.type);
@@ -201,7 +202,7 @@ describe('E2E: Golden Flow - Error Handling', () => {
     await client.sendMessage(session.id, 'Test resilience');
 
     // Wait for some events (may get complete or error)
-    await new Promise(resolve => setTimeout(resolve, 10000));
+    await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.SOCKET_CONNECTION));
 
     const events = client.getReceivedEvents();
     const agentEvents = events.filter(e => e.data?.type);
@@ -229,7 +230,7 @@ describe('E2E: Golden Flow - Error Handling', () => {
     await client.sendMessage(session.id, 'Partial failure test');
 
     // Wait for events
-    await new Promise(resolve => setTimeout(resolve, 10000));
+    await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.SOCKET_CONNECTION));
 
     const events = client.getReceivedEvents();
     const agentEvents = events.filter(e => e.data?.type);

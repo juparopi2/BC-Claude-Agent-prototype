@@ -22,20 +22,31 @@ import sql from 'mssql';
 import './loadEnv';
 
 // Configuration
-const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3002';
+const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3001';
+
+// Detect if running locally (Docker Redis without auth) vs Azure (with auth + TLS)
+const isLocalRedis = process.env.REDIS_HOST === 'localhost' || process.env.REDIS_HOST === '127.0.0.1';
 
 // Redis configuration (DEV environment) - NO DEFAULT VALUES, MUST BE IN .env
+// Local Redis (Docker): no password, no TLS
+// Azure Redis: password required, TLS required
 const REDIS_CONFIG = {
   host: process.env.REDIS_HOST,
   port: parseInt(process.env.REDIS_PORT || '6380', 10),
-  password: process.env.REDIS_PASSWORD,
-  tls: { rejectUnauthorized: false }, // Azure Redis requires TLS
+  password: process.env.REDIS_PASSWORD || undefined,
+  ...(isLocalRedis ? {} : { tls: { rejectUnauthorized: false } }), // TLS only for Azure Redis
 };
 
 // Validate Redis configuration
-if (!REDIS_CONFIG.host || !REDIS_CONFIG.password) {
+if (!REDIS_CONFIG.host) {
   throw new Error(
-    'Redis configuration is incomplete. Ensure REDIS_HOST and REDIS_PASSWORD are set in backend/.env'
+    'Redis configuration is incomplete. Ensure REDIS_HOST is set in backend/.env'
+  );
+}
+// Password only required for non-local Redis
+if (!isLocalRedis && !REDIS_CONFIG.password) {
+  throw new Error(
+    'Redis password is required for Azure Redis. Ensure REDIS_PASSWORD is set in backend/.env'
   );
 }
 

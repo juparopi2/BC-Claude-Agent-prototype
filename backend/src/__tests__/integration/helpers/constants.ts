@@ -78,12 +78,18 @@ export const TEST_TIMEOUTS = {
   SOCKET_CONNECTION: 10000,
   /** Event wait timeout (ms) */
   EVENT_WAIT: 5000,
-  /** Short wait for event propagation (ms) */
-  EVENT_PROPAGATION: 200,
-  /** Medium wait for async operations (ms) */
-  ASYNC_OPERATION: 500,
+  /** Wait for streaming operations to complete (ms) */
+  STREAMING_WAIT: 3000,
+  /** Long async operations like agent processing (ms) */
+  LONG_ASYNC_OPERATION: 2000,
   /** Message cleanup timeout (ms) */
   MESSAGE_CLEANUP: 1000,
+  /** Medium wait for async operations (ms) */
+  ASYNC_OPERATION: 500,
+  /** Short wait for event propagation (ms) */
+  EVENT_PROPAGATION: 200,
+  /** Minimal delay for quick checks (ms) */
+  SHORT_DELAY: 100,
 } as const;
 
 /**

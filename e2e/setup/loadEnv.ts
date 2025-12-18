@@ -18,6 +18,7 @@ let envLoaded = false;
 
 /**
  * Required environment variables for E2E tests
+ * Note: REDIS_PASSWORD is optional for local development (Docker Redis without auth)
  */
 const REQUIRED_ENV_VARS = [
   'DATABASE_SERVER',
@@ -26,7 +27,6 @@ const REQUIRED_ENV_VARS = [
   'DATABASE_PASSWORD',
   'REDIS_HOST',
   'REDIS_PORT',
-  'REDIS_PASSWORD',
 ] as const;
 
 /**
@@ -61,7 +61,6 @@ export function loadEnv(): void {
     console.error('     - DATABASE_PASSWORD');
     console.error('     - REDIS_HOST');
     console.error('     - REDIS_PORT');
-    console.error('     - REDIS_PASSWORD');
     console.error('');
     console.error(`  Example file: ${envExamplePath}`);
     console.error(`  Target file:  ${envPath}`);

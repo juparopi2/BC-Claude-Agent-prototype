@@ -21,6 +21,7 @@ import {
   type TestUser,
   type TestChatSession,
 } from '../helpers';
+import { TEST_TIMEOUTS } from '../../integration/helpers/constants';
 import type { AgentEvent } from '@/types/websocket.types';
 
 describe('E2E-04: Streaming Flow', () => {
@@ -310,7 +311,7 @@ describe('E2E-04: Streaming Flow', () => {
       }
 
       // Allow persistence (increased timeout for MessageQueue async processing)
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.STREAMING_WAIT));
 
       // Fetch from REST
       const response = await client.get<{
@@ -377,7 +378,7 @@ describe('E2E-04: Streaming Flow', () => {
       await client.sendMessage(testSession.id, 'Tell me a long story');
 
       // Wait briefly for streaming to start
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.ASYNC_OPERATION));
 
       // Disconnect mid-stream
       await client.disconnect();

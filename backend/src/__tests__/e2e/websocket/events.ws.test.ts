@@ -11,6 +11,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from
 import { setupE2ETest, E2E_CONFIG } from '../setup.e2e';
 import { createE2ETestClient, E2ETestClient } from '../helpers/E2ETestClient';
 import { TestSessionFactory } from '../../integration/helpers/TestSessionFactory';
+import { TEST_TIMEOUTS } from '../../integration/helpers/constants';
 import { configureGoldenFlow } from '../helpers/GoldenResponses';
 import { FakeAnthropicClient } from '@/services/agent/FakeAnthropicClient';
 import { getDirectAgentService, __resetDirectAgentService } from '@/services/agent';
@@ -206,7 +207,7 @@ describe('E2E: WebSocket Agent Events', () => {
       await client.waitForComplete(60000);
 
       // Give it a moment to ensure no more events arrive
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.ASYNC_OPERATION));
 
       // Verify complete is last
       const lastEvent = client.getLastEvent();

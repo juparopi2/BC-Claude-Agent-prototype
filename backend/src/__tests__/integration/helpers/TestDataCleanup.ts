@@ -308,6 +308,9 @@ export async function cleanupSession(sessionId: string): Promise<{
  */
 export async function cleanupUser(userId: string): Promise<{
   sessions: number;
+  usageEvents: number;
+  tokenUsage: number;
+  files: number;
   user: boolean;
 }> {
   // Get all sessions for this user
@@ -323,7 +326,25 @@ export async function cleanupUser(userId: string): Promise<{
     sessionsDeleted++;
   }
 
-  // Delete the user
+  // Delete usage_events for this user (FK constraint: FK_usage_events_user)
+  const usageEventsResult = await executeQuery(
+    `DELETE FROM usage_events WHERE user_id = @userId`,
+    { userId }
+  );
+
+  // Delete token_usage for this user (FK constraint)
+  const tokenUsageResult = await executeQuery(
+    `DELETE FROM token_usage WHERE user_id = @userId`,
+    { userId }
+  );
+
+  // Delete files for this user (FK constraint)
+  const filesResult = await executeQuery(
+    `DELETE FROM files WHERE user_id = @userId`,
+    { userId }
+  );
+
+  // Delete the user (now safe - all FK dependencies removed)
   const userResult = await executeQuery(
     `DELETE FROM users WHERE id = @userId`,
     { userId }
@@ -331,6 +352,9 @@ export async function cleanupUser(userId: string): Promise<{
 
   return {
     sessions: sessionsDeleted,
+    usageEvents: usageEventsResult.rowsAffected[0] || 0,
+    tokenUsage: tokenUsageResult.rowsAffected[0] || 0,
+    files: filesResult.rowsAffected[0] || 0,
     user: (userResult.rowsAffected[0] || 0) > 0,
   };
 }

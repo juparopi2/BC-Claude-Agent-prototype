@@ -20,6 +20,7 @@ import {
   type TestUser,
   type TestChatSession,
 } from '../helpers';
+import { TEST_TIMEOUTS } from '../../integration/helpers/constants';
 
 describe('E2E-09: Session Recovery', () => {
   const { getBaseUrl } = setupE2ETest();
@@ -74,7 +75,7 @@ describe('E2E-09: Session Recovery', () => {
       await client.disconnect();
 
       // Wait for persistence
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.MESSAGE_CLEANUP));
 
       // New connection (simulates page reload)
       const newClient = createE2ETestClient();
@@ -117,7 +118,7 @@ describe('E2E-09: Session Recovery', () => {
       }
 
       await client.disconnect();
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.MESSAGE_CLEANUP));
 
       // Recover
       const newClient = createE2ETestClient();
@@ -153,7 +154,7 @@ describe('E2E-09: Session Recovery', () => {
       await client.waitForAgentEvent('complete', { timeout: 30000 });
 
       await client.disconnect();
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.MESSAGE_CLEANUP));
 
       // Recover
       const newClient = createE2ETestClient();
@@ -277,13 +278,13 @@ describe('E2E-09: Session Recovery', () => {
       );
 
       // Wait briefly for streaming to start
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.ASYNC_OPERATION));
 
       // Disconnect mid-stream
       await client.disconnect();
 
       // Wait a bit
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.MESSAGE_CLEANUP));
 
       // Reconnect
       await client.connect();
@@ -312,13 +313,13 @@ describe('E2E-09: Session Recovery', () => {
       await client.sendMessage(freshSession.id, 'Count from 1 to 10');
 
       // Wait for some streaming
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.LONG_ASYNC_OPERATION));
 
       // Disconnect
       await client.disconnect();
 
       // Wait for persistence
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.LONG_ASYNC_OPERATION));
 
       // Check what was persisted
       const newClient = createE2ETestClient();
@@ -429,7 +430,7 @@ describe('E2E-09: Session Recovery', () => {
       await client.waitForAgentEvent('complete', { timeout: 30000 });
 
       await client.disconnect();
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.MESSAGE_CLEANUP));
 
       // Recover each session separately
       const newClient = createE2ETestClient();
@@ -508,7 +509,7 @@ describe('E2E-09: Session Recovery', () => {
       await client.waitForAgentEvent('complete', { timeout: 30000 });
 
       await client.disconnect();
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.MESSAGE_CLEANUP));
 
       // Recover
       const newClient = createE2ETestClient();

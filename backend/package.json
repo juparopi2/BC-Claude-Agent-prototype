@@ -17,7 +17,7 @@
     "test:unit": "vitest run --exclude '**/*.integration.test.ts'",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:integration:files": "vitest run --config vitest.integration.config.ts src/__tests__/integration/files/",
-    "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts && powershell -Command \"Start-Process 'test-results/e2e-report.html'\"",
     "azurite:start": "azurite --silent --location ./azurite-data --blobPort 10000 --queuePort 10001 --tablePort 10002",
     "azurite:clean": "powershell -Command \"Remove-Item -Recurse -Force -ErrorAction SilentlyContinue azurite-data; Remove-Item -Force -ErrorAction SilentlyContinue azurite-debug.log\"",
     "test:e2e:watch": "vitest --config vitest.e2e.config.ts",

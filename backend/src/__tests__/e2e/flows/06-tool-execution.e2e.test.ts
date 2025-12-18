@@ -22,6 +22,7 @@ import {
   type TestUser,
   type TestChatSession,
 } from '../helpers';
+import { TEST_TIMEOUTS } from '../../integration/helpers/constants';
 import type { AgentEvent } from '../../../types/websocket.types';
 import type { ToolUseEvent } from '../../../types/agent.types';
 
@@ -579,7 +580,7 @@ describe('E2E-06: Tool Execution', () => {
       await client.waitForAgentEvent('complete', { timeout: 60000 });
 
       // Allow persistence
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.MESSAGE_CLEANUP));
 
       // Fetch session
       const response = await client.get<{
@@ -625,7 +626,7 @@ describe('E2E-06: Tool Execution', () => {
       await client.waitForAgentEvent('complete', { timeout: 60000 });
 
       // Allow persistence
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.LONG_ASYNC_OPERATION));
 
       // Fetch session
       const response = await client.get<{

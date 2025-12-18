@@ -36,13 +36,14 @@ import {
 import { getChatMessageHandler } from '@/services/websocket/ChatMessageHandler';
 
 /**
- * SKIPPED: Test cleanup fails with FK constraint violation on usage_events table.
- * The DELETE on users conflicts with FK_usage_events_user constraint.
+ * WebSocket Message Flow Integration Tests
  *
- * @see docs/plans/TECHNICAL_DEBT_REGISTRY.md - D18
- * TODO: Fix test cleanup to delete usage_events before users
+ * Tests complete message flow through the WebSocket layer using FakeAnthropicClient.
+ * FK cleanup issue (D18) resolved by adding usage_events cleanup to cleanupUser().
+ *
+ * @see docs/plans/TECHNICAL_DEBT_REGISTRY.md - D18 (RESOLVED)
  */
-describe.skip('WebSocket Message Flow Integration', () => {
+describe('WebSocket Message Flow Integration', () => {
   // Setup REAL database + Redis connection
   setupDatabaseForTests();
 

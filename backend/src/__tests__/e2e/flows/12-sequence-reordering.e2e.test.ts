@@ -20,6 +20,7 @@ import {
   type TestUser,
   type TestChatSession,
 } from '../helpers';
+import { TEST_TIMEOUTS } from '../../integration/helpers/constants';
 import type { AgentEvent } from '@/types/websocket.types';
 import { executeQuery } from '@/config/database';
 
@@ -137,7 +138,7 @@ describe('E2E-12: Sequence Number Reordering', () => {
       await client.waitForAgentEvent('complete', { timeout: 30000 });
 
       // Wait longer for async persistence (MessageQueue processing)
-      await new Promise(resolve => setTimeout(resolve, 5000));
+      await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.EVENT_WAIT));
 
       // Get WebSocket events with sequenceNumber
       const wsEvents = client.getReceivedEvents()
@@ -356,7 +357,7 @@ describe('E2E-12: Sequence Number Reordering', () => {
       await client.waitForAgentEvent('complete', { timeout: 30000 });
 
       // Give time for client2 to receive events
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.MESSAGE_CLEANUP));
 
       // Get confirmed events from both clients
       const client1Confirmed = client.getReceivedEvents()

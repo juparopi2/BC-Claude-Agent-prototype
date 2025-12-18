@@ -20,6 +20,7 @@ import {
   type TestUser,
   type TestChatSession,
 } from '../helpers';
+import { TEST_TIMEOUTS } from '../../integration/helpers/constants';
 
 describe('E2E-10: Multi-Tenant Isolation', () => {
   const { getBaseUrl } = setupE2ETest();
@@ -277,7 +278,7 @@ describe('E2E-10: Multi-Tenant Isolation', () => {
       await clientB.waitForAgentEvent('complete', { timeout: 30000 });
 
       // Wait for persistence
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.MESSAGE_CLEANUP));
 
       // Verify user A can only see their message
       const responseA = await clientA.get<{

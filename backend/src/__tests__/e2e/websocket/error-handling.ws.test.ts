@@ -11,6 +11,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from
 import { setupE2ETest } from '../setup.e2e';
 import { createE2ETestClient, E2ETestClient } from '../helpers/E2ETestClient';
 import { TestSessionFactory } from '../../integration/helpers/TestSessionFactory';
+import { TEST_TIMEOUTS } from '../../integration/helpers/constants';
 
 describe('E2E: WebSocket Error Handling', () => {
   setupE2ETest();
@@ -76,7 +77,7 @@ describe('E2E: WebSocket Error Handling', () => {
       client.emitRaw('chat:message', { message: 'test' });
 
       // Should not crash, just log error
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.MESSAGE_CLEANUP));
       expect(client.isConnected()).toBe(true);
     });
 
@@ -92,7 +93,7 @@ describe('E2E: WebSocket Error Handling', () => {
       client.emitRaw('chat:message', { sessionId });
 
       // Should not crash
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.MESSAGE_CLEANUP));
       expect(client.isConnected()).toBe(true);
     });
 
@@ -101,7 +102,7 @@ describe('E2E: WebSocket Error Handling', () => {
       client.emitRaw('session:join', {});
 
       // Should not crash
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.MESSAGE_CLEANUP));
       expect(client.isConnected()).toBe(true);
     });
 
@@ -110,7 +111,7 @@ describe('E2E: WebSocket Error Handling', () => {
       client.emitRaw('session:leave', {});
 
       // Should not crash
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.MESSAGE_CLEANUP));
       expect(client.isConnected()).toBe(true);
     });
   });
@@ -120,7 +121,7 @@ describe('E2E: WebSocket Error Handling', () => {
       await client.respondToApproval('invalid-approval-id', 'approved');
 
       // Wait for potential error response
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.MESSAGE_CLEANUP));
 
       // Connection should remain stable
       expect(client.isConnected()).toBe(true);
@@ -131,7 +132,7 @@ describe('E2E: WebSocket Error Handling', () => {
       client.emitRaw('approval:response', { decision: 'approved' });
 
       // Should not crash
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.MESSAGE_CLEANUP));
       expect(client.isConnected()).toBe(true);
     });
 
@@ -143,7 +144,7 @@ describe('E2E: WebSocket Error Handling', () => {
       });
 
       // Should not crash
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.MESSAGE_CLEANUP));
       expect(client.isConnected()).toBe(true);
     });
   });
@@ -206,7 +207,7 @@ describe('E2E: WebSocket Error Handling', () => {
       await client.sendMessage(sessionId, '');
 
       // Should not crash
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.MESSAGE_CLEANUP));
       expect(client.isConnected()).toBe(true);
     });
 
@@ -223,7 +224,7 @@ describe('E2E: WebSocket Error Handling', () => {
       await client.sendMessage(sessionId, longMessage);
 
       // Should not crash
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.MESSAGE_CLEANUP));
       expect(client.isConnected()).toBe(true);
     });
 
@@ -240,7 +241,7 @@ describe('E2E: WebSocket Error Handling', () => {
       await client.sendMessage(sessionId, specialMessage);
 
       // Should not crash
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.MESSAGE_CLEANUP));
       expect(client.isConnected()).toBe(true);
     });
   });

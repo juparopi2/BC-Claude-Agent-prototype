@@ -21,6 +21,7 @@ import {
   type TestSessionFactory,
   type TestUser,
 } from '../helpers';
+import { TEST_TIMEOUTS } from '../../integration/helpers/constants';
 
 describe('E2E API: Sessions Endpoints', () => {
   setupE2ETest();
@@ -170,9 +171,9 @@ describe('E2E API: Sessions Endpoints', () => {
     it('should order sessions by creation date (newest first)', async () => {
       // Create multiple sessions with small delays
       await client.post('/api/chat/sessions', { title: 'First' });
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.SHORT_DELAY));
       await client.post('/api/chat/sessions', { title: 'Second' });
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.SHORT_DELAY));
       await client.post('/api/chat/sessions', { title: 'Third' });
 
       const response = await client.get<Array<{
@@ -402,7 +403,7 @@ describe('E2E API: Sessions Endpoints', () => {
       const originalUpdatedAt = createResponse.body.updatedAt;
 
       // Wait a bit to ensure timestamp difference
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.SHORT_DELAY));
 
       const updateResponse = await client.request<{ updatedAt: string }>(
         'PATCH',

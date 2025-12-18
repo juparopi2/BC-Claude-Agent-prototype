@@ -1,0 +1,2329 @@
+{
+  "metadata": {
+    "capturedAt": "2025-12-18T18:48:37.083Z",
+    "scenario": "thinking-tools",
+    "model": "claude-sonnet-4-20250514",
+    "sdkVersion": "0.71.0",
+    "scriptVersion": "1.0.0",
+    "request": {
+      "message": "List the first 3 customers. Think through which tool to use.",
+      "thinking": true,
+      "thinkingBudget": 5000,
+      "toolsEnabled": true,
+      "toolCount": 10
+    }
+  },
+  "finalResponse": {
+    "model": "claude-sonnet-4-20250514",
+    "id": "msg_011cc872RZkoeDULfcUmtZx3",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "The user is asking to list the first 3 customers. I need to think about which tool would be appropriate for this request.\n\nLooking at the available functions, I can see:\n- account\n- agedAccountsPayable\n- agedAccountsReceivable\n- attachments\n- balanceSheet\n- bankAccount\n- cashFlowStatement\n- company\n- companyInformation\n- countryRegion\n\nNone of these functions explicitly mention \"customers\" or seem to be a customer entity. The user is asking for customers, but I don't see a \"customer\" function in the list of available tools.\n\nThe closest might be:\n- agedAccountsReceivable - this could potentially contain customer information since it deals with money owed to the company\n- company - but this seems to be about the company itself, not customers\n\nHowever, none of these functions seem like they would directly provide a list of customers. I should let the user know that there doesn't appear to be a customer-specific function available in the current set of tools.",
+        "signature": "EuoICkYIChgCKkBQr4+szA38IORFWFzAx7jBH7B9VPpqWB0ntYcYxlCcC51jh70Q7FbWEbYCOekaqMA6CjLxJqcBzUV9M4A3V/+sEgx+q2z76C4FXBF+wgEaDJ42xCJ2+XWGS/uoaSIwcHzqHyQXeThMh6ds5QnRNM74C7CK52vyyFgs1XPzdU5JSB1NObpGzIBqBlc9VVnuKtEHvSMaHjgpSIo2B/nNdx1Tj/Dn2uwhR3HH1ZbfhsvdtYs7u3Ss54dST0AbejVwcrRiclkDwIPimV84ic84cO+/8hXt78WWKiW4WPoTlQ56kWCe9eYcwHhp2yuU4oDy19BpxeYLI4+FQNqCaoaTRpkq3BaigAfr5a7O+VY1E3p+/iFLXJaJYZ3LH6aLTflMllpLw2SJgfs7bXWITStZTfRsFoVJELnIIyxvTson/yKdpET56X6cx03AfMDUD0yTKcB6Rq7TCRfEzEraCS5mdo8PjZ4KZY4PK1Isv8ozaNfiHKo4FloLUeLmHLLrKa/Hhe5C3+YW4GMQCfWJPqc+vKcRYdCSqQ3aYdDJEylxx/2lkL8koDaiEYS46k7gpyNAUZueshzkyiFWmlyj451Q0Vpda8X1uovGu0bsVBbIZcIPBRNSsNMFQBRCORerfpA3mZYo/qp/U3pL2wdbd/2dLbnxq1fV9DAtr4lW8F7Ru4Trnxvb5oA7n3dblcS2TULs+uPXO93pfus53BssIqy4xShwPK7jAjUAnIuuyrs6l6n9LAPnVekYmVklkwD9Vz14RWKKxBr0eQi2IEfEJwwgSTZ5AlXmeOetSt2n+cAGr9ImHb996UqPCE8MX3w4XUcYv/x4oveSrZvwYTop5QzFZvs8S+gngCmBA7bZxfjYP1T11UKOXs4eo2AL88u62/5MZb3+Am/ZW8/LNlou5xVUvVh8GV6V8d53rRzpI/svqDBS8fE1wRyFGHcx4smAbsuP4EjA9o/X1F+1Ar9feRo8QEPUzinj/nZ4neFXc/aUHjgU2mZ4cgwq5Vqn9SY8sbPm+OyoTbwHzSdq7TB6uIbCsawqOt8MV0vQewfv2hlj+r3Iaw4aIGq/srYd3L4bZzb7bK5+3PvgVRUyUxxeqGo7GkF79IgWPVBp3fIgm+zyzFGBQZD5qU9FzFtRy59IzB274xs3lWzk/xqpJAGXMPoxnzFJcTaRI7yK2VdvHpd5f1nZyKbCRGF6Mxm7n+VG0sMIIxdPu9mYakt8u8XmGDTOwcM3B8NwNVCxWfFDSZq/flbTi6pRR0Ly8rQTzIiPMJ7Gs8YvxtwrFrQql9TshDMrXFSzMlNZKatI9GXGcuIOc1yqh+H27cvFWFB74nyNGjhvYHZuAiCAR6U1KEQQMuI4b4q43Jv3CWQRz17RPkfC4N+trlabvErX46QPVRpZFh9Vadh6p7okAseiI+8JviONjvEWu0SzOH3L/Wvq5GdWhgcOP9X7XPWT35jf12p5+YQOLtz9QW39ZCpFbO7jZSs1bmZOFcoYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "Looking at the available tools, I don't see a specific \"customer\" entity function that would allow me to retrieve a list of customers directly. \n\nThe available Business Central entities are:\n- account\n- agedAccountsPayable  \n- agedAccountsReceivable\n- attachments\n- balanceSheet\n- bankAccount\n- cashFlowStatement\n- company\n- companyInformation\n- countryRegion\n\nNone of these appear to be designed specifically for retrieving customer records. The closest might be `agedAccountsReceivable` which could contain customer information (since it tracks money owed to the company), but that's focused on aging analysis rather than a customer list.\n\nIt seems like there may be a missing \"customer\" or \"customers\" entity function that would be needed to fulfill your request. Do you have access to additional Business Central API endpoints for customer data, or would you like me to try one of the available functions that might contain some customer information?"
+      }
+    ],
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "usage": {
+      "input_tokens": 787,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 447,
+      "service_tier": "standard"
+    }
+  },
+  "streamingEvents": [
+    {
+      "index": 0,
+      "event": {
+        "type": "message_start",
+        "message": {
+          "model": "claude-sonnet-4-20250514",
+          "id": "msg_011cc872RZkoeDULfcUmtZx3",
+          "type": "message",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "thinking",
+              "thinking": "The user is asking to list the first 3 customers. I need to think about which tool would be appropriate for this request.\n\nLooking at the available functions, I can see:\n- account\n- agedAccountsPayable\n- agedAccountsReceivable\n- attachments\n- balanceSheet\n- bankAccount\n- cashFlowStatement\n- company\n- companyInformation\n- countryRegion\n\nNone of these functions explicitly mention \"customers\" or seem to be a customer entity. The user is asking for customers, but I don't see a \"customer\" function in the list of available tools.\n\nThe closest might be:\n- agedAccountsReceivable - this could potentially contain customer information since it deals with money owed to the company\n- company - but this seems to be about the company itself, not customers\n\nHowever, none of these functions seem like they would directly provide a list of customers. I should let the user know that there doesn't appear to be a customer-specific function available in the current set of tools.",
+              "signature": "EuoICkYIChgCKkBQr4+szA38IORFWFzAx7jBH7B9VPpqWB0ntYcYxlCcC51jh70Q7FbWEbYCOekaqMA6CjLxJqcBzUV9M4A3V/+sEgx+q2z76C4FXBF+wgEaDJ42xCJ2+XWGS/uoaSIwcHzqHyQXeThMh6ds5QnRNM74C7CK52vyyFgs1XPzdU5JSB1NObpGzIBqBlc9VVnuKtEHvSMaHjgpSIo2B/nNdx1Tj/Dn2uwhR3HH1ZbfhsvdtYs7u3Ss54dST0AbejVwcrRiclkDwIPimV84ic84cO+/8hXt78WWKiW4WPoTlQ56kWCe9eYcwHhp2yuU4oDy19BpxeYLI4+FQNqCaoaTRpkq3BaigAfr5a7O+VY1E3p+/iFLXJaJYZ3LH6aLTflMllpLw2SJgfs7bXWITStZTfRsFoVJELnIIyxvTson/yKdpET56X6cx03AfMDUD0yTKcB6Rq7TCRfEzEraCS5mdo8PjZ4KZY4PK1Isv8ozaNfiHKo4FloLUeLmHLLrKa/Hhe5C3+YW4GMQCfWJPqc+vKcRYdCSqQ3aYdDJEylxx/2lkL8koDaiEYS46k7gpyNAUZueshzkyiFWmlyj451Q0Vpda8X1uovGu0bsVBbIZcIPBRNSsNMFQBRCORerfpA3mZYo/qp/U3pL2wdbd/2dLbnxq1fV9DAtr4lW8F7Ru4Trnxvb5oA7n3dblcS2TULs+uPXO93pfus53BssIqy4xShwPK7jAjUAnIuuyrs6l6n9LAPnVekYmVklkwD9Vz14RWKKxBr0eQi2IEfEJwwgSTZ5AlXmeOetSt2n+cAGr9ImHb996UqPCE8MX3w4XUcYv/x4oveSrZvwYTop5QzFZvs8S+gngCmBA7bZxfjYP1T11UKOXs4eo2AL88u62/5MZb3+Am/ZW8/LNlou5xVUvVh8GV6V8d53rRzpI/svqDBS8fE1wRyFGHcx4smAbsuP4EjA9o/X1F+1Ar9feRo8QEPUzinj/nZ4neFXc/aUHjgU2mZ4cgwq5Vqn9SY8sbPm+OyoTbwHzSdq7TB6uIbCsawqOt8MV0vQewfv2hlj+r3Iaw4aIGq/srYd3L4bZzb7bK5+3PvgVRUyUxxeqGo7GkF79IgWPVBp3fIgm+zyzFGBQZD5qU9FzFtRy59IzB274xs3lWzk/xqpJAGXMPoxnzFJcTaRI7yK2VdvHpd5f1nZyKbCRGF6Mxm7n+VG0sMIIxdPu9mYakt8u8XmGDTOwcM3B8NwNVCxWfFDSZq/flbTi6pRR0Ly8rQTzIiPMJ7Gs8YvxtwrFrQql9TshDMrXFSzMlNZKatI9GXGcuIOc1yqh+H27cvFWFB74nyNGjhvYHZuAiCAR6U1KEQQMuI4b4q43Jv3CWQRz17RPkfC4N+trlabvErX46QPVRpZFh9Vadh6p7okAseiI+8JviONjvEWu0SzOH3L/Wvq5GdWhgcOP9X7XPWT35jf12p5+YQOLtz9QW39ZCpFbO7jZSs1bmZOFcoYAQ=="
+            },
+            {
+              "type": "text",
+              "text": "Looking at the available tools, I don't see a specific \"customer\" entity function that would allow me to retrieve a list of customers directly. \n\nThe available Business Central entities are:\n- account\n- agedAccountsPayable  \n- agedAccountsReceivable\n- attachments\n- balanceSheet\n- bankAccount\n- cashFlowStatement\n- company\n- companyInformation\n- countryRegion\n\nNone of these appear to be designed specifically for retrieving customer records. The closest might be `agedAccountsReceivable` which could contain customer information (since it tracks money owed to the company), but that's focused on aging analysis rather than a customer list.\n\nIt seems like there may be a missing \"customer\" or \"customers\" entity function that would be needed to fulfill your request. Do you have access to additional Business Central API endpoints for customer data, or would you like me to try one of the available functions that might contain some customer information?"
+            }
+          ],
+          "stop_reason": "end_turn",
+          "stop_sequence": null,
+          "usage": {
+            "input_tokens": 787,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "output_tokens": 447,
+            "service_tier": "standard"
+          }
+        }
+      },
+      "timestampMs": 2459
+    },
+    {
+      "index": 1,
+      "event": {
+        "type": "content_block_start",
+        "index": 0,
+        "content_block": {
+          "type": "thinking",
+          "thinking": "",
+          "signature": ""
+        }
+      },
+      "timestampMs": 2459
+    },
+    {
+      "index": 2,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": "The user is asking to"
+        }
+      },
+      "timestampMs": 2460
+    },
+    {
+      "index": 3,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " list the first 3 customers."
+        }
+      },
+      "timestampMs": 2641
+    },
+    {
+      "index": 4,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " I"
+        }
+      },
+      "timestampMs": 2648
+    },
+    {
+      "index": 5,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " nee"
+        }
+      },
+      "timestampMs": 2650
+    },
+    {
+      "index": 6,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": "d to think"
+        }
+      },
+      "timestampMs": 2686
+    },
+    {
+      "index": 7,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " about which tool would be appropriate for"
+        }
+      },
+      "timestampMs": 2861
+    },
+    {
+      "index": 8,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " this request."
+        }
+      },
+      "timestampMs": 2864
+    },
+    {
+      "index": 9,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": "\n\nLooking at the available functions, I"
+        }
+      },
+      "timestampMs": 2974
+    },
+    {
+      "index": 10,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " can"
+        }
+      },
+      "timestampMs": 2974
+    },
+    {
+      "index": 11,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " see:"
+        }
+      },
+      "timestampMs": 2991
+    },
+    {
+      "index": 12,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": "\n- account"
+        }
+      },
+      "timestampMs": 3063
+    },
+    {
+      "index": 13,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": "\n- agedAccountsPayable"
+        }
+      },
+      "timestampMs": 3270
+    },
+    {
+      "index": 14,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": "\n- agedAccountsReceivable"
+        }
+      },
+      "timestampMs": 3328
+    },
+    {
+      "index": 15,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": "\n- attachments\n- balance"
+        }
+      },
+      "timestampMs": 3388
+    },
+    {
+      "index": 16,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": "Sheet\n- bankAccount\n- cash"
+        }
+      },
+      "timestampMs": 3434
+    },
+    {
+      "index": 17,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": "FlowStatement\n- company\n-"
+        }
+      },
+      "timestampMs": 3491
+    },
+    {
+      "index": 18,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " companyInformation\n- country"
+        }
+      },
+      "timestampMs": 3552
+    },
+    {
+      "index": 19,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": "Region\n\nNone"
+        }
+      },
+      "timestampMs": 3556
+    },
+    {
+      "index": 20,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " of these functions"
+        }
+      },
+      "timestampMs": 3611
+    },
+    {
+      "index": 21,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " explicitly"
+        }
+      },
+      "timestampMs": 3635
+    },
+    {
+      "index": 22,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " mention \"customers"
+        }
+      },
+      "timestampMs": 3739
+    },
+    {
+      "index": 23,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": "\" or seem"
+        }
+      },
+      "timestampMs": 3777
+    },
+    {
+      "index": 24,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " to be a"
+        }
+      },
+      "timestampMs": 3835
+    },
+    {
+      "index": 25,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " customer entity"
+        }
+      },
+      "timestampMs": 3881
+    },
+    {
+      "index": 26,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": ". The user"
+        }
+      },
+      "timestampMs": 3952
+    },
+    {
+      "index": 27,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " is"
+        }
+      },
+      "timestampMs": 3981
+    },
+    {
+      "index": 28,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " asking for customers"
+        }
+      },
+      "timestampMs": 4067
+    },
+    {
+      "index": 29,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": ", but I"
+        }
+      },
+      "timestampMs": 4133
+    },
+    {
+      "index": 30,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " don't see a"
+        }
+      },
+      "timestampMs": 4199
+    },
+    {
+      "index": 31,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " \""
+        }
+      },
+      "timestampMs": 4214
+    },
+    {
+      "index": 32,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": "customer"
+        }
+      },
+      "timestampMs": 4276
+    },
+    {
+      "index": 33,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": "\" function"
+        }
+      },
+      "timestampMs": 4345
+    },
+    {
+      "index": 34,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " in the list of"
+        }
+      },
+      "timestampMs": 4440
+    },
+    {
+      "index": 35,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " available tools"
+        }
+      },
+      "timestampMs": 4462
+    },
+    {
+      "index": 36,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": "."
+        }
+      },
+      "timestampMs": 4506
+    },
+    {
+      "index": 37,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": "\n\nThe"
+        }
+      },
+      "timestampMs": 4578
+    },
+    {
+      "index": 38,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " closest"
+        }
+      },
+      "timestampMs": 4631
+    },
+    {
+      "index": 39,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " might"
+        }
+      },
+      "timestampMs": 4677
+    },
+    {
+      "index": 40,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " be:"
+        }
+      },
+      "timestampMs": 4752
+    },
+    {
+      "index": 41,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": "\n- a"
+        }
+      },
+      "timestampMs": 4835
+    },
+    {
+      "index": 42,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": "gedAccountsRece"
+        }
+      },
+      "timestampMs": 4904
+    },
+    {
+      "index": 43,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": "ivable - this could potentially"
+        }
+      },
+      "timestampMs": 4997
+    },
+    {
+      "index": 44,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " contain"
+        }
+      },
+      "timestampMs": 4997
+    },
+    {
+      "index": 45,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " customer information since"
+        }
+      },
+      "timestampMs": 5065
+    },
+    {
+      "index": 46,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " it deals"
+        }
+      },
+      "timestampMs": 5105
+    },
+    {
+      "index": 47,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " with money"
+        }
+      },
+      "timestampMs": 5173
+    },
+    {
+      "index": 48,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " "
+        }
+      },
+      "timestampMs": 5205
+    },
+    {
+      "index": 49,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": "owed to the company\n- company"
+        }
+      },
+      "timestampMs": 5368
+    },
+    {
+      "index": 50,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " - but"
+        }
+      },
+      "timestampMs": 5374
+    },
+    {
+      "index": 51,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " this seems to be about the"
+        }
+      },
+      "timestampMs": 5479
+    },
+    {
+      "index": 52,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " company itself, not customers\n\nHowever"
+        }
+      },
+      "timestampMs": 5545
+    },
+    {
+      "index": 53,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": ", none"
+        }
+      },
+      "timestampMs": 5545
+    },
+    {
+      "index": 54,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " of these functions seem like"
+        }
+      },
+      "timestampMs": 5646
+    },
+    {
+      "index": 55,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " they would directly"
+        }
+      },
+      "timestampMs": 5662
+    },
+    {
+      "index": 56,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " provide"
+        }
+      },
+      "timestampMs": 5679
+    },
+    {
+      "index": 57,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " a"
+        }
+      },
+      "timestampMs": 5736
+    },
+    {
+      "index": 58,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " list of customers. I"
+        }
+      },
+      "timestampMs": 5894
+    },
+    {
+      "index": 59,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " should let"
+        }
+      },
+      "timestampMs": 5899
+    },
+    {
+      "index": 60,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " the user know that there"
+        }
+      },
+      "timestampMs": 6008
+    },
+    {
+      "index": 61,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " doesn"
+        }
+      },
+      "timestampMs": 6015
+    },
+    {
+      "index": 62,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": "'t appear to be a customer-"
+        }
+      },
+      "timestampMs": 6134
+    },
+    {
+      "index": 63,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": "specific"
+        }
+      },
+      "timestampMs": 6134
+    },
+    {
+      "index": 64,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " function available in"
+        }
+      },
+      "timestampMs": 6181
+    },
+    {
+      "index": 65,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " the current"
+        }
+      },
+      "timestampMs": 6225
+    },
+    {
+      "index": 66,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " set"
+        }
+      },
+      "timestampMs": 6270
+    },
+    {
+      "index": 67,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " of tools."
+        }
+      },
+      "timestampMs": 6453
+    },
+    {
+      "index": 68,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": ""
+        }
+      },
+      "timestampMs": 6453
+    },
+    {
+      "index": 69,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "signature_delta",
+          "signature": "EuoICkYIChgCKkBQr4+szA38IORFWFzAx7jBH7B9VPpqWB0ntYcYxlCcC51jh70Q7FbWEbYCOekaqMA6CjLxJqcBzUV9M4A3V/+sEgx+q2z76C4FXBF+wgEaDJ42xCJ2+XWGS/uoaSIwcHzqHyQXeThMh6ds5QnRNM74C7CK52vyyFgs1XPzdU5JSB1NObpGzIBqBlc9VVnuKtEHvSMaHjgpSIo2B/nNdx1Tj/Dn2uwhR3HH1ZbfhsvdtYs7u3Ss54dST0AbejVwcrRiclkDwIPimV84ic84cO+/8hXt78WWKiW4WPoTlQ56kWCe9eYcwHhp2yuU4oDy19BpxeYLI4+FQNqCaoaTRpkq3BaigAfr5a7O+VY1E3p+/iFLXJaJYZ3LH6aLTflMllpLw2SJgfs7bXWITStZTfRsFoVJELnIIyxvTson/yKdpET56X6cx03AfMDUD0yTKcB6Rq7TCRfEzEraCS5mdo8PjZ4KZY4PK1Isv8ozaNfiHKo4FloLUeLmHLLrKa/Hhe5C3+YW4GMQCfWJPqc+vKcRYdCSqQ3aYdDJEylxx/2lkL8koDaiEYS46k7gpyNAUZueshzkyiFWmlyj451Q0Vpda8X1uovGu0bsVBbIZcIPBRNSsNMFQBRCORerfpA3mZYo/qp/U3pL2wdbd/2dLbnxq1fV9DAtr4lW8F7Ru4Trnxvb5oA7n3dblcS2TULs+uPXO93pfus53BssIqy4xShwPK7jAjUAnIuuyrs6l6n9LAPnVekYmVklkwD9Vz14RWKKxBr0eQi2IEfEJwwgSTZ5AlXmeOetSt2n+cAGr9ImHb996UqPCE8MX3w4XUcYv/x4oveSrZvwYTop5QzFZvs8S+gngCmBA7bZxfjYP1T11UKOXs4eo2AL88u62/5MZb3+Am/ZW8/LNlou5xVUvVh8GV6V8d53rRzpI/svqDBS8fE1wRyFGHcx4smAbsuP4EjA9o/X1F+1Ar9feRo8QEPUzinj/nZ4neFXc/aUHjgU2mZ4cgwq5Vqn9SY8sbPm+OyoTbwHzSdq7TB6uIbCsawqOt8MV0vQewfv2hlj+r3Iaw4aIGq/srYd3L4bZzb7bK5+3PvgVRUyUxxeqGo7GkF79IgWPVBp3fIgm+zyzFGBQZD5qU9FzFtRy59IzB274xs3lWzk/xqpJAGXMPoxnzFJcTaRI7yK2VdvHpd5f1nZyKbCRGF6Mxm7n+VG0sMIIxdPu9mYakt8u8XmGDTOwcM3B8NwNVCxWfFDSZq/flbTi6pRR0Ly8rQTzIiPMJ7Gs8YvxtwrFrQql9TshDMrXFSzMlNZKatI9GXGcuIOc1yqh+H27cvFWFB74nyNGjhvYHZuAiCAR6U1KEQQMuI4b4q43Jv3CWQRz17RPkfC4N+trlabvErX46QPVRpZFh9Vadh6p7okAseiI+8JviONjvEWu0SzOH3L/Wvq5GdWhgcOP9X7XPWT35jf12p5+YQOLtz9QW39ZCpFbO7jZSs1bmZOFcoYAQ=="
+        }
+      },
+      "timestampMs": 6456
+    },
+    {
+      "index": 70,
+      "event": {
+        "type": "content_block_stop",
+        "index": 0
+      },
+      "timestampMs": 6458
+    },
+    {
+      "index": 71,
+      "event": {
+        "type": "content_block_start",
+        "index": 1,
+        "content_block": {
+          "type": "text",
+          "text": ""
+        }
+      },
+      "timestampMs": 6462
+    },
+    {
+      "index": 72,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": "Looking"
+        }
+      },
+      "timestampMs": 6462
+    },
+    {
+      "index": 73,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " at the available tools, I don't"
+        }
+      },
+      "timestampMs": 6730
+    },
+    {
+      "index": 74,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " see a specific"
+        }
+      },
+      "timestampMs": 6743
+    },
+    {
+      "index": 75,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " \""
+        }
+      },
+      "timestampMs": 6793
+    },
+    {
+      "index": 76,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": "customer"
+        }
+      },
+      "timestampMs": 6810
+    },
+    {
+      "index": 77,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": "\" entity"
+        }
+      },
+      "timestampMs": 6820
+    },
+    {
+      "index": 78,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " function that"
+        }
+      },
+      "timestampMs": 6855
+    },
+    {
+      "index": 79,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " would allow"
+        }
+      },
+      "timestampMs": 6866
+    },
+    {
+      "index": 80,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " me to retrieve"
+        }
+      },
+      "timestampMs": 6903
+    },
+    {
+      "index": 81,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " a list of customers directly"
+        }
+      },
+      "timestampMs": 6982
+    },
+    {
+      "index": 82,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": ". "
+        }
+      },
+      "timestampMs": 6986
+    },
+    {
+      "index": 83,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": "\n\nThe available Business"
+        }
+      },
+      "timestampMs": 7083
+    },
+    {
+      "index": 84,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " Central entities"
+        }
+      },
+      "timestampMs": 7112
+    },
+    {
+      "index": 85,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " are:\n- account\n- a"
+        }
+      },
+      "timestampMs": 7267
+    },
+    {
+      "index": 86,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": "gedAccountsPayable  "
+        }
+      },
+      "timestampMs": 7292
+    },
+    {
+      "index": 87,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": "\n- agedAccountsReceiv"
+        }
+      },
+      "timestampMs": 7384
+    },
+    {
+      "index": 88,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": "able\n- attachments\n- bal"
+        }
+      },
+      "timestampMs": 7444
+    },
+    {
+      "index": 89,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": "anceSheet\n- bankAccount\n-"
+        }
+      },
+      "timestampMs": 7517
+    },
+    {
+      "index": 90,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " cashFlowStatement\n- company"
+        }
+      },
+      "timestampMs": 7608
+    },
+    {
+      "index": 91,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": "\n- companyInformation\n- count"
+        }
+      },
+      "timestampMs": 7634
+    },
+    {
+      "index": 92,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": "ryRegion\n\nNone of these appear"
+        }
+      },
+      "timestampMs": 7723
+    },
+    {
+      "index": 93,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " to be designe"
+        }
+      },
+      "timestampMs": 7728
+    },
+    {
+      "index": 94,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": "d specifically"
+        }
+      },
+      "timestampMs": 7736
+    },
+    {
+      "index": 95,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " for retriev"
+        }
+      },
+      "timestampMs": 7762
+    },
+    {
+      "index": 96,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": "ing customer records"
+        }
+      },
+      "timestampMs": 7949
+    },
+    {
+      "index": 97,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": "."
+        }
+      },
+      "timestampMs": 8002
+    },
+    {
+      "index": 98,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " The closest"
+        }
+      },
+      "timestampMs": 8012
+    },
+    {
+      "index": 99,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " might be `"
+        }
+      },
+      "timestampMs": 8022
+    },
+    {
+      "index": 100,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": "agedAccountsReceivable`"
+        }
+      },
+      "timestampMs": 8148
+    },
+    {
+      "index": 101,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " which could contain"
+        }
+      },
+      "timestampMs": 8153
+    },
+    {
+      "index": 102,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " customer information ("
+        }
+      },
+      "timestampMs": 8183
+    },
+    {
+      "index": 103,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": "since it tracks"
+        }
+      },
+      "timestampMs": 8247
+    },
+    {
+      "index": 104,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " money"
+        }
+      },
+      "timestampMs": 8266
+    },
+    {
+      "index": 105,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " owed to the company), but that"
+        }
+      },
+      "timestampMs": 8441
+    },
+    {
+      "index": 106,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": "'s focuse"
+        }
+      },
+      "timestampMs": 8441
+    },
+    {
+      "index": 107,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": "d on aging"
+        }
+      },
+      "timestampMs": 8467
+    },
+    {
+      "index": 108,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " analysis"
+        }
+      },
+      "timestampMs": 8523
+    },
+    {
+      "index": 109,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " rather than a"
+        }
+      },
+      "timestampMs": 8596
+    },
+    {
+      "index": 110,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " customer"
+        }
+      },
+      "timestampMs": 8620
+    },
+    {
+      "index": 111,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " list.\n\nIt"
+        }
+      },
+      "timestampMs": 8729
+    },
+    {
+      "index": 112,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " seems"
+        }
+      },
+      "timestampMs": 8737
+    },
+    {
+      "index": 113,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " like"
+        }
+      },
+      "timestampMs": 8795
+    },
+    {
+      "index": 114,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " there"
+        }
+      },
+      "timestampMs": 8854
+    },
+    {
+      "index": 115,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " may"
+        }
+      },
+      "timestampMs": 8912
+    },
+    {
+      "index": 116,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " be a missing"
+        }
+      },
+      "timestampMs": 9005
+    },
+    {
+      "index": 117,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " \""
+        }
+      },
+      "timestampMs": 9029
+    },
+    {
+      "index": 118,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": "customer\" or"
+        }
+      },
+      "timestampMs": 9133
+    },
+    {
+      "index": 119,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " \"customers"
+        }
+      },
+      "timestampMs": 9169
+    },
+    {
+      "index": 120,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": "\" entity"
+        }
+      },
+      "timestampMs": 9229
+    },
+    {
+      "index": 121,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " function that woul"
+        }
+      },
+      "timestampMs": 9301
+    },
+    {
+      "index": 122,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": "d be neede"
+        }
+      },
+      "timestampMs": 9340
+    },
+    {
+      "index": 123,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": "d to fulfill"
+        }
+      },
+      "timestampMs": 9406
+    },
+    {
+      "index": 124,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " your"
+        }
+      },
+      "timestampMs": 9442
+    },
+    {
+      "index": 125,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " request. Do"
+        }
+      },
+      "timestampMs": 9553
+    },
+    {
+      "index": 126,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " you have access"
+        }
+      },
+      "timestampMs": 9593
+    },
+    {
+      "index": 127,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " to additional"
+        }
+      },
+      "timestampMs": 9633
+    },
+    {
+      "index": 128,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " Business"
+        }
+      },
+      "timestampMs": 9674
+    },
+    {
+      "index": 129,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " Central API"
+        }
+      },
+      "timestampMs": 9750
+    },
+    {
+      "index": 130,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " endpoints for"
+        }
+      },
+      "timestampMs": 9809
+    },
+    {
+      "index": 131,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " customer data"
+        }
+      },
+      "timestampMs": 9867
+    },
+    {
+      "index": 132,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": ","
+        }
+      },
+      "timestampMs": 9911
+    },
+    {
+      "index": 133,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " or would you like me to try one"
+        }
+      },
+      "timestampMs": 10098
+    },
+    {
+      "index": 134,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " of the available functions that"
+        }
+      },
+      "timestampMs": 10100
+    },
+    {
+      "index": 135,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " might contain"
+        }
+      },
+      "timestampMs": 10102
+    },
+    {
+      "index": 136,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " some"
+        }
+      },
+      "timestampMs": 10145
+    },
+    {
+      "index": 137,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " customer information?"
+        }
+      },
+      "timestampMs": 10302
+    },
+    {
+      "index": 138,
+      "event": {
+        "type": "content_block_stop",
+        "index": 1
+      },
+      "timestampMs": 10305
+    },
+    {
+      "index": 139,
+      "event": {
+        "type": "message_delta",
+        "delta": {
+          "stop_reason": "end_turn",
+          "stop_sequence": null
+        },
+        "usage": {
+          "input_tokens": 787,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "output_tokens": 447
+        }
+      },
+      "timestampMs": 10333
+    },
+    {
+      "index": 140,
+      "event": {
+        "type": "message_stop"
+      },
+      "timestampMs": 10333
+    }
+  ],
+  "eventTimings": [
+    {
+      "type": "message_start",
+      "deltaMs": 2459
+    },
+    {
+      "type": "content_block_start",
+      "deltaMs": 2459
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 2460
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 2641
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 2648
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 2650
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 2686
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 2861
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 2864
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 2974
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 2974
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 2991
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 3063
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 3270
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 3328
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 3388
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 3434
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 3491
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 3552
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 3556
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 3611
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 3635
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 3739
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 3777
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 3835
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 3881
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 3952
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 3981
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 4067
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 4133
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 4199
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 4214
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 4276
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 4345
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 4440
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 4462
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 4506
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 4578
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 4631
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 4677
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 4752
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 4835
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 4904
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 4997
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 4997
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 5065
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 5105
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 5173
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 5205
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 5368
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 5374
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 5479
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 5545
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 5545
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 5646
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 5662
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 5679
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 5736
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 5894
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 5899
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 6008
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 6015
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 6134
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 6134
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 6181
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 6225
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 6270
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 6453
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 6453
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 6456
+    },
+    {
+      "type": "content_block_stop",
+      "deltaMs": 6458
+    },
+    {
+      "type": "content_block_start",
+      "deltaMs": 6462
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 6462
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 6730
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 6743
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 6793
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 6810
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 6820
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 6855
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 6866
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 6903
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 6982
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 6986
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 7083
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 7112
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 7267
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 7292
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 7384
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 7444
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 7517
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 7608
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 7634
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 7723
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 7728
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 7736
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 7762
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 7949
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 8002
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 8012
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 8022
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 8148
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 8153
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 8183
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 8247
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 8266
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 8441
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 8441
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 8467
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 8523
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 8596
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 8620
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 8729
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 8737
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 8795
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 8854
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 8912
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 9005
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 9029
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 9133
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 9169
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 9229
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 9301
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 9340
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 9406
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 9442
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 9553
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 9593
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 9633
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 9674
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 9750
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 9809
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 9867
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 9911
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 10098
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 10100
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 10102
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 10145
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 10302
+    },
+    {
+      "type": "content_block_stop",
+      "deltaMs": 10305
+    },
+    {
+      "type": "message_delta",
+      "deltaMs": 10333
+    },
+    {
+      "type": "message_stop",
+      "deltaMs": 10333
+    }
+  ],
+  "contentSummary": {
+    "thinkingBlocks": 1,
+    "textBlocks": 1,
+    "toolUseBlocks": 0
+  }
+}

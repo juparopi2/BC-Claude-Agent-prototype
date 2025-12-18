@@ -1,0 +1,351 @@
+{
+  "metadata": {
+    "capturedAt": "2025-12-18T19:04:18.161Z",
+    "scenario": "tool-use-simple",
+    "model": "claude-sonnet-4-20250514",
+    "sdkVersion": "0.71.0",
+    "scriptVersion": "1.0.0",
+    "request": {
+      "message": "What is 15 multiplied by 23? You must use the calculator tool to compute this.",
+      "thinking": false,
+      "toolsEnabled": true,
+      "toolCount": 2
+    }
+  },
+  "finalResponse": {
+    "model": "claude-sonnet-4-20250514",
+    "id": "msg_012kEeG27JWVGMKp6TQMrWf6",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+      {
+        "type": "text",
+        "text": "I'll use the calculator tool to compute 15 multiplied by 23."
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01UMDGXtuNJ37fPqzgBBYeC6",
+        "name": "calculator",
+        "input": {
+          "expression": "15 * 23"
+        }
+      }
+    ],
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "usage": {
+      "input_tokens": 557,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 73,
+      "service_tier": "standard"
+    }
+  },
+  "streamingEvents": [
+    {
+      "index": 0,
+      "event": {
+        "type": "message_start",
+        "message": {
+          "model": "claude-sonnet-4-20250514",
+          "id": "msg_012kEeG27JWVGMKp6TQMrWf6",
+          "type": "message",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "I'll use the calculator tool to compute 15 multiplied by 23."
+            },
+            {
+              "type": "tool_use",
+              "id": "toolu_01UMDGXtuNJ37fPqzgBBYeC6",
+              "name": "calculator",
+              "input": {
+                "expression": "15 * 23"
+              }
+            }
+          ],
+          "stop_reason": "tool_use",
+          "stop_sequence": null,
+          "usage": {
+            "input_tokens": 557,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "output_tokens": 73,
+            "service_tier": "standard"
+          }
+        }
+      },
+      "timestampMs": 2463
+    },
+    {
+      "index": 1,
+      "event": {
+        "type": "content_block_start",
+        "index": 0,
+        "content_block": {
+          "type": "text",
+          "text": ""
+        }
+      },
+      "timestampMs": 2465
+    },
+    {
+      "index": 2,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": "I'll use"
+        }
+      },
+      "timestampMs": 2466
+    },
+    {
+      "index": 3,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": " the calculator tool"
+        }
+      },
+      "timestampMs": 2551
+    },
+    {
+      "index": 4,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": " to compute 15 multiplied by"
+        }
+      },
+      "timestampMs": 2753
+    },
+    {
+      "index": 5,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": " 23."
+        }
+      },
+      "timestampMs": 2753
+    },
+    {
+      "index": 6,
+      "event": {
+        "type": "content_block_stop",
+        "index": 0
+      },
+      "timestampMs": 2844
+    },
+    {
+      "index": 7,
+      "event": {
+        "type": "content_block_start",
+        "index": 1,
+        "content_block": {
+          "type": "tool_use",
+          "id": "toolu_01UMDGXtuNJ37fPqzgBBYeC6",
+          "name": "calculator",
+          "input": {}
+        }
+      },
+      "timestampMs": 2847
+    },
+    {
+      "index": 8,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "input_json_delta",
+          "partial_json": ""
+        }
+      },
+      "timestampMs": 2850
+    },
+    {
+      "index": 9,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "input_json_delta",
+          "partial_json": "{\"expres"
+        }
+      },
+      "timestampMs": 3090
+    },
+    {
+      "index": 10,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "input_json_delta",
+          "partial_json": "si"
+        }
+      },
+      "timestampMs": 3090
+    },
+    {
+      "index": 11,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "input_json_delta",
+          "partial_json": "on\": \""
+        }
+      },
+      "timestampMs": 3091
+    },
+    {
+      "index": 12,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "input_json_delta",
+          "partial_json": "15 * "
+        }
+      },
+      "timestampMs": 3094
+    },
+    {
+      "index": 13,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "input_json_delta",
+          "partial_json": "23\"}"
+        }
+      },
+      "timestampMs": 3094
+    },
+    {
+      "index": 14,
+      "event": {
+        "type": "content_block_stop",
+        "index": 1
+      },
+      "timestampMs": 3096
+    },
+    {
+      "index": 15,
+      "event": {
+        "type": "message_delta",
+        "delta": {
+          "stop_reason": "tool_use",
+          "stop_sequence": null
+        },
+        "usage": {
+          "input_tokens": 557,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "output_tokens": 73
+        }
+      },
+      "timestampMs": 3118
+    },
+    {
+      "index": 16,
+      "event": {
+        "type": "message_stop"
+      },
+      "timestampMs": 3122
+    }
+  ],
+  "eventTimings": [
+    {
+      "type": "message_start",
+      "deltaMs": 2463
+    },
+    {
+      "type": "content_block_start",
+      "deltaMs": 2465
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 2466
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 2551
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 2753
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 2753
+    },
+    {
+      "type": "content_block_stop",
+      "deltaMs": 2844
+    },
+    {
+      "type": "content_block_start",
+      "deltaMs": 2847
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 2850
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 3090
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 3090
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 3091
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 3094
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 3094
+    },
+    {
+      "type": "content_block_stop",
+      "deltaMs": 3096
+    },
+    {
+      "type": "message_delta",
+      "deltaMs": 3118
+    },
+    {
+      "type": "message_stop",
+      "deltaMs": 3122
+    }
+  ],
+  "contentSummary": {
+    "thinkingBlocks": 0,
+    "textBlocks": 1,
+    "toolUseBlocks": 1
+  }
+}

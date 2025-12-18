@@ -21,6 +21,17 @@
 import { FakeAnthropicClient } from '@/services/agent/FakeAnthropicClient';
 
 /**
+ * Generate a unique tool ID for each test run to avoid PRIMARY KEY violations.
+ * The messages table uses tool IDs as primary keys, so reusing the same ID
+ * across test runs causes PK constraint violations.
+ *
+ * Format: toolu_test_{timestamp}_{random}
+ */
+function generateToolId(): string {
+  return `toolu_test_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+}
+
+/**
  * Golden flow types
  */
 export type GoldenFlowType = 'simple' | 'thinking' | 'tool_use' | 'approval' | 'error';
@@ -71,7 +82,7 @@ export function configureToolUseResponse(fake: FakeAnthropicClient): void {
     textBlocks: ['Let me look up that information for you.'],
     toolUseBlocks: [
       {
-        id: 'toolu_01test123',
+        id: generateToolId(), // Dynamic ID to avoid PK violations
         name: 'bc_customers_read',
         input: { $top: 5 },
       },
@@ -101,7 +112,7 @@ export function configureApprovalResponse(fake: FakeAnthropicClient): void {
     textBlocks: ['I will create a new customer for you.'],
     toolUseBlocks: [
       {
-        id: 'toolu_02approval456',
+        id: generateToolId(), // Dynamic ID to avoid PK violations
         name: 'bc_customers_create',
         input: { name: 'Test Customer', email: 'test@example.com' },
       },

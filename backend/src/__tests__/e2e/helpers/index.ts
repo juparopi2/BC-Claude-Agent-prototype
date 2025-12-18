@@ -69,3 +69,37 @@ export {
   type TestSocketClientOptions,
   type ReceivedEvent,
 } from '../../integration/helpers/TestSocketClient';
+
+// Database cleanup utilities
+export {
+  cleanSlateForSuite,
+  verifyCleanSlate,
+  type CleanSlateOptions,
+  type CleanSlateResult,
+  type CleanSlateVerification,
+} from './CleanSlateDB';
+
+// Response scenario registry
+export {
+  ResponseScenarioRegistry,
+  getScenarioRegistry,
+  resetScenarioRegistry,
+  type AgentEvent,
+  type ScenarioDatabaseMessage,
+  type ScenarioDatabaseEvent,
+  type ScenarioResult,
+  type ScenarioDefinition,
+  type ScenarioId,
+} from './ResponseScenarioRegistry';
+
+// Captured response validator
+export {
+  validateFakeAgainstCaptured,
+  quickValidate,
+  loadCapturedResponse,
+  loadLatestCapturedResponse,
+  listCapturedResponses,
+  type CapturedResponse,
+  type FakeStreamingEvent,
+  type ValidationResult,
+} from './CapturedResponseValidator';

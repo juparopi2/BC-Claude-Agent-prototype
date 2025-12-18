@@ -1,0 +1,1463 @@
+{
+  "metadata": {
+    "capturedAt": "2025-12-18T19:04:55.871Z",
+    "scenario": "thinking-tool-use",
+    "model": "claude-sonnet-4-20250514",
+    "sdkVersion": "0.71.0",
+    "scriptVersion": "1.0.0",
+    "request": {
+      "message": "Think step by step about what 100 divided by 4 equals, then use the calculator tool to verify your thinking.",
+      "thinking": true,
+      "thinkingBudget": 5000,
+      "toolsEnabled": true,
+      "toolCount": 2
+    }
+  },
+  "finalResponse": {
+    "model": "claude-sonnet-4-20250514",
+    "id": "msg_01X84wDbt9FvN91zJ8Q85oLi",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "The user is asking me to think step by step about what 100 divided by 4 equals, and then use the calculator tool to verify my thinking.\n\nLet me think through this step by step:\n- 100 divided by 4\n- I can think of this as: how many times does 4 go into 100?\n- 4 × 25 = 100, so 100 ÷ 4 = 25\n\nNow I need to use the calculator tool to verify this calculation. The user specifically asked me to use the calculator tool to verify, and the tool description says I MUST use this tool for ANY math problem, equation, or arithmetic operation.",
+        "signature": "EroFCkYIChgCKkBC8ccSmpFPfSN5mIBs9+HGbRcjdM68ANBPhQqSiAb4dBDfuhiAe4YmhCWGXfnrxJJojl/x1bFZEE7qJmG3bOwKEgwytnO3+YvVQujLTU0aDDu+9xFIsWvw9EuYqiIwB0PxpZYJ9Ef6KPHzb+DVRyb6Xs7I6nE1THYGpH5Zo8qBVcf3j7RZuNSiKok8Jq5XKqEEbT1Z8nHurTMtrDq2zW9U4OTaY0e+Gn7i1AFSxFG4/1HqQixQ5lCk/dhIYS4sKTI6IyvDwo0bmwsvwYLSyX2OVqrytJpYeh6nE4WoG5zbnX2oyP7zbEsqOSvLOD6RxsjoE9WdZTJtBU/kasBHAeWB7V3IhDhuFlXeaY/fZ2A+pJfQ5wIJHWJMMOIq7O11O6D/o3d0EnGjZZIKlxR0eB2THvl7Eb7v0fGVs3sChsXDfVJImKZ+W2J1gYTXsXDE22t02NtA9niJIFKqA4efILqoluKgZGehwucHcNHcjJqttWLRwDx/6Hr7xXOEa/7OQOwWWQyCjcbmMnQdT0QqDxbef7LaTR88Df0uPi/vKd2991Y/nj0RdYdQcKz2NiFGhpPtvGJQAvaMnQTpJkU4Zcwbg7v/+eOcereWBitVfyoa06XIoHb+fc/klor3MJIgWtpO0USB5q2Xeyg0RCMn9iLe8vsbEkfTh3FDNiiS+/S6UQQ/PA5u7WoFZh3bi/Xw4sypFuZd2ZYCY6y5HZy17f7K+IZyjitdp3t4mEIhgx1lKRO1pRbd7yaWyXoG7L9UPYsaBNUkHnah0IERETFhu9VpDEEfSj2FxptIW6YDWdHv1wIPVoPU9lDbbe6TTyaQNkLSLAm8T9JCrsve/cLVkv5nWAKt0cpGIKYwhTulbtXpE3XX7QoJEOoZ88xnlj8RB4SqB8k8y4tbTSp0w7FKj8SxHsQYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "Let me think through this step by step:\n\n**Step-by-step thinking:**\n1. I need to divide 100 by 4\n2. I can think of this as: \"How many times does 4 go into 100?\"\n3. I know that 4 × 25 = 100, so 100 ÷ 4 should equal 25\n4. Another way to think about it: 100 ÷ 4 = (100 ÷ 2) ÷ 2 = 50 ÷ 2 = 25\n\nNow let me use the calculator tool to verify my thinking:"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01FoNY4i5wJ3zXmtjgNTqSFn",
+        "name": "calculator",
+        "input": {
+          "expression": "100 / 4"
+        }
+      }
+    ],
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "usage": {
+      "input_tokens": 592,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 364,
+      "service_tier": "standard"
+    }
+  },
+  "streamingEvents": [
+    {
+      "index": 0,
+      "event": {
+        "type": "message_start",
+        "message": {
+          "model": "claude-sonnet-4-20250514",
+          "id": "msg_01X84wDbt9FvN91zJ8Q85oLi",
+          "type": "message",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "thinking",
+              "thinking": "The user is asking me to think step by step about what 100 divided by 4 equals, and then use the calculator tool to verify my thinking.\n\nLet me think through this step by step:\n- 100 divided by 4\n- I can think of this as: how many times does 4 go into 100?\n- 4 × 25 = 100, so 100 ÷ 4 = 25\n\nNow I need to use the calculator tool to verify this calculation. The user specifically asked me to use the calculator tool to verify, and the tool description says I MUST use this tool for ANY math problem, equation, or arithmetic operation.",
+              "signature": "EroFCkYIChgCKkBC8ccSmpFPfSN5mIBs9+HGbRcjdM68ANBPhQqSiAb4dBDfuhiAe4YmhCWGXfnrxJJojl/x1bFZEE7qJmG3bOwKEgwytnO3+YvVQujLTU0aDDu+9xFIsWvw9EuYqiIwB0PxpZYJ9Ef6KPHzb+DVRyb6Xs7I6nE1THYGpH5Zo8qBVcf3j7RZuNSiKok8Jq5XKqEEbT1Z8nHurTMtrDq2zW9U4OTaY0e+Gn7i1AFSxFG4/1HqQixQ5lCk/dhIYS4sKTI6IyvDwo0bmwsvwYLSyX2OVqrytJpYeh6nE4WoG5zbnX2oyP7zbEsqOSvLOD6RxsjoE9WdZTJtBU/kasBHAeWB7V3IhDhuFlXeaY/fZ2A+pJfQ5wIJHWJMMOIq7O11O6D/o3d0EnGjZZIKlxR0eB2THvl7Eb7v0fGVs3sChsXDfVJImKZ+W2J1gYTXsXDE22t02NtA9niJIFKqA4efILqoluKgZGehwucHcNHcjJqttWLRwDx/6Hr7xXOEa/7OQOwWWQyCjcbmMnQdT0QqDxbef7LaTR88Df0uPi/vKd2991Y/nj0RdYdQcKz2NiFGhpPtvGJQAvaMnQTpJkU4Zcwbg7v/+eOcereWBitVfyoa06XIoHb+fc/klor3MJIgWtpO0USB5q2Xeyg0RCMn9iLe8vsbEkfTh3FDNiiS+/S6UQQ/PA5u7WoFZh3bi/Xw4sypFuZd2ZYCY6y5HZy17f7K+IZyjitdp3t4mEIhgx1lKRO1pRbd7yaWyXoG7L9UPYsaBNUkHnah0IERETFhu9VpDEEfSj2FxptIW6YDWdHv1wIPVoPU9lDbbe6TTyaQNkLSLAm8T9JCrsve/cLVkv5nWAKt0cpGIKYwhTulbtXpE3XX7QoJEOoZ88xnlj8RB4SqB8k8y4tbTSp0w7FKj8SxHsQYAQ=="
+            },
+            {
+              "type": "text",
+              "text": "Let me think through this step by step:\n\n**Step-by-step thinking:**\n1. I need to divide 100 by 4\n2. I can think of this as: \"How many times does 4 go into 100?\"\n3. I know that 4 × 25 = 100, so 100 ÷ 4 should equal 25\n4. Another way to think about it: 100 ÷ 4 = (100 ÷ 2) ÷ 2 = 50 ÷ 2 = 25\n\nNow let me use the calculator tool to verify my thinking:"
+            },
+            {
+              "type": "tool_use",
+              "id": "toolu_01FoNY4i5wJ3zXmtjgNTqSFn",
+              "name": "calculator",
+              "input": {
+                "expression": "100 / 4"
+              }
+            }
+          ],
+          "stop_reason": "tool_use",
+          "stop_sequence": null,
+          "usage": {
+            "input_tokens": 592,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "output_tokens": 364,
+            "service_tier": "standard"
+          }
+        }
+      },
+      "timestampMs": 2145
+    },
+    {
+      "index": 1,
+      "event": {
+        "type": "content_block_start",
+        "index": 0,
+        "content_block": {
+          "type": "thinking",
+          "thinking": "",
+          "signature": ""
+        }
+      },
+      "timestampMs": 2146
+    },
+    {
+      "index": 2,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": "The user is"
+        }
+      },
+      "timestampMs": 2151
+    },
+    {
+      "index": 3,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " asking me to think step by step about"
+        }
+      },
+      "timestampMs": 2422
+    },
+    {
+      "index": 4,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " what 100 divided by 4"
+        }
+      },
+      "timestampMs": 2427
+    },
+    {
+      "index": 5,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " equals, and then use the calculator"
+        }
+      },
+      "timestampMs": 2428
+    },
+    {
+      "index": 6,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " tool"
+        }
+      },
+      "timestampMs": 2428
+    },
+    {
+      "index": 7,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " to verify my"
+        }
+      },
+      "timestampMs": 2459
+    },
+    {
+      "index": 8,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " thinking.\n\nLet"
+        }
+      },
+      "timestampMs": 2531
+    },
+    {
+      "index": 9,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " me think"
+        }
+      },
+      "timestampMs": 2570
+    },
+    {
+      "index": 10,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " through"
+        }
+      },
+      "timestampMs": 2606
+    },
+    {
+      "index": 11,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " this step by step:"
+        }
+      },
+      "timestampMs": 2743
+    },
+    {
+      "index": 12,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": "\n-"
+        }
+      },
+      "timestampMs": 2743
+    },
+    {
+      "index": 13,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " 100 divided by 4"
+        }
+      },
+      "timestampMs": 2903
+    },
+    {
+      "index": 14,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": "\n- I"
+        }
+      },
+      "timestampMs": 2906
+    },
+    {
+      "index": 15,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " can"
+        }
+      },
+      "timestampMs": 2907
+    },
+    {
+      "index": 16,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " think"
+        }
+      },
+      "timestampMs": 2955
+    },
+    {
+      "index": 17,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " of"
+        }
+      },
+      "timestampMs": 3014
+    },
+    {
+      "index": 18,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " this as:"
+        }
+      },
+      "timestampMs": 3120
+    },
+    {
+      "index": 19,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " how"
+        }
+      },
+      "timestampMs": 3145
+    },
+    {
+      "index": 20,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " many times does"
+        }
+      },
+      "timestampMs": 3223
+    },
+    {
+      "index": 21,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " 4 go into 100?"
+        }
+      },
+      "timestampMs": 3374
+    },
+    {
+      "index": 22,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": "\n- 4 × 25"
+        }
+      },
+      "timestampMs": 3425
+    },
+    {
+      "index": 23,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " = 100,"
+        }
+      },
+      "timestampMs": 3431
+    },
+    {
+      "index": 24,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " so 100"
+        }
+      },
+      "timestampMs": 3461
+    },
+    {
+      "index": 25,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " ÷ 4 "
+        }
+      },
+      "timestampMs": 3602
+    },
+    {
+      "index": 26,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": "= 25"
+        }
+      },
+      "timestampMs": 3603
+    },
+    {
+      "index": 27,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": "\n\nNow I need to use the calculator tool"
+        }
+      },
+      "timestampMs": 3717
+    },
+    {
+      "index": 28,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " to verify this calculation."
+        }
+      },
+      "timestampMs": 3733
+    },
+    {
+      "index": 29,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " The"
+        }
+      },
+      "timestampMs": 3741
+    },
+    {
+      "index": 30,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " user"
+        }
+      },
+      "timestampMs": 3782
+    },
+    {
+      "index": 31,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " specifically"
+        }
+      },
+      "timestampMs": 3841
+    },
+    {
+      "index": 32,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " asked me to use the calculator tool to"
+        }
+      },
+      "timestampMs": 4197
+    },
+    {
+      "index": 33,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " verify,"
+        }
+      },
+      "timestampMs": 4204
+    },
+    {
+      "index": 34,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " an"
+        }
+      },
+      "timestampMs": 4225
+    },
+    {
+      "index": 35,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": "d the"
+        }
+      },
+      "timestampMs": 4265
+    },
+    {
+      "index": 36,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " tool description"
+        }
+      },
+      "timestampMs": 4272
+    },
+    {
+      "index": 37,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " says I"
+        }
+      },
+      "timestampMs": 4280
+    },
+    {
+      "index": 38,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": " MUST use this tool for ANY math problem"
+        }
+      },
+      "timestampMs": 4373
+    },
+    {
+      "index": 39,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": ", equation, or arithmetic operation."
+        }
+      },
+      "timestampMs": 4418
+    },
+    {
+      "index": 40,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "thinking_delta",
+          "thinking": ""
+        }
+      },
+      "timestampMs": 4497
+    },
+    {
+      "index": 41,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "signature_delta",
+          "signature": "EroFCkYIChgCKkBC8ccSmpFPfSN5mIBs9+HGbRcjdM68ANBPhQqSiAb4dBDfuhiAe4YmhCWGXfnrxJJojl/x1bFZEE7qJmG3bOwKEgwytnO3+YvVQujLTU0aDDu+9xFIsWvw9EuYqiIwB0PxpZYJ9Ef6KPHzb+DVRyb6Xs7I6nE1THYGpH5Zo8qBVcf3j7RZuNSiKok8Jq5XKqEEbT1Z8nHurTMtrDq2zW9U4OTaY0e+Gn7i1AFSxFG4/1HqQixQ5lCk/dhIYS4sKTI6IyvDwo0bmwsvwYLSyX2OVqrytJpYeh6nE4WoG5zbnX2oyP7zbEsqOSvLOD6RxsjoE9WdZTJtBU/kasBHAeWB7V3IhDhuFlXeaY/fZ2A+pJfQ5wIJHWJMMOIq7O11O6D/o3d0EnGjZZIKlxR0eB2THvl7Eb7v0fGVs3sChsXDfVJImKZ+W2J1gYTXsXDE22t02NtA9niJIFKqA4efILqoluKgZGehwucHcNHcjJqttWLRwDx/6Hr7xXOEa/7OQOwWWQyCjcbmMnQdT0QqDxbef7LaTR88Df0uPi/vKd2991Y/nj0RdYdQcKz2NiFGhpPtvGJQAvaMnQTpJkU4Zcwbg7v/+eOcereWBitVfyoa06XIoHb+fc/klor3MJIgWtpO0USB5q2Xeyg0RCMn9iLe8vsbEkfTh3FDNiiS+/S6UQQ/PA5u7WoFZh3bi/Xw4sypFuZd2ZYCY6y5HZy17f7K+IZyjitdp3t4mEIhgx1lKRO1pRbd7yaWyXoG7L9UPYsaBNUkHnah0IERETFhu9VpDEEfSj2FxptIW6YDWdHv1wIPVoPU9lDbbe6TTyaQNkLSLAm8T9JCrsve/cLVkv5nWAKt0cpGIKYwhTulbtXpE3XX7QoJEOoZ88xnlj8RB4SqB8k8y4tbTSp0w7FKj8SxHsQYAQ=="
+        }
+      },
+      "timestampMs": 4499
+    },
+    {
+      "index": 42,
+      "event": {
+        "type": "content_block_stop",
+        "index": 0
+      },
+      "timestampMs": 4500
+    },
+    {
+      "index": 43,
+      "event": {
+        "type": "content_block_start",
+        "index": 1,
+        "content_block": {
+          "type": "text",
+          "text": ""
+        }
+      },
+      "timestampMs": 4503
+    },
+    {
+      "index": 44,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": "Let"
+        }
+      },
+      "timestampMs": 4509
+    },
+    {
+      "index": 45,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " me think through this step by step:"
+        }
+      },
+      "timestampMs": 4550
+    },
+    {
+      "index": 46,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": "\n\n**"
+        }
+      },
+      "timestampMs": 4550
+    },
+    {
+      "index": 47,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": "Step-"
+        }
+      },
+      "timestampMs": 4562
+    },
+    {
+      "index": 48,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": "by-step thinking"
+        }
+      },
+      "timestampMs": 4652
+    },
+    {
+      "index": 49,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": ":**"
+        }
+      },
+      "timestampMs": 4678
+    },
+    {
+      "index": 50,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": "\n1. I"
+        }
+      },
+      "timestampMs": 4760
+    },
+    {
+      "index": 51,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " need to divide"
+        }
+      },
+      "timestampMs": 4816
+    },
+    {
+      "index": 52,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " 100 by 4\n2"
+        }
+      },
+      "timestampMs": 4951
+    },
+    {
+      "index": 53,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": ". I"
+        }
+      },
+      "timestampMs": 4951
+    },
+    {
+      "index": 54,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " can think of this as: \""
+        }
+      },
+      "timestampMs": 5056
+    },
+    {
+      "index": 55,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": "How many times does 4 go"
+        }
+      },
+      "timestampMs": 5124
+    },
+    {
+      "index": 56,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " into 100?\"\n3. I"
+        }
+      },
+      "timestampMs": 5181
+    },
+    {
+      "index": 57,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " know"
+        }
+      },
+      "timestampMs": 5181
+    },
+    {
+      "index": 58,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " that 4 × 25 "
+        }
+      },
+      "timestampMs": 5306
+    },
+    {
+      "index": 59,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": "= 100, so 100 "
+        }
+      },
+      "timestampMs": 5360
+    },
+    {
+      "index": 60,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": "÷ 4 shoul"
+        }
+      },
+      "timestampMs": 5411
+    },
+    {
+      "index": 61,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": "d equal 25"
+        }
+      },
+      "timestampMs": 5411
+    },
+    {
+      "index": 62,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": "\n4. Another"
+        }
+      },
+      "timestampMs": 5457
+    },
+    {
+      "index": 63,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " way to think"
+        }
+      },
+      "timestampMs": 5517
+    },
+    {
+      "index": 64,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " about it: 100"
+        }
+      },
+      "timestampMs": 5607
+    },
+    {
+      "index": 65,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " ÷ 4 "
+        }
+      },
+      "timestampMs": 5708
+    },
+    {
+      "index": 66,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": "= ("
+        }
+      },
+      "timestampMs": 5710
+    },
+    {
+      "index": 67,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": "100 ÷ 2"
+        }
+      },
+      "timestampMs": 5822
+    },
+    {
+      "index": 68,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": ") "
+        }
+      },
+      "timestampMs": 5822
+    },
+    {
+      "index": 69,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": "÷ 2 = "
+        }
+      },
+      "timestampMs": 5940
+    },
+    {
+      "index": 70,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": "50 ÷ 2"
+        }
+      },
+      "timestampMs": 6005
+    },
+    {
+      "index": 71,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " = 25\n\nNow"
+        }
+      },
+      "timestampMs": 6050
+    },
+    {
+      "index": 72,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " let"
+        }
+      },
+      "timestampMs": 6056
+    },
+    {
+      "index": 73,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " me use the calculator tool"
+        }
+      },
+      "timestampMs": 6133
+    },
+    {
+      "index": 74,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " to verify my"
+        }
+      },
+      "timestampMs": 6165
+    },
+    {
+      "index": 75,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": " thinking"
+        }
+      },
+      "timestampMs": 6203
+    },
+    {
+      "index": 76,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "text_delta",
+          "text": ":"
+        }
+      },
+      "timestampMs": 6421
+    },
+    {
+      "index": 77,
+      "event": {
+        "type": "content_block_stop",
+        "index": 1
+      },
+      "timestampMs": 6475
+    },
+    {
+      "index": 78,
+      "event": {
+        "type": "content_block_start",
+        "index": 2,
+        "content_block": {
+          "type": "tool_use",
+          "id": "toolu_01FoNY4i5wJ3zXmtjgNTqSFn",
+          "name": "calculator",
+          "input": {}
+        }
+      },
+      "timestampMs": 6475
+    },
+    {
+      "index": 79,
+      "event": {
+        "type": "content_block_delta",
+        "index": 2,
+        "delta": {
+          "type": "input_json_delta",
+          "partial_json": ""
+        }
+      },
+      "timestampMs": 6477
+    },
+    {
+      "index": 80,
+      "event": {
+        "type": "content_block_delta",
+        "index": 2,
+        "delta": {
+          "type": "input_json_delta",
+          "partial_json": "{\"expr"
+        }
+      },
+      "timestampMs": 6676
+    },
+    {
+      "index": 81,
+      "event": {
+        "type": "content_block_delta",
+        "index": 2,
+        "delta": {
+          "type": "input_json_delta",
+          "partial_json": "ession\": \"1"
+        }
+      },
+      "timestampMs": 6677
+    },
+    {
+      "index": 82,
+      "event": {
+        "type": "content_block_delta",
+        "index": 2,
+        "delta": {
+          "type": "input_json_delta",
+          "partial_json": "00 / 4\"}"
+        }
+      },
+      "timestampMs": 6686
+    },
+    {
+      "index": 83,
+      "event": {
+        "type": "content_block_stop",
+        "index": 2
+      },
+      "timestampMs": 6687
+    },
+    {
+      "index": 84,
+      "event": {
+        "type": "message_delta",
+        "delta": {
+          "stop_reason": "tool_use",
+          "stop_sequence": null
+        },
+        "usage": {
+          "input_tokens": 592,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "output_tokens": 364
+        }
+      },
+      "timestampMs": 6707
+    },
+    {
+      "index": 85,
+      "event": {
+        "type": "message_stop"
+      },
+      "timestampMs": 6708
+    }
+  ],
+  "eventTimings": [
+    {
+      "type": "message_start",
+      "deltaMs": 2145
+    },
+    {
+      "type": "content_block_start",
+      "deltaMs": 2146
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 2151
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 2422
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 2427
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 2428
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 2428
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 2459
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 2531
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 2570
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 2606
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 2743
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 2743
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 2903
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 2906
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 2907
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 2955
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 3014
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 3120
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 3145
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 3223
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 3374
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 3425
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 3431
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 3461
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 3602
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 3603
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 3717
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 3733
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 3741
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 3782
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 3841
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 4197
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 4204
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 4225
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 4265
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 4272
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 4280
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 4373
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 4418
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 4497
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 4499
+    },
+    {
+      "type": "content_block_stop",
+      "deltaMs": 4500
+    },
+    {
+      "type": "content_block_start",
+      "deltaMs": 4503
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 4509
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 4550
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 4550
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 4562
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 4652
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 4678
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 4760
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 4816
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 4951
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 4951
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 5056
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 5124
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 5181
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 5181
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 5306
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 5360
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 5411
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 5411
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 5457
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 5517
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 5607
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 5708
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 5710
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 5822
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 5822
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 5940
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 6005
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 6050
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 6056
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 6133
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 6165
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 6203
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 6421
+    },
+    {
+      "type": "content_block_stop",
+      "deltaMs": 6475
+    },
+    {
+      "type": "content_block_start",
+      "deltaMs": 6475
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 6477
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 6676
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 6677
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 6686
+    },
+    {
+      "type": "content_block_stop",
+      "deltaMs": 6687
+    },
+    {
+      "type": "message_delta",
+      "deltaMs": 6707
+    },
+    {
+      "type": "message_stop",
+      "deltaMs": 6708
+    }
+  ],
+  "contentSummary": {
+    "thinkingBlocks": 1,
+    "textBlocks": 1,
+    "toolUseBlocks": 1
+  }
+}

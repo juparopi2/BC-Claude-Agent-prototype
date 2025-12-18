@@ -3,9 +3,10 @@
  *
  * Verifies and prepares the environment for E2E tests:
  * 1. Kills processes on test ports (3099, 3001) to prevent EADDRINUSE
- * 2. Verifies Redis is available on port 6399
- * 3. Attempts to start Docker Redis if not available
- * 4. Reports status summary
+ * 2. Verifies Redis is available on port 6399 (auto-starts Docker if available)
+ * 3. Verifies Database connectivity and schema
+ * 4. Cleans stale test data to prevent PRIMARY KEY violations
+ * 5. Reports status summary
  *
  * Run: node scripts/e2e-prerequisites.js
  * Or automatically via: npm run test:e2e
@@ -13,6 +14,11 @@
 
 const { execSync, spawn } = require('child_process');
 const net = require('net');
+const mssql = require('mssql');
+const path = require('path');
+
+// Load environment variables from .env file
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 // Configuration
 const TEST_PORTS = [3099, 3001];
@@ -143,6 +149,169 @@ async function checkRedis() {
 }
 
 /**
+ * Check if Database is available and has required schema
+ */
+async function checkDatabase() {
+  // Check if env vars are set
+  const { DATABASE_SERVER, DATABASE_NAME, DATABASE_USER, DATABASE_PASSWORD } = process.env;
+
+  if (!DATABASE_SERVER || !DATABASE_NAME) {
+    return {
+      available: false,
+      error: 'DATABASE_SERVER or DATABASE_NAME not set in environment'
+    };
+  }
+
+  try {
+    const config = {
+      server: DATABASE_SERVER,
+      database: DATABASE_NAME,
+      user: DATABASE_USER,
+      password: DATABASE_PASSWORD,
+      options: {
+        encrypt: true,
+        trustServerCertificate: true,
+      },
+      connectionTimeout: 10000,
+    };
+
+    const pool = await mssql.connect(config);
+
+    // Verify connection with health check
+    const healthResult = await pool.request().query('SELECT 1 AS health');
+    if (healthResult.recordset[0]?.health !== 1) {
+      await pool.close();
+      return { available: false, error: 'Health check query failed' };
+    }
+
+    // Check required tables exist
+    const tablesResult = await pool.request().query(`
+      SELECT TABLE_NAME
+      FROM INFORMATION_SCHEMA.TABLES
+      WHERE TABLE_NAME IN ('users', 'sessions', 'messages', 'message_events')
+    `);
+
+    const foundTables = tablesResult.recordset.map(r => r.TABLE_NAME);
+    const requiredTables = ['users', 'sessions', 'messages', 'message_events'];
+    const missingTables = requiredTables.filter(t => !foundTables.includes(t));
+
+    await pool.close();
+
+    if (missingTables.length > 0) {
+      return {
+        available: false,
+        error: `Missing tables: ${missingTables.join(', ')}`
+      };
+    }
+
+    return { available: true };
+  } catch (error) {
+    return { available: false, error: error.message };
+  }
+}
+
+/**
+ * Clean test data from database before E2E tests
+ * This prevents PRIMARY KEY violations from stale test data
+ */
+async function cleanTestData() {
+  const { DATABASE_SERVER, DATABASE_NAME, DATABASE_USER, DATABASE_PASSWORD } = process.env;
+
+  if (!DATABASE_SERVER || !DATABASE_NAME) {
+    log('yellow', '!', 'Skipping test data cleanup - database not configured');
+    return { success: false, error: 'Database not configured' };
+  }
+
+  try {
+    const config = {
+      server: DATABASE_SERVER,
+      database: DATABASE_NAME,
+      user: DATABASE_USER,
+      password: DATABASE_PASSWORD,
+      options: {
+        encrypt: true,
+        trustServerCertificate: true,
+      },
+      connectionTimeout: 10000,
+    };
+
+    const pool = await mssql.connect(config);
+
+    // Delete test data in FK-respecting order
+    // Test data is identified by email pattern '%@bcagent.test'
+    const cleanupQueries = [
+      // 1. Delete messages with FK to message_events and sessions
+      `DELETE FROM messages WHERE session_id IN (
+         SELECT id FROM sessions WHERE user_id IN (
+           SELECT id FROM users WHERE email LIKE '%@bcagent.test'
+         )
+       )`,
+      // 2. Delete message_events
+      `DELETE FROM message_events WHERE session_id IN (
+         SELECT id FROM sessions WHERE user_id IN (
+           SELECT id FROM users WHERE email LIKE '%@bcagent.test'
+         )
+       )`,
+      // 3. Delete approvals
+      `DELETE FROM approvals WHERE session_id IN (
+         SELECT id FROM sessions WHERE user_id IN (
+           SELECT id FROM users WHERE email LIKE '%@bcagent.test'
+         )
+       )`,
+      // 4. Delete todos
+      `DELETE FROM todos WHERE session_id IN (
+         SELECT id FROM sessions WHERE user_id IN (
+           SELECT id FROM users WHERE email LIKE '%@bcagent.test'
+         )
+       )`,
+      // 5. Delete usage_events (FK to users)
+      `DELETE FROM usage_events WHERE user_id IN (
+         SELECT id FROM users WHERE email LIKE '%@bcagent.test'
+       )`,
+      // 6. Delete token_usage (FK to users)
+      `DELETE FROM token_usage WHERE user_id IN (
+         SELECT id FROM users WHERE email LIKE '%@bcagent.test'
+       )`,
+      // 7. Delete session_files
+      `DELETE FROM session_files WHERE session_id IN (
+         SELECT id FROM sessions WHERE user_id IN (
+           SELECT id FROM users WHERE email LIKE '%@bcagent.test'
+         )
+       )`,
+      // 8. Delete files (FK to users)
+      `DELETE FROM files WHERE user_id IN (
+         SELECT id FROM users WHERE email LIKE '%@bcagent.test'
+       )`,
+      // 9. Delete sessions (FK to users)
+      `DELETE FROM sessions WHERE user_id IN (
+         SELECT id FROM users WHERE email LIKE '%@bcagent.test'
+       )`,
+      // 10. Delete test users (optional - keep for reuse)
+      // `DELETE FROM users WHERE email LIKE '%@bcagent.test'`,
+    ];
+
+    let totalDeleted = 0;
+    for (const query of cleanupQueries) {
+      try {
+        const result = await pool.request().query(query);
+        totalDeleted += result.rowsAffected[0] || 0;
+      } catch (queryError) {
+        // Table might not exist - that's OK
+        if (!queryError.message.includes('Invalid object name')) {
+          log('yellow', '~', `Cleanup warning: ${queryError.message}`);
+        }
+      }
+    }
+
+    await pool.close();
+
+    return { success: true, rowsDeleted: totalDeleted };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+/**
  * Check if Docker is available
  */
 function isDockerAvailable() {
@@ -202,6 +371,8 @@ async function main() {
   const results = {
     portsCleared: true,
     redisAvailable: false,
+    databaseAvailable: false,
+    testDataCleaned: false,
   };
 
   // Step 1: Clear test ports
@@ -244,6 +415,34 @@ async function main() {
     }
   }
 
+  // Step 3: Check Database
+  logHeader('Step 3: Checking Database availability...');
+  const dbResult = await checkDatabase();
+
+  if (dbResult.available) {
+    log('green', '✓', 'Database is available and tables verified');
+    results.databaseAvailable = true;
+  } else {
+    log('yellow', '!', `Database not available: ${dbResult.error}`);
+    results.databaseAvailable = false;
+  }
+
+  // Step 4: Clean test data
+  logHeader('Step 4: Cleaning stale test data...');
+  if (results.databaseAvailable) {
+    const cleanupResult = await cleanTestData();
+    if (cleanupResult.success) {
+      log('green', '✓', `Test data cleaned (${cleanupResult.rowsDeleted} rows deleted)`);
+      results.testDataCleaned = true;
+    } else {
+      log('yellow', '!', `Test data cleanup failed: ${cleanupResult.error}`);
+      results.testDataCleaned = false;
+    }
+  } else {
+    log('yellow', '!', 'Skipping cleanup - database not available');
+    results.testDataCleaned = false;
+  }
+
   // Summary
   console.log('\n' + '═'.repeat(60));
   logHeader('📋 Prerequisites Summary');
@@ -257,17 +456,25 @@ async function main() {
       results.redisAvailable ? '✓' : '!',
       `Redis (port ${REDIS_PORT}): ${results.redisAvailable ? 'AVAILABLE' : 'NOT AVAILABLE'}`);
 
+  log(results.databaseAvailable ? 'green' : 'yellow',
+      results.databaseAvailable ? '✓' : '!',
+      `Database: ${results.databaseAvailable ? 'AVAILABLE' : 'NOT AVAILABLE'}`);
+
+  log(results.testDataCleaned ? 'green' : 'yellow',
+      results.testDataCleaned ? '✓' : '!',
+      `Test data cleanup: ${results.testDataCleaned ? 'DONE' : 'SKIPPED'}`);
+
   console.log('\n' + '─'.repeat(60));
 
   // Exit code
-  if (!results.redisAvailable) {
-    log('yellow', '⚠', 'Some tests may be skipped due to missing Redis');
+  if (!results.redisAvailable || !results.databaseAvailable) {
+    log('yellow', '⚠', 'Some tests may be skipped due to missing services');
     log('blue', '→', 'E2E tests will still run with available services');
     console.log('');
-    process.exit(0); // Don't fail - tests can skip Redis-dependent parts
+    process.exit(0); // Don't fail - tests can skip service-dependent parts
   }
 
-  if (results.portsCleared && results.redisAvailable) {
+  if (results.portsCleared && results.redisAvailable && results.databaseAvailable) {
     log('green', '✓', 'All prerequisites satisfied! Ready to run E2E tests.');
     console.log('');
     process.exit(0);

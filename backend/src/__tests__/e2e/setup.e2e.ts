@@ -31,6 +31,7 @@ import { initRedis, closeRedis } from '@/config/redis';
 import { initRedisClient, closeRedisClient } from '@/config/redis-client';
 import { REDIS_TEST_CONFIG } from '../integration/setup.integration';
 import { TEST_SESSION_SECRET } from '../integration/helpers/constants';
+import { cleanSlateForSuite, CleanSlateOptions, CleanSlateResult } from './helpers/CleanSlateDB';
 
 /**
  * E2E API Mode Configuration
@@ -76,6 +77,44 @@ export const E2E_CONFIG = {
 let server: Server | null = null;
 let app: Express | null = null;
 let isServerRunning = false;
+
+/**
+ * Infrastructure status tracking (for graceful degradation)
+ */
+interface InfrastructureStatus {
+  redis: boolean;
+  database: boolean;
+  redisError?: string;
+  databaseError?: string;
+}
+
+let infrastructureStatus: InfrastructureStatus = {
+  redis: false,
+  database: false,
+};
+
+/**
+ * Get current infrastructure status
+ */
+export function getInfrastructureStatus(): InfrastructureStatus {
+  return { ...infrastructureStatus };
+}
+
+/**
+ * Skip test if required infrastructure is not available
+ * @param required - Array of required infrastructure ('redis' or 'database')
+ * @throws Error if any required infrastructure is unavailable
+ */
+export function skipIfInfrastructureMissing(required: ('redis' | 'database')[]): void {
+  for (const infra of required) {
+    if (!infrastructureStatus[infra]) {
+      const errorKey = `${infra}Error` as keyof InfrastructureStatus;
+      throw new Error(
+        `Test skipped: ${infra} not available. Error: ${infrastructureStatus[errorKey] || 'Unknown'}`
+      );
+    }
+  }
+}
 
 /**
  * Global initialization state tracking
@@ -184,8 +223,11 @@ async function initRedisForE2E(): Promise<void> {
     // Initialize redis package client (used by TestSessionFactory for session cookies)
     await initRedisClient();
 
+    infrastructureStatus.redis = true;
     console.log(`[E2E] Redis initialized - both ioredis and redis-client (${REDIS_TEST_CONFIG.host}:${REDIS_TEST_CONFIG.port})`);
   } catch (error) {
+    infrastructureStatus.redis = false;
+    infrastructureStatus.redisError = error instanceof Error ? error.message : String(error);
     const errorMessage = error instanceof Error ? error.message : String(error);
     throw new Error(
       `[E2E] Redis not available. Run: docker compose -f docker-compose.test.yml up -d\n` +
@@ -200,8 +242,11 @@ async function initRedisForE2E(): Promise<void> {
 async function initDatabaseForE2E(): Promise<void> {
   try {
     await initDatabase();
+    infrastructureStatus.database = true;
     console.log('[E2E] Database initialized');
   } catch (error) {
+    infrastructureStatus.database = false;
+    infrastructureStatus.databaseError = error instanceof Error ? error.message : String(error);
     const errorMessage = error instanceof Error ? error.message : String(error);
     throw new Error(
       `[E2E] Database not available. Check DATABASE_* environment variables.\n` +
@@ -298,6 +343,10 @@ export function setupE2ETest(options: {
   skipServerStartup?: boolean;
   /** Custom timeout for initialization */
   timeout?: number;
+  /** Run clean slate before suite */
+  cleanSlate?: boolean;
+  /** Clean slate configuration */
+  cleanSlateOptions?: CleanSlateOptions;
 } = {}) {
   const timeout = options.timeout || E2E_CONFIG.serverStartupTimeout;
 
@@ -316,7 +365,17 @@ export function setupE2ETest(options: {
       // 2. Initialize Database
       await initDatabaseForE2E();
 
-      // 3. Start Server (if not skipped)
+      // 3. Clean slate if requested (AFTER database init, BEFORE server startup)
+      if (options.cleanSlate) {
+        console.log('[E2E] Running clean slate database cleanup...');
+        const result = await cleanSlateForSuite(options.cleanSlateOptions);
+        console.log(
+          `[E2E] Clean slate complete: ${result.tablesCleared.length} tables, ` +
+          `${Object.values(result.rowsDeleted).reduce((a, b) => a + b, 0)} rows in ${result.durationMs}ms`
+        );
+      }
+
+      // 4. Start Server (if not skipped)
       if (!options.skipServerStartup) {
         await startServer();
       }

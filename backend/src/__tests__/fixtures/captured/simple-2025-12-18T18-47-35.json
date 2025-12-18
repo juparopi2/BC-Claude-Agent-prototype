@@ -1,0 +1,177 @@
+{
+  "metadata": {
+    "capturedAt": "2025-12-18T18:47:35.110Z",
+    "scenario": "simple",
+    "model": "claude-sonnet-4-20250514",
+    "sdkVersion": "0.71.0",
+    "scriptVersion": "1.0.0",
+    "request": {
+      "message": "What is 2 + 2? Give a brief answer.",
+      "thinking": false,
+      "toolsEnabled": false,
+      "toolCount": 0
+    }
+  },
+  "finalResponse": {
+    "model": "claude-sonnet-4-20250514",
+    "id": "msg_015q2kVdEiTRC3m4g1RzQdQ2",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+      {
+        "type": "text",
+        "text": "2 + 2 = 4"
+      }
+    ],
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "usage": {
+      "input_tokens": 21,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 13,
+      "service_tier": "standard"
+    }
+  },
+  "streamingEvents": [
+    {
+      "index": 0,
+      "event": {
+        "type": "message_start",
+        "message": {
+          "model": "claude-sonnet-4-20250514",
+          "id": "msg_015q2kVdEiTRC3m4g1RzQdQ2",
+          "type": "message",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "2 + 2 = 4"
+            }
+          ],
+          "stop_reason": "end_turn",
+          "stop_sequence": null,
+          "usage": {
+            "input_tokens": 21,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "output_tokens": 13,
+            "service_tier": "standard"
+          }
+        }
+      },
+      "timestampMs": 1935
+    },
+    {
+      "index": 1,
+      "event": {
+        "type": "content_block_start",
+        "index": 0,
+        "content_block": {
+          "type": "text",
+          "text": ""
+        }
+      },
+      "timestampMs": 2869
+    },
+    {
+      "index": 2,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": "2 + 2 = "
+        }
+      },
+      "timestampMs": 2870
+    },
+    {
+      "index": 3,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": "4"
+        }
+      },
+      "timestampMs": 2901
+    },
+    {
+      "index": 4,
+      "event": {
+        "type": "content_block_stop",
+        "index": 0
+      },
+      "timestampMs": 2906
+    },
+    {
+      "index": 5,
+      "event": {
+        "type": "message_delta",
+        "delta": {
+          "stop_reason": "end_turn",
+          "stop_sequence": null
+        },
+        "usage": {
+          "input_tokens": 21,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "output_tokens": 13
+        }
+      },
+      "timestampMs": 2928
+    },
+    {
+      "index": 6,
+      "event": {
+        "type": "message_stop"
+      },
+      "timestampMs": 2929
+    }
+  ],
+  "eventTimings": [
+    {
+      "type": "message_start",
+      "deltaMs": 1935
+    },
+    {
+      "type": "content_block_start",
+      "deltaMs": 2869
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 2870
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 2901
+    },
+    {
+      "type": "content_block_stop",
+      "deltaMs": 2906
+    },
+    {
+      "type": "message_delta",
+      "deltaMs": 2928
+    },
+    {
+      "type": "message_stop",
+      "deltaMs": 2929
+    }
+  ],
+  "contentSummary": {
+    "thinkingBlocks": 0,
+    "textBlocks": 1,
+    "toolUseBlocks": 0
+  }
+}

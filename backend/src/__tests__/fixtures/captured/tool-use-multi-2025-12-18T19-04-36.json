@@ -1,0 +1,413 @@
+{
+  "metadata": {
+    "capturedAt": "2025-12-18T19:04:36.046Z",
+    "scenario": "tool-use-multi",
+    "model": "claude-sonnet-4-20250514",
+    "sdkVersion": "0.71.0",
+    "scriptVersion": "1.0.0",
+    "request": {
+      "message": "I need two things: First, calculate 10 + 5 using the calculator. Second, get the current time in UTC timezone. Use both tools.",
+      "thinking": false,
+      "toolsEnabled": true,
+      "toolCount": 2
+    }
+  },
+  "finalResponse": {
+    "model": "claude-sonnet-4-20250514",
+    "id": "msg_01FKywfdwvahRD3iZsPLhteU",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+      {
+        "type": "text",
+        "text": "I'll help you with both requests using the available tools."
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_012ehXhjCXukrjpC5CggkUhd",
+        "name": "calculator",
+        "input": {
+          "expression": "10 + 5"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_019fEetimxMzZ2ri4WBbMQrT",
+        "name": "get_current_time",
+        "input": {
+          "timezone": "UTC"
+        }
+      }
+    ],
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "usage": {
+      "input_tokens": 569,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 106,
+      "service_tier": "standard"
+    }
+  },
+  "streamingEvents": [
+    {
+      "index": 0,
+      "event": {
+        "type": "message_start",
+        "message": {
+          "model": "claude-sonnet-4-20250514",
+          "id": "msg_01FKywfdwvahRD3iZsPLhteU",
+          "type": "message",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "I'll help you with both requests using the available tools."
+            },
+            {
+              "type": "tool_use",
+              "id": "toolu_012ehXhjCXukrjpC5CggkUhd",
+              "name": "calculator",
+              "input": {
+                "expression": "10 + 5"
+              }
+            },
+            {
+              "type": "tool_use",
+              "id": "toolu_019fEetimxMzZ2ri4WBbMQrT",
+              "name": "get_current_time",
+              "input": {
+                "timezone": "UTC"
+              }
+            }
+          ],
+          "stop_reason": "tool_use",
+          "stop_sequence": null,
+          "usage": {
+            "input_tokens": 569,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "output_tokens": 106,
+            "service_tier": "standard"
+          }
+        }
+      },
+      "timestampMs": 2040
+    },
+    {
+      "index": 1,
+      "event": {
+        "type": "content_block_start",
+        "index": 0,
+        "content_block": {
+          "type": "text",
+          "text": ""
+        }
+      },
+      "timestampMs": 2041
+    },
+    {
+      "index": 2,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": "I'll help you with both requests using"
+        }
+      },
+      "timestampMs": 2041
+    },
+    {
+      "index": 3,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": " the available"
+        }
+      },
+      "timestampMs": 2192
+    },
+    {
+      "index": 4,
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": " tools."
+        }
+      },
+      "timestampMs": 2286
+    },
+    {
+      "index": 5,
+      "event": {
+        "type": "content_block_stop",
+        "index": 0
+      },
+      "timestampMs": 2346
+    },
+    {
+      "index": 6,
+      "event": {
+        "type": "content_block_start",
+        "index": 1,
+        "content_block": {
+          "type": "tool_use",
+          "id": "toolu_012ehXhjCXukrjpC5CggkUhd",
+          "name": "calculator",
+          "input": {}
+        }
+      },
+      "timestampMs": 2347
+    },
+    {
+      "index": 7,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "input_json_delta",
+          "partial_json": ""
+        }
+      },
+      "timestampMs": 2347
+    },
+    {
+      "index": 8,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "input_json_delta",
+          "partial_json": "{\"expressi"
+        }
+      },
+      "timestampMs": 2632
+    },
+    {
+      "index": 9,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "input_json_delta",
+          "partial_json": "on\": \"10 + "
+        }
+      },
+      "timestampMs": 2633
+    },
+    {
+      "index": 10,
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "input_json_delta",
+          "partial_json": "5\"}"
+        }
+      },
+      "timestampMs": 2639
+    },
+    {
+      "index": 11,
+      "event": {
+        "type": "content_block_stop",
+        "index": 1
+      },
+      "timestampMs": 2639
+    },
+    {
+      "index": 12,
+      "event": {
+        "type": "content_block_start",
+        "index": 2,
+        "content_block": {
+          "type": "tool_use",
+          "id": "toolu_019fEetimxMzZ2ri4WBbMQrT",
+          "name": "get_current_time",
+          "input": {}
+        }
+      },
+      "timestampMs": 2646
+    },
+    {
+      "index": 13,
+      "event": {
+        "type": "content_block_delta",
+        "index": 2,
+        "delta": {
+          "type": "input_json_delta",
+          "partial_json": ""
+        }
+      },
+      "timestampMs": 2653
+    },
+    {
+      "index": 14,
+      "event": {
+        "type": "content_block_delta",
+        "index": 2,
+        "delta": {
+          "type": "input_json_delta",
+          "partial_json": "{\"tim"
+        }
+      },
+      "timestampMs": 2874
+    },
+    {
+      "index": 15,
+      "event": {
+        "type": "content_block_delta",
+        "index": 2,
+        "delta": {
+          "type": "input_json_delta",
+          "partial_json": "ezone\": "
+        }
+      },
+      "timestampMs": 2877
+    },
+    {
+      "index": 16,
+      "event": {
+        "type": "content_block_delta",
+        "index": 2,
+        "delta": {
+          "type": "input_json_delta",
+          "partial_json": "\"UTC\"}"
+        }
+      },
+      "timestampMs": 2888
+    },
+    {
+      "index": 17,
+      "event": {
+        "type": "content_block_stop",
+        "index": 2
+      },
+      "timestampMs": 2890
+    },
+    {
+      "index": 18,
+      "event": {
+        "type": "message_delta",
+        "delta": {
+          "stop_reason": "tool_use",
+          "stop_sequence": null
+        },
+        "usage": {
+          "input_tokens": 569,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "output_tokens": 106
+        }
+      },
+      "timestampMs": 2920
+    },
+    {
+      "index": 19,
+      "event": {
+        "type": "message_stop"
+      },
+      "timestampMs": 2923
+    }
+  ],
+  "eventTimings": [
+    {
+      "type": "message_start",
+      "deltaMs": 2040
+    },
+    {
+      "type": "content_block_start",
+      "deltaMs": 2041
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 2041
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 2192
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 2286
+    },
+    {
+      "type": "content_block_stop",
+      "deltaMs": 2346
+    },
+    {
+      "type": "content_block_start",
+      "deltaMs": 2347
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 2347
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 2632
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 2633
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 2639
+    },
+    {
+      "type": "content_block_stop",
+      "deltaMs": 2639
+    },
+    {
+      "type": "content_block_start",
+      "deltaMs": 2646
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 2653
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 2874
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 2877
+    },
+    {
+      "type": "content_block_delta",
+      "deltaMs": 2888
+    },
+    {
+      "type": "content_block_stop",
+      "deltaMs": 2890
+    },
+    {
+      "type": "message_delta",
+      "deltaMs": 2920
+    },
+    {
+      "type": "message_stop",
+      "deltaMs": 2923
+    }
+  ],
+  "contentSummary": {
+    "thinkingBlocks": 0,
+    "textBlocks": 1,
+    "toolUseBlocks": 2
+  }
+}

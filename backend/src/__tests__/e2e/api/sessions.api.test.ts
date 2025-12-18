@@ -203,6 +203,7 @@ describe('E2E API: Sessions Endpoints', () => {
         title: 'Get Test',
       });
       const sessionId = createResponse.body.id;
+      expect(sessionId, 'Failed to create session for GET test').toBeDefined();
 
       const response = await client.get<{
         id: string;

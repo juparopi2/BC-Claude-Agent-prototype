@@ -117,25 +117,30 @@ export class TestSessionFactory {
 
     // Insert user into database
     // Schema uses full_name not display_name, and has required fields
-    await executeQuery(
-      `INSERT INTO users (id, microsoft_id, email, full_name, is_active, is_admin, role, created_at, updated_at)
-       VALUES (@userId, @microsoftId, @email, @fullName, 1, 0, 'viewer', GETDATE(), GETDATE())`,
-      { userId, microsoftId, email, fullName: displayName }
-    );
-
-    this.createdUsers.push(userId);
-
-    // Create Redis session for WebSocket authentication
-    const { sessionId, cookie } = await this.createSessionCookie(userId, email, microsoftId, redisClient);
-
-    return {
-      id: userId,
-      email,
-      displayName,
-      microsoftId,
-      sessionCookie: cookie,
-      redisSessionId: sessionId,
-    };
+    try {
+      await executeQuery(
+        `INSERT INTO users (id, microsoft_id, email, full_name, is_active, is_admin, role, created_at, updated_at)
+         VALUES (@userId, @microsoftId, @email, @fullName, 1, 0, 'viewer', GETDATE(), GETDATE())`,
+        { userId, microsoftId, email, fullName: displayName }
+      );
+  
+      this.createdUsers.push(userId);
+  
+      // Create Redis session for WebSocket authentication
+      const { sessionId, cookie } = await this.createSessionCookie(userId, email, microsoftId, redisClient);
+  
+      return {
+        id: userId,
+        email,
+        displayName,
+        microsoftId,
+        sessionCookie: cookie,
+        redisSessionId: sessionId,
+      };
+    } catch (error) {
+      console.error(`[TestSessionFactory] Failed to create test user! userId=${userId}`, error);
+      throw error;
+    }
   }
 
   /**
@@ -156,21 +161,34 @@ export class TestSessionFactory {
     const title = options?.title || `Test Session ${Date.now()}`;
     const now = new Date();
 
+    if (!userId) {
+      console.error('[TestSessionFactory] Error: userId is undefined or empty in createChatSession');
+    }
+
+    if (!sessionId) {
+      console.error('[TestSessionFactory] Error: sessionId is undefined or empty in createChatSession');
+    }
+
     // Insert session into database
-    await executeQuery(
-      `INSERT INTO sessions (id, user_id, title, created_at, updated_at)
-       VALUES (@sessionId, @userId, @title, @createdAt, @createdAt)`,
-      { sessionId, userId, title, createdAt: now }
-    );
-
-    this.createdSessions.push(sessionId);
-
-    return {
-      id: sessionId,
-      userId,
-      title,
-      createdAt: now,
-    };
+    try {
+      await executeQuery(
+        `INSERT INTO sessions (id, user_id, title, created_at, updated_at)
+         VALUES (@sessionId, @userId, @title, @createdAt, @createdAt)`,
+        { sessionId, userId, title, createdAt: now }
+      );
+      
+      this.createdSessions.push(sessionId);
+  
+      return {
+        id: sessionId,
+        userId,
+        title,
+        createdAt: now,
+      };
+    } catch (error) {
+      console.error(`[TestSessionFactory] Failed to create chat session! sessionId=${sessionId}, userId=${userId}`, error);
+      throw error;
+    }
   }
 
   /**

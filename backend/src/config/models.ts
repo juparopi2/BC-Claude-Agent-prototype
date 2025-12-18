@@ -28,6 +28,7 @@ export const AnthropicModels = {
   // Claude 4.5 Series (2025)
   OPUS_4_5: 'claude-opus-4-5-20250929',
   SONNET_4_5: 'claude-sonnet-4-5-20250929',
+  HAIKU_4_5: 'claude-haiku-4-5-20251001',
 
   // Claude 3.5 Series (Legacy 2024)
   SONNET_3_5: 'claude-3-5-sonnet-20241022',
@@ -62,6 +63,11 @@ export const AnthropicPricing: Record<AnthropicModelId, ModelPricing> = {
     inputPerMillion: 3.0,
     outputPerMillion: 15.0,
     cachedInputPerMillion: 0.3,
+  },
+  [AnthropicModels.HAIKU_4_5]: {
+    inputPerMillion: 1.0,
+    outputPerMillion: 5.0,
+    cachedInputPerMillion: 0.1,
   },
   [AnthropicModels.SONNET_3_5]: {
     inputPerMillion: 3.0,
@@ -130,7 +136,7 @@ export const ModelRoleConfigs: Record<ModelRole, RoleModelConfig> = {
     role: 'orchestrator',
     description: 'Complex orchestration, multi-step planning, and tool coordination',
     provider: 'anthropic' as ModelProvider,
-    modelName: AnthropicModels.OPUS_4_5,
+    modelName: AnthropicModels.SONNET_4_5,
     temperature: 0.7,
     maxTokens: 32000, // Increased for deep thinking workflows
     streaming: true,
@@ -160,7 +166,7 @@ export const ModelRoleConfigs: Record<ModelRole, RoleModelConfig> = {
     role: 'bc_agent',
     description: 'Business Central operations and API interactions',
     provider: 'anthropic' as ModelProvider,
-    modelName: AnthropicModels.SONNET_4_5,
+    modelName: AnthropicModels.HAIKU_4_5,
     temperature: 0.3, // More deterministic for BC operations
     maxTokens: 32000, // Increased to support long tool sequences
     streaming: true,
@@ -177,7 +183,7 @@ export const ModelRoleConfigs: Record<ModelRole, RoleModelConfig> = {
     role: 'rag_agent',
     description: 'RAG retrieval and knowledge synthesis - smarter model for reasoning',
     provider: 'anthropic' as ModelProvider,
-    modelName: AnthropicModels.SONNET_4_5, // Upgraded to Sonnet 4.5 as requested
+    modelName: AnthropicModels.HAIKU_4_5, // Upgraded to Sonnet 4.5 as requested
     temperature: 0.5,
     maxTokens: 16384, // Increased for document synthesis
     streaming: true,
@@ -218,7 +224,7 @@ export const ModelRoleConfigs: Record<ModelRole, RoleModelConfig> = {
     role: 'default',
     description: 'Default fallback model for unspecified uses',
     provider: 'anthropic' as ModelProvider,
-    modelName: AnthropicModels.SONNET_4_5,
+    modelName: AnthropicModels.HAIKU_4_5,
     temperature: 0.7,
     maxTokens: 4096,
     streaming: true,

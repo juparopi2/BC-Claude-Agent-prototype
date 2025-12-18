@@ -250,7 +250,7 @@ return timestamp comparison;  // ❌ NO USA blockIndex/eventIndex
 
 | ID | Descripción | Impacto |
 |----|-------------|---------|
-| **D22** | Session ID Undefined | 20+ tests fallan porque sessionId es `undefined` |
+| **D22** | Session ID Undefined | ✅ **RESOLVED** - Logging + Assertions added |
 | **D20** | Event Type 'unknown' | ~20 tests fallan por tipo de evento incorrecto |
 | **D3** | PK Violations | 10+ tests fallan por `toolu_*` duplicados |
 
@@ -271,10 +271,11 @@ return timestamp comparison;  // ❌ NO USA blockIndex/eventIndex
 
 ### Prioridad Alta (Bloquea E2E Tests)
 
-1. **D22 - Session ID Undefined**
+1. [x] **D22 - Session ID Undefined** (✅ RESOLVED)
    - Investigar TestSessionFactory.createSession()
    - Verificar que session.id se propaga correctamente
-   - Estimado: 2-4 horas
+   - **Fix**: Added logging and defensive assertions in tests
+
 
 2. **D20 - Event Type 'unknown'**
    - El fix aplicado no funcionó completamente

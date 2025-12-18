@@ -267,8 +267,6 @@ export class ResponseScenarioRegistry {
       const collectedEvents = await eventPromise;
 
       // Transform to AgentEvent format
-      // Note: collectedEvents is AgentEvent[] from E2ETestClient.collectEvents()
-      // Each AgentEvent has a .type property from the discriminated union
       for (const event of collectedEvents) {
         // Extract type from event - handle multiple possible structures
         const eventRecord = event as unknown as Record<string, unknown>;
@@ -277,14 +275,21 @@ export class ResponseScenarioRegistry {
           ((eventRecord.data as Record<string, unknown>)?.type as string) ||  // Nested in data
           'unknown';
 
-        // Debug: Log if we're falling back to 'unknown'
+        // Filter out events without type (likely session events like session:joined, session:ready)
         if (eventType === 'unknown') {
-          console.warn('[ResponseScenarioRegistry] Event has no type:', {
-            keys: Object.keys(eventRecord),
-            hasType: 'type' in eventRecord,
-            typeValue: eventRecord.type,
-            event: JSON.stringify(event, null, 2).slice(0, 500),
-          });
+          // Verify if it's a known non-agent event structure to reduce log noise
+          // session:joined has { sessionId }
+          // session:ready has { sessionId, timestamp }
+          // session:error has { error, sessionId }
+          const isSessionEvent = 'sessionId' in eventRecord && !('type' in eventRecord);
+          
+          if (!isSessionEvent) {
+             console.warn('[ResponseScenarioRegistry] Event has no type (skipping):', {
+              keys: Object.keys(eventRecord),
+              event: JSON.stringify(event, null, 2).slice(0, 500),
+            });
+          }
+          continue; 
         }
 
         events.push({

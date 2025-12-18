@@ -231,10 +231,10 @@ describe('E2E Scenario: Single Tool Call (No Thinking)', () => {
       const toolUseEvent = scenarioResult.events.find(e => e.type === 'tool_use');
       expect(toolUseEvent).toBeDefined();
 
-      const data = toolUseEvent?.data as { name?: string; toolId?: string };
+      const data = toolUseEvent?.data as { toolName?: string; toolUseId?: string };
 
-      // Should have tool name or toolId
-      const hasToolIdentifier = data?.name || data?.toolId;
+      // Should have toolName or toolUseId (AgentEvent standardized properties)
+      const hasToolIdentifier = data?.toolName || data?.toolUseId;
       expect(hasToolIdentifier).toBeTruthy();
     });
 
@@ -245,7 +245,7 @@ describe('E2E Scenario: Single Tool Call (No Thinking)', () => {
       expect(toolUseEvent).toBeDefined();
       expect(toolResultEvent).toBeDefined();
 
-      const toolUseId = (toolUseEvent?.data as { toolId?: string })?.toolId;
+      const toolUseId = (toolUseEvent?.data as { toolUseId?: string })?.toolUseId;
       const toolResultId = (toolResultEvent?.data as { toolUseId?: string })?.toolUseId;
 
       if (toolUseId && toolResultId) {

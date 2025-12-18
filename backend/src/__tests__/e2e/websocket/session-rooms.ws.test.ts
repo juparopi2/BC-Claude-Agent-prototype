@@ -48,6 +48,7 @@ describe('E2E: WebSocket Session Rooms', () => {
       httpClient.setSessionCookie(sessionCookie);
       const response = await httpClient.post<{ id: string }>('/api/chat/sessions', { title: 'WS Join Test' });
       const sessionId = response.body.id;
+      expect(sessionId).toBeDefined();
 
       // Join the session room
       await client.joinSession(sessionId);
@@ -66,6 +67,7 @@ describe('E2E: WebSocket Session Rooms', () => {
       httpClient.setSessionCookie(sessionCookie);
       const response = await httpClient.post<{ id: string }>('/api/chat/sessions', { title: 'Other User Session' });
       const sessionId = response.body.id;
+      expect(sessionId).toBeDefined();
 
       // Create second user and client
       const otherAuth = await factory.createTestUser({ prefix: 'other_' });
@@ -86,8 +88,10 @@ describe('E2E: WebSocket Session Rooms', () => {
       // Create two sessions
       const response1 = await httpClient.post<{ id: string }>('/api/chat/sessions', { title: 'Session 1' });
       const sessionId1 = response1.body.id;
+      expect(sessionId1).toBeDefined();
       const response2 = await httpClient.post<{ id: string }>('/api/chat/sessions', { title: 'Session 2' });
       const sessionId2 = response2.body.id;
+      expect(sessionId2).toBeDefined();
 
       // Join first session
       await client.joinSession(sessionId1);
@@ -108,6 +112,7 @@ describe('E2E: WebSocket Session Rooms', () => {
       httpClient.setSessionCookie(sessionCookie);
       const response = await httpClient.post<{ id: string }>('/api/chat/sessions', { title: 'WS Leave Test' });
       const sessionId = response.body.id;
+      expect(sessionId).toBeDefined();
 
       await client.joinSession(sessionId);
       await client.leaveSession(sessionId);
@@ -130,8 +135,10 @@ describe('E2E: WebSocket Session Rooms', () => {
       // Create two sessions
       const response1 = await httpClient.post<{ id: string }>('/api/chat/sessions', { title: 'Session A' });
       const sessionId1 = response1.body.id;
+      expect(sessionId1).toBeDefined();
       const response2 = await httpClient.post<{ id: string }>('/api/chat/sessions', { title: 'Session B' });
       const sessionId2 = response2.body.id;
+      expect(sessionId2).toBeDefined();
 
       // Join only session 1
       await client.joinSession(sessionId1);

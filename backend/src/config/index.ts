@@ -1,30 +1,31 @@
 /**
  * Configuration Module
+ * @deprecated Import from '@/infrastructure' instead
  *
- * Centralized configuration exports for the application.
- * This module re-exports all configuration modules for easy imports.
+ * This file exists for backwards compatibility during migration.
+ * All exports are re-exported from their new locations in infrastructure/.
  *
  * @module config
  */
 
-// Environment configuration
+// Environment configuration (from infrastructure/config)
 export {
   env,
   isProd,
   isDev,
   validateRequiredSecrets,
   printConfig,
-} from './environment';
+} from '../infrastructure/config/environment';
 
-// Azure Key Vault
+// Azure Key Vault (from infrastructure/keyvault)
 export {
   SECRET_NAMES,
   getSecret,
   loadSecretsFromKeyVault,
   clearSecretCache,
-} from './keyvault';
+} from '../infrastructure/keyvault/keyvault';
 
-// Database configuration
+// Database configuration (from infrastructure/database)
 export {
   initDatabase,
   getDatabase,
@@ -33,54 +34,41 @@ export {
   closeDatabase,
   checkDatabaseHealth,
   sql,
-} from './database';
+} from '../infrastructure/database/database';
 
-// Redis configuration
+// Redis configuration (from infrastructure/redis)
 export {
   initRedis,
   getRedis,
   closeRedis,
   checkRedisHealth,
-  // Session helpers
   setSession,
   getSession,
   deleteSession,
-  // Cache helpers
   setCache,
   getCache,
   deleteCache,
   deleteCachePattern,
-} from './redis';
+} from '../infrastructure/redis/redis';
 
 /**
  * Initialize all services
- *
- * This function initializes all core services in the correct order:
- * 1. Load secrets from Key Vault
- * 2. Validate required secrets
- * 3. Initialize database connection
- * 4. Initialize Redis connection
- *
- * @returns Promise that resolves when all services are initialized
+ * @deprecated Use imports from '@/infrastructure' directly
  */
 export async function initializeAllServices(): Promise<void> {
   console.log('🚀 Initializing all services...');
 
   try {
-    // Step 1: Load secrets from Key Vault (if configured)
-    const { loadSecretsFromKeyVault } = await import('./keyvault');
+    const { loadSecretsFromKeyVault } = await import('../infrastructure/keyvault/keyvault');
     await loadSecretsFromKeyVault();
 
-    // Step 2: Validate required secrets
-    const { validateRequiredSecrets } = await import('./environment');
+    const { validateRequiredSecrets } = await import('../infrastructure/config/environment');
     validateRequiredSecrets();
 
-    // Step 3: Initialize database
-    const { initDatabase } = await import('./database');
+    const { initDatabase } = await import('../infrastructure/database/database');
     await initDatabase();
 
-    // Step 4: Initialize Redis
-    const { initRedis } = await import('./redis');
+    const { initRedis } = await import('../infrastructure/redis/redis');
     await initRedis();
 
     console.log('✅ All services initialized successfully');
@@ -92,25 +80,16 @@ export async function initializeAllServices(): Promise<void> {
 
 /**
  * Close all services gracefully
- *
- * This function closes all active connections:
- * - Database connection pool
- * - Redis client
- *
- * Should be called on application shutdown.
- *
- * @returns Promise that resolves when all services are closed
+ * @deprecated Use imports from '@/infrastructure' directly
  */
 export async function closeAllServices(): Promise<void> {
   console.log('🛑 Closing all services...');
 
   try {
-    // Close database connection
-    const { closeDatabase } = await import('./database');
+    const { closeDatabase } = await import('../infrastructure/database/database');
     await closeDatabase();
 
-    // Close Redis connection
-    const { closeRedis } = await import('./redis');
+    const { closeRedis } = await import('../infrastructure/redis/redis');
     await closeRedis();
 
     console.log('✅ All services closed successfully');
@@ -122,16 +101,15 @@ export async function closeAllServices(): Promise<void> {
 
 /**
  * Check health of all services
- *
- * @returns Object with health status of each service
+ * @deprecated Use imports from '@/infrastructure' directly
  */
 export async function checkAllServicesHealth(): Promise<{
   database: boolean;
   redis: boolean;
   overall: boolean;
 }> {
-  const { checkDatabaseHealth } = await import('./database');
-  const { checkRedisHealth } = await import('./redis');
+  const { checkDatabaseHealth } = await import('../infrastructure/database/database');
+  const { checkRedisHealth } = await import('../infrastructure/redis/redis');
 
   const database = await checkDatabaseHealth();
   const redis = await checkRedisHealth();

@@ -6,6 +6,10 @@
 docs/plans/
 ├── INDEX.md                    # Este archivo - guía de navegación
 ├── 00-PRINCIPLES.md            # Principios y lineamientos (LEER PRIMERO)
+├── ARCHITECTURE_PHASE_5.md     # Arquitectura actual y Screaming Architecture (NUEVO)
+├── TECHNICAL_DEBT_REGISTRY.md  # Registro de deuda técnica (23 items)
+├── TECHNICAL_DEBT_CLEANUP.md   # Plan de limpieza de deuda técnica
+├── SEQUENCE_NUMBER_ARCHITECTURE.md  # Arquitectura de sequence numbers
 │
 ├── phase-0/                    # Diagnóstico y Análisis
 │   ├── README.md               # Descripción, success criteria, filosofía
@@ -99,12 +103,24 @@ Luego ejecuta las tareas del TODO en orden, siguiendo los principios establecido
 
 ---
 
+## Documentos Clave
+
+| Documento | Propósito |
+|-----------|-----------|
+| **[ARCHITECTURE_PHASE_5.md](./ARCHITECTURE_PHASE_5.md)** | Estado actual del sistema (18,997 LOC), Screaming Architecture propuesta, plan de migración |
+| **[TECHNICAL_DEBT_REGISTRY.md](./TECHNICAL_DEBT_REGISTRY.md)** | Registro completo de deuda técnica (23 items, 9 resueltos) |
+| **[TECHNICAL_DEBT_CLEANUP.md](./TECHNICAL_DEBT_CLEANUP.md)** | Plan de limpieza Fase 4.7 con resultados de E2E tests |
+| **[SEQUENCE_NUMBER_ARCHITECTURE.md](./SEQUENCE_NUMBER_ARCHITECTURE.md)** | Arquitectura de ordering con Redis INCR |
+
+---
+
 ## Problemas Prioritarios
 
 Identificados en el diagnóstico inicial:
 
 1. **Thinking Events** - Orden incorrecto, transición thinking→text
 2. **Tool Events** - Deduplicación, IDs inconsistentes
+3. **DirectAgentService** - God Object (1,472 líneas) requiere refactor
 
 Estos problemas deben resolverse en las Fases 2 y 5.
 
@@ -177,4 +193,4 @@ Antes de pasar a la siguiente fase, verificar:
 
 ---
 
-*Última actualización: 2025-12-17*
+*Última actualización: 2025-12-18*

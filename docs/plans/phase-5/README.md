@@ -8,6 +8,17 @@
 | **Nombre** | Refactoring Estructural Completo |
 | **Prerequisitos** | Fases 0-4 completadas (diagnóstico y tests) |
 | **Fase Siguiente** | Fase 6: Documentación |
+| **Arquitectura** | 📐 [ARCHITECTURE_PHASE_5.md](../ARCHITECTURE_PHASE_5.md) |
+
+---
+
+## Documentos Relacionados
+
+| Documento | Descripción |
+|-----------|-------------|
+| **[ARCHITECTURE_PHASE_5.md](../ARCHITECTURE_PHASE_5.md)** | Estado actual (18,997 LOC), Screaming Architecture, Plan de migración |
+| **[TECHNICAL_DEBT_REGISTRY.md](../TECHNICAL_DEBT_REGISTRY.md)** | Registro de deuda técnica (23 items) |
+| **[TECHNICAL_DEBT_CLEANUP.md](../TECHNICAL_DEBT_CLEANUP.md)** | Plan de limpieza pre-Fase 5 |
 
 ---
 
@@ -314,8 +325,9 @@ Esto NO es atomico - puede causar sequence numbers duplicados bajo carga concurr
 
 ---
 
-*Ultima actualizacion: 2025-12-17*
+*Ultima actualizacion: 2025-12-18*
 *Deuda tecnica documentada: QA Audit Fase 3*
+*Arquitectura documentada: [ARCHITECTURE_PHASE_5.md](../ARCHITECTURE_PHASE_5.md)*
 
 ---
 

@@ -155,7 +155,8 @@
       "Bash(git stash:*)",
       "Bash(npx vite preview:*)",
       "Bash(E2E_USE_REAL_API=true npm run test:e2e:*)",
-      "Bash(gunzip:*)"
+      "Bash(gunzip:*)",
+      "Bash(wc:*)"
     ],
     "deny": [],
     "ask": []

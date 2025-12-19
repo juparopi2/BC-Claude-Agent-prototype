@@ -16,6 +16,17 @@
       "@/*": [
         "src/*"
       ],
+      /* New Screaming Architecture paths */
+      "@domains/*": [
+        "src/domains/*"
+      ],
+      "@shared/*": [
+        "src/shared/*"
+      ],
+      "@infrastructure/*": [
+        "src/infrastructure/*"
+      ],
+      /* Legacy paths (maintained for backwards compatibility) */
       "@config/*": [
         "src/config/*"
       ],

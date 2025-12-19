@@ -1,7 +1,6 @@
 /**
  * Billing Service Exports
- *
- * Public exports for the billing service module.
+ * @deprecated Import from '@/domains/billing' instead
  */
 
 export { BillingService, getBillingService, __resetBillingService } from './BillingService';

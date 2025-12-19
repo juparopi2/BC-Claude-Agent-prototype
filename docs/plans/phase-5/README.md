@@ -316,3 +316,34 @@ Esto NO es atomico - puede causar sequence numbers duplicados bajo carga concurr
 
 *Ultima actualizacion: 2025-12-17*
 *Deuda tecnica documentada: QA Audit Fase 3*
+
+---
+
+## Decisión Arquitectónica: Modelo de Evento Canónico Unificado
+
+**Estado**: Aprobado para inclusión en Fase 5
+**Contexto**: Existe una desconexión entre el modelo de transmisión (INormalizedStreamEvent) y el modelo de persistencia (message_events, messages table). Esto genera disparidad en el manejo de tipos, ordenamiento y monitoreo.
+
+### El Problema
+- **Transmisión**: Usa eventos normalizados y agnósticos (ej. `reasoning_delta`).
+- **Persistencia**: Usa eventos de ciclo de vida (ej. `agent_thinking_block`) que a veces divergen en naming o estructura.
+- **Consecuencia**: Lógica duplicada o inconsistente para reconstruir el estado visual vs el estado persistido. Dificultad para agregar nuevos providers sin tocar múltiples capas.
+
+### La Solución: "Unified Canonical Event Model"
+Implementar una única entidad de evento que sirva como **Single Source of Truth** para:
+1.  **Transmisión** (Socket.IO)
+2.  **Persistencia** (Event Store / SQL)
+3.  **Encolamiento** (Message Queue)
+4.  **Monitoreo** (Usage Tracking)
+
+### Implicaciones (Breaking Changes Aceptados)
+Se acepta romper compatibilidad hacia atrás para garantizar una arquitectura limpia y robusta:
+- **Base de Datos**: Refactorización de tablas `messages` y `message_events` para alinearse estrictamente al modelo canónico.
+- **Frontend Contract**: Los eventos de socket cambiarán para reflejar exactamente la estructura canónica.
+- **Backend Refactor**: `DirectAgentService`, `MessageService` y `ChatMessageHandler` serán unificados para usar este único tipo de dato.
+
+### Beneficios
+- **Trazabilidad Total**: El mismo objeto que se emite es el que se guarda y se audita.
+- **Agnosticismo Real**: El `CanonicalAgentEvent` es la lengua franca del sistema. Los adaptadores convierten Provider -> Canonico en la frontera.
+- **Simplicidad**: Lógica de ordenamiento y renderizado idéntica en cliente y servidor.
+

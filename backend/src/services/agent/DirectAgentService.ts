@@ -30,7 +30,7 @@
 // as they were used by executeQueryStreaming which was deprecated in Phase 1.
 // The runGraph method uses LangChain for orchestration instead.
 import { env } from '@/config';
-import type { AgentEvent, AgentExecutionResult, UsageEvent } from '@/types';
+import type { AgentEvent, BaseAgentEvent, AgentExecutionResult, UsageEvent } from '@/types';
 import type { ApprovalManager } from '../approval/ApprovalManager';
 import type { TodoManager } from '../todo/TodoManager';
 import type { IAnthropicClient } from './IAnthropicClient';
@@ -1012,9 +1012,16 @@ export class DirectAgentService {
                    // Note: UsageEvent is backend-only type, not in AgentEvent union
                    const eventType = agentEvent.type;
                    if (eventType !== 'usage') {
+                        // FIX: Mark tool events as 'transient' to prevent ChatMessageHandler from persisting them via fallback.
+                        // DirectAgentService handles reliable persistence at on_chain_end.
+                        if (eventType === 'tool_use' || eventType === 'tool_result') {
+                            (agentEvent as BaseAgentEvent).persistenceState = 'transient';
+                        }
+
                         this.logger.debug({
                           eventType,
-                          willEmit: !!onEvent
+                          willEmit: !!onEvent,
+                          persistenceState: agentEvent.persistenceState
                         }, 'DirectAgentService: Emitting event to WebSocket');
                         emitEvent(agentEvent);
                    }

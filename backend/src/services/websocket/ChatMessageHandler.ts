@@ -400,9 +400,15 @@ export class ChatMessageHandler {
               sequenceNumber: (event as ToolUseEvent).sequenceNumber,
               eventId: (event as ToolUseEvent).eventId,
             });
+          } else if ((event as ToolUseEvent).persistenceState === 'transient') {
+            // ⭐ FIX: Transient tool events from stream (previews) should be skipped
+            this.logger.debug('⏩ Tool use event is transient (skipping persistence)', {
+              toolUseId: (event as ToolUseEvent).toolUseId,
+            });
           } else {
             this.logger.error('❌ Tool use event NOT persisted by DirectAgentService', {
               toolUseId: (event as ToolUseEvent).toolUseId,
+              state: (event as ToolUseEvent).persistenceState
             });
             // ⚠️ FALLBACK: Persistir aquí si no está
             await this.handleToolUse(event as ToolUseEvent, sessionId, userId);
@@ -417,9 +423,15 @@ export class ChatMessageHandler {
               sequenceNumber: (event as ToolResultEvent).sequenceNumber,
               eventId: (event as ToolResultEvent).eventId,
             });
+          } else if ((event as ToolResultEvent).persistenceState === 'transient') {
+             // ⭐ FIX: Transient tool result events (if any) should be skipped
+             this.logger.debug('⏩ Tool result event is transient (skipping persistence)', {
+               toolUseId: (event as ToolResultEvent).toolUseId,
+             });
           } else {
             this.logger.error('❌ Tool result event NOT persisted by DirectAgentService', {
               toolUseId: (event as ToolResultEvent).toolUseId,
+              state: (event as ToolResultEvent).persistenceState
             });
             // ⚠️ FALLBACK: Persistir aquí si no está
             await this.handleToolResult(event as ToolResultEvent, sessionId, userId);

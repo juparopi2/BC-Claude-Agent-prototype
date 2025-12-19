@@ -276,12 +276,15 @@ export class ResponseScenarioRegistry {
           'unknown';
 
         // Filter out events without type (likely session events like session:joined, session:ready)
+        // Filter out events without type (likely session events like session:joined, session:ready)
         if (eventType === 'unknown') {
-          // Verify if it's a known non-agent event structure to reduce log noise
+          // ⭐ FIX D20: Robust filtering of known non-agent events
           // session:joined has { sessionId }
           // session:ready has { sessionId, timestamp }
           // session:error has { error, sessionId }
-          const isSessionEvent = 'sessionId' in eventRecord && !('type' in eventRecord);
+          const isSessionEvent = 
+            ('sessionId' in eventRecord || 'session_id' in eventRecord) && 
+            !('type' in eventRecord);
           
           if (!isSessionEvent) {
              console.warn('[ResponseScenarioRegistry] Event has no type (skipping):', {
@@ -290,6 +293,11 @@ export class ResponseScenarioRegistry {
             });
           }
           continue; 
+        }
+
+        // ⭐ FILTER: Explicitly ignore specific known events that shouldn't be in the timeline
+        if (['session:joined', 'session:ready', 'session:error'].includes(eventType)) {
+          continue;
         }
 
         events.push({

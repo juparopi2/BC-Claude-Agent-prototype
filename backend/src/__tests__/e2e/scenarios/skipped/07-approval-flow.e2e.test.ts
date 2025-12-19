@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
-import { setupE2ETest } from '../setup.e2e';
+import { setupE2ETest } from '../../setup.e2e';
 import {
   E2ETestClient,
   createE2ETestClient,

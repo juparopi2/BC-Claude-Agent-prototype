@@ -241,7 +241,7 @@ export class MessageService {
       throw new Error(`Invalid toolUseId: ${toolUseId}. Cannot save tool use message.`);
     }
 
-    const messageId = toolUseId; // Use toolUseId as messageId for consistency
+    const messageId = randomUUID(); // ⭐ FIX D3: Use randomUUID to avoid PK violations
 
     try {
       // 1. Append event to EventStore (gets atomic sequence number)

@@ -62,8 +62,7 @@ La estrategia se divide en 3 "Sprints" o bloques de trabajo para esta fase de li
 ### Bloque C: Consistencia de Datos E2E (Mediano Plazo)
 *Objetivo: Permitir ejecución confiable contra API Real.*
 
-- [ ] **D3**: Implementar estrategia de limpieza o IDs únicos para Tool IDs en tests E2E.
-    - *Propuesta*: Prefijar IDs en mocks o limpiar DB antes de tests E2E.
+- [x] **D3**: ✅ RESUELTO - `MessageService` usa `randomUUID()` para evitar conflictos de PK con `toolUseId`.
 
 ---
 
@@ -99,6 +98,7 @@ Los siguientes items NO se resolverán en esta fase de limpieza, ya que el refac
 - **D13 (Redis Chaos)** -> Fase 5 (Validación de robustez).
 - **D8 (Dynamic Model)** -> Fase 6 (Configuración).
 - **Frontend Ordering Inconsistency** -> Fase 5 (Unificar lógica de ordenamiento).
+- **D23 (E2E Retrieval Verification)** -> Fase 5 (Coverage Gap).
 
 ---
 
@@ -278,15 +278,14 @@ return timestamp comparison;  // ❌ NO USA blockIndex/eventIndex
 
 
 2. **D20 - Event Type 'unknown'**
-   - El fix aplicado no funcionó completamente
-   - Revisar estructura de eventos en E2ETestClient.collectEvents()
-   - Estimado: 1-2 horas
+   - ✅ **RESOLVED** - Filtros robustos implementados en `ResponseScenarioRegistry`.
+
 
 ### Prioridad Media
 
 3. **D3 - PK Violations**
-   - Implementar upsert pattern o limpieza de BD
-   - Estimado: 2-4 horas
+   - ✅ **RESOLVED** - Implementado fix con `randomUUID()`.
+
 
 4. **Migrar a Haiku para Tests**
    - Cambiar `ANTHROPIC_MODEL` en `.env` para E2E

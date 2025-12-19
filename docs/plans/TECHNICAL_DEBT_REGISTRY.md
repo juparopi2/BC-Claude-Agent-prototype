@@ -112,12 +112,13 @@ The `messages` table uses the tool ID as primary key. Real API responses can inc
 - `backend/src/__tests__/e2e/flows/golden/tool-use.golden.test.ts` (5 tests)
 - `backend/src/__tests__/e2e/flows/golden/approval.golden.test.ts` (5 tests)
 
-**Temporary Fix Applied** (2025-12-18):
-- Tests skipped with `describe.skip` and TODO: TD-D3 comment
-- GoldenResponses.ts updated to generate unique tool IDs per test run
+**Resolution** (2025-12-18):
+- **Strategy**: Decoupled `messageId` from `toolUseId`.
+- **Implementation**: `MessageService.saveToolUseMessage` now generates a `randomUUID()` for the primary key (`id`) of the `messages` table, while preserving the original `toolUseId` in the `tool_use_id` column and metadata.
+- **Verdict**: This prevents PK violations even if Anthropic returns duplicate `toolUseId`s across test runs.
 
-**Status**: Tests skipped, pending permanent fix
-**Target Phase**: Phase 5
+**Status**: Resolved
+**Target Phase**: Phase 4.8 (Completed)
 
 ---
 
@@ -380,7 +381,7 @@ expected 'unknown' to be 'user_message_confirmed'
 - `simple-message` scenario runs without 'unknown' event type errors.
 - Logs confirm session events are being filtered out correctly.
 
-**Target Phase**: Resolved (Code updated)
+**Target Phase**: Resolved (Verified 2025-12-18)
 
 ---
 
@@ -534,6 +535,33 @@ export function validateNormalizedEvents(
 **Priority**: Medium
 **Target Phase**: Phase 5
 **Estimated Effort**: 4-6 hours
+
+---
+
+### D23: Missing E2E Verification for API Retrieval of Complex State
+
+**ID**: D23
+**Created**: 2025-12-18
+**Category**: Test Gap
+**Priority**: Medium
+**Status**: Pending
+
+**Location**: `backend/src/__tests__/e2e/scenarios/*`
+
+**Description**:
+Current E2E tests verify data persistence by directly querying the database (SQL) via `fetchDatabaseState` in `ResponseScenarioRegistry`. However, they DO NOT verify that the API endpoints (e.g., `GET /sessions/:id/messages`) correctly retrieve and reconstruct this complex data (messages, tools, thinking blocks) for the client.
+
+**Impact**:
+- We confirm data is in the DB, but not that the API serves it correctly.
+- Risks of regressions in the serialization/DTO layer where DB rows are converted back to JSON responses.
+- Complex structures like "thinking" blocks or "tool_use" might be persisted correctly but fail to load/display if the retrieval logic is broken.
+
+**Recommended Fix**:
+- Add a "Retrieval Verification" step to `ResponseScenarioRegistry` or relevant flow tests.
+- After scenario execution, call `client.get('/api/chat/sessions/:id/messages')`.
+- Assert that the returned JSON matches the expected structure and content (integrity check).
+
+**Target Phase**: Phase 5
 
 ---
 
@@ -798,9 +826,9 @@ beforeAll(async () => {
 **Root Cause**: Real Claude API returns tool IDs (`toolu_*`) that may already exist in database.
 
 **Affected Tests**:
-- `tool-use.golden.test.ts` - Multiple tests
-- `approval.golden.test.ts` - Approval flow tests
-- Any test that triggers tool calls with real API
+- ✅ **RESOLVED** - `MessageService` uses `randomUUID()` for PKs.
+- previously: `tool-use.golden.test.ts`
+- previously: `approval.golden.test.ts`
 
 **Error Pattern**:
 ```

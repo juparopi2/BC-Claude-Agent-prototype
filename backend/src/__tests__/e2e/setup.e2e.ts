@@ -17,6 +17,7 @@
 process.env.SESSION_SECRET = 'test-secret-for-integration-test';
 process.env.NODE_ENV = 'test';
 process.env.ENABLE_FILE_LOGGING = 'true';
+process.env.LOG_LEVEL = 'debug';
 process.env.LOG_FILE_PATH = 'logs/e2e-test-run.json';
 // Set Redis config for E2E tests (must be before imports)
 process.env.REDIS_HOST = 'localhost';

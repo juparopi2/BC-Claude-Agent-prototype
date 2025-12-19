@@ -1169,7 +1169,7 @@ export class MessageQueue {
       );
 
       // ⭐ DIAGNOSTIC: Enhanced success logging
-      this.log.info('✅ Message persisted to database successfully', {
+      this.log.info({
         jobId: job.id,
         messageId,
         sessionId,
@@ -1180,9 +1180,9 @@ export class MessageQueue {
         sequenceNumber,
         hasEventId: !!eventId,
         eventId,
-      });
+      }, '✅ Message persisted to database successfully');
     } catch (error) {
-      this.log.error('❌ Failed to persist message to database', {
+      this.log.error({
         error: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined,
         jobId: job.id,
@@ -1192,7 +1192,7 @@ export class MessageQueue {
         sequenceNumber,
         eventId,
         attemptNumber: job.attemptsMade,
-      });
+      }, '❌ Failed to persist message to database');
       throw error; // Will trigger retry
     }
   }

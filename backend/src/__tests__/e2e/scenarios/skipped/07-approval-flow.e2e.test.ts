@@ -19,8 +19,8 @@ import {
   createTestSessionFactory,
   type TestUser,
   type TestChatSession,
-} from '../helpers';
-import { TEST_TIMEOUTS } from '../../integration/helpers/constants';
+} from '../../helpers';
+import { TEST_TIMEOUTS } from '../../../integration/helpers/constants';
 import type { AgentEvent } from '@/types/websocket.types';
 
 // TODO: APPROVAL-NOT-IMPLEMENTED

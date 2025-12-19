@@ -38,7 +38,7 @@ import type {
   UserQuotasDbRow,
 } from '@/types/usage.types';
 import { ALERT_THRESHOLDS } from '@/types/usage.types';
-import { createChildLogger } from '@/utils/logger';
+import { createChildLogger } from '@/shared/utils/logger';
 import type { Logger } from 'pino';
 
 /**

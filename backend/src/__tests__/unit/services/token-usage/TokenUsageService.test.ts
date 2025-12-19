@@ -9,12 +9,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { TokenUsageRecord } from '@/services/token-usage/TokenUsageService';
 
 // Mock the database module
-vi.mock('@/config/database', () => ({
+vi.mock('@/infrastructure/database/database', () => ({
   executeQuery: vi.fn(),
 }));
 
 // Mock the logger
-vi.mock('@/utils/logger', () => ({
+vi.mock('@/shared/utils/logger', () => ({
   createChildLogger: vi.fn(() => ({
     info: vi.fn(),
     debug: vi.fn(),
@@ -25,7 +25,7 @@ vi.mock('@/utils/logger', () => ({
 
 // Import after mocking
 import { TokenUsageService, getTokenUsageService } from '@/services/token-usage/TokenUsageService';
-import { executeQuery } from '@/config/database';
+import { executeQuery } from '@/infrastructure/database/database';
 
 describe('TokenUsageService', () => {
   let service: TokenUsageService;

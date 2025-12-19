@@ -17,7 +17,7 @@ vi.mock('@config/database', () => ({
 }));
 
 // Mock logger
-vi.mock('@/utils/logger', () => ({
+vi.mock('@/shared/utils/logger', () => ({
   createChildLogger: vi.fn(() => ({
     info: vi.fn(),
     warn: vi.fn(),
@@ -37,7 +37,7 @@ import {
   validateUserIdMatch,
   validateSessionOwnership,
   timingSafeCompare,
-} from '@/utils/session-ownership';
+} from '@/shared/utils/session-ownership';
 import { executeQuery } from '@config/database';
 
 const mockExecuteQuery = vi.mocked(executeQuery);

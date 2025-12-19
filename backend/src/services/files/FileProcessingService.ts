@@ -24,7 +24,7 @@
  * @module services/files/FileProcessingService
  */
 
-import { createChildLogger } from '@/utils/logger';
+import { createChildLogger } from '@/shared/utils/logger';
 import { FileService } from './FileService';
 import { getFileUploadService } from './FileUploadService';
 import { getSocketIO, isSocketServiceInitialized } from '@services/websocket/SocketService';

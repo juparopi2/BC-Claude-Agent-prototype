@@ -1,4 +1,4 @@
-import type { SqlParams } from '@/config/database';
+import type { SqlParams } from '@/infrastructure/database/database';
 
 export type ColumnValue = string | number | boolean | null | undefined;
 export type SqlOperator = '=' | '!=' | '>' | '<' | '>=' | '<=';

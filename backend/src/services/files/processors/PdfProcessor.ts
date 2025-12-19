@@ -8,7 +8,7 @@
  */
 
 import { DocumentAnalysisClient, AzureKeyCredential } from '@azure/ai-form-recognizer';
-import { createChildLogger } from '@/utils/logger';
+import { createChildLogger } from '@/shared/utils/logger';
 import { env } from '@config/environment';
 import type { DocumentProcessor, ExtractionResult } from './types';
 import { fromAzureAnalyzeResult } from './types';

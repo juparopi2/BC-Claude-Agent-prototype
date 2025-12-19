@@ -11,7 +11,7 @@
  */
 
 import { randomUUID } from 'crypto';
-import { createChildLogger } from '@/utils/logger';
+import { createChildLogger } from '@/shared/utils/logger';
 import type { CitedFile } from '@bc-agent/shared';
 import type {
   EventCallback,

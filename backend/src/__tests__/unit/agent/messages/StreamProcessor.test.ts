@@ -15,7 +15,7 @@ import type { StreamEvent } from '@services/agent/messages/StreamProcessor';
 import type { MessageStreamEvent } from '@anthropic-ai/sdk/resources/messages';
 
 // Mock logger to avoid noise in tests
-vi.mock('@/utils/logger', () => ({
+vi.mock('@/shared/utils/logger', () => ({
   createChildLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),

@@ -9,13 +9,13 @@ const mockLogger = vi.hoisted(() => ({
   debug: vi.fn(),
 }));
 
-vi.mock('@/utils/logger', () => ({
+vi.mock('@/shared/utils/logger', () => ({
   logger: mockLogger,
   createChildLogger: vi.fn(() => mockLogger),
 }));
 
 // Mock environment with valid connection string
-vi.mock('@/config/environment', () => ({
+vi.mock('@/infrastructure/config/environment', () => ({
   env: {
     STORAGE_CONNECTION_STRING: 'DefaultEndpointsProtocol=https;AccountName=testaccount;AccountKey=dGVzdGtleQ==;EndpointSuffix=core.windows.net',
     STORAGE_CONTAINER_NAME: 'test-container',

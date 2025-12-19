@@ -7,8 +7,8 @@
  * @module services/token-usage/TokenUsageService
  */
 
-import { executeQuery } from '@/config/database';
-import { createChildLogger } from '@/utils/logger';
+import { executeQuery } from '@/infrastructure/database/database';
+import { createChildLogger } from '@/shared/utils/logger';
 
 const logger = createChildLogger({ service: 'TokenUsageService' });
 

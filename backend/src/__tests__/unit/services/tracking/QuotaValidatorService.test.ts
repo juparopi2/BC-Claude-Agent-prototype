@@ -19,7 +19,7 @@ import type { ConnectionPool, IResult } from 'mssql';
 import type { Redis } from 'ioredis';
 
 // Mock dependencies
-vi.mock('@/utils/logger', () => ({
+vi.mock('@/shared/utils/logger', () => ({
   createChildLogger: vi.fn(() => ({
     info: vi.fn(),
     debug: vi.fn(),

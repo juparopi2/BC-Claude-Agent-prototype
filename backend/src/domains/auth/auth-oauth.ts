@@ -14,14 +14,14 @@
 
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
-import { executeQuery } from '@/config/database';
+import { executeQuery } from '@/infrastructure/database/database';
 import { createMicrosoftOAuthService } from '@/services/auth/MicrosoftOAuthService';
 import { createBCTokenManager } from '@/services/auth/BCTokenManager';
-import { authenticateMicrosoft, authenticateMicrosoftOptional } from '@/middleware/auth-oauth';
+import { authenticateMicrosoft, authenticateMicrosoftOptional } from '@/domains/auth/middleware/auth-oauth';
 import { MicrosoftOAuthSession } from '@/types/microsoft.types';
-import { logger } from '@/utils/logger';
-import { ErrorCode } from '@/constants/errors';
-import { sendError } from '@/utils/error-response';
+import { logger } from '@/shared/utils/logger';
+import { ErrorCode } from '@/shared/constants/errors';
+import { sendError } from '@/shared/utils/error-response';
 
 /**
  * Extract tenant ID from client_info base64 string

@@ -30,9 +30,9 @@
 
 import { Server as SocketServer } from 'socket.io';
 import crypto from 'crypto';
-import { getDatabase } from '@/config/database';
-import { uuidInput, applyUuidInputs } from '@/config/database-helpers';
-import { createChildLogger } from '@/utils/logger';
+import { getDatabase } from '@/infrastructure/database/database';
+import { uuidInput, applyUuidInputs } from '@/infrastructure/database/database-helpers';
+import { createChildLogger } from '@/shared/utils/logger';
 import { getEventStore, EventStore } from '@/services/events/EventStore';
 import type {
   ApprovalRequestedEvent as AgentApprovalRequestedEvent,
@@ -47,7 +47,7 @@ import {
   ApprovalOwnershipResult,
   AtomicApprovalResponseResult,
 } from '@/types/approval.types';
-import { normalizeUUID } from '@/utils/uuid';
+import { normalizeUUID } from '@/shared/utils/uuid';
 
 // Structured logger for approval operations
 const logger = createChildLogger({ service: 'ApprovalManager' });

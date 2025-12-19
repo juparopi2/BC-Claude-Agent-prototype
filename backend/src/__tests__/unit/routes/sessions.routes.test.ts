@@ -11,11 +11,11 @@ import { describe, it, expect, vi, beforeEach, Mock } from 'vitest';
 import request from 'supertest';
 import express, { Application } from 'express';
 import sessionsRouter from '@/routes/sessions';
-import { executeQuery } from '@/config/database';
+import { executeQuery } from '@/infrastructure/database/database';
 import crypto from 'crypto';
 
 // Mock dependencies
-vi.mock('@/config/database', () => ({
+vi.mock('@/infrastructure/database/database', () => ({
   executeQuery: vi.fn()
 }));
 
@@ -25,7 +25,7 @@ vi.mock('crypto', () => ({
   }
 }));
 
-vi.mock('@/utils/logger', () => ({
+vi.mock('@/shared/utils/logger', () => ({
   logger: {
     info: vi.fn(),
     error: vi.fn(),
@@ -44,7 +44,7 @@ vi.mock('@/utils/logger', () => ({
 }));
 
 // Mock auth middleware
-vi.mock('@/middleware/auth-oauth', () => ({
+vi.mock('@/domains/auth/middleware/auth-oauth', () => ({
   authenticateMicrosoft: (req: express.Request, _res: express.Response, next: express.NextFunction) => {
     // Set userId from test
     req.userId = (req as Express.Request & { testUserId?: string }).testUserId || 'test-user-123';

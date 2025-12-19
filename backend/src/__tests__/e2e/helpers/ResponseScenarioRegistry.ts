@@ -16,8 +16,8 @@ import {
 } from '../../integration/helpers/TestSessionFactory';
 import { E2ETestClient, createE2ETestClient } from './E2ETestClient';
 import { E2E_API_MODE } from '../setup.e2e';
-import { executeQuery } from '@/config/database';
-import { normalizeUUID } from '@/utils/uuid';
+import { executeQuery } from '@/infrastructure/database/database';
+import { normalizeUUID } from '@/shared/utils/uuid';
 
 /** Event from WebSocket collected during scenario execution */
 export interface AgentEvent {

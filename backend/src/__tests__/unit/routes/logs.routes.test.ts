@@ -14,7 +14,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
 import express, { Application } from 'express';
 import logsRouter from '@/routes/logs';
-import { ErrorCode } from '@/constants/errors';
+import { ErrorCode } from '@/shared/constants/errors';
 
 // ============================================
 // Mock Dependencies
@@ -28,7 +28,7 @@ const mockChildLogger = {
   error: vi.fn(),
 };
 
-vi.mock('@/utils/logger', () => ({
+vi.mock('@/shared/utils/logger', () => ({
   logger: {
     child: vi.fn(() => mockChildLogger),
     info: vi.fn(),

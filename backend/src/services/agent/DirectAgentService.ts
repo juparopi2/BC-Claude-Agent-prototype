@@ -29,7 +29,7 @@
 // Note: Anthropic SDK types (MessageParam, ToolUseBlock, etc.) were removed
 // as they were used by executeQueryStreaming which was deprecated in Phase 1.
 // The runGraph method uses LangChain for orchestration instead.
-import { env } from '@/config';
+import { env } from '@/infrastructure/config';
 import type { AgentEvent, BaseAgentEvent, AgentExecutionResult, UsageEvent } from '@/types';
 import type { ApprovalManager } from '../approval/ApprovalManager';
 import type { TodoManager } from '../todo/TodoManager';
@@ -41,7 +41,7 @@ import { getMessageQueue } from '../queue/MessageQueue';
 import { getTokenUsageService } from '../token-usage/TokenUsageService';
 import { getUsageTrackingService } from '../tracking/UsageTrackingService';
 import { getMessageEmitter, type IMessageEmitter } from './messages';
-import { createChildLogger } from '@/utils/logger';
+import { createChildLogger } from '@/shared/utils/logger';
 import type { Logger } from 'pino';
 import * as path from 'path';
 import { getFileService } from '../files/FileService';

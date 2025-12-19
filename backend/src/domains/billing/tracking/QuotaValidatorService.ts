@@ -41,7 +41,7 @@ import type {
   UserQuotasDbRow,
   QuotaType,
 } from '@/types/usage.types';
-import { createChildLogger } from '@/utils/logger';
+import { createChildLogger } from '@/shared/utils/logger';
 import type { Logger } from 'pino';
 
 /**

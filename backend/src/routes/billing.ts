@@ -19,9 +19,9 @@ import { Router, Request, Response } from 'express';
 import { z, ZodError } from 'zod';
 import { authenticateMicrosoft } from '@middleware/auth-oauth';
 import { getBillingService } from '@services/billing';
-import { sendError } from '@/utils/error-response';
-import { ErrorCode } from '@/constants/errors';
-import { createChildLogger } from '@/utils/logger';
+import { sendError } from '@/shared/utils/error-response';
+import { ErrorCode } from '@/shared/constants/errors';
+import { createChildLogger } from '@/shared/utils/logger';
 
 const router = Router();
 const logger = createChildLogger({ service: 'BillingRoutes' });

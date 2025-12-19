@@ -19,8 +19,8 @@ import {
   sendConflict,
   sendInternalError,
   sendServiceUnavailable,
-} from '@/utils/error-response';
-import { ErrorCode } from '@/constants/errors';
+} from '@/shared/utils/error-response';
+import { ErrorCode } from '@/shared/constants/errors';
 
 // Mock Express Response
 function createMockResponse(): Response {

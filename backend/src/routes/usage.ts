@@ -23,9 +23,9 @@ import { Router, Request, Response } from 'express';
 import { z, ZodError } from 'zod';
 import { authenticateMicrosoft } from '@middleware/auth-oauth';
 import { getQuotaValidatorService } from '@services/tracking/QuotaValidatorService';
-import { sendError } from '@/utils/error-response';
-import { ErrorCode } from '@/constants/errors';
-import { createChildLogger } from '@/utils/logger';
+import { sendError } from '@/shared/utils/error-response';
+import { ErrorCode } from '@/shared/constants/errors';
+import { createChildLogger } from '@/shared/utils/logger';
 import { executeQuery } from '@config/database';
 import type { PeriodType } from '@/types/usage.types';
 

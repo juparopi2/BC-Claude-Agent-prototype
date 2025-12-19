@@ -22,7 +22,7 @@ import type {
 } from './retrieval.types';
 import type { ParsedFile } from '@/types/file.types';
 import type { SearchResult } from '@/services/search/types';
-import { logger } from '@/utils/logger';
+import { logger } from '@/shared/utils/logger';
 
 /** Interface for FileService dependency */
 interface IFileService {

@@ -10,7 +10,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach, Mock } from 'vitest';
 import request from 'supertest';
 import express, { Application, Request, Response, NextFunction } from 'express';
-import { ErrorCode } from '@/constants/errors';
+import { ErrorCode } from '@/shared/constants/errors';
 import {
   sendError,
   sendBadRequest,
@@ -20,21 +20,21 @@ import {
   sendConflict,
   sendInternalError,
   sendServiceUnavailable,
-} from '@/utils/error-response';
+} from '@/shared/utils/error-response';
 
 // ============================================
 // Mock All External Dependencies BEFORE imports
 // ============================================
 
 // Mock config modules
-vi.mock('@/config/database', () => ({
+vi.mock('@/infrastructure/database/database', () => ({
   executeQuery: vi.fn().mockResolvedValue({ recordset: [], rowsAffected: [0] }),
   initDatabase: vi.fn().mockResolvedValue(undefined),
   closeDatabase: vi.fn().mockResolvedValue(undefined),
   checkDatabaseHealth: vi.fn().mockResolvedValue(true),
 }));
 
-vi.mock('@/config/redis', () => ({
+vi.mock('@/infrastructure/redis/redis', () => ({
   initRedis: vi.fn().mockResolvedValue(undefined),
   closeRedis: vi.fn().mockResolvedValue(undefined),
   checkRedisHealth: vi.fn().mockResolvedValue(true),
@@ -46,11 +46,11 @@ vi.mock('@/config/redis', () => ({
   }),
 }));
 
-vi.mock('@/config/keyvault', () => ({
+vi.mock('@/infrastructure/security/keyvault', () => ({
   loadSecretsFromKeyVault: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock('@/config/environment', () => ({
+vi.mock('@/infrastructure/config/environment', () => ({
   env: {
     PORT: 3002,
     CORS_ORIGIN: 'http://localhost:3000',
@@ -70,12 +70,12 @@ vi.mock('@/config/environment', () => ({
 }));
 
 // Mock utils
-vi.mock('@/utils/databaseKeepalive', () => ({
+vi.mock('@/shared/utils/databaseKeepalive', () => ({
   startDatabaseKeepalive: vi.fn(),
   stopDatabaseKeepalive: vi.fn(),
 }));
 
-vi.mock('@/utils/logger', () => ({
+vi.mock('@/shared/utils/logger', () => ({
   logger: {
     info: vi.fn(),
     error: vi.fn(),
@@ -85,7 +85,7 @@ vi.mock('@/utils/logger', () => ({
   },
 }));
 
-vi.mock('@/utils/session-ownership', () => ({
+vi.mock('@/shared/utils/session-ownership', () => ({
   validateSessionOwnership: vi.fn().mockResolvedValue(true),
 }));
 
@@ -139,7 +139,7 @@ vi.mock('@/services/agent', () => ({
   getDirectAgentService: () => mockDirectAgentService,
 }));
 
-vi.mock('@/services/approval/ApprovalManager', () => ({
+vi.mock('@/domains/approval/ApprovalManager', () => ({
   getApprovalManager: () => mockApprovalManager,
 }));
 
@@ -151,7 +151,7 @@ vi.mock('@/services/websocket/ChatMessageHandler', () => ({
   getChatMessageHandler: () => mockChatMessageHandler,
 }));
 
-vi.mock('@/services/queue/MessageQueue', () => ({
+vi.mock('@/infrastructure/queue/MessageQueue', () => ({
   getMessageQueue: () => mockMessageQueue,
 }));
 
@@ -177,7 +177,7 @@ vi.mock('@/routes/token-usage', () => ({
 }));
 
 // Mock middleware
-vi.mock('@/middleware/auth-oauth', () => ({
+vi.mock('@/domains/auth/middleware/auth-oauth', () => ({
   authenticateMicrosoft: (req: Request, _res: Response, next: NextFunction) => {
     // Simulate authenticated user from headers
     const userId = req.headers['x-test-user-id'] as string;
@@ -193,13 +193,13 @@ vi.mock('@/middleware/auth-oauth', () => ({
   },
 }));
 
-vi.mock('@/middleware/logging', () => ({
+vi.mock('@/shared/middleware/logging', () => ({
   httpLogger: (_req: Request, _res: Response, next: NextFunction) => next(),
 }));
 
 // Import executeQuery after mocks
-import { executeQuery } from '@/config/database';
-import { validateSessionOwnership } from '@/utils/session-ownership';
+import { executeQuery } from '@/infrastructure/database/database';
+import { validateSessionOwnership } from '@/shared/utils/session-ownership';
 
 // ============================================
 // Test Helpers

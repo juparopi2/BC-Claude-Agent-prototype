@@ -10,7 +10,7 @@
  * For normal operations, prefer using MCP tools via Agent SDK.
  */
 
-import { env } from '@/config';
+import { env } from '@/infrastructure/config';
 import type {
   BCQueryOptions,
   BCApiResponse,

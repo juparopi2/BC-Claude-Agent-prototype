@@ -23,7 +23,7 @@ import request from 'supertest';
 import express, { Application, Request, Response, NextFunction } from 'express';
 import session from 'express-session';
 import type { MicrosoftOAuthSession } from '@/types/microsoft.types';
-import { ErrorCode } from '@/constants/errors';
+import { ErrorCode } from '@/shared/constants/errors';
 
 // ============================================
 // Mock Dependencies using vi.hoisted to ensure proper hoisting
@@ -93,12 +93,12 @@ const { mockOAuthService, mockBCTokenManager, mockExecuteQuery, mockLogger, mock
 });
 
 // Mock database
-vi.mock('@/config/database', () => ({
+vi.mock('@/infrastructure/database/database', () => ({
   executeQuery: mockExecuteQuery,
 }));
 
 // Mock logger
-vi.mock('@/utils/logger', () => ({
+vi.mock('@/shared/utils/logger', () => ({
   logger: mockLogger,
 }));
 
@@ -113,7 +113,7 @@ vi.mock('@/services/auth/BCTokenManager', () => ({
 }));
 
 // Mock the authentication middleware
-vi.mock('@/middleware/auth-oauth', () => ({
+vi.mock('@/domains/auth/middleware/auth-oauth', () => ({
   authenticateMicrosoft: mockAuthenticateMicrosoft,
 }));
 

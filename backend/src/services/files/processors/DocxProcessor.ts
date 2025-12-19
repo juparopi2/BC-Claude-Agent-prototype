@@ -8,7 +8,7 @@
  */
 
 import mammoth from 'mammoth';
-import { createChildLogger } from '@/utils/logger';
+import { createChildLogger } from '@/shared/utils/logger';
 import type { DocumentProcessor, ExtractionResult } from './types';
 
 const logger = createChildLogger({ service: 'DocxProcessor' });

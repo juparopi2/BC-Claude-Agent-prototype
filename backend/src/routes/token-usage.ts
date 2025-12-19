@@ -12,14 +12,14 @@
 
 import { Router, Request, Response } from 'express';
 import { getTokenUsageService } from '@/services/token-usage';
-import { createChildLogger } from '@/utils/logger';
-import { authenticateMicrosoft } from '@/middleware/auth-oauth';
+import { createChildLogger } from '@/shared/utils/logger';
+import { authenticateMicrosoft } from '@/domains/auth/middleware/auth-oauth';
 import {
   validateSessionOwnership,
   validateUserIdMatch,
-} from '@/utils/session-ownership';
-import { ErrorCode } from '@/constants/errors';
-import { sendError } from '@/utils/error-response';
+} from '@/shared/utils/session-ownership';
+import { ErrorCode } from '@/shared/constants/errors';
+import { sendError } from '@/shared/utils/error-response';
 
 const router = Router();
 const logger = createChildLogger({ route: 'token-usage' });

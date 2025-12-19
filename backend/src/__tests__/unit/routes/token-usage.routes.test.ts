@@ -19,9 +19,9 @@ import { describe, it, expect, vi, beforeEach, Mock } from 'vitest';
 import request from 'supertest';
 import express, { Application, Request, Response, NextFunction } from 'express';
 import tokenUsageRouter from '@/routes/token-usage';
-import { ErrorCode } from '@/constants/errors';
+import { ErrorCode } from '@/shared/constants/errors';
 import { getTokenUsageService } from '@/services/token-usage';
-import { validateSessionOwnership, validateUserIdMatch } from '@/utils/session-ownership';
+import { validateSessionOwnership, validateUserIdMatch } from '@/shared/utils/session-ownership';
 
 // ============================================
 // Mock Dependencies
@@ -41,13 +41,13 @@ vi.mock('@/services/token-usage', () => ({
 }));
 
 // Mock session ownership validation
-vi.mock('@/utils/session-ownership', () => ({
+vi.mock('@/shared/utils/session-ownership', () => ({
   validateSessionOwnership: vi.fn(),
   validateUserIdMatch: vi.fn((requestedId, authenticatedId) => requestedId === authenticatedId),
 }));
 
 // Mock logger
-vi.mock('@/utils/logger', () => ({
+vi.mock('@/shared/utils/logger', () => ({
   createChildLogger: () => ({
     info: vi.fn(),
     error: vi.fn(),
@@ -57,7 +57,7 @@ vi.mock('@/utils/logger', () => ({
 }));
 
 // Mock auth middleware - we'll inject userId in tests
-vi.mock('@/middleware/auth-oauth', () => ({
+vi.mock('@/domains/auth/middleware/auth-oauth', () => ({
   authenticateMicrosoft: (req: Request, res: Response, next: NextFunction) => {
     // Get userId from custom header for testing
     const testUserId = req.headers['x-test-user-id'] as string;

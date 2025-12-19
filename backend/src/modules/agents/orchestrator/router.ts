@@ -3,7 +3,7 @@ import { ModelFactory } from '../../../core/langchain/ModelFactory';
 import { getModelConfig } from '../../../config/models';
 import { SystemMessage } from '@langchain/core/messages';
 import { z } from 'zod';
-import { createChildLogger } from '@/utils/logger';
+import { createChildLogger } from '@/shared/utils/logger';
 
 const logger = createChildLogger({ service: 'RouterNode' });
 

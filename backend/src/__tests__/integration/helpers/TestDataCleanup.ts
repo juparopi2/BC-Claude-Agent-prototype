@@ -7,8 +7,8 @@
  * @module __tests__/integration/helpers/TestDataCleanup
  */
 
-import { executeQuery } from '@/config/database';
-import { getRedis } from '@/config/redis';
+import { executeQuery } from '@/infrastructure/database/database';
+import { getRedis } from '@/infrastructure/redis/redis';
 import { TEST_PREFIX, TEST_EMAIL_DOMAIN } from './TestSessionFactory';
 import { REDIS_CLEANUP_PATTERNS } from './constants';
 

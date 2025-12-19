@@ -203,7 +203,7 @@ interface MultiTenantResponse extends ConcurrentResponse {
 // ============================================
 
 // Mock logger with performance tracking (inline to avoid hoisting issues)
-vi.mock('@/utils/logger', () => ({
+vi.mock('@/shared/utils/logger', () => ({
   logger: {
     info: vi.fn(),
     warn: vi.fn(),
@@ -238,13 +238,13 @@ vi.mock('@/services/token-usage', () => ({
 }));
 
 // Mock session ownership validation
-vi.mock('@/utils/session-ownership', () => ({
+vi.mock('@/shared/utils/session-ownership', () => ({
   validateSessionOwnership: vi.fn().mockResolvedValue({ isOwner: true }),
   validateUserIdMatch: vi.fn((requestedId, authenticatedId) => requestedId === authenticatedId),
 }));
 
 // Mock database for sessions route
-vi.mock('@/config/database', () => ({
+vi.mock('@/infrastructure/database/database', () => ({
   executeQuery: vi.fn().mockResolvedValue({
     recordset: [],
     rowsAffected: [0],
@@ -252,7 +252,7 @@ vi.mock('@/config/database', () => ({
 }));
 
 // Mock auth middleware - inject userId via header
-vi.mock('@/middleware/auth-oauth', () => ({
+vi.mock('@/domains/auth/middleware/auth-oauth', () => ({
   authenticateMicrosoft: (req: Request, _res: Response, next: NextFunction) => {
     const testUserId = req.headers['x-test-user-id'] as string;
     if (testUserId) {

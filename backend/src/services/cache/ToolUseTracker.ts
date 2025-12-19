@@ -16,8 +16,8 @@
  */
 
 import Redis from 'ioredis';
-import { env } from '@/config';
-import { logger } from '@/utils/logger';
+import { env } from '@/infrastructure/config';
+import { logger } from '@/shared/utils/logger';
 import { randomUUID } from 'crypto';
 
 /**

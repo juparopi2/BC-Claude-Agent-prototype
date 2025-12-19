@@ -10,7 +10,7 @@
  */
 
 import { createClient, RedisClientType } from 'redis';
-import { createChildLogger } from '@/utils/logger';
+import { createChildLogger } from '@/shared/utils/logger';
 import { Environment } from '@config/EnvironmentFacade';
 import { env } from '@/infrastructure/config/environment';
 

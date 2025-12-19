@@ -58,7 +58,7 @@ import {
 import type { TestSessionFactory, TestUser, TestChatSession } from '../../helpers';
 
 // ONLY mock logger (acceptable per audit)
-vi.mock('@/utils/logger', () => ({
+vi.mock('@/shared/utils/logger', () => ({
   logger: {
     info: vi.fn(),
     error: vi.fn(),
@@ -82,17 +82,17 @@ import {
   getMessageQueue,
   __resetMessageQueue,
   QueueName,
-} from '@/services/queue/MessageQueue';
+} from '@/infrastructure/queue/MessageQueue';
 import type {
   MessagePersistenceJob,
   ToolExecutionJob,
   EventProcessingJob,
-} from '@/services/queue/MessageQueue';
+} from '@/infrastructure/queue/MessageQueue';
 
 // REAL dependencies for DI
-import { executeQuery } from '@/config/database';
+import { executeQuery } from '@/infrastructure/database/database';
 import { getEventStore } from '@/services/events/EventStore';
-import { logger } from '@/utils/logger';
+import { logger } from '@/shared/utils/logger';
 
 describe('MessageQueue Integration Tests', () => {
   // Initialize DB + Redis REAL infrastructure with extended timeout

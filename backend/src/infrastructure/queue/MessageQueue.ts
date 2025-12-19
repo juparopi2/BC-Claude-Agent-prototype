@@ -25,9 +25,9 @@
 
 import { Queue, Worker, Job, QueueEvents, type RedisOptions } from 'bullmq';
 import { Redis } from 'ioredis';
-import { env } from '@/config';
-import { logger } from '@/utils/logger';
-import { executeQuery, SqlParams } from '@/config/database';
+import { env } from '@/infrastructure/config';
+import { logger } from '@/shared/utils/logger';
+import { executeQuery, SqlParams } from '@/infrastructure/database/database';
 import { getEventStore, EventType } from '@/services/events/EventStore';
 import type {
   IMessageQueueDependencies,

@@ -21,7 +21,7 @@ const mockExecuteQuery = vi.hoisted(() =>
   vi.fn().mockResolvedValue({ recordset: [], rowsAffected: [1] })
 );
 
-vi.mock('@/config/database', () => ({
+vi.mock('@/infrastructure/database/database', () => ({
   executeQuery: mockExecuteQuery,
 }));
 
@@ -33,7 +33,7 @@ const mockLogger = vi.hoisted(() => ({
   debug: vi.fn(),
 }));
 
-vi.mock('@/utils/logger', () => ({
+vi.mock('@/shared/utils/logger', () => ({
   logger: mockLogger,
   createChildLogger: vi.fn(() => mockLogger),
 }));

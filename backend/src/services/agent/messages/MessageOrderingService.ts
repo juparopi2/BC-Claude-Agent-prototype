@@ -15,10 +15,10 @@
  * - With pre-assignment: A gets seq=N, B gets seq=N+1 (preserves intent)
  */
 
-import { getRedis } from '@/config/redis';
-import { executeQuery } from '@/config/database';
+import { getRedis } from '@/infrastructure/redis/redis';
+import { executeQuery } from '@/infrastructure/database/database';
 import { randomUUID } from 'crypto';
-import { createChildLogger } from '@/utils/logger';
+import { createChildLogger } from '@/shared/utils/logger';
 import type { Logger } from 'pino';
 import type {
   ReservedSequenceBatch,

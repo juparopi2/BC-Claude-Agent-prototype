@@ -30,7 +30,7 @@ import type {
   TurnResult,
   CompletedBlock,
 } from './types';
-import { createChildLogger } from '@/utils/logger';
+import { createChildLogger } from '@/shared/utils/logger';
 import type { Logger } from 'pino';
 import { randomUUID } from 'crypto';
 

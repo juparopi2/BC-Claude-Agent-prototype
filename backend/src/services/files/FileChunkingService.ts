@@ -15,8 +15,8 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
-import { executeQuery, SqlParams } from '@/config/database';
-import { logger as rootLogger } from '@/utils/logger';
+import { executeQuery, SqlParams } from '@/infrastructure/database/database';
+import { logger as rootLogger } from '@/shared/utils/logger';
 import { ChunkingStrategyFactory } from '../chunking/ChunkingStrategyFactory';
 import type { ChunkingOptions } from '../chunking/types';
 import type { FileChunkingJob, EmbeddingGenerationJob } from '../queue/MessageQueue';

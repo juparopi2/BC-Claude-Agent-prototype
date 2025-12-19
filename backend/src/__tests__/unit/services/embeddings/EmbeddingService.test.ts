@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EmbeddingService } from '@/services/embeddings/EmbeddingService';
-import { env } from '@/config/environment';
+import { env } from '@/infrastructure/config/environment';
 import { OpenAI } from 'openai';
 
 // Mock dependencies
@@ -13,7 +13,7 @@ vi.mock('openai', () => {
     }
   };
 });
-vi.mock('@/config/environment', async (importOriginal) => {
+vi.mock('@/infrastructure/config/environment', async (importOriginal) => {
   const actual = await importOriginal();
   return {
     ...actual as object,

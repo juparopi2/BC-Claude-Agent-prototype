@@ -10,7 +10,7 @@
  * @module __tests__/e2e/helpers/CleanSlateDB
  */
 
-import { executeQuery } from '@/config/database';
+import { executeQuery } from '@/infrastructure/database/database';
 import { TEST_EMAIL_DOMAIN } from '../../integration/helpers/constants';
 
 /**

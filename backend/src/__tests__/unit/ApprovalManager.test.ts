@@ -16,7 +16,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { ApprovalManager, getApprovalManager } from '@/services/approval/ApprovalManager';
+import { ApprovalManager, getApprovalManager } from '@/domains/approval/ApprovalManager';
 import type { Server as SocketServer } from 'socket.io';
 
 // ===== PHASE 1: FIX DATABASE MOCK =====
@@ -42,7 +42,7 @@ const mockTransaction = {
 };
 
 // Mock database with persistent spy including transaction support
-vi.mock('@/config/database', () => ({
+vi.mock('@/infrastructure/database/database', () => ({
   getDatabase: vi.fn(() => ({
     request: mockDbRequest,
     transaction: vi.fn(() => mockTransaction),
@@ -75,7 +75,7 @@ vi.mock('@/services/events/EventStore', () => ({
 }));
 
 // Mock logger to avoid output during tests
-vi.mock('@/utils/logger', () => ({
+vi.mock('@/shared/utils/logger', () => ({
   createChildLogger: vi.fn(() => ({
     info: vi.fn(),
     warn: vi.fn(),

@@ -15,8 +15,8 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
-import { executeQuery, initDatabase, closeDatabase } from '@/config/database';
-import { MessagePersistenceJob } from '@/services/queue/MessageQueue';
+import { executeQuery, initDatabase, closeDatabase } from '@/infrastructure/database/database';
+import { MessagePersistenceJob } from '@/infrastructure/queue/MessageQueue';
 import { MessageEvent } from '@/types/agent.types';
 import { randomUUID } from 'crypto';
 

@@ -20,7 +20,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ToolExecutor } from '@/services/agent/execution/ToolExecutor';
-import type { ApprovalManager } from '@/services/approval/ApprovalManager';
+import type { ApprovalManager } from '@/domains/approval/ApprovalManager';
 import type { ToolResultEvent } from '@bc-agent/shared';
 
 // ===== HOISTED MOCKS =====
@@ -59,7 +59,7 @@ const mockUsageTrackingService = {
   trackClaudeUsage: vi.fn(),
 };
 
-vi.mock('@/services/tracking/UsageTrackingService', () => ({
+vi.mock('@/domains/billing/tracking/UsageTrackingService', () => ({
   getUsageTrackingService: vi.fn(() => mockUsageTrackingService),
 }));
 
@@ -79,7 +79,7 @@ const mockMessageQueue = {
   addMessagePersistence: mockAddMessagePersistence,
 };
 
-vi.mock('@/services/queue/MessageQueue', () => ({
+vi.mock('@/infrastructure/queue/MessageQueue', () => ({
   getMessageQueue: vi.fn(() => mockMessageQueue),
 }));
 

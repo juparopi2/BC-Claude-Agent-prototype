@@ -34,7 +34,7 @@ vi.mock('@/config', () => ({
   },
 }));
 
-vi.mock('@/utils/logger', () => ({
+vi.mock('@/shared/utils/logger', () => ({
   createChildLogger: () => ({
     info: vi.fn(),
     warn: vi.fn(),
@@ -55,7 +55,7 @@ vi.mock('@/services/events/EventStore', () => ({
   })),
 }));
 
-vi.mock('@/services/queue/MessageQueue', () => ({
+vi.mock('@/infrastructure/queue/MessageQueue', () => ({
   getMessageQueue: vi.fn(() => ({
     addMessagePersistence: vi.fn(),
   })),
@@ -79,7 +79,7 @@ vi.mock('@/core/providers/adapters', () => ({
   },
 }));
 
-vi.mock('@/services/tracking/UsageTrackingService', () => ({
+vi.mock('@/domains/billing/tracking/UsageTrackingService', () => ({
   getUsageTrackingService: vi.fn(() => ({
     trackClaudeUsage: vi.fn(),
   })),

@@ -33,12 +33,12 @@ vi.mock('@services/files/DeletionAuditService', () => ({
 
 // Mock database
 const mockExecuteQuery = vi.fn();
-vi.mock('@/config/database', () => ({
+vi.mock('@/infrastructure/database/database', () => ({
   executeQuery: (...args: unknown[]) => mockExecuteQuery(...args),
 }));
 
 // Mock logger
-vi.mock('@/utils/logger', () => ({
+vi.mock('@/shared/utils/logger', () => ({
   createChildLogger: () => ({
     info: vi.fn(),
     error: vi.fn(),

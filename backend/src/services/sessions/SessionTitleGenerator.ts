@@ -8,10 +8,10 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
-import { env } from '@/config';
-import { getModelName } from '@/config/models';
-import { logger } from '@/utils/logger';
-import { executeQuery, SqlParams } from '@/config/database';
+import { env } from '@/infrastructure/config/environment';
+import { getModelName } from '@/infrastructure/config/models';
+import { logger } from '@/shared/utils/logger';
+import { executeQuery, SqlParams } from '@/infrastructure/database/database';
 
 /**
  * Session Title Generator Class

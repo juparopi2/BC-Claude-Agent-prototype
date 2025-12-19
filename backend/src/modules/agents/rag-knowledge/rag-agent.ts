@@ -6,7 +6,7 @@ import { getModelConfig } from '../../../config/models';
 import { RunnableConfig } from '@langchain/core/runnables';
 import { AIMessage, ToolMessage, BaseMessage } from '@langchain/core/messages';
 import { createKnowledgeSearchTool } from './tools';
-import { createChildLogger } from '@/utils/logger';
+import { createChildLogger } from '@/shared/utils/logger';
 import { StructuredToolInterface } from '@langchain/core/tools';
 
 const logger = createChildLogger({ service: 'RAGAgent' });

@@ -7,7 +7,7 @@
  * @module services/files/processors/TextProcessor
  */
 
-import { createChildLogger } from '@/utils/logger';
+import { createChildLogger } from '@/shared/utils/logger';
 import type { DocumentProcessor, ExtractionResult } from './types';
 
 const logger = createChildLogger({ service: 'TextProcessor' });

@@ -1,4 +1,4 @@
-import type { SqlParams } from '@/config/database';
+import type { SqlParams } from '@/infrastructure/database/database';
 
 /**
  * Validate SQL query and parameters for common anti-patterns

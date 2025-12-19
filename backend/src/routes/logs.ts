@@ -26,8 +26,8 @@
 import { Router, Request, Response } from 'express';
 import { logger } from '../utils/logger';
 import { z } from 'zod';
-import { ErrorCode } from '@/constants/errors';
-import { sendError } from '@/utils/error-response';
+import { ErrorCode } from '@/shared/constants/errors';
+import { sendError } from '@/shared/utils/error-response';
 
 const router = Router();
 

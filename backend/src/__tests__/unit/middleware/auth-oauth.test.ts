@@ -16,7 +16,7 @@ import type { Request, Response, NextFunction } from 'express';
 import type { MicrosoftOAuthSession } from '@/types/microsoft.types';
 
 // Mock dependencies before importing the middleware
-vi.mock('@/utils/logger', () => ({
+vi.mock('@/shared/utils/logger', () => ({
   logger: {
     info: vi.fn(),
     warn: vi.fn(),
@@ -25,7 +25,7 @@ vi.mock('@/utils/logger', () => ({
   },
 }));
 
-vi.mock('@/config/database', () => ({
+vi.mock('@/infrastructure/database/database', () => ({
   executeQuery: vi.fn(),
 }));
 
@@ -41,10 +41,10 @@ import {
   authenticateMicrosoft,
   requireBCAccess,
   authenticateMicrosoftOptional,
-} from '@/middleware/auth-oauth';
-import { logger } from '@/utils/logger';
-import { executeQuery } from '@/config/database';
-import { ErrorCode } from '@/constants/errors';
+} from '@/domains/auth/middleware/auth-oauth';
+import { logger } from '@/shared/utils/logger';
+import { executeQuery } from '@/infrastructure/database/database';
+import { ErrorCode } from '@/shared/constants/errors';
 
 // ===== TEST HELPERS =====
 

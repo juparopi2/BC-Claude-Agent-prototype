@@ -419,7 +419,7 @@ export const Environment = {
    *
    * @example
    * // Write to log file
-   * import { logger } from '@/utils/logger';
+   * import { logger } from '@/shared/utils/logger';
    * logger.info(Environment.info(), 'Environment configuration loaded');
    *
    * @example

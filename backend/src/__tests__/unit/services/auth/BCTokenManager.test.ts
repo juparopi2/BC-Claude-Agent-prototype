@@ -22,12 +22,12 @@ import type { TokenAcquisitionResult, BCTokenData } from '@/types/microsoft.type
 // Mock database module with vi.hoisted()
 const mockExecuteQuery = vi.hoisted(() => vi.fn());
 
-vi.mock('@/config/database', () => ({
+vi.mock('@/infrastructure/database/database', () => ({
   executeQuery: mockExecuteQuery,
 }));
 
 // Mock logger
-vi.mock('@/utils/logger', () => ({
+vi.mock('@/shared/utils/logger', () => ({
   logger: {
     info: vi.fn(),
     warn: vi.fn(),

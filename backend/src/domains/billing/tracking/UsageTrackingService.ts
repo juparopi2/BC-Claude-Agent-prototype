@@ -30,7 +30,7 @@ import { getPool } from '@config/database';
 import { getRedis } from '@config/redis';
 import { UNIT_COSTS, calculateTokenCost } from '@config/pricing.config';
 import type { OperationCategory } from '@/types/usage.types';
-import { createChildLogger } from '@/utils/logger';
+import { createChildLogger } from '@/shared/utils/logger';
 import type { Logger } from 'pino';
 import crypto from 'crypto';
 

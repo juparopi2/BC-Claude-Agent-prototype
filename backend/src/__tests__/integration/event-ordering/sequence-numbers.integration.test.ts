@@ -9,7 +9,7 @@
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import IORedis from 'ioredis';
-import { getRedis } from '@/config/redis';
+import { getRedis } from '@/infrastructure/redis/redis';
 import { getEventStore, EventStore, EventType } from '@/services/events/EventStore';
 import {
   createTestSessionFactory,

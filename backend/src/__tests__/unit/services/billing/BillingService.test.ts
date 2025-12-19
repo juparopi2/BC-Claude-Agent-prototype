@@ -20,7 +20,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { ConnectionPool, IResult } from 'mssql';
 
 // Mock dependencies
-vi.mock('@/utils/logger', () => ({
+vi.mock('@/shared/utils/logger', () => ({
   createChildLogger: vi.fn(() => ({
     info: vi.fn(),
     debug: vi.fn(),

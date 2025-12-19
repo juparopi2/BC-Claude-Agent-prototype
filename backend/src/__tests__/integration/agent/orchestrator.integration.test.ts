@@ -39,7 +39,7 @@ vi.mock('@/services/events/EventStore', () => ({
   })),
 }));
 
-vi.mock('@/services/tracking/UsageTrackingService', () => ({
+vi.mock('@/domains/billing/tracking/UsageTrackingService', () => ({
   getUsageTrackingService: vi.fn(() => ({
     trackOperation: vi.fn().mockResolvedValue(undefined),
     trackClaudeUsage: vi.fn().mockResolvedValue(undefined),

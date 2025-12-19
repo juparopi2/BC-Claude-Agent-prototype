@@ -14,7 +14,7 @@ import {
   getEndpointDocumentationTool,
 } from './tools';
 import { SystemMessage, ToolMessage, BaseMessage } from '@langchain/core/messages';
-import { createChildLogger } from '@/utils/logger';
+import { createChildLogger } from '@/shared/utils/logger';
 import { StructuredToolInterface } from '@langchain/core/tools';
 
 const logger = createChildLogger({ service: 'BCAgent' });

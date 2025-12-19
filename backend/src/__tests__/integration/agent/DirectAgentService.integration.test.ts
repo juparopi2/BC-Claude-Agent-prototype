@@ -26,11 +26,11 @@ import { setupDatabaseForTests } from '../helpers/TestDatabaseSetup';
 import { TestSessionFactory } from '../helpers/TestSessionFactory';
 import { createTestSocketIOServer, SocketIOServerResult } from '../helpers/SocketIOServerFactory';
 import { DirectAgentService } from '@/services/agent/DirectAgentService';
-import { getApprovalManager } from '@/services/approval/ApprovalManager';
+import { getApprovalManager } from '@/domains/approval/ApprovalManager';
 import { FakeAnthropicClient } from '@/services/agent/FakeAnthropicClient';
-import { executeQuery } from '@/config/database';
-import { getMessageQueue } from '@/services/queue/MessageQueue';
-import { normalizeUUID } from '@/utils/uuid';
+import { executeQuery } from '@/infrastructure/database/database';
+import { getMessageQueue } from '@/infrastructure/queue/MessageQueue';
+import { normalizeUUID } from '@/shared/utils/uuid';
 
 /**
  * SKIPPED: These tests use executeQueryStreaming which was deprecated in Phase 1.

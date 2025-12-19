@@ -12,19 +12,19 @@ import { io as ioClient, Socket as ClientSocket } from 'socket.io-client';
 import { AddressInfo } from 'net';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
-import { executeQuery } from '@/config/database';
+import { executeQuery } from '@/infrastructure/database/database';
 import { getDirectAgentService } from '@/services/agent';
-import { getApprovalManager } from '@/services/approval/ApprovalManager';
+import { getApprovalManager } from '@/domains/approval/ApprovalManager';
 import type { DirectAgentService } from '@/services/agent/DirectAgentService';
-import type { ApprovalManager } from '@/services/approval/ApprovalManager';
+import type { ApprovalManager } from '@/domains/approval/ApprovalManager';
 import { server as mswServer } from '../mocks/server';
 
 // Mock dependencies
-vi.mock('@/config/database', () => ({
+vi.mock('@/infrastructure/database/database', () => ({
   executeQuery: vi.fn(),
 }));
 
-vi.mock('@/utils/logger', () => ({
+vi.mock('@/shared/utils/logger', () => ({
   logger: {
     info: vi.fn(),
     error: vi.fn(),
@@ -37,7 +37,7 @@ vi.mock('@/services/agent', () => ({
   getDirectAgentService: vi.fn(),
 }));
 
-vi.mock('@/services/approval/ApprovalManager', () => ({
+vi.mock('@/domains/approval/ApprovalManager', () => ({
   getApprovalManager: vi.fn(),
 }));
 

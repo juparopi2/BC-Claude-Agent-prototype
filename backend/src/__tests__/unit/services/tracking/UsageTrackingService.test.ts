@@ -10,7 +10,7 @@ import type { ConnectionPool, IResult } from 'mssql';
 import type { Redis } from 'ioredis';
 
 // Mock dependencies
-vi.mock('@/utils/logger', () => ({
+vi.mock('@/shared/utils/logger', () => ({
   createChildLogger: vi.fn(() => ({
     info: vi.fn(),
     debug: vi.fn(),
@@ -24,7 +24,7 @@ import {
   UsageTrackingService,
   getUsageTrackingService,
   __resetUsageTrackingService,
-} from '@/services/tracking/UsageTrackingService';
+} from '@/domains/billing/tracking/UsageTrackingService';
 import { UNIT_COSTS } from '@config/pricing.config';
 
 describe('UsageTrackingService', () => {

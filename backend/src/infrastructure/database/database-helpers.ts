@@ -28,7 +28,7 @@
  */
 
 import sql from 'mssql';
-import { isValidUUID, normalizeUUID } from '@/utils/uuid';
+import { isValidUUID, normalizeUUID } from '@/shared/utils/uuid';
 
 /**
  * Type definition for SQL parameter tuple

@@ -11,12 +11,12 @@
 
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { createChildLogger } from '@/utils/logger';
+import { createChildLogger } from '@/shared/utils/logger';
 import { authenticateMicrosoft } from '@middleware/auth-oauth';
 import { getDeletionAuditService } from '@services/files/DeletionAuditService';
-import { executeQuery } from '@/config/database';
-import { sendError } from '@/utils/error-response';
-import { ErrorCode } from '@/constants/errors';
+import { executeQuery } from '@/infrastructure/database/database';
+import { sendError } from '@/shared/utils/error-response';
+import { ErrorCode } from '@/shared/constants/errors';
 
 const router = Router();
 const logger = createChildLogger({ service: 'GDPRRoutes' });

@@ -21,9 +21,9 @@ import { getFileService } from '@services/files';
 import { getFileUploadService } from '@services/files';
 import { getUsageTrackingService } from '@services/tracking/UsageTrackingService';
 import { getMessageQueue } from '@services/queue/MessageQueue';
-import { sendError } from '@/utils/error-response';
-import { ErrorCode } from '@/constants/errors';
-import { logger } from '@/utils/logger';
+import { sendError } from '@/shared/utils/error-response';
+import { ErrorCode } from '@/shared/constants/errors';
+import { logger } from '@/shared/utils/logger';
 import type { ParsedFile } from '@/types/file.types';
 
 const router = Router();

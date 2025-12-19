@@ -14,7 +14,7 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
-import { executeQuery } from '@/config/database';
+import { executeQuery } from '@/infrastructure/database/database';
 import { getFileUploadService } from '@/services/files/FileUploadService';
 import { getFileService } from '@/services/files/FileService';
 import { TEST_PREFIX } from './constants';

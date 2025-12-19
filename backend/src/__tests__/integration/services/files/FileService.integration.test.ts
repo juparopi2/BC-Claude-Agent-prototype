@@ -11,9 +11,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { getFileService } from '@/services/files/FileService';
 import { setupDatabaseForTests } from '../../helpers/TestDatabaseSetup';
-import { executeQuery } from '@/config/database';
+import { executeQuery } from '@/infrastructure/database/database';
 import { randomUUID } from 'crypto';
-import type { SqlParams } from '@/config/database';
+import type { SqlParams } from '@/infrastructure/database/database';
 
 describe('FileService - SQL NULL Comparison Integration', () => {
   setupDatabaseForTests({ skipRedis: true }); // Redis not needed for FileService

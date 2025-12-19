@@ -33,7 +33,7 @@ vi.mock('@azure/msal-node', () => ({
 }));
 
 // Mock logger to avoid console output during tests
-vi.mock('@/utils/logger', () => ({
+vi.mock('@/shared/utils/logger', () => ({
   logger: {
     info: vi.fn(),
     warn: vi.fn(),

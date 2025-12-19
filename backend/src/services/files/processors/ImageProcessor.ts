@@ -11,11 +11,11 @@
  * @module services/files/processors/ImageProcessor
  */
 
-import { createChildLogger } from '@/utils/logger';
+import { createChildLogger } from '@/shared/utils/logger';
 import { EmbeddingService } from '@services/embeddings/EmbeddingService';
 import { getUsageTrackingService } from '@services/tracking/UsageTrackingService';
 import type { DocumentProcessor, ExtractionResult, ExtractionMetadata } from './types';
-import { env } from '@/config/environment';
+import { env } from '@/infrastructure/config/environment';
 
 const logger = createChildLogger({ service: 'ImageProcessor' });
 

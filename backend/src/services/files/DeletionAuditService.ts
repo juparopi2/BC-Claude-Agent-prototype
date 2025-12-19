@@ -16,8 +16,8 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
-import { executeQuery, SqlParams } from '@/config/database';
-import { createChildLogger } from '@/utils/logger';
+import { executeQuery, SqlParams } from '@/infrastructure/database/database';
+import { createChildLogger } from '@/shared/utils/logger';
 
 const logger = createChildLogger({ service: 'DeletionAuditService' });
 

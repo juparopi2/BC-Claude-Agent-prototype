@@ -23,7 +23,7 @@ const mockRedisMethods = vi.hoisted(() => ({
   quit: vi.fn().mockResolvedValue('OK'),
 }));
 
-vi.mock('@/config/redis', () => ({
+vi.mock('@/infrastructure/redis/redis', () => ({
   getRedis: vi.fn(() => mockRedisMethods),
 }));
 
@@ -43,7 +43,7 @@ const mockDbRequest = vi.hoisted(() =>
   }))
 );
 
-vi.mock('@/config/database', () => ({
+vi.mock('@/infrastructure/database/database', () => ({
   executeQuery: vi.fn().mockResolvedValue({
     recordset: [],
     rowsAffected: [1],
@@ -61,7 +61,7 @@ const mockLogger = vi.hoisted(() => ({
   debug: vi.fn(),
 }));
 
-vi.mock('@/utils/logger', () => ({
+vi.mock('@/shared/utils/logger', () => ({
   logger: mockLogger,
 }));
 
@@ -88,7 +88,7 @@ describe('EventStore', () => {
     mockDbQuery.mockResolvedValue({ recordset: [], rowsAffected: [1] });
 
     // Get executeQuery mock reference
-    const { executeQuery } = await import('@/config/database');
+    const { executeQuery } = await import('@/infrastructure/database/database');
     mockExecuteQuery = vi.mocked(executeQuery);
 
     // Reset singleton instance
@@ -322,7 +322,7 @@ describe('EventStore', () => {
   describe('Get Events', () => {
     beforeEach(async () => {
       // Mock getDatabase to return truthy value
-      const { getDatabase } = await import('@/config/database');
+      const { getDatabase } = await import('@/infrastructure/database/database');
       vi.mocked(getDatabase).mockReturnValue({} as any);
     });
 
@@ -522,7 +522,7 @@ describe('EventStore', () => {
   describe('Get Unprocessed Events', () => {
     beforeEach(async () => {
       // Mock getDatabase to return truthy value
-      const { getDatabase } = await import('@/config/database');
+      const { getDatabase } = await import('@/infrastructure/database/database');
       vi.mocked(getDatabase).mockReturnValue({} as any);
     });
 

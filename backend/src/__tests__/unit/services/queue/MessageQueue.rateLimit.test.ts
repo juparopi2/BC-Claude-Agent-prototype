@@ -108,12 +108,12 @@ vi.mock('bullmq', () => ({
 }));
 
 // Mock logger
-vi.mock('@/utils/logger', () => ({
+vi.mock('@/shared/utils/logger', () => ({
   logger: mockLogger,
 }));
 
 // Mock database
-vi.mock('@/config/database', () => ({
+vi.mock('@/infrastructure/database/database', () => ({
   executeQuery: mockExecuteQuery,
 }));
 
@@ -136,7 +136,7 @@ vi.mock('@/config', () => ({
 }));
 
 // Import after mocks
-import { MessageQueue, getMessageQueue, QueueName, MessagePersistenceJob } from '@/services/queue/MessageQueue';
+import { MessageQueue, getMessageQueue, QueueName, MessagePersistenceJob } from '@/infrastructure/queue/MessageQueue';
 
 // ============================================
 // Test Helpers

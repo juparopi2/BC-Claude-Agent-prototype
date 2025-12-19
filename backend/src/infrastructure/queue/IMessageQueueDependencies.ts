@@ -8,7 +8,7 @@
  */
 
 import type { Redis } from 'ioredis';
-import type { SqlParams } from '@/config/database';
+import type { SqlParams } from '@/infrastructure/database/database';
 
 // Re-export SqlParams for consumers
 export type { SqlParams };

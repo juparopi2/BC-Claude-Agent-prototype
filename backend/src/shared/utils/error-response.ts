@@ -17,7 +17,7 @@ import {
   ERROR_MESSAGES,
   ERROR_STATUS_CODES,
   HTTP_STATUS_NAMES,
-} from '@/constants/errors';
+} from '@/shared/constants/errors';
 import type { ApiErrorResponse, ErrorResponseWithStatus } from '@/types/error.types';
 
 /**

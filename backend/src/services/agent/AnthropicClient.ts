@@ -19,7 +19,7 @@ import type {
   ChatCompletionRequest,
   ChatCompletionResponse,
 } from './IAnthropicClient';
-import { logger } from '@/utils/logger';
+import { logger } from '@/shared/utils/logger';
 
 /**
  * Real Anthropic Client

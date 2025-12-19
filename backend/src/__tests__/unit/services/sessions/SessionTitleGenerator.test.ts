@@ -13,7 +13,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { SessionTitleGenerator, getSessionTitleGenerator } from '@/services/sessions/SessionTitleGenerator';
 import type { TextBlock } from '@/types/sdk';
-import { getModelName } from '@/config/models';
+import { getModelName } from '@/infrastructure/config/models';
 
 // ============================================================================
 // MOCKS SETUP
@@ -22,7 +22,7 @@ import { getModelName } from '@/config/models';
 // Mock database module with vi.hoisted()
 const mockExecuteQuery = vi.hoisted(() => vi.fn());
 
-vi.mock('@/config/database', () => ({
+vi.mock('@/infrastructure/database/database', () => ({
   executeQuery: mockExecuteQuery,
 }));
 
@@ -34,7 +34,7 @@ const mockLogger = vi.hoisted(() => ({
   debug: vi.fn(),
 }));
 
-vi.mock('@/utils/logger', () => ({
+vi.mock('@/shared/utils/logger', () => ({
   logger: mockLogger,
 }));
 

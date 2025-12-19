@@ -24,7 +24,7 @@ import {
   setupDatabaseForTests,
 } from '../helpers';
 import { REDIS_TEST_CONFIG } from '../setup.integration';
-import { getApprovalManager, ApprovalManager } from '@/services/approval/ApprovalManager';
+import { getApprovalManager, ApprovalManager } from '@/domains/approval/ApprovalManager';
 import { resetEventStore } from '@/services/events/EventStore';
 
 

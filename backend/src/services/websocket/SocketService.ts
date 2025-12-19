@@ -27,7 +27,7 @@
  */
 
 import { Server as SocketServer } from 'socket.io';
-import { createChildLogger } from '@/utils/logger';
+import { createChildLogger } from '@/shared/utils/logger';
 
 // Structured logger for socket service operations
 const logger = createChildLogger({ service: 'SocketService' });

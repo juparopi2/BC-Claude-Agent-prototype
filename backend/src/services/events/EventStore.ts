@@ -14,10 +14,10 @@
  * @module services/events/EventStore
  */
 
-import { executeQuery, getDatabase, SqlParams } from '@/config/database';
-import { getRedis } from '@/config/redis';
+import { executeQuery, getDatabase, SqlParams } from '@/infrastructure/database/database';
+import { getRedis } from '@/infrastructure/redis/redis';
 import { randomUUID } from 'crypto';
-import { logger } from '@/utils/logger';
+import { logger } from '@/shared/utils/logger';
 
 /**
  * Event Type - All possible message events

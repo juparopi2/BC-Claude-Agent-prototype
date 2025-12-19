@@ -20,7 +20,7 @@ import {
   RetryPredicates,
   Retry,
   type RetryOptions,
-} from '@/utils/retry';
+} from '@/shared/utils/retry';
 
 // ============================================================================
 // MOCKS SETUP
@@ -34,7 +34,7 @@ const mockLogger = vi.hoisted(() => ({
   debug: vi.fn(),
 }));
 
-vi.mock('@/utils/logger', () => ({
+vi.mock('@/shared/utils/logger', () => ({
   logger: mockLogger,
 }));
 

@@ -13,7 +13,7 @@
  */
 
 import Redis, { RedisOptions } from 'ioredis';
-import { createChildLogger } from '@/utils/logger';
+import { createChildLogger } from '@/shared/utils/logger';
 import { Environment } from '@config/EnvironmentFacade';
 import { env } from '@/infrastructure/config/environment';
 

@@ -28,10 +28,10 @@ import type {
 import type { ChatMessageData } from '@/types/websocket.types';
 import { getDirectAgentService } from '../agent/DirectAgentService';
 import { getMessageService } from '../messages/MessageService';
-import { TOOL_NAMES } from '@/constants/tools';
-import { createChildLogger } from '@/utils/logger';
-import { validateSessionOwnership } from '@/utils/session-ownership';
-import { normalizeUUID } from '@/utils/uuid';
+import { TOOL_NAMES } from '@/shared/constants/tools';
+import { createChildLogger } from '@/shared/utils/logger';
+import { validateSessionOwnership } from '@/shared/utils/session-ownership';
+import { normalizeUUID } from '@/shared/utils/uuid';
 import type { Logger } from 'pino';
 
 /**

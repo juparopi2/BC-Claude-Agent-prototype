@@ -18,11 +18,11 @@ import { AddressInfo } from 'net';
 import { server as mswServer } from '../../mocks/server';
 
 // Mock dependencies
-vi.mock('@/config/database', () => ({
+vi.mock('@/infrastructure/database/database', () => ({
   executeQuery: vi.fn(),
 }));
 
-vi.mock('@/utils/logger', () => ({
+vi.mock('@/shared/utils/logger', () => ({
   logger: {
     info: vi.fn(),
     error: vi.fn(),
@@ -37,16 +37,16 @@ vi.mock('@/utils/logger', () => ({
   })),
 }));
 
-vi.mock('@/utils/session-ownership', () => ({
+vi.mock('@/shared/utils/session-ownership', () => ({
   validateSessionOwnership: vi.fn(),
 }));
 
-vi.mock('@/services/approval/ApprovalManager', () => ({
+vi.mock('@/domains/approval/ApprovalManager', () => ({
   getApprovalManager: vi.fn(),
 }));
 
-import { validateSessionOwnership } from '@/utils/session-ownership';
-import { getApprovalManager } from '@/services/approval/ApprovalManager';
+import { validateSessionOwnership } from '@/shared/utils/session-ownership';
+import { getApprovalManager } from '@/domains/approval/ApprovalManager';
 
 /**
  * Authenticated Socket interface matching server.ts

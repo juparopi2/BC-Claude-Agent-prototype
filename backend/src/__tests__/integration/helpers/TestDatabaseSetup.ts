@@ -21,9 +21,9 @@
  */
 
 import { beforeAll, afterAll } from 'vitest';
-import { initDatabase, closeDatabase, executeQuery } from '@/config/database';
-import { initRedis, closeRedis } from '@/config/redis';
-import { initRedisClient, closeRedisClient } from '@/config/redis-client';
+import { initDatabase, closeDatabase, executeQuery } from '@/infrastructure/database/database';
+import { initRedis, closeRedis } from '@/infrastructure/redis/redis';
+import { initRedisClient, closeRedisClient } from '@/infrastructure/redis/redis-client';
 import { REDIS_TEST_CONFIG } from '../setup.integration';
 
 /**

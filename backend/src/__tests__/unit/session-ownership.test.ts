@@ -21,7 +21,7 @@ vi.mock('@config/database', () => ({
 }));
 
 // Mock logger to avoid output during tests
-vi.mock('@/utils/logger', () => ({
+vi.mock('@/shared/utils/logger', () => ({
   createChildLogger: vi.fn(() => ({
     info: vi.fn(),
     warn: vi.fn(),
@@ -42,7 +42,7 @@ import {
   validateUserIdMatch,
   requireSessionOwnership,
   requireSessionOwnershipMiddleware,
-} from '@/utils/session-ownership';
+} from '@/shared/utils/session-ownership';
 import { executeQuery } from '@config/database';
 
 // Get the mocked version

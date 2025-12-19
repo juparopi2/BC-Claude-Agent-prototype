@@ -13,8 +13,8 @@
 
 import { timingSafeEqual } from 'crypto';
 import { executeQuery } from '@config/database';
-import { createChildLogger } from '@/utils/logger';
-import { normalizeUUID } from '@/utils/uuid';
+import { createChildLogger } from '@/shared/utils/logger';
+import { normalizeUUID } from '@/shared/utils/uuid';
 
 const logger = createChildLogger({ module: 'session-ownership' });
 

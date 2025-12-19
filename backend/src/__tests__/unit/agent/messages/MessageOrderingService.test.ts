@@ -20,18 +20,18 @@ const mockRedis = {
   set: vi.fn(),
 };
 
-vi.mock('@/config/redis', () => ({
+vi.mock('@/infrastructure/redis/redis', () => ({
   getRedis: () => mockRedis,
 }));
 
 // Mock database
 const mockExecuteQuery = vi.fn();
-vi.mock('@/config/database', () => ({
+vi.mock('@/infrastructure/database/database', () => ({
   executeQuery: (...args: unknown[]) => mockExecuteQuery(...args),
 }));
 
 // Mock logger
-vi.mock('@/utils/logger', () => ({
+vi.mock('@/shared/utils/logger', () => ({
   createChildLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),

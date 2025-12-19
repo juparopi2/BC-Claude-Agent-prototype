@@ -14,7 +14,7 @@ import { ContentBlockAccumulator } from '@services/agent/messages/ContentBlockAc
 import type { TextCitation } from '@anthropic-ai/sdk/resources/messages';
 
 // Mock logger to avoid noise in tests
-vi.mock('@/utils/logger', () => ({
+vi.mock('@/shared/utils/logger', () => ({
   createChildLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),

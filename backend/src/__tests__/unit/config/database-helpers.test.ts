@@ -13,7 +13,7 @@ import {
   isValidUuidString,
   extractUuid,
   createUuidParams,
-} from '@/config/database-helpers';
+} from '@/infrastructure/database/database-helpers';
 
 describe('database-helpers', () => {
   describe('uuidInput', () => {

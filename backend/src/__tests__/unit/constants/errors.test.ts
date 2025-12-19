@@ -17,7 +17,7 @@ import {
   getErrorMessage,
   getErrorStatusCode,
   validateErrorConstants,
-} from '@/constants/errors';
+} from '@/shared/constants/errors';
 
 describe('Error Constants', () => {
   describe('ErrorCode enum', () => {

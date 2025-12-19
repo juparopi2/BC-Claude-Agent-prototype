@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { QueueName } from '@/services/queue/MessageQueue';
+import { QueueName } from '@/infrastructure/queue/MessageQueue';
 
 // ============================================
 // Mock Dependencies using vi.hoisted
@@ -75,17 +75,17 @@ vi.mock('bullmq', () => ({
   QueueEvents: vi.fn(() => mockQueueEvents),
 }));
 
-vi.mock('@/utils/logger', () => ({
+vi.mock('@/shared/utils/logger', () => ({
   logger: mockLogger,
   createChildLogger: vi.fn(() => mockLogger),
 }));
 
-vi.mock('@/config/database', () => ({
+vi.mock('@/infrastructure/database/database', () => ({
   executeQuery: mockExecuteQuery,
 }));
 
 // Import MessageQueue AFTER mocks
-import { MessageQueue, __resetMessageQueue, EmbeddingGenerationJob } from '@/services/queue/MessageQueue';
+import { MessageQueue, __resetMessageQueue, EmbeddingGenerationJob } from '@/infrastructure/queue/MessageQueue';
 
 describe('MessageQueue - Embedding Generation', () => {
   beforeEach(async () => {

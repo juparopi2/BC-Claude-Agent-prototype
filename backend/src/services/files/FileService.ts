@@ -1,5 +1,5 @@
-import { createChildLogger } from '@/utils/logger';
-import { executeQuery, SqlParams } from '@/config/database';
+import { createChildLogger } from '@/shared/utils/logger';
+import { executeQuery, SqlParams } from '@/infrastructure/database/database';
 import type { Logger } from 'pino';
 import { randomUUID } from 'crypto';
 import {

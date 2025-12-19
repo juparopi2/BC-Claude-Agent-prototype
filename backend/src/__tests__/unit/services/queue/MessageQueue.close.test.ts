@@ -116,18 +116,18 @@ vi.mock('bullmq', () => ({
 }));
 
 // Mock logger
-vi.mock('@/utils/logger', () => ({
+vi.mock('@/shared/utils/logger', () => ({
   logger: mockLogger,
   createChildLogger: vi.fn(() => mockLogger),
 }));
 
 // Mock database
-vi.mock('@/config/database', () => ({
+vi.mock('@/infrastructure/database/database', () => ({
   executeQuery: mockExecuteQuery,
 }));
 
 // Import MessageQueue AFTER mocks are set up
-import { MessageQueue, __resetMessageQueue } from '@/services/queue/MessageQueue';
+import { MessageQueue, __resetMessageQueue } from '@/infrastructure/queue/MessageQueue';
 
 // ============================================
 // Test Suite

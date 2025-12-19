@@ -1,5 +1,5 @@
 import { StreamEvent } from '@langchain/core/tracers/log_stream';
-import { createChildLogger } from '@/utils/logger';
+import { createChildLogger } from '@/shared/utils/logger';
 import {
   IStreamAdapter,
   INormalizedStreamEvent,

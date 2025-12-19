@@ -15,7 +15,7 @@ import { createClient, RedisClientType } from 'redis';
 import RedisStore from 'connect-redis';
 import { TEST_SESSION_SECRET, TEST_SESSION_COOKIE } from './constants';
 import { REDIS_TEST_CONFIG } from '../setup.integration';
-import { normalizeUUID } from '@/utils/uuid';
+import { normalizeUUID } from '@/shared/utils/uuid';
 
 /**
  * Extended Socket type with authentication properties

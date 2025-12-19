@@ -13,7 +13,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { MessageService, getMessageService } from '../../../../services/messages/MessageService';
 import { getEventStore } from '../../../../services/events/EventStore';
-import { getMessageQueue } from '../../../../services/queue/MessageQueue';
+import { getMessageQueue } from '@/infrastructure/queue/MessageQueue';
 import { createChildLogger } from '../../../../utils/logger';
 import { executeQuery } from '../../../../config/database';
 import { ParsedMessage, MessageDbRecord } from '../../../../types/message.types';
@@ -34,7 +34,7 @@ const mockMessageQueueMethods = vi.hoisted(() => ({
   addMessagePersistence: vi.fn().mockResolvedValue({ id: 'job-123' }),
 }));
 
-vi.mock('@/services/queue/MessageQueue', () => ({
+vi.mock('@/infrastructure/queue/MessageQueue', () => ({
   getMessageQueue: vi.fn(() => mockMessageQueueMethods),
 }));
 
@@ -43,7 +43,7 @@ const mockExecuteQuery = vi.hoisted(() =>
   vi.fn().mockResolvedValue({ recordset: [], rowsAffected: [1] })
 );
 
-vi.mock('@/config/database', () => ({
+vi.mock('@/infrastructure/database/database', () => ({
   executeQuery: mockExecuteQuery,
 }));
 
@@ -55,7 +55,7 @@ const mockLogger = vi.hoisted(() => ({
   debug: vi.fn(),
 }));
 
-vi.mock('@/utils/logger', () => ({
+vi.mock('@/shared/utils/logger', () => ({
   logger: mockLogger,
   createChildLogger: vi.fn(() => mockLogger),
 }));

@@ -12,16 +12,16 @@ import IORedis from 'ioredis';
 import { QueueEvents } from 'bullmq';
 import { REDIS_TEST_CONFIG, clearRedisKeys, createTestRedisConnection } from '../../setup.integration';
 import { setupDatabaseForTests, createTestSessionFactory } from '../../helpers';
-import { MessageQueue, QueueName, EmbeddingGenerationJob, __resetMessageQueue, getMessageQueue } from '@/services/queue/MessageQueue';
-import { executeQuery, initDatabase, getDatabase } from '@/config/database';
+import { MessageQueue, QueueName, EmbeddingGenerationJob, __resetMessageQueue, getMessageQueue } from '@/infrastructure/queue/MessageQueue';
+import { executeQuery, initDatabase, getDatabase } from '@/infrastructure/database/database';
 import { getEventStore } from '@/services/events/EventStore';
-import { initRedisClient, closeRedisClient } from '@/config/redis-client';
-import { logger } from '@/utils/logger';
+import { initRedisClient, closeRedisClient } from '@/infrastructure/redis/redis-client';
+import { logger } from '@/shared/utils/logger';
 import { EmbeddingService } from '@/services/embeddings/EmbeddingService';
 import { VectorSearchService } from '@/services/search/VectorSearchService';
 
 // ONLY mock logger (acceptable per audit)
-vi.mock('@/utils/logger', () => ({
+vi.mock('@/shared/utils/logger', () => ({
   logger: {
     info: vi.fn((msg, meta) => console.log('[INFO]', msg, meta || '')),
     error: vi.fn((msg, meta) => console.error('[ERROR]', msg, meta || '')),

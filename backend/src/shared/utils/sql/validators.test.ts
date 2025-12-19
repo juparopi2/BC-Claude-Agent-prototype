@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { validateQuery, isUsingQueryBuilder } from './validators';
-import type { SqlParams } from '@/config/database';
+import type { SqlParams } from '@/infrastructure/database/database';
 
 describe('SQL Query Validator', () => {
   let originalEnv: string | undefined;

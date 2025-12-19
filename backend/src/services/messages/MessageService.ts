@@ -16,10 +16,10 @@
 
 import { getEventStore } from '../events/EventStore';
 import { getMessageQueue } from '../queue/MessageQueue';
-import { createChildLogger } from '@/utils/logger';
+import { createChildLogger } from '@/shared/utils/logger';
 import type { Logger } from 'pino';
 import { randomUUID } from 'crypto';
-import { executeQuery, SqlParams } from '@/config/database';
+import { executeQuery, SqlParams } from '@/infrastructure/database/database';
 import { ParsedMessage, MessageDbRecord, parseMessageMetadata } from '@/types/message.types';
 
 /**

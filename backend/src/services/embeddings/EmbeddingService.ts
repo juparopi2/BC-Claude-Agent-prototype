@@ -1,11 +1,11 @@
-import { env } from '@/config/environment';
+import { env } from '@/infrastructure/config/environment';
 import { EmbeddingConfig, TextEmbedding, ImageEmbedding } from './types';
 import { OpenAI } from 'openai';
 import Redis from 'ioredis';
-import { createRedisClient } from '@/config/redis';
+import { createRedisClient } from '@/infrastructure/redis/redis';
 import crypto from 'crypto';
 import { getUsageTrackingService } from '@services/tracking/UsageTrackingService';
-import { createChildLogger } from '@/utils/logger';
+import { createChildLogger } from '@/shared/utils/logger';
 
 const logger = createChildLogger({ service: 'EmbeddingService' });
 

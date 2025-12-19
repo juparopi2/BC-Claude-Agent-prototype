@@ -28,9 +28,9 @@
 
 import type { ConnectionPool } from 'mssql';
 import sql from 'mssql';
-import { createChildLogger } from '@/utils/logger';
-import { getPool } from '@/config/database';
-import { PRICING_PLANS, PAYG_RATES, calculateOverageCost } from '@/config/pricing.config';
+import { createChildLogger } from '@/shared/utils/logger';
+import { getPool } from '@/infrastructure/database/database';
+import { PRICING_PLANS, PAYG_RATES, calculateOverageCost } from '@/infrastructure/config/pricing.config';
 import type {
   PlanTier,
   BillingRecordDbRow,

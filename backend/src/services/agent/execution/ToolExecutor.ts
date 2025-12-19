@@ -17,12 +17,12 @@
 
 import { getEventStore } from '@/services/events/EventStore';
 import { getMessageOrderingService, getMessageEmitter } from '@/services/agent/messages';
-import { getUsageTrackingService } from '@/services/tracking/UsageTrackingService';
+import { getUsageTrackingService } from '@/domains/billing/tracking/UsageTrackingService';
 import { getMessageService } from '@/services/messages/MessageService';
-import { getMessageQueue } from '@/services/queue/MessageQueue';
-import type { ApprovalManager } from '@/services/approval/ApprovalManager';
+import { getMessageQueue } from '@/infrastructure/queue/MessageQueue';
+import type { ApprovalManager } from '@/domains/approval/ApprovalManager';
 import type { ToolResultEvent } from '@bc-agent/shared';
-import { createChildLogger } from '@/utils/logger';
+import { createChildLogger } from '@/shared/utils/logger';
 import type { Logger } from 'pino';
 
 /**

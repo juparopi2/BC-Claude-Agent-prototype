@@ -61,7 +61,7 @@ vi.mock('@anthropic-ai/sdk', () => {
 });
 
 // Mock the logger
-vi.mock('@/utils/logger', () => ({
+vi.mock('@/shared/utils/logger', () => ({
   logger: {
     info: mockLoggerInfo,
     error: mockLoggerError,

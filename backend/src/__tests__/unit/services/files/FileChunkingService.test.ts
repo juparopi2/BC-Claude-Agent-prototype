@@ -9,16 +9,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { FileChunkingService, getFileChunkingService } from '../../../../services/files/FileChunkingService';
 import type { FileChunkingJob } from '../../../../services/queue/MessageQueue';
-import { executeQuery } from '@/config/database';
+import { executeQuery } from '@/infrastructure/database/database';
 
 // Mock dependencies
-vi.mock('@/config/database', () => ({
+vi.mock('@/infrastructure/database/database', () => ({
   executeQuery: vi.fn(),
 }));
 
 const mockExecuteQuery = vi.mocked(executeQuery);
 
-vi.mock('@/utils/logger', () => ({
+vi.mock('@/shared/utils/logger', () => ({
   logger: {
     child: vi.fn(() => ({
       info: vi.fn(),

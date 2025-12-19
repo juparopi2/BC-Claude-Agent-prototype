@@ -17,8 +17,8 @@ import crypto from 'crypto';
 import { executeQuery } from '../config/database';
 import { authenticateMicrosoft } from '../middleware/auth-oauth';
 import { logger } from '../utils/logger';
-import { ErrorCode } from '@/constants/errors';
-import { sendError } from '@/utils/error-response';
+import { ErrorCode } from '@/shared/constants/errors';
+import { sendError } from '@/shared/utils/error-response';
 // ✅ Import native SDK types (source of truth)
 import type { StopReason, TextCitation } from '@anthropic-ai/sdk/resources/messages';
 import { getSessionTitleGenerator } from '../services/sessions/SessionTitleGenerator';

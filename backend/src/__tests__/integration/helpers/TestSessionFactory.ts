@@ -15,9 +15,9 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
-import { executeQuery } from '@/config/database';
-import { getRedisClient } from '@/config/redis-client'; // Use redis package client (not ioredis)
-import { normalizeUUID } from '@/utils/uuid';
+import { executeQuery } from '@/infrastructure/database/database';
+import { getRedisClient } from '@/infrastructure/redis/redis-client'; // Use redis package client (not ioredis)
+import { normalizeUUID } from '@/shared/utils/uuid';
 import {
   TEST_SESSION_SECRET,
   TEST_PREFIX,

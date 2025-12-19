@@ -1,7 +1,7 @@
 import { EmbeddingService } from '@/services/embeddings/EmbeddingService';
 import { VectorSearchService } from '@/services/search/VectorSearchService';
 import { getFileService } from '@/services/files/FileService';
-import { createChildLogger } from '@/utils/logger';
+import { createChildLogger } from '@/shared/utils/logger';
 import type {
   SemanticSearchOptions,
   SemanticSearchResult,

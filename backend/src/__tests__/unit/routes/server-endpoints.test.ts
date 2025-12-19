@@ -23,9 +23,9 @@
 import { describe, it, expect, vi, beforeEach, Mock } from 'vitest';
 import request from 'supertest';
 import express, { Application, Request, Response, NextFunction } from 'express';
-import { executeQuery } from '@/config/database';
-import { validateSessionOwnership } from '@/utils/session-ownership';
-import { ErrorCode } from '@/constants/errors';
+import { executeQuery } from '@/infrastructure/database/database';
+import { validateSessionOwnership } from '@/shared/utils/session-ownership';
+import { ErrorCode } from '@/shared/constants/errors';
 import {
   sendError,
   sendBadRequest,
@@ -35,17 +35,17 @@ import {
   sendConflict,
   sendInternalError,
   sendServiceUnavailable,
-} from '@/utils/error-response';
+} from '@/shared/utils/error-response';
 
 // ============================================
 // Mock Dependencies
 // ============================================
 
-vi.mock('@/config/database', () => ({
+vi.mock('@/infrastructure/database/database', () => ({
   executeQuery: vi.fn(),
 }));
 
-vi.mock('@/utils/session-ownership', () => ({
+vi.mock('@/shared/utils/session-ownership', () => ({
   validateSessionOwnership: vi.fn(),
 }));
 
@@ -73,7 +73,7 @@ vi.mock('@/services/agent', () => ({
   getDirectAgentService: () => mockDirectAgentService,
 }));
 
-vi.mock('@/services/approval/ApprovalManager', () => ({
+vi.mock('@/domains/approval/ApprovalManager', () => ({
   getApprovalManager: () => mockApprovalManager,
 }));
 
@@ -81,7 +81,7 @@ vi.mock('@/services/todo/TodoManager', () => ({
   getTodoManager: () => mockTodoManager,
 }));
 
-vi.mock('@/utils/logger', () => ({
+vi.mock('@/shared/utils/logger', () => ({
   logger: {
     info: vi.fn(),
     error: vi.fn(),

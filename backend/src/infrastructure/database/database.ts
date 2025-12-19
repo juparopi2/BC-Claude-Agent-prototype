@@ -9,8 +9,8 @@
 
 import sql, { ConnectionPool, config as SqlConfig, ISqlType } from 'mssql';
 import { env, isProd } from '@/infrastructure/config/environment';
-import { isValidUUID } from '@/utils/uuid';
-import { validateQuery } from '@/utils/sql/validators';
+import { isValidUUID } from '@/shared/utils/uuid';
+import { validateQuery } from '@/shared/utils/sql/validators';
 
 /**
  * Transient error codes that should trigger a retry

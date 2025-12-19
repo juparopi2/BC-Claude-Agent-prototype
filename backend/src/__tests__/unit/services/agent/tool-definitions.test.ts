@@ -20,7 +20,7 @@ import {
   getToolDefinition,
   getToolNames,
 } from '@/services/agent/tool-definitions';
-import { TOOL_NAMES, TOOL_METADATA, ToolCategory } from '@/constants/tools';
+import { TOOL_NAMES, TOOL_METADATA, ToolCategory } from '@/shared/constants/tools';
 import type { Tool } from '@anthropic-ai/sdk/resources/messages';
 
 // ===== EXPECTED TOOL NAMES =====

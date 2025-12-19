@@ -9,14 +9,14 @@
 
 import { Request, Response, NextFunction } from 'express';
 import { MicrosoftOAuthSession } from '@/types/microsoft.types';
-import { logger } from '@/utils/logger';
-import { ErrorCode } from '@/constants/errors';
+import { logger } from '@/shared/utils/logger';
+import { ErrorCode } from '@/shared/constants/errors';
 import {
   sendError,
   sendUnauthorized,
   sendNotFound,
   sendInternalError,
-} from '@/utils/error-response';
+} from '@/shared/utils/error-response';
 
 /**
  * Extend Express Request to include Microsoft OAuth session

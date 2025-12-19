@@ -23,7 +23,7 @@ import {
   setupDatabaseForTests,
 } from '../helpers';
 // Import the real validateSessionOwnership - no mock needed since we use the real implementation
-import { validateSessionOwnership } from '@/utils/session-ownership';
+import { validateSessionOwnership } from '@/shared/utils/session-ownership';
 
 // US-002 FIXED (2024-11-26): UUID case sensitivity issue resolved.
 // The timingSafeCompare() function in session-ownership.ts normalizes UUIDs to lowercase

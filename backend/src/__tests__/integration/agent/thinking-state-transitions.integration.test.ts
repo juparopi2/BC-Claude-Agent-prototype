@@ -24,10 +24,10 @@ import { setupDatabaseForTests } from '../helpers/TestDatabaseSetup';
 import { TestSessionFactory } from '../helpers/TestSessionFactory';
 import { createTestSocketIOServer, SocketIOServerResult } from '../helpers/SocketIOServerFactory';
 import { DirectAgentService } from '@/services/agent/DirectAgentService';
-import { getApprovalManager } from '@/services/approval/ApprovalManager';
+import { getApprovalManager } from '@/domains/approval/ApprovalManager';
 import { FakeAnthropicClient } from '@/services/agent/FakeAnthropicClient';
-import { executeQuery } from '@/config/database';
-import { getMessageQueue } from '@/services/queue/MessageQueue';
+import { executeQuery } from '@/infrastructure/database/database';
+import { getMessageQueue } from '@/infrastructure/queue/MessageQueue';
 import type { AgentEvent } from '@/types/websocket.types';
 
 /**

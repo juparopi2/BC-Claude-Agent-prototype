@@ -8,7 +8,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { isApiErrorResponse, isValidErrorCode } from '@/types/error.types';
-import { ErrorCode } from '@/constants/errors';
+import { ErrorCode } from '@/shared/constants/errors';
 
 describe('Error Types', () => {
   describe('isApiErrorResponse', () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { WhereClauseBuilder, createWhereClause } from '@/utils/sql/QueryBuilder';
+import { WhereClauseBuilder, createWhereClause } from '@/shared/utils/sql/QueryBuilder';
 
 describe('WhereClauseBuilder', () => {
   let builder: WhereClauseBuilder;

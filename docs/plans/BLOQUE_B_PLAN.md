@@ -142,27 +142,31 @@ grep -r "export \* from '\.\." backend/src/constants/ --include="*.ts" -l
 ```bash
 # Buscar todos los archivos que importan de @/constants
 grep -r "from '@/constants" backend/src/ --include="*.ts" -l | wc -l
-# Reemplazar con sed o manualmente
+# Status: PENDIENTE (~10 archivos)
 ```
 
 #### 2.2 Migrar imports de `@/utils/` → `@/shared/utils/`
 ```bash
 grep -r "from '@/utils" backend/src/ --include="*.ts" -l | wc -l
+# Status: COMPLETADO (0 archivos restantes)
 ```
 
 #### 2.3 Migrar imports de `@/config/` → `@/infrastructure/`
 ```bash
 grep -r "from '@/config" backend/src/ --include="*.ts" -l | wc -l
+# Status: COMPLETADO (0 archivos restantes)
 ```
 
 #### 2.4 Migrar imports de `@/middleware/` → paths específicos
 ```bash
 grep -r "from '@/middleware" backend/src/ --include="*.ts" -l | wc -l
+# Status: PENDIENTE (~5 archivos)
 ```
 
 #### 2.5 Migrar imports de `@/services/` → `@/domains/`
 ```bash
 grep -r "from '@/services" backend/src/ --include="*.ts" -l | wc -l
+# Status: CRÍTICO (91 archivos restantes)
 ```
 
 **IMPORTANTE**: Después de cada grupo, correr tests:
@@ -357,3 +361,4 @@ Una vez completado BLOQUE B, proceder con:
 | Fecha | Cambio |
 |-------|--------|
 | 2025-12-19 | Documento creado después de completar BLOQUE A |
+| 2025-12-19 | Actualización estado B.6: Utils/Config migrados, Services pendientes (91 archivos) |

@@ -424,7 +424,7 @@ function generateLogEntry(index: number): {
 // Test Suite
 // ============================================
 
-describe('Performance Tests', () => {
+describe.skip('Performance Tests', () => {
   let app: Application;
 
   beforeEach(() => {

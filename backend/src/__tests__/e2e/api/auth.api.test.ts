@@ -185,23 +185,23 @@ describe('E2E API: Auth Endpoints', () => {
       client.setSessionCookie(testUser.sessionCookie);
 
       const response = await client.get<{
-        hasToken: boolean;
+        hasAccess: boolean;
         isValid: boolean;
       }>('/api/auth/bc-status');
 
       expect(response.ok).toBe(true);
       expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('hasToken');
+      expect(response.body).toHaveProperty('hasAccess');
     });
 
     it('should indicate no token for new test user', async () => {
       const testUser = await factory.createTestUser({ prefix: 'bc_no_token_' });
       client.setSessionCookie(testUser.sessionCookie);
 
-      const response = await client.get<{ hasToken: boolean }>('/api/auth/bc-status');
+      const response = await client.get<{ hasAccess: boolean }>('/api/auth/bc-status');
 
       expect(response.ok).toBe(true);
-      expect(response.body.hasToken).toBe(false);
+      expect(response.body.hasAccess).toBe(false);
     });
 
     it('should require authentication', async () => {
@@ -215,16 +215,16 @@ describe('E2E API: Auth Endpoints', () => {
       client.setSessionCookie(testUser.sessionCookie);
 
       const response = await client.get<{
-        hasToken: boolean;
+        hasAccess: boolean;
         isValid?: boolean;
         expiresAt?: string;
       }>('/api/auth/bc-status');
 
       expect(response.ok).toBe(true);
-      expect(typeof response.body.hasToken).toBe('boolean');
+      expect(typeof response.body.hasAccess).toBe('boolean');
 
-      // Optional fields should be present only when hasToken is true
-      if (response.body.hasToken) {
+      // Optional fields should be present only when hasAccess is true
+      if (response.body.hasAccess) {
         expect(response.body).toHaveProperty('isValid');
         expect(typeof response.body.isValid).toBe('boolean');
       }

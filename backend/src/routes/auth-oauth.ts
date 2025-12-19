@@ -17,7 +17,7 @@ import crypto from 'crypto';
 import { executeQuery } from '../config/database';
 import { createMicrosoftOAuthService } from '../services/auth/MicrosoftOAuthService';
 import { createBCTokenManager } from '../services/auth/BCTokenManager';
-import { authenticateMicrosoft } from '../middleware/auth-oauth';
+import { authenticateMicrosoft, authenticateMicrosoftOptional } from '../middleware/auth-oauth';
 import { MicrosoftOAuthSession } from '../types/microsoft.types';
 import { logger } from '../utils/logger';
 import { ErrorCode } from '@/constants/errors';
@@ -228,7 +228,7 @@ router.get('/callback', async (req: Request, res: Response) => {
  *
  * Logout user and destroy session.
  */
-router.post('/logout', authenticateMicrosoft, async (req: Request, res: Response) => {
+router.post('/logout', authenticateMicrosoftOptional, async (req: Request, res: Response) => {
   try {
     const userId = req.userId;
 
@@ -241,7 +241,7 @@ router.post('/logout', authenticateMicrosoft, async (req: Request, res: Response
       });
     }
 
-    logger.info('User logged out', { userId });
+    logger.info('User logged out', { userId: userId || 'unauthenticated' });
 
     res.json({
       success: true,
@@ -281,10 +281,12 @@ router.get('/me', authenticateMicrosoft, async (req: Request, res: Response) => 
     const user = result.recordset[0] as Record<string, unknown>;
 
     res.json({
-      id: user.id,
+      id: (user.id as string).toLowerCase(),
       email: user.email,
+      displayName: user.full_name,
       fullName: user.full_name,
       role: user.role,
+      isAdmin: user.role === 'admin',
       microsoftEmail: user.microsoft_email,
       microsoftId: user.microsoft_id,
       lastLogin: user.last_microsoft_login,

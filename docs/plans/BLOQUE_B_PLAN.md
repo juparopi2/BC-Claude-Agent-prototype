@@ -1,23 +1,23 @@
 # BLOQUE B: Pre-Refactor (Malla de Seguridad)
 
 **Fecha de creación**: 2025-12-19
-**Estado**: EN PROGRESO (B.2-B.5 COMPLETADOS, B.6 PENDIENTE)
+**Estado**: ✅ COMPLETADO (2025-12-22)
 **Prerrequisito**: BLOQUE A (Screaming Architecture) - COMPLETADO
 
 ---
 
-## Resumen de Logros (2025-12-19)
+## Resumen de Logros (2025-12-22)
 
 ### Tareas Completadas
 
 | Tarea | Estado | Descripción |
 |-------|--------|-------------|
-| B.1 | COMPLETADO | Response Shape ya estaba correcto (`response.body.session.id`) |
-| B.2 | COMPLETADO | Backend devuelve 404 para cross-tenant access (OWASP pattern) |
-| B.3 | COMPLETADO | `E2ETestClient.sendMessage()` ahora pasa `userId` correctamente |
-| B.4 | COMPLETADO | Tests de billing/usage/gdpr ya tenían `describe.skip()` |
-| B.5 | COMPLETADO | Nuevo test `messages-retrieval.api.test.ts` creado (Gap D23) |
-| B.6 | PENDIENTE | Migración de imports y eliminación de re-exports |
+| B.1 | ✅ COMPLETADO | Response Shape ya estaba correcto (`response.body.session.id`) |
+| B.2 | ✅ COMPLETADO | Backend devuelve 404 para cross-tenant access (OWASP pattern) |
+| B.3 | ✅ COMPLETADO | `E2ETestClient.sendMessage()` ahora pasa `userId` correctamente |
+| B.4 | ✅ COMPLETADO | Tests de billing/usage/gdpr ya tenían `describe.skip()` |
+| B.5 | ✅ COMPLETADO | Nuevo test `messages-retrieval.api.test.ts` creado (Gap D23) |
+| B.6 | ✅ COMPLETADO | Migración de imports y eliminación de re-exports (Strangler Fig completo) |
 
 ### Resultados Numéricos Pre-B.6 (Baseline)
 
@@ -56,6 +56,49 @@ Duration: 748.29s
 | `session-rooms.ws.test.ts` | Fixed response shape `response.body.session.id` |
 | `messages-retrieval.api.test.ts` | NUEVO - Gap D23 test |
 | `sessions.ts` (routes) | Agregado UUID validation y error handling 404 |
+
+### Resultados Numéricos Post-B.6 (Final - 2025-12-22)
+
+**Tests Unitarios (npm test)**:
+```
+Tests: 1916 passed, 0 failed, 12 skipped
+Test Files: 80 passed, 1 skipped (81 total)
+Duration: 16.91s
+```
+
+**Build**:
+```
+✅ Successfully compiled: 325 files with swc (626.86ms)
+```
+
+**Lint**:
+```
+✅ 0 errors, 30 warnings (pre-existentes)
+```
+
+### Archivos Eliminados en B.6 (Strangler Fig Cleanup)
+
+**Directorios eliminados completamente**:
+- `backend/src/config/` (12 re-export files)
+- `backend/src/utils/` (9 re-export files + sql/)
+- `backend/src/constants/` (4 re-export files)
+- `backend/src/middleware/` (2 re-export files)
+
+**Archivos en services/ eliminados**:
+- `services/approval/ApprovalManager.ts` (re-export to domains)
+- `services/auth/MicrosoftOAuthService.ts` (re-export to domains)
+- `services/billing/` (re-exports to domains)
+- `services/queue/MessageQueue.ts` (re-export to infrastructure)
+- `services/tracking/` (re-exports to domains)
+
+### Correcciones de Tests en B.6
+
+| Archivo | Problema | Solución |
+|---------|----------|----------|
+| `sessions.routes.test.ts` | IDs de sesión inválidos (no UUIDs) causaban 404 antes de llegar a mocks | Actualizado a UUIDs válidos |
+| `auth-oauth.ts` | Import dinámico a `@/config/database` eliminado | Cambiado a `@/infrastructure/database/database` |
+| `BCTokenManager.raceCondition.test.ts` | Mock paths con rutas relativas antiguas | Actualizado a paths absolutos |
+| `FileChunkingService.test.ts` | Mock de logger sin `createChildLogger` | Agregado export faltante al mock |
 
 ---
 

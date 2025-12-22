@@ -8,7 +8,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { FileChunkingService, getFileChunkingService } from '../../../../services/files/FileChunkingService';
-import type { FileChunkingJob } from '../../../../services/queue/MessageQueue';
+import type { FileChunkingJob } from '@/infrastructure/queue/MessageQueue';
 import { executeQuery } from '@/infrastructure/database/database';
 
 // Mock dependencies
@@ -31,6 +31,12 @@ vi.mock('@/shared/utils/logger', () => ({
     error: vi.fn(),
     debug: vi.fn(),
   },
+  createChildLogger: vi.fn(() => ({
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  })),
 }));
 
 vi.mock('uuid', () => ({
@@ -50,7 +56,7 @@ vi.mock('../../../../services/chunking/ChunkingStrategyFactory', () => ({
 }));
 
 // Mock MessageQueue
-vi.mock('../../../../services/queue/MessageQueue', () => ({
+vi.mock('@/infrastructure/queue/MessageQueue', () => ({
   getMessageQueue: vi.fn(() => ({
     addEmbeddingGenerationJob: vi.fn(() => Promise.resolve('mock-embedding-job-id')),
   })),

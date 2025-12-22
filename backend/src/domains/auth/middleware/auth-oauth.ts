@@ -207,7 +207,7 @@ export async function requireBCAccess(req: Request, res: Response, next: NextFun
     }
 
     // Check if user has BC tokens in database
-    const { executeQuery } = await import('@/config/database');
+    const { executeQuery } = await import('@/infrastructure/database/database');
 
     const result = await executeQuery(
       `

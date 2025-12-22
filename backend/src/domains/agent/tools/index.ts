@@ -6,18 +6,20 @@
  *
  * Implemented Classes:
  * - ToolEventDeduplicator: Prevents duplicate tool events (~50 LOC)
- *
- * TODO: Implement remaining classes:
  * - ToolExecutionProcessor: Processes tool executions (~100 LOC)
  */
 
 // Types
 export * from './types';
 
-// Implemented classes
+// ToolEventDeduplicator
 export {
   ToolEventDeduplicator,
   createToolEventDeduplicator,
 } from './ToolEventDeduplicator';
 
-// TODO: Export ToolExecutionProcessor when implemented
+// ToolExecutionProcessor
+export {
+  ToolExecutionProcessor,
+  createToolExecutionProcessor,
+} from './ToolExecutionProcessor';

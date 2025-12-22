@@ -1,7 +1,7 @@
 # Estado Actual del Proyecto
 
 **Fecha**: 2025-12-22
-**Estado**: En Progreso - Fase 4 Completada ✅
+**Estado**: En Progreso - Fase 5 Completada ✅
 
 ---
 
@@ -154,12 +154,13 @@ const [prevSeq] = await Promise.all([
 | **ThinkingAccumulator** | `domains/agent/streaming/` | 24 ✅ | ~60 |
 | **ContentAccumulator** | `domains/agent/streaming/` | 21 ✅ | ~45 |
 | **ToolEventDeduplicator** | `domains/agent/tools/` | 30 ✅ | ~50 |
+| **ToolExecutionProcessor** | `domains/agent/tools/` | 53 ✅ | ~100 |
 | **AgentEventEmitter** | `domains/agent/emission/` | 32 ✅ | ~80 |
 | **UsageTracker** | `domains/agent/usage/` | 35 ✅ | ~70 |
 | **SemanticSearchHandler** | `domains/agent/context/` | 19 ✅ | ~84 |
 | **FileContextPreparer** | `domains/agent/context/` | 23 ✅ | ~100 |
 
-**Total:** 10 clases, 296 tests, ~829 LOC
+**Total:** 11 clases, 349 tests, ~929 LOC
 
 ### Cleanup Realizado (Fase 3)
 
@@ -173,16 +174,24 @@ const [prevSeq] = await Promise.all([
   - GAP identificado: Imágenes generan embeddings pero NO se indexan
   - Solución propuesta: OCR + Captions + Dual-Index + Fusion Search (6-8 semanas)
 
+### Nuevo en Fase 5
+
+- ✅ ToolExecutionProcessor: Procesa tool executions de LangGraph (53 tests)
+  - Deduplicación via ToolEventDeduplicator
+  - Emit-first, persist-async pattern
+  - Emite tool_use y tool_result events
+  - Batch persistence via PersistenceCoordinator.persistToolEventsAsync()
+
 ### Estructura de Carpetas Creada
 
 ```
 backend/src/domains/agent/
 ├── context/          # SemanticSearchHandler ✅, FileContextPreparer ✅
-├── emission/         # EventIndexTracker, AgentEventEmitter ✅
+├── emission/         # EventIndexTracker ✅, AgentEventEmitter ✅
 ├── orchestration/    # Para AgentOrchestrator
-├── persistence/      # PersistenceErrorAnalyzer, PersistenceCoordinator ✅
-├── streaming/        # ThinkingAccumulator, ContentAccumulator ✅
-├── tools/            # ToolEventDeduplicator ✅
+├── persistence/      # PersistenceErrorAnalyzer ✅, PersistenceCoordinator ✅
+├── streaming/        # ThinkingAccumulator ✅, ContentAccumulator ✅
+├── tools/            # ToolEventDeduplicator ✅, ToolExecutionProcessor ✅
 └── usage/            # UsageTracker ✅
 ```
 
@@ -194,4 +203,4 @@ backend/src/domains/agent/
 
 ---
 
-*Última actualización: 2025-12-22 - Fase 4 Completada*
+*Última actualización: 2025-12-22 - Fase 5 Completada*

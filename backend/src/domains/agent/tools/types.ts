@@ -5,6 +5,8 @@
  * Tool execution, deduplication, and approval handling.
  */
 
+import type { AgentEvent } from '@bc-agent/shared';
+
 /**
  * Result of checking if a tool event is duplicate.
  */
@@ -57,6 +59,102 @@ export interface IToolEventDeduplicator {
 
   /**
    * Reset tracker for new session.
+   */
+  reset(): void;
+}
+
+// === ToolExecutionProcessor Types ===
+
+/**
+ * Context for tool execution processing.
+ * Contains session info and event emission callback.
+ */
+export interface ToolProcessorContext {
+  /** Session ID for logging and persistence */
+  sessionId: string;
+
+  /** User ID for logging */
+  userId: string;
+
+  /** Callback to emit events to WebSocket */
+  onEvent: (event: AgentEvent) => void;
+}
+
+/**
+ * Input format for tool executions from LangGraph.
+ * Matches the shape from agentOutput.toolExecutions in on_chain_end.
+ *
+ * Note: Uses 'args' (from LangGraph) not 'toolInput' (persistence format).
+ */
+export interface RawToolExecution {
+  /** Unique tool use ID for correlation */
+  toolUseId: string;
+
+  /** Name of the tool executed */
+  toolName: string;
+
+  /** Tool arguments (from LangGraph) */
+  args: Record<string, unknown>;
+
+  /** Tool result output */
+  result: string;
+
+  /** Whether tool execution succeeded */
+  success: boolean;
+
+  /** Error message if tool failed */
+  error?: string;
+}
+
+/**
+ * Statistics about tool execution processing.
+ */
+export interface ToolProcessorStats {
+  /** Total executions received */
+  totalReceived: number;
+
+  /** Executions skipped due to deduplication */
+  duplicatesSkipped: number;
+
+  /** Events emitted (tool_use + tool_result pairs) */
+  eventsEmitted: number;
+
+  /** Persistence operations initiated */
+  persistenceInitiated: number;
+}
+
+/**
+ * Interface for ToolExecutionProcessor.
+ * Processes tool executions: deduplicates, emits events, persists async.
+ *
+ * Pattern: Emit-first, persist-async (for UI responsiveness)
+ */
+export interface IToolExecutionProcessor {
+  /**
+   * Process an array of tool executions.
+   * For each unique execution:
+   * 1. Check deduplication (skip if duplicate)
+   * 2. Emit tool_use event (immediate)
+   * 3. Emit tool_result event (immediate)
+   * 4. Queue async persistence (batch)
+   *
+   * @param executions - Tool executions from LangGraph
+   * @param context - Session context and event callback
+   * @returns Array of tool names that were processed (non-duplicate)
+   */
+  processExecutions(
+    executions: RawToolExecution[],
+    context: ToolProcessorContext
+  ): Promise<string[]>;
+
+  /**
+   * Get processing statistics.
+   */
+  getStats(): ToolProcessorStats;
+
+  /**
+   * Reset processor state (deduplicator + stats).
+   * Call this at the start of a new agent run.
    */
   reset(): void;
 }

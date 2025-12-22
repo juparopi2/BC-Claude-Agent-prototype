@@ -1,7 +1,7 @@
 # Refactor de DirectAgentService - Documentación
 
 **Fecha**: 2025-12-22
-**Estado**: En Progreso - Fase 4 (Contexto) Completada ✅
+**Estado**: En Progreso - Fase 5 (Tools) Completada ✅
 
 ---
 
@@ -9,11 +9,11 @@
 
 | Métrica | Valor |
 |---------|-------|
-| **Clases implementadas** | 10 / 13 (77%) |
-| **Tests nuevos** | 296 pasando |
-| **Tests totales** | 2,193 pasando |
+| **Clases implementadas** | 11 / 13 (85%) |
+| **Tests nuevos** | 349 pasando |
+| **Tests totales** | 2,246 pasando |
 | **Lint** | 0 errores |
-| **Build** | 352 archivos compilados |
+| **Build** | 354 archivos compilados |
 
 ### Clases Completadas ✅
 
@@ -32,7 +32,8 @@ backend/src/domains/agent/
 │   ├── ThinkingAccumulator.ts         ✅ 24 tests
 │   └── ContentAccumulator.ts          ✅ 21 tests
 ├── tools/
-│   └── ToolEventDeduplicator.ts       ✅ 30 tests
+│   ├── ToolEventDeduplicator.ts       ✅ 30 tests
+│   └── ToolExecutionProcessor.ts      ✅ 53 tests
 └── usage/
     └── UsageTracker.ts                ✅ 35 tests
 ```
@@ -153,10 +154,13 @@ Este directorio contiene la documentación completa del refactor del DirectAgent
 7. ✅ **Fase 4 (Contexto):** FileContextPreparer (23 tests)
    - Coordina validación de attachments, búsqueda semántica, y formateo de contexto
    - Agregado ticket URGENTE D2 (Multimodal RAG Search) en 99-FUTURE-DEVELOPMENT.md
+8. ✅ **Fase 5 (Tools):** ToolExecutionProcessor (53 tests)
+   - Procesa tool executions de LangGraph
+   - Emit-first, persist-async pattern
+   - Deduplicación via ToolEventDeduplicator
 
 ### En Progreso ⏳
 
-8. ⏳ **Fase 5 (Tools):** ToolExecutionProcessor
 9. ⏳ **Fase 6 (Stream):** GraphStreamProcessor (ALTO RIESGO)
 10. ⏳ **Fase 7 (Orchestrator):** AgentOrchestrator (ALTO RIESGO)
 11. ⏳ **Fase 8 (Integración):** ChatMessageHandler, E2E tests
@@ -164,4 +168,4 @@ Este directorio contiene la documentación completa del refactor del DirectAgent
 
 ---
 
-*Última actualización: 2025-12-22 - Fase 4 Completada*
+*Última actualización: 2025-12-22 - Fase 5 Completada*

@@ -27,15 +27,15 @@ Esto permite:
 | 5 | ToolEventDeduplicator | Ninguna | Bajo | ✅ Completada | 30 |
 | 6 | AgentEventEmitter | EventIndexTracker | Bajo | ✅ Completada | 32 |
 | 7 | UsageTracker | Services externos | Bajo | ✅ Completada | 35 |
-| 8 | PersistenceCoordinator | EventStore, Queue, ErrorAnalyzer | Medio | ⏳ Pendiente | - |
-| 9 | SemanticSearchHandler | SemanticSearchService | Bajo | ⏳ Pendiente | - |
-| 10 | FileContextPreparer | SemanticSearchHandler | Medio | ⏳ Pendiente | - |
-| 11 | ToolExecutionProcessor | Deduplicator, Persistence, Emitter | Medio | ⏳ Pendiente | - |
+| 8 | PersistenceCoordinator | EventStore, Queue, ErrorAnalyzer | Medio | ✅ Completada | 72 |
+| 9 | SemanticSearchHandler | SemanticSearchService | Bajo | ✅ Completada | 19 |
+| 10 | FileContextPreparer | SemanticSearchHandler | Medio | ✅ Completada | 23 |
+| 11 | ToolExecutionProcessor | Deduplicator, Persistence, Emitter | Medio | ✅ Completada | 53 |
 | 12 | GraphStreamProcessor | Accumulators, ToolProcessor | **Alto** | ⏳ Pendiente | - |
 | 13 | AgentOrchestrator | Todas las anteriores | **Alto** | ⏳ Pendiente | - |
 
-**Total tests Fase A (hojas):** 182 tests pasando
-**Progreso:** 7/13 clases completadas (54%)
+**Total tests Fase A-B (hojas + coordinadores + tools):** 349 tests pasando
+**Progreso:** 11/13 clases completadas (85%)
 
 ---
 

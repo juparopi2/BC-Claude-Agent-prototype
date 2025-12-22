@@ -6,19 +6,22 @@
  *
  * Implemented Classes:
  * - PersistenceErrorAnalyzer: Categorizes persistence errors (~60 LOC)
- *
- * TODO: Implement remaining classes:
  * - PersistenceCoordinator: Coordinates EventStore + MessageQueue (~120 LOC)
  */
 
 // Types
 export * from './types';
 
-// Implemented classes
+// PersistenceErrorAnalyzer
 export {
   PersistenceErrorAnalyzer,
   getPersistenceErrorAnalyzer,
   __resetPersistenceErrorAnalyzer,
 } from './PersistenceErrorAnalyzer';
 
-// TODO: Export PersistenceCoordinator when implemented
+// PersistenceCoordinator
+export {
+  PersistenceCoordinator,
+  getPersistenceCoordinator,
+  __resetPersistenceCoordinator,
+} from './PersistenceCoordinator';

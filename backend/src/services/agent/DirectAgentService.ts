@@ -54,6 +54,7 @@ import type { FileContextResult, ParsedFile } from '@/types';
 import { orchestratorGraph } from '@/modules/agents/orchestrator/graph';
 import { HumanMessage } from '@langchain/core/messages';
 import { StreamAdapterFactory } from '@/shared/providers/adapters';
+import { getPersistenceErrorAnalyzer, type IPersistenceErrorAnalyzer } from '@/domains/agent/persistence';
 
 // Note: BC Index types (BCEndpoint, BCIndexEntity, BCIndex, etc.) were removed
 // as they were used by executeQueryStreaming which was deprecated in Phase 1.
@@ -114,6 +115,7 @@ export class DirectAgentService {
   private mcpDataPath: string;
   private logger: Logger;
   private emitter: IMessageEmitter;
+  private readonly persistenceErrorAnalyzer: IPersistenceErrorAnalyzer;
   // Note: toolDataAccumulators was used by executeQueryStreaming (removed)
   // runGraph processes tools via toolExecutions at on_chain_end instead
 
@@ -138,6 +140,9 @@ export class DirectAgentService {
 
     // Initialize message emitter
     this.emitter = getMessageEmitter();
+
+    // Initialize persistence error analyzer
+    this.persistenceErrorAnalyzer = getPersistenceErrorAnalyzer();
   }
 
 
@@ -651,7 +656,7 @@ export class DirectAgentService {
                            messageId: turnEndMessageId,
                            phase: 'turn_end_persistence',
                            contentLength: accumulatedText.length,
-                           possibleCauses: this.analyzePersistenceError(persistError)
+                           possibleCauses: this.persistenceErrorAnalyzer.analyze(persistError)
                          };
 
                          this.logger.error(errorDetails, '❌ CRITICAL: Failed to persist turn-end message');
@@ -923,7 +928,7 @@ export class DirectAgentService {
                                messageId: intermediateMessageId,
                                phase: 'intermediate_message_persistence',
                                contentLength: intermediateText.length,
-                               possibleCauses: this.analyzePersistenceError(persistError)
+                               possibleCauses: this.persistenceErrorAnalyzer.analyze(persistError)
                              };
 
                              this.logger.error(errorDetails, '❌ CRITICAL: Failed to persist intermediate message');
@@ -1232,7 +1237,7 @@ export class DirectAgentService {
                 messageId: thinkingMessageId,
                 phase: 'thinking_persistence',
                 contentLength: thinkingContent.length,
-                possibleCauses: this.analyzePersistenceError(persistError)
+                possibleCauses: this.persistenceErrorAnalyzer.analyze(persistError)
               };
 
               this.logger.error(errorDetails, '❌ CRITICAL: Failed to persist thinking event');
@@ -1338,7 +1343,7 @@ export class DirectAgentService {
             },
 
             // Detected possible causes
-            possibleCauses: this.analyzePersistenceError(persistError)
+            possibleCauses: this.persistenceErrorAnalyzer.analyze(persistError)
           };
 
           this.logger.error(errorDetails, '❌ CRITICAL: Failed to persist final message event');
@@ -1404,45 +1409,6 @@ export class DirectAgentService {
       };
   }
 
-  /**
-   * Analyzes persistence errors to identify root causes for debugging.
-   * Returns an array of human-readable cause descriptions.
-   *
-   * @param error - The error thrown during persistence
-   * @returns Array of identified possible causes
-   */
-  private analyzePersistenceError(error: unknown): string[] {
-    const causes: string[] = [];
-    const errorMsg = error instanceof Error ? error.message : String(error);
-
-    if (errorMsg.includes('duplicate key') || errorMsg.includes('PRIMARY KEY')) {
-      causes.push('DUPLICATE_ID: El ID del mensaje ya existe en la base de datos');
-    }
-    if (errorMsg.includes('FOREIGN KEY') || errorMsg.includes('FK_')) {
-      causes.push('FK_VIOLATION: Referencia a sesión o usuario que no existe');
-    }
-    if (errorMsg.includes('sequence_number')) {
-      causes.push('SEQUENCE_CONFLICT: Conflicto en el número de secuencia (posible race condition D1)');
-    }
-    if (errorMsg.includes('timeout') || errorMsg.includes('ETIMEDOUT')) {
-      causes.push('DB_TIMEOUT: La base de datos no respondió a tiempo');
-    }
-    if (errorMsg.includes('Redis') || errorMsg.includes('redis')) {
-      causes.push('REDIS_ERROR: Problema con Redis al obtener sequence number');
-    }
-    if (errorMsg.includes('connection') || errorMsg.includes('ECONNREFUSED')) {
-      causes.push('CONNECTION_ERROR: No se pudo conectar a la base de datos');
-    }
-    if (errorMsg.includes('Database not available')) {
-      causes.push('DB_UNAVAILABLE: El servicio de base de datos no está disponible');
-    }
-
-    if (causes.length === 0) {
-      causes.push('UNKNOWN: Error no categorizado - revisar logs completos');
-    }
-
-    return causes;
-  }
 }
 
 // Export singleton getter

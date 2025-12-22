@@ -50,9 +50,89 @@ WHEN MATCHED THEN
 
 ---
 
+## URGENTE - Siguiente Prioridad
+
+### D2: Multimodal RAG Search (Core Feature)
+
+**Prioridad:** CRÍTICA
+**Estimación:** 6-8 semanas
+**Impacto:** Búsqueda de imágenes por contenido (funcionalidad core del negocio)
+
+**Problema Actual:**
+
+El sistema RAG actualmente tiene un GAP CRÍTICO:
+- ✅ Documentos de texto (PDF, DOCX, XLSX) → embeddings 1536d → búsqueda funcional
+- ❌ Imágenes → embeddings 1024d generados pero **NO indexados**
+- ❌ No hay OCR para texto visible en imágenes
+- ❌ No hay captions/descripciones automáticas
+- ❌ Búsqueda semántica **SOLO funciona para texto**
+
+```typescript
+// FileChunkingService.ts - línea ~114
+if (IMAGE_MIME_TYPES.has(mimeType)) {
+  logger.info('Skipping text chunking for image file');
+  return { fileId, chunkCount: 0, totalTokens: 0 };
+  // ⚠️ Embedding de imagen generado pero NO indexado!
+}
+```
+
+**Impacto en Usuarios:**
+- Cliente con 10,000 imágenes de productos (cajas de metal, etc.)
+- Usuario busca "cajas de 50x30cm" → NO encuentra imágenes relevantes
+- Las imágenes tienen texto visible (dimensiones, códigos) pero no es extraído
+
+**Solución Propuesta en 4 Fases:**
+
+```
+Fase 1: Image OCR (2 semanas)
+├── Agregar Azure Computer Vision Read API en ImageProcessor
+├── Extraer texto OCR y almacenar en extracted_text
+├── Crear chunks del OCR e indexarlos
+└── Resultado: Imágenes con texto visible ahora buscables
+
+Fase 2: Image Captions (1 semana)
+├── Agregar Azure Computer Vision Description API
+├── Generar descripciones automáticas ("metal box with label")
+├── Indexar captions como texto buscable
+└── Resultado: Búsqueda semántica por contenido visual
+
+Fase 3: Dual-Index Architecture (2 semanas)
+├── Separar índices: textVector (1536d) + imageVector (1024d)
+├── Agregar campos: ocrText, imageCaption, detectedObjects
+├── Actualizar Azure AI Search schema
+└── Resultado: Arquitectura preparada para fusion search
+
+Fase 4: Fusion Search (2 semanas)
+├── Implementar algoritmo de fusion ranking
+├── Combinar: OCR matches + caption matches + visual similarity
+├── Configurar weights (text: 0.4, caption: 0.3, visual: 0.3)
+└── Resultado: Búsqueda multimodal completa
+```
+
+**Costos Adicionales:**
+
+| Servicio | Costo Actual | Costo Nuevo | Incremento |
+|----------|--------------|-------------|------------|
+| Por imagen | $0.001 (embedding) | $0.004 (+ OCR + caption) | 4x |
+| 10K imágenes | $10 | $40 | +$30 |
+
+**Archivos Afectados:**
+- `backend/src/services/files/processors/ImageProcessor.ts`
+- `backend/src/services/search/VectorSearchService.ts`
+- `backend/src/services/files/FileChunkingService.ts`
+- `backend/src/infrastructure/config/models.ts`
+- Azure AI Search index schema
+
+**Nota:** Las 3 técnicas (OCR, Captions, Visual) **NO entran en conflicto** - se complementan:
+- OCR: Encuentra texto exacto ("50x30cm", "MX-5030")
+- Captions: Encuentra contexto semántico ("caja de metal plateada")
+- Visual: Encuentra imágenes visualmente similares
+
+---
+
 ## Posponer para Fases Futuras
 
-### D2: FakeAnthropicClient - Extended Thinking
+### D3: FakeAnthropicClient - Extended Thinking
 
 **Descripción:**
 El `FakeAnthropicClient` actual no soporta extended thinking (blockIndex 0).
@@ -358,7 +438,8 @@ Dashboard de analytics para admins.
 | ID | Descripción | Fase | Prioridad | Días |
 |----|-------------|------|-----------|------|
 | **D1** | **Race condition EventStore** | **Phase 5C** | **Alta** | **1-2** |
-| D2 | FakeAnthropicClient thinking | Phase 6 | Media | 0.5 |
+| **D2** | **Multimodal RAG Search** | **URGENTE** | **CRÍTICA** | **30-40** |
+| D3 | FakeAnthropicClient thinking | Phase 6 | Media | 0.5 |
 | D8 | Dynamic model selection | Phase 6 | Media | 2 |
 | D9 | WebSocket usage alerts | Phase 6 | Baja | 1 |
 | D10 | Message replay | Phase 6 | Baja | 3 |
@@ -371,6 +452,7 @@ Dashboard de analytics para admins.
 | - | Batch API | Phase 7 | Baja | 5 |
 | - | Analytics Dashboard | Phase 8 | Media | 10 |
 
+**Total estimado URGENTE (D2):** ~30-40 días (6-8 semanas)
 **Total estimado Phase 6:** ~17.5 días
 **Total estimado Phase 7:** ~28 días
 **Total estimado Phase 8:** ~10 días

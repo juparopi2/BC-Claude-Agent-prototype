@@ -59,3 +59,144 @@ export interface IPersistenceErrorAnalyzer {
    */
   getDetailedAnalysis(error: unknown): ErrorAnalysis;
 }
+
+// === PersistenceCoordinator Types ===
+
+/**
+ * Result of a successful persistence operation.
+ * Contains the sequence number for ordering and the event ID for correlation.
+ */
+export interface PersistedEvent {
+  eventId: string;
+  sequenceNumber: number;
+  timestamp: string;
+}
+
+/**
+ * Data for persisting an agent message.
+ */
+export interface AgentMessageData {
+  messageId: string;
+  content: string;
+  stopReason: string;
+  tokenUsage?: {
+    inputTokens: number;
+    outputTokens: number;
+  };
+  model?: string;
+}
+
+/**
+ * Data for persisting thinking content.
+ */
+export interface ThinkingData {
+  messageId: string;
+  content: string;
+  tokenUsage?: {
+    inputTokens: number;
+    outputTokens: number;
+  };
+}
+
+/**
+ * Data for persisting tool use request.
+ */
+export interface ToolUseData {
+  toolUseId: string;
+  toolName: string;
+  toolInput: Record<string, unknown>;
+}
+
+/**
+ * Data for persisting tool result.
+ */
+export interface ToolResultData {
+  toolUseId: string;
+  toolOutput: string;
+  isError: boolean;
+  errorMessage?: string;
+}
+
+/**
+ * Data for persisting error events.
+ */
+export interface ErrorData {
+  error: string;
+  code: string;
+  details?: Record<string, unknown>;
+}
+
+/**
+ * Tool execution data for async batch persistence.
+ */
+export interface ToolExecution {
+  toolUseId: string;
+  toolName: string;
+  toolInput: Record<string, unknown>;
+  toolOutput: string;
+  success: boolean;
+  error?: string;
+  timestamp: string;
+}
+
+/**
+ * Interface for PersistenceCoordinator.
+ * Coordinates EventStore + MessageQueue for unified persistence.
+ */
+export interface IPersistenceCoordinator {
+  /**
+   * Persist a user message to the event store.
+   * @param sessionId - Session ID
+   * @param content - Message content
+   * @returns Persisted event with sequence number
+   */
+  persistUserMessage(sessionId: string, content: string): Promise<PersistedEvent>;
+
+  /**
+   * Persist an agent message with full metadata.
+   * @param sessionId - Session ID
+   * @param data - Agent message data
+   * @returns Persisted event with sequence number
+   */
+  persistAgentMessage(sessionId: string, data: AgentMessageData): Promise<PersistedEvent>;
+
+  /**
+   * Persist thinking content.
+   * @param sessionId - Session ID
+   * @param data - Thinking data
+   * @returns Persisted event with sequence number
+   */
+  persistThinking(sessionId: string, data: ThinkingData): Promise<PersistedEvent>;
+
+  /**
+   * Persist tool use request.
+   * @param sessionId - Session ID
+   * @param data - Tool use data
+   * @returns Persisted event with sequence number
+   */
+  persistToolUse(sessionId: string, data: ToolUseData): Promise<PersistedEvent>;
+
+  /**
+   * Persist tool result.
+   * @param sessionId - Session ID
+   * @param data - Tool result data
+   * @returns Persisted event with sequence number
+   */
+  persistToolResult(sessionId: string, data: ToolResultData): Promise<PersistedEvent>;
+
+  /**
+   * Persist error event.
+   * @param sessionId - Session ID
+   * @param data - Error data
+   * @returns Persisted event with sequence number
+   */
+  persistError(sessionId: string, data: ErrorData): Promise<PersistedEvent>;
+
+  /**
+   * Persist tool executions asynchronously (fire-and-forget).
+   * Does not block - persists in background.
+   * @param sessionId - Session ID
+   * @param executions - Array of tool executions
+   */
+  persistToolEventsAsync(sessionId: string, executions: ToolExecution[]): void;
+}

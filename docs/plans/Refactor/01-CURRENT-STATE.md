@@ -1,7 +1,7 @@
 # Estado Actual del Proyecto
 
 **Fecha**: 2025-12-22
-**Estado**: En Progreso - Fase A Completada ✅
+**Estado**: En Progreso - Fase 4 Completada ✅
 
 ---
 
@@ -142,30 +142,45 @@ const [prevSeq] = await Promise.all([
 
 ---
 
-## Progreso del Refactor (Fase A Completada)
+## Progreso del Refactor (Fase 4 Completada)
 
 ### Nuevas Clases Implementadas
 
 | Clase | Ubicación | Tests | LOC |
 |-------|-----------|-------|-----|
 | **PersistenceErrorAnalyzer** | `domains/agent/persistence/` | 27 ✅ | ~60 |
+| **PersistenceCoordinator** | `domains/agent/persistence/` | 72 ✅ | ~250 |
 | **EventIndexTracker** | `domains/agent/emission/` | 13 ✅ | ~30 |
 | **ThinkingAccumulator** | `domains/agent/streaming/` | 24 ✅ | ~60 |
 | **ContentAccumulator** | `domains/agent/streaming/` | 21 ✅ | ~45 |
 | **ToolEventDeduplicator** | `domains/agent/tools/` | 30 ✅ | ~50 |
 | **AgentEventEmitter** | `domains/agent/emission/` | 32 ✅ | ~80 |
 | **UsageTracker** | `domains/agent/usage/` | 35 ✅ | ~70 |
+| **SemanticSearchHandler** | `domains/agent/context/` | 19 ✅ | ~84 |
+| **FileContextPreparer** | `domains/agent/context/` | 23 ✅ | ~100 |
 
-**Total:** 7 clases, 182 tests, ~395 LOC
+**Total:** 10 clases, 296 tests, ~829 LOC
+
+### Cleanup Realizado (Fase 3)
+
+- ✅ Eliminado método `analyzePersistenceError()` de DirectAgentService (~35 LOC)
+- ✅ Reemplazado con `PersistenceErrorAnalyzer.analyze()` (4 llamadas actualizadas)
+
+### Nuevo en Fase 4
+
+- ✅ FileContextPreparer: Coordina validación de attachments, búsqueda semántica, y formateo de contexto
+- ✅ Agregado ticket URGENTE D2 (Multimodal RAG Search) en `99-FUTURE-DEVELOPMENT.md`
+  - GAP identificado: Imágenes generan embeddings pero NO se indexan
+  - Solución propuesta: OCR + Captions + Dual-Index + Fusion Search (6-8 semanas)
 
 ### Estructura de Carpetas Creada
 
 ```
 backend/src/domains/agent/
-├── context/          # Para FileContextPreparer, SemanticSearchHandler
+├── context/          # SemanticSearchHandler ✅, FileContextPreparer ✅
 ├── emission/         # EventIndexTracker, AgentEventEmitter ✅
 ├── orchestration/    # Para AgentOrchestrator
-├── persistence/      # PersistenceErrorAnalyzer ✅
+├── persistence/      # PersistenceErrorAnalyzer, PersistenceCoordinator ✅
 ├── streaming/        # ThinkingAccumulator, ContentAccumulator ✅
 ├── tools/            # ToolEventDeduplicator ✅
 └── usage/            # UsageTracker ✅
@@ -173,11 +188,10 @@ backend/src/domains/agent/
 
 ### Verificaciones Pasadas
 
-- ✅ `npm run lint` - 0 errores (30 warnings preexistentes)
-- ✅ `npm run type-check` - Sin errores de tipos
-- ✅ `npm run build` - 345 archivos compilados
-- ✅ `npm test` - 2,031 tests pasando
+- ✅ `npm run lint` - 0 errores (34 warnings preexistentes)
+- ✅ `npm run build` - 352 archivos compilados
+- ✅ `npm test` - 2,193 tests pasando (90 archivos)
 
 ---
 
-*Última actualización: 2025-12-22 13:30 UTC-5*
+*Última actualización: 2025-12-22 - Fase 4 Completada*

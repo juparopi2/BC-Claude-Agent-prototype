@@ -1,7 +1,7 @@
 # Refactor de DirectAgentService - Documentación
 
 **Fecha**: 2025-12-22
-**Estado**: En Progreso - Fase A (Hojas) Completada ✅
+**Estado**: En Progreso - Fase 4 (Contexto) Completada ✅
 
 ---
 
@@ -9,18 +9,22 @@
 
 | Métrica | Valor |
 |---------|-------|
-| **Clases implementadas** | 7 / 13 (54%) |
-| **Tests nuevos** | 182 pasando |
-| **Tests totales** | 2,031 pasando |
+| **Clases implementadas** | 10 / 13 (77%) |
+| **Tests nuevos** | 296 pasando |
+| **Tests totales** | 2,193 pasando |
 | **Lint** | 0 errores |
-| **Build** | 345 archivos compilados |
+| **Build** | 352 archivos compilados |
 
 ### Clases Completadas ✅
 
 ```
 backend/src/domains/agent/
+├── context/
+│   ├── SemanticSearchHandler.ts       ✅ 19 tests
+│   └── FileContextPreparer.ts         ✅ 23 tests
 ├── persistence/
-│   └── PersistenceErrorAnalyzer.ts    ✅ 27 tests
+│   ├── PersistenceErrorAnalyzer.ts    ✅ 27 tests
+│   └── PersistenceCoordinator.ts      ✅ 72 tests
 ├── emission/
 │   ├── EventIndexTracker.ts           ✅ 13 tests
 │   └── AgentEventEmitter.ts           ✅ 32 tests
@@ -144,11 +148,14 @@ Este directorio contiene la documentación completa del refactor del DirectAgent
 3. ✅ Creada estructura de carpetas `domains/agent/` (7 subdirectorios)
 4. ✅ **Fase 1 (Hojas):** 5 clases sin dependencias (115 tests)
 5. ✅ **Fase 2 (Emisores/Trackers):** 2 clases con dependencias internas (67 tests)
+6. ✅ **Fase 3 (Coordinadores):** PersistenceCoordinator (72 tests), SemanticSearchHandler (19 tests)
+   - Cleanup: Eliminado `analyzePersistenceError()` de DirectAgentService
+7. ✅ **Fase 4 (Contexto):** FileContextPreparer (23 tests)
+   - Coordina validación de attachments, búsqueda semántica, y formateo de contexto
+   - Agregado ticket URGENTE D2 (Multimodal RAG Search) en 99-FUTURE-DEVELOPMENT.md
 
 ### En Progreso ⏳
 
-6. ⏳ **Fase 3 (Coordinadores):** PersistenceCoordinator, SemanticSearchHandler
-7. ⏳ **Fase 4 (Contexto):** FileContextPreparer
 8. ⏳ **Fase 5 (Tools):** ToolExecutionProcessor
 9. ⏳ **Fase 6 (Stream):** GraphStreamProcessor (ALTO RIESGO)
 10. ⏳ **Fase 7 (Orchestrator):** AgentOrchestrator (ALTO RIESGO)
@@ -157,4 +164,4 @@ Este directorio contiene la documentación completa del refactor del DirectAgent
 
 ---
 
-*Última actualización: 2025-12-22 13:30 UTC-5*
+*Última actualización: 2025-12-22 - Fase 4 Completada*

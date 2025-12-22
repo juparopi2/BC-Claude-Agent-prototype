@@ -16,13 +16,11 @@ describe('E2E: WebSocket Session Rooms', () => {
   setupE2ETest();
   const factory = new TestSessionFactory();
   let client: E2ETestClient;
-  let userId: string;
-  let sessionCookie: string;
+  let testUser: { id: string; sessionCookie: string };
 
   beforeAll(async () => {
     const auth = await factory.createTestUser();
-    userId = auth.id;
-    sessionCookie = auth.sessionCookie;
+    testUser = { id: auth.id, sessionCookie: auth.sessionCookie };
   });
 
   afterAll(async () => {
@@ -31,7 +29,7 @@ describe('E2E: WebSocket Session Rooms', () => {
 
   beforeEach(async () => {
     client = createE2ETestClient();
-    client.setSessionCookie(sessionCookie);
+    client.setUserAuth(testUser);
     await client.connect();
   });
 
@@ -45,9 +43,9 @@ describe('E2E: WebSocket Session Rooms', () => {
     it('should join session room and receive ready signal', async () => {
       // Create a session via HTTP first
       const httpClient = createE2ETestClient();
-      httpClient.setSessionCookie(sessionCookie);
-      const response = await httpClient.post<{ id: string }>('/api/chat/sessions', { title: 'WS Join Test' });
-      const sessionId = response.body.id;
+      httpClient.setSessionCookie(testUser.sessionCookie);
+      const response = await httpClient.post<{ session: { id: string } }>('/api/chat/sessions', { title: 'WS Join Test' });
+      const sessionId = response.body.session.id;
       expect(sessionId).toBeDefined();
 
       // Join the session room
@@ -64,9 +62,9 @@ describe('E2E: WebSocket Session Rooms', () => {
     it('should reject joining session owned by another user', async () => {
       // Create session as first user
       const httpClient = createE2ETestClient();
-      httpClient.setSessionCookie(sessionCookie);
-      const response = await httpClient.post<{ id: string }>('/api/chat/sessions', { title: 'Other User Session' });
-      const sessionId = response.body.id;
+      httpClient.setSessionCookie(testUser.sessionCookie);
+      const response = await httpClient.post<{ session: { id: string } }>('/api/chat/sessions', { title: 'Other User Session' });
+      const sessionId = response.body.session.id;
       expect(sessionId).toBeDefined();
 
       // Create second user and client
@@ -83,14 +81,14 @@ describe('E2E: WebSocket Session Rooms', () => {
 
     it('should allow joining multiple sessions sequentially', async () => {
       const httpClient = createE2ETestClient();
-      httpClient.setSessionCookie(sessionCookie);
+      httpClient.setSessionCookie(testUser.sessionCookie);
 
       // Create two sessions
-      const response1 = await httpClient.post<{ id: string }>('/api/chat/sessions', { title: 'Session 1' });
-      const sessionId1 = response1.body.id;
+      const response1 = await httpClient.post<{ session: { id: string } }>('/api/chat/sessions', { title: 'Session 1' });
+      const sessionId1 = response1.body.session.id;
       expect(sessionId1).toBeDefined();
-      const response2 = await httpClient.post<{ id: string }>('/api/chat/sessions', { title: 'Session 2' });
-      const sessionId2 = response2.body.id;
+      const response2 = await httpClient.post<{ session: { id: string } }>('/api/chat/sessions', { title: 'Session 2' });
+      const sessionId2 = response2.body.session.id;
       expect(sessionId2).toBeDefined();
 
       // Join first session
@@ -109,9 +107,9 @@ describe('E2E: WebSocket Session Rooms', () => {
   describe('session:leave', () => {
     it('should leave session room', async () => {
       const httpClient = createE2ETestClient();
-      httpClient.setSessionCookie(sessionCookie);
-      const response = await httpClient.post<{ id: string }>('/api/chat/sessions', { title: 'WS Leave Test' });
-      const sessionId = response.body.id;
+      httpClient.setSessionCookie(testUser.sessionCookie);
+      const response = await httpClient.post<{ session: { id: string } }>('/api/chat/sessions', { title: 'WS Leave Test' });
+      const sessionId = response.body.session.id;
       expect(sessionId).toBeDefined();
 
       await client.joinSession(sessionId);
@@ -130,14 +128,14 @@ describe('E2E: WebSocket Session Rooms', () => {
   describe('Session room isolation', () => {
     it('should not receive events from sessions not joined', async () => {
       const httpClient = createE2ETestClient();
-      httpClient.setSessionCookie(sessionCookie);
+      httpClient.setSessionCookie(testUser.sessionCookie);
 
       // Create two sessions
-      const response1 = await httpClient.post<{ id: string }>('/api/chat/sessions', { title: 'Session A' });
-      const sessionId1 = response1.body.id;
+      const response1 = await httpClient.post<{ session: { id: string } }>('/api/chat/sessions', { title: 'Session A' });
+      const sessionId1 = response1.body.session.id;
       expect(sessionId1).toBeDefined();
-      const response2 = await httpClient.post<{ id: string }>('/api/chat/sessions', { title: 'Session B' });
-      const sessionId2 = response2.body.id;
+      const response2 = await httpClient.post<{ session: { id: string } }>('/api/chat/sessions', { title: 'Session B' });
+      const sessionId2 = response2.body.session.id;
       expect(sessionId2).toBeDefined();
 
       // Join only session 1
@@ -146,7 +144,7 @@ describe('E2E: WebSocket Session Rooms', () => {
 
       // Create second client to send message to session 2
       const client2 = createE2ETestClient();
-      client2.setSessionCookie(sessionCookie);
+      client2.setUserAuth(testUser);
       await client2.connect();
       await client2.joinSession(sessionId2);
       await client2.sendMessage(sessionId2, 'Message to session 2');

@@ -235,7 +235,45 @@ _Copiar aquí descubrimientos relevantes._
 
 ### Descubrimientos de Esta Fase
 
-_Agregar hallazgos durante ejecución._
+#### D3-RESOLVED: Análisis de tool_use_id de Anthropic (2025-12-19)
+
+**Hallazgo Principal**: La hipótesis original de D3 era INCORRECTA.
+
+| Aspecto | Creencia Original | Realidad |
+|---------|-------------------|----------|
+| tool_use_id | ID de definición del tool (podría repetirse) | ID de INSTANCIA único por request |
+| Causa del PK violation | Anthropic reutiliza IDs | BD no limpiada entre test runs |
+| Solución necesaria | Usar randomUUID() | Mantener toolUseId + limpiar BD |
+
+**Evidencia SQL**:
+```sql
+-- NO hay duplicados en la columna id (PK):
+SELECT id, COUNT(*) cnt FROM messages GROUP BY id HAVING COUNT(*) > 1
+-- Resultado: 0 rows (cero duplicados)
+
+-- tool_use_id aparece 2x porque es CORRECTO:
+-- 1 vez para message_type='tool_use'
+-- 1 vez para message_type='tool_result'
+```
+
+**Arquitectura Actual (Correcta)**:
+```
+TOOL_USE MESSAGE:     id = toolu_01EkRWFg9E5qGZAMBS34sLtS
+TOOL_RESULT MESSAGE:  id = toolu_01EkRWFg9E5qGZAMBS34sLtS_result
+```
+
+**Código Actual** (`MessageService.ts:244-245`):
+```typescript
+// Use toolUseId as messageId - Anthropic tool_use_ids are unique
+const messageId = toolUseId;
+```
+
+**Decisión**: Mantener código actual. El problema D3 se resuelve con `CleanSlateDB.ts` (ya existe en `backend/src/__tests__/e2e/helpers/CleanSlateDB.ts`).
+
+**NO se requiere**:
+- Cambio de schema de BD
+- Usar randomUUID() para messageId
+- Reestructuración de la tabla messages
 
 ### Prerequisitos para Fase 6
 

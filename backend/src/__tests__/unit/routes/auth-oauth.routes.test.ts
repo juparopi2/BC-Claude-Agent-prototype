@@ -115,6 +115,8 @@ vi.mock('@/services/auth/BCTokenManager', () => ({
 // Mock the authentication middleware
 vi.mock('@/domains/auth/middleware/auth-oauth', () => ({
   authenticateMicrosoft: mockAuthenticateMicrosoft,
+  // authenticateMicrosoftOptional: same behavior as authenticateMicrosoft for logout route
+  authenticateMicrosoftOptional: mockAuthenticateMicrosoft,
 }));
 
 // NOW import the router that depends on mocks

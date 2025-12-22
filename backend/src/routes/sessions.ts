@@ -363,6 +363,13 @@ router.get('/:sessionId', authenticateMicrosoft, async (req: Request, res: Respo
       return;
     }
 
+    // Validate UUID format to avoid SQL errors
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(sessionId)) {
+      sendError(res, ErrorCode.SESSION_NOT_FOUND, 'Session not found');
+      return;
+    }
+
     logger.info(`[Sessions] Getting session ${sessionId} for user ${userId}`);
 
     // Query specific session (verify ownership)
@@ -400,7 +407,20 @@ router.get('/:sessionId', authenticateMicrosoft, async (req: Request, res: Respo
       session,
     });
   } catch (error) {
-    logger.error('[Sessions] Get session failed:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error('[Sessions] Get session failed:', { error: errorMessage, sessionId: req.params.sessionId });
+
+    // Handle SQL conversion errors or UUID validation errors as 404
+    if (error instanceof Error && (
+      errorMessage.includes('Conversion failed') ||
+      errorMessage.includes('uniqueidentifier') ||
+      errorMessage.toLowerCase().includes('invalid') ||
+      errorMessage.includes('Invalid UUID')
+    )) {
+      sendError(res, ErrorCode.SESSION_NOT_FOUND, 'Session not found');
+      return;
+    }
+
     sendError(res, ErrorCode.INTERNAL_ERROR, 'Failed to get session');
   }
 });
@@ -421,6 +441,13 @@ router.get('/:sessionId/messages', authenticateMicrosoft, async (req: Request, r
 
     if (!sessionId) {
       sendError(res, ErrorCode.MISSING_REQUIRED_FIELD, 'Session ID is required');
+      return;
+    }
+
+    // Validate UUID format to avoid SQL errors
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(sessionId)) {
+      sendError(res, ErrorCode.SESSION_NOT_FOUND, 'Session not found');
       return;
     }
 
@@ -502,7 +529,20 @@ router.get('/:sessionId/messages', authenticateMicrosoft, async (req: Request, r
       messages,
     });
   } catch (error) {
-    logger.error('[Sessions] Get messages failed:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error('[Sessions] Get messages failed:', { error: errorMessage, sessionId: req.params.sessionId });
+
+    // Handle SQL conversion errors or UUID validation errors as 404
+    if (error instanceof Error && (
+      errorMessage.includes('Conversion failed') ||
+      errorMessage.includes('uniqueidentifier') ||
+      errorMessage.toLowerCase().includes('invalid') ||
+      errorMessage.includes('Invalid UUID')
+    )) {
+      sendError(res, ErrorCode.SESSION_NOT_FOUND, 'Session not found');
+      return;
+    }
+
     sendError(res, ErrorCode.INTERNAL_ERROR, 'Failed to get messages');
   }
 });

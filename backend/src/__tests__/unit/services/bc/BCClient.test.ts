@@ -29,8 +29,8 @@ import type {
   BCCustomer,
 } from '@/types/bc.types';
 
-// Mock env config
-vi.mock('@/config', () => ({
+// Mock env config - Note: BCClient imports from @/infrastructure/config
+vi.mock('@/infrastructure/config', () => ({
   env: {
     BC_API_URL: 'https://api.businesscentral.dynamics.com/v2.0/test-tenant/Production/api/v2.0',
     BC_TENANT_ID: 'test-tenant-id',
@@ -437,7 +437,7 @@ describe('BCClient', () => {
       };
 
       server.use(
-        http.get('https://api.businesscentral.dynamics.com/v2.0/*/customers', () => {
+        http.get(`${BC_API_BASE_URL}/customers*`, () => {
           return HttpResponse.json(mockError, { status: 401 });
         })
       );
@@ -462,7 +462,7 @@ describe('BCClient', () => {
       };
 
       server.use(
-        http.get('https://api.businesscentral.dynamics.com/v2.0/*/customers', () => {
+        http.get(`${BC_API_BASE_URL}/customers*`, () => {
           return HttpResponse.json(mockError, { status: 403 });
         })
       );
@@ -487,7 +487,7 @@ describe('BCClient', () => {
       };
 
       server.use(
-        http.get('https://api.businesscentral.dynamics.com/v2.0/*/customers', () => {
+        http.get(`${BC_API_BASE_URL}/customers*`, () => {
           return HttpResponse.json(mockError, { status: 500 });
         })
       );
@@ -516,7 +516,7 @@ describe('BCClient', () => {
       };
 
       server.use(
-        http.post('https://api.businesscentral.dynamics.com/v2.0/test-tenant/Production/api/v2.0/customers', () => {
+        http.post(`${BC_API_BASE_URL}/customers`, () => {
           return HttpResponse.json(mockError, { status: 400 });
         })
       );
@@ -540,7 +540,7 @@ describe('BCClient', () => {
     it('should handle network errors (fetch fails)', async () => {
       // Arrange: Mock network error
       server.use(
-        http.get('https://api.businesscentral.dynamics.com/v2.0/*/customers', () => {
+        http.get(`${BC_API_BASE_URL}/customers*`, () => {
           return HttpResponse.error();
         })
       );
@@ -593,7 +593,7 @@ describe('BCClient', () => {
       };
 
       server.use(
-        http.get('https://api.businesscentral.dynamics.com/v2.0/*/$metadata*', () => {
+        http.get(`${BC_API_BASE_URL}/$metadata*`, () => {
           return HttpResponse.json(mockMetadata);
         })
       );
@@ -624,7 +624,7 @@ describe('BCClient', () => {
       // Arrange: Track the URL to verify $top=1
       let capturedUrl: string | undefined;
       server.use(
-        http.get('https://api.businesscentral.dynamics.com/v2.0/*/customers', ({ request }) => {
+        http.get(`${BC_API_BASE_URL}/customers*`, ({ request }) => {
           capturedUrl = request.url;
           return HttpResponse.json({ value: [] });
         })

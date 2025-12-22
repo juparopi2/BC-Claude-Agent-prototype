@@ -80,44 +80,61 @@ FakeAnthropicClient now supports dynamic thinking:
 
 ## High Priority
 
-### D3: E2E Tests Database PK Violations with Real Claude API
+### [RESOLVED] D3: E2E Tests Database PK Violations with Real Claude API
 
 **Location**: Multiple E2E test files
 
-**Description**: When running E2E tests with `E2E_USE_REAL_API=true`, the real Claude API returns tool IDs (`toolu_*`) that may already exist in the database from previous test runs.
+**Description**: When running E2E tests with `E2E_USE_REAL_API=true`, PK violations occurred on the `messages` table.
 
-**Root Cause**:
+**Original Error**:
 ```
 Error: Violation of PRIMARY KEY constraint 'PK_messages'.
 Cannot insert duplicate key in object 'dbo.messages'.
 The duplicate key value is (toolu_01FosQFrADXtG8ru2wZH5Zpu).
 ```
 
-The `messages` table uses the tool ID as primary key. Real API responses can include previously seen tool IDs when:
-- Same prompts trigger same tool suggestions
-- Test database not cleaned between runs
-- Anthropic's API reuses tool IDs in some scenarios
+**Root Cause Analysis** (CORRECTED 2025-12-19):
 
-**Impact**:
-- 10+ test failures with real API
-- Tests work fine with FakeAnthropicClient
-- Prevents full validation of real API behavior
+| Original Hypothesis | Investigation Result |
+|---------------------|---------------------|
+| "Anthropic reuses tool IDs" | ❌ INCORRECT - Anthropic IDs are unique per request |
+| "Same prompts = same tool IDs" | ❌ INCORRECT - IDs are instance-based, not content-based |
+| "BD not cleaned between runs" | ✅ CORRECT - This was the actual cause |
 
-**Recommended Fix**:
-- Option A: Use `INSERT...ON CONFLICT DO UPDATE` (upsert pattern)
-- Option B: Clean test data before each E2E run
-- Option C: Generate unique session-scoped message IDs
+**Evidencia de BD** (verified via SQL):
+```sql
+-- NO duplicates in id column:
+SELECT id, COUNT(*) FROM messages GROUP BY id HAVING COUNT(*) > 1
+-- Result: 0 rows (zero duplicates)
 
-**Skipped Tests** (TODO: TD-D3):
-- `backend/src/__tests__/e2e/flows/golden/tool-use.golden.test.ts` (5 tests)
-- `backend/src/__tests__/e2e/flows/golden/approval.golden.test.ts` (5 tests)
+-- tool_use_id appears 2x because tool_use + tool_result share it (CORRECT):
+-- toolu_01xxx (tool_use) + toolu_01xxx (tool_result) = 2 entries, different `id` values
+```
 
-**Resolution** (2025-12-18):
-- **Strategy**: Decoupled `messageId` from `toolUseId`.
-- **Implementation**: `MessageService.saveToolUseMessage` now generates a `randomUUID()` for the primary key (`id`) of the `messages` table, while preserving the original `toolUseId` in the `tool_use_id` column and metadata.
-- **Verdict**: This prevents PK violations even if Anthropic returns duplicate `toolUseId`s across test runs.
+**Arquitectura Actual** (funcionando correctamente):
+```
+tool_use:    id = toolu_01xxx           tool_use_id = toolu_01xxx
+tool_result: id = toolu_01xxx_result    tool_use_id = toolu_01xxx
+```
 
-**Status**: Resolved
+**Resolution History**:
+
+1. **2025-12-18 (Workaround)**: Changed `messageId = randomUUID()` to decouple from `toolUseId`
+   - This was a workaround, not a root cause fix
+   - Broke unit test expectation `expect(messageId).toBe(toolUseId)`
+
+2. **2025-12-19 (Final Fix)**: Reverted to `messageId = toolUseId` + proper BD cleanup
+   - Root cause was BD not cleaned between E2E runs
+   - `CleanSlateDB.ts` already exists and solves this
+   - Anthropic IDs are unique - no need for randomUUID workaround
+
+**Final Implementation**:
+- `MessageService.ts:244`: `const messageId = toolUseId;` (uses Anthropic ID directly)
+- `CleanSlateDB.ts`: Cleans test data before E2E runs (FK-safe order)
+- `tool_use_id` column: Preserved for correlation (same ID in tool_use and tool_result)
+
+**Status**: ✅ RESOLVED (correctly this time)
+**Root Cause**: Test infrastructure (BD not cleaned), NOT Anthropic API behavior
 **Target Phase**: Phase 4.8 (Completed)
 
 ---

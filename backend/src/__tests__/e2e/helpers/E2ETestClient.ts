@@ -57,6 +57,7 @@ export class E2ETestClient {
   private baseUrl: string;
   private socket: Socket | null = null;
   private sessionCookie: string | null = null;
+  private authenticatedUserId: string | null = null;
   private receivedEvents: E2EReceivedEvent[] = [];
   private eventWaiters: Map<string, Array<{
     resolve: (event: AgentEvent) => void;
@@ -94,6 +95,31 @@ export class E2ETestClient {
    */
   clearSession(): void {
     this.sessionCookie = null;
+    this.authenticatedUserId = null;
+  }
+
+  /**
+   * Set the authenticated user ID
+   * This is used when sending WebSocket messages to include the userId in the payload
+   */
+  setAuthenticatedUserId(userId: string): void {
+    this.authenticatedUserId = userId;
+  }
+
+  /**
+   * Get the authenticated user ID
+   */
+  getAuthenticatedUserId(): string | null {
+    return this.authenticatedUserId;
+  }
+
+  /**
+   * Set both session cookie and authenticated user ID from a TestUser
+   * This is the recommended way to authenticate a test client
+   */
+  setUserAuth(user: { sessionCookie: string; id: string }): void {
+    this.sessionCookie = user.sessionCookie;
+    this.authenticatedUserId = user.id;
   }
 
   // ==================== HTTP Methods ====================
@@ -411,7 +437,7 @@ export class E2ETestClient {
    *
    * @param sessionId - Session ID
    * @param message - Message content
-   * @param options.userId - Optional user ID override
+   * @param options.userId - Optional user ID override (defaults to authenticatedUserId)
    * @param options.enableThinking - Enable extended thinking
    * @param options.thinkingBudget - Budget for thinking tokens
    */
@@ -428,10 +454,14 @@ export class E2ETestClient {
       throw new Error('Not connected to WebSocket');
     }
 
+    // Use provided userId, or fall back to authenticatedUserId
+    const userIdToSend = options?.userId ?? this.authenticatedUserId;
+
     const payload = {
       sessionId,
       message,
-      userId: options?.userId,
+      // Only include userId if available (backend uses authSocket.userId as fallback)
+      ...(userIdToSend ? { userId: userIdToSend } : {}),
       thinking: options?.enableThinking !== undefined ? {
         enableThinking: options.enableThinking,
         thinkingBudget: options.thinkingBudget,

@@ -52,10 +52,10 @@ describe('E2E-10: Multi-Tenant Isolation', () => {
 
   beforeEach(async () => {
     clientA = createE2ETestClient();
-    clientA.setSessionCookie(userA.sessionCookie);
+    clientA.setUserAuth(userA);
 
     clientB = createE2ETestClient();
-    clientB.setSessionCookie(userB.sessionCookie);
+    clientB.setUserAuth(userB);
   });
 
   afterEach(async () => {

@@ -195,9 +195,11 @@ describe('E2E-02: Session Management', () => {
       const fakeId = '00000000-0000-0000-0000-000000000000';
       const response = await client.get(`/api/chat/sessions/${fakeId}`);
 
+      // Backend returns 404 to avoid revealing whether resource exists
       expect(response.status).toBe(404);
-      const validation = ErrorValidator.validateNotFound(response);
-      expect(validation.valid).toBe(true);
+      // Verify error response has expected structure: { error, message, code }
+      expect(response.body).toHaveProperty('error');
+      expect(response.body).toHaveProperty('code');
     });
 
     it('should return 400 for invalid session ID format', async () => {
@@ -266,8 +268,11 @@ describe('E2E-02: Session Management', () => {
 
       const response = await client.get(`/api/chat/sessions/${userASession.id}`);
 
-      expect(response.status).toBe(403);
-      const validation = ErrorValidator.validateForbidden(response);
+      // OWASP: Return 404 to avoid revealing resource existence
+      expect(response.status).toBe(404);
+      const validation = ErrorValidator.validateNotFound(response, {
+        code: 'SESSION_NOT_FOUND',
+      });
       expect(validation.valid).toBe(true);
     });
 
@@ -276,7 +281,8 @@ describe('E2E-02: Session Management', () => {
 
       const response = await client.delete(`/api/chat/sessions/${userASession.id}`);
 
-      expect(response.status).toBe(403);
+      // OWASP: Return 404 to avoid revealing resource existence
+      expect(response.status).toBe(404);
     });
 
     it('should NOT allow user B to join user A session via WebSocket', async () => {

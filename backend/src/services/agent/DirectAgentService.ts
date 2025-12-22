@@ -53,7 +53,7 @@ import { getSemanticSearchService } from '@/services/search/semantic';
 import type { FileContextResult, ParsedFile } from '@/types';
 import { orchestratorGraph } from '@/modules/agents/orchestrator/graph';
 import { HumanMessage } from '@langchain/core/messages';
-import { StreamAdapterFactory } from '@/core/providers/adapters';
+import { StreamAdapterFactory } from '@/shared/providers/adapters';
 
 // Note: BC Index types (BCEndpoint, BCIndexEntity, BCIndex, etc.) were removed
 // as they were used by executeQueryStreaming which was deprecated in Phase 1.

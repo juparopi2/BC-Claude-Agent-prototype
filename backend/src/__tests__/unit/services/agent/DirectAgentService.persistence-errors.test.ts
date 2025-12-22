@@ -71,7 +71,7 @@ vi.mock('@/services/search/semantic', () => ({
   })),
 }));
 
-vi.mock('@/core/providers/adapters', () => ({
+vi.mock('@/shared/providers/adapters', () => ({
   StreamAdapterFactory: {
     create: vi.fn(() => ({
       adaptEvent: vi.fn(() => null),

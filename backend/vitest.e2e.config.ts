@@ -74,10 +74,13 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
-      '@config': path.resolve(__dirname, './src/config'),
+      '@core': path.resolve(__dirname, './src/core'),
+      '@domains': path.resolve(__dirname, './src/domains'),
+      '@infrastructure': path.resolve(__dirname, './src/infrastructure'),
+      '@modules': path.resolve(__dirname, './src/modules'),
+      '@schemas': path.resolve(__dirname, './src/schemas'),
       '@services': path.resolve(__dirname, './src/services'),
-      '@models': path.resolve(__dirname, './src/models'),
-      '@middleware': path.resolve(__dirname, './src/middleware'),
+      '@shared': path.resolve(__dirname, './src/shared'),
       '@types': path.resolve(__dirname, './src/types'),
       '@routes': path.resolve(__dirname, './src/routes'),
     },

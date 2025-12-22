@@ -1269,8 +1269,8 @@ export class MessageQueue {
 
     try {
       // Dynamic import to avoid circular dependencies
-      const { getUsageAggregationService } = await import('../tracking/UsageAggregationService');
-      const { getBillingService } = await import('../billing');
+      const { getUsageAggregationService } = await import('@/domains/billing/tracking/UsageAggregationService');
+      const { getBillingService } = await import('@/domains/billing');
 
       const aggregationService = getUsageAggregationService();
       const billingService = getBillingService();
@@ -1380,7 +1380,7 @@ export class MessageQueue {
 
     try {
       // Dynamic import to avoid circular dependencies
-      const { getFileProcessingService } = await import('../files/FileProcessingService');
+      const { getFileProcessingService } = await import('@/services/files/FileProcessingService');
       const fileProcessingService = getFileProcessingService();
 
       await fileProcessingService.processFile(job.data);
@@ -1435,8 +1435,8 @@ export class MessageQueue {
 
     try {
       // Dynamic imports to avoid circular dependencies
-      const { EmbeddingService } = await import('../embeddings/EmbeddingService');
-      const { VectorSearchService } = await import('../search/VectorSearchService');
+      const { EmbeddingService } = await import('@/services/embeddings/EmbeddingService');
+      const { VectorSearchService } = await import('@/services/search/VectorSearchService');
       
       const embeddingService = EmbeddingService.getInstance();
       const vectorSearchService = VectorSearchService.getInstance();
@@ -1536,7 +1536,7 @@ export class MessageQueue {
 
     try {
       // Dynamic import to avoid circular dependencies
-      const { getFileChunkingService } = await import('../files/FileChunkingService');
+      const { getFileChunkingService } = await import('@/services/files/FileChunkingService');
       const fileChunkingService = getFileChunkingService();
 
       await fileChunkingService.processFileChunks(job.data);

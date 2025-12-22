@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { AnthropicStreamAdapter } from '@/core/providers/adapters/AnthropicStreamAdapter';
+import { AnthropicStreamAdapter } from '@/shared/providers/adapters/AnthropicStreamAdapter';
 import { StreamEvent } from '@langchain/core/tracers/log_stream';
 
 /**

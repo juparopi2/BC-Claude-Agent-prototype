@@ -13,19 +13,19 @@ import { Server as SocketIOServer } from 'socket.io';
 import cors from 'cors';
 import session from 'express-session';
 import RedisStore from 'connect-redis';
-import { env, isProd, printConfig, validateRequiredSecrets } from './config/environment';
-import { loadSecretsFromKeyVault } from './config/keyvault';
-import { initDatabase, closeDatabase, checkDatabaseHealth, executeQuery } from './config/database';
-import { initRedis, closeRedis, checkRedisHealth } from './config/redis'; // ioredis for BullMQ only
-import { initRedisClient, closeRedisClient, getRedisClient } from './config/redis-client'; // redis package for sessions
-import { startDatabaseKeepalive, stopDatabaseKeepalive } from './utils/databaseKeepalive';
-import { logger } from './utils/logger';
-import { getBCClient } from './services/bc';
-import { getDirectAgentService } from './services/agent';
-import { getApprovalManager } from './services/approval/ApprovalManager';
-import { getTodoManager } from './services/todo/TodoManager';
-import { getChatMessageHandler } from './services/websocket/ChatMessageHandler';
-import { getMessageQueue } from './services/queue/MessageQueue';
+import { env, isProd, printConfig, validateRequiredSecrets } from '@infrastructure/config/environment';
+import { loadSecretsFromKeyVault } from '@infrastructure/keyvault/keyvault';
+import { initDatabase, closeDatabase, checkDatabaseHealth, executeQuery } from '@infrastructure/database/database';
+import { initRedis, closeRedis, checkRedisHealth } from '@infrastructure/redis/redis'; // ioredis for BullMQ only
+import { initRedisClient, closeRedisClient, getRedisClient } from '@infrastructure/redis/redis-client'; // redis package for sessions
+import { startDatabaseKeepalive, stopDatabaseKeepalive } from '@shared/utils/databaseKeepalive';
+import { logger } from '@shared/utils/logger';
+import { getBCClient } from '@/services/bc';
+import { getDirectAgentService } from '@/services/agent';
+import { getApprovalManager } from '@/domains/approval/ApprovalManager';
+import { getTodoManager } from '@/services/todo/TodoManager';
+import { getChatMessageHandler } from '@/services/websocket/ChatMessageHandler';
+import { getMessageQueue } from '@/infrastructure/queue/MessageQueue';
 import authOAuthRoutes from './routes/auth-oauth';
 import sessionsRoutes from './routes/sessions';
 import logsRoutes from './routes/logs';
@@ -34,12 +34,12 @@ import fileRoutes from './routes/files';
 import usageRoutes from './routes/usage';
 import billingRoutes from './routes/billing';
 import gdprRoutes from './routes/gdpr';
-import { authenticateMicrosoft } from './middleware/auth-oauth';
-import { httpLogger } from './middleware/logging';
-import { validateSessionOwnership } from './utils/session-ownership';
+import { authenticateMicrosoft } from '@domains/auth/middleware/auth-oauth';
+import { httpLogger } from '@shared/middleware/logging';
+import { validateSessionOwnership } from '@shared/utils/session-ownership';
 import { MicrosoftOAuthSession } from './types/microsoft.types';
 import { Socket } from 'socket.io';
-import { ErrorCode } from './constants/errors';
+import { ErrorCode } from '@shared/constants/errors';
 import {
   sendError,
   sendBadRequest,
@@ -49,7 +49,7 @@ import {
   sendConflict,
   sendInternalError,
   sendServiceUnavailable,
-} from './utils/error-response';
+} from '@shared/utils/error-response';
 
 /**
  * Extend express-session types to include Microsoft OAuth session data

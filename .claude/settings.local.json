@@ -157,7 +157,8 @@
       "Bash(E2E_USE_REAL_API=true npm run test:e2e:*)",
       "Bash(gunzip:*)",
       "Bash(wc:*)",
-      "Bash(git branch:*)"
+      "Bash(git branch:*)",
+      "Bash(Select-Object -Last 60)"
     ],
     "deny": [],
     "ask": []

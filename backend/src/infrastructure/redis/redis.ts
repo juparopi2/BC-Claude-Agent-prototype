@@ -9,12 +9,12 @@
  * This eliminates "Socket closed unexpectedly" errors by providing
  * appropriate retry strategies for each use case.
  *
- * @module config/redis
+ * @module infrastructure/redis/redis
  */
 
 import Redis, { RedisOptions } from 'ioredis';
 import { createChildLogger } from '@/shared/utils/logger';
-import { Environment } from '@config/EnvironmentFacade';
+import { Environment } from '@/infrastructure/config/EnvironmentFacade';
 import { env } from '@/infrastructure/config/environment';
 
 const logger = createChildLogger({ service: 'RedisConfig' });
@@ -333,7 +333,7 @@ export function getRedis(): Redis | null {
  * @returns Redis client with BULLMQ profile
  *
  * @example
- * import { getRedisForBullMQ } from '@config/redis';
+ * import { getRedisForBullMQ } from '@/infrastructure/redis/redis';
  * const redis = getRedisForBullMQ();
  * const queue = new Queue('my-queue', { connection: redis });
  */
@@ -355,7 +355,7 @@ export function getRedisForBullMQ(): Redis {
  * need immediate Redis access.
  *
  * @example
- * import { redis } from '@config/redis';
+ * import { redis } from '@/infrastructure/redis/redis';
  * await redis.ping();
  */
 export const redis = createRedisClient(getDefaultProfile());

@@ -2,7 +2,7 @@
 import { AgentState, ToolExecution } from '../orchestrator/state';
 import { BaseAgent } from '../core/AgentFactory';
 import { ModelFactory } from '../../../core/langchain/ModelFactory';
-import { getModelConfig } from '../../../config/models';
+import { getModelConfig } from '@/infrastructure/config/models';
 import { RunnableConfig } from '@langchain/core/runnables';
 import { AIMessage, ToolMessage, BaseMessage } from '@langchain/core/messages';
 import { createKnowledgeSearchTool } from './tools';

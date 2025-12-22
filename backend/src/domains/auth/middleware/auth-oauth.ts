@@ -99,7 +99,7 @@ export async function authenticateMicrosoft(req: Request, res: Response, next: N
       // Attempt to refresh the token automatically
       if (oauthSession.refreshToken) {
         try {
-          const { createMicrosoftOAuthService } = await import('@/services/auth/MicrosoftOAuthService');
+          const { createMicrosoftOAuthService } = await import('@/domains/auth/oauth/MicrosoftOAuthService');
           const oauthService = createMicrosoftOAuthService();
 
           logger.debug('Refreshing access token', { userId: oauthSession.userId });

@@ -25,7 +25,7 @@ import {
   getUsageTrackingService,
   __resetUsageTrackingService,
 } from '@/domains/billing/tracking/UsageTrackingService';
-import { UNIT_COSTS } from '@config/pricing.config';
+import { UNIT_COSTS } from '@/infrastructure/config/pricing.config';
 
 describe('UsageTrackingService', () => {
   let service: UsageTrackingService;

@@ -12,7 +12,7 @@
  */
 
 import { timingSafeEqual } from 'crypto';
-import { executeQuery } from '@config/database';
+import { executeQuery } from '@/infrastructure/database/database';
 import { createChildLogger } from '@/shared/utils/logger';
 import { normalizeUUID } from '@/shared/utils/uuid';
 

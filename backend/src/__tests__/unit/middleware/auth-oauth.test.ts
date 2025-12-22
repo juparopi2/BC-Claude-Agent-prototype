@@ -29,7 +29,7 @@ vi.mock('@/infrastructure/database/database', () => ({
   executeQuery: vi.fn(),
 }));
 
-vi.mock('@/services/auth/MicrosoftOAuthService', () => ({
+vi.mock('@/domains/auth/oauth/MicrosoftOAuthService', () => ({
   createMicrosoftOAuthService: vi.fn(),
 }));
 
@@ -290,7 +290,7 @@ describe('authenticateMicrosoft', () => {
         }),
       };
 
-      const { createMicrosoftOAuthService } = await import('@/services/auth/MicrosoftOAuthService');
+      const { createMicrosoftOAuthService } = await import('@/domains/auth/oauth/MicrosoftOAuthService');
       vi.mocked(createMicrosoftOAuthService).mockReturnValue(mockOAuthService as ReturnType<typeof createMicrosoftOAuthService>);
 
       mockReq = createMockRequest({
@@ -319,7 +319,7 @@ describe('authenticateMicrosoft', () => {
         refreshAccessToken: vi.fn().mockRejectedValue(new Error('Refresh failed')),
       };
 
-      const { createMicrosoftOAuthService } = await import('@/services/auth/MicrosoftOAuthService');
+      const { createMicrosoftOAuthService } = await import('@/domains/auth/oauth/MicrosoftOAuthService');
       vi.mocked(createMicrosoftOAuthService).mockReturnValue(mockOAuthService as ReturnType<typeof createMicrosoftOAuthService>);
 
       mockReq = createMockRequest({
@@ -363,7 +363,7 @@ describe('authenticateMicrosoft', () => {
         }),
       };
 
-      const { createMicrosoftOAuthService } = await import('@/services/auth/MicrosoftOAuthService');
+      const { createMicrosoftOAuthService } = await import('@/domains/auth/oauth/MicrosoftOAuthService');
       vi.mocked(createMicrosoftOAuthService).mockReturnValue(mockOAuthService as ReturnType<typeof createMicrosoftOAuthService>);
 
       await authenticateMicrosoft(mockReq as Request, mockRes, mockNext);
@@ -1299,7 +1299,7 @@ describe('Token Refresh Race Condition (Documented)', () => {
       }),
     };
 
-    const { createMicrosoftOAuthService } = await import('@/services/auth/MicrosoftOAuthService');
+    const { createMicrosoftOAuthService } = await import('@/domains/auth/oauth/MicrosoftOAuthService');
     vi.mocked(createMicrosoftOAuthService).mockReturnValue(
       mockOAuthService as ReturnType<typeof createMicrosoftOAuthService>
     );

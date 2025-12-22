@@ -19,7 +19,7 @@ import { executeQuery, SqlParams } from '@/infrastructure/database/database';
 import { logger as rootLogger } from '@/shared/utils/logger';
 import { ChunkingStrategyFactory } from '../chunking/ChunkingStrategyFactory';
 import type { ChunkingOptions } from '../chunking/types';
-import type { FileChunkingJob, EmbeddingGenerationJob } from '../queue/MessageQueue';
+import type { FileChunkingJob, EmbeddingGenerationJob } from '@/infrastructure/queue/MessageQueue';
 
 // Child logger for this service
 const logger = rootLogger.child({ service: 'FileChunkingService' });
@@ -313,7 +313,7 @@ export class FileChunkingService {
     chunks: Array<{ id: string; text: string; chunkIndex: number; tokenCount: number }>
   ): Promise<string> {
     // Dynamic import to avoid circular dependencies
-    const { getMessageQueue } = await import('../queue/MessageQueue');
+    const { getMessageQueue } = await import('@/infrastructure/queue/MessageQueue');
     const messageQueue = getMessageQueue();
 
     const jobData: EmbeddingGenerationJob = {

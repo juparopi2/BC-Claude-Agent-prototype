@@ -34,8 +34,8 @@
 
 import type { ConnectionPool } from 'mssql';
 import type { Redis } from 'ioredis';
-import { getPool } from '@config/database';
-import { getRedis } from '@config/redis';
+import { getPool } from '@/infrastructure/database/database';
+import { getRedis } from '@/infrastructure/redis/redis';
 import type {
   QuotaValidationResult,
   UserQuotasDbRow,

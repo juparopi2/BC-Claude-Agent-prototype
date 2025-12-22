@@ -4,7 +4,7 @@
  * Provides case-insensitive NODE_ENV detection with normalized values.
  * Handles variants: dev/DEV/development, prod/PROD/production, test/TEST
  *
- * @module config/environment-detection
+ * @module infrastructure/config/environment-detection
  */
 
 /**
@@ -134,7 +134,7 @@ export function createEnvironmentConfig(nodeEnv?: string): EnvironmentConfig {
  * Computed immediately when this module is imported to ensure consistency.
  *
  * @example
- * import { runtimeEnvironment } from '@config/environment-detection';
+ * import { runtimeEnvironment } from '@/infrastructure/config/environment-detection';
  *
  * if (runtimeEnvironment.isDevelopment) {
  *   console.log('Running in development mode');

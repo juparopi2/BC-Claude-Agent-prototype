@@ -1,7 +1,7 @@
 import { BlobServiceClient, ContainerClient, BlobSASPermissions, generateBlobSASQueryParameters, StorageSharedKeyCredential } from '@azure/storage-blob';
 import { env } from '@/infrastructure/config/environment';
 import { createChildLogger } from '@/shared/utils/logger';
-import { getUsageTrackingService } from '@services/tracking/UsageTrackingService';
+import { getUsageTrackingService } from '@/domains/billing/tracking/UsageTrackingService';
 import type { Logger } from 'pino';
 
 // File type whitelist

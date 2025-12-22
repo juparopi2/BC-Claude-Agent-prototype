@@ -24,7 +24,7 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { logger } from '../utils/logger';
+import { logger } from '@/shared/utils/logger';
 import { z } from 'zod';
 import { ErrorCode } from '@/shared/constants/errors';
 import { sendError } from '@/shared/utils/error-response';

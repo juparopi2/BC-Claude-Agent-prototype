@@ -12,7 +12,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { FileProcessingService, getFileProcessingService, __resetFileProcessingService } from '@/services/files/FileProcessingService';
-import type { FileProcessingJob } from '@services/queue/MessageQueue';
+import type { FileProcessingJob } from '@/infrastructure/queue/MessageQueue';
 import type { ExtractionResult } from '@/services/files/processors/types';
 
 // ===== MOCK DEPENDENCIES (vi.hoisted pattern) =====

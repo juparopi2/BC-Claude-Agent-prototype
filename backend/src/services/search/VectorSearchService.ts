@@ -1,9 +1,9 @@
 import { SearchClient, SearchIndexClient, AzureKeyCredential } from '@azure/search-documents';
-import { env } from '../../config/environment';
-import { createChildLogger } from '../../utils/logger';
+import { env } from '@/infrastructure/config/environment';
+import { createChildLogger } from '@/shared/utils/logger';
 import { indexSchema, INDEX_NAME } from './schema';
 import { IndexStats, FileChunkWithEmbedding, SearchQuery, HybridSearchQuery, SearchResult } from './types';
-import { getUsageTrackingService } from '@services/tracking/UsageTrackingService';
+import { getUsageTrackingService } from '@/domains/billing/tracking/UsageTrackingService';
 
 const logger = createChildLogger({ service: 'VectorSearchService' });
 

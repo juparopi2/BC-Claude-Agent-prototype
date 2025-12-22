@@ -48,7 +48,7 @@ vi.mock('@/shared/utils/logger', () => ({
 }));
 
 // Mock auth middleware - inject userId via header for testing
-vi.mock('@middleware/auth-oauth', () => ({
+vi.mock('@/domains/auth/middleware/auth-oauth', () => ({
   authenticateMicrosoft: (req: Request, res: Response, next: NextFunction) => {
     const testUserId = req.headers['x-test-user-id'] as string;
     if (testUserId) {

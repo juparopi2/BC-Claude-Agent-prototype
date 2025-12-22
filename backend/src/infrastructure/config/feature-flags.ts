@@ -5,10 +5,10 @@
  * All feature flags are loaded from environment variables or computed
  * based on runtime environment (dev/prod/test).
  *
- * @module config/feature-flags
+ * @module infrastructure/config/feature-flags
  *
  * @example
- * import { featureFlags } from '@config/feature-flags';
+ * import { featureFlags } from '@/infrastructure/config/feature-flags';
  *
  * if (featureFlags.agent.promptCaching) {
  *   // Use prompt caching for better performance
@@ -494,7 +494,7 @@ export function loadFeatureFlags(): FeatureFlags {
  * Do not call loadFeatureFlags() directly - always use this constant.
  *
  * @example
- * import { featureFlags } from '@config/feature-flags';
+ * import { featureFlags } from '@/infrastructure/config/feature-flags';
  *
  * // Agent configuration
  * if (featureFlags.agent.promptCaching) {

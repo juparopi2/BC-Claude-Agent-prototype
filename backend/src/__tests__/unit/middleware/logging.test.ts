@@ -36,7 +36,7 @@ vi.mock('@/shared/utils/logger', () => ({
 }));
 
 // Import to trigger the mock setup
-import '@/middleware/logging';
+import '@/shared/middleware/logging';
 
 // ===== TEST HELPERS =====
 

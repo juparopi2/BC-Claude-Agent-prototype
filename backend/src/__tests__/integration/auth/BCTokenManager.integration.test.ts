@@ -22,7 +22,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { BCTokenManager } from '../../../services/auth/BCTokenManager';
 import { MicrosoftOAuthService } from '../../../services/auth/MicrosoftOAuthService';
-import { executeQuery } from '../../../config/database';
+import { executeQuery } from '@/infrastructure/database/database';
 import { setupDatabaseForTests } from '../helpers/TestDatabaseSetup';
 import crypto from 'crypto';
 

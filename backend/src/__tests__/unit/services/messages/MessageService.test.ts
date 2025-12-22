@@ -14,8 +14,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { MessageService, getMessageService } from '../../../../services/messages/MessageService';
 import { getEventStore } from '../../../../services/events/EventStore';
 import { getMessageQueue } from '@/infrastructure/queue/MessageQueue';
-import { createChildLogger } from '../../../../utils/logger';
-import { executeQuery } from '../../../../config/database';
+import { createChildLogger } from '@/shared/utils/logger';
+import { executeQuery } from '@/infrastructure/database/database';
 import { ParsedMessage, MessageDbRecord } from '../../../../types/message.types';
 import { randomUUID } from 'crypto';
 

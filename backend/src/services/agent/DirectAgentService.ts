@@ -31,15 +31,15 @@
 // The runGraph method uses LangChain for orchestration instead.
 import { env } from '@/infrastructure/config';
 import type { AgentEvent, BaseAgentEvent, AgentExecutionResult, UsageEvent } from '@/types';
-import type { ApprovalManager } from '../approval/ApprovalManager';
+import type { ApprovalManager } from '@/domains/approval/ApprovalManager';
 import type { TodoManager } from '../todo/TodoManager';
 import type { IAnthropicClient } from './IAnthropicClient';
 import { AnthropicClient } from './AnthropicClient';
 import { randomUUID } from 'crypto';
 import { getEventStore } from '../events/EventStore';
-import { getMessageQueue } from '../queue/MessageQueue';
+import { getMessageQueue } from '@/infrastructure/queue/MessageQueue';
 import { getTokenUsageService } from '../token-usage/TokenUsageService';
-import { getUsageTrackingService } from '../tracking/UsageTrackingService';
+import { getUsageTrackingService } from '@/domains/billing/tracking/UsageTrackingService';
 import { getMessageEmitter, type IMessageEmitter } from './messages';
 import { createChildLogger } from '@/shared/utils/logger';
 import type { Logger } from 'pino';

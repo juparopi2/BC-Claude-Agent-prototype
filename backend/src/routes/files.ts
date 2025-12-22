@@ -16,11 +16,11 @@
 import { Router, Request, Response } from 'express';
 import { z, ZodError } from 'zod';
 import multer from 'multer';
-import { authenticateMicrosoft } from '@middleware/auth-oauth';
+import { authenticateMicrosoft } from '@/domains/auth/middleware/auth-oauth';
 import { getFileService } from '@services/files';
 import { getFileUploadService } from '@services/files';
-import { getUsageTrackingService } from '@services/tracking/UsageTrackingService';
-import { getMessageQueue } from '@services/queue/MessageQueue';
+import { getUsageTrackingService } from '@/domains/billing/tracking/UsageTrackingService';
+import { getMessageQueue } from '@/infrastructure/queue/MessageQueue';
 import { sendError } from '@/shared/utils/error-response';
 import { ErrorCode } from '@/shared/constants/errors';
 import { logger } from '@/shared/utils/logger';

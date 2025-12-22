@@ -23,7 +23,7 @@ import { getFileService } from '../../../services/files/FileService';
 import { setupDatabaseForTests } from '../helpers/TestDatabaseSetup';
 import { createTestSessionFactory } from '../helpers/TestSessionFactory';
 import { createFileTestHelper, FileTestHelper, TestFile } from '../helpers/FileTestHelper';
-import { initRedisClient, closeRedisClient } from '../../../config/redis-client';
+import { initRedisClient, closeRedisClient } from '@/infrastructure/redis/redis-client';
 import crypto from 'crypto';
 
 /**

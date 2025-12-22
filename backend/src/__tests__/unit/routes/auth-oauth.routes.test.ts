@@ -103,7 +103,7 @@ vi.mock('@/shared/utils/logger', () => ({
 }));
 
 // Mock OAuth service factory
-vi.mock('@/services/auth/MicrosoftOAuthService', () => ({
+vi.mock('@/domains/auth/oauth/MicrosoftOAuthService', () => ({
   createMicrosoftOAuthService: () => mockOAuthService,
 }));
 

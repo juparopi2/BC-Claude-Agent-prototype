@@ -28,14 +28,14 @@ import { createChildLogger } from '@/shared/utils/logger';
 import { FileService } from './FileService';
 import { getFileUploadService } from './FileUploadService';
 import { getSocketIO, isSocketServiceInitialized } from '@services/websocket/SocketService';
-import { getUsageTrackingService } from '@services/tracking/UsageTrackingService';
+import { getUsageTrackingService } from '@/domains/billing/tracking/UsageTrackingService';
 import { TextProcessor } from './processors/TextProcessor';
 import { PdfProcessor } from './processors/PdfProcessor';
 import { DocxProcessor } from './processors/DocxProcessor';
 import { ExcelProcessor } from './processors/ExcelProcessor';
 import { ImageProcessor } from './processors/ImageProcessor';
 import type { DocumentProcessor, ExtractionResult } from './processors/types';
-import type { FileProcessingJob } from '@services/queue/MessageQueue';
+import type { FileProcessingJob } from '@/infrastructure/queue/MessageQueue';
 import type { ProcessingStatus } from '@/types/file.types';
 
 const logger = createChildLogger({ service: 'FileProcessingService' });

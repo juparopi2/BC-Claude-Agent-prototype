@@ -34,7 +34,7 @@ import {
   UsageAggregationService,
   getUsageAggregationService,
   __resetUsageAggregationService,
-} from '@services/tracking/UsageAggregationService';
+} from '@/domains/billing/tracking/UsageAggregationService';
 import type { UserQuotasDbRow } from '@/types/usage.types';
 
 describe('UsageAggregationService', () => {

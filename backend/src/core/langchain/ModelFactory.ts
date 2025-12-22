@@ -2,8 +2,8 @@ import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { ChatAnthropic } from '@langchain/anthropic';
 import { ChatVertexAI } from '@langchain/google-vertexai';
 import { ChatOpenAI } from '@langchain/openai';
-import { env } from '../../config';
-import { getModelConfig } from '../../config/models';
+import { env } from '@/infrastructure/config/environment';
+import { getModelConfig } from '@/infrastructure/config/models';
 
 export type ModelProvider = 'anthropic' | 'google' | 'openai';
 

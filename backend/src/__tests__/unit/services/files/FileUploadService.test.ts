@@ -23,7 +23,7 @@ vi.mock('@/infrastructure/config/environment', () => ({
 }));
 
 // Mock UsageTrackingService to prevent Redis initialization
-vi.mock('@services/tracking/UsageTrackingService', () => ({
+vi.mock('@/domains/billing/tracking/UsageTrackingService', () => ({
   getUsageTrackingService: vi.fn(() => ({
     trackFileUpload: vi.fn().mockResolvedValue(undefined),
   })),

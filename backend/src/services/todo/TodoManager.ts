@@ -15,7 +15,7 @@
 
 import { Server as SocketServer } from 'socket.io';
 import crypto from 'crypto';
-import { getDatabase } from '../../config/database';
+import { getDatabase } from '@/infrastructure/database/database';
 import {
   Todo,
   TodoStatus,

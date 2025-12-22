@@ -26,9 +26,9 @@
 
 import type { ConnectionPool } from 'mssql';
 import type { Redis } from 'ioredis';
-import { getPool } from '@config/database';
-import { getRedis } from '@config/redis';
-import { UNIT_COSTS, calculateTokenCost } from '@config/pricing.config';
+import { getPool } from '@/infrastructure/database/database';
+import { getRedis } from '@/infrastructure/redis/redis';
+import { UNIT_COSTS, calculateTokenCost } from '@/infrastructure/config/pricing.config';
 import type { OperationCategory } from '@/types/usage.types';
 import { createChildLogger } from '@/shared/utils/logger';
 import type { Logger } from 'pino';

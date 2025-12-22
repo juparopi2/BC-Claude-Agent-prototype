@@ -17,8 +17,8 @@
 
 import { Router, Request, Response } from 'express';
 import { z, ZodError } from 'zod';
-import { authenticateMicrosoft } from '@middleware/auth-oauth';
-import { getBillingService } from '@services/billing';
+import { authenticateMicrosoft } from '@/domains/auth/middleware/auth-oauth';
+import { getBillingService } from '@/domains/billing/BillingService';
 import { sendError } from '@/shared/utils/error-response';
 import { ErrorCode } from '@/shared/constants/errors';
 import { createChildLogger } from '@/shared/utils/logger';

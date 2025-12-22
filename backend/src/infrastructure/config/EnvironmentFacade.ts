@@ -12,7 +12,7 @@
  * **Usage:**
  *
  * @example
- * import { Environment } from '@config/EnvironmentFacade';
+ * import { Environment } from '@/infrastructure/config/EnvironmentFacade';
  *
  * // Environment checks
  * if (Environment.isDevelopment()) {
@@ -35,7 +35,7 @@
  * // Debug information
  * console.log(Environment.info());
  *
- * @module config/EnvironmentFacade
+ * @module infrastructure/config/EnvironmentFacade
  */
 
 import {
@@ -266,7 +266,7 @@ function info(): string {
  *
  * @example
  * // Complete service initialization
- * import { Environment } from '@config/EnvironmentFacade';
+ * import { Environment } from '@/infrastructure/config/EnvironmentFacade';
  *
  * class MyService {
  *   constructor() {

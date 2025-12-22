@@ -15,7 +15,7 @@
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { executeQuery } from '@/infrastructure/database/database';
-import { createMicrosoftOAuthService } from '@/services/auth/MicrosoftOAuthService';
+import { createMicrosoftOAuthService } from '@/domains/auth/oauth/MicrosoftOAuthService';
 import { createBCTokenManager } from '@/services/auth/BCTokenManager';
 import { authenticateMicrosoft, authenticateMicrosoftOptional } from '@/domains/auth/middleware/auth-oauth';
 import { MicrosoftOAuthSession } from '@/types/microsoft.types';

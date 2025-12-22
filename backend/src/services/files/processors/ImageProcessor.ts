@@ -13,7 +13,7 @@
 
 import { createChildLogger } from '@/shared/utils/logger';
 import { EmbeddingService } from '@services/embeddings/EmbeddingService';
-import { getUsageTrackingService } from '@services/tracking/UsageTrackingService';
+import { getUsageTrackingService } from '@/domains/billing/tracking/UsageTrackingService';
 import type { DocumentProcessor, ExtractionResult, ExtractionMetadata } from './types';
 import { env } from '@/infrastructure/config/environment';
 

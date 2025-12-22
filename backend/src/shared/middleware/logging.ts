@@ -32,7 +32,7 @@
  */
 
 import pinoHttp from 'pino-http';
-import { logger } from '../utils/logger';
+import { logger } from '@/shared/utils/logger';
 import { RequestHandler } from 'express';
 import type { IncomingMessage, ServerResponse } from 'http';
 

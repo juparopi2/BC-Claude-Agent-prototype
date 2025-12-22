@@ -254,10 +254,13 @@ describe('Sessions Routes', () => {
   });
 
   describe('GET /api/chat/sessions/:sessionId', () => {
+    // Valid UUID for get session tests
+    const GET_SESSION_UUID = 'f0f0f0f0-f0f0-f0f0-f0f0-f0f0f0f0f0f0';
+
     it('should return specific session when user owns it', async () => {
-      // Arrange
+      // Arrange - Use valid UUID
       const mockSession = {
-        id: 'session-specific',
+        id: GET_SESSION_UUID,
         user_id: 'test-user-123',
         title: 'Specific Session',
         is_active: true,
@@ -269,28 +272,28 @@ describe('Sessions Routes', () => {
 
       // Act
       const response = await request(app)
-        .get('/api/chat/sessions/session-specific')
+        .get(`/api/chat/sessions/${GET_SESSION_UUID}`)
         .expect(200);
 
       // Assert
       expect(response.body.session).toMatchObject({
-        id: 'session-specific',
+        id: GET_SESSION_UUID,
         user_id: 'test-user-123',
         title: 'Specific Session'
       });
       expect(mockExecuteQuery).toHaveBeenCalledWith(
         expect.stringContaining('WHERE id = @sessionId AND user_id = @userId'),
-        { sessionId: 'session-specific', userId: 'test-user-123' }
+        { sessionId: GET_SESSION_UUID, userId: 'test-user-123' }
       );
     });
 
     it('should return 404 when session does not exist', async () => {
-      // Arrange
+      // Arrange - Use valid UUID format so it reaches database query
       mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
 
       // Act
       const response = await request(app)
-        .get('/api/chat/sessions/nonexistent-session')
+        .get('/api/chat/sessions/00000000-0000-0000-0000-000000000000')
         .expect(404);
 
       // Assert
@@ -299,12 +302,12 @@ describe('Sessions Routes', () => {
     });
 
     it('should return 404 when user does not own the session', async () => {
-      // Arrange - Session belongs to different user
+      // Arrange - Session belongs to different user (use valid UUID)
       mockExecuteQuery.mockResolvedValueOnce({ recordset: [] }); // No results due to ownership check
 
       // Act
       const response = await request(app)
-        .get('/api/chat/sessions/other-user-session')
+        .get('/api/chat/sessions/11111111-1111-1111-1111-111111111111')
         .expect(404);
 
       // Assert
@@ -315,18 +318,21 @@ describe('Sessions Routes', () => {
   });
 
   describe('GET /api/chat/sessions/:sessionId/messages', () => {
+    // Valid UUID for session messages tests
+    const VALID_SESSION_UUID = '22222222-2222-2222-2222-222222222222';
+
     it('should return messages for a session with default pagination', async () => {
       // Arrange
       // First query: verify session ownership
       mockExecuteQuery.mockResolvedValueOnce({
-        recordset: [{ id: 'session-msgs' }]
+        recordset: [{ id: VALID_SESSION_UUID }]
       });
 
       // Second query: get messages
       const mockMessages = [
         {
           id: 'msg-1',
-          session_id: 'session-msgs',
+          session_id: VALID_SESSION_UUID,
           role: 'user',
           message_type: 'standard',
           content: 'Hello',
@@ -337,7 +343,7 @@ describe('Sessions Routes', () => {
         },
         {
           id: 'msg-2',
-          session_id: 'session-msgs',
+          session_id: VALID_SESSION_UUID,
           role: 'assistant',
           message_type: 'standard',
           content: 'Hi there!',
@@ -352,7 +358,7 @@ describe('Sessions Routes', () => {
 
       // Act
       const response = await request(app)
-        .get('/api/chat/sessions/session-msgs/messages')
+        .get(`/api/chat/sessions/${VALID_SESSION_UUID}/messages`)
         .expect(200);
 
       // Assert
@@ -367,18 +373,19 @@ describe('Sessions Routes', () => {
       expect(mockExecuteQuery).toHaveBeenNthCalledWith(
         2,
         expect.stringContaining('OFFSET @offset ROWS'),
-        expect.objectContaining({ sessionId: 'session-msgs', offset: 0, limit: 50 })
+        expect.objectContaining({ sessionId: VALID_SESSION_UUID, offset: 0, limit: 50 })
       );
     });
 
     it('should handle custom pagination parameters', async () => {
-      // Arrange
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [{ id: 'session-page' }] });
+      // Arrange - Use valid UUID
+      const paginationSessionUUID = '33333333-3333-3333-3333-333333333333';
+      mockExecuteQuery.mockResolvedValueOnce({ recordset: [{ id: paginationSessionUUID }] });
       mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
 
       // Act
       const response = await request(app)
-        .get('/api/chat/sessions/session-page/messages?limit=10&offset=5')
+        .get(`/api/chat/sessions/${paginationSessionUUID}/messages?limit=10&offset=5`)
         .expect(200);
 
       // Assert
@@ -390,9 +397,9 @@ describe('Sessions Routes', () => {
     });
 
     it('should return 400 when pagination params are invalid', async () => {
-      // Act
+      // Act - Use valid UUID to reach pagination validation
       const response = await request(app)
-        .get('/api/chat/sessions/any/messages?limit=invalid')
+        .get('/api/chat/sessions/44444444-4444-4444-4444-444444444444/messages?limit=invalid')
         .expect(400);
 
       // Assert - sendError format: { error: HTTP_STATUS_NAME, message: CUSTOM_MESSAGE }
@@ -400,12 +407,12 @@ describe('Sessions Routes', () => {
     });
 
     it('should return 404 when session does not exist or user lacks access', async () => {
-      // Arrange - Session ownership check fails
+      // Arrange - Session ownership check fails (use valid UUID)
       mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
 
       // Act
       const response = await request(app)
-        .get('/api/chat/sessions/no-access-session/messages')
+        .get('/api/chat/sessions/55555555-5555-5555-5555-555555555555/messages')
         .expect(404);
 
       // Assert
@@ -414,13 +421,14 @@ describe('Sessions Routes', () => {
     });
 
     it('should handle thinking and tool_use message types', async () => {
-      // Arrange
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [{ id: 'session-types' }] });
+      // Arrange - Use valid UUID
+      const typesSessionUUID = '66666666-6666-6666-6666-666666666666';
+      mockExecuteQuery.mockResolvedValueOnce({ recordset: [{ id: typesSessionUUID }] });
 
       const mockMessages = [
         {
           id: 'msg-thinking',
-          session_id: 'session-types',
+          session_id: typesSessionUUID,
           role: 'assistant',
           message_type: 'thinking',
           content: 'Let me think about this...',  // Content is in content column, not metadata
@@ -431,7 +439,7 @@ describe('Sessions Routes', () => {
         },
         {
           id: 'msg-tool',
-          session_id: 'session-types',
+          session_id: typesSessionUUID,
           role: 'assistant',
           message_type: 'tool_use',
           content: '',
@@ -451,7 +459,7 @@ describe('Sessions Routes', () => {
 
       // Act
       const response = await request(app)
-        .get('/api/chat/sessions/session-types/messages')
+        .get(`/api/chat/sessions/${typesSessionUUID}/messages`)
         .expect(200);
 
       // Assert
@@ -476,6 +484,11 @@ describe('Sessions Routes', () => {
   });
 
   describe('PATCH /api/chat/sessions/:sessionId', () => {
+    // Valid UUIDs for PATCH tests
+    const PATCH_SESSION_UUID = '77777777-7777-7777-7777-777777777777';
+    const PATCH_TRIM_UUID = '88888888-8888-8888-8888-888888888888';
+    const PATCH_VALIDATION_UUID = '99999999-9999-9999-9999-999999999999';
+
     it('should update session title successfully', async () => {
       // Arrange
       // First query: UPDATE
@@ -483,7 +496,7 @@ describe('Sessions Routes', () => {
 
       // Second query: SELECT updated session
       const mockUpdatedSession = {
-        id: 'session-update',
+        id: PATCH_SESSION_UUID,
         user_id: 'test-user-123',
         title: 'Updated Title',
         is_active: true,
@@ -494,7 +507,7 @@ describe('Sessions Routes', () => {
 
       // Act
       const response = await request(app)
-        .patch('/api/chat/sessions/session-update')
+        .patch(`/api/chat/sessions/${PATCH_SESSION_UUID}`)
         .send({ title: 'Updated Title' })
         .expect(200);
 
@@ -504,7 +517,7 @@ describe('Sessions Routes', () => {
       expect(mockExecuteQuery).toHaveBeenCalledWith(
         expect.stringContaining('UPDATE sessions'),
         expect.objectContaining({
-          sessionId: 'session-update',
+          sessionId: PATCH_SESSION_UUID,
           userId: 'test-user-123',
           title: 'Updated Title'
         })
@@ -516,7 +529,7 @@ describe('Sessions Routes', () => {
       mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
       mockExecuteQuery.mockResolvedValueOnce({
         recordset: [{
-          id: 'session-trim',
+          id: PATCH_TRIM_UUID,
           user_id: 'test-user-123',
           title: 'Trimmed Title',
           is_active: true,
@@ -527,7 +540,7 @@ describe('Sessions Routes', () => {
 
       // Act
       await request(app)
-        .patch('/api/chat/sessions/session-trim')
+        .patch(`/api/chat/sessions/${PATCH_TRIM_UUID}`)
         .send({ title: '  Trimmed Title  ' })
         .expect(200);
 
@@ -539,9 +552,9 @@ describe('Sessions Routes', () => {
     });
 
     it('should return 400 when title is missing', async () => {
-      // Act
+      // Act - Use valid UUID to reach validation
       const response = await request(app)
-        .patch('/api/chat/sessions/any')
+        .patch(`/api/chat/sessions/${PATCH_VALIDATION_UUID}`)
         .send({})
         .expect(400);
 
@@ -551,9 +564,9 @@ describe('Sessions Routes', () => {
     });
 
     it('should return 400 when title is empty string', async () => {
-      // Act
+      // Act - Use valid UUID to reach validation
       const response = await request(app)
-        .patch('/api/chat/sessions/any')
+        .patch(`/api/chat/sessions/${PATCH_VALIDATION_UUID}`)
         .send({ title: '   ' })
         .expect(400);
 
@@ -562,9 +575,9 @@ describe('Sessions Routes', () => {
     });
 
     it('should return 400 when title exceeds 500 characters', async () => {
-      // Act
+      // Act - Use valid UUID to reach validation
       const response = await request(app)
-        .patch('/api/chat/sessions/any')
+        .patch(`/api/chat/sessions/${PATCH_VALIDATION_UUID}`)
         .send({ title: 'a'.repeat(501) })
         .expect(400);
 
@@ -573,12 +586,12 @@ describe('Sessions Routes', () => {
     });
 
     it('should return 404 when session does not exist or user lacks access', async () => {
-      // Arrange - No rows affected
+      // Arrange - No rows affected (use valid UUID)
       mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [0] });
 
       // Act
       const response = await request(app)
-        .patch('/api/chat/sessions/no-access')
+        .patch('/api/chat/sessions/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
         .send({ title: 'Test' })
         .expect(404);
 
@@ -588,13 +601,19 @@ describe('Sessions Routes', () => {
   });
 
   describe('DELETE /api/chat/sessions/:sessionId', () => {
+    // Valid UUIDs for DELETE tests
+    const DELETE_SESSION_UUID = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+    const DELETE_NONEXIST_UUID = 'cccccccc-cccc-cccc-cccc-cccccccccccc';
+    const DELETE_OTHER_UUID = 'dddddddd-dddd-dddd-dddd-dddddddddddd';
+    const DELETE_ERROR_UUID = 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee';
+
     it('should delete session successfully (CASCADE delete)', async () => {
       // Arrange
       mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
 
       // Act
       const response = await request(app)
-        .delete('/api/chat/sessions/session-delete')
+        .delete(`/api/chat/sessions/${DELETE_SESSION_UUID}`)
         .expect(200);
 
       // Assert
@@ -602,7 +621,7 @@ describe('Sessions Routes', () => {
       expect(response.body.message).toBe('Session deleted');
       expect(mockExecuteQuery).toHaveBeenCalledWith(
         expect.stringContaining('DELETE FROM sessions'),
-        { sessionId: 'session-delete', userId: 'test-user-123' }
+        { sessionId: DELETE_SESSION_UUID, userId: 'test-user-123' }
       );
     });
 
@@ -612,7 +631,7 @@ describe('Sessions Routes', () => {
 
       // Act
       const response = await request(app)
-        .delete('/api/chat/sessions/nonexistent')
+        .delete(`/api/chat/sessions/${DELETE_NONEXIST_UUID}`)
         .expect(404);
 
       // Assert
@@ -626,7 +645,7 @@ describe('Sessions Routes', () => {
 
       // Act
       const response = await request(app)
-        .delete('/api/chat/sessions/other-user-session')
+        .delete(`/api/chat/sessions/${DELETE_OTHER_UUID}`)
         .expect(404);
 
       // Assert
@@ -641,7 +660,7 @@ describe('Sessions Routes', () => {
 
       // Act
       const response = await request(app)
-        .delete('/api/chat/sessions/error-session')
+        .delete(`/api/chat/sessions/${DELETE_ERROR_UUID}`)
         .expect(500);
 
       // Assert - sendError format: { error: HTTP_STATUS_NAME, message: CUSTOM_MESSAGE }

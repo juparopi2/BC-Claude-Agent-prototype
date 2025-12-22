@@ -1,6 +1,6 @@
 import { AgentState } from './state';
 import { ModelFactory } from '../../../core/langchain/ModelFactory';
-import { getModelConfig } from '../../../config/models';
+import { getModelConfig } from '@/infrastructure/config/models';
 import { SystemMessage } from '@langchain/core/messages';
 import { z } from 'zod';
 import { createChildLogger } from '@/shared/utils/logger';

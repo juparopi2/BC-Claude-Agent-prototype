@@ -6,12 +6,12 @@
  *
  * Separate from ioredis configuration (redis.ts) which is used by BullMQ.
  *
- * @module config/redis-client
+ * @module infrastructure/redis/redis-client
  */
 
 import { createClient, RedisClientType } from 'redis';
 import { createChildLogger } from '@/shared/utils/logger';
-import { Environment } from '@config/EnvironmentFacade';
+import { Environment } from '@/infrastructure/config/EnvironmentFacade';
 import { env } from '@/infrastructure/config/environment';
 
 const logger = createChildLogger({ service: 'RedisClient' });

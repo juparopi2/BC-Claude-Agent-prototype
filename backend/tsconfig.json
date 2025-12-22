@@ -26,18 +26,9 @@
       "@infrastructure/*": [
         "src/infrastructure/*"
       ],
-      /* Legacy paths (maintained for backwards compatibility) */
-      "@config/*": [
-        "src/config/*"
-      ],
+      /* Existing paths */
       "@services/*": [
         "src/services/*"
-      ],
-      "@models/*": [
-        "src/models/*"
-      ],
-      "@middleware/*": [
-        "src/middleware/*"
       ],
       "@types/*": [
         "src/types/*"

@@ -14,7 +14,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { AuthenticationResult } from '@azure/msal-node';
 import { http, HttpResponse } from 'msw';
 import { server } from '../../../mocks/server';
-import { MicrosoftOAuthService } from '@/services/auth/MicrosoftOAuthService';
+import { MicrosoftOAuthService } from '@/domains/auth/oauth/MicrosoftOAuthService';
 import type { MicrosoftOAuthConfig, OAuthTokenResponse, TokenAcquisitionResult, MicrosoftUserProfile } from '@/types/microsoft.types';
 import { BC_API_SCOPE, ALL_SCOPES } from '@/types/microsoft.types';
 

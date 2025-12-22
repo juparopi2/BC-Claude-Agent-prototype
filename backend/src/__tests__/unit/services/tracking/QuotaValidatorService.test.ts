@@ -33,7 +33,7 @@ import {
   QuotaValidatorService,
   getQuotaValidatorService,
   __resetQuotaValidatorService,
-} from '@services/tracking/QuotaValidatorService';
+} from '@/domains/billing/tracking/QuotaValidatorService';
 import type { UserQuotasDbRow } from '@/types/usage.types';
 
 describe('QuotaValidatorService', () => {

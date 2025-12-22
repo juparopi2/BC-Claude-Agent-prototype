@@ -1,6 +1,6 @@
 import type { ChunkingStrategy, ChunkingOptions, ChunkResult } from './types';
 
-import { createChildLogger } from '../../utils/logger';
+import { createChildLogger } from '@/shared/utils/logger';
 
 const logger = createChildLogger({ service: 'RecursiveChunkingStrategy' });
 

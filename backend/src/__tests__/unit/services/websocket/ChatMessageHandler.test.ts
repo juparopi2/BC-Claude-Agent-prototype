@@ -60,7 +60,7 @@ vi.mock('@/services/agent/DirectAgentService', () => ({
 }));
 
 // ===== MOCK DATABASE FOR SESSION OWNERSHIP (added for F4-003) =====
-vi.mock('@config/database', () => ({
+vi.mock('@/infrastructure/database/database', () => ({
   executeQuery: vi.fn().mockResolvedValue({
     recordset: [{ user_id: 'test-user-456' }], // Default: user owns the session
     rowsAffected: [1],

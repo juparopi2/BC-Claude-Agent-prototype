@@ -1,8 +1,61 @@
 # BLOQUE B: Pre-Refactor (Malla de Seguridad)
 
 **Fecha de creación**: 2025-12-19
-**Estado**: PENDIENTE
+**Estado**: EN PROGRESO (B.2-B.5 COMPLETADOS, B.6 PENDIENTE)
 **Prerrequisito**: BLOQUE A (Screaming Architecture) - COMPLETADO
+
+---
+
+## Resumen de Logros (2025-12-19)
+
+### Tareas Completadas
+
+| Tarea | Estado | Descripción |
+|-------|--------|-------------|
+| B.1 | COMPLETADO | Response Shape ya estaba correcto (`response.body.session.id`) |
+| B.2 | COMPLETADO | Backend devuelve 404 para cross-tenant access (OWASP pattern) |
+| B.3 | COMPLETADO | `E2ETestClient.sendMessage()` ahora pasa `userId` correctamente |
+| B.4 | COMPLETADO | Tests de billing/usage/gdpr ya tenían `describe.skip()` |
+| B.5 | COMPLETADO | Nuevo test `messages-retrieval.api.test.ts` creado (Gap D23) |
+| B.6 | PENDIENTE | Migración de imports y eliminación de re-exports |
+
+### Resultados Numéricos Pre-B.6 (Baseline)
+
+**Tests Unitarios (npm test)**:
+```
+Tests: 1903 passed, 13 failed
+Files: 1916 total
+Failures: Todos en server.comprehensive.test.ts (pre-existentes)
+```
+
+**Tests E2E (npm run test:e2e)**:
+```
+Test Files: 12 passed, 7 failed, 6 skipped (25 total)
+Tests: 270 passed, 41 failed, 97 skipped (408 total)
+Duration: 748.29s
+```
+
+**Desglose de Tests E2E Fallidos**:
+| Archivo | Causa |
+|---------|-------|
+| `02-session-management.e2e.test.ts` | Response shape inconsistencies |
+| `events.ws.test.ts` | Session ID required errors |
+| `error-handling.ws.test.ts` | Session ID required errors |
+| `error-tool.scenario.test.ts` | Error events no se emiten como esperado |
+| `error-api.scenario.test.ts` | Error events no se emiten como esperado |
+| `multi-tool-with-thinking.scenario.test.ts` | Thinking ordering issues |
+| `single-tool-no-thinking.scenario.test.ts` | Tool correlation issues |
+
+### Archivos Modificados en B.2-B.5
+
+| Archivo | Cambio |
+|---------|--------|
+| `E2ETestClient.ts` | Agregado `setUserAuth()`, `authenticatedUserId`, `sendMessage()` actualizado |
+| `02-session-management.e2e.test.ts` | Actualizado para esperar 404 (OWASP) |
+| `10-multi-tenant-isolation.e2e.test.ts` | Migrado a `setUserAuth()` |
+| `session-rooms.ws.test.ts` | Fixed response shape `response.body.session.id` |
+| `messages-retrieval.api.test.ts` | NUEVO - Gap D23 test |
+| `sessions.ts` (routes) | Agregado UUID validation y error handling 404 |
 
 ---
 

@@ -15,7 +15,7 @@
  */
 
 import { getEventStore } from '../events/EventStore';
-import { getMessageQueue } from '../queue/MessageQueue';
+import { getMessageQueue } from '@/infrastructure/queue/MessageQueue';
 import { createChildLogger } from '@/shared/utils/logger';
 import type { Logger } from 'pino';
 import { randomUUID } from 'crypto';

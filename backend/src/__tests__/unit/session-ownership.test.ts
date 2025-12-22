@@ -16,7 +16,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Mock database module - use vi.fn() inside factory
-vi.mock('@config/database', () => ({
+vi.mock('@/infrastructure/database/database', () => ({
   executeQuery: vi.fn(),
 }));
 
@@ -43,7 +43,7 @@ import {
   requireSessionOwnership,
   requireSessionOwnershipMiddleware,
 } from '@/shared/utils/session-ownership';
-import { executeQuery } from '@config/database';
+import { executeQuery } from '@/infrastructure/database/database';
 
 // Get the mocked version
 const mockExecuteQuery = vi.mocked(executeQuery);

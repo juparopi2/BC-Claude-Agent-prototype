@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { VectorSearchService } from '../../../services/search/VectorSearchService';
-import { env } from '../../../config/environment';
+import { env } from '@/infrastructure/config/environment';
 
 // Skippable integration test suite
 // Run only if Azure Search credentials are provided

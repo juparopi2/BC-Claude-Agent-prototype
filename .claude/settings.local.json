@@ -156,7 +156,8 @@
       "Bash(npx vite preview:*)",
       "Bash(E2E_USE_REAL_API=true npm run test:e2e:*)",
       "Bash(gunzip:*)",
-      "Bash(wc:*)"
+      "Bash(wc:*)",
+      "Bash(git branch:*)"
     ],
     "deny": [],
     "ask": []

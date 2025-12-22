@@ -49,7 +49,7 @@ const mockEnv = vi.hoisted(() => ({
   AZURE_DI_KEY: undefined as string | undefined,
 }));
 
-vi.mock('@config/environment', () => ({
+vi.mock('@/infrastructure/config/environment', () => ({
   env: mockEnv,
 }));
 

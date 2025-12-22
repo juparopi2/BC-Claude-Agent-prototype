@@ -12,7 +12,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { timingSafeEqual } from 'crypto';
 
 // Mock database module
-vi.mock('@config/database', () => ({
+vi.mock('@/infrastructure/database/database', () => ({
   executeQuery: vi.fn(),
 }));
 
@@ -38,7 +38,7 @@ import {
   validateSessionOwnership,
   timingSafeCompare,
 } from '@/shared/utils/session-ownership';
-import { executeQuery } from '@config/database';
+import { executeQuery } from '@/infrastructure/database/database';
 
 const mockExecuteQuery = vi.mocked(executeQuery);
 

@@ -4,7 +4,7 @@ import { OpenAI } from 'openai';
 import Redis from 'ioredis';
 import { createRedisClient } from '@/infrastructure/redis/redis';
 import crypto from 'crypto';
-import { getUsageTrackingService } from '@services/tracking/UsageTrackingService';
+import { getUsageTrackingService } from '@/domains/billing/tracking/UsageTrackingService';
 import { createChildLogger } from '@/shared/utils/logger';
 
 const logger = createChildLogger({ service: 'EmbeddingService' });

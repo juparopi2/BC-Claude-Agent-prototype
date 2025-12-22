@@ -34,8 +34,8 @@ import {
   BillingService,
   getBillingService,
   __resetBillingService,
-} from '@services/billing';
-import { PRICING_PLANS, PAYG_RATES } from '@config/pricing.config';
+} from '@/domains/billing/BillingService';
+import { PRICING_PLANS, PAYG_RATES } from '@/infrastructure/config/pricing.config';
 import type {
   BillingRecordDbRow,
   UserQuotasDbRow,

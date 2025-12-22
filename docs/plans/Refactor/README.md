@@ -1,7 +1,37 @@
 # Refactor de DirectAgentService - Documentación
 
 **Fecha**: 2025-12-22
-**Estado**: Aprobado
+**Estado**: En Progreso - Fase A (Hojas) Completada ✅
+
+---
+
+## Progreso Actual
+
+| Métrica | Valor |
+|---------|-------|
+| **Clases implementadas** | 7 / 13 (54%) |
+| **Tests nuevos** | 182 pasando |
+| **Tests totales** | 2,031 pasando |
+| **Lint** | 0 errores |
+| **Build** | 345 archivos compilados |
+
+### Clases Completadas ✅
+
+```
+backend/src/domains/agent/
+├── persistence/
+│   └── PersistenceErrorAnalyzer.ts    ✅ 27 tests
+├── emission/
+│   ├── EventIndexTracker.ts           ✅ 13 tests
+│   └── AgentEventEmitter.ts           ✅ 32 tests
+├── streaming/
+│   ├── ThinkingAccumulator.ts         ✅ 24 tests
+│   └── ContentAccumulator.ts          ✅ 21 tests
+├── tools/
+│   └── ToolEventDeduplicator.ts       ✅ 30 tests
+└── usage/
+    └── UsageTracker.ts                ✅ 35 tests
+```
 
 ---
 
@@ -107,12 +137,24 @@ Este directorio contiene la documentación completa del refactor del DirectAgent
 
 ## Próximos Pasos
 
-1. ✅ Documentación creada
-2. ⏳ Eliminar archivos obsoletos de planificación
-3. ⏳ Crear estructura de carpetas `domains/agent/`
-4. ⏳ Implementar clases hojas (Fase 1)
-5. ⏳ ...seguir orden de implementación
+### Completados ✅
+
+1. ✅ Documentación creada (10 archivos en `docs/plans/Refactor/`)
+2. ✅ Eliminados 7 archivos obsoletos de planificación
+3. ✅ Creada estructura de carpetas `domains/agent/` (7 subdirectorios)
+4. ✅ **Fase 1 (Hojas):** 5 clases sin dependencias (115 tests)
+5. ✅ **Fase 2 (Emisores/Trackers):** 2 clases con dependencias internas (67 tests)
+
+### En Progreso ⏳
+
+6. ⏳ **Fase 3 (Coordinadores):** PersistenceCoordinator, SemanticSearchHandler
+7. ⏳ **Fase 4 (Contexto):** FileContextPreparer
+8. ⏳ **Fase 5 (Tools):** ToolExecutionProcessor
+9. ⏳ **Fase 6 (Stream):** GraphStreamProcessor (ALTO RIESGO)
+10. ⏳ **Fase 7 (Orchestrator):** AgentOrchestrator (ALTO RIESGO)
+11. ⏳ **Fase 8 (Integración):** ChatMessageHandler, E2E tests
+12. ⏳ **Fase 9 (Cleanup):** Eliminar DirectAgentService, documentación final
 
 ---
 
-*Última actualización: 2025-12-22*
+*Última actualización: 2025-12-22 13:30 UTC-5*

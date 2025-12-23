@@ -65,6 +65,28 @@ vi.mock('@/shared/utils/logger', () => {
   };
 });
 
+// Mock persistence module to prevent real Redis connections in Factory Functions tests
+vi.mock('@domains/agent/persistence', () => ({
+  getPersistenceCoordinator: vi.fn(() => ({
+    persistUserMessage: vi.fn().mockResolvedValue({ sequenceNumber: 1 }),
+    persistThinking: vi.fn().mockResolvedValue({ sequenceNumber: 2 }),
+    persistAgentMessage: vi.fn().mockResolvedValue({
+      sequenceNumber: 3,
+      timestamp: '2025-12-22T10:00:00.000Z',
+      eventId: 'event-123',
+    }),
+  })),
+  createPersistenceCoordinator: vi.fn(() => ({
+    persistUserMessage: vi.fn().mockResolvedValue({ sequenceNumber: 1 }),
+    persistThinking: vi.fn().mockResolvedValue({ sequenceNumber: 2 }),
+    persistAgentMessage: vi.fn().mockResolvedValue({
+      sequenceNumber: 3,
+      timestamp: '2025-12-22T10:00:00.000Z',
+      eventId: 'event-123',
+    }),
+  })),
+}));
+
 // Import mocked dependencies for assertions
 import { orchestratorGraph } from '@/modules/agents/orchestrator/graph';
 import { StreamAdapterFactory } from '@shared/providers/adapters/StreamAdapterFactory';

@@ -429,22 +429,25 @@ Dashboard de analytics para admins.
 **Fecha análisis:** 2025-12-22
 **Total:** 12 tests skipped (justificados)
 
-### D14: UNIMPLEMENTED APIs (3 tests)
+### D14: UNIMPLEMENTED APIs (3 tests) - MANTENER SKIP
 
-| Archivo | Descripción | Prioridad |
-|---------|-------------|-----------|
-| `gdpr.api.test.ts` | GDPR compliance endpoints (delete user data, export) | Media |
-| `billing.api.test.ts` | Billing/subscription management endpoints | Media |
-| `usage.api.test.ts` | Usage dashboard analytics endpoints | Media |
+| Archivo | Descripción | Estado |
+|---------|-------------|--------|
+| `gdpr.api.test.ts` | GDPR compliance endpoints (delete user data, export) | ⏸️ Skip intencional |
+| `billing.api.test.ts` | Billing/subscription management endpoints | ⏸️ Skip intencional |
+| `usage.api.test.ts` | Usage dashboard analytics endpoints | ⏸️ Skip intencional |
+
+**Justificación:** Estos tests son **placeholder tests** para features futuras. Los endpoints NO existen aún.
+Los tests documentan el comportamiento esperado para cuando se implementen.
 
 **Fase:** Phase 6 o posterior
-**Estimación:** 5-7 días total
+**Estimación:** 5-7 días total (cuando se implementen los endpoints)
 
 ### D15: UNIMPLEMENTED Features (3 tests) - ✅ PARCIALMENTE RESUELTO
 
 | Archivo | Descripción | Estado |
 |---------|-------------|--------|
-| `approval-flow.e2e.test.ts` | Full approval flow E2E con WebSocket | ⏸️ Pendiente |
+| `approval-flow.e2e.test.ts` | Full approval flow E2E con WebSocket | ⏸️ Pendiente refactor |
 | `max-tokens.scenario.test.ts` | Manejo de stop_reason: max_tokens | ✅ Habilitado |
 | `error-tool.scenario.test.ts` | Manejo de errores en tool execution | ✅ Habilitado |
 
@@ -452,11 +455,12 @@ Dashboard de analytics para admins.
 - `max-tokens.scenario.test.ts`: Skip removido, migrado a FakeAgentOrchestrator
 - `error-tool.scenario.test.ts`: Skip removido, migrado a FakeAgentOrchestrator
 
-**Pendiente:**
-- `approval-flow.e2e.test.ts`: Requiere implementación de ApprovalManager completo (ver sección ApprovalManager)
+**Actualización 2025-12-23:**
+- `approval-flow.e2e.test.ts`: Mantener skip - ApprovalManager recibirá un refactor significativo.
+  El servicio existe pero será reestructurado antes de habilitar estos E2E tests.
 
-**Fase restante:** Phase 6 o posterior
-**Estimación restante:** 1-2 días (solo approval flow)
+**Fase restante:** Phase 6 o posterior (post-refactor ApprovalManager)
+**Estimación restante:** 3-5 días (refactor + tests)
 
 ### D16: DEPRECATED Tests (3 tests) ✅ ELIMINADOS
 
@@ -476,16 +480,23 @@ Tests eliminados 2025-12-22 por usar API obsoleta `executeQueryStreaming`:
 **Estado:** RESUELTO - AgentOrchestrator implementado en Fase 7 con 38 tests (30 unit + 8 integration)
 **Fecha completado:** 2025-12-22
 
-### D18: Technical Issues (3 tests)
+### D18: Technical Issues (2 tests) - PARCIALMENTE RESUELTO
 
-| Archivo | Descripción | Prioridad |
-|---------|-------------|-----------|
-| `performance.test.ts` | Requires benchmark infrastructure | Baja |
-| `message-flow.integration.test.ts:186` | WebSocket reliability issue | Media |
-| `orchestrator.integration.test.ts` | Counted in D17 | - |
+| Archivo | Descripción | Estado |
+|---------|-------------|--------|
+| `performance.test.ts` | Tests de carga (100+ requests concurrentes, P95/P99 latency) | ⏸️ Skip INTENCIONAL |
+| `message-flow.integration.test.ts:186` | WebSocket reliability issue | ✅ RESUELTO 2025-12-23 |
+
+**Actualización 2025-12-23:**
+- `message-flow.integration.test.ts`: Corregido - usaba API incorrecta de TestSocketClient
+- `performance.test.ts`: **Mantener skip** - Son tests de carga resource-intensive:
+  - 100+ requests concurrentes
+  - Medición de latencia P95/P99
+  - Detección de memory leaks (100MB heap threshold)
+  - Deben ejecutarse en entorno de benchmark dedicado, NO en CI/CD
 
 **Fase:** Phase 6 (infrastructure) o posterior
-**Estimación:** 2-3 días
+**Estimación:** 1 día (solo infraestructura de benchmark)
 
 ---
 
@@ -506,6 +517,7 @@ Tests eliminados 2025-12-22 por usar API obsoleta `executeQueryStreaming`:
 | D16 | ~~Deprecated Tests~~ | ~~N/A~~ | ✅ | ~~Eliminados~~ |
 | D17 | ~~TDD RED - Orchestrator Integration~~ | ~~Phase 7~~ | ✅ | ~~Completado~~ |
 | D18 | Technical Issues (performance, websocket) | Phase 6+ | Media | 2-3 |
+| **D19** | **Refactor E2E Tests - Nueva Filosofía** | **Phase 6** | **ALTA** | **5-7** |
 | - | ApprovalManager completo | Phase 6 | Alta | 5 |
 | - | Azure OpenAI support | Phase 7 | Alta | 10 |
 | - | Google Gemini support | Phase 7 | Media | 10 |
@@ -514,9 +526,189 @@ Tests eliminados 2025-12-22 por usar API obsoleta `executeQueryStreaming`:
 | - | Analytics Dashboard | Phase 8 | Media | 10 |
 
 **Total estimado URGENTE (D2):** ~30-40 días (6-8 semanas)
-**Total estimado Phase 6:** ~27.5-32 días (incluyendo D14, D15, D18)
+**Total estimado Phase 6:** ~32.5-39 días (incluyendo D14, D15, D18, D19)
 **Total estimado Phase 7:** ~28 días
 **Total estimado Phase 8:** ~10 días
+
+---
+
+## D19: Refactor E2E Tests - Nueva Filosofía (CRÍTICO)
+
+**Fecha análisis:** 2025-12-23
+**Estado:** Documentado - Pendiente Implementación
+**Prioridad:** ALTA
+**Estimación:** 5-7 días
+
+### Contexto del Problema
+
+Los E2E tests actuales tienen **56 failures** al ejecutar con `E2E_USE_REAL_API=true`.
+Esto NO son bugs del sistema - son diferencias entre:
+- **Expectations hardcoded** (basadas en mocks determinísticos)
+- **Comportamiento real de Claude API** (no determinístico)
+
+### Nueva Filosofía de Tests E2E
+
+Los E2E tests deben seguir estos principios:
+
+#### 1. NO Verificar Contenido Específico
+
+```typescript
+// ❌ MALO - Verificar contenido específico
+expect(response.content).toBe('Hello! I am Claude...');
+
+// ✅ BUENO - Verificar estructura y consistencia
+expect(response.stopReason).toBe('end_turn');
+expect(response.hasTools).toBe(true);
+expect(response.toolCount).toBeGreaterThan(0);
+```
+
+#### 2. Capturar Respuesta Real como Ground Truth
+
+```typescript
+// Flujo propuesto:
+// 1. Llamar API real de Anthropic
+// 2. Capturar respuesta como "golden file" (una vez)
+// 3. Usar golden file para validar pipeline completo
+const realResponse = await captureFromAnthropic(prompt);
+const normalizedEvents = normalize(realResponse);
+const persistedEvents = await persist(normalizedEvents);
+const reconstructed = reconstruct(persistedEvents);
+
+// Validar que reconstrucción preserva estructura
+expect(reconstructed.toolCallCount).toBe(realResponse.toolCallCount);
+expect(reconstructed.hasThinking).toBe(realResponse.hasThinking);
+```
+
+#### 3. Verificar Flujo Completo End-to-End
+
+```
+API Anthropic → Normalización → Persistencia → WebSocket → Reconstrucción
+     │              │              │              │              │
+     │              │              │              │              └── Frontend puede
+     │              │              │              │                  renderizar correctamente
+     │              │              │              │
+     │              │              │              └── Eventos transmitidos
+     │              │              │                  son completos
+     │              │              │
+     │              │              └── DB contiene toda
+     │              │                  la información
+     │              │
+     │              └── Eventos normalizados
+     │                  preservan estructura
+     │
+     └── Respuesta capturada
+         como ground truth
+```
+
+#### 4. Qué Verificar vs Qué NO Verificar
+
+| Verificar (BUENO) | NO Verificar (MALO) |
+|-------------------|---------------------|
+| Orden de eventos | Contenido de texto |
+| Cantidad de tools | Mensaje específico |
+| Presencia de thinking | Texto de thinking |
+| Tokens consumidos | Valores exactos |
+| Sequence numbers | IDs específicos |
+| Stop reasons | Timestamps exactos |
+| Reconstrucción posible | Formato de fechas |
+
+### Gaps Identificados
+
+#### Gap #1: No hay Ground Truth de Anthropic (CRÍTICO)
+
+**Problema:** Tests usan `FakeScenario` con contenido hardcoded en lugar de respuestas reales.
+
+**Ubicación:**
+- `backend/src/__tests__/e2e/helpers/GoldenResponses.ts`
+- `backend/src/__tests__/e2e/helpers/ResponseScenarioRegistry.ts`
+
+**Solución propuesta:**
+1. Crear script `capture-golden-responses.ts` que llama API real una vez
+2. Guardar respuestas en `__fixtures__/golden/` como JSON
+3. Usar golden files como baseline para validación
+
+#### Gap #2: Sin Validación de Reconstrucción (CRÍTICO)
+
+**Problema:** No hay test que valide que eventos persistidos pueden reconstruir mensaje original.
+
+**Solución propuesta:**
+```typescript
+// Nuevo helper: reconstructMessageFromEvents()
+function reconstructMessageFromEvents(events: DBEvent[]): ReconstructedMessage {
+  const chunks = events.filter(e => e.type === 'message_chunk');
+  const content = chunks.map(c => c.data.content).join('');
+  const tools = events.filter(e => e.type === 'tool_use');
+  return { content, toolCount: tools.length, ... };
+}
+
+// Test nuevo:
+it('should reconstruct response from persisted events', () => {
+  const reconstructed = reconstructMessageFromEvents(scenarioResult.dbEvents);
+  expect(reconstructed.stopReason).toBe(goldenResponse.stopReason);
+  expect(reconstructed.toolCount).toBe(goldenResponse.toolCount);
+});
+```
+
+#### Gap #3: Hardcoded Session IDs (ALTA)
+
+**Problema:** Potencial colisión si tests corren en paralelo.
+
+**Ubicación:**
+- `logs.api.test.ts:49,126` - `'test_session_123'`
+- `token-usage.api.test.ts:124` - `'test_session_123'`
+
+**Solución:** Reemplazar con IDs generados dinámicamente via `TestSessionFactory`.
+
+#### Gap #4: Token Tracking No Implementado (ALTA)
+
+**Problema:** `CapturedResponseValidator.ts:211` tiene `// TODO: Implement when adding multi-provider support`
+
+**Solución:** Implementar validación de tokens en cada evento del stream.
+
+#### Gap #5: Thinking Content Sin Validación Real (MEDIA)
+
+**Problema:** Solo verifica que `data` existe, no que es thinking real vs fake.
+
+**Solución:** Validar estructura de thinking blocks, no contenido.
+
+### Archivos a Modificar
+
+```
+backend/src/__tests__/e2e/helpers/
+├── ResponseScenarioRegistry.ts  → Agregar captura de golden responses
+├── CapturedResponseValidator.ts → Implementar token tracking
+├── GoldenResponses.ts           → Reemplazar con golden files reales
+└── ReconstructionHelper.ts      → NUEVO: reconstruir desde eventos
+
+backend/src/__tests__/e2e/scenarios/patterns/
+├── *.scenario.test.ts           → Cambiar assertions a estructura
+
+backend/src/__tests__/e2e/api/
+├── logs.api.test.ts             → Fix hardcoded sessionIds
+└── token-usage.api.test.ts      → Fix hardcoded sessionIds
+```
+
+### Plan de Implementación
+
+**Fase 1: Foundation (2 días)**
+1. Crear `capture-golden-responses.ts` script
+2. Capturar golden files para todos los scenarios
+3. Fix hardcoded sessionIds
+
+**Fase 2: Reconstruction (2 días)**
+1. Implementar `reconstructMessageFromEvents()`
+2. Agregar tests de reconstrucción
+3. Validar flujo API→DB→Reconstruct
+
+**Fase 3: Validation (2 días)**
+1. Implementar token tracking en `CapturedResponseValidator`
+2. Agregar validación de estructura (no contenido)
+3. Tests de normalización
+
+**Fase 4: Cleanup (1 día)**
+1. Eliminar assertions de contenido específico
+2. Actualizar documentación
+3. Verificar 0 failures con Real API
 
 ---
 
@@ -539,4 +731,4 @@ Tests eliminados 2025-12-22 por usar API obsoleta `executeQueryStreaming`:
 
 ---
 
-*Última actualización: 2025-12-22 - Fase 8 Part 2 Completada, D3 OBSOLETO, D15 Parcialmente Resuelto (max-tokens, error-tool habilitados)*
+*Última actualización: 2025-12-23 - D19 agregado (Refactor E2E Tests con nueva filosofía de validación de estructura, no contenido). D14 documentado (API placeholder), D15 approval-flow pendiente refactor, D18 actualizado (performance skip intencional, message-flow corregido)*

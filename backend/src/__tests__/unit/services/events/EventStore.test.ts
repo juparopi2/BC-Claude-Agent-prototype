@@ -10,7 +10,7 @@
  * Reference: https://vitest.dev/api/vi#vi-hoisted
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EventStore, getEventStore } from '@/services/events/EventStore';
 import type { EventType, MessageEvent } from '@/services/events/EventStore';
 
@@ -94,6 +94,12 @@ describe('EventStore', () => {
     // Reset singleton instance
     (EventStore as any).instance = null;
     eventStore = getEventStore();
+  });
+
+  afterEach(() => {
+    // Clean up singleton to prevent Redis connection leaks
+    (EventStore as any).instance = null;
+    vi.clearAllMocks();
   });
 
   // ========== BASIC FUNCTIONALITY (10 TESTS) ==========

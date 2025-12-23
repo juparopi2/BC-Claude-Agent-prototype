@@ -16,9 +16,8 @@ import {
   cleanupAllTestData,
   TestSessionFactory,
   initRedisForTests,
-  ensureDatabaseAvailable,
-  closeDatabaseConnection,
   closeRedisForTests,
+  setupDatabaseForTests,
 } from '../helpers';
 import { REDIS_TEST_CONFIG } from '../setup.integration';
 
@@ -49,9 +48,9 @@ const isRedisAvailable = await (async () => {
 })();
 
 describe.skipIf(!isRedisAvailable)('Event Ordering with Real Redis', () => {
-  // NOTE: US-002 FIX - Explicit initialization instead of setupDatabaseForTests()
-  // The singleFork: true config in Vitest causes timing issues with the hook-based
-  // setup. Explicit initialization ensures database is ready before tests run.
+  // Use hook-based database setup (matches pattern from message-flow.integration.test.ts)
+  // This provides automatic reconnection if connection drops during test execution
+  setupDatabaseForTests();
 
   let factory: TestSessionFactory;
   let eventStore: EventStore;
@@ -60,9 +59,6 @@ describe.skipIf(!isRedisAvailable)('Event Ordering with Real Redis', () => {
     // Initialize Redis FIRST (TestSessionFactory depends on it)
     await initRedisForTests();
 
-    // Initialize Database
-    await ensureDatabaseAvailable();
-
     // Now safe to create factory and event store
     factory = createTestSessionFactory();
     eventStore = getEventStore();
@@ -70,8 +66,7 @@ describe.skipIf(!isRedisAvailable)('Event Ordering with Real Redis', () => {
 
   afterAll(async () => {
     await cleanupAllTestData();
-    // Close connections explicitly
-    await closeDatabaseConnection();
+    // Close Redis connection explicitly
     await closeRedisForTests();
   }, 30000);
 

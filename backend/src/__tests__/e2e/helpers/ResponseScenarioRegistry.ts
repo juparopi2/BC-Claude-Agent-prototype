@@ -428,8 +428,8 @@ export class ResponseScenarioRegistry {
       thinking: { enable: true, budget: 10000 },
       expectedEventTypes: [
         'user_message_confirmed',
-        'thinking',
         'thinking_chunk',
+        'thinking_complete',
         'message_chunk',
         'message',
         'complete',
@@ -457,7 +457,8 @@ export class ResponseScenarioRegistry {
       thinking: { enable: true, budget: 10000 },
       expectedEventTypes: [
         'user_message_confirmed',
-        'thinking',
+        'thinking_chunk',
+        'thinking_complete',
         'message_chunk',
         'tool_use',
         'tool_result',
@@ -595,7 +596,8 @@ export class ResponseScenarioRegistry {
       thinking: { enable: true, budget: 10000 },
       expectedEventTypes: [
         'user_message_confirmed',
-        'thinking',
+        'thinking_chunk',
+        'thinking_complete',
         'message_chunk',
         'tool_use',
         'tool_result',

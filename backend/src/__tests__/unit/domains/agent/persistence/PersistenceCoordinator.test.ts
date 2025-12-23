@@ -269,6 +269,7 @@ describe('PersistenceCoordinator', () => {
         eventId: 'event-456',
         sequenceNumber: 43,
         timestamp: '2025-12-22T10:01:00.000Z',
+        jobId: 'job-123',
       });
     });
 

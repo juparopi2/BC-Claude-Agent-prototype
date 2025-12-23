@@ -18,7 +18,7 @@
 
 import { createChildLogger } from '@/shared/utils/logger';
 import { getEventStore, type EventStore } from '@services/events/EventStore';
-import { getMessageQueue, type MessageQueue } from '@/infrastructure/queue/MessageQueue';
+import { getMessageQueue, type MessageQueue, QueueName } from '@/infrastructure/queue/MessageQueue';
 import { v4 as uuidv4 } from 'uuid';
 import type {
   IPersistenceCoordinator,
@@ -143,7 +143,7 @@ export class PersistenceCoordinator implements IPersistenceCoordinator {
       }
 
       // 3. Queue to MessageQueue
-      await this.messageQueue.addMessagePersistence({
+      const jobId = await this.messageQueue.addMessagePersistence({
         sessionId,
         messageId: data.messageId,
         role: 'assistant',
@@ -163,6 +163,7 @@ export class PersistenceCoordinator implements IPersistenceCoordinator {
         eventId: dbEvent.id,
         sequenceNumber: dbEvent.sequence_number,
         timestamp: dbEvent.timestamp.toISOString(),
+        jobId,
       };
     } catch (error) {
       const causes = this.errorAnalyzer.analyze(error);
@@ -509,6 +510,28 @@ export class PersistenceCoordinator implements IPersistenceCoordinator {
         }
       }
     })();
+  }
+
+  /**
+   * Await completion of a persistence job.
+   * Uses BullMQ's waitUntilFinished for reliable job completion detection.
+   * @param jobId - BullMQ job ID from persist* methods
+   * @param timeoutMs - Max wait time (default 30000ms)
+   */
+  async awaitPersistence(jobId: string, timeoutMs: number = 30000): Promise<void> {
+    const queueEvents = this.messageQueue.getQueueEvents(QueueName.MESSAGE_PERSISTENCE);
+    if (!queueEvents) {
+      this.logger.warn('QueueEvents not available, skipping await');
+      return;
+    }
+
+    const job = await this.messageQueue.getJob(QueueName.MESSAGE_PERSISTENCE, jobId);
+    if (!job) {
+      this.logger.debug({ jobId }, 'Job not found, may have completed');
+      return;
+    }
+
+    await job.waitUntilFinished(queueEvents, timeoutMs);
   }
 }
 

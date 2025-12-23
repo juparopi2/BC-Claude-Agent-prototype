@@ -70,6 +70,7 @@ export interface PersistedEvent {
   eventId: string;
   sequenceNumber: number;
   timestamp: string;
+  jobId?: string;  // BullMQ job ID for awaiting persistence
 }
 
 /**
@@ -207,4 +208,11 @@ export interface IPersistenceCoordinator {
    * @param executions - Array of tool executions
    */
   persistToolEventsAsync(sessionId: string, executions: ToolExecution[]): void;
+
+  /**
+   * Await completion of a persistence job.
+   * @param jobId - BullMQ job ID from persist* methods
+   * @param timeoutMs - Max wait time (default 30000ms)
+   */
+  awaitPersistence(jobId: string, timeoutMs?: number): Promise<void>;
 }

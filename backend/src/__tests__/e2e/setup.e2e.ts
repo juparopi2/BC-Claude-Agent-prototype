@@ -519,7 +519,8 @@ export async function drainMessageQueue(): Promise<void> {
     // CRITICAL: Add settling delay to ensure all DB writes have completed
     // BullMQ marks jobs as "completed" before the async DB writes finish,
     // which can cause FK violations during cleanup if we proceed too quickly.
-    await new Promise(resolve => setTimeout(resolve, 500));
+    // Increased to 1500ms to account for Azure SQL latency (was 500ms)
+    await new Promise(resolve => setTimeout(resolve, 1500));
 
     console.log('[E2E] MessageQueue drained (with DB settling delay)');
   } catch (error) {

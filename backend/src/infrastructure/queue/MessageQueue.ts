@@ -1630,6 +1630,27 @@ export class MessageQueue {
   }
 
   /**
+   * Get QueueEvents instance for a queue (for job.waitUntilFinished)
+   * @param queueName - Name of the queue
+   * @returns QueueEvents instance or undefined if not found
+   */
+  public getQueueEvents(queueName: QueueName): QueueEvents | undefined {
+    return this.queueEvents.get(queueName);
+  }
+
+  /**
+   * Get a job by ID for awaiting completion
+   * @param queueName - Name of the queue
+   * @param jobId - BullMQ job ID
+   * @returns Job instance or null if not found
+   */
+  public async getJob(queueName: QueueName, jobId: string): Promise<Job | null> {
+    const queue = this.queues.get(queueName);
+    if (!queue) return null;
+    return queue.getJob(jobId);
+  }
+
+  /**
    * Pause Queue
    *
    * @param queueName - Name of queue to pause

@@ -180,6 +180,7 @@ export class FakeAgentOrchestrator implements IAgentOrchestrator {
       messageId: uuidv4(),
       content: prompt,
       userId: userId ?? 'fake-user',
+      persistenceState: 'persisted',
     };
     emit(userMessageEvent);
     await wait();

@@ -128,7 +128,7 @@ describe('E2E Scenario: Multiple Tool Calls (With Thinking)', () => {
     });
 
     it('should emit thinking before tool_use', () => {
-      const thinkingIndex = scenarioResult.events.findIndex(e => e.type === 'thinking');
+      const thinkingIndex = scenarioResult.events.findIndex(e => e.type === 'thinking_chunk' || e.type === 'thinking_complete');
       const toolUseIndex = scenarioResult.events.findIndex(e => e.type === 'tool_use');
 
       // Thinking should exist
@@ -242,7 +242,7 @@ describe('E2E Scenario: Multiple Tool Calls (With Thinking)', () => {
 
   describe('Thinking Structure', () => {
     it('should have thinking event with content', () => {
-      const thinkingEvent = scenarioResult.events.find(e => e.type === 'thinking');
+      const thinkingEvent = scenarioResult.events.find(e => e.type === 'thinking_complete');
       expect(thinkingEvent).toBeDefined();
       expect(thinkingEvent?.data).toBeDefined();
     });
@@ -266,7 +266,7 @@ describe('E2E Scenario: Multiple Tool Calls (With Thinking)', () => {
     });
 
     it('should have thinking content before tool use', () => {
-      const thinkingIndex = scenarioResult.events.findIndex(e => e.type === 'thinking');
+      const thinkingIndex = scenarioResult.events.findIndex(e => e.type === 'thinking_complete');
       const toolUseIndex = scenarioResult.events.findIndex(e => e.type === 'tool_use');
 
       if (thinkingIndex > -1 && toolUseIndex > -1) {

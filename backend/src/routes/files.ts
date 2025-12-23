@@ -13,9 +13,9 @@
  * - DELETE /api/files/:id - Delete file
  */
 
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { z, ZodError } from 'zod';
-import multer from 'multer';
+import multer, { MulterError } from 'multer';
 import { authenticateMicrosoft } from '@/domains/auth/middleware/auth-oauth';
 import { getFileService } from '@services/files';
 import { getFileUploadService } from '@services/files';
@@ -40,6 +40,41 @@ const upload = multer({
     fieldSize: 10 * 1024, // 10 KB field size
   },
 });
+
+/**
+ * Wrapper for Multer middleware that catches and handles Multer errors
+ * Returns 413 for file size limit, 400 for other validation errors
+ */
+function uploadWithErrorHandling(req: Request, res: Response, next: NextFunction): void {
+  upload.array('files', 20)(req, res, (err) => {
+    if (err instanceof MulterError) {
+      switch (err.code) {
+        case 'LIMIT_FILE_SIZE':
+          // 413 Payload Too Large
+          res.status(413).json({
+            error: 'Payload Too Large',
+            message: 'File size exceeds 100MB limit',
+            code: 'PAYLOAD_TOO_LARGE',
+          });
+          return;
+        case 'LIMIT_FILE_COUNT':
+          sendError(res, ErrorCode.VALIDATION_ERROR, 'Too many files (max 20)');
+          return;
+        case 'LIMIT_UNEXPECTED_FILE':
+          sendError(res, ErrorCode.VALIDATION_ERROR, 'Unexpected file field');
+          return;
+        default:
+          sendError(res, ErrorCode.VALIDATION_ERROR, err.message);
+          return;
+      }
+    }
+    if (err) {
+      next(err);
+      return;
+    }
+    next();
+  });
+}
 
 // ============================================
 // Zod Schemas for Validation
@@ -169,7 +204,7 @@ function getUserId(req: Request): string {
 router.post(
   '/upload',
   authenticateMicrosoft,
-  upload.array('files', 20),
+  uploadWithErrorHandling, // Multer with proper error handling (413 for size limit)
   async (req: Request, res: Response): Promise<void> => {
     try {
       // Get userId from authenticated request

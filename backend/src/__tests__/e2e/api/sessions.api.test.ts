@@ -45,50 +45,44 @@ describe('E2E API: Sessions Endpoints', () => {
 
   describe('POST /api/chat/sessions', () => {
     it('should create a new session', async () => {
+      // NOTE: API returns unwrapped session object directly (REST standard)
       const response = await client.post<{
-        session: {
-          id: string;
-          title: string;
-          user_id: string;
-        };
+        id: string;
+        title: string;
+        user_id: string;
       }>('/api/chat/sessions', {
         title: 'E2E Test Session',
       });
 
       expect(response.ok).toBe(true);
       expect(response.status).toBe(201);
-      expect(response.body).toHaveProperty('session');
-      expect(response.body.session).toHaveProperty('id');
-      expect(response.body.session).toHaveProperty('title', 'E2E Test Session');
-      expect(response.body.session.user_id.toLowerCase()).toBe(testUser.id.toLowerCase());
+      expect(response.body).toHaveProperty('id');
+      expect(response.body).toHaveProperty('title', 'E2E Test Session');
+      expect(response.body.user_id.toLowerCase()).toBe(testUser.id.toLowerCase());
     });
 
     it('should create session with default title if not provided', async () => {
-      const response = await client.post<{ session: { title: string } }>('/api/chat/sessions', {});
+      const response = await client.post<{ title: string }>('/api/chat/sessions', {});
 
       expect(response.ok).toBe(true);
-      expect(response.body).toHaveProperty('session');
-      expect(response.body.session).toHaveProperty('title');
-      expect(response.body.session.title.length).toBeGreaterThan(0);
+      expect(response.body).toHaveProperty('title');
+      expect(response.body.title.length).toBeGreaterThan(0);
     });
 
     it('should return session timestamps', async () => {
       const response = await client.post<{
-        session: {
-          created_at: string;
-          updated_at: string;
-        };
+        created_at: string;
+        updated_at: string;
       }>('/api/chat/sessions', {
         title: 'Timestamp Test',
       });
 
       expect(response.ok).toBe(true);
-      expect(response.body).toHaveProperty('session');
-      expect(response.body.session).toHaveProperty('created_at');
-      expect(response.body.session).toHaveProperty('updated_at');
+      expect(response.body).toHaveProperty('created_at');
+      expect(response.body).toHaveProperty('updated_at');
 
       // Verify timestamps are valid ISO 8601 dates
-      const createdAt = new Date(response.body.session.created_at);
+      const createdAt = new Date(response.body.created_at);
       expect(createdAt.getTime()).not.toBeNaN();
     });
 
@@ -102,16 +96,16 @@ describe('E2E API: Sessions Endpoints', () => {
     });
 
     it('should generate unique session IDs', async () => {
-      const response1 = await client.post<{ session: { id: string } }>('/api/chat/sessions', {
+      const response1 = await client.post<{ id: string }>('/api/chat/sessions', {
         title: 'Session 1',
       });
-      const response2 = await client.post<{ session: { id: string } }>('/api/chat/sessions', {
+      const response2 = await client.post<{ id: string }>('/api/chat/sessions', {
         title: 'Session 2',
       });
 
       expect(response1.ok).toBe(true);
       expect(response2.ok).toBe(true);
-      expect(response1.body.session.id).not.toBe(response2.body.session.id);
+      expect(response1.body.id).not.toBe(response2.body.id);
     });
   });
 
@@ -137,7 +131,7 @@ describe('E2E API: Sessions Endpoints', () => {
 
     it('should return sessions with correct structure', async () => {
       // Create a test session
-      const createResponse = await client.post<{ session: { id: string } }>('/api/chat/sessions', {
+      const createResponse = await client.post<{ id: string }>('/api/chat/sessions', {
         title: 'Structure Test',
       });
 
@@ -152,7 +146,10 @@ describe('E2E API: Sessions Endpoints', () => {
       }>('/api/chat/sessions');
 
       expect(response.ok).toBe(true);
-      const session = response.body.sessions.find(s => s.id === createResponse.body.session.id);
+      // Normalize UUIDs for comparison (SQL Server returns UPPERCASE)
+      const session = response.body.sessions.find(
+        s => s.id.toLowerCase() === createResponse.body.id.toLowerCase()
+      );
       expect(session).toBeDefined();
       expect(session?.title).toBe('Structure Test');
       expect(session?.user_id.toLowerCase()).toBe(testUser.id.toLowerCase());
@@ -214,26 +211,27 @@ describe('E2E API: Sessions Endpoints', () => {
 
   describe('GET /api/chat/sessions/:id', () => {
     it('should get a specific session', async () => {
-      const createResponse = await client.post<{ session: { id: string } }>('/api/chat/sessions', {
+      const createResponse = await client.post<{ id: string }>('/api/chat/sessions', {
         title: 'Get Test',
       });
-      const sessionId = createResponse.body.session.id;
+      const sessionId = createResponse.body.id;
       expect(sessionId, 'Failed to create session for GET test').toBeDefined();
 
+      // NOTE: API returns unwrapped session object directly (REST standard)
       const response = await client.get<{
-        session: {
-          id: string;
-          title: string;
-          user_id: string;
-        };
+        id: string;
+        title: string;
+        user_id: string;
+        messageCount: number;
       }>(`/api/chat/sessions/${sessionId}`);
 
       expect(response.ok).toBe(true);
       expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('session');
-      expect(response.body.session).toHaveProperty('id', sessionId);
-      expect(response.body.session).toHaveProperty('title', 'Get Test');
-      expect(response.body.session.user_id.toLowerCase()).toBe(testUser.id.toLowerCase());
+      expect(response.body).toHaveProperty('id');
+      // Normalize UUIDs for comparison (SQL Server returns UPPERCASE)
+      expect(response.body.id.toLowerCase()).toBe(sessionId.toLowerCase());
+      expect(response.body).toHaveProperty('title', 'Get Test');
+      expect(response.body.user_id.toLowerCase()).toBe(testUser.id.toLowerCase());
     });
 
     it('should return 404 for non-existent session', async () => {
@@ -244,10 +242,10 @@ describe('E2E API: Sessions Endpoints', () => {
     });
 
     it('should require authentication', async () => {
-      const createResponse = await client.post<{ session: { id: string } }>('/api/chat/sessions', {
+      const createResponse = await client.post<{ id: string }>('/api/chat/sessions', {
         title: 'Auth Test',
       });
-      const sessionId = createResponse.body.session.id;
+      const sessionId = createResponse.body.id;
 
       const unauthClient = createE2ETestClient();
       const response = await unauthClient.get(`/api/chat/sessions/${sessionId}`);
@@ -256,27 +254,27 @@ describe('E2E API: Sessions Endpoints', () => {
     });
 
     it('should include message count', async () => {
-      const createResponse = await client.post<{ session: { id: string } }>('/api/chat/sessions', {
+      const createResponse = await client.post<{ id: string }>('/api/chat/sessions', {
         title: 'Message Count Test',
       });
-      const sessionId = createResponse.body.session.id;
+      const sessionId = createResponse.body.id;
 
-      const response = await client.get<{ session: { messageCount?: number } }>(
+      const response = await client.get<{ messageCount?: number }>(
         `/api/chat/sessions/${sessionId}`
       );
 
       expect(response.ok).toBe(true);
-      expect(response.body).toHaveProperty('session');
-      // Note: messageCount is not in the current API response, this test may need adjustment
+      // messageCount is included in session details
+      expect(response.body).toHaveProperty('messageCount');
     });
   });
 
   describe('GET /api/chat/sessions/:id/messages', () => {
     it('should get messages for a session', async () => {
-      const createResponse = await client.post<{ session: { id: string } }>('/api/chat/sessions', {
+      const createResponse = await client.post<{ id: string }>('/api/chat/sessions', {
         title: 'Messages Test',
       });
-      const sessionId = createResponse.body.session.id;
+      const sessionId = createResponse.body.id;
 
       const response = await client.get<{
         messages: Array<{
@@ -293,10 +291,10 @@ describe('E2E API: Sessions Endpoints', () => {
     });
 
     it('should return empty array for session with no messages', async () => {
-      const createResponse = await client.post<{ session: { id: string } }>('/api/chat/sessions', {
+      const createResponse = await client.post<{ id: string }>('/api/chat/sessions', {
         title: 'Empty Messages',
       });
-      const sessionId = createResponse.body.session.id;
+      const sessionId = createResponse.body.id;
 
       const response = await client.get<{ messages: Array<unknown> }>(
         `/api/chat/sessions/${sessionId}/messages`
@@ -309,10 +307,10 @@ describe('E2E API: Sessions Endpoints', () => {
     });
 
     it('should support limit parameter', async () => {
-      const createResponse = await client.post<{ session: { id: string } }>('/api/chat/sessions', {
+      const createResponse = await client.post<{ id: string }>('/api/chat/sessions', {
         title: 'Limit Test',
       });
-      const sessionId = createResponse.body.session.id;
+      const sessionId = createResponse.body.id;
 
       const response = await client.get<{ messages: Array<unknown> }>(
         `/api/chat/sessions/${sessionId}/messages`,
@@ -326,10 +324,10 @@ describe('E2E API: Sessions Endpoints', () => {
     });
 
     it('should support offset parameter', async () => {
-      const createResponse = await client.post<{ session: { id: string } }>('/api/chat/sessions', {
+      const createResponse = await client.post<{ id: string }>('/api/chat/sessions', {
         title: 'Offset Test',
       });
-      const sessionId = createResponse.body.session.id;
+      const sessionId = createResponse.body.id;
 
       const response = await client.get<{ messages: Array<unknown> }>(
         `/api/chat/sessions/${sessionId}/messages`,
@@ -342,10 +340,10 @@ describe('E2E API: Sessions Endpoints', () => {
     });
 
     it('should support pagination with limit and offset', async () => {
-      const createResponse = await client.post<{ session: { id: string } }>('/api/chat/sessions', {
+      const createResponse = await client.post<{ id: string }>('/api/chat/sessions', {
         title: 'Pagination Test',
       });
-      const sessionId = createResponse.body.session.id;
+      const sessionId = createResponse.body.id;
 
       const response = await client.get<{ messages: Array<unknown> }>(
         `/api/chat/sessions/${sessionId}/messages`,
@@ -359,10 +357,10 @@ describe('E2E API: Sessions Endpoints', () => {
     });
 
     it('should require authentication', async () => {
-      const createResponse = await client.post<{ session: { id: string } }>('/api/chat/sessions', {
+      const createResponse = await client.post<{ id: string }>('/api/chat/sessions', {
         title: 'Auth Messages Test',
       });
-      const sessionId = createResponse.body.session.id;
+      const sessionId = createResponse.body.id;
 
       const unauthClient = createE2ETestClient();
       const response = await unauthClient.get(`/api/chat/sessions/${sessionId}/messages`);
@@ -380,84 +378,80 @@ describe('E2E API: Sessions Endpoints', () => {
 
   describe('PATCH /api/chat/sessions/:id', () => {
     it('should update session title', async () => {
-      const createResponse = await client.post<{ session: { id: string } }>('/api/chat/sessions', {
+      const createResponse = await client.post<{ id: string }>('/api/chat/sessions', {
         title: 'Original Title',
       });
-      const sessionId = createResponse.body.session.id;
+      const sessionId = createResponse.body.id;
 
+      // PATCH returns unwrapped session directly (REST standard)
       const response = await client.request<{
-        success: boolean;
-        session: {
-          id: string;
-          title: string;
-        };
+        id: string;
+        title: string;
       }>('PATCH', `/api/chat/sessions/${sessionId}`, {
         body: { title: 'Updated Title' },
       });
 
       expect(response.ok).toBe(true);
       expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('success', true);
-      expect(response.body).toHaveProperty('session');
-      expect(response.body.session).toHaveProperty('title', 'Updated Title');
-      expect(response.body.session).toHaveProperty('id', sessionId);
+      expect(response.body).toHaveProperty('title', 'Updated Title');
+      // Normalize UUIDs for comparison
+      expect(response.body.id.toLowerCase()).toBe(sessionId.toLowerCase());
     });
 
     it('should persist title update', async () => {
-      const createResponse = await client.post<{ session: { id: string } }>('/api/chat/sessions', {
+      const createResponse = await client.post<{ id: string }>('/api/chat/sessions', {
         title: 'Before Update',
       });
-      const sessionId = createResponse.body.session.id;
+      const sessionId = createResponse.body.id;
 
       // Update title
       await client.request('PATCH', `/api/chat/sessions/${sessionId}`, {
         body: { title: 'After Update' },
       });
 
-      // Verify persistence
-      const getResponse = await client.get<{ session: { title: string } }>(
+      // Verify persistence (GET returns unwrapped session)
+      const getResponse = await client.get<{ title: string }>(
         `/api/chat/sessions/${sessionId}`
       );
 
       expect(getResponse.ok).toBe(true);
-      expect(getResponse.body.session.title).toBe('After Update');
+      expect(getResponse.body.title).toBe('After Update');
     });
 
     it('should update updatedAt timestamp', async () => {
       const createResponse = await client.post<{
-        session: {
-          id: string;
-          updated_at: string;
-        };
+        id: string;
+        updated_at: string;
       }>('/api/chat/sessions', {
         title: 'Timestamp Test',
       });
-      const sessionId = createResponse.body.session.id;
-      const originalUpdatedAt = createResponse.body.session.updated_at;
+      const sessionId = createResponse.body.id;
+      const originalUpdatedAt = createResponse.body.updated_at;
 
       // Wait a bit to ensure timestamp difference
       await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.SHORT_DELAY));
 
-      const updateResponse = await client.request<{ session: { updated_at: string } }>(
+      // PATCH returns unwrapped session directly (REST standard)
+      const updateResponse = await client.request<{ updated_at: string }>(
         'PATCH',
         `/api/chat/sessions/${sessionId}`,
         { body: { title: 'Updated' } }
       );
 
       expect(updateResponse.ok).toBe(true);
-      expect(updateResponse.body.session.updated_at).not.toBe(originalUpdatedAt);
+      expect(updateResponse.body.updated_at).not.toBe(originalUpdatedAt);
 
       // Verify new timestamp is more recent
       const originalTime = new Date(originalUpdatedAt).getTime();
-      const newTime = new Date(updateResponse.body.session.updated_at).getTime();
+      const newTime = new Date(updateResponse.body.updated_at).getTime();
       expect(newTime).toBeGreaterThan(originalTime);
     });
 
     it('should require authentication', async () => {
-      const createResponse = await client.post<{ session: { id: string } }>('/api/chat/sessions', {
+      const createResponse = await client.post<{ id: string }>('/api/chat/sessions', {
         title: 'Auth Update Test',
       });
-      const sessionId = createResponse.body.session.id;
+      const sessionId = createResponse.body.id;
 
       const unauthClient = createE2ETestClient();
       const response = await unauthClient.request('PATCH', `/api/chat/sessions/${sessionId}`, {
@@ -477,10 +471,10 @@ describe('E2E API: Sessions Endpoints', () => {
     });
 
     it('should validate title is not empty', async () => {
-      const createResponse = await client.post<{ session: { id: string } }>('/api/chat/sessions', {
+      const createResponse = await client.post<{ id: string }>('/api/chat/sessions', {
         title: 'Valid Title',
       });
-      const sessionId = createResponse.body.session.id;
+      const sessionId = createResponse.body.id;
 
       const response = await client.request('PATCH', `/api/chat/sessions/${sessionId}`, {
         body: { title: '' },
@@ -492,36 +486,36 @@ describe('E2E API: Sessions Endpoints', () => {
 
   describe('DELETE /api/chat/sessions/:id', () => {
     it('should delete a session', async () => {
-      const createResponse = await client.post<{ session: { id: string } }>('/api/chat/sessions', {
+      const createResponse = await client.post<{ id: string }>('/api/chat/sessions', {
         title: 'Delete Test',
       });
-      const sessionId = createResponse.body.session.id;
+      const sessionId = createResponse.body.id;
 
       const response = await client.delete(`/api/chat/sessions/${sessionId}`);
 
       expect(response.ok).toBe(true);
-      expect(response.status).toBe(200);
+      // REST standard: DELETE returns 204 No Content
+      expect(response.status).toBe(204);
     });
 
-    it('should return success message on deletion', async () => {
-      const createResponse = await client.post<{ session: { id: string } }>('/api/chat/sessions', {
+    it('should return 204 No Content on deletion', async () => {
+      const createResponse = await client.post<{ id: string }>('/api/chat/sessions', {
         title: 'Delete Message Test',
       });
-      const sessionId = createResponse.body.session.id;
+      const sessionId = createResponse.body.id;
 
-      const response = await client.delete<{ success: boolean }>(
-        `/api/chat/sessions/${sessionId}`
-      );
+      const response = await client.delete(`/api/chat/sessions/${sessionId}`);
 
       expect(response.ok).toBe(true);
-      expect(response.body).toHaveProperty('success', true);
+      // REST standard: 204 No Content has no body
+      expect(response.status).toBe(204);
     });
 
     it('should verify session is deleted', async () => {
-      const createResponse = await client.post<{ session: { id: string } }>('/api/chat/sessions', {
+      const createResponse = await client.post<{ id: string }>('/api/chat/sessions', {
         title: 'Verify Delete',
       });
-      const sessionId = createResponse.body.session.id;
+      const sessionId = createResponse.body.id;
 
       // Delete session
       const deleteResponse = await client.delete(`/api/chat/sessions/${sessionId}`);
@@ -533,27 +527,29 @@ describe('E2E API: Sessions Endpoints', () => {
     });
 
     it('should not appear in session list after deletion', async () => {
-      const createResponse = await client.post<{ session: { id: string } }>('/api/chat/sessions', {
+      const createResponse = await client.post<{ id: string }>('/api/chat/sessions', {
         title: 'List Delete Test',
       });
-      const sessionId = createResponse.body.session.id;
+      const sessionId = createResponse.body.id;
 
       // Delete session
       await client.delete(`/api/chat/sessions/${sessionId}`);
 
-      // Verify not in list
+      // Verify not in list (normalize UUID case for comparison)
       const listResponse = await client.get<{ sessions: Array<{ id: string }> }>('/api/chat/sessions');
       expect(listResponse.ok).toBe(true);
 
-      const deletedSession = listResponse.body.sessions.find(s => s.id === sessionId);
+      const deletedSession = listResponse.body.sessions.find(
+        s => s.id.toLowerCase() === sessionId.toLowerCase()
+      );
       expect(deletedSession).toBeUndefined();
     });
 
     it('should require authentication', async () => {
-      const createResponse = await client.post<{ session: { id: string } }>('/api/chat/sessions', {
+      const createResponse = await client.post<{ id: string }>('/api/chat/sessions', {
         title: 'Auth Delete Test',
       });
-      const sessionId = createResponse.body.session.id;
+      const sessionId = createResponse.body.id;
 
       const unauthClient = createE2ETestClient();
       const response = await unauthClient.delete(`/api/chat/sessions/${sessionId}`);
@@ -569,10 +565,10 @@ describe('E2E API: Sessions Endpoints', () => {
     });
 
     it('should return 404 for already deleted session', async () => {
-      const createResponse = await client.post<{ session: { id: string } }>('/api/chat/sessions', {
+      const createResponse = await client.post<{ id: string }>('/api/chat/sessions', {
         title: 'Double Delete',
       });
-      const sessionId = createResponse.body.session.id;
+      const sessionId = createResponse.body.id;
 
       // First deletion
       const firstDelete = await client.delete(`/api/chat/sessions/${sessionId}`);
@@ -587,10 +583,10 @@ describe('E2E API: Sessions Endpoints', () => {
   describe('Multi-tenant isolation', () => {
     it('should not allow access to other user sessions', async () => {
       // Create session as first user
-      const createResponse = await client.post<{ session: { id: string } }>('/api/chat/sessions', {
+      const createResponse = await client.post<{ id: string }>('/api/chat/sessions', {
         title: 'Isolation Test',
       });
-      const sessionId = createResponse.body.session.id;
+      const sessionId = createResponse.body.id;
 
       // Create second user
       const otherUser = await factory.createTestUser({ prefix: 'other_user_' });
@@ -604,10 +600,10 @@ describe('E2E API: Sessions Endpoints', () => {
 
     it('should not allow updating other user sessions', async () => {
       // Create session as first user
-      const createResponse = await client.post<{ session: { id: string } }>('/api/chat/sessions', {
+      const createResponse = await client.post<{ id: string }>('/api/chat/sessions', {
         title: 'Update Isolation',
       });
-      const sessionId = createResponse.body.session.id;
+      const sessionId = createResponse.body.id;
 
       // Create second user
       const otherUser = await factory.createTestUser({ prefix: 'update_other_' });
@@ -624,10 +620,10 @@ describe('E2E API: Sessions Endpoints', () => {
 
     it('should not allow deleting other user sessions', async () => {
       // Create session as first user
-      const createResponse = await client.post<{ session: { id: string } }>('/api/chat/sessions', {
+      const createResponse = await client.post<{ id: string }>('/api/chat/sessions', {
         title: 'Delete Isolation',
       });
-      const sessionId = createResponse.body.session.id;
+      const sessionId = createResponse.body.id;
 
       // Create second user
       const otherUser = await factory.createTestUser({ prefix: 'delete_other_' });

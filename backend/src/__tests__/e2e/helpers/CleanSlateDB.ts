@@ -14,6 +14,57 @@ import { executeQuery } from '@/infrastructure/database/database';
 import { TEST_EMAIL_DOMAIN } from '../../integration/helpers/constants';
 
 /**
+ * Drain MessageQueue before cleanup to prevent FK violations
+ *
+ * BullMQ marks jobs as "completed" before async DB writes finish.
+ * We must wait for all pending writes to complete before deleting records.
+ */
+async function drainMessageQueueForCleanup(): Promise<void> {
+  try {
+    // Dynamic import to avoid circular dependencies
+    const { getMessageQueue, QueueName } = await import('@/infrastructure/queue/MessageQueue');
+    const messageQueue = getMessageQueue();
+
+    // Check if queue is ready
+    if (!messageQueue.getReadyStatus()) {
+      console.log('[CleanSlateDB] MessageQueue not ready, skipping drain');
+      return;
+    }
+
+    // Get stats to check if there are pending jobs
+    const stats = await messageQueue.getQueueStats(QueueName.MESSAGE_PERSISTENCE);
+
+    if (stats.active > 0 || stats.waiting > 0) {
+      console.log(`[CleanSlateDB] Waiting for ${stats.active} active + ${stats.waiting} waiting jobs...`);
+
+      // Wait up to 10 seconds for jobs to complete
+      const maxWait = 10000;
+      const checkInterval = 500;
+      let elapsed = 0;
+
+      while (elapsed < maxWait) {
+        const currentStats = await messageQueue.getQueueStats(QueueName.MESSAGE_PERSISTENCE);
+        if (currentStats.active === 0 && currentStats.waiting === 0) {
+          console.log('[CleanSlateDB] All MessageQueue jobs completed');
+          break;
+        }
+        await new Promise(resolve => setTimeout(resolve, checkInterval));
+        elapsed += checkInterval;
+      }
+    }
+
+    // Add settling delay to ensure all DB writes have completed
+    // BullMQ marks jobs as "completed" before async DB writes finish
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    console.log('[CleanSlateDB] MessageQueue drained with settling delay');
+  } catch (error) {
+    // Graceful degradation - don't fail cleanup if queue isn't available
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.warn('[CleanSlateDB] Could not drain MessageQueue:', errorMessage);
+  }
+}
+
+/**
  * CleanSlate configuration options
  */
 export interface CleanSlateOptions {
@@ -136,6 +187,10 @@ export async function cleanSlateForSuite(
   };
 
   console.log(`[CleanSlateDB] Starting cleanup (preserveTestUsers: ${preserveTestUsers})...`);
+
+  // CRITICAL: Drain MessageQueue BEFORE deleting any records
+  // This prevents FK violations from async writes still in progress
+  await drainMessageQueueForCleanup();
 
   try {
     // Delete tables in FK-safe order

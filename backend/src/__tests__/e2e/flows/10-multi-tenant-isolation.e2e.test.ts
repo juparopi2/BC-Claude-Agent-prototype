@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
-import { setupE2ETest } from '../setup.e2e';
+import { setupE2ETest, drainMessageQueue } from '../setup.e2e';
 import {
   E2ETestClient,
   createE2ETestClient,
@@ -154,7 +154,8 @@ describe('E2E-10: Multi-Tenant Isolation', () => {
 
       const response = await clientA.delete(`/api/chat/sessions/${tempSession.id}`);
 
-      expect(response.status).toBe(200);
+      // REST standard: DELETE returns 204 No Content
+      expect(response.status).toBe(204);
     });
   });
 
@@ -266,56 +267,113 @@ describe('E2E-10: Multi-Tenant Isolation', () => {
 
   describe('Data Isolation Verification', () => {
     it('should not leak message content between users', async () => {
+      // ⭐ CRITICAL: Create FRESH sessions for this test to avoid message contamination
+      // from previous tests that use the shared userASession/userBSession
+      const isolatedSessionA = await factory.createChatSession(userA.id, {
+        title: 'Data Isolation Test - User A',
+      });
+      const isolatedSessionB = await factory.createChatSession(userB.id, {
+        title: 'Data Isolation Test - User B',
+      });
+
       // Create unique messages
       const userAMessage = `User A secret ${Date.now()}`;
       const userBMessage = `User B secret ${Date.now()}`;
 
       await clientA.connect();
-      await clientA.joinSession(userASession.id);
-      await clientA.sendMessage(userASession.id, userAMessage);
+      await clientA.joinSession(isolatedSessionA.id);
+      await clientA.sendMessage(isolatedSessionA.id, userAMessage);
       await clientA.waitForAgentEvent('complete', { timeout: 30000 });
 
       await clientB.connect();
-      await clientB.joinSession(userBSession.id);
-      await clientB.sendMessage(userBSession.id, userBMessage);
+      await clientB.joinSession(isolatedSessionB.id);
+      await clientB.sendMessage(isolatedSessionB.id, userBMessage);
       await clientB.waitForAgentEvent('complete', { timeout: 30000 });
 
-      // Wait for persistence
-      await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.MESSAGE_CLEANUP));
+      // ⭐ CRITICAL: Drain MessageQueue to ensure all BullMQ jobs complete
+      // User messages are persisted async via BullMQ, so we must wait for jobs to finish
+      await drainMessageQueue();
 
-      // Verify user A can only see their message (use /messages endpoint)
-      const responseA = await clientA.get<{
-        messages: Array<{ content?: string }>;
-      }>(`/api/chat/sessions/${userASession.id}/messages`);
+      // Wait for async persistence with polling (BullMQ processing can take time)
+      // Poll for up to 10 seconds until messages appear
+      const maxWaitTime = 10000;
+      const pollInterval = 500;
+      let elapsed = 0;
+      let userAMessages: Array<{ content?: string; role?: string }> = [];
+      let userBMessages: Array<{ content?: string; role?: string }> = [];
+      let userAContents: string[] = [];
+      let userBContents: string[] = [];
 
-      const userAContents = (responseA.body.messages || [])
-        .map(m => m.content)
-        .filter((c): c is string => c !== undefined);
-      expect(userAContents.some(c => c.includes('User A secret'))).toBe(true);
-      expect(userAContents.some(c => c.includes('User B secret'))).toBe(false);
+      while (elapsed < maxWaitTime) {
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
+        elapsed += pollInterval;
 
-      // Verify user B can only see their message (use /messages endpoint)
-      const responseB = await clientB.get<{
-        messages: Array<{ content?: string }>;
-      }>(`/api/chat/sessions/${userBSession.id}/messages`);
+        // Check User A messages (using isolated session)
+        const responseA = await clientA.get<{
+          messages: Array<{ content?: string; role?: string }>;
+        }>(`/api/chat/sessions/${isolatedSessionA.id}/messages`);
+        userAMessages = responseA.body.messages || [];
+        userAContents = userAMessages
+          .map(m => m.content)
+          .filter((c): c is string => c !== undefined);
 
-      const userBContents = (responseB.body.messages || [])
-        .map(m => m.content)
-        .filter((c): c is string => c !== undefined);
-      expect(userBContents.some(c => c.includes('User B secret'))).toBe(true);
-      expect(userBContents.some(c => c.includes('User A secret'))).toBe(false);
-    });
+        // Check User B messages (using isolated session)
+        const responseB = await clientB.get<{
+          messages: Array<{ content?: string; role?: string }>;
+        }>(`/api/chat/sessions/${isolatedSessionB.id}/messages`);
+        userBMessages = responseB.body.messages || [];
+        userBContents = userBMessages
+          .map(m => m.content)
+          .filter((c): c is string => c !== undefined);
+
+        // If both users have their messages, stop polling
+        const userAHasMessage = userAContents.some(c => c.includes('User A secret'));
+        const userBHasMessage = userBContents.some(c => c.includes('User B secret'));
+        if (userAHasMessage && userBHasMessage) {
+          break;
+        }
+      }
+
+      // Debug: Log what we got
+      console.log('[DEBUG] User A messages:', userAMessages.length, 'roles:', userAMessages.map(m => m.role));
+      console.log('[DEBUG] User B messages:', userBMessages.length, 'roles:', userBMessages.map(m => m.role));
+      console.log('[DEBUG] User A contents (first 100 chars):', userAContents.map(c => c?.slice(0, 100)));
+      console.log('[DEBUG] User B contents (first 100 chars):', userBContents.map(c => c?.slice(0, 100)));
+
+      // Debug: Explicit assertion checks
+      const userAHasOwnSecret = userAContents.some(c => c.includes('User A secret'));
+      const userAHasOtherSecret = userAContents.some(c => c.includes('User B secret'));
+      const userBHasOwnSecret = userBContents.some(c => c.includes('User B secret'));
+      const userBHasOtherSecret = userBContents.some(c => c.includes('User A secret'));
+
+      console.log('[DEBUG] Assertion values:', {
+        userAHasOwnSecret,
+        userAHasOtherSecret,
+        userBHasOwnSecret,
+        userBHasOtherSecret,
+        userAContentsLength: userAContents.length,
+        userBContentsLength: userBContents.length,
+      });
+
+      // Verify user A can only see their message
+      expect(userAHasOwnSecret).toBe(true);
+      expect(userAHasOtherSecret).toBe(false);
+
+      // Verify user B can only see their message
+      expect(userBHasOwnSecret).toBe(true);
+      expect(userBHasOtherSecret).toBe(false);
+    }, 120000); // 2 minute timeout for real API
   });
 
   describe('Session Creation Isolation', () => {
     it('should create sessions only for authenticated user', async () => {
-      // User A creates session
-      const responseA = await clientA.post<{ session: { id: string } }>('/api/chat/sessions', {
+      // User A creates session (API returns unwrapped session)
+      const responseA = await clientA.post<{ id: string }>('/api/chat/sessions', {
         title: 'User A New Session',
       });
 
       expect(responseA.ok).toBe(true);
-      const newSessionId = responseA.body.session.id;
+      const newSessionId = responseA.body.id;
 
       // User B should not have access
       const accessResponse = await clientB.get(

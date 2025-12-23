@@ -4,33 +4,20 @@
  * Tests agent:event types including user_message_confirmed, message_chunk, and complete.
  * Uses FakeAgentOrchestrator configured via GoldenResponses for predictable behavior.
  *
- * REFACTORED: Uses FakeAgentOrchestrator instead of FakeAnthropicClient.
+ * REFACTORED: Uses shared e2eFakeOrchestrator from setup.e2e.ts
  *
  * @module __tests__/e2e/websocket/events.ws.test
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
-import { setupE2ETest, E2E_CONFIG } from '../setup.e2e';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+import { setupE2ETest, E2E_CONFIG, e2eFakeOrchestrator } from '../setup.e2e';
 import { createE2ETestClient, E2ETestClient } from '../helpers/E2ETestClient';
 import { TestSessionFactory } from '../../integration/helpers/TestSessionFactory';
 import { TEST_TIMEOUTS } from '../../integration/helpers/constants';
 import { createGoldenScenario } from '../helpers/GoldenResponses';
-import {
-  FakeAgentOrchestrator,
-  __resetAgentOrchestrator,
-} from '@domains/agent/orchestration';
 
-// Create a shared FakeAgentOrchestrator instance for the entire test suite
-const fakeOrchestrator = new FakeAgentOrchestrator();
-
-// Mock getAgentOrchestrator to return our fake (only when not using real API)
-vi.mock('@domains/agent/orchestration', async (importOriginal) => {
-  const original = await importOriginal<typeof import('@domains/agent/orchestration')>();
-  return {
-    ...original,
-    getAgentOrchestrator: vi.fn(() => fakeOrchestrator),
-  };
-});
+// Use the shared FakeAgentOrchestrator from setup.e2e.ts
+// The vi.mock is already set up there
 
 describe('E2E: WebSocket Agent Events', () => {
   setupE2ETest();
@@ -47,13 +34,12 @@ describe('E2E: WebSocket Agent Events', () => {
 
   afterAll(async () => {
     await factory.cleanup();
-    __resetAgentOrchestrator();
   });
 
   beforeEach(async () => {
-    // Reset FakeAgentOrchestrator for each test
+    // Reset FakeAgentOrchestrator for each test (use shared instance from setup.e2e.ts)
     if (!E2E_CONFIG.apiMode.useRealApi) {
-      fakeOrchestrator.reset();
+      e2eFakeOrchestrator.reset();
     }
 
     client = createE2ETestClient();
@@ -71,7 +57,7 @@ describe('E2E: WebSocket Agent Events', () => {
   describe('user_message_confirmed event', () => {
     it('should receive user_message_confirmed before agent events', async () => {
       if (!E2E_CONFIG.apiMode.useRealApi) {
-        fakeOrchestrator.setResponse(createGoldenScenario('simple'));
+        e2eFakeOrchestrator.setResponse(createGoldenScenario('simple'));
       }
 
       // Create session
@@ -96,7 +82,7 @@ describe('E2E: WebSocket Agent Events', () => {
 
     it('should include sequence number and message ID', async () => {
       if (!E2E_CONFIG.apiMode.useRealApi) {
-        fakeOrchestrator.setResponse(createGoldenScenario('simple'));
+        e2eFakeOrchestrator.setResponse(createGoldenScenario('simple'));
       }
 
       const httpClient = createE2ETestClient();
@@ -120,7 +106,7 @@ describe('E2E: WebSocket Agent Events', () => {
   describe('message_chunk events', () => {
     it('should receive streaming message_chunk events', async () => {
       if (!E2E_CONFIG.apiMode.useRealApi) {
-        fakeOrchestrator.setResponse(createGoldenScenario('simple'));
+        e2eFakeOrchestrator.setResponse(createGoldenScenario('simple'));
       }
 
       const httpClient = createE2ETestClient();
@@ -144,7 +130,7 @@ describe('E2E: WebSocket Agent Events', () => {
 
     it('should accumulate chunks into coherent text', async () => {
       if (!E2E_CONFIG.apiMode.useRealApi) {
-        fakeOrchestrator.setResponse(createGoldenScenario('simple'));
+        e2eFakeOrchestrator.setResponse(createGoldenScenario('simple'));
       }
 
       const httpClient = createE2ETestClient();
@@ -178,7 +164,7 @@ describe('E2E: WebSocket Agent Events', () => {
   describe('complete event', () => {
     it('should receive complete event at the end', async () => {
       if (!E2E_CONFIG.apiMode.useRealApi) {
-        fakeOrchestrator.setResponse(createGoldenScenario('simple'));
+        e2eFakeOrchestrator.setResponse(createGoldenScenario('simple'));
       }
 
       const httpClient = createE2ETestClient();
@@ -194,12 +180,13 @@ describe('E2E: WebSocket Agent Events', () => {
       const completeEvent = await client.waitForComplete(60000);
       expect(completeEvent.type).toBe('complete');
       expect(completeEvent).toHaveProperty('reason');
-      expect(['end_turn', 'max_tokens', 'tool_use']).toContain(completeEvent.reason);
+      // Normalized CompleteEvent.reason values (provider-agnostic)
+      expect(['success', 'error', 'max_turns', 'user_cancelled']).toContain(completeEvent.reason);
     });
 
     it('should be the last event in the sequence', async () => {
       if (!E2E_CONFIG.apiMode.useRealApi) {
-        fakeOrchestrator.setResponse(createGoldenScenario('simple'));
+        e2eFakeOrchestrator.setResponse(createGoldenScenario('simple'));
       }
 
       const httpClient = createE2ETestClient();
@@ -227,7 +214,7 @@ describe('E2E: WebSocket Agent Events', () => {
   describe('Event ordering', () => {
     it('should receive events in correct order', async () => {
       if (!E2E_CONFIG.apiMode.useRealApi) {
-        fakeOrchestrator.setResponse(createGoldenScenario('simple'));
+        e2eFakeOrchestrator.setResponse(createGoldenScenario('simple'));
       }
 
       const httpClient = createE2ETestClient();
@@ -262,7 +249,7 @@ describe('E2E: WebSocket Agent Events', () => {
   describe('Thinking events', () => {
     it('should receive thinking events when extended thinking is used', async () => {
       if (!E2E_CONFIG.apiMode.useRealApi) {
-        fakeOrchestrator.setResponse(createGoldenScenario('thinking'));
+        e2eFakeOrchestrator.setResponse(createGoldenScenario('thinking'));
       }
 
       const httpClient = createE2ETestClient();

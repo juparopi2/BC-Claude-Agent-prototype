@@ -25,7 +25,39 @@ process.env.REDIS_PORT = '6399';
 process.env.REDIS_PASSWORD = '';
 delete process.env.REDIS_CONNECTION_STRING;
 
-import { beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+import { beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
+
+// ============================================================================
+// E2E API MODE MOCK SETUP
+// ============================================================================
+// CRITICAL: vi.mock is hoisted by Vitest and runs BEFORE any other code.
+// This mock intercepts getAgentOrchestrator to return FakeAgentOrchestrator
+// when E2E_USE_REAL_API is not set to 'true'.
+// ============================================================================
+
+import { FakeAgentOrchestrator } from '@domains/agent/orchestration';
+
+// Singleton FakeAgentOrchestrator shared across all E2E tests
+export const e2eFakeOrchestrator = new FakeAgentOrchestrator();
+
+// Mock getAgentOrchestrator to return fake when not using real API
+vi.mock('@domains/agent/orchestration', async (importOriginal) => {
+  const original = await importOriginal<typeof import('@domains/agent/orchestration')>();
+
+  // Check at runtime whether to use real or fake
+  const useRealApi = process.env.E2E_USE_REAL_API === 'true';
+
+  if (useRealApi) {
+    // Use real orchestrator - return original module unchanged
+    return original;
+  }
+
+  // Use fake orchestrator
+  return {
+    ...original,
+    getAgentOrchestrator: vi.fn(() => e2eFakeOrchestrator),
+  };
+});
 import type { Server } from 'http';
 import type { Express } from 'express';
 import { initDatabase, closeDatabase } from '@/infrastructure/database/database';
@@ -444,7 +476,7 @@ export function setupE2ETestLightweight() {
  */
 export async function drainMessageQueue(): Promise<void> {
   try {
-    const { getMessageQueue, QueueName } = await import('@/services/queue/MessageQueue');
+    const { getMessageQueue, QueueName } = await import('@/infrastructure/queue/MessageQueue');
     const messageQueue = getMessageQueue();
 
     // Wait for queue to be ready first
@@ -483,7 +515,12 @@ export async function drainMessageQueue(): Promise<void> {
       console.log('[E2E] MessageQueue has no pending jobs');
     }
 
-    console.log('[E2E] MessageQueue drained');
+    // CRITICAL: Add settling delay to ensure all DB writes have completed
+    // BullMQ marks jobs as "completed" before the async DB writes finish,
+    // which can cause FK violations during cleanup if we proceed too quickly.
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    console.log('[E2E] MessageQueue drained (with DB settling delay)');
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.warn('[E2E] Failed to drain MessageQueue:', errorMessage);

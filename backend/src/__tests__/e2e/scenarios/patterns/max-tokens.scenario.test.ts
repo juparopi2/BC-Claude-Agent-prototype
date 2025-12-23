@@ -114,30 +114,35 @@ describe('E2E Scenario: Max Tokens Limit', () => {
   // ============================================================================
 
   describe('Stop Reason', () => {
-    it('should have stop_reason = max_tokens in complete event', () => {
+    it('should have reason = max_turns in complete event (normalized from max_tokens)', () => {
       const completeEvent = scenarioResult.events.find(e => e.type === 'complete');
       expect(completeEvent).toBeDefined();
 
-      const stopReason = (completeEvent?.data as { stopReason?: string })?.stopReason;
-      expect(stopReason).toBe('max_tokens');
+      // CompleteEvent uses normalized 'reason' field (not Anthropic-specific 'stopReason')
+      // 'max_tokens' (Anthropic) → 'max_turns' (normalized)
+      const reason = (completeEvent as { reason?: string })?.reason;
+      expect(reason).toBe('max_turns');
     });
 
-    it('should NOT have stop_reason = end_turn', () => {
+    it('should NOT have reason = success (natural completion)', () => {
       const completeEvent = scenarioResult.events.find(e => e.type === 'complete');
       expect(completeEvent).toBeDefined();
 
-      const stopReason = (completeEvent?.data as { stopReason?: string })?.stopReason;
-      expect(stopReason).not.toBe('end_turn');
+      // Normalized: 'end_turn' (Anthropic) → 'success' (normalized)
+      const reason = (completeEvent as { reason?: string })?.reason;
+      expect(reason).not.toBe('success');
     });
 
-    it('should document max_tokens behavior', () => {
-      // This test documents expected behavior: max_tokens means response was truncated
+    it('should document max_turns behavior', () => {
+      // This test documents expected behavior: max_turns means response was truncated
       const completeEvent = scenarioResult.events.find(e => e.type === 'complete');
-      const stopReason = (completeEvent?.data as { stopReason?: string })?.stopReason;
 
-      // When max_tokens is reached, the response is incomplete
-      // This is different from end_turn which means natural completion
-      expect(['max_tokens', 'length']).toContain(stopReason);
+      // Normalized reason values (provider-agnostic)
+      const reason = (completeEvent as { reason?: string })?.reason;
+
+      // When max_turns is reached, the response is incomplete
+      // This is different from 'success' which means natural completion
+      expect(['max_turns']).toContain(reason);
     });
   });
 

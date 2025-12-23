@@ -49,17 +49,18 @@ describe('E2E-02: Session Management', () => {
     });
 
     it('should create a new session', async () => {
+      // NOTE: API returns unwrapped session with snake_case fields
       const response = await client.post<{
         id: string;
         title: string;
-        createdAt: string;
+        created_at: string;
       }>('/api/chat/sessions', { title: 'Test Session' });
 
       expect(response.ok).toBe(true);
       expect(response.status).toBe(201);
       expect(response.body.id).toBeDefined();
       expect(response.body.title).toBe('Test Session');
-      expect(response.body.createdAt).toBeDefined();
+      expect(response.body.created_at).toBeDefined();
     });
 
     it('should create session with default title', async () => {
@@ -85,8 +86,8 @@ describe('E2E-02: Session Management', () => {
       });
       expect(response2.ok).toBe(true);
 
-      // Sessions should have different IDs
-      expect(response1.body.id).not.toBe(response2.body.id);
+      // Sessions should have different IDs (normalize case for comparison)
+      expect(response1.body.id.toLowerCase()).not.toBe(response2.body.id.toLowerCase());
     });
   });
 
@@ -100,12 +101,13 @@ describe('E2E-02: Session Management', () => {
       await factory.createChatSession(userA.id, { title: 'List Test 1' });
       await factory.createChatSession(userA.id, { title: 'List Test 2' });
 
+      // NOTE: API returns snake_case field names
       const response = await client.get<{
         sessions: Array<{
           id: string;
           title: string;
-          createdAt: string;
-          updatedAt: string;
+          created_at: string;
+          updated_at: string;
         }>;
       }>('/api/chat/sessions');
 
@@ -129,10 +131,10 @@ describe('E2E-02: Session Management', () => {
 
       expect(response.ok).toBe(true);
 
-      // Find our test sessions
-      const sessionIds = response.body.sessions.map(s => s.id);
-      const index1 = sessionIds.indexOf(session1.id);
-      const index2 = sessionIds.indexOf(session2.id);
+      // Find our test sessions (normalize UUIDs for comparison - SQL Server returns UPPERCASE)
+      const sessionIds = response.body.sessions.map(s => s.id.toLowerCase());
+      const index1 = sessionIds.indexOf(session1.id.toLowerCase());
+      const index2 = sessionIds.indexOf(session2.id.toLowerCase());
 
       // Session 2 should come before Session 1 (more recent)
       expect(index2).toBeLessThan(index1);
@@ -156,13 +158,14 @@ describe('E2E-02: Session Management', () => {
 
       expect(response.ok).toBe(true);
 
-      const sessionIds = response.body.sessions.map(s => s.id);
+      // Normalize UUIDs for comparison (SQL Server returns UPPERCASE)
+      const sessionIds = response.body.sessions.map(s => s.id.toLowerCase());
 
       // Should include user A's session
-      expect(sessionIds).toContain(sessionA.id);
+      expect(sessionIds).toContain(sessionA.id.toLowerCase());
 
       // Should NOT include user B's session
-      expect(sessionIds).not.toContain(sessionB.id);
+      expect(sessionIds).not.toContain(sessionB.id.toLowerCase());
     });
   });
 
@@ -180,14 +183,16 @@ describe('E2E-02: Session Management', () => {
     });
 
     it('should get session details', async () => {
+      // NOTE: API returns unwrapped session with messageCount
       const response = await client.get<{
         id: string;
         title: string;
-        messages: Array<unknown>;
+        messageCount: number;
       }>(`/api/chat/sessions/${testSession.id}`);
 
       expect(response.ok).toBe(true);
-      expect(response.body.id).toBe(testSession.id);
+      // Normalize UUIDs for comparison (SQL Server returns UPPERCASE)
+      expect(response.body.id.toLowerCase()).toBe(testSession.id.toLowerCase());
       expect(response.body.title).toBe('Detail Test Session');
     });
 
@@ -205,8 +210,11 @@ describe('E2E-02: Session Management', () => {
     it('should return 400 for invalid session ID format', async () => {
       const response = await client.get('/api/chat/sessions/not-a-uuid');
 
+      // Backend validates UUID format and returns 400 with INVALID_PARAMETER code
       expect(response.status).toBe(400);
-      const validation = ErrorValidator.validateBadRequest(response);
+      const validation = ErrorValidator.validateBadRequest(response, {
+        code: 'INVALID_PARAMETER',  // Backend uses ErrorCode.INVALID_PARAMETER
+      });
       expect(validation.valid).toBe(true);
     });
   });
@@ -364,19 +372,20 @@ describe('E2E-02: Session Management', () => {
         title: 'Timestamp Test',
       });
 
+      // NOTE: API returns snake_case field names
       const response = await client.get<{
         id: string;
-        createdAt: string;
-        updatedAt: string;
+        created_at: string;
+        updated_at: string;
       }>(`/api/chat/sessions/${session.id}`);
 
       expect(response.ok).toBe(true);
-      expect(response.body.createdAt).toBeDefined();
-      expect(response.body.updatedAt).toBeDefined();
+      expect(response.body.created_at).toBeDefined();
+      expect(response.body.updated_at).toBeDefined();
 
       // Timestamps should be valid ISO strings
-      expect(new Date(response.body.createdAt).getTime()).not.toBeNaN();
-      expect(new Date(response.body.updatedAt).getTime()).not.toBeNaN();
+      expect(new Date(response.body.created_at).getTime()).not.toBeNaN();
+      expect(new Date(response.body.updated_at).getTime()).not.toBeNaN();
     });
 
     it('should include message count or messages in session details', async () => {

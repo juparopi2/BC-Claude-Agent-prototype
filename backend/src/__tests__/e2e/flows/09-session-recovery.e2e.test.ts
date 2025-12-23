@@ -125,13 +125,14 @@ describe('E2E-09: Session Recovery', () => {
       newClient.setSessionCookie(testUser.sessionCookie);
 
       const response = await newClient.get<{
-        messages: Array<{ content: string; sequenceNumber?: number }>;
+        messages: Array<{ content: string; sequenceNumber?: number; role: string }>;
       }>(`/api/chat/sessions/${freshSession.id}/messages`);
 
       expect(response.ok).toBe(true);
 
+      // Filter by role to avoid assistant messages that might echo the content
       const orderMessages = response.body.messages?.filter(
-        m => m.content?.startsWith('Order test')
+        m => m.role === 'user' && m.content?.startsWith('Order test')
       ) || [];
 
       // Should be in correct order
@@ -391,17 +392,17 @@ describe('E2E-09: Session Recovery', () => {
       const newClient = createE2ETestClient();
       newClient.setSessionCookie(testUser.sessionCookie);
 
+      // API returns unwrapped session object directly
       const response = await newClient.get<{
-        session: {
-          id: string;
-          title: string;
-          created_at: string;
-        };
+        id: string;
+        title: string;
+        created_at: string;
+        messageCount: number;
       }>(`/api/chat/sessions/${freshSession.id}`);
 
       expect(response.ok).toBe(true);
-      expect(response.body.session.title).toBe('Metadata Preservation Test');
-      expect(response.body.session.created_at).toBeDefined();
+      expect(response.body.title).toBe('Metadata Preservation Test');
+      expect(response.body.created_at).toBeDefined();
     });
   });
 
@@ -437,22 +438,26 @@ describe('E2E-09: Session Recovery', () => {
       newClient.setSessionCookie(testUser.sessionCookie);
 
       const response1 = await newClient.get<{
-        messages: Array<{ content: string }>;
+        messages: Array<{ content: string; role: string }>;
       }>(`/api/chat/sessions/${session1.id}/messages`);
 
       const response2 = await newClient.get<{
-        messages: Array<{ content: string }>;
+        messages: Array<{ content: string; role: string }>;
       }>(`/api/chat/sessions/${session2.id}/messages`);
 
       expect(response1.ok).toBe(true);
       expect(response2.ok).toBe(true);
 
-      // Each should have its own message
+      // Each should have its own message - filter by role and use includes for flexibility
       const session1Msgs = response1.body.messages || [];
       const session2Msgs = response2.body.messages || [];
 
-      const has1 = session1Msgs.some(m => m.content === 'Message in session 1');
-      const has2 = session2Msgs.some(m => m.content === 'Message in session 2');
+      const has1 = session1Msgs.some(m =>
+        m.role === 'user' && m.content?.includes('Message in session 1')
+      );
+      const has2 = session2Msgs.some(m =>
+        m.role === 'user' && m.content?.includes('Message in session 2')
+      );
 
       expect(has1).toBe(true);
       expect(has2).toBe(true);

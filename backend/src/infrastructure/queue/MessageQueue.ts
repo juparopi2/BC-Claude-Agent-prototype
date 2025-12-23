@@ -1159,11 +1159,16 @@ export class MessageQueue {
         // SDK doesn't provide thinking_tokens separately (included in output_tokens)
       };
 
-      // ⭐ UPDATED 2025-11-24: Removed thinking_tokens column per Option A
+      // ⭐ UPDATED 2025-12-23: Use MERGE (upsert) to prevent PK violations on retries
+      // This is idempotent - if message already exists, skip insertion
       await this.executeQueryFn(
         `
-        INSERT INTO messages (id, session_id, role, message_type, content, metadata, sequence_number, event_id, token_count, stop_reason, tool_use_id, created_at, model, input_tokens, output_tokens)
-        VALUES (@id, @session_id, @role, @message_type, @content, @metadata, @sequence_number, @event_id, @token_count, @stop_reason, @tool_use_id, @created_at, @model, @input_tokens, @output_tokens)
+        MERGE INTO messages WITH (HOLDLOCK) AS target
+        USING (SELECT @id AS id) AS source
+        ON target.id = source.id
+        WHEN NOT MATCHED THEN
+          INSERT (id, session_id, role, message_type, content, metadata, sequence_number, event_id, token_count, stop_reason, tool_use_id, created_at, model, input_tokens, output_tokens)
+          VALUES (@id, @session_id, @role, @message_type, @content, @metadata, @sequence_number, @event_id, @token_count, @stop_reason, @tool_use_id, @created_at, @model, @input_tokens, @output_tokens);
         `,
         params
       );

@@ -225,12 +225,12 @@ export class ResponseScenarioRegistry {
     });
 
     // Configure FakeAgentOrchestrator if not using real API
+    // The vi.mock in setup.e2e.ts handles injecting the fake into getAgentOrchestrator()
     if (!E2E_API_MODE.useRealApi) {
-      const { getAgentOrchestrator, __resetAgentOrchestrator } = await import('@domains/agent/orchestration');
-      __resetAgentOrchestrator();
-      const fakeOrchestrator = getFakeAgentOrchestrator();
-      fakeOrchestrator.setResponse(scenario.scenario);
-      // vi.mock handles the injection - see message-flow.integration.test.ts pattern
+      // Import the shared e2eFakeOrchestrator from setup
+      const { e2eFakeOrchestrator } = await import('../setup.e2e');
+      e2eFakeOrchestrator.reset();
+      e2eFakeOrchestrator.setResponse(scenario.scenario);
     }
 
     // Create or use provided client

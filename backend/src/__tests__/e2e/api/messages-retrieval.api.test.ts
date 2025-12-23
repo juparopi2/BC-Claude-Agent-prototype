@@ -45,12 +45,14 @@ interface MessagesApiResponse {
   messages: MessageResponse[];
 }
 
+/**
+ * Session response structure from POST/GET /api/chat/sessions
+ * NOTE: API returns unwrapped session object directly (REST standard)
+ */
 interface SessionResponse {
-  session: {
-    id: string;
-    title: string;
-    user_id: string;
-  };
+  id: string;
+  title: string;
+  user_id: string;
 }
 
 describe('E2E API: Message Retrieval (Gap D23)', () => {
@@ -82,12 +84,12 @@ describe('E2E API: Message Retrieval (Gap D23)', () => {
 
   describe('Basic Retrieval', () => {
     it('should retrieve messages from a session via HTTP API', async () => {
-      // 1. Create session via HTTP
+      // 1. Create session via HTTP (API returns unwrapped session)
       const createResponse = await client.post<SessionResponse>('/api/chat/sessions', {
         title: 'Message Retrieval Test',
       });
       expect(createResponse.ok).toBe(true);
-      const sessionId = createResponse.body.session.id;
+      const sessionId = createResponse.body.id;
       expect(sessionId).toBeDefined();
 
       // 2. Retrieve messages via GET
@@ -107,7 +109,7 @@ describe('E2E API: Message Retrieval (Gap D23)', () => {
         title: 'Empty Session Test',
       });
       expect(createResponse.ok).toBe(true);
-      const sessionId = createResponse.body.session.id;
+      const sessionId = createResponse.body.id;
 
       // Retrieve messages
       const messagesResponse = await client.get<MessagesApiResponse>(
@@ -125,7 +127,7 @@ describe('E2E API: Message Retrieval (Gap D23)', () => {
         title: 'Pagination Test',
       });
       expect(createResponse.ok).toBe(true);
-      const sessionId = createResponse.body.session.id;
+      const sessionId = createResponse.body.id;
 
       // Retrieve with limit
       const messagesResponse = await client.get<MessagesApiResponse>(
@@ -143,7 +145,7 @@ describe('E2E API: Message Retrieval (Gap D23)', () => {
         title: 'Offset Test',
       });
       expect(createResponse.ok).toBe(true);
-      const sessionId = createResponse.body.session.id;
+      const sessionId = createResponse.body.id;
 
       // Retrieve with offset
       const messagesResponse = await client.get<MessagesApiResponse>(
@@ -162,7 +164,7 @@ describe('E2E API: Message Retrieval (Gap D23)', () => {
         title: 'Private Session',
       });
       expect(createResponse.ok).toBe(true);
-      const sessionId = createResponse.body.session.id;
+      const sessionId = createResponse.body.id;
 
       // Create another user
       const otherUser = await factory.createTestUser({ prefix: 'other_user_' });
@@ -185,7 +187,7 @@ describe('E2E API: Message Retrieval (Gap D23)', () => {
         title: 'Structure Test',
       });
       expect(createResponse.ok).toBe(true);
-      const sessionId = createResponse.body.session.id;
+      const sessionId = createResponse.body.id;
 
       // Retrieve messages (may be empty)
       const messagesResponse = await client.get<MessagesApiResponse>(
@@ -223,7 +225,7 @@ describe('E2E API: Message Retrieval (Gap D23)', () => {
         title: 'Auth Test',
       });
       expect(createResponse.ok).toBe(true);
-      const sessionId = createResponse.body.session.id;
+      const sessionId = createResponse.body.id;
 
       // Create unauthenticated client
       const unauthClient = createE2ETestClient();

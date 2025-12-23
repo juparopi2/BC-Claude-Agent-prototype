@@ -76,8 +76,9 @@ describe('E2E API: Files Endpoints', () => {
     });
 
     it('should handle large file rejection', async () => {
-      // Create a 20MB file (exceeding typical limits)
-      const largeContent = Buffer.alloc(20 * 1024 * 1024, 'x');
+      // Create a 150MB file (exceeding 100MB limit)
+      // Note: Previous test used 20MB which is within limits (100MB for general, 30MB for images)
+      const largeContent = Buffer.alloc(150 * 1024 * 1024, 'x');
       const testFile = createTestFileData({
         name: 'large-file.bin',
         content: largeContent,
@@ -89,7 +90,7 @@ describe('E2E API: Files Endpoints', () => {
         testFile.name
       );
 
-      // Should reject or return 404 if not implemented
+      // Should reject with 400 (validation), 413 (payload too large), or 404 (not found)
       expect([400, 413, 404]).toContain(response.status);
     });
 
@@ -133,25 +134,26 @@ describe('E2E API: Files Endpoints', () => {
 
   describe('GET /api/files', () => {
     it('should list files for authenticated user', async () => {
-      const response = await client.get('/api/files');
+      const response = await client.get<{ files: unknown[]; pagination: unknown }>('/api/files');
 
       // Document current behavior
       expect(response.status).toBeGreaterThanOrEqual(200);
 
-      // If implemented, should return array
+      // API returns { files: [...], pagination: {...} }
       if (response.ok) {
-        expect(Array.isArray(response.body)).toBe(true);
+        expect(Array.isArray(response.body.files)).toBe(true);
       }
     });
 
     it('should filter files by type', async () => {
-      const response = await client.get('/api/files', { type: 'document' });
+      const response = await client.get<{ files: unknown[]; pagination: unknown }>('/api/files', { type: 'document' });
 
       // Document current behavior
       expect(response.status).toBeGreaterThanOrEqual(200);
 
+      // API returns { files: [...], pagination: {...} }
       if (response.ok) {
-        expect(Array.isArray(response.body)).toBe(true);
+        expect(Array.isArray(response.body.files)).toBe(true);
       }
     });
 

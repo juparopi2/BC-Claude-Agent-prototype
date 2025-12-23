@@ -335,9 +335,8 @@ router.post('/', authenticateMicrosoft, async (req: Request, res: Response): Pro
 
     logger.info(`[Sessions] Session ${sessionId} created successfully (messages will be sent via Socket.IO)`);
 
-    res.status(201).json({
-      session,
-    });
+    // Return session directly (REST standard - unwrapped)
+    res.status(201).json(session);
   } catch (error) {
     logger.error('[Sessions] Create session failed:', error);
     sendError(res, ErrorCode.SESSION_CREATE_ERROR);
@@ -363,10 +362,10 @@ router.get('/:sessionId', authenticateMicrosoft, async (req: Request, res: Respo
       return;
     }
 
-    // Validate UUID format to avoid SQL errors
+    // Validate UUID format to avoid SQL errors (return 400, not 404)
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!uuidRegex.test(sessionId)) {
-      sendError(res, ErrorCode.SESSION_NOT_FOUND, 'Session not found');
+      sendError(res, ErrorCode.INVALID_PARAMETER, 'Invalid session ID format');
       return;
     }
 
@@ -401,10 +400,17 @@ router.get('/:sessionId', authenticateMicrosoft, async (req: Request, res: Respo
 
     const session = transformSession(result.recordset[0]);
 
+    // Get message count for the session
+    const countQuery = `SELECT COUNT(*) as count FROM messages WHERE session_id = @sessionId`;
+    const countResult = await executeQuery<{ count: number }>(countQuery, { sessionId });
+    const messageCount = countResult.recordset[0]?.count ?? 0;
+
     logger.info(`[Sessions] Session ${sessionId} retrieved successfully`);
 
+    // Return session directly with messageCount (REST standard - unwrapped)
     res.json({
-      session,
+      ...session,
+      messageCount,
     });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
@@ -444,10 +450,10 @@ router.get('/:sessionId/messages', authenticateMicrosoft, async (req: Request, r
       return;
     }
 
-    // Validate UUID format to avoid SQL errors
+    // Validate UUID format to avoid SQL errors (return 400, not 404)
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!uuidRegex.test(sessionId)) {
-      sendError(res, ErrorCode.SESSION_NOT_FOUND, 'Session not found');
+      sendError(res, ErrorCode.INVALID_PARAMETER, 'Invalid session ID format');
       return;
     }
 
@@ -616,10 +622,8 @@ router.patch('/:sessionId', authenticateMicrosoft, async (req: Request, res: Res
 
     logger.info(`[Sessions] Session ${sessionId} title updated successfully`);
 
-    res.json({
-      success: true,
-      session: transformSession(sessionData),
-    });
+    // Return session directly (REST standard - unwrapped)
+    res.json(transformSession(sessionData));
   } catch (error) {
     logger.error('[Sessions] Update title error:', error);
     sendError(res, ErrorCode.INTERNAL_ERROR, 'Failed to update session');
@@ -645,6 +649,13 @@ router.delete('/:sessionId', authenticateMicrosoft, async (req: Request, res: Re
       return;
     }
 
+    // Validate UUID format to avoid SQL errors (return 400, not 500)
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(sessionId)) {
+      sendError(res, ErrorCode.INVALID_PARAMETER, 'Invalid session ID format');
+      return;
+    }
+
     logger.info(`[Sessions] Deleting session ${sessionId} for user ${userId}`);
 
     // Delete session (verify ownership, CASCADE deletes related records)
@@ -663,12 +674,23 @@ router.delete('/:sessionId', authenticateMicrosoft, async (req: Request, res: Re
 
     logger.info(`[Sessions] Session ${sessionId} deleted successfully (CASCADE delete applied)`);
 
-    res.json({
-      success: true,
-      message: 'Session deleted',
-    });
+    // Return 204 No Content (REST standard for successful DELETE)
+    res.status(204).send();
   } catch (error) {
-    logger.error('[Sessions] Delete session failed:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error('[Sessions] Delete session failed:', { error: errorMessage, sessionId: req.params.sessionId });
+
+    // Handle SQL conversion errors or UUID validation errors as 404
+    if (error instanceof Error && (
+      errorMessage.includes('Conversion failed') ||
+      errorMessage.includes('uniqueidentifier') ||
+      errorMessage.toLowerCase().includes('invalid') ||
+      errorMessage.includes('Invalid UUID')
+    )) {
+      sendError(res, ErrorCode.SESSION_NOT_FOUND, 'Session not found');
+      return;
+    }
+
     sendError(res, ErrorCode.INTERNAL_ERROR, 'Failed to delete session');
   }
 });

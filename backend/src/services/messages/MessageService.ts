@@ -137,10 +137,15 @@ export class MessageService {
             output_tokens: null,
           };
 
+          // ⭐ UPDATED 2025-12-23: Use MERGE (upsert) to prevent PK violations
           await executeQuery(
             `
-            INSERT INTO messages (id, session_id, role, message_type, content, metadata, token_count, stop_reason, sequence_number, event_id, created_at, model, input_tokens, output_tokens)
-            VALUES (@id, @session_id, @role, @message_type, @content, @metadata, @token_count, @stop_reason, @sequence_number, @event_id, @created_at, @model, @input_tokens, @output_tokens)
+            MERGE INTO messages WITH (HOLDLOCK) AS target
+            USING (SELECT @id AS id) AS source
+            ON target.id = source.id
+            WHEN NOT MATCHED THEN
+              INSERT (id, session_id, role, message_type, content, metadata, token_count, stop_reason, sequence_number, event_id, created_at, model, input_tokens, output_tokens)
+              VALUES (@id, @session_id, @role, @message_type, @content, @metadata, @token_count, @stop_reason, @sequence_number, @event_id, @created_at, @model, @input_tokens, @output_tokens);
             `,
             params
           );

@@ -20,8 +20,11 @@ import type {
   ToolUseEvent,
   ToolResultEvent,
   ErrorEvent,
+  UserMessageConfirmedEvent,
 } from '@bc-agent/shared';
 import type { IAgentOrchestrator, ExecuteStreamingOptions } from './types';
+import { getMessageQueue } from '@/infrastructure/queue/MessageQueue';
+import { getEventStore } from '@/services/events/EventStore';
 
 /**
  * Configuration for a fake response scenario
@@ -44,6 +47,8 @@ export interface FakeScenario {
   delayMs?: number;
   /** Stop reason */
   stopReason?: 'end_turn' | 'tool_use' | 'max_tokens';
+  /** Enable persistence to database (default: true for E2E tests) */
+  enablePersistence?: boolean;
 }
 
 /**
@@ -52,6 +57,7 @@ export interface FakeScenario {
 const DEFAULT_SCENARIO: FakeScenario = {
   textBlocks: ['This is a fake response from FakeAgentOrchestrator.'],
   stopReason: 'end_turn',
+  enablePersistence: true, // ⭐ Enable persistence by default for E2E tests
 };
 
 /**
@@ -140,12 +146,14 @@ export class FakeAgentOrchestrator implements IAgentOrchestrator {
     const emit = onEvent ?? (() => {});
     const delay = this.scenario.delayMs ?? 0;
     let eventIndex = 0;
+    let sequenceNumber = 1; // Start at 1, not 0 (tests expect > 0)
 
     const createBaseEvent = () => ({
       timestamp: new Date().toISOString(),
       eventId: uuidv4(),
       persistenceState: 'transient' as const,
       eventIndex: eventIndex++,
+      sequenceNumber: sequenceNumber++, // Add real sequence numbers
     });
 
     // Helper for delays
@@ -155,7 +163,26 @@ export class FakeAgentOrchestrator implements IAgentOrchestrator {
       }
     };
 
-    // Check for error scenario
+    // Emit session_start first (always)
+    const sessionStartEvent: SessionStartEvent = {
+      ...createBaseEvent(),
+      type: 'session_start',
+      sessionId,
+      userId: userId ?? 'fake-user',
+    };
+    emit(sessionStartEvent);
+    await wait();
+
+    // Emit user_message_confirmed (always, before any other events)
+    const userMessageEvent: UserMessageConfirmedEvent = {
+      ...createBaseEvent(),
+      type: 'user_message_confirmed',
+      messageId: uuidv4(),
+    };
+    emit(userMessageEvent);
+    await wait();
+
+    // Check for error scenario (AFTER user_message_confirmed)
     if (this.scenario.error) {
       const errorEvent: ErrorEvent = {
         ...createBaseEvent(),
@@ -167,6 +194,14 @@ export class FakeAgentOrchestrator implements IAgentOrchestrator {
       };
       emit(errorEvent);
 
+      // Also emit complete event for error scenarios
+      const completeEvent: CompleteEvent = {
+        ...createBaseEvent(),
+        type: 'complete',
+        reason: 'error',
+      };
+      emit(completeEvent);
+
       return {
         sessionId,
         response: '',
@@ -175,16 +210,6 @@ export class FakeAgentOrchestrator implements IAgentOrchestrator {
         error: errorEvent.error,
       };
     }
-
-    // Emit session_start
-    const sessionStartEvent: SessionStartEvent = {
-      ...createBaseEvent(),
-      type: 'session_start',
-      sessionId,
-      userId: userId ?? 'fake-user',
-    };
-    emit(sessionStartEvent);
-    await wait();
 
     // Emit thinking events if configured
     if (this.scenario.thinkingContent) {
@@ -259,9 +284,47 @@ export class FakeAgentOrchestrator implements IAgentOrchestrator {
       }
     }
 
+    // ⭐ Persist assistant message if persistence is enabled
+    const enablePersistence = this.scenario.enablePersistence ?? true;
+    let persistedEventId: string | undefined;
+    let persistedSequenceNumber: number | undefined;
+
+    if (enablePersistence && fullContent) {
+      try {
+        // Append to EventStore
+        const eventStore = getEventStore();
+        const event = await eventStore.appendEvent(sessionId, 'agent_message', {
+          message_id: messageId,
+          content: fullContent,
+          role: 'assistant',
+          stop_reason: this.scenario.stopReason ?? 'end_turn',
+        });
+        persistedEventId = event.id;
+        persistedSequenceNumber = event.sequence_number;
+
+        // Queue for DB persistence
+        const messageQueue = getMessageQueue();
+        await messageQueue.addMessagePersistence({
+          sessionId,
+          messageId,
+          role: 'assistant',
+          messageType: 'text',
+          content: fullContent,
+          metadata: { fake_orchestrator: true },
+          sequenceNumber: event.sequence_number,
+          eventId: event.id,
+          stopReason: this.scenario.stopReason ?? 'end_turn',
+        });
+      } catch (error) {
+        // Log but don't fail - persistence is optional for fake
+        console.warn('[FakeAgentOrchestrator] Persistence failed:', error);
+      }
+    }
+
     // Emit final message
+    const baseEvent = createBaseEvent();
     const messageEvent: MessageEvent = {
-      ...createBaseEvent(),
+      ...baseEvent,
       type: 'message',
       content: fullContent,
       messageId,
@@ -271,15 +334,30 @@ export class FakeAgentOrchestrator implements IAgentOrchestrator {
         inputTokens: prompt.length,
         outputTokens: fullContent.length,
       },
+      // ⭐ Set persistenceState based on whether we persisted
+      persistenceState: enablePersistence ? 'persisted' : 'transient',
+      eventId: persistedEventId ?? baseEvent.eventId,
+      sequenceNumber: persistedSequenceNumber ?? baseEvent.sequenceNumber,
     };
     emit(messageEvent);
     await wait();
 
-    // Emit complete event
+    // Map Anthropic stopReason to normalized CompleteEvent.reason
+    // Anthropic: 'end_turn' | 'max_tokens' | 'tool_use' | 'stop_sequence'
+    // Normalized: 'success' | 'error' | 'max_turns' | 'user_cancelled'
+    const stopReasonToNormalized: Record<string, CompleteEvent['reason']> = {
+      'end_turn': 'success',
+      'max_tokens': 'max_turns',
+      'tool_use': 'success',
+      'stop_sequence': 'success',
+    };
+    const normalizedReason = stopReasonToNormalized[this.scenario.stopReason ?? 'end_turn'] ?? 'success';
+
+    // Emit complete event with normalized reason
     const completeEvent: CompleteEvent = {
       ...createBaseEvent(),
       type: 'complete',
-      reason: 'success',
+      reason: normalizedReason,
     };
     emit(completeEvent);
 

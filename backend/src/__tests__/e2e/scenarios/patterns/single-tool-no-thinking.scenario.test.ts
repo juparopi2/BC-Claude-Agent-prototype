@@ -41,41 +41,9 @@ describe('E2E Scenario: Single Tool Call (No Thinking)', () => {
     // Create test user
     testUser = await factory.createTestUser({ prefix: 'e2e_scenario_stnt_' });
 
-    // Execute scenario (using multi-tool but requesting only ONE tool)
+    // Use predefined scenario from ResponseScenarioRegistry
+    // The registry already has 'single-tool-no-thinking' configured with FakeScenario pattern
     const registry = getScenarioRegistry();
-
-    // Register custom scenario: multi-tool but with message requesting only ONE tool
-    registry.registerScenario({
-      id: 'single-tool-no-thinking',
-      name: 'Single Tool Call (No Thinking)',
-      configureFake: (fake) => {
-        fake.addResponse({
-          textBlocks: ['Let me retrieve the customer information for you.'],
-          toolUseBlocks: [
-            {
-              id: 'toolu_01single_customers',
-              name: 'bc_customers_read',
-              input: { $top: 3, $select: 'number,displayName,email' },
-            },
-          ],
-          stopReason: 'tool_use',
-        });
-        fake.addResponse({
-          textBlocks: ['Here are the first 3 customers from your Business Central system.'],
-          stopReason: 'end_turn',
-        });
-      },
-      message: 'List the first 3 customers.',
-      thinking: undefined, // NO thinking
-      expectedEventTypes: [
-        'user_message_confirmed',
-        'message_chunk',
-        'tool_use',
-        'tool_result',
-        'message',
-        'complete',
-      ],
-    });
 
     scenarioResult = await registry.executeScenario('single-tool-no-thinking', factory, testUser);
 

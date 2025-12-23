@@ -22,7 +22,7 @@ import {
 } from '../../helpers/ResponseScenarioRegistry';
 import { TestSessionFactory, TestUser } from '../../../integration/helpers/TestSessionFactory';
 
-describe.skip('E2E Scenario: Max Tokens Limit', () => {
+describe('E2E Scenario: Max Tokens Limit', () => {
   // Setup E2E test environment
   const { getBaseUrl } = setupE2ETest({
     cleanSlate: true,
@@ -37,8 +37,8 @@ describe.skip('E2E Scenario: Max Tokens Limit', () => {
    * Execute the scenario ONCE before all tests.
    * All tests will verify different aspects of this single execution.
    *
-   * TODO: This scenario needs a custom definition in ResponseScenarioRegistry
-   * that configures FakeAnthropicClient to simulate max_tokens stop_reason.
+   * Uses predefined 'max-tokens' scenario from ResponseScenarioRegistry
+   * which configures FakeAgentOrchestrator to simulate max_tokens stop_reason.
    */
   beforeAll(async () => {
     console.log(`\n[Scenario] API Mode: ${E2E_API_MODE.description}`);
@@ -47,33 +47,9 @@ describe.skip('E2E Scenario: Max Tokens Limit', () => {
     // Create test user
     testUser = await factory.createTestUser({ prefix: 'e2e_scenario_max_tok_' });
 
-    // Execute scenario (needs custom scenario definition)
+    // Use predefined scenario from ResponseScenarioRegistry
+    // The registry already has 'max-tokens' configured with FakeScenario pattern
     const registry = getScenarioRegistry();
-
-    // TODO: Register custom scenario for max_tokens
-    registry.registerScenario({
-      id: 'max-tokens',
-      name: 'Max Tokens Limit',
-      configureFake: (fake) => {
-        // Configure response with max_tokens stop_reason
-        fake.addResponse({
-          textBlocks: [
-            'Let me provide a very detailed explanation of Business Central functionality. ' +
-            'Business Central is a comprehensive ERP system that handles accounting, inventory, ' +
-            'sales, purchasing, and much more. The system provides extensive features for... ' +
-            '[This response would continue but gets cut off due to token limit]',
-          ],
-          stopReason: 'max_tokens', // Key: stop_reason is max_tokens, not end_turn
-        });
-      },
-      message: 'Give me a comprehensive explanation of Business Central.',
-      expectedEventTypes: [
-        'user_message_confirmed',
-        'message_chunk',
-        'message',
-        'complete',
-      ],
-    });
 
     scenarioResult = await registry.executeScenario('max-tokens', factory, testUser);
 

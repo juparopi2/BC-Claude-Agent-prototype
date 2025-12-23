@@ -22,7 +22,7 @@ import {
 } from '../../helpers/ResponseScenarioRegistry';
 import { TestSessionFactory, TestUser } from '../../../integration/helpers/TestSessionFactory';
 
-describe.skip('E2E Scenario: Tool Execution Error', () => {
+describe('E2E Scenario: Tool Execution Error', () => {
   // Setup E2E test environment
   const { getBaseUrl } = setupE2ETest({
     cleanSlate: true,
@@ -37,8 +37,8 @@ describe.skip('E2E Scenario: Tool Execution Error', () => {
    * Execute the scenario ONCE before all tests.
    * All tests will verify different aspects of this single execution.
    *
-   * TODO: This scenario needs a custom definition in ResponseScenarioRegistry
-   * that configures FakeAnthropicClient to simulate tool execution failure.
+   * Uses predefined 'tool-error' scenario from ResponseScenarioRegistry
+   * which configures FakeAgentOrchestrator to simulate tool execution failure.
    */
   beforeAll(async () => {
     console.log(`\n[Scenario] API Mode: ${E2E_API_MODE.description}`);
@@ -47,42 +47,9 @@ describe.skip('E2E Scenario: Tool Execution Error', () => {
     // Create test user
     testUser = await factory.createTestUser({ prefix: 'e2e_scenario_tool_err_' });
 
-    // Execute scenario (needs custom scenario definition)
+    // Use predefined scenario from ResponseScenarioRegistry
+    // The registry already has 'tool-error' configured with FakeScenario pattern
     const registry = getScenarioRegistry();
-
-    // TODO: Register custom scenario for tool execution error
-    registry.registerScenario({
-      id: 'tool-error',
-      name: 'Tool Execution Error',
-      configureFake: (fake) => {
-        // First response: tool use request
-        fake.addResponse({
-          textBlocks: ['Let me retrieve customer data.'],
-          toolUseBlocks: [
-            {
-              id: 'toolu_01tool_error',
-              name: 'bc_customers_read',
-              input: { $top: 5 },
-            },
-          ],
-          stopReason: 'tool_use',
-        });
-        // Second response: handle tool error result
-        fake.addResponse({
-          textBlocks: ['I encountered an error retrieving the customer data.'],
-          stopReason: 'end_turn',
-        });
-      },
-      message: 'Show me customers.',
-      expectedEventTypes: [
-        'user_message_confirmed',
-        'message_chunk',
-        'tool_use',
-        'tool_result',
-        'message',
-        'complete',
-      ],
-    });
 
     scenarioResult = await registry.executeScenario('tool-error', factory, testUser);
 

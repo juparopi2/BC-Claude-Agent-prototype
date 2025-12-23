@@ -1,7 +1,7 @@
 /**
  * Chat Message Handler
  *
- * Handles chat messages using DirectAgentService and enhanced contract events.
+ * Handles chat messages using AgentOrchestrator and enhanced contract events.
  * Multi-tenant safe: All operations scoped by userId + sessionId.
  *
  * Architecture:
@@ -26,7 +26,7 @@ import type {
   ErrorEvent,
 } from '@/types';
 import type { ChatMessageData } from '@/types/websocket.types';
-import { getDirectAgentService } from '../agent/DirectAgentService';
+import { getAgentOrchestrator } from '@domains/agent/orchestration';
 import { getMessageService } from '../messages/MessageService';
 import { TOOL_NAMES } from '@/shared/constants/tools';
 import { createChildLogger } from '@/shared/utils/logger';
@@ -186,14 +186,14 @@ export class ChatMessageHandler {
         return;
       }
 
-      // 3. Execute agent with DirectAgentService (SDK-first)
-      this.logger.info('🤖 About to call DirectAgentService.runGraph', { sessionId, userId });
+      // 3. Execute agent with AgentOrchestrator
+      this.logger.info('🤖 About to call AgentOrchestrator.executeAgent', { sessionId, userId });
 
-      const agentService = getDirectAgentService();
-      this.logger.info('✅ DirectAgentService instance obtained', {
-        hasAgentService: !!agentService,
-        agentServiceType: agentService?.constructor?.name,
-        hasExecuteMethod: typeof agentService?.runGraph === 'function'
+      const orchestrator = getAgentOrchestrator();
+      this.logger.info('✅ AgentOrchestrator instance obtained', {
+        hasOrchestrator: !!orchestrator,
+        orchestratorType: orchestrator?.constructor?.name,
+        hasExecuteMethod: typeof orchestrator?.executeAgent === 'function'
       });
 
       // ⭐ Phase 1F: Extract and validate Extended Thinking config from request
@@ -220,7 +220,7 @@ export class ChatMessageHandler {
         }
       }
 
-      this.logger.info('📞 Calling runGraph...', {
+      this.logger.info('📞 Calling executeAgent...', {
         sessionId,
         userId,
         messageLength: message.length,
@@ -239,7 +239,7 @@ export class ChatMessageHandler {
         enableAutoSemanticSearch: data.enableAutoSemanticSearch,
       };
 
-      await agentService.runGraph(
+      await orchestrator.executeAgent(
         message,
         sessionId,
         (event: AgentEvent) => this.handleAgentEvent(event, io, sessionId, userId),
@@ -248,7 +248,7 @@ export class ChatMessageHandler {
         streamingOptions
       );
 
-      this.logger.info('✅ Chat message processed successfully (runGraph completed)', { sessionId, userId });
+      this.logger.info('✅ Chat message processed successfully (executeAgent completed)', { sessionId, userId });
     } catch (error) {
       // Type for Node.js system errors with additional properties
       type NodeSystemError = Error & { code?: string; errno?: number; syscall?: string };
@@ -282,7 +282,7 @@ export class ChatMessageHandler {
    * Type-safe discrimination using switch statement + type assertions.
    * Emits single 'agent:event' to frontend (enhanced contract).
    *
-   * This method is called by DirectAgentService for EVERY event during streaming.
+   * This method is called by AgentOrchestrator for EVERY event during streaming.
    * It handles both real-time emission (WebSocket) and persistence (DB + EventStore).
    *
    * @param event - Agent event with enhanced contract fields
@@ -341,7 +341,7 @@ export class ChatMessageHandler {
         case 'thinking':
           // ⭐ FIXED: Thinking events from streams are TRANSIENT.
           // They are chunks of thought, not the final thought block.
-          // DirectAgentService may persist a final "thought" block, but the stream is transient.
+          // AgentOrchestrator may persist a final "thought" block, but the stream is transient.
           if ((event as ThinkingEvent).persistenceState === 'transient') {
              this.logger.debug('🧠 Thinking event received (transient)', {
                 sequenceNumber: (event as ThinkingEvent).sequenceNumber,
@@ -374,14 +374,14 @@ export class ChatMessageHandler {
           break;
 
         case 'message':
-          // ✅ PHASE 1B: Persistence handled by DirectAgentService
-          // DirectAgentService writes directly to EventStore + MessageQueue
+          // ✅ PHASE 1B: Persistence handled by AgentOrchestrator
+          // AgentOrchestrator writes directly to EventStore + MessageQueue
           // No fallback needed - if persistenceState is not 'persisted', it's a critical bug
           if ((event as MessageEvent).persistenceState !== 'persisted') {
-            this.logger.error('❌ CRITICAL: Complete message NOT marked as persisted by DirectAgentService', {
+            this.logger.error('❌ CRITICAL: Complete message NOT marked as persisted by AgentOrchestrator', {
               messageId: (event as MessageEvent).messageId,
               sequenceNumber: (event as MessageEvent).sequenceNumber,
-              errorContext: 'DirectAgentService must persist before emitting'
+              errorContext: 'AgentOrchestrator must persist before emitting'
             });
             // We log error but don't throw to avoid crashing the socket connection for the user
           } else {
@@ -393,9 +393,9 @@ export class ChatMessageHandler {
           break;
 
         case 'tool_use':
-          // ✅ SKIP persistence - event already persisted by DirectAgentService
+          // ✅ SKIP persistence - event already persisted by AgentOrchestrator
           if ((event as ToolUseEvent).persistenceState === 'persisted') {
-            this.logger.debug('✅ Tool use event already persisted by DirectAgentService', {
+            this.logger.debug('✅ Tool use event already persisted by AgentOrchestrator', {
               toolUseId: (event as ToolUseEvent).toolUseId,
               sequenceNumber: (event as ToolUseEvent).sequenceNumber,
               eventId: (event as ToolUseEvent).eventId,
@@ -406,7 +406,7 @@ export class ChatMessageHandler {
               toolUseId: (event as ToolUseEvent).toolUseId,
             });
           } else {
-            this.logger.error('❌ Tool use event NOT persisted by DirectAgentService', {
+            this.logger.error('❌ Tool use event NOT persisted by AgentOrchestrator', {
               toolUseId: (event as ToolUseEvent).toolUseId,
               state: (event as ToolUseEvent).persistenceState
             });
@@ -416,9 +416,9 @@ export class ChatMessageHandler {
           break;
 
         case 'tool_result':
-          // ✅ SKIP persistence - event already persisted by DirectAgentService
+          // ✅ SKIP persistence - event already persisted by AgentOrchestrator
           if ((event as ToolResultEvent).persistenceState === 'persisted') {
-            this.logger.debug('✅ Tool result event already persisted by DirectAgentService', {
+            this.logger.debug('✅ Tool result event already persisted by AgentOrchestrator', {
               toolUseId: (event as ToolResultEvent).toolUseId,
               sequenceNumber: (event as ToolResultEvent).sequenceNumber,
               eventId: (event as ToolResultEvent).eventId,
@@ -429,7 +429,7 @@ export class ChatMessageHandler {
                toolUseId: (event as ToolResultEvent).toolUseId,
              });
           } else {
-            this.logger.error('❌ Tool result event NOT persisted by DirectAgentService', {
+            this.logger.error('❌ Tool result event NOT persisted by AgentOrchestrator', {
               toolUseId: (event as ToolResultEvent).toolUseId,
               state: (event as ToolResultEvent).persistenceState
             });
@@ -448,12 +448,12 @@ export class ChatMessageHandler {
           break;
 
         case 'approval_requested':
-          // Approval requested - handled by DirectAgentService
+          // Approval requested - handled by AgentOrchestrator
           this.logger.debug('Approval requested', { sessionId, userId });
           break;
 
         case 'approval_resolved':
-          // Approval resolved - handled by DirectAgentService
+          // Approval resolved - handled by AgentOrchestrator
           this.logger.debug('Approval resolved', { sessionId, userId });
           break;
 
@@ -478,7 +478,7 @@ export class ChatMessageHandler {
 
         case 'turn_paused':
           // ⭐ SDK 0.71: Long agentic turn was paused
-          // Already persisted by DirectAgentService, just log
+          // Already persisted by AgentOrchestrator, just log
           this.logger.info('Turn paused event', {
             sessionId,
             userId,
@@ -489,7 +489,7 @@ export class ChatMessageHandler {
 
         case 'content_refused':
           // ⭐ SDK 0.71: Content refused due to policy violation
-          // Already persisted by DirectAgentService, just log
+          // Already persisted by AgentOrchestrator, just log
           this.logger.warn('Content refused event', {
             sessionId,
             userId,
@@ -514,7 +514,7 @@ export class ChatMessageHandler {
   }
 
   // ⭐ PHASE 1B: handleMessage() and handleThinking() REMOVED
-  // These methods were fallback duplicates - DirectAgentService now handles ALL persistence
+  // These methods were fallback duplicates - AgentOrchestrator now handles ALL persistence
   // directly via EventStore + MessageQueue before emitting events.
   // If persistenceState !== 'persisted', it's a critical bug (not a fallback scenario).
 

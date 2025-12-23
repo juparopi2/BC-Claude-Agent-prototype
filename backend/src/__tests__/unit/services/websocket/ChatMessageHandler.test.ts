@@ -1,7 +1,7 @@
 /**
  * ChatMessageHandler Unit Tests
  *
- * Tests for ChatMessageHandler which handles WebSocket chat messages with DirectAgentService.
+ * Tests for ChatMessageHandler which handles WebSocket chat messages with AgentOrchestrator.
  * Implements enhanced contract with type-safe event discrimination and audit trail.
  *
  * Pattern: vi.hoisted() + manual re-setup in beforeEach
@@ -46,17 +46,17 @@ vi.mock('@/services/messages/MessageService', () => ({
   getMessageService: vi.fn(() => mockMessageServiceMethods),
 }));
 
-// ===== MOCK DIRECT AGENT SERVICE (vi.hoisted pattern) =====
-const mockDirectAgentServiceMethods = vi.hoisted(() => ({
-  runGraph: vi.fn().mockResolvedValue({
+// ===== MOCK AGENT ORCHESTRATOR (vi.hoisted pattern) =====
+const mockAgentOrchestratorMethods = vi.hoisted(() => ({
+  executeAgent: vi.fn().mockResolvedValue({
     response: 'Test response',
     toolsUsed: [],
     success: true,
   }),
 }));
 
-vi.mock('@/services/agent/DirectAgentService', () => ({
-  getDirectAgentService: vi.fn(() => mockDirectAgentServiceMethods),
+vi.mock('@domains/agent/orchestration', () => ({
+  getAgentOrchestrator: vi.fn(() => mockAgentOrchestratorMethods),
 }));
 
 // ===== MOCK DATABASE FOR SESSION OWNERSHIP (added for F4-003) =====
@@ -107,7 +107,7 @@ describe('ChatMessageHandler', () => {
     mockMessageServiceMethods.saveToolUseMessage.mockResolvedValue('tool-123');
     mockMessageServiceMethods.updateToolResult.mockResolvedValue(undefined);
 
-    mockDirectAgentServiceMethods.runGraph.mockResolvedValue({
+    mockAgentOrchestratorMethods.executeAgent.mockResolvedValue({
       response: 'Test response',
       toolsUsed: [],
       success: true,
@@ -170,7 +170,7 @@ describe('ChatMessageHandler', () => {
       );
     });
 
-    it('should execute agent query via DirectAgentService', async () => {
+    it('should execute agent query via AgentOrchestrator', async () => {
       const data: ChatMessageData = {
         message: testMessage,
         sessionId: testSessionId,
@@ -179,9 +179,9 @@ describe('ChatMessageHandler', () => {
 
       await handler.handle(data, mockSocket as Socket, mockIo as SocketIOServer);
 
-      // ⭐ PHASE 1B: runGraph now receives userId as 4th parameter
-      // ⭐ PHASE 1F: Optional 5th parameter is thinkingConfig (undefined when not provided)
-      expect(mockDirectAgentServiceMethods.runGraph).toHaveBeenCalledWith(
+      // ⭐ PHASE 1B: executeAgent receives userId as 4th parameter
+      // ⭐ PHASE 1F: Optional 5th parameter is options (undefined when not provided)
+      expect(mockAgentOrchestratorMethods.executeAgent).toHaveBeenCalledWith(
         testMessage,
         testSessionId,
         expect.any(Function), // onEvent callback
@@ -191,7 +191,7 @@ describe('ChatMessageHandler', () => {
 
       // ⭐ PHASE 1B: Final log message changed
       expect(mockLogger.info).toHaveBeenCalledWith(
-        '✅ Chat message processed successfully (runGraph completed)',
+        '✅ Chat message processed successfully (executeAgent completed)',
         expect.objectContaining({ sessionId: testSessionId, userId: testUserId })
       );
     });
@@ -249,7 +249,7 @@ describe('ChatMessageHandler', () => {
       };
 
       // Simulate agent calling the event handler
-      mockDirectAgentServiceMethods.runGraph.mockImplementationOnce(
+      mockAgentOrchestratorMethods.executeAgent.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           await onEvent(event);
           return { response: 'Test', toolsUsed: [], success: true };
@@ -268,13 +268,13 @@ describe('ChatMessageHandler', () => {
         userId: testUserId,
       });
 
-      // ⭐ PHASE 1B: No persistence in ChatMessageHandler - DirectAgentService handles all persistence
+      // ⭐ PHASE 1B: No persistence in ChatMessageHandler - AgentOrchestrator handles all persistence
     });
 
     /**
      * ⭐ PHASE 1B: Test REMOVED - "should handle thinking event (with persistence)"
      *
-     * ChatMessageHandler NO LONGER persists thinking events. DirectAgentService handles
+     * ChatMessageHandler NO LONGER persists thinking events. AgentOrchestrator handles
      * all persistence directly via EventStore + MessageQueue.
      *
      * Removed: 2025-11-24
@@ -296,7 +296,7 @@ describe('ChatMessageHandler', () => {
         userId: testUserId,
       };
 
-      mockDirectAgentServiceMethods.runGraph.mockImplementationOnce(
+      mockAgentOrchestratorMethods.executeAgent.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           await onEvent(event);
           return { response: 'Test', toolsUsed: [], success: true };
@@ -305,7 +305,7 @@ describe('ChatMessageHandler', () => {
 
       await handler.handle(data, mockSocket as Socket, mockIo as SocketIOServer);
 
-      // Verify event emitted but no persistence (DirectAgentService handles persistence)
+      // Verify event emitted but no persistence (AgentOrchestrator handles persistence)
       expect(mockIoEmit).toHaveBeenCalledWith('agent:event', event);
     });
 
@@ -325,7 +325,7 @@ describe('ChatMessageHandler', () => {
         userId: testUserId,
       };
 
-      mockDirectAgentServiceMethods.runGraph.mockImplementationOnce(
+      mockAgentOrchestratorMethods.executeAgent.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           await onEvent(event);
           return { response: 'Test', toolsUsed: [], success: true };
@@ -341,7 +341,7 @@ describe('ChatMessageHandler', () => {
     /**
      * ⭐ PHASE 1B: Test REMOVED - "should handle message event with stopReason"
      *
-     * ChatMessageHandler NO LONGER persists message events. DirectAgentService handles
+     * ChatMessageHandler NO LONGER persists message events. AgentOrchestrator handles
      * all persistence directly via EventStore + MessageQueue before emitting events.
      *
      * The message event already has persistenceState = 'persisted' when it arrives at
@@ -368,7 +368,7 @@ describe('ChatMessageHandler', () => {
         userId: testUserId,
       };
 
-      mockDirectAgentServiceMethods.runGraph.mockImplementationOnce(
+      mockAgentOrchestratorMethods.executeAgent.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           await onEvent(event);
           return { response: 'Test', toolsUsed: [], success: true };
@@ -415,7 +415,7 @@ describe('ChatMessageHandler', () => {
         userId: testUserId,
       };
 
-      mockDirectAgentServiceMethods.runGraph.mockImplementationOnce(
+      mockAgentOrchestratorMethods.executeAgent.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           await onEvent(event);
           return { response: 'Test', toolsUsed: [], success: true };
@@ -454,7 +454,7 @@ describe('ChatMessageHandler', () => {
         userId: testUserId,
       };
 
-      mockDirectAgentServiceMethods.runGraph.mockImplementationOnce(
+      mockAgentOrchestratorMethods.executeAgent.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           await onEvent(event);
           return { response: 'Test', toolsUsed: [], success: true };
@@ -510,7 +510,7 @@ describe('ChatMessageHandler', () => {
         userId: testUserId,
       };
 
-      mockDirectAgentServiceMethods.runGraph.mockImplementationOnce(
+      mockAgentOrchestratorMethods.executeAgent.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           await onEvent(event);
           return { response: 'Test', toolsUsed: [], success: true };
@@ -556,7 +556,7 @@ describe('ChatMessageHandler', () => {
         userId: testUserId,
       };
 
-      mockDirectAgentServiceMethods.runGraph.mockImplementationOnce(
+      mockAgentOrchestratorMethods.executeAgent.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           await onEvent(event);
           return { response: 'Test', toolsUsed: [], success: true };
@@ -589,7 +589,7 @@ describe('ChatMessageHandler', () => {
         userId: testUserId,
       };
 
-      mockDirectAgentServiceMethods.runGraph.mockImplementationOnce(
+      mockAgentOrchestratorMethods.executeAgent.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           await onEvent(event);
           return { response: 'Test', toolsUsed: [], success: true };
@@ -629,7 +629,7 @@ describe('ChatMessageHandler', () => {
         userId: testUserId,
       };
 
-      mockDirectAgentServiceMethods.runGraph.mockImplementationOnce(
+      mockAgentOrchestratorMethods.executeAgent.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           await onEvent(event);
           return { response: 'Test', toolsUsed: [], success: true };
@@ -638,7 +638,7 @@ describe('ChatMessageHandler', () => {
 
       await handler.handle(data, mockSocket as Socket, mockIo as SocketIOServer);
 
-      // Verify logger called (approval handled by DirectAgentService)
+      // Verify logger called (approval handled by AgentOrchestrator)
       expect(mockLogger.debug).toHaveBeenCalledWith('Approval requested', {
         sessionId: testSessionId,
         userId: testUserId,
@@ -663,7 +663,7 @@ describe('ChatMessageHandler', () => {
         userId: testUserId,
       };
 
-      mockDirectAgentServiceMethods.runGraph.mockImplementationOnce(
+      mockAgentOrchestratorMethods.executeAgent.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           await onEvent(event);
           return { response: 'Test', toolsUsed: [], success: true };
@@ -672,7 +672,7 @@ describe('ChatMessageHandler', () => {
 
       await handler.handle(data, mockSocket as Socket, mockIo as SocketIOServer);
 
-      // Verify logger called (approval handled by DirectAgentService)
+      // Verify logger called (approval handled by AgentOrchestrator)
       expect(mockLogger.debug).toHaveBeenCalledWith('Approval resolved', {
         sessionId: testSessionId,
         userId: testUserId,
@@ -696,7 +696,7 @@ describe('ChatMessageHandler', () => {
         userId: testUserId,
       };
 
-      mockDirectAgentServiceMethods.runGraph.mockImplementationOnce(
+      mockAgentOrchestratorMethods.executeAgent.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           await onEvent(event);
           return { response: 'Test', toolsUsed: [], success: true };
@@ -766,7 +766,7 @@ describe('ChatMessageHandler', () => {
         }),
       });
 
-      mockDirectAgentServiceMethods.runGraph.mockImplementationOnce(
+      mockAgentOrchestratorMethods.executeAgent.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           // Emit events sequentially
           for (const event of events) {
@@ -835,7 +835,7 @@ describe('ChatMessageHandler', () => {
         }
       );
 
-      mockDirectAgentServiceMethods.runGraph.mockImplementationOnce(
+      mockAgentOrchestratorMethods.executeAgent.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           // Emit events concurrently (simulate race condition)
           await Promise.all(events.map((event) => onEvent(event)));
@@ -896,7 +896,7 @@ describe('ChatMessageHandler', () => {
         callOrder.push('updateToolResult');
       });
 
-      mockDirectAgentServiceMethods.runGraph.mockImplementationOnce(
+      mockAgentOrchestratorMethods.executeAgent.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           for (const event of events) {
             await onEvent(event);
@@ -927,7 +927,7 @@ describe('ChatMessageHandler', () => {
         userId: testUserId,
       };
 
-      mockDirectAgentServiceMethods.runGraph.mockImplementationOnce(
+      mockAgentOrchestratorMethods.executeAgent.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           await onEvent(event);
           return { response: 'Test', toolsUsed: [], success: true };
@@ -947,7 +947,7 @@ describe('ChatMessageHandler', () => {
     /**
      * ⭐ PHASE 1B: Test REMOVED - "should handle persistence errors without breaking event emission"
      *
-     * ChatMessageHandler NO LONGER handles persistence. DirectAgentService handles all persistence
+     * ChatMessageHandler NO LONGER handles persistence. AgentOrchestrator handles all persistence
      * before emitting events, so there are no persistence errors to handle in ChatMessageHandler.
      *
      * Removed: 2025-11-24
@@ -975,7 +975,7 @@ describe('ChatMessageHandler', () => {
         userId: testUserId,
       };
 
-      mockDirectAgentServiceMethods.runGraph.mockImplementationOnce(
+      mockAgentOrchestratorMethods.executeAgent.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           await onEvent(event);
           return { response: 'Test', toolsUsed: [], success: true };
@@ -993,7 +993,7 @@ describe('ChatMessageHandler', () => {
      * ⭐ PHASE 1B: Test REMOVED - "should handle WebSocket emission errors gracefully"
      *
      * This test was testing that thinking event persistence errors don't break WebSocket emission.
-     * With Phase 1B, ChatMessageHandler NO LONGER persists thinking events - DirectAgentService
+     * With Phase 1B, ChatMessageHandler NO LONGER persists thinking events - AgentOrchestrator
      * handles all persistence before emitting events.
      *
      * The test is no longer relevant because there's no persistence to fail in ChatMessageHandler.
@@ -1008,7 +1008,7 @@ describe('ChatMessageHandler', () => {
      * ⭐ PHASE 1B: Test REMOVED - "should pass userId to all persistence methods"
      *
      * ChatMessageHandler NO LONGER calls saveThinkingMessage() or saveAgentMessage().
-     * DirectAgentService handles all persistence directly with userId audit trail.
+     * AgentOrchestrator handles all persistence directly with userId audit trail.
      *
      * Removed: 2025-11-24
      */
@@ -1031,7 +1031,7 @@ describe('ChatMessageHandler', () => {
         userId: testUserId,
       };
 
-      mockDirectAgentServiceMethods.runGraph.mockImplementationOnce(
+      mockAgentOrchestratorMethods.executeAgent.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           await onEvent(event);
           return { response: 'Test', toolsUsed: [], success: true };

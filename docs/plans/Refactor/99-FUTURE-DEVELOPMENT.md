@@ -132,40 +132,31 @@ Fase 4: Fusion Search (2 semanas)
 
 ## Posponer para Fases Futuras
 
-### D3: FakeAnthropicClient - Extended Thinking
+### D3: ~~FakeAnthropicClient - Extended Thinking~~ ✅ OBSOLETO
 
-**Descripción:**
-El `FakeAnthropicClient` actual no soporta extended thinking (blockIndex 0).
+**Estado:** ELIMINADO - Fase 8 (2025-12-22)
 
-**Estado actual:**
+**Motivo:**
+`FakeAnthropicClient` fue eliminado durante la migración de Fase 8 (Part 2).
+Reemplazado por `FakeAgentOrchestrator` que trabaja a nivel de orquestación y soporta
+thinking mediante `FakeScenario.thinkingContent`.
+
+**Nuevo enfoque:**
 ```typescript
-// FakeAnthropicClient.ts
-async *createMessage(params) {
-  // Solo emite blockIndex 1 (mensaje)
-  yield { type: 'content_block_delta', content: 'response' };
-}
+// FakeAgentOrchestrator.setResponse()
+fakeOrchestrator.setResponse({
+  thinkingContent: 'Let me analyze this...',
+  textBlocks: ['Here is my response'],
+  stopReason: 'end_turn',
+});
 ```
 
-**Solución propuesta:**
-```typescript
-async *createMessage(params) {
-  // Primero thinking (blockIndex 0)
-  yield { type: 'content_block_start', blockIndex: 0, blockType: 'thinking' };
-  yield { type: 'content_block_delta', blockIndex: 0, delta: { text: 'Thinking...' } };
-  yield { type: 'content_block_stop', blockIndex: 0 };
+**Archivos eliminados:**
+- `backend/src/services/agent/FakeAnthropicClient.ts`
+- `backend/src/services/agent/IAnthropicClient.ts`
 
-  // Luego mensaje (blockIndex 1)
-  yield { type: 'content_block_start', blockIndex: 1, blockType: 'text' };
-  yield { type: 'content_block_delta', blockIndex: 1, delta: { text: 'Response' } };
-  yield { type: 'content_block_stop', blockIndex: 1 };
-}
-```
-
-**Fase:** Phase 6 (testing improvements)
-
-**Prioridad:** Media
-
-**Estimación:** 0.5 días
+**Archivos nuevos:**
+- `backend/src/domains/agent/orchestration/FakeAgentOrchestrator.ts` (38 tests)
 
 ---
 
@@ -449,16 +440,23 @@ Dashboard de analytics para admins.
 **Fase:** Phase 6 o posterior
 **Estimación:** 5-7 días total
 
-### D15: UNIMPLEMENTED Features (3 tests)
+### D15: UNIMPLEMENTED Features (3 tests) - ✅ PARCIALMENTE RESUELTO
 
-| Archivo | Descripción | Prioridad |
-|---------|-------------|-----------|
-| `approval-flow.e2e.test.ts` | Full approval flow E2E con WebSocket | Alta |
-| `max-tokens.scenario.test.ts` | Manejo de stop_reason: max_tokens | Media |
-| `error-tool.scenario.test.ts` | Manejo de errores en tool execution | Media |
+| Archivo | Descripción | Estado |
+|---------|-------------|--------|
+| `approval-flow.e2e.test.ts` | Full approval flow E2E con WebSocket | ⏸️ Pendiente |
+| `max-tokens.scenario.test.ts` | Manejo de stop_reason: max_tokens | ✅ Habilitado |
+| `error-tool.scenario.test.ts` | Manejo de errores en tool execution | ✅ Habilitado |
 
-**Fase:** Phase 6 o posterior
-**Estimación:** 3-4 días total
+**Actualización 2025-12-22 (Fase 8 Part 2):**
+- `max-tokens.scenario.test.ts`: Skip removido, migrado a FakeAgentOrchestrator
+- `error-tool.scenario.test.ts`: Skip removido, migrado a FakeAgentOrchestrator
+
+**Pendiente:**
+- `approval-flow.e2e.test.ts`: Requiere implementación de ApprovalManager completo (ver sección ApprovalManager)
+
+**Fase restante:** Phase 6 o posterior
+**Estimación restante:** 1-2 días (solo approval flow)
 
 ### D16: DEPRECATED Tests (3 tests) ✅ ELIMINADOS
 
@@ -497,14 +495,14 @@ Tests eliminados 2025-12-22 por usar API obsoleta `executeQueryStreaming`:
 |----|-------------|------|-----------|------|
 | **D1** | **Race condition EventStore** | **Phase 5C** | **Alta** | **1-2** |
 | **D2** | **Multimodal RAG Search** | **URGENTE** | **CRÍTICA** | **30-40** |
-| D3 | FakeAnthropicClient thinking | Phase 6 | Media | 0.5 |
+| D3 | ~~FakeAnthropicClient thinking~~ | ~~Phase 6~~ | ✅ | ~~OBSOLETO~~ |
 | D8 | Dynamic model selection | Phase 6 | Media | 2 |
 | D9 | WebSocket usage alerts | Phase 6 | Baja | 1 |
 | D10 | Message replay | Phase 6 | Baja | 3 |
 | D11 | Tool execution queue | Phase 6 | Media | 4 |
 | D13 | Redis chaos tests | Phase 6 | Media | 2 |
 | D14 | Unimplemented APIs (GDPR, billing, usage) | Phase 6+ | Media | 5-7 |
-| D15 | Unimplemented Features (approval, max-tokens) | Phase 6+ | Alta | 3-4 |
+| D15 | ~~Unimplemented Features~~ (solo approval pending) | Phase 6+ | Media | 1-2 |
 | D16 | ~~Deprecated Tests~~ | ~~N/A~~ | ✅ | ~~Eliminados~~ |
 | D17 | ~~TDD RED - Orchestrator Integration~~ | ~~Phase 7~~ | ✅ | ~~Completado~~ |
 | D18 | Technical Issues (performance, websocket) | Phase 6+ | Media | 2-3 |
@@ -541,4 +539,4 @@ Tests eliminados 2025-12-22 por usar API obsoleta `executeQueryStreaming`:
 
 ---
 
-*Última actualización: 2025-12-22 - Fase 7 Completada, D16 y D17 Resueltos*
+*Última actualización: 2025-12-22 - Fase 8 Part 2 Completada, D3 OBSOLETO, D15 Parcialmente Resuelto (max-tokens, error-tool habilitados)*

@@ -1,5 +1,5 @@
 /**
- * GoldenResponses - Pre-configured FakeAnthropicClient responses
+ * GoldenResponses - Pre-configured FakeScenario responses for agent testing
  *
  * This module provides pre-configured response patterns for the 5 golden flows:
  * 1. Simple text response - Basic conversation
@@ -10,26 +10,17 @@
  *
  * Usage:
  * ```typescript
- * const fake = new FakeAnthropicClient();
- * configureGoldenFlow(fake, 'simple');
- * const service = new DirectAgentService(undefined, undefined, fake);
+ * import { getFakeAgentOrchestrator } from '@domains/agent/orchestration';
+ * import { createGoldenScenario } from './GoldenResponses';
+ *
+ * const fake = getFakeAgentOrchestrator();
+ * fake.setResponse(createGoldenScenario('simple'));
  * ```
  *
  * @module __tests__/e2e/helpers/GoldenResponses
  */
 
-import { FakeAnthropicClient } from '@/services/agent/FakeAnthropicClient';
-
-/**
- * Generate a unique tool ID for each test run to avoid PRIMARY KEY violations.
- * The messages table uses tool IDs as primary keys, so reusing the same ID
- * across test runs causes PK constraint violations.
- *
- * Format: toolu_test_{timestamp}_{random}
- */
-function generateToolId(): string {
-  return `toolu_test_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
-}
+import type { FakeScenario } from '@domains/agent/orchestration';
 
 /**
  * Golden flow types
@@ -37,143 +28,132 @@ function generateToolId(): string {
 export type GoldenFlowType = 'simple' | 'thinking' | 'tool_use' | 'approval' | 'error';
 
 /**
- * Configure FakeAnthropicClient for simple text response flow
+ * Create FakeScenario for simple text response flow
  *
  * Flow: User sends message -> Claude responds with text -> Complete
  *
- * @param fake - The FakeAnthropicClient instance to configure
+ * @returns FakeScenario configuration
  */
-export function configureSimpleTextResponse(fake: FakeAnthropicClient): void {
-  fake.addResponse({
+export function createSimpleTextScenario(): FakeScenario {
+  return {
     textBlocks: ['Hello! I am Claude, your Business Central assistant.'],
     stopReason: 'end_turn',
-  });
+  };
 }
 
 /**
- * Configure FakeAnthropicClient for extended thinking flow
+ * Create FakeScenario for extended thinking flow
  *
  * Flow: User sends message -> Claude thinks -> Claude responds -> Complete
  *
- * @param fake - The FakeAnthropicClient instance to configure
+ * @returns FakeScenario configuration
  */
-export function configureThinkingResponse(fake: FakeAnthropicClient): void {
-  fake.addResponse({
-    thinkingBlocks: [
-      'Let me analyze this request carefully...',
-      'Considering the implications and context...',
-    ],
+export function createThinkingScenario(): FakeScenario {
+  return {
+    thinkingContent: 'Let me analyze this request carefully... Considering the implications and context...',
     textBlocks: ['Based on my analysis, here is my response.'],
     stopReason: 'end_turn',
-  });
+  };
 }
 
 /**
- * Configure FakeAnthropicClient for tool use flow (read operation)
+ * Create FakeScenario for tool use flow (read operation)
  *
  * Flow: User sends message -> Claude requests tool use -> Tool executes ->
  *       Claude responds with result -> Complete
  *
- * @param fake - The FakeAnthropicClient instance to configure
+ * @returns FakeScenario configuration
  */
-export function configureToolUseResponse(fake: FakeAnthropicClient): void {
-  // First response: request tool use
-  fake.addResponse({
-    textBlocks: ['Let me look up that information for you.'],
-    toolUseBlocks: [
+export function createToolUseScenario(): FakeScenario {
+  return {
+    textBlocks: [
+      'Let me look up that information for you.',
+      'I found 5 customers in Business Central.',
+    ],
+    toolCalls: [
       {
-        id: generateToolId(), // Dynamic ID to avoid PK violations
-        name: 'bc_customers_read',
-        input: { $top: 5 },
+        toolName: 'bc_customers_read',
+        args: { $top: 5 },
+        result: { value: [{ id: '1', name: 'Customer 1' }] },
+        success: true,
       },
     ],
-    stopReason: 'tool_use',
-  });
-
-  // Second response: after tool result
-  fake.addResponse({
-    textBlocks: ['I found 5 customers in Business Central.'],
     stopReason: 'end_turn',
-  });
+  };
 }
 
 /**
- * Configure FakeAnthropicClient for approval flow (write operation)
+ * Create FakeScenario for approval flow (write operation)
  *
  * Flow: User sends message -> Claude requests tool use (write) ->
  *       Backend requests approval -> User approves -> Tool executes ->
  *       Claude responds with result -> Complete
  *
- * @param fake - The FakeAnthropicClient instance to configure
+ * @returns FakeScenario configuration
  */
-export function configureApprovalResponse(fake: FakeAnthropicClient): void {
-  // First response: request tool use for write operation
-  fake.addResponse({
-    textBlocks: ['I will create a new customer for you.'],
-    toolUseBlocks: [
+export function createApprovalScenario(): FakeScenario {
+  return {
+    textBlocks: [
+      'I will create a new customer for you.',
+      'The customer has been created successfully.',
+    ],
+    toolCalls: [
       {
-        id: generateToolId(), // Dynamic ID to avoid PK violations
-        name: 'bc_customers_create',
-        input: { name: 'Test Customer', email: 'test@example.com' },
+        toolName: 'bc_customers_create',
+        args: { name: 'Test Customer', email: 'test@example.com' },
+        result: { id: 'new-customer-id', name: 'Test Customer' },
+        success: true,
       },
     ],
-    stopReason: 'tool_use',
-  });
-
-  // Second response: after approval and tool result
-  fake.addResponse({
-    textBlocks: ['The customer has been created successfully.'],
     stopReason: 'end_turn',
-  });
+  };
 }
 
 /**
- * Configure FakeAnthropicClient for error handling flow
+ * Create FakeScenario for error handling flow
  *
  * Flow: User sends message -> Claude API throws error -> Backend handles error
  *
- * @param fake - The FakeAnthropicClient instance to configure
+ * @returns FakeScenario configuration
  */
-export function configureErrorResponse(fake: FakeAnthropicClient): void {
-  fake.throwOnNextCall(new Error('API Error: Rate limit exceeded'));
+export function createErrorScenario(): FakeScenario {
+  return {
+    error: 'API Error: Rate limit exceeded',
+  };
 }
 
 /**
- * Reset and configure FakeAnthropicClient for a specific golden flow
+ * Create FakeScenario for a specific golden flow
  *
- * This is the main entry point for configuring fake responses.
- * It resets the fake client and configures it for one of the 5 golden flows.
+ * This is the main entry point for creating fake response scenarios.
+ * It returns a FakeScenario configuration for one of the 5 golden flows.
  *
- * @param fake - The FakeAnthropicClient instance to configure
- * @param flow - The golden flow type to configure
+ * @param flow - The golden flow type to create
+ * @returns FakeScenario configuration
  *
  * @example
  * ```typescript
- * const fake = new FakeAnthropicClient();
- * configureGoldenFlow(fake, 'simple');
+ * import { getFakeAgentOrchestrator } from '@domains/agent/orchestration';
+ * import { createGoldenScenario } from './GoldenResponses';
+ *
+ * const fake = getFakeAgentOrchestrator();
+ * fake.setResponse(createGoldenScenario('simple'));
  * // fake is now ready to simulate a simple text response flow
  * ```
  */
-export function configureGoldenFlow(
-  fake: FakeAnthropicClient,
-  flow: GoldenFlowType
-): void {
-  fake.reset();
+export function createGoldenScenario(flow: GoldenFlowType): FakeScenario {
   switch (flow) {
     case 'simple':
-      configureSimpleTextResponse(fake);
-      break;
+      return createSimpleTextScenario();
     case 'thinking':
-      configureThinkingResponse(fake);
-      break;
+      return createThinkingScenario();
     case 'tool_use':
-      configureToolUseResponse(fake);
-      break;
+      return createToolUseScenario();
     case 'approval':
-      configureApprovalResponse(fake);
-      break;
+      return createApprovalScenario();
     case 'error':
-      configureErrorResponse(fake);
-      break;
+      return createErrorScenario();
+    default:
+      throw new Error(`Unknown flow type: ${flow}`);
   }
 }

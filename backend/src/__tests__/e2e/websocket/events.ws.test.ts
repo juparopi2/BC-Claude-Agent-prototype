@@ -2,19 +2,35 @@
  * E2E Tests: WebSocket Agent Events
  *
  * Tests agent:event types including user_message_confirmed, message_chunk, and complete.
- * Uses FakeAnthropicClient configured via GoldenResponses for predictable behavior.
+ * Uses FakeAgentOrchestrator configured via GoldenResponses for predictable behavior.
+ *
+ * REFACTORED: Uses FakeAgentOrchestrator instead of FakeAnthropicClient.
  *
  * @module __tests__/e2e/websocket/events.ws.test
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import { setupE2ETest, E2E_CONFIG } from '../setup.e2e';
 import { createE2ETestClient, E2ETestClient } from '../helpers/E2ETestClient';
 import { TestSessionFactory } from '../../integration/helpers/TestSessionFactory';
 import { TEST_TIMEOUTS } from '../../integration/helpers/constants';
-import { configureGoldenFlow } from '../helpers/GoldenResponses';
-import { FakeAnthropicClient } from '@/services/agent/FakeAnthropicClient';
-import { getDirectAgentService, __resetDirectAgentService } from '@/services/agent';
+import { createGoldenScenario } from '../helpers/GoldenResponses';
+import {
+  FakeAgentOrchestrator,
+  __resetAgentOrchestrator,
+} from '@domains/agent/orchestration';
+
+// Create a shared FakeAgentOrchestrator instance for the entire test suite
+const fakeOrchestrator = new FakeAgentOrchestrator();
+
+// Mock getAgentOrchestrator to return our fake (only when not using real API)
+vi.mock('@domains/agent/orchestration', async (importOriginal) => {
+  const original = await importOriginal<typeof import('@domains/agent/orchestration')>();
+  return {
+    ...original,
+    getAgentOrchestrator: vi.fn(() => fakeOrchestrator),
+  };
+});
 
 describe('E2E: WebSocket Agent Events', () => {
   setupE2ETest();
@@ -22,7 +38,6 @@ describe('E2E: WebSocket Agent Events', () => {
   let client: E2ETestClient;
   let userId: string;
   let sessionCookie: string;
-  let fakeClient: FakeAnthropicClient;
 
   beforeAll(async () => {
     const auth = await factory.createTestUser();
@@ -32,13 +47,13 @@ describe('E2E: WebSocket Agent Events', () => {
 
   afterAll(async () => {
     await factory.cleanup();
+    __resetAgentOrchestrator();
   });
 
   beforeEach(async () => {
-    // Reset and configure fake client if not using real API
+    // Reset FakeAgentOrchestrator for each test
     if (!E2E_CONFIG.apiMode.useRealApi) {
-      __resetDirectAgentService();
-      fakeClient = new FakeAnthropicClient();
+      fakeOrchestrator.reset();
     }
 
     client = createE2ETestClient();
@@ -56,8 +71,7 @@ describe('E2E: WebSocket Agent Events', () => {
   describe('user_message_confirmed event', () => {
     it('should receive user_message_confirmed before agent events', async () => {
       if (!E2E_CONFIG.apiMode.useRealApi) {
-        configureGoldenFlow(fakeClient, 'simple');
-        getDirectAgentService(undefined, undefined, fakeClient);
+        fakeOrchestrator.setResponse(createGoldenScenario('simple'));
       }
 
       // Create session
@@ -82,8 +96,7 @@ describe('E2E: WebSocket Agent Events', () => {
 
     it('should include sequence number and message ID', async () => {
       if (!E2E_CONFIG.apiMode.useRealApi) {
-        configureGoldenFlow(fakeClient, 'simple');
-        getDirectAgentService(undefined, undefined, fakeClient);
+        fakeOrchestrator.setResponse(createGoldenScenario('simple'));
       }
 
       const httpClient = createE2ETestClient();
@@ -107,8 +120,7 @@ describe('E2E: WebSocket Agent Events', () => {
   describe('message_chunk events', () => {
     it('should receive streaming message_chunk events', async () => {
       if (!E2E_CONFIG.apiMode.useRealApi) {
-        configureGoldenFlow(fakeClient, 'simple');
-        getDirectAgentService(undefined, undefined, fakeClient);
+        fakeOrchestrator.setResponse(createGoldenScenario('simple'));
       }
 
       const httpClient = createE2ETestClient();
@@ -132,8 +144,7 @@ describe('E2E: WebSocket Agent Events', () => {
 
     it('should accumulate chunks into coherent text', async () => {
       if (!E2E_CONFIG.apiMode.useRealApi) {
-        configureGoldenFlow(fakeClient, 'simple');
-        getDirectAgentService(undefined, undefined, fakeClient);
+        fakeOrchestrator.setResponse(createGoldenScenario('simple'));
       }
 
       const httpClient = createE2ETestClient();
@@ -167,8 +178,7 @@ describe('E2E: WebSocket Agent Events', () => {
   describe('complete event', () => {
     it('should receive complete event at the end', async () => {
       if (!E2E_CONFIG.apiMode.useRealApi) {
-        configureGoldenFlow(fakeClient, 'simple');
-        getDirectAgentService(undefined, undefined, fakeClient);
+        fakeOrchestrator.setResponse(createGoldenScenario('simple'));
       }
 
       const httpClient = createE2ETestClient();
@@ -189,8 +199,7 @@ describe('E2E: WebSocket Agent Events', () => {
 
     it('should be the last event in the sequence', async () => {
       if (!E2E_CONFIG.apiMode.useRealApi) {
-        configureGoldenFlow(fakeClient, 'simple');
-        getDirectAgentService(undefined, undefined, fakeClient);
+        fakeOrchestrator.setResponse(createGoldenScenario('simple'));
       }
 
       const httpClient = createE2ETestClient();
@@ -218,8 +227,7 @@ describe('E2E: WebSocket Agent Events', () => {
   describe('Event ordering', () => {
     it('should receive events in correct order', async () => {
       if (!E2E_CONFIG.apiMode.useRealApi) {
-        configureGoldenFlow(fakeClient, 'simple');
-        getDirectAgentService(undefined, undefined, fakeClient);
+        fakeOrchestrator.setResponse(createGoldenScenario('simple'));
       }
 
       const httpClient = createE2ETestClient();
@@ -254,8 +262,7 @@ describe('E2E: WebSocket Agent Events', () => {
   describe('Thinking events', () => {
     it('should receive thinking events when extended thinking is used', async () => {
       if (!E2E_CONFIG.apiMode.useRealApi) {
-        configureGoldenFlow(fakeClient, 'thinking');
-        getDirectAgentService(undefined, undefined, fakeClient);
+        fakeOrchestrator.setResponse(createGoldenScenario('thinking'));
       }
 
       const httpClient = createE2ETestClient();
@@ -276,7 +283,7 @@ describe('E2E: WebSocket Agent Events', () => {
       const thinkingEvents = events.filter(e => e.data?.type === 'thinking');
 
       if (!E2E_CONFIG.apiMode.useRealApi) {
-        // FakeAnthropicClient with 'thinking' flow should produce thinking events
+        // FakeAgentOrchestrator with 'thinking' scenario should produce thinking events
         expect(thinkingEvents.length).toBeGreaterThan(0);
       }
     });

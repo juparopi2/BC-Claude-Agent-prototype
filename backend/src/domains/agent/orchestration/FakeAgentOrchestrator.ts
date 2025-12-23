@@ -1,0 +1,335 @@
+/**
+ * FakeAgentOrchestrator for Testing
+ *
+ * Mock implementation of IAgentOrchestrator for integration and E2E tests.
+ * Allows configuring fake responses and events without calling Anthropic API.
+ *
+ * @module domains/agent/orchestration/FakeAgentOrchestrator
+ */
+
+import { v4 as uuidv4 } from 'uuid';
+import type {
+  AgentEvent,
+  AgentExecutionResult,
+  SessionStartEvent,
+  MessageChunkEvent,
+  MessageEvent,
+  CompleteEvent,
+  ThinkingChunkEvent,
+  ThinkingCompleteEvent,
+  ToolUseEvent,
+  ToolResultEvent,
+  ErrorEvent,
+} from '@bc-agent/shared';
+import type { IAgentOrchestrator, ExecuteStreamingOptions } from './types';
+
+/**
+ * Configuration for a fake response scenario
+ */
+export interface FakeScenario {
+  /** Text content to stream in chunks */
+  textBlocks?: string[];
+  /** Thinking content (for extended thinking tests) */
+  thinkingContent?: string;
+  /** Tool calls to simulate */
+  toolCalls?: Array<{
+    toolName: string;
+    args: Record<string, unknown>;
+    result: unknown;
+    success?: boolean;
+  }>;
+  /** Error to throw */
+  error?: Error | string;
+  /** Delay between events in ms */
+  delayMs?: number;
+  /** Stop reason */
+  stopReason?: 'end_turn' | 'tool_use' | 'max_tokens';
+}
+
+/**
+ * Default scenario for simple text response
+ */
+const DEFAULT_SCENARIO: FakeScenario = {
+  textBlocks: ['This is a fake response from FakeAgentOrchestrator.'],
+  stopReason: 'end_turn',
+};
+
+/**
+ * FakeAgentOrchestrator for testing
+ *
+ * Usage:
+ * ```typescript
+ * const fake = new FakeAgentOrchestrator();
+ *
+ * // Configure a simple text response
+ * fake.setResponse({ textBlocks: ['Hello, world!'] });
+ *
+ * // Configure with thinking
+ * fake.setResponse({
+ *   thinkingContent: 'Let me think...',
+ *   textBlocks: ['Here is my answer.'],
+ * });
+ *
+ * // Configure with tool calls
+ * fake.setResponse({
+ *   toolCalls: [{
+ *     toolName: 'list_all_entities',
+ *     args: {},
+ *     result: [{ id: '1', name: 'Test' }],
+ *   }],
+ *   textBlocks: ['I found one entity.'],
+ * });
+ *
+ * // Configure an error
+ * fake.setResponse({ error: new Error('API Error') });
+ * ```
+ */
+export class FakeAgentOrchestrator implements IAgentOrchestrator {
+  private scenario: FakeScenario = DEFAULT_SCENARIO;
+  private callCount = 0;
+  private lastCallArgs: {
+    prompt: string;
+    sessionId: string;
+    userId?: string;
+    options?: ExecuteStreamingOptions;
+  } | null = null;
+
+  /**
+   * Set the fake response scenario
+   */
+  setResponse(scenario: FakeScenario): void {
+    this.scenario = { ...DEFAULT_SCENARIO, ...scenario };
+  }
+
+  /**
+   * Reset to default scenario
+   */
+  reset(): void {
+    this.scenario = DEFAULT_SCENARIO;
+    this.callCount = 0;
+    this.lastCallArgs = null;
+  }
+
+  /**
+   * Get number of times executeAgent was called
+   */
+  getCallCount(): number {
+    return this.callCount;
+  }
+
+  /**
+   * Get the arguments from the last call
+   */
+  getLastCallArgs(): typeof this.lastCallArgs {
+    return this.lastCallArgs;
+  }
+
+  /**
+   * Execute the fake agent
+   */
+  async executeAgent(
+    prompt: string,
+    sessionId: string,
+    onEvent?: (event: AgentEvent) => void,
+    userId?: string,
+    options?: ExecuteStreamingOptions
+  ): Promise<AgentExecutionResult> {
+    this.callCount++;
+    this.lastCallArgs = { prompt, sessionId, userId, options };
+
+    const emit = onEvent ?? (() => {});
+    const delay = this.scenario.delayMs ?? 0;
+    let eventIndex = 0;
+
+    const createBaseEvent = () => ({
+      timestamp: new Date().toISOString(),
+      eventId: uuidv4(),
+      persistenceState: 'transient' as const,
+      eventIndex: eventIndex++,
+    });
+
+    // Helper for delays
+    const wait = async () => {
+      if (delay > 0) {
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    };
+
+    // Check for error scenario
+    if (this.scenario.error) {
+      const errorEvent: ErrorEvent = {
+        ...createBaseEvent(),
+        type: 'error',
+        error: this.scenario.error instanceof Error
+          ? this.scenario.error.message
+          : this.scenario.error,
+        code: 'FAKE_ERROR',
+      };
+      emit(errorEvent);
+
+      return {
+        sessionId,
+        response: '',
+        toolsUsed: [],
+        success: false,
+        error: errorEvent.error,
+      };
+    }
+
+    // Emit session_start
+    const sessionStartEvent: SessionStartEvent = {
+      ...createBaseEvent(),
+      type: 'session_start',
+      sessionId,
+      userId: userId ?? 'fake-user',
+    };
+    emit(sessionStartEvent);
+    await wait();
+
+    // Emit thinking events if configured
+    if (this.scenario.thinkingContent) {
+      const chunks = this.chunkText(this.scenario.thinkingContent, 20);
+      for (const chunk of chunks) {
+        const thinkingChunk: ThinkingChunkEvent = {
+          ...createBaseEvent(),
+          type: 'thinking_chunk',
+          content: chunk,
+        };
+        emit(thinkingChunk);
+        await wait();
+      }
+
+      const thinkingComplete: ThinkingCompleteEvent = {
+        ...createBaseEvent(),
+        type: 'thinking_complete',
+        content: this.scenario.thinkingContent,
+      };
+      emit(thinkingComplete);
+      await wait();
+    }
+
+    // Emit tool calls if configured
+    const toolsUsed: string[] = [];
+    if (this.scenario.toolCalls) {
+      for (const tool of this.scenario.toolCalls) {
+        const toolUseId = uuidv4();
+
+        const toolUseEvent: ToolUseEvent = {
+          ...createBaseEvent(),
+          type: 'tool_use',
+          toolName: tool.toolName,
+          args: tool.args,
+          toolUseId,
+        };
+        emit(toolUseEvent);
+        await wait();
+
+        const toolResultEvent: ToolResultEvent = {
+          ...createBaseEvent(),
+          type: 'tool_result',
+          toolName: tool.toolName,
+          args: tool.args,
+          result: tool.result,
+          success: tool.success ?? true,
+          toolUseId,
+        };
+        emit(toolResultEvent);
+        await wait();
+
+        toolsUsed.push(tool.toolName);
+      }
+    }
+
+    // Emit text content as message chunks
+    const messageId = `msg_fake_${uuidv4().slice(0, 8)}`;
+    let fullContent = '';
+
+    for (const block of this.scenario.textBlocks ?? []) {
+      const chunks = this.chunkText(block, 10);
+      for (const chunk of chunks) {
+        fullContent += chunk;
+        const chunkEvent: MessageChunkEvent = {
+          ...createBaseEvent(),
+          type: 'message_chunk',
+          content: chunk,
+          messageId,
+        };
+        emit(chunkEvent);
+        await wait();
+      }
+    }
+
+    // Emit final message
+    const messageEvent: MessageEvent = {
+      ...createBaseEvent(),
+      type: 'message',
+      content: fullContent,
+      messageId,
+      role: 'assistant',
+      stopReason: this.scenario.stopReason ?? 'end_turn',
+      tokenUsage: {
+        inputTokens: prompt.length,
+        outputTokens: fullContent.length,
+      },
+    };
+    emit(messageEvent);
+    await wait();
+
+    // Emit complete event
+    const completeEvent: CompleteEvent = {
+      ...createBaseEvent(),
+      type: 'complete',
+      reason: 'success',
+    };
+    emit(completeEvent);
+
+    return {
+      sessionId,
+      response: fullContent,
+      messageId,
+      toolsUsed,
+      success: true,
+      tokenUsage: {
+        inputTokens: prompt.length,
+        outputTokens: fullContent.length,
+        totalTokens: prompt.length + fullContent.length,
+      },
+    };
+  }
+
+  /**
+   * Split text into chunks for streaming simulation
+   */
+  private chunkText(text: string, chunkSize: number): string[] {
+    const chunks: string[] = [];
+    for (let i = 0; i < text.length; i += chunkSize) {
+      chunks.push(text.slice(i, i + chunkSize));
+    }
+    return chunks;
+  }
+}
+
+/**
+ * Singleton instance for tests
+ */
+let fakeOrchestratorInstance: FakeAgentOrchestrator | null = null;
+
+/**
+ * Get the singleton FakeAgentOrchestrator instance
+ */
+export function getFakeAgentOrchestrator(): FakeAgentOrchestrator {
+  if (!fakeOrchestratorInstance) {
+    fakeOrchestratorInstance = new FakeAgentOrchestrator();
+  }
+  return fakeOrchestratorInstance;
+}
+
+/**
+ * Reset the singleton (for test isolation)
+ */
+export function __resetFakeAgentOrchestrator(): void {
+  if (fakeOrchestratorInstance) {
+    fakeOrchestratorInstance.reset();
+  }
+  fakeOrchestratorInstance = null;
+}

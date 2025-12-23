@@ -1,7 +1,7 @@
 # Refactor de DirectAgentService - Documentación
 
 **Fecha**: 2025-12-22
-**Estado**: En Progreso - Fase 7 (Orchestrator) Completada ✅
+**Estado**: En Progreso - Fase 8 (Integración) Parcialmente Completada ✅
 
 ---
 
@@ -11,9 +11,10 @@
 |---------|-------|
 | **Clases implementadas** | 14 / 14 (100%) |
 | **Tests nuevos** | 507 pasando |
-| **Tests totales** | 2,499 pasando |
+| **Tests unitarios totales** | 2,137 pasando |
 | **Lint** | 0 errores |
-| **Build** | 359 archivos compilados |
+| **Build** | 338 archivos compilados |
+| **LOC eliminados** | ~3,000 (DirectAgentService + archivos obsoletos) |
 
 ### Clases Completadas ✅
 
@@ -176,12 +177,31 @@ Este directorio contiene la documentación completa del refactor del DirectAgent
     - Fix: Emisión de usage desde stream_end events
     - 30 unit tests + 8 integration tests para AgentOrchestrator
     - 15 unit tests para StreamEventRouter
+11. ✅ **Fase 8 (Integración - Parte 1):** Cutover a AgentOrchestrator
+    - ✅ `ChatMessageHandler.ts` actualizado (`runGraph()` → `executeAgent()`)
+    - ✅ `server.ts` actualizado (imports y inicialización)
+    - ✅ `services/agent/index.ts` re-exporta desde domains
+    - ✅ Eliminados ~3,000 LOC de código obsoleto:
+      - `DirectAgentService.ts` (1,471 LOC)
+      - `AnthropicClient.ts`, `IAnthropicClient.ts`, `FakeAnthropicClient.ts`
+      - Carpetas `execution/` y `messages/` completas
+    - ✅ Creado `FakeAgentOrchestrator` para tests
+    - ✅ Tests unitarios migrados (2,137 pasando)
 
 ### En Progreso ⏳
 
-11. ⏳ **Fase 8 (Integración):** ChatMessageHandler, E2E tests
-12. ⏳ **Fase 9 (Cleanup):** Eliminar DirectAgentService, documentación final
+12. ⏳ **Fase 8 (Integración - Parte 2):** Migrar tests E2E a FakeAgentOrchestrator
+    - `chatmessagehandler-agent.integration.test.ts`
+    - `events.ws.test.ts`
+    - `e2e/helpers/ResponseScenarioRegistry.ts`
+    - `e2e/helpers/GoldenResponses.ts`
+    - `e2e/helpers/CapturedResponseValidator.ts`
+    - `e2e/scenarios/patterns/*.test.ts`
+
+    **Nota**: El patrón de mocking cambió de DI (constructor injection) a `vi.mock()`.
+
+13. ⏳ **Fase 9 (Cleanup):** Documentación final
 
 ---
 
-*Última actualización: 2025-12-22 - Fase 7 Completada*
+*Última actualización: 2025-12-22 - Fase 8 (Parte 1) Completada*

@@ -1,7 +1,7 @@
 /**
- * ChatMessageHandler + DirectAgentService Integration Tests
+ * ChatMessageHandler + AgentOrchestrator Integration Tests
  *
- * Tests the integration between ChatMessageHandler and DirectAgentService,
+ * Tests the integration between ChatMessageHandler and AgentOrchestrator,
  * verifying that events are correctly emitted with proper persistenceState.
  *
  * This test file focuses on:
@@ -9,10 +9,12 @@
  * 2. Sequence number assignment for persisted events
  * 3. Tool use events with proper ID consistency
  *
+ * REFACTORED: Uses FakeAgentOrchestrator instead of FakeAnthropicClient.
+ *
  * @module __tests__/integration/websocket/chatmessagehandler-agent.integration.test.ts
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 
 // Test helpers - using REAL database and Redis
 import {
@@ -28,35 +30,41 @@ import {
   setupDatabaseForTests,
 } from '../helpers';
 
-// Real services with DI support
-import { FakeAnthropicClient } from '@/services/agent/FakeAnthropicClient';
+// Import FakeAgentOrchestrator for testing
 import {
-  getDirectAgentService,
-  __resetDirectAgentService,
-} from '@/services/agent/DirectAgentService';
+  FakeAgentOrchestrator,
+  __resetAgentOrchestrator,
+} from '@domains/agent/orchestration';
 import { getChatMessageHandler } from '@/services/websocket/ChatMessageHandler';
 
-describe('ChatMessageHandler + DirectAgentService Integration', () => {
+// Create a shared FakeAgentOrchestrator instance for the entire test suite
+const fakeOrchestrator = new FakeAgentOrchestrator();
+
+// Mock getAgentOrchestrator to return our fake
+vi.mock('@domains/agent/orchestration', async (importOriginal) => {
+  const original = await importOriginal<typeof import('@domains/agent/orchestration')>();
+  return {
+    ...original,
+    getAgentOrchestrator: vi.fn(() => fakeOrchestrator),
+  };
+});
+
+describe('ChatMessageHandler + AgentOrchestrator Integration', () => {
   // Setup REAL database + Redis connection
   setupDatabaseForTests();
 
   let serverResult: SocketIOServerResult;
   let factory: TestSessionFactory;
   let client: TestSocketClient | null = null;
-  let fakeAnthropicClient: FakeAnthropicClient;
 
   beforeAll(async () => {
-    // 1. Create FakeAnthropicClient for testing
-    fakeAnthropicClient = new FakeAnthropicClient();
+    // 1. Reset AgentOrchestrator singleton
+    __resetAgentOrchestrator();
 
-    // 2. Reset DirectAgentService singleton and inject FakeAnthropicClient
-    __resetDirectAgentService();
-    getDirectAgentService(undefined, undefined, fakeAnthropicClient);
-
-    // 3. Get chat message handler - uses REAL services with injected FakeAnthropicClient
+    // 2. Get chat message handler - uses mocked getAgentOrchestrator
     const chatHandler = getChatMessageHandler();
 
-    // 4. Create Socket.IO server with custom chat:message handler
+    // 3. Create Socket.IO server with custom chat:message handler
     serverResult = await createTestSocketIOServer({
       handlers: {
         onChatMessage: async (socket: AuthenticatedSocket, data, io) => {
@@ -65,13 +73,13 @@ describe('ChatMessageHandler + DirectAgentService Integration', () => {
       },
     });
 
-    // 5. Create test session factory
+    // 4. Create test session factory
     factory = createTestSessionFactory();
   }, TEST_TIMEOUTS.BEFORE_ALL);
 
   afterAll(async () => {
-    // Reset DirectAgentService singleton to avoid affecting other tests
-    __resetDirectAgentService();
+    // Reset AgentOrchestrator singleton to avoid affecting other tests
+    __resetAgentOrchestrator();
 
     await cleanupAllTestData();
     if (client) await client.disconnect();
@@ -82,8 +90,8 @@ describe('ChatMessageHandler + DirectAgentService Integration', () => {
   beforeEach(() => {
     client = null;
 
-    // Reset FakeAnthropicClient for each test
-    fakeAnthropicClient.reset();
+    // Reset FakeAgentOrchestrator for each test
+    fakeOrchestrator.reset();
   });
 
   afterEach(async () => {
@@ -96,10 +104,9 @@ describe('ChatMessageHandler + DirectAgentService Integration', () => {
   describe('Persistence State Verification', () => {
     it('should emit user_message_confirmed with sequenceNumber (persisted)', async () => {
       // Configure simple response
-      fakeAnthropicClient.addResponse({
+      fakeOrchestrator.setResponse({
         textBlocks: ['Simple test response.'],
         stopReason: 'end_turn',
-        usage: { input_tokens: 50, output_tokens: 25 },
       });
 
       const testUser = await factory.createTestUser({ prefix: 'persist_user_' }, serverResult.redisClient);
@@ -128,10 +135,9 @@ describe('ChatMessageHandler + DirectAgentService Integration', () => {
 
     it('should emit message_chunk without sequenceNumber (transient)', async () => {
       // Configure response with text
-      fakeAnthropicClient.addResponse({
+      fakeOrchestrator.setResponse({
         textBlocks: ['This is a longer response that generates chunks.'],
         stopReason: 'end_turn',
-        usage: { input_tokens: 50, output_tokens: 40 },
       });
 
       const testUser = await factory.createTestUser({ prefix: 'persist_chunk_' }, serverResult.redisClient);
@@ -170,10 +176,9 @@ describe('ChatMessageHandler + DirectAgentService Integration', () => {
 
     it('should emit final message with required fields (persisted to DB)', async () => {
       // Configure simple response
-      fakeAnthropicClient.addResponse({
+      fakeOrchestrator.setResponse({
         textBlocks: ['Final message with persistence.'],
         stopReason: 'end_turn',
-        usage: { input_tokens: 50, output_tokens: 30 },
       });
 
       const testUser = await factory.createTestUser({ prefix: 'persist_msg_' }, serverResult.redisClient);
@@ -206,25 +211,18 @@ describe('ChatMessageHandler + DirectAgentService Integration', () => {
 
   describe('Tool Use Event Consistency', () => {
     it('should emit tool_use and tool_result with matching toolUseId', async () => {
-      // Configure response with tool use
-      fakeAnthropicClient.addResponse({
-        textBlocks: ['Let me check that for you.'],
-        toolUseBlocks: [
+      // Configure response with tool use (FakeAgentOrchestrator handles tool execution internally)
+      fakeOrchestrator.setResponse({
+        textBlocks: ['Let me check that for you.', 'Here are the results from the tool.'],
+        toolCalls: [
           {
-            id: 'toolu_test_customers_01',
-            name: 'getCustomers',
-            input: { top: 5 },
+            toolName: 'getCustomers',
+            args: { top: 5 },
+            result: { customers: [] },
+            success: true,
           },
         ],
-        stopReason: 'tool_use',
-        usage: { input_tokens: 100, output_tokens: 75 },
-      });
-
-      // Configure follow-up response after tool result
-      fakeAnthropicClient.addResponse({
-        textBlocks: ['Here are the results from the tool.'],
         stopReason: 'end_turn',
-        usage: { input_tokens: 150, output_tokens: 50 },
       });
 
       const testUser = await factory.createTestUser({ prefix: 'tool_id_' }, serverResult.redisClient);
@@ -270,25 +268,18 @@ describe('ChatMessageHandler + DirectAgentService Integration', () => {
     });
 
     it('should emit tool events with correct structure', async () => {
-      // Configure response with tool use
-      fakeAnthropicClient.addResponse({
-        textBlocks: ['Checking vendors...'],
-        toolUseBlocks: [
+      // Configure response with tool use (FakeAgentOrchestrator handles tool execution internally)
+      fakeOrchestrator.setResponse({
+        textBlocks: ['Checking vendors...', 'Found the vendors.'],
+        toolCalls: [
           {
-            id: 'toolu_test_vendors_01',
-            name: 'getVendors',
-            input: { top: 3 },
+            toolName: 'getVendors',
+            args: { top: 3 },
+            result: { vendors: [] },
+            success: true,
           },
         ],
-        stopReason: 'tool_use',
-        usage: { input_tokens: 80, output_tokens: 60 },
-      });
-
-      // Follow-up response
-      fakeAnthropicClient.addResponse({
-        textBlocks: ['Found the vendors.'],
         stopReason: 'end_turn',
-        usage: { input_tokens: 120, output_tokens: 40 },
       });
 
       const testUser = await factory.createTestUser({ prefix: 'tool_seq_' }, serverResult.redisClient);
@@ -328,16 +319,15 @@ describe('ChatMessageHandler + DirectAgentService Integration', () => {
   });
 
   // NOTE: Error event emission test was removed during QA audit (2025-12-17)
-  // Reason: FakeAnthropicClient's throwOnNextCall doesn't propagate errors through
-  // the agent pipeline in a way that emits an 'error' event to WebSocket.
-  // Coverage exists in: unit tests and message-flow.integration.test.ts Error Handling suite;
+  // Reason: Error propagation through the agent pipeline is tested in
+  // message-flow.integration.test.ts "handles errors gracefully" test using
+  // FakeAgentOrchestrator.setResponse({ error: 'message' }).
 
   describe('Event Ordering Invariants', () => {
     it('should emit user_message_confirmed BEFORE any agent events', async () => {
-      fakeAnthropicClient.addResponse({
+      fakeOrchestrator.setResponse({
         textBlocks: ['Response after user message.'],
         stopReason: 'end_turn',
-        usage: { input_tokens: 50, output_tokens: 30 },
       });
 
       const testUser = await factory.createTestUser({ prefix: 'order_user_' }, serverResult.redisClient);

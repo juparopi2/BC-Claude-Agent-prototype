@@ -16,3 +16,11 @@ export {
   createAgentOrchestrator,
   __resetAgentOrchestrator,
 } from './AgentOrchestrator';
+
+export {
+  FakeAgentOrchestrator,
+  getFakeAgentOrchestrator,
+  __resetFakeAgentOrchestrator,
+} from './FakeAgentOrchestrator';
+
+export type { FakeScenario } from './FakeAgentOrchestrator';

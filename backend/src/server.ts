@@ -21,7 +21,7 @@ import { initRedisClient, closeRedisClient, getRedisClient } from '@infrastructu
 import { startDatabaseKeepalive, stopDatabaseKeepalive } from '@shared/utils/databaseKeepalive';
 import { logger } from '@shared/utils/logger';
 import { getBCClient } from '@/services/bc';
-import { getDirectAgentService } from '@/services/agent';
+import { getAgentOrchestrator } from '@domains/agent/orchestration';
 import { getApprovalManager } from '@/domains/approval/ApprovalManager';
 import { getTodoManager } from '@/services/todo/TodoManager';
 import { getChatMessageHandler } from '@/services/websocket/ChatMessageHandler';
@@ -220,27 +220,27 @@ async function initializeApp(): Promise<void> {
 
     // Step 6: Initialize Approval Manager (requires Socket.IO)
     console.log('📋 Initializing Approval Manager...');
-    const approvalManager = getApprovalManager(io);
+    getApprovalManager(io); // Initialize singleton
     console.log('✅ Approval Manager initialized');
     console.log('');
 
     // Step 7: Initialize Todo Manager (requires Socket.IO)
     console.log('✅ Initializing Todo Manager...');
-    const todoManager = getTodoManager(io);
+    getTodoManager(io); // Initialize singleton
     console.log('✅ Todo Manager initialized');
     console.log('');
 
-    // Step 8: Initialize Direct Agent Service (bypasses ProcessTransport bug)
-    console.log('🤖 Initializing Direct Agent Service (workaround)...');
+    // Step 8: Initialize Agent Orchestrator (refactored from DirectAgentService)
+    console.log('🤖 Initializing Agent Orchestrator...');
     // Initialize singleton (will be used by routes/socket handlers)
-    getDirectAgentService(approvalManager, todoManager);
+    getAgentOrchestrator();
     if (env.ANTHROPIC_API_KEY) {
-      console.log('✅ Direct Agent Service initialized');
+      console.log('✅ Agent Orchestrator initialized');
       console.log(`   Model: ${env.ANTHROPIC_MODEL}`);
-      console.log(`   Strategy: Direct API (bypasses Agent SDK bug)`);
+      console.log(`   Strategy: Direct API with modular orchestration`);
       console.log(`   Tools: 115 BC entities (vendored from data files)`);
     } else {
-      console.warn('⚠️  Direct Agent Service: ANTHROPIC_API_KEY not configured');
+      console.warn('⚠️  Agent Orchestrator: ANTHROPIC_API_KEY not configured');
     }
     console.log('');
 
@@ -455,8 +455,8 @@ function configureRoutes(): void {
         count: 115,
       },
       implementation: {
-        type: 'DirectAgentService',
-        reason: 'Bypasses Agent SDK ProcessTransport bug',
+        type: 'AgentOrchestrator',
+        reason: 'Modular orchestration with direct API (refactored from DirectAgentService)',
         manualAgenticLoop: true,
       },
     };
@@ -466,7 +466,7 @@ function configureRoutes(): void {
 
   app.post('/api/agent/query', authenticateMicrosoft, async (req: Request, res: Response): Promise<void> => {
     try {
-      const agentService = getDirectAgentService();
+      const orchestrator = getAgentOrchestrator();
 
       if (!env.ANTHROPIC_API_KEY) {
         sendServiceUnavailable(res, ErrorCode.SERVICE_UNAVAILABLE);
@@ -492,7 +492,7 @@ function configureRoutes(): void {
       }
 
       // Execute query with streaming (REST endpoint doesn't stream to client)
-      const result = await agentService.executeQueryStreaming(
+      const result = await orchestrator.executeAgent(
         prompt,
         sessionId,
         undefined, // onEvent - not used for REST endpoint

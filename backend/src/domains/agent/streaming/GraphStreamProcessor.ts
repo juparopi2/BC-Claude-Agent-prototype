@@ -159,6 +159,15 @@ export class GraphStreamProcessor implements IGraphStreamProcessor {
     const results: ProcessedStreamEvent[] = [];
     const stopReason = this.determineStopReason(event);
 
+    // Emit usage if present on stream_end event (common pattern for on_chat_model_end)
+    if (event.usage) {
+      results.push({
+        type: 'usage',
+        inputTokens: event.usage.inputTokens,
+        outputTokens: event.usage.outputTokens,
+      });
+    }
+
     // Emit thinking_complete if thinking wasn't completed yet (edge case)
     if (this.thinkingAccumulator.hasContent() && !this.thinkingAccumulator.isComplete()) {
       this.thinkingAccumulator.markComplete();

@@ -1,7 +1,7 @@
 # Refactor de DirectAgentService - Documentación
 
 **Fecha**: 2025-12-22
-**Estado**: En Progreso - Fase 6 (Stream) Completada ✅
+**Estado**: En Progreso - Fase 7 (Orchestrator) Completada ✅
 
 ---
 
@@ -9,11 +9,11 @@
 
 | Métrica | Valor |
 |---------|-------|
-| **Clases implementadas** | 12 / 13 (92%) |
-| **Tests nuevos** | 424 pasando |
-| **Tests totales** | 2,311 pasando |
+| **Clases implementadas** | 14 / 14 (100%) |
+| **Tests nuevos** | 507 pasando |
+| **Tests totales** | 2,499 pasando |
 | **Lint** | 0 errores |
-| **Build** | 354 archivos compilados |
+| **Build** | 359 archivos compilados |
 
 ### Clases Completadas ✅
 
@@ -31,7 +31,10 @@ backend/src/domains/agent/
 ├── streaming/
 │   ├── ThinkingAccumulator.ts         ✅ 24 tests
 │   ├── ContentAccumulator.ts          ✅ 21 tests
+│   ├── StreamEventRouter.ts           ✅ 15 tests (NEW - Phase 7)
 │   └── GraphStreamProcessor.ts        ✅ 75 tests (65 unit + 10 integration)
+├── orchestration/
+│   └── AgentOrchestrator.ts           ✅ 38 tests (30 unit + 8 integration) (NEW - Phase 7)
 ├── tools/
 │   ├── ToolEventDeduplicator.ts       ✅ 30 tests
 │   └── ToolExecutionProcessor.ts      ✅ 53 tests
@@ -166,13 +169,19 @@ Este directorio contiene la documentación completa del refactor del DirectAgent
    - Cleanup: Eliminados 3 tests deprecated de DirectAgentService
    - Fix: Error Redis NOAUTH corregido via vi.mock()
    - Documentados 12 tests skipped en 99-FUTURE-DEVELOPMENT.md (D14-D18)
+10. ✅ **Fase 7 (Orchestrator):** AgentOrchestrator + StreamEventRouter (53 tests = 30 + 8 + 15)
+    - **StreamEventRouter** (~60 LOC): Separa eventos LangGraph en normalized vs tool_executions
+    - **AgentOrchestrator** (~180 LOC): Coordina todas las 13 clases anteriores
+    - Fix: Procesamiento de eventos en stream único para acumulación correcta
+    - Fix: Emisión de usage desde stream_end events
+    - 30 unit tests + 8 integration tests para AgentOrchestrator
+    - 15 unit tests para StreamEventRouter
 
 ### En Progreso ⏳
 
-10. ⏳ **Fase 7 (Orchestrator):** AgentOrchestrator (ALTO RIESGO)
 11. ⏳ **Fase 8 (Integración):** ChatMessageHandler, E2E tests
 12. ⏳ **Fase 9 (Cleanup):** Eliminar DirectAgentService, documentación final
 
 ---
 
-*Última actualización: 2025-12-22 - Fase 6 Completada*
+*Última actualización: 2025-12-22 - Fase 7 Completada*

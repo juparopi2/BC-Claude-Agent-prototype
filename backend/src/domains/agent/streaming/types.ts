@@ -5,6 +5,11 @@
  * Used by ThinkingAccumulator, ContentAccumulator, and GraphStreamProcessor.
  */
 
+import type { StreamEvent } from '@langchain/core/tracers/log_stream';
+import type { INormalizedStreamEvent } from '@shared/providers/interfaces/INormalizedEvent';
+import type { IStreamAdapter } from '@shared/providers/interfaces/IStreamAdapter';
+import type { RawToolExecution } from '@domains/agent/tools/types';
+
 /**
  * Interface for ThinkingAccumulator.
  * Accumulates thinking chunks during streaming and tracks completion.
@@ -74,4 +79,33 @@ export interface ToolExecution {
   input: unknown;
   output?: unknown;
   error?: string;
+}
+
+// === StreamEventRouter Types ===
+
+/**
+ * Discriminated union of events routed from LangGraph stream.
+ * StreamEventRouter separates:
+ * - 'normalized': Events from StreamAdapter (on_chat_model_stream)
+ * - 'tool_executions': Events from on_chain_end with toolExecutions
+ */
+export type RoutedEvent =
+  | { type: 'normalized'; event: INormalizedStreamEvent }
+  | { type: 'tool_executions'; executions: RawToolExecution[]; agentName: string };
+
+/**
+ * Interface for StreamEventRouter.
+ * Routes LangGraph stream events to appropriate processors.
+ */
+export interface IStreamEventRouter {
+  /**
+   * Route events from LangGraph stream.
+   * @param eventStream - Raw LangGraph streamEvents
+   * @param adapter - StreamAdapter for normalizing chat model events
+   * @yields RoutedEvent - Either normalized event or tool executions
+   */
+  route(
+    eventStream: AsyncIterable<StreamEvent>,
+    adapter: IStreamAdapter
+  ): AsyncGenerator<RoutedEvent>;
 }

@@ -34,6 +34,8 @@ import type {
   IEventStoreMinimal,
   ILoggerMinimal,
   ExecuteQueryFn,
+  IEmbeddingServiceMinimal,
+  IVectorSearchServiceMinimal,
 } from './IMessageQueueDependencies';
 
 /**
@@ -199,6 +201,8 @@ export class MessageQueue {
   private executeQueryFn: ExecuteQueryFn;
   private eventStoreGetter: () => IEventStoreMinimal;
   private log: ILoggerMinimal;
+  private embeddingServiceOverride?: IEmbeddingServiceMinimal;
+  private vectorSearchServiceOverride?: IVectorSearchServiceMinimal;
 
   /**
    * Private constructor with optional dependency injection
@@ -212,6 +216,9 @@ export class MessageQueue {
       ? () => dependencies.eventStore!
       : () => getEventStore();
     this.log = dependencies?.logger ?? logger;
+    // Store optional service overrides (for testing with mocks)
+    this.embeddingServiceOverride = dependencies?.embeddingService;
+    this.vectorSearchServiceOverride = dependencies?.vectorSearchService;
 
     // Create Redis connection for BullMQ (use injected or create default)
     if (dependencies?.redis) {
@@ -441,7 +448,7 @@ export class MessageQueue {
           },
           removeOnComplete: {
             count: 100, // Keep last 100 completed jobs
-            age: 3600, // Remove after 1 hour
+            // Note: age removed to prevent race condition with BullMQ state transitions
           },
           removeOnFail: {
             count: 500, // Keep last 500 failed jobs for debugging
@@ -1439,12 +1446,21 @@ export class MessageQueue {
     });
 
     try {
-      // Dynamic imports to avoid circular dependencies
-      const { EmbeddingService } = await import('@/services/embeddings/EmbeddingService');
-      const { VectorSearchService } = await import('@/services/search/VectorSearchService');
-      
-      const embeddingService = EmbeddingService.getInstance();
-      const vectorSearchService = VectorSearchService.getInstance();
+      // Use injected services if provided (for testing), otherwise dynamic import
+      let embeddingService: IEmbeddingServiceMinimal;
+      let vectorSearchService: IVectorSearchServiceMinimal;
+
+      if (this.embeddingServiceOverride && this.vectorSearchServiceOverride) {
+        // Use injected mocks (testing)
+        embeddingService = this.embeddingServiceOverride;
+        vectorSearchService = this.vectorSearchServiceOverride;
+      } else {
+        // Dynamic imports to avoid circular dependencies (production)
+        const { EmbeddingService } = await import('@/services/embeddings/EmbeddingService');
+        const { VectorSearchService } = await import('@/services/search/VectorSearchService');
+        embeddingService = EmbeddingService.getInstance();
+        vectorSearchService = VectorSearchService.getInstance();
+      }
 
       // 1. Generate embeddings
       const texts = chunks.map(c => c.text);

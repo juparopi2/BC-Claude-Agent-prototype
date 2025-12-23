@@ -17,8 +17,7 @@ import { executeQuery, initDatabase, getDatabase } from '@/infrastructure/databa
 import { getEventStore } from '@/services/events/EventStore';
 import { initRedisClient, closeRedisClient } from '@/infrastructure/redis/redis-client';
 import { logger } from '@/shared/utils/logger';
-import { EmbeddingService } from '@/services/embeddings/EmbeddingService';
-import { VectorSearchService } from '@/services/search/VectorSearchService';
+import type { IEmbeddingServiceMinimal, IVectorSearchServiceMinimal } from '@/infrastructure/queue/IMessageQueueDependencies';
 
 // ONLY mock logger (acceptable per audit)
 vi.mock('@/shared/utils/logger', () => ({
@@ -39,22 +38,8 @@ vi.mock('@/shared/utils/logger', () => ({
   })),
 }));
 
-// Mock external services to avoid API costs and network dependencies
-vi.mock('@/services/embeddings/EmbeddingService', () => ({
-  EmbeddingService: {
-    getInstance: vi.fn(() => ({
-      generateTextEmbeddingsBatch: vi.fn(),
-    })),
-  },
-}));
-
-vi.mock('@/services/search/VectorSearchService', () => ({
-  VectorSearchService: {
-    getInstance: vi.fn(() => ({
-      indexChunksBatch: vi.fn(),
-    })),
-  },
-}));
+// Note: External services are now injected via DI instead of vi.mock
+// This avoids issues with dynamic imports in workers not picking up mocks
 
 describe('Embedding Generation Pipeline', () => {
   setupDatabaseForTests();
@@ -80,6 +65,10 @@ describe('Embedding Generation Pipeline', () => {
     }
   });
 
+  // Mock services stored at describe level for assertions
+  let mockEmbeddingService: IEmbeddingServiceMinimal & { generateTextEmbeddingsBatch: ReturnType<typeof vi.fn> };
+  let mockVectorSearchService: IVectorSearchServiceMinimal & { indexChunksBatch: ReturnType<typeof vi.fn> };
+
   beforeEach(async () => {
     // Use TestSessionFactory to create required data
     factory = createTestSessionFactory();
@@ -89,22 +78,19 @@ describe('Embedding Generation Pipeline', () => {
     await __resetMessageQueue();
     await clearRedisKeys(cleanupRedis, 'bull:*');
 
-    // Mock Embedding Service behavior - FIXED: Return objects with embedding and model properties
-    const mockEmbeddingService = {
+    // Create mock services with vi.fn() for assertions
+    mockEmbeddingService = {
         generateTextEmbeddingsBatch: vi.fn().mockResolvedValue([
             { embedding: [0.1, 0.2, 0.3], model: 'text-embedding-3-small' }, // Chunk 1
             { embedding: [0.4, 0.5, 0.6], model: 'text-embedding-3-small' }  // Chunk 2
         ])
     };
-    (EmbeddingService.getInstance as any).mockReturnValue(mockEmbeddingService);
 
-    // Mock Vector Search behavior
-    const mockVectorSearchService = {
-        indexChunksBatch: vi.fn().mockImplementation(async (chunks: any[]) => {
+    mockVectorSearchService = {
+        indexChunksBatch: vi.fn().mockImplementation(async (chunks: unknown[]) => {
             return chunks.map(() => factory.generateTestId());
         })
     };
-    (VectorSearchService.getInstance as any).mockReturnValue(mockVectorSearchService);
 
     // Create a wrapped executeQuery that ensures DB connection before each call
     // This handles the case where the pool might be closed by another test's afterAll
@@ -117,12 +103,15 @@ describe('Embedding Generation Pipeline', () => {
         return executeQuery(query, params);
     };
 
-    // Initialize MessageQueue with real Redis and connection-ensuring executeQuery
+    // Initialize MessageQueue with real Redis, DB, and INJECTED mock services
+    // This ensures the worker uses our mocks instead of dynamic imports
     messageQueue = getMessageQueue({
         redis: new IORedis({ ...REDIS_TEST_CONFIG, maxRetriesPerRequest: null }),
         executeQuery: ensureConnectedExecuteQuery,
         eventStore: getEventStore(),
         logger,
+        embeddingService: mockEmbeddingService,
+        vectorSearchService: mockVectorSearchService,
     });
     // Ensure MessageQueue connects
     await messageQueue.waitForReady();
@@ -225,15 +214,13 @@ describe('Embedding Generation Pipeline', () => {
 
     await completedPromise;
 
-    // 7. Verify mocks called
-    const embeddingService = EmbeddingService.getInstance();
-    expect(embeddingService.generateTextEmbeddingsBatch).toHaveBeenCalledWith(
+    // 7. Verify injected mocks were called
+    expect(mockEmbeddingService.generateTextEmbeddingsBatch).toHaveBeenCalledWith(
         ['Hello world', 'Another chunk'],
         testUser.id
     );
 
-    const vectorSearchService = VectorSearchService.getInstance();
-    expect(vectorSearchService.indexChunksBatch).toHaveBeenCalled();
+    expect(mockVectorSearchService.indexChunksBatch).toHaveBeenCalled();
 
     // 8. Verify database was updated
     const fileResult = await executeQuery<{ embedding_status: string }>(

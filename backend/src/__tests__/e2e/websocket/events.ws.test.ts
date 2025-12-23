@@ -150,7 +150,7 @@ describe('E2E: WebSocket Agent Events', () => {
       const events = client.getReceivedEvents();
       const messageChunks = events.filter(e => e.data?.type === 'message_chunk');
       const accumulatedText = messageChunks
-        .map(e => e.data.delta?.text || '')
+        .map(e => (e.data as { content?: string }).content || '')
         .join('');
 
       // Should have received meaningful text

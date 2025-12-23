@@ -512,6 +512,12 @@ export async function drainMessageQueue(): Promise<void> {
           `${finalStats.active} active, ${finalStats.waiting} waiting`
         );
       }
+
+      // Check for delayed jobs that might still be in transition
+      if (finalStats.delayed > 0) {
+        console.warn(`[E2E] ${finalStats.delayed} delayed jobs still in queue - waiting additional time`);
+        await new Promise(resolve => setTimeout(resolve, Math.min(finalStats.delayed * 1000, 5000)));
+      }
     } else {
       console.log('[E2E] MessageQueue has no pending jobs');
     }
@@ -519,10 +525,13 @@ export async function drainMessageQueue(): Promise<void> {
     // CRITICAL: Add settling delay to ensure all DB writes have completed
     // BullMQ marks jobs as "completed" before the async DB writes finish,
     // which can cause FK violations during cleanup if we proceed too quickly.
-    // Increased to 1500ms to account for Azure SQL latency (was 500ms)
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    // Increased to 3000ms to account for:
+    // - BullMQ state machine completion
+    // - Azure SQL latency
+    // - Multi-connection synchronization
+    await new Promise(resolve => setTimeout(resolve, 3000));
 
-    console.log('[E2E] MessageQueue drained (with DB settling delay)');
+    console.log('[E2E] MessageQueue drained (with extended DB settling delay)');
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.warn('[E2E] Failed to drain MessageQueue:', errorMessage);

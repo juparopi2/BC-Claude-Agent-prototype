@@ -50,6 +50,49 @@ export interface ILoggerMinimal {
 }
 
 /**
+ * Embedding result from EmbeddingService
+ */
+export interface IEmbeddingResult {
+  embedding: number[];
+  model: string;
+}
+
+/**
+ * EmbeddingService minimal interface
+ *
+ * Only includes methods actually used by MessageQueue.
+ * Allows for easier testing with mock implementations.
+ */
+export interface IEmbeddingServiceMinimal {
+  generateTextEmbeddingsBatch(texts: string[], userId: string): Promise<IEmbeddingResult[]>;
+}
+
+/**
+ * Chunk data for vector indexing
+ */
+export interface IChunkForIndexing {
+  chunkId: string;
+  fileId: string;
+  userId: string;
+  content: string;
+  embedding: number[];
+  chunkIndex: number;
+  tokenCount: number;
+  embeddingModel: string;
+  createdAt: Date;
+}
+
+/**
+ * VectorSearchService minimal interface
+ *
+ * Only includes methods actually used by MessageQueue.
+ * Allows for easier testing with mock implementations.
+ */
+export interface IVectorSearchServiceMinimal {
+  indexChunksBatch(chunks: IChunkForIndexing[]): Promise<string[]>;
+}
+
+/**
  * Full dependencies interface for MessageQueue DI
  *
  * All dependencies are optional - defaults from module imports are used if not provided.
@@ -92,4 +135,18 @@ export interface IMessageQueueDependencies {
    * If provided, MessageQueue will use this instead of the global logger.
    */
   logger?: ILoggerMinimal;
+
+  /**
+   * EmbeddingService instance (or minimal interface)
+   * If provided, MessageQueue will use this instead of dynamic import.
+   * Useful for testing with mocks.
+   */
+  embeddingService?: IEmbeddingServiceMinimal;
+
+  /**
+   * VectorSearchService instance (or minimal interface)
+   * If provided, MessageQueue will use this instead of dynamic import.
+   * Useful for testing with mocks.
+   */
+  vectorSearchService?: IVectorSearchServiceMinimal;
 }

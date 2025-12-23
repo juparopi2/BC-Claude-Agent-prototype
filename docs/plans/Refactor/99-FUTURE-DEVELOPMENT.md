@@ -433,6 +433,65 @@ Dashboard de analytics para admins.
 
 ---
 
+## Tests Skipped - Pendientes de Implementación
+
+**Fecha análisis:** 2025-12-22
+**Total:** 12 tests skipped (justificados)
+
+### D14: UNIMPLEMENTED APIs (3 tests)
+
+| Archivo | Descripción | Prioridad |
+|---------|-------------|-----------|
+| `gdpr.api.test.ts` | GDPR compliance endpoints (delete user data, export) | Media |
+| `billing.api.test.ts` | Billing/subscription management endpoints | Media |
+| `usage.api.test.ts` | Usage dashboard analytics endpoints | Media |
+
+**Fase:** Phase 6 o posterior
+**Estimación:** 5-7 días total
+
+### D15: UNIMPLEMENTED Features (3 tests)
+
+| Archivo | Descripción | Prioridad |
+|---------|-------------|-----------|
+| `approval-flow.e2e.test.ts` | Full approval flow E2E con WebSocket | Alta |
+| `max-tokens.scenario.test.ts` | Manejo de stop_reason: max_tokens | Media |
+| `error-tool.scenario.test.ts` | Manejo de errores en tool execution | Media |
+
+**Fase:** Phase 6 o posterior
+**Estimación:** 3-4 días total
+
+### D16: DEPRECATED Tests (3 tests) ✅ ELIMINADOS
+
+Tests eliminados 2025-12-22 por usar API obsoleta `executeQueryStreaming`:
+- `DirectAgentService.attachments.integration.test.ts`
+- `DirectAgentService.integration.test.ts`
+- `thinking-state-transitions.integration.test.ts`
+
+**Estado:** RESUELTO - archivos eliminados del codebase
+
+### D17: TDD RED - Orchestrator Integration (1 test)
+
+| Archivo | Descripción | Prioridad |
+|---------|-------------|-----------|
+| `orchestrator.integration.test.ts` | Tests de orquestación para nueva arquitectura | Alta |
+
+**Nota:** Test en estado "RED" por diseño TDD - se implementará con AgentOrchestrator en Fase 7.
+**Fase:** Phase 7 (AgentOrchestrator)
+**Estimación:** Incluido en Fase 7
+
+### D18: Technical Issues (3 tests)
+
+| Archivo | Descripción | Prioridad |
+|---------|-------------|-----------|
+| `performance.test.ts` | Requires benchmark infrastructure | Baja |
+| `message-flow.integration.test.ts:186` | WebSocket reliability issue | Media |
+| `orchestrator.integration.test.ts` | Counted in D17 | - |
+
+**Fase:** Phase 6 (infrastructure) o posterior
+**Estimación:** 2-3 días
+
+---
+
 ## Registro de Deuda Técnica
 
 | ID | Descripción | Fase | Prioridad | Días |
@@ -445,6 +504,11 @@ Dashboard de analytics para admins.
 | D10 | Message replay | Phase 6 | Baja | 3 |
 | D11 | Tool execution queue | Phase 6 | Media | 4 |
 | D13 | Redis chaos tests | Phase 6 | Media | 2 |
+| D14 | Unimplemented APIs (GDPR, billing, usage) | Phase 6+ | Media | 5-7 |
+| D15 | Unimplemented Features (approval, max-tokens) | Phase 6+ | Alta | 3-4 |
+| D16 | ~~Deprecated Tests~~ | ~~N/A~~ | ✅ | ~~Eliminados~~ |
+| D17 | TDD RED - Orchestrator Integration | Phase 7 | Alta | Incluido |
+| D18 | Technical Issues (performance, websocket) | Phase 6+ | Media | 2-3 |
 | - | ApprovalManager completo | Phase 6 | Alta | 5 |
 | - | Azure OpenAI support | Phase 7 | Alta | 10 |
 | - | Google Gemini support | Phase 7 | Media | 10 |
@@ -453,7 +517,7 @@ Dashboard de analytics para admins.
 | - | Analytics Dashboard | Phase 8 | Media | 10 |
 
 **Total estimado URGENTE (D2):** ~30-40 días (6-8 semanas)
-**Total estimado Phase 6:** ~17.5 días
+**Total estimado Phase 6:** ~27.5-32 días (incluyendo D14, D15, D18)
 **Total estimado Phase 7:** ~28 días
 **Total estimado Phase 8:** ~10 días
 
@@ -478,4 +542,4 @@ Dashboard de analytics para admins.
 
 ---
 
-*Última actualización: 2025-12-22*
+*Última actualización: 2025-12-22 - Fase 6 Completada, Tests Skipped Documentados*

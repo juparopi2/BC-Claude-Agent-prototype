@@ -7,6 +7,24 @@
 
 import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
 import type { AgentEvent } from '@bc-agent/shared';
+
+// Mock getPersistenceCoordinator to prevent Redis connection in default constructor
+vi.mock('@/domains/agent/persistence', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/domains/agent/persistence')>();
+  return {
+    ...actual,
+    getPersistenceCoordinator: vi.fn(() => ({
+      persistUserMessage: vi.fn(),
+      persistAgentMessage: vi.fn(),
+      persistThinking: vi.fn(),
+      persistToolUse: vi.fn(),
+      persistToolResult: vi.fn(),
+      persistError: vi.fn(),
+      persistToolEventsAsync: vi.fn(),
+    })),
+  };
+});
+
 import {
   ToolExecutionProcessor,
   createToolExecutionProcessor,

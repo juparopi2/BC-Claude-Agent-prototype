@@ -25,4 +25,13 @@ export {
   ContentAccumulator,
   createContentAccumulator,
 } from './ContentAccumulator';
-// TODO: Export GraphStreamProcessor when implemented
+
+export {
+  GraphStreamProcessor,
+  createGraphStreamProcessor,
+} from './GraphStreamProcessor';
+
+export type {
+  IGraphStreamProcessor,
+  StreamProcessorContext,
+} from './GraphStreamProcessor';

@@ -1,7 +1,7 @@
 # Refactor de DirectAgentService - Documentación
 
 **Fecha**: 2025-12-22
-**Estado**: En Progreso - Fase 5 (Tools) Completada ✅
+**Estado**: En Progreso - Fase 6 (Stream) Completada ✅
 
 ---
 
@@ -9,9 +9,9 @@
 
 | Métrica | Valor |
 |---------|-------|
-| **Clases implementadas** | 11 / 13 (85%) |
-| **Tests nuevos** | 349 pasando |
-| **Tests totales** | 2,246 pasando |
+| **Clases implementadas** | 12 / 13 (92%) |
+| **Tests nuevos** | 424 pasando |
+| **Tests totales** | 2,311 pasando |
 | **Lint** | 0 errores |
 | **Build** | 354 archivos compilados |
 
@@ -30,7 +30,8 @@ backend/src/domains/agent/
 │   └── AgentEventEmitter.ts           ✅ 32 tests
 ├── streaming/
 │   ├── ThinkingAccumulator.ts         ✅ 24 tests
-│   └── ContentAccumulator.ts          ✅ 21 tests
+│   ├── ContentAccumulator.ts          ✅ 21 tests
+│   └── GraphStreamProcessor.ts        ✅ 75 tests (65 unit + 10 integration)
 ├── tools/
 │   ├── ToolEventDeduplicator.ts       ✅ 30 tests
 │   └── ToolExecutionProcessor.ts      ✅ 53 tests
@@ -158,14 +159,20 @@ Este directorio contiene la documentación completa del refactor del DirectAgent
    - Procesa tool executions de LangGraph
    - Emit-first, persist-async pattern
    - Deduplicación via ToolEventDeduplicator
+9. ✅ **Fase 6 (Stream):** GraphStreamProcessor (75 tests = 65 unit + 10 integration)
+   - Procesa INormalizedStreamEvent → ProcessedStreamEvent
+   - Coordina ThinkingAccumulator, ContentAccumulator, ToolEventDeduplicator
+   - Maneja 6 tipos de eventos: reasoning_delta, content_delta, tool_call, usage, stream_end
+   - Cleanup: Eliminados 3 tests deprecated de DirectAgentService
+   - Fix: Error Redis NOAUTH corregido via vi.mock()
+   - Documentados 12 tests skipped en 99-FUTURE-DEVELOPMENT.md (D14-D18)
 
 ### En Progreso ⏳
 
-9. ⏳ **Fase 6 (Stream):** GraphStreamProcessor (ALTO RIESGO)
 10. ⏳ **Fase 7 (Orchestrator):** AgentOrchestrator (ALTO RIESGO)
 11. ⏳ **Fase 8 (Integración):** ChatMessageHandler, E2E tests
 12. ⏳ **Fase 9 (Cleanup):** Eliminar DirectAgentService, documentación final
 
 ---
 
-*Última actualización: 2025-12-22 - Fase 5 Completada*
+*Última actualización: 2025-12-22 - Fase 6 Completada*

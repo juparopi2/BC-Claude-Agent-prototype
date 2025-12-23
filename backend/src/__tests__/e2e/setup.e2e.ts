@@ -40,23 +40,24 @@ import { FakeAgentOrchestrator } from '@domains/agent/orchestration';
 // Singleton FakeAgentOrchestrator shared across all E2E tests
 export const e2eFakeOrchestrator = new FakeAgentOrchestrator();
 
-// Mock getAgentOrchestrator to return fake when not using real API
+// Mock getAgentOrchestrator to return fake ONLY when explicitly disabled
+// DEFAULT: Use real Claude API (E2E_USE_REAL_API !== 'false')
 vi.mock('@domains/agent/orchestration', async (importOriginal) => {
   const original = await importOriginal<typeof import('@domains/agent/orchestration')>();
 
-  // Check at runtime whether to use real or fake
-  const useRealApi = process.env.E2E_USE_REAL_API === 'true';
+  // Use real API by default, only use fake when explicitly set to 'false'
+  const useFakeApi = process.env.E2E_USE_REAL_API === 'false';
 
-  if (useRealApi) {
-    // Use real orchestrator - return original module unchanged
-    return original;
+  if (useFakeApi) {
+    // Use fake orchestrator (for CI/CD or cost-sensitive environments)
+    return {
+      ...original,
+      getAgentOrchestrator: vi.fn(() => e2eFakeOrchestrator),
+    };
   }
 
-  // Use fake orchestrator
-  return {
-    ...original,
-    getAgentOrchestrator: vi.fn(() => e2eFakeOrchestrator),
-  };
+  // DEFAULT: Use real orchestrator - return original module unchanged
+  return original;
 });
 import type { Server } from 'http';
 import type { Express } from 'express';
@@ -70,16 +71,16 @@ import { cleanSlateForSuite, CleanSlateOptions, CleanSlateResult } from './helpe
 /**
  * E2E API Mode Configuration
  *
- * Controls whether E2E tests use real Claude API or FakeAnthropicClient:
- * - E2E_USE_REAL_API=true: Use real Claude API (expensive, slow)
- * - E2E_USE_REAL_API=false (default): Use FakeAnthropicClient (fast, free)
+ * Controls whether E2E tests use real Claude API or FakeAgentOrchestrator:
+ * - E2E_USE_REAL_API=false: Use FakeAgentOrchestrator (fast, free, for CI/CD)
+ * - E2E_USE_REAL_API unset or any other value (DEFAULT): Use real Claude API
  */
 export const E2E_API_MODE = {
-  /** Whether to use real Claude API */
-  useRealApi: process.env.E2E_USE_REAL_API === 'true',
+  /** Whether to use real Claude API (default: true) */
+  useRealApi: process.env.E2E_USE_REAL_API !== 'false',
   /** Get mode description */
   get description(): string {
-    return this.useRealApi ? 'Real Claude API' : 'FakeAnthropicClient (Mock)';
+    return this.useRealApi ? 'Real Claude API' : 'FakeAgentOrchestrator (Mock)';
   },
 };
 

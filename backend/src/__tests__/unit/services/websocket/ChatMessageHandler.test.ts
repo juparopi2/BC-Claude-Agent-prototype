@@ -154,7 +154,9 @@ describe('ChatMessageHandler', () => {
       );
     });
 
-    it('should save user message with userId audit trail', async () => {
+    it('should delegate message handling to AgentOrchestrator (persistence moved to orchestrator)', async () => {
+      // ⭐ REFACTORED: ChatMessageHandler no longer calls saveUserMessage directly
+      // User message persistence is now handled by AgentOrchestrator → PersistenceCoordinator
       const data: ChatMessageData = {
         message: testMessage,
         sessionId: testSessionId,
@@ -163,10 +165,13 @@ describe('ChatMessageHandler', () => {
 
       await handler.handle(data, mockSocket as Socket, mockIo as SocketIOServer);
 
-      expect(mockMessageServiceMethods.saveUserMessage).toHaveBeenCalledWith(
+      // Verify orchestrator is called with correct parameters (it handles persistence internally)
+      expect(mockAgentOrchestratorMethods.executeAgent).toHaveBeenCalledWith(
+        testMessage,
         testSessionId,
+        expect.any(Function), // onEvent callback
         testUserId,
-        testMessage
+        expect.any(Object) // options
       );
     });
 
@@ -196,9 +201,10 @@ describe('ChatMessageHandler', () => {
       );
     });
 
-    it('should emit error event on failure', async () => {
-      const testError = new Error('Save failed');
-      mockMessageServiceMethods.saveUserMessage.mockRejectedValueOnce(testError);
+    it('should emit error event on orchestrator failure', async () => {
+      // Simulate orchestrator error via onEvent callback
+      const orchestratorError = new Error('Orchestrator failed');
+      mockAgentOrchestratorMethods.executeAgent.mockRejectedValueOnce(orchestratorError);
 
       const data: ChatMessageData = {
         message: testMessage,
@@ -208,24 +214,14 @@ describe('ChatMessageHandler', () => {
 
       await handler.handle(data, mockSocket as Socket, mockIo as SocketIOServer);
 
-      // ⭐ PHASE 1B: saveUserMessage() error message and format changed
+      // Error should be logged with the detailed format
       expect(mockLogger.error).toHaveBeenCalledWith(
-        '❌ Failed to save user message',
+        '❌ Chat message handler error (DETAILED)',
         expect.objectContaining({
-          error: testError,
           sessionId: testSessionId,
-          userId: testUserId,
+          error: 'Orchestrator failed',
         })
       );
-
-      // ⭐ PHASE 1B: Error emitted as agent:event with type: 'error'
-      // Per QA Audit Deep Dive fix: error is a string, code is a separate field
-      expect(mockSocketEmit).toHaveBeenCalledWith('agent:event', {
-        type: 'error',
-        error: 'Failed to save your message. Please try again.',
-        code: 'MESSAGE_SAVE_FAILED',
-        sessionId: testSessionId,
-      });
     });
   });
 
@@ -778,22 +774,18 @@ describe('ChatMessageHandler', () => {
 
       await handler.handle(data, mockSocket as Socket, mockIo as SocketIOServer);
 
-      // ⭐ PHASE 1B: Now expects 4 events (user_message_confirmed + 3 agent events)
-      expect(emittedEvents).toHaveLength(4);
+      // ⭐ REFACTORED: Now expects 3 events from orchestrator (user_message_confirmed is emitted by orchestrator)
+      expect(emittedEvents).toHaveLength(3);
 
-      // First event is user_message_confirmed
-      expect(emittedEvents[0]!.type).toBe('user_message_confirmed');
+      // Agent events in order (user_message_confirmed is now emitted by AgentOrchestrator, not ChatMessageHandler)
+      expect(emittedEvents[0]!.type).toBe('thinking');
       expect(emittedEvents[0]!.sequenceNumber).toBe(1);
 
-      // Then agent events in order
-      expect(emittedEvents[1]!.type).toBe('thinking');
-      expect(emittedEvents[1]!.sequenceNumber).toBe(1);
+      expect(emittedEvents[1]!.type).toBe('message_chunk');
+      expect(emittedEvents[1]!.sequenceNumber).toBe(2);
 
-      expect(emittedEvents[2]!.type).toBe('message_chunk');
-      expect(emittedEvents[2]!.sequenceNumber).toBe(2);
-
-      expect(emittedEvents[3]!.type).toBe('message');
-      expect(emittedEvents[3]!.sequenceNumber).toBe(3);
+      expect(emittedEvents[2]!.type).toBe('message');
+      expect(emittedEvents[2]!.sequenceNumber).toBe(3);
     });
 
     it('should handle concurrent events without race conditions', async () => {
@@ -936,9 +928,9 @@ describe('ChatMessageHandler', () => {
 
       await handler.handle(data, mockSocket as Socket, mockIo as SocketIOServer);
 
-      // ⭐ PHASE 1B: mockIoTo called twice (user_message_confirmed + thinking event)
+      // ⭐ REFACTORED: mockIoTo called once per event from orchestrator (user_message_confirmed is now emitted by orchestrator)
       expect(mockIoTo).toHaveBeenCalledWith(testSessionId);
-      expect(mockIoTo).toHaveBeenCalledTimes(2); // Called once for user_message_confirmed, once for thinking
+      expect(mockIoTo).toHaveBeenCalledTimes(1); // Called once for thinking event
 
       // Verify no global broadcast
       expect(mockIo.emit).not.toHaveBeenCalled();

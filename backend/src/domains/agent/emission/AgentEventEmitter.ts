@@ -66,6 +66,36 @@ export class AgentEventEmitter implements IAgentEventEmitter {
   }
 
   /**
+   * Emit user_message_confirmed event.
+   * Called after user message is persisted to EventStore.
+   *
+   * @param sessionId - The session ID
+   * @param data - Message persistence data
+   */
+  emitUserMessageConfirmed(
+    sessionId: string,
+    data: {
+      messageId: string;
+      sequenceNumber: number;
+      eventId: string;
+      content: string;
+      userId: string;
+    }
+  ): void {
+    this.emit({
+      type: 'user_message_confirmed',
+      sessionId,
+      messageId: data.messageId,
+      sequenceNumber: data.sequenceNumber,
+      eventId: data.eventId,
+      content: data.content,
+      userId: data.userId,
+      timestamp: new Date().toISOString(),
+      persistenceState: 'persisted',
+    });
+  }
+
+  /**
    * Emit an error event.
    * Convenience method for error emission.
    *

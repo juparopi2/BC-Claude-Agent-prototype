@@ -68,7 +68,12 @@ vi.mock('@/shared/utils/logger', () => {
 // Mock persistence module to prevent real Redis connections in Factory Functions tests
 vi.mock('@domains/agent/persistence', () => ({
   getPersistenceCoordinator: vi.fn(() => ({
-    persistUserMessage: vi.fn().mockResolvedValue({ sequenceNumber: 1 }),
+    persistUserMessage: vi.fn().mockResolvedValue({
+      sequenceNumber: 1,
+      eventId: 'event-user-1',
+      timestamp: '2025-12-22T10:00:00.000Z',
+      messageId: 'msg-user-1',
+    }),
     persistThinking: vi.fn().mockResolvedValue({ sequenceNumber: 2 }),
     persistAgentMessage: vi.fn().mockResolvedValue({
       sequenceNumber: 3,
@@ -77,7 +82,12 @@ vi.mock('@domains/agent/persistence', () => ({
     }),
   })),
   createPersistenceCoordinator: vi.fn(() => ({
-    persistUserMessage: vi.fn().mockResolvedValue({ sequenceNumber: 1 }),
+    persistUserMessage: vi.fn().mockResolvedValue({
+      sequenceNumber: 1,
+      eventId: 'event-user-1',
+      timestamp: '2025-12-22T10:00:00.000Z',
+      messageId: 'msg-user-1',
+    }),
     persistThinking: vi.fn().mockResolvedValue({ sequenceNumber: 2 }),
     persistAgentMessage: vi.fn().mockResolvedValue({
       sequenceNumber: 3,
@@ -124,7 +134,12 @@ describe('AgentOrchestrator', () => {
     } as unknown as IFileContextPreparer;
 
     mockPersistenceCoordinator = {
-      persistUserMessage: vi.fn().mockResolvedValue({ sequenceNumber: 1 }),
+      persistUserMessage: vi.fn().mockResolvedValue({
+        sequenceNumber: 1,
+        eventId: 'event-user-1',
+        timestamp: '2025-12-22T10:00:00.000Z',
+        messageId: 'msg-user-1',
+      }),
       persistThinking: vi.fn().mockResolvedValue({ sequenceNumber: 2 }),
       persistAgentMessage: vi.fn().mockResolvedValue({
         sequenceNumber: 3,
@@ -149,6 +164,7 @@ describe('AgentOrchestrator', () => {
       setCallback: vi.fn(),
       emit: vi.fn(),
       emitError: vi.fn(),
+      emitUserMessageConfirmed: vi.fn(),
     } as unknown as IAgentEventEmitter;
 
     mockUsageTracker = {

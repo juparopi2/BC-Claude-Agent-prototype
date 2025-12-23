@@ -23,6 +23,7 @@ import { v4 as uuidv4 } from 'uuid';
 import type {
   IPersistenceCoordinator,
   PersistedEvent,
+  UserMessagePersistedEvent,
   AgentMessageData,
   ThinkingData,
   ToolUseData,
@@ -57,9 +58,9 @@ export class PersistenceCoordinator implements IPersistenceCoordinator {
    * Persist a user message to the event store.
    * @param sessionId - Session ID
    * @param content - Message content
-   * @returns Persisted event with sequence number
+   * @returns Persisted event with sequence number and messageId
    */
-  async persistUserMessage(sessionId: string, content: string): Promise<PersistedEvent> {
+  async persistUserMessage(sessionId: string, content: string): Promise<UserMessagePersistedEvent> {
     try {
       const messageId = uuidv4();
 
@@ -90,11 +91,12 @@ export class PersistenceCoordinator implements IPersistenceCoordinator {
         eventId: dbEvent.id,
       });
 
-      // 4. Return PersistedEvent
+      // 4. Return UserMessagePersistedEvent (includes messageId for event emission)
       return {
         eventId: dbEvent.id,
         sequenceNumber: dbEvent.sequence_number,
         timestamp: dbEvent.timestamp.toISOString(),
+        messageId,
       };
     } catch (error) {
       const causes = this.errorAnalyzer.analyze(error);

@@ -178,6 +178,8 @@ export class FakeAgentOrchestrator implements IAgentOrchestrator {
       ...createBaseEvent(),
       type: 'user_message_confirmed',
       messageId: uuidv4(),
+      content: prompt,
+      userId: userId ?? 'fake-user',
     };
     emit(userMessageEvent);
     await wait();

@@ -178,6 +178,84 @@ describe('AgentEventEmitter', () => {
     });
   });
 
+  describe('emitUserMessageConfirmed()', () => {
+    it('should emit user_message_confirmed with correct structure', () => {
+      emitter.setCallback((event) => receivedEvents.push(event));
+
+      emitter.emitUserMessageConfirmed('session-123', {
+        messageId: 'msg-1',
+        sequenceNumber: 5,
+        eventId: 'evt-1',
+        content: 'Hello, agent!',
+        userId: 'user-1',
+      });
+
+      expect(receivedEvents).toHaveLength(1);
+      expect(receivedEvents[0]).toMatchObject({
+        type: 'user_message_confirmed',
+        sessionId: 'session-123',
+        messageId: 'msg-1',
+        sequenceNumber: 5,
+        eventId: 'evt-1',
+        content: 'Hello, agent!',
+        userId: 'user-1',
+        persistenceState: 'persisted',
+      });
+    });
+
+    it('should include timestamp', () => {
+      emitter.setCallback((event) => receivedEvents.push(event));
+
+      const before = new Date().toISOString();
+      emitter.emitUserMessageConfirmed('session-123', {
+        messageId: 'msg-1',
+        sequenceNumber: 1,
+        eventId: 'evt-1',
+        content: 'Test',
+        userId: 'user-1',
+      });
+      const after = new Date().toISOString();
+
+      expect(receivedEvents[0]?.timestamp).toBeDefined();
+      expect(receivedEvents[0]?.timestamp! >= before).toBe(true);
+      expect(receivedEvents[0]?.timestamp! <= after).toBe(true);
+    });
+
+    it('should include eventIndex', () => {
+      emitter.setCallback((event) => receivedEvents.push(event));
+
+      emitter.emitUserMessageConfirmed('session-1', {
+        messageId: 'msg-1',
+        sequenceNumber: 1,
+        eventId: 'evt-1',
+        content: 'First',
+        userId: 'user-1',
+      });
+      emitter.emitUserMessageConfirmed('session-1', {
+        messageId: 'msg-2',
+        sequenceNumber: 2,
+        eventId: 'evt-2',
+        content: 'Second',
+        userId: 'user-1',
+      });
+
+      expect(receivedEvents[0]).toHaveProperty('eventIndex', 0);
+      expect(receivedEvents[1]).toHaveProperty('eventIndex', 1);
+    });
+
+    it('should not emit if no callback', () => {
+      expect(() => {
+        emitter.emitUserMessageConfirmed('session-123', {
+          messageId: 'msg-1',
+          sequenceNumber: 1,
+          eventId: 'evt-1',
+          content: 'Test',
+          userId: 'user-1',
+        });
+      }).not.toThrow();
+    });
+  });
+
   describe('emitError()', () => {
     it('should emit error event', () => {
       emitter.setCallback((event) => receivedEvents.push(event));

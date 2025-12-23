@@ -112,8 +112,15 @@ export class AgentOrchestrator implements IAgentOrchestrator {
       },
     };
 
-    // Persist user message
-    await this.persistenceCoordinator.persistUserMessage(sessionId, prompt);
+    // Persist user message and emit confirmation event
+    const userMessageResult = await this.persistenceCoordinator.persistUserMessage(sessionId, prompt);
+    this.agentEventEmitter.emitUserMessageConfirmed(sessionId, {
+      messageId: userMessageResult.messageId,
+      sequenceNumber: userMessageResult.sequenceNumber,
+      eventId: userMessageResult.eventId,
+      content: prompt,
+      userId: userId ?? '',
+    });
 
     // Track thinking and final response
     let thinkingContent = '';

@@ -134,59 +134,9 @@ export class ChatMessageHandler {
       // This queries the database to ensure the authenticated user owns this session
       await this.validateSessionOwnershipInternal(sessionId, userId);
 
-      // 2. Save user message with userId for audit trail
-      this.logger.info('💾 Saving user message to database...', { sessionId, userId });
-      const startSaveTime = Date.now();
-
-      let messageConfirmation: { messageId: string; sequenceNumber: number; eventId: string } | null = null;
-
-      try {
-        messageConfirmation = await this.messageService.saveUserMessage(sessionId, userId, message);
-        const saveDuration = Date.now() - startSaveTime;
-        this.logger.info('✅ User message saved successfully', {
-          sessionId,
-          userId,
-          saveDuration,
-          messageId: messageConfirmation.messageId,
-          sequenceNumber: messageConfirmation.sequenceNumber,
-          eventId: messageConfirmation.eventId,
-        });
-
-        // ⭐ Emit user_message_confirmed event to frontend
-        io.to(sessionId).emit('agent:event', {
-          type: 'user_message_confirmed',
-          sessionId,
-          messageId: messageConfirmation.messageId,
-          userId,
-          content: message,
-          sequenceNumber: messageConfirmation.sequenceNumber,
-          eventId: messageConfirmation.eventId,
-          timestamp: new Date().toISOString(),
-          // Enhanced contract fields (required by BaseAgentEvent)
-          persistenceState: 'persisted' as const,
-        });
-
-        this.logger.info('✅ User message confirmation emitted to frontend', {
-          sessionId,
-          messageId: messageConfirmation.messageId,
-          sequenceNumber: messageConfirmation.sequenceNumber,
-        });
-      } catch (saveError) {
-        this.logger.error('❌ Failed to save user message', { error: saveError, sessionId, userId });
-
-        // ⭐ Emit specific error to frontend (error must be string per type definition)
-        socket.emit('agent:event', {
-          type: 'error',
-          error: 'Failed to save your message. Please try again.',
-          code: 'MESSAGE_SAVE_FAILED',
-          sessionId,
-        });
-
-        // Don't proceed with agent execution if message save failed
-        return;
-      }
-
-      // 3. Execute agent with AgentOrchestrator
+      // 2. Execute agent with AgentOrchestrator
+      // Note: User message persistence is now handled by AgentOrchestrator → PersistenceCoordinator
+      // The orchestrator emits user_message_confirmed after persisting to EventStore + MessageQueue
       this.logger.info('🤖 About to call AgentOrchestrator.executeAgent', { sessionId, userId });
 
       const orchestrator = getAgentOrchestrator();

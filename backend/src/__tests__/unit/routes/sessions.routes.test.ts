@@ -177,8 +177,8 @@ describe('Sessions Routes', () => {
         .send({ title: 'My Custom Title' })
         .expect(201);
 
-      // Assert
-      expect(response.body.session).toMatchObject({
+      // Assert - Route returns unwrapped session (REST standard)
+      expect(response.body).toMatchObject({
         id: mockSessionId,
         user_id: 'test-user-123',
         title: 'My Custom Title',
@@ -216,8 +216,8 @@ describe('Sessions Routes', () => {
         .send({})
         .expect(201);
 
-      // Assert
-      expect(response.body.session.title).toBe('New Chat');
+      // Assert - Route returns unwrapped session (REST standard)
+      expect(response.body.title).toBe('New Chat');
     });
 
     it('should return 400 when title exceeds 500 characters', async () => {
@@ -269,18 +269,21 @@ describe('Sessions Routes', () => {
       };
 
       mockExecuteQuery.mockResolvedValueOnce({ recordset: [mockSession] });
+      // Second query: message count
+      mockExecuteQuery.mockResolvedValueOnce({ recordset: [{ count: 5 }] });
 
       // Act
       const response = await request(app)
         .get(`/api/chat/sessions/${GET_SESSION_UUID}`)
         .expect(200);
 
-      // Assert
-      expect(response.body.session).toMatchObject({
+      // Assert - Route returns unwrapped session with messageCount (REST standard)
+      expect(response.body).toMatchObject({
         id: GET_SESSION_UUID,
         user_id: 'test-user-123',
         title: 'Specific Session'
       });
+      expect(response.body.messageCount).toBe(5);
       expect(mockExecuteQuery).toHaveBeenCalledWith(
         expect.stringContaining('WHERE id = @sessionId AND user_id = @userId'),
         { sessionId: GET_SESSION_UUID, userId: 'test-user-123' }
@@ -511,9 +514,9 @@ describe('Sessions Routes', () => {
         .send({ title: 'Updated Title' })
         .expect(200);
 
-      // Assert
-      expect(response.body.success).toBe(true);
-      expect(response.body.session.title).toBe('Updated Title');
+      // Assert - Route returns unwrapped session (REST standard, no success wrapper)
+      expect(response.body.title).toBe('Updated Title');
+      expect(response.body.id).toBe(PATCH_SESSION_UUID);
       expect(mockExecuteQuery).toHaveBeenCalledWith(
         expect.stringContaining('UPDATE sessions'),
         expect.objectContaining({
@@ -611,14 +614,12 @@ describe('Sessions Routes', () => {
       // Arrange
       mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
 
-      // Act
-      const response = await request(app)
+      // Act - Route returns 204 No Content (REST standard for successful DELETE)
+      await request(app)
         .delete(`/api/chat/sessions/${DELETE_SESSION_UUID}`)
-        .expect(200);
+        .expect(204);
 
-      // Assert
-      expect(response.body.success).toBe(true);
-      expect(response.body.message).toBe('Session deleted');
+      // Assert - No body with 204, just verify DB call
       expect(mockExecuteQuery).toHaveBeenCalledWith(
         expect.stringContaining('DELETE FROM sessions'),
         { sessionId: DELETE_SESSION_UUID, userId: 'test-user-123' }

@@ -50,6 +50,18 @@ export interface IAgentEventEmitter {
   /** Emit an error event */
   emitError(sessionId: string, error: string, code: string): void;
 
+  /** Emit user_message_confirmed event after persistence */
+  emitUserMessageConfirmed(
+    sessionId: string,
+    data: {
+      messageId: string;
+      sequenceNumber: number;
+      eventId: string;
+      content: string;
+      userId: string;
+    }
+  ): void;
+
   /** Get current event index */
   getEventIndex(): number;
 

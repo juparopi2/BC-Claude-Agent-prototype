@@ -73,6 +73,14 @@ export interface PersistedEvent {
 }
 
 /**
+ * Result of persisting a user message.
+ * Extends PersistedEvent with messageId for event emission.
+ */
+export interface UserMessagePersistedEvent extends PersistedEvent {
+  messageId: string;
+}
+
+/**
  * Data for persisting an agent message.
  */
 export interface AgentMessageData {
@@ -148,9 +156,9 @@ export interface IPersistenceCoordinator {
    * Persist a user message to the event store.
    * @param sessionId - Session ID
    * @param content - Message content
-   * @returns Persisted event with sequence number
+   * @returns Persisted event with sequence number and messageId
    */
-  persistUserMessage(sessionId: string, content: string): Promise<PersistedEvent>;
+  persistUserMessage(sessionId: string, content: string): Promise<UserMessagePersistedEvent>;
 
   /**
    * Persist an agent message with full metadata.

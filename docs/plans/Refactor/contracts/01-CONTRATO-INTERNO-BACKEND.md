@@ -1546,6 +1546,91 @@ const orchestrator = new AgentOrchestrator(undefined, mockPersistence);
 - Aislamiento: Cada test controla sus dependencias
 - Flexibilidad: Swap implementations (fake, mock, spy)
 
+### 7. Stateless Components with ExecutionContext (Multi-Tenant Safe)
+
+**Definición**: Componentes singleton stateless que reciben un `ExecutionContext` con todo estado mutable por ejecución.
+
+**Problema que Resuelve**:
+```typescript
+// ❌ ANTES: Singleton con estado compartido → Race condition
+class AgentOrchestrator {
+  constructor() {
+    this.agentEventEmitter = createAgentEventEmitter();
+  }
+
+  async executeAgent(prompt, sessionId, onEvent) {
+    // ⚠️ RACE CONDITION: Si User A y User B llaman simultáneamente,
+    // el callback del User B sobrescribe el del User A
+    this.agentEventEmitter.setCallback(onEvent);
+  }
+}
+```
+
+**Solución - ExecutionContext**:
+```typescript
+// ✅ AHORA: Componentes stateless + ExecutionContext
+interface ExecutionContext {
+  readonly executionId: string;
+  readonly sessionId: string;
+  readonly userId: string;
+  readonly callback: EventEmitCallback | undefined;
+  eventIndex: number;                   // Mutable - auto-incrementing
+  readonly thinkingChunks: string[];    // Mutable - accumulation
+  readonly contentChunks: string[];     // Mutable - accumulation
+  readonly seenToolIds: Map<string, string>; // Mutable - deduplication
+  totalInputTokens: number;             // Mutable - usage tracking
+  totalOutputTokens: number;            // Mutable - usage tracking
+}
+
+// En AgentOrchestrator:
+async executeAgent(prompt, sessionId, onEvent, userId, options) {
+  // ✅ Crear contexto POR EJECUCIÓN
+  const ctx = createExecutionContext(sessionId, userId, onEvent, options);
+
+  // ✅ Pasar ctx a componentes stateless
+  const graphStreamProcessor = getGraphStreamProcessor();
+  const agentEventEmitter = getAgentEventEmitter();
+
+  // ✅ Componentes usan estado del contexto
+  for await (const event of graphStreamProcessor.process(events, ctx)) {
+    agentEventEmitter.emit(event, ctx);
+  }
+}
+```
+
+**Componentes Stateless**:
+
+| Componente | Estado Movido a ExecutionContext |
+|------------|----------------------------------|
+| `AgentEventEmitter` | `ctx.callback`, `ctx.eventIndex` |
+| `GraphStreamProcessor` | `ctx.thinkingChunks`, `ctx.contentChunks`, `ctx.seenToolIds` |
+| `ToolExecutionProcessor` | `ctx.seenToolIds` (compartido con GraphStreamProcessor) |
+
+**Memoria por ExecutionContext** (~310 bytes base):
+- Identity fields: ~108 bytes (3 UUIDs)
+- Callback: 8 bytes (pointer)
+- Arrays vacíos: ~96 bytes (overhead)
+- Map vacío: ~48 bytes (overhead)
+- Números: 40 bytes
+- Crecimiento durante ejecución:
+  - thinkingChunks: ~100KB típico (Extended Thinking)
+  - contentChunks: ~10KB típico
+  - seenToolIds: ~200 bytes por herramienta
+
+**Beneficios**:
+- **Multi-Tenant Safe**: Garantiza aislamiento entre usuarios concurrentes
+- **Azure Container Apps Ready**: Componentes stateless permiten horizontal scaling sin sticky sessions
+- **Bajo GC Pressure**: Solo se crea el contexto (ligero), componentes son singletons reutilizados
+- **Sin Cleanup**: Contexto es garbage collected automáticamente al terminar la ejecución
+- **Deduplicación Unificada**: `ctx.seenToolIds` es compartido entre GraphStreamProcessor y ToolExecutionProcessor
+
+**Invariantes**:
+1. Componentes stateless NO tienen campos de instancia mutables
+2. Todo estado per-execution vive en `ExecutionContext`
+3. `ctx.seenToolIds` es la ÚNICA fuente de verdad para deduplicación de herramientas
+4. `ctx.eventIndex` se incrementa atómicamente por cada emisión
+5. ExecutionContext NUNCA se comparte entre ejecuciones
+
 ---
 
 ## Resumen de Contratos Críticos

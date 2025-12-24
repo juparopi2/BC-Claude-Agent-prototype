@@ -4,8 +4,19 @@
  * Processes tool executions from LangGraph streaming events.
  * Extracted from DirectAgentService.runGraph() lines 683-828.
  *
+ * ## Stateless Architecture
+ *
+ * This processor is STATELESS - deduplication uses ctx.seenToolIds which is
+ * SHARED with GraphStreamProcessor. This ensures a single source of truth
+ * for tool deduplication across all processors.
+ *
+ * This enables:
+ * - Multi-tenant isolation (no shared state between executions)
+ * - Horizontal scaling in Azure Container Apps
+ * - Guaranteed deduplication (one Map for both processors)
+ *
  * Responsibilities:
- * 1. Deduplication - Prevents duplicate tool events via ToolEventDeduplicator
+ * 1. Deduplication - Prevents duplicate tool events via ctx.seenToolIds
  * 2. Event emission - Emits tool_use and tool_result to WebSocket immediately
  * 3. Async persistence - Queues persistence via PersistenceCoordinator
  *
@@ -13,15 +24,13 @@
  *
  * @example
  * ```typescript
- * const processor = createToolExecutionProcessor();
+ * const ctx = createExecutionContext(sessionId, userId, callback, options);
+ * const processor = getToolExecutionProcessor();
  *
  * const toolsUsed = await processor.processExecutions(
  *   agentOutput.toolExecutions,
- *   { sessionId, userId, onEvent: emitEvent }
+ *   ctx
  * );
- *
- * console.log('Tools used:', toolsUsed);
- * console.log('Stats:', processor.getStats());
  * ```
  */
 
@@ -30,39 +39,32 @@ import { createChildLogger } from '@/shared/utils/logger';
 import type { AgentEvent, ToolUseEvent, ToolResultEvent } from '@bc-agent/shared';
 import type { IPersistenceCoordinator, ToolExecution } from '../persistence/types';
 import { getPersistenceCoordinator } from '../persistence';
-import type {
-  IToolExecutionProcessor,
-  IToolEventDeduplicator,
-  ToolProcessorContext,
-  RawToolExecution,
-  ToolProcessorStats,
-} from './types';
-import { ToolEventDeduplicator } from './ToolEventDeduplicator';
+import type { IToolExecutionProcessor, RawToolExecution } from './types';
+import type { ExecutionContext } from '@domains/agent/orchestration/ExecutionContext';
+import { markToolSeen } from '@domains/agent/orchestration/ExecutionContext';
 
 /**
  * Processes tool executions from LangGraph streaming events.
+ * STATELESS - all deduplication state lives in ExecutionContext.
  */
 export class ToolExecutionProcessor implements IToolExecutionProcessor {
   private readonly logger = createChildLogger({ service: 'ToolExecutionProcessor' });
 
-  private totalReceived = 0;
-  private duplicatesSkipped = 0;
-  private eventsEmitted = 0;
-  private persistenceInitiated = 0;
+  // NO instance fields for deduplication - uses ctx.seenToolIds
 
   constructor(
-    private readonly deduplicator: IToolEventDeduplicator = new ToolEventDeduplicator(),
     private readonly persistenceCoordinator: IPersistenceCoordinator = getPersistenceCoordinator()
   ) {}
 
   /**
    * Process an array of tool executions.
+   * Uses ctx.seenToolIds for deduplication (shared with GraphStreamProcessor).
    */
   async processExecutions(
     executions: RawToolExecution[],
-    context: ToolProcessorContext
+    ctx: ExecutionContext
   ): Promise<string[]> {
-    const { sessionId, onEvent } = context;
+    const { sessionId, callback } = ctx;
     const toolsUsed: string[] = [];
     const executionsToPersist: ToolExecution[] = [];
 
@@ -70,19 +72,17 @@ export class ToolExecutionProcessor implements IToolExecutionProcessor {
       return toolsUsed;
     }
 
-    this.totalReceived += executions.length;
-
     this.logger.debug({
       sessionId,
+      executionId: ctx.executionId,
       executionsCount: executions.length,
     }, 'Processing tool executions');
 
     for (const exec of executions) {
-      // 1. DEDUPLICATION CHECK
-      const dedupResult = this.deduplicator.checkAndMark(exec.toolUseId);
+      // 1. DEDUPLICATION CHECK (shared with GraphStreamProcessor)
+      const dedupResult = markToolSeen(ctx, exec.toolUseId);
 
       if (dedupResult.isDuplicate) {
-        this.duplicatesSkipped++;
         this.logger.debug({
           toolUseId: exec.toolUseId,
           toolName: exec.toolName,
@@ -108,8 +108,7 @@ export class ToolExecutionProcessor implements IToolExecutionProcessor {
         persistenceState: 'pending',
       };
 
-      this.safeEmit(onEvent, toolUseEvent);
-      this.eventsEmitted++;
+      this.safeEmit(callback, toolUseEvent, ctx);
 
       // 4. EMIT tool_result EVENT (immediate)
       const toolResultEvent: ToolResultEvent = {
@@ -126,8 +125,7 @@ export class ToolExecutionProcessor implements IToolExecutionProcessor {
         persistenceState: 'pending',
       };
 
-      this.safeEmit(onEvent, toolResultEvent);
-      this.eventsEmitted++;
+      this.safeEmit(callback, toolResultEvent, ctx);
 
       this.logger.debug({
         toolUseId: exec.toolUseId,
@@ -151,7 +149,6 @@ export class ToolExecutionProcessor implements IToolExecutionProcessor {
 
     // 6. INITIATE ASYNC PERSISTENCE (fire-and-forget)
     if (executionsToPersist.length > 0) {
-      this.persistenceInitiated++;
       try {
         this.persistenceCoordinator.persistToolEventsAsync(sessionId, executionsToPersist);
       } catch (err) {
@@ -168,11 +165,21 @@ export class ToolExecutionProcessor implements IToolExecutionProcessor {
   }
 
   /**
-   * Safely emit an event, catching any callback errors.
+   * Safely emit an event with eventIndex, catching any callback errors.
    */
-  private safeEmit(onEvent: (event: AgentEvent) => void, event: AgentEvent): void {
+  private safeEmit(
+    callback: ((event: AgentEvent) => void) | undefined,
+    event: AgentEvent,
+    ctx: ExecutionContext
+  ): void {
+    if (!callback) return;
+
     try {
-      onEvent(event);
+      const eventWithIndex = {
+        ...event,
+        eventIndex: ctx.eventIndex++,
+      };
+      callback(eventWithIndex);
     } catch (err) {
       this.logger.error({
         err,
@@ -181,37 +188,40 @@ export class ToolExecutionProcessor implements IToolExecutionProcessor {
       }, 'Error in event emission callback');
     }
   }
+}
 
-  /**
-   * Get processing statistics.
-   */
-  getStats(): ToolProcessorStats {
-    return {
-      totalReceived: this.totalReceived,
-      duplicatesSkipped: this.duplicatesSkipped,
-      eventsEmitted: this.eventsEmitted,
-      persistenceInitiated: this.persistenceInitiated,
-    };
-  }
+// ============================================================================
+// Singleton Pattern
+// ============================================================================
 
-  /**
-   * Reset processor state for new agent run.
-   */
-  reset(): void {
-    this.deduplicator.reset();
-    this.totalReceived = 0;
-    this.duplicatesSkipped = 0;
-    this.eventsEmitted = 0;
-    this.persistenceInitiated = 0;
+let instance: ToolExecutionProcessor | null = null;
+
+/**
+ * Get the singleton ToolExecutionProcessor instance.
+ * Safe for concurrent use because all state lives in ExecutionContext.
+ */
+export function getToolExecutionProcessor(): ToolExecutionProcessor {
+  if (!instance) {
+    instance = new ToolExecutionProcessor();
   }
+  return instance;
 }
 
 /**
- * Factory function to create ToolExecutionProcessor.
- * Each agent run should have its own processor.
- *
- * @returns New ToolExecutionProcessor instance
+ * Create a new ToolExecutionProcessor instance.
+ * @deprecated Use getToolExecutionProcessor() for production.
+ * Only use this for testing with dependency injection.
  */
-export function createToolExecutionProcessor(): ToolExecutionProcessor {
-  return new ToolExecutionProcessor();
+export function createToolExecutionProcessor(
+  persistenceCoordinator?: IPersistenceCoordinator
+): ToolExecutionProcessor {
+  return new ToolExecutionProcessor(persistenceCoordinator);
+}
+
+/**
+ * Reset singleton for testing.
+ * @internal Only for unit tests
+ */
+export function __resetToolExecutionProcessor(): void {
+  instance = null;
 }

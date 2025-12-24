@@ -5,17 +5,20 @@
  * Subfase 6B: Turn boundary detection (thinking_complete transition, final_response, array event handling).
  * Subfase 6C: Tool execution handling (tool_call processing, deduplication, mixed flows).
  * Subfase 6D: Usage events, stop reason handling, and final_response edge cases.
+ *
+ * NOTE: GraphStreamProcessor is now STATELESS. All mutable state lives in ExecutionContext.
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   GraphStreamProcessor,
   createGraphStreamProcessor,
-  type StreamProcessorContext,
+  getGraphStreamProcessor,
 } from '@domains/agent/streaming/GraphStreamProcessor';
-import { ThinkingAccumulator } from '@domains/agent/streaming/ThinkingAccumulator';
-import { ContentAccumulator } from '@domains/agent/streaming/ContentAccumulator';
-import { ToolEventDeduplicator } from '@domains/agent/tools/ToolEventDeduplicator';
+import {
+  createExecutionContext,
+  type ExecutionContext,
+} from '@domains/agent/orchestration/ExecutionContext';
 import type { INormalizedStreamEvent } from '@shared/providers/interfaces/INormalizedEvent';
 import type { ProcessedStreamEvent } from '@domains/agent/streaming/types';
 
@@ -79,27 +82,36 @@ function createToolCallEvent(
 }
 
 /**
- * Mock context for stream processing.
+ * Creates a fresh ExecutionContext for testing.
+ * Since GraphStreamProcessor is stateless, all state lives in the context.
  */
-const mockContext: StreamProcessorContext = {
-  sessionId: 'test-session',
-  userId: 'test-user',
-  enableThinking: true,
-};
+function createTestContext(options?: {
+  enableThinking?: boolean;
+  thinkingBudget?: number;
+}): ExecutionContext {
+  return createExecutionContext(
+    'test-session',
+    'test-user',
+    undefined, // no callback needed for unit tests
+    {
+      enableThinking: options?.enableThinking ?? true,
+      thinkingBudget: options?.thinkingBudget ?? 10000,
+    }
+  );
+}
 
 // ============================================================================
 // Tests
 // ============================================================================
 
 describe('GraphStreamProcessor', () => {
-  let thinkingAccumulator: ThinkingAccumulator;
-  let contentAccumulator: ContentAccumulator;
   let processor: GraphStreamProcessor;
+  let ctx: ExecutionContext;
 
   beforeEach(() => {
-    thinkingAccumulator = new ThinkingAccumulator();
-    contentAccumulator = new ContentAccumulator();
-    processor = new GraphStreamProcessor(thinkingAccumulator, contentAccumulator);
+    // Processor is stateless - all state lives in ctx
+    processor = createGraphStreamProcessor();
+    ctx = createTestContext();
   });
 
   // ==========================================================================
@@ -107,8 +119,9 @@ describe('GraphStreamProcessor', () => {
   // ==========================================================================
 
   describe('construction and factory', () => {
-    it('should create instance with injected accumulators', () => {
-      expect(processor).toBeInstanceOf(GraphStreamProcessor);
+    it('should create instance via createGraphStreamProcessor()', () => {
+      const instance = createGraphStreamProcessor();
+      expect(instance).toBeInstanceOf(GraphStreamProcessor);
     });
 
     it('should have process method', () => {
@@ -116,12 +129,10 @@ describe('GraphStreamProcessor', () => {
       expect(typeof processor.process).toBe('function');
     });
 
-    it('should create instance via factory function', () => {
-      const factoryProcessor = createGraphStreamProcessor(
-        thinkingAccumulator,
-        contentAccumulator
-      );
-      expect(factoryProcessor).toBeInstanceOf(GraphStreamProcessor);
+    it('should return singleton via getGraphStreamProcessor()', () => {
+      const instance1 = getGraphStreamProcessor();
+      const instance2 = getGraphStreamProcessor();
+      expect(instance1).toBe(instance2);
     });
   });
 
@@ -133,7 +144,7 @@ describe('GraphStreamProcessor', () => {
     it('should process empty event stream', async () => {
       const events: INormalizedStreamEvent[] = [];
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       expect(results).toHaveLength(0);
@@ -154,7 +165,7 @@ describe('GraphStreamProcessor', () => {
       ];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       expect(results).toHaveLength(2);
@@ -169,7 +180,7 @@ describe('GraphStreamProcessor', () => {
         }),
       ];
 
-      const generator = processor.process(createAsyncIterable(events), mockContext);
+      const generator = processor.process(createAsyncIterable(events), ctx);
 
       // Should be able to iterate with for-await-of
       const results: ProcessedStreamEvent[] = [];
@@ -196,7 +207,7 @@ describe('GraphStreamProcessor', () => {
       ];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       expect(results).toHaveLength(1);
@@ -217,12 +228,12 @@ describe('GraphStreamProcessor', () => {
       ];
 
       await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       // Verify accumulator received the content
-      expect(thinkingAccumulator.getContent()).toBe('Thinking chunk');
-      expect(thinkingAccumulator.getChunkCount()).toBe(1);
+      expect(ctx.thinkingChunks.join('')).toBe('Thinking chunk');
+      expect(ctx.thinkingChunks.length).toBe(1);
     });
 
     it('should include blockIndex from metadata', async () => {
@@ -235,7 +246,7 @@ describe('GraphStreamProcessor', () => {
       ];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       expect(results[0]?.blockIndex).toBe(5);
@@ -251,7 +262,7 @@ describe('GraphStreamProcessor', () => {
       ];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       expect(results).toHaveLength(1);
@@ -261,8 +272,9 @@ describe('GraphStreamProcessor', () => {
         blockIndex: 0,
       });
 
-      // Empty chunks should not be added to accumulator
-      expect(thinkingAccumulator.getChunkCount()).toBe(0);
+      // Empty chunks ARE pushed to context (simple accumulation)
+      expect(ctx.thinkingChunks.length).toBe(1);
+      expect(ctx.thinkingChunks[0]).toBe('');
     });
 
     it('should handle multiple reasoning chunks', async () => {
@@ -285,7 +297,7 @@ describe('GraphStreamProcessor', () => {
       ];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       expect(results).toHaveLength(3);
@@ -294,8 +306,8 @@ describe('GraphStreamProcessor', () => {
       expect(results[2]?.content).toBe('Third');
 
       // All chunks should be accumulated
-      expect(thinkingAccumulator.getContent()).toBe('First Second Third');
-      expect(thinkingAccumulator.getChunkCount()).toBe(3);
+      expect(ctx.thinkingChunks.join('')).toBe('First Second Third');
+      expect(ctx.thinkingChunks.length).toBe(3);
     });
   });
 
@@ -314,7 +326,7 @@ describe('GraphStreamProcessor', () => {
       ];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       expect(results).toHaveLength(1);
@@ -335,12 +347,12 @@ describe('GraphStreamProcessor', () => {
       ];
 
       await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       // Verify accumulator received the content
-      expect(contentAccumulator.getContent()).toBe('Content chunk');
-      expect(contentAccumulator.getChunkCount()).toBe(1);
+      expect(ctx.contentChunks.join('')).toBe('Content chunk');
+      expect(ctx.contentChunks.length).toBe(1);
     });
 
     it('should include blockIndex from metadata', async () => {
@@ -353,7 +365,7 @@ describe('GraphStreamProcessor', () => {
       ];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       expect(results[0]?.blockIndex).toBe(7);
@@ -369,7 +381,7 @@ describe('GraphStreamProcessor', () => {
       ];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       expect(results).toHaveLength(1);
@@ -379,8 +391,9 @@ describe('GraphStreamProcessor', () => {
         blockIndex: 0,
       });
 
-      // Empty chunks should not be added to accumulator
-      expect(contentAccumulator.getChunkCount()).toBe(0);
+      // Empty chunks ARE pushed to context (simple accumulation)
+      expect(ctx.contentChunks.length).toBe(1);
+      expect(ctx.contentChunks[0]).toBe('');
     });
 
     it('should handle multiple content chunks', async () => {
@@ -403,7 +416,7 @@ describe('GraphStreamProcessor', () => {
       ];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       expect(results).toHaveLength(3);
@@ -412,35 +425,34 @@ describe('GraphStreamProcessor', () => {
       expect(results[2]?.content).toBe('world');
 
       // All chunks should be accumulated
-      expect(contentAccumulator.getContent()).toBe('Hello beautiful world');
-      expect(contentAccumulator.getChunkCount()).toBe(3);
+      expect(ctx.contentChunks.join('')).toBe('Hello beautiful world');
+      expect(ctx.contentChunks.length).toBe(3);
     });
   });
 
   // ==========================================================================
-  // 5. Accumulator Integration (4 tests)
+  // 5. ExecutionContext State Management (4 tests)
   // ==========================================================================
 
-  describe('accumulator integration', () => {
-    it('should reset accumulators at start of process()', async () => {
-      // Pre-populate accumulators with data
-      thinkingAccumulator.append('Old thinking');
-      contentAccumulator.append('Old content');
+  describe('ExecutionContext state management', () => {
+    it('should start with empty chunks in fresh context', async () => {
+      // Each execution gets a fresh context - no need to reset
+      const freshCtx = createTestContext();
 
-      expect(thinkingAccumulator.getChunkCount()).toBe(1);
-      expect(contentAccumulator.getChunkCount()).toBe(1);
+      expect(freshCtx.thinkingChunks.length).toBe(0);
+      expect(freshCtx.contentChunks.length).toBe(0);
 
       // Process empty stream
       const events: INormalizedStreamEvent[] = [];
       await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), freshCtx)
       );
 
-      // Accumulators should be reset
-      expect(thinkingAccumulator.getChunkCount()).toBe(0);
-      expect(contentAccumulator.getChunkCount()).toBe(0);
-      expect(thinkingAccumulator.getContent()).toBe('');
-      expect(contentAccumulator.getContent()).toBe('');
+      // Context remains empty
+      expect(freshCtx.thinkingChunks.length).toBe(0);
+      expect(freshCtx.contentChunks.length).toBe(0);
+      expect(freshCtx.thinkingChunks.join('')).toBe('');
+      expect(freshCtx.contentChunks.join('')).toBe('');
     });
 
     it('should accumulate thinking across multiple events', async () => {
@@ -463,12 +475,12 @@ describe('GraphStreamProcessor', () => {
       ];
 
       await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
-      expect(thinkingAccumulator.getContent()).toBe('Step 1: Step 2: Step 3');
-      expect(thinkingAccumulator.getChunkCount()).toBe(3);
-      expect(thinkingAccumulator.hasContent()).toBe(true);
+      expect(ctx.thinkingChunks.join('')).toBe('Step 1: Step 2: Step 3');
+      expect(ctx.thinkingChunks.length).toBe(3);
+      expect(ctx.thinkingChunks.length > 0).toBe(true);
     });
 
     it('should accumulate content across multiple events', async () => {
@@ -496,12 +508,12 @@ describe('GraphStreamProcessor', () => {
       ];
 
       await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
-      expect(contentAccumulator.getContent()).toBe('The quick brown fox');
-      expect(contentAccumulator.getChunkCount()).toBe(4);
-      expect(contentAccumulator.hasContent()).toBe(true);
+      expect(ctx.contentChunks.join('')).toBe('The quick brown fox');
+      expect(ctx.contentChunks.length).toBe(4);
+      expect(ctx.contentChunks.length > 0).toBe(true);
     });
 
     it('should handle mixed thinking and content events', async () => {
@@ -529,7 +541,7 @@ describe('GraphStreamProcessor', () => {
       ];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       // Should yield 5 events (Subfase 6B adds thinking_complete)
@@ -545,14 +557,14 @@ describe('GraphStreamProcessor', () => {
       expect(results[2]?.blockIndex).toBe(0);
 
       // Both accumulators should have content
-      expect(thinkingAccumulator.getContent()).toBe('Analyzing... Done.');
-      expect(thinkingAccumulator.getChunkCount()).toBe(2);
+      expect(ctx.thinkingChunks.join('')).toBe('Analyzing... Done.');
+      expect(ctx.thinkingChunks.length).toBe(2);
 
-      expect(contentAccumulator.getContent()).toBe('Here is my answer.');
-      expect(contentAccumulator.getChunkCount()).toBe(2);
+      expect(ctx.contentChunks.join('')).toBe('Here is my answer.');
+      expect(ctx.contentChunks.length).toBe(2);
 
       // Verify thinking is marked complete
-      expect(thinkingAccumulator.isComplete()).toBe(true);
+      expect(ctx.thinkingComplete).toBe(true);
     });
   });
 
@@ -576,7 +588,7 @@ describe('GraphStreamProcessor', () => {
       ];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       expect(results).toHaveLength(3); // thinking_chunk, thinking_complete, message_chunk
@@ -610,7 +622,7 @@ describe('GraphStreamProcessor', () => {
       ];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       const thinkingComplete = results.find(r => r.type === 'thinking_complete');
@@ -633,7 +645,7 @@ describe('GraphStreamProcessor', () => {
       ];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       const thinkingComplete = results.find(r => r.type === 'thinking_complete');
@@ -656,7 +668,7 @@ describe('GraphStreamProcessor', () => {
       ];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       const completeIdx = results.findIndex(r => r.type === 'thinking_complete');
@@ -682,7 +694,7 @@ describe('GraphStreamProcessor', () => {
       ];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       const thinkingComplete = results.find(r => r.type === 'thinking_complete');
@@ -715,7 +727,7 @@ describe('GraphStreamProcessor', () => {
       ];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       const thinkingCompleteCount = results.filter(
@@ -739,12 +751,12 @@ describe('GraphStreamProcessor', () => {
       ];
 
       await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       // After processing, thinking should be marked complete
-      expect(thinkingAccumulator.isComplete()).toBe(true);
-      expect(thinkingAccumulator.hasContent()).toBe(true);
+      expect(ctx.thinkingComplete).toBe(true);
+      expect(ctx.thinkingChunks.length > 0).toBe(true);
     });
   });
 
@@ -772,7 +784,7 @@ describe('GraphStreamProcessor', () => {
       ];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       const finalResponse = results.find(r => r.type === 'final_response');
@@ -810,7 +822,7 @@ describe('GraphStreamProcessor', () => {
       ];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       const finalResponse = results[results.length - 1]; // Should be last event
@@ -832,7 +844,7 @@ describe('GraphStreamProcessor', () => {
       ];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       const finalResponse = results.find(r => r.type === 'final_response');
@@ -849,7 +861,7 @@ describe('GraphStreamProcessor', () => {
       ];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       expect(results).toHaveLength(0); // No events emitted
@@ -884,7 +896,7 @@ describe('GraphStreamProcessor', () => {
       ];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       // Last event should be final_response
@@ -917,7 +929,7 @@ describe('GraphStreamProcessor', () => {
       ];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       // Second event triggers array return [thinking_complete, message_chunk]
@@ -942,7 +954,7 @@ describe('GraphStreamProcessor', () => {
       ];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       const completeIdx = results.findIndex(r => r.type === 'thinking_complete');
@@ -977,7 +989,7 @@ describe('GraphStreamProcessor', () => {
       ];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       // thinking_chunk, thinking_complete, message_chunk, message_chunk, final_response = 5
@@ -999,7 +1011,7 @@ describe('GraphStreamProcessor', () => {
       const events = [createToolCallEvent('toolu_123', 'get_weather', { city: 'Seattle' })];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       expect(results).toHaveLength(1);
@@ -1014,7 +1026,7 @@ describe('GraphStreamProcessor', () => {
       const events = [createToolCallEvent('toolu_456', 'list_customers')];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       expect(results).toHaveLength(1);
@@ -1026,7 +1038,7 @@ describe('GraphStreamProcessor', () => {
       const events = [createToolCallEvent('toolu_789', 'create_sales_order')];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       expect(results).toHaveLength(1);
@@ -1046,7 +1058,7 @@ describe('GraphStreamProcessor', () => {
       const events = [createToolCallEvent('toolu_complex', 'create_order', complexInput)];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       expect(results).toHaveLength(1);
@@ -1064,7 +1076,7 @@ describe('GraphStreamProcessor', () => {
       ];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       expect(results).toHaveLength(0); // No events emitted
@@ -1082,7 +1094,7 @@ describe('GraphStreamProcessor', () => {
       const events = [createToolCallEvent('toolu_nested', 'query_database', nestedInput)];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       expect(results).toHaveLength(1);
@@ -1094,38 +1106,35 @@ describe('GraphStreamProcessor', () => {
 
   // ==========================================================================
   // 10. Tool Event Deduplication (5 tests) - Subfase 6C
+  // NOTE: Deduplication now uses ctx.seenToolIds (ExecutionContext)
   // ==========================================================================
 
   describe('tool event deduplication', () => {
-    let deduplicator: ToolEventDeduplicator;
-    let processorWithDedup: GraphStreamProcessor;
-
-    beforeEach(() => {
-      deduplicator = new ToolEventDeduplicator();
-      processorWithDedup = new GraphStreamProcessor(
-        new ThinkingAccumulator(),
-        new ContentAccumulator(),
-        deduplicator
-      );
-    });
-
     it('should skip duplicate tool_call with same id', async () => {
+      // Use fresh context - deduplication happens via ctx.seenToolIds
+      const dedupCtx = createTestContext();
+
       const events = [
         createToolCallEvent('toolu_123', 'get_weather'),
         createToolCallEvent('toolu_123', 'get_weather'), // Duplicate
       ];
 
       const results = await collectEvents(
-        processorWithDedup.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), dedupCtx)
       );
 
       expect(results).toHaveLength(1); // Only first one emitted
       expect(results[0]?.type).toBe('tool_execution');
       const toolExec = results[0] as { type: 'tool_execution'; execution: any };
       expect(toolExec.execution.toolUseId).toBe('toolu_123');
+
+      // Verify deduplication state in context
+      expect(dedupCtx.seenToolIds.has('toolu_123')).toBe(true);
     });
 
     it('should emit tool_execution for first occurrence', async () => {
+      const dedupCtx = createTestContext();
+
       const events = [
         createToolCallEvent('toolu_first', 'list_items'),
         createToolCallEvent('toolu_first', 'list_items'), // Duplicate
@@ -1133,7 +1142,7 @@ describe('GraphStreamProcessor', () => {
       ];
 
       const results = await collectEvents(
-        processorWithDedup.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), dedupCtx)
       );
 
       expect(results).toHaveLength(1); // Only first occurrence
@@ -1142,6 +1151,8 @@ describe('GraphStreamProcessor', () => {
     });
 
     it('should emit tool_execution for different tool ids', async () => {
+      const dedupCtx = createTestContext();
+
       const events = [
         createToolCallEvent('toolu_001', 'tool_a'),
         createToolCallEvent('toolu_002', 'tool_b'),
@@ -1149,7 +1160,7 @@ describe('GraphStreamProcessor', () => {
       ];
 
       const results = await collectEvents(
-        processorWithDedup.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), dedupCtx)
       );
 
       expect(results).toHaveLength(3); // All different IDs
@@ -1161,40 +1172,49 @@ describe('GraphStreamProcessor', () => {
         r => (r as { type: 'tool_execution'; execution: any }).execution.toolUseId
       );
       expect(ids).toEqual(['toolu_001', 'toolu_002', 'toolu_003']);
+
+      // All three should be in the context's seenToolIds
+      expect(dedupCtx.seenToolIds.size).toBe(3);
     });
 
-    it('should work without deduplicator (no deduplication)', async () => {
-      // Use processor without deduplicator (from main beforeEach)
+    it('should always deduplicate via ctx.seenToolIds', async () => {
+      // Deduplication is always active via ExecutionContext
+      const dedupCtx = createTestContext();
       const events = [
         createToolCallEvent('toolu_123', 'get_weather'),
-        createToolCallEvent('toolu_123', 'get_weather'), // Same id, no dedup
+        createToolCallEvent('toolu_123', 'get_weather'), // Same id - will be deduped
       ];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), dedupCtx)
       );
 
-      expect(results).toHaveLength(2); // Both emitted (no deduplication)
+      expect(results).toHaveLength(1); // Deduplicated
       expect(results[0]?.type).toBe('tool_execution');
-      expect(results[1]?.type).toBe('tool_execution');
     });
 
-    it('should reset deduplicator at start of process()', async () => {
-      // First stream with a tool call
+    it('should isolate deduplication between different contexts', async () => {
+      // First context with a tool call
+      const ctx1 = createTestContext();
       const stream1 = [createToolCallEvent('toolu_xyz', 'first_call')];
       await collectEvents(
-        processorWithDedup.process(createAsyncIterable(stream1), mockContext)
+        processor.process(createAsyncIterable(stream1), ctx1)
       );
 
-      // Second stream with the SAME tool id (should NOT be deduplicated because reset)
+      // Second context with the SAME tool id (should NOT be deduplicated - fresh context)
+      const ctx2 = createTestContext();
       const stream2 = [createToolCallEvent('toolu_xyz', 'first_call')];
       const results = await collectEvents(
-        processorWithDedup.process(createAsyncIterable(stream2), mockContext)
+        processor.process(createAsyncIterable(stream2), ctx2)
       );
 
-      expect(results).toHaveLength(1); // Should emit (deduplicator was reset)
+      expect(results).toHaveLength(1); // Should emit (different context)
       const toolExec = results[0] as { type: 'tool_execution'; execution: any };
       expect(toolExec.execution.toolUseId).toBe('toolu_xyz');
+
+      // Both contexts have the same tool id, but independently
+      expect(ctx1.seenToolIds.has('toolu_xyz')).toBe(true);
+      expect(ctx2.seenToolIds.has('toolu_xyz')).toBe(true);
     });
   });
 
@@ -1219,7 +1239,7 @@ describe('GraphStreamProcessor', () => {
       ];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       expect(results).toHaveLength(3);
@@ -1243,7 +1263,7 @@ describe('GraphStreamProcessor', () => {
       ];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       expect(results).toHaveLength(4);
@@ -1274,7 +1294,7 @@ describe('GraphStreamProcessor', () => {
       ];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       // thinking_chunk (2), tool_execution, thinking_complete, message_chunk = 5
@@ -1312,7 +1332,7 @@ describe('GraphStreamProcessor', () => {
       ];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       // content, tool, content, tool, content, final_response = 6
@@ -1344,7 +1364,7 @@ describe('GraphStreamProcessor', () => {
       ];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       expect(results).toHaveLength(1);
@@ -1363,7 +1383,7 @@ describe('GraphStreamProcessor', () => {
       ];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       expect(results).toHaveLength(1);
@@ -1380,7 +1400,7 @@ describe('GraphStreamProcessor', () => {
       ];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       expect(results).toHaveLength(1);
@@ -1397,7 +1417,7 @@ describe('GraphStreamProcessor', () => {
       ];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       expect(results).toHaveLength(0); // No events emitted
@@ -1422,7 +1442,7 @@ describe('GraphStreamProcessor', () => {
       ];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       // message_chunk, final_response, usage = 3
@@ -1454,7 +1474,7 @@ describe('GraphStreamProcessor', () => {
       ];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       const finalResponse = results.find(r => r.type === 'final_response');
@@ -1477,7 +1497,7 @@ describe('GraphStreamProcessor', () => {
       ];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       const finalResponse = results.find(r => r.type === 'final_response');
@@ -1500,7 +1520,7 @@ describe('GraphStreamProcessor', () => {
       ];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       const finalResponse = results.find(r => r.type === 'final_response');
@@ -1523,7 +1543,7 @@ describe('GraphStreamProcessor', () => {
       ];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       const finalResponse = results.find(r => r.type === 'final_response');
@@ -1546,7 +1566,7 @@ describe('GraphStreamProcessor', () => {
       ];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       const finalResponse = results.find(r => r.type === 'final_response');
@@ -1574,7 +1594,7 @@ describe('GraphStreamProcessor', () => {
       ];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       // Should have: thinking_chunk, thinking_complete
@@ -1602,7 +1622,7 @@ describe('GraphStreamProcessor', () => {
       ];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       // Should have: thinking_chunk, thinking_complete, message_chunk, final_response = 4
@@ -1620,7 +1640,7 @@ describe('GraphStreamProcessor', () => {
       ];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       expect(results.some(r => r.type === 'final_response')).toBe(false);
@@ -1641,7 +1661,7 @@ describe('GraphStreamProcessor', () => {
       ];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       // Should have: thinking_chunk, thinking_complete (no final_response since no content)
@@ -1666,7 +1686,7 @@ describe('GraphStreamProcessor', () => {
       ];
 
       const results = await collectEvents(
-        processor.process(createAsyncIterable(events), mockContext)
+        processor.process(createAsyncIterable(events), ctx)
       );
 
       const finalResponse = results.find(r => r.type === 'final_response');

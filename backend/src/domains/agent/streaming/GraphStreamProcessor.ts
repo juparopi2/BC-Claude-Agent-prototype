@@ -3,50 +3,50 @@
  *
  * Processes normalized stream events from LangGraph and yields ProcessedStreamEvents.
  * Extracted from DirectAgentService.runGraph() streaming logic (lines 500-1200).
+ *
+ * ## Stateless Architecture
+ *
+ * This processor is STATELESS - all mutable state lives in ExecutionContext.
+ * This enables:
+ * - Multi-tenant isolation (no shared state between executions)
+ * - Horizontal scaling in Azure Container Apps
+ * - No cleanup required between executions
+ *
+ * State managed via ExecutionContext:
+ * - ctx.thinkingChunks: Accumulated thinking content
+ * - ctx.thinkingComplete: Flag when thinking phase ends
+ * - ctx.contentChunks: Accumulated response content
+ * - ctx.lastStopReason: Stop reason from stream
+ * - ctx.seenToolIds: Tool deduplication (shared with ToolExecutionProcessor)
  */
 
 import type { INormalizedStreamEvent } from '@shared/providers/interfaces/INormalizedEvent';
-import type {
-  IThinkingAccumulator,
-  IContentAccumulator,
-  ProcessedStreamEvent,
-} from './types';
-import type { IToolEventDeduplicator } from '@domains/agent/tools/types';
-
-export interface StreamProcessorContext {
-  sessionId: string;
-  userId: string;
-  enableThinking?: boolean;
-}
+import type { ProcessedStreamEvent } from './types';
+import type { ExecutionContext } from '@domains/agent/orchestration/ExecutionContext';
+import { markToolSeen } from '@domains/agent/orchestration/ExecutionContext';
 
 export interface IGraphStreamProcessor {
   process(
     normalizedEvents: AsyncIterable<INormalizedStreamEvent>,
-    context: StreamProcessorContext
+    ctx: ExecutionContext
   ): AsyncGenerator<ProcessedStreamEvent>;
 }
 
+/**
+ * Stateless stream processor.
+ * All mutable state is stored in ExecutionContext, not in this class.
+ */
 export class GraphStreamProcessor implements IGraphStreamProcessor {
-  private lastStopReason: string = 'end_turn';
-
-  constructor(
-    private readonly thinkingAccumulator: IThinkingAccumulator,
-    private readonly contentAccumulator: IContentAccumulator,
-    private readonly toolEventDeduplicator?: IToolEventDeduplicator
-  ) {}
+  // NO instance fields - completely stateless
 
   async *process(
     normalizedEvents: AsyncIterable<INormalizedStreamEvent>,
-    context: StreamProcessorContext
+    ctx: ExecutionContext
   ): AsyncGenerator<ProcessedStreamEvent> {
-    // Reset accumulators for new stream
-    this.thinkingAccumulator.reset();
-    this.contentAccumulator.reset();
-    this.toolEventDeduplicator?.reset();
-    this.lastStopReason = 'end_turn';
+    // No reset needed - ctx is fresh per execution
 
     for await (const event of normalizedEvents) {
-      const processed = this.processEvent(event, context);
+      const processed = this.processEvent(event, ctx);
       if (processed) {
         // Handle both single events and arrays of events
         if (Array.isArray(processed)) {
@@ -62,59 +62,58 @@ export class GraphStreamProcessor implements IGraphStreamProcessor {
 
   private processEvent(
     event: INormalizedStreamEvent,
-    _context: StreamProcessorContext
+    ctx: ExecutionContext
   ): ProcessedStreamEvent | ProcessedStreamEvent[] | null {
     switch (event.type) {
       case 'reasoning_delta':
-        return this.handleReasoningDelta(event);
+        return this.handleReasoningDelta(event, ctx);
       case 'content_delta':
-        return this.handleContentDelta(event);
+        return this.handleContentDelta(event, ctx);
       case 'tool_call':
-        return this.handleToolCall(event);
+        return this.handleToolCall(event, ctx);
       case 'usage':
         return this.handleUsage(event);
       case 'stream_end':
-        return this.handleStreamEnd(event);
+        return this.handleStreamEnd(event, ctx);
       default:
         return null;
     }
   }
 
   private handleReasoningDelta(
-    event: INormalizedStreamEvent
+    event: INormalizedStreamEvent,
+    ctx: ExecutionContext
   ): ProcessedStreamEvent {
     const content = event.reasoning || '';
-    this.thinkingAccumulator.append(content);
+    ctx.thinkingChunks.push(content);
     return {
       type: 'thinking_chunk',
       content,
-      blockIndex: event.metadata.blockIndex,
+      blockIndex: event.metadata?.blockIndex ?? 0,
     };
   }
 
   private handleContentDelta(
-    event: INormalizedStreamEvent
+    event: INormalizedStreamEvent,
+    ctx: ExecutionContext
   ): ProcessedStreamEvent | ProcessedStreamEvent[] {
     // If we have thinking and it's not yet marked complete, emit thinking_complete
-    if (
-      this.thinkingAccumulator.hasContent() &&
-      !this.thinkingAccumulator.isComplete()
-    ) {
-      this.thinkingAccumulator.markComplete();
+    if (ctx.thinkingChunks.length > 0 && !ctx.thinkingComplete) {
+      ctx.thinkingComplete = true;
 
       const thinkingComplete: ProcessedStreamEvent = {
         type: 'thinking_complete',
-        content: this.thinkingAccumulator.getContent(),
+        content: ctx.thinkingChunks.join(''),
         blockIndex: 0, // Thinking is always block 0
       };
 
       // Now process the content_delta
       const content = event.content || '';
-      this.contentAccumulator.append(content);
+      ctx.contentChunks.push(content);
       const messageChunk: ProcessedStreamEvent = {
         type: 'message_chunk',
         content,
-        blockIndex: event.metadata.blockIndex,
+        blockIndex: event.metadata?.blockIndex ?? 1,
       };
 
       return [thinkingComplete, messageChunk]; // Return array of events
@@ -122,26 +121,27 @@ export class GraphStreamProcessor implements IGraphStreamProcessor {
 
     // Normal content processing
     const content = event.content || '';
-    this.contentAccumulator.append(content);
+    ctx.contentChunks.push(content);
     return {
       type: 'message_chunk',
       content,
-      blockIndex: event.metadata.blockIndex,
+      blockIndex: event.metadata?.blockIndex ?? 1,
     };
   }
 
-  private handleToolCall(event: INormalizedStreamEvent): ProcessedStreamEvent | null {
+  private handleToolCall(
+    event: INormalizedStreamEvent,
+    ctx: ExecutionContext
+  ): ProcessedStreamEvent | null {
     const toolCall = event.toolCall;
     if (!toolCall) {
       return null;
     }
 
-    // Deduplicate if deduplicator is provided
-    if (this.toolEventDeduplicator) {
-      const result = this.toolEventDeduplicator.checkAndMark(toolCall.id);
-      if (result.isDuplicate) {
-        return null; // Skip duplicate
-      }
+    // Deduplicate using shared ctx.seenToolIds
+    const result = markToolSeen(ctx, toolCall.id);
+    if (result.isDuplicate) {
+      return null; // Skip duplicate
     }
 
     return {
@@ -155,9 +155,12 @@ export class GraphStreamProcessor implements IGraphStreamProcessor {
     };
   }
 
-  private handleStreamEnd(event: INormalizedStreamEvent): ProcessedStreamEvent | ProcessedStreamEvent[] | null {
+  private handleStreamEnd(
+    event: INormalizedStreamEvent,
+    ctx: ExecutionContext
+  ): ProcessedStreamEvent | ProcessedStreamEvent[] | null {
     const results: ProcessedStreamEvent[] = [];
-    const stopReason = this.determineStopReason(event);
+    const stopReason = this.determineStopReason(event, ctx);
 
     // Emit usage if present on stream_end event (common pattern for on_chat_model_end)
     if (event.usage) {
@@ -169,20 +172,20 @@ export class GraphStreamProcessor implements IGraphStreamProcessor {
     }
 
     // Emit thinking_complete if thinking wasn't completed yet (edge case)
-    if (this.thinkingAccumulator.hasContent() && !this.thinkingAccumulator.isComplete()) {
-      this.thinkingAccumulator.markComplete();
+    if (ctx.thinkingChunks.length > 0 && !ctx.thinkingComplete) {
+      ctx.thinkingComplete = true;
       results.push({
         type: 'thinking_complete',
-        content: this.thinkingAccumulator.getContent(),
+        content: ctx.thinkingChunks.join(''),
         blockIndex: 0,
       });
     }
 
     // Emit final_response if we have content
-    if (this.contentAccumulator.hasContent()) {
+    if (ctx.contentChunks.length > 0) {
       results.push({
         type: 'final_response',
-        content: this.contentAccumulator.getContent(),
+        content: ctx.contentChunks.join(''),
         stopReason,
       });
     }
@@ -203,25 +206,54 @@ export class GraphStreamProcessor implements IGraphStreamProcessor {
     };
   }
 
-  private determineStopReason(event: INormalizedStreamEvent): string {
+  private determineStopReason(
+    event: INormalizedStreamEvent,
+    ctx: ExecutionContext
+  ): string {
     // Check if event has explicit stop reason in raw data
     if (event.raw && typeof event.raw === 'object') {
       const raw = event.raw as Record<string, unknown>;
       if (typeof raw['stop_reason'] === 'string') {
+        ctx.lastStopReason = raw['stop_reason'];
         return raw['stop_reason'];
       }
     }
 
-    // Use last tracked stop reason or default
-    return this.lastStopReason;
+    // Use last tracked stop reason from context
+    return ctx.lastStopReason;
   }
 }
 
-// Factory function
-export function createGraphStreamProcessor(
-  thinkingAccumulator: IThinkingAccumulator,
-  contentAccumulator: IContentAccumulator,
-  toolEventDeduplicator?: IToolEventDeduplicator
-): GraphStreamProcessor {
-  return new GraphStreamProcessor(thinkingAccumulator, contentAccumulator, toolEventDeduplicator);
+// ============================================================================
+// Singleton Pattern
+// ============================================================================
+
+let instance: GraphStreamProcessor | null = null;
+
+/**
+ * Get the singleton GraphStreamProcessor instance.
+ * Safe for concurrent use because all state lives in ExecutionContext.
+ */
+export function getGraphStreamProcessor(): GraphStreamProcessor {
+  if (!instance) {
+    instance = new GraphStreamProcessor();
+  }
+  return instance;
+}
+
+/**
+ * Create a new GraphStreamProcessor instance.
+ * @deprecated Use getGraphStreamProcessor() for production.
+ * Only use this for testing with dependency injection.
+ */
+export function createGraphStreamProcessor(): GraphStreamProcessor {
+  return new GraphStreamProcessor();
+}
+
+/**
+ * Reset singleton for testing.
+ * @internal Only for unit tests
+ */
+export function __resetGraphStreamProcessor(): void {
+  instance = null;
 }

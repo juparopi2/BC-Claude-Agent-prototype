@@ -3,6 +3,8 @@
  *
  * Unit tests for ToolExecutionProcessor.
  * Tests processing of tool executions from LangGraph streaming events.
+ *
+ * NOTE: ToolExecutionProcessor is now STATELESS. Deduplication uses ctx.seenToolIds.
  */
 
 import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
@@ -28,28 +30,15 @@ vi.mock('@/domains/agent/persistence', async (importOriginal) => {
 import {
   ToolExecutionProcessor,
   createToolExecutionProcessor,
-  type IToolEventDeduplicator,
   type RawToolExecution,
-  type ToolProcessorContext,
-  type DeduplicationResult,
 } from '@/domains/agent/tools';
 import type { IPersistenceCoordinator, ToolExecution } from '@/domains/agent/persistence/types';
+import {
+  createExecutionContext,
+  type ExecutionContext,
+} from '@/domains/agent/orchestration/ExecutionContext';
 
 // === Mock Factories ===
-
-function createMockDeduplicator(overrides: Partial<IToolEventDeduplicator> = {}): IToolEventDeduplicator {
-  return {
-    checkAndMark: vi.fn((toolUseId: string): DeduplicationResult => ({
-      isDuplicate: false,
-      toolUseId,
-      firstSeenAt: new Date().toISOString(),
-    })),
-    hasSeen: vi.fn(() => false),
-    getStats: vi.fn(() => ({ totalTracked: 0, duplicatesPrevented: 0 })),
-    reset: vi.fn(),
-    ...overrides,
-  };
-}
 
 function createMockPersistenceCoordinator(
   overrides: Partial<IPersistenceCoordinator> = {}
@@ -77,24 +66,32 @@ function createRawToolExecution(overrides: Partial<RawToolExecution> = {}): RawT
   };
 }
 
-function createContext(overrides: Partial<ToolProcessorContext> = {}): ToolProcessorContext {
-  return {
-    sessionId: 'test-session-123',
-    userId: 'test-user-456',
-    onEvent: vi.fn(),
-    ...overrides,
-  };
+/**
+ * Creates a fresh ExecutionContext for testing.
+ * Deduplication state lives in ctx.seenToolIds.
+ */
+function createTestContext(options?: {
+  sessionId?: string;
+  userId?: string;
+  callback?: (event: AgentEvent) => void;
+}): ExecutionContext {
+  return createExecutionContext(
+    options?.sessionId ?? 'test-session-123',
+    options?.userId ?? 'test-user-456',
+    options?.callback ?? vi.fn(),
+    { enableThinking: false }
+  );
 }
 
 describe('ToolExecutionProcessor', () => {
   let processor: ToolExecutionProcessor;
-  let mockDeduplicator: IToolEventDeduplicator;
   let mockPersistence: IPersistenceCoordinator;
+  let ctx: ExecutionContext;
 
   beforeEach(() => {
-    mockDeduplicator = createMockDeduplicator();
     mockPersistence = createMockPersistenceCoordinator();
-    processor = new ToolExecutionProcessor(mockDeduplicator, mockPersistence);
+    processor = new ToolExecutionProcessor(mockPersistence);
+    ctx = createTestContext();
   });
 
   // === Constructor & Dependency Injection ===
@@ -104,42 +101,30 @@ describe('ToolExecutionProcessor', () => {
       expect(defaultProcessor).toBeInstanceOf(ToolExecutionProcessor);
     });
 
-    it('should accept injected deduplicator', () => {
-      const customDeduplicator = createMockDeduplicator();
-      const processorWithCustomDedup = new ToolExecutionProcessor(customDeduplicator);
-      expect(processorWithCustomDedup).toBeInstanceOf(ToolExecutionProcessor);
-    });
-
     it('should accept injected persistenceCoordinator', () => {
       const customPersistence = createMockPersistenceCoordinator();
-      const defaultDeduplicator = createMockDeduplicator();
-      const processorWithCustomPersist = new ToolExecutionProcessor(
-        defaultDeduplicator,
-        customPersistence
-      );
+      const processorWithCustomPersist = new ToolExecutionProcessor(customPersistence);
       expect(processorWithCustomPersist).toBeInstanceOf(ToolExecutionProcessor);
     });
 
-    it('should accept both injected dependencies', () => {
-      const customDeduplicator = createMockDeduplicator();
-      const customPersistence = createMockPersistenceCoordinator();
-      const processorWithBoth = new ToolExecutionProcessor(customDeduplicator, customPersistence);
-      expect(processorWithBoth).toBeInstanceOf(ToolExecutionProcessor);
+    it('should create via factory function', () => {
+      const factoryProcessor = createToolExecutionProcessor();
+      expect(factoryProcessor).toBeInstanceOf(ToolExecutionProcessor);
     });
   });
 
   // === processExecutions() - Basic ===
   describe('processExecutions() - basic', () => {
     it('should return empty array for empty executions', async () => {
-      const context = createContext();
+      const context = createTestContext();
       const result = await processor.processExecutions([], context);
 
       expect(result).toEqual([]);
-      expect(context.onEvent).not.toHaveBeenCalled();
+      expect(context.callback).not.toHaveBeenCalled();
     });
 
     it('should return empty array for undefined executions', async () => {
-      const context = createContext();
+      const context = createTestContext();
       const result = await processor.processExecutions(
         undefined as unknown as RawToolExecution[],
         context
@@ -149,7 +134,7 @@ describe('ToolExecutionProcessor', () => {
     });
 
     it('should return empty array for null executions', async () => {
-      const context = createContext();
+      const context = createTestContext();
       const result = await processor.processExecutions(
         null as unknown as RawToolExecution[],
         context
@@ -159,7 +144,7 @@ describe('ToolExecutionProcessor', () => {
     });
 
     it('should process single execution successfully', async () => {
-      const context = createContext();
+      const context = createTestContext();
       const execution = createRawToolExecution({ toolName: 'get_customers' });
 
       const result = await processor.processExecutions([execution], context);
@@ -168,7 +153,7 @@ describe('ToolExecutionProcessor', () => {
     });
 
     it('should return array of tool names for processed executions', async () => {
-      const context = createContext();
+      const context = createTestContext();
       const executions = [
         createRawToolExecution({ toolName: 'tool_a' }),
         createRawToolExecution({ toolName: 'tool_b' }),
@@ -181,7 +166,7 @@ describe('ToolExecutionProcessor', () => {
     });
 
     it('should process multiple executions', async () => {
-      const context = createContext();
+      const context = createTestContext();
       const executions = [
         createRawToolExecution(),
         createRawToolExecution(),
@@ -190,89 +175,60 @@ describe('ToolExecutionProcessor', () => {
 
       await processor.processExecutions(executions, context);
 
-      expect(mockDeduplicator.checkAndMark).toHaveBeenCalledTimes(3);
+      // All 3 tools should be tracked in ctx.seenToolIds
+      expect(context.seenToolIds.size).toBe(3);
     });
   });
 
   // === processExecutions() - Deduplication ===
   describe('processExecutions() - deduplication', () => {
     it('should skip duplicate tool_use_ids', async () => {
-      const duplicateDeduplicator = createMockDeduplicator({
-        checkAndMark: vi.fn(() => ({
-          isDuplicate: true,
-          toolUseId: 'toolu_duplicate',
-          firstSeenAt: '2025-01-01T00:00:00.000Z',
-        })),
-      });
-      processor = new ToolExecutionProcessor(duplicateDeduplicator, mockPersistence);
+      // Pre-populate seenToolIds to simulate duplicate
+      const context = createTestContext();
+      context.seenToolIds.set('toolu_duplicate', new Date().toISOString());
 
-      const context = createContext();
       const execution = createRawToolExecution({ toolUseId: 'toolu_duplicate' });
 
       const result = await processor.processExecutions([execution], context);
 
       expect(result).toEqual([]);
-      expect(context.onEvent).not.toHaveBeenCalled();
+      expect(context.callback).not.toHaveBeenCalled();
     });
 
     it('should process unique tool_use_ids', async () => {
-      const context = createContext();
+      const context = createTestContext();
       const execution = createRawToolExecution({ toolUseId: 'toolu_unique' });
 
       const result = await processor.processExecutions([execution], context);
 
       expect(result.length).toBe(1);
-      expect(context.onEvent).toHaveBeenCalled();
+      expect(context.callback).toHaveBeenCalled();
     });
 
-    it('should track duplicates in stats', async () => {
-      // First call: not duplicate
-      // Second call: duplicate
-      let callCount = 0;
-      const mixedDeduplicator = createMockDeduplicator({
-        checkAndMark: vi.fn((toolUseId: string) => {
-          callCount++;
-          return {
-            isDuplicate: callCount === 2,
-            toolUseId,
-            firstSeenAt: new Date().toISOString(),
-          };
-        }),
-      });
-      processor = new ToolExecutionProcessor(mixedDeduplicator, mockPersistence);
-
-      const context = createContext();
+    it('should track tools in seenToolIds', async () => {
+      const context = createTestContext();
       const executions = [
         createRawToolExecution({ toolUseId: 'toolu_first' }),
-        createRawToolExecution({ toolUseId: 'toolu_duplicate' }),
+        createRawToolExecution({ toolUseId: 'toolu_second' }),
       ];
 
       await processor.processExecutions(executions, context);
 
-      const stats = processor.getStats();
-      expect(stats.duplicatesSkipped).toBe(1);
+      // Both tools should be tracked in ctx.seenToolIds
+      expect(context.seenToolIds.has('toolu_first')).toBe(true);
+      expect(context.seenToolIds.has('toolu_second')).toBe(true);
+      expect(context.seenToolIds.size).toBe(2);
     });
 
     it('should handle mixed unique and duplicate executions', async () => {
-      // Simulate: first is new, second is duplicate, third is new
-      let callCount = 0;
-      const mixedDeduplicator = createMockDeduplicator({
-        checkAndMark: vi.fn((toolUseId: string) => {
-          callCount++;
-          return {
-            isDuplicate: callCount === 2,
-            toolUseId,
-            firstSeenAt: new Date().toISOString(),
-          };
-        }),
-      });
-      processor = new ToolExecutionProcessor(mixedDeduplicator, mockPersistence);
+      const context = createTestContext();
+      // Pre-populate one as duplicate
+      context.seenToolIds.set('toolu_duplicate', new Date().toISOString());
 
-      const context = createContext();
       const executions = [
-        createRawToolExecution({ toolName: 'tool_a' }),
-        createRawToolExecution({ toolName: 'tool_b_duplicate' }),
-        createRawToolExecution({ toolName: 'tool_c' }),
+        createRawToolExecution({ toolName: 'tool_a', toolUseId: 'toolu_a' }),
+        createRawToolExecution({ toolName: 'tool_b_duplicate', toolUseId: 'toolu_duplicate' }),
+        createRawToolExecution({ toolName: 'tool_c', toolUseId: 'toolu_c' }),
       ];
 
       const result = await processor.processExecutions(executions, context);
@@ -282,34 +238,32 @@ describe('ToolExecutionProcessor', () => {
 
     it('should preserve firstSeenAt timestamp in logs for duplicates', async () => {
       const firstSeenAt = '2025-01-01T00:00:00.000Z';
-      const duplicateDeduplicator = createMockDeduplicator({
-        checkAndMark: vi.fn(() => ({
-          isDuplicate: true,
-          toolUseId: 'toolu_dup',
-          firstSeenAt,
-        })),
-      });
-      processor = new ToolExecutionProcessor(duplicateDeduplicator, mockPersistence);
+      const context = createTestContext();
 
-      const context = createContext();
-      const execution = createRawToolExecution();
+      // Pre-populate to simulate duplicate with known timestamp
+      const toolUseId = 'toolu_dup';
+      context.seenToolIds.set(toolUseId, firstSeenAt);
 
-      await processor.processExecutions([execution], context);
+      const execution = createRawToolExecution({ toolUseId });
 
-      // Verify deduplicator was called with the execution's toolUseId
-      expect(duplicateDeduplicator.checkAndMark).toHaveBeenCalled();
+      const result = await processor.processExecutions([execution], context);
+
+      // Should skip the duplicate
+      expect(result).toEqual([]);
+      // Timestamp should still be the original
+      expect(context.seenToolIds.get(toolUseId)).toBe(firstSeenAt);
     });
   });
 
   // === processExecutions() - Event Emission ===
   describe('processExecutions() - event emission', () => {
     it('should emit tool_use event for each unique execution', async () => {
-      const context = createContext();
+      const context = createTestContext();
       const execution = createRawToolExecution({ toolName: 'my_tool' });
 
       await processor.processExecutions([execution], context);
 
-      const calls = (context.onEvent as Mock).mock.calls;
+      const calls = (context.callback as Mock).mock.calls;
       const toolUseEvents = calls.filter(
         ([event]: [AgentEvent]) => event.type === 'tool_use'
       );
@@ -317,12 +271,12 @@ describe('ToolExecutionProcessor', () => {
     });
 
     it('should emit tool_result event for each unique execution', async () => {
-      const context = createContext();
+      const context = createTestContext();
       const execution = createRawToolExecution();
 
       await processor.processExecutions([execution], context);
 
-      const calls = (context.onEvent as Mock).mock.calls;
+      const calls = (context.callback as Mock).mock.calls;
       const toolResultEvents = calls.filter(
         ([event]: [AgentEvent]) => event.type === 'tool_result'
       );
@@ -330,75 +284,75 @@ describe('ToolExecutionProcessor', () => {
     });
 
     it('should emit events in order: tool_use then tool_result', async () => {
-      const context = createContext();
+      const context = createTestContext();
       const execution = createRawToolExecution();
 
       await processor.processExecutions([execution], context);
 
-      const calls = (context.onEvent as Mock).mock.calls;
+      const calls = (context.callback as Mock).mock.calls;
       expect(calls[0]?.[0]?.type).toBe('tool_use');
       expect(calls[1]?.[0]?.type).toBe('tool_result');
     });
 
     it('should include correct sessionId in events', async () => {
-      const context = createContext({ sessionId: 'specific-session-id' });
+      const context = createTestContext({ sessionId: 'specific-session-id' });
       const execution = createRawToolExecution();
 
       await processor.processExecutions([execution], context);
 
-      const calls = (context.onEvent as Mock).mock.calls;
+      const calls = (context.callback as Mock).mock.calls;
       expect(calls[0]?.[0]?.sessionId).toBe('specific-session-id');
       expect(calls[1]?.[0]?.sessionId).toBe('specific-session-id');
     });
 
     it('should include correct toolUseId in events', async () => {
-      const context = createContext();
+      const context = createTestContext();
       const execution = createRawToolExecution({ toolUseId: 'toolu_specific_id' });
 
       await processor.processExecutions([execution], context);
 
-      const calls = (context.onEvent as Mock).mock.calls;
+      const calls = (context.callback as Mock).mock.calls;
       expect(calls[0]?.[0]?.toolUseId).toBe('toolu_specific_id');
       expect(calls[1]?.[0]?.toolUseId).toBe('toolu_specific_id');
     });
 
     it('should include correct args in tool_use event', async () => {
-      const context = createContext();
+      const context = createTestContext();
       const execution = createRawToolExecution({
         args: { customParam: 'customValue', number: 42 },
       });
 
       await processor.processExecutions([execution], context);
 
-      const calls = (context.onEvent as Mock).mock.calls;
+      const calls = (context.callback as Mock).mock.calls;
       const toolUseEvent = calls[0]?.[0];
       expect(toolUseEvent?.args).toEqual({ customParam: 'customValue', number: 42 });
     });
 
     it('should include result in tool_result event', async () => {
-      const context = createContext();
+      const context = createTestContext();
       const execution = createRawToolExecution({ result: 'Custom result data' });
 
       await processor.processExecutions([execution], context);
 
-      const calls = (context.onEvent as Mock).mock.calls;
+      const calls = (context.callback as Mock).mock.calls;
       const toolResultEvent = calls[1]?.[0];
       expect(toolResultEvent?.result).toBe('Custom result data');
     });
 
     it('should include success flag in tool_result event', async () => {
-      const context = createContext();
+      const context = createTestContext();
       const execution = createRawToolExecution({ success: true });
 
       await processor.processExecutions([execution], context);
 
-      const calls = (context.onEvent as Mock).mock.calls;
+      const calls = (context.callback as Mock).mock.calls;
       const toolResultEvent = calls[1]?.[0];
       expect(toolResultEvent?.success).toBe(true);
     });
 
     it('should include error in tool_result event when present', async () => {
-      const context = createContext();
+      const context = createTestContext();
       const execution = createRawToolExecution({
         success: false,
         error: 'Something went wrong',
@@ -406,30 +360,30 @@ describe('ToolExecutionProcessor', () => {
 
       await processor.processExecutions([execution], context);
 
-      const calls = (context.onEvent as Mock).mock.calls;
+      const calls = (context.callback as Mock).mock.calls;
       const toolResultEvent = calls[1]?.[0];
       expect(toolResultEvent?.success).toBe(false);
       expect(toolResultEvent?.error).toBe('Something went wrong');
     });
 
     it('should set persistenceState to pending', async () => {
-      const context = createContext();
+      const context = createTestContext();
       const execution = createRawToolExecution();
 
       await processor.processExecutions([execution], context);
 
-      const calls = (context.onEvent as Mock).mock.calls;
+      const calls = (context.callback as Mock).mock.calls;
       expect(calls[0]?.[0]?.persistenceState).toBe('pending');
       expect(calls[1]?.[0]?.persistenceState).toBe('pending');
     });
 
     it('should generate unique eventId for each event', async () => {
-      const context = createContext();
+      const context = createTestContext();
       const execution = createRawToolExecution();
 
       await processor.processExecutions([execution], context);
 
-      const calls = (context.onEvent as Mock).mock.calls;
+      const calls = (context.callback as Mock).mock.calls;
       const eventId1 = calls[0]?.[0]?.eventId;
       const eventId2 = calls[1]?.[0]?.eventId;
 
@@ -439,12 +393,12 @@ describe('ToolExecutionProcessor', () => {
     });
 
     it('should use consistent timestamp for tool_use and tool_result pair', async () => {
-      const context = createContext();
+      const context = createTestContext();
       const execution = createRawToolExecution();
 
       await processor.processExecutions([execution], context);
 
-      const calls = (context.onEvent as Mock).mock.calls;
+      const calls = (context.callback as Mock).mock.calls;
       const timestamp1 = calls[0]?.[0]?.timestamp;
       const timestamp2 = calls[1]?.[0]?.timestamp;
 
@@ -455,7 +409,7 @@ describe('ToolExecutionProcessor', () => {
   // === processExecutions() - Persistence ===
   describe('processExecutions() - persistence', () => {
     it('should call persistToolEventsAsync with correct sessionId', async () => {
-      const context = createContext({ sessionId: 'persistence-test-session' });
+      const context = createTestContext({ sessionId: 'persistence-test-session' });
       const execution = createRawToolExecution();
 
       await processor.processExecutions([execution], context);
@@ -467,7 +421,7 @@ describe('ToolExecutionProcessor', () => {
     });
 
     it('should pass all unique executions to persistence', async () => {
-      const context = createContext();
+      const context = createTestContext();
       const executions = [
         createRawToolExecution({ toolName: 'tool_1' }),
         createRawToolExecution({ toolName: 'tool_2' }),
@@ -484,7 +438,7 @@ describe('ToolExecutionProcessor', () => {
     });
 
     it('should transform args to toolInput for persistence', async () => {
-      const context = createContext();
+      const context = createTestContext();
       const execution = createRawToolExecution({
         args: { param: 'value' },
       });
@@ -498,7 +452,7 @@ describe('ToolExecutionProcessor', () => {
     });
 
     it('should not call persistence for empty executions', async () => {
-      const context = createContext();
+      const context = createTestContext();
 
       await processor.processExecutions([], context);
 
@@ -506,31 +460,31 @@ describe('ToolExecutionProcessor', () => {
     });
 
     it('should not call persistence when all are duplicates', async () => {
-      const allDuplicatesDeduplicator = createMockDeduplicator({
-        checkAndMark: vi.fn(() => ({
-          isDuplicate: true,
-          toolUseId: 'toolu_dup',
-          firstSeenAt: new Date().toISOString(),
-        })),
-      });
-      processor = new ToolExecutionProcessor(allDuplicatesDeduplicator, mockPersistence);
+      // Pre-populate context with duplicate IDs
+      const context = createTestContext();
+      const toolId1 = 'toolu_dup1';
+      const toolId2 = 'toolu_dup2';
+      context.seenToolIds.set(toolId1, new Date().toISOString());
+      context.seenToolIds.set(toolId2, new Date().toISOString());
 
-      const context = createContext();
-      const executions = [createRawToolExecution(), createRawToolExecution()];
+      const executions = [
+        createRawToolExecution({ toolUseId: toolId1 }),
+        createRawToolExecution({ toolUseId: toolId2 }),
+      ];
 
       await processor.processExecutions(executions, context);
 
       expect(mockPersistence.persistToolEventsAsync).not.toHaveBeenCalled();
     });
 
-    it('should increment persistenceInitiated in stats', async () => {
-      const context = createContext();
+    it('should call persistence for unique executions', async () => {
+      const context = createTestContext();
       const execution = createRawToolExecution();
 
       await processor.processExecutions([execution], context);
 
-      const stats = processor.getStats();
-      expect(stats.persistenceInitiated).toBe(1);
+      // Persistence should have been called for the unique execution
+      expect(mockPersistence.persistToolEventsAsync).toHaveBeenCalled();
     });
   });
 
@@ -540,7 +494,7 @@ describe('ToolExecutionProcessor', () => {
       const throwingCallback = vi.fn(() => {
         throw new Error('Callback failed');
       });
-      const context = createContext({ onEvent: throwingCallback });
+      const context = createTestContext({ callback: throwingCallback });
       const execution = createRawToolExecution();
 
       // Should not throw
@@ -553,7 +507,7 @@ describe('ToolExecutionProcessor', () => {
         callCount++;
         if (callCount === 1) throw new Error('First call fails');
       });
-      const context = createContext({ onEvent: sometimesThrowingCallback });
+      const context = createTestContext({ callback: sometimesThrowingCallback });
       const execution = createRawToolExecution();
 
       await processor.processExecutions([execution], context);
@@ -568,9 +522,9 @@ describe('ToolExecutionProcessor', () => {
           throw new Error('Persistence failed');
         }),
       });
-      processor = new ToolExecutionProcessor(mockDeduplicator, failingPersistence);
+      processor = new ToolExecutionProcessor(failingPersistence);
 
-      const context = createContext();
+      const context = createTestContext();
       const execution = createRawToolExecution();
 
       // Should not throw (fire-and-forget pattern)
@@ -578,145 +532,51 @@ describe('ToolExecutionProcessor', () => {
     });
   });
 
-  // === getStats() ===
-  describe('getStats()', () => {
-    it('should return zero stats initially', () => {
-      const stats = processor.getStats();
+  // === Context-based deduplication (replaces getStats/reset) ===
+  describe('context-based deduplication', () => {
+    it('should isolate deduplication between different contexts', async () => {
+      const ctx1 = createTestContext();
+      const ctx2 = createTestContext();
+      const execution = createRawToolExecution({ toolUseId: 'toolu_same_id' });
 
-      expect(stats.totalReceived).toBe(0);
-      expect(stats.duplicatesSkipped).toBe(0);
-      expect(stats.eventsEmitted).toBe(0);
-      expect(stats.persistenceInitiated).toBe(0);
+      // First context processes the execution
+      const result1 = await processor.processExecutions([execution], ctx1);
+      expect(result1.length).toBe(1);
+
+      // Second context also processes (isolated)
+      const result2 = await processor.processExecutions([execution], ctx2);
+      expect(result2.length).toBe(1);
+
+      // Both contexts track the same tool independently
+      expect(ctx1.seenToolIds.has('toolu_same_id')).toBe(true);
+      expect(ctx2.seenToolIds.has('toolu_same_id')).toBe(true);
     });
 
-    it('should count totalReceived correctly', async () => {
-      const context = createContext();
-      const executions = [
-        createRawToolExecution(),
-        createRawToolExecution(),
-        createRawToolExecution(),
-      ];
-
-      await processor.processExecutions(executions, context);
-
-      const stats = processor.getStats();
-      expect(stats.totalReceived).toBe(3);
-    });
-
-    it('should count duplicatesSkipped correctly', async () => {
-      // All duplicates
-      const allDuplicatesDeduplicator = createMockDeduplicator({
-        checkAndMark: vi.fn(() => ({
-          isDuplicate: true,
-          toolUseId: 'toolu_dup',
-          firstSeenAt: new Date().toISOString(),
-        })),
-      });
-      processor = new ToolExecutionProcessor(allDuplicatesDeduplicator, mockPersistence);
-
-      const context = createContext();
-      const executions = [
-        createRawToolExecution(),
-        createRawToolExecution(),
-      ];
-
-      await processor.processExecutions(executions, context);
-
-      const stats = processor.getStats();
-      expect(stats.duplicatesSkipped).toBe(2);
-    });
-
-    it('should count eventsEmitted correctly', async () => {
-      const context = createContext();
-      const executions = [createRawToolExecution(), createRawToolExecution()];
-
-      await processor.processExecutions(executions, context);
-
-      const stats = processor.getStats();
-      // 2 executions × 2 events each (tool_use + tool_result) = 4
-      expect(stats.eventsEmitted).toBe(4);
-    });
-
-    it('should accumulate stats across multiple calls', async () => {
-      const context = createContext();
-
-      await processor.processExecutions([createRawToolExecution()], context);
-      await processor.processExecutions([createRawToolExecution()], context);
-      await processor.processExecutions([createRawToolExecution()], context);
-
-      const stats = processor.getStats();
-      expect(stats.totalReceived).toBe(3);
-      expect(stats.eventsEmitted).toBe(6); // 3 × 2
-      expect(stats.persistenceInitiated).toBe(3);
-    });
-  });
-
-  // === reset() ===
-  describe('reset()', () => {
-    it('should reset deduplicator', async () => {
-      const context = createContext();
-      await processor.processExecutions([createRawToolExecution()], context);
-
-      processor.reset();
-
-      expect(mockDeduplicator.reset).toHaveBeenCalled();
-    });
-
-    it('should reset all stats to zero', async () => {
-      const context = createContext();
-      await processor.processExecutions([createRawToolExecution()], context);
-
-      processor.reset();
-
-      const stats = processor.getStats();
-      expect(stats.totalReceived).toBe(0);
-      expect(stats.duplicatesSkipped).toBe(0);
-      expect(stats.eventsEmitted).toBe(0);
-      expect(stats.persistenceInitiated).toBe(0);
-    });
-
-    it('should allow processing same toolUseId after reset', async () => {
-      const trackedIds = new Set<string>();
-      const trackingDeduplicator = createMockDeduplicator({
-        checkAndMark: vi.fn((toolUseId: string) => {
-          const isDuplicate = trackedIds.has(toolUseId);
-          trackedIds.add(toolUseId);
-          return {
-            isDuplicate,
-            toolUseId,
-            firstSeenAt: new Date().toISOString(),
-          };
-        }),
-        reset: vi.fn(() => {
-          trackedIds.clear();
-        }),
-      });
-      processor = new ToolExecutionProcessor(trackingDeduplicator, mockPersistence);
-
-      const context = createContext();
+    it('should deduplicate within same context', async () => {
+      const ctx = createTestContext();
       const execution = createRawToolExecution({ toolUseId: 'toolu_same_id' });
 
       // First call: not duplicate
-      const result1 = await processor.processExecutions([execution], context);
+      const result1 = await processor.processExecutions([execution], ctx);
       expect(result1.length).toBe(1);
 
-      // Second call without reset: duplicate
-      const result2 = await processor.processExecutions([execution], context);
+      // Second call with same context: duplicate
+      const result2 = await processor.processExecutions([execution], ctx);
       expect(result2.length).toBe(0);
-
-      // Reset and call again: not duplicate
-      processor.reset();
-      const result3 = await processor.processExecutions([execution], context);
-      expect(result3.length).toBe(1);
     });
 
-    it('should be idempotent', () => {
-      processor.reset();
-      processor.reset();
-      processor.reset();
+    it('should allow processing same toolUseId with fresh context', async () => {
+      const ctx1 = createTestContext();
+      const execution = createRawToolExecution({ toolUseId: 'toolu_same_id' });
 
-      const stats = processor.getStats();
-      expect(stats.totalReceived).toBe(0);
+      // First call with ctx1
+      const result1 = await processor.processExecutions([execution], ctx1);
+      expect(result1.length).toBe(1);
+
+      // Fresh context - not duplicate
+      const ctx2 = createTestContext();
+      const result2 = await processor.processExecutions([execution], ctx2);
+      expect(result2.length).toBe(1);
     });
   });
 
@@ -727,15 +587,18 @@ describe('ToolExecutionProcessor', () => {
       expect(proc).toBeInstanceOf(ToolExecutionProcessor);
     });
 
-    it('should create independent instances', async () => {
+    it('should be stateless (deduplication via context)', async () => {
       const proc1 = createToolExecutionProcessor();
       const proc2 = createToolExecutionProcessor();
 
-      const context = createContext();
-      await proc1.processExecutions([createRawToolExecution()], context);
+      const ctx1 = createTestContext();
+      const ctx2 = createTestContext();
 
-      expect(proc1.getStats().totalReceived).toBe(1);
-      expect(proc2.getStats().totalReceived).toBe(0);
+      await proc1.processExecutions([createRawToolExecution()], ctx1);
+
+      // Processor is stateless - deduplication state is in context
+      expect(ctx1.seenToolIds.size).toBe(1);
+      expect(ctx2.seenToolIds.size).toBe(0);
     });
 
     it('should return ToolExecutionProcessor instance', () => {
@@ -747,7 +610,7 @@ describe('ToolExecutionProcessor', () => {
   // === Realistic Scenarios ===
   describe('realistic scenarios', () => {
     it('should handle typical LangGraph tool execution batch', async () => {
-      const context = createContext({ sessionId: 'chat-session-123' });
+      const context = createTestContext({ sessionId: 'chat-session-123' });
       const executions: RawToolExecution[] = [
         {
           toolUseId: 'toolu_get_customers_001',
@@ -768,16 +631,12 @@ describe('ToolExecutionProcessor', () => {
       const result = await processor.processExecutions(executions, context);
 
       expect(result).toEqual(['get_customers', 'get_orders']);
-      expect(context.onEvent).toHaveBeenCalledTimes(4); // 2 × (tool_use + tool_result)
-
-      const stats = processor.getStats();
-      expect(stats.totalReceived).toBe(2);
-      expect(stats.eventsEmitted).toBe(4);
-      expect(stats.persistenceInitiated).toBe(1);
+      expect(context.callback).toHaveBeenCalledTimes(4); // 2 × (tool_use + tool_result)
+      expect(context.seenToolIds.size).toBe(2);
     });
 
     it('should handle tool failure with error', async () => {
-      const context = createContext();
+      const context = createTestContext();
       const execution: RawToolExecution = {
         toolUseId: 'toolu_create_order_fail',
         toolName: 'create_order',
@@ -789,39 +648,33 @@ describe('ToolExecutionProcessor', () => {
 
       await processor.processExecutions([execution], context);
 
-      const calls = (context.onEvent as Mock).mock.calls;
+      const calls = (context.callback as Mock).mock.calls;
       const toolResultEvent = calls[1]?.[0];
 
       expect(toolResultEvent?.success).toBe(false);
       expect(toolResultEvent?.error).toBe('Customer not found');
     });
 
-    it('should handle multi-turn conversation with reset', async () => {
-      const context = createContext();
-
-      // Turn 1
+    it('should handle multi-turn conversation with fresh contexts', async () => {
+      // Turn 1 with context 1
+      const ctx1 = createTestContext();
       await processor.processExecutions(
-        [createRawToolExecution({ toolName: 'turn1_tool' })],
-        context
+        [createRawToolExecution({ toolName: 'turn1_tool', toolUseId: 'toolu_turn1' })],
+        ctx1
       );
+      expect(ctx1.seenToolIds.size).toBe(1);
 
-      // Reset between turns
-      processor.reset();
-
-      // Turn 2
+      // Turn 2 with fresh context (simulates new execution)
+      const ctx2 = createTestContext();
       await processor.processExecutions(
-        [createRawToolExecution({ toolName: 'turn2_tool' })],
-        context
+        [createRawToolExecution({ toolName: 'turn2_tool', toolUseId: 'toolu_turn2' })],
+        ctx2
       );
-
-      const stats = processor.getStats();
-      // Only turn 2 stats after reset
-      expect(stats.totalReceived).toBe(1);
-      expect(stats.eventsEmitted).toBe(2);
+      expect(ctx2.seenToolIds.size).toBe(1);
     });
 
     it('should handle rapid successive tool calls', async () => {
-      const context = createContext();
+      const context = createTestContext();
       const executions = Array.from({ length: 10 }, (_, i) =>
         createRawToolExecution({
           toolUseId: `toolu_rapid_${i}`,
@@ -832,39 +685,25 @@ describe('ToolExecutionProcessor', () => {
       const result = await processor.processExecutions(executions, context);
 
       expect(result.length).toBe(10);
-      expect(context.onEvent).toHaveBeenCalledTimes(20); // 10 × 2
+      expect(context.callback).toHaveBeenCalledTimes(20); // 10 × 2
+      expect(context.seenToolIds.size).toBe(10);
     });
 
-    it('should deduplicate across multiple processExecutions calls', async () => {
-      // Use real deduplication tracking
-      const trackedIds = new Set<string>();
-      const trackingDeduplicator = createMockDeduplicator({
-        checkAndMark: vi.fn((toolUseId: string) => {
-          const isDuplicate = trackedIds.has(toolUseId);
-          trackedIds.add(toolUseId);
-          return {
-            isDuplicate,
-            toolUseId,
-            firstSeenAt: new Date().toISOString(),
-          };
-        }),
-      });
-      processor = new ToolExecutionProcessor(trackingDeduplicator, mockPersistence);
-
-      const context = createContext();
+    it('should deduplicate across multiple processExecutions calls with same context', async () => {
+      const context = createTestContext();
       const sameExecution = createRawToolExecution({ toolUseId: 'toolu_same_across_calls' });
 
       // First call: processed
       const result1 = await processor.processExecutions([sameExecution], context);
       expect(result1.length).toBe(1);
 
-      // Second call with same ID: skipped
+      // Second call with same context + same ID: skipped
       const result2 = await processor.processExecutions([sameExecution], context);
       expect(result2.length).toBe(0);
 
-      const stats = processor.getStats();
-      expect(stats.totalReceived).toBe(2);
-      expect(stats.duplicatesSkipped).toBe(1);
+      // Only tracked once
+      expect(context.seenToolIds.size).toBe(1);
+      expect(context.seenToolIds.has('toolu_same_across_calls')).toBe(true);
     });
   });
 });

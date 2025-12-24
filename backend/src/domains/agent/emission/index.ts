@@ -21,4 +21,6 @@ export {
 export {
   AgentEventEmitter,
   createAgentEventEmitter,
+  getAgentEventEmitter,
+  __resetAgentEventEmitter,
 } from './AgentEventEmitter';

@@ -3,9 +3,16 @@
  *
  * Type definitions for tool-related classes.
  * Tool execution, deduplication, and approval handling.
+ *
+ * ## Stateless Architecture
+ *
+ * ToolExecutionProcessor is STATELESS - deduplication uses ctx.seenToolIds
+ * which is shared with GraphStreamProcessor. This ensures a single source
+ * of truth for tool deduplication across all processors.
  */
 
 import type { AgentEvent } from '@bc-agent/shared';
+import type { ExecutionContext } from '@domains/agent/orchestration/ExecutionContext';
 
 /**
  * Result of checking if a tool event is duplicate.
@@ -31,35 +38,12 @@ export interface DeduplicationStats {
 
 /**
  * Interface for tool event deduplication.
- * Prevents duplicate tool_use events from being emitted.
- *
- * LangGraph can emit the same tool execution multiple times through different
- * event paths (on_chain_end, tool execution callbacks, etc.). This tracker
- * ensures each tool_use_id is only processed once per session.
+ * @deprecated Use ExecutionContext.seenToolIds directly
  */
 export interface IToolEventDeduplicator {
-  /**
-   * Check if a tool_use_id has been seen and mark it as seen.
-   * @param toolUseId - The tool_use_id to check
-   * @returns Deduplication result with isDuplicate flag
-   */
   checkAndMark(toolUseId: string): DeduplicationResult;
-
-  /**
-   * Check if a tool_use_id has been seen without marking it.
-   * @param toolUseId - The tool_use_id to check
-   * @returns true if already seen
-   */
   hasSeen(toolUseId: string): boolean;
-
-  /**
-   * Get deduplication statistics.
-   */
   getStats(): DeduplicationStats;
-
-  /**
-   * Reset tracker for new session.
-   */
   reset(): void;
 }
 
@@ -67,7 +51,7 @@ export interface IToolEventDeduplicator {
 
 /**
  * Context for tool execution processing.
- * Contains session info and event emission callback.
+ * @deprecated Use ExecutionContext directly
  */
 export interface ToolProcessorContext {
   /** Session ID for logging and persistence */
@@ -108,6 +92,7 @@ export interface RawToolExecution {
 
 /**
  * Statistics about tool execution processing.
+ * Optional - only used for debugging/monitoring.
  */
 export interface ToolProcessorStats {
   /** Total executions received */
@@ -124,37 +109,32 @@ export interface ToolProcessorStats {
 }
 
 /**
- * Interface for ToolExecutionProcessor.
+ * Interface for ToolExecutionProcessor (Stateless).
  * Processes tool executions: deduplicates, emits events, persists async.
  *
  * Pattern: Emit-first, persist-async (for UI responsiveness)
+ *
+ * ## Deduplication
+ *
+ * Uses ctx.seenToolIds which is SHARED with GraphStreamProcessor.
+ * This ensures a tool_use_id is only processed once, regardless of
+ * which processor sees it first.
  */
 export interface IToolExecutionProcessor {
   /**
    * Process an array of tool executions.
    * For each unique execution:
-   * 1. Check deduplication (skip if duplicate)
+   * 1. Check deduplication via ctx.seenToolIds (skip if duplicate)
    * 2. Emit tool_use event (immediate)
    * 3. Emit tool_result event (immediate)
    * 4. Queue async persistence (batch)
    *
    * @param executions - Tool executions from LangGraph
-   * @param context - Session context and event callback
+   * @param ctx - Execution context with seenToolIds and callback
    * @returns Array of tool names that were processed (non-duplicate)
    */
   processExecutions(
     executions: RawToolExecution[],
-    context: ToolProcessorContext
+    ctx: ExecutionContext
   ): Promise<string[]>;
-
-  /**
-   * Get processing statistics.
-   */
-  getStats(): ToolProcessorStats;
-
-  /**
-   * Reset processor state (deduplicator + stats).
-   * Call this at the start of a new agent run.
-   */
-  reset(): void;
 }

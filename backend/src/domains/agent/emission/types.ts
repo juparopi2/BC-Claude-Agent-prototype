@@ -2,10 +2,15 @@
  * @module domains/agent/emission/types
  *
  * Types for agent event emission.
- * Used by AgentEventEmitter and EventIndexTracker.
+ *
+ * ## Stateless Architecture
+ *
+ * AgentEventEmitter is STATELESS - the callback and eventIndex
+ * are stored in ExecutionContext, not in the emitter.
  */
 
 import type { AgentEvent } from '@bc-agent/shared';
+import type { ExecutionContext } from '@domains/agent/orchestration/ExecutionContext';
 
 /**
  * Event with index added for frontend sorting.
@@ -18,7 +23,7 @@ export interface IndexedAgentEvent extends AgentEvent {
 
 /**
  * Interface for EventIndexTracker.
- * Simple counter for event ordering.
+ * @deprecated Use ExecutionContext.eventIndex instead
  */
 export interface IEventIndexTracker {
   /** Get the next event index (auto-increments) */
@@ -33,22 +38,20 @@ export interface IEventIndexTracker {
 
 /**
  * Callback type for event emission.
+ * Re-exported from ExecutionContext for convenience.
  */
-export type EventEmitCallback = (event: AgentEvent) => void;
+export type { EventEmitCallback } from '@domains/agent/orchestration/ExecutionContext';
 
 /**
- * Interface for AgentEventEmitter.
- * Handles event emission with index tracking.
+ * Interface for AgentEventEmitter (Stateless).
+ * All methods receive ExecutionContext which contains the callback and eventIndex.
  */
 export interface IAgentEventEmitter {
-  /** Set the callback for event emission */
-  setCallback(callback: EventEmitCallback | undefined): void;
-
   /** Emit an event with auto-incrementing index */
-  emit(event: AgentEvent | null): void;
+  emit(event: AgentEvent | null, ctx: ExecutionContext): void;
 
   /** Emit an error event */
-  emitError(sessionId: string, error: string, code: string): void;
+  emitError(sessionId: string, error: string, code: string, ctx: ExecutionContext): void;
 
   /** Emit user_message_confirmed event after persistence */
   emitUserMessageConfirmed(
@@ -59,12 +62,10 @@ export interface IAgentEventEmitter {
       eventId: string;
       content: string;
       userId: string;
-    }
+    },
+    ctx: ExecutionContext
   ): void;
 
-  /** Get current event index */
-  getEventIndex(): number;
-
-  /** Reset emitter state */
-  reset(): void;
+  /** Get current event index from context */
+  getEventIndex(ctx: ExecutionContext): number;
 }

@@ -9,14 +9,23 @@ import type {
 } from '@bc-agent/shared';
 import type { IFileContextPreparer } from '@domains/agent/context/types';
 import type { IPersistenceCoordinator } from '@domains/agent/persistence/types';
-import type { IToolExecutionProcessor } from '@domains/agent/tools/types';
 import type { IStreamEventRouter } from '@domains/agent/streaming/types';
-import type { IGraphStreamProcessor } from '@domains/agent/streaming/GraphStreamProcessor';
-import type { IAgentEventEmitter } from '@domains/agent/emission/types';
-import type { IUsageTracker } from '@domains/agent/usage/types';
 
 // Re-export for convenience
 export type { AgentEvent, SharedAgentExecutionResult as AgentExecutionResult };
+
+// Re-export ExecutionContext types for stateless architecture
+export {
+  createExecutionContext,
+  getThinkingContent,
+  getResponseContent,
+  isToolSeen,
+  markToolSeen,
+  getTotalTokens,
+  addUsage,
+} from './ExecutionContext';
+
+export type { ExecutionContext, EventEmitCallback } from './ExecutionContext';
 
 /**
  * Options for executeAgent method.
@@ -88,8 +97,12 @@ export interface IAgentOrchestrator {
 }
 
 /**
- * Dependencies for AgentOrchestrator.
- * All dependencies are optional for testing with mocks.
+ * Dependencies for AgentOrchestrator (for testing).
+ *
+ * NOTE: With the stateless architecture, only non-stateless components
+ * need to be injected. Stateless components (GraphStreamProcessor,
+ * AgentEventEmitter, ToolExecutionProcessor) are singletons that receive
+ * ExecutionContext for per-execution state.
  */
 export interface AgentOrchestratorDependencies {
   /** File context preparation (attachments + semantic search) */
@@ -98,18 +111,6 @@ export interface AgentOrchestratorDependencies {
   /** Persistence coordination (EventStore + MessageQueue) */
   persistenceCoordinator?: IPersistenceCoordinator;
 
-  /** Tool execution processing */
-  toolExecutionProcessor?: IToolExecutionProcessor;
-
   /** Stream event routing (LangGraph events → processors) */
   streamEventRouter?: IStreamEventRouter;
-
-  /** Stream processing (normalized events → processed events) */
-  graphStreamProcessor?: IGraphStreamProcessor;
-
-  /** Event emission with indexing */
-  agentEventEmitter?: IAgentEventEmitter;
-
-  /** Token usage tracking */
-  usageTracker?: IUsageTracker;
 }

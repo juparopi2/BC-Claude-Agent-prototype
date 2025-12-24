@@ -197,9 +197,94 @@ The system enforces Application-Level Isolation.
 
 ---
 
-## 8. Key Patterns
+## 8. Stateless Architecture (ExecutionContext Pattern)
 
-### SQL NULL Comparison
+### 8.1 Why Stateless?
+The backend runs on **Azure Container Apps** with horizontal auto-scaling. Multiple instances handle concurrent requests without sticky sessions. This requires all components to be **stateless** to prevent:
+- **Race conditions**: Shared mutable state between concurrent users
+- **Data leaks**: User A receiving events meant for User B
+- **Scaling issues**: State not shared across container instances
+
+### 8.2 The ExecutionContext Pattern
+All mutable state lives in an `ExecutionContext` created per-execution:
+
+```typescript
+// CORRECT: Create context per execution
+async executeAgent(prompt, sessionId, onEvent, userId, options) {
+  const ctx = createExecutionContext(sessionId, userId, onEvent, options);
+
+  // Pass ctx to all components
+  await this.graphStreamProcessor.process(events, ctx);
+  this.agentEventEmitter.emit(event, ctx);
+  await this.toolExecutionProcessor.processExecutions(execs, ctx);
+}
+```
+
+**ExecutionContext contains**:
+- `callback`: Event emission function
+- `eventIndex`: Auto-incrementing counter for event ordering
+- `thinkingChunks`: Accumulated thinking content
+- `contentChunks`: Accumulated response content
+- `seenToolIds`: Tool deduplication (shared across processors)
+- `totalInputTokens/totalOutputTokens`: Usage tracking
+
+### 8.3 Component Design Rules
+
+**DO - Stateless Singletons**:
+```typescript
+// Components have NO instance fields for mutable state
+export class GraphStreamProcessor {
+  // NO: private thinkingChunks: string[] = [];
+  // NO: private callback: Function;
+
+  async *process(events, ctx: ExecutionContext) {
+    ctx.thinkingChunks.push(content);  // YES: Mutate ctx
+  }
+}
+
+// Use singleton getter
+const processor = getGraphStreamProcessor();
+```
+
+**DON'T - Shared Mutable State**:
+```typescript
+// WRONG: Mutable state in singleton
+export class BadProcessor {
+  private callback: Function;  // Overwritten by concurrent users!
+
+  setCallback(cb) { this.callback = cb; }  // Race condition!
+}
+```
+
+### 8.4 Key Files
+- `ExecutionContext.ts`: Interface and factory function
+- `AgentOrchestrator.ts`: Creates ctx and passes to components
+- `GraphStreamProcessor.ts`, `AgentEventEmitter.ts`, `ToolExecutionProcessor.ts`: Stateless, receive ctx
+
+### 8.5 Testing Pattern
+Tests must create fresh ExecutionContext and pass to methods:
+
+```typescript
+function createTestContext(options?) {
+  return createExecutionContext(
+    options?.sessionId ?? 'test-session',
+    options?.userId ?? 'test-user',
+    options?.callback,
+    { enableThinking: false }
+  );
+}
+
+it('should emit events', () => {
+  const ctx = createTestContext({ callback: (e) => events.push(e) });
+  emitter.emit(event, ctx);  // Pass ctx
+});
+```
+
+---
+
+## 9. Other Key Patterns
+
+### 9.1 SQL NULL Comparison
 Never use `column = NULL` in SQL queries. Use `QueryBuilder` for nullable parameters:
 
 ```typescript
@@ -213,13 +298,13 @@ const { whereClause, params } = createWhereClause()
 
 See `docs/backend/sql-best-practices.md` for detailed guidance.
 
-### WebSocket Events
+### 9.2 WebSocket Events
 Real-time communication uses Socket.IO with typed events from `@bc-agent/shared`:
 - `chat:message` - Send user message
 - `agent:*` events - Stream agent responses
 - `approval:request/resolve` - Human-in-the-loop flow
 
-### Test Data (E2E)
+### 9.3 Test Data (E2E)
 E2E test data uses specific prefixes for safe cleanup:
 - User IDs: `e2e00001-...`
 - Session IDs: `e2e10001-...`

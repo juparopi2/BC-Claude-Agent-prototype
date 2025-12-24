@@ -28,12 +28,11 @@ export {
 export {
   GraphStreamProcessor,
   createGraphStreamProcessor,
+  getGraphStreamProcessor,
+  __resetGraphStreamProcessor,
 } from './GraphStreamProcessor';
 
-export type {
-  IGraphStreamProcessor,
-  StreamProcessorContext,
-} from './GraphStreamProcessor';
+export type { IGraphStreamProcessor } from './GraphStreamProcessor';
 
 export {
   StreamEventRouter,

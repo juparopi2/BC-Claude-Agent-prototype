@@ -22,4 +22,6 @@ export {
 export {
   ToolExecutionProcessor,
   createToolExecutionProcessor,
+  getToolExecutionProcessor,
+  __resetToolExecutionProcessor,
 } from './ToolExecutionProcessor';

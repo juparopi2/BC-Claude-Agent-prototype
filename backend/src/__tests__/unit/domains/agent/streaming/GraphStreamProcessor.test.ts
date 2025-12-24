@@ -1106,51 +1106,49 @@ describe('GraphStreamProcessor', () => {
 
   // ==========================================================================
   // 10. Tool Event Deduplication (5 tests) - Subfase 6C
-  // NOTE: Deduplication now uses ctx.seenToolIds (ExecutionContext)
+  // NOTE: GraphStreamProcessor only CHECKS ctx.seenToolIds (read-only).
+  // It does NOT mark tools as seen. Marking is done by ToolExecutionProcessor.
+  // This prevents the race condition where marking before emission blocks emission.
   // ==========================================================================
 
   describe('tool event deduplication', () => {
-    it('should skip duplicate tool_call with same id', async () => {
-      // Use fresh context - deduplication happens via ctx.seenToolIds
+    it('should skip tool_call if already marked in ctx.seenToolIds', async () => {
+      // Pre-mark tool in context (simulates ToolExecutionProcessor already processed it)
       const dedupCtx = createTestContext();
+      dedupCtx.seenToolIds.set('toolu_123', new Date().toISOString());
 
       const events = [
-        createToolCallEvent('toolu_123', 'get_weather'),
-        createToolCallEvent('toolu_123', 'get_weather'), // Duplicate
+        createToolCallEvent('toolu_123', 'get_weather'), // Already marked - should skip
       ];
 
       const results = await collectEvents(
         processor.process(createAsyncIterable(events), dedupCtx)
       );
 
-      expect(results).toHaveLength(1); // Only first one emitted
-      expect(results[0]?.type).toBe('tool_execution');
-      const toolExec = results[0] as { type: 'tool_execution'; execution: any };
-      expect(toolExec.execution.toolUseId).toBe('toolu_123');
-
-      // Verify deduplication state in context
-      expect(dedupCtx.seenToolIds.has('toolu_123')).toBe(true);
+      expect(results).toHaveLength(0); // Skipped because already marked
     });
 
-    it('should emit tool_execution for first occurrence', async () => {
+    it('should emit tool_execution if not already marked (ToolExecutionProcessor handles marking)', async () => {
       const dedupCtx = createTestContext();
+      // NOT pre-marking - GraphStreamProcessor should emit
 
       const events = [
         createToolCallEvent('toolu_first', 'list_items'),
-        createToolCallEvent('toolu_first', 'list_items'), // Duplicate
-        createToolCallEvent('toolu_first', 'list_items'), // Duplicate
       ];
 
       const results = await collectEvents(
         processor.process(createAsyncIterable(events), dedupCtx)
       );
 
-      expect(results).toHaveLength(1); // Only first occurrence
+      expect(results).toHaveLength(1); // Emitted because not pre-marked
       const toolExec = results[0] as { type: 'tool_execution'; execution: any };
       expect(toolExec.execution.toolUseId).toBe('toolu_first');
+
+      // GraphStreamProcessor does NOT mark - ToolExecutionProcessor does
+      expect(dedupCtx.seenToolIds.has('toolu_first')).toBe(false);
     });
 
-    it('should emit tool_execution for different tool ids', async () => {
+    it('should emit tool_execution for all different tool ids', async () => {
       const dedupCtx = createTestContext();
 
       const events = [
@@ -1163,7 +1161,7 @@ describe('GraphStreamProcessor', () => {
         processor.process(createAsyncIterable(events), dedupCtx)
       );
 
-      expect(results).toHaveLength(3); // All different IDs
+      expect(results).toHaveLength(3); // All different IDs, none pre-marked
       expect(results[0]?.type).toBe('tool_execution');
       expect(results[1]?.type).toBe('tool_execution');
       expect(results[2]?.type).toBe('tool_execution');
@@ -1173,48 +1171,50 @@ describe('GraphStreamProcessor', () => {
       );
       expect(ids).toEqual(['toolu_001', 'toolu_002', 'toolu_003']);
 
-      // All three should be in the context's seenToolIds
-      expect(dedupCtx.seenToolIds.size).toBe(3);
+      // GraphStreamProcessor does NOT mark - seenToolIds should be empty
+      expect(dedupCtx.seenToolIds.size).toBe(0);
     });
 
-    it('should always deduplicate via ctx.seenToolIds', async () => {
-      // Deduplication is always active via ExecutionContext
+    it('should skip only pre-marked tools, emit non-marked ones', async () => {
+      // Pre-mark one tool (simulates ToolExecutionProcessor processed it first)
       const dedupCtx = createTestContext();
+      dedupCtx.seenToolIds.set('toolu_123', new Date().toISOString());
+
       const events = [
-        createToolCallEvent('toolu_123', 'get_weather'),
-        createToolCallEvent('toolu_123', 'get_weather'), // Same id - will be deduped
+        createToolCallEvent('toolu_123', 'get_weather'), // Pre-marked - skip
+        createToolCallEvent('toolu_456', 'get_forecast'), // Not marked - emit
       ];
 
       const results = await collectEvents(
         processor.process(createAsyncIterable(events), dedupCtx)
       );
 
-      expect(results).toHaveLength(1); // Deduplicated
-      expect(results[0]?.type).toBe('tool_execution');
+      expect(results).toHaveLength(1); // Only non-marked tool emitted
+      const toolExec = results[0] as { type: 'tool_execution'; execution: any };
+      expect(toolExec.execution.toolUseId).toBe('toolu_456');
     });
 
     it('should isolate deduplication between different contexts', async () => {
-      // First context with a tool call
+      // First context - process tool (not marked, so emits)
       const ctx1 = createTestContext();
       const stream1 = [createToolCallEvent('toolu_xyz', 'first_call')];
-      await collectEvents(
+      const results1 = await collectEvents(
         processor.process(createAsyncIterable(stream1), ctx1)
       );
 
-      // Second context with the SAME tool id (should NOT be deduplicated - fresh context)
+      // Second context with the SAME tool id - should also emit (different context, not pre-marked)
       const ctx2 = createTestContext();
       const stream2 = [createToolCallEvent('toolu_xyz', 'first_call')];
-      const results = await collectEvents(
+      const results2 = await collectEvents(
         processor.process(createAsyncIterable(stream2), ctx2)
       );
 
-      expect(results).toHaveLength(1); // Should emit (different context)
-      const toolExec = results[0] as { type: 'tool_execution'; execution: any };
-      expect(toolExec.execution.toolUseId).toBe('toolu_xyz');
+      expect(results1).toHaveLength(1); // Emitted in ctx1
+      expect(results2).toHaveLength(1); // Emitted in ctx2 (isolated context)
 
-      // Both contexts have the same tool id, but independently
-      expect(ctx1.seenToolIds.has('toolu_xyz')).toBe(true);
-      expect(ctx2.seenToolIds.has('toolu_xyz')).toBe(true);
+      // GraphStreamProcessor does NOT mark - both contexts should be empty
+      expect(ctx1.seenToolIds.size).toBe(0);
+      expect(ctx2.seenToolIds.size).toBe(0);
     });
   });
 

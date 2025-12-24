@@ -23,7 +23,7 @@
 import type { INormalizedStreamEvent } from '@shared/providers/interfaces/INormalizedEvent';
 import type { ProcessedStreamEvent } from './types';
 import type { ExecutionContext } from '@domains/agent/orchestration/ExecutionContext';
-import { markToolSeen } from '@domains/agent/orchestration/ExecutionContext';
+import { isToolSeen } from '@domains/agent/orchestration/ExecutionContext';
 
 export interface IGraphStreamProcessor {
   process(
@@ -138,9 +138,10 @@ export class GraphStreamProcessor implements IGraphStreamProcessor {
       return null;
     }
 
-    // Deduplicate using shared ctx.seenToolIds
-    const result = markToolSeen(ctx, toolCall.id);
-    if (result.isDuplicate) {
+    // Check if already seen (READ-ONLY, no mutation)
+    // The actual marking happens in ToolExecutionProcessor when it emits
+    // This prevents the race condition where we mark before emission
+    if (isToolSeen(ctx, toolCall.id)) {
       return null; // Skip duplicate
     }
 

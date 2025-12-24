@@ -44,6 +44,16 @@ vi.mock('@shared/providers/adapters/StreamAdapterFactory', () => ({
   StreamAdapterFactory: {
     create: vi.fn(() => ({
       processChunk: vi.fn(),
+      normalizeStopReason: vi.fn((stopReason: string) => {
+        // Simulate Anthropic adapter behavior
+        const mapping: Record<string, string> = {
+          'end_turn': 'success',
+          'max_tokens': 'max_turns',
+          'tool_use': 'success',
+          'stop_sequence': 'success',
+        };
+        return mapping[stopReason] ?? 'success';
+      }),
     })),
   },
 }));

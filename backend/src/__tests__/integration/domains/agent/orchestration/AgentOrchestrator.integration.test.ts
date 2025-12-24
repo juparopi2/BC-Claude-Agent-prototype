@@ -106,6 +106,16 @@ vi.mock('@shared/providers/adapters/StreamAdapterFactory', () => ({
         }
         return null;
       },
+      normalizeStopReason: (stopReason: string) => {
+        // Simulate Anthropic adapter behavior
+        const mapping: Record<string, string> = {
+          'end_turn': 'success',
+          'max_tokens': 'max_turns',
+          'tool_use': 'success',
+          'stop_sequence': 'success',
+        };
+        return mapping[stopReason] ?? 'success';
+      },
     })),
   },
 }));

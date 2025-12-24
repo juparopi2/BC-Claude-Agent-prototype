@@ -216,9 +216,9 @@ export class EventStore {
           throw new Error(`Invalid sequence number generated: ${sequenceNumber}`);
         }
 
-        if (sequenceNumber < 0) {
-          logger.warn('Negative sequence number generated, using 0', { sequenceNumber, sessionId });
-          sequenceNumber = 0;
+        if (sequenceNumber < 1) {
+          logger.warn('Invalid sequence number generated (< 1), using 1', { sequenceNumber, sessionId });
+          sequenceNumber = 1;
         }
       } catch (seqError) {
         logger.error('Failed to get sequence number, using timestamp fallback', {
@@ -503,13 +503,14 @@ export class EventStore {
       const key = `event:sequence:${sessionId}`;
 
       // Redis INCR is atomic - perfect for distributed systems
+      // Redis INCR starts at 1 on first call, which is what we want (1-indexed sequences)
       const sequenceNumber = await redis.incr(key);
 
       // Set TTL to 7 days (auto-cleanup for inactive sessions)
       await redis.expire(key, 7 * 24 * 60 * 60);
 
-      // Redis INCR starts at 1, but we want 0-indexed sequence numbers
-      return sequenceNumber - 1;
+      // Return sequence number as-is (1-indexed: first event = 1, second = 2, etc.)
+      return sequenceNumber;
     } catch (error) {
       logger.error('Failed to get next sequence number from Redis', { error, sessionId });
 
@@ -551,13 +552,13 @@ export class EventStore {
   private async fallbackToDatabase(sessionId: string): Promise<number> {
     try {
       const result = await executeQuery<{ next_seq: number }>(
-        `SELECT COALESCE(MAX(sequence_number), -1) + 1 AS next_seq
+        `SELECT COALESCE(MAX(sequence_number), 0) + 1 AS next_seq
          FROM message_events
          WHERE session_id = @session_id`,
         { session_id: sessionId }
       );
 
-      const nextSeq = result.recordset[0]?.next_seq ?? 0;
+      const nextSeq = result.recordset[0]?.next_seq ?? 1;
 
       logger.debug('Fallback to database successful', {
         sessionId,
@@ -568,12 +569,12 @@ export class EventStore {
     } catch (dbError) {
       logger.error('Fallback to database also failed', { dbError, sessionId });
 
-      // ⭐ Last resort: return 0 to start fresh sequence
+      // ⭐ Last resort: return 1 to start fresh sequence (1-indexed)
       // Using Date.now() would create huge gaps in sequence numbers
-      // Better to start from 0 and let the session rebuild
-      logger.warn('All sequence generation methods failed, starting from 0', { sessionId });
+      // Better to start from 1 and let the session rebuild
+      logger.warn('All sequence generation methods failed, starting from 1', { sessionId });
 
-      return 0;
+      return 1;
     }
   }
 

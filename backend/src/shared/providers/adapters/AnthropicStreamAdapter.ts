@@ -3,6 +3,8 @@ import { createChildLogger } from '@/shared/utils/logger';
 import {
   IStreamAdapter,
   INormalizedStreamEvent,
+  NormalizedStopReason,
+  ProviderStopReason,
   ProviderType,
   NormalizedToolCall,
   NormalizedUsage,
@@ -170,6 +172,38 @@ export class AnthropicStreamAdapter implements IStreamAdapter {
       });
     }
     return null;
+  }
+
+  /**
+   * Normalizes Anthropic-specific stop reasons to canonical format.
+   *
+   * Anthropic stop reasons:
+   * - 'end_turn': Model finished naturally → 'success'
+   * - 'max_tokens': Hit token limit → 'max_turns'
+   * - 'tool_use': Model wants to use a tool → 'success'
+   * - 'stop_sequence': Hit a stop sequence → 'success'
+   *
+   * @param stopReason - Anthropic-specific stop reason
+   * @returns Normalized stop reason
+   */
+  normalizeStopReason(stopReason: ProviderStopReason): NormalizedStopReason {
+    const mapping: Record<string, NormalizedStopReason> = {
+      'end_turn': 'success',
+      'max_tokens': 'max_turns',
+      'tool_use': 'success',
+      'stop_sequence': 'success',
+    };
+
+    const normalized = mapping[stopReason];
+    if (!normalized) {
+      logger.warn(
+        { sessionId: this.sessionId, stopReason },
+        'Unknown Anthropic stop reason, defaulting to success'
+      );
+      return 'success';
+    }
+
+    return normalized;
   }
 
   private createEvent(

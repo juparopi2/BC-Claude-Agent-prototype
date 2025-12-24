@@ -66,3 +66,22 @@ export interface NormalizedUsage {
   reasoningTokens?: number;
   cachedTokens?: number;
 }
+
+/**
+ * Normalized stop reason for multi-provider support.
+ * Provider-agnostic reason why the model stopped generating.
+ *
+ * - 'success': Normal completion (Anthropic: end_turn, tool_use, stop_sequence; OpenAI: stop)
+ * - 'error': An error occurred during generation
+ * - 'max_turns': Hit token limit (Anthropic: max_tokens; OpenAI: length)
+ * - 'user_cancelled': User manually cancelled the request
+ */
+export type NormalizedStopReason = 'success' | 'error' | 'max_turns' | 'user_cancelled';
+
+/**
+ * Provider-specific stop reason mappings.
+ * Each provider has its own terminology for stop reasons.
+ */
+export type AnthropicStopReason = 'end_turn' | 'max_tokens' | 'tool_use' | 'stop_sequence';
+export type OpenAIStopReason = 'stop' | 'length' | 'tool_calls' | 'content_filter' | 'function_call';
+export type ProviderStopReason = AnthropicStopReason | OpenAIStopReason | string;

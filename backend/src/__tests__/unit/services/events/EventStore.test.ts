@@ -272,21 +272,21 @@ describe('EventStore', () => {
       );
     });
 
-    it('should start from 0 when no previous events exist (database fallback)', async () => {
+    it('should start from 1 when no previous events exist (database fallback)', async () => {
       mockRedisMethods.incr.mockRejectedValueOnce(new Error('Redis unavailable'));
       mockExecuteQuery
-        .mockResolvedValueOnce({ recordset: [{ next_seq: 0 }], rowsAffected: [1] }) // No previous events
+        .mockResolvedValueOnce({ recordset: [{ next_seq: 1 }], rowsAffected: [1] }) // No previous events (1-indexed)
         .mockResolvedValueOnce({ recordset: [], rowsAffected: [1] }); // Insert query
 
       const event = await eventStore.appendEvent('session-123', 'user_message_sent', { message_id: 'msg-1', content: '', user_id: 'user-1' });
 
-      expect(event.sequence_number).toBe(0);
+      expect(event.sequence_number).toBe(1);
     });
 
     it('should log error when Redis fails but continue with database fallback', async () => {
       mockRedisMethods.incr.mockRejectedValueOnce(new Error('Redis error'));
       mockExecuteQuery
-        .mockResolvedValueOnce({ recordset: [{ next_seq: 0 }], rowsAffected: [1] })
+        .mockResolvedValueOnce({ recordset: [{ next_seq: 1 }], rowsAffected: [1] })
         .mockResolvedValueOnce({ recordset: [], rowsAffected: [1] });
 
       await eventStore.appendEvent('session-123', 'user_message_sent', { message_id: 'msg-1', content: '', user_id: 'user-1' });

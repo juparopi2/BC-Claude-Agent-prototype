@@ -1,5 +1,5 @@
 import { StreamEvent } from '@langchain/core/tracers/log_stream';
-import { INormalizedStreamEvent, ProviderType } from './INormalizedEvent';
+import { INormalizedStreamEvent, NormalizedStopReason, ProviderType, ProviderStopReason } from './INormalizedEvent';
 
 /**
  * Interface that all provider stream adapters must implement.
@@ -27,4 +27,22 @@ export interface IStreamAdapter {
    * Gets the current block index tracking position in the stream.
    */
   getCurrentBlockIndex(): number;
+
+  /**
+   * Normalizes a provider-specific stop reason to the canonical format.
+   * Each provider has different terminology for why generation stopped.
+   *
+   * @param stopReason - Provider-specific stop reason string
+   * @returns Normalized stop reason ('success' | 'error' | 'max_turns' | 'user_cancelled')
+   *
+   * @example
+   * // Anthropic
+   * adapter.normalizeStopReason('end_turn'); // 'success'
+   * adapter.normalizeStopReason('max_tokens'); // 'max_turns'
+   *
+   * // OpenAI
+   * adapter.normalizeStopReason('stop'); // 'success'
+   * adapter.normalizeStopReason('length'); // 'max_turns'
+   */
+  normalizeStopReason(stopReason: ProviderStopReason): NormalizedStopReason;
 }

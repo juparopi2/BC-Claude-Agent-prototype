@@ -1099,6 +1099,71 @@ type AgentEventType =
 
 ---
 
+## Garantías de Eventos (Provider-Agnostic)
+
+Esta sección define las garantías de eventos que el sistema provee, independiente del proveedor de LLM utilizado (Claude, GPT-4, etc.). Los tests E2E deben verificar estos patrones, no secuencias específicas de eventos.
+
+### Eventos Garantizados (SIEMPRE ocurren)
+
+| Evento | Garantía | Condición |
+|--------|----------|-----------|
+| `user_message_confirmed` | SIEMPRE primero | Después de persistir mensaje de usuario |
+| `message` o `error` | SIEMPRE terminal | Hay un evento de contenido final |
+| `complete` | SIEMPRE último significativo | Último evento lógico de la sesión |
+
+### Eventos Condicionales (Dependen del LLM)
+
+| Evento | Condición |
+|--------|-----------|
+| `thinking_chunk` / `thinking_complete` | Solo si Extended Thinking está habilitado Y el LLM decide pensar |
+| `tool_use` / `tool_result` | Solo si el LLM decide usar herramientas |
+| `message_chunk` | Solo durante streaming (puede no haber con respuestas muy cortas) |
+
+### Invariantes de Orden
+
+1. **Tool pairing**: Si hay `tool_use`, DEBE seguir un `tool_result` con mismo `toolUseId`
+2. **Thinking before message**: Si hay `thinking_chunk`, DEBE preceder a `message_chunk`
+3. **Complete is terminal**: `complete` DEBE ser el último evento significativo
+   - Eventos transient (`message_chunk`, `thinking_chunk`) pueden llegar después por buffering de WebSocket
+   - Frontend debe ignorar chunks después de `complete`
+
+### Implicaciones para Testing
+
+```typescript
+// ✅ CORRECTO: Verificar patrones, no secuencias exactas
+it('should emit tool_result after tool_use if tools were used', () => {
+  const toolUseIndex = events.findIndex(e => e.type === 'tool_use');
+  const toolResultIndex = events.findIndex(e => e.type === 'tool_result');
+
+  // Solo verificar orden si ambos existen
+  if (toolUseIndex > -1 && toolResultIndex > -1) {
+    expect(toolUseIndex).toBeLessThan(toolResultIndex);
+  }
+});
+
+// ❌ INCORRECTO: Asumir que siempre habrá tool events
+it('should emit tool_use event', () => {
+  const toolUseEvent = events.find(e => e.type === 'tool_use');
+  expect(toolUseEvent).toBeDefined(); // Falla si LLM no usa tools
+});
+```
+
+### Normalización de Stop Reasons
+
+El `stopReason` del proveedor se normaliza a valores canónicos:
+
+| Provider Stop Reason | Normalized `reason` |
+|---------------------|---------------------|
+| `end_turn` | `success` |
+| `tool_use` | `success` |
+| `max_tokens` | `success` |
+| `stop_sequence` | `success` |
+| Error/exception | `error` |
+| Max turns reached | `max_turns` |
+| User cancelled | `user_cancelled` |
+
+---
+
 ## Garantías de Ordenamiento
 
 ### Dos Sistemas de Ordenamiento

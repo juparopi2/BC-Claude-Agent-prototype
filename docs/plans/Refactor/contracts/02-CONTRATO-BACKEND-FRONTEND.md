@@ -831,6 +831,72 @@ function leaveSession(sessionId: string) {
 
 ---
 
+## Garantías de Eventos (Provider-Agnostic)
+
+Esta sección define las garantías de eventos desde la perspectiva del frontend, independiente del proveedor de LLM utilizado (Claude, GPT-4, etc.).
+
+### Eventos Garantizados (SIEMPRE ocurren)
+
+| Evento | Garantía | Acción Frontend |
+|--------|----------|-----------------|
+| `user_message_confirmed` | SIEMPRE primero | Actualizar mensaje optimista con `sequenceNumber` |
+| `message` o `error` | SIEMPRE terminal | Renderizar mensaje final o error |
+| `complete` | SIEMPRE último significativo | Habilitar input, detener indicadores |
+
+### Eventos Condicionales (Dependen del LLM)
+
+| Evento | Condición | Acción Frontend |
+|--------|-----------|-----------------|
+| `thinking_chunk` | Extended Thinking habilitado | Acumular en bloque colapsable |
+| `thinking_complete` | Después de thinking chunks | Colapsar bloque de pensamiento |
+| `tool_use` | LLM decide usar herramienta | Mostrar tarjeta de ejecución |
+| `tool_result` | Después de tool_use | Actualizar tarjeta con resultado |
+| `message_chunk` | Durante streaming | Acumular texto con efecto typing |
+
+### Invariantes de Orden
+
+1. **Tool pairing**: Si hay `tool_use`, siempre seguirá un `tool_result` con mismo `toolUseId`
+2. **Thinking before message**: `thinking_chunk` siempre precede a `message_chunk`
+3. **Complete is terminal**: `complete` es el último evento significativo
+   - Pueden llegar chunks transient después por buffering de WebSocket
+   - **Ignorar chunks después de recibir `complete`**
+
+### Manejo de Eventos Transient Tardíos
+
+```typescript
+// Patrón recomendado para ignorar chunks tardíos
+let isComplete = false;
+
+function handleComplete(event: CompleteEvent) {
+  isComplete = true;
+  hideLoadingIndicator();
+  enableMessageInput();
+}
+
+function handleMessageChunk(event: MessageChunkEvent) {
+  // Ignorar chunks que lleguen después de complete
+  if (isComplete) {
+    console.debug('[Ignored] Late chunk after complete');
+    return;
+  }
+  accumulator.append(event.content);
+  renderStreamingText(accumulator.get());
+}
+```
+
+### Normalización de CompleteEvent.reason
+
+El `reason` en `CompleteEvent` está normalizado a valores canónicos:
+
+| Valor | Significado | Acción Recomendada |
+|-------|-------------|-------------------|
+| `success` | Completado exitosamente | Mostrar indicador de éxito |
+| `error` | Error durante ejecución | Mostrar mensaje de error |
+| `max_turns` | Límite de turnos alcanzado | Informar al usuario |
+| `user_cancelled` | Usuario canceló | Mostrar mensaje de cancelación |
+
+---
+
 ## Ordenamiento de Eventos
 
 ### Regla de Oro

@@ -227,12 +227,17 @@ export class AgentOrchestrator implements IAgentOrchestrator {
         sessionId,
       });
 
-      // Emit complete event
+      // Use adapter to normalize provider-specific stopReason to canonical format
+      // This keeps all provider-specific logic centralized in the adapter
+      const normalizedReason = adapter.normalizeStopReason(finalStopReason);
+
+      // Emit complete event with normalized reason
       this.agentEventEmitter.emit({
         type: 'complete',
         sessionId,
         timestamp: new Date().toISOString(),
         stopReason: finalStopReason,
+        reason: normalizedReason,
       });
 
       this.logger.info({ sessionId, stopReason: finalStopReason }, 'Agent execution completed');

@@ -55,8 +55,9 @@ async function drainMessageQueueForCleanup(): Promise<void> {
 
     // Add settling delay to ensure all DB writes have completed
     // BullMQ marks jobs as "completed" before async DB writes finish
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    console.log('[CleanSlateDB] MessageQueue drained with settling delay');
+    // Increased to 3000ms to account for Azure SQL latency
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    console.log('[CleanSlateDB] MessageQueue drained with 3s settling delay');
   } catch (error) {
     // Graceful degradation - don't fail cleanup if queue isn't available
     const errorMessage = error instanceof Error ? error.message : String(error);
@@ -122,8 +123,10 @@ const TABLE_DELETION_ORDER = [
   'message_events',  // FK: session_id → sessions
   'approvals',       // FK: session_id → sessions
   'todos',           // FK: session_id → sessions
-  'usage_events',    // FK: user_id → users, session_id → sessions
-  'token_usage',     // FK: user_id → users, session_id → sessions
+  'usage_events',    // FK: user_id → users, session_id → sessions (dual FK)
+  'token_usage',     // FK: user_id → users, session_id → sessions (dual FK)
+  'billing_records', // FK: user_id → users (NO CASCADE - preserve financial data)
+  'user_feedback',   // FK: user_id → users (NO CASCADE - preserve feedback)
   'session_files',   // FK: session_id → sessions, file_id → files
   'files',           // FK: user_id → users
   'sessions',        // FK: user_id → users
@@ -280,15 +283,55 @@ export async function cleanSlateForSuite(
             break;
           }
 
-          // Approvals, todos, usage_events, token_usage: Delete by session owner
+          // Approvals, todos: Delete by session owner
           case 'approvals':
-          case 'todos':
-          case 'usage_events':
-          case 'token_usage': {
+          case 'todos': {
             deleteQuery = `DELETE FROM ${table} WHERE session_id IN (
               SELECT s.id FROM sessions s
               JOIN users u ON s.user_id = u.id
               WHERE u.email LIKE @emailPattern
+            )`;
+            const queryResult = await executeQuery(deleteQuery, { emailPattern: testEmailPattern });
+            rowsAffected = queryResult.rowsAffected[0] || 0;
+            break;
+          }
+
+          // usage_events, token_usage: Dual FK to both sessions AND users
+          // Must delete by BOTH session_id AND user_id to catch orphaned records
+          case 'usage_events':
+          case 'token_usage': {
+            // 1. First delete by session_id (captures records with valid session)
+            const bySessionResult = await executeQuery(
+              `DELETE FROM ${table} WHERE session_id IN (
+                SELECT s.id FROM sessions s
+                JOIN users u ON s.user_id = u.id
+                WHERE u.email LIKE @emailPattern
+              )`,
+              { emailPattern: testEmailPattern }
+            );
+            const deletedBySession = bySessionResult.rowsAffected[0] || 0;
+
+            // 2. ALSO delete by user_id directly (captures orphaned records without valid session)
+            const byUserResult = await executeQuery(
+              `DELETE FROM ${table} WHERE user_id IN (
+                SELECT id FROM users WHERE email LIKE @emailPattern
+              )`,
+              { emailPattern: testEmailPattern }
+            );
+            const deletedByUser = byUserResult.rowsAffected[0] || 0;
+
+            rowsAffected = deletedBySession + deletedByUser;
+            if (deletedByUser > 0) {
+              console.log(`[CleanSlateDB] ${table}: ${deletedBySession} by session + ${deletedByUser} orphaned by user`);
+            }
+            break;
+          }
+
+          // billing_records, user_feedback: Direct FK to users only (NO CASCADE)
+          case 'billing_records':
+          case 'user_feedback': {
+            deleteQuery = `DELETE FROM ${table} WHERE user_id IN (
+              SELECT id FROM users WHERE email LIKE @emailPattern
             )`;
             const queryResult = await executeQuery(deleteQuery, { emailPattern: testEmailPattern });
             rowsAffected = queryResult.rowsAffected[0] || 0;

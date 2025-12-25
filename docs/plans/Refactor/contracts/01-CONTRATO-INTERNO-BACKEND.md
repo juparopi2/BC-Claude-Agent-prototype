@@ -1603,8 +1603,8 @@ async executeAgent(prompt, sessionId, onEvent, userId, options) {
 | Componente | Estado Movido a ExecutionContext |
 |------------|----------------------------------|
 | `AgentEventEmitter` | `ctx.callback`, `ctx.eventIndex` |
-| `GraphStreamProcessor` | `ctx.thinkingChunks`, `ctx.contentChunks`, `ctx.seenToolIds` |
-| `ToolExecutionProcessor` | `ctx.seenToolIds` (compartido con GraphStreamProcessor) |
+| `GraphStreamProcessor` | `ctx.thinkingChunks`, `ctx.contentChunks`, `ctx.seenToolIds` (solo lectura) |
+| `ToolExecutionProcessor` | `ctx.seenToolIds` (lectura + escritura) |
 
 **Memoria por ExecutionContext** (~310 bytes base):
 - Identity fields: ~108 bytes (3 UUIDs)
@@ -1622,12 +1622,12 @@ async executeAgent(prompt, sessionId, onEvent, userId, options) {
 - **Azure Container Apps Ready**: Componentes stateless permiten horizontal scaling sin sticky sessions
 - **Bajo GC Pressure**: Solo se crea el contexto (ligero), componentes son singletons reutilizados
 - **Sin Cleanup**: Contexto es garbage collected automáticamente al terminar la ejecución
-- **Deduplicación Unificada**: `ctx.seenToolIds` es compartido entre GraphStreamProcessor y ToolExecutionProcessor
+- **Deduplicación Unificada**: `ctx.seenToolIds` es compartido - `GraphStreamProcessor` solo lee (`isToolSeen`), `ToolExecutionProcessor` lee y escribe (`markToolSeen`)
 
 **Invariantes**:
 1. Componentes stateless NO tienen campos de instancia mutables
 2. Todo estado per-execution vive en `ExecutionContext`
-3. `ctx.seenToolIds` es la ÚNICA fuente de verdad para deduplicación de herramientas
+3. `ctx.seenToolIds` es la ÚNICA fuente de verdad para deduplicación de herramientas (solo `ToolExecutionProcessor` escribe)
 4. `ctx.eventIndex` se incrementa atómicamente por cada emisión
 5. ExecutionContext NUNCA se comparte entre ejecuciones
 

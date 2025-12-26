@@ -190,7 +190,8 @@ describe('useMessages', () => {
       });
 
       expect(result.current.messages).toHaveLength(1);
-      expect(result.current.messages[0]?.content).toBe('Sending...');
+      const firstMessage = result.current.messages[0];
+      expect(firstMessage && 'content' in firstMessage ? firstMessage.content : undefined).toBe('Sending...');
 
       // Verify it's in optimistic map
       const state = getMessageStore().getState();

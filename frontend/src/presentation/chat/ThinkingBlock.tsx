@@ -1,25 +1,36 @@
 'use client';
 
 /**
- * ThinkingDisplay Component
+ * ThinkingBlock Component
  *
  * Unified component for displaying extended thinking content.
  * Used for BOTH streaming thinking and persisted thinking messages.
  *
- * PHASE 4.6: Single component ensures consistent amber styling across all views.
+ * Supports both single-string content and multi-block thinking (Gap #5).
  *
- * @module components/chat/ThinkingDisplay
+ * @module presentation/chat/ThinkingBlock
  */
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Brain, ChevronRight, ChevronDown } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
 
-interface ThinkingDisplayProps {
-  /** The thinking content to display */
-  content: string;
+/**
+ * Get sorted content blocks from thinkingBlocks Map
+ */
+function getSortedBlocks(thinkingBlocks: Map<number, string>): string[] {
+  const entries = Array.from(thinkingBlocks.entries());
+  entries.sort((a, b) => a[0] - b[0]);
+  return entries.map(([, content]) => content);
+}
+
+interface ThinkingBlockProps {
+  /** The thinking content to display (single string, backward compat) */
+  content?: string;
+  /** Multi-block thinking content (Gap #5) - Map of blockIndex -> content */
+  thinkingBlocks?: Map<number, string>;
   /** Whether this is actively streaming (shows animation) */
   isStreaming?: boolean;
   /** Whether to open the collapsible by default */
@@ -38,12 +49,28 @@ interface ThinkingDisplayProps {
  *
  * This ensures thinking looks the same during streaming AND after page refresh.
  */
-export function ThinkingDisplay({
-  content,
+export function ThinkingBlock({
+  content = '',
+  thinkingBlocks,
   isStreaming = false,
   defaultOpen = false,
-}: ThinkingDisplayProps) {
+}: ThinkingBlockProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen || isStreaming);
+
+  // Compute sorted blocks and total character count
+  const { blocks, totalChars } = useMemo(() => {
+    // Prefer thinkingBlocks over content when both provided
+    if (thinkingBlocks && thinkingBlocks.size > 0) {
+      const sortedBlocks = getSortedBlocks(thinkingBlocks);
+      const chars = sortedBlocks.reduce((sum, block) => sum + block.length, 0);
+      return { blocks: sortedBlocks, totalChars: chars };
+    }
+    // Fall back to single content string
+    return { blocks: content ? [content] : [], totalChars: content?.length ?? 0 };
+  }, [content, thinkingBlocks]);
+
+  // Check if we have multi-block content
+  const isMultiBlock = blocks.length > 1;
 
   return (
     <div
@@ -74,18 +101,43 @@ export function ThinkingDisplay({
           <span className="font-medium">
             {isStreaming ? 'Thinking...' : 'Extended Thinking'}
           </span>
+          {totalChars > 0 && (
+            <span className="text-xs text-muted-foreground">
+              ({totalChars} chars)
+            </span>
+          )}
         </CollapsibleTrigger>
 
         <CollapsibleContent>
           <div className="mt-2 p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg max-h-96 overflow-y-auto">
-            <pre className="text-xs whitespace-pre-wrap font-mono text-amber-900 dark:text-amber-100">
-              {content || ''}
-              {isStreaming && (
+            {blocks.map((blockContent, index) => (
+              <div key={index}>
+                {/* Separator between blocks */}
+                {isMultiBlock && index > 0 && (
+                  <div
+                    data-testid="thinking-block-separator"
+                    className="my-2 border-t border-amber-300 dark:border-amber-700"
+                  />
+                )}
+                <pre className="text-xs whitespace-pre-wrap font-mono text-amber-900 dark:text-amber-100">
+                  {blockContent}
+                  {/* Show cursor only on the last block when streaming */}
+                  {isStreaming && index === blocks.length - 1 && (
+                    <span className="inline-block w-0.5 h-4 bg-amber-500 ml-0.5 animate-pulse">
+                      |
+                    </span>
+                  )}
+                </pre>
+              </div>
+            ))}
+            {/* Empty state - just show cursor when streaming with no content */}
+            {blocks.length === 0 && isStreaming && (
+              <pre className="text-xs whitespace-pre-wrap font-mono text-amber-900 dark:text-amber-100">
                 <span className="inline-block w-0.5 h-4 bg-amber-500 ml-0.5 animate-pulse">
                   |
                 </span>
-              )}
-            </pre>
+              </pre>
+            )}
           </div>
         </CollapsibleContent>
       </Collapsible>
@@ -93,4 +145,7 @@ export function ThinkingDisplay({
   );
 }
 
-export default ThinkingDisplay;
+export default ThinkingBlock;
+
+// Legacy alias for backward compatibility
+export { ThinkingBlock as ThinkingDisplay };

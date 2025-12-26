@@ -9,3 +9,4 @@
 export { useMessages, type UseMessagesReturn } from './useMessages';
 export { useStreaming, type UseStreamingReturn } from './useStreaming';
 export { useSendMessage, type UseSendMessageReturn, type SendMessageOptions } from './useSendMessage';
+export { useFileAttachments, type Attachment, type UseFileAttachmentsResult } from './useFileAttachments';

@@ -18,7 +18,7 @@ export class ApprovalRequestedBuilder {
   private event: Partial<ApprovalRequestedEvent> = {
     type: 'approval_requested',
     eventId: `evt-${Date.now()}`,
-    timestamp: new Date(),
+    timestamp: new Date().toISOString(),
     persistenceState: 'persisted',
     approvalId: 'test-approval-id',
     sessionId: 'test-session-id',
@@ -63,7 +63,7 @@ export class ApprovalResolvedBuilder {
   private event: Partial<ApprovalResolvedEvent> = {
     type: 'approval_resolved',
     eventId: `evt-${Date.now()}`,
-    timestamp: new Date(),
+    timestamp: new Date().toISOString(),
     persistenceState: 'persisted',
     approvalId: 'test-approval-id',
     sessionId: 'test-session-id',

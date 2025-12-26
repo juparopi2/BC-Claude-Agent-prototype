@@ -4,19 +4,22 @@ import { useEffect, useRef, useCallback } from 'react';
 import { useChatStore } from '@/lib/stores/chatStore';
 import { useFileStore } from '@/lib/stores/fileStore';
 import { useFilePreviewStore } from '@/lib/stores/filePreviewStore';
+import { useAuthStore, selectUserInitials } from '@/lib/stores/authStore';
 import { useMessages, useStreaming } from '@/src/domains/chat';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Loader2 } from 'lucide-react';
 import { isToolUseMessage, isToolResultMessage, isThinkingMessage } from '@bc-agent/shared';
-import MessageBubble from './MessageBubble';
-import StreamingMessage from './StreamingMessage';
-import { ThinkingDisplay } from './ThinkingDisplay';
-import { ToolCard } from './ToolCard';
+import {
+  MessageBubble,
+  StreamingIndicator,
+  ThinkingBlock,
+  ToolCard,
+} from '@/src/presentation/chat';
 
 export default function ChatContainer() {
   // Use domain hooks for messages and streaming
   const { messages } = useMessages();
-  const { isStreaming, content: streamingContent, thinking: streamingThinking } = useStreaming();
+  const { isStreaming, content: streamingContent, thinkingBlocks } = useStreaming();
   const citationFileMap = useChatStore((s) => s.citationFileMap);
 
   // File store for looking up file metadata
@@ -28,6 +31,9 @@ export default function ChatContainer() {
   // UI state remains in chatStore (will be moved in Sprint 3)
   const isLoading = useChatStore((s) => s.isLoading);
   const isAgentBusy = useChatStore((s) => s.isAgentBusy);
+
+  // User initials for MessageBubble avatar
+  const userInitials = useAuthStore(selectUserInitials);
 
   // DEBUG: Log sorted messages when they change
   if (process.env.NODE_ENV === 'development') {
@@ -61,7 +67,7 @@ export default function ChatContainer() {
   // Auto-scroll to bottom when new messages arrive or streaming updates
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamingContent, streamingThinking]);
+  }, [messages, streamingContent, thinkingBlocks]);
 
   if (isLoading) {
     return (
@@ -85,9 +91,9 @@ export default function ChatContainer() {
           if (isThinkingMessage(message)) {
             return (
               <div key={message.id} className="space-y-3">
-                <ThinkingDisplay
+                <ThinkingBlock
                   content={message.content}
-                  isStreaming={isStreaming && streamingThinking.length > 0}
+                  isStreaming={false}
                 />
               </div>
             );
@@ -124,16 +130,17 @@ export default function ChatContainer() {
             <MessageBubble
               key={message.id}
               message={message}
+              userInitials={userInitials}
               citationFileMap={citationFileMap}
               onCitationOpen={handleCitationOpen}
             />
           );
         })}
 
-        {isStreaming && streamingContent.length > 0 && (
-          <StreamingMessage
+        {isStreaming && (streamingContent.length > 0 || thinkingBlocks.size > 0) && (
+          <StreamingIndicator
             content={streamingContent}
-            thinking=""
+            thinkingBlocks={thinkingBlocks}
           />
         )}
 

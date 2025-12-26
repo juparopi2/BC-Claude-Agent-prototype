@@ -7,7 +7,7 @@
  * @module __tests__/domains/chat/services/streamProcessor
  */
 
-import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type {
   AgentEvent,
   ThinkingChunkEvent,
@@ -19,6 +19,7 @@ import type {
   ApprovalRequestedEvent,
   CompleteEvent,
   Message,
+  StandardMessage,
 } from '@bc-agent/shared';
 
 // Import the function to test
@@ -32,12 +33,15 @@ import { getMessageStore, resetMessageStore } from '../../../../src/domains/chat
 import { getStreamingStore, resetStreamingStore } from '../../../../src/domains/chat/stores/streamingStore';
 import { getApprovalStore, resetApprovalStore } from '../../../../src/domains/chat/stores/approvalStore';
 
+// Helper to create timestamps for events
+const now = () => new Date().toISOString();
+
 describe('StreamProcessor', () => {
   // Track callback invocations
   let callbacks: {
-    onAgentBusyChange: Mock<[boolean], void>;
-    onError: Mock<[string], void>;
-    onCitationsReceived: Mock<[Map<string, string>], void>;
+    onAgentBusyChange: ReturnType<typeof vi.fn>;
+    onError: ReturnType<typeof vi.fn>;
+    onCitationsReceived: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(() => {
@@ -72,6 +76,9 @@ describe('StreamProcessor', () => {
         type: 'session_start',
         eventId: 'evt-1',
         sessionId: 'session-1',
+        userId: 'user-1',
+        timestamp: now(),
+        persistenceState: 'persisted',
       };
 
       processAgentEvent(event, callbacks);
@@ -86,6 +93,9 @@ describe('StreamProcessor', () => {
         type: 'session_start',
         eventId: 'evt-1',
         sessionId: 'session-1',
+        userId: 'user-1',
+        timestamp: now(),
+        persistenceState: 'persisted',
       };
 
       processAgentEvent(event, callbacks);
@@ -107,6 +117,8 @@ describe('StreamProcessor', () => {
           eventId: 'evt-thinking-1',
           sessionId: 'session-1',
           sequenceNumber: 1,
+          timestamp: now(),
+          persistenceState: 'persisted',
         };
 
         processAgentEvent(event, callbacks);
@@ -115,7 +127,8 @@ describe('StreamProcessor', () => {
         expect(messages).toHaveLength(1);
         expect(messages[0]?.type).toBe('thinking');
         expect(messages[0]?.id).toBe('evt-thinking-1');
-        expect(messages[0]?.content).toBe('');
+        const thinkingMsg = messages[0] as StandardMessage;
+        expect(thinkingMsg.content).toBe('');
       });
 
       it('should start streaming if not already streaming', () => {
@@ -123,6 +136,8 @@ describe('StreamProcessor', () => {
           type: 'thinking',
           eventId: 'evt-thinking-1',
           sessionId: 'session-1',
+          timestamp: now(),
+          persistenceState: 'persisted',
         };
 
         expect(getStreamingStore().getState().isStreaming).toBe(false);
@@ -141,6 +156,7 @@ describe('StreamProcessor', () => {
           sessionId: 'session-1',
           content: 'Thinking about',
           blockIndex: 0,
+          timestamp: now(),
           persistenceState: 'transient',
         };
 
@@ -159,6 +175,7 @@ describe('StreamProcessor', () => {
           sessionId: 'session-1',
           content: 'First ',
           blockIndex: 0,
+          timestamp: now(),
           persistenceState: 'transient',
         };
         const event2: ThinkingChunkEvent = {
@@ -167,6 +184,7 @@ describe('StreamProcessor', () => {
           sessionId: 'session-1',
           content: 'second',
           blockIndex: 0,
+          timestamp: now(),
           persistenceState: 'transient',
         };
 
@@ -184,6 +202,7 @@ describe('StreamProcessor', () => {
           sessionId: 'session-1',
           content: 'Block 0',
           blockIndex: 0,
+          timestamp: now(),
           persistenceState: 'transient',
         };
         const event2: ThinkingChunkEvent = {
@@ -192,6 +211,7 @@ describe('StreamProcessor', () => {
           sessionId: 'session-1',
           content: 'Block 1',
           blockIndex: 1,
+          timestamp: now(),
           persistenceState: 'transient',
         };
 
@@ -209,6 +229,8 @@ describe('StreamProcessor', () => {
           type: 'thinking',
           eventId: 'think-msg-1',
           sessionId: 'session-1',
+          timestamp: now(),
+          persistenceState: 'persisted',
         };
         processAgentEvent(thinkingEvent, callbacks);
 
@@ -219,12 +241,13 @@ describe('StreamProcessor', () => {
           sessionId: 'session-1',
           content: 'Reasoning...',
           blockIndex: 0,
+          timestamp: now(),
           persistenceState: 'transient',
         };
         processAgentEvent(chunkEvent, callbacks);
 
         const messages = getMessageStore().getState().messages;
-        const thinkingMsg = messages.find(m => m.type === 'thinking');
+        const thinkingMsg = messages.find(m => m.type === 'thinking') as StandardMessage | undefined;
         expect(thinkingMsg?.content).toBe('Reasoning...');
       });
     });
@@ -236,6 +259,8 @@ describe('StreamProcessor', () => {
           type: 'thinking',
           eventId: 'think-msg-1',
           sessionId: 'session-1',
+          timestamp: now(),
+          persistenceState: 'persisted',
         };
         processAgentEvent(thinkingEvent, callbacks);
 
@@ -245,11 +270,13 @@ describe('StreamProcessor', () => {
           eventId: 'evt-complete',
           sessionId: 'session-1',
           content: 'Final thinking content after analysis.',
+          timestamp: now(),
+          persistenceState: 'transient',
         };
         processAgentEvent(completeEvent, callbacks);
 
         const messages = getMessageStore().getState().messages;
-        const thinkingMsg = messages.find(m => m.type === 'thinking');
+        const thinkingMsg = messages.find(m => m.type === 'thinking') as StandardMessage | undefined;
         expect(thinkingMsg?.content).toBe('Final thinking content after analysis.');
       });
     });
@@ -268,6 +295,7 @@ describe('StreamProcessor', () => {
           sessionId: 'session-1',
           content: 'Hello',
           eventIndex: 0,
+          timestamp: now(),
           persistenceState: 'transient',
         };
 
@@ -286,6 +314,7 @@ describe('StreamProcessor', () => {
           sessionId: 'session-1',
           content: 'Hello ',
           eventIndex: 0,
+          timestamp: now(),
           persistenceState: 'transient',
         };
         const event2: MessageChunkEvent = {
@@ -294,6 +323,7 @@ describe('StreamProcessor', () => {
           sessionId: 'session-1',
           content: 'World',
           eventIndex: 1,
+          timestamp: now(),
           persistenceState: 'transient',
         };
 
@@ -312,6 +342,7 @@ describe('StreamProcessor', () => {
           sessionId: 'session-1',
           content: 'Original',
           eventIndex: 0,
+          timestamp: now(),
           persistenceState: 'transient',
         };
         processAgentEvent(chunkEvent, callbacks);
@@ -321,7 +352,9 @@ describe('StreamProcessor', () => {
           type: 'complete',
           eventId: 'evt-complete',
           sessionId: 'session-1',
-          reason: 'end_turn',
+          reason: 'success',
+          timestamp: now(),
+          persistenceState: 'persisted',
         };
         processAgentEvent(completeEvent, callbacks);
 
@@ -332,6 +365,7 @@ describe('StreamProcessor', () => {
           sessionId: 'session-1',
           content: 'Late chunk',
           eventIndex: 1,
+          timestamp: now(),
           persistenceState: 'transient',
         };
         processAgentEvent(lateChunk, callbacks);
@@ -353,6 +387,8 @@ describe('StreamProcessor', () => {
           role: 'assistant',
           content: 'Hello, I am Claude.',
           sequenceNumber: 1,
+          timestamp: now(),
+          persistenceState: 'persisted',
         };
 
         processAgentEvent(event, callbacks);
@@ -360,9 +396,10 @@ describe('StreamProcessor', () => {
         const messages = getMessageStore().getState().messages;
         expect(messages).toHaveLength(1);
         expect(messages[0]?.id).toBe('msg-123');
-        expect(messages[0]?.content).toBe('Hello, I am Claude.');
-        expect(messages[0]?.role).toBe('assistant');
-        expect(messages[0]?.sequence_number).toBe(1);
+        const msg = messages[0] as StandardMessage;
+        expect(msg.content).toBe('Hello, I am Claude.');
+        expect(msg.role).toBe('assistant');
+        expect(msg.sequence_number).toBe(1);
       });
 
       it('should include token usage in final message', () => {
@@ -379,12 +416,14 @@ describe('StreamProcessor', () => {
             outputTokens: 50,
           },
           model: 'claude-3-5-sonnet-20241022',
+          timestamp: now(),
+          persistenceState: 'persisted',
         };
 
         processAgentEvent(event, callbacks);
 
         const messages = getMessageStore().getState().messages;
-        const msg = messages[0] as Message & { token_usage?: { input_tokens: number; output_tokens: number } };
+        const msg = messages[0] as StandardMessage & { token_usage?: { input_tokens: number; output_tokens: number }; model?: string };
         expect(msg.token_usage).toEqual({
           input_tokens: 100,
           output_tokens: 50,
@@ -400,6 +439,7 @@ describe('StreamProcessor', () => {
           sessionId: 'session-1',
           content: 'Partial',
           eventIndex: 0,
+          timestamp: now(),
           persistenceState: 'transient',
         };
         processAgentEvent(chunkEvent, callbacks);
@@ -414,6 +454,8 @@ describe('StreamProcessor', () => {
           role: 'assistant',
           content: 'Final',
           sequenceNumber: 1,
+          timestamp: now(),
+          persistenceState: 'persisted',
         };
         processAgentEvent(event, callbacks);
 
@@ -506,6 +548,8 @@ describe('StreamProcessor', () => {
           toolName: 'search_knowledge',
           args: { query: 'test query' },
           sequenceNumber: 1,
+          timestamp: now(),
+          persistenceState: 'persisted',
         };
 
         processAgentEvent(event, callbacks);
@@ -538,6 +582,8 @@ describe('StreamProcessor', () => {
           toolName: 'search',
           args: {},
           sequenceNumber: 1,
+          timestamp: now(),
+          persistenceState: 'persisted',
         };
         processAgentEvent(toolUseEvent, callbacks);
 
@@ -547,10 +593,13 @@ describe('StreamProcessor', () => {
           eventId: 'evt-result-1',
           sessionId: 'session-1',
           toolUseId: 'toolu_abc123',
+          toolName: 'search',
           success: true,
           result: { data: 'found results' },
           durationMs: 150,
           sequenceNumber: 2,
+          timestamp: now(),
+          persistenceState: 'persisted',
         };
         processAgentEvent(resultEvent, callbacks);
 
@@ -575,6 +624,8 @@ describe('StreamProcessor', () => {
           toolName: 'search',
           args: {},
           sequenceNumber: 1,
+          timestamp: now(),
+          persistenceState: 'persisted',
         };
         processAgentEvent(toolUseEvent, callbacks);
 
@@ -584,10 +635,14 @@ describe('StreamProcessor', () => {
           eventId: 'evt-result-1',
           sessionId: 'session-1',
           toolUseId: 'toolu_error',
+          toolName: 'search',
           success: false,
+          result: null,
           error: 'Connection timeout',
           durationMs: 5000,
           sequenceNumber: 2,
+          timestamp: now(),
+          persistenceState: 'persisted',
         };
         processAgentEvent(resultEvent, callbacks);
 
@@ -607,9 +662,12 @@ describe('StreamProcessor', () => {
           eventId: 'evt-result-1',
           sessionId: 'session-1',
           toolUseId: 'nonexistent',
+          toolName: 'unknown',
           success: true,
           result: {},
           sequenceNumber: 1,
+          timestamp: now(),
+          persistenceState: 'persisted',
         };
 
         // Should not throw
@@ -629,6 +687,8 @@ describe('StreamProcessor', () => {
           toolName: 'search',
           args: {},
           sequenceNumber: 1,
+          timestamp: now(),
+          persistenceState: 'persisted',
         };
         processAgentEvent(toolUseEvent, callbacks);
 
@@ -638,9 +698,12 @@ describe('StreamProcessor', () => {
           eventId: 'evt-result-1',
           sessionId: 'session-1',
           correlationId: 'toolu_correlation', // Using correlationId
+          toolName: 'search',
           success: true,
           result: { data: 'found' },
           sequenceNumber: 2,
+          timestamp: now(),
+          persistenceState: 'persisted' as const,
         };
         processAgentEvent(resultEvent as unknown as AgentEvent, callbacks);
 
@@ -667,6 +730,8 @@ describe('StreamProcessor', () => {
           args: { path: '/important.txt' },
           changeSummary: 'Delete important.txt',
           priority: 'high',
+          timestamp: now(),
+          persistenceState: 'persisted',
         };
 
         processAgentEvent(event, callbacks);
@@ -693,6 +758,8 @@ describe('StreamProcessor', () => {
           changeSummary: 'Modify data',
           priority: 'medium',
           expiresAt,
+          timestamp: now(),
+          persistenceState: 'persisted',
         };
 
         processAgentEvent(event, callbacks);
@@ -714,6 +781,8 @@ describe('StreamProcessor', () => {
           args: {},
           changeSummary: 'Test',
           priority: 'low',
+          timestamp: now(),
+          persistenceState: 'persisted',
         };
         processAgentEvent(requestEvent, callbacks);
         expect(getApprovalStore().getState().pendingApprovals.size).toBe(1);
@@ -724,6 +793,8 @@ describe('StreamProcessor', () => {
           eventId: 'evt-2',
           sessionId: 'session-1',
           approvalId: 'approval-to-resolve',
+          timestamp: now(),
+          persistenceState: 'persisted' as const,
         };
         processAgentEvent(resolveEvent as AgentEvent, callbacks);
 
@@ -746,6 +817,7 @@ describe('StreamProcessor', () => {
           sessionId: 'session-1',
           content: 'Partial',
           eventIndex: 0,
+          timestamp: now(),
           persistenceState: 'transient',
         };
         processAgentEvent(chunkEvent, callbacks);
@@ -757,6 +829,8 @@ describe('StreamProcessor', () => {
           eventId: 'evt-error',
           sessionId: 'session-1',
           error: 'Something went wrong',
+          timestamp: now(),
+          persistenceState: 'persisted' as const,
         };
         processAgentEvent(errorEvent as AgentEvent, callbacks);
 
@@ -769,6 +843,8 @@ describe('StreamProcessor', () => {
           eventId: 'evt-error',
           sessionId: 'session-1',
           error: 'API rate limit exceeded',
+          timestamp: now(),
+          persistenceState: 'persisted' as const,
         };
 
         processAgentEvent(errorEvent as AgentEvent, callbacks);
@@ -786,6 +862,7 @@ describe('StreamProcessor', () => {
           sessionId: 'session-1',
           content: 'Response',
           eventIndex: 0,
+          timestamp: now(),
           persistenceState: 'transient',
         };
         processAgentEvent(chunkEvent, callbacks);
@@ -794,7 +871,9 @@ describe('StreamProcessor', () => {
           type: 'complete',
           eventId: 'evt-complete',
           sessionId: 'session-1',
-          reason: 'end_turn',
+          reason: 'success',
+          timestamp: now(),
+          persistenceState: 'persisted',
         };
         processAgentEvent(completeEvent, callbacks);
 
@@ -806,7 +885,9 @@ describe('StreamProcessor', () => {
           type: 'complete',
           eventId: 'evt-complete',
           sessionId: 'session-1',
-          reason: 'end_turn',
+          reason: 'success',
+          timestamp: now(),
+          persistenceState: 'persisted',
         };
 
         processAgentEvent(completeEvent, callbacks);
@@ -819,11 +900,13 @@ describe('StreamProcessor', () => {
           type: 'complete',
           eventId: 'evt-complete',
           sessionId: 'session-1',
-          reason: 'end_turn',
+          reason: 'success',
           citedFiles: [
             { fileName: 'doc.pdf', fileId: 'file-123' },
             { fileName: 'report.xlsx', fileId: 'file-456' },
           ],
+          timestamp: now(),
+          persistenceState: 'persisted',
         };
 
         processAgentEvent(completeEvent, callbacks);
@@ -839,8 +922,10 @@ describe('StreamProcessor', () => {
           type: 'complete',
           eventId: 'evt-complete',
           sessionId: 'session-1',
-          reason: 'end_turn',
+          reason: 'success',
           citedFiles: [],
+          timestamp: now(),
+          persistenceState: 'persisted',
         };
 
         processAgentEvent(completeEvent, callbacks);
@@ -865,6 +950,7 @@ describe('StreamProcessor', () => {
           sessionId: 'session-1',
           content: 'Partial',
           eventIndex: 0,
+          timestamp: now(),
           persistenceState: 'transient',
         };
         processAgentEvent(chunkEvent, callbacks);
@@ -873,6 +959,8 @@ describe('StreamProcessor', () => {
           type: 'session_end',
           eventId: 'evt-end',
           sessionId: 'session-1',
+          timestamp: now(),
+          persistenceState: 'persisted',
         };
         processAgentEvent(endEvent, callbacks);
 
@@ -884,6 +972,8 @@ describe('StreamProcessor', () => {
           type: 'session_end',
           eventId: 'evt-end',
           sessionId: 'session-1',
+          timestamp: now(),
+          persistenceState: 'persisted',
         };
 
         processAgentEvent(endEvent, callbacks);
@@ -900,6 +990,7 @@ describe('StreamProcessor', () => {
           sessionId: 'session-1',
           content: 'Partial',
           eventIndex: 0,
+          timestamp: now(),
           persistenceState: 'transient',
         };
         processAgentEvent(chunkEvent, callbacks);
@@ -908,6 +999,9 @@ describe('StreamProcessor', () => {
           type: 'turn_paused',
           eventId: 'evt-paused',
           sessionId: 'session-1',
+          messageId: 'msg-1',
+          timestamp: now(),
+          persistenceState: 'persisted',
         };
         processAgentEvent(pausedEvent, callbacks);
 
@@ -923,6 +1017,9 @@ describe('StreamProcessor', () => {
           type: 'content_refused',
           eventId: 'evt-refused',
           sessionId: 'session-1',
+          messageId: 'msg-1',
+          timestamp: now(),
+          persistenceState: 'persisted',
         };
 
         processAgentEvent(refusedEvent, callbacks);
@@ -937,6 +1034,7 @@ describe('StreamProcessor', () => {
           sessionId: 'session-1',
           content: 'Partial',
           eventIndex: 0,
+          timestamp: now(),
           persistenceState: 'transient',
         };
         processAgentEvent(chunkEvent, callbacks);
@@ -945,6 +1043,9 @@ describe('StreamProcessor', () => {
           type: 'content_refused',
           eventId: 'evt-refused',
           sessionId: 'session-1',
+          messageId: 'msg-1',
+          timestamp: now(),
+          persistenceState: 'persisted',
         };
         processAgentEvent(refusedEvent, callbacks);
 
@@ -1008,6 +1109,9 @@ describe('StreamProcessor', () => {
         type: 'session_start',
         eventId: 'evt-1',
         sessionId: 'session-1',
+        userId: 'user-1',
+        timestamp: now(),
+        persistenceState: 'persisted',
       };
 
       // Should not throw when callbacks is undefined
@@ -1019,17 +1123,21 @@ describe('StreamProcessor', () => {
         type: 'unknown_event_type',
         eventId: 'evt-unknown',
         sessionId: 'session-1',
-      } as AgentEvent;
+        timestamp: now(),
+        persistenceState: 'persisted' as const,
+      } as unknown as AgentEvent;
 
       // Should not throw
       expect(() => processAgentEvent(unknownEvent, callbacks)).not.toThrow();
     });
 
     it('should handle events with missing optional fields', () => {
-      const minimalEvent: MessageChunkEvent = {
+      // Using type assertion to test runtime behavior with minimal fields
+      const minimalEvent = {
         type: 'message_chunk',
         eventId: 'evt-1',
         content: 'Content',
+        timestamp: now(),
         persistenceState: 'transient',
         // No sessionId, no eventIndex
       } as MessageChunkEvent;

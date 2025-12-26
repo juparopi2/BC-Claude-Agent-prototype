@@ -46,8 +46,11 @@ export {
   useMessages,
   useStreaming,
   useSendMessage,
+  useFileAttachments,
   type UseMessagesReturn,
   type UseStreamingReturn,
   type UseSendMessageReturn,
   type SendMessageOptions,
+  type Attachment,
+  type UseFileAttachmentsResult,
 } from './hooks';

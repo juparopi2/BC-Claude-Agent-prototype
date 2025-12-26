@@ -113,7 +113,7 @@ describe('Chat Flow Integration', () => {
         type: 'complete',
         eventId: 'evt-6',
         sessionId,
-        stopReason: 'success',
+        reason: 'success',
         timestamp: now(),
         persistenceState: 'persisted',
       } as AgentEvent, callbacks);
@@ -196,7 +196,7 @@ describe('Chat Flow Integration', () => {
         type: 'complete',
         eventId: 'evt-6',
         sessionId,
-        stopReason: 'success',
+        reason: 'success',
         timestamp: now(),
         persistenceState: 'persisted',
       } as AgentEvent);
@@ -429,7 +429,7 @@ describe('Chat Flow Integration', () => {
         type: 'complete',
         eventId: 'evt-2',
         sessionId,
-        stopReason: 'success',
+        reason: 'success',
         timestamp: now(),
         persistenceState: 'persisted',
       } as AgentEvent);

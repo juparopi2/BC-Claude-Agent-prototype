@@ -33,7 +33,7 @@ describe('chatStore citationFileMap', () => {
       const completeEvent: CompleteEvent = {
         type: 'complete',
         eventId: 'event-123',
-        timestamp: new Date(),
+        timestamp: new Date().toISOString(),
         persistenceState: 'transient',
         reason: 'success',
         citedFiles: [
@@ -61,7 +61,7 @@ describe('chatStore citationFileMap', () => {
       const completeEvent: CompleteEvent = {
         type: 'complete',
         eventId: 'event-456',
-        timestamp: new Date(),
+        timestamp: new Date().toISOString(),
         persistenceState: 'transient',
         reason: 'success',
         // No citedFiles
@@ -86,7 +86,7 @@ describe('chatStore citationFileMap', () => {
       const completeEvent: CompleteEvent = {
         type: 'complete',
         eventId: 'event-789',
-        timestamp: new Date(),
+        timestamp: new Date().toISOString(),
         persistenceState: 'transient',
         reason: 'success',
         citedFiles: [
@@ -114,7 +114,7 @@ describe('chatStore citationFileMap', () => {
       const completeEvent: CompleteEvent = {
         type: 'complete',
         eventId: 'event-empty',
-        timestamp: new Date(),
+        timestamp: new Date().toISOString(),
         persistenceState: 'transient',
         reason: 'success',
         citedFiles: [], // Empty array
@@ -175,7 +175,7 @@ describe('chatStore citationFileMap', () => {
       const completeEvent: CompleteEvent = {
         type: 'complete',
         eventId: 'event-other',
-        timestamp: new Date(),
+        timestamp: new Date().toISOString(),
         persistenceState: 'transient',
         reason: 'success',
         sessionId: 'session-other', // Different session
@@ -205,7 +205,7 @@ describe('chatStore citationFileMap', () => {
       const completeEvent: CompleteEvent = {
         type: 'complete',
         eventId: 'event-same',
-        timestamp: new Date(),
+        timestamp: new Date().toISOString(),
         persistenceState: 'transient',
         reason: 'success',
         sessionId: 'session-current', // Same session

@@ -4,20 +4,17 @@
  * MessageBubble Component
  *
  * Renders individual chat messages based on type.
- * Uses ThinkingDisplay for thinking messages.
+ * Uses ThinkingBlock for thinking messages.
  *
- * PHASE 4.6: Uses shared types from @bc-agent/shared for type safety.
- *
- * @module components/chat/MessageBubble
+ * @module presentation/chat/MessageBubble
  */
 
-import { ThinkingDisplay } from './ThinkingDisplay';
+import { ThinkingBlock } from './ThinkingBlock';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { isThinkingMessage, isStandardMessage, isToolResultMessage, type Message } from '@bc-agent/shared';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Bot } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useAuthStore, selectUserInitials } from '@/lib/stores/authStore';
 import type { CitationFileMap } from '@/lib/types/citation.types';
 
 /**
@@ -34,6 +31,8 @@ function formatTokenCount(count: number): string {
 
 interface MessageBubbleProps {
   message: Message;
+  /** User initials to display in user message avatar */
+  userInitials?: string;
   /** Map of fileName -> fileId for citation matching */
   citationFileMap?: CitationFileMap;
   /** Callback when a citation is clicked */
@@ -42,16 +41,16 @@ interface MessageBubbleProps {
 
 export default function MessageBubble({
   message,
+  userInitials = 'U',
   citationFileMap,
   onCitationOpen,
 }: MessageBubbleProps) {
-  const userInitials = useAuthStore(selectUserInitials);
 
-  // Handle thinking messages with unified ThinkingDisplay component
-  // PHASE 4.6: Consistent amber styling for both streaming and persisted
+  // Handle thinking messages with unified ThinkingBlock component
+  // Consistent amber styling for both streaming and persisted
   if (isThinkingMessage(message)) {
     return (
-      <ThinkingDisplay
+      <ThinkingBlock
         content={message.content}
         isStreaming={false}
         charCount={message.content.length}

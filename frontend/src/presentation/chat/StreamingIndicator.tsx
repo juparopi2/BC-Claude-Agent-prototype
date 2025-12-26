@@ -1,40 +1,40 @@
 'use client';
 
 /**
- * StreamingMessage Component
+ * StreamingIndicator Component
  *
  * Displays actively streaming message content (thinking and text).
+ * Uses ThinkingBlock for consistent amber styling.
  *
- * PHASE 4.6: Uses ThinkingDisplay for consistent amber styling.
- * Previously used blue, now uses amber to match persisted thinking.
+ * Updated for Gap #5: Uses thinkingBlocks Map for multi-block thinking support.
  *
- * @module components/chat/StreamingMessage
+ * @module presentation/chat/StreamingIndicator
  */
 
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Bot, Loader2 } from 'lucide-react';
-import { ThinkingDisplay } from './ThinkingDisplay';
+import { ThinkingBlock } from './ThinkingBlock';
 
-interface StreamingMessageProps {
+interface StreamingIndicatorProps {
   /** Currently streaming text content */
   content: string;
-  /** Currently streaming thinking content */
-  thinking: string;
+  /** Multi-block thinking content (Gap #5) - keyed by blockIndex */
+  thinkingBlocks: Map<number, string>;
 }
 
-export default function StreamingMessage({ content, thinking }: StreamingMessageProps) {
+export function StreamingIndicator({ content, thinkingBlocks }: StreamingIndicatorProps) {
   const hasContent = content.length > 0;
-  const hasThinking = thinking.length > 0;
+  const hasThinking = thinkingBlocks.size > 0;
 
   return (
     <div
       className="flex flex-col gap-2"
       data-testid="streaming-indicator"
     >
-      {/* Thinking content - use unified ThinkingDisplay with amber styling */}
+      {/* Thinking blocks - use Map for multi-block support (Gap #5) */}
       {hasThinking && (
-        <ThinkingDisplay
-          content={thinking ?? ''}
+        <ThinkingBlock
+          thinkingBlocks={thinkingBlocks}
           isStreaming={true}
           defaultOpen={true}
         />
@@ -80,3 +80,8 @@ export default function StreamingMessage({ content, thinking }: StreamingMessage
     </div>
   );
 }
+
+export default StreamingIndicator;
+
+// Legacy alias for backward compatibility
+export { StreamingIndicator as StreamingMessage };

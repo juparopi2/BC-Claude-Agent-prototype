@@ -9,7 +9,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import MessageBubble from '@/components/chat/MessageBubble';
+import { MessageBubble } from '@/src/presentation/chat';
 import type { StandardMessage } from '@bc-agent/shared';
 import type { CitationFileMap } from '@/lib/types/citation.types';
 
@@ -21,7 +21,11 @@ vi.mock('@/lib/stores/authStore', () => ({
 
 // Mock MarkdownRenderer to capture props
 const mockMarkdownRenderer = vi.fn();
-vi.mock('@/components/chat/MarkdownRenderer', () => ({
+vi.mock('@/src/presentation/chat/MarkdownRenderer', () => ({
+  default: (props: Record<string, unknown>) => {
+    mockMarkdownRenderer(props);
+    return <div data-testid="markdown-renderer">{props.content as string}</div>;
+  },
   MarkdownRenderer: (props: Record<string, unknown>) => {
     mockMarkdownRenderer(props);
     return <div data-testid="markdown-renderer">{props.content as string}</div>;

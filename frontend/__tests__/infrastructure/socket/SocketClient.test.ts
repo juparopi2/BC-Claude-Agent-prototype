@@ -299,9 +299,9 @@ describe('SocketClient', () => {
     });
 
     it('emits chat:stop event', () => {
-      client.stopAgent({ sessionId: 'session-123' });
+      client.stopAgent({ sessionId: 'session-123', userId: 'user-123' });
 
-      expect(mockSocket.emit).toHaveBeenCalledWith('chat:stop', { sessionId: 'session-123' });
+      expect(mockSocket.emit).toHaveBeenCalledWith('chat:stop', { sessionId: 'session-123', userId: 'user-123' });
     });
   });
 
@@ -315,9 +315,9 @@ describe('SocketClient', () => {
 
     it('emits approval:response event', () => {
       const approvalData = {
-        sessionId: 'session-123',
         approvalId: 'approval-456',
-        approved: true,
+        decision: 'approved' as const,
+        userId: 'user-123',
       };
 
       client.respondToApproval(approvalData);

@@ -105,7 +105,7 @@ export class AgentEventFactory {
       eventId: generateEventId(),
       sequenceNumber: overrides?.sequenceNumber ?? sequenceCounter++,
       persistenceState: overrides?.persistenceState ?? ('persisted' as PersistenceState),
-      timestamp: new Date(),
+      timestamp: new Date().toISOString(),
     };
   }
 
@@ -116,7 +116,7 @@ export class AgentEventFactory {
     return {
       eventId: generateEventId(),
       persistenceState: 'transient' as PersistenceState,
-      timestamp: new Date(),
+      timestamp: new Date().toISOString(),
     };
   }
 
@@ -301,7 +301,7 @@ export class AgentEventFactory {
       args: overrides?.args ?? { name: 'New Customer', email: 'new@example.com' },
       changeSummary: overrides?.changeSummary ?? 'Create new customer: New Customer',
       priority: overrides?.priority ?? 'high',
-      expiresAt: overrides?.expiresAt ?? new Date(Date.now() + 5 * 60 * 1000),
+      expiresAt: overrides?.expiresAt ?? new Date(Date.now() + 5 * 60 * 1000).toISOString(),
       ...this.baseEvent(overrides),
       ...overrides,
     };
@@ -338,7 +338,7 @@ export class AgentEventFactory {
       sequenceNumber: seq,
       eventId: overrides?.eventId ?? generateEventId(),
       persistenceState: 'persisted',
-      timestamp: overrides?.timestamp ?? new Date(),
+      timestamp: overrides?.timestamp ?? new Date().toISOString(),
       ...overrides,
     };
   }
@@ -431,6 +431,11 @@ export class AgentEventFactory {
           return this.turnPaused();
         case 'content_refused':
           return this.contentRefused();
+        case 'thinking_complete':
+          // thinking_complete is handled elsewhere or is a transient event
+          return this.thinking();
+        default:
+          throw new Error(`Unknown event type: ${type}`);
       }
     });
   }

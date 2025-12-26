@@ -1,5 +1,21 @@
 'use client';
 
+/**
+ * ChatInput Component
+ *
+ * @deprecated This monolithic component (371 LOC) is being replaced by smaller,
+ * composable components in src/presentation/chat/:
+ *
+ * - InputOptionsBar - Toggle controls (thinking, context search)
+ * - AttachmentList - File attachment display
+ * - useFileAttachments - Hook for file upload management
+ *
+ * For new implementations, prefer using these smaller components directly.
+ * This file will be maintained for backward compatibility until Sprint 7.
+ *
+ * @module components/chat/ChatInput
+ */
+
 import { useState, useRef, useEffect, KeyboardEvent } from 'react';
 import { useSocket } from '@/lib/stores/socketMiddleware';
 import { useChatStore } from '@/lib/stores/chatStore';
@@ -10,7 +26,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Toggle } from '@/components/ui/toggle';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Send, Square, Brain, WifiOff, Mic, Paperclip, Globe, Loader2, FolderSearch } from 'lucide-react';
-import { FileAttachmentChip } from '@/components/chat/FileAttachmentChip';
+import { FileAttachmentChip } from '@/src/presentation/chat';
 import { getFileApiClient } from '@/lib/services/fileApi';
 import { toast } from 'sonner';
 

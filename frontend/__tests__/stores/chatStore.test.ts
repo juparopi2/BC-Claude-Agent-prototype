@@ -192,7 +192,7 @@ describe('ChatStore', () => {
         toolUseId: 'tool-1',
         args: {},
         eventId: 'evt-tool-1',
-        timestamp: new Date(),
+        timestamp: new Date().toISOString(),
         persistenceState: 'persisted',
         sequenceNumber: 1,
         sessionId: 'session-1',
@@ -221,7 +221,7 @@ describe('ChatStore', () => {
         result: { customers: [] },
         durationMs: 100,
         eventId: 'evt-result-1',
-        timestamp: new Date(),
+        timestamp: new Date().toISOString(),
         persistenceState: 'persisted',
         sequenceNumber: 2,
         sessionId: 'session-1',
@@ -251,7 +251,7 @@ describe('ChatStore', () => {
         type: 'message_chunk',
         content: 'Hello',
         eventId: 'evt-1',
-        timestamp: new Date(),
+        timestamp: new Date().toISOString(),
         persistenceState: 'transient',
       };
 
@@ -269,7 +269,7 @@ describe('ChatStore', () => {
         type: 'thinking_chunk',
         content: 'Let me think...',
         eventId: 'evt-1',
-        timestamp: new Date(),
+        timestamp: new Date().toISOString(),
         persistenceState: 'transient',
       };
 
@@ -290,7 +290,7 @@ describe('ChatStore', () => {
         changeSummary: 'Update customer',
         priority: 'high',
         eventId: 'evt-1',
-        timestamp: new Date(),
+        timestamp: new Date().toISOString(),
         persistenceState: 'persisted',
       };
 
@@ -307,7 +307,7 @@ describe('ChatStore', () => {
         type: 'error',
         error: 'Something went wrong',
         eventId: 'evt-1',
-        timestamp: new Date(),
+        timestamp: new Date().toISOString(),
         persistenceState: 'transient',
       };
 

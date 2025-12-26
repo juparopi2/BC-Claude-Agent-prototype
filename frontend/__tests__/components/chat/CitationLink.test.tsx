@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { CitationLink } from '@/components/chat/CitationLink';
+import { CitationLink } from '@/src/presentation/chat';
 import { TooltipProvider } from '@/components/ui/tooltip';
 
 const renderWithTooltip = (ui: React.ReactElement) => {

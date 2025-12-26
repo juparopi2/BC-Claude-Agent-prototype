@@ -42,7 +42,7 @@ export const EventSequences = {
       changeSummary: 'Create customer Test',
       priority: 'medium',
       eventId: `evt-${Date.now()}`,
-      timestamp: new Date(),
+      timestamp: new Date().toISOString(),
       persistenceState: 'persisted',
     },
     {
@@ -51,7 +51,7 @@ export const EventSequences = {
       sessionId,
       decision: 'approved',
       eventId: `evt-${Date.now() + 100}`,
-      timestamp: new Date(),
+      timestamp: new Date().toISOString(),
       persistenceState: 'persisted',
     },
   ],

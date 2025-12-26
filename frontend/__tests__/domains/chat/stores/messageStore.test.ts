@@ -9,7 +9,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { act } from '@testing-library/react';
-import type { Message } from '@bc-agent/shared';
+import type { Message, StandardMessage } from '@bc-agent/shared';
 
 // Will be implemented in messageStore.ts
 import {
@@ -81,6 +81,9 @@ describe('MessageStore', () => {
           type: 'tool_result',
           id: 'msg-2',
           session_id: 'session-1',
+          role: 'assistant',
+          tool_name: 'search',
+          tool_args: { query: 'test' },
           tool_use_id: toolUseId,
           success: true,
           result: { data: 'found' },
@@ -191,7 +194,8 @@ describe('MessageStore', () => {
 
       const state = getMessageStore().getState();
       expect(state.optimisticMessages.has(tempId)).toBe(true);
-      expect(state.optimisticMessages.get(tempId)?.content).toBe('Pending message');
+      const storedMsg = state.optimisticMessages.get(tempId) as StandardMessage | undefined;
+      expect(storedMsg?.content).toBe('Pending message');
     });
 
     it('should include optimistic messages in sorted output', () => {

@@ -1,7 +1,18 @@
+// Local components (still in components/chat/)
 export { default as ChatContainer } from './ChatContainer';
 export { default as ChatInput } from './ChatInput';
-export { default as MessageBubble } from './MessageBubble';
-export { default as StreamingMessage } from './StreamingMessage';
-export { ToolCard } from './ToolCard';
-export { MarkdownRenderer } from './MarkdownRenderer';
-export { CitationLink } from './CitationLink';
+
+// Re-export from presentation layer for backward compatibility
+export {
+  MessageBubble,
+  StreamingIndicator,
+  StreamingMessage, // Legacy alias
+  ThinkingBlock,
+  ThinkingDisplay, // Legacy alias
+  ToolCard,
+  MarkdownRenderer,
+  CitationLink,
+  FileAttachmentChip,
+  AttachmentList,
+  InputOptionsBar,
+} from '@/src/presentation/chat';

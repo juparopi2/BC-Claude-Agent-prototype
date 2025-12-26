@@ -16,27 +16,10 @@ vi.mock('@/src/infrastructure/api', () => ({
   getFileApiClient: vi.fn(),
 }));
 
-vi.mock('@/lib/stores/socketMiddleware', () => ({
-  useSocket: vi.fn(() => ({
-    isConnected: true,
-    isReconnecting: false,
-    sendMessage: vi.fn(),
-    stopAgent: vi.fn(),
-  })),
-}));
-
-// Variable to control mock state
-let mockChatStoreState = {
-  isAgentBusy: false,
-};
-
-vi.mock('@/lib/stores/chatStore', () => ({
-  useChatStore: vi.fn((selector) => selector(mockChatStoreState)),
-}));
-
-// Mock streaming hook
+// Mock streaming hook and socket connection
 let mockStreamingState = {
   isStreaming: false,
+  isAgentBusy: false,
   isComplete: false,
   content: '',
   thinking: '',
@@ -44,8 +27,16 @@ let mockStreamingState = {
   capturedThinking: null,
 };
 
+const mockSocketConnection = {
+  isConnected: true,
+  isReconnecting: false,
+  sendMessage: vi.fn(),
+  stopAgent: vi.fn(),
+};
+
 vi.mock('@/src/domains/chat', () => ({
   useStreaming: vi.fn(() => mockStreamingState),
+  useSocketConnection: vi.fn(() => mockSocketConnection),
 }));
 
 // Variable to control UI preferences mock
@@ -74,17 +65,19 @@ describe('ChatInput', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockChatStoreState = {
-      isAgentBusy: false,
-    };
     mockStreamingState = {
       isStreaming: false,
+      isAgentBusy: false,
       isComplete: false,
       content: '',
       thinking: '',
       thinkingBlocks: new Map(),
       capturedThinking: null,
     };
+    mockSocketConnection.sendMessage = vi.fn();
+    mockSocketConnection.stopAgent = vi.fn();
+    mockSocketConnection.isConnected = true;
+    mockSocketConnection.isReconnecting = false;
     mockUIPreferencesState = {
       enableThinking: false,
       setEnableThinking: vi.fn(),
@@ -364,7 +357,7 @@ describe('ChatInput', () => {
     });
 
     it('disables input when agent is busy', () => {
-      mockChatStoreState.isAgentBusy = true;
+      mockStreamingState.isAgentBusy = true;
 
       render(
         <ChatInput

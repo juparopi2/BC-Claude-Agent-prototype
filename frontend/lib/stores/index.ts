@@ -1,27 +1,18 @@
 /**
- * Frontend Stores
+ * Frontend Stores (Legacy)
  *
- * Barrel export for remaining Zustand stores and middleware.
- * Note: authStore, sessionStore, and uiPreferencesStore have been migrated to domains/.
+ * All stores have been migrated to the domain architecture:
+ * - authStore -> src/domains/auth
+ * - sessionStore -> src/domains/session
+ * - uiPreferencesStore -> src/domains/ui
+ * - chatStore -> src/domains/chat (messageStore, streamingStore, approvalStore, citationStore)
+ * - fileStore -> src/domains/files
+ *
+ * This directory is kept for backwards compatibility.
+ * Use the new domain imports instead.
  *
  * @module lib/stores
+ * @deprecated Use @/src/domains/* instead
  */
 
-// Chat store (to be migrated to domains/chat in future sprint)
-export {
-  useChatStore,
-  selectAllMessages,
-  selectPendingApprovals,
-  type ChatState,
-  type ChatActions,
-  type ChatStore,
-  type StreamingState,
-  type PendingApproval,
-} from './chatStore';
-
-// Socket middleware (to be migrated to infrastructure/socket in future sprint)
-export {
-  useSocket,
-  type UseSocketOptions,
-  type UseSocketReturn,
-} from './socketMiddleware';
+// No exports - all stores have been migrated

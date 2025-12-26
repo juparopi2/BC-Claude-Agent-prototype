@@ -39,3 +39,14 @@ export {
   type ApprovalStore,
 } from './approvalStore';
 
+// Citation Store
+export {
+  getCitationStore,
+  useCitationStore,
+  resetCitationStore,
+  type CitationFileMap,
+  type CitationState,
+  type CitationActions,
+  type CitationStore,
+} from './citationStore';
+

@@ -11,3 +11,8 @@ export { useStreaming, type UseStreamingReturn } from './useStreaming';
 export { useSendMessage, type UseSendMessageReturn, type SendMessageOptions } from './useSendMessage';
 export { useFileAttachments, type Attachment, type UseFileAttachmentsResult } from './useFileAttachments';
 export { usePagination, type UsePaginationReturn } from './usePagination';
+export {
+  useSocketConnection,
+  type UseSocketConnectionOptions,
+  type UseSocketConnectionReturn,
+} from './useSocketConnection';

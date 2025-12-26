@@ -22,6 +22,14 @@ import type { SocketConnectOptions, JoinSessionOptions, PendingMessage } from '.
 type EventCallback<T = unknown> = (data: T) => void;
 
 /**
+ * Session title update event data
+ */
+export interface SessionTitleUpdatedEvent {
+  sessionId: string;
+  title: string;
+}
+
+/**
  * WebSocket client for real-time communication.
  *
  * @example
@@ -45,6 +53,7 @@ export class SocketClient {
   private connectionChangeListeners = new Set<EventCallback<boolean>>();
   private sessionReadyListeners = new Set<EventCallback<SessionReadyEvent>>();
   private errorListeners = new Set<EventCallback<AgentErrorData>>();
+  private sessionTitleListeners = new Set<EventCallback<SessionTitleUpdatedEvent>>();
 
   /**
    * Whether the socket is currently connected
@@ -286,6 +295,19 @@ export class SocketClient {
     };
   }
 
+  /**
+   * Subscribe to session title update events
+   *
+   * @param callback Session title handler
+   * @returns Unsubscribe function
+   */
+  onSessionTitleUpdated(callback: EventCallback<SessionTitleUpdatedEvent>): () => void {
+    this.sessionTitleListeners.add(callback);
+    return () => {
+      this.sessionTitleListeners.delete(callback);
+    };
+  }
+
   // Private methods
 
   private setupEventListeners(): void {
@@ -323,6 +345,17 @@ export class SocketClient {
           callback(error);
         } catch (err) {
           console.error('[SocketClient] Error in error handler:', err);
+        }
+      });
+    });
+
+    // Session title updates
+    this.socket.on('session:title_updated', (data: SessionTitleUpdatedEvent) => {
+      this.sessionTitleListeners.forEach((callback) => {
+        try {
+          callback(data);
+        } catch (err) {
+          console.error('[SocketClient] Error in session title handler:', err);
         }
       });
     });

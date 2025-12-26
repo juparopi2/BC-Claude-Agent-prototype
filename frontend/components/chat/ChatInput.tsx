@@ -3,24 +3,15 @@
 /**
  * ChatInput Component
  *
- * @deprecated This monolithic component (371 LOC) is being replaced by smaller,
- * composable components in src/presentation/chat/:
- *
- * - InputOptionsBar - Toggle controls (thinking, context search)
- * - AttachmentList - File attachment display
- * - useFileAttachments - Hook for file upload management
- *
- * For new implementations, prefer using these smaller components directly.
- * This file will be maintained for backward compatibility until Sprint 7.
+ * Provides message input with file attachments and options.
+ * Uses domain hooks for streaming state and UI preferences.
  *
  * @module components/chat/ChatInput
  */
 
 import { useState, useRef, useEffect, KeyboardEvent } from 'react';
-import { useSocket } from '@/lib/stores/socketMiddleware';
-import { useChatStore } from '@/lib/stores/chatStore';
 import { useUIPreferencesStore } from '@/src/domains/ui';
-import { useStreaming } from '@/src/domains/chat';
+import { useStreaming, useSocketConnection } from '@/src/domains/chat';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Toggle } from '@/components/ui/toggle';
@@ -61,8 +52,8 @@ export default function ChatInput({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Use socket from parent if provided, otherwise create local instance
-  const shouldUseLocalSocket = propsIsConnected === undefined && !onSend && !!sessionId; // FIX: Check if prop was PROVIDED
-  const localSocket = useSocket({
+  const shouldUseLocalSocket = propsIsConnected === undefined && !onSend && !!sessionId;
+  const localSocket = useSocketConnection({
     sessionId: sessionId || '',
     autoConnect: !!shouldUseLocalSocket
   });
@@ -73,10 +64,8 @@ export default function ChatInput({
   const sendMessage = propsSendMessage ?? localSocket.sendMessage;
   const stopAgent = propsStopAgent ?? localSocket.stopAgent;
 
-  const isAgentBusy = useChatStore((s) => s.isAgentBusy);
-
-  // Use domain hook for streaming state
-  const { isStreaming } = useStreaming();
+  // Use domain hook for streaming state (includes isAgentBusy)
+  const { isStreaming, isAgentBusy } = useStreaming();
 
   // If we're in "new session" mode (no sessionId), we're always "connected" in UI terms
   // unless explicitly disabled.

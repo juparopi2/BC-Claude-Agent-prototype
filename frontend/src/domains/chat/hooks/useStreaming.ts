@@ -18,6 +18,8 @@ import {
 export interface UseStreamingReturn {
   /** Whether actively streaming */
   isStreaming: boolean;
+  /** Whether the agent is busy (processing but not necessarily streaming) */
+  isAgentBusy: boolean;
   /** Whether the current turn is complete */
   isComplete: boolean;
   /** Whether the agent is paused (Gap #7) */
@@ -36,6 +38,7 @@ export interface UseStreamingReturn {
 
 // Individual selectors to prevent infinite re-renders
 const selectIsStreaming = (state: StreamingStore) => state.isStreaming;
+const selectIsAgentBusy = (state: StreamingStore) => state.isAgentBusy;
 const selectIsComplete = (state: StreamingStore) => state.isComplete;
 const selectIsPaused = (state: StreamingStore) => state.isPaused;
 const selectPauseReason = (state: StreamingStore) => state.pauseReason;
@@ -74,6 +77,7 @@ const selectCapturedThinking = (state: StreamingStore) => state.capturedThinking
 export function useStreaming(): UseStreamingReturn {
   // Use individual selectors to avoid creating new objects on each render
   const isStreaming = useStreamingStore(selectIsStreaming);
+  const isAgentBusy = useStreamingStore(selectIsAgentBusy);
   const isComplete = useStreamingStore(selectIsComplete);
   const isPaused = useStreamingStore(selectIsPaused);
   const pauseReason = useStreamingStore(selectPauseReason);
@@ -84,6 +88,7 @@ export function useStreaming(): UseStreamingReturn {
 
   return {
     isStreaming,
+    isAgentBusy,
     isComplete,
     isPaused,
     pauseReason,

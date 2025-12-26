@@ -1,11 +1,9 @@
 'use client';
 
 import { useEffect, useRef, useCallback } from 'react';
-import { useChatStore } from '@/lib/stores/chatStore';
-import { useFileStore } from '@/lib/stores/fileStore';
-import { useFilePreviewStore } from '@/src/domains/files';
+import { useFilePreviewStore, useFiles } from '@/src/domains/files';
 import { useAuthStore, selectUserInitials } from '@/src/domains/auth';
-import { useMessages, useStreaming } from '@/src/domains/chat';
+import { useMessages, useStreaming, useCitationStore } from '@/src/domains/chat';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Loader2 } from 'lucide-react';
 import { isToolUseMessage, isToolResultMessage, isThinkingMessage } from '@bc-agent/shared';
@@ -18,19 +16,17 @@ import {
 
 export default function ChatContainer() {
   // Use domain hooks for messages and streaming
-  const { messages } = useMessages();
-  const { isStreaming, content: streamingContent, thinkingBlocks } = useStreaming();
-  const citationFileMap = useChatStore((s) => s.citationFileMap);
+  const { messages, isEmpty } = useMessages();
+  const { isStreaming, isAgentBusy, content: streamingContent, thinkingBlocks } = useStreaming();
 
-  // File store for looking up file metadata
-  const files = useFileStore((s) => s.files);
+  // Citation store for file references
+  const citationFileMap = useCitationStore((s) => s.citationFileMap);
+
+  // File domain for looking up file metadata
+  const { sortedFiles } = useFiles();
 
   // File preview store for opening previews
   const openPreview = useFilePreviewStore((s) => s.openPreview);
-
-  // UI state remains in chatStore (will be moved in Sprint 3)
-  const isLoading = useChatStore((s) => s.isLoading);
-  const isAgentBusy = useChatStore((s) => s.isAgentBusy);
 
   // User initials for MessageBubble avatar
   const userInitials = useAuthStore(selectUserInitials);
@@ -49,8 +45,8 @@ export default function ChatContainer() {
    * Handle citation click - lookup file and open preview modal
    */
   const handleCitationOpen = useCallback((fileId: string) => {
-    // Look up file metadata from fileStore
-    const file = files.find(f => f.id === fileId);
+    // Look up file metadata from files domain
+    const file = sortedFiles.find(f => f.id === fileId);
 
     if (file) {
       openPreview(fileId, file.name, file.mimeType);
@@ -59,7 +55,7 @@ export default function ChatContainer() {
       // The preview modal will handle the case where file content can't be loaded
       console.warn(`Citation clicked for file ${fileId} but file not found in store`);
     }
-  }, [files, openPreview]);
+  }, [sortedFiles, openPreview]);
 
 
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -69,15 +65,15 @@ export default function ChatContainer() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, streamingContent, thinkingBlocks]);
 
-  if (isLoading) {
+  // Show welcome state when no messages and not actively streaming
+  if (isEmpty && !isStreaming && !isAgentBusy) {
     return (
       <div
         className="flex items-center justify-center h-full"
         data-testid="chat-container"
       >
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="size-8 animate-spin text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">Loading conversation...</p>
+        <div className="flex flex-col items-center gap-3 text-muted-foreground">
+          <p className="text-sm">Start a conversation to begin</p>
         </div>
       </div>
     );

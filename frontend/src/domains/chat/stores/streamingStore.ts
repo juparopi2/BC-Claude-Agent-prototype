@@ -17,6 +17,8 @@ import { subscribeWithSelector } from 'zustand/middleware';
 export interface StreamingState {
   /** Whether actively streaming */
   isStreaming: boolean;
+  /** Whether the agent is busy (processing but not necessarily streaming) */
+  isAgentBusy: boolean;
   /** Whether the current turn is complete (Gap #6 fix) */
   isComplete: boolean;
   /** Whether the agent is paused (Gap #7) */
@@ -48,6 +50,8 @@ export interface StreamingActions {
   markComplete: () => void;
   /** Set paused state with optional reason (Gap #7) */
   setPaused: (paused: boolean, reason?: string) => void;
+  /** Set agent busy state */
+  setAgentBusy: (busy: boolean) => void;
   /** Reset all accumulators (Gap #10 fix) */
   reset: () => void;
 }
@@ -60,6 +64,7 @@ export type StreamingStore = StreamingState & StreamingActions;
 
 const initialState: StreamingState = {
   isStreaming: false,
+  isAgentBusy: false,
   isComplete: false,
   isPaused: false,
   pauseReason: null,
@@ -192,6 +197,7 @@ const createStreamingStore = () =>
         set((state) => ({
           isComplete: true,
           isStreaming: false,
+          isAgentBusy: false,
           isPaused: false,
           pauseReason: null,
           capturedThinking: state.accumulatedThinking || null,
@@ -207,6 +213,12 @@ const createStreamingStore = () =>
           pauseReason: reason || null,
           isStreaming: !paused, // Stop streaming when paused
         }),
+
+      /**
+       * Set agent busy state (processing but not streaming).
+       */
+      setAgentBusy: (busy) =>
+        set({ isAgentBusy: busy }),
 
       /**
        * Reset all accumulators for new turn.

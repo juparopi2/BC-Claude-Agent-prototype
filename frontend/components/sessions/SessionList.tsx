@@ -3,7 +3,7 @@
 import { useEffect, useMemo } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useSessionStore } from '@/src/domains/session';
-import { getSocketService } from '@/lib/services/socket';
+import { getSocketClient } from '@/src/infrastructure/socket';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -33,12 +33,14 @@ export default function SessionList() {
   useEffect(() => {
     fetchSessions();
 
-    const socket = getSocketService();
-    socket.setHandlers({
-      onSessionTitleUpdated: (data) => {
-        setSessionTitle(data.sessionId, data.title);
-      },
+    const client = getSocketClient();
+    const unsubscribe = client.onSessionTitleUpdated((data) => {
+      setSessionTitle(data.sessionId, data.title);
     });
+
+    return () => {
+      unsubscribe();
+    };
   }, [fetchSessions, setSessionTitle]);
 
   const handleNewChat = () => {

@@ -32,6 +32,14 @@ export {
   type ApprovalState,
   type ApprovalActions,
   type ApprovalStore,
+  // Citation Store
+  getCitationStore,
+  useCitationStore,
+  resetCitationStore,
+  type CitationFileMap,
+  type CitationState,
+  type CitationActions,
+  type CitationStore,
 } from './stores';
 
 // Services
@@ -48,6 +56,7 @@ export {
   useSendMessage,
   useFileAttachments,
   usePagination,
+  useSocketConnection,
   type UseMessagesReturn,
   type UseStreamingReturn,
   type UseSendMessageReturn,
@@ -55,4 +64,6 @@ export {
   type Attachment,
   type UseFileAttachmentsResult,
   type UsePaginationReturn,
+  type UseSocketConnectionOptions,
+  type UseSocketConnectionReturn,
 } from './hooks';

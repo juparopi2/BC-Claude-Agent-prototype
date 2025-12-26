@@ -73,6 +73,7 @@ export function processAgentEvent(
     case 'session_start':
       // ESSENTIAL: Reset state for new session - do not remove
       streamingStore.getState().reset();
+      streamingStore.getState().setAgentBusy(true);
       callbacks?.onAgentBusyChange?.(true);
       break;
 
@@ -336,6 +337,7 @@ export function processAgentEvent(
 
     case 'error':
       streamingStore.getState().markComplete();
+      streamingStore.getState().setAgentBusy(false);
       callbacks?.onError?.((event as { error: string }).error);
       break;
 

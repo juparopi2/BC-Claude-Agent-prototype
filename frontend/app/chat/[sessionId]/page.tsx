@@ -2,15 +2,13 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
-import { useChatStore } from '@/lib/stores/chatStore';
 import { useSessionStore } from '@/src/domains/session';
 import { getApiClient } from '@/src/infrastructure/api';
 import { MainLayout, Header, LeftPanel, RightPanel } from '@/components/layout';
 import { ChatContainer, ChatInput } from '@/components/chat';
-import { useSocket } from '@/lib/stores/socketMiddleware';
 import { useUIPreferencesStore } from '@/src/domains/ui';
-// Domain stores for message management
-import { getMessageStore, getStreamingStore } from '@/src/domains/chat/stores';
+// Domain hooks and stores
+import { useSocketConnection, getMessageStore, getStreamingStore } from '@/src/domains/chat';
 
 export default function ChatPage() {
   const params = useParams();
@@ -23,6 +21,7 @@ export default function ChatPage() {
 
   const [leftPanelVisible, setLeftPanelVisible] = useState(true);
   const [rightPanelVisible, setRightPanelVisible] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
 
   // Track if we've already sent the initial message
   const initialMessageSentRef = useRef(false);
@@ -35,35 +34,30 @@ export default function ChatPage() {
   const toggleLeftPanel = () => setLeftPanelVisible((prev) => !prev);
   const toggleRightPanel = () => setRightPanelVisible((prev) => !prev);
 
-  // UI state remains in chatStore
-  const setCurrentSession = useChatStore((s) => s.setCurrentSession);
-  const setLoading = useChatStore((s) => s.setLoading);
-  const isLoading = useChatStore((s) => s.isLoading);
+  // Session management
   const selectSession = useSessionStore((s) => s.selectSession);
-
-  // Use domain stores for message management
-  const messageStore = getMessageStore();
-  const streamingStore = getStreamingStore();
 
   // UI preferences from store
   const setEnableThinking = useUIPreferencesStore((s) => s.setEnableThinking);
   const setUseMyContext = useUIPreferencesStore((s) => s.setUseMyContext);
 
-  // Initialize socket and get sendMessage function
-  const { sendMessage, isSessionReady, isConnected, isReconnecting, stopAgent } = useSocket({
+  // Initialize socket connection with domain hook
+  const { sendMessage, isSessionReady, isConnected, isReconnecting, stopAgent } = useSocketConnection({
     sessionId,
-    autoConnect: true
+    autoConnect: true,
   });
 
   useEffect(() => {
     async function loadSession() {
       if (!sessionId) return;
 
-      setLoading(true);
-      // Clear domain stores (replaces clearChat)
+      setIsLoading(true);
+
+      // Clear domain stores on session change
+      const messageStore = getMessageStore();
+      const streamingStore = getStreamingStore();
       messageStore.getState().reset();
       streamingStore.getState().reset();
-      setCurrentSession(sessionId);
 
       // Select the session in the session store
       await selectSession(sessionId);
@@ -77,11 +71,11 @@ export default function ChatPage() {
         console.error('[ChatPage] Failed to load messages:', result.error);
       }
 
-      setLoading(false);
+      setIsLoading(false);
     }
 
     loadSession();
-  }, [sessionId, setCurrentSession, setLoading, selectSession, messageStore, streamingStore]);
+  }, [sessionId, selectSession]);
 
   // Sync URL preferences to store when navigating with initialMessage
   useEffect(() => {

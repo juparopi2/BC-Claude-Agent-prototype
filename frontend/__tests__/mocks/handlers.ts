@@ -5,7 +5,7 @@
  */
 
 import { http, HttpResponse } from 'msw';
-import type { Session, Message, UserProfile, TokenUsage } from '../../lib/services/api';
+import type { Session, Message, UserProfile, TokenUsage } from '@/src/infrastructure/api';
 import type { ParsedFile } from '@bc-agent/shared';
 
 // Base URL for mocking

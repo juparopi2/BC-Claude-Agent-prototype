@@ -15,15 +15,15 @@ import {
   resetMessageStore,
 } from '../../../../src/domains/chat/stores/messageStore';
 
-// Mock useSocket
+// Mock useSocketConnection
 const mockSendMessage = vi.fn();
 const mockStopAgent = vi.fn();
 let mockIsConnected = true;
 let mockIsSessionReady = true;
 let mockIsReconnecting = false;
 
-vi.mock('@/lib/stores/socketMiddleware', () => ({
-  useSocket: vi.fn(() => ({
+vi.mock('../../../../src/domains/chat/hooks/useSocketConnection', () => ({
+  useSocketConnection: vi.fn(() => ({
     sendMessage: mockSendMessage,
     stopAgent: mockStopAgent,
     isConnected: mockIsConnected,
@@ -32,8 +32,8 @@ vi.mock('@/lib/stores/socketMiddleware', () => ({
   })),
 }));
 
-// Import mocked useSocket for verification
-import { useSocket } from '@/lib/stores/socketMiddleware';
+// Import mocked useSocketConnection for verification
+import { useSocketConnection } from '../../../../src/domains/chat/hooks/useSocketConnection';
 
 describe('useSendMessage', () => {
   beforeEach(() => {
@@ -46,7 +46,7 @@ describe('useSendMessage', () => {
     mockIsReconnecting = false;
 
     // Update mock return value
-    (useSocket as Mock).mockReturnValue({
+    (useSocketConnection as Mock).mockReturnValue({
       sendMessage: mockSendMessage,
       stopAgent: mockStopAgent,
       isConnected: mockIsConnected,
@@ -60,16 +60,16 @@ describe('useSendMessage', () => {
   // ============================================================================
 
   describe('initialization', () => {
-    it('should call useSocket with sessionId', () => {
+    it('should call useSocketConnection with sessionId', () => {
       renderHook(() => useSendMessage('session-123'));
 
-      expect(useSocket).toHaveBeenCalledWith({
+      expect(useSocketConnection).toHaveBeenCalledWith({
         sessionId: 'session-123',
         autoConnect: true,
       });
     });
 
-    it('should return connection state from useSocket', () => {
+    it('should return connection state from useSocketConnection', () => {
       const { result } = renderHook(() => useSendMessage('session-123'));
 
       expect(result.current.isConnected).toBe(true);
@@ -246,7 +246,7 @@ describe('useSendMessage', () => {
       mockIsConnected = false;
       mockIsSessionReady = false;
 
-      (useSocket as Mock).mockReturnValue({
+      (useSocketConnection as Mock).mockReturnValue({
         sendMessage: mockSendMessage,
         stopAgent: mockStopAgent,
         isConnected: false,
@@ -263,7 +263,7 @@ describe('useSendMessage', () => {
     it('should reflect reconnecting state', () => {
       mockIsReconnecting = true;
 
-      (useSocket as Mock).mockReturnValue({
+      (useSocketConnection as Mock).mockReturnValue({
         sendMessage: mockSendMessage,
         stopAgent: mockStopAgent,
         isConnected: true,

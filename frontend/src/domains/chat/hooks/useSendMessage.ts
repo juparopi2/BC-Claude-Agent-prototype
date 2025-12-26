@@ -2,13 +2,13 @@
  * useSendMessage Hook
  *
  * Provides message sending functionality with optimistic updates.
- * Wraps useSocket for a focused send-centric API.
+ * Wraps useSocketConnection for a focused send-centric API.
  *
  * @module domains/chat/hooks/useSendMessage
  */
 
 import { useCallback, useMemo } from 'react';
-import { useSocket } from '@/lib/stores/socketMiddleware';
+import { useSocketConnection } from './useSocketConnection';
 import { useMessageStore, type MessageStore } from '../stores/messageStore';
 
 /**
@@ -80,14 +80,14 @@ const selectOptimisticMessages = (state: MessageStore) => state.optimisticMessag
  * ```
  */
 export function useSendMessage(sessionId: string): UseSendMessageReturn {
-  // Use socket hook for connection management
+  // Use socket connection hook for connection management
   const {
     sendMessage: socketSendMessage,
     stopAgent,
     isConnected,
     isSessionReady,
     isReconnecting,
-  } = useSocket({
+  } = useSocketConnection({
     sessionId,
     autoConnect: true,
   });

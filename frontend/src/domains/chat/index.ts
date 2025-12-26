@@ -40,3 +40,14 @@ export {
   resetAllStores,
   type StreamProcessorCallbacks,
 } from './services';
+
+// Hooks
+export {
+  useMessages,
+  useStreaming,
+  useSendMessage,
+  type UseMessagesReturn,
+  type UseStreamingReturn,
+  type UseSendMessageReturn,
+  type SendMessageOptions,
+} from './hooks';

@@ -4,7 +4,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import { useChatStore } from '@/lib/stores/chatStore';
 import { useFileStore } from '@/lib/stores/fileStore';
 import { useFilePreviewStore } from '@/lib/stores/filePreviewStore';
-import { useMessageStore, getSortedMessages, useStreamingStore } from '@/src/domains/chat/stores';
+import { useMessages, useStreaming } from '@/src/domains/chat';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Loader2 } from 'lucide-react';
 import { isToolUseMessage, isToolResultMessage, isThinkingMessage } from '@bc-agent/shared';
@@ -14,14 +14,10 @@ import { ThinkingDisplay } from './ThinkingDisplay';
 import { ToolCard } from './ToolCard';
 
 export default function ChatContainer() {
-  // Use new domain stores for messages and streaming
-  const messages = useMessageStore(getSortedMessages);
+  // Use domain hooks for messages and streaming
+  const { messages } = useMessages();
+  const { isStreaming, content: streamingContent, thinking: streamingThinking } = useStreaming();
   const citationFileMap = useChatStore((s) => s.citationFileMap);
-
-  // Streaming state from new store
-  const isStreaming = useStreamingStore((s) => s.isStreaming);
-  const streamingContent = useStreamingStore((s) => s.accumulatedContent);
-  const streamingThinking = useStreamingStore((s) => s.accumulatedThinking);
 
   // File store for looking up file metadata
   const files = useFileStore((s) => s.files);

@@ -98,6 +98,14 @@ export function processAgentEvent(
       const thinkingChunkEvent = event as ThinkingChunkEvent;
       const state = streamingStore.getState();
 
+      // Gap #6: Ignore late chunks after complete
+      if (state.isComplete) {
+        if (process.env.NODE_ENV === 'development') {
+          console.debug('[StreamProcessor] Ignored late thinking_chunk (isComplete=true)');
+        }
+        break;
+      }
+
       if (!state.isStreaming) {
         state.startStreaming();
       }
@@ -143,6 +151,14 @@ export function processAgentEvent(
     case 'message_chunk': {
       const chunkEvent = event as MessageChunkEvent;
       const state = streamingStore.getState();
+
+      // Gap #6: Ignore late chunks after complete
+      if (state.isComplete) {
+        if (process.env.NODE_ENV === 'development') {
+          console.debug('[StreamProcessor] Ignored late message_chunk (isComplete=true)');
+        }
+        break;
+      }
 
       if (!state.isStreaming) {
         state.startStreaming();

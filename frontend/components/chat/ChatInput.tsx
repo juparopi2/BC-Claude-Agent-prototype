@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, KeyboardEvent } from 'react';
 import { useSocket } from '@/lib/stores/socketMiddleware';
 import { useChatStore } from '@/lib/stores/chatStore';
 import { useUIPreferencesStore } from '@/lib/stores/uiPreferencesStore';
-import { useStreamingStore } from '@/src/domains/chat/stores';
+import { useStreaming } from '@/src/domains/chat';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Toggle } from '@/components/ui/toggle';
@@ -59,8 +59,8 @@ export default function ChatInput({
 
   const isAgentBusy = useChatStore((s) => s.isAgentBusy);
 
-  // Use new domain store for streaming state
-  const isStreaming = useStreamingStore((s) => s.isStreaming);
+  // Use domain hook for streaming state
+  const { isStreaming } = useStreaming();
 
   // If we're in "new session" mode (no sessionId), we're always "connected" in UI terms
   // unless explicitly disabled.

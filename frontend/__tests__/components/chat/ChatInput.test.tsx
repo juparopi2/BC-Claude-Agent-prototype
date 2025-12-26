@@ -34,13 +34,18 @@ vi.mock('@/lib/stores/chatStore', () => ({
   useChatStore: vi.fn((selector) => selector(mockChatStoreState)),
 }));
 
-// Mock streaming store
+// Mock streaming hook
 let mockStreamingState = {
   isStreaming: false,
+  isComplete: false,
+  content: '',
+  thinking: '',
+  thinkingBlocks: new Map(),
+  capturedThinking: null,
 };
 
-vi.mock('@/src/domains/chat/stores', () => ({
-  useStreamingStore: vi.fn((selector) => selector(mockStreamingState)),
+vi.mock('@/src/domains/chat', () => ({
+  useStreaming: vi.fn(() => mockStreamingState),
 }));
 
 // Variable to control UI preferences mock
@@ -74,6 +79,11 @@ describe('ChatInput', () => {
     };
     mockStreamingState = {
       isStreaming: false,
+      isComplete: false,
+      content: '',
+      thinking: '',
+      thinkingBlocks: new Map(),
+      capturedThinking: null,
     };
     mockUIPreferencesState = {
       enableThinking: false,

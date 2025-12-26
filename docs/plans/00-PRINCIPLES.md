@@ -424,7 +424,35 @@ logger.info('Processing chunk for session ' + sessionId);
 processChunk(event: StreamEvent): INormalizedStreamEvent | null
 ```
 
-### 7.3 Imports
+### 7.3 Documentación Sin Referencias al Pasado
+
+**REGLA**: Al escribir código nuevo (incluyendo refactors), documentar como si fuera código original. NO mencionar migraciones, código anterior, ni contexto histórico.
+
+```typescript
+// ❌ PROHIBIDO - Referencias al pasado
+/**
+ * Este hook reemplaza la funcionalidad de chatStore.handleAgentEvent()
+ * que antes manejaba todos los eventos en un solo lugar.
+ * Migrado en Sprint 2 del refactor.
+ */
+
+// ✅ CORRECTO - Documentación limpia
+/**
+ * Procesa eventos del agente y actualiza los stores correspondientes.
+ * Soporta 16 tipos de eventos incluyendo streaming y tools.
+ *
+ * @param event - Evento recibido del WebSocket
+ */
+```
+
+**Justificación**:
+- El código debe ser autoexplicativo sin contexto histórico
+- Nuevos desarrolladores no necesitan saber "cómo era antes"
+- Evita confusión sobre qué es legacy y qué es actual
+
+**Excepción**: Los archivos de PLANIFICACIÓN (como este) SÍ pueden referenciar el pasado para contexto. El código fuente NO.
+
+### 7.4 Imports
 
 **PREFERIR**:
 1. Path aliases sobre rutas relativas

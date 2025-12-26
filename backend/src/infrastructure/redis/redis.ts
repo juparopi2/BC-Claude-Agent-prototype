@@ -228,7 +228,7 @@ export function createRedisClient(profile: RedisProfile = getDefaultProfile()): 
   });
 
   client.on('error', (err: Error) => {
-    logger.error({ profile, error: err.message }, 'Redis client error');
+    logger.error({ profile, error: err, errorMessage: err.message, stack: err.stack }, 'Redis client error');
   });
 
   client.on('close', () => {

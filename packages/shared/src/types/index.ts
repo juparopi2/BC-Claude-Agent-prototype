@@ -33,7 +33,11 @@ export type {
   AgentEvent,
   AgentExecutionResult,
   CitedFile,
+  TransientEventType,
 } from './agent.types';
+
+// Transient event utilities
+export { TRANSIENT_EVENT_TYPES, isTransientEventType } from './agent.types';
 
 // WebSocket types
 export type {

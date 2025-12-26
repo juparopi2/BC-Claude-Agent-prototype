@@ -49,6 +49,7 @@ export type {
   AgentEvent,
   AgentExecutionResult,
   CitedFile,
+  TransientEventType,
 
   // WebSocket types
   ExtendedThinkingConfig,
@@ -116,10 +117,15 @@ export {
   isToolResultMessage,
   // File type guards
   isAllowedMimeType,
+  // Transient event utilities
+  isTransientEventType,
 } from './types';
 
 // File constants
 export { FILE_UPLOAD_LIMITS, ALLOWED_MIME_TYPES } from './types';
+
+// Transient event constants
+export { TRANSIENT_EVENT_TYPES } from './types';
 
 // ============================================
 // Constants - Error codes, messages, mappings

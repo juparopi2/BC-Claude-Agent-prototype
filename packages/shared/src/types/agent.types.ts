@@ -479,3 +479,46 @@ export interface AgentExecutionResult {
   /** Error if execution failed */
   error?: string;
 }
+
+// ============================================
+// Transient Event Utilities
+// ============================================
+
+/**
+ * Event types that are transient (not persisted to database)
+ *
+ * Transient events are streaming events that exist only during real-time
+ * communication and are not saved to the database. The final persisted
+ * event (e.g., 'message') contains the complete content.
+ *
+ * Used by frontend to:
+ * - Filter late chunks after 'complete' event (Gap #6 fix)
+ * - Identify events that don't have sequenceNumber
+ */
+export const TRANSIENT_EVENT_TYPES = [
+  'message_chunk',
+  'thinking_chunk',
+  'message_partial',
+] as const;
+
+/**
+ * Type for transient event types
+ */
+export type TransientEventType = (typeof TRANSIENT_EVENT_TYPES)[number];
+
+/**
+ * Check if an event type is transient (not persisted)
+ *
+ * @param type - The event type string to check
+ * @returns true if the event type is transient
+ *
+ * @example
+ * ```typescript
+ * if (isTransientEventType(event.type)) {
+ *   // This event won't be persisted, handle as streaming chunk
+ * }
+ * ```
+ */
+export function isTransientEventType(type: string): type is TransientEventType {
+  return TRANSIENT_EVENT_TYPES.includes(type as TransientEventType);
+}

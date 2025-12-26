@@ -48,7 +48,8 @@ export function ThinkingDisplay({
   return (
     <div
       className="flex gap-3 py-4"
-      data-testid={isStreaming ? 'streaming-thinking' : 'thinking-message'}
+      data-testid="thinking-block"
+      data-streaming={isStreaming}
     >
       {/* Avatar with amber theme */}
       <Avatar className="size-8 shrink-0 bg-amber-100 dark:bg-amber-900">

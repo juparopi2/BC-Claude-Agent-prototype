@@ -79,7 +79,7 @@ export default function MessageBubble({
         'flex gap-3 max-w-[90%]',
         isUser ? 'ml-auto flex-row-reverse' : 'mr-auto'
       )}
-      data-testid="message"
+      data-testid={isUser ? 'user-message' : 'assistant-message'}
     >
       <Avatar className="size-8 shrink-0">
         <AvatarFallback

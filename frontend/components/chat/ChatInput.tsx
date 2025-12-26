@@ -232,6 +232,7 @@ export default function ChatInput({
                   size="sm"
                   className={thinkingToggleClasses}
                   disabled={effectiveIsBusy || disabled}
+                  data-testid="thinking-toggle"
                 >
                   <Brain className="size-3.5" />
                   <span className="text-xs">Thinking</span>

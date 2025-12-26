@@ -4,6 +4,11 @@
  * Type-safe Socket.IO client for real-time communication with the backend.
  * Uses types from @bc-agent/shared for guaranteed frontend-backend contract.
  *
+ * @deprecated Use `@/infrastructure/socket` instead. This module will be
+ * removed in a future sprint. The new SocketClient provides Promise-based
+ * session joining and better event subscription patterns.
+ *
+ * @see {@link @/infrastructure/socket/SocketClient} for the new implementation
  * @module lib/services/socket
  */
 

@@ -6,7 +6,7 @@ import { FILE_UPLOAD_LIMITS, ALLOWED_MIME_TYPES } from '@bc-agent/shared';
 import { Upload } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Progress } from '@/components/ui/progress';
-import { useFileStore } from '@/lib/stores/fileStore';
+import { useFileUpload } from '@/src/domains/files';
 import { toast } from 'sonner';
 
 interface FileUploadZoneProps {
@@ -20,7 +20,7 @@ export function FileUploadZone({
   className,
   disabled = false,
 }: FileUploadZoneProps) {
-  const { uploadFiles, isUploading, uploadProgress } = useFileStore();
+  const { uploadFiles, isUploading, overallProgress: uploadProgress } = useFileUpload();
   const [isDragActive, setIsDragActive] = useState(false);
 
   const onDrop = useCallback(async (acceptedFiles: File[], rejectedFiles: FileRejection[]) => {
@@ -108,7 +108,7 @@ export function FileUploadZone({
  * Hook to trigger file picker programmatically
  */
 export function useFileUploadTrigger() {
-  const { uploadFiles, isUploading } = useFileStore();
+  const { uploadFiles, isUploading } = useFileUpload();
 
   const openFilePicker = useCallback(() => {
     const input = document.createElement('input');

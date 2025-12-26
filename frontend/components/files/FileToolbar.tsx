@@ -8,7 +8,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { CreateFolderDialog } from './CreateFolderDialog';
 import { FileSortControls } from './FileSortControls';
 import { useFileUploadTrigger } from './FileUploadZone';
-import { useFileStore } from '@/lib/stores/fileStore';
+import { useSortFilterStore } from '@/src/domains/files/stores/sortFilterStore';
+import { useFiles } from '@/src/domains/files';
+import { useUIPreferencesStore } from '@/lib/stores/uiPreferencesStore';
 import { cn } from '@/lib/utils';
 
 interface FileToolbarProps {
@@ -18,10 +20,9 @@ interface FileToolbarProps {
 
 export function FileToolbar({ className, isNarrow = false }: FileToolbarProps) {
   const { openFilePicker, isUploading } = useFileUploadTrigger();
-  const showFavoritesOnly = useFileStore(state => state.showFavoritesOnly);
-  const isSidebarVisible = useFileStore(state => state.isSidebarVisible);
-  const isLoading = useFileStore(state => state.isLoading);
-  const { toggleFavoritesFilter, toggleSidebar, refreshCurrentFolder } = useFileStore();
+  const { showFavoritesOnly, toggleFavoritesFilter } = useSortFilterStore();
+  const { isFileSidebarVisible: isSidebarVisible, toggleFileSidebar: toggleSidebar } = useUIPreferencesStore();
+  const { isLoading, refreshCurrentFolder } = useFiles();
 
   const [toolbarWidth, setToolbarWidth] = useState<number>(Infinity);
   const toolbarRef = useRef<HTMLDivElement>(null);

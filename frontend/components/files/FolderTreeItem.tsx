@@ -4,13 +4,13 @@ import { Folder, ChevronRight, ChevronDown, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { useFileStore, selectIsFolderLoading } from '@/lib/stores/fileStore';
+import { useFolderNavigation } from '@/src/domains/files';
 import { FileContextMenu } from './FileContextMenu';
 
 interface FolderTreeItemProps {
   folder: ParsedFile;
   level: number;
-  onSelect?: (folderId: string) => void; 
+  onSelect?: (folderId: string) => void;
 }
 
 export const FolderTreeItem = memo(function FolderTreeItem({
@@ -18,15 +18,19 @@ export const FolderTreeItem = memo(function FolderTreeItem({
   level,
   onSelect,
 }: FolderTreeItemProps) {
-  const currentFolderId = useFileStore(state => state.currentFolderId);
-  const expandedFolderIds = useFileStore(state => state.expandedFolderIds);
-  const treeFolders = useFileStore(state => state.treeFolders);
-  const isLoading = useFileStore(state => selectIsFolderLoading(state, folder.id));
-  const { toggleFolderExpanded, navigateToFolder } = useFileStore();
+  const {
+    currentFolderId,
+    expandedFolderIds,
+    isFolderLoading,
+    toggleFolderExpanded,
+    navigateToFolder,
+    getChildFolders,
+  } = useFolderNavigation();
 
+  const isLoading = isFolderLoading(folder.id);
   const isExpanded = expandedFolderIds.includes(folder.id);
   const isSelected = currentFolderId === folder.id;
-  const subfolders = treeFolders[folder.id] || [];
+  const subfolders = getChildFolders(folder.id);
   
   // Auto-collapse: If expanded but no children and not loading, force collapse
   // This prevents recursive auto-expansion of deep folders after reload if data is missing.

@@ -4,7 +4,7 @@
  * Zustand store for managing file preview modal state.
  * Controls which file is being previewed and modal visibility.
  *
- * @module lib/stores/filePreviewStore
+ * @module domains/files/stores/filePreviewStore
  */
 
 import { create } from 'zustand';

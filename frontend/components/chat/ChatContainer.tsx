@@ -3,7 +3,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useChatStore } from '@/lib/stores/chatStore';
 import { useFileStore } from '@/lib/stores/fileStore';
-import { useFilePreviewStore } from '@/lib/stores/filePreviewStore';
+import { useFilePreviewStore } from '@/src/domains/files';
 import { useAuthStore, selectUserInitials } from '@/lib/stores/authStore';
 import { useMessages, useStreaming } from '@/src/domains/chat';
 import { ScrollArea } from '@/components/ui/scroll-area';

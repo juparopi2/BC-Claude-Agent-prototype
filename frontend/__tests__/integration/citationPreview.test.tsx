@@ -12,7 +12,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import ChatContainer from '@/components/chat/ChatContainer';
 import { useChatStore } from '@/lib/stores/chatStore';
 import { useFileStore } from '@/lib/stores/fileStore';
-import { useFilePreviewStore, resetFilePreviewStore } from '@/lib/stores/filePreviewStore';
+import { useFilePreviewStore, resetFilePreviewStore } from '@/src/domains/files';
 import type { StandardMessage } from '@bc-agent/shared';
 import type { ParsedFile } from '@bc-agent/shared';
 

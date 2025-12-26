@@ -2,13 +2,12 @@
  * filePreviewStore Tests
  *
  * Tests for the file preview Zustand store.
- * TDD: Tests written FIRST (RED phase) before implementation.
  *
- * @module __tests__/stores/filePreviewStore
+ * @module __tests__/domains/files/stores/filePreviewStore
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { useFilePreviewStore, resetFilePreviewStore } from '@/lib/stores/filePreviewStore';
+import { useFilePreviewStore, resetFilePreviewStore } from '@/src/domains/files';
 
 describe('filePreviewStore', () => {
   beforeEach(() => {

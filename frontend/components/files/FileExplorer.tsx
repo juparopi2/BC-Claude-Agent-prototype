@@ -3,7 +3,8 @@
 import { useEffect } from 'react';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
-import { useFileStore } from '@/lib/stores/fileStore';
+import { useFiles, useFolderNavigation } from '@/src/domains/files';
+import { useUIPreferencesStore } from '@/lib/stores/uiPreferencesStore';
 import { FileToolbar } from './FileToolbar';
 import { FileBreadcrumb } from './FileBreadcrumb';
 import { FileUploadZone } from './FileUploadZone';
@@ -16,7 +17,9 @@ interface FileExplorerProps {
 }
 
 export function FileExplorer({ className, isNarrow = false }: FileExplorerProps) {
-  const { fetchFiles, currentFolderId, isSidebarVisible } = useFileStore();
+  const { fetchFiles } = useFiles();
+  const { currentFolderId } = useFolderNavigation();
+  const isSidebarVisible = useUIPreferencesStore((state) => state.isFileSidebarVisible);
 
   // Load files on mount and when folder changes
   useEffect(() => {

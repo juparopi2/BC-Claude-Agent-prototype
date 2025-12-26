@@ -4,7 +4,7 @@ import { useEffect, useCallback } from 'react';
 import { Home } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { useFileStore, selectRootFolders } from '@/lib/stores/fileStore';
+import { useFolderNavigation } from '@/src/domains/files';
 import { FolderTreeItem } from './FolderTreeItem';
 
 interface FolderTreeProps {
@@ -12,9 +12,7 @@ interface FolderTreeProps {
 }
 
 export function FolderTree({ className }: FolderTreeProps) {
-  const currentFolderId = useFileStore(state => state.currentFolderId);
-  const { navigateToFolder, initFolderTree } = useFileStore();
-  const rootFolders = useFileStore(selectRootFolders);
+  const { currentFolderId, rootFolders, navigateToFolder, initFolderTree } = useFolderNavigation();
 
   // Load root folders on mount
   useEffect(() => {

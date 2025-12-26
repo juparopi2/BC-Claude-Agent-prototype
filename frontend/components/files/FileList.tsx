@@ -8,7 +8,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 import { FileItem } from './FileItem';
 import { FileContextMenu } from './FileContextMenu';
-import { useFileStore, selectSortedFiles } from '@/lib/stores/fileStore';
+import { useFiles, useFileSelection, useFolderNavigation } from '@/src/domains/files';
 import { getFileApiClient } from '@/lib/services/fileApi';
 import { triggerDownload } from '@/lib/download';
 import { FilePreviewModal } from '@/components/modals/FilePreviewModal';
@@ -43,10 +43,9 @@ function isPreviewableFile(mimeType: string): boolean {
 }
 
 export function FileList() {
-  const files = useFileStore(selectSortedFiles);
-  const isLoading = useFileStore(state => state.isLoading);
-  const selectedFileIds = useFileStore(state => state.selectedFileIds);
-  const { selectFile, navigateToFolder, toggleFavorite } = useFileStore();
+  const { sortedFiles: files, isLoading, toggleFavorite } = useFiles();
+  const { selectedFileIds, selectFile } = useFileSelection();
+  const { navigateToFolder } = useFolderNavigation();
 
   const [previewModalOpen, setPreviewModalOpen] = useState(false);
   const [activePreviewFile, setActivePreviewFile] = useState<ParsedFile | null>(null);

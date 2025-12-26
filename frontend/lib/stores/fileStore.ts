@@ -5,6 +5,23 @@
  * Handles files, folders, uploads, sorting, and selection.
  *
  * @module lib/stores/fileStore
+ * @deprecated This file is being migrated to domains/files/stores/.
+ * Import from '@/src/domains/files' instead.
+ *
+ * Migration mapping:
+ * - File list state → fileListStore
+ * - Upload state → uploadStore
+ * - Folder navigation → folderTreeStore
+ * - Selection → selectionStore
+ * - Sort/filter → sortFilterStore
+ *
+ * Hooks (recommended):
+ * - useFiles() - file list, sorting, favorites
+ * - useFileUpload() - upload queue and execution
+ * - useFolderNavigation() - folder tree, breadcrumbs
+ * - useFileSelection() - multi-select, range-select
+ *
+ * Will be removed in Sprint 7.
  */
 
 import { create } from 'zustand';

@@ -27,6 +27,30 @@ vi.mock('@/lib/stores/authStore', () => ({
   selectUserInitials: vi.fn(),
 }));
 
+// Store mock state for domain stores
+let mockMessages: StandardMessage[] = [];
+let mockStreamingState = {
+  isStreaming: false,
+  accumulatedContent: '',
+  accumulatedThinking: '',
+};
+
+// Mock new domain stores
+vi.mock('@/src/domains/chat/stores', () => ({
+  useMessageStore: vi.fn((selector) => {
+    const state = {
+      messages: mockMessages,
+      optimisticMessages: new Map(),
+    };
+    return selector(state);
+  }),
+  useStreamingStore: vi.fn((selector) => selector(mockStreamingState)),
+  getSortedMessages: (state: { messages: StandardMessage[]; optimisticMessages: Map<string, StandardMessage> }) =>
+    [...state.messages, ...Array.from(state.optimisticMessages.values())].sort((a, b) =>
+      (a.sequence_number || 0) - (b.sequence_number || 0)
+    ),
+}));
+
 describe('Citation to Preview flow', () => {
   const mockFile: ParsedFile = {
     id: 'file-123',
@@ -64,9 +88,16 @@ describe('Citation to Preview flow', () => {
     });
     resetFilePreviewStore();
 
-    // Setup chatStore with citationFileMap
+    // Setup mock messages for domain store
+    mockMessages = [messageWithCitation];
+    mockStreamingState = {
+      isStreaming: false,
+      accumulatedContent: '',
+      accumulatedThinking: '',
+    };
+
+    // Setup chatStore with citationFileMap (still needed for citation mapping)
     useChatStore.setState({
-      messages: [messageWithCitation],
       citationFileMap: new Map([['report.pdf', 'file-123']]),
       isLoading: false,
     });

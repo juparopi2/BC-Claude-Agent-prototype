@@ -172,6 +172,10 @@ export interface ChatActions {
   reset: () => void;
 
   // Event handling
+  /**
+   * @deprecated Use `processAgentEvent` from `@/src/domains/chat` instead.
+   * This method will be removed in a future version.
+   */
   handleAgentEvent: (event: AgentEvent) => void;
 }
 
@@ -430,6 +434,9 @@ export const useChatStore = create<ChatStore>()(
     // ========================================
     // Event handling
     // ========================================
+    /**
+     * @deprecated Use `processAgentEvent` from `@/src/domains/chat` instead.
+     */
     handleAgentEvent: (event) => {
       // DEBUG: Log all incoming events
       console.log('[ChatStore] Event received:', event.type, {

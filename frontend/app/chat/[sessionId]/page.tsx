@@ -9,6 +9,8 @@ import { MainLayout, Header, LeftPanel, RightPanel } from '@/components/layout';
 import { ChatContainer, ChatInput } from '@/components/chat';
 import { useSocket } from '@/lib/stores/socketMiddleware';
 import { useUIPreferencesStore } from '@/lib/stores/uiPreferencesStore';
+// Domain stores for message management
+import { getMessageStore, getStreamingStore } from '@/src/domains/chat/stores';
 
 export default function ChatPage() {
   const params = useParams();
@@ -33,12 +35,15 @@ export default function ChatPage() {
   const toggleLeftPanel = () => setLeftPanelVisible((prev) => !prev);
   const toggleRightPanel = () => setRightPanelVisible((prev) => !prev);
 
-  const setMessages = useChatStore((s) => s.setMessages);
+  // UI state remains in chatStore
   const setCurrentSession = useChatStore((s) => s.setCurrentSession);
-  const clearChat = useChatStore((s) => s.clearChat);
   const setLoading = useChatStore((s) => s.setLoading);
   const isLoading = useChatStore((s) => s.isLoading);
   const selectSession = useSessionStore((s) => s.selectSession);
+
+  // Use domain stores for message management
+  const messageStore = getMessageStore();
+  const streamingStore = getStreamingStore();
 
   // UI preferences from store
   const setEnableThinking = useUIPreferencesStore((s) => s.setEnableThinking);
@@ -55,7 +60,9 @@ export default function ChatPage() {
       if (!sessionId) return;
 
       setLoading(true);
-      clearChat();
+      // Clear domain stores (replaces clearChat)
+      messageStore.getState().reset();
+      streamingStore.getState().reset();
       setCurrentSession(sessionId);
 
       // Select the session in the session store
@@ -65,7 +72,7 @@ export default function ChatPage() {
       const api = getApiClient();
       const result = await api.getMessages(sessionId);
       if (result.success) {
-        setMessages(result.data);
+        messageStore.getState().setMessages(result.data);
       } else {
         console.error('[ChatPage] Failed to load messages:', result.error);
       }
@@ -74,7 +81,7 @@ export default function ChatPage() {
     }
 
     loadSession();
-  }, [sessionId, setMessages, setCurrentSession, clearChat, setLoading, selectSession]);
+  }, [sessionId, setCurrentSession, setLoading, selectSession, messageStore, streamingStore]);
 
   // Sync URL preferences to store when navigating with initialMessage
   useEffect(() => {

@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useRef, useMemo, useCallback } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { useChatStore } from '@/lib/stores/chatStore';
 import { useFileStore } from '@/lib/stores/fileStore';
 import { useFilePreviewStore } from '@/lib/stores/filePreviewStore';
+import { useMessageStore, getSortedMessages, useStreamingStore } from '@/src/domains/chat/stores';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Loader2 } from 'lucide-react';
 import { isToolUseMessage, isToolResultMessage, isThinkingMessage } from '@bc-agent/shared';
@@ -13,9 +14,14 @@ import { ThinkingDisplay } from './ThinkingDisplay';
 import { ToolCard } from './ToolCard';
 
 export default function ChatContainer() {
-  const persistedMessages = useChatStore((s) => s.messages || []);
-  const optimisticMessages = useChatStore((s) => s.optimisticMessages || new Map());
+  // Use new domain stores for messages and streaming
+  const messages = useMessageStore(getSortedMessages);
   const citationFileMap = useChatStore((s) => s.citationFileMap);
+
+  // Streaming state from new store
+  const isStreaming = useStreamingStore((s) => s.isStreaming);
+  const streamingContent = useStreamingStore((s) => s.accumulatedContent);
+  const streamingThinking = useStreamingStore((s) => s.accumulatedThinking);
 
   // File store for looking up file metadata
   const files = useFileStore((s) => s.files);
@@ -23,42 +29,19 @@ export default function ChatContainer() {
   // File preview store for opening previews
   const openPreview = useFilePreviewStore((s) => s.openPreview);
 
-  // Combine persisted and optimistic messages, sorted by sequence_number
-  const messages = useMemo(() => {
-    const optimisticArray = Array.from(optimisticMessages.values());
-    return [...persistedMessages, ...optimisticArray].sort((a, b) => {
-      // Primary sort: sequence_number (if both have valid values)
-      const seqA = a.sequence_number ?? 0;
-      const seqB = b.sequence_number ?? 0;
-
-      // If both have real sequence numbers (> 0), sort by them
-      if (seqA > 0 && seqB > 0) {
-        return seqA - seqB;
-      }
-
-      // If only one has a real sequence number, prioritize it
-      // FIX: Persisted messages (with sequence_number) should come BEFORE unpersisted
-      if (seqA > 0) return -1;  // a is persisted, comes first
-      if (seqB > 0) return 1;   // b is persisted, comes first
-
-      // Both are optimistic (sequence 0 or undefined) - sort by timestamp
-      const timeA = new Date(a.created_at).getTime();
-      const timeB = new Date(b.created_at).getTime();
-      return timeA - timeB;
-    });
-  }, [persistedMessages, optimisticMessages]);
-
-  // DEBUG: Log sorted messages when they change
-  console.log('[ChatContainer] Messages sorted:', messages.map(m => ({
-    id: m.id,
-    type: m.type,
-    seq: m.sequence_number,
-    role: 'role' in m ? m.role : undefined,
-  })));
-
-  const streaming = useChatStore((s) => s.streaming);
+  // UI state remains in chatStore (will be moved in Sprint 3)
   const isLoading = useChatStore((s) => s.isLoading);
   const isAgentBusy = useChatStore((s) => s.isAgentBusy);
+
+  // DEBUG: Log sorted messages when they change
+  if (process.env.NODE_ENV === 'development') {
+    console.log('[ChatContainer] Messages sorted:', messages.map(m => ({
+      id: m.id,
+      type: m.type,
+      seq: m.sequence_number,
+      role: 'role' in m ? m.role : undefined,
+    })));
+  }
 
   /**
    * Handle citation click - lookup file and open preview modal
@@ -82,7 +65,7 @@ export default function ChatContainer() {
   // Auto-scroll to bottom when new messages arrive or streaming updates
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streaming.content, streaming.thinking]);
+  }, [messages, streamingContent, streamingThinking]);
 
   if (isLoading) {
     return (
@@ -108,7 +91,7 @@ export default function ChatContainer() {
               <div key={message.id} className="space-y-3">
                 <ThinkingDisplay
                   content={message.content}
-                  isStreaming={streaming.isStreaming && streaming.thinking.length > 0}
+                  isStreaming={isStreaming && streamingThinking.length > 0}
                 />
               </div>
             );
@@ -151,14 +134,14 @@ export default function ChatContainer() {
           );
         })}
 
-        {streaming.isStreaming && streaming.content.length > 0 && (
+        {isStreaming && streamingContent.length > 0 && (
           <StreamingMessage
-            content={streaming.content}
+            content={streamingContent}
             thinking=""
           />
         )}
 
-        {isAgentBusy && !streaming.isStreaming && (
+        {isAgentBusy && !isStreaming && (
           <div className="flex items-center gap-3 text-muted-foreground">
             <Loader2 className="size-4 animate-spin" />
             <span className="text-sm">Agent processing...</span>

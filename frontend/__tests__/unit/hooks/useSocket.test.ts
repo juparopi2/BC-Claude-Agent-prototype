@@ -70,6 +70,16 @@ vi.mock('@/lib/services/socket', () => ({
   getSocketService: vi.fn(() => mockSocketService),
 }));
 
+// Mock domain stores
+vi.mock('@/src/domains/chat', () => ({
+  processAgentEvent: vi.fn(),
+  getMessageStore: vi.fn(() => ({
+    getState: () => ({
+      addOptimisticMessage: mockAddOptimisticMessage,
+    }),
+  })),
+}));
+
 describe('useSocket Hook', () => {
   beforeEach(() => {
     vi.clearAllMocks();

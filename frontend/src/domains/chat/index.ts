@@ -1,0 +1,42 @@
+/**
+ * Chat Domain
+ *
+ * Exports all public API for the chat domain.
+ *
+ * @module domains/chat
+ */
+
+// Stores
+export {
+  // Message Store
+  getMessageStore,
+  useMessageStore,
+  resetMessageStore,
+  getSortedMessages,
+  type MessageState,
+  type MessageActions,
+  type MessageStore,
+  // Streaming Store
+  getStreamingStore,
+  useStreamingStore,
+  resetStreamingStore,
+  type StreamingState,
+  type StreamingActions,
+  type StreamingStore,
+  // Approval Store
+  getApprovalStore,
+  useApprovalStore,
+  resetApprovalStore,
+  getPendingApprovalsArray,
+  type PendingApproval,
+  type ApprovalState,
+  type ApprovalActions,
+  type ApprovalStore,
+} from './stores';
+
+// Services
+export {
+  processAgentEvent,
+  resetAllStores,
+  type StreamProcessorCallbacks,
+} from './services';

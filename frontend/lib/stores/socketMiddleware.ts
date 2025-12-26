@@ -12,6 +12,7 @@ import { getSocketService, type SocketEventHandlers } from '../services/socket';
 import { useChatStore } from './chatStore';
 import { useAuthStore } from './authStore';
 import type { AgentEvent, AgentErrorData, SessionReadyEvent } from '@bc-agent/shared';
+import { processAgentEvent, getMessageStore } from '@/src/domains/chat';
 
 /**
  * Socket connection options
@@ -86,12 +87,10 @@ export function useSocket(options: UseSocketOptions = {}): UseSocketReturn {
     onConnectionChange,
   } = options;
 
-  // Get store actions
-  const handleAgentEvent = useChatStore((state) => state.handleAgentEvent);
+  // Get store actions - UI state remains in chatStore, domain logic in new stores
   const setAgentBusy = useChatStore((state) => state.setAgentBusy);
   const setError = useChatStore((state) => state.setError);
   const setCurrentSession = useChatStore((state) => state.setCurrentSession);
-  const addOptimisticMessage = useChatStore((state) => state.addOptimisticMessage);
 
   const user = useAuthStore((state) => state.user);
 
@@ -112,8 +111,15 @@ export function useSocket(options: UseSocketOptions = {}): UseSocketReturn {
         if (shouldFilter) {
           return;
         }
-        // Update store
-        handleAgentEvent(event);
+        // Process event through new domain stores with UI callbacks
+        processAgentEvent(event, {
+          onAgentBusyChange: setAgentBusy,
+          onError: setError,
+          onCitationsReceived: (citations) => {
+            // Update citation map in chatStore (will be moved in Sprint 3)
+            useChatStore.setState({ citationFileMap: citations });
+          },
+        });
         // Call custom handler
         onAgentEvent?.(event);
       },
@@ -141,7 +147,7 @@ export function useSocket(options: UseSocketOptions = {}): UseSocketReturn {
         onConnectionChange?.(connected);
       },
     }),
-    [handleAgentEvent, setAgentBusy, setError, setCurrentSession, onAgentEvent, onError, onSessionReady, onConnectionChange]
+    [setAgentBusy, setError, setCurrentSession, onAgentEvent, onError, onSessionReady, onConnectionChange]
   );
 
   // Initialize socket
@@ -235,9 +241,9 @@ export function useSocket(options: UseSocketOptions = {}): UseSocketReturn {
 
       const socket = getSocketService();
 
-      // Add optimistic message
+      // Add optimistic message using new domain store
       const tempId = `optimistic-${Date.now()}`;
-      addOptimisticMessage(tempId, {
+      getMessageStore().getState().addOptimisticMessage(tempId, {
         type: 'standard',
         id: tempId,
         session_id: currentSessionRef.current,
@@ -262,7 +268,7 @@ export function useSocket(options: UseSocketOptions = {}): UseSocketReturn {
         enableAutoSemanticSearch: opts?.enableAutoSemanticSearch, // Pass semantic search flag
       });
     },
-    [user, addOptimisticMessage]
+    [user]
   );
 
   // Stop agent function

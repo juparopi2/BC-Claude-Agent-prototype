@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, KeyboardEvent } from 'react';
 import { useSocket } from '@/lib/stores/socketMiddleware';
 import { useChatStore } from '@/lib/stores/chatStore';
 import { useUIPreferencesStore } from '@/lib/stores/uiPreferencesStore';
+import { useStreamingStore } from '@/src/domains/chat/stores';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Toggle } from '@/components/ui/toggle';
@@ -57,7 +58,9 @@ export default function ChatInput({
   const stopAgent = propsStopAgent ?? localSocket.stopAgent;
 
   const isAgentBusy = useChatStore((s) => s.isAgentBusy);
-  const streaming = useChatStore((s) => s.streaming);
+
+  // Use new domain store for streaming state
+  const isStreaming = useStreamingStore((s) => s.isStreaming);
 
   // If we're in "new session" mode (no sessionId), we're always "connected" in UI terms
   // unless explicitly disabled.
@@ -67,9 +70,9 @@ export default function ChatInput({
   // Check if any uploads are in progress
   const isUploading = attachments.some(a => a.status === 'uploading');
   
-  const canSend = (message.trim().length > 0 || attachments.some(a => a.status === 'completed')) && 
+  const canSend = (message.trim().length > 0 || attachments.some(a => a.status === 'completed')) &&
     effectiveIsConnected && !effectiveIsBusy && !disabled && !isUploading;
-  const showStopButton = (effectiveIsBusy || streaming.isStreaming) && !!sessionId;
+  const showStopButton = (effectiveIsBusy || isStreaming) && !!sessionId;
 
   // Auto-resize textarea based on content
   useEffect(() => {

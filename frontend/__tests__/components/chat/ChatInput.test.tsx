@@ -28,11 +28,19 @@ vi.mock('@/lib/stores/socketMiddleware', () => ({
 // Variable to control mock state
 let mockChatStoreState = {
   isAgentBusy: false,
-  streaming: { isStreaming: false },
 };
 
 vi.mock('@/lib/stores/chatStore', () => ({
   useChatStore: vi.fn((selector) => selector(mockChatStoreState)),
+}));
+
+// Mock streaming store
+let mockStreamingState = {
+  isStreaming: false,
+};
+
+vi.mock('@/src/domains/chat/stores', () => ({
+  useStreamingStore: vi.fn((selector) => selector(mockStreamingState)),
 }));
 
 // Variable to control UI preferences mock
@@ -63,7 +71,9 @@ describe('ChatInput', () => {
     vi.clearAllMocks();
     mockChatStoreState = {
       isAgentBusy: false,
-      streaming: { isStreaming: false },
+    };
+    mockStreamingState = {
+      isStreaming: false,
     };
     mockUIPreferencesState = {
       enableThinking: false,
@@ -359,7 +369,7 @@ describe('ChatInput', () => {
     });
 
     it('shows stop button when agent is streaming', () => {
-      mockChatStoreState.streaming.isStreaming = true;
+      mockStreamingState.isStreaming = true;
 
       render(
         <ChatInput

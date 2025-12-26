@@ -149,7 +149,23 @@ export class AgentOrchestrator implements IAgentOrchestrator {
     };
 
     // =========================================================================
-    // 2. PERSIST USER MESSAGE
+    // 2. EMIT SESSION_START (Signals new turn to frontend)
+    // Must be emitted BEFORE user_message_confirmed to match FakeAgentOrchestrator
+    // =========================================================================
+    agentEventEmitter.emit(
+      {
+        type: 'session_start',
+        sessionId,
+        userId: userId ?? '',
+        timestamp: new Date().toISOString(),
+        eventId: randomUUID(),
+        persistenceState: 'transient',
+      },
+      ctx
+    );
+
+    // =========================================================================
+    // 3. PERSIST USER MESSAGE
     // =========================================================================
     const userMessageResult = await this.persistenceCoordinator.persistUserMessage(
       sessionId,
@@ -171,7 +187,7 @@ export class AgentOrchestrator implements IAgentOrchestrator {
 
     try {
       // =========================================================================
-      // 3. STREAM EXECUTION
+      // 4. STREAM EXECUTION
       // =========================================================================
       const eventStream = await orchestratorGraph.streamEvents(inputs, {
         version: 'v2',
@@ -201,7 +217,7 @@ export class AgentOrchestrator implements IAgentOrchestrator {
       }
 
       // =========================================================================
-      // 4. PROCESS STREAM EVENTS
+      // 5. PROCESS STREAM EVENTS
       // GraphStreamProcessor uses ctx for accumulation and deduplication
       // =========================================================================
       const processedEvents = graphStreamProcessor.process(createNormalizedEventStream(), ctx);
@@ -221,14 +237,14 @@ export class AgentOrchestrator implements IAgentOrchestrator {
       }
 
       // =========================================================================
-      // 5. GET ACCUMULATED CONTENT FROM CONTEXT
+      // 6. GET ACCUMULATED CONTENT FROM CONTEXT
       // =========================================================================
       const thinkingContent = getThinkingContent(ctx);
       const finalResponseContent = getResponseContent(ctx);
       const finalStopReason = ctx.lastStopReason;
 
       // =========================================================================
-      // 6. PERSIST RESULTS
+      // 7. PERSIST RESULTS
       // =========================================================================
 
       // Persist thinking if present

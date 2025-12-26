@@ -13,8 +13,8 @@ import { MessageBubble } from '@/src/presentation/chat';
 import type { StandardMessage } from '@bc-agent/shared';
 import type { CitationFileMap } from '@/lib/types/citation.types';
 
-// Mock the stores
-vi.mock('@/lib/stores/authStore', () => ({
+// Mock the auth domain
+vi.mock('@/src/domains/auth', () => ({
   useAuthStore: vi.fn(() => 'JP'),
   selectUserInitials: vi.fn(),
 }));

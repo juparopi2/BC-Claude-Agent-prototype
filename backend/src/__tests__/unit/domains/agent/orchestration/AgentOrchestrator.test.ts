@@ -515,13 +515,52 @@ describe('AgentOrchestrator', () => {
     });
   });
 
-  // ===== 5. Event Emission (4 tests) =====
+  // ===== 5. Event Emission (5 tests) =====
 
   describe('Event Emission', () => {
     beforeEach(() => {
       vi.mocked(orchestratorGraph.streamEvents).mockResolvedValue(
         createMockLangGraphStream([])
       );
+    });
+
+    it('should emit session_start as the FIRST event before user_message_confirmed', async () => {
+      // This test verifies the fix for the FakeAgentOrchestrator vs AgentOrchestrator gap.
+      // The real AgentOrchestrator must emit session_start first to match FakeAgentOrchestrator.
+      const emittedEventTypes: string[] = [];
+
+      // Track ALL emit calls and their types
+      vi.mocked(mockAgentEventEmitter.emit).mockImplementation(
+        (event: AgentEvent) => {
+          emittedEventTypes.push(event.type);
+        }
+      );
+      vi.mocked(mockAgentEventEmitter.emitUserMessageConfirmed).mockImplementation(
+        () => {
+          emittedEventTypes.push('user_message_confirmed');
+        }
+      );
+
+      vi.mocked(mockStreamEventRouter.route).mockReturnValue(
+        createMockRouterStream([
+          { type: 'normalized', event: { type: 'stream_end' } },
+        ])
+      );
+      vi.mocked(mockGraphStreamProcessor.process).mockReturnValue(
+        createMockProcessedStream([
+          { type: 'final_response', content: 'Done', stopReason: 'end_turn' },
+        ])
+      );
+
+      await orchestrator.executeAgent(prompt, sessionId, undefined, userId);
+
+      // Verify session_start is the FIRST event
+      expect(emittedEventTypes[0]).toBe('session_start');
+
+      // Verify user_message_confirmed comes AFTER session_start
+      const sessionStartIndex = emittedEventTypes.indexOf('session_start');
+      const userMessageIndex = emittedEventTypes.indexOf('user_message_confirmed');
+      expect(sessionStartIndex).toBeLessThan(userMessageIndex);
     });
 
     it('should emit thinking_chunk events correctly', async () => {

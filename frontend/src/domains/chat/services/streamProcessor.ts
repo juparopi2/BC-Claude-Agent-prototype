@@ -70,12 +70,21 @@ export function processAgentEvent(
   }
 
   switch (event.type) {
-    case 'session_start':
+    case 'session_start': {
       // ESSENTIAL: Reset state for new session - do not remove
-      streamingStore.getState().reset();
-      streamingStore.getState().setAgentBusy(true);
-      callbacks?.onAgentBusyChange?.(true);
+      // NOTE: This event may or may not be emitted by the backend.
+      // The real AgentOrchestrator did NOT emit this (fixed in this sprint).
+      // The FakeAgentOrchestrator (for tests) DOES emit this.
+      // The guard ensures idempotent behavior if both session_start and
+      // user_message_confirmed arrive (both can trigger reset).
+      const sessionStreamState = streamingStore.getState();
+      if (!sessionStreamState.isAgentBusy) {
+        sessionStreamState.reset();
+        sessionStreamState.setAgentBusy(true);
+        callbacks?.onAgentBusyChange?.(true);
+      }
       break;
+    }
 
     case 'thinking': {
       /**
@@ -225,6 +234,17 @@ export function processAgentEvent(
         sequenceNumber: number;
         sessionId?: string;
       };
+
+      // DEFENSIVE FIX: Reset streaming state for new turn
+      // This handles the case where session_start is not emitted by the backend.
+      // user_message_confirmed is ALWAYS the first event from the real AgentOrchestrator.
+      // This reset is idempotent - if session_start already reset, this is a no-op.
+      const streamState = streamingStore.getState();
+      if (!streamState.isAgentBusy) {
+        streamState.reset();
+        streamState.setAgentBusy(true);
+        callbacks?.onAgentBusyChange?.(true);
+      }
 
       // Try both ID formats for compatibility
       const tempIdOptions = [

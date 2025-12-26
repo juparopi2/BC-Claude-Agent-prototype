@@ -77,10 +77,17 @@ export function processAgentEvent(
       break;
 
     case 'thinking': {
-      // LEGACY HANDLER: This handler exists for backwards compatibility.
-      // Modern backend uses thinking_chunk + thinking_complete instead.
-      // TODO: Remove after backend confirms migration to new thinking events.
-      // Migration date target: Q2 2025
+      /**
+       * @deprecated LEGACY HANDLER - Remove after Q2 2025
+       *
+       * This handler exists for backwards compatibility with older backends.
+       * Modern backend uses thinking_chunk + thinking_complete events instead.
+       *
+       * Migration plan:
+       * 1. Verify backend no longer emits 'thinking' events
+       * 2. Remove this case block entirely
+       * 3. Update ThinkingEvent type if needed
+       */
       const thinkingEvent = event;
       messageStore.getState().addMessage({
         type: 'thinking',
@@ -197,6 +204,15 @@ export function processAgentEvent(
         stop_reason: msgEvent.stopReason || undefined,
         model: msgEvent.model,
       });
+
+      // Gap #3: Store correlation metadata for debugging
+      if (event.correlationId || event.parentEventId) {
+        messageStore.getState().setEventMetadata(msgEvent.messageId, {
+          correlationId: event.correlationId,
+          parentEventId: event.parentEventId,
+          eventId: event.eventId,
+        });
+      }
       break;
     }
 
@@ -245,6 +261,15 @@ export function processAgentEvent(
         sequence_number: event.sequenceNumber || 0,
         created_at: new Date().toISOString(),
       });
+
+      // Gap #3: Store correlation metadata for debugging
+      if (event.correlationId || event.parentEventId) {
+        messageStore.getState().setEventMetadata(toolEvent.eventId, {
+          correlationId: event.correlationId,
+          parentEventId: event.parentEventId,
+          eventId: event.eventId,
+        });
+      }
       break;
     }
 
@@ -313,6 +338,39 @@ export function processAgentEvent(
       streamingStore.getState().markComplete();
       callbacks?.onError?.((event as { error: string }).error);
       break;
+
+    case 'turn_paused': {
+      // Gap #7: Handle turn_paused event
+      const pausedEvent = event as {
+        content?: string;
+        messageId?: string;
+        reason?: string;
+      };
+
+      // Set paused state with reason
+      streamingStore.getState().setPaused(true, pausedEvent.reason);
+
+      // If there's partial content, add it as a message
+      if (pausedEvent.content && pausedEvent.messageId) {
+        messageStore.getState().addMessage({
+          type: 'standard',
+          id: pausedEvent.messageId,
+          session_id: event.sessionId || '',
+          role: 'assistant',
+          content: pausedEvent.content,
+          sequence_number: event.sequenceNumber || 0,
+          created_at: new Date().toISOString(),
+        });
+      }
+
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[StreamProcessor] Turn paused:', {
+          reason: pausedEvent.reason,
+          hasContent: !!pausedEvent.content,
+        });
+      }
+      break;
+    }
 
     case 'complete': {
       const completeEvent = event as CompleteEvent;

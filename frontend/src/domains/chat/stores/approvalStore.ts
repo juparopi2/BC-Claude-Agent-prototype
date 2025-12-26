@@ -8,6 +8,7 @@
 
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
+import type { ApprovalPriority } from '@bc-agent/shared';
 
 // ============================================================================
 // Types
@@ -22,8 +23,8 @@ export interface PendingApproval {
   args: Record<string, unknown>;
   /** User-friendly description of the change */
   changeSummary: string;
-  /** Priority level */
-  priority: 'low' | 'medium' | 'high';
+  /** Priority level - uses shared type for consistency */
+  priority: ApprovalPriority;
   /** ISO 8601 timestamp when approval expires */
   expiresAt?: string;
   /** When the approval was created */

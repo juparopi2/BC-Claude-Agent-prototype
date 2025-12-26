@@ -12,16 +12,14 @@ import { usePagination } from '@/src/domains/chat/hooks/usePagination';
 import { resetMessageStore, getMessageStore } from '@/src/domains/chat/stores/messageStore';
 import type { Message } from '@bc-agent/shared';
 
-// Mock the API module
-vi.mock('@/lib/services/api', () => ({
-  api: {
-    getMessages: vi.fn(),
-  },
-}));
+// Mock the API module - getApiClient returns a singleton with getMessages
+const mockGetMessages = vi.fn();
 
-// Get mock reference
-import { api } from '@/lib/services/api';
-const mockGetMessages = vi.mocked(api.getMessages);
+vi.mock('@/lib/services/api', () => ({
+  getApiClient: () => ({
+    getMessages: mockGetMessages,
+  }),
+}));
 
 // Helper to create test messages
 function createMessage(overrides: Partial<Message> = {}): Message {
@@ -40,7 +38,7 @@ function createMessage(overrides: Partial<Message> = {}): Message {
 describe('usePagination', () => {
   beforeEach(() => {
     resetMessageStore();
-    vi.clearAllMocks();
+    mockGetMessages.mockReset();
     mockGetMessages.mockResolvedValue({
       success: true,
       data: [],
@@ -287,7 +285,7 @@ describe('usePagination', () => {
     it('should set error on API failure', async () => {
       mockGetMessages.mockResolvedValueOnce({
         success: false,
-        error: 'Network error',
+        error: { message: 'Network error' },
         data: undefined,
       });
 
@@ -316,7 +314,7 @@ describe('usePagination', () => {
       // First call fails
       mockGetMessages.mockResolvedValueOnce({
         success: false,
-        error: 'Network error',
+        error: { message: 'Network error' },
         data: undefined,
       });
 

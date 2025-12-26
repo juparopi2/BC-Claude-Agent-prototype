@@ -92,10 +92,9 @@ export function useMyFeature() {
 ## Chat Domain (`chat/`)
 
 ### Stores
-- **messageStore**: Persisted and optimistic messages
-- **streamingStore**: Real-time streaming accumulation
-- **approvalStore**: Pending human approvals
-- **eventCorrelationStore**: Event tracking for debugging (Gap #3)
+- **messageStore**: Persisted and optimistic messages (includes eventMetadata for Gap #3 debugging)
+- **streamingStore**: Real-time streaming accumulation (includes pause state for Gap #7)
+- **approvalStore**: Pending human approvals (HITL)
 
 ### Hooks
 - **useMessages**: Access sorted messages with optimistic updates
@@ -136,8 +135,7 @@ __tests__/domains/
 │   ├── stores/
 │   │   ├── messageStore.test.ts
 │   │   ├── streamingStore.test.ts
-│   │   ├── approvalStore.test.ts
-│   │   └── eventCorrelationStore.test.ts
+│   │   └── approvalStore.test.ts
 │   ├── services/
 │   │   └── streamProcessor.test.ts
 │   ├── hooks/

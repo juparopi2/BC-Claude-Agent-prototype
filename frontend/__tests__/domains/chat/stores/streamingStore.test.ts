@@ -333,4 +333,76 @@ describe('StreamingStore', () => {
       expect(state.accumulatedContent).toBe('Content');
     });
   });
+
+  // ============================================================================
+  // Gap #7: Pause State
+  // ============================================================================
+
+  describe('setPaused (Gap #7)', () => {
+    it('should set paused state to true with reason', () => {
+      act(() => {
+        getStreamingStore().getState().startStreaming();
+        getStreamingStore().getState().setPaused(true, 'User requested pause');
+      });
+
+      const state = getStreamingStore().getState();
+      expect(state.isPaused).toBe(true);
+      expect(state.pauseReason).toBe('User requested pause');
+      expect(state.isStreaming).toBe(false); // Stops streaming when paused
+    });
+
+    it('should set paused state without reason', () => {
+      act(() => {
+        getStreamingStore().getState().startStreaming();
+        getStreamingStore().getState().setPaused(true);
+      });
+
+      const state = getStreamingStore().getState();
+      expect(state.isPaused).toBe(true);
+      expect(state.pauseReason).toBeNull();
+    });
+
+    it('should clear paused state when resumed', () => {
+      act(() => {
+        getStreamingStore().getState().startStreaming();
+        getStreamingStore().getState().setPaused(true, 'Paused');
+        getStreamingStore().getState().setPaused(false);
+      });
+
+      const state = getStreamingStore().getState();
+      expect(state.isPaused).toBe(false);
+      expect(state.pauseReason).toBeNull();
+      expect(state.isStreaming).toBe(true); // Resumes streaming
+    });
+
+    it('should clear pause state on markComplete', () => {
+      act(() => {
+        getStreamingStore().getState().startStreaming();
+        getStreamingStore().getState().setPaused(true, 'Paused for reason');
+        getStreamingStore().getState().markComplete();
+      });
+
+      const state = getStreamingStore().getState();
+      expect(state.isPaused).toBe(false);
+      expect(state.pauseReason).toBeNull();
+    });
+
+    it('should clear pause state on reset', () => {
+      act(() => {
+        getStreamingStore().getState().startStreaming();
+        getStreamingStore().getState().setPaused(true, 'Paused');
+        getStreamingStore().getState().reset();
+      });
+
+      const state = getStreamingStore().getState();
+      expect(state.isPaused).toBe(false);
+      expect(state.pauseReason).toBeNull();
+    });
+
+    it('should start with isPaused false', () => {
+      const state = getStreamingStore().getState();
+      expect(state.isPaused).toBe(false);
+      expect(state.pauseReason).toBeNull();
+    });
+  });
 });

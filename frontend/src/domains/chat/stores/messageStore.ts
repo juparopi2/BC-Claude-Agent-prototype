@@ -16,11 +16,25 @@ import { sortMessages } from '../utils/messageSort';
 // Types
 // ============================================================================
 
+/**
+ * Event metadata for debugging (Gap #3: correlationId support)
+ */
+export interface EventMetadata {
+  /** Correlation ID for linking related events */
+  correlationId?: string;
+  /** Parent event ID for hierarchical relationships */
+  parentEventId?: string;
+  /** Original event ID from backend */
+  eventId?: string;
+}
+
 export interface MessageState {
   /** Persisted messages from backend */
   messages: Message[];
   /** Temporary user messages pending confirmation */
   optimisticMessages: Map<string, Message>;
+  /** Event metadata by message ID (Gap #3: for debugging) */
+  eventMetadata: Map<string, EventMetadata>;
 }
 
 export interface MessageActions {
@@ -36,6 +50,10 @@ export interface MessageActions {
   confirmOptimisticMessage: (tempId: string, confirmedMessage: Message) => void;
   /** Remove an optimistic message */
   removeOptimisticMessage: (tempId: string) => void;
+  /** Set event metadata for a message (Gap #3: debugging) */
+  setEventMetadata: (messageId: string, metadata: EventMetadata) => void;
+  /** Get event metadata for a message */
+  getEventMetadata: (messageId: string) => EventMetadata | undefined;
   /** Reset to initial state */
   reset: () => void;
 }
@@ -49,6 +67,7 @@ export type MessageStore = MessageState & MessageActions;
 const initialState: MessageState = {
   messages: [],
   optimisticMessages: new Map(),
+  eventMetadata: new Map(),
 };
 
 // ============================================================================
@@ -160,6 +179,22 @@ const createMessageStore = () =>
           newMap.delete(tempId);
           return { optimisticMessages: newMap };
         }),
+
+      /**
+       * Set event metadata for a message (Gap #3: debugging).
+       * Stores correlationId and other event info for dev tools.
+       */
+      setEventMetadata: (messageId, metadata) =>
+        set((state) => {
+          const newMap = new Map(state.eventMetadata);
+          newMap.set(messageId, metadata);
+          return { eventMetadata: newMap };
+        }),
+
+      /**
+       * Get event metadata for a message.
+       */
+      getEventMetadata: (messageId) => get().eventMetadata.get(messageId),
 
       reset: () => set(initialState),
     }))

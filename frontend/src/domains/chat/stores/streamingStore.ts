@@ -19,6 +19,10 @@ export interface StreamingState {
   isStreaming: boolean;
   /** Whether the current turn is complete (Gap #6 fix) */
   isComplete: boolean;
+  /** Whether the agent is paused (Gap #7) */
+  isPaused: boolean;
+  /** Reason for pause if paused (Gap #7) */
+  pauseReason: string | null;
   /** Message chunks by eventIndex */
   messageChunks: Map<number, string>;
   /** Thinking blocks by blockIndex (Gap #5 prep - multi-block) */
@@ -42,6 +46,8 @@ export interface StreamingActions {
   appendThinkingChunk: (blockIndex: number, content: string) => void;
   /** Mark the current turn as complete (Gap #6 fix) */
   markComplete: () => void;
+  /** Set paused state with optional reason (Gap #7) */
+  setPaused: (paused: boolean, reason?: string) => void;
   /** Reset all accumulators (Gap #10 fix) */
   reset: () => void;
 }
@@ -55,6 +61,8 @@ export type StreamingStore = StreamingState & StreamingActions;
 const initialState: StreamingState = {
   isStreaming: false,
   isComplete: false,
+  isPaused: false,
+  pauseReason: null,
   messageChunks: new Map(),
   thinkingBlocks: new Map(),
   currentMessageId: null,
@@ -184,8 +192,21 @@ const createStreamingStore = () =>
         set((state) => ({
           isComplete: true,
           isStreaming: false,
+          isPaused: false,
+          pauseReason: null,
           capturedThinking: state.accumulatedThinking || null,
         })),
+
+      /**
+       * Set paused state with optional reason.
+       * Gap #7 Fix: Handles turn_paused events from backend.
+       */
+      setPaused: (paused, reason) =>
+        set({
+          isPaused: paused,
+          pauseReason: reason || null,
+          isStreaming: !paused, // Stop streaming when paused
+        }),
 
       /**
        * Reset all accumulators for new turn.

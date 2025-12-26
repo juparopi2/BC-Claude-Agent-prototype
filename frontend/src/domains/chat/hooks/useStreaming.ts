@@ -20,6 +20,10 @@ export interface UseStreamingReturn {
   isStreaming: boolean;
   /** Whether the current turn is complete */
   isComplete: boolean;
+  /** Whether the agent is paused (Gap #7) */
+  isPaused: boolean;
+  /** Reason for pause if paused (Gap #7) */
+  pauseReason: string | null;
   /** Accumulated message content */
   content: string;
   /** Accumulated thinking content */
@@ -33,6 +37,8 @@ export interface UseStreamingReturn {
 // Individual selectors to prevent infinite re-renders
 const selectIsStreaming = (state: StreamingStore) => state.isStreaming;
 const selectIsComplete = (state: StreamingStore) => state.isComplete;
+const selectIsPaused = (state: StreamingStore) => state.isPaused;
+const selectPauseReason = (state: StreamingStore) => state.pauseReason;
 const selectContent = (state: StreamingStore) => state.accumulatedContent;
 const selectThinking = (state: StreamingStore) => state.accumulatedThinking;
 const selectThinkingBlocks = (state: StreamingStore) => state.thinkingBlocks;
@@ -69,6 +75,8 @@ export function useStreaming(): UseStreamingReturn {
   // Use individual selectors to avoid creating new objects on each render
   const isStreaming = useStreamingStore(selectIsStreaming);
   const isComplete = useStreamingStore(selectIsComplete);
+  const isPaused = useStreamingStore(selectIsPaused);
+  const pauseReason = useStreamingStore(selectPauseReason);
   const content = useStreamingStore(selectContent);
   const thinking = useStreamingStore(selectThinking);
   const thinkingBlocks = useStreamingStore(selectThinkingBlocks);
@@ -77,6 +85,8 @@ export function useStreaming(): UseStreamingReturn {
   return {
     isStreaming,
     isComplete,
+    isPaused,
+    pauseReason,
     content,
     thinking,
     thinkingBlocks,

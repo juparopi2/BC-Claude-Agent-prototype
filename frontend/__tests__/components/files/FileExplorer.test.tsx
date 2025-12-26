@@ -3,98 +3,172 @@
  *
  * Tests for the FileExplorer component with focus on NULL handling
  * when loading files at root level vs nested folders.
+ *
+ * Updated to use new domain hooks (useFiles, useFolderNavigation).
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
+import { render, waitFor } from '@testing-library/react';
 import { act } from '@testing-library/react';
 import { FileExplorer } from '../../../components/files/FileExplorer';
-import { useFileStore } from '../../../lib/stores/fileStore';
+import {
+  resetFileListStore,
+  useFileListStore,
+} from '@/src/domains/files/stores/fileListStore';
+import {
+  resetFolderTreeStore,
+  useFolderTreeStore,
+} from '@/src/domains/files/stores/folderTreeStore';
+import {
+  resetSortFilterStore,
+} from '@/src/domains/files/stores/sortFilterStore';
 import { server } from '../../../vitest.setup';
 import { mockFiles } from '../../mocks/handlers';
 import { http, HttpResponse } from 'msw';
 
 const API_URL = 'http://localhost:3002';
 
+// Mock the fileApi client
+vi.mock('@/lib/services/fileApi', () => ({
+  getFileApiClient: vi.fn(() => ({
+    getFiles: vi.fn().mockResolvedValue({
+      success: true,
+      data: {
+        files: mockFiles,
+        pagination: { offset: 0, limit: 50, total: mockFiles.length },
+      },
+    }),
+    getFolders: vi.fn().mockResolvedValue({
+      success: true,
+      data: { folders: [] },
+    }),
+  })),
+  resetFileApiClient: vi.fn(),
+}));
+
+// Mock UI preferences store
+vi.mock('@/lib/stores/uiPreferencesStore', () => ({
+  useUIPreferencesStore: vi.fn((selector) => {
+    const state = {
+      isFileSidebarVisible: true,
+      setFileSidebarVisible: vi.fn(),
+    };
+    return selector ? selector(state) : state;
+  }),
+}));
+
+import { getFileApiClient } from '@/lib/services/fileApi';
+import { useUIPreferencesStore } from '@/lib/stores/uiPreferencesStore';
+
 describe('FileExplorer', () => {
   beforeEach(() => {
-    // Reset store to initial state
-    act(() => {
-      useFileStore.setState({
-        files: [],
-        currentFolderId: null,
-        selectedFileIds: new Set(),
-        folderPath: [],
-        uploadQueue: [],
-        isUploading: false,
-        uploadProgress: 0,
-        isLoading: false,
-        error: null,
-        isSidebarVisible: true,
-        sortBy: 'date',
-        sortOrder: 'desc',
-        showFavoritesOnly: false,
-        totalFiles: 0,
-        hasMore: false,
-        currentOffset: 0,
-        currentLimit: 50,
-      });
+    // Reset all domain stores
+    resetFileListStore();
+    resetFolderTreeStore();
+    resetSortFilterStore();
+
+    // Reset mocks
+    vi.clearAllMocks();
+
+    // Reset default mock implementation for fileApi
+    (getFileApiClient as Mock).mockReturnValue({
+      getFiles: vi.fn().mockResolvedValue({
+        success: true,
+        data: {
+          files: mockFiles,
+          pagination: { offset: 0, limit: 50, total: mockFiles.length },
+        },
+      }),
+      getFolders: vi.fn().mockResolvedValue({
+        success: true,
+        data: { folders: [] },
+      }),
     });
 
-    // Clear all mocks
-    vi.clearAllMocks();
+    // Reset UI preferences mock
+    (useUIPreferencesStore as Mock).mockImplementation((selector) => {
+      const state = {
+        isFileSidebarVisible: true,
+        setFileSidebarVisible: vi.fn(),
+      };
+      return selector ? selector(state) : state;
+    });
   });
 
   describe('Load root-level files on mount', () => {
     it('should fetch root-level files when currentFolderId is null', async () => {
-      // Ensure currentFolderId is null
+      // Ensure we're at root (currentFolderId is null)
       act(() => {
-        useFileStore.setState({ currentFolderId: null });
+        useFolderTreeStore.getState().setCurrentFolder(null, []);
       });
 
-      // Spy on fetchFiles action
-      const fetchFilesSpy = vi.spyOn(useFileStore.getState(), 'fetchFiles');
+      const mockGetFiles = vi.fn().mockResolvedValue({
+        success: true,
+        data: {
+          files: mockFiles.filter((f) => f.parentFolderId === null),
+          pagination: { offset: 0, limit: 50, total: 3 },
+        },
+      });
+
+      (getFileApiClient as Mock).mockReturnValue({
+        getFiles: mockGetFiles,
+        getFolders: vi.fn().mockResolvedValue({ success: true, data: { folders: [] } }),
+      });
 
       // Render component
       render(<FileExplorer />);
 
-      // Wait for fetchFiles to be called
+      // Wait for fetchFiles to be called with undefined (root folder)
       await waitFor(() => {
-        expect(fetchFilesSpy).toHaveBeenCalledWith(null);
+        expect(mockGetFiles).toHaveBeenCalledWith({ folderId: undefined });
       });
 
-      // Wait for files to be loaded into state
+      // Wait for files to be loaded into store
       await waitFor(() => {
-        const state = useFileStore.getState();
-        expect(state.files.length).toBeGreaterThan(0);
+        const files = useFileListStore.getState().files;
+        expect(files.length).toBeGreaterThan(0);
       });
-
-      // Verify root-level files are loaded (parentFolderId === null)
-      const state = useFileStore.getState();
-      const rootFiles = state.files.filter((f) => f.parentFolderId === null);
-      expect(rootFiles.length).toBe(state.files.length);
 
       // Verify loading state is false
-      expect(state.isLoading).toBe(false);
+      expect(useFileListStore.getState().isLoading).toBe(false);
     });
 
     it('should display loading state while fetching files', async () => {
-      // Set loading state
-      act(() => {
-        useFileStore.setState({ isLoading: true, currentFolderId: null });
+      // Create a promise we can control
+      let resolveFiles: (value: unknown) => void;
+      const pendingPromise = new Promise((resolve) => {
+        resolveFiles = resolve;
+      });
+
+      const mockGetFiles = vi.fn().mockReturnValue(pendingPromise);
+
+      (getFileApiClient as Mock).mockReturnValue({
+        getFiles: mockGetFiles,
+        getFolders: vi.fn().mockResolvedValue({ success: true, data: { folders: [] } }),
       });
 
       // Render component
       render(<FileExplorer />);
 
-      // Component should be in loading state initially
-      const state = useFileStore.getState();
-      expect(state.isLoading).toBe(true);
+      // Component should trigger loading
+      await waitFor(() => {
+        expect(useFileListStore.getState().isLoading).toBe(true);
+      });
+
+      // Resolve the promise
+      await act(async () => {
+        resolveFiles!({
+          success: true,
+          data: {
+            files: mockFiles,
+            pagination: { offset: 0, limit: 50, total: mockFiles.length },
+          },
+        });
+      });
 
       // Wait for loading to complete
       await waitFor(() => {
-        const updatedState = useFileStore.getState();
-        expect(updatedState.isLoading).toBe(false);
+        expect(useFileListStore.getState().isLoading).toBe(false);
       });
     });
   });
@@ -103,23 +177,38 @@ describe('FileExplorer', () => {
     it('should reload files when navigating to a folder', async () => {
       const folderId = 'folder-123';
 
-      // Start at root
+      // Start at root with initial files
       act(() => {
-        useFileStore.setState({
-          currentFolderId: null,
-          files: [...mockFiles],
-        });
+        useFolderTreeStore.getState().setCurrentFolder(null, []);
+        useFileListStore.getState().setFiles(mockFiles, mockFiles.length, false);
+      });
+
+      const mockGetFiles = vi.fn().mockResolvedValue({
+        success: true,
+        data: {
+          files: [],
+          pagination: { offset: 0, limit: 50, total: 0 },
+        },
+      });
+
+      (getFileApiClient as Mock).mockReturnValue({
+        getFiles: mockGetFiles,
+        getFolders: vi.fn().mockResolvedValue({ success: true, data: { folders: [] } }),
       });
 
       // Render component
       const { rerender } = render(<FileExplorer />);
 
-      // Spy on fetchFiles
-      const fetchFilesSpy = vi.spyOn(useFileStore.getState(), 'fetchFiles');
+      // Wait for initial fetch
+      await waitFor(() => {
+        expect(mockGetFiles).toHaveBeenCalledWith({ folderId: undefined });
+      });
 
-      // Navigate to folder by updating currentFolderId
+      // Navigate to folder by updating folderTreeStore
       act(() => {
-        useFileStore.setState({ currentFolderId: folderId });
+        useFolderTreeStore.getState().setCurrentFolder(folderId, [
+          { id: folderId, name: 'Test Folder' },
+        ]);
       });
 
       // Rerender to trigger useEffect
@@ -127,12 +216,11 @@ describe('FileExplorer', () => {
 
       // Wait for fetchFiles to be called with new folderId
       await waitFor(() => {
-        expect(fetchFilesSpy).toHaveBeenCalledWith(folderId);
+        expect(mockGetFiles).toHaveBeenCalledWith({ folderId });
       });
 
       // Verify currentFolderId is updated
-      const state = useFileStore.getState();
-      expect(state.currentFolderId).toBe(folderId);
+      expect(useFolderTreeStore.getState().currentFolderId).toBe(folderId);
     });
 
     it('should reload files when navigating back to root', async () => {
@@ -140,34 +228,48 @@ describe('FileExplorer', () => {
 
       // Start in a folder
       act(() => {
-        useFileStore.setState({
-          currentFolderId: folderId,
-          files: [],
-        });
+        useFolderTreeStore.getState().setCurrentFolder(folderId, [
+          { id: folderId, name: 'Test Folder' },
+        ]);
+        useFileListStore.getState().setFiles([], 0, false);
+      });
+
+      const mockGetFiles = vi.fn().mockResolvedValue({
+        success: true,
+        data: {
+          files: mockFiles,
+          pagination: { offset: 0, limit: 50, total: mockFiles.length },
+        },
+      });
+
+      (getFileApiClient as Mock).mockReturnValue({
+        getFiles: mockGetFiles,
+        getFolders: vi.fn().mockResolvedValue({ success: true, data: { folders: [] } }),
       });
 
       // Render component
       const { rerender } = render(<FileExplorer />);
 
-      // Spy on fetchFiles
-      const fetchFilesSpy = vi.spyOn(useFileStore.getState(), 'fetchFiles');
+      // Wait for initial fetch
+      await waitFor(() => {
+        expect(mockGetFiles).toHaveBeenCalledWith({ folderId });
+      });
 
       // Navigate back to root
       act(() => {
-        useFileStore.setState({ currentFolderId: null });
+        useFolderTreeStore.getState().setCurrentFolder(null, []);
       });
 
       // Rerender to trigger useEffect
       rerender(<FileExplorer />);
 
-      // Wait for fetchFiles to be called with null (root)
+      // Wait for fetchFiles to be called with undefined (root)
       await waitFor(() => {
-        expect(fetchFilesSpy).toHaveBeenCalledWith(null);
+        expect(mockGetFiles).toHaveBeenCalledWith({ folderId: undefined });
       });
 
       // Verify we're at root
-      const state = useFileStore.getState();
-      expect(state.currentFolderId).toBeNull();
+      expect(useFolderTreeStore.getState().currentFolderId).toBeNull();
     });
 
     it('should handle rapid folder navigation correctly', async () => {
@@ -176,36 +278,50 @@ describe('FileExplorer', () => {
 
       // Start at root
       act(() => {
-        useFileStore.setState({ currentFolderId: null, files: [] });
+        useFolderTreeStore.getState().setCurrentFolder(null, []);
+        useFileListStore.getState().setFiles([], 0, false);
+      });
+
+      const mockGetFiles = vi.fn().mockResolvedValue({
+        success: true,
+        data: {
+          files: [],
+          pagination: { offset: 0, limit: 50, total: 0 },
+        },
+      });
+
+      (getFileApiClient as Mock).mockReturnValue({
+        getFiles: mockGetFiles,
+        getFolders: vi.fn().mockResolvedValue({ success: true, data: { folders: [] } }),
       });
 
       // Render component
       const { rerender } = render(<FileExplorer />);
 
-      // Spy on fetchFiles
-      const fetchFilesSpy = vi.spyOn(useFileStore.getState(), 'fetchFiles');
-
       // Navigate to folder 1
       act(() => {
-        useFileStore.setState({ currentFolderId: folder1 });
+        useFolderTreeStore.getState().setCurrentFolder(folder1, [
+          { id: folder1, name: 'Folder 1' },
+        ]);
       });
       rerender(<FileExplorer />);
 
       // Immediately navigate to folder 2
       act(() => {
-        useFileStore.setState({ currentFolderId: folder2 });
+        useFolderTreeStore.getState().setCurrentFolder(folder2, [
+          { id: folder2, name: 'Folder 2' },
+        ]);
       });
       rerender(<FileExplorer />);
 
       // Wait for both fetchFiles calls
       await waitFor(() => {
-        expect(fetchFilesSpy).toHaveBeenCalledWith(folder1);
-        expect(fetchFilesSpy).toHaveBeenCalledWith(folder2);
+        expect(mockGetFiles).toHaveBeenCalledWith({ folderId: folder1 });
+        expect(mockGetFiles).toHaveBeenCalledWith({ folderId: folder2 });
       });
 
       // Verify final state is folder2
-      const state = useFileStore.getState();
-      expect(state.currentFolderId).toBe(folder2);
+      expect(useFolderTreeStore.getState().currentFolderId).toBe(folder2);
     });
   });
 
@@ -213,38 +329,39 @@ describe('FileExplorer', () => {
     it('should render narrow layout when isNarrow prop is true', () => {
       const { container } = render(<FileExplorer isNarrow />);
 
-      // In narrow layout, sidebar is not rendered
-      const state = useFileStore.getState();
-
-      // The component should still render (verify container has content)
+      // The component should render (verify container has content)
       expect(container.firstChild).toBeInTheDocument();
     });
 
     it('should render full layout with sidebar by default', () => {
-      // Ensure sidebar is visible
-      act(() => {
-        useFileStore.setState({ isSidebarVisible: true });
+      // Ensure sidebar is visible via mock
+      (useUIPreferencesStore as Mock).mockImplementation((selector) => {
+        const state = {
+          isFileSidebarVisible: true,
+          setFileSidebarVisible: vi.fn(),
+        };
+        return selector ? selector(state) : state;
       });
 
       const { container } = render(<FileExplorer />);
 
       // Sidebar should be visible in full layout
-      const state = useFileStore.getState();
-      expect(state.isSidebarVisible).toBe(true);
       expect(container.firstChild).toBeInTheDocument();
     });
 
     it('should hide sidebar when isSidebarVisible is false', () => {
-      // Hide sidebar
-      act(() => {
-        useFileStore.setState({ isSidebarVisible: false });
+      // Hide sidebar via mock
+      (useUIPreferencesStore as Mock).mockImplementation((selector) => {
+        const state = {
+          isFileSidebarVisible: false,
+          setFileSidebarVisible: vi.fn(),
+        };
+        return selector ? selector(state) : state;
       });
 
       const { container } = render(<FileExplorer />);
 
-      // Verify sidebar is hidden
-      const state = useFileStore.getState();
-      expect(state.isSidebarVisible).toBe(false);
+      // Component should still render
       expect(container.firstChild).toBeInTheDocument();
     });
   });
@@ -252,32 +369,26 @@ describe('FileExplorer', () => {
   describe('Error handling', () => {
     it('should handle API errors when fetching files', async () => {
       // Mock API error
-      server.use(
-        http.get(`${API_URL}/api/files`, () => {
-          return HttpResponse.json(
-            {
-              error: 'Server Error',
-              message: 'Failed to load files',
-              code: 'INTERNAL_ERROR',
-            },
-            { status: 500 }
-          );
-        })
-      );
+      (getFileApiClient as Mock).mockReturnValue({
+        getFiles: vi.fn().mockResolvedValue({
+          success: false,
+          error: { message: 'Failed to load files' },
+        }),
+        getFolders: vi.fn().mockResolvedValue({ success: true, data: { folders: [] } }),
+      });
 
-      const { container } = render(<FileExplorer />);
+      render(<FileExplorer />);
 
       // Wait for the error to be set after fetchFiles is called
       await waitFor(() => {
-        const state = useFileStore.getState();
-        expect(state.error).toBeTruthy();
+        const error = useFileListStore.getState().error;
+        expect(error).toBeTruthy();
       });
 
       // Verify error state
-      const state = useFileStore.getState();
+      const state = useFileListStore.getState();
       expect(state.error).toBe('Failed to load files');
       expect(state.isLoading).toBe(false);
-      expect(container.firstChild).toBeInTheDocument();
     });
   });
 
@@ -288,6 +399,37 @@ describe('FileExplorer', () => {
       // Component should render without errors
       // TooltipProvider is a context provider that enables tooltips
       expect(container.firstChild).toBeInTheDocument();
+    });
+
+    it('should pass correct folderId to fetchFiles', async () => {
+      const testFolderId = 'test-folder-id';
+
+      // Set current folder
+      act(() => {
+        useFolderTreeStore.getState().setCurrentFolder(testFolderId, [
+          { id: testFolderId, name: 'Test Folder' },
+        ]);
+      });
+
+      const mockGetFiles = vi.fn().mockResolvedValue({
+        success: true,
+        data: {
+          files: [],
+          pagination: { offset: 0, limit: 50, total: 0 },
+        },
+      });
+
+      (getFileApiClient as Mock).mockReturnValue({
+        getFiles: mockGetFiles,
+        getFolders: vi.fn().mockResolvedValue({ success: true, data: { folders: [] } }),
+      });
+
+      render(<FileExplorer />);
+
+      // Verify fetchFiles was called with the correct folderId
+      await waitFor(() => {
+        expect(mockGetFiles).toHaveBeenCalledWith({ folderId: testFolderId });
+      });
     });
   });
 });

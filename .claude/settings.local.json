@@ -158,7 +158,8 @@
       "Bash(gunzip:*)",
       "Bash(wc:*)",
       "Bash(git branch:*)",
-      "Bash(Select-Object -Last 60)"
+      "Bash(Select-Object -Last 60)",
+      "Bash(Select-Object -Last 30)"
     ],
     "deny": [],
     "ask": []

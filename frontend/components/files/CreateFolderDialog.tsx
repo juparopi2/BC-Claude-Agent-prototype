@@ -13,7 +13,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useFileStore } from '@/lib/stores/fileStore';
+import { useFileActions, useFolderNavigation } from '@/src/domains/files';
 import { validateFolderName } from '@/lib/utils/validation';
 import { toast } from 'sonner';
 
@@ -25,8 +25,8 @@ interface CreateFolderDialogProps {
 export function CreateFolderDialog({ trigger, isCompact = false }: CreateFolderDialogProps) {
   const [open, setOpen] = useState(false);
   const [folderName, setFolderName] = useState('');
-  const [isCreating, setIsCreating] = useState(false);
-  const { createFolder } = useFileStore();
+  const { createFolder, isLoading: isCreating, error } = useFileActions();
+  const { currentFolderId } = useFolderNavigation();
 
   // Handle dialog open state change - reset form when opening
   const handleOpenChange = useCallback((newOpen: boolean) => {
@@ -46,17 +46,16 @@ export function CreateFolderDialog({ trigger, isCompact = false }: CreateFolderD
       return;
     }
 
-    setIsCreating(true);
-    const result = await createFolder(trimmedName);
-    setIsCreating(false);
+    // useFileActions manages isLoading state internally
+    const result = await createFolder(trimmedName, currentFolderId);
 
     if (result) {
       toast.success(`Folder "${trimmedName}" created`);
       setOpen(false);
     } else {
-      toast.error('Failed to create folder');
+      toast.error(error || 'Failed to create folder');
     }
-  }, [folderName, createFolder]);
+  }, [folderName, createFolder, currentFolderId, error]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !isCreating) {

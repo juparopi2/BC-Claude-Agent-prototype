@@ -28,7 +28,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useFileStore } from '@/lib/stores/fileStore';
+import { useFileActions, useFiles } from '@/src/domains/files';
 import { validateFolderName, validateFileName } from '@/lib/utils/validation';
 import { toast } from 'sonner';
 
@@ -45,12 +45,9 @@ export function FileContextMenu({ file, children, onOpenChange }: FileContextMen
   const [isRenaming, setIsRenaming] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const {
-    downloadFile,
-    renameFile,
-    toggleFavorite,
-    deleteFiles
-  } = useFileStore();
+  // File actions from domain hooks
+  const { downloadFile, renameFile, deleteFiles, error: actionError } = useFileActions();
+  const { toggleFavorite } = useFiles();
 
   const handleDownload = useCallback(async () => {
     if (!file.isFolder) {
@@ -78,16 +75,16 @@ export function FileContextMenu({ file, children, onOpenChange }: FileContextMen
     }
 
     setIsRenaming(true);
-    const success = await renameFile(file.id, trimmedName);
+    const result = await renameFile(file.id, trimmedName);
     setIsRenaming(false);
 
-    if (success) {
+    if (result) {
       toast.success(`${file.isFolder ? 'Folder' : 'File'} renamed`);
       setRenameOpen(false);
     } else {
-      toast.error(`Failed to rename ${file.isFolder ? 'folder' : 'file'}`);
+      toast.error(actionError || `Failed to rename ${file.isFolder ? 'folder' : 'file'}`);
     }
-  }, [file, newName, renameFile]);
+  }, [file, newName, renameFile, actionError]);
 
   const handleToggleFavorite = useCallback(async () => {
     await toggleFavorite(file.id);
@@ -97,14 +94,14 @@ export function FileContextMenu({ file, children, onOpenChange }: FileContextMen
     setIsDeleting(true);
     const success = await deleteFiles([file.id]);
     setIsDeleting(false);
-    
+
     if (success) {
       toast.success(`"${file.name}" deleted`);
       setDeleteOpen(false);
     } else {
-      toast.error('Failed to delete');
+      toast.error(actionError || 'Failed to delete');
     }
-  }, [file, deleteFiles]);
+  }, [file, deleteFiles, actionError]);
 
   const handleCopyPath = useCallback(() => {
     navigator.clipboard.writeText(file.blobPath);

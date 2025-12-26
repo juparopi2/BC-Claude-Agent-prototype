@@ -11,7 +11,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
-import { useFileStore } from '@/lib/stores/fileStore';
+import { useSortFilterStore } from '@/src/domains/files';
 
 const SORT_OPTIONS: { value: FileSortBy; label: string }[] = [
   { value: 'name', label: 'Name' },
@@ -20,9 +20,10 @@ const SORT_OPTIONS: { value: FileSortBy; label: string }[] = [
 ];
 
 export function FileSortControls({ isCompact = false }: { isCompact?: boolean }) {
-  const sortBy = useFileStore(state => state.sortBy);
-  const sortOrder = useFileStore(state => state.sortOrder);
-  const { setSort, toggleSortOrder } = useFileStore();
+  const sortBy = useSortFilterStore((state) => state.sortBy);
+  const sortOrder = useSortFilterStore((state) => state.sortOrder);
+  const setSort = useSortFilterStore((state) => state.setSort);
+  const toggleSortOrder = useSortFilterStore((state) => state.toggleSortOrder);
 
   const handleSortChange = useCallback((newSortBy: FileSortBy) => {
     setSort(newSortBy);

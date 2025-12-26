@@ -10,3 +10,4 @@ export { useFileSelection, type UseFileSelectionReturn } from './useFileSelectio
 export { useFiles, type UseFilesReturn } from './useFiles';
 export { useFileUpload, type UseFileUploadReturn } from './useFileUpload';
 export { useFolderNavigation, type UseFolderNavigationReturn } from './useFolderNavigation';
+export { useFileActions, type UseFileActionsReturn } from './useFileActions';

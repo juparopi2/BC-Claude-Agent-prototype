@@ -3,7 +3,7 @@
 import { useCallback } from 'react';
 import { Home, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useFileStore } from '@/lib/stores/fileStore';
+import { useFolderNavigation } from '@/src/domains/files';
 
 /**
  * FileBreadcrumb Component
@@ -26,13 +26,18 @@ import { useFileStore } from '@/lib/stores/fileStore';
  * ```
  */
 export function FileBreadcrumb() {
-  const folderPath = useFileStore(state => state.folderPath);
-  const currentFolderId = useFileStore(state => state.currentFolderId);
-  const { navigateToFolder } = useFileStore();
+  const { folderPath, currentFolderId, setCurrentFolder } = useFolderNavigation();
 
-  const handleNavigate = useCallback((folderId: string | null) => {
-    navigateToFolder(folderId);
-  }, [navigateToFolder]);
+  const handleNavigate = useCallback((folderId: string | null, index: number) => {
+    if (folderId === null) {
+      // Navigate to root
+      setCurrentFolder(null, []);
+    } else {
+      // Truncate path to the clicked folder (inclusive)
+      const newPath = folderPath.slice(0, index + 1);
+      setCurrentFolder(folderId, newPath);
+    }
+  }, [setCurrentFolder, folderPath]);
 
   return (
     <nav
@@ -41,7 +46,7 @@ export function FileBreadcrumb() {
     >
       {/* Home/Root */}
       <button
-        onClick={() => handleNavigate(null)}
+        onClick={() => handleNavigate(null, -1)}
         className={cn(
           'flex items-center gap-1 px-2 py-1 rounded hover:bg-accent transition-colors',
           currentFolderId === null && 'bg-accent font-medium'
@@ -57,7 +62,7 @@ export function FileBreadcrumb() {
         <div key={folder.id} className="flex items-center">
           <ChevronRight className="size-4 text-muted-foreground flex-shrink-0" />
           <button
-            onClick={() => handleNavigate(folder.id)}
+            onClick={() => handleNavigate(folder.id, index)}
             className={cn(
               'px-2 py-1 rounded hover:bg-accent transition-colors truncate max-w-32',
               index === folderPath.length - 1 && 'bg-accent font-medium'

@@ -15,7 +15,7 @@ import type { Message } from '@bc-agent/shared';
 // Mock the API module - getApiClient returns a singleton with getMessages
 const mockGetMessages = vi.fn();
 
-vi.mock('@/lib/services/api', () => ({
+vi.mock('@/src/infrastructure/api', () => ({
   getApiClient: () => ({
     getMessages: mockGetMessages,
   }),

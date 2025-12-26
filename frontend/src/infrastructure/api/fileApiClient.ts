@@ -1,10 +1,10 @@
 /**
- * File API Service
+ * File API Client
  *
  * Handles all file management API operations.
  * Uses XMLHttpRequest for upload progress tracking.
  *
- * @module lib/services/fileApi
+ * @module infrastructure/api/fileApiClient
  */
 
 import type {
@@ -18,7 +18,7 @@ import type {
   ApiErrorResponse,
 } from '@bc-agent/shared';
 import { isApiErrorResponse, ErrorCode } from '@bc-agent/shared';
-import { env } from '../config/env';
+import { env } from '@/lib/config/env';
 
 /**
  * API Response wrapper

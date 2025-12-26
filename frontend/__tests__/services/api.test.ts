@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { ApiClient, getApiClient, resetApiClient } from '../../lib/services/api';
+import { ApiClient, getApiClient, resetApiClient } from '@/src/infrastructure/api';
 import { server } from '../../vitest.setup';
 import { errorHandlers, mockUser, mockSessions } from '../mocks/handlers';
 

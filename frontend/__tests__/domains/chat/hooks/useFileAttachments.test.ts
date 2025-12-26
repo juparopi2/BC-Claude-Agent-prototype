@@ -10,10 +10,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useFileAttachments } from '@/src/domains/chat/hooks/useFileAttachments';
-import * as fileApiModule from '@/lib/services/fileApi';
+import * as fileApiModule from '@/src/infrastructure/api';
 
 // Mock the file API
-vi.mock('@/lib/services/fileApi', () => ({
+vi.mock('@/src/infrastructure/api', () => ({
   getFileApiClient: vi.fn(),
 }));
 

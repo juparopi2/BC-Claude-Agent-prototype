@@ -9,7 +9,7 @@
 
 import { useState, useCallback, useMemo } from 'react';
 import type { Message } from '@bc-agent/shared';
-import { getApiClient } from '@/lib/services/api';
+import { getApiClient } from '@/src/infrastructure/api';
 import { getMessageStore } from '../stores/messageStore';
 
 /**

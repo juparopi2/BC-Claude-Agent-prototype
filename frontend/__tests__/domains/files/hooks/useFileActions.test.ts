@@ -12,10 +12,10 @@ import type { ParsedFile } from '@bc-agent/shared';
 import { useFileActions } from '@/src/domains/files/hooks/useFileActions';
 import { resetFileListStore, useFileListStore } from '@/src/domains/files/stores/fileListStore';
 import { resetFolderTreeStore, useFolderTreeStore } from '@/src/domains/files/stores/folderTreeStore';
-import { getFileApiClient, resetFileApiClient } from '@/lib/services/fileApi';
+import { getFileApiClient, resetFileApiClient } from '@/src/infrastructure/api';
 
 // Mock the file API client
-vi.mock('@/lib/services/fileApi', () => ({
+vi.mock('@/src/infrastructure/api', () => ({
   getFileApiClient: vi.fn(),
   resetFileApiClient: vi.fn(),
 }));

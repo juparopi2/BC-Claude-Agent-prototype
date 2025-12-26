@@ -1,30 +1,16 @@
 /**
  * Frontend Services
  *
- * Barrel export for all frontend services.
+ * Barrel export for remaining frontend services.
+ * Note: api.ts and fileApi.ts have been migrated to src/infrastructure/api/.
  *
  * @module lib/services
  */
 
-// Socket service
+// Socket service (to be migrated to infrastructure/socket in future sprint)
 export {
   SocketService,
   getSocketService,
   resetSocketService,
   type SocketEventHandlers,
 } from './socket';
-
-// API client
-export {
-  ApiClient,
-  ApiError,
-  getApiClient,
-  resetApiClient,
-  type ApiResponse,
-  type Session,
-  type Message,
-  type UserProfile,
-  type TokenUsage,
-  type CreateSessionRequest,
-  type UpdateSessionRequest,
-} from './api';

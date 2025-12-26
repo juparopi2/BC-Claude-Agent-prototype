@@ -10,7 +10,7 @@ import {
   useAuthStore,
   selectUserDisplayName,
   selectUserInitials,
-} from '../../lib/stores/authStore';
+} from '@/src/domains/auth';
 import { server } from '../../vitest.setup';
 import { errorHandlers, mockUser } from '../mocks/handlers';
 

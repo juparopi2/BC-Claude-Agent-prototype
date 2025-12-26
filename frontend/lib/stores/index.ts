@@ -1,12 +1,13 @@
 /**
  * Frontend Stores
  *
- * Barrel export for all Zustand stores and middleware.
+ * Barrel export for remaining Zustand stores and middleware.
+ * Note: authStore, sessionStore, and uiPreferencesStore have been migrated to domains/.
  *
  * @module lib/stores
  */
 
-// Chat store
+// Chat store (to be migrated to domains/chat in future sprint)
 export {
   useChatStore,
   selectAllMessages,
@@ -18,27 +19,7 @@ export {
   type PendingApproval,
 } from './chatStore';
 
-// Session store
-export {
-  useSessionStore,
-  selectSortedSessions,
-  selectActiveSessions,
-  type SessionState,
-  type SessionActions,
-  type SessionStore,
-} from './sessionStore';
-
-// Auth store
-export {
-  useAuthStore,
-  selectUserDisplayName,
-  selectUserInitials,
-  type AuthState,
-  type AuthActions,
-  type AuthStore,
-} from './authStore';
-
-// Socket middleware
+// Socket middleware (to be migrated to infrastructure/socket in future sprint)
 export {
   useSocket,
   type UseSocketOptions,

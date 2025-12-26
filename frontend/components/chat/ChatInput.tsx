@@ -19,7 +19,7 @@
 import { useState, useRef, useEffect, KeyboardEvent } from 'react';
 import { useSocket } from '@/lib/stores/socketMiddleware';
 import { useChatStore } from '@/lib/stores/chatStore';
-import { useUIPreferencesStore } from '@/lib/stores/uiPreferencesStore';
+import { useUIPreferencesStore } from '@/src/domains/ui';
 import { useStreaming } from '@/src/domains/chat';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -27,7 +27,7 @@ import { Toggle } from '@/components/ui/toggle';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Send, Square, Brain, WifiOff, Mic, Paperclip, Globe, Loader2, FolderSearch } from 'lucide-react';
 import { FileAttachmentChip } from '@/src/presentation/chat';
-import { getFileApiClient } from '@/lib/services/fileApi';
+import { getFileApiClient } from '@/src/infrastructure/api';
 import { toast } from 'sonner';
 
 export interface ChatInputProps {

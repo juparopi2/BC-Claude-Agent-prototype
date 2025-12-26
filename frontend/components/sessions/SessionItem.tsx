@@ -2,8 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useSessionStore } from '@/lib/stores/sessionStore';
-import type { Session } from '@/lib/services/api';
+import { useSessionStore, type Session } from '@/src/domains/session';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';

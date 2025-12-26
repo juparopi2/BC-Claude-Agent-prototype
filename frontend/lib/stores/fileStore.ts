@@ -27,7 +27,7 @@
 import { create } from 'zustand';
 import { subscribeWithSelector, persist } from 'zustand/middleware';
 import type { ParsedFile, FileSortBy, SortOrder } from '@bc-agent/shared';
-import { getFileApiClient } from '../services/fileApi';
+import { getFileApiClient } from '@/src/infrastructure/api';
 import { nanoid } from 'nanoid';
 
 // Memoization cache for selectors

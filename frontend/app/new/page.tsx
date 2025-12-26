@@ -11,7 +11,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { MainLayout, Header, LeftPanel, RightPanel } from '@/components/layout';
-import { useSessionStore } from '@/lib/stores/sessionStore';
+import { useSessionStore } from '@/src/domains/session';
 import { Button } from '@/components/ui/button';
 import { MessageSquare, Users, Image as ImageIcon, FileText } from 'lucide-react';
 import ChatInput from '@/components/chat/ChatInput';

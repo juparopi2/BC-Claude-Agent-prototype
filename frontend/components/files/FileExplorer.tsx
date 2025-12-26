@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { useFiles, useFolderNavigation } from '@/src/domains/files';
-import { useUIPreferencesStore } from '@/lib/stores/uiPreferencesStore';
+import { useUIPreferencesStore } from '@/src/domains/ui';
 import { FileToolbar } from './FileToolbar';
 import { FileBreadcrumb } from './FileBreadcrumb';
 import { FileUploadZone } from './FileUploadZone';

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { useAuthStore } from '@/lib/stores/authStore';
+import { useAuthStore } from '@/src/domains/auth';
 import { Loader2 } from 'lucide-react';
 
 const PUBLIC_ROUTES = ['/login', '/'];

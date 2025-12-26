@@ -10,7 +10,7 @@ import { FileSortControls } from './FileSortControls';
 import { useFileUploadTrigger } from './FileUploadZone';
 import { useSortFilterStore } from '@/src/domains/files/stores/sortFilterStore';
 import { useFiles } from '@/src/domains/files';
-import { useUIPreferencesStore } from '@/lib/stores/uiPreferencesStore';
+import { useUIPreferencesStore } from '@/src/domains/ui';
 import { cn } from '@/lib/utils';
 
 interface FileToolbarProps {

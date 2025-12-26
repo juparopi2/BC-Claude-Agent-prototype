@@ -10,7 +10,7 @@
 import { useEffect, useRef, useCallback, useState, useMemo, startTransition } from 'react';
 import { getSocketService, type SocketEventHandlers } from '../services/socket';
 import { useChatStore } from './chatStore';
-import { useAuthStore } from './authStore';
+import { useAuthStore } from '@/src/domains/auth';
 import type { AgentEvent, AgentErrorData, SessionReadyEvent } from '@bc-agent/shared';
 import { processAgentEvent, getMessageStore } from '@/src/domains/chat';
 

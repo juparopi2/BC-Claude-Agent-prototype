@@ -8,7 +8,7 @@
  */
 
 import { useState, useMemo, useCallback } from 'react';
-import { getFileApiClient } from '@/lib/services/fileApi';
+import { getFileApiClient } from '@/src/infrastructure/api';
 import { toast } from 'sonner';
 
 export interface Attachment {

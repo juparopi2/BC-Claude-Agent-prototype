@@ -11,7 +11,7 @@ import { useCallback } from 'react';
 import { useUploadStore, type UploadItem } from '../stores/uploadStore';
 import { useFileListStore } from '../stores/fileListStore';
 import { useFolderTreeStore } from '../stores/folderTreeStore';
-import { getFileApiClient } from '@/lib/services/fileApi';
+import { getFileApiClient } from '@/src/infrastructure/api';
 
 /**
  * useFileUpload return type

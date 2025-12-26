@@ -57,7 +57,7 @@ vi.mock('@/lib/stores/chatStore', () => ({
   }),
 }));
 
-vi.mock('@/lib/stores/authStore', () => ({
+vi.mock('@/src/domains/auth', () => ({
   useAuthStore: vi.fn((selector) => {
     const state = {
       user: { id: 'test-user-id' },

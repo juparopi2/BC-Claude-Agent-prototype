@@ -1,15 +1,15 @@
 /**
- * API Service
+ * HTTP Client
  *
  * Type-safe HTTP client for REST API communication.
  * Uses types from @bc-agent/shared for guaranteed frontend-backend contract.
  *
- * @module lib/services/api
+ * @module infrastructure/api/httpClient
  */
 
 import type { ApiErrorResponse } from '@bc-agent/shared';
 import { isApiErrorResponse, ErrorCode } from '@bc-agent/shared';
-import { env } from '../config/env';
+import { env } from '@/lib/config/env';
 
 // ============================================
 // Message Types - Import from shared package

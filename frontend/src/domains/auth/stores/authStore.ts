@@ -4,13 +4,13 @@
  * Zustand store for authentication state.
  * Manages user session, login/logout, and auth status.
  *
- * @module lib/stores/authStore
+ * @module domains/auth/stores/authStore
  */
 
 import { create } from 'zustand';
 import { subscribeWithSelector, persist } from 'zustand/middleware';
-import type { UserProfile } from '../services/api';
-import { getApiClient } from '../services/api';
+import type { UserProfile } from '@/src/infrastructure/api';
+import { getApiClient } from '@/src/infrastructure/api';
 
 /**
  * Auth store state
@@ -163,3 +163,10 @@ export const selectUserInitials = (state: AuthStore): string => {
   }
   return name.slice(0, 2).toUpperCase();
 };
+
+/**
+ * Reset auth store for testing
+ */
+export function resetAuthStore(): void {
+  useAuthStore.getState().reset();
+}

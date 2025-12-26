@@ -30,7 +30,7 @@ vi.mock('sonner', () => ({
 }));
 
 // Mock the fileApi client
-vi.mock('@/lib/services/fileApi', () => ({
+vi.mock('@/src/infrastructure/api', () => ({
   getFileApiClient: vi.fn(() => ({
     createFolder: vi.fn(),
   })),
@@ -38,7 +38,7 @@ vi.mock('@/lib/services/fileApi', () => ({
 }));
 
 import { toast } from 'sonner';
-import { getFileApiClient } from '@/lib/services/fileApi';
+import { getFileApiClient } from '@/src/infrastructure/api';
 
 describe('CreateFolderDialog', () => {
   beforeEach(() => {

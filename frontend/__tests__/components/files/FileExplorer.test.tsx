@@ -29,7 +29,7 @@ import { http, HttpResponse } from 'msw';
 const API_URL = 'http://localhost:3002';
 
 // Mock the fileApi client
-vi.mock('@/lib/services/fileApi', () => ({
+vi.mock('@/src/infrastructure/api', () => ({
   getFileApiClient: vi.fn(() => ({
     getFiles: vi.fn().mockResolvedValue({
       success: true,
@@ -47,7 +47,7 @@ vi.mock('@/lib/services/fileApi', () => ({
 }));
 
 // Mock UI preferences store
-vi.mock('@/lib/stores/uiPreferencesStore', () => ({
+vi.mock('@/src/domains/ui', () => ({
   useUIPreferencesStore: vi.fn((selector) => {
     const state = {
       isFileSidebarVisible: true,
@@ -57,8 +57,8 @@ vi.mock('@/lib/stores/uiPreferencesStore', () => ({
   }),
 }));
 
-import { getFileApiClient } from '@/lib/services/fileApi';
-import { useUIPreferencesStore } from '@/lib/stores/uiPreferencesStore';
+import { getFileApiClient } from '@/src/infrastructure/api';
+import { useUIPreferencesStore } from '@/src/domains/ui';
 
 describe('FileExplorer', () => {
   beforeEach(() => {

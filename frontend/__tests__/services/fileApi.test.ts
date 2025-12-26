@@ -12,7 +12,7 @@ import {
   FileApiClient,
   getFileApiClient,
   resetFileApiClient,
-} from '../../lib/services/fileApi';
+} from '@/src/infrastructure/api';
 import { server } from '../../vitest.setup';
 import type {
   FilesListResponse,

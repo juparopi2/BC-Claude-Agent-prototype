@@ -9,7 +9,7 @@
 
 import { useCallback } from 'react';
 import { useFolderTreeStore } from '../stores/folderTreeStore';
-import { getFileApiClient } from '@/lib/services/fileApi';
+import { getFileApiClient } from '@/src/infrastructure/api';
 import type { ParsedFile } from '@bc-agent/shared';
 
 /**

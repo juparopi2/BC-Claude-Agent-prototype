@@ -17,8 +17,8 @@ import {
 } from '../mocks/socketMock';
 import { AgentEventFactory } from '../fixtures/AgentEventFactory';
 import { useChatStore } from '@/lib/stores/chatStore';
-import { useAuthStore } from '@/lib/stores/authStore';
-import { useSessionStore } from '@/lib/stores/sessionStore';
+import { useAuthStore } from '@/src/domains/auth';
+import { useSessionStore } from '@/src/domains/session';
 
 /**
  * Test context returned by createTestContext

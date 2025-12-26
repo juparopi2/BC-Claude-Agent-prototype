@@ -4,7 +4,7 @@
  * Persists user preferences for chat options like Extended Thinking and My Files search.
  * These preferences are maintained across route changes to ensure consistent UX.
  *
- * @module lib/stores/uiPreferencesStore
+ * @module domains/ui/stores/uiPreferencesStore
  */
 
 import { create } from 'zustand';
@@ -87,3 +87,10 @@ export const useUIPreferencesStore = create<UIPreferencesStore>()(
     }
   )
 );
+
+/**
+ * Reset UI preferences store for testing
+ */
+export function resetUIPreferencesStore(): void {
+  useUIPreferencesStore.getState().resetPreferences();
+}

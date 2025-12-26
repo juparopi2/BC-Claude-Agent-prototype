@@ -9,7 +9,7 @@ import { toast } from 'sonner';
 import { FileItem } from './FileItem';
 import { FileContextMenu } from './FileContextMenu';
 import { useFiles, useFileSelection, useFolderNavigation } from '@/src/domains/files';
-import { getFileApiClient } from '@/lib/services/fileApi';
+import { getFileApiClient } from '@/src/infrastructure/api';
 import { triggerDownload } from '@/lib/download';
 import { FilePreviewModal } from '@/components/modals/FilePreviewModal';
 

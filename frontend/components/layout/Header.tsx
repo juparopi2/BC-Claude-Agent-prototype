@@ -21,7 +21,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useAuthStore, selectUserDisplayName, selectUserInitials } from '@/lib/stores';
+import { useAuthStore, selectUserDisplayName, selectUserInitials } from '@/src/domains/auth';
 import { cn } from '@/lib/utils';
 
 export interface HeaderProps {

@@ -10,7 +10,7 @@ import {
   useSessionStore,
   selectSortedSessions,
   selectActiveSessions,
-} from '../../lib/stores/sessionStore';
+} from '@/src/domains/session';
 import { server } from '../../vitest.setup';
 import { errorHandlers, mockSessions } from '../mocks/handlers';
 

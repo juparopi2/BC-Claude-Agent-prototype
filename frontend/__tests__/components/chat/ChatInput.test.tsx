@@ -8,11 +8,11 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import ChatInput from '@/components/chat/ChatInput';
-import { getFileApiClient } from '@/lib/services/fileApi';
+import { getFileApiClient } from '@/src/infrastructure/api';
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 
 // Mock dependencies
-vi.mock('@/lib/services/fileApi', () => ({
+vi.mock('@/src/infrastructure/api', () => ({
   getFileApiClient: vi.fn(),
 }));
 
@@ -56,7 +56,7 @@ let mockUIPreferencesState = {
   setUseMyContext: vi.fn(),
 };
 
-vi.mock('@/lib/stores/uiPreferencesStore', () => ({
+vi.mock('@/src/domains/ui', () => ({
   useUIPreferencesStore: vi.fn((selector) => selector(mockUIPreferencesState)),
 }));
 

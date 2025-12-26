@@ -4,13 +4,13 @@
  * Zustand store for session management.
  * Handles session list, creation, updates, and deletion.
  *
- * @module lib/stores/sessionStore
+ * @module domains/session/stores/sessionStore
  */
 
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
-import type { Session } from '../services/api';
-import { getApiClient } from '../services/api';
+import type { Session } from '@/src/infrastructure/api';
+import { getApiClient } from '@/src/infrastructure/api';
 
 /**
  * Session store state
@@ -231,3 +231,10 @@ export const selectSortedSessions = (state: SessionStore): Session[] => {
 export const selectActiveSessions = (state: SessionStore): Session[] => {
   return state.sessions.filter((s) => s.is_active);
 };
+
+/**
+ * Reset session store for testing
+ */
+export function resetSessionStore(): void {
+  useSessionStore.getState().clearSessions();
+}

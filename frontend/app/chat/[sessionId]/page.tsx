@@ -3,12 +3,12 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { useChatStore } from '@/lib/stores/chatStore';
-import { useSessionStore } from '@/lib/stores/sessionStore';
-import { getApiClient } from '@/lib/services/api';
+import { useSessionStore } from '@/src/domains/session';
+import { getApiClient } from '@/src/infrastructure/api';
 import { MainLayout, Header, LeftPanel, RightPanel } from '@/components/layout';
 import { ChatContainer, ChatInput } from '@/components/chat';
 import { useSocket } from '@/lib/stores/socketMiddleware';
-import { useUIPreferencesStore } from '@/lib/stores/uiPreferencesStore';
+import { useUIPreferencesStore } from '@/src/domains/ui';
 // Domain stores for message management
 import { getMessageStore, getStreamingStore } from '@/src/domains/chat/stores';
 

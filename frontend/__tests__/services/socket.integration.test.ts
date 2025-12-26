@@ -91,7 +91,7 @@ import {
 } from '@bc-agent/shared/schemas';
 import { SocketService, resetSocketService } from '@/lib/services/socket';
 import { useChatStore } from '@/lib/stores/chatStore';
-import { useAuthStore } from '@/lib/stores/authStore';
+import { useAuthStore } from '@/src/domains/auth';
 import {
   resetTestEnvironment,
   createConsoleSpy,

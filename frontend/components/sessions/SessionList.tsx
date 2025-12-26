@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { useSessionStore } from '@/lib/stores/sessionStore';
+import { useSessionStore } from '@/src/domains/session';
 import { getSocketService } from '@/lib/services/socket';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';

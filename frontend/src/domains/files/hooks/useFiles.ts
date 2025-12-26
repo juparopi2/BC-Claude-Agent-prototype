@@ -11,7 +11,7 @@ import { useMemo, useCallback } from 'react';
 import { useFileListStore } from '../stores/fileListStore';
 import { useSortFilterStore } from '../stores/sortFilterStore';
 import { useFolderTreeStore } from '../stores/folderTreeStore';
-import { getFileApiClient } from '@/lib/services/fileApi';
+import { getFileApiClient } from '@/src/infrastructure/api';
 import type { ParsedFile, FileSortBy, SortOrder } from '@bc-agent/shared';
 
 /**

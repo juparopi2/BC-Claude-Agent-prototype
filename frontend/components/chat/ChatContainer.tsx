@@ -7,7 +7,7 @@ import { useFilePreviewStore } from '@/src/domains/files';
 import { useAuthStore, selectUserInitials } from '@/lib/stores/authStore';
 import { useMessages, useStreaming } from '@/src/domains/chat';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Loader2, PauseCircle } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { isToolUseMessage, isToolResultMessage, isThinkingMessage } from '@bc-agent/shared';
 import {
   MessageBubble,
@@ -19,7 +19,7 @@ import {
 export default function ChatContainer() {
   // Use domain hooks for messages and streaming
   const { messages } = useMessages();
-  const { isStreaming, isPaused, pauseReason, content: streamingContent, thinkingBlocks } = useStreaming();
+  const { isStreaming, content: streamingContent, thinkingBlocks } = useStreaming();
   const citationFileMap = useChatStore((s) => s.citationFileMap);
 
   // File store for looking up file metadata
@@ -144,22 +144,10 @@ export default function ChatContainer() {
           />
         )}
 
-        {isAgentBusy && !isStreaming && !isPaused && (
+        {isAgentBusy && !isStreaming && (
           <div className="flex items-center gap-3 text-muted-foreground">
             <Loader2 className="size-4 animate-spin" />
             <span className="text-sm">Agent processing...</span>
-          </div>
-        )}
-
-        {isPaused && (
-          <div
-            className="flex items-center gap-3 text-amber-600 dark:text-amber-500"
-            data-testid="paused-indicator"
-          >
-            <PauseCircle className="size-4" />
-            <span className="text-sm">
-              {pauseReason || 'Agent paused'}
-            </span>
           </div>
         )}
 

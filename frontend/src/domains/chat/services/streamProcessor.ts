@@ -17,14 +17,12 @@ import type {
   ThinkingCompleteEvent,
   MessageChunkEvent,
   CompleteEvent,
-  TurnPausedEvent,
   Message,
 } from '@bc-agent/shared';
 import { isThinkingMessage } from '@bc-agent/shared';
 import { getMessageStore } from '../stores/messageStore';
 import { getStreamingStore } from '../stores/streamingStore';
 import { getApprovalStore } from '../stores/approvalStore';
-import { getEventCorrelationStore } from '../stores/eventCorrelationStore';
 
 /**
  * Callbacks for UI state that remains outside domain stores.
@@ -60,10 +58,6 @@ export function processAgentEvent(
   const messageStore = getMessageStore();
   const streamingStore = getStreamingStore();
   const approvalStore = getApprovalStore();
-  const eventCorrelationStore = getEventCorrelationStore();
-
-  // Gap #3 Fix: Track all events for correlation analysis
-  eventCorrelationStore.getState().trackEvent(event);
 
   // Log event for debugging
   if (process.env.NODE_ENV === 'development') {
@@ -339,25 +333,6 @@ export function processAgentEvent(
       break;
     }
 
-    case 'session_end':
-      // ESSENTIAL: Clean up state when session ends - do not remove
-      streamingStore.getState().markComplete();
-      callbacks?.onAgentBusyChange?.(false);
-      break;
-
-    case 'turn_paused': {
-      // Gap #7 Fix: Agent paused - keep busy but stop streaming
-      // Unlike complete, paused state can be resumed
-      const pausedEvent = event as TurnPausedEvent;
-      streamingStore.getState().setPaused(true, pausedEvent.reason);
-      break;
-    }
-
-    case 'content_refused':
-      callbacks?.onError?.('Content was refused due to policy violation');
-      streamingStore.getState().markComplete();
-      break;
-
     default:
       if (process.env.NODE_ENV === 'development') {
         console.debug('[StreamProcessor] Unhandled event type:', event.type);
@@ -373,5 +348,4 @@ export function resetAllStores(): void {
   getMessageStore().getState().reset();
   getStreamingStore().getState().reset();
   getApprovalStore().getState().reset();
-  getEventCorrelationStore().getState().reset();
 }

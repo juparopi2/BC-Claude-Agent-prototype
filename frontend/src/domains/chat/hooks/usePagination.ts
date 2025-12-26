@@ -9,7 +9,7 @@
 
 import { useState, useCallback, useMemo } from 'react';
 import type { Message } from '@bc-agent/shared';
-import { api } from '@/lib/services/api';
+import { getApiClient } from '@/lib/services/api';
 import { getMessageStore } from '../stores/messageStore';
 
 /**
@@ -119,13 +119,13 @@ export function usePagination(
         : undefined;
 
       // Fetch older messages
-      const result = await api.getMessages(sessionId, {
+      const result = await getApiClient().getMessages(sessionId, {
         limit: pageSize,
         before: beforeCursor,
       });
 
       if (!result.success) {
-        setError(result.error || 'Failed to load messages');
+        setError(result.error?.message || 'Failed to load messages');
         return;
       }
 

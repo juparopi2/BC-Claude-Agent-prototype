@@ -14,6 +14,7 @@ import {
   getMessageStore,
   type MessageState,
 } from '../stores/messageStore';
+import { sortMessages } from '../utils/messageSort';
 
 /**
  * Return type for useMessages hook
@@ -29,44 +30,6 @@ export interface UseMessagesReturn {
   confirmOptimistic: (tempId: string, confirmed: Message) => void;
   /** Remove an optimistic message (e.g., on error) */
   removeOptimistic: (tempId: string) => void;
-}
-
-/**
- * Extended message type for sorting.
- */
-type SortableMessage = Message & {
-  eventIndex?: number;
-  blockIndex?: number;
-};
-
-/**
- * Sort messages by sequence_number, with fallback to timestamp.
- */
-function sortMessages(a: SortableMessage, b: SortableMessage): number {
-  const seqA = a.sequence_number;
-  const seqB = b.sequence_number;
-
-  // Both have valid sequence numbers - sort by sequence
-  if (seqA && seqA > 0 && seqB && seqB > 0) {
-    return seqA - seqB;
-  }
-
-  // One is persisted, one isn't - persisted first
-  if (seqA && seqA > 0) return -1;
-  if (seqB && seqB > 0) return 1;
-
-  // Both transient - use eventIndex/blockIndex
-  const indexA = a.blockIndex ?? a.eventIndex ?? -1;
-  const indexB = b.blockIndex ?? b.eventIndex ?? -1;
-
-  if (indexA >= 0 && indexB >= 0 && indexA !== indexB) {
-    return indexA - indexB;
-  }
-
-  // Fallback: timestamp
-  const timeA = new Date(a.created_at).getTime();
-  const timeB = new Date(b.created_at).getTime();
-  return timeA - timeB;
 }
 
 /**

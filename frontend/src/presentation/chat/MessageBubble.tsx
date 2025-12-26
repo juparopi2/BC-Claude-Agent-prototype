@@ -11,7 +11,8 @@
 
 import { ThinkingBlock } from './ThinkingBlock';
 import { MarkdownRenderer } from './MarkdownRenderer';
-import { isThinkingMessage, isStandardMessage, isToolResultMessage, type Message } from '@bc-agent/shared';
+import { PersistenceIndicator } from './PersistenceIndicator';
+import { isThinkingMessage, isStandardMessage, isToolResultMessage, type Message, type PersistenceState } from '@bc-agent/shared';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Bot } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -37,6 +38,8 @@ interface MessageBubbleProps {
   citationFileMap?: CitationFileMap;
   /** Callback when a citation is clicked */
   onCitationOpen?: (fileId: string) => void;
+  /** Persistence state for showing save indicator (Gap #2) */
+  persistenceState?: PersistenceState;
 }
 
 export default function MessageBubble({
@@ -44,6 +47,7 @@ export default function MessageBubble({
   userInitials = 'U',
   citationFileMap,
   onCitationOpen,
+  persistenceState,
 }: MessageBubbleProps) {
 
   // Handle thinking messages with unified ThinkingBlock component
@@ -109,17 +113,23 @@ export default function MessageBubble({
           />
         </div>
 
-        {/* Token usage display for assistant messages */}
-        {!isUser && message.token_usage && (
-          <div className="flex items-center gap-2 px-2 text-xs text-muted-foreground">
+        {/* Metadata row: token usage (assistant) or persistence state (user) */}
+        <div className="flex items-center gap-2 px-2 text-xs text-muted-foreground">
+          {/* Token usage display for assistant messages */}
+          {!isUser && message.token_usage && (
             <span>
               {formatTokenCount(
                 message.token_usage.input_tokens + message.token_usage.output_tokens
               )}{' '}
               Tokens
             </span>
-          </div>
-        )}
+          )}
+
+          {/* Persistence indicator for user messages (Gap #2) */}
+          {isUser && persistenceState && (
+            <PersistenceIndicator state={persistenceState} />
+          )}
+        </div>
       </div>
     </div>
   );

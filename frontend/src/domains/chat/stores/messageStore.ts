@@ -10,18 +10,11 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import type { Message } from '@bc-agent/shared';
+import { sortMessages } from '../utils/messageSort';
 
 // ============================================================================
 // Types
 // ============================================================================
-
-/**
- * Extended message type for sorting that includes transient event properties.
- */
-type SortableMessage = Message & {
-  eventIndex?: number;
-  blockIndex?: number;
-};
 
 export interface MessageState {
   /** Persisted messages from backend */
@@ -48,46 +41,6 @@ export interface MessageActions {
 }
 
 export type MessageStore = MessageState & MessageActions;
-
-// ============================================================================
-// Sorting Utility
-// ============================================================================
-
-/**
- * Sort messages by sequence_number, with fallback to timestamp.
- *
- * Rules:
- * 1. Persisted messages (sequence_number > 0) sorted by sequence_number
- * 2. Persisted comes before transient (no sequence_number)
- * 3. Transient messages sorted by eventIndex/blockIndex if available
- * 4. Fallback to timestamp
- */
-function sortMessages(a: SortableMessage, b: SortableMessage): number {
-  const seqA = a.sequence_number;
-  const seqB = b.sequence_number;
-
-  // State 1: Both have valid sequence numbers - sort by sequence
-  if (seqA && seqA > 0 && seqB && seqB > 0) {
-    return seqA - seqB;
-  }
-
-  // State 2: One is persisted, one isn't - persisted first
-  if (seqA && seqA > 0) return -1;
-  if (seqB && seqB > 0) return 1;
-
-  // State 3: Both transient - use eventIndex/blockIndex
-  const indexA = a.blockIndex ?? a.eventIndex ?? -1;
-  const indexB = b.blockIndex ?? b.eventIndex ?? -1;
-
-  if (indexA >= 0 && indexB >= 0 && indexA !== indexB) {
-    return indexA - indexB;
-  }
-
-  // Fallback: timestamp
-  const timeA = new Date(a.created_at).getTime();
-  const timeB = new Date(b.created_at).getTime();
-  return timeA - timeB;
-}
 
 // ============================================================================
 // Initial State

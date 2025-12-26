@@ -982,8 +982,8 @@ describe('StreamProcessor', () => {
       });
     });
 
-    describe('turn_paused', () => {
-      it('should mark streaming complete but NOT change busy state', () => {
+    describe('turn_paused (Gap #7 Fix)', () => {
+      it('should set paused state without marking complete', () => {
         const chunkEvent: MessageChunkEvent = {
           type: 'message_chunk',
           eventId: 'evt-1',
@@ -1005,9 +1005,30 @@ describe('StreamProcessor', () => {
         };
         processAgentEvent(pausedEvent, callbacks);
 
-        expect(getStreamingStore().getState().isComplete).toBe(true);
+        const state = getStreamingStore().getState();
+        // Gap #7: turn_paused sets isPaused, NOT isComplete
+        expect(state.isPaused).toBe(true);
+        expect(state.isComplete).toBe(false);
+        expect(state.isStreaming).toBe(false);
         // Note: turn_paused does NOT call onAgentBusyChange
         expect(callbacks.onAgentBusyChange).not.toHaveBeenCalled();
+      });
+
+      it('should capture pause reason from event', () => {
+        const pausedEvent = {
+          type: 'turn_paused' as const,
+          eventId: 'evt-paused',
+          sessionId: 'session-1',
+          messageId: 'msg-1',
+          reason: 'waiting_for_approval',
+          timestamp: now(),
+          persistenceState: 'persisted' as const,
+        };
+        processAgentEvent(pausedEvent as AgentEvent, callbacks);
+
+        const state = getStreamingStore().getState();
+        expect(state.isPaused).toBe(true);
+        expect(state.pauseReason).toBe('waiting_for_approval');
       });
     });
 

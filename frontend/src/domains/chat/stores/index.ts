@@ -38,3 +38,14 @@ export {
   type ApprovalActions,
   type ApprovalStore,
 } from './approvalStore';
+
+// Event Correlation Store (Gap #3 Fix)
+export {
+  getEventCorrelationStore,
+  useEventCorrelationStore,
+  resetEventCorrelationStore,
+  type EventCorrelation,
+  type EventCorrelationState,
+  type EventCorrelationActions,
+  type EventCorrelationStore,
+} from './eventCorrelationStore';

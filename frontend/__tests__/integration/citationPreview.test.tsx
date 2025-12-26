@@ -27,7 +27,7 @@ vi.mock('@/lib/stores/authStore', () => ({
   selectUserInitials: vi.fn(),
 }));
 
-// Store mock state for domain stores
+// Store mock state for domain hooks
 let mockMessages: StandardMessage[] = [];
 let mockStreamingState = {
   isStreaming: false,
@@ -35,20 +35,23 @@ let mockStreamingState = {
   accumulatedThinking: '',
 };
 
-// Mock new domain stores
-vi.mock('@/src/domains/chat/stores', () => ({
-  useMessageStore: vi.fn((selector) => {
-    const state = {
-      messages: mockMessages,
-      optimisticMessages: new Map(),
-    };
-    return selector(state);
+// Mock domain hooks (barrel export) - ChatContainer uses useMessages/useStreaming from @/src/domains/chat
+vi.mock('@/src/domains/chat', () => ({
+  useMessages: () => ({
+    messages: mockMessages,
+    isEmpty: mockMessages.length === 0,
+    addOptimistic: vi.fn(),
+    confirmOptimistic: vi.fn(),
+    removeOptimistic: vi.fn(),
   }),
-  useStreamingStore: vi.fn((selector) => selector(mockStreamingState)),
-  getSortedMessages: (state: { messages: StandardMessage[]; optimisticMessages: Map<string, StandardMessage> }) =>
-    [...state.messages, ...Array.from(state.optimisticMessages.values())].sort((a, b) =>
-      (a.sequence_number || 0) - (b.sequence_number || 0)
-    ),
+  useStreaming: () => ({
+    isStreaming: mockStreamingState.isStreaming,
+    isComplete: false,
+    content: mockStreamingState.accumulatedContent,
+    thinking: mockStreamingState.accumulatedThinking,
+    thinkingBlocks: new Map<number, string>(),
+    capturedThinking: null,
+  }),
 }));
 
 describe('Citation to Preview flow', () => {

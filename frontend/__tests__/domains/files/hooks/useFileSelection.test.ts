@@ -8,25 +8,10 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import type { ParsedFile } from '@bc-agent/shared';
 import { useFileSelection } from '@/src/domains/files/hooks/useFileSelection';
 import { resetSelectionStore } from '@/src/domains/files/stores/selectionStore';
 import { resetFileListStore, useFileListStore } from '@/src/domains/files/stores/fileListStore';
-
-// Test fixtures
-const createMockFile = (overrides: Partial<ParsedFile> = {}): ParsedFile => ({
-  id: `file-${Math.random().toString(36).substr(2, 9)}`,
-  name: 'test-file.txt',
-  mimeType: 'text/plain',
-  sizeBytes: 1024,
-  isFolder: false,
-  isFavorite: false,
-  parentFolderId: null,
-  createdAt: new Date().toISOString(),
-  updatedAt: new Date().toISOString(),
-  userId: 'user-1',
-  ...overrides,
-});
+import { createMockFile } from '@/__tests__/fixtures/FileFixture';
 
 describe('useFileSelection', () => {
   beforeEach(() => {

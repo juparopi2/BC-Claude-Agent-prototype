@@ -20,6 +20,7 @@ import {
   resetFolderTreeStore,
   useFolderTreeStore,
 } from '@/src/domains/files/stores/folderTreeStore';
+import { createMockFolder } from '../../fixtures/FileFixture';
 
 // Mock sonner toast
 vi.mock('sonner', () => ({
@@ -60,16 +61,11 @@ describe('CreateFolderDialog', () => {
       });
 
       // Mock successful folder creation
-      const newFolder = {
+      const newFolder = createMockFolder({
         id: 'new-folder-123',
         name: 'Root Folder',
-        isFolder: true,
         parentFolderId: null,
-        mimeType: 'application/folder',
-        sizeBytes: 0,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
+      });
 
       (getFileApiClient as Mock).mockReturnValue({
         createFolder: vi.fn().mockResolvedValue({
@@ -125,21 +121,16 @@ describe('CreateFolderDialog', () => {
       // Set currentFolderId to a parent folder
       act(() => {
         useFolderTreeStore.getState().setCurrentFolder(parentFolderId, [
-          { id: parentFolderId, name: 'Parent Folder' },
+          createMockFolder({ id: parentFolderId, name: 'Parent Folder' }),
         ]);
       });
 
       // Mock successful folder creation
-      const newFolder = {
+      const newFolder = createMockFolder({
         id: 'new-folder-456',
         name: 'Nested Folder',
-        isFolder: true,
         parentFolderId: parentFolderId,
-        mimeType: 'application/folder',
-        sizeBytes: 0,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
+      });
 
       (getFileApiClient as Mock).mockReturnValue({
         createFolder: vi.fn().mockResolvedValue({

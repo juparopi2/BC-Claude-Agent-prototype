@@ -589,19 +589,24 @@ interface ContentRefusedEvent extends BaseAgentEvent {
 
 ## Flujos de Eventos Comunes
 
+> **Nota**: Todos los flujos comienzan con `session_start` (transient) que señala el inicio de un nuevo turno de conversación, seguido inmediatamente por `user_message_confirmed` que confirma la persistencia del mensaje del usuario.
+
 ### Flujo 1: Mensaje Simple
 
 ```
-1. user_message_confirmed
+1. session_start (transient)
    ↓
-2. message_chunk (repetido, transient)
+2. user_message_confirmed (persisted)
    ↓
-3. message (persisted)
+3. message_chunk (repetido, transient)
    ↓
-4. complete (terminal)
+4. message (persisted)
+   ↓
+5. complete (terminal)
 ```
 
 **Frontend**:
+- Ignorar `session_start` (uso interno de señalización)
 - Acumular chunks durante streaming
 - Al recibir `message`, reemplazar acumulador con mensaje final
 - Al recibir `complete`, habilitar input
@@ -611,19 +616,21 @@ interface ContentRefusedEvent extends BaseAgentEvent {
 ### Flujo 2: Con Ejecución de Herramienta
 
 ```
-1. user_message_confirmed
+1. session_start (transient)
    ↓
-2. message_chunk (texto previo)
+2. user_message_confirmed (persisted)
    ↓
-3. tool_use
+3. message_chunk (texto previo)
    ↓
-4. tool_result
+4. tool_use (persisted)
    ↓
-5. message_chunk (continuación)
+5. tool_result (persisted)
    ↓
-6. message (persisted)
+6. message_chunk (continuación)
    ↓
-7. complete (terminal)
+7. message (persisted)
+   ↓
+8. complete (terminal)
 ```
 
 **Frontend**:
@@ -636,17 +643,19 @@ interface ContentRefusedEvent extends BaseAgentEvent {
 ### Flujo 3: Con Extended Thinking
 
 ```
-1. user_message_confirmed
+1. session_start (transient)
    ↓
-2. thinking_chunk (repetido, transient)
+2. user_message_confirmed (persisted)
    ↓
-3. thinking_complete
+3. thinking_chunk (repetido, transient)
    ↓
-4. message_chunk (repetido, transient)
+4. thinking_complete (persisted)
    ↓
-5. message (persisted)
+5. message_chunk (repetido, transient)
    ↓
-6. complete (terminal)
+6. message (persisted)
+   ↓
+7. complete (terminal)
 ```
 
 **Frontend**:
@@ -660,24 +669,26 @@ interface ContentRefusedEvent extends BaseAgentEvent {
 ### Flujo 4: Con Aprobación Humana
 
 ```
-1. user_message_confirmed
+1. session_start (transient)
    ↓
-2. message_chunk
+2. user_message_confirmed (persisted)
    ↓
-3. tool_use
+3. message_chunk
    ↓
-4. approval_requested
+4. tool_use (persisted)
+   ↓
+5. approval_requested (persisted)
    [PAUSA - Esperando usuario]
    ↓
-5. approval_resolved (usuario respondió)
+6. approval_resolved (persisted, usuario respondió)
    ↓
-6. tool_result
+7. tool_result (persisted)
    ↓
-7. message_chunk (continuación)
+8. message_chunk (continuación)
    ↓
-8. message (persisted)
+9. message (persisted)
    ↓
-9. complete (terminal)
+10. complete (terminal)
 ```
 
 **Frontend**:

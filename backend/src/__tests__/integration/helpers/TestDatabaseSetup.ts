@@ -52,17 +52,24 @@ let isRedisClientInitialized = false;
 export async function initRedisForTests(): Promise<void> {
   // FIRST: Close any existing Redis connection
   // This is critical because the .env file may have already caused a connection
-  // to Azure Redis, but tests need to use local Docker Redis (localhost:6399)
+  // to a different Redis instance
   try {
     await closeRedis();
   } catch {
     // Ignore errors - connection might not exist yet
   }
 
-  // Override environment variables to use local Docker Redis
+  // Override environment variables to use test Redis configuration
+  // Supports both local Docker Redis and Azure Redis with TLS
   process.env.REDIS_HOST = REDIS_TEST_CONFIG.host;
   process.env.REDIS_PORT = String(REDIS_TEST_CONFIG.port);
-  process.env.REDIS_PASSWORD = ''; // Docker Redis has no password
+
+  // Only set password if it exists in test config (Azure Redis needs password)
+  if (REDIS_TEST_CONFIG.password) {
+    process.env.REDIS_PASSWORD = REDIS_TEST_CONFIG.password;
+  } else {
+    process.env.REDIS_PASSWORD = ''; // Local Docker Redis has no password
+  }
 
   // Clear connection string to force use of individual parameters
   delete process.env.REDIS_CONNECTION_STRING;

@@ -25,6 +25,7 @@ import {
 import { server } from '../../../vitest.setup';
 import { mockFiles } from '../../mocks/handlers';
 import { http, HttpResponse } from 'msw';
+import { createMockFolder } from '../../fixtures/FileFixture';
 
 const API_URL = 'http://localhost:3002';
 
@@ -86,7 +87,7 @@ describe('FileExplorer', () => {
     });
 
     // Reset UI preferences mock
-    (useUIPreferencesStore as Mock).mockImplementation((selector) => {
+    (useUIPreferencesStore as unknown as Mock).mockImplementation((selector) => {
       const state = {
         isFileSidebarVisible: true,
         setFileSidebarVisible: vi.fn(),
@@ -207,7 +208,7 @@ describe('FileExplorer', () => {
       // Navigate to folder by updating folderTreeStore
       act(() => {
         useFolderTreeStore.getState().setCurrentFolder(folderId, [
-          { id: folderId, name: 'Test Folder' },
+          createMockFolder({ id: folderId, name: 'Test Folder' }),
         ]);
       });
 
@@ -229,7 +230,7 @@ describe('FileExplorer', () => {
       // Start in a folder
       act(() => {
         useFolderTreeStore.getState().setCurrentFolder(folderId, [
-          { id: folderId, name: 'Test Folder' },
+          createMockFolder({ id: folderId, name: 'Test Folder' }),
         ]);
         useFileListStore.getState().setFiles([], 0, false);
       });
@@ -301,7 +302,7 @@ describe('FileExplorer', () => {
       // Navigate to folder 1
       act(() => {
         useFolderTreeStore.getState().setCurrentFolder(folder1, [
-          { id: folder1, name: 'Folder 1' },
+          createMockFolder({ id: folder1, name: 'Folder 1' }),
         ]);
       });
       rerender(<FileExplorer />);
@@ -309,7 +310,7 @@ describe('FileExplorer', () => {
       // Immediately navigate to folder 2
       act(() => {
         useFolderTreeStore.getState().setCurrentFolder(folder2, [
-          { id: folder2, name: 'Folder 2' },
+          createMockFolder({ id: folder2, name: 'Folder 2' }),
         ]);
       });
       rerender(<FileExplorer />);
@@ -335,7 +336,7 @@ describe('FileExplorer', () => {
 
     it('should render full layout with sidebar by default', () => {
       // Ensure sidebar is visible via mock
-      (useUIPreferencesStore as Mock).mockImplementation((selector) => {
+      (useUIPreferencesStore as unknown as Mock).mockImplementation((selector) => {
         const state = {
           isFileSidebarVisible: true,
           setFileSidebarVisible: vi.fn(),
@@ -351,7 +352,7 @@ describe('FileExplorer', () => {
 
     it('should hide sidebar when isSidebarVisible is false', () => {
       // Hide sidebar via mock
-      (useUIPreferencesStore as Mock).mockImplementation((selector) => {
+      (useUIPreferencesStore as unknown as Mock).mockImplementation((selector) => {
         const state = {
           isFileSidebarVisible: false,
           setFileSidebarVisible: vi.fn(),
@@ -407,7 +408,7 @@ describe('FileExplorer', () => {
       // Set current folder
       act(() => {
         useFolderTreeStore.getState().setCurrentFolder(testFolderId, [
-          { id: testFolderId, name: 'Test Folder' },
+          createMockFolder({ id: testFolderId, name: 'Test Folder' }),
         ]);
       });
 

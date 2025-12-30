@@ -21,6 +21,7 @@ import type {
   ToolResultEvent,
   ErrorEvent,
   UserMessageConfirmedEvent,
+  StopReason,
 } from '@bc-agent/shared';
 import type { IAgentOrchestrator, ExecuteStreamingOptions } from './types';
 import { getMessageQueue } from '@/infrastructure/queue/MessageQueue';
@@ -45,8 +46,8 @@ export interface FakeScenario {
   error?: Error | string;
   /** Delay between events in ms */
   delayMs?: number;
-  /** Stop reason */
-  stopReason?: 'end_turn' | 'tool_use' | 'max_tokens';
+  /** Stop reason for the scenario (defaults to 'end_turn') */
+  stopReason?: StopReason;
   /** Enable persistence to database (default: true for E2E tests) */
   enablePersistence?: boolean;
 }
@@ -354,13 +355,16 @@ export class FakeAgentOrchestrator implements IAgentOrchestrator {
       'tool_use': 'success',
       'stop_sequence': 'success',
     };
-    const normalizedReason = stopReasonToNormalized[this.scenario.stopReason ?? 'end_turn'] ?? 'success';
+    const originalStopReason = this.scenario.stopReason ?? 'end_turn';
+    const normalizedReason = stopReasonToNormalized[originalStopReason] ?? 'success';
 
-    // Emit complete event with normalized reason
+    // Emit complete event with both original stopReason and normalized reason
+    // This matches the real AgentOrchestrator behavior (AgentOrchestrator.ts lines 291-304)
     const completeEvent: CompleteEvent = {
       ...createBaseEvent(),
       type: 'complete',
-      reason: normalizedReason,
+      stopReason: originalStopReason, // Original provider-specific reason
+      reason: normalizedReason,        // Normalized canonical reason
     };
     emit(completeEvent);
 

@@ -7,11 +7,30 @@
  * @module @bc-agent/shared/types/agent
  */
 
-// Import native SDK types (source of truth)
-import type { StopReason } from '@anthropic-ai/sdk/resources/messages';
-
-// Re-export for consumers
-export type { StopReason };
+/**
+ * Provider-agnostic stop reason.
+ * Covers all possible reasons why an LLM stopped generating.
+ *
+ * Mappings:
+ * - Anthropic: end_turn, max_tokens, tool_use, stop_sequence, pause_turn, refusal
+ * - OpenAI: stop, length, tool_calls, content_filter
+ */
+export type StopReason =
+  // Natural completions
+  | 'end_turn'       // Anthropic: finished naturally
+  | 'stop'           // OpenAI: finished naturally
+  // Token limits
+  | 'max_tokens'     // Anthropic: hit token limit
+  | 'length'         // OpenAI: hit token limit
+  // Tool usage
+  | 'tool_use'       // Anthropic: wants to use tool
+  | 'tool_calls'     // OpenAI: wants to use tool
+  // Content control
+  | 'stop_sequence'  // Hit custom stop sequence
+  | 'content_filter' // OpenAI: content filtered
+  | 'refusal'        // Anthropic: policy violation
+  // Agentic
+  | 'pause_turn';    // Anthropic: long turn paused
 
 /**
  * Agent Event Types
@@ -315,8 +334,13 @@ export interface CitedFile {
  */
 export interface CompleteEvent extends BaseAgentEvent {
   type: 'complete';
-  /** Completion reason */
+  /** Completion reason (normalized, provider-agnostic) */
   reason: 'success' | 'error' | 'max_turns' | 'user_cancelled';
+  /**
+   * Original provider-specific stop reason (e.g., 'end_turn', 'max_tokens' for Anthropic).
+   * Used for debugging and provider-specific handling.
+   */
+  stopReason?: string;
   /**
    * Files that were used/cited during agent execution.
    * Frontend uses this to enable clickable citations after streaming completes.

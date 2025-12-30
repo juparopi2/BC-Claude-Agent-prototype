@@ -23,10 +23,12 @@ import { createClient } from 'redis';
 const envPath = path.resolve(__dirname, '../../../.env');
 config({ path: envPath });
 
-// Test Redis configuration (Docker container on port 6399)
+// Test Redis configuration (Docker container on port 6399 or Azure Redis)
 const REDIS_TEST_CONFIG = {
   host: process.env.REDIS_TEST_HOST || 'localhost',
   port: parseInt(process.env.REDIS_TEST_PORT || '6399', 10),
+  password: process.env.REDIS_TEST_PASSWORD || undefined,
+  tls: process.env.REDIS_TEST_TLS === 'true',
 };
 
 /**
@@ -49,7 +51,9 @@ export async function setup(): Promise<void> {
     socket: {
       host: REDIS_TEST_CONFIG.host,
       port: REDIS_TEST_CONFIG.port,
+      tls: REDIS_TEST_CONFIG.tls,
     },
+    password: REDIS_TEST_CONFIG.password,
   });
 
   try {

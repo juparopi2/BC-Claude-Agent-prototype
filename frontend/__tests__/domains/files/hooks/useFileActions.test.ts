@@ -13,40 +13,13 @@ import { useFileActions } from '@/src/domains/files/hooks/useFileActions';
 import { resetFileListStore, useFileListStore } from '@/src/domains/files/stores/fileListStore';
 import { resetFolderTreeStore, useFolderTreeStore } from '@/src/domains/files/stores/folderTreeStore';
 import { getFileApiClient, resetFileApiClient } from '@/src/infrastructure/api';
+import { createMockFile, createMockFolder } from '@/__tests__/fixtures/FileFixture';
 
 // Mock the file API client
 vi.mock('@/src/infrastructure/api', () => ({
   getFileApiClient: vi.fn(),
   resetFileApiClient: vi.fn(),
 }));
-
-// Test fixtures
-const createMockFile = (overrides: Partial<ParsedFile> = {}): ParsedFile => ({
-  id: `file-${Math.random().toString(36).substr(2, 9)}`,
-  name: 'test-file.txt',
-  mimeType: 'text/plain',
-  sizeBytes: 1024,
-  isFolder: false,
-  isFavorite: false,
-  parentFolderId: null,
-  createdAt: new Date().toISOString(),
-  updatedAt: new Date().toISOString(),
-  userId: 'user-1',
-  processingStatus: 'completed',
-  embeddingStatus: 'completed',
-  hasExtractedText: false,
-  blobPath: null,
-  ...overrides,
-});
-
-const createMockFolder = (overrides: Partial<ParsedFile> = {}): ParsedFile =>
-  createMockFile({
-    name: 'test-folder',
-    mimeType: 'application/folder',
-    sizeBytes: 0,
-    isFolder: true,
-    ...overrides,
-  });
 
 // Mock API client
 const mockFileApi = {
@@ -329,7 +302,7 @@ describe('useFileActions', () => {
         renamed = await result.current.renameFile('file-1', 'new-name.txt');
       });
 
-      expect(renamed?.name).toBe('new-name.txt');
+      expect((renamed as ParsedFile | null)?.name).toBe('new-name.txt');
       expect(mockFileApi.updateFile).toHaveBeenCalledWith('file-1', { name: 'new-name.txt' });
     });
 

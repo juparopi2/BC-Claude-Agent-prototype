@@ -8,10 +8,13 @@
  */
 
 import dotenv from 'dotenv';
+import path from 'path';
 import { z } from 'zod';
 
-// Load .env file (override: false preserves existing env vars for testing)
-dotenv.config({ override: false });
+// Load .env file with explicit path to ensure it works from any CWD
+// This is critical for test workers which may have different working directories
+const envPath = path.resolve(__dirname, '../../../.env');
+dotenv.config({ path: envPath, override: false });
 
 /**
  * Environment variables schema for validation

@@ -22,7 +22,7 @@ function createMessage(overrides: Partial<SortableMessage> = {}): SortableMessag
     session_id: 'test-session',
     role: 'user',
     content: 'Test message',
-    sequence_number: null,
+    sequence_number: undefined,
     created_at: new Date().toISOString(),
     ...overrides,
   } as SortableMessage;
@@ -78,7 +78,7 @@ describe('sortMessages', () => {
         created_at: '2024-01-01T01:00:00Z',
       });
       const transient = createMessage({
-        sequence_number: null,
+        sequence_number: undefined,
         created_at: '2024-01-01T00:00:00Z', // Earlier timestamp
       });
 
@@ -88,7 +88,7 @@ describe('sortMessages', () => {
 
     it('should place transient messages after persisted', () => {
       const transient = createMessage({
-        sequence_number: null,
+        sequence_number: undefined,
         created_at: '2024-01-01T00:00:00Z',
       });
       const persisted = createMessage({
@@ -104,12 +104,12 @@ describe('sortMessages', () => {
   describe('transient messages (no sequence_number)', () => {
     it('should sort by eventIndex when both have eventIndex', () => {
       const first = createMessage({
-        sequence_number: null,
+        sequence_number: undefined,
         eventIndex: 1,
         created_at: '2024-01-01T01:00:00Z',
       });
       const second = createMessage({
-        sequence_number: null,
+        sequence_number: undefined,
         eventIndex: 2,
         created_at: '2024-01-01T00:00:00Z', // Earlier timestamp
       });
@@ -120,12 +120,12 @@ describe('sortMessages', () => {
 
     it('should sort by blockIndex when both have blockIndex', () => {
       const first = createMessage({
-        sequence_number: null,
+        sequence_number: undefined,
         blockIndex: 0,
         created_at: '2024-01-01T01:00:00Z',
       });
       const second = createMessage({
-        sequence_number: null,
+        sequence_number: undefined,
         blockIndex: 1,
         created_at: '2024-01-01T00:00:00Z',
       });
@@ -136,12 +136,12 @@ describe('sortMessages', () => {
 
     it('should prefer blockIndex over eventIndex when both present', () => {
       const withBlock = createMessage({
-        sequence_number: null,
+        sequence_number: undefined,
         blockIndex: 2,
         eventIndex: 1, // Lower eventIndex but blockIndex takes precedence
       });
       const withEvent = createMessage({
-        sequence_number: null,
+        sequence_number: undefined,
         blockIndex: 1,
         eventIndex: 5,
       });
@@ -152,11 +152,11 @@ describe('sortMessages', () => {
 
     it('should fall back to timestamp when no eventIndex/blockIndex', () => {
       const earlier = createMessage({
-        sequence_number: null,
+        sequence_number: undefined,
         created_at: '2024-01-01T00:00:00Z',
       });
       const later = createMessage({
-        sequence_number: null,
+        sequence_number: undefined,
         created_at: '2024-01-01T01:00:00Z',
       });
 
@@ -166,12 +166,12 @@ describe('sortMessages', () => {
 
     it('should fall back to timestamp when eventIndex is -1', () => {
       const earlier = createMessage({
-        sequence_number: null,
+        sequence_number: undefined,
         eventIndex: -1,
         created_at: '2024-01-01T00:00:00Z',
       });
       const later = createMessage({
-        sequence_number: null,
+        sequence_number: undefined,
         eventIndex: -1,
         created_at: '2024-01-01T01:00:00Z',
       });
@@ -199,11 +199,11 @@ describe('sortMessages', () => {
 
     it('should handle undefined eventIndex/blockIndex', () => {
       const msg1 = createMessage({
-        sequence_number: null,
+        sequence_number: undefined,
         created_at: '2024-01-01T00:00:00Z',
       });
       const msg2 = createMessage({
-        sequence_number: null,
+        sequence_number: undefined,
         eventIndex: 0,
         created_at: '2024-01-01T01:00:00Z',
       });

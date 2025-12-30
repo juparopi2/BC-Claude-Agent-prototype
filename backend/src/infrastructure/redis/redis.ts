@@ -345,20 +345,36 @@ export function getRedisForBullMQ(): Redis {
 }
 
 /**
- * Eagerly initialized default Redis instance
+ * Singleton for lazy-initialized eager Redis client
+ */
+let _eagerRedisClient: Redis | null = null;
+
+/**
+ * Get eagerly-available Redis instance (lazy initialization)
  *
- * **New API:** Use this for direct import without initialization ceremony.
- * Automatically creates client with environment-based profile.
+ * **New API:** Use this for direct access without initialization ceremony.
+ * Automatically creates client with environment-based profile on first call.
  *
  * **Note:** Prefer initRedis()/getRedis() pattern in server.ts for
- * explicit initialization control. This export is for services that
+ * explicit initialization control. This function is for services that
  * need immediate Redis access.
  *
+ * **Why lazy?** To prevent Redis client creation at module import time,
+ * which would fail in test environments where .env is loaded later.
+ *
+ * @returns Redis client with default profile
+ *
  * @example
- * import { redis } from '@/infrastructure/redis/redis';
+ * import { getEagerRedis } from '@/infrastructure/redis/redis';
+ * const redis = getEagerRedis();
  * await redis.ping();
  */
-export const redis = createRedisClient(getDefaultProfile());
+export function getEagerRedis(): Redis {
+  if (!_eagerRedisClient) {
+    _eagerRedisClient = createRedisClient(getDefaultProfile());
+  }
+  return _eagerRedisClient;
+}
 
 /**
  * Create test-specific Redis instance

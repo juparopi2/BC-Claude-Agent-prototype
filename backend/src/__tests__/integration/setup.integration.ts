@@ -17,10 +17,13 @@ import { afterAll, beforeAll } from 'vitest';
 
 /**
  * Default Redis configuration for integration tests
+ * Supports both local Docker Redis and Azure Redis with TLS
  */
 export const REDIS_TEST_CONFIG = {
   host: process.env.REDIS_TEST_HOST || 'localhost',
   port: parseInt(process.env.REDIS_TEST_PORT || '6399', 10),
+  password: process.env.REDIS_TEST_PASSWORD || undefined,
+  tls: process.env.REDIS_TEST_TLS === 'true' ? {} : undefined,
   maxRetriesPerRequest: 3,
   retryStrategy: (times: number) => {
     if (times > 3) {

@@ -1,17 +1,30 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { EmbeddingService } from '../../../services/embeddings/EmbeddingService';
-import 'dotenv/config';
 
-// Only run if Azure OpenAI credentials are present
-const runIntegrationTests = 
-    process.env.AZURE_OPENAI_KEY && 
-    process.env.AZURE_OPENAI_ENDPOINT && 
-    process.env.AZURE_OPENAI_EMBEDDING_DEPLOYMENT;
+describe('EmbeddingService Integration', () => {
+    // Get singleton INSIDE describe block to ensure setupFiles have run
+    let embeddingService: EmbeddingService | null = null;
+    let skipTests = false;
 
-describe.skipIf(!runIntegrationTests)('EmbeddingService Integration', () => {
-    const embeddingService = EmbeddingService.getInstance();
+    beforeAll(() => {
+        // Skip if credentials not present
+        if (!process.env.AZURE_OPENAI_KEY ||
+            !process.env.AZURE_OPENAI_ENDPOINT ||
+            !process.env.AZURE_OPENAI_EMBEDDING_DEPLOYMENT ||
+            !process.env.REDIS_PASSWORD) {
+            skipTests = true;
+            console.log('Skipping EmbeddingService tests: missing Azure OpenAI or Redis credentials');
+            return;
+        }
+        embeddingService = EmbeddingService.getInstance();
+    });
 
     it('should generate real embeddings from Azure OpenAI', async () => {
+        if (skipTests || !embeddingService) {
+            console.log('Test skipped: missing credentials');
+            return;
+        }
+
         const text = 'This is a test sentence for embedding generation.';
         const result = await embeddingService.generateTextEmbedding(text, 'test-user');
 
@@ -23,6 +36,11 @@ describe.skipIf(!runIntegrationTests)('EmbeddingService Integration', () => {
     });
 
     it('should batch generate embeddings', async () => {
+        if (skipTests || !embeddingService) {
+            console.log('Test skipped: missing credentials');
+            return;
+        }
+
         const texts = [
             'First sentence.',
             'Second sentence represents a query.',

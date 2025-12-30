@@ -9,7 +9,6 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import type { ParsedFile } from '@bc-agent/shared';
 
 // Hooks
 import { useFiles } from '@/src/domains/files/hooks/useFiles';
@@ -25,28 +24,7 @@ import { useSelectionStore, resetSelectionStore } from '@/src/domains/files/stor
 import { useFolderTreeStore, resetFolderTreeStore } from '@/src/domains/files/stores/folderTreeStore';
 
 // Test fixtures
-const createMockFile = (overrides: Partial<ParsedFile> = {}): ParsedFile => ({
-  id: `file-${Math.random().toString(36).substr(2, 9)}`,
-  name: 'test-file.txt',
-  mimeType: 'text/plain',
-  sizeBytes: 1024,
-  isFolder: false,
-  isFavorite: false,
-  parentFolderId: null,
-  createdAt: new Date().toISOString(),
-  updatedAt: new Date().toISOString(),
-  userId: 'user-1',
-  ...overrides,
-});
-
-const createMockFolder = (overrides: Partial<ParsedFile> = {}): ParsedFile =>
-  createMockFile({
-    name: 'test-folder',
-    mimeType: 'application/folder',
-    sizeBytes: 0,
-    isFolder: true,
-    ...overrides,
-  });
+import { createMockFile, createMockFolder } from '@/__tests__/fixtures/FileFixture';
 
 describe('Files Domain Integration', () => {
   beforeEach(() => {

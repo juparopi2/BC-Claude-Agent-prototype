@@ -8,35 +8,11 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import type { ParsedFile } from '@bc-agent/shared';
 import {
   useFileListStore,
   resetFileListStore,
 } from '@/src/domains/files/stores/fileListStore';
-
-// Test fixtures
-const createMockFile = (overrides: Partial<ParsedFile> = {}): ParsedFile => ({
-  id: `file-${Math.random().toString(36).substr(2, 9)}`,
-  name: 'test-file.txt',
-  mimeType: 'text/plain',
-  sizeBytes: 1024,
-  isFolder: false,
-  isFavorite: false,
-  parentFolderId: null,
-  createdAt: new Date().toISOString(),
-  updatedAt: new Date().toISOString(),
-  userId: 'user-1',
-  ...overrides,
-});
-
-const createMockFolder = (overrides: Partial<ParsedFile> = {}): ParsedFile =>
-  createMockFile({
-    name: 'test-folder',
-    mimeType: 'application/folder',
-    sizeBytes: 0,
-    isFolder: true,
-    ...overrides,
-  });
+import { createMockFile, createMockFolder } from '@/__tests__/fixtures/FileFixture';
 
 describe('fileListStore', () => {
   beforeEach(() => {

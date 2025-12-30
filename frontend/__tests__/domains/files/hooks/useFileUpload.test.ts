@@ -11,8 +11,9 @@ import { renderHook, act } from '@testing-library/react';
 import { useFileUpload } from '@/src/domains/files/hooks/useFileUpload';
 import { resetUploadStore, useUploadStore } from '@/src/domains/files/stores/uploadStore';
 import { resetFileListStore } from '@/src/domains/files/stores/fileListStore';
+import { createMockParsedFile } from '@/__tests__/fixtures/FileFixture';
 
-// Test fixtures
+// Test fixtures - createMockFile is for browser File API objects
 const createMockFile = (name = 'test.txt', size = 1024): File => {
   return new File(['test content'], name, { type: 'text/plain' });
 };
@@ -160,18 +161,10 @@ describe('useFileUpload', () => {
         const { startUpload, completeUpload } = useUploadStore.getState();
         const itemId = useUploadStore.getState().queue[0].id;
         startUpload(itemId);
-        completeUpload(itemId, {
+        completeUpload(itemId, createMockParsedFile({
           id: 'server-id',
           name: 'test.txt',
-          mimeType: 'text/plain',
-          sizeBytes: 1024,
-          isFolder: false,
-          isFavorite: false,
-          parentFolderId: null,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          userId: 'user-1',
-        });
+        }));
       });
 
       expect(result.current.completedCount).toBe(1);

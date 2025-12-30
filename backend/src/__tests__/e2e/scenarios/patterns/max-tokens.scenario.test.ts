@@ -78,12 +78,17 @@ describe('E2E Scenario: Max Tokens Limit', () => {
   // ============================================================================
 
   describe('Event Ordering', () => {
-    it('should emit user_message_confirmed as first event', () => {
+    it('should emit session_start as first event, followed by user_message_confirmed', () => {
       expect(scenarioResult.error).toBeUndefined();
-      expect(scenarioResult.events.length).toBeGreaterThan(0);
+      expect(scenarioResult.events.length).toBeGreaterThan(1);
 
+      // session_start is always the first event (signals new turn)
       const firstEvent = scenarioResult.events[0];
-      expect(firstEvent?.type).toBe('user_message_confirmed');
+      expect(firstEvent?.type).toBe('session_start');
+
+      // user_message_confirmed is always the second event (confirms persistence)
+      const secondEvent = scenarioResult.events[1];
+      expect(secondEvent?.type).toBe('user_message_confirmed');
     });
 
     it('should emit complete as last event', () => {
@@ -99,8 +104,9 @@ describe('E2E Scenario: Max Tokens Limit', () => {
     it('should have valid event flow according to state machine', () => {
       const eventTypes = scenarioResult.events.map(e => e.type);
 
-      // Basic flow validation
-      expect(eventTypes[0]).toBe('user_message_confirmed');
+      // Basic flow validation: session_start → user_message_confirmed → ... → complete
+      expect(eventTypes[0]).toBe('session_start');
+      expect(eventTypes[1]).toBe('user_message_confirmed');
       expect(eventTypes[eventTypes.length - 1]).toBe('complete');
 
       // No invalid transitions
@@ -120,7 +126,8 @@ describe('E2E Scenario: Max Tokens Limit', () => {
 
       // CompleteEvent uses normalized 'reason' field (not Anthropic-specific 'stopReason')
       // 'max_tokens' (Anthropic) → 'max_turns' (normalized)
-      const reason = (completeEvent as { reason?: string })?.reason;
+      // Note: In AgentEvent, the full event is stored in 'data' property
+      const reason = (completeEvent?.data as { reason?: string })?.reason;
       expect(reason).toBe('max_turns');
     });
 
@@ -129,7 +136,8 @@ describe('E2E Scenario: Max Tokens Limit', () => {
       expect(completeEvent).toBeDefined();
 
       // Normalized: 'end_turn' (Anthropic) → 'success' (normalized)
-      const reason = (completeEvent as { reason?: string })?.reason;
+      // Note: In AgentEvent, the full event is stored in 'data' property
+      const reason = (completeEvent?.data as { reason?: string })?.reason;
       expect(reason).not.toBe('success');
     });
 
@@ -138,7 +146,8 @@ describe('E2E Scenario: Max Tokens Limit', () => {
       const completeEvent = scenarioResult.events.find(e => e.type === 'complete');
 
       // Normalized reason values (provider-agnostic)
-      const reason = (completeEvent as { reason?: string })?.reason;
+      // Note: In AgentEvent, the full event is stored in 'data' property
+      const reason = (completeEvent?.data as { reason?: string })?.reason;
 
       // When max_turns is reached, the response is incomplete
       // This is different from 'success' which means natural completion

@@ -1,8 +1,12 @@
 /**
  * @module __tests__/integration/domains/agent/streaming/GraphStreamProcessor.integration.test
  *
- * Integration tests for GraphStreamProcessor with REAL dependencies.
- * Tests complete flow scenarios with actual ThinkingAccumulator, ContentAccumulator, and ToolEventDeduplicator.
+ * Integration tests for GraphStreamProcessor with REAL ExecutionContext.
+ * Tests complete flow scenarios using the stateless architecture.
+ *
+ * ## Architecture Note
+ * GraphStreamProcessor is STATELESS - all mutable state lives in ExecutionContext.
+ * Each test creates a fresh ExecutionContext to ensure isolation.
  *
  * Coverage:
  * - Complete stream with thinking + content (2 tests)
@@ -12,11 +16,10 @@
  * - Edge cases (2 tests)
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
-import { GraphStreamProcessor } from '@domains/agent/streaming/GraphStreamProcessor';
-import { ThinkingAccumulator } from '@domains/agent/streaming/ThinkingAccumulator';
-import { ContentAccumulator } from '@domains/agent/streaming/ContentAccumulator';
-import { ToolEventDeduplicator } from '@domains/agent/tools/ToolEventDeduplicator';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { getGraphStreamProcessor } from '@domains/agent/streaming/GraphStreamProcessor';
+import { createExecutionContext, markToolSeen } from '@domains/agent/orchestration/ExecutionContext';
+import type { ExecutionContext } from '@domains/agent/orchestration/ExecutionContext';
 import type { INormalizedStreamEvent } from '@shared/providers/interfaces/INormalizedEvent';
 import type { ProcessedStreamEvent } from '@domains/agent/streaming/types';
 
@@ -59,28 +62,29 @@ async function collect<T>(gen: AsyncGenerator<T>): Promise<T[]> {
   return results;
 }
 
+/**
+ * Create a fresh ExecutionContext for testing.
+ */
+function createTestContext(options?: { enableThinking?: boolean }): ExecutionContext {
+  return createExecutionContext(
+    'test-session',
+    'test-user',
+    vi.fn(), // Mock callback
+    { enableThinking: options?.enableThinking ?? true }
+  );
+}
+
 // ============================================================================
 // Integration Tests
 // ============================================================================
 
 describe('GraphStreamProcessor Integration', () => {
-  let thinkingAccumulator: ThinkingAccumulator;
-  let contentAccumulator: ContentAccumulator;
-  let toolDeduplicator: ToolEventDeduplicator;
-  let processor: GraphStreamProcessor;
-
-  const context = { sessionId: 'test-session', userId: 'test-user' };
+  const processor = getGraphStreamProcessor();
+  let ctx: ExecutionContext;
 
   beforeEach(() => {
-    // Use REAL dependencies - NO MOCKS
-    thinkingAccumulator = new ThinkingAccumulator();
-    contentAccumulator = new ContentAccumulator();
-    toolDeduplicator = new ToolEventDeduplicator();
-    processor = new GraphStreamProcessor(
-      thinkingAccumulator,
-      contentAccumulator,
-      toolDeduplicator
-    );
+    // Create fresh ExecutionContext for each test (stateless pattern)
+    ctx = createTestContext();
   });
 
   // ==========================================================================
@@ -119,7 +123,7 @@ describe('GraphStreamProcessor Integration', () => {
 
       // Act: Process the stream
       const results = await collect(
-        processor.process(toAsyncIterable(events), context)
+        processor.process(toAsyncIterable(events), ctx)
       );
 
       // Assert: Verify event sequence
@@ -176,7 +180,7 @@ describe('GraphStreamProcessor Integration', () => {
 
       // Act
       const results = await collect(
-        processor.process(toAsyncIterable(events), context)
+        processor.process(toAsyncIterable(events), ctx)
       );
 
       // Assert: Verify chunks emitted correctly
@@ -225,7 +229,7 @@ describe('GraphStreamProcessor Integration', () => {
 
       // Act
       const results = await collect(
-        processor.process(toAsyncIterable(events), context)
+        processor.process(toAsyncIterable(events), ctx)
       );
 
       // Assert: Tool execution event emitted
@@ -241,22 +245,20 @@ describe('GraphStreamProcessor Integration', () => {
       expect((messageChunk as any).content).toBe('The weather is sunny.');
     });
 
-    it('should deduplicate tool events with same id', async () => {
-      // Arrange: Stream with duplicate tool calls (LangGraph can emit duplicates)
+    it('should deduplicate tool events with same id via ExecutionContext', async () => {
+      // Arrange: Pre-mark a tool as seen (simulating previous emission)
+      markToolSeen(ctx, 'toolu_123');
+
+      // Arrange: Stream with duplicate tool calls
       const events = [
         createEvent({
           type: 'tool_call',
-          toolCall: { id: 'toolu_123', name: 'test_tool', input: {} },
+          toolCall: { id: 'toolu_123', name: 'test_tool', input: {} }, // Already seen
           metadata: { blockIndex: 0, isStreaming: true, isFinal: false },
         }),
         createEvent({
           type: 'tool_call',
-          toolCall: { id: 'toolu_123', name: 'test_tool', input: {} }, // DUPLICATE
-          metadata: { blockIndex: 0, isStreaming: true, isFinal: false },
-        }),
-        createEvent({
-          type: 'tool_call',
-          toolCall: { id: 'toolu_456', name: 'another_tool', input: {} }, // DIFFERENT
+          toolCall: { id: 'toolu_456', name: 'another_tool', input: {} }, // New
           metadata: { blockIndex: 0, isStreaming: true, isFinal: false },
         }),
         createEvent({
@@ -267,22 +269,19 @@ describe('GraphStreamProcessor Integration', () => {
 
       // Act
       const results = await collect(
-        processor.process(toAsyncIterable(events), context)
+        processor.process(toAsyncIterable(events), ctx)
       );
 
-      // Assert: Only 2 tool executions (duplicate filtered out)
+      // Assert: Only 1 tool execution (duplicate filtered out)
       const toolExecs = results.filter((r) => r.type === 'tool_execution');
-      expect(toolExecs).toHaveLength(2);
+      expect(toolExecs).toHaveLength(1);
 
-      // Assert: Correct tools emitted
-      const toolIds = toolExecs.map((t: any) => t.execution.toolUseId);
-      expect(toolIds).toContain('toolu_123');
-      expect(toolIds).toContain('toolu_456');
+      // Assert: Correct tool emitted (only the new one)
+      expect((toolExecs[0] as any).execution.toolUseId).toBe('toolu_456');
 
-      // Assert: Deduplicator stats
-      const stats = toolDeduplicator.getStats();
-      expect(stats.totalTracked).toBe(2);
-      expect(stats.duplicatesPrevented).toBe(1);
+      // Assert: Context tracks both
+      expect(ctx.seenToolIds.has('toolu_123')).toBe(true);
+      // Note: toolu_456 is NOT in seenToolIds because GraphStreamProcessor only checks, doesn't mark
     });
   });
 
@@ -291,8 +290,9 @@ describe('GraphStreamProcessor Integration', () => {
   // ==========================================================================
 
   describe('multi-turn conversation simulation', () => {
-    it('should reset accumulators between streams', async () => {
-      // Arrange: First stream
+    it('should have isolated state between streams with fresh contexts', async () => {
+      // Arrange: First stream with first context
+      const ctx1 = createTestContext();
       const stream1 = [
         createEvent({
           type: 'reasoning_delta',
@@ -312,7 +312,7 @@ describe('GraphStreamProcessor Integration', () => {
 
       // Act: Process first stream
       const results1 = await collect(
-        processor.process(toAsyncIterable(stream1), context)
+        processor.process(toAsyncIterable(stream1), ctx1)
       );
 
       // Assert: First stream processed correctly
@@ -321,7 +321,8 @@ describe('GraphStreamProcessor Integration', () => {
       expect((thinking1 as any).content).toBe('First thought');
       expect((final1 as any).content).toBe('First response');
 
-      // Arrange: Second stream (new turn)
+      // Arrange: Second stream with FRESH context (new turn)
+      const ctx2 = createTestContext();
       const stream2 = [
         createEvent({
           type: 'reasoning_delta',
@@ -341,7 +342,7 @@ describe('GraphStreamProcessor Integration', () => {
 
       // Act: Process second stream
       const results2 = await collect(
-        processor.process(toAsyncIterable(stream2), context)
+        processor.process(toAsyncIterable(stream2), ctx2)
       );
 
       // Assert: Second stream has fresh data (not accumulated from first)
@@ -351,8 +352,9 @@ describe('GraphStreamProcessor Integration', () => {
       expect((final2 as any).content).toBe('Second response'); // NOT "First responseSecond response"
     });
 
-    it('should reset tool deduplicator between streams', async () => {
+    it('should have isolated tool tracking between streams with fresh contexts', async () => {
       // Arrange: First stream with tool
+      const ctx1 = createTestContext();
       const stream1 = [
         createEvent({
           type: 'tool_call',
@@ -367,13 +369,12 @@ describe('GraphStreamProcessor Integration', () => {
 
       // Act: Process first stream
       const results1 = await collect(
-        processor.process(toAsyncIterable(stream1), context)
+        processor.process(toAsyncIterable(stream1), ctx1)
       );
-      expect(results1.filter((r) => r.type === 'tool_execution')).toHaveLength(
-        1
-      );
+      expect(results1.filter((r) => r.type === 'tool_execution')).toHaveLength(1);
 
-      // Arrange: Second stream with SAME tool id (should not be deduplicated across streams)
+      // Arrange: Second stream with SAME tool id but FRESH context
+      const ctx2 = createTestContext();
       const stream2 = [
         createEvent({
           type: 'tool_call',
@@ -388,18 +389,17 @@ describe('GraphStreamProcessor Integration', () => {
 
       // Act: Process second stream
       const results2 = await collect(
-        processor.process(toAsyncIterable(stream2), context)
+        processor.process(toAsyncIterable(stream2), ctx2)
       );
 
-      // Assert: Tool should be emitted again (deduplicator was reset)
-      expect(results2.filter((r) => r.type === 'tool_execution')).toHaveLength(
-        1
-      );
+      // Assert: Tool should be emitted again (fresh context = fresh seenToolIds)
+      expect(results2.filter((r) => r.type === 'tool_execution')).toHaveLength(1);
 
-      // Assert: Deduplicator stats only reflect second stream
-      const stats = toolDeduplicator.getStats();
-      expect(stats.totalTracked).toBe(1); // Only second stream
-      expect(stats.duplicatesPrevented).toBe(0); // No duplicates in second stream
+      // Assert: Each context has its own seenToolIds (isolation)
+      // Note: seenToolIds is not populated by GraphStreamProcessor.handleToolCall
+      // It only CHECKS isToolSeen, not marks. ToolExecutionProcessor marks.
+      expect(ctx1.seenToolIds.size).toBe(0);
+      expect(ctx2.seenToolIds.size).toBe(0);
     });
   });
 
@@ -433,7 +433,7 @@ describe('GraphStreamProcessor Integration', () => {
 
       // Act
       const results = await collect(
-        processor.process(toAsyncIterable(events), context)
+        processor.process(toAsyncIterable(events), ctx)
       );
 
       // Assert: Usage event emitted
@@ -460,7 +460,7 @@ describe('GraphStreamProcessor Integration', () => {
 
       // Act
       const results = await collect(
-        processor.process(toAsyncIterable(events), context)
+        processor.process(toAsyncIterable(events), ctx)
       );
 
       // Assert: Final response has correct stop reason
@@ -498,7 +498,7 @@ describe('GraphStreamProcessor Integration', () => {
 
       // Act
       const results = await collect(
-        processor.process(toAsyncIterable(events), context)
+        processor.process(toAsyncIterable(events), ctx)
       );
 
       // Assert: Thinking chunks emitted
@@ -547,7 +547,7 @@ describe('GraphStreamProcessor Integration', () => {
 
       // Act
       const results = await collect(
-        processor.process(toAsyncIterable(events), context)
+        processor.process(toAsyncIterable(events), ctx)
       );
 
       // Assert: All events processed in order

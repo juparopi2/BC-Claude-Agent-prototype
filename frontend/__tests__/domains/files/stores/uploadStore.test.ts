@@ -8,31 +8,17 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import type { ParsedFile } from '@bc-agent/shared';
 import {
   useUploadStore,
   resetUploadStore,
   type UploadItem,
 } from '@/src/domains/files/stores/uploadStore';
+import { createMockParsedFile } from '@/__tests__/fixtures/FileFixture';
 
-// Test fixtures
+// Test fixtures - createMockFile is for browser File API, not ParsedFile
 const createMockFile = (name = 'test.txt', size = 1024): File => {
   return new File(['test content'], name, { type: 'text/plain' });
 };
-
-const createMockParsedFile = (overrides: Partial<ParsedFile> = {}): ParsedFile => ({
-  id: `file-${Math.random().toString(36).substr(2, 9)}`,
-  name: 'test-file.txt',
-  mimeType: 'text/plain',
-  sizeBytes: 1024,
-  isFolder: false,
-  isFavorite: false,
-  parentFolderId: null,
-  createdAt: new Date().toISOString(),
-  updatedAt: new Date().toISOString(),
-  userId: 'user-1',
-  ...overrides,
-});
 
 describe('uploadStore', () => {
   beforeEach(() => {

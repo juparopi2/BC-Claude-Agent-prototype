@@ -149,4 +149,24 @@ export interface IMessageQueueDependencies {
    * Useful for testing with mocks.
    */
   vectorSearchService?: IVectorSearchServiceMinimal;
+
+  /**
+   * Queue name prefix for test isolation
+   *
+   * When running integration tests, multiple MessageQueue instances may create
+   * workers that listen on the same queue names in Redis. Even after close(),
+   * workers may still be active and process jobs from other tests.
+   *
+   * By providing a unique prefix (e.g., `test-${Date.now()}`), each test gets
+   * completely isolated queue names like "test-123--embedding-generation".
+   * Note: BullMQ doesn't allow ':' in queue names, so '--' is used as separator.
+   *
+   * @example
+   * // Test usage with isolated queues
+   * const queue = getMessageQueue({
+   *   queueNamePrefix: `test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+   *   embeddingService: mockEmbeddingService,
+   * });
+   */
+  queueNamePrefix?: string;
 }

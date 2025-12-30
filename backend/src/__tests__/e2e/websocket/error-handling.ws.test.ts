@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
-import { setupE2ETest } from '../setup.e2e';
+import { setupE2ETest, drainMessageQueue } from '../setup.e2e';
 import { createE2ETestClient, E2ETestClient } from '../helpers/E2ETestClient';
 import { TestSessionFactory } from '../../integration/helpers/TestSessionFactory';
 import { TEST_TIMEOUTS } from '../../integration/helpers/constants';
@@ -25,6 +25,7 @@ describe('E2E: WebSocket Error Handling', () => {
   });
 
   afterAll(async () => {
+    await drainMessageQueue();
     await factory.cleanup();
   });
 

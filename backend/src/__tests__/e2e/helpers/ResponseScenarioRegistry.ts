@@ -302,7 +302,8 @@ export class ResponseScenarioRegistry {
         }
 
         // ⭐ FILTER: Explicitly ignore specific known events that shouldn't be in the timeline
-        if (['session:joined', 'session:ready', 'session:error'].includes(eventType)) {
+        // session_start is a Socket.IO room event, not an agent response event
+        if (['session:joined', 'session:ready', 'session:error', 'session_start'].includes(eventType)) {
           continue;
         }
 

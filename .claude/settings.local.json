@@ -172,7 +172,8 @@
       "Bash(then echo \"❌ FOUND: app/test-socket/page.tsx\")",
       "Bash(else echo \"✅ DELETED: app/test-socket/page.tsx\")",
       "WebFetch(domain:www.dragonflydb.io)",
-      "WebFetch(domain:www.azure.cn)"
+      "WebFetch(domain:www.azure.cn)",
+      "Bash(docker exec:*)"
     ],
     "deny": [],
     "ask": []

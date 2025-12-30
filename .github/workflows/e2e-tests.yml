@@ -17,11 +17,19 @@ on:
   workflow_dispatch:
 
 env:
-  # Azure DEV environment resources
+  # Azure DEV environment resources (Database only - Redis uses service container)
   DATABASE_SERVER: sqlsrv-bcagent-dev.database.windows.net
   DATABASE_NAME: sqldb-bcagent-dev
-  REDIS_HOST: redis-bcagent-dev.redis.cache.windows.net
-  REDIS_PORT: 6380
+  # Redis - LOCAL (Service Container on port 6399)
+  REDIS_HOST: localhost
+  REDIS_PORT: 6399
+  REDIS_PASSWORD: ''
+  REDIS_TLS: 'false'
+  REDIS_TEST_HOST: localhost
+  REDIS_TEST_PORT: 6399
+  REDIS_TEST_PASSWORD: ''
+  REDIS_TEST_TLS: 'false'
+  # URLs
   BACKEND_URL: http://localhost:3002
   FRONTEND_URL: http://localhost:3000
 
@@ -29,6 +37,18 @@ jobs:
   e2e-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+
+    # Redis service container for E2E tests
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6399:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - name: Checkout code
@@ -39,6 +59,18 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
+
+      - name: Wait for Redis
+        run: |
+          echo "Waiting for Redis to be ready..."
+          for i in {1..30}; do
+            if redis-cli -h localhost -p 6399 ping 2>/dev/null | grep -q PONG; then
+              echo "Redis is ready!"
+              break
+            fi
+            echo "Attempt $i/30 - Redis not ready, waiting..."
+            sleep 1
+          done
 
       - name: Install dependencies
         run: npm ci
@@ -70,9 +102,15 @@ jobs:
           DATABASE_NAME: ${{ env.DATABASE_NAME }}
           DATABASE_USER: ${{ secrets.DATABASE_USER }}
           DATABASE_PASSWORD: ${{ secrets.DATABASE_PASSWORD }}
+          # Redis - Local service container
           REDIS_HOST: ${{ env.REDIS_HOST }}
           REDIS_PORT: ${{ env.REDIS_PORT }}
-          REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+          REDIS_PASSWORD: ${{ env.REDIS_PASSWORD }}
+          REDIS_TLS: ${{ env.REDIS_TLS }}
+          REDIS_TEST_HOST: ${{ env.REDIS_TEST_HOST }}
+          REDIS_TEST_PORT: ${{ env.REDIS_TEST_PORT }}
+          REDIS_TEST_PASSWORD: ${{ env.REDIS_TEST_PASSWORD }}
+          REDIS_TEST_TLS: ${{ env.REDIS_TEST_TLS }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
           ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
@@ -101,7 +139,7 @@ jobs:
           BACKEND_URL: ${{ env.BACKEND_URL }}
           REDIS_HOST: ${{ env.REDIS_HOST }}
           REDIS_PORT: ${{ env.REDIS_PORT }}
-          REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+          REDIS_PASSWORD: ${{ env.REDIS_PASSWORD }}
         run: |
           echo "Running E2E tests..."
           npm run test:e2e
@@ -132,6 +170,7 @@ jobs:
           npm run e2e:clean || true
 
   # Optional: Run E2E tests against deployed staging environment
+  # Note: Staging still uses Azure Redis for realistic testing
   e2e-staging:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
@@ -157,8 +196,9 @@ jobs:
       - name: Run E2E tests against staging
         env:
           BACKEND_URL: ${{ secrets.STAGING_BACKEND_URL }}
-          REDIS_HOST: ${{ env.REDIS_HOST }}
-          REDIS_PORT: ${{ env.REDIS_PORT }}
+          # Staging uses Azure Redis (production-like environment)
+          REDIS_HOST: redis-bcagent-dev.redis.cache.windows.net
+          REDIS_PORT: 6380
           REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
         run: |
           echo "Running E2E tests against staging environment..."

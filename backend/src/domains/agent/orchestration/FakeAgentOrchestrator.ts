@@ -11,7 +11,6 @@ import { v4 as uuidv4 } from 'uuid';
 import type {
   AgentEvent,
   AgentExecutionResult,
-  SessionStartEvent,
   MessageChunkEvent,
   MessageEvent,
   CompleteEvent,
@@ -163,16 +162,6 @@ export class FakeAgentOrchestrator implements IAgentOrchestrator {
         await new Promise((resolve) => setTimeout(resolve, delay));
       }
     };
-
-    // Emit session_start first (always)
-    const sessionStartEvent: SessionStartEvent = {
-      ...createBaseEvent(),
-      type: 'session_start',
-      sessionId,
-      userId: userId ?? 'fake-user',
-    };
-    emit(sessionStartEvent);
-    await wait();
 
     // Emit user_message_confirmed (always, before any other events)
     const userMessageEvent: UserMessageConfirmedEvent = {

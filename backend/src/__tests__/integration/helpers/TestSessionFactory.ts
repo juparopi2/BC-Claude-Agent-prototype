@@ -507,12 +507,17 @@ export class TestSessionFactory {
   async cleanup(redisClient?: ReturnType<typeof getRedisClient>): Promise<void> {
     const redis = redisClient || getRedisClient();
     if (!redis) {
-      throw new Error('Redis not initialized');
+      // In E2E tests, Redis may already be closed by setup.e2e.ts afterAll
+      // This is acceptable - session keys will expire naturally (TTL)
+      console.warn('[TestSessionFactory] Redis not available for cleanup - skipping session key cleanup');
+      // Continue with database cleanup (which doesn't need Redis)
     }
 
-    // Clean up Redis sessions
-    for (const key of this.createdRedisKeys) {
-      await redis.del(key);
+    // Clean up Redis sessions (if Redis is available)
+    if (redis) {
+      for (const key of this.createdRedisKeys) {
+        await redis.del(key);
+      }
     }
 
     // Clean up database in correct order (respecting foreign keys)

@@ -203,6 +203,7 @@ export class MessageQueue {
   private log: ILoggerMinimal;
   private embeddingServiceOverride?: IEmbeddingServiceMinimal;
   private vectorSearchServiceOverride?: IVectorSearchServiceMinimal;
+  private queueNamePrefix: string;
 
   /**
    * Private constructor with optional dependency injection
@@ -219,6 +220,8 @@ export class MessageQueue {
     // Store optional service overrides (for testing with mocks)
     this.embeddingServiceOverride = dependencies?.embeddingService;
     this.vectorSearchServiceOverride = dependencies?.vectorSearchService;
+    // Queue name prefix for test isolation (empty string for production)
+    this.queueNamePrefix = dependencies?.queueNamePrefix || '';
 
     // Create Redis connection for BullMQ (use injected or create default)
     if (dependencies?.redis) {
@@ -228,7 +231,8 @@ export class MessageQueue {
       this.redisConnection = new Redis({
         host: env.REDIS_HOST || 'localhost',
         port: env.REDIS_PORT || 6379,
-        password: env.REDIS_PASSWORD,
+        // Only include password if non-empty (empty string causes AUTH command which fails on Redis without auth)
+        ...(env.REDIS_PASSWORD ? { password: env.REDIS_PASSWORD } : {}),
         maxRetriesPerRequest: null, // Required for BullMQ
         lazyConnect: false, // Connect immediately
         enableReadyCheck: true,
@@ -444,13 +448,29 @@ export class MessageQueue {
   }
 
   /**
+   * Get prefixed queue name for test isolation
+   *
+   * In production, returns the base name unchanged.
+   * In tests with queueNamePrefix, returns "prefix:baseName".
+   *
+   * @param baseName - The base queue name from QueueName enum
+   * @returns The full queue name (with prefix if set)
+   */
+  private getQueueName(baseName: QueueName): string {
+    // Note: BullMQ doesn't allow ':' in queue names (reserved for Redis key namespacing)
+    return this.queueNamePrefix
+      ? `${this.queueNamePrefix}--${baseName}`
+      : baseName;
+  }
+
+  /**
    * Initialize all queues
    */
   private initializeQueues(): void {
     // Message Persistence Queue
     this.queues.set(
       QueueName.MESSAGE_PERSISTENCE,
-      new Queue(QueueName.MESSAGE_PERSISTENCE, {
+      new Queue(this.getQueueName(QueueName.MESSAGE_PERSISTENCE), {
         connection: this.getRedisConnectionConfig(),
         defaultJobOptions: {
           attempts: 3,
@@ -473,7 +493,7 @@ export class MessageQueue {
     // Tool Execution Queue
     this.queues.set(
       QueueName.TOOL_EXECUTION,
-      new Queue(QueueName.TOOL_EXECUTION, {
+      new Queue(this.getQueueName(QueueName.TOOL_EXECUTION), {
         connection: this.getRedisConnectionConfig(),
         defaultJobOptions: {
           attempts: 2,
@@ -488,7 +508,7 @@ export class MessageQueue {
     // Event Processing Queue
     this.queues.set(
       QueueName.EVENT_PROCESSING,
-      new Queue(QueueName.EVENT_PROCESSING, {
+      new Queue(this.getQueueName(QueueName.EVENT_PROCESSING), {
         connection: this.getRedisConnectionConfig(),
         defaultJobOptions: {
           attempts: 3,
@@ -503,7 +523,7 @@ export class MessageQueue {
     // Usage Aggregation Queue (low concurrency - batch processing)
     this.queues.set(
       QueueName.USAGE_AGGREGATION,
-      new Queue(QueueName.USAGE_AGGREGATION, {
+      new Queue(this.getQueueName(QueueName.USAGE_AGGREGATION), {
         connection: this.getRedisConnectionConfig(),
         defaultJobOptions: {
           attempts: 3,
@@ -526,7 +546,7 @@ export class MessageQueue {
     // File Processing Queue (limited concurrency for Azure DI API)
     this.queues.set(
       QueueName.FILE_PROCESSING,
-      new Queue(QueueName.FILE_PROCESSING, {
+      new Queue(this.getQueueName(QueueName.FILE_PROCESSING), {
         connection: this.getRedisConnectionConfig(),
         defaultJobOptions: {
           attempts: 2,  // External API calls - limited retries
@@ -549,7 +569,7 @@ export class MessageQueue {
     // File Chunking Queue (chunks text and prepares for embedding)
     this.queues.set(
       QueueName.FILE_CHUNKING,
-      new Queue(QueueName.FILE_CHUNKING, {
+      new Queue(this.getQueueName(QueueName.FILE_CHUNKING), {
         connection: this.getRedisConnectionConfig(),
         defaultJobOptions: {
           attempts: 2,  // Limited retries for chunking
@@ -572,7 +592,7 @@ export class MessageQueue {
     // Embedding Generation Queue
     this.queues.set(
       QueueName.EMBEDDING_GENERATION,
-      new Queue(QueueName.EMBEDDING_GENERATION, {
+      new Queue(this.getQueueName(QueueName.EMBEDDING_GENERATION), {
         connection: this.getRedisConnectionConfig(),
         defaultJobOptions: {
           attempts: 3,
@@ -605,7 +625,7 @@ export class MessageQueue {
     this.workers.set(
       QueueName.MESSAGE_PERSISTENCE,
       new Worker(
-        QueueName.MESSAGE_PERSISTENCE,
+        this.getQueueName(QueueName.MESSAGE_PERSISTENCE),
         async (job: Job<MessagePersistenceJob>) => {
           return this.processMessagePersistence(job);
         },
@@ -620,7 +640,7 @@ export class MessageQueue {
     this.workers.set(
       QueueName.TOOL_EXECUTION,
       new Worker(
-        QueueName.TOOL_EXECUTION,
+        this.getQueueName(QueueName.TOOL_EXECUTION),
         async (job: Job<ToolExecutionJob>) => {
           return this.processToolExecution(job);
         },
@@ -635,7 +655,7 @@ export class MessageQueue {
     this.workers.set(
       QueueName.EVENT_PROCESSING,
       new Worker(
-        QueueName.EVENT_PROCESSING,
+        this.getQueueName(QueueName.EVENT_PROCESSING),
         async (job: Job<EventProcessingJob>) => {
           return this.processEvent(job);
         },
@@ -650,7 +670,7 @@ export class MessageQueue {
     this.workers.set(
       QueueName.USAGE_AGGREGATION,
       new Worker(
-        QueueName.USAGE_AGGREGATION,
+        this.getQueueName(QueueName.USAGE_AGGREGATION),
         async (job: Job<UsageAggregationJob>) => {
           return this.processUsageAggregation(job);
         },
@@ -665,7 +685,7 @@ export class MessageQueue {
     this.workers.set(
       QueueName.FILE_PROCESSING,
       new Worker(
-        QueueName.FILE_PROCESSING,
+        this.getQueueName(QueueName.FILE_PROCESSING),
         async (job: Job<FileProcessingJob>) => {
           return this.processFileProcessingJob(job);
         },
@@ -680,7 +700,7 @@ export class MessageQueue {
     this.workers.set(
       QueueName.FILE_CHUNKING,
       new Worker(
-        QueueName.FILE_CHUNKING,
+        this.getQueueName(QueueName.FILE_CHUNKING),
         async (job: Job<FileChunkingJob>) => {
           return this.processFileChunkingJob(job);
         },
@@ -695,7 +715,7 @@ export class MessageQueue {
     this.workers.set(
       QueueName.EMBEDDING_GENERATION,
       new Worker(
-        QueueName.EMBEDDING_GENERATION,
+        this.getQueueName(QueueName.EMBEDDING_GENERATION),
         async (job: Job<EmbeddingGenerationJob>) => {
           return this.processEmbeddingGeneration(job);
         },
@@ -718,7 +738,8 @@ export class MessageQueue {
    */
   private setupEventListeners(): void {
     Object.values(QueueName).forEach((queueName) => {
-      const queueEvents = new QueueEvents(queueName, {
+      const prefixedName = this.getQueueName(queueName as QueueName);
+      const queueEvents = new QueueEvents(prefixedName, {
         connection: this.getRedisConnectionConfig(),
       });
 

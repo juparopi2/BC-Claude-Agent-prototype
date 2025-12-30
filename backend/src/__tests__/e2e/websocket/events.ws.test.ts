@@ -252,8 +252,13 @@ describe('E2E: WebSocket Agent Events', () => {
       const events = client.getReceivedEvents();
       const eventTypes = events.map(e => e.data?.type).filter(Boolean);
 
-      // Should start with user_message_confirmed
-      expect(eventTypes[0]).toBe('user_message_confirmed');
+      // According to backend contract (02-CONTRATO-BACKEND-FRONTEND.md):
+      // 1. session_start (signals new turn to frontend)
+      // 2. user_message_confirmed (after persistence)
+      // 3. chunks...
+      // 4. complete
+      expect(eventTypes[0]).toBe('session_start');
+      expect(eventTypes[1]).toBe('user_message_confirmed');
 
       // Should end with complete
       expect(eventTypes[eventTypes.length - 1]).toBe('complete');

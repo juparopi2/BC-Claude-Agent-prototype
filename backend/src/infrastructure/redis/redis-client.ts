@@ -57,7 +57,10 @@ export function createRedisClient(profile: RedisClientProfile = 'SESSION'): Redi
   const redisPort = process.env.REDIS_PORT
     ? parseInt(process.env.REDIS_PORT, 10)
     : env.REDIS_PORT;
-  const redisPassword = process.env.REDIS_PASSWORD || env.REDIS_PASSWORD;
+  // Check if REDIS_PASSWORD was explicitly set (including empty string for no-auth Docker Redis)
+  const redisPassword = process.env.REDIS_PASSWORD !== undefined
+    ? process.env.REDIS_PASSWORD
+    : env.REDIS_PASSWORD;
 
   // Validate required parameters
   if (!redisHost || !redisPort) {

@@ -13,7 +13,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
-import { setupE2ETest } from '../setup.e2e';
+import { setupE2ETest, drainMessageQueue } from '../setup.e2e';
 import {
   createE2ETestClient,
   createTestSessionFactory,
@@ -35,6 +35,7 @@ describe('E2E API: Sessions Endpoints', () => {
   });
 
   afterAll(async () => {
+    await drainMessageQueue();
     await factory.cleanup();
   });
 

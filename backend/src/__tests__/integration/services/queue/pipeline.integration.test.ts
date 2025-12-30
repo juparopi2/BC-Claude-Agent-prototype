@@ -50,6 +50,7 @@ describe('Embedding Generation Pipeline', () => {
   let testUser: any;
   let cleanupRedis: IORedis;
   let injectedRedis: IORedis | undefined;  // Track injected Redis for proper cleanup
+  let testQueuePrefix: string;  // Unique prefix for complete queue isolation
 
   beforeAll(async () => {
     // Ensure redis client initialized for SessionFactory (node-redis)
@@ -71,25 +72,31 @@ describe('Embedding Generation Pipeline', () => {
   let mockVectorSearchService: IVectorSearchServiceMinimal & { indexChunksBatch: ReturnType<typeof vi.fn> };
 
   beforeEach(async () => {
+    // ========================================================================
+    // CRITICAL: Generate unique queue prefix for complete test isolation
+    // This ensures workers from other tests cannot intercept our jobs.
+    // Each test gets its own queue namespace (e.g., "test-1735567890123-abc123:embedding-generation")
+    // ========================================================================
+    testQueuePrefix = `test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
     // Use TestSessionFactory to create required data
     factory = createTestSessionFactory();
     testUser = await factory.createTestUser(); // Use random email
 
-    // Reset singleton
+    // Reset singleton to ensure fresh instance with our prefix
     await __resetMessageQueue();
-    await clearRedisKeys(cleanupRedis, 'bull:*');
 
     // Create mock services with vi.fn() for assertions
     mockEmbeddingService = {
         generateTextEmbeddingsBatch: vi.fn().mockResolvedValue([
-            { embedding: [0.1, 0.2, 0.3], model: 'text-embedding-3-small' }, // Chunk 1
-            { embedding: [0.4, 0.5, 0.6], model: 'text-embedding-3-small' }  // Chunk 2
+            { embedding: [0.1, 0.2, 0.3], model: 'text-embedding-3-small' },
+            { embedding: [0.4, 0.5, 0.6], model: 'text-embedding-3-small' }
         ])
     };
 
     mockVectorSearchService = {
         indexChunksBatch: vi.fn().mockImplementation(async (chunks: unknown[]) => {
-            return chunks.map(() => factory.generateTestId());
+            return (chunks as any[]).map(() => factory.generateTestId());
         })
     };
 
@@ -115,12 +122,19 @@ describe('Embedding Generation Pipeline', () => {
         logger,
         embeddingService: mockEmbeddingService,
         vectorSearchService: mockVectorSearchService,
+        queueNamePrefix: testQueuePrefix,  // Ensures complete isolation from other tests
     });
     // Ensure MessageQueue connects
     await messageQueue.waitForReady();
 
-    // Initialize QueueEvents for verification
-    queueEvents = new QueueEvents(QueueName.EMBEDDING_GENERATION, {
+    // Verify mocks are injected (sanity check)
+    expect((messageQueue as any)['embeddingServiceOverride']).toBe(mockEmbeddingService);
+    expect((messageQueue as any)['vectorSearchServiceOverride']).toBe(mockVectorSearchService);
+
+    // Initialize QueueEvents for verification (must use same prefixed queue name)
+    // Note: BullMQ doesn't allow ':' in queue names, so we use '--' as separator
+    const prefixedQueueName = `${testQueuePrefix}--${QueueName.EMBEDDING_GENERATION}`;
+    queueEvents = new QueueEvents(prefixedQueueName, {
         connection: REDIS_TEST_CONFIG
     });
     // Wait for QueueEvents to be ready to ensure we don't miss events

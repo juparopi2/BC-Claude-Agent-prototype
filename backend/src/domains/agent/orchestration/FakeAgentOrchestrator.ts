@@ -163,7 +163,20 @@ export class FakeAgentOrchestrator implements IAgentOrchestrator {
       }
     };
 
-    // Emit user_message_confirmed (always, before any other events)
+    // =========================================================================
+    // EMIT SESSION_START (Signals new turn to frontend)
+    // Must be emitted BEFORE user_message_confirmed to match AgentOrchestrator
+    // =========================================================================
+    emit({
+      ...createBaseEvent(),
+      type: 'session_start',
+      sessionId,
+      userId: userId ?? 'fake-user',
+      persistenceState: 'transient',
+    } as AgentEvent);
+    await wait();
+
+    // Emit user_message_confirmed (after session_start)
     const userMessageEvent: UserMessageConfirmedEvent = {
       ...createBaseEvent(),
       type: 'user_message_confirmed',

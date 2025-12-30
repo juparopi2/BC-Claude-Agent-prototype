@@ -26,7 +26,7 @@ import {
 import { REDIS_TEST_CONFIG } from '../setup.integration';
 import { getApprovalManager, ApprovalManager } from '@/domains/approval/ApprovalManager';
 import { resetEventStore } from '@/services/events/EventStore';
-import { getMessageQueue } from '@/infrastructure/queue/MessageQueue';
+import { getMessageQueue, hasMessageQueueInstance } from '@/infrastructure/queue/MessageQueue';
 
 
 
@@ -157,11 +157,14 @@ describe('Approval Flow Integration', () => {
   afterAll(async () => {
     // Drain BullMQ jobs before cleanup to prevent FK_messages_event_id violation
     // See docs/plans/Refactor/FK-errors.md for details
-    try {
-      const messageQueue = getMessageQueue();
-      await messageQueue.close();
-    } catch {
-      // MessageQueue may not be initialized in all test scenarios
+    // IMPORTANT: Only close if instance exists - don't create new connections!
+    if (hasMessageQueueInstance()) {
+      try {
+        const messageQueue = getMessageQueue();
+        await messageQueue.close();
+      } catch {
+        // MessageQueue may not be initialized in all test scenarios
+      }
     }
 
     await cleanupAllTestData();

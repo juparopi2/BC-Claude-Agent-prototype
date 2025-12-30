@@ -49,6 +49,7 @@ describe('Embedding Generation Pipeline', () => {
   let factory: any;
   let testUser: any;
   let cleanupRedis: IORedis;
+  let injectedRedis: IORedis | undefined;  // Track injected Redis for proper cleanup
 
   beforeAll(async () => {
     // Ensure redis client initialized for SessionFactory (node-redis)
@@ -105,8 +106,10 @@ describe('Embedding Generation Pipeline', () => {
 
     // Initialize MessageQueue with real Redis, DB, and INJECTED mock services
     // This ensures the worker uses our mocks instead of dynamic imports
+    // IMPORTANT: Store injectedRedis to close it properly in afterEach
+    injectedRedis = new IORedis({ ...REDIS_TEST_CONFIG, maxRetriesPerRequest: null });
     messageQueue = getMessageQueue({
-        redis: new IORedis({ ...REDIS_TEST_CONFIG, maxRetriesPerRequest: null }),
+        redis: injectedRedis,
         executeQuery: ensureConnectedExecuteQuery,
         eventStore: getEventStore(),
         logger,
@@ -125,9 +128,29 @@ describe('Embedding Generation Pipeline', () => {
   });
 
   afterEach(async () => {
-    if (messageQueue) await messageQueue.close();
-    if (queueEvents) await queueEvents.close();
-    if (factory) await factory.cleanup();
+    // 1. Close MessageQueue first (doesn't close injected Redis)
+    if (messageQueue) {
+      await messageQueue.close();
+    }
+
+    // 2. Close QueueEvents
+    if (queueEvents) {
+      await queueEvents.close();
+    }
+
+    // 3. Wait for BullMQ internal connections to fully close
+    await new Promise(resolve => setTimeout(resolve, 300));
+
+    // 4. Close injected Redis explicitly (CRITICAL - prevents connection leak)
+    if (injectedRedis) {
+      await injectedRedis.quit();
+      injectedRedis = undefined;
+    }
+
+    // 5. Cleanup test data
+    if (factory) {
+      await factory.cleanup();
+    }
   });
 
   // FIX: Test now creates required DB records and uses correct mock format

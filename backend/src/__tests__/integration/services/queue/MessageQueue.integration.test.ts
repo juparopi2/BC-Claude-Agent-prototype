@@ -81,6 +81,7 @@ import {
   MessageQueue,
   getMessageQueue,
   __resetMessageQueue,
+  hasMessageQueueInstance,
   QueueName,
 } from '@/infrastructure/queue/MessageQueue';
 import type {
@@ -149,7 +150,12 @@ describe('MessageQueue Integration Tests', () => {
     vi.clearAllMocks();
 
     // Reset singleton for fresh instance with DI
-    await __resetMessageQueue();
+    // Only reset if instance exists to avoid unnecessary operations
+    if (hasMessageQueueInstance()) {
+      await __resetMessageQueue();
+      // Wait for Azure Redis to fully release connections before creating new ones
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
 
     // Create unique session per test (isolation)
     testSession = await factory.createChatSession(testUser.id);
@@ -168,7 +174,8 @@ describe('MessageQueue Integration Tests', () => {
       }
 
       // 2. Wait for BullMQ internal connections to fully close
-      await new Promise(resolve => setTimeout(resolve, 300));
+      // Increased delay for Azure Redis connection release
+      await new Promise(resolve => setTimeout(resolve, 500));
 
       // 3. Close injected Redis explicitly
       if (injectedRedis) {
@@ -176,8 +183,8 @@ describe('MessageQueue Integration Tests', () => {
         injectedRedis = undefined;
       }
 
-      // 4. Final delay for full cleanup
-      await new Promise(resolve => setTimeout(resolve, 300));
+      // 4. Wait for Azure Redis to fully release the connection
+      await new Promise(resolve => setTimeout(resolve, 500));
     } catch { /* ignore */ }
   });
 

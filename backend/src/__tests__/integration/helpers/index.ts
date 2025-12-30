@@ -12,3 +12,4 @@ export * from './TestSessionFactory';
 export * from './TestDataCleanup';
 export * from './TestDatabaseSetup';
 export * from './SocketIOServerFactory';
+export * from './cleanupTestConnections';

@@ -22,8 +22,9 @@
 
 import { beforeAll, afterAll } from 'vitest';
 import { initDatabase, closeDatabase, executeQuery } from '@/infrastructure/database/database';
-import { initRedis, closeRedis } from '@/infrastructure/redis/redis';
-import { initRedisClient, closeRedisClient } from '@/infrastructure/redis/redis-client';
+import { initRedis, closeRedis, __resetAllRedis } from '@/infrastructure/redis/redis';
+import { initRedisClient, closeRedisClient, __resetRedisClient } from '@/infrastructure/redis/redis-client';
+import { __resetMessageQueue, hasMessageQueueInstance } from '@/infrastructure/queue/MessageQueue';
 import { REDIS_TEST_CONFIG } from '../setup.integration';
 
 /**
@@ -213,10 +214,29 @@ export function setupDatabaseForTests(options: {
   }, timeout);
 
   afterAll(async () => {
-    await closeDatabaseConnection();
+    // IMPORTANT: Close in correct order to prevent connection leaks
+
+    // 1. First reset MessageQueue singleton (closes internal BullMQ connections)
+    // ONLY if instance exists - don't create unnecessary connections!
+    if (hasMessageQueueInstance()) {
+      try {
+        await __resetMessageQueue();
+      } catch { /* ignore - may not have been initialized */ }
+
+      // 2. Wait for BullMQ internal connections to fully release
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
+    // 3. Close Redis connections
     if (!skipRedis) {
       await closeRedisForTests();
+      // 4. Reset all Redis singletons (ioredis + redis package)
+      await __resetAllRedis();
+      await __resetRedisClient();
     }
+
+    // 5. Finally close Database
+    await closeDatabaseConnection();
   }, timeout);
 
   return {
@@ -271,8 +291,27 @@ export function setupFullIntegrationTest(options: {
   }, timeout);
 
   afterAll(async () => {
-    await closeDatabaseConnection();
+    // IMPORTANT: Close in correct order to prevent connection leaks
+
+    // 1. First reset MessageQueue singleton (closes internal BullMQ connections)
+    // ONLY if instance exists - don't create unnecessary connections!
+    if (hasMessageQueueInstance()) {
+      try {
+        await __resetMessageQueue();
+      } catch { /* ignore - may not have been initialized */ }
+
+      // 2. Wait for BullMQ internal connections to fully release
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
+    // 3. Close Redis connections
     await closeRedisForTests();
+    // 4. Reset all Redis singletons (ioredis + redis package)
+    await __resetAllRedis();
+    await __resetRedisClient();
+
+    // 5. Finally close Database
+    await closeDatabaseConnection();
   }, timeout);
 
   return {

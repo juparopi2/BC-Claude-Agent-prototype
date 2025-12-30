@@ -295,9 +295,10 @@ export class MessageQueue {
     // Create promise that resolves when Redis is ready
     // Create promise that resolves when Redis is ready
     this.readyPromise = new Promise((resolve, reject) => {
+      const connectionTimeout = env.BULLMQ_CONNECTION_TIMEOUT || 30000;
       const timeout = setTimeout(() => {
-        reject(new Error('Redis connection timeout for BullMQ (10s)'));
-      }, 10000);
+        reject(new Error(`Redis connection timeout for BullMQ (${connectionTimeout / 1000}s)`));
+      }, connectionTimeout);
 
       const onReady = async () => {
         clearTimeout(timeout);
@@ -355,6 +356,17 @@ export class MessageQueue {
       await MessageQueue.instance.close();
     }
     MessageQueue.instance = null;
+  }
+
+  /**
+   * Check if singleton instance exists
+   *
+   * Use this to check if MessageQueue was initialized without creating a new instance.
+   *
+   * @internal Only for integration tests - DO NOT use in production
+   */
+  public static hasInstance(): boolean {
+    return MessageQueue.instance !== null;
   }
 
   /**
@@ -599,7 +611,7 @@ export class MessageQueue {
         },
         {
           connection: this.getRedisConnectionConfig(),
-          concurrency: 10, // Process 10 messages in parallel
+          concurrency: env.QUEUE_MESSAGE_CONCURRENCY || 10,
         }
       )
     );
@@ -614,7 +626,7 @@ export class MessageQueue {
         },
         {
           connection: this.getRedisConnectionConfig(),
-          concurrency: 5,
+          concurrency: env.QUEUE_TOOL_CONCURRENCY || 5,
         }
       )
     );
@@ -629,12 +641,12 @@ export class MessageQueue {
         },
         {
           connection: this.getRedisConnectionConfig(),
-          concurrency: 10,
+          concurrency: env.QUEUE_EVENT_CONCURRENCY || 10,
         }
       )
     );
 
-    // Usage Aggregation Worker (concurrency: 1 - sequential batch processing)
+    // Usage Aggregation Worker (sequential batch processing)
     this.workers.set(
       QueueName.USAGE_AGGREGATION,
       new Worker(
@@ -644,12 +656,12 @@ export class MessageQueue {
         },
         {
           connection: this.getRedisConnectionConfig(),
-          concurrency: 1,  // Process one aggregation job at a time
+          concurrency: env.QUEUE_USAGE_CONCURRENCY || 1,
         }
       )
     );
 
-    // File Processing Worker (concurrency: 3 - limited for Azure DI API)
+    // File Processing Worker (limited for Azure DI API)
     this.workers.set(
       QueueName.FILE_PROCESSING,
       new Worker(
@@ -659,12 +671,12 @@ export class MessageQueue {
         },
         {
           connection: this.getRedisConnectionConfig(),
-          concurrency: 3,  // Limited concurrency for external API calls
+          concurrency: env.QUEUE_FILE_PROCESSING_CONCURRENCY || 3,
         }
       )
     );
 
-    // File Chunking Worker (concurrency: 5 - CPU-bound text processing)
+    // File Chunking Worker (CPU-bound text processing)
     this.workers.set(
       QueueName.FILE_CHUNKING,
       new Worker(
@@ -674,12 +686,12 @@ export class MessageQueue {
         },
         {
           connection: this.getRedisConnectionConfig(),
-          concurrency: 5,
+          concurrency: env.QUEUE_FILE_CHUNKING_CONCURRENCY || 5,
         }
       )
     );
 
-    // Embedding Generation Worker (concurrency: 5)
+    // Embedding Generation Worker
     this.workers.set(
       QueueName.EMBEDDING_GENERATION,
       new Worker(
@@ -689,7 +701,7 @@ export class MessageQueue {
         },
         {
           connection: this.getRedisConnectionConfig(),
-          concurrency: 5,
+          concurrency: env.QUEUE_EMBEDDING_CONCURRENCY || 5,
         }
       )
     );
@@ -1809,6 +1821,18 @@ export class MessageQueue {
  */
 export function getMessageQueue(dependencies?: IMessageQueueDependencies): MessageQueue {
   return MessageQueue.getInstance(dependencies);
+}
+
+/**
+ * Check if MessageQueue singleton exists
+ *
+ * Use this to check if MessageQueue was initialized without creating a new instance.
+ * Useful in test cleanup to avoid creating unnecessary connections.
+ *
+ * @internal Only for integration tests - DO NOT use in production
+ */
+export function hasMessageQueueInstance(): boolean {
+  return MessageQueue.hasInstance();
 }
 
 /**

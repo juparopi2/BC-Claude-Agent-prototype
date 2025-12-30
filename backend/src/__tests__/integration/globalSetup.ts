@@ -42,7 +42,8 @@ export async function setup(): Promise<void> {
   // These will be inherited by child processes (test workers)
   process.env.REDIS_HOST = REDIS_TEST_CONFIG.host;
   process.env.REDIS_PORT = String(REDIS_TEST_CONFIG.port);
-  process.env.REDIS_PASSWORD = '';
+  process.env.REDIS_PASSWORD = REDIS_TEST_CONFIG.password || '';
+  process.env.REDIS_TLS = String(REDIS_TEST_CONFIG.tls);
   delete process.env.REDIS_CONNECTION_STRING;
 
   // Pre-flight check: Verify Redis is available
@@ -87,8 +88,45 @@ export async function setup(): Promise<void> {
 
 /**
  * Global teardown function - runs after all tests complete
+ *
+ * IMPORTANT: This runs in the SAME process as tests (with singleFork: true)
+ * so we can clean up any lingering singletons here.
  */
 export async function teardown(): Promise<void> {
+  console.log('\n🧹 [Global Teardown] Cleaning up remaining connections...\n');
+
+  // Import cleanup functions dynamically to avoid loading modules before tests
+  try {
+    const { __resetMessageQueue, hasMessageQueueInstance } = await import('@/infrastructure/queue/MessageQueue');
+    if (hasMessageQueueInstance()) {
+      await __resetMessageQueue();
+      console.log('  ✅ MessageQueue singleton reset');
+    } else {
+      console.log('  ⏭️ MessageQueue not initialized (skipped)');
+    }
+  } catch (e) {
+    console.log('  ⚠️ MessageQueue reset skipped (import error)');
+  }
+
+  try {
+    const { __resetAllRedis } = await import('@/infrastructure/redis/redis');
+    await __resetAllRedis();
+    console.log('  ✅ ioredis singletons reset');
+  } catch (e) {
+    console.log('  ⚠️ ioredis reset skipped');
+  }
+
+  try {
+    const { __resetRedisClient } = await import('@/infrastructure/redis/redis-client');
+    await __resetRedisClient();
+    console.log('  ✅ redis package singletons reset');
+  } catch (e) {
+    console.log('  ⚠️ redis package reset skipped');
+  }
+
+  // Give connections time to fully close
+  await new Promise(resolve => setTimeout(resolve, 1000));
+
   console.log('\n✅ [Global Teardown] Integration tests completed\n');
 }
 

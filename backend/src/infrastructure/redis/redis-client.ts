@@ -266,3 +266,57 @@ export async function checkRedisClientHealth(client?: RedisClientType): Promise<
     return false;
   }
 }
+
+/**
+ * Reset Redis client singletons for testing
+ *
+ * Closes and resets all 'redis' package singleton instances:
+ * - Default session client
+ * - Test client
+ *
+ * **INTERNAL USE ONLY:** This function is intended for integration tests
+ * to prevent connection leaks between test files.
+ *
+ * @internal
+ *
+ * @example
+ * // In test afterAll hook
+ * afterAll(async () => {
+ *   await __resetRedisClient();
+ * });
+ */
+export async function __resetRedisClient(): Promise<void> {
+  const errors: Error[] = [];
+
+  // Close default client
+  const defaultClient = _getRedisClientInternal();
+  if (defaultClient) {
+    try {
+      if (defaultClient.isOpen) {
+        await defaultClient.quit();
+      }
+    } catch (e) {
+      errors.push(e as Error);
+    }
+    _setRedisClientInternal(null);
+  }
+
+  // Close test client
+  const testClient = _getTestRedisClientInternal();
+  if (testClient) {
+    try {
+      if (testClient.isOpen) {
+        await testClient.quit();
+      }
+    } catch (e) {
+      errors.push(e as Error);
+    }
+    _setTestRedisClientInternal(null);
+  }
+
+  if (errors.length > 0) {
+    logger.warn({ errorCount: errors.length }, '__resetRedisClient completed with errors');
+  } else {
+    logger.debug('__resetRedisClient completed successfully');
+  }
+}

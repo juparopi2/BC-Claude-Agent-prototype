@@ -112,6 +112,18 @@ const envSchema = z.object({
   // Azure Computer Vision (Image Embeddings)
   AZURE_VISION_ENDPOINT: z.string().url().optional(),
   AZURE_VISION_KEY: z.string().optional(),
+
+  // BullMQ Configuration
+  BULLMQ_CONNECTION_TIMEOUT: z.string().default('30000').transform(Number).pipe(z.number().min(5000).max(120000)),
+
+  // Queue Worker Concurrency (for Azure Redis Basic tier with limited connections)
+  QUEUE_MESSAGE_CONCURRENCY: z.string().default('10').transform(Number).pipe(z.number().min(1).max(50)),
+  QUEUE_TOOL_CONCURRENCY: z.string().default('5').transform(Number).pipe(z.number().min(1).max(20)),
+  QUEUE_EVENT_CONCURRENCY: z.string().default('10').transform(Number).pipe(z.number().min(1).max(50)),
+  QUEUE_USAGE_CONCURRENCY: z.string().default('1').transform(Number).pipe(z.number().min(1).max(5)),
+  QUEUE_FILE_PROCESSING_CONCURRENCY: z.string().default('3').transform(Number).pipe(z.number().min(1).max(10)),
+  QUEUE_FILE_CHUNKING_CONCURRENCY: z.string().default('5').transform(Number).pipe(z.number().min(1).max(20)),
+  QUEUE_EMBEDDING_CONCURRENCY: z.string().default('5').transform(Number).pipe(z.number().min(1).max(20)),
 });
 
 /**

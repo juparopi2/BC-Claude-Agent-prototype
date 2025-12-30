@@ -626,3 +626,68 @@ export async function deleteCachePattern(pattern: string): Promise<number> {
   await client.del(...keys);
   return keys.length;
 }
+
+/**
+ * Reset all Redis singletons for testing
+ *
+ * Closes and resets all ioredis singleton instances:
+ * - Default Redis client
+ * - BullMQ Redis client
+ * - Eager Redis client
+ *
+ * **INTERNAL USE ONLY:** This function is intended for integration tests
+ * to prevent connection leaks between test files.
+ *
+ * @internal
+ *
+ * @example
+ * // In test afterAll hook
+ * afterAll(async () => {
+ *   await __resetAllRedis();
+ * });
+ */
+export async function __resetAllRedis(): Promise<void> {
+  const errors: Error[] = [];
+
+  // Close default client
+  if (_defaultRedisClient) {
+    try {
+      if (_defaultRedisClient.status === 'ready' || _defaultRedisClient.status === 'connect') {
+        await _defaultRedisClient.quit();
+      }
+    } catch (e) {
+      errors.push(e as Error);
+    }
+    _defaultRedisClient = null;
+  }
+
+  // Close BullMQ client
+  if (_bullmqRedisClient) {
+    try {
+      if (_bullmqRedisClient.status === 'ready' || _bullmqRedisClient.status === 'connect') {
+        await _bullmqRedisClient.quit();
+      }
+    } catch (e) {
+      errors.push(e as Error);
+    }
+    _bullmqRedisClient = null;
+  }
+
+  // Close eager client
+  if (_eagerRedisClient) {
+    try {
+      if (_eagerRedisClient.status === 'ready' || _eagerRedisClient.status === 'connect') {
+        await _eagerRedisClient.quit();
+      }
+    } catch (e) {
+      errors.push(e as Error);
+    }
+    _eagerRedisClient = null;
+  }
+
+  if (errors.length > 0) {
+    logger.warn({ errorCount: errors.length }, '__resetAllRedis completed with errors');
+  } else {
+    logger.debug('__resetAllRedis completed successfully');
+  }
+}

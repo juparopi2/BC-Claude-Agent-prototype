@@ -11,10 +11,8 @@ import { v4 as uuidv4 } from 'uuid';
 import type {
   AgentEvent,
   AgentExecutionResult,
-  MessageChunkEvent,
   MessageEvent,
   CompleteEvent,
-  ThinkingChunkEvent,
   ThinkingCompleteEvent,
   ToolUseEvent,
   ToolResultEvent,
@@ -217,19 +215,8 @@ export class FakeAgentOrchestrator implements IAgentOrchestrator {
       };
     }
 
-    // Emit thinking events if configured
+    // Emit thinking_complete if configured (NO chunks - sync architecture)
     if (this.scenario.thinkingContent) {
-      const chunks = this.chunkText(this.scenario.thinkingContent, 20);
-      for (const chunk of chunks) {
-        const thinkingChunk: ThinkingChunkEvent = {
-          ...createBaseEvent(),
-          type: 'thinking_chunk',
-          content: chunk,
-        };
-        emit(thinkingChunk);
-        await wait();
-      }
-
       const thinkingComplete: ThinkingCompleteEvent = {
         ...createBaseEvent(),
         type: 'thinking_complete',
@@ -271,24 +258,9 @@ export class FakeAgentOrchestrator implements IAgentOrchestrator {
       }
     }
 
-    // Emit text content as message chunks
+    // Build full content (NO chunks - sync architecture)
     const messageId = `msg_fake_${uuidv4().slice(0, 8)}`;
-    let fullContent = '';
-
-    for (const block of this.scenario.textBlocks ?? []) {
-      const chunks = this.chunkText(block, 10);
-      for (const chunk of chunks) {
-        fullContent += chunk;
-        const chunkEvent: MessageChunkEvent = {
-          ...createBaseEvent(),
-          type: 'message_chunk',
-          content: chunk,
-          messageId,
-        };
-        emit(chunkEvent);
-        await wait();
-      }
-    }
+    const fullContent = (this.scenario.textBlocks ?? []).join(' ');
 
     // ⭐ Persist assistant message if persistence is enabled
     const enablePersistence = this.scenario.enablePersistence ?? true;
@@ -382,17 +354,6 @@ export class FakeAgentOrchestrator implements IAgentOrchestrator {
         totalTokens: prompt.length + fullContent.length,
       },
     };
-  }
-
-  /**
-   * Split text into chunks for streaming simulation
-   */
-  private chunkText(text: string, chunkSize: number): string[] {
-    const chunks: string[] = [];
-    for (let i = 0; i < text.length; i += chunkSize) {
-      chunks.push(text.slice(i, i + chunkSize));
-    }
-    return chunks;
   }
 }
 

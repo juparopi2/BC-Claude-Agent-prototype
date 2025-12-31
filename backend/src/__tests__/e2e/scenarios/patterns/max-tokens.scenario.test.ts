@@ -96,9 +96,9 @@ describe('E2E Scenario: Max Tokens Limit', () => {
       expect(lastEvent?.type).toBe('complete');
     });
 
-    it('should emit message_chunk events for streaming', () => {
-      const messageChunks = scenarioResult.events.filter(e => e.type === 'message_chunk');
-      expect(messageChunks.length).toBeGreaterThan(0);
+    it('should emit message event (sync architecture - no chunks)', () => {
+      const messageEvents = scenarioResult.events.filter(e => e.type === 'message');
+      expect(messageEvents.length).toBeGreaterThan(0);
     });
 
     it('should have valid event flow according to state machine', () => {

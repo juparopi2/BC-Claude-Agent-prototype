@@ -6,7 +6,7 @@
  * @module @bc-agent/shared/types
  */
 
-// Agent event types
+// Agent event types (sync architecture - no chunk types)
 export type {
   StopReason,
   AgentEventType,
@@ -14,11 +14,8 @@ export type {
   BaseAgentEvent,
   SessionStartEvent,
   ThinkingEvent,
-  ThinkingChunkEvent,
   ThinkingCompleteEvent,
-  MessagePartialEvent,
   MessageEvent,
-  MessageChunkEvent,
   Citation,  // RAG source attribution
   ToolUseEvent,
   ToolResultEvent,

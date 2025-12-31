@@ -24,18 +24,16 @@
 // Types - All type definitions
 // ============================================
 export type {
-  // Agent event types
+  // Agent event types (sync architecture - no chunk types)
   StopReason,
   AgentEventType,
   PersistenceState,
   BaseAgentEvent,
   SessionStartEvent,
   ThinkingEvent,
-  ThinkingChunkEvent,
   ThinkingCompleteEvent,
-  MessagePartialEvent,
   MessageEvent,
-  MessageChunkEvent,
+  Citation,  // RAG source attribution
   ToolUseEvent,
   ToolResultEvent,
   ErrorEvent,

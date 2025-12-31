@@ -416,7 +416,7 @@ export class ResponseScenarioRegistry {
         stopReason: 'end_turn',
       },
       message: 'Hello, introduce yourself.',
-      expectedEventTypes: ['user_message_confirmed', 'message_chunk', 'message', 'complete'],
+      expectedEventTypes: ['session_start', 'user_message_confirmed', 'message', 'complete'],
     });
 
     // Thinking only
@@ -433,10 +433,9 @@ export class ResponseScenarioRegistry {
       message: 'Explain the accounting cycle in Business Central. Think carefully.',
       thinking: { enable: true, budget: 10000 },
       expectedEventTypes: [
+        'session_start',
         'user_message_confirmed',
-        'thinking_chunk',
         'thinking_complete',
-        'message_chunk',
         'message',
         'complete',
       ],
@@ -462,10 +461,9 @@ export class ResponseScenarioRegistry {
       message: 'List the first 5 customers.',
       thinking: { enable: true, budget: 10000 },
       expectedEventTypes: [
+        'session_start',
         'user_message_confirmed',
-        'thinking_chunk',
         'thinking_complete',
-        'message_chunk',
         'tool_use',
         'tool_result',
         'message',
@@ -497,8 +495,8 @@ export class ResponseScenarioRegistry {
       },
       message: 'Show me 3 customers and 3 items.',
       expectedEventTypes: [
+        'session_start',
         'user_message_confirmed',
-        'message_chunk',
         'tool_use',
         'tool_result',
         'message',
@@ -514,7 +512,7 @@ export class ResponseScenarioRegistry {
         error: 'API rate limit exceeded',
       },
       message: 'This should trigger an error.',
-      expectedEventTypes: ['user_message_confirmed', 'error', 'complete'],
+      expectedEventTypes: ['session_start', 'user_message_confirmed', 'error', 'complete'],
     });
 
     // Approval flow (for write operations)
@@ -536,8 +534,8 @@ export class ResponseScenarioRegistry {
       message: 'Create a new customer named Test Customer with email test@example.com.',
       approvalResponse: { approve: true },
       expectedEventTypes: [
+        'session_start',
         'user_message_confirmed',
-        'message_chunk',
         'tool_use',
         'approval_requested',
         'approval_resolved',
@@ -568,8 +566,8 @@ export class ResponseScenarioRegistry {
       // FORCE TOOL USAGE: Explicit instruction ensures LLM uses the tool even with real API
       message: 'Use the bc_customers_read tool to retrieve and display the first 3 customers from Business Central.',
       expectedEventTypes: [
+        'session_start',
         'user_message_confirmed',
-        'message_chunk',
         'tool_use',
         'tool_result',
         'message',
@@ -603,10 +601,9 @@ export class ResponseScenarioRegistry {
       message: 'Show me 3 customers and 3 items.',
       thinking: { enable: true, budget: 10000 },
       expectedEventTypes: [
+        'session_start',
         'user_message_confirmed',
-        'thinking_chunk',
         'thinking_complete',
-        'message_chunk',
         'tool_use',
         'tool_result',
         'message',
@@ -635,8 +632,8 @@ export class ResponseScenarioRegistry {
       // Note: With real API, the tool may succeed - tests verify patterns, not specific errors
       message: 'Use the bc_customers_read tool to retrieve customer data from Business Central.',
       expectedEventTypes: [
+        'session_start',
         'user_message_confirmed',
-        'message_chunk',
         'tool_use',
         'tool_result',
         'message',
@@ -656,8 +653,8 @@ export class ResponseScenarioRegistry {
       },
       message: 'Generate a very long response about Business Central.',
       expectedEventTypes: [
+        'session_start',
         'user_message_confirmed',
-        'message_chunk',
         'message',
         'complete',
       ],

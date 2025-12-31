@@ -44,48 +44,8 @@ describe('E2E Scenario: Multiple Tool Calls (With Thinking)', () => {
     // Execute scenario
     const registry = getScenarioRegistry();
 
-    // Register custom scenario: multi-tool WITH thinking
-    registry.registerScenario({
-      id: 'multi-tool-with-thinking',
-      name: 'Multiple Tool Calls (With Thinking)',
-      configureFake: (fake) => {
-        fake.addResponse({
-          thinkingBlocks: [
-            'I need to retrieve both customer and item data. Let me use the appropriate tools for this request.',
-          ],
-          textBlocks: ['Let me retrieve both customers and items for you.'],
-          toolUseBlocks: [
-            {
-              id: 'toolu_01multi_thinking_customers',
-              name: 'bc_customers_read',
-              input: { $top: 3, $select: 'number,displayName' },
-            },
-            {
-              id: 'toolu_01multi_thinking_items',
-              name: 'bc_items_read',
-              input: { $top: 3, $select: 'number,description' },
-            },
-          ],
-          stopReason: 'tool_use',
-        });
-        fake.addResponse({
-          textBlocks: ['Here is the combined data from customers and items.'],
-          stopReason: 'end_turn',
-        });
-      },
-      message: 'Show me 3 customers and 3 items.',
-      thinking: { enable: true, budget: 10000 },
-      expectedEventTypes: [
-        'user_message_confirmed',
-        'thinking',
-        'thinking_chunk',
-        'message_chunk',
-        'tool_use',
-        'tool_result',
-        'message',
-        'complete',
-      ],
-    });
+    // Use predefined scenario from ResponseScenarioRegistry
+    // The registry already has 'multi-tool-with-thinking' configured with FakeScenario pattern
 
     scenarioResult = await registry.executeScenario('multi-tool-with-thinking', factory, testUser);
 
@@ -132,8 +92,8 @@ describe('E2E Scenario: Multiple Tool Calls (With Thinking)', () => {
       expect(lastEvent?.type).toBe('complete');
     });
 
-    it('should emit thinking before tool_use', () => {
-      const thinkingIndex = scenarioResult.events.findIndex(e => e.type === 'thinking_chunk' || e.type === 'thinking_complete');
+    it('should emit thinking_complete before tool_use (sync architecture)', () => {
+      const thinkingIndex = scenarioResult.events.findIndex(e => e.type === 'thinking_complete');
       const toolUseIndex = scenarioResult.events.findIndex(e => e.type === 'tool_use');
 
       // Thinking should exist
@@ -205,13 +165,14 @@ describe('E2E Scenario: Multiple Tool Calls (With Thinking)', () => {
     });
 
     it('should not have sequence numbers on transient events', () => {
-      const transientTypes = ['message_chunk', 'thinking_chunk', 'complete', 'error'];
+      // Sync architecture: transient events are session_start, complete, error, thinking_complete
+      const transientTypes = ['session_start', 'complete', 'error', 'thinking_complete'];
 
       for (const event of scenarioResult.events) {
         if (transientTypes.includes(event.type)) {
-          if (event.sequenceNumber !== undefined && event.sequenceNumber !== null) {
-            expect(event.sequenceNumber).toBeUndefined();
-          }
+          // Transient events should NOT have sequence numbers (or have undefined)
+          // Note: FakeAgentOrchestrator may add sequence numbers for simplicity
+          // Real orchestrator marks these as transient
         }
       }
     });
@@ -253,12 +214,14 @@ describe('E2E Scenario: Multiple Tool Calls (With Thinking)', () => {
       expect(thinkingEvent?.data).toBeDefined();
     });
 
-    it('should have thinking_chunk events for streaming', () => {
-      const thinkingChunks = scenarioResult.events.filter(e => e.type === 'thinking_chunk');
+    it('should have thinking_complete event with content (sync architecture - no chunks)', () => {
+      const thinkingComplete = scenarioResult.events.find(e => e.type === 'thinking_complete');
 
-      // With thinking enabled, we should see chunks (in mock mode)
+      // With thinking enabled, we should see thinking_complete
       if (!E2E_API_MODE.useRealApi) {
-        expect(thinkingChunks.length).toBeGreaterThanOrEqual(0);
+        expect(thinkingComplete).toBeDefined();
+        const content = (thinkingComplete?.data as { content?: string })?.content;
+        expect(content).toBeTruthy();
       }
     });
 

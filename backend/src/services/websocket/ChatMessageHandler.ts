@@ -18,7 +18,6 @@ import type {
   AgentEvent,
   ThinkingEvent,
   MessageEvent,
-  MessageChunkEvent,
   ToolUseEvent,
   ToolResultEvent,
   SessionEndEvent,
@@ -268,10 +267,7 @@ export class ChatMessageHandler {
         this.logger.debug({ sessionId }, 'Thinking event emitted to Socket.IO room');
       }
 
-      // DEBUG: Log message_chunk events to verify structure
-      if (event.type === 'message_chunk') {
-        this.logger.debug({ event }, 'Message chunk emitted');
-      }
+      // NOTE: message_chunk debug logging removed - sync architecture uses complete messages only
 
       // Persist to database based on event type (type-safe discrimination)
       switch (event.type) {
@@ -299,21 +295,7 @@ export class ChatMessageHandler {
           }
           break;
 
-        case 'message_partial':
-          // No persistence needed - partials are transient
-          break;
-
-        case 'message_chunk':
-          // ✅ Verificar que esté marcado como transient
-          if ((event as MessageChunkEvent).persistenceState !== 'transient') {
-            this.logger.warn('⚠️  Message chunk NOT marked as transient', {
-              sequenceNumber: (event as MessageChunkEvent).sequenceNumber,
-            });
-          }
-          this.logger.debug('📡 Message chunk received (transient, not persisted)', {
-            content: (event as MessageChunkEvent).content?.substring(0, 20),
-          });
-          break;
+        // NOTE: message_partial and message_chunk cases removed - sync architecture only emits complete messages
 
         case 'message':
           // ✅ PHASE 1B: Persistence handled by AgentOrchestrator
@@ -408,15 +390,7 @@ export class ChatMessageHandler {
           this.logger.debug('User message confirmed event', { sessionId, userId });
           break;
 
-        case 'thinking_chunk':
-          // ⭐ Phase 1F: Extended Thinking chunks are transient (streamed, not persisted)
-          // Just log for debugging, no persistence needed
-          this.logger.debug('Thinking chunk event (transient)', {
-            sessionId,
-            userId,
-            contentLength: (event as { content?: string }).content?.length,
-          });
-          break;
+        // NOTE: thinking_chunk case removed - sync architecture uses thinking_complete only
 
         case 'turn_paused':
           // ⭐ SDK 0.71: Long agentic turn was paused

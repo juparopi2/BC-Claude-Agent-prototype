@@ -70,11 +70,16 @@ describe('E2E Scenario: API Error Handling', () => {
   // ============================================================================
 
   describe('Event Ordering', () => {
-    it('should emit user_message_confirmed as first event (even on error)', () => {
-      expect(scenarioResult.events.length).toBeGreaterThan(0);
+    it('should emit session_start as first event, followed by user_message_confirmed (even on error)', () => {
+      expect(scenarioResult.events.length).toBeGreaterThan(1);
 
+      // session_start is always the first event (signals new turn)
       const firstEvent = scenarioResult.events[0];
-      expect(firstEvent?.type).toBe('user_message_confirmed');
+      expect(firstEvent?.type).toBe('session_start');
+
+      // user_message_confirmed is always the second event
+      const secondEvent = scenarioResult.events[1];
+      expect(secondEvent?.type).toBe('user_message_confirmed');
     });
 
     it('should emit error event when API fails', () => {
@@ -105,8 +110,9 @@ describe('E2E Scenario: API Error Handling', () => {
     it('should have valid event flow according to state machine', () => {
       const eventTypes = scenarioResult.events.map(e => e.type);
 
-      // Basic flow validation
-      expect(eventTypes[0]).toBe('user_message_confirmed');
+      // Basic flow validation: session_start → user_message_confirmed → ... → complete/error
+      expect(eventTypes[0]).toBe('session_start');
+      expect(eventTypes[1]).toBe('user_message_confirmed');
 
       // Error should be present
       expect(eventTypes).toContain('error');

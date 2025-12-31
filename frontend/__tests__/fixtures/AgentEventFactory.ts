@@ -13,10 +13,8 @@ import type {
   PersistenceState,
   SessionStartEvent,
   ThinkingEvent,
-  ThinkingChunkEvent,
-  MessagePartialEvent,
+  ThinkingCompleteEvent,
   MessageEvent,
-  MessageChunkEvent,
   ToolUseEvent,
   ToolResultEvent,
   ErrorEvent,
@@ -179,59 +177,11 @@ export class AgentEventFactory {
     };
   }
 
-  /**
-   * Create thinking_chunk event (streaming, transient)
-   * NOTE: Transient events MUST NOT have sequenceNumber - we strip it from overrides
-   */
-  static thinkingChunk(overrides?: Partial<ThinkingChunkEvent>): ThinkingChunkEvent {
-    // Remove sequenceNumber from overrides if present (transient events shouldn't have one)
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { sequenceNumber: _ignored, ...safeOverrides } = overrides ?? {};
-    return {
-      type: 'thinking_chunk',
-      content: safeOverrides?.content ?? 'Let me think about this...',
-      blockIndex: safeOverrides?.blockIndex ?? 0,
-      ...this.transientBaseEvent(),
-      ...safeOverrides,
-    };
-  }
+  // NOTE: thinkingChunk, messagePartial, messageChunk removed - sync architecture uses complete events only
 
   // ============================================
-  // Message Events
+  // Message Events (sync architecture - complete messages only)
   // ============================================
-
-  /**
-   * Create message_partial event (streaming, transient)
-   * NOTE: Transient events MUST NOT have sequenceNumber - we strip it from overrides
-   */
-  static messagePartial(overrides?: Partial<MessagePartialEvent>): MessagePartialEvent {
-    // Remove sequenceNumber from overrides if present (transient events shouldn't have one)
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { sequenceNumber: _ignored, ...safeOverrides } = overrides ?? {};
-    return {
-      type: 'message_partial',
-      content: safeOverrides?.content ?? 'Partial message content...',
-      messageId: safeOverrides?.messageId ?? generateMessageId(),
-      ...this.transientBaseEvent(),
-      ...safeOverrides,
-    };
-  }
-
-  /**
-   * Create message_chunk event (streaming, transient)
-   * NOTE: Transient events MUST NOT have sequenceNumber - we strip it from overrides
-   */
-  static messageChunk(overrides?: Partial<MessageChunkEvent>): MessageChunkEvent {
-    // Remove sequenceNumber from overrides if present (transient events shouldn't have one)
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { sequenceNumber: _ignored, ...safeOverrides } = overrides ?? {};
-    return {
-      type: 'message_chunk',
-      content: safeOverrides?.content ?? 'chunk ',
-      ...this.transientBaseEvent(),
-      ...safeOverrides,
-    };
-  }
 
   /**
    * Create message event (complete message)
@@ -513,14 +463,13 @@ export class AgentEventFactory {
     },
 
     /**
-     * User message confirmation flow
+     * User message confirmation flow (sync architecture - no chunks)
      */
     userMessageFlow: (): AgentEvent[] => {
       AgentEventFactory.resetSequence();
       return [
-        AgentEventFactory.userMessageConfirmed({ content: 'Hello agent!' }),
         AgentEventFactory.sessionStart(),
-        AgentEventFactory.messageChunk({ content: 'Response...' }),
+        AgentEventFactory.userMessageConfirmed({ content: 'Hello agent!' }),
         AgentEventFactory.message({ content: 'Response...' }),
         AgentEventFactory.complete(),
       ];
@@ -534,8 +483,7 @@ export class AgentEventFactory {
 export const isMessageEvent = (event: AgentEvent): event is MessageEvent =>
   event.type === 'message';
 
-export const isMessageChunkEvent = (event: AgentEvent): event is MessageChunkEvent =>
-  event.type === 'message_chunk';
+// NOTE: isMessageChunkEvent removed - sync architecture uses complete messages only
 
 export const isToolUseEvent = (event: AgentEvent): event is ToolUseEvent =>
   event.type === 'tool_use';

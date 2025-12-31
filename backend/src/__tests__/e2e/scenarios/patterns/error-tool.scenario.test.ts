@@ -78,11 +78,16 @@ describe('E2E Scenario: Tool Execution Error', () => {
   // ============================================================================
 
   describe('Event Ordering', () => {
-    it('should emit user_message_confirmed as first event', () => {
-      expect(scenarioResult.events.length).toBeGreaterThan(0);
+    it('should emit session_start as first event, followed by user_message_confirmed', () => {
+      expect(scenarioResult.events.length).toBeGreaterThan(1);
 
+      // session_start is always the first event (signals new turn)
       const firstEvent = scenarioResult.events[0];
-      expect(firstEvent?.type).toBe('user_message_confirmed');
+      expect(firstEvent?.type).toBe('session_start');
+
+      // user_message_confirmed is always the second event
+      const secondEvent = scenarioResult.events[1];
+      expect(secondEvent?.type).toBe('user_message_confirmed');
     });
 
     it('should emit tool_use event when LLM uses tools', () => {

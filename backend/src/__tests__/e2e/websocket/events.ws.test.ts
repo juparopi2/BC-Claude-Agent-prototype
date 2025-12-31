@@ -103,15 +103,15 @@ describe('E2E: WebSocket Agent Events', () => {
     });
   });
 
-  describe('message_chunk events', () => {
-    it('should receive streaming message_chunk events', async () => {
+  describe('message events', () => {
+    it('should receive complete message event (sync architecture)', async () => {
       if (!E2E_CONFIG.apiMode.useRealApi) {
         e2eFakeOrchestrator.setResponse(createGoldenScenario('simple'));
       }
 
       const httpClient = createE2ETestClient();
       httpClient.setSessionCookie(sessionCookie);
-      const response = await httpClient.post<{ id: string }>('/api/chat/sessions', { title: 'Chunk Test' });
+      const response = await httpClient.post<{ id: string }>('/api/chat/sessions', { title: 'Message Test' });
       const sessionId = response.body.id;
 
       await client.joinSession(sessionId);
@@ -122,20 +122,24 @@ describe('E2E: WebSocket Agent Events', () => {
       // Wait for complete
       await client.waitForComplete(60000);
 
-      // Check received events
+      // Check received events - should have complete message, not chunks
       const events = client.getReceivedEvents();
-      const messageChunks = events.filter(e => e.data?.type === 'message_chunk');
-      expect(messageChunks.length).toBeGreaterThan(0);
+      const messageEvents = events.filter(e => e.data?.type === 'message');
+      expect(messageEvents.length).toBeGreaterThan(0);
+
+      // Message should have content
+      const messageContent = (messageEvents[0]?.data as { content?: string })?.content;
+      expect(messageContent).toBeTruthy();
     });
 
-    it('should accumulate chunks into coherent text', async () => {
+    it('should receive message with complete text', async () => {
       if (!E2E_CONFIG.apiMode.useRealApi) {
         e2eFakeOrchestrator.setResponse(createGoldenScenario('simple'));
       }
 
       const httpClient = createE2ETestClient();
       httpClient.setSessionCookie(sessionCookie);
-      const response = await httpClient.post<{ id: string }>('/api/chat/sessions', { title: 'Text Accumulation Test' });
+      const response = await httpClient.post<{ id: string }>('/api/chat/sessions', { title: 'Text Complete Test' });
       const sessionId = response.body.id;
 
       await client.joinSession(sessionId);
@@ -146,17 +150,15 @@ describe('E2E: WebSocket Agent Events', () => {
       // Wait for complete
       await client.waitForComplete(60000);
 
-      // Accumulate chunks
+      // Get message event
       const events = client.getReceivedEvents();
-      const messageChunks = events.filter(e => e.data?.type === 'message_chunk');
-      const accumulatedText = messageChunks
-        .map(e => (e.data as { content?: string }).content || '')
-        .join('');
+      const messageEvent = events.find(e => e.data?.type === 'message');
+      const messageContent = (messageEvent?.data as { content?: string })?.content || '';
 
-      // Should have received meaningful text
-      expect(accumulatedText.length).toBeGreaterThan(0);
+      // Should have received meaningful text in the complete message
+      expect(messageContent.length).toBeGreaterThan(0);
       if (!E2E_CONFIG.apiMode.useRealApi) {
-        expect(accumulatedText).toContain('Hello! I am Claude');
+        expect(messageContent).toContain('Hello! I am Claude');
       }
     });
   });
@@ -230,7 +232,7 @@ describe('E2E: WebSocket Agent Events', () => {
   });
 
   describe('Event ordering', () => {
-    it('should receive events in correct order', async () => {
+    it('should receive events in correct order (sync architecture)', async () => {
       if (!E2E_CONFIG.apiMode.useRealApi) {
         e2eFakeOrchestrator.setResponse(createGoldenScenario('simple'));
       }
@@ -252,10 +254,10 @@ describe('E2E: WebSocket Agent Events', () => {
       const events = client.getReceivedEvents();
       const eventTypes = events.map(e => e.data?.type).filter(Boolean);
 
-      // According to backend contract (02-CONTRATO-BACKEND-FRONTEND.md):
+      // Sync architecture event order:
       // 1. session_start (signals new turn to frontend)
       // 2. user_message_confirmed (after persistence)
-      // 3. chunks...
+      // 3. message (complete response - NO chunks)
       // 4. complete
       expect(eventTypes[0]).toBe('session_start');
       expect(eventTypes[1]).toBe('user_message_confirmed');
@@ -263,14 +265,14 @@ describe('E2E: WebSocket Agent Events', () => {
       // Should end with complete
       expect(eventTypes[eventTypes.length - 1]).toBe('complete');
 
-      // Should have message_chunk events in between
-      const chunkEvents = eventTypes.filter(t => t === 'message_chunk');
-      expect(chunkEvents.length).toBeGreaterThan(0);
+      // Should have message event (not chunks)
+      const messageEvents = eventTypes.filter(t => t === 'message');
+      expect(messageEvents.length).toBeGreaterThan(0);
     });
   });
 
   describe('Thinking events', () => {
-    it('should receive thinking events when extended thinking is used', async () => {
+    it('should receive thinking_complete event when extended thinking is used', async () => {
       if (!E2E_CONFIG.apiMode.useRealApi) {
         e2eFakeOrchestrator.setResponse(createGoldenScenario('thinking'));
       }
@@ -288,13 +290,17 @@ describe('E2E: WebSocket Agent Events', () => {
       // Wait for complete
       await client.waitForComplete(60000);
 
-      // Check for thinking events
+      // Check for thinking_complete event (sync architecture - no chunks)
       const events = client.getReceivedEvents();
-      const thinkingEvents = events.filter(e => e.data?.type === 'thinking');
+      const thinkingCompleteEvents = events.filter(e => e.data?.type === 'thinking_complete');
 
       if (!E2E_CONFIG.apiMode.useRealApi) {
-        // FakeAgentOrchestrator with 'thinking' scenario should produce thinking events
-        expect(thinkingEvents.length).toBeGreaterThan(0);
+        // FakeAgentOrchestrator with 'thinking' scenario should produce thinking_complete event
+        expect(thinkingCompleteEvents.length).toBeGreaterThan(0);
+
+        // thinking_complete should have content
+        const thinkingContent = (thinkingCompleteEvents[0]?.data as { content?: string })?.content;
+        expect(thinkingContent).toBeTruthy();
       }
     });
   });

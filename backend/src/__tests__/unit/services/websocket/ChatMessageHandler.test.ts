@@ -22,8 +22,6 @@ import type {
   CompleteEvent,
   ErrorEvent,
   SessionStartEvent,
-  MessagePartialEvent,
-  MessageChunkEvent,
   ApprovalRequestedEvent,
   ApprovalResolvedEvent,
 } from '@/types';
@@ -268,71 +266,17 @@ describe('ChatMessageHandler', () => {
     });
 
     /**
-     * ⭐ PHASE 1B: Test REMOVED - "should handle thinking event (with persistence)"
+     * ⭐ PHASE 1B: Tests REMOVED - thinking, message_partial, message_chunk
      *
-     * ChatMessageHandler NO LONGER persists thinking events. AgentOrchestrator handles
+     * ChatMessageHandler NO LONGER persists these events. AgentOrchestrator handles
      * all persistence directly via EventStore + MessageQueue.
      *
-     * Removed: 2025-11-24
+     * Additionally, message_partial and message_chunk events have been removed from
+     * the sync architecture - only complete messages are emitted now.
+     *
+     * Removed: 2025-11-24 (thinking)
+     * Removed: 2025-12-31 (message_partial, message_chunk - sync architecture)
      */
-
-    it('should handle message_partial event (no persistence)', async () => {
-      const event: MessagePartialEvent = {
-        type: 'message_partial',
-        content: 'This is partial...',
-        timestamp: new Date(),
-        eventId: 'evt-3',
-        sequenceNumber: 3,
-        persistenceState: 'queued',
-      };
-
-      const data: ChatMessageData = {
-        message: testMessage,
-        sessionId: testSessionId,
-        userId: testUserId,
-      };
-
-      mockAgentOrchestratorMethods.executeAgentSync.mockImplementationOnce(
-        async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
-          await onEvent(event);
-          return { response: 'Test', toolsUsed: [], success: true };
-        }
-      );
-
-      await handler.handle(data, mockSocket as Socket, mockIo as SocketIOServer);
-
-      // Verify event emitted but no persistence (AgentOrchestrator handles persistence)
-      expect(mockIoEmit).toHaveBeenCalledWith('agent:event', event);
-    });
-
-    it('should handle message_chunk event (no persistence)', async () => {
-      const event: MessageChunkEvent = {
-        type: 'message_chunk',
-        content: 'chunk of text',
-        timestamp: new Date(),
-        eventId: 'evt-4',
-        sequenceNumber: 4,
-        persistenceState: 'queued',
-      };
-
-      const data: ChatMessageData = {
-        message: testMessage,
-        sessionId: testSessionId,
-        userId: testUserId,
-      };
-
-      mockAgentOrchestratorMethods.executeAgentSync.mockImplementationOnce(
-        async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
-          await onEvent(event);
-          return { response: 'Test', toolsUsed: [], success: true };
-        }
-      );
-
-      await handler.handle(data, mockSocket as Socket, mockIo as SocketIOServer);
-
-      // Verify event emitted but no persistence (chunks are transient)
-      expect(mockIoEmit).toHaveBeenCalledWith('agent:event', event);
-    });
 
     /**
      * ⭐ PHASE 1B: Test REMOVED - "should handle message event with stopReason"
@@ -716,6 +660,7 @@ describe('ChatMessageHandler', () => {
   // ========== SUITE 3: MESSAGE ORDERING & RACE CONDITIONS (5 TESTS) ==========
   describe('Message Ordering & Race Conditions', () => {
     it('should preserve event order via sequenceNumber', async () => {
+      // NOTE: Using sync architecture events (no message_chunk)
       const events: AgentEvent[] = [
         {
           type: 'thinking',
@@ -726,13 +671,15 @@ describe('ChatMessageHandler', () => {
           persistenceState: 'queued',
         } as ThinkingEvent,
         {
-          type: 'message_chunk',
-          content: 'Second event',
+          type: 'tool_use',
+          toolName: 'list_entities',
+          args: { type: 'customer' },
+          toolUseId: 'tool-1',
           timestamp: new Date(),
           eventId: 'evt-2',
           sequenceNumber: 2,
           persistenceState: 'queued',
-        } as MessageChunkEvent,
+        } as ToolUseEvent,
         {
           type: 'message',
           content: 'Third event',
@@ -775,13 +722,14 @@ describe('ChatMessageHandler', () => {
       await handler.handle(data, mockSocket as Socket, mockIo as SocketIOServer);
 
       // ⭐ REFACTORED: Now expects 3 events from orchestrator (user_message_confirmed is emitted by orchestrator)
+      // NOTE: Events changed to use tool_use instead of message_chunk (sync architecture)
       expect(emittedEvents).toHaveLength(3);
 
       // Agent events in order (user_message_confirmed is now emitted by AgentOrchestrator, not ChatMessageHandler)
       expect(emittedEvents[0]!.type).toBe('thinking');
       expect(emittedEvents[0]!.sequenceNumber).toBe(1);
 
-      expect(emittedEvents[1]!.type).toBe('message_chunk');
+      expect(emittedEvents[1]!.type).toBe('tool_use');
       expect(emittedEvents[1]!.sequenceNumber).toBe(2);
 
       expect(emittedEvents[2]!.type).toBe('message');

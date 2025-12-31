@@ -79,16 +79,7 @@ export interface AgentMessageEvent extends Omit<BaseEvent, 'event_type' | 'data'
   };
 }
 
-/**
- * Agent Message Chunk Event
- */
-export interface AgentMessageChunkEvent extends Omit<BaseEvent, 'event_type' | 'data'> {
-  event_type: 'agent_message_chunk';
-  data: {
-    chunk: string;
-    is_final: boolean;
-  };
-}
+// NOTE: AgentMessageChunkEvent removed - sync architecture uses complete messages only
 
 /**
  * Tool Use Event
@@ -117,12 +108,11 @@ export interface ToolResultEvent extends Omit<BaseEvent, 'event_type' | 'data'> 
 }
 
 /**
- * Discriminated Union of all events
+ * Discriminated Union of all events (sync architecture - no chunk events)
  */
 export type MessageEvent =
   | UserMessageEvent
   | AgentMessageEvent
-  | AgentMessageChunkEvent
   | ToolUseEvent
   | ToolResultEvent
   | BaseEvent;

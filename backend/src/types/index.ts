@@ -34,7 +34,7 @@ export type {
   BCSingleResult,
 } from './bc.types';
 
-// Agent Types
+// Agent Types (sync architecture - no chunk types)
 export type {
   AgentOptions,
   AgentEventType,
@@ -42,18 +42,16 @@ export type {
   BaseAgentEvent,
   SessionStartEvent,
   ThinkingEvent,
-  MessagePartialEvent,
   MessageEvent,
-  MessageChunkEvent,  // ⭐ Added missing export
-  Citation,  // ⭐ RAG source attribution
+  Citation,  // RAG source attribution
   ToolUseEvent,
   ToolResultEvent,
   ErrorEvent,
   SessionEndEvent,
-  CompleteEvent,  // ⭐ Added missing export
+  CompleteEvent,
   ApprovalRequestedEvent,
   ApprovalResolvedEvent,
-  UserMessageConfirmedEvent,  // ⭐ NEW: User message confirmation event
+  UserMessageConfirmedEvent,
   AgentEvent,
   AgentExecutionResult,
   AgentType,

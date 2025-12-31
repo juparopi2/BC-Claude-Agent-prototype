@@ -9,7 +9,7 @@
 
 
 // ============================================
-// Re-export ALL shared types for consumers
+// Re-export ALL shared types for consumers (sync architecture - no chunk types)
 // ============================================
 export type {
   StopReason,
@@ -18,10 +18,8 @@ export type {
   BaseAgentEvent,
   SessionStartEvent,
   ThinkingEvent,
-  ThinkingChunkEvent,
-  MessagePartialEvent,
+  ThinkingCompleteEvent,
   MessageEvent,
-  MessageChunkEvent,
   Citation,  // RAG source attribution
   ToolUseEvent,
   ToolResultEvent,

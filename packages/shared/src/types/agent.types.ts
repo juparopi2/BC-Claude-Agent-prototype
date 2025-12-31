@@ -34,16 +34,15 @@ export type StopReason =
 
 /**
  * Agent Event Types
- * All 16 event types emitted during agent execution
+ * Event types emitted during synchronous agent execution.
+ * Note: Streaming chunk types (thinking_chunk, message_chunk, message_partial) have been removed
+ * as the architecture now uses synchronous execution with complete messages.
  */
 export type AgentEventType =
   | 'session_start'
   | 'thinking'
-  | 'thinking_chunk'
   | 'thinking_complete'
-  | 'message_partial'
   | 'message'
-  | 'message_chunk'
   | 'tool_use'
   | 'tool_result'
   | 'error'
@@ -132,23 +131,6 @@ export interface ThinkingEvent extends BaseAgentEvent {
 }
 
 /**
- * Thinking Chunk Event (Phase 1F: Extended Thinking)
- * Emitted during streaming for incremental thinking content
- *
- * Extended Thinking provides real-time visibility into Claude's reasoning process.
- * Chunks arrive as Claude thinks, providing immediate feedback to users.
- */
-export interface ThinkingChunkEvent extends BaseAgentEvent {
-  type: 'thinking_chunk';
-  /** Chunk of thinking content */
-  content: string;
-  /** Index of the thinking content block (for multi-block responses) */
-  blockIndex?: number;
-  /** Message ID to link chunk to specific message */
-  messageId?: string;
-}
-
-/**
  * Thinking Complete Event
  * Emitted when the thinking block is complete (before text content starts)
  *
@@ -162,18 +144,6 @@ export interface ThinkingCompleteEvent extends BaseAgentEvent {
   /** Index of the thinking content block */
   blockIndex?: number;
   /** Message ID to link to specific message */
-  messageId?: string;
-}
-
-/**
- * Message Partial Event
- * Emitted during streaming for partial message content
- */
-export interface MessagePartialEvent extends BaseAgentEvent {
-  type: 'message_partial';
-  /** Partial message content */
-  content: string;
-  /** Message ID */
   messageId?: string;
 }
 
@@ -240,20 +210,6 @@ export interface Citation {
   end_char_index?: number;
   /** Page number (for PDF documents) */
   page_number?: number;
-}
-
-/**
- * Message Chunk Event
- * Emitted during streaming for incremental message content
- */
-export interface MessageChunkEvent extends BaseAgentEvent {
-  type: 'message_chunk';
-  /** Chunk of message content */
-  content: string;
-  /** Message ID to link chunk to specific message */
-  messageId?: string;
-  /** Citations for RAG source attribution */
-  citations?: Citation[];
 }
 
 /**
@@ -434,7 +390,7 @@ export interface ContentRefusedEvent extends BaseAgentEvent {
 
 /**
  * Agent Event
- * Discriminated union of all 16 agent event types
+ * Discriminated union of all 13 agent event types (sync architecture - no chunks)
  *
  * Frontend should use switch statement on event.type for type narrowing:
  * @example
@@ -454,11 +410,8 @@ export interface ContentRefusedEvent extends BaseAgentEvent {
 export type AgentEvent =
   | SessionStartEvent
   | ThinkingEvent
-  | ThinkingChunkEvent
   | ThinkingCompleteEvent
-  | MessagePartialEvent
   | MessageEvent
-  | MessageChunkEvent
   | ToolUseEvent
   | ToolResultEvent
   | ErrorEvent
@@ -505,24 +458,24 @@ export interface AgentExecutionResult {
 }
 
 // ============================================
-// Transient Event Utilities
+// Transient Event Utilities (Sync Architecture)
 // ============================================
 
 /**
  * Event types that are transient (not persisted to database)
  *
- * Transient events are streaming events that exist only during real-time
- * communication and are not saved to the database. The final persisted
- * event (e.g., 'message') contains the complete content.
+ * In the synchronous architecture, transient events are control signals
+ * that exist only during real-time communication:
+ * - session_start: Signals a new turn to the frontend
+ * - complete: Signals agent execution finished
+ * - error: Signals an error occurred (may still be logged)
  *
- * Used by frontend to:
- * - Filter late chunks after 'complete' event (Gap #6 fix)
- * - Identify events that don't have sequenceNumber
+ * Persisted events have sequenceNumber from EventStore.
  */
 export const TRANSIENT_EVENT_TYPES = [
-  'message_chunk',
-  'thinking_chunk',
-  'message_partial',
+  'session_start',
+  'complete',
+  'error',
 ] as const;
 
 /**
@@ -539,7 +492,7 @@ export type TransientEventType = (typeof TRANSIENT_EVENT_TYPES)[number];
  * @example
  * ```typescript
  * if (isTransientEventType(event.type)) {
- *   // This event won't be persisted, handle as streaming chunk
+ *   // This event won't have a sequenceNumber
  * }
  * ```
  */

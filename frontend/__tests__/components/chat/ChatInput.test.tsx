@@ -16,15 +16,11 @@ vi.mock('@/src/infrastructure/api', () => ({
   getFileApiClient: vi.fn(),
 }));
 
-// Mock streaming hook and socket connection
-let mockStreamingState = {
-  isStreaming: false,
+// Mock agent state hook and socket connection
+let mockAgentState = {
   isAgentBusy: false,
-  isComplete: false,
-  content: '',
-  thinking: '',
-  thinkingBlocks: new Map(),
-  capturedThinking: null,
+  isPaused: false,
+  pauseReason: null as string | null,
 };
 
 const mockSocketConnection = {
@@ -35,7 +31,7 @@ const mockSocketConnection = {
 };
 
 vi.mock('@/src/domains/chat', () => ({
-  useStreaming: vi.fn(() => mockStreamingState),
+  useAgentState: vi.fn(() => mockAgentState),
   useSocketConnection: vi.fn(() => mockSocketConnection),
 }));
 
@@ -65,14 +61,10 @@ describe('ChatInput', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockStreamingState = {
-      isStreaming: false,
+    mockAgentState = {
       isAgentBusy: false,
-      isComplete: false,
-      content: '',
-      thinking: '',
-      thinkingBlocks: new Map(),
-      capturedThinking: null,
+      isPaused: false,
+      pauseReason: null,
     };
     mockSocketConnection.sendMessage = vi.fn();
     mockSocketConnection.stopAgent = vi.fn();
@@ -357,7 +349,7 @@ describe('ChatInput', () => {
     });
 
     it('disables input when agent is busy', () => {
-      mockStreamingState.isAgentBusy = true;
+      mockAgentState.isAgentBusy = true;
 
       render(
         <ChatInput
@@ -372,7 +364,7 @@ describe('ChatInput', () => {
     });
 
     it('shows stop button when agent is streaming', () => {
-      mockStreamingState.isStreaming = true;
+      mockAgentState.isAgentBusy = true;
 
       render(
         <ChatInput

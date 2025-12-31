@@ -9,41 +9,28 @@
  * Background:
  * - FakeAgentOrchestrator: Used in integration/E2E tests (no Claude API calls)
  * - AgentOrchestrator: Production code that calls Claude API
- * - ISSUE FOUND: FakeAgentOrchestrator emitted `session_start` but Real didn't
- * - FIX: Added `session_start` emission to AgentOrchestrator (this sprint)
+ * - Both now use synchronous execution model with invoke()
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { FakeAgentOrchestrator } from '@domains/agent/orchestration/FakeAgentOrchestrator';
 import type { AgentEvent } from '@bc-agent/shared';
+import { AIMessage } from '@langchain/core/messages';
 
 // Mock external dependencies for the real AgentOrchestrator
 vi.mock('@/modules/agents/orchestrator/graph', () => ({
   orchestratorGraph: {
-    streamEvents: vi.fn(),
+    invoke: vi.fn(),
   },
 }));
 
-vi.mock('@shared/providers/adapters/StreamAdapterFactory', () => ({
-  StreamAdapterFactory: {
-    create: vi.fn(() => ({
-      processChunk: vi.fn(),
-      normalizeStopReason: vi.fn((stopReason: string) => {
-        const mapping: Record<string, string> = {
-          'end_turn': 'success',
-          'max_tokens': 'max_turns',
-          'tool_use': 'success',
-          'stop_sequence': 'success',
-        };
-        return mapping[stopReason] ?? 'success';
-      }),
-    })),
-  },
-}));
-
-vi.mock('@langchain/core/messages', () => ({
-  HumanMessage: vi.fn((content) => ({ content, type: 'human' })),
-}));
+vi.mock('@langchain/core/messages', async (importOriginal) => {
+  const original = await importOriginal<typeof import('@langchain/core/messages')>();
+  return {
+    ...original,
+    HumanMessage: vi.fn((content) => ({ content, _getType: () => 'human' })),
+  };
+});
 
 vi.mock('@/shared/utils/logger', () => {
   const mockLogger = {
@@ -76,46 +63,36 @@ vi.mock('@domains/agent/persistence', () => ({
   })),
 }));
 
-// Mock GraphStreamProcessor singleton
-const mockGraphProcessor = {
-  process: vi.fn(),
-};
-vi.mock('@domains/agent/streaming/GraphStreamProcessor', () => ({
-  getGraphStreamProcessor: vi.fn(() => mockGraphProcessor),
-}));
-
-// Mock ToolExecutionProcessor singleton
-vi.mock('@domains/agent/tools', () => ({
-  getToolExecutionProcessor: vi.fn(() => ({
-    processExecutions: vi.fn().mockResolvedValue([]),
-  })),
-}));
-
-// Mock AgentEventEmitter singleton - capture events
-let capturedRealEvents: AgentEvent[] = [];
-vi.mock('@domains/agent/emission', () => ({
-  getAgentEventEmitter: vi.fn(() => ({
-    emit: vi.fn((event: AgentEvent) => {
-      capturedRealEvents.push(event);
-    }),
-    emitError: vi.fn(),
-    emitUserMessageConfirmed: vi.fn((sessionId: string, data: Record<string, unknown>) => {
-      capturedRealEvents.push({
-        type: 'user_message_confirmed',
-        sessionId,
-        ...data,
-      } as AgentEvent);
-    }),
-    getEventIndex: vi.fn().mockReturnValue(0),
-  })),
-}));
-
 // Now import with mocks in place
 import { orchestratorGraph } from '@/modules/agents/orchestrator/graph';
 import {
   createAgentOrchestrator,
   __resetAgentOrchestrator,
 } from '@domains/agent/orchestration/AgentOrchestrator';
+
+/**
+ * Create a mock AgentState result from orchestratorGraph.invoke()
+ */
+function createMockInvokeResult(content: string) {
+  return {
+    messages: [
+      // User message
+      { content: 'Hello', _getType: () => 'human' },
+      // AI response
+      new AIMessage({
+        content,
+        response_metadata: {
+          stop_reason: 'end_turn',
+          usage: {
+            input_tokens: 50,
+            output_tokens: 10,
+          },
+        },
+      }),
+    ],
+    toolExecutions: [],
+  };
+}
 
 describe('OrchestratorParity', () => {
   const sessionId = 'test-session';
@@ -124,20 +101,11 @@ describe('OrchestratorParity', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    capturedRealEvents = [];
     __resetAgentOrchestrator();
 
-    // Setup minimal mocks for real orchestrator to execute
-    vi.mocked(orchestratorGraph.streamEvents).mockResolvedValue(
-      (async function* () {
-        // Empty stream
-      })()
-    );
-
-    mockGraphProcessor.process.mockReturnValue(
-      (async function* () {
-        yield { type: 'final_response', content: 'Done', stopReason: 'end_turn' };
-      })()
+    // Setup mock for invoke to return proper result
+    vi.mocked(orchestratorGraph.invoke).mockResolvedValue(
+      createMockInvokeResult('Done')
     );
   });
 
@@ -163,11 +131,12 @@ describe('OrchestratorParity', () => {
 
       // Run Real AgentOrchestrator (with mocked internals)
       const realOrchestrator = createAgentOrchestrator();
-      await realOrchestrator.executeAgentSync(prompt, sessionId, () => {}, userId);
+      const realEvents: AgentEvent[] = [];
+      await realOrchestrator.executeAgentSync(prompt, sessionId, (e) => realEvents.push(e), userId);
 
       // Verify Real emits session_start first
-      expect(capturedRealEvents.length).toBeGreaterThan(0);
-      expect(capturedRealEvents[0].type).toBe('session_start');
+      expect(realEvents.length).toBeGreaterThan(0);
+      expect(realEvents[0].type).toBe('session_start');
     });
 
     it('Both orchestrators should emit user_message_confirmed after session_start', async () => {
@@ -192,10 +161,11 @@ describe('OrchestratorParity', () => {
 
       // Run Real AgentOrchestrator
       const realOrchestrator = createAgentOrchestrator();
-      await realOrchestrator.executeAgentSync(prompt, sessionId, () => {}, userId);
+      const realEvents: AgentEvent[] = [];
+      await realOrchestrator.executeAgentSync(prompt, sessionId, (e) => realEvents.push(e), userId);
 
       // Get event sequence from Real
-      const realEventTypes = capturedRealEvents.map(e => e.type);
+      const realEventTypes = realEvents.map(e => e.type);
 
       // Verify sequence: session_start → user_message_confirmed
       const realSessionStartIdx = realEventTypes.indexOf('session_start');
@@ -220,10 +190,11 @@ describe('OrchestratorParity', () => {
 
       // Run Real AgentOrchestrator
       const realOrchestrator = createAgentOrchestrator();
-      await realOrchestrator.executeAgentSync(prompt, sessionId, () => {}, userId);
+      const realEvents: AgentEvent[] = [];
+      await realOrchestrator.executeAgentSync(prompt, sessionId, (e) => realEvents.push(e), userId);
 
       // Verify Real ends with complete
-      expect(capturedRealEvents[capturedRealEvents.length - 1].type).toBe('complete');
+      expect(realEvents[realEvents.length - 1].type).toBe('complete');
     });
 
     it('Both orchestrators should have same core event sequence structure', async () => {
@@ -239,14 +210,15 @@ describe('OrchestratorParity', () => {
 
       // Run Real AgentOrchestrator
       const realOrchestrator = createAgentOrchestrator();
-      await realOrchestrator.executeAgentSync(prompt, sessionId, () => {}, userId);
+      const realEvents: AgentEvent[] = [];
+      await realOrchestrator.executeAgentSync(prompt, sessionId, (e) => realEvents.push(e), userId);
 
-      // Extract core event types (exclude message_chunk which varies)
+      // Extract core event types (exclude message_chunk which Fake emits but Real doesn't in sync mode)
       const fakeCoreTypes = fakeEvents
         .map(e => e.type)
         .filter(t => ['session_start', 'user_message_confirmed', 'message', 'complete'].includes(t));
 
-      const realCoreTypes = capturedRealEvents
+      const realCoreTypes = realEvents
         .map(e => e.type)
         .filter(t => ['session_start', 'user_message_confirmed', 'message', 'complete'].includes(t));
 
@@ -276,9 +248,10 @@ describe('OrchestratorParity', () => {
 
       // Run Real AgentOrchestrator
       const realOrchestrator = createAgentOrchestrator();
-      await realOrchestrator.executeAgentSync(prompt, sessionId, () => {}, userId);
+      const realEvents: AgentEvent[] = [];
+      await realOrchestrator.executeAgentSync(prompt, sessionId, (e) => realEvents.push(e), userId);
 
-      const realSessionStart = capturedRealEvents.find(e => e.type === 'session_start');
+      const realSessionStart = realEvents.find(e => e.type === 'session_start');
       expect(realSessionStart).toBeDefined();
       expect(realSessionStart).toHaveProperty('sessionId');
       expect(realSessionStart).toHaveProperty('userId');

@@ -1,12 +1,10 @@
 /**
  * @module __tests__/integration/domains/agent/orchestration/AgentOrchestrator.integration.test
  *
- * Integration tests for AgentOrchestrator.
+ * Integration tests for AgentOrchestrator with synchronous execution model.
  * Tests the orchestrator with mocked external services.
  *
- * Note: Multi-event accumulation scenarios (thinking, tool execution) are covered
- * extensively in unit tests (30 tests in AgentOrchestrator.test.ts).
- * These integration tests focus on:
+ * Tests focus on:
  * - Simple end-to-end flow
  * - Error handling
  * - Input validation
@@ -15,7 +13,7 @@
 
 import { describe, it, expect, beforeEach, vi, afterEach, type Mock } from 'vitest';
 import { randomUUID } from 'crypto';
-import type { StreamEvent } from '@langchain/core/tracers/log_stream';
+import { AIMessage } from '@langchain/core/messages';
 import { createAgentOrchestrator, __resetAgentOrchestrator } from '@domains/agent/orchestration/AgentOrchestrator';
 import { PersistenceCoordinator } from '@domains/agent/persistence/PersistenceCoordinator';
 import type {
@@ -33,7 +31,7 @@ import type { MessageQueue } from '@/infrastructure/queue/MessageQueue';
 // Mock LangGraph
 vi.mock('@/modules/agents/orchestrator/graph', () => ({
   orchestratorGraph: {
-    streamEvents: vi.fn(),
+    invoke: vi.fn(),
   },
 }));
 
@@ -69,57 +67,6 @@ vi.mock('@/services/files/context/PromptBuilder', () => ({
   }),
 }));
 
-// Mock StreamAdapterFactory to return a mock adapter that processes our test events
-vi.mock('@shared/providers/adapters/StreamAdapterFactory', () => ({
-  StreamAdapterFactory: {
-    create: vi.fn(() => ({
-      processChunk: (event: { event: string; name: string; data?: Record<string, unknown> }) => {
-        // Handle content delta events
-        if (event.event === 'on_chat_model_stream' && event.name === 'ChatAnthropic') {
-          const chunk = event.data?.chunk as Record<string, unknown> | undefined;
-          if (chunk?.delta && typeof chunk.delta === 'object') {
-            const delta = chunk.delta as Record<string, unknown>;
-            if (delta.type === 'text_delta' && typeof delta.text === 'string') {
-              return {
-                type: 'content_delta',
-                content: delta.text,
-                timestamp: new Date(),
-                metadata: { blockIndex: chunk.index ?? 0 },
-              };
-            }
-          }
-        }
-        // Handle stream end events
-        if (event.event === 'on_chat_model_end' && event.name === 'ChatAnthropic') {
-          const output = event.data?.output as Record<string, unknown> | undefined;
-          const usage = output?.usage as Record<string, number> | undefined;
-          return {
-            type: 'stream_end',
-            timestamp: new Date(),
-            metadata: { blockIndex: 0 },
-            raw: { stop_reason: output?.stop_reason ?? 'end_turn' },
-            usage: usage ? {
-              inputTokens: usage.input_tokens ?? 0,
-              outputTokens: usage.output_tokens ?? 0,
-            } : undefined,
-          };
-        }
-        return null;
-      },
-      normalizeStopReason: (stopReason: string) => {
-        // Simulate Anthropic adapter behavior
-        const mapping: Record<string, string> = {
-          'end_turn': 'success',
-          'max_tokens': 'max_turns',
-          'tool_use': 'success',
-          'stop_sequence': 'success',
-        };
-        return mapping[stopReason] ?? 'success';
-      },
-    })),
-  },
-}));
-
 // Import after mocks are set up
 import { orchestratorGraph } from '@/modules/agents/orchestrator/graph';
 import { FileService } from '@/services/files/FileService';
@@ -130,61 +77,24 @@ import { getSemanticSearchService } from '@/services/semantic-search/SemanticSea
 // ============================================================================
 
 /**
- * Create a mock LangGraph stream that yields events.
+ * Create a mock AgentState result from orchestratorGraph.invoke()
  */
-async function* createMockLangGraphStream(events: StreamEvent[]): AsyncIterable<StreamEvent> {
-  for (const event of events) {
-    yield event;
-  }
-}
-
-/**
- * Create a properly formatted content delta event (text streaming).
- */
-function createContentDeltaEvent(content: string, blockIndex = 0): StreamEvent {
+function createMockInvokeResult(content: string, inputTokens = 50, outputTokens = 10) {
   return {
-    event: 'on_chat_model_stream',
-    name: 'ChatAnthropic',
-    run_id: randomUUID(),
-    tags: [],
-    metadata: {},
-    data: {
-      chunk: {
-        type: 'content_block_delta',
-        index: blockIndex,
-        delta: {
-          type: 'text_delta',
-          text: content,
+    messages: [
+      { content: 'Test prompt', _getType: () => 'human' },
+      new AIMessage({
+        content,
+        response_metadata: {
+          stop_reason: 'end_turn',
+          usage: {
+            input_tokens: inputTokens,
+            output_tokens: outputTokens,
+          },
         },
-      },
-    },
-  };
-}
-
-/**
- * Create a stream end event with usage information.
- */
-function createStreamEndEvent(inputTokens = 100, outputTokens = 50): StreamEvent {
-  return {
-    event: 'on_chat_model_end',
-    name: 'ChatAnthropic',
-    run_id: randomUUID(),
-    tags: [],
-    metadata: {},
-    data: {
-      output: {
-        id: randomUUID(),
-        content: [{ type: 'text', text: '' }],
-        role: 'assistant',
-        model: 'claude-3-5-sonnet-20241022',
-        stop_reason: 'end_turn',
-        type: 'message',
-        usage: {
-          input_tokens: inputTokens,
-          output_tokens: outputTokens,
-        },
-      },
-    },
+      }),
+    ],
+    toolExecutions: [],
   };
 }
 
@@ -193,7 +103,7 @@ function createStreamEndEvent(inputTokens = 100, outputTokens = 50): StreamEvent
 // ============================================================================
 
 describe('AgentOrchestrator Integration', () => {
-  let mockStreamEvents: Mock;
+  let mockInvoke: Mock;
   let mockGetFile: Mock;
   let mockSearchRelevantFiles: Mock;
   let mockAppendEvent: Mock;
@@ -207,7 +117,7 @@ describe('AgentOrchestrator Integration', () => {
     __resetAgentOrchestrator();
 
     // Get references to mocked module functions
-    mockStreamEvents = orchestratorGraph.streamEvents as Mock;
+    mockInvoke = orchestratorGraph.invoke as Mock;
     mockGetFile = FileService.getInstance().getFile as Mock;
     mockSearchRelevantFiles = getSemanticSearchService().searchRelevantFiles as Mock;
 
@@ -250,14 +160,9 @@ describe('AgentOrchestrator Integration', () => {
   // ==========================================================================
 
   describe('simple text response flow', () => {
-    it('should process simple text streaming end-to-end', async () => {
-      // Arrange: Mock LangGraph stream with simple content
-      const mockEvents = createMockLangGraphStream([
-        createContentDeltaEvent('Hello '),
-        createContentDeltaEvent('World!'),
-        createStreamEndEvent(50, 10),
-      ]);
-      mockStreamEvents.mockResolvedValue(mockEvents);
+    it('should process simple text response end-to-end', async () => {
+      // Arrange: Mock invoke to return response
+      mockInvoke.mockResolvedValue(createMockInvokeResult('Hello World!', 50, 10));
 
       // Create orchestrator with mocked persistence
       const orchestrator = createAgentOrchestrator({
@@ -284,10 +189,6 @@ describe('AgentOrchestrator Integration', () => {
       // Assert: Events were emitted correctly
       expect(events.length).toBeGreaterThan(0);
 
-      // Verify message chunks were emitted
-      const messageChunks = events.filter((e) => e.type === 'message_chunk');
-      expect(messageChunks.length).toBeGreaterThanOrEqual(2);
-
       // Verify final message event
       const messageEvent = events.find((e): e is MessageEvent => e.type === 'message');
       expect(messageEvent).toBeDefined();
@@ -309,14 +210,8 @@ describe('AgentOrchestrator Integration', () => {
 
   describe('event emission', () => {
     it('should emit events with auto-incrementing index', async () => {
-      // Arrange: Stream with multiple events
-      const mockEvents = createMockLangGraphStream([
-        createContentDeltaEvent('Chunk 1'),
-        createContentDeltaEvent('Chunk 2'),
-        createContentDeltaEvent('Chunk 3'),
-        createStreamEndEvent(50, 10),
-      ]);
-      mockStreamEvents.mockResolvedValue(mockEvents);
+      // Arrange
+      mockInvoke.mockResolvedValue(createMockInvokeResult('Response', 50, 10));
 
       const orchestrator = createAgentOrchestrator({ persistenceCoordinator });
       const events: AgentEvent[] = [];
@@ -348,7 +243,7 @@ describe('AgentOrchestrator Integration', () => {
   describe('error handling', () => {
     it('should emit error event when LangGraph execution fails', async () => {
       // Arrange: Mock LangGraph failure
-      mockStreamEvents.mockRejectedValue(new Error('LangGraph execution failed'));
+      mockInvoke.mockRejectedValue(new Error('LangGraph execution failed'));
 
       const orchestrator = createAgentOrchestrator({ persistenceCoordinator });
       const events: AgentEvent[] = [];
@@ -373,11 +268,7 @@ describe('AgentOrchestrator Integration', () => {
       // Arrange: Mock persistence failure
       mockAppendEvent.mockRejectedValueOnce(new Error('Database connection failed'));
 
-      const mockEvents = createMockLangGraphStream([
-        createContentDeltaEvent('Response'),
-        createStreamEndEvent(50, 10),
-      ]);
-      mockStreamEvents.mockResolvedValue(mockEvents);
+      mockInvoke.mockResolvedValue(createMockInvokeResult('Response', 50, 10));
 
       const orchestrator = createAgentOrchestrator({ persistenceCoordinator });
 
@@ -425,12 +316,8 @@ describe('AgentOrchestrator Integration', () => {
   // ==========================================================================
 
   describe('persistence integration', () => {
-    it('should persist user message before streaming', async () => {
-      const mockEvents = createMockLangGraphStream([
-        createContentDeltaEvent('Response'),
-        createStreamEndEvent(50, 10),
-      ]);
-      mockStreamEvents.mockResolvedValue(mockEvents);
+    it('should persist user message before execution', async () => {
+      mockInvoke.mockResolvedValue(createMockInvokeResult('Response', 50, 10));
 
       const orchestrator = createAgentOrchestrator({ persistenceCoordinator });
 
@@ -449,12 +336,8 @@ describe('AgentOrchestrator Integration', () => {
       expect(firstCall?.[1]).toBe('user_message_sent');
     });
 
-    it('should persist agent message after streaming', async () => {
-      const mockEvents = createMockLangGraphStream([
-        createContentDeltaEvent('Response'),
-        createStreamEndEvent(50, 10),
-      ]);
-      mockStreamEvents.mockResolvedValue(mockEvents);
+    it('should persist agent message after execution', async () => {
+      mockInvoke.mockResolvedValue(createMockInvokeResult('Response', 50, 10));
 
       const orchestrator = createAgentOrchestrator({ persistenceCoordinator });
 

@@ -143,11 +143,11 @@ export const handlers = [
     return HttpResponse.json({ sessions: mockSessions });
   }),
 
-  // Get single session (wrapped in { session: {...} })
+  // Get single session (returns Session directly)
   http.get(`${API_URL}/api/chat/sessions/:sessionId`, ({ params }) => {
     const session = mockSessions.find((s) => s.id === params.sessionId);
     if (session) {
-      return HttpResponse.json({ session });
+      return HttpResponse.json(session);
     }
     return HttpResponse.json(
       { error: 'Not Found', message: 'Session not found', code: 'SESSION_NOT_FOUND' },
@@ -155,7 +155,7 @@ export const handlers = [
     );
   }),
 
-  // Create session (wrapped in { session: {...} })
+  // Create session (returns Session directly)
   http.post(`${API_URL}/api/chat/sessions`, async ({ request }) => {
     const body = (await request.json()) as { title?: string } | null;
     const newSession: Session = {
@@ -167,10 +167,10 @@ export const handlers = [
       is_active: true,
       message_count: 0,
     };
-    return HttpResponse.json({ session: newSession }, { status: 201 });
+    return HttpResponse.json(newSession, { status: 201 });
   }),
 
-  // Update session (wrapped in { success: true, session: {...} })
+  // Update session (returns Session directly)
   http.patch(`${API_URL}/api/chat/sessions/:sessionId`, async ({ params, request }) => {
     const body = (await request.json()) as { title?: string; is_active?: boolean };
     const session = mockSessions.find((s) => s.id === params.sessionId);
@@ -180,7 +180,7 @@ export const handlers = [
         ...body,
         updated_at: new Date().toISOString(),
       };
-      return HttpResponse.json({ success: true, session: updatedSession });
+      return HttpResponse.json(updatedSession);
     }
     return HttpResponse.json(
       { error: 'Not Found', message: 'Session not found', code: 'SESSION_NOT_FOUND' },

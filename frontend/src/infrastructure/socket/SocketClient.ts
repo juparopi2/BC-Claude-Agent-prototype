@@ -146,29 +146,58 @@ export class SocketClient {
     const timeout = options.timeout ?? 5000;
 
     return new Promise((resolve, reject) => {
-      if (!this.socket?.connected) {
-        reject(new Error('Not connected'));
+      const doJoin = () => {
+        if (!this.socket) {
+          reject(new Error('No socket instance'));
+          return;
+        }
+
+        // Leave current session if different
+        if (this.currentSessionId && this.currentSessionId !== sessionId) {
+          this.socket.emit('session:leave', { sessionId: this.currentSessionId });
+        }
+
+        const timeoutId = setTimeout(() => {
+          reject(new Error('Join timeout'));
+        }, timeout);
+
+        // Listen for session:ready once
+        this.socket.once('session:ready', (data: SessionReadyEvent) => {
+          clearTimeout(timeoutId);
+          this.currentSessionId = sessionId;
+          this.notifySessionReady(data);
+          resolve();
+        });
+
+        this.socket.emit('session:join', { sessionId });
+      };
+
+      // If already connected, join immediately
+      if (this.socket?.connected) {
+        doJoin();
         return;
       }
 
-      // Leave current session if different
-      if (this.currentSessionId && this.currentSessionId !== sessionId) {
-        this.socket.emit('session:leave', { sessionId: this.currentSessionId });
+      // If socket exists but not connected, wait for connection
+      if (this.socket) {
+        const connectTimeout = setTimeout(() => {
+          reject(new Error('Connection timeout while joining'));
+        }, timeout);
+
+        this.socket.once('connect', () => {
+          clearTimeout(connectTimeout);
+          doJoin();
+        });
+
+        this.socket.once('connect_error', (error) => {
+          clearTimeout(connectTimeout);
+          reject(new Error(`Connection failed: ${error.message}`));
+        });
+        return;
       }
 
-      const timeoutId = setTimeout(() => {
-        reject(new Error('Join timeout'));
-      }, timeout);
-
-      // Listen for session:ready once
-      this.socket.once('session:ready', (data: SessionReadyEvent) => {
-        clearTimeout(timeoutId);
-        this.currentSessionId = sessionId;
-        this.notifySessionReady(data);
-        resolve();
-      });
-
-      this.socket.emit('session:join', { sessionId });
+      // No socket at all
+      reject(new Error('Not connected - no socket instance'));
     });
   }
 

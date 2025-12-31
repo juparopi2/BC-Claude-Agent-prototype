@@ -162,8 +162,14 @@ export function useSocketConnection(
   const joinSession = useCallback(async (id: string) => {
     const client = getSocketClient();
 
+    // If not connected, try to connect first
     if (!client.isConnected) {
-      throw new Error('Not connected');
+      try {
+        await client.connect({ url: env.wsUrl });
+      } catch (error) {
+        console.error('[useSocketConnection] Failed to connect before joining session:', error);
+        throw new Error('Failed to connect');
+      }
     }
 
     currentSessionRef.current = id;
@@ -355,7 +361,9 @@ export function useSocketConnection(
       }
     }
 
-    if (sessionId && isConnected) {
+    // Join session when sessionId is available
+    // joinSession handles connection internally if needed
+    if (sessionId && sessionChanged) {
       currentSessionRef.current = sessionId;
 
       // Join new session
@@ -365,7 +373,7 @@ export function useSocketConnection(
     }
 
     prevSessionRef.current = sessionId;
-  }, [sessionId, isConnected, joinSession, leaveSession]);
+  }, [sessionId, joinSession, leaveSession]);
 
   return {
     connect,

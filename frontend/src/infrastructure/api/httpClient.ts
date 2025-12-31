@@ -280,10 +280,8 @@ export class ApiClient {
    * Get a single session by ID
    */
   async getSession(sessionId: string): Promise<ApiResponse<Session>> {
-    const result = await this.request<{ session: Session }>('GET', `/api/chat/sessions/${sessionId}`);
-    if (result.success) {
-      return { success: true, data: result.data.session };
-    }
+    // Backend returns session directly (not wrapped in { session: ... })
+    const result = await this.request<Session>('GET', `/api/chat/sessions/${sessionId}`);
     return result;
   }
 
@@ -291,10 +289,8 @@ export class ApiClient {
    * Create a new session
    */
   async createSession(data?: CreateSessionRequest): Promise<ApiResponse<Session>> {
-    const result = await this.request<{ session: Session }>('POST', '/api/chat/sessions', data);
-    if (result.success) {
-      return { success: true, data: result.data.session };
-    }
+    // Backend returns session directly (not wrapped in { session: ... })
+    const result = await this.request<Session>('POST', '/api/chat/sessions', data);
     return result;
   }
 
@@ -302,10 +298,8 @@ export class ApiClient {
    * Update a session
    */
   async updateSession(sessionId: string, data: UpdateSessionRequest): Promise<ApiResponse<Session>> {
-    const result = await this.request<{ success: boolean; session: Session }>('PATCH', `/api/chat/sessions/${sessionId}`, data);
-    if (result.success) {
-      return { success: true, data: result.data.session };
-    }
+    // Backend returns session directly (not wrapped in { session: ... })
+    const result = await this.request<Session>('PATCH', `/api/chat/sessions/${sessionId}`, data);
     return result;
   }
 

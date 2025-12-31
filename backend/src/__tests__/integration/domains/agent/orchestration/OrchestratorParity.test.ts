@@ -155,7 +155,7 @@ describe('OrchestratorParity', () => {
       });
 
       const fakeEvents: AgentEvent[] = [];
-      await fakeOrchestrator.executeAgent(prompt, sessionId, (e) => fakeEvents.push(e), userId);
+      await fakeOrchestrator.executeAgentSync(prompt, sessionId, (e) => fakeEvents.push(e), userId);
 
       // Verify Fake emits session_start first
       expect(fakeEvents.length).toBeGreaterThan(0);
@@ -163,7 +163,7 @@ describe('OrchestratorParity', () => {
 
       // Run Real AgentOrchestrator (with mocked internals)
       const realOrchestrator = createAgentOrchestrator();
-      await realOrchestrator.executeAgent(prompt, sessionId, () => {}, userId);
+      await realOrchestrator.executeAgentSync(prompt, sessionId, () => {}, userId);
 
       // Verify Real emits session_start first
       expect(capturedRealEvents.length).toBeGreaterThan(0);
@@ -179,7 +179,7 @@ describe('OrchestratorParity', () => {
       });
 
       const fakeEvents: AgentEvent[] = [];
-      await fakeOrchestrator.executeAgent(prompt, sessionId, (e) => fakeEvents.push(e), userId);
+      await fakeOrchestrator.executeAgentSync(prompt, sessionId, (e) => fakeEvents.push(e), userId);
 
       // Get event sequence from Fake
       const fakeEventTypes = fakeEvents.map(e => e.type);
@@ -192,7 +192,7 @@ describe('OrchestratorParity', () => {
 
       // Run Real AgentOrchestrator
       const realOrchestrator = createAgentOrchestrator();
-      await realOrchestrator.executeAgent(prompt, sessionId, () => {}, userId);
+      await realOrchestrator.executeAgentSync(prompt, sessionId, () => {}, userId);
 
       // Get event sequence from Real
       const realEventTypes = capturedRealEvents.map(e => e.type);
@@ -213,14 +213,14 @@ describe('OrchestratorParity', () => {
       });
 
       const fakeEvents: AgentEvent[] = [];
-      await fakeOrchestrator.executeAgent(prompt, sessionId, (e) => fakeEvents.push(e), userId);
+      await fakeOrchestrator.executeAgentSync(prompt, sessionId, (e) => fakeEvents.push(e), userId);
 
       // Verify Fake ends with complete
       expect(fakeEvents[fakeEvents.length - 1].type).toBe('complete');
 
       // Run Real AgentOrchestrator
       const realOrchestrator = createAgentOrchestrator();
-      await realOrchestrator.executeAgent(prompt, sessionId, () => {}, userId);
+      await realOrchestrator.executeAgentSync(prompt, sessionId, () => {}, userId);
 
       // Verify Real ends with complete
       expect(capturedRealEvents[capturedRealEvents.length - 1].type).toBe('complete');
@@ -235,11 +235,11 @@ describe('OrchestratorParity', () => {
       });
 
       const fakeEvents: AgentEvent[] = [];
-      await fakeOrchestrator.executeAgent(prompt, sessionId, (e) => fakeEvents.push(e), userId);
+      await fakeOrchestrator.executeAgentSync(prompt, sessionId, (e) => fakeEvents.push(e), userId);
 
       // Run Real AgentOrchestrator
       const realOrchestrator = createAgentOrchestrator();
-      await realOrchestrator.executeAgent(prompt, sessionId, () => {}, userId);
+      await realOrchestrator.executeAgentSync(prompt, sessionId, () => {}, userId);
 
       // Extract core event types (exclude message_chunk which varies)
       const fakeCoreTypes = fakeEvents
@@ -265,7 +265,7 @@ describe('OrchestratorParity', () => {
       });
 
       const fakeEvents: AgentEvent[] = [];
-      await fakeOrchestrator.executeAgent(prompt, sessionId, (e) => fakeEvents.push(e), userId);
+      await fakeOrchestrator.executeAgentSync(prompt, sessionId, (e) => fakeEvents.push(e), userId);
 
       const fakeSessionStart = fakeEvents.find(e => e.type === 'session_start');
       expect(fakeSessionStart).toBeDefined();
@@ -276,7 +276,7 @@ describe('OrchestratorParity', () => {
 
       // Run Real AgentOrchestrator
       const realOrchestrator = createAgentOrchestrator();
-      await realOrchestrator.executeAgent(prompt, sessionId, () => {}, userId);
+      await realOrchestrator.executeAgentSync(prompt, sessionId, () => {}, userId);
 
       const realSessionStart = capturedRealEvents.find(e => e.type === 'session_start');
       expect(realSessionStart).toBeDefined();

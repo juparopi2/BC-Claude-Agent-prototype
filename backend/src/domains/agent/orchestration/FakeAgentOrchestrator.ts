@@ -117,7 +117,7 @@ export class FakeAgentOrchestrator implements IAgentOrchestrator {
   }
 
   /**
-   * Get number of times executeAgent was called
+   * Get number of times executeAgentSync was called
    */
   getCallCount(): number {
     return this.callCount;
@@ -131,9 +131,9 @@ export class FakeAgentOrchestrator implements IAgentOrchestrator {
   }
 
   /**
-   * Execute the fake agent
+   * Execute the fake agent synchronously (matches IAgentOrchestrator interface)
    */
-  async executeAgent(
+  async executeAgentSync(
     prompt: string,
     sessionId: string,
     onEvent?: (event: AgentEvent) => void,

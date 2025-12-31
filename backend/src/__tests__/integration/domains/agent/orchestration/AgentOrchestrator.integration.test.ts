@@ -266,7 +266,7 @@ describe('AgentOrchestrator Integration', () => {
       const events: AgentEvent[] = [];
 
       // Act: Execute agent
-      const result = await orchestrator.executeAgent(
+      const result = await orchestrator.executeAgentSync(
         'Say hello',
         'session-1',
         (event) => events.push(event),
@@ -322,7 +322,7 @@ describe('AgentOrchestrator Integration', () => {
       const events: AgentEvent[] = [];
 
       // Act
-      await orchestrator.executeAgent(
+      await orchestrator.executeAgentSync(
         'Test indexing',
         'session-2',
         (event) => events.push(event),
@@ -355,7 +355,7 @@ describe('AgentOrchestrator Integration', () => {
 
       // Act & Assert: Should throw and emit error event
       await expect(
-        orchestrator.executeAgent(
+        orchestrator.executeAgentSync(
           'Test error event',
           'session-3',
           (event) => events.push(event),
@@ -383,7 +383,7 @@ describe('AgentOrchestrator Integration', () => {
 
       // Act & Assert: Should throw error
       await expect(
-        orchestrator.executeAgent('Test persistence error', 'session-4', undefined, 'user-1')
+        orchestrator.executeAgentSync('Test persistence error', 'session-4', undefined, 'user-1')
       ).rejects.toThrow('Database connection failed');
     });
 
@@ -393,7 +393,7 @@ describe('AgentOrchestrator Integration', () => {
 
       // Act & Assert: Should throw immediately
       await expect(
-        orchestrator.executeAgent(
+        orchestrator.executeAgentSync(
           'Test',
           'session-5',
           undefined,
@@ -409,7 +409,7 @@ describe('AgentOrchestrator Integration', () => {
 
       // Act & Assert: Should throw immediately
       await expect(
-        orchestrator.executeAgent(
+        orchestrator.executeAgentSync(
           'Test',
           'session-6',
           undefined,
@@ -434,7 +434,7 @@ describe('AgentOrchestrator Integration', () => {
 
       const orchestrator = createAgentOrchestrator({ persistenceCoordinator });
 
-      await orchestrator.executeAgent(
+      await orchestrator.executeAgentSync(
         'Test message',
         'session-7',
         undefined,
@@ -458,7 +458,7 @@ describe('AgentOrchestrator Integration', () => {
 
       const orchestrator = createAgentOrchestrator({ persistenceCoordinator });
 
-      await orchestrator.executeAgent(
+      await orchestrator.executeAgentSync(
         'Test',
         'session-8',
         undefined,

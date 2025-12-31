@@ -25,6 +25,7 @@ export interface MockSocket {
   off: Mock<(event: string, callback?: EventCallback) => MockSocket>;
   emit: Mock<(event: string, ...args: unknown[]) => MockSocket>;
   once: Mock<(event: string, callback: EventCallback) => MockSocket>;
+  removeAllListeners: Mock<(event?: string) => MockSocket>;
 
   // Connection methods
   connect: Mock<() => MockSocket>;
@@ -99,6 +100,15 @@ export function createMockSocket(
       return socket;
     }),
 
+    removeAllListeners: vi.fn((event?: string) => {
+      if (event) {
+        listeners.delete(event);
+      } else {
+        listeners.clear();
+      }
+      return socket;
+    }),
+
     connect: vi.fn(() => {
       socket.connected = true;
       // Simulate async connect event
@@ -139,6 +149,7 @@ export function createMockSocket(
       vi.mocked(socket.off).mockClear();
       vi.mocked(socket.emit).mockClear();
       vi.mocked(socket.once).mockClear();
+      vi.mocked(socket.removeAllListeners).mockClear();
       vi.mocked(socket.connect).mockClear();
       vi.mocked(socket.disconnect).mockClear();
     },

@@ -137,13 +137,13 @@ export class ChatMessageHandler {
       // 2. Execute agent with AgentOrchestrator
       // Note: User message persistence is now handled by AgentOrchestrator → PersistenceCoordinator
       // The orchestrator emits user_message_confirmed after persisting to EventStore + MessageQueue
-      this.logger.info('🤖 About to call AgentOrchestrator.executeAgent', { sessionId, userId });
+      this.logger.info('🤖 About to call AgentOrchestrator.executeAgentSync', { sessionId, userId });
 
       const orchestrator = getAgentOrchestrator();
       this.logger.info('✅ AgentOrchestrator instance obtained', {
         hasOrchestrator: !!orchestrator,
         orchestratorType: orchestrator?.constructor?.name,
-        hasExecuteMethod: typeof orchestrator?.executeAgent === 'function'
+        hasExecuteMethod: typeof orchestrator?.executeAgentSync === 'function'
       });
 
       // ⭐ Phase 1F: Extract and validate Extended Thinking config from request
@@ -170,7 +170,7 @@ export class ChatMessageHandler {
         }
       }
 
-      this.logger.info('📞 Calling executeAgent...', {
+      this.logger.info('📞 Calling executeAgentSync...', {
         sessionId,
         userId,
         messageLength: message.length,
@@ -190,7 +190,7 @@ export class ChatMessageHandler {
         }
       );
 
-      this.logger.info('✅ Chat message processed successfully (executeAgent completed)', { sessionId, userId });
+      this.logger.info('✅ Chat message processed successfully (executeAgentSync completed)', { sessionId, userId });
     } catch (error) {
       // Type for Node.js system errors with additional properties
       type NodeSystemError = Error & { code?: string; errno?: number; syscall?: string };

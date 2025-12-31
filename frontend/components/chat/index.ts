@@ -5,8 +5,6 @@ export { default as ChatInput } from './ChatInput';
 // Re-export from presentation layer for backward compatibility
 export {
   MessageBubble,
-  StreamingIndicator,
-  StreamingMessage, // Legacy alias
   ThinkingBlock,
   ThinkingDisplay, // Legacy alias
   ToolCard,

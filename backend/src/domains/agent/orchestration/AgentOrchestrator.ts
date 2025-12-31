@@ -1,36 +1,28 @@
 /**
  * @module domains/agent/orchestration/AgentOrchestrator
  *
- * Main orchestration class that coordinates all agent execution phases.
- * Extracted from DirectAgentService.runGraph() (lines 304-1200).
+ * Main orchestration class for synchronous agent execution.
+ * Uses graph.invoke() to wait for complete responses, eliminating streaming complexity.
  *
- * ## Stateless Architecture
+ * ## Architecture
  *
- * All components are STATELESS singletons. Per-execution state lives in ExecutionContext.
- * This pattern solves multi-tenant race conditions by:
- * 1. Creating a new ExecutionContext for each executeAgent() call
- * 2. Passing ctx to all stateless components
- * 3. All mutable state lives in ctx, not in singleton instances
- *
- * Benefits:
- * - Guaranteed isolation between concurrent executions
- * - Compatible with Azure Container Apps horizontal scaling
- * - Low GC pressure (~310 bytes per context base size)
- * - No cleanup required (context is garbage collected)
+ * Per-execution state lives in ExecutionContextSync.
+ * Events are emitted in strict order after execution completes:
+ * 1. session_start
+ * 2. user_message_confirmed
+ * 3. thinking_complete (if enabled)
+ * 4. tool_use + tool_result (pairs)
+ * 5. message (complete response)
+ * 6. complete
  *
  * Coordinates:
  * 1. FileContextPreparer - Prepares file context (attachments + semantic search)
- * 2. StreamEventRouter - Routes LangGraph events to processors
- * 3. GraphStreamProcessor - Processes normalized events (stateless)
- * 4. ToolExecutionProcessor - Handles tool execution deduplication (stateless)
- * 5. PersistenceCoordinator - Coordinates EventStore + MessageQueue
- * 6. AgentEventEmitter - Emits events with auto-incrementing index (stateless)
- * 7. UsageTracker - Tracks token usage
+ * 2. PersistenceCoordinator - Coordinates EventStore + MessageQueue
  *
  * @example
  * ```typescript
  * const orchestrator = getAgentOrchestrator();
- * const result = await orchestrator.executeAgent(
+ * const result = await orchestrator.executeAgentSync(
  *   'Create a sales order',
  *   sessionId,
  *   (event) => socket.emit('agent:event', event),
@@ -47,24 +39,23 @@ import { HumanMessage } from '@langchain/core/messages';
 import { randomUUID } from 'crypto';
 import type {
   IAgentOrchestrator,
-  ExecuteStreamingOptions,
   AgentExecutionResult,
   AgentEvent,
 } from './types';
-import type { ProcessedStreamEvent } from '@domains/agent/streaming/types';
 import {
-  createExecutionContext,
-  getResponseContent,
-  getThinkingContent,
-  addUsage,
-} from './ExecutionContext';
-import type { ExecutionContext } from './ExecutionContext';
+  createExecutionContextSync,
+  setUsageSync,
+  getNextEventIndex,
+  markToolSeenSync,
+} from './ExecutionContextSync';
+import type { ExecutionContextSync, ExecuteSyncOptions } from './ExecutionContextSync';
+import { extractContent } from './ResultExtractor';
 import { createFileContextPreparer, type IFileContextPreparer } from '@domains/agent/context';
-import { createStreamEventRouter, type IStreamEventRouter } from '@domains/agent/streaming';
-import { getGraphStreamProcessor } from '@domains/agent/streaming/GraphStreamProcessor';
-import { getToolExecutionProcessor } from '@domains/agent/tools';
-import { getPersistenceCoordinator, type IPersistenceCoordinator } from '@domains/agent/persistence';
-import { getAgentEventEmitter } from '@domains/agent/emission';
+import {
+  getPersistenceCoordinator,
+  type IPersistenceCoordinator,
+  type ToolExecution as PersistenceToolExecution,
+} from '@domains/agent/persistence';
 
 /**
  * Dependencies for AgentOrchestrator (for testing).
@@ -72,13 +63,12 @@ import { getAgentEventEmitter } from '@domains/agent/emission';
 export interface AgentOrchestratorDependencies {
   fileContextPreparer?: IFileContextPreparer;
   persistenceCoordinator?: IPersistenceCoordinator;
-  streamEventRouter?: IStreamEventRouter;
 }
 
 /**
  * Main orchestrator for agent execution.
  * Coordinates all phases of agent execution using stateless components.
- * All per-execution state lives in ExecutionContext.
+ * All per-execution state lives in ExecutionContextSync.
  */
 export class AgentOrchestrator implements IAgentOrchestrator {
   private readonly logger = createChildLogger({ service: 'AgentOrchestrator' });
@@ -86,47 +76,62 @@ export class AgentOrchestrator implements IAgentOrchestrator {
   // Dependencies that don't hold per-execution state
   private readonly fileContextPreparer: IFileContextPreparer;
   private readonly persistenceCoordinator: IPersistenceCoordinator;
-  private readonly streamEventRouter: IStreamEventRouter;
 
   constructor(deps?: AgentOrchestratorDependencies) {
     this.fileContextPreparer = deps?.fileContextPreparer ?? createFileContextPreparer();
     this.persistenceCoordinator = deps?.persistenceCoordinator ?? getPersistenceCoordinator();
-    this.streamEventRouter = deps?.streamEventRouter ?? createStreamEventRouter();
   }
 
-  async executeAgent(
+  /**
+   * Execute agent synchronously, emitting only complete messages.
+   *
+   * Uses graph.invoke() instead of streamEvents() to wait for complete response.
+   * Events are emitted in strict order after execution completes:
+   * 1. session_start
+   * 2. user_message_confirmed
+   * 3. thinking_complete (if thinking enabled)
+   * 4. tool_use + tool_result (pairs, in execution order)
+   * 5. message (complete response)
+   * 6. complete
+   *
+   * @param prompt - User message
+   * @param sessionId - Session ID
+   * @param onEvent - Callback for event emission
+   * @param userId - User ID for multi-tenant isolation
+   * @param options - Execution options
+   * @returns Execution result
+   */
+  async executeAgentSync(
     prompt: string,
     sessionId: string,
     onEvent?: (event: AgentEvent) => void,
     userId?: string,
-    options?: ExecuteStreamingOptions
+    options?: ExecuteSyncOptions
   ): Promise<AgentExecutionResult> {
     // =========================================================================
-    // 1. CREATE EXECUTION CONTEXT
-    // All per-execution state lives here, not in singleton components
+    // 1. CREATE EXECUTION CONTEXT (Simplified)
     // =========================================================================
-    const ctx = createExecutionContext(sessionId, userId ?? '', onEvent, options);
+    const ctx = createExecutionContextSync(sessionId, userId ?? '', onEvent, options);
 
     this.logger.info(
       { sessionId, userId, executionId: ctx.executionId },
-      'Starting agent execution'
+      'Starting synchronous agent execution'
     );
 
     // Validate userId for file operations
-    if ((options?.attachments?.length || options?.enableAutoSemanticSearch) && !userId) {
-      throw new Error('UserId required for file attachments or semantic search');
+    if (!userId) {
+      this.logger.warn({ sessionId }, 'No userId provided, file operations disabled');
     }
 
-    // Get stateless singleton components
-    const graphStreamProcessor = getGraphStreamProcessor();
-    const toolExecutionProcessor = getToolExecutionProcessor();
-    const agentEventEmitter = getAgentEventEmitter();
-
-    // Setup stream adapter
+    // Setup stream adapter (for stop reason normalization)
     const adapter = StreamAdapterFactory.create('anthropic', sessionId);
 
     // Prepare file context
-    const contextResult = await this.fileContextPreparer.prepare(userId ?? '', prompt, options);
+    const fileOptions: ExecuteStreamingOptions = {
+      enableThinking: options?.enableThinking,
+      thinkingBudget: options?.thinkingBudget,
+    };
+    const contextResult = await this.fileContextPreparer.prepare(userId ?? '', prompt, fileOptions);
     const enhancedPrompt = contextResult.contextText
       ? `${contextResult.contextText}\n\n${prompt}`
       : prompt;
@@ -142,27 +147,21 @@ export class AgentOrchestrator implements IAgentOrchestrator {
         options: {
           enableThinking: options?.enableThinking ?? false,
           thinkingBudget: options?.thinkingBudget ?? 10000,
-          attachments: options?.attachments,
-          enableAutoSemanticSearch: options?.enableAutoSemanticSearch,
         },
       },
     };
 
     // =========================================================================
-    // 2. EMIT SESSION_START (Signals new turn to frontend)
-    // Must be emitted BEFORE user_message_confirmed to match FakeAgentOrchestrator
+    // 2. EMIT SESSION_START
     // =========================================================================
-    agentEventEmitter.emit(
-      {
-        type: 'session_start',
-        sessionId,
-        userId: userId ?? '',
-        timestamp: new Date().toISOString(),
-        eventId: randomUUID(),
-        persistenceState: 'transient',
-      },
-      ctx
-    );
+    this.emitEventSync(ctx, {
+      type: 'session_start',
+      sessionId,
+      userId: userId ?? '',
+      timestamp: new Date().toISOString(),
+      eventId: randomUUID(),
+      persistenceState: 'transient',
+    });
 
     // =========================================================================
     // 3. PERSIST USER MESSAGE
@@ -171,146 +170,166 @@ export class AgentOrchestrator implements IAgentOrchestrator {
       sessionId,
       prompt
     );
-    agentEventEmitter.emitUserMessageConfirmed(
+    this.emitEventSync(ctx, {
+      type: 'user_message_confirmed',
       sessionId,
-      {
-        messageId: userMessageResult.messageId,
-        sequenceNumber: userMessageResult.sequenceNumber,
-        eventId: userMessageResult.eventId,
-        content: prompt,
-        userId: userId ?? '',
-      },
-      ctx
-    );
+      messageId: userMessageResult.messageId,
+      sequenceNumber: userMessageResult.sequenceNumber,
+      eventId: userMessageResult.eventId,
+      content: prompt,
+      userId: userId ?? '',
+      role: 'user',
+      timestamp: new Date().toISOString(),
+      persistenceState: 'persisted',
+    });
 
     const agentMessageId = randomUUID();
 
     try {
       // =========================================================================
-      // 4. STREAM EXECUTION
+      // 4. EXECUTE GRAPH (Synchronous - waits for complete response)
       // =========================================================================
-      const eventStream = await orchestratorGraph.streamEvents(inputs, {
-        version: 'v2',
+      const result = await orchestratorGraph.invoke(inputs, {
         recursionLimit: 50,
+        signal: AbortSignal.timeout(ctx.timeoutMs),
       });
 
-      // Track tool execution promises for parallel processing
-      const toolExecutionPromises: Promise<string[]>[] = [];
-      const self = this;
+      // =========================================================================
+      // 5. EXTRACT CONTENT FROM RESULT
+      // =========================================================================
+      const { thinking, content, toolExecutions, stopReason, usage } = extractContent(result);
 
-      // Create generator that yields normalized events while handling tools in parallel
-      async function* createNormalizedEventStream() {
-        for await (const routed of self.streamEventRouter.route(eventStream, adapter)) {
-          if (routed.type === 'normalized') {
-            yield routed.event;
-          } else if (routed.type === 'tool_executions') {
-            // Process tool executions asynchronously (don't block the stream)
-            // Pass ctx for deduplication and event emission
-            const toolPromise = toolExecutionProcessor.processExecutions(routed.executions, ctx);
-            toolExecutionPromises.push(toolPromise);
-            self.logger.debug(
-              { sessionId, count: routed.executions.length },
-              'Tool executions dispatched'
-            );
-          }
-        }
-      }
+      // Update usage in context
+      setUsageSync(ctx, { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens });
 
       // =========================================================================
-      // 5. PROCESS STREAM EVENTS
-      // GraphStreamProcessor uses ctx for accumulation and deduplication
-      // =========================================================================
-      const processedEvents = graphStreamProcessor.process(createNormalizedEventStream(), ctx);
-
-      for await (const processed of processedEvents) {
-        await this.handleProcessedEvent(processed, ctx, agentEventEmitter);
-      }
-
-      // Wait for all tool executions to complete
-      const allToolResults = await Promise.all(toolExecutionPromises);
-      const toolsUsed = allToolResults.flat();
-      if (toolsUsed.length > 0) {
-        this.logger.debug(
-          { sessionId, toolsUsed, count: toolsUsed.length },
-          'All tool executions completed'
-        );
-      }
-
-      // =========================================================================
-      // 6. GET ACCUMULATED CONTENT FROM CONTEXT
-      // =========================================================================
-      const thinkingContent = getThinkingContent(ctx);
-      const finalResponseContent = getResponseContent(ctx);
-      const finalStopReason = ctx.lastStopReason;
-
-      // =========================================================================
-      // 7. PERSIST RESULTS
+      // 6. EMIT EVENTS IN STRICT ORDER
       // =========================================================================
 
-      // Persist thinking if present
-      if (thinkingContent) {
+      // 6.1 Thinking complete (if present)
+      if (thinking) {
+        // Persist thinking
         await this.persistenceCoordinator.persistThinking(sessionId, {
           messageId: agentMessageId,
-          content: thinkingContent,
-          tokenUsage: {
-            inputTokens: ctx.totalInputTokens,
-            outputTokens: ctx.totalOutputTokens,
-          },
+          content: thinking,
+          tokenUsage: usage,
+        });
+
+        this.emitEventSync(ctx, {
+          type: 'thinking_complete',
+          content: thinking,
+          timestamp: new Date().toISOString(),
+          eventId: randomUUID(),
+          persistenceState: 'transient',
+          sessionId,
         });
       }
 
-      // Persist agent message
+      // 6.2 Tool events (pairs: tool_use + tool_result)
+      const toolsUsed: string[] = [];
+      for (const exec of toolExecutions) {
+        // Check deduplication
+        const { isDuplicate } = markToolSeenSync(ctx, exec.toolUseId);
+        if (isDuplicate) {
+          continue;
+        }
+
+        toolsUsed.push(exec.toolName);
+
+        // Emit tool_use
+        this.emitEventSync(ctx, {
+          type: 'tool_use',
+          toolUseId: exec.toolUseId,
+          toolName: exec.toolName,
+          args: exec.args,
+          timestamp: new Date().toISOString(),
+          eventId: randomUUID(),
+          persistenceState: 'pending',
+          sessionId,
+        });
+
+        // Emit tool_result
+        this.emitEventSync(ctx, {
+          type: 'tool_result',
+          toolUseId: exec.toolUseId,
+          toolName: exec.toolName,
+          result: exec.result,
+          success: exec.success,
+          error: exec.error,
+          timestamp: new Date().toISOString(),
+          eventId: randomUUID(),
+          persistenceState: 'pending',
+          sessionId,
+        });
+
+        // Persist tool events asynchronously (fire-and-forget)
+        // Map state's ToolExecution to persistence's format
+        const persistenceExec: PersistenceToolExecution = {
+          toolUseId: exec.toolUseId,
+          toolName: exec.toolName,
+          toolInput: exec.args,
+          toolOutput: exec.result ?? '',
+          success: exec.success,
+          error: exec.error,
+          timestamp: new Date().toISOString(),
+        };
+        this.persistenceCoordinator.persistToolEventsAsync(sessionId, [persistenceExec]).catch((err) => {
+          this.logger.error({ err, toolUseId: exec.toolUseId }, 'Failed to persist tool event');
+        });
+      }
+
+      // =========================================================================
+      // 7. PERSIST AGENT MESSAGE
+      // =========================================================================
       const persistResult = await this.persistenceCoordinator.persistAgentMessage(sessionId, {
         messageId: agentMessageId,
-        content: finalResponseContent,
-        stopReason: finalStopReason,
+        content,
+        stopReason,
         model: 'claude-3-5-sonnet-20241022',
-        tokenUsage: {
-          inputTokens: ctx.totalInputTokens,
-          outputTokens: ctx.totalOutputTokens,
-        },
+        tokenUsage: usage,
       });
 
-      // Emit final message event
-      agentEventEmitter.emit(
-        {
-          type: 'message',
-          content: finalResponseContent,
-          messageId: agentMessageId,
-          role: 'assistant',
-          stopReason: finalStopReason,
-          timestamp: persistResult.timestamp,
-          eventId: persistResult.eventId,
-          sequenceNumber: persistResult.sequenceNumber,
-          persistenceState: 'persisted',
-          sessionId,
-        },
-        ctx
-      );
+      // Wait for BullMQ to complete DB write
+      if (persistResult.jobId) {
+        try {
+          await this.persistenceCoordinator.awaitPersistence(persistResult.jobId, 10000);
+        } catch (err) {
+          this.logger.warn({ sessionId, jobId: persistResult.jobId, err }, 'Timeout awaiting persistence');
+        }
+      }
 
-      // Use adapter to normalize provider-specific stopReason to canonical format
-      const normalizedReason = adapter.normalizeStopReason(finalStopReason);
+      // 6.3 Final message
+      this.emitEventSync(ctx, {
+        type: 'message',
+        content,
+        messageId: agentMessageId,
+        role: 'assistant',
+        stopReason,
+        timestamp: persistResult.timestamp,
+        eventId: persistResult.eventId,
+        sequenceNumber: persistResult.sequenceNumber,
+        persistenceState: 'persisted',
+        sessionId,
+      });
 
-      // Emit complete event with normalized reason
-      agentEventEmitter.emit(
-        {
-          type: 'complete',
-          sessionId,
-          timestamp: new Date().toISOString(),
-          stopReason: finalStopReason,
-          reason: normalizedReason,
-        },
-        ctx
-      );
+      // 6.4 Complete
+      const normalizedReason = adapter.normalizeStopReason(stopReason);
+      this.emitEventSync(ctx, {
+        type: 'complete',
+        sessionId,
+        timestamp: new Date().toISOString(),
+        stopReason,
+        reason: normalizedReason,
+      });
 
       this.logger.info(
-        { sessionId, executionId: ctx.executionId, stopReason: finalStopReason },
-        'Agent execution completed'
+        { sessionId, executionId: ctx.executionId, stopReason },
+        'Synchronous agent execution completed'
       );
 
       return {
         sessionId,
-        response: finalResponseContent,
+        response: content,
         messageId: agentMessageId,
         tokenUsage: {
           inputTokens: ctx.totalInputTokens,
@@ -321,87 +340,32 @@ export class AgentOrchestrator implements IAgentOrchestrator {
         success: true,
       };
     } catch (error) {
-      this.logger.error({ error, sessionId, executionId: ctx.executionId }, 'Agent execution failed');
+      this.logger.error({ error, sessionId, executionId: ctx.executionId }, 'Synchronous execution failed');
 
-      agentEventEmitter.emitError(
+      this.emitEventSync(ctx, {
+        type: 'error',
         sessionId,
-        error instanceof Error ? error.message : String(error),
-        'EXECUTION_FAILED',
-        ctx
-      );
+        error: error instanceof Error ? error.message : String(error),
+        code: 'EXECUTION_FAILED',
+        timestamp: new Date().toISOString(),
+        eventId: randomUUID(),
+        persistenceState: 'transient',
+      });
 
       throw error;
     }
   }
 
   /**
-   * Handle processed stream events from GraphStreamProcessor.
+   * Emit an event with auto-incrementing index (for sync execution).
    */
-  private async handleProcessedEvent(
-    event: ProcessedStreamEvent,
-    ctx: ExecutionContext,
-    emitter: ReturnType<typeof getAgentEventEmitter>
-  ): Promise<void> {
-    switch (event.type) {
-      case 'thinking_chunk':
-        emitter.emit(
-          {
-            type: 'thinking_chunk',
-            content: event.content,
-            blockIndex: event.blockIndex,
-            timestamp: new Date().toISOString(),
-            eventId: randomUUID(),
-            persistenceState: 'transient',
-            sessionId: ctx.sessionId,
-          },
-          ctx
-        );
-        break;
-
-      case 'message_chunk':
-        emitter.emit(
-          {
-            type: 'message_chunk',
-            content: event.content,
-            blockIndex: event.blockIndex,
-            timestamp: new Date().toISOString(),
-            eventId: randomUUID(),
-            persistenceState: 'transient',
-            sessionId: ctx.sessionId,
-          },
-          ctx
-        );
-        break;
-
-      case 'thinking_complete':
-        emitter.emit(
-          {
-            type: 'thinking_complete',
-            content: event.content,
-            timestamp: new Date().toISOString(),
-            eventId: randomUUID(),
-            persistenceState: 'transient',
-            sessionId: ctx.sessionId,
-          },
-          ctx
-        );
-        break;
-
-      case 'usage':
-        addUsage(ctx, {
-          inputTokens: event.inputTokens,
-          outputTokens: event.outputTokens,
-        });
-        break;
-
-      case 'tool_execution':
-        // Tool executions are handled by ToolExecutionProcessor
-        // via routed events, not here
-        break;
-
-      case 'final_response':
-        // Captured for persistence in main flow (already in ctx)
-        break;
+  private emitEventSync(ctx: ExecutionContextSync, event: AgentEvent): void {
+    if (ctx.callback) {
+      const eventWithIndex = {
+        ...event,
+        eventIndex: getNextEventIndex(ctx),
+      };
+      ctx.callback(eventWithIndex);
     }
   }
 }

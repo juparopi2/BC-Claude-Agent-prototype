@@ -3,21 +3,20 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useFilePreviewStore, useFiles } from '@/src/domains/files';
 import { useAuthStore, selectUserInitials } from '@/src/domains/auth';
-import { useMessages, useStreaming, useCitationStore } from '@/src/domains/chat';
+import { useMessages, useAgentState, useCitationStore } from '@/src/domains/chat';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Loader2 } from 'lucide-react';
 import { isToolUseMessage, isToolResultMessage, isThinkingMessage } from '@bc-agent/shared';
 import {
   MessageBubble,
-  StreamingIndicator,
   ThinkingBlock,
   ToolCard,
 } from '@/src/presentation/chat';
 
 export default function ChatContainer() {
-  // Use domain hooks for messages and streaming
+  // Use domain hooks for messages and agent state
   const { messages, isEmpty } = useMessages();
-  const { isStreaming, isAgentBusy, content: streamingContent, thinkingBlocks } = useStreaming();
+  const { isAgentBusy, isPaused, pauseReason } = useAgentState();
 
   // Citation store for file references
   const citationFileMap = useCitationStore((s) => s.citationFileMap);
@@ -60,13 +59,13 @@ export default function ChatContainer() {
 
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to bottom when new messages arrive or streaming updates
+  // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamingContent, thinkingBlocks]);
+  }, [messages]);
 
-  // Show welcome state when no messages and not actively streaming
-  if (isEmpty && !isStreaming && !isAgentBusy) {
+  // Show welcome state when no messages and agent not busy
+  if (isEmpty && !isAgentBusy) {
     return (
       <div
         className="flex items-center justify-center h-full"
@@ -133,17 +132,12 @@ export default function ChatContainer() {
           );
         })}
 
-        {isStreaming && (streamingContent.length > 0 || thinkingBlocks.size > 0) && (
-          <StreamingIndicator
-            content={streamingContent}
-            thinkingBlocks={thinkingBlocks}
-          />
-        )}
-
-        {isAgentBusy && !isStreaming && (
+        {isAgentBusy && (
           <div className="flex items-center gap-3 text-muted-foreground">
             <Loader2 className="size-4 animate-spin" />
-            <span className="text-sm">Agent processing...</span>
+            <span className="text-sm">
+              {isPaused ? `Paused${pauseReason ? `: ${pauseReason}` : ''}` : 'Agent thinking...'}
+            </span>
           </div>
         )}
 

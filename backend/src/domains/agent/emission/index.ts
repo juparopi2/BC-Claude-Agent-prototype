@@ -2,25 +2,19 @@
  * @module domains/agent/emission
  *
  * Event emission domain for the agent orchestration system.
- * Handles WebSocket event emission with proper ordering.
  *
- * Implemented Classes:
- * - EventIndexTracker: Counter for event ordering (~30 LOC)
- * - AgentEventEmitter: Unified event emission (~80 LOC)
+ * NOTE: AgentEventEmitter has been removed.
+ * Event emission is now handled directly in AgentOrchestrator.executeAgentSync().
+ *
+ * Remaining:
+ * - EventIndexTracker: Counter for event ordering (used internally)
  */
 
 // Types
 export * from './types';
 
-// Implemented classes
+// EventIndexTracker (still used by orchestrator)
 export {
   EventIndexTracker,
   createEventIndexTracker,
 } from './EventIndexTracker';
-
-export {
-  AgentEventEmitter,
-  createAgentEventEmitter,
-  getAgentEventEmitter,
-  __resetAgentEventEmitter,
-} from './AgentEventEmitter';

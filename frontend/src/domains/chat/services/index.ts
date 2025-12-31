@@ -3,11 +3,13 @@
  *
  * Exports service layer for chat domain.
  *
+ * NOTE: streamProcessor has been removed.
+ * Use processAgentEventSync for all event processing.
+ *
  * @module domains/chat/services
  */
 
 export {
-  processAgentEvent,
-  resetAllStores,
-  type StreamProcessorCallbacks,
-} from './streamProcessor';
+  processAgentEventSync,
+  type EventProcessorCallbacks,
+} from './processAgentEventSync';

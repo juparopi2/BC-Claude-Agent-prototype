@@ -11,7 +11,7 @@
 
 import { useState, useRef, useEffect, KeyboardEvent } from 'react';
 import { useUIPreferencesStore } from '@/src/domains/ui';
-import { useStreaming, useSocketConnection } from '@/src/domains/chat';
+import { useAgentState, useSocketConnection } from '@/src/domains/chat';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Toggle } from '@/components/ui/toggle';
@@ -64,8 +64,8 @@ export default function ChatInput({
   const sendMessage = propsSendMessage ?? localSocket.sendMessage;
   const stopAgent = propsStopAgent ?? localSocket.stopAgent;
 
-  // Use domain hook for streaming state (includes isAgentBusy)
-  const { isStreaming, isAgentBusy } = useStreaming();
+  // Use domain hook for agent state
+  const { isAgentBusy } = useAgentState();
 
   // If we're in "new session" mode (no sessionId), we're always "connected" in UI terms
   // unless explicitly disabled.
@@ -77,7 +77,7 @@ export default function ChatInput({
   
   const canSend = (message.trim().length > 0 || attachments.some(a => a.status === 'completed')) &&
     effectiveIsConnected && !effectiveIsBusy && !disabled && !isUploading;
-  const showStopButton = (effectiveIsBusy || isStreaming) && !!sessionId;
+  const showStopButton = effectiveIsBusy && !!sessionId;
 
   // Auto-resize textarea based on content
   useEffect(() => {

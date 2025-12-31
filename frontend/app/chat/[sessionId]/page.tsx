@@ -8,7 +8,7 @@ import { MainLayout, Header, LeftPanel, RightPanel } from '@/components/layout';
 import { ChatContainer, ChatInput } from '@/components/chat';
 import { useUIPreferencesStore } from '@/src/domains/ui';
 // Domain hooks and stores
-import { useSocketConnection, getMessageStore, getStreamingStore } from '@/src/domains/chat';
+import { useSocketConnection, getMessageStore, getAgentStateStore } from '@/src/domains/chat';
 
 export default function ChatPage() {
   const params = useParams();
@@ -55,9 +55,9 @@ export default function ChatPage() {
 
       // Clear domain stores on session change
       const messageStore = getMessageStore();
-      const streamingStore = getStreamingStore();
+      const agentStateStore = getAgentStateStore();
       messageStore.getState().reset();
-      streamingStore.getState().reset();
+      agentStateStore.getState().reset();
 
       // Select the session in the session store
       await selectSession(sessionId);

@@ -2,11 +2,10 @@
  * @module domains/agent/tools
  *
  * Tool execution domain for the agent orchestration system.
- * Handles tool deduplication, execution, and approval flow.
+ * Handles tool deduplication.
  *
- * Implemented Classes:
- * - ToolEventDeduplicator: Prevents duplicate tool events (~50 LOC)
- * - ToolExecutionProcessor: Processes tool executions (~100 LOC)
+ * NOTE: ToolExecutionProcessor has been removed.
+ * Tool execution is now handled directly in AgentOrchestrator.executeAgentSync().
  */
 
 // Types
@@ -17,11 +16,3 @@ export {
   ToolEventDeduplicator,
   createToolEventDeduplicator,
 } from './ToolEventDeduplicator';
-
-// ToolExecutionProcessor
-export {
-  ToolExecutionProcessor,
-  createToolExecutionProcessor,
-  getToolExecutionProcessor,
-  __resetToolExecutionProcessor,
-} from './ToolExecutionProcessor';

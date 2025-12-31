@@ -3,12 +3,13 @@
  *
  * Unified exports for all chat-related presentation components.
  *
+ * NOTE: StreamingIndicator has been removed. Use loading indicator instead.
+ *
  * @module presentation/chat
  */
 
 // Core display components
 export { ThinkingBlock, ThinkingDisplay } from './ThinkingBlock';
-export { StreamingIndicator, StreamingMessage } from './StreamingIndicator';
 export { default as MessageBubble } from './MessageBubble';
 export { ToolCard } from './ToolCard';
 export { CitationLink } from './CitationLink';

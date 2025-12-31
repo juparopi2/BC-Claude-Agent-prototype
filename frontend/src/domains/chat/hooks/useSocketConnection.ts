@@ -12,7 +12,8 @@ import { getSocketClient } from '@/src/infrastructure/socket';
 import { useAuthStore } from '@/src/domains/auth';
 import { env } from '@/lib/config/env';
 import type { AgentEvent, AgentErrorData, SessionReadyEvent } from '@bc-agent/shared';
-import { processAgentEvent, getMessageStore, getStreamingStore, getCitationStore } from '@/src/domains/chat';
+import { getMessageStore, getCitationStore } from '@/src/domains/chat';
+import { processAgentEventSync } from '../services/processAgentEventSync';
 
 /**
  * Socket connection options
@@ -133,6 +134,43 @@ export function useSocketConnection(
     }),
     [onAgentBusyChange, onError, onCitationsReceived]
   );
+
+  // =========================================================================
+  // STABLE REFS FOR CALLBACKS (Fix for duplicate event processing)
+  // These refs allow us to access the latest callback values without
+  // re-subscribing to socket events when callbacks change.
+  // =========================================================================
+  const processCallbacksRef = useRef(processCallbacks);
+  const onAgentEventRef = useRef(onAgentEvent);
+  const onConnectionChangeRef = useRef(onConnectionChange);
+  const onErrorRef = useRef(onError);
+  const onSessionReadyRef = useRef(onSessionReady);
+  const onAgentBusyChangeRef = useRef(onAgentBusyChange);
+
+  // Update refs when callbacks change (without triggering re-subscription)
+  useEffect(() => {
+    processCallbacksRef.current = processCallbacks;
+  }, [processCallbacks]);
+
+  useEffect(() => {
+    onAgentEventRef.current = onAgentEvent;
+  }, [onAgentEvent]);
+
+  useEffect(() => {
+    onConnectionChangeRef.current = onConnectionChange;
+  }, [onConnectionChange]);
+
+  useEffect(() => {
+    onErrorRef.current = onError;
+  }, [onError]);
+
+  useEffect(() => {
+    onSessionReadyRef.current = onSessionReady;
+  }, [onSessionReady]);
+
+  useEffect(() => {
+    onAgentBusyChangeRef.current = onAgentBusyChange;
+  }, [onAgentBusyChange]);
 
   // Connect to socket server
   const connect = useCallback(async () => {
@@ -278,48 +316,49 @@ export function useSocketConnection(
   );
 
   // Setup event listeners on mount
+  // NOTE: Using refs for callbacks to prevent re-subscription on callback changes
   useEffect(() => {
     const client = getSocketClient();
 
-    // Subscribe to agent events
+    // Subscribe to agent events (using refs for stable subscription)
     const unsubscribeAgentEvent = client.onAgentEvent((event) => {
       // Filter events for current session only
       if (event.sessionId && event.sessionId !== currentSessionRef.current) {
         return;
       }
 
-      // Process through domain stores
-      processAgentEvent(event, processCallbacks);
+      // Process through domain stores (using ref for latest callbacks)
+      processAgentEventSync(event, processCallbacksRef.current);
 
-      // Call custom handler
-      onAgentEvent?.(event);
+      // Call custom handler (using ref for latest callback)
+      onAgentEventRef.current?.(event);
     });
 
-    // Subscribe to connection changes
+    // Subscribe to connection changes (using refs)
     const unsubscribeConnection = client.onConnectionChange((connected) => {
       setIsConnected(connected);
 
       if (!connected) {
         // Reset states on disconnect
-        onAgentBusyChange?.(false);
+        onAgentBusyChangeRef.current?.(false);
         setIsSessionReady(false);
       }
 
-      onConnectionChange?.(connected);
+      onConnectionChangeRef.current?.(connected);
     });
 
-    // Subscribe to errors
+    // Subscribe to errors (using refs)
     const unsubscribeError = client.onAgentError((error) => {
-      onAgentBusyChange?.(false);
-      onError?.(error);
+      onAgentBusyChangeRef.current?.(false);
+      onErrorRef.current?.(error);
     });
 
-    // Subscribe to session ready
+    // Subscribe to session ready (using refs)
     const unsubscribeSessionReady = client.onSessionReady((data) => {
       if (data.sessionId === currentSessionRef.current) {
         setIsSessionReady(true);
       }
-      onSessionReady?.(data);
+      onSessionReadyRef.current?.(data);
     });
 
     // Auto-connect if enabled
@@ -335,16 +374,7 @@ export function useSocketConnection(
       unsubscribeError();
       unsubscribeSessionReady();
     };
-  }, [
-    autoConnect,
-    connect,
-    processCallbacks,
-    onAgentEvent,
-    onAgentBusyChange,
-    onConnectionChange,
-    onError,
-    onSessionReady,
-  ]);
+  }, [autoConnect, connect]);  // Only re-subscribe when autoConnect or connect changes
 
   // Handle session changes
   useEffect(() => {

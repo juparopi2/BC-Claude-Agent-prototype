@@ -491,15 +491,13 @@ function configureRoutes(): void {
         return;
       }
 
-      // Execute query with streaming (REST endpoint doesn't stream to client)
-      const result = await orchestrator.executeAgent(
+      // Execute query synchronously (no streaming for REST endpoint)
+      const result = await orchestrator.executeAgentSync(
         prompt,
         sessionId,
         undefined, // onEvent - not used for REST endpoint
         userId,
-        {
-          attachments: attachments as string[]
-        }
+        {} // options
       );
 
       res.json(result);

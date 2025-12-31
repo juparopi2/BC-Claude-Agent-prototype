@@ -50,6 +50,8 @@ export interface MessageActions {
   confirmOptimisticMessage: (tempId: string, confirmedMessage: Message) => void;
   /** Remove an optimistic message */
   removeOptimisticMessage: (tempId: string) => void;
+  /** Clear all optimistic messages */
+  clearAllOptimisticMessages: () => void;
   /** Set event metadata for a message (Gap #3: debugging) */
   setEventMetadata: (messageId: string, metadata: EventMetadata) => void;
   /** Get event metadata for a message */
@@ -112,9 +114,16 @@ const createMessageStore = () =>
       },
 
       addMessage: (message) =>
-        set((state) => ({
-          messages: [...state.messages, message].sort(sortMessages),
-        })),
+        set((state) => {
+          // Deduplication: Skip if message with same ID already exists
+          if (state.messages.some((m) => m.id === message.id)) {
+            console.debug('[messageStore] Skipping duplicate message:', message.id);
+            return state;
+          }
+          return {
+            messages: [...state.messages, message].sort(sortMessages),
+          };
+        }),
 
       updateMessage: (messageId, updates) =>
         set((state) => ({
@@ -179,6 +188,9 @@ const createMessageStore = () =>
           newMap.delete(tempId);
           return { optimisticMessages: newMap };
         }),
+
+      clearAllOptimisticMessages: () =>
+        set({ optimisticMessages: new Map() }),
 
       /**
        * Set event metadata for a message (Gap #3: debugging).

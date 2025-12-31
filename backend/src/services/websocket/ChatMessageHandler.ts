@@ -179,23 +179,15 @@ export class ChatMessageHandler {
         thinkingBudget: thinkingConfig?.thinkingBudget,
       });
 
-      // Build options object with thinking, attachments, and enableAutoSemanticSearch
-      const streamingOptions = {
-        ...(thinkingConfig ? {
-          enableThinking: thinkingConfig.enableThinking,
-          thinkingBudget: thinkingConfig.thinkingBudget,
-        } : {}),
-        attachments: data.attachments,
-        enableAutoSemanticSearch: data.enableAutoSemanticSearch,
-      };
-
-      await orchestrator.executeAgent(
+      await orchestrator.executeAgentSync(
         message,
         sessionId,
         (event: AgentEvent) => this.handleAgentEvent(event, io, sessionId, userId),
-        userId, // ⭐ Pass userId for tool persistence
-        // ⭐ Pass options (thinking + attachments)
-        streamingOptions
+        userId,
+        {
+          enableThinking: thinkingConfig?.enableThinking,
+          thinkingBudget: thinkingConfig?.thinkingBudget,
+        }
       );
 
       this.logger.info('✅ Chat message processed successfully (executeAgent completed)', { sessionId, userId });

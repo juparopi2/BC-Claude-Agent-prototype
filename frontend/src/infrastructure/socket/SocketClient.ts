@@ -342,6 +342,14 @@ export class SocketClient {
   private setupEventListeners(): void {
     if (!this.socket) return;
 
+    // Remove ONLY listeners that use .on() in THIS method to prevent accumulation
+    // DO NOT remove 'connect', 'connect_error', 'session:ready' - they use .once() in
+    // connect() and joinSession() methods and would break if removed here
+    this.socket.removeAllListeners('disconnect');
+    this.socket.removeAllListeners('agent:event');
+    this.socket.removeAllListeners('agent:error');
+    this.socket.removeAllListeners('session:title_updated');
+
     // Connection events
     this.socket.on('connect', () => {
       this.notifyConnectionChange(true);

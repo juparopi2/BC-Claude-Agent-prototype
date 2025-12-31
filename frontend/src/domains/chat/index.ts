@@ -3,6 +3,8 @@
  *
  * Exports all public API for the chat domain.
  *
+ * NOTE: Streaming has been removed. Use agentStateStore and processAgentEventSync.
+ *
  * @module domains/chat
  */
 
@@ -16,13 +18,12 @@ export {
   type MessageState,
   type MessageActions,
   type MessageStore,
-  // Streaming Store
-  getStreamingStore,
-  useStreamingStore,
-  resetStreamingStore,
-  type StreamingState,
-  type StreamingActions,
-  type StreamingStore,
+  // Agent State Store
+  getAgentStateStore,
+  useAgentStateStore,
+  type AgentState,
+  type AgentStateActions,
+  type AgentStateStore,
   // Approval Store
   getApprovalStore,
   useApprovalStore,
@@ -44,21 +45,19 @@ export {
 
 // Services
 export {
-  processAgentEvent,
-  resetAllStores,
-  type StreamProcessorCallbacks,
+  processAgentEventSync,
+  type EventProcessorCallbacks,
 } from './services';
 
 // Hooks
 export {
   useMessages,
-  useStreaming,
+  useAgentState,
   useSendMessage,
   useFileAttachments,
   usePagination,
   useSocketConnection,
   type UseMessagesReturn,
-  type UseStreamingReturn,
   type UseSendMessageReturn,
   type SendMessageOptions,
   type Attachment,

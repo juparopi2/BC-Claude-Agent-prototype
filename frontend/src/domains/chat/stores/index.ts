@@ -3,6 +3,9 @@
  *
  * Barrel export for all chat-related stores.
  *
+ * NOTE: streamingStore has been removed.
+ * Use agentStateStore for agent busy/paused state.
+ *
  * @module domains/chat/stores
  */
 
@@ -17,15 +20,14 @@ export {
   type MessageStore,
 } from './messageStore';
 
-// Streaming Store
+// Agent State Store
 export {
-  getStreamingStore,
-  useStreamingStore,
-  resetStreamingStore,
-  type StreamingState,
-  type StreamingActions,
-  type StreamingStore,
-} from './streamingStore';
+  getAgentStateStore,
+  useAgentStateStore,
+  type AgentState,
+  type AgentStateActions,
+  type AgentStateStore,
+} from './agentStateStore';
 
 // Approval Store
 export {
@@ -49,4 +51,3 @@ export {
   type CitationActions,
   type CitationStore,
 } from './citationStore';
-

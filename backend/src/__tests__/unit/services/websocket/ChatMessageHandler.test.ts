@@ -48,7 +48,7 @@ vi.mock('@/services/messages/MessageService', () => ({
 
 // ===== MOCK AGENT ORCHESTRATOR (vi.hoisted pattern) =====
 const mockAgentOrchestratorMethods = vi.hoisted(() => ({
-  executeAgent: vi.fn().mockResolvedValue({
+  executeAgentSync: vi.fn().mockResolvedValue({
     response: 'Test response',
     toolsUsed: [],
     success: true,
@@ -107,7 +107,7 @@ describe('ChatMessageHandler', () => {
     mockMessageServiceMethods.saveToolUseMessage.mockResolvedValue('tool-123');
     mockMessageServiceMethods.updateToolResult.mockResolvedValue(undefined);
 
-    mockAgentOrchestratorMethods.executeAgent.mockResolvedValue({
+    mockAgentOrchestratorMethods.executeAgentSync.mockResolvedValue({
       response: 'Test response',
       toolsUsed: [],
       success: true,
@@ -166,7 +166,7 @@ describe('ChatMessageHandler', () => {
       await handler.handle(data, mockSocket as Socket, mockIo as SocketIOServer);
 
       // Verify orchestrator is called with correct parameters (it handles persistence internally)
-      expect(mockAgentOrchestratorMethods.executeAgent).toHaveBeenCalledWith(
+      expect(mockAgentOrchestratorMethods.executeAgentSync).toHaveBeenCalledWith(
         testMessage,
         testSessionId,
         expect.any(Function), // onEvent callback
@@ -184,9 +184,9 @@ describe('ChatMessageHandler', () => {
 
       await handler.handle(data, mockSocket as Socket, mockIo as SocketIOServer);
 
-      // ⭐ PHASE 1B: executeAgent receives userId as 4th parameter
+      // ⭐ PHASE 1B: executeAgentSync receives userId as 4th parameter
       // ⭐ PHASE 1F: Optional 5th parameter is options (undefined when not provided)
-      expect(mockAgentOrchestratorMethods.executeAgent).toHaveBeenCalledWith(
+      expect(mockAgentOrchestratorMethods.executeAgentSync).toHaveBeenCalledWith(
         testMessage,
         testSessionId,
         expect.any(Function), // onEvent callback
@@ -196,7 +196,7 @@ describe('ChatMessageHandler', () => {
 
       // ⭐ PHASE 1B: Final log message changed
       expect(mockLogger.info).toHaveBeenCalledWith(
-        '✅ Chat message processed successfully (executeAgent completed)',
+        '✅ Chat message processed successfully (executeAgentSync completed)',
         expect.objectContaining({ sessionId: testSessionId, userId: testUserId })
       );
     });
@@ -204,7 +204,7 @@ describe('ChatMessageHandler', () => {
     it('should emit error event on orchestrator failure', async () => {
       // Simulate orchestrator error via onEvent callback
       const orchestratorError = new Error('Orchestrator failed');
-      mockAgentOrchestratorMethods.executeAgent.mockRejectedValueOnce(orchestratorError);
+      mockAgentOrchestratorMethods.executeAgentSync.mockRejectedValueOnce(orchestratorError);
 
       const data: ChatMessageData = {
         message: testMessage,
@@ -245,7 +245,7 @@ describe('ChatMessageHandler', () => {
       };
 
       // Simulate agent calling the event handler
-      mockAgentOrchestratorMethods.executeAgent.mockImplementationOnce(
+      mockAgentOrchestratorMethods.executeAgentSync.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           await onEvent(event);
           return { response: 'Test', toolsUsed: [], success: true };
@@ -292,7 +292,7 @@ describe('ChatMessageHandler', () => {
         userId: testUserId,
       };
 
-      mockAgentOrchestratorMethods.executeAgent.mockImplementationOnce(
+      mockAgentOrchestratorMethods.executeAgentSync.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           await onEvent(event);
           return { response: 'Test', toolsUsed: [], success: true };
@@ -321,7 +321,7 @@ describe('ChatMessageHandler', () => {
         userId: testUserId,
       };
 
-      mockAgentOrchestratorMethods.executeAgent.mockImplementationOnce(
+      mockAgentOrchestratorMethods.executeAgentSync.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           await onEvent(event);
           return { response: 'Test', toolsUsed: [], success: true };
@@ -364,7 +364,7 @@ describe('ChatMessageHandler', () => {
         userId: testUserId,
       };
 
-      mockAgentOrchestratorMethods.executeAgent.mockImplementationOnce(
+      mockAgentOrchestratorMethods.executeAgentSync.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           await onEvent(event);
           return { response: 'Test', toolsUsed: [], success: true };
@@ -411,7 +411,7 @@ describe('ChatMessageHandler', () => {
         userId: testUserId,
       };
 
-      mockAgentOrchestratorMethods.executeAgent.mockImplementationOnce(
+      mockAgentOrchestratorMethods.executeAgentSync.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           await onEvent(event);
           return { response: 'Test', toolsUsed: [], success: true };
@@ -450,7 +450,7 @@ describe('ChatMessageHandler', () => {
         userId: testUserId,
       };
 
-      mockAgentOrchestratorMethods.executeAgent.mockImplementationOnce(
+      mockAgentOrchestratorMethods.executeAgentSync.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           await onEvent(event);
           return { response: 'Test', toolsUsed: [], success: true };
@@ -506,7 +506,7 @@ describe('ChatMessageHandler', () => {
         userId: testUserId,
       };
 
-      mockAgentOrchestratorMethods.executeAgent.mockImplementationOnce(
+      mockAgentOrchestratorMethods.executeAgentSync.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           await onEvent(event);
           return { response: 'Test', toolsUsed: [], success: true };
@@ -552,7 +552,7 @@ describe('ChatMessageHandler', () => {
         userId: testUserId,
       };
 
-      mockAgentOrchestratorMethods.executeAgent.mockImplementationOnce(
+      mockAgentOrchestratorMethods.executeAgentSync.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           await onEvent(event);
           return { response: 'Test', toolsUsed: [], success: true };
@@ -585,7 +585,7 @@ describe('ChatMessageHandler', () => {
         userId: testUserId,
       };
 
-      mockAgentOrchestratorMethods.executeAgent.mockImplementationOnce(
+      mockAgentOrchestratorMethods.executeAgentSync.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           await onEvent(event);
           return { response: 'Test', toolsUsed: [], success: true };
@@ -625,7 +625,7 @@ describe('ChatMessageHandler', () => {
         userId: testUserId,
       };
 
-      mockAgentOrchestratorMethods.executeAgent.mockImplementationOnce(
+      mockAgentOrchestratorMethods.executeAgentSync.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           await onEvent(event);
           return { response: 'Test', toolsUsed: [], success: true };
@@ -659,7 +659,7 @@ describe('ChatMessageHandler', () => {
         userId: testUserId,
       };
 
-      mockAgentOrchestratorMethods.executeAgent.mockImplementationOnce(
+      mockAgentOrchestratorMethods.executeAgentSync.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           await onEvent(event);
           return { response: 'Test', toolsUsed: [], success: true };
@@ -692,7 +692,7 @@ describe('ChatMessageHandler', () => {
         userId: testUserId,
       };
 
-      mockAgentOrchestratorMethods.executeAgent.mockImplementationOnce(
+      mockAgentOrchestratorMethods.executeAgentSync.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           await onEvent(event);
           return { response: 'Test', toolsUsed: [], success: true };
@@ -762,7 +762,7 @@ describe('ChatMessageHandler', () => {
         }),
       });
 
-      mockAgentOrchestratorMethods.executeAgent.mockImplementationOnce(
+      mockAgentOrchestratorMethods.executeAgentSync.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           // Emit events sequentially
           for (const event of events) {
@@ -827,7 +827,7 @@ describe('ChatMessageHandler', () => {
         }
       );
 
-      mockAgentOrchestratorMethods.executeAgent.mockImplementationOnce(
+      mockAgentOrchestratorMethods.executeAgentSync.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           // Emit events concurrently (simulate race condition)
           await Promise.all(events.map((event) => onEvent(event)));
@@ -888,7 +888,7 @@ describe('ChatMessageHandler', () => {
         callOrder.push('updateToolResult');
       });
 
-      mockAgentOrchestratorMethods.executeAgent.mockImplementationOnce(
+      mockAgentOrchestratorMethods.executeAgentSync.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           for (const event of events) {
             await onEvent(event);
@@ -919,7 +919,7 @@ describe('ChatMessageHandler', () => {
         userId: testUserId,
       };
 
-      mockAgentOrchestratorMethods.executeAgent.mockImplementationOnce(
+      mockAgentOrchestratorMethods.executeAgentSync.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           await onEvent(event);
           return { response: 'Test', toolsUsed: [], success: true };
@@ -967,7 +967,7 @@ describe('ChatMessageHandler', () => {
         userId: testUserId,
       };
 
-      mockAgentOrchestratorMethods.executeAgent.mockImplementationOnce(
+      mockAgentOrchestratorMethods.executeAgentSync.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           await onEvent(event);
           return { response: 'Test', toolsUsed: [], success: true };
@@ -1023,7 +1023,7 @@ describe('ChatMessageHandler', () => {
         userId: testUserId,
       };
 
-      mockAgentOrchestratorMethods.executeAgent.mockImplementationOnce(
+      mockAgentOrchestratorMethods.executeAgentSync.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
           await onEvent(event);
           return { response: 'Test', toolsUsed: [], success: true };

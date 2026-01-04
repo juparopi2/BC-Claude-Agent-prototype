@@ -199,6 +199,15 @@ export class AgentOrchestrator implements IAgentOrchestrator {
       // =========================================================================
       const { thinking, content, toolExecutions, stopReason, usage } = extractContent(result);
 
+      // Diagnostic logging for thinking extraction
+      this.logger.info({
+        hasThinking: !!thinking,
+        thinkingLength: thinking?.length ?? 0,
+        messagesCount: result.messages?.length ?? 0,
+        enableThinking: options?.enableThinking,
+        thinkingBudget: options?.thinkingBudget,
+      }, 'Extracted content from graph result');
+
       // Update usage in context
       setUsageSync(ctx, { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens });
 
@@ -309,6 +318,11 @@ export class AgentOrchestrator implements IAgentOrchestrator {
         sequenceNumber: persistResult.sequenceNumber,
         persistenceState: 'persisted',
         sessionId,
+        model: 'claude-3-5-sonnet-20241022',
+        tokenUsage: {
+          inputTokens: ctx.totalInputTokens,
+          outputTokens: ctx.totalOutputTokens,
+        },
       });
 
       // 6.4 Complete

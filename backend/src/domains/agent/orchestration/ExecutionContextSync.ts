@@ -48,6 +48,17 @@ export interface ExecuteSyncOptions {
    * @default 300000 (5 minutes)
    */
   timeoutMs?: number;
+
+  /**
+   * File attachment IDs to include as context.
+   */
+  attachments?: string[];
+
+  /**
+   * Enable automatic semantic search for relevant files.
+   * @default false
+   */
+  enableAutoSemanticSearch?: boolean;
 }
 
 /**

@@ -20,7 +20,7 @@ import type {
   UserMessageConfirmedEvent,
   StopReason,
 } from '@bc-agent/shared';
-import type { IAgentOrchestrator, ExecuteStreamingOptions } from './types';
+import type { IAgentOrchestrator, ExecuteSyncOptions } from './types';
 import { getMessageQueue } from '@/infrastructure/queue/MessageQueue';
 import { getEventStore } from '@/services/events/EventStore';
 
@@ -95,7 +95,7 @@ export class FakeAgentOrchestrator implements IAgentOrchestrator {
     prompt: string;
     sessionId: string;
     userId?: string;
-    options?: ExecuteStreamingOptions;
+    options?: ExecuteSyncOptions;
   } | null = null;
 
   /**
@@ -136,7 +136,7 @@ export class FakeAgentOrchestrator implements IAgentOrchestrator {
     sessionId: string,
     onEvent?: (event: AgentEvent) => void,
     userId?: string,
-    options?: ExecuteStreamingOptions
+    options?: ExecuteSyncOptions
   ): Promise<AgentExecutionResult> {
     this.callCount++;
     this.lastCallArgs = { prompt, sessionId, userId, options };
@@ -271,7 +271,7 @@ export class FakeAgentOrchestrator implements IAgentOrchestrator {
       try {
         // Append to EventStore
         const eventStore = getEventStore();
-        const event = await eventStore.appendEvent(sessionId, 'agent_message', {
+        const event = await eventStore.appendEvent(sessionId, 'agent_message_sent', {
           message_id: messageId,
           content: fullContent,
           role: 'assistant',

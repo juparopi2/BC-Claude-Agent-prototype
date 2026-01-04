@@ -9,14 +9,13 @@ import { AgentEventFactory } from './AgentEventFactory';
 
 export const EventSequences = {
   /**
-   * Standard chat flow: User message -> Thinking -> Message Chunk -> Complete
+   * Standard chat flow (sync architecture): User message -> Thinking -> Message -> Complete
+   * NOTE: Chunks removed - sync architecture uses complete messages only
    */
   chatFlow: (sessionId: string, messageId: string): AgentEvent[] => [
     AgentEventFactory.sessionStart({ sessionId }),
     AgentEventFactory.userMessageConfirmed({ messageId, sequenceNumber: 1 }),
     AgentEventFactory.thinking({ content: 'Analyzing request...', sessionId }),
-    AgentEventFactory.messageChunk({ content: 'Hello', sessionId }),
-    AgentEventFactory.messageChunk({ content: ' world', sessionId }),
     AgentEventFactory.message({ content: 'Hello world', sessionId, messageId, stopReason: 'end_turn' }),
     AgentEventFactory.complete({ sessionId, reason: 'success' }),
   ],

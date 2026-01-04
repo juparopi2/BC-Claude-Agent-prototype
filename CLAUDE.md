@@ -309,3 +309,96 @@ E2E test data uses specific prefixes for safe cleanup:
 - User IDs: `e2e00001-...`
 - Session IDs: `e2e10001-...`
 - Run `npm run e2e:seed` before tests, `npm run e2e:clean` after
+
+---
+
+## 10. Bug Prevention Strategy
+
+### 10.1 Common Runtime Errors to Watch For
+
+**Void functions with `.catch()` or `.then()`:**
+```typescript
+// ❌ WRONG: persistToolEventsAsync returns void
+this.persistenceCoordinator.persistToolEventsAsync(data).catch(err => ...);
+
+// ✅ CORRECT: Fire-and-forget (function handles errors internally)
+this.persistenceCoordinator.persistToolEventsAsync(data);
+
+// ✅ CORRECT: If you need the Promise, the function must return one
+const result = await this.persistenceCoordinator.persistToolEventsAsync(data);
+```
+
+**Prevention:** Always annotate return types explicitly. TypeScript will catch `.catch()` on `void`:
+```typescript
+// Return type annotation catches misuse at compile time
+persistToolEventsAsync(sessionId: string, data: ToolExecution[]): void { ... }
+```
+
+### 10.2 Migration Checklist
+
+When removing features (e.g., streaming chunks → sync architecture):
+
+1. **Search for all references** before removing types:
+   ```bash
+   # Find all usages of removed types
+   grep -rn "message_chunk\|thinking_chunk\|message_partial" --include="*.ts"
+   ```
+
+2. **Update shared types FIRST** - Remove from `@bc-agent/shared` types
+3. **Run type-check** - `npm run verify:types` will show all breaking usages
+4. **Update test fixtures** - Factory methods, sequences, presets
+5. **Update documentation** - Code comments, CLAUDE.md, contracts
+
+### 10.3 Pre-Commit Verification
+
+Before committing changes, always run:
+```bash
+# Full type verification (catches most issues)
+npm run verify:types
+
+# Backend lint (catches style issues)
+npm run -w backend lint
+
+# Frontend lint
+npm run -w bc-agent-frontend lint
+```
+
+### 10.4 Error Serialization Pattern
+
+Always serialize Error objects properly for logging:
+```typescript
+// ❌ WRONG: Error objects don't serialize to JSON
+this.logger.error({ error }, 'Operation failed');  // logs error: {}
+
+// ✅ CORRECT: Extract serializable properties
+const errorInfo = error instanceof Error
+  ? { message: error.message, stack: error.stack, name: error.name, cause: error.cause }
+  : { value: String(error) };
+this.logger.error({ error: errorInfo }, 'Operation failed');
+```
+
+### 10.5 Type Mismatches Between Modules
+
+When types differ between modules (e.g., `FileContextPreparationResult` vs `FileContextResult`):
+
+1. **Prefer the shared package type** - Use `@bc-agent/shared` types across modules
+2. **Create adapter functions** if types differ intentionally
+3. **Use type assertions only as last resort** with clear comments:
+   ```typescript
+   // FIXME: FileContextPreparationResult should be unified with FileContextResult
+   fileContext: contextResult as unknown,
+   ```
+
+### 10.6 Sync Architecture Event Types
+
+The system uses **synchronous execution** (not streaming). Valid event types:
+- `session_start`, `session_end`, `complete` (lifecycle)
+- `user_message_confirmed` (user message persisted)
+- `thinking`, `thinking_complete` (extended thinking)
+- `message` (complete assistant response)
+- `tool_use`, `tool_result` (tool execution)
+- `error` (errors)
+- `approval_requested`, `approval_resolved` (human-in-the-loop)
+- `turn_paused`, `content_refused` (SDK 0.71+)
+
+**Removed types** (DO NOT USE): `thinking_chunk`, `message_chunk`, `message_partial`

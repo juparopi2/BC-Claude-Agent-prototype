@@ -1,7 +1,7 @@
 import { Annotation, messagesStateReducer } from '@langchain/langgraph';
 import { BaseMessage } from '@langchain/core/messages';
 import { ModelConfig } from '../../../core/langchain/ModelFactory';
-import type { FileContextResult } from '@/types/agent.types';
+import type { FileContextPreparationResult } from '@domains/agent/context/types';
 
 /**
  * Tool execution record for tracking tool calls made by agents.
@@ -65,7 +65,7 @@ export const AgentStateAnnotation = Annotation.Root({
       enableAutoSemanticSearch?: boolean;
     };
     /** File context prepared for injection into prompts */
-    fileContext?: FileContextResult;
+    fileContext?: FileContextPreparationResult;
   }>({
     reducer: (x, y) => ({ ...x, ...y }),
     default: () => ({}),

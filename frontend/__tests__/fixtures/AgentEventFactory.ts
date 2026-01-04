@@ -344,6 +344,7 @@ export class AgentEventFactory {
 
   /**
    * Create a sequence of events from type names
+   * NOTE: Sync architecture - chunk types removed (thinking_chunk, message_chunk, message_partial)
    */
   static sequence(types: AgentEventType[], startSeq = 1): AgentEvent[] {
     this.resetSequence(startSeq);
@@ -353,14 +354,10 @@ export class AgentEventFactory {
           return this.sessionStart();
         case 'thinking':
           return this.thinking();
-        case 'thinking_chunk':
-          return this.thinkingChunk();
-        case 'message_partial':
-          return this.messagePartial();
+        case 'thinking_complete':
+          return this.thinking(); // thinking_complete uses same structure
         case 'message':
           return this.message();
-        case 'message_chunk':
-          return this.messageChunk();
         case 'tool_use':
           return this.toolUse();
         case 'tool_result':
@@ -381,9 +378,6 @@ export class AgentEventFactory {
           return this.turnPaused();
         case 'content_refused':
           return this.contentRefused();
-        case 'thinking_complete':
-          // thinking_complete is handled elsewhere or is a transient event
-          return this.thinking();
         default:
           throw new Error(`Unknown event type: ${type}`);
       }
@@ -396,15 +390,13 @@ export class AgentEventFactory {
 
   static Presets = {
     /**
-     * Basic chat flow: session_start -> chunks -> message -> complete
+     * Basic chat flow (sync architecture): session_start -> message -> complete
+     * NOTE: Chunks removed - sync architecture uses complete messages only
      */
     chatFlow: (): AgentEvent[] => {
       AgentEventFactory.resetSequence();
       return [
         AgentEventFactory.sessionStart(),
-        AgentEventFactory.messageChunk({ content: 'Hello, ' }),
-        AgentEventFactory.messageChunk({ content: 'how can ' }),
-        AgentEventFactory.messageChunk({ content: 'I help?' }),
         AgentEventFactory.message({ content: 'Hello, how can I help?' }),
         AgentEventFactory.complete(),
       ];
@@ -441,14 +433,12 @@ export class AgentEventFactory {
     },
 
     /**
-     * Thinking flow (Extended Thinking): thinking_chunks -> thinking -> message
-     * NOTE: Low priority per user decision - only happy path
+     * Thinking flow (Extended Thinking - sync architecture): thinking -> message
+     * NOTE: Sync architecture emits complete thinking block only, not chunks
      */
     thinkingFlow: (): AgentEvent[] => {
       AgentEventFactory.resetSequence();
       return [
-        AgentEventFactory.thinkingChunk({ content: 'First thought...' }),
-        AgentEventFactory.thinkingChunk({ content: 'Second thought...' }),
         AgentEventFactory.thinking({ content: 'First thought...Second thought...' }),
         AgentEventFactory.message({ content: 'Here is my response.' }),
       ];

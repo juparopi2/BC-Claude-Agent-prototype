@@ -42,6 +42,7 @@ import type {
   AgentExecutionResult,
   AgentEvent,
 } from './types';
+import type { StopReason } from '@bc-agent/shared';
 import {
   createExecutionContextSync,
   setUsageSync,
@@ -126,12 +127,12 @@ export class AgentOrchestrator implements IAgentOrchestrator {
     // Setup stream adapter (for stop reason normalization)
     const adapter = StreamAdapterFactory.create('anthropic', sessionId);
 
-    // Prepare file context
-    const fileOptions: ExecuteStreamingOptions = {
-      enableThinking: options?.enableThinking,
-      thinkingBudget: options?.thinkingBudget,
-    };
-    const contextResult = await this.fileContextPreparer.prepare(userId ?? '', prompt, fileOptions);
+    // Prepare file context (options for attachments and semantic search)
+    // Note: Thinking options are passed to the graph, not to file context preparer
+    const contextResult = await this.fileContextPreparer.prepare(userId ?? '', prompt, {
+      attachments: options?.attachments,
+      enableAutoSemanticSearch: options?.enableAutoSemanticSearch,
+    });
     const enhancedPrompt = contextResult.contextText
       ? `${contextResult.contextText}\n\n${prompt}`
       : prompt;
@@ -140,9 +141,9 @@ export class AgentOrchestrator implements IAgentOrchestrator {
     const inputs = {
       messages: [new HumanMessage(enhancedPrompt)],
       activeAgent: 'orchestrator',
-      sessionId,
       context: {
         userId,
+        sessionId,
         fileContext: contextResult,
         options: {
           enableThinking: options?.enableThinking ?? false,
@@ -178,7 +179,6 @@ export class AgentOrchestrator implements IAgentOrchestrator {
       eventId: userMessageResult.eventId,
       content: prompt,
       userId: userId ?? '',
-      role: 'user',
       timestamp: new Date().toISOString(),
       persistenceState: 'persisted',
     });
@@ -236,7 +236,7 @@ export class AgentOrchestrator implements IAgentOrchestrator {
 
         toolsUsed.push(exec.toolName);
 
-        // Emit tool_use
+        // Emit tool_use (transient - async persistence happens after)
         this.emitEventSync(ctx, {
           type: 'tool_use',
           toolUseId: exec.toolUseId,
@@ -244,11 +244,11 @@ export class AgentOrchestrator implements IAgentOrchestrator {
           args: exec.args,
           timestamp: new Date().toISOString(),
           eventId: randomUUID(),
-          persistenceState: 'pending',
+          persistenceState: 'transient',
           sessionId,
         });
 
-        // Emit tool_result
+        // Emit tool_result (transient - async persistence happens after)
         this.emitEventSync(ctx, {
           type: 'tool_result',
           toolUseId: exec.toolUseId,
@@ -258,7 +258,7 @@ export class AgentOrchestrator implements IAgentOrchestrator {
           error: exec.error,
           timestamp: new Date().toISOString(),
           eventId: randomUUID(),
-          persistenceState: 'pending',
+          persistenceState: 'transient',
           sessionId,
         });
 
@@ -273,9 +273,8 @@ export class AgentOrchestrator implements IAgentOrchestrator {
           error: exec.error,
           timestamp: new Date().toISOString(),
         };
-        this.persistenceCoordinator.persistToolEventsAsync(sessionId, [persistenceExec]).catch((err) => {
-          this.logger.error({ err, toolUseId: exec.toolUseId }, 'Failed to persist tool event');
-        });
+        // Fire-and-forget: persistToolEventsAsync handles errors internally (void return)
+        this.persistenceCoordinator.persistToolEventsAsync(sessionId, [persistenceExec]);
       }
 
       // =========================================================================
@@ -304,7 +303,7 @@ export class AgentOrchestrator implements IAgentOrchestrator {
         content,
         messageId: agentMessageId,
         role: 'assistant',
-        stopReason,
+        stopReason: stopReason as StopReason,
         timestamp: persistResult.timestamp,
         eventId: persistResult.eventId,
         sequenceNumber: persistResult.sequenceNumber,
@@ -318,8 +317,10 @@ export class AgentOrchestrator implements IAgentOrchestrator {
         type: 'complete',
         sessionId,
         timestamp: new Date().toISOString(),
+        eventId: randomUUID(),
         stopReason,
-        reason: normalizedReason,
+        reason: normalizedReason as 'success' | 'error' | 'max_turns' | 'user_cancelled',
+        persistenceState: 'transient',
       });
 
       this.logger.info(
@@ -340,7 +341,11 @@ export class AgentOrchestrator implements IAgentOrchestrator {
         success: true,
       };
     } catch (error) {
-      this.logger.error({ error, sessionId, executionId: ctx.executionId }, 'Synchronous execution failed');
+      // Serialize error properly - Error objects don't serialize to JSON by default
+      const errorInfo = error instanceof Error
+        ? { message: error.message, stack: error.stack, name: error.name, cause: error.cause }
+        : { value: String(error) };
+      this.logger.error({ error: errorInfo, sessionId, executionId: ctx.executionId }, 'Synchronous execution failed');
 
       this.emitEventSync(ctx, {
         type: 'error',

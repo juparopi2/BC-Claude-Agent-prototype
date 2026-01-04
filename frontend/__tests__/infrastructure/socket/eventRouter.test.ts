@@ -2,7 +2,7 @@
  * EventRouter Tests
  *
  * TDD tests for event routing and filtering logic.
- * Tests the guard against late chunks (Gap #6 fix).
+ * NOTE: Sync architecture - chunk types removed. Tests updated to reflect complete message pattern.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -129,7 +129,7 @@ describe('EventRouter', () => {
     });
   });
 
-  describe('isComplete guard (Gap #6 fix)', () => {
+  describe('isComplete guard', () => {
     it('ignores transient events after complete', () => {
       const mockClient = createMockSocketClient();
 
@@ -146,15 +146,15 @@ describe('EventRouter', () => {
       expect(receivedEvents).toHaveLength(1);
       expect(receivedEvents[0].type).toBe('complete');
 
-      // Now send a late message_chunk - should be ignored
-      const lateChunk = AgentEventFactory.messageChunk({ sessionId: 'session-123' });
-      mockClient._triggerEvent(lateChunk);
+      // Now send a late session_start (transient) - should be ignored
+      const lateSessionStart = AgentEventFactory.sessionStart({ sessionId: 'session-123' });
+      mockClient._triggerEvent(lateSessionStart);
 
       // Still only 1 event (the complete)
       expect(receivedEvents).toHaveLength(1);
     });
 
-    it('ignores thinking_chunk after complete', () => {
+    it('allows error events after complete', () => {
       const mockClient = createMockSocketClient();
 
       router.initialize(
@@ -166,26 +166,7 @@ describe('EventRouter', () => {
       // Complete event
       mockClient._triggerEvent(AgentEventFactory.complete({ sessionId: 'session-123' }));
 
-      // Late thinking_chunk - should be ignored
-      mockClient._triggerEvent(AgentEventFactory.thinkingChunk({ sessionId: 'session-123' }));
-
-      expect(receivedEvents).toHaveLength(1);
-      expect(receivedEvents[0].type).toBe('complete');
-    });
-
-    it('allows non-transient events after complete', () => {
-      const mockClient = createMockSocketClient();
-
-      router.initialize(
-        mockClient as unknown as Parameters<typeof router.initialize>[0],
-        'session-123',
-        (event) => receivedEvents.push(event)
-      );
-
-      // Complete event
-      mockClient._triggerEvent(AgentEventFactory.complete({ sessionId: 'session-123' }));
-
-      // Non-transient event like error should still pass through
+      // Error event should still pass through (error handling takes priority)
       const errorEvent = AgentEventFactory.error({ sessionId: 'session-123' });
       mockClient._triggerEvent(errorEvent);
 
@@ -193,7 +174,7 @@ describe('EventRouter', () => {
       expect(receivedEvents[1].type).toBe('error');
     });
 
-    it('processes transient events before complete normally', () => {
+    it('allows persisted events after complete', () => {
       const mockClient = createMockSocketClient();
 
       router.initialize(
@@ -202,17 +183,20 @@ describe('EventRouter', () => {
         (event) => receivedEvents.push(event)
       );
 
-      // Send chunks before complete - should all be received
-      mockClient._triggerEvent(AgentEventFactory.messageChunk({ sessionId: 'session-123' }));
-      mockClient._triggerEvent(AgentEventFactory.messageChunk({ sessionId: 'session-123' }));
-      mockClient._triggerEvent(AgentEventFactory.thinkingChunk({ sessionId: 'session-123' }));
+      // Complete event
+      mockClient._triggerEvent(AgentEventFactory.complete({ sessionId: 'session-123' }));
 
-      expect(receivedEvents).toHaveLength(3);
+      // Persisted message event should still pass through
+      const messageEvent = AgentEventFactory.message({ sessionId: 'session-123' });
+      mockClient._triggerEvent(messageEvent);
+
+      expect(receivedEvents).toHaveLength(2);
+      expect(receivedEvents[1].type).toBe('message');
     });
   });
 
   describe('reset()', () => {
-    it('resets isComplete flag allowing new chunks', () => {
+    it('resets isComplete flag allowing new events', () => {
       const mockClient = createMockSocketClient();
 
       router.initialize(
@@ -225,21 +209,17 @@ describe('EventRouter', () => {
       mockClient._triggerEvent(AgentEventFactory.complete({ sessionId: 'session-123' }));
       expect(receivedEvents).toHaveLength(1);
 
-      // Late chunk should be ignored
-      mockClient._triggerEvent(AgentEventFactory.messageChunk({ sessionId: 'session-123' }));
-      expect(receivedEvents).toHaveLength(1);
-
       // Reset the router (new message sent)
       router.reset();
 
-      // Now chunks should be accepted again
-      mockClient._triggerEvent(AgentEventFactory.messageChunk({ sessionId: 'session-123' }));
+      // Now events should be accepted again
+      mockClient._triggerEvent(AgentEventFactory.message({ sessionId: 'session-123' }));
       expect(receivedEvents).toHaveLength(2);
     });
   });
 
   describe('event flow sequences', () => {
-    it('processes complete chat flow in order', () => {
+    it('processes complete chat flow in order (sync architecture)', () => {
       const mockClient = createMockSocketClient();
 
       router.initialize(
@@ -248,28 +228,22 @@ describe('EventRouter', () => {
         (event) => receivedEvents.push(event)
       );
 
-      // Simulate typical flow
+      // Simulate typical sync flow (no chunks)
       const flow = [
         AgentEventFactory.sessionStart({ sessionId: 'session-123' }),
-        AgentEventFactory.thinkingChunk({ sessionId: 'session-123' }),
-        AgentEventFactory.thinkingChunk({ sessionId: 'session-123' }),
+        AgentEventFactory.userMessageConfirmed({ sessionId: 'session-123' }),
         AgentEventFactory.thinking({ sessionId: 'session-123' }),
-        AgentEventFactory.messageChunk({ sessionId: 'session-123' }),
-        AgentEventFactory.messageChunk({ sessionId: 'session-123' }),
         AgentEventFactory.message({ sessionId: 'session-123' }),
         AgentEventFactory.complete({ sessionId: 'session-123' }),
       ];
 
       flow.forEach((event) => mockClient._triggerEvent(event));
 
-      expect(receivedEvents).toHaveLength(8);
+      expect(receivedEvents).toHaveLength(5);
       expect(receivedEvents.map((e) => e.type)).toEqual([
         'session_start',
-        'thinking_chunk',
-        'thinking_chunk',
+        'user_message_confirmed',
         'thinking',
-        'message_chunk',
-        'message_chunk',
         'message',
         'complete',
       ]);

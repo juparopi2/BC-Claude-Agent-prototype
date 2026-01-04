@@ -16,7 +16,7 @@ export {
 // Re-export types for consumers
 export type {
   IAgentOrchestrator,
-  ExecuteStreamingOptions,
+  ExecuteSyncOptions,
   AgentOrchestratorDependencies,
 } from '@domains/agent/orchestration';
 

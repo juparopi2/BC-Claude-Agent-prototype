@@ -49,11 +49,11 @@ export interface EventProcessorCallbacks {
  * - approval_requested: Add to approval store
  * - approval_resolved: Remove from approval store
  *
- * Events IGNORED (not used in sync mode):
- * - thinking_chunk
- * - message_chunk
- * - message_partial
- * - thinking (legacy)
+ * Events IGNORED:
+ * - thinking (handled via thinking_complete instead)
+ *
+ * NOTE: Chunk types (thinking_chunk, message_chunk, message_partial) have been
+ * removed from AgentEventType - sync architecture uses complete messages only.
  *
  * @param event - The agent event to process
  * @param callbacks - Optional callbacks for UI state updates
@@ -253,13 +253,13 @@ export function processAgentEventSync(
       break;
     }
 
-    // Ignore streaming events (not used in sync mode)
-    case 'thinking_chunk':
-    case 'message_chunk':
-    case 'message_partial':
+    // NOTE: Chunk types (thinking_chunk, message_chunk, message_partial) have been removed
+    // from AgentEventType - sync architecture uses complete messages only
+
+    // Thinking event (may be emitted by some flows - ignore as we handle thinking_complete)
     case 'thinking':
       if (process.env.NODE_ENV === 'development') {
-        console.debug('[ProcessAgentEventSync] Ignored streaming event:', event.type);
+        console.debug('[ProcessAgentEventSync] Ignored thinking event (use thinking_complete):', event.type);
       }
       break;
 

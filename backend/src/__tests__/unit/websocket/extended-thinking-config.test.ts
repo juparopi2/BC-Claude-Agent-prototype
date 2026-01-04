@@ -14,7 +14,7 @@
 
 import { describe, it, expect } from 'vitest';
 import type { ChatMessageData, ExtendedThinkingConfig } from '../../../types/websocket.types';
-import type { ExecuteStreamingOptions } from '../../../services/agent/DirectAgentService';
+import type { ExecuteSyncOptions } from '../../../services/agent';
 
 describe('Extended Thinking Configuration', () => {
   describe('ExtendedThinkingConfig Interface', () => {
@@ -97,10 +97,10 @@ describe('Extended Thinking Configuration', () => {
     });
   });
 
-  describe('ExecuteStreamingOptions Interface', () => {
+  describe('ExecuteSyncOptions Interface', () => {
     it('should match ExtendedThinkingConfig structure', () => {
-      // ExecuteStreamingOptions should be compatible with what ChatMessageHandler passes
-      const options: ExecuteStreamingOptions = {
+      // ExecuteSyncOptions should be compatible with what ChatMessageHandler passes
+      const options: ExecuteSyncOptions = {
         enableThinking: true,
         thinkingBudget: 12000,
       };
@@ -110,7 +110,7 @@ describe('Extended Thinking Configuration', () => {
     });
 
     it('should allow partial options', () => {
-      const options: ExecuteStreamingOptions = {
+      const options: ExecuteSyncOptions = {
         enableThinking: true,
         // thinkingBudget will use default (10000)
       };
@@ -120,7 +120,7 @@ describe('Extended Thinking Configuration', () => {
     });
 
     it('should allow empty options (uses env fallback)', () => {
-      const options: ExecuteStreamingOptions = {};
+      const options: ExecuteSyncOptions = {};
 
       expect(options.enableThinking).toBeUndefined();
       expect(options.thinkingBudget).toBeUndefined();
@@ -128,7 +128,7 @@ describe('Extended Thinking Configuration', () => {
   });
 
   describe('Config Propagation Flow', () => {
-    it('should transform ChatMessageData.thinking to ExecuteStreamingOptions', () => {
+    it('should transform ChatMessageData.thinking to ExecuteSyncOptions', () => {
       // This test documents the expected transformation in ChatMessageHandler
       const chatData: ChatMessageData = {
         message: 'Test message',
@@ -140,8 +140,8 @@ describe('Extended Thinking Configuration', () => {
         },
       };
 
-      // ChatMessageHandler transforms to ExecuteStreamingOptions
-      const streamingOptions: ExecuteStreamingOptions | undefined = chatData.thinking
+      // ChatMessageHandler transforms to ExecuteSyncOptions
+      const streamingOptions: ExecuteSyncOptions | undefined = chatData.thinking
         ? {
             enableThinking: chatData.thinking.enableThinking,
             thinkingBudget: chatData.thinking.thinkingBudget,
@@ -162,7 +162,7 @@ describe('Extended Thinking Configuration', () => {
       };
 
       // ChatMessageHandler transforms to undefined
-      const streamingOptions: ExecuteStreamingOptions | undefined = chatData.thinking
+      const streamingOptions: ExecuteSyncOptions | undefined = chatData.thinking
         ? {
             enableThinking: chatData.thinking.enableThinking,
             thinkingBudget: chatData.thinking.thinkingBudget,

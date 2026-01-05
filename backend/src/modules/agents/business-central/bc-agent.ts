@@ -234,6 +234,7 @@ export class BusinessCentralAgent extends BaseAgent {
     return {
       messages: newMessages,
       toolExecutions: toolExecutions, // Return tool executions for event emission
+      usedModel: bcConfig.modelName, // Track model for billing and traceability
     };
   }
 }

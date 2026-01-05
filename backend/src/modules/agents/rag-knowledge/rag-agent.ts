@@ -184,6 +184,7 @@ export class RAGAgent extends BaseAgent {
      return {
         messages: newMessages,
         toolExecutions: toolExecutions, // Return tool executions for event emission
+        usedModel: ragConfig.modelName, // Track model for billing and traceability
      };
   }
 }

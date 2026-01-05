@@ -139,7 +139,7 @@ describe('WebSocket Message Flow Integration', () => {
       expect(event).toHaveProperty('sequenceNumber');
     });
 
-    it('should stream message_chunk events', async () => {
+    it('should emit message event with full response (sync architecture)', async () => {
       const testUser = await factory.createTestUser({ prefix: 'stream_chunk_' }, serverResult.redisClient);
       const testSession = await factory.createChatSession(testUser.id);
 
@@ -155,14 +155,14 @@ describe('WebSocket Message Flow Integration', () => {
       await client.sendMessage(testSession.id, 'Stream test');
       await client.waitForAgentEvent('complete', TEST_TIMEOUTS.EVENT_WAIT);
 
-      // Collect all message_chunk events from received events
+      // In sync architecture, we receive a single 'message' event with full content
       const receivedEvents = client.getReceivedEvents();
-      const chunks = receivedEvents
-        .filter(e => e.data.type === 'message_chunk')
+      const messageEvents = receivedEvents
+        .filter(e => e.data.type === 'message')
         .map(e => (e.data as { content?: string }).content || '');
 
-      expect(chunks.length).toBeGreaterThan(0);
-      expect(chunks.join('')).toBe('This is a test response from FakeAgentOrchestrator.');
+      expect(messageEvents.length).toBeGreaterThan(0);
+      expect(messageEvents[0]).toBe('This is a test response from FakeAgentOrchestrator.');
     });
 
     it('should emit complete event at end', async () => {

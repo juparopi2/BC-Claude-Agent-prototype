@@ -80,6 +80,16 @@ export const AgentStateAnnotation = Annotation.Root({
     reducer: (existing, incoming) => [...(existing || []), ...(incoming || [])],
     default: () => [],
   }),
+
+  /**
+   * Model used by the active agent.
+   * Set by each agent when it executes for billing and traceability.
+   * Reducer keeps the last set value (each agent overwrites).
+   */
+  usedModel: Annotation<string | null>({
+    reducer: (_, y) => y ?? null,
+    default: () => null,
+  }),
 });
 
 export type AgentState = typeof AgentStateAnnotation.State;

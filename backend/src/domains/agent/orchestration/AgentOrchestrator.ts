@@ -34,7 +34,8 @@
 
 import { createChildLogger } from '@/shared/utils/logger';
 import { orchestratorGraph } from '@/modules/agents/orchestrator/graph';
-import { StreamAdapterFactory } from '@shared/providers/adapters/StreamAdapterFactory';
+import { AnthropicAdapter } from '@shared/providers/adapters/AnthropicAdapter';
+import { getBatchResultNormalizer, type BatchResultNormalizer } from '@shared/providers/normalizers/BatchResultNormalizer';
 import { HumanMessage } from '@langchain/core/messages';
 import { randomUUID } from 'crypto';
 import type {
@@ -42,15 +43,21 @@ import type {
   AgentExecutionResult,
   AgentEvent,
 } from './types';
-import type { StopReason } from '@bc-agent/shared';
+import type {
+  StopReason,
+  NormalizedAgentEvent,
+  NormalizedThinkingEvent,
+  NormalizedToolRequestEvent,
+  NormalizedToolResponseEvent,
+  NormalizedAssistantMessageEvent,
+  NormalizedCompleteEvent,
+} from '@bc-agent/shared';
 import {
   createExecutionContextSync,
   setUsageSync,
   getNextEventIndex,
-  markToolSeenSync,
 } from './ExecutionContextSync';
 import type { ExecutionContextSync, ExecuteSyncOptions } from './ExecutionContextSync';
-import { extractContent } from './ResultExtractor';
 import { createFileContextPreparer, type IFileContextPreparer } from '@domains/agent/context';
 import {
   getPersistenceCoordinator,
@@ -64,12 +71,21 @@ import {
 export interface AgentOrchestratorDependencies {
   fileContextPreparer?: IFileContextPreparer;
   persistenceCoordinator?: IPersistenceCoordinator;
+  normalizer?: BatchResultNormalizer;
 }
 
 /**
  * Main orchestrator for agent execution.
  * Coordinates all phases of agent execution using stateless components.
  * All per-execution state lives in ExecutionContextSync.
+ *
+ * ## Event Normalization Architecture
+ *
+ * Uses BatchResultNormalizer to convert graph results into normalized events:
+ * 1. graph.invoke() returns AgentState
+ * 2. BatchResultNormalizer.normalize() converts to NormalizedAgentEvent[]
+ * 3. Events are processed in order without conditional logic
+ * 4. Each event is emitted and persisted based on its strategy
  */
 export class AgentOrchestrator implements IAgentOrchestrator {
   private readonly logger = createChildLogger({ service: 'AgentOrchestrator' });
@@ -77,10 +93,12 @@ export class AgentOrchestrator implements IAgentOrchestrator {
   // Dependencies that don't hold per-execution state
   private readonly fileContextPreparer: IFileContextPreparer;
   private readonly persistenceCoordinator: IPersistenceCoordinator;
+  private readonly normalizer: BatchResultNormalizer;
 
   constructor(deps?: AgentOrchestratorDependencies) {
     this.fileContextPreparer = deps?.fileContextPreparer ?? createFileContextPreparer();
     this.persistenceCoordinator = deps?.persistenceCoordinator ?? getPersistenceCoordinator();
+    this.normalizer = deps?.normalizer ?? getBatchResultNormalizer();
   }
 
   /**
@@ -110,7 +128,16 @@ export class AgentOrchestrator implements IAgentOrchestrator {
     options?: ExecuteSyncOptions
   ): Promise<AgentExecutionResult> {
     // =========================================================================
-    // 1. CREATE EXECUTION CONTEXT (Simplified)
+    // 1. INPUT VALIDATION
+    // =========================================================================
+    // Early validation: userId is REQUIRED for file operations
+    const requiresUserId = !!(options?.attachments?.length || options?.enableAutoSemanticSearch);
+    if (requiresUserId && !userId) {
+      throw new Error('UserId required for file attachments or semantic search');
+    }
+
+    // =========================================================================
+    // 2. CREATE EXECUTION CONTEXT (Simplified)
     // =========================================================================
     const ctx = createExecutionContextSync(sessionId, userId ?? '', onEvent, options);
 
@@ -119,13 +146,8 @@ export class AgentOrchestrator implements IAgentOrchestrator {
       'Starting synchronous agent execution'
     );
 
-    // Validate userId for file operations
-    if (!userId) {
-      this.logger.warn({ sessionId }, 'No userId provided, file operations disabled');
-    }
-
-    // Setup stream adapter (for stop reason normalization)
-    const adapter = StreamAdapterFactory.create('anthropic', sessionId);
+    // Setup provider adapter for batch result normalization
+    const adapter = new AnthropicAdapter(sessionId);
 
     // Prepare file context (options for attachments and semantic search)
     // Note: Thinking options are passed to the graph, not to file context preparer
@@ -195,157 +217,58 @@ export class AgentOrchestrator implements IAgentOrchestrator {
       });
 
       // =========================================================================
-      // 5. EXTRACT CONTENT FROM RESULT
+      // 5. NORMALIZE RESULT (replaces extractContent)
       // =========================================================================
-      const { thinking, content, toolExecutions, stopReason, usage } = extractContent(result);
+      const normalizedEvents = this.normalizer.normalize(result, adapter, {
+        includeComplete: true,
+      });
 
-      // Diagnostic logging for thinking extraction
+      // Diagnostic logging
       this.logger.info({
-        hasThinking: !!thinking,
-        thinkingLength: thinking?.length ?? 0,
+        eventCount: normalizedEvents.length,
+        eventTypes: normalizedEvents.map(e => e.type),
         messagesCount: result.messages?.length ?? 0,
         enableThinking: options?.enableThinking,
         thinkingBudget: options?.thinkingBudget,
-      }, 'Extracted content from graph result');
-
-      // Update usage in context
-      setUsageSync(ctx, { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens });
+      }, 'Normalized events from graph result');
 
       // =========================================================================
-      // 6. EMIT EVENTS IN STRICT ORDER
+      // 6. PROCESS EVENTS IN ORDER (no conditionals!)
       // =========================================================================
-
-      // 6.1 Thinking complete (if present)
-      if (thinking) {
-        // Persist thinking
-        await this.persistenceCoordinator.persistThinking(sessionId, {
-          messageId: agentMessageId,
-          content: thinking,
-          tokenUsage: usage,
-        });
-
-        this.emitEventSync(ctx, {
-          type: 'thinking_complete',
-          content: thinking,
-          timestamp: new Date().toISOString(),
-          eventId: randomUUID(),
-          persistenceState: 'transient',
-          sessionId,
-        });
-      }
-
-      // 6.2 Tool events (pairs: tool_use + tool_result)
+      let finalContent = '';
+      let finalMessageId = agentMessageId;
       const toolsUsed: string[] = [];
-      for (const exec of toolExecutions) {
-        // Check deduplication
-        const { isDuplicate } = markToolSeenSync(ctx, exec.toolUseId);
-        if (isDuplicate) {
-          continue;
+      let finalStopReason: string = 'end_turn';
+
+      for (const event of normalizedEvents) {
+        await this.processNormalizedEvent(ctx, event, sessionId, agentMessageId);
+
+        // Track state for result
+        if (event.type === 'assistant_message') {
+          const msgEvent = event as NormalizedAssistantMessageEvent;
+          finalContent = msgEvent.content;
+          finalMessageId = msgEvent.messageId;
+          finalStopReason = msgEvent.stopReason;
+          setUsageSync(ctx, {
+            inputTokens: msgEvent.tokenUsage.inputTokens,
+            outputTokens: msgEvent.tokenUsage.outputTokens,
+          });
         }
-
-        toolsUsed.push(exec.toolName);
-
-        // Emit tool_use (transient - async persistence happens after)
-        this.emitEventSync(ctx, {
-          type: 'tool_use',
-          toolUseId: exec.toolUseId,
-          toolName: exec.toolName,
-          args: exec.args,
-          timestamp: new Date().toISOString(),
-          eventId: randomUUID(),
-          persistenceState: 'transient',
-          sessionId,
-        });
-
-        // Emit tool_result (transient - async persistence happens after)
-        this.emitEventSync(ctx, {
-          type: 'tool_result',
-          toolUseId: exec.toolUseId,
-          toolName: exec.toolName,
-          result: exec.result,
-          success: exec.success,
-          error: exec.error,
-          timestamp: new Date().toISOString(),
-          eventId: randomUUID(),
-          persistenceState: 'transient',
-          sessionId,
-        });
-
-        // Persist tool events asynchronously (fire-and-forget)
-        // Map state's ToolExecution to persistence's format
-        const persistenceExec: PersistenceToolExecution = {
-          toolUseId: exec.toolUseId,
-          toolName: exec.toolName,
-          toolInput: exec.args,
-          toolOutput: exec.result ?? '',
-          success: exec.success,
-          error: exec.error,
-          timestamp: new Date().toISOString(),
-        };
-        // Fire-and-forget: persistToolEventsAsync handles errors internally (void return)
-        this.persistenceCoordinator.persistToolEventsAsync(sessionId, [persistenceExec]);
-      }
-
-      // =========================================================================
-      // 7. PERSIST AGENT MESSAGE
-      // =========================================================================
-      const persistResult = await this.persistenceCoordinator.persistAgentMessage(sessionId, {
-        messageId: agentMessageId,
-        content,
-        stopReason,
-        model: 'claude-3-5-sonnet-20241022',
-        tokenUsage: usage,
-      });
-
-      // Wait for BullMQ to complete DB write
-      if (persistResult.jobId) {
-        try {
-          await this.persistenceCoordinator.awaitPersistence(persistResult.jobId, 10000);
-        } catch (err) {
-          this.logger.warn({ sessionId, jobId: persistResult.jobId, err }, 'Timeout awaiting persistence');
+        if (event.type === 'tool_request') {
+          const toolEvent = event as NormalizedToolRequestEvent;
+          toolsUsed.push(toolEvent.toolName);
         }
       }
-
-      // 6.3 Final message
-      this.emitEventSync(ctx, {
-        type: 'message',
-        content,
-        messageId: agentMessageId,
-        role: 'assistant',
-        stopReason: stopReason as StopReason,
-        timestamp: persistResult.timestamp,
-        eventId: persistResult.eventId,
-        sequenceNumber: persistResult.sequenceNumber,
-        persistenceState: 'persisted',
-        sessionId,
-        model: 'claude-3-5-sonnet-20241022',
-        tokenUsage: {
-          inputTokens: ctx.totalInputTokens,
-          outputTokens: ctx.totalOutputTokens,
-        },
-      });
-
-      // 6.4 Complete
-      const normalizedReason = adapter.normalizeStopReason(stopReason);
-      this.emitEventSync(ctx, {
-        type: 'complete',
-        sessionId,
-        timestamp: new Date().toISOString(),
-        eventId: randomUUID(),
-        stopReason,
-        reason: normalizedReason as 'success' | 'error' | 'max_turns' | 'user_cancelled',
-        persistenceState: 'transient',
-      });
 
       this.logger.info(
-        { sessionId, executionId: ctx.executionId, stopReason },
+        { sessionId, executionId: ctx.executionId, stopReason: finalStopReason },
         'Synchronous agent execution completed'
       );
 
       return {
         sessionId,
-        response: content,
-        messageId: agentMessageId,
+        response: finalContent,
+        messageId: finalMessageId,
         tokenUsage: {
           inputTokens: ctx.totalInputTokens,
           outputTokens: ctx.totalOutputTokens,
@@ -385,6 +308,209 @@ export class AgentOrchestrator implements IAgentOrchestrator {
         eventIndex: getNextEventIndex(ctx),
       };
       ctx.callback(eventWithIndex);
+    }
+  }
+
+  /**
+   * Process a single normalized event: emit + persist based on strategy.
+   *
+   * This is the key simplification: one method handles all event types
+   * based on their persistenceStrategy, not their type.
+   */
+  private async processNormalizedEvent(
+    ctx: ExecutionContextSync,
+    event: NormalizedAgentEvent,
+    sessionId: string,
+    agentMessageId: string
+  ): Promise<void> {
+    // Convert to AgentEvent for emission
+    const agentEvent = this.toAgentEvent(event, ctx, agentMessageId);
+
+    // Emit to WebSocket
+    this.emitEventSync(ctx, agentEvent);
+
+    // Persist based on strategy
+    switch (event.persistenceStrategy) {
+      case 'transient':
+        // No persistence needed
+        break;
+
+      case 'sync_required':
+        await this.persistSyncEvent(event, sessionId, agentMessageId);
+        break;
+
+      case 'async_allowed':
+        this.persistAsyncEvent(event, sessionId);
+        break;
+    }
+  }
+
+  /**
+   * Convert NormalizedAgentEvent to AgentEvent for WebSocket emission.
+   */
+  private toAgentEvent(
+    normalized: NormalizedAgentEvent,
+    _ctx: ExecutionContextSync,
+    _agentMessageId: string
+  ): AgentEvent {
+    // Base event fields
+    const baseEvent = {
+      eventId: normalized.eventId,
+      sessionId: normalized.sessionId,
+      timestamp: normalized.timestamp,
+      persistenceState: normalized.persistenceStrategy === 'transient'
+        ? 'transient' as const
+        : 'pending' as const,
+    };
+
+    switch (normalized.type) {
+      case 'thinking': {
+        const thinkingEvent = normalized as NormalizedThinkingEvent;
+        return {
+          ...baseEvent,
+          type: 'thinking_complete' as const,
+          content: thinkingEvent.content,
+        };
+      }
+
+      case 'tool_request': {
+        const toolReqEvent = normalized as NormalizedToolRequestEvent;
+        return {
+          ...baseEvent,
+          type: 'tool_use' as const,
+          toolName: toolReqEvent.toolName,
+          toolUseId: toolReqEvent.toolUseId,
+          args: toolReqEvent.args,
+        };
+      }
+
+      case 'tool_response': {
+        const toolRespEvent = normalized as NormalizedToolResponseEvent;
+        return {
+          ...baseEvent,
+          type: 'tool_result' as const,
+          toolName: toolRespEvent.toolName,
+          toolUseId: toolRespEvent.toolUseId,
+          result: toolRespEvent.result ?? '',
+          success: toolRespEvent.success,
+          error: toolRespEvent.error,
+        };
+      }
+
+      case 'assistant_message': {
+        const msgEvent = normalized as NormalizedAssistantMessageEvent;
+        return {
+          ...baseEvent,
+          type: 'message' as const,
+          content: msgEvent.content,
+          messageId: msgEvent.messageId,
+          role: 'assistant' as const,
+          stopReason: msgEvent.stopReason as StopReason,
+          model: msgEvent.model,
+          tokenUsage: {
+            inputTokens: msgEvent.tokenUsage.inputTokens,
+            outputTokens: msgEvent.tokenUsage.outputTokens,
+          },
+        };
+      }
+
+      case 'complete': {
+        const completeEvent = normalized as NormalizedCompleteEvent;
+        return {
+          ...baseEvent,
+          type: 'complete' as const,
+          reason: completeEvent.reason,
+          stopReason: completeEvent.stopReason,
+        };
+      }
+
+      default:
+        // Fallback for other event types
+        return baseEvent as AgentEvent;
+    }
+  }
+
+  /**
+   * Persist an event synchronously (for sync_required events).
+   */
+  private async persistSyncEvent(
+    event: NormalizedAgentEvent,
+    sessionId: string,
+    agentMessageId: string
+  ): Promise<void> {
+    switch (event.type) {
+      case 'thinking': {
+        const thinkingEvent = event as NormalizedThinkingEvent;
+        await this.persistenceCoordinator.persistThinking(sessionId, {
+          messageId: agentMessageId,
+          content: thinkingEvent.content,
+          tokenUsage: thinkingEvent.tokenUsage ?? {
+            inputTokens: 0,
+            outputTokens: 0,
+          },
+        });
+        break;
+      }
+
+      case 'assistant_message': {
+        const msgEvent = event as NormalizedAssistantMessageEvent;
+        const persistResult = await this.persistenceCoordinator.persistAgentMessage(sessionId, {
+          messageId: agentMessageId,
+          content: msgEvent.content,
+          stopReason: msgEvent.stopReason,
+          model: msgEvent.model,
+          tokenUsage: {
+            inputTokens: msgEvent.tokenUsage.inputTokens,
+            outputTokens: msgEvent.tokenUsage.outputTokens,
+          },
+        });
+
+        // Wait for BullMQ to complete DB write
+        if (persistResult.jobId) {
+          try {
+            await this.persistenceCoordinator.awaitPersistence(persistResult.jobId, 10000);
+          } catch (err) {
+            this.logger.warn({ sessionId, jobId: persistResult.jobId, err }, 'Timeout awaiting persistence');
+          }
+        }
+        break;
+      }
+    }
+  }
+
+  /**
+   * Persist an event asynchronously (for async_allowed events).
+   */
+  private persistAsyncEvent(
+    event: NormalizedAgentEvent,
+    sessionId: string
+  ): void {
+    // Handle tool_request and tool_response events
+    if (event.type === 'tool_request') {
+      const toolReqEvent = event as NormalizedToolRequestEvent;
+      const persistenceExec: PersistenceToolExecution = {
+        toolUseId: toolReqEvent.toolUseId,
+        toolName: toolReqEvent.toolName,
+        toolInput: toolReqEvent.args,
+        toolOutput: '', // Will be filled by tool_response
+        success: true,
+        timestamp: toolReqEvent.timestamp,
+      };
+      // Fire-and-forget
+      this.persistenceCoordinator.persistToolEventsAsync(sessionId, [persistenceExec]);
+    } else if (event.type === 'tool_response') {
+      const toolRespEvent = event as NormalizedToolResponseEvent;
+      const persistenceExec: PersistenceToolExecution = {
+        toolUseId: toolRespEvent.toolUseId,
+        toolName: toolRespEvent.toolName,
+        toolInput: {},
+        toolOutput: toolRespEvent.result ?? '',
+        success: toolRespEvent.success,
+        error: toolRespEvent.error,
+        timestamp: toolRespEvent.timestamp,
+      };
+      // Fire-and-forget
+      this.persistenceCoordinator.persistToolEventsAsync(sessionId, [persistenceExec]);
     }
   }
 }

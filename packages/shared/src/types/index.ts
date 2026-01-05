@@ -115,3 +115,34 @@ export { FILE_UPLOAD_LIMITS, ALLOWED_MIME_TYPES } from './file.types';
 
 // File type guards
 export { isAllowedMimeType } from './file.types';
+
+// Normalized event types (multi-provider normalization)
+export type {
+  NormalizedProvider,
+  NormalizedAgentEventType,
+  NormalizedPersistenceStrategy,
+  NormalizedStopReason,
+  NormalizedTokenUsage,
+  BaseNormalizedEvent,
+  NormalizedSessionStartEvent,
+  NormalizedUserMessageEvent,
+  NormalizedThinkingEvent,
+  NormalizedToolRequestEvent,
+  NormalizedToolResponseEvent,
+  NormalizedAssistantMessageEvent,
+  NormalizedErrorEvent,
+  NormalizedCompleteEvent,
+  NormalizedAgentEvent,
+} from './normalized-events.types';
+
+// Normalized event type guards
+export {
+  requiresSyncPersistence,
+  isTransientNormalizedEvent,
+  allowsAsyncPersistence,
+  isNormalizedThinkingEvent,
+  isNormalizedToolRequestEvent,
+  isNormalizedToolResponseEvent,
+  isNormalizedAssistantMessageEvent,
+  isNormalizedCompleteEvent,
+} from './normalized-events.types';

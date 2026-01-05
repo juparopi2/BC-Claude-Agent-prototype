@@ -1,2 +1,1 @@
-export * from './AnthropicStreamAdapter';
-export * from './StreamAdapterFactory';
+export * from './AnthropicAdapter';

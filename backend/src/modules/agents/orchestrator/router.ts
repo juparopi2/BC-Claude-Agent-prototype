@@ -140,12 +140,18 @@ CONTEXT (current request):
       reasoning: result.reasoning
     }, 'Router: LLM selected agent');
 
-    return { activeAgent: result.target_agent };
+    return {
+      activeAgent: result.target_agent,
+      usedModel: routerConfig.modelName, // Track router model for billing
+    };
   } catch (error) {
     logger.error({
       error: (error as Error).message,
       stack: (error as Error).stack
     }, 'Router: LLM routing failed, defaulting to orchestrator');
-    return { activeAgent: 'orchestrator' };
+    return {
+      activeAgent: 'orchestrator',
+      usedModel: routerConfig.modelName, // Still track model (was attempted)
+    };
   }
 }

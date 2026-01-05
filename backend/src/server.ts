@@ -19,7 +19,7 @@ import { initDatabase, closeDatabase, checkDatabaseHealth, executeQuery } from '
 import { initRedis, closeRedis, checkRedisHealth } from '@infrastructure/redis/redis'; // ioredis for BullMQ only
 import { initRedisClient, closeRedisClient, getRedisClient } from '@infrastructure/redis/redis-client'; // redis package for sessions
 import { startDatabaseKeepalive, stopDatabaseKeepalive } from '@shared/utils/databaseKeepalive';
-import { logger } from '@shared/utils/logger';
+import { createChildLogger } from '@shared/utils/logger';
 import { getBCClient } from '@/services/bc';
 import { getAgentOrchestrator } from '@domains/agent/orchestration';
 import { getApprovalManager } from '@/domains/approval/ApprovalManager';
@@ -50,6 +50,8 @@ import {
   sendInternalError,
   sendServiceUnavailable,
 } from '@shared/utils/error-response';
+
+const logger = createChildLogger({ service: 'Server' });
 
 /**
  * Extend express-session types to include Microsoft OAuth session data

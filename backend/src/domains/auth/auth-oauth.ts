@@ -19,9 +19,11 @@ import { createMicrosoftOAuthService } from '@/domains/auth/oauth/MicrosoftOAuth
 import { createBCTokenManager } from '@/services/auth/BCTokenManager';
 import { authenticateMicrosoft, authenticateMicrosoftOptional } from '@/domains/auth/middleware/auth-oauth';
 import { MicrosoftOAuthSession } from '@/types/microsoft.types';
-import { logger } from '@/shared/utils/logger';
+import { createChildLogger } from '@/shared/utils/logger';
 import { ErrorCode } from '@/shared/constants/errors';
 import { sendError } from '@/shared/utils/error-response';
+
+const logger = createChildLogger({ service: 'AuthOAuthRoutes' });
 
 /**
  * Extract tenant ID from client_info base64 string

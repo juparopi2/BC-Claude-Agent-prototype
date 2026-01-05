@@ -41,6 +41,9 @@ import '@/types/session.types';
 const isDevelopment = process.env.NODE_ENV !== 'production';
 const logLevel = process.env.LOG_LEVEL || (isDevelopment ? 'debug' : 'info');
 
+// Service filtering for diagnostics (LOG_SERVICES=Service1,Service2,...)
+const allowedServices = process.env.LOG_SERVICES?.split(',').map(s => s.trim()).filter(Boolean) ?? [];
+
 // Transport configuration
 const targets = [];
 
@@ -52,9 +55,9 @@ if (isDevelopment) {
     options: {
       colorize: true,
       translateTime: 'SYS:standard',
-      ignore: 'pid,hostname',
+      ignore: 'pid,hostname,env',
       singleLine: false,
-      messageFormat: '{levelLabel} - {msg}',
+      messageFormat: '[{service}] {msg}',
     },
   });
 } else {
@@ -139,11 +142,22 @@ export const logger = pino(
  * Use this for service-scoped or request-scoped logging.
  * Child loggers inherit configuration from parent and add context.
  *
+ * Supports LOG_SERVICES environment variable for filtering:
+ * - When LOG_SERVICES is set, only logs from listed services are shown
+ * - Example: LOG_SERVICES=AgentOrchestrator,PersistenceCoordinator
+ *
  * @example
  * const serviceLogger = createChildLogger({ service: 'DirectAgentService' });
  * serviceLogger.info({ sessionId: '123' }, 'Processing message');
  */
 export const createChildLogger = (context: Record<string, unknown>) => {
+  const serviceName = context.service as string | undefined;
+
+  // If LOG_SERVICES is set and service is not in the list, return silent logger
+  if (allowedServices.length > 0 && serviceName && !allowedServices.includes(serviceName)) {
+    return pino({ level: 'silent' });
+  }
+
   return logger.child(context);
 };
 

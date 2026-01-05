@@ -16,13 +16,14 @@ import { z } from 'zod';
 import crypto from 'crypto';
 import { executeQuery } from '@/infrastructure/database/database';
 import { authenticateMicrosoft } from '@/domains/auth/middleware/auth-oauth';
-import { logger } from '@/shared/utils/logger';
+import { createChildLogger } from '@/shared/utils/logger';
 import { ErrorCode } from '@/shared/constants/errors';
 import { sendError } from '@/shared/utils/error-response';
 // ✅ Import native SDK types (source of truth)
 import type { StopReason, TextCitation } from '@anthropic-ai/sdk/resources/messages';
 import { getSessionTitleGenerator } from '../services/sessions/SessionTitleGenerator';
 
+const logger = createChildLogger({ service: 'SessionRoutes' });
 const router = Router();
 
 // ============================================

@@ -16,7 +16,7 @@ import { executeQuery } from '@/infrastructure/database/database';
 import { createChildLogger } from '@/shared/utils/logger';
 import { normalizeUUID } from '@/shared/utils/uuid';
 
-const logger = createChildLogger({ module: 'session-ownership' });
+const logger = createChildLogger({ service: 'SessionOwnership' });
 
 /**
  * Session ownership validation result

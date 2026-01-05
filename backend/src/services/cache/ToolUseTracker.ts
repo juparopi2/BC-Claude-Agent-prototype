@@ -17,7 +17,7 @@
 
 import Redis from 'ioredis';
 import { env } from '@/infrastructure/config';
-import { logger } from '@/shared/utils/logger';
+import { createChildLogger } from '@/shared/utils/logger';
 import { randomUUID } from 'crypto';
 
 /**
@@ -41,6 +41,7 @@ export class ToolUseTracker {
   private redis: Redis;
   private readonly TTL_SECONDS = 300; // 5 minutes
   private readonly KEY_PREFIX = 'tooluse:mapping:';
+  private logger = createChildLogger({ service: 'ToolUseTracker' });
 
   private constructor() {
     // Initialize Redis connection
@@ -56,14 +57,14 @@ export class ToolUseTracker {
     });
 
     this.redis.on('error', (err) => {
-      logger.error('Redis error in ToolUseTracker', { error: err });
+      this.logger.error('Redis error in ToolUseTracker', { error: err });
     });
 
     this.redis.on('connect', () => {
-      logger.info('ToolUseTracker connected to Redis');
+      this.logger.info('ToolUseTracker connected to Redis');
     });
 
-    logger.info('ToolUseTracker initialized');
+    this.logger.info('ToolUseTracker initialized');
   }
 
   /**
@@ -107,7 +108,7 @@ export class ToolUseTracker {
       // Store mapping in Redis with TTL
       await this.redis.setex(key, this.TTL_SECONDS, JSON.stringify(mapping));
 
-      logger.debug('Tool use ID mapped', {
+      this.logger.debug('Tool use ID mapped', {
         sessionId,
         sdkToolUseId,
         dbGuid,
@@ -116,7 +117,7 @@ export class ToolUseTracker {
 
       return dbGuid;
     } catch (error) {
-      logger.error('Failed to map tool use ID', {
+      this.logger.error('Failed to map tool use ID', {
         error,
         sessionId,
         sdkToolUseId,
@@ -144,14 +145,14 @@ export class ToolUseTracker {
       const data = await this.redis.get(key);
 
       if (!data) {
-        logger.warn('Tool use ID mapping not found', { sessionId, sdkToolUseId });
+        this.logger.warn('Tool use ID mapping not found', { sessionId, sdkToolUseId });
         return null;
       }
 
       const mapping = JSON.parse(data) as ToolUseMapping;
       return mapping.dbGuid;
     } catch (error) {
-      logger.error('Failed to get DB GUID', {
+      this.logger.error('Failed to get DB GUID', {
         error,
         sessionId,
         sdkToolUseId,
@@ -183,7 +184,7 @@ export class ToolUseTracker {
 
       return JSON.parse(data) as ToolUseMapping;
     } catch (error) {
-      logger.error('Failed to get tool use mapping', {
+      this.logger.error('Failed to get tool use mapping', {
         error,
         sessionId,
         sdkToolUseId,
@@ -224,9 +225,9 @@ export class ToolUseTracker {
       const key = this.getRedisKey(sessionId, sdkToolUseId);
       await this.redis.del(key);
 
-      logger.debug('Tool use mapping cleaned up', { sessionId, sdkToolUseId });
+      this.logger.debug('Tool use mapping cleaned up', { sessionId, sdkToolUseId });
     } catch (error) {
-      logger.error('Failed to cleanup tool use mapping', {
+      this.logger.error('Failed to cleanup tool use mapping', {
         error,
         sessionId,
         sdkToolUseId,
@@ -267,7 +268,7 @@ export class ToolUseTracker {
 
       return mappings;
     } catch (error) {
-      logger.error('Failed to get all mappings for session', {
+      this.logger.error('Failed to get all mappings for session', {
         error,
         sessionId,
       });
@@ -306,14 +307,14 @@ export class ToolUseTracker {
       // Delete in batch
       await this.redis.del(...keysToDelete);
 
-      logger.info('Session mappings cleaned up', {
+      this.logger.info('Session mappings cleaned up', {
         sessionId,
         deletedCount: keysToDelete.length,
       });
 
       return keysToDelete.length;
     } catch (error) {
-      logger.error('Failed to cleanup session mappings', {
+      this.logger.error('Failed to cleanup session mappings', {
         error,
         sessionId,
       });
@@ -351,7 +352,7 @@ export class ToolUseTracker {
       await this.redis.del(testKey);
       return value === 'ok';
     } catch (error) {
-      logger.error('ToolUseTracker health check failed', { error });
+      this.logger.error('ToolUseTracker health check failed', { error });
       return false;
     }
   }
@@ -365,9 +366,9 @@ export class ToolUseTracker {
   public async close(): Promise<void> {
     try {
       await this.redis.quit();
-      logger.info('ToolUseTracker Redis connection closed');
+      this.logger.info('ToolUseTracker Redis connection closed');
     } catch (error) {
-      logger.error('Failed to close ToolUseTracker Redis connection', { error });
+      this.logger.error('Failed to close ToolUseTracker Redis connection', { error });
     }
   }
 }

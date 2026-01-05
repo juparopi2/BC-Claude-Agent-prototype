@@ -23,9 +23,10 @@ import { getUsageTrackingService } from '@/domains/billing/tracking/UsageTrackin
 import { getMessageQueue } from '@/infrastructure/queue/MessageQueue';
 import { sendError } from '@/shared/utils/error-response';
 import { ErrorCode } from '@/shared/constants/errors';
-import { logger } from '@/shared/utils/logger';
+import { createChildLogger } from '@/shared/utils/logger';
 import type { ParsedFile } from '@/types/file.types';
 
+const logger = createChildLogger({ service: 'FileRoutes' });
 const router = Router();
 
 // ============================================

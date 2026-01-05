@@ -9,7 +9,7 @@
 
 import { Request, Response, NextFunction } from 'express';
 import { MicrosoftOAuthSession } from '@/types/microsoft.types';
-import { logger } from '@/shared/utils/logger';
+import { createChildLogger } from '@/shared/utils/logger';
 import { ErrorCode } from '@/shared/constants/errors';
 import {
   sendError,
@@ -17,6 +17,8 @@ import {
   sendNotFound,
   sendInternalError,
 } from '@/shared/utils/error-response';
+
+const logger = createChildLogger({ service: 'OAuthMiddleware' });
 
 /**
  * Extend Express Request to include Microsoft OAuth session

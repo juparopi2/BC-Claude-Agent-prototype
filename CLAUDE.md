@@ -402,3 +402,67 @@ The system uses **synchronous execution** (not streaming). Valid event types:
 - `turn_paused`, `content_refused` (SDK 0.71+)
 
 **Removed types** (DO NOT USE): `thinking_chunk`, `message_chunk`, `message_partial`
+
+---
+
+## 11. Logging Pattern - Service Context
+
+Always use `createChildLogger` with a service name to enable `LOG_SERVICES` filtering. This allows selective log output during development/debugging.
+
+### 11.1 For Classes
+
+```typescript
+import { createChildLogger } from '@/shared/utils/logger';
+
+export class MyService {
+  private logger = createChildLogger({ service: 'MyService' });
+
+  doSomething() {
+    this.logger.info({ data }, 'Operation completed');
+  }
+}
+```
+
+### 11.2 For Routes/Middleware
+
+```typescript
+import { createChildLogger } from '@/shared/utils/logger';
+
+const logger = createChildLogger({ service: 'MyRoutes' });
+
+router.get('/path', (req, res) => {
+  logger.info('Handling request');
+});
+```
+
+### 11.3 For Classes with Dependency Injection
+
+```typescript
+import { createChildLogger } from '@/shared/utils/logger';
+import type { ILoggerMinimal } from '@/infrastructure/queue/IMessageQueueDependencies';
+
+export class MyService {
+  private log: ILoggerMinimal;
+
+  constructor(deps?: { logger?: ILoggerMinimal }) {
+    this.log = deps?.logger ?? createChildLogger({ service: 'MyService' });
+  }
+}
+```
+
+### 11.4 Exceptions (use raw `logger` directly)
+
+- `pinoHttp` middleware (`logging.ts`) - requires base logger instance for HTTP logging
+- Shared utilities (`retry.ts`) - not service-scoped
+
+### 11.5 Usage
+
+Filter logs by service using `LOG_SERVICES` environment variable:
+
+```bash
+# Show only specific services
+LOG_SERVICES=AgentOrchestrator,MessageQueue npm run dev
+
+# Show all logs (default)
+npm run dev
+```

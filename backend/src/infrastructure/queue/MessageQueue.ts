@@ -26,7 +26,7 @@
 import { Queue, Worker, Job, QueueEvents, type RedisOptions } from 'bullmq';
 import { Redis } from 'ioredis';
 import { env } from '@/infrastructure/config';
-import { logger } from '@/shared/utils/logger';
+import { createChildLogger } from '@/shared/utils/logger';
 import { executeQuery, SqlParams } from '@/infrastructure/database/database';
 import { getEventStore, EventType } from '@/services/events/EventStore';
 import type {
@@ -216,7 +216,7 @@ export class MessageQueue {
     this.eventStoreGetter = dependencies?.eventStore
       ? () => dependencies.eventStore!
       : () => getEventStore();
-    this.log = dependencies?.logger ?? logger;
+    this.log = dependencies?.logger ?? createChildLogger({ service: 'MessageQueue' });
     // Store optional service overrides (for testing with mocks)
     this.embeddingServiceOverride = dependencies?.embeddingService;
     this.vectorSearchServiceOverride = dependencies?.vectorSearchService;
@@ -1532,7 +1532,7 @@ export class MessageQueue {
          const chunkId = chunks[i]?.id;
 
          if (!chunkId) {
-            logger.warn({ fileId, i }, 'Missing chunk ID during update');
+            this.log.warn({ fileId, i }, 'Missing chunk ID during update');
             continue;
          }
          

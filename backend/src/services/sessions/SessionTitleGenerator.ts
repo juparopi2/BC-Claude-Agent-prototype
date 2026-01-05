@@ -10,7 +10,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { env } from '@/infrastructure/config/environment';
 import { getModelName } from '@/infrastructure/config/models';
-import { logger } from '@/shared/utils/logger';
+import { createChildLogger } from '@/shared/utils/logger';
 import { executeQuery, SqlParams } from '@/infrastructure/database/database';
 
 /**
@@ -19,13 +19,14 @@ import { executeQuery, SqlParams } from '@/infrastructure/database/database';
 export class SessionTitleGenerator {
   private static instance: SessionTitleGenerator | null = null;
   private anthropic: Anthropic;
+  private logger = createChildLogger({ service: 'SessionTitleGenerator' });
 
   private constructor() {
     this.anthropic = new Anthropic({
       apiKey: env.ANTHROPIC_API_KEY,
     });
 
-    logger.info('SessionTitleGenerator initialized');
+    this.logger.info('SessionTitleGenerator initialized');
   }
 
   /**
@@ -56,7 +57,7 @@ export class SessionTitleGenerator {
    */
   public async generateTitle(userMessage: string): Promise<string> {
     try {
-      logger.debug('Generating session title', {
+      this.logger.debug('Generating session title', {
         messageLength: userMessage.length,
       });
 
@@ -114,11 +115,11 @@ Now generate a title for the user's message:`;
         title = title.substring(0, 47) + '...';
       }
 
-      logger.debug('Session title generated', { title });
+      this.logger.debug('Session title generated', { title });
 
       return title;
     } catch (error) {
-      logger.error('Failed to generate session title', { error });
+      this.logger.error('Failed to generate session title', { error });
 
       // Fallback to simple title
       return this.generateFallbackTitle(userMessage);
@@ -152,9 +153,9 @@ Now generate a title for the user's message:`;
         params
       );
 
-      logger.debug('Session title updated', { sessionId, title });
+      this.logger.debug('Session title updated', { sessionId, title });
     } catch (error) {
-      logger.error('Failed to update session title', { error, sessionId });
+      this.logger.error('Failed to update session title', { error, sessionId });
       // Don't throw - title generation failure shouldn't break the flow
     }
   }
@@ -178,7 +179,7 @@ Now generate a title for the user's message:`;
       await this.updateSessionTitle(sessionId, title);
       return title;
     } catch (error) {
-      logger.error('Failed to generate and update title', {
+      this.logger.error('Failed to generate and update title', {
         error,
         sessionId,
       });
@@ -245,7 +246,7 @@ Now generate a title for the user's message:`;
   public async batchGenerateTitles(
     sessions: Array<{ sessionId: string; userMessage: string }>
   ): Promise<Array<{ sessionId: string; title: string }>> {
-    logger.info('Batch generating titles', { count: sessions.length });
+    this.logger.info('Batch generating titles', { count: sessions.length });
 
     const results = await Promise.allSettled(
       sessions.map(async (session) => {
@@ -264,11 +265,11 @@ Now generate a title for the user's message:`;
       } else {
         // Validate session exists (defensive programming)
         if (!session) {
-          logger.warn('Session undefined in batch results', { index });
+          this.logger.warn('Session undefined in batch results', { index });
           return;
         }
 
-        logger.error('Failed to generate title in batch', {
+        this.logger.error('Failed to generate title in batch', {
           sessionId: session.sessionId,
           error: result.reason,
         });
@@ -280,7 +281,7 @@ Now generate a title for the user's message:`;
       }
     });
 
-    logger.info('Batch title generation completed', {
+    this.logger.info('Batch title generation completed', {
       total: sessions.length,
       successful: successfulResults.length,
     });

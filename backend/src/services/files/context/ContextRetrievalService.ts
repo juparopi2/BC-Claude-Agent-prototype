@@ -22,7 +22,7 @@ import type {
 } from './retrieval.types';
 import type { ParsedFile } from '@/types/file.types';
 import type { SearchResult } from '@/services/search/types';
-import { logger } from '@/shared/utils/logger';
+import { createChildLogger } from '@/shared/utils/logger';
 
 /** Interface for FileService dependency */
 interface IFileService {
@@ -71,7 +71,7 @@ export class ContextRetrievalService {
   private fileUploadService: IFileUploadService;
   private vectorSearchService: IVectorSearchService;
   private embeddingService: IEmbeddingService;
-  private log = logger.child({ service: 'ContextRetrievalService' });
+  private log = createChildLogger({ service: 'ContextRetrievalService' });
 
   constructor(
     fileService: IFileService,

@@ -12,7 +12,7 @@ import crypto from 'crypto';
 import { executeQuery } from '@/infrastructure/database/database';
 import { BCTokenData, TokenAcquisitionResult } from '../../types/microsoft.types';
 import { MicrosoftOAuthService } from './MicrosoftOAuthService';
-import { logger } from '@/shared/utils/logger';
+import { createChildLogger } from '@/shared/utils/logger';
 
 const ENCRYPTION_ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16;
@@ -21,6 +21,7 @@ const KEY_LENGTH = 32;
 export class BCTokenManager {
   private encryptionKey: Buffer;
   private oauthService: MicrosoftOAuthService;
+  private logger = createChildLogger({ service: 'BCTokenManager' });
 
   // Map to store in-flight refresh promises for deduplication
   private refreshPromises = new Map<string, Promise<BCTokenData>>();
@@ -34,7 +35,7 @@ export class BCTokenManager {
     }
 
     this.oauthService = oauthService;
-    logger.info('BCTokenManager initialized');
+    this.logger.info('BCTokenManager initialized');
   }
 
   /**
@@ -56,7 +57,7 @@ export class BCTokenManager {
       // Format: iv:encryptedData:authTag (all base64)
       return `${iv.toString('base64')}:${encrypted}:${authTag.toString('base64')}`;
     } catch (error) {
-      logger.error('Token encryption failed', { error });
+      this.logger.error('Token encryption failed', { error });
       throw new Error('Failed to encrypt token');
     }
   }
@@ -93,7 +94,7 @@ export class BCTokenManager {
 
       return decrypted;
     } catch (error) {
-      logger.error('Token decryption failed', { error });
+      this.logger.error('Token decryption failed', { error });
       throw new Error('Failed to decrypt token');
     }
   }
@@ -126,9 +127,9 @@ export class BCTokenManager {
         }
       );
 
-      logger.info('Stored encrypted BC tokens for user', { userId, expiresAt: tokenData.expiresAt });
+      this.logger.info('Stored encrypted BC tokens for user', { userId, expiresAt: tokenData.expiresAt });
     } catch (error) {
-      logger.error('Failed to store BC tokens', { error, userId });
+      this.logger.error('Failed to store BC tokens', { error, userId });
       throw new Error('Failed to store Business Central tokens');
     }
   }
@@ -163,7 +164,7 @@ export class BCTokenManager {
 
       // If no BC token stored, acquire new one
       if (!record.bc_access_token_encrypted) {
-        logger.info('No BC token stored for user, acquiring new token', { userId });
+        this.logger.info('No BC token stored for user, acquiring new token', { userId });
         return await this._getOrCreateRefreshPromise(userId, userRefreshToken);
       }
 
@@ -172,7 +173,7 @@ export class BCTokenManager {
 
       // If token expired or expires in next 5 minutes, refresh it
       if (expiresAt <= new Date(now.getTime() + 5 * 60 * 1000)) {
-        logger.info('BC token expired or expiring soon, refreshing', { userId, expiresAt });
+        this.logger.info('BC token expired or expiring soon, refreshing', { userId, expiresAt });
         return await this._getOrCreateRefreshPromise(userId, userRefreshToken);
       }
 
@@ -186,7 +187,7 @@ export class BCTokenManager {
         expiresAt,
       };
     } catch (error) {
-      logger.error('Failed to get BC token', { error, userId });
+      this.logger.error('Failed to get BC token', { error, userId });
       throw new Error('Failed to retrieve Business Central token');
     }
   }
@@ -203,21 +204,21 @@ export class BCTokenManager {
 
     // Check if refresh already in progress
     if (this.refreshPromises.has(key)) {
-      logger.debug('BCTokenManager: Reusing existing refresh promise', { userId });
+      this.logger.debug('BCTokenManager: Reusing existing refresh promise', { userId });
       return this.refreshPromises.get(key)!;
     }
 
     // Create new refresh promise
-    logger.debug('BCTokenManager: Creating new refresh promise', { userId });
+    this.logger.debug('BCTokenManager: Creating new refresh promise', { userId });
     
     // Create new refresh promise
-    logger.debug('BCTokenManager: Creating new refresh promise', { userId });
+    this.logger.debug('BCTokenManager: Creating new refresh promise', { userId });
     
     const promise = this.refreshBCToken(userId, userRefreshToken)
       .finally(() => {
         // CRITICAL: Always cleanup, even on error
         this.refreshPromises.delete(key);
-        logger.debug('BCTokenManager: Refresh promise cleaned up', { userId });
+        this.logger.debug('BCTokenManager: Refresh promise cleaned up', { userId });
       });
 
     // Store promise in map
@@ -235,7 +236,7 @@ export class BCTokenManager {
    */
   async refreshBCToken(userId: string, userRefreshToken: string): Promise<BCTokenData> {
     try {
-      logger.info('Refreshing BC token', { userId });
+      this.logger.info('Refreshing BC token', { userId });
 
       // Acquire new BC token using OAuth service
       const tokenResult = await this.oauthService.acquireBCToken(userRefreshToken);
@@ -249,7 +250,7 @@ export class BCTokenManager {
         expiresAt: tokenResult.expiresAt,
       };
     } catch (error) {
-      logger.error('Failed to refresh BC token', { error, userId });
+      this.logger.error('Failed to refresh BC token', { error, userId });
       throw new Error('Failed to refresh Business Central token');
     }
   }
@@ -273,9 +274,9 @@ export class BCTokenManager {
         { userId }
       );
 
-      logger.info('Cleared BC tokens for user', { userId });
+      this.logger.info('Cleared BC tokens for user', { userId });
     } catch (error) {
-      logger.error('Failed to clear BC tokens', { error, userId });
+      this.logger.error('Failed to clear BC tokens', { error, userId });
       throw new Error('Failed to clear Business Central tokens');
     }
   }

@@ -17,7 +17,7 @@
 import { executeQuery, getDatabase, SqlParams } from '@/infrastructure/database/database';
 import { getRedis } from '@/infrastructure/redis/redis';
 import { randomUUID } from 'crypto';
-import { logger } from '@/shared/utils/logger';
+import { createChildLogger } from '@/shared/utils/logger';
 
 /**
  * Event Type - All possible message events
@@ -137,9 +137,10 @@ interface EventDbRow {
  */
 export class EventStore {
   private static instance: EventStore | null = null;
+  private logger = createChildLogger({ service: 'EventStore' });
 
   private constructor() {
-    logger.info('EventStore initialized');
+    this.logger.info('EventStore initialized');
   }
 
   /**
@@ -207,11 +208,11 @@ export class EventStore {
         }
 
         if (sequenceNumber < 1) {
-          logger.warn('Invalid sequence number generated (< 1), using 1', { sequenceNumber, sessionId });
+          this.logger.warn('Invalid sequence number generated (< 1), using 1', { sequenceNumber, sessionId });
           sequenceNumber = 1;
         }
       } catch (seqError) {
-        logger.error('Failed to get sequence number, using timestamp fallback', {
+        this.logger.error('Failed to get sequence number, using timestamp fallback', {
           sessionId,
           error: seqError
         });
@@ -220,7 +221,7 @@ export class EventStore {
         // This guarantees a valid number even if all other methods fail
         sequenceNumber = Date.now() % 1000000;  // Modulo to keep it under 1 million
 
-        logger.warn('Using timestamp-based sequence number', {
+        this.logger.warn('Using timestamp-based sequence number', {
           sessionId,
           sequenceNumber,
           eventType
@@ -245,7 +246,7 @@ export class EventStore {
         params
       );
 
-      logger.debug('Event appended to store', {
+      this.logger.debug('Event appended to store', {
         eventId,
         sessionId,
         eventType,
@@ -262,7 +263,7 @@ export class EventStore {
         processed: false,
       };
     } catch (error) {
-      logger.error('Failed to append event', { error, sessionId, eventType });
+      this.logger.error('Failed to append event', { error, sessionId, eventType });
       throw error;
     }
   }
@@ -294,7 +295,7 @@ export class EventStore {
       const eventId = randomUUID();
       const timestamp = new Date();
 
-      logger.info({
+      this.logger.info({
         sessionId,
         eventType,
         preAssignedSequence,
@@ -318,7 +319,7 @@ export class EventStore {
         params
       );
 
-      logger.debug('Event appended with pre-assigned sequence', {
+      this.logger.debug('Event appended with pre-assigned sequence', {
         eventId,
         sessionId,
         eventType,
@@ -335,7 +336,7 @@ export class EventStore {
         processed: false,
       };
     } catch (error) {
-      logger.error('Failed to append event with pre-assigned sequence', {
+      this.logger.error('Failed to append event with pre-assigned sequence', {
         error,
         sessionId,
         eventType,
@@ -398,7 +399,7 @@ export class EventStore {
         processed: row.processed,
       }));
     } catch (error) {
-      logger.error('Failed to get events', { error, sessionId });
+      this.logger.error('Failed to get events', { error, sessionId });
       throw error;
     }
   }
@@ -419,9 +420,9 @@ export class EventStore {
         { id: eventId }
       );
 
-      logger.debug('Event marked as processed', { eventId });
+      this.logger.debug('Event marked as processed', { eventId });
     } catch (error) {
-      logger.error('Failed to mark event as processed', { error, eventId });
+      this.logger.error('Failed to mark event as processed', { error, eventId });
       throw error;
     }
   }
@@ -468,7 +469,7 @@ export class EventStore {
         processed: row.processed,
       }));
     } catch (error) {
-      logger.error('Failed to get unprocessed events', { error, sessionId });
+      this.logger.error('Failed to get unprocessed events', { error, sessionId });
       throw error;
     }
   }
@@ -486,7 +487,7 @@ export class EventStore {
     try {
       const redis = getRedis();
       if (!redis) {
-        logger.warn('Redis not available, falling back to database for sequence number', { sessionId });
+        this.logger.warn('Redis not available, falling back to database for sequence number', { sessionId });
         return this.fallbackToDatabase(sessionId);
       }
 
@@ -502,10 +503,10 @@ export class EventStore {
       // Return sequence number as-is (1-indexed: first event = 1, second = 2, etc.)
       return sequenceNumber;
     } catch (error) {
-      logger.error('Failed to get next sequence number from Redis', { error, sessionId });
+      this.logger.error('Failed to get next sequence number from Redis', { error, sessionId });
 
       // Fallback to database MAX+1 (slower, but guarantees correctness)
-      logger.warn('Falling back to database for sequence number', { sessionId });
+      this.logger.warn('Falling back to database for sequence number', { sessionId });
       return this.fallbackToDatabase(sessionId);
     }
   }
@@ -550,19 +551,19 @@ export class EventStore {
 
       const nextSeq = result.recordset[0]?.next_seq ?? 1;
 
-      logger.debug('Fallback to database successful', {
+      this.logger.debug('Fallback to database successful', {
         sessionId,
         nextSequenceNumber: nextSeq
       });
 
       return nextSeq;
     } catch (dbError) {
-      logger.error('Fallback to database also failed', { dbError, sessionId });
+      this.logger.error('Fallback to database also failed', { dbError, sessionId });
 
       // ⭐ Last resort: return 1 to start fresh sequence (1-indexed)
       // Using Date.now() would create huge gaps in sequence numbers
       // Better to start from 1 and let the session rebuild
-      logger.warn('All sequence generation methods failed, starting from 1', { sessionId });
+      this.logger.warn('All sequence generation methods failed, starting from 1', { sessionId });
 
       return 1;
     }
@@ -583,13 +584,13 @@ export class EventStore {
   ): Promise<void> {
     const events = await this.getEvents(sessionId);
 
-    logger.info('Replaying events', { sessionId, eventCount: events.length });
+    this.logger.info('Replaying events', { sessionId, eventCount: events.length });
 
     for (const event of events) {
       await handler(event);
     }
 
-    logger.info('Event replay completed', { sessionId });
+    this.logger.info('Event replay completed', { sessionId });
   }
 
   /**
@@ -611,7 +612,7 @@ export class EventStore {
 
       return result.recordset[0]?.count ?? 0;
     } catch (error) {
-      logger.error('Failed to get event count', { error, sessionId });
+      this.logger.error('Failed to get event count', { error, sessionId });
       return 0;
     }
   }
@@ -639,7 +640,7 @@ export class EventStore {
 
       return result.recordset[0]?.id ?? null;
     } catch (error) {
-      logger.error('Failed to get last event ID', { error, sessionId });
+      this.logger.error('Failed to get last event ID', { error, sessionId });
       return null;
     }
   }
@@ -666,7 +667,7 @@ export class EventStore {
 
       return result.recordset[0]?.last_seq ?? -1;
     } catch (error) {
-      logger.error('Failed to get last sequence number', { error, sessionId });
+      this.logger.error('Failed to get last sequence number', { error, sessionId });
       return -1;
     }
   }

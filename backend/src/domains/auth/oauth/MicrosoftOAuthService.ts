@@ -11,11 +11,12 @@
 
 import { ConfidentialClientApplication, AuthorizationUrlRequest, AuthorizationCodeRequest, Configuration } from '@azure/msal-node';
 import { MicrosoftOAuthConfig, OAuthTokenResponse, MicrosoftUserProfile, TokenAcquisitionResult, ALL_SCOPES, BC_API_SCOPE } from '@/types/microsoft.types';
-import { logger } from '@/shared/utils/logger';
+import { createChildLogger } from '@/shared/utils/logger';
 
 export class MicrosoftOAuthService {
   private msalClient: ConfidentialClientApplication;
   private config: MicrosoftOAuthConfig;
+  private logger = createChildLogger({ service: 'MicrosoftOAuthService' });
 
   constructor(config: MicrosoftOAuthConfig) {
     this.config = config;
@@ -32,16 +33,16 @@ export class MicrosoftOAuthService {
             if (containsPii) return;
             switch (level) {
               case 0: // Error
-                logger.error(`MSAL: ${message}`);
+                this.logger.error(`MSAL: ${message}`);
                 break;
               case 1: // Warning
-                logger.warn(`MSAL: ${message}`);
+                this.logger.warn(`MSAL: ${message}`);
                 break;
               case 2: // Info
-                logger.info(`MSAL: ${message}`);
+                this.logger.info(`MSAL: ${message}`);
                 break;
               case 3: // Verbose
-                logger.debug(`MSAL: ${message}`);
+                this.logger.debug(`MSAL: ${message}`);
                 break;
             }
           },
@@ -52,7 +53,7 @@ export class MicrosoftOAuthService {
     };
 
     this.msalClient = new ConfidentialClientApplication(msalConfig);
-    logger.info('MicrosoftOAuthService initialized', { tenantId: config.tenantId, clientId: config.clientId });
+    this.logger.info('MicrosoftOAuthService initialized', { tenantId: config.tenantId, clientId: config.clientId });
   }
 
   /**
@@ -71,10 +72,10 @@ export class MicrosoftOAuthService {
       };
 
       const authUrl = await this.msalClient.getAuthCodeUrl(authCodeUrlParameters);
-      logger.info('Generated authorization URL', { state });
+      this.logger.info('Generated authorization URL', { state });
       return authUrl;
     } catch (error) {
-      logger.error('Failed to generate authorization URL', { error, state });
+      this.logger.error('Failed to generate authorization URL', { error, state });
       throw new Error('Failed to generate Microsoft login URL');
     }
   }
@@ -100,7 +101,7 @@ export class MicrosoftOAuthService {
         throw new Error('Failed to acquire tokens from authorization code');
       }
 
-      logger.info('Successfully acquired tokens from authorization code', {
+      this.logger.info('Successfully acquired tokens from authorization code', {
         state,
         scopes: response.scopes,
         expiresOn: response.expiresOn,
@@ -121,7 +122,7 @@ export class MicrosoftOAuthService {
         scope: response.scopes?.join(' ') || '',
       };
     } catch (error) {
-      logger.error('Failed to handle authorization callback', { error, state });
+      this.logger.error('Failed to handle authorization callback', { error, state });
       throw new Error('Failed to complete Microsoft login');
     }
   }
@@ -145,7 +146,7 @@ export class MicrosoftOAuthService {
         throw new Error('Failed to refresh access token');
       }
 
-      logger.info('Successfully refreshed access token', {
+      this.logger.info('Successfully refreshed access token', {
         scopes: response.scopes,
         expiresOn: response.expiresOn,
       });
@@ -163,7 +164,7 @@ export class MicrosoftOAuthService {
         expiresAt: response.expiresOn || new Date(Date.now() + 3600 * 1000),
       };
     } catch (error) {
-      logger.error('Failed to refresh access token', { error });
+      this.logger.error('Failed to refresh access token', { error });
       throw new Error('Failed to refresh Microsoft access token');
     }
   }
@@ -180,7 +181,7 @@ export class MicrosoftOAuthService {
       await this.getUserProfile(accessToken);
       return true;
     } catch (error) {
-      logger.warn('Access token validation failed', { error });
+      this.logger.warn('Access token validation failed', { error });
       return false;
     }
   }
@@ -205,7 +206,7 @@ export class MicrosoftOAuthService {
 
       const profile = await response.json() as MicrosoftUserProfile;
 
-      logger.info('Successfully fetched user profile from Microsoft Graph', {
+      this.logger.info('Successfully fetched user profile from Microsoft Graph', {
         userId: profile.id,
         email: profile.mail || profile.userPrincipalName,
       });
@@ -223,7 +224,7 @@ export class MicrosoftOAuthService {
         businessPhones: profile.businessPhones,
       };
     } catch (error) {
-      logger.error('Failed to get user profile from Microsoft Graph', { error });
+      this.logger.error('Failed to get user profile from Microsoft Graph', { error });
       throw new Error('Failed to retrieve user profile');
     }
   }
@@ -250,7 +251,7 @@ export class MicrosoftOAuthService {
         throw new Error('Failed to acquire Business Central API token');
       }
 
-      logger.info('Successfully acquired Business Central API token', {
+      this.logger.info('Successfully acquired Business Central API token', {
         scopes: response.scopes,
         expiresOn: response.expiresOn,
       });
@@ -267,7 +268,7 @@ export class MicrosoftOAuthService {
         expiresAt: response.expiresOn || new Date(Date.now() + 3600 * 1000),
       };
     } catch (error) {
-      logger.error('Failed to acquire Business Central API token', { error });
+      this.logger.error('Failed to acquire Business Central API token', { error });
       throw new Error('Failed to acquire Business Central access');
     }
   }

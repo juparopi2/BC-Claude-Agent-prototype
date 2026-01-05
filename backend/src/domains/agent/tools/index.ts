@@ -2,7 +2,7 @@
  * @module domains/agent/tools
  *
  * Tool execution domain for the agent orchestration system.
- * Handles tool deduplication.
+ * Handles tool deduplication and lifecycle management.
  *
  * NOTE: ToolExecutionProcessor has been removed.
  * Tool execution is now handled directly in AgentOrchestrator.executeAgentSync().
@@ -16,3 +16,9 @@ export {
   ToolEventDeduplicator,
   createToolEventDeduplicator,
 } from './ToolEventDeduplicator';
+
+// ToolLifecycleManager - Unified tool persistence
+export {
+  ToolLifecycleManager,
+  createToolLifecycleManager,
+} from './ToolLifecycleManager';

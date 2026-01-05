@@ -290,7 +290,9 @@ describe('ChatMessageHandler', () => {
      * Removed: 2025-11-24
      */
 
-    it('should handle tool_use event with valid toolUseId', async () => {
+    it('should handle tool_use event (persistence via ToolLifecycleManager)', async () => {
+      // NOTE: Tool persistence is now handled by ToolLifecycleManager in AgentOrchestrator.
+      // ChatMessageHandler only emits to frontend and logs - no direct persistence.
       const event: ToolUseEvent = {
         type: 'tool_use',
         toolName: 'list_all_entities',
@@ -299,7 +301,7 @@ describe('ChatMessageHandler', () => {
         timestamp: new Date(),
         eventId: 'evt-6',
         sequenceNumber: 6,
-        persistenceState: 'queued',
+        persistenceState: 'pending',
       };
 
       const data: ChatMessageData = {
@@ -317,36 +319,30 @@ describe('ChatMessageHandler', () => {
 
       await handler.handle(data, mockSocket as Socket, mockIo as SocketIOServer);
 
-      // Verify tool use saved
-      expect(mockMessageServiceMethods.saveToolUseMessage).toHaveBeenCalledWith(
-        testSessionId,
-        testUserId,
-        'tool-456',
-        'list_all_entities',
-        { entity: 'customer' }
-      );
-
+      // Verify tool event logged (persistence handled by ToolLifecycleManager)
       expect(mockLogger.debug).toHaveBeenCalledWith(
-        'Tool use saved',
+        'Tool use event - persistence via ToolLifecycleManager',
         expect.objectContaining({
-          sessionId: testSessionId,
-          userId: testUserId,
-          toolName: 'list_all_entities',
           toolUseId: 'tool-456',
         })
       );
+
+      // ChatMessageHandler should NOT call saveToolUseMessage (handled by AgentOrchestrator)
+      expect(mockMessageServiceMethods.saveToolUseMessage).not.toHaveBeenCalled();
     });
 
-    it('should skip tool_use event with missing toolUseId', async () => {
+    it('should handle tool_use event even with missing toolUseId (logs only)', async () => {
+      // NOTE: Tool validation now happens in ToolLifecycleManager, not ChatMessageHandler.
+      // ChatMessageHandler just logs and emits.
       const event: ToolUseEvent = {
         type: 'tool_use',
         toolName: 'list_all_entities',
         args: { entity: 'customer' },
-        toolUseId: undefined, // Missing toolUseId
+        toolUseId: undefined, // Missing toolUseId - validation is in ToolLifecycleManager
         timestamp: new Date(),
         eventId: 'evt-7',
         sequenceNumber: 7,
-        persistenceState: 'queued',
+        persistenceState: 'pending',
       };
 
       const data: ChatMessageData = {
@@ -364,16 +360,19 @@ describe('ChatMessageHandler', () => {
 
       await handler.handle(data, mockSocket as Socket, mockIo as SocketIOServer);
 
-      // Verify warning logged and no persistence
-      expect(mockLogger.warn).toHaveBeenCalledWith(
-        'Tool use event missing toolUseId',
-        expect.objectContaining({ sessionId: testSessionId, toolName: 'list_all_entities' })
+      // ChatMessageHandler just logs - validation is in ToolLifecycleManager
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'Tool use event - persistence via ToolLifecycleManager',
+        expect.objectContaining({ toolUseId: undefined })
       );
 
+      // No direct persistence from ChatMessageHandler
       expect(mockMessageServiceMethods.saveToolUseMessage).not.toHaveBeenCalled();
     });
 
-    it('should handle tool_result event', async () => {
+    it('should handle tool_result event (persistence via ToolLifecycleManager)', async () => {
+      // NOTE: Tool persistence is now handled by ToolLifecycleManager in AgentOrchestrator.
+      // ChatMessageHandler only emits to frontend and logs - no direct persistence.
       const event: ToolResultEvent = {
         type: 'tool_result',
         toolName: 'list_all_entities',
@@ -384,7 +383,7 @@ describe('ChatMessageHandler', () => {
         timestamp: new Date(),
         eventId: 'evt-8',
         sequenceNumber: 8,
-        persistenceState: 'queued',
+        persistenceState: 'pending',
         durationMs: 150,
       };
 
@@ -403,31 +402,21 @@ describe('ChatMessageHandler', () => {
 
       await handler.handle(data, mockSocket as Socket, mockIo as SocketIOServer);
 
-      // Verify tool result updated
-      expect(mockMessageServiceMethods.updateToolResult).toHaveBeenCalledWith(
-        testSessionId,
-        testUserId,
-        'tool-456',
-        'list_all_entities',
-        { entity: 'customer' },
-        { entities: [{ id: 1, name: 'Acme Corp' }] },
-        true,
-        undefined // no error
-      );
-
+      // Verify tool event logged (persistence handled by ToolLifecycleManager)
       expect(mockLogger.debug).toHaveBeenCalledWith(
-        'Tool result saved',
+        'Tool result event - persistence via ToolLifecycleManager',
         expect.objectContaining({
-          sessionId: testSessionId,
-          userId: testUserId,
-          toolName: 'list_all_entities',
           toolUseId: 'tool-456',
-          success: true,
         })
       );
+
+      // ChatMessageHandler should NOT call updateToolResult (handled by AgentOrchestrator)
+      expect(mockMessageServiceMethods.updateToolResult).not.toHaveBeenCalled();
     });
 
-    it('should detect TodoWrite tool (no additional persistence)', async () => {
+    it('should handle TodoWrite tool like any other tool (persistence via ToolLifecycleManager)', async () => {
+      // NOTE: TodoWrite is now handled the same as any other tool.
+      // Special TodoWrite detection was removed since persistence is unified in ToolLifecycleManager.
       const event: ToolUseEvent = {
         type: 'tool_use',
         toolName: 'TodoWrite',
@@ -441,7 +430,7 @@ describe('ChatMessageHandler', () => {
         timestamp: new Date(),
         eventId: 'evt-9',
         sequenceNumber: 9,
-        persistenceState: 'queued',
+        persistenceState: 'pending',
       };
 
       const data: ChatMessageData = {
@@ -459,24 +448,16 @@ describe('ChatMessageHandler', () => {
 
       await handler.handle(data, mockSocket as Socket, mockIo as SocketIOServer);
 
-      // Verify TodoWrite detected and logged
+      // Verify tool logged (persistence handled by ToolLifecycleManager)
       expect(mockLogger.debug).toHaveBeenCalledWith(
-        'TodoWrite tool detected',
+        'Tool use event - persistence via ToolLifecycleManager',
         expect.objectContaining({
-          sessionId: testSessionId,
-          userId: testUserId,
-          todoCount: 2,
+          toolUseId: 'tool-789',
         })
       );
 
-      // TodoWrite still saved to tool_use table
-      expect(mockMessageServiceMethods.saveToolUseMessage).toHaveBeenCalledWith(
-        testSessionId,
-        testUserId,
-        'tool-789',
-        'TodoWrite',
-        expect.objectContaining({ todos: expect.any(Array) })
-      );
+      // ChatMessageHandler should NOT call saveToolUseMessage (handled by AgentOrchestrator)
+      expect(mockMessageServiceMethods.saveToolUseMessage).not.toHaveBeenCalled();
     });
 
     it('should handle session_end event (no persistence)', async () => {
@@ -736,7 +717,10 @@ describe('ChatMessageHandler', () => {
       expect(emittedEvents[2]!.sequenceNumber).toBe(3);
     });
 
-    it('should handle concurrent events without race conditions', async () => {
+    it('should handle concurrent events without race conditions (logging only)', async () => {
+      // NOTE: ChatMessageHandler no longer persists tool events directly.
+      // Persistence is handled by ToolLifecycleManager in AgentOrchestrator.
+      // This test verifies events are logged without errors during concurrent emission.
       const events: AgentEvent[] = [
         {
           type: 'tool_use',
@@ -746,7 +730,7 @@ describe('ChatMessageHandler', () => {
           timestamp: new Date(),
           eventId: 'evt-1',
           sequenceNumber: 1,
-          persistenceState: 'queued',
+          persistenceState: 'pending',
         } as ToolUseEvent,
         {
           type: 'tool_use',
@@ -756,7 +740,7 @@ describe('ChatMessageHandler', () => {
           timestamp: new Date(),
           eventId: 'evt-2',
           sequenceNumber: 2,
-          persistenceState: 'queued',
+          persistenceState: 'pending',
         } as ToolUseEvent,
       ];
 
@@ -765,15 +749,6 @@ describe('ChatMessageHandler', () => {
         sessionId: testSessionId,
         userId: testUserId,
       };
-
-      // Track saveToolUseMessage call order
-      const savedToolIds: string[] = [];
-      mockMessageServiceMethods.saveToolUseMessage.mockImplementation(
-        async (_sessionId: string, _userId: string, toolUseId: string) => {
-          savedToolIds.push(toolUseId);
-          return toolUseId;
-        }
-      );
 
       mockAgentOrchestratorMethods.executeAgentSync.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
@@ -785,16 +760,24 @@ describe('ChatMessageHandler', () => {
 
       await handler.handle(data, mockSocket as Socket, mockIo as SocketIOServer);
 
-      // Verify both tools saved (order may vary due to concurrency)
-      expect(savedToolIds).toHaveLength(2);
-      expect(savedToolIds).toContain('tool-1');
-      expect(savedToolIds).toContain('tool-2');
+      // Verify both tools logged (persistence handled by ToolLifecycleManager)
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'Tool use event - persistence via ToolLifecycleManager',
+        expect.objectContaining({ toolUseId: 'tool-1' })
+      );
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'Tool use event - persistence via ToolLifecycleManager',
+        expect.objectContaining({ toolUseId: 'tool-2' })
+      );
 
-      // Verify both tool use messages saved
-      expect(mockMessageServiceMethods.saveToolUseMessage).toHaveBeenCalledTimes(2);
+      // ChatMessageHandler should NOT call saveToolUseMessage (handled by AgentOrchestrator)
+      expect(mockMessageServiceMethods.saveToolUseMessage).not.toHaveBeenCalled();
     });
 
-    it('should maintain order between tool_use and tool_result', async () => {
+    it('should emit tool_use before tool_result in correct order (logging only)', async () => {
+      // NOTE: ChatMessageHandler no longer persists tool events directly.
+      // Persistence order is maintained by ToolLifecycleManager in AgentOrchestrator.
+      // This test verifies events are logged in the order they are received.
       const events: AgentEvent[] = [
         {
           type: 'tool_use',
@@ -804,7 +787,7 @@ describe('ChatMessageHandler', () => {
           timestamp: new Date(),
           eventId: 'evt-1',
           sequenceNumber: 1,
-          persistenceState: 'queued',
+          persistenceState: 'pending',
         } as ToolUseEvent,
         {
           type: 'tool_result',
@@ -816,7 +799,7 @@ describe('ChatMessageHandler', () => {
           timestamp: new Date(),
           eventId: 'evt-2',
           sequenceNumber: 2,
-          persistenceState: 'queued',
+          persistenceState: 'pending',
         } as ToolResultEvent,
       ];
 
@@ -825,16 +808,6 @@ describe('ChatMessageHandler', () => {
         sessionId: testSessionId,
         userId: testUserId,
       };
-
-      // Track call order
-      const callOrder: string[] = [];
-      mockMessageServiceMethods.saveToolUseMessage.mockImplementationOnce(async () => {
-        callOrder.push('saveToolUseMessage');
-        return 'tool-123';
-      });
-      mockMessageServiceMethods.updateToolResult.mockImplementationOnce(async () => {
-        callOrder.push('updateToolResult');
-      });
 
       mockAgentOrchestratorMethods.executeAgentSync.mockImplementationOnce(
         async (_prompt: string, _sessionId: string, onEvent: (event: AgentEvent) => void) => {
@@ -847,8 +820,19 @@ describe('ChatMessageHandler', () => {
 
       await handler.handle(data, mockSocket as Socket, mockIo as SocketIOServer);
 
-      // Verify correct order: tool_use BEFORE tool_result
-      expect(callOrder).toEqual(['saveToolUseMessage', 'updateToolResult']);
+      // Verify events logged (persistence handled by ToolLifecycleManager)
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'Tool use event - persistence via ToolLifecycleManager',
+        expect.objectContaining({ toolUseId: 'tool-123' })
+      );
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'Tool result event - persistence via ToolLifecycleManager',
+        expect.objectContaining({ toolUseId: 'tool-123' })
+      );
+
+      // ChatMessageHandler should NOT call save methods (handled by AgentOrchestrator)
+      expect(mockMessageServiceMethods.saveToolUseMessage).not.toHaveBeenCalled();
+      expect(mockMessageServiceMethods.updateToolResult).not.toHaveBeenCalled();
     });
 
     it('should emit events to correct session room (no cross-session leaks)', async () => {

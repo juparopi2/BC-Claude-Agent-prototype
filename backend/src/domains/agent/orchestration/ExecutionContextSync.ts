@@ -21,6 +21,10 @@
 
 import { randomUUID } from 'crypto';
 import type { AgentEvent } from '@bc-agent/shared';
+import {
+  createToolLifecycleManager,
+  type ToolLifecycleManager,
+} from '@/domains/agent/tools';
 
 /**
  * Callback type for emitting events to WebSocket client.
@@ -124,6 +128,19 @@ export interface ExecutionContextSync {
   readonly seenToolIds: Map<string, string>;
 
   // ============================================================================
+  // Tool Lifecycle Management
+  // ============================================================================
+
+  /**
+   * Manages tool lifecycle for unified persistence.
+   * Tracks tool requests until responses arrive, then returns complete state
+   * with both input and output for a single persistence operation.
+   *
+   * Created per-execution to ensure multi-tenant isolation.
+   */
+  readonly toolLifecycleManager: ToolLifecycleManager;
+
+  // ============================================================================
   // Usage Tracking
   // ============================================================================
 
@@ -199,6 +216,9 @@ export function createExecutionContextSync(
 
     // Tool Deduplication
     seenToolIds: new Map(),
+
+    // Tool Lifecycle Management
+    toolLifecycleManager: createToolLifecycleManager(),
 
     // Usage Tracking
     totalInputTokens: 0,

@@ -27,7 +27,6 @@ import type {
 import type { ChatMessageData } from '@/types/websocket.types';
 import { getAgentOrchestrator } from '@domains/agent/orchestration';
 import { getMessageService } from '../messages/MessageService';
-import { TOOL_NAMES } from '@/shared/constants/tools';
 import { createChildLogger } from '@/shared/utils/logger';
 import { validateSessionOwnership } from '@/shared/utils/session-ownership';
 import { normalizeUUID } from '@/shared/utils/uuid';
@@ -317,49 +316,22 @@ export class ChatMessageHandler {
           break;
 
         case 'tool_use':
-          // ✅ SKIP persistence - event already persisted by AgentOrchestrator
-          if ((event as ToolUseEvent).persistenceState === 'persisted') {
-            this.logger.debug('✅ Tool use event already persisted by AgentOrchestrator', {
-              toolUseId: (event as ToolUseEvent).toolUseId,
-              sequenceNumber: (event as ToolUseEvent).sequenceNumber,
-              eventId: (event as ToolUseEvent).eventId,
-            });
-          } else if ((event as ToolUseEvent).persistenceState === 'transient') {
-            // ⭐ FIX: Transient tool events from stream (previews) should be skipped
-            this.logger.debug('⏩ Tool use event is transient (skipping persistence)', {
-              toolUseId: (event as ToolUseEvent).toolUseId,
-            });
-          } else {
-            this.logger.error('❌ Tool use event NOT persisted by AgentOrchestrator', {
-              toolUseId: (event as ToolUseEvent).toolUseId,
-              state: (event as ToolUseEvent).persistenceState
-            });
-            // ⚠️ FALLBACK: Persistir aquí si no está
-            await this.handleToolUse(event as ToolUseEvent, sessionId, userId);
-          }
+          // ✅ Persistence handled by ToolLifecycleManager in AgentOrchestrator
+          // tool_request events are held in memory until tool_response arrives,
+          // then persisted together with unified input+output
+          this.logger.debug('Tool use event - persistence via ToolLifecycleManager', {
+            toolUseId: (event as ToolUseEvent).toolUseId,
+            persistenceState: (event as ToolUseEvent).persistenceState,
+          });
           break;
 
         case 'tool_result':
-          // ✅ SKIP persistence - event already persisted by AgentOrchestrator
-          if ((event as ToolResultEvent).persistenceState === 'persisted') {
-            this.logger.debug('✅ Tool result event already persisted by AgentOrchestrator', {
-              toolUseId: (event as ToolResultEvent).toolUseId,
-              sequenceNumber: (event as ToolResultEvent).sequenceNumber,
-              eventId: (event as ToolResultEvent).eventId,
-            });
-          } else if ((event as ToolResultEvent).persistenceState === 'transient') {
-             // ⭐ FIX: Transient tool result events (if any) should be skipped
-             this.logger.debug('⏩ Tool result event is transient (skipping persistence)', {
-               toolUseId: (event as ToolResultEvent).toolUseId,
-             });
-          } else {
-            this.logger.error('❌ Tool result event NOT persisted by AgentOrchestrator', {
-              toolUseId: (event as ToolResultEvent).toolUseId,
-              state: (event as ToolResultEvent).persistenceState
-            });
-            // ⚠️ FALLBACK: Persistir aquí si no está
-            await this.handleToolResult(event as ToolResultEvent, sessionId, userId);
-          }
+          // ✅ Persistence handled by ToolLifecycleManager in AgentOrchestrator
+          // tool_response triggers unified persistence with combined input+output
+          this.logger.debug('Tool result event - persistence via ToolLifecycleManager', {
+            toolUseId: (event as ToolResultEvent).toolUseId,
+            persistenceState: (event as ToolResultEvent).persistenceState,
+          });
           break;
 
         case 'session_end':
@@ -429,95 +401,11 @@ export class ChatMessageHandler {
     }
   }
 
-  // ⭐ PHASE 1B: handleMessage() and handleThinking() REMOVED
+  // ⭐ PHASE 1B: handleMessage(), handleThinking(), handleToolUse(), handleToolResult() REMOVED
   // These methods were fallback duplicates - AgentOrchestrator now handles ALL persistence
   // directly via EventStore + MessageQueue before emitting events.
+  // Tool persistence is unified via ToolLifecycleManager (combines tool_request + tool_response).
   // If persistenceState !== 'persisted', it's a critical bug (not a fallback scenario).
-
-  /**
-   * Handle Tool Use Event
-   *
-   * Persists tool use to database and handles special cases (e.g., TodoWrite).
-   *
-   * @param event - Tool use event
-   * @param sessionId - Session ID
-   * @param userId - User ID (audit trail)
-   */
-  private async handleToolUse(
-    event: ToolUseEvent,
-    sessionId: string,
-    userId: string
-  ): Promise<void> {
-    // Validate toolUseId (should always be present)
-    if (!event.toolUseId) {
-      this.logger.warn('Tool use event missing toolUseId', { sessionId, toolName: event.toolName });
-      return;
-    }
-
-    await this.messageService.saveToolUseMessage(
-      sessionId,
-      userId,  // ⭐ Updated signature
-      event.toolUseId,
-      event.toolName,
-      event.args
-    );
-
-    // Handle TodoWrite special case (no persistence needed - SDK handles it)
-    if (event.toolName === TOOL_NAMES.TODO_WRITE && event.args?.todos) {
-      this.logger.debug('TodoWrite tool detected', {
-        sessionId,
-        userId,
-        todoCount: Array.isArray(event.args.todos) ? event.args.todos.length : 0,
-      });
-    }
-
-    this.logger.debug('Tool use saved', {
-      sessionId,
-      userId,
-      toolName: event.toolName,
-      toolUseId: event.toolUseId,
-    });
-  }
-
-  /**
-   * Handle Tool Result Event
-   *
-   * Updates existing tool use message with execution result.
-   *
-   * @param event - Tool result event
-   * @param sessionId - Session ID
-   * @param userId - User ID (audit trail)
-   */
-  private async handleToolResult(
-    event: ToolResultEvent,
-    sessionId: string,
-    userId: string
-  ): Promise<void> {
-    // Validate toolUseId (should always be present)
-    if (!event.toolUseId) {
-      this.logger.warn('Tool result event missing toolUseId', { sessionId, toolName: event.toolName });
-      return;
-    }
-
-    await this.messageService.updateToolResult(
-      sessionId,
-      userId,  // ⭐ Updated signature
-      event.toolUseId,
-      event.toolName,
-      event.args || {},  // Default to empty object if undefined
-      event.result,
-      event.success,
-      event.error
-    );
-
-    this.logger.debug('Tool result saved', {
-      sessionId,
-      userId,
-      toolName: event.toolName,
-      toolUseId: event.toolUseId,
-      success: event.success,
-    });
-  }
 
   /**
    * Handle Complete Event

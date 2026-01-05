@@ -265,6 +265,14 @@ export class AgentOrchestrator implements IAgentOrchestrator {
         'Synchronous agent execution completed'
       );
 
+      // =========================================================================
+      // 7. FINALIZE TOOL LIFECYCLE (persist any orphaned tools)
+      // =========================================================================
+      await ctx.toolLifecycleManager.finalizeAndPersistOrphans(
+        sessionId,
+        this.persistenceCoordinator
+      );
+
       return {
         sessionId,
         response: finalContent,
@@ -340,7 +348,7 @@ export class AgentOrchestrator implements IAgentOrchestrator {
         break;
 
       case 'async_allowed':
-        this.persistAsyncEvent(event, sessionId);
+        this.persistAsyncEvent(event, sessionId, ctx);
         break;
     }
   }
@@ -480,37 +488,83 @@ export class AgentOrchestrator implements IAgentOrchestrator {
 
   /**
    * Persist an event asynchronously (for async_allowed events).
+   *
+   * Uses ToolLifecycleManager for unified persistence:
+   * - tool_request: Register in memory, DO NOT persist yet
+   * - tool_response: Combine with stored request, persist with complete input+output
+   *
+   * This fixes the bug where tool_request and tool_response were persisted separately,
+   * resulting in 5+ events per tool instead of 2.
    */
   private persistAsyncEvent(
     event: NormalizedAgentEvent,
-    sessionId: string
+    sessionId: string,
+    ctx: ExecutionContextSync
   ): void {
-    // Handle tool_request and tool_response events
+    // Handle tool_request: Register in lifecycle manager, NO persistence yet
     if (event.type === 'tool_request') {
       const toolReqEvent = event as NormalizedToolRequestEvent;
-      const persistenceExec: PersistenceToolExecution = {
-        toolUseId: toolReqEvent.toolUseId,
-        toolName: toolReqEvent.toolName,
-        toolInput: toolReqEvent.args,
-        toolOutput: '', // Will be filled by tool_response
-        success: true,
-        timestamp: toolReqEvent.timestamp,
-      };
-      // Fire-and-forget
-      this.persistenceCoordinator.persistToolEventsAsync(sessionId, [persistenceExec]);
-    } else if (event.type === 'tool_response') {
+
+      // Register tool request in memory - will be combined with response later
+      ctx.toolLifecycleManager.onToolRequested(
+        sessionId,
+        toolReqEvent.toolUseId,
+        toolReqEvent.toolName,
+        toolReqEvent.args
+      );
+
+      this.logger.debug(
+        { toolUseId: toolReqEvent.toolUseId, toolName: toolReqEvent.toolName },
+        'Tool request registered in lifecycle manager (awaiting response)'
+      );
+      return; // DO NOT persist yet - wait for tool_response
+    }
+
+    // Handle tool_response: Complete and persist with unified input+output
+    if (event.type === 'tool_response') {
       const toolRespEvent = event as NormalizedToolResponseEvent;
-      const persistenceExec: PersistenceToolExecution = {
-        toolUseId: toolRespEvent.toolUseId,
-        toolName: toolRespEvent.toolName,
-        toolInput: {},
-        toolOutput: toolRespEvent.result ?? '',
-        success: toolRespEvent.success,
-        error: toolRespEvent.error,
-        timestamp: toolRespEvent.timestamp,
-      };
-      // Fire-and-forget
-      this.persistenceCoordinator.persistToolEventsAsync(sessionId, [persistenceExec]);
+
+      // Complete the tool lifecycle and get unified state
+      const completeState = ctx.toolLifecycleManager.onToolCompleted(
+        sessionId,
+        toolRespEvent.toolUseId,
+        toolRespEvent.result ?? '',
+        toolRespEvent.success,
+        toolRespEvent.error
+      );
+
+      if (completeState) {
+        // NOW persist with complete input+output
+        const persistenceExec: PersistenceToolExecution = {
+          toolUseId: completeState.toolUseId,
+          toolName: completeState.toolName,
+          toolInput: completeState.args,           // From tool_request
+          toolOutput: completeState.result ?? '',   // From tool_response
+          success: completeState.state === 'completed',
+          error: completeState.error,
+          timestamp: completeState.completedAt?.toISOString() ?? new Date().toISOString(),
+        };
+
+        // Fire-and-forget persistence with unified data
+        this.persistenceCoordinator.persistToolEventsAsync(sessionId, [persistenceExec]);
+
+        this.logger.debug(
+          {
+            toolUseId: completeState.toolUseId,
+            toolName: completeState.toolName,
+            hasInput: Object.keys(completeState.args).length > 0,
+            hasOutput: !!completeState.result,
+            success: completeState.state === 'completed',
+          },
+          'Tool persisted with unified input+output'
+        );
+      } else {
+        // Orphan response - tool_response without matching tool_request
+        this.logger.warn(
+          { toolUseId: toolRespEvent.toolUseId },
+          'Tool response without matching request - skipping persistence'
+        );
+      }
     }
   }
 }

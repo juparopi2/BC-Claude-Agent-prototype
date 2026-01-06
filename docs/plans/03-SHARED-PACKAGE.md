@@ -164,6 +164,20 @@ export interface ProcessedStreamEvent {
   blockIndex: number;
   timestamp: string;
 }
+
+// Posible adición a file.types.ts
+export interface ImageSearchResult {
+    fileId: string;
+    fileName: string;
+    score: number;
+    thumbnailUrl?: string;
+}
+
+export interface ImageSearchResponse {
+    results: ImageSearchResult[];
+    query: string;
+    totalResults: number;
+}
 ```
 
 ---

@@ -73,8 +73,13 @@ backend/src/
 │   ├── messages/               # MessageService
 │   ├── sessions/               # SessionService
 │   ├── search/                 # Search services
-│   │   └── semantic/           # SemanticSearchService
+│   │   ├── semantic/           # SemanticSearchService
+│   │   ├── ImageSearchService.ts # Image search logic
+│   │   └── VectorSearchService.ts # Azure AI Search client
 │   └── cache/                  # Redis caching layer
+│
+├── repositories/               # Data Access Layer
+│   └── ImageEmbeddingRepository.ts # Gestión de embeddings de imágenes
 │
 ├── shared/                     # Código compartido
 │   ├── providers/              # Adaptadores de proveedores LLM
@@ -96,7 +101,7 @@ backend/src/
 │
 ├── routes/                     # Rutas HTTP (REST)
 │   ├── auth-oauth.ts           # OAuth login endpoints
-│   ├── files.ts                # File upload/download
+│   ├── files.ts                # File upload/download/search
 │   ├── sessions.ts             # Session CRUD
 │   ├── billing.ts              # Billing queries
 │   ├── gdpr.ts                 # Data deletion (GDPR)
@@ -1743,11 +1748,15 @@ Esta sección documenta el pipeline completo de procesamiento de archivos, desde
 
 **Operaciones**:
 ```typescript
-// Indexar chunks
+// Indexar chunks (Texto)
 indexChunksBatch(chunks: ChunkWithEmbedding[]): Promise<void>
 
-// Buscar por similaridad
+// Indexar embeddings de imágenes (Nuevo)
+indexImageEmbedding(params: ImageIndexParams): Promise<string>
+
+// Buscar por similaridad (Multimodal)
 search(query: string, userId: string, options?: SearchOptions): Promise<SearchResult[]>
+searchImages(query: ImageSearchQuery): Promise<ImageSearchResult[]>
 
 // GDPR deletion
 deleteChunksForUser(userId: string): Promise<void>
@@ -1861,13 +1870,29 @@ interface FileContextPreparationResult {
 }
 ```
 
-### 9.11 Gaps Actuales (D2 en Future Development)
+### 9.11 Image Search Service
+
+**Ubicación**: `backend/src/services/search/ImageSearchService.ts`
+
+**Responsabilidad**: Búsqueda semántica de imágenes (Texto -> Imagen).
+
+**Funcionalidad**:
+1. Recibe query de texto.
+2. Genera embedding de texto usando `Azure Vision VectorizeText` (mismo espacio vectorial que imágenes).
+3. Busca en Azure AI Search usando `searchImages` (filtro `isImage eq true`).
+4. Enriquece resultados con metadatos del archivo.
+
+**Repositorio de Apoyo**: `ImageEmbeddingRepository.ts`
+- Gestiona la tabla `image_embeddings`.
+- Almacena metadatos del embedding (modelo, dimensiones) para gestión de versiones.
+- Soporta operaciones CRUD y upsert para evitar duplicados.
+
+### 9.12 Gaps Actuales (D2 en Future Development)
 
 | Gap | Descripción | Impacto |
 |-----|-------------|---------|
 | **No OCR en imágenes** | Texto visible no extraído | No busca "50x30cm" en fotos |
 | **No captions** | Sin descripciones automáticas | No busca "caja metálica" |
-| **Embeddings no indexados** | Generados pero no buscables | Solo similitud visual |
 | **Índice único** | textVector + imageVector mezclados | No fusion search |
 
 **Roadmap de Mejoras** (ver `99-FUTURE-DEVELOPMENT.md` D2):

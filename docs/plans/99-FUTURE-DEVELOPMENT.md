@@ -50,125 +50,9 @@ WHEN MATCHED THEN
 
 ---
 
-## URGENTE - Siguiente Prioridad
-
-### D2: Semantic Image Search (Core Feature) - SIMPLIFICADO
-
-**Prioridad:** CRÍTICA
-**Estimación:** 4-5 días
-**Impacto:** Búsqueda semántica de imágenes por concepto visual (funcionalidad core del negocio)
-
-> **PRD Completo:** Ver `/docs/plans/image-search/` para documentación detallada con TDD specs.
-
-**Problema Actual:**
-
-El sistema RAG tiene un GAP CRÍTICO en el pipeline de imágenes:
-- ✅ `ImageProcessor.ts` genera embedding 1024d via Azure Computer Vision
-- ❌ El embedding **NO se persiste** en BD ni en Azure AI Search
-- ❌ `FileChunkingService.ts` marca imágenes como "completed" pero **NO las indexa**
-- ❌ `schema.ts` solo soporta 1536d (text embeddings)
-
-```typescript
-// FileChunkingService.ts - línea ~114-128
-if (IMAGE_MIME_TYPES.has(mimeType)) {
-  await this.updateEmbeddingStatus(fileId, 'completed');  // ⚠️ FALSO POSITIVO
-  return { fileId, chunkCount: 0, totalTokens: 0 };       // ⚠️ EMBEDDING PERDIDO
-}
-```
-
-**Caso de Uso Real:**
-- Cliente vende cajas de metal y piezas de camión (10,000+ imágenes)
-- Usuario busca "cajas metálicas" o "acoplamientos" por concepto visual
-- Sistema debe devolver imágenes visualmente similares **SIN depender de OCR**
-
-**Solución: Multimodal RAG Simplificado**
-
-Usar Azure Computer Vision Multimodal Embeddings que proyecta **imágenes y texto al mismo espacio vectorial 1024d**:
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                    Azure Vision API                      │
-│  ┌─────────────────┐      ┌─────────────────────────┐  │
-│  │ VectorizeImage  │      │    VectorizeText        │  │
-│  │  (imagen.jpg)   │      │ ("cajas metálicas")     │  │
-│  └────────┬────────┘      └───────────┬─────────────┘  │
-│           │                           │                 │
-│           ▼                           ▼                 │
-│    [embedding 1024d]          [embedding 1024d]         │
-│           │                           │                 │
-│           └────────── MISMO ──────────┘                 │
-│                    ESPACIO VECTORIAL                    │
-└─────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────┐
-│              Azure AI Search (Cosine Similarity)         │
-│         Encuentra imágenes similares a query texto       │
-└─────────────────────────────────────────────────────────┘
-```
-
-**Implementación en 3 Fases:**
-
-| Fase | Días | Entregable |
-|------|------|------------|
-| **1: Persistencia** | 1.5 | Nueva tabla `image_embeddings`, actualizar `ImageProcessor` |
-| **2: Indexación** | 2 | Nuevo campo `imageVector` en Azure AI Search (1024d), `ImageSearchService` |
-| **3: Query** | 1 | Endpoint `/api/files/search/images`, integración con RAG Agent |
-
-**Por Qué NO OCR:**
-- OCR es para texto en imágenes → No aplica a productos visuales
-- El cliente necesita **similitud visual**, no extracción de texto
-- OCR puede agregarse en fase futura si se requiere (complementario)
-
-**Costos:**
-- Image embedding: $0.0001/imagen (ya definido en `pricing.config.ts`)
-- Text query embedding: $0.0001/query
-- Azure AI Search: Ya incluido en tier Basic
-
-**Archivos a Modificar:**
-- `backend/src/services/files/processors/ImageProcessor.ts` - Persistir embedding
-- `backend/src/services/search/schema.ts` - Agregar imageVector 1024d
-- `backend/src/services/embeddings/EmbeddingService.ts` - Método `generateQueryEmbedding`
-- `backend/src/services/search/VectorSearchService.ts` - Método `searchImages`
-- `backend/migrations/00X-create-image-embeddings.sql` - Nueva tabla
-
-**Infraestructura Verificada (AZ CLI):**
-- ✅ `cv-bcagent-dev` (Computer Vision S1) → VectorizeImage API
-- ✅ `search-bcagent-dev` (Basic) → Soporta múltiples campos vectoriales
-- ✅ `models.ts` ya define `image_embedding` role (1024d)
-- ✅ `pricing.config.ts` ya tiene costo de image_embedding
-
----
-
 ## Posponer para Fases Futuras
 
-### D3: ~~FakeAnthropicClient - Extended Thinking~~ ✅ OBSOLETO
 
-**Estado:** ELIMINADO - Fase 8 (2025-12-22)
-
-**Motivo:**
-`FakeAnthropicClient` fue eliminado durante la migración de Fase 8 (Part 2).
-Reemplazado por `FakeAgentOrchestrator` que trabaja a nivel de orquestación y soporta
-thinking mediante `FakeScenario.thinkingContent`.
-
-**Nuevo enfoque:**
-```typescript
-// FakeAgentOrchestrator.setResponse()
-fakeOrchestrator.setResponse({
-  thinkingContent: 'Let me analyze this...',
-  textBlocks: ['Here is my response'],
-  stopReason: 'end_turn',
-});
-```
-
-**Archivos eliminados:**
-- `backend/src/services/agent/FakeAnthropicClient.ts`
-- `backend/src/services/agent/IAnthropicClient.ts`
-
-**Archivos nuevos:**
-- `backend/src/domains/agent/orchestration/FakeAgentOrchestrator.ts` (38 tests)
-
----
 
 ### D8: Dynamic Model Selection
 
@@ -453,17 +337,11 @@ Los tests documentan el comportamiento esperado para cuando se implementen.
 **Fase:** Phase 6 o posterior
 **Estimación:** 5-7 días total (cuando se implementen los endpoints)
 
-### D15: UNIMPLEMENTED Features (3 tests) - ✅ PARCIALMENTE RESUELTO
+### D15: UNIMPLEMENTED Features (1 test) - PARCIALMENTE RESUELTO
 
 | Archivo | Descripción | Estado |
 |---------|-------------|--------|
 | `approval-flow.e2e.test.ts` | Full approval flow E2E con WebSocket | ⏸️ Pendiente refactor |
-| `max-tokens.scenario.test.ts` | Manejo de stop_reason: max_tokens | ✅ Habilitado |
-| `error-tool.scenario.test.ts` | Manejo de errores en tool execution | ✅ Habilitado |
-
-**Actualización 2025-12-22 (Fase 8 Part 2):**
-- `max-tokens.scenario.test.ts`: Skip removido, migrado a FakeAgentOrchestrator
-- `error-tool.scenario.test.ts`: Skip removido, migrado a FakeAgentOrchestrator
 
 **Actualización 2025-12-23:**
 - `approval-flow.e2e.test.ts`: Mantener skip - ApprovalManager recibirá un refactor significativo.
@@ -472,33 +350,16 @@ Los tests documentan el comportamiento esperado para cuando se implementen.
 **Fase restante:** Phase 6 o posterior (post-refactor ApprovalManager)
 **Estimación restante:** 3-5 días (refactor + tests)
 
-### D16: DEPRECATED Tests (3 tests) ✅ ELIMINADOS
 
-Tests eliminados 2025-12-22 por usar API obsoleta `executeQueryStreaming`:
-- `DirectAgentService.attachments.integration.test.ts`
-- `DirectAgentService.integration.test.ts`
-- `thinking-state-transitions.integration.test.ts`
 
-**Estado:** RESUELTO - archivos eliminados del codebase
 
-### D17: TDD RED - Orchestrator Integration (1 test) ✅ COMPLETADO
-
-| Archivo | Descripción | Estado |
-|---------|-------------|--------|
-| `AgentOrchestrator.integration.test.ts` | Tests de orquestación para nueva arquitectura | ✅ 8 tests pasando |
-
-**Estado:** RESUELTO - AgentOrchestrator implementado en Fase 7 con 38 tests (30 unit + 8 integration)
-**Fecha completado:** 2025-12-22
-
-### D18: Technical Issues (2 tests) - PARCIALMENTE RESUELTO
+### D18: Technical Issues (1 test) - PENDIENTE
 
 | Archivo | Descripción | Estado |
 |---------|-------------|--------|
 | `performance.test.ts` | Tests de carga (100+ requests concurrentes, P95/P99 latency) | ⏸️ Skip INTENCIONAL |
-| `message-flow.integration.test.ts:186` | WebSocket reliability issue | ✅ RESUELTO 2025-12-23 |
 
 **Actualización 2025-12-23:**
-- `message-flow.integration.test.ts`: Corregido - usaba API incorrecta de TestSocketClient
 - `performance.test.ts`: **Mantener skip** - Son tests de carga resource-intensive:
   - 100+ requests concurrentes
   - Medición de latencia P95/P99
@@ -508,6 +369,7 @@ Tests eliminados 2025-12-22 por usar API obsoleta `executeQueryStreaming`:
 **Fase:** Phase 6 (infrastructure) o posterior
 **Estimación:** 1 día (solo infraestructura de benchmark)
 
+
 ---
 
 ## Registro de Deuda Técnica
@@ -515,17 +377,17 @@ Tests eliminados 2025-12-22 por usar API obsoleta `executeQueryStreaming`:
 | ID | Descripción | Fase | Prioridad | Días |
 |----|-------------|------|-----------|------|
 | **D1** | **Race condition EventStore** | **Phase 5C** | **Alta** | **1-2** |
-| **D2** | **Semantic Image Search** | **URGENTE** | **CRÍTICA** | **4-5** |
-| D3 | ~~FakeAnthropicClient thinking~~ | ~~Phase 6~~ | ✅ | ~~OBSOLETO~~ |
+
+
 | D8 | Dynamic model selection | Phase 6 | Media | 2 |
 | D9 | WebSocket usage alerts | Phase 6 | Baja | 1 |
 | D10 | Message replay | Phase 6 | Baja | 3 |
 | D11 | Tool execution queue | Phase 6 | Media | 4 |
 | D13 | Redis chaos tests | Phase 6 | Media | 2 |
 | D14 | Unimplemented APIs (GDPR, billing, usage) | Phase 6+ | Media | 5-7 |
-| D15 | ~~Unimplemented Features~~ (solo approval pending) | Phase 6+ | Media | 1-2 |
-| D16 | ~~Deprecated Tests~~ | ~~N/A~~ | ✅ | ~~Eliminados~~ |
-| D17 | ~~TDD RED - Orchestrator Integration~~ | ~~Phase 7~~ | ✅ | ~~Completado~~ |
+| D15 | Unimplemented Features (solo approval pending) | Phase 6+ | Media | 1-2 |
+
+
 | D18 | Technical Issues (performance, websocket) | Phase 6+ | Media | 2-3 |
 | **D19** | **Refactor E2E Tests - Nueva Filosofía** | **Phase 6** | **ALTA** | **5-7** |
 | - | ApprovalManager completo | Phase 6 | Alta | 5 |
@@ -534,9 +396,13 @@ Tests eliminados 2025-12-22 por usar API obsoleta `executeQueryStreaming`:
 | - | Prompt Caching | Phase 7 | Alta | 3 |
 | - | Batch API | Phase 7 | Baja | 5 |
 | - | Analytics Dashboard | Phase 8 | Media | 10 |
+| **D21** | **File Deletion Cascade (actualizado)** | **Phase 6** | **ALTA** | **2-3** |
+| **D22** | **Orphan Cleanup Job** | **Phase 6** | **Media** | **2** |
+| D23 | Post-Delete Verification | Phase 6 | Baja | 1 |
+| **D24** | **UserId Case Sensitivity (AI Search)** | **Phase 6** | **ALTA** | **0.5** |
 
-**Total estimado URGENTE (D2):** ~4-5 días (1 semana)
-**Total estimado Phase 6:** ~32.5-39 días (incluyendo D14, D15, D18, D19)
+
+**Total estimado Phase 6:** ~37-44 días (incluyendo D14, D15, D18, D19, D21-D24)
 **Total estimado Phase 7:** ~28 días
 **Total estimado Phase 8:** ~10 días
 
@@ -825,40 +691,161 @@ CREATE INDEX IX_files_content_hash ON files(user_id, content_hash);
 ## D21: File Deletion Cascade Completeness
 
 **Fecha análisis:** 2026-01-06
-**Estado:** Documentado - Pendiente junto con D2
-**Prioridad:** MEDIA (Data Integrity)
-**Estimación:** 0.5 días (incluido en D2)
+**Estado:** Documentado - ACTUALIZADO con auditoría 2026-01-06
+**Prioridad:** ALTA (Data Integrity + GDPR)
+**Estimación:** 2-3 días
 
-### Estado Actual de Cascadas
+### Inventario Completo de Storage Points (Auditoría 2026-01-06)
 
-| Tabla/Storage | ON DELETE | Implementado |
-|---------------|-----------|--------------|
-| `files` → `file_chunks` | CASCADE | ✅ DB |
-| `files` → `message_file_attachments` | CASCADE | ✅ DB |
-| `files` → `image_embeddings` | N/A | ❌ Tabla no existe |
-| Azure AI Search (text) | Manual | ✅ `cleanupAISearchEmbeddings()` |
-| Azure AI Search (images) | Manual | ❌ No implementado |
-| Azure Blob Storage | Manual | ✅ Route handler |
+| Storage | Tabla/Índice | Cascade | Estado | Archivo Responsable |
+|---------|-------------|---------|--------|---------------------|
+| SQL Server | `files` | N/A (source of truth) | OK | - |
+| SQL Server | `file_chunks` | FK CASCADE | ✅ OK | `migrations/003-create-files-tables.sql:64` |
+| SQL Server | `message_file_attachments` | FK CASCADE | ✅ OK | `migrations/003-create-files-tables.sql:87` |
+| SQL Server | `image_embeddings` | FK CASCADE | ✅ OK | `migrations/007-create-image-embeddings.sql:28-29` |
+| Azure AI Search | `file-chunks-index` (text) | Manual | ✅ `deleteChunksForFile()` | `services/search/VectorSearchService.ts:301-317` |
+| Azure AI Search | `file-chunks-index` (images) | Manual | ✅ Usa mismo filtro (fileId+userId) | `services/search/VectorSearchService.ts:312` |
+| Azure Blob Storage | `users/{userId}/files/` | Manual | ✅ Route handler | `routes/files.ts:862-926` |
+| Redis Cache | N/A | N/A | ❌ NO implementado | - |
 
-### Gap Crítico
+### Gaps Identificados
 
-Cuando se implemente `image_embeddings` (D2), debe incluir:
+1. **Eventual Consistency en AI Search**: Si Azure AI Search está caído durante eliminación, los documentos quedan huérfanos
+   - Código menciona "orphan cleanup job" pero NO existe (`FileService.ts:606`)
+2. **No hay verificación post-delete**: No se confirma que AI Search realmente eliminó los documentos
+3. **UserId Case Sensitivity**: AI Search almacena userId en MAYÚSCULAS, posible mismatch con consultas
+4. **Redis Cache no se limpia**: Campo `deleted_from_cache` en audit siempre es false
 
-```sql
--- En migración 00X-create-image-embeddings.sql
-CONSTRAINT FK_image_embeddings_files
-    FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE
+### Auditoría Realizada 2026-01-06
+
+Se encontraron y eliminaron **139 documentos huérfanos** en Azure AI Search:
+- 5 fileIds huérfanos de archivos eliminados previamente
+- Causa: Archivos eliminados antes de implementar `cleanupAISearchEmbeddings()`
+- Limpieza manual via Azure CLI
+
+### Solución Propuesta
+
+Ver D22 (Orphan Cleanup Job) y D23 (Post-Delete Verification)
+
+---
+
+## D22: Orphan Cleanup Job
+
+**Fecha análisis:** 2026-01-06
+**Estado:** Nuevo - Documentado
+**Prioridad:** MEDIA
+**Estimación:** 2 días
+
+### Descripción
+
+Job programado para detectar y eliminar documentos huérfanos en Azure AI Search.
+
+### Requisitos
+
+1. Ejecutar semanalmente o bajo demanda
+2. Para cada usuario con documentos en AI Search:
+   - Obtener lista de `fileId` únicos de AI Search
+   - Comparar con `files` tabla en SQL
+   - Eliminar documentos cuyo `fileId` no existe en SQL
+3. Logging de documentos eliminados para auditoría
+
+### Implementación Propuesta
+
+```typescript
+// backend/src/jobs/OrphanCleanupJob.ts
+async cleanOrphans(userId: string): Promise<number> {
+  // 1. Get fileIds from AI Search
+  const searchFileIds = await vectorSearchService.getUniqueFileIds(userId);
+
+  // 2. Get fileIds from SQL
+  const sqlFileIds = await fileRepository.getFileIdsByUser(userId);
+
+  // 3. Find orphans (in AI Search but not in SQL)
+  const orphanFileIds = searchFileIds.filter(id => !sqlFileIds.includes(id));
+
+  // 4. Delete orphans
+  for (const fileId of orphanFileIds) {
+    await vectorSearchService.deleteChunksForFile(fileId, userId);
+  }
+
+  return orphanFileIds.length;
+}
 ```
 
-Y actualizar `FileService.cleanupAISearchEmbeddings()` para:
-1. Eliminar de `image_embeddings` table (si no CASCADE)
-2. Eliminar documentos de Azure AI Search con `isImage=true`
+### Archivos a Crear/Modificar
 
-### Solución
+- `backend/src/jobs/OrphanCleanupJob.ts` - NUEVO
+- `backend/src/services/search/VectorSearchService.ts` - Agregar `getUniqueFileIds()`
 
-Incluir en PRD de Image Search (`docs/plans/image-search/02-DATABASE-SCHEMA.md`):
-- ✅ Ya documentado FK CASCADE en schema propuesto
-- Pendiente: Actualizar `FileService.deleteFile()` para cleanup de image embeddings
+---
+
+## D23: Post-Delete Verification
+
+**Fecha análisis:** 2026-01-06
+**Estado:** Nuevo - Documentado
+**Prioridad:** BAJA
+**Estimación:** 1 día
+
+### Descripción
+
+Verificar que los documentos fueron realmente eliminados de Azure AI Search después de `deleteChunksForFile()`.
+
+### Requisitos
+
+1. Después de eliminar, consultar AI Search para confirmar 0 documentos con ese `fileId`
+2. Si hay documentos restantes, reintentar eliminación (max 3 intentos)
+3. Si persisten, loggear warning y actualizar audit status a `partial`
+
+### Implementación Propuesta
+
+```typescript
+// En VectorSearchService.deleteChunksForFile()
+async deleteChunksForFile(fileId: string, userId: string): Promise<void> {
+  await this.deleteByQuery(options);
+
+  // Verify deletion
+  const remaining = await this.countDocuments(fileId, userId);
+  if (remaining > 0) {
+    logger.warn({ fileId, userId, remaining }, 'Documents still exist after deletion');
+    // Retry or alert
+  }
+}
+```
+
+---
+
+## D24: UserId Case Sensitivity in AI Search
+
+**Fecha análisis:** 2026-01-06
+**Estado:** Nuevo - Documentado
+**Prioridad:** ALTA (Bug potencial)
+**Estimación:** 0.5 días
+
+### Descripción
+
+Azure AI Search almacena `userId` en MAYÚSCULAS (ej: `BCD5A31B-C560-40D5-972F-50E134A8389D`), pero las consultas pueden usar minúsculas (ej: `bcd5a31b-c560-40d5-972f-50e134a8389d`). Esto causa que el filtro `userId eq '...'` no encuentre documentos.
+
+### Evidencia
+
+- Auditoría 2026-01-06: Consulta con minúsculas retornó 0 docs, con mayúsculas retornó 141 docs
+- SQL Server retorna UUIDs en mayúsculas, pero sesión de usuario puede normalizar a minúsculas
+
+### Solución Propuesta
+
+Normalizar `userId` a mayúsculas antes de:
+1. Indexar documentos (`indexChunk`, `indexImageEmbedding`)
+2. Buscar documentos (`search`, `searchImages`, `deleteChunksForFile`)
+
+```typescript
+// En VectorSearchService
+private normalizeUserId(userId: string): string {
+  return userId.toUpperCase();
+}
+```
+
+### Archivos a Modificar
+
+- `backend/src/services/search/VectorSearchService.ts` - Todas las operaciones que usan `userId`
 
 ---
 
@@ -881,4 +868,4 @@ Incluir en PRD de Image Search (`docs/plans/image-search/02-DATABASE-SCHEMA.md`)
 
 ---
 
-*Última actualización: 2026-01-06 - D2 simplificado: Semantic Image Search (4-5 días vs 6-8 semanas). PRD detallado en `/docs/plans/image-search/`. Enfoque en similitud visual multimodal, NO OCR.*
+*Última actualización: 2026-01-06 - D2 (Semantic Image Search) completado.*

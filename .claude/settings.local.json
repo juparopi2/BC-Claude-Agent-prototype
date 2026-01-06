@@ -174,7 +174,11 @@
       "WebFetch(domain:www.dragonflydb.io)",
       "WebFetch(domain:www.azure.cn)",
       "Bash(docker exec:*)",
-      "Bash(NODE_OPTIONS='--max-old-space-size=16384' npx tsc:*)"
+      "Bash(NODE_OPTIONS='--max-old-space-size=16384' npx tsc:*)",
+      "WebFetch(domain:js.langchain.com)",
+      "WebFetch(domain:python.langchain.com)",
+      "WebFetch(domain:dev.to)",
+      "WebFetch(domain:medium.com)"
     ],
     "deny": [],
     "ask": []

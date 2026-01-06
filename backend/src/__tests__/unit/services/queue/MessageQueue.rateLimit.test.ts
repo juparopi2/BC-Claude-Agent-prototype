@@ -107,15 +107,10 @@ vi.mock('bullmq', () => ({
   QueueEvents: vi.fn(() => mockQueueEvents),
 }));
 
-// Mock logger
+// Mock logger - use regular function to survive vi.resetAllMocks()
 vi.mock('@/shared/utils/logger', () => ({
   logger: mockLogger,
-  createChildLogger: vi.fn(() => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  })),
+  createChildLogger: () => mockLogger,  // Regular function, not vi.fn()
 }));
 
 // Mock database

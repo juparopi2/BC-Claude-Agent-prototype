@@ -26,22 +26,20 @@ vi.mock('@/infrastructure/database/database', () => ({
   executeQuery: mockExecuteQuery,
 }));
 
-// Mock logger with vi.hoisted()
+// Mock logger with vi.hoisted() + regular function to survive vi.resetAllMocks()
 const mockLogger = vi.hoisted(() => ({
   info: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
   debug: vi.fn(),
+  fatal: vi.fn(),
+  trace: vi.fn(),
+  child: vi.fn(),
 }));
 
 vi.mock('@/shared/utils/logger', () => ({
   logger: mockLogger,
-  createChildLogger: vi.fn(() => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  })),
+  createChildLogger: () => mockLogger,  // Regular function, not vi.fn()
 }));
 
 // Mock environment config

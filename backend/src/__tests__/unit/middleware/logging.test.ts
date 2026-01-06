@@ -26,19 +26,24 @@ vi.mock('pino-http', () => {
   };
 });
 
+// Mock logger with vi.hoisted() + regular functions to survive vi.resetAllMocks()
+const mockLogger = vi.hoisted(() => {
+  const mock = {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+    fatal: vi.fn(),
+    trace: vi.fn(),
+    child: vi.fn(),
+  };
+  mock.child.mockReturnValue(mock);
+  return mock;
+});
+
 vi.mock('@/shared/utils/logger', () => ({
-  logger: {
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  },
-  createChildLogger: vi.fn(() => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  })),
+  logger: mockLogger,
+  createChildLogger: () => mockLogger,  // Regular function, not vi.fn()
 }));
 
 // Import to trigger the mock setup

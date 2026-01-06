@@ -20,28 +20,34 @@ import { ErrorCode } from '@/shared/constants/errors';
 // Mock Dependencies
 // ============================================
 
-// Mock logger with child logger support
-const mockChildLogger = {
+// Mock logger with vi.hoisted() + regular functions to survive vi.resetAllMocks()
+// mockChildLogger is the innermost child returned by logger.child()
+const mockChildLogger = vi.hoisted(() => ({
   debug: vi.fn(),
   info: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
-};
+  fatal: vi.fn(),
+  trace: vi.fn(),
+}));
+
+// mockLogger is returned by createChildLogger() and has a child() method
+const mockLogger = vi.hoisted(() => {
+  const mock = {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+    fatal: vi.fn(),
+    trace: vi.fn(),
+    child: vi.fn(() => mockChildLogger),  // Returns mockChildLogger for assertions
+  };
+  return mock;
+});
 
 vi.mock('@/shared/utils/logger', () => ({
-  logger: {
-    child: vi.fn(() => mockChildLogger),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  },
-  createChildLogger: vi.fn(() => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  })),
+  logger: mockLogger,
+  createChildLogger: () => mockLogger,  // Returns mockLogger which has .child()
 }));
 
 // ============================================

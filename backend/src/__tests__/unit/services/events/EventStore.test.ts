@@ -53,22 +53,20 @@ vi.mock('@/infrastructure/database/database', () => ({
   })),
 }));
 
-// ===== MOCK LOGGER (vi.hoisted pattern) =====
+// ===== MOCK LOGGER (vi.hoisted pattern with regular function) =====
 const mockLogger = vi.hoisted(() => ({
   info: vi.fn(),
   error: vi.fn(),
   warn: vi.fn(),
   debug: vi.fn(),
+  fatal: vi.fn(),
+  trace: vi.fn(),
+  child: vi.fn(),
 }));
 
 vi.mock('@/shared/utils/logger', () => ({
   logger: mockLogger,
-  createChildLogger: vi.fn(() => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  })),
+  createChildLogger: () => mockLogger,  // Regular function to survive vi.resetAllMocks()
 }));
 
 describe('EventStore', () => {

@@ -15,20 +15,24 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Request, Response, NextFunction } from 'express';
 import type { MicrosoftOAuthSession } from '@/types/microsoft.types';
 
-// Mock dependencies before importing the middleware
+// Mock logger with vi.hoisted() + regular functions to survive vi.resetAllMocks()
+const mockLogger = vi.hoisted(() => {
+  const mock = {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+    fatal: vi.fn(),
+    trace: vi.fn(),
+    child: vi.fn(),
+  };
+  mock.child.mockReturnValue(mock);
+  return mock;
+});
+
 vi.mock('@/shared/utils/logger', () => ({
-  logger: {
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  },
-  createChildLogger: vi.fn(() => ({
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  })),
+  logger: mockLogger,
+  createChildLogger: () => mockLogger,  // Regular function, not vi.fn()
 }));
 
 vi.mock('@/infrastructure/database/database', () => ({
@@ -48,9 +52,10 @@ import {
   requireBCAccess,
   authenticateMicrosoftOptional,
 } from '@/domains/auth/middleware/auth-oauth';
-import { logger } from '@/shared/utils/logger';
 import { executeQuery } from '@/infrastructure/database/database';
 import { ErrorCode } from '@/shared/constants/errors';
+
+// Use mockLogger directly for assertions (not logger import which may be a different instance)
 
 // ===== TEST HELPERS =====
 
@@ -183,7 +188,7 @@ describe('authenticateMicrosoft', () => {
           message: expect.stringContaining('Invalid Microsoft OAuth session'),
         })
       );
-      expect(logger.warn).toHaveBeenCalled();
+      expect(mockLogger.warn).toHaveBeenCalled();
     });
 
     it('should return 401 when microsoftId is missing', async () => {
@@ -310,7 +315,7 @@ describe('authenticateMicrosoft', () => {
 
       expect(mockOAuthService.refreshAccessToken).toHaveBeenCalledWith('valid-refresh-token');
       expect(mockNext).toHaveBeenCalled();
-      expect(logger.info).toHaveBeenCalledWith(
+      expect(mockLogger.info).toHaveBeenCalledWith(
         expect.stringContaining('refreshed successfully'),
         expect.any(Object)
       );
@@ -376,7 +381,7 @@ describe('authenticateMicrosoft', () => {
 
       // After session.save fails, should return 401 (refresh flow failure)
       expect(mockRes.status).toHaveBeenCalledWith(401);
-      expect(logger.error).toHaveBeenCalled();
+      expect(mockLogger.error).toHaveBeenCalled();
     });
 
     // FIX #1: Test for generic catch block (line 179-190)
@@ -407,7 +412,7 @@ describe('authenticateMicrosoft', () => {
           code: ErrorCode.SERVICE_ERROR,
         })
       );
-      expect(logger.error).toHaveBeenCalledWith(
+      expect(mockLogger.error).toHaveBeenCalledWith(
         'Microsoft OAuth authentication error',
         expect.objectContaining({
           error: expect.any(Error),
@@ -431,7 +436,7 @@ describe('authenticateMicrosoft', () => {
 
       // Should still return 401 without crashing
       expect(mockRes.status).toHaveBeenCalledWith(401);
-      expect(logger.warn).toHaveBeenCalled();
+      expect(mockLogger.warn).toHaveBeenCalled();
     });
   });
 
@@ -740,7 +745,7 @@ describe('requireBCAccess', () => {
 
       expect(mockNext).toHaveBeenCalled();
       expect(mockRes.status).not.toHaveBeenCalled();
-      expect(logger.debug).toHaveBeenCalledWith(
+      expect(mockLogger.debug).toHaveBeenCalledWith(
         expect.stringContaining('Business Central access verified'),
         expect.any(Object)
       );
@@ -762,7 +767,7 @@ describe('requireBCAccess', () => {
           error: 'Internal Server Error',
         })
       );
-      expect(logger.error).toHaveBeenCalled();
+      expect(mockLogger.error).toHaveBeenCalled();
     });
   });
 
@@ -1133,7 +1138,7 @@ describe('authenticateMicrosoftOptional', () => {
       authenticateMicrosoftOptional(mockReq as Request, mockRes, mockNext);
 
       expect(mockNext).toHaveBeenCalled();
-      expect(logger.error).toHaveBeenCalled();
+      expect(mockLogger.error).toHaveBeenCalled();
     });
 
     it('should continue without auth when session throws accessing properties', () => {

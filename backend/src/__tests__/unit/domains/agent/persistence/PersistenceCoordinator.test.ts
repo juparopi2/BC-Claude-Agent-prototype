@@ -5,6 +5,30 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi, type Mock } from 'vitest';
+
+// Mock logger FIRST with vi.hoisted() to ensure it's available before PersistenceCoordinator loads
+// Use a stable function reference that won't be affected by vi.resetAllMocks()
+const mockLogger = vi.hoisted(() => {
+  const mock = {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+    fatal: vi.fn(),
+    trace: vi.fn(),
+    child: vi.fn(),
+  };
+  mock.child.mockReturnValue(mock);
+  return mock;
+});
+
+// Use a regular function to return mockLogger (not vi.fn) so vi.resetAllMocks() won't clear it
+vi.mock('@/shared/utils/logger', () => ({
+  logger: mockLogger,
+  createChildLogger: () => mockLogger,  // Regular function, not vi.fn()
+  createRequestLogger: () => mockLogger,
+}));
+
 import {
   PersistenceCoordinator,
   getPersistenceCoordinator,

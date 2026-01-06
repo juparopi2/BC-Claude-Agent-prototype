@@ -2,10 +2,15 @@ import { useCallback, memo, useEffect } from 'react';
 import type { ParsedFile } from '@bc-agent/shared';
 import { Folder, ChevronRight, ChevronDown, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useShallow } from 'zustand/react/shallow';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { useFolderNavigation } from '@/src/domains/files';
+import { useFolderNavigation, useFolderTreeStore } from '@/src/domains/files';
+import { getFileApiClient } from '@/src/infrastructure/api';
 import { FileContextMenu } from './FileContextMenu';
+
+// Empty array constant to avoid creating new references
+const EMPTY_FOLDERS: ParsedFile[] = [];
 
 interface FolderTreeItemProps {
   folder: ParsedFile;
@@ -21,32 +26,86 @@ export const FolderTreeItem = memo(function FolderTreeItem({
   const {
     currentFolderId,
     expandedFolderIds,
-    isFolderLoading,
     toggleFolderExpanded,
     navigateToFolder,
-    getChildFolders,
+    setTreeFolders,
+    setLoadingFolder,
   } = useFolderNavigation();
 
-  const isLoading = isFolderLoading(folder.id);
+  // Use direct selectors for reactive subscription
+  // 1. Subfolders - returns undefined if not loaded, empty array if loaded but empty
+  const subfoldersFromStore = useFolderTreeStore(
+    (state) => state.treeFolders[folder.id]
+  );
+  const subfolders = subfoldersFromStore || EMPTY_FOLDERS;
+  const isLoaded = subfoldersFromStore !== undefined; // Distinguish "not loaded" vs "empty"
+
+  // 2. Loading state - must be reactive to show spinner
+  const isLoading = useFolderTreeStore(
+    (state) => state.loadingFolderIds.has(folder.id)
+  );
+
   const isExpanded = expandedFolderIds.includes(folder.id);
   const isSelected = currentFolderId === folder.id;
-  const subfolders = getChildFolders(folder.id);
-  
-  // Auto-collapse: If expanded but no children and not loading, force collapse
-  // This prevents recursive auto-expansion of deep folders after reload if data is missing.
+
+  // Debug logging
+  if (process.env.NODE_ENV === 'development') {
+    console.log('[FolderTreeItem] Render:', {
+      id: folder.id,
+      name: folder.name,
+      isExpanded,
+      isLoading,
+      isLoaded,
+      subfoldersCount: subfolders.length,
+    });
+  }
+
+  // Lazy load children when expanded and not yet loaded
   useEffect(() => {
-    if (isExpanded && subfolders.length === 0 && !isLoading) {
-      toggleFolderExpanded(folder.id, false);
-    }
-  }, [isExpanded, subfolders.length, isLoading, folder.id, toggleFolderExpanded]);
+    const loadChildren = async () => {
+      if (!isExpanded) return;
+      if (isLoaded) return; // Already loaded (even if empty)
+      if (isLoading) return; // Already loading
+
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[FolderTreeItem] Loading children for:', folder.id);
+      }
+
+      setLoadingFolder(folder.id, true);
+      try {
+        const fileApi = getFileApiClient();
+        const result = await fileApi.getFiles({ folderId: folder.id });
+        if (result.success) {
+          const childFolders = result.data.files.filter((f) => f.isFolder);
+          // Always set, even if empty - this marks as "loaded"
+          setTreeFolders(folder.id, childFolders);
+          if (process.env.NODE_ENV === 'development') {
+            console.log('[FolderTreeItem] Loaded children:', {
+              folderId: folder.id,
+              childCount: childFolders.length,
+            });
+          }
+        }
+      } catch (err) {
+        console.error(`[FolderTreeItem] Failed to load children for folder ${folder.id}:`, err);
+        // On error, still mark as loaded to prevent infinite retries
+        setTreeFolders(folder.id, []);
+      } finally {
+        setLoadingFolder(folder.id, false);
+      }
+    };
+
+    loadChildren();
+  }, [isExpanded, folder.id, isLoaded, isLoading, setLoadingFolder, setTreeFolders]);
 
   const handleSelect = useCallback(() => {
     if (onSelect) {
       onSelect(folder.id);
     } else {
-      navigateToFolder(folder.id);
+      // Pass full folder data for breadcrumb path construction
+      navigateToFolder(folder.id, folder);
     }
-  }, [folder.id, onSelect, navigateToFolder]);
+  }, [folder, onSelect, navigateToFolder]);
 
   return (
     <Collapsible open={isExpanded} onOpenChange={() => toggleFolderExpanded(folder.id)}>

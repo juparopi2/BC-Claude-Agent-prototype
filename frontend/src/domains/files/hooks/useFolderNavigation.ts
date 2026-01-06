@@ -42,8 +42,8 @@ export interface UseFolderNavigationReturn {
   getChildFolders: (parentId: string) => ParsedFile[];
   /** Initialize folder tree by loading root folders */
   initFolderTree: () => Promise<void>;
-  /** Navigate to folder (simplified - just sets ID, use with fetchFiles) */
-  navigateToFolder: (folderId: string | null) => void;
+  /** Navigate to folder with optional folder data for breadcrumb path */
+  navigateToFolder: (folderId: string | null, folderData?: ParsedFile) => void;
 }
 
 /**
@@ -169,14 +169,37 @@ export function useFolderNavigation(): UseFolderNavigationReturn {
     }
   }, [setLoadingFolderAction, setTreeFoldersAction]);
 
-  // Navigate to folder (simplified - just sets the current folder ID and clears path if going to root)
+  // Navigate to folder with optional folder data for breadcrumb path construction
   const navigateToFolder = useCallback(
-    (folderId: string | null) => {
+    (folderId: string | null, folderData?: ParsedFile) => {
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[useFolderNavigation] navigateToFolder:', {
+          folderId,
+          hasFolder: !!folderData,
+          currentPathLength: folderPath.length,
+        });
+      }
+
       if (folderId === null) {
         setCurrentFolderAction(null, []);
+        return;
+      }
+
+      if (folderData) {
+        // Check if folder already exists in path (navigating to ancestor)
+        const existingIndex = folderPath.findIndex((f) => f.id === folderId);
+        if (existingIndex >= 0) {
+          // Truncate path to this folder
+          const newPath = folderPath.slice(0, existingIndex + 1);
+          setCurrentFolderAction(folderId, newPath);
+        } else {
+          // Navigating deeper - append folder to path
+          const newPath = [...folderPath, folderData];
+          setCurrentFolderAction(folderId, newPath);
+        }
       } else {
-        // For now, just set the folder ID without full path
-        // Components can update the path as needed
+        // No folder data provided - keep current path
+        // This is a fallback for cases where folder data isn't available
         setCurrentFolderAction(folderId, folderPath);
       }
     },

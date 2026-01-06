@@ -56,7 +56,8 @@ export function FileList() {
 
   const handleDoubleClick = useCallback(async (file: ParsedFile) => {
     if (file.isFolder) {
-      navigateToFolder(file.id);
+      // Pass full folder data for breadcrumb path construction
+      navigateToFolder(file.id, file);
       return;
     }
 

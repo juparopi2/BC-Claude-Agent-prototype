@@ -30,16 +30,6 @@ export default function ChatContainer() {
   // User initials for MessageBubble avatar
   const userInitials = useAuthStore(selectUserInitials);
 
-  // DEBUG: Log sorted messages when they change
-  if (process.env.NODE_ENV === 'development') {
-    console.log('[ChatContainer] Messages sorted:', messages.map(m => ({
-      id: m.id,
-      type: m.type,
-      seq: m.sequence_number,
-      role: 'role' in m ? m.role : undefined,
-    })));
-  }
-
   /**
    * Handle citation click - lookup file and open preview modal
    */

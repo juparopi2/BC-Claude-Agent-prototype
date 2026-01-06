@@ -152,7 +152,7 @@ export function ToolCard({
                 <JsonView
                   value={displayArgs}
                   style={theme === 'dark' ? darkTheme : lightTheme}
-                  collapsed={Object.keys(displayArgs).length > 10}
+                  collapsed={2}
                   displayDataTypes={false}
                   displayObjectSize={true}
                   enableClipboard={true}

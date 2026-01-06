@@ -22,6 +22,7 @@ import { sendError } from '@/shared/utils/error-response';
 // ✅ Import native SDK types (source of truth)
 import type { StopReason, TextCitation } from '@anthropic-ai/sdk/resources/messages';
 import { getSessionTitleGenerator } from '../services/sessions/SessionTitleGenerator';
+import { normalizeToolArgs } from '@/domains/agent/tools';
 
 const logger = createChildLogger({ service: 'SessionRoutes' });
 const router = Router();
@@ -159,7 +160,7 @@ function transformMessage(row: DbMessageRow) {
         type: 'tool_use' as const,        // ✅ Discriminator for union
         role: 'assistant' as const,       // ✅ Always assistant
         tool_name: metadata.tool_name as string || '',
-        tool_args: (metadata.tool_args as Record<string, unknown>) || {},
+        tool_args: normalizeToolArgs(metadata.tool_args, metadata.tool_name as string),
         status: (metadata.status as 'pending' | 'success' | 'error') || 'pending',
         result: metadata.tool_result,
         error_message: metadata.error_message as string | undefined,
@@ -174,7 +175,7 @@ function transformMessage(row: DbMessageRow) {
         type: 'tool_result' as const,
         role: 'assistant' as const,
         tool_name: (metadata.tool_name as string) || '',
-        tool_args: (metadata.tool_args as Record<string, unknown>) || {},
+        tool_args: normalizeToolArgs(metadata.tool_args, metadata.tool_name as string),
         success: (metadata.success as boolean) ?? true,
         // FIX: Read from content column, try JSON.parse for objects
         result: row.content ? tryParseJSON(row.content) : undefined,

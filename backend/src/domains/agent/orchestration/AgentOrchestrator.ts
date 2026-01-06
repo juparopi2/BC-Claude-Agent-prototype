@@ -68,6 +68,7 @@ import {
   type PersistedEvent,
 } from '@domains/agent/persistence';
 import { getEventStore, type EventStore } from '@services/events/EventStore';
+import { normalizeToolArgs } from '@domains/agent/tools';
 
 /**
  * Dependencies for AgentOrchestrator (for testing).
@@ -469,7 +470,7 @@ export class AgentOrchestrator implements IAgentOrchestrator {
           type: 'tool_use' as const,
           toolName: toolReqEvent.toolName,
           toolUseId: toolReqEvent.toolUseId,
-          args: toolReqEvent.args,
+          args: normalizeToolArgs(toolReqEvent.args, toolReqEvent.toolName),
         };
       }
 
@@ -602,13 +603,16 @@ export class AgentOrchestrator implements IAgentOrchestrator {
     if (event.type === 'tool_request') {
       const toolReqEvent = event as NormalizedToolRequestEvent;
 
+      // Normalize args to ensure they are always an object (handles double-serialization bug)
+      const normalizedArgs = normalizeToolArgs(toolReqEvent.args, toolReqEvent.toolName);
+
       // Register tool request in memory - will be combined with response later
       // Pass preAllocatedSeq to store it for later persistence
       ctx.toolLifecycleManager.onToolRequested(
         sessionId,
         toolReqEvent.toolUseId,
         toolReqEvent.toolName,
-        toolReqEvent.args,
+        normalizedArgs,
         preAllocatedSeq
       );
 

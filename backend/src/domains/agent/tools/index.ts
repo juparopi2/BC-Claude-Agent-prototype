@@ -22,3 +22,6 @@ export {
   ToolLifecycleManager,
   createToolLifecycleManager,
 } from './ToolLifecycleManager';
+
+// Tool args normalization helper
+export { normalizeToolArgs } from './normalizeToolArgs';

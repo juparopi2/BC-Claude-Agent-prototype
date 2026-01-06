@@ -142,15 +142,17 @@ export function processAgentEventSync(
       const eventWithIndex = event as { eventIndex?: number };
 
       // FIX: Use toolUseId as message ID to match DB storage (Anthropic's toolu_* ID)
+      // Fallback to eventId if toolUseId is not available (shouldn't happen in practice)
+      const toolId = toolEvent.toolUseId || event.eventId;
       messageStore.getState().addMessage({
         type: 'tool_use',
-        id: toolEvent.toolUseId,
+        id: toolId,
         session_id: event.sessionId || '',
         role: 'assistant',
         tool_name: toolEvent.toolName,
         tool_args: toolEvent.args,
         status: 'pending',
-        tool_use_id: toolEvent.toolUseId,
+        tool_use_id: toolId,
         sequence_number: event.sequenceNumber || eventWithIndex.eventIndex || 0,
         created_at: new Date().toISOString(),
       });

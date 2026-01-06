@@ -183,7 +183,7 @@ export class AnthropicAdapter implements IProviderAdapter {
         }
       }
 
-      // Emit thinking first (if present)
+      // 1. Emit thinking first (if present)
       if (thinkingContent) {
         events.push(this.createThinkingEvent(
           messageId,
@@ -194,10 +194,8 @@ export class AnthropicAdapter implements IProviderAdapter {
         ));
       }
 
-      // Emit tool requests
-      events.push(...toolRequests);
-
-      // Emit assistant message (if text content exists)
+      // 2. Emit assistant message BEFORE tools (text-first strategy)
+      // This ensures text messages appear at their natural position in the conversation
       if (textContent.trim()) {
         events.push(this.createAssistantMessageEvent(
           messageId,
@@ -209,6 +207,9 @@ export class AnthropicAdapter implements IProviderAdapter {
           messageIndex * 100 + eventIndex++
         ));
       }
+
+      // 3. Emit tool requests LAST (they wait for result to be displayed)
+      events.push(...toolRequests);
     }
 
     return events;

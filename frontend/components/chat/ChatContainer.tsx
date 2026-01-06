@@ -94,8 +94,13 @@ export default function ChatContainer() {
             );
           }
 
-          // Render tool_use messages
+          // Render tool_use messages ONLY when they have result (text-first strategy)
           if (isToolUseMessage(message)) {
+            // Skip pending tools - wait for result to arrive before displaying
+            // This ensures text messages appear at their natural position
+            if (message.status === 'pending') {
+              return null;
+            }
             return (
               <ToolCard
                 key={message.id}

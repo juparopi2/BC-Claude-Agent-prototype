@@ -146,16 +146,27 @@ export interface ExtractionMetadata {
  * - Mammoth (DOCX): extracted raw text
  * - XLSX: converted markdown tables
  * - Text files: UTF-8 decoded content
+ * - Images: placeholder text like "[Image: filename.jpg]"
  */
 export interface ExtractionResult {
   /**
    * Extracted text content
    * For Azure results, this is AzureAnalyzeResult.content
+   * For images, this is a placeholder like "[Image: filename.jpg]"
    */
   text: string;
 
   /** Document metadata derived from processor output */
   metadata: ExtractionMetadata;
+
+  /**
+   * Image embedding vector (1024 dimensions)
+   *
+   * Only populated for image files processed by ImageProcessor.
+   * Generated via Azure Computer Vision VectorizeImage API.
+   * Used for semantic image search in Azure AI Search.
+   */
+  imageEmbedding?: number[];
 }
 
 // =============================================================================

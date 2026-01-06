@@ -169,6 +169,11 @@ const PARAMETER_TYPE_MAP: Record<string, ISqlType | (() => ISqlType)> = {
 
   // VARBINARY columns
   'file_content': sql.VarBinary(sql.MAX),
+
+  // Image embedding columns
+  'embedding': sql.NVarChar(sql.MAX),  // JSON array of floats
+  'dimensions': sql.Int,
+  'model_version': sql.NVarChar(50),
 };
 
 /**

@@ -36,31 +36,52 @@ export class SemanticSearchService {
     } = options;
 
     try {
-      // 1. Generate embedding from query
       const embeddingService = EmbeddingService.getInstance();
-      const queryEmbedding = await embeddingService.generateTextEmbedding(
-        query,
-        userId,
-        'semantic-search'
-      );
-
-      // 2. Search for relevant chunks
       const vectorSearchService = VectorSearchService.getInstance();
-      const searchResults = await vectorSearchService.search({
-        embedding: queryEmbedding.embedding,
-        userId,
-        top: maxFiles * maxChunksPerFile * 2, // Get more to allow filtering
-        minScore: threshold,
-      });
 
-      // 3. Filter excluded files
-      const filteredResults = searchResults.filter(
+      // 1. Generate BOTH embeddings in parallel:
+      //    - Text embedding (1536d) for text chunk search
+      //    - Image query embedding (1024d) for image search
+      const [textEmbedding, imageQueryEmbedding] = await Promise.all([
+        embeddingService.generateTextEmbedding(query, userId, 'semantic-search'),
+        embeddingService.generateImageQueryEmbedding(query, userId, 'semantic-search').catch(err => {
+          // Image search is optional - don't fail if Vision API is unavailable
+          this.logger.warn({ err: err instanceof Error ? err.message : String(err) }, 'Image query embedding failed, skipping image search');
+          return null;
+        }),
+      ]);
+
+      // 2. Execute BOTH searches in parallel
+      const searchPromises: [
+        Promise<{ chunkId: string; fileId: string; content: string; score: number; chunkIndex: number }[]>,
+        Promise<{ fileId: string; fileName: string; score: number; isImage: true }[]>
+      ] = [
+        vectorSearchService.search({
+          embedding: textEmbedding.embedding,
+          userId,
+          top: maxFiles * maxChunksPerFile * 2,
+          minScore: threshold,
+        }),
+        imageQueryEmbedding
+          ? vectorSearchService.searchImages({
+              embedding: imageQueryEmbedding.embedding,
+              userId,
+              top: maxFiles,
+              minScore: threshold,
+            })
+          : Promise.resolve([]),
+      ];
+
+      const [textResults, imageResults] = await Promise.all(searchPromises);
+
+      // 3. Filter excluded files from text results
+      const filteredTextResults = textResults.filter(
         result => !excludeFileIds.includes(result.fileId)
       );
 
-      // 4. Group by fileId and aggregate
+      // 4. Group text results by fileId
       const fileMap = new Map<string, SemanticChunk[]>();
-      for (const result of filteredResults) {
+      for (const result of filteredTextResults) {
         const chunks = fileMap.get(result.fileId) || [];
         chunks.push({
           chunkId: result.chunkId,
@@ -71,21 +92,21 @@ export class SemanticSearchService {
         fileMap.set(result.fileId, chunks);
       }
 
-      // 5. Get file names and build results
+      // 5. Build text results
       const fileService = getFileService();
       const results: SemanticSearchResult[] = [];
 
       for (const [fileId, chunks] of fileMap) {
-        // Sort chunks by score and limit
         const sortedChunks = chunks
           .sort((a, b) => b.score - a.score)
           .slice(0, maxChunksPerFile);
 
-        // Get file name
         let fileName = 'Unknown';
+        let mimeType: string | undefined;
         try {
           const file = await fileService.getFile(userId, fileId);
           fileName = file?.name || 'Unknown';
+          mimeType = file?.mimeType;
         } catch {
           // File might be deleted, continue
         }
@@ -95,27 +116,65 @@ export class SemanticSearchService {
           fileName,
           relevanceScore: Math.max(...sortedChunks.map(c => c.score)),
           topChunks: sortedChunks,
+          isImage: false,
+          mimeType,
         });
       }
 
-      // 6. Sort by relevance and limit
+      // 6. Add image results (filtered by excluded files)
+      const filteredImageResults = imageResults.filter(
+        result => !excludeFileIds.includes(result.fileId)
+      );
+
+      for (const imageResult of filteredImageResults) {
+        // Avoid duplicate if same file already in text results
+        if (fileMap.has(imageResult.fileId)) {
+          continue;
+        }
+
+        // Get mimeType from file service
+        let mimeType: string | undefined;
+        try {
+          const file = await fileService.getFile(userId, imageResult.fileId);
+          mimeType = file?.mimeType;
+        } catch {
+          // File might be deleted, continue
+        }
+
+        results.push({
+          fileId: imageResult.fileId,
+          fileName: imageResult.fileName,
+          relevanceScore: imageResult.score,
+          topChunks: [], // Images don't have text chunks
+          isImage: true,
+          mimeType,
+        });
+      }
+
+      // 7. Sort by relevance and limit
       const finalResults = results
         .sort((a, b) => b.relevanceScore - a.relevanceScore)
         .slice(0, maxFiles);
+
+      const imageCount = finalResults.filter(r => r.isImage).length;
+      const textCount = finalResults.length - imageCount;
 
       this.logger.info({
         userId,
         queryLength: query.length,
         threshold,
-        totalChunks: searchResults.length,
+        totalChunks: textResults.length,
+        totalImages: imageResults.length,
         matchingFiles: finalResults.length,
-      }, 'Semantic search completed');
+        textResults: textCount,
+        imageResults: imageCount,
+      }, 'Unified semantic search completed');
 
       return {
         results: finalResults,
         query,
         threshold,
-        totalChunksSearched: searchResults.length,
+        totalChunksSearched: textResults.length + imageResults.length,
       };
 
     } catch (error) {

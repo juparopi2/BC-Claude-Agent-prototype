@@ -194,6 +194,11 @@ export class FileProcessingService {
         logger.warn({ err, fileId, userId }, 'Failed to track text extraction usage');
       });
 
+      // Step 4.6: Persist image embedding if present (for semantic image search)
+      if (result.imageEmbedding && result.imageEmbedding.length > 0) {
+        await this.persistImageEmbedding(userId, fileId, result.imageEmbedding);
+      }
+
       // Step 5: Update database with extracted text and 'completed' status (emit 90% progress)
       await this.updateStatus(userId, fileId, 'completed', result.text);
       this.emitProgress(sessionId, fileId, 90, 'processing');
@@ -444,6 +449,55 @@ export class FileProcessingService {
   }
 
   /**
+   * Persist image embedding to database
+   *
+   * Stores the image embedding for semantic image search.
+   * Uses ImageEmbeddingRepository for database operations.
+   *
+   * @param userId - User ID
+   * @param fileId - File ID
+   * @param embedding - Image embedding vector (1024 dimensions)
+   */
+  private async persistImageEmbedding(
+    userId: string,
+    fileId: string,
+    embedding: number[]
+  ): Promise<void> {
+    try {
+      // Dynamic import to avoid circular dependencies
+      const { getImageEmbeddingRepository } = await import(
+        '@/repositories/ImageEmbeddingRepository'
+      );
+      const repository = getImageEmbeddingRepository();
+
+      await repository.upsert({
+        fileId,
+        userId,
+        embedding,
+        dimensions: embedding.length,
+        model: 'azure-vision-vectorize-image',
+        modelVersion: '2024-02-01',
+      });
+
+      logger.info(
+        { fileId, userId, dimensions: embedding.length },
+        'Image embedding persisted to database'
+      );
+    } catch (error) {
+      // Log error but don't fail the job - image can be stored without embedding
+      logger.error(
+        {
+          error: error instanceof Error ? error.message : String(error),
+          fileId,
+          userId,
+        },
+        'Failed to persist image embedding'
+      );
+      // Don't rethrow - embedding persistence failure shouldn't fail the job
+    }
+  }
+
+  /**
    * Enqueue file chunking job
    *
    * Triggers the chunking → embedding → AI Search indexing pipeline.
@@ -461,7 +515,7 @@ export class FileProcessingService {
     mimeType: string
   ): Promise<void> {
     // Dynamic import to avoid circular dependencies
-    const { getMessageQueue } = await import('../queue/MessageQueue');
+    const { getMessageQueue } = await import('@/infrastructure/queue/MessageQueue');
     const messageQueue = getMessageQueue();
 
     const jobId = await messageQueue.addFileChunkingJob({

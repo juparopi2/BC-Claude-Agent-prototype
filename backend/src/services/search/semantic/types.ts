@@ -19,6 +19,8 @@ export interface SemanticSearchResult {
   fileName: string;
   relevanceScore: number;  // Max score from chunks
   topChunks: SemanticChunk[];
+  isImage?: boolean;       // true if this is an image result
+  mimeType?: string;       // MIME type for frontend display
 }
 
 export interface SemanticSearchResponse {

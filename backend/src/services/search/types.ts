@@ -55,3 +55,35 @@ export interface IndexStats {
   documentCount: number;
   storageSize: number;
 }
+
+// ===== Image Search Types =====
+
+/**
+ * Parameters for indexing an image embedding
+ */
+export interface ImageIndexParams {
+  fileId: string;
+  userId: string;
+  embedding: number[];
+  fileName: string;
+}
+
+/**
+ * Parameters for image search query
+ */
+export interface ImageSearchQuery {
+  embedding: number[];
+  userId: string;
+  top?: number;
+  minScore?: number;
+}
+
+/**
+ * Result from image search
+ */
+export interface ImageSearchResult {
+  fileId: string;
+  fileName: string;
+  score: number;
+  isImage: true;
+}

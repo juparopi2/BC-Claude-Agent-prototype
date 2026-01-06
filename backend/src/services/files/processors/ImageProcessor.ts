@@ -125,6 +125,9 @@ export class ImageProcessor implements DocumentProcessor {
       // Step 4: Generate image embedding
       logger.info({ fileName }, 'Generating image embedding via Azure Computer Vision');
 
+      // Store embedding for return in result
+      let generatedEmbedding: number[] | undefined;
+
       try {
         const embeddingService = EmbeddingService.getInstance();
 
@@ -136,6 +139,9 @@ export class ImageProcessor implements DocumentProcessor {
           'image-processor', // placeholder userId
           fileName // use fileName as placeholder fileId
         );
+
+        // Store the embedding for return
+        generatedEmbedding = embedding.embedding;
 
         metadata.embeddingGenerated = true;
         metadata.embeddingDimensions = embedding.embedding.length;
@@ -161,12 +167,14 @@ export class ImageProcessor implements DocumentProcessor {
         );
       }
 
-      // Step 5: Return result
+      // Step 5: Return result with embedding
       const result: ExtractionResult = {
         // Images have no extractable text - use descriptive placeholder
         // This helps with basic text search ("find images in folder X")
         text: `[Image: ${fileName}] Format: ${imageFormat}, Size: ${buffer.length} bytes`,
         metadata,
+        // Include embedding for persistence in FileProcessingService
+        imageEmbedding: generatedEmbedding,
       };
 
       logger.info(

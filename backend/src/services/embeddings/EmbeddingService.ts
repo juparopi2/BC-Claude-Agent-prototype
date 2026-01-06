@@ -185,6 +185,92 @@ export class EmbeddingService {
   }
 
   /**
+   * Generates a 1024d embedding for a text query using Azure Vision VectorizeText API.
+   *
+   * This embedding is in the SAME vector space as image embeddings (VectorizeImage),
+   * enabling text-to-image semantic search. For example, searching "sunset over mountains"
+   * will find images semantically related to sunsets and mountains.
+   *
+   * @param text The text query to embed (max ~77 tokens per Azure Vision docs)
+   * @param userId The ID of the user requesting the embedding
+   * @param fileId Optional file ID for tracking (defaults to 'direct')
+   * @returns ImageEmbedding with 1024 dimensions
+   */
+  async generateImageQueryEmbedding(text: string, userId: string, fileId = 'direct'): Promise<ImageEmbedding> {
+    if (!this.config.visionEndpoint || !this.config.visionKey) {
+      throw new Error('Azure Vision not configured');
+    }
+
+    if (!text || text.trim().length === 0) {
+      throw new Error('Text query cannot be empty');
+    }
+
+    // Check cache first (different prefix for image query embeddings)
+    const cacheKey = `img-query:${this.getCacheKey(text)}`;
+    const cache = this.getCache();
+
+    try {
+      const cached = await cache.get(cacheKey);
+      if (cached) {
+        const result = JSON.parse(cached) as ImageEmbedding;
+        result.createdAt = new Date(result.createdAt);
+        logger.debug({ userId, textLength: text.length }, 'Image query embedding cache hit');
+        return result;
+      }
+    } catch (error) {
+      logger.warn({ error }, 'Error reading image query embedding from cache');
+    }
+
+    // API Endpoint: VectorizeText (same embedding space as VectorizeImage)
+    // https://<endpoint>/computervision/retrieval:vectorizeText?api-version=2024-02-01&model-version=2023-04-15
+    const url = `${this.config.visionEndpoint}/computervision/retrieval:vectorizeText?api-version=2024-02-01&model-version=2023-04-15`;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Ocp-Apim-Subscription-Key': this.config.visionKey
+      },
+      body: JSON.stringify({ text })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Vision VectorizeText API Error: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    const data = await response.json() as { vector: number[]; modelVersion: string };
+
+    const result: ImageEmbedding = {
+      embedding: data.vector,
+      model: `vectorize-text-${data.modelVersion}`,
+      imageSize: 0, // Not applicable for text queries
+      userId,
+      createdAt: new Date()
+    };
+
+    // Cache the result (7 days)
+    try {
+      await cache.set(cacheKey, JSON.stringify(result), 'EX', 604800);
+    } catch (error) {
+      logger.warn({ error }, 'Error caching image query embedding');
+    }
+
+    // Track usage for billing (fire-and-forget)
+    // For text queries to image space, we track as image type with text length
+    this.trackImageQueryEmbeddingUsage(userId, fileId, text.length).catch((err) => {
+      logger.warn({ err, userId, fileId }, 'Failed to track image query embedding usage');
+    });
+
+    logger.debug(
+      { userId, textLength: text.length, dimensions: result.embedding.length },
+      'Generated image query embedding'
+    );
+
+    return result;
+  }
+
+  /**
    * Generates vector embeddings for a batch of texts.
    * optimized with Redis caching - only generates embeddings for non-cached texts.
    * @param texts Array of texts to embed
@@ -348,6 +434,33 @@ export class EmbeddingService {
     logger.debug(
       { userId, fileId, imageSize },
       'Image embedding usage tracked'
+    );
+  }
+
+  /**
+   * Track image query embedding usage for billing (helper method)
+   *
+   * For text-to-image search queries using VectorizeText API.
+   *
+   * @param userId User ID for usage attribution
+   * @param fileId File ID for tracking
+   * @param textLength Length of the text query
+   */
+  private async trackImageQueryEmbeddingUsage(
+    userId: string,
+    fileId: string,
+    textLength: number
+  ): Promise<void> {
+    const usageTrackingService = getUsageTrackingService();
+    // Track as 'image_query' type, count=1 per query
+    await usageTrackingService.trackEmbedding(userId, fileId, 1, 'image', {
+      query_type: 'image_query',
+      text_length: textLength,
+    });
+
+    logger.debug(
+      { userId, fileId, textLength },
+      'Image query embedding usage tracked'
     );
   }
 }

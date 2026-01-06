@@ -31,7 +31,7 @@ if (IMAGE_MIME_TYPES.has(mimeType)) {
 
 ```bash
 # Verificado via AZ CLI 2026-01-06
-az resource list --resource-group rg-bcagent-app-dev --query "[].{name:name, type:type}"
+az resource list --resource-group rg-BCAgentPrototype-data-dev --query "[].{name:name, type:type}"
 
 # Computer Vision (VectorizeImage API)
 Name: cv-bcagent-dev

@@ -98,7 +98,7 @@ export const indexSchema: SearchIndex = {
       type: 'Collection(Edm.Single)',
       searchable: true,
       vectorSearchDimensions: 1536,
-      vectorSearchProfileName: 'hnsw-profile-text',
+      vectorSearchProfileName: 'hnsw-profile',
     },
     {
       name: 'chunkIndex',
@@ -141,7 +141,7 @@ export const indexSchema: SearchIndex = {
     algorithms: [
       // Text algorithm (existing)
       {
-        name: 'hnsw-algorithm-text',
+        name: 'hnsw-algorithm',
         kind: 'hnsw',
         hnswParameters: {
           metric: 'cosine',
@@ -165,8 +165,8 @@ export const indexSchema: SearchIndex = {
     profiles: [
       // Text profile (renamed for clarity)
       {
-        name: 'hnsw-profile-text',
-        algorithmConfigurationName: 'hnsw-algorithm-text',
+        name: 'hnsw-profile',
+        algorithmConfigurationName: 'hnsw-algorithm',
       },
       // Image profile (NEW)
       {

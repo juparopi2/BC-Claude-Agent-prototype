@@ -3,12 +3,34 @@ import { SearchIndex } from '@azure/search-documents';
 export const INDEX_NAME = 'file-chunks-index';
 
 /**
+ * Text profile name constant for use in code
+ */
+export const TEXT_PROFILE_NAME = 'hnsw-profile';
+
+/**
+ * Image profile name constant for use in code
+ */
+export const IMAGE_PROFILE_NAME = 'hnsw-profile-image';
+
+/**
+ * Algorithm name constants
+ */
+export const TEXT_ALGORITHM_NAME = 'hnsw-algorithm';
+export const IMAGE_ALGORITHM_NAME = 'hnsw-algorithm-image';
+
+/**
  * Azure AI Search Index Schema Definition.
- * Configured for HNSW vector search with 1536 dimensions (OpenAI text-embedding-3-small).
+ *
+ * Supports two vector search modes:
+ * - Text embeddings: 1536 dimensions (OpenAI text-embedding-3-small)
+ * - Image embeddings: 1024 dimensions (Azure Computer Vision VectorizeImage)
+ *
+ * Both use HNSW algorithm with cosine similarity for semantic search.
  */
 export const indexSchema: SearchIndex = {
   name: INDEX_NAME,
   fields: [
+    // ===== Existing Fields =====
     {
       name: 'chunkId',
       type: 'Edm.String',
@@ -48,7 +70,7 @@ export const indexSchema: SearchIndex = {
       type: 'Collection(Edm.Single)',
       searchable: true,
       vectorSearchDimensions: 1536,
-      vectorSearchProfileName: 'hnsw-profile',
+      vectorSearchProfileName: TEXT_PROFILE_NAME,
     },
     {
       name: 'chunkIndex',
@@ -81,18 +103,40 @@ export const indexSchema: SearchIndex = {
       filterable: true,
       sortable: true,
       facetable: false
-    }
+    },
+
+    // ===== NEW: Image Search Fields =====
+    {
+      name: 'imageVector',
+      type: 'Collection(Edm.Single)',
+      searchable: true,
+      vectorSearchDimensions: 1024, // Azure Computer Vision VectorizeImage dimensions
+      vectorSearchProfileName: IMAGE_PROFILE_NAME,
+    },
+    {
+      name: 'isImage',
+      type: 'Edm.Boolean',
+      searchable: false,
+      filterable: true, // Filter for image-only searches
+      sortable: false,
+      facetable: true
+    },
   ],
+
   vectorSearch: {
     profiles: [
       {
-        name: 'hnsw-profile',
-        algorithmConfigurationName: 'hnsw-algorithm'
-      }
+        name: TEXT_PROFILE_NAME,
+        algorithmConfigurationName: TEXT_ALGORITHM_NAME
+      },
+      {
+        name: IMAGE_PROFILE_NAME,
+        algorithmConfigurationName: IMAGE_ALGORITHM_NAME
+      },
     ],
     algorithms: [
       {
-        name: 'hnsw-algorithm',
+        name: TEXT_ALGORITHM_NAME,
         kind: 'hnsw',
         parameters: {
           m: 4,               // Bi-directional links per node (lower = faster build, less precision)
@@ -100,7 +144,17 @@ export const indexSchema: SearchIndex = {
           efSearch: 500,       // Size of dynamic candidate list during search (higher = better recall)
           metric: 'cosine'
         }
-      }
+      },
+      {
+        name: IMAGE_ALGORITHM_NAME,
+        kind: 'hnsw',
+        parameters: {
+          m: 4,
+          efConstruction: 400,
+          efSearch: 500,
+          metric: 'cosine'
+        }
+      },
     ]
   }
 };

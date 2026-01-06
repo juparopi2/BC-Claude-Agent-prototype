@@ -236,7 +236,7 @@ describe('EmbeddingService', () => {
     it('should generate embedding for image buffer', async () => {
         const service = EmbeddingService.getInstance();
         const mockBuffer = Buffer.from('fake-image');
-        
+
         // Mock fetch usage
         // We need to define global.fetch mock or inject it
         const mockFetch = vi.fn().mockResolvedValue({
@@ -253,21 +253,21 @@ describe('EmbeddingService', () => {
         // @ts-ignore
         env.AZURE_VISION_KEY = 'vision-key';
 
-        // Re-init to pick up vision config? 
-        // Logic might check config at call time or init. 
+        // Re-init to pick up vision config?
+        // Logic might check config at call time or init.
         // If init, we need to reset instance.
         // But let's assume methods read env or config property is updatable.
         // Actually constructor reads Env.
-        
+
         // Reset singleton
         // @ts-ignore
         EmbeddingService.instance = undefined;
         // @ts-ignore
         service.config = { ...service.config, visionEndpoint: 'https://vision.test', visionKey: 'vision-key' };
-       
+
         // We'll trust the method implementation to handle config.
         // But for test reliability, let's create a new instance with mocks.
-        
+
         const instance = EmbeddingService.getInstance();
 
         const result = await instance.generateImageEmbedding(mockBuffer, 'user-123');
@@ -284,6 +284,138 @@ describe('EmbeddingService', () => {
                 })
             })
         );
+    });
+  });
+
+  describe('generateImageQueryEmbedding', () => {
+    beforeEach(() => {
+      // Reset singleton
+      // @ts-ignore
+      EmbeddingService.instance = undefined;
+      // @ts-ignore
+      env.AZURE_VISION_ENDPOINT = 'https://vision.test';
+      // @ts-ignore
+      env.AZURE_VISION_KEY = 'vision-key';
+    });
+
+    it('should generate 1024d embedding for text query using VectorizeText API', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          vector: new Array(1024).fill(0.5),
+          modelVersion: '2023-04-15'
+        })
+      });
+      global.fetch = mockFetch;
+
+      const service = EmbeddingService.getInstance();
+      // @ts-ignore
+      service.cache = { get: vi.fn().mockResolvedValue(null), set: vi.fn() };
+
+      const result = await service.generateImageQueryEmbedding('sunset over mountains', 'user-123');
+
+      expect(result).toBeDefined();
+      expect(result.embedding).toHaveLength(1024);
+      expect(result.userId).toBe('user-123');
+      expect(result.model).toContain('vectorize-text');
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('retrieval:vectorizeText'),
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({
+            'Ocp-Apim-Subscription-Key': 'vision-key',
+            'Content-Type': 'application/json'
+          }),
+          body: JSON.stringify({ text: 'sunset over mountains' })
+        })
+      );
+    });
+
+    it('should return cached embedding if available', async () => {
+      const mockResult = {
+        embedding: new Array(1024).fill(0.3),
+        model: 'vectorize-text-2023-04-15',
+        imageSize: 0,
+        userId: 'user-123',
+        createdAt: new Date().toISOString()
+      };
+
+      const mockGet = vi.fn().mockResolvedValue(JSON.stringify(mockResult));
+      const mockFetch = vi.fn();
+      global.fetch = mockFetch;
+
+      const service = EmbeddingService.getInstance();
+      // @ts-ignore
+      service.cache = { get: mockGet, set: vi.fn() };
+
+      const result = await service.generateImageQueryEmbedding('cached query', 'user-123');
+
+      expect(mockGet).toHaveBeenCalled();
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(result.embedding).toEqual(mockResult.embedding);
+    });
+
+    it('should cache new embeddings with img-query prefix', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          vector: new Array(1024).fill(0.4),
+          modelVersion: '2023-04-15'
+        })
+      });
+      global.fetch = mockFetch;
+
+      const mockGet = vi.fn().mockResolvedValue(null);
+      const mockSet = vi.fn();
+
+      const service = EmbeddingService.getInstance();
+      // @ts-ignore
+      service.cache = { get: mockGet, set: mockSet };
+
+      await service.generateImageQueryEmbedding('new query', 'user-123');
+
+      expect(mockGet).toHaveBeenCalledWith(expect.stringContaining('img-query:'));
+      expect(mockSet).toHaveBeenCalled();
+    });
+
+    it('should throw error when Azure Vision is not configured', async () => {
+      // @ts-ignore
+      env.AZURE_VISION_ENDPOINT = undefined;
+      // @ts-ignore
+      env.AZURE_VISION_KEY = undefined;
+      // @ts-ignore
+      EmbeddingService.instance = undefined;
+
+      const service = EmbeddingService.getInstance();
+
+      await expect(service.generateImageQueryEmbedding('test', 'user-123'))
+        .rejects.toThrow('Azure Vision not configured');
+    });
+
+    it('should throw error for empty text', async () => {
+      const service = EmbeddingService.getInstance();
+      // @ts-ignore
+      service.cache = { get: vi.fn().mockResolvedValue(null), set: vi.fn() };
+
+      await expect(service.generateImageQueryEmbedding('', 'user-123'))
+        .rejects.toThrow('Text query cannot be empty');
+    });
+
+    it('should propagate API errors', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 500,
+        statusText: 'Internal Server Error',
+        text: async () => 'Server error'
+      });
+      global.fetch = mockFetch;
+
+      const service = EmbeddingService.getInstance();
+      // @ts-ignore
+      service.cache = { get: vi.fn().mockResolvedValue(null), set: vi.fn() };
+
+      await expect(service.generateImageQueryEmbedding('test query', 'user-123'))
+        .rejects.toThrow('Vision VectorizeText API Error');
     });
   });
 });

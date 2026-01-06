@@ -85,6 +85,18 @@ export interface ToolState {
 
   /** Timestamp when tool completed/failed (undefined until done) */
   completedAt?: Date;
+
+  /**
+   * Pre-allocated sequence number for tool_use_requested event.
+   * Set when tool_request is registered with pre-allocated sequence.
+   */
+  preAllocatedToolUseSeq?: number;
+
+  /**
+   * Pre-allocated sequence number for tool_use_completed event.
+   * Set when tool_response completes the lifecycle.
+   */
+  preAllocatedToolResultSeq?: number;
 }
 
 /**
@@ -119,6 +131,10 @@ export interface IToolPersistenceCoordinator {
       success: boolean;
       error?: string;
       timestamp: string;
+      /** Pre-allocated sequence for tool_use_requested event */
+      preAllocatedToolUseSeq?: number;
+      /** Pre-allocated sequence for tool_use_completed event */
+      preAllocatedToolResultSeq?: number;
     }>
   ): void;
 }
@@ -143,12 +159,19 @@ export interface IToolLifecycleManager {
    * Register a new tool request.
    * Called when tool_request event is received.
    * Does NOT persist - just tracks state in memory.
+   *
+   * @param sessionId - Session ID
+   * @param toolUseId - Unique tool execution ID
+   * @param toolName - Name of the tool
+   * @param args - Tool input arguments
+   * @param preAllocatedSeq - Pre-allocated sequence number for tool_use_requested event
    */
   onToolRequested(
     sessionId: string,
     toolUseId: string,
     toolName: string,
-    args: Record<string, unknown>
+    args: Record<string, unknown>,
+    preAllocatedSeq?: number
   ): void;
 
   /**
@@ -156,13 +179,21 @@ export interface IToolLifecycleManager {
    * Called when tool_response event is received.
    * Returns the complete ToolState with input+output for persistence.
    * Returns null if tool_request was never received (orphan response).
+   *
+   * @param sessionId - Session ID
+   * @param toolUseId - Unique tool execution ID
+   * @param result - Tool output/result
+   * @param success - Whether tool succeeded
+   * @param error - Error message if failed
+   * @param preAllocatedSeq - Pre-allocated sequence number for tool_use_completed event
    */
   onToolCompleted(
     sessionId: string,
     toolUseId: string,
     result: string,
     success: boolean,
-    error?: string
+    error?: string,
+    preAllocatedSeq?: number
   ): ToolState | null;
 
   /**

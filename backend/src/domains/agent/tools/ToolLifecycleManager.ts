@@ -69,12 +69,19 @@ export class ToolLifecycleManager implements IToolLifecycleManager {
   /**
    * Register a new tool request.
    * Stores in memory without persistence.
+   *
+   * @param sessionId - Session ID
+   * @param toolUseId - Unique tool execution ID
+   * @param toolName - Name of the tool
+   * @param args - Tool input arguments
+   * @param preAllocatedSeq - Pre-allocated sequence number for tool_use_requested event
    */
   onToolRequested(
     sessionId: string,
     toolUseId: string,
     toolName: string,
-    args: Record<string, unknown>
+    args: Record<string, unknown>,
+    preAllocatedSeq?: number
   ): void {
     // Check for duplicate request (should not happen but defensive)
     if (this.pendingTools.has(toolUseId)) {
@@ -92,13 +99,14 @@ export class ToolLifecycleManager implements IToolLifecycleManager {
       state: 'requested',
       args,
       requestedAt: new Date(),
+      preAllocatedToolUseSeq: preAllocatedSeq,
     };
 
     this.pendingTools.set(toolUseId, toolState);
     this.stats.pending++;
 
     logger.debug(
-      { toolUseId, toolName, sessionId, pendingCount: this.stats.pending },
+      { toolUseId, toolName, sessionId, pendingCount: this.stats.pending, preAllocatedSeq },
       'Tool request registered'
     );
   }
@@ -106,13 +114,21 @@ export class ToolLifecycleManager implements IToolLifecycleManager {
   /**
    * Complete a tool execution.
    * Returns complete state with input+output for unified persistence.
+   *
+   * @param sessionId - Session ID
+   * @param toolUseId - Unique tool execution ID
+   * @param result - Tool output/result
+   * @param success - Whether tool succeeded
+   * @param error - Error message if failed
+   * @param preAllocatedSeq - Pre-allocated sequence number for tool_use_completed event
    */
   onToolCompleted(
     sessionId: string,
     toolUseId: string,
     result: string,
     success: boolean,
-    error?: string
+    error?: string,
+    preAllocatedSeq?: number
   ): ToolState | null {
     const pendingTool = this.pendingTools.get(toolUseId);
 
@@ -138,13 +154,15 @@ export class ToolLifecycleManager implements IToolLifecycleManager {
       return null;
     }
 
-    // Update state to completed/failed
+    // Update state to completed/failed with both pre-allocated sequences
     const completedState: ToolState = {
       ...pendingTool,
       state: success ? 'completed' : 'failed',
       result,
       error: success ? undefined : error,
       completedAt: new Date(),
+      // preAllocatedToolUseSeq is preserved from pendingTool
+      preAllocatedToolResultSeq: preAllocatedSeq,
     };
 
     // Remove from pending
@@ -168,6 +186,8 @@ export class ToolLifecycleManager implements IToolLifecycleManager {
         success,
         hasError: !!error,
         durationMs,
+        preAllocatedToolUseSeq: completedState.preAllocatedToolUseSeq,
+        preAllocatedToolResultSeq: completedState.preAllocatedToolResultSeq,
       },
       'Tool execution completed'
     );

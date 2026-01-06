@@ -124,6 +124,18 @@ export class BatchResultNormalizer implements IBatchResultNormalizer {
           continue;
         }
 
+        // WARN: AI message that produced no events = potential data loss
+        if (messageEvents.length === 0) {
+          logger.warn({
+            sessionId: adapter.sessionId,
+            messageIndex: i,
+            messageType: msgType,
+            contentType: typeof msg.content,
+            contentIsArray: Array.isArray(msg.content),
+            contentLength: Array.isArray(msg.content) ? msg.content.length : (typeof msg.content === 'string' ? msg.content.length : 0),
+          }, 'RAW_ANTHROPIC: AI message produced ZERO events - possible data loss');
+        }
+
         // Reindex events with global counter
         for (const event of messageEvents) {
           allEvents.push({

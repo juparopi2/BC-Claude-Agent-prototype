@@ -101,6 +101,17 @@ export interface BaseNormalizedEvent {
 
   /** Provider that generated this event (for debugging) */
   provider?: NormalizedProvider;
+
+  /**
+   * Pre-allocated sequence number for deterministic ordering.
+   *
+   * When set, this sequence number was reserved atomically BEFORE
+   * processing events, fixing the race condition where async tool
+   * events would get sequence numbers after sync events.
+   *
+   * Only populated for non-transient events after pre-allocation.
+   */
+  preAllocatedSequenceNumber?: number;
 }
 
 // ============================================================================

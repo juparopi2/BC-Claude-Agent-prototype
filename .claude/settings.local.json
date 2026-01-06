@@ -173,7 +173,8 @@
       "Bash(else echo \"✅ DELETED: app/test-socket/page.tsx\")",
       "WebFetch(domain:www.dragonflydb.io)",
       "WebFetch(domain:www.azure.cn)",
-      "Bash(docker exec:*)"
+      "Bash(docker exec:*)",
+      "Bash(NODE_OPTIONS='--max-old-space-size=16384' npx tsc:*)"
     ],
     "deny": [],
     "ask": []

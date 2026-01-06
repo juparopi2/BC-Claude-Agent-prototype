@@ -42,6 +42,8 @@ import type {
   IAgentOrchestrator,
   AgentExecutionResult,
   AgentEvent,
+  MessageWithMetadata,
+  AgentEventWithSequence,
 } from './types';
 import type {
   StopReason,
@@ -63,7 +65,9 @@ import {
   getPersistenceCoordinator,
   type IPersistenceCoordinator,
   type ToolExecution as PersistenceToolExecution,
+  type PersistedEvent,
 } from '@domains/agent/persistence';
+import { getEventStore, type EventStore } from '@services/events/EventStore';
 
 /**
  * Dependencies for AgentOrchestrator (for testing).
@@ -72,6 +76,7 @@ export interface AgentOrchestratorDependencies {
   fileContextPreparer?: IFileContextPreparer;
   persistenceCoordinator?: IPersistenceCoordinator;
   normalizer?: BatchResultNormalizer;
+  eventStore?: EventStore;
 }
 
 /**
@@ -94,11 +99,13 @@ export class AgentOrchestrator implements IAgentOrchestrator {
   private readonly fileContextPreparer: IFileContextPreparer;
   private readonly persistenceCoordinator: IPersistenceCoordinator;
   private readonly normalizer: BatchResultNormalizer;
+  private readonly eventStore: EventStore;
 
   constructor(deps?: AgentOrchestratorDependencies) {
     this.fileContextPreparer = deps?.fileContextPreparer ?? createFileContextPreparer();
     this.persistenceCoordinator = deps?.persistenceCoordinator ?? getPersistenceCoordinator();
     this.normalizer = deps?.normalizer ?? getBatchResultNormalizer();
+    this.eventStore = deps?.eventStore ?? getEventStore();
   }
 
   /**
@@ -216,6 +223,23 @@ export class AgentOrchestrator implements IAgentOrchestrator {
         signal: AbortSignal.timeout(ctx.timeoutMs),
       });
 
+      // DEBUG: Log raw Anthropic response structure
+      this.logger.debug({
+        sessionId,
+        rawMessageCount: result.messages?.length ?? 0,
+        rawMessages: result.messages?.map((msg, idx) => {
+          const msgWithMeta = msg as MessageWithMetadata;
+          return {
+            index: idx,
+            type: msg._getType?.(),
+            contentType: typeof msg.content,
+            blockCount: Array.isArray(msg.content) ? msg.content.length : 1,
+            stopReason: msgWithMeta.response_metadata?.stop_reason,
+            messageId: msgWithMeta.id,
+          };
+        }),
+      }, 'RAW_ANTHROPIC: Graph invoke result');
+
       // =========================================================================
       // 5. NORMALIZE RESULT (replaces extractContent)
       // =========================================================================
@@ -231,6 +255,42 @@ export class AgentOrchestrator implements IAgentOrchestrator {
         enableThinking: options?.enableThinking,
         thinkingBudget: options?.thinkingBudget,
       }, 'Normalized events from graph result');
+
+      // =========================================================================
+      // 5.1 PRE-ALLOCATE SEQUENCE NUMBERS (fixes race condition)
+      // =========================================================================
+      // Count events that need persistence (non-transient events)
+      // Each tool needs 2 sequences: tool_use_requested + tool_use_completed
+      let sequencesNeeded = 0;
+      for (const event of normalizedEvents) {
+        if (event.persistenceStrategy !== 'transient') {
+          sequencesNeeded++;
+        }
+      }
+
+      // Reserve all sequences atomically via Redis INCRBY
+      const reservedSeqs = await this.eventStore.reserveSequenceNumbers(
+        sessionId,
+        sequencesNeeded
+      );
+
+      // Assign pre-allocated sequences to events in order
+      let seqIndex = 0;
+      for (const event of normalizedEvents) {
+        if (event.persistenceStrategy !== 'transient') {
+          event.preAllocatedSequenceNumber = reservedSeqs[seqIndex++];
+        }
+      }
+
+      this.logger.debug({
+        sessionId,
+        sequencesNeeded,
+        reservedSeqs,
+        assignments: normalizedEvents.map(e => ({
+          type: e.type,
+          seq: e.preAllocatedSequenceNumber,
+        })),
+      }, 'Pre-allocated sequence numbers for events');
 
       // =========================================================================
       // 6. PROCESS EVENTS IN ORDER (no conditionals!)
@@ -320,7 +380,11 @@ export class AgentOrchestrator implements IAgentOrchestrator {
   }
 
   /**
-   * Process a single normalized event: emit + persist based on strategy.
+   * Process a single normalized event: persist (if required) then emit.
+   *
+   * CRITICAL: Events now have pre-allocated sequence numbers from Phase 5.1.
+   * This fixes the race condition where async tool events would get sequence
+   * numbers after sync events had already been emitted.
    *
    * This is the key simplification: one method handles all event types
    * based on their persistenceStrategy, not their type.
@@ -331,25 +395,42 @@ export class AgentOrchestrator implements IAgentOrchestrator {
     sessionId: string,
     agentMessageId: string
   ): Promise<void> {
-    // Convert to AgentEvent for emission
-    const agentEvent = this.toAgentEvent(event, ctx, agentMessageId);
+    // Get pre-allocated sequence number (assigned in Phase 5.1)
+    const preAllocatedSeq = event.preAllocatedSequenceNumber;
 
-    // Emit to WebSocket
+    // STEP 1: Persist FIRST for sync_required events (with pre-allocated seq)
+    let persistResult: PersistedEvent | undefined;
+    if (event.persistenceStrategy === 'sync_required') {
+      persistResult = await this.persistSyncEvent(event, sessionId, agentMessageId, preAllocatedSeq);
+    }
+
+    // FIX: For thinking events, use agentMessageId as eventId for consistency with persistence
+    // This ensures the emitted eventId matches the messageId stored in DB
+    if (event.type === 'thinking') {
+      event.eventId = agentMessageId;
+    }
+
+    // STEP 2: Convert to AgentEvent for emission
+    const agentEvent: AgentEventWithSequence = this.toAgentEvent(event, ctx, agentMessageId);
+
+    // STEP 3: Set sequenceNumber from pre-allocated OR persist result
+    // Pre-allocated takes precedence for consistent ordering
+    if (preAllocatedSeq !== undefined) {
+      agentEvent.sequenceNumber = preAllocatedSeq;
+      agentEvent.persistenceState = event.persistenceStrategy === 'transient'
+        ? 'transient'
+        : 'persisted';
+    } else if (persistResult?.sequenceNumber !== undefined) {
+      agentEvent.persistenceState = 'persisted';
+      agentEvent.sequenceNumber = persistResult.sequenceNumber;
+    }
+
+    // STEP 4: Emit to WebSocket (now with correct sequenceNumber)
     this.emitEventSync(ctx, agentEvent);
 
-    // Persist based on strategy
-    switch (event.persistenceStrategy) {
-      case 'transient':
-        // No persistence needed
-        break;
-
-      case 'sync_required':
-        await this.persistSyncEvent(event, sessionId, agentMessageId);
-        break;
-
-      case 'async_allowed':
-        this.persistAsyncEvent(event, sessionId, ctx);
-        break;
+    // STEP 5: Handle async persistence (tools) with pre-allocated seq
+    if (event.persistenceStrategy === 'async_allowed') {
+      this.persistAsyncEvent(event, sessionId, ctx, preAllocatedSeq);
     }
   }
 
@@ -440,38 +521,50 @@ export class AgentOrchestrator implements IAgentOrchestrator {
 
   /**
    * Persist an event synchronously (for sync_required events).
+   * Uses pre-allocated sequence number if provided for deterministic ordering.
+   * Returns PersistedEvent with sequenceNumber for updating the emitted event.
    */
   private async persistSyncEvent(
     event: NormalizedAgentEvent,
     sessionId: string,
-    agentMessageId: string
-  ): Promise<void> {
+    agentMessageId: string,
+    preAllocatedSeq?: number
+  ): Promise<PersistedEvent | undefined> {
     switch (event.type) {
       case 'thinking': {
         const thinkingEvent = event as NormalizedThinkingEvent;
-        await this.persistenceCoordinator.persistThinking(sessionId, {
-          messageId: agentMessageId,
-          content: thinkingEvent.content,
-          tokenUsage: thinkingEvent.tokenUsage ?? {
-            inputTokens: 0,
-            outputTokens: 0,
+        const result = await this.persistenceCoordinator.persistThinking(
+          sessionId,
+          {
+            messageId: agentMessageId,
+            content: thinkingEvent.content,
+            tokenUsage: thinkingEvent.tokenUsage ?? {
+              inputTokens: 0,
+              outputTokens: 0,
+            },
           },
-        });
-        break;
+          preAllocatedSeq
+        );
+        return result;
       }
 
       case 'assistant_message': {
         const msgEvent = event as NormalizedAssistantMessageEvent;
-        const persistResult = await this.persistenceCoordinator.persistAgentMessage(sessionId, {
-          messageId: agentMessageId,
-          content: msgEvent.content,
-          stopReason: msgEvent.stopReason,
-          model: msgEvent.model,
-          tokenUsage: {
-            inputTokens: msgEvent.tokenUsage.inputTokens,
-            outputTokens: msgEvent.tokenUsage.outputTokens,
+        // FIX: Use Anthropic's messageId (msg_*) This ensures each assistant message gets a unique ID for persistence
+        const persistResult = await this.persistenceCoordinator.persistAgentMessage(
+          sessionId,
+          {
+            messageId: msgEvent.messageId,
+            content: msgEvent.content,
+            stopReason: msgEvent.stopReason,
+            model: msgEvent.model,
+            tokenUsage: {
+              inputTokens: msgEvent.tokenUsage.inputTokens,
+              outputTokens: msgEvent.tokenUsage.outputTokens,
+            },
           },
-        });
+          preAllocatedSeq
+        );
 
         // Wait for BullMQ to complete DB write
         if (persistResult.jobId) {
@@ -481,8 +574,11 @@ export class AgentOrchestrator implements IAgentOrchestrator {
             this.logger.warn({ sessionId, jobId: persistResult.jobId, err }, 'Timeout awaiting persistence');
           }
         }
-        break;
+        return persistResult;
       }
+
+      default:
+        return undefined;
     }
   }
 
@@ -490,8 +586,8 @@ export class AgentOrchestrator implements IAgentOrchestrator {
    * Persist an event asynchronously (for async_allowed events).
    *
    * Uses ToolLifecycleManager for unified persistence:
-   * - tool_request: Register in memory, DO NOT persist yet
-   * - tool_response: Combine with stored request, persist with complete input+output
+   * - tool_request: Register in memory with pre-allocated sequence, DO NOT persist yet
+   * - tool_response: Combine with stored request, persist with complete input+output and sequences
    *
    * This fixes the bug where tool_request and tool_response were persisted separately,
    * resulting in 5+ events per tool instead of 2.
@@ -499,38 +595,46 @@ export class AgentOrchestrator implements IAgentOrchestrator {
   private persistAsyncEvent(
     event: NormalizedAgentEvent,
     sessionId: string,
-    ctx: ExecutionContextSync
+    ctx: ExecutionContextSync,
+    preAllocatedSeq?: number
   ): void {
-    // Handle tool_request: Register in lifecycle manager, NO persistence yet
+    // Handle tool_request: Register in lifecycle manager with pre-allocated seq, NO persistence yet
     if (event.type === 'tool_request') {
       const toolReqEvent = event as NormalizedToolRequestEvent;
 
       // Register tool request in memory - will be combined with response later
+      // Pass preAllocatedSeq to store it for later persistence
       ctx.toolLifecycleManager.onToolRequested(
         sessionId,
         toolReqEvent.toolUseId,
         toolReqEvent.toolName,
-        toolReqEvent.args
+        toolReqEvent.args,
+        preAllocatedSeq
       );
 
       this.logger.debug(
-        { toolUseId: toolReqEvent.toolUseId, toolName: toolReqEvent.toolName },
+        {
+          toolUseId: toolReqEvent.toolUseId,
+          toolName: toolReqEvent.toolName,
+          preAllocatedSeq,
+        },
         'Tool request registered in lifecycle manager (awaiting response)'
       );
       return; // DO NOT persist yet - wait for tool_response
     }
 
-    // Handle tool_response: Complete and persist with unified input+output
+    // Handle tool_response: Complete and persist with unified input+output and sequences
     if (event.type === 'tool_response') {
       const toolRespEvent = event as NormalizedToolResponseEvent;
 
-      // Complete the tool lifecycle and get unified state
+      // Complete the tool lifecycle and get unified state (includes stored preAllocatedSeq)
       const completeState = ctx.toolLifecycleManager.onToolCompleted(
         sessionId,
         toolRespEvent.toolUseId,
         toolRespEvent.result ?? '',
         toolRespEvent.success,
-        toolRespEvent.error
+        toolRespEvent.error,
+        preAllocatedSeq // tool_response's pre-allocated sequence
       );
 
       if (completeState) {
@@ -543,9 +647,12 @@ export class AgentOrchestrator implements IAgentOrchestrator {
           success: completeState.state === 'completed',
           error: completeState.error,
           timestamp: completeState.completedAt?.toISOString() ?? new Date().toISOString(),
+          // Pre-allocated sequences for deterministic ordering
+          preAllocatedToolUseSeq: completeState.preAllocatedToolUseSeq,
+          preAllocatedToolResultSeq: completeState.preAllocatedToolResultSeq,
         };
 
-        // Fire-and-forget persistence with unified data
+        // Fire-and-forget persistence with unified data and pre-allocated sequences
         this.persistenceCoordinator.persistToolEventsAsync(sessionId, [persistenceExec]);
 
         this.logger.debug(
@@ -555,8 +662,10 @@ export class AgentOrchestrator implements IAgentOrchestrator {
             hasInput: Object.keys(completeState.args).length > 0,
             hasOutput: !!completeState.result,
             success: completeState.state === 'completed',
+            preAllocatedToolUseSeq: completeState.preAllocatedToolUseSeq,
+            preAllocatedToolResultSeq: completeState.preAllocatedToolResultSeq,
           },
-          'Tool persisted with unified input+output'
+          'Tool persisted with unified input+output and pre-allocated sequences'
         );
       } else {
         // Orphan response - tool_response without matching tool_request

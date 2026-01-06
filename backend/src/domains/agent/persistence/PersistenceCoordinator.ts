@@ -117,14 +117,17 @@ export class PersistenceCoordinator implements IPersistenceCoordinator {
    * Persist an agent message with full metadata.
    * @param sessionId - Session ID
    * @param data - Agent message data
+   * @param preAllocatedSeq - Pre-allocated sequence number (uses appendEventWithSequence if provided)
    * @returns Persisted event with sequence number
    */
-  async persistAgentMessage(sessionId: string, data: AgentMessageData): Promise<PersistedEvent> {
+  async persistAgentMessage(
+    sessionId: string,
+    data: AgentMessageData,
+    preAllocatedSeq?: number
+  ): Promise<PersistedEvent> {
     try {
       const timestamp = new Date().toISOString();
-
-      // 1. Persist to EventStore FIRST (gets sequence_number)
-      const dbEvent = await this.eventStore.appendEvent(sessionId, 'agent_message_sent', {
+      const payload = {
         message_id: data.messageId,
         content: data.content,
         stop_reason: data.stopReason,
@@ -133,7 +136,12 @@ export class PersistenceCoordinator implements IPersistenceCoordinator {
         output_tokens: data.tokenUsage?.outputTokens,
         timestamp,
         persistenceState: 'persisted',
-      });
+      };
+
+      // 1. Persist to EventStore (use appendEventWithSequence if preAllocatedSeq provided)
+      const dbEvent = preAllocatedSeq !== undefined
+        ? await this.eventStore.appendEventWithSequence(sessionId, 'agent_message_sent', payload, preAllocatedSeq)
+        : await this.eventStore.appendEvent(sessionId, 'agent_message_sent', payload);
 
       // 2. CRITICAL: Validate sequenceNumber
       if (dbEvent.sequence_number === undefined || dbEvent.sequence_number === null) {
@@ -185,19 +193,27 @@ export class PersistenceCoordinator implements IPersistenceCoordinator {
    * Persist thinking content.
    * @param sessionId - Session ID
    * @param data - Thinking data
+   * @param preAllocatedSeq - Pre-allocated sequence number (uses appendEventWithSequence if provided)
    * @returns Persisted event with sequence number
    */
-  async persistThinking(sessionId: string, data: ThinkingData): Promise<PersistedEvent> {
+  async persistThinking(
+    sessionId: string,
+    data: ThinkingData,
+    preAllocatedSeq?: number
+  ): Promise<PersistedEvent> {
     try {
       const timestamp = new Date().toISOString();
-
-      // 1. Persist to EventStore FIRST
-      const dbEvent = await this.eventStore.appendEvent(sessionId, 'agent_thinking_block', {
+      const payload = {
         message_id: data.messageId,
         content: data.content,
         timestamp,
         persistenceState: 'persisted',
-      });
+      };
+
+      // 1. Persist to EventStore (use appendEventWithSequence if preAllocatedSeq provided)
+      const dbEvent = preAllocatedSeq !== undefined
+        ? await this.eventStore.appendEventWithSequence(sessionId, 'agent_thinking_block', payload, preAllocatedSeq)
+        : await this.eventStore.appendEvent(sessionId, 'agent_thinking_block', payload);
 
       // 2. CRITICAL: Validate sequenceNumber
       if (dbEvent.sequence_number === undefined || dbEvent.sequence_number === null) {
@@ -419,26 +435,33 @@ export class PersistenceCoordinator implements IPersistenceCoordinator {
   /**
    * Persist tool executions asynchronously (fire-and-forget).
    * Does not block - persists in background.
+   * Uses pre-allocated sequence numbers when provided for deterministic ordering.
+   *
    * @param sessionId - Session ID
-   * @param executions - Array of tool executions
+   * @param executions - Array of tool executions (may include preAllocatedToolUseSeq/preAllocatedToolResultSeq)
    */
   persistToolEventsAsync(sessionId: string, executions: ToolExecution[]): void {
     // Use IIFE for background processing
     (async () => {
       for (const exec of executions) {
         try {
-          // Persist tool_use
-          const toolUseDbEvent = await this.eventStore.appendEvent(
-            sessionId,
-            'tool_use_requested',
-            {
-              tool_use_id: exec.toolUseId,
-              tool_name: exec.toolName,
-              tool_args: exec.toolInput,
-              timestamp: exec.timestamp,
-              persistenceState: 'persisted',
-            }
-          );
+          const toolUsePayload = {
+            tool_use_id: exec.toolUseId,
+            tool_name: exec.toolName,
+            tool_args: exec.toolInput,
+            timestamp: exec.timestamp,
+            persistenceState: 'persisted',
+          };
+
+          // Persist tool_use (use appendEventWithSequence if preAllocatedToolUseSeq provided)
+          const toolUseDbEvent = exec.preAllocatedToolUseSeq !== undefined
+            ? await this.eventStore.appendEventWithSequence(
+                sessionId,
+                'tool_use_requested',
+                toolUsePayload,
+                exec.preAllocatedToolUseSeq
+              )
+            : await this.eventStore.appendEvent(sessionId, 'tool_use_requested', toolUsePayload);
 
           await this.messageQueue.addMessagePersistence({
             sessionId,
@@ -457,19 +480,24 @@ export class PersistenceCoordinator implements IPersistenceCoordinator {
             toolUseId: exec.toolUseId,
           });
 
-          // Persist tool_result
-          const toolResultDbEvent = await this.eventStore.appendEvent(
-            sessionId,
-            'tool_use_completed',
-            {
-              tool_use_id: exec.toolUseId,
-              result: exec.toolOutput,
-              success: exec.success,
-              error: exec.error,
-              timestamp: exec.timestamp,
-              persistenceState: 'persisted',
-            }
-          );
+          const toolResultPayload = {
+            tool_use_id: exec.toolUseId,
+            result: exec.toolOutput,
+            success: exec.success,
+            error: exec.error,
+            timestamp: exec.timestamp,
+            persistenceState: 'persisted',
+          };
+
+          // Persist tool_result (use appendEventWithSequence if preAllocatedToolResultSeq provided)
+          const toolResultDbEvent = exec.preAllocatedToolResultSeq !== undefined
+            ? await this.eventStore.appendEventWithSequence(
+                sessionId,
+                'tool_use_completed',
+                toolResultPayload,
+                exec.preAllocatedToolResultSeq
+              )
+            : await this.eventStore.appendEvent(sessionId, 'tool_use_completed', toolResultPayload);
 
           await this.messageQueue.addMessagePersistence({
             sessionId,
@@ -494,6 +522,7 @@ export class PersistenceCoordinator implements IPersistenceCoordinator {
               toolName: exec.toolName,
               toolUseSeqNum: toolUseDbEvent.sequence_number,
               toolResultSeqNum: toolResultDbEvent.sequence_number,
+              usedPreAllocated: exec.preAllocatedToolUseSeq !== undefined,
             },
             'Tool events persisted async'
           );

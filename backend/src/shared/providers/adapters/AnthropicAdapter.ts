@@ -135,6 +135,21 @@ export class AnthropicAdapter implements IProviderAdapter {
 
     // Handle array content (rich blocks)
     if (Array.isArray(content)) {
+      // DEBUG: Log content blocks before processing
+      logger.debug({
+        sessionId: this.sessionId,
+        messageIndex,
+        blockCount: content.length,
+        blocks: (content as ContentBlock[]).map((block, idx) => ({
+          index: idx,
+          type: block.type,
+          hasText: 'text' in block,
+          hasThinking: 'thinking' in block,
+          toolName: 'name' in block ? (block as ToolUseBlock).name : undefined,
+          toolId: 'id' in block ? (block as ToolUseBlock).id : undefined,
+        })),
+      }, 'RAW_ANTHROPIC: Content blocks to process');
+
       let thinkingContent = '';
       let textContent = '';
       const toolRequests: NormalizedToolRequestEvent[] = [];

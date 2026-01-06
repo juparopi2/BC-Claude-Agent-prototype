@@ -104,6 +104,11 @@ const createMessageStore = () =>
                   status: result.success ? 'success' : 'error',
                   result: result.result,
                   error_message: result.error_message,
+                  // FIX: Use tool_result sequence_number for ordering
+                  // The tool should appear at the position where it completed (tool_result seq),
+                  // not where it was requested (tool_use seq). This ensures correct ordering:
+                  // e.g., message(seq 5) → tool(seq 6) instead of tool(seq 3) → message(seq 5)
+                  sequence_number: result.sequence_number || m.sequence_number,
                 } as Message;
               }
             }

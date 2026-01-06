@@ -117,15 +117,19 @@ export function processAgentEventSync(
 
     case 'thinking_complete': {
       const thinkingEvent = event as ThinkingCompleteEvent;
+      // FIX: Use eventIndex as fallback when sequenceNumber is not yet available
+      // This happens for async_allowed events that are emitted before persistence
+      const eventWithIndex = event as { eventIndex?: number };
 
       // Add thinking message
+      // FIX: Use eventId directly (no prefix) to match DB messageId
       messageStore.getState().addMessage({
         type: 'thinking',
-        id: `thinking-${event.eventId}`,
+        id: event.eventId,
         session_id: event.sessionId || '',
         role: 'assistant',
         content: thinkingEvent.content,
-        sequence_number: event.sequenceNumber || 0,
+        sequence_number: event.sequenceNumber || eventWithIndex.eventIndex || 0,
         created_at: new Date().toISOString(),
       });
       break;
@@ -133,17 +137,21 @@ export function processAgentEventSync(
 
     case 'tool_use': {
       const toolEvent = event as ToolUseEvent;
+      // FIX: Use eventIndex as fallback when sequenceNumber is not yet available
+      // Tool events use async_allowed persistence, so they are emitted before DB write
+      const eventWithIndex = event as { eventIndex?: number };
 
+      // FIX: Use toolUseId as message ID to match DB storage (Anthropic's toolu_* ID)
       messageStore.getState().addMessage({
         type: 'tool_use',
-        id: toolEvent.eventId,
+        id: toolEvent.toolUseId,
         session_id: event.sessionId || '',
         role: 'assistant',
         tool_name: toolEvent.toolName,
         tool_args: toolEvent.args,
         status: 'pending',
         tool_use_id: toolEvent.toolUseId,
-        sequence_number: event.sequenceNumber || 0,
+        sequence_number: event.sequenceNumber || eventWithIndex.eventIndex || 0,
         created_at: new Date().toISOString(),
       });
       break;
@@ -152,6 +160,8 @@ export function processAgentEventSync(
     case 'tool_result': {
       const resultEvent = event as ToolResultEvent;
       const toolId = resultEvent.toolUseId;
+      // FIX: Get sequence from tool_result event for completion position
+      const eventWithIndex = event as { eventIndex?: number };
 
       if (!toolId) {
         console.warn('[ProcessAgentEventSync] tool_result missing toolUseId:', resultEvent);
@@ -169,16 +179,21 @@ export function processAgentEventSync(
         break;
       }
 
+      // FIX: Update sequence_number to completion position (tool_result's seq)
+      // This ensures tools appear at completion position, matching DB merge behavior
       messageStore.getState().updateMessage(toolMessage.id, {
         status: resultEvent.success ? 'success' : 'error',
         result: resultEvent.result,
         error_message: resultEvent.error,
+        sequence_number: event.sequenceNumber || eventWithIndex.eventIndex || toolMessage.sequence_number,
       } as Partial<Message>);
       break;
     }
 
     case 'message': {
       const msgEvent = event as MessageEvent;
+      // FIX: Use eventIndex as fallback when sequenceNumber is not yet available
+      const eventWithIndex = event as { eventIndex?: number };
 
       // Add final message
       messageStore.getState().addMessage({
@@ -187,7 +202,7 @@ export function processAgentEventSync(
         session_id: event.sessionId || '',
         role: msgEvent.role,
         content: msgEvent.content,
-        sequence_number: event.sequenceNumber || 0,
+        sequence_number: event.sequenceNumber || eventWithIndex.eventIndex || 0,
         created_at: new Date().toISOString(),
         token_usage: msgEvent.tokenUsage ? {
           input_tokens: msgEvent.tokenUsage.inputTokens,

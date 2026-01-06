@@ -671,6 +671,83 @@ export class EventStore {
       return -1;
     }
   }
+
+  /**
+   * Reserve N sequence numbers atomically for batch event processing.
+   *
+   * This method enables pre-allocation of sequence numbers BEFORE processing
+   * events, which fixes the race condition where async tool events get their
+   * sequence numbers assigned after sync events have already been emitted.
+   *
+   * Uses Redis INCRBY for atomic reservation (single round-trip).
+   *
+   * @param sessionId - Session ID
+   * @param count - Number of sequence numbers to reserve
+   * @returns Array of reserved sequence numbers in order [startSeq, startSeq+1, ..., endSeq]
+   *
+   * @example
+   * // Reserve 5 sequences when current is 2
+   * const seqs = await eventStore.reserveSequenceNumbers(sessionId, 5);
+   * // Returns [3, 4, 5, 6, 7]
+   */
+  public async reserveSequenceNumbers(sessionId: string, count: number): Promise<number[]> {
+    if (count <= 0) return [];
+
+    try {
+      const redis = getRedis();
+      if (!redis) {
+        this.logger.warn('Redis not available, falling back to sequential reservation', { sessionId, count });
+        return this.fallbackReserveSequences(sessionId, count);
+      }
+
+      const key = `event:sequence:${sessionId}`;
+
+      // INCRBY atomically increments and returns the NEW value
+      // If we need 5 sequences and current is 2, INCRBY 5 returns 7
+      // So our sequences are: 3, 4, 5, 6, 7
+      const endSeq = await redis.incrby(key, count);
+      const startSeq = endSeq - count + 1;
+
+      // Set/refresh TTL (7 days)
+      await redis.expire(key, 7 * 24 * 60 * 60);
+
+      this.logger.debug({
+        sessionId,
+        count,
+        startSeq,
+        endSeq,
+      }, 'Reserved sequence numbers atomically');
+
+      // Generate array [startSeq, startSeq+1, ..., endSeq]
+      return Array.from({ length: count }, (_, i) => startSeq + i);
+    } catch (error) {
+      this.logger.error('Failed to reserve sequence numbers', { error, sessionId, count });
+      // Fallback to sequential reservation
+      return this.fallbackReserveSequences(sessionId, count);
+    }
+  }
+
+  /**
+   * Fallback method to reserve sequences one at a time from database.
+   * Used when Redis is unavailable.
+   *
+   * @param sessionId - Session ID
+   * @param count - Number of sequences to reserve
+   * @returns Array of reserved sequence numbers
+   */
+  private async fallbackReserveSequences(sessionId: string, count: number): Promise<number[]> {
+    const sequences: number[] = [];
+    for (let i = 0; i < count; i++) {
+      const seq = await this.fallbackToDatabase(sessionId);
+      sequences.push(seq);
+    }
+    this.logger.debug({
+      sessionId,
+      count,
+      sequences,
+    }, 'Reserved sequence numbers via fallback');
+    return sequences;
+  }
 }
 
 /**

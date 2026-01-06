@@ -146,6 +146,16 @@ export interface ToolExecution {
   success: boolean;
   error?: string;
   timestamp: string;
+  /**
+   * Pre-allocated sequence number for tool_use_requested event.
+   * When provided, uses appendEventWithSequence instead of appendEvent.
+   */
+  preAllocatedToolUseSeq?: number;
+  /**
+   * Pre-allocated sequence number for tool_use_completed event.
+   * When provided, uses appendEventWithSequence instead of appendEvent.
+   */
+  preAllocatedToolResultSeq?: number;
 }
 
 /**
@@ -165,17 +175,27 @@ export interface IPersistenceCoordinator {
    * Persist an agent message with full metadata.
    * @param sessionId - Session ID
    * @param data - Agent message data
+   * @param preAllocatedSeq - Pre-allocated sequence number (uses appendEventWithSequence if provided)
    * @returns Persisted event with sequence number
    */
-  persistAgentMessage(sessionId: string, data: AgentMessageData): Promise<PersistedEvent>;
+  persistAgentMessage(
+    sessionId: string,
+    data: AgentMessageData,
+    preAllocatedSeq?: number
+  ): Promise<PersistedEvent>;
 
   /**
    * Persist thinking content.
    * @param sessionId - Session ID
    * @param data - Thinking data
+   * @param preAllocatedSeq - Pre-allocated sequence number (uses appendEventWithSequence if provided)
    * @returns Persisted event with sequence number
    */
-  persistThinking(sessionId: string, data: ThinkingData): Promise<PersistedEvent>;
+  persistThinking(
+    sessionId: string,
+    data: ThinkingData,
+    preAllocatedSeq?: number
+  ): Promise<PersistedEvent>;
 
   /**
    * Persist tool use request.

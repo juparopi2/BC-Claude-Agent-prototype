@@ -154,7 +154,7 @@ describe('EventRouter', () => {
       expect(receivedEvents).toHaveLength(1);
     });
 
-    it('allows error events after complete', () => {
+    it('blocks error events after complete (transient events are filtered)', () => {
       const mockClient = createMockSocketClient();
 
       router.initialize(
@@ -166,12 +166,13 @@ describe('EventRouter', () => {
       // Complete event
       mockClient._triggerEvent(AgentEventFactory.complete({ sessionId: 'session-123' }));
 
-      // Error event should still pass through (error handling takes priority)
+      // Error event is transient and should be blocked after complete
+      // (same as session_start - once complete, no more transient events)
       const errorEvent = AgentEventFactory.error({ sessionId: 'session-123' });
       mockClient._triggerEvent(errorEvent);
 
-      expect(receivedEvents).toHaveLength(2);
-      expect(receivedEvents[1].type).toBe('error');
+      expect(receivedEvents).toHaveLength(1);
+      expect(receivedEvents[0].type).toBe('complete');
     });
 
     it('allows persisted events after complete', () => {

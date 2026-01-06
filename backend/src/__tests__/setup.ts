@@ -17,6 +17,33 @@ vi.mock('openai', () => {
   };
 });
 
+// Mock logger globally to prevent import errors across all tests
+// The logger module exports: logger, createChildLogger, createRequestLogger, and convenience methods
+vi.mock('@/shared/utils/logger', () => {
+  const createMockLogger = () => ({
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+    fatal: vi.fn(),
+    trace: vi.fn(),
+    child: vi.fn(() => createMockLogger()),
+  });
+
+  return {
+    logger: createMockLogger(),
+    createChildLogger: vi.fn(() => createMockLogger()),
+    createRequestLogger: vi.fn(() => createMockLogger()),
+    // Convenience exports (destructured from logger)
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+    fatal: vi.fn(),
+    trace: vi.fn(),
+  };
+});
+
 // Reduce log verbosity during tests (improves performance)
 process.env.LOG_LEVEL = 'warn';
 

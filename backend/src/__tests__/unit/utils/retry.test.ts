@@ -36,6 +36,12 @@ const mockLogger = vi.hoisted(() => ({
 
 vi.mock('@/shared/utils/logger', () => ({
   logger: mockLogger,
+  createChildLogger: vi.fn(() => ({
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  })),
 }));
 
 // ============================================================================

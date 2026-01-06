@@ -216,12 +216,12 @@ vi.mock('@/shared/utils/logger', () => ({
       debug: vi.fn(),
     })),
   },
-  createChildLogger: () => ({
+  createChildLogger: vi.fn(() => ({
     info: vi.fn(),
-    error: vi.fn(),
     warn: vi.fn(),
+    error: vi.fn(),
     debug: vi.fn(),
-  }),
+  })),
 }));
 
 // Mock token usage service

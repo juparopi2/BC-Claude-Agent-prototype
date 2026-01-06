@@ -110,6 +110,12 @@ vi.mock('bullmq', () => ({
 // Mock logger
 vi.mock('@/shared/utils/logger', () => ({
   logger: mockLogger,
+  createChildLogger: vi.fn(() => ({
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  })),
 }));
 
 // Mock database

@@ -134,6 +134,14 @@ describe('AgentOrchestrator Integration', () => {
 
     mockEventStore = {
       appendEvent: mockAppendEvent,
+      appendEventWithSequence: vi.fn().mockImplementation(
+        async (sessionId, eventType, data, preAssignedSequence) => ({
+          id: `evt-${randomUUID()}`,
+          sequence_number: preAssignedSequence,
+          timestamp: new Date(),
+          processed: false,
+        })
+      ),
     } as Partial<EventStore>;
 
     mockMessageQueue = {

@@ -34,6 +34,12 @@ vi.mock('@/shared/utils/logger', () => ({
     error: vi.fn(),
     debug: vi.fn(),
   },
+  createChildLogger: vi.fn(() => ({
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  })),
 }));
 
 // Mock crypto for predictable testing (but also test real crypto)

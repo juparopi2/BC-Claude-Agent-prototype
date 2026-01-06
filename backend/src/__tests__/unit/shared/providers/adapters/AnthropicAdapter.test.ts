@@ -205,7 +205,10 @@ describe('AnthropicAdapter', () => {
     });
 
     describe('mixed content blocks', () => {
-      it('should handle thinking + text + tool_use in order', () => {
+      it('should handle thinking + text + tool_use in semantic order', () => {
+        // Anthropic sends mixed content in a single message.
+        // The adapter emits events in semantic order: thinking -> text -> tools
+        // This ensures the assistant's explanation appears before tool execution.
         const message = createMockMessage({
           content: [
             { type: 'thinking', thinking: 'Analyzing the request...' },
@@ -224,11 +227,13 @@ describe('AnthropicAdapter', () => {
 
         expect(events).toHaveLength(3);
         expect(events[0].type).toBe('thinking');
-        expect(events[1].type).toBe('tool_request');
-        expect(events[2].type).toBe('assistant_message');
+        expect(events[1].type).toBe('assistant_message'); // Text comes before tools
+        expect(events[2].type).toBe('tool_request');
       });
 
-      it('should produce events in block order', () => {
+      it('should produce events in semantic order (text before tools)', () => {
+        // Even when tool_use blocks appear before text in the raw message,
+        // the adapter reorders them semantically: thinking -> text -> tools
         const message = createMockMessage({
           content: [
             { type: 'thinking', thinking: 'First' },
@@ -252,12 +257,12 @@ describe('AnthropicAdapter', () => {
         const events = adapter.normalizeMessage(message, 0);
 
         expect(events).toHaveLength(4);
-        // Verify order: thinking, tool1, tool2, text
+        // Verify semantic order: thinking, text, then tools
         expect(events.map(e => e.type)).toEqual([
           'thinking',
-          'tool_request',
-          'tool_request',
           'assistant_message',
+          'tool_request',
+          'tool_request',
         ]);
       });
     });

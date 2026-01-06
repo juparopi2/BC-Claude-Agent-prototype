@@ -29,9 +29,9 @@ describe('sortFilterStore', () => {
       expect(state.sortOrder).toBe('desc');
     });
 
-    it('should have showFavoritesOnly as false initially', () => {
+    it('should have showFavoritesFirst as false initially', () => {
       const state = useSortFilterStore.getState();
-      expect(state.showFavoritesOnly).toBe(false);
+      expect(state.showFavoritesFirst).toBe(false);
     });
   });
 
@@ -102,57 +102,57 @@ describe('sortFilterStore', () => {
     });
   });
 
-  describe('toggleFavoritesFilter', () => {
+  describe('toggleFavoritesFirst', () => {
     it('should toggle from false to true', () => {
-      const { toggleFavoritesFilter } = useSortFilterStore.getState();
+      const { toggleFavoritesFirst } = useSortFilterStore.getState();
 
-      expect(useSortFilterStore.getState().showFavoritesOnly).toBe(false);
+      expect(useSortFilterStore.getState().showFavoritesFirst).toBe(false);
 
-      toggleFavoritesFilter();
-      expect(useSortFilterStore.getState().showFavoritesOnly).toBe(true);
+      toggleFavoritesFirst();
+      expect(useSortFilterStore.getState().showFavoritesFirst).toBe(true);
     });
 
     it('should toggle from true to false', () => {
-      const { toggleFavoritesFilter } = useSortFilterStore.getState();
+      const { toggleFavoritesFirst } = useSortFilterStore.getState();
 
-      toggleFavoritesFilter(); // false -> true
-      expect(useSortFilterStore.getState().showFavoritesOnly).toBe(true);
+      toggleFavoritesFirst(); // false -> true
+      expect(useSortFilterStore.getState().showFavoritesFirst).toBe(true);
 
-      toggleFavoritesFilter(); // true -> false
-      expect(useSortFilterStore.getState().showFavoritesOnly).toBe(false);
+      toggleFavoritesFirst(); // true -> false
+      expect(useSortFilterStore.getState().showFavoritesFirst).toBe(false);
     });
   });
 
-  describe('setShowFavoritesOnly', () => {
+  describe('setShowFavoritesFirst', () => {
     it('should set to true', () => {
-      const { setShowFavoritesOnly } = useSortFilterStore.getState();
-      setShowFavoritesOnly(true);
+      const { setShowFavoritesFirst } = useSortFilterStore.getState();
+      setShowFavoritesFirst(true);
 
-      expect(useSortFilterStore.getState().showFavoritesOnly).toBe(true);
+      expect(useSortFilterStore.getState().showFavoritesFirst).toBe(true);
     });
 
     it('should set to false', () => {
-      const { toggleFavoritesFilter, setShowFavoritesOnly } = useSortFilterStore.getState();
+      const { toggleFavoritesFirst, setShowFavoritesFirst } = useSortFilterStore.getState();
 
-      toggleFavoritesFilter(); // Set to true first
-      setShowFavoritesOnly(false);
+      toggleFavoritesFirst(); // Set to true first
+      setShowFavoritesFirst(false);
 
-      expect(useSortFilterStore.getState().showFavoritesOnly).toBe(false);
+      expect(useSortFilterStore.getState().showFavoritesFirst).toBe(false);
     });
   });
 
   describe('resetSortFilterStore', () => {
     it('should reset all state to initial values', () => {
-      const { setSort, toggleFavoritesFilter } = useSortFilterStore.getState();
+      const { setSort, toggleFavoritesFirst } = useSortFilterStore.getState();
 
       // Change all values
       setSort('name', 'asc');
-      toggleFavoritesFilter();
+      toggleFavoritesFirst();
 
       // Verify changed
       expect(useSortFilterStore.getState().sortBy).toBe('name');
       expect(useSortFilterStore.getState().sortOrder).toBe('asc');
-      expect(useSortFilterStore.getState().showFavoritesOnly).toBe(true);
+      expect(useSortFilterStore.getState().showFavoritesFirst).toBe(true);
 
       // Reset
       resetSortFilterStore();
@@ -161,7 +161,7 @@ describe('sortFilterStore', () => {
       const state = useSortFilterStore.getState();
       expect(state.sortBy).toBe('date');
       expect(state.sortOrder).toBe('desc');
-      expect(state.showFavoritesOnly).toBe(false);
+      expect(state.showFavoritesFirst).toBe(false);
     });
   });
 });

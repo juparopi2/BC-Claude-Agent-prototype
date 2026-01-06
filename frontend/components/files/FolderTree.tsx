@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useFolderNavigation } from '@/src/domains/files';
 import { FolderTreeItem } from './FolderTreeItem';
+import type { ParsedFile } from '@bc-agent/shared';
 
 interface FolderTreeProps {
   className?: string;
@@ -19,8 +20,8 @@ export function FolderTree({ className }: FolderTreeProps) {
     initFolderTree();
   }, [initFolderTree]);
 
-  const handleSelect = useCallback((folderId: string | null) => {
-    navigateToFolder(folderId);
+  const handleSelect = useCallback((folderId: string | null, folder?: ParsedFile) => {
+    navigateToFolder(folderId, folder);
   }, [navigateToFolder]);
 
   // We rely on the store's treeFolders['root'] to know if we have data

@@ -13,6 +13,51 @@ import { getFileApiClient } from '@/src/infrastructure/api';
 import type { ParsedFile } from '@bc-agent/shared';
 
 /**
+ * Build the breadcrumb path from root to a given folder
+ * by walking up the parent chain using the treeFolders cache.
+ *
+ * @param folder - The target folder to build path for
+ * @returns Array of folders from root to target (inclusive)
+ */
+function buildPathToFolder(folder: ParsedFile): ParsedFile[] {
+  const path: ParsedFile[] = [folder];
+  const { treeFolders } = useFolderTreeStore.getState();
+
+  let currentParentId = folder.parentFolderId;
+
+  // Walk up the tree until we reach root (null parentFolderId)
+  while (currentParentId !== null) {
+    // Search for parent in all cached folder lists
+    let parentFolder: ParsedFile | undefined;
+
+    // Check root folders
+    const rootFolders = treeFolders['root'] || [];
+    parentFolder = rootFolders.find((f) => f.id === currentParentId);
+
+    // If not in root, search in all cached children
+    if (!parentFolder) {
+      for (const folderId of Object.keys(treeFolders)) {
+        const children = treeFolders[folderId];
+        parentFolder = children?.find((f) => f.id === currentParentId);
+        if (parentFolder) break;
+      }
+    }
+
+    if (parentFolder) {
+      // Add parent to the beginning of the path
+      path.unshift(parentFolder);
+      currentParentId = parentFolder.parentFolderId;
+    } else {
+      // Parent not found in cache - stop walking
+      // This can happen if not all folders are loaded yet
+      break;
+    }
+  }
+
+  return path;
+}
+
+/**
  * useFolderNavigation return type
  */
 export interface UseFolderNavigationReturn {
@@ -172,38 +217,36 @@ export function useFolderNavigation(): UseFolderNavigationReturn {
   // Navigate to folder with optional folder data for breadcrumb path construction
   const navigateToFolder = useCallback(
     (folderId: string | null, folderData?: ParsedFile) => {
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[useFolderNavigation] navigateToFolder:', {
-          folderId,
-          hasFolder: !!folderData,
-          currentPathLength: folderPath.length,
-        });
-      }
+      console.log('[navigateToFolder] Called with:', { folderId, folderName: folderData?.name });
 
       if (folderId === null) {
+        console.log('[navigateToFolder] Navigating to root');
         setCurrentFolderAction(null, []);
         return;
       }
 
       if (folderData) {
-        // Check if folder already exists in path (navigating to ancestor)
-        const existingIndex = folderPath.findIndex((f) => f.id === folderId);
-        if (existingIndex >= 0) {
-          // Truncate path to this folder
-          const newPath = folderPath.slice(0, existingIndex + 1);
-          setCurrentFolderAction(folderId, newPath);
-        } else {
-          // Navigating deeper - append folder to path
-          const newPath = [...folderPath, folderData];
-          setCurrentFolderAction(folderId, newPath);
-        }
+        // Build the correct path from root to this folder
+        // by walking up using parentFolderId
+        const newPath = buildPathToFolder(folderData);
+        console.log('[navigateToFolder] Built path:', newPath.map(f => f.name));
+        setCurrentFolderAction(folderId, newPath);
+
+        // Verify state was updated
+        setTimeout(() => {
+          const state = useFolderTreeStore.getState();
+          console.log('[navigateToFolder] After update - currentFolderId:', state.currentFolderId);
+          console.log('[navigateToFolder] After update - folderPath:', state.folderPath.map(f => f.name));
+        }, 100);
       } else {
         // No folder data provided - keep current path
         // This is a fallback for cases where folder data isn't available
-        setCurrentFolderAction(folderId, folderPath);
+        const currentPath = useFolderTreeStore.getState().folderPath;
+        console.log('[navigateToFolder] No folder data, keeping path:', currentPath.map(f => f.name));
+        setCurrentFolderAction(folderId, currentPath);
       }
     },
-    [setCurrentFolderAction, folderPath]
+    [setCurrentFolderAction]
   );
 
   return {

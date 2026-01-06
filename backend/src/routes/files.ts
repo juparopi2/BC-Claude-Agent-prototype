@@ -112,7 +112,7 @@ const createFolderSchema = z.object({
 const getFilesSchema = z.object({
   folderId: z.string().uuid().optional(),
   sortBy: z.enum(['name', 'date', 'size']).optional().default('date'),
-  favorites: z.coerce.boolean().optional(),
+  favoritesFirst: z.coerce.boolean().optional(),
   limit: z.coerce.number().int().min(1).max(100).optional().default(50),
   offset: z.coerce.number().int().min(0).optional().default(0),
 });
@@ -437,9 +437,9 @@ router.get('/', authenticateMicrosoft, async (req: Request, res: Response): Prom
       return;
     }
 
-    const { folderId, sortBy, favorites, limit, offset } = validation.data;
+    const { folderId, sortBy, favoritesFirst, limit, offset } = validation.data;
 
-    logger.info({ userId, folderId, sortBy, favorites, limit, offset }, 'Getting files');
+    logger.info({ userId, folderId, sortBy, favoritesFirst, limit, offset }, 'Getting files');
 
     // Get files with FileService
     const fileService = getFileService();
@@ -447,13 +447,13 @@ router.get('/', authenticateMicrosoft, async (req: Request, res: Response): Prom
       userId,
       folderId,
       sortBy,
-      favorites,
+      favoritesFirst,
       limit,
       offset,
     });
 
     // Get total count for pagination
-    const total = await fileService.getFileCount(userId, folderId);
+    const total = await fileService.getFileCount(userId, folderId, { favoritesFirst });
 
     logger.info({ userId, fileCount: files.length, total }, 'Files retrieved successfully');
 

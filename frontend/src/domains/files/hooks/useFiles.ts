@@ -7,12 +7,17 @@
  * @module domains/files/hooks/useFiles
  */
 
-import { useMemo, useCallback } from 'react';
+import { useMemo, useCallback, useEffect } from 'react';
 import { useFileListStore } from '../stores/fileListStore';
 import { useSortFilterStore } from '../stores/sortFilterStore';
 import { useFolderTreeStore } from '../stores/folderTreeStore';
 import { getFileApiClient } from '@/src/infrastructure/api';
-import type { ParsedFile, FileSortBy, SortOrder } from '@bc-agent/shared';
+import type { ParsedFile, FileSortBy, SortOrder, GetFilesOptions } from '@bc-agent/shared';
+
+// Module-level state to coordinate filter change fetches across all hook instances
+// This ensures only ONE instance fetches when showFavoritesFirst changes
+let lastFetchedFilterValue: boolean | null = null;
+let filterFetchInProgress = false;
 
 /**
  * useFiles return type
@@ -32,14 +37,14 @@ export interface UseFilesReturn {
   sortBy: FileSortBy;
   /** Current sort order */
   sortOrder: SortOrder;
-  /** Whether showing only favorites */
-  showFavoritesOnly: boolean;
+  /** Whether showing favorites first */
+  showFavoritesFirst: boolean;
   /** Set sort field and optionally order */
   setSort: (sortBy: FileSortBy, sortOrder?: SortOrder) => void;
   /** Toggle sort order */
   toggleSortOrder: () => void;
-  /** Toggle favorites filter */
-  toggleFavoritesFilter: () => void;
+  /** Toggle favorites first sorting */
+  toggleFavoritesFirst: () => void;
   /** Fetch files from API for a folder */
   fetchFiles: (folderId?: string | null) => Promise<void>;
   /** Refresh current folder */
@@ -49,7 +54,12 @@ export interface UseFilesReturn {
 }
 
 /**
- * Sort files with folders first, then by specified field
+ * Sort files with folders first, favorites prioritized, then by specified field
+ *
+ * Sort order:
+ * 1. Folders (favorites first, then non-favorites)
+ * 2. Files (favorites first, then non-favorites)
+ * Within each group, apply the user's sort preference (name, date, size)
  */
 function sortFiles(
   files: ParsedFile[],
@@ -57,11 +67,15 @@ function sortFiles(
   sortOrder: SortOrder
 ): ParsedFile[] {
   return [...files].sort((a, b) => {
-    // Folders always first
+    // 1. Folders always first
     if (a.isFolder && !b.isFolder) return -1;
     if (!a.isFolder && b.isFolder) return 1;
 
-    // Apply sort field
+    // 2. Favorites before non-favorites (within same type: folder or file)
+    if (a.isFavorite && !b.isFavorite) return -1;
+    if (!a.isFavorite && b.isFavorite) return 1;
+
+    // 3. Apply sort field
     let comparison = 0;
     switch (sortBy) {
       case 'name':
@@ -126,10 +140,10 @@ export function useFiles(): UseFilesReturn {
   // Get sort/filter state and actions
   const sortBy = useSortFilterStore((state) => state.sortBy);
   const sortOrder = useSortFilterStore((state) => state.sortOrder);
-  const showFavoritesOnly = useSortFilterStore((state) => state.showFavoritesOnly);
+  const showFavoritesFirst = useSortFilterStore((state) => state.showFavoritesFirst);
   const setSort = useSortFilterStore((state) => state.setSort);
   const toggleSortOrder = useSortFilterStore((state) => state.toggleSortOrder);
-  const toggleFavoritesFilter = useSortFilterStore((state) => state.toggleFavoritesFilter);
+  const toggleFavoritesFirst = useSortFilterStore((state) => state.toggleFavoritesFirst);
 
   // Memoize sorted files
   const sortedFiles = useMemo(
@@ -144,9 +158,23 @@ export function useFiles(): UseFilesReturn {
       setError(null);
       try {
         const fileApi = getFileApiClient();
-        const result = await fileApi.getFiles({
+
+        // Get current favorites setting from store
+        const currentShowFavoritesFirst = useSortFilterStore.getState().showFavoritesFirst;
+
+        // Build fetch options - backend handles the root vs folder logic
+        const fetchOptions: GetFilesOptions = {
           folderId: folderId ?? undefined,
-        });
+        };
+
+        // Add favoritesFirst if enabled - backend handles:
+        // - At root: favorites from any folder + all root items
+        // - In folder: all items in folder, sorted with favorites first
+        if (currentShowFavoritesFirst) {
+          fetchOptions.favoritesFirst = true;
+        }
+
+        const result = await fileApi.getFiles(fetchOptions);
         if (result.success) {
           const { files: fetchedFiles, pagination } = result.data;
           const hasMoreFiles = pagination.offset + fetchedFiles.length < pagination.total;
@@ -193,6 +221,58 @@ export function useFiles(): UseFilesReturn {
     [files, updateFile]
   );
 
+  // Re-fetch files when favorites filter changes
+  // Uses module-level coordination to ensure only ONE hook instance fetches
+  useEffect(() => {
+    // Check if this filter value was already fetched (by any hook instance)
+    if (lastFetchedFilterValue === showFavoritesFirst) {
+      return;
+    }
+
+    // Check if another instance is already fetching
+    if (filterFetchInProgress) {
+      return;
+    }
+
+    // This instance will handle the fetch
+    filterFetchInProgress = true;
+    lastFetchedFilterValue = showFavoritesFirst;
+
+    // Re-fetch with current folder when favorites setting changes
+    // Use the store directly to avoid stale closures
+    const folderId = useFolderTreeStore.getState().currentFolderId;
+    const fileApi = getFileApiClient();
+    const currentShowFavoritesFirst = useSortFilterStore.getState().showFavoritesFirst;
+
+    // Build fetch options - backend handles root vs folder logic
+    const fetchOptions: GetFilesOptions = {
+      folderId: folderId ?? undefined,
+    };
+
+    if (currentShowFavoritesFirst) {
+      fetchOptions.favoritesFirst = true;
+    }
+
+    setLoading(true);
+    fileApi.getFiles(fetchOptions)
+      .then((result) => {
+        if (result.success) {
+          const { files: fetchedFiles, pagination } = result.data;
+          const hasMoreFiles = pagination.offset + fetchedFiles.length < pagination.total;
+          setFiles(fetchedFiles, pagination.total, hasMoreFiles);
+        } else {
+          setError(result.error.message);
+        }
+      })
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : 'Failed to fetch files');
+      })
+      .finally(() => {
+        setLoading(false);
+        filterFetchInProgress = false;
+      });
+  }, [showFavoritesFirst, setFiles, setLoading, setError]);
+
   return {
     sortedFiles,
     isLoading,
@@ -201,10 +281,10 @@ export function useFiles(): UseFilesReturn {
     totalFiles,
     sortBy,
     sortOrder,
-    showFavoritesOnly,
+    showFavoritesFirst,
     setSort,
     toggleSortOrder,
-    toggleFavoritesFilter,
+    toggleFavoritesFirst,
     fetchFiles,
     refreshCurrentFolder,
     toggleFavorite,

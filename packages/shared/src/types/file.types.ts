@@ -204,9 +204,9 @@ export interface ParsedFileChunk {
  * // List folder contents
  * const options: GetFilesOptions = { folderId: 'folder-123' };
  *
- * // List favorites sorted by date
+ * // List with favorites first (at root: favorites from any folder + root items)
  * const options: GetFilesOptions = {
- *   favorites: true,
+ *   favoritesFirst: true,
  *   sortBy: 'date',
  *   limit: 20,
  * };
@@ -219,8 +219,12 @@ export interface GetFilesOptions {
   /** Sort field */
   sortBy?: FileSortBy;
 
-  /** Filter to favorites only */
-  favorites?: boolean;
+  /**
+   * Sort favorites first (not a filter).
+   * - At root (folderId=null): Returns favorites from ALL folders + all root items, favorites sorted first
+   * - In folder: Returns all items in folder, with favorites sorted first
+   */
+  favoritesFirst?: boolean;
 
   /** Maximum number of results */
   limit?: number;

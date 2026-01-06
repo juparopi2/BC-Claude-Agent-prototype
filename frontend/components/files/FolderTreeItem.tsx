@@ -15,7 +15,7 @@ const EMPTY_FOLDERS: ParsedFile[] = [];
 interface FolderTreeItemProps {
   folder: ParsedFile;
   level: number;
-  onSelect?: (folderId: string) => void;
+  onSelect?: (folderId: string, folder: ParsedFile) => void;
 }
 
 export const FolderTreeItem = memo(function FolderTreeItem({
@@ -48,28 +48,12 @@ export const FolderTreeItem = memo(function FolderTreeItem({
   const isExpanded = expandedFolderIds.includes(folder.id);
   const isSelected = currentFolderId === folder.id;
 
-  // Debug logging
-  if (process.env.NODE_ENV === 'development') {
-    console.log('[FolderTreeItem] Render:', {
-      id: folder.id,
-      name: folder.name,
-      isExpanded,
-      isLoading,
-      isLoaded,
-      subfoldersCount: subfolders.length,
-    });
-  }
-
   // Lazy load children when expanded and not yet loaded
   useEffect(() => {
     const loadChildren = async () => {
       if (!isExpanded) return;
       if (isLoaded) return; // Already loaded (even if empty)
       if (isLoading) return; // Already loading
-
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[FolderTreeItem] Loading children for:', folder.id);
-      }
 
       setLoadingFolder(folder.id, true);
       try {
@@ -79,12 +63,6 @@ export const FolderTreeItem = memo(function FolderTreeItem({
           const childFolders = result.data.files.filter((f) => f.isFolder);
           // Always set, even if empty - this marks as "loaded"
           setTreeFolders(folder.id, childFolders);
-          if (process.env.NODE_ENV === 'development') {
-            console.log('[FolderTreeItem] Loaded children:', {
-              folderId: folder.id,
-              childCount: childFolders.length,
-            });
-          }
         }
       } catch (err) {
         console.error(`[FolderTreeItem] Failed to load children for folder ${folder.id}:`, err);
@@ -100,7 +78,8 @@ export const FolderTreeItem = memo(function FolderTreeItem({
 
   const handleSelect = useCallback(() => {
     if (onSelect) {
-      onSelect(folder.id);
+      // Pass full folder data for breadcrumb path construction
+      onSelect(folder.id, folder);
     } else {
       // Pass full folder data for breadcrumb path construction
       navigateToFolder(folder.id, folder);

@@ -164,7 +164,7 @@ describe('FileApiClient - Parameter Serialization', () => {
       await api.getFiles({
         folderId: 'folder-789',
         sortBy: 'date',
-        favorites: true,
+        favoritesFirst: true,
         limit: 20,
         offset: 10,
       });
@@ -172,7 +172,7 @@ describe('FileApiClient - Parameter Serialization', () => {
       // Verify all parameters are in query string
       expect(capturedUrl).toContain('folderId=folder-789');
       expect(capturedUrl).toContain('sortBy=date');
-      expect(capturedUrl).toContain('favorites=true');
+      expect(capturedUrl).toContain('favoritesFirst=true');
       expect(capturedUrl).toContain('limit=20');
       expect(capturedUrl).toContain('offset=10');
 
@@ -180,7 +180,7 @@ describe('FileApiClient - Parameter Serialization', () => {
       const url = new URL(capturedUrl);
       expect(url.searchParams.get('folderId')).toBe('folder-789');
       expect(url.searchParams.get('sortBy')).toBe('date');
-      expect(url.searchParams.get('favorites')).toBe('true');
+      expect(url.searchParams.get('favoritesFirst')).toBe('true');
       expect(url.searchParams.get('limit')).toBe('20');
       expect(url.searchParams.get('offset')).toBe('10');
     });

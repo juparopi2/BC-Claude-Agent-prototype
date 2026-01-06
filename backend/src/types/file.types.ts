@@ -267,7 +267,7 @@ export interface ParsedFileChunk {
  * - List all user's files: `{ userId: 'user-123' }`
  * - List root-level files: `{ userId: 'user-123', folderId: null }`
  * - List folder contents: `{ userId: 'user-123', folderId: 'folder-456' }`
- * - List favorites: `{ userId: 'user-123', favorites: true }`
+ * - List with favorites first: `{ userId: 'user-123', favoritesFirst: true }`
  */
 export interface GetFilesOptions {
   /** Owner user ID (required) */
@@ -279,8 +279,12 @@ export interface GetFilesOptions {
   /** Sort order */
   sortBy?: FileSortBy;
 
-  /** Filter to favorites only */
-  favorites?: boolean;
+  /**
+   * Sort favorites first (not a filter).
+   * - At root (folderId=null): Returns favorites from ALL folders + all root items, favorites sorted first
+   * - In folder: Returns all items in folder, with favorites sorted first
+   */
+  favoritesFirst?: boolean;
 
   /** Maximum number of results */
   limit?: number;

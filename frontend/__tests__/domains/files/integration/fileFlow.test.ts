@@ -57,7 +57,7 @@ describe('Files Domain Integration', () => {
       expect(result.current.sortedFiles[2].name).toBe('charlie.txt');
     });
 
-    it('should expose showFavoritesOnly state for component filtering', () => {
+    it('should expose showFavoritesFirst state for component display', () => {
       const files = [
         createMockFile({ id: 'file-1', name: 'favorite.txt', isFavorite: true }),
         createMockFile({ id: 'file-2', name: 'normal.txt', isFavorite: false }),
@@ -66,18 +66,18 @@ describe('Files Domain Integration', () => {
 
       act(() => {
         useFileListStore.getState().setFiles(files, 3, false);
-        useSortFilterStore.getState().setShowFavoritesOnly(true);
+        useSortFilterStore.getState().setShowFavoritesFirst(true);
       });
 
       const { result } = renderHook(() => useFiles());
 
-      // Hook exposes the filter state, component does the filtering
-      expect(result.current.showFavoritesOnly).toBe(true);
+      // Hook exposes the favorites-first state
+      expect(result.current.showFavoritesFirst).toBe(true);
 
-      // Simulate component-level filtering (as FileList would do)
-      const filteredFiles = result.current.sortedFiles.filter((f) => f.isFavorite);
-      expect(filteredFiles).toHaveLength(2);
-      expect(filteredFiles.every((f) => f.isFavorite)).toBe(true);
+      // With favorites-first, favorites should be sorted first
+      const favoriteFiles = result.current.sortedFiles.filter((f) => f.isFavorite);
+      expect(favoriteFiles).toHaveLength(2);
+      expect(favoriteFiles.every((f) => f.isFavorite)).toBe(true);
     });
 
     it('should put folders first regardless of sort field', () => {

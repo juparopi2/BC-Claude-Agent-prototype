@@ -42,28 +42,45 @@ export class FileService {
    * @returns Array of parsed files
    */
   public async getFiles(options: GetFilesOptions): Promise<ParsedFile[]> {
-    const { userId, folderId, sortBy = 'date', favorites, limit = 50, offset = 0 } = options;
+    const { userId, folderId, sortBy = 'date', favoritesFirst, limit = 50, offset = 0 } = options;
 
-    this.logger.info({ userId, folderId, sortBy, favorites, limit, offset }, 'Getting files');
+    this.logger.info({ userId, folderId, sortBy, favoritesFirst, limit, offset }, 'Getting files');
 
     try {
       // Build WHERE clause
       let whereClause = 'WHERE user_id = @user_id';
+      const isAtRoot = folderId === undefined || folderId === null;
 
-      // Handle NULL parent_folder_id correctly with IS NULL operator
-      // SQL: column = NULL always returns FALSE, must use IS NULL
-      if (folderId === undefined || folderId === null) {
-        whereClause += ' AND parent_folder_id IS NULL';
+      if (favoritesFirst) {
+        // "Favorites first" mode - show all items, favorites sorted first
+        if (isAtRoot) {
+          // At root: return favorites from ANY folder + all root items
+          whereClause += ' AND (is_favorite = 1 OR parent_folder_id IS NULL)';
+        } else {
+          // In folder: return all items in folder (sorting handles favorites first)
+          whereClause += ' AND parent_folder_id = @parent_folder_id';
+        }
       } else {
-        whereClause += ' AND parent_folder_id = @parent_folder_id';
-      }
-
-      if (favorites) {
-        whereClause += ' AND is_favorite = 1';
+        // Standard behavior: filter by folder only
+        if (isAtRoot) {
+          whereClause += ' AND parent_folder_id IS NULL';
+        } else {
+          whereClause += ' AND parent_folder_id = @parent_folder_id';
+        }
       }
 
       // Build ORDER BY clause
       let orderByClause = 'ORDER BY ';
+
+      // When favoritesFirst is enabled, sort favorites to the top
+      if (favoritesFirst) {
+        orderByClause += 'is_favorite DESC, ';
+      }
+
+      // Then folders before files
+      orderByClause += 'is_folder DESC, ';
+
+      // Then by user's sort preference
       switch (sortBy) {
         case 'name':
           orderByClause += 'name ASC';
@@ -91,9 +108,11 @@ export class FileService {
         limit,
       };
 
-      // Only add parent_folder_id parameter if not NULL
-      if (folderId !== undefined && folderId !== null) {
-        params.parent_folder_id = folderId;
+      // Add parent_folder_id parameter if in a subfolder (not at root)
+      if (!isAtRoot || (favoritesFirst && !isAtRoot)) {
+        if (folderId !== undefined && folderId !== null) {
+          params.parent_folder_id = folderId;
+        }
       }
 
       const result = await executeQuery<FileDbRecord>(query, params);
@@ -675,21 +694,36 @@ export class FileService {
    *
    * @param userId - User ID
    * @param folderId - Folder ID (undefined for root)
+   * @param options - Optional filter options (favoritesFirst)
    * @returns File count
    */
-  public async getFileCount(userId: string, folderId?: string): Promise<number> {
-    this.logger.info({ userId, folderId }, 'Getting file count');
+  public async getFileCount(
+    userId: string,
+    folderId?: string | null,
+    options?: { favoritesFirst?: boolean }
+  ): Promise<number> {
+    this.logger.info({ userId, folderId, options }, 'Getting file count');
 
     try {
       let whereClause = 'WHERE user_id = @user_id';
       const params: SqlParams = {
         user_id: userId,
       };
+      const isAtRoot = folderId === undefined || folderId === null;
 
-      // Handle NULL parent_folder_id correctly with IS NULL operator
-      // SQL: column = NULL always returns FALSE, must use IS NULL
-      if (folderId !== undefined) {
-        if (folderId === null) {
+      if (options?.favoritesFirst) {
+        // "Favorites first" mode - count all items that would be shown
+        if (isAtRoot) {
+          // At root: count favorites from ANY folder + root items
+          whereClause += ' AND (is_favorite = 1 OR parent_folder_id IS NULL)';
+        } else {
+          // In folder: count all items in folder
+          whereClause += ' AND parent_folder_id = @parent_folder_id';
+          params.parent_folder_id = folderId;
+        }
+      } else {
+        // Standard behavior: count by folder only
+        if (isAtRoot) {
           whereClause += ' AND parent_folder_id IS NULL';
         } else {
           whereClause += ' AND parent_folder_id = @parent_folder_id';

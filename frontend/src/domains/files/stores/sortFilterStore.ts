@@ -19,8 +19,8 @@ export interface SortFilterState {
   sortBy: FileSortBy;
   /** Sort order (ascending or descending) */
   sortOrder: SortOrder;
-  /** Show only favorite files */
-  showFavoritesOnly: boolean;
+  /** Show favorites first (sort preference, not a filter) */
+  showFavoritesFirst: boolean;
 }
 
 /**
@@ -31,10 +31,10 @@ export interface SortFilterActions {
   setSort: (sortBy: FileSortBy, sortOrder?: SortOrder) => void;
   /** Toggle sort order between asc and desc */
   toggleSortOrder: () => void;
-  /** Toggle favorites filter */
-  toggleFavoritesFilter: () => void;
-  /** Set favorites filter explicitly */
-  setShowFavoritesOnly: (show: boolean) => void;
+  /** Toggle favorites first sorting */
+  toggleFavoritesFirst: () => void;
+  /** Set favorites first explicitly */
+  setShowFavoritesFirst: (show: boolean) => void;
 }
 
 /**
@@ -43,7 +43,7 @@ export interface SortFilterActions {
 const initialState: SortFilterState = {
   sortBy: 'date',
   sortOrder: 'desc',
-  showFavoritesOnly: false,
+  showFavoritesFirst: false,
 };
 
 /**
@@ -82,14 +82,14 @@ export const useSortFilterStore = create<SortFilterState & SortFilterActions>()(
         }));
       },
 
-      toggleFavoritesFilter: () => {
+      toggleFavoritesFirst: () => {
         set((state) => ({
-          showFavoritesOnly: !state.showFavoritesOnly,
+          showFavoritesFirst: !state.showFavoritesFirst,
         }));
       },
 
-      setShowFavoritesOnly: (show) => {
-        set({ showFavoritesOnly: show });
+      setShowFavoritesFirst: (show) => {
+        set({ showFavoritesFirst: show });
       },
     }),
     {
@@ -97,7 +97,7 @@ export const useSortFilterStore = create<SortFilterState & SortFilterActions>()(
       partialize: (state) => ({
         sortBy: state.sortBy,
         sortOrder: state.sortOrder,
-        showFavoritesOnly: state.showFavoritesOnly,
+        showFavoritesFirst: state.showFavoritesFirst,
       }),
     }
   )

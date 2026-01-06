@@ -1,7 +1,7 @@
 # Contrato Interno del Backend - BC Agent
 
-> **Fecha**: 2026-01-04
-> **Versión**: 1.0
+> **Fecha**: 2026-01-06
+> **Versión**: 2.0
 > **Propósito**: Documentar la arquitectura, módulos, responsabilidades y flujo de procesamiento de mensajes del backend.
 
 ---
@@ -14,62 +14,106 @@ El backend sigue una **Screaming Architecture** donde la estructura de carpetas 
 
 ```
 backend/src/
+├── core/                       # Utilidades centrales de LangChain
+│   └── langchain/
+│       └── ModelFactory.ts     # Factory para crear modelos LLM
+│
 ├── domains/                    # Lógica de negocio pura (agnóstica de frameworks)
 │   ├── agent/                  # Dominio principal del agente
-│   │   ├── orchestration/      # Coordinación de ejecución
-│   │   ├── streaming/          # Procesamiento de streams (legacy)
-│   │   ├── persistence/        # Persistencia coordinada
-│   │   ├── context/            # Preparación de contexto (archivos)
-│   │   ├── emission/           # Emisión de eventos (tracking de índices)
-│   │   ├── tools/              # Procesamiento de herramientas
+│   │   ├── orchestration/      # AgentOrchestrator, ExecutionContextSync
+│   │   ├── persistence/        # PersistenceCoordinator (Two-Phase)
+│   │   ├── context/            # FileContextPreparer
+│   │   ├── emission/           # Tracking de índices de eventos
+│   │   ├── tools/              # ToolLifecycleManager, ToolExecutionProcessor
 │   │   └── usage/              # Tracking de uso de tokens
 │   ├── approval/               # Flujo Human-in-the-Loop
 │   ├── auth/                   # Autenticación y middleware
+│   │   ├── middleware/         # Express middleware
+│   │   └── oauth/              # OAuth strategies
 │   ├── billing/                # Billing y tracking de costos
-│   ├── business-central/       # Integración con BC (auth, client, tools)
-│   ├── chat/                   # Mensajes y sesiones
-│   ├── files/                  # Procesamiento de archivos
+│   │   └── tracking/           # Usage tracking service
+│   ├── business-central/       # Integración con BC
+│   │   ├── auth/               # BC authentication
+│   │   ├── client/             # BC API client
+│   │   └── tools/              # BC tools metadata
+│   ├── chat/                   # Chat domain
+│   │   ├── messages/           # Message handling
+│   │   ├── session/            # Session management
+│   │   └── websocket/          # WebSocket coordination
+│   ├── files/                  # File management domain
+│   │   ├── chunking/           # Text chunking strategies
+│   │   ├── context/            # File context preparation
+│   │   ├── processing/         # File processors
+│   │   └── upload/             # Upload handling
 │   └── search/                 # Búsqueda semántica
+│       └── semantic/           # Vector search
 │
 ├── modules/                    # Implementaciones concretas de agentes (LangGraph)
 │   └── agents/
 │       ├── orchestrator/       # Grafo principal y routing
 │       │   ├── graph.ts        # Definición del StateGraph
 │       │   ├── router.ts       # Lógica de routing de intents
-│       │   └── state.ts        # Estado compartido (AgentState)
+│       │   ├── state.ts        # Estado compartido (AgentState)
+│       │   └── check_graph.ts  # Validación del grafo
 │       ├── business-central/   # BC Agent y sus herramientas
 │       │   ├── bc-agent.ts     # Implementación del agente
 │       │   └── tools.ts        # 7 meta-tools de BC
 │       ├── rag-knowledge/      # RAG Agent
-│       └── core/               # Factory de agentes base
+│       └── core/               # Shared graph utilities
 │
 ├── services/                   # Servicios de infraestructura
 │   ├── websocket/              # ChatMessageHandler (punto de entrada)
 │   ├── events/                 # EventStore (Event Sourcing)
-│   ├── files/                  # FileService, ContextRetrieval
+│   ├── files/                  # FileService, FileUploadService
+│   │   ├── citations/          # Citation generation
+│   │   ├── context/            # ContextRetrievalService
+│   │   └── processors/         # PDF, Word, Excel, Image processors
+│   ├── chunking/               # Text chunking implementations
+│   ├── embeddings/             # EmbeddingService
 │   ├── messages/               # MessageService
 │   ├── sessions/               # SessionService
-│   └── search/                 # SemanticSearch
+│   ├── search/                 # Search services
+│   │   └── semantic/           # SemanticSearchService
+│   └── cache/                  # Redis caching layer
 │
 ├── shared/                     # Código compartido
 │   ├── providers/              # Adaptadores de proveedores LLM
-│   │   ├── adapters/           # AnthropicStreamAdapter, Factory
-│   │   └── interfaces/         # INormalizedStreamEvent, IStreamAdapter
+│   │   ├── adapters/           # AnthropicAdapter
+│   │   ├── interfaces/         # IProviderAdapter, INormalizedAgentEvent
+│   │   └── normalizers/        # BatchResultNormalizer
 │   ├── constants/              # Constantes globales
 │   ├── middleware/             # Middleware HTTP
-│   ├── types/                  # Tipos TypeScript
-│   └── utils/                  # Utilidades (logger, SQL, UUID)
+│   ├── types/                  # Tipos compartidos
+│   └── utils/                  # Utilidades (logger, SQL, UUID, retry)
+│       └── sql/                # QueryBuilder para SQL seguro
 │
 ├── infrastructure/             # Infraestructura técnica
 │   ├── config/                 # Configuración de modelos
-│   ├── database/               # Conexión SQL Server
+│   ├── database/               # Azure SQL connection pool
 │   ├── redis/                  # Cliente Redis
 │   ├── queue/                  # MessageQueue (BullMQ)
 │   └── keyvault/               # Azure Key Vault
 │
 ├── routes/                     # Rutas HTTP (REST)
-├── schemas/                    # Schemas Zod
-└── types/                      # Tipos globales
+│   ├── auth-oauth.ts           # OAuth login endpoints
+│   ├── files.ts                # File upload/download
+│   ├── sessions.ts             # Session CRUD
+│   ├── billing.ts              # Billing queries
+│   ├── gdpr.ts                 # Data deletion (GDPR)
+│   └── ...
+│
+├── schemas/                    # Schemas Zod para validación
+│   └── request.schemas.ts
+│
+├── types/                      # Tipos TypeScript centralizados
+│   ├── agent.types.ts
+│   ├── file.types.ts
+│   ├── message.types.ts
+│   ├── session.types.ts
+│   ├── usage.types.ts
+│   └── index.ts                # Barrel exports
+│
+└── server.ts                   # Main Express server
 ```
 
 ### 1.2 Jerarquía de Dependencias
@@ -86,22 +130,29 @@ backend/src/
 │                    domains/agent/orchestration                   │
 │                      (AgentOrchestrator)                         │
 │                   COORDINADOR PRINCIPAL                          │
-└────────┬────────────────────┼────────────────────┬──────────────┘
-         │                    │                    │
-         ▼                    ▼                    ▼
-┌────────────────┐   ┌────────────────┐   ┌────────────────────┐
-│ domains/agent/ │   │ modules/agents │   │  domains/agent/    │
-│   context/     │   │  orchestrator/ │   │   persistence/     │
-│ FileContext    │   │   (graph.ts)   │   │ PersistenceCoord.  │
-│  Preparer      │   │  LangGraph     │   │  EventStore+Queue  │
-└────────────────┘   └───────┬────────┘   └────────────────────┘
-                             │
-              ┌──────────────┼──────────────┐
-              ▼              ▼              ▼
-     ┌────────────┐  ┌────────────┐  ┌────────────┐
-     │  router.ts │  │ bc-agent   │  │ rag-agent  │
-     │  (Routing) │  │   .ts      │  │   .ts      │
-     └────────────┘  └────────────┘  └────────────┘
+└───┬──────────┬────────────────┬───────────────┬────────────────┘
+    │          │                │               │
+    ▼          ▼                ▼               ▼
+┌────────┐ ┌───────────┐ ┌───────────────┐ ┌────────────────────┐
+│context/│ │  modules/ │ │ persistence/  │ │shared/providers/   │
+│ File   │ │  agents/  │ │Persistence    │ │normalizers/        │
+│Context │ │  graph.ts │ │Coordinator    │ │BatchResult         │
+│Preparer│ │ LangGraph │ │EventStore+MQ  │ │Normalizer          │
+└────────┘ └─────┬─────┘ └───────────────┘ └────────────────────┘
+                 │
+    ┌────────────┼────────────┐
+    ▼            ▼            ▼
+┌────────┐ ┌──────────┐ ┌──────────┐
+│router  │ │bc-agent  │ │rag-agent │
+│.ts     │ │.ts       │ │.ts       │
+└────────┘ └──────────┘ └──────────┘
+                 │
+                 ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    domains/agent/tools                           │
+│                   (ToolLifecycleManager)                         │
+│              COORDINACIÓN DE CICLO DE VIDA DE TOOLS              │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -111,85 +162,102 @@ backend/src/
 ### 2.1 Diagrama de Secuencia Completo
 
 ```
-┌─────────┐     ┌──────────────────┐     ┌─────────────────┐     ┌──────────────┐
-│Frontend │     │ChatMessageHandler│     │AgentOrchestrator│     │orchestrator  │
-│Socket.IO│     │(WebSocket Layer) │     │(Orchestration)  │     │Graph.invoke()│
-└────┬────┘     └────────┬─────────┘     └───────┬─────────┘     └──────┬───────┘
-     │                   │                       │                       │
-     │ chat:message      │                       │                       │
-     │──────────────────>│                       │                       │
-     │                   │                       │                       │
-     │                   │ 1. Validate Auth      │                       │
-     │                   │    (userId from       │                       │
-     │                   │     session)          │                       │
-     │                   │                       │                       │
-     │                   │ 2. Validate Session   │                       │
-     │                   │    Ownership          │                       │
-     │                   │                       │                       │
-     │                   │ executeAgentSync()    │                       │
-     │                   │──────────────────────>│                       │
-     │                   │                       │                       │
-     │                   │                       │ 3. Create             │
-     │                   │                       │    ExecutionContextSync
-     │                   │                       │                       │
-     │                   │                       │ 4. Prepare File       │
-     │                   │                       │    Context            │
-     │                   │                       │    (FileContextPreparer)
-     │                   │                       │                       │
-     │ session_start     │                       │                       │
-     │<──────────────────│<──────────────────────│                       │
-     │                   │                       │                       │
-     │                   │                       │ 5. Persist User Msg   │
-     │                   │                       │    (PersistenceCoord) │
-     │                   │                       │                       │
-     │ user_message_     │                       │                       │
-     │ confirmed         │                       │                       │
-     │<──────────────────│<──────────────────────│                       │
-     │                   │                       │                       │
-     │                   │                       │ 6. graph.invoke()     │
-     │                   │                       │──────────────────────>│
-     │                   │                       │                       │
-     │                   │                       │    [Router Node]      │
-     │                   │                       │    [Agent Node]       │
-     │                   │                       │    [ReAct Loop]       │
-     │                   │                       │                       │
-     │                   │                       │<──────────────────────│
-     │                   │                       │ AgentState (final)    │
-     │                   │                       │                       │
-     │                   │                       │ 7. extractContent()   │
-     │                   │                       │    (ResultExtractor)  │
-     │                   │                       │                       │
-     │ thinking_complete │                       │                       │
-     │<──────────────────│<──────────────────────│ 8. Emit if thinking  │
-     │                   │                       │                       │
-     │ tool_use          │                       │                       │
-     │<──────────────────│<──────────────────────│ 9. Emit tool events  │
-     │ tool_result       │                       │    (+ persist async)  │
-     │<──────────────────│<──────────────────────│                       │
-     │                   │                       │                       │
-     │                   │                       │ 10. Persist Agent Msg │
-     │                   │                       │     (PersistenceCoord)│
-     │                   │                       │                       │
-     │ message           │                       │                       │
-     │<──────────────────│<──────────────────────│ 11. Emit complete msg │
-     │                   │                       │                       │
-     │ complete          │                       │                       │
-     │<──────────────────│<──────────────────────│ 12. Emit completion   │
-     │                   │                       │                       │
+┌─────────┐  ┌────────────────┐  ┌────────────────┐  ┌────────────┐  ┌─────────────────┐
+│Frontend │  │ChatMessage     │  │AgentOrchestrator│ │orchestrator│  │BatchResult      │
+│Socket.IO│  │Handler         │  │                │  │Graph       │  │Normalizer       │
+└────┬────┘  └───────┬────────┘  └───────┬────────┘  └─────┬──────┘  └────────┬────────┘
+     │               │                   │                 │                  │
+     │ chat:message  │                   │                 │                  │
+     │──────────────>│                   │                 │                  │
+     │               │                   │                 │                  │
+     │               │ 1. Validate Auth  │                 │                  │
+     │               │ 2. Validate Owner │                 │                  │
+     │               │                   │                 │                  │
+     │               │ executeAgentSync()│                 │                  │
+     │               │──────────────────>│                 │                  │
+     │               │                   │                 │                  │
+     │               │                   │ 3. Create       │                  │
+     │               │                   │ ExecutionContext│                  │
+     │               │                   │ Sync            │                  │
+     │               │                   │                 │                  │
+     │               │                   │ 4. FileContext  │                  │
+     │               │                   │    Preparer     │                  │
+     │               │                   │                 │                  │
+     │ session_start │                   │                 │                  │
+     │<──────────────│<──────────────────│                 │                  │
+     │               │                   │                 │                  │
+     │               │                   │ 5. Persist User │                  │
+     │               │                   │    Message      │                  │
+     │               │                   │                 │                  │
+     │ user_message_ │                   │                 │                  │
+     │ confirmed     │                   │                 │                  │
+     │<──────────────│<──────────────────│                 │                  │
+     │               │                   │                 │                  │
+     │               │                   │ 6. graph.invoke │                  │
+     │               │                   │────────────────>│                  │
+     │               │                   │                 │                  │
+     │               │                   │                 │ [Router Node]    │
+     │               │                   │                 │ [Agent Node]     │
+     │               │                   │                 │ [ReAct Loop]     │
+     │               │                   │                 │                  │
+     │               │                   │<────────────────│                  │
+     │               │                   │ AgentState      │                  │
+     │               │                   │                 │                  │
+     │               │                   │ 7. BatchResultNormalizer.normalize()
+     │               │                   │─────────────────────────────────────>
+     │               │                   │                 │                  │
+     │               │                   │<─────────────────────────────────────
+     │               │                   │ NormalizedAgentEvent[]             │
+     │               │                   │                 │                  │
+     │               │                   │ 8. Pre-Allocate │                  │
+     │               │                   │    Sequences    │                  │
+     │               │                   │    (Redis INCRBY)                  │
+     │               │                   │                 │                  │
+     │               │                   │ 9. Process Events Loop             │
+     │               │                   │    ┌────────────────────────────┐  │
+     │               │                   │    │ FOR event IN normalized:   │  │
+     │               │                   │    │   IF sync_required:        │  │
+     │               │                   │    │     persistSyncEvent()     │  │
+     │               │                   │    │   IF tool_request:         │  │
+     │               │                   │    │     ToolLifecycleMgr.onReq │  │
+     │               │                   │    │   IF tool_response:        │  │
+     │               │                   │    │     ToolLifecycleMgr.onComp│  │
+     │               │                   │    │     persistToolAsync()     │  │
+     │               │                   │    │   emitEvent()              │  │
+     │               │                   │    └────────────────────────────┘  │
+     │               │                   │                 │                  │
+     │thinking_compl │                   │                 │                  │
+     │<──────────────│<──────────────────│                 │                  │
+     │               │                   │                 │                  │
+     │ tool_use      │                   │                 │                  │
+     │<──────────────│<──────────────────│                 │                  │
+     │ tool_result   │                   │                 │                  │
+     │<──────────────│<──────────────────│                 │                  │
+     │               │                   │                 │                  │
+     │ message       │                   │                 │                  │
+     │<──────────────│<──────────────────│                 │                  │
+     │               │                   │                 │                  │
+     │               │                   │ 10. Finalize    │                  │
+     │               │                   │     Orphan Tools│                  │
+     │               │                   │                 │                  │
+     │ complete      │                   │                 │                  │
+     │<──────────────│<──────────────────│                 │                  │
+     │               │                   │                 │                  │
 ```
 
-### 2.2 El Stack de 6 Capas
+### 2.2 El Stack de 7 Capas
 
-El procesamiento de mensajes atraviesa 6 capas estrictas:
+El procesamiento de mensajes atraviesa 7 capas estrictas:
 
 | Capa | Módulo | Responsabilidad |
 |------|--------|-----------------|
 | **1. WebSocket** | `ChatMessageHandler.ts` | Validación de auth, sesión, delegación |
-| **2. Orquestación** | `AgentOrchestrator.ts` | Contexto, persistencia inicial, coordinación |
+| **2. Orquestación** | `AgentOrchestrator.ts` | Contexto, coordinación, flujo principal |
 | **3. Routing** | `router.ts` | Decidir qué agente procesa (BC, RAG, Orchestrator) |
 | **4. Ejecución** | `graph.ts` + Agentes | LangGraph StateGraph con nodos de agentes |
-| **5. Extracción** | `ResultExtractor.ts` | Extraer thinking, content, tools del resultado |
-| **6. Persistencia** | `PersistenceCoordinator.ts` | EventStore + MessageQueue (Two-Phase) |
+| **5. Normalización** | `BatchResultNormalizer.ts` | Convertir AgentState a NormalizedAgentEvent[] |
+| **6. Tool Lifecycle** | `ToolLifecycleManager.ts` | Coordinar tool_request + tool_response |
+| **7. Persistencia** | `PersistenceCoordinator.ts` | EventStore + MessageQueue (Two-Phase) |
 
 ---
 
@@ -262,7 +330,7 @@ executeAgentSync(prompt, sessionId, onEvent, userId, options):
     // 1. CREAR CONTEXTO DE EJECUCIÓN
     // ========================================
     ctx = createExecutionContextSync(sessionId, userId, onEvent, options)
-    adapter = StreamAdapterFactory.create('anthropic', sessionId)
+    ctx.toolLifecycleManager = createToolLifecycleManager()
 
     // ========================================
     // 2. PREPARAR CONTEXTO DE ARCHIVOS
@@ -283,7 +351,7 @@ executeAgentSync(prompt, sessionId, onEvent, userId, options):
     }
 
     // ========================================
-    // 4. EMITIR SESSION_START
+    // 4. EMITIR SESSION_START (transient)
     // ========================================
     emitEventSync(ctx, { type: 'session_start', ... })
 
@@ -291,7 +359,7 @@ executeAgentSync(prompt, sessionId, onEvent, userId, options):
     // 5. PERSISTIR MENSAJE DEL USUARIO
     // ========================================
     userMessageResult = persistenceCoordinator.persistUserMessage(sessionId, prompt)
-    emitEventSync(ctx, { type: 'user_message_confirmed', ... })
+    emitEventSync(ctx, { type: 'user_message_confirmed', sequenceNumber, ... })
 
     // ========================================
     // 6. EJECUTAR GRAFO (SÍNCRONO)
@@ -302,48 +370,108 @@ executeAgentSync(prompt, sessionId, onEvent, userId, options):
     })
 
     // ========================================
-    // 7. EXTRAER CONTENIDO
+    // 7. NORMALIZAR RESULTADO (BATCH)
     // ========================================
-    { thinking, content, toolExecutions, stopReason, usage } = extractContent(result)
-    setUsageSync(ctx, usage)
-
-    // ========================================
-    // 8. EMITIR EVENTOS EN ORDEN ESTRICTO
-    // ========================================
-
-    // 8.1 Thinking (si existe)
-    IF thinking:
-        persistenceCoordinator.persistThinking(sessionId, {...})
-        emitEventSync(ctx, { type: 'thinking_complete', content: thinking })
-
-    // 8.2 Tools (pares tool_use + tool_result)
-    FOR exec IN toolExecutions:
-        IF markToolSeenSync(ctx, exec.toolUseId).isDuplicate:
-            CONTINUE
-        emitEventSync(ctx, { type: 'tool_use', ... })
-        emitEventSync(ctx, { type: 'tool_result', ... })
-        persistenceCoordinator.persistToolEventsAsync(...)  // Fire-and-forget
+    adapter = createAnthropicAdapter(sessionId)
+    normalizedEvents = batchResultNormalizer.normalize(result, adapter, {
+        includeComplete: true
+    })
+    // Resultado: NormalizedAgentEvent[] ordenados por originalIndex
+    // Tipos: thinking, assistant_message, tool_request, tool_response, complete
 
     // ========================================
-    // 9. PERSISTIR MENSAJE DEL AGENTE
+    // 8. PRE-ALLOCAR SEQUENCE NUMBERS
     // ========================================
-    persistResult = persistenceCoordinator.persistAgentMessage(sessionId, {...})
-    awaitPersistence(persistResult.jobId, 10000)  // Esperar BullMQ
+    // Contar eventos que requieren persistencia
+    persistedEventCount = normalizedEvents.filter(
+        e => e.persistenceStrategy !== 'transient'
+    ).length
 
-    // 8.3 Mensaje final
-    emitEventSync(ctx, { type: 'message', content, ... })
+    // Reservar secuencias atómicamente via Redis INCRBY
+    startSeq = eventStore.reserveSequenceNumbers(sessionId, persistedEventCount)
 
-    // 8.4 Complete
-    emitEventSync(ctx, { type: 'complete', ... })
+    // Asignar secuencias pre-reservadas
+    seqIndex = 0
+    FOR event IN normalizedEvents:
+        IF event.persistenceStrategy !== 'transient':
+            event.preAllocatedSequenceNumber = startSeq + seqIndex
+            seqIndex++
 
-    RETURN { sessionId, response: content, messageId, tokenUsage, toolsUsed, success: true }
+    // ========================================
+    // 9. PROCESAR EVENTOS EN ORDEN
+    // ========================================
+    FOR event IN normalizedEvents:
+        SWITCH event.type:
+            CASE 'thinking':
+                // Persist sync (sync_required)
+                persistenceCoordinator.persistThinking(sessionId, event, event.preAllocatedSequenceNumber)
+                emitEventSync(ctx, convertToAgentEvent(event))
+
+            CASE 'assistant_message':
+                // Persist sync (sync_required)
+                persistenceCoordinator.persistAgentMessage(sessionId, event, event.preAllocatedSequenceNumber)
+                emitEventSync(ctx, { type: 'message', ... })
+
+            CASE 'tool_request':
+                // Registrar en ToolLifecycleManager (NO persistir aún)
+                ctx.toolLifecycleManager.onToolRequested(
+                    sessionId,
+                    event.toolUseId,
+                    event.toolName,
+                    event.args,
+                    event.preAllocatedSequenceNumber  // Para tool_use_requested
+                )
+                emitEventSync(ctx, { type: 'tool_use', ... })
+
+            CASE 'tool_response':
+                // Completar ciclo en ToolLifecycleManager
+                toolState = ctx.toolLifecycleManager.onToolCompleted(
+                    sessionId,
+                    event.toolUseId,
+                    event.result,
+                    event.success,
+                    event.error,
+                    event.preAllocatedSequenceNumber  // Para tool_use_completed
+                )
+                IF toolState:
+                    // Persistir ambos eventos juntos (fire-and-forget)
+                    persistenceCoordinator.persistToolEventsAsync(sessionId, [{
+                        toolUseId: toolState.toolUseId,
+                        toolName: toolState.toolName,
+                        args: toolState.args,
+                        result: toolState.result,
+                        success: toolState.state === 'completed',
+                        toolUseSeq: toolState.preAllocatedToolUseSeq,
+                        toolResultSeq: toolState.preAllocatedToolResultSeq
+                    }])
+                emitEventSync(ctx, { type: 'tool_result', ... })
+
+            CASE 'complete':
+                emitEventSync(ctx, { type: 'complete', ... })
+
+    // ========================================
+    // 10. FINALIZAR TOOLS HUÉRFANOS
+    // ========================================
+    // Persiste tools que nunca recibieron response
+    ctx.toolLifecycleManager.finalizeAndPersistOrphans(sessionId, persistenceCoordinator)
+
+    RETURN {
+        sessionId,
+        response: extractedContent,
+        messageId,
+        tokenUsage: { input: ctx.totalInputTokens, output: ctx.totalOutputTokens },
+        toolsUsed: toolExecutions.map(t => t.toolName),
+        success: true
+    }
 ```
 
 **Dependencias**:
 - `FileContextPreparer` - Preparación de contexto de archivos
-- `PersistenceCoordinator` - Persistencia coordinada
+- `PersistenceCoordinator` - Persistencia coordinada (Two-Phase)
+- `BatchResultNormalizer` - Normalización de AgentState a eventos
+- `ToolLifecycleManager` - Coordinación de ciclo de vida de tools
+- `AnthropicAdapter` - Normalización específica de Anthropic
 - `orchestratorGraph` - Grafo LangGraph
-- `StreamAdapterFactory` - Para normalización de stop_reason
 - `ExecutionContextSync` - Estado mutable por ejecución
 
 ---
@@ -358,7 +486,7 @@ executeAgentSync(prompt, sessionId, onEvent, userId, options):
 ```typescript
 interface ExecutionContextSync {
     // Identity (inmutables)
-    executionId: string;      // UUID único
+    executionId: string;      // UUID único para tracing
     sessionId: string;        // ID de sesión
     userId: string;           // ID de usuario (multi-tenant)
 
@@ -366,8 +494,9 @@ interface ExecutionContextSync {
     callback: EventEmitCallback;  // Función para emitir eventos
     eventIndex: number;           // Índice auto-incrementante
 
-    // Tool Deduplication (mutable)
-    seenToolIds: Map<string, string>;  // toolUseId → timestamp
+    // Tool Management (mutable)
+    seenToolIds: Map<string, string>;           // toolUseId → timestamp
+    toolLifecycleManager: ToolLifecycleManager; // Coordinación de tools
 
     // Usage Tracking (mutables)
     totalInputTokens: number;
@@ -380,11 +509,18 @@ interface ExecutionContextSync {
 }
 ```
 
+**Memoria Eficiente**:
+- Base overhead: ~250 bytes
+- Identity fields: 3 UUIDs (~108 bytes)
+- Mutable tracking: seenToolIds Map + token counters
+- Nueva instancia creada por ejecución
+
 **Funciones Helper**:
 - `createExecutionContextSync()` - Factory
-- `markToolSeenSync(ctx, toolUseId)` - Marcar herramienta vista (deduplicación)
 - `getNextEventIndex(ctx)` - Obtener y auto-incrementar índice
 - `setUsageSync(ctx, usage)` - Actualizar tokens
+- `isToolSeenSync(ctx, toolUseId)` - Verificar deduplicación
+- `markToolSeenSync(ctx, toolUseId)` - Registrar tool como visto
 
 ---
 
@@ -596,57 +732,235 @@ invoke(state, config) → Partial<AgentState>:
 
 ---
 
-### 3.8 ResultExtractor (Extracción de Contenido)
+### 3.8 BatchResultNormalizer (Normalización Batch)
 
-**Ubicación**: `backend/src/domains/agent/orchestration/ResultExtractor.ts`
+**Ubicación**: `backend/src/shared/providers/normalizers/BatchResultNormalizer.ts`
 
-**Responsabilidad Única**: Extraer contenido estructurado del resultado de LangGraph.
+**Responsabilidad Única**: Convertir AgentState de LangGraph a NormalizedAgentEvent[].
+
+**Características**:
+- Procesa TODOS los AI messages (soporte para ReAct loops multi-turn)
+- Interleaves tool_request con tool_response (usa state.toolExecutions)
+- Mantiene orden via `originalIndex`
+- Soporta extended thinking
 
 **Pseudocódigo**:
 ```
-extractContent(state: AgentState) → ExtractedContent:
-    messages = state.messages
-    lastMessage = findLastAIMessage(messages)
+normalize(state: AgentState, adapter: IProviderAdapter, options) → NormalizedAgentEvent[]:
+    events = []
+    messageIndex = 0
 
-    IF !lastMessage:
-        RETURN { thinking: null, content: '', stopReason: 'end_turn', ... }
+    // 1. PROCESAR TODOS LOS AI MESSAGES
+    FOR message IN state.messages:
+        IF message.type !== 'ai':
+            CONTINUE
 
-    // Buscar thinking en TODOS los mensajes AI (ReAct loop)
-    thinking = findThinkingInAllMessages(messages)
+        // Usar adapter para normalizar cada mensaje
+        messageEvents = adapter.normalizeMessage(message, messageIndex)
+        events.push(...messageEvents)
+        messageIndex++
 
-    // Extraer texto del ÚLTIMO mensaje
-    { text } = extractContentBlocks(lastMessage)
+    // 2. CREAR TOOL_RESPONSE EVENTS
+    toolResponses = []
+    FOR exec IN state.toolExecutions:
+        toolResponses.push({
+            type: 'tool_response',
+            toolUseId: exec.toolUseId,
+            result: exec.result,
+            success: exec.success,
+            error: exec.error,
+            originalIndex: findOriginalIndex(exec.toolUseId, events)
+        })
 
-    // Extraer metadata
-    stopReason = extractStopReason(lastMessage)  // response_metadata.stop_reason
-    usage = extractUsage(lastMessage)            // usage_metadata
+    // 3. INTERLEAVE RESPONSES CON REQUESTS
+    // Inserta tool_response inmediatamente después de su tool_request
+    FOR response IN toolResponses:
+        requestIndex = events.findIndex(e =>
+            e.type === 'tool_request' && e.toolUseId === response.toolUseId
+        )
+        IF requestIndex >= 0:
+            events.splice(requestIndex + 1, 0, response)
 
-    RETURN {
-        thinking,
-        content: text,
-        stopReason,
-        toolExecutions: state.toolExecutions,
-        usage
-    }
+    // 4. ORDENAR POR originalIndex
+    events.sort((a, b) => a.originalIndex - b.originalIndex)
 
-extractContentBlocks(message):
-    content = message.content
+    // 5. AGREGAR COMPLETE EVENT (opcional)
+    IF options.includeComplete:
+        events.push({
+            type: 'complete',
+            stopReason: extractStopReason(state),
+            usage: extractUsage(state),
+            persistenceStrategy: 'transient'
+        })
 
-    IF typeof content == 'string':
-        RETURN { thinking: '', text: content }
+    // 6. ASIGNAR PERSISTENCE STRATEGIES
+    FOR event IN events:
+        event.persistenceStrategy = determinePersistenceStrategy(event.type)
 
-    IF Array.isArray(content):
-        FOR block IN content:
-            IF block.type == 'thinking':
-                thinking += block.thinking
-            ELSE IF block.type == 'text':
-                text += block.text
-        RETURN { thinking, text }
+    RETURN events
+
+determinePersistenceStrategy(type):
+    IF type IN ['thinking', 'assistant_message']:
+        RETURN 'sync_required'
+    IF type IN ['tool_request', 'tool_response']:
+        RETURN 'async_allowed'
+    RETURN 'transient'  // session_start, complete
+```
+
+**Tipos de Eventos Normalizados**:
+```typescript
+type NormalizedAgentEvent =
+    | NormalizedThinkingEvent       // thinking content
+    | NormalizedAssistantMessageEvent  // text content
+    | NormalizedToolRequestEvent    // tool_use block
+    | NormalizedToolResponseEvent   // tool result
+    | NormalizedCompleteEvent;      // stream/session end
+
+interface NormalizedAgentEvent {
+    type: string;
+    eventId: string;
+    sessionId: string;
+    timestamp: string;
+    originalIndex: number;
+    persistenceStrategy: 'sync_required' | 'async_allowed' | 'transient';
+    provider: 'anthropic';
+    preAllocatedSequenceNumber?: number;  // Asignado en paso 8
+}
+```
+
+**Ejemplo de Procesamiento**:
+```
+Input: AgentState con 2 AI messages, 3 tool executions
+  Message 1: [thinking, text, tool_use_1, tool_use_2]
+  Message 2: [tool_use_3, text]
+  ToolExecutions: [result_1, result_2, result_3]
+
+Output (ordenado):
+  1. thinking (from msg 1, originalIndex=0)
+  2. text (from msg 1, originalIndex=1)
+  3. tool_request (tool_use_1, originalIndex=2)
+  4. tool_response (result_1, insertado)
+  5. tool_request (tool_use_2, originalIndex=3)
+  6. tool_response (result_2, insertado)
+  7. tool_request (tool_use_3, from msg 2, originalIndex=4)
+  8. tool_response (result_3, insertado)
+  9. text (from msg 2, originalIndex=5)
+  10. complete (transient)
 ```
 
 ---
 
-### 3.9 PersistenceCoordinator (Persistencia)
+### 3.9 ToolLifecycleManager (Ciclo de Vida de Tools)
+
+**Ubicación**: `backend/src/domains/agent/tools/ToolLifecycleManager.ts`
+
+**Responsabilidad Única**: Coordinar tool_request + tool_response para persistencia unificada.
+
+**Problema que Resuelve**:
+- Antes: 5+ eventos por tool (request, múltiples results, status updates)
+- Ahora: 2 eventos por tool (tool_use_requested + tool_use_completed)
+
+**Scope**: Per-execution (creado fresco para cada ejecución)
+
+**Pseudocódigo**:
+```
+// Creado fresco para cada ejecución
+createToolLifecycleManager() → ToolLifecycleManager
+
+class ToolLifecycleManager {
+    private pendingTools: Map<string, ToolState> = new Map()
+    private stats: ToolLifecycleStats = { pending: 0, completed: 0, failed: 0, orphaned: 0 }
+
+    onToolRequested(sessionId, toolUseId, toolName, args, preAllocatedSeq?):
+        // NO persiste - solo almacena en memoria
+        state = {
+            toolUseId,
+            sessionId,
+            toolName,
+            args,
+            state: 'requested',
+            requestedAt: new Date(),
+            preAllocatedToolUseSeq: preAllocatedSeq
+        }
+        this.pendingTools.set(toolUseId, state)
+        this.stats.pending++
+
+    onToolCompleted(sessionId, toolUseId, result, success, error?, preAllocatedSeq?) → ToolState | null:
+        state = this.pendingTools.get(toolUseId)
+
+        IF !state:
+            LOG WARN "Orphan tool response: no matching request"
+            RETURN null  // Orphan response
+
+        // Completar el estado
+        state.result = result
+        state.success = success
+        state.error = error
+        state.completedAt = new Date()
+        state.state = success ? 'completed' : 'failed'
+        state.preAllocatedToolResultSeq = preAllocatedSeq
+
+        this.pendingTools.delete(toolUseId)
+        this.stats.pending--
+        IF success:
+            this.stats.completed++
+        ELSE:
+            this.stats.failed++
+
+        RETURN state  // Caller persiste ambos eventos juntos
+
+    finalizeAndPersistOrphans(sessionId, persistenceCoordinator):
+        // Llamado al final de la ejecución
+        FOR [toolUseId, state] IN this.pendingTools:
+            // Persiste como tool_incomplete
+            state.state = 'incomplete'
+            persistenceCoordinator.persistToolEventsAsync(sessionId, [{
+                ...state,
+                result: '[Tool execution incomplete]',
+                success: false
+            }])
+            this.stats.orphaned++
+
+        this.pendingTools.clear()
+
+    getStats() → ToolLifecycleStats:
+        RETURN this.stats
+}
+```
+
+**ToolState**:
+```typescript
+interface ToolState {
+    toolUseId: string;
+    sessionId: string;
+    toolName: string;
+    state: 'requested' | 'completed' | 'failed' | 'incomplete';
+    args: Record<string, unknown>;
+    result?: string;
+    error?: string;
+    requestedAt: Date;
+    completedAt?: Date;
+    preAllocatedToolUseSeq?: number;      // Para evento tool_use_requested
+    preAllocatedToolResultSeq?: number;   // Para evento tool_use_completed
+}
+
+interface ToolLifecycleStats {
+    pending: number;    // Esperando response
+    completed: number;  // Exitosos
+    failed: number;     // Fallidos con error
+    orphaned: number;   // Persistidos como incomplete
+}
+```
+
+**Beneficios**:
+1. **Reducción de eventos en DB**: De 5+ a 2 eventos por tool
+2. **Audit trail completo**: Input + output juntos
+3. **Manejo de orphans**: Tools sin response se persisten al final
+4. **Pre-allocated sequences**: Garantiza orden determinístico
+
+---
+
+### 3.10 PersistenceCoordinator (Persistencia)
 
 **Ubicación**: `backend/src/domains/agent/persistence/PersistenceCoordinator.ts`
 
@@ -797,58 +1111,129 @@ prepare(userId, prompt, options) → FileContextPreparationResult:
 
 ---
 
-### 3.12 AnthropicStreamAdapter (Normalización)
+### 3.13 AnthropicAdapter (Normalización de Proveedor)
 
-**Ubicación**: `backend/src/shared/providers/adapters/AnthropicStreamAdapter.ts`
+**Ubicación**: `backend/src/shared/providers/adapters/AnthropicAdapter.ts`
 
-**Responsabilidad Única**: Normalizar eventos de Anthropic a formato canónico.
+**Responsabilidad Única**: Normalizar estructuras de mensaje de Anthropic a eventos normalizados.
+
+**Interfaz**:
+```typescript
+interface IProviderAdapter {
+    readonly provider: 'anthropic' | 'azure-openai' | 'openai' | 'google';
+    readonly sessionId: string;
+
+    normalizeMessage(message: BaseMessage, messageIndex: number): NormalizedAgentEvent[];
+    detectBlockType(block: unknown): ContentBlockType | null;
+    normalizeStopReason(stopReason?: string): NormalizedStopReason;
+    extractUsage(message: BaseMessage): NormalizedTokenUsage | null;
+    extractMessageId(message: BaseMessage): string;
+}
+```
 
 **Pseudocódigo**:
 ```
-processChunk(event: StreamEvent) → INormalizedStreamEvent | null:
-    IF event.event == 'on_chat_model_stream':
-        RETURN handleStreamChunk(event)
-    IF event.event == 'on_chat_model_end':
-        RETURN handleStreamEnd(event)
-    RETURN null
+normalizeMessage(message: BaseMessage, messageIndex: number) → NormalizedAgentEvent[]:
+    events = []
 
-handleStreamChunk(event):
-    chunk = event.data.chunk
+    // 1. EXTRAER THINKING BLOCKS (primero)
+    FOR block IN message.content:
+        IF isThinkingBlock(block):
+            events.push({
+                type: 'thinking',
+                content: block.thinking,
+                originalIndex: events.length,
+                persistenceStrategy: 'sync_required'
+            })
 
-    IF Array.isArray(chunk.content):
-        FOR block IN chunk.content:
-            IF block.type == 'thinking':
-                RETURN createEvent('reasoning_delta', { reasoning: block.thinking })
-            IF block.type == 'text':
-                RETURN createEvent('content_delta', { content: block.text })
-            IF block.type == 'tool_use':
-                RETURN createEvent('tool_call', { toolCall: {...} })
+    // 2. EXTRAER TEXTO (acumular en un solo evento)
+    text = ''
+    FOR block IN message.content:
+        IF isTextBlock(block):
+            text += block.text
 
-    IF typeof chunk.content == 'string':
-        RETURN createEvent('content_delta', { content: chunk.content })
+    IF text:
+        events.push({
+            type: 'assistant_message',
+            content: text,
+            originalIndex: events.length,
+            persistenceStrategy: 'sync_required'
+        })
 
+    // 3. EXTRAER TOOL_USE BLOCKS (último)
+    FOR block IN message.content:
+        IF isToolUseBlock(block):
+            events.push({
+                type: 'tool_request',
+                toolUseId: block.id,
+                toolName: block.name,
+                args: block.input,
+                originalIndex: events.length,
+                persistenceStrategy: 'async_allowed'
+            })
+
+    RETURN events  // Orden: thinking → text → tools
+
+// Type Guards
+isThinkingBlock(block):
+    RETURN block.type === 'thinking' && 'thinking' IN block
+
+isTextBlock(block):
+    RETURN block.type IN ['text', 'text_delta'] && 'text' IN block
+
+isToolUseBlock(block):
+    RETURN block.type === 'tool_use' && 'id' IN block && 'name' IN block
+
+// Stop Reason Normalization
 normalizeStopReason(stopReason) → NormalizedStopReason:
     mapping = {
-        'end_turn': 'success',
-        'max_tokens': 'max_turns',
-        'tool_use': 'success',
-        'stop_sequence': 'success'
+        'end_turn': 'end_turn',
+        'max_tokens': 'max_tokens',
+        'tool_use': 'tool_use',
+        'stop_sequence': 'end_turn'
     }
-    RETURN mapping[stopReason] ?? 'success'
+    RETURN mapping[stopReason] ?? 'end_turn'
+
+// Token Usage Extraction
+extractUsage(message) → NormalizedTokenUsage | null:
+    // Primary: response_metadata.usage
+    IF message.response_metadata?.usage:
+        RETURN {
+            inputTokens: usage.input_tokens,
+            outputTokens: usage.output_tokens
+        }
+
+    // Fallback: usage_metadata (LangChain 0.3+)
+    IF message.usage_metadata:
+        RETURN {
+            inputTokens: usage_metadata.input_tokens,
+            outputTokens: usage_metadata.output_tokens
+        }
+
+    RETURN null
+
+// Message ID Extraction
+extractMessageId(message) → string:
+    // Primary: message.id
+    IF message.id:
+        RETURN message.id
+
+    // Fallback: response_metadata.id
+    IF message.response_metadata?.id:
+        RETURN message.response_metadata.id
+
+    // Last resort: generate UUID (with warning)
+    LOG WARN "No message ID found, generating UUID"
+    RETURN uuid()
 ```
 
-**Tipos Normalizados**:
+**Stop Reasons Normalizados**:
 ```typescript
-type NormalizedEventType =
-    | 'stream_start'
-    | 'reasoning_delta'   // Thinking
-    | 'content_delta'     // Texto visible
-    | 'tool_call'         // Tool use
-    | 'citation'          // RAG
-    | 'usage'             // Tokens
-    | 'stream_end';
-
-type NormalizedStopReason = 'success' | 'error' | 'max_turns' | 'user_cancelled';
+type NormalizedStopReason =
+    | 'end_turn'       // Respuesta completa
+    | 'max_tokens'     // Límite de tokens alcanzado
+    | 'tool_use'       // Requiere ejecución de herramienta
+    | 'stop_sequence'  // Secuencia de parada encontrada
 ```
 
 ---
@@ -893,24 +1278,26 @@ type NormalizedStopReason = 'success' | 'error' | 'max_turns' | 'user_cancelled'
 | `ExecutionContextSync` | Estado por ejecución | **SÍ** | Solo contiene estado |
 | `Router` | Routing de intents | **SÍ** | Solo decide agente |
 | `BCAgent` | Ejecución BC | **SÍ** | Solo ejecuta BC tools |
-| `ResultExtractor` | Extracción de contenido | **SÍ** | Solo extrae del resultado |
 | `PersistenceCoordinator` | Persistencia coordinada | **SÍ** | Solo coordina ES+MQ |
 | `EventStore` | Event log | **SÍ** | Solo append-only log |
 | `FileContextPreparer` | Preparación contexto | **SÍ** | Solo prepara archivos |
-| `AnthropicStreamAdapter` | Normalización Anthropic | **SÍ** | Solo normaliza eventos |
+| `AnthropicAdapter` | Normalización Anthropic | **SÍ** | Solo normaliza eventos |
+| `BatchResultNormalizer` | Batch normalization | **SÍ** | Convierte AgentState a eventos |
+| `ToolLifecycleManager` | Tool coordination | **SÍ** | Gestiona ciclo de vida de tools |
 
 ### 5.2 Agnosticismo de Proveedor
 
 | Módulo | Agnóstico? | Dependencias de Proveedor |
 |--------|------------|---------------------------|
 | `ChatMessageHandler` | **SÍ** | Ninguna |
-| `AgentOrchestrator` | **PARCIAL** | Usa `StreamAdapterFactory('anthropic')` |
+| `AgentOrchestrator` | **PARCIAL** | Usa `createAnthropicAdapter()` (hardcoded) |
 | `Router` | **SÍ** | Usa ModelFactory (abstracción) |
 | `BCAgent` | **SÍ** | Usa ModelFactory |
 | `PersistenceCoordinator` | **SÍ** | Ninguna |
 | `EventStore` | **SÍ** | Ninguna |
-| `AnthropicStreamAdapter` | **NO** | Específico para Anthropic |
-| `StreamAdapterFactory` | **SÍ** | Factory pattern |
+| `AnthropicAdapter` | **NO** | Específico para Anthropic |
+| `BatchResultNormalizer` | **SÍ** | Usa IProviderAdapter interface |
+| `ToolLifecycleManager` | **SÍ** | Ninguna |
 
 ### 5.3 Desacoplamiento
 
@@ -952,7 +1339,14 @@ type NormalizedStopReason = 'success' | 'error' | 'max_turns' | 'user_cancelled'
 | Tool execution error | `BCAgent` / `RAGAgent` | Agente | `toolExecutions.error` |
 | Archivo no encontrado | `FileContextPreparer` | Contexto | `getFile` returns null |
 | Búsqueda semántica falla | `FileContextPreparer` | Contexto | Graceful degradation |
-| Stop reason desconocido | `AnthropicStreamAdapter` | Normalización | Log warn, default 'success' |
+| Stop reason desconocido | `AnthropicAdapter` | Normalización | Log warn, default 'end_turn' |
+| Normalización falla | `BatchResultNormalizer` | Normalización | Event extraction error |
+| Tool huérfano | `ToolLifecycleManager` | Tools | Tool sin response al final |
+| Pre-allocation falla | `EventStore.reserveSequenceNumbers` | Persistencia | Redis INCRBY error |
+| File processing falla | `FileProcessingService` | Files | Processor exception |
+| Chunking falla | `FileChunkingService` | Files | Strategy exception |
+| Embedding falla | `EmbeddingService` | Files | Azure OpenAI error |
+| Vector indexing falla | `VectorSearchService` | Files | AI Search error |
 
 ### 6.2 Flujo de Errores
 
@@ -1021,6 +1415,53 @@ Todo estado mutable vive en `ExecutionContextSync`, no en singletons.
 - Errores se loguean pero no fallan
 - Tools ya fueron ejecutados, solo persistimos para auditoría
 
+### 7.5 Pre-Allocated Sequence Numbers
+
+**Problema**: Persistencia async podía crear race conditions en sequence_number cuando múltiples eventos se procesan concurrentemente.
+
+**Solución**:
+1. Contar todos los eventos que requieren persistencia
+2. Reservar secuencias atómicamente: `Redis INCRBY event:sequence:{sessionId} count`
+3. Asignar secuencias pre-reservadas a cada evento
+4. Usar `appendEventWithSequence()` para garantizar orden
+
+**Beneficios**:
+- Elimina race conditions en ordenamiento
+- Orden determinístico garantizado
+- Sin gaps en sequence_number
+
+### 7.6 Batch Normalization
+
+**Problema**: Extraer eventos de AgentState era frágil y dependía del orden de iteración.
+
+**Solución**: `BatchResultNormalizer` con pipeline de 6 pasos:
+1. Procesar todos los AI messages
+2. Crear tool_response events
+3. Interleave responses con requests
+4. Ordenar por originalIndex
+5. Agregar evento complete
+6. Asignar persistence strategies
+
+**Beneficios**:
+- Soporta ReAct loops multi-turn
+- Garantiza orden correcto de tool_request → tool_response
+- Provider-agnostic via `IProviderAdapter`
+
+### 7.7 Unified Tool Persistence
+
+**Problema**: Antes se persistían 5+ eventos por tool (request, múltiples results, status updates).
+
+**Solución**: `ToolLifecycleManager`:
+- tool_request almacenado en memoria (no persistido)
+- Al llegar tool_response, combina ambos
+- Persiste 2 eventos: `tool_use_requested` + `tool_use_completed`
+- Tools huérfanos (sin response) se persisten al final como `tool_incomplete`
+
+**Beneficios**:
+- Reducción de 5+ a 2 eventos por tool
+- Audit trail completo (input + output juntos)
+- Manejo explícito de tools incompletos
+
 ---
 
 ## 8. Apéndice: Tipos Clave
@@ -1043,23 +1484,59 @@ type AgentEvent =
     | ContentRefusedEvent;
 ```
 
-### B. INormalizedStreamEvent (Interno)
+### B. NormalizedAgentEvent (Normalización Interna)
 
 ```typescript
-interface INormalizedStreamEvent {
-    type: NormalizedEventType;
-    provider: ProviderType;
-    timestamp: Date;
-    content?: string;
-    reasoning?: string;
-    toolCall?: NormalizedToolCall;
-    usage?: NormalizedUsage;
-    metadata: {
-        blockIndex: number;
-        messageId?: string;
-        isStreaming: boolean;
-        isFinal: boolean;
-    };
+// Tipo union para todos los eventos normalizados
+type NormalizedAgentEvent =
+    | NormalizedThinkingEvent
+    | NormalizedAssistantMessageEvent
+    | NormalizedToolRequestEvent
+    | NormalizedToolResponseEvent
+    | NormalizedCompleteEvent;
+
+// Base común para todos los eventos
+interface NormalizedEventBase {
+    type: string;
+    eventId: string;
+    sessionId: string;
+    timestamp: string;
+    originalIndex: number;
+    persistenceStrategy: 'sync_required' | 'async_allowed' | 'transient';
+    provider: 'anthropic';
+    preAllocatedSequenceNumber?: number;
+}
+
+// Evento de thinking (extended reasoning)
+interface NormalizedThinkingEvent extends NormalizedEventBase {
+    type: 'thinking';
+    content: string;
+    tokenUsage?: { thinkingTokens: number };
+}
+
+// Evento de mensaje del asistente
+interface NormalizedAssistantMessageEvent extends NormalizedEventBase {
+    type: 'assistant_message';
+    content: string;
+    stopReason?: NormalizedStopReason;
+    tokenUsage?: { inputTokens: number; outputTokens: number };
+}
+
+// Evento de tool request
+interface NormalizedToolRequestEvent extends NormalizedEventBase {
+    type: 'tool_request';
+    toolUseId: string;
+    toolName: string;
+    args: Record<string, unknown>;
+}
+
+// Evento de tool response
+interface NormalizedToolResponseEvent extends NormalizedEventBase {
+    type: 'tool_response';
+    toolUseId: string;
+    result: string;
+    success: boolean;
+    error?: string;
 }
 ```
 
@@ -1078,23 +1555,350 @@ interface ToolExecution {
 
 ---
 
-## 9. Conclusiones
+## 9. File Services (Flujo Completo)
+
+Esta sección documenta el pipeline completo de procesamiento de archivos, desde upload hasta contexto para agentes.
+
+### 9.1 Arquitectura General
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         FILE PROCESSING PIPELINE                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│   UPLOAD → PROCESS → CHUNK → EMBED → INDEX → SEARCH → CONTEXT               │
+│                                                                              │
+│   FileUpload   FileProcessing  FileChunking  Embedding  VectorSearch  FileContext
+│   Service      Service         Service       Service    Service       Preparer
+│                                                                              │
+│   (services/) (services/)     (services/)   (services/) (services/)  (domains/)
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 9.2 File Upload Flow
+
+**Ubicación**: `backend/src/services/files/FileUploadService.ts`
+
+**Endpoint**: `POST /api/files/upload`
+
+**Pipeline**:
+```
+1. Multer Middleware
+   ├── In-memory storage
+   ├── Max 100MB por archivo
+   ├── Max 20 archivos por request
+   └── Fix mojibake en filenames (UTF-8)
+
+2. FileUploadService.uploadFile()
+   ├── Validación MIME whitelist (29 tipos)
+   ├── Size limits: 100MB general, 30MB images
+   ├── Blob path: users/{userId}/files/{timestamp}-{sanitized-filename}
+   │   └── Sanitización: ASCII only (DB guarda nombre original Unicode)
+   └── Smart upload strategy:
+       ├── < 256MB: Single-put (1 API call)
+       └── >= 256MB: Block-upload (4MB chunks, parallel)
+
+3. FileService.createFile()
+   ├── DB record con processing_status='pending'
+   ├── embedding_status='pending'
+   └── Multi-tenant: scoped by user_id
+
+4. MessageQueue.addFileProcessingJob()
+   └── Fire-and-forget → Background worker
+```
+
+**MIME Types Soportados**:
+| Categoría | Tipos |
+|-----------|-------|
+| Documents | PDF, DOCX, XLSX, PPTX, TXT, MD |
+| Images | JPEG, PNG, GIF, WebP, BMP, TIFF |
+| Code | JS, TS, PY, JSON, XML, YAML, HTML, CSS |
+| Data | CSV |
+
+### 9.3 File Processing
+
+**Ubicación**: `backend/src/services/files/FileProcessingService.ts`
+
+**Triggered by**: BullMQ background worker
+
+**Processor Registry**:
+| MIME Type | Processor | Backend |
+|-----------|-----------|---------|
+| `application/pdf` | PdfProcessor | Azure Document Intelligence (prebuilt-read) |
+| `application/vnd.openxmlformats...docx` | DocxProcessor | mammoth.js |
+| `application/vnd.openxmlformats...xlsx` | ExcelProcessor | xlsx → markdown tables |
+| `text/*`, `application/json` | TextProcessor | UTF-8 decode |
+| `image/*` | ImageProcessor | Azure Computer Vision |
+
+**Pipeline**:
+```
+1. Download blob from Azure Storage (emit 20% progress)
+2. Select processor by MIME type
+3. Extract text → DB.extracted_text (emit 70% progress)
+4. Update processing_status='completed'
+5. Enqueue FileChunkingJob (fire-and-forget)
+6. Emit WebSocket progress events
+```
+
+**WebSocket Events**:
+- `file:processing_progress` - 0-100%
+- `file:processing_completed` - with stats
+- `file:processing_failed` - error details
+
+### 9.4 Image Processing (Especial)
+
+**Ubicación**: `backend/src/services/files/processors/ImageProcessor.ts`
+
+**Diferencia con texto**: Las imágenes NO tienen texto extraíble.
+
+**Pipeline**:
+```
+1. Detectar formato (JPEG, PNG, GIF, WebP) via magic bytes
+2. Verificar Azure Vision configurado
+3. Generar embedding vía Azure Computer Vision
+   └── Endpoint: /computervision/retrieval:vectorizeImage
+   └── Returns: 1024-dimensional vector
+4. Retornar metadata:
+   ├── embeddingGenerated: true
+   ├── imageFormat: "jpeg"
+   └── embeddingDimensions: 1024
+```
+
+**Limitación Actual**: Las imágenes solo tienen embeddings visuales.
+- NO hay OCR para texto visible en imágenes
+- NO hay captions/descripciones automáticas
+- Ver D2 en 99-FUTURE-DEVELOPMENT.md para roadmap de mejoras
+
+### 9.5 File Chunking
+
+**Ubicación**: `backend/src/services/files/FileChunkingService.ts`
+
+**Triggered by**: FileProcessingService enqueues `addFileChunkingJob()`
+
+**Estrategias** (via ChunkingStrategyFactory):
+| Tipo de archivo | Estrategia | Descripción |
+|-----------------|------------|-------------|
+| PDF, DOCX, Código | `RecursiveChunkingStrategy` | Jerárquico, respeta estructura |
+| Markdown, Plain text | `SemanticChunkingStrategy` | Sentence-aware |
+| CSV | `RowBasedChunkingStrategy` | Preserva filas completas |
+
+**Parámetros Default**:
+- `maxTokens: 512` - Óptimo para embeddings
+- `overlapTokens: 50` - Continuidad de contexto
+
+**Pipeline**:
+```
+1. Get file con extracted_text de DB
+2. Validar processing_status='completed'
+3. Select chunking strategy
+4. Split en chunks de 512 tokens
+5. Insert chunks en file_chunks table:
+   ├── id, file_id, user_id (multi-tenant)
+   ├── chunk_index, chunk_text, chunk_tokens
+   └── metadata (JSON)
+6. Update embedding_status='queued'
+7. Enqueue EmbeddingGenerationJob
+```
+
+**Caso Especial - Imágenes**:
+- Skip chunking (images no tienen chunks)
+- Set embedding_status='completed' (ImageProcessor ya generó embedding)
+- Return 0 chunks
+
+### 9.6 Embedding Generation
+
+**Ubicación**: `backend/src/services/embeddings/EmbeddingService.ts`
+
+**Text Embeddings**:
+```
+- Model: Azure OpenAI text-embedding-3-small (configurable)
+- Dimensions: 1536
+- Redis cache: 7-day TTL
+- Batch optimization: Check cache first, generate only missing
+```
+
+**Image Embeddings**:
+```
+- Model: Azure Computer Vision
+- Dimensions: 1024
+- Generated during ImageProcessor (not in this service)
+```
+
+**Pipeline**:
+```
+1. generateTextEmbeddingsBatch(texts)
+2. Check Redis cache (mget)
+3. Generate missing via Azure OpenAI
+4. Cache results (7-day TTL)
+5. Track usage for billing
+6. Return embeddings array
+```
+
+### 9.7 Vector Search
+
+**Ubicación**: `backend/src/services/search/VectorSearchService.ts`
+
+**Index**: Azure AI Search
+
+**Operaciones**:
+```typescript
+// Indexar chunks
+indexChunksBatch(chunks: ChunkWithEmbedding[]): Promise<void>
+
+// Buscar por similaridad
+search(query: string, userId: string, options?: SearchOptions): Promise<SearchResult[]>
+
+// GDPR deletion
+deleteChunksForUser(userId: string): Promise<void>
+deleteChunksForFile(fileId: string): Promise<void>
+```
+
+**Seguridad Multi-Tenant**:
+- Todos los queries incluyen: `userId eq '{userId}'`
+- Previene acceso cross-user
+- Filtros adicionales opcionales (fileId, etc.)
+
+### 9.8 Semantic Search
+
+**Ubicación**: `backend/src/services/search/semantic/SemanticSearchService.ts`
+
+**High-Level Search (File Granularity)**:
+```
+1. Generar embedding del query
+2. Vector search en todos los chunks
+3. Agrupar chunks por fileId
+4. Get top N chunks per file (default 5)
+5. Get file names de FileService
+6. Retornar top M files (default 3) ordenados por relevancia
+```
+
+**Resultado**:
+```typescript
+interface SemanticSearchResult {
+    fileId: string;
+    fileName: string;
+    relevanceScore: number;  // Max score de top chunks
+    topChunks: Array<{
+        chunkId: string;
+        content: string;
+        score: number;
+        chunkIndex: number;
+    }>;
+}
+```
+
+### 9.9 Context Retrieval
+
+**Ubicación**: `backend/src/services/files/context/ContextRetrievalService.ts`
+
+**3 Estrategias de Recuperación**:
+
+| Estrategia | Descripción | Uso |
+|------------|-------------|-----|
+| `DIRECT_CONTENT` | Descarga completa del blob | Imágenes, archivos < 30MB |
+| `EXTRACTED_TEXT` | Texto pre-extraído de DB | Documentos procesados |
+| `RAG_CHUNKS` | Top-k chunks via vector search | Archivos grandes con embeddings |
+
+**Strategy Selection** (ContextStrategyFactory):
+```
+Rule 1: Images → DIRECT_CONTENT (Claude Vision)
+Rule 2: Large (≥30MB) + embeddings → RAG_CHUNKS
+Rule 3: Has extracted_text → EXTRACTED_TEXT
+Rule 4: Small (<30MB) + native type → DIRECT_CONTENT
+Rule 5: Fallback → DIRECT_CONTENT
+```
+
+**Token Estimation**:
+- Text: ~4 characters per token
+- Chunks: sum of chunk text estimates
+- Base64 images: 0 (separate budget in Claude)
+
+### 9.10 FileContextPreparer (Integración con Agent)
+
+**Ubicación**: `backend/src/domains/agent/context/FileContextPreparer.ts`
+
+**Flujo Completo**:
+```
+1. VALIDAR ATTACHMENTS EXPLÍCITOS
+   ├── User adjunta fileIds explícitamente
+   ├── Validar ownership (user_id = userId)
+   └── Throws error si no encontrado
+
+2. SEMANTIC SEARCH AUTOMÁTICA (opcional)
+   ├── Si enableAutoSemanticSearch=true
+   ├── Graceful degradation on error
+   ├── Excluir archivos ya adjuntos
+   └── Retornar top N files (default 3)
+
+3. DEDUPLICACIÓN
+   ├── Combinar attached + searched files
+   ├── Attachments tienen prioridad
+   └── Track source ('attachment' vs 'semantic_search')
+
+4. RECUPERAR CONTENIDO
+   └── ContextRetrievalService.retrieveMultiple()
+
+5. CONSTRUIR XML CONTEXT
+   └── <documents>
+         <document source="attachment" file="report.pdf">
+           ...content...
+         </document>
+       </documents>
+
+6. INYECTAR EN PROMPT
+   └── {contextText}\n\n{userPrompt}
+```
+
+**Resultado**:
+```typescript
+interface FileContextPreparationResult {
+    contextText: string;         // <documents>...</documents>
+    filesIncluded: FileReference[];
+    semanticSearchUsed: boolean;
+    totalFilesProcessed: number;
+    executionTimeMs: number;
+}
+```
+
+### 9.11 Gaps Actuales (D2 en Future Development)
+
+| Gap | Descripción | Impacto |
+|-----|-------------|---------|
+| **No OCR en imágenes** | Texto visible no extraído | No busca "50x30cm" en fotos |
+| **No captions** | Sin descripciones automáticas | No busca "caja metálica" |
+| **Embeddings no indexados** | Generados pero no buscables | Solo similitud visual |
+| **Índice único** | textVector + imageVector mezclados | No fusion search |
+
+**Roadmap de Mejoras** (ver `99-FUTURE-DEVELOPMENT.md` D2):
+1. Fase 1: Image OCR via Azure Computer Vision Read API
+2. Fase 2: Image Captions via Description API
+3. Fase 3: Dual-Index Architecture (text 1536d + image 1024d)
+4. Fase 4: Fusion Search (OCR + caption + visual)
+
+---
+
+## 10. Conclusiones
 
 ### Fortalezas del Diseño Actual
 
 1. **Clara separación de responsabilidades** - Cada módulo hace una cosa
 2. **Arquitectura multi-tenant segura** - `userId` validado en cada capa
 3. **Persistencia robusta** - Two-phase con atomicidad en sequence_number
-4. **Agnosticismo de proveedor** - StreamAdapterFactory permite cambiar LLM
-5. **Stateless components** - ExecutionContext pattern para scalability
+4. **Normalización batch** - BatchResultNormalizer garantiza orden de eventos
+5. **Tool lifecycle unificado** - ToolLifecycleManager reduce eventos de 5+ a 2 por tool
+6. **Pre-allocated sequences** - Elimina race conditions en ordenamiento
+7. **Stateless components** - ExecutionContext pattern para scalability
+8. **File pipeline completo** - Upload → Process → Chunk → Embed → Search → Context
 
-### Áreas de Mejora Potencial
+### Áreas de Mejora Identificadas
 
-1. **Fallback de Redis no atómico** - Race condition en secuencias
+1. **Fallback de Redis no atómico** - Race condition en secuencias (D1 en Future Development)
 2. **Hardcoded 'anthropic'** en AgentOrchestrator - Debería ser configurable
 3. **No hay retry automático** para persistencia fallida
-4. **Timeout fijo** (5 min) - Podría ser configurable por request
+4. **Image search limitado** - No OCR, no captions (D2 en Future Development)
+5. **Timeout fijo** (5 min) - Podría ser configurable por request
 
 ---
 
-*Documento generado automáticamente. Última actualización: 2026-01-04*
+*Documento actualizado: 2026-01-06 v2.0*

@@ -52,81 +52,91 @@ WHEN MATCHED THEN
 
 ## URGENTE - Siguiente Prioridad
 
-### D2: Multimodal RAG Search (Core Feature)
+### D2: Semantic Image Search (Core Feature) - SIMPLIFICADO
 
 **Prioridad:** CRÍTICA
-**Estimación:** 6-8 semanas
-**Impacto:** Búsqueda de imágenes por contenido (funcionalidad core del negocio)
+**Estimación:** 4-5 días
+**Impacto:** Búsqueda semántica de imágenes por concepto visual (funcionalidad core del negocio)
+
+> **PRD Completo:** Ver `/docs/plans/image-search/` para documentación detallada con TDD specs.
 
 **Problema Actual:**
 
-El sistema RAG actualmente tiene un GAP CRÍTICO:
-- ✅ Documentos de texto (PDF, DOCX, XLSX) → embeddings 1536d → búsqueda funcional
-- ❌ Imágenes → embeddings 1024d generados pero **NO indexados**
-- ❌ No hay OCR para texto visible en imágenes
-- ❌ No hay captions/descripciones automáticas
-- ❌ Búsqueda semántica **SOLO funciona para texto**
+El sistema RAG tiene un GAP CRÍTICO en el pipeline de imágenes:
+- ✅ `ImageProcessor.ts` genera embedding 1024d via Azure Computer Vision
+- ❌ El embedding **NO se persiste** en BD ni en Azure AI Search
+- ❌ `FileChunkingService.ts` marca imágenes como "completed" pero **NO las indexa**
+- ❌ `schema.ts` solo soporta 1536d (text embeddings)
 
 ```typescript
-// FileChunkingService.ts - línea ~114
+// FileChunkingService.ts - línea ~114-128
 if (IMAGE_MIME_TYPES.has(mimeType)) {
-  logger.info('Skipping text chunking for image file');
-  return { fileId, chunkCount: 0, totalTokens: 0 };
-  // ⚠️ Embedding de imagen generado pero NO indexado!
+  await this.updateEmbeddingStatus(fileId, 'completed');  // ⚠️ FALSO POSITIVO
+  return { fileId, chunkCount: 0, totalTokens: 0 };       // ⚠️ EMBEDDING PERDIDO
 }
 ```
 
-**Impacto en Usuarios:**
-- Cliente con 10,000 imágenes de productos (cajas de metal, etc.)
-- Usuario busca "cajas de 50x30cm" → NO encuentra imágenes relevantes
-- Las imágenes tienen texto visible (dimensiones, códigos) pero no es extraído
+**Caso de Uso Real:**
+- Cliente vende cajas de metal y piezas de camión (10,000+ imágenes)
+- Usuario busca "cajas metálicas" o "acoplamientos" por concepto visual
+- Sistema debe devolver imágenes visualmente similares **SIN depender de OCR**
 
-**Solución Propuesta en 4 Fases:**
+**Solución: Multimodal RAG Simplificado**
+
+Usar Azure Computer Vision Multimodal Embeddings que proyecta **imágenes y texto al mismo espacio vectorial 1024d**:
 
 ```
-Fase 1: Image OCR (2 semanas)
-├── Agregar Azure Computer Vision Read API en ImageProcessor
-├── Extraer texto OCR y almacenar en extracted_text
-├── Crear chunks del OCR e indexarlos
-└── Resultado: Imágenes con texto visible ahora buscables
-
-Fase 2: Image Captions (1 semana)
-├── Agregar Azure Computer Vision Description API
-├── Generar descripciones automáticas ("metal box with label")
-├── Indexar captions como texto buscable
-└── Resultado: Búsqueda semántica por contenido visual
-
-Fase 3: Dual-Index Architecture (2 semanas)
-├── Separar índices: textVector (1536d) + imageVector (1024d)
-├── Agregar campos: ocrText, imageCaption, detectedObjects
-├── Actualizar Azure AI Search schema
-└── Resultado: Arquitectura preparada para fusion search
-
-Fase 4: Fusion Search (2 semanas)
-├── Implementar algoritmo de fusion ranking
-├── Combinar: OCR matches + caption matches + visual similarity
-├── Configurar weights (text: 0.4, caption: 0.3, visual: 0.3)
-└── Resultado: Búsqueda multimodal completa
+┌─────────────────────────────────────────────────────────┐
+│                    Azure Vision API                      │
+│  ┌─────────────────┐      ┌─────────────────────────┐  │
+│  │ VectorizeImage  │      │    VectorizeText        │  │
+│  │  (imagen.jpg)   │      │ ("cajas metálicas")     │  │
+│  └────────┬────────┘      └───────────┬─────────────┘  │
+│           │                           │                 │
+│           ▼                           ▼                 │
+│    [embedding 1024d]          [embedding 1024d]         │
+│           │                           │                 │
+│           └────────── MISMO ──────────┘                 │
+│                    ESPACIO VECTORIAL                    │
+└─────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────┐
+│              Azure AI Search (Cosine Similarity)         │
+│         Encuentra imágenes similares a query texto       │
+└─────────────────────────────────────────────────────────┘
 ```
 
-**Costos Adicionales:**
+**Implementación en 3 Fases:**
 
-| Servicio | Costo Actual | Costo Nuevo | Incremento |
-|----------|--------------|-------------|------------|
-| Por imagen | $0.001 (embedding) | $0.004 (+ OCR + caption) | 4x |
-| 10K imágenes | $10 | $40 | +$30 |
+| Fase | Días | Entregable |
+|------|------|------------|
+| **1: Persistencia** | 1.5 | Nueva tabla `image_embeddings`, actualizar `ImageProcessor` |
+| **2: Indexación** | 2 | Nuevo campo `imageVector` en Azure AI Search (1024d), `ImageSearchService` |
+| **3: Query** | 1 | Endpoint `/api/files/search/images`, integración con RAG Agent |
 
-**Archivos Afectados:**
-- `backend/src/services/files/processors/ImageProcessor.ts`
-- `backend/src/services/search/VectorSearchService.ts`
-- `backend/src/services/files/FileChunkingService.ts`
-- `backend/src/infrastructure/config/models.ts`
-- Azure AI Search index schema
+**Por Qué NO OCR:**
+- OCR es para texto en imágenes → No aplica a productos visuales
+- El cliente necesita **similitud visual**, no extracción de texto
+- OCR puede agregarse en fase futura si se requiere (complementario)
 
-**Nota:** Las 3 técnicas (OCR, Captions, Visual) **NO entran en conflicto** - se complementan:
-- OCR: Encuentra texto exacto ("50x30cm", "MX-5030")
-- Captions: Encuentra contexto semántico ("caja de metal plateada")
-- Visual: Encuentra imágenes visualmente similares
+**Costos:**
+- Image embedding: $0.0001/imagen (ya definido en `pricing.config.ts`)
+- Text query embedding: $0.0001/query
+- Azure AI Search: Ya incluido en tier Basic
+
+**Archivos a Modificar:**
+- `backend/src/services/files/processors/ImageProcessor.ts` - Persistir embedding
+- `backend/src/services/search/schema.ts` - Agregar imageVector 1024d
+- `backend/src/services/embeddings/EmbeddingService.ts` - Método `generateQueryEmbedding`
+- `backend/src/services/search/VectorSearchService.ts` - Método `searchImages`
+- `backend/migrations/00X-create-image-embeddings.sql` - Nueva tabla
+
+**Infraestructura Verificada (AZ CLI):**
+- ✅ `cv-bcagent-dev` (Computer Vision S1) → VectorizeImage API
+- ✅ `search-bcagent-dev` (Basic) → Soporta múltiples campos vectoriales
+- ✅ `models.ts` ya define `image_embedding` role (1024d)
+- ✅ `pricing.config.ts` ya tiene costo de image_embedding
 
 ---
 
@@ -505,7 +515,7 @@ Tests eliminados 2025-12-22 por usar API obsoleta `executeQueryStreaming`:
 | ID | Descripción | Fase | Prioridad | Días |
 |----|-------------|------|-----------|------|
 | **D1** | **Race condition EventStore** | **Phase 5C** | **Alta** | **1-2** |
-| **D2** | **Multimodal RAG Search** | **URGENTE** | **CRÍTICA** | **30-40** |
+| **D2** | **Semantic Image Search** | **URGENTE** | **CRÍTICA** | **4-5** |
 | D3 | ~~FakeAnthropicClient thinking~~ | ~~Phase 6~~ | ✅ | ~~OBSOLETO~~ |
 | D8 | Dynamic model selection | Phase 6 | Media | 2 |
 | D9 | WebSocket usage alerts | Phase 6 | Baja | 1 |
@@ -525,7 +535,7 @@ Tests eliminados 2025-12-22 por usar API obsoleta `executeQueryStreaming`:
 | - | Batch API | Phase 7 | Baja | 5 |
 | - | Analytics Dashboard | Phase 8 | Media | 10 |
 
-**Total estimado URGENTE (D2):** ~30-40 días (6-8 semanas)
+**Total estimado URGENTE (D2):** ~4-5 días (1 semana)
 **Total estimado Phase 6:** ~32.5-39 días (incluyendo D14, D15, D18, D19)
 **Total estimado Phase 7:** ~28 días
 **Total estimado Phase 8:** ~10 días
@@ -712,6 +722,146 @@ backend/src/__tests__/e2e/api/
 
 ---
 
+## D20: Duplicate File Detection & Management (UX Critical)
+
+**Fecha análisis:** 2026-01-06
+**Estado:** Documentado - Pendiente Implementación
+**Prioridad:** ALTA (UX + Cost Savings)
+**Estimación:** 3-4 días
+
+### Problema Actual
+
+El sistema NO detecta archivos duplicados durante el upload:
+
+```typescript
+// FileUploadService.ts - línea 104-108
+public generateBlobPath(userId: string, fileName: string): string {
+  const timestamp = Date.now();  // ⚠️ Siempre genera path único
+  return `users/${userId}/files/${timestamp}-${sanitizedFileName}`;
+}
+
+// FileService.ts - línea 215-264
+public async createFileRecord(options: CreateFileOptions): Promise<string> {
+  const fileId = randomUUID();  // ⚠️ Siempre crea nuevo registro
+  // NO verifica si existe archivo con mismo nombre
+  await executeQuery('INSERT INTO files...', params);
+}
+```
+
+### Impacto
+
+1. **Costos desperdiciados**: Mismo archivo subido N veces = N blobs + N embeddings
+2. **UX confusa**: Usuario ve múltiples archivos con mismo nombre
+3. **Búsqueda degradada**: Embeddings duplicados afectan relevancia
+4. **Storage innecesario**: Azure Blob Storage cobra por GB
+
+### Solución Propuesta
+
+**Fase 1: Backend - Detección (1 día)**
+```typescript
+// FileService.ts - Nuevo método
+async checkDuplicate(userId: string, fileName: string, folderId?: string): Promise<{
+  isDuplicate: boolean;
+  existingFile?: ParsedFile;
+  sameSize?: boolean;
+  sameHash?: boolean;
+}> {
+  const existing = await this.findByName(userId, fileName, folderId);
+  if (!existing) return { isDuplicate: false };
+
+  return {
+    isDuplicate: true,
+    existingFile: existing,
+    sameSize: false,  // Future: compare sizes
+    sameHash: false,  // Future: compare SHA-256
+  };
+}
+```
+
+**Fase 2: API - Endpoint (0.5 días)**
+```typescript
+// GET /api/files/check-duplicates
+// Body: { files: [{ name: string, size: number }], folderId?: string }
+// Response: { duplicates: [{ name, existingId, existingSize, action: 'replace'|'skip'|'keep_both' }] }
+```
+
+**Fase 3: Frontend - UX (1.5 días)**
+```tsx
+// DuplicateFileDialog.tsx
+interface DuplicateDialogProps {
+  duplicates: DuplicateFile[];
+  onResolve: (resolutions: DuplicateResolution[]) => void;
+}
+
+// Opciones por archivo:
+// - "Reemplazar" → DELETE existing + upload new
+// - "Saltar" → Skip this file
+// - "Conservar ambos" → Rename to "archivo (1).pdf"
+
+// Checkbox: "Aplicar a todos los duplicados"
+```
+
+**Fase 4: Hash Verification (1 día - Future)**
+```sql
+-- Agregar columna a files table
+ALTER TABLE files ADD content_hash NVARCHAR(64) NULL;
+
+-- Index para búsqueda rápida
+CREATE INDEX IX_files_content_hash ON files(user_id, content_hash);
+```
+
+### Archivos Afectados
+
+| Archivo | Cambio |
+|---------|--------|
+| `backend/src/services/files/FileService.ts` | Método `checkDuplicate()`, `findByName()` |
+| `backend/src/routes/files.ts` | Endpoint `/check-duplicates` |
+| `frontend/components/files/DuplicateFileDialog.tsx` | NUEVO: Diálogo de resolución |
+| `frontend/components/files/FileUploadZone.tsx` | Integrar verificación pre-upload |
+| `packages/shared/src/constants/files.ts` | Agregar `DuplicateResolution` type |
+
+---
+
+## D21: File Deletion Cascade Completeness
+
+**Fecha análisis:** 2026-01-06
+**Estado:** Documentado - Pendiente junto con D2
+**Prioridad:** MEDIA (Data Integrity)
+**Estimación:** 0.5 días (incluido en D2)
+
+### Estado Actual de Cascadas
+
+| Tabla/Storage | ON DELETE | Implementado |
+|---------------|-----------|--------------|
+| `files` → `file_chunks` | CASCADE | ✅ DB |
+| `files` → `message_file_attachments` | CASCADE | ✅ DB |
+| `files` → `image_embeddings` | N/A | ❌ Tabla no existe |
+| Azure AI Search (text) | Manual | ✅ `cleanupAISearchEmbeddings()` |
+| Azure AI Search (images) | Manual | ❌ No implementado |
+| Azure Blob Storage | Manual | ✅ Route handler |
+
+### Gap Crítico
+
+Cuando se implemente `image_embeddings` (D2), debe incluir:
+
+```sql
+-- En migración 00X-create-image-embeddings.sql
+CONSTRAINT FK_image_embeddings_files
+    FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE
+```
+
+Y actualizar `FileService.cleanupAISearchEmbeddings()` para:
+1. Eliminar de `image_embeddings` table (si no CASCADE)
+2. Eliminar documentos de Azure AI Search con `isImage=true`
+
+### Solución
+
+Incluir en PRD de Image Search (`docs/plans/image-search/02-DATABASE-SCHEMA.md`):
+- ✅ Ya documentado FK CASCADE en schema propuesto
+- Pendiente: Actualizar `FileService.deleteFile()` para cleanup de image embeddings
+
+---
+
 ## Criterios de Priorización
 
 ### Alta Prioridad
@@ -731,4 +881,4 @@ backend/src/__tests__/e2e/api/
 
 ---
 
-*Última actualización: 2025-12-23 - D19 agregado (Refactor E2E Tests con nueva filosofía de validación de estructura, no contenido). D14 documentado (API placeholder), D15 approval-flow pendiente refactor, D18 actualizado (performance skip intencional, message-flow corregido)*
+*Última actualización: 2026-01-06 - D2 simplificado: Semantic Image Search (4-5 días vs 6-8 semanas). PRD detallado en `/docs/plans/image-search/`. Enfoque en similitud visual multimodal, NO OCR.*

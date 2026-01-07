@@ -323,6 +323,71 @@ handleAgentEvent(event, io, sessionId, userId):
 
 ---
 
+### 3.9 Arquitectura RAG y Procesamiento de Archivos
+
+**Ubicación**: `backend/src/services/files/` y `backend/src/services/search/semantic/`
+
+**Concepto**: Sistema de RAG Multimodal con "Dual-Vector Architecture".
+
+#### 3.9.1 Processors y Estrategias de Extracción
+
+El sistema soporta múltiples tipos de archivo mediante procesadores especializados (`DocumentProcessor`):
+
+| Tipo Archivo | Procesador | Estrategia de Extracción | Embeddings |
+|--------------|------------|--------------------------|------------|
+| **PDF** | `PdfProcessor` | Azure Document Intelligence (Prebuilt-Read). Extrae texto y estructura (OCR). | Texto (1536d) |
+| **DOCX** | `DocxProcessor` | Mammoth. Extrae raw text. | Texto (1536d) |
+| **Excel** | `ExcelProcessor` | XLSX. Convierte cada hoja a formato CSV. | Texto (1536d) |
+| **TXT/CSV** | `TextProcessor` | Decodificación UTF-8 directa. | Texto (1536d) |
+| **Imágenes** | `ImageProcessor` | **No extrae texto**. Genera embedding visual semántico usando Azure Computer Vision. | Imagen (1024d) |
+
+#### 3.9.2 Dual-Vector Architecture
+
+Para soportar búsquedas que encuentren tanto documentos de texto relevante como imágenes visualmente similares, se utilizan dos espacios vectoriales distintos en paralelo:
+
+1.  **Espacio Semántico de Texto (1536 dimensiones)**:
+    *   **Modelo**: OpenAI `text-embedding-3-small`.
+    *   **Uso**: Todos los documentos de texto (PDF, DOCX, etc.) se fragmentan (Chunking) y se vectorizan aquí.
+    *   **Búsqueda**: El query del usuario se vectoriza con el mismo modelo.
+
+2.  **Espacio Semántico Visual (1024 dimensiones)**:
+    *   **Modelo**: Azure Computer Vision (`vectorizeImage` / `vectorizeText`).
+    *   **Uso**:
+        *   **Indexación**: Las imágenes se vectorizan visualmente usando `vectorizeImage`.
+        *   **Búsqueda**: El query del usuario (texto) se proyecta al espacio visual usando `vectorizeText`.
+    *   **Resultado**: Permite encontrar imágenes (ej. "atardecer") que coincidan semánticamente con el texto, aunque la imagen no tenga metadata.
+
+#### 3.9.3 Flujo de Búsqueda Unificada (`SemanticSearchService`)
+
+La búsqueda RAG combina ambos mundos:
+
+```typescript
+searchRelevantFiles(query):
+    // 1. Generación Paralela de Embeddings del Query
+    [textVec, imageQueryVec] = Promise.all([
+        OpenAI.embed(query), // 1536d
+        AzureVision.embedText(query) // 1024d
+    ])
+
+    // 2. Ejecución Paralela de Búsquedas (Azure AI Search)
+    [textResults, imageResults] = Promise.all([
+        searchIndex.search(textVec, fields: ['contentVector']),
+        searchIndex.search(imageQueryVec, fields: ['imageVector'])
+    ])
+
+    // 3. Fusión de Resultados
+    results = [...textResults, ...imageResults]
+
+    // 4. Ordenamiento (Naive)
+    // ADVERTENCIA: Los scores de OpenAI y Azure Vision no son directamente comparables.
+    // Esto puede causar que un tipo de resultado domine sobre el otro.
+    results.sort((a, b) => b.score - a.score)
+
+    RETURN results
+```
+
+---
+
 ### 3.2 AgentOrchestrator (Capa de Orquestación)
 
 **Ubicación**: `backend/src/domains/agent/orchestration/AgentOrchestrator.ts`

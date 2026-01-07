@@ -39,7 +39,6 @@
     "husky": "9.1.7",
     "ioredis": "5.8.2",
     "mssql": "11.0.1",
-    "next": "16.0.6",
     "ts-node": "10.9.2",
     "typescript": "5.3.3"
   }

@@ -359,6 +359,9 @@ describe('Sessions Routes', () => {
 
       mockExecuteQuery.mockResolvedValueOnce({ recordset: mockMessages });
 
+      // Third query: get citations for assistant message (msg-2)
+      mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
+
       // Act
       const response = await request(app)
         .get(`/api/chat/sessions/${VALID_SESSION_UUID}/messages`)
@@ -372,7 +375,8 @@ describe('Sessions Routes', () => {
         type: 'standard',
         content: 'Hello'
       });
-      expect(mockExecuteQuery).toHaveBeenCalledTimes(2);
+      // 3 queries: session ownership, messages, citations
+      expect(mockExecuteQuery).toHaveBeenCalledTimes(3);
       expect(mockExecuteQuery).toHaveBeenNthCalledWith(
         2,
         expect.stringContaining('OFFSET @offset ROWS'),

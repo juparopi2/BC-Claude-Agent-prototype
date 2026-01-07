@@ -251,7 +251,9 @@ describe('FileService - SQL NULL Comparison Integration', () => {
   });
 
   describe('getFileCount() - SQL NULL Handling', () => {
-    it('should count all user files when folderId=undefined', async () => {
+    it('should count root-level files when folderId=undefined (same as null)', async () => {
+      // When folderId is undefined or null, getFileCount counts only ROOT items
+      // (where parent_folder_id IS NULL), NOT all files in the user's account
       const rootFile1Id = randomUUID();
       const rootFile2Id = randomUUID();
       const folderId = randomUUID();
@@ -291,7 +293,9 @@ describe('FileService - SQL NULL Comparison Integration', () => {
 
       const count = await fileService.getFileCount(testUserId);
 
-      expect(count).toBe(4);
+      // Should count only root-level items: root-1.pdf, root-2.pdf, Folder = 3
+      // child.pdf is NOT counted because it's inside Folder
+      expect(count).toBe(3);
     });
 
     it('should count root-level files when folderId=null (IS NULL)', async () => {

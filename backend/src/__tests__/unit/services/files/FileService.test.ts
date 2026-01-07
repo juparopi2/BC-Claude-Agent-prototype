@@ -130,11 +130,11 @@ describe('FileService', () => {
     it('should filter favorites when favorites=true', async () => {
       mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
 
-      await fileService.getFiles({ userId: testUserId, favorites: true });
+      await fileService.getFiles({ userId: testUserId, favoritesFirst: true });
 
-      // Verify WHERE clause includes is_favorite
+      // Verify WHERE clause includes is_favorite logic for favorites first mode at root
       expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('AND is_favorite = 1'),
+        expect.stringContaining('AND (is_favorite = 1 OR parent_folder_id IS NULL)'),
         expect.objectContaining({
           user_id: testUserId,
         })
@@ -146,9 +146,9 @@ describe('FileService', () => {
 
       await fileService.getFiles({ userId: testUserId, sortBy: 'name' });
 
-      // Verify ORDER BY clause
+      // Verify ORDER BY clause (folders first, then by name)
       expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('ORDER BY name ASC'),
+        expect.stringContaining('ORDER BY is_folder DESC, name ASC'),
         expect.anything()
       );
     });
@@ -158,9 +158,9 @@ describe('FileService', () => {
 
       await fileService.getFiles({ userId: testUserId, sortBy: 'size' });
 
-      // Verify ORDER BY clause
+      // Verify ORDER BY clause (folders first, then by size)
       expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('ORDER BY size_bytes DESC'),
+        expect.stringContaining('ORDER BY is_folder DESC, size_bytes DESC'),
         expect.anything()
       );
     });
@@ -170,9 +170,9 @@ describe('FileService', () => {
 
       await fileService.getFiles({ userId: testUserId, sortBy: 'date' });
 
-      // Verify ORDER BY clause (default)
+      // Verify ORDER BY clause (folders first, then by date)
       expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('ORDER BY created_at DESC'),
+        expect.stringContaining('ORDER BY is_folder DESC, created_at DESC'),
         expect.anything()
       );
     });
@@ -278,7 +278,7 @@ describe('FileService', () => {
     });
 
     describe('getFileCount() with NULL parent_folder_id', () => {
-      it('should exclude parent_folder_id filter when folderId is undefined', async () => {
+      it('should use IS NULL for root folder when folderId is undefined', async () => {
         mockExecuteQuery.mockResolvedValueOnce({ recordset: [{ count: 42 }] });
 
         const count = await fileService.getFileCount(testUserId);
@@ -287,7 +287,9 @@ describe('FileService', () => {
         const query = queryCall?.[0] as string;
         const params = queryCall?.[1] as Record<string, unknown>;
 
-        expect(query).not.toContain('parent_folder_id');
+        // Root folder uses IS NULL, no parameter for parent_folder_id
+        expect(query).toContain('AND parent_folder_id IS NULL');
+        expect(query).not.toContain('parent_folder_id = @parent_folder_id');
         expect(params).not.toHaveProperty('parent_folder_id');
         expect(count).toBe(42);
       });
@@ -708,9 +710,9 @@ describe('FileService', () => {
 
       expect(count).toBe(42);
 
-      // Verify WHERE clause only includes user_id
+      // Verify WHERE clause includes user_id and parent_folder_id IS NULL for root
       expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringMatching(/WHERE user_id = @user_id\s+$/),
+        expect.stringContaining('AND parent_folder_id IS NULL'),
         expect.objectContaining({
           user_id: testUserId,
         })

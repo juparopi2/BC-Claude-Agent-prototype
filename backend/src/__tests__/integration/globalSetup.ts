@@ -24,11 +24,15 @@ const envPath = path.resolve(__dirname, '../../../.env');
 config({ path: envPath });
 
 // Test Redis configuration (Docker container on port 6399 or Azure Redis)
+// If REDIS_TEST_PASSWORD is empty/undefined, we'll preserve the original REDIS_PASSWORD
+// This allows EmbeddingService tests to use Azure Redis while other tests use Docker
 const REDIS_TEST_CONFIG = {
   host: process.env.REDIS_TEST_HOST || 'localhost',
   port: parseInt(process.env.REDIS_TEST_PORT || '6399', 10),
   password: process.env.REDIS_TEST_PASSWORD || undefined,
   tls: process.env.REDIS_TEST_TLS === 'true',
+  // Track if we should override REDIS_PASSWORD
+  hasExplicitPassword: Boolean(process.env.REDIS_TEST_PASSWORD),
 };
 
 /**
@@ -42,9 +46,17 @@ export async function setup(): Promise<void> {
   // These will be inherited by child processes (test workers)
   process.env.REDIS_HOST = REDIS_TEST_CONFIG.host;
   process.env.REDIS_PORT = String(REDIS_TEST_CONFIG.port);
-  process.env.REDIS_PASSWORD = REDIS_TEST_CONFIG.password || '';
   process.env.REDIS_TLS = String(REDIS_TEST_CONFIG.tls);
   delete process.env.REDIS_CONNECTION_STRING;
+
+  // Only override REDIS_PASSWORD if REDIS_TEST_PASSWORD was explicitly set
+  // This preserves Azure Redis credentials for tests that need them (e.g., EmbeddingService)
+  if (REDIS_TEST_CONFIG.hasExplicitPassword) {
+    process.env.REDIS_PASSWORD = REDIS_TEST_CONFIG.password || '';
+    console.log('  📌 Using REDIS_TEST_PASSWORD for test Redis');
+  } else {
+    console.log('  📌 Preserving original REDIS_PASSWORD (REDIS_TEST_PASSWORD not set)');
+  }
 
   // Pre-flight check: Verify Redis is available
   console.log(`📡 [Global Setup] Checking Redis (${REDIS_TEST_CONFIG.host}:${REDIS_TEST_CONFIG.port})...`);

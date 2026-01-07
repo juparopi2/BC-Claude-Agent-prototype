@@ -12,6 +12,7 @@ import {
   ThinkingBlock,
   ToolCard,
 } from '@/src/presentation/chat';
+import type { CitationInfo } from '@/lib/types/citation.types';
 
 export default function ChatContainer() {
   // Use domain hooks for messages and agent state
@@ -20,6 +21,8 @@ export default function ChatContainer() {
 
   // Citation store for file references
   const citationFileMap = useCitationStore((s) => s.citationFileMap);
+  const messageCitations = useCitationStore((s) => s.messageCitations);
+  const getMessageCitations = useCitationStore((s) => s.getMessageCitations);
 
   // File domain for looking up file metadata
   const { sortedFiles } = useFiles();
@@ -45,6 +48,18 @@ export default function ChatContainer() {
       console.warn(`Citation clicked for file ${fileId} but file not found in store`);
     }
   }, [sortedFiles, openPreview]);
+
+  /**
+   * Handle citation info click from SourceCarousel
+   * Uses rich metadata from CitationInfo for better preview experience
+   */
+  const handleCitationInfoOpen = useCallback((info: CitationInfo) => {
+    if (info.isDeleted || !info.fileId) {
+      // Don't open deleted files or files without IDs
+      return;
+    }
+    openPreview(info.fileId, info.fileName, info.mimeType);
+  }, [openPreview]);
 
 
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -123,6 +138,8 @@ export default function ChatContainer() {
               userInitials={userInitials}
               citationFileMap={citationFileMap}
               onCitationOpen={handleCitationOpen}
+              messageCitations={getMessageCitations(message.id)}
+              onCitationInfoOpen={handleCitationInfoOpen}
             />
           );
         })}

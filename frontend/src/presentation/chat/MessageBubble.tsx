@@ -5,6 +5,7 @@
  *
  * Renders individual chat messages based on type.
  * Uses ThinkingBlock for thinking messages.
+ * Shows SourceCarousel for assistant messages with citations.
  *
  * @module presentation/chat/MessageBubble
  */
@@ -12,11 +13,12 @@
 import { ThinkingBlock } from './ThinkingBlock';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { PersistenceIndicator } from './PersistenceIndicator';
+import { SourceCarousel } from './SourceCarousel';
 import { isThinkingMessage, isStandardMessage, isToolResultMessage, type Message, type PersistenceState } from '@bc-agent/shared';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Bot } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { CitationFileMap } from '@/lib/types/citation.types';
+import type { CitationFileMap, CitationInfo } from '@/lib/types/citation.types';
 
 /**
  * Format token count with K suffix for thousands
@@ -34,12 +36,16 @@ interface MessageBubbleProps {
   message: Message;
   /** User initials to display in user message avatar */
   userInitials?: string;
-  /** Map of fileName -> fileId for citation matching */
+  /** Map of fileName -> fileId for citation matching (legacy) */
   citationFileMap?: CitationFileMap;
   /** Callback when a citation is clicked */
   onCitationOpen?: (fileId: string) => void;
   /** Persistence state for showing save indicator (Gap #2) */
   persistenceState?: PersistenceState;
+  /** Rich citation info for SourceCarousel (new) */
+  messageCitations?: CitationInfo[];
+  /** Callback when a citation card in the carousel is clicked */
+  onCitationInfoOpen?: (info: CitationInfo) => void;
 }
 
 export default function MessageBubble({
@@ -48,6 +54,8 @@ export default function MessageBubble({
   citationFileMap,
   onCitationOpen,
   persistenceState,
+  messageCitations,
+  onCitationInfoOpen,
 }: MessageBubbleProps) {
 
   // Handle thinking messages with unified ThinkingBlock component
@@ -112,6 +120,17 @@ export default function MessageBubble({
             onCitationOpen={onCitationOpen}
           />
         </div>
+
+        {/* SourceCarousel for assistant messages with citations */}
+        {!isUser && messageCitations && messageCitations.length > 0 && (
+          <div className="mt-2 pl-1">
+            <SourceCarousel
+              citations={messageCitations}
+              onFileClick={onCitationInfoOpen}
+              maxVisible={4}
+            />
+          </div>
+        )}
 
         {/* Metadata row: token usage (assistant) or persistence state (user) */}
         <div className="flex items-center gap-2 px-2 text-xs text-muted-foreground">

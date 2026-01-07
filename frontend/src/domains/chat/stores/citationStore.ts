@@ -2,15 +2,17 @@
  * Citation Store
  *
  * Manages the mapping between file names and file IDs for citations.
- * Used to resolve citation references in messages.
+ * Extended with rich metadata for enhanced UI (badges, carousel, source icons).
  *
  * @module domains/chat/stores/citationStore
  */
 
 import { create } from 'zustand';
+import type { CitedFile } from '@bc-agent/shared';
+import type { CitationInfo, CitationInfoMap } from '@/lib/types/citation.types';
 
 /**
- * Map of file name to file ID
+ * Map of file name to file ID (legacy)
  */
 export type CitationFileMap = Map<string, string>;
 
@@ -18,20 +20,30 @@ export type CitationFileMap = Map<string, string>;
  * Citation state
  */
 export interface CitationState {
-  /** Map of file name -> file ID */
+  /** Map of file name -> file ID (legacy, for backward compatibility) */
   citationFileMap: CitationFileMap;
+  /** Map of file name -> CitationInfo (rich metadata) */
+  citationInfoMap: CitationInfoMap;
+  /** Map of message ID -> CitationInfo[] (per-message citations) */
+  messageCitations: Map<string, CitationInfo[]>;
 }
 
 /**
  * Citation actions
  */
 export interface CitationActions {
-  /** Set citation mapping for a file */
+  /** Set citation mapping for a file (legacy) */
   setCitationFile: (fileName: string, fileId: string) => void;
-  /** Get file ID for a file name */
+  /** Get file ID for a file name (legacy) */
   getCitationFile: (fileName: string) => string | undefined;
-  /** Set entire citation map (replaces existing) */
+  /** Set entire citation map (replaces existing, legacy) */
   setCitationMap: (map: CitationFileMap) => void;
+  /** Set cited files from CompleteEvent with full metadata */
+  setCitedFiles: (citedFiles: CitedFile[], messageId?: string) => void;
+  /** Get rich citation info for a file name */
+  getCitationInfo: (fileName: string) => CitationInfo | undefined;
+  /** Get citations for a specific message */
+  getMessageCitations: (messageId: string) => CitationInfo[];
   /** Clear all citations */
   clearCitations: () => void;
   /** Reset to initial state */
@@ -48,6 +60,8 @@ export type CitationStore = CitationState & CitationActions;
  */
 const initialState: CitationState = {
   citationFileMap: new Map(),
+  citationInfoMap: new Map(),
+  messageCitations: new Map(),
 };
 
 /**
@@ -82,8 +96,70 @@ export const useCitationStore = create<CitationStore>((set, get) => ({
     set({ citationFileMap: new Map(map) });
   },
 
+  /**
+   * Set cited files from CompleteEvent with full metadata.
+   * Updates both legacy citationFileMap and rich citationInfoMap.
+   * Optionally associates citations with a specific message.
+   */
+  setCitedFiles: (citedFiles, messageId) => {
+    set((state) => {
+      // Update legacy map (backward compatibility)
+      const newFileMap = new Map(state.citationFileMap);
+      // Update rich info map
+      const newInfoMap = new Map(state.citationInfoMap);
+      // Build citation list for this message
+      const citations: CitationInfo[] = [];
+
+      for (const file of citedFiles) {
+        // Legacy map only stores files with valid IDs
+        if (file.fileId) {
+          newFileMap.set(file.fileName, file.fileId);
+        }
+
+        // Rich info for all files (including tombstones)
+        const citationInfo: CitationInfo = {
+          fileName: file.fileName,
+          fileId: file.fileId,
+          sourceType: file.sourceType,
+          mimeType: file.mimeType,
+          relevanceScore: file.relevanceScore,
+          isImage: file.isImage,
+          fetchStrategy: file.fetchStrategy,
+          isDeleted: file.fileId === null,
+        };
+
+        newInfoMap.set(file.fileName, citationInfo);
+        citations.push(citationInfo);
+      }
+
+      // Update message citations if messageId provided
+      const newMessageCitations = new Map(state.messageCitations);
+      if (messageId) {
+        newMessageCitations.set(messageId, citations);
+      }
+
+      return {
+        citationFileMap: newFileMap,
+        citationInfoMap: newInfoMap,
+        messageCitations: newMessageCitations,
+      };
+    });
+  },
+
+  getCitationInfo: (fileName) => {
+    return get().citationInfoMap.get(fileName);
+  },
+
+  getMessageCitations: (messageId) => {
+    return get().messageCitations.get(messageId) ?? [];
+  },
+
   clearCitations: () => {
-    set({ citationFileMap: new Map() });
+    set({
+      citationFileMap: new Map(),
+      citationInfoMap: new Map(),
+      messageCitations: new Map(),
+    });
   },
 
   reset: () => {

@@ -15,11 +15,13 @@ import type {
   ApprovalRequestedEvent,
   ThinkingCompleteEvent,
   CompleteEvent,
+  CitedFile,
   Message,
 } from '@bc-agent/shared';
 import { getMessageStore } from '../stores/messageStore';
 import { getAgentStateStore } from '../stores/agentStateStore';
 import { getApprovalStore } from '../stores/approvalStore';
+import { getCitationStore } from '../stores/citationStore';
 
 /**
  * Callbacks for UI state updates.
@@ -29,8 +31,10 @@ export interface EventProcessorCallbacks {
   onAgentBusyChange?: (busy: boolean) => void;
   /** Called on error events */
   onError?: (error: string) => void;
-  /** Called when citations are received */
+  /** Called when citations are received (legacy: simple map) */
   onCitationsReceived?: (citations: Map<string, string>) => void;
+  /** Called when rich citations are received (new: full metadata) */
+  onCitedFilesReceived?: (citedFiles: CitedFile[], messageId?: string) => void;
 }
 
 /**
@@ -218,19 +222,31 @@ export function processAgentEventSync(
 
     case 'complete': {
       const completeEvent = event as CompleteEvent;
+      const citationStore = getCitationStore();
       agentStateStore.getState().setAgentBusy(false);
       agentStateStore.getState().setPaused(false);
       callbacks?.onAgentBusyChange?.(false);
 
       // Handle citations if present
       if (completeEvent.citedFiles && completeEvent.citedFiles.length > 0) {
+        // Store rich citation info directly in citationStore
+        // messageId is used to associate citations with specific messages (per PRD)
+        citationStore.getState().setCitedFiles(completeEvent.citedFiles, completeEvent.messageId);
+
+        // Callback with full CitedFile[]
+        callbacks?.onCitedFilesReceived?.(completeEvent.citedFiles, completeEvent.messageId);
+
+        // Legacy callback (backward compatibility)
         const citationMap = new Map<string, string>();
         for (const file of completeEvent.citedFiles) {
-          citationMap.set(file.fileName, file.fileId);
+          if (file.fileId) {
+            citationMap.set(file.fileName, file.fileId);
+          }
         }
         callbacks?.onCitationsReceived?.(citationMap);
       } else if (completeEvent.citedFiles) {
         // Empty array clears citations
+        citationStore.getState().clearCitations();
         callbacks?.onCitationsReceived?.(new Map());
       }
       break;

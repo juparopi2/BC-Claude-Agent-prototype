@@ -20,7 +20,7 @@
  */
 
 import { randomUUID } from 'crypto';
-import type { AgentEvent } from '@bc-agent/shared';
+import type { AgentEvent, CitedFile } from '@bc-agent/shared';
 import {
   createToolLifecycleManager,
   type ToolLifecycleManager,
@@ -141,6 +141,29 @@ export interface ExecutionContextSync {
   readonly toolLifecycleManager: ToolLifecycleManager;
 
   // ============================================================================
+  // Citation Tracking
+  // ============================================================================
+
+  /**
+   * Cited sources collected from tool results.
+   * Populated by CitationExtractor when processing tool_response events.
+   * Used to populate citedFiles in CompleteEvent.
+   *
+   * MUTABLE: Sources are added during tool response processing.
+   * Accumulated throughout execution and emitted with CompleteEvent.
+   */
+  readonly citedSources: CitedFile[];
+
+  /**
+   * Message ID of the last assistant message.
+   * Set when processing assistant_message events.
+   * Used to associate citations with the message in CompleteEvent.
+   *
+   * MUTABLE: Updated when assistant_message is processed.
+   */
+  lastAssistantMessageId: string | null;
+
+  // ============================================================================
   // Usage Tracking
   // ============================================================================
 
@@ -219,6 +242,10 @@ export function createExecutionContextSync(
 
     // Tool Lifecycle Management
     toolLifecycleManager: createToolLifecycleManager(),
+
+    // Citation Tracking
+    citedSources: [],
+    lastAssistantMessageId: null,
 
     // Usage Tracking
     totalInputTokens: 0,

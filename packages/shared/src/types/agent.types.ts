@@ -7,6 +7,8 @@
  * @module @bc-agent/shared/types/agent
  */
 
+import type { SourceType, FetchStrategy } from './source.types';
+
 /**
  * Provider-agnostic stop reason.
  * Covers all possible reasons why an LLM stopped generating.
@@ -275,13 +277,24 @@ export interface SessionEndEvent extends BaseAgentEvent {
 
 /**
  * Cited File
- * Represents a file that was used/cited during agent execution
+ * Represents a file that was used/cited during agent execution.
+ * Extended with source metadata for rich frontend rendering.
  */
 export interface CitedFile {
   /** File name for display */
   fileName: string;
-  /** File ID for lookup/preview */
-  fileId: string;
+  /** File ID for lookup/preview (null for tombstone/deleted files) */
+  fileId: string | null;
+  /** Source type for routing fetch requests */
+  sourceType: SourceType;
+  /** MIME type for icon/preview rendering */
+  mimeType: string;
+  /** Relevance score from search (0-1) */
+  relevanceScore: number;
+  /** Whether this is an image file */
+  isImage: boolean;
+  /** How to fetch content (internal API, OAuth proxy, or external URL) */
+  fetchStrategy: FetchStrategy;
 }
 
 /**
@@ -303,6 +316,11 @@ export interface CompleteEvent extends BaseAgentEvent {
    * Undefined when no files were used.
    */
   citedFiles?: CitedFile[];
+  /**
+   * Message ID of the assistant message to associate citations with.
+   * Frontend uses this to link citedFiles to specific messages for per-message rendering.
+   */
+  messageId?: string;
 }
 
 /**

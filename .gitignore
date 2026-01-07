@@ -64,6 +64,7 @@ tmp/
 
 # Playwright
 .playwright/
+.playwright-mcp/
 playwright/.cache/
 
 # Local documentation with sensitive information

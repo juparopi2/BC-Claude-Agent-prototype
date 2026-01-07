@@ -17,3 +17,5 @@ export { FileAttachmentChip } from './FileAttachmentChip';
 export { MarkdownRenderer } from './MarkdownRenderer';
 export { AttachmentList } from './AttachmentList';
 export { InputOptionsBar } from './InputOptionsBar';
+export { SourceCarousel } from './SourceCarousel';
+export type { SourceCarouselProps } from './SourceCarousel';

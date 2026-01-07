@@ -178,7 +178,8 @@
       "WebFetch(domain:js.langchain.com)",
       "WebFetch(domain:python.langchain.com)",
       "WebFetch(domain:dev.to)",
-      "WebFetch(domain:medium.com)"
+      "WebFetch(domain:medium.com)",
+      "mcp__playwright__browser_navigate"
     ],
     "deny": [],
     "ask": []

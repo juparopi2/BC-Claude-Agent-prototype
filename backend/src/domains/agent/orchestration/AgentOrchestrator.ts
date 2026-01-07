@@ -69,6 +69,7 @@ import {
 } from '@domains/agent/persistence';
 import { getEventStore, type EventStore } from '@services/events/EventStore';
 import { normalizeToolArgs } from '@domains/agent/tools';
+import { getCitationExtractor, type ICitationExtractor } from '@/domains/agent/citations';
 
 /**
  * Dependencies for AgentOrchestrator (for testing).
@@ -78,6 +79,7 @@ export interface AgentOrchestratorDependencies {
   persistenceCoordinator?: IPersistenceCoordinator;
   normalizer?: BatchResultNormalizer;
   eventStore?: EventStore;
+  citationExtractor?: ICitationExtractor;
 }
 
 /**
@@ -101,12 +103,14 @@ export class AgentOrchestrator implements IAgentOrchestrator {
   private readonly persistenceCoordinator: IPersistenceCoordinator;
   private readonly normalizer: BatchResultNormalizer;
   private readonly eventStore: EventStore;
+  private readonly citationExtractor: ICitationExtractor;
 
   constructor(deps?: AgentOrchestratorDependencies) {
     this.fileContextPreparer = deps?.fileContextPreparer ?? createFileContextPreparer();
     this.persistenceCoordinator = deps?.persistenceCoordinator ?? getPersistenceCoordinator();
     this.normalizer = deps?.normalizer ?? getBatchResultNormalizer();
     this.eventStore = deps?.eventStore ?? getEventStore();
+    this.citationExtractor = deps?.citationExtractor ?? getCitationExtractor();
   }
 
   /**
@@ -310,6 +314,8 @@ export class AgentOrchestrator implements IAgentOrchestrator {
           finalContent = msgEvent.content;
           finalMessageId = msgEvent.messageId;
           finalStopReason = msgEvent.stopReason;
+          // Store messageId for citation association in CompleteEvent
+          ctx.lastAssistantMessageId = msgEvent.messageId;
           setUsageSync(ctx, {
             inputTokens: msgEvent.tokenUsage.inputTokens,
             outputTokens: msgEvent.tokenUsage.outputTokens,
@@ -429,6 +435,28 @@ export class AgentOrchestrator implements IAgentOrchestrator {
     // STEP 4: Emit to WebSocket (now with correct sequenceNumber)
     this.emitEventSync(ctx, agentEvent);
 
+    // STEP 4.1: Extract citations from tool_response events (for RAG tools)
+    if (event.type === 'tool_response') {
+      const toolRespEvent = event as NormalizedToolResponseEvent;
+      if (toolRespEvent.result && this.citationExtractor.producesCitations(toolRespEvent.toolName)) {
+        const extractedCitations = this.citationExtractor.extract(
+          toolRespEvent.toolName,
+          toolRespEvent.result
+        );
+        if (extractedCitations.length > 0) {
+          ctx.citedSources.push(...extractedCitations);
+          this.logger.debug(
+            {
+              toolName: toolRespEvent.toolName,
+              citationCount: extractedCitations.length,
+              fileNames: extractedCitations.map(c => c.fileName),
+            },
+            'Citations extracted from tool response'
+          );
+        }
+      }
+    }
+
     // STEP 5: Handle async persistence (tools) with pre-allocated seq
     if (event.persistenceStrategy === 'async_allowed') {
       this.persistAsyncEvent(event, sessionId, ctx, preAllocatedSeq);
@@ -511,6 +539,10 @@ export class AgentOrchestrator implements IAgentOrchestrator {
           type: 'complete' as const,
           reason: completeEvent.reason,
           stopReason: completeEvent.stopReason,
+          // Include cited files from RAG tool results (if any)
+          citedFiles: _ctx.citedSources.length > 0 ? _ctx.citedSources : undefined,
+          // Include messageId for citation association on frontend
+          messageId: _ctx.lastAssistantMessageId ?? undefined,
         };
       }
 

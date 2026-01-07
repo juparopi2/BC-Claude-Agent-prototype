@@ -102,6 +102,11 @@ export type {
   FolderResponse,
   UploadFilesResponse,
   AllowedMimeType,
+
+  // Source types (Visual Representation feature)
+  SourceType,
+  FetchStrategy,
+  SourceExcerpt,
 } from './types';
 
 // Type guards (runtime functions, not types)
@@ -124,6 +129,13 @@ export { FILE_UPLOAD_LIMITS, ALLOWED_MIME_TYPES } from './types';
 
 // Transient event constants
 export { TRANSIENT_EVENT_TYPES } from './types';
+
+// Source type utilities (Visual Representation feature)
+export {
+  getFetchStrategy,
+  DEFAULT_SOURCE_TYPE,
+  DEFAULT_FETCH_STRATEGY,
+} from './types';
 
 // ============================================
 // Constants - Error codes, messages, mappings

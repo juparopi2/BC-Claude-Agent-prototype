@@ -116,6 +116,14 @@ export { FILE_UPLOAD_LIMITS, ALLOWED_MIME_TYPES } from './file.types';
 // File type guards
 export { isAllowedMimeType } from './file.types';
 
+// Source types (Visual Representation - Multi-Provider Support)
+export type { SourceType, FetchStrategy, SourceExcerpt } from './source.types';
+export {
+  getFetchStrategy,
+  DEFAULT_SOURCE_TYPE,
+  DEFAULT_FETCH_STRATEGY,
+} from './source.types';
+
 // Normalized event types (multi-provider normalization)
 export type {
   NormalizedProvider,

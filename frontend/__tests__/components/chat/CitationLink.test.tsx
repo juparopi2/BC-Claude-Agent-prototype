@@ -45,17 +45,17 @@ describe('CitationLink', () => {
     it('should have proper aria-label when clickable', () => {
       const onOpen = vi.fn();
       renderWithTooltip(<CitationLink fileName="document.pdf" fileId="123" onOpen={onOpen} />);
-      expect(screen.getByRole('button')).toHaveAttribute('aria-label', 'File: document.pdf');
+      expect(screen.getByRole('button')).toHaveAttribute('aria-label', 'document.pdf');
     });
 
     it('should indicate when file not found', () => {
       renderWithTooltip(<CitationLink fileName="document.pdf" fileId={null} />);
-      expect(screen.getByRole('button')).toHaveAttribute('aria-label', 'File: document.pdf (not found)');
+      expect(screen.getByRole('button')).toHaveAttribute('aria-label', 'document.pdf (File not found)');
     });
 
-    it('should indicate when file not found (fileId without onOpen)', () => {
+    it('should show filename when fileId exists but no onOpen handler', () => {
       renderWithTooltip(<CitationLink fileName="document.pdf" fileId="123" />);
-      expect(screen.getByRole('button')).toHaveAttribute('aria-label', 'File: document.pdf (not found)');
+      expect(screen.getByRole('button')).toHaveAttribute('aria-label', 'document.pdf');
     });
   });
 });

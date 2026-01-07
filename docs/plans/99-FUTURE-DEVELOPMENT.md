@@ -400,9 +400,10 @@ Los tests documentan el comportamiento esperado para cuando se implementen.
 | **D22** | **Orphan Cleanup Job** | **Phase 6** | **Media** | **2** |
 | D23 | Post-Delete Verification | Phase 6 | Baja | 1 |
 | **D24** | **UserId Case Sensitivity (AI Search)** | **Phase 6** | **ALTA** | **0.5** |
+| **D25** | **EmbeddingService Tests Env Injection** | **Phase 6** | **MEDIA** | **1-2** |
 
 
-**Total estimado Phase 6:** ~37-44 días (incluyendo D14, D15, D18, D19, D21-D24)
+**Total estimado Phase 6:** ~38-46 días (incluyendo D14, D15, D18, D19, D21-D25)
 **Total estimado Phase 7:** ~28 días
 **Total estimado Phase 8:** ~10 días
 
@@ -849,6 +850,145 @@ private normalizeUserId(userId: string): string {
 
 ---
 
+## D25: EmbeddingService Integration Tests - Environment Variable Injection
+
+**Fecha análisis:** 2026-01-06
+**Estado:** Documentado - Workaround Aplicado
+**Prioridad:** MEDIA
+**Estimación:** 1-2 días
+
+### Problema Actual
+
+Los tests de integración de `EmbeddingService` se **saltan silenciosamente** cuando se ejecuta la suite completa (`npm run test:integration`), a pesar de que las credenciales existen en el `.env`.
+
+```
+stdout | EmbeddingService.integration.test.ts
+Skipping EmbeddingService tests: missing Azure OpenAI or Redis credentials
+Test skipped: missing credentials
+```
+
+**Sin embargo**, cuando se ejecuta el test directamente (`npm run test:integration -- EmbeddingService`), los tests **SÍ se ejecutan correctamente**.
+
+### Causa Raíz
+
+El problema está en cómo vitest con `pool: 'forks'` maneja las variables de entorno:
+
+1. **globalSetup.ts** se ejecuta en el proceso principal
+2. Carga el `.env` y configura variables de entorno
+3. Pero los **workers de vitest son procesos fork** que NO heredan las variables modificadas en globalSetup de manera consistente
+4. El archivo `setup.env.ts` (setupFiles) se ejecuta EN el worker, pero DESPUÉS de que los módulos del test se importan
+5. Cuando `EmbeddingService.integration.test.ts` importa `EmbeddingService`, este carga `environment.ts` que lee `process.env` ANTES de que setupFiles haya ejecutado
+
+### Orden de Ejecución Problemático
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ PROCESO PRINCIPAL                                           │
+│  1. globalSetup.ts ejecuta y carga .env ✅                  │
+│  2. Spawn worker process                                    │
+└─────────────────────────────────────────────────────────────┘
+                          │
+                          ▼
+┌─────────────────────────────────────────────────────────────┐
+│ WORKER PROCESS (fork)                                       │
+│  3. Importa módulos del test (EmbeddingService)             │
+│     → environment.ts lee process.env (VACÍO) ❌             │
+│  4. setupFiles ejecuta setup.env.ts                         │
+│     → Carga .env (YA ES TARDE) ❌                           │
+│  5. beforeAll() verifica credenciales → FALTAN ❌           │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Workaround Actual (2026-01-06)
+
+Se modificó `globalSetup.ts` para NO sobrescribir `REDIS_PASSWORD` cuando `REDIS_TEST_PASSWORD` está vacío:
+
+```typescript
+// globalSetup.ts
+if (REDIS_TEST_CONFIG.hasExplicitPassword) {
+  process.env.REDIS_PASSWORD = REDIS_TEST_CONFIG.password || '';
+} else {
+  // Preservar original - pero esto NO se hereda a workers
+}
+```
+
+**Esto soluciona parcialmente** el problema para ejecuciones individuales, pero NO para la suite completa.
+
+### Solución Propuesta
+
+**Opción A: Usar `singleThread: true`** (Simple pero lento)
+```typescript
+// vitest.integration.config.ts
+pool: 'threads',
+poolOptions: {
+  threads: { singleThread: true }
+}
+```
+- Pro: Workers heredan process.env del main process
+- Contra: Tests más lentos (no paralelos)
+
+**Opción B: Pasar env via poolOptions** (Recomendado)
+```typescript
+// vitest.integration.config.ts
+pool: 'forks',
+poolOptions: {
+  forks: {
+    singleFork: true,
+    execArgv: [],
+    // Pasar env explícitamente
+    env: {
+      ...process.env,
+      AZURE_OPENAI_KEY: process.env.AZURE_OPENAI_KEY,
+      REDIS_PASSWORD: process.env.REDIS_PASSWORD,
+    }
+  }
+}
+```
+
+**Opción C: Cargar .env en el test file directamente** (Workaround)
+```typescript
+// EmbeddingService.integration.test.ts
+import { config } from 'dotenv';
+config({ path: path.resolve(__dirname, '../../../../.env') });
+
+describe('EmbeddingService', () => { ... });
+```
+
+### Archivos Afectados
+
+| Archivo | Estado |
+|---------|--------|
+| `backend/vitest.integration.config.ts` | Requiere modificación |
+| `backend/src/__tests__/integration/globalSetup.ts` | Workaround aplicado |
+| `backend/src/__tests__/integration/setup.env.ts` | Funciona pero tarde |
+| `backend/src/__tests__/integration/embeddings/EmbeddingService.integration.test.ts` | Tests se saltan |
+
+### Tests Afectados
+
+- `should generate real embeddings from Azure OpenAI`
+- `should batch generate embeddings`
+- `should generate 1024-dimensional embedding for text query`
+- `should generate embeddings in same vector space as image embeddings`
+- `should handle different text queries correctly`
+- `should cache embeddings for repeated queries`
+
+**Total: 6 tests que NO se ejecutan en suite completa**
+
+### Impacto
+
+- **Cobertura reducida**: Tests de embedding NO validan funcionalidad real en CI
+- **Falsa confianza**: Suite muestra "147 passed" pero 6 tests no corren
+- **Debugging difícil**: Solo descubierto por inspección manual de logs
+
+### Recomendación
+
+Implementar **Opción B** (pasar env via poolOptions) para asegurar que:
+1. Los tests se ejecutan con las credenciales correctas
+2. La suite de integración completa valida EmbeddingService
+3. CI/CD detecta regresiones en embeddings
+
+---
+
 ## Criterios de Priorización
 
 ### Alta Prioridad
@@ -868,4 +1008,4 @@ private normalizeUserId(userId: string): string {
 
 ---
 
-*Última actualización: 2026-01-06 - D2 (Semantic Image Search) completado.*
+*Última actualización: 2026-01-06 - D25 (EmbeddingService Tests Env Injection) documentado.*

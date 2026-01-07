@@ -50,6 +50,32 @@ WHEN MATCHED THEN
 
 ---
 
+### D26: Multimodal RAG with Reranker & Image Captioning
+
+**Descripción:**
+La arquitectura actual "Dual-Vector" (Text 1536d + Image 1024d) tiene problemas de relevancia porque los scores de similitud de OpenAI y Azure Vision no son comparables directamente.
+
+**Solución Propuesta (Cross-Encoder Strategy):**
+
+1.  **Ingesta (Upload)**:
+    *   Generar descripciones textuales ("captions") para cada imagen usando `Azure AI Vision Analyze Image`.
+    *   Guardar este "caption" en el índice de búsqueda (campo `content`) y en la base de datos al momento de subir la imagen.
+
+2.  **Búsqueda (Retrieval)**:
+    *   fetchTopK = 30 (Mezcla de Texto e Imágenes).
+    *   Usar **Azure AI Search Semantic Ranker** para re-rankear estos 30 resultados.
+    *   Seleccionar el Top 10 final basado en el score del Reranker.
+
+**Nota:** Como estamos en prototipado, NO se requiere script de backfill. Se volverán a subir las imágenes de prueba.
+
+**Fase:** Phase 6 (Immediate Priority)
+
+**Prioridad:** CRÍTICA (Bloqueante para UX de búsqueda visual)
+
+**Estimación:** 3-4 días
+
+---
+
 ## Posponer para Fases Futuras
 
 

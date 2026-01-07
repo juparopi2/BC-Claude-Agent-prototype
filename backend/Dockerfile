@@ -33,9 +33,9 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 # Copy dependencies from deps stage
+# Note: npm workspaces hoist most dependencies to root node_modules
+# packages/shared has no local node_modules (all deps hoisted)
 COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/packages/shared/node_modules ./packages/shared/node_modules
-COPY --from=deps /app/backend/node_modules ./backend/node_modules
 
 # Copy workspace configuration
 COPY package.json package-lock.json ./

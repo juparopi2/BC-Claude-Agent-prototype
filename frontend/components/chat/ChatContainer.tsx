@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useCallback } from 'react';
-import { useFilePreviewStore, useFiles } from '@/src/domains/files';
+import { useFilePreviewStore, useFiles, useGoToFilePath } from '@/src/domains/files';
 import { useAuthStore, selectUserInitials } from '@/src/domains/auth';
 import { useMessages, useAgentState, useCitationStore } from '@/src/domains/chat';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -12,6 +12,7 @@ import {
   ThinkingBlock,
   ToolCard,
 } from '@/src/presentation/chat';
+import { SourcePreviewModal } from '@/components/modals/SourcePreviewModal';
 import type { CitationInfo } from '@/lib/types/citation.types';
 
 export default function ChatContainer() {
@@ -21,7 +22,6 @@ export default function ChatContainer() {
 
   // Citation store for file references
   const citationFileMap = useCitationStore((s) => s.citationFileMap);
-  const messageCitations = useCitationStore((s) => s.messageCitations);
   const getMessageCitations = useCitationStore((s) => s.getMessageCitations);
 
   // File domain for looking up file metadata
@@ -29,6 +29,17 @@ export default function ChatContainer() {
 
   // File preview store for opening previews
   const openPreview = useFilePreviewStore((s) => s.openPreview);
+  const openCitationPreview = useFilePreviewStore((s) => s.openCitationPreview);
+  const closePreview = useFilePreviewStore((s) => s.closePreview);
+  const navigateNext = useFilePreviewStore((s) => s.navigateNext);
+  const navigatePrev = useFilePreviewStore((s) => s.navigatePrev);
+  const isPreviewOpen = useFilePreviewStore((s) => s.isOpen);
+  const previewCitations = useFilePreviewStore((s) => s.citations);
+  const currentPreviewIndex = useFilePreviewStore((s) => s.currentIndex);
+  const isNavigationMode = useFilePreviewStore((s) => s.isNavigationMode);
+
+  // Go to file path hook
+  const { goToFilePath, isNavigating: isGoingToPath } = useGoToFilePath();
 
   // User initials for MessageBubble avatar
   const userInitials = useAuthStore(selectUserInitials);
@@ -51,15 +62,27 @@ export default function ChatContainer() {
 
   /**
    * Handle citation info click from SourceCarousel
-   * Uses rich metadata from CitationInfo for better preview experience
+   * Opens enhanced modal with navigation if multiple citations exist
    */
-  const handleCitationInfoOpen = useCallback((info: CitationInfo) => {
+  const handleCitationInfoOpen = useCallback((info: CitationInfo, allCitations: CitationInfo[]) => {
     if (info.isDeleted || !info.fileId) {
       // Don't open deleted files or files without IDs
       return;
     }
-    openPreview(info.fileId, info.fileName, info.mimeType);
-  }, [openPreview]);
+
+    // Filter valid citations for navigation
+    const validCitations = allCitations.filter(c => !c.isDeleted && c.fileId);
+    const index = validCitations.findIndex(c => c.fileId === info.fileId);
+
+    openCitationPreview(validCitations, Math.max(0, index));
+  }, [openCitationPreview]);
+
+  /**
+   * Handle "Go to Path" action - navigate to file location in browser
+   */
+  const handleGoToPath = useCallback(async (fileId: string) => {
+    await goToFilePath(fileId);
+  }, [goToFilePath]);
 
 
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -155,6 +178,20 @@ export default function ChatContainer() {
 
         <div ref={bottomRef} />
       </div>
+
+      {/* Source Preview Modal with Navigation */}
+      {isNavigationMode && (
+        <SourcePreviewModal
+          isOpen={isPreviewOpen}
+          onClose={closePreview}
+          citations={previewCitations}
+          currentIndex={currentPreviewIndex}
+          onNavigateNext={navigateNext}
+          onNavigatePrev={navigatePrev}
+          onGoToPath={handleGoToPath}
+          isGoingToPath={isGoingToPath}
+        />
+      )}
     </ScrollArea>
   );
 }

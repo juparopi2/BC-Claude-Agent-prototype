@@ -485,4 +485,89 @@ All migrations are additive with defaults.
 
 ---
 
+## 13. Enhanced Visual Features (Phase 2)
+
+### 13.1 Image Thumbnails
+
+**Component:** `FileThumbnail.tsx`
+**Location:** `frontend/src/presentation/chat/FileThumbnail.tsx`
+
+The SourceCarousel now displays actual image thumbnails instead of icons:
+- **Images** (`isImage: true`): Render actual preview from `/api/files/{id}/content`
+- **Non-images**: Render file type icon (PDF, code, spreadsheet, etc.)
+- **Deleted files**: Render warning icon with red styling
+- **Error handling**: Falls back to icon on image load failure
+
+```typescript
+interface FileThumbnailProps {
+  fileId: string | null;
+  fileName: string;
+  mimeType: string;
+  isImage: boolean;
+  isDeleted: boolean;
+  size?: 'sm' | 'md' | 'lg';  // 32px, 48px, 64px
+}
+```
+
+### 13.2 Modal Navigation (Source Preview Carousel)
+
+**Component:** `SourcePreviewModal.tsx`
+**Location:** `frontend/components/modals/SourcePreviewModal.tsx`
+
+Enhanced file preview modal with multi-source navigation:
+- **Navigation arrows**: Left/right buttons to browse sources
+- **Position indicator**: Shows "2 of 5" style counter
+- **Keyboard support**: ArrowLeft, ArrowRight, Escape
+- **Single-source mode**: Hides arrows when only one citation
+
+**State Management:** Extended `filePreviewStore.ts` with:
+```typescript
+// New state
+citations: CitationInfo[];
+currentIndex: number;
+isNavigationMode: boolean;
+
+// New actions
+openCitationPreview(citations, startIndex): void;
+navigateNext(): void;
+navigatePrev(): void;
+```
+
+### 13.3 "Go to Path" Feature
+
+**Hook:** `useGoToFilePath.ts`
+**Location:** `frontend/src/domains/files/hooks/useGoToFilePath.ts`
+
+Enables navigation from citation to file location in browser:
+
+1. **Fetches file metadata** via `GET /api/files/{id}` to get `parentFolderId`
+2. **Navigates to parent folder** using `useFolderNavigation`
+3. **Selects the file** using `useFileSelection`
+4. **Opens right panel** if hidden via `useUIPreferencesStore`
+
+```typescript
+const { goToFilePath, isNavigating, error } = useGoToFilePath();
+await goToFilePath(fileId);  // Returns true on success
+```
+
+### 13.4 New Files Created
+
+| File | Purpose |
+|------|---------|
+| `frontend/src/presentation/chat/FileThumbnail.tsx` | Image thumbnail or icon component |
+| `frontend/components/modals/SourcePreviewModal.tsx` | Modal with navigation arrows |
+| `frontend/src/domains/files/hooks/useGoToFilePath.ts` | Go-to-path hook |
+
+### 13.5 Modified Files
+
+| File | Changes |
+|------|---------|
+| `frontend/src/domains/files/stores/filePreviewStore.ts` | Added citations array, navigation actions |
+| `frontend/src/presentation/chat/SourceCarousel.tsx` | Uses FileThumbnail instead of FileTypeIcon |
+| `frontend/src/presentation/chat/MessageBubble.tsx` | Updated callback signature for navigation |
+| `frontend/components/chat/ChatContainer.tsx` | Integrated SourcePreviewModal |
+
+---
+
 *Document created: 2026-01-06*
+*Updated: 2026-01-06 - Added Phase 2 Enhanced Visual Features*

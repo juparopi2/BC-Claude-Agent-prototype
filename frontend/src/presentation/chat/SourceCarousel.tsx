@@ -11,19 +11,13 @@
 
 import { useCallback, useMemo } from 'react';
 import {
-  FileText,
-  FileSpreadsheet,
-  FileImage,
-  File,
-  FileCode,
-  FileArchive,
   Cloud,
   Mail,
   Globe,
   HardDrive,
   ChevronRight,
-  FileWarning,
 } from 'lucide-react';
+import { FileThumbnail } from './FileThumbnail';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
@@ -43,69 +37,6 @@ export interface SourceCarouselProps {
   maxVisible?: number;
   /** Additional CSS classes */
   className?: string;
-}
-
-/**
- * Get file extension from filename
- */
-function getExtension(fileName: string): string {
-  return fileName.split('.').pop()?.toLowerCase() || '';
-}
-
-/**
- * FileTypeIcon - renders icon based on file extension or mimeType
- */
-function FileTypeIcon({
-  fileName,
-  mimeType,
-  className,
-}: {
-  fileName: string;
-  mimeType?: string;
-  className?: string;
-}) {
-  // Check mimeType first for images
-  if (mimeType?.startsWith('image/')) {
-    return <FileImage className={className} />;
-  }
-
-  const ext = getExtension(fileName);
-
-  switch (ext) {
-    case 'pdf':
-    case 'doc':
-    case 'docx':
-    case 'txt':
-    case 'md':
-      return <FileText className={className} />;
-    case 'xls':
-    case 'xlsx':
-    case 'csv':
-      return <FileSpreadsheet className={className} />;
-    case 'png':
-    case 'jpg':
-    case 'jpeg':
-    case 'gif':
-    case 'webp':
-    case 'svg':
-      return <FileImage className={className} />;
-    case 'js':
-    case 'ts':
-    case 'jsx':
-    case 'tsx':
-    case 'json':
-    case 'html':
-    case 'css':
-      return <FileCode className={className} />;
-    case 'zip':
-    case 'rar':
-    case '7z':
-    case 'tar':
-    case 'gz':
-      return <FileArchive className={className} />;
-    default:
-      return <File className={className} />;
-  }
 }
 
 /**
@@ -166,6 +97,18 @@ function RelevanceIndicator({ score }: { score: number }) {
 }
 
 /**
+ * Get confidence color based on percentage (0-100)
+ * 5 ranges: 0-20 red, 20-40 orange, 40-60 yellow, 60-80 lime, 80-100 green
+ */
+function getConfidenceColor(percentage: number): string {
+  if (percentage < 20) return 'text-red-600';
+  if (percentage < 40) return 'text-orange-500';
+  if (percentage < 60) return 'text-yellow-600';
+  if (percentage < 80) return 'text-lime-600';
+  return 'text-green-600';
+}
+
+/**
  * SourceCard - individual card in the carousel
  */
 function SourceCard({
@@ -176,11 +119,13 @@ function SourceCard({
   onClick?: () => void;
 }) {
   const isClickable = !citation.isDeleted && citation.fileId !== null && onClick !== undefined;
+  const percentage = Math.round(citation.relevanceScore * 100);
+  const confidenceColor = getConfidenceColor(percentage);
 
   return (
     <Card
       className={cn(
-        'w-48 shrink-0 transition-all',
+        'w-44 shrink-0 transition-all overflow-hidden gap-2 py-2',
         citation.isDeleted
           ? 'opacity-60 border-red-200 bg-red-50/50'
           : isClickable
@@ -201,45 +146,40 @@ function SourceCard({
           : undefined
       }
     >
-      <CardContent className="p-3 space-y-2">
-        {/* Header: Icon + Source Badge */}
-        <div className="flex items-start justify-between">
-          <div className={cn(
-            'p-2 rounded-lg',
-            citation.isDeleted ? 'bg-red-100' : 'bg-muted'
-          )}>
-            {citation.isDeleted ? (
-              <FileWarning className="size-5 text-red-500" />
-            ) : (
-              <FileTypeIcon
-                fileName={citation.fileName}
-                mimeType={citation.mimeType}
-                className="size-5 text-muted-foreground"
-              />
-            )}
-          </div>
-          <SourceBadge sourceType={citation.sourceType} />
-        </div>
+      {/* Thumbnail Area - Full Width */}
+      <div className="relative px-2 pt-2">
+        <FileThumbnail
+          fileId={citation.fileId}
+          fileName={citation.fileName}
+          mimeType={citation.mimeType}
+          isImage={citation.isImage}
+          isDeleted={citation.isDeleted}
+          size="xl"
+        />
+      </div>
 
+      <CardContent className="p-2.5 space-y-1.5">
         {/* File Name */}
-        <div className="space-y-1">
-          <p
-            className={cn(
-              'text-sm font-medium truncate',
-              citation.isDeleted && 'line-through text-red-600'
-            )}
-            title={citation.fileName}
-          >
-            {citation.fileName}
-          </p>
-          {citation.isDeleted && (
-            <p className="text-xs text-red-500">File deleted</p>
+        <p
+          className={cn(
+            'text-xs font-medium truncate',
+            citation.isDeleted && 'line-through text-red-600'
           )}
-        </div>
+          title={citation.fileName}
+        >
+          {citation.fileName}
+        </p>
 
-        {/* Relevance Score */}
-        {!citation.isDeleted && (
-          <RelevanceIndicator score={citation.relevanceScore} />
+        {/* Footer: Source Badge + Relevance Score */}
+        {!citation.isDeleted ? (
+          <div className="flex items-center justify-between gap-2">
+            <SourceBadge sourceType={citation.sourceType} />
+            <span className={cn('text-[10px] font-semibold', confidenceColor)}>
+              {percentage}%
+            </span>
+          </div>
+        ) : (
+          <p className="text-xs text-red-500">File deleted</p>
         )}
       </CardContent>
     </Card>

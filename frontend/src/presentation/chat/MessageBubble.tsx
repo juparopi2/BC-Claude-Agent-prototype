@@ -44,8 +44,8 @@ interface MessageBubbleProps {
   persistenceState?: PersistenceState;
   /** Rich citation info for SourceCarousel (new) */
   messageCitations?: CitationInfo[];
-  /** Callback when a citation card in the carousel is clicked */
-  onCitationInfoOpen?: (info: CitationInfo) => void;
+  /** Callback when a citation card in the carousel is clicked - receives info and all citations for navigation */
+  onCitationInfoOpen?: (info: CitationInfo, allCitations: CitationInfo[]) => void;
 }
 
 export default function MessageBubble({
@@ -126,7 +126,7 @@ export default function MessageBubble({
           <div className="mt-2 pl-1">
             <SourceCarousel
               citations={messageCitations}
-              onFileClick={onCitationInfoOpen}
+              onFileClick={onCitationInfoOpen ? (info) => onCitationInfoOpen(info, messageCitations) : undefined}
               maxVisible={4}
             />
           </div>

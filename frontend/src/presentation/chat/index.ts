@@ -19,3 +19,5 @@ export { AttachmentList } from './AttachmentList';
 export { InputOptionsBar } from './InputOptionsBar';
 export { SourceCarousel } from './SourceCarousel';
 export type { SourceCarouselProps } from './SourceCarousel';
+export { FileThumbnail } from './FileThumbnail';
+export type { FileThumbnailProps } from './FileThumbnail';

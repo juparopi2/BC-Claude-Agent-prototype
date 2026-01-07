@@ -28,18 +28,18 @@
     "docker:test:up": "docker-compose -f docker-compose.test.yml up -d",
     "docker:test:down": "docker-compose -f docker-compose.test.yml down",
     "docker:test:logs": "docker-compose -f docker-compose.test.yml logs -f",
-    "prepare": "husky"
+    "prepare": "husky || true"
   },
   "devDependencies": {
-    "@playwright/test": "^1.57.0",
-    "@types/ioredis": "^4.28.10",
+    "@playwright/test": "1.57.0",
+    "@types/ioredis": "4.28.10",
     "@types/mssql": "9.1.5",
     "@types/node": "20.10.0",
     "dotenv": "16.4.5",
     "husky": "9.1.7",
-    "ioredis": "^5.8.2",
+    "ioredis": "5.8.2",
     "mssql": "11.0.1",
-    "next": "^16.0.6",
+    "next": "16.0.6",
     "ts-node": "10.9.2",
     "typescript": "5.3.3"
   }

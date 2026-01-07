@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - 'backend/**'
+      - 'packages/shared/**'
       - '.github/workflows/backend-deploy.yml'
   workflow_dispatch:
 
@@ -39,7 +40,7 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
-          context: ./backend
+          context: .
           file: ./backend/Dockerfile
           push: true
           tags: |
@@ -110,10 +111,38 @@ jobs:
               bc-client-id=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/BC-ClientId,identityref:system \
               bc-client-secret=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/BC-ClientSecret,identityref:system \
               jwt-secret=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/JWT-Secret,identityref:system \
-              storage-connection-string=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/Storage-ConnectionString,identityref:system
+              storage-connection-string=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/Storage-ConnectionString,identityref:system \
+              session-secret=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/SESSION-SECRET,identityref:system \
+              encryption-key=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/ENCRYPTION-KEY,identityref:system \
+              microsoft-client-id=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/Microsoft-ClientId,identityref:system \
+              microsoft-client-secret=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/Microsoft-ClientSecret,identityref:system \
+              microsoft-tenant-id=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/Microsoft-TenantId,identityref:system \
+              azure-openai-endpoint=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/AZURE-OPENAI-ENDPOINT,identityref:system \
+              azure-openai-key=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/AZURE-OPENAI-KEY,identityref:system \
+              azure-search-endpoint=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/AZURE-SEARCH-ENDPOINT,identityref:system \
+              azure-search-key=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/AZURE-SEARCH-KEY,identityref:system \
+              azure-vision-endpoint=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/AZURE-VISION-ENDPOINT,identityref:system \
+              azure-vision-key=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/AZURE-VISION-KEY,identityref:system \
+              azure-di-endpoint=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/DocumentIntelligence-Endpoint,identityref:system \
+              azure-di-key=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/DocumentIntelligence-Key,identityref:system
 
           # Step 4: Update to the actual backend image with env vars
+          # Get frontend URL for CORS configuration
+          FRONTEND_FQDN=$(az containerapp show \
+            --name app-bcagent-frontend-dev \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --query properties.configuration.ingress.fqdn \
+            --output tsv 2>/dev/null || echo "")
+
+          if [ -z "$FRONTEND_FQDN" ]; then
+            FRONTEND_URL="https://app-bcagent-frontend-dev.placeholder.azurecontainerapps.io"
+          else
+            FRONTEND_URL="https://$FRONTEND_FQDN"
+          fi
+
+          echo "Frontend URL for CORS: $FRONTEND_URL"
           echo "Updating to backend image..."
+
           az containerapp update \
             --name ${{ env.CONTAINER_APP_NAME }} \
             --resource-group ${{ env.RESOURCE_GROUP }} \
@@ -126,16 +155,37 @@ jobs:
               DATABASE_CONNECTION_STRING=secretref:sql-connection-string \
               REDIS_CONNECTION_STRING=secretref:redis-connection-string \
               ANTHROPIC_API_KEY=secretref:anthropic-api-key \
+              ANTHROPIC_MODEL=claude-sonnet-4-20250514 \
               BC_TENANT_ID=secretref:bc-tenant-id \
               BC_CLIENT_ID=secretref:bc-client-id \
               BC_CLIENT_SECRET=secretref:bc-client-secret \
-              JWT_SECRET=secretref:jwt-secret \
-              STORAGE_CONNECTION_STRING=secretref:storage-connection-string \
               BC_API_URL=https://api.businesscentral.dynamics.com/v2.0 \
               BC_ENVIRONMENT=production \
+              JWT_SECRET=secretref:jwt-secret \
+              STORAGE_CONNECTION_STRING=secretref:storage-connection-string \
+              STORAGE_CONTAINER_NAME=agent-files \
+              SESSION_SECRET=secretref:session-secret \
+              ENCRYPTION_KEY=secretref:encryption-key \
+              MICROSOFT_CLIENT_ID=secretref:microsoft-client-id \
+              MICROSOFT_CLIENT_SECRET=secretref:microsoft-client-secret \
+              MICROSOFT_TENANT_ID=secretref:microsoft-tenant-id \
+              MICROSOFT_REDIRECT_URI=https://app-bcagent-backend-dev.ambitiousflower-b4d27c1a.westeurope.azurecontainerapps.io/api/auth/callback \
+              AZURE_OPENAI_ENDPOINT=secretref:azure-openai-endpoint \
+              AZURE_OPENAI_KEY=secretref:azure-openai-key \
+              AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-3-small \
+              AZURE_SEARCH_ENDPOINT=secretref:azure-search-endpoint \
+              AZURE_SEARCH_KEY=secretref:azure-search-key \
+              AZURE_SEARCH_INDEX_NAME=file-chunks-index \
+              AZURE_VISION_ENDPOINT=secretref:azure-vision-endpoint \
+              AZURE_VISION_KEY=secretref:azure-vision-key \
+              AZURE_DI_ENDPOINT=secretref:azure-di-endpoint \
+              AZURE_DI_KEY=secretref:azure-di-key \
+              FRONTEND_URL=$FRONTEND_URL \
+              CORS_ORIGIN=$FRONTEND_URL \
               LOG_LEVEL=info \
               ENABLE_PROMPT_CACHING=true \
-              ENABLE_EXTENDED_THINKING=true
+              ENABLE_EXTENDED_THINKING=true \
+              MAX_CONTEXT_TOKENS=100000
 
           # Update ingress configuration for the backend
           az containerapp ingress update \

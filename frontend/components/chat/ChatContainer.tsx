@@ -99,9 +99,6 @@ export default function ChatContainer() {
         className="flex items-center justify-center h-full"
         data-testid="chat-container"
       >
-        <div className="flex flex-col items-center gap-3 text-muted-foreground">
-          <p className="text-sm">Start a conversation to begin</p>
-        </div>
       </div>
     );
   }

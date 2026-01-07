@@ -8,7 +8,7 @@ import { MainLayout, Header, LeftPanel, RightPanel } from '@/components/layout';
 import { ChatContainer, ChatInput } from '@/components/chat';
 import { useUIPreferencesStore } from '@/src/domains/ui';
 // Domain hooks and stores
-import { useSocketConnection, getMessageStore, getAgentStateStore } from '@/src/domains/chat';
+import { useSocketConnection, getMessageStore, getAgentStateStore, getCitationStore } from '@/src/domains/chat';
 
 export default function ChatPage() {
   const params = useParams();
@@ -56,8 +56,10 @@ export default function ChatPage() {
       // Clear domain stores on session change
       const messageStore = getMessageStore();
       const agentStateStore = getAgentStateStore();
+      const citationStore = getCitationStore();
       messageStore.getState().reset();
       agentStateStore.getState().reset();
+      citationStore.getState().clearCitations();
 
       // Select the session in the session store
       await selectSession(sessionId);
@@ -67,6 +69,17 @@ export default function ChatPage() {
       const result = await api.getMessages(sessionId);
       if (result.success) {
         messageStore.getState().setMessages(result.data);
+
+        // Hydrate citations from loaded messages (for source carousel)
+        const messagesWithCitations = result.data
+          .filter((m): m is typeof m & { citedFiles: unknown } => 'citedFiles' in m)
+          .map(m => ({
+            id: m.id,
+            citedFiles: m.citedFiles as import('@bc-agent/shared').CitedFile[],
+          }));
+        if (messagesWithCitations.length > 0) {
+          citationStore.getState().hydrateFromMessages(messagesWithCitations);
+        }
       } else {
         console.error('[ChatPage] Failed to load messages:', result.error);
       }

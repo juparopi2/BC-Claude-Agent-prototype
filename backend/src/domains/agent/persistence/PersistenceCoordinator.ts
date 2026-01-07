@@ -542,6 +542,75 @@ export class PersistenceCoordinator implements IPersistenceCoordinator {
   }
 
   /**
+   * Persist citations asynchronously (fire-and-forget).
+   * Does not block - persists RAG citations in background.
+   *
+   * @param sessionId - Session ID
+   * @param messageId - Message ID to associate citations with
+   * @param citations - Array of cited files from RAG tool results
+   */
+  persistCitationsAsync(
+    sessionId: string,
+    messageId: string,
+    citations: Array<{
+      fileName: string;
+      fileId: string | null;
+      sourceType: string;
+      mimeType: string;
+      relevanceScore: number;
+      isImage: boolean;
+    }>
+  ): void {
+    if (!citations.length) return;
+
+    // Use IIFE for background processing
+    (async () => {
+      try {
+        // Deduplicate by fileName (in case of multiple chunks from same file)
+        const uniqueCitations = Array.from(
+          new Map(citations.map(c => [c.fileName, c])).values()
+        );
+
+        // Append audit event to EventStore
+        await this.eventStore.appendEvent(sessionId, 'citations_created', {
+          message_id: messageId,
+          citation_count: uniqueCitations.length,
+          file_names: uniqueCitations.map(c => c.fileName),
+          timestamp: new Date().toISOString(),
+          persistenceState: 'persisted',
+        });
+
+        // Queue DB write via MessageQueue
+        await this.messageQueue.addCitationPersistence({
+          sessionId,
+          messageId,
+          citations: uniqueCitations,
+        });
+
+        this.logger.info(
+          {
+            sessionId,
+            messageId,
+            citationCount: uniqueCitations.length,
+          },
+          'Citations persisted async'
+        );
+      } catch (err) {
+        // Log error but don't throw (fire-and-forget)
+        this.logger.error(
+          {
+            err,
+            sessionId,
+            messageId,
+            citationCount: citations.length,
+          },
+          'Failed to persist citations'
+        );
+      }
+    })();
+  }
+
+  /**
    * Await completion of a persistence job.
    * Uses BullMQ's waitUntilFinished for reliable job completion detection.
    * @param jobId - BullMQ job ID from persist* methods

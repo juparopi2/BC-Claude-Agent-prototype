@@ -37,7 +37,8 @@ export type EventType =
   | 'todo_updated'
   | 'session_started'
   | 'session_ended'
-  | 'error_occurred';
+  | 'error_occurred'
+  | 'citations_created';
 
 /**
  * Base Event

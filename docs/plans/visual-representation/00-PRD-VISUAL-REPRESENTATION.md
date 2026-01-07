@@ -173,9 +173,11 @@ To handle file deletions without breaking historical chat references, we impleme
 
 ## 4. Data Flow
 
+### 4.1 Real-Time Flow (During Streaming)
+
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│                        DATA FLOW                                  │
+│                   REAL-TIME DATA FLOW                             │
 ├──────────────────────────────────────────────────────────────────┤
 │                                                                  │
 │  1. RAG Tool executes search_knowledge_base                      │
@@ -191,17 +193,54 @@ To handle file deletions without breaking historical chat references, we impleme
 │     └─> CitationExtractor.extract(event.result)                  │
 │     └─> ctx.citedSources.push(...extractedSources)               │
 │                                                                  │
-│  5. CompleteEvent emitted with citedFiles                        │
+│  5. CompleteEvent emitted with citedFiles + messageId            │
 │     └─> citedFiles: ctx.citedSources                             │
+│     └─> messageId: ctx.lastAssistantMessageId                    │
+│                                                                  │
+│  5.1 PERSIST: PersistenceCoordinator.persistCitationsAsync()     │
+│     └─> Deduplicate by fileName                                  │
+│     └─> EventStore.appendEvent('citations_created')              │
+│     └─> MessageQueue.addCitationPersistence()                    │
+│     └─> INSERT INTO message_citations (fire-and-forget)          │
 │                                                                  │
 │  6. Frontend processAgentEventSync                               │
-│     └─> citationStore.setCitationFiles(citedFiles)               │
+│     └─> citationStore.setCitedFiles(citedFiles, messageId)       │
 │                                                                  │
 │  7. SourceCarousel renders thumbnails                            │
 │     └─> For each citedFile: render preview based on sourceType   │
 │                                                                  │
 │  8. User clicks file                                             │
 │     └─> Based on fetchStrategy: internal_api | oauth | external  │
+│                                                                  │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### 4.2 Retrieval Flow (Page Refresh)
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                   RETRIEVAL DATA FLOW                             │
+├──────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  1. User refreshes page / navigates to session                   │
+│                                                                  │
+│  2. ChatPage useEffect triggers loadSession()                    │
+│     └─> Clear messageStore, agentStateStore, citationStore       │
+│                                                                  │
+│  3. API call: GET /api/chat/sessions/:sessionId/messages         │
+│                                                                  │
+│  4. Sessions Route handler                                       │
+│     └─> Query messages from database                             │
+│     └─> CitationService.getCitationsForMessages(assistantIds)    │
+│     └─> Attach citations to message objects                      │
+│     └─> Return { messages: [..., { citedFiles: [...] }] }        │
+│                                                                  │
+│  5. Frontend receives response                                   │
+│     └─> messageStore.setMessages(messages)                       │
+│     └─> citationStore.hydrateFromMessages(messages)              │
+│                                                                  │
+│  6. SourceCarousel renders from hydrated citation state          │
+│     └─> getMessageCitations(messageId) returns citations         │
 │                                                                  │
 └──────────────────────────────────────────────────────────────────┘
 ```
@@ -271,9 +310,10 @@ CREATE INDEX IX_files_source_type ON files(user_id, source_type);
 
 ```sql
 -- New table for citation analytics
+-- NOTE: message_id is NVARCHAR(255) to support Anthropic message IDs (msg_01...)
 CREATE TABLE message_citations (
   id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
-  message_id UNIQUEIDENTIFIER NOT NULL,
+  message_id NVARCHAR(255) NOT NULL,  -- Supports Anthropic IDs (not UUID)
   file_id UNIQUEIDENTIFIER NULL REFERENCES files(id) ON DELETE SET NULL,
   file_name NVARCHAR(512) NOT NULL,
   source_type VARCHAR(50) NOT NULL,
@@ -288,6 +328,13 @@ CREATE TABLE message_citations (
   INDEX IX_message_citations_created (created_at)
 );
 ```
+
+### 6.3 Applied Migrations
+
+| Migration | Description |
+|-----------|-------------|
+| `008-add-citations-event-type.sql` | Added `citations_created` to `CK_message_events_valid_type` CHECK constraint |
+| `009-fix-citation-message-id-type.sql` | Changed `message_citations.message_id` from `uniqueidentifier` to `nvarchar(255)` |
 
 ---
 

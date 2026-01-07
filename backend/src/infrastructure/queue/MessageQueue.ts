@@ -49,6 +49,7 @@ export enum QueueName {
   FILE_PROCESSING = 'file-processing',
   FILE_CHUNKING = 'file-chunking',
   EMBEDDING_GENERATION = 'embedding-generation',
+  CITATION_PERSISTENCE = 'citation-persistence',
 }
 
 
@@ -174,6 +175,29 @@ export interface FileChunkingJob {
   sessionId?: string;
   /** MIME type to determine chunking strategy */
   mimeType: string;
+}
+
+/**
+ * Citation Persistence Job Data
+ *
+ * Used by background workers to persist RAG citations to the database.
+ * Fire-and-forget pattern: citations are persisted asynchronously after
+ * the complete event is emitted to maintain chat flow performance.
+ */
+export interface CitationPersistenceJob {
+  /** Message ID to associate citations with */
+  messageId: string;
+  /** Session ID for context */
+  sessionId: string;
+  /** Array of cited files from RAG tool results */
+  citations: Array<{
+    fileName: string;
+    fileId: string | null;
+    sourceType: string;
+    mimeType: string;
+    relevanceScore: number;
+    isImage: boolean;
+  }>;
 }
 
 /**
@@ -612,6 +636,29 @@ export class MessageQueue {
       })
     );
 
+    // Citation Persistence Queue (fire-and-forget RAG citations)
+    this.queues.set(
+      QueueName.CITATION_PERSISTENCE,
+      new Queue(this.getQueueName(QueueName.CITATION_PERSISTENCE), {
+        connection: this.getRedisConnectionConfig(),
+        defaultJobOptions: {
+          attempts: 3,
+          backoff: {
+            type: 'exponential',
+            delay: 1000,
+          },
+          removeOnComplete: {
+            count: 100,
+            age: 3600,  // 1 hour
+          },
+          removeOnFail: {
+            count: 200,
+            age: 86400,  // 24 hours
+          },
+        },
+      })
+    );
+
     this.log.info('All queues initialized', {
       queues: Array.from(this.queues.keys()),
     });
@@ -726,7 +773,20 @@ export class MessageQueue {
       )
     );
 
-
+    // Citation Persistence Worker (low concurrency, fire-and-forget)
+    this.workers.set(
+      QueueName.CITATION_PERSISTENCE,
+      new Worker(
+        this.getQueueName(QueueName.CITATION_PERSISTENCE),
+        async (job: Job<CitationPersistenceJob>) => {
+          return this.processCitationPersistence(job);
+        },
+        {
+          connection: this.getRedisConnectionConfig(),
+          concurrency: env.QUEUE_CITATION_CONCURRENCY || 5,
+        }
+      )
+    );
 
     this.log.info('All workers initialized', {
       workers: Array.from(this.workers.keys()),
@@ -1112,6 +1172,43 @@ export class MessageQueue {
       fileId: data.fileId,
       userId: data.userId,
       mimeType: data.mimeType,
+    });
+
+    return job.id || '';
+  }
+
+  /**
+   * Add Citation Persistence Job
+   *
+   * Enqueues citations from RAG tool results for background persistence.
+   * Fire-and-forget pattern: does not block the chat flow.
+   *
+   * @param data - Citation persistence job data
+   * @returns Job ID
+   */
+  public async addCitationPersistence(
+    data: CitationPersistenceJob
+  ): Promise<string> {
+    // Wait for Redis connection to be ready
+    await this.waitForReady();
+
+    const queue = this.queues.get(QueueName.CITATION_PERSISTENCE);
+    if (!queue) {
+      throw new Error('Citation persistence queue not initialized');
+    }
+
+    // No rate limiting for citations - they are tied to assistant responses
+    // which are already rate limited by the message flow
+
+    const job = await queue.add('persist-citations', data, {
+      priority: 4,  // Lower priority than message persistence
+    });
+
+    this.log.info('Citation persistence job added to queue', {
+      jobId: job.id,
+      messageId: data.messageId,
+      sessionId: data.sessionId,
+      citationCount: data.citations.length,
     });
 
     return job.id || '';
@@ -1608,6 +1705,67 @@ export class MessageQueue {
         fileId,
         userId,
         mimeType,
+        attemptNumber: job.attemptsMade,
+      });
+      throw error;  // Will trigger retry
+    }
+  }
+
+  /**
+   * Process Citation Persistence Job
+   *
+   * Persists RAG citations to the message_citations table.
+   * Fire-and-forget pattern: failures are logged but don't affect chat flow.
+   *
+   * @param job - BullMQ job containing citations to persist
+   */
+  private async processCitationPersistence(
+    job: Job<CitationPersistenceJob>
+  ): Promise<void> {
+    const { messageId, sessionId, citations } = job.data;
+
+    this.log.info('Processing citation persistence job', {
+      jobId: job.id,
+      messageId,
+      sessionId,
+      citationCount: citations.length,
+      attemptNumber: job.attemptsMade,
+    });
+
+    try {
+      // Insert each citation into message_citations table
+      for (const cite of citations) {
+        await this.executeQueryFn(
+          `
+          INSERT INTO message_citations
+          (message_id, file_id, file_name, source_type, mime_type, relevance_score, is_image)
+          VALUES (@messageId, @fileId, @fileName, @sourceType, @mimeType, @relevanceScore, @isImage)
+          `,
+          {
+            messageId,
+            fileId: cite.fileId,
+            fileName: cite.fileName,
+            sourceType: cite.sourceType,
+            mimeType: cite.mimeType,
+            relevanceScore: cite.relevanceScore,
+            isImage: cite.isImage ? 1 : 0,
+          }
+        );
+      }
+
+      this.log.info('Citation persistence completed', {
+        jobId: job.id,
+        messageId,
+        citationCount: citations.length,
+      });
+    } catch (error) {
+      this.log.error('Citation persistence job failed', {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        jobId: job.id,
+        messageId,
+        sessionId,
+        citationCount: citations.length,
         attemptNumber: job.attemptsMade,
       });
       throw error;  // Will trigger retry

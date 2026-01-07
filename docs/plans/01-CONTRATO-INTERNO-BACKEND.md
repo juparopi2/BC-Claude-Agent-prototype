@@ -69,6 +69,7 @@ backend/src/
 │   │   ├── context/            # ContextRetrievalService
 │   │   └── processors/         # PDF, Word, Excel, Image processors
 │   ├── chunking/               # Text chunking implementations
+│   ├── citations/              # CitationService (recuperación de citas)
 │   ├── embeddings/             # EmbeddingService
 │   ├── messages/               # MessageService
 │   ├── sessions/               # SessionService
@@ -1025,11 +1026,94 @@ persistToolEventsAsync(sessionId, executions):
 awaitPersistence(jobId, timeoutMs):
     job = messageQueue.getJob(jobId)
     job.waitUntilFinished(queueEvents, timeoutMs)
+
+persistCitationsAsync(sessionId, messageId, citations):
+    // Fire-and-forget (no bloquea)
+    IF citations.length == 0:
+        RETURN
+
+    // Deduplicar por fileName
+    uniqueCitations = deduplicate(citations, by: 'fileName')
+
+    // Append evento de auditoría
+    eventStore.appendEvent(sessionId, 'citations_created', {
+        message_id: messageId,
+        citation_count: uniqueCitations.length,
+        file_names: uniqueCitations.map(c => c.fileName)
+    })
+
+    // Encolar persistencia a DB
+    messageQueue.addCitationPersistence({
+        sessionId,
+        messageId,
+        citations: uniqueCitations
+    })
 ```
 
 ---
 
-### 3.10 EventStore (Event Sourcing)
+### 3.11 CitationService (Recuperación de Citas)
+
+**Ubicación**: `backend/src/services/citations/CitationService.ts`
+
+**Responsabilidad Única**: Recuperar citas persistidas de la tabla `message_citations`.
+
+**Pseudocódigo**:
+```
+getCitationsForMessages(messageIds: string[]) → Map<messageId, CitedFile[]>:
+    IF messageIds.length == 0:
+        RETURN new Map()
+
+    // Query batch para eficiencia
+    result = executeQuery(`
+        SELECT message_id, file_id, file_name, source_type,
+               mime_type, relevance_score, is_image
+        FROM message_citations
+        WHERE message_id IN (@messageIds)
+        ORDER BY message_id, relevance_score DESC
+    `, { messageIds })
+
+    // Agrupar por message_id
+    citationMap = new Map()
+    FOR row IN result.recordset:
+        citations = citationMap.get(row.message_id) ?? []
+        citations.push({
+            fileName: row.file_name,
+            fileId: row.file_id,
+            sourceType: row.source_type,
+            mimeType: row.mime_type,
+            relevanceScore: row.relevance_score,
+            isImage: row.is_image,
+            fetchStrategy: getFetchStrategy(row.source_type)
+        })
+        citationMap.set(row.message_id, citations)
+
+    RETURN citationMap
+```
+
+**Flujo de Datos (Citations)**:
+```
+PERSISTENCIA (durante streaming):
+┌────────────────────────────────────────────────────────────────┐
+│ 1. RAG Tool → CitationExtractor → ctx.citedSources[]          │
+│ 2. CompleteEvent emitido con citedFiles + messageId           │
+│ 3. PersistenceCoordinator.persistCitationsAsync()             │
+│ 4. MessageQueue → INSERT INTO message_citations               │
+└────────────────────────────────────────────────────────────────┘
+
+RECUPERACIÓN (al cargar página):
+┌────────────────────────────────────────────────────────────────┐
+│ 1. GET /api/chat/sessions/:id/messages                        │
+│ 2. CitationService.getCitationsForMessages()                  │
+│ 3. Messages devueltos con citations[] field                   │
+│ 4. Frontend: citationStore.hydrateFromMessages()              │
+│ 5. SourceCarousel renderiza correctamente                     │
+└────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### 3.12 EventStore (Event Sourcing)
 
 **Ubicación**: `backend/src/services/events/EventStore.ts`
 
@@ -1073,6 +1157,7 @@ type EventType =
     | 'agent_thinking_block'
     | 'tool_use_requested'
     | 'tool_use_completed'
+    | 'citations_created'    // NEW: Citation persistence audit event
     | 'error_occurred'
     | ...
 ```
@@ -1903,7 +1988,33 @@ interface FileContextPreparationResult {
 
 ---
 
-## 10. Conclusiones
+## 10. Database Migrations (Citation System)
+
+### 10.1 Applied Migrations
+
+| Migration | Purpose |
+|-----------|---------|
+| `008-add-citations-event-type.sql` | Added `citations_created` to `CK_message_events_valid_type` CHECK constraint |
+| `009-fix-citation-message-id-type.sql` | Changed `message_citations.message_id` from `uniqueidentifier` to `nvarchar(255)` |
+
+### 10.2 Type Inference Fix
+
+**File**: `backend/src/infrastructure/database/database.ts`
+
+Added `messageId` (camelCase) to `PARAMETER_TYPE_MAP`:
+
+```typescript
+const PARAMETER_TYPE_MAP = {
+  // ... existing entries ...
+  'messageId': sql.NVarChar(255),  // Anthropic message IDs (msg_01...)
+};
+```
+
+**Reason**: Anthropic message IDs (e.g., `msg_01BRsWtSA9yhWYRX6SGB3BvC`) are NOT UUIDs. The `inferSqlType` function was detecting `messageId` as a UUID parameter (because it ends with `Id`) and failing validation.
+
+---
+
+## 11. Conclusiones
 
 ### Fortalezas del Diseño Actual
 
@@ -1926,4 +2037,4 @@ interface FileContextPreparationResult {
 
 ---
 
-*Documento actualizado: 2026-01-06 v2.0*
+*Documento actualizado: 2026-01-06 v2.1 (Citation System migrations)*

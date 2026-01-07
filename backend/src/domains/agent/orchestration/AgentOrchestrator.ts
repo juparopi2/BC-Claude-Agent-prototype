@@ -457,6 +457,30 @@ export class AgentOrchestrator implements IAgentOrchestrator {
       }
     }
 
+    // STEP 4.2: Persist citations asynchronously when complete event is emitted
+    if (event.type === 'complete' && ctx.citedSources.length > 0 && ctx.lastAssistantMessageId) {
+      this.persistenceCoordinator.persistCitationsAsync(
+        sessionId,
+        ctx.lastAssistantMessageId,
+        ctx.citedSources.map(cite => ({
+          fileName: cite.fileName,
+          fileId: cite.fileId,
+          sourceType: cite.sourceType,
+          mimeType: cite.mimeType,
+          relevanceScore: cite.relevanceScore,
+          isImage: cite.isImage,
+        }))
+      );
+      this.logger.info(
+        {
+          sessionId,
+          messageId: ctx.lastAssistantMessageId,
+          citationCount: ctx.citedSources.length,
+        },
+        'Citation persistence triggered'
+      );
+    }
+
     // STEP 5: Handle async persistence (tools) with pre-allocated seq
     if (event.persistenceStrategy === 'async_allowed') {
       this.persistAsyncEvent(event, sessionId, ctx, preAllocatedSeq);

@@ -124,6 +124,7 @@ const envSchema = z.object({
   QUEUE_FILE_PROCESSING_CONCURRENCY: z.string().default('3').transform(Number).pipe(z.number().min(1).max(10)),
   QUEUE_FILE_CHUNKING_CONCURRENCY: z.string().default('5').transform(Number).pipe(z.number().min(1).max(20)),
   QUEUE_EMBEDDING_CONCURRENCY: z.string().default('5').transform(Number).pipe(z.number().min(1).max(20)),
+  QUEUE_CITATION_CONCURRENCY: z.string().default('5').transform(Number).pipe(z.number().min(1).max(20)),
 });
 
 /**

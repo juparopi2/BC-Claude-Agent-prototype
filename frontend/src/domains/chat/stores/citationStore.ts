@@ -29,6 +29,14 @@ export interface CitationState {
 }
 
 /**
+ * Message with optional citations from API response
+ */
+export interface MessageWithCitations {
+  id: string;
+  citedFiles?: CitedFile[];
+}
+
+/**
  * Citation actions
  */
 export interface CitationActions {
@@ -44,6 +52,8 @@ export interface CitationActions {
   getCitationInfo: (fileName: string) => CitationInfo | undefined;
   /** Get citations for a specific message */
   getMessageCitations: (messageId: string) => CitationInfo[];
+  /** Hydrate citations from API response (page load) */
+  hydrateFromMessages: (messages: MessageWithCitations[]) => void;
   /** Clear all citations */
   clearCitations: () => void;
   /** Reset to initial state */
@@ -152,6 +162,54 @@ export const useCitationStore = create<CitationStore>((set, get) => ({
 
   getMessageCitations: (messageId) => {
     return get().messageCitations.get(messageId) ?? [];
+  },
+
+  /**
+   * Hydrate citations from API response (page load).
+   * Called when loading historical messages to restore citation state.
+   */
+  hydrateFromMessages: (messages) => {
+    set((state) => {
+      const newFileMap = new Map(state.citationFileMap);
+      const newInfoMap = new Map(state.citationInfoMap);
+      const newMessageCitations = new Map(state.messageCitations);
+
+      for (const message of messages) {
+        if (!message.citedFiles || message.citedFiles.length === 0) continue;
+
+        const infos: CitationInfo[] = [];
+        for (const file of message.citedFiles) {
+          // Update legacy file map
+          if (file.fileId) {
+            newFileMap.set(file.fileName, file.fileId);
+          }
+
+          // Create citation info
+          const info: CitationInfo = {
+            fileName: file.fileName,
+            fileId: file.fileId,
+            sourceType: file.sourceType,
+            mimeType: file.mimeType,
+            relevanceScore: file.relevanceScore,
+            isImage: file.isImage,
+            fetchStrategy: file.fetchStrategy,
+            isDeleted: file.fileId === null,
+          };
+
+          newInfoMap.set(file.fileName, info);
+          infos.push(info);
+        }
+
+        // Associate citations with message
+        newMessageCitations.set(message.id, infos);
+      }
+
+      return {
+        citationFileMap: newFileMap,
+        citationInfoMap: newInfoMap,
+        messageCitations: newMessageCitations,
+      };
+    });
   },
 
   clearCitations: () => {

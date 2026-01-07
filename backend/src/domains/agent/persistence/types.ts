@@ -230,6 +230,26 @@ export interface IPersistenceCoordinator {
   persistToolEventsAsync(sessionId: string, executions: ToolExecution[]): void;
 
   /**
+   * Persist citations asynchronously (fire-and-forget).
+   * Does not block - persists RAG citations in background.
+   * @param sessionId - Session ID
+   * @param messageId - Message ID to associate citations with
+   * @param citations - Array of cited files from RAG tool results
+   */
+  persistCitationsAsync(
+    sessionId: string,
+    messageId: string,
+    citations: Array<{
+      fileName: string;
+      fileId: string | null;
+      sourceType: string;
+      mimeType: string;
+      relevanceScore: number;
+      isImage: boolean;
+    }>
+  ): void;
+
+  /**
    * Await completion of a persistence job.
    * @param jobId - BullMQ job ID from persist* methods
    * @param timeoutMs - Max wait time (default 30000ms)

@@ -23,6 +23,7 @@ import { sendError } from '@/shared/utils/error-response';
 import type { StopReason, TextCitation } from '@anthropic-ai/sdk/resources/messages';
 import { getSessionTitleGenerator } from '../services/sessions/SessionTitleGenerator';
 import { normalizeToolArgs } from '@/domains/agent/tools';
+import { getCitationService } from '@/services/citations';
 
 const logger = createChildLogger({ service: 'SessionRoutes' });
 const router = Router();
@@ -530,6 +531,40 @@ router.get('/:sessionId/messages', authenticateMicrosoft, async (req: Request, r
     }>(messagesQuery, { sessionId, offset, limit });
 
     const messages = (messagesResult.recordset || []).map(transformMessage);
+
+    // ⭐ Fetch citations for assistant standard messages
+    const assistantMessageIds = messages
+      .filter(m => m.type === 'standard' && m.role === 'assistant')
+      .map(m => m.id);
+
+    if (assistantMessageIds.length > 0) {
+      try {
+        const citationService = getCitationService();
+        const citationsMap = await citationService.getCitationsForMessages(assistantMessageIds);
+
+        // Attach citations to messages
+        for (const message of messages) {
+          if (message.type === 'standard' && message.role === 'assistant') {
+            const messageCitations = citationsMap.get(message.id);
+            if (messageCitations && messageCitations.length > 0) {
+              // Add citations to message (dynamically add property)
+              (message as Record<string, unknown>).citedFiles = messageCitations;
+            }
+          }
+        }
+
+        logger.debug(
+          { sessionId, citationMessagesCount: citationsMap.size },
+          'Citations attached to messages'
+        );
+      } catch (citationError) {
+        // Non-critical: log error but continue returning messages
+        logger.warn(
+          { error: citationError instanceof Error ? citationError.message : String(citationError), sessionId },
+          'Failed to fetch citations, continuing without them'
+        );
+      }
+    }
 
     logger.info(`[Sessions] Found ${messages.length} messages for session ${sessionId}`);
 

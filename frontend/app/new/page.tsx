@@ -12,6 +12,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { MainLayout, Header, LeftPanel, RightPanel } from '@/components/layout';
 import { useSessionStore } from '@/src/domains/session';
+import { useUIPreferencesStore } from '@/src/domains/ui';
 import { Button } from '@/components/ui/button';
 import { MessageSquare, Users, Image as ImageIcon, FileText } from 'lucide-react';
 import ChatInput from '@/components/chat/ChatInput';
@@ -23,6 +24,10 @@ export default function Home() {
 
   const router = useRouter();
   const createSession = useSessionStore((s) => s.createSession);
+
+  // Read UI preferences for Quick Questions
+  const enableThinking = useUIPreferencesStore((s) => s.enableThinking);
+  const useMyContext = useUIPreferencesStore((s) => s.useMyContext);
 
   const toggleLeftPanel = () => setLeftPanelVisible((prev) => !prev);
   const toggleRightPanel = () => setRightPanelVisible((prev) => !prev);
@@ -53,7 +58,7 @@ export default function Home() {
   };
 
   const handleSuggestion = (suggestion: string) => {
-    handleSend(suggestion);
+    handleSend(suggestion, { enableThinking, useMyContext });
   };
 
   return (

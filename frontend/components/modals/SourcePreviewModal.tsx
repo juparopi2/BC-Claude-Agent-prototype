@@ -466,6 +466,7 @@ export function SourcePreviewModal({
           <Button
             variant="outline"
             onClick={() => {
+              if (!currentCitation.fileId) return;
               const link = document.createElement('a');
               link.href = getFileContentUrl(currentCitation.fileId);
               link.download = currentCitation.fileName;

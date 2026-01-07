@@ -1,0 +1,47 @@
+# =============================================================================
+# Docker Build Context Exclusions
+# =============================================================================
+# Reduces build context size and prevents accidental inclusion of dev files
+
+# Dependencies - installed fresh during build
+**/node_modules
+
+# Nested lockfiles - npm workspaces should only have root package-lock.json
+frontend/package-lock.json
+backend/package-lock.json
+
+# Build outputs - regenerated during build
+**/.next
+**/dist
+**/.turbo
+
+# Development files
+**/*.log
+.git
+.gitignore
+*.md
+!README.md
+
+# IDE and editor files
+.vscode
+.idea
+*.swp
+*.swo
+
+# Test files and coverage
+**/__tests__
+**/coverage
+**/playwright-report
+**/.nyc_output
+
+# Environment files (secrets should be injected at runtime)
+.env
+.env.*
+!.env.example
+
+# Azure local emulator data
+**/azurite-data
+
+# OS files
+.DS_Store
+Thumbs.db

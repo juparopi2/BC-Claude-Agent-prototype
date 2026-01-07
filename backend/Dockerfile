@@ -44,6 +44,9 @@ COPY package.json package-lock.json ./
 COPY packages/shared ./packages/shared
 RUN npm run -w @bc-agent/shared build
 
+# Copy backend package.json (needed for npm run build)
+COPY backend/package.json ./backend/
+
 # Copy backend source code
 COPY backend/tsconfig.json ./backend/
 COPY backend/src ./backend/src

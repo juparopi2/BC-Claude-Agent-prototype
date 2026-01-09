@@ -33,6 +33,8 @@ backend/package-lock.json
 **/coverage
 **/playwright-report
 **/.nyc_output
+**/vitest.setup.ts
+**/vitest.config.ts
 
 # Environment files (secrets should be injected at runtime)
 .env

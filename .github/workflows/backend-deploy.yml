@@ -196,12 +196,30 @@ jobs:
       - name: Update Container App (if exists)
         if: steps.check_app.outputs.exists == 'true'
         run: |
+          # Get frontend URL for CORS configuration
+          FRONTEND_FQDN=$(az containerapp show \
+            --name app-bcagent-frontend-dev \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --query properties.configuration.ingress.fqdn \
+            --output tsv 2>/dev/null || echo "")
+
+          if [ -z "$FRONTEND_FQDN" ]; then
+            FRONTEND_URL="https://app-bcagent-frontend-dev.placeholder.azurecontainerapps.io"
+          else
+            FRONTEND_URL="https://$FRONTEND_FQDN"
+          fi
+
+          echo "Frontend URL for CORS: $FRONTEND_URL"
+
           az containerapp update \
             --name ${{ env.CONTAINER_APP_NAME }} \
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --image ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }} \
             --min-replicas 1 \
-            --max-replicas 3
+            --max-replicas 3 \
+            --set-env-vars \
+              FRONTEND_URL=$FRONTEND_URL \
+              CORS_ORIGIN=$FRONTEND_URL
 
       - name: Get Container App URL
         id: get_url

@@ -78,11 +78,11 @@
   --sidebar-ring: oklch(0.704 0.04 256.788);
 
   /* BC Agent Custom Variables */
-  --primary: 221.2 83.2% 53.3%;          /* Azul BC - color principal de Business Central */
-  --bc-green: 142 76% 36%;               /* Verde éxito para confirmaciones */
-  --bc-amber: 45 93% 47%;                /* Amber para thinking/processing */
-  --thinking-bg: 45 100% 96%;            /* Fondo suave para secciones de thinking */
-  --tool-bg: 210 100% 97%;               /* Fondo suave para cards de herramientas */
+  --primary: hsl(221.2 83.2% 53.3%);          /* Azul BC - color principal de Business Central */
+  --bc-green: hsl(142 76% 36%);               /* Verde éxito para confirmaciones */
+  --bc-amber: hsl(45 93% 47%);                /* Amber para thinking/processing */
+  --thinking-bg: hsl(45 100% 96%);            /* Fondo suave para secciones de thinking */
+  --tool-bg: hsl(210 100% 97%);               /* Fondo suave para cards de herramientas */
 }
 
 .dark {
@@ -119,10 +119,10 @@
   --sidebar-ring: oklch(0.551 0.027 264.364);
 
   /* BC Agent Custom Variables - Dark Mode */
-  --bc-green: 142 70% 45%;               /* Verde éxito más brillante en dark */
-  --bc-amber: 45 93% 55%;                /* Amber más brillante en dark */
-  --thinking-bg: 45 20% 15%;             /* Fondo oscuro para thinking */
-  --tool-bg: 210 20% 15%;                /* Fondo oscuro para tools */
+  --bc-green: hsl(142 70% 45%);               /* Verde éxito más brillante en dark */
+  --bc-amber: hsl(45 93% 55%);                /* Amber más brillante en dark */
+  --thinking-bg: hsl(45 20% 15%);             /* Fondo oscuro para thinking */
+  --tool-bg: hsl(210 20% 15%);                /* Fondo oscuro para tools */
 }
 
 @layer base {

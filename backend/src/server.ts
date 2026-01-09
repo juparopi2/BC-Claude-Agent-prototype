@@ -257,6 +257,13 @@ async function initializeApp(): Promise<void> {
  * Configure Express middleware
  */
 function configureMiddleware(): void {
+  // Trust first proxy (Azure Container Apps ingress terminates SSL)
+  // Required for secure cookies to work behind reverse proxy
+  // Without this, Express sees requests as HTTP and won't send Secure cookies
+  if (isProd) {
+    app.set('trust proxy', 1);
+  }
+
   // CORS
   app.use(cors({
     origin: env.CORS_ORIGIN.includes(',')

@@ -66,7 +66,29 @@ router.get('/login', async (req: Request, res: Response) => {
 
     logger.info('Redirecting to Microsoft login', { state });
 
-    // Redirect to Microsoft login
+    // CRITICAL: Ensure session is saved to Redis BEFORE redirecting
+    // Without this, the redirect may happen before async session save completes,
+    // causing "invalid_state" errors when Microsoft redirects back to callback
+    await new Promise<void>((resolve, reject) => {
+      req.session.save((err) => {
+        if (err) {
+          logger.error('Failed to save session before OAuth redirect', {
+            error: err instanceof Error
+              ? { message: err.message, stack: err.stack }
+              : { value: String(err) }
+          });
+          reject(err);
+        } else {
+          logger.info('Session saved successfully before OAuth redirect', {
+            sessionID: req.sessionID,
+            hasOAuthState: !!req.session?.oauthState
+          });
+          resolve();
+        }
+      });
+    });
+
+    // Now safe to redirect
     res.redirect(authUrl);
   } catch (error) {
     logger.error('Failed to start Microsoft login', { error });
@@ -83,6 +105,16 @@ router.get('/login', async (req: Request, res: Response) => {
 router.get('/callback', async (req: Request, res: Response) => {
   try {
     const { code, state, error: oauthError, error_description, client_info } = req.query;
+
+    // Enhanced diagnostic logging for troubleshooting session issues
+    logger.info('OAuth callback received', {
+      hasSession: !!req.session,
+      sessionID: req.sessionID,
+      hasOAuthState: !!req.session?.oauthState,
+      receivedState: typeof state === 'string' ? state.substring(0, 16) + '...' : undefined,
+      expectedState: req.session?.oauthState ? req.session.oauthState.substring(0, 16) + '...' : undefined,
+      hasCode: !!code,
+    });
 
     // Check for OAuth errors
     if (oauthError) {

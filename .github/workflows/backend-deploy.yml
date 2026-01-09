@@ -193,6 +193,36 @@ jobs:
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --target-port 3001
 
+      - name: Configure Container App Secrets
+        run: |
+          echo "Configuring secrets from Key Vault..."
+          az containerapp secret set \
+            --name ${{ env.CONTAINER_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --secrets \
+              sql-connection-string=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/SqlDb-ConnectionString,identityref:system \
+              redis-connection-string=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/Redis-ConnectionString,identityref:system \
+              anthropic-api-key=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/Claude-ApiKey,identityref:system \
+              bc-tenant-id=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/BC-TenantId,identityref:system \
+              bc-client-id=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/BC-ClientId,identityref:system \
+              bc-client-secret=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/BC-ClientSecret,identityref:system \
+              jwt-secret=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/JWT-Secret,identityref:system \
+              storage-connection-string=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/Storage-ConnectionString,identityref:system \
+              session-secret=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/SESSION-SECRET,identityref:system \
+              encryption-key=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/ENCRYPTION-KEY,identityref:system \
+              microsoft-client-id=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/Microsoft-ClientId,identityref:system \
+              microsoft-client-secret=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/Microsoft-ClientSecret,identityref:system \
+              microsoft-tenant-id=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/Microsoft-TenantId,identityref:system \
+              azure-openai-endpoint=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/AZURE-OPENAI-ENDPOINT,identityref:system \
+              azure-openai-key=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/AZURE-OPENAI-KEY,identityref:system \
+              azure-search-endpoint=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/AZURE-SEARCH-ENDPOINT,identityref:system \
+              azure-search-key=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/AZURE-SEARCH-KEY,identityref:system \
+              azure-vision-endpoint=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/AZURE-VISION-ENDPOINT,identityref:system \
+              azure-vision-key=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/AZURE-VISION-KEY,identityref:system \
+              azure-di-endpoint=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/DocumentIntelligence-Endpoint,identityref:system \
+              azure-di-key=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/DocumentIntelligence-Key,identityref:system
+          echo "✅ Secrets configured from Key Vault"
+
       - name: Update Container App (if exists)
         if: steps.check_app.outputs.exists == 'true'
         run: |
@@ -218,8 +248,42 @@ jobs:
             --min-replicas 1 \
             --max-replicas 3 \
             --set-env-vars \
+              NODE_ENV=production \
+              PORT=3001 \
+              DATABASE_CONNECTION_STRING=secretref:sql-connection-string \
+              REDIS_CONNECTION_STRING=secretref:redis-connection-string \
+              ANTHROPIC_API_KEY=secretref:anthropic-api-key \
+              ANTHROPIC_MODEL=claude-sonnet-4-20250514 \
+              BC_TENANT_ID=secretref:bc-tenant-id \
+              BC_CLIENT_ID=secretref:bc-client-id \
+              BC_CLIENT_SECRET=secretref:bc-client-secret \
+              BC_API_URL=https://api.businesscentral.dynamics.com/v2.0 \
+              BC_ENVIRONMENT=production \
+              JWT_SECRET=secretref:jwt-secret \
+              STORAGE_CONNECTION_STRING=secretref:storage-connection-string \
+              STORAGE_CONTAINER_NAME=agent-files \
+              SESSION_SECRET=secretref:session-secret \
+              ENCRYPTION_KEY=secretref:encryption-key \
+              MICROSOFT_CLIENT_ID=secretref:microsoft-client-id \
+              MICROSOFT_CLIENT_SECRET=secretref:microsoft-client-secret \
+              MICROSOFT_TENANT_ID=secretref:microsoft-tenant-id \
+              MICROSOFT_REDIRECT_URI=https://app-bcagent-backend-dev.ambitiousflower-b4d27c1a.westeurope.azurecontainerapps.io/api/auth/callback \
+              AZURE_OPENAI_ENDPOINT=secretref:azure-openai-endpoint \
+              AZURE_OPENAI_KEY=secretref:azure-openai-key \
+              AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-3-small \
+              AZURE_SEARCH_ENDPOINT=secretref:azure-search-endpoint \
+              AZURE_SEARCH_KEY=secretref:azure-search-key \
+              AZURE_SEARCH_INDEX_NAME=file-chunks-index \
+              AZURE_VISION_ENDPOINT=secretref:azure-vision-endpoint \
+              AZURE_VISION_KEY=secretref:azure-vision-key \
+              AZURE_DI_ENDPOINT=secretref:azure-di-endpoint \
+              AZURE_DI_KEY=secretref:azure-di-key \
               FRONTEND_URL=$FRONTEND_URL \
-              CORS_ORIGIN=$FRONTEND_URL
+              CORS_ORIGIN=$FRONTEND_URL \
+              LOG_LEVEL=info \
+              ENABLE_PROMPT_CACHING=true \
+              ENABLE_EXTENDED_THINKING=true \
+              MAX_CONTEXT_TOKENS=100000
 
       - name: Get Container App URL
         id: get_url
@@ -235,7 +299,7 @@ jobs:
         run: |
           echo "Waiting 120 seconds for container startup (cold start + initialization)..."
           sleep 120
-          echo "Testing liveness endpoint with retries..."
+          echo "Testing health endpoint..."
 
           MAX_RETRIES=5
           RETRY_DELAY=15
@@ -243,11 +307,16 @@ jobs:
           for i in $(seq 1 $MAX_RETRIES); do
             echo "Attempt $i/$MAX_RETRIES..."
 
-            if curl -f --max-time 60 --connect-timeout 30 ${{ steps.get_url.outputs.url }}/health/liveness; then
+            RESPONSE=$(curl -s --max-time 60 --connect-timeout 30 ${{ steps.get_url.outputs.url }}/health/liveness)
+
+            # Check if response is valid JSON with expected structure
+            if echo "$RESPONSE" | jq -e '.status == "alive"' > /dev/null 2>&1; then
               echo "✅ Health check passed!"
+              echo "Response: $RESPONSE"
               exit 0
             else
-              echo "❌ Health check failed (attempt $i/$MAX_RETRIES)"
+              echo "❌ Health check failed - invalid or unexpected response"
+              echo "Response (first 500 chars): $(echo "$RESPONSE" | head -c 500)"
 
               if [ $i -lt $MAX_RETRIES ]; then
                 echo "Waiting $RETRY_DELAY seconds before retry..."
@@ -257,6 +326,8 @@ jobs:
           done
 
           echo "❌ Health check failed after $MAX_RETRIES attempts"
+          echo "This usually means the container crashed during startup."
+          echo "Check logs: az containerapp logs show --name ${{ env.CONTAINER_APP_NAME }} --resource-group ${{ env.RESOURCE_GROUP }} --tail 100"
           exit 1
 
       - name: Deployment Summary

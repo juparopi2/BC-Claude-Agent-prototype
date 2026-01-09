@@ -26,6 +26,7 @@
 import { Queue, Worker, Job, QueueEvents, type RedisOptions } from 'bullmq';
 import { Redis } from 'ioredis';
 import { env } from '@/infrastructure/config';
+import { getRedisConfig } from '@/infrastructure/redis/redis';
 import { createChildLogger } from '@/shared/utils/logger';
 import { executeQuery, SqlParams } from '@/infrastructure/database/database';
 import { getEventStore, EventType } from '@/services/events/EventStore';
@@ -252,16 +253,24 @@ export class MessageQueue {
       this.redisConnection = dependencies.redis;
       this.ownsRedisConnection = false;  // Injected - don't close it
     } else {
+      // Use shared Redis config that supports connection strings
+      const redisConfig = getRedisConfig();
+      this.log.info('Creating BullMQ Redis connection', {
+        host: redisConfig.host,
+        port: redisConfig.port,
+        hasPassword: !!redisConfig.password,
+      });
+
       this.redisConnection = new Redis({
-        host: env.REDIS_HOST || 'localhost',
-        port: env.REDIS_PORT || 6379,
+        host: redisConfig.host,
+        port: redisConfig.port,
         // Only include password if non-empty (empty string causes AUTH command which fails on Redis without auth)
-        ...(env.REDIS_PASSWORD ? { password: env.REDIS_PASSWORD } : {}),
+        ...(redisConfig.password ? { password: redisConfig.password } : {}),
         maxRetriesPerRequest: null, // Required for BullMQ
         lazyConnect: false, // Connect immediately
         enableReadyCheck: true,
         // ⭐ TLS Configuration for Azure Redis Cache (port 6380 requires SSL)
-        tls: env.REDIS_PORT === 6380 ? {
+        tls: redisConfig.port === 6380 ? {
           rejectUnauthorized: true,
         } : undefined,
         // ⭐ Reconnection Strategy - Handle transient failures

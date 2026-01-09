@@ -176,8 +176,10 @@ function parseAzureRedisConnectionString(connectionString: string): {
 
 /**
  * Get Redis configuration from connection string or individual params
+ *
+ * Exported for use by MessageQueue and other services that need Redis config.
  */
-function getRedisConfig(): { host: string; port: number; password: string | undefined } {
+export function getRedisConfig(): { host: string; port: number; password: string | undefined } {
   // First check for connection string
   const connectionString = process.env.REDIS_CONNECTION_STRING || env.REDIS_CONNECTION_STRING;
 

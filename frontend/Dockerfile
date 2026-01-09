@@ -19,6 +19,9 @@ COPY packages/shared/package.json ./packages/shared/
 COPY packages/shared/tsconfig.json ./packages/shared/
 COPY packages/shared/tsup.config.ts ./packages/shared/
 
+# Copy backend package.json (required for npm workspaces to resolve all dependencies)
+COPY backend/package.json ./backend/
+
 # Copy frontend package.json
 COPY frontend/package.json ./frontend/
 

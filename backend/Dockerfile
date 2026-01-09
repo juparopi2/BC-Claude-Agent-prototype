@@ -22,6 +22,9 @@ COPY packages/shared/tsup.config.ts ./packages/shared/
 # Copy backend package configuration
 COPY backend/package.json ./backend/
 
+# Copy frontend package.json (required for npm workspaces to resolve all dependencies)
+COPY frontend/package.json ./frontend/
+
 # Install ALL workspace dependencies (needed for build)
 # This resolves @bc-agent/shared as a workspace package
 RUN npm ci
@@ -72,6 +75,7 @@ RUN apk add --no-cache dumb-init
 COPY package.json package-lock.json ./
 COPY packages/shared/package.json ./packages/shared/
 COPY backend/package.json ./backend/
+COPY frontend/package.json ./frontend/
 
 # Install production dependencies only
 # --omit=dev excludes devDependencies

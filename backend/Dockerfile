@@ -50,8 +50,9 @@ RUN npm run -w @bc-agent/shared build
 # Copy backend package.json (needed for npm run build)
 COPY backend/package.json ./backend/
 
-# Copy backend source code
+# Copy backend source code and build configuration
 COPY backend/tsconfig.json ./backend/
+COPY backend/.swcrc ./backend/
 COPY backend/src ./backend/src
 
 # Copy backend-specific node_modules (npm workspaces creates nested deps)

@@ -43,16 +43,72 @@ function _setTestRedisClientInternal(client: RedisClientType | null): void {
 }
 
 /**
- * Create Redis client using official 'redis' package
+ * Parse Azure Redis connection string into individual components
  *
- * This is compatible with connect-redis@7 for session storage.
- * BullMQ continues to use ioredis (see config/redis.ts).
+ * Supports formats like:
+ * - redis-name.redis.cache.windows.net:6380,password=xxx,ssl=True,abortConnect=False
  *
- * @param profile - Configuration profile
- * @returns Configured Redis client
+ * @param connectionString - Azure Redis connection string
+ * @returns Parsed components { host, port, password }
  */
-export function createRedisClient(profile: RedisClientProfile = 'SESSION'): RedisClientType {
-  // Read from process.env directly to support runtime overrides in tests
+function parseAzureRedisConnectionString(connectionString: string): {
+  host: string;
+  port: number;
+  password: string;
+} {
+  // Azure Redis connection string format:
+  // redis-name.redis.cache.windows.net:6380,password=xxx,ssl=True,abortConnect=False
+  const parts = connectionString.split(',');
+
+  if (parts.length === 0) {
+    throw new Error('Invalid Redis connection string format');
+  }
+
+  // First part is host:port
+  const hostPort = parts[0].trim();
+  const [host, portStr] = hostPort.includes(':')
+    ? hostPort.split(':')
+    : [hostPort, '6380']; // Default to SSL port
+
+  const port = parseInt(portStr, 10);
+
+  // Find password in remaining parts
+  let password = '';
+  for (const part of parts.slice(1)) {
+    const trimmed = part.trim();
+    if (trimmed.toLowerCase().startsWith('password=')) {
+      password = trimmed.substring(9);
+      break;
+    }
+  }
+
+  if (!host) {
+    throw new Error('Invalid Redis connection string: missing host');
+  }
+
+  console.log(`🔍 Parsed Redis connection string: host=${host}, port=${port}`);
+
+  return { host, port, password };
+}
+
+/**
+ * Get Redis configuration from connection string or individual params
+ */
+function getRedisConfig(): { host: string; port: number; password: string | undefined } {
+  // First check for connection string
+  const connectionString = process.env.REDIS_CONNECTION_STRING || env.REDIS_CONNECTION_STRING;
+
+  if (connectionString) {
+    console.log('🔍 Parsing REDIS_CONNECTION_STRING...');
+    const parsed = parseAzureRedisConnectionString(connectionString);
+    return {
+      host: parsed.host,
+      port: parsed.port,
+      password: parsed.password || undefined,
+    };
+  }
+
+  // Fall back to individual parameters
   const redisHost = process.env.REDIS_HOST || env.REDIS_HOST;
   const redisPort = process.env.REDIS_PORT
     ? parseInt(process.env.REDIS_PORT, 10)
@@ -62,12 +118,30 @@ export function createRedisClient(profile: RedisClientProfile = 'SESSION'): Redi
     ? process.env.REDIS_PASSWORD
     : env.REDIS_PASSWORD;
 
-  // Validate required parameters
   if (!redisHost || !redisPort) {
     throw new Error(
-      'Redis configuration is incomplete. Provide REDIS_HOST and REDIS_PORT.'
+      'Redis configuration is incomplete. Provide REDIS_CONNECTION_STRING or REDIS_HOST and REDIS_PORT.'
     );
   }
+
+  return {
+    host: redisHost,
+    port: redisPort,
+    password: redisPassword,
+  };
+}
+
+/**
+ * Create Redis client using official 'redis' package
+ *
+ * This is compatible with connect-redis@7 for session storage.
+ * BullMQ continues to use ioredis (see config/redis.ts).
+ *
+ * @param profile - Configuration profile
+ * @returns Configured Redis client
+ */
+export function createRedisClient(profile: RedisClientProfile = 'SESSION'): RedisClientType {
+  const { host: redisHost, port: redisPort, password: redisPassword } = getRedisConfig();
 
   // Detect local vs Azure Redis
   const isLocalRedis =

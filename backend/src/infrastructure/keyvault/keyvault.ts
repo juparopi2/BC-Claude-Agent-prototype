@@ -196,12 +196,12 @@ export async function loadSecretsFromKeyVault(): Promise<void> {
     if (sessionSecret) process.env.SESSION_SECRET = sessionSecret;
 
     // Load connection strings
-    // Temporarily disabled - using individual DATABASE_* and REDIS_* parameters instead
-    // const sqlConnectionString = await getSecret(SECRET_NAMES.SQLDB_CONNECTION_STRING, 'DATABASE_CONNECTION_STRING');
-    // if (sqlConnectionString) process.env.DATABASE_CONNECTION_STRING = sqlConnectionString;
+    // Now supports parsing connection strings into individual components
+    const sqlConnectionString = await getSecret(SECRET_NAMES.SQLDB_CONNECTION_STRING, 'DATABASE_CONNECTION_STRING');
+    if (sqlConnectionString) process.env.DATABASE_CONNECTION_STRING = sqlConnectionString;
 
-    // const redisConnectionString = await getSecret(SECRET_NAMES.REDIS_CONNECTION_STRING, 'REDIS_CONNECTION_STRING');
-    // if (redisConnectionString) process.env.REDIS_CONNECTION_STRING = redisConnectionString;
+    const redisConnectionString = await getSecret(SECRET_NAMES.REDIS_CONNECTION_STRING, 'REDIS_CONNECTION_STRING');
+    if (redisConnectionString) process.env.REDIS_CONNECTION_STRING = redisConnectionString;
 
     const storageConnectionString = await getSecret(SECRET_NAMES.STORAGE_CONNECTION_STRING, 'STORAGE_CONNECTION_STRING');
     if (storageConnectionString) process.env.STORAGE_CONNECTION_STRING = storageConnectionString;

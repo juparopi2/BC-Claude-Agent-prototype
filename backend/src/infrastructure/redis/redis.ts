@@ -126,6 +126,95 @@ export function getDefaultProfile(): RedisProfile {
 }
 
 /**
+ * Parse Azure Redis connection string into individual components
+ *
+ * Supports formats like:
+ * - redis-name.redis.cache.windows.net:6380,password=xxx,ssl=True,abortConnect=False
+ *
+ * @param connectionString - Azure Redis connection string
+ * @returns Parsed components { host, port, password }
+ */
+function parseAzureRedisConnectionString(connectionString: string): {
+  host: string;
+  port: number;
+  password: string;
+} {
+  // Azure Redis connection string format:
+  // redis-name.redis.cache.windows.net:6380,password=xxx,ssl=True,abortConnect=False
+  const parts = connectionString.split(',');
+
+  if (parts.length === 0) {
+    throw new Error('Invalid Redis connection string format');
+  }
+
+  // First part is host:port
+  const hostPort = parts[0].trim();
+  const [host, portStr] = hostPort.includes(':')
+    ? hostPort.split(':')
+    : [hostPort, '6380']; // Default to SSL port
+
+  const port = parseInt(portStr, 10);
+
+  // Find password in remaining parts
+  let password = '';
+  for (const part of parts.slice(1)) {
+    const trimmed = part.trim();
+    if (trimmed.toLowerCase().startsWith('password=')) {
+      password = trimmed.substring(9);
+      break;
+    }
+  }
+
+  if (!host) {
+    throw new Error('Invalid Redis connection string: missing host');
+  }
+
+  logger.info({ host, port }, 'Parsed Redis connection string');
+
+  return { host, port, password };
+}
+
+/**
+ * Get Redis configuration from connection string or individual params
+ */
+function getRedisConfig(): { host: string; port: number; password: string | undefined } {
+  // First check for connection string
+  const connectionString = process.env.REDIS_CONNECTION_STRING || env.REDIS_CONNECTION_STRING;
+
+  if (connectionString) {
+    logger.info('Parsing REDIS_CONNECTION_STRING...');
+    const parsed = parseAzureRedisConnectionString(connectionString);
+    return {
+      host: parsed.host,
+      port: parsed.port,
+      password: parsed.password || undefined,
+    };
+  }
+
+  // Fall back to individual parameters
+  const redisHost = process.env.REDIS_HOST || env.REDIS_HOST;
+  const redisPort = process.env.REDIS_PORT
+    ? parseInt(process.env.REDIS_PORT, 10)
+    : env.REDIS_PORT;
+  // Check if REDIS_PASSWORD was explicitly set (including empty string for no-auth Docker Redis)
+  const redisPassword = process.env.REDIS_PASSWORD !== undefined
+    ? process.env.REDIS_PASSWORD
+    : env.REDIS_PASSWORD;
+
+  if (!redisHost || !redisPort) {
+    throw new Error(
+      'Redis configuration is incomplete. Provide REDIS_CONNECTION_STRING or REDIS_HOST and REDIS_PORT.'
+    );
+  }
+
+  return {
+    host: redisHost,
+    port: redisPort,
+    password: redisPassword,
+  };
+}
+
+/**
  * Create Redis client with specified profile
  *
  * Factory function that creates ioredis client with profile-specific
@@ -157,22 +246,7 @@ export function getDefaultProfile(): RedisProfile {
  * const testRedis = createRedisClient('TEST');
  */
 export function createRedisClient(profile: RedisProfile = getDefaultProfile()): Redis {
-  // Read from process.env directly to support runtime overrides in tests
-  const redisHost = process.env.REDIS_HOST || env.REDIS_HOST;
-  const redisPort = process.env.REDIS_PORT
-    ? parseInt(process.env.REDIS_PORT, 10)
-    : env.REDIS_PORT;
-  // Check if REDIS_PASSWORD was explicitly set (including empty string for no-auth Docker Redis)
-  const redisPassword = process.env.REDIS_PASSWORD !== undefined
-    ? process.env.REDIS_PASSWORD
-    : env.REDIS_PASSWORD;
-
-  // Validate required parameters
-  if (!redisHost || !redisPort) {
-    throw new Error(
-      'Redis configuration is incomplete. Provide REDIS_HOST and REDIS_PORT.'
-    );
-  }
+  const { host: redisHost, port: redisPort, password: redisPassword } = getRedisConfig();
 
   // Detect local vs Azure Redis
   const isLocalRedis =

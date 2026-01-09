@@ -246,29 +246,98 @@ function inferSqlType(key: string, value: unknown): ISqlType | (() => ISqlType) 
 }
 
 /**
+ * Parse Azure SQL connection string into individual components
+ *
+ * Supports formats like:
+ * - Server=tcp:server.database.windows.net,1433;Database=dbname;User ID=user;Password=password;Encrypt=True;
+ *
+ * @param connectionString - Azure SQL connection string
+ * @returns Parsed components { server, database, user, password }
+ */
+function parseAzureSqlConnectionString(connectionString: string): {
+  server: string;
+  database: string;
+  user: string;
+  password: string;
+} {
+  const parts: Record<string, string> = {};
+
+  // Split by semicolon and parse key=value pairs
+  connectionString.split(';').forEach(part => {
+    const trimmed = part.trim();
+    if (!trimmed) return;
+
+    const equalsIndex = trimmed.indexOf('=');
+    if (equalsIndex === -1) return;
+
+    const key = trimmed.substring(0, equalsIndex).trim().toLowerCase();
+    const value = trimmed.substring(equalsIndex + 1).trim();
+    parts[key] = value;
+  });
+
+  // Extract server (remove tcp: prefix and port)
+  let server = parts['server'] || parts['data source'] || '';
+  if (server.startsWith('tcp:')) {
+    server = server.substring(4);
+  }
+  // Remove port if present (e.g., "server.database.windows.net,1433" -> "server.database.windows.net")
+  if (server.includes(',')) {
+    server = server.split(',')[0];
+  }
+
+  const database = parts['database'] || parts['initial catalog'] || '';
+  const user = parts['user id'] || parts['uid'] || '';
+  const password = parts['password'] || parts['pwd'] || '';
+
+  if (!server || !database || !user || !password) {
+    throw new Error(
+      `Invalid connection string format. Missing required fields. ` +
+      `Found: server=${server ? 'yes' : 'no'}, database=${database ? 'yes' : 'no'}, ` +
+      `user=${user ? 'yes' : 'no'}, password=${password ? 'yes' : 'no'}`
+    );
+  }
+
+  return { server, database, user, password };
+}
+
+/**
  * Get database configuration
  *
  * @returns SQL Server configuration object
  */
 export function getDatabaseConfig(): SqlConfig {
+  let server: string;
+  let database: string;
+  let user: string;
+  let password: string;
+
   // If connection string is provided, parse it
   if (env.DATABASE_CONNECTION_STRING) {
-    // In mssql v12, connectionString is no longer a direct property
-    // Parse connection string manually or use it directly with sql.connect()
-    // For now, we'll require individual parameters
-    throw new Error('Connection string parsing not yet implemented for mssql v12. Please use DATABASE_SERVER, DATABASE_NAME, DATABASE_USER, and DATABASE_PASSWORD.');
-  }
-
-  // Otherwise, use individual parameters
-  if (!env.DATABASE_SERVER || !env.DATABASE_NAME || !env.DATABASE_USER || !env.DATABASE_PASSWORD) {
-    throw new Error('Database configuration is incomplete. Provide either DATABASE_CONNECTION_STRING or DATABASE_SERVER, DATABASE_NAME, DATABASE_USER, and DATABASE_PASSWORD.');
+    console.log('🔍 Parsing DATABASE_CONNECTION_STRING...');
+    const parsed = parseAzureSqlConnectionString(env.DATABASE_CONNECTION_STRING);
+    server = parsed.server;
+    database = parsed.database;
+    user = parsed.user;
+    password = parsed.password;
+    console.log(`✅ Parsed: server=${server}, database=${database}, user=${user}`);
+  } else if (env.DATABASE_SERVER && env.DATABASE_NAME && env.DATABASE_USER && env.DATABASE_PASSWORD) {
+    // Use individual parameters
+    server = env.DATABASE_SERVER;
+    database = env.DATABASE_NAME;
+    user = env.DATABASE_USER;
+    password = env.DATABASE_PASSWORD;
+  } else {
+    throw new Error(
+      'Database configuration is incomplete. Provide either DATABASE_CONNECTION_STRING or ' +
+      'DATABASE_SERVER, DATABASE_NAME, DATABASE_USER, and DATABASE_PASSWORD.'
+    );
   }
 
   return {
-    server: env.DATABASE_SERVER,
-    database: env.DATABASE_NAME,
-    user: env.DATABASE_USER,
-    password: env.DATABASE_PASSWORD,
+    server,
+    database,
+    user,
+    password,
     options: {
       encrypt: true, // Required for Azure SQL
       trustServerCertificate: !isProd, // Trust certificate in development

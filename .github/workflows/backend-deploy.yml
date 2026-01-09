@@ -285,6 +285,15 @@ jobs:
               ENABLE_EXTENDED_THINKING=true \
               MAX_CONTEXT_TOKENS=100000
 
+      - name: Configure Ingress
+        run: |
+          echo "Ensuring ingress is configured for port 3001..."
+          az containerapp ingress update \
+            --name ${{ env.CONTAINER_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --target-port 3001
+          echo "✅ Ingress configured for port 3001"
+
       - name: Get Container App URL
         id: get_url
         run: |
@@ -295,28 +304,78 @@ jobs:
             --output tsv)
           echo "url=https://$URL" >> $GITHUB_OUTPUT
 
+      - name: Container Diagnostics
+        run: |
+          echo "=== Container App Configuration ==="
+
+          echo ""
+          echo "📦 Revision Status:"
+          az containerapp revision list \
+            --name ${{ env.CONTAINER_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --query "[].{name:name, runningState:properties.runningState, trafficWeight:trafficWeight}" \
+            -o table
+
+          echo ""
+          echo "🌐 Ingress Configuration:"
+          az containerapp show \
+            --name ${{ env.CONTAINER_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --query "properties.configuration.ingress.{targetPort:targetPort, external:external, fqdn:fqdn}" \
+            -o json
+
+          echo ""
+          echo "🔐 Secrets Configured:"
+          az containerapp show \
+            --name ${{ env.CONTAINER_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --query "properties.configuration.secrets[].name" \
+            -o tsv | wc -l
+          echo "secrets total"
+
+          echo ""
+          echo "📝 Environment Variables:"
+          az containerapp show \
+            --name ${{ env.CONTAINER_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --query "properties.template.containers[0].env[].name" \
+            -o tsv | head -20
+          echo "... (first 20 shown)"
+
       - name: Health Check
         run: |
-          echo "Waiting 120 seconds for container startup (cold start + initialization)..."
-          sleep 120
-          echo "Testing health endpoint..."
+          echo "Waiting 90 seconds for container startup..."
+          sleep 90
+          echo "Testing health endpoint: ${{ steps.get_url.outputs.url }}/health/liveness"
 
           MAX_RETRIES=5
-          RETRY_DELAY=15
+          RETRY_DELAY=20
 
           for i in $(seq 1 $MAX_RETRIES); do
-            echo "Attempt $i/$MAX_RETRIES..."
+            echo ""
+            echo "=== Attempt $i/$MAX_RETRIES ==="
 
-            RESPONSE=$(curl -s --max-time 60 --connect-timeout 30 ${{ steps.get_url.outputs.url }}/health/liveness)
+            RESPONSE=$(curl -s -w "\nHTTP_CODE:%{http_code}" --max-time 30 --connect-timeout 15 "${{ steps.get_url.outputs.url }}/health/liveness" 2>&1)
+
+            HTTP_CODE=$(echo "$RESPONSE" | grep "HTTP_CODE:" | cut -d':' -f2)
+            BODY=$(echo "$RESPONSE" | grep -v "HTTP_CODE:")
+
+            echo "HTTP Status: $HTTP_CODE"
+            echo "Response Body (first 300 chars): $(echo "$BODY" | head -c 300)"
 
             # Check if response is valid JSON with expected structure
-            if echo "$RESPONSE" | jq -e '.status == "alive"' > /dev/null 2>&1; then
+            if echo "$BODY" | jq -e '.status == "alive"' > /dev/null 2>&1; then
+              echo ""
               echo "✅ Health check passed!"
-              echo "Response: $RESPONSE"
+              echo "Full response: $BODY"
               exit 0
             else
-              echo "❌ Health check failed - invalid or unexpected response"
-              echo "Response (first 500 chars): $(echo "$RESPONSE" | head -c 500)"
+              echo "❌ Health check failed"
+
+              # Check if it's the Azure welcome page
+              if echo "$BODY" | grep -q "Azure Container Apps"; then
+                echo "⚠️  Getting Azure welcome page - container not responding"
+              fi
 
               if [ $i -lt $MAX_RETRIES ]; then
                 echo "Waiting $RETRY_DELAY seconds before retry..."
@@ -325,9 +384,22 @@ jobs:
             fi
           done
 
+          echo ""
           echo "❌ Health check failed after $MAX_RETRIES attempts"
-          echo "This usually means the container crashed during startup."
-          echo "Check logs: az containerapp logs show --name ${{ env.CONTAINER_APP_NAME }} --resource-group ${{ env.RESOURCE_GROUP }} --tail 100"
+          echo ""
+          echo "=== DIAGNOSTIC: Container Logs (last 50 lines) ==="
+          az containerapp logs show \
+            --name ${{ env.CONTAINER_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --tail 50 || echo "Could not fetch logs"
+          echo ""
+          echo "=== DIAGNOSTIC: Revision Status ==="
+          az containerapp revision list \
+            --name ${{ env.CONTAINER_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --query "[].{name:name, runningState:properties.runningState, healthState:properties.healthState, replicas:properties.replicas}" \
+            -o table || echo "Could not fetch revision status"
+
           exit 1
 
       - name: Deployment Summary

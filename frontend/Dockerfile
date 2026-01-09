@@ -49,6 +49,9 @@ RUN npm run -w @bc-agent/shared build
 # Copy frontend source
 COPY frontend ./frontend
 
+# Copy frontend-specific node_modules (npm workspaces creates nested deps)
+COPY --from=deps /app/frontend/node_modules ./frontend/node_modules
+
 # Build arguments for Next.js public environment variables
 # These are baked into the build at compile time
 ARG NEXT_PUBLIC_API_URL

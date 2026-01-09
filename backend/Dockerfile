@@ -54,6 +54,9 @@ COPY backend/package.json ./backend/
 COPY backend/tsconfig.json ./backend/
 COPY backend/src ./backend/src
 
+# Copy backend-specific node_modules (npm workspaces creates nested deps)
+COPY --from=deps /app/backend/node_modules ./backend/node_modules
+
 # Copy MCP server data files (vendored static data, no build needed)
 COPY backend/mcp-server/data ./backend/mcp-server/data
 COPY backend/mcp-server/bcoas1.0.yaml ./backend/mcp-server/bcoas1.0.yaml

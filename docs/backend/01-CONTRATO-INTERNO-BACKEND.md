@@ -1,7 +1,7 @@
 # Contrato Interno del Backend - BC Agent
 
-> **Fecha**: 2026-01-06
-> **Versión**: 2.0
+> **Fecha**: 2026-01-13
+> **Versión**: 2.1
 > **Propósito**: Documentar la arquitectura, módulos, responsabilidades y flujo de procesamiento de mensajes del backend.
 
 ---
@@ -22,31 +22,21 @@ backend/src/
 │   ├── agent/                  # Dominio principal del agente
 │   │   ├── orchestration/      # AgentOrchestrator, ExecutionContextSync
 │   │   ├── persistence/        # PersistenceCoordinator (Two-Phase)
-│   │   ├── context/            # FileContextPreparer
-│   │   ├── emission/           # Tracking de índices de eventos
-│   │   ├── tools/              # ToolLifecycleManager, ToolExecutionProcessor
-│   │   └── usage/              # Tracking de uso de tokens
-│   ├── approval/               # Flujo Human-in-the-Loop
+│   │   ├── context/            # FileContextPreparer, SemanticSearchHandler
+│   │   ├── citations/          # CitationExtractor (extracción de citas de RAG)
+│   │   ├── emission/           # EventIndexTracker
+│   │   ├── tools/              # ToolLifecycleManager, ToolEventDeduplicator
+│   │   └── usage/              # UsageTracker
+│   ├── approval/               # Flujo Human-in-the-Loop (ApprovalManager)
 │   ├── auth/                   # Autenticación y middleware
 │   │   ├── middleware/         # Express middleware
-│   │   └── oauth/              # OAuth strategies
+│   │   └── oauth/              # MicrosoftOAuthService
 │   ├── billing/                # Billing y tracking de costos
-│   │   └── tracking/           # Usage tracking service
-│   ├── business-central/       # Integración con BC
-│   │   ├── auth/               # BC authentication
-│   │   ├── client/             # BC API client
-│   │   └── tools/              # BC tools metadata
-│   ├── chat/                   # Chat domain
-│   │   ├── messages/           # Message handling
-│   │   ├── session/            # Session management
-│   │   └── websocket/          # WebSocket coordination
-│   ├── files/                  # File management domain
-│   │   ├── chunking/           # Text chunking strategies
-│   │   ├── context/            # File context preparation
-│   │   ├── processing/         # File processors
-│   │   └── upload/             # Upload handling
-│   └── search/                 # Búsqueda semántica
-│       └── semantic/           # Vector search
+│   │   └── tracking/           # UsageTrackingService, QuotaValidatorService
+│   ├── business-central/       # (Placeholder - estructura reservada)
+│   ├── chat/                   # (Placeholder - estructura reservada)
+│   ├── files/                  # (Placeholder - estructura reservada)
+│   └── search/                 # (Placeholder - estructura reservada)
 │
 ├── modules/                    # Implementaciones concretas de agentes (LangGraph)
 │   └── agents/
@@ -59,25 +49,31 @@ backend/src/
 │       │   ├── bc-agent.ts     # Implementación del agente
 │       │   └── tools.ts        # 7 meta-tools de BC
 │       ├── rag-knowledge/      # RAG Agent
-│       └── core/               # Shared graph utilities
+│       │   ├── rag-agent.ts    # Implementación del agente RAG
+│       │   ├── tools.ts        # search_knowledge_base tool
+│       │   └── schemas/        # searchResult.schema.ts (Zod)
+│       └── core/               # AgentFactory
 │
 ├── services/                   # Servicios de infraestructura
-│   ├── websocket/              # ChatMessageHandler (punto de entrada)
+│   ├── websocket/              # ChatMessageHandler, SocketService
 │   ├── events/                 # EventStore (Event Sourcing)
 │   ├── files/                  # FileService, FileUploadService
-│   │   ├── citations/          # Citation generation
-│   │   ├── context/            # ContextRetrievalService
-│   │   └── processors/         # PDF, Word, Excel, Image processors
-│   ├── chunking/               # Text chunking implementations
+│   │   ├── citations/          # CitationParser
+│   │   ├── context/            # ContextRetrievalService, ContextStrategyFactory
+│   │   └── processors/         # PDF, DOCX, Excel, Text, Image processors
+│   ├── chunking/               # ChunkingStrategyFactory (3 estrategias)
 │   ├── citations/              # CitationService (recuperación de citas)
 │   ├── embeddings/             # EmbeddingService
 │   ├── messages/               # MessageService
-│   ├── sessions/               # SessionService
+│   ├── sessions/               # SessionTitleGenerator
 │   ├── search/                 # Search services
 │   │   ├── semantic/           # SemanticSearchService
-│   │   ├── ImageSearchService.ts # Image search logic
 │   │   └── VectorSearchService.ts # Azure AI Search client
-│   └── cache/                  # Redis caching layer
+│   ├── cache/                  # ToolUseTracker
+│   ├── todo/                   # TodoManager
+│   ├── token-usage/            # TokenUsageService
+│   ├── auth/                   # BCTokenManager
+│   └── bc/                     # BCClient, BCValidator
 │
 ├── repositories/               # Data Access Layer
 │   └── ImageEmbeddingRepository.ts # Gestión de embeddings de imágenes
@@ -85,18 +81,18 @@ backend/src/
 ├── shared/                     # Código compartido
 │   ├── providers/              # Adaptadores de proveedores LLM
 │   │   ├── adapters/           # AnthropicAdapter
-│   │   ├── interfaces/         # IProviderAdapter, INormalizedAgentEvent
+│   │   ├── interfaces/         # IProviderAdapter, IBatchResultNormalizer
 │   │   └── normalizers/        # BatchResultNormalizer
-│   ├── constants/              # Constantes globales
-│   ├── middleware/             # Middleware HTTP
+│   ├── constants/              # errors, queue, tools
+│   ├── middleware/             # logging middleware
 │   ├── types/                  # Tipos compartidos
-│   └── utils/                  # Utilidades (logger, SQL, UUID, retry)
-│       └── sql/                # QueryBuilder para SQL seguro
+│   └── utils/                  # logger, retry, session-ownership, uuid
+│       └── sql/                # QueryBuilder, validators
 │
 ├── infrastructure/             # Infraestructura técnica
-│   ├── config/                 # Configuración de modelos
-│   ├── database/               # Azure SQL connection pool
-│   ├── redis/                  # Cliente Redis
+│   ├── config/                 # EnvironmentFacade, feature-flags, pricing.config
+│   ├── database/               # database.ts, migrations/
+│   ├── redis/                  # redis.ts, redis-client.ts
 │   ├── queue/                  # MessageQueue (BullMQ)
 │   └── keyvault/               # Azure Key Vault
 │
@@ -106,17 +102,14 @@ backend/src/
 │   ├── sessions.ts             # Session CRUD
 │   ├── billing.ts              # Billing queries
 │   ├── gdpr.ts                 # Data deletion (GDPR)
-│   └── ...
+│   ├── token-usage.ts          # Token usage queries
+│   ├── usage.ts                # Usage aggregation
+│   └── logs.ts                 # Log endpoints
 │
 ├── schemas/                    # Schemas Zod para validación
 │   └── request.schemas.ts
 │
 ├── types/                      # Tipos TypeScript centralizados
-│   ├── agent.types.ts
-│   ├── file.types.ts
-│   ├── message.types.ts
-│   ├── session.types.ts
-│   ├── usage.types.ts
 │   └── index.ts                # Barrel exports
 │
 └── server.ts                   # Main Express server
@@ -141,9 +134,9 @@ backend/src/
     ▼          ▼                ▼               ▼
 ┌────────┐ ┌───────────┐ ┌───────────────┐ ┌────────────────────┐
 │context/│ │  modules/ │ │ persistence/  │ │shared/providers/   │
-│ File   │ │  agents/  │ │Persistence    │ │normalizers/        │
-│Context │ │  graph.ts │ │Coordinator    │ │BatchResult         │
-│Preparer│ │ LangGraph │ │EventStore+MQ  │ │Normalizer          │
+│ File   │ │  agents/  │ │Persistence    │ │                    │
+│Context │ │  graph.ts │ │Coordinator    │ │AnthropicAdapter    │
+│Preparer│ │ LangGraph │ │EventStore+MQ  │ │BatchResultNormaliz.│
 └────────┘ └─────┬─────┘ └───────────────┘ └────────────────────┘
                  │
     ┌────────────┼────────────┐
@@ -153,12 +146,14 @@ backend/src/
 │.ts     │ │.ts       │ │.ts       │
 └────────┘ └──────────┘ └──────────┘
                  │
-                 ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    domains/agent/tools                           │
-│                   (ToolLifecycleManager)                         │
-│              COORDINACIÓN DE CICLO DE VIDA DE TOOLS              │
-└─────────────────────────────────────────────────────────────────┘
+      ┌──────────┴──────────┐
+      ▼                     ▼
+┌─────────────────┐ ┌─────────────────────────────────────────────┐
+│domains/agent/   │ │                domains/agent/citations       │
+│tools/           │ │                (CitationExtractor)           │
+│ToolLifecycle    │ │        EXTRACCIÓN DE CITAS DE RAG RESULTS    │
+│Manager          │ └─────────────────────────────────────────────┘
+└─────────────────┘
 ```
 
 ---
@@ -251,9 +246,9 @@ backend/src/
      │               │                   │                 │                  │
 ```
 
-### 2.2 El Stack de 7 Capas
+### 2.2 El Stack de 8 Capas
 
-El procesamiento de mensajes atraviesa 7 capas estrictas:
+El procesamiento de mensajes atraviesa 8 capas estrictas:
 
 | Capa | Módulo | Responsabilidad |
 |------|--------|-----------------|
@@ -262,8 +257,11 @@ El procesamiento de mensajes atraviesa 7 capas estrictas:
 | **3. Routing** | `router.ts` | Decidir qué agente procesa (BC, RAG, Orchestrator) |
 | **4. Ejecución** | `graph.ts` + Agentes | LangGraph StateGraph con nodos de agentes |
 | **5. Normalización** | `BatchResultNormalizer.ts` | Convertir AgentState a NormalizedAgentEvent[] |
-| **6. Tool Lifecycle** | `ToolLifecycleManager.ts` | Coordinar tool_request + tool_response |
-| **7. Persistencia** | `PersistenceCoordinator.ts` | EventStore + MessageQueue (Two-Phase) |
+| **6. Pre-allocation** | `EventStore.reserveSequenceNumbers()` | Reservar sequence numbers atómicamente |
+| **7. Tool Lifecycle** | `ToolLifecycleManager.ts` | Coordinar tool_request + tool_response |
+| **8. Persistencia** | `PersistenceCoordinator.ts` | EventStore + MessageQueue (Two-Phase) |
+
+> **Nota**: El sistema usa ejecución **síncrona** (`graph.invoke()`), no streaming. Los eventos se emiten después de que el grafo complete.
 
 ---
 
@@ -551,7 +549,7 @@ executeAgentSync(prompt, sessionId, onEvent, userId, options):
 
 **Ubicación**: `backend/src/domains/agent/orchestration/ExecutionContextSync.ts`
 
-**Responsabilidad Única**: Contener todo el estado mutable de una ejecución.
+**Responsabilidad Única**: Contener todo el estado mutable de una ejecución síncrona.
 
 **Estructura**:
 ```typescript
@@ -567,7 +565,11 @@ interface ExecutionContextSync {
 
     // Tool Management (mutable)
     seenToolIds: Map<string, string>;           // toolUseId → timestamp
-    toolLifecycleManager: ToolLifecycleManager; // Coordinación de tools
+    toolLifecycleManager: ToolLifecycleManager; // Coordinación de tools (per-execution)
+
+    // Citation Tracking (mutables)
+    citedSources: CitedFile[];        // Citas acumuladas de resultados RAG
+    lastAssistantMessageId: string | null;  // Para asociar citas con mensaje
 
     // Usage Tracking (mutables)
     totalInputTokens: number;
@@ -592,6 +594,7 @@ interface ExecutionContextSync {
 - `setUsageSync(ctx, usage)` - Actualizar tokens
 - `isToolSeenSync(ctx, toolUseId)` - Verificar deduplicación
 - `markToolSeenSync(ctx, toolUseId)` - Registrar tool como visto
+- `getTotalTokensSync(ctx)` - Obtener total de tokens
 
 ---
 
@@ -1031,7 +1034,89 @@ interface ToolLifecycleStats {
 
 ---
 
-### 3.10 PersistenceCoordinator (Persistencia)
+### 3.10 CitationExtractor (Extracción de Citas)
+
+**Ubicación**: `backend/src/domains/agent/citations/CitationExtractor.ts`
+
+**Responsabilidad Única**: Extraer `CitedFile[]` de resultados de herramientas RAG.
+
+**Problema que Resuelve**:
+- Las herramientas RAG (como `search_knowledge_base`) devuelven JSON estructurado con información de archivos.
+- El frontend necesita `CitedFile[]` para renderizar el `SourceCarousel`.
+- La extracción debe ser robusta y manejar errores gracefully.
+
+**Herramientas que Producen Citas**:
+```typescript
+const CITATION_PRODUCING_TOOLS = ['search_knowledge_base'] as const;
+```
+
+**Pseudocódigo**:
+```
+class CitationExtractor {
+    producesCitations(toolName: string): boolean
+        RETURN toolName IN CITATION_PRODUCING_TOOLS
+
+    extract(toolName: string, resultJson: string): CitedFile[]
+        IF !producesCitations(toolName):
+            RETURN []
+
+        IF !resultJson OR typeof resultJson !== 'string':
+            RETURN []
+
+        TRY:
+            // Validar con schema Zod
+            parseResult = parseStructuredSearchResult(resultJson)
+
+            IF !parseResult.success:
+                LOG WARN "Schema mismatch"
+                RETURN []
+
+            sources = parseResult.data.sources
+            IF !sources OR sources.length == 0:
+                RETURN []
+
+            // Mapear a CitedFile[]
+            RETURN sources.map(source => ({
+                fileName: source.fileName,
+                fileId: source.fileId,
+                sourceType: source.sourceType,
+                mimeType: source.mimeType,
+                relevanceScore: source.relevanceScore,
+                isImage: source.isImage,
+                fetchStrategy: getFetchStrategy(source.sourceType)
+            }))
+        CATCH:
+            RETURN []  // Graceful degradation
+}
+```
+
+**Flujo de Integración en AgentOrchestrator**:
+```
+1. tool_response event procesado
+2. CitationExtractor.producesCitations(toolName)? → extract()
+3. Citas añadidas a ctx.citedSources
+4. Al emitir CompleteEvent:
+   - Incluir citedFiles: ctx.citedSources
+   - Incluir messageId: ctx.lastAssistantMessageId
+5. PersistenceCoordinator.persistCitationsAsync() (fire-and-forget)
+```
+
+**CitedFile Interface** (desde `@bc-agent/shared`):
+```typescript
+interface CitedFile {
+    fileName: string;           // Nombre del archivo
+    fileId: string | null;      // ID para lookup (null si tombstone)
+    sourceType: SourceType;     // 'blob_storage' | 'sharepoint' | etc.
+    mimeType: string;           // Para renderizado de iconos
+    relevanceScore: number;     // Score de búsqueda (0-1)
+    isImage: boolean;           // Para renderizado especial
+    fetchStrategy: FetchStrategy; // 'internal_api' | 'oauth_proxy' | 'external'
+}
+```
+
+---
+
+### 3.11 PersistenceCoordinator (Persistencia)
 
 **Ubicación**: `backend/src/domains/agent/persistence/PersistenceCoordinator.ts`
 
@@ -2089,17 +2174,20 @@ const PARAMETER_TYPE_MAP = {
 4. **Normalización batch** - BatchResultNormalizer garantiza orden de eventos
 5. **Tool lifecycle unificado** - ToolLifecycleManager reduce eventos de 5+ a 2 por tool
 6. **Pre-allocated sequences** - Elimina race conditions en ordenamiento
-7. **Stateless components** - ExecutionContext pattern para scalability
+7. **Stateless components** - ExecutionContextSync pattern para scalability
 8. **File pipeline completo** - Upload → Process → Chunk → Embed → Search → Context
+9. **Citation tracking** - CitationExtractor para asociar citas RAG con mensajes
+10. **Ejecución síncrona** - `graph.invoke()` simplifica el flujo de eventos
 
 ### Áreas de Mejora Identificadas
 
 1. **Fallback de Redis no atómico** - Race condition en secuencias (D1 en Future Development)
-2. **Hardcoded 'anthropic'** en AgentOrchestrator - Debería ser configurable
+2. **Hardcoded 'anthropic'** en AgentOrchestrator - Debería ser configurable via factory
 3. **No hay retry automático** para persistencia fallida
 4. **Image search limitado** - No OCR, no captions (D2 en Future Development)
 5. **Timeout fijo** (5 min) - Podría ser configurable por request
+6. **Placeholder directories vacíos** - domains/business-central, chat, files, search
 
 ---
 
-*Documento actualizado: 2026-01-06 v2.1 (Citation System migrations)*
+*Documento actualizado: 2026-01-13 v2.2 (CitationExtractor, ExecutionContextSync updates, pre-allocation)*

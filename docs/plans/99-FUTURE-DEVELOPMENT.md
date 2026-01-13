@@ -427,9 +427,10 @@ Los tests documentan el comportamiento esperado para cuando se implementen.
 | D23 | Post-Delete Verification | Phase 6 | Baja | 1 |
 | **D24** | **UserId Case Sensitivity (AI Search)** | **Phase 6** | **ALTA** | **0.5** |
 | **D25** | **EmbeddingService Tests Env Injection** | **Phase 6** | **MEDIA** | **1-2** |
+| **D27** | **MessageQueue Refactor - God File Decomposition** | **Phase 6** | **ALTA** | **3-5** |
 
 
-**Total estimado Phase 6:** ~38-46 días (incluyendo D14, D15, D18, D19, D21-D25)
+**Total estimado Phase 6:** ~41-51 días (incluyendo D14, D15, D18, D19, D21-D25, D27)
 **Total estimado Phase 7:** ~28 días
 **Total estimado Phase 8:** ~10 días
 
@@ -1015,6 +1016,175 @@ Implementar **Opción B** (pasar env via poolOptions) para asegurar que:
 
 ---
 
+## D27: MessageQueue Refactor - God File Decomposition (ALTA)
+
+**Fecha análisis:** 2026-01-13
+**Estado:** Documentado - Pendiente Implementación
+**Prioridad:** ALTA (Architectural Debt)
+**Estimación:** 3-5 días
+
+### Problema Actual
+
+El archivo `MessageQueue.ts` tiene **2039 líneas** y viola múltiples principios de diseño:
+
+1. **Violación de SRP (Single Responsibility Principle)**: El archivo tiene **12 responsabilidades distintas**
+2. **Violación de Screaming Architecture**: El código no "grita" qué hace el sistema
+3. **God File Anti-Pattern**: Concentra demasiada lógica en un solo lugar
+4. **Lógica de negocio en infraestructura**: Los procesadores de jobs contienen lógica de dominio
+
+### Análisis de Responsabilidades
+
+| Responsabilidad | Líneas Aprox | Problema |
+|-----------------|--------------|----------|
+| Tipos/Interfaces de Jobs | ~160 | Deberían estar en archivos separados |
+| Gestión Redis | ~90 | OK en este archivo |
+| Inicialización de Colas | ~170 | Puede extraerse a config |
+| Inicialización de Workers | ~130 | Puede extraerse a registry |
+| Event Listeners | ~25 | OK en este archivo |
+| Scheduled Jobs | ~65 | Debería estar separado |
+| Rate Limiting | ~80 | Debería ser un servicio separado |
+| Métodos add* públicos | ~270 | OK en este archivo |
+| **Procesadores de Jobs** | **~550** | **CRÍTICO: Lógica de negocio mezclada** |
+| Utilidades de tiempo | ~30 | Debería estar en utils |
+| Gestión de colas | ~100 | OK en este archivo |
+| Shutdown/cleanup | ~90 | OK en este archivo |
+
+### Estructura Propuesta
+
+```
+backend/src/infrastructure/queue/
+├── index.ts                          # Re-exports públicos
+├── MessageQueue.ts                   # Core: singleton, métodos add* (~400 líneas)
+├── QueueConfig.ts                    # Configuración de colas (~200 líneas)
+├── WorkerRegistry.ts                 # Registro de workers (~150 líneas)
+├── IMessageQueueDependencies.ts      # Ya existe (mantener)
+│
+├── types/
+│   ├── index.ts
+│   ├── QueueName.ts
+│   └── jobs/
+│       ├── index.ts
+│       ├── MessagePersistenceJob.ts
+│       ├── ToolExecutionJob.ts
+│       ├── EventProcessingJob.ts
+│       ├── UsageAggregationJob.ts
+│       ├── FileProcessingJob.ts
+│       ├── FileChunkingJob.ts
+│       ├── EmbeddingGenerationJob.ts
+│       └── CitationPersistenceJob.ts
+│
+├── processors/                        # Lógica de procesamiento
+│   ├── index.ts
+│   ├── IJobProcessor.ts              # Interface común
+│   ├── MessagePersistenceProcessor.ts
+│   ├── ToolExecutionProcessor.ts     # (stub - no implementado)
+│   ├── EventProcessor.ts
+│   ├── UsageAggregationProcessor.ts
+│   ├── FileProcessingProcessor.ts
+│   ├── FileChunkingProcessor.ts
+│   ├── EmbeddingGenerationProcessor.ts
+│   └── CitationPersistenceProcessor.ts
+│
+├── scheduling/
+│   └── ScheduledJobsInitializer.ts   # Jobs programados
+│
+├── rate-limiting/
+│   └── SessionRateLimiter.ts         # Rate limiting multi-tenant
+│
+└── utils/
+    └── TimeHelpers.ts                # getLastHourStart, etc.
+```
+
+### Beneficios del Refactor
+
+1. **Screaming Architecture**: La estructura de carpetas "grita" qué hace cada parte
+2. **Testabilidad**: Cada procesador puede testearse independientemente
+3. **Mantenibilidad**: Archivos de ~100-200 líneas vs 2000+ líneas
+4. **Extensibilidad**: Agregar nueva cola = nuevo archivo en `types/jobs/` + `processors/`
+5. **Separación de concerns**: Infraestructura vs Lógica de procesamiento
+
+### Tests Afectados
+
+**Unit Tests Existentes (3 archivos):**
+- `MessageQueue.rateLimit.test.ts` - Deberá migrar a testear `SessionRateLimiter`
+- `MessageQueue.close.test.ts` - Se mantiene en `MessageQueue.ts`
+- `MessageQueue.embedding.test.ts` - Deberá migrar a testear `EmbeddingGenerationProcessor`
+
+**Integration Tests (2 archivos):**
+- `MessageQueue.integration.test.ts` - Se mantiene, testea flujo completo
+- `pipeline.integration.test.ts` - Se mantiene, testea embedding pipeline
+
+**Nuevos Tests Requeridos:**
+- `SessionRateLimiter.test.ts` - Unit tests de rate limiting
+- `*Processor.test.ts` - Unit tests de cada procesador
+- `QueueConfig.test.ts` - Verificar configuración de colas
+- `WorkerRegistry.test.ts` - Verificar registro de workers
+
+### Archivos que Importan MessageQueue
+
+| Archivo | Impacto |
+|---------|---------|
+| `server.ts` | Bajo - Solo usa `getMessageQueue()` y `close()` |
+| `PersistenceCoordinator.ts` | Bajo - Solo usa métodos `add*` |
+| `files.ts` (routes) | Bajo - Solo usa `addFileProcessingJob()` |
+| `FileProcessingService.ts` | Bajo - Solo usa métodos `add*` |
+| `FileChunkingService.ts` | Bajo - Solo usa métodos `add*` |
+| `MessageService.ts` | Bajo - Solo usa métodos `add*` |
+
+**Nota:** Todos los consumidores solo usan la API pública (`getMessageQueue()` + métodos `add*`), que se mantendrá intacta.
+
+### Plan de Implementación
+
+**Fase 1: Extracción de Tipos (0.5 días)**
+1. Crear estructura de carpetas `types/` y `types/jobs/`
+2. Mover `QueueName` enum a `types/QueueName.ts`
+3. Mover interfaces de jobs a archivos individuales
+4. Actualizar imports en `MessageQueue.ts`
+5. Verificar que tests existentes pasan
+
+**Fase 2: Extracción de Procesadores (1.5 días)**
+1. Crear interface `IJobProcessor` en `processors/`
+2. Extraer cada método `process*` a su propio archivo
+3. Inyectar dependencias via constructor (executeQuery, logger, etc.)
+4. Crear unit tests para cada procesador
+5. Integrar procesadores en `MessageQueue.ts` via registry
+
+**Fase 3: Extracción de Rate Limiting (0.5 días)**
+1. Crear `SessionRateLimiter` en `rate-limiting/`
+2. Mover `checkRateLimit` y `getRateLimitStatus`
+3. Inyectar en `MessageQueue` via constructor
+4. Crear unit tests
+
+**Fase 4: Extracción de Configuración (0.5 días)**
+1. Crear `QueueConfig.ts` con definiciones de colas
+2. Crear `WorkerRegistry.ts` con configuración de workers
+3. Extraer `ScheduledJobsInitializer` a `scheduling/`
+4. Extraer utilidades de tiempo a `utils/TimeHelpers.ts`
+
+**Fase 5: Verificación (0.5-1 día)**
+1. Ejecutar suite completa de tests
+2. Verificar integration tests
+3. Verificar que `MessageQueue.ts` queda en ~400 líneas
+4. Actualizar documentación
+
+### Estrategia de Migración Segura
+
+1. **No cambiar API pública**: `getMessageQueue()` y métodos `add*` mantienen firma
+2. **Refactor incremental**: Una fase a la vez, tests después de cada fase
+3. **Feature flags NO necesarios**: Cambio interno, API externa intacta
+4. **Rollback fácil**: Git permite revertir si algo falla
+
+### Riesgos y Mitigaciones
+
+| Riesgo | Probabilidad | Mitigación |
+|--------|--------------|------------|
+| Tests de integración fallan | Media | Ejecutar después de cada fase |
+| Imports circulares | Baja | Estructura de dependencias clara |
+| Performance degradation | Muy Baja | No hay cambio de lógica, solo organización |
+| Merge conflicts | Media | Hacer en branch dedicado, mergear rápido |
+
+---
+
 ## Criterios de Priorización
 
 ### Alta Prioridad
@@ -1034,4 +1204,4 @@ Implementar **Opción B** (pasar env via poolOptions) para asegurar que:
 
 ---
 
-*Última actualización: 2026-01-06 - D25 (EmbeddingService Tests Env Injection) documentado.*
+*Última actualización: 2026-01-13 - D27 (MessageQueue Refactor - God File Decomposition) documentado.*

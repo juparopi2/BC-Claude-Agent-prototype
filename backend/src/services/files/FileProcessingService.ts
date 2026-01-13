@@ -195,8 +195,15 @@ export class FileProcessingService {
       });
 
       // Step 4.6: Persist image embedding if present (for semantic image search)
+      // D26: Also persist caption for improved search relevance
       if (result.imageEmbedding && result.imageEmbedding.length > 0) {
-        await this.persistImageEmbedding(userId, fileId, result.imageEmbedding);
+        await this.persistImageEmbedding(
+          userId,
+          fileId,
+          result.imageEmbedding,
+          result.imageCaption,
+          result.imageCaptionConfidence
+        );
       }
 
       // Step 5: Update database with extracted text and 'completed' status (emit 90% progress)
@@ -452,16 +459,21 @@ export class FileProcessingService {
    * Persist image embedding to database
    *
    * Stores the image embedding for semantic image search.
+   * D26: Also stores the AI-generated caption for improved search relevance.
    * Uses ImageEmbeddingRepository for database operations.
    *
    * @param userId - User ID
    * @param fileId - File ID
    * @param embedding - Image embedding vector (1024 dimensions)
+   * @param caption - AI-generated caption (D26 feature)
+   * @param captionConfidence - Confidence score of the caption (0-1)
    */
   private async persistImageEmbedding(
     userId: string,
     fileId: string,
-    embedding: number[]
+    embedding: number[],
+    caption?: string,
+    captionConfidence?: number
   ): Promise<void> {
     try {
       // Dynamic import to avoid circular dependencies
@@ -477,10 +489,12 @@ export class FileProcessingService {
         dimensions: embedding.length,
         model: 'azure-vision-vectorize-image',
         modelVersion: '2024-02-01',
+        caption,
+        captionConfidence,
       });
 
       logger.info(
-        { fileId, userId, dimensions: embedding.length },
+        { fileId, userId, dimensions: embedding.length, hasCaption: !!caption },
         'Image embedding persisted to database'
       );
     } catch (error) {

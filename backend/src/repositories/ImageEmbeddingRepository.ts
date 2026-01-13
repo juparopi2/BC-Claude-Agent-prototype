@@ -24,6 +24,10 @@ export interface ImageEmbeddingRecord {
   dimensions: number;
   model: string;
   modelVersion: string;
+  /** AI-generated textual description of the image (D26 feature) */
+  caption: string | null;
+  /** Confidence score of the caption (0-1) */
+  captionConfidence: number | null;
   createdAt: Date;
   updatedAt: Date | null;
 }
@@ -38,6 +42,10 @@ export interface UpsertImageEmbeddingParams {
   dimensions: number;
   model: string;
   modelVersion: string;
+  /** AI-generated textual description of the image (D26 feature) */
+  caption?: string;
+  /** Confidence score of the caption (0-1) */
+  captionConfidence?: number;
 }
 
 /**
@@ -51,6 +59,8 @@ interface ImageEmbeddingRow {
   dimensions: number;
   model: string;
   model_version: string;
+  caption: string | null;
+  caption_confidence: number | null;
   created_at: Date;
   updated_at: Date | null;
 }
@@ -84,7 +94,7 @@ export class ImageEmbeddingRepository {
    * @returns ID of the upserted record
    */
   async upsert(params: UpsertImageEmbeddingParams): Promise<string> {
-    const { fileId, userId, embedding, dimensions, model, modelVersion } = params;
+    const { fileId, userId, embedding, dimensions, model, modelVersion, caption, captionConfidence } = params;
 
     // Check if exists first (simpler than MERGE for cross-DB compatibility)
     const existing = await this.getByFileId(fileId, userId);
@@ -97,6 +107,8 @@ export class ImageEmbeddingRepository {
              dimensions = @dimensions,
              model = @model,
              model_version = @model_version,
+             caption = @caption,
+             caption_confidence = @caption_confidence,
              updated_at = GETUTCDATE()
          WHERE file_id = @file_id AND user_id = @user_id`,
         {
@@ -106,10 +118,12 @@ export class ImageEmbeddingRepository {
           dimensions,
           model,
           model_version: modelVersion,
+          caption: caption ?? null,
+          caption_confidence: captionConfidence ?? null,
         }
       );
 
-      logger.debug({ fileId, userId }, 'Image embedding updated');
+      logger.debug({ fileId, userId, hasCaption: !!caption }, 'Image embedding updated');
       return existing.id;
     }
 
@@ -117,8 +131,8 @@ export class ImageEmbeddingRepository {
     const id = uuidv4();
     await executeQuery(
       `INSERT INTO image_embeddings
-       (id, file_id, user_id, embedding, dimensions, model, model_version, created_at)
-       VALUES (@id, @file_id, @user_id, @embedding, @dimensions, @model, @model_version, GETUTCDATE())`,
+       (id, file_id, user_id, embedding, dimensions, model, model_version, caption, caption_confidence, created_at)
+       VALUES (@id, @file_id, @user_id, @embedding, @dimensions, @model, @model_version, @caption, @caption_confidence, GETUTCDATE())`,
       {
         id,
         file_id: fileId,
@@ -127,10 +141,12 @@ export class ImageEmbeddingRepository {
         dimensions,
         model,
         model_version: modelVersion,
+        caption: caption ?? null,
+        caption_confidence: captionConfidence ?? null,
       }
     );
 
-    logger.debug({ id, fileId, userId }, 'Image embedding inserted');
+    logger.debug({ id, fileId, userId, hasCaption: !!caption }, 'Image embedding inserted');
     return id;
   }
 
@@ -146,7 +162,7 @@ export class ImageEmbeddingRepository {
    */
   async getByFileId(fileId: string, userId: string): Promise<ImageEmbeddingRecord | null> {
     const result = await executeQuery<ImageEmbeddingRow>(
-      `SELECT id, file_id, user_id, embedding, dimensions, model, model_version, created_at, updated_at
+      `SELECT id, file_id, user_id, embedding, dimensions, model, model_version, caption, caption_confidence, created_at, updated_at
        FROM image_embeddings
        WHERE file_id = @file_id AND user_id = @user_id`,
       { file_id: fileId, user_id: userId }
@@ -169,7 +185,7 @@ export class ImageEmbeddingRepository {
    */
   async getByUserId(userId: string): Promise<ImageEmbeddingRecord[]> {
     const result = await executeQuery<ImageEmbeddingRow>(
-      `SELECT id, file_id, user_id, embedding, dimensions, model, model_version, created_at, updated_at
+      `SELECT id, file_id, user_id, embedding, dimensions, model, model_version, caption, caption_confidence, created_at, updated_at
        FROM image_embeddings
        WHERE user_id = @user_id
        ORDER BY created_at DESC`,
@@ -265,6 +281,8 @@ export class ImageEmbeddingRepository {
       dimensions: row.dimensions,
       model: row.model,
       modelVersion: row.model_version,
+      caption: row.caption,
+      captionConfidence: row.caption_confidence,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };

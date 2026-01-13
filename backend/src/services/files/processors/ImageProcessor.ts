@@ -63,6 +63,10 @@ export interface ImageMetadata extends ExtractionMetadata {
   embeddingDimensions?: number;
   /** Azure Vision model version used */
   visionModelVersion?: string;
+  /** Whether AI caption was generated (D26 feature) */
+  captionGenerated?: boolean;
+  /** Confidence score of the generated caption */
+  captionConfidence?: number;
 }
 
 /**
@@ -112,7 +116,7 @@ export class ImageProcessor implements DocumentProcessor {
       if (!visionConfigured) {
         logger.warn(
           { fileName },
-          'Azure Vision not configured - skipping image embedding generation'
+          'Azure Vision not configured - skipping image embedding and caption generation'
         );
 
         return {
@@ -122,59 +126,98 @@ export class ImageProcessor implements DocumentProcessor {
         };
       }
 
-      // Step 4: Generate image embedding
-      logger.info({ fileName }, 'Generating image embedding via Azure Computer Vision');
+      // Step 4: Generate image embedding AND caption in parallel (D26 feature)
+      logger.info({ fileName }, 'Generating image embedding and caption via Azure Computer Vision');
 
-      // Store embedding for return in result
+      // Store embedding and caption for return in result
       let generatedEmbedding: number[] | undefined;
+      let generatedCaption: string | undefined;
+      let captionConfidence: number | undefined;
 
-      try {
-        const embeddingService = EmbeddingService.getInstance();
+      const embeddingService = EmbeddingService.getInstance();
 
-        // Note: EmbeddingService.generateImageEmbedding expects (userId, fileId, buffer)
-        // but we only have fileName here. We'll pass 'image-processor' as placeholder userId/fileId
-        // The actual tracking happens in FileProcessingService with real userId/fileId
-        const embedding = await embeddingService.generateImageEmbedding(
+      // Generate embedding and caption in parallel for better performance
+      const [embeddingResult, captionResult] = await Promise.allSettled([
+        embeddingService.generateImageEmbedding(
           buffer,
           'image-processor', // placeholder userId
           fileName // use fileName as placeholder fileId
-        );
+        ),
+        embeddingService.generateImageCaption(
+          buffer,
+          'image-processor', // placeholder userId
+          fileName // use fileName as placeholder fileId
+        ),
+      ]);
 
-        // Store the embedding for return
-        generatedEmbedding = embedding.embedding;
-
+      // Process embedding result
+      if (embeddingResult.status === 'fulfilled') {
+        generatedEmbedding = embeddingResult.value.embedding;
         metadata.embeddingGenerated = true;
-        metadata.embeddingDimensions = embedding.embedding.length;
-        metadata.visionModelVersion = embedding.model;
+        metadata.embeddingDimensions = embeddingResult.value.embedding.length;
+        metadata.visionModelVersion = embeddingResult.value.model;
 
         logger.info(
           {
             fileName,
-            embeddingDimensions: embedding.embedding.length,
-            modelVersion: embedding.model,
+            embeddingDimensions: embeddingResult.value.embedding.length,
+            modelVersion: embeddingResult.value.model,
           },
           'Image embedding generated successfully'
         );
-      } catch (embeddingError) {
-        // Log warning but don't fail processing
-        // The image can still be stored, just without semantic search capability
+      } else {
         logger.warn(
           {
             fileName,
-            error: embeddingError instanceof Error ? embeddingError.message : String(embeddingError),
+            error: embeddingResult.reason instanceof Error
+              ? embeddingResult.reason.message
+              : String(embeddingResult.reason),
           },
           'Failed to generate image embedding - continuing without it'
         );
       }
 
-      // Step 5: Return result with embedding
+      // Process caption result (D26 feature)
+      if (captionResult.status === 'fulfilled') {
+        generatedCaption = captionResult.value.caption;
+        captionConfidence = captionResult.value.confidence;
+        metadata.captionGenerated = true;
+        metadata.captionConfidence = captionConfidence;
+
+        logger.info(
+          {
+            fileName,
+            captionLength: generatedCaption.length,
+            confidence: captionConfidence,
+          },
+          'Image caption generated successfully'
+        );
+      } else {
+        logger.warn(
+          {
+            fileName,
+            error: captionResult.reason instanceof Error
+              ? captionResult.reason.message
+              : String(captionResult.reason),
+          },
+          'Failed to generate image caption - continuing without it'
+        );
+      }
+
+      // Step 5: Return result with embedding and caption
+      // D26: Use caption as text content for better semantic search
+      const textContent = generatedCaption
+        ? `${generatedCaption} [Image: ${fileName}]`
+        : `[Image: ${fileName}] Format: ${imageFormat}, Size: ${buffer.length} bytes`;
+
       const result: ExtractionResult = {
-        // Images have no extractable text - use descriptive placeholder
-        // This helps with basic text search ("find images in folder X")
-        text: `[Image: ${fileName}] Format: ${imageFormat}, Size: ${buffer.length} bytes`,
+        text: textContent,
         metadata,
         // Include embedding for persistence in FileProcessingService
         imageEmbedding: generatedEmbedding,
+        // Include caption for persistence (D26)
+        imageCaption: generatedCaption,
+        imageCaptionConfidence: captionConfidence,
       };
 
       logger.info(
@@ -183,6 +226,7 @@ export class ImageProcessor implements DocumentProcessor {
           fileSize: buffer.length,
           imageFormat,
           embeddingGenerated: metadata.embeddingGenerated,
+          captionGenerated: metadata.captionGenerated,
         },
         'Image processing completed'
       );

@@ -251,7 +251,7 @@ export class FileChunkingService {
    * Index image embedding in Azure AI Search
    *
    * Retrieves the embedding from ImageEmbeddingRepository and indexes it
-   * in Azure AI Search for visual search capability.
+   * in Azure AI Search for visual search capability. Also passes AI-generated caption for improved search relevance.
    *
    * @param fileId - File ID
    * @param userId - User ID
@@ -261,7 +261,6 @@ export class FileChunkingService {
       // Mark as processing
       await this.updateEmbeddingStatus(fileId, 'processing');
 
-      // Get embedding from repository
       const { getImageEmbeddingRepository } = await import(
         '@/repositories/ImageEmbeddingRepository'
       );
@@ -291,13 +290,19 @@ export class FileChunkingService {
         userId,
         embedding: embeddingRecord.embedding,
         fileName,
+        caption: embeddingRecord.caption ?? undefined,
       });
 
       // Mark as completed
       await this.updateEmbeddingStatus(fileId, 'completed');
 
       logger.info(
-        { fileId, userId, dimensions: embeddingRecord.embedding.length },
+        {
+          fileId,
+          userId,
+          dimensions: embeddingRecord.embedding.length,
+          hasCaption: !!embeddingRecord.caption,
+        },
         'Image embedding indexed in Azure AI Search successfully'
       );
     } catch (error) {

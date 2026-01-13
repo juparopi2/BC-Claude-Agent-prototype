@@ -19,6 +19,11 @@ export const TEXT_ALGORITHM_NAME = 'hnsw-algorithm';
 export const IMAGE_ALGORITHM_NAME = 'hnsw-algorithm-image';
 
 /**
+ * D26: Semantic configuration name for reranking
+ */
+export const SEMANTIC_CONFIG_NAME = 'semantic-config';
+
+/**
  * Azure AI Search Index Schema Definition.
  *
  * Supports two vector search modes:
@@ -156,5 +161,26 @@ export const indexSchema: SearchIndex = {
         }
       },
     ]
-  }
+  },
+
+  // D26: Semantic Search Configuration for Reranking
+  // Enables Azure AI Search Semantic Ranker to improve relevance
+  // by understanding the semantic meaning of content.
+  // Free tier: 1000 queries/month; Standard tier: unlimited (paid)
+  semanticSearch: {
+    defaultConfigurationName: SEMANTIC_CONFIG_NAME,
+    configurations: [
+      {
+        name: SEMANTIC_CONFIG_NAME,
+        prioritizedFields: {
+          // Content field is primary for semantic understanding
+          // For images, this now contains AI-generated captions (D26)
+          contentFields: [
+            { name: 'content' }
+          ],
+          // No title field in current schema, but could add fileName in future
+        },
+      },
+    ],
+  },
 };

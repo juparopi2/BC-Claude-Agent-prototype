@@ -1,7 +1,7 @@
 import { SearchClient, SearchIndexClient, AzureKeyCredential } from '@azure/search-documents';
 import { env } from '@/infrastructure/config/environment';
 import { createChildLogger } from '@/shared/utils/logger';
-import { indexSchema, INDEX_NAME } from './schema';
+import { indexSchema, INDEX_NAME, SEMANTIC_CONFIG_NAME } from './schema';
 import {
   IndexStats,
   FileChunkWithEmbedding,
@@ -11,6 +11,8 @@ import {
   ImageIndexParams,
   ImageSearchQuery,
   ImageSearchResult,
+  SemanticSearchQuery,
+  SemanticSearchResult,
 } from './types';
 import { getUsageTrackingService } from '@/domains/billing/tracking/UsageTrackingService';
 
@@ -387,14 +389,20 @@ export class VectorSearchService {
       throw new Error('Failed to initialize search client');
     }
 
-    const { fileId, userId, embedding, fileName } = params;
+    const { fileId, userId, embedding, fileName, caption } = params;
     const documentId = `img_${fileId}`;
+
+    // Use caption as content if available for better semantic search
+    // This enables Semantic Ranker to understand image context
+    const content = caption
+      ? `${caption} [Image: ${fileName}]`
+      : `[Image: ${fileName}]`;
 
     const document = {
       chunkId: documentId,
       fileId,
       userId,
-      content: `[Image: ${fileName}]`,
+      content,
       // contentVector intentionally omitted - images use imageVector only
       imageVector: embedding,
       chunkIndex: 0,
@@ -412,7 +420,10 @@ export class VectorSearchService {
       throw new Error(`Failed to index image: ${failed[0]?.errorMessage || 'Unknown error'}`);
     }
 
-    logger.info({ documentId, fileId, userId, dimensions: embedding.length }, 'Image embedding indexed');
+    logger.info(
+      { documentId, fileId, userId, dimensions: embedding.length, hasCaption: !!caption },
+      'Image embedding indexed'
+    );
     return documentId;
   }
 
@@ -522,17 +533,155 @@ export class VectorSearchService {
     }
   }
 
+
+  /**
+   * Perform semantic search with Azure AI Search Semantic Ranker (D26)
+   *
+   * Combines vector search with Semantic Ranker for improved relevance.
+   * The Semantic Ranker uses AI to understand query intent and content meaning,
+   * normalizing scores across text chunks and image captions.
+   *
+   * Flow:
+   * 1. Execute vector search to get top K candidates
+   * 2. Apply Semantic Ranker to rerank results
+   * 3. Return top N with normalized relevance scores
+   *
+   * @param query - Semantic search query parameters
+   * @returns Reranked search results
+   */
+  async semanticSearch(query: SemanticSearchQuery): Promise<SemanticSearchResult[]> {
+    if (!this.searchClient) {
+      await this.initializeClients();
+    }
+    if (!this.searchClient) {
+      throw new Error('Failed to initialize search client');
+    }
+
+    const {
+      text,
+      textEmbedding,
+      imageEmbedding,
+      userId,
+      fetchTopK = 30,
+      finalTopK = 10,
+      minScore = 0,
+    } = query;
+
+    // Security: Always enforce userId filter
+    const searchFilter = `userId eq '${userId}'`;
+
+    // Build search options with semantic ranker
+    const searchOptions: Record<string, unknown> = {
+      filter: searchFilter,
+      top: fetchTopK,
+      queryType: 'semantic',
+      semanticSearchOptions: {
+        configurationName: SEMANTIC_CONFIG_NAME,
+      },
+      select: ['chunkId', 'fileId', 'content', 'chunkIndex', 'isImage'],
+    };
+
+    // Add vector search queries if embeddings provided
+    const vectorQueries: Array<Record<string, unknown>> = [];
+
+    if (textEmbedding && textEmbedding.length > 0) {
+      vectorQueries.push({
+        kind: 'vector',
+        vector: textEmbedding,
+        fields: ['contentVector'],
+        kNearestNeighborsCount: fetchTopK,
+      });
+    }
+
+    if (imageEmbedding && imageEmbedding.length > 0) {
+      vectorQueries.push({
+        kind: 'vector',
+        vector: imageEmbedding,
+        fields: ['imageVector'],
+        kNearestNeighborsCount: fetchTopK,
+      });
+    }
+
+    if (vectorQueries.length > 0) {
+      searchOptions.vectorSearchOptions = { queries: vectorQueries };
+    }
+
+    // Execute hybrid search with semantic ranking
+    const searchResults = await this.searchClient.search(text, searchOptions);
+
+    // Process results
+    const results: SemanticSearchResult[] = [];
+    for await (const result of searchResults.results) {
+      const doc = result.document as {
+        chunkId: string;
+        fileId: string;
+        content: string;
+        chunkIndex: number;
+        isImage?: boolean;
+      };
+
+      const vectorScore = result.score ?? 0;
+      // Semantic Ranker score is in rerankerScore property (0-4 scale)
+      const rerankerScore = (result as unknown as { rerankerScore?: number }).rerankerScore;
+
+      // Calculate combined score:
+      // - If rerankerScore exists, use it (normalized to 0-1 scale)
+      // - Otherwise fall back to vector score
+      const score = rerankerScore !== undefined
+        ? rerankerScore / 4  // Normalize 0-4 to 0-1
+        : vectorScore;
+
+      // Filter by minimum score
+      if (score < minScore) continue;
+
+      results.push({
+        chunkId: doc.chunkId,
+        fileId: doc.fileId,
+        content: doc.content,
+        vectorScore,
+        rerankerScore,
+        score,
+        chunkIndex: doc.chunkIndex,
+        isImage: doc.isImage ?? false,
+      });
+    }
+
+    // Sort by score descending and take top N
+    results.sort((a, b) => b.score - a.score);
+    const finalResults = results.slice(0, finalTopK);
+
+    // Track usage for billing (fire-and-forget)
+    this.trackSearchUsage(userId, 'semantic', finalResults.length, fetchTopK).catch((err) => {
+      logger.warn({ err, userId, resultCount: finalResults.length }, 'Failed to track semantic search usage');
+    });
+
+    logger.info(
+      {
+        userId,
+        fetchTopK,
+        finalTopK,
+        candidateCount: results.length,
+        resultCount: finalResults.length,
+        hasTextEmbedding: !!textEmbedding,
+        hasImageEmbedding: !!imageEmbedding,
+      },
+      'Semantic search completed (D26)'
+    );
+
+    return finalResults;
+  }
+
   /**
    * Track search usage for billing (helper method)
    *
    * @param userId User ID for usage attribution
-   * @param searchType Type of search performed ('vector' | 'hybrid')
+   * @param searchType Type of search performed ('vector' | 'hybrid' | 'semantic')
    * @param resultCount Number of results returned
    * @param topK The top_k parameter used in the search
    */
   private async trackSearchUsage(
     userId: string,
-    searchType: 'vector' | 'hybrid',
+    searchType: 'vector' | 'hybrid' | 'semantic',
     resultCount: number,
     topK: number
   ): Promise<void> {

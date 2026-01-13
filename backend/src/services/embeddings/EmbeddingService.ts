@@ -463,4 +463,122 @@ export class EmbeddingService {
       'Image query embedding usage tracked'
     );
   }
+
+  /**
+   * Generates a textual caption/description for an image using Azure Vision Image Analysis API.
+   *
+   * This is used for D26 (Multimodal RAG with Reranker) to improve search relevance
+   * by storing semantic descriptions of images alongside their vector embeddings.
+   *
+   * @param imageBuffer The image binary data (JPEG, PNG, GIF, or WebP)
+   * @param userId The ID of the user (for tracking)
+   * @param fileId Optional file ID for tracking (defaults to 'direct')
+   * @returns The generated caption text, or null if captioning fails gracefully
+   */
+  async generateImageCaption(
+    imageBuffer: Buffer,
+    userId: string,
+    fileId = 'direct'
+  ): Promise<ImageCaptionResult> {
+    if (!this.config.visionEndpoint || !this.config.visionKey) {
+      throw new Error('Azure Vision not configured');
+    }
+
+    if (!imageBuffer || imageBuffer.length === 0) {
+      throw new Error('Image buffer cannot be empty');
+    }
+
+    // Azure Vision Image Analysis API
+    // https://<endpoint>/computervision/imageanalysis:analyze?api-version=2024-02-01&features=caption
+    const url = `${this.config.visionEndpoint}/computervision/imageanalysis:analyze?api-version=2024-02-01&features=caption`;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/octet-stream',
+        'Ocp-Apim-Subscription-Key': this.config.visionKey
+      },
+      body: imageBuffer
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      logger.error(
+        { status: response.status, statusText: response.statusText, error: errorText, userId, fileId },
+        'Azure Vision Image Analysis API error'
+      );
+      throw new Error(`Vision Image Analysis API Error: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    const data = await response.json() as ImageAnalysisResponse;
+
+    // Extract caption from response
+    const caption = data.captionResult?.text || '';
+    const confidence = data.captionResult?.confidence || 0;
+
+    // Track usage for billing (fire-and-forget)
+    this.trackImageCaptionUsage(userId, fileId, imageBuffer.length).catch((err) => {
+      logger.warn({ err, userId, fileId }, 'Failed to track image caption usage');
+    });
+
+    logger.debug(
+      { userId, fileId, captionLength: caption.length, confidence },
+      'Generated image caption'
+    );
+
+    return {
+      caption,
+      confidence,
+      modelVersion: data.modelVersion || 'unknown'
+    };
+  }
+
+  /**
+   * Track image caption usage for billing (helper method)
+   *
+   * @param userId User ID for usage attribution
+   * @param fileId File ID for tracking
+   * @param imageSize Size of the image in bytes
+   */
+  private async trackImageCaptionUsage(
+    userId: string,
+    fileId: string,
+    imageSize: number
+  ): Promise<void> {
+    const usageTrackingService = getUsageTrackingService();
+    // Track as 'image_caption' type, count=1 per image
+    await usageTrackingService.trackEmbedding(userId, fileId, 1, 'image', {
+      operation: 'caption',
+      image_size: imageSize,
+    });
+
+    logger.debug(
+      { userId, fileId, imageSize },
+      'Image caption usage tracked'
+    );
+  }
+}
+
+/**
+ * Response type from Azure Vision Image Analysis API
+ */
+interface ImageAnalysisResponse {
+  captionResult?: {
+    text: string;
+    confidence: number;
+  };
+  modelVersion?: string;
+  metadata?: {
+    width: number;
+    height: number;
+  };
+}
+
+/**
+ * Result from image caption generation
+ */
+export interface ImageCaptionResult {
+  caption: string;
+  confidence: number;
+  modelVersion: string;
 }

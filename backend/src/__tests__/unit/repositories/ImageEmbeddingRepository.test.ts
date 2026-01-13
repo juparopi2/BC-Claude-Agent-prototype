@@ -55,6 +55,8 @@ describe('ImageEmbeddingRepository', () => {
     modelVersion: '2024-02-01',
     createdAt: new Date('2026-01-06T12:00:00Z'),
     updatedAt: null,
+    caption: null,
+    captionConfidence: null,
   };
 
   beforeEach(() => {
@@ -215,6 +217,8 @@ describe('ImageEmbeddingRepository', () => {
             model_version: testRecord.modelVersion,
             created_at: testRecord.createdAt,
             updated_at: testRecord.updatedAt,
+            caption: testRecord.caption,
+            caption_confidence: testRecord.captionConfidence,
           },
         ],
         recordsets: [],
@@ -258,6 +262,8 @@ describe('ImageEmbeddingRepository', () => {
             model_version: '1.0',
             created_at: new Date(),
             updated_at: null,
+            caption: null,
+            caption_confidence: null,
           },
         ],
         recordsets: [],
@@ -490,6 +496,165 @@ describe('ImageEmbeddingRepository', () => {
 
       await expect(repository.deleteByUserId(testUserId)).rejects.toThrow(
         'Transaction failed'
+      );
+    });
+  });
+
+  describe('Caption Storage (D26)', () => {
+    const upsertParamsWithCaption: UpsertImageEmbeddingParams = {
+      fileId: testFileId,
+      userId: testUserId,
+      embedding: testEmbedding,
+      dimensions: 1024,
+      model: 'azure-vision-vectorize-image',
+      modelVersion: '2024-02-01',
+      caption: 'A beautiful sunset over mountains',
+      captionConfidence: 0.95,
+    };
+
+    it('should store caption when upserting new embedding', async () => {
+      // Mock getByFileId to return null (not exists)
+      mockExecuteQuery.mockResolvedValueOnce({
+        recordset: [],
+        recordsets: [],
+        rowsAffected: [0],
+        output: {},
+      } as IResult<unknown>);
+
+      // Mock insert
+      mockExecuteQuery.mockResolvedValueOnce({
+        recordset: [],
+        recordsets: [],
+        rowsAffected: [1],
+        output: {},
+      } as IResult<unknown>);
+
+      await repository.upsert(upsertParamsWithCaption);
+
+      // Verify INSERT query includes caption
+      expect(mockExecuteQuery).toHaveBeenNthCalledWith(
+        2,
+        expect.stringContaining('INSERT INTO image_embeddings'),
+        expect.objectContaining({
+          caption: 'A beautiful sunset over mountains',
+          caption_confidence: 0.95,
+        })
+      );
+    });
+
+    it('should handle null caption gracefully', async () => {
+      const paramsNoCaption: UpsertImageEmbeddingParams = {
+        fileId: testFileId,
+        userId: testUserId,
+        embedding: testEmbedding,
+        dimensions: 1024,
+        model: 'azure-vision-vectorize-image',
+        modelVersion: '2024-02-01',
+        // No caption or captionConfidence
+      };
+
+      // Mock getByFileId to return null (not exists)
+      mockExecuteQuery.mockResolvedValueOnce({
+        recordset: [],
+        recordsets: [],
+        rowsAffected: [0],
+        output: {},
+      } as IResult<unknown>);
+
+      // Mock insert
+      mockExecuteQuery.mockResolvedValueOnce({
+        recordset: [],
+        recordsets: [],
+        rowsAffected: [1],
+        output: {},
+      } as IResult<unknown>);
+
+      await repository.upsert(paramsNoCaption);
+
+      // Verify INSERT query has null caption
+      expect(mockExecuteQuery).toHaveBeenNthCalledWith(
+        2,
+        expect.stringContaining('INSERT INTO image_embeddings'),
+        expect.objectContaining({
+          caption: null,
+          caption_confidence: null,
+        })
+      );
+    });
+
+    it('should retrieve caption when getting by fileId', async () => {
+      mockExecuteQuery.mockResolvedValueOnce({
+        recordset: [
+          {
+            id: testRecord.id,
+            file_id: testRecord.fileId,
+            user_id: testRecord.userId,
+            embedding: JSON.stringify(testRecord.embedding),
+            dimensions: testRecord.dimensions,
+            model: testRecord.model,
+            model_version: testRecord.modelVersion,
+            caption: 'A sunset over mountains',
+            caption_confidence: 0.92,
+            created_at: testRecord.createdAt,
+            updated_at: null,
+          },
+        ],
+        recordsets: [],
+        rowsAffected: [1],
+        output: {},
+      } as IResult<unknown>);
+
+      const result = await repository.getByFileId(testFileId, testUserId);
+
+      expect(result?.caption).toBe('A sunset over mountains');
+      expect(result?.captionConfidence).toBe(0.92);
+    });
+
+    it('should update existing caption on re-upsert', async () => {
+      // Mock getByFileId to return existing record with old caption
+      mockExecuteQuery.mockResolvedValueOnce({
+        recordset: [
+          {
+            id: testRecord.id,
+            file_id: testRecord.fileId,
+            user_id: testRecord.userId,
+            embedding: JSON.stringify(testRecord.embedding),
+            dimensions: testRecord.dimensions,
+            model: testRecord.model,
+            model_version: testRecord.modelVersion,
+            caption: 'Old caption',
+            caption_confidence: 0.80,
+            created_at: testRecord.createdAt,
+            updated_at: null,
+          },
+        ],
+        recordsets: [],
+        rowsAffected: [1],
+        output: {},
+      } as IResult<unknown>);
+
+      // Mock update
+      mockExecuteQuery.mockResolvedValueOnce({
+        recordset: [],
+        recordsets: [],
+        rowsAffected: [1],
+        output: {},
+      } as IResult<unknown>);
+
+      await repository.upsert({
+        ...upsertParamsWithCaption,
+        caption: 'New improved caption',
+        captionConfidence: 0.98,
+      });
+
+      // Verify UPDATE query includes new caption
+      expect(mockExecuteQuery).toHaveBeenNthCalledWith(
+        2,
+        expect.stringContaining('UPDATE image_embeddings'),
+        expect.objectContaining({
+          caption: 'New improved caption',
+          caption_confidence: 0.98,
+        })
       );
     });
   });

@@ -51,56 +51,89 @@ export class SemanticSearchService {
         }),
       ]);
 
-      // 2. Execute BOTH searches in parallel
-      const searchPromises: [
-        Promise<{ chunkId: string; fileId: string; content: string; score: number; chunkIndex: number }[]>,
-        Promise<{ fileId: string; fileName: string; score: number; isImage: true }[]>
-      ] = [
-        vectorSearchService.search({
-          embedding: textEmbedding.embedding,
-          userId,
-          top: maxFiles * maxChunksPerFile * 2,
-          minScore: threshold,
-        }),
-        imageQueryEmbedding
-          ? vectorSearchService.searchImages({
-              embedding: imageQueryEmbedding.embedding,
-              userId,
-              top: maxFiles,
-              minScore: threshold,
-            })
-          : Promise.resolve([]),
-      ];
+      // 2. D26: Execute unified semantic search with reranking
+      //    This combines text + image results and uses Azure AI Search Semantic Ranker
+      //    to normalize scores across different vector spaces
+      const semanticResults = await vectorSearchService.semanticSearch({
+        text: query,
+        textEmbedding: textEmbedding.embedding,
+        imageEmbedding: imageQueryEmbedding?.embedding,
+        userId,
+        fetchTopK: maxFiles * maxChunksPerFile * 3, // Fetch more candidates for reranking
+        finalTopK: maxFiles * maxChunksPerFile * 2, // After reranking, still need to group
+        minScore: threshold,
+      });
 
-      const [textResults, imageResults] = await Promise.all(searchPromises);
-
-      // 3. Filter excluded files from text results
-      const filteredTextResults = textResults.filter(
+      // 3. Filter excluded files
+      const filteredResults = semanticResults.filter(
         result => !excludeFileIds.includes(result.fileId)
       );
 
-      // 4. Group text results by fileId
-      const fileMap = new Map<string, SemanticChunk[]>();
-      for (const result of filteredTextResults) {
-        const chunks = fileMap.get(result.fileId) || [];
-        chunks.push({
-          chunkId: result.chunkId,
-          content: result.content,
-          score: result.score,
-          chunkIndex: result.chunkIndex,
-        });
-        fileMap.set(result.fileId, chunks);
+      // 4. Group results by fileId (separate text chunks from images)
+      const fileMap = new Map<string, {
+        chunks: SemanticChunk[];
+        isImage: boolean;
+        maxScore: number;
+      }>();
+
+      for (const result of filteredResults) {
+        const existing = fileMap.get(result.fileId);
+
+        if (result.isImage) {
+          // Images: store as single entry with their caption in content
+          if (!existing) {
+            fileMap.set(result.fileId, {
+              chunks: [{
+                chunkId: result.chunkId,
+                content: result.content, // D26: Now contains AI-generated caption
+                score: result.score,
+                chunkIndex: result.chunkIndex,
+              }],
+              isImage: true,
+              maxScore: result.score,
+            });
+          } else if (result.score > existing.maxScore) {
+            // Update if better score found
+            existing.maxScore = result.score;
+          }
+        } else {
+          // Text: accumulate chunks
+          if (!existing) {
+            fileMap.set(result.fileId, {
+              chunks: [{
+                chunkId: result.chunkId,
+                content: result.content,
+                score: result.score,
+                chunkIndex: result.chunkIndex,
+              }],
+              isImage: false,
+              maxScore: result.score,
+            });
+          } else {
+            existing.chunks.push({
+              chunkId: result.chunkId,
+              content: result.content,
+              score: result.score,
+              chunkIndex: result.chunkIndex,
+            });
+            if (result.score > existing.maxScore) {
+              existing.maxScore = result.score;
+            }
+          }
+        }
       }
 
-      // 5. Build text results
+      // 5. Build final results
       const fileService = getFileService();
       const results: SemanticSearchResult[] = [];
 
-      for (const [fileId, chunks] of fileMap) {
-        const sortedChunks = chunks
+      for (const [fileId, data] of fileMap) {
+        // Sort chunks by score and limit
+        const sortedChunks = data.chunks
           .sort((a, b) => b.score - a.score)
-          .slice(0, maxChunksPerFile);
+          .slice(0, data.isImage ? 1 : maxChunksPerFile);
 
+        // Get file metadata
         let fileName = 'Unknown';
         let mimeType: string | undefined;
         try {
@@ -114,44 +147,14 @@ export class SemanticSearchService {
         results.push({
           fileId,
           fileName,
-          relevanceScore: Math.max(...sortedChunks.map(c => c.score)),
-          topChunks: sortedChunks,
-          isImage: false,
+          relevanceScore: data.maxScore,
+          topChunks: data.isImage ? [] : sortedChunks, // Images don't expose chunks
+          isImage: data.isImage,
           mimeType,
         });
       }
 
-      // 6. Add image results (filtered by excluded files)
-      const filteredImageResults = imageResults.filter(
-        result => !excludeFileIds.includes(result.fileId)
-      );
-
-      for (const imageResult of filteredImageResults) {
-        // Avoid duplicate if same file already in text results
-        if (fileMap.has(imageResult.fileId)) {
-          continue;
-        }
-
-        // Get mimeType from file service
-        let mimeType: string | undefined;
-        try {
-          const file = await fileService.getFile(userId, imageResult.fileId);
-          mimeType = file?.mimeType;
-        } catch {
-          // File might be deleted, continue
-        }
-
-        results.push({
-          fileId: imageResult.fileId,
-          fileName: imageResult.fileName,
-          relevanceScore: imageResult.score,
-          topChunks: [], // Images don't have text chunks
-          isImage: true,
-          mimeType,
-        });
-      }
-
-      // 7. Sort by relevance and limit
+      // 6. Sort by relevance score (already normalized by Semantic Ranker) and limit
       const finalResults = results
         .sort((a, b) => b.relevanceScore - a.relevanceScore)
         .slice(0, maxFiles);
@@ -163,18 +166,18 @@ export class SemanticSearchService {
         userId,
         queryLength: query.length,
         threshold,
-        totalChunks: textResults.length,
-        totalImages: imageResults.length,
+        totalCandidates: semanticResults.length,
         matchingFiles: finalResults.length,
         textResults: textCount,
         imageResults: imageCount,
-      }, 'Unified semantic search completed');
+        useSemanticReranking: true,
+      }, 'D26: Unified semantic search with reranking completed');
 
       return {
         results: finalResults,
         query,
         threshold,
-        totalChunksSearched: textResults.length + imageResults.length,
+        totalChunksSearched: semanticResults.length,
       };
 
     } catch (error) {

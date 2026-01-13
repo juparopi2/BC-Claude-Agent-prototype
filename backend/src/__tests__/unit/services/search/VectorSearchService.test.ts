@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { VectorSearchService } from '../../../../services/search/VectorSearchService';
 import { SearchIndexClient, SearchClient } from '@azure/search-documents';
-import { indexSchema, INDEX_NAME } from '../../../../services/search/schema';
-import { SearchQuery, HybridSearchQuery } from '../../../../services/search/types';
+import { indexSchema, INDEX_NAME, SEMANTIC_CONFIG_NAME } from '../../../../services/search/schema';
+import { SearchQuery, HybridSearchQuery, SemanticSearchQuery } from '../../../../services/search/types';
 
 // Mock Azure SDK
 vi.mock('@azure/search-documents', () => {
@@ -363,3 +363,295 @@ function createAsyncIterable(data: any[]) {
         }
     };
 }
+
+// Helper to create semantic search mock results with rerankerScore
+function createSemanticSearchResults(items: Array<{
+  chunkId: string;
+  fileId?: string;
+  content?: string;
+  score: number;
+  rerankerScore?: number;
+  isImage?: boolean;
+  chunkIndex?: number;
+}>) {
+  return {
+    results: createAsyncIterable(items.map(item => ({
+      document: {
+        chunkId: item.chunkId,
+        fileId: item.fileId || 'file-1',
+        content: item.content || 'Test content',
+        chunkIndex: item.chunkIndex || 0,
+        isImage: item.isImage ?? false,
+      },
+      score: item.score,
+      rerankerScore: item.rerankerScore,
+    })))
+  };
+}
+
+describe('VectorSearchService - Semantic Search (D26)', () => {
+  let service: VectorSearchService;
+  let mockIndexClient: any;
+  let mockSearchClient: any;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    mockIndexClient = {
+      getIndex: vi.fn(),
+      createIndex: vi.fn(),
+      deleteIndex: vi.fn(),
+      getServiceStatistics: vi.fn(),
+      listIndexes: vi.fn(),
+    };
+
+    mockSearchClient = {
+      getDocumentsCount: vi.fn(),
+      uploadDocuments: vi.fn(),
+      deleteDocuments: vi.fn(),
+      search: vi.fn(),
+    };
+
+    service = VectorSearchService.getInstance();
+    service.initializeClients(mockIndexClient as unknown as SearchIndexClient, mockSearchClient as unknown as SearchClient<any>);
+  });
+
+  describe('semanticSearch', () => {
+    it('should search with text embedding only', async () => {
+      const mockResults = createSemanticSearchResults([
+        { chunkId: '1', score: 0.9 }
+      ]);
+      mockSearchClient.search.mockResolvedValue(mockResults);
+
+      const query: SemanticSearchQuery = {
+        text: 'test query',
+        textEmbedding: new Array(1536).fill(0.1),
+        userId: 'user-123',
+      };
+
+      await service.semanticSearch(query);
+
+      // Verify vector search options include only contentVector
+      const callArgs = mockSearchClient.search.mock.calls[0][1];
+      expect(callArgs.vectorSearchOptions.queries).toHaveLength(1);
+      expect(callArgs.vectorSearchOptions.queries[0].fields).toEqual(['contentVector']);
+    });
+
+    it('should search with image embedding only', async () => {
+      const mockResults = createSemanticSearchResults([
+        { chunkId: '1', score: 0.8, isImage: true }
+      ]);
+      mockSearchClient.search.mockResolvedValue(mockResults);
+
+      const query: SemanticSearchQuery = {
+        text: 'find sunset images',
+        imageEmbedding: new Array(1024).fill(0.2),
+        userId: 'user-123',
+      };
+
+      await service.semanticSearch(query);
+
+      const callArgs = mockSearchClient.search.mock.calls[0][1];
+      expect(callArgs.vectorSearchOptions.queries).toHaveLength(1);
+      expect(callArgs.vectorSearchOptions.queries[0].fields).toEqual(['imageVector']);
+    });
+
+    it('should search with both text and image embeddings', async () => {
+      const mockResults = createSemanticSearchResults([
+        { chunkId: '1', score: 0.9 },
+        { chunkId: '2', score: 0.85, isImage: true }
+      ]);
+      mockSearchClient.search.mockResolvedValue(mockResults);
+
+      const query: SemanticSearchQuery = {
+        text: 'sunset over mountains',
+        textEmbedding: new Array(1536).fill(0.1),
+        imageEmbedding: new Array(1024).fill(0.2),
+        userId: 'user-123',
+      };
+
+      await service.semanticSearch(query);
+
+      const callArgs = mockSearchClient.search.mock.calls[0][1];
+      expect(callArgs.vectorSearchOptions.queries).toHaveLength(2);
+      expect(callArgs.vectorSearchOptions.queries[0].fields).toEqual(['contentVector']);
+      expect(callArgs.vectorSearchOptions.queries[1].fields).toEqual(['imageVector']);
+    });
+
+    it('should normalize reranker score from 0-4 to 0-1', async () => {
+      const mockResults = createSemanticSearchResults([
+        { chunkId: '1', score: 0.7, rerankerScore: 3.2 } // Should become 0.8
+      ]);
+      mockSearchClient.search.mockResolvedValue(mockResults);
+
+      const query: SemanticSearchQuery = {
+        text: 'test',
+        userId: 'user-123',
+      };
+
+      const results = await service.semanticSearch(query);
+
+      expect(results[0].score).toBe(0.8); // 3.2 / 4 = 0.8
+      expect(results[0].rerankerScore).toBe(3.2);
+      expect(results[0].vectorScore).toBe(0.7);
+    });
+
+    it('should use vectorScore when rerankerScore not available', async () => {
+      const mockResults = createSemanticSearchResults([
+        { chunkId: '1', score: 0.75 } // No rerankerScore
+      ]);
+      mockSearchClient.search.mockResolvedValue(mockResults);
+
+      const query: SemanticSearchQuery = {
+        text: 'test',
+        userId: 'user-123',
+      };
+
+      const results = await service.semanticSearch(query);
+
+      expect(results[0].score).toBe(0.75);
+      expect(results[0].rerankerScore).toBeUndefined();
+    });
+
+    it('should filter results below minScore threshold', async () => {
+      const mockResults = createSemanticSearchResults([
+        { chunkId: '1', score: 0.3 },
+        { chunkId: '2', score: 0.6 },
+        { chunkId: '3', score: 0.8 }
+      ]);
+      mockSearchClient.search.mockResolvedValue(mockResults);
+
+      const query: SemanticSearchQuery = {
+        text: 'test',
+        userId: 'user-123',
+        minScore: 0.5,
+      };
+
+      const results = await service.semanticSearch(query);
+
+      expect(results).toHaveLength(2);
+      expect(results.map(r => r.chunkId)).toEqual(['3', '2']); // Sorted by score desc
+    });
+
+    it('should limit results to finalTopK', async () => {
+      const mockResults = createSemanticSearchResults([
+        { chunkId: '1', score: 0.9 },
+        { chunkId: '2', score: 0.85 },
+        { chunkId: '3', score: 0.8 },
+        { chunkId: '4', score: 0.75 },
+        { chunkId: '5', score: 0.7 },
+      ]);
+      mockSearchClient.search.mockResolvedValue(mockResults);
+
+      const query: SemanticSearchQuery = {
+        text: 'test',
+        userId: 'user-123',
+        finalTopK: 3,
+      };
+
+      const results = await service.semanticSearch(query);
+
+      expect(results).toHaveLength(3);
+    });
+
+    it('should sort results by score descending', async () => {
+      const mockResults = createSemanticSearchResults([
+        { chunkId: '1', score: 0.5 },
+        { chunkId: '2', score: 0.9 },
+        { chunkId: '3', score: 0.7 }
+      ]);
+      mockSearchClient.search.mockResolvedValue(mockResults);
+
+      const query: SemanticSearchQuery = {
+        text: 'test',
+        userId: 'user-123',
+      };
+
+      const results = await service.semanticSearch(query);
+
+      expect(results.map(r => r.score)).toEqual([0.9, 0.7, 0.5]);
+      expect(results.map(r => r.chunkId)).toEqual(['2', '3', '1']);
+    });
+
+    it('should always include userId filter for multi-tenant isolation', async () => {
+      const mockResults = createSemanticSearchResults([]);
+      mockSearchClient.search.mockResolvedValue(mockResults);
+
+      const query: SemanticSearchQuery = {
+        text: 'test',
+        userId: 'user-secure-123',
+      };
+
+      await service.semanticSearch(query);
+
+      expect(mockSearchClient.search).toHaveBeenCalledWith(
+        'test',
+        expect.objectContaining({
+          filter: "userId eq 'user-secure-123'"
+        })
+      );
+    });
+
+    it('should use semantic query type with configuration', async () => {
+      const mockResults = createSemanticSearchResults([]);
+      mockSearchClient.search.mockResolvedValue(mockResults);
+
+      const query: SemanticSearchQuery = {
+        text: 'semantic test',
+        userId: 'user-123',
+      };
+
+      await service.semanticSearch(query);
+
+      expect(mockSearchClient.search).toHaveBeenCalledWith(
+        'semantic test',
+        expect.objectContaining({
+          queryType: 'semantic',
+          semanticSearchOptions: expect.objectContaining({
+            configurationName: SEMANTIC_CONFIG_NAME
+          })
+        })
+      );
+    });
+
+    it('should correctly identify image results', async () => {
+      const mockResults = createSemanticSearchResults([
+        { chunkId: '1', score: 0.9, isImage: false, content: 'Text chunk' },
+        { chunkId: 'img_2', score: 0.85, isImage: true, content: 'A cat on a sofa [Image: cat.jpg]' }
+      ]);
+      mockSearchClient.search.mockResolvedValue(mockResults);
+
+      const query: SemanticSearchQuery = {
+        text: 'find cats',
+        textEmbedding: new Array(1536).fill(0.1),
+        imageEmbedding: new Array(1024).fill(0.2),
+        userId: 'user-123',
+      };
+
+      const results = await service.semanticSearch(query);
+
+      expect(results[0].isImage).toBe(false);
+      expect(results[1].isImage).toBe(true);
+    });
+
+    it('should use default values for fetchTopK and finalTopK', async () => {
+      const mockResults = createSemanticSearchResults([]);
+      mockSearchClient.search.mockResolvedValue(mockResults);
+
+      const query: SemanticSearchQuery = {
+        text: 'test',
+        userId: 'user-123',
+        // No fetchTopK or finalTopK specified
+      };
+
+      await service.semanticSearch(query);
+
+      expect(mockSearchClient.search).toHaveBeenCalledWith(
+        'test',
+        expect.objectContaining({
+          top: 30 // default fetchTopK
+        })
+      );
+    });
+  });
+});

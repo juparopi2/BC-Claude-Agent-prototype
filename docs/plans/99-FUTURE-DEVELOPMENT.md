@@ -50,29 +50,67 @@ WHEN MATCHED THEN
 
 ---
 
-### D26: Multimodal RAG with Reranker & Image Captioning
+### D26: Multimodal RAG with Reranker & Image Captioning - COMPLETADO
 
-**Descripción:**
-La arquitectura actual "Dual-Vector" (Text 1536d + Image 1024d) tiene problemas de relevancia porque los scores de similitud de OpenAI y Azure Vision no son comparables directamente.
+**Estado:** ✅ COMPLETADO (2026-01-13)
 
-**Solución Propuesta (Cross-Encoder Strategy):**
+**Descripción Original:**
+La arquitectura "Dual-Vector" (Text 1536d + Image 1024d) tenía problemas de relevancia porque los scores de similitud de OpenAI y Azure Vision no eran comparables directamente.
 
-1.  **Ingesta (Upload)**:
-    *   Generar descripciones textuales ("captions") para cada imagen usando `Azure AI Vision Analyze Image`.
-    *   Guardar este "caption" en el índice de búsqueda (campo `content`) y en la base de datos al momento de subir la imagen.
+**Solución Implementada (Cross-Encoder Strategy):**
 
-2.  **Búsqueda (Retrieval)**:
-    *   fetchTopK = 30 (Mezcla de Texto e Imágenes).
-    *   Usar **Azure AI Search Semantic Ranker** para re-rankear estos 30 resultados.
-    *   Seleccionar el Top 10 final basado en el score del Reranker.
+#### Fase 1: Image Captioning en Upload ✅
+- Implementado `EmbeddingService.generateImageCaption()` que usa Azure AI Vision Analyze Image API
+- Las imágenes ahora generan captions AI durante el procesamiento de upload
+- Los captions se almacenan en `image_embeddings.caption` y `image_embeddings.caption_confidence`
+- El caption se incluye en el campo `content` del índice Azure AI Search para mejor búsqueda semántica
 
-**Nota:** Como estamos en prototipado, NO se requiere script de backfill. Se volverán a subir las imágenes de prueba.
+#### Fase 2: Semantic Ranker Configuration ✅
+- Actualizado `schema.ts` con configuración semántica (`semantic-config`)
+- Campos priorizados para reranking: `content`, `chunkIndex`
+- Script `update-search-semantic-config.sh` para actualizar índice existente
 
-**Fase:** Phase 6 (Immediate Priority)
+#### Fase 3: Reranking en Búsqueda ✅
+- Implementado `VectorSearchService.semanticSearch()` que combina:
+  - Vector search (texto 1536d + imagen 1024d)
+  - Azure AI Search Semantic Ranker para reranking unificado
+- Score normalization: rerankerScore (0-4) → normalized score (0-1)
+- `SemanticSearchService.searchRelevantFiles()` ahora usa `semanticSearch()` para búsqueda unificada
 
-**Prioridad:** CRÍTICA (Bloqueante para UX de búsqueda visual)
+#### Fase 4: Testing ✅
+- **Unit Tests (21 nuevos tests):**
+  - `EmbeddingService.generateImageCaption` (6 tests)
+  - `VectorSearchService.semanticSearch` (11 tests)
+  - `ImageEmbeddingRepository` caption storage (4 tests)
+- **Tests Existentes Actualizados:**
+  - `SemanticSearchService.test.ts` - Actualizado para usar `semanticSearch()` mock
+- **Todos los unit tests pasan:** 2026 tests passing
+- **Todos los integration tests pasan:** 147 tests passing
 
-**Estimación:** 3-4 días
+**Archivos Modificados/Creados:**
+
+| Archivo | Cambio |
+|---------|--------|
+| `backend/src/services/embeddings/EmbeddingService.ts` | Nuevo método `generateImageCaption()` |
+| `backend/src/services/search/VectorSearchService.ts` | Nuevo método `semanticSearch()` |
+| `backend/src/services/search/schema.ts` | Configuración semántica agregada |
+| `backend/src/services/search/semantic/SemanticSearchService.ts` | Usa `semanticSearch()` unificado |
+| `backend/src/services/search/types.ts` | Nuevos tipos `SemanticSearchQuery`, `SemanticSearchResult` |
+| `backend/src/services/files/ImageProcessor.ts` | Integración de captioning |
+| `backend/src/repositories/ImageEmbeddingRepository.ts` | Campos `caption`, `captionConfidence` |
+| `backend/src/migrations/010-add-image-caption-fields.sql` | Migración para campos de caption |
+| `backend/scripts/update-search-semantic-config.sh` | Script para configurar Semantic Ranker |
+| `backend/src/__tests__/unit/services/embeddings/EmbeddingService.test.ts` | Tests de caption |
+| `backend/src/__tests__/unit/services/search/VectorSearchService.test.ts` | Tests de semanticSearch |
+| `backend/src/__tests__/unit/services/search/SemanticSearchService.test.ts` | Tests actualizados |
+| `backend/src/__tests__/unit/repositories/ImageEmbeddingRepository.test.ts` | Tests de caption storage |
+
+**Logros:**
+1. ✅ Imágenes ahora tienen descripciones AI automáticas (captions)
+2. ✅ Búsqueda unificada text + image con scores comparables
+3. ✅ Azure AI Search Semantic Ranker normaliza relevancia
+4. ✅ Score range unificado (0-1) para todos los resultados
+5. ✅ Cobertura de tests completa para nuevas funcionalidades
 
 ---
 
@@ -400,12 +438,12 @@ Los tests documentan el comportamiento esperado para cuando se implementen.
 
 ## Registro de Deuda Técnica
 
-| ID | Descripción | Fase | Prioridad | Días |
-|----|-------------|------|-----------|------|
-| **D1** | **Race condition EventStore** | **Phase 5C** | **Alta** | **1-2** |
+| ID | Descripción | Fase | Prioridad | Días | Estado |
+|----|-------------|------|-----------|------|--------|
+| **D1** | **Race condition EventStore** | **Phase 5C** | **Alta** | **1-2** | Pendiente |
+| ~~D26~~ | ~~Multimodal RAG with Reranker & Image Captioning~~ | ~~Phase 6~~ | ~~CRÍTICA~~ | ~~3-4~~ | ✅ COMPLETADO |
 
-
-| D8 | Dynamic model selection | Phase 6 | Media | 2 |
+| D8 | Dynamic model selection | Phase 6 | Media | 2 | Pendiente |
 | D9 | WebSocket usage alerts | Phase 6 | Baja | 1 |
 | D10 | Message replay | Phase 6 | Baja | 3 |
 | D11 | Tool execution queue | Phase 6 | Media | 4 |
@@ -1204,4 +1242,4 @@ backend/src/infrastructure/queue/
 
 ---
 
-*Última actualización: 2026-01-13 - D27 (MessageQueue Refactor - God File Decomposition) documentado.*
+*Última actualización: 2026-01-13*

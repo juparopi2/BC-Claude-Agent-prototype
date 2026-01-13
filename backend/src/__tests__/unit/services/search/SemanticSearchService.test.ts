@@ -5,7 +5,7 @@ import { VectorSearchService } from '@/services/search/VectorSearchService';
 import { getFileService } from '@/services/files/FileService';
 import { SEMANTIC_THRESHOLD } from '@/services/search/semantic/types';
 import type { TextEmbedding, ImageEmbedding } from '@/services/embeddings/types';
-import type { SearchResult, ImageSearchResult } from '@/services/search/types';
+import type { SearchResult, ImageSearchResult, SemanticSearchResult } from '@/services/search/types';
 import type { ParsedFile } from '@/types/file.types';
 
 // Mock dependencies
@@ -45,6 +45,7 @@ describe('SemanticSearchService', () => {
     mockVectorSearchService = {
       search: vi.fn(),
       searchImages: vi.fn(),
+      semanticSearch: vi.fn(),
     };
 
     mockFileService = {
@@ -71,10 +72,28 @@ describe('SemanticSearchService', () => {
     };
 
     // Helper to setup standard mocks for text-only tests
-    const setupTextOnlyMocks = () => {
+    const setupStandardMocks = () => {
       mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue(mockImageQueryEmbedding);
-      mockVectorSearchService.searchImages.mockResolvedValue([]);
+      mockVectorSearchService.semanticSearch.mockResolvedValue([]);
     };
+
+    // Helper to create SemanticSearchResult format
+    const createSemanticResult = (params: {
+      chunkId: string;
+      fileId: string;
+      content: string;
+      score: number;
+      isImage?: boolean;
+      chunkIndex?: number;
+    }): SemanticSearchResult => ({
+      chunkId: params.chunkId,
+      fileId: params.fileId,
+      content: params.content,
+      vectorScore: params.score,
+      score: params.score,
+      chunkIndex: params.chunkIndex ?? 0,
+      isImage: params.isImage ?? false,
+    });
 
     it('should return empty array when no files match threshold', async () => {
       const mockEmbedding: TextEmbedding = {
@@ -85,9 +104,8 @@ describe('SemanticSearchService', () => {
         createdAt: new Date(),
       };
 
-      setupTextOnlyMocks();
+      setupStandardMocks();
       mockEmbeddingService.generateTextEmbedding.mockResolvedValue(mockEmbedding);
-      mockVectorSearchService.search.mockResolvedValue([]);
 
       const result = await service.searchRelevantFiles({ userId, query });
 
@@ -106,21 +124,19 @@ describe('SemanticSearchService', () => {
         createdAt: new Date(),
       };
 
-      // VectorSearchService.search() already filters by minScore,
-      // so only results above threshold are returned
-      const searchResults: SearchResult[] = [
-        {
+      // semanticSearch returns only results above threshold
+      const semanticResults: SemanticSearchResult[] = [
+        createSemanticResult({
           chunkId: 'chunk-1',
           fileId: 'file-1',
           content: 'high relevance content',
           score: 0.85,
-          chunkIndex: 0,
-        },
+        }),
       ];
 
-      setupTextOnlyMocks();
+      mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue(mockImageQueryEmbedding);
       mockEmbeddingService.generateTextEmbedding.mockResolvedValue(mockEmbedding);
-      mockVectorSearchService.search.mockResolvedValue(searchResults);
+      mockVectorSearchService.semanticSearch.mockResolvedValue(semanticResults);
 
       mockFileService.getFile.mockResolvedValue({
         id: 'file-1',
@@ -134,8 +150,8 @@ describe('SemanticSearchService', () => {
       expect(result.results[0]?.fileId).toBe('file-1');
       expect(result.results[0]?.relevanceScore).toBe(0.85);
 
-      // Verify minScore was passed to vector search
-      expect(mockVectorSearchService.search).toHaveBeenCalledWith(
+      // Verify minScore was passed to semanticSearch
+      expect(mockVectorSearchService.semanticSearch).toHaveBeenCalledWith(
         expect.objectContaining({
           minScore: SEMANTIC_THRESHOLD,
         })
@@ -152,15 +168,15 @@ describe('SemanticSearchService', () => {
       };
 
       // Create search results for 3 different files, all above threshold
-      const searchResults: SearchResult[] = [
-        { chunkId: 'chunk-1', fileId: 'file-1', content: 'content 1', score: 0.95, chunkIndex: 0 },
-        { chunkId: 'chunk-2', fileId: 'file-2', content: 'content 2', score: 0.85, chunkIndex: 0 },
-        { chunkId: 'chunk-3', fileId: 'file-3', content: 'content 3', score: 0.75, chunkIndex: 0 },
+      const semanticResults: SemanticSearchResult[] = [
+        createSemanticResult({ chunkId: 'chunk-1', fileId: 'file-1', content: 'content 1', score: 0.95 }),
+        createSemanticResult({ chunkId: 'chunk-2', fileId: 'file-2', content: 'content 2', score: 0.85 }),
+        createSemanticResult({ chunkId: 'chunk-3', fileId: 'file-3', content: 'content 3', score: 0.75 }),
       ];
 
-      setupTextOnlyMocks();
+      mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue(mockImageQueryEmbedding);
       mockEmbeddingService.generateTextEmbedding.mockResolvedValue(mockEmbedding);
-      mockVectorSearchService.search.mockResolvedValue(searchResults);
+      mockVectorSearchService.semanticSearch.mockResolvedValue(semanticResults);
 
       mockFileService.getFile.mockImplementation((uid: string, fid: string) =>
         Promise.resolve({ id: fid, name: `${fid}.txt` } as ParsedFile)
@@ -187,14 +203,14 @@ describe('SemanticSearchService', () => {
         createdAt: new Date(),
       };
 
-      const searchResults: SearchResult[] = [
-        { chunkId: 'chunk-1', fileId: 'file-1', content: 'content 1', score: 0.95, chunkIndex: 0 },
-        { chunkId: 'chunk-2', fileId: 'file-2', content: 'content 2', score: 0.85, chunkIndex: 0 },
+      const semanticResults: SemanticSearchResult[] = [
+        createSemanticResult({ chunkId: 'chunk-1', fileId: 'file-1', content: 'content 1', score: 0.95 }),
+        createSemanticResult({ chunkId: 'chunk-2', fileId: 'file-2', content: 'content 2', score: 0.85 }),
       ];
 
-      setupTextOnlyMocks();
+      mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue(mockImageQueryEmbedding);
       mockEmbeddingService.generateTextEmbedding.mockResolvedValue(mockEmbedding);
-      mockVectorSearchService.search.mockResolvedValue(searchResults);
+      mockVectorSearchService.semanticSearch.mockResolvedValue(semanticResults);
 
       mockFileService.getFile.mockImplementation((uid: string, fid: string) =>
         Promise.resolve({ id: fid, name: `${fid}.txt` } as ParsedFile)
@@ -220,9 +236,8 @@ describe('SemanticSearchService', () => {
         createdAt: new Date(),
       };
 
-      setupTextOnlyMocks();
+      setupStandardMocks();
       mockEmbeddingService.generateTextEmbedding.mockResolvedValue(mockEmbedding);
-      mockVectorSearchService.search.mockResolvedValue([]);
 
       await service.searchRelevantFiles({ userId, query });
 
@@ -233,7 +248,7 @@ describe('SemanticSearchService', () => {
       );
     });
 
-    it('should call VectorSearchService with query embedding', async () => {
+    it('should call VectorSearchService.semanticSearch with query embedding', async () => {
       const mockEmbedding: TextEmbedding = {
         embedding: [0.1, 0.2, 0.3],
         model: 'text-embedding-3-small',
@@ -242,18 +257,23 @@ describe('SemanticSearchService', () => {
         createdAt: new Date(),
       };
 
-      setupTextOnlyMocks();
+      mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue(mockImageQueryEmbedding);
       mockEmbeddingService.generateTextEmbedding.mockResolvedValue(mockEmbedding);
-      mockVectorSearchService.search.mockResolvedValue([]);
+      mockVectorSearchService.semanticSearch.mockResolvedValue([]);
 
       await service.searchRelevantFiles({ userId, query, maxFiles: 3, maxChunksPerFile: 2 });
 
-      expect(mockVectorSearchService.search).toHaveBeenCalledWith({
-        embedding: mockEmbedding.embedding,
-        userId,
-        top: 3 * 2 * 2, // maxFiles * maxChunksPerFile * 2
-        minScore: SEMANTIC_THRESHOLD,
-      });
+      expect(mockVectorSearchService.semanticSearch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: query,
+          textEmbedding: mockEmbedding.embedding,
+          imageEmbedding: mockImageQueryEmbedding.embedding,
+          userId,
+          fetchTopK: 3 * 2 * 3, // maxFiles * maxChunksPerFile * 3
+          finalTopK: 3 * 2 * 2, // maxFiles * maxChunksPerFile * 2
+          minScore: SEMANTIC_THRESHOLD,
+        })
+      );
     });
 
     it('should aggregate chunks by fileId', async () => {
@@ -266,15 +286,15 @@ describe('SemanticSearchService', () => {
       };
 
       // Multiple chunks from same file
-      const searchResults: SearchResult[] = [
-        { chunkId: 'chunk-1', fileId: 'file-1', content: 'content 1', score: 0.95, chunkIndex: 0 },
-        { chunkId: 'chunk-2', fileId: 'file-1', content: 'content 2', score: 0.85, chunkIndex: 1 },
-        { chunkId: 'chunk-3', fileId: 'file-1', content: 'content 3', score: 0.75, chunkIndex: 2 },
+      const semanticResults: SemanticSearchResult[] = [
+        createSemanticResult({ chunkId: 'chunk-1', fileId: 'file-1', content: 'content 1', score: 0.95, chunkIndex: 0 }),
+        createSemanticResult({ chunkId: 'chunk-2', fileId: 'file-1', content: 'content 2', score: 0.85, chunkIndex: 1 }),
+        createSemanticResult({ chunkId: 'chunk-3', fileId: 'file-1', content: 'content 3', score: 0.75, chunkIndex: 2 }),
       ];
 
-      setupTextOnlyMocks();
+      mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue(mockImageQueryEmbedding);
       mockEmbeddingService.generateTextEmbedding.mockResolvedValue(mockEmbedding);
-      mockVectorSearchService.search.mockResolvedValue(searchResults);
+      mockVectorSearchService.semanticSearch.mockResolvedValue(semanticResults);
 
       mockFileService.getFile.mockResolvedValue({
         id: 'file-1',
@@ -298,15 +318,15 @@ describe('SemanticSearchService', () => {
         createdAt: new Date(),
       };
 
-      const searchResults: SearchResult[] = [
-        { chunkId: 'chunk-1', fileId: 'file-1', content: 'content 1', score: 0.75, chunkIndex: 0 },
-        { chunkId: 'chunk-2', fileId: 'file-2', content: 'content 2', score: 0.95, chunkIndex: 0 },
-        { chunkId: 'chunk-3', fileId: 'file-3', content: 'content 3', score: 0.85, chunkIndex: 0 },
+      const semanticResults: SemanticSearchResult[] = [
+        createSemanticResult({ chunkId: 'chunk-1', fileId: 'file-1', content: 'content 1', score: 0.75 }),
+        createSemanticResult({ chunkId: 'chunk-2', fileId: 'file-2', content: 'content 2', score: 0.95 }),
+        createSemanticResult({ chunkId: 'chunk-3', fileId: 'file-3', content: 'content 3', score: 0.85 }),
       ];
 
-      setupTextOnlyMocks();
+      mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue(mockImageQueryEmbedding);
       mockEmbeddingService.generateTextEmbedding.mockResolvedValue(mockEmbedding);
-      mockVectorSearchService.search.mockResolvedValue(searchResults);
+      mockVectorSearchService.semanticSearch.mockResolvedValue(semanticResults);
 
       mockFileService.getFile.mockImplementation((uid: string, fid: string) =>
         Promise.resolve({ id: fid, name: `${fid}.txt` } as ParsedFile)
@@ -330,17 +350,17 @@ describe('SemanticSearchService', () => {
       };
 
       // 5 chunks from same file
-      const searchResults: SearchResult[] = [
-        { chunkId: 'chunk-1', fileId: 'file-1', content: 'content 1', score: 0.95, chunkIndex: 0 },
-        { chunkId: 'chunk-2', fileId: 'file-1', content: 'content 2', score: 0.90, chunkIndex: 1 },
-        { chunkId: 'chunk-3', fileId: 'file-1', content: 'content 3', score: 0.85, chunkIndex: 2 },
-        { chunkId: 'chunk-4', fileId: 'file-1', content: 'content 4', score: 0.80, chunkIndex: 3 },
-        { chunkId: 'chunk-5', fileId: 'file-1', content: 'content 5', score: 0.75, chunkIndex: 4 },
+      const semanticResults: SemanticSearchResult[] = [
+        createSemanticResult({ chunkId: 'chunk-1', fileId: 'file-1', content: 'content 1', score: 0.95, chunkIndex: 0 }),
+        createSemanticResult({ chunkId: 'chunk-2', fileId: 'file-1', content: 'content 2', score: 0.90, chunkIndex: 1 }),
+        createSemanticResult({ chunkId: 'chunk-3', fileId: 'file-1', content: 'content 3', score: 0.85, chunkIndex: 2 }),
+        createSemanticResult({ chunkId: 'chunk-4', fileId: 'file-1', content: 'content 4', score: 0.80, chunkIndex: 3 }),
+        createSemanticResult({ chunkId: 'chunk-5', fileId: 'file-1', content: 'content 5', score: 0.75, chunkIndex: 4 }),
       ];
 
-      setupTextOnlyMocks();
+      mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue(mockImageQueryEmbedding);
       mockEmbeddingService.generateTextEmbedding.mockResolvedValue(mockEmbedding);
-      mockVectorSearchService.search.mockResolvedValue(searchResults);
+      mockVectorSearchService.semanticSearch.mockResolvedValue(semanticResults);
 
       mockFileService.getFile.mockResolvedValue({
         id: 'file-1',
@@ -370,9 +390,9 @@ describe('SemanticSearchService', () => {
 
       const customThreshold = 0.8;
 
-      setupTextOnlyMocks();
+      mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue(mockImageQueryEmbedding);
       mockEmbeddingService.generateTextEmbedding.mockResolvedValue(mockEmbedding);
-      mockVectorSearchService.search.mockResolvedValue([]);
+      mockVectorSearchService.semanticSearch.mockResolvedValue([]);
 
       const result = await service.searchRelevantFiles({
         userId,
@@ -381,7 +401,7 @@ describe('SemanticSearchService', () => {
       });
 
       expect(result.threshold).toBe(customThreshold);
-      expect(mockVectorSearchService.search).toHaveBeenCalledWith(
+      expect(mockVectorSearchService.semanticSearch).toHaveBeenCalledWith(
         expect.objectContaining({
           minScore: customThreshold,
         })
@@ -421,10 +441,9 @@ describe('SemanticSearchService', () => {
 
       mockEmbeddingService.generateTextEmbedding.mockResolvedValue(mockEmbedding);
       mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue(mockImageQueryEmbedding);
-      mockVectorSearchService.search.mockRejectedValue(
+      mockVectorSearchService.semanticSearch.mockRejectedValue(
         new Error('Vector search error')
       );
-      mockVectorSearchService.searchImages.mockResolvedValue([]);
 
       const result = await service.searchRelevantFiles({ userId, query });
 
@@ -445,7 +464,7 @@ describe('SemanticSearchService', () => {
     });
   });
 
-  describe('unified search (text + images)', () => {
+  describe('unified search (text + images) - D26 semanticSearch', () => {
     const mockTextEmbedding: TextEmbedding = {
       embedding: new Array(1536).fill(0.1),
       model: 'text-embedding-3-small',
@@ -462,11 +481,28 @@ describe('SemanticSearchService', () => {
       createdAt: new Date(),
     };
 
-    it('should search both text and images in parallel', async () => {
+    // Helper to create SemanticSearchResult format
+    const createSemanticResult = (params: {
+      chunkId: string;
+      fileId: string;
+      content: string;
+      score: number;
+      isImage: boolean;
+      chunkIndex?: number;
+    }): SemanticSearchResult => ({
+      chunkId: params.chunkId,
+      fileId: params.fileId,
+      content: params.content,
+      vectorScore: params.score,
+      score: params.score,
+      chunkIndex: params.chunkIndex ?? 0,
+      isImage: params.isImage,
+    });
+
+    it('should call semanticSearch with both text and image embeddings', async () => {
       mockEmbeddingService.generateTextEmbedding.mockResolvedValue(mockTextEmbedding);
       mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue(mockImageQueryEmbedding);
-      mockVectorSearchService.search.mockResolvedValue([]);
-      mockVectorSearchService.searchImages.mockResolvedValue([]);
+      mockVectorSearchService.semanticSearch.mockResolvedValue([]);
 
       await service.searchRelevantFiles({ userId, query });
 
@@ -478,24 +514,26 @@ describe('SemanticSearchService', () => {
         query, userId, 'semantic-search'
       );
 
-      // Should call both search methods
-      expect(mockVectorSearchService.search).toHaveBeenCalled();
-      expect(mockVectorSearchService.searchImages).toHaveBeenCalled();
+      // Should call semanticSearch with both embeddings
+      expect(mockVectorSearchService.semanticSearch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: query,
+          textEmbedding: mockTextEmbedding.embedding,
+          imageEmbedding: mockImageQueryEmbedding.embedding,
+          userId,
+        })
+      );
     });
 
     it('should merge text and image results sorted by score', async () => {
-      const textResults: SearchResult[] = [
-        { chunkId: 'chunk-1', fileId: 'file-1', content: 'text content', score: 0.85, chunkIndex: 0 },
-      ];
-
-      const imageResults: ImageSearchResult[] = [
-        { fileId: 'file-2', fileName: 'photo.jpg', score: 0.90, isImage: true },
+      const semanticResults: SemanticSearchResult[] = [
+        createSemanticResult({ chunkId: 'chunk-1', fileId: 'file-1', content: 'text content', score: 0.85, isImage: false }),
+        createSemanticResult({ chunkId: 'img_file-2', fileId: 'file-2', content: 'A sunset photo [Image: photo.jpg]', score: 0.90, isImage: true }),
       ];
 
       mockEmbeddingService.generateTextEmbedding.mockResolvedValue(mockTextEmbedding);
       mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue(mockImageQueryEmbedding);
-      mockVectorSearchService.search.mockResolvedValue(textResults);
-      mockVectorSearchService.searchImages.mockResolvedValue(imageResults);
+      mockVectorSearchService.semanticSearch.mockResolvedValue(semanticResults);
       mockFileService.getFile.mockImplementation((uid: string, fid: string) =>
         Promise.resolve({ id: fid, name: fid === 'file-2' ? 'photo.jpg' : 'doc.txt', mimeType: fid === 'file-2' ? 'image/jpeg' : 'text/plain' } as ParsedFile)
       );
@@ -514,18 +552,14 @@ describe('SemanticSearchService', () => {
     });
 
     it('should set isImage flag correctly on results', async () => {
-      const textResults: SearchResult[] = [
-        { chunkId: 'chunk-1', fileId: 'file-1', content: 'text content', score: 0.85, chunkIndex: 0 },
-      ];
-
-      const imageResults: ImageSearchResult[] = [
-        { fileId: 'file-2', fileName: 'photo.jpg', score: 0.80, isImage: true },
+      const semanticResults: SemanticSearchResult[] = [
+        createSemanticResult({ chunkId: 'chunk-1', fileId: 'file-1', content: 'text content', score: 0.85, isImage: false }),
+        createSemanticResult({ chunkId: 'img_file-2', fileId: 'file-2', content: 'A sunset [Image: photo.jpg]', score: 0.80, isImage: true }),
       ];
 
       mockEmbeddingService.generateTextEmbedding.mockResolvedValue(mockTextEmbedding);
       mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue(mockImageQueryEmbedding);
-      mockVectorSearchService.search.mockResolvedValue(textResults);
-      mockVectorSearchService.searchImages.mockResolvedValue(imageResults);
+      mockVectorSearchService.semanticSearch.mockResolvedValue(semanticResults);
       mockFileService.getFile.mockImplementation((uid: string, fid: string) =>
         Promise.resolve({ id: fid, name: 'test', mimeType: 'text/plain' } as ParsedFile)
       );
@@ -542,38 +576,42 @@ describe('SemanticSearchService', () => {
       expect(imageResult?.topChunks).toHaveLength(0); // Images don't have chunks
     });
 
-    it('should continue with text search if image query embedding fails', async () => {
-      const textResults: SearchResult[] = [
-        { chunkId: 'chunk-1', fileId: 'file-1', content: 'content', score: 0.85, chunkIndex: 0 },
+    it('should continue with text-only search if image query embedding fails', async () => {
+      const semanticResults: SemanticSearchResult[] = [
+        createSemanticResult({ chunkId: 'chunk-1', fileId: 'file-1', content: 'content', score: 0.85, isImage: false }),
       ];
 
       mockEmbeddingService.generateTextEmbedding.mockResolvedValue(mockTextEmbedding);
       mockEmbeddingService.generateImageQueryEmbedding.mockRejectedValue(
         new Error('Azure Vision not configured')
       );
-      mockVectorSearchService.search.mockResolvedValue(textResults);
+      mockVectorSearchService.semanticSearch.mockResolvedValue(semanticResults);
       mockFileService.getFile.mockResolvedValue({ id: 'file-1', name: 'doc.txt' } as ParsedFile);
 
       const result = await service.searchRelevantFiles({ userId, query });
 
-      // Should still return text results even though image search failed
+      // Should still return text results even though image embedding failed
       expect(result.results).toHaveLength(1);
       expect(result.results[0]?.fileId).toBe('file-1');
 
-      // Image search should not have been called (since embedding failed)
-      expect(mockVectorSearchService.searchImages).not.toHaveBeenCalled();
+      // semanticSearch should have been called without image embedding
+      expect(mockVectorSearchService.semanticSearch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          textEmbedding: mockTextEmbedding.embedding,
+          imageEmbedding: undefined,
+        })
+      );
     });
 
     it('should exclude images from results if fileId is in excludeFileIds', async () => {
-      const imageResults: ImageSearchResult[] = [
-        { fileId: 'file-1', fileName: 'photo1.jpg', score: 0.90, isImage: true },
-        { fileId: 'file-2', fileName: 'photo2.jpg', score: 0.85, isImage: true },
+      const semanticResults: SemanticSearchResult[] = [
+        createSemanticResult({ chunkId: 'img_file-1', fileId: 'file-1', content: 'Photo 1', score: 0.90, isImage: true }),
+        createSemanticResult({ chunkId: 'img_file-2', fileId: 'file-2', content: 'Photo 2', score: 0.85, isImage: true }),
       ];
 
       mockEmbeddingService.generateTextEmbedding.mockResolvedValue(mockTextEmbedding);
       mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue(mockImageQueryEmbedding);
-      mockVectorSearchService.search.mockResolvedValue([]);
-      mockVectorSearchService.searchImages.mockResolvedValue(imageResults);
+      mockVectorSearchService.semanticSearch.mockResolvedValue(semanticResults);
       mockFileService.getFile.mockImplementation((uid: string, fid: string) =>
         Promise.resolve({ id: fid, name: 'photo.jpg' } as ParsedFile)
       );
@@ -589,52 +627,45 @@ describe('SemanticSearchService', () => {
       expect(result.results[0]?.fileId).toBe('file-2');
     });
 
-    it('should include totalChunksSearched from both text and image searches', async () => {
-      const textResults: SearchResult[] = [
-        { chunkId: 'chunk-1', fileId: 'file-1', content: 'content 1', score: 0.85, chunkIndex: 0 },
-        { chunkId: 'chunk-2', fileId: 'file-1', content: 'content 2', score: 0.80, chunkIndex: 1 },
-      ];
-
-      const imageResults: ImageSearchResult[] = [
-        { fileId: 'file-2', fileName: 'photo.jpg', score: 0.90, isImage: true },
+    it('should include totalChunksSearched from semanticSearch results', async () => {
+      const semanticResults: SemanticSearchResult[] = [
+        createSemanticResult({ chunkId: 'chunk-1', fileId: 'file-1', content: 'content 1', score: 0.85, isImage: false, chunkIndex: 0 }),
+        createSemanticResult({ chunkId: 'chunk-2', fileId: 'file-1', content: 'content 2', score: 0.80, isImage: false, chunkIndex: 1 }),
+        createSemanticResult({ chunkId: 'img_file-2', fileId: 'file-2', content: 'photo', score: 0.90, isImage: true }),
       ];
 
       mockEmbeddingService.generateTextEmbedding.mockResolvedValue(mockTextEmbedding);
       mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue(mockImageQueryEmbedding);
-      mockVectorSearchService.search.mockResolvedValue(textResults);
-      mockVectorSearchService.searchImages.mockResolvedValue(imageResults);
+      mockVectorSearchService.semanticSearch.mockResolvedValue(semanticResults);
       mockFileService.getFile.mockImplementation((uid: string, fid: string) =>
         Promise.resolve({ id: fid, name: 'test' } as ParsedFile)
       );
 
       const result = await service.searchRelevantFiles({ userId, query });
 
-      // 2 text chunks + 1 image = 3 total
+      // 3 total results from semanticSearch
       expect(result.totalChunksSearched).toBe(3);
     });
 
-    it('should not duplicate files that appear in both text and image results', async () => {
-      // Same file appears in both searches (unlikely but possible if file has text + image vector)
-      const textResults: SearchResult[] = [
-        { chunkId: 'chunk-1', fileId: 'file-1', content: 'content', score: 0.85, chunkIndex: 0 },
-      ];
-
-      const imageResults: ImageSearchResult[] = [
-        { fileId: 'file-1', fileName: 'doc.pdf', score: 0.80, isImage: true },
+    it('should not duplicate files that appear multiple times', async () => {
+      // Same file with multiple chunks - text result takes precedence
+      const semanticResults: SemanticSearchResult[] = [
+        createSemanticResult({ chunkId: 'chunk-1', fileId: 'file-1', content: 'text content', score: 0.85, isImage: false }),
+        createSemanticResult({ chunkId: 'img_file-1', fileId: 'file-1', content: 'image content', score: 0.80, isImage: true }),
       ];
 
       mockEmbeddingService.generateTextEmbedding.mockResolvedValue(mockTextEmbedding);
       mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue(mockImageQueryEmbedding);
-      mockVectorSearchService.search.mockResolvedValue(textResults);
-      mockVectorSearchService.searchImages.mockResolvedValue(imageResults);
+      mockVectorSearchService.semanticSearch.mockResolvedValue(semanticResults);
       mockFileService.getFile.mockResolvedValue({ id: 'file-1', name: 'doc.pdf' } as ParsedFile);
 
       const result = await service.searchRelevantFiles({ userId, query });
 
-      // Should only appear once (text result takes precedence)
+      // Should only appear once (text result takes precedence since it comes first and isImage=false)
       expect(result.results).toHaveLength(1);
       expect(result.results[0]?.fileId).toBe('file-1');
-      expect(result.results[0]?.isImage).toBe(false); // Text result has chunks
+      // The first result for this fileId was text (isImage=false), so that determines the type
+      expect(result.results[0]?.isImage).toBe(false);
     });
   });
 });

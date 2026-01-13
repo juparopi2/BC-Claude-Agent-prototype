@@ -146,13 +146,13 @@ export interface ExtractionMetadata {
  * - Mammoth (DOCX): extracted raw text
  * - XLSX: converted markdown tables
  * - Text files: UTF-8 decoded content
- * - Images: placeholder text like "[Image: filename.jpg]"
+ * - Images: AI-generated caption (D26) or placeholder text like "[Image: filename.jpg]"
  */
 export interface ExtractionResult {
   /**
    * Extracted text content
    * For Azure results, this is AzureAnalyzeResult.content
-   * For images, this is a placeholder like "[Image: filename.jpg]"
+   * For images, this is the AI-generated caption (D26) or a placeholder
    */
   text: string;
 
@@ -167,6 +167,22 @@ export interface ExtractionResult {
    * Used for semantic image search in Azure AI Search.
    */
   imageEmbedding?: number[];
+
+  /**
+   * AI-generated caption/description for images (D26 feature)
+   *
+   * Only populated for image files processed by ImageProcessor.
+   * Generated via Azure Computer Vision Image Analysis API.
+   * Used for improved semantic search relevance in multimodal RAG.
+   */
+  imageCaption?: string;
+
+  /**
+   * Confidence score for the image caption (0-1)
+   *
+   * Only populated when imageCaption is present.
+   */
+  imageCaptionConfidence?: number;
 }
 
 // =============================================================================

@@ -66,6 +66,8 @@ export interface ImageIndexParams {
   userId: string;
   embedding: number[];
   fileName: string;
+  /** AI-generated caption/description for improved search relevance (D26 feature) */
+  caption?: string;
 }
 
 /**
@@ -86,4 +88,49 @@ export interface ImageSearchResult {
   fileName: string;
   score: number;
   isImage: true;
+}
+
+// ===== D26: Semantic Search Types =====
+
+/**
+ * Parameters for semantic search with reranking
+ * D26: Combines vector search with Azure AI Search Semantic Ranker
+ */
+export interface SemanticSearchQuery {
+  /** Text query for semantic understanding */
+  text: string;
+  /** Optional: pre-computed query embedding for vector search */
+  textEmbedding?: number[];
+  /** Optional: pre-computed image query embedding for image search */
+  imageEmbedding?: number[];
+  /** User ID for multi-tenant isolation */
+  userId: string;
+  /** Number of candidates to fetch before reranking (default: 30) */
+  fetchTopK?: number;
+  /** Number of final results after reranking (default: 10) */
+  finalTopK?: number;
+  /** Minimum score threshold for results */
+  minScore?: number;
+}
+
+/**
+ * Result from semantic search with reranker score
+ */
+export interface SemanticSearchResult {
+  /** Unique chunk/document ID */
+  chunkId: string;
+  /** Associated file ID */
+  fileId: string;
+  /** Document content (text chunk or image caption) */
+  content: string;
+  /** Vector similarity score (0-1) */
+  vectorScore: number;
+  /** Semantic Ranker score (0-4 scale, higher = more relevant) */
+  rerankerScore?: number;
+  /** Combined/final score */
+  score: number;
+  /** Chunk index within file */
+  chunkIndex: number;
+  /** Whether this is an image result */
+  isImage: boolean;
 }

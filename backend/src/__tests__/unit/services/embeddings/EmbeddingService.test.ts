@@ -418,4 +418,125 @@ describe('EmbeddingService', () => {
         .rejects.toThrow('Vision VectorizeText API Error');
     });
   });
+
+  describe('generateImageCaption (D26)', () => {
+    beforeEach(() => {
+      // Reset singleton
+      // @ts-ignore
+      EmbeddingService.instance = undefined;
+      // @ts-ignore
+      env.AZURE_VISION_ENDPOINT = 'https://vision.test';
+      // @ts-ignore
+      env.AZURE_VISION_KEY = 'vision-key';
+    });
+
+    it('should generate caption from Azure Vision Image Analysis API', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          captionResult: { text: 'A cat sleeping on a red sofa', confidence: 0.92 },
+          modelVersion: '2023-10-01'
+        })
+      });
+      global.fetch = mockFetch;
+
+      const service = EmbeddingService.getInstance();
+      const mockBuffer = Buffer.from('fake-image-data');
+
+      const result = await service.generateImageCaption(mockBuffer, 'user-123', 'file-456');
+
+      expect(result).toBeDefined();
+      expect(result.caption).toBe('A cat sleeping on a red sofa');
+      expect(result.confidence).toBe(0.92);
+      expect(result.modelVersion).toBe('2023-10-01');
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('imageanalysis:analyze'),
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({
+            'Ocp-Apim-Subscription-Key': 'vision-key',
+            'Content-Type': 'application/octet-stream'
+          }),
+          body: mockBuffer
+        })
+      );
+    });
+
+    it('should throw error when Azure Vision API returns error', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 500,
+        statusText: 'Internal Server Error',
+        text: async () => 'Service unavailable'
+      });
+      global.fetch = mockFetch;
+
+      const service = EmbeddingService.getInstance();
+      const mockBuffer = Buffer.from('fake-image-data');
+
+      await expect(service.generateImageCaption(mockBuffer, 'user-123'))
+        .rejects.toThrow('Vision Image Analysis API Error');
+    });
+
+    it('should handle missing caption in response gracefully', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          // No captionResult in response
+          modelVersion: '2023-10-01'
+        })
+      });
+      global.fetch = mockFetch;
+
+      const service = EmbeddingService.getInstance();
+      const mockBuffer = Buffer.from('fake-image-data');
+
+      const result = await service.generateImageCaption(mockBuffer, 'user-123');
+
+      expect(result.caption).toBe(''); // Empty string fallback
+      expect(result.confidence).toBe(0); // Zero confidence fallback
+    });
+
+    it('should reject empty image buffer', async () => {
+      const service = EmbeddingService.getInstance();
+      const emptyBuffer = Buffer.from([]);
+
+      await expect(service.generateImageCaption(emptyBuffer, 'user-123'))
+        .rejects.toThrow('Image buffer cannot be empty');
+    });
+
+    it('should throw when Azure Vision is not configured', async () => {
+      // @ts-ignore
+      env.AZURE_VISION_ENDPOINT = undefined;
+      // @ts-ignore
+      env.AZURE_VISION_KEY = undefined;
+      // @ts-ignore
+      EmbeddingService.instance = undefined;
+
+      const service = EmbeddingService.getInstance();
+      const mockBuffer = Buffer.from('fake-image-data');
+
+      await expect(service.generateImageCaption(mockBuffer, 'user-123'))
+        .rejects.toThrow('Azure Vision not configured');
+    });
+
+    it('should use default fileId when not provided', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          captionResult: { text: 'A sunset', confidence: 0.88 },
+          modelVersion: '2023-10-01'
+        })
+      });
+      global.fetch = mockFetch;
+
+      const service = EmbeddingService.getInstance();
+      const mockBuffer = Buffer.from('fake-image-data');
+
+      const result = await service.generateImageCaption(mockBuffer, 'user-123');
+
+      expect(result.caption).toBe('A sunset');
+      // fileId defaults to 'direct' internally
+    });
+  });
 });

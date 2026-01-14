@@ -819,7 +819,14 @@ export class MessageQueue {
       });
 
       queueEvents.on('failed', ({ jobId, failedReason }) => {
-        this.log.error(`Job failed in ${queueName}`, { jobId, failedReason });
+        // Enhanced error logging with full context
+        this.log.error(`Job failed in ${queueName}`, {
+          jobId,
+          failedReason: failedReason || 'No reason provided by BullMQ',
+          queueName,
+          timestamp: new Date().toISOString(),
+          hint: 'Check previous logs for detailed error with stack trace',
+        });
       });
 
       queueEvents.on('stalled', ({ jobId }) => {

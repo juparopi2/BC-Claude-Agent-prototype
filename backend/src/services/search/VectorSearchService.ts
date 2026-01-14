@@ -328,7 +328,17 @@ export class VectorSearchService {
         select: ['chunkId']
     };
 
-    await this.deleteByQuery(options);
+    logger.info(
+      { fileId, userId, normalizedUserId, operation: 'deleteChunksForFile' },
+      'Starting AI Search cascade deletion'
+    );
+
+    const deletedCount = await this.deleteByQuery(options);
+
+    logger.info(
+      { fileId, userId, normalizedUserId, deletedCount },
+      'AI Search cascade deletion completed'
+    );
   }
 
   async deleteChunksForUser(userId: string): Promise<void> {
@@ -349,14 +359,20 @@ export class VectorSearchService {
     await this.deleteByQuery(options);
   }
 
-  private async deleteByQuery(searchOptions: Record<string, unknown>): Promise<void> {
+  /**
+   * Delete documents by query filter
+   *
+   * @param searchOptions - Search options with filter
+   * @returns Number of documents deleted
+   */
+  private async deleteByQuery(searchOptions: Record<string, unknown>): Promise<number> {
     if (!this.searchClient) {
       throw new Error('Search client not initialized');
     }
-    
+
     // Helper to perform search-then-delete
     const searchResults = await this.searchClient.search('*', searchOptions);
-    
+
     const chunkIds: string[] = [];
     for await (const result of searchResults.results) {
         // Safe casting as we selected chunkId
@@ -367,8 +383,15 @@ export class VectorSearchService {
     }
 
     if (chunkIds.length === 0) {
-        return;
+        logger.debug({ filter: searchOptions.filter }, 'No documents found to delete');
+        return 0;
     }
+
+    // Log documents found before deletion
+    logger.debug(
+      { documentCount: chunkIds.length, filter: searchOptions.filter },
+      'Documents found for deletion'
+    );
 
     // Azure Search batch size limit is typically 1000 actions.
     // For safety, we process in batches of 1000 if needed, but SDK handles batches well usually.
@@ -383,6 +406,8 @@ export class VectorSearchService {
         logger.error({ failedCount: failed.length, errors: failed }, 'Failed to delete some chunks');
         throw new Error(`Failed to delete chunks: ${failed.map(f => f.errorMessage || 'Unknown error').join(', ')}`);
     }
+
+    return chunkIds.length;
   }
 
   // ===== Image Search Methods =====

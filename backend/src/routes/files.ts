@@ -959,11 +959,16 @@ router.delete('/:id', authenticateMicrosoft, async (req: Request, res: Response)
 
     const { id } = validation.data;
 
-    logger.info({ userId, fileId: id }, 'Deleting file');
+    logger.info({ userId, fileId: id }, 'Starting file deletion cascade');
 
     // Delete file from database (returns list of blob_paths for cleanup)
     const fileService = getFileService();
     const blobPaths = await fileService.deleteFile(userId, id);
+
+    logger.info(
+      { userId, fileId: id, blobCount: blobPaths.length },
+      'DB + AI Search deletion completed, starting blob cleanup'
+    );
 
     // Helper to delete a single blob safely
     const deleteBlobSafely = async (path: string) => {

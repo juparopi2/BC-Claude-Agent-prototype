@@ -1257,5 +1257,228 @@ describe('FileService', () => {
         );
       });
     });
+
+    // ========== Post-Delete Verification (D23) ==========
+    describe('Post-Delete Verification (D23)', () => {
+      it('should call VectorSearchService.deleteChunksForFile after DB deletion', async () => {
+        mockExecuteQuery.mockResolvedValueOnce({
+          recordset: [{
+            blob_path: 'cascade-test.pdf',
+            is_folder: false,
+            name: 'cascade-test.pdf',
+            mime_type: 'application/pdf',
+            size_bytes: 100,
+          }],
+        });
+        mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+
+        await fileService.deleteFile(testUserId, testFileId);
+
+        // Verify VectorSearchService was called AFTER DB deletion
+        expect(mockVectorSearchService.deleteChunksForFile).toHaveBeenCalledWith(
+          testFileId,
+          testUserId
+        );
+        expect(mockVectorSearchService.deleteChunksForFile).toHaveBeenCalledTimes(1);
+      });
+
+      it('should call deleteChunksForFile for each child file in folder', async () => {
+        const childFileId1 = 'child-cascade-1';
+        const childFileId2 = 'child-cascade-2';
+
+        // Parent folder query
+        mockExecuteQuery.mockResolvedValueOnce({
+          recordset: [{ blob_path: '', is_folder: true, name: 'CascadeFolder', mime_type: 'inode/directory', size_bytes: 0 }],
+        });
+        // Children query
+        mockExecuteQuery.mockResolvedValueOnce({
+          recordset: [{ id: childFileId1 }, { id: childFileId2 }],
+        });
+        // Child 1 query + delete
+        mockExecuteQuery.mockResolvedValueOnce({
+          recordset: [{ blob_path: 'c1.pdf', is_folder: false, name: 'c1.pdf', mime_type: 'application/pdf', size_bytes: 100 }],
+        });
+        mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+        // Child 2 query + delete
+        mockExecuteQuery.mockResolvedValueOnce({
+          recordset: [{ blob_path: 'c2.pdf', is_folder: false, name: 'c2.pdf', mime_type: 'application/pdf', size_bytes: 200 }],
+        });
+        mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+        // Parent folder delete
+        mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+
+        await fileService.deleteFile(testUserId, testFileId);
+
+        // Should call for each child file
+        expect(mockVectorSearchService.deleteChunksForFile).toHaveBeenCalledTimes(2);
+        expect(mockVectorSearchService.deleteChunksForFile).toHaveBeenCalledWith(childFileId1, testUserId);
+        expect(mockVectorSearchService.deleteChunksForFile).toHaveBeenCalledWith(childFileId2, testUserId);
+      });
+
+      it('should not call deleteChunksForFile when file not found (idempotent)', async () => {
+        mockExecuteQuery.mockResolvedValueOnce({ recordset: [] }); // File not found
+
+        const result = await fileService.deleteFile(testUserId, 'non-existent-file');
+
+        expect(result).toEqual([]);
+        expect(mockVectorSearchService.deleteChunksForFile).not.toHaveBeenCalled();
+      });
+    });
+  });
+
+  // ========== SUITE 14: DUPLICATE FILE DETECTION (D20) ==========
+  describe('Duplicate File Detection (D20)', () => {
+    describe('checkDuplicate()', () => {
+      it('should return isDuplicate=false when no matching file exists', async () => {
+        mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
+
+        const result = await fileService.checkDuplicate(testUserId, 'new-file.pdf');
+
+        expect(result.isDuplicate).toBe(false);
+        expect(result.existingFile).toBeUndefined();
+      });
+
+      it('should return isDuplicate=true with existing file when match found', async () => {
+        const existingFile = FileFixture.createFileDbRecord({
+          id: 'existing-123',
+          user_id: testUserId,
+          name: 'duplicate.pdf',
+        });
+        mockExecuteQuery.mockResolvedValueOnce({ recordset: [existingFile] });
+
+        const result = await fileService.checkDuplicate(testUserId, 'duplicate.pdf');
+
+        expect(result.isDuplicate).toBe(true);
+        expect(result.existingFile?.id).toBe('existing-123');
+        expect(result.existingFile?.name).toBe('duplicate.pdf');
+      });
+
+      it('should check in specific folder when folderId provided', async () => {
+        mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
+
+        await fileService.checkDuplicate(testUserId, 'file.pdf', 'folder-123');
+
+        expect(mockExecuteQuery).toHaveBeenCalledWith(
+          expect.stringContaining('AND parent_folder_id = @parent_folder_id'),
+          expect.objectContaining({
+            user_id: testUserId,
+            name: 'file.pdf',
+            parent_folder_id: 'folder-123',
+          })
+        );
+      });
+
+      it('should check in root when folderId is null', async () => {
+        mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
+
+        await fileService.checkDuplicate(testUserId, 'file.pdf', null);
+
+        expect(mockExecuteQuery).toHaveBeenCalledWith(
+          expect.stringContaining('AND parent_folder_id IS NULL'),
+          expect.objectContaining({
+            user_id: testUserId,
+            name: 'file.pdf',
+          })
+        );
+      });
+
+      it('should check in root when folderId is undefined', async () => {
+        mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
+
+        await fileService.checkDuplicate(testUserId, 'root-file.pdf');
+
+        expect(mockExecuteQuery).toHaveBeenCalledWith(
+          expect.stringContaining('AND parent_folder_id IS NULL'),
+          expect.anything()
+        );
+      });
+
+      it('should only check files (not folders)', async () => {
+        mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
+
+        await fileService.checkDuplicate(testUserId, 'Documents');
+
+        expect(mockExecuteQuery).toHaveBeenCalledWith(
+          expect.stringContaining('AND is_folder = 0'),
+          expect.anything()
+        );
+      });
+
+      it('should enforce multi-tenant isolation with userId filter', async () => {
+        mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
+
+        await fileService.checkDuplicate(testUserId, 'secure-file.pdf');
+
+        expect(mockExecuteQuery).toHaveBeenCalledWith(
+          expect.stringContaining('WHERE user_id = @user_id'),
+          expect.objectContaining({
+            user_id: testUserId,
+          })
+        );
+      });
+
+      it('should throw error and log on database failure', async () => {
+        const dbError = new Error('Connection timeout');
+        mockExecuteQuery.mockRejectedValueOnce(dbError);
+
+        await expect(
+          fileService.checkDuplicate(testUserId, 'error-file.pdf')
+        ).rejects.toThrow('Connection timeout');
+
+        expect(mockLogger.error).toHaveBeenCalledWith(
+          expect.objectContaining({
+            error: dbError,
+            userId: testUserId,
+            fileName: 'error-file.pdf',
+          }),
+          'Failed to check for duplicate'
+        );
+      });
+    });
+
+    describe('checkDuplicatesBatch()', () => {
+      it('should check multiple files in parallel', async () => {
+        // First check - no duplicate
+        mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
+        // Second check - duplicate found
+        const existingFile = FileFixture.createFileDbRecord({
+          id: 'dup-batch-123',
+          user_id: testUserId,
+          name: 'existing.pdf',
+        });
+        mockExecuteQuery.mockResolvedValueOnce({ recordset: [existingFile] });
+
+        const results = await fileService.checkDuplicatesBatch(testUserId, [
+          { name: 'new.pdf' },
+          { name: 'existing.pdf' },
+        ]);
+
+        expect(results).toHaveLength(2);
+        expect(results[0]!.name).toBe('new.pdf');
+        expect(results[0]!.isDuplicate).toBe(false);
+        expect(results[1]!.name).toBe('existing.pdf');
+        expect(results[1]!.isDuplicate).toBe(true);
+        expect(results[1]!.existingFile?.id).toBe('dup-batch-123');
+      });
+
+      it('should handle mixed folderId values', async () => {
+        mockExecuteQuery.mockResolvedValue({ recordset: [] });
+
+        await fileService.checkDuplicatesBatch(testUserId, [
+          { name: 'root.pdf' },                    // Root (undefined)
+          { name: 'folder.pdf', folderId: 'f1' }, // In folder f1
+          { name: 'root2.pdf', folderId: null },  // Root (explicit null)
+        ]);
+
+        expect(mockExecuteQuery).toHaveBeenCalledTimes(3);
+      });
+
+      it('should return empty array for empty input', async () => {
+        const results = await fileService.checkDuplicatesBatch(testUserId, []);
+
+        expect(results).toEqual([]);
+        expect(mockExecuteQuery).not.toHaveBeenCalled();
+      });
+    });
   });
 });

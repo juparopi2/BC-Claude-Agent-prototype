@@ -208,7 +208,7 @@ describe('VectorSearchService - Index Management', () => {
         expect(mockSearchClient.search).toHaveBeenCalledWith(
             '*',
             expect.objectContaining({
-                filter: "userId eq 'user-123'", // Critical security check
+                filter: "userId eq 'USER-123'", // Critical security check + D24 normalization
                 vectorSearchOptions: expect.objectContaining({
                     queries: expect.arrayContaining([
                         expect.objectContaining({
@@ -236,7 +236,7 @@ describe('VectorSearchService - Index Management', () => {
         expect(mockSearchClient.search).toHaveBeenCalledWith(
             'test query',
             expect.objectContaining({
-                 filter: "userId eq 'user-123'",
+                 filter: "userId eq 'USER-123'", // D24 normalization
                  vectorSearchOptions: expect.objectContaining({
                     queries: expect.arrayContaining([
                         expect.objectContaining({
@@ -247,7 +247,7 @@ describe('VectorSearchService - Index Management', () => {
             })
         );
     });
-    
+
     it('should combine custom filter with userId filter', async () => {
         const query = {
             embedding: [0.1],
@@ -260,7 +260,7 @@ describe('VectorSearchService - Index Management', () => {
         expect(mockSearchClient.search).toHaveBeenCalledWith(
             '*',
             expect.objectContaining({
-                filter: "(userId eq 'user-123') and (fileId eq 'f1')"
+                filter: "(userId eq 'USER-123') and (fileId eq 'f1')" // D24 normalization
             })
         );
     });
@@ -300,11 +300,11 @@ describe('VectorSearchService - Index Management', () => {
 
         await service.deleteChunksForFile('file-123', 'user-123');
 
-        // Verify search used correct filter
+        // Verify search used correct filter (D24: userId normalized to uppercase)
         expect(mockSearchClient.search).toHaveBeenCalledWith(
             '*',
             expect.objectContaining({
-                filter: "(userId eq 'user-123') and (fileId eq 'file-123')",
+                filter: "(userId eq 'USER-123') and (fileId eq 'file-123')",
                 select: ['chunkId']
             })
         );
@@ -328,10 +328,11 @@ describe('VectorSearchService - Index Management', () => {
 
         await service.deleteChunksForUser('user-123');
 
+        // D24: userId normalized to uppercase
         expect(mockSearchClient.search).toHaveBeenCalledWith(
             '*',
             expect.objectContaining({
-                filter: "userId eq 'user-123'",
+                filter: "userId eq 'USER-123'",
                 select: ['chunkId']
             })
         );
@@ -584,10 +585,11 @@ describe('VectorSearchService - Semantic Search (D26)', () => {
 
       await service.semanticSearch(query);
 
+      // D24: userId normalized to uppercase
       expect(mockSearchClient.search).toHaveBeenCalledWith(
         'test',
         expect.objectContaining({
-          filter: "userId eq 'user-secure-123'"
+          filter: "userId eq 'USER-SECURE-123'"
         })
       );
     });
@@ -650,6 +652,418 @@ describe('VectorSearchService - Semantic Search (D26)', () => {
         'test',
         expect.objectContaining({
           top: 30 // default fetchTopK
+        })
+      );
+    });
+  });
+});
+
+describe('VectorSearchService - Orphan Detection & Verification (D21, D22, D23)', () => {
+  let service: VectorSearchService;
+  let mockIndexClient: any;
+  let mockSearchClient: any;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    mockIndexClient = {
+      getIndex: vi.fn(),
+      createIndex: vi.fn(),
+      deleteIndex: vi.fn(),
+      getServiceStatistics: vi.fn(),
+      listIndexes: vi.fn(),
+    };
+
+    mockSearchClient = {
+      getDocumentsCount: vi.fn(),
+      uploadDocuments: vi.fn(),
+      deleteDocuments: vi.fn(),
+      search: vi.fn(),
+    };
+
+    service = VectorSearchService.getInstance();
+    service.initializeClients(mockIndexClient as unknown as SearchIndexClient, mockSearchClient as unknown as SearchClient<any>);
+  });
+
+  describe('getUniqueFileIds (D22)', () => {
+    it('should return unique fileIds for a user', async () => {
+      // Mock search results with duplicate fileIds
+      const mockResults = {
+        results: createAsyncIterable([
+          { document: { fileId: 'file-1' } },
+          { document: { fileId: 'file-2' } },
+          { document: { fileId: 'file-1' } }, // Duplicate
+          { document: { fileId: 'file-3' } },
+        ])
+      };
+      mockSearchClient.search.mockResolvedValue(mockResults);
+
+      const fileIds = await service.getUniqueFileIds('user-123');
+
+      expect(fileIds).toHaveLength(3);
+      expect(fileIds).toContain('file-1');
+      expect(fileIds).toContain('file-2');
+      expect(fileIds).toContain('file-3');
+    });
+
+    it('should normalize userId to uppercase for D24 compatibility', async () => {
+      const mockResults = { results: createAsyncIterable([]) };
+      mockSearchClient.search.mockResolvedValue(mockResults);
+
+      await service.getUniqueFileIds('user-lowercase-123');
+
+      expect(mockSearchClient.search).toHaveBeenCalledWith(
+        '*',
+        expect.objectContaining({
+          filter: "userId eq 'USER-LOWERCASE-123'", // Uppercased
+        })
+      );
+    });
+
+    it('should return empty array when no documents exist', async () => {
+      const mockResults = { results: createAsyncIterable([]) };
+      mockSearchClient.search.mockResolvedValue(mockResults);
+
+      const fileIds = await service.getUniqueFileIds('user-empty');
+
+      expect(fileIds).toHaveLength(0);
+      expect(fileIds).toEqual([]);
+    });
+
+    it('should handle documents without fileId gracefully', async () => {
+      const mockResults = {
+        results: createAsyncIterable([
+          { document: { fileId: 'file-1' } },
+          { document: {} }, // Missing fileId
+          { document: { fileId: null } }, // Null fileId
+          { document: { fileId: 'file-2' } },
+        ])
+      };
+      mockSearchClient.search.mockResolvedValue(mockResults);
+
+      const fileIds = await service.getUniqueFileIds('user-123');
+
+      expect(fileIds).toHaveLength(2);
+      expect(fileIds).toContain('file-1');
+      expect(fileIds).toContain('file-2');
+    });
+
+    it('should select only fileId field for efficiency', async () => {
+      const mockResults = { results: createAsyncIterable([]) };
+      mockSearchClient.search.mockResolvedValue(mockResults);
+
+      await service.getUniqueFileIds('user-123');
+
+      expect(mockSearchClient.search).toHaveBeenCalledWith(
+        '*',
+        expect.objectContaining({
+          select: ['fileId'],
+        })
+      );
+    });
+  });
+
+  describe('countDocumentsForFile (D23)', () => {
+    it('should return count of documents for file', async () => {
+      const mockResults = {
+        count: 5,
+        results: createAsyncIterable([])
+      };
+      mockSearchClient.search.mockResolvedValue(mockResults);
+
+      const count = await service.countDocumentsForFile('file-123', 'user-456');
+
+      expect(count).toBe(5);
+    });
+
+    it('should return 0 when no documents found', async () => {
+      const mockResults = {
+        count: 0,
+        results: createAsyncIterable([])
+      };
+      mockSearchClient.search.mockResolvedValue(mockResults);
+
+      const count = await service.countDocumentsForFile('non-existent', 'user-456');
+
+      expect(count).toBe(0);
+    });
+
+    it('should return 0 when count is undefined', async () => {
+      const mockResults = {
+        // count undefined
+        results: createAsyncIterable([])
+      };
+      mockSearchClient.search.mockResolvedValue(mockResults);
+
+      const count = await service.countDocumentsForFile('file-123', 'user-456');
+
+      expect(count).toBe(0);
+    });
+
+    it('should normalize userId to uppercase for D24 compatibility', async () => {
+      const mockResults = { count: 3, results: createAsyncIterable([]) };
+      mockSearchClient.search.mockResolvedValue(mockResults);
+
+      await service.countDocumentsForFile('file-123', 'user-lowercase');
+
+      expect(mockSearchClient.search).toHaveBeenCalledWith(
+        '*',
+        expect.objectContaining({
+          filter: "(userId eq 'USER-LOWERCASE') and (fileId eq 'file-123')"
+        })
+      );
+    });
+
+    it('should use includeTotalCount option', async () => {
+      const mockResults = { count: 10, results: createAsyncIterable([]) };
+      mockSearchClient.search.mockResolvedValue(mockResults);
+
+      await service.countDocumentsForFile('file-123', 'user-456');
+
+      expect(mockSearchClient.search).toHaveBeenCalledWith(
+        '*',
+        expect.objectContaining({
+          includeTotalCount: true,
+          top: 1, // Only need count, not content
+        })
+      );
+    });
+
+    it('should filter by both userId and fileId', async () => {
+      const mockResults = { count: 2, results: createAsyncIterable([]) };
+      mockSearchClient.search.mockResolvedValue(mockResults);
+
+      await service.countDocumentsForFile('specific-file', 'specific-user');
+
+      expect(mockSearchClient.search).toHaveBeenCalledWith(
+        '*',
+        expect.objectContaining({
+          filter: "(userId eq 'SPECIFIC-USER') and (fileId eq 'specific-file')"
+        })
+      );
+    });
+  });
+});
+
+/**
+ * D24: UserId Case Sensitivity Tests
+ *
+ * Azure AI Search stores userId in UPPERCASE. These tests verify that
+ * ALL methods that query by userId normalize to uppercase.
+ *
+ * See docs/plans/99-FUTURE-DEVELOPMENT.md for details.
+ */
+describe('VectorSearchService - D24 UserId Normalization', () => {
+  let service: VectorSearchService;
+  let mockSearchClient: any;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    mockSearchClient = {
+      getDocumentsCount: vi.fn(),
+      uploadDocuments: vi.fn(),
+      deleteDocuments: vi.fn(),
+      search: vi.fn(),
+    };
+
+    service = VectorSearchService.getInstance();
+    service.initializeClients(undefined, mockSearchClient as unknown as SearchClient<any>);
+  });
+
+  describe('searchImages', () => {
+    it('should normalize userId to uppercase', async () => {
+      const mockResults = {
+        results: createAsyncIterable([
+          {
+            document: { fileId: 'file-1', content: '[Image: test.jpg]' },
+            score: 0.9
+          }
+        ])
+      };
+      mockSearchClient.search.mockResolvedValue(mockResults);
+
+      const query = {
+        embedding: new Array(1024).fill(0.1),
+        userId: 'lowercase-user-id',
+        top: 5
+      };
+
+      await service.searchImages(query);
+
+      expect(mockSearchClient.search).toHaveBeenCalledWith(
+        '*',
+        expect.objectContaining({
+          filter: "userId eq 'LOWERCASE-USER-ID' and isImage eq true"
+        })
+      );
+    });
+
+    it('should return image search results', async () => {
+      const mockResults = {
+        results: createAsyncIterable([
+          {
+            document: { fileId: 'file-1', content: '[Image: photo.jpg]' },
+            score: 0.95
+          },
+          {
+            document: { fileId: 'file-2', content: 'A beautiful sunset [Image: sunset.png]' },
+            score: 0.85
+          }
+        ])
+      };
+      mockSearchClient.search.mockResolvedValue(mockResults);
+
+      const query = {
+        embedding: new Array(1024).fill(0.1),
+        userId: 'user-123',
+      };
+
+      const results = await service.searchImages(query);
+
+      expect(results).toHaveLength(2);
+      expect(results[0].fileId).toBe('file-1');
+      expect(results[0].fileName).toBe('photo.jpg');
+      expect(results[0].isImage).toBe(true);
+      expect(results[1].fileName).toBe('sunset.png');
+    });
+
+    it('should filter by minScore', async () => {
+      const mockResults = {
+        results: createAsyncIterable([
+          { document: { fileId: 'file-1', content: '[Image: a.jpg]' }, score: 0.9 },
+          { document: { fileId: 'file-2', content: '[Image: b.jpg]' }, score: 0.3 }
+        ])
+      };
+      mockSearchClient.search.mockResolvedValue(mockResults);
+
+      const query = {
+        embedding: new Array(1024).fill(0.1),
+        userId: 'user-123',
+        minScore: 0.5
+      };
+
+      const results = await service.searchImages(query);
+
+      expect(results).toHaveLength(1);
+      expect(results[0].fileId).toBe('file-1');
+    });
+  });
+
+  describe('All methods normalize userId (D24 compliance)', () => {
+    it('search() normalizes userId', async () => {
+      mockSearchClient.search.mockResolvedValue({ results: createAsyncIterable([]) });
+
+      await service.search({
+        embedding: [0.1],
+        userId: 'MixedCase-User'
+      });
+
+      expect(mockSearchClient.search).toHaveBeenCalledWith(
+        '*',
+        expect.objectContaining({
+          filter: "userId eq 'MIXEDCASE-USER'"
+        })
+      );
+    });
+
+    it('hybridSearch() normalizes userId', async () => {
+      mockSearchClient.search.mockResolvedValue({ results: createAsyncIterable([]) });
+
+      await service.hybridSearch({
+        text: 'test',
+        embedding: [0.1],
+        userId: 'lowercase-id'
+      });
+
+      expect(mockSearchClient.search).toHaveBeenCalledWith(
+        'test',
+        expect.objectContaining({
+          filter: "userId eq 'LOWERCASE-ID'"
+        })
+      );
+    });
+
+    it('deleteChunksForFile() normalizes userId', async () => {
+      mockSearchClient.search.mockResolvedValue({ results: createAsyncIterable([]) });
+
+      await service.deleteChunksForFile('file-1', 'Mixed-Case-Id');
+
+      expect(mockSearchClient.search).toHaveBeenCalledWith(
+        '*',
+        expect.objectContaining({
+          filter: "(userId eq 'MIXED-CASE-ID') and (fileId eq 'file-1')"
+        })
+      );
+    });
+
+    it('deleteChunksForUser() normalizes userId', async () => {
+      mockSearchClient.search.mockResolvedValue({ results: createAsyncIterable([]) });
+
+      await service.deleteChunksForUser('lower-case-user');
+
+      expect(mockSearchClient.search).toHaveBeenCalledWith(
+        '*',
+        expect.objectContaining({
+          filter: "userId eq 'LOWER-CASE-USER'"
+        })
+      );
+    });
+
+    it('searchImages() normalizes userId', async () => {
+      mockSearchClient.search.mockResolvedValue({ results: createAsyncIterable([]) });
+
+      await service.searchImages({
+        embedding: new Array(1024).fill(0.1),
+        userId: 'image-user-lowercase'
+      });
+
+      expect(mockSearchClient.search).toHaveBeenCalledWith(
+        '*',
+        expect.objectContaining({
+          filter: "userId eq 'IMAGE-USER-LOWERCASE' and isImage eq true"
+        })
+      );
+    });
+
+    it('semanticSearch() normalizes userId', async () => {
+      mockSearchClient.search.mockResolvedValue({ results: createAsyncIterable([]) });
+
+      await service.semanticSearch({
+        text: 'test query',
+        userId: 'semantic-user-lower'
+      });
+
+      expect(mockSearchClient.search).toHaveBeenCalledWith(
+        'test query',
+        expect.objectContaining({
+          filter: "userId eq 'SEMANTIC-USER-LOWER'"
+        })
+      );
+    });
+
+    it('getUniqueFileIds() normalizes userId', async () => {
+      mockSearchClient.search.mockResolvedValue({ results: createAsyncIterable([]) });
+
+      await service.getUniqueFileIds('orphan-user-lower');
+
+      expect(mockSearchClient.search).toHaveBeenCalledWith(
+        '*',
+        expect.objectContaining({
+          filter: "userId eq 'ORPHAN-USER-LOWER'"
+        })
+      );
+    });
+
+    it('countDocumentsForFile() normalizes userId', async () => {
+      mockSearchClient.search.mockResolvedValue({ count: 0, results: createAsyncIterable([]) });
+
+      await service.countDocumentsForFile('file-1', 'count-user-lower');
+
+      expect(mockSearchClient.search).toHaveBeenCalledWith(
+        '*',
+        expect.objectContaining({
+          filter: "(userId eq 'COUNT-USER-LOWER') and (fileId eq 'file-1')"
         })
       );
     });

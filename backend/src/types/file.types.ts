@@ -104,6 +104,9 @@ export interface FileDbRecord {
   /** Extracted text content (NULL until processing completes) */
   extracted_text: string | null;
 
+  /** SHA-256 hash of file content for duplicate detection (NULL for folders) */
+  content_hash: string | null;
+
   /** UTC timestamp when file was uploaded */
   created_at: Date;
 
@@ -223,6 +226,9 @@ export interface ParsedFile {
   /** True if text has been extracted (computed from extracted_text !== null) */
   hasExtractedText: boolean;
 
+  /** SHA-256 hash of file content for duplicate detection (null for folders) */
+  contentHash: string | null;
+
   /** ISO 8601 timestamp when file was uploaded */
   createdAt: string;
 
@@ -318,6 +324,9 @@ export interface CreateFileOptions {
 
   /** Parent folder ID (undefined = root level) */
   parentFolderId?: string;
+
+  /** SHA-256 content hash for duplicate detection (optional) */
+  contentHash?: string;
 }
 
 /**
@@ -373,6 +382,7 @@ export function parseFile(record: FileDbRecord): ParsedFile {
     processingStatus: record.processing_status,
     embeddingStatus: record.embedding_status,
     hasExtractedText: record.extracted_text !== null,
+    contentHash: record.content_hash,
     createdAt: record.created_at.toISOString(),
     updatedAt: record.updated_at.toISOString(),
   };

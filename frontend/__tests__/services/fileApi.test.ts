@@ -38,6 +38,7 @@ const mockFile: ParsedFile = {
   processingStatus: 'completed',
   embeddingStatus: 'completed',
   hasExtractedText: true,
+  contentHash: 'abc123def456',
   createdAt: '2024-01-15T10:30:00.000Z',
   updatedAt: '2024-01-15T10:30:00.000Z',
 };
@@ -55,6 +56,7 @@ const mockFolder: ParsedFile = {
   processingStatus: 'completed',
   embeddingStatus: 'completed',
   hasExtractedText: false,
+  contentHash: null,
   createdAt: '2024-01-15T10:00:00.000Z',
   updatedAt: '2024-01-15T10:00:00.000Z',
 };

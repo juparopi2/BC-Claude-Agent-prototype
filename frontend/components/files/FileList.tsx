@@ -8,6 +8,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 import { FileItem } from './FileItem';
 import { FileContextMenu } from './FileContextMenu';
+import { MultiFileContextMenu } from './MultiFileContextMenu';
 import { useFiles, useFileSelection, useFolderNavigation } from '@/src/domains/files';
 import { getFileApiClient } from '@/src/infrastructure/api';
 import { triggerDownload } from '@/lib/download';
@@ -134,13 +135,35 @@ export function FileList() {
     );
   }
 
+  // Get selected files for multi-selection context menu
+  const selectedFiles = files.filter((f) => selectedFileIds.has(f.id));
+  const hasMultipleSelected = selectedFiles.length > 1;
+
+  // Render context menu wrapper based on selection state
+  const renderWithContextMenu = (file: ParsedFile, fileItem: React.ReactNode) => {
+    // If file is selected and multiple files are selected, use multi-file menu
+    if (selectedFileIds.has(file.id) && hasMultipleSelected) {
+      return (
+        <MultiFileContextMenu key={file.id} files={selectedFiles}>
+          {fileItem}
+        </MultiFileContextMenu>
+      );
+    }
+    // Otherwise use single file menu
+    return (
+      <FileContextMenu key={file.id} file={file}>
+        {fileItem}
+      </FileContextMenu>
+    );
+  };
+
   // File list
   return (
     <>
     <ScrollArea className="h-full">
       <div className="p-2 space-y-0.5">
-        {files.map(file => (
-          <FileContextMenu key={file.id} file={file}>
+        {files.map(file => {
+          const fileItem = (
             <FileItem
               file={file}
               isSelected={selectedFileIds.has(file.id)}
@@ -148,8 +171,9 @@ export function FileList() {
               onDoubleClick={handleDoubleClick}
               onFavoriteToggle={handleFavoriteToggle}
             />
-          </FileContextMenu>
-        ))}
+          );
+          return renderWithContextMenu(file, fileItem);
+        })}
       </div>
     </ScrollArea>
     {activePreviewFile && (

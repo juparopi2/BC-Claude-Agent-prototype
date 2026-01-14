@@ -97,6 +97,7 @@ backend/src/
 │   └── keyvault/               # Azure Key Vault
 │
 ├── routes/                     # Rutas HTTP (REST)
+│   ├── admin.ts                # Admin endpoints (OrphanCleanupJob)
 │   ├── auth-oauth.ts           # OAuth login endpoints
 │   ├── files.ts                # File upload/download/search
 │   ├── sessions.ts             # Session CRUD
@@ -105,6 +106,10 @@ backend/src/
 │   ├── token-usage.ts          # Token usage queries
 │   ├── usage.ts                # Usage aggregation
 │   └── logs.ts                 # Log endpoints
+│
+├── jobs/                       # Background jobs
+│   ├── index.ts                # Job exports
+│   └── OrphanCleanupJob.ts     # AI Search orphan cleanup
 │
 ├── schemas/                    # Schemas Zod para validación
 │   └── request.schemas.ts
@@ -2138,16 +2143,150 @@ interface FileContextPreparationResult {
 
 ---
 
-## 10. Database Migrations (Citation System)
+## 10. Duplicate Detection System
 
-### 10.1 Applied Migrations
+### 10.1 Arquitectura General
+
+El sistema detecta archivos duplicados durante el upload usando SHA-256 content hash:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         DUPLICATE DETECTION FLOW                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│   Frontend: Hash Files (Web Crypto)                                          │
+│        │                                                                     │
+│        ▼                                                                     │
+│   POST /api/files/check-duplicates                                           │
+│        │                                                                     │
+│        ▼                                                                     │
+│   FileService.checkDuplicatesByHash()                                        │
+│        │                                                                     │
+│        ├── No duplicates → Upload normally                                   │
+│        │                                                                     │
+│        └── Duplicates found → Show modal                                     │
+│             ├── Replace → Delete old + Upload new                            │
+│             ├── Skip → Don't upload                                          │
+│             └── Cancel → Abort all                                           │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 10.2 Backend Components
+
+**FileService** (`backend/src/services/files/FileService.ts`):
+```typescript
+// Buscar archivos por hash en TODO el repositorio del usuario
+async findByContentHash(userId: string, contentHash: string): Promise<ParsedFile[]>
+
+// Verificar duplicados en batch
+async checkDuplicatesByHash(
+  userId: string,
+  items: Array<{ tempId: string; contentHash: string; fileName: string }>
+): Promise<Array<{ tempId: string; isDuplicate: boolean; existingFile?: ParsedFile }>>
+```
+
+**Endpoint** (`backend/src/routes/files.ts`):
+```typescript
+POST /api/files/check-duplicates
+Body: { files: Array<{ tempId, contentHash, fileName }> }
+Response: { results: Array<{ tempId, isDuplicate, existingFile? }> }
+```
+
+### 10.3 Frontend Components
+
+**Hash Utility** (`frontend/src/lib/utils/hash.ts`):
+- `computeFileSha256(file: File): Promise<string>` - Web Crypto API
+
+**Duplicate Store** (`frontend/src/domains/files/stores/duplicateStore.ts`):
+- Estado Zustand para conflictos, resoluciones, modal control
+
+**DuplicateFileModal** (`frontend/components/modals/DuplicateFileModal.tsx`):
+- Muestra archivo nuevo vs existente
+- Opciones: Reemplazar | Omitir | Cancelar
+- Checkbox "Aplicar a todos los duplicados"
+
+### 10.4 Database Schema
+
+```sql
+-- Migration: 011-add-content-hash.sql
+ALTER TABLE files ADD content_hash CHAR(64) NULL;
+
+CREATE NONCLUSTERED INDEX IX_files_user_content_hash
+ON files(user_id, content_hash)
+WHERE content_hash IS NOT NULL AND is_folder = 0;
+```
+
+---
+
+## 11. Admin Routes
+
+### 11.1 OrphanCleanupJob Endpoint
+
+**Ubicación**: `backend/src/routes/admin.ts`
+
+**Responsabilidad**: Endpoints administrativos para mantenimiento del sistema.
+
+**Endpoint**:
+```typescript
+POST /api/admin/jobs/orphan-cleanup
+Query params:
+  - userId?: string (optional, cleanup for specific user)
+  - dryRun?: boolean (optional, report without deleting)
+
+Response: {
+  success: true,
+  summary: CleanupResult | FullCleanupSummary,
+  dryRun: boolean
+}
+```
+
+**Autenticación**: Requiere `authenticateMicrosoft` + `requireAdmin` middleware.
+
+### 11.2 OrphanCleanupJob
+
+**Ubicación**: `backend/src/jobs/OrphanCleanupJob.ts`
+
+**Responsabilidad**: Detectar y eliminar documentos huérfanos en Azure AI Search.
+
+**Pipeline**:
+```
+1. Para cada usuario con documentos en AI Search:
+   ├── Obtener fileIds únicos de AI Search (via getUniqueFileIds)
+   ├── Comparar con fileIds en SQL (files table)
+   ├── Identificar huérfanos (en AI Search pero no en SQL)
+   └── Eliminar documentos huérfanos (deleteChunksForFile)
+
+2. Retornar resumen:
+   ├── totalUsers processed
+   ├── totalOrphans found
+   ├── totalDeleted successfully
+   └── totalFailed deletions
+```
+
+**Script Manual**: `backend/scripts/run-orphan-cleanup.ts`
+```bash
+# Cleanup para todos los usuarios
+npx tsx scripts/run-orphan-cleanup.ts
+
+# Cleanup para usuario específico
+npx tsx scripts/run-orphan-cleanup.ts --userId <uuid>
+```
+
+---
+
+## 12. Database Migrations (Citation System)
+
+### 12.1 Applied Migrations
 
 | Migration | Purpose |
 |-----------|---------|
 | `008-add-citations-event-type.sql` | Added `citations_created` to `CK_message_events_valid_type` CHECK constraint |
 | `009-fix-citation-message-id-type.sql` | Changed `message_citations.message_id` from `uniqueidentifier` to `nvarchar(255)` |
+| `010-add-image-caption-fields.sql` | Added `caption` and `caption_confidence` to `image_embeddings` table |
+| `011-add-content-hash.sql` | Added `content_hash` column to `files` table for duplicate detection |
 
-### 10.2 Type Inference Fix
+### 12.2 Type Inference Fix
 
 **File**: `backend/src/infrastructure/database/database.ts`
 
@@ -2164,7 +2303,7 @@ const PARAMETER_TYPE_MAP = {
 
 ---
 
-## 11. Conclusiones
+## 13. Conclusiones
 
 ### Fortalezas del Diseño Actual
 
@@ -2190,4 +2329,4 @@ const PARAMETER_TYPE_MAP = {
 
 ---
 
-*Documento actualizado: 2026-01-13 v2.2 (CitationExtractor, ExecutionContextSync updates, pre-allocation)*
+*Documento actualizado: 2026-01-13 v2.3 (Duplicate Detection, Admin Routes, OrphanCleanupJob)*

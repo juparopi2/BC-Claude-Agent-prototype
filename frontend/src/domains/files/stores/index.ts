@@ -49,3 +49,9 @@ export {
   type FolderTreeState,
   type FolderTreeActions,
 } from './folderTreeStore';
+
+export {
+  useDuplicateStore,
+  type DuplicateConflict,
+  type DuplicateResolution,
+} from './duplicateStore';

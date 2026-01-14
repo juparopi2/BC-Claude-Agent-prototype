@@ -102,6 +102,12 @@ export type {
   FolderResponse,
   UploadFilesResponse,
   AllowedMimeType,
+  // Duplicate detection types
+  DuplicateCheckItem,
+  CheckDuplicatesRequest,
+  DuplicateResult,
+  CheckDuplicatesResponse,
+  DuplicateAction,
 
   // Source types (Visual Representation feature)
   SourceType,

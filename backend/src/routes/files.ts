@@ -25,6 +25,7 @@ import { getMessageQueue } from '@/infrastructure/queue/MessageQueue';
 import { sendError } from '@/shared/utils/error-response';
 import { ErrorCode } from '@/shared/constants/errors';
 import { createChildLogger } from '@/shared/utils/logger';
+import { computeSha256 } from '@/shared/utils/hash';
 import { EmbeddingService } from '@/services/embeddings/EmbeddingService';
 import { VectorSearchService } from '@/services/search/VectorSearchService';
 import type { ParsedFile } from '@/types/file.types';
@@ -139,6 +140,17 @@ const imageSearchSchema = z.object({
   q: z.string().min(1, 'Query is required').max(1000, 'Query must be 1000 characters or less'),
   top: z.coerce.number().int().min(1).max(50).optional().default(10),
   minScore: z.coerce.number().min(0).max(1).optional().default(0.5),
+});
+
+/**
+ * Schema for duplicate check request (content-based)
+ */
+const checkDuplicatesSchema = z.object({
+  files: z.array(z.object({
+    tempId: z.string().min(1, 'tempId is required'),
+    contentHash: z.string().length(64, 'contentHash must be 64 characters (SHA-256 hex)').regex(/^[a-f0-9]+$/i, 'contentHash must be valid hex'),
+    fileName: z.string().min(1, 'fileName is required').max(500, 'fileName must be 500 characters or less'),
+  })).min(1, 'At least one file required').max(50, 'Maximum 50 files per request'),
 });
 
 // ============================================
@@ -258,6 +270,10 @@ router.post(
 
       // Loop through files and upload each one
       for (const file of files) {
+        // Track blob upload for rollback on SQL failure
+        let blobUploaded = false;
+        let blobPath = '';
+
         try {
           // Validate file type
           fileUploadService.validateFileType(file.mimetype);
@@ -266,13 +282,17 @@ router.post(
           fileUploadService.validateFileSize(file.size, file.mimetype);
 
           // Generate blob path
-          const blobPath = fileUploadService.generateBlobPath(userId, file.originalname);
+          blobPath = fileUploadService.generateBlobPath(userId, file.originalname);
 
           // Upload to blob storage
           await fileUploadService.uploadToBlob(file.buffer, blobPath, file.mimetype);
+          blobUploaded = true; // Mark blob as uploaded for potential rollback
 
           // Fix mojibake in filename before storing
           const fixedFilename = fixFilenameMojibake(file.originalname);
+
+          // Compute content hash for duplicate detection
+          const contentHash = computeSha256(file.buffer);
 
           // Create file record in database
           const fileId = await fileService.createFileRecord({
@@ -282,6 +302,7 @@ router.post(
             sizeBytes: file.size,
             blobPath,
             parentFolderId,
+            contentHash,
           });
 
           // Track file upload usage (fire-and-forget)
@@ -324,6 +345,19 @@ router.post(
             fileName: file.originalname
           }, 'File uploaded successfully');
         } catch (fileError) {
+          // D20-D24: Rollback blob if it was uploaded but subsequent operations failed
+          if (blobUploaded && blobPath) {
+            logger.warn({ userId, blobPath, fileName: file.originalname }, 'Rolling back blob after SQL failure');
+            fileUploadService.deleteFromBlob(blobPath).catch((rollbackError) => {
+              logger.error({
+                error: rollbackError,
+                userId,
+                blobPath,
+                fileName: file.originalname
+              }, 'Failed to rollback blob after SQL error - orphan blob created');
+            });
+          }
+
           // Log error but continue with other files
           logger.error({ error: fileError, userId, fileName: file.originalname }, 'Failed to upload file');
 
@@ -365,6 +399,54 @@ router.post(
     }
   }
 );
+
+/**
+ * POST /api/files/check-duplicates
+ * Check if files with given content hashes already exist in user's repository
+ *
+ * Used before upload to detect duplicate content regardless of filename.
+ * Returns which files are duplicates and their existing file info.
+ */
+router.post('/check-duplicates', authenticateMicrosoft, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = getUserId(req);
+
+    // Validate request body
+    const validation = checkDuplicatesSchema.safeParse(req.body);
+    if (!validation.success) {
+      sendError(res, ErrorCode.VALIDATION_ERROR, validation.error.errors[0]?.message || 'Invalid request');
+      return;
+    }
+
+    const { files } = validation.data;
+
+    logger.info({ userId, fileCount: files.length }, 'Checking for duplicate files by content hash');
+
+    const fileService = getFileService();
+    const results = await fileService.checkDuplicatesByHash(userId, files);
+
+    logger.info(
+      { userId, total: files.length, duplicates: results.filter(r => r.isDuplicate).length },
+      'Duplicate check completed'
+    );
+
+    res.json({ results });
+  } catch (error) {
+    logger.error({ error, userId: req.userId }, 'Check duplicates failed');
+
+    if (error instanceof ZodError) {
+      sendError(res, ErrorCode.VALIDATION_ERROR, error.errors[0]?.message || 'Validation failed');
+      return;
+    }
+
+    if (error instanceof Error && error.message === 'User not authenticated') {
+      sendError(res, ErrorCode.UNAUTHORIZED, 'User not authenticated');
+      return;
+    }
+
+    sendError(res, ErrorCode.INTERNAL_ERROR, 'Failed to check duplicates');
+  }
+});
 
 /**
  * POST /api/files/folders

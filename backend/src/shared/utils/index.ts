@@ -8,5 +8,6 @@ export * from './uuid';
 export * from './retry';
 export * from './session-ownership';
 export * from './databaseKeepalive';
+export * from './hash';
 export * from './sql/QueryBuilder';
 export * from './sql/validators';

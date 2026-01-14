@@ -1670,6 +1670,22 @@ export class MessageQueue {
         fileId,
         userId
       });
+
+      // Update embedding_status to 'failed' so the user knows the file failed processing
+      // Without this, files would stay in 'processing' state indefinitely
+      try {
+        await this.executeQueryFn(
+          `UPDATE files SET embedding_status = 'failed' WHERE id = @fileId`,
+          { fileId }
+        );
+        this.log.info('Updated embedding_status to failed', { fileId });
+      } catch (statusError) {
+        this.log.error('Failed to update embedding_status to failed', {
+          fileId,
+          error: statusError instanceof Error ? statusError.message : String(statusError)
+        });
+      }
+
       throw error;
     }
   }

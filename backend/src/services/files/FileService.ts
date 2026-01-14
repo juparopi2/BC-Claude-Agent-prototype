@@ -233,7 +233,7 @@ export class FileService {
    */
   public async createFileRecord(options: CreateFileOptions): Promise<string> {
     const fileId = randomUUID();
-    const { userId, name, mimeType, sizeBytes, blobPath, parentFolderId } = options;
+    const { userId, name, mimeType, sizeBytes, blobPath, parentFolderId, contentHash } = options;
 
     // Prevent storing blob path as name (catches bugs early)
     if (name.match(/^\d{13}-/) || name.includes('users/')) {
@@ -241,19 +241,19 @@ export class FileService {
       throw new Error('File name cannot be a blob path. Use original filename.');
     }
 
-    this.logger.info({ userId, name, sizeBytes, fileId }, 'Creating file record');
+    this.logger.info({ userId, name, sizeBytes, fileId, hasHash: !!contentHash }, 'Creating file record');
 
     try {
       const query = `
         INSERT INTO files (
           id, user_id, parent_folder_id, name, mime_type, size_bytes, blob_path,
           is_folder, is_favorite, processing_status, embedding_status, extracted_text,
-          created_at, updated_at
+          content_hash, created_at, updated_at
         )
         VALUES (
           @id, @user_id, @parent_folder_id, @name, @mime_type, @size_bytes, @blob_path,
           @is_folder, @is_favorite, @processing_status, @embedding_status, @extracted_text,
-          GETUTCDATE(), GETUTCDATE()
+          @content_hash, GETUTCDATE(), GETUTCDATE()
         )
       `;
 
@@ -270,6 +270,7 @@ export class FileService {
         processing_status: 'pending',
         embedding_status: 'pending',
         extracted_text: null,
+        content_hash: contentHash || null,
       };
 
       await executeQuery(query, params);
@@ -690,7 +691,207 @@ export class FileService {
   }
 
   /**
-   * 10. Get file count in folder (for UI badges)
+   * 10. Check for duplicate file (D20)
+   *
+   * Detects if a file with the same name already exists in the specified folder.
+   * Used during upload to warn users about potential overwrites.
+   *
+   * @param userId - User ID for multi-tenant isolation
+   * @param fileName - Name of the file to check
+   * @param folderId - Folder ID to check in (null/undefined for root)
+   * @returns Object with isDuplicate flag and existing file if found
+   */
+  public async checkDuplicate(
+    userId: string,
+    fileName: string,
+    folderId?: string | null
+  ): Promise<{ isDuplicate: boolean; existingFile?: ParsedFile }> {
+    this.logger.info({ userId, fileName, folderId }, 'Checking for duplicate file');
+
+    try {
+      const isAtRoot = folderId === undefined || folderId === null;
+
+      // Build query to find matching file (not folder) with same name
+      let query: string;
+      const params: SqlParams = {
+        user_id: userId,
+        name: fileName,
+      };
+
+      if (isAtRoot) {
+        query = `
+          SELECT *
+          FROM files
+          WHERE user_id = @user_id
+            AND name = @name
+            AND parent_folder_id IS NULL
+            AND is_folder = 0
+        `;
+      } else {
+        query = `
+          SELECT *
+          FROM files
+          WHERE user_id = @user_id
+            AND name = @name
+            AND parent_folder_id = @parent_folder_id
+            AND is_folder = 0
+        `;
+        params.parent_folder_id = folderId;
+      }
+
+      const result = await executeQuery<FileDbRecord>(query, params);
+
+      if (result.recordset.length === 0) {
+        this.logger.info({ userId, fileName, folderId }, 'No duplicate found');
+        return { isDuplicate: false };
+      }
+
+      const existingFile = parseFile(result.recordset[0]!);
+      this.logger.info(
+        { userId, fileName, folderId, existingFileId: existingFile.id },
+        'Duplicate file found'
+      );
+
+      return { isDuplicate: true, existingFile };
+    } catch (error) {
+      this.logger.error({ error, userId, fileName, folderId }, 'Failed to check for duplicate');
+      throw error;
+    }
+  }
+
+  /**
+   * 11. Check for multiple duplicate files (D20 - batch)
+   *
+   * Efficiently checks multiple files for duplicates in a single operation.
+   * Used during multi-file upload to detect conflicts.
+   *
+   * @param userId - User ID for multi-tenant isolation
+   * @param files - Array of files to check (name and optional folderId)
+   * @returns Array of results with duplicate status for each file
+   */
+  public async checkDuplicatesBatch(
+    userId: string,
+    files: Array<{ name: string; folderId?: string | null }>
+  ): Promise<Array<{ name: string; isDuplicate: boolean; existingFile?: ParsedFile }>> {
+    this.logger.info({ userId, fileCount: files.length }, 'Checking for duplicate files (batch)');
+
+    try {
+      // For simplicity and correctness, check each file individually
+      // This could be optimized with a single query if performance becomes an issue
+      const results: Array<{ name: string; isDuplicate: boolean; existingFile?: ParsedFile }> = [];
+
+      for (const file of files) {
+        const checkResult = await this.checkDuplicate(userId, file.name, file.folderId);
+        results.push({
+          name: file.name,
+          isDuplicate: checkResult.isDuplicate,
+          existingFile: checkResult.existingFile,
+        });
+      }
+
+      this.logger.info(
+        { userId, total: files.length, duplicates: results.filter((r) => r.isDuplicate).length },
+        'Batch duplicate check completed'
+      );
+
+      return results;
+    } catch (error) {
+      this.logger.error({ error, userId, fileCount: files.length }, 'Failed batch duplicate check');
+      throw error;
+    }
+  }
+
+  /**
+   * 12. Find files by content hash (for duplicate detection)
+   *
+   * Searches the user's entire repository for files with matching SHA-256 hash.
+   * Used to detect duplicates based on file content regardless of filename.
+   *
+   * @param userId - User ID for multi-tenant isolation
+   * @param contentHash - SHA-256 hash to search for (64-char hex string)
+   * @returns Matching files (if any)
+   */
+  public async findByContentHash(
+    userId: string,
+    contentHash: string
+  ): Promise<ParsedFile[]> {
+    this.logger.info({ userId, contentHash: contentHash.substring(0, 8) + '...' }, 'Finding files by content hash');
+
+    try {
+      const query = `
+        SELECT *
+        FROM files
+        WHERE user_id = @user_id
+          AND content_hash = @content_hash
+          AND is_folder = 0
+      `;
+
+      const params: SqlParams = {
+        user_id: userId,
+        content_hash: contentHash,
+      };
+
+      const result = await executeQuery<FileDbRecord>(query, params);
+
+      this.logger.info({ userId, matches: result.recordset.length }, 'Content hash search completed');
+
+      return result.recordset.map((record) => parseFile(record));
+    } catch (error) {
+      this.logger.error({ error, userId, contentHash }, 'Failed to find files by content hash');
+      throw error;
+    }
+  }
+
+  /**
+   * 13. Check duplicates by content hash (batch)
+   *
+   * Efficiently checks multiple files for duplicates based on content hash.
+   * Used during multi-file upload to detect content-identical files.
+   *
+   * @param userId - User ID for multi-tenant isolation
+   * @param items - Array of files to check with their content hashes
+   * @returns Array of results with duplicate status for each file
+   */
+  public async checkDuplicatesByHash(
+    userId: string,
+    items: Array<{ tempId: string; contentHash: string; fileName: string }>
+  ): Promise<Array<{ tempId: string; isDuplicate: boolean; existingFile?: ParsedFile }>> {
+    this.logger.info({ userId, itemCount: items.length }, 'Checking duplicates by content hash (batch)');
+
+    try {
+      const results: Array<{ tempId: string; isDuplicate: boolean; existingFile?: ParsedFile }> = [];
+
+      for (const item of items) {
+        const matches = await this.findByContentHash(userId, item.contentHash);
+
+        if (matches.length > 0) {
+          results.push({
+            tempId: item.tempId,
+            isDuplicate: true,
+            existingFile: matches[0], // Return first match
+          });
+        } else {
+          results.push({
+            tempId: item.tempId,
+            isDuplicate: false,
+          });
+        }
+      }
+
+      this.logger.info(
+        { userId, total: items.length, duplicates: results.filter((r) => r.isDuplicate).length },
+        'Batch content hash duplicate check completed'
+      );
+
+      return results;
+    } catch (error) {
+      this.logger.error({ error, userId, itemCount: items.length }, 'Failed batch content hash duplicate check');
+      throw error;
+    }
+  }
+
+  /**
+   * 14. Get file count in folder (for UI badges)
    *
    * @param userId - User ID
    * @param folderId - Folder ID (undefined for root)

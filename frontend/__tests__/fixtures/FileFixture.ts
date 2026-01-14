@@ -26,6 +26,7 @@ export const createMockParsedFile = (overrides: Partial<ParsedFile> = {}): Parse
   processingStatus: 'completed' as ProcessingStatus,
   embeddingStatus: 'completed' as EmbeddingStatus,
   hasExtractedText: true,
+  contentHash: null,
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
   ...overrides,

@@ -25,6 +25,15 @@ export class VectorSearchService {
 
   private constructor() {}
 
+  /**
+   * Normalizes userId to uppercase for Azure AI Search compatibility.
+   * AI Search stores userId in uppercase, so queries must match.
+   * See D24 in docs/plans/99-FUTURE-DEVELOPMENT.md
+   */
+  private normalizeUserId(userId: string): string {
+    return userId.toUpperCase();
+  }
+
   static getInstance(): VectorSearchService {
     if (!VectorSearchService.instance) {
       VectorSearchService.instance = new VectorSearchService();
@@ -187,10 +196,11 @@ export class VectorSearchService {
 
     const { embedding, userId, top = 10, filter } = query;
 
-    // Security: Always enforce userId filter
-    const searchFilter = filter 
-      ? `(userId eq '${userId}') and (${filter})`
-      : `userId eq '${userId}'`;
+    // Security: Always enforce userId filter (D24: normalize userId)
+    const normalizedUserId = this.normalizeUserId(userId);
+    const searchFilter = filter
+      ? `(userId eq '${normalizedUserId}') and (${filter})`
+      : `userId eq '${normalizedUserId}'`;
 
     const searchOptions: Record<string, unknown> = {
       filter: searchFilter,
@@ -240,8 +250,9 @@ export class VectorSearchService {
 
     const { text, embedding, userId, top = 10 } = query;
 
-    // Security: Always enforce userId filter
-    const searchFilter = `userId eq '${userId}'`;
+    // Security: Always enforce userId filter (D24: normalize userId)
+    const normalizedUserId = this.normalizeUserId(userId);
+    const searchFilter = `userId eq '${normalizedUserId}'`;
 
     const searchOptions: Record<string, unknown> = {
       filter: searchFilter,
@@ -308,11 +319,13 @@ export class VectorSearchService {
       throw new Error('Failed to initialize search client');
     }
 
-    // 1. Find chunks first 
+    // 1. Find chunks first
     // Optimization: Select only the key field (chunkId)
+    // D24: Normalize userId for Azure AI Search compatibility
+    const normalizedUserId = this.normalizeUserId(userId);
     const options = {
-        filter: `(userId eq '${userId}') and (fileId eq '${fileId}')`,
-        select: ['chunkId'] 
+        filter: `(userId eq '${normalizedUserId}') and (fileId eq '${fileId}')`,
+        select: ['chunkId']
     };
 
     await this.deleteByQuery(options);
@@ -326,8 +339,10 @@ export class VectorSearchService {
       throw new Error('Failed to initialize search client');
     }
 
+    // D24: Normalize userId for Azure AI Search compatibility
+    const normalizedUserId = this.normalizeUserId(userId);
     const options = {
-        filter: `userId eq '${userId}'`,
+        filter: `userId eq '${normalizedUserId}'`,
         select: ['chunkId']
     };
 
@@ -446,8 +461,9 @@ export class VectorSearchService {
 
     const { embedding, userId, top = 10, minScore = 0 } = query;
 
-    // Security: Always enforce userId filter + isImage filter
-    const searchFilter = `userId eq '${userId}' and isImage eq true`;
+    // Security: Always enforce userId filter + isImage filter (D24: normalize userId)
+    const normalizedUserId = this.normalizeUserId(userId);
+    const searchFilter = `userId eq '${normalizedUserId}' and isImage eq true`;
 
     const searchOptions: Record<string, unknown> = {
       filter: searchFilter,
@@ -567,8 +583,9 @@ export class VectorSearchService {
       minScore = 0,
     } = query;
 
-    // Security: Always enforce userId filter
-    const searchFilter = `userId eq '${userId}'`;
+    // Security: Always enforce userId filter (D24: normalize userId)
+    const normalizedUserId = this.normalizeUserId(userId);
+    const searchFilter = `userId eq '${normalizedUserId}'`;
 
     // Build search options with semantic ranker
     const searchOptions: Record<string, unknown> = {
@@ -699,5 +716,92 @@ export class VectorSearchService {
       { userId, searchType, resultCount, topK },
       'Vector search usage tracked'
     );
+  }
+
+  // ===== Orphan Detection & Verification Methods (D21, D22, D23) =====
+
+  /**
+   * Get unique fileIds for a user from Azure AI Search (D22)
+   *
+   * Used by OrphanCleanupJob to detect orphaned documents.
+   * Returns all unique fileIds that exist in AI Search for a given user.
+   *
+   * @param userId - User ID (normalized to uppercase internally for D24 compatibility)
+   * @returns Array of unique fileIds in AI Search
+   */
+  async getUniqueFileIds(userId: string): Promise<string[]> {
+    if (!this.searchClient) {
+      await this.initializeClients();
+    }
+    if (!this.searchClient) {
+      throw new Error('Failed to initialize search client');
+    }
+
+    // Normalize userId to uppercase for Azure AI Search compatibility (D24)
+    const normalizedUserId = userId.toUpperCase();
+    const searchFilter = `userId eq '${normalizedUserId}'`;
+
+    const searchOptions = {
+      filter: searchFilter,
+      select: ['fileId'],
+      top: 1000, // Azure Search limit per request
+    };
+
+    const fileIds = new Set<string>();
+    const searchResults = await this.searchClient.search('*', searchOptions);
+
+    for await (const result of searchResults.results) {
+      const doc = result.document as { fileId?: string };
+      if (doc.fileId) {
+        fileIds.add(doc.fileId);
+      }
+    }
+
+    logger.info(
+      { userId, normalizedUserId, uniqueFileIdCount: fileIds.size },
+      'Retrieved unique fileIds from AI Search (D22)'
+    );
+
+    return Array.from(fileIds);
+  }
+
+  /**
+   * Count documents in Azure AI Search for a specific file (D23)
+   *
+   * Used for post-delete verification to confirm all documents
+   * (text chunks + image embeddings) were actually deleted.
+   *
+   * @param fileId - File ID to count documents for
+   * @param userId - User ID (normalized to uppercase internally)
+   * @returns Count of documents (should be 0 after successful deletion)
+   */
+  async countDocumentsForFile(fileId: string, userId: string): Promise<number> {
+    if (!this.searchClient) {
+      await this.initializeClients();
+    }
+    if (!this.searchClient) {
+      throw new Error('Failed to initialize search client');
+    }
+
+    // Normalize userId to uppercase for Azure AI Search compatibility (D24)
+    const normalizedUserId = userId.toUpperCase();
+    const searchFilter = `(userId eq '${normalizedUserId}') and (fileId eq '${fileId}')`;
+
+    const searchOptions = {
+      filter: searchFilter,
+      select: ['chunkId'],
+      top: 1, // We only need count, not content
+      includeTotalCount: true,
+    };
+
+    const searchResults = await this.searchClient.search('*', searchOptions);
+    const count = searchResults.count ?? 0;
+
+    logger.debug(
+      { fileId, userId, normalizedUserId, documentCount: count },
+      'Counted documents for file in AI Search (D23)'
+    );
+
+    return count;
   }
 }

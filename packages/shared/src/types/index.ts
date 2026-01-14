@@ -108,6 +108,12 @@ export type {
   FolderResponse,
   UploadFilesResponse,
   AllowedMimeType,
+  // Duplicate detection types
+  DuplicateCheckItem,
+  CheckDuplicatesRequest,
+  DuplicateResult,
+  CheckDuplicatesResponse,
+  DuplicateAction,
 } from './file.types';
 
 // File constants

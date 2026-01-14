@@ -92,6 +92,7 @@ export const mockFiles: ParsedFile[] = [
     processingStatus: 'completed',
     embeddingStatus: 'completed',
     hasExtractedText: true,
+    contentHash: 'abc123def456',
     createdAt: '2024-01-15T10:30:00.000Z',
     updatedAt: '2024-01-15T10:30:00.000Z',
   },
@@ -108,6 +109,7 @@ export const mockFiles: ParsedFile[] = [
     processingStatus: 'completed',
     embeddingStatus: 'completed',
     hasExtractedText: false,
+    contentHash: null,
     createdAt: '2024-01-14T10:00:00.000Z',
     updatedAt: '2024-01-14T10:00:00.000Z',
   },
@@ -250,6 +252,7 @@ export const handlers = [
       processingStatus: 'completed',
       embeddingStatus: 'completed',
       hasExtractedText: false,
+      contentHash: null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };

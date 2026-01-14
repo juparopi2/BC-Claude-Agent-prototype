@@ -140,6 +140,9 @@ export interface ParsedFile {
   /** True if text has been extracted (computed from extracted_text !== null) */
   hasExtractedText: boolean;
 
+  /** SHA-256 hash of file content for duplicate detection (null for folders) */
+  contentHash: string | null;
+
   /** ISO 8601 timestamp when file was uploaded */
   createdAt: string;
 
@@ -461,3 +464,96 @@ export type AllowedMimeType = (typeof ALLOWED_MIME_TYPES)[number];
 export function isAllowedMimeType(mimeType: string): mimeType is AllowedMimeType {
   return ALLOWED_MIME_TYPES.includes(mimeType as AllowedMimeType);
 }
+
+// ============================================
+// Duplicate Detection Types
+// ============================================
+
+/**
+ * Single file to check for duplicates (content-based)
+ *
+ * Used in batch duplicate checking before upload.
+ * The tempId allows correlating results back to client-side file references.
+ *
+ * @example
+ * ```typescript
+ * const item: DuplicateCheckItem = {
+ *   tempId: 'temp-abc123',
+ *   contentHash: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+ *   fileName: 'document.pdf',
+ * };
+ * ```
+ */
+export interface DuplicateCheckItem {
+  /** Client-generated temporary ID for correlation */
+  tempId: string;
+
+  /** SHA-256 content hash (64-character hex string) */
+  contentHash: string;
+
+  /** Original filename (for display purposes) */
+  fileName: string;
+}
+
+/**
+ * Request body for checking duplicates by content hash
+ *
+ * @example
+ * ```typescript
+ * const request: CheckDuplicatesRequest = {
+ *   files: [
+ *     { tempId: 'temp-1', contentHash: 'abc...', fileName: 'doc1.pdf' },
+ *     { tempId: 'temp-2', contentHash: 'def...', fileName: 'doc2.pdf' },
+ *   ],
+ * };
+ * ```
+ */
+export interface CheckDuplicatesRequest {
+  /** Array of files to check (1-50 files) */
+  files: DuplicateCheckItem[];
+}
+
+/**
+ * Single duplicate check result
+ *
+ * Indicates whether a file with matching content hash exists.
+ * If duplicate, includes the existing file details.
+ */
+export interface DuplicateResult {
+  /** Client temp ID for correlation */
+  tempId: string;
+
+  /** Whether a duplicate exists */
+  isDuplicate: boolean;
+
+  /** Existing file if duplicate found */
+  existingFile?: ParsedFile;
+}
+
+/**
+ * Response for duplicate check API endpoint
+ *
+ * @example
+ * ```typescript
+ * const response: CheckDuplicatesResponse = {
+ *   results: [
+ *     { tempId: 'temp-1', isDuplicate: true, existingFile: { ... } },
+ *     { tempId: 'temp-2', isDuplicate: false },
+ *   ],
+ * };
+ * ```
+ */
+export interface CheckDuplicatesResponse {
+  /** Results for each file checked */
+  results: DuplicateResult[];
+}
+
+/**
+ * User action for handling duplicate files during upload
+ *
+ * Actions:
+ * - `replace`: Delete existing file and upload new one
+ * - `skip`: Skip uploading this file
+ * - `cancel`: Cancel entire upload operation
+ */
+export type DuplicateAction = 'replace' | 'skip' | 'cancel';

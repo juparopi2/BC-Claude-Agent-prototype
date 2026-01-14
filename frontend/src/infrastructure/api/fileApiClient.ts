@@ -16,6 +16,8 @@ import type {
   FolderResponse,
   UploadFilesResponse,
   ApiErrorResponse,
+  CheckDuplicatesRequest,
+  CheckDuplicatesResponse,
 } from '@bc-agent/shared';
 import { isApiErrorResponse, ErrorCode } from '@bc-agent/shared';
 import { env } from '@/lib/config/env';
@@ -368,6 +370,40 @@ export class FileApiClient {
       xhr.timeout = 120000; // 2 minute timeout for large files
       xhr.send(formData);
     });
+  }
+
+  // ============================================
+  // Duplicate Detection Endpoint
+  // ============================================
+
+  /**
+   * Check for duplicate files by content hash
+   *
+   * Used before upload to detect if files with identical content already exist.
+   * This enables showing a conflict resolution dialog to the user.
+   *
+   * @param request - Files to check (with content hashes)
+   * @returns Duplicate status for each file
+   *
+   * @example
+   * ```typescript
+   * const result = await fileApi.checkDuplicates({
+   *   files: [
+   *     { tempId: 'temp-1', contentHash: 'abc123...', fileName: 'doc.pdf' },
+   *     { tempId: 'temp-2', contentHash: 'def456...', fileName: 'img.png' },
+   *   ],
+   * });
+   *
+   * if (result.success) {
+   *   const duplicates = result.data.results.filter(r => r.isDuplicate);
+   *   console.log(`Found ${duplicates.length} duplicate files`);
+   * }
+   * ```
+   */
+  async checkDuplicates(
+    request: CheckDuplicatesRequest
+  ): Promise<ApiResponse<CheckDuplicatesResponse>> {
+    return this.postJson<CheckDuplicatesResponse>('/api/files/check-duplicates', request);
   }
 
   // ============================================

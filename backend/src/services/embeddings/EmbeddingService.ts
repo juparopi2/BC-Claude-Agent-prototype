@@ -93,7 +93,7 @@ export class EmbeddingService {
       }
     } catch (error) {
       // Log error but continue to generate embedding
-      console.error('Error reading from cache:', error);
+      logger.warn({ error: error instanceof Error ? error.message : String(error) }, 'Error reading from embedding cache');
     }
 
     const client = this.getClient();
@@ -301,7 +301,7 @@ export class EmbeddingService {
         }
       });
     } catch (error) {
-      console.error('Error reading from cache (batch):', error);
+      logger.warn({ error: error instanceof Error ? error.message : String(error) }, 'Error reading from embedding cache (batch)');
       // Continue without cache on error
     }
 

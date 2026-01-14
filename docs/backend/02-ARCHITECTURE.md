@@ -49,11 +49,15 @@ backend/src/domains/agent/
     ├── UsageTracker.ts               # ~100 LOC - Tracking de tokens
     ├── types.ts
     └── index.ts
+
+backend/src/jobs/
+├── index.ts                          # Job exports
+└── OrphanCleanupJob.ts               # ~200 LOC - AI Search orphan cleanup
 ```
 
 ---
 
-## Las 11 Clases Implementadas
+## Las 12 Clases Implementadas
 
 | # | Clase | LOC | Responsabilidad |
 |---|-------|-----|-----------------|
@@ -68,8 +72,9 @@ backend/src/domains/agent/
 | 9 | **PersistenceErrorAnalyzer** | ~100 | Categorización de errores |
 | 10 | **EventIndexTracker** | ~50 | Contador monotónico de eventIndex |
 | 11 | **UsageTracker** | ~100 | Tracking de tokens |
+| 12 | **OrphanCleanupJob** | ~200 | Limpieza de documentos huérfanos en AI Search |
 
-**Total**: ~2,805 LOC en dominio agent
+**Total**: ~3,005 LOC en dominio agent + jobs
 
 **Componentes adicionales en shared/providers**:
 - **BatchResultNormalizer** (~327 LOC) - Normalización de AgentState a eventos
@@ -327,4 +332,32 @@ AgentOrchestrator
 
 ---
 
-*Última actualización: 2026-01-13*
+### 12. OrphanCleanupJob (~200 LOC)
+
+**Ubicación**: `backend/src/jobs/OrphanCleanupJob.ts`
+
+**Responsabilidad:**
+- Detectar documentos huérfanos en Azure AI Search
+- Comparar fileIds en AI Search vs SQL
+- Eliminar documentos que no tienen correspondencia en SQL
+
+**Métodos principales:**
+```typescript
+// Limpieza para un usuario específico
+async cleanOrphansForUser(userId: string): Promise<CleanupResult>
+
+// Limpieza completa para todos los usuarios
+async runFullCleanup(): Promise<FullCleanupSummary>
+```
+
+**Dependencias:**
+- VectorSearchService (getUniqueFileIds, deleteChunksForFile)
+- FileService (getFileIdsByUser)
+
+**Acceso:**
+- Via endpoint: `POST /api/admin/jobs/orphan-cleanup`
+- Via script: `npx tsx scripts/run-orphan-cleanup.ts`
+
+---
+
+*Última actualización: 2026-01-13 (v2.1 - OrphanCleanupJob)*

@@ -1,7 +1,7 @@
 # Deuda Técnica y Desarrollos Futuros
 
-**Fecha**: 2025-12-22
-**Estado**: Aprobado
+**Fecha**: 2026-01-13
+**Estado**: Aprobado (Actualizado)
 
 ---
 
@@ -441,36 +441,37 @@ Los tests documentan el comportamiento esperado para cuando se implementen.
 | ID | Descripción | Fase | Prioridad | Días | Estado |
 |----|-------------|------|-----------|------|--------|
 | **D1** | **Race condition EventStore** | **Phase 5C** | **Alta** | **1-2** | Pendiente |
+| ~~D20~~ | ~~Duplicate File Detection & Management~~ | ~~Phase 6~~ | ~~ALTA~~ | ~~3-4~~ | ✅ COMPLETADO |
+| ~~D22~~ | ~~Orphan Cleanup Job~~ | ~~Phase 6~~ | ~~Media~~ | ~~2~~ | ✅ COMPLETADO |
 | ~~D26~~ | ~~Multimodal RAG with Reranker & Image Captioning~~ | ~~Phase 6~~ | ~~CRÍTICA~~ | ~~3-4~~ | ✅ COMPLETADO |
 
 | D8 | Dynamic model selection | Phase 6 | Media | 2 | Pendiente |
-| D9 | WebSocket usage alerts | Phase 6 | Baja | 1 |
-| D10 | Message replay | Phase 6 | Baja | 3 |
-| D11 | Tool execution queue | Phase 6 | Media | 4 |
-| D13 | Redis chaos tests | Phase 6 | Media | 2 |
-| D14 | Unimplemented APIs (GDPR, billing, usage) | Phase 6+ | Media | 5-7 |
-| D15 | Unimplemented Features (solo approval pending) | Phase 6+ | Media | 1-2 |
+| D9 | WebSocket usage alerts | Phase 6 | Baja | 1 | Pendiente |
+| D10 | Message replay | Phase 6 | Baja | 3 | Pendiente |
+| D11 | Tool execution queue | Phase 6 | Media | 4 | Pendiente |
+| D13 | Redis chaos tests | Phase 6 | Media | 2 | Pendiente |
+| D14 | Unimplemented APIs (GDPR, billing, usage) | Phase 6+ | Media | 5-7 | Pendiente |
+| D15 | Unimplemented Features (solo approval pending) | Phase 6+ | Media | 1-2 | Pendiente |
+| D18 | Technical Issues (performance, websocket) | Phase 6+ | Media | 2-3 | Pendiente |
+| **D19** | **Refactor E2E Tests - Nueva Filosofía** | **Phase 6** | **ALTA** | **5-7** | Pendiente |
+| - | ApprovalManager completo | Phase 6 | Alta | 5 | Pendiente |
+| - | Azure OpenAI support | Phase 7 | Alta | 10 | Pendiente |
+| - | Google Gemini support | Phase 7 | Media | 10 | Pendiente |
+| - | Prompt Caching | Phase 7 | Alta | 3 | Pendiente |
+| - | Batch API | Phase 7 | Baja | 5 | Pendiente |
+| - | Analytics Dashboard | Phase 8 | Media | 10 | Pendiente |
+| ~~D21~~ | ~~File Deletion Cascade~~ | ~~Phase 6~~ | ~~Media~~ | ~~1~~ | ✅ 3/4 gaps (Redis opcional) |
+| ~~D23~~ | ~~Post-Delete Verification~~ | ~~Phase 6~~ | ~~Baja~~ | ~~0.5~~ | ✅ BY DESIGN (via D22) |
+| ~~D24~~ | ~~UserId Case Sensitivity (AI Search)~~ | ~~Phase 6~~ | ~~ALTA~~ | ~~0.5~~ | ✅ COMPLETADO |
+| **D25** | **EmbeddingService Tests Env Injection** | **Phase 6** | **MEDIA** | **1-2** | Pendiente |
+| **D27** | **MessageQueue Refactor - God File Decomposition** | **Phase 6** | **ALTA** | **3-5** | Pendiente |
 
 
-| D18 | Technical Issues (performance, websocket) | Phase 6+ | Media | 2-3 |
-| **D19** | **Refactor E2E Tests - Nueva Filosofía** | **Phase 6** | **ALTA** | **5-7** |
-| - | ApprovalManager completo | Phase 6 | Alta | 5 |
-| - | Azure OpenAI support | Phase 7 | Alta | 10 |
-| - | Google Gemini support | Phase 7 | Media | 10 |
-| - | Prompt Caching | Phase 7 | Alta | 3 |
-| - | Batch API | Phase 7 | Baja | 5 |
-| - | Analytics Dashboard | Phase 8 | Media | 10 |
-| **D21** | **File Deletion Cascade (actualizado)** | **Phase 6** | **ALTA** | **2-3** |
-| **D22** | **Orphan Cleanup Job** | **Phase 6** | **Media** | **2** |
-| D23 | Post-Delete Verification | Phase 6 | Baja | 1 |
-| **D24** | **UserId Case Sensitivity (AI Search)** | **Phase 6** | **ALTA** | **0.5** |
-| **D25** | **EmbeddingService Tests Env Injection** | **Phase 6** | **MEDIA** | **1-2** |
-| **D27** | **MessageQueue Refactor - God File Decomposition** | **Phase 6** | **ALTA** | **3-5** |
-
-
-**Total estimado Phase 6:** ~41-51 días (incluyendo D14, D15, D18, D19, D21-D25, D27)
+**Total estimado Phase 6:** ~30-35 días (ajustado - D20, D21, D22, D23, D24, D26 completados)
 **Total estimado Phase 7:** ~28 días
 **Total estimado Phase 8:** ~10 días
+
+*Última actualización: 2026-01-13 (D24 completado)*
 
 ---
 
@@ -654,264 +655,252 @@ backend/src/__tests__/e2e/api/
 
 ---
 
-## D20: Duplicate File Detection & Management (UX Critical)
+## D20: Duplicate File Detection & Management - COMPLETADO
 
 **Fecha análisis:** 2026-01-06
-**Estado:** Documentado - Pendiente Implementación
+**Estado:** ✅ COMPLETADO (2026-01-13)
 **Prioridad:** ALTA (UX + Cost Savings)
-**Estimación:** 3-4 días
+**Estimación original:** 3-4 días
 
-### Problema Actual
+### Solución Implementada (SHA-256 Hash Detection)
 
-El sistema NO detecta archivos duplicados durante el upload:
+#### Fase 1: Backend - Hash-Based Detection ✅
+- Implementado `FileService.findByContentHash()` para buscar archivos por hash
+- Implementado `FileService.checkDuplicatesByHash()` para verificación batch
+- Endpoint `POST /api/files/check-duplicates` con validación Zod
 
-```typescript
-// FileUploadService.ts - línea 104-108
-public generateBlobPath(userId: string, fileName: string): string {
-  const timestamp = Date.now();  // ⚠️ Siempre genera path único
-  return `users/${userId}/files/${timestamp}-${sanitizedFileName}`;
-}
-
-// FileService.ts - línea 215-264
-public async createFileRecord(options: CreateFileOptions): Promise<string> {
-  const fileId = randomUUID();  // ⚠️ Siempre crea nuevo registro
-  // NO verifica si existe archivo con mismo nombre
-  await executeQuery('INSERT INTO files...', params);
-}
-```
-
-### Impacto
-
-1. **Costos desperdiciados**: Mismo archivo subido N veces = N blobs + N embeddings
-2. **UX confusa**: Usuario ve múltiples archivos con mismo nombre
-3. **Búsqueda degradada**: Embeddings duplicados afectan relevancia
-4. **Storage innecesario**: Azure Blob Storage cobra por GB
-
-### Solución Propuesta
-
-**Fase 1: Backend - Detección (1 día)**
-```typescript
-// FileService.ts - Nuevo método
-async checkDuplicate(userId: string, fileName: string, folderId?: string): Promise<{
-  isDuplicate: boolean;
-  existingFile?: ParsedFile;
-  sameSize?: boolean;
-  sameHash?: boolean;
-}> {
-  const existing = await this.findByName(userId, fileName, folderId);
-  if (!existing) return { isDuplicate: false };
-
-  return {
-    isDuplicate: true,
-    existingFile: existing,
-    sameSize: false,  // Future: compare sizes
-    sameHash: false,  // Future: compare SHA-256
-  };
-}
-```
-
-**Fase 2: API - Endpoint (0.5 días)**
-```typescript
-// GET /api/files/check-duplicates
-// Body: { files: [{ name: string, size: number }], folderId?: string }
-// Response: { duplicates: [{ name, existingId, existingSize, action: 'replace'|'skip'|'keep_both' }] }
-```
-
-**Fase 3: Frontend - UX (1.5 días)**
-```tsx
-// DuplicateFileDialog.tsx
-interface DuplicateDialogProps {
-  duplicates: DuplicateFile[];
-  onResolve: (resolutions: DuplicateResolution[]) => void;
-}
-
-// Opciones por archivo:
-// - "Reemplazar" → DELETE existing + upload new
-// - "Saltar" → Skip this file
-// - "Conservar ambos" → Rename to "archivo (1).pdf"
-
-// Checkbox: "Aplicar a todos los duplicados"
-```
-
-**Fase 4: Hash Verification (1 día - Future)**
+#### Fase 2: Database Migration ✅
 ```sql
--- Agregar columna a files table
-ALTER TABLE files ADD content_hash NVARCHAR(64) NULL;
+-- Migration: 011-add-content-hash.sql
+ALTER TABLE files ADD content_hash CHAR(64) NULL;
 
--- Index para búsqueda rápida
-CREATE INDEX IX_files_content_hash ON files(user_id, content_hash);
+CREATE NONCLUSTERED INDEX IX_files_user_content_hash
+ON files(user_id, content_hash)
+WHERE content_hash IS NOT NULL AND is_folder = 0;
 ```
 
-### Archivos Afectados
+#### Fase 3: Frontend - Complete UX ✅
+- `computeFileSha256()` - Web Crypto API para hash en cliente
+- `duplicateStore.ts` - Zustand store para manejo de conflictos
+- `DuplicateFileModal.tsx` - Modal con opciones Replace/Skip/Cancel
+- `useFileUpload.ts` - Hook modificado con flujo completo de detección
+- `MultiFileContextMenu.tsx` - Context menu para eliminación múltiple
+
+#### Fase 4: Tipos Compartidos ✅
+- Tipos añadidos a `@bc-agent/shared`:
+  - `DuplicateCheckItem`, `CheckDuplicatesRequest`
+  - `DuplicateResult`, `CheckDuplicatesResponse`
+  - `DuplicateAction`
+
+**Archivos Modificados/Creados:**
 
 | Archivo | Cambio |
 |---------|--------|
-| `backend/src/services/files/FileService.ts` | Método `checkDuplicate()`, `findByName()` |
-| `backend/src/routes/files.ts` | Endpoint `/check-duplicates` |
-| `frontend/components/files/DuplicateFileDialog.tsx` | NUEVO: Diálogo de resolución |
-| `frontend/components/files/FileUploadZone.tsx` | Integrar verificación pre-upload |
-| `packages/shared/src/constants/files.ts` | Agregar `DuplicateResolution` type |
+| `backend/migrations/011-add-content-hash.sql` | Nueva migración |
+| `backend/src/services/files/FileService.ts` | Métodos findByContentHash, checkDuplicatesByHash, createFileRecord |
+| `backend/src/routes/files.ts` | Endpoint check-duplicates, upload con hash |
+| `backend/src/shared/utils/hash.ts` | Utilidad SHA-256 |
+| `packages/shared/src/types/file.types.ts` | Tipos de duplicados |
+| `packages/shared/src/index.ts` | Exports de tipos |
+| `frontend/src/lib/utils/hash.ts` | Web Crypto SHA-256 |
+| `frontend/src/domains/files/stores/duplicateStore.ts` | Estado Zustand |
+| `frontend/components/modals/DuplicateFileModal.tsx` | Modal de conflictos |
+| `frontend/src/domains/files/hooks/useFileUpload.ts` | Flujo completo |
+| `frontend/src/infrastructure/api/fileApiClient.ts` | Método checkDuplicates |
+| `frontend/components/files/MultiFileContextMenu.tsx` | Multi-selección |
+| `frontend/components/files/FileList.tsx` | Integración multi-select |
+
+**Decisiones del Usuario:**
+- Scope de duplicados: **Todo el repositorio** del usuario (no solo carpeta actual)
+- Archivos legacy sin hash: **No participan** en detección
 
 ---
 
-## D21: File Deletion Cascade Completeness
+## D21: File Deletion Cascade Completeness - ACTUALIZADO 2026-01-13
 
 **Fecha análisis:** 2026-01-06
-**Estado:** Documentado - ACTUALIZADO con auditoría 2026-01-06
-**Prioridad:** ALTA (Data Integrity + GDPR)
-**Estimación:** 2-3 días
+**Estado:** ✅ MAYORMENTE RESUELTO - 3 de 4 gaps cerrados
+**Prioridad:** BAJA (solo Redis cache pendiente)
+**Estimación restante:** 0.5 días (opcional)
 
-### Inventario Completo de Storage Points (Auditoría 2026-01-06)
+### Inventario Completo de Storage Points (Auditoría 2026-01-13)
 
 | Storage | Tabla/Índice | Cascade | Estado | Archivo Responsable |
 |---------|-------------|---------|--------|---------------------|
-| SQL Server | `files` | N/A (source of truth) | OK | - |
+| SQL Server | `files` | N/A (source of truth) | ✅ OK | - |
 | SQL Server | `file_chunks` | FK CASCADE | ✅ OK | `migrations/003-create-files-tables.sql:64` |
 | SQL Server | `message_file_attachments` | FK CASCADE | ✅ OK | `migrations/003-create-files-tables.sql:87` |
 | SQL Server | `image_embeddings` | FK CASCADE | ✅ OK | `migrations/007-create-image-embeddings.sql:28-29` |
-| Azure AI Search | `file-chunks-index` (text) | Manual | ✅ `deleteChunksForFile()` | `services/search/VectorSearchService.ts:301-317` |
-| Azure AI Search | `file-chunks-index` (images) | Manual | ✅ Usa mismo filtro (fileId+userId) | `services/search/VectorSearchService.ts:312` |
+| Azure AI Search | `file-chunks-index` (text) | Manual | ✅ `deleteChunksForFile()` | `services/search/VectorSearchService.ts:303-319` |
+| Azure AI Search | `file-chunks-index` (images) | Manual | ✅ Usa mismo filtro (fileId+userId) | `services/search/VectorSearchService.ts:314` |
 | Azure Blob Storage | `users/{userId}/files/` | Manual | ✅ Route handler | `routes/files.ts:862-926` |
 | Redis Cache | N/A | N/A | ❌ NO implementado | - |
 
-### Gaps Identificados
+### Gaps - Estado Actualizado (2026-01-13)
 
-1. **Eventual Consistency en AI Search**: Si Azure AI Search está caído durante eliminación, los documentos quedan huérfanos
-   - Código menciona "orphan cleanup job" pero NO existe (`FileService.ts:606`)
-2. **No hay verificación post-delete**: No se confirma que AI Search realmente eliminó los documentos
-3. **UserId Case Sensitivity**: AI Search almacena userId en MAYÚSCULAS, posible mismatch con consultas
-4. **Redis Cache no se limpia**: Campo `deleted_from_cache` en audit siempre es false
+| Gap | Descripción | Estado | Notas |
+|-----|-------------|--------|-------|
+| Gap 1 | Eventual Consistency en AI Search | ✅ RESUELTO | OrphanCleanupJob implementado (D22) |
+| Gap 2 | No hay verificación post-delete | ✅ BY DESIGN | `countDocumentsForFile()` existe; OrphanCleanupJob para cleanup eventual |
+| Gap 3 | UserId Case Sensitivity | ✅ RESUELTO | D24 completado - todos los métodos normalizan userId |
+| Gap 4 | Redis Cache no se limpia | ❌ PENDIENTE | Baja prioridad - TTL de 7 días maneja limpieza automática |
+
+### Tests de Integración Implementados (Staged)
+
+**Archivo:** `backend/src/__tests__/integration/files/FileDeletionCascade.integration.test.ts`
+
+Tests implementados:
+- ✅ Database cascade (FK delete)
+- ✅ Audit trail creation
+- ✅ Text embeddings deletion from AI Search
+- ✅ Image embeddings deletion from AI Search
+- ✅ Folder cascade (children embeddings)
+- ✅ Idempotent deletion (no embeddings case)
+- ✅ Multi-tenant isolation
+
+### Trabajo Restante
+
+1. **Redis Cache cleanup** (baja prioridad, opcional) - TTL de 7 días ya maneja limpieza automática
 
 ### Auditoría Realizada 2026-01-06
 
-Se encontraron y eliminaron **139 documentos huérfanos** en Azure AI Search:
-- 5 fileIds huérfanos de archivos eliminados previamente
-- Causa: Archivos eliminados antes de implementar `cleanupAISearchEmbeddings()`
-- Limpieza manual via Azure CLI
-
-### Solución Propuesta
-
-Ver D22 (Orphan Cleanup Job) y D23 (Post-Delete Verification)
+Se encontraron y eliminaron **139 documentos huérfanos** en Azure AI Search.
+**Resultado 2026-01-13:** OrphanCleanupJob ejecutado, sistema limpio (1 huérfano eliminado).
 
 ---
 
-## D22: Orphan Cleanup Job
+## D22: Orphan Cleanup Job - COMPLETADO
 
 **Fecha análisis:** 2026-01-06
-**Estado:** Nuevo - Documentado
+**Estado:** ✅ COMPLETADO (2026-01-13)
 **Prioridad:** MEDIA
-**Estimación:** 2 días
+**Estimación original:** 2 días
 
-### Descripción
+### Solución Implementada
 
-Job programado para detectar y eliminar documentos huérfanos en Azure AI Search.
+#### Backend Job ✅
+- `OrphanCleanupJob.ts` implementado con:
+  - `cleanOrphansForUser(userId)` - Limpieza por usuario
+  - `runFullCleanup()` - Limpieza de todos los usuarios
+  - Detailed logging y estadísticas
 
-### Requisitos
+#### VectorSearchService Extensions ✅
+- `getUniqueFileIds(userId)` - Obtener fileIds de AI Search
+- `getAllUserIdsWithDocuments()` - Listar usuarios con documentos
 
-1. Ejecutar semanalmente o bajo demanda
-2. Para cada usuario con documentos en AI Search:
-   - Obtener lista de `fileId` únicos de AI Search
-   - Comparar con `files` tabla en SQL
-   - Eliminar documentos cuyo `fileId` no existe en SQL
-3. Logging de documentos eliminados para auditoría
-
-### Implementación Propuesta
-
+#### Admin Endpoint ✅
 ```typescript
-// backend/src/jobs/OrphanCleanupJob.ts
-async cleanOrphans(userId: string): Promise<number> {
-  // 1. Get fileIds from AI Search
-  const searchFileIds = await vectorSearchService.getUniqueFileIds(userId);
-
-  // 2. Get fileIds from SQL
-  const sqlFileIds = await fileRepository.getFileIdsByUser(userId);
-
-  // 3. Find orphans (in AI Search but not in SQL)
-  const orphanFileIds = searchFileIds.filter(id => !sqlFileIds.includes(id));
-
-  // 4. Delete orphans
-  for (const fileId of orphanFileIds) {
-    await vectorSearchService.deleteChunksForFile(fileId, userId);
-  }
-
-  return orphanFileIds.length;
-}
+POST /api/admin/jobs/orphan-cleanup
+Query params:
+  - userId?: string (cleanup for specific user)
+  - dryRun?: boolean (report without deleting)
 ```
 
-### Archivos a Crear/Modificar
+#### Manual Script ✅
+```bash
+# Cleanup para todos los usuarios
+npx tsx scripts/run-orphan-cleanup.ts
 
-- `backend/src/jobs/OrphanCleanupJob.ts` - NUEVO
-- `backend/src/services/search/VectorSearchService.ts` - Agregar `getUniqueFileIds()`
+# Cleanup para usuario específico
+npx tsx scripts/run-orphan-cleanup.ts --userId <uuid>
+```
+
+**Archivos Creados:**
+
+| Archivo | Descripción |
+|---------|-------------|
+| `backend/src/jobs/OrphanCleanupJob.ts` | Job principal (~200 LOC) |
+| `backend/src/jobs/index.ts` | Exports |
+| `backend/src/routes/admin.ts` | Endpoint admin |
+| `backend/scripts/run-orphan-cleanup.ts` | Script CLI |
+
+**Verificación Inicial:**
+- Ejecutado cleanup inicial: 1 documento huérfano encontrado y eliminado
+- Sistema verificado sin huérfanos restantes
 
 ---
 
-## D23: Post-Delete Verification
+## D23: Post-Delete Verification - BY DESIGN
 
 **Fecha análisis:** 2026-01-06
-**Estado:** Nuevo - Documentado
-**Prioridad:** BAJA
-**Estimación:** 1 día
+**Estado:** ✅ BY DESIGN (2026-01-13) - Confiar en OrphanCleanupJob
+**Prioridad:** N/A (cerrado)
+**Decisión:** Eventual consistency via D22
 
-### Descripción
+### Infraestructura Disponible
 
-Verificar que los documentos fueron realmente eliminados de Azure AI Search después de `deleteChunksForFile()`.
+1. **`VectorSearchService.countDocumentsForFile()`** - Método implementado
+   - Normaliza userId a mayúsculas (D24 completo)
+   - Retorna count de documentos para fileId+userId
+   - Disponible para verificación manual si se necesita
 
-### Requisitos
+2. **Tests de Integración** - Verifican eliminación
+   - Tests usan `countDocumentsForFile()` para validar count === 0 post-delete
+   - Cubren: text embeddings, image embeddings, folder cascade, multi-tenant
 
-1. Después de eliminar, consultar AI Search para confirmar 0 documentos con ese `fileId`
-2. Si hay documentos restantes, reintentar eliminación (max 3 intentos)
-3. Si persisten, loggear warning y actualizar audit status a `partial`
+### Decisión Final
 
-### Implementación Propuesta
+**Opción elegida:** Confiar en OrphanCleanupJob (D22) para cleanup eventual.
 
-```typescript
-// En VectorSearchService.deleteChunksForFile()
-async deleteChunksForFile(fileId: string, userId: string): Promise<void> {
-  await this.deleteByQuery(options);
-
-  // Verify deletion
-  const remaining = await this.countDocuments(fileId, userId);
-  if (remaining > 0) {
-    logger.warn({ fileId, userId, remaining }, 'Documents still exist after deletion');
-    // Retry or alert
-  }
-}
-```
+**Justificación:**
+1. `countDocumentsForFile()` existe y funciona correctamente
+2. Los integration tests ya verifican que la eliminación funciona
+3. OrphanCleanupJob (D22) detecta y limpia huérfanos periódicamente
+4. Agregar retry logic complica innecesariamente el código
+5. Eventual consistency es aceptable para este caso de uso
 
 ---
 
-## D24: UserId Case Sensitivity in AI Search
+## D24: UserId Case Sensitivity in AI Search - COMPLETADO
 
 **Fecha análisis:** 2026-01-06
-**Estado:** Nuevo - Documentado
-**Prioridad:** ALTA (Bug potencial)
-**Estimación:** 0.5 días
+**Estado:** ✅ COMPLETADO (2026-01-13)
+**Prioridad:** ALTA (Bug potencial en eliminación)
+**Estimación original:** 0.5 días
 
 ### Descripción
 
-Azure AI Search almacena `userId` en MAYÚSCULAS (ej: `BCD5A31B-C560-40D5-972F-50E134A8389D`), pero las consultas pueden usar minúsculas (ej: `bcd5a31b-c560-40d5-972f-50e134a8389d`). Esto causa que el filtro `userId eq '...'` no encuentre documentos.
+Azure AI Search almacena `userId` en MAYÚSCULAS, pero las consultas pueden usar minúsculas, causando mismatches.
 
-### Evidencia
+### Solución Implementada
 
-- Auditoría 2026-01-06: Consulta con minúsculas retornó 0 docs, con mayúsculas retornó 141 docs
-- SQL Server retorna UUIDs en mayúsculas, pero sesión de usuario puede normalizar a minúsculas
+**Archivo:** `backend/src/services/search/VectorSearchService.ts`
 
-### Solución Propuesta
-
-Normalizar `userId` a mayúsculas antes de:
-1. Indexar documentos (`indexChunk`, `indexImageEmbedding`)
-2. Buscar documentos (`search`, `searchImages`, `deleteChunksForFile`)
+Se implementó método helper `normalizeUserId()` y se aplicó a TODOS los métodos que usan filtros de userId:
 
 ```typescript
-// En VectorSearchService
+/**
+ * Normalizes userId to uppercase for Azure AI Search compatibility.
+ * AI Search stores userId in uppercase, so queries must match.
+ * See D24 in docs/plans/99-FUTURE-DEVELOPMENT.md
+ */
 private normalizeUserId(userId: string): string {
   return userId.toUpperCase();
 }
 ```
 
-### Archivos a Modificar
+#### ✅ Métodos CON Normalización (8/8 - 100%)
 
-- `backend/src/services/search/VectorSearchService.ts` - Todas las operaciones que usan `userId`
+| Método | Estado |
+|--------|--------|
+| `search()` | ✅ Normalizado |
+| `hybridSearch()` | ✅ Normalizado |
+| `deleteChunksForFile()` | ✅ Normalizado |
+| `deleteChunksForUser()` | ✅ Normalizado |
+| `searchImages()` | ✅ Normalizado |
+| `semanticSearch()` | ✅ Normalizado |
+| `getUniqueFileIds()` | ✅ Normalizado |
+| `countDocumentsForFile()` | ✅ Normalizado |
+
+### Tests Implementados
+
+**Archivo:** `backend/src/__tests__/unit/services/search/VectorSearchService.test.ts`
+
+- Nueva sección "D24 UserId Normalization" con tests para cada método
+- Tests de `searchImages()` agregados (faltaban)
+- Tests existentes actualizados para esperar userId en mayúsculas
+
+**Total nuevos tests:** 11 tests específicos para D24
 
 ---
 

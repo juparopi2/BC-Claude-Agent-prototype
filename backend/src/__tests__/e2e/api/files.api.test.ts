@@ -24,6 +24,7 @@ import {
   type TestSessionFactory,
   type TestUser,
 } from '../helpers';
+import { VectorSearchService } from '@/services/search/VectorSearchService';
 
 describe('E2E API: Files Endpoints', () => {
   setupE2ETest();
@@ -37,6 +38,16 @@ describe('E2E API: Files Endpoints', () => {
   });
 
   afterAll(async () => {
+    // D20-D24: Cleanup AI Search documents for test user before DB cleanup
+    // This prevents orphan documents in AI Search after test user is deleted
+    if (testUser?.id) {
+      try {
+        const vectorSearchService = VectorSearchService.getInstance();
+        await vectorSearchService.deleteChunksForUser(testUser.id);
+      } catch {
+        // Ignore cleanup errors - AI Search may not have any docs for this user
+      }
+    }
     await factory.cleanup();
   });
 

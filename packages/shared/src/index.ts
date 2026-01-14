@@ -156,6 +156,18 @@ export {
   getErrorMessage,
   getErrorStatusCode,
   validateErrorConstants,
+  // WebSocket Events (D25 Sprint 3)
+  FILE_WS_CHANNELS,
+  FILE_WS_EVENTS,
+  type FileWsChannel,
+  type FileWsEventType,
+  // File Processing Status Constants (D25 Sprint 3)
+  PROCESSING_STATUS,
+  EMBEDDING_STATUS,
+  FILE_READINESS_STATE,
+  type ProcessingStatusValue,
+  type EmbeddingStatusValue,
+  type FileReadinessStateValue,
 } from './constants';
 
 // ============================================

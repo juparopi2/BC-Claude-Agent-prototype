@@ -58,6 +58,24 @@ vi.mock('@services/websocket/SocketService', () => ({
   isSocketServiceInitialized: mockIsSocketServiceInitialized,
 }));
 
+// Mock FileEventEmitter (D25 Sprint 3)
+const mockEmitProgress = vi.hoisted(() => vi.fn());
+const mockEmitCompletion = vi.hoisted(() => vi.fn());
+const mockEmitError = vi.hoisted(() => vi.fn());
+const mockGetFileEventEmitter = vi.hoisted(() =>
+  vi.fn(() => ({
+    emitProgress: mockEmitProgress,
+    emitCompletion: mockEmitCompletion,
+    emitError: mockEmitError,
+    emitReadinessChanged: vi.fn(),
+    emitPermanentlyFailed: vi.fn(),
+  }))
+);
+
+vi.mock('@/domains/files/emission', () => ({
+  getFileEventEmitter: mockGetFileEventEmitter,
+}));
+
 // Mock Processors
 const mockTextProcessorExtractText = vi.hoisted(() =>
   vi.fn().mockResolvedValue({
@@ -162,6 +180,11 @@ describe('FileProcessingService', () => {
     mockDownloadFromBlob.mockResolvedValue(Buffer.from('mock file content'));
     mockIsSocketServiceInitialized.mockReturnValue(true);
     mockSocketTo.mockReturnValue({ emit: mockSocketEmit });
+
+    // Re-setup FileEventEmitter mocks (D25 Sprint 3)
+    mockEmitProgress.mockImplementation(() => {});
+    mockEmitCompletion.mockImplementation(() => {});
+    mockEmitError.mockImplementation(() => {});
 
     mockTextProcessorExtractText.mockResolvedValue({
       text: 'Extracted plain text content',
@@ -354,143 +377,124 @@ describe('FileProcessingService', () => {
 
   // ========== SUITE 4: WEBSOCKET EVENTS (6 TESTS) ==========
   describe('WebSocket Events', () => {
-    it('should emit progress events at key stages', async () => {
+    it('should emit progress events at key stages via FileEventEmitter', async () => {
       const job = createMockJob();
 
       await service.processFile(job);
 
-      // Verify all progress events were emitted (0%, 20%, 30%, 70%, 90%)
-      expect(mockSocketEmit).toHaveBeenCalledWith(
-        'file:processing',
+      // Verify all progress events were emitted via FileEventEmitter (0%, 20%, 30%, 70%, 90%)
+      expect(mockEmitProgress).toHaveBeenCalledWith(
         expect.objectContaining({
-          type: 'file:processing_progress',
           fileId: 'test-file-123',
-          status: 'processing',
+          userId: 'test-user-456',
+          sessionId: 'test-session-789',
+        }),
+        expect.objectContaining({
           progress: 0,
+          status: 'processing',
+          attemptNumber: 1,
+          maxAttempts: 2,
         })
       );
 
-      expect(mockSocketEmit).toHaveBeenCalledWith(
-        'file:processing',
-        expect.objectContaining({
-          progress: 20,
-        })
+      expect(mockEmitProgress).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ progress: 20 })
       );
 
-      expect(mockSocketEmit).toHaveBeenCalledWith(
-        'file:processing',
-        expect.objectContaining({
-          progress: 30,
-        })
+      expect(mockEmitProgress).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ progress: 30 })
       );
 
-      expect(mockSocketEmit).toHaveBeenCalledWith(
-        'file:processing',
-        expect.objectContaining({
-          progress: 70,
-        })
+      expect(mockEmitProgress).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ progress: 70 })
       );
 
-      expect(mockSocketEmit).toHaveBeenCalledWith(
-        'file:processing',
-        expect.objectContaining({
-          progress: 90,
-        })
+      expect(mockEmitProgress).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ progress: 90 })
       );
     });
 
-    it('should emit completion event with stats', async () => {
+    it('should emit completion event with stats via FileEventEmitter', async () => {
       const job = createMockJob({ mimeType: 'application/pdf' });
 
       await service.processFile(job);
 
-      // Verify completion event with PDF stats
-      expect(mockSocketEmit).toHaveBeenCalledWith(
-        'file:processing',
+      // Verify completion event with PDF stats via FileEventEmitter
+      expect(mockEmitCompletion).toHaveBeenCalledWith(
         expect.objectContaining({
-          type: 'file:processing_completed',
           fileId: 'test-file-123',
-          status: 'completed',
-          stats: {
-            textLength: expect.any(Number),
-            pageCount: 3,
-            ocrUsed: true,
-          },
-          progress: 100,
+          userId: 'test-user-456',
+          sessionId: 'test-session-789',
+        }),
+        expect.objectContaining({
+          textLength: expect.any(Number),
+          pageCount: 3,
+          ocrUsed: true,
         })
       );
     });
 
-    it('should emit error event on failure', async () => {
+    it('should emit error event on failure via FileEventEmitter', async () => {
       const job = createMockJob();
       const testError = new Error('Download failed');
       mockDownloadFromBlob.mockRejectedValueOnce(testError);
 
       await expect(service.processFile(job)).rejects.toThrow('Download failed');
 
-      // Verify error event
-      expect(mockSocketEmit).toHaveBeenCalledWith(
-        'file:processing',
+      // Verify error event via FileEventEmitter
+      expect(mockEmitError).toHaveBeenCalledWith(
         expect.objectContaining({
-          type: 'file:processing_failed',
           fileId: 'test-file-123',
-          status: 'failed',
-          error: 'Download failed',
-        })
+          userId: 'test-user-456',
+          sessionId: 'test-session-789',
+        }),
+        'Download failed'
       );
     });
 
-    it('should skip WebSocket events when sessionId is undefined', async () => {
+    it('should pass undefined sessionId to FileEventEmitter (emitter handles skip)', async () => {
       const job = createMockJob({ sessionId: undefined });
 
       await service.processFile(job);
 
-      // Verify no WebSocket events were emitted
-      expect(mockSocketEmit).not.toHaveBeenCalled();
-      expect(mockLogger.debug).toHaveBeenCalledWith(
+      // FileEventEmitter handles the skip internally - verify it was still called
+      expect(mockEmitProgress).toHaveBeenCalledWith(
         expect.objectContaining({
-          sessionId: undefined,
           fileId: 'test-file-123',
+          userId: 'test-user-456',
+          sessionId: undefined,
         }),
-        expect.stringContaining('Skipping progress event')
+        expect.any(Object)
       );
     });
 
-    it('should skip WebSocket events when Socket.IO not initialized', async () => {
+    it('should call FileEventEmitter regardless of Socket.IO state (emitter handles check)', async () => {
       mockIsSocketServiceInitialized.mockReturnValue(false);
       const job = createMockJob();
 
       await service.processFile(job);
 
-      // Verify no WebSocket events were emitted
-      expect(mockSocketEmit).not.toHaveBeenCalled();
-      expect(mockLogger.debug).toHaveBeenCalledWith(
-        expect.objectContaining({
-          sessionId: 'test-session-789',
-        }),
-        expect.stringContaining('Socket.IO not initialized')
-      );
+      // FileEventEmitter handles the Socket.IO check internally
+      // FileProcessingService just calls the emitter
+      expect(mockEmitProgress).toHaveBeenCalled();
+      expect(mockEmitCompletion).toHaveBeenCalled();
     });
 
-    it('should not throw if WebSocket emit fails', async () => {
-      mockSocketEmit.mockImplementation(() => {
-        throw new Error('WebSocket emit failed');
-      });
-
+    it('should call FileEventEmitter methods for all event types', async () => {
       const job = createMockJob();
 
-      // Should complete successfully despite WebSocket error
-      await expect(service.processFile(job)).resolves.not.toThrow();
+      await service.processFile(job);
 
-      // Verify error was logged but not rethrown
-      expect(mockLogger.error).toHaveBeenCalledWith(
-        expect.objectContaining({
-          error: expect.any(Error),
-          sessionId: 'test-session-789',
-          fileId: 'test-file-123',
-        }),
-        'Failed to emit progress event'
-      );
+      // Verify all emitter methods are called
+      expect(mockEmitProgress).toHaveBeenCalled();
+      expect(mockEmitCompletion).toHaveBeenCalled();
+
+      // emitError is not called on success
+      expect(mockEmitError).not.toHaveBeenCalled();
     });
   });
 

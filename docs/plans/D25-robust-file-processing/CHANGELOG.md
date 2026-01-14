@@ -152,8 +152,8 @@ Implementar lógica de retry automático con exponential backoff y cleanup de da
 
 - **`backend/src/domains/files/cleanup/PartialDataCleaner.ts`**
   - `cleanupForFile(userId, fileId)` - Limpia chunks y search docs de un archivo
-  - `cleanupOrphanedChunks(userId?, olderThanDays?)` - Chunks huérfanos
-  - `cleanupOrphanedSearchDocs(userId?)` - Docs de AI Search huérfanos
+  - `cleanupOrphanedChunks(olderThanDays?)` - Chunks huérfanos (opera globalmente)
+  - `cleanupOrphanedSearchDocs()` - Docs de AI Search huérfanos (delega a OrphanCleanupJob)
   - `cleanupOldFailedFiles(olderThanDays)` - Batch cleanup de archivos viejos
   - Integra con `VectorSearchService.deleteChunksForFile()`
   - Singleton pattern con `getPartialDataCleaner()` y `__resetPartialDataCleaner()`
@@ -219,12 +219,137 @@ Implementar lógica de retry automático con exponential backoff y cleanup de da
 
 ---
 
-## [Unreleased]
+## [Sprint 3] - 2026-01-14 ✅ COMPLETADO
 
-### Sprint 3 - WebSocket Events (Pending)
-- [ ] Events with attempt info
-- [ ] `file:readiness_changed` event
-- [ ] `file:permanently_failed` event
+### Objetivo
+Centralizar la emisión de eventos WebSocket para file processing usando `FileEventEmitter`.
+
+### Added - Domain Layer (Event Emission)
+- **`backend/src/domains/files/emission/IFileEventEmitter.ts`**
+  - Interface para dependency injection
+  - `FileEventContext` type para contexto de eventos
+  - `ReadinessChangedPayload`, `PermanentlyFailedPayload`, `ProcessingProgressPayload`, `CompletionStats`
+  - Métodos: `emitReadinessChanged()`, `emitPermanentlyFailed()`, `emitProgress()`, `emitCompletion()`, `emitError()`
+
+- **`backend/src/domains/files/emission/FileEventEmitter.ts`**
+  - Singleton implementation para emisión centralizada de eventos
+  - Canales: `file:status` (readiness changes), `file:processing` (progress/completion/error)
+  - Never throws - errores de WebSocket se loguean pero no fallan operaciones
+  - Verifica `isSocketServiceInitialized()` antes de emitir
+  - Skip silencioso si no hay sessionId
+  - Singleton pattern con `getFileEventEmitter()` y `__resetFileEventEmitter()`
+
+- **`backend/src/domains/files/emission/index.ts`**
+  - Barrel export para módulo emission
+
+### Added - Types (Shared Package)
+- **`packages/shared/src/types/file.types.ts`**
+  - `BaseFileWebSocketEvent` - Base interface con fileId y timestamp
+  - `FileReadinessChangedEvent` - Cambios de readiness state
+  - `FilePermanentlyFailedEvent` - Fallo permanente con retry counts
+  - `FileProcessingProgressEvent` - Progreso con attemptNumber/maxAttempts
+  - `FileProcessingCompletedEvent` - Completado con stats
+  - `FileProcessingFailedEvent` - Error con mensaje
+  - `FileWebSocketEvent` - Union type de todos los eventos
+
+### Added - Unit Tests
+- **`backend/src/__tests__/unit/domains/files/FileEventEmitter.test.ts`**
+  - 29 tests cubriendo:
+    - Singleton pattern (getInstance, resetInstance)
+    - `emitReadinessChanged()` - emite a canal `file:status`
+    - `emitPermanentlyFailed()` - emite con detalles de fallo
+    - `emitProgress()` - incluye attemptNumber/maxAttempts
+    - `emitCompletion()` - stats con textLength, pageCount, ocrUsed
+    - `emitError()` - emite mensaje de error
+    - Skip si no hay sessionId
+    - Skip si Socket.IO no inicializado
+    - No lanzar error si emit falla (error swallowing)
+
+### Modified - ProcessingRetryManager
+- **`backend/src/domains/files/retry/IProcessingRetryManager.ts`**
+  - Agregado `sessionId?: string` a `handlePermanentFailure()` para WebSocket routing
+
+- **`backend/src/domains/files/retry/ProcessingRetryManager.ts`**
+  - Integra `IFileEventEmitter` como dependency
+  - `handlePermanentFailure()` ahora emite:
+    - `file:permanently_failed` con retry counts y canRetryManually flag
+    - `file:readiness_changed` con transición a 'failed'
+  - Constructor inyecta `getFileEventEmitter()` por defecto
+
+### Modified - MessageQueue Workers
+- **`backend/src/infrastructure/queue/MessageQueue.ts`**
+  - Agregado `sessionId` a `EmbeddingGenerationJob` interface
+  - Workers pasan `sessionId` a `handlePermanentFailure()`:
+    - `processFileProcessingJob()` - pasa sessionId del job
+    - `processEmbeddingGeneration()` - pasa sessionId del job
+    - `processFileChunkingJob()` - pasa sessionId del job
+  - Al completar embedding exitosamente, emite:
+    - `file:readiness_changed` con transición 'processing' → 'ready'
+
+### Modified - FileProcessingService
+- **`backend/src/services/files/FileProcessingService.ts`**
+  - Reemplazado emisión directa de Socket.IO con `FileEventEmitter`
+  - `emitProgress()` ahora delega a `eventEmitter.emitProgress()`
+  - `emitCompletion()` ahora delega a `eventEmitter.emitCompletion()`
+  - `emitError()` ahora delega a `eventEmitter.emitError()`
+  - Eventos de progreso incluyen `attemptNumber` y `maxAttempts` del job
+
+### Modified - Test Updates
+- **`backend/src/__tests__/unit/services/files/FileProcessingService.test.ts`**
+  - Agregado mock para `FileEventEmitter`
+  - Tests de WebSocket Events actualizados para verificar:
+    - Llamadas a `mockEmitProgress()` con context y payload
+    - Llamadas a `mockEmitCompletion()` con stats
+    - Llamadas a `mockEmitError()` con mensaje
+    - Delegación correcta de sessionId (emitter maneja skip)
+    - Delegación correcta independiente de estado de Socket.IO (emitter maneja check)
+
+### Added - Constants (Shared Package)
+- **`packages/shared/src/constants/file-processing.ts`**
+  - `PROCESSING_STATUS` - Constantes: `PENDING`, `PROCESSING`, `COMPLETED`, `FAILED`
+  - `EMBEDDING_STATUS` - Constantes: `PENDING`, `QUEUED`, `PROCESSING`, `COMPLETED`, `FAILED`
+  - `FILE_READINESS_STATE` - Constantes: `UPLOADING`, `PROCESSING`, `READY`, `FAILED`
+  - Tipos derivados: `ProcessingStatusValue`, `EmbeddingStatusValue`, `FileReadinessStateValue`
+
+- **`packages/shared/src/constants/websocket-events.ts`**
+  - `FILE_WS_CHANNELS` - Canales: `STATUS = 'file:status'`, `PROCESSING = 'file:processing'`
+  - `FILE_WS_EVENTS` - Eventos: `READINESS_CHANGED`, `PERMANENTLY_FAILED`, `PROCESSING_PROGRESS`, `PROCESSING_COMPLETED`, `PROCESSING_FAILED`
+  - Tipos derivados: `FileWsChannel`, `FileWsEventType`
+
+- **`packages/shared/src/constants/index.ts`**
+  - Barrel exports para file-processing y websocket-events
+
+### Modified - Magic String Elimination
+- **`backend/src/infrastructure/queue/MessageQueue.ts`**
+  - Reemplazado `'pending'` → `EMBEDDING_STATUS.PENDING` (línea 1896)
+  - Reemplazado `'failed'` → `EMBEDDING_STATUS.FAILED` (línea 1926)
+  - Import agregado: `import { EMBEDDING_STATUS } from '@bc-agent/shared'`
+
+- **`backend/src/services/files/FileProcessingService.ts`**
+  - Reemplazado 7x `'processing'` → `PROCESSING_STATUS.PROCESSING`
+  - Reemplazado 1x `'completed'` → `PROCESSING_STATUS.COMPLETED`
+  - Reemplazado 1x `'failed'` → `PROCESSING_STATUS.FAILED`
+  - Actualizado tipo de parámetro: `status: string` → `status: ProcessingStatus`
+  - Import agregado: `import { PROCESSING_STATUS } from '@bc-agent/shared'`
+
+- **`backend/src/domains/files/emission/FileEventEmitter.ts`**
+  - Usa `FILE_WS_CHANNELS.STATUS` y `FILE_WS_CHANNELS.PROCESSING` en lugar de strings
+  - Usa `FILE_WS_EVENTS.*` para tipos de evento
+  - Usa `PROCESSING_STATUS.COMPLETED` y `PROCESSING_STATUS.FAILED` en emisiones
+
+### Verification
+
+```
+✅ Type verification passing (npm run verify:types)
+✅ Backend unit tests: 2262 passing, 12 skipped
+✅ FileEventEmitter tests: 29 passing
+✅ Lint: 0 errors, 38 warnings (pre-existing)
+✅ No magic strings restantes en file processing status
+```
+
+---
+
+## [Unreleased]
 
 ### Sprint 4 - Frontend (Pending)
 - [ ] `fileProcessingStore` (Zustand)

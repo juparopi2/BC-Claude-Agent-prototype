@@ -8,6 +8,7 @@
  * - status: Readiness state computation (ReadinessStateComputer)
  * - retry: Retry tracking and orchestration (FileRetryService, ProcessingRetryManager)
  * - cleanup: Partial data cleanup (PartialDataCleaner)
+ * - emission: WebSocket event emission (FileEventEmitter)
  *
  * @module domains/files
  */
@@ -23,3 +24,6 @@ export * from './retry';
 
 // Cleanup
 export * from './cleanup';
+
+// Event emission
+export * from './emission';

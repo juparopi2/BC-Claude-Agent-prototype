@@ -14,18 +14,21 @@
 
 import { createChildLogger } from '@/shared/utils/logger';
 import type { Logger } from 'pino';
-import type {
-  RetryDecisionResult,
-  ManualRetryResult,
-  RetryScope,
-  RetryPhase,
-  ParsedFile,
-  ProcessingStatus,
+import {
+  type RetryDecisionResult,
+  type ManualRetryResult,
+  type RetryScope,
+  type RetryPhase,
+  type ParsedFile,
+  type ProcessingStatus,
+  PROCESSING_STATUS,
 } from '@bc-agent/shared';
 import type { IProcessingRetryManager } from './IProcessingRetryManager';
 import type { IFileRetryService } from './IFileRetryService';
 import { getFileRetryService } from './FileRetryService';
 import { getFileProcessingConfig, type FileProcessingConfig } from '../config';
+import type { IFileEventEmitter } from '../emission';
+import { getFileEventEmitter } from '../emission';
 
 /**
  * Dependencies for ProcessingRetryManager (DI support)
@@ -34,6 +37,7 @@ export interface ProcessingRetryManagerDependencies {
   retryService?: IFileRetryService;
   config?: FileProcessingConfig;
   logger?: Logger;
+  eventEmitter?: IFileEventEmitter;
   getFile?: (userId: string, fileId: string) => Promise<ParsedFile | null>;
   updateProcessingStatus?: (userId: string, fileId: string, status: ProcessingStatus) => Promise<void>;
   cleanupForFile?: (userId: string, fileId: string) => Promise<void>;
@@ -48,6 +52,7 @@ export class ProcessingRetryManager implements IProcessingRetryManager {
   private readonly log: Logger;
   private readonly retryService: IFileRetryService;
   private readonly config: FileProcessingConfig;
+  private readonly eventEmitter: IFileEventEmitter;
   private readonly getFileFn: (userId: string, fileId: string) => Promise<ParsedFile | null>;
   private readonly updateProcessingStatusFn: (userId: string, fileId: string, status: ProcessingStatus) => Promise<void>;
   private readonly cleanupForFileFn: (userId: string, fileId: string) => Promise<void>;
@@ -56,6 +61,7 @@ export class ProcessingRetryManager implements IProcessingRetryManager {
     this.log = deps?.logger ?? createChildLogger({ service: 'ProcessingRetryManager' });
     this.retryService = deps?.retryService ?? getFileRetryService();
     this.config = deps?.config ?? getFileProcessingConfig();
+    this.eventEmitter = deps?.eventEmitter ?? getFileEventEmitter();
 
     // Lazy-loaded dependencies to avoid circular imports
     this.getFileFn = deps?.getFile ?? this.defaultGetFile;
@@ -187,9 +193,13 @@ export class ProcessingRetryManager implements IProcessingRetryManager {
   async handlePermanentFailure(
     userId: string,
     fileId: string,
-    errorMessage: string
+    errorMessage: string,
+    sessionId?: string
   ): Promise<void> {
     this.log.info({ userId, fileId }, 'Handling permanent failure');
+
+    // Get file for retry counts before marking as failed
+    const file = await this.getFileFn(userId, fileId);
 
     // 1. Mark file as permanently failed
     await this.retryService.markAsPermanentlyFailed(userId, fileId);
@@ -213,7 +223,24 @@ export class ProcessingRetryManager implements IProcessingRetryManager {
       );
     }
 
-    // 4. TODO: Emit WebSocket event (Sprint 3)
+    // 4. Emit WebSocket events
+    const ctx = { fileId, userId, sessionId };
+
+    // Emit permanently_failed event
+    this.eventEmitter.emitPermanentlyFailed(ctx, {
+      error: errorMessage,
+      processingRetryCount: file?.processingRetryCount ?? 0,
+      embeddingRetryCount: file?.embeddingRetryCount ?? 0,
+      canRetryManually: true,
+    });
+
+    // Emit readiness_changed to 'failed'
+    this.eventEmitter.emitReadinessChanged(ctx, {
+      previousState: PROCESSING_STATUS.PROCESSING,
+      newState: PROCESSING_STATUS.FAILED,
+      processingStatus: PROCESSING_STATUS.FAILED,
+      embeddingStatus: file?.embeddingStatus ?? PROCESSING_STATUS.PENDING,
+    });
   }
 
   /**

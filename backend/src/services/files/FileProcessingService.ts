@@ -27,13 +27,14 @@
 import { createChildLogger } from '@/shared/utils/logger';
 import { FileService } from './FileService';
 import { getFileUploadService } from './FileUploadService';
-import { getSocketIO, isSocketServiceInitialized } from '@services/websocket/SocketService';
 import { getUsageTrackingService } from '@/domains/billing/tracking/UsageTrackingService';
+import { getFileEventEmitter } from '@/domains/files/emission';
 import { TextProcessor } from './processors/TextProcessor';
 import { PdfProcessor } from './processors/PdfProcessor';
 import { DocxProcessor } from './processors/DocxProcessor';
 import { ExcelProcessor } from './processors/ExcelProcessor';
 import { ImageProcessor } from './processors/ImageProcessor';
+import { PROCESSING_STATUS } from '@bc-agent/shared';
 import type { DocumentProcessor, ExtractionResult } from './processors/types';
 import type { FileProcessingJob } from '@/infrastructure/queue/MessageQueue';
 import type { ProcessingStatus } from '@/types/file.types';
@@ -142,23 +143,35 @@ export class FileProcessingService {
    * @throws Error if processing fails (will trigger BullMQ retry)
    */
   public async processFile(job: FileProcessingJob): Promise<void> {
-    const { fileId, userId, sessionId, mimeType, blobPath, fileName } = job;
+    const {
+      fileId,
+      userId,
+      sessionId,
+      mimeType,
+      blobPath,
+      fileName,
+      attemptNumber = 1,
+      maxAttempts = 2,
+    } = job;
 
     logger.info(
-      { fileId, userId, sessionId, mimeType, fileName },
+      { fileId, userId, sessionId, mimeType, fileName, attemptNumber, maxAttempts },
       'Starting file processing'
     );
 
+    // Create event context for FileEventEmitter
+    const eventCtx = { fileId, userId, sessionId };
+
     try {
       // Step 1: Update status to 'processing' and emit 0% progress
-      await this.updateStatus(userId, fileId, 'processing');
-      this.emitProgress(sessionId, fileId, 0, 'processing');
+      await this.updateStatus(userId, fileId, PROCESSING_STATUS.PROCESSING);
+      this.emitProgress(eventCtx, 0, PROCESSING_STATUS.PROCESSING, attemptNumber, maxAttempts);
 
       // Step 2: Download blob from storage (emit 20% progress)
       logger.debug({ fileId, blobPath }, 'Downloading blob from storage');
       const fileUploadService = getFileUploadService();
       const buffer = await fileUploadService.downloadFromBlob(blobPath);
-      this.emitProgress(sessionId, fileId, 20, 'processing');
+      this.emitProgress(eventCtx, 20, PROCESSING_STATUS.PROCESSING, attemptNumber, maxAttempts);
 
       logger.info(
         { fileId, bufferSize: buffer.length },
@@ -170,14 +183,14 @@ export class FileProcessingService {
       if (!processor) {
         throw new Error(`No processor found for MIME type: ${mimeType}`);
       }
-      this.emitProgress(sessionId, fileId, 30, 'processing');
+      this.emitProgress(eventCtx, 30, PROCESSING_STATUS.PROCESSING, attemptNumber, maxAttempts);
 
       logger.debug({ fileId, mimeType, processor: processor.constructor.name }, 'Processor selected');
 
       // Step 4: Extract text (emit 70% progress after completion)
       logger.debug({ fileId, fileName }, 'Extracting text from document');
       const result: ExtractionResult = await processor.extractText(buffer, fileName);
-      this.emitProgress(sessionId, fileId, 70, 'processing');
+      this.emitProgress(eventCtx, 70, PROCESSING_STATUS.PROCESSING, attemptNumber, maxAttempts);
 
       logger.info(
         {
@@ -207,8 +220,8 @@ export class FileProcessingService {
       }
 
       // Step 5: Update database with extracted text and 'completed' status (emit 90% progress)
-      await this.updateStatus(userId, fileId, 'completed', result.text);
-      this.emitProgress(sessionId, fileId, 90, 'processing');
+      await this.updateStatus(userId, fileId, PROCESSING_STATUS.COMPLETED, result.text);
+      this.emitProgress(eventCtx, 90, PROCESSING_STATUS.PROCESSING, attemptNumber, maxAttempts);
 
       // Step 5.5: Enqueue file chunking job (fire-and-forget)
       // This triggers the chunking → embedding → AI Search indexing pipeline
@@ -217,7 +230,7 @@ export class FileProcessingService {
       });
 
       // Step 6: Emit completion event (100% progress)
-      this.emitCompletion(sessionId, fileId, result);
+      this.emitCompletion(eventCtx, result);
       logger.info({ fileId, userId }, 'File processing completed successfully');
     } catch (error) {
       // On error: Update status to 'failed' and emit error event
@@ -236,10 +249,10 @@ export class FileProcessingService {
       );
 
       // Update database status
-      await this.updateStatus(userId, fileId, 'failed');
+      await this.updateStatus(userId, fileId, PROCESSING_STATUS.FAILED);
 
       // Emit error event
-      this.emitError(sessionId, fileId, errorMessage);
+      this.emitError(eventCtx, errorMessage);
 
       // Rethrow to trigger BullMQ retry
       throw error;
@@ -275,121 +288,63 @@ export class FileProcessingService {
   }
 
   /**
-   * Emit progress event via WebSocket
+   * Emit progress event via FileEventEmitter
    *
-   * @param sessionId - Session ID (optional, for WebSocket room targeting)
-   * @param fileId - File ID
+   * Sends progress updates to the client during file processing.
+   * Now includes attemptNumber and maxAttempts for retry tracking.
+   *
+   * @param ctx - Event context (fileId, userId, sessionId)
    * @param progress - Progress percentage (0-100)
-   * @param status - Processing status string
+   * @param status - Processing status (from PROCESSING_STATUS constants)
+   * @param attemptNumber - Current retry attempt (1-based)
+   * @param maxAttempts - Maximum retry attempts configured
    */
   private emitProgress(
-    sessionId: string | undefined,
-    fileId: string,
+    ctx: { fileId: string; userId: string; sessionId?: string },
     progress: number,
-    status: string
+    status: ProcessingStatus,
+    attemptNumber: number,
+    maxAttempts: number
   ): void {
-    if (!sessionId || !isSocketServiceInitialized()) {
-      logger.debug(
-        { sessionId, fileId, progress },
-        'Skipping progress event: no session or Socket.IO not initialized'
-      );
-      return;
-    }
-
-    try {
-      const io = getSocketIO();
-      io.to(sessionId).emit('file:processing', {
-        type: 'file:processing_progress',
-        fileId,
-        status,
-        progress,
-        timestamp: new Date().toISOString(),
-      });
-
-      logger.debug({ sessionId, fileId, progress, status }, 'Progress event emitted');
-    } catch (error) {
-      logger.error({ error, sessionId, fileId, progress }, 'Failed to emit progress event');
-      // Don't throw - WebSocket errors should not fail the job
-    }
+    const eventEmitter = getFileEventEmitter();
+    eventEmitter.emitProgress(ctx, {
+      progress,
+      status,
+      attemptNumber,
+      maxAttempts,
+    });
   }
 
   /**
-   * Emit completion event via WebSocket
+   * Emit completion event via FileEventEmitter
    *
-   * @param sessionId - Session ID (optional, for WebSocket room targeting)
-   * @param fileId - File ID
+   * @param ctx - Event context (fileId, userId, sessionId)
    * @param result - Extraction result with text and metadata
    */
   private emitCompletion(
-    sessionId: string | undefined,
-    fileId: string,
+    ctx: { fileId: string; userId: string; sessionId?: string },
     result: ExtractionResult
   ): void {
-    if (!sessionId || !isSocketServiceInitialized()) {
-      logger.debug(
-        { sessionId, fileId },
-        'Skipping completion event: no session or Socket.IO not initialized'
-      );
-      return;
-    }
-
-    try {
-      const io = getSocketIO();
-      io.to(sessionId).emit('file:processing', {
-        type: 'file:processing_completed',
-        fileId,
-        status: 'completed',
-        stats: {
-          textLength: result.text.length,
-          pageCount: result.metadata.pageCount || 0,
-          ocrUsed: result.metadata.ocrUsed || false,
-        },
-        progress: 100,
-        timestamp: new Date().toISOString(),
-      });
-
-      logger.debug({ sessionId, fileId, textLength: result.text.length }, 'Completion event emitted');
-    } catch (error) {
-      logger.error({ error, sessionId, fileId }, 'Failed to emit completion event');
-      // Don't throw - WebSocket errors should not fail the job
-    }
+    const eventEmitter = getFileEventEmitter();
+    eventEmitter.emitCompletion(ctx, {
+      textLength: result.text.length,
+      pageCount: result.metadata.pageCount || 0,
+      ocrUsed: result.metadata.ocrUsed || false,
+    });
   }
 
   /**
-   * Emit error event via WebSocket
+   * Emit error event via FileEventEmitter
    *
-   * @param sessionId - Session ID (optional, for WebSocket room targeting)
-   * @param fileId - File ID
+   * @param ctx - Event context (fileId, userId, sessionId)
    * @param errorMessage - Error message
    */
   private emitError(
-    sessionId: string | undefined,
-    fileId: string,
+    ctx: { fileId: string; userId: string; sessionId?: string },
     errorMessage: string
   ): void {
-    if (!sessionId || !isSocketServiceInitialized()) {
-      logger.debug(
-        { sessionId, fileId },
-        'Skipping error event: no session or Socket.IO not initialized'
-      );
-      return;
-    }
-
-    try {
-      const io = getSocketIO();
-      io.to(sessionId).emit('file:processing', {
-        type: 'file:processing_failed',
-        fileId,
-        status: 'failed',
-        error: errorMessage,
-        timestamp: new Date().toISOString(),
-      });
-
-      logger.debug({ sessionId, fileId, errorMessage }, 'Error event emitted');
-    } catch (error) {
-      logger.error({ error, sessionId, fileId }, 'Failed to emit error event');
-      // Don't throw - WebSocket errors should not fail the job
-    }
+    const eventEmitter = getFileEventEmitter();
+    eventEmitter.emitError(ctx, errorMessage);
   }
 
   /**

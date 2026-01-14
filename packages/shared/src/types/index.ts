@@ -124,6 +124,12 @@ export type {
   BatchCleanupResult,
   RetryProcessingRequest,
   RetryProcessingResponse,
+  FileReadinessChangedEvent,
+  FilePermanentlyFailedEvent,
+  FileProcessingProgressEvent,
+  FileProcessingCompletedEvent,
+  FileProcessingFailedEvent,
+  FileWebSocketEvent,
 } from './file.types';
 
 // File constants

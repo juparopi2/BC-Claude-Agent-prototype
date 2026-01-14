@@ -465,6 +465,7 @@ Los tests documentan el comportamiento esperado para cuando se implementen.
 | ~~D24~~ | ~~UserId Case Sensitivity (AI Search)~~ | ~~Phase 6~~ | ~~ALTA~~ | ~~0.5~~ | ✅ COMPLETADO |
 | **D25** | **EmbeddingService Tests Env Injection** | **Phase 6** | **MEDIA** | **1-2** | Pendiente |
 | **D27** | **MessageQueue Refactor - God File Decomposition** | **Phase 6** | **ALTA** | **3-5** | Pendiente |
+| **D28** | **WebSocket Event Constants Centralization** | **Phase 6** | **MEDIA** | **2-3** | Parcial (File events ✅) |
 
 
 **Total estimado Phase 6:** ~30-35 días (ajustado - D20, D21, D22, D23, D24, D26 completados)
@@ -1212,6 +1213,130 @@ backend/src/infrastructure/queue/
 
 ---
 
+## D28: WebSocket Event Constants Centralization
+
+**Fecha análisis:** 2026-01-14
+**Estado:** PARCIALMENTE COMPLETADO (File events done, others pending)
+**Prioridad:** MEDIA
+**Estimación:** 2-3 días
+
+### Descripción
+
+Los eventos WebSocket están hardcodeados como magic strings en múltiples archivos. Esto dificulta:
+1. Refactoring seguro (renombrar eventos requiere buscar strings)
+2. Autocompletado de IDE
+3. Type safety en discriminated unions
+
+### Progreso
+
+✅ **File Events** (D25 Sprint 3 - 2026-01-14):
+- Creado `packages/shared/src/constants/websocket-events.ts`
+- `FILE_WS_CHANNELS`: `file:status`, `file:processing`
+- `FILE_WS_EVENTS`: `file:readiness_changed`, `file:permanently_failed`, `file:processing_progress`, `file:processing_completed`, `file:processing_failed`
+- Actualizado `FileEventEmitter.ts`, `file.types.ts`, y tests
+
+⏳ **Pendientes** (por categoría):
+
+#### Session Events
+| Evento | Dirección | Archivos |
+|--------|-----------|----------|
+| `session:join` | Client → Server | server.ts, tests |
+| `session:leave` | Client → Server | server.ts, tests |
+| `session:joined` | Server → Client | server.ts, tests |
+| `session:left` | Server → Client | server.ts, tests |
+| `session:error` | Server → Client | server.ts, tests |
+| `session:ready` | Server → Client | server.ts |
+
+#### Agent Events
+| Evento | Dirección | Archivos |
+|--------|-----------|----------|
+| `agent:event` | Server → Client | ChatMessageHandler.ts, ApprovalManager.ts, tests |
+| `agent:error` | Server → Client | ChatMessageHandler.ts, tests |
+| `agent:thinking` | Server → Client | server.socket.test.ts |
+| `agent:message_complete` | Server → Client | server.socket.test.ts |
+| `agent:tool_use` | Server → Client | server.socket.test.ts |
+| `agent:complete` | Server → Client | server.socket.test.ts |
+
+#### Approval Events
+| Evento | Dirección | Archivos |
+|--------|-----------|----------|
+| `approval:response` | Client → Server | tests |
+| `approval:error` | Server → Client | server.ts, tests |
+| `approval:resolved` | Server → Client | server.socket.test.ts |
+
+#### Chat Events
+| Evento | Dirección | Archivos |
+|--------|-----------|----------|
+| `chat:message` | Client → Server | tests |
+
+#### Todo Events
+| Evento | Dirección | Archivos |
+|--------|-----------|----------|
+| `todo:created` | Server → Client | TodoManager.ts |
+| `todo:completed` | Server → Client | TodoManager.ts |
+| `todo:updated` | Server → Client | TodoManager.ts |
+
+#### Connection Events
+| Evento | Dirección | Archivos |
+|--------|-----------|----------|
+| `connected` | Server → Client | SocketIOServerFactory.ts |
+| `pong` | Server → Client | SocketIOServerFactory.ts |
+
+### Estructura Propuesta
+
+```typescript
+// packages/shared/src/constants/websocket-events.ts
+
+// Ya implementado:
+export const FILE_WS_CHANNELS = { ... };
+export const FILE_WS_EVENTS = { ... };
+
+// Por implementar:
+export const SESSION_WS_EVENTS = {
+  JOIN: 'session:join',
+  LEAVE: 'session:leave',
+  JOINED: 'session:joined',
+  LEFT: 'session:left',
+  ERROR: 'session:error',
+  READY: 'session:ready',
+} as const;
+
+export const AGENT_WS_EVENTS = {
+  EVENT: 'agent:event',
+  ERROR: 'agent:error',
+  THINKING: 'agent:thinking',
+  MESSAGE_COMPLETE: 'agent:message_complete',
+  TOOL_USE: 'agent:tool_use',
+  COMPLETE: 'agent:complete',
+} as const;
+
+export const APPROVAL_WS_EVENTS = {
+  RESPONSE: 'approval:response',
+  ERROR: 'approval:error',
+  RESOLVED: 'approval:resolved',
+} as const;
+
+export const CHAT_WS_EVENTS = {
+  MESSAGE: 'chat:message',
+} as const;
+
+export const TODO_WS_EVENTS = {
+  CREATED: 'todo:created',
+  COMPLETED: 'todo:completed',
+  UPDATED: 'todo:updated',
+} as const;
+```
+
+### Plan de Implementación
+
+1. **Fase 1**: Agregar constantes para cada categoría
+2. **Fase 2**: Actualizar server.ts (session events)
+3. **Fase 3**: Actualizar ChatMessageHandler.ts y ApprovalManager.ts (agent events)
+4. **Fase 4**: Actualizar TodoManager.ts (todo events)
+5. **Fase 5**: Actualizar todos los tests
+
+---
+
 ## Criterios de Priorización
 
 ### Alta Prioridad
@@ -1231,4 +1356,4 @@ backend/src/infrastructure/queue/
 
 ---
 
-*Última actualización: 2026-01-13*
+*Última actualización: 2026-01-14*

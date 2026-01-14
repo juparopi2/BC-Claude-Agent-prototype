@@ -38,6 +38,12 @@ import type {
   IEmbeddingServiceMinimal,
   IVectorSearchServiceMinimal,
 } from './IMessageQueueDependencies';
+import { getFileEventEmitter } from '@/domains/files/emission';
+import {
+  PROCESSING_STATUS,
+  EMBEDDING_STATUS,
+  FILE_READINESS_STATE,
+} from '@bc-agent/shared';
 
 /**
  * Queue Names
@@ -143,6 +149,10 @@ export interface FileProcessingJob {
   blobPath: string;
   /** Original filename for logging */
   fileName: string;
+  /** Current retry attempt number (1-based, D25 Sprint 3) */
+  attemptNumber?: number;
+  /** Maximum retry attempts configured (D25 Sprint 3) */
+  maxAttempts?: number;
 }
 
 /**
@@ -151,6 +161,8 @@ export interface FileProcessingJob {
 export interface EmbeddingGenerationJob {
   fileId: string;
   userId: string;
+  /** Session ID for WebSocket events (optional) */
+  sessionId?: string;
   chunks: Array<{
     id: string; // chunkId
     text: string;
@@ -1655,7 +1667,7 @@ export class MessageQueue {
   private async processFileProcessingJob(
     job: Job<FileProcessingJob>
   ): Promise<void> {
-    const { fileId, userId, sessionId: _sessionId, mimeType, fileName } = job.data;
+    const { fileId, userId, sessionId, mimeType, fileName } = job.data;
 
     this.log.info('Processing file', {
       jobId: job.id,
@@ -1713,8 +1725,8 @@ export class MessageQueue {
           throw error;
         }
 
-        // Max retries exceeded - handle permanent failure
-        await retryManager.handlePermanentFailure(userId, fileId, errorMessage);
+        // Max retries exceeded - handle permanent failure (includes WebSocket events)
+        await retryManager.handlePermanentFailure(userId, fileId, errorMessage, sessionId);
         this.log.warn('File processing permanently failed after max retries', {
           jobId: job.id,
           fileId,
@@ -1749,7 +1761,7 @@ export class MessageQueue {
   private async processEmbeddingGeneration(
     job: Job<EmbeddingGenerationJob>
   ): Promise<void> {
-    const { fileId, userId, chunks } = job.data;
+    const { fileId, userId, sessionId, chunks } = job.data;
 
     this.log.info('Processing embedding generation job', {
       jobId: job.id,
@@ -1828,8 +1840,20 @@ export class MessageQueue {
       
       // 5. Update File status
       await this.executeQueryFn(
-          'UPDATE files SET embedding_status = \'completed\' WHERE id = @fileId',
+          `UPDATE files SET embedding_status = '${EMBEDDING_STATUS.COMPLETED}' WHERE id = @fileId`,
           { fileId }
+      );
+
+      // 6. Emit readiness_changed event (file is now ready for RAG)
+      const eventEmitter = getFileEventEmitter();
+      eventEmitter.emitReadinessChanged(
+        { fileId, userId, sessionId },
+        {
+          previousState: FILE_READINESS_STATE.PROCESSING,
+          newState: FILE_READINESS_STATE.READY,
+          processingStatus: PROCESSING_STATUS.COMPLETED,
+          embeddingStatus: EMBEDDING_STATUS.COMPLETED,
+        }
       );
 
       this.log.info('Embedding generation completed', {
@@ -1869,15 +1893,15 @@ export class MessageQueue {
         if (decision.shouldRetry) {
           // Update embedding_status to 'pending' for retry
           await this.executeQueryFn(
-            `UPDATE files SET embedding_status = 'pending' WHERE id = @fileId`,
+            `UPDATE files SET embedding_status = '${EMBEDDING_STATUS.PENDING}' WHERE id = @fileId`,
             { fileId }
           );
           // Throw to trigger BullMQ retry
           throw error;
         }
 
-        // Max retries exceeded - handle permanent failure
-        await retryManager.handlePermanentFailure(userId, fileId, errorMessage);
+        // Max retries exceeded - handle permanent failure (includes WebSocket events)
+        await retryManager.handlePermanentFailure(userId, fileId, errorMessage, sessionId);
         this.log.warn('Embedding generation permanently failed after max retries', {
           jobId: job.id,
           fileId,
@@ -1899,7 +1923,7 @@ export class MessageQueue {
         // Fall back to original behavior: mark as failed and throw
         try {
           await this.executeQueryFn(
-            `UPDATE files SET embedding_status = 'failed' WHERE id = @fileId`,
+            `UPDATE files SET embedding_status = '${EMBEDDING_STATUS.FAILED}' WHERE id = @fileId`,
             { fileId }
           );
         } catch (statusError) {
@@ -1924,7 +1948,7 @@ export class MessageQueue {
   private async processFileChunkingJob(
     job: Job<FileChunkingJob>
   ): Promise<void> {
-    const { fileId, userId, mimeType } = job.data;
+    const { fileId, userId, sessionId, mimeType } = job.data;
 
     this.log.info('Processing file chunking job', {
       jobId: job.id,
@@ -1981,8 +2005,8 @@ export class MessageQueue {
           throw error;
         }
 
-        // Max retries exceeded - handle permanent failure
-        await retryManager.handlePermanentFailure(userId, fileId, errorMessage);
+        // Max retries exceeded - handle permanent failure (includes WebSocket events)
+        await retryManager.handlePermanentFailure(userId, fileId, errorMessage, sessionId);
         this.log.warn('File chunking permanently failed after max retries', {
           jobId: job.id,
           fileId,

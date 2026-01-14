@@ -19,6 +19,8 @@
  * @module @bc-agent/shared/types/file
  */
 
+import { FILE_WS_EVENTS } from '../constants/websocket-events';
+
 /**
  * Processing status for async workers (Phase 3)
  *
@@ -792,3 +794,236 @@ export interface RetryProcessingResponse {
   /** Human-readable status message */
   message: string;
 }
+
+// ============================================
+// WebSocket Event Types
+// ============================================
+
+/**
+ * Base interface for file WebSocket events
+ */
+interface BaseFileWebSocketEvent {
+  /** ID of the file this event relates to */
+  fileId: string;
+
+  /** ISO 8601 timestamp when event was emitted */
+  timestamp: string;
+}
+
+/**
+ * Readiness state change event
+ * Channel: file:status
+ *
+ * Emitted when file transitions between readiness states:
+ * - uploading -> processing (file uploaded, processing started)
+ * - processing -> ready (all processing completed successfully)
+ * - processing -> failed (processing or embedding failed permanently)
+ * - failed -> processing (manual retry initiated)
+ *
+ * @example
+ * ```typescript
+ * const event: FileReadinessChangedEvent = {
+ *   type: 'file:readiness_changed',
+ *   fileId: 'file-123',
+ *   userId: 'user-456',
+ *   previousState: 'processing',
+ *   readinessState: 'ready',
+ *   processingStatus: 'completed',
+ *   embeddingStatus: 'completed',
+ *   timestamp: '2026-01-14T10:30:00.000Z',
+ * };
+ * ```
+ */
+export interface FileReadinessChangedEvent extends BaseFileWebSocketEvent {
+  type: typeof FILE_WS_EVENTS.READINESS_CHANGED;
+
+  /** User ID for multi-tenant filtering */
+  userId: string;
+
+  /** Previous readiness state (undefined for initial state) */
+  previousState?: FileReadinessState;
+
+  /** New readiness state */
+  readinessState: FileReadinessState;
+
+  /** Current processing status */
+  processingStatus: ProcessingStatus;
+
+  /** Current embedding status */
+  embeddingStatus: EmbeddingStatus;
+}
+
+/**
+ * Permanent failure event
+ * Channel: file:status
+ *
+ * Emitted when file has exhausted all automatic retries.
+ * User can still manually retry via POST /api/files/:id/retry-processing.
+ *
+ * @example
+ * ```typescript
+ * const event: FilePermanentlyFailedEvent = {
+ *   type: 'file:permanently_failed',
+ *   fileId: 'file-123',
+ *   userId: 'user-456',
+ *   error: 'OCR timeout after 30s',
+ *   processingRetryCount: 2,
+ *   embeddingRetryCount: 0,
+ *   canRetryManually: true,
+ *   timestamp: '2026-01-14T10:30:00.000Z',
+ * };
+ * ```
+ */
+export interface FilePermanentlyFailedEvent extends BaseFileWebSocketEvent {
+  type: typeof FILE_WS_EVENTS.PERMANENTLY_FAILED;
+
+  /** User ID for multi-tenant filtering */
+  userId: string;
+
+  /** Error message describing the failure */
+  error: string;
+
+  /** Number of processing retries attempted */
+  processingRetryCount: number;
+
+  /** Number of embedding retries attempted */
+  embeddingRetryCount: number;
+
+  /** Whether user can manually retry via API */
+  canRetryManually: boolean;
+}
+
+/**
+ * Processing progress event
+ * Channel: file:processing
+ *
+ * Emitted during text extraction, OCR, and embedding generation.
+ * Includes retry attempt information for user feedback.
+ *
+ * @example
+ * ```typescript
+ * const event: FileProcessingProgressEvent = {
+ *   type: 'file:processing_progress',
+ *   fileId: 'file-123',
+ *   progress: 50,
+ *   status: 'processing',
+ *   attemptNumber: 2,
+ *   maxAttempts: 3,
+ *   timestamp: '2026-01-14T10:30:00.000Z',
+ * };
+ * ```
+ */
+export interface FileProcessingProgressEvent extends BaseFileWebSocketEvent {
+  type: typeof FILE_WS_EVENTS.PROCESSING_PROGRESS;
+
+  /** Progress percentage (0-100) */
+  progress: number;
+
+  /** Current processing status */
+  status: ProcessingStatus;
+
+  /** Current retry attempt number (1-based) */
+  attemptNumber: number;
+
+  /** Maximum retry attempts configured */
+  maxAttempts: number;
+}
+
+/**
+ * Processing completed event
+ * Channel: file:processing
+ *
+ * Emitted when text extraction completes successfully.
+ * Note: This does not mean the file is ready for RAG - embedding may still be pending.
+ *
+ * @example
+ * ```typescript
+ * const event: FileProcessingCompletedEvent = {
+ *   type: 'file:processing_completed',
+ *   fileId: 'file-123',
+ *   status: 'completed',
+ *   progress: 100,
+ *   stats: { textLength: 5000, pageCount: 10, ocrUsed: true },
+ *   timestamp: '2026-01-14T10:30:00.000Z',
+ * };
+ * ```
+ */
+export interface FileProcessingCompletedEvent extends BaseFileWebSocketEvent {
+  type: typeof FILE_WS_EVENTS.PROCESSING_COMPLETED;
+
+  /** Always 'completed' for this event */
+  status: 'completed';
+
+  /** Always 100 for completion event */
+  progress: 100;
+
+  /** Processing statistics */
+  stats: {
+    /** Length of extracted text in characters */
+    textLength: number;
+
+    /** Number of pages (for documents) */
+    pageCount: number;
+
+    /** Whether OCR was used for text extraction */
+    ocrUsed: boolean;
+  };
+}
+
+/**
+ * Processing failed event
+ * Channel: file:processing
+ *
+ * Emitted when processing fails (before retry decision).
+ * This may be followed by automatic retry or permanent failure.
+ *
+ * @example
+ * ```typescript
+ * const event: FileProcessingFailedEvent = {
+ *   type: 'file:processing_failed',
+ *   fileId: 'file-123',
+ *   status: 'failed',
+ *   error: 'Failed to extract text from PDF',
+ *   timestamp: '2026-01-14T10:30:00.000Z',
+ * };
+ * ```
+ */
+export interface FileProcessingFailedEvent extends BaseFileWebSocketEvent {
+  type: typeof FILE_WS_EVENTS.PROCESSING_FAILED;
+
+  /** Always 'failed' for this event */
+  status: 'failed';
+
+  /** Error message describing the failure */
+  error: string;
+}
+
+/**
+ * Union type for all file WebSocket events
+ *
+ * Use discriminated union pattern with `type` field for type narrowing:
+ *
+ * @example
+ * ```typescript
+ * function handleFileEvent(event: FileWebSocketEvent) {
+ *   switch (event.type) {
+ *     case 'file:readiness_changed':
+ *       console.log('New state:', event.readinessState);
+ *       break;
+ *     case 'file:permanently_failed':
+ *       console.log('Error:', event.error);
+ *       break;
+ *     case 'file:processing_progress':
+ *       console.log('Progress:', event.progress, '%');
+ *       break;
+ *     // ...
+ *   }
+ * }
+ * ```
+ */
+export type FileWebSocketEvent =
+  | FileReadinessChangedEvent
+  | FilePermanentlyFailedEvent
+  | FileProcessingProgressEvent
+  | FileProcessingCompletedEvent
+  | FileProcessingFailedEvent;

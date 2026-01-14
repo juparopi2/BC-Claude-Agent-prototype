@@ -8,7 +8,7 @@ Sistema robusto de procesamiento de archivos con estados visuales claros, retry 
 |--------|--------|-------------|
 | Sprint 1 | ✅ Completado | Backend Foundation - Tipos, migration, ReadinessStateComputer, FileRetryService |
 | Sprint 2 | ✅ Completado | Retry & Cleanup - ProcessingRetryManager, PartialDataCleaner, API Endpoint, Cron Job, Worker Integration |
-| Sprint 3 | ⏳ Pendiente | WebSocket Events - Eventos con info de intentos |
+| Sprint 3 | ✅ Completado | WebSocket Events - FileEventEmitter centralizado, eventos con attemptNumber/maxAttempts |
 | Sprint 4 | ⏳ Pendiente | Frontend - Store, hooks, componentes visuales |
 | Sprint 5 | ⏳ Opcional | Refactorización - God files cleanup |
 
@@ -28,7 +28,9 @@ Sistema robusto de procesamiento de archivos con estados visuales claros, retry 
 npm run verify:types
 
 # Ejecutar tests del dominio
-npm run -w backend test:unit -- --grep "ReadinessState"
+npm run -w backend test:unit -- -t "ReadinessState"
+npm run -w backend test:unit -- -t "FileEventEmitter"
+npm run -w backend test:unit -- -t "ProcessingRetryManager"
 
 # Ejecutar todos los tests
 npm run -w backend test:unit
@@ -45,14 +47,25 @@ npm run -w backend test:unit
 - `backend/src/domains/files/retry/ProcessingRetryManager.ts` - Orquestación de retries
 - `backend/src/domains/files/cleanup/PartialDataCleaner.ts` - Cleanup de datos parciales
 
+**Domain Layer (Sprint 3)**:
+- `backend/src/domains/files/emission/IFileEventEmitter.ts` - Interface para DI
+- `backend/src/domains/files/emission/FileEventEmitter.ts` - Singleton para emisión WebSocket centralizada
+- `backend/src/domains/files/emission/index.ts` - Barrel export
+
+**Constants (Sprint 3)**:
+- `packages/shared/src/constants/file-processing.ts` - `PROCESSING_STATUS`, `EMBEDDING_STATUS`, `FILE_READINESS_STATE`
+- `packages/shared/src/constants/websocket-events.ts` - `FILE_WS_CHANNELS`, `FILE_WS_EVENTS`
+
 **API (Sprint 2)**:
 - `backend/src/routes/files.ts` - `POST /api/files/:id/retry-processing` endpoint
 
 **Queue Infrastructure (Sprint 2)**:
 - `backend/src/infrastructure/queue/MessageQueue.ts` - FILE_CLEANUP queue, cron job, worker integration
 
-**Types**:
-- `packages/shared/src/types/file.types.ts` (FileReadinessState, RetryDecisionResult, CleanupResult, etc.)
+**Types & Constants**:
+- `packages/shared/src/types/file.types.ts` (FileReadinessState, RetryDecisionResult, CleanupResult, WebSocket events)
+- `packages/shared/src/constants/file-processing.ts` (PROCESSING_STATUS, EMBEDDING_STATUS, FILE_READINESS_STATE)
+- `packages/shared/src/constants/websocket-events.ts` (FILE_WS_CHANNELS, FILE_WS_EVENTS)
 - `backend/src/types/file.types.ts` (parseFile con readinessState)
 
 **Database**:
@@ -69,6 +82,9 @@ npm run -w backend test:unit
 - `backend/src/__tests__/unit/domains/files/PartialDataCleaner.test.ts` - 19 tests
 - `backend/src/__tests__/integration/files/file-retry-processing.test.ts` - 18 tests de integración
 
+**Tests (Sprint 3)**:
+- `backend/src/__tests__/unit/domains/files/FileEventEmitter.test.ts` - 29 tests
+
 ## Filosofía de Trabajo
 
 1. **TDD**: Tests primero (RED → GREEN → REFACTOR)
@@ -76,3 +92,4 @@ npm run -w backend test:unit
 3. **DI**: Dependencias inyectadas, no hardcodeadas
 4. **Event-Driven**: Cambios emiten eventos
 5. **Screaming Architecture**: Estructura que explica el negocio
+6. **Single Source of Truth**: Constantes centralizadas en `@bc-agent/shared`, no magic strings

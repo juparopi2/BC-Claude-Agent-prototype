@@ -57,16 +57,18 @@ export interface IProcessingRetryManager {
   /**
    * Handle permanent failure after max retries exceeded.
    *
-   * Marks file as permanently failed and triggers cleanup.
+   * Marks file as permanently failed, triggers cleanup, and emits WebSocket events.
    *
    * @param userId - User ID for multi-tenant isolation
    * @param fileId - File ID
    * @param errorMessage - Error message to store
+   * @param sessionId - Optional session ID for WebSocket event emission
    */
   handlePermanentFailure(
     userId: string,
     fileId: string,
-    errorMessage: string
+    errorMessage: string,
+    sessionId?: string
   ): Promise<void>;
 
   /**

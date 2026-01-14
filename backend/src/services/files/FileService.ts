@@ -9,9 +9,11 @@ import {
   GetFilesOptions,
   CreateFileOptions,
   UpdateFileOptions,
+  ProcessingStatus,
 } from '@/types/file.types';
 import { VectorSearchService } from '@services/search/VectorSearchService';
 import { getDeletionAuditService } from './DeletionAuditService';
+import { getFileRetryService } from '@/domains/files/retry';
 
 /**
  * File Service
@@ -650,7 +652,7 @@ export class FileService {
   public async updateProcessingStatus(
     userId: string,
     fileId: string,
-    status: 'pending' | 'processing' | 'completed' | 'failed',
+    status: ProcessingStatus,
     extractedText?: string
   ): Promise<void> {
     this.logger.info({ userId, fileId, status, hasText: !!extractedText }, 'Updating processing status');
@@ -953,6 +955,93 @@ export class FileService {
       this.logger.error({ error, userId, folderId }, 'Failed to get file count');
       throw error;
     }
+  }
+
+  // ============================================
+  // Phase 5: Retry Tracking Methods (Delegated to FileRetryService)
+  // ============================================
+  // These methods delegate to FileRetryService for SRP compliance.
+  // Direct usage of FileRetryService is preferred for new code.
+
+  /**
+   * 15. Increment processing retry count (Phase 5)
+   * @deprecated Prefer using getFileRetryService().incrementProcessingRetryCount() directly
+   */
+  public async incrementProcessingRetryCount(
+    userId: string,
+    fileId: string
+  ): Promise<number> {
+    return getFileRetryService().incrementProcessingRetryCount(userId, fileId);
+  }
+
+  /**
+   * 16. Increment embedding retry count (Phase 5)
+   * @deprecated Prefer using getFileRetryService().incrementEmbeddingRetryCount() directly
+   */
+  public async incrementEmbeddingRetryCount(
+    userId: string,
+    fileId: string
+  ): Promise<number> {
+    return getFileRetryService().incrementEmbeddingRetryCount(userId, fileId);
+  }
+
+  /**
+   * 17. Set last processing error (Phase 5)
+   * @deprecated Prefer using getFileRetryService().setLastProcessingError() directly
+   */
+  public async setLastProcessingError(
+    userId: string,
+    fileId: string,
+    errorMessage: string
+  ): Promise<void> {
+    return getFileRetryService().setLastProcessingError(userId, fileId, errorMessage);
+  }
+
+  /**
+   * 18. Set last embedding error (Phase 5)
+   * @deprecated Prefer using getFileRetryService().setLastEmbeddingError() directly
+   */
+  public async setLastEmbeddingError(
+    userId: string,
+    fileId: string,
+    errorMessage: string
+  ): Promise<void> {
+    return getFileRetryService().setLastEmbeddingError(userId, fileId, errorMessage);
+  }
+
+  /**
+   * 19. Mark file as permanently failed (Phase 5)
+   * @deprecated Prefer using getFileRetryService().markAsPermanentlyFailed() directly
+   */
+  public async markAsPermanentlyFailed(
+    userId: string,
+    fileId: string
+  ): Promise<void> {
+    return getFileRetryService().markAsPermanentlyFailed(userId, fileId);
+  }
+
+  /**
+   * 20. Clear failed status for retry (Phase 5)
+   * @deprecated Prefer using getFileRetryService().clearFailedStatus() directly
+   */
+  public async clearFailedStatus(
+    userId: string,
+    fileId: string,
+    scope: 'full' | 'embedding_only' = 'full'
+  ): Promise<void> {
+    return getFileRetryService().clearFailedStatus(userId, fileId, scope);
+  }
+
+  /**
+   * 21. Update embedding status (Phase 5)
+   * @deprecated Prefer using getFileRetryService().updateEmbeddingStatus() directly
+   */
+  public async updateEmbeddingStatus(
+    userId: string,
+    fileId: string,
+    status: 'pending' | 'processing' | 'completed' | 'failed'
+  ): Promise<void> {
+    return getFileRetryService().updateEmbeddingStatus(userId, fileId, status);
   }
 }
 

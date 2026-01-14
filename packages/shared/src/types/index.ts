@@ -91,10 +91,10 @@ export {
   isToolResultMessage,
 } from './message.types';
 
-// File types (Phase 2: File Management)
 export type {
   ProcessingStatus,
   EmbeddingStatus,
+  FileReadinessState,
   FileUsageType,
   FileSortBy,
   SortOrder,
@@ -114,6 +114,16 @@ export type {
   DuplicateResult,
   CheckDuplicatesResponse,
   DuplicateAction,
+  // Retry & Cleanup types (D25 Sprint 2)
+  RetryPhase,
+  RetryScope,
+  RetryDecisionReason,
+  RetryDecisionResult,
+  ManualRetryResult,
+  CleanupResult,
+  BatchCleanupResult,
+  RetryProcessingRequest,
+  RetryProcessingResponse,
 } from './file.types';
 
 // File constants

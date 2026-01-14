@@ -86,9 +86,10 @@ export type {
   ToolResultMessage,
   Message,
 
-  // File types (Phase 2: File Management)
+  // File types
   ProcessingStatus,
   EmbeddingStatus,
+  FileReadinessState,
   FileUsageType,
   FileSortBy,
   SortOrder,

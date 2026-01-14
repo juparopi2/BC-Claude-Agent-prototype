@@ -6,10 +6,13 @@
  * Endpoints:
  * - POST /api/files/upload - Upload file(s)
  * - POST /api/files/folders - Create folder
+ * - POST /api/files/check-duplicates - Check for duplicate files
+ * - POST /api/files/:id/retry-processing - Retry processing for failed file (D25)
  * - GET /api/files - List files
  * - GET /api/files/search/images - Search images by semantic query
  * - GET /api/files/:id - Get file metadata
  * - GET /api/files/:id/download - Download file
+ * - GET /api/files/:id/content - Get file content
  * - PATCH /api/files/:id - Update file metadata
  * - DELETE /api/files/:id - Delete file
  */
@@ -1011,5 +1014,126 @@ router.delete('/:id', authenticateMicrosoft, async (req: Request, res: Response)
     sendError(res, ErrorCode.INTERNAL_ERROR, 'Failed to delete file');
   }
 });
+
+// ============================================
+// Retry Processing Endpoint
+// ============================================
+
+/**
+ * Schema for retry processing request body
+ */
+const retryProcessingSchema = z.object({
+  scope: z.enum(['full', 'embedding_only']).optional().default('full'),
+});
+
+/**
+ * POST /api/files/:id/retry-processing
+ *
+ * Retry processing for a failed file.
+ *
+ * Body:
+ * - scope: 'full' (re-process from start) or 'embedding_only' (only re-do embeddings)
+ *
+ * Responses:
+ * - 200: Retry initiated successfully
+ * - 400: File is not in failed state
+ * - 404: File not found
+ * - 429: Rate limit exceeded
+ */
+router.post(
+  '/:id/retry-processing',
+  authenticateMicrosoft,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const userId = getUserId(req);
+
+      // Validate file ID
+      const paramsValidation = fileIdSchema.safeParse(req.params);
+      if (!paramsValidation.success) {
+        sendError(
+          res,
+          ErrorCode.VALIDATION_ERROR,
+          paramsValidation.error.errors[0]?.message || 'Invalid file ID'
+        );
+        return;
+      }
+
+      const { id } = paramsValidation.data;
+
+      // Validate body
+      const bodyValidation = retryProcessingSchema.safeParse(req.body);
+      if (!bodyValidation.success) {
+        sendError(
+          res,
+          ErrorCode.VALIDATION_ERROR,
+          bodyValidation.error.errors[0]?.message || 'Invalid request body'
+        );
+        return;
+      }
+
+      const { scope } = bodyValidation.data;
+
+      logger.info({ userId, fileId: id, scope }, 'Processing retry request');
+
+      // Execute retry using ProcessingRetryManager
+      const { getProcessingRetryManager } = await import('@/domains/files/retry');
+      const retryManager = getProcessingRetryManager();
+
+      const result = await retryManager.executeManualRetry(userId, id, scope);
+
+      if (!result.success) {
+        if (result.error?.includes('not found')) {
+          sendError(res, ErrorCode.NOT_FOUND, result.error);
+          return;
+        }
+        if (result.error?.includes('not in failed state')) {
+          sendError(res, ErrorCode.VALIDATION_ERROR, result.error);
+          return;
+        }
+        sendError(res, ErrorCode.INTERNAL_ERROR, result.error || 'Retry failed');
+        return;
+      }
+
+      // Enqueue processing job
+      const messageQueue = getMessageQueue();
+      let jobId: string;
+
+      if (scope === 'full') {
+        // Re-process entire file
+        jobId = await messageQueue.addFileProcessingJob({
+          fileId: id,
+          userId,
+          mimeType: result.file.mimeType,
+          blobPath: result.file.blobPath,
+          fileName: result.file.name,
+        });
+      } else {
+        // Only re-do embedding
+        jobId = await messageQueue.addFileChunkingJob({
+          fileId: id,
+          userId,
+          mimeType: result.file.mimeType,
+        });
+      }
+
+      logger.info({ userId, fileId: id, jobId, scope }, 'Retry initiated successfully');
+
+      res.json({
+        file: result.file,
+        jobId,
+        message: 'Processing retry initiated',
+      });
+    } catch (error) {
+      logger.error({ error, userId: req.userId, fileId: req.params.id }, 'Retry processing failed');
+
+      if (error instanceof Error && error.message === 'User not authenticated') {
+        sendError(res, ErrorCode.UNAUTHORIZED, 'User not authenticated');
+        return;
+      }
+
+      sendError(res, ErrorCode.INTERNAL_ERROR, 'Failed to retry processing');
+    }
+  }
+);
 
 export default router;

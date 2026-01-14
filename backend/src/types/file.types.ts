@@ -10,6 +10,7 @@
  * - API responses use camelCase for JavaScript conventions
  * - Transformer functions handle conversion between formats
  * - All types are fully typed (no `any` allowed)
+ * - API types are imported from @bc-agent/shared (Single Source of Truth)
  *
  * Architecture:
  * - Phase 1: Basic file CRUD (this module)
@@ -18,42 +19,34 @@
  * - Phase 4: Vector search and semantic matching
  */
 
-/**
- * Processing status for async workers (Phase 3)
- *
- * Lifecycle:
- * - `pending`: File uploaded, awaiting processing
- * - `processing`: Worker is extracting text/generating previews
- * - `completed`: Processing finished successfully
- * - `failed`: Processing failed (check logs for details)
- */
-export type ProcessingStatus = 'pending' | 'processing' | 'completed' | 'failed';
+// ============================================
+// Shared Types (Single Source of Truth)
+// ============================================
 
-/**
- * Embedding status for vector search (Phase 4)
- *
- * Lifecycle:
- * - `pending`: Text extracted, awaiting embedding generation
- * - `processing`: Embedding model is generating vectors
- * - `completed`: Embeddings stored in Azure AI Search
- * - `failed`: Embedding generation failed
- */
-export type EmbeddingStatus = 'pending' | 'processing' | 'completed' | 'failed';
+// Re-export types from @bc-agent/shared for internal use
+// These types are defined once in shared package and used across all packages
+export type {
+  ProcessingStatus,
+  EmbeddingStatus,
+  FileReadinessState,
+  FileUsageType,
+  FileSortBy,
+  ParsedFile,
+  ParsedFileChunk,
+} from '@bc-agent/shared';
 
-/**
- * File usage type in messages
- *
- * Types:
- * - `direct`: User explicitly attached this file to the message
- * - `semantic_match`: Agent found this file via semantic search
- * - `folder`: File included because parent folder was attached
- */
-export type FileUsageType = 'direct' | 'semantic_match' | 'folder';
+// Import for local use in this module
+import type {
+  ProcessingStatus,
+  EmbeddingStatus,
+  FileUsageType,
+  ParsedFile,
+  ParsedFileChunk,
+  FileSortBy,
+} from '@bc-agent/shared';
 
-/**
- * File sort options for queries
- */
-export type FileSortBy = 'name' | 'date' | 'size';
+// Import domain service for computing readiness state
+import { getReadinessStateComputer } from '@/domains/files/status';
 
 /**
  * Database record for files table
@@ -106,6 +99,21 @@ export interface FileDbRecord {
 
   /** SHA-256 hash of file content for duplicate detection (NULL for folders) */
   content_hash: string | null;
+
+  /** Number of processing retry attempts (Phase 5) */
+  processing_retry_count: number;
+
+  /** Number of embedding retry attempts (Phase 5) */
+  embedding_retry_count: number;
+
+  /** Last error message from processing failure (Phase 5) */
+  last_processing_error: string | null;
+
+  /** Last error message from embedding failure (Phase 5) */
+  last_embedding_error: string | null;
+
+  /** UTC timestamp when file permanently failed (Phase 5) */
+  failed_at: Date | null;
 
   /** UTC timestamp when file was uploaded */
   created_at: Date;
@@ -179,90 +187,8 @@ export interface MessageFileAttachmentDbRecord {
   created_at: Date;
 }
 
-/**
- * Parsed file for API responses
- *
- * This is the camelCase version sent to clients.
- * Differences from DB record:
- * - camelCase naming
- * - Dates as ISO 8601 strings
- * - `hasExtractedText` computed field (extracted_text !== null)
- * - No `extracted_text` field (too large for API responses)
- */
-export interface ParsedFile {
-  /** UUID primary key */
-  id: string;
-
-  /** Owner of the file */
-  userId: string;
-
-  /** Parent folder ID (null for root-level) */
-  parentFolderId: string | null;
-
-  /** File or folder name */
-  name: string;
-
-  /** MIME type */
-  mimeType: string;
-
-  /** Size in bytes (0 for folders) */
-  sizeBytes: number;
-
-  /** Azure Blob Storage path (empty string for folders) */
-  blobPath: string;
-
-  /** True if this is a folder */
-  isFolder: boolean;
-
-  /** User-set favorite flag */
-  isFavorite: boolean;
-
-  /** Processing status (Phase 3) */
-  processingStatus: ProcessingStatus;
-
-  /** Embedding status (Phase 4) */
-  embeddingStatus: EmbeddingStatus;
-
-  /** True if text has been extracted (computed from extracted_text !== null) */
-  hasExtractedText: boolean;
-
-  /** SHA-256 hash of file content for duplicate detection (null for folders) */
-  contentHash: string | null;
-
-  /** ISO 8601 timestamp when file was uploaded */
-  createdAt: string;
-
-  /** ISO 8601 timestamp when file was last modified */
-  updatedAt: string;
-}
-
-/**
- * Parsed file chunk for API responses
- *
- * Used when returning search results or file content.
- */
-export interface ParsedFileChunk {
-  /** UUID primary key */
-  id: string;
-
-  /** Parent file ID */
-  fileId: string;
-
-  /** Chunk position in document (0-indexed) */
-  chunkIndex: number;
-
-  /** Chunk text content */
-  chunkText: string;
-
-  /** Token count for this chunk */
-  chunkTokens: number;
-
-  /** Azure AI Search document ID (null if not embedded yet) */
-  searchDocumentId: string | null;
-
-  /** ISO 8601 timestamp when chunk was created */
-  createdAt: string;
-}
+// NOTE: ParsedFile and ParsedFileChunk interfaces are imported from @bc-agent/shared
+// See type exports at the top of this file
 
 /**
  * Options for getFiles() query
@@ -357,6 +283,7 @@ export interface UpdateFileOptions {
  * - snake_case DB fields → camelCase API fields
  * - Date objects → ISO 8601 strings
  * - Adds computed `hasExtractedText` field
+ * - Computes `readinessState` from processing + embedding status (Phase 5)
  *
  * @param record - Database record from SQL query
  * @returns Parsed file ready for API response
@@ -369,6 +296,9 @@ export interface UpdateFileOptions {
  * ```
  */
 export function parseFile(record: FileDbRecord): ParsedFile {
+  // Compute last error from either processing or embedding error
+  const lastError = record.last_processing_error || record.last_embedding_error || null;
+
   return {
     id: record.id,
     userId: record.user_id,
@@ -381,6 +311,11 @@ export function parseFile(record: FileDbRecord): ParsedFile {
     isFavorite: record.is_favorite,
     processingStatus: record.processing_status,
     embeddingStatus: record.embedding_status,
+    readinessState: getReadinessStateComputer().compute(record.processing_status, record.embedding_status),
+    processingRetryCount: record.processing_retry_count ?? 0,
+    embeddingRetryCount: record.embedding_retry_count ?? 0,
+    lastError,
+    failedAt: record.failed_at ? record.failed_at.toISOString() : null,
     hasExtractedText: record.extracted_text !== null,
     contentHash: record.content_hash,
     createdAt: record.created_at.toISOString(),

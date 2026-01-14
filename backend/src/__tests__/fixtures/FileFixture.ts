@@ -42,6 +42,7 @@ import {
   ProcessingStatus,
   EmbeddingStatus,
   FileUsageType,
+  FileReadinessState,
 } from '@/types/file.types';
 
 /**
@@ -105,6 +106,13 @@ export class FileFixture {
       processing_status: 'completed' as ProcessingStatus,
       embedding_status: 'pending' as EmbeddingStatus,
       extracted_text: null,
+      content_hash: null,
+      // Retry tracking fields (D25 robustness)
+      processing_retry_count: 0,
+      embedding_retry_count: 0,
+      last_processing_error: null,
+      last_embedding_error: null,
+      failed_at: null,
       created_at: createdAt,
       updated_at: createdAt,
       ...overrides,
@@ -179,7 +187,14 @@ export class FileFixture {
       isFavorite: false,
       processingStatus: 'completed',
       embeddingStatus: 'pending',
+      readinessState: 'processing' as FileReadinessState, // Default: completed + pending = processing
       hasExtractedText: false,
+      contentHash: null,
+      // Retry tracking fields (D25 robustness)
+      processingRetryCount: 0,
+      embeddingRetryCount: 0,
+      lastError: null,
+      failedAt: null,
       createdAt,
       updatedAt: createdAt,
       ...overrides,
@@ -505,6 +520,60 @@ export class FileFixture {
         file_id: fileId,
         usage_type: 'folder',
         relevance_score: null,
+      }),
+
+    // ========== D25 RETRY TRACKING PRESETS ==========
+
+    /**
+     * File with active retry tracking (for retry tests)
+     * Processing failed with 2 retries, embedding pending
+     */
+    fileWithRetries: (userId = 'user-test-123') =>
+      FileFixture.createFileDbRecord({
+        user_id: userId,
+        name: 'retry-test.pdf',
+        processing_status: 'failed',
+        embedding_status: 'pending',
+        processing_retry_count: 2,
+        embedding_retry_count: 1,
+        last_processing_error: 'OCR extraction timeout after 30 seconds',
+        last_embedding_error: null,
+        failed_at: null,
+      }),
+
+    /**
+     * Permanently failed file (for cleanup job tests)
+     * Max retries exceeded, failed_at timestamp set
+     */
+    permanentlyFailedFile: (userId = 'user-test-123') =>
+      FileFixture.createFileDbRecord({
+        user_id: userId,
+        name: 'permanently-failed.pdf',
+        processing_status: 'failed',
+        embedding_status: 'pending',
+        processing_retry_count: 3,
+        embedding_retry_count: 0,
+        last_processing_error: 'Maximum retries exceeded: OCR service unavailable',
+        last_embedding_error: null,
+        failed_at: new Date('2025-01-10T10:00:00Z'),
+      }),
+
+    /**
+     * File with embedding failure (embedding retry scenario)
+     * Processing completed, embedding failed
+     */
+    embeddingFailedFile: (userId = 'user-test-123') =>
+      FileFixture.createFileDbRecord({
+        user_id: userId,
+        name: 'embedding-failed.pdf',
+        processing_status: 'completed',
+        embedding_status: 'failed',
+        processing_retry_count: 0,
+        embedding_retry_count: 2,
+        last_processing_error: null,
+        last_embedding_error: 'Azure OpenAI rate limit exceeded',
+        extracted_text: 'This is the extracted text content...',
+        failed_at: null,
       }),
   };
 }

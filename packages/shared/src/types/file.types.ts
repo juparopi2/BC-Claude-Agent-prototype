@@ -42,6 +42,22 @@ export type ProcessingStatus = 'pending' | 'processing' | 'completed' | 'failed'
 export type EmbeddingStatus = 'pending' | 'processing' | 'completed' | 'failed';
 
 /**
+ * Unified readiness state for frontend display
+ *
+ * Computed from processing_status + embedding_status to simplify frontend logic.
+ * The frontend should NOT compute this; it's computed by the backend.
+ *
+ * States:
+ * - `uploading`: File is being uploaded (frontend-only during upload progress)
+ * - `processing`: File uploaded, processing or embedding in progress
+ * - `ready`: Both processing and embedding completed successfully
+ * - `failed`: Either processing or embedding failed permanently
+ *
+ * Priority: failed > processing > ready
+ */
+export type FileReadinessState = 'uploading' | 'processing' | 'ready' | 'failed';
+
+/**
  * File usage type in messages
  *
  * Types:
@@ -136,6 +152,21 @@ export interface ParsedFile {
 
   /** Embedding status (Phase 4) */
   embeddingStatus: EmbeddingStatus;
+
+  /** Unified readiness state computed from processing + embedding status */
+  readinessState: FileReadinessState;
+
+  /** Number of processing retry attempts */
+  processingRetryCount: number;
+
+  /** Number of embedding retry attempts */
+  embeddingRetryCount: number;
+
+  /** Last error message from processing or embedding failure */
+  lastError: string | null;
+
+  /** ISO 8601 timestamp when file permanently failed */
+  failedAt: string | null;
 
   /** True if text has been extracted (computed from extracted_text !== null) */
   hasExtractedText: boolean;
@@ -557,3 +588,207 @@ export interface CheckDuplicatesResponse {
  * - `cancel`: Cancel entire upload operation
  */
 export type DuplicateAction = 'replace' | 'skip' | 'cancel';
+
+// ============================================
+// Retry & Cleanup Types (D25 Sprint 2)
+// ============================================
+
+/**
+ * Phase of file processing that can be retried
+ *
+ * Phases:
+ * - `processing`: Text extraction, OCR, preview generation
+ * - `embedding`: Vector embedding generation for AI Search
+ */
+export type RetryPhase = 'processing' | 'embedding';
+
+/**
+ * Scope for retry operations
+ *
+ * Scopes:
+ * - `full`: Re-process entire file from start (text extraction + embedding)
+ * - `embedding_only`: Only re-generate embeddings (text extraction was successful)
+ */
+export type RetryScope = 'full' | 'embedding_only';
+
+/**
+ * Reason for retry decision
+ *
+ * Reasons:
+ * - `within_limit`: Retry count is below max, will retry
+ * - `max_retries_exceeded`: Max retries reached, mark as permanently failed
+ * - `not_failed`: File is not in failed state
+ */
+export type RetryDecisionReason = 'within_limit' | 'max_retries_exceeded' | 'not_failed';
+
+/**
+ * Result of retry decision check
+ *
+ * Used by ProcessingRetryManager to decide whether to retry or fail permanently.
+ *
+ * @example
+ * ```typescript
+ * const decision: RetryDecisionResult = {
+ *   shouldRetry: true,
+ *   newRetryCount: 2,
+ *   maxRetries: 3,
+ *   backoffDelayMs: 10000,
+ *   reason: 'within_limit',
+ * };
+ * ```
+ */
+export interface RetryDecisionResult {
+  /** Whether to retry processing */
+  shouldRetry: boolean;
+
+  /** Updated retry count after this attempt */
+  newRetryCount: number;
+
+  /** Maximum allowed retries for this phase */
+  maxRetries: number;
+
+  /** Delay in milliseconds before next retry (exponential backoff) */
+  backoffDelayMs: number;
+
+  /** Reason for the decision */
+  reason: RetryDecisionReason;
+}
+
+/**
+ * Result of manual retry request
+ *
+ * Returned by POST /api/files/:id/retry-processing endpoint.
+ *
+ * @example
+ * ```typescript
+ * // Success case
+ * const result: ManualRetryResult = {
+ *   success: true,
+ *   file: { id: '...', readinessState: 'processing', ... },
+ *   jobId: 'job-12345',
+ * };
+ *
+ * // Failure case
+ * const result: ManualRetryResult = {
+ *   success: false,
+ *   file: { id: '...', readinessState: 'ready', ... },
+ *   error: 'File is not in failed state',
+ * };
+ * ```
+ */
+export interface ManualRetryResult {
+  /** Whether retry was initiated successfully */
+  success: boolean;
+
+  /** Current file state */
+  file: ParsedFile;
+
+  /** Job ID for tracking (only if success=true) */
+  jobId?: string;
+
+  /** Error message (only if success=false) */
+  error?: string;
+}
+
+/**
+ * Result of cleanup operation for a single file
+ *
+ * Returned by PartialDataCleaner.cleanupForFile().
+ *
+ * @example
+ * ```typescript
+ * const result: CleanupResult = {
+ *   fileId: 'file-123',
+ *   chunksDeleted: 15,
+ *   searchDocumentsDeleted: 15,
+ *   success: true,
+ * };
+ * ```
+ */
+export interface CleanupResult {
+  /** ID of the file that was cleaned */
+  fileId: string;
+
+  /** Number of chunks deleted from database */
+  chunksDeleted: number;
+
+  /** Number of documents deleted from Azure AI Search */
+  searchDocumentsDeleted: number;
+
+  /** Whether cleanup completed successfully */
+  success: boolean;
+
+  /** Error message if cleanup failed */
+  error?: string;
+}
+
+/**
+ * Result of batch cleanup operation
+ *
+ * Returned by PartialDataCleaner.cleanupOldFailedFiles().
+ *
+ * @example
+ * ```typescript
+ * const result: BatchCleanupResult = {
+ *   filesProcessed: 10,
+ *   totalChunksDeleted: 150,
+ *   totalSearchDocsDeleted: 150,
+ *   failures: [
+ *     { fileId: 'file-456', error: 'AI Search unavailable' },
+ *   ],
+ * };
+ * ```
+ */
+export interface BatchCleanupResult {
+  /** Number of files processed in batch */
+  filesProcessed: number;
+
+  /** Total chunks deleted across all files */
+  totalChunksDeleted: number;
+
+  /** Total search documents deleted across all files */
+  totalSearchDocsDeleted: number;
+
+  /** List of files that failed to clean up */
+  failures: Array<{ fileId: string; error: string }>;
+}
+
+/**
+ * Request body for POST /api/files/:id/retry-processing
+ *
+ * @example
+ * ```typescript
+ * // Retry everything
+ * const request: RetryProcessingRequest = { scope: 'full' };
+ *
+ * // Only retry embedding
+ * const request: RetryProcessingRequest = { scope: 'embedding_only' };
+ * ```
+ */
+export interface RetryProcessingRequest {
+  /** Scope of retry (default: 'full') */
+  scope?: RetryScope;
+}
+
+/**
+ * Response from POST /api/files/:id/retry-processing
+ *
+ * @example
+ * ```typescript
+ * const response: RetryProcessingResponse = {
+ *   file: { id: '...', readinessState: 'processing', ... },
+ *   jobId: 'job-12345',
+ *   message: 'Processing retry initiated',
+ * };
+ * ```
+ */
+export interface RetryProcessingResponse {
+  /** Updated file with new processing state */
+  file: ParsedFile;
+
+  /** Job ID for tracking retry progress */
+  jobId: string;
+
+  /** Human-readable status message */
+  message: string;
+}

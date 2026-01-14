@@ -175,10 +175,10 @@ describe('MessageQueue.close()', () => {
     // Expected: worker(s), queueEvents(s), queue(s)
     // Note: Redis is injected (ownsRedisConnection = false), so quit() is NOT called
     // Each queue has: worker, queueEvents, queue
-    // With 8 queues (including citation-persistence): 8 workers, 8 queueEvents, 8 queues
-    expect(capturedCallOrder).toHaveLength(24); // 8 + 8 + 8
+    // With 9 queues (including file-cleanup D25 Sprint 2): 9 workers, 9 queueEvents, 9 queues
+    expect(capturedCallOrder).toHaveLength(27); // 9 + 9 + 9
 
-    // Workers first (indices 0-7)
+    // Workers first (indices 0-8)
     expect(capturedCallOrder[0]).toBe('worker');
     expect(capturedCallOrder[1]).toBe('worker');
     expect(capturedCallOrder[2]).toBe('worker');
@@ -187,9 +187,9 @@ describe('MessageQueue.close()', () => {
     expect(capturedCallOrder[5]).toBe('worker');
     expect(capturedCallOrder[6]).toBe('worker');
     expect(capturedCallOrder[7]).toBe('worker');
+    expect(capturedCallOrder[8]).toBe('worker');
 
-    // QueueEvents second (indices 8-15)
-    expect(capturedCallOrder[8]).toBe('queueEvents');
+    // QueueEvents second (indices 9-17)
     expect(capturedCallOrder[9]).toBe('queueEvents');
     expect(capturedCallOrder[10]).toBe('queueEvents');
     expect(capturedCallOrder[11]).toBe('queueEvents');
@@ -197,16 +197,19 @@ describe('MessageQueue.close()', () => {
     expect(capturedCallOrder[13]).toBe('queueEvents');
     expect(capturedCallOrder[14]).toBe('queueEvents');
     expect(capturedCallOrder[15]).toBe('queueEvents');
+    expect(capturedCallOrder[16]).toBe('queueEvents');
+    expect(capturedCallOrder[17]).toBe('queueEvents');
 
-    // Queues third (indices 16-23)
-    expect(capturedCallOrder[16]).toBe('queue');
-    expect(capturedCallOrder[17]).toBe('queue');
+    // Queues third (indices 18-26)
     expect(capturedCallOrder[18]).toBe('queue');
     expect(capturedCallOrder[19]).toBe('queue');
     expect(capturedCallOrder[20]).toBe('queue');
     expect(capturedCallOrder[21]).toBe('queue');
     expect(capturedCallOrder[22]).toBe('queue');
     expect(capturedCallOrder[23]).toBe('queue');
+    expect(capturedCallOrder[24]).toBe('queue');
+    expect(capturedCallOrder[25]).toBe('queue');
+    expect(capturedCallOrder[26]).toBe('queue');
 
     // Verify Redis quit() was NOT called (injected connection)
     expect(mockRedis.quit).not.toHaveBeenCalled();

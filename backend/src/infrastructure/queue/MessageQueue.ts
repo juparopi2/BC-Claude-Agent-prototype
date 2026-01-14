@@ -51,6 +51,7 @@ export enum QueueName {
   FILE_CHUNKING = 'file-chunking',
   EMBEDDING_GENERATION = 'embedding-generation',
   CITATION_PERSISTENCE = 'citation-persistence',
+  FILE_CLEANUP = 'file-cleanup',
 }
 
 
@@ -199,6 +200,27 @@ export interface CitationPersistenceJob {
     relevanceScore: number;
     isImage: boolean;
   }>;
+}
+
+/**
+ * File Cleanup Job Data
+ *
+ * Used by scheduled background workers to clean up:
+ * - Old failed files that exceeded retention period
+ * - Orphaned chunks without parent files
+ * - Orphaned search documents in Azure AI Search
+ *
+ * D25 Sprint 2: Robust file processing cleanup
+ */
+export interface FileCleanupJob {
+  /** Type of cleanup operation */
+  type: 'failed_files' | 'orphaned_chunks' | 'orphaned_search_docs' | 'daily_full';
+  /** Optional user ID for targeted cleanup (omit for all users) */
+  userId?: string;
+  /** Retention days for failed files (default: 30) */
+  failedFileRetentionDays?: number;
+  /** Retention days for orphaned chunks (default: 7) */
+  orphanedChunkRetentionDays?: number;
 }
 
 /**
@@ -668,6 +690,29 @@ export class MessageQueue {
       })
     );
 
+    // File Cleanup Queue (D25 Sprint 2: scheduled cleanup jobs)
+    this.queues.set(
+      QueueName.FILE_CLEANUP,
+      new Queue(this.getQueueName(QueueName.FILE_CLEANUP), {
+        connection: this.getRedisConnectionConfig(),
+        defaultJobOptions: {
+          attempts: 3,
+          backoff: {
+            type: 'exponential',
+            delay: 10000,  // 10s base delay (cleanup can take time)
+          },
+          removeOnComplete: {
+            count: 50,
+            age: 86400,  // 24 hours
+          },
+          removeOnFail: {
+            count: 100,
+            age: 604800,  // 7 days (keep failures longer for debugging)
+          },
+        },
+      })
+    );
+
     this.log.info('All queues initialized', {
       queues: Array.from(this.queues.keys()),
     });
@@ -797,6 +842,21 @@ export class MessageQueue {
       )
     );
 
+    // File Cleanup Worker (low concurrency, runs daily)
+    this.workers.set(
+      QueueName.FILE_CLEANUP,
+      new Worker(
+        this.getQueueName(QueueName.FILE_CLEANUP),
+        async (job: Job<FileCleanupJob>) => {
+          return this.processFileCleanupJob(job);
+        },
+        {
+          connection: this.getRedisConnectionConfig(),
+          concurrency: 1,  // Sequential - cleanup should not overwhelm DB
+        }
+      )
+    );
+
     this.log.info('All workers initialized', {
       workers: Array.from(this.workers.keys()),
     });
@@ -906,6 +966,42 @@ export class MessageQueue {
         error: error instanceof Error ? error.message : String(error),
       });
       // Don't throw - scheduled jobs are optional, queue can still work for manual jobs
+    }
+
+    // ===== FILE CLEANUP SCHEDULED JOBS (D25 Sprint 2) =====
+    const cleanupQueue = this.queues.get(QueueName.FILE_CLEANUP);
+    if (!cleanupQueue) {
+      this.log.warn('File cleanup queue not available for scheduled jobs');
+      return;
+    }
+
+    try {
+      // Remove existing repeatable jobs to prevent duplicates on restart
+      const existingCleanupJobs = await cleanupQueue.getRepeatableJobs();
+      for (const job of existingCleanupJobs) {
+        await cleanupQueue.removeRepeatableByKey(job.key);
+      }
+
+      // Daily full cleanup (every day at 3:00 AM UTC)
+      // Cleans: old failed files (30 days) + orphaned chunks (7 days) + orphaned search docs
+      await cleanupQueue.add(
+        'scheduled-daily-cleanup',
+        { type: 'daily_full' as const },
+        {
+          repeat: { pattern: '0 3 * * *' },
+          jobId: 'scheduled-daily-cleanup',
+        }
+      );
+
+      this.log.info('Scheduled jobs initialized for file cleanup', {
+        jobs: ['daily-cleanup'],
+        schedule: '0 3 * * * (3 AM UTC daily)',
+      });
+    } catch (error) {
+      this.log.error('Failed to initialize file cleanup scheduled jobs', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      // Don't throw - scheduled jobs are optional
     }
   }
 
@@ -1231,6 +1327,38 @@ export class MessageQueue {
   }
 
   /**
+   * Add File Cleanup Job
+   *
+   * Enqueues a file cleanup job. Can be used for manual cleanup triggers
+   * or scheduled cleanup. D25 Sprint 2 implementation.
+   *
+   * @param data - File cleanup job data
+   * @returns Job ID
+   */
+  public async addFileCleanupJob(
+    data: FileCleanupJob
+  ): Promise<string> {
+    await this.waitForReady();
+
+    const queue = this.queues.get(QueueName.FILE_CLEANUP);
+    if (!queue) {
+      throw new Error('File cleanup queue not initialized');
+    }
+
+    const job = await queue.add(`cleanup-${data.type}`, data, {
+      priority: 10,  // Lowest priority - don't interfere with user operations
+    });
+
+    this.log.info('File cleanup job added to queue', {
+      jobId: job.id,
+      type: data.type,
+      userId: data.userId || 'all-users',
+    });
+
+    return job.id || '';
+  }
+
+  /**
    * Process Message Persistence Job
    *
    * @param job - BullMQ job
@@ -1520,6 +1648,8 @@ export class MessageQueue {
    * - XLSX: xlsx library for Excel files
    * - Plain text: Direct UTF-8 reading
    *
+   * Integrated with ProcessingRetryManager for robust retry handling.
+   *
    * @param job - BullMQ job containing file processing data
    */
   private async processFileProcessingJob(
@@ -1549,8 +1679,10 @@ export class MessageQueue {
         userId,
       });
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+
       this.log.error('File processing job failed', {
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage,
         stack: error instanceof Error ? error.stack : undefined,
         jobId: job.id,
         fileId,
@@ -1558,7 +1690,51 @@ export class MessageQueue {
         mimeType,
         attemptNumber: job.attemptsMade,
       });
-      throw error;  // Will trigger retry
+
+      // Use ProcessingRetryManager for retry decision
+      try {
+        const { getProcessingRetryManager } = await import('@/domains/files/retry');
+        const retryManager = getProcessingRetryManager();
+
+        const decision = await retryManager.shouldRetry(userId, fileId, 'processing');
+
+        this.log.info('Retry decision for file processing', {
+          jobId: job.id,
+          fileId,
+          userId,
+          shouldRetry: decision.shouldRetry,
+          newRetryCount: decision.newRetryCount,
+          maxRetries: decision.maxRetries,
+          reason: decision.reason,
+        });
+
+        if (decision.shouldRetry) {
+          // Throw to trigger BullMQ retry
+          throw error;
+        }
+
+        // Max retries exceeded - handle permanent failure
+        await retryManager.handlePermanentFailure(userId, fileId, errorMessage);
+        this.log.warn('File processing permanently failed after max retries', {
+          jobId: job.id,
+          fileId,
+          userId,
+          retryCount: decision.newRetryCount,
+        });
+        // Don't throw - job is complete (permanent failure)
+        return;
+      } catch (retryError) {
+        // If retry decision fails, fall back to throwing original error
+        if (retryError === error) {
+          throw error;  // This is the expected case when shouldRetry is true
+        }
+        this.log.error('Failed to process retry decision', {
+          jobId: job.id,
+          fileId,
+          error: retryError instanceof Error ? retryError.message : String(retryError),
+        });
+        throw error;  // Fall back to BullMQ retry
+      }
     }
   }
 
@@ -1566,15 +1742,7 @@ export class MessageQueue {
    * Process Embedding Generation Job
    *
    * Generates embeddings for file chunks and indexes them in Azure AI Search.
-   *
-   * @param job - BullMQ job containing chunks to process
-   */
-
-
-  /**
-   * Process Embedding Generation Job
-   *
-   * Generates embeddings for file chunks and indexes them in Azure AI Search.
+   * Integrated with ProcessingRetryManager for robust retry handling.
    *
    * @param job - BullMQ job containing chunks to process
    */
@@ -1671,29 +1839,77 @@ export class MessageQueue {
       });
 
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+
       this.log.error('Embedding generation job failed', {
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage,
         jobId: job.id,
         fileId,
-        userId
+        userId,
+        attemptNumber: job.attemptsMade,
       });
 
-      // Update embedding_status to 'failed' so the user knows the file failed processing
-      // Without this, files would stay in 'processing' state indefinitely
+      //  Use ProcessingRetryManager for retry decision
       try {
-        await this.executeQueryFn(
-          `UPDATE files SET embedding_status = 'failed' WHERE id = @fileId`,
-          { fileId }
-        );
-        this.log.info('Updated embedding_status to failed', { fileId });
-      } catch (statusError) {
-        this.log.error('Failed to update embedding_status to failed', {
-          fileId,
-          error: statusError instanceof Error ? statusError.message : String(statusError)
-        });
-      }
+        const { getProcessingRetryManager } = await import('@/domains/files/retry');
+        const retryManager = getProcessingRetryManager();
 
-      throw error;
+        const decision = await retryManager.shouldRetry(userId, fileId, 'embedding');
+
+        this.log.info('Retry decision for embedding generation', {
+          jobId: job.id,
+          fileId,
+          userId,
+          shouldRetry: decision.shouldRetry,
+          newRetryCount: decision.newRetryCount,
+          maxRetries: decision.maxRetries,
+          reason: decision.reason,
+        });
+
+        if (decision.shouldRetry) {
+          // Update embedding_status to 'pending' for retry
+          await this.executeQueryFn(
+            `UPDATE files SET embedding_status = 'pending' WHERE id = @fileId`,
+            { fileId }
+          );
+          // Throw to trigger BullMQ retry
+          throw error;
+        }
+
+        // Max retries exceeded - handle permanent failure
+        await retryManager.handlePermanentFailure(userId, fileId, errorMessage);
+        this.log.warn('Embedding generation permanently failed after max retries', {
+          jobId: job.id,
+          fileId,
+          userId,
+          retryCount: decision.newRetryCount,
+        });
+        // Don't throw - job is complete (permanent failure)
+        return;
+      } catch (retryError) {
+        // If retry decision fails, fall back to throwing original error
+        if (retryError === error) {
+          throw error;  // This is the expected case when shouldRetry is true
+        }
+        this.log.error('Failed to process embedding retry decision', {
+          jobId: job.id,
+          fileId,
+          error: retryError instanceof Error ? retryError.message : String(retryError),
+        });
+        // Fall back to original behavior: mark as failed and throw
+        try {
+          await this.executeQueryFn(
+            `UPDATE files SET embedding_status = 'failed' WHERE id = @fileId`,
+            { fileId }
+          );
+        } catch (statusError) {
+          this.log.error('Failed to update embedding_status', {
+            fileId,
+            error: statusError instanceof Error ? statusError.message : String(statusError),
+          });
+        }
+        throw error;
+      }
     }
   }
 
@@ -1701,6 +1917,7 @@ export class MessageQueue {
    * Process File Chunking Job
    *
    * Chunks extracted text and prepares for embedding generation.
+   * Integrated with ProcessingRetryManager for robust retry handling.
    *
    * @param job - BullMQ job containing file to chunk
    */
@@ -1730,8 +1947,10 @@ export class MessageQueue {
         userId,
       });
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+
       this.log.error('File chunking job failed', {
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage,
         stack: error instanceof Error ? error.stack : undefined,
         jobId: job.id,
         fileId,
@@ -1739,7 +1958,51 @@ export class MessageQueue {
         mimeType,
         attemptNumber: job.attemptsMade,
       });
-      throw error;  // Will trigger retry
+
+      // Use ProcessingRetryManager for retry decision (chunking is part of processing phase)
+      try {
+        const { getProcessingRetryManager } = await import('@/domains/files/retry');
+        const retryManager = getProcessingRetryManager();
+
+        const decision = await retryManager.shouldRetry(userId, fileId, 'processing');
+
+        this.log.info('Retry decision for file chunking', {
+          jobId: job.id,
+          fileId,
+          userId,
+          shouldRetry: decision.shouldRetry,
+          newRetryCount: decision.newRetryCount,
+          maxRetries: decision.maxRetries,
+          reason: decision.reason,
+        });
+
+        if (decision.shouldRetry) {
+          // Throw to trigger BullMQ retry
+          throw error;
+        }
+
+        // Max retries exceeded - handle permanent failure
+        await retryManager.handlePermanentFailure(userId, fileId, errorMessage);
+        this.log.warn('File chunking permanently failed after max retries', {
+          jobId: job.id,
+          fileId,
+          userId,
+          retryCount: decision.newRetryCount,
+        });
+        // Don't throw - job is complete (permanent failure)
+        return;
+      } catch (retryError) {
+        // If retry decision fails, fall back to throwing original error
+        if (retryError === error) {
+          throw error;  // This is the expected case when shouldRetry is true
+        }
+        this.log.error('Failed to process chunking retry decision', {
+          jobId: job.id,
+          fileId,
+          error: retryError instanceof Error ? retryError.message : String(retryError),
+        });
+        throw error;  // Fall back to BullMQ retry
+      }
     }
   }
 
@@ -1798,6 +2061,108 @@ export class MessageQueue {
         messageId,
         sessionId,
         citationCount: citations.length,
+        attemptNumber: job.attemptsMade,
+      });
+      throw error;  // Will trigger retry
+    }
+  }
+
+  /**
+   * Process File Cleanup Job
+   *
+   * Cleans up old failed files, orphaned chunks, and orphaned search documents.
+   * D25 Sprint 2: Robust file processing cleanup.
+   *
+   * @param job - BullMQ job containing cleanup parameters
+   */
+  private async processFileCleanupJob(
+    job: Job<FileCleanupJob>
+  ): Promise<void> {
+    const {
+      type,
+      userId,
+      failedFileRetentionDays = 30,
+      orphanedChunkRetentionDays = 7,
+    } = job.data;
+
+    this.log.info('Processing file cleanup job', {
+      jobId: job.id,
+      type,
+      userId: userId || 'all-users',
+      failedFileRetentionDays,
+      orphanedChunkRetentionDays,
+      attemptNumber: job.attemptsMade,
+    });
+
+    try {
+      // Dynamic import to avoid circular dependencies
+      const { getPartialDataCleaner } = await import('@/domains/files/cleanup');
+      const cleaner = getPartialDataCleaner();
+
+      switch (type) {
+        case 'failed_files': {
+          const result = await cleaner.cleanupOldFailedFiles(failedFileRetentionDays);
+          this.log.info('Failed files cleanup completed', {
+            jobId: job.id,
+            filesProcessed: result.filesProcessed,
+            chunksDeleted: result.totalChunksDeleted,
+            searchDocsDeleted: result.totalSearchDocsDeleted,
+            failures: result.failures.length,
+          });
+          break;
+        }
+        case 'orphaned_chunks': {
+          // Note: cleanupOrphanedChunks operates globally (all users), userId is for logging only
+          const count = await cleaner.cleanupOrphanedChunks(orphanedChunkRetentionDays);
+          this.log.info('Orphaned chunks cleanup completed', {
+            jobId: job.id,
+            chunksDeleted: count,
+          });
+          break;
+        }
+        case 'orphaned_search_docs': {
+          // Note: cleanupOrphanedSearchDocs operates globally via OrphanCleanupJob
+          const count = await cleaner.cleanupOrphanedSearchDocs();
+          this.log.info('Orphaned search docs cleanup completed', {
+            jobId: job.id,
+            searchDocsDeleted: count,
+          });
+          break;
+        }
+        case 'daily_full': {
+          // Run all cleanup tasks sequentially
+          this.log.info('Starting daily full cleanup', { jobId: job.id });
+
+          // 1. Clean old failed files (operates across all users)
+          const failedResult = await cleaner.cleanupOldFailedFiles(failedFileRetentionDays);
+
+          // 2. Clean orphaned chunks (operates globally)
+          const chunksDeleted = await cleaner.cleanupOrphanedChunks(orphanedChunkRetentionDays);
+
+          // 3. Clean orphaned search documents (operates globally via OrphanCleanupJob)
+          const searchDocsDeleted = await cleaner.cleanupOrphanedSearchDocs();
+
+          this.log.info('Daily full cleanup completed', {
+            jobId: job.id,
+            failedFilesProcessed: failedResult.filesProcessed,
+            failedFilesChunksDeleted: failedResult.totalChunksDeleted,
+            failedFilesSearchDocsDeleted: failedResult.totalSearchDocsDeleted,
+            orphanedChunksDeleted: chunksDeleted,
+            orphanedSearchDocsDeleted: searchDocsDeleted,
+          });
+          break;
+        }
+        default:
+          this.log.error('Unknown cleanup job type', { jobId: job.id, type });
+          throw new Error(`Unknown cleanup job type: ${type}`);
+      }
+    } catch (error) {
+      this.log.error('File cleanup job failed', {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        jobId: job.id,
+        type,
+        userId,
         attemptNumber: job.attemptsMade,
       });
       throw error;  // Will trigger retry
@@ -1886,7 +2251,8 @@ export class MessageQueue {
   public async getJob(queueName: QueueName, jobId: string): Promise<Job | null> {
     const queue = this.queues.get(queueName);
     if (!queue) return null;
-    return queue.getJob(jobId);
+    const job = await queue.getJob(jobId);
+    return job ?? null;
   }
 
   /**

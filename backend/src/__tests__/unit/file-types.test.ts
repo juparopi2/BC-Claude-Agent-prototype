@@ -42,7 +42,13 @@ describe('File Types', () => {
         isFavorite: true,
         processingStatus: 'completed',
         embeddingStatus: 'pending',
+        readinessState: 'processing', // completed + pending = processing
         hasExtractedText: true, // Computed from extracted_text !== null
+        contentHash: null, // Fixture default is null
+        processingRetryCount: 0,
+        embeddingRetryCount: 0,
+        lastError: null,
+        failedAt: null,
         createdAt: '2025-01-15T10:00:00.000Z',
         updatedAt: '2025-01-15T11:00:00.000Z',
       });

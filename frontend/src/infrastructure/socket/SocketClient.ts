@@ -16,7 +16,9 @@ import type {
   AgentErrorData,
   SessionReadyEvent,
   ExtendedThinkingConfig,
+  FileWebSocketEvent,
 } from '@bc-agent/shared';
+import { FILE_WS_CHANNELS } from '@bc-agent/shared';
 import type { SocketConnectOptions, JoinSessionOptions, PendingMessage } from './types';
 
 type EventCallback<T = unknown> = (data: T) => void;
@@ -54,6 +56,9 @@ export class SocketClient {
   private sessionReadyListeners = new Set<EventCallback<SessionReadyEvent>>();
   private errorListeners = new Set<EventCallback<AgentErrorData>>();
   private sessionTitleListeners = new Set<EventCallback<SessionTitleUpdatedEvent>>();
+  // File processing event listeners (D25)
+  private fileStatusListeners = new Set<EventCallback<FileWebSocketEvent>>();
+  private fileProcessingListeners = new Set<EventCallback<FileWebSocketEvent>>();
 
   /**
    * Whether the socket is currently connected
@@ -337,6 +342,41 @@ export class SocketClient {
     };
   }
 
+  /**
+   * Subscribe to file status events (D25)
+   *
+   * Receives events on the file:status channel:
+   * - file:readiness_changed - File transitioned between readiness states
+   * - file:permanently_failed - File exhausted all retries
+   *
+   * @param callback Event handler
+   * @returns Unsubscribe function
+   */
+  onFileStatusEvent(callback: EventCallback<FileWebSocketEvent>): () => void {
+    this.fileStatusListeners.add(callback);
+    return () => {
+      this.fileStatusListeners.delete(callback);
+    };
+  }
+
+  /**
+   * Subscribe to file processing events (D25)
+   *
+   * Receives events on the file:processing channel:
+   * - file:processing_progress - Progress update (0-100%)
+   * - file:processing_completed - Processing finished successfully
+   * - file:processing_failed - Processing failed (may retry)
+   *
+   * @param callback Event handler
+   * @returns Unsubscribe function
+   */
+  onFileProcessingEvent(callback: EventCallback<FileWebSocketEvent>): () => void {
+    this.fileProcessingListeners.add(callback);
+    return () => {
+      this.fileProcessingListeners.delete(callback);
+    };
+  }
+
   // Private methods
 
   private setupEventListeners(): void {
@@ -349,6 +389,9 @@ export class SocketClient {
     this.socket.removeAllListeners('agent:event');
     this.socket.removeAllListeners('agent:error');
     this.socket.removeAllListeners('session:title_updated');
+    // File processing channels (D25)
+    this.socket.removeAllListeners(FILE_WS_CHANNELS.STATUS);
+    this.socket.removeAllListeners(FILE_WS_CHANNELS.PROCESSING);
 
     // Connection events
     this.socket.on('connect', () => {
@@ -393,6 +436,28 @@ export class SocketClient {
           callback(data);
         } catch (err) {
           console.error('[SocketClient] Error in session title handler:', err);
+        }
+      });
+    });
+
+    // File status events (D25)
+    this.socket.on(FILE_WS_CHANNELS.STATUS, (event: FileWebSocketEvent) => {
+      this.fileStatusListeners.forEach((callback) => {
+        try {
+          callback(event);
+        } catch (err) {
+          console.error('[SocketClient] Error in file status handler:', err);
+        }
+      });
+    });
+
+    // File processing events (D25)
+    this.socket.on(FILE_WS_CHANNELS.PROCESSING, (event: FileWebSocketEvent) => {
+      this.fileProcessingListeners.forEach((callback) => {
+        try {
+          callback(event);
+        } catch (err) {
+          console.error('[SocketClient] Error in file processing handler:', err);
         }
       });
     });

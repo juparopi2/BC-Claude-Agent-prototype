@@ -9,7 +9,7 @@ Sistema robusto de procesamiento de archivos con estados visuales claros, retry 
 | Sprint 1 | ✅ Completado | Backend Foundation - Tipos, migration, ReadinessStateComputer, FileRetryService |
 | Sprint 2 | ✅ Completado | Retry & Cleanup - ProcessingRetryManager, PartialDataCleaner, API Endpoint, Cron Job, Worker Integration |
 | Sprint 3 | ✅ Completado | WebSocket Events - FileEventEmitter centralizado, eventos con attemptNumber/maxAttempts |
-| Sprint 4 | ⏳ Pendiente | Frontend - Store, hooks, componentes visuales |
+| Sprint 4 | ✅ Completado | Frontend - fileProcessingStore, useFileProcessingEvents, FileStatusIndicator |
 | Sprint 5 | ⏳ Opcional | Refactorización - God files cleanup |
 
 ## Documentos
@@ -84,6 +84,21 @@ npm run -w backend test:unit
 
 **Tests (Sprint 3)**:
 - `backend/src/__tests__/unit/domains/files/FileEventEmitter.test.ts` - 29 tests
+
+**Frontend (Sprint 4)**:
+- `frontend/src/domains/files/stores/fileProcessingStore.ts` - Zustand store para tracking de procesamiento
+- `frontend/src/domains/files/hooks/useFileProcessingEvents.ts` - Hook para WebSocket events
+- `frontend/src/domains/files/hooks/useFileRetry.ts` - Hook para retry manual
+- `frontend/components/files/FileStatusIndicator.tsx` - Componente visual de estados
+- `frontend/components/files/FileItem.tsx` - Integración del indicador de estado
+
+**Frontend API (Sprint 4)**:
+- `frontend/src/infrastructure/api/fileApiClient.ts` - Método `retryProcessing()`
+- `frontend/src/infrastructure/socket/SocketClient.ts` - Event listeners para `file:status` y `file:processing`
+- `frontend/src/infrastructure/socket/types.ts` - Re-exports de tipos de WebSocket
+
+**Tests (Sprint 4)**:
+- `frontend/__tests__/stores/fileProcessingStore.test.ts` - 18 tests del store
 
 ## Filosofía de Trabajo
 

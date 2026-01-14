@@ -1,8 +1,8 @@
 # Integración con Paquete Compartido (@bc-agent/shared)
 
-**Fecha**: 2026-01-13
+**Fecha**: 2026-01-14
 **Estado**: Implementado
-**Versión**: 2.0
+**Versión**: 2.1
 
 ---
 
@@ -16,15 +16,17 @@ packages/shared/
 │   │   ├── message.types.ts          # Contrato API (single source of truth)
 │   │   ├── websocket.types.ts        # Eventos WebSocket type-safe
 │   │   ├── approval.types.ts         # Sistema Human-in-the-Loop
-│   │   ├── file.types.ts             # Gestión de archivos
+│   │   ├── file.types.ts             # Gestión de archivos + D25 retry/readiness types
 │   │   ├── source.types.ts           # Sistema multi-origen (Blob, SharePoint, etc.)
 │   │   ├── error.types.ts            # Respuestas de error estandarizadas
 │   │   ├── normalized-events.types.ts # Eventos normalizados multi-provider
 │   │   └── index.ts                  # Barrel export
 │   ├── schemas/
-│   │   └── index.ts                  # 10 esquemas Zod de validación
+│   │   └── index.ts                  # 11 esquemas Zod de validación (+ retryProcessingRequestSchema)
 │   ├── constants/
 │   │   ├── errors.ts                 # 42 códigos de error + mensajes
+│   │   ├── file-processing.ts        # PROCESSING_STATUS, EMBEDDING_STATUS, FILE_READINESS_STATE
+│   │   ├── websocket-events.ts       # FILE_WS_CHANNELS, FILE_WS_EVENTS
 │   │   └── index.ts
 │   └── index.ts                      # Root barrel export
 └── package.json
@@ -151,11 +153,161 @@ getFetchStrategy(sourceType: SourceType): FetchStrategy
 
 ---
 
-### 8. file.types.ts (Gestión de Archivos)
+### 8. file.types.ts (Gestión de Archivos + D25)
 
 | Tipo | Descripción |
 |------|-------------|
-| Tipos para gestión de archivos y uploads |
+| `ParsedFile` | Archivo parseado con todos los campos incluido `readinessState` |
+| `FileReadinessState` | `'uploading' \| 'processing' \| 'ready' \| 'failed'` |
+| `ProcessingStatus` | `'pending' \| 'processing' \| 'completed' \| 'failed'` |
+| `EmbeddingStatus` | `'pending' \| 'queued' \| 'processing' \| 'completed' \| 'failed'` |
+
+**Tipos de Retry (D25)**:
+| Tipo | Descripción |
+|------|-------------|
+| `RetryPhase` | `'processing' \| 'embedding'` |
+| `RetryScope` | `'full' \| 'embedding_only'` |
+| `RetryDecisionReason` | `'within_limit' \| 'max_retries_exceeded' \| 'not_failed'` |
+| `RetryDecisionResult` | Resultado de decisión de retry con `shouldRetry`, `backoffDelayMs`, etc. |
+| `ManualRetryResult` | Resultado de retry manual con `file`, `jobId`, `error` |
+| `CleanupResult` | Estadísticas de cleanup: `chunksDeleted`, `searchDocumentsDeleted` |
+| `BatchCleanupResult` | Estadísticas de cleanup en batch con `failures` array |
+
+**Tipos de API (D25)**:
+| Tipo | Descripción |
+|------|-------------|
+| `RetryProcessingRequest` | Request body para `POST /api/files/:id/retry-processing` |
+| `RetryProcessingResponse` | Response con `file`, `jobId`, `message` |
+
+**Tipos de WebSocket Events (D25)**:
+| Tipo | Descripción |
+|------|-------------|
+| `BaseFileWebSocketEvent` | Base con `fileId`, `timestamp` |
+| `FileReadinessChangedEvent` | Cambio de readiness: `previousState`, `newState`, statuses |
+| `FilePermanentlyFailedEvent` | Fallo permanente: `error`, retry counts, `canRetryManually` |
+| `FileProcessingProgressEvent` | Progreso: `progress`, `stage`, `attemptNumber`, `maxAttempts` |
+| `FileProcessingCompletedEvent` | Completado: `stats` (`textLength`, `pageCount`, `ocrUsed`) |
+| `FileProcessingFailedEvent` | Error con `error` message |
+| `FileWebSocketEvent` | Union type de todos los eventos WebSocket de archivos |
+
+**Ejemplo de uso**:
+```typescript
+import {
+  FileReadinessState,
+  RetryDecisionResult,
+  FileWebSocketEvent,
+  FileReadinessChangedEvent
+} from '@bc-agent/shared';
+
+function handleFileEvent(event: FileWebSocketEvent) {
+  if (event.type === 'file:readiness_changed') {
+    const e = event as FileReadinessChangedEvent;
+    console.log(`File ${e.fileId}: ${e.previousState} → ${e.newState}`);
+  }
+}
+```
+
+---
+
+### 9. Constants: file-processing.ts (D25)
+
+Constantes centralizadas para estados de procesamiento de archivos.
+
+```typescript
+import {
+  PROCESSING_STATUS,
+  EMBEDDING_STATUS,
+  FILE_READINESS_STATE
+} from '@bc-agent/shared';
+```
+
+| Constante | Valores |
+|-----------|---------|
+| `PROCESSING_STATUS` | `PENDING`, `PROCESSING`, `COMPLETED`, `FAILED` |
+| `EMBEDDING_STATUS` | `PENDING`, `QUEUED`, `PROCESSING`, `COMPLETED`, `FAILED` |
+| `FILE_READINESS_STATE` | `UPLOADING`, `PROCESSING`, `READY`, `FAILED` |
+
+**Tipos derivados** (para type safety):
+```typescript
+type ProcessingStatusValue = typeof PROCESSING_STATUS[keyof typeof PROCESSING_STATUS];
+// → 'pending' | 'processing' | 'completed' | 'failed'
+
+type EmbeddingStatusValue = typeof EMBEDDING_STATUS[keyof typeof EMBEDDING_STATUS];
+// → 'pending' | 'queued' | 'processing' | 'completed' | 'failed'
+
+type FileReadinessStateValue = typeof FILE_READINESS_STATE[keyof typeof FILE_READINESS_STATE];
+// → 'uploading' | 'processing' | 'ready' | 'failed'
+```
+
+**Uso correcto (evita magic strings)**:
+```typescript
+// ❌ INCORRECTO - Magic strings
+if (file.processingStatus === 'completed') { ... }
+
+// ✅ CORRECTO - Constantes centralizadas
+import { PROCESSING_STATUS } from '@bc-agent/shared';
+if (file.processingStatus === PROCESSING_STATUS.COMPLETED) { ... }
+```
+
+---
+
+### 10. Constants: websocket-events.ts (D25)
+
+Constantes centralizadas para canales y eventos WebSocket de archivos.
+
+```typescript
+import {
+  FILE_WS_CHANNELS,
+  FILE_WS_EVENTS
+} from '@bc-agent/shared';
+```
+
+**Canales**:
+| Constante | Valor | Uso |
+|-----------|-------|-----|
+| `FILE_WS_CHANNELS.STATUS` | `'file:status'` | Cambios de estado de readiness |
+| `FILE_WS_CHANNELS.PROCESSING` | `'file:processing'` | Progreso, completado, errores |
+
+**Eventos**:
+| Constante | Valor |
+|-----------|-------|
+| `FILE_WS_EVENTS.READINESS_CHANGED` | `'file:readiness_changed'` |
+| `FILE_WS_EVENTS.PERMANENTLY_FAILED` | `'file:permanently_failed'` |
+| `FILE_WS_EVENTS.PROCESSING_PROGRESS` | `'file:processing_progress'` |
+| `FILE_WS_EVENTS.PROCESSING_COMPLETED` | `'file:processing_completed'` |
+| `FILE_WS_EVENTS.PROCESSING_FAILED` | `'file:processing_failed'` |
+
+**Tipos derivados**:
+```typescript
+type FileWsChannel = typeof FILE_WS_CHANNELS[keyof typeof FILE_WS_CHANNELS];
+// → 'file:status' | 'file:processing'
+
+type FileWsEventType = typeof FILE_WS_EVENTS[keyof typeof FILE_WS_EVENTS];
+// → 'file:readiness_changed' | 'file:permanently_failed' | ...
+```
+
+**Uso en backend (emisión)**:
+```typescript
+import { FILE_WS_CHANNELS, FILE_WS_EVENTS } from '@bc-agent/shared';
+
+io.to(sessionId).emit(FILE_WS_CHANNELS.STATUS, {
+  type: FILE_WS_EVENTS.READINESS_CHANGED,
+  fileId,
+  previousState: 'processing',
+  newState: 'ready'
+});
+```
+
+**Uso en frontend (escucha)**:
+```typescript
+import { FILE_WS_CHANNELS, FILE_WS_EVENTS, FileWebSocketEvent } from '@bc-agent/shared';
+
+socket.on(FILE_WS_CHANNELS.STATUS, (event: FileWebSocketEvent) => {
+  if (event.type === FILE_WS_EVENTS.READINESS_CHANGED) {
+    // Handle readiness change
+  }
+});
+```
 
 ---
 
@@ -486,4 +638,4 @@ Al implementar cada nueva clase:
 
 ---
 
-*Última actualización: 2026-01-13*
+*Última actualización: 2026-01-14*

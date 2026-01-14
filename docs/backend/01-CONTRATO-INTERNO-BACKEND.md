@@ -2285,6 +2285,7 @@ npx tsx scripts/run-orphan-cleanup.ts --userId <uuid>
 | `009-fix-citation-message-id-type.sql` | Changed `message_citations.message_id` from `uniqueidentifier` to `nvarchar(255)` |
 | `010-add-image-caption-fields.sql` | Added `caption` and `caption_confidence` to `image_embeddings` table |
 | `011-add-content-hash.sql` | Added `content_hash` column to `files` table for duplicate detection |
+| `012-add-file-retry-tracking.sql` | Added retry tracking columns and indices for D25 robust file processing |
 
 ### 12.2 Type Inference Fix
 
@@ -2303,7 +2304,420 @@ const PARAMETER_TYPE_MAP = {
 
 ---
 
-## 13. Conclusiones
+## 13. Robust File Processing System
+
+### 13.1 Arquitectura General
+
+Sistema robusto de procesamiento de archivos que proporciona:
+- **Visibilidad clara** del estado de procesamiento al usuario via `readinessState`
+- **Retry automático** con backoff exponencial via BullMQ
+- **Cleanup automático** de datos parciales al agotar reintentos
+- **Retry manual** para archivos fallidos permanentemente
+- **WebSocket events centralizados** para actualizaciones en tiempo real
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    ROBUST FILE PROCESSING ARCHITECTURE                        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  User uploads file                                                           │
+│        │                                                                     │
+│        ▼                                                                     │
+│  [readinessState: UPLOADING]  ←── Frontend shows progress                   │
+│        │                                                                     │
+│        ▼                                                                     │
+│  [readinessState: PROCESSING] ←── WebSocket: readiness_changed              │
+│        │                                                                     │
+│   ┌────┴────┐                                                                │
+│   │ Worker  │ ←── BullMQ job (attempt 1/2)                                   │
+│   └────┬────┘                                                                │
+│        │                                                                     │
+│   ┌────┴────┬─────────────────┐                                              │
+│   │         │                 │                                              │
+│   ▼         ▼                 ▼                                              │
+│ SUCCESS   ERROR            MAX_RETRIES                                       │
+│   │     (retry)            EXCEEDED                                          │
+│   │         │                 │                                              │
+│   ▼         │                 ▼                                              │
+│ [READY] ←───┘      [FAILED] + Cleanup                                        │
+│   ✓                    ✗ + Retry Button                                      │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 13.2 Domain Layer (`backend/src/domains/files/`)
+
+El domain layer sigue SRP (Single Responsibility Principle) con 5 clases principales:
+
+#### 13.2.1 ReadinessStateComputer
+
+**Ubicación**: `backend/src/domains/files/status/ReadinessStateComputer.ts`
+
+**Responsabilidad Única**: Computar `FileReadinessState` desde `ProcessingStatus + EmbeddingStatus`.
+
+**Lógica de Prioridad**:
+```
+failed > processing > ready
+
+computeReadinessState(processingStatus, embeddingStatus):
+    IF processingStatus == 'failed' OR embeddingStatus == 'failed':
+        RETURN 'failed'
+    IF processingStatus != 'completed' OR embeddingStatus != 'completed':
+        RETURN 'processing'
+    RETURN 'ready'
+```
+
+**Patrón**: Singleton puro (sin efectos secundarios, sin dependencies).
+
+#### 13.2.2 FileRetryService
+
+**Ubicación**: `backend/src/domains/files/retry/FileRetryService.ts`
+
+**Responsabilidad Única**: Mutaciones de estado relacionadas con retries.
+
+**Métodos**:
+```typescript
+incrementProcessingRetryCount(userId, fileId): Promise<number>
+incrementEmbeddingRetryCount(userId, fileId): Promise<number>
+setLastProcessingError(userId, fileId, error): Promise<void>  // Trunca a 1000 chars
+setLastEmbeddingError(userId, fileId, error): Promise<void>
+markAsPermanentlyFailed(userId, fileId): Promise<void>        // Sets failed_at = GETUTCDATE()
+clearFailedStatus(userId, fileId, scope): Promise<void>       // Reset para retry manual
+updateEmbeddingStatus(userId, fileId, status): Promise<void>
+```
+
+**Patrón**: Singleton con DI support (`getFileRetryService()`, `__resetFileRetryService()`).
+
+#### 13.2.3 ProcessingRetryManager
+
+**Ubicación**: `backend/src/domains/files/retry/ProcessingRetryManager.ts`
+
+**Responsabilidad Única**: Orquestación de decisiones y ejecución de retries.
+
+**Métodos Clave**:
+```typescript
+shouldRetry(userId, fileId, phase: RetryPhase): Promise<RetryDecisionResult>
+    // Decide si reintentar basado en contadores y config
+    // Retorna: { shouldRetry, newRetryCount, maxRetries, backoffDelayMs, reason }
+
+executeManualRetry(userId, fileId, scope: RetryScope): Promise<ManualRetryResult>
+    // Retry manual desde UI: valida estado, limpia contadores, encola job
+
+handlePermanentFailure(userId, fileId, errorMessage, sessionId?): Promise<void>
+    // Marca como failed, ejecuta cleanup, emite WebSocket events
+
+calculateBackoffDelay(retryCount): number
+    // Formula: delay = baseDelay * multiplier^retryCount (con jitter)
+    // Capped at maxDelay (60s por defecto)
+```
+
+**Backoff Exponencial**:
+```
+Attempt 1: 5000ms * 2^0 = 5s (+ jitter)
+Attempt 2: 5000ms * 2^1 = 10s (+ jitter)
+Attempt 3: 5000ms * 2^2 = 20s (+ jitter)
+Max: 60s
+Jitter: delay * 0.1 * random()
+```
+
+**Patrón**: Singleton con lazy-loaded dependencies (evita circular imports).
+
+#### 13.2.4 PartialDataCleaner
+
+**Ubicación**: `backend/src/domains/files/cleanup/PartialDataCleaner.ts`
+
+**Responsabilidad Única**: Cleanup de datos huérfanos cuando el procesamiento falla.
+
+**Métodos**:
+```typescript
+cleanupForFile(userId, fileId, options?): Promise<CleanupResult>
+    // Limpia chunks de DB + documentos de AI Search
+    // Best-effort: errores en search no fallan la operación
+    // Soporta dryRun mode
+
+cleanupOrphanedChunks(olderThanDays?): Promise<number>
+    // Chunks sin parent file > N días
+
+cleanupOrphanedSearchDocs(): Promise<number>
+    // Delega a OrphanCleanupJob
+
+cleanupOldFailedFiles(olderThanDays, options?): Promise<BatchCleanupResult>
+    // Batch cleanup de archivos que fallaron > N días
+```
+
+**Patrón**: Singleton con DI support.
+
+#### 13.2.5 FileEventEmitter
+
+**Ubicación**: `backend/src/domains/files/emission/FileEventEmitter.ts`
+
+**Responsabilidad Única**: Centralizar emisión de eventos WebSocket para file processing.
+
+**Principios**:
+- **Single Responsibility**: Solo emite eventos
+- **Graceful Degradation**: Nunca throws si Socket.IO no disponible
+- **Fail-Safe**: Solo emite si hay sessionId
+
+**Canales y Eventos**:
+```typescript
+// Canal: file:status
+emitReadinessChanged(ctx, payload):
+    // Emite FILE_WS_EVENTS.READINESS_CHANGED
+    // payload: { previousState, newState, processingStatus, embeddingStatus }
+
+emitPermanentlyFailed(ctx, payload):
+    // Emite FILE_WS_EVENTS.PERMANENTLY_FAILED
+    // payload: { error, processingRetryCount, embeddingRetryCount, canRetryManually }
+
+// Canal: file:processing
+emitProgress(ctx, payload):
+    // Emite FILE_WS_EVENTS.PROCESSING_PROGRESS
+    // payload: { progress, stage, attemptNumber, maxAttempts }
+
+emitCompletion(ctx, stats):
+    // Emite FILE_WS_EVENTS.PROCESSING_COMPLETED
+    // stats: { textLength, pageCount, ocrUsed }
+
+emitError(ctx, errorMessage):
+    // Emite FILE_WS_EVENTS.PROCESSING_FAILED
+```
+
+**Patrón**: Singleton con verificación de Socket.IO readiness.
+
+### 13.3 Configuration
+
+**Ubicación**: `backend/src/domains/files/config/file-processing.config.ts`
+
+**Configuración centralizada** (Zod schema con environment variable support):
+
+| Config | Valor Default | Descripción |
+|--------|---------------|-------------|
+| `maxProcessingRetries` | 2 | Reintentos para extracción de texto |
+| `maxEmbeddingRetries` | 3 | Reintentos para generación de embeddings |
+| `baseDelayMs` | 5000 | Delay base para backoff |
+| `maxDelayMs` | 60000 | Delay máximo |
+| `backoffMultiplier` | 2 | Multiplicador exponencial |
+| `jitterFactor` | 0.1 | Factor de aleatoriedad |
+| `failedFileRetentionDays` | 30 | Días para cleanup de archivos fallidos |
+| `orphanedChunkRetentionDays` | 7 | Días para cleanup de chunks huérfanos |
+| `maxManualRetriesPerHour` | 10 | Rate limit para retry manual |
+
+### 13.4 Database Schema
+
+**Migration**: `backend/migrations/012-add-file-retry-tracking.sql`
+
+```sql
+-- Columnas de tracking
+ALTER TABLE files ADD processing_retry_count INT NOT NULL DEFAULT 0;
+ALTER TABLE files ADD embedding_retry_count INT NOT NULL DEFAULT 0;
+ALTER TABLE files ADD last_processing_error NVARCHAR(1000) NULL;
+ALTER TABLE files ADD last_embedding_error NVARCHAR(1000) NULL;
+ALTER TABLE files ADD failed_at DATETIME2 NULL;
+
+-- Índices filtrados para performance
+CREATE INDEX IX_files_failed_at ON files(failed_at)
+  WHERE failed_at IS NOT NULL;
+CREATE INDEX IX_files_processing_status_pending ON files(user_id, processing_status, created_at)
+  WHERE processing_status IN ('pending', 'processing');
+CREATE INDEX IX_files_embedding_status_failed ON files(user_id, embedding_status)
+  WHERE embedding_status = 'failed';
+```
+
+### 13.5 API Endpoint
+
+**Endpoint**: `POST /api/files/:id/retry-processing`
+
+**Ubicación**: `backend/src/routes/files.ts`
+
+**Pseudocódigo**:
+```
+handle(req, res):
+    // 1. Validar fileId y scope con Zod
+    { scope = 'full' } = validateOrThrow(retryProcessingRequestSchema, req.body)
+
+    // 2. Ejecutar retry manual
+    result = ProcessingRetryManager.executeManualRetry(userId, fileId, scope)
+
+    IF !result.success:
+        IF result.error == 'File not in failed state':
+            RETURN 400
+        IF result.error == 'File not found':
+            RETURN 404
+        RETURN 500
+
+    // 3. Encolar job según scope
+    IF scope == 'full':
+        jobId = MessageQueue.addFileProcessingJob(...)
+    ELSE IF scope == 'embedding_only':
+        jobId = MessageQueue.addFileChunkingJob(...)
+
+    RETURN 200 { file: result.file, jobId, message: 'Retry initiated' }
+```
+
+**Responses**:
+| Status | Condición |
+|--------|-----------|
+| 200 | Success - retorna ParsedFile + jobId |
+| 400 | File no está en estado 'failed' |
+| 404 | File no encontrado |
+| 429 | Rate limit excedido (10/hora) |
+
+### 13.6 Queue Integration
+
+**Nueva Cola**: `QueueName.FILE_CLEANUP = 'file-cleanup'`
+
+**FileCleanupJob Interface**:
+```typescript
+interface FileCleanupJob {
+    userId: string;
+    fileId?: string;          // Para single file cleanup
+    olderThanDays?: number;   // Para batch cleanup
+    scope: 'single' | 'orphaned_chunks' | 'orphaned_docs' | 'batch';
+}
+```
+
+**Scheduled Job** (Cron):
+```typescript
+// Cada día a las 3 AM UTC
+schedule: '0 3 * * *'
+jobId: 'scheduled-daily-cleanup'
+
+// Ejecuta:
+// 1. cleanupOldFailedFiles(30 days)
+// 2. cleanupOrphanedChunks(7 days)
+// 3. cleanupOrphanedSearchDocs()
+```
+
+**Worker Integration** en jobs existentes:
+```
+processFileProcessingJob / processEmbeddingGeneration / processFileChunkingJob:
+    TRY:
+        // Procesar archivo
+    CATCH error:
+        decision = ProcessingRetryManager.shouldRetry(userId, fileId, phase)
+
+        IF decision.shouldRetry:
+            // Re-throw para que BullMQ haga retry con delay
+            THROW RetryableError(message, { delay: decision.backoffDelayMs })
+        ELSE:
+            // Max retries agotados
+            ProcessingRetryManager.handlePermanentFailure(userId, fileId, error, sessionId)
+```
+
+### 13.7 WebSocket Events
+
+**Canales y Eventos** (definidos en `@bc-agent/shared`):
+
+```typescript
+// Constants
+FILE_WS_CHANNELS = {
+    STATUS: 'file:status',       // Cambios de estado
+    PROCESSING: 'file:processing' // Progreso y errores
+}
+
+FILE_WS_EVENTS = {
+    READINESS_CHANGED: 'file:readiness_changed',
+    PERMANENTLY_FAILED: 'file:permanently_failed',
+    PROCESSING_PROGRESS: 'file:processing_progress',
+    PROCESSING_COMPLETED: 'file:processing_completed',
+    PROCESSING_FAILED: 'file:processing_failed'
+}
+```
+
+**Event Payloads**:
+
+| Evento | Payload |
+|--------|---------|
+| `readiness_changed` | `{ fileId, previousState, newState, processingStatus, embeddingStatus }` |
+| `permanently_failed` | `{ fileId, error, processingRetryCount, embeddingRetryCount, canRetryManually }` |
+| `processing_progress` | `{ fileId, progress, stage, attemptNumber, maxAttempts }` |
+| `processing_completed` | `{ fileId, stats: { textLength, pageCount, ocrUsed } }` |
+| `processing_failed` | `{ fileId, error }` |
+
+### 13.8 Flujo de Eventos (Diagrama de Secuencia)
+
+```
+┌─────────┐  ┌──────────────┐  ┌─────────────────┐  ┌──────────────┐  ┌──────────────┐
+│Frontend │  │MessageQueue  │  │ProcessingRetry  │  │FileEvent     │  │PartialData   │
+│         │  │Worker        │  │Manager          │  │Emitter       │  │Cleaner       │
+└────┬────┘  └──────┬───────┘  └────────┬────────┘  └──────┬───────┘  └──────┬───────┘
+     │              │                   │                  │                 │
+     │ Upload file  │                   │                  │                 │
+     │──────────────>                   │                  │                 │
+     │              │                   │                  │                 │
+     │ WS: readiness│_changed           │                  │                 │
+     │<────────────(UPLOADING→PROCESSING)                  │                 │
+     │              │                   │                  │                 │
+     │              │ Process (attempt 1)                  │                 │
+     │              │─────────────────────────────────────>│                 │
+     │              │                   │                  │                 │
+     │ WS: progress │(20%, attempt 1/2) │                  │                 │
+     │<────────────────────────────────────────────────────│                 │
+     │              │                   │                  │                 │
+     │              │ Error occurs      │                  │                 │
+     │              │──────────────────>│                  │                 │
+     │              │                   │                  │                 │
+     │              │ shouldRetry()     │                  │                 │
+     │              │──────────────────>│                  │                 │
+     │              │<──────────────────│                  │                 │
+     │              │ { shouldRetry: true, delay: 5000 }   │                 │
+     │              │                   │                  │                 │
+     │              │ Retry (attempt 2) │                  │                 │
+     │              │─────────────────────────────────────>│                 │
+     │              │                   │                  │                 │
+     │ WS: progress │(50%, attempt 2/2) │                  │                 │
+     │<────────────────────────────────────────────────────│                 │
+     │              │                   │                  │                 │
+     │              │ Error again       │                  │                 │
+     │              │──────────────────>│                  │                 │
+     │              │                   │                  │                 │
+     │              │ shouldRetry()     │                  │                 │
+     │              │──────────────────>│                  │                 │
+     │              │<──────────────────│                  │                 │
+     │              │ { shouldRetry: false, reason: 'max_retries_exceeded' }│
+     │              │                   │                  │                 │
+     │              │handlePermanent    │                  │                 │
+     │              │Failure()          │                  │                 │
+     │              │──────────────────>│                  │                 │
+     │              │                   │──────────────────────────────────>│
+     │              │                   │ cleanupForFile() │                 │
+     │              │                   │                  │<────────────────│
+     │              │                   │                  │                 │
+     │ WS: permanently_failed           │                  │                 │
+     │<────────────────────────────────────────────────────│                 │
+     │              │                   │                  │                 │
+     │ WS: readiness_changed            │                  │                 │
+     │<────────────(PROCESSING→FAILED)──────────────────────                 │
+     │              │                   │                  │                 │
+     │ Click Retry  │                   │                  │                 │
+     │─────────────────────────────────>│                  │                 │
+     │              │                   │                  │                 │
+     │              │ executeManualRetry()                 │                 │
+     │              │──────────────────>│                  │                 │
+     │              │                   │ Clear counters   │                 │
+     │              │                   │ Reset status     │                 │
+     │              │                   │ Enqueue job      │                 │
+     │              │<──────────────────│                  │                 │
+     │              │                   │                  │                 │
+     │ WS: readiness_changed            │                  │                 │
+     │<────────────(FAILED→PROCESSING)──────────────────────                 │
+     │              │                   │                  │                 │
+```
+
+### 13.9 Tests Coverage
+
+| Componente | Tests | Cobertura |
+|------------|-------|-----------|
+| `ReadinessStateComputer` | 32 unit tests | Todas las combinaciones de estados |
+| `FileRetryService` | 29 unit tests | CRUD ops, truncación, multi-tenant |
+| `ProcessingRetryManager` | 21 unit tests | Decisions, backoff, manual retry |
+| `PartialDataCleaner` | 19 unit tests | Single/batch cleanup, error handling |
+| `FileEventEmitter` | 29 unit tests | Todos los eventos, graceful degradation |
+| **Integration** | 18 tests | Flujo completo, multi-tenant, singletons |
+
+---
+
+## 14. Conclusiones
 
 ### Fortalezas del Diseño Actual
 
@@ -2317,16 +2731,20 @@ const PARAMETER_TYPE_MAP = {
 8. **File pipeline completo** - Upload → Process → Chunk → Embed → Search → Context
 9. **Citation tracking** - CitationExtractor para asociar citas RAG con mensajes
 10. **Ejecución síncrona** - `graph.invoke()` simplifica el flujo de eventos
+11. **Robust File Processing (D25)** - Retry automático con backoff exponencial, cleanup de datos huérfanos, estados visuales claros
+12. **Event emission centralizada** - FileEventEmitter para WebSocket con graceful degradation
+13. **Constantes centralizadas** - Sin magic strings para estados y eventos de archivos
 
 ### Áreas de Mejora Identificadas
 
 1. **Fallback de Redis no atómico** - Race condition en secuencias (D1 en Future Development)
 2. **Hardcoded 'anthropic'** en AgentOrchestrator - Debería ser configurable via factory
 3. **No hay retry automático** para persistencia fallida
-4. **Image search limitado** - No OCR, no captions (D2 en Future Development)
+4. **Image search limitado** - No OCR, no captions (D26 completado: captions + semantic ranker)
 5. **Timeout fijo** (5 min) - Podría ser configurable por request
 6. **Placeholder directories vacíos** - domains/business-central, chat, files, search
+7. **MessageQueue.ts God File** - 2000+ líneas con múltiples responsabilidades (D27 en Future Development)
 
 ---
 
-*Documento actualizado: 2026-01-13 v2.3 (Duplicate Detection, Admin Routes, OrphanCleanupJob)*
+*Documento actualizado: 2026-01-14 v2.4 (Robust File Processing D25)*

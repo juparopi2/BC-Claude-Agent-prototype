@@ -55,3 +55,12 @@ export {
   type DuplicateConflict,
   type DuplicateResolution,
 } from './duplicateStore';
+
+export {
+  useFileProcessingStore,
+  resetFileProcessingStore,
+  selectFileProcessingStatus,
+  type FileProcessingState,
+  type FileProcessingActions,
+  type FileProcessingStatus,
+} from './fileProcessingStore';

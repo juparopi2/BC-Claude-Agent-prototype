@@ -349,13 +349,100 @@ Centralizar la emisión de eventos WebSocket para file processing usando `FileEv
 
 ---
 
-## [Unreleased]
+## [Sprint 4] - 2026-01-14 ✅ COMPLETADO
 
-### Sprint 4 - Frontend (Pending)
-- [ ] `fileProcessingStore` (Zustand)
-- [ ] `useFileProcessingEvents` hook
-- [ ] `FileStatusIndicator` component
-- [ ] Integration in `FileItem`
+### Objetivo
+Implementar UI para mostrar estados de procesamiento de archivos en tiempo real.
+
+### Added - Zustand Store
+- **`frontend/src/domains/files/stores/fileProcessingStore.ts`**
+  - `FileProcessingState` con Map<fileId, FileProcessingStatus>
+  - `FileProcessingStatus` - readinessState, progress, attemptNumber, maxAttempts, error, canRetryManually
+  - Actions: `setProcessingStatus()`, `updateProgress()`, `markCompleted()`, `markFailed()`, `removeProcessingStatus()`, `reset()`
+  - Selector: `selectFileProcessingStatus(state, fileId)`
+  - Singleton pattern con `resetFileProcessingStore()`
+
+### Added - React Hooks
+- **`frontend/src/domains/files/hooks/useFileProcessingEvents.ts`**
+  - Suscripción a WebSocket canales `file:status` y `file:processing`
+  - Maneja eventos: `readiness_changed`, `permanently_failed`, `processing_progress`, `processing_completed`, `processing_failed`
+  - Usa refs para callbacks estables (patrón del proyecto)
+  - Actualiza `fileProcessingStore` y `fileListStore`
+
+- **`frontend/src/domains/files/hooks/useFileRetry.ts`**
+  - `retryFile(fileId, scope?)` - Llama API y actualiza stores
+  - Estados: `isRetrying`, `error`, `clearError()`
+  - Integra con `fileApiClient.retryProcessing()`
+
+### Added - UI Component
+- **`frontend/components/files/FileStatusIndicator.tsx`**
+  - Estados visuales: uploading (spinner), processing (spinner + progress), ready (checkmark), failed (error + retry button)
+  - Props: `fileId`, `readinessState`, `className`, `compact`
+  - Subcomponentes: `ProcessingSpinner`, `ReadyIndicator`, `FailedIndicator`
+  - Usa `useFileProcessingStore` para updates en tiempo real
+  - Retry button integrado con `useFileRetry`
+  - Accesibilidad: roles ARIA, tooltips
+
+### Added - API Client
+- **`frontend/src/infrastructure/api/fileApiClient.ts`**
+  - Método `retryProcessing(fileId, request?)` - POST a `/api/files/:id/retry-processing`
+
+### Added - WebSocket Client
+- **`frontend/src/infrastructure/socket/SocketClient.ts`**
+  - `fileStatusListeners` y `fileProcessingListeners` Sets
+  - `onFileStatusEvent(callback)` - Suscripción a `file:status`
+  - `onFileProcessingEvent(callback)` - Suscripción a `file:processing`
+  - Event handlers en `setupEventListeners()` para ambos canales
+
+- **`frontend/src/infrastructure/socket/types.ts`**
+  - Re-exports de tipos: `FileWebSocketEvent`, `FileReadinessChangedEvent`, `FilePermanentlyFailedEvent`, etc.
+  - Re-exports de constantes: `FILE_WS_CHANNELS`, `FILE_WS_EVENTS`
+
+### Modified - FileItem Integration
+- **`frontend/components/files/FileItem.tsx`**
+  - Import `FileStatusIndicator`
+  - Indicador visual junto al icono (solo para archivos, no carpetas)
+  - `opacity-60` para archivos con `readinessState !== 'ready'`
+  - Modo compact para indicador
+
+### Modified - Barrel Exports
+- **`frontend/src/domains/files/stores/index.ts`**
+  - Export `useFileProcessingStore`, `resetFileProcessingStore`, `selectFileProcessingStatus`, types
+
+- **`frontend/src/domains/files/hooks/index.ts`**
+  - Export `useFileRetry`, `UseFileRetryReturn`
+  - Export `useFileProcessingEvents`, `UseFileProcessingEventsOptions`
+
+### Modified - Shared Package
+- **`packages/shared/src/index.ts`**
+  - Agregados exports de D25 Sprint 2: `RetryPhase`, `RetryScope`, `RetryProcessingRequest`, `RetryProcessingResponse`, etc.
+  - Agregados exports de D25 Sprint 3: `FileWebSocketEvent`, `FileReadinessChangedEvent`, etc.
+
+### Added - Unit Tests
+- **`frontend/__tests__/stores/fileProcessingStore.test.ts`**
+  - 18 tests cubriendo:
+    - Initial state
+    - `setProcessingStatus()` - add, update partial, multiple files
+    - `updateProgress()` - with/without attempt info, non-existent file
+    - `markCompleted()` - ready state, clear error
+    - `markFailed()` - error message, canRetryManually flag
+    - `removeProcessingStatus()` - remove, non-existent
+    - `reset()` - clear all
+    - Selectors: `selectFileProcessingStatus()`
+    - Edge cases: rapid updates, Map immutability
+
+### Verification
+
+```
+✅ Type verification passing (npm run verify:types)
+✅ Frontend store tests: 18 passing
+✅ Lint: No new errors
+✅ FileStatusIndicator renders all states correctly
+```
+
+---
+
+## [Unreleased]
 
 ### Sprint 5 - Refactoring (Optional)
 - [ ] Extract `QueueManager` from `MessageQueue`

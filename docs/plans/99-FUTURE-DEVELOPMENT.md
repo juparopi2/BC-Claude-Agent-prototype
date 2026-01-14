@@ -463,16 +463,18 @@ Los tests documentan el comportamiento esperado para cuando se implementen.
 | ~~D21~~ | ~~File Deletion Cascade~~ | ~~Phase 6~~ | ~~Media~~ | ~~1~~ | ✅ 3/4 gaps (Redis opcional) |
 | ~~D23~~ | ~~Post-Delete Verification~~ | ~~Phase 6~~ | ~~Baja~~ | ~~0.5~~ | ✅ BY DESIGN (via D22) |
 | ~~D24~~ | ~~UserId Case Sensitivity (AI Search)~~ | ~~Phase 6~~ | ~~ALTA~~ | ~~0.5~~ | ✅ COMPLETADO |
-| **D25** | **EmbeddingService Tests Env Injection** | **Phase 6** | **MEDIA** | **1-2** | Pendiente |
+| ~~D25~~ | ~~Robust File Processing System~~ | ~~Phase 6~~ | ~~ALTA~~ | ~~5-7~~ | ✅ COMPLETADO (Sprints 1-4) |
+| **D25-S5** | **D25-Sprint5: MessageQueue Workers Extraction** | **Phase 6** | **BAJA** | **3-5** | Pendiente (Opcional) |
+| **D26-A** | **EmbeddingService Tests Env Injection** | **Phase 6** | **MEDIA** | **1-2** | Pendiente |
 | **D27** | **MessageQueue Refactor - God File Decomposition** | **Phase 6** | **ALTA** | **3-5** | Pendiente |
 | **D28** | **WebSocket Event Constants Centralization** | **Phase 6** | **MEDIA** | **2-3** | Parcial (File events ✅) |
 
 
-**Total estimado Phase 6:** ~30-35 días (ajustado - D20, D21, D22, D23, D24, D26 completados)
+**Total estimado Phase 6:** ~25-30 días (ajustado - D20, D21, D22, D23, D24, D25, D26 completados)
 **Total estimado Phase 7:** ~28 días
 **Total estimado Phase 8:** ~10 días
 
-*Última actualización: 2026-01-13 (D24 completado)*
+*Última actualización: 2026-01-14 (D25 Robust File Processing completado, Sprint 5 documentado como D29)*
 
 ---
 
@@ -905,7 +907,7 @@ private normalizeUserId(userId: string): string {
 
 ---
 
-## D25: EmbeddingService Integration Tests - Environment Variable Injection
+## D26-A: EmbeddingService Integration Tests - Environment Variable Injection
 
 **Fecha análisis:** 2026-01-06
 **Estado:** Documentado - Workaround Aplicado
@@ -1210,6 +1212,131 @@ backend/src/infrastructure/queue/
 | Imports circulares | Baja | Estructura de dependencias clara |
 | Performance degradation | Muy Baja | No hay cambio de lógica, solo organización |
 | Merge conflicts | Media | Hacer en branch dedicado, mergear rápido |
+
+---
+
+## D25-S5: D25-Sprint5 - MessageQueue Workers Extraction (OPCIONAL)
+
+**Fecha análisis:** 2026-01-14
+**Estado:** Documentado - Opcional (Sprints 1-4 de D25 completados)
+**Prioridad:** BAJA (No bloquea funcionalidad)
+**Estimación:** 3-5 días
+
+### Contexto
+
+El plan D25 (Robust File Processing) fue implementado exitosamente en 4 sprints:
+- **Sprint 1**: Domain Layer Foundation (ReadinessStateComputer, FileRetryService, migration)
+- **Sprint 2**: Retry & Cleanup (ProcessingRetryManager, PartialDataCleaner, API endpoint, queue integration)
+- **Sprint 3**: WebSocket Events (FileEventEmitter, constantes centralizadas)
+- **Sprint 4**: Frontend (fileProcessingStore, useFileProcessingEvents, FileStatusIndicator)
+
+El **Sprint 5 es opcional** y consiste en refactorización de "god files" que no bloquean la funcionalidad pero representan deuda técnica arquitectónica.
+
+### God Files Identificados
+
+| Archivo | Líneas | Responsabilidades | Problema |
+|---------|--------|-------------------|----------|
+| `MessageQueue.ts` | ~2,061 | 8+ responsabilidades | Viola SRP severamente |
+| `files.ts` (routes) | ~1,015 | CRUD + upload + search + retry | Lógica de negocio en routes |
+| `FileService.ts` | ~967 | CRUD + búsqueda + procesamiento | Múltiples dominios mezclados |
+
+### Plan de Refactorización para MessageQueue.ts
+
+**Estructura Propuesta:**
+```
+backend/src/infrastructure/queue/
+├── index.ts                          # Re-exports públicos
+├── MessageQueue.ts                   # Core: singleton, métodos add* (~400 líneas)
+├── QueueConfig.ts                    # Configuración de colas (~200 líneas)
+├── WorkerRegistry.ts                 # Registro de workers (~150 líneas)
+│
+├── types/
+│   ├── index.ts
+│   ├── QueueName.ts
+│   └── jobs/
+│       ├── MessagePersistenceJob.ts
+│       ├── FileProcessingJob.ts
+│       ├── FileChunkingJob.ts
+│       ├── EmbeddingGenerationJob.ts
+│       ├── FileCleanupJob.ts
+│       └── CitationPersistenceJob.ts
+│
+├── processors/                        # Lógica de procesamiento
+│   ├── index.ts
+│   ├── IJobProcessor.ts              # Interface común
+│   ├── MessagePersistenceProcessor.ts
+│   ├── FileProcessingProcessor.ts
+│   ├── FileChunkingProcessor.ts
+│   ├── EmbeddingGenerationProcessor.ts
+│   ├── FileCleanupProcessor.ts
+│   └── CitationPersistenceProcessor.ts
+│
+├── scheduling/
+│   └── ScheduledJobsInitializer.ts   # Jobs programados
+│
+├── rate-limiting/
+│   └── SessionRateLimiter.ts         # Rate limiting multi-tenant
+│
+└── utils/
+    └── TimeHelpers.ts                # getLastHourStart, etc.
+```
+
+### Beneficios
+
+1. **Screaming Architecture**: La estructura de carpetas "grita" qué hace cada parte
+2. **Testabilidad**: Cada procesador puede testearse independientemente
+3. **Mantenibilidad**: Archivos de ~100-200 líneas vs 2000+ líneas
+4. **Extensibilidad**: Agregar nueva cola = nuevo archivo en `types/jobs/` + `processors/`
+5. **Separación de concerns**: Infraestructura vs Lógica de procesamiento
+
+### Plan de Implementación
+
+**Fase 1: Extracción de Tipos (0.5 días)**
+- Crear estructura de carpetas `types/` y `types/jobs/`
+- Mover `QueueName` enum a `types/QueueName.ts`
+- Mover interfaces de jobs a archivos individuales
+
+**Fase 2: Extracción de Procesadores (1.5 días)**
+- Crear interface `IJobProcessor` en `processors/`
+- Extraer cada método `process*` a su propio archivo
+- Inyectar dependencias via constructor
+
+**Fase 3: Extracción de Rate Limiting (0.5 días)**
+- Crear `SessionRateLimiter` en `rate-limiting/`
+- Mover `checkRateLimit` y `getRateLimitStatus`
+
+**Fase 4: Extracción de Configuración (0.5 días)**
+- Crear `QueueConfig.ts` con definiciones de colas
+- Crear `WorkerRegistry.ts` con configuración de workers
+- Extraer `ScheduledJobsInitializer` a `scheduling/`
+
+**Fase 5: Verificación (1 día)**
+- Ejecutar suite completa de tests
+- Verificar que `MessageQueue.ts` queda en ~400 líneas
+- Actualizar documentación
+
+### Estrategia de Migración Segura
+
+1. **No cambiar API pública**: `getMessageQueue()` y métodos `add*` mantienen firma
+2. **Refactor incremental**: Una fase a la vez, tests después de cada fase
+3. **Feature flags NO necesarios**: Cambio interno, API externa intacta
+
+### Riesgos
+
+| Riesgo | Probabilidad | Mitigación |
+|--------|--------------|------------|
+| Tests de integración fallan | Media | Ejecutar después de cada fase |
+| Imports circulares | Baja | Estructura de dependencias clara |
+| Merge conflicts | Media | Hacer en branch dedicado, mergear rápido |
+
+### Decisión
+
+**Estado**: OPCIONAL - La funcionalidad de D25 está completamente implementada sin este refactor.
+
+Se recomienda completar este refactor cuando:
+- Haya tiempo disponible sin presión de features nuevas
+- Se necesite agregar nuevas colas/workers
+- El equipo quiera mejorar la mantenibilidad del código
 
 ---
 

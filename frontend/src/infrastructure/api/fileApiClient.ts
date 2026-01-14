@@ -18,6 +18,8 @@ import type {
   ApiErrorResponse,
   CheckDuplicatesRequest,
   CheckDuplicatesResponse,
+  RetryProcessingRequest,
+  RetryProcessingResponse,
 } from '@bc-agent/shared';
 import { isApiErrorResponse, ErrorCode } from '@bc-agent/shared';
 import { env } from '@/lib/config/env';
@@ -567,6 +569,45 @@ export class FileApiClient {
         },
       };
     }
+  }
+
+  // ============================================
+  // File Retry Processing Endpoint (D25)
+  // ============================================
+
+  /**
+   * Retry processing for a failed file
+   *
+   * Triggers re-processing of a file that has permanently failed.
+   * Can retry full processing or just embedding generation.
+   *
+   * @param fileId - File UUID
+   * @param request - Optional retry options (scope: 'full' | 'embedding_only')
+   * @returns Updated file and job ID
+   *
+   * @example
+   * ```typescript
+   * // Retry full processing
+   * const result = await fileApi.retryProcessing('file-123');
+   *
+   * // Retry embedding only
+   * const result = await fileApi.retryProcessing('file-123', {
+   *   scope: 'embedding_only',
+   * });
+   *
+   * if (result.success) {
+   *   console.log('Retry initiated, job ID:', result.data.jobId);
+   * }
+   * ```
+   */
+  async retryProcessing(
+    fileId: string,
+    request?: RetryProcessingRequest
+  ): Promise<ApiResponse<RetryProcessingResponse>> {
+    return this.postJson<RetryProcessingResponse>(
+      `/api/files/${fileId}/retry-processing`,
+      request ?? {}
+    );
   }
 }
 

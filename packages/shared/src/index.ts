@@ -109,6 +109,23 @@ export type {
   DuplicateResult,
   CheckDuplicatesResponse,
   DuplicateAction,
+  // Retry & Cleanup types
+  RetryPhase,
+  RetryScope,
+  RetryDecisionReason,
+  RetryDecisionResult,
+  ManualRetryResult,
+  CleanupResult,
+  BatchCleanupResult,
+  RetryProcessingRequest,
+  RetryProcessingResponse,
+  // File WebSocket event types
+  FileReadinessChangedEvent,
+  FilePermanentlyFailedEvent,
+  FileProcessingProgressEvent,
+  FileProcessingCompletedEvent,
+  FileProcessingFailedEvent,
+  FileWebSocketEvent,
 
   // Source types (Visual Representation feature)
   SourceType,

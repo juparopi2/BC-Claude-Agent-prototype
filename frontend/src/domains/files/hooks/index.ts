@@ -12,3 +12,8 @@ export { useFileUpload, type UseFileUploadReturn } from './useFileUpload';
 export { useFolderNavigation, type UseFolderNavigationReturn } from './useFolderNavigation';
 export { useFileActions, type UseFileActionsReturn } from './useFileActions';
 export { useGoToFilePath, type UseGoToFilePathReturn } from './useGoToFilePath';
+export { useFileRetry, type UseFileRetryReturn } from './useFileRetry';
+export {
+  useFileProcessingEvents,
+  type UseFileProcessingEventsOptions,
+} from './useFileProcessingEvents';

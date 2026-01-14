@@ -18,10 +18,20 @@ export type {
   SessionReadyEvent,
   ExtendedThinkingConfig,
   TransientEventType,
+  // File processing WebSocket events (D25)
+  FileWebSocketEvent,
+  FileReadinessChangedEvent,
+  FilePermanentlyFailedEvent,
+  FileProcessingProgressEvent,
+  FileProcessingCompletedEvent,
+  FileProcessingFailedEvent,
 } from '@bc-agent/shared';
 
 // Re-export transient event utilities from shared (single source of truth)
 export { TRANSIENT_EVENT_TYPES, isTransientEventType } from '@bc-agent/shared';
+
+// Re-export file WebSocket constants (D25)
+export { FILE_WS_CHANNELS, FILE_WS_EVENTS } from '@bc-agent/shared';
 
 /**
  * Socket connection options

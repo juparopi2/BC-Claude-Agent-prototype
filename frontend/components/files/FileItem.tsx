@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { FileStatusIndicator } from './FileStatusIndicator';
 
 /**
  * FileIcon component - renders the appropriate icon based on file type
@@ -192,6 +193,9 @@ export const FileItem = memo(forwardRef<HTMLDivElement, FileItemProps>(function 
     [file, onSelect, onDoubleClick, onKeyDown]
   );
 
+  // Files that are not ready should appear slightly faded (but not folders)
+  const isProcessing = !file.isFolder && file.readinessState !== 'ready';
+
   return (
     <div
       ref={ref}
@@ -199,6 +203,7 @@ export const FileItem = memo(forwardRef<HTMLDivElement, FileItemProps>(function 
         'group flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-colors',
         'hover:bg-accent/50',
         isSelected && 'bg-accent ring-1 ring-primary/20',
+        isProcessing && 'opacity-60',
         className
       )}
       onClick={handleClick}
@@ -212,6 +217,15 @@ export const FileItem = memo(forwardRef<HTMLDivElement, FileItemProps>(function 
     >
       {/* Icon */}
       <FileIcon className="shrink-0" file={file} />
+
+      {/* Processing status indicator (D25) - only for files, not folders */}
+      {!file.isFolder && (
+        <FileStatusIndicator
+          fileId={file.id}
+          readinessState={file.readinessState}
+          compact
+        />
+      )}
 
       {/* Name */}
       <Tooltip>

@@ -168,8 +168,12 @@ export class FileProcessingService {
       this.emitProgress(eventCtx, 0, PROCESSING_STATUS.PROCESSING, attemptNumber, maxAttempts);
 
       // Step 2: Download blob from storage (emit 20% progress)
-      logger.debug({ fileId, blobPath }, 'Downloading blob from storage');
       const fileUploadService = getFileUploadService();
+      logger.info({
+        fileId,
+        blobPath,
+        containerName: (fileUploadService as unknown as { containerName: string }).containerName,
+      }, 'Downloading blob for file processing');
       const buffer = await fileUploadService.downloadFromBlob(blobPath);
       this.emitProgress(eventCtx, 20, PROCESSING_STATUS.PROCESSING, attemptNumber, maxAttempts);
 

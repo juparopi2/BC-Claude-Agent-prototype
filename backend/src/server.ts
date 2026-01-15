@@ -201,9 +201,14 @@ async function initializeApp(): Promise<void> {
     // Step 4.6: Initialize MessageQueue eagerly (fail fast if Redis unavailable)
     console.log('🔌 Initializing MessageQueue (BullMQ)...');
     try {
-      const messageQueue = getMessageQueue();
+      // Pass queue name prefix for environment isolation (local vs Azure)
+      const queuePrefix = env.QUEUE_NAME_PREFIX || undefined;
+      const messageQueue = getMessageQueue({
+        queueNamePrefix: queuePrefix,
+      });
       await messageQueue.waitForReady();
       console.log('✅ MessageQueue initialized successfully');
+      console.log(`   Queue prefix: ${queuePrefix || '(none - production mode)'}`);
       console.log('   Queues: message-persistence, tool-execution, event-processing');
     } catch (error) {
       console.error('❌ MessageQueue initialization failed:', error instanceof Error ? error.message : 'Unknown error');

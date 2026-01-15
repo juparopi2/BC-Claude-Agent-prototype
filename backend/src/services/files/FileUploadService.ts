@@ -74,15 +74,16 @@ export class FileUploadService {
     this.containerClient = this.blobServiceClient.getContainerClient(container);
     this.containerName = container;
 
-    // Diagnostic: Log storage account URL and container name
+    // Diagnostic: Log container resolution for debugging
     this.logger.info({
-      container,
+      resolvedContainer: container,
+      envContainerName: env.STORAGE_CONTAINER_NAME,
+      injectedContainerName: containerName || null,
+      fallbackUsed: !containerName && !env.STORAGE_CONTAINER_NAME,
       storageAccountUrl: this.blobServiceClient.url,
       containerUrl: this.containerClient.url,
-      envContainerName: env.STORAGE_CONTAINER_NAME,
       hasConnectionString: !!connString,
-      connectionStringLength: connString?.length,
-    }, 'FileUploadService initialized');
+    }, 'FileUploadService initialized with container');
   }
 
   public static getInstance(

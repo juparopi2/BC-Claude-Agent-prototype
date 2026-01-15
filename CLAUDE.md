@@ -109,6 +109,7 @@ The system decides which agent to activate based on hybrid logic:
 2.  **No Logic in Controllers**: `ChatMessageHandler` only validates and delegates.
 3.  **Tests**: Every change requires a unit test. If touching persistence, integration test.
 4.  **Logging**: Use structured logger (`createChildLogger`). Never `console.log`.
+5.  **IDs**: All UUIDs/GUIDs must be **UPPERCASE** (see Section 12).
 
 ### 4.3 Common Commands
 
@@ -465,4 +466,31 @@ LOG_SERVICES=AgentOrchestrator,MessageQueue npm run dev
 
 # Show all logs (default)
 npm run dev
+```
+
+---
+
+## 12. ID Standardization (GUID/UUID)
+
+**CRITICAL RULE**: All IDs (User ID, File ID, Session ID, Workspace ID, etc.) that follow GUID/UUID format MUST be **UPPERCASE** throughout the entire system.
+
+### 12.1 Implementation Rules
+1.  **Ingestion Normalization**: When receiving an ID from any external source (API request, CLI input, integration, etc.):
+    -   **Backend**: Convert to uppercase immediately upon receipt (e.g., in controllers or DTO transformation). `id.toUpperCase()`.
+    -   **Frontend**: Convert to uppercase before sending to backend or storing in state.
+    -   **Shared**: Zod schemas for IDs should ideally transform/validate to uppercase.
+2.  **Comparison**: All ID comparisons must be done in uppercase.
+3.  **Logging**: All IDs written to logs must be uppercase.
+4.  **Database**: IDs stored in the database (SQL, Redis, etc.) must be uppercase.
+5.  **Constants/Magic Strings**: Any hardcoded IDs in tests or code (e.g., `const TEST_USER_ID = '...'`) must be uppercase.
+
+### 12.2 Examples
+```typescript
+// ✅ CORRECT
+const userId = rawId.toUpperCase();
+const sessionId = "A1B2C3D4-E5F6-7890-1234-567890ABCDEF";
+
+// ❌ WRONG
+const userId = rawId.toLowerCase(); // Never lowercase
+const sessionId = "a1b2c3d4-e5f6-7890-1234-567890abcdef";
 ```

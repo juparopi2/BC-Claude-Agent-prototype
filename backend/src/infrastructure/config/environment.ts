@@ -93,7 +93,7 @@ const envSchema = z.object({
 
   // Storage
   STORAGE_CONNECTION_STRING: z.string().optional(),
-  STORAGE_CONTAINER_NAME: z.string().default('agent-files'),
+  STORAGE_CONTAINER_NAME: z.string().default('user-files'),
 
   // Azure Document Intelligence (OCR)
   AZURE_DI_ENDPOINT: z.string().url().optional(),
@@ -115,6 +115,11 @@ const envSchema = z.object({
 
   // BullMQ Configuration
   BULLMQ_CONNECTION_TIMEOUT: z.string().default('30000').transform(Number).pipe(z.number().min(5000).max(120000)),
+
+  // Queue Name Prefix (Environment Isolation)
+  // Use 'local' for local development to avoid conflicts with Azure Container Apps
+  // Leave empty for production/Azure deployments
+  QUEUE_NAME_PREFIX: z.string().default(''),
 
   // Queue Worker Concurrency (for Azure Redis Basic tier with limited connections)
   QUEUE_MESSAGE_CONCURRENCY: z.string().default('10').transform(Number).pipe(z.number().min(1).max(50)),

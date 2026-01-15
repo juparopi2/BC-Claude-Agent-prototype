@@ -109,11 +109,6 @@ export const useFileListStore = create<FileListState & FileListActions>()(
         ? { ...file, readinessState: processingStatus.readinessState }
         : file;
 
-      console.log('[fileListStore] addFile called:', file.id, {
-        originalState: file.readinessState,
-        processingStoreState: processingStatus?.readinessState,
-        finalState: fileWithLatestStatus.readinessState,
-      });
 
       set((state) => ({
         files: [fileWithLatestStatus, ...state.files],
@@ -124,10 +119,8 @@ export const useFileListStore = create<FileListState & FileListActions>()(
     updateFile: (id, updates) => {
       // Normalize ID to lowercase for case-insensitive matching
       const normalizedId = id.toUpperCase();
-      console.log('[fileListStore] updateFile called:', normalizedId, updates);
       set((state) => {
         const fileExists = state.files.some((file) => file.id.toUpperCase() === normalizedId);
-        console.log('[fileListStore] File exists in store:', fileExists, 'Total files:', state.files.length);
         if (!fileExists) {
           console.warn('[fileListStore] File not found in store, update will have no effect:', normalizedId);
         }

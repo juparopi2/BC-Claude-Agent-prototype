@@ -9,6 +9,7 @@ import {
   StarOff,
   Trash2,
   Copy,
+  RefreshCw,
 } from 'lucide-react';
 import {
   ContextMenu,
@@ -28,7 +29,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useFileActions, useFiles } from '@/src/domains/files';
+import { useFileActions, useFiles, useFileRetry } from '@/src/domains/files';
+import { cn } from '@/lib/utils';
 import { validateFolderName, validateFileName } from '@/lib/utils/validation';
 import { toast } from 'sonner';
 
@@ -48,6 +50,15 @@ export function FileContextMenu({ file, children, onOpenChange }: FileContextMen
   // File actions from domain hooks
   const { downloadFile, renameFile, deleteFiles, error: actionError } = useFileActions();
   const { toggleFavorite } = useFiles();
+  const { retryFile, isRetrying } = useFileRetry();
+
+  const handleRetry = useCallback(async () => {
+    const success = await retryFile(file.id);
+    if (success) {
+      toast.success('Retry initiated');
+    }
+    // Error handling is done in the hook
+  }, [file.id, retryFile]);
 
   const handleDownload = useCallback(async () => {
     if (!file.isFolder) {
@@ -119,6 +130,13 @@ export function FileContextMenu({ file, children, onOpenChange }: FileContextMen
             <ContextMenuItem onClick={handleDownload}>
               <Download className="size-4 mr-2" />
               Download
+            </ContextMenuItem>
+          )}
+
+          {!file.isFolder && file.readinessState === 'failed' && (
+            <ContextMenuItem onClick={handleRetry} disabled={isRetrying}>
+              <RefreshCw className={cn('size-4 mr-2', isRetrying && 'animate-spin')} />
+              {isRetrying ? 'Retrying...' : 'Retry processing'}
             </ContextMenuItem>
           )}
 

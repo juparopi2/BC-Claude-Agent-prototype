@@ -119,6 +119,8 @@ function ReadyIndicator({ compact }: { compact: boolean }) {
 
 /**
  * Failed Indicator - Shows error icon with retry button
+ * In compact mode, the icon itself is clickable to trigger retry.
+ * In non-compact mode, a separate button is shown.
  */
 function FailedIndicator({
   fileId,
@@ -136,25 +138,35 @@ function FailedIndicator({
   const handleRetry = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
+      e.preventDefault();
       retryFile(fileId);
     },
     [fileId, retryFile]
   );
 
+  // In compact mode, the entire indicator is clickable when retry is available
+  const isClickable = canRetry && !isRetrying;
+
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <div
-          className="flex items-center gap-1"
+          className={cn(
+            'flex items-center gap-1',
+            isClickable && 'cursor-pointer hover:opacity-80'
+          )}
           role="status"
           aria-label={error || 'Processing failed'}
+          onClick={isClickable ? handleRetry : undefined}
         >
           <AlertCircle
             className={cn(
               'text-red-500',
-              compact ? 'size-3' : 'size-4'
+              compact ? 'size-3' : 'size-4',
+              isRetrying && 'animate-pulse'
             )}
           />
+          {/* Show separate button only in non-compact mode */}
           {canRetry && !compact && (
             <Button
               variant="ghost"
@@ -171,10 +183,21 @@ function FailedIndicator({
           )}
         </div>
       </TooltipTrigger>
-      <TooltipContent side="bottom" className="max-w-xs text-xs">
+      <TooltipContent
+        side="bottom"
+        className={cn(
+          'max-w-xs text-xs',
+          isClickable && 'cursor-pointer'
+        )}
+        onClick={isClickable ? handleRetry : undefined}
+      >
         <p className="font-medium text-red-500">Processing failed</p>
         {error && <p className="text-muted-foreground">{error}</p>}
-        {canRetry && <p className="text-blue-500 mt-1">Click to retry</p>}
+        {canRetry && (
+          <p className="text-blue-500 mt-1">
+            {isRetrying ? 'Retrying...' : 'Click to retry'}
+          </p>
+        )}
       </TooltipContent>
     </Tooltip>
   );

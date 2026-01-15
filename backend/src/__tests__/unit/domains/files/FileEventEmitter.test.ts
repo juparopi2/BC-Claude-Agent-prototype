@@ -171,12 +171,13 @@ describe('FileEventEmitter', () => {
         embeddingStatus: 'pending',
       });
 
-      expect(mockEmit).toHaveBeenCalledTimes(3);
+      // 3 events x 2 rooms (userId + sessionId) = 6 emit calls
+      expect(mockEmit).toHaveBeenCalledTimes(6);
     });
 
-    it('should skip if no sessionId provided', () => {
+    it('should skip if no userId and no sessionId provided', () => {
       const emitter = getFileEventEmitter();
-      const ctx = createTestContext({ sessionId: undefined });
+      const ctx = createTestContext({ sessionId: undefined, userId: undefined });
 
       emitter.emitReadinessChanged(ctx, {
         newState: 'processing',
@@ -186,6 +187,20 @@ describe('FileEventEmitter', () => {
 
       expect(mockTo).not.toHaveBeenCalled();
       expect(mockEmit).not.toHaveBeenCalled();
+    });
+
+    it('should emit to userId room even without sessionId', () => {
+      const emitter = getFileEventEmitter();
+      const ctx = createTestContext({ sessionId: undefined });
+
+      emitter.emitReadinessChanged(ctx, {
+        newState: 'processing',
+        processingStatus: 'processing',
+        embeddingStatus: 'pending',
+      });
+
+      expect(mockTo).toHaveBeenCalledWith('user:user-456');
+      expect(mockEmit).toHaveBeenCalled();
     });
 
     it('should skip if Socket.IO not initialized', () => {
@@ -270,7 +285,21 @@ describe('FileEventEmitter', () => {
       );
     });
 
-    it('should skip if no sessionId', () => {
+    it('should skip if no userId and no sessionId', () => {
+      const emitter = getFileEventEmitter();
+      const ctx = createTestContext({ sessionId: undefined, userId: undefined });
+
+      emitter.emitPermanentlyFailed(ctx, {
+        error: 'Test error',
+        processingRetryCount: 2,
+        embeddingRetryCount: 0,
+        canRetryManually: true,
+      });
+
+      expect(mockEmit).not.toHaveBeenCalled();
+    });
+
+    it('should emit to userId room even without sessionId', () => {
       const emitter = getFileEventEmitter();
       const ctx = createTestContext({ sessionId: undefined });
 
@@ -281,7 +310,8 @@ describe('FileEventEmitter', () => {
         canRetryManually: true,
       });
 
-      expect(mockEmit).not.toHaveBeenCalled();
+      expect(mockTo).toHaveBeenCalledWith('user:user-456');
+      expect(mockEmit).toHaveBeenCalled();
     });
   });
 
@@ -325,7 +355,8 @@ describe('FileEventEmitter', () => {
         });
       });
 
-      expect(mockEmit).toHaveBeenCalledTimes(5);
+      // 5 events x 2 rooms (userId + sessionId) = 10 emit calls
+      expect(mockEmit).toHaveBeenCalledTimes(10);
     });
 
     it('should include timestamp', () => {
@@ -347,7 +378,21 @@ describe('FileEventEmitter', () => {
       );
     });
 
-    it('should skip if no sessionId', () => {
+    it('should skip if no userId and no sessionId', () => {
+      const emitter = getFileEventEmitter();
+      const ctx = createTestContext({ sessionId: undefined, userId: undefined });
+
+      emitter.emitProgress(ctx, {
+        progress: 50,
+        status: 'processing',
+        attemptNumber: 1,
+        maxAttempts: 2,
+      });
+
+      expect(mockEmit).not.toHaveBeenCalled();
+    });
+
+    it('should emit to userId room even without sessionId', () => {
       const emitter = getFileEventEmitter();
       const ctx = createTestContext({ sessionId: undefined });
 
@@ -358,7 +403,8 @@ describe('FileEventEmitter', () => {
         maxAttempts: 2,
       });
 
-      expect(mockEmit).not.toHaveBeenCalled();
+      expect(mockTo).toHaveBeenCalledWith('user:user-456');
+      expect(mockEmit).toHaveBeenCalled();
     });
   });
 
@@ -409,7 +455,20 @@ describe('FileEventEmitter', () => {
       );
     });
 
-    it('should skip if no sessionId', () => {
+    it('should skip if no userId and no sessionId', () => {
+      const emitter = getFileEventEmitter();
+      const ctx = createTestContext({ sessionId: undefined, userId: undefined });
+
+      emitter.emitCompletion(ctx, {
+        textLength: 1000,
+        pageCount: 1,
+        ocrUsed: false,
+      });
+
+      expect(mockEmit).not.toHaveBeenCalled();
+    });
+
+    it('should emit to userId room even without sessionId', () => {
       const emitter = getFileEventEmitter();
       const ctx = createTestContext({ sessionId: undefined });
 
@@ -419,7 +478,8 @@ describe('FileEventEmitter', () => {
         ocrUsed: false,
       });
 
-      expect(mockEmit).not.toHaveBeenCalled();
+      expect(mockTo).toHaveBeenCalledWith('user:user-456');
+      expect(mockEmit).toHaveBeenCalled();
     });
   });
 
@@ -457,13 +517,23 @@ describe('FileEventEmitter', () => {
       );
     });
 
-    it('should skip if no sessionId', () => {
+    it('should skip if no userId and no sessionId', () => {
+      const emitter = getFileEventEmitter();
+      const ctx = createTestContext({ sessionId: undefined, userId: undefined });
+
+      emitter.emitError(ctx, 'Test error');
+
+      expect(mockEmit).not.toHaveBeenCalled();
+    });
+
+    it('should emit to userId room even without sessionId', () => {
       const emitter = getFileEventEmitter();
       const ctx = createTestContext({ sessionId: undefined });
 
       emitter.emitError(ctx, 'Test error');
 
-      expect(mockEmit).not.toHaveBeenCalled();
+      expect(mockTo).toHaveBeenCalledWith('user:user-456');
+      expect(mockEmit).toHaveBeenCalled();
     });
   });
 

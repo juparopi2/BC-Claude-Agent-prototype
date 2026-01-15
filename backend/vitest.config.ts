@@ -70,6 +70,8 @@ export default defineConfig({
       // and conflict with MSW mocking. Run separately with: npm run test:integration
       'src/**/*.integration.test.ts',
       'src/**/*.integration.spec.ts',
+      'src/__tests__/integration/**/*.test.ts',
+      'src/__tests__/integration/**/*.spec.ts',
       // Exclude E2E tests - they require full server stack running
       // Run separately with: npm run test:e2e
       'src/__tests__/e2e/**/*.test.ts',

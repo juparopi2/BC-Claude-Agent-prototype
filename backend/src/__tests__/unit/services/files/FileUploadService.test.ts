@@ -52,10 +52,11 @@ describe('FileUploadService', () => {
       expect(service).toBeInstanceOf(FileUploadService);
       expect(mockLogger.info).toHaveBeenCalledWith(
         expect.objectContaining({
-          container: customContainer,
+          resolvedContainer: customContainer,
+          injectedContainerName: customContainer,
           hasConnectionString: true,
         }),
-        'FileUploadService initialized'
+        'FileUploadService initialized with container'
       );
     });
   });

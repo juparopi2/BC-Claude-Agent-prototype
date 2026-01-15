@@ -91,15 +91,9 @@ export class SocketClient {
    * @returns Promise that resolves when connected
    */
   connect(options: SocketConnectOptions): Promise<void> {
-    console.log('[SocketClient] connect() called, current state:', {
-      hasSocket: !!this.socket,
-      isConnected: this.socket?.connected,
-      pendingUserRoomJoin: this.pendingUserRoomJoin,
-    });
 
     return new Promise((resolve, reject) => {
       if (this.socket?.connected) {
-        console.log('[SocketClient] Already connected, flushing pending joins');
         this.flushPendingUserRoomJoin();
         resolve();
         return;
@@ -116,7 +110,6 @@ export class SocketClient {
       });
 
       const onConnect = () => {
-        console.log('[SocketClient] Socket.IO onConnect fired');
         this.notifyConnectionChange(true);
         this.flushPendingMessages();
         this.flushPendingUserRoomJoin();
@@ -403,12 +396,10 @@ export class SocketClient {
    */
   joinUserRoom(userId: string): void {
     if (!this.socket?.connected) {
-      console.log('[SocketClient] Queueing user room join for:', userId);
       this.pendingUserRoomJoin = userId;
       return;
     }
 
-    console.log('[SocketClient] Joining user room:', userId);
     this.socket.emit('user:join', { userId });
   }
 
@@ -430,7 +421,6 @@ export class SocketClient {
 
     // Connection events
     this.socket.on('connect', () => {
-      console.log('[SocketClient] Socket connected');
       this.notifyConnectionChange(true);
       this.flushPendingMessages();
       this.flushPendingUserRoomJoin();
@@ -439,7 +429,6 @@ export class SocketClient {
       // This ensures file processing events are received even without an active chat session
       const userId = useAuthStore.getState().user?.id;
       if (userId && this.socket && !this.pendingUserRoomJoin) {
-        console.log('[SocketClient] Emitting user:join on connect (fallback):', userId);
         this.socket.emit('user:join', { userId });
       }
     });
@@ -498,8 +487,6 @@ export class SocketClient {
 
     // File processing events (D25)
     this.socket.on(FILE_WS_CHANNELS.PROCESSING, (event: FileWebSocketEvent) => {
-      console.log('[SocketClient] Received file:processing event:', event);
-      console.log('[SocketClient] fileProcessingListeners count:', this.fileProcessingListeners.size);
       this.fileProcessingListeners.forEach((callback) => {
         try {
           callback(event);
@@ -546,7 +533,6 @@ export class SocketClient {
 
   private flushPendingUserRoomJoin(): void {
     if (this.pendingUserRoomJoin && this.socket?.connected) {
-      console.log('[SocketClient] Flushing pending user room join:', this.pendingUserRoomJoin);
       this.socket.emit('user:join', { userId: this.pendingUserRoomJoin });
       this.pendingUserRoomJoin = null;
     }

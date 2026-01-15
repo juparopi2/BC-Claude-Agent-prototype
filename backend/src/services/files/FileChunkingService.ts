@@ -386,7 +386,8 @@ export class FileChunkingService {
     const chunkRecords: Array<{ id: string; text: string; chunkIndex: number; tokenCount: number }> = [];
 
     for (const chunk of chunks) {
-      const chunkId = uuidv4();
+      // All IDs must be UPPERCASE per CLAUDE.md
+      const chunkId = uuidv4().toUpperCase();
 
       // Table schema (after migration 004):
       // - chunk_text (not content)

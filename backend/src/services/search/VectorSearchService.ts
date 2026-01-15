@@ -163,10 +163,11 @@ export class VectorSearchService {
       throw new Error('Failed to initialize search client');
     }
 
+    // Normalize IDs to UPPERCASE for consistency
     const documents = chunks.map(chunk => ({
-      chunkId: chunk.chunkId,
-      fileId: chunk.fileId,
-      userId: chunk.userId,
+      chunkId: chunk.chunkId.toUpperCase(),
+      fileId: chunk.fileId.toUpperCase(),
+      userId: chunk.userId.toUpperCase(),
       content: chunk.content,
       contentVector: chunk.embedding,
       chunkIndex: chunk.chunkIndex,
@@ -321,15 +322,21 @@ export class VectorSearchService {
 
     // 1. Find chunks first
     // Optimization: Select only the key field (chunkId)
-    // D24: Normalize userId for Azure AI Search compatibility
+    // CRITICAL: AI Search stores fileIds in lowercase (from randomUUID()),
+    // but SQL Server returns them in UPPERCASE. We query BOTH cases to handle
+    // existing data indexed before normalization was implemented.
     const normalizedUserId = this.normalizeUserId(userId);
+    const normalizedFileId = fileId.toUpperCase();
+    const lowercaseFileId = fileId.toLowerCase();
+
+    // Query with both cases to handle legacy data
     const options = {
-        filter: `(userId eq '${normalizedUserId}') and (fileId eq '${fileId}')`,
+        filter: `(userId eq '${normalizedUserId}') and (fileId eq '${lowercaseFileId}' or fileId eq '${normalizedFileId}')`,
         select: ['chunkId']
     };
 
     logger.info(
-      { fileId, userId, normalizedUserId, operation: 'deleteChunksForFile' },
+      { fileId, userId, normalizedUserId, normalizedFileId, lowercaseFileId, operation: 'deleteChunksForFile' },
       'Starting AI Search cascade deletion'
     );
 
@@ -430,7 +437,9 @@ export class VectorSearchService {
     }
 
     const { fileId, userId, embedding, fileName, caption } = params;
-    const documentId = `img_${fileId}`;
+    const normalizedFileId = fileId.toUpperCase();
+    const normalizedUserId = userId.toUpperCase();
+    const documentId = `img_${normalizedFileId}`;
 
     // Use caption as content if available for better semantic search
     // This enables Semantic Ranker to understand image context
@@ -440,8 +449,8 @@ export class VectorSearchService {
 
     const document = {
       chunkId: documentId,
-      fileId,
-      userId,
+      fileId: normalizedFileId,
+      userId: normalizedUserId,
       content,
       // contentVector intentionally omitted - images use imageVector only
       imageVector: embedding,
@@ -809,8 +818,11 @@ export class VectorSearchService {
     }
 
     // Normalize userId to uppercase for Azure AI Search compatibility (D24)
+    // Also query both cases of fileId to handle legacy data
     const normalizedUserId = userId.toUpperCase();
-    const searchFilter = `(userId eq '${normalizedUserId}') and (fileId eq '${fileId}')`;
+    const normalizedFileId = fileId.toUpperCase();
+    const lowercaseFileId = fileId.toLowerCase();
+    const searchFilter = `(userId eq '${normalizedUserId}') and (fileId eq '${lowercaseFileId}' or fileId eq '${normalizedFileId}')`;
 
     const searchOptions = {
       filter: searchFilter,

@@ -63,7 +63,8 @@ export class MessageFileAttachmentService {
         const fileId = fileIds[i];
         if (!fileId) continue;
 
-        const id = randomUUID();
+        // D24/Section 12: All IDs must be UPPERCASE per CLAUDE.md
+        const id = randomUUID().toUpperCase();
 
         params[`id_${i}`] = id;
         params[`file_id_${i}`] = fileId;

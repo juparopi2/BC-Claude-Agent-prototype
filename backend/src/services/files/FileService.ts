@@ -184,7 +184,8 @@ export class FileService {
     name: string,
     parentId?: string
   ): Promise<string> {
-    const folderId = randomUUID();
+    // All IDs must be UPPERCASE per CLAUDE.md
+    const folderId = randomUUID().toUpperCase();
 
     this.logger.info({ userId, name, parentId, folderId }, 'Creating folder');
 
@@ -234,7 +235,8 @@ export class FileService {
    * @returns Created file ID
    */
   public async createFileRecord(options: CreateFileOptions): Promise<string> {
-    const fileId = randomUUID();
+    // All IDs must be UPPERCASE per CLAUDE.md
+    const fileId = randomUUID().toUpperCase();
     const { userId, name, mimeType, sizeBytes, blobPath, parentFolderId, contentHash } = options;
 
     // Prevent storing blob path as name (catches bugs early)

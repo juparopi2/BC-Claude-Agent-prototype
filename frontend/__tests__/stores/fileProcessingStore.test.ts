@@ -44,7 +44,7 @@ describe('FileProcessingStore', () => {
       const state = useFileProcessingStore.getState();
       expect(state.processingFiles.size).toBe(1);
 
-      const status = state.processingFiles.get('file-1');
+      const status = selectFileProcessingStatus(state, 'file-1');
       expect(status).toBeDefined();
       expect(status?.readinessState).toBe('processing');
       expect(status?.progress).toBe(0);
@@ -70,7 +70,7 @@ describe('FileProcessingStore', () => {
         });
       });
 
-      const status = useFileProcessingStore.getState().processingFiles.get('file-1');
+      const status = selectFileProcessingStatus(useFileProcessingStore.getState(), 'file-1');
       expect(status?.readinessState).toBe('processing'); // Preserved
       expect(status?.progress).toBe(50); // Updated
       expect(status?.attemptNumber).toBe(1); // Preserved
@@ -90,8 +90,8 @@ describe('FileProcessingStore', () => {
 
       const state = useFileProcessingStore.getState();
       expect(state.processingFiles.size).toBe(2);
-      expect(state.processingFiles.get('file-1')?.progress).toBe(25);
-      expect(state.processingFiles.get('file-2')?.progress).toBe(75);
+      expect(selectFileProcessingStatus(state, 'file-1')?.progress).toBe(25);
+      expect(selectFileProcessingStatus(state, 'file-2')?.progress).toBe(75);
     });
   });
 
@@ -108,7 +108,7 @@ describe('FileProcessingStore', () => {
         useFileProcessingStore.getState().updateProgress('file-1', 50);
       });
 
-      const status = useFileProcessingStore.getState().processingFiles.get('file-1');
+      const status = selectFileProcessingStatus(useFileProcessingStore.getState(), 'file-1');
       expect(status?.progress).toBe(50);
     });
 
@@ -124,23 +124,26 @@ describe('FileProcessingStore', () => {
         useFileProcessingStore.getState().updateProgress('file-1', 75, 2, 3);
       });
 
-      const status = useFileProcessingStore.getState().processingFiles.get('file-1');
+      const status = selectFileProcessingStatus(useFileProcessingStore.getState(), 'file-1');
       expect(status?.progress).toBe(75);
       expect(status?.attemptNumber).toBe(2);
       expect(status?.maxAttempts).toBe(3);
     });
 
     it('should handle updating non-existent file gracefully', () => {
-      // Should not throw
+      // Should not throw - updateProgress now creates an entry if it doesn't exist
       expect(() => {
         act(() => {
           useFileProcessingStore.getState().updateProgress('non-existent', 50);
         });
       }).not.toThrow();
 
-      // File should not be added
+      // File should be created with default processing state (implementation behavior)
       const state = useFileProcessingStore.getState();
-      expect(state.processingFiles.size).toBe(0);
+      expect(state.processingFiles.size).toBe(1);
+      const status = selectFileProcessingStatus(state, 'non-existent');
+      expect(status?.progress).toBe(50);
+      expect(status?.readinessState).toBe('processing');
     });
   });
 
@@ -157,7 +160,7 @@ describe('FileProcessingStore', () => {
         useFileProcessingStore.getState().markCompleted('file-1');
       });
 
-      const status = useFileProcessingStore.getState().processingFiles.get('file-1');
+      const status = selectFileProcessingStatus(useFileProcessingStore.getState(), 'file-1');
       expect(status?.readinessState).toBe('ready');
       expect(status?.progress).toBe(100);
       expect(status?.error).toBeUndefined();
@@ -175,7 +178,7 @@ describe('FileProcessingStore', () => {
         useFileProcessingStore.getState().markCompleted('file-1');
       });
 
-      const status = useFileProcessingStore.getState().processingFiles.get('file-1');
+      const status = selectFileProcessingStatus(useFileProcessingStore.getState(), 'file-1');
       expect(status?.readinessState).toBe('ready');
       expect(status?.error).toBeUndefined();
     });
@@ -194,7 +197,7 @@ describe('FileProcessingStore', () => {
         useFileProcessingStore.getState().markFailed('file-1', 'Processing failed', true);
       });
 
-      const status = useFileProcessingStore.getState().processingFiles.get('file-1');
+      const status = selectFileProcessingStatus(useFileProcessingStore.getState(), 'file-1');
       expect(status?.readinessState).toBe('failed');
       expect(status?.error).toBe('Processing failed');
       expect(status?.canRetryManually).toBe(true);
@@ -211,7 +214,7 @@ describe('FileProcessingStore', () => {
         useFileProcessingStore.getState().markFailed('file-1', 'Max retries exceeded', false);
       });
 
-      const status = useFileProcessingStore.getState().processingFiles.get('file-1');
+      const status = selectFileProcessingStatus(useFileProcessingStore.getState(), 'file-1');
       expect(status?.canRetryManually).toBe(false);
     });
   });
@@ -235,8 +238,8 @@ describe('FileProcessingStore', () => {
 
       const state = useFileProcessingStore.getState();
       expect(state.processingFiles.size).toBe(1);
-      expect(state.processingFiles.has('file-1')).toBe(false);
-      expect(state.processingFiles.has('file-2')).toBe(true);
+      expect(selectFileProcessingStatus(state, 'file-1')).toBeUndefined();
+      expect(selectFileProcessingStatus(state, 'file-2')).toBeDefined();
     });
 
     it('should handle removing non-existent file gracefully', () => {
@@ -307,7 +310,7 @@ describe('FileProcessingStore', () => {
         }
       });
 
-      const status = useFileProcessingStore.getState().processingFiles.get('file-1');
+      const status = selectFileProcessingStatus(useFileProcessingStore.getState(), 'file-1');
       expect(status?.progress).toBe(100);
     });
 

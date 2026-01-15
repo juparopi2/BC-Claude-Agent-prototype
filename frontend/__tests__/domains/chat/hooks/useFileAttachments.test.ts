@@ -80,7 +80,7 @@ describe('useFileAttachments', () => {
     it('should update progress during upload', async () => {
       let progressCallback: ((progress: number) => void) | undefined;
 
-      mockUploadFiles.mockImplementation((files, folderId, onProgress) => {
+      mockUploadFiles.mockImplementation((files, folderId, sessionId, onProgress) => {
         progressCallback = onProgress;
         return new Promise(() => {}); // Never resolves
       });
@@ -288,7 +288,7 @@ describe('useFileAttachments', () => {
     it('should track individual file progress', async () => {
       const progressCallbacks: ((progress: number) => void)[] = [];
 
-      mockUploadFiles.mockImplementation((files, folderId, onProgress) => {
+      mockUploadFiles.mockImplementation((files, folderId, sessionId, onProgress) => {
         progressCallbacks.push(onProgress!);
         return new Promise(() => {}); // Never resolves
       });

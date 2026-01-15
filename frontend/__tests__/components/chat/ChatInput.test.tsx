@@ -426,8 +426,8 @@ describe('ChatInput', () => {
     });
 
     it('handles file upload and sending correctly', async () => {
-      mockUploadFiles.mockImplementation((files, parent, onProgress) => {
-        onProgress(50);
+      mockUploadFiles.mockImplementation((files, parent, sessionId, onProgress) => {
+        onProgress?.(50);
         return Promise.resolve({
           success: true,
           data: {

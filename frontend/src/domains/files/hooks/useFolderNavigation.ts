@@ -217,10 +217,9 @@ export function useFolderNavigation(): UseFolderNavigationReturn {
   // Navigate to folder with optional folder data for breadcrumb path construction
   const navigateToFolder = useCallback(
     (folderId: string | null, folderData?: ParsedFile) => {
-      console.log('[navigateToFolder] Called with:', { folderId, folderName: folderData?.name });
+
 
       if (folderId === null) {
-        console.log('[navigateToFolder] Navigating to root');
         setCurrentFolderAction(null, []);
         return;
       }
@@ -229,20 +228,16 @@ export function useFolderNavigation(): UseFolderNavigationReturn {
         // Build the correct path from root to this folder
         // by walking up using parentFolderId
         const newPath = buildPathToFolder(folderData);
-        console.log('[navigateToFolder] Built path:', newPath.map(f => f.name));
         setCurrentFolderAction(folderId, newPath);
 
         // Verify state was updated
         setTimeout(() => {
           const state = useFolderTreeStore.getState();
-          console.log('[navigateToFolder] After update - currentFolderId:', state.currentFolderId);
-          console.log('[navigateToFolder] After update - folderPath:', state.folderPath.map(f => f.name));
         }, 100);
       } else {
         // No folder data provided - keep current path
         // This is a fallback for cases where folder data isn't available
         const currentPath = useFolderTreeStore.getState().folderPath;
-        console.log('[navigateToFolder] No folder data, keeping path:', currentPath.map(f => f.name));
         setCurrentFolderAction(folderId, currentPath);
       }
     },

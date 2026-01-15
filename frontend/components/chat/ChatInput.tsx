@@ -141,8 +141,8 @@ export default function ChatInput({
         const attachmentRef = newAttachments[i];
 
         try {
-          const result = await fileApi.uploadFiles([file], undefined, (progress) => {
-            setAttachments(prev => prev.map(a => 
+          const result = await fileApi.uploadFiles([file], undefined, sessionId, (progress) => {
+            setAttachments(prev => prev.map(a =>
               a.id === attachmentRef.id ? { ...a, progress } : a
             ));
           });

@@ -254,6 +254,7 @@ export class FileApiClient {
    *
    * @param files - Array of File objects to upload
    * @param parentFolderId - Optional parent folder ID (undefined = root level)
+   * @param sessionId - Optional session ID for WebSocket event targeting
    * @param onProgress - Optional progress callback (0-100)
    * @returns Uploaded files with metadata
    *
@@ -263,6 +264,7 @@ export class FileApiClient {
    * const result = await fileApi.uploadFiles(
    *   files,
    *   'folder-123',
+   *   'session-uuid',
    *   (progress) => console.log(`Upload: ${progress}%`)
    * );
    *
@@ -274,6 +276,7 @@ export class FileApiClient {
   async uploadFiles(
     files: File[],
     parentFolderId?: string,
+    sessionId?: string,
     onProgress?: (progress: number) => void
   ): Promise<ApiResponse<UploadFilesResponse>> {
     return new Promise((resolve) => {
@@ -286,6 +289,11 @@ export class FileApiClient {
       // Append optional parent folder ID
       if (parentFolderId !== undefined) {
         formData.append('parentFolderId', parentFolderId);
+      }
+
+      // Append sessionId for WebSocket event targeting (D25)
+      if (sessionId) {
+        formData.append('sessionId', sessionId);
       }
 
       // Upload progress tracking

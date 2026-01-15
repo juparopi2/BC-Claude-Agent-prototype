@@ -181,22 +181,16 @@ export class FileEventEmitter implements IFileEventEmitter {
 
   /**
    * Safe emit to WebSocket - never throws
+   *
+   * Emits to both userId room (for file explorer) and sessionId room (for chat context).
+   * This ensures file events are received regardless of whether the user has an active chat session.
    */
   private emit(
     ctx: FileEventContext,
     channel: string,
     payload: Record<string, unknown>
   ): void {
-    const { sessionId } = ctx;
-
-    // Skip if no session to target
-    if (!sessionId) {
-      this.log.debug(
-        { fileId: ctx.fileId, channel },
-        'Skipping event: no sessionId'
-      );
-      return;
-    }
+    const { sessionId, userId } = ctx;
 
     // Skip if Socket.IO not initialized
     if (!this.isSocketReady()) {
@@ -207,9 +201,31 @@ export class FileEventEmitter implements IFileEventEmitter {
       return;
     }
 
+    // Warn if no room target at all
+    if (!userId && !sessionId) {
+      this.log.warn(
+        { fileId: ctx.fileId, channel },
+        'Skipping WebSocket event: no userId or sessionId - frontend will not receive update'
+      );
+      return;
+    }
+
     try {
       const io = this.getIO();
-      io.to(sessionId).emit(channel, payload);
+
+      // Always emit to userId room (for file explorer)
+      // This ensures events are received even without an active chat session
+      if (userId) {
+        const userRoom = `user:${userId}`;
+        this.log.debug({ userRoom, channel, fileId: ctx.fileId }, 'Emitting to user room');
+        io.to(userRoom).emit(channel, payload);
+      }
+
+      // Also emit to sessionId room if available (for chat context)
+      if (sessionId) {
+        this.log.debug({ sessionId, channel, fileId: ctx.fileId }, 'Emitting to session room');
+        io.to(sessionId).emit(channel, payload);
+      }
     } catch (error) {
       // Log but never throw - WebSocket errors should not fail jobs
       this.log.error(

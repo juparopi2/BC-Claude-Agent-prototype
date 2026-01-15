@@ -800,6 +800,11 @@ export class MessageQueue {
       new Worker(
         this.getQueueName(QueueName.FILE_PROCESSING),
         async (job: Job<FileProcessingJob>) => {
+          this.log.info({
+            jobId: job.id,
+            fileId: job.data?.fileId,
+            attemptsMade: job.attemptsMade,
+          }, '[WORKER-ENTRY] File processing worker callback started');
           return this.processFileProcessingJob(job);
         },
         {
@@ -890,15 +895,73 @@ export class MessageQueue {
         this.log.debug(`Job completed in ${queueName}`, { jobId });
       });
 
-      queueEvents.on('failed', ({ jobId, failedReason }) => {
+      queueEvents.on('failed', async ({ jobId, failedReason }) => {
+        // Try to get job data for additional context (helps diagnose issues)
+        let jobContext: Record<string, unknown> = {};
+        let shouldEmitFailure = false;
+        try {
+          const queue = this.queues.get(queueName as QueueName);
+          if (queue) {
+            const failedJob = await queue.getJob(jobId);
+            if (failedJob?.data) {
+              // Extract common fields that might exist across different job types
+              jobContext = {
+                fileId: failedJob.data.fileId,
+                userId: failedJob.data.userId,
+                mimeType: failedJob.data.mimeType,
+                fileName: failedJob.data.fileName,
+                sessionId: failedJob.data.sessionId,
+                attemptsMade: failedJob.attemptsMade,
+                maxAttempts: failedJob.opts?.attempts,
+              };
+
+              // For file processing queues, we need to emit failure event to frontend
+              const isFileQueue = queueName === QueueName.FILE_PROCESSING ||
+                                  queueName === QueueName.FILE_CHUNKING ||
+                                  queueName === QueueName.EMBEDDING_GENERATION;
+              if (isFileQueue && failedJob.data.fileId && failedJob.data.userId) {
+                shouldEmitFailure = true;
+              }
+            }
+          }
+        } catch {
+          // Ignore errors when fetching job data - don't fail the error handler
+        }
+
         // Enhanced error logging with full context
-        this.log.error(`Job failed in ${queueName}`, {
+        this.log.error({
           jobId,
           failedReason: failedReason || 'No reason provided by BullMQ',
           queueName,
+          ...jobContext,
           timestamp: new Date().toISOString(),
-          hint: 'Check previous logs for detailed error with stack trace',
-        });
+        }, `Job failed in ${queueName}`);
+
+        // Fallback: Emit failure event to frontend if handlePermanentFailure wasn't called
+        // This handles edge cases where BullMQ exhausts retries before our code can emit
+        if (shouldEmitFailure) {
+          try {
+            const { getProcessingRetryManager } = await import('@/domains/files/retry');
+            const retryManager = getProcessingRetryManager();
+            await retryManager.handlePermanentFailure(
+              jobContext.userId as string,
+              jobContext.fileId as string,
+              failedReason || 'Processing failed',
+              jobContext.sessionId as string | undefined
+            );
+            this.log.info({
+              jobId,
+              fileId: jobContext.fileId,
+              queueName,
+            }, 'Emitted failure event via fallback handler');
+          } catch (emitError) {
+            this.log.error({
+              error: emitError instanceof Error ? emitError.message : String(emitError),
+              jobId,
+              fileId: jobContext.fileId,
+            }, 'Failed to emit failure event in fallback handler');
+          }
+        }
       });
 
       queueEvents.on('stalled', ({ jobId }) => {
@@ -1667,22 +1730,46 @@ export class MessageQueue {
   private async processFileProcessingJob(
     job: Job<FileProcessingJob>
   ): Promise<void> {
-    const { fileId, userId, sessionId, mimeType, fileName } = job.data;
+    // Extract job data with validation - log immediately for debugging concurrent job issues
+    const jobData = job.data;
+    const fileId = jobData?.fileId;
+    const userId = jobData?.userId;
+    const sessionId = jobData?.sessionId;
+    const mimeType = jobData?.mimeType;
+    const fileName = jobData?.fileName;
 
-    this.log.info('Processing file', {
+    // Immediate logging to diagnose concurrent job failures
+    this.log.info('File processing job received by worker', {
       jobId: job.id,
       fileId,
       userId,
       mimeType,
       fileName,
-      attemptNumber: job.attemptsMade,
+      attemptsMade: job.attemptsMade,
+      hasJobData: !!jobData,
     });
+
+    // Validate required fields before any processing
+    if (!fileId || !userId) {
+      this.log.error('Invalid job data - missing required fields', {
+        jobId: job.id,
+        hasFileId: !!fileId,
+        hasUserId: !!userId,
+        hasJobData: !!jobData,
+        jobDataKeys: jobData ? Object.keys(jobData) : [],
+      });
+      throw new Error(`Invalid job data: fileId=${fileId}, userId=${userId}`);
+    }
 
     try {
       // Dynamic import to avoid circular dependencies
+      this.log.debug('Importing FileProcessingService...', { fileId, jobId: job.id });
       const { getFileProcessingService } = await import('@/services/files/FileProcessingService');
+
+      this.log.debug('Getting FileProcessingService singleton...', { fileId, jobId: job.id });
       const fileProcessingService = getFileProcessingService();
 
+      this.log.debug('Calling FileProcessingService.processFile()...', { fileId, jobId: job.id });
       await fileProcessingService.processFile(job.data);
 
       this.log.info('File processing completed', {

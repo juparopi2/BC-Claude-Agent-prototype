@@ -11,6 +11,8 @@ import { create } from 'zustand';
 import { subscribeWithSelector, persist } from 'zustand/middleware';
 import type { UserProfile } from '@/src/infrastructure/api';
 import { getApiClient } from '@/src/infrastructure/api';
+import { getSocketClient } from '@/src/infrastructure/socket/SocketClient';
+import { env } from '@/lib/config/env';
 
 /**
  * Auth store state
@@ -86,6 +88,22 @@ export const useAuthStore = create<AuthStore>()(
               isLoading: false,
               lastChecked: Date.now(),
             });
+
+            // Connect socket and join user room for file events (D25)
+            // This ensures file processing events are received regardless of chat page
+            if (authenticated && user?.id) {
+              const socketClient = getSocketClient();
+              console.log('[AuthStore] Connecting socket for user:', user.id);
+              socketClient.connect({ url: env.wsUrl })
+                .then(() => {
+                  console.log('[AuthStore] Socket connected, joining user room');
+                  socketClient.joinUserRoom(user.id);
+                })
+                .catch((err) => {
+                  console.error('[AuthStore] Socket connect failed:', err);
+                });
+            }
+
             return authenticated;
           } else {
             set({

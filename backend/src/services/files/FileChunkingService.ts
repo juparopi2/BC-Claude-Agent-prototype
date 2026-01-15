@@ -105,7 +105,7 @@ export class FileChunkingService {
    * @returns Chunking result
    */
   public async processFileChunks(jobData: FileChunkingJob): Promise<ChunkingResult> {
-    const { fileId, userId, mimeType } = jobData;
+    const { fileId, userId, mimeType, sessionId } = jobData;
 
     logger.info({ fileId, userId, mimeType }, 'Starting file chunking');
 
@@ -118,7 +118,7 @@ export class FileChunkingService {
         'Handling image file - indexing embedding in Azure AI Search'
       );
 
-      await this.indexImageEmbedding(fileId, userId);
+      await this.indexImageEmbedding(fileId, userId, sessionId);
 
       return {
         fileId,
@@ -252,11 +252,13 @@ export class FileChunkingService {
    *
    * Retrieves the embedding from ImageEmbeddingRepository and indexes it
    * in Azure AI Search for visual search capability. Also passes AI-generated caption for improved search relevance.
+   * Emits WebSocket event to notify frontend of readiness state change.
    *
    * @param fileId - File ID
    * @param userId - User ID
+   * @param sessionId - Session ID for WebSocket room targeting (optional)
    */
-  private async indexImageEmbedding(fileId: string, userId: string): Promise<void> {
+  private async indexImageEmbedding(fileId: string, userId: string, sessionId?: string): Promise<void> {
     try {
       // Mark as processing
       await this.updateEmbeddingStatus(fileId, 'processing');
@@ -270,6 +272,9 @@ export class FileChunkingService {
       if (!embeddingRecord) {
         logger.warn({ fileId, userId }, 'No image embedding found - marking as completed without indexing');
         await this.updateEmbeddingStatus(fileId, 'completed');
+
+        // Emit readiness_changed event even when no embedding (file is still "ready")
+        await this.emitReadinessChanged(fileId, userId, sessionId);
         return;
       }
 
@@ -305,6 +310,9 @@ export class FileChunkingService {
         },
         'Image embedding indexed in Azure AI Search successfully'
       );
+
+      // Emit WebSocket event to notify frontend
+      await this.emitReadinessChanged(fileId, userId, sessionId);
     } catch (error) {
       logger.error(
         {
@@ -317,6 +325,48 @@ export class FileChunkingService {
 
       await this.updateEmbeddingStatus(fileId, 'failed');
       throw error;
+    }
+  }
+
+  /**
+   * Emit readiness_changed WebSocket event
+   *
+   * Notifies frontend that file is ready for use (processing + embedding completed).
+   *
+   * @param fileId - File ID
+   * @param userId - User ID
+   * @param sessionId - Session ID for WebSocket room targeting
+   */
+  private async emitReadinessChanged(fileId: string, userId: string, sessionId?: string): Promise<void> {
+    try {
+      const { getFileEventEmitter } = await import('@/domains/files/emission/FileEventEmitter');
+      const { FILE_READINESS_STATE, PROCESSING_STATUS, EMBEDDING_STATUS } = await import(
+        '@bc-agent/shared'
+      );
+
+      const eventEmitter = getFileEventEmitter();
+
+      eventEmitter.emitReadinessChanged(
+        { fileId, userId, sessionId },
+        {
+          previousState: FILE_READINESS_STATE.PROCESSING,
+          newState: FILE_READINESS_STATE.READY,
+          processingStatus: PROCESSING_STATUS.COMPLETED,
+          embeddingStatus: EMBEDDING_STATUS.COMPLETED,
+        }
+      );
+
+      logger.debug({ fileId, userId, sessionId: !!sessionId }, 'Emitted readiness_changed event');
+    } catch (error) {
+      // Don't fail the operation if event emission fails
+      logger.warn(
+        {
+          error: error instanceof Error ? error.message : String(error),
+          fileId,
+          userId,
+        },
+        'Failed to emit readiness_changed event - file processing still succeeded'
+      );
     }
   }
 

@@ -106,7 +106,7 @@ export class ProcessingRetryManager implements IProcessingRetryManager {
       ? await this.retryService.incrementProcessingRetryCount(userId, fileId)
       : await this.retryService.incrementEmbeddingRetryCount(userId, fileId);
 
-    const shouldRetry = newCount <= maxRetries;
+    const shouldRetry = newCount < maxRetries;
     const backoffDelayMs = shouldRetry
       ? this.calculateBackoffDelay(newCount - 1)
       : 0;

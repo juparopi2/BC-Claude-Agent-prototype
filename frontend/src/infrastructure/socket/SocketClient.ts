@@ -20,6 +20,7 @@ import type {
 } from '@bc-agent/shared';
 import { FILE_WS_CHANNELS } from '@bc-agent/shared';
 import type { SocketConnectOptions, JoinSessionOptions, PendingMessage } from './types';
+import { useAuthStore } from '@/src/domains/auth/stores/authStore';
 
 type EventCallback<T = unknown> = (data: T) => void;
 
@@ -59,6 +60,8 @@ export class SocketClient {
   // File processing event listeners (D25)
   private fileStatusListeners = new Set<EventCallback<FileWebSocketEvent>>();
   private fileProcessingListeners = new Set<EventCallback<FileWebSocketEvent>>();
+  // Pending user room join (D25 race condition fix)
+  private pendingUserRoomJoin: string | null = null;
 
   /**
    * Whether the socket is currently connected
@@ -88,8 +91,16 @@ export class SocketClient {
    * @returns Promise that resolves when connected
    */
   connect(options: SocketConnectOptions): Promise<void> {
+    console.log('[SocketClient] connect() called, current state:', {
+      hasSocket: !!this.socket,
+      isConnected: this.socket?.connected,
+      pendingUserRoomJoin: this.pendingUserRoomJoin,
+    });
+
     return new Promise((resolve, reject) => {
       if (this.socket?.connected) {
+        console.log('[SocketClient] Already connected, flushing pending joins');
+        this.flushPendingUserRoomJoin();
         resolve();
         return;
       }
@@ -105,12 +116,15 @@ export class SocketClient {
       });
 
       const onConnect = () => {
+        console.log('[SocketClient] Socket.IO onConnect fired');
         this.notifyConnectionChange(true);
         this.flushPendingMessages();
+        this.flushPendingUserRoomJoin();
         resolve();
       };
 
       const onConnectError = (error: Error) => {
+        console.error('[SocketClient] Socket.IO connect error:', error.message);
         this.notifyConnectionChange(false);
         reject(error);
       };
@@ -134,6 +148,7 @@ export class SocketClient {
     this.socket?.disconnect();
     this.socket = null;
     this.pendingMessages = [];
+    this.pendingUserRoomJoin = null;
     this.notifyConnectionChange(false);
   }
 
@@ -377,6 +392,26 @@ export class SocketClient {
     };
   }
 
+  /**
+   * Join the user room for file events (D25)
+   *
+   * Call this after user authentication completes to ensure
+   * file processing events are received. This is necessary because
+   * socket may connect before authentication completes.
+   *
+   * @param userId User ID to join room for
+   */
+  joinUserRoom(userId: string): void {
+    if (!this.socket?.connected) {
+      console.log('[SocketClient] Queueing user room join for:', userId);
+      this.pendingUserRoomJoin = userId;
+      return;
+    }
+
+    console.log('[SocketClient] Joining user room:', userId);
+    this.socket.emit('user:join', { userId });
+  }
+
   // Private methods
 
   private setupEventListeners(): void {
@@ -395,8 +430,18 @@ export class SocketClient {
 
     // Connection events
     this.socket.on('connect', () => {
+      console.log('[SocketClient] Socket connected');
       this.notifyConnectionChange(true);
       this.flushPendingMessages();
+      this.flushPendingUserRoomJoin();
+
+      // Join user room for file events (fallback if no pending join was queued)
+      // This ensures file processing events are received even without an active chat session
+      const userId = useAuthStore.getState().user?.id;
+      if (userId && this.socket && !this.pendingUserRoomJoin) {
+        console.log('[SocketClient] Emitting user:join on connect (fallback):', userId);
+        this.socket.emit('user:join', { userId });
+      }
     });
 
     this.socket.on('disconnect', () => {
@@ -453,6 +498,8 @@ export class SocketClient {
 
     // File processing events (D25)
     this.socket.on(FILE_WS_CHANNELS.PROCESSING, (event: FileWebSocketEvent) => {
+      console.log('[SocketClient] Received file:processing event:', event);
+      console.log('[SocketClient] fileProcessingListeners count:', this.fileProcessingListeners.size);
       this.fileProcessingListeners.forEach((callback) => {
         try {
           callback(event);
@@ -494,6 +541,14 @@ export class SocketClient {
         this.socket.emit('chat:message', pending.data);
         pending.resolve();
       }
+    }
+  }
+
+  private flushPendingUserRoomJoin(): void {
+    if (this.pendingUserRoomJoin && this.socket?.connected) {
+      console.log('[SocketClient] Flushing pending user room join:', this.pendingUserRoomJoin);
+      this.socket.emit('user:join', { userId: this.pendingUserRoomJoin });
+      this.pendingUserRoomJoin = null;
     }
   }
 }

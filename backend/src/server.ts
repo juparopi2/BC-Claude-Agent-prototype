@@ -25,6 +25,7 @@ import { getAgentOrchestrator } from '@domains/agent/orchestration';
 import { getApprovalManager } from '@/domains/approval/ApprovalManager';
 import { getTodoManager } from '@/services/todo/TodoManager';
 import { getChatMessageHandler } from '@/services/websocket/ChatMessageHandler';
+import { initSocketService } from '@/services/websocket/SocketService';
 import { getMessageQueue } from '@/infrastructure/queue/MessageQueue';
 import authOAuthRoutes from './routes/auth-oauth';
 import sessionsRoutes from './routes/sessions';
@@ -1088,6 +1089,34 @@ function configureSocketIO(): void {
       socket.emit('session:left', { sessionId });
     });
 
+    // Handler: Join user room for file events
+    // Security: Only allows joining your own user room (verified via authenticated socket)
+    // This enables file processing events to reach the frontend even without an active chat session
+    socket.on('user:join', (data: { userId: string }) => {
+      const authenticatedUserId = authSocket.userId;
+
+      // Security: Only allow joining your own user room
+      // Note: Case-insensitive comparison because Azure AD returns uppercase UUIDs
+      // but frontend may store lowercase versions
+      if (data.userId.toLowerCase() !== authenticatedUserId.toLowerCase()) {
+        logger.warn('[Socket.IO] User attempted to join another user room', {
+          requestedUserId: data.userId,
+          authenticatedUserId,
+          socketId: socket.id,
+        });
+        socket.emit('user:error', { error: 'Cannot join another user room' });
+        return;
+      }
+
+      const userRoom = `user:${authenticatedUserId}`;
+      socket.join(userRoom);
+      logger.info(`[Socket.IO] Client ${socket.id} joined user room: ${userRoom}`, {
+        userId: authenticatedUserId,
+      });
+
+      socket.emit('user:joined', { userId: authenticatedUserId });
+    });
+
     // Disconnect handler
     socket.on('disconnect', () => {
       logger.info(`[Socket.IO] ❌ Client disconnected: ${socket.id}`);
@@ -1100,6 +1129,7 @@ function configureSocketIO(): void {
         'approval:response',
         'session:join',
         'session:leave',
+        'user:join',
         'disconnect',
       ];
 
@@ -1140,6 +1170,9 @@ async function startServer(): Promise<void> {
 
     // Configure Socket.IO
     configureSocketIO();
+
+    // Initialize SocketService singleton for background workers (D25 file events)
+    initSocketService(io);
 
     // Start listening
     httpServer.listen(env.PORT, () => {

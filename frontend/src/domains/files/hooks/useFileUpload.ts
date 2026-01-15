@@ -13,6 +13,7 @@ import { useUploadStore, type UploadItem } from '../stores/uploadStore';
 import { useFileListStore } from '../stores/fileListStore';
 import { useFolderTreeStore } from '../stores/folderTreeStore';
 import { useDuplicateStore, type DuplicateConflict } from '../stores/duplicateStore';
+import { useSessionStore } from '@/src/domains/session/stores/sessionStore';
 import { getFileApiClient } from '@/src/infrastructure/api';
 import { computeFileHashesWithIds, type FileHashResult } from '@/lib/utils/hash';
 
@@ -123,10 +124,14 @@ export function useFileUpload(): UseFileUploadReturn {
     ) => {
       startUploadAction(queueItemId);
 
+      // Get sessionId for WebSocket event targeting (D25)
+      const sessionId = useSessionStore.getState().currentSession?.id;
+
       try {
         const result = await fileApi.uploadFiles(
           [file],
           targetFolderId ?? undefined,
+          sessionId,
           (progress) => {
             updateProgressAction(queueItemId, progress);
           }

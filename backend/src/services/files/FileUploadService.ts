@@ -74,7 +74,15 @@ export class FileUploadService {
     this.containerClient = this.blobServiceClient.getContainerClient(container);
     this.containerName = container;
 
-    this.logger.info({ container }, 'FileUploadService initialized');
+    // Diagnostic: Log storage account URL and container name
+    this.logger.info({
+      container,
+      storageAccountUrl: this.blobServiceClient.url,
+      containerUrl: this.containerClient.url,
+      envContainerName: env.STORAGE_CONTAINER_NAME,
+      hasConnectionString: !!connString,
+      connectionStringLength: connString?.length,
+    }, 'FileUploadService initialized');
   }
 
   public static getInstance(
@@ -228,6 +236,12 @@ export class FileUploadService {
    * @returns File buffer
    */
   public async downloadFromBlob(blobPath: string): Promise<Buffer> {
+    this.logger.info({
+      containerName: this.containerName,
+      blobPath,
+      blobUrl: this.containerClient.getBlockBlobClient(blobPath).url,
+    }, 'Attempting blob download');
+
     const blockBlobClient = this.containerClient.getBlockBlobClient(blobPath);
 
     try {
@@ -248,7 +262,11 @@ export class FileUploadService {
       this.logger.info({ blobPath, size: buffer.length }, 'File downloaded from blob');
       return buffer;
     } catch (error) {
-      this.logger.error({ error, blobPath }, 'Failed to download file from blob');
+      this.logger.error({
+        error: error instanceof Error ? { message: error.message, name: error.name } : error,
+        blobPath,
+        containerName: this.containerName,
+      }, 'Failed to download file from blob');
       throw error;
     }
   }

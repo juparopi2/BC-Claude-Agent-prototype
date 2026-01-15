@@ -119,16 +119,18 @@ export const useFileProcessingStore = create<FileProcessingStore>()((set, get) =
   ...initialState,
 
   setProcessingStatus: (fileId, status) => {
+    // Normalize ID to uppercase for case-insensitive matching
+    const normalizedId = fileId.toUpperCase();
     set((state) => {
       const newMap = new Map(state.processingFiles);
-      const existing = newMap.get(fileId);
+      const existing = newMap.get(normalizedId);
 
       if (existing) {
         // Merge with existing status
-        newMap.set(fileId, { ...existing, ...status });
+        newMap.set(normalizedId, { ...existing, ...status });
       } else {
         // Create new entry with required field
-        newMap.set(fileId, {
+        newMap.set(normalizedId, {
           readinessState: status.readinessState ?? 'processing',
           ...status,
         });
@@ -139,20 +141,24 @@ export const useFileProcessingStore = create<FileProcessingStore>()((set, get) =
   },
 
   updateProgress: (fileId, progress, attemptNumber, maxAttempts) => {
-    const existing = get().processingFiles.get(fileId);
-
-    // Only update if file exists in the map
-    if (!existing) {
-      return;
-    }
-
+    // Normalize ID to uppercase for case-insensitive matching
+    const normalizedId = fileId.toUpperCase();
     set((state) => {
       const newMap = new Map(state.processingFiles);
-      const current = newMap.get(fileId);
+      const existing = newMap.get(normalizedId);
 
-      if (current) {
-        newMap.set(fileId, {
-          ...current,
+      if (existing) {
+        // Update existing entry
+        newMap.set(normalizedId, {
+          ...existing,
+          progress,
+          ...(attemptNumber !== undefined && { attemptNumber }),
+          ...(maxAttempts !== undefined && { maxAttempts }),
+        });
+      } else {
+        // Create new entry for this file
+        newMap.set(normalizedId, {
+          readinessState: 'processing',
           progress,
           ...(attemptNumber !== undefined && { attemptNumber }),
           ...(maxAttempts !== undefined && { maxAttempts }),
@@ -164,19 +170,21 @@ export const useFileProcessingStore = create<FileProcessingStore>()((set, get) =
   },
 
   markCompleted: (fileId) => {
+    // Normalize ID to uppercase for case-insensitive matching
+    const normalizedId = fileId.toUpperCase();
     set((state) => {
       const newMap = new Map(state.processingFiles);
-      const existing = newMap.get(fileId);
+      const existing = newMap.get(normalizedId);
 
       if (existing) {
-        newMap.set(fileId, {
+        newMap.set(normalizedId, {
           ...existing,
           readinessState: 'ready',
           progress: 100,
           error: undefined,
         });
       } else {
-        newMap.set(fileId, {
+        newMap.set(normalizedId, {
           readinessState: 'ready',
           progress: 100,
         });
@@ -187,19 +195,21 @@ export const useFileProcessingStore = create<FileProcessingStore>()((set, get) =
   },
 
   markFailed: (fileId, error, canRetryManually) => {
+    // Normalize ID to uppercase for case-insensitive matching
+    const normalizedId = fileId.toUpperCase();
     set((state) => {
       const newMap = new Map(state.processingFiles);
-      const existing = newMap.get(fileId);
+      const existing = newMap.get(normalizedId);
 
       if (existing) {
-        newMap.set(fileId, {
+        newMap.set(normalizedId, {
           ...existing,
           readinessState: 'failed',
           error,
           canRetryManually,
         });
       } else {
-        newMap.set(fileId, {
+        newMap.set(normalizedId, {
           readinessState: 'failed',
           error,
           canRetryManually,
@@ -211,9 +221,11 @@ export const useFileProcessingStore = create<FileProcessingStore>()((set, get) =
   },
 
   removeProcessingStatus: (fileId) => {
+    // Normalize ID to uppercase for case-insensitive matching
+    const normalizedId = fileId.toUpperCase();
     set((state) => {
       const newMap = new Map(state.processingFiles);
-      newMap.delete(fileId);
+      newMap.delete(normalizedId);
       return { processingFiles: newMap };
     });
   },
@@ -238,7 +250,8 @@ export function selectFileProcessingStatus(
   state: FileProcessingState,
   fileId: string
 ): FileProcessingStatus | undefined {
-  return state.processingFiles.get(fileId);
+  // Normalize ID to  uppercase for case-insensitive matching
+  return state.processingFiles.get(fileId.toUpperCase());
 }
 
 // ============================================================================

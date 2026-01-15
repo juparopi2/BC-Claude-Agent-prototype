@@ -10,6 +10,7 @@
 
 import { create } from 'zustand';
 import type { ParsedFile } from '@bc-agent/shared';
+import { useFileProcessingStore } from './fileProcessingStore';
 
 /**
  * File list state
@@ -98,25 +99,56 @@ export const useFileListStore = create<FileListState & FileListActions>()(
     },
 
     addFile: (file) => {
+      // Check if WebSocket events arrived before HTTP response and updated fileProcessingStore
+      // If so, merge the latest status from fileProcessingStore into the new file
+      // Note: Normalize ID to lowercase for case-insensitive matching (SQL Server returns uppercase,
+      // WebSocket events use lowercase)
+      const normalizedId = file.id.toUpperCase();
+      const processingStatus = useFileProcessingStore.getState().processingFiles.get(normalizedId);
+      const fileWithLatestStatus = processingStatus
+        ? { ...file, readinessState: processingStatus.readinessState }
+        : file;
+
+      console.log('[fileListStore] addFile called:', file.id, {
+        originalState: file.readinessState,
+        processingStoreState: processingStatus?.readinessState,
+        finalState: fileWithLatestStatus.readinessState,
+      });
+
       set((state) => ({
-        files: [file, ...state.files],
+        files: [fileWithLatestStatus, ...state.files],
         totalFiles: state.totalFiles + 1,
       }));
     },
 
     updateFile: (id, updates) => {
-      set((state) => ({
-        files: state.files.map((file) =>
-          file.id === id ? { ...file, ...updates } : file
-        ),
-      }));
+      // Normalize ID to lowercase for case-insensitive matching
+      const normalizedId = id.toUpperCase();
+      console.log('[fileListStore] updateFile called:', normalizedId, updates);
+      set((state) => {
+        const fileExists = state.files.some((file) => file.id.toUpperCase() === normalizedId);
+        console.log('[fileListStore] File exists in store:', fileExists, 'Total files:', state.files.length);
+        if (!fileExists) {
+          console.warn('[fileListStore] File not found in store, update will have no effect:', normalizedId);
+        }
+        return {
+          files: state.files.map((file) =>
+            file.id.toUpperCase() === normalizedId ? { ...file, ...updates } : file
+          ),
+        };
+      });
     },
 
     deleteFiles: (ids) => {
       if (ids.length === 0) return;
 
+      // Normalize IDs to lowercase for case-insensitive matching
+      const normalizedIds = ids.map((id) => id.toUpperCase());
+
       set((state) => {
-        const remainingFiles = state.files.filter((file) => !ids.includes(file.id));
+        const remainingFiles = state.files.filter(
+          (file) => !normalizedIds.includes(file.id.toUpperCase())
+        );
         const deletedCount = state.files.length - remainingFiles.length;
 
         return {

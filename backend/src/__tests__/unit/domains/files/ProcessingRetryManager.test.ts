@@ -209,6 +209,19 @@ describe('ProcessingRetryManager', () => {
       expect(result.reason).toBe('max_retries_exceeded');
     });
 
+    it('should return shouldRetry=false when retryCount equals maxRetries (boundary case)', async () => {
+      // This test verifies the boundary condition: when count exactly equals max, no more retries
+      mockGetFile.mockResolvedValue(createMockFile({ processingRetryCount: 1 }));
+      mockIncrementProcessingRetryCount.mockResolvedValue(2); // equals maxRetries (2)
+
+      const result = await retryManager.shouldRetry(testUserId, testFileId, 'processing');
+
+      expect(result.shouldRetry).toBe(false); // 2 < 2 = false
+      expect(result.newRetryCount).toBe(2);
+      expect(result.maxRetries).toBe(2);
+      expect(result.reason).toBe('max_retries_exceeded');
+    });
+
     it('should return shouldRetry=true for embedding within limit', async () => {
       mockGetFile.mockResolvedValue(createMockFile({ embeddingRetryCount: 1 }));
       mockIncrementEmbeddingRetryCount.mockResolvedValue(2);
@@ -229,14 +242,16 @@ describe('ProcessingRetryManager', () => {
     });
 
     it('should calculate exponential backoff correctly', async () => {
-      mockGetFile.mockResolvedValue(createMockFile({ processingRetryCount: 1 }));
-      mockIncrementProcessingRetryCount.mockResolvedValue(2);
+      // Use first retry (newCount=1) where shouldRetry is true (1 < 2)
+      mockGetFile.mockResolvedValue(createMockFile({ processingRetryCount: 0 }));
+      mockIncrementProcessingRetryCount.mockResolvedValue(1);
 
       const result = await retryManager.shouldRetry(testUserId, testFileId, 'processing');
 
-      // backoffDelayMs = baseDelay * 2^retryCount = 5000 * 2^1 = 10000 (plus jitter)
-      expect(result.backoffDelayMs).toBeGreaterThanOrEqual(10000);
-      expect(result.backoffDelayMs).toBeLessThanOrEqual(11000); // 10% jitter
+      // backoffDelayMs = baseDelay * 2^retryCount = 5000 * 2^0 = 5000 (plus jitter)
+      expect(result.shouldRetry).toBe(true); // 1 < 2 = true
+      expect(result.backoffDelayMs).toBeGreaterThanOrEqual(5000);
+      expect(result.backoffDelayMs).toBeLessThanOrEqual(5500); // 10% jitter
     });
 
     it('should throw error when file not found', async () => {

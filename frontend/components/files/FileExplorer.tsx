@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
-import { useFiles, useFolderNavigation } from '@/src/domains/files';
+import { useFiles, useFolderNavigation, useFileProcessingEvents } from '@/src/domains/files';
 import { useUIPreferencesStore } from '@/src/domains/ui';
 import { FileToolbar } from './FileToolbar';
 import { FileBreadcrumb } from './FileBreadcrumb';
@@ -20,6 +20,9 @@ export function FileExplorer({ className, isNarrow = false }: FileExplorerProps)
   const { fetchFiles } = useFiles();
   const { currentFolderId } = useFolderNavigation();
   const isSidebarVisible = useUIPreferencesStore((state) => state.isFileSidebarVisible);
+
+  // Activate WebSocket listeners for file processing status updates (D25)
+  useFileProcessingEvents();
 
   // Load files on mount and when folder changes
   useEffect(() => {

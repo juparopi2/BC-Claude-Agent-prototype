@@ -9,6 +9,7 @@
 
 import { useState, useMemo, useCallback } from 'react';
 import { getFileApiClient } from '@/src/infrastructure/api';
+import { useSessionStore } from '@/src/domains/session/stores/sessionStore';
 import { toast } from 'sonner';
 
 export interface Attachment {
@@ -68,7 +69,9 @@ export function useFileAttachments(): UseFileAttachmentsResult {
 
     try {
       const fileApi = getFileApiClient();
-      const result = await fileApi.uploadFiles([file], undefined, (progress) => {
+      // Get sessionId for WebSocket event targeting (D25)
+      const sessionId = useSessionStore.getState().currentSession?.id;
+      const result = await fileApi.uploadFiles([file], undefined, sessionId, (progress) => {
         setAttachments(prev =>
           prev.map(a =>
             a.tempId === tempId ? { ...a, progress } : a

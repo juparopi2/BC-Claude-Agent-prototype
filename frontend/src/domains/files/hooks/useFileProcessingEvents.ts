@@ -127,6 +127,7 @@ export function useFileProcessingEvents(
       setProcessingStatus: setStatus,
       updateProgress: progress,
       markCompleted: complete,
+      updateFileInStore: updateFile,
     } = callbacksRef.current;
 
     switch (event.type) {
@@ -134,13 +135,22 @@ export function useFileProcessingEvents(
         const e = event as FileProcessingProgressEvent;
         // Update progress in processing store
         progress(e.fileId, e.progress, e.attemptNumber, e.maxAttempts);
+        // Update file list store with processing state
+        updateFile(e.fileId, {
+          readinessState: 'processing',
+        });
         break;
       }
 
       case FILE_WS_EVENTS.PROCESSING_COMPLETED: {
         const e = event as FileProcessingCompletedEvent;
-        // Mark as completed
+        // Mark as completed in processing store
         complete(e.fileId);
+        // Update file list store with ready state
+        updateFile(e.fileId, {
+          readinessState: 'ready',
+          processingStatus: 'completed',
+        });
         break;
       }
 
@@ -150,6 +160,10 @@ export function useFileProcessingEvents(
         // The backend will either retry or emit permanently_failed
         setStatus(e.fileId, {
           error: e.error,
+        });
+        // Update file list store with error
+        updateFile(e.fileId, {
+          lastError: e.error,
         });
         break;
       }

@@ -28,11 +28,6 @@ import { useFolderNavigation } from '@/src/domains/files';
 export function FileBreadcrumb() {
   const { folderPath, currentFolderId, setCurrentFolder } = useFolderNavigation();
 
-  console.log('[FileBreadcrumb] Rendering with:', {
-    currentFolderId,
-    folderPath: folderPath.map(f => f.name),
-  });
-
   const handleNavigate = useCallback((folderId: string | null, index: number) => {
     if (folderId === null) {
       // Navigate to root

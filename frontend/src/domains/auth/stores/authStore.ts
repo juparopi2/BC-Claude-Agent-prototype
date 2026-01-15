@@ -93,10 +93,8 @@ export const useAuthStore = create<AuthStore>()(
             // This ensures file processing events are received regardless of chat page
             if (authenticated && user?.id) {
               const socketClient = getSocketClient();
-              console.log('[AuthStore] Connecting socket for user:', user.id);
               socketClient.connect({ url: env.wsUrl })
                 .then(() => {
-                  console.log('[AuthStore] Socket connected, joining user room');
                   socketClient.joinUserRoom(user.id);
                 })
                 .catch((err) => {

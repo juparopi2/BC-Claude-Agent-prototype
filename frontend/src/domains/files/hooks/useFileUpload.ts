@@ -195,31 +195,32 @@ export function useFileUpload(): UseFileUploadReturn {
 
       if (!queueItem) continue;
 
-      // If there's a resolution for this file
-      if (resolution) {
-        if (resolution.action === 'skip') {
-          // Remove from queue (skipped files don't complete)
-          removeFromQueueAction(queueItem.id);
-          continue;
-        }
+      // Skip files without resolution - they're non-duplicates already uploaded
+      if (!resolution) continue;
 
-        if (resolution.action === 'replace' && resolution.existingFileId) {
-          // Delete existing file first
-          try {
-            await fileApi.deleteFile(resolution.existingFileId);
-            // Remove from file list if in current folder
-            const currentFolder = useFolderTreeStore.getState().currentFolderId;
-            if (targetFolderId === currentFolder || (targetFolderId === null && currentFolder === null)) {
-              useFileListStore.getState().deleteFiles([resolution.existingFileId]);
-            }
-          } catch (err) {
-            // If delete fails, fail the upload
-            failUploadAction(
-              queueItem.id,
-              `Failed to replace existing file: ${err instanceof Error ? err.message : 'Unknown error'}`
-            );
-            continue;
+      // Process files with resolution (duplicates)
+      if (resolution.action === 'skip') {
+        // Remove from queue (skipped files don't complete)
+        removeFromQueueAction(queueItem.id);
+        continue;
+      }
+
+      if (resolution.action === 'replace' && resolution.existingFileId) {
+        // Delete existing file first
+        try {
+          await fileApi.deleteFile(resolution.existingFileId);
+          // Remove from file list if in current folder
+          const currentFolder = useFolderTreeStore.getState().currentFolderId;
+          if (targetFolderId === currentFolder || (targetFolderId === null && currentFolder === null)) {
+            useFileListStore.getState().deleteFiles([resolution.existingFileId]);
           }
+        } catch (err) {
+          // If delete fails, fail the upload
+          failUploadAction(
+            queueItem.id,
+            `Failed to replace existing file: ${err instanceof Error ? err.message : 'Unknown error'}`
+          );
+          continue;
         }
       }
 

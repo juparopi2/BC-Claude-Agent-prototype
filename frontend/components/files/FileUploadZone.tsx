@@ -7,6 +7,8 @@ import { Upload } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Progress } from '@/components/ui/progress';
 import { useFileUpload } from '@/src/domains/files';
+import { useDuplicateStore } from '@/src/domains/files/stores/duplicateStore';
+import { DuplicateFileModal } from '@/components/modals/DuplicateFileModal';
 import { toast } from 'sonner';
 
 interface FileUploadZoneProps {
@@ -22,6 +24,14 @@ export function FileUploadZone({
 }: FileUploadZoneProps) {
   const { uploadFiles, isUploading, overallProgress: uploadProgress } = useFileUpload();
   const [isDragActive, setIsDragActive] = useState(false);
+
+  // Duplicate detection modal state
+  const conflicts = useDuplicateStore((state) => state.conflicts);
+  const currentIndex = useDuplicateStore((state) => state.currentIndex);
+  const isModalOpen = useDuplicateStore((state) => state.isModalOpen);
+  const resolveConflict = useDuplicateStore((state) => state.resolveConflict);
+  const resolveAllRemaining = useDuplicateStore((state) => state.resolveAllRemaining);
+  const closeModal = useDuplicateStore((state) => state.closeModal);
 
   const onDrop = useCallback(async (acceptedFiles: File[], rejectedFiles: FileRejection[]) => {
     setIsDragActive(false);
@@ -100,6 +110,16 @@ export function FileUploadZone({
           <p className="text-xs text-muted-foreground mt-2">{uploadProgress}%</p>
         </div>
       )}
+
+      {/* Duplicate file detection modal */}
+      <DuplicateFileModal
+        isOpen={isModalOpen}
+        onClose={closeModal}
+        conflicts={conflicts}
+        currentIndex={currentIndex}
+        onResolve={resolveConflict}
+        onResolveAll={resolveAllRemaining}
+      />
     </div>
   );
 }

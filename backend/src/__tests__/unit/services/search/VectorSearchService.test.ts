@@ -300,11 +300,11 @@ describe('VectorSearchService - Index Management', () => {
 
         await service.deleteChunksForFile('file-123', 'user-123');
 
-        // Verify search used correct filter (D24: userId normalized to uppercase)
+        // Verify search used correct filter (D24: userId normalized to uppercase, dual-case fileId for backward compatibility)
         expect(mockSearchClient.search).toHaveBeenCalledWith(
             '*',
             expect.objectContaining({
-                filter: "(userId eq 'USER-123') and (fileId eq 'file-123')",
+                filter: "(userId eq 'USER-123') and (fileId eq 'file-123' or fileId eq 'FILE-123')",
                 select: ['chunkId']
             })
         );
@@ -809,7 +809,7 @@ describe('VectorSearchService - Orphan Detection & Verification (D21, D22, D23)'
       expect(mockSearchClient.search).toHaveBeenCalledWith(
         '*',
         expect.objectContaining({
-          filter: "(userId eq 'USER-LOWERCASE') and (fileId eq 'file-123')"
+          filter: "(userId eq 'USER-LOWERCASE') and (fileId eq 'file-123' or fileId eq 'FILE-123')"
         })
       );
     });
@@ -838,7 +838,7 @@ describe('VectorSearchService - Orphan Detection & Verification (D21, D22, D23)'
       expect(mockSearchClient.search).toHaveBeenCalledWith(
         '*',
         expect.objectContaining({
-          filter: "(userId eq 'SPECIFIC-USER') and (fileId eq 'specific-file')"
+          filter: "(userId eq 'SPECIFIC-USER') and (fileId eq 'specific-file' or fileId eq 'SPECIFIC-FILE')"
         })
       );
     });
@@ -992,7 +992,7 @@ describe('VectorSearchService - D24 UserId Normalization', () => {
       expect(mockSearchClient.search).toHaveBeenCalledWith(
         '*',
         expect.objectContaining({
-          filter: "(userId eq 'MIXED-CASE-ID') and (fileId eq 'file-1')"
+          filter: "(userId eq 'MIXED-CASE-ID') and (fileId eq 'file-1' or fileId eq 'FILE-1')"
         })
       );
     });
@@ -1063,7 +1063,7 @@ describe('VectorSearchService - D24 UserId Normalization', () => {
       expect(mockSearchClient.search).toHaveBeenCalledWith(
         '*',
         expect.objectContaining({
-          filter: "(userId eq 'COUNT-USER-LOWER') and (fileId eq 'file-1')"
+          filter: "(userId eq 'COUNT-USER-LOWER') and (fileId eq 'file-1' or fileId eq 'FILE-1')"
         })
       );
     });

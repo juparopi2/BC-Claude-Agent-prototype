@@ -378,13 +378,13 @@ describe('FileService', () => {
 
       const folderId = await fileService.createFolder(testUserId, 'Documents');
 
-      expect(folderId).toBe('mock-uuid-1');
+      expect(folderId).toBe('MOCK-UUID-1');
 
       // Verify INSERT with folder-specific values
       expect(mockExecuteQuery).toHaveBeenCalledWith(
         expect.stringContaining('INSERT INTO files'),
         expect.objectContaining({
-          id: 'mock-uuid-1',
+          id: 'MOCK-UUID-1',
           user_id: testUserId,
           parent_folder_id: null, // Root folder
           name: 'Documents',
@@ -409,7 +409,7 @@ describe('FileService', () => {
         parentFolderId
       );
 
-      expect(folderId).toBe('mock-uuid-1');
+      expect(folderId).toBe('MOCK-UUID-1');
 
       // Verify parent_folder_id is set
       expect(mockExecuteQuery).toHaveBeenCalledWith(
@@ -436,13 +436,13 @@ describe('FileService', () => {
         blobPath: 'users/test-user/files/invoice.pdf',
       });
 
-      expect(fileId).toBe('mock-uuid-1');
+      expect(fileId).toBe('MOCK-UUID-1');
 
       // Verify INSERT with file-specific values
       expect(mockExecuteQuery).toHaveBeenCalledWith(
         expect.stringContaining('INSERT INTO files'),
         expect.objectContaining({
-          id: 'mock-uuid-1',
+          id: 'MOCK-UUID-1',
           user_id: testUserId,
           parent_folder_id: null,
           name: 'invoice.pdf',
@@ -470,7 +470,7 @@ describe('FileService', () => {
         parentFolderId,
       });
 
-      expect(fileId).toBe('mock-uuid-1');
+      expect(fileId).toBe('MOCK-UUID-1');
 
       // Verify parent_folder_id is set
       expect(mockExecuteQuery).toHaveBeenCalledWith(

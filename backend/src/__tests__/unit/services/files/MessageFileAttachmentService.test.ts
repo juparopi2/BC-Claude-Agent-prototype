@@ -108,10 +108,10 @@ describe('MessageFileAttachmentService', () => {
       const callArgs = mockExecuteQuery.mock.calls[0];
       const params = callArgs?.[1] as Record<string, string>;
 
-      // Each record should have its own UUID
-      expect(params['id_0']).toBe('mock-uuid-1');
-      expect(params['id_1']).toBe('mock-uuid-2');
-      expect(params['id_2']).toBe('mock-uuid-3');
+      // Each record should have its own UUID (uppercase per CLAUDE.md Section 12)
+      expect(params['id_0']).toBe('MOCK-UUID-1');
+      expect(params['id_1']).toBe('MOCK-UUID-2');
+      expect(params['id_2']).toBe('MOCK-UUID-3');
     });
 
     it('should include relevanceScore when provided', async () => {

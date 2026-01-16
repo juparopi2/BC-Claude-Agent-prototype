@@ -183,7 +183,8 @@
       "mcp__playwright__browser_wait_for",
       "mcp__playwright__browser_click",
       "mcp__playwright__browser_take_screenshot",
-      "Bash(docker build:*)"
+      "Bash(docker build:*)",
+      "Bash(git push:*)"
     ],
     "deny": [],
     "ask": []

@@ -45,9 +45,9 @@ describe.skipIf(!runIntegrationTests)('VectorSearchService Integration', () => {
             createdAt: new Date()
         };
 
-        // 1. Index
+        // 1. Index (service normalizes IDs to UPPERCASE per CLAUDE.md Section 12)
         const key = await service.indexChunk(chunk);
-        expect(key).toBe('integration-1');
+        expect(key).toBe('INTEGRATION-1');
         
         // Wait for indexing (Azure Search has eventual consistency)
         await new Promise(resolve => setTimeout(resolve, 2000));
@@ -60,11 +60,11 @@ describe.skipIf(!runIntegrationTests)('VectorSearchService Integration', () => {
         });
 
         expect(results.length).toBeGreaterThan(0);
-        expect(results[0].chunkId).toBe('integration-1');
+        expect(results[0].chunkId).toBe('INTEGRATION-1');
         expect(results[0].content).toBe('Integration test content');
 
-        // 3. Delete
-        await service.deleteChunk('integration-1');
+        // 3. Delete (use UPPERCASE as stored)
+        await service.deleteChunk('INTEGRATION-1');
 
         await new Promise(resolve => setTimeout(resolve, 2000));
 
@@ -78,10 +78,11 @@ describe.skipIf(!runIntegrationTests)('VectorSearchService Integration', () => {
     });
 
     describe('Image Search', () => {
-        const testImageFileId = 'integration-test-image-file';
+        // UPPERCASE per CLAUDE.md Section 12 - service normalizes all IDs
+        const testImageFileId = 'INTEGRATION-TEST-IMAGE-FILE';
 
         afterAll(async () => {
-            // Cleanup image documents
+            // Cleanup image documents (documentId format: img_FILEID)
             try {
                 await service.deleteChunk(`img_${testImageFileId}`);
             } catch {
@@ -120,8 +121,8 @@ describe.skipIf(!runIntegrationTests)('VectorSearchService Integration', () => {
         });
 
         it('should not return images from other users (multi-tenant isolation)', async () => {
-            const otherUserId = 'integration-test-other-user';
-            const otherFileId = 'integration-test-other-image';
+            const otherUserId = 'INTEGRATION-TEST-OTHER-USER';
+            const otherFileId = 'INTEGRATION-TEST-OTHER-IMAGE';
 
             // Index image for OTHER user
             await service.indexImageEmbedding({
@@ -141,18 +142,18 @@ describe.skipIf(!runIntegrationTests)('VectorSearchService Integration', () => {
                 minScore: 0.0,
             });
 
-            // Should NOT find other user's images
+            // Should NOT find other user's images (filtering by UPPERCASE fileId)
             const otherUserFiles = results.filter(r => r.fileId === otherFileId);
             expect(otherUserFiles).toHaveLength(0);
 
-            // Cleanup
+            // Cleanup (documentId format: img_FILEID)
             await service.deleteChunk(`img_${otherFileId}`);
         });
 
         it('should filter images by minScore threshold', async () => {
-            // Index two images with different embeddings
-            const highMatchFileId = 'integration-high-match';
-            const lowMatchFileId = 'integration-low-match';
+            // Index two images with different embeddings (UPPERCASE per CLAUDE.md)
+            const highMatchFileId = 'INTEGRATION-HIGH-MATCH';
+            const lowMatchFileId = 'INTEGRATION-LOW-MATCH';
 
             // High match: embedding similar to query
             await service.indexImageEmbedding({
@@ -193,7 +194,7 @@ describe.skipIf(!runIntegrationTests)('VectorSearchService Integration', () => {
         });
 
         it('should delete image embedding', async () => {
-            const deleteTestFileId = 'integration-delete-test';
+            const deleteTestFileId = 'INTEGRATION-DELETE-TEST';
 
             // Index
             await service.indexImageEmbedding({

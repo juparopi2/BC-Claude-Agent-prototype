@@ -270,18 +270,19 @@ describe.skipIf(skipTests)('File Deletion Cascade Integration (D23)', () => {
         is_folder: false,
       });
 
-      // Insert file_chunk directly
+      // Insert file_chunk directly (using actual schema from migrations 003 + 004)
       const chunkQuery = `
-        INSERT INTO file_chunks (id, file_id, chunk_index, content, embedding_status, created_at, updated_at)
-        VALUES (@id, @file_id, @chunk_index, @content, @embedding_status, GETUTCDATE(), GETUTCDATE())
+        INSERT INTO file_chunks (id, file_id, user_id, chunk_index, chunk_text, chunk_tokens, created_at)
+        VALUES (@id, @file_id, @user_id, @chunk_index, @chunk_text, @chunk_tokens, GETUTCDATE())
       `;
       const chunkId = randomUUID();
       await executeQuery(chunkQuery, {
         id: chunkId,
         file_id: fileId,
+        user_id: testUserId,
         chunk_index: 0,
-        content: 'Test chunk content',
-        embedding_status: 'completed',
+        chunk_text: 'Test chunk content',
+        chunk_tokens: 3,
       });
 
       // Verify chunk exists

@@ -24,7 +24,6 @@ vi.mock('@/src/infrastructure/api', () => ({
 // Mock API client
 const mockFileApi = {
   createFolder: vi.fn(),
-  deleteFile: vi.fn(),
   deleteFilesBatch: vi.fn(),
   updateFile: vi.fn(),
   downloadFile: vi.fn(),

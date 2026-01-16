@@ -152,13 +152,8 @@ describe('Multi-Tenant Session Isolation', () => {
       await clientA.connect();
 
       // Try to join User B's session
-      await expect(clientA.joinSession(sessionB.id)).rejects.toThrow();
-
-      // Verify error event was received
-      const events = clientA.getReceivedEvents();
-      const errorEvent = events.find(e => e.type === 'session:error');
-      expect(errorEvent).toBeDefined();
-      expect(errorEvent?.data).toHaveProperty('error', 'UNAUTHORIZED');
+      // joinSession() throws with the error message when it receives session:error
+      await expect(clientA.joinSession(sessionB.id)).rejects.toThrow('UNAUTHORIZED');
     });
 
     it('should allow User B to join their own session', async () => {
@@ -364,15 +359,8 @@ describe('Multi-Tenant Session Isolation', () => {
       await attackerClient.connect();
 
       // Attacker tries to join User B's session by its ID
-      attackerClient.emitRaw('session:join', { sessionId: sessionB.id });
-
-      // Wait for response
-      await new Promise(resolve => setTimeout(resolve, TEST_TIMEOUTS.ASYNC_OPERATION));
-
-      // Should be rejected
-      const events = attackerClient.getReceivedEvents();
-      const errorEvent = events.find(e => e.type === 'session:error');
-      expect(errorEvent).toBeDefined();
+      // joinSession() throws when it receives session:error, which validates the rejection
+      await expect(attackerClient.joinSession(sessionB.id)).rejects.toThrow();
 
       // Verify User B's session was not compromised - they can still access it
       const victimClient = createTestSocketClient({

@@ -54,6 +54,8 @@ export const FILE_WS_EVENTS = {
   PROCESSING_FAILED: 'file:processing_failed',
   /** File deletion completed (success or failure) - used by bulk delete */
   DELETED: 'file:deleted',
+  /** File upload completed (success or failure) - used by bulk upload */
+  UPLOADED: 'file:uploaded',
 } as const;
 
 /**

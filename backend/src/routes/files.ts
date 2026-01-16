@@ -34,7 +34,17 @@ import { computeSha256 } from '@/shared/utils/hash';
 import { EmbeddingService } from '@/services/embeddings/EmbeddingService';
 import { VectorSearchService } from '@/services/search/VectorSearchService';
 import type { ParsedFile } from '@/types/file.types';
-import { bulkDeleteRequestSchema, validateSafe, type BulkDeleteAcceptedResponse } from '@bc-agent/shared';
+import {
+  bulkDeleteRequestSchema,
+  bulkUploadInitRequestSchema,
+  bulkUploadCompleteRequestSchema,
+  validateSafe,
+  FILE_BULK_UPLOAD_CONFIG,
+  type BulkDeleteAcceptedResponse,
+  type BulkUploadInitResponse,
+  type BulkUploadAcceptedResponse,
+  type BulkUploadFileSasInfo,
+} from '@bc-agent/shared';
 
 const logger = createChildLogger({ service: 'FileRoutes' });
 const router = Router();
@@ -948,6 +958,256 @@ router.patch('/:id', authenticateMicrosoft, async (req: Request, res: Response):
 });
 
 // ============================================
+// Bulk Upload Endpoints (SAS URL-Based)
+// ============================================
+
+// Store batch metadata in memory (would be Redis in production for scaling)
+const bulkUploadBatches = new Map<string, {
+  userId: string;
+  files: Array<{
+    tempId: string;
+    fileName: string;
+    mimeType: string;
+    sizeBytes: number;
+    blobPath: string;
+  }>;
+  sessionId?: string;
+  createdAt: Date;
+}>();
+
+// Clean up old batches every hour
+setInterval(() => {
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+  for (const [batchId, batch] of bulkUploadBatches.entries()) {
+    if (batch.createdAt < oneHourAgo) {
+      bulkUploadBatches.delete(batchId);
+    }
+  }
+}, 60 * 60 * 1000);
+
+/**
+ * POST /api/files/bulk-upload/init
+ *
+ * Initialize bulk upload batch. Generates SAS URLs for direct-to-blob uploads.
+ * Returns 202 Accepted with batchId and SAS URLs for each file.
+ *
+ * Request body:
+ * - files: Array<{ tempId, fileName, mimeType, sizeBytes }> (1-500 files)
+ * - parentFolderId?: string (optional)
+ * - sessionId?: string (optional, for WebSocket events)
+ *
+ * Response 202:
+ * - batchId: string (for tracking)
+ * - files: Array<{ tempId, sasUrl, blobPath, expiresAt }>
+ */
+router.post('/bulk-upload/init', authenticateMicrosoft, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = getUserId(req);
+
+    // Validate request body
+    const validation = validateSafe(bulkUploadInitRequestSchema, req.body);
+    if (!validation.success) {
+      sendError(res, ErrorCode.VALIDATION_ERROR, validation.error.errors[0]?.message || 'Invalid request body');
+      return;
+    }
+
+    // Note: parentFolderId is passed but only used in /complete endpoint
+    const { files, parentFolderId: _parentFolderId, sessionId } = validation.data;
+
+    // Generate batch ID (UPPERCASE per CLAUDE.md)
+    const batchId = crypto.randomUUID().toUpperCase();
+
+    logger.info({ userId, fileCount: files.length, batchId }, 'Initializing bulk upload');
+
+    // Generate SAS URLs for each file
+    const fileUploadService = getFileUploadService();
+    const sasFiles: BulkUploadFileSasInfo[] = [];
+    const batchFiles: Array<{
+      tempId: string;
+      fileName: string;
+      mimeType: string;
+      sizeBytes: number;
+      blobPath: string;
+    }> = [];
+
+    for (const file of files) {
+      try {
+        const sasInfo = await fileUploadService.generateSasUrlForBulkUpload(
+          userId,
+          file.fileName,
+          file.mimeType,
+          file.sizeBytes,
+          FILE_BULK_UPLOAD_CONFIG.SAS_EXPIRY_MINUTES
+        );
+
+        sasFiles.push({
+          tempId: file.tempId,
+          sasUrl: sasInfo.sasUrl,
+          blobPath: sasInfo.blobPath,
+          expiresAt: sasInfo.expiresAt,
+        });
+
+        batchFiles.push({
+          tempId: file.tempId,
+          fileName: file.fileName,
+          mimeType: file.mimeType,
+          sizeBytes: file.sizeBytes,
+          blobPath: sasInfo.blobPath,
+        });
+      } catch (fileError) {
+        // If validation fails for a file (bad mime type, size), skip it
+        logger.warn({
+          userId,
+          tempId: file.tempId,
+          fileName: file.fileName,
+          error: fileError instanceof Error ? fileError.message : String(fileError),
+        }, 'Failed to generate SAS URL for file');
+      }
+    }
+
+    if (sasFiles.length === 0) {
+      sendError(res, ErrorCode.VALIDATION_ERROR, 'No valid files in request');
+      return;
+    }
+
+    // Store batch metadata for later validation
+    bulkUploadBatches.set(batchId, {
+      userId,
+      files: batchFiles,
+      sessionId,
+      createdAt: new Date(),
+    });
+
+    logger.info({
+      userId,
+      batchId,
+      filesRequested: files.length,
+      sasUrlsGenerated: sasFiles.length,
+    }, 'Bulk upload initialized');
+
+    // Return 202 Accepted with SAS URLs
+    const response: BulkUploadInitResponse = {
+      batchId,
+      files: sasFiles,
+    };
+
+    res.status(202).json(response);
+  } catch (error) {
+    logger.error({ error, userId: req.userId }, 'Bulk upload init failed');
+
+    if (error instanceof Error && error.message === 'User not authenticated') {
+      sendError(res, ErrorCode.UNAUTHORIZED, 'User not authenticated');
+      return;
+    }
+
+    sendError(res, ErrorCode.INTERNAL_ERROR, 'Failed to initialize bulk upload');
+  }
+});
+
+/**
+ * POST /api/files/bulk-upload/complete
+ *
+ * Complete bulk upload batch. Enqueues jobs to create database records.
+ * Returns 202 Accepted with job IDs for tracking.
+ *
+ * Request body:
+ * - batchId: string
+ * - uploads: Array<{ tempId, success, contentHash?, error? }>
+ * - parentFolderId?: string | null
+ *
+ * Response 202:
+ * - batchId: string
+ * - jobsEnqueued: number
+ * - jobIds: string[]
+ */
+router.post('/bulk-upload/complete', authenticateMicrosoft, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = getUserId(req);
+
+    // Validate request body
+    const validation = validateSafe(bulkUploadCompleteRequestSchema, req.body);
+    if (!validation.success) {
+      sendError(res, ErrorCode.VALIDATION_ERROR, validation.error.errors[0]?.message || 'Invalid request body');
+      return;
+    }
+
+    const { batchId, uploads, parentFolderId } = validation.data;
+
+    // Validate batch exists and belongs to user
+    const batch = bulkUploadBatches.get(batchId);
+    if (!batch) {
+      sendError(res, ErrorCode.NOT_FOUND, 'Batch not found or expired');
+      return;
+    }
+
+    if (batch.userId !== userId) {
+      sendError(res, ErrorCode.UNAUTHORIZED, 'Batch belongs to another user');
+      return;
+    }
+
+    logger.info({
+      userId,
+      batchId,
+      uploadCount: uploads.length,
+      successCount: uploads.filter(u => u.success).length,
+    }, 'Completing bulk upload');
+
+    // Enqueue jobs for successful uploads
+    const messageQueue = getMessageQueue();
+    const jobIds: string[] = [];
+
+    for (const upload of uploads.filter(u => u.success)) {
+      const fileMetadata = batch.files.find(f => f.tempId === upload.tempId);
+      if (!fileMetadata) {
+        logger.warn({ userId, batchId, tempId: upload.tempId }, 'File metadata not found for tempId');
+        continue;
+      }
+
+      const jobId = await messageQueue.addFileBulkUploadJob({
+        tempId: upload.tempId,
+        userId,
+        batchId,
+        fileName: fileMetadata.fileName,
+        mimeType: fileMetadata.mimeType,
+        sizeBytes: fileMetadata.sizeBytes,
+        blobPath: fileMetadata.blobPath,
+        contentHash: upload.contentHash,
+        parentFolderId: parentFolderId ?? null,
+        sessionId: batch.sessionId,
+      });
+      jobIds.push(jobId);
+    }
+
+    // Clean up batch metadata
+    bulkUploadBatches.delete(batchId);
+
+    logger.info({
+      userId,
+      batchId,
+      jobsEnqueued: jobIds.length,
+    }, 'Bulk upload jobs enqueued');
+
+    // Return 202 Accepted with job tracking info
+    const response: BulkUploadAcceptedResponse = {
+      batchId,
+      jobsEnqueued: jobIds.length,
+      jobIds,
+    };
+
+    res.status(202).json(response);
+  } catch (error) {
+    logger.error({ error, userId: req.userId }, 'Bulk upload complete failed');
+
+    if (error instanceof Error && error.message === 'User not authenticated') {
+      sendError(res, ErrorCode.UNAUTHORIZED, 'User not authenticated');
+      return;
+    }
+
+    sendError(res, ErrorCode.INTERNAL_ERROR, 'Failed to complete bulk upload');
+  }
+});
+
+// ============================================
 // Bulk Delete Endpoint (Queue-Based)
 // ============================================
 
@@ -1025,7 +1285,10 @@ router.delete('/', authenticateMicrosoft, async (req: Request, res: Response): P
 
     res.status(202).json(response);
   } catch (error) {
-    logger.error({ error, userId: req.userId }, 'Bulk delete failed');
+    const errorInfo = error instanceof Error
+      ? { message: error.message, stack: error.stack, name: error.name }
+      : { value: String(error) };
+    logger.error({ error: errorInfo, userId: req.userId }, 'Bulk delete failed');
 
     if (error instanceof Error && error.message === 'User not authenticated') {
       sendError(res, ErrorCode.UNAUTHORIZED, 'User not authenticated');

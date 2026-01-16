@@ -350,7 +350,84 @@ export class FileUploadService {
   }
 
   /**
-   * 8. Check if blob exists
+   * 8. Generate SAS URL info for bulk upload
+   *
+   * Returns all information needed for direct-to-blob upload:
+   * - sasUrl: Full URL with SAS token for PUT request
+   * - blobPath: Path to store in batch metadata for later confirmation
+   * - expiresAt: ISO 8601 timestamp when SAS URL expires
+   *
+   * @param userId - User ID for multi-tenant isolation
+   * @param fileName - Original filename
+   * @param mimeType - MIME type for validation
+   * @param sizeBytes - File size for validation
+   * @param expiryMinutes - SAS token expiry time in minutes (default: 60)
+   * @returns Object with sasUrl, blobPath, and expiresAt
+   */
+  public async generateSasUrlForBulkUpload(
+    userId: string,
+    fileName: string,
+    mimeType: string,
+    sizeBytes: number,
+    expiryMinutes: number = 60
+  ): Promise<{ sasUrl: string; blobPath: string; expiresAt: string }> {
+    // Validate file type and size
+    this.validateFileType(mimeType);
+    this.validateFileSize(sizeBytes, mimeType);
+
+    const blobPath = this.generateBlobPath(userId, fileName);
+    const blockBlobClient = this.containerClient.getBlockBlobClient(blobPath);
+
+    try {
+      // Extract account name and key from connection string
+      const connString = env.STORAGE_CONNECTION_STRING;
+      if (!connString) {
+        throw new Error('STORAGE_CONNECTION_STRING is required for SAS token generation');
+      }
+
+      const accountNameMatch = connString.match(/AccountName=([^;]+)/);
+      const accountKeyMatch = connString.match(/AccountKey=([^;]+)/);
+
+      if (!accountNameMatch?.[1] || !accountKeyMatch?.[1]) {
+        throw new Error('Invalid connection string format');
+      }
+
+      const accountName = accountNameMatch[1];
+      const accountKey = accountKeyMatch[1];
+
+      const sharedKeyCredential = new StorageSharedKeyCredential(accountName, accountKey);
+
+      const expiresOn = new Date(Date.now() + expiryMinutes * 60 * 1000);
+
+      // Generate SAS token with create and write permissions for PUT
+      const sasToken = generateBlobSASQueryParameters(
+        {
+          containerName: this.containerName,
+          blobName: blobPath,
+          permissions: BlobSASPermissions.parse('cw'), // Create and write
+          startsOn: new Date(),
+          expiresOn,
+        },
+        sharedKeyCredential
+      ).toString();
+
+      const sasUrl = `${blockBlobClient.url}?${sasToken}`;
+
+      this.logger.debug({ userId, fileName, blobPath, expiryMinutes }, 'SAS URL generated for bulk upload');
+
+      return {
+        sasUrl,
+        blobPath,
+        expiresAt: expiresOn.toISOString(),
+      };
+    } catch (error) {
+      this.logger.error({ error, userId, fileName }, 'Failed to generate SAS URL for bulk upload');
+      throw error;
+    }
+  }
+
+  /**
+   * 9. Check if blob exists
    *
    * @param blobPath - Blob path in container
    * @returns True if blob exists, false otherwise

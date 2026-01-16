@@ -25,6 +25,7 @@ vi.mock('@/src/infrastructure/api', () => ({
 const mockFileApi = {
   createFolder: vi.fn(),
   deleteFile: vi.fn(),
+  deleteFilesBatch: vi.fn(),
   updateFile: vi.fn(),
   downloadFile: vi.fn(),
 };
@@ -168,7 +169,11 @@ describe('useFileActions', () => {
         useFileListStore.getState().setFiles([file1, file2], 2, false);
       });
 
-      mockFileApi.deleteFile.mockResolvedValue({ success: true });
+      // Mock bulk delete endpoint (202 Accepted response)
+      mockFileApi.deleteFilesBatch.mockResolvedValue({
+        success: true,
+        data: { batchId: 'batch-123', jobsEnqueued: 1, jobIds: ['job-1'] },
+      });
 
       const { result } = renderHook(() => useFileActions());
 
@@ -178,7 +183,7 @@ describe('useFileActions', () => {
       });
 
       expect(success).toBe(true);
-      expect(mockFileApi.deleteFile).toHaveBeenCalledWith('file-1');
+      expect(mockFileApi.deleteFilesBatch).toHaveBeenCalledWith({ fileIds: ['file-1'] });
     });
 
     it('should remove files from store on success', async () => {
@@ -189,7 +194,10 @@ describe('useFileActions', () => {
         useFileListStore.getState().setFiles([file1, file2], 2, false);
       });
 
-      mockFileApi.deleteFile.mockResolvedValue({ success: true });
+      mockFileApi.deleteFilesBatch.mockResolvedValue({
+        success: true,
+        data: { batchId: 'batch-123', jobsEnqueued: 1, jobIds: ['job-1'] },
+      });
 
       const { result } = renderHook(() => useFileActions());
 
@@ -211,7 +219,10 @@ describe('useFileActions', () => {
         useFileListStore.getState().setFiles([file1, file2, file3], 3, false);
       });
 
-      mockFileApi.deleteFile.mockResolvedValue({ success: true });
+      mockFileApi.deleteFilesBatch.mockResolvedValue({
+        success: true,
+        data: { batchId: 'batch-123', jobsEnqueued: 2, jobIds: ['job-1', 'job-2'] },
+      });
 
       const { result } = renderHook(() => useFileActions());
 
@@ -219,7 +230,11 @@ describe('useFileActions', () => {
         await result.current.deleteFiles(['file-1', 'file-2']);
       });
 
-      expect(mockFileApi.deleteFile).toHaveBeenCalledTimes(2);
+      // Bulk delete uses single call with all file IDs
+      expect(mockFileApi.deleteFilesBatch).toHaveBeenCalledTimes(1);
+      expect(mockFileApi.deleteFilesBatch).toHaveBeenCalledWith({
+        fileIds: ['file-1', 'file-2'],
+      });
       const files = useFileListStore.getState().files;
       expect(files).toHaveLength(1);
       expect(files[0].id).toBe('file-3');
@@ -234,7 +249,8 @@ describe('useFileActions', () => {
       });
 
       expect(success).toBe(true);
-      expect(mockFileApi.deleteFile).not.toHaveBeenCalled();
+      // Should not call API for empty array
+      expect(mockFileApi.deleteFilesBatch).not.toHaveBeenCalled();
     });
 
     it('should handle API error and return false', async () => {
@@ -244,7 +260,7 @@ describe('useFileActions', () => {
         useFileListStore.getState().setFiles([file1], 1, false);
       });
 
-      mockFileApi.deleteFile.mockResolvedValue({
+      mockFileApi.deleteFilesBatch.mockResolvedValue({
         success: false,
         error: { message: 'Permission denied' },
       });
@@ -268,7 +284,10 @@ describe('useFileActions', () => {
         useFolderTreeStore.getState().setTreeFolders('root', [folder]);
       });
 
-      mockFileApi.deleteFile.mockResolvedValue({ success: true });
+      mockFileApi.deleteFilesBatch.mockResolvedValue({
+        success: true,
+        data: { batchId: 'batch-123', jobsEnqueued: 1, jobIds: ['job-1'] },
+      });
 
       const { result } = renderHook(() => useFileActions());
 

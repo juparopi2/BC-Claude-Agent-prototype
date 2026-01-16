@@ -44,7 +44,9 @@ import {
   EMBEDDING_STATUS,
   FILE_READINESS_STATE,
   FILE_DELETION_CONFIG,
+  FILE_BULK_UPLOAD_CONFIG,
   type FileDeletionJobData,
+  type BulkUploadJobData,
 } from '@bc-agent/shared';
 
 /**
@@ -61,6 +63,7 @@ export enum QueueName {
   CITATION_PERSISTENCE = 'citation-persistence',
   FILE_CLEANUP = 'file-cleanup',
   FILE_DELETION = 'file-deletion',
+  FILE_BULK_UPLOAD = 'file-bulk-upload',
 }
 
 
@@ -752,6 +755,29 @@ export class MessageQueue {
       })
     );
 
+    // File Bulk Upload Queue (parallel processing OK for uploads)
+    this.queues.set(
+      QueueName.FILE_BULK_UPLOAD,
+      new Queue(this.getQueueName(QueueName.FILE_BULK_UPLOAD), {
+        connection: this.getRedisConnectionConfig(),
+        defaultJobOptions: {
+          attempts: FILE_BULK_UPLOAD_CONFIG.MAX_RETRY_ATTEMPTS,
+          backoff: {
+            type: 'exponential',
+            delay: FILE_BULK_UPLOAD_CONFIG.RETRY_DELAY_MS,
+          },
+          removeOnComplete: {
+            count: 100,
+            age: 3600,  // 1 hour
+          },
+          removeOnFail: {
+            count: 200,
+            age: 86400,  // 24 hours
+          },
+        },
+      })
+    );
+
     this.log.info('All queues initialized', {
       queues: Array.from(this.queues.keys()),
     });
@@ -912,6 +938,21 @@ export class MessageQueue {
         {
           connection: this.getRedisConnectionConfig(),
           concurrency: FILE_DELETION_CONFIG.QUEUE_CONCURRENCY,  // Sequential to avoid deadlocks
+        }
+      )
+    );
+
+    // File Bulk Upload Worker (parallel processing OK - creating DB records is safe)
+    this.workers.set(
+      QueueName.FILE_BULK_UPLOAD,
+      new Worker(
+        this.getQueueName(QueueName.FILE_BULK_UPLOAD),
+        async (job: Job<BulkUploadJobData>) => {
+          return this.processFileBulkUploadJob(job);
+        },
+        {
+          connection: this.getRedisConnectionConfig(),
+          concurrency: FILE_BULK_UPLOAD_CONFIG.QUEUE_CONCURRENCY,  // Parallel OK for uploads
         }
       )
     );
@@ -1504,6 +1545,40 @@ export class MessageQueue {
       userId: data.userId,
       batchId: data.batchId,
       deletionReason: data.deletionReason,
+    });
+
+    return job.id || '';
+  }
+
+  /**
+   * Add File Bulk Upload Job
+   *
+   * Adds a bulk upload job to the queue for parallel processing.
+   * Creates database records for files uploaded directly to Azure Blob Storage.
+   *
+   * @param data - Job data with tempId, userId, batchId, fileName, etc.
+   * @returns Job ID
+   */
+  public async addFileBulkUploadJob(
+    data: BulkUploadJobData
+  ): Promise<string> {
+    await this.waitForReady();
+
+    const queue = this.queues.get(QueueName.FILE_BULK_UPLOAD);
+    if (!queue) {
+      throw new Error('File bulk upload queue not initialized');
+    }
+
+    const job = await queue.add('upload-file', data, {
+      priority: 3,  // Same priority as file processing
+    });
+
+    this.log.info('File bulk upload job added to queue', {
+      jobId: job.id,
+      tempId: data.tempId,
+      userId: data.userId,
+      batchId: data.batchId,
+      fileName: data.fileName,
     });
 
     return job.id || '';
@@ -2379,6 +2454,34 @@ export class MessageQueue {
     // Dynamic import to avoid circular dependencies
     const { getFileDeletionProcessor } = await import('@/domains/files/deletion');
     const processor = getFileDeletionProcessor();
+
+    // Delegate to domain processor (throws on failure for BullMQ retry)
+    await processor.processJob(job.data);
+  }
+
+  /**
+   * Process File Bulk Upload Job
+   *
+   * Processes a bulk upload job by creating database record for a file
+   * that was uploaded directly to Azure Blob Storage via SAS URL.
+   *
+   * @param job - BullMQ job with BulkUploadJobData
+   */
+  private async processFileBulkUploadJob(
+    job: Job<BulkUploadJobData>
+  ): Promise<void> {
+    this.log.info('Processing bulk upload job', {
+      jobId: job.id,
+      tempId: job.data.tempId,
+      userId: job.data.userId,
+      batchId: job.data.batchId,
+      fileName: job.data.fileName,
+      attemptNumber: job.attemptsMade,
+    });
+
+    // Dynamic import to avoid circular dependencies
+    const { getBulkUploadProcessor } = await import('@/domains/files/bulk-upload');
+    const processor = getBulkUploadProcessor();
 
     // Delegate to domain processor (throws on failure for BullMQ retry)
     await processor.processJob(job.data);

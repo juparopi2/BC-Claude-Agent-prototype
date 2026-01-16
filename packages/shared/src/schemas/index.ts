@@ -200,6 +200,61 @@ export const bulkDeleteRequestSchema = z.object({
 
 export type BulkDeleteRequestInput = z.infer<typeof bulkDeleteRequestSchema>;
 
+// ============================================
+// Bulk Upload Schemas (SAS URL-based upload)
+// ============================================
+
+/**
+ * Single file metadata schema for bulk upload init
+ */
+export const bulkUploadFileMetadataSchema = z.object({
+  tempId: z.string().min(1, 'tempId is required'),
+  fileName: z.string().min(1, 'fileName is required').max(500, 'fileName too long (max 500 chars)'),
+  mimeType: z.string().min(1, 'mimeType is required'),
+  sizeBytes: z.number().int().positive('sizeBytes must be positive'),
+});
+
+export type BulkUploadFileMetadataInput = z.infer<typeof bulkUploadFileMetadataSchema>;
+
+/**
+ * Bulk Upload Init Request Schema
+ * Validates POST /api/files/bulk-upload/init requests
+ */
+export const bulkUploadInitRequestSchema = z.object({
+  files: z.array(bulkUploadFileMetadataSchema)
+    .min(1, 'At least one file required')
+    .max(500, 'Maximum 500 files per request'),
+  parentFolderId: z.string().uuid('Invalid parent folder ID').optional(),
+  sessionId: z.string().uuid('Invalid session ID').optional(),
+});
+
+export type BulkUploadInitRequestInput = z.infer<typeof bulkUploadInitRequestSchema>;
+
+/**
+ * Single upload result schema for bulk upload complete
+ */
+export const bulkUploadResultSchema = z.object({
+  tempId: z.string().min(1, 'tempId is required'),
+  success: z.boolean(),
+  contentHash: z.string().length(64, 'contentHash must be 64 characters (SHA-256 hex)').regex(/^[a-f0-9]+$/i, 'contentHash must be valid hex').optional(),
+  error: z.string().optional(),
+});
+
+export type BulkUploadResultInput = z.infer<typeof bulkUploadResultSchema>;
+
+/**
+ * Bulk Upload Complete Request Schema
+ * Validates POST /api/files/bulk-upload/complete requests
+ */
+export const bulkUploadCompleteRequestSchema = z.object({
+  batchId: z.string().uuid('Invalid batch ID'),
+  uploads: z.array(bulkUploadResultSchema)
+    .min(1, 'At least one upload result required'),
+  parentFolderId: z.string().uuid('Invalid parent folder ID').nullable().optional(),
+});
+
+export type BulkUploadCompleteRequestInput = z.infer<typeof bulkUploadCompleteRequestSchema>;
+
 /**
  * Re-export Zod for consumers who need to extend schemas
  */

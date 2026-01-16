@@ -435,8 +435,11 @@ export const FILE_UPLOAD_LIMITS = {
   /** Maximum image size: 30MB (Anthropic API constraint) */
   MAX_IMAGE_SIZE: 30 * 1024 * 1024,
 
-  /** Maximum files per upload request */
+  /** Maximum files per synchronous upload request (legacy) */
   MAX_FILES_PER_UPLOAD: 20,
+
+  /** Maximum files per bulk upload batch */
+  MAX_FILES_PER_BULK_UPLOAD: 500,
 } as const;
 
 /**
@@ -1027,7 +1030,8 @@ export type FileWebSocketEvent =
   | FileProcessingProgressEvent
   | FileProcessingCompletedEvent
   | FileProcessingFailedEvent
-  | FileDeletedEvent;
+  | FileDeletedEvent
+  | FileUploadedEvent;
 
 // ============================================
 // Bulk Delete Types (Queue-based deletion)
@@ -1129,5 +1133,286 @@ export interface FileDeletedEvent extends BaseFileWebSocketEvent {
   success: boolean;
 
   /** Error message if deletion failed */
+  error?: string;
+}
+
+// ============================================
+// Bulk Upload Types (Queue-based upload with SAS URLs)
+// ============================================
+
+/**
+ * Configuration for bulk file upload queue processing
+ *
+ * Mirrors FILE_DELETION_CONFIG pattern for consistency.
+ */
+export const FILE_BULK_UPLOAD_CONFIG = {
+  /** Maximum files per bulk upload batch */
+  MAX_BATCH_SIZE: 500,
+
+  /** Queue worker concurrency (parallel processing OK for uploads) */
+  QUEUE_CONCURRENCY: 10,
+
+  /** Maximum retry attempts for failed upload jobs */
+  MAX_RETRY_ATTEMPTS: 3,
+
+  /** Initial retry delay in milliseconds */
+  RETRY_DELAY_MS: 1000,
+
+  /** SAS URL expiration in minutes */
+  SAS_EXPIRY_MINUTES: 60,
+} as const;
+
+/**
+ * Job data for bulk file upload queue (BullMQ)
+ *
+ * Used by the FILE_BULK_UPLOAD queue to create database records
+ * after files have been uploaded directly to Azure Blob Storage.
+ *
+ * @example
+ * ```typescript
+ * const jobData: BulkUploadJobData = {
+ *   tempId: 'temp-123',
+ *   userId: 'USER-456',
+ *   batchId: 'BATCH-789',
+ *   fileName: 'document.pdf',
+ *   mimeType: 'application/pdf',
+ *   sizeBytes: 1024000,
+ *   blobPath: 'users/USER-456/files/1705312200000-document.pdf',
+ * };
+ * ```
+ */
+export interface BulkUploadJobData {
+  /** Client-generated temporary ID for correlation */
+  tempId: string;
+
+  /** UUID of the file owner (for multi-tenant isolation) */
+  userId: string;
+
+  /** Batch ID to group related uploads for tracking */
+  batchId: string;
+
+  /** Original filename */
+  fileName: string;
+
+  /** MIME type of the file */
+  mimeType: string;
+
+  /** File size in bytes */
+  sizeBytes: number;
+
+  /** Azure Blob Storage path where file was uploaded */
+  blobPath: string;
+
+  /** SHA-256 content hash for duplicate detection (optional) */
+  contentHash?: string;
+
+  /** Parent folder ID (null for root level) */
+  parentFolderId?: string | null;
+
+  /** Session ID for WebSocket events (optional) */
+  sessionId?: string;
+}
+
+/**
+ * Single file metadata for bulk upload init request
+ */
+export interface BulkUploadFileMetadata {
+  /** Client-generated temporary ID for correlation */
+  tempId: string;
+
+  /** Original filename */
+  fileName: string;
+
+  /** MIME type of the file */
+  mimeType: string;
+
+  /** File size in bytes */
+  sizeBytes: number;
+}
+
+/**
+ * Request body for bulk upload initialization (POST /api/files/bulk-upload/init)
+ *
+ * @example
+ * ```typescript
+ * const request: BulkUploadInitRequest = {
+ *   files: [
+ *     { tempId: 'temp-1', fileName: 'doc1.pdf', mimeType: 'application/pdf', sizeBytes: 1024000 },
+ *     { tempId: 'temp-2', fileName: 'doc2.pdf', mimeType: 'application/pdf', sizeBytes: 2048000 },
+ *   ],
+ *   parentFolderId: 'FOLDER-123',
+ *   sessionId: 'SESSION-456',
+ * };
+ * ```
+ */
+export interface BulkUploadInitRequest {
+  /** Array of files to upload (1-500 files) */
+  files: BulkUploadFileMetadata[];
+
+  /** Parent folder ID for all files (undefined = root level) */
+  parentFolderId?: string;
+
+  /** Session ID for WebSocket events (optional) */
+  sessionId?: string;
+}
+
+/**
+ * Single file SAS URL info in bulk upload init response
+ */
+export interface BulkUploadFileSasInfo {
+  /** Client temp ID for correlation */
+  tempId: string;
+
+  /** Presigned SAS URL for direct blob upload */
+  sasUrl: string;
+
+  /** Blob path for confirmation */
+  blobPath: string;
+
+  /** ISO 8601 timestamp when SAS URL expires */
+  expiresAt: string;
+}
+
+/**
+ * Response for bulk upload initialization (POST /api/files/bulk-upload/init)
+ *
+ * Returns 202 Accepted with SAS URLs for direct-to-blob uploads.
+ *
+ * @example
+ * ```typescript
+ * const response: BulkUploadInitResponse = {
+ *   batchId: 'BATCH-123',
+ *   files: [
+ *     {
+ *       tempId: 'temp-1',
+ *       sasUrl: 'https://storage.blob.core.windows.net/...?sv=...',
+ *       blobPath: 'users/USER-456/files/1705312200000-doc1.pdf',
+ *       expiresAt: '2026-01-16T11:30:00.000Z',
+ *     },
+ *   ],
+ * };
+ * ```
+ */
+export interface BulkUploadInitResponse {
+  /** Unique batch ID for tracking this bulk upload */
+  batchId: string;
+
+  /** SAS URLs and blob paths for each file */
+  files: BulkUploadFileSasInfo[];
+}
+
+/**
+ * Single upload result in bulk upload complete request
+ */
+export interface BulkUploadResult {
+  /** Client temp ID for correlation */
+  tempId: string;
+
+  /** Whether upload to blob succeeded */
+  success: boolean;
+
+  /** SHA-256 content hash (if upload succeeded) */
+  contentHash?: string;
+
+  /** Error message (if upload failed) */
+  error?: string;
+}
+
+/**
+ * Request body for bulk upload completion (POST /api/files/bulk-upload/complete)
+ *
+ * @example
+ * ```typescript
+ * const request: BulkUploadCompleteRequest = {
+ *   batchId: 'BATCH-123',
+ *   uploads: [
+ *     { tempId: 'temp-1', success: true, contentHash: 'abc123...' },
+ *     { tempId: 'temp-2', success: false, error: 'Network error' },
+ *   ],
+ *   parentFolderId: 'FOLDER-456',
+ * };
+ * ```
+ */
+export interface BulkUploadCompleteRequest {
+  /** Batch ID from init response */
+  batchId: string;
+
+  /** Upload results for each file */
+  uploads: BulkUploadResult[];
+
+  /** Parent folder ID (null for root level) */
+  parentFolderId?: string | null;
+}
+
+/**
+ * Response for bulk upload completion (POST /api/files/bulk-upload/complete)
+ *
+ * Returns 202 Accepted with job tracking information.
+ *
+ * @example
+ * ```typescript
+ * const response: BulkUploadAcceptedResponse = {
+ *   batchId: 'BATCH-123',
+ *   jobsEnqueued: 5,
+ *   jobIds: ['job-1', 'job-2', 'job-3', 'job-4', 'job-5'],
+ * };
+ * ```
+ */
+export interface BulkUploadAcceptedResponse {
+  /** Batch ID for tracking this bulk operation */
+  batchId: string;
+
+  /** Number of upload jobs enqueued */
+  jobsEnqueued: number;
+
+  /** Individual job IDs for tracking each file */
+  jobIds: string[];
+}
+
+/**
+ * WebSocket event emitted when bulk upload file record is created
+ * Channel: file:status
+ *
+ * @example
+ * ```typescript
+ * // Success
+ * const event: FileUploadedEvent = {
+ *   type: 'file:uploaded',
+ *   fileId: 'FILE-123',
+ *   tempId: 'temp-1',
+ *   batchId: 'BATCH-789',
+ *   success: true,
+ *   file: { id: 'FILE-123', name: 'doc.pdf', ... },
+ *   timestamp: '2026-01-16T10:30:00.000Z',
+ * };
+ *
+ * // Failure
+ * const event: FileUploadedEvent = {
+ *   type: 'file:uploaded',
+ *   fileId: '',
+ *   tempId: 'temp-1',
+ *   batchId: 'BATCH-789',
+ *   success: false,
+ *   error: 'Blob not found at specified path',
+ *   timestamp: '2026-01-16T10:30:00.000Z',
+ * };
+ * ```
+ */
+export interface FileUploadedEvent extends BaseFileWebSocketEvent {
+  type: typeof FILE_WS_EVENTS.UPLOADED;
+
+  /** Client temp ID for correlation */
+  tempId?: string;
+
+  /** Batch ID for correlating with bulk upload request */
+  batchId?: string;
+
+  /** Whether file record creation succeeded */
+  success: boolean;
+
+  /** Created file (only if success=true) */
+  file?: ParsedFile;
+
+  /** Error message (only if success=false) */
   error?: string;
 }

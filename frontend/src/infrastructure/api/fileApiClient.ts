@@ -22,6 +22,10 @@ import type {
   RetryProcessingResponse,
   BulkDeleteAcceptedResponse,
   DeletionReason,
+  BulkUploadInitRequest,
+  BulkUploadInitResponse,
+  BulkUploadCompleteRequest,
+  BulkUploadAcceptedResponse,
 } from '@bc-agent/shared';
 import { isApiErrorResponse, ErrorCode } from '@bc-agent/shared';
 import { env } from '@/lib/config/env';
@@ -648,6 +652,163 @@ export class FileApiClient {
       `/api/files/${fileId}/retry-processing`,
       request ?? {}
     );
+  }
+
+  // ============================================
+  // Bulk Upload Endpoints (SAS URL-Based)
+  // ============================================
+
+  /**
+   * Initialize bulk upload batch
+   *
+   * Requests SAS URLs for direct-to-blob uploads.
+   * Returns 202 Accepted with batchId and SAS URLs for each file.
+   *
+   * @param request - Files metadata and optional parent folder ID
+   * @returns Batch ID and SAS URLs for each file
+   *
+   * @example
+   * ```typescript
+   * const result = await fileApi.initBulkUpload({
+   *   files: [
+   *     { tempId: 'temp-1', fileName: 'doc.pdf', mimeType: 'application/pdf', sizeBytes: 1024000 },
+   *     { tempId: 'temp-2', fileName: 'img.png', mimeType: 'image/png', sizeBytes: 500000 },
+   *   ],
+   *   parentFolderId: 'folder-123',
+   *   sessionId: 'session-456',
+   * });
+   *
+   * if (result.success) {
+   *   console.log('Batch ID:', result.data.batchId);
+   *   // Upload files directly to Azure Blob using sasUrl
+   *   for (const file of result.data.files) {
+   *     await fileApi.uploadToBlob(fileBlob, file.sasUrl);
+   *   }
+   * }
+   * ```
+   */
+  async initBulkUpload(
+    request: BulkUploadInitRequest
+  ): Promise<ApiResponse<BulkUploadInitResponse>> {
+    return this.postJson<BulkUploadInitResponse>('/api/files/bulk-upload/init', request);
+  }
+
+  /**
+   * Complete bulk upload batch
+   *
+   * Confirms successful uploads and enqueues processing jobs.
+   * Returns 202 Accepted with job tracking information.
+   *
+   * @param request - Batch ID and upload results
+   * @returns Job tracking information
+   *
+   * @example
+   * ```typescript
+   * const result = await fileApi.completeBulkUpload({
+   *   batchId: 'BATCH-123',
+   *   uploads: [
+   *     { tempId: 'temp-1', success: true, contentHash: 'abc123...' },
+   *     { tempId: 'temp-2', success: false, error: 'Network error' },
+   *   ],
+   *   parentFolderId: 'folder-456',
+   * });
+   *
+   * if (result.success) {
+   *   console.log('Jobs enqueued:', result.data.jobsEnqueued);
+   * }
+   * ```
+   */
+  async completeBulkUpload(
+    request: BulkUploadCompleteRequest
+  ): Promise<ApiResponse<BulkUploadAcceptedResponse>> {
+    return this.postJson<BulkUploadAcceptedResponse>('/api/files/bulk-upload/complete', request);
+  }
+
+  /**
+   * Upload file directly to Azure Blob Storage using SAS URL
+   *
+   * Uses XMLHttpRequest for progress tracking.
+   * This bypasses the backend - file goes directly to Azure.
+   *
+   * @param file - File to upload
+   * @param sasUrl - Pre-signed SAS URL from initBulkUpload
+   * @param onProgress - Optional progress callback (0-100)
+   * @returns Upload result
+   *
+   * @example
+   * ```typescript
+   * const result = await fileApi.uploadToBlob(
+   *   file,
+   *   sasUrl,
+   *   (progress) => console.log(`Upload: ${progress}%`)
+   * );
+   *
+   * if (result.success) {
+   *   console.log('File uploaded to blob');
+   * } else {
+   *   console.error('Upload failed:', result.error);
+   * }
+   * ```
+   */
+  async uploadToBlob(
+    file: File,
+    sasUrl: string,
+    onProgress?: (progress: number) => void
+  ): Promise<{ success: true } | { success: false; error: string }> {
+    return new Promise((resolve) => {
+      const xhr = new XMLHttpRequest();
+
+      // Upload progress tracking
+      xhr.upload.addEventListener('progress', (event) => {
+        if (event.lengthComputable && onProgress) {
+          const progress = Math.round((event.loaded / event.total) * 100);
+          onProgress(progress);
+        }
+      });
+
+      // Upload complete
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve({ success: true });
+        } else {
+          resolve({
+            success: false,
+            error: `Upload failed with status ${xhr.status}: ${xhr.statusText}`,
+          });
+        }
+      });
+
+      // Network error
+      xhr.addEventListener('error', () => {
+        resolve({
+          success: false,
+          error: 'Network error during upload',
+        });
+      });
+
+      // Upload timeout
+      xhr.addEventListener('timeout', () => {
+        resolve({
+          success: false,
+          error: 'Upload request timed out',
+        });
+      });
+
+      // Upload aborted
+      xhr.addEventListener('abort', () => {
+        resolve({
+          success: false,
+          error: 'Upload was cancelled',
+        });
+      });
+
+      // Send request to Azure Blob Storage
+      xhr.open('PUT', sasUrl);
+      xhr.setRequestHeader('x-ms-blob-type', 'BlockBlob');
+      xhr.setRequestHeader('Content-Type', file.type);
+      xhr.timeout = 300000; // 5 minute timeout for large files
+      xhr.send(file);
+    });
   }
 }
 

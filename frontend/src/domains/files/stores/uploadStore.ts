@@ -31,8 +31,8 @@ export interface UploadItem {
   progress: number;
   /** Error message if failed */
   error?: string;
-  /** Result from server after completion */
-  resultFile?: ParsedFile;
+  /** Result from server after completion (null for async bulk uploads) */
+  resultFile?: ParsedFile | null;
 }
 
 /**
@@ -57,8 +57,8 @@ export interface UploadActions {
   startUpload: (itemId: string) => void;
   /** Update progress for a specific item */
   updateProgress: (itemId: string, progress: number) => void;
-  /** Mark upload as completed with server file */
-  completeUpload: (itemId: string, resultFile: ParsedFile) => void;
+  /** Mark upload as completed with server file (null for async bulk uploads) */
+  completeUpload: (itemId: string, resultFile: ParsedFile | null) => void;
   /** Mark upload as failed with error */
   failUpload: (itemId: string, error: string) => void;
   /** Remove a single item from queue */
@@ -174,7 +174,13 @@ export const useUploadStore = create<UploadState & UploadActions>()(
       set((state) => {
         const newQueue = state.queue.map((item) =>
           item.id === itemId
-            ? { ...item, status: 'completed' as UploadStatus, progress: 100, resultFile }
+            ? {
+                ...item,
+                status: 'completed' as UploadStatus,
+                progress: 100,
+                // Only set resultFile if provided (null for async bulk uploads)
+                ...(resultFile !== null ? { resultFile } : {}),
+              }
             : item
         );
 

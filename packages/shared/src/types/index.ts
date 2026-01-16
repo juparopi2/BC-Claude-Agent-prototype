@@ -135,10 +135,20 @@ export type {
   FileDeletionJobData,
   BulkDeleteAcceptedResponse,
   FileDeletedEvent,
+  // Bulk Upload types (Queue-based upload with SAS URLs)
+  BulkUploadJobData,
+  BulkUploadFileMetadata,
+  BulkUploadInitRequest,
+  BulkUploadFileSasInfo,
+  BulkUploadInitResponse,
+  BulkUploadResult,
+  BulkUploadCompleteRequest,
+  BulkUploadAcceptedResponse,
+  FileUploadedEvent,
 } from './file.types';
 
 // File constants
-export { FILE_UPLOAD_LIMITS, ALLOWED_MIME_TYPES } from './file.types';
+export { FILE_UPLOAD_LIMITS, ALLOWED_MIME_TYPES, FILE_BULK_UPLOAD_CONFIG } from './file.types';
 
 // File type guards
 export { isAllowedMimeType } from './file.types';

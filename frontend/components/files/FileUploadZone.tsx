@@ -44,10 +44,10 @@ export function FileUploadZone({
       });
     }
 
-    // Upload accepted files
+    // Upload accepted files (bulk upload handles >20 files via SAS URLs)
     if (acceptedFiles.length > 0) {
-      if (acceptedFiles.length > FILE_UPLOAD_LIMITS.MAX_FILES_PER_UPLOAD) {
-        toast.error(`Maximum ${FILE_UPLOAD_LIMITS.MAX_FILES_PER_UPLOAD} files per upload`);
+      if (acceptedFiles.length > FILE_UPLOAD_LIMITS.MAX_FILES_PER_BULK_UPLOAD) {
+        toast.error(`Maximum ${FILE_UPLOAD_LIMITS.MAX_FILES_PER_BULK_UPLOAD} files per upload`);
         return;
       }
 
@@ -64,7 +64,7 @@ export function FileUploadZone({
       return acc;
     }, {} as Record<string, string[]>),
     maxSize: FILE_UPLOAD_LIMITS.MAX_FILE_SIZE,
-    maxFiles: FILE_UPLOAD_LIMITS.MAX_FILES_PER_UPLOAD,
+    maxFiles: FILE_UPLOAD_LIMITS.MAX_FILES_PER_BULK_UPLOAD,
     disabled: disabled || isUploading,
     noClick: true,
     noKeyboard: true,
@@ -96,7 +96,7 @@ export function FileUploadZone({
             {isDragReject ? 'Invalid file type' : 'Drop files to upload'}
           </p>
           <p className="text-xs text-muted-foreground mt-1">
-            Max {FILE_UPLOAD_LIMITS.MAX_FILES_PER_UPLOAD} files, {FILE_UPLOAD_LIMITS.MAX_FILE_SIZE / 1024 / 1024}MB each
+            Max {FILE_UPLOAD_LIMITS.MAX_FILES_PER_BULK_UPLOAD} files, {FILE_UPLOAD_LIMITS.MAX_FILE_SIZE / 1024 / 1024}MB each
           </p>
         </div>
       )}

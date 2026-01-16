@@ -188,6 +188,19 @@ export function validateSafe<T extends z.ZodType>(
 }
 
 /**
+ * Bulk Delete Request Schema
+ * Validates bulk file deletion requests (DELETE /api/files)
+ */
+export const bulkDeleteRequestSchema = z.object({
+  fileIds: z.array(z.string().uuid('Invalid file ID format')).min(1, 'At least one file ID required').max(100, 'Maximum 100 files per request'),
+  deletionReason: z.enum(['user_request', 'gdpr_erasure', 'retention_policy', 'admin_action'], {
+    errorMap: () => ({ message: 'Invalid deletion reason' })
+  }).optional().default('user_request'),
+});
+
+export type BulkDeleteRequestInput = z.infer<typeof bulkDeleteRequestSchema>;
+
+/**
  * Re-export Zod for consumers who need to extend schemas
  */
 export { z };

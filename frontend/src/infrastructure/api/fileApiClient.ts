@@ -20,6 +20,8 @@ import type {
   CheckDuplicatesResponse,
   RetryProcessingRequest,
   RetryProcessingResponse,
+  BulkDeleteAcceptedResponse,
+  DeletionReason,
 } from '@bc-agent/shared';
 import { isApiErrorResponse, ErrorCode } from '@bc-agent/shared';
 import { env } from '@/lib/config/env';
@@ -499,6 +501,36 @@ export class FileApiClient {
    */
   async deleteFile(fileId: string): Promise<ApiResponse<{ success: boolean }>> {
     return this.request<{ success: boolean }>('DELETE', `/api/files/${fileId}`);
+  }
+
+  /**
+   * Delete multiple files asynchronously (bulk delete)
+   *
+   * Enqueues deletion jobs for processing via BullMQ queue.
+   * Returns immediately with 202 Accepted and tracking information.
+   * Deletion status is emitted via WebSocket (FILE_WS_EVENTS.DELETED).
+   *
+   * @param request - File IDs to delete and optional deletion reason
+   * @returns Accepted response with batchId and job IDs
+   *
+   * @example
+   * ```typescript
+   * const result = await fileApi.deleteFilesBatch({
+   *   fileIds: ['file-1', 'file-2', 'file-3'],
+   *   deletionReason: 'user_request',
+   * });
+   *
+   * if (result.success) {
+   *   console.log('Batch ID:', result.data.batchId);
+   *   console.log('Jobs enqueued:', result.data.jobsEnqueued);
+   * }
+   * ```
+   */
+  async deleteFilesBatch(request: {
+    fileIds: string[];
+    deletionReason?: DeletionReason;
+  }): Promise<ApiResponse<BulkDeleteAcceptedResponse>> {
+    return this.request<BulkDeleteAcceptedResponse>('DELETE', '/api/files', request);
   }
 
   // ============================================

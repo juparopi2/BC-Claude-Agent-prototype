@@ -2713,7 +2713,68 @@ FILE_WS_EVENTS = {
 | `ProcessingRetryManager` | 21 unit tests | Decisions, backoff, manual retry |
 | `PartialDataCleaner` | 19 unit tests | Single/batch cleanup, error handling |
 | `FileEventEmitter` | 29 unit tests | Todos los eventos, graceful degradation |
+| `FileDeletionProcessor` | 25 unit tests | Success/error handling, WebSocket, multi-tenant |
 | **Integration** | 18 tests | Flujo completo, multi-tenant, singletons |
+
+### 13.10 File Deletion Queue (Bulk Delete)
+
+El sistema incluye una cola BullMQ dedicada para eliminación de archivos en batch, evitando deadlocks SQL cuando se eliminan múltiples archivos simultáneamente.
+
+#### Nueva Cola: `QueueName.FILE_DELETION = 'file-deletion'`
+
+**FileDeletionJobData Interface** (desde `@bc-agent/shared`):
+```typescript
+interface FileDeletionJobData {
+  fileId: string;
+  userId: string;
+  deletionReason?: 'user_request' | 'gdpr_erasure' | 'retention_policy' | 'admin_action';
+  batchId?: string;
+}
+```
+
+**Endpoint**: `DELETE /api/files` (bulk)
+- Request: `{ fileIds: string[], deletionReason?: string }`
+- Response: `202 Accepted` con `{ batchId, jobsEnqueued, jobIds }`
+
+**Flujo de Eliminación Batch**:
+```
+Frontend                    Backend                         BullMQ Worker
+   │                           │                                 │
+   ├─DELETE /api/files─────────►│                                 │
+   │  {fileIds: [...]}         │                                 │
+   │                           ├──verifyOwnership()              │
+   │                           ├──enqueue jobs──────────────────►│
+   │◄──202 Accepted────────────┤                                 │
+   │  {batchId, jobIds}        │    ┌─────────────────────────────┤
+   │                           │    │ Process SEQUENTIALLY        │
+   │                           │    │ (concurrency=1)             │
+   │◄──────────────────────────┼──ws: file:deleted────────────────┤
+```
+
+**Domain Module**: `backend/src/domains/files/deletion/`
+- `FileDeletionProcessor.ts` - Procesa jobs individuales
+- `IFileDeletionProcessor.ts` - Interface para DI
+- `index.ts` - Exports
+
+**Configuración** (`FILE_DELETION_CONFIG` desde `@bc-agent/shared`):
+| Constante | Valor | Descripción |
+|-----------|-------|-------------|
+| `MAX_BATCH_SIZE` | `100` | Máximo archivos por request |
+| `QUEUE_CONCURRENCY` | `1` | Secuencial para evitar deadlocks |
+| `MAX_RETRY_ATTEMPTS` | `3` | Reintentos automáticos |
+| `RETRY_DELAY_MS` | `1000` | Base delay para backoff |
+
+**WebSocket Event** (`FILE_WS_EVENTS.DELETED`):
+```typescript
+interface FileDeletedEvent {
+  type: 'file:deleted';
+  fileId: string;
+  batchId?: string;
+  success: boolean;
+  error?: string;
+  timestamp: string;
+}
+```
 
 ---
 
@@ -2734,6 +2795,7 @@ FILE_WS_EVENTS = {
 11. **Robust File Processing (D25)** - Retry automático con backoff exponencial, cleanup de datos huérfanos, estados visuales claros
 12. **Event emission centralizada** - FileEventEmitter para WebSocket con graceful degradation
 13. **Constantes centralizadas** - Sin magic strings para estados y eventos de archivos
+14. **Bulk File Deletion (D25 Sprint 3)** - Cola BullMQ secuencial evita deadlocks SQL, 202 Accepted + WebSocket para UX responsiva
 
 ### Áreas de Mejora Identificadas
 
@@ -2747,4 +2809,4 @@ FILE_WS_EVENTS = {
 
 ---
 
-*Documento actualizado: 2026-01-14 v2.4 (Robust File Processing D25)*
+*Documento actualizado: 2026-01-16 v2.5 (Bulk File Deletion Queue D25 Sprint 3)*

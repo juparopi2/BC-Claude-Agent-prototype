@@ -43,6 +43,8 @@ import {
   PROCESSING_STATUS,
   EMBEDDING_STATUS,
   FILE_READINESS_STATE,
+  FILE_DELETION_CONFIG,
+  type FileDeletionJobData,
 } from '@bc-agent/shared';
 
 /**
@@ -58,6 +60,7 @@ export enum QueueName {
   EMBEDDING_GENERATION = 'embedding-generation',
   CITATION_PERSISTENCE = 'citation-persistence',
   FILE_CLEANUP = 'file-cleanup',
+  FILE_DELETION = 'file-deletion',
 }
 
 
@@ -725,6 +728,30 @@ export class MessageQueue {
       })
     );
 
+    // File Deletion Queue (D25 Sprint 3: bulk file deletion)
+    // Sequential processing (concurrency=1) to avoid SQL deadlocks
+    this.queues.set(
+      QueueName.FILE_DELETION,
+      new Queue(this.getQueueName(QueueName.FILE_DELETION), {
+        connection: this.getRedisConnectionConfig(),
+        defaultJobOptions: {
+          attempts: FILE_DELETION_CONFIG.MAX_RETRY_ATTEMPTS,
+          backoff: {
+            type: 'exponential',
+            delay: FILE_DELETION_CONFIG.RETRY_DELAY_MS,
+          },
+          removeOnComplete: {
+            count: 100,
+            age: 3600,  // 1 hour
+          },
+          removeOnFail: {
+            count: 200,
+            age: 86400,  // 24 hours
+          },
+        },
+      })
+    );
+
     this.log.info('All queues initialized', {
       queues: Array.from(this.queues.keys()),
     });
@@ -870,6 +897,21 @@ export class MessageQueue {
         {
           connection: this.getRedisConnectionConfig(),
           concurrency: 1,  // Sequential - cleanup should not overwhelm DB
+        }
+      )
+    );
+
+    // File Deletion Worker (sequential to avoid SQL deadlocks)
+    this.workers.set(
+      QueueName.FILE_DELETION,
+      new Worker(
+        this.getQueueName(QueueName.FILE_DELETION),
+        async (job: Job<FileDeletionJobData>) => {
+          return this.processFileDeletionJob(job);
+        },
+        {
+          connection: this.getRedisConnectionConfig(),
+          concurrency: FILE_DELETION_CONFIG.QUEUE_CONCURRENCY,  // Sequential to avoid deadlocks
         }
       )
     );
@@ -1428,6 +1470,40 @@ export class MessageQueue {
       jobId: job.id,
       type: data.type,
       userId: data.userId || 'all-users',
+    });
+
+    return job.id || '';
+  }
+
+  /**
+   * Add File Deletion Job
+   *
+   * Adds a file deletion job to the queue for sequential processing.
+   * Uses concurrency=1 to avoid SQL deadlocks on shared tables.
+   *
+   * @param data - Job data with fileId, userId, and optional batchId
+   * @returns Job ID
+   */
+  public async addFileDeletionJob(
+    data: FileDeletionJobData
+  ): Promise<string> {
+    await this.waitForReady();
+
+    const queue = this.queues.get(QueueName.FILE_DELETION);
+    if (!queue) {
+      throw new Error('File deletion queue not initialized');
+    }
+
+    const job = await queue.add('delete-file', data, {
+      priority: 3,  // Same priority as file processing
+    });
+
+    this.log.info('File deletion job added to queue', {
+      jobId: job.id,
+      fileId: data.fileId,
+      userId: data.userId,
+      batchId: data.batchId,
+      deletionReason: data.deletionReason,
     });
 
     return job.id || '';
@@ -2278,6 +2354,34 @@ export class MessageQueue {
       });
       throw error;  // Will trigger retry
     }
+  }
+
+  /**
+   * Process File Deletion Job
+   *
+   * Delegates to FileDeletionProcessor domain module.
+   * Sequential processing (concurrency=1) to avoid SQL deadlocks.
+   *
+   * @param job - BullMQ job with FileDeletionJobData
+   */
+  private async processFileDeletionJob(
+    job: Job<FileDeletionJobData>
+  ): Promise<void> {
+    this.log.info('Processing file deletion job', {
+      jobId: job.id,
+      fileId: job.data.fileId,
+      userId: job.data.userId,
+      batchId: job.data.batchId,
+      deletionReason: job.data.deletionReason,
+      attemptNumber: job.attemptsMade,
+    });
+
+    // Dynamic import to avoid circular dependencies
+    const { getFileDeletionProcessor } = await import('@/domains/files/deletion');
+    const processor = getFileDeletionProcessor();
+
+    // Delegate to domain processor (throws on failure for BullMQ retry)
+    await processor.processJob(job.data);
   }
 
   /**

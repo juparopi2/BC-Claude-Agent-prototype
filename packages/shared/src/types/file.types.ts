@@ -1026,4 +1026,108 @@ export type FileWebSocketEvent =
   | FilePermanentlyFailedEvent
   | FileProcessingProgressEvent
   | FileProcessingCompletedEvent
-  | FileProcessingFailedEvent;
+  | FileProcessingFailedEvent
+  | FileDeletedEvent;
+
+// ============================================
+// Bulk Delete Types (Queue-based deletion)
+// ============================================
+
+/**
+ * Deletion reason for GDPR compliance audit trail
+ */
+export type DeletionReason = 'user_request' | 'gdpr_erasure' | 'retention_policy' | 'admin_action';
+
+/**
+ * Job data for file deletion queue (BullMQ)
+ *
+ * Used by the FILE_DELETION queue to process deletions sequentially
+ * to avoid SQL deadlocks from parallel DELETE operations.
+ *
+ * @example
+ * ```typescript
+ * const jobData: FileDeletionJobData = {
+ *   fileId: 'FILE-123',
+ *   userId: 'USER-456',
+ *   deletionReason: 'user_request',
+ *   batchId: 'BATCH-789',
+ * };
+ * ```
+ */
+export interface FileDeletionJobData {
+  /** UUID of the file to delete */
+  fileId: string;
+
+  /** UUID of the file owner (for multi-tenant isolation) */
+  userId: string;
+
+  /** Reason for deletion (GDPR audit trail) */
+  deletionReason?: DeletionReason;
+
+  /** Batch ID to group related deletions for tracking */
+  batchId?: string;
+}
+
+/**
+ * Response for bulk delete API endpoint (DELETE /api/files)
+ *
+ * Returns 202 Accepted with tracking information for async processing.
+ *
+ * @example
+ * ```typescript
+ * const response: BulkDeleteAcceptedResponse = {
+ *   batchId: 'BATCH-123',
+ *   jobsEnqueued: 5,
+ *   jobIds: ['job-1', 'job-2', 'job-3', 'job-4', 'job-5'],
+ * };
+ * ```
+ */
+export interface BulkDeleteAcceptedResponse {
+  /** Unique batch ID for tracking this bulk operation */
+  batchId: string;
+
+  /** Number of deletion jobs enqueued */
+  jobsEnqueued: number;
+
+  /** Individual job IDs for tracking each file deletion */
+  jobIds: string[];
+}
+
+/**
+ * WebSocket event emitted when file deletion completes
+ * Channel: file:status
+ *
+ * @example
+ * ```typescript
+ * // Success
+ * const event: FileDeletedEvent = {
+ *   type: 'file:deleted',
+ *   fileId: 'FILE-123',
+ *   batchId: 'BATCH-789',
+ *   success: true,
+ *   timestamp: '2026-01-16T10:30:00.000Z',
+ * };
+ *
+ * // Failure
+ * const event: FileDeletedEvent = {
+ *   type: 'file:deleted',
+ *   fileId: 'FILE-123',
+ *   batchId: 'BATCH-789',
+ *   success: false,
+ *   error: 'Database connection failed',
+ *   timestamp: '2026-01-16T10:30:00.000Z',
+ * };
+ * ```
+ */
+export interface FileDeletedEvent extends BaseFileWebSocketEvent {
+  type: typeof FILE_WS_EVENTS.DELETED;
+
+  /** Batch ID for correlating with bulk delete request */
+  batchId?: string;
+
+  /** Whether deletion succeeded */
+  success: boolean;
+
+  /** Error message if deletion failed */
+  error?: string;
+}

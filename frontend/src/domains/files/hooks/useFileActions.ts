@@ -139,10 +139,14 @@ export function useFileActions(): UseFileActionsReturn {
   );
 
   /**
-   * Delete files or folders
+   * Delete files or folders (bulk delete via queue)
+   *
+   * Uses the batch deletion endpoint which queues jobs for async processing.
+   * Files are optimistically removed from the UI immediately.
+   * Actual deletion status is emitted via WebSocket (see useFileDeleteEvents).
    *
    * @param fileIds - Array of file/folder IDs to delete
-   * @returns true if all deletions successful, false otherwise
+   * @returns true if jobs were enqueued successfully, false on error
    */
   const deleteFiles = useCallback(
     async (fileIds: string[]): Promise<boolean> => {
@@ -153,18 +157,17 @@ export function useFileActions(): UseFileActionsReturn {
 
       try {
         const fileApi = getFileApiClient();
-        const results = await Promise.all(
-          fileIds.map((id) => fileApi.deleteFile(id))
-        );
 
-        const failedResults = results.filter((r) => !r.success);
-        if (failedResults.length > 0) {
-          const firstError = failedResults[0];
-          if (!firstError.success) {
-            setError(firstError.error.message);
-          }
+        // Use bulk delete endpoint (returns 202 Accepted)
+        const result = await fileApi.deleteFilesBatch({ fileIds });
+
+        if (!result.success) {
+          setError(result.error.message);
           return false;
         }
+
+        // Jobs enqueued - optimistically remove from UI
+        // Actual deletion happens async, errors reported via WebSocket
 
         // Find which files are folders before deleting from store
         const deletedFolderIds = files

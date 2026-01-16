@@ -52,6 +52,8 @@ export const FILE_WS_EVENTS = {
   PROCESSING_COMPLETED: 'file:processing_completed',
   /** Processing failed (before retry decision) */
   PROCESSING_FAILED: 'file:processing_failed',
+  /** File deletion completed (success or failure) - used by bulk delete */
+  DELETED: 'file:deleted',
 } as const;
 
 /**

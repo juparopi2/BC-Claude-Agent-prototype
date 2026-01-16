@@ -30,6 +30,7 @@ export {
   PROCESSING_STATUS,
   EMBEDDING_STATUS,
   FILE_READINESS_STATE,
+  FILE_DELETION_CONFIG,
   type ProcessingStatusValue,
   type EmbeddingStatusValue,
   type FileReadinessStateValue,

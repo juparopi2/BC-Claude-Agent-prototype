@@ -1,8 +1,8 @@
 # Integración con Paquete Compartido (@bc-agent/shared)
 
-**Fecha**: 2026-01-14
+**Fecha**: 2026-01-16
 **Estado**: Implementado
-**Versión**: 2.1
+**Versión**: 2.2
 
 ---
 
@@ -188,7 +188,16 @@ getFetchStrategy(sourceType: SourceType): FetchStrategy
 | `FileProcessingProgressEvent` | Progreso: `progress`, `stage`, `attemptNumber`, `maxAttempts` |
 | `FileProcessingCompletedEvent` | Completado: `stats` (`textLength`, `pageCount`, `ocrUsed`) |
 | `FileProcessingFailedEvent` | Error con `error` message |
+| `FileDeletedEvent` | Eliminación: `batchId`, `success`, `error` (D25 Sprint 3) |
 | `FileWebSocketEvent` | Union type de todos los eventos WebSocket de archivos |
+
+**Tipos de Bulk Delete (D25 Sprint 3)**:
+| Tipo | Descripción |
+|------|-------------|
+| `DeletionReason` | `'user_request' \| 'gdpr_erasure' \| 'retention_policy' \| 'admin_action'` |
+| `FileDeletionJobData` | Job data para cola BullMQ: `fileId`, `userId`, `deletionReason?`, `batchId?` |
+| `BulkDeleteAcceptedResponse` | Response 202: `batchId`, `jobsEnqueued`, `jobIds[]` |
+| `FileDeletedEvent` | WebSocket event: `success`, `error?`, `batchId?` |
 
 **Ejemplo de uso**:
 ```typescript
@@ -226,6 +235,15 @@ import {
 | `PROCESSING_STATUS` | `PENDING`, `PROCESSING`, `COMPLETED`, `FAILED` |
 | `EMBEDDING_STATUS` | `PENDING`, `QUEUED`, `PROCESSING`, `COMPLETED`, `FAILED` |
 | `FILE_READINESS_STATE` | `UPLOADING`, `PROCESSING`, `READY`, `FAILED` |
+| `FILE_DELETION_CONFIG` | Config para cola de eliminación (D25 Sprint 3) |
+
+**Configuración de Eliminación (D25 Sprint 3)**:
+| Campo | Valor | Descripción |
+|-------|-------|-------------|
+| `FILE_DELETION_CONFIG.MAX_BATCH_SIZE` | `100` | Máximo archivos por request |
+| `FILE_DELETION_CONFIG.QUEUE_CONCURRENCY` | `1` | Secuencial para evitar deadlocks |
+| `FILE_DELETION_CONFIG.MAX_RETRY_ATTEMPTS` | `3` | Reintentos automáticos |
+| `FILE_DELETION_CONFIG.RETRY_DELAY_MS` | `1000` | Base delay para backoff exponencial |
 
 **Tipos derivados** (para type safety):
 ```typescript
@@ -276,6 +294,7 @@ import {
 | `FILE_WS_EVENTS.PROCESSING_PROGRESS` | `'file:processing_progress'` |
 | `FILE_WS_EVENTS.PROCESSING_COMPLETED` | `'file:processing_completed'` |
 | `FILE_WS_EVENTS.PROCESSING_FAILED` | `'file:processing_failed'` |
+| `FILE_WS_EVENTS.DELETED` | `'file:deleted'` |
 
 **Tipos derivados**:
 ```typescript
@@ -311,7 +330,7 @@ socket.on(FILE_WS_CHANNELS.STATUS, (event: FileWebSocketEvent) => {
 
 ---
 
-## Esquemas Zod (10 Schemas)
+## Esquemas Zod (11 Schemas)
 
 ```typescript
 import {
@@ -325,6 +344,7 @@ import {
   extendedThinkingConfigSchema,
   fullChatMessageSchema,
   stopAgentSchema,
+  bulkDeleteRequestSchema,  // D25 Sprint 3
   validateOrThrow,
   validateSafe,
   z  // Re-export de Zod
@@ -343,6 +363,7 @@ import {
 | `extendedThinkingConfigSchema` | enableThinking?, thinkingBudget? (min 1024) |
 | `fullChatMessageSchema` | chatMessage + thinking config |
 | `stopAgentSchema` | sessionId, userId |
+| `bulkDeleteRequestSchema` | fileIds (1-100 UUIDs), deletionReason? (enum) |
 
 **Helpers de validación**:
 ```typescript
@@ -638,4 +659,4 @@ Al implementar cada nueva clase:
 
 ---
 
-*Última actualización: 2026-01-14*
+*Última actualización: 2026-01-16 v2.2 (Bulk File Deletion D25 Sprint 3)*

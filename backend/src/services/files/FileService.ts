@@ -172,6 +172,53 @@ export class FileService {
   }
 
   /**
+   * 2b. Verify ownership of multiple files
+   *
+   * Returns only the file IDs that the user owns.
+   * Used for bulk operations to filter out unauthorized file IDs.
+   *
+   * @param userId - User ID to verify ownership against
+   * @param fileIds - Array of file IDs to verify
+   * @returns Array of file IDs that the user owns
+   */
+  public async verifyOwnership(userId: string, fileIds: string[]): Promise<string[]> {
+    if (fileIds.length === 0) {
+      return [];
+    }
+
+    this.logger.info({ userId, fileCount: fileIds.length }, 'Verifying file ownership');
+
+    try {
+      // Build parameterized query to prevent SQL injection
+      const placeholders = fileIds.map((_, i) => `@id${i}`).join(', ');
+      const query = `
+        SELECT id
+        FROM files
+        WHERE user_id = @user_id AND id IN (${placeholders})
+      `;
+
+      const params: SqlParams = { user_id: userId };
+      fileIds.forEach((id, i) => {
+        params[`id${i}`] = id;
+      });
+
+      const result = await executeQuery<{ id: string }>(query, params);
+      const ownedIds = result.recordset.map(r => r.id);
+
+      this.logger.info({
+        userId,
+        requestedCount: fileIds.length,
+        ownedCount: ownedIds.length,
+      }, 'Ownership verification complete');
+
+      return ownedIds;
+    } catch (error) {
+      this.logger.error({ error, userId, fileCount: fileIds.length }, 'Failed to verify file ownership');
+      throw error;
+    }
+  }
+
+  /**
    * 3. Create folder
    *
    * @param userId - User ID

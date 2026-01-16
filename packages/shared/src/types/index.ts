@@ -130,6 +130,11 @@ export type {
   FileProcessingCompletedEvent,
   FileProcessingFailedEvent,
   FileWebSocketEvent,
+  // Bulk Delete types (Queue-based deletion)
+  DeletionReason,
+  FileDeletionJobData,
+  BulkDeleteAcceptedResponse,
+  FileDeletedEvent,
 } from './file.types';
 
 // File constants

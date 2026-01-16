@@ -14,10 +14,12 @@
  * - GET /api/files/:id/download - Download file
  * - GET /api/files/:id/content - Get file content
  * - PATCH /api/files/:id - Update file metadata
- * - DELETE /api/files/:id - Delete file
+ * - DELETE /api/files - Bulk delete files (async, 202 Accepted)
+ * - DELETE /api/files/:id - Delete single file
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
+import crypto from 'crypto';
 import { z, ZodError } from 'zod';
 import multer, { MulterError } from 'multer';
 import { authenticateMicrosoft } from '@/domains/auth/middleware/auth-oauth';
@@ -32,6 +34,7 @@ import { computeSha256 } from '@/shared/utils/hash';
 import { EmbeddingService } from '@/services/embeddings/EmbeddingService';
 import { VectorSearchService } from '@/services/search/VectorSearchService';
 import type { ParsedFile } from '@/types/file.types';
+import { bulkDeleteRequestSchema, validateSafe, type BulkDeleteAcceptedResponse } from '@bc-agent/shared';
 
 const logger = createChildLogger({ service: 'FileRoutes' });
 const router = Router();
@@ -941,6 +944,95 @@ router.patch('/:id', authenticateMicrosoft, async (req: Request, res: Response):
     }
 
     sendError(res, ErrorCode.INTERNAL_ERROR, 'Failed to update file');
+  }
+});
+
+// ============================================
+// Bulk Delete Endpoint (Queue-Based)
+// ============================================
+
+/**
+ * DELETE /api/files (Bulk Delete)
+ *
+ * Asynchronously deletes multiple files via BullMQ queue.
+ * Returns 202 Accepted immediately with batchId for tracking.
+ * Deletion status is emitted via WebSocket (FILE_WS_EVENTS.DELETED).
+ *
+ * Request body:
+ * - fileIds: string[] (1-100 UUIDs)
+ * - deletionReason?: 'user_request' | 'gdpr_erasure' | 'retention_policy' | 'admin_action'
+ *
+ * Response 202:
+ * - batchId: string (for tracking)
+ * - jobsEnqueued: number
+ * - jobIds: string[]
+ */
+router.delete('/', authenticateMicrosoft, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = getUserId(req);
+
+    // Validate request body using shared schema
+    const validation = validateSafe(bulkDeleteRequestSchema, req.body);
+    if (!validation.success) {
+      sendError(res, ErrorCode.VALIDATION_ERROR, validation.error.errors[0]?.message || 'Invalid request body');
+      return;
+    }
+
+    const { fileIds, deletionReason } = validation.data;
+
+    // Generate batch ID for tracking (UPPERCASE per CLAUDE.md)
+    const batchId = crypto.randomUUID().toUpperCase();
+
+    logger.info({ userId, fileCount: fileIds.length, batchId, deletionReason }, 'Starting bulk delete');
+
+    // Verify ownership before enqueueing jobs
+    const fileService = getFileService();
+    const ownedFiles = await fileService.verifyOwnership(userId, fileIds);
+
+    if (ownedFiles.length === 0) {
+      sendError(res, ErrorCode.NOT_FOUND, 'No files found or access denied');
+      return;
+    }
+
+    // Enqueue deletion jobs (sequential processing avoids deadlocks)
+    const messageQueue = getMessageQueue();
+    const jobIds: string[] = [];
+
+    for (const fileId of ownedFiles) {
+      const jobId = await messageQueue.addFileDeletionJob({
+        fileId,
+        userId,
+        deletionReason,
+        batchId,
+      });
+      jobIds.push(jobId);
+    }
+
+    logger.info({
+      userId,
+      batchId,
+      jobsEnqueued: jobIds.length,
+      requestedCount: fileIds.length,
+      ownedCount: ownedFiles.length,
+    }, 'Bulk delete jobs enqueued');
+
+    // Return 202 Accepted with tracking info
+    const response: BulkDeleteAcceptedResponse = {
+      batchId,
+      jobsEnqueued: jobIds.length,
+      jobIds,
+    };
+
+    res.status(202).json(response);
+  } catch (error) {
+    logger.error({ error, userId: req.userId }, 'Bulk delete failed');
+
+    if (error instanceof Error && error.message === 'User not authenticated') {
+      sendError(res, ErrorCode.UNAUTHORIZED, 'User not authenticated');
+      return;
+    }
+
+    sendError(res, ErrorCode.INTERNAL_ERROR, 'Failed to enqueue deletion jobs');
   }
 });
 

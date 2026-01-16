@@ -90,3 +90,34 @@ export const FILE_READINESS_STATE = {
  * Should match FileReadinessState type.
  */
 export type FileReadinessStateValue = (typeof FILE_READINESS_STATE)[keyof typeof FILE_READINESS_STATE];
+
+// ============================================================================
+// FILE DELETION CONFIGURATION (Bulk Delete)
+// ============================================================================
+
+/**
+ * Configuration for file deletion queue processing.
+ * Used to avoid SQL deadlocks by processing deletions sequentially.
+ *
+ * @example
+ * ```typescript
+ * import { FILE_DELETION_CONFIG } from '@bc-agent/shared';
+ *
+ * const worker = new Worker(queueName, processor, {
+ *   concurrency: FILE_DELETION_CONFIG.QUEUE_CONCURRENCY,
+ * });
+ * ```
+ */
+export const FILE_DELETION_CONFIG = {
+  /** Maximum files per bulk delete request */
+  MAX_BATCH_SIZE: 100,
+
+  /** Queue worker concurrency (1 = sequential to avoid deadlocks) */
+  QUEUE_CONCURRENCY: 1,
+
+  /** Maximum retry attempts for failed deletion jobs */
+  MAX_RETRY_ATTEMPTS: 3,
+
+  /** Initial retry delay in milliseconds (exponential backoff) */
+  RETRY_DELAY_MS: 1000,
+} as const;

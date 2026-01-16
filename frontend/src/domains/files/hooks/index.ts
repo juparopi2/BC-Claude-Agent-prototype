@@ -17,3 +17,7 @@ export {
   useFileProcessingEvents,
   type UseFileProcessingEventsOptions,
 } from './useFileProcessingEvents';
+export {
+  useFileDeleteEvents,
+  type UseFileDeleteEventsOptions,
+} from './useFileDeleteEvents';

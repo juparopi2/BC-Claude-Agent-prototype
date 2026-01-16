@@ -125,7 +125,12 @@ export type {
   FileProcessingProgressEvent,
   FileProcessingCompletedEvent,
   FileProcessingFailedEvent,
+  FileDeletedEvent,
   FileWebSocketEvent,
+  // Bulk Delete types (Queue-based deletion)
+  DeletionReason,
+  FileDeletionJobData,
+  BulkDeleteAcceptedResponse,
 
   // Source types (Visual Representation feature)
   SourceType,
@@ -185,6 +190,8 @@ export {
   type ProcessingStatusValue,
   type EmbeddingStatusValue,
   type FileReadinessStateValue,
+  // File Deletion Configuration (Bulk Delete)
+  FILE_DELETION_CONFIG,
 } from './constants';
 
 // ============================================

@@ -72,6 +72,10 @@ export interface UserProfile {
   lastLogin: string | null;
   createdAt: string;
   isActive: boolean;
+  /** Token expiration timestamp (ISO 8601) */
+  tokenExpiresAt: string | null;
+  /** Session expiration timestamp (ISO 8601) */
+  sessionExpiresAt: string | null;
 }
 
 /**

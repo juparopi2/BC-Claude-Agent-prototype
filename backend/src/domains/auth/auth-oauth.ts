@@ -22,6 +22,7 @@ import { MicrosoftOAuthSession } from '@/types/microsoft.types';
 import { createChildLogger } from '@/shared/utils/logger';
 import { ErrorCode } from '@/shared/constants/errors';
 import { sendError } from '@/shared/utils/error-response';
+import { AUTH_TIME_MS } from '@bc-agent/shared';
 
 const logger = createChildLogger({ service: 'AuthOAuthRoutes' });
 
@@ -314,8 +315,12 @@ router.get('/me', authenticateMicrosoft, async (req: Request, res: Response) => 
 
     const user = result.recordset[0] as Record<string, unknown>;
 
+    // Calculate session expiration
+    const sessionMaxAge = parseInt(process.env.SESSION_MAX_AGE || String(AUTH_TIME_MS.DEFAULT_SESSION_MAX_AGE));
+    const sessionExpiresAt = new Date(Date.now() + sessionMaxAge).toISOString();
+
     res.json({
-      id: (user.id as string).toLowerCase(),
+      id: (user.id as string).toUpperCase(), // UPPERCASE per CLAUDE.md ID standardization
       email: user.email,
       displayName: user.full_name,
       fullName: user.full_name,
@@ -326,6 +331,9 @@ router.get('/me', authenticateMicrosoft, async (req: Request, res: Response) => 
       lastLogin: user.last_microsoft_login,
       createdAt: user.created_at,
       isActive: user.is_active,
+      // Auth expiry data
+      tokenExpiresAt: req.microsoftSession?.tokenExpiresAt || null,
+      sessionExpiresAt,
     });
   } catch (error) {
     logger.error('Failed to get current user', { error, userId: req.userId });

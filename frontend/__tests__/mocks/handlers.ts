@@ -22,6 +22,8 @@ export const mockUser: UserProfile = {
   lastLogin: '2024-01-01T00:00:00Z',
   createdAt: '2024-01-01T00:00:00Z',
   isActive: true,
+  tokenExpiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(), // 1 hour from now
+  sessionExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24 hours from now
 };
 
 export const mockSessions: Session[] = [

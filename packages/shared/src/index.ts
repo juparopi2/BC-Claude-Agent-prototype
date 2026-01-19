@@ -147,6 +147,12 @@ export type {
   SourceType,
   FetchStrategy,
   SourceExcerpt,
+
+  // Auth types
+  SessionHealthResponse,
+  AuthExpiringEventPayload,
+  AuthRefreshedEventPayload,
+  UserProfileWithExpiry,
 } from './types';
 
 // Type guards (runtime functions, not types)
@@ -203,6 +209,14 @@ export {
   type FileReadinessStateValue,
   // File Deletion Configuration (Bulk Delete)
   FILE_DELETION_CONFIG,
+  // Auth Constants
+  AUTH_SESSION_STATUS,
+  AUTH_WS_EVENTS,
+  AUTH_TIME_MS,
+  AUTH_ERROR_CODES,
+  type AuthSessionStatus,
+  type AuthWsEventType,
+  type AuthErrorCode,
 } from './constants';
 
 // ============================================

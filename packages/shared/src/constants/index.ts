@@ -35,3 +35,14 @@ export {
   type EmbeddingStatusValue,
   type FileReadinessStateValue,
 } from './file-processing';
+
+// Auth Constants
+export {
+  AUTH_SESSION_STATUS,
+  AUTH_WS_EVENTS,
+  AUTH_TIME_MS,
+  AUTH_ERROR_CODES,
+  type AuthSessionStatus,
+  type AuthWsEventType,
+  type AuthErrorCode,
+} from './auth.constants';

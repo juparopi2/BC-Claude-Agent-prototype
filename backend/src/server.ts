@@ -28,6 +28,9 @@ import { getChatMessageHandler } from '@/services/websocket/ChatMessageHandler';
 import { initSocketService } from '@/services/websocket/SocketService';
 import { getMessageQueue } from '@/infrastructure/queue/MessageQueue';
 import authOAuthRoutes from './routes/auth-oauth';
+import { authHealthRouter } from '@domains/auth/health';
+import { createSocketAuthMiddleware, type AuthenticatedSocket } from '@domains/auth/websocket';
+import { createMicrosoftOAuthService } from '@domains/auth/oauth/MicrosoftOAuthService';
 import sessionsRoutes from './routes/sessions';
 import logsRoutes from './routes/logs';
 import tokenUsageRoutes from './routes/token-usage';
@@ -40,7 +43,6 @@ import { authenticateMicrosoft } from '@domains/auth/middleware/auth-oauth';
 import { httpLogger } from '@shared/middleware/logging';
 import { validateSessionOwnership } from '@shared/utils/session-ownership';
 import { MicrosoftOAuthSession } from './types/microsoft.types';
-import { Socket } from 'socket.io';
 import { ErrorCode } from '@shared/constants/errors';
 import {
   sendError,
@@ -63,14 +65,6 @@ declare module 'express-session' {
     microsoftOAuth?: MicrosoftOAuthSession;
     oauthState?: string;
   }
-}
-
-/**
- * Extend Socket.IO socket interface to include user info
- */
-interface AuthenticatedSocket extends Socket {
-  userId?: string;
-  userEmail?: string;
 }
 
 /**
@@ -774,6 +768,8 @@ function configureRoutes(): void {
   // Auth routes - Microsoft OAuth (requires database)
   if (isDatabaseAvailable) {
     app.use('/api/auth', authOAuthRoutes);
+    // Auth health check endpoint (session state verification)
+    app.use('/api/auth', authHealthRouter);
   } else {
     logger.warn('Auth routes not available - database is required for authentication');
   }
@@ -833,44 +829,12 @@ function configureSocketIO(): void {
   // Wrap session middleware for Socket.IO (converts Express middleware to Socket.IO middleware)
   io.engine.use(sessionMiddleware);
 
-  // Socket.IO authentication middleware
-  io.use((socket, next) => {
-    const req = socket.request as express.Request;
-
-    // Check if session exists
-    if (!req.session || !req.session.microsoftOAuth) {
-      console.warn('[Socket.IO] Connection rejected: No valid session', {
-        socketId: socket.id,
-      });
-      return next(new Error('Authentication required'));
-    }
-
-    const oauthSession = req.session.microsoftOAuth as MicrosoftOAuthSession;
-
-    // Verify session has userId
-    if (!oauthSession.userId) {
-      console.warn('[Socket.IO] Connection rejected: No userId in session', {
-        socketId: socket.id,
-      });
-      return next(new Error('Invalid session'));
-    }
-
-    // Check token expiration
-    if (oauthSession.tokenExpiresAt && new Date(oauthSession.tokenExpiresAt) <= new Date()) {
-      console.warn('[Socket.IO] Connection rejected: Token expired', {
-        socketId: socket.id,
-        userId: oauthSession.userId,
-      });
-      return next(new Error('Session expired'));
-    }
-
-    // Attach userId to socket for later use
-    const authSocket = socket as AuthenticatedSocket;
-    authSocket.userId = oauthSession.userId;
-    authSocket.userEmail = oauthSession.email;
-
-    next();
+  // Socket.IO authentication middleware (extracted to auth domain)
+  const socketAuthMiddleware = createSocketAuthMiddleware({
+    oauthService: createMicrosoftOAuthService(),
+    logger: createChildLogger({ service: 'SocketAuth' }),
   });
+  io.use(socketAuthMiddleware);
 
   io.on('connection', (socket) => {
     const authSocket = socket as AuthenticatedSocket;

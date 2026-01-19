@@ -536,9 +536,9 @@ describe('Auth OAuth Routes', () => {
         .get('/api/auth/me')
         .expect(200);
 
-      // Assert
+      // Assert - IDs are returned as UPPERCASE per CLAUDE.md guidelines
       expect(response.body).toMatchObject({
-        id: 'user-me-123',
+        id: 'USER-ME-123',
         email: 'me@example.com',
         fullName: 'Current User',
         role: 'admin',
@@ -870,7 +870,8 @@ describe('Auth OAuth Routes', () => {
         expect.any(String),
         { userId: 'user-tenant-a' }
       );
-      expect(response.body.id).toBe('user-tenant-a');
+      // IDs are returned as UPPERCASE per CLAUDE.md guidelines
+      expect(response.body.id).toBe('USER-TENANT-A');
     });
 
     it('should use authenticated userId for BC status check', async () => {

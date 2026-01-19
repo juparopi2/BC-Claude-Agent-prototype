@@ -191,3 +191,11 @@ export {
   isNormalizedAssistantMessageEvent,
   isNormalizedCompleteEvent,
 } from './normalized-events.types';
+
+// Auth types
+export type {
+  SessionHealthResponse,
+  AuthExpiringEventPayload,
+  AuthRefreshedEventPayload,
+  UserProfileWithExpiry,
+} from './auth.types';

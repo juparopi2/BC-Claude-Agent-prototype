@@ -345,10 +345,6 @@ export function useFileUpload(): UseFileUploadReturn {
         }
       }
 
-      console.log(
-        `Bulk upload completed: ${successfulUploads.length}/${files.length} files uploaded, ` +
-        `${completeResult.success ? completeResult.data.jobsEnqueued : 0} jobs enqueued`
-      );
     },
     [startUploadAction, updateProgressAction, completeUploadAction, failUploadAction]
   );
@@ -448,7 +444,6 @@ export function useFileUpload(): UseFileUploadReturn {
       // Route to bulk upload for large batches (>20 files)
       // Bulk upload uses SAS URLs for direct-to-blob uploads
       if (files.length > FILE_UPLOAD_LIMITS.MAX_FILES_PER_UPLOAD) {
-        console.log(`Using bulk upload for ${files.length} files`);
         await bulkUploadFiles(files, targetFolderId);
         return;
       }

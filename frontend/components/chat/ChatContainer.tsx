@@ -151,19 +151,9 @@ export default function ChatContainer() {
     const sentinel = topSentinelRef.current;
     const scrollContainer = scrollViewportRef.current;
 
-    // Debug log for setup
-    console.log('[InfiniteScroll] Setup:', {
-      sentinel: !!sentinel,
-      scrollContainer: !!scrollContainer,
-      hasMoreMessages,
-      isLoadingMoreMessages
-    });
-
     if (!sentinel || !scrollContainer || !hasMoreMessages || isLoadingMoreMessages) return;
 
     const observer = new IntersectionObserver((entries) => {
-      console.log('[InfiniteScroll] Intersection:', entries[0].isIntersecting);
-
       if (entries[0].isIntersecting && hasMoreMessages && !isLoadingMoreMessages) {
         // Capture current scroll height before triggering load
         if (scrollViewportRef.current) {

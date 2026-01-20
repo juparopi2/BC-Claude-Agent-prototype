@@ -8,7 +8,6 @@
  */
 
 import { useState, useCallback, useMemo } from 'react';
-import type { Message } from '@bc-agent/shared';
 import { getApiClient } from '@/src/infrastructure/api';
 import { getMessageStore } from '../stores/messageStore';
 
@@ -31,7 +30,7 @@ export interface UsePaginationReturn {
 /**
  * Default page size for loading messages
  */
-const DEFAULT_PAGE_SIZE = 5;
+const DEFAULT_PAGE_SIZE = 50;
 
 /**
  * Hook for paginating chat messages.

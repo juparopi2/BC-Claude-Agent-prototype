@@ -70,14 +70,6 @@ export function processAgentEventSync(
   const agentStateStore = getAgentStateStore();
   const approvalStore = getApprovalStore();
 
-  // Log event for debugging
-  if (process.env.NODE_ENV === 'development') {
-    console.log('[ProcessAgentEventSync] Event received:', event.type, {
-      eventId: event.eventId,
-      sequenceNumber: event.sequenceNumber,
-    });
-  }
-
   switch (event.type) {
     case 'session_start': {
       // Reset state for new session

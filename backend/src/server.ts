@@ -40,6 +40,7 @@ import billingRoutes from './routes/billing';
 import gdprRoutes from './routes/gdpr';
 import adminRoutes from './routes/admin';
 import settingsRoutes from './routes/settings';
+import chatAttachmentsRoutes from './routes/chat-attachments';
 import { authenticateMicrosoft } from '@domains/auth/middleware/auth-oauth';
 import { httpLogger } from '@shared/middleware/logging';
 import { validateSessionOwnership } from '@shared/utils/session-ownership';
@@ -778,6 +779,8 @@ function configureRoutes(): void {
   // Chat sessions routes (requires database)
   if (isDatabaseAvailable) {
     app.use('/api/chat/sessions', sessionsRoutes);
+    // Chat attachments endpoints (ephemeral attachments, requires database)
+    app.use('/api/chat/attachments', chatAttachmentsRoutes);
     // Token usage analytics endpoints (requires database)
     app.use('/api/token-usage', tokenUsageRoutes);
     // File upload/download endpoints (requires database)

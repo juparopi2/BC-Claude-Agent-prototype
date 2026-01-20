@@ -13,3 +13,6 @@ export {
   processAgentEventSync,
   type EventProcessorCallbacks,
 } from './processAgentEventSync';
+
+// Pending File Manager
+export { pendingFileManager } from './pendingFileManager';

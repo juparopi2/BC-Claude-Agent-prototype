@@ -51,3 +51,14 @@ export {
   type CitationActions,
   type CitationStore,
 } from './citationStore';
+
+// Pending Chat Store
+export {
+  usePendingChatStore,
+  getPendingChatStore,
+  resetPendingChatStore,
+  type PendingFileInfo,
+  type PendingChatState,
+  type PendingChatActions,
+  type PendingChatStore,
+} from './pendingChatStore';

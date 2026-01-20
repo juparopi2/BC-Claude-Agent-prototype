@@ -1,35 +1,57 @@
 'use client';
 
+/**
+ * Chat Session Page
+ *
+ * Displays a chat session with message history and input.
+ * Processes pending chat state from /new page on mount.
+ *
+ * Flow for new chats:
+ * 1. /new page stores message/files in pendingChatStore
+ * 2. /new page creates session and navigates here
+ * 3. This page detects hasPendingChat
+ * 4. Uploads files via chat attachment API
+ * 5. Sends message with attachments and options
+ * 6. Clears pending state
+ */
+
 import { useEffect, useState, useRef } from 'react';
-import { useParams, useSearchParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
+import { toast } from 'sonner';
 import { useSessionStore } from '@/src/domains/session';
-import { getApiClient } from '@/src/infrastructure/api';
+import { getApiClient, getChatAttachmentApiClient } from '@/src/infrastructure/api';
 import { MainLayout, Header, LeftPanel, RightPanel } from '@/components/layout';
 import { ChatContainer, ChatInput } from '@/components/chat';
-import { useUIPreferencesStore } from '@/src/domains/ui';
 // Domain hooks and stores
-import { useSocketConnection, getMessageStore, getAgentStateStore, getCitationStore } from '@/src/domains/chat';
+import {
+  useSocketConnection,
+  getMessageStore,
+  getAgentStateStore,
+  getCitationStore,
+  usePendingChatStore,
+  getPendingChatStore,
+  pendingFileManager,
+} from '@/src/domains/chat';
 
 export default function ChatPage() {
   const params = useParams();
-  const searchParams = useSearchParams();
-  const router = useRouter();
   const sessionId = params.sessionId as string;
-  const initialMessage = searchParams.get('initialMessage');
-  const enableThinking = searchParams.get('enableThinking') === 'true';
-  const useMyContext = searchParams.get('useMyContext') === 'true';
 
   const [leftPanelVisible, setLeftPanelVisible] = useState(true);
   const [rightPanelVisible, setRightPanelVisible] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Track if we've already sent the initial message
-  const initialMessageSentRef = useRef(false);
+  // Track if we've already processed pending chat
+  const pendingProcessedRef = useRef(false);
 
-  // Reset the ref when sessionId changes to allow new initial messages
+  // Reset ref when sessionId changes
   useEffect(() => {
-    initialMessageSentRef.current = false;
+    pendingProcessedRef.current = false;
   }, [sessionId]);
+
+  // Get pending chat state
+  const hasPendingChat = usePendingChatStore((s) => s.hasPendingChat);
+  const clearPendingChat = usePendingChatStore((s) => s.clearPendingChat);
 
   const toggleLeftPanel = () => setLeftPanelVisible((prev) => !prev);
   const toggleRightPanel = () => setRightPanelVisible((prev) => !prev);
@@ -37,16 +59,13 @@ export default function ChatPage() {
   // Session management
   const selectSession = useSessionStore((s) => s.selectSession);
 
-  // UI preferences from store
-  const setEnableThinking = useUIPreferencesStore((s) => s.setEnableThinking);
-  const setUseMyContext = useUIPreferencesStore((s) => s.setUseMyContext);
-
   // Initialize socket connection with domain hook
   const { sendMessage, isSessionReady, isConnected, isReconnecting, stopAgent } = useSocketConnection({
     sessionId,
     autoConnect: true,
   });
 
+  // Load session and messages
   useEffect(() => {
     async function loadSession() {
       if (!sessionId) return;
@@ -90,37 +109,60 @@ export default function ChatPage() {
     loadSession();
   }, [sessionId, selectSession]);
 
-  // Sync URL preferences to store when navigating with initialMessage
+  // Process pending chat from /new page
   useEffect(() => {
-    if (initialMessage) {
-      // Only update store if coming from /new with URL params
-      if (enableThinking) setEnableThinking(true);
-      if (useMyContext) setUseMyContext(true);
+    async function processPendingChat() {
+      // Guard conditions
+      if (!hasPendingChat || pendingProcessedRef.current || !isSessionReady || isLoading) {
+        return;
+      }
+
+      pendingProcessedRef.current = true;
+
+      const store = getPendingChatStore();
+      const files = pendingFileManager.getAllAsArray();
+
+      try {
+        // 1. Upload files if any
+        const uploadedIds: string[] = [];
+        if (files.length > 0) {
+          const attachmentApi = getChatAttachmentApiClient();
+          for (const { file } of files) {
+            const result = await attachmentApi.uploadAttachment(sessionId, file);
+            if (result.success) {
+              uploadedIds.push(result.data.attachment.id);
+            } else {
+              console.error('[ChatPage] Failed to upload file:', file.name, result.error);
+              toast.error(`Failed to upload ${file.name}`);
+            }
+          }
+        }
+
+        // 2. Send message with options and attachments
+        if (store.message.trim() || uploadedIds.length > 0) {
+          sendMessage(store.message, {
+            enableThinking: store.enableThinking || undefined,
+            thinkingBudget: store.enableThinking ? store.thinkingBudget : undefined,
+            enableAutoSemanticSearch: store.useMyContext || undefined,
+            chatAttachments: uploadedIds.length > 0 ? uploadedIds : undefined,
+          });
+        }
+
+        // 3. Clear pending state
+        clearPendingChat();
+        pendingFileManager.clear();
+
+      } catch (error) {
+        console.error('[ChatPage] Failed to process pending chat:', error);
+        toast.error('Failed to send initial message');
+        // Clear state even on error to prevent infinite loops
+        clearPendingChat();
+        pendingFileManager.clear();
+      }
     }
-  }, [initialMessage, enableThinking, useMyContext, setEnableThinking, setUseMyContext]);
 
-  // Auto-send initial message from URL parameter
-  useEffect(() => {
-    // Only send if:
-    // 1. We have an initial message
-    // 2. Session is FULLY ready (connected + joined room)
-    // 3. We haven't already sent it
-    // 4. Session is loaded (not loading)
-    if (initialMessage && isSessionReady && !initialMessageSentRef.current && !isLoading) {
-      initialMessageSentRef.current = true;
-
-      // Send the message with options if specified
-      const options = (enableThinking || useMyContext) ? {
-        enableThinking: enableThinking || undefined,
-        thinkingBudget: enableThinking ? 10000 : undefined,
-        enableAutoSemanticSearch: useMyContext || undefined,
-      } : undefined;
-      sendMessage(initialMessage, options);
-
-      // Clear the URL parameter to prevent re-sending on refresh
-      router.replace(`/chat/${sessionId}`, { scroll: false });
-    }
-  }, [initialMessage, isSessionReady, sessionId, router, sendMessage, isLoading, enableThinking, useMyContext]);
+    processPendingChat();
+  }, [hasPendingChat, isSessionReady, isLoading, sessionId, sendMessage, clearPendingChat]);
 
   return (
     <MainLayout

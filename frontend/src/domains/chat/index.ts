@@ -41,12 +41,21 @@ export {
   type CitationState,
   type CitationActions,
   type CitationStore,
+  // Pending Chat Store
+  usePendingChatStore,
+  getPendingChatStore,
+  resetPendingChatStore,
+  type PendingFileInfo,
+  type PendingChatState,
+  type PendingChatActions,
+  type PendingChatStore,
 } from './stores';
 
 // Services
 export {
   processAgentEventSync,
   type EventProcessorCallbacks,
+  pendingFileManager,
 } from './services';
 
 // Hooks
@@ -55,14 +64,19 @@ export {
   useAgentState,
   useSendMessage,
   useFileAttachments,
+  useChatAttachments,
   usePagination,
   useSocketConnection,
+  usePendingChat,
   type UseMessagesReturn,
   type UseSendMessageReturn,
   type SendMessageOptions,
   type Attachment,
   type UseFileAttachmentsResult,
+  type ChatAttachment,
+  type UseChatAttachmentsResult,
   type UsePaginationReturn,
   type UseSocketConnectionOptions,
   type UseSocketConnectionReturn,
+  type UsePendingChatReturn,
 } from './hooks';

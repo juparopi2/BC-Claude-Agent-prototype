@@ -67,6 +67,13 @@ export interface ChatMessageData {
    * @default false
    */
   enableAutoSemanticSearch?: boolean;
+
+  /**
+   * List of chat attachment IDs (ephemeral, NOT Knowledge Base files).
+   * These are sent directly to Anthropic as document/image content blocks.
+   * Array of UUIDs corresponding to chat_attachments table.
+   */
+  chatAttachments?: string[];
 }
 
 /**

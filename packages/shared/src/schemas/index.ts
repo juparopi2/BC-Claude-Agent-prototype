@@ -281,6 +281,38 @@ export const updateUserSettingsSchema = z.object({
 
 export type UpdateUserSettingsInput = z.infer<typeof updateUserSettingsSchema>;
 
+// ============================================
+// Chat Attachments Schemas
+// ============================================
+
+export {
+  chatAttachmentIdSchema,
+  chatAttachmentMimeTypeSchema,
+  uploadChatAttachmentSchema,
+  getChatAttachmentSchema,
+  listChatAttachmentsSchema,
+  deleteChatAttachmentSchema,
+  resolveChatAttachmentsSchema,
+  validateChatAttachmentSize,
+  validateChatAttachmentMimeType,
+} from './chat-attachments.schemas';
+
+export type {
+  ChatAttachmentIdInput,
+  ChatAttachmentId,
+  ChatAttachmentMimeTypeInput,
+  UploadChatAttachmentInput,
+  UploadChatAttachmentParsed,
+  GetChatAttachmentInput,
+  GetChatAttachmentParsed,
+  ListChatAttachmentsInput,
+  ListChatAttachmentsParsed,
+  DeleteChatAttachmentInput,
+  DeleteChatAttachmentParsed,
+  ResolveChatAttachmentsInput,
+  ResolveChatAttachmentsParsed,
+} from './chat-attachments.schemas';
+
 /**
  * Re-export Zod for consumers who need to extend schemas
  */

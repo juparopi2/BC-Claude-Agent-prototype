@@ -183,6 +183,9 @@ export class ChatMessageHandler {
         {
           enableThinking: thinkingConfig?.enableThinking,
           thinkingBudget: thinkingConfig?.thinkingBudget,
+          attachments: data.attachments,
+          chatAttachments: data.chatAttachments,
+          enableAutoSemanticSearch: data.enableAutoSemanticSearch,
         }
       );
 

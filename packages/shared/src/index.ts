@@ -183,6 +183,20 @@ export type {
   NormalizedErrorEvent,
   NormalizedCompleteEvent,
   NormalizedAgentEvent,
+
+  // Chat Attachments types (ephemeral attachments for chat)
+  ChatAttachmentStatus,
+  ChatAttachmentMediaType,
+  ChatAttachmentDbRecord,
+  ParsedChatAttachment,
+  AnthropicDocumentBlock,
+  AnthropicImageBlock,
+  AnthropicAttachmentContentBlock,
+  UploadChatAttachmentRequest,
+  UploadChatAttachmentResponse,
+  ListChatAttachmentsResponse,
+  ResolvedChatAttachment,
+  ChatAttachmentCleanupJobData,
 } from './types';
 
 // Type guards (runtime functions, not types)
@@ -224,6 +238,17 @@ export {
 
 // Job event utilities (Phase 3, Task 3.3)
 export { JOB_QUEUE_DISPLAY_NAMES, getQueueDisplayName } from './types';
+
+// Chat Attachments constants and utilities
+export {
+  CHAT_ATTACHMENT_ALLOWED_MIME_TYPES,
+  CHAT_ATTACHMENT_CONFIG,
+  isAllowedChatAttachmentMimeType,
+  parseChatAttachment,
+  isImageMimeType,
+  getContentBlockType,
+  getMaxSizeForMimeType,
+} from './types';
 
 // ============================================
 // Constants - Error codes, messages, mappings
@@ -285,4 +310,10 @@ export {
   // Settings schemas
   themePreferenceSchema,
   updateUserSettingsSchema,
+  // Chat attachment schemas and validators
+  chatAttachmentIdSchema,
+  uploadChatAttachmentSchema,
+  listChatAttachmentsSchema,
+  validateChatAttachmentMimeType,
+  validateChatAttachmentSize,
 } from './schemas';

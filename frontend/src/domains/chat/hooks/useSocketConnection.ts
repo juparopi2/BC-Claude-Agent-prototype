@@ -52,6 +52,7 @@ export interface UseSocketConnectionReturn {
       enableThinking?: boolean;
       thinkingBudget?: number;
       attachments?: string[];
+      chatAttachments?: string[];
       enableAutoSemanticSearch?: boolean;
     }
   ) => void;
@@ -234,6 +235,7 @@ export function useSocketConnection(
         enableThinking?: boolean;
         thinkingBudget?: number;
         attachments?: string[];
+        chatAttachments?: string[];
         enableAutoSemanticSearch?: boolean;
       }
     ) => {
@@ -275,6 +277,7 @@ export function useSocketConnection(
             }
           : undefined,
         attachments: opts?.attachments,
+        chatAttachments: opts?.chatAttachments,
         enableAutoSemanticSearch: opts?.enableAutoSemanticSearch,
       });
 

@@ -1,64 +1,81 @@
 'use client';
 
 /**
- * Home Page
+ * New Chat Page
  *
- * Main landing page that renders the BC Agent interface
- * with MainLayout, Header, LeftPanel, and RightPanel.
- * Includes suggestion buttons and chat input to start new sessions.
+ * Landing page for starting new chat sessions.
+ * Uses pendingChatStore to manage message, options, and files
+ * before session creation.
+ *
+ * Flow:
+ * 1. User enters message and/or attaches files
+ * 2. User configures options (thinking, my files)
+ * 3. User clicks Send
+ * 4. Store is marked ready, session is created
+ * 5. Navigation to /chat/[sessionId]
+ * 6. Chat page processes pending state (uploads files, sends message)
  */
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { MainLayout, Header, LeftPanel, RightPanel } from '@/components/layout';
-import { useSessionStore } from '@/src/domains/session';
-import { useUIPreferencesStore } from '@/src/domains/ui';
 import { Button } from '@/components/ui/button';
-import { MessageSquare, Users, Image as ImageIcon, FileText } from 'lucide-react';
+import { MessageSquare, Users, Image as ImageIcon, FileText, Loader2 } from 'lucide-react';
 import ChatInput from '@/components/chat/ChatInput';
+import { usePendingChat } from '@/src/domains/chat';
 
 export default function Home() {
   const [leftPanelVisible, setLeftPanelVisible] = useState(true);
   const [rightPanelVisible, setRightPanelVisible] = useState(true);
-  const [isCreating, setIsCreating] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const router = useRouter();
-  const createSession = useSessionStore((s) => s.createSession);
-
-  // Read UI preferences for Quick Questions
-  const enableThinking = useUIPreferencesStore((s) => s.enableThinking);
-  const useMyContext = useUIPreferencesStore((s) => s.useMyContext);
+  // Use pending chat hook for state management
+  const {
+    message,
+    enableThinking,
+    useMyContext,
+    pendingFiles,
+    setMessage,
+    setEnableThinking,
+    setUseMyContext,
+    addFile,
+    removeFile,
+    submit,
+  } = usePendingChat();
 
   const toggleLeftPanel = () => setLeftPanelVisible((prev) => !prev);
   const toggleRightPanel = () => setRightPanelVisible((prev) => !prev);
 
-  const handleSend = async (text: string, options?: { enableThinking: boolean; useMyContext: boolean }) => {
-    if (!text.trim() || isCreating) return;
+  /**
+   * Handle send: creates session and navigates to chat page
+   */
+  const handleSend = async () => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
 
-    setIsCreating(true);
+    const sessionId = await submit();
 
-    try {
-      const session = await createSession(undefined, text.trim());
-      if (session) {
-        const params = new URLSearchParams({
-          initialMessage: text.trim(),
-        });
-        if (options?.enableThinking) {
-          params.set('enableThinking', 'true');
-        }
-        if (options?.useMyContext) {
-          params.set('useMyContext', 'true');
-        }
-        router.push(`/chat/${session.id}?${params.toString()}`);
-      }
-    } catch (error) {
-      console.error('Failed to create session:', error);
-      setIsCreating(false);
+    if (!sessionId) {
+      // Error occurred, submit() shows toast
+      setIsSubmitting(false);
+    }
+    // If successful, navigation happens and component unmounts
+  };
+
+  /**
+   * Handle file selection from ChatInput
+   */
+  const handleFileSelect = (files: File[]) => {
+    for (const file of files) {
+      addFile(file);
     }
   };
 
+  /**
+   * Handle suggestion button click
+   */
   const handleSuggestion = (suggestion: string) => {
-    handleSend(suggestion, { enableThinking, useMyContext });
+    setMessage(suggestion);
+    // Don't auto-submit, let user add options/files first
   };
 
   return (
@@ -97,7 +114,7 @@ export default function Home() {
                 variant="outline"
                 className="gap-2"
                 onClick={() => handleSuggestion('List all customers')}
-                disabled={isCreating}
+                disabled={isSubmitting}
               >
                 <Users className="size-4" />
                 List all customers
@@ -106,7 +123,7 @@ export default function Home() {
                 variant="outline"
                 className="gap-2"
                 onClick={() => handleSuggestion('Analyze this image')}
-                disabled={isCreating}
+                disabled={isSubmitting}
               >
                 <ImageIcon className="size-4" />
                 Analyze this image
@@ -115,19 +132,39 @@ export default function Home() {
                 variant="outline"
                 className="gap-2"
                 onClick={() => handleSuggestion('Create a quotation for customer')}
-                disabled={isCreating}
+                disabled={isSubmitting}
               >
                 <FileText className="size-4" />
                 Create a quotation
               </Button>
             </div>
+
+            {/* Loading indicator */}
+            {isSubmitting && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground mt-4">
+                <Loader2 className="size-4 animate-spin" />
+                <span>Creating session...</span>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Input area at bottom */}
-        <ChatInput 
+        {/* Input area at bottom - pending mode */}
+        <ChatInput
+          // Enable pending mode for controlled state
+          pendingMode={true}
+          pendingMessage={message}
+          pendingFiles={pendingFiles}
+          onMessageChange={setMessage}
+          onFileSelect={handleFileSelect}
+          onFileRemove={removeFile}
           onSend={handleSend}
-          disabled={isCreating}
+          disabled={isSubmitting}
+          // Controlled options (synced with pending chat store)
+          enableThinkingControlled={enableThinking}
+          useMyContextControlled={useMyContext}
+          onEnableThinkingChange={setEnableThinking}
+          onUseMyContextChange={setUseMyContext}
         />
       </div>
     </MainLayout>

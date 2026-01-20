@@ -61,6 +61,7 @@ import {
 } from './ExecutionContextSync';
 import type { ExecutionContextSync, ExecuteSyncOptions } from './ExecutionContextSync';
 import { createFileContextPreparer, type IFileContextPreparer } from '@domains/agent/context';
+import { getAttachmentContentResolver, type AttachmentContentResolver } from '@/domains/chat-attachments';
 import {
   getPersistenceCoordinator,
   type IPersistenceCoordinator,
@@ -80,6 +81,7 @@ export interface AgentOrchestratorDependencies {
   normalizer?: BatchResultNormalizer;
   eventStore?: EventStore;
   citationExtractor?: ICitationExtractor;
+  attachmentContentResolver?: AttachmentContentResolver;
 }
 
 /**
@@ -104,6 +106,7 @@ export class AgentOrchestrator implements IAgentOrchestrator {
   private readonly normalizer: BatchResultNormalizer;
   private readonly eventStore: EventStore;
   private readonly citationExtractor: ICitationExtractor;
+  private readonly attachmentContentResolver: AttachmentContentResolver;
 
   constructor(deps?: AgentOrchestratorDependencies) {
     this.fileContextPreparer = deps?.fileContextPreparer ?? createFileContextPreparer();
@@ -111,6 +114,7 @@ export class AgentOrchestrator implements IAgentOrchestrator {
     this.normalizer = deps?.normalizer ?? getBatchResultNormalizer();
     this.eventStore = deps?.eventStore ?? getEventStore();
     this.citationExtractor = deps?.citationExtractor ?? getCitationExtractor();
+    this.attachmentContentResolver = deps?.attachmentContentResolver ?? getAttachmentContentResolver();
   }
 
   /**
@@ -161,19 +165,59 @@ export class AgentOrchestrator implements IAgentOrchestrator {
     // Setup provider adapter for batch result normalization
     const adapter = new AnthropicAdapter(sessionId);
 
-    // Prepare file context (options for attachments and semantic search)
+    // Prepare file context (options for KB attachments and semantic search)
     // Note: Thinking options are passed to the graph, not to file context preparer
     const contextResult = await this.fileContextPreparer.prepare(userId ?? '', prompt, {
       attachments: options?.attachments,
       enableAutoSemanticSearch: options?.enableAutoSemanticSearch,
     });
-    const enhancedPrompt = contextResult.contextText
-      ? `${contextResult.contextText}\n\n${prompt}`
-      : prompt;
+
+    // Resolve chat attachments to content blocks (ephemeral, direct-to-Anthropic)
+    const chatAttachmentBlocks: Array<{ type: string; source: { type: string; media_type: string; data: string } }> = [];
+    if (options?.chatAttachments?.length && userId) {
+      const resolvedAttachments = await this.attachmentContentResolver.resolve(
+        userId,
+        options.chatAttachments
+      );
+      for (const resolved of resolvedAttachments) {
+        chatAttachmentBlocks.push(resolved.contentBlock);
+      }
+      this.logger.debug(
+        { sessionId, resolvedCount: resolvedAttachments.length },
+        'Resolved chat attachments for message'
+      );
+    }
+
+    // Build message content (multi-modal if attachments present)
+    type ContentBlock = string | { type: 'text'; text: string } | { type: string; source: { type: string; media_type: string; data: string } };
+    let messageContent: ContentBlock | ContentBlock[];
+
+    if (chatAttachmentBlocks.length > 0) {
+      // Use multi-modal format with content array
+      const contentBlocks: ContentBlock[] = [];
+
+      // Add document/image blocks first
+      contentBlocks.push(...chatAttachmentBlocks);
+
+      // Add context text if present
+      if (contextResult.contextText) {
+        contentBlocks.push({ type: 'text', text: contextResult.contextText });
+      }
+
+      // Add the user prompt last
+      contentBlocks.push({ type: 'text', text: prompt });
+
+      messageContent = contentBlocks;
+    } else {
+      // Use simple string format (original behavior)
+      messageContent = contextResult.contextText
+        ? `${contextResult.contextText}\n\n${prompt}`
+        : prompt;
+    }
 
     // Build graph inputs
     const inputs = {
-      messages: [new HumanMessage(enhancedPrompt)],
+      messages: [new HumanMessage(messageContent)],
       activeAgent: 'orchestrator',
       context: {
         userId,

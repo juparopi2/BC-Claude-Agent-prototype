@@ -37,3 +37,12 @@ export {
   getFileApiClient,
   resetFileApiClient,
 } from './fileApiClient';
+
+// Chat Attachment API Client
+export {
+  ChatAttachmentApiClient,
+  getChatAttachmentApiClient,
+  resetChatAttachmentApiClient,
+  type UploadChatAttachmentResponse,
+  type ListChatAttachmentsResponse,
+} from './chatAttachmentApiClient';

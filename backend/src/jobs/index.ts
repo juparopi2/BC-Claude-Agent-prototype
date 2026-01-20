@@ -14,3 +14,11 @@ export {
   type CleanupJobSummary,
   type OrphanCleanupJobDependencies,
 } from './OrphanCleanupJob';
+
+export {
+  ChatAttachmentCleanupJob,
+  getChatAttachmentCleanupJob,
+  __resetChatAttachmentCleanupJob,
+  type CleanupResult as ChatAttachmentCleanupResult,
+  type ChatAttachmentCleanupJobDependencies,
+} from './ChatAttachmentCleanupJob';

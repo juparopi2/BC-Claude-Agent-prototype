@@ -14,6 +14,8 @@ export interface FileAttachmentChipProps {
   progress?: number;
   onRemove: () => void;
   error?: string;
+  /** Mark as ephemeral chat attachment (not stored in Knowledge Base) */
+  ephemeral?: boolean;
 }
 
 export function FileAttachmentChip({
@@ -22,7 +24,8 @@ export function FileAttachmentChip({
   status,
   progress = 0,
   onRemove,
-  error
+  error,
+  ephemeral = false
 }: FileAttachmentChipProps) {
   return (
     <div 
@@ -83,7 +86,21 @@ export function FileAttachmentChip({
               </Tooltip>
             </TooltipProvider>
           ) : (
-            <span>{formatBytes(size)}</span>
+            <span>
+              {formatBytes(size)}
+              {ephemeral && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="ml-1 text-amber-500/80 cursor-help">• Chat</span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Ephemeral attachment - will expire after 24h</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+            </span>
           )}
         </div>
       </div>

@@ -221,3 +221,30 @@ export {
   JOB_QUEUE_DISPLAY_NAMES,
   getQueueDisplayName,
 } from './job-events.types';
+
+// Chat Attachments types (ephemeral attachments for chat)
+export type {
+  ChatAttachmentStatus,
+  ChatAttachmentMediaType,
+  ChatAttachmentDbRecord,
+  ParsedChatAttachment,
+  AnthropicDocumentBlock,
+  AnthropicImageBlock,
+  AnthropicAttachmentContentBlock,
+  UploadChatAttachmentRequest,
+  UploadChatAttachmentResponse,
+  ListChatAttachmentsResponse,
+  ResolvedChatAttachment,
+  ChatAttachmentCleanupJobData,
+} from './chat-attachments.types';
+
+// Chat Attachments constants and utilities
+export {
+  CHAT_ATTACHMENT_ALLOWED_MIME_TYPES,
+  CHAT_ATTACHMENT_CONFIG,
+  isAllowedChatAttachmentMimeType,
+  parseChatAttachment,
+  isImageMimeType,
+  getContentBlockType,
+  getMaxSizeForMimeType,
+} from './chat-attachments.types';

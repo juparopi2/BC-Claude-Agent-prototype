@@ -11,15 +11,23 @@
 
 import { useState, useRef, useEffect, KeyboardEvent } from 'react';
 import { useUIPreferencesStore } from '@/src/domains/ui';
-import { useAgentState, useSocketConnection } from '@/src/domains/chat';
+import { useAgentState, useSocketConnection, useChatAttachments } from '@/src/domains/chat';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Toggle } from '@/components/ui/toggle';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Send, Square, Brain, WifiOff, Mic, Paperclip, Globe, Loader2, FolderSearch } from 'lucide-react';
 import { FileAttachmentChip } from '@/src/presentation/chat';
-import { getFileApiClient } from '@/src/infrastructure/api';
-import { toast } from 'sonner';
+
+/**
+ * Pending file info (for pending mode)
+ */
+export interface PendingFileDisplay {
+  tempId: string;
+  name: string;
+  size: number;
+  type: string;
+}
 
 export interface ChatInputProps {
   sessionId?: string;
@@ -28,8 +36,36 @@ export interface ChatInputProps {
   // Socket state from parent (avoids duplicate useSocket calls)
   isConnected?: boolean;
   isReconnecting?: boolean;
-  sendMessage?: (message: string, options?: { enableThinking?: boolean; thinkingBudget?: number; attachments?: string[]; enableAutoSemanticSearch?: boolean }) => void;
+  sendMessage?: (message: string, options?: { enableThinking?: boolean; thinkingBudget?: number; attachments?: string[]; chatAttachments?: string[]; enableAutoSemanticSearch?: boolean }) => void;
   stopAgent?: () => void;
+
+  // ============================================
+  // Pending Mode Props (for /new page)
+  // When pendingMode=true, the component uses controlled state
+  // ============================================
+
+  /** Enable pending/controlled mode for new session creation */
+  pendingMode?: boolean;
+  /** Controlled message value (pendingMode only) */
+  pendingMessage?: string;
+  /** Pending files metadata (pendingMode only) */
+  pendingFiles?: PendingFileDisplay[];
+  /** Message change handler (pendingMode only) */
+  onMessageChange?: (message: string) => void;
+  /** File selection handler - receives raw File objects (pendingMode only) */
+  onFileSelect?: (files: File[]) => void;
+  /** File removal handler (pendingMode only) */
+  onFileRemove?: (tempId: string) => void;
+
+  // Controlled options (can be used in pendingMode)
+  /** Controlled enableThinking value */
+  enableThinkingControlled?: boolean;
+  /** Controlled useMyContext value */
+  useMyContextControlled?: boolean;
+  /** Enable thinking change handler */
+  onEnableThinkingChange?: (enabled: boolean) => void;
+  /** Use my context change handler */
+  onUseMyContextChange?: (enabled: boolean) => void;
 }
 
 export default function ChatInput({
@@ -40,14 +76,53 @@ export default function ChatInput({
   isReconnecting: propsIsReconnecting,
   sendMessage: propsSendMessage,
   stopAgent: propsStopAgent,
+  // Pending mode props
+  pendingMode = false,
+  pendingMessage,
+  pendingFiles = [],
+  onMessageChange,
+  onFileSelect,
+  onFileRemove,
+  // Controlled options
+  enableThinkingControlled,
+  useMyContextControlled,
+  onEnableThinkingChange,
+  onUseMyContextChange,
 }: ChatInputProps) {
-  const [message, setMessage] = useState('');
+  // Internal message state (used when NOT in pending mode)
+  const [internalMessage, setInternalMessage] = useState('');
+
+  // Determine which message to use
+  const message = pendingMode ? (pendingMessage ?? '') : internalMessage;
+  const setMessage = pendingMode ? (onMessageChange ?? (() => {})) : setInternalMessage;
+
   // Use persistent UI preferences from store
-  const enableThinking = useUIPreferencesStore((s) => s.enableThinking);
-  const setEnableThinking = useUIPreferencesStore((s) => s.setEnableThinking);
-  const useMyContext = useUIPreferencesStore((s) => s.useMyContext);
-  const setUseMyContext = useUIPreferencesStore((s) => s.setUseMyContext);
-  const [attachments, setAttachments] = useState<Array<{ id: string; file: File; status: 'uploading' | 'completed' | 'error'; progress: number; error?: string }>>([]);
+  const storeEnableThinking = useUIPreferencesStore((s) => s.enableThinking);
+  const storeSetEnableThinking = useUIPreferencesStore((s) => s.setEnableThinking);
+  const storeUseMyContext = useUIPreferencesStore((s) => s.useMyContext);
+  const storeSetUseMyContext = useUIPreferencesStore((s) => s.setUseMyContext);
+
+  // Use controlled or store values
+  const enableThinking = enableThinkingControlled ?? storeEnableThinking;
+  const useMyContext = useMyContextControlled ?? storeUseMyContext;
+  const setEnableThinking = onEnableThinkingChange ?? storeSetEnableThinking;
+  const setUseMyContext = onUseMyContextChange ?? storeSetUseMyContext;
+
+  // Use chat attachments hook for ephemeral file uploads (normal mode only)
+  const {
+    attachments: chatAttachments,
+    uploadAttachment,
+    removeAttachment,
+    clearAttachments,
+    completedAttachmentIds,
+    hasUploading,
+  } = useChatAttachments();
+
+  // In pending mode, use pending files; otherwise use chat attachments
+  const displayAttachments = pendingMode ? pendingFiles : chatAttachments;
+  const hasFiles = pendingMode ? pendingFiles.length > 0 : chatAttachments.length > 0;
+  const isUploading = pendingMode ? false : hasUploading;
+
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -71,11 +146,13 @@ export default function ChatInput({
   // unless explicitly disabled.
   const effectiveIsConnected = sessionId ? isConnected : true;
   const effectiveIsBusy = sessionId ? isAgentBusy : false;
-  
-  // Check if any uploads are in progress
-  const isUploading = attachments.some(a => a.status === 'uploading');
-  
-  const canSend = (message.trim().length > 0 || attachments.some(a => a.status === 'completed')) &&
+
+  // Determine what attachments count as "ready to send"
+  const hasReadyAttachments = pendingMode
+    ? pendingFiles.length > 0
+    : completedAttachmentIds.length > 0;
+
+  const canSend = (message.trim().length > 0 || hasReadyAttachments) &&
     effectiveIsConnected && !effectiveIsBusy && !disabled && !isUploading;
   const showStopButton = effectiveIsBusy && !!sessionId;
 
@@ -91,27 +168,27 @@ export default function ChatInput({
   const handleSend = () => {
     if (!canSend) return;
 
-    // Filter valid attachments
-    const validAttachmentIds = attachments
-      .filter(a => a.status === 'completed')
-      .map(a => a.id);
-
     if (onSend) {
-      // Note: onSend currently doesn't support attachments in the interface,
-      // but we'll assume it might be updated or ignored for now in simple mode.
+      // Simple callback mode (works for both pending and normal mode without sessionId)
       onSend(message, { enableThinking, useMyContext });
     } else {
+      // Full message mode (requires sessionId/socket)
       const options = {
         enableThinking,
         thinkingBudget: enableThinking ? 10000 : undefined,
-        attachments: validAttachmentIds.length > 0 ? validAttachmentIds : undefined,
+        // Use chatAttachments for ephemeral files sent directly to Anthropic
+        chatAttachments: completedAttachmentIds.length > 0 ? completedAttachmentIds : undefined,
         enableAutoSemanticSearch: useMyContext,
       };
       sendMessage(message, options);
     }
-    
-    setMessage('');
-    setAttachments([]);
+
+    // In pending mode, parent handles clearing state
+    // In normal mode, clear internal state
+    if (!pendingMode) {
+      setMessage('');
+      clearAttachments();
+    }
 
     // Reset textarea height
     if (textareaRef.current) {
@@ -122,61 +199,23 @@ export default function ChatInput({
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const newFiles = Array.from(e.target.files);
-      
-      // Initialize new attachments with uploading state
-      const newAttachments = newFiles.map(file => ({
-        id: crypto.randomUUID(), // Temporary ID for UI key
-        file,
-        status: 'uploading' as const,
-        progress: 0
-      }));
 
-      setAttachments(prev => [...prev, ...newAttachments]);
-
-      // Upload each file
-      const fileApi = getFileApiClient();
-      
-      for (let i = 0; i < newFiles.length; i++) {
-        const file = newFiles[i];
-        const attachmentRef = newAttachments[i];
-
-        try {
-          const result = await fileApi.uploadFiles([file], undefined, sessionId, (progress) => {
-            setAttachments(prev => prev.map(a =>
-              a.id === attachmentRef.id ? { ...a, progress } : a
-            ));
-          });
-
-          if (result.success) {
-            if (result.data.files[0]) {
-              const uploadedFile = result.data.files[0];
-              setAttachments(prev => prev.map(a => 
-                a.id === attachmentRef.id ? { ...a, status: 'completed', id: uploadedFile.id, progress: 100 } : a
-              ));
-            } else {
-              throw new Error('Upload succeeded but no file returned');
-            }
-          } else {
-            throw new Error(result.error?.message || 'Upload failed');
-          }
-        } catch (error) {
-          console.error('File upload error:', error);
-          setAttachments(prev => prev.map(a => 
-            a.id === attachmentRef.id ? { ...a, status: 'error', error: 'Upload failed', progress: 0 } : a
-          ));
-          toast.error(`Failed to upload ${file.name}`);
+      if (pendingMode && onFileSelect) {
+        // Pending mode: pass raw files to parent handler
+        onFileSelect(newFiles);
+      } else if (sessionId) {
+        // Normal mode: upload each file using the chat attachments hook
+        for (const file of newFiles) {
+          // Upload as ephemeral chat attachment (not KB file)
+          await uploadAttachment(sessionId, file);
         }
       }
-      
+
       // Reset input
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
     }
-  };
-
-  const RemoveAttachment = (id: string) => {
-    setAttachments(prev => prev.filter(a => a.id !== id));
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -211,21 +250,38 @@ export default function ChatInput({
           onChange={handleFileSelect}
         />
 
-        {/* Attachments List */}
-        {attachments.length > 0 && (
+        {/* Attachments List (Ephemeral or Pending) */}
+        {hasFiles && (
           <div className="flex flex-wrap gap-2">
-            {attachments.map((attachment) => (
-              <FileAttachmentChip
-                key={attachment.id} // Use ID (temp or real) as key
-                name={attachment.file.name}
-                size={attachment.file.size}
-                type={attachment.file.type}
-                status={attachment.status}
-                progress={attachment.progress}
-                error={attachment.error}
-                onRemove={() => RemoveAttachment(attachment.id)}
-              />
-            ))}
+            {pendingMode ? (
+              // Pending mode: display pending files (not yet uploaded)
+              pendingFiles.map((file) => (
+                <FileAttachmentChip
+                  key={file.tempId}
+                  name={file.name}
+                  size={file.size}
+                  type={file.type}
+                  status="completed" // Pending files are "ready" (will upload on submit)
+                  onRemove={() => onFileRemove?.(file.tempId)}
+                  ephemeral
+                />
+              ))
+            ) : (
+              // Normal mode: display chat attachments (uploading/uploaded)
+              chatAttachments.map((attachment) => (
+                <FileAttachmentChip
+                  key={attachment.tempId}
+                  name={attachment.name}
+                  size={attachment.size}
+                  type={attachment.type}
+                  status={attachment.status === 'completed' ? 'completed' : attachment.status === 'error' ? 'error' : 'uploading'}
+                  progress={attachment.progress}
+                  error={attachment.error}
+                  onRemove={() => removeAttachment(attachment.tempId)}
+                  ephemeral
+                />
+              ))
+            )}
           </div>
         )}
 

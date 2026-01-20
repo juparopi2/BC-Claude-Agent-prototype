@@ -63,6 +63,12 @@ export interface ExecuteSyncOptions {
    * @default false
    */
   enableAutoSemanticSearch?: boolean;
+
+  /**
+   * Chat attachment IDs to resolve and send to Anthropic as content blocks.
+   * These are ephemeral attachments (not KB files), sent directly to the model.
+   */
+  chatAttachments?: string[];
 }
 
 /**

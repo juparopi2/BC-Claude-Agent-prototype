@@ -47,4 +47,5 @@ export const SETTINGS_TAB = {
   APPEARANCE: 'appearance',
   USAGE: 'usage',
   CAPABILITIES: 'capabilities',
+  BILLING: 'billing',
 } as const;

@@ -19,7 +19,7 @@ import { cn } from '@/lib/utils';
  * Format time remaining in human-readable format
  */
 function formatTimeRemaining(ms: number): string {
-  if (ms <= 0) return 'ahora';
+  if (ms <= 0) return 'now';
 
   const seconds = Math.floor(ms / 1000);
   const minutes = Math.floor(seconds / 60);
@@ -146,7 +146,7 @@ export function SessionExpiryBanner({
       <AlertTriangle className="h-5 w-5 shrink-0" aria-hidden="true" />
 
       <span className="text-sm font-medium">
-        Tu sesion expira en{' '}
+        Your session expires in{' '}
         <span className="font-bold tabular-nums">
           {timeLeft !== null ? formatTimeRemaining(timeLeft) : '...'}
         </span>
@@ -162,7 +162,7 @@ export function SessionExpiryBanner({
         {isExtending ? (
           <RefreshCw className="h-4 w-4 animate-spin" aria-hidden="true" />
         ) : (
-          'Extender sesion'
+          'Extend session'
         )}
       </Button>
 
@@ -170,7 +170,7 @@ export function SessionExpiryBanner({
         type="button"
         onClick={() => setIsDismissed(true)}
         className="ml-2 p-1 rounded-full hover:bg-amber-400/50 transition-colors"
-        aria-label="Cerrar aviso"
+        aria-label="Dismiss warning"
       >
         <X className="h-4 w-4" aria-hidden="true" />
       </button>

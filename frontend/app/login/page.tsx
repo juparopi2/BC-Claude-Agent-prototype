@@ -40,16 +40,16 @@ export default function LoginPage() {
     if (authFailureReason === 'session_expired') {
       return {
         variant: 'warning',
-        title: 'Sesión Expirada',
-        message: 'Tu sesión ha expirado. Por favor, inicia sesión nuevamente.',
+        title: 'Session Expired',
+        message: 'Your session has expired. Please log in again.',
         icon: <AlertTriangle className="h-4 w-4" />,
       };
     }
     if (authFailureReason === 'network_error') {
       return {
         variant: 'error',
-        title: 'Error de Conexión',
-        message: 'No se pudo conectar al servidor. Verifica tu conexión.',
+        title: 'Connection Error',
+        message: 'Could not connect to the server. Please check your connection.',
         icon: <WifiOff className="h-4 w-4" />,
       };
     }

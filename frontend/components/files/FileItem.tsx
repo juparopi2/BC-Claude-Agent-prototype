@@ -227,21 +227,21 @@ export const FileItem = memo(forwardRef<HTMLDivElement, FileItemProps>(function 
         />
       )}
 
-      {/* Name */}
+      {/* Name - shrinks last (priority 3) */}
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className="flex-1 min-w-0 truncate text-sm">{file.name}</span>
+          <span className="flex-1 min-w-20 truncate text-sm">{file.name}</span>
         </TooltipTrigger>
         <TooltipContent side="bottom">{file.name}</TooltipContent>
       </Tooltip>
 
-      {/* Size - hide on very narrow widths */}
-      <span className="text-xs text-muted-foreground w-12 text-right hidden md:block shrink-0">
+      {/* Size - shrinks second (priority 2) */}
+      <span className="text-xs text-muted-foreground w-12 text-right hidden md:block min-w-0 shrink-[2] truncate">
         {formatFileSize(file.sizeBytes)}
       </span>
 
-      {/* Date - hide on narrow widths */}
-      <span className="text-xs text-muted-foreground w-18 text-right hidden lg:block shrink-0">
+      {/* Date - shrinks first (priority 1) */}
+      <span className="text-xs text-muted-foreground w-18 text-right hidden lg:block min-w-0 shrink-[3] truncate">
         {formatDate(file.updatedAt)}
       </span>
 

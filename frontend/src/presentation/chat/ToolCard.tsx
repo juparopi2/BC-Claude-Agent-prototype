@@ -7,9 +7,63 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Wrench, ChevronRight, ChevronDown, Clock, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import JsonView from '@uiw/react-json-view';
-import { lightTheme } from '@uiw/react-json-view/light';
-import { darkTheme } from '@uiw/react-json-view/dark';
 import { useTheme } from 'next-themes';
+
+/**
+ * Custom transparent theme for JsonView in light mode
+ * Uses colors that work well on light backgrounds
+ */
+const transparentLightTheme: React.CSSProperties = {
+  '--w-rjv-font-family': 'var(--font-geist-mono, monospace)',
+  '--w-rjv-color': '#a2a3a7',
+  '--w-rjv-key-string': '#a2a3a7',
+  '--w-rjv-background-color': 'transparent',
+  '--w-rjv-line-color': '#e8e8e8',
+  '--w-rjv-arrow-color': '#6a737d',
+  '--w-rjv-info-color': '#6a737d',
+  '--w-rjv-curlybraces-color': '#a2a3a7',
+  '--w-rjv-colon-color': '#a2a3a7',
+  '--w-rjv-brackets-color': '#a2a3a7',
+  '--w-rjv-quotes-color': '#50a14f',
+  '--w-rjv-quotes-string-color': '#50a14f',
+  '--w-rjv-type-string-color': '#50a14f',
+  '--w-rjv-type-int-color': '#986801',
+  '--w-rjv-type-float-color': '#986801',
+  '--w-rjv-type-bigint-color': '#986801',
+  '--w-rjv-type-boolean-color': '#0184bc',
+  '--w-rjv-type-date-color': '#986801',
+  '--w-rjv-type-null-color': '#e45649',
+  '--w-rjv-type-undefined-color': '#e45649',
+  '--w-rjv-type-nan-color': '#e45649',
+} as React.CSSProperties;
+
+/**
+ * Custom transparent theme for JsonView in dark mode
+ * Uses colors that work well on dark backgrounds
+ */
+const transparentDarkTheme: React.CSSProperties = {
+  '--w-rjv-font-family': 'var(--font-geist-mono, monospace)',
+  '--w-rjv-color': '#abb2bf',
+  '--w-rjv-key-string': '#e5c07b',
+  '--w-rjv-background-color': 'transparent',
+  '--w-rjv-line-color': '#3e4451',
+  '--w-rjv-arrow-color': '#6a737d',
+  '--w-rjv-info-color': '#6a737d',
+  '--w-rjv-curlybraces-color': '#abb2bf',
+  '--w-rjv-colon-color': '#abb2bf',
+  '--w-rjv-brackets-color': '#abb2bf',
+  '--w-rjv-quotes-color': '#98c379',
+  '--w-rjv-quotes-string-color': '#98c379',
+  '--w-rjv-type-string-color': '#98c379',
+  '--w-rjv-type-int-color': '#d19a66',
+  '--w-rjv-type-float-color': '#d19a66',
+  '--w-rjv-type-bigint-color': '#d19a66',
+  '--w-rjv-type-boolean-color': '#56b6c2',
+  '--w-rjv-type-date-color': '#d19a66',
+  '--w-rjv-type-null-color': '#e06c75',
+  '--w-rjv-type-undefined-color': '#e06c75',
+  '--w-rjv-type-nan-color': '#e06c75',
+} as React.CSSProperties;
 
 /**
  * Try to parse JSON strings recursively
@@ -147,11 +201,11 @@ export function ToolCard({
           <div className="mt-2 space-y-2">
             {/* Input arguments */}
             {Object.keys(displayArgs).length > 0 && (
-              <div className="p-2 bg-muted rounded-lg">
-                <div className="text-xs font-medium text-muted-foreground mb-1">Input</div>
+              <div className="p-2 bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg">
+                <div className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Input</div>
                 <JsonView
                   value={displayArgs}
-                  style={theme === 'dark' ? darkTheme : lightTheme}
+                  style={theme === 'dark' ? transparentDarkTheme : transparentLightTheme}
                   collapsed={2}
                   displayDataTypes={false}
                   displayObjectSize={true}
@@ -162,11 +216,11 @@ export function ToolCard({
 
             {/* Result (if completed) */}
             {displayStatus === 'completed' && displayResult !== undefined && (
-              <div className="p-2 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 rounded-lg">
+              <div className="p-2 bg-emerald-50 dark:bg-emerald-900/40 border border-emerald-200 dark:border-emerald-700 rounded-lg">
                 <div className="text-xs font-medium text-emerald-700 dark:text-emerald-300 mb-1">Result</div>
                 <JsonView
                   value={tryParseJSON(displayResult)}
-                  style={theme === 'dark' ? darkTheme : lightTheme}
+                  style={theme === 'dark' ? transparentDarkTheme : transparentLightTheme}
                   collapsed={2}
                   displayDataTypes={false}
                   displayObjectSize={true}
@@ -177,7 +231,7 @@ export function ToolCard({
 
             {/* Error (if failed) */}
             {displayStatus === 'failed' && displayError && (
-              <div className="p-2 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg">
+              <div className="p-2 bg-red-50 dark:bg-red-900/40 border border-red-200 dark:border-red-700 rounded-lg">
                 <div className="text-xs font-medium text-red-700 dark:text-red-300 mb-1">Error</div>
                 <p className="text-xs text-red-600 dark:text-red-400">{displayError}</p>
               </div>

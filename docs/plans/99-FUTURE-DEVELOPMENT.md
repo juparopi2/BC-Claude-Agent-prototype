@@ -1,7 +1,7 @@
 # Futuros Desarrollos y Deuda Técnica
 
 **Estado**: Organizado
-**Última actualización**: 2026-01-16
+**Última actualización**: 2026-01-20
 
 Este documento centraliza todos los planes futuros, organizados por categoría para facilitar la priorización y ejecución.
 
@@ -88,6 +88,29 @@ Mejoras perceptibles para el usuario final.
 **Specs:** Agente intermedio que procesa datos numéricos de otros agentes (BC/RAG). Responsable de cálculos, aproximaciones, selección del tipo de gráfico óptimo (ej. Tremor UI) y formateo de datos/leyendas para una visualización correcta. Requiere lógica en Backend y componentes dinámicos en Frontend.
 **Estimación:** 7 días
 
+### @Mention para Knowledge Base Files (Alta)
+**Necesidad:** Permitir al usuario seleccionar archivos específicos de su Knowledge Base usando `@filename` en el input del chat, en lugar de depender solo de semantic search automático.
+**Contexto:** Actualmente el usuario puede: (1) adjuntar archivos nuevos que se procesan completamente, o (2) habilitar "Search in my files" que busca automáticamente. No hay forma de decir "usa específicamente este archivo de mi KB".
+**Specs:**
+- UI: Autocomplete al escribir `@` que muestra archivos/carpetas de la KB del usuario
+- Backend: Nuevo campo en `ChatMessageData`: `kbFileIds: string[]` (separado de `attachments`)
+- `FileContextPreparer`: Distinguir entre `kbFileIds` (usar EXTRACTED_TEXT/RAG_CHUNKS) y `attachments` (usar document blocks nativos)
+- Soporte para seleccionar carpetas completas (`@reports/2025/`)
+**Dependencias:** Requiere que Chat Attachments Refactor esté implementado primero (separación de flujos)
+**Estimación:** 5-7 días
+
+### Anthropic Files API Integration (Media)
+**Necesidad:** Optimizar el manejo de archivos grandes o repetidos usando la Files API de Anthropic en lugar de base64 en cada request.
+**Contexto:** Actualmente todos los attachments se envían como base64 en cada mensaje. Para archivos >10MB o que se usan repetidamente en la misma sesión, es más eficiente usar la Files API de Anthropic (upload una vez, referenciar por `file_id`).
+**Specs:**
+- `AnthropicFilesAdapter`: Servicio para upload/manage archivos en Anthropic
+- Estrategia de decisión: base64 para archivos pequeños (<10MB, uso único), Files API para grandes/repetidos
+- Tracking de `anthropic_file_id` en tabla `chat_attachments`
+- Cleanup job para eliminar archivos de Anthropic cuando expiren en nuestro sistema
+- Provider-agnostic: Interfaz `IProviderFilesAdapter` para soportar OpenAI Files API en el futuro
+**Limitaciones:** Files API de Anthropic está en Beta, límites: 500MB/archivo, 100GB/workspace
+**Estimación:** 4-5 días
+
 ---
 
 ## 🟢 Integraciones
@@ -140,8 +163,8 @@ Herramientas para administración y visión del negocio.
 | Categoría | Estimación Total Aprox. |
 |-----------|-------------------------|
 | 🛠 Deuda Técnica | ~15-20 días |
-| ✨ Nuevas Funcionalidades | ~15 días |
+| ✨ Nuevas Funcionalidades | ~24-27 días |
 | 🟢 Integraciones | ~20 días |
 | 🚀 Rendimiento | ~11 días |
 | 📊 Analítica | ~10 días |
-| **Total Estimado** | **~71-76 días** |
+| **Total Estimado** | **~80-88 días** |

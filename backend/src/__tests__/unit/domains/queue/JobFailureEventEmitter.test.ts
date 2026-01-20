@@ -171,16 +171,17 @@ describe('JobFailureEventEmitter', () => {
     });
 
     it('should skip emission when Socket.IO not initialized', () => {
-      const emitterNoSocket = new JobFailureEventEmitter.getInstance({
+      // Reset singleton first
+      __resetJobFailureEventEmitter();
+
+      // Create emitter with socket not ready
+      const emitterNoSocket = getJobFailureEventEmitter({
         isSocketReady: () => false,
         getIO: () => { throw new Error('Not initialized'); },
       });
 
-      // Reset singleton to use our test instance
-      __resetJobFailureEventEmitter();
-
       const ctx = createTestContext();
-      const payload = createTestPayload();
+      const payload = createTestPayload({ jobId: 'no-socket-test' });
 
       // This should not throw
       emitterNoSocket.emitJobFailed(ctx, payload);
@@ -358,9 +359,11 @@ describe('JobFailureEventEmitter', () => {
         'message-persistence',
       ];
 
-      for (const queueName of queueNames) {
+      for (let i = 0; i < queueNames.length; i++) {
+        const queueName = queueNames[i];
         vi.clearAllMocks();
-        const payload = emitter.createPayload('job', queueName, 'error', 1, 1);
+        // Use unique jobId for each to avoid deduplication
+        const payload = emitter.createPayload(`job-${queueName}-${i}`, queueName, 'error', 1, 1);
         const ctx = createTestContext();
 
         emitter.emitJobFailed(ctx, payload);

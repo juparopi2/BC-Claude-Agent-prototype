@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 import { AuthProvider } from "@/components/providers";
+import { GlobalBanners } from "@/components/layout";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -30,6 +31,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <AuthProvider>
+          <GlobalBanners />
           {children}
         </AuthProvider>
         <Toaster position="bottom-right" />

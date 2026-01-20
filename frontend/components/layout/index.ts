@@ -13,3 +13,6 @@ export { Header } from './Header';
 export type { HeaderProps } from './Header';
 export { default as LeftPanel } from './LeftPanel';
 export { default as RightPanel } from './RightPanel';
+export { ConnectionStatusBanner } from './ConnectionStatusBanner';
+export type { ConnectionStatusBannerProps } from './ConnectionStatusBanner';
+export { GlobalBanners } from './GlobalBanners';

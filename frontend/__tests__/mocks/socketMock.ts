@@ -12,6 +12,20 @@ import { vi, expect, type Mock } from 'vitest';
 type EventCallback = (...args: unknown[]) => void;
 
 /**
+ * Mock Manager interface matching Socket.IO Manager
+ * Handles reconnection events
+ */
+export interface MockManager {
+  on: Mock<(event: string, callback: EventCallback) => MockManager>;
+  off: Mock<(event: string, callback?: EventCallback) => MockManager>;
+  removeAllListeners: Mock<(event?: string) => MockManager>;
+  /** Trigger a manager event (reconnect_attempt, reconnect, etc.) */
+  _trigger: (event: string, ...args: unknown[]) => void;
+  /** Map of registered event listeners */
+  _listeners: Map<string, Set<EventCallback>>;
+}
+
+/**
  * Mock Socket interface matching Socket.IO client
  */
 export interface MockSocket {
@@ -30,6 +44,9 @@ export interface MockSocket {
   // Connection methods
   connect: Mock<() => MockSocket>;
   disconnect: Mock<() => MockSocket>;
+
+  // Manager reference (for reconnection events)
+  io: MockManager;
 
   // Test utilities (not part of real Socket.IO)
   /** Trigger an event as if server sent it */
@@ -58,10 +75,63 @@ export interface MockSocket {
  * expect(mockSocket.emit).toHaveBeenCalledWith('chat:message', { message: 'Hi' });
  * ```
  */
+/**
+ * Create a mock Manager instance for Socket.IO
+ */
+function createMockManager(): MockManager {
+  const managerListeners = new Map<string, Set<EventCallback>>();
+
+  const manager: MockManager = {
+    on: vi.fn((event: string, callback: EventCallback) => {
+      if (!managerListeners.has(event)) {
+        managerListeners.set(event, new Set());
+      }
+      managerListeners.get(event)!.add(callback);
+      return manager;
+    }),
+
+    off: vi.fn((event: string, callback?: EventCallback) => {
+      if (callback && managerListeners.has(event)) {
+        managerListeners.get(event)!.delete(callback);
+      } else if (!callback) {
+        managerListeners.delete(event);
+      }
+      return manager;
+    }),
+
+    removeAllListeners: vi.fn((event?: string) => {
+      if (event) {
+        managerListeners.delete(event);
+      } else {
+        managerListeners.clear();
+      }
+      return manager;
+    }),
+
+    _trigger: (event: string, ...args: unknown[]) => {
+      const eventListeners = managerListeners.get(event);
+      if (eventListeners) {
+        eventListeners.forEach((callback) => {
+          try {
+            callback(...args);
+          } catch (error) {
+            console.error(`Error in mock manager event handler for "${event}":`, error);
+          }
+        });
+      }
+    },
+
+    _listeners: managerListeners,
+  };
+
+  return manager;
+}
+
 export function createMockSocket(
   options: { connected?: boolean; id?: string } = {}
 ): MockSocket {
   const listeners = new Map<string, Set<EventCallback>>();
+  const mockManager = createMockManager();
 
   const socket: MockSocket = {
     connected: options.connected ?? false,
@@ -127,6 +197,9 @@ export function createMockSocket(
       return socket;
     }),
 
+    // Manager reference for reconnection events
+    io: mockManager,
+
     _trigger: (event: string, ...args: unknown[]) => {
       const eventListeners = listeners.get(event);
       if (eventListeners) {
@@ -144,6 +217,7 @@ export function createMockSocket(
 
     _reset: () => {
       listeners.clear();
+      mockManager._listeners.clear();
       socket.connected = false;
       vi.mocked(socket.on).mockClear();
       vi.mocked(socket.off).mockClear();
@@ -152,6 +226,9 @@ export function createMockSocket(
       vi.mocked(socket.removeAllListeners).mockClear();
       vi.mocked(socket.connect).mockClear();
       vi.mocked(socket.disconnect).mockClear();
+      vi.mocked(mockManager.on).mockClear();
+      vi.mocked(mockManager.off).mockClear();
+      vi.mocked(mockManager.removeAllListeners).mockClear();
     },
   };
 

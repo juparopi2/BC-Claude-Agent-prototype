@@ -16,6 +16,30 @@ import {
 import type { SessionHealthResponse } from '@bc-agent/shared';
 import { env } from '@/lib/config/env';
 
+/**
+ * Hook to track tab visibility state
+ */
+function useTabVisibility(): boolean {
+  const [isVisible, setIsVisible] = useState(() =>
+    typeof document !== 'undefined' ? !document.hidden : true
+  );
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+
+    const handleVisibilityChange = () => {
+      setIsVisible(!document.hidden);
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
+  return isVisible;
+}
+
 /** Options for the useSessionHealth hook */
 export interface UseSessionHealthOptions {
   /** Polling interval in ms (default: 60000) */
@@ -76,10 +100,15 @@ export function useSessionHealth(
 
   // Track previous status to detect transitions
   const prevStatusRef = useRef<AuthSessionStatus | null>(null);
+  // Track if we need to check immediately when tab becomes visible
+  const shouldCheckOnVisibleRef = useRef(false);
 
   // Get auth state
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const checkAuth = useAuthStore((s) => s.checkAuth);
+
+  // Track tab visibility
+  const isTabVisible = useTabVisibility();
 
   // Fetch health status
   const fetchHealth = useCallback(async () => {
@@ -133,22 +162,44 @@ export function useSessionHealth(
     }
   }, [isAuthenticated, checkAuth, onExpiring, onExpired]);
 
-  // Set up polling
+  // Set up polling with tab visibility optimization
   useEffect(() => {
     if (!enabled || !isAuthenticated) {
       return;
     }
 
-    // Initial fetch
-    fetchHealth();
+    // If tab is not visible, mark that we should check when it becomes visible
+    if (!isTabVisible) {
+      shouldCheckOnVisibleRef.current = true;
+      return;
+    }
 
-    // Set up interval
+    // If we're becoming visible again and we missed a check, do it now
+    if (shouldCheckOnVisibleRef.current) {
+      shouldCheckOnVisibleRef.current = false;
+      fetchHealth();
+    }
+
+    // Initial fetch (only if we haven't fetched yet)
+    if (health === null) {
+      fetchHealth();
+    }
+
+    // Set up interval (only when tab is visible)
     const intervalId = setInterval(fetchHealth, pollInterval);
 
     return () => {
       clearInterval(intervalId);
     };
-  }, [enabled, isAuthenticated, pollInterval, fetchHealth]);
+  }, [enabled, isAuthenticated, pollInterval, fetchHealth, isTabVisible, health]);
+
+  // Immediate check when tab becomes visible after being hidden
+  useEffect(() => {
+    if (enabled && isAuthenticated && isTabVisible && shouldCheckOnVisibleRef.current) {
+      shouldCheckOnVisibleRef.current = false;
+      fetchHealth();
+    }
+  }, [enabled, isAuthenticated, isTabVisible, fetchHealth]);
 
   // Compute derived values
   const isExpiring = health?.status === AUTH_SESSION_STATUS.EXPIRING;

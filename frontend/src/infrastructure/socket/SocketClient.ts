@@ -22,6 +22,7 @@ import type {
 import { FILE_WS_CHANNELS, JOB_WS_CHANNELS } from '@bc-agent/shared';
 import type { SocketConnectOptions, JoinSessionOptions, PendingMessage } from './types';
 import { useAuthStore } from '@/src/domains/auth/stores/authStore';
+import { useConnectionStore } from '@/src/domains/connection';
 
 type EventCallback<T = unknown> = (data: T) => void;
 
@@ -65,6 +66,9 @@ export class SocketClient {
   private jobFailureListeners = new Set<EventCallback<JobFailedPayload>>();
   // Pending user room join (D25 race condition fix)
   private pendingUserRoomJoin: string | null = null;
+  // Track reconnection attempts for connection store
+  private reconnectAttemptCount = 0;
+  private maxReconnectAttempts = 5;
 
   /**
    * Whether the socket is currently connected
@@ -94,25 +98,35 @@ export class SocketClient {
    * @returns Promise that resolves when connected
    */
   connect(options: SocketConnectOptions): Promise<void> {
+    // Update connection store to connecting state
+    useConnectionStore.getState().setConnecting();
 
     return new Promise((resolve, reject) => {
       if (this.socket?.connected) {
         this.flushPendingUserRoomJoin();
+        useConnectionStore.getState().setConnected();
         resolve();
         return;
       }
+
+      // Store max reconnect attempts for tracking
+      this.maxReconnectAttempts = options.reconnectionAttempts ?? 5;
+      this.reconnectAttemptCount = 0;
+      useConnectionStore.getState().setMaxReconnectAttempts(this.maxReconnectAttempts);
 
       this.socket = io(options.url, {
         transports: options.transports ?? ['websocket', 'polling'],
         withCredentials: true,
         autoConnect: true,
         reconnection: options.reconnection ?? true,
-        reconnectionAttempts: options.reconnectionAttempts ?? 5,
+        reconnectionAttempts: this.maxReconnectAttempts,
         reconnectionDelay: options.reconnectionDelay ?? 1000,
         reconnectionDelayMax: options.reconnectionDelayMax ?? 5000,
       });
 
       const onConnect = () => {
+        this.reconnectAttemptCount = 0;
+        useConnectionStore.getState().setConnected();
         this.notifyConnectionChange(true);
         this.flushPendingMessages();
         this.flushPendingUserRoomJoin();
@@ -121,6 +135,7 @@ export class SocketClient {
 
       const onConnectError = (error: Error) => {
         console.error('[SocketClient] Socket.IO connect error:', error.message);
+        useConnectionStore.getState().setFailed(error.message);
         this.notifyConnectionChange(false);
         reject(error);
       };
@@ -145,6 +160,8 @@ export class SocketClient {
     this.socket = null;
     this.pendingMessages = [];
     this.pendingUserRoomJoin = null;
+    this.reconnectAttemptCount = 0;
+    useConnectionStore.getState().setDisconnected();
     this.notifyConnectionChange(false);
   }
 
@@ -434,6 +451,10 @@ export class SocketClient {
     this.socket.removeAllListeners('agent:event');
     this.socket.removeAllListeners('agent:error');
     this.socket.removeAllListeners('session:title_updated');
+    // Reconnection events
+    this.socket.io.removeAllListeners('reconnect');
+    this.socket.io.removeAllListeners('reconnect_attempt');
+    this.socket.io.removeAllListeners('reconnect_failed');
     // File processing channels (D25)
     this.socket.removeAllListeners(FILE_WS_CHANNELS.STATUS);
     this.socket.removeAllListeners(FILE_WS_CHANNELS.PROCESSING);
@@ -442,6 +463,8 @@ export class SocketClient {
 
     // Connection events
     this.socket.on('connect', () => {
+      this.reconnectAttemptCount = 0;
+      useConnectionStore.getState().setConnected();
       this.notifyConnectionChange(true);
       this.flushPendingMessages();
       this.flushPendingUserRoomJoin();
@@ -454,12 +477,34 @@ export class SocketClient {
       }
     });
 
-    this.socket.on('disconnect', () => {
+    this.socket.on('disconnect', (reason) => {
+      // Don't update store if this is an intentional disconnect (io client disconnect)
+      if (reason !== 'io client disconnect') {
+        useConnectionStore.getState().setDisconnected(reason);
+      }
       this.notifyConnectionChange(false);
     });
 
-    this.socket.on('connect_error', () => {
+    this.socket.on('connect_error', (error) => {
+      useConnectionStore.getState().setFailed(error.message);
       this.notifyConnectionChange(false);
+    });
+
+    // Reconnection events (from Manager, not Socket)
+    this.socket.io.on('reconnect_attempt', (attempt: number) => {
+      this.reconnectAttemptCount = attempt;
+      useConnectionStore.getState().setReconnecting(attempt);
+    });
+
+    this.socket.io.on('reconnect', () => {
+      this.reconnectAttemptCount = 0;
+      useConnectionStore.getState().setConnected();
+    });
+
+    this.socket.io.on('reconnect_failed', () => {
+      useConnectionStore.getState().setFailed(
+        `Could not reconnect after ${this.maxReconnectAttempts} attempts`
+      );
     });
 
     // Agent events

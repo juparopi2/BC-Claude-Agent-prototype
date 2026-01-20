@@ -124,18 +124,23 @@ export function SessionExpiryBanner({
     return null;
   }
 
+  // Determine if using relative or fixed positioning
+  const isRelative = className?.includes('relative');
+
   return (
     <div
       role="alert"
       aria-live="polite"
       className={cn(
-        'fixed top-0 left-0 right-0 z-50',
+        // Use fixed positioning by default, but allow override to relative
+        isRelative ? 'relative' : 'fixed top-0 left-0 right-0 z-50',
         'bg-amber-500/95 text-amber-950',
         'px-4 py-3',
         'flex items-center justify-center gap-4',
         'shadow-lg backdrop-blur-sm',
         'animate-in slide-in-from-top duration-300',
-        className
+        // Filter out 'relative' from className since we handle it above
+        className?.replace('relative', '').trim() || undefined
       )}
     >
       <AlertTriangle className="h-5 w-5 shrink-0" aria-hidden="true" />

@@ -184,7 +184,8 @@
       "mcp__playwright__browser_click",
       "mcp__playwright__browser_take_screenshot",
       "Bash(docker build:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(NODE_OPTIONS=\"--max-old-space-size=8192\" npx tsc:*)"
     ],
     "deny": [],
     "ask": []

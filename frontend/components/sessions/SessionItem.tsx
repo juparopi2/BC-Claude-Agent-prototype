@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { MessageSquare, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
+import { MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface SessionItemProps {
@@ -32,22 +32,6 @@ export default function SessionItem({ session, isActive }: SessionItemProps) {
       inputRef.current.select();
     }
   }, [isEditing]);
-
-  // Format date helper
-  const formatDate = (dateString: string): string => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-    if (diffDays === 0) {
-      return 'Today';
-    } else if (diffDays === 1) {
-      return 'Yesterday';
-    } else {
-      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    }
-  };
 
   const handleClick = () => {
     if (!isEditing) {
@@ -95,9 +79,7 @@ export default function SessionItem({ session, isActive }: SessionItemProps) {
         onClick={handleClick}
         data-testid="session-item"
       >
-        <MessageSquare className="size-4 shrink-0" />
-
-        <div className="flex-1 min-w-0 space-y-0.5">
+        <div className="flex-1 min-w-0">
           {isEditing ? (
             <Input
               ref={inputRef}
@@ -111,9 +93,6 @@ export default function SessionItem({ session, isActive }: SessionItemProps) {
           ) : (
             <p className="text-sm font-medium truncate">{displayTitle}</p>
           )}
-          <p className="text-xs text-muted-foreground">
-            {formatDate(session.updated_at)}
-          </p>
         </div>
 
         <DropdownMenu>

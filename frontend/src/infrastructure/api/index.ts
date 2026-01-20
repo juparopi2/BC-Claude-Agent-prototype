@@ -18,6 +18,9 @@ export {
   type TokenUsage,
   type CreateSessionRequest,
   type UpdateSessionRequest,
+  type GetSessionsOptions,
+  type PaginationInfo,
+  type PaginatedSessionsResponse,
   // Message types from shared
   type Message,
   type StandardMessage,

@@ -20,8 +20,14 @@ export interface SessionState {
   sessions: Session[];
   /** Currently active session */
   currentSession: Session | null;
-  /** Loading state */
+  /** Loading state (initial load) */
   isLoading: boolean;
+  /** Loading state (loading more via pagination) */
+  isLoadingMore: boolean;
+  /** Whether there are more sessions to load */
+  hasMoreSessions: boolean;
+  /** Next cursor for pagination (ISO 8601 datetime) */
+  nextCursor: string | null;
   /** Error message */
   error: string | null;
   /** Last fetch timestamp */
@@ -34,6 +40,7 @@ export interface SessionState {
 export interface SessionActions {
   // Fetch sessions
   fetchSessions: () => Promise<void>;
+  fetchMoreSessions: () => Promise<void>;
   fetchSession: (sessionId: string) => Promise<Session | null>;
 
   // Session management
@@ -61,6 +68,9 @@ const initialState: SessionState = {
   sessions: [],
   currentSession: null,
   isLoading: false,
+  isLoadingMore: false,
+  hasMoreSessions: true,
+  nextCursor: null,
   error: null,
   lastFetched: null,
 };
@@ -79,11 +89,13 @@ export const useSessionStore = create<SessionStore>()(
       set({ isLoading: true, error: null });
 
       const api = getApiClient();
-      const result = await api.getSessions();
+      const result = await api.getSessions({ limit: 20 });
 
       if (result.success) {
         set({
-          sessions: result.data,
+          sessions: result.data.sessions,
+          hasMoreSessions: result.data.pagination.hasMore,
+          nextCursor: result.data.pagination.nextCursor,
           isLoading: false,
           lastFetched: Date.now(),
         });
@@ -91,6 +103,34 @@ export const useSessionStore = create<SessionStore>()(
         set({
           error: result.error.message,
           isLoading: false,
+        });
+      }
+    },
+
+    fetchMoreSessions: async () => {
+      const { nextCursor, hasMoreSessions, isLoadingMore } = get();
+
+      // Guard: don't fetch if already loading or no more sessions
+      if (!hasMoreSessions || isLoadingMore || !nextCursor) {
+        return;
+      }
+
+      set({ isLoadingMore: true });
+
+      const api = getApiClient();
+      const result = await api.getSessions({ limit: 20, before: nextCursor });
+
+      if (result.success) {
+        set((state) => ({
+          sessions: [...state.sessions, ...result.data.sessions],
+          hasMoreSessions: result.data.pagination.hasMore,
+          nextCursor: result.data.pagination.nextCursor,
+          isLoadingMore: false,
+        }));
+      } else {
+        set({
+          error: result.error.message,
+          isLoadingMore: false,
         });
       }
     },

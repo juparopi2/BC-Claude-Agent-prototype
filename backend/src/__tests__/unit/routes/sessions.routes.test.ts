@@ -52,6 +52,13 @@ vi.mock('@/domains/auth/middleware/auth-oauth', () => ({
   }
 }));
 
+// Mock SessionTitleGenerator
+vi.mock('@/services/sessions/SessionTitleGenerator', () => ({
+  getSessionTitleGenerator: vi.fn(() => ({
+    generateTitle: vi.fn().mockResolvedValue('Generated Title'),
+  })),
+}));
+
 describe('Sessions Routes', () => {
   let app: Application;
   let mockExecuteQuery: Mock;
@@ -77,7 +84,7 @@ describe('Sessions Routes', () => {
   });
 
   describe('GET /api/chat/sessions', () => {
-    it('should return all sessions for authenticated user', async () => {
+    it('should return all sessions for authenticated user with pagination', async () => {
       // Arrange
       const mockSessions = [
         {
@@ -105,8 +112,11 @@ describe('Sessions Routes', () => {
         .get('/api/chat/sessions')
         .expect(200);
 
-      // Assert
+      // Assert - Now returns paginated response
       expect(response.body.sessions).toHaveLength(2);
+      expect(response.body.pagination).toBeDefined();
+      expect(response.body.pagination.hasMore).toBe(false);
+      expect(response.body.pagination.nextCursor).toBe(null);
       expect(response.body.sessions[0]).toMatchObject({
         id: 'session-1',
         user_id: 'test-user-123',
@@ -119,7 +129,7 @@ describe('Sessions Routes', () => {
       });
       expect(mockExecuteQuery).toHaveBeenCalledWith(
         expect.stringContaining('SELECT'),
-        { userId: 'test-user-123' }
+        expect.objectContaining({ userId: 'test-user-123', fetchLimit: 21 })
       );
     });
 
@@ -132,8 +142,9 @@ describe('Sessions Routes', () => {
         .get('/api/chat/sessions')
         .expect(200);
 
-      // Assert
+      // Assert - Now returns paginated response
       expect(response.body.sessions).toEqual([]);
+      expect(response.body.pagination.hasMore).toBe(false);
     });
 
     // Note: Authentication tests moved to integration tests
@@ -156,12 +167,13 @@ describe('Sessions Routes', () => {
 
   describe('POST /api/chat/sessions', () => {
     it('should create a new session with provided title', async () => {
-      // Arrange
+      // Arrange - UUID is normalized to uppercase per CLAUDE.md spec
       const mockSessionId = 'new-session-123';
+      const uppercaseSessionId = mockSessionId.toUpperCase();
       mockRandomUUID.mockReturnValueOnce(mockSessionId);
 
       const mockCreatedSession = {
-        id: mockSessionId,
+        id: uppercaseSessionId,
         user_id: 'test-user-123',
         title: 'My Custom Title',
         is_active: true,
@@ -179,7 +191,7 @@ describe('Sessions Routes', () => {
 
       // Assert - Route returns unwrapped session (REST standard)
       expect(response.body).toMatchObject({
-        id: mockSessionId,
+        id: uppercaseSessionId,
         user_id: 'test-user-123',
         title: 'My Custom Title',
         status: 'active'
@@ -187,7 +199,7 @@ describe('Sessions Routes', () => {
       expect(mockExecuteQuery).toHaveBeenCalledWith(
         expect.stringContaining('INSERT INTO sessions'),
         expect.objectContaining({
-          sessionId: mockSessionId,
+          sessionId: uppercaseSessionId,
           userId: 'test-user-123',
           title: 'My Custom Title'
         })
@@ -195,12 +207,13 @@ describe('Sessions Routes', () => {
     });
 
     it('should create session with default title when not provided', async () => {
-      // Arrange
+      // Arrange - UUID is normalized to uppercase per CLAUDE.md spec
       const mockSessionId = 'new-session-456';
+      const uppercaseSessionId = mockSessionId.toUpperCase();
       mockRandomUUID.mockReturnValueOnce(mockSessionId);
 
       const mockCreatedSession = {
-        id: mockSessionId,
+        id: uppercaseSessionId,
         user_id: 'test-user-123',
         title: 'New Chat',
         is_active: true,
@@ -331,19 +344,8 @@ describe('Sessions Routes', () => {
         recordset: [{ id: VALID_SESSION_UUID }]
       });
 
-      // Second query: get messages
+      // Second query: get messages (returned in DESC order, reversed in code)
       const mockMessages = [
-        {
-          id: 'msg-1',
-          session_id: VALID_SESSION_UUID,
-          role: 'user',
-          message_type: 'standard',
-          content: 'Hello',
-          metadata: null,
-          stop_reason: null,
-          token_count: 5,
-          created_at: new Date('2024-01-15T10:00:00Z')
-        },
         {
           id: 'msg-2',
           session_id: VALID_SESSION_UUID,
@@ -353,7 +355,20 @@ describe('Sessions Routes', () => {
           metadata: null,
           stop_reason: 'end_turn',
           token_count: 10,
+          sequence_number: 2,
           created_at: new Date('2024-01-15T10:00:05Z')
+        },
+        {
+          id: 'msg-1',
+          session_id: VALID_SESSION_UUID,
+          role: 'user',
+          message_type: 'standard',
+          content: 'Hello',
+          metadata: null,
+          stop_reason: null,
+          token_count: 5,
+          sequence_number: 1,
+          created_at: new Date('2024-01-15T10:00:00Z')
         }
       ];
 
@@ -367,7 +382,7 @@ describe('Sessions Routes', () => {
         .get(`/api/chat/sessions/${VALID_SESSION_UUID}/messages`)
         .expect(200);
 
-      // Assert
+      // Assert - After reversing, msg-1 (seq 1) is first
       expect(response.body.messages).toHaveLength(2);
       expect(response.body.messages[0]).toMatchObject({
         id: 'msg-1',
@@ -375,12 +390,15 @@ describe('Sessions Routes', () => {
         type: 'standard',
         content: 'Hello'
       });
+      // Now includes pagination info
+      expect(response.body.pagination).toBeDefined();
+      expect(response.body.pagination.hasMore).toBe(false);
       // 3 queries: session ownership, messages, citations
       expect(mockExecuteQuery).toHaveBeenCalledTimes(3);
       expect(mockExecuteQuery).toHaveBeenNthCalledWith(
         2,
-        expect.stringContaining('OFFSET @offset ROWS'),
-        expect.objectContaining({ sessionId: VALID_SESSION_UUID, offset: 0, limit: 50 })
+        expect.stringContaining('ORDER BY sequence_number DESC'),
+        expect.objectContaining({ sessionId: VALID_SESSION_UUID, fetchLimit: 51 })
       );
     });
 
@@ -390,16 +408,16 @@ describe('Sessions Routes', () => {
       mockExecuteQuery.mockResolvedValueOnce({ recordset: [{ id: paginationSessionUUID }] });
       mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
 
-      // Act
+      // Act - Now using cursor-based pagination with before parameter
       const response = await request(app)
-        .get(`/api/chat/sessions/${paginationSessionUUID}/messages?limit=10&offset=5`)
+        .get(`/api/chat/sessions/${paginationSessionUUID}/messages?limit=10`)
         .expect(200);
 
-      // Assert
+      // Assert - fetchLimit is limit + 1 for hasMore check
       expect(mockExecuteQuery).toHaveBeenNthCalledWith(
         2,
         expect.any(String),
-        expect.objectContaining({ limit: 10, offset: 5 })
+        expect.objectContaining({ fetchLimit: 11 })
       );
     });
 
@@ -432,18 +450,9 @@ describe('Sessions Routes', () => {
       const typesSessionUUID = '66666666-6666-6666-6666-666666666666';
       mockExecuteQuery.mockResolvedValueOnce({ recordset: [{ id: typesSessionUUID }] });
 
+      // Note: Messages are fetched ORDER BY sequence_number DESC, then reversed
+      // So mockMessages should be in DESC order (newest first)
       const mockMessages = [
-        {
-          id: 'msg-thinking',
-          session_id: typesSessionUUID,
-          role: 'assistant',
-          message_type: 'thinking',
-          content: 'Let me think about this...',  // Content is in content column, not metadata
-          metadata: JSON.stringify({ duration_ms: 1500 }),
-          stop_reason: null,
-          token_count: 20,
-          created_at: new Date()
-        },
         {
           id: 'msg-tool',
           session_id: typesSessionUUID,
@@ -458,6 +467,19 @@ describe('Sessions Routes', () => {
           }),
           stop_reason: 'tool_use',
           token_count: 50,
+          sequence_number: 2,
+          created_at: new Date()
+        },
+        {
+          id: 'msg-thinking',
+          session_id: typesSessionUUID,
+          role: 'assistant',
+          message_type: 'thinking',
+          content: 'Let me think about this...',  // Content is in content column, not metadata
+          metadata: JSON.stringify({ duration_ms: 1500 }),
+          stop_reason: null,
+          token_count: 20,
+          sequence_number: 1,
           created_at: new Date()
         }
       ];
@@ -472,7 +494,7 @@ describe('Sessions Routes', () => {
       // Assert
       expect(response.body.messages).toHaveLength(2);
 
-      // Verify thinking message structure
+      // After reversing, thinking (seq 1) should be first, tool_use (seq 2) should be second
       expect(response.body.messages[0]).toMatchObject({
         id: 'msg-thinking',
         type: 'thinking',
@@ -567,11 +589,11 @@ describe('Sessions Routes', () => {
 
       // Assert
       expect(response.body.error).toBe('Bad Request');
-      expect(response.body.message).toContain('Title is required');
+      expect(response.body.code).toBe('VALIDATION_ERROR');
     });
 
     it('should return 400 when title is empty string', async () => {
-      // Act - Use valid UUID to reach validation
+      // Act - Use valid UUID to reach validation (Zod trims before min check)
       const response = await request(app)
         .patch(`/api/chat/sessions/${PATCH_VALIDATION_UUID}`)
         .send({ title: '   ' })
@@ -579,6 +601,7 @@ describe('Sessions Routes', () => {
 
       // Assert
       expect(response.body.error).toBe('Bad Request');
+      expect(response.body.message).toContain('Title is required');
     });
 
     it('should return 400 when title exceeds 500 characters', async () => {
@@ -588,8 +611,8 @@ describe('Sessions Routes', () => {
         .send({ title: 'a'.repeat(501) })
         .expect(400);
 
-      // Assert
-      expect(response.body.message).toContain('500 characters');
+      // Assert - Zod error message format
+      expect(response.body.message).toContain('500');
     });
 
     it('should return 404 when session does not exist or user lacks access', async () => {

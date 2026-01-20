@@ -143,15 +143,15 @@ export const useConnectionStore = create<ConnectionStore>()(
 export const selectConnectionMessage = (state: ConnectionStore): string | null => {
   switch (state.status) {
     case 'connecting':
-      return 'Conectando al servidor...';
+      return 'Connecting to server...';
     case 'reconnecting':
-      return `Reconectando... (intento ${state.reconnectAttempt}/${state.maxReconnectAttempts})`;
+      return `Reconnecting... (attempt ${state.reconnectAttempt}/${state.maxReconnectAttempts})`;
     case 'failed':
-      return state.lastError ?? 'No se pudo conectar al servidor';
+      return state.lastError ?? 'Could not connect to server';
     case 'disconnected':
       // Only show message if was previously connected
       if (state.lastConnectedAt !== null) {
-        return 'Desconectado del servidor';
+        return 'Disconnected from server';
       }
       return null;
     default:

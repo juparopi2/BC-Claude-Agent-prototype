@@ -78,13 +78,15 @@ describe('ApiClient', () => {
   });
 
   describe('Sessions', () => {
-    it('should get all sessions', async () => {
+    it('should get all sessions with pagination', async () => {
       const result = await api.getSessions();
 
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data).toHaveLength(2);
-        expect(result.data[0]?.id).toBe(mockSessions[0]?.id);
+        expect(result.data.sessions).toHaveLength(2);
+        expect(result.data.sessions[0]?.id).toBe(mockSessions[0]?.id);
+        expect(result.data.pagination.hasMore).toBe(false);
+        expect(result.data.pagination.nextCursor).toBe(null);
       }
     });
 

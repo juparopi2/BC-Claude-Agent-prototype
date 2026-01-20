@@ -158,9 +158,15 @@ export const handlers = [
     return HttpResponse.json(mockUser);
   }),
 
-  // Get sessions (wrapped in { sessions: [...] })
+  // Get sessions (paginated response)
   http.get(`${API_URL}/api/chat/sessions`, () => {
-    return HttpResponse.json({ sessions: mockSessions });
+    return HttpResponse.json({
+      sessions: mockSessions,
+      pagination: {
+        hasMore: false,
+        nextCursor: null,
+      },
+    });
   }),
 
   // Get single session (returns Session directly)

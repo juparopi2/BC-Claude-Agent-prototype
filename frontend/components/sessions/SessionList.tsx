@@ -1,31 +1,42 @@
 'use client';
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useSessionStore } from '@/src/domains/session';
+import { groupSessionsByDate } from '@/src/domains/session/utils/dateGrouping';
 import { getSocketClient } from '@/src/infrastructure/socket';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Plus, MessageSquare, AlertCircle } from 'lucide-react';
-import SessionItem from './SessionItem';
+import { Plus, MessageSquare, AlertCircle, Loader2 } from 'lucide-react';
+import SessionGroup from './SessionGroup';
 
 export default function SessionList() {
   const router = useRouter();
   const pathname = usePathname();
 
   const rawSessions = useSessionStore((s) => s.sessions || []);
+  const isLoading = useSessionStore((s) => s.isLoading);
+  const isLoadingMore = useSessionStore((s) => s.isLoadingMore);
+  const hasMoreSessions = useSessionStore((s) => s.hasMoreSessions);
+  const error = useSessionStore((s) => s.error);
+  const fetchSessions = useSessionStore((s) => s.fetchSessions);
+  const fetchMoreSessions = useSessionStore((s) => s.fetchMoreSessions);
+  const setSessionTitle = useSessionStore((s) => s.setSessionTitle);
+
   // Sort sessions by updated_at descending (newest first)
-  const sessions = useMemo(
+  const sortedSessions = useMemo(
     () => [...rawSessions].sort((a, b) =>
       new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
     ),
     [rawSessions]
   );
-  const isLoading = useSessionStore((s) => s.isLoading);
-  const error = useSessionStore((s) => s.error);
-  const fetchSessions = useSessionStore((s) => s.fetchSessions);
-  const setSessionTitle = useSessionStore((s) => s.setSessionTitle);
+
+  // Group sessions by date
+  const groupedSessions = useMemo(
+    () => groupSessionsByDate(sortedSessions),
+    [sortedSessions]
+  );
 
   // Extract current sessionId from pathname (/chat/xxx)
   const currentSessionId = pathname?.startsWith('/chat/') ? pathname.split('/')[2] : null;
@@ -42,6 +53,16 @@ export default function SessionList() {
       unsubscribe();
     };
   }, [fetchSessions, setSessionTitle]);
+
+  // Handle scroll for infinite loading
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLDivElement;
+    const nearBottom = target.scrollHeight - target.scrollTop <= target.clientHeight + 100;
+
+    if (nearBottom && hasMoreSessions && !isLoadingMore) {
+      fetchMoreSessions();
+    }
+  }, [fetchMoreSessions, hasMoreSessions, isLoadingMore]);
 
   const handleNewChat = () => {
     // Navigate to /new page instead of creating empty session
@@ -69,10 +90,10 @@ export default function SessionList() {
       </div>
 
       {/* Sessions List */}
-      <ScrollArea className="flex-1">
-        <div className="p-2 space-y-1">
-          {/* Loading State */}
-          {isLoading && sessions.length === 0 && (
+      <ScrollArea className="flex-1" onScrollCapture={handleScroll}>
+        <div className="p-2 space-y-4">
+          {/* Loading State (initial load) */}
+          {isLoading && sortedSessions.length === 0 && (
             <>
               {Array.from({ length: 5 }).map((_, i) => (
                 <div key={i} className="px-3 py-2 space-y-2">
@@ -100,7 +121,7 @@ export default function SessionList() {
           )}
 
           {/* Empty State */}
-          {!isLoading && !error && sessions.length === 0 && (
+          {!isLoading && !error && sortedSessions.length === 0 && (
             <div className="px-3 py-12 text-center space-y-3">
               <div className="flex justify-center">
                 <MessageSquare className="size-12 text-muted-foreground/50" />
@@ -114,14 +135,21 @@ export default function SessionList() {
             </div>
           )}
 
-          {/* Sessions */}
-          {sessions.map((session) => (
-            <SessionItem
-              key={session.id}
-              session={session}
-              isActive={session.id === currentSessionId}
+          {/* Session Groups */}
+          {groupedSessions.map((group) => (
+            <SessionGroup
+              key={group.key}
+              group={group}
+              currentSessionId={currentSessionId}
             />
           ))}
+
+          {/* Loading More Indicator */}
+          {isLoadingMore && (
+            <div className="flex justify-center py-4">
+              <Loader2 className="size-5 animate-spin text-muted-foreground" />
+            </div>
+          )}
         </div>
       </ScrollArea>
     </div>

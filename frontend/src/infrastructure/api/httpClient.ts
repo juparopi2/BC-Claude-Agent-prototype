@@ -99,6 +99,30 @@ export interface CreateSessionRequest {
 }
 
 /**
+ * Get sessions request options (cursor-based pagination)
+ */
+export interface GetSessionsOptions {
+  limit?: number;
+  before?: string; // ISO 8601 datetime cursor
+}
+
+/**
+ * Pagination info for cursor-based pagination
+ */
+export interface PaginationInfo {
+  hasMore: boolean;
+  nextCursor: string | null;
+}
+
+/**
+ * Paginated sessions response
+ */
+export interface PaginatedSessionsResponse {
+  sessions: Session[];
+  pagination: PaginationInfo;
+}
+
+/**
  * Update session request
  */
 export interface UpdateSessionRequest {
@@ -285,14 +309,20 @@ export class ApiClient {
   // ============================================
 
   /**
-   * Get all sessions for current user
+   * Get sessions for current user with cursor-based pagination
+   *
+   * @param options - Pagination options (limit, before cursor)
+   * @returns Paginated sessions response
    */
-  async getSessions(): Promise<ApiResponse<Session[]>> {
-    const result = await this.request<{ sessions: Session[] }>('GET', '/api/chat/sessions');
-    if (result.success) {
-      return { success: true, data: result.data.sessions };
-    }
-    return result;
+  async getSessions(options?: GetSessionsOptions): Promise<ApiResponse<PaginatedSessionsResponse>> {
+    const params = new URLSearchParams();
+    if (options?.limit) params.set('limit', options.limit.toString());
+    if (options?.before) params.set('before', options.before);
+
+    const query = params.toString();
+    const path = `/api/chat/sessions${query ? `?${query}` : ''}`;
+
+    return this.request<PaginatedSessionsResponse>('GET', path);
   }
 
   /**

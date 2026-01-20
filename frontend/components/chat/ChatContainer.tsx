@@ -149,9 +149,21 @@ export default function ChatContainer() {
   // Intersection Observer for top sentinel
   useEffect(() => {
     const sentinel = topSentinelRef.current;
-    if (!sentinel || !hasMoreMessages || isLoadingMoreMessages) return;
+    const scrollContainer = scrollViewportRef.current;
+
+    // Debug log for setup
+    console.log('[InfiniteScroll] Setup:', {
+      sentinel: !!sentinel,
+      scrollContainer: !!scrollContainer,
+      hasMoreMessages,
+      isLoadingMoreMessages
+    });
+
+    if (!sentinel || !scrollContainer || !hasMoreMessages || isLoadingMoreMessages) return;
 
     const observer = new IntersectionObserver((entries) => {
+      console.log('[InfiniteScroll] Intersection:', entries[0].isIntersecting);
+
       if (entries[0].isIntersecting && hasMoreMessages && !isLoadingMoreMessages) {
         // Capture current scroll height before triggering load
         if (scrollViewportRef.current) {
@@ -160,14 +172,14 @@ export default function ChatContainer() {
         loadOlderMessages();
       }
     }, {
-      root: scrollViewportRef.current, // Use the scroll viewport as root
-      rootMargin: '100px 0px 0px 0px', // Trigger slighlty before top
+      root: scrollContainer, // Use ScrollArea viewport as root
+      rootMargin: '100px 0px 0px 0px', // Trigger slightly before top
       threshold: 0.1
     });
 
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [hasMoreMessages, isLoadingMoreMessages, loadOlderMessages]);
+  }, [isEmpty, hasMoreMessages, isLoadingMoreMessages, loadOlderMessages]);
 
 
   // Show welcome state when no messages and agent not busy

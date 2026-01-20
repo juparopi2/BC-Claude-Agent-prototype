@@ -31,7 +31,7 @@ export interface UsePaginationReturn {
 /**
  * Default page size for loading messages
  */
-const DEFAULT_PAGE_SIZE = 50;
+const DEFAULT_PAGE_SIZE = 5;
 
 /**
  * Hook for paginating chat messages.

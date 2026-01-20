@@ -27,21 +27,53 @@ The system uses an **Event Sourcing** architecture with two-phase persistence an
 The code is structured so that the folder structure "screams" what the system does.
 
 ### 2.1 Core Structure (`backend/src`)
--   **`domains/`**: Pure business logic, agnostic of external frameworks.
-    -   `agent/orchestration`: Flow control logic (`AgentOrchestrator`).
-    -   `agent/streaming`: Stream processing (`StreamEventRouter`, `GraphStreamProcessor`).
-    -   `agent/persistence`: Saving coordination (`PersistenceCoordinator`).
-    -   `agent/tools`: Tool execution and deduplication.
-    -   `agent/context`: RAG context preparation (`FileContextPreparer`).
+-   **`domains/`**: Pure business logic, agnostic of external frameworks. Contains 11 domains:
+    -   `agent/`: Main agent domain with subdomains:
+        -   `citations/`: CitationExtractor (extraction from RAG results)
+        -   `context/`: FileContextPreparer, SemanticSearchHandler
+        -   `emission/`: EventIndexTracker
+        -   `orchestration/`: Flow control logic (`AgentOrchestrator`)
+        -   `persistence/`: Saving coordination (`PersistenceCoordinator`)
+        -   `tools/`: ToolLifecycleManager, ToolEventDeduplicator
+        -   `usage/`: UsageTracker
+    -   `approval/`: Human-in-the-Loop flow (ApprovalManager)
+    -   `auth/`: Authentication and middleware (OAuth, Express middleware)
+    -   `billing/`: Billing and cost tracking (UsageTrackingService, QuotaValidatorService)
+    -   `business-central/`: Business Central integration (reserved)
+    -   `chat/`: WebSocket chat abstraction
+    -   `files/`: File management (upload, processing)
+    -   `queue/`: BullMQ abstraction (Message Queue)
+    -   `search/`: Semantic search
+    -   `sessions/`: Session management (schemas, validations, pagination)
+    -   `settings/`: User preferences
 -   **`modules/`**: Concrete implementations of agents and graphs (LangGraph).
     -   `agents/orchestrator`: Main graph and routing (`router.ts`, `graph.ts`).
     -   `agents/business-central`: BC Agent and its tools.
     -   `agents/rag-knowledge`: RAG Agent.
 -   **`shared/`**: Shared code and abstractions.
-    -   `providers/`: LLM Adapters (e.g., `AnthropicStreamAdapter`) to normalize events.
--   **`services/`**: Infrastructure services (WebSocket, Files, EventStore).
+    -   `providers/`: LLM Adapters (e.g., `AnthropicAdapter`) to normalize events.
+-   **`services/`**: Infrastructure services (15 directories: WebSocket, Files, EventStore, Sessions, etc.).
 
-### 2.2 Key Principles
+### 2.2 Frontend Structure (`frontend/src`)
+-   **`domains/`**: Feature-based organization with Zustand stores and hooks. Contains 8 domains:
+    -   `auth/`: Authentication store and session health hook
+    -   `chat/`: Messages, agent state, approvals, citations (4 stores, 6+ hooks)
+    -   `connection/`: WebSocket connection state management
+    -   `files/`: File management - upload, selection, preview, etc. (8 stores, 9 hooks)
+    -   `notifications/`: Job failure notifications hook
+    -   `session/`: Session list management store
+    -   `settings/`: User preferences (theme, etc.)
+    -   `ui/`: UI preferences store
+-   **`components/`**: React components organized by feature:
+    -   `chat/`: ChatContainer, MessageList, ChatInput
+    -   `files/`: FileItem, FileUploader, FilePreview
+    -   `sessions/`: SessionList, SessionItem
+    -   `settings/`: SettingsTabs, ThemeSelector
+    -   `ui/`: Shared UI components (shadcn/ui based)
+-   **`lib/`**: Utilities and API clients
+-   **`app/`**: Next.js App Router pages
+
+### 2.3 Key Principles
 1.  **Single Responsibility**: Each service does 1 thing (e.g., `AgentOrchestrator` coordinates, does not implement persistence logic).
 2.  **Provider Agnostic**: All business logic MUST use normalized events (`INormalizedStreamEvent`). Adapters (`AnthropicStreamAdapter`) isolate provider complexity.
 3.  **Two-Phase Persistence**:
@@ -52,36 +84,41 @@ The code is structured so that the folder structure "screams" what the system do
 
 ## 3. Critical Flows
 
-### 3.1 Message Processing (The 6-Layer Stack)
-A user message flows through 6 strict layers:
+### 3.1 Message Processing (The 8-Layer Stack)
+A user message flows through 8 strict layers (synchronous execution):
 
 1.  **WebSocket Layer** (`ChatMessageHandler.ts`):
     -   Validates session and authentication.
     -   Delegates to `AgentOrchestrator`.
 
 2.  **Orchestration Layer** (`AgentOrchestrator.ts`):
+    -   Creates ExecutionContext.
     -   Prepares context (files + search).
     -   Persists user message (`PersistenceCoordinator`).
-    -   Initializes the LangGraph graph.
+    -   Executes graph synchronously.
 
-3.  **Routing Layer** (`StreamEventRouter.ts`):
-    -   Intercepts raw LangChain events.
-    -   Routes `on_chat_model_stream` -> StreamProcessor.
-    -   Routes `tool_executions` -> ToolProcessor.
+3.  **Routing Layer** (`router.ts`):
+    -   Decides which agent processes the request (BC, RAG, Orchestrator).
+    -   Routes based on slash commands, keywords, context, or LLM classification.
 
-4.  **Stream Processing Layer** (`GraphStreamProcessor.ts`):
-    -   Uses `StreamAdapter` to normalize events.
-    -   Accumulates "thinking" (extended thought) and final content.
-    -   Emits `thinking_chunk` and `message_chunk` (transient).
+4.  **Execution Layer** (`graph.ts` + Agents):
+    -   LangGraph StateGraph with agent nodes.
+    -   Synchronous execution via `graph.invoke()`.
 
-5.  **Tool Layer** (`ToolExecutionProcessor.ts`):
-    -   Deduplicates executions.
-    -   Emits `tool_use` and `tool_result` immediately to frontend.
-    -   Persists tool events asynchronously.
+5.  **Normalization Layer** (`BatchResultNormalizer.ts`):
+    -   Converts AgentState to NormalizedAgentEvent[].
+    -   Orders events by originalIndex.
 
-6.  **Persistence Layer** (`PersistenceCoordinator.ts`):
+6.  **Pre-allocation Layer** (`EventStore.reserveSequenceNumbers()`):
+    -   Reserves sequence numbers atomically via Redis INCRBY.
+
+7.  **Tool Lifecycle Layer** (`ToolLifecycleManager.ts`):
+    -   Coordinates tool_request + tool_response.
+    -   Manages tool execution deduplication.
+
+8.  **Persistence Layer** (`PersistenceCoordinator.ts`):
     -   Guarantees global order with `sequenceNumber`.
-    -   Handles "Append-Only" strategy in Redis and deferred SQL persistence.
+    -   Handles "Append-Only" strategy in EventStore + MessageQueue (Two-Phase).
 
 ### 3.2 Agent Routing (`orchestrator/router.ts`)
 The system decides which agent to activate based on hybrid logic:
@@ -103,6 +140,7 @@ The system decides which agent to activate based on hybrid logic:
 -   **Add a new BC tool**: `backend/src/modules/agents/business-central/tools.ts`
 -   **Change routing logic**: `backend/src/modules/agents/orchestrator/router.ts`
 -   **Adjust socket event formats**: Check `docs/plans/Refactor/contracts/02-CONTRATO-BACKEND-FRONTEND.md`. Emission logic is in `backend/src/domains/agent/emission`.
+-   **Pagination configuration**: See `docs/backend/02-PAGINATION.md`. Limits: Sessions (20/50), Messages (50/100), Files (50/100).
 
 ### 4.2 Golden Rules (Pre-Commit)
 1.  **Strict Typing**: No `any`. Use `unknown` with Zod validation if necessary.

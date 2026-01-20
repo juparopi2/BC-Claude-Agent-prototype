@@ -20,11 +20,11 @@ backend/src/
 │
 ├── domains/                    # Lógica de negocio pura (agnóstica de frameworks)
 │   ├── agent/                  # Dominio principal del agente
+│   │   ├── citations/          # CitationExtractor (extracción de citas de RAG)
+│   │   ├── context/            # FileContextPreparer, SemanticSearchHandler
+│   │   ├── emission/           # EventIndexTracker
 │   │   ├── orchestration/      # AgentOrchestrator, ExecutionContextSync
 │   │   ├── persistence/        # PersistenceCoordinator (Two-Phase)
-│   │   ├── context/            # FileContextPreparer, SemanticSearchHandler
-│   │   ├── citations/          # CitationExtractor (extracción de citas de RAG)
-│   │   ├── emission/           # EventIndexTracker
 │   │   ├── tools/              # ToolLifecycleManager, ToolEventDeduplicator
 │   │   └── usage/              # UsageTracker
 │   ├── approval/               # Flujo Human-in-the-Loop (ApprovalManager)
@@ -33,10 +33,13 @@ backend/src/
 │   │   └── oauth/              # MicrosoftOAuthService
 │   ├── billing/                # Billing y tracking de costos
 │   │   └── tracking/           # UsageTrackingService, QuotaValidatorService
-│   ├── business-central/       # (Placeholder - estructura reservada)
-│   ├── chat/                   # (Placeholder - estructura reservada)
-│   ├── files/                  # (Placeholder - estructura reservada)
-│   └── search/                 # (Placeholder - estructura reservada)
+│   ├── business-central/       # Integración con Business Central (estructura reservada)
+│   ├── chat/                   # Abstracción de chat WebSocket
+│   ├── files/                  # Gestión de archivos (upload, processing)
+│   ├── queue/                  # Abstracción de BullMQ (Message Queue)
+│   ├── search/                 # Búsqueda semántica
+│   ├── sessions/               # Gestión de sesiones (schemas, validations)
+│   └── settings/               # Preferencias de usuario
 │
 ├── modules/                    # Implementaciones concretas de agentes (LangGraph)
 │   └── agents/

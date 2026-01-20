@@ -66,7 +66,7 @@ export default function ChatPage() {
 
       // Load messages for this session
       const api = getApiClient();
-      const result = await api.getMessages(sessionId);
+      const result = await api.getMessages(sessionId, { limit: 5 });
       if (result.success) {
         messageStore.getState().setMessages(result.data);
 

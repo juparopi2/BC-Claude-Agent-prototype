@@ -154,6 +154,14 @@ export type {
   AuthRefreshedEventPayload,
   UserProfileWithExpiry,
 
+  // Settings types
+  ThemePreference,
+  SettingsTabId,
+  UserSettings,
+  UserSettingsResponse,
+  UpdateUserSettingsRequest,
+  UserSettingsRow,
+
   // Job event types (Phase 3, Task 3.3)
   JobQueueName,
   JobFailureContext,
@@ -251,6 +259,13 @@ export {
   type AuthSessionStatus,
   type AuthWsEventType,
   type AuthErrorCode,
+  // Settings Constants
+  SETTINGS_THEME,
+  SETTINGS_DEFAULT_THEME,
+  SETTINGS_THEME_VALUES,
+  SETTINGS_STORAGE_KEY,
+  SETTINGS_API,
+  SETTINGS_TAB,
   // Job WebSocket Events (Phase 3, Task 3.3)
   JOB_WS_CHANNELS,
   type JobWsChannel,
@@ -267,4 +282,7 @@ export {
   bulkUploadInitRequestSchema,
   bulkUploadCompleteRequestSchema,
   chatMessageSchema,
+  // Settings schemas
+  themePreferenceSchema,
+  updateUserSettingsSchema,
 } from './schemas';

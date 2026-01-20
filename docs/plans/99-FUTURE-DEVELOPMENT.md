@@ -82,6 +82,12 @@ Mejoras perceptibles para el usuario final.
 **Specs:** DB Schema para agentes, selector en UI, theming dinámico (colores/sombras por agente), soporte multi-agente.
 **Estimación:** 7 días
 
+
+### Graphing Agent (Data Visualization) (Alta)
+**Necesidad:** Permitir al usuario visualizar información comparativa o numérica (ej. ventas año actual vs anterior) mediante diagramas generados dinámicamente.
+**Specs:** Agente intermedio que procesa datos numéricos de otros agentes (BC/RAG). Responsable de cálculos, aproximaciones, selección del tipo de gráfico óptimo (ej. Tremor UI) y formateo de datos/leyendas para una visualización correcta. Requiere lógica en Backend y componentes dinámicos en Frontend.
+**Estimación:** 7 días
+
 ---
 
 ## 🟢 Integraciones

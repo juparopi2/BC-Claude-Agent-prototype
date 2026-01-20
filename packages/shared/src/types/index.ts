@@ -200,6 +200,16 @@ export type {
   UserProfileWithExpiry,
 } from './auth.types';
 
+// Settings types
+export type {
+  ThemePreference,
+  SettingsTabId,
+  UserSettings,
+  UserSettingsResponse,
+  UpdateUserSettingsRequest,
+  UserSettingsRow,
+} from './settings.types';
+
 // Job event types (Phase 3, Task 3.3)
 export type {
   JobQueueName,

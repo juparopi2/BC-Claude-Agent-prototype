@@ -6,7 +6,8 @@
 
 import { http, HttpResponse } from 'msw';
 import type { Session, Message, UserProfile, TokenUsage } from '@/src/infrastructure/api';
-import type { ParsedFile } from '@bc-agent/shared';
+import type { ParsedFile, UserSettingsResponse, ThemePreference } from '@bc-agent/shared';
+import { SETTINGS_DEFAULT_THEME } from '@bc-agent/shared';
 
 // Base URL for mocking
 const API_URL = 'http://localhost:3002';
@@ -78,6 +79,11 @@ export const mockTokenUsage: TokenUsage = {
   total_output_tokens: 1500,
   total_thinking_tokens: 200,
   message_count: 50,
+};
+
+export const mockUserSettings: UserSettingsResponse = {
+  theme: SETTINGS_DEFAULT_THEME,
+  updatedAt: null,
 };
 
 export const mockFiles: ParsedFile[] = [
@@ -230,6 +236,21 @@ export const handlers = [
     return HttpResponse.json(mockTokenUsage);
   }),
 
+  // Get user settings
+  http.get(`${API_URL}/api/user/settings`, () => {
+    return HttpResponse.json(mockUserSettings);
+  }),
+
+  // Update user settings
+  http.patch(`${API_URL}/api/user/settings`, async ({ request }) => {
+    const body = (await request.json()) as { theme?: ThemePreference };
+    const updatedSettings: UserSettingsResponse = {
+      theme: body.theme ?? mockUserSettings.theme,
+      updatedAt: new Date().toISOString(),
+    };
+    return HttpResponse.json(updatedSettings);
+  }),
+
   // Get files
   http.get(`${API_URL}/api/files`, ({ request }) => {
     const url = new URL(request.url);
@@ -306,5 +327,20 @@ export const errorHandlers = {
 
   networkError: http.get(`${API_URL}/api/chat/sessions`, () => {
     return HttpResponse.error();
+  }),
+
+  // Settings error handlers
+  settingsServerError: http.get(`${API_URL}/api/user/settings`, () => {
+    return HttpResponse.json(
+      { error: 'Internal Server Error', message: 'Failed to fetch settings', code: 'INTERNAL_ERROR' },
+      { status: 500 }
+    );
+  }),
+
+  settingsUpdateError: http.patch(`${API_URL}/api/user/settings`, () => {
+    return HttpResponse.json(
+      { error: 'Internal Server Error', message: 'Failed to update settings', code: 'INTERNAL_ERROR' },
+      { status: 500 }
+    );
   }),
 };

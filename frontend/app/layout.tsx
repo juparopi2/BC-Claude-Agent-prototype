@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "sonner";
-import { AuthProvider } from "@/components/providers";
+import { AuthProvider, ThemeProvider } from "@/components/providers";
 import { GlobalBanners } from "@/components/layout";
 import "./globals.css";
 
@@ -26,15 +26,17 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <AuthProvider>
-          <GlobalBanners />
-          {children}
-        </AuthProvider>
-        <Toaster position="bottom-right" />
+        <ThemeProvider>
+          <AuthProvider>
+            <GlobalBanners />
+            {children}
+          </AuthProvider>
+          <Toaster position="bottom-right" />
+        </ThemeProvider>
       </body>
     </html>
   );

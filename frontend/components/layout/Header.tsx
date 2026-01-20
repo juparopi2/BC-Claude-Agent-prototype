@@ -9,6 +9,7 @@
  * @module components/layout/Header
  */
 
+import { useState } from 'react';
 import { PanelLeft, PanelRight, LogOut, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -22,6 +23,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useAuthStore, selectUserDisplayName, selectUserInitials } from '@/src/domains/auth';
+import { SettingsModal } from '@/components/settings';
 import { cn } from '@/lib/utils';
 
 export interface HeaderProps {
@@ -41,6 +43,7 @@ export function Header({
   const logout = useAuthStore((state) => state.logout);
   const displayName = useAuthStore(selectUserDisplayName);
   const initials = useAuthStore(selectUserInitials);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   return (
     <header className="h-16 border-b bg-background px-4 flex items-center justify-between">
@@ -97,7 +100,7 @@ export function Header({
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem disabled>
+            <DropdownMenuItem onClick={() => setSettingsOpen(true)}>
               <Settings />
               Settings
             </DropdownMenuItem>
@@ -108,6 +111,9 @@ export function Header({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+
+      {/* Settings Modal */}
+      <SettingsModal open={settingsOpen} onOpenChange={setSettingsOpen} />
     </header>
   );
 }

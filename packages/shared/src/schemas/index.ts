@@ -255,6 +255,32 @@ export const bulkUploadCompleteRequestSchema = z.object({
 
 export type BulkUploadCompleteRequestInput = z.infer<typeof bulkUploadCompleteRequestSchema>;
 
+// ============================================
+// Settings Schemas
+// ============================================
+
+import { SETTINGS_THEME_VALUES } from '../constants/settings.constants';
+
+/**
+ * Theme Preference Schema
+ * Validates theme values against allowed options
+ */
+export const themePreferenceSchema = z.enum(
+  SETTINGS_THEME_VALUES as [string, ...string[]]
+);
+
+export type ThemePreferenceInput = z.infer<typeof themePreferenceSchema>;
+
+/**
+ * Update User Settings Schema
+ * Validates PATCH /api/user/settings requests
+ */
+export const updateUserSettingsSchema = z.object({
+  theme: themePreferenceSchema.optional(),
+});
+
+export type UpdateUserSettingsInput = z.infer<typeof updateUserSettingsSchema>;
+
 /**
  * Re-export Zod for consumers who need to extend schemas
  */

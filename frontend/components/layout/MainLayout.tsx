@@ -156,8 +156,8 @@ export function MainLayout({
         <ResizablePanelGroup direction="horizontal" className="flex-1">
           {/* Center Panel */}
           <ResizablePanel
-            defaultSize={rightPanelVisible ? 75 : 100}
-            minSize={40}
+            defaultSize={rightPanelVisible ? 60 : 100}
+            minSize={30}
             className="bg-background"
           >
           <div className="h-full overflow-hidden">
@@ -182,9 +182,9 @@ export function MainLayout({
             {/* Right Panel */}
             <ResizablePanel
               ref={rightPanelRef}
-              defaultSize={25}
+              defaultSize={40}
               minSize={15}
-              maxSize={35}
+              maxSize={70}
               collapsible={true}
               collapsedSize={0}
               onCollapse={handleRightCollapse}

@@ -39,6 +39,7 @@ import usageRoutes from './routes/usage';
 import billingRoutes from './routes/billing';
 import gdprRoutes from './routes/gdpr';
 import adminRoutes from './routes/admin';
+import settingsRoutes from './routes/settings';
 import { authenticateMicrosoft } from '@domains/auth/middleware/auth-oauth';
 import { httpLogger } from '@shared/middleware/logging';
 import { validateSessionOwnership } from '@shared/utils/session-ownership';
@@ -789,6 +790,8 @@ function configureRoutes(): void {
     app.use('/api/gdpr', gdprRoutes);
     // Admin endpoints (requires database)
     app.use('/api/admin', adminRoutes);
+    // User settings endpoints (requires database)
+    app.use('/api/user', settingsRoutes);
   }
 
   // Client log ingestion endpoint

@@ -9,10 +9,16 @@
 
 import { create } from 'zustand';
 import { subscribeWithSelector, persist } from 'zustand/middleware';
+import { ErrorCode } from '@bc-agent/shared';
 import type { UserProfile } from '@/src/infrastructure/api';
 import { getApiClient } from '@/src/infrastructure/api';
 import { getSocketClient } from '@/src/infrastructure/socket/SocketClient';
 import { env } from '@/lib/config/env';
+
+/**
+ * Auth failure reasons to distinguish between different authentication failures
+ */
+export type AuthFailureReason = 'session_expired' | 'not_authenticated' | 'network_error' | null;
 
 /**
  * Auth store state
@@ -28,6 +34,8 @@ export interface AuthState {
   error: string | null;
   /** Last auth check timestamp */
   lastChecked: number | null;
+  /** Reason for authentication failure (session_expired, not_authenticated, network_error) */
+  authFailureReason: AuthFailureReason;
 }
 
 /**
@@ -63,6 +71,7 @@ const initialState: AuthState = {
   isLoading: true, // Start loading to check auth on mount
   error: null,
   lastChecked: null,
+  authFailureReason: null,
 };
 
 /**
@@ -75,7 +84,7 @@ export const useAuthStore = create<AuthStore>()(
         ...initialState,
 
         checkAuth: async () => {
-          set({ isLoading: true, error: null });
+          set({ isLoading: true, error: null, authFailureReason: null });
 
           const api = getApiClient();
           const result = await api.checkAuth();
@@ -87,6 +96,7 @@ export const useAuthStore = create<AuthStore>()(
               user: user || null,
               isLoading: false,
               lastChecked: Date.now(),
+              authFailureReason: null,
             });
 
             // Connect socket and join user room for file events (D25)
@@ -104,12 +114,21 @@ export const useAuthStore = create<AuthStore>()(
 
             return authenticated;
           } else {
+            // Determine the failure reason based on the error code
+            let authFailureReason: AuthFailureReason = 'not_authenticated';
+            if (result.error.code === ErrorCode.SESSION_EXPIRED) {
+              authFailureReason = 'session_expired';
+            } else if (result.error.code === ErrorCode.SERVICE_UNAVAILABLE) {
+              authFailureReason = 'network_error';
+            }
+
             set({
               isAuthenticated: false,
               user: null,
               isLoading: false,
               error: result.error.message,
               lastChecked: Date.now(),
+              authFailureReason,
             });
             return false;
           }
@@ -145,10 +164,11 @@ export const useAuthStore = create<AuthStore>()(
       }),
       {
         name: 'bc-agent-auth',
-        // Only persist user and isAuthenticated
+        // Persist user, isAuthenticated, and authFailureReason
         partialize: (state) => ({
           user: state.user,
           isAuthenticated: state.isAuthenticated,
+          authFailureReason: state.authFailureReason,
         }),
       }
     )

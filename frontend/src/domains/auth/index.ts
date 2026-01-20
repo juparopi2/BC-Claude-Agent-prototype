@@ -21,4 +21,5 @@ export {
   type AuthState,
   type AuthActions,
   type AuthStore,
+  type AuthFailureReason,
 } from './stores/authStore';

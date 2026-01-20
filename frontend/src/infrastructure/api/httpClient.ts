@@ -217,7 +217,7 @@ export class ApiClient {
 
   /**
    * Check if user is authenticated
-   * Uses /api/auth/me and treats 401 as "not authenticated" (not an error)
+   * Returns success: false with error details for 401 (to distinguish session expired vs not authenticated)
    */
   async checkAuth(): Promise<ApiResponse<{ authenticated: boolean; user?: UserProfile }>> {
     try {
@@ -225,11 +225,22 @@ export class ApiClient {
         credentials: 'include',
       });
 
-      // 401 = not authenticated (treat as success with authenticated: false)
+      // 401 = not authenticated - return as error with code from backend
       if (response.status === 401) {
+        const errorData = await response.json().catch(() => ({}));
+
+        if (isApiErrorResponse(errorData)) {
+          return { success: false, error: errorData };
+        }
+
+        // Fallback error if response is not structured
         return {
-          success: true,
-          data: { authenticated: false, user: undefined },
+          success: false,
+          error: {
+            error: 'Unauthorized',
+            message: 'Authentication required',
+            code: ErrorCode.UNAUTHORIZED,
+          },
         };
       }
 
@@ -243,10 +254,14 @@ export class ApiClient {
         data: { authenticated: true, user },
       };
     } catch {
-      // Network errors or other issues - treat as not authenticated
+      // Network errors or other issues
       return {
-        success: true,
-        data: { authenticated: false, user: undefined },
+        success: false,
+        error: {
+          error: 'Network Error',
+          message: 'Failed to connect to server',
+          code: ErrorCode.SERVICE_UNAVAILABLE,
+        },
       };
     }
   }

@@ -24,6 +24,7 @@ describe('AuthStore', () => {
         isLoading: true,
         error: null,
         lastChecked: null,
+        authFailureReason: null,
       });
     });
   });
@@ -40,9 +41,10 @@ describe('AuthStore', () => {
       expect(state.user).toEqual(mockUser);
       expect(state.isLoading).toBe(false);
       expect(state.lastChecked).toBeDefined();
+      expect(state.authFailureReason).toBeNull();
     });
 
-    it('should handle unauthorized response gracefully', async () => {
+    it('should handle unauthorized response with not_authenticated reason', async () => {
       server.use(errorHandlers.unauthorized);
 
       await act(async () => {
@@ -53,9 +55,24 @@ describe('AuthStore', () => {
       const state = useAuthStore.getState();
       expect(state.isAuthenticated).toBe(false);
       expect(state.user).toBeNull();
-      // Note: 401 is treated as "not authenticated" (not an error)
-      // This is intentional - auth check doesn't "fail", it just returns not authenticated
-      expect(state.error).toBeNull();
+      expect(state.error).toBe('Authentication required');
+      expect(state.authFailureReason).toBe('not_authenticated');
+      expect(state.isLoading).toBe(false);
+    });
+
+    it('should handle session expired with session_expired reason', async () => {
+      server.use(errorHandlers.sessionExpired);
+
+      await act(async () => {
+        const isAuth = await useAuthStore.getState().checkAuth();
+        expect(isAuth).toBe(false);
+      });
+
+      const state = useAuthStore.getState();
+      expect(state.isAuthenticated).toBe(false);
+      expect(state.user).toBeNull();
+      expect(state.error).toBe('Your session has expired');
+      expect(state.authFailureReason).toBe('session_expired');
       expect(state.isLoading).toBe(false);
     });
   });

@@ -289,6 +289,14 @@ export const errorHandlers = {
     );
   }),
 
+  // Session expired - 401 with SESSION_EXPIRED code
+  sessionExpired: http.get(`${API_URL}/api/auth/me`, () => {
+    return HttpResponse.json(
+      { error: 'Unauthorized', message: 'Your session has expired', code: 'SESSION_EXPIRED' },
+      { status: 401 }
+    );
+  }),
+
   serverError: http.get(`${API_URL}/api/chat/sessions`, () => {
     return HttpResponse.json(
       { error: 'Internal Server Error', message: 'An unexpected error occurred', code: 'INTERNAL_ERROR' },

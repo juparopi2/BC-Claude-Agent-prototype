@@ -1,15 +1,25 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/src/domains/auth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2 } from 'lucide-react';
+import { Loader2, AlertTriangle, WifiOff, ShieldAlert } from 'lucide-react';
+
+/**
+ * Alert info for different auth failure scenarios
+ */
+interface AlertInfo {
+  variant: 'warning' | 'error';
+  title: string;
+  message: string;
+  icon: React.ReactNode;
+}
 
 export default function LoginPage() {
   const router = useRouter();
-  const { isAuthenticated, isLoading, error, getLoginUrl } = useAuthStore();
+  const { isAuthenticated, isLoading, error, authFailureReason, getLoginUrl } = useAuthStore();
 
   // AuthProvider already checks auth on mount, no need to duplicate here
 
@@ -22,6 +32,37 @@ export default function LoginPage() {
   const handleLogin = () => {
     window.location.href = getLoginUrl();
   };
+
+  /**
+   * Get alert info based on auth failure reason
+   */
+  const alertInfo = useMemo((): AlertInfo | null => {
+    if (authFailureReason === 'session_expired') {
+      return {
+        variant: 'warning',
+        title: 'Sesión Expirada',
+        message: 'Tu sesión ha expirado. Por favor, inicia sesión nuevamente.',
+        icon: <AlertTriangle className="h-4 w-4" />,
+      };
+    }
+    if (authFailureReason === 'network_error') {
+      return {
+        variant: 'error',
+        title: 'Error de Conexión',
+        message: 'No se pudo conectar al servidor. Verifica tu conexión.',
+        icon: <WifiOff className="h-4 w-4" />,
+      };
+    }
+    if (error && authFailureReason !== 'not_authenticated') {
+      return {
+        variant: 'error',
+        title: 'Error',
+        message: error,
+        icon: <ShieldAlert className="h-4 w-4" />,
+      };
+    }
+    return null;
+  }, [authFailureReason, error]);
 
   if (isLoading) {
     return (
@@ -41,9 +82,19 @@ export default function LoginPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          {error && (
-            <div className="rounded-md bg-destructive/15 p-3 text-sm text-destructive">
-              {error}
+          {alertInfo && (
+            <div
+              className={`rounded-md p-3 text-sm ${
+                alertInfo.variant === 'warning'
+                  ? 'bg-amber-500/15 text-amber-700 dark:text-amber-400'
+                  : 'bg-destructive/15 text-destructive'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                {alertInfo.icon}
+                <span className="font-medium">{alertInfo.title}</span>
+              </div>
+              <p className="mt-1 ml-6">{alertInfo.message}</p>
             </div>
           )}
           

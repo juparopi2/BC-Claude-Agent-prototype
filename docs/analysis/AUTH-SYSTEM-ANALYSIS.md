@@ -216,24 +216,44 @@ checkAuth: async () => {
 - Operaciones fallan silenciosamente
 - No hay advertencia "Tu sesión expira en 5 minutos"
 
-### 2.2 🔴 CRÍTICO: 401 Tratado Como "No Autenticado" (No Como Error)
+### 2.2 ✅ RESUELTO: 401 Ahora Se Distingue Como Error
 
-**Problema**: El frontend trata 401 como éxito con `authenticated: false`.
+**Problema Original**: El frontend trataba 401 como éxito con `authenticated: false`.
 
+**Solución Implementada** (`httpClient.ts`):
 ```typescript
-// httpClient.ts
+// 401 = not authenticated - return as error with code from backend
 if (response.status === 401) {
+  const errorData = await response.json().catch(() => ({}));
+
+  if (isApiErrorResponse(errorData)) {
+    return { success: false, error: errorData };
+  }
+
   return {
-    success: true,  // ❌ Esto NO es un éxito
-    data: { authenticated: false, user: undefined },
+    success: false,
+    error: {
+      error: 'Unauthorized',
+      message: 'Authentication required',
+      code: ErrorCode.UNAUTHORIZED,
+    },
   };
 }
 ```
 
-**Impacto**:
-- Usuario no distingue entre "no logueado" y "sesión expirada"
-- No hay mensaje explicativo de qué pasó
-- UX confusa
+**AuthStore** ahora incluye `authFailureReason`:
+```typescript
+type AuthFailureReason = 'session_expired' | 'not_authenticated' | 'network_error' | null;
+
+// checkAuth() determina la razón basándose en error.code:
+// - SESSION_EXPIRED → 'session_expired'
+// - UNAUTHORIZED → 'not_authenticated'
+// - SERVICE_UNAVAILABLE → 'network_error'
+```
+
+**Login Page** muestra mensajes contextuales:
+- Sesión expirada: Banner amber con "Tu sesión ha expirado"
+- Error de red: Banner rojo con "No se pudo conectar al servidor"
 
 ### 2.3 🔴 CRÍTICO: WebSocket No Refresca Tokens
 
@@ -459,20 +479,37 @@ interface AuthState {
 
 **Esfuerzo**: ~2-4 horas
 
-#### 1.2 Distinguir 401 vs "No Autenticado"
+#### 1.2 Distinguir 401 vs "No Autenticado" ✅ COMPLETADO
 
-**Cambios Frontend** (`httpClient.ts`):
-```typescript
-if (response.status === 401) {
-  return {
-    success: false,  // ✅ Ahora es error
-    error: {
-      code: 'SESSION_EXPIRED',
-      message: 'Tu sesión ha expirado. Por favor, inicia sesión nuevamente.',
-    }
-  };
-}
-```
+**Cambios Implementados**:
+
+1. **`httpClient.ts`** - `checkAuth()` ahora retorna `success: false` para 401:
+   ```typescript
+   if (response.status === 401) {
+     const errorData = await response.json().catch(() => ({}));
+     if (isApiErrorResponse(errorData)) {
+       return { success: false, error: errorData };
+     }
+     return {
+       success: false,
+       error: { error: 'Unauthorized', message: 'Authentication required', code: ErrorCode.UNAUTHORIZED },
+     };
+   }
+   ```
+
+2. **`authStore.ts`** - Nuevo campo `authFailureReason`:
+   ```typescript
+   export type AuthFailureReason = 'session_expired' | 'not_authenticated' | 'network_error' | null;
+
+   // En checkAuth(), se determina la razón:
+   if (result.error.code === ErrorCode.SESSION_EXPIRED) authFailureReason = 'session_expired';
+   else if (result.error.code === ErrorCode.SERVICE_UNAVAILABLE) authFailureReason = 'network_error';
+   else authFailureReason = 'not_authenticated';
+   ```
+
+3. **`login/page.tsx`** - Mensajes contextuales con iconos:
+   - `session_expired`: Banner amber "Sesión Expirada - Tu sesión ha expirado..."
+   - `network_error`: Banner rojo "Error de Conexión - No se pudo conectar..."
 
 **Esfuerzo**: ~1-2 horas
 
@@ -714,7 +751,7 @@ async process(job) {
 | Fase | Descripción | Esfuerzo | Prioridad | Estado |
 |------|-------------|----------|-----------|--------|
 | **1.1** | Exponer tokenExpiresAt | 2-4h | 🔴 Crítica | ✅ Completado |
-| **1.2** | Distinguir 401 vs no-auth | 1-2h | 🔴 Crítica | ⏳ Pendiente |
+| **1.2** | Distinguir 401 vs no-auth | 1-2h | 🔴 Crítica | ✅ Completado |
 | **1.3** | Banner de advertencia | 4-6h | 🔴 Crítica | ✅ Completado |
 | **2.1** | Auto-refresh en WebSocket | 4-6h | 🟠 Alta | ✅ Completado |
 | **2.2** | Endpoint health check | 2-3h | 🟠 Alta | ✅ Completado |
@@ -788,11 +825,26 @@ El problema actual es que el frontend no detecta esto hasta que hace una request
 
 ## 8. Conclusión
 
-El sistema de autenticación actual es **arquitecturalmente sólido** (session-based, tokens server-side, CSRF protection), pero tiene **gaps críticos en UX y comunicación de estado**. Los problemas principales son:
+El sistema de autenticación actual es **arquitecturalmente sólido** (session-based, tokens server-side, CSRF protection).
 
-1. **Frontend ciego al estado de tokens** - No sabe cuándo expiran
-2. **Fallos silenciosos** - 401 no se comunica como error
-3. **WebSocket sin auto-refresh** - Se desconecta sin recuperarse
-4. **Operaciones background sin validación** - Continúan después de logout
+### Estado Actual del Progreso
 
-La implementación de las Fases 1 y 2 (~17-23 horas) resolverá los síntomas principales. La Fase 3 es opcional pero mejora significativamente la robustez del sistema.
+**✅ Fases 1 y 2 COMPLETADAS** - Problemas principales resueltos:
+1. ~~Frontend ciego al estado de tokens~~ → **RESUELTO**: `tokenExpiresAt` y `sessionExpiresAt` expuestos
+2. ~~Fallos silenciosos~~ → **RESUELTO**: 401 ahora retorna `success: false` con `authFailureReason`
+3. ~~WebSocket sin auto-refresh~~ → **RESUELTO**: Auto-refresh implementado en middleware
+4. **Operaciones background sin validación** - Pendiente (Fase 3)
+
+### Problemas Resueltos
+- ✅ Usuario sabe cuándo expira su sesión (`tokenExpiresAt`, `sessionExpiresAt`)
+- ✅ Banner de advertencia antes de expirar (`SessionExpiryBanner`)
+- ✅ Errores claros cuando la sesión expira (`authFailureReason`: session_expired/not_authenticated/network_error)
+- ✅ Monitoreo proactivo de salud de sesión (`useSessionHealth` hook)
+- ✅ WebSocket se recupera automáticamente con auto-refresh
+
+### Pendiente (Fase 3 - Opcional)
+- Auto-refresh de tokens BC en middleware
+- Mutex para prevenir race conditions en refresh
+- Notificaciones de jobs fallidos al usuario
+
+La Fase 3 es opcional pero mejora significativamente la robustez del sistema.

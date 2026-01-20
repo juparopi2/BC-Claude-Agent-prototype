@@ -50,17 +50,29 @@ describe('ApiClient', () => {
       }
     });
 
-    it('should handle unauthorized response gracefully', async () => {
+    it('should handle unauthorized response with error details', async () => {
       server.use(errorHandlers.unauthorized);
 
       const result = await api.checkAuth();
 
-      // 401 is treated as "not authenticated" (success), not an error
-      // This is intentional UX design - auth check doesn't "fail", it just returns not authenticated
-      expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.data.authenticated).toBe(false);
-        expect(result.data.user).toBeUndefined();
+      // 401 now returns success: false with error details
+      // This allows the frontend to distinguish between different auth failure reasons
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('UNAUTHORIZED');
+        expect(result.error.message).toBe('Authentication required');
+      }
+    });
+
+    it('should handle session expired response with error details', async () => {
+      server.use(errorHandlers.sessionExpired);
+
+      const result = await api.checkAuth();
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('SESSION_EXPIRED');
+        expect(result.error.message).toBe('Your session has expired');
       }
     });
   });

@@ -65,12 +65,12 @@ function parseAzureRedisConnectionString(connectionString: string): {
   }
 
   // First part is host:port
-  const hostPort = parts[0].trim();
+  const hostPort = parts[0]!.trim();
   const [host, portStr] = hostPort.includes(':')
     ? hostPort.split(':')
     : [hostPort, '6380']; // Default to SSL port
 
-  const port = parseInt(portStr, 10);
+  const port = parseInt(portStr ?? '6380', 10);
 
   // Find password in remaining parts
   let password = '';

@@ -23,6 +23,9 @@ export {
   FILE_WS_EVENTS,
   type FileWsChannel,
   type FileWsEventType,
+  // Job failure events (Phase 3, Task 3.3)
+  JOB_WS_CHANNELS,
+  type JobWsChannel,
 } from './websocket-events';
 
 // File Processing Status Constants (D25 Sprint 3)

@@ -211,7 +211,7 @@ export class ApprovalManager {
       const agentEvent: AgentApprovalRequestedEvent = {
         type: 'approval_requested',
         sessionId,
-        timestamp: now,
+        timestamp: now.toISOString(),
         eventId: storedEvent.id,
         // FIX-001: Only include sequenceNumber if we have a valid one
         ...(storedEvent.sequence_number >= 0 && { sequenceNumber: storedEvent.sequence_number }),
@@ -221,7 +221,7 @@ export class ApprovalManager {
         args: toolArgs,
         changeSummary: summary.description,
         priority,
-        expiresAt,
+        expiresAt: expiresAt.toISOString(),
       };
 
       this.io.to(sessionId).emit('agent:event', agentEvent);
@@ -357,7 +357,7 @@ export class ApprovalManager {
         const agentEvent: AgentApprovalResolvedEvent = {
           type: 'approval_resolved',
           sessionId,
-          timestamp: new Date(),
+          timestamp: new Date().toISOString(),
           eventId: storedEvent.id,
           // FIX-002: Only include sequenceNumber if valid
           ...(storedEvent.sequence_number >= 0 && { sequenceNumber: storedEvent.sequence_number }),
@@ -597,7 +597,7 @@ export class ApprovalManager {
       const agentEvent: AgentApprovalResolvedEvent = {
         type: 'approval_resolved',
         sessionId,
-        timestamp: new Date(),
+        timestamp: new Date().toISOString(),
         eventId: storedEvent.id,
         // FIX-003: Only include sequenceNumber if valid
         ...(storedEvent.sequence_number >= 0 && { sequenceNumber: storedEvent.sequence_number }),
@@ -1049,7 +1049,7 @@ export class ApprovalManager {
       const agentEvent: AgentApprovalResolvedEvent = {
         type: 'approval_resolved',
         sessionId,
-        timestamp: new Date(),
+        timestamp: new Date().toISOString(),
         eventId: storedEvent.id,
         ...(storedEvent.sequence_number >= 0 && { sequenceNumber: storedEvent.sequence_number }),
         persistenceState,

@@ -26,7 +26,6 @@ import type {
 } from '@/types';
 import type { ChatMessageData } from '@/types/websocket.types';
 import { getAgentOrchestrator } from '@domains/agent/orchestration';
-import { getMessageService } from '../messages/MessageService';
 import { createChildLogger } from '@/shared/utils/logger';
 import { validateSessionOwnership } from '@/shared/utils/session-ownership';
 import { normalizeUUID } from '@/shared/utils/uuid';
@@ -47,7 +46,6 @@ interface AuthenticatedSocket extends Socket {
  * Implements enhanced contract for agent events.
  */
 export class ChatMessageHandler {
-  private messageService = getMessageService();
   private logger: Logger;
 
   constructor() {

@@ -100,6 +100,7 @@ export class BatchResultNormalizer implements IBatchResultNormalizer {
 
     for (let i = 0; i < messages.length; i++) {
       const msg = messages[i];
+      if (!msg) continue;
       const msgType = msg._getType?.();
 
       if (msgType === 'ai' || msgType === 'assistant') {

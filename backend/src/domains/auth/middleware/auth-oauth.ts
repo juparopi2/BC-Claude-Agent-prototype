@@ -21,7 +21,7 @@ import {
 const logger = createChildLogger({ service: 'OAuthMiddleware' });
 
 /**
- * Extend Express Request to include Microsoft OAuth session
+ * Extend Express Request to include Microsoft OAuth session and BC tokens
  */
 declare global {
   namespace Express {
@@ -29,6 +29,10 @@ declare global {
       microsoftSession?: MicrosoftOAuthSession;
       userId?: string;
       userEmail?: string;
+      /** BC access token (set by requireBCAccess middleware after auto-refresh) */
+      bcAccessToken?: string;
+      /** BC token expiration (set by requireBCAccess middleware after auto-refresh) */
+      bcTokenExpiresAt?: Date;
     }
   }
 }
@@ -268,14 +272,69 @@ export async function requireBCAccess(req: Request, res: Response, next: NextFun
     }
 
     if (expiresAt <= now) {
-      logger.warn('Business Central token expired', {
+      logger.info('BC token expired, attempting auto-refresh', {
         userId: req.userId,
         expiresAt,
         path: req.path,
       });
 
-      sendError(res, ErrorCode.SESSION_EXPIRED, 'Your Business Central access token has expired. Token will be refreshed automatically on next request, or visit /api/auth/bc-consent.', { consentUrl: '/api/auth/bc-consent' });
-      return;
+      // Phase 3.1: Auto-refresh BC tokens instead of returning 403
+      try {
+        const oauthSession = req.session?.microsoftOAuth as MicrosoftOAuthSession | undefined;
+
+        if (!oauthSession?.refreshToken) {
+          logger.warn('BC token expired but no refresh token available', {
+            userId: req.userId,
+            path: req.path,
+          });
+          sendError(
+            res,
+            ErrorCode.SESSION_EXPIRED,
+            'Your session has expired and cannot be refreshed. Please log in again.',
+            { consentUrl: '/api/auth/bc-consent' }
+          );
+          return;
+        }
+
+        // Import BCTokenManager dynamically to avoid circular dependencies
+        const { createBCTokenManager } = await import('@/services/auth/BCTokenManager');
+        const { createMicrosoftOAuthService } = await import('@/domains/auth/oauth/MicrosoftOAuthService');
+
+        const oauthService = createMicrosoftOAuthService();
+        const tokenManager = createBCTokenManager(oauthService);
+
+        // Refresh BC token using distributed lock (if available)
+        const newToken = await tokenManager.getBCToken(req.userId, oauthSession.refreshToken);
+
+        // Attach refreshed token to request
+        req.bcAccessToken = newToken.accessToken;
+        req.bcTokenExpiresAt = newToken.expiresAt;
+
+        logger.info('BC token refreshed successfully', {
+          userId: req.userId,
+          newExpiresAt: newToken.expiresAt.toISOString(),
+          path: req.path,
+        });
+
+        next();
+        return;
+      } catch (refreshError) {
+        logger.error('Failed to refresh BC token', {
+          userId: req.userId,
+          path: req.path,
+          error: refreshError instanceof Error
+            ? { message: refreshError.message, stack: refreshError.stack }
+            : { value: String(refreshError) },
+        });
+
+        sendError(
+          res,
+          ErrorCode.SESSION_EXPIRED,
+          'Failed to refresh Business Central access token. Please re-authorize.',
+          { consentUrl: '/api/auth/bc-consent' }
+        );
+        return;
+      }
     }
 
     logger.debug('Business Central access verified', {

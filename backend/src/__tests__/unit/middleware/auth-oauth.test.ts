@@ -43,6 +43,15 @@ vi.mock('@/domains/auth/oauth/MicrosoftOAuthService', () => ({
   createMicrosoftOAuthService: vi.fn(),
 }));
 
+// Mock BCTokenManager for requireBCAccess auto-refresh tests
+const mockBCTokenManager = vi.hoisted(() => ({
+  getBCToken: vi.fn(),
+}));
+
+vi.mock('@/services/auth/BCTokenManager', () => ({
+  createBCTokenManager: vi.fn(() => mockBCTokenManager),
+}));
+
 // DON'T mock @/utils/error-response, it should work with the real implementation
 // Instead,ensure @bc-agent/shared is properly available (it should be by default)
 
@@ -698,9 +707,14 @@ describe('requireBCAccess', () => {
       );
     });
 
-    it('should return 401 when BC token is expired', async () => {
+    it('should return 401 when BC token is expired and no refresh token available', async () => {
       mockReq = createMockRequest();
       mockReq.userId = 'user-123';
+      // No microsoftOAuth session = no refresh token
+      mockReq.session = {
+        save: vi.fn((cb: (err?: Error) => void) => cb()),
+        microsoftOAuth: undefined,
+      };
 
       vi.mocked(executeQuery).mockResolvedValue({
         recordset: [{
@@ -714,7 +728,7 @@ describe('requireBCAccess', () => {
 
       await requireBCAccess(mockReq as Request, mockRes, mockNext);
 
-      // SESSION_EXPIRED returns 401
+      // SESSION_EXPIRED returns 401 when no refresh token
       expect(mockRes.status).toHaveBeenCalledWith(401);
       expect(mockRes.json).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -768,6 +782,164 @@ describe('requireBCAccess', () => {
         })
       );
       expect(mockLogger.error).toHaveBeenCalled();
+    });
+  });
+
+  // ===== BC TOKEN AUTO-REFRESH TESTS (Phase 3.1) =====
+
+  describe('BC token auto-refresh', () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+      mockRes = createMockResponse();
+      mockNext = vi.fn();
+    });
+
+    it('should auto-refresh expired BC token and call next() when refresh succeeds', async () => {
+      mockReq = createMockRequest();
+      mockReq.userId = 'user-123';
+      mockReq.session = {
+        save: vi.fn((cb: (err?: Error) => void) => cb()),
+        microsoftOAuth: createValidSession({ refreshToken: 'valid-refresh-token' }),
+      };
+
+      vi.mocked(executeQuery).mockResolvedValue({
+        recordset: [{
+          bc_access_token_encrypted: 'encrypted-token',
+          bc_token_expires_at: new Date(Date.now() - 3600000).toISOString(), // Expired
+        }],
+        recordsets: [],
+        rowsAffected: [1],
+        output: {},
+      });
+
+      // Mock successful token refresh
+      vi.mocked(mockBCTokenManager.getBCToken).mockResolvedValue({
+        accessToken: 'new-bc-access-token',
+        refreshToken: 'new-bc-refresh-token',
+        expiresAt: new Date(Date.now() + 3600000),
+      });
+
+      await requireBCAccess(mockReq as Request, mockRes, mockNext);
+
+      // Should call next() after successful refresh
+      expect(mockNext).toHaveBeenCalled();
+      expect(mockRes.status).not.toHaveBeenCalled();
+
+      // Should attach refreshed token to request
+      expect(mockReq.bcAccessToken).toBe('new-bc-access-token');
+      expect(mockReq.bcTokenExpiresAt).toBeInstanceOf(Date);
+
+      // Should log success
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        expect.stringContaining('BC token refreshed successfully'),
+        expect.any(Object)
+      );
+    });
+
+    it('should return 401 when auto-refresh fails', async () => {
+      mockReq = createMockRequest();
+      mockReq.userId = 'user-123';
+      mockReq.session = {
+        save: vi.fn((cb: (err?: Error) => void) => cb()),
+        microsoftOAuth: createValidSession({ refreshToken: 'valid-refresh-token' }),
+      };
+
+      vi.mocked(executeQuery).mockResolvedValue({
+        recordset: [{
+          bc_access_token_encrypted: 'encrypted-token',
+          bc_token_expires_at: new Date(Date.now() - 3600000).toISOString(), // Expired
+        }],
+        recordsets: [],
+        rowsAffected: [1],
+        output: {},
+      });
+
+      // Mock failed token refresh
+      vi.mocked(mockBCTokenManager.getBCToken).mockRejectedValue(
+        new Error('Failed to refresh Business Central token')
+      );
+
+      await requireBCAccess(mockReq as Request, mockRes, mockNext);
+
+      // Should return 401 with re-authorize message
+      expect(mockRes.status).toHaveBeenCalledWith(401);
+      expect(mockRes.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error: 'Unauthorized',
+          code: ErrorCode.SESSION_EXPIRED,
+          message: expect.stringContaining('Failed to refresh'),
+          details: expect.objectContaining({
+            consentUrl: '/api/auth/bc-consent',
+          }),
+        })
+      );
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+
+    it('should return 401 when BC token expired but session has no refresh token', async () => {
+      mockReq = createMockRequest();
+      mockReq.userId = 'user-123';
+      mockReq.session = {
+        save: vi.fn((cb: (err?: Error) => void) => cb()),
+        microsoftOAuth: createValidSession({ refreshToken: undefined }), // No refresh token
+      };
+
+      vi.mocked(executeQuery).mockResolvedValue({
+        recordset: [{
+          bc_access_token_encrypted: 'encrypted-token',
+          bc_token_expires_at: new Date(Date.now() - 3600000).toISOString(), // Expired
+        }],
+        recordsets: [],
+        rowsAffected: [1],
+        output: {},
+      });
+
+      await requireBCAccess(mockReq as Request, mockRes, mockNext);
+
+      // Should return 401 with login message
+      expect(mockRes.status).toHaveBeenCalledWith(401);
+      expect(mockRes.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error: 'Unauthorized',
+          code: ErrorCode.SESSION_EXPIRED,
+          message: expect.stringContaining('cannot be refreshed'),
+        })
+      );
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+
+    it('should log auto-refresh attempt', async () => {
+      mockReq = createMockRequest();
+      mockReq.userId = 'user-123';
+      mockReq.session = {
+        save: vi.fn((cb: (err?: Error) => void) => cb()),
+        microsoftOAuth: createValidSession({ refreshToken: 'valid-refresh-token' }),
+      };
+
+      vi.mocked(executeQuery).mockResolvedValue({
+        recordset: [{
+          bc_access_token_encrypted: 'encrypted-token',
+          bc_token_expires_at: new Date(Date.now() - 3600000).toISOString(),
+        }],
+        recordsets: [],
+        rowsAffected: [1],
+        output: {},
+      });
+
+      vi.mocked(mockBCTokenManager.getBCToken).mockResolvedValue({
+        accessToken: 'new-token',
+        refreshToken: 'new-refresh',
+        expiresAt: new Date(Date.now() + 3600000),
+      });
+
+      await requireBCAccess(mockReq as Request, mockRes, mockNext);
+
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        expect.stringContaining('attempting auto-refresh'),
+        expect.objectContaining({
+          userId: 'user-123',
+        })
+      );
     });
   });
 

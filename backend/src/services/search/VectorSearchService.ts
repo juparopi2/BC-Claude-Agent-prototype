@@ -526,7 +526,7 @@ export class VectorSearchService {
 
       // Extract filename from content like "[Image: filename.jpg]"
       const fileNameMatch = doc.content.match(/\[Image: (.+?)\]/);
-      const fileName = fileNameMatch ? fileNameMatch[1] : 'unknown';
+      const fileName = fileNameMatch?.[1] ?? 'unknown';
 
       results.push({
         fileId: doc.fileId,

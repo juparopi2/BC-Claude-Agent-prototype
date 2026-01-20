@@ -28,6 +28,8 @@ describe('BusinessCentralAgent', () => {
       messages: [],
       activeAgent: 'business-central',
       context: {},
+      toolExecutions: [],
+      usedModel: '',
     };
   });
 

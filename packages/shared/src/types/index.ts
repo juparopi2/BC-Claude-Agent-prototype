@@ -199,3 +199,15 @@ export type {
   AuthRefreshedEventPayload,
   UserProfileWithExpiry,
 } from './auth.types';
+
+// Job event types (Phase 3, Task 3.3)
+export type {
+  JobQueueName,
+  JobFailureContext,
+  JobFailedPayload,
+} from './job-events.types';
+
+export {
+  JOB_QUEUE_DISPLAY_NAMES,
+  getQueueDisplayName,
+} from './job-events.types';

@@ -17,8 +17,9 @@ import type {
   SessionReadyEvent,
   ExtendedThinkingConfig,
   FileWebSocketEvent,
+  JobFailedPayload,
 } from '@bc-agent/shared';
-import { FILE_WS_CHANNELS } from '@bc-agent/shared';
+import { FILE_WS_CHANNELS, JOB_WS_CHANNELS } from '@bc-agent/shared';
 import type { SocketConnectOptions, JoinSessionOptions, PendingMessage } from './types';
 import { useAuthStore } from '@/src/domains/auth/stores/authStore';
 
@@ -60,6 +61,8 @@ export class SocketClient {
   // File processing event listeners (D25)
   private fileStatusListeners = new Set<EventCallback<FileWebSocketEvent>>();
   private fileProcessingListeners = new Set<EventCallback<FileWebSocketEvent>>();
+  // Job failure event listeners (Phase 3, Task 3.3)
+  private jobFailureListeners = new Set<EventCallback<JobFailedPayload>>();
   // Pending user room join (D25 race condition fix)
   private pendingUserRoomJoin: string | null = null;
 
@@ -386,6 +389,22 @@ export class SocketClient {
   }
 
   /**
+   * Subscribe to job failure events (Phase 3, Task 3.3)
+   *
+   * Receives events on the job:failed channel when background jobs
+   * fail permanently after exhausting all retries.
+   *
+   * @param callback Event handler
+   * @returns Unsubscribe function
+   */
+  onJobFailureEvent(callback: EventCallback<JobFailedPayload>): () => void {
+    this.jobFailureListeners.add(callback);
+    return () => {
+      this.jobFailureListeners.delete(callback);
+    };
+  }
+
+  /**
    * Join the user room for file events (D25)
    *
    * Call this after user authentication completes to ensure
@@ -418,6 +437,8 @@ export class SocketClient {
     // File processing channels (D25)
     this.socket.removeAllListeners(FILE_WS_CHANNELS.STATUS);
     this.socket.removeAllListeners(FILE_WS_CHANNELS.PROCESSING);
+    // Job failure channel (Phase 3, Task 3.3)
+    this.socket.removeAllListeners(JOB_WS_CHANNELS.FAILURE);
 
     // Connection events
     this.socket.on('connect', () => {
@@ -492,6 +513,17 @@ export class SocketClient {
           callback(event);
         } catch (err) {
           console.error('[SocketClient] Error in file processing handler:', err);
+        }
+      });
+    });
+
+    // Job failure events (Phase 3, Task 3.3)
+    this.socket.on(JOB_WS_CHANNELS.FAILURE, (event: JobFailedPayload) => {
+      this.jobFailureListeners.forEach((callback) => {
+        try {
+          callback(event);
+        } catch (err) {
+          console.error('[SocketClient] Error in job failure handler:', err);
         }
       });
     });

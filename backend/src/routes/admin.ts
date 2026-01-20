@@ -13,7 +13,7 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { authenticateMicrosoft } from '@/domains/auth/middleware/auth-oauth';
 import { getOrphanCleanupJob } from '@/jobs/OrphanCleanupJob';
-import { sendError, sendInternalError } from '@/shared/utils/error-response';
+import { sendError } from '@/shared/utils/error-response';
 import { ErrorCode } from '@/shared/constants/errors';
 import { createChildLogger } from '@/shared/utils/logger';
 
@@ -93,9 +93,14 @@ router.post(
       const parseResult = orphanCleanupSchema.safeParse(req.query);
 
       if (!parseResult.success) {
-        sendError(res, ErrorCode.VALIDATION_ERROR, 'Invalid query parameters', {
-          details: parseResult.error.flatten().fieldErrors,
-        });
+        const fieldErrors = parseResult.error.flatten().fieldErrors;
+        const errorDetails: Record<string, string> = {};
+        for (const [key, errors] of Object.entries(fieldErrors)) {
+          if (errors && errors.length > 0) {
+            errorDetails[key] = errors.join(', ');
+          }
+        }
+        sendError(res, ErrorCode.VALIDATION_ERROR, 'Invalid query parameters', errorDetails);
         return;
       }
 
@@ -161,7 +166,7 @@ router.post(
         'Orphan cleanup job failed'
       );
 
-      sendInternalError(res, 'Orphan cleanup job failed');
+      sendError(res, ErrorCode.INTERNAL_ERROR, 'Orphan cleanup job failed');
     }
   }
 );

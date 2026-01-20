@@ -1149,14 +1149,14 @@ router.post('/bulk-upload/complete', authenticateMicrosoft, async (req: Request,
       userId,
       batchId,
       uploadCount: uploads.length,
-      successCount: uploads.filter(u => u.success).length,
+      successCount: uploads.filter((u: { success: boolean }) => u.success).length,
     }, 'Completing bulk upload');
 
     // Enqueue jobs for successful uploads
     const messageQueue = getMessageQueue();
     const jobIds: string[] = [];
 
-    for (const upload of uploads.filter(u => u.success)) {
+    for (const upload of uploads.filter((u: { success: boolean }) => u.success)) {
       const fileMetadata = batch.files.find(f => f.tempId === upload.tempId);
       if (!fileMetadata) {
         logger.warn({ userId, batchId, tempId: upload.tempId }, 'File metadata not found for tempId');

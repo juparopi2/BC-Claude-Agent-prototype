@@ -39,6 +39,7 @@ import type {
   IVectorSearchServiceMinimal,
 } from './IMessageQueueDependencies';
 import { getFileEventEmitter } from '@/domains/files/emission';
+import { getJobFailureEventEmitter } from '@/domains/queue/emission';
 import {
   PROCESSING_STATUS,
   EMBEDDING_STATUS,
@@ -47,6 +48,7 @@ import {
   FILE_BULK_UPLOAD_CONFIG,
   type FileDeletionJobData,
   type BulkUploadJobData,
+  type JobQueueName,
 } from '@bc-agent/shared';
 
 /**
@@ -981,29 +983,39 @@ export class MessageQueue {
       queueEvents.on('failed', async ({ jobId, failedReason }) => {
         // Try to get job data for additional context (helps diagnose issues)
         let jobContext: Record<string, unknown> = {};
-        let shouldEmitFailure = false;
+        let shouldEmitFileFailure = false;
+        let userId: string | undefined;
+        let sessionId: string | undefined;
+        let attemptsMade = 0;
+        let maxAttempts = 1;
+
         try {
           const queue = this.queues.get(queueName as QueueName);
           if (queue) {
             const failedJob = await queue.getJob(jobId);
             if (failedJob?.data) {
               // Extract common fields that might exist across different job types
+              userId = failedJob.data.userId;
+              sessionId = failedJob.data.sessionId;
+              attemptsMade = failedJob.attemptsMade ?? 0;
+              maxAttempts = failedJob.opts?.attempts ?? 1;
+
               jobContext = {
                 fileId: failedJob.data.fileId,
-                userId: failedJob.data.userId,
+                userId,
                 mimeType: failedJob.data.mimeType,
                 fileName: failedJob.data.fileName,
-                sessionId: failedJob.data.sessionId,
-                attemptsMade: failedJob.attemptsMade,
-                maxAttempts: failedJob.opts?.attempts,
+                sessionId,
+                attemptsMade,
+                maxAttempts,
               };
 
               // For file processing queues, we need to emit failure event to frontend
               const isFileQueue = queueName === QueueName.FILE_PROCESSING ||
                                   queueName === QueueName.FILE_CHUNKING ||
                                   queueName === QueueName.EMBEDDING_GENERATION;
-              if (isFileQueue && failedJob.data.fileId && failedJob.data.userId) {
-                shouldEmitFailure = true;
+              if (isFileQueue && failedJob.data.fileId && userId) {
+                shouldEmitFileFailure = true;
               }
             }
           }
@@ -1020,29 +1032,66 @@ export class MessageQueue {
           timestamp: new Date().toISOString(),
         }, `Job failed in ${queueName}`);
 
-        // Fallback: Emit failure event to frontend if handlePermanentFailure wasn't called
-        // This handles edge cases where BullMQ exhausts retries before our code can emit
-        if (shouldEmitFailure) {
+        // Phase 3.3: Emit generic job failure notification for ALL queues with userId
+        if (userId) {
+          try {
+            const jobFailureEmitter = getJobFailureEventEmitter();
+            const jobQueueName = this.mapQueueNameToJobQueueName(queueName as QueueName);
+
+            if (jobQueueName) {
+              const payload = jobFailureEmitter.createPayload(
+                jobId,
+                jobQueueName,
+                failedReason || 'Job failed after exhausting all retries',
+                attemptsMade,
+                maxAttempts,
+                {
+                  fileId: jobContext.fileId as string | undefined,
+                  fileName: jobContext.fileName as string | undefined,
+                  sessionId,
+                }
+              );
+
+              jobFailureEmitter.emitJobFailed({ userId, sessionId }, payload);
+
+              this.log.debug({
+                jobId,
+                queueName,
+                userId,
+              }, 'Emitted generic job failure notification');
+            }
+          } catch (emitError) {
+            this.log.warn({
+              error: emitError instanceof Error ? emitError.message : String(emitError),
+              jobId,
+              queueName,
+            }, 'Failed to emit generic job failure notification');
+          }
+        }
+
+        // Additional handling for file processing queues: call ProcessingRetryManager
+        // This updates file readiness state and emits file-specific events
+        if (shouldEmitFileFailure) {
           try {
             const { getProcessingRetryManager } = await import('@/domains/files/retry');
             const retryManager = getProcessingRetryManager();
             await retryManager.handlePermanentFailure(
-              jobContext.userId as string,
+              userId!,
               jobContext.fileId as string,
               failedReason || 'Processing failed',
-              jobContext.sessionId as string | undefined
+              sessionId
             );
             this.log.info({
               jobId,
               fileId: jobContext.fileId,
               queueName,
-            }, 'Emitted failure event via fallback handler');
+            }, 'Updated file readiness state via ProcessingRetryManager');
           } catch (emitError) {
             this.log.error({
               error: emitError instanceof Error ? emitError.message : String(emitError),
               jobId,
               fileId: jobContext.fileId,
-            }, 'Failed to emit failure event in fallback handler');
+            }, 'Failed to update file readiness state');
           }
         }
       });
@@ -2601,6 +2650,29 @@ export class MessageQueue {
 
     await queue.resume();
     this.log.info(`Queue ${queueName} resumed`);
+  }
+
+  /**
+   * Map internal QueueName to shared JobQueueName type
+   *
+   * Used to convert our internal queue names to the shared type
+   * for job failure notifications.
+   *
+   * @param queueName - Internal queue name
+   * @returns Shared JobQueueName or null if not mappable
+   */
+  private mapQueueNameToJobQueueName(queueName: QueueName): JobQueueName | null {
+    const mapping: Partial<Record<QueueName, JobQueueName>> = {
+      [QueueName.FILE_PROCESSING]: 'file-processing',
+      [QueueName.FILE_CHUNKING]: 'file-chunking',
+      [QueueName.EMBEDDING_GENERATION]: 'embedding-generation',
+      [QueueName.MESSAGE_PERSISTENCE]: 'message-persistence',
+      [QueueName.TOOL_EXECUTION]: 'tool-execution',
+      [QueueName.FILE_BULK_UPLOAD]: 'file-bulk-upload',
+      [QueueName.FILE_DELETION]: 'file-deletion',
+    };
+
+    return mapping[queueName] ?? null;
   }
 
   /**

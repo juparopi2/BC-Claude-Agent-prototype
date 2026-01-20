@@ -301,7 +301,7 @@ export class AgentOrchestrator implements IAgentOrchestrator {
       // 6. PROCESS EVENTS IN ORDER (no conditionals!)
       // =========================================================================
       let finalContent = '';
-      let finalMessageId = agentMessageId;
+      let finalMessageId: string = agentMessageId;
       const toolsUsed: string[] = [];
       let finalStopReason: string = 'end_turn';
 

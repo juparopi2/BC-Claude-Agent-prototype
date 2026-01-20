@@ -64,6 +64,23 @@ export const FILE_WS_EVENTS = {
 export type FileWsEventType = (typeof FILE_WS_EVENTS)[keyof typeof FILE_WS_EVENTS];
 
 // ============================================================================
+// JOB FAILURE EVENTS (Phase 3, Task 3.3)
+// ============================================================================
+
+/**
+ * WebSocket channel for job failure events.
+ */
+export const JOB_WS_CHANNELS = {
+  /** Channel for job failure notifications */
+  FAILURE: 'job:failed',
+} as const;
+
+/**
+ * Type for job WebSocket channel names.
+ */
+export type JobWsChannel = (typeof JOB_WS_CHANNELS)[keyof typeof JOB_WS_CHANNELS];
+
+// ============================================================================
 // FUTURE: Other WebSocket events should be added here
 // See D28 in docs/plans/99-FUTURE-DEVELOPMENT.md for centralization plan
 // ============================================================================

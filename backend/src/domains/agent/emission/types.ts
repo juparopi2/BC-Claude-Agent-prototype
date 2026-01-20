@@ -11,10 +11,10 @@ import type { AgentEvent } from '@bc-agent/shared';
  * Event with index added for frontend sorting.
  * Extends any AgentEvent with an eventIndex property.
  */
-export interface IndexedAgentEvent extends AgentEvent {
+export type IndexedAgentEvent = AgentEvent & {
   /** Index for ordering events without sequence numbers */
   eventIndex: number;
-}
+};
 
 /**
  * Interface for EventIndexTracker.

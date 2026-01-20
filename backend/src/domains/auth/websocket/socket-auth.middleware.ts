@@ -15,7 +15,7 @@ import type { ILoggerMinimal } from '@/infrastructure/queue/IMessageQueueDepende
 /** Socket con datos de auth adjuntos */
 export interface AuthenticatedSocket extends Socket {
   userId: string;
-  userEmail: string;
+  userEmail?: string;
 }
 
 /** Dependencias inyectables para testing */
@@ -23,7 +23,7 @@ export interface SocketAuthDependencies {
   oauthService: {
     refreshAccessToken: (refreshToken: string) => Promise<{
       accessToken: string;
-      refreshToken: string;
+      refreshToken?: string;
       expiresAt: Date | string;
     }>;
   };
@@ -40,7 +40,7 @@ export function createSocketAuthMiddleware(
   const { oauthService, logger } = deps;
 
   return async (socket: Socket, next: (err?: Error) => void): Promise<void> => {
-    const req = socket.request as Express.Request;
+    const req = socket.request as unknown as Express.Request;
 
     // Verificar sesión existe
     if (!req.session?.microsoftOAuth) {

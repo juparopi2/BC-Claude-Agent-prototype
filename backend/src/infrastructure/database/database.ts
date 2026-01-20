@@ -190,8 +190,9 @@ const PARAMETER_TYPE_MAP: Record<string, ISqlType | (() => ISqlType)> = {
  */
 function inferSqlType(key: string, value: unknown): ISqlType | (() => ISqlType) {
   // 1. Check explicit mapping first
-  if (PARAMETER_TYPE_MAP[key]) {
-    return PARAMETER_TYPE_MAP[key];
+  const mappedType = PARAMETER_TYPE_MAP[key];
+  if (mappedType) {
+    return mappedType;
   }
 
   // 2. Heuristic fallbacks based on naming conventions
@@ -282,7 +283,7 @@ function parseAzureSqlConnectionString(connectionString: string): {
   }
   // Remove port if present (e.g., "server.database.windows.net,1433" -> "server.database.windows.net")
   if (server.includes(',')) {
-    server = server.split(',')[0];
+    server = server.split(',')[0] ?? server;
   }
 
   const database = parts['database'] || parts['initial catalog'] || '';

@@ -46,6 +46,8 @@ describe('RAGAgent', () => {
       context: {
         userId: 'test-user-id',
       },
+      toolExecutions: [],
+      usedModel: '',
     };
   });
 

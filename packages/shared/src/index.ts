@@ -153,6 +153,28 @@ export type {
   AuthExpiringEventPayload,
   AuthRefreshedEventPayload,
   UserProfileWithExpiry,
+
+  // Job event types (Phase 3, Task 3.3)
+  JobQueueName,
+  JobFailureContext,
+  JobFailedPayload,
+
+  // Normalized event types (multi-provider normalization)
+  NormalizedProvider,
+  NormalizedAgentEventType,
+  NormalizedPersistenceStrategy,
+  NormalizedStopReason,
+  NormalizedTokenUsage,
+  BaseNormalizedEvent,
+  NormalizedSessionStartEvent,
+  NormalizedUserMessageEvent,
+  NormalizedThinkingEvent,
+  NormalizedToolRequestEvent,
+  NormalizedToolResponseEvent,
+  NormalizedAssistantMessageEvent,
+  NormalizedErrorEvent,
+  NormalizedCompleteEvent,
+  NormalizedAgentEvent,
 } from './types';
 
 // Type guards (runtime functions, not types)
@@ -168,6 +190,15 @@ export {
   isAllowedMimeType,
   // Transient event utilities
   isTransientEventType,
+  // Normalized event type guards
+  requiresSyncPersistence,
+  isTransientNormalizedEvent,
+  allowsAsyncPersistence,
+  isNormalizedThinkingEvent,
+  isNormalizedToolRequestEvent,
+  isNormalizedToolResponseEvent,
+  isNormalizedAssistantMessageEvent,
+  isNormalizedCompleteEvent,
 } from './types';
 
 // File constants
@@ -182,6 +213,9 @@ export {
   DEFAULT_SOURCE_TYPE,
   DEFAULT_FETCH_STRATEGY,
 } from './types';
+
+// Job event utilities (Phase 3, Task 3.3)
+export { JOB_QUEUE_DISPLAY_NAMES, getQueueDisplayName } from './types';
 
 // ============================================
 // Constants - Error codes, messages, mappings
@@ -217,10 +251,20 @@ export {
   type AuthSessionStatus,
   type AuthWsEventType,
   type AuthErrorCode,
+  // Job WebSocket Events (Phase 3, Task 3.3)
+  JOB_WS_CHANNELS,
+  type JobWsChannel,
 } from './constants';
 
 // ============================================
-// Schemas - Exported from separate entry point
+// Schemas - Key validation schemas
 // ============================================
-// Note: Schemas are exported from '@bc-agent/shared/schemas'
-// to allow tree-shaking of Zod dependency when only types are needed
+// Note: Full schema list is available from '@bc-agent/shared/schemas'
+// Re-exporting commonly used schemas for convenience
+export {
+  validateSafe,
+  bulkDeleteRequestSchema,
+  bulkUploadInitRequestSchema,
+  bulkUploadCompleteRequestSchema,
+  chatMessageSchema,
+} from './schemas';

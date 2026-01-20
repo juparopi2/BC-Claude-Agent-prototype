@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useCallback } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useSessionStore } from '@/src/domains/session';
 import { groupSessionsByDate } from '@/src/domains/session/utils/dateGrouping';
@@ -54,14 +54,23 @@ export default function SessionList() {
     };
   }, [fetchSessions, setSessionTitle]);
 
-  // Handle scroll for infinite loading
-  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
-    const target = e.target as HTMLDivElement;
-    const nearBottom = target.scrollHeight - target.scrollTop <= target.clientHeight + 100;
+  // Infinite scroll with IntersectionObserver
+  const loadMoreRef = useRef<HTMLDivElement>(null);
 
-    if (nearBottom && hasMoreSessions && !isLoadingMore) {
-      fetchMoreSessions();
-    }
+  useEffect(() => {
+    const sentinel = loadMoreRef.current;
+    if (!sentinel || !hasMoreSessions || isLoadingMore) return;
+
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting && hasMoreSessions && !isLoadingMore) {
+        fetchMoreSessions();
+      }
+    }, {
+      rootMargin: '100px', // Trigger before reaching exact bottom
+    });
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
   }, [fetchMoreSessions, hasMoreSessions, isLoadingMore]);
 
   const handleNewChat = () => {
@@ -90,7 +99,7 @@ export default function SessionList() {
       </div>
 
       {/* Sessions List */}
-      <ScrollArea className="flex-1" onScrollCapture={handleScroll}>
+      <ScrollArea className="flex-1">
         <div className="p-2 space-y-4">
           {/* Loading State (initial load) */}
           {isLoading && sortedSessions.length === 0 && (
@@ -144,12 +153,12 @@ export default function SessionList() {
             />
           ))}
 
-          {/* Loading More Indicator */}
-          {isLoadingMore && (
-            <div className="flex justify-center py-4">
+          {/* Loading More Indicator & Sentinel */}
+          <div ref={loadMoreRef} className="py-2 flex justify-center min-h-[20px]">
+            {isLoadingMore && (
               <Loader2 className="size-5 animate-spin text-muted-foreground" />
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </ScrollArea>
     </div>

@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useLayoutEffect } from 'react';
+import { usePathname } from 'next/navigation';
 import { useFilePreviewStore, useFiles, useGoToFilePath } from '@/src/domains/files';
 import { useAuthStore, selectUserInitials } from '@/src/domains/auth';
-import { useMessages, useAgentState, useCitationStore } from '@/src/domains/chat';
+import { useMessages, useAgentState, useCitationStore, usePagination } from '@/src/domains/chat';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Loader2 } from 'lucide-react';
 import { isToolUseMessage, isToolResultMessage, isThinkingMessage } from '@bc-agent/shared';
@@ -16,9 +17,21 @@ import { SourcePreviewModal } from '@/components/modals/SourcePreviewModal';
 import type { CitationInfo } from '@/lib/types/citation.types';
 
 export default function ChatContainer() {
+  // Use path to get session ID for pagination
+  // We need to parse it because this component might be used in a layout or page where params aren't directly passed
+  const pathname = usePathname();
+  const sessionId = pathname?.startsWith('/chat/') ? pathname.split('/')[2] : null;
+
   // Use domain hooks for messages and agent state
   const { messages, isEmpty } = useMessages();
   const { isAgentBusy, isPaused, pauseReason } = useAgentState();
+  
+  // Pagination hook
+  const { 
+    loadOlderMessages, 
+    hasMore: hasMoreMessages, 
+    isLoadingMore: isLoadingMoreMessages 
+  } = usePagination(sessionId);
 
   // Citation store for file references
   const citationFileMap = useCitationStore((s) => s.citationFileMap);
@@ -86,11 +99,76 @@ export default function ChatContainer() {
 
 
   const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollViewportRef = useRef<HTMLDivElement>(null);
+  const topSentinelRef = useRef<HTMLDivElement>(null);
+  const previousScrollHeightRef = useRef<number>(0);
+  const isAutoScrollingRef = useRef(false);
 
-  // Auto-scroll to bottom when new messages arrive
+  // Auto-scroll to bottom when new messages arrive (only if we were near bottom or it's a new message)
+  // Simplified: Auto-scroll on new message if it's the latest one
   useEffect(() => {
+    if (isLoadingMoreMessages) return; // Don't scroll to bottom if loading older messages
+    
+    // Simple heuristic: if the new message is from user or we are generally tracking bottom, scroll
+    // For now, consistent behavior:
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages.length, isLoadingMoreMessages]); // Depend on length change. 
+  // NOTE: This might conflict with pagination if not careful. 
+  // We need to differentiate "messages prepended" vs "messages appended".
+  // 'usePagination' adds messages to the START of the array.
+  // We should verify if 'useMessages' returns a new array reference that triggers this.
+  
+  // Correction: We need to handle scroll restoration MANUALLY for pagination.
+  // And disable the "auto scroll to bottom" when pagination happens.
+  
+  // Let's use a LayoutEffect to restore scroll position after pagination
+  useLayoutEffect(() => {
+    if (isLoadingMoreMessages && scrollViewportRef.current) {
+      // Capture scroll height before update
+      previousScrollHeightRef.current = scrollViewportRef.current.scrollHeight;
+    }
+  }, [isLoadingMoreMessages]);
+
+  useEffect(() => {
+    // If we just finished loading more messages, adjust scroll
+    // We detect this by checking if previousScrollHeight > 0 and we are NOT loading anymore
+    // But we need to know if we actually added messages.
+    if (!isLoadingMoreMessages && previousScrollHeightRef.current > 0 && scrollViewportRef.current) {
+      const newScrollHeight = scrollViewportRef.current.scrollHeight;
+      const diff = newScrollHeight - previousScrollHeightRef.current;
+      
+      if (diff > 0) {
+        // Restore scroll position
+        scrollViewportRef.current.scrollTop += diff;
+      }
+      
+      previousScrollHeightRef.current = 0;
+    }
+  }, [messages, isLoadingMoreMessages]); // When messages change
+
+  // Intersection Observer for top sentinel
+  useEffect(() => {
+    const sentinel = topSentinelRef.current;
+    if (!sentinel || !hasMoreMessages || isLoadingMoreMessages) return;
+
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting && hasMoreMessages && !isLoadingMoreMessages) {
+        // Capture current scroll height before triggering load
+        if (scrollViewportRef.current) {
+          previousScrollHeightRef.current = scrollViewportRef.current.scrollHeight;
+        }
+        loadOlderMessages();
+      }
+    }, {
+      root: scrollViewportRef.current, // Use the scroll viewport as root
+      rootMargin: '100px 0px 0px 0px', // Trigger slighlty before top
+      threshold: 0.1
+    });
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasMoreMessages, isLoadingMoreMessages, loadOlderMessages]);
+
 
   // Show welcome state when no messages and agent not busy
   if (isEmpty && !isAgentBusy) {
@@ -104,8 +182,16 @@ export default function ChatContainer() {
   }
 
   return (
-    <ScrollArea className="h-full" data-testid="chat-container">
+    <ScrollArea className="h-full" data-testid="chat-container" ref={scrollViewportRef}>
       <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
+        
+        {/* Loading Indicator / Top Sentinel */}
+        <div ref={topSentinelRef} className="h-4 w-full flex justify-center items-center py-2">
+           {isLoadingMoreMessages && (
+             <Loader2 className="size-4 animate-spin text-muted-foreground" />
+           )}
+        </div>
+
         {messages.map((message) => {
           // Render thinking messages
           if (isThinkingMessage(message)) {

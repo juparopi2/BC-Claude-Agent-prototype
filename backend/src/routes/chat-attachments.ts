@@ -135,7 +135,7 @@ router.post(
   uploadWithErrorHandling,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = req.user?.oid?.toUpperCase();
+      const userId = req.userId?.toUpperCase();
       if (!userId) {
         sendError(res, ErrorCode.UNAUTHORIZED, 'User ID not found');
         return;
@@ -206,7 +206,7 @@ router.post(
  */
 router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const userId = req.user?.oid?.toUpperCase();
+    const userId = req.userId?.toUpperCase();
     if (!userId) {
       sendError(res, ErrorCode.UNAUTHORIZED, 'User ID not found');
       return;
@@ -251,7 +251,7 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
  */
 router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const userId = req.user?.oid?.toUpperCase();
+    const userId = req.userId?.toUpperCase();
     if (!userId) {
       sendError(res, ErrorCode.UNAUTHORIZED, 'User ID not found');
       return;
@@ -295,7 +295,7 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
  */
 router.delete('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const userId = req.user?.oid?.toUpperCase();
+    const userId = req.userId?.toUpperCase();
     if (!userId) {
       sendError(res, ErrorCode.UNAUTHORIZED, 'User ID not found');
       return;

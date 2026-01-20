@@ -51,6 +51,16 @@ Mejoras en la estabilidad, calidad del código e infraestructura existente.
 
 Mejoras perceptibles para el usuario final.
 
+### Chat Attachments UX & Scalability Refactor (Crítica)
+**Necesidad:** Visibilidad clara, persistencia e interactividad de los archivos adjuntos en el historial del chat.
+**Problema:** Al enviar desde `/new`, se pierde la referencia visual del adjunto tras el redirect. El usuario no puede ver, abrir ni descargar lo que envió.
+**Solución Escalable:**
+- **UI:** Visualización de adjuntos en el historial (iconos/tarjetas) distintos del texto.
+- **Interacción:** Habilitar clic para preview/download.
+- **Backend:** Mapeo explícito entre el `ChatMessage` y la ubicación en Blob Storage para persistencia.
+- **Evolución:** Diseño flexible para soportar futuros tipos de adjuntos: múltiples archivos, carpetas completas y referencias a Knowledge Base (`@file`).
+**Estimación:** 3-5 días
+
 ### ApprovalManager Completo (Alta)
 **Necesidad:** Persistencia y gestión robusta de aprobaciones humanas.
 **Requisitos:** Tabla DB `pending_approvals`, API para listar/cancelar, expiración automática (TTL).
@@ -163,8 +173,8 @@ Herramientas para administración y visión del negocio.
 | Categoría | Estimación Total Aprox. |
 |-----------|-------------------------|
 | 🛠 Deuda Técnica | ~15-20 días |
-| ✨ Nuevas Funcionalidades | ~24-27 días |
+| ✨ Nuevas Funcionalidades | ~27-32 días |
 | 🟢 Integraciones | ~20 días |
 | 🚀 Rendimiento | ~11 días |
 | 📊 Analítica | ~10 días |
-| **Total Estimado** | **~80-88 días** |
+| **Total Estimado** | **~83-93 días** |

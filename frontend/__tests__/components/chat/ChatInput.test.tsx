@@ -8,13 +8,7 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import ChatInput from '@/components/chat/ChatInput';
-import { getFileApiClient } from '@/src/infrastructure/api';
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
-
-// Mock dependencies
-vi.mock('@/src/infrastructure/api', () => ({
-  getFileApiClient: vi.fn(),
-}));
 
 // Mock agent state hook and socket connection
 let mockAgentState = {
@@ -30,9 +24,37 @@ const mockSocketConnection = {
   stopAgent: vi.fn(),
 };
 
+// Mutable state for chat attachments
+let mockChatAttachmentsState = {
+  attachments: [] as Array<{
+    tempId: string;
+    name: string;
+    size: number;
+    type: string;
+    status: 'uploading' | 'completed' | 'error';
+    progress?: number;
+    error?: string;
+    id?: string;
+  }>,
+  completedAttachmentIds: [] as string[],
+  hasUploading: false,
+};
+
+const mockUploadAttachment = vi.fn();
+const mockRemoveAttachment = vi.fn();
+const mockClearAttachments = vi.fn();
+
 vi.mock('@/src/domains/chat', () => ({
   useAgentState: vi.fn(() => mockAgentState),
   useSocketConnection: vi.fn(() => mockSocketConnection),
+  useChatAttachments: vi.fn(() => ({
+    attachments: mockChatAttachmentsState.attachments,
+    uploadAttachment: mockUploadAttachment,
+    removeAttachment: mockRemoveAttachment,
+    clearAttachments: mockClearAttachments,
+    completedAttachmentIds: mockChatAttachmentsState.completedAttachmentIds,
+    hasUploading: mockChatAttachmentsState.hasUploading,
+  })),
 }));
 
 // Variable to control UI preferences mock
@@ -55,7 +77,6 @@ vi.mock('sonner', () => ({
 }));
 
 describe('ChatInput', () => {
-  const mockUploadFiles = vi.fn();
   const mockSendMessage = vi.fn();
   const mockStopAgent = vi.fn();
 
@@ -76,9 +97,12 @@ describe('ChatInput', () => {
       useMyContext: false,
       setUseMyContext: vi.fn(),
     };
-    vi.mocked(getFileApiClient).mockReturnValue({
-      uploadFiles: mockUploadFiles,
-    } as unknown as ReturnType<typeof getFileApiClient>);
+    // Reset chat attachments state
+    mockChatAttachmentsState = {
+      attachments: [],
+      completedAttachmentIds: [],
+      hasUploading: false,
+    };
   });
 
   afterEach(() => {
@@ -396,14 +420,21 @@ describe('ChatInput', () => {
 
   describe('Attachments', () => {
     it('uploads file and adds attachment chip on selection', async () => {
-      mockUploadFiles.mockResolvedValue({
-        success: true,
-        data: {
-          files: [{ id: 'file-123', name: 'test.pdf', size: 1024 }],
-        },
+      // Mock uploadAttachment to simulate async upload
+      mockUploadAttachment.mockImplementation(async () => {
+        // Simulate the hook updating state after successful upload
+        mockChatAttachmentsState.attachments = [{
+          tempId: 'temp-123',
+          name: 'test.pdf',
+          size: 1024,
+          type: 'application/pdf',
+          status: 'completed',
+          id: 'file-123',
+        }];
+        mockChatAttachmentsState.completedAttachmentIds = ['file-123'];
       });
 
-      const { container } = render(
+      const { container, rerender } = render(
         <ChatInput
           sessionId="session-1"
           isConnected={true}
@@ -417,26 +448,11 @@ describe('ChatInput', () => {
       fireEvent.change(input, { target: { files: [file] } });
 
       await waitFor(() => {
-        expect(mockUploadFiles).toHaveBeenCalled();
+        expect(mockUploadAttachment).toHaveBeenCalledWith('session-1', file);
       });
 
-      await waitFor(() => {
-        expect(screen.getByText('test.pdf')).toBeInTheDocument();
-      });
-    });
-
-    it('handles file upload and sending correctly', async () => {
-      mockUploadFiles.mockImplementation((files, parent, sessionId, onProgress) => {
-        onProgress?.(50);
-        return Promise.resolve({
-          success: true,
-          data: {
-            files: [{ id: 'file-uuid-1', name: 'test-doc.pdf', size: 2048 }],
-          },
-        });
-      });
-
-      const { container } = render(
+      // Re-render to pick up state changes
+      rerender(
         <ChatInput
           sessionId="session-1"
           isConnected={true}
@@ -444,20 +460,33 @@ describe('ChatInput', () => {
         />
       );
 
-      const file = new File(['dummy content'], 'test-doc.pdf', { type: 'application/pdf' });
-      const input = container.querySelector('input[type="file"]') as HTMLInputElement;
-
-      expect(input).toBeInTheDocument();
-
-      fireEvent.change(input, { target: { files: [file] } });
-
       await waitFor(() => {
-        expect(mockUploadFiles).toHaveBeenCalled();
+        expect(screen.getByText('test.pdf')).toBeInTheDocument();
       });
+    });
 
-      await waitFor(() => {
-        expect(screen.getByText('test-doc.pdf')).toBeInTheDocument();
-      });
+    it('handles file upload and sending correctly', async () => {
+      // Set up initial state with a completed attachment
+      mockChatAttachmentsState.attachments = [{
+        tempId: 'temp-uuid-1',
+        name: 'test-doc.pdf',
+        size: 2048,
+        type: 'application/pdf',
+        status: 'completed',
+        id: 'file-uuid-1',
+      }];
+      mockChatAttachmentsState.completedAttachmentIds = ['file-uuid-1'];
+
+      render(
+        <ChatInput
+          sessionId="session-1"
+          isConnected={true}
+          sendMessage={mockSendMessage}
+        />
+      );
+
+      // Verify attachment is displayed
+      expect(screen.getByText('test-doc.pdf')).toBeInTheDocument();
 
       const textarea = screen.getByRole('textbox');
       fireEvent.change(textarea, { target: { value: 'Analyze this file' } });
@@ -468,20 +497,23 @@ describe('ChatInput', () => {
       expect(mockSendMessage).toHaveBeenCalledWith(
         'Analyze this file',
         expect.objectContaining({
-          attachments: ['file-uuid-1'],
+          chatAttachments: ['file-uuid-1'],
         })
       );
     });
 
     it('shows upload error on failure', async () => {
-      const mockToast = vi.fn();
-      vi.doMock('sonner', () => ({
-        toast: { error: mockToast },
-      }));
+      // Set up state with an error attachment
+      mockChatAttachmentsState.attachments = [{
+        tempId: 'temp-fail',
+        name: 'fail.pdf',
+        size: 1024,
+        type: 'application/pdf',
+        status: 'error',
+        error: 'Network error',
+      }];
 
-      mockUploadFiles.mockRejectedValue(new Error('Network error'));
-
-      const { container } = render(
+      render(
         <ChatInput
           sessionId="session-1"
           isConnected={true}
@@ -489,25 +521,23 @@ describe('ChatInput', () => {
         />
       );
 
-      const file = new File(['dummy'], 'fail.pdf', { type: 'application/pdf' });
-      const input = container.querySelector('input[type="file"]') as HTMLInputElement;
-
-      fireEvent.change(input, { target: { files: [file] } });
-
-      await waitFor(() => {
-        expect(mockUploadFiles).toHaveBeenCalled();
-      });
+      // Error attachment should still be displayed
+      expect(screen.getByText('fail.pdf')).toBeInTheDocument();
     });
 
     it('clears attachments after send', async () => {
-      mockUploadFiles.mockResolvedValue({
-        success: true,
-        data: {
-          files: [{ id: 'file-123', name: 'test.pdf', size: 1024 }],
-        },
-      });
+      // Set up initial state with a completed attachment
+      mockChatAttachmentsState.attachments = [{
+        tempId: 'temp-123',
+        name: 'test.pdf',
+        size: 1024,
+        type: 'application/pdf',
+        status: 'completed',
+        id: 'file-123',
+      }];
+      mockChatAttachmentsState.completedAttachmentIds = ['file-123'];
 
-      const { container } = render(
+      render(
         <ChatInput
           sessionId="session-1"
           isConnected={true}
@@ -515,14 +545,8 @@ describe('ChatInput', () => {
         />
       );
 
-      const file = new File(['dummy'], 'test.pdf', { type: 'application/pdf' });
-      const input = container.querySelector('input[type="file"]') as HTMLInputElement;
-
-      fireEvent.change(input, { target: { files: [file] } });
-
-      await waitFor(() => {
-        expect(screen.getByText('test.pdf')).toBeInTheDocument();
-      });
+      // Verify attachment is displayed
+      expect(screen.getByText('test.pdf')).toBeInTheDocument();
 
       const textarea = screen.getByRole('textbox');
       fireEvent.change(textarea, { target: { value: 'Message with file' } });
@@ -530,10 +554,8 @@ describe('ChatInput', () => {
       const sendButton = screen.getByTestId('send-button');
       fireEvent.click(sendButton);
 
-      // Attachment should be cleared after send
-      await waitFor(() => {
-        expect(screen.queryByText('test.pdf')).not.toBeInTheDocument();
-      });
+      // clearAttachments should be called after send
+      expect(mockClearAttachments).toHaveBeenCalled();
     });
   });
 

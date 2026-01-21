@@ -1,9 +1,29 @@
 # Futuros Desarrollos y Deuda Técnica
 
 **Estado**: Organizado
-**Última actualización**: 2026-01-20
+**Última actualización**: 2026-01-21
 
 Este documento centraliza todos los planes futuros, organizados por categoría para facilitar la priorización y ejecución.
+
+---
+
+## 🎯 Proyecto Activo: Multi-Agent Architecture
+
+> **IMPORTANTE**: Este es el proyecto de mayor prioridad actualmente.
+> Documentación completa en: [multi-agent-architecture/README.md](./multi-agent-architecture/README.md)
+
+**Objetivo**: Transformar el sistema de un grafo lineal simple a una arquitectura multi-agente con supervisor centralizado.
+
+**Fases**:
+1. **Fase 0**: Refactoring de God Files (FileService, ApprovalManager, AgentOrchestrator, files.ts, MessageQueue)
+2. **Fase 1**: TDD Foundation y AgentRegistry
+3. **Fase 2**: Extended AgentState Schema
+4. **Fase 3**: Supervisor/Planner Node
+5. **Fase 4**: Handoffs y Re-routing
+6. **Fase 5**: Graphing Agent (Tremor UI)
+7. **Fase 6**: Agent Selection UI
+
+**Estado**: En Progreso - Ver [PRDs detallados](./multi-agent-architecture/)
 
 ---
 
@@ -50,16 +70,6 @@ Mejoras en la estabilidad, calidad del código e infraestructura existente.
 ## ✨ Nuevas Funcionalidades
 
 Mejoras perceptibles para el usuario final.
-
-### Chat Attachments UX & Scalability Refactor (Crítica)
-**Necesidad:** Visibilidad clara, persistencia e interactividad de los archivos adjuntos en el historial del chat.
-**Problema:** Al enviar desde `/new`, se pierde la referencia visual del adjunto tras el redirect. El usuario no puede ver, abrir ni descargar lo que envió.
-**Solución Escalable:**
-- **UI:** Visualización de adjuntos en el historial (iconos/tarjetas) distintos del texto.
-- **Interacción:** Habilitar clic para preview/download.
-- **Backend:** Mapeo explícito entre el `ChatMessage` y la ubicación en Blob Storage para persistencia.
-- **Evolución:** Diseño flexible para soportar futuros tipos de adjuntos: múltiples archivos, carpetas completas y referencias a Knowledge Base (`@file`).
-**Estimación:** 3-5 días
 
 ### ApprovalManager Completo (Alta)
 **Necesidad:** Persistencia y gestión robusta de aprobaciones humanas.

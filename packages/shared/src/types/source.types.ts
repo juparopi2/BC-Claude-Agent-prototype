@@ -21,7 +21,8 @@
  * - web: Web URLs
  */
 export type SourceType =
-  | 'blob_storage' // Azure Blob (current)
+  | 'blob_storage' // Azure Blob (current) - KB files
+  | 'chat_attachment' // Chat attachments (ephemeral, session-scoped)
   | 'sharepoint' // Microsoft SharePoint (future)
   | 'onedrive' // Microsoft OneDrive (future)
   | 'email' // Email attachments (future)
@@ -31,11 +32,13 @@ export type SourceType =
  * Fetch strategy determines how frontend retrieves content.
  *
  * - internal_api: Use /api/files/:id/content (blob_storage)
+ * - chat_attachment_api: Use /api/chat/attachments/:id/content (chat_attachment)
  * - oauth_proxy: Use /api/external/:source/:id (sharepoint, onedrive, email)
  * - external: Direct external URL (web)
  */
 export type FetchStrategy =
   | 'internal_api' // Use /api/files/:id/content
+  | 'chat_attachment_api' // Use /api/chat/attachments/:id/content
   | 'oauth_proxy' // Use /api/external/:source/:id
   | 'external'; // Direct external URL
 
@@ -69,6 +72,8 @@ export function getFetchStrategy(sourceType: SourceType): FetchStrategy {
   switch (sourceType) {
     case 'blob_storage':
       return 'internal_api';
+    case 'chat_attachment':
+      return 'chat_attachment_api';
     case 'sharepoint':
     case 'onedrive':
     case 'email':

@@ -82,14 +82,19 @@ export class ModelFactory {
           thinkingConfig = { type: 'disabled' };
         }
 
-        // Prepare client options for caching
-        const clientOptions = enableCaching
-          ? {
-              defaultHeaders: {
-                'anthropic-beta': 'prompt-caching-2024-07-31',
-              },
-            }
-          : undefined;
+        // Prepare client options with beta headers
+        // Always include PDF beta for document support (required for multi-modal PDF uploads)
+        // Combine with caching beta header when caching is enabled
+        const betaFeatures = ['pdfs-2024-09-25'];
+        if (enableCaching) {
+          betaFeatures.push('prompt-caching-2024-07-31');
+        }
+
+        const clientOptions = {
+          defaultHeaders: {
+            'anthropic-beta': betaFeatures.join(','),
+          },
+        };
 
         return new ChatAnthropic({
           modelName,

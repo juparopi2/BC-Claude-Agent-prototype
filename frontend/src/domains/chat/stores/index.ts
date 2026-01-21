@@ -62,3 +62,14 @@ export {
   type PendingChatActions,
   type PendingChatStore,
 } from './pendingChatStore';
+
+// Chat Attachment Store (message-to-attachment mapping)
+export {
+  useChatAttachmentStore,
+  getChatAttachmentStore,
+  resetChatAttachmentStore,
+  type ChatAttachmentState,
+  type ChatAttachmentActions,
+  type ChatAttachmentStore,
+  type MessageWithChatAttachments,
+} from './chatAttachmentStore';

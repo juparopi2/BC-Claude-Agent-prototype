@@ -36,6 +36,7 @@ import { env } from '@/lib/config/env';
 import { Light as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { atomOneDark } from 'react-syntax-highlighter/dist/esm/styles/hljs';
 import type { CitationInfo } from '@/lib/types/citation.types';
+import type { FetchStrategy } from '@bc-agent/shared';
 
 interface SourcePreviewModalProps {
   isOpen: boolean;
@@ -49,9 +50,15 @@ interface SourcePreviewModalProps {
 }
 
 /**
- * Get the file content URL for API calls
+ * Get the file content URL based on fetch strategy
+ * - internal_api: /api/files/:id/content (KB files)
+ * - chat_attachment_api: /api/chat/attachments/:id/content (chat attachments)
  */
-function getFileContentUrl(fileId: string): string {
+function getFileContentUrl(fileId: string, fetchStrategy?: FetchStrategy): string {
+  if (fetchStrategy === 'chat_attachment_api') {
+    return `${env.apiUrl}/api/chat/attachments/${fileId}/content`;
+  }
+  // Default to KB files endpoint
   return `${env.apiUrl}/api/files/${fileId}/content`;
 }
 
@@ -155,8 +162,8 @@ function getFileIcon(previewType: 'pdf' | 'image' | 'text' | 'unsupported') {
 /**
  * PDF Preview Component
  */
-function PDFPreview({ fileId }: { fileId: string }) {
-  const src = getFileContentUrl(fileId);
+function PDFPreview({ fileId, fetchStrategy }: { fileId: string; fetchStrategy?: FetchStrategy }) {
+  const src = getFileContentUrl(fileId, fetchStrategy);
 
   return (
     <iframe
@@ -171,8 +178,8 @@ function PDFPreview({ fileId }: { fileId: string }) {
 /**
  * Image Preview Component
  */
-function ImagePreview({ fileId, fileName }: { fileId: string; fileName: string }) {
-  const src = getFileContentUrl(fileId);
+function ImagePreview({ fileId, fileName, fetchStrategy }: { fileId: string; fileName: string; fetchStrategy?: FetchStrategy }) {
+  const src = getFileContentUrl(fileId, fetchStrategy);
 
   return (
     <div className="flex items-center justify-center p-4 bg-muted/50 rounded-md">
@@ -193,10 +200,12 @@ function TextPreview({
   fileId,
   fileName,
   mimeType,
+  fetchStrategy,
 }: {
   fileId: string;
   fileName: string;
   mimeType: string;
+  fetchStrategy?: FetchStrategy;
 }) {
   const [content, setContent] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
@@ -208,7 +217,7 @@ function TextPreview({
       setError(null);
 
       try {
-        const response = await fetch(getFileContentUrl(fileId));
+        const response = await fetch(getFileContentUrl(fileId, fetchStrategy));
         if (!response.ok) {
           throw new Error(`Failed to load file: ${response.statusText}`);
         }
@@ -222,7 +231,7 @@ function TextPreview({
     }
 
     fetchContent();
-  }, [fileId]);
+  }, [fileId, fetchStrategy]);
 
   const language = getLanguage(mimeType, fileName);
 
@@ -273,13 +282,15 @@ function TextPreview({
 function DownloadFallback({
   fileId,
   fileName,
+  fetchStrategy,
 }: {
   fileId: string;
   fileName: string;
+  fetchStrategy?: FetchStrategy;
 }) {
   const handleDownload = () => {
     const link = document.createElement('a');
-    link.href = getFileContentUrl(fileId);
+    link.href = getFileContentUrl(fileId, fetchStrategy);
     link.download = fileName;
     document.body.appendChild(link);
     link.click();
@@ -415,19 +426,30 @@ export function SourcePreviewModal({
 
           {/* Preview Content */}
           <div className="flex-1 min-h-[300px]">
-            {previewType === 'pdf' && <PDFPreview fileId={currentCitation.fileId} />}
+            {previewType === 'pdf' && (
+              <PDFPreview fileId={currentCitation.fileId} fetchStrategy={currentCitation.fetchStrategy} />
+            )}
             {previewType === 'image' && (
-              <ImagePreview fileId={currentCitation.fileId} fileName={currentCitation.fileName} />
+              <ImagePreview
+                fileId={currentCitation.fileId}
+                fileName={currentCitation.fileName}
+                fetchStrategy={currentCitation.fetchStrategy}
+              />
             )}
             {previewType === 'text' && (
               <TextPreview
                 fileId={currentCitation.fileId}
                 fileName={currentCitation.fileName}
                 mimeType={currentCitation.mimeType}
+                fetchStrategy={currentCitation.fetchStrategy}
               />
             )}
             {previewType === 'unsupported' && (
-              <DownloadFallback fileId={currentCitation.fileId} fileName={currentCitation.fileName} />
+              <DownloadFallback
+                fileId={currentCitation.fileId}
+                fileName={currentCitation.fileName}
+                fetchStrategy={currentCitation.fetchStrategy}
+              />
             )}
           </div>
 
@@ -468,7 +490,7 @@ export function SourcePreviewModal({
             onClick={() => {
               if (!currentCitation.fileId) return;
               const link = document.createElement('a');
-              link.href = getFileContentUrl(currentCitation.fileId);
+              link.href = getFileContentUrl(currentCitation.fileId, currentCitation.fetchStrategy);
               link.download = currentCitation.fileName;
               document.body.appendChild(link);
               link.click();

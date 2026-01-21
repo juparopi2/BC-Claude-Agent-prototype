@@ -28,6 +28,7 @@ import {
   getMessageStore,
   getAgentStateStore,
   getCitationStore,
+  getChatAttachmentStore,
   usePendingChatStore,
   getPendingChatStore,
   pendingFileManager,
@@ -99,6 +100,10 @@ export default function ChatPage() {
         if (messagesWithCitations.length > 0) {
           citationStore.getState().hydrateFromMessages(messagesWithCitations);
         }
+
+        // Hydrate chat attachments from loaded messages (for attachment carousel)
+        const chatAttachmentStore = getChatAttachmentStore();
+        chatAttachmentStore.getState().hydrateFromMessages(result.data);
       } else {
         console.error('[ChatPage] Failed to load messages:', result.error);
       }

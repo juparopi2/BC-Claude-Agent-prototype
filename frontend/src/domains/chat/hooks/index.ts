@@ -27,3 +27,9 @@ export {
 
 // Pending Chat Hook
 export { usePendingChat, type UsePendingChatReturn } from './usePendingChat';
+
+// Message Chat Attachments Hook (for displaying attachments in message history)
+export {
+  useMessageChatAttachments,
+  type UseMessageChatAttachmentsReturn,
+} from './useMessageChatAttachments';

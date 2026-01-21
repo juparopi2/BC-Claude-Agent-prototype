@@ -7,7 +7,8 @@
  * Endpoints:
  * - POST /api/chat/attachments - Upload chat attachment
  * - GET /api/chat/attachments - List attachments for a session
- * - GET /api/chat/attachments/:id - Get single attachment
+ * - GET /api/chat/attachments/:id - Get single attachment metadata
+ * - GET /api/chat/attachments/:id/content - Download attachment content
  * - DELETE /api/chat/attachments/:id - Delete attachment
  */
 
@@ -16,6 +17,7 @@ import multer, { MulterError } from 'multer';
 import { z } from 'zod';
 import { authenticateMicrosoft } from '@/domains/auth/middleware/auth-oauth';
 import { getChatAttachmentService } from '@/domains/chat-attachments';
+import { getFileUploadService } from '@/services/files/FileUploadService';
 import { sendError } from '@/shared/utils/error-response';
 import { ErrorCode } from '@/shared/constants/errors';
 import { createChildLogger } from '@/shared/utils/logger';
@@ -275,6 +277,63 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
     }
 
     res.json({ attachment });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/chat/attachments/:id/content
+ *
+ * Download the raw content of a chat attachment.
+ * Returns the file with appropriate Content-Type header.
+ *
+ * Response: 200 OK with file content
+ * Response: 404 Not Found (if attachment not found or expired)
+ */
+router.get('/:id/content', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.userId?.toUpperCase();
+    if (!userId) {
+      sendError(res, ErrorCode.UNAUTHORIZED, 'User ID not found');
+      return;
+    }
+
+    // Validate ID param
+    const paramResult = attachmentIdParamSchema.safeParse(req.params);
+    if (!paramResult.success) {
+      sendError(res, ErrorCode.VALIDATION_ERROR, 'Invalid attachment ID');
+      return;
+    }
+
+    const attachmentId = paramResult.data.id.toUpperCase();
+
+    // Get attachment record with blob path
+    const attachmentService = getChatAttachmentService();
+    const attachment = await attachmentService.getAttachmentRecord(userId, attachmentId);
+
+    if (!attachment) {
+      sendError(res, ErrorCode.NOT_FOUND, 'Attachment not found or expired');
+      return;
+    }
+
+    // Download from blob storage
+    const fileUploadService = getFileUploadService();
+    const buffer = await fileUploadService.downloadFromBlob(attachment.blob_path);
+
+    // Set response headers
+    res.setHeader('Content-Type', attachment.mime_type);
+    res.setHeader('Content-Length', buffer.length);
+    res.setHeader(
+      'Content-Disposition',
+      `inline; filename="${encodeURIComponent(attachment.name)}"`
+    );
+    // Allow browser caching for 1 hour (attachments are ephemeral but still worth caching briefly)
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+
+    logger.debug({ attachmentId, userId, mimeType: attachment.mime_type }, 'Serving attachment content');
+
+    res.send(buffer);
   } catch (error) {
     next(error);
   }

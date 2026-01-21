@@ -34,7 +34,7 @@
 
 import { createChildLogger } from '@/shared/utils/logger';
 import { orchestratorGraph } from '@/modules/agents/orchestrator/graph';
-import { AnthropicAdapter } from '@shared/providers/adapters/AnthropicAdapter';
+import { AnthropicAdapter, convertToLangChainFormat } from '@shared/providers/adapters/AnthropicAdapter';
 import { getBatchResultNormalizer, type BatchResultNormalizer } from '@shared/providers/normalizers/BatchResultNormalizer';
 import { HumanMessage } from '@langchain/core/messages';
 import { randomUUID } from 'crypto';
@@ -53,6 +53,8 @@ import type {
   NormalizedToolResponseEvent,
   NormalizedAssistantMessageEvent,
   NormalizedCompleteEvent,
+  LangChainContentBlock,
+  AnthropicAttachmentContentBlock,
 } from '@bc-agent/shared';
 import {
   createExecutionContextSync,
@@ -62,6 +64,7 @@ import {
 import type { ExecutionContextSync, ExecuteSyncOptions } from './ExecutionContextSync';
 import { createFileContextPreparer, type IFileContextPreparer } from '@domains/agent/context';
 import { getAttachmentContentResolver, type AttachmentContentResolver } from '@/domains/chat-attachments';
+import { getChatAttachmentService } from '@/domains/chat-attachments';
 import {
   getPersistenceCoordinator,
   type IPersistenceCoordinator,
@@ -172,15 +175,17 @@ export class AgentOrchestrator implements IAgentOrchestrator {
       enableAutoSemanticSearch: options?.enableAutoSemanticSearch,
     });
 
-    // Resolve chat attachments to content blocks (ephemeral, direct-to-Anthropic)
-    const chatAttachmentBlocks: Array<{ type: string; source: { type: string; media_type: string; data: string } }> = [];
+    // Resolve chat attachments to content blocks (ephemeral)
+    // AttachmentContentResolver returns Anthropic-native format, which needs conversion
+    // for LangChain compatibility
+    const anthropicAttachmentBlocks: AnthropicAttachmentContentBlock[] = [];
     if (options?.chatAttachments?.length && userId) {
       const resolvedAttachments = await this.attachmentContentResolver.resolve(
         userId,
         options.chatAttachments
       );
       for (const resolved of resolvedAttachments) {
-        chatAttachmentBlocks.push(resolved.contentBlock);
+        anthropicAttachmentBlocks.push(resolved.contentBlock);
       }
       this.logger.debug(
         { sessionId, resolvedCount: resolvedAttachments.length },
@@ -188,16 +193,21 @@ export class AgentOrchestrator implements IAgentOrchestrator {
       );
     }
 
+    // Convert Anthropic-native blocks to LangChain-compatible format
+    // LangChain @langchain/anthropic expects OpenAI-style image_url format for images
+    const langChainAttachmentBlocks = convertToLangChainFormat(anthropicAttachmentBlocks);
+
     // Build message content (multi-modal if attachments present)
-    type ContentBlock = string | { type: 'text'; text: string } | { type: string; source: { type: string; media_type: string; data: string } };
+    // ContentBlock type now uses LangChain-compatible format for images
+    type ContentBlock = string | { type: 'text'; text: string } | LangChainContentBlock;
     let messageContent: ContentBlock | ContentBlock[];
 
-    if (chatAttachmentBlocks.length > 0) {
+    if (langChainAttachmentBlocks.length > 0) {
       // Use multi-modal format with content array
       const contentBlocks: ContentBlock[] = [];
 
-      // Add document/image blocks first
-      contentBlocks.push(...chatAttachmentBlocks);
+      // Add document/image blocks first (already in LangChain format)
+      contentBlocks.push(...langChainAttachmentBlocks);
 
       // Add context text if present
       if (contextResult.contextText) {
@@ -216,8 +226,16 @@ export class AgentOrchestrator implements IAgentOrchestrator {
     }
 
     // Build graph inputs
+    // CRITICAL FIX: LangChain's HumanMessage constructor expects:
+    // - A string directly: new HumanMessage("text")
+    // - An object with content property: new HumanMessage({ content: [...] })
+    // When messageContent is an array (multi-modal), we MUST use the object format
     const inputs = {
-      messages: [new HumanMessage(messageContent)],
+      messages: [
+        typeof messageContent === 'string'
+          ? new HumanMessage(messageContent)
+          : new HumanMessage({ content: messageContent })
+      ],
       activeAgent: 'orchestrator',
       context: {
         userId,
@@ -247,8 +265,24 @@ export class AgentOrchestrator implements IAgentOrchestrator {
     // =========================================================================
     const userMessageResult = await this.persistenceCoordinator.persistUserMessage(
       sessionId,
-      prompt
+      prompt,
+      {
+        // Pass chat attachment IDs for junction table linkage
+        chatAttachmentIds: options?.chatAttachments,
+      }
     );
+
+    // Fetch attachment summaries for immediate frontend rendering
+    // This avoids the need for frontend to fetch separately or show placeholders
+    let chatAttachmentSummaries: import('@bc-agent/shared').ChatAttachmentSummary[] | undefined;
+    if (options?.chatAttachments?.length && userId) {
+      const attachmentService = getChatAttachmentService();
+      chatAttachmentSummaries = await attachmentService.getAttachmentSummaries(
+        userId,
+        options.chatAttachments
+      );
+    }
+
     this.emitEventSync(ctx, {
       type: 'user_message_confirmed',
       sessionId,
@@ -259,6 +293,10 @@ export class AgentOrchestrator implements IAgentOrchestrator {
       userId: userId ?? '',
       timestamp: new Date().toISOString(),
       persistenceState: 'persisted',
+      // Include chat attachment IDs for frontend tracking
+      chatAttachmentIds: options?.chatAttachments,
+      // Include full summaries for immediate rendering (no placeholders needed)
+      chatAttachments: chatAttachmentSummaries,
     });
 
     const agentMessageId = randomUUID();

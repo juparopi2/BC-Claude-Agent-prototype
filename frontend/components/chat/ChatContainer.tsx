@@ -4,10 +4,10 @@ import { useEffect, useRef, useCallback, useLayoutEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import { useFilePreviewStore, useFiles, useGoToFilePath } from '@/src/domains/files';
 import { useAuthStore, selectUserInitials } from '@/src/domains/auth';
-import { useMessages, useAgentState, useCitationStore, usePagination } from '@/src/domains/chat';
+import { useMessages, useAgentState, useCitationStore, usePagination, useChatAttachmentStore } from '@/src/domains/chat';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Loader2 } from 'lucide-react';
-import { isToolUseMessage, isToolResultMessage, isThinkingMessage } from '@bc-agent/shared';
+import { isToolUseMessage, isToolResultMessage, isThinkingMessage, type ChatAttachmentSummary } from '@bc-agent/shared';
 import {
   MessageBubble,
   ThinkingBlock,
@@ -36,6 +36,9 @@ export default function ChatContainer() {
   // Citation store for file references
   const citationFileMap = useCitationStore((s) => s.citationFileMap);
   const getMessageCitations = useCitationStore((s) => s.getMessageCitations);
+
+  // Chat attachment store for message attachments
+  const getMessageAttachments = useChatAttachmentStore((s) => s.getMessageAttachments);
 
   // File domain for looking up file metadata
   const { sortedFiles } = useFiles();
@@ -96,6 +99,44 @@ export default function ChatContainer() {
   const handleGoToPath = useCallback(async (fileId: string) => {
     await goToFilePath(fileId);
   }, [goToFilePath]);
+
+  /**
+   * Handle attachment click from MessageAttachmentCarousel
+   * Opens the file preview modal with the chat attachment
+   * Note: Uses the same preview modal as citations. The attachment content
+   * is fetched via /api/chat/attachments/:id/content endpoint.
+   *
+   * IMPORTANT: Chat attachments use a different API endpoint than KB files.
+   * The SourcePreviewModal needs to be adapted to handle both types.
+   * For now, we use 'blob_storage' as sourceType but the preview URL
+   * will need adjustment in the modal.
+   */
+  const handleAttachmentClick = useCallback(
+    (attachment: ChatAttachmentSummary, allAttachments: ChatAttachmentSummary[]) => {
+      if (attachment.status !== 'ready' || !attachment.id) {
+        return;
+      }
+
+      // Convert attachments to CitationInfo format for the preview modal
+      // This allows reusing the existing SourcePreviewModal with navigation
+      const citationsFromAttachments: CitationInfo[] = allAttachments
+        .filter(a => a.status === 'ready' && a.id)
+        .map(a => ({
+          fileName: a.name,
+          fileId: a.id,
+          mimeType: a.mimeType,
+          isImage: a.isImage,
+          isDeleted: a.status !== 'ready',
+          sourceType: 'chat_attachment' as const,
+          fetchStrategy: 'chat_attachment_api' as const,
+          relevanceScore: 1,
+        }));
+
+      const index = citationsFromAttachments.findIndex(c => c.fileId === attachment.id);
+      openCitationPreview(citationsFromAttachments, Math.max(0, index));
+    },
+    [openCitationPreview]
+  );
 
 
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -248,6 +289,8 @@ export default function ChatContainer() {
               onCitationOpen={handleCitationOpen}
               messageCitations={getMessageCitations(message.id)}
               onCitationInfoOpen={handleCitationInfoOpen}
+              messageAttachments={getMessageAttachments(message.id)}
+              onAttachmentClick={handleAttachmentClick}
             />
           );
         })}

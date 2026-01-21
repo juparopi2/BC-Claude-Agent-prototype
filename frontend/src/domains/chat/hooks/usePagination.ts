@@ -10,6 +10,7 @@
 import { useState, useCallback, useMemo } from 'react';
 import { getApiClient } from '@/src/infrastructure/api';
 import { getMessageStore } from '../stores/messageStore';
+import { getChatAttachmentStore } from '../stores/chatAttachmentStore';
 
 /**
  * Return type for usePagination hook
@@ -143,6 +144,10 @@ export function usePagination(
         for (const message of olderMessages) {
           store.addMessage(message);
         }
+
+        // Hydrate chat attachments from older messages
+        const chatAttachmentStore = getChatAttachmentStore();
+        chatAttachmentStore.getState().hydrateFromMessages(olderMessages);
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';

@@ -377,6 +377,9 @@ describe('Sessions Routes', () => {
       // Third query: get citations for assistant message (msg-2)
       mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
 
+      // Fourth query: get chat attachments for user message (msg-1)
+      mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
+
       // Act
       const response = await request(app)
         .get(`/api/chat/sessions/${VALID_SESSION_UUID}/messages`)
@@ -393,8 +396,8 @@ describe('Sessions Routes', () => {
       // Now includes pagination info
       expect(response.body.pagination).toBeDefined();
       expect(response.body.pagination.hasMore).toBe(false);
-      // 3 queries: session ownership, messages, citations
-      expect(mockExecuteQuery).toHaveBeenCalledTimes(3);
+      // 4 queries: session ownership, messages, citations, chat attachments
+      expect(mockExecuteQuery).toHaveBeenCalledTimes(4);
       expect(mockExecuteQuery).toHaveBeenNthCalledWith(
         2,
         expect.stringContaining('ORDER BY sequence_number DESC'),

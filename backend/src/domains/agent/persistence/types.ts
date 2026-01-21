@@ -159,6 +159,17 @@ export interface ToolExecution {
 }
 
 /**
+ * Options for persisting a user message.
+ */
+export interface PersistUserMessageOptions {
+  /**
+   * Chat attachment IDs to link to this message.
+   * These are ephemeral attachments uploaded via /api/chat/attachments.
+   */
+  chatAttachmentIds?: string[];
+}
+
+/**
  * Interface for PersistenceCoordinator.
  * Coordinates EventStore + MessageQueue for unified persistence.
  */
@@ -167,9 +178,14 @@ export interface IPersistenceCoordinator {
    * Persist a user message to the event store.
    * @param sessionId - Session ID
    * @param content - Message content
+   * @param options - Optional settings including chat attachment IDs
    * @returns Persisted event with sequence number and messageId
    */
-  persistUserMessage(sessionId: string, content: string): Promise<UserMessagePersistedEvent>;
+  persistUserMessage(
+    sessionId: string,
+    content: string,
+    options?: PersistUserMessageOptions
+  ): Promise<UserMessagePersistedEvent>;
 
   /**
    * Persist an agent message with full metadata.
@@ -248,6 +264,14 @@ export interface IPersistenceCoordinator {
       isImage: boolean;
     }>
   ): void;
+
+  /**
+   * Persist message-to-chat-attachment links asynchronously (fire-and-forget).
+   * Does not block - creates junction table entries in background.
+   * @param messageId - Message ID to link attachments to
+   * @param chatAttachmentIds - Array of chat attachment IDs to link
+   */
+  persistMessageChatAttachmentsAsync(messageId: string, chatAttachmentIds: string[]): void;
 
   /**
    * Await completion of a persistence job.

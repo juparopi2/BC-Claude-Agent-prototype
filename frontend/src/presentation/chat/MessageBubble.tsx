@@ -14,7 +14,8 @@ import { ThinkingBlock } from './ThinkingBlock';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { PersistenceIndicator } from './PersistenceIndicator';
 import { SourceCarousel } from './SourceCarousel';
-import { isThinkingMessage, isStandardMessage, isToolResultMessage, type Message, type PersistenceState } from '@bc-agent/shared';
+import { MessageAttachmentCarousel } from './MessageAttachmentCarousel';
+import { isThinkingMessage, isStandardMessage, isToolResultMessage, type Message, type PersistenceState, type ChatAttachmentSummary } from '@bc-agent/shared';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Bot } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -46,6 +47,10 @@ interface MessageBubbleProps {
   messageCitations?: CitationInfo[];
   /** Callback when a citation card in the carousel is clicked - receives info and all citations for navigation */
   onCitationInfoOpen?: (info: CitationInfo, allCitations: CitationInfo[]) => void;
+  /** Chat attachments associated with this user message */
+  messageAttachments?: ChatAttachmentSummary[];
+  /** Callback when an attachment card is clicked */
+  onAttachmentClick?: (attachment: ChatAttachmentSummary, allAttachments: ChatAttachmentSummary[]) => void;
 }
 
 export default function MessageBubble({
@@ -56,6 +61,8 @@ export default function MessageBubble({
   persistenceState,
   messageCitations,
   onCitationInfoOpen,
+  messageAttachments,
+  onAttachmentClick,
 }: MessageBubbleProps) {
 
   // Handle thinking messages with unified ThinkingBlock component
@@ -120,6 +127,17 @@ export default function MessageBubble({
             onCitationOpen={onCitationOpen}
           />
         </div>
+
+        {/* MessageAttachmentCarousel for user messages with attachments */}
+        {isUser && messageAttachments && messageAttachments.length > 0 && (
+          <div className="mt-2 pr-1">
+            <MessageAttachmentCarousel
+              attachments={messageAttachments}
+              onAttachmentClick={onAttachmentClick}
+              maxVisible={5}
+            />
+          </div>
+        )}
 
         {/* SourceCarousel for assistant messages with citations */}
         {!isUser && messageCitations && messageCitations.length > 0 && (

@@ -170,6 +170,34 @@ export interface ChatAttachmentDbRecord {
 // ============================================
 
 /**
+ * Lightweight chat attachment summary for message history
+ *
+ * Used when displaying attachments in message bubbles.
+ * Contains only the fields needed for UI rendering.
+ *
+ * @see MessageChatAttachmentService.getAttachmentsForMessages
+ */
+export interface ChatAttachmentSummary {
+  /** Attachment ID (UPPERCASE UUID) */
+  id: string;
+
+  /** Original filename */
+  name: string;
+
+  /** MIME type */
+  mimeType: string;
+
+  /** File size in bytes */
+  sizeBytes: number;
+
+  /** Whether this is an image (for thumbnail rendering) */
+  isImage: boolean;
+
+  /** Current status (ready, expired, deleted) */
+  status: ChatAttachmentStatus;
+}
+
+/**
  * Parsed chat attachment for API responses
  *
  * This is the camelCase format sent to clients.
@@ -283,6 +311,56 @@ export type AnthropicAttachmentContentBlock = AnthropicDocumentBlock | Anthropic
 export function isImageMimeType(mimeType: string): boolean {
   return mimeType.startsWith('image/');
 }
+
+// ============================================
+// LangChain Content Block Types
+// ============================================
+
+/**
+ * LangChain image content block (OpenAI-style)
+ *
+ * LangChain @langchain/anthropic expects this format for images,
+ * NOT the native Anthropic format.
+ *
+ * @see https://github.com/langchain-ai/langchainjs/issues/7839
+ */
+export interface LangChainImageBlock {
+  type: 'image_url';
+  image_url: {
+    url: string; // data:mime;base64,data format
+  };
+}
+
+/**
+ * LangChain text content block
+ */
+export interface LangChainTextBlock {
+  type: 'text';
+  text: string;
+}
+
+/**
+ * LangChain document content block
+ *
+ * Documents can use either simplified base64 string or full source object.
+ * LangChain accepts the same format as Anthropic for documents.
+ */
+export interface LangChainDocumentBlock {
+  type: 'document';
+  source: string | {
+    type: 'base64';
+    media_type: string;
+    data: string;
+  };
+}
+
+/**
+ * Union of content blocks compatible with LangChain @langchain/anthropic
+ */
+export type LangChainContentBlock =
+  | LangChainImageBlock
+  | LangChainTextBlock
+  | LangChainDocumentBlock;
 
 /**
  * Get the appropriate content block type for a MIME type

@@ -8,6 +8,7 @@
  */
 
 import type { SourceType, FetchStrategy } from './source.types';
+import type { ChatAttachmentSummary } from './chat-attachments.types';
 
 /**
  * Provider-agnostic stop reason.
@@ -374,6 +375,18 @@ export interface UserMessageConfirmedEvent extends BaseAgentEvent {
   sequenceNumber: number;
   /** Event ID from EventStore for tracing */
   eventId: string;
+  /**
+   * Chat attachment IDs associated with this message.
+   * These are the IDs that were linked to the message in the junction table.
+   * Frontend can use these to fetch attachment summaries from the store.
+   */
+  chatAttachmentIds?: string[];
+  /**
+   * Full chat attachment summaries for immediate rendering.
+   * Contains complete metadata (name, size, mimeType) so frontend
+   * doesn't need to fetch separately or display placeholders.
+   */
+  chatAttachments?: ChatAttachmentSummary[];
 }
 
 /**

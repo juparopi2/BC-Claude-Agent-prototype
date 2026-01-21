@@ -13,6 +13,8 @@
  * @module @bc-agent/shared/types/message
  */
 
+import type { ChatAttachmentSummary } from './chat-attachments.types';
+
 /**
  * Base fields shared by all message types.
  *
@@ -89,6 +91,13 @@ export interface StandardMessage extends BaseMessage {
 
   /** Claude model name, e.g., 'claude-sonnet-4-5-20250929' */
   model?: string;
+
+  /**
+   * Chat attachments associated with this user message.
+   * These are ephemeral files uploaded via chat input and sent to Anthropic.
+   * Only present on user messages that had attachments.
+   */
+  chatAttachments?: ChatAttachmentSummary[];
 }
 
 /**

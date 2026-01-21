@@ -21,6 +21,8 @@ import type {
   NormalizedToolRequestEvent,
   NormalizedStopReason,
   NormalizedTokenUsage,
+  AnthropicAttachmentContentBlock,
+  LangChainContentBlock,
 } from '@bc-agent/shared';
 import type { IProviderAdapter, ContentBlockType } from '../interfaces/IProviderAdapter';
 import { createChildLogger } from '@/shared/utils/logger';
@@ -73,6 +75,47 @@ function isTextBlock(block: ContentBlock): block is TextBlock {
  */
 function isToolUseBlock(block: ContentBlock): block is ToolUseBlock {
   return block.type === 'tool_use' && 'id' in block && 'name' in block;
+}
+
+// =============================================================================
+// LangChain Content Block Conversion
+// =============================================================================
+
+/**
+ * Convert Anthropic native content blocks to LangChain-compatible format.
+ *
+ * LangChain @langchain/anthropic uses OpenAI-style format for images:
+ * - Native Anthropic: { type: 'image', source: { type: 'base64', media_type, data } }
+ * - LangChain expects: { type: 'image_url', image_url: { url: 'data:mime;base64,data' } }
+ *
+ * Documents pass through unchanged (LangChain accepts Anthropic format).
+ *
+ * @see https://github.com/langchain-ai/langchainjs/issues/7839
+ *
+ * @param contentBlocks - Array of Anthropic native content blocks
+ * @returns Array of LangChain-compatible content blocks
+ */
+export function convertToLangChainFormat(
+  contentBlocks: AnthropicAttachmentContentBlock[]
+): LangChainContentBlock[] {
+  return contentBlocks.map((block): LangChainContentBlock => {
+    if (block.type === 'image') {
+      // Convert Anthropic native image format to LangChain image_url format
+      return {
+        type: 'image_url',
+        image_url: {
+          url: `data:${block.source.media_type};base64,${block.source.data}`,
+        },
+      };
+    }
+
+    // Documents: LangChain accepts Anthropic format directly
+    // Return with the full source object structure
+    return {
+      type: 'document',
+      source: block.source,
+    };
+  });
 }
 
 /**

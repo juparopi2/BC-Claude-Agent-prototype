@@ -188,6 +188,7 @@ export type {
   ChatAttachmentStatus,
   ChatAttachmentMediaType,
   ChatAttachmentDbRecord,
+  ChatAttachmentSummary,
   ParsedChatAttachment,
   AnthropicDocumentBlock,
   AnthropicImageBlock,

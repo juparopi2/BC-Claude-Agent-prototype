@@ -21,3 +21,5 @@ export { SourceCarousel } from './SourceCarousel';
 export type { SourceCarouselProps } from './SourceCarousel';
 export { FileThumbnail } from './FileThumbnail';
 export type { FileThumbnailProps } from './FileThumbnail';
+export { MessageAttachmentCarousel } from './MessageAttachmentCarousel';
+export type { MessageAttachmentCarouselProps } from './MessageAttachmentCarousel';

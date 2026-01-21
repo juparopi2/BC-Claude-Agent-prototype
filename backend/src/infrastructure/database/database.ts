@@ -73,6 +73,7 @@ const PARAMETER_TYPE_MAP: Record<string, ISqlType | (() => ISqlType)> = {
   'entity_id': sql.UniqueIdentifier,
   'file_id': sql.UniqueIdentifier,
   'parent_folder_id': sql.UniqueIdentifier,
+  'chat_attachment_id': sql.UniqueIdentifier,
 
   // NVARCHAR columns that end in 'Id' but are NOT UUIDs (Microsoft OAuth IDs, Anthropic IDs)
   'microsoftId': sql.NVarChar(255),

@@ -31,8 +31,10 @@ import type {
   ErrorData,
   ToolExecution,
   IPersistenceErrorAnalyzer,
+  PersistUserMessageOptions,
 } from './types';
 import { getPersistenceErrorAnalyzer } from './PersistenceErrorAnalyzer';
+import { getMessageChatAttachmentService } from '@/services/files/MessageChatAttachmentService';
 
 /**
  * Singleton instance
@@ -58,9 +60,14 @@ export class PersistenceCoordinator implements IPersistenceCoordinator {
    * Persist a user message to the event store.
    * @param sessionId - Session ID
    * @param content - Message content
+   * @param options - Optional settings including chat attachment IDs
    * @returns Persisted event with sequence number and messageId
    */
-  async persistUserMessage(sessionId: string, content: string): Promise<UserMessagePersistedEvent> {
+  async persistUserMessage(
+    sessionId: string,
+    content: string,
+    options?: PersistUserMessageOptions
+  ): Promise<UserMessagePersistedEvent> {
     try {
       const messageId = uuidv4();
 
@@ -70,6 +77,8 @@ export class PersistenceCoordinator implements IPersistenceCoordinator {
         content,
         timestamp: new Date().toISOString(),
         persistenceState: 'persisted',
+        // Include attachment count in event data for auditing
+        chat_attachment_count: options?.chatAttachmentIds?.length ?? 0,
       });
 
       // 2. CRITICAL: Validate sequenceNumber
@@ -91,7 +100,12 @@ export class PersistenceCoordinator implements IPersistenceCoordinator {
         eventId: dbEvent.id,
       });
 
-      // 4. Return UserMessagePersistedEvent (includes messageId for event emission)
+      // 4. Persist chat attachments asynchronously (fire-and-forget)
+      if (options?.chatAttachmentIds && options.chatAttachmentIds.length > 0) {
+        this.persistMessageChatAttachmentsAsync(messageId, options.chatAttachmentIds);
+      }
+
+      // 5. Return UserMessagePersistedEvent (includes messageId for event emission)
       return {
         eventId: dbEvent.id,
         sequenceNumber: dbEvent.sequence_number,
@@ -605,6 +619,49 @@ export class PersistenceCoordinator implements IPersistenceCoordinator {
             citationCount: citations.length,
           },
           'Failed to persist citations'
+        );
+      }
+    })();
+  }
+
+  /**
+   * Persist message-to-chat-attachment links asynchronously (fire-and-forget).
+   * Does not block - creates junction table entries in background.
+   *
+   * @param messageId - Message ID to link attachments to
+   * @param chatAttachmentIds - Array of chat attachment IDs to link
+   */
+  persistMessageChatAttachmentsAsync(messageId: string, chatAttachmentIds: string[]): void {
+    if (!chatAttachmentIds.length) return;
+
+    // Use IIFE for background processing
+    (async () => {
+      try {
+        const attachmentService = getMessageChatAttachmentService();
+        const result = await attachmentService.recordAttachments(messageId, chatAttachmentIds);
+
+        this.logger.info(
+          {
+            messageId,
+            attachmentCount: chatAttachmentIds.length,
+            recordsCreated: result.recordsCreated,
+          },
+          'Chat attachments linked to message async'
+        );
+      } catch (err) {
+        // Log error but don't throw (fire-and-forget)
+        const errorInfo =
+          err instanceof Error
+            ? { message: err.message, stack: err.stack, name: err.name }
+            : { value: String(err) };
+
+        this.logger.error(
+          {
+            error: errorInfo,
+            messageId,
+            attachmentCount: chatAttachmentIds.length,
+          },
+          'Failed to link chat attachments to message'
         );
       }
     })();

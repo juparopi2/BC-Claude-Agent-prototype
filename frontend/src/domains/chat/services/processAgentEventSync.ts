@@ -17,11 +17,13 @@ import type {
   CompleteEvent,
   CitedFile,
   Message,
+  ChatAttachmentSummary,
 } from '@bc-agent/shared';
 import { getMessageStore } from '../stores/messageStore';
 import { getAgentStateStore } from '../stores/agentStateStore';
 import { getApprovalStore } from '../stores/approvalStore';
 import { getCitationStore } from '../stores/citationStore';
+import { getChatAttachmentStore } from '../stores/chatAttachmentStore';
 
 /**
  * Callbacks for UI state updates.
@@ -86,6 +88,8 @@ export function processAgentEventSync(
         content: string;
         sequenceNumber: number;
         sessionId?: string;
+        chatAttachmentIds?: string[];
+        chatAttachments?: ChatAttachmentSummary[];
       };
 
       // Ensure agent is marked busy
@@ -108,6 +112,23 @@ export function processAgentEventSync(
         sequence_number: confirmedEvent.sequenceNumber,
         created_at: new Date().toISOString(),
       });
+
+      // Store chat attachments - prefer full summaries over IDs-only
+      // Full summaries allow immediate rendering without placeholders
+      const chatAttachmentStore = getChatAttachmentStore();
+      if (confirmedEvent.chatAttachments && confirmedEvent.chatAttachments.length > 0) {
+        // Use full summaries (includes name, size, mimeType)
+        chatAttachmentStore.getState().setMessageAttachments(
+          confirmedEvent.messageId,
+          confirmedEvent.chatAttachments
+        );
+      } else if (confirmedEvent.chatAttachmentIds && confirmedEvent.chatAttachmentIds.length > 0) {
+        // Fallback to IDs-only (creates placeholders)
+        chatAttachmentStore.getState().setMessageAttachmentIds(
+          confirmedEvent.messageId,
+          confirmedEvent.chatAttachmentIds
+        );
+      }
       break;
     }
 

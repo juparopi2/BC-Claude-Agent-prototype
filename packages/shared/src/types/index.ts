@@ -227,6 +227,7 @@ export type {
   ChatAttachmentStatus,
   ChatAttachmentMediaType,
   ChatAttachmentDbRecord,
+  ChatAttachmentSummary,
   ParsedChatAttachment,
   AnthropicDocumentBlock,
   AnthropicImageBlock,
@@ -236,6 +237,11 @@ export type {
   ListChatAttachmentsResponse,
   ResolvedChatAttachment,
   ChatAttachmentCleanupJobData,
+  // LangChain-compatible content block types
+  LangChainImageBlock,
+  LangChainTextBlock,
+  LangChainDocumentBlock,
+  LangChainContentBlock,
 } from './chat-attachments.types';
 
 // Chat Attachments constants and utilities

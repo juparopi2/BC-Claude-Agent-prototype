@@ -49,6 +49,14 @@ export {
   type PendingChatState,
   type PendingChatActions,
   type PendingChatStore,
+  // Chat Attachment Store (message-to-attachment mapping)
+  useChatAttachmentStore,
+  getChatAttachmentStore,
+  resetChatAttachmentStore,
+  type ChatAttachmentState,
+  type ChatAttachmentActions,
+  type ChatAttachmentStore,
+  type MessageWithChatAttachments,
 } from './stores';
 
 // Services

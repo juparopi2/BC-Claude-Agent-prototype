@@ -30,6 +30,8 @@ import type {
   ChatAttachmentDbRecord,
   ParsedChatAttachment,
   ChatAttachmentMediaType,
+  ChatAttachmentSummary,
+  ChatAttachmentStatus,
 } from '@bc-agent/shared';
 import type { Logger } from 'pino';
 
@@ -285,6 +287,70 @@ export class ChatAttachmentService {
     });
 
     return result.recordset[0] || null;
+  }
+
+  /**
+   * Get lightweight attachment summaries by IDs.
+   *
+   * Returns ChatAttachmentSummary (not full ParsedChatAttachment) for
+   * efficient WebSocket event emission. Used when user_message_confirmed
+   * needs to include attachment metadata for immediate frontend rendering.
+   *
+   * @param userId - User ID for ownership check
+   * @param attachmentIds - Array of attachment IDs
+   * @returns Array of summaries (order matches input IDs where found)
+   */
+  async getAttachmentSummaries(
+    userId: string,
+    attachmentIds: string[]
+  ): Promise<ChatAttachmentSummary[]> {
+    if (attachmentIds.length === 0) {
+      return [];
+    }
+
+    // Build parameterized IN clause
+    const idParams = attachmentIds.map((_, i) => `@id${i}`).join(', ');
+    const params: Record<string, unknown> = { user_id: userId };
+    attachmentIds.forEach((id, i) => {
+      params[`id${i}`] = id;
+    });
+
+    const query = `
+      SELECT id, name, mime_type, size_bytes, expires_at, is_deleted
+      FROM chat_attachments
+      WHERE id IN (${idParams})
+        AND user_id = @user_id
+        AND is_deleted = 0
+    `;
+
+    const result = await executeQuery<{
+      id: string;
+      name: string;
+      mime_type: string;
+      size_bytes: number;
+      expires_at: Date;
+      is_deleted: boolean;
+    }>(query, params);
+
+    // Convert to summaries
+    const now = new Date();
+    return result.recordset.map((record): ChatAttachmentSummary => {
+      let status: ChatAttachmentStatus = 'ready';
+      if (record.is_deleted) {
+        status = 'deleted';
+      } else if (record.expires_at < now) {
+        status = 'expired';
+      }
+
+      return {
+        id: record.id,
+        name: record.name,
+        mimeType: record.mime_type,
+        sizeBytes: record.size_bytes,
+        isImage: record.mime_type.startsWith('image/'),
+        status,
+      };
+    });
   }
 
   // ========================================

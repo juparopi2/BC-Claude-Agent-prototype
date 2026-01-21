@@ -17,6 +17,7 @@ import { sendError } from '@/shared/utils/error-response';
 import { getMessagesSchema } from '@/domains/sessions';
 import { getSessionService } from '@/services/sessions';
 import { getCitationService } from '@/services/citations';
+import { getMessageChatAttachmentService } from '@/services/files/MessageChatAttachmentService';
 
 const logger = createChildLogger({ service: 'MessagesRoutes' });
 const router = Router();
@@ -123,6 +124,39 @@ router.get('/:sessionId/messages', authenticateMicrosoft, async (req: Request, r
         logger.warn(
           { error: citationError instanceof Error ? citationError.message : String(citationError), sessionId },
           'Failed to fetch citations, continuing without them'
+        );
+      }
+    }
+
+    // Fetch chat attachments for user standard messages
+    const userMessageIds = messages
+      .filter(m => m.type === 'standard' && m.role === 'user')
+      .map(m => m.id);
+
+    if (userMessageIds.length > 0) {
+      try {
+        const attachmentService = getMessageChatAttachmentService();
+        const attachmentsMap = await attachmentService.getAttachmentsForMessages(userMessageIds);
+
+        // Attach chat attachments to user messages
+        for (const message of messages) {
+          if (message.type === 'standard' && message.role === 'user') {
+            const messageAttachments = attachmentsMap.get(message.id);
+            if (messageAttachments && messageAttachments.length > 0) {
+              (message as Record<string, unknown>).chatAttachments = messageAttachments;
+            }
+          }
+        }
+
+        logger.debug(
+          { sessionId, attachmentMessagesCount: attachmentsMap.size },
+          'Chat attachments attached to messages'
+        );
+      } catch (attachmentError) {
+        // Non-critical: log error but continue returning messages
+        logger.warn(
+          { error: attachmentError instanceof Error ? attachmentError.message : String(attachmentError), sessionId },
+          'Failed to fetch chat attachments, continuing without them'
         );
       }
     }

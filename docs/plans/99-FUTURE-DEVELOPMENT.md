@@ -60,6 +60,11 @@ Mejoras en la estabilidad, calidad del código e infraestructura existente.
 **Objetivo:** Simular fallos de Redis en CI para garantizar que el fallback a DB funciona automáticamente.
 **Estimación:** 2 días
 
+### Cleanup Deprecated Methods (Media)
+**Problema:** Existe código marcado como `@deprecated` que debe ser eliminado para mantener el código limpio.
+**Solución:** Identificar, refactorizar si es necesario y eliminar métodos marcados como `@deprecated`.
+**Estimación:** 3 días
+
 ### Tests Pendientes (Maintenance)
 - **D14**: Unimplemented APIs (GDPR, Billing, Usage) - *Cuando existan las features*
 - **D15**: Approval E2E Tests - *Pendiente de refactor ApprovalManager*

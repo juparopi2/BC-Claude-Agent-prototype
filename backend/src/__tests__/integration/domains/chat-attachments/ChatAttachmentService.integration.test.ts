@@ -92,7 +92,7 @@ describe('ChatAttachmentService Integration', () => {
   describe('uploadAttachment', () => {
     it('should upload a PDF attachment and persist to database', async () => {
       const user = await factory.createTestUser({ prefix: 'chat_attach_upload_' });
-      const session = await factory.createSession(user.id, { title: 'Test Session' });
+      const session = await factory.createChatSession(user.id, { title: 'Test Session' });
 
       const pdfContent = Buffer.from('%PDF-1.4\ntest content');
       const result = await service.uploadAttachment({
@@ -126,7 +126,7 @@ describe('ChatAttachmentService Integration', () => {
 
     it('should upload an image attachment', async () => {
       const user = await factory.createTestUser({ prefix: 'chat_attach_img_' });
-      const session = await factory.createSession(user.id, { title: 'Image Test' });
+      const session = await factory.createChatSession(user.id, { title: 'Image Test' });
 
       // Minimal PNG content
       const pngContent = Buffer.from([
@@ -150,7 +150,7 @@ describe('ChatAttachmentService Integration', () => {
 
     it('should set correct expiration time based on TTL', async () => {
       const user = await factory.createTestUser({ prefix: 'chat_attach_ttl_' });
-      const session = await factory.createSession(user.id, { title: 'TTL Test' });
+      const session = await factory.createChatSession(user.id, { title: 'TTL Test' });
 
       const content = Buffer.from('%PDF-1.4\nttl test');
       const customTtlHours = 48;
@@ -180,7 +180,7 @@ describe('ChatAttachmentService Integration', () => {
   describe('getAttachment', () => {
     it('should retrieve an attachment by ID', async () => {
       const user = await factory.createTestUser({ prefix: 'chat_attach_get_' });
-      const session = await factory.createSession(user.id, { title: 'Get Test' });
+      const session = await factory.createChatSession(user.id, { title: 'Get Test' });
 
       const content = Buffer.from('%PDF-1.4\nget test');
       const uploaded = await service.uploadAttachment({
@@ -214,7 +214,7 @@ describe('ChatAttachmentService Integration', () => {
       // Create two users
       const user1 = await factory.createTestUser({ prefix: 'chat_attach_iso1_' });
       const user2 = await factory.createTestUser({ prefix: 'chat_attach_iso2_' });
-      const session1 = await factory.createSession(user1.id, { title: 'User1 Session' });
+      const session1 = await factory.createChatSession(user1.id, { title: 'User1 Session' });
 
       // User1 uploads an attachment
       const content = Buffer.from('%PDF-1.4\nisolation test');
@@ -242,7 +242,7 @@ describe('ChatAttachmentService Integration', () => {
   describe('getAttachmentsBySession', () => {
     it('should list all attachments for a session', async () => {
       const user = await factory.createTestUser({ prefix: 'chat_attach_list_' });
-      const session = await factory.createSession(user.id, { title: 'List Test' });
+      const session = await factory.createChatSession(user.id, { title: 'List Test' });
 
       // Upload multiple attachments
       const content1 = Buffer.from('%PDF-1.4\nfile 1');
@@ -278,7 +278,7 @@ describe('ChatAttachmentService Integration', () => {
 
     it('should return empty array for session with no attachments', async () => {
       const user = await factory.createTestUser({ prefix: 'chat_attach_empty_' });
-      const session = await factory.createSession(user.id, { title: 'Empty Session' });
+      const session = await factory.createChatSession(user.id, { title: 'Empty Session' });
 
       const result = await service.getAttachmentsBySession(user.id, session.id);
 
@@ -289,7 +289,7 @@ describe('ChatAttachmentService Integration', () => {
   describe('getAttachmentsByIds', () => {
     it('should retrieve multiple attachments by IDs', async () => {
       const user = await factory.createTestUser({ prefix: 'chat_attach_ids_' });
-      const session = await factory.createSession(user.id, { title: 'IDs Test' });
+      const session = await factory.createChatSession(user.id, { title: 'IDs Test' });
 
       const content = Buffer.from('%PDF-1.4\nids test');
 
@@ -320,7 +320,7 @@ describe('ChatAttachmentService Integration', () => {
 
     it('should filter out non-existent IDs', async () => {
       const user = await factory.createTestUser({ prefix: 'chat_attach_filter_' });
-      const session = await factory.createSession(user.id, { title: 'Filter Test' });
+      const session = await factory.createChatSession(user.id, { title: 'Filter Test' });
 
       const content = Buffer.from('%PDF-1.4\nfilter test');
 
@@ -346,7 +346,7 @@ describe('ChatAttachmentService Integration', () => {
   describe('deleteAttachment', () => {
     it('should soft delete an attachment', async () => {
       const user = await factory.createTestUser({ prefix: 'chat_attach_del_' });
-      const session = await factory.createSession(user.id, { title: 'Delete Test' });
+      const session = await factory.createChatSession(user.id, { title: 'Delete Test' });
 
       const content = Buffer.from('%PDF-1.4\ndelete test');
 
@@ -390,7 +390,7 @@ describe('ChatAttachmentService Integration', () => {
     it('should enforce multi-tenant isolation on delete', async () => {
       const user1 = await factory.createTestUser({ prefix: 'chat_attach_del_iso1_' });
       const user2 = await factory.createTestUser({ prefix: 'chat_attach_del_iso2_' });
-      const session1 = await factory.createSession(user1.id, { title: 'Del Isolation' });
+      const session1 = await factory.createChatSession(user1.id, { title: 'Del Isolation' });
 
       const content = Buffer.from('%PDF-1.4\ndel isolation');
 
@@ -418,7 +418,7 @@ describe('ChatAttachmentService Integration', () => {
   describe('markExpiredForDeletion', () => {
     it('should mark expired attachments as deleted', async () => {
       const user = await factory.createTestUser({ prefix: 'chat_attach_exp_' });
-      const session = await factory.createSession(user.id, { title: 'Expiration Test' });
+      const session = await factory.createChatSession(user.id, { title: 'Expiration Test' });
 
       // Manually insert an expired attachment (expires_at in the past)
       const attachmentId = crypto.randomUUID().toUpperCase();
@@ -460,7 +460,7 @@ describe('ChatAttachmentService Integration', () => {
   describe('hardDeleteAttachments', () => {
     it('should permanently delete attachment records', async () => {
       const user = await factory.createTestUser({ prefix: 'chat_attach_hard_' });
-      const session = await factory.createSession(user.id, { title: 'Hard Delete Test' });
+      const session = await factory.createChatSession(user.id, { title: 'Hard Delete Test' });
 
       // Insert a soft-deleted attachment
       const attachmentId = crypto.randomUUID().toUpperCase();

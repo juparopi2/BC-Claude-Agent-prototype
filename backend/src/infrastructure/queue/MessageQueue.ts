@@ -1,422 +1,352 @@
 /**
- * Message Queue Service (Multi-Tenant Safe)
+ * Message Queue Service (Multi-Tenant Safe) - Facade
  *
  * Implements message queue system using BullMQ with rate limiting.
- * Decouples message persistence from the main request/response flow.
+ * This facade coordinates extracted components for modularity.
  *
  * Architecture:
- * - message-persistence: Persist messages to database (concurrency: 10)
- * - tool-execution: Execute tool calls asynchronously (concurrency: 5)
- * - event-processing: Process events from EventStore (concurrency: 10)
+ * - Core components: RedisConnectionManager, QueueManager, WorkerRegistry, etc.
+ * - Workers: Extracted to individual files in ./workers/
+ * - Constants: Centralized in ./constants/
+ * - Types: Centralized in ./types/
  *
- * Graceful Shutdown:
- * - Follows BullMQ official pattern (docs.bullmq.io/guide/workers/graceful-shutdown)
- * - Workers close first (drain active jobs), then queues, then Redis
- * - Production: Called from server.ts gracefulShutdown()
- * - Tests: Must close injected Redis connections explicitly
+ * Backward Compatibility:
+ * - All public methods remain unchanged
+ * - All types re-exported for consumers
  *
- * Rate Limiting:
- * - Max 100 jobs per session in message-persistence queue
- * - Prevents single tenant from saturating the queue
- * - Horizontal scaling ready
- *
- * @module services/queue/MessageQueue
+ * @module infrastructure/queue/MessageQueue
  */
 
-import { Queue, Worker, Job, QueueEvents, type RedisOptions } from 'bullmq';
-import { Redis } from 'ioredis';
-import { env } from '@/infrastructure/config';
-import { getRedisConfig } from '@/infrastructure/redis/redis';
+import { Job, QueueEvents } from 'bullmq';
 import { createChildLogger } from '@/shared/utils/logger';
-import { executeQuery, SqlParams } from '@/infrastructure/database/database';
-import { getEventStore, EventType } from '@/services/events/EventStore';
 import type {
   IMessageQueueDependencies,
-  IEventStoreMinimal,
   ILoggerMinimal,
   ExecuteQueryFn,
   IEmbeddingServiceMinimal,
   IVectorSearchServiceMinimal,
 } from './IMessageQueueDependencies';
-import { getFileEventEmitter } from '@/domains/files/emission';
-import { getJobFailureEventEmitter } from '@/domains/queue/emission';
-import {
-  PROCESSING_STATUS,
-  EMBEDDING_STATUS,
-  FILE_READINESS_STATE,
-  FILE_DELETION_CONFIG,
-  FILE_BULK_UPLOAD_CONFIG,
-  type FileDeletionJobData,
-  type BulkUploadJobData,
-  type JobQueueName,
-} from '@bc-agent/shared';
+import type { FileDeletionJobData, BulkUploadJobData } from '@bc-agent/shared';
 
-/**
- * Queue Names
- */
-export enum QueueName {
-  MESSAGE_PERSISTENCE = 'message-persistence',
-  TOOL_EXECUTION = 'tool-execution',
-  EVENT_PROCESSING = 'event-processing',
-  USAGE_AGGREGATION = 'usage-aggregation',
-  FILE_PROCESSING = 'file-processing',
-  FILE_CHUNKING = 'file-chunking',
-  EMBEDDING_GENERATION = 'embedding-generation',
-  CITATION_PERSISTENCE = 'citation-persistence',
-  FILE_CLEANUP = 'file-cleanup',
-  FILE_DELETION = 'file-deletion',
-  FILE_BULK_UPLOAD = 'file-bulk-upload',
-}
+// Re-export from constants for backward compatibility
+export { QueueName } from './constants';
+import { QueueName, JOB_PRIORITY, RATE_LIMIT, SHUTDOWN_DELAYS } from './constants';
 
+// Re-export types for backward compatibility
+export type {
+  MessagePersistenceJob,
+  ToolExecutionJob,
+  EventProcessingJob,
+  UsageAggregationJob,
+  FileProcessingJob,
+  EmbeddingGenerationJob,
+  FileChunkingJob,
+  CitationPersistenceJob,
+  FileCleanupJob,
+} from './types';
+import type {
+  MessagePersistenceJob,
+  ToolExecutionJob,
+  EventProcessingJob,
+  UsageAggregationJob,
+  FileProcessingJob,
+  EmbeddingGenerationJob,
+  FileChunkingJob,
+  CitationPersistenceJob,
+  FileCleanupJob,
+} from './types';
 
-/**
- * Message Persistence Job Data
- *
- * @description Contains all data needed to persist a message to the database.
- * Phase 1A adds token tracking fields (model, inputTokens, outputTokens).
- * Phase 1B uses Anthropic message IDs as primary key.
- */
-export interface MessagePersistenceJob {
-  sessionId: string;
-  messageId: string;
-  role: 'user' | 'assistant' | 'system';
-  messageType: 'text' | 'thinking' | 'tool_use' | 'tool_result' | 'error';
-  content: string;
-  metadata?: Record<string, unknown>;
-  // ⭐ NEW: Sequence number and event ID from EventStore
-  sequenceNumber?: number;
-  eventId?: string;
-  // ⭐ FIX: Tool use ID for correlating tool_use and tool_result (stored in messages.tool_use_id column)
-  toolUseId?: string | null;
-  // ⭐ FIX: Stop reason from Anthropic SDK (for identifying intermediate vs final messages)
-  stopReason?: string | null;
-  // ⭐ PHASE 1A: Token tracking fields from Anthropic SDK
-  model?: string;
-  inputTokens?: number;
-  outputTokens?: number;
-  // Note: thinkingTokens removed per Option A (2025-11-24)
-  // SDK doesn't provide thinking_tokens separately (included in output_tokens)
-  // Real-time estimation still available via WebSocket tokenUsage
-}
+// Core components
+import { RedisConnectionManager } from './core/RedisConnectionManager';
+import { QueueManager } from './core/QueueManager';
+import { WorkerRegistry } from './core/WorkerRegistry';
+import { QueueEventManager } from './core/QueueEventManager';
+import { ScheduledJobManager } from './core/ScheduledJobManager';
+import { RateLimiter } from './core/RateLimiter';
 
-/**
- * Tool Execution Job Data
- */
-export interface ToolExecutionJob {
-  sessionId: string;
-  toolUseId: string;
-  toolName: string;
-  toolArgs: Record<string, unknown>;
-  userId: string;
-}
-
-/**
- * Event Processing Job Data
- */
-export interface EventProcessingJob {
-  eventId: string;
-  sessionId: string;
-  eventType: EventType;
-  data: Record<string, unknown>;
-}
-
-/**
- * Usage Aggregation Job Data
- *
- * Used by background workers for:
- * - Hourly/daily/monthly aggregation
- * - Monthly invoice generation
- * - Quota reset processing
- */
-export interface UsageAggregationJob {
-  type: 'hourly' | 'daily' | 'monthly' | 'monthly-invoices' | 'quota-reset';
-  userId?: string;  // Optional: process specific user, or all users if omitted
-  periodStart?: string;  // ISO 8601 date string
-  force?: boolean;  // Force re-aggregation even if already exists
-}
-
-/**
- * File Processing Job Data
- *
- * Used by background workers for document text extraction:
- * - PDF (Azure Document Intelligence with OCR)
- * - DOCX (mammoth.js)
- * - XLSX (xlsx library)
- * - Plain text (txt, csv, md)
- */
-export interface FileProcessingJob {
-  /** File ID from database */
-  fileId: string;
-  /** User ID for multi-tenant isolation */
-  userId: string;
-  /** Session ID for WebSocket events (optional) */
-  sessionId?: string;
-  /** MIME type to determine processor */
-  mimeType: string;
-  /** Azure Blob path for downloading */
-  blobPath: string;
-  /** Original filename for logging */
-  fileName: string;
-  /** Current retry attempt number (1-based, D25 Sprint 3) */
-  attemptNumber?: number;
-  /** Maximum retry attempts configured (D25 Sprint 3) */
-  maxAttempts?: number;
-}
-
-/**
- * Embedding Generation Job Data
- */
-export interface EmbeddingGenerationJob {
-  fileId: string;
-  userId: string;
-  /** Session ID for WebSocket events (optional) */
-  sessionId?: string;
-  chunks: Array<{
-    id: string; // chunkId
-    text: string;
-    chunkIndex: number;
-    tokenCount: number;
-  }>;
-}
-
-/**
- * File Chunking Job Data
- *
- * Used by background workers to chunk extracted text and prepare for embedding:
- * - Read extracted_text from file
- * - Apply chunking strategy based on MIME type
- * - Insert chunks into file_chunks table
- * - Enqueue EmbeddingGenerationJob
- */
-export interface FileChunkingJob {
-  /** File ID from database */
-  fileId: string;
-  /** User ID for multi-tenant isolation */
-  userId: string;
-  /** Session ID for WebSocket events (optional) */
-  sessionId?: string;
-  /** MIME type to determine chunking strategy */
-  mimeType: string;
-}
-
-/**
- * Citation Persistence Job Data
- *
- * Used by background workers to persist RAG citations to the database.
- * Fire-and-forget pattern: citations are persisted asynchronously after
- * the complete event is emitted to maintain chat flow performance.
- */
-export interface CitationPersistenceJob {
-  /** Message ID to associate citations with */
-  messageId: string;
-  /** Session ID for context */
-  sessionId: string;
-  /** Array of cited files from RAG tool results */
-  citations: Array<{
-    fileName: string;
-    fileId: string | null;
-    sourceType: string;
-    mimeType: string;
-    relevanceScore: number;
-    isImage: boolean;
-  }>;
-}
-
-/**
- * File Cleanup Job Data
- *
- * Used by scheduled background workers to clean up:
- * - Old failed files that exceeded retention period
- * - Orphaned chunks without parent files
- * - Orphaned search documents in Azure AI Search
- *
- * D25 Sprint 2: Robust file processing cleanup
- */
-export interface FileCleanupJob {
-  /** Type of cleanup operation */
-  type: 'failed_files' | 'orphaned_chunks' | 'orphaned_search_docs' | 'daily_full';
-  /** Optional user ID for targeted cleanup (omit for all users) */
-  userId?: string;
-  /** Retention days for failed files (default: 30) */
-  failedFileRetentionDays?: number;
-  /** Retention days for orphaned chunks (default: 7) */
-  orphanedChunkRetentionDays?: number;
-}
+// Workers
+import { getMessagePersistenceWorker } from './workers/MessagePersistenceWorker';
+import { getToolExecutionWorker } from './workers/ToolExecutionWorker';
+import { getEventProcessingWorker } from './workers/EventProcessingWorker';
+import { getUsageAggregationWorker } from './workers/UsageAggregationWorker';
+import { getFileProcessingWorker } from './workers/FileProcessingWorker';
+import { getFileChunkingWorker } from './workers/FileChunkingWorker';
+import { getEmbeddingGenerationWorker } from './workers/EmbeddingGenerationWorker';
+import { getCitationPersistenceWorker } from './workers/CitationPersistenceWorker';
+import { getFileCleanupWorker } from './workers/FileCleanupWorker';
+import { getFileDeletionWorker } from './workers/FileDeletionWorker';
+import { getFileBulkUploadWorker } from './workers/FileBulkUploadWorker';
 
 /**
  * Message Queue Manager Class
  *
- * Manages all queues and workers with rate limiting for multi-tenant safety.
+ * Facade that coordinates extracted components for backward compatibility.
  */
 export class MessageQueue {
   private static instance: MessageQueue | null = null;
 
-  // Rate limiting constants
-  private static readonly MAX_JOBS_PER_SESSION = 100;
-  private static readonly RATE_LIMIT_WINDOW_SECONDS = 3600; // 1 hour
+  // Core components
+  private redisManager: RedisConnectionManager;
+  private queueManager: QueueManager;
+  private workerRegistry: WorkerRegistry;
+  private eventManager: QueueEventManager;
+  private scheduledJobManager: ScheduledJobManager;
+  private rateLimiter: RateLimiter;
 
-  private redisConnection: Redis;
-  private ownsRedisConnection: boolean = false;  // Track if we created the connection
-  private queues: Map<QueueName, Queue>;
-  private workers: Map<QueueName, Worker>;
-  private queueEvents: Map<QueueName, QueueEvents>;
-  // Connection state tracking (used in waitForReady() method)
+  // Dependencies
+  private log: ILoggerMinimal;
+  private executeQueryFn: ExecuteQueryFn | null = null;
+  private executeQueryOverride?: ExecuteQueryFn;
+  private embeddingServiceOverride?: IEmbeddingServiceMinimal;
+  private vectorSearchServiceOverride?: IVectorSearchServiceMinimal;
+
+  // State
   private isReady: boolean = false;
   private readyPromise: Promise<void>;
 
-  // Injected dependencies (DI support for testing)
-  private executeQueryFn: ExecuteQueryFn;
-  private eventStoreGetter: () => IEventStoreMinimal;
-  private log: ILoggerMinimal;
-  private embeddingServiceOverride?: IEmbeddingServiceMinimal;
-  private vectorSearchServiceOverride?: IVectorSearchServiceMinimal;
-  private queueNamePrefix: string;
-
   /**
    * Private constructor with optional dependency injection
-   *
-   * @param dependencies - Optional dependencies for testing
    */
   private constructor(dependencies?: IMessageQueueDependencies) {
-    // Store injected dependencies (with defaults from module imports)
-    this.executeQueryFn = dependencies?.executeQuery ?? executeQuery;
-    this.eventStoreGetter = dependencies?.eventStore
-      ? () => dependencies.eventStore!
-      : () => getEventStore();
     this.log = dependencies?.logger ?? createChildLogger({ service: 'MessageQueue' });
-    // Store optional service overrides (for testing with mocks)
+
+    // Store service overrides for workers
     this.embeddingServiceOverride = dependencies?.embeddingService;
     this.vectorSearchServiceOverride = dependencies?.vectorSearchService;
-    // Queue name prefix for test isolation (empty string for production)
-    this.queueNamePrefix = dependencies?.queueNamePrefix || '';
 
-    // Create Redis connection for BullMQ (use injected or create default)
-    if (dependencies?.redis) {
-      this.redisConnection = dependencies.redis;
-      this.ownsRedisConnection = false;  // Injected - don't close it
+    // Initialize RedisConnectionManager
+    this.redisManager = new RedisConnectionManager({
+      redis: dependencies?.redis,
+      logger: this.log,
+    });
+
+    // Get Redis connection config for other components
+    const redisConfig = this.redisManager.getConnectionConfig();
+    const queueNamePrefix = dependencies?.queueNamePrefix || '';
+
+    // Initialize QueueManager
+    this.queueManager = new QueueManager({
+      redisConfig,
+      logger: this.log,
+      queueNamePrefix,
+    });
+
+    // Initialize WorkerRegistry
+    this.workerRegistry = new WorkerRegistry({
+      redisConfig,
+      getQueueName: (name) => this.queueManager.getQueueName(name),
+      logger: this.log,
+    });
+
+    // Initialize QueueEventManager
+    this.eventManager = new QueueEventManager({
+      redisConfig,
+      getQueueName: (name) => this.queueManager.getQueueName(name),
+      getQueue: (name) => this.queueManager.getQueue(name),
+      logger: this.log,
+    });
+
+    // Initialize ScheduledJobManager
+    this.scheduledJobManager = new ScheduledJobManager({
+      getQueue: (name) => this.queueManager.getQueue(name),
+      logger: this.log,
+    });
+
+    // Initialize RateLimiter
+    this.rateLimiter = new RateLimiter({
+      redis: this.redisManager.getConnection(),
+      logger: this.log,
+    });
+
+    // Store executeQuery override for later initialization
+    this.executeQueryOverride = dependencies?.executeQuery;
+
+    // Create ready promise
+    this.readyPromise = this.initialize(dependencies);
+  }
+
+  /**
+   * Initialize all components after Redis is ready
+   */
+  private async initialize(dependencies?: IMessageQueueDependencies): Promise<void> {
+    // Wait for Redis connection
+    await this.redisManager.waitForReady();
+
+    // Resolve executeQuery function (use override or dynamic import)
+    if (this.executeQueryOverride) {
+      this.executeQueryFn = this.executeQueryOverride;
     } else {
-      // Use shared Redis config that supports connection strings
-      const redisConfig = getRedisConfig();
-      this.log.info('Creating BullMQ Redis connection', {
-        host: redisConfig.host,
-        port: redisConfig.port,
-        hasPassword: !!redisConfig.password,
-      });
-
-      this.redisConnection = new Redis({
-        host: redisConfig.host,
-        port: redisConfig.port,
-        // Only include password if non-empty (empty string causes AUTH command which fails on Redis without auth)
-        ...(redisConfig.password ? { password: redisConfig.password } : {}),
-        maxRetriesPerRequest: null, // Required for BullMQ
-        lazyConnect: false, // Connect immediately
-        enableReadyCheck: true,
-        // ⭐ TLS Configuration for Azure Redis Cache (port 6380 requires SSL)
-        tls: redisConfig.port === 6380 ? {
-          rejectUnauthorized: true,
-        } : undefined,
-        // ⭐ Reconnection Strategy - Handle transient failures
-        reconnectOnError: (err) => {
-          const targetErrors = ['READONLY', 'ECONNRESET', 'ETIMEDOUT'];
-          if (targetErrors.some((targetError) => err.message.includes(targetError))) {
-            this.log.warn('Redis reconnecting due to error', { error: err.message });
-            return true; // Reconnect
-          }
-          return false;
-        },
-        // ⭐ Retry Strategy - Exponential backoff
-        retryStrategy: (times) => {
-          if (times > 10) {
-            this.log.error('Redis max retry attempts reached (10)', { attempts: times });
-            return null; // Stop retrying after 10 attempts
-          }
-          const delay = Math.min(times * 100, 3200); // 100ms, 200ms, 400ms, ..., max 3200ms
-          this.log.info('Redis retry attempt', { attempt: times, delayMs: delay });
-          return delay;
-        },
-      });
-      this.ownsRedisConnection = true;  // We created it - we close it
+      // Dynamic import to avoid circular dependency
+      const { executeQuery } = await import('@/infrastructure/database/database');
+      this.executeQueryFn = executeQuery;
     }
 
-    this.queues = new Map();
-    this.workers = new Map();
-    this.queueEvents = new Map();
+    // Initialize queues
+    this.queueManager.initializeQueues();
 
-    // ⭐ DIAGNOSTIC: Add connection event listeners for IORedis
-    this.redisConnection.on('connect', () => {
-      this.log.info('🔌 BullMQ IORedis: connect event fired');
+    // Initialize workers with extracted worker classes
+    this.initializeWorkers(dependencies);
+
+    // Initialize event listeners
+    this.eventManager.initializeEventListeners();
+
+    // Set up custom failed job handler for file processing
+    this.eventManager.setFailedJobHandler(async (context) => {
+      await this.handleFailedFileJob(context);
     });
 
-    this.redisConnection.on('ready', () => {
-      this.log.info('✅ BullMQ IORedis: ready event fired (connection fully established)');
-    });
+    // Initialize scheduled jobs
+    await this.scheduledJobManager.initializeScheduledJobs();
 
-    this.redisConnection.on('error', (err) => {
-      this.log.error('❌ BullMQ IORedis: error event', {
-        error: err.message,
-        stack: err.stack,
-        code: (err as NodeJS.ErrnoException).code
-      });
-    });
-
-    this.redisConnection.on('close', () => {
-      this.log.warn('🔴 BullMQ IORedis: close event (connection closed)');
-    });
-
-    this.redisConnection.on('reconnecting', (timeToReconnect: number) => {
-      this.log.warn('🔄 BullMQ IORedis: reconnecting...', { timeToReconnect });
-    });
-
-    this.redisConnection.on('end', () => {
-      this.log.warn('🛑 BullMQ IORedis: end event (no more reconnections)');
-    });
-
-    // Create promise that resolves when Redis is ready
-    // Create promise that resolves when Redis is ready
-    this.readyPromise = new Promise((resolve, reject) => {
-      const connectionTimeout = env.BULLMQ_CONNECTION_TIMEOUT || 30000;
-      const timeout = setTimeout(() => {
-        reject(new Error(`Redis connection timeout for BullMQ (${connectionTimeout / 1000}s)`));
-      }, connectionTimeout);
-
-      const onReady = async () => {
-        clearTimeout(timeout);
-        this.isReady = true;
-        this.log.info('✅ BullMQ Redis connection ready');
-
-        // Initialize queues/workers AFTER Redis is ready
-        this.initializeQueues();
-        this.initializeWorkers();
-        this.setupEventListeners();
-        await this.initializeScheduledJobs();
-        this.log.info('MessageQueue initialized with BullMQ', {
-          queues: Array.from(this.queues.keys()),
-          workers: Array.from(this.workers.keys()),
-        });
-
-        resolve();
-      };
-
-      if (this.redisConnection.status === 'ready') {
-        onReady();
-      } else {
-        this.redisConnection.once('ready', onReady);
-        this.redisConnection.once('error', (error) => {
-          this.log.error('❌ BullMQ Redis connection error during initialization', {
-            error: error.message,
-            stack: error.stack
-          });
-          clearTimeout(timeout);
-          reject(error);
-        });
-      }
+    this.isReady = true;
+    this.log.info('MessageQueue initialized with BullMQ', {
+      queues: Array.from(this.queueManager.getAllQueues().keys()),
+      workers: Array.from(this.workerRegistry.getAllWorkers().keys()),
     });
   }
 
   /**
+   * Initialize all workers using extracted worker classes
+   */
+  private initializeWorkers(dependencies?: IMessageQueueDependencies): void {
+    // executeQueryFn should be resolved by this point in initialize()
+    if (!this.executeQueryFn) {
+      throw new Error('executeQueryFn not initialized');
+    }
+
+    const workerDeps = {
+      logger: this.log,
+      executeQuery: this.executeQueryFn,
+      eventStore: dependencies?.eventStore,
+      embeddingService: this.embeddingServiceOverride,
+      vectorSearchService: this.vectorSearchServiceOverride,
+    };
+
+    // Message Persistence Worker
+    const messagePersistenceWorker = getMessagePersistenceWorker(workerDeps);
+    this.workerRegistry.registerWorker(
+      QueueName.MESSAGE_PERSISTENCE,
+      async (job: Job<MessagePersistenceJob>) => messagePersistenceWorker.process(job)
+    );
+
+    // Tool Execution Worker
+    const toolExecutionWorker = getToolExecutionWorker(workerDeps);
+    this.workerRegistry.registerWorker(
+      QueueName.TOOL_EXECUTION,
+      async (job: Job<ToolExecutionJob>) => toolExecutionWorker.process(job)
+    );
+
+    // Event Processing Worker
+    const eventProcessingWorker = getEventProcessingWorker(workerDeps);
+    this.workerRegistry.registerWorker(
+      QueueName.EVENT_PROCESSING,
+      async (job: Job<EventProcessingJob>) => eventProcessingWorker.process(job)
+    );
+
+    // Usage Aggregation Worker
+    const usageAggregationWorker = getUsageAggregationWorker(workerDeps);
+    this.workerRegistry.registerWorker(
+      QueueName.USAGE_AGGREGATION,
+      async (job: Job<UsageAggregationJob>) => usageAggregationWorker.process(job)
+    );
+
+    // File Processing Worker
+    const fileProcessingWorker = getFileProcessingWorker(workerDeps);
+    this.workerRegistry.registerWorker(
+      QueueName.FILE_PROCESSING,
+      async (job: Job<FileProcessingJob>) => {
+        this.log.info({
+          jobId: job.id,
+          fileId: job.data?.fileId,
+          attemptsMade: job.attemptsMade,
+        }, '[WORKER-ENTRY] File processing worker callback started');
+        return fileProcessingWorker.process(job);
+      }
+    );
+
+    // File Chunking Worker
+    const fileChunkingWorker = getFileChunkingWorker(workerDeps);
+    this.workerRegistry.registerWorker(
+      QueueName.FILE_CHUNKING,
+      async (job: Job<FileChunkingJob>) => fileChunkingWorker.process(job)
+    );
+
+    // Embedding Generation Worker
+    const embeddingGenerationWorker = getEmbeddingGenerationWorker(workerDeps);
+    this.workerRegistry.registerWorker(
+      QueueName.EMBEDDING_GENERATION,
+      async (job: Job<EmbeddingGenerationJob>) => embeddingGenerationWorker.process(job)
+    );
+
+    // Citation Persistence Worker
+    const citationPersistenceWorker = getCitationPersistenceWorker(workerDeps);
+    this.workerRegistry.registerWorker(
+      QueueName.CITATION_PERSISTENCE,
+      async (job: Job<CitationPersistenceJob>) => citationPersistenceWorker.process(job)
+    );
+
+    // File Cleanup Worker
+    const fileCleanupWorker = getFileCleanupWorker(workerDeps);
+    this.workerRegistry.registerWorker(
+      QueueName.FILE_CLEANUP,
+      async (job: Job<FileCleanupJob>) => fileCleanupWorker.process(job)
+    );
+
+    // File Deletion Worker
+    const fileDeletionWorker = getFileDeletionWorker(workerDeps);
+    this.workerRegistry.registerWorker(
+      QueueName.FILE_DELETION,
+      async (job: Job<FileDeletionJobData>) => fileDeletionWorker.process(job)
+    );
+
+    // File Bulk Upload Worker
+    const fileBulkUploadWorker = getFileBulkUploadWorker(workerDeps);
+    this.workerRegistry.registerWorker(
+      QueueName.FILE_BULK_UPLOAD,
+      async (job: Job<BulkUploadJobData>) => fileBulkUploadWorker.process(job)
+    );
+
+    this.log.info('All workers initialized', {
+      workers: Array.from(this.workerRegistry.getAllWorkers().keys()),
+    });
+  }
+
+  /**
+   * Handle failed file processing jobs (for ProcessingRetryManager)
+   */
+  private async handleFailedFileJob(context: {
+    queueName: QueueName;
+    userId?: string;
+    fileId?: string;
+    sessionId?: string;
+    failedReason: string;
+  }): Promise<void> {
+    const { queueName, userId, fileId, sessionId, failedReason } = context;
+
+    const isFileQueue = queueName === QueueName.FILE_PROCESSING ||
+                        queueName === QueueName.FILE_CHUNKING ||
+                        queueName === QueueName.EMBEDDING_GENERATION;
+
+    if (isFileQueue && fileId && userId) {
+      try {
+        const { getProcessingRetryManager } = await import('@/domains/files/retry');
+        const retryManager = getProcessingRetryManager();
+        await retryManager.handlePermanentFailure(userId, fileId, failedReason, sessionId);
+        this.log.info({
+          fileId,
+          queueName,
+        }, 'Updated file readiness state via ProcessingRetryManager');
+      } catch (emitError) {
+        this.log.error({
+          error: emitError instanceof Error ? emitError.message : String(emitError),
+          fileId,
+        }, 'Failed to update file readiness state');
+      }
+    }
+  }
+
+  /**
    * Get singleton instance with optional dependency injection
-   *
-   * @param dependencies - Optional dependencies (only used when creating new instance)
    */
   public static getInstance(dependencies?: IMessageQueueDependencies): MessageQueue {
     if (!MessageQueue.instance) {
@@ -427,8 +357,6 @@ export class MessageQueue {
 
   /**
    * Reset singleton instance for testing
-   *
-   * @internal Only for integration tests - DO NOT use in production
    */
   public static async __resetInstance(): Promise<void> {
     if (MessageQueue.instance) {
@@ -439,10 +367,6 @@ export class MessageQueue {
 
   /**
    * Check if singleton instance exists
-   *
-   * Use this to check if MessageQueue was initialized without creating a new instance.
-   *
-   * @internal Only for integration tests - DO NOT use in production
    */
   public static hasInstance(): boolean {
     return MessageQueue.instance !== null;
@@ -450,844 +374,49 @@ export class MessageQueue {
 
   /**
    * Wait for MessageQueue to be ready
-   *
-   * MUST be called before using any queue methods to ensure Redis connection is established.
-   * This method is idempotent and safe to call multiple times.
-   *
-   * @throws Error if Redis connection fails or times out
    */
   public async waitForReady(): Promise<void> {
-    // Check if already ready (uses this.isReady)
     if (this.isReady) {
-      return; // Already ready
+      return;
     }
-
     this.log.debug('Waiting for MessageQueue to be ready...');
-    // Wait for Redis connection (uses this.readyPromise)
     await this.readyPromise;
     this.log.debug('MessageQueue is ready');
   }
 
   /**
-   * Check if MessageQueue is ready (for testing/debugging)
+   * Check if MessageQueue is ready
    */
   public getReadyStatus(): boolean {
     return this.isReady;
   }
 
-  /**
-   * Get Redis connection configuration for BullMQ components.
-   *
-   * BullMQ will create independent connections from this config,
-   * avoiding shared connection reference issues during cleanup.
-   *
-   * Extracts configuration from the existing connection to ensure
-   * test and production environments use consistent settings.
-   *
-   * @returns Redis connection configuration object
-   */
-  private getRedisConnectionConfig(): RedisOptions {
-    // Extract configuration from existing IORedis connection
-    const options = this.redisConnection.options;
-
-    return {
-      host: options.host || 'localhost',
-      port: options.port || 6379,
-      password: options.password,
-      maxRetriesPerRequest: null, // Required for BullMQ
-      enableReadyCheck: true,
-      // Copy TLS settings from existing connection
-      tls: options.tls ? {
-        rejectUnauthorized: typeof options.tls === 'object' ? options.tls.rejectUnauthorized : true,
-      } : undefined,
-      // Reconnection strategy (same as main connection)
-      reconnectOnError: (err) => {
-        const targetErrors = ['READONLY', 'ECONNRESET', 'ETIMEDOUT'];
-        if (targetErrors.some((targetError) => err.message.includes(targetError))) {
-          this.log.warn('Redis reconnecting due to error', { error: err.message });
-          return true;
-        }
-        return false;
-      },
-      // Retry strategy with exponential backoff
-      retryStrategy: (times) => {
-        if (times > 10) {
-          this.log.error('Redis max retry attempts reached (10)', { attempts: times });
-          return null;
-        }
-        const delay = Math.min(times * 100, 3200);
-        this.log.info('Redis retry attempt', { attempt: times, delayMs: delay });
-        return delay;
-      },
-    };
-  }
-
-  /**
-   * Get prefixed queue name for test isolation
-   *
-   * In production, returns the base name unchanged.
-   * In tests with queueNamePrefix, returns "prefix:baseName".
-   *
-   * @param baseName - The base queue name from QueueName enum
-   * @returns The full queue name (with prefix if set)
-   */
-  private getQueueName(baseName: QueueName): string {
-    // Note: BullMQ doesn't allow ':' in queue names (reserved for Redis key namespacing)
-    return this.queueNamePrefix
-      ? `${this.queueNamePrefix}--${baseName}`
-      : baseName;
-  }
-
-  /**
-   * Initialize all queues
-   */
-  private initializeQueues(): void {
-    // Message Persistence Queue
-    this.queues.set(
-      QueueName.MESSAGE_PERSISTENCE,
-      new Queue(this.getQueueName(QueueName.MESSAGE_PERSISTENCE), {
-        connection: this.getRedisConnectionConfig(),
-        defaultJobOptions: {
-          attempts: 3,
-          backoff: {
-            type: 'exponential',
-            delay: 1000, // Start with 1s, then 2s, 4s
-          },
-          removeOnComplete: {
-            count: 100, // Keep last 100 completed jobs
-            // Note: age removed to prevent race condition with BullMQ state transitions
-          },
-          removeOnFail: {
-            count: 500, // Keep last 500 failed jobs for debugging
-            age: 86400, // Remove after 24 hours
-          },
-        },
-      })
-    );
-
-    // Tool Execution Queue
-    this.queues.set(
-      QueueName.TOOL_EXECUTION,
-      new Queue(this.getQueueName(QueueName.TOOL_EXECUTION), {
-        connection: this.getRedisConnectionConfig(),
-        defaultJobOptions: {
-          attempts: 2,
-          backoff: {
-            type: 'exponential',
-            delay: 2000,
-          },
-        },
-      })
-    );
-
-    // Event Processing Queue
-    this.queues.set(
-      QueueName.EVENT_PROCESSING,
-      new Queue(this.getQueueName(QueueName.EVENT_PROCESSING), {
-        connection: this.getRedisConnectionConfig(),
-        defaultJobOptions: {
-          attempts: 3,
-          backoff: {
-            type: 'exponential',
-            delay: 500,
-          },
-        },
-      })
-    );
-
-    // Usage Aggregation Queue (low concurrency - batch processing)
-    this.queues.set(
-      QueueName.USAGE_AGGREGATION,
-      new Queue(this.getQueueName(QueueName.USAGE_AGGREGATION), {
-        connection: this.getRedisConnectionConfig(),
-        defaultJobOptions: {
-          attempts: 3,
-          backoff: {
-            type: 'exponential',
-            delay: 5000,  // Start with 5s for aggregation jobs
-          },
-          removeOnComplete: {
-            count: 50,
-            age: 3600,  // 1 hour
-          },
-          removeOnFail: {
-            count: 100,
-            age: 86400,  // 24 hours
-          },
-        },
-      })
-    );
-
-    // File Processing Queue (limited concurrency for Azure DI API)
-    this.queues.set(
-      QueueName.FILE_PROCESSING,
-      new Queue(this.getQueueName(QueueName.FILE_PROCESSING), {
-        connection: this.getRedisConnectionConfig(),
-        defaultJobOptions: {
-          attempts: 2,  // External API calls - limited retries
-          backoff: {
-            type: 'exponential',
-            delay: 5000,  // Start with 5s for external API retries
-          },
-          removeOnComplete: {
-            count: 100,
-            age: 3600,  // 1 hour
-          },
-          removeOnFail: {
-            count: 200,
-            age: 86400,  // 24 hours
-          },
-        },
-      })
-    );
-
-    // File Chunking Queue (chunks text and prepares for embedding)
-    this.queues.set(
-      QueueName.FILE_CHUNKING,
-      new Queue(this.getQueueName(QueueName.FILE_CHUNKING), {
-        connection: this.getRedisConnectionConfig(),
-        defaultJobOptions: {
-          attempts: 2,  // Limited retries for chunking
-          backoff: {
-            type: 'exponential',
-            delay: 2000,
-          },
-          removeOnComplete: {
-            count: 100,
-            age: 3600,  // 1 hour
-          },
-          removeOnFail: {
-            count: 200,
-            age: 86400,  // 24 hours
-          },
-        },
-      })
-    );
-
-    // Embedding Generation Queue
-    this.queues.set(
-      QueueName.EMBEDDING_GENERATION,
-      new Queue(this.getQueueName(QueueName.EMBEDDING_GENERATION), {
-        connection: this.getRedisConnectionConfig(),
-        defaultJobOptions: {
-          attempts: 3,
-          backoff: {
-            type: 'exponential',
-            delay: 2000,
-          },
-          removeOnComplete: {
-            count: 100,
-            age: 3600,
-          },
-          removeOnFail: {
-            count: 200,
-            age: 86400,
-          },
-        },
-      })
-    );
-
-    // Citation Persistence Queue (fire-and-forget RAG citations)
-    this.queues.set(
-      QueueName.CITATION_PERSISTENCE,
-      new Queue(this.getQueueName(QueueName.CITATION_PERSISTENCE), {
-        connection: this.getRedisConnectionConfig(),
-        defaultJobOptions: {
-          attempts: 3,
-          backoff: {
-            type: 'exponential',
-            delay: 1000,
-          },
-          removeOnComplete: {
-            count: 100,
-            age: 3600,  // 1 hour
-          },
-          removeOnFail: {
-            count: 200,
-            age: 86400,  // 24 hours
-          },
-        },
-      })
-    );
-
-    // File Cleanup Queue (D25 Sprint 2: scheduled cleanup jobs)
-    this.queues.set(
-      QueueName.FILE_CLEANUP,
-      new Queue(this.getQueueName(QueueName.FILE_CLEANUP), {
-        connection: this.getRedisConnectionConfig(),
-        defaultJobOptions: {
-          attempts: 3,
-          backoff: {
-            type: 'exponential',
-            delay: 10000,  // 10s base delay (cleanup can take time)
-          },
-          removeOnComplete: {
-            count: 50,
-            age: 86400,  // 24 hours
-          },
-          removeOnFail: {
-            count: 100,
-            age: 604800,  // 7 days (keep failures longer for debugging)
-          },
-        },
-      })
-    );
-
-    // File Deletion Queue (D25 Sprint 3: bulk file deletion)
-    // Sequential processing (concurrency=1) to avoid SQL deadlocks
-    this.queues.set(
-      QueueName.FILE_DELETION,
-      new Queue(this.getQueueName(QueueName.FILE_DELETION), {
-        connection: this.getRedisConnectionConfig(),
-        defaultJobOptions: {
-          attempts: FILE_DELETION_CONFIG.MAX_RETRY_ATTEMPTS,
-          backoff: {
-            type: 'exponential',
-            delay: FILE_DELETION_CONFIG.RETRY_DELAY_MS,
-          },
-          removeOnComplete: {
-            count: 100,
-            age: 3600,  // 1 hour
-          },
-          removeOnFail: {
-            count: 200,
-            age: 86400,  // 24 hours
-          },
-        },
-      })
-    );
-
-    // File Bulk Upload Queue (parallel processing OK for uploads)
-    this.queues.set(
-      QueueName.FILE_BULK_UPLOAD,
-      new Queue(this.getQueueName(QueueName.FILE_BULK_UPLOAD), {
-        connection: this.getRedisConnectionConfig(),
-        defaultJobOptions: {
-          attempts: FILE_BULK_UPLOAD_CONFIG.MAX_RETRY_ATTEMPTS,
-          backoff: {
-            type: 'exponential',
-            delay: FILE_BULK_UPLOAD_CONFIG.RETRY_DELAY_MS,
-          },
-          removeOnComplete: {
-            count: 100,
-            age: 3600,  // 1 hour
-          },
-          removeOnFail: {
-            count: 200,
-            age: 86400,  // 24 hours
-          },
-        },
-      })
-    );
-
-    this.log.info('All queues initialized', {
-      queues: Array.from(this.queues.keys()),
-    });
-  }
-
-  /**
-   * Initialize all workers
-   */
-  private initializeWorkers(): void {
-    // Message Persistence Worker
-    this.workers.set(
-      QueueName.MESSAGE_PERSISTENCE,
-      new Worker(
-        this.getQueueName(QueueName.MESSAGE_PERSISTENCE),
-        async (job: Job<MessagePersistenceJob>) => {
-          return this.processMessagePersistence(job);
-        },
-        {
-          connection: this.getRedisConnectionConfig(),
-          concurrency: env.QUEUE_MESSAGE_CONCURRENCY || 10,
-        }
-      )
-    );
-
-    // Tool Execution Worker
-    this.workers.set(
-      QueueName.TOOL_EXECUTION,
-      new Worker(
-        this.getQueueName(QueueName.TOOL_EXECUTION),
-        async (job: Job<ToolExecutionJob>) => {
-          return this.processToolExecution(job);
-        },
-        {
-          connection: this.getRedisConnectionConfig(),
-          concurrency: env.QUEUE_TOOL_CONCURRENCY || 5,
-        }
-      )
-    );
-
-    // Event Processing Worker
-    this.workers.set(
-      QueueName.EVENT_PROCESSING,
-      new Worker(
-        this.getQueueName(QueueName.EVENT_PROCESSING),
-        async (job: Job<EventProcessingJob>) => {
-          return this.processEvent(job);
-        },
-        {
-          connection: this.getRedisConnectionConfig(),
-          concurrency: env.QUEUE_EVENT_CONCURRENCY || 10,
-        }
-      )
-    );
-
-    // Usage Aggregation Worker (sequential batch processing)
-    this.workers.set(
-      QueueName.USAGE_AGGREGATION,
-      new Worker(
-        this.getQueueName(QueueName.USAGE_AGGREGATION),
-        async (job: Job<UsageAggregationJob>) => {
-          return this.processUsageAggregation(job);
-        },
-        {
-          connection: this.getRedisConnectionConfig(),
-          concurrency: env.QUEUE_USAGE_CONCURRENCY || 1,
-        }
-      )
-    );
-
-    // File Processing Worker (limited for Azure DI API)
-    this.workers.set(
-      QueueName.FILE_PROCESSING,
-      new Worker(
-        this.getQueueName(QueueName.FILE_PROCESSING),
-        async (job: Job<FileProcessingJob>) => {
-          this.log.info({
-            jobId: job.id,
-            fileId: job.data?.fileId,
-            attemptsMade: job.attemptsMade,
-          }, '[WORKER-ENTRY] File processing worker callback started');
-          return this.processFileProcessingJob(job);
-        },
-        {
-          connection: this.getRedisConnectionConfig(),
-          concurrency: env.QUEUE_FILE_PROCESSING_CONCURRENCY || 3,
-        }
-      )
-    );
-
-    // File Chunking Worker (CPU-bound text processing)
-    this.workers.set(
-      QueueName.FILE_CHUNKING,
-      new Worker(
-        this.getQueueName(QueueName.FILE_CHUNKING),
-        async (job: Job<FileChunkingJob>) => {
-          return this.processFileChunkingJob(job);
-        },
-        {
-          connection: this.getRedisConnectionConfig(),
-          concurrency: env.QUEUE_FILE_CHUNKING_CONCURRENCY || 5,
-        }
-      )
-    );
-
-    // Embedding Generation Worker
-    this.workers.set(
-      QueueName.EMBEDDING_GENERATION,
-      new Worker(
-        this.getQueueName(QueueName.EMBEDDING_GENERATION),
-        async (job: Job<EmbeddingGenerationJob>) => {
-          return this.processEmbeddingGeneration(job);
-        },
-        {
-          connection: this.getRedisConnectionConfig(),
-          concurrency: env.QUEUE_EMBEDDING_CONCURRENCY || 5,
-        }
-      )
-    );
-
-    // Citation Persistence Worker (low concurrency, fire-and-forget)
-    this.workers.set(
-      QueueName.CITATION_PERSISTENCE,
-      new Worker(
-        this.getQueueName(QueueName.CITATION_PERSISTENCE),
-        async (job: Job<CitationPersistenceJob>) => {
-          return this.processCitationPersistence(job);
-        },
-        {
-          connection: this.getRedisConnectionConfig(),
-          concurrency: env.QUEUE_CITATION_CONCURRENCY || 5,
-        }
-      )
-    );
-
-    // File Cleanup Worker (low concurrency, runs daily)
-    this.workers.set(
-      QueueName.FILE_CLEANUP,
-      new Worker(
-        this.getQueueName(QueueName.FILE_CLEANUP),
-        async (job: Job<FileCleanupJob>) => {
-          return this.processFileCleanupJob(job);
-        },
-        {
-          connection: this.getRedisConnectionConfig(),
-          concurrency: 1,  // Sequential - cleanup should not overwhelm DB
-        }
-      )
-    );
-
-    // File Deletion Worker (sequential to avoid SQL deadlocks)
-    this.workers.set(
-      QueueName.FILE_DELETION,
-      new Worker(
-        this.getQueueName(QueueName.FILE_DELETION),
-        async (job: Job<FileDeletionJobData>) => {
-          return this.processFileDeletionJob(job);
-        },
-        {
-          connection: this.getRedisConnectionConfig(),
-          concurrency: FILE_DELETION_CONFIG.QUEUE_CONCURRENCY,  // Sequential to avoid deadlocks
-        }
-      )
-    );
-
-    // File Bulk Upload Worker (parallel processing OK - creating DB records is safe)
-    this.workers.set(
-      QueueName.FILE_BULK_UPLOAD,
-      new Worker(
-        this.getQueueName(QueueName.FILE_BULK_UPLOAD),
-        async (job: Job<BulkUploadJobData>) => {
-          return this.processFileBulkUploadJob(job);
-        },
-        {
-          connection: this.getRedisConnectionConfig(),
-          concurrency: FILE_BULK_UPLOAD_CONFIG.QUEUE_CONCURRENCY,  // Parallel OK for uploads
-        }
-      )
-    );
-
-    this.log.info('All workers initialized', {
-      workers: Array.from(this.workers.keys()),
-    });
-  }
-
-  /**
-   * Setup event listeners for monitoring
-   */
-  private setupEventListeners(): void {
-    Object.values(QueueName).forEach((queueName) => {
-      const prefixedName = this.getQueueName(queueName as QueueName);
-      const queueEvents = new QueueEvents(prefixedName, {
-        connection: this.getRedisConnectionConfig(),
-      });
-
-      this.queueEvents.set(queueName, queueEvents);
-
-      queueEvents.on('completed', ({ jobId }) => {
-        this.log.debug(`Job completed in ${queueName}`, { jobId });
-      });
-
-      queueEvents.on('failed', async ({ jobId, failedReason }) => {
-        // Try to get job data for additional context (helps diagnose issues)
-        let jobContext: Record<string, unknown> = {};
-        let shouldEmitFileFailure = false;
-        let userId: string | undefined;
-        let sessionId: string | undefined;
-        let attemptsMade = 0;
-        let maxAttempts = 1;
-
-        try {
-          const queue = this.queues.get(queueName as QueueName);
-          if (queue) {
-            const failedJob = await queue.getJob(jobId);
-            if (failedJob?.data) {
-              // Extract common fields that might exist across different job types
-              userId = failedJob.data.userId;
-              sessionId = failedJob.data.sessionId;
-              attemptsMade = failedJob.attemptsMade ?? 0;
-              maxAttempts = failedJob.opts?.attempts ?? 1;
-
-              jobContext = {
-                fileId: failedJob.data.fileId,
-                userId,
-                mimeType: failedJob.data.mimeType,
-                fileName: failedJob.data.fileName,
-                sessionId,
-                attemptsMade,
-                maxAttempts,
-              };
-
-              // For file processing queues, we need to emit failure event to frontend
-              const isFileQueue = queueName === QueueName.FILE_PROCESSING ||
-                                  queueName === QueueName.FILE_CHUNKING ||
-                                  queueName === QueueName.EMBEDDING_GENERATION;
-              if (isFileQueue && failedJob.data.fileId && userId) {
-                shouldEmitFileFailure = true;
-              }
-            }
-          }
-        } catch {
-          // Ignore errors when fetching job data - don't fail the error handler
-        }
-
-        // Enhanced error logging with full context
-        this.log.error({
-          jobId,
-          failedReason: failedReason || 'No reason provided by BullMQ',
-          queueName,
-          ...jobContext,
-          timestamp: new Date().toISOString(),
-        }, `Job failed in ${queueName}`);
-
-        // Phase 3.3: Emit generic job failure notification for ALL queues with userId
-        if (userId) {
-          try {
-            const jobFailureEmitter = getJobFailureEventEmitter();
-            const jobQueueName = this.mapQueueNameToJobQueueName(queueName as QueueName);
-
-            if (jobQueueName) {
-              const payload = jobFailureEmitter.createPayload(
-                jobId,
-                jobQueueName,
-                failedReason || 'Job failed after exhausting all retries',
-                attemptsMade,
-                maxAttempts,
-                {
-                  fileId: jobContext.fileId as string | undefined,
-                  fileName: jobContext.fileName as string | undefined,
-                  sessionId,
-                }
-              );
-
-              jobFailureEmitter.emitJobFailed({ userId, sessionId }, payload);
-
-              this.log.debug({
-                jobId,
-                queueName,
-                userId,
-              }, 'Emitted generic job failure notification');
-            }
-          } catch (emitError) {
-            this.log.warn({
-              error: emitError instanceof Error ? emitError.message : String(emitError),
-              jobId,
-              queueName,
-            }, 'Failed to emit generic job failure notification');
-          }
-        }
-
-        // Additional handling for file processing queues: call ProcessingRetryManager
-        // This updates file readiness state and emits file-specific events
-        if (shouldEmitFileFailure) {
-          try {
-            const { getProcessingRetryManager } = await import('@/domains/files/retry');
-            const retryManager = getProcessingRetryManager();
-            await retryManager.handlePermanentFailure(
-              userId!,
-              jobContext.fileId as string,
-              failedReason || 'Processing failed',
-              sessionId
-            );
-            this.log.info({
-              jobId,
-              fileId: jobContext.fileId,
-              queueName,
-            }, 'Updated file readiness state via ProcessingRetryManager');
-          } catch (emitError) {
-            this.log.error({
-              error: emitError instanceof Error ? emitError.message : String(emitError),
-              jobId,
-              fileId: jobContext.fileId,
-            }, 'Failed to update file readiness state');
-          }
-        }
-      });
-
-      queueEvents.on('stalled', ({ jobId }) => {
-        this.log.warn(`Job stalled in ${queueName}`, { jobId });
-      });
-    });
-  }
-
-  /**
-   * Initialize Scheduled Jobs for Usage Aggregation
-   *
-   * Sets up recurring jobs for:
-   * - Hourly aggregation: Every hour at :05
-   * - Daily aggregation: Every day at 00:15 UTC
-   * - Monthly invoices: 1st of month at 00:30 UTC
-   * - Quota reset: Every day at 00:10 UTC
-   */
-  private async initializeScheduledJobs(): Promise<void> {
-    const queue = this.queues.get(QueueName.USAGE_AGGREGATION);
-    if (!queue) {
-      this.log.warn('Usage aggregation queue not available for scheduled jobs');
-      return;
-    }
-
-    try {
-      // Remove any existing repeatable jobs first (prevents duplicates on restart)
-      const existingJobs = await queue.getRepeatableJobs();
-      for (const job of existingJobs) {
-        await queue.removeRepeatableByKey(job.key);
-      }
-
-      // Hourly aggregation (every hour at :05)
-      await queue.add(
-        'scheduled-hourly-aggregation',
-        { type: 'hourly' as const },
-        {
-          repeat: { pattern: '5 * * * *' },
-          jobId: 'scheduled-hourly-aggregation',
-        }
-      );
-
-      // Daily aggregation (every day at 00:15 UTC)
-      await queue.add(
-        'scheduled-daily-aggregation',
-        { type: 'daily' as const },
-        {
-          repeat: { pattern: '15 0 * * *' },
-          jobId: 'scheduled-daily-aggregation',
-        }
-      );
-
-      // Monthly invoice generation (1st of month at 00:30 UTC)
-      await queue.add(
-        'scheduled-monthly-invoices',
-        { type: 'monthly-invoices' as const },
-        {
-          repeat: { pattern: '30 0 1 * *' },
-          jobId: 'scheduled-monthly-invoices',
-        }
-      );
-
-      // Quota reset check (every day at 00:10 UTC)
-      await queue.add(
-        'scheduled-quota-reset',
-        { type: 'quota-reset' as const },
-        {
-          repeat: { pattern: '10 0 * * *' },
-          jobId: 'scheduled-quota-reset',
-        }
-      );
-
-      this.log.info('Scheduled jobs initialized for usage aggregation', {
-        jobs: ['hourly-aggregation', 'daily-aggregation', 'monthly-invoices', 'quota-reset'],
-      });
-    } catch (error) {
-      this.log.error('Failed to initialize scheduled jobs', {
-        error: error instanceof Error ? error.message : String(error),
-      });
-      // Don't throw - scheduled jobs are optional, queue can still work for manual jobs
-    }
-
-    // ===== FILE CLEANUP SCHEDULED JOBS (D25 Sprint 2) =====
-    const cleanupQueue = this.queues.get(QueueName.FILE_CLEANUP);
-    if (!cleanupQueue) {
-      this.log.warn('File cleanup queue not available for scheduled jobs');
-      return;
-    }
-
-    try {
-      // Remove existing repeatable jobs to prevent duplicates on restart
-      const existingCleanupJobs = await cleanupQueue.getRepeatableJobs();
-      for (const job of existingCleanupJobs) {
-        await cleanupQueue.removeRepeatableByKey(job.key);
-      }
-
-      // Daily full cleanup (every day at 3:00 AM UTC)
-      // Cleans: old failed files (30 days) + orphaned chunks (7 days) + orphaned search docs
-      await cleanupQueue.add(
-        'scheduled-daily-cleanup',
-        { type: 'daily_full' as const },
-        {
-          repeat: { pattern: '0 3 * * *' },
-          jobId: 'scheduled-daily-cleanup',
-        }
-      );
-
-      this.log.info('Scheduled jobs initialized for file cleanup', {
-        jobs: ['daily-cleanup'],
-        schedule: '0 3 * * * (3 AM UTC daily)',
-      });
-    } catch (error) {
-      this.log.error('Failed to initialize file cleanup scheduled jobs', {
-        error: error instanceof Error ? error.message : String(error),
-      });
-      // Don't throw - scheduled jobs are optional
-    }
-  }
-
-  /**
-   * Check Rate Limit for Session
-   *
-   * Ensures a session doesn't exceed max jobs per hour (multi-tenant safety).
-   *
-   * @param sessionId - Session ID
-   * @returns True if within limit, false otherwise
-   */
-  private async checkRateLimit(sessionId: string): Promise<boolean> {
-    const key = `queue:ratelimit:${sessionId}`;
-
-    try {
-      // Increment counter and set expiry atomically
-      const count = await this.redisConnection.incr(key);
-
-      // Set TTL only on first increment
-      if (count === 1) {
-        await this.redisConnection.expire(
-          key,
-          MessageQueue.RATE_LIMIT_WINDOW_SECONDS
-        );
-      }
-
-      const withinLimit = count <= MessageQueue.MAX_JOBS_PER_SESSION;
-
-      if (!withinLimit) {
-        this.log.warn('Rate limit exceeded for session', {
-          sessionId,
-          count,
-          limit: MessageQueue.MAX_JOBS_PER_SESSION,
-        });
-      }
-
-      return withinLimit;
-    } catch (error) {
-      this.log.error('Failed to check rate limit', { error, sessionId });
-      // Fail open - allow job if rate limit check fails
-      return true;
-    }
-  }
+  // ==================== PUBLIC API (unchanged) ====================
 
   /**
    * Add Message to Persistence Queue (with rate limiting)
-   *
-   * Rate Limiting: Max 100 jobs per session per hour.
-   * Prevents single tenant from saturating the queue.
-   *
-   * @param data - Message data to persist
-   * @returns Job ID
-   * @throws Error if rate limit exceeded
    */
-  public async addMessagePersistence(
-    data: MessagePersistenceJob
-  ): Promise<string> {
-    // ⭐ CRITICAL: Wait for Redis connection to be ready
+  public async addMessagePersistence(data: MessagePersistenceJob): Promise<string> {
     await this.waitForReady();
 
-    const queue = this.queues.get(QueueName.MESSAGE_PERSISTENCE);
+    const queue = this.queueManager.getQueue(QueueName.MESSAGE_PERSISTENCE);
     if (!queue) {
       throw new Error('Message persistence queue not initialized');
     }
 
     // Check rate limit
-    const withinLimit = await this.checkRateLimit(data.sessionId);
+    const withinLimit = await this.rateLimiter.checkLimit(data.sessionId);
     if (!withinLimit) {
       throw new Error(
-        `Rate limit exceeded for session ${data.sessionId}. Max ${MessageQueue.MAX_JOBS_PER_SESSION} jobs per hour.`
+        `Rate limit exceeded for session ${data.sessionId}. Max ${RATE_LIMIT.MAX_JOBS_PER_SESSION} jobs per hour.`
       );
     }
 
     const job = await queue.add('persist-message', data, {
-      priority: 1, // High priority for message persistence
+      priority: JOB_PRIORITY.MESSAGE_PERSISTENCE,
     });
 
-    // ⭐ DIAGNOSTIC: Enhanced logging
-    this.log.info('✅ Message job enqueued to BullMQ', {
+    this.log.info('Message job enqueued to BullMQ', {
       jobId: job.id,
       sessionId: data.sessionId,
       messageId: data.messageId,
@@ -1302,21 +431,17 @@ export class MessageQueue {
 
   /**
    * Add Tool Execution to Queue
-   *
-   * @param data - Tool execution data
-   * @returns Job ID
    */
   public async addToolExecution(data: ToolExecutionJob): Promise<string> {
-    // ⭐ CRITICAL: Wait for Redis connection to be ready
     await this.waitForReady();
 
-    const queue = this.queues.get(QueueName.TOOL_EXECUTION);
+    const queue = this.queueManager.getQueue(QueueName.TOOL_EXECUTION);
     if (!queue) {
       throw new Error('Tool execution queue not initialized');
     }
 
     const job = await queue.add('execute-tool', data, {
-      priority: 2,
+      priority: JOB_PRIORITY.TOOL_EXECUTION,
     });
 
     this.log.debug('Tool execution added to queue', {
@@ -1329,15 +454,11 @@ export class MessageQueue {
 
   /**
    * Add Event to Processing Queue
-   *
-   * @param data - Event data
-   * @returns Job ID
    */
   public async addEventProcessing(data: EventProcessingJob): Promise<string> {
-    // ⭐ CRITICAL: Wait for Redis connection to be ready
     await this.waitForReady();
 
-    const queue = this.queues.get(QueueName.EVENT_PROCESSING);
+    const queue = this.queueManager.getQueue(QueueName.EVENT_PROCESSING);
     if (!queue) {
       throw new Error('Event processing queue not initialized');
     }
@@ -1351,29 +472,17 @@ export class MessageQueue {
 
   /**
    * Add Embedding Generation Job
-   * 
-   * @param data Job data
-   * @returns Job ID
    */
   async addEmbeddingGenerationJob(data: EmbeddingGenerationJob): Promise<string> {
     await this.waitForReady();
 
-    const queue = this.queues.get(QueueName.EMBEDDING_GENERATION);
+    const queue = this.queueManager.getQueue(QueueName.EMBEDDING_GENERATION);
     if (!queue) {
       throw new Error('Embedding generation queue not initialized');
     }
 
-    // Rate limit check (reuse session logic or implement user-based)
-    // For now, simple check or rely on worker concurrency
-    // Since this is triggered by system flow, maybe no strict rate limit needed here yet 
-    // strictly per session, but we can check if needed.
-    // The plan said: "Add addEmbeddingGenerationJob method with rate limiting check."
-    // I shall check against userId if possible, but checkRateLimit uses session.
-    // Let's assume we use a constructed session-like key or just skip explicit per-call limit 
-    // and rely on worker concurrency (5).
-    
     const job = await queue.add('generate-embeddings', data, {
-      priority: 2
+      priority: JOB_PRIORITY.EMBEDDING_GENERATION,
     });
 
     return job.id || '';
@@ -1381,22 +490,17 @@ export class MessageQueue {
 
   /**
    * Add Usage Aggregation Job to Queue
-   *
-   * @param data - Aggregation job data
-   * @returns Job ID
    */
-  public async addUsageAggregationJob(
-    data: UsageAggregationJob
-  ): Promise<string> {
+  public async addUsageAggregationJob(data: UsageAggregationJob): Promise<string> {
     await this.waitForReady();
 
-    const queue = this.queues.get(QueueName.USAGE_AGGREGATION);
+    const queue = this.queueManager.getQueue(QueueName.USAGE_AGGREGATION);
     if (!queue) {
       throw new Error('Usage aggregation queue not initialized');
     }
 
     const job = await queue.add(`aggregation-${data.type}`, data, {
-      priority: 5,  // Lower priority than message persistence
+      priority: JOB_PRIORITY.USAGE_AGGREGATION,
     });
 
     this.log.info('Usage aggregation job added to queue', {
@@ -1411,35 +515,24 @@ export class MessageQueue {
 
   /**
    * Add File Processing Job to Queue
-   *
-   * Enqueues a file for background text extraction. Rate limited per user
-   * to prevent queue saturation in multi-tenant environment.
-   *
-   * @param data - File processing job data
-   * @returns Job ID
-   * @throws Error if rate limit exceeded
    */
-  public async addFileProcessingJob(
-    data: FileProcessingJob
-  ): Promise<string> {
-    // Wait for Redis connection to be ready
+  public async addFileProcessingJob(data: FileProcessingJob): Promise<string> {
     await this.waitForReady();
 
-    const queue = this.queues.get(QueueName.FILE_PROCESSING);
+    const queue = this.queueManager.getQueue(QueueName.FILE_PROCESSING);
     if (!queue) {
       throw new Error('File processing queue not initialized');
     }
 
-    // Check rate limit (per user, not per session)
-    const withinLimit = await this.checkRateLimit(`file:${data.userId}`);
+    const withinLimit = await this.rateLimiter.checkLimit(`file:${data.userId}`);
     if (!withinLimit) {
       throw new Error(
-        `Rate limit exceeded for user ${data.userId}. Max ${MessageQueue.MAX_JOBS_PER_SESSION} file processing jobs per hour.`
+        `Rate limit exceeded for user ${data.userId}. Max ${RATE_LIMIT.MAX_JOBS_PER_SESSION} file processing jobs per hour.`
       );
     }
 
     const job = await queue.add('process-file', data, {
-      priority: 3,  // Lower priority than message persistence, higher than aggregation
+      priority: JOB_PRIORITY.FILE_PROCESSING,
     });
 
     this.log.info('File processing job added to queue', {
@@ -1455,35 +548,24 @@ export class MessageQueue {
 
   /**
    * Add File Chunking Job
-   *
-   * Enqueues a file for chunking after text extraction completes.
-   * Rate limited per user to prevent queue saturation.
-   *
-   * @param data - File chunking job data
-   * @returns Job ID
-   * @throws Error if rate limit exceeded
    */
-  public async addFileChunkingJob(
-    data: FileChunkingJob
-  ): Promise<string> {
-    // Wait for Redis connection to be ready
+  public async addFileChunkingJob(data: FileChunkingJob): Promise<string> {
     await this.waitForReady();
 
-    const queue = this.queues.get(QueueName.FILE_CHUNKING);
+    const queue = this.queueManager.getQueue(QueueName.FILE_CHUNKING);
     if (!queue) {
       throw new Error('File chunking queue not initialized');
     }
 
-    // Check rate limit (per user)
-    const withinLimit = await this.checkRateLimit(`chunking:${data.userId}`);
+    const withinLimit = await this.rateLimiter.checkLimit(`chunking:${data.userId}`);
     if (!withinLimit) {
       throw new Error(
-        `Rate limit exceeded for user ${data.userId}. Max ${MessageQueue.MAX_JOBS_PER_SESSION} chunking jobs per hour.`
+        `Rate limit exceeded for user ${data.userId}. Max ${RATE_LIMIT.MAX_JOBS_PER_SESSION} chunking jobs per hour.`
       );
     }
 
     const job = await queue.add('chunk-file', data, {
-      priority: 3,  // Same priority as file processing
+      priority: JOB_PRIORITY.FILE_CHUNKING,
     });
 
     this.log.info('File chunking job added to queue', {
@@ -1498,29 +580,17 @@ export class MessageQueue {
 
   /**
    * Add Citation Persistence Job
-   *
-   * Enqueues citations from RAG tool results for background persistence.
-   * Fire-and-forget pattern: does not block the chat flow.
-   *
-   * @param data - Citation persistence job data
-   * @returns Job ID
    */
-  public async addCitationPersistence(
-    data: CitationPersistenceJob
-  ): Promise<string> {
-    // Wait for Redis connection to be ready
+  public async addCitationPersistence(data: CitationPersistenceJob): Promise<string> {
     await this.waitForReady();
 
-    const queue = this.queues.get(QueueName.CITATION_PERSISTENCE);
+    const queue = this.queueManager.getQueue(QueueName.CITATION_PERSISTENCE);
     if (!queue) {
       throw new Error('Citation persistence queue not initialized');
     }
 
-    // No rate limiting for citations - they are tied to assistant responses
-    // which are already rate limited by the message flow
-
     const job = await queue.add('persist-citations', data, {
-      priority: 4,  // Lower priority than message persistence
+      priority: JOB_PRIORITY.CITATION_PERSISTENCE,
     });
 
     this.log.info('Citation persistence job added to queue', {
@@ -1535,25 +605,17 @@ export class MessageQueue {
 
   /**
    * Add File Cleanup Job
-   *
-   * Enqueues a file cleanup job. Can be used for manual cleanup triggers
-   * or scheduled cleanup. D25 Sprint 2 implementation.
-   *
-   * @param data - File cleanup job data
-   * @returns Job ID
    */
-  public async addFileCleanupJob(
-    data: FileCleanupJob
-  ): Promise<string> {
+  public async addFileCleanupJob(data: FileCleanupJob): Promise<string> {
     await this.waitForReady();
 
-    const queue = this.queues.get(QueueName.FILE_CLEANUP);
+    const queue = this.queueManager.getQueue(QueueName.FILE_CLEANUP);
     if (!queue) {
       throw new Error('File cleanup queue not initialized');
     }
 
     const job = await queue.add(`cleanup-${data.type}`, data, {
-      priority: 10,  // Lowest priority - don't interfere with user operations
+      priority: JOB_PRIORITY.FILE_CLEANUP,
     });
 
     this.log.info('File cleanup job added to queue', {
@@ -1567,25 +629,17 @@ export class MessageQueue {
 
   /**
    * Add File Deletion Job
-   *
-   * Adds a file deletion job to the queue for sequential processing.
-   * Uses concurrency=1 to avoid SQL deadlocks on shared tables.
-   *
-   * @param data - Job data with fileId, userId, and optional batchId
-   * @returns Job ID
    */
-  public async addFileDeletionJob(
-    data: FileDeletionJobData
-  ): Promise<string> {
+  public async addFileDeletionJob(data: FileDeletionJobData): Promise<string> {
     await this.waitForReady();
 
-    const queue = this.queues.get(QueueName.FILE_DELETION);
+    const queue = this.queueManager.getQueue(QueueName.FILE_DELETION);
     if (!queue) {
       throw new Error('File deletion queue not initialized');
     }
 
     const job = await queue.add('delete-file', data, {
-      priority: 3,  // Same priority as file processing
+      priority: JOB_PRIORITY.FILE_DELETION,
     });
 
     this.log.info('File deletion job added to queue', {
@@ -1601,25 +655,17 @@ export class MessageQueue {
 
   /**
    * Add File Bulk Upload Job
-   *
-   * Adds a bulk upload job to the queue for parallel processing.
-   * Creates database records for files uploaded directly to Azure Blob Storage.
-   *
-   * @param data - Job data with tempId, userId, batchId, fileName, etc.
-   * @returns Job ID
    */
-  public async addFileBulkUploadJob(
-    data: BulkUploadJobData
-  ): Promise<string> {
+  public async addFileBulkUploadJob(data: BulkUploadJobData): Promise<string> {
     await this.waitForReady();
 
-    const queue = this.queues.get(QueueName.FILE_BULK_UPLOAD);
+    const queue = this.queueManager.getQueue(QueueName.FILE_BULK_UPLOAD);
     if (!queue) {
       throw new Error('File bulk upload queue not initialized');
     }
 
     const job = await queue.add('upload-file', data, {
-      priority: 3,  // Same priority as file processing
+      priority: JOB_PRIORITY.FILE_BULK_UPLOAD,
     });
 
     this.log.info('File bulk upload job added to queue', {
@@ -1634,915 +680,7 @@ export class MessageQueue {
   }
 
   /**
-   * Process Message Persistence Job
-   *
-   * @param job - BullMQ job
-   */
-  private async processMessagePersistence(
-    job: Job<MessagePersistenceJob>
-  ): Promise<void> {
-    const {
-      sessionId, messageId, role, messageType, content, metadata,
-      sequenceNumber, eventId, toolUseId, stopReason,
-      // ⭐ PHASE 1A: Token tracking fields
-      model, inputTokens, outputTokens,
-      // Note: thinkingTokens removed per Option A (2025-11-24)
-    } = job.data;
-
-    // ⭐ VALIDATION: Check for undefined messageId
-    if (!messageId || messageId === 'undefined' || messageId.trim() === '') {
-      this.log.error('❌ processMessagePersistence: Invalid messageId', {
-        jobId: job.id,
-        messageId,
-        sessionId,
-        role,
-        messageType,
-        metadata,
-      });
-      throw new Error(`Invalid messageId: ${messageId}. Cannot persist message.`);
-    }
-
-    // ⭐ DIAGNOSTIC: Log worker pickup with token info
-    this.log.info('🔨 Worker picked up message persistence job', {
-      jobId: job.id,
-      messageId,
-      sessionId,
-      role,
-      messageType,
-      contentLength: content?.length || 0,
-      hasSequenceNumber: !!sequenceNumber,
-      sequenceNumber,
-      hasEventId: !!eventId,
-      hasToolUseId: !!toolUseId,
-      toolUseId,
-      // ⭐ PHASE 1A: Log token data
-      model,
-      inputTokens,
-      outputTokens,
-      // Note: thinkingTokens removed from DB per Option A (2025-11-24)
-      attemptNumber: job.attemptsMade,
-    });
-
-    try {
-      // ⭐ FIX: Use toolUseId from job data directly (fallback to metadata for backwards compat)
-      const finalToolUseId: string | null = toolUseId || (typeof metadata?.tool_use_id === 'string' ? metadata.tool_use_id : null);
-
-      // ⭐ PHASE 1A: Calculate total tokens if input and output are provided
-      const totalTokens = (inputTokens !== undefined && outputTokens !== undefined)
-        ? inputTokens + outputTokens
-        : null;
-
-      const params: SqlParams = {
-        id: messageId,
-        session_id: sessionId,
-        role,
-        message_type: messageType,
-        content,
-        metadata: metadata ? JSON.stringify(metadata) : '{}',
-        // ⭐ CRITICAL: Include sequence_number and event_id
-        sequence_number: sequenceNumber ?? null,
-        event_id: eventId ?? null,
-        // ⭐ PHASE 1A: Token tracking - use total_tokens for legacy column, add new columns
-        token_count: totalTokens,
-        stop_reason: stopReason ?? null,
-        tool_use_id: finalToolUseId as string | null,
-        created_at: new Date(),
-        // ⭐ PHASE 1A: New token tracking columns
-        model: model ?? null,
-        input_tokens: inputTokens ?? null,
-        output_tokens: outputTokens ?? null,
-        // Note: thinking_tokens removed per Option A (2025-11-24)
-        // SDK doesn't provide thinking_tokens separately (included in output_tokens)
-      };
-
-      // ⭐ UPDATED 2025-12-23: Use MERGE (upsert) to prevent PK violations on retries
-      // This is idempotent - if message already exists, skip insertion
-      await this.executeQueryFn(
-        `
-        MERGE INTO messages WITH (HOLDLOCK) AS target
-        USING (SELECT @id AS id) AS source
-        ON target.id = source.id
-        WHEN NOT MATCHED THEN
-          INSERT (id, session_id, role, message_type, content, metadata, sequence_number, event_id, token_count, stop_reason, tool_use_id, created_at, model, input_tokens, output_tokens)
-          VALUES (@id, @session_id, @role, @message_type, @content, @metadata, @sequence_number, @event_id, @token_count, @stop_reason, @tool_use_id, @created_at, @model, @input_tokens, @output_tokens);
-        `,
-        params
-      );
-
-      // ⭐ DIAGNOSTIC: Enhanced success logging
-      this.log.info({
-        jobId: job.id,
-        messageId,
-        sessionId,
-        messageType,
-        role,
-        contentLength: content?.length || 0,
-        hasSequenceNumber: !!sequenceNumber,
-        sequenceNumber,
-        hasEventId: !!eventId,
-        eventId,
-      }, '✅ Message persisted to database successfully');
-    } catch (error) {
-      this.log.error({
-        error: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined,
-        jobId: job.id,
-        messageId,
-        sessionId,
-        messageType,
-        sequenceNumber,
-        eventId,
-        attemptNumber: job.attemptsMade,
-      }, '❌ Failed to persist message to database');
-      throw error; // Will trigger retry
-    }
-  }
-
-  /**
-   * Process Tool Execution Job
-   *
-   * @param job - BullMQ job
-   */
-  private async processToolExecution(
-    job: Job<ToolExecutionJob>
-  ): Promise<void> {
-    const { sessionId, toolUseId, toolName } = job.data;
-
-    this.log.error('Tool execution queue not implemented', {
-      jobId: job.id,
-      toolName,
-      toolUseId,
-      sessionId,
-    });
-
-    // Feature not implemented - tool execution happens synchronously in DirectAgentService
-    // This queue worker exists for future async tool execution support
-    throw new Error(
-      'Tool execution queue is not implemented. ' +
-      'Tools are executed synchronously in DirectAgentService.executeMCPTool(). ' +
-      'This worker should not be called in production.'
-    );
-  }
-
-  /**
-   * Process Event Job
-   *
-   * @param job - BullMQ job
-   */
-  private async processEvent(job: Job<EventProcessingJob>): Promise<void> {
-    const { eventId, sessionId, eventType } = job.data;
-
-    this.log.debug('Processing event', {
-      jobId: job.id,
-      eventId,
-      eventType,
-      sessionId,
-    });
-
-    // Mark event as processed in EventStore (use injected dependency)
-    const eventStore = this.eventStoreGetter();
-    await eventStore.markAsProcessed(eventId);
-
-    // Additional event-specific processing can be added here
-    // For example, triggering webhooks, notifications, etc.
-  }
-
-  /**
-   * Process Usage Aggregation Job
-   *
-   * Routes aggregation jobs to the appropriate service methods.
-   * Supports hourly/daily/monthly aggregation, invoice generation, and quota resets.
-   *
-   * @param job - BullMQ job containing aggregation type and parameters
-   */
-  private async processUsageAggregation(
-    job: Job<UsageAggregationJob>
-  ): Promise<void> {
-    const { type, userId, periodStart } = job.data;
-
-    this.log.info('Processing usage aggregation job', {
-      jobId: job.id,
-      type,
-      userId: userId || 'all-users',
-      periodStart,
-      attemptNumber: job.attemptsMade,
-    });
-
-    try {
-      // Dynamic import to avoid circular dependencies
-      const { getUsageAggregationService } = await import('@/domains/billing/tracking/UsageAggregationService');
-      const { getBillingService } = await import('@/domains/billing');
-
-      const aggregationService = getUsageAggregationService();
-      const billingService = getBillingService();
-
-      switch (type) {
-        case 'hourly': {
-          const hourStart = periodStart ? new Date(periodStart) : this.getLastHourStart();
-          const count = await aggregationService.aggregateHourly(hourStart, userId);
-          this.log.info('Hourly aggregation completed', { jobId: job.id, usersProcessed: count });
-          break;
-        }
-        case 'daily': {
-          const dayStart = periodStart ? new Date(periodStart) : this.getYesterdayStart();
-          const count = await aggregationService.aggregateDaily(dayStart, userId);
-          this.log.info('Daily aggregation completed', { jobId: job.id, usersProcessed: count });
-          break;
-        }
-        case 'monthly': {
-          const monthStart = periodStart ? new Date(periodStart) : this.getLastMonthStart();
-          const count = await aggregationService.aggregateMonthly(monthStart, userId);
-          this.log.info('Monthly aggregation completed', { jobId: job.id, usersProcessed: count });
-          break;
-        }
-        case 'monthly-invoices': {
-          const invoiceMonth = periodStart ? new Date(periodStart) : this.getLastMonthStart();
-          const count = await billingService.generateAllMonthlyInvoices(invoiceMonth);
-          this.log.info('Monthly invoices generated', { jobId: job.id, invoicesCreated: count });
-          break;
-        }
-        case 'quota-reset': {
-          const count = await aggregationService.resetExpiredQuotas();
-          this.log.info('Expired quotas reset', { jobId: job.id, usersReset: count });
-          break;
-        }
-        default:
-          this.log.error('Unknown aggregation job type', { jobId: job.id, type });
-          throw new Error(`Unknown aggregation job type: ${type}`);
-      }
-    } catch (error) {
-      this.log.error('Usage aggregation job failed', {
-        error: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined,
-        jobId: job.id,
-        type,
-        userId,
-        attemptNumber: job.attemptsMade,
-      });
-      throw error;  // Will trigger retry
-    }
-  }
-
-  /**
-   * Get the start of the last completed hour
-   */
-  private getLastHourStart(): Date {
-    const now = new Date();
-    now.setMinutes(0, 0, 0);
-    now.setHours(now.getHours() - 1);
-    return now;
-  }
-
-  /**
-   * Get the start of yesterday (UTC)
-   */
-  private getYesterdayStart(): Date {
-    const now = new Date();
-    now.setUTCHours(0, 0, 0, 0);
-    now.setUTCDate(now.getUTCDate() - 1);
-    return now;
-  }
-
-  /**
-   * Get the start of last month (UTC)
-   */
-  private getLastMonthStart(): Date {
-    const now = new Date();
-    now.setUTCDate(1);
-    now.setUTCHours(0, 0, 0, 0);
-    now.setUTCMonth(now.getUTCMonth() - 1);
-    return now;
-  }
-
-  /**
-   * Process File Processing Job
-   *
-   * Extracts text from uploaded documents using appropriate processors:
-   * - PDF: Azure Document Intelligence with OCR
-   * - DOCX: mammoth.js for Word documents
-   * - XLSX: xlsx library for Excel files
-   * - Plain text: Direct UTF-8 reading
-   *
-   * Integrated with ProcessingRetryManager for robust retry handling.
-   *
-   * @param job - BullMQ job containing file processing data
-   */
-  private async processFileProcessingJob(
-    job: Job<FileProcessingJob>
-  ): Promise<void> {
-    // Extract job data with validation - log immediately for debugging concurrent job issues
-    const jobData = job.data;
-    const fileId = jobData?.fileId;
-    const userId = jobData?.userId;
-    const sessionId = jobData?.sessionId;
-    const mimeType = jobData?.mimeType;
-    const fileName = jobData?.fileName;
-
-    // Immediate logging to diagnose concurrent job failures
-    this.log.info('File processing job received by worker', {
-      jobId: job.id,
-      fileId,
-      userId,
-      mimeType,
-      fileName,
-      attemptsMade: job.attemptsMade,
-      hasJobData: !!jobData,
-    });
-
-    // Validate required fields before any processing
-    if (!fileId || !userId) {
-      this.log.error('Invalid job data - missing required fields', {
-        jobId: job.id,
-        hasFileId: !!fileId,
-        hasUserId: !!userId,
-        hasJobData: !!jobData,
-        jobDataKeys: jobData ? Object.keys(jobData) : [],
-      });
-      throw new Error(`Invalid job data: fileId=${fileId}, userId=${userId}`);
-    }
-
-    try {
-      // Dynamic import to avoid circular dependencies
-      this.log.debug('Importing FileProcessingService...', { fileId, jobId: job.id });
-      const { getFileProcessingService } = await import('@/services/files/FileProcessingService');
-
-      this.log.debug('Getting FileProcessingService singleton...', { fileId, jobId: job.id });
-      const fileProcessingService = getFileProcessingService();
-
-      this.log.debug('Calling FileProcessingService.processFile()...', { fileId, jobId: job.id });
-      await fileProcessingService.processFile(job.data);
-
-      this.log.info('File processing completed', {
-        jobId: job.id,
-        fileId,
-        userId,
-      });
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-
-      this.log.error('File processing job failed', {
-        error: errorMessage,
-        stack: error instanceof Error ? error.stack : undefined,
-        jobId: job.id,
-        fileId,
-        userId,
-        mimeType,
-        attemptNumber: job.attemptsMade,
-      });
-
-      // Use ProcessingRetryManager for retry decision
-      try {
-        const { getProcessingRetryManager } = await import('@/domains/files/retry');
-        const retryManager = getProcessingRetryManager();
-
-        const decision = await retryManager.shouldRetry(userId, fileId, 'processing');
-
-        this.log.info('Retry decision for file processing', {
-          jobId: job.id,
-          fileId,
-          userId,
-          shouldRetry: decision.shouldRetry,
-          newRetryCount: decision.newRetryCount,
-          maxRetries: decision.maxRetries,
-          reason: decision.reason,
-        });
-
-        if (decision.shouldRetry) {
-          // Throw to trigger BullMQ retry
-          throw error;
-        }
-
-        // Max retries exceeded - handle permanent failure (includes WebSocket events)
-        await retryManager.handlePermanentFailure(userId, fileId, errorMessage, sessionId);
-        this.log.warn('File processing permanently failed after max retries', {
-          jobId: job.id,
-          fileId,
-          userId,
-          retryCount: decision.newRetryCount,
-        });
-        // Don't throw - job is complete (permanent failure)
-        return;
-      } catch (retryError) {
-        // If retry decision fails, fall back to throwing original error
-        if (retryError === error) {
-          throw error;  // This is the expected case when shouldRetry is true
-        }
-        this.log.error('Failed to process retry decision', {
-          jobId: job.id,
-          fileId,
-          error: retryError instanceof Error ? retryError.message : String(retryError),
-        });
-        throw error;  // Fall back to BullMQ retry
-      }
-    }
-  }
-
-  /**
-   * Process Embedding Generation Job
-   *
-   * Generates embeddings for file chunks and indexes them in Azure AI Search.
-   * Integrated with ProcessingRetryManager for robust retry handling.
-   *
-   * @param job - BullMQ job containing chunks to process
-   */
-  private async processEmbeddingGeneration(
-    job: Job<EmbeddingGenerationJob>
-  ): Promise<void> {
-    const { fileId, userId, sessionId, chunks } = job.data;
-
-    this.log.info('Processing embedding generation job', {
-      jobId: job.id,
-      fileId,
-      userId,
-      chunkCount: chunks.length,
-      attemptNumber: job.attemptsMade,
-    });
-
-    try {
-      // Use injected services if provided (for testing), otherwise dynamic import
-      let embeddingService: IEmbeddingServiceMinimal;
-      let vectorSearchService: IVectorSearchServiceMinimal;
-
-      if (this.embeddingServiceOverride && this.vectorSearchServiceOverride) {
-        // Use injected mocks (testing)
-        embeddingService = this.embeddingServiceOverride;
-        vectorSearchService = this.vectorSearchServiceOverride;
-      } else {
-        // Dynamic imports to avoid circular dependencies (production)
-        const { EmbeddingService } = await import('@/services/embeddings/EmbeddingService');
-        const { VectorSearchService } = await import('@/services/search/VectorSearchService');
-        embeddingService = EmbeddingService.getInstance();
-        vectorSearchService = VectorSearchService.getInstance();
-      }
-
-      // 1. Generate embeddings
-      const texts = chunks.map(c => c.text);
-      const embeddings = await embeddingService.generateTextEmbeddingsBatch(texts, userId);
-
-      // 2. Prepare chunks for indexing
-      if (embeddings.length !== chunks.length) {
-          throw new Error(`Embedding count mismatch: expected ${chunks.length}, got ${embeddings.length}`);
-      }
-      
-      const chunksWithEmbeddings = chunks.map((chunk, i) => {
-        const embedding = embeddings[i];
-        if (!embedding) {
-             throw new Error(`Missing embedding for chunk index ${i}`);
-        }
-        return {
-            chunkId: chunk.id,
-            fileId,
-            userId,
-            content: chunk.text,
-            embedding: embedding.embedding,
-            chunkIndex: chunk.chunkIndex,
-            tokenCount: chunk.tokenCount,
-            embeddingModel: embedding.model,
-            createdAt: new Date()
-        };
-      });
-
-      // 3. Index in Azure AI Search
-      const searchDocIds = await vectorSearchService.indexChunksBatch(chunksWithEmbeddings);
-
-      // 4. Update file_chunks table with search_document_id
-      for (let i = 0; i < chunks.length; i++) {
-         // Safe access with fallback or check
-         const searchId = searchDocIds[i];
-         const chunkId = chunks[i]?.id;
-
-         if (!chunkId) {
-            this.log.warn({ fileId, i }, 'Missing chunk ID during update');
-            continue;
-         }
-         
-         await this.executeQueryFn(
-             'UPDATE file_chunks SET search_document_id = @searchId WHERE id = @chunkId',
-             {
-                 searchId: searchId || null,
-                 chunkId: chunkId
-             }
-         );
-      }
-      
-      // 5. Update File status
-      await this.executeQueryFn(
-          `UPDATE files SET embedding_status = '${EMBEDDING_STATUS.COMPLETED}' WHERE id = @fileId`,
-          { fileId }
-      );
-
-      // 6. Emit readiness_changed event (file is now ready for RAG)
-      const eventEmitter = getFileEventEmitter();
-      eventEmitter.emitReadinessChanged(
-        { fileId, userId, sessionId },
-        {
-          previousState: FILE_READINESS_STATE.PROCESSING,
-          newState: FILE_READINESS_STATE.READY,
-          processingStatus: PROCESSING_STATUS.COMPLETED,
-          embeddingStatus: EMBEDDING_STATUS.COMPLETED,
-        }
-      );
-
-      this.log.info('Embedding generation completed', {
-        jobId: job.id,
-        fileId,
-        chunksIndexed: chunks.length
-      });
-
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-
-      this.log.error('Embedding generation job failed', {
-        error: errorMessage,
-        jobId: job.id,
-        fileId,
-        userId,
-        attemptNumber: job.attemptsMade,
-      });
-
-      //  Use ProcessingRetryManager for retry decision
-      try {
-        const { getProcessingRetryManager } = await import('@/domains/files/retry');
-        const retryManager = getProcessingRetryManager();
-
-        const decision = await retryManager.shouldRetry(userId, fileId, 'embedding');
-
-        this.log.info('Retry decision for embedding generation', {
-          jobId: job.id,
-          fileId,
-          userId,
-          shouldRetry: decision.shouldRetry,
-          newRetryCount: decision.newRetryCount,
-          maxRetries: decision.maxRetries,
-          reason: decision.reason,
-        });
-
-        if (decision.shouldRetry) {
-          // Update embedding_status to 'pending' for retry
-          await this.executeQueryFn(
-            `UPDATE files SET embedding_status = '${EMBEDDING_STATUS.PENDING}' WHERE id = @fileId`,
-            { fileId }
-          );
-          // Throw to trigger BullMQ retry
-          throw error;
-        }
-
-        // Max retries exceeded - handle permanent failure (includes WebSocket events)
-        await retryManager.handlePermanentFailure(userId, fileId, errorMessage, sessionId);
-        this.log.warn('Embedding generation permanently failed after max retries', {
-          jobId: job.id,
-          fileId,
-          userId,
-          retryCount: decision.newRetryCount,
-        });
-        // Don't throw - job is complete (permanent failure)
-        return;
-      } catch (retryError) {
-        // If retry decision fails, fall back to throwing original error
-        if (retryError === error) {
-          throw error;  // This is the expected case when shouldRetry is true
-        }
-        this.log.error('Failed to process embedding retry decision', {
-          jobId: job.id,
-          fileId,
-          error: retryError instanceof Error ? retryError.message : String(retryError),
-        });
-        // Fall back to original behavior: mark as failed and throw
-        try {
-          await this.executeQueryFn(
-            `UPDATE files SET embedding_status = '${EMBEDDING_STATUS.FAILED}' WHERE id = @fileId`,
-            { fileId }
-          );
-        } catch (statusError) {
-          this.log.error('Failed to update embedding_status', {
-            fileId,
-            error: statusError instanceof Error ? statusError.message : String(statusError),
-          });
-        }
-        throw error;
-      }
-    }
-  }
-
-  /**
-   * Process File Chunking Job
-   *
-   * Chunks extracted text and prepares for embedding generation.
-   * Integrated with ProcessingRetryManager for robust retry handling.
-   *
-   * @param job - BullMQ job containing file to chunk
-   */
-  private async processFileChunkingJob(
-    job: Job<FileChunkingJob>
-  ): Promise<void> {
-    const { fileId, userId, sessionId, mimeType } = job.data;
-
-    this.log.info('Processing file chunking job', {
-      jobId: job.id,
-      fileId,
-      userId,
-      mimeType,
-      attemptNumber: job.attemptsMade,
-    });
-
-    try {
-      // Dynamic import to avoid circular dependencies
-      const { getFileChunkingService } = await import('@/services/files/FileChunkingService');
-      const fileChunkingService = getFileChunkingService();
-
-      await fileChunkingService.processFileChunks(job.data);
-
-      this.log.info('File chunking completed', {
-        jobId: job.id,
-        fileId,
-        userId,
-      });
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-
-      this.log.error('File chunking job failed', {
-        error: errorMessage,
-        stack: error instanceof Error ? error.stack : undefined,
-        jobId: job.id,
-        fileId,
-        userId,
-        mimeType,
-        attemptNumber: job.attemptsMade,
-      });
-
-      // Use ProcessingRetryManager for retry decision (chunking is part of processing phase)
-      try {
-        const { getProcessingRetryManager } = await import('@/domains/files/retry');
-        const retryManager = getProcessingRetryManager();
-
-        const decision = await retryManager.shouldRetry(userId, fileId, 'processing');
-
-        this.log.info('Retry decision for file chunking', {
-          jobId: job.id,
-          fileId,
-          userId,
-          shouldRetry: decision.shouldRetry,
-          newRetryCount: decision.newRetryCount,
-          maxRetries: decision.maxRetries,
-          reason: decision.reason,
-        });
-
-        if (decision.shouldRetry) {
-          // Throw to trigger BullMQ retry
-          throw error;
-        }
-
-        // Max retries exceeded - handle permanent failure (includes WebSocket events)
-        await retryManager.handlePermanentFailure(userId, fileId, errorMessage, sessionId);
-        this.log.warn('File chunking permanently failed after max retries', {
-          jobId: job.id,
-          fileId,
-          userId,
-          retryCount: decision.newRetryCount,
-        });
-        // Don't throw - job is complete (permanent failure)
-        return;
-      } catch (retryError) {
-        // If retry decision fails, fall back to throwing original error
-        if (retryError === error) {
-          throw error;  // This is the expected case when shouldRetry is true
-        }
-        this.log.error('Failed to process chunking retry decision', {
-          jobId: job.id,
-          fileId,
-          error: retryError instanceof Error ? retryError.message : String(retryError),
-        });
-        throw error;  // Fall back to BullMQ retry
-      }
-    }
-  }
-
-  /**
-   * Process Citation Persistence Job
-   *
-   * Persists RAG citations to the message_citations table.
-   * Fire-and-forget pattern: failures are logged but don't affect chat flow.
-   *
-   * @param job - BullMQ job containing citations to persist
-   */
-  private async processCitationPersistence(
-    job: Job<CitationPersistenceJob>
-  ): Promise<void> {
-    const { messageId, sessionId, citations } = job.data;
-
-    this.log.info('Processing citation persistence job', {
-      jobId: job.id,
-      messageId,
-      sessionId,
-      citationCount: citations.length,
-      attemptNumber: job.attemptsMade,
-    });
-
-    try {
-      // Insert each citation into message_citations table
-      for (const cite of citations) {
-        await this.executeQueryFn(
-          `
-          INSERT INTO message_citations
-          (message_id, file_id, file_name, source_type, mime_type, relevance_score, is_image)
-          VALUES (@messageId, @fileId, @fileName, @sourceType, @mimeType, @relevanceScore, @isImage)
-          `,
-          {
-            messageId,
-            fileId: cite.fileId,
-            fileName: cite.fileName,
-            sourceType: cite.sourceType,
-            mimeType: cite.mimeType,
-            relevanceScore: cite.relevanceScore,
-            isImage: cite.isImage ? 1 : 0,
-          }
-        );
-      }
-
-      this.log.info('Citation persistence completed', {
-        jobId: job.id,
-        messageId,
-        citationCount: citations.length,
-      });
-    } catch (error) {
-      this.log.error('Citation persistence job failed', {
-        error: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined,
-        jobId: job.id,
-        messageId,
-        sessionId,
-        citationCount: citations.length,
-        attemptNumber: job.attemptsMade,
-      });
-      throw error;  // Will trigger retry
-    }
-  }
-
-  /**
-   * Process File Cleanup Job
-   *
-   * Cleans up old failed files, orphaned chunks, and orphaned search documents.
-   * D25 Sprint 2: Robust file processing cleanup.
-   *
-   * @param job - BullMQ job containing cleanup parameters
-   */
-  private async processFileCleanupJob(
-    job: Job<FileCleanupJob>
-  ): Promise<void> {
-    const {
-      type,
-      userId,
-      failedFileRetentionDays = 30,
-      orphanedChunkRetentionDays = 7,
-    } = job.data;
-
-    this.log.info('Processing file cleanup job', {
-      jobId: job.id,
-      type,
-      userId: userId || 'all-users',
-      failedFileRetentionDays,
-      orphanedChunkRetentionDays,
-      attemptNumber: job.attemptsMade,
-    });
-
-    try {
-      // Dynamic import to avoid circular dependencies
-      const { getPartialDataCleaner } = await import('@/domains/files/cleanup');
-      const cleaner = getPartialDataCleaner();
-
-      switch (type) {
-        case 'failed_files': {
-          const result = await cleaner.cleanupOldFailedFiles(failedFileRetentionDays);
-          this.log.info('Failed files cleanup completed', {
-            jobId: job.id,
-            filesProcessed: result.filesProcessed,
-            chunksDeleted: result.totalChunksDeleted,
-            searchDocsDeleted: result.totalSearchDocsDeleted,
-            failures: result.failures.length,
-          });
-          break;
-        }
-        case 'orphaned_chunks': {
-          // Note: cleanupOrphanedChunks operates globally (all users), userId is for logging only
-          const count = await cleaner.cleanupOrphanedChunks(orphanedChunkRetentionDays);
-          this.log.info('Orphaned chunks cleanup completed', {
-            jobId: job.id,
-            chunksDeleted: count,
-          });
-          break;
-        }
-        case 'orphaned_search_docs': {
-          // Note: cleanupOrphanedSearchDocs operates globally via OrphanCleanupJob
-          const count = await cleaner.cleanupOrphanedSearchDocs();
-          this.log.info('Orphaned search docs cleanup completed', {
-            jobId: job.id,
-            searchDocsDeleted: count,
-          });
-          break;
-        }
-        case 'daily_full': {
-          // Run all cleanup tasks sequentially
-          this.log.info('Starting daily full cleanup', { jobId: job.id });
-
-          // 1. Clean old failed files (operates across all users)
-          const failedResult = await cleaner.cleanupOldFailedFiles(failedFileRetentionDays);
-
-          // 2. Clean orphaned chunks (operates globally)
-          const chunksDeleted = await cleaner.cleanupOrphanedChunks(orphanedChunkRetentionDays);
-
-          // 3. Clean orphaned search documents (operates globally via OrphanCleanupJob)
-          const searchDocsDeleted = await cleaner.cleanupOrphanedSearchDocs();
-
-          this.log.info('Daily full cleanup completed', {
-            jobId: job.id,
-            failedFilesProcessed: failedResult.filesProcessed,
-            failedFilesChunksDeleted: failedResult.totalChunksDeleted,
-            failedFilesSearchDocsDeleted: failedResult.totalSearchDocsDeleted,
-            orphanedChunksDeleted: chunksDeleted,
-            orphanedSearchDocsDeleted: searchDocsDeleted,
-          });
-          break;
-        }
-        default:
-          this.log.error('Unknown cleanup job type', { jobId: job.id, type });
-          throw new Error(`Unknown cleanup job type: ${type}`);
-      }
-    } catch (error) {
-      this.log.error('File cleanup job failed', {
-        error: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined,
-        jobId: job.id,
-        type,
-        userId,
-        attemptNumber: job.attemptsMade,
-      });
-      throw error;  // Will trigger retry
-    }
-  }
-
-  /**
-   * Process File Deletion Job
-   *
-   * Delegates to FileDeletionProcessor domain module.
-   * Sequential processing (concurrency=1) to avoid SQL deadlocks.
-   *
-   * @param job - BullMQ job with FileDeletionJobData
-   */
-  private async processFileDeletionJob(
-    job: Job<FileDeletionJobData>
-  ): Promise<void> {
-    this.log.info('Processing file deletion job', {
-      jobId: job.id,
-      fileId: job.data.fileId,
-      userId: job.data.userId,
-      batchId: job.data.batchId,
-      deletionReason: job.data.deletionReason,
-      attemptNumber: job.attemptsMade,
-    });
-
-    // Dynamic import to avoid circular dependencies
-    const { getFileDeletionProcessor } = await import('@/domains/files/deletion');
-    const processor = getFileDeletionProcessor();
-
-    // Delegate to domain processor (throws on failure for BullMQ retry)
-    await processor.processJob(job.data);
-  }
-
-  /**
-   * Process File Bulk Upload Job
-   *
-   * Processes a bulk upload job by creating database record for a file
-   * that was uploaded directly to Azure Blob Storage via SAS URL.
-   *
-   * @param job - BullMQ job with BulkUploadJobData
-   */
-  private async processFileBulkUploadJob(
-    job: Job<BulkUploadJobData>
-  ): Promise<void> {
-    this.log.info('Processing bulk upload job', {
-      jobId: job.id,
-      tempId: job.data.tempId,
-      userId: job.data.userId,
-      batchId: job.data.batchId,
-      fileName: job.data.fileName,
-      attemptNumber: job.attemptsMade,
-    });
-
-    // Dynamic import to avoid circular dependencies
-    const { getBulkUploadProcessor } = await import('@/domains/files/bulk-upload');
-    const processor = getBulkUploadProcessor();
-
-    // Delegate to domain processor (throws on failure for BullMQ retry)
-    await processor.processJob(job.data);
-  }
-
-  /**
    * Get Rate Limit Status for Session
-   *
-   * Returns current rate limit status for monitoring.
-   *
-   * @param sessionId - Session ID
-   * @returns Rate limit status
    */
   public async getRateLimitStatus(sessionId: string): Promise<{
     count: number;
@@ -2550,32 +688,11 @@ export class MessageQueue {
     remaining: number;
     withinLimit: boolean;
   }> {
-    const key = `queue:ratelimit:${sessionId}`;
-
-    try {
-      const countStr = await this.redisConnection.get(key);
-      const count = countStr ? parseInt(countStr, 10) : 0;
-      const limit = MessageQueue.MAX_JOBS_PER_SESSION;
-      const remaining = Math.max(0, limit - count);
-      const withinLimit = count <= limit;
-
-      return { count, limit, remaining, withinLimit };
-    } catch (error) {
-      this.log.error('Failed to get rate limit status', { error, sessionId });
-      return {
-        count: 0,
-        limit: MessageQueue.MAX_JOBS_PER_SESSION,
-        remaining: MessageQueue.MAX_JOBS_PER_SESSION,
-        withinLimit: true,
-      };
-    }
+    return this.rateLimiter.getStatus(sessionId);
   }
 
   /**
    * Get Queue Stats
-   *
-   * @param queueName - Name of queue
-   * @returns Queue statistics
    */
   public async getQueueStats(queueName: QueueName): Promise<{
     waiting: number;
@@ -2584,7 +701,7 @@ export class MessageQueue {
     failed: number;
     delayed: number;
   }> {
-    const queue = this.queues.get(queueName);
+    const queue = this.queueManager.getQueue(queueName);
     if (!queue) {
       throw new Error(`Queue ${queueName} not found`);
     }
@@ -2601,22 +718,17 @@ export class MessageQueue {
   }
 
   /**
-   * Get QueueEvents instance for a queue (for job.waitUntilFinished)
-   * @param queueName - Name of the queue
-   * @returns QueueEvents instance or undefined if not found
+   * Get QueueEvents instance for a queue
    */
   public getQueueEvents(queueName: QueueName): QueueEvents | undefined {
-    return this.queueEvents.get(queueName);
+    return this.eventManager.getQueueEvents(queueName);
   }
 
   /**
-   * Get a job by ID for awaiting completion
-   * @param queueName - Name of the queue
-   * @param jobId - BullMQ job ID
-   * @returns Job instance or null if not found
+   * Get a job by ID
    */
   public async getJob(queueName: QueueName, jobId: string): Promise<Job | null> {
-    const queue = this.queues.get(queueName);
+    const queue = this.queueManager.getQueue(queueName);
     if (!queue) return null;
     const job = await queue.getJob(jobId);
     return job ?? null;
@@ -2624,157 +736,68 @@ export class MessageQueue {
 
   /**
    * Pause Queue
-   *
-   * @param queueName - Name of queue to pause
    */
   public async pauseQueue(queueName: QueueName): Promise<void> {
-    const queue = this.queues.get(queueName);
+    const queue = this.queueManager.getQueue(queueName);
     if (!queue) {
       throw new Error(`Queue ${queueName} not found`);
     }
-
     await queue.pause();
     this.log.info(`Queue ${queueName} paused`);
   }
 
   /**
    * Resume Queue
-   *
-   * @param queueName - Name of queue to resume
    */
   public async resumeQueue(queueName: QueueName): Promise<void> {
-    const queue = this.queues.get(queueName);
+    const queue = this.queueManager.getQueue(queueName);
     if (!queue) {
       throw new Error(`Queue ${queueName} not found`);
     }
-
     await queue.resume();
     this.log.info(`Queue ${queueName} resumed`);
   }
 
   /**
-   * Map internal QueueName to shared JobQueueName type
-   *
-   * Used to convert our internal queue names to the shared type
-   * for job failure notifications.
-   *
-   * @param queueName - Internal queue name
-   * @returns Shared JobQueueName or null if not mappable
-   */
-  private mapQueueNameToJobQueueName(queueName: QueueName): JobQueueName | null {
-    const mapping: Partial<Record<QueueName, JobQueueName>> = {
-      [QueueName.FILE_PROCESSING]: 'file-processing',
-      [QueueName.FILE_CHUNKING]: 'file-chunking',
-      [QueueName.EMBEDDING_GENERATION]: 'embedding-generation',
-      [QueueName.MESSAGE_PERSISTENCE]: 'message-persistence',
-      [QueueName.TOOL_EXECUTION]: 'tool-execution',
-      [QueueName.FILE_BULK_UPLOAD]: 'file-bulk-upload',
-      [QueueName.FILE_DELETION]: 'file-deletion',
-    };
-
-    return mapping[queueName] ?? null;
-  }
-
-  /**
    * Close all queues and workers with proper BullMQ shutdown pattern
-   *
-   * BullMQ Best Practice Pattern:
-   * 1. Close workers FIRST (stops accepting jobs, drains active jobs)
-   * 2. Close queue events
-   * 3. Close queues
-   * 4. Close main Redis connection (only if owned)
-   *
-   * Key Principles:
-   * - worker.close() marks worker as closing AND waits for active jobs to complete
-   * - No artificial timeouts needed - worker.close() handles the wait
-   * - Close workers sequentially to avoid connection race conditions
-   * - Only close connections we created (check ownsRedisConnection flag)
-   *
-   * @see https://docs.bullmq.io/guide/workers/graceful-shutdown
    */
   public async close(): Promise<void> {
     this.log.info('Initiating MessageQueue graceful shutdown...');
     const errors: Error[] = [];
 
-    // ===== PHASE 1: CLOSE WORKERS (Most Important - Do This First) =====
+    // Phase 1: Close workers
     this.log.debug('Phase 1: Closing workers...');
-    for (const [name, worker] of this.workers.entries()) {
-      try {
-        this.log.debug(`Closing worker: ${name}`);
-        // BullMQ Best Practice: worker.close() does TWO things:
-        // 1. Marks worker as closing (no new jobs accepted)
-        // 2. Waits for ALL active jobs to complete or fail
-        // No timeout by default - jobs must finalize properly
-        await worker.close();
-        this.log.debug(`Worker closed successfully: ${name}`);
-      } catch (err) {
-        const error = err instanceof Error ? err : new Error(String(err));
-        this.log.error(`Failed to close worker: ${name}`, { error: error.message });
-        errors.push(error);
-      }
-    }
+    const workerErrors = await this.workerRegistry.closeAll();
+    errors.push(...workerErrors);
 
-    // Small delay for BullMQ internal Redis connection cleanup
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise(resolve => setTimeout(resolve, SHUTDOWN_DELAYS.PHASE_DELAY));
 
-    // ===== PHASE 2: CLOSE QUEUE EVENTS =====
+    // Phase 2: Close queue events
     this.log.debug('Phase 2: Closing queue events...');
-    for (const [name, events] of this.queueEvents.entries()) {
-      try {
-        this.log.debug(`Closing queue events: ${name}`);
-        await events.close();
-        this.log.debug(`Queue events closed: ${name}`);
-      } catch (err) {
-        const error = err instanceof Error ? err : new Error(String(err));
-        this.log.error(`Failed to close queue events: ${name}`, { error: error.message });
-        errors.push(error);
-      }
-    }
+    const eventErrors = await this.eventManager.closeAll();
+    errors.push(...eventErrors);
 
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise(resolve => setTimeout(resolve, SHUTDOWN_DELAYS.PHASE_DELAY));
 
-    // ===== PHASE 3: CLOSE QUEUES =====
+    // Phase 3: Close queues
     this.log.debug('Phase 3: Closing queues...');
-    for (const [name, queue] of this.queues.entries()) {
-      try {
-        this.log.debug(`Closing queue: ${name}`);
-        await queue.close();
-        this.log.debug(`Queue closed: ${name}`);
-      } catch (err) {
-        const error = err instanceof Error ? err : new Error(String(err));
-        this.log.error(`Failed to close queue: ${name}`, { error: error.message });
-        errors.push(error);
-      }
+    const queueErrors = await this.queueManager.closeAll();
+    errors.push(...queueErrors);
+
+    // Phase 4: Close Redis (only if owned)
+    try {
+      await this.redisManager.close();
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      errors.push(error);
     }
 
-    // ===== CLEAR REFERENCES =====
-    this.workers.clear();
-    this.queueEvents.clear();
-    this.queues.clear();
-
-    // ===== PHASE 4: CLOSE MAIN REDIS CONNECTION (Only if we own it) =====
-    if (this.ownsRedisConnection) {
-      try {
-        this.log.debug('Phase 4: Closing main Redis connection (owned by MessageQueue)');
-        await this.redisConnection.quit();
-        this.log.debug('Main Redis connection closed');
-      } catch (err) {
-        const error = err instanceof Error ? err : new Error(String(err));
-        this.log.error('Failed to close main Redis connection', { error: error.message });
-        errors.push(error);
-      }
-    } else {
-      this.log.debug('Phase 4: Skipping main Redis close (injected connection - caller owns it)');
-    }
-
-    // ===== FINALIZATION =====
     this.isReady = false;
 
     if (errors.length > 0) {
       this.log.warn(`MessageQueue closed with ${errors.length} error(s)`, {
-        errors: errors.map(e => e.message)
+        errors: errors.map(e => e.message),
       });
-      // Don't throw - allow graceful degradation
     } else {
       this.log.info('MessageQueue closed successfully');
     }
@@ -2783,8 +806,6 @@ export class MessageQueue {
 
 /**
  * Get MessageQueue singleton instance
- *
- * @param dependencies - Optional dependencies for DI (only used on first call)
  */
 export function getMessageQueue(dependencies?: IMessageQueueDependencies): MessageQueue {
   return MessageQueue.getInstance(dependencies);
@@ -2792,11 +813,6 @@ export function getMessageQueue(dependencies?: IMessageQueueDependencies): Messa
 
 /**
  * Check if MessageQueue singleton exists
- *
- * Use this to check if MessageQueue was initialized without creating a new instance.
- * Useful in test cleanup to avoid creating unnecessary connections.
- *
- * @internal Only for integration tests - DO NOT use in production
  */
 export function hasMessageQueueInstance(): boolean {
   return MessageQueue.hasInstance();
@@ -2804,14 +820,7 @@ export function hasMessageQueueInstance(): boolean {
 
 /**
  * Reset MessageQueue singleton for testing
- *
- * Closes the current instance (if any) and clears the singleton.
- * Allows tests to create fresh instances with different dependencies.
- *
- * @internal Only for integration tests - DO NOT use in production
  */
 export async function __resetMessageQueue(): Promise<void> {
   await MessageQueue.__resetInstance();
 }
-
-

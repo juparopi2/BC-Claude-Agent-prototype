@@ -17,12 +17,12 @@ import {
 
 describe('database-helpers', () => {
   describe('uuidInput', () => {
-    it('should return tuple with normalized lowercase UUID', () => {
+    it('should return tuple with normalized UPPERCASE UUID', () => {
       const [name, type, value] = uuidInput('userId', '322A1BAC-77DB-4A15-B1F0-48A51604642B');
 
       expect(name).toBe('userId');
       expect(type).toBe(sql.UniqueIdentifier);
-      expect(value).toBe('322a1bac-77db-4a15-b1f0-48a51604642b');
+      expect(value).toBe('322A1BAC-77DB-4A15-B1F0-48A51604642B');
     });
 
     it('should handle null value', () => {
@@ -59,30 +59,30 @@ describe('database-helpers', () => {
       const params = multiUuidInput({
         userId: '322A1BAC-77DB-4A15-B1F0-48A51604642B',
         sessionId: '422A1BAC-77DB-4A15-B1F0-48A51604642B',
-        approvalId: '522a1bac-77db-4a15-b1f0-48a51604642b',
+        approvalId: '522A1BAC-77DB-4A15-B1F0-48A51604642B',
       });
 
       expect(params).toHaveLength(3);
 
       // Check first param
-      expect(params[0]).toEqual(['userId', sql.UniqueIdentifier, '322a1bac-77db-4a15-b1f0-48a51604642b']);
+      expect(params[0]).toEqual(['userId', sql.UniqueIdentifier, '322A1BAC-77DB-4A15-B1F0-48A51604642B']);
 
       // Check second param
-      expect(params[1]).toEqual(['sessionId', sql.UniqueIdentifier, '422a1bac-77db-4a15-b1f0-48a51604642b']);
+      expect(params[1]).toEqual(['sessionId', sql.UniqueIdentifier, '422A1BAC-77DB-4A15-B1F0-48A51604642B']);
 
       // Check third param
-      expect(params[2]).toEqual(['approvalId', sql.UniqueIdentifier, '522a1bac-77db-4a15-b1f0-48a51604642b']);
+      expect(params[2]).toEqual(['approvalId', sql.UniqueIdentifier, '522A1BAC-77DB-4A15-B1F0-48A51604642B']);
     });
 
     it('should handle mix of valid UUIDs and null', () => {
       const params = multiUuidInput({
-        userId: '322a1bac-77db-4a15-b1f0-48a51604642b',
+        userId: '322A1BAC-77DB-4A15-B1F0-48A51604642B',
         sessionId: null,
         approvalId: undefined,
       });
 
       expect(params).toHaveLength(3);
-      expect(params[0][2]).toBe('322a1bac-77db-4a15-b1f0-48a51604642b');
+      expect(params[0][2]).toBe('322A1BAC-77DB-4A15-B1F0-48A51604642B');
       expect(params[1][2]).toBe(null);
       expect(params[2][2]).toBe(null);
     });
@@ -111,7 +111,7 @@ describe('database-helpers', () => {
       // Apply inputs
       const result = applyUuidInputs(mockRequest, {
         userId: '322A1BAC-77DB-4A15-B1F0-48A51604642B',
-        sessionId: '422a1bac-77db-4a15-b1f0-48a51604642b',
+        sessionId: '422A1BAC-77DB-4A15-B1F0-48A51604642B',
       });
 
       // Verify chaining
@@ -119,8 +119,8 @@ describe('database-helpers', () => {
 
       // Verify inputs were applied
       expect(inputs).toHaveLength(2);
-      expect(inputs[0]).toEqual(['userId', sql.UniqueIdentifier, '322a1bac-77db-4a15-b1f0-48a51604642b']);
-      expect(inputs[1]).toEqual(['sessionId', sql.UniqueIdentifier, '422a1bac-77db-4a15-b1f0-48a51604642b']);
+      expect(inputs[0]).toEqual(['userId', sql.UniqueIdentifier, '322A1BAC-77DB-4A15-B1F0-48A51604642B']);
+      expect(inputs[1]).toEqual(['sessionId', sql.UniqueIdentifier, '422A1BAC-77DB-4A15-B1F0-48A51604642B']);
     });
   });
 
@@ -147,7 +147,7 @@ describe('database-helpers', () => {
   describe('extractUuid', () => {
     it('should extract and normalize valid UUID', () => {
       const result = extractUuid('322A1BAC-77DB-4A15-B1F0-48A51604642B', 'userId');
-      expect(result).toBe('322a1bac-77db-4a15-b1f0-48a51604642b');
+      expect(result).toBe('322A1BAC-77DB-4A15-B1F0-48A51604642B');
     });
 
     it('should throw error for missing value', () => {
@@ -173,24 +173,24 @@ describe('database-helpers', () => {
     it('should create params object with normalized UUIDs', () => {
       const params = createUuidParams({
         userId: '322A1BAC-77DB-4A15-B1F0-48A51604642B',
-        sessionId: '422a1bac-77db-4a15-b1f0-48a51604642b',
+        sessionId: '422A1BAC-77DB-4A15-B1F0-48A51604642B',
       });
 
       expect(params).toEqual({
-        userId: '322a1bac-77db-4a15-b1f0-48a51604642b',
-        sessionId: '422a1bac-77db-4a15-b1f0-48a51604642b',
+        userId: '322A1BAC-77DB-4A15-B1F0-48A51604642B',
+        sessionId: '422A1BAC-77DB-4A15-B1F0-48A51604642B',
       });
     });
 
     it('should handle null values', () => {
       const params = createUuidParams({
-        userId: '322a1bac-77db-4a15-b1f0-48a51604642b',
+        userId: '322A1BAC-77DB-4A15-B1F0-48A51604642B',
         optionalId: null,
         undefinedId: undefined,
       });
 
       expect(params).toEqual({
-        userId: '322a1bac-77db-4a15-b1f0-48a51604642b',
+        userId: '322A1BAC-77DB-4A15-B1F0-48A51604642B',
         optionalId: null,
         undefinedId: null,
       });
@@ -206,31 +206,31 @@ describe('database-helpers', () => {
   });
 
   describe('UUID normalization', () => {
-    it('should normalize uppercase UUIDs to lowercase', () => {
-      const uppercase = '322A1BAC-77DB-4A15-B1F0-48A51604642B';
-      const expected = '322a1bac-77db-4a15-b1f0-48a51604642b';
+    it('should normalize lowercase UUIDs to UPPERCASE', () => {
+      const lowercase = '322a1bac-77db-4a15-b1f0-48a51604642b';
+      const expected = '322A1BAC-77DB-4A15-B1F0-48A51604642B';
 
-      const [, , value1] = uuidInput('test', uppercase);
+      const [, , value1] = uuidInput('test', lowercase);
       expect(value1).toBe(expected);
 
-      const value2 = extractUuid(uppercase, 'test');
+      const value2 = extractUuid(lowercase, 'test');
       expect(value2).toBe(expected);
 
-      const params = createUuidParams({ test: uppercase });
+      const params = createUuidParams({ test: lowercase });
       expect(params.test).toBe(expected);
     });
 
-    it('should preserve lowercase UUIDs', () => {
-      const lowercase = '322a1bac-77db-4a15-b1f0-48a51604642b';
+    it('should preserve UPPERCASE UUIDs', () => {
+      const uppercase = '322A1BAC-77DB-4A15-B1F0-48A51604642B';
 
-      const [, , value1] = uuidInput('test', lowercase);
-      expect(value1).toBe(lowercase);
+      const [, , value1] = uuidInput('test', uppercase);
+      expect(value1).toBe(uppercase);
 
-      const value2 = extractUuid(lowercase, 'test');
-      expect(value2).toBe(lowercase);
+      const value2 = extractUuid(uppercase, 'test');
+      expect(value2).toBe(uppercase);
 
-      const params = createUuidParams({ test: lowercase });
-      expect(params.test).toBe(lowercase);
+      const params = createUuidParams({ test: uppercase });
+      expect(params.test).toBe(uppercase);
     });
   });
 });

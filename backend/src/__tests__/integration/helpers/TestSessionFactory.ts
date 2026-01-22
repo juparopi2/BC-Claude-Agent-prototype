@@ -85,9 +85,10 @@ export class TestSessionFactory {
 
   /**
    * Generate a unique test ID (valid UUID for UNIQUEIDENTIFIER columns)
+   * Returns UPPERCASE UUID to match system standard (CLAUDE.md Section 12)
    */
   generateTestId(): string {
-    return uuidv4();
+    return normalizeUUID(uuidv4());
   }
 
   /**

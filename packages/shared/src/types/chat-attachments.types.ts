@@ -251,7 +251,7 @@ export function parseChatAttachment(record: ChatAttachmentDbRecord): ParsedChatA
     sessionId: record.session_id,
     name: record.name,
     mimeType: record.mime_type,
-    sizeBytes: record.size_bytes,
+    sizeBytes: Number(record.size_bytes),
     status,
     expiresAt: record.expires_at.toISOString(),
     createdAt: record.created_at.toISOString(),

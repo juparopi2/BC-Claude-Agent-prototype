@@ -27,7 +27,7 @@
  */
 export function normalizeUUID(uuid: string | null | undefined): string {
   if (!uuid) return '';
-  return uuid.toLowerCase();
+  return uuid.toUpperCase();
 }
 
 /**

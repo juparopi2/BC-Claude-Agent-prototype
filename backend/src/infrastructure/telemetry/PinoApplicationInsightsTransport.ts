@@ -227,8 +227,26 @@ export default async function (options: TransportOptions) {
         return;
       }
 
+      // Track logs processed for periodic flush
+      let logsProcessed = 0;
+      let logsSent = 0;
+      const FLUSH_INTERVAL = 50; // Flush every 50 logs
+
+      // Log first batch to confirm transport is receiving logs
+      let firstLogLogged = false;
+
       // Process logs
       for await (const logObj of source) {
+        // Debug: Log first log received to confirm transport is working
+        if (!firstLogLogged) {
+          console.log('[PinoApplicationInsightsTransport] First log received:', {
+            hasMsg: !!logObj.msg,
+            hasMessage: !!logObj.message,
+            level: logObj.level,
+            service: logObj.service,
+          });
+          firstLogLogged = true;
+        }
         try {
           // Extract log properties
           const level = logObj.level || PINO_LEVELS.info;
@@ -268,6 +286,12 @@ export default async function (options: TransportOptions) {
             properties: customDimensions,
           });
 
+          logsSent++;
+          // Log every 100 traces sent
+          if (logsSent % 100 === 0) {
+            console.log(`[PinoApplicationInsightsTransport] Traces sent: ${logsSent}`);
+          }
+
           // If this is an error or fatal, also track as exception
           if (level >= PINO_LEVELS.error && logObj.error) {
             const exception =
@@ -283,6 +307,16 @@ export default async function (options: TransportOptions) {
               time: timestamp,
               properties: customDimensions,
             });
+          }
+
+          // Periodic flush to ensure data is sent
+          logsProcessed++;
+          if (logsProcessed % FLUSH_INTERVAL === 0) {
+            try {
+              await client.flush();
+            } catch {
+              // Ignore flush errors - telemetry will retry
+            }
           }
         } catch (transportError) {
           // NEVER let transport errors crash the app

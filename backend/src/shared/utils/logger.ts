@@ -35,8 +35,11 @@
 
 import pino from 'pino';
 import { Request } from 'express';
-import path from 'path';
 import '@/types/session.types';
+import {
+  getApplicationInsightsClient,
+  isApplicationInsightsEnabled,
+} from '@/infrastructure/telemetry/ApplicationInsightsSetup';
 
 // Environment-based configuration
 const isDevelopment = process.env.NODE_ENV !== 'production';
@@ -94,18 +97,6 @@ if (process.env.ENABLE_FILE_LOGGING === 'true') {
   });
 }
 
-// Application Insights transport (production only)
-if (process.env.APPLICATIONINSIGHTS_ENABLED === 'true' && process.env.APPLICATIONINSIGHTS_CONNECTION_STRING) {
-  const transportPath = path.join(__dirname, '../../infrastructure/telemetry/PinoApplicationInsightsTransport.js');
-  targets.push({
-    level: logLevel,
-    target: transportPath,
-    options: {
-      connectionString: process.env.APPLICATIONINSIGHTS_CONNECTION_STRING,
-    },
-  });
-}
-
 const transport = pino.transport({ targets });
 
 // Create base logger
@@ -149,6 +140,91 @@ export const logger = pino(
   transport
 );
 
+// Map Pino levels to App Insights severity (SeverityLevel enum values)
+const SEVERITY_MAP: Record<string, number> = {
+  trace: 0, // Verbose
+  debug: 0, // Verbose
+  info: 1, // Information
+  warn: 2, // Warning
+  error: 3, // Error
+  fatal: 4, // Critical
+};
+
+/**
+ * Send log entry to Application Insights as a trace
+ */
+function trackToAppInsights(
+  level: string,
+  context: Record<string, unknown>,
+  msg: string
+): void {
+  if (!msg) return; // Skip empty messages
+
+  const client = getApplicationInsightsClient();
+  if (!client) return;
+
+  const properties: Record<string, string> = {};
+
+  // Extract custom dimensions for filtering/searching in App Insights
+  if (context.userId) properties.userId = String(context.userId);
+  if (context.sessionId) properties.sessionId = String(context.sessionId);
+  if (context.service) properties.service = String(context.service);
+  if (context.jobId) properties.jobId = String(context.jobId);
+  if (context.fileId) properties.fileId = String(context.fileId);
+  if (context.correlationId)
+    properties.correlationId = String(context.correlationId);
+  if (context.requestId) properties.requestId = String(context.requestId);
+
+  client.trackTrace({
+    message: msg,
+    severity: SEVERITY_MAP[level] ?? 1,
+    properties,
+  });
+}
+
+/**
+ * Wrap a Pino logger to also send logs to Application Insights
+ *
+ * Uses a Proxy to intercept log method calls without modifying Pino's behavior.
+ */
+function wrapLoggerWithAppInsights(
+  pinoLogger: pino.Logger,
+  context: Record<string, unknown>
+): pino.Logger {
+  if (!isApplicationInsightsEnabled()) {
+    return pinoLogger;
+  }
+
+  const levels = ['trace', 'debug', 'info', 'warn', 'error', 'fatal'] as const;
+
+  return new Proxy(pinoLogger, {
+    get(target, prop) {
+      if (levels.includes(prop as (typeof levels)[number])) {
+        return (...args: unknown[]) => {
+          // Call original Pino logger first
+          (target[prop as keyof typeof target] as (...a: unknown[]) => void)(
+            ...args
+          );
+
+          // Extract message (last string arg) and merge context
+          const msg =
+            typeof args[args.length - 1] === 'string'
+              ? (args[args.length - 1] as string)
+              : '';
+          const logContext =
+            typeof args[0] === 'object' && args[0] !== null
+              ? { ...context, ...(args[0] as Record<string, unknown>) }
+              : context;
+
+          // Send to App Insights
+          trackToAppInsights(prop as string, logContext, msg);
+        };
+      }
+      return target[prop as keyof typeof target];
+    },
+  }) as pino.Logger;
+}
+
 /**
  * Create a child logger with additional context
  *
@@ -158,6 +234,9 @@ export const logger = pino(
  * Supports LOG_SERVICES environment variable for filtering:
  * - When LOG_SERVICES is set, only logs from listed services are shown
  * - Example: LOG_SERVICES=AgentOrchestrator,PersistenceCoordinator
+ *
+ * When Application Insights is enabled, logs are also sent as traces
+ * with custom dimensions for filtering.
  *
  * @example
  * const serviceLogger = createChildLogger({ service: 'DirectAgentService' });
@@ -171,7 +250,8 @@ export const createChildLogger = (context: Record<string, unknown>) => {
     return pino({ level: 'silent' });
   }
 
-  return logger.child(context);
+  const childLogger = logger.child(context);
+  return wrapLoggerWithAppInsights(childLogger, context);
 };
 
 /**

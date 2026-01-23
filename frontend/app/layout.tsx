@@ -16,8 +16,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "BC Agent - AI Copilot for Business Central",
-  description: "Conversational AI agent for Microsoft Dynamics 365 Business Central",
+  title: "MyWorkMate - Your AI Business Assistant",
+  description: "Connect and automate your business operations across multiple platforms including Business Central, SharePoint, OneDrive, and more",
 };
 
 export default function RootLayout({

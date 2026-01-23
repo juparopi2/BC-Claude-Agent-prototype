@@ -102,10 +102,10 @@ export default function Home() {
           <div className="flex flex-col items-center gap-6 text-center max-w-2xl px-4">
             <MessageSquare className="size-16 text-muted-foreground" />
             <h1 className="text-3xl font-semibold tracking-tight">
-              Welcome to BC Agent
+              Welcome to MyWorkMate
             </h1>
             <p className="text-lg text-muted-foreground max-w-md">
-              Start a conversation to interact with Business Central
+              Your AI assistant for seamless business operations
             </p>
 
             {/* Suggestion buttons */}

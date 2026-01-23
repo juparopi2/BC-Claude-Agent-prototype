@@ -385,7 +385,7 @@ export default function ChatInput({
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={effectiveIsConnected ? "Ask about Business Central..." : "Connecting..."}
+            placeholder={effectiveIsConnected ? "Ask me anything about your business..." : "Connecting..."}
             disabled={!effectiveIsConnected || effectiveIsBusy || disabled}
             className="min-h-[44px] max-h-[200px] resize-none"
             rows={1}

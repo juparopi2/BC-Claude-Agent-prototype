@@ -86,12 +86,12 @@ export default function RightPanel() {
                 <Badge variant="secondary">Coming soon</Badge>
               </div>
 
-              {/* Dynamics 365 Connection */}
+              {/* OneDrive Connection */}
               <div className="flex items-center justify-between p-3 rounded-lg border bg-card opacity-60">
                 <div className="flex items-center gap-2">
                   <Cloud className="size-5 text-muted-foreground" />
                   <span className="text-sm font-medium text-muted-foreground">
-                    Dynamics 365
+                    OneDrive
                   </span>
                 </div>
                 <Badge variant="secondary">Coming soon</Badge>

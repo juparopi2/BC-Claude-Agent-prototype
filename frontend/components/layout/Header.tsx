@@ -60,7 +60,7 @@ export function Header({
         </Button>
 
         <div className="flex items-center gap-2">
-          <h1 className="text-lg font-semibold">BC Agent</h1>
+          <h1 className="text-lg font-semibold">MyWorkMate</h1>
           <Badge variant="secondary">Prototype</Badge>
         </div>
       </div>

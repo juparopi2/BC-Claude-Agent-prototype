@@ -4,12 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 1. System Overview
 
-**Integrated Agent System with Business Central (BC Agent)**
+**MyWorkMate - Multi-Connector AI Business Assistant**
 
-This project implements a SaaS platform that orchestrates multiple AI agents (based on LLMs) to solve complex business problems. The core is a Node.js/TypeScript backend that integrates:
+This project implements a SaaS platform that orchestrates multiple AI agents (based on LLMs) to help users work seamlessly across multiple business systems. The core is a Node.js/TypeScript backend that integrates:
 
 1.  **Agent Orchestrator**: Central brain that routes intents.
-2.  **BC Agent**: Specialist in Microsoft Business Central (ERP).
+2.  **ERP Agent**: Specialist in ERP systems (currently focused on Microsoft Business Central, extensible to other ERPs).
 3.  **RAG Agent**: Specialist in semantic search and document analysis.
 
 The system uses an **Event Sourcing** architecture with two-phase persistence and real-time streaming via WebSocket.
@@ -17,8 +17,9 @@ The system uses an **Event Sourcing** architecture with two-phase persistence an
 ### Tech Stack
 -   **Backend**: Express 5 + TypeScript + Socket.IO + Azure SQL + Redis + BullMQ
 -   **Frontend**: Next.js 16 (App Router) + React 19 + Zustand + Tailwind CSS 4 + shadcn/ui
--   **Shared**: `@bc-agent/shared` package for types, schemas (Zod), and constants
+-   **Shared**: `@bc-agent/shared` package for types, schemas (Zod), and constants (package name retained for backwards compatibility)
 -   **Infrastructure**: Azure (SQL, Redis, Key Vault, Storage, Container Apps)
+-   **Connectors**: Business Central (ERP), SharePoint, OneDrive (future: additional ERP systems, email, Power BI)
 
 ---
 
@@ -48,7 +49,7 @@ The code is structured so that the folder structure "screams" what the system do
     -   `settings/`: User preferences
 -   **`modules/`**: Concrete implementations of agents and graphs (LangGraph).
     -   `agents/orchestrator`: Main graph and routing (`router.ts`, `graph.ts`).
-    -   `agents/business-central`: BC Agent and its tools.
+    -   `agents/business-central`: ERP Agent with Business Central integration and tools.
     -   `agents/rag-knowledge`: RAG Agent.
 -   **`shared/`**: Shared code and abstractions.
     -   `providers/`: LLM Adapters (e.g., `AnthropicAdapter`) to normalize events.
@@ -98,7 +99,7 @@ A user message flows through 8 strict layers (synchronous execution):
     -   Executes graph synchronously.
 
 3.  **Routing Layer** (`router.ts`):
-    -   Decides which agent processes the request (BC, RAG, Orchestrator).
+    -   Decides which agent processes the request (ERP, RAG, Orchestrator).
     -   Routes based on slash commands, keywords, context, or LLM classification.
 
 4.  **Execution Layer** (`graph.ts` + Agents):
@@ -122,22 +123,23 @@ A user message flows through 8 strict layers (synchronous execution):
 
 ### 3.2 Agent Routing (`orchestrator/router.ts`)
 The system decides which agent to activate based on hybrid logic:
-1.  **Slash Commands** (Max Priority): `/bc` -> BC Agent, `/search` -> RAG.
-2.  **Keywords** (Deterministic rules): "invoice", "vendor", "inventory" -> BC Agent.
+1.  **Slash Commands** (Max Priority): `/bc` -> ERP Agent, `/search` -> RAG.
+2.  **Keywords** (Deterministic rules): "invoice", "vendor", "inventory", "ERP", "Business Central" -> ERP Agent.
 3.  **Context**: If files attached -> RAG Agent.
 4.  **LLM Router**: If ambiguous, an LLM classifies the intent.
 
-### 3.3 Business Central Agent (`bc-agent.ts`)
--   **Role**: ERP Expert.
+### 3.3 ERP Agent (`bc-agent.ts`)
+-   **Role**: ERP system expert (currently Business Central, designed to be extensible).
 -   **Tools**: 7 meta-tools (`tools.ts`) that query a local index (`mcp-server/data/v1.0`).
--   **Capabilities**: Currently reads metadata (entities, endpoints, workflows) and can simulate validations. Does not execute real writes in BC yet (prototype/read phase).
+-   **Capabilities**: Currently reads metadata (entities, endpoints, workflows) and can simulate validations. Does not execute real writes yet (prototype/read phase).
+-   **Future**: Support for additional ERP systems beyond Business Central.
 
 ---
 
 ## 4. Developer Guide
 
 ### 4.1 Where to find things
--   **Add a new BC tool**: `backend/src/modules/agents/business-central/tools.ts`
+-   **Add a new ERP tool**: `backend/src/modules/agents/business-central/tools.ts`
 -   **Change routing logic**: `backend/src/modules/agents/orchestrator/router.ts`
 -   **Adjust socket event formats**: Check `docs/plans/Refactor/contracts/02-CONTRATO-BACKEND-FRONTEND.md`. Emission logic is in `backend/src/domains/agent/emission`.
 -   **Pagination configuration**: See `docs/backend/02-PAGINATION.md`. Limits: Sessions (20/50), Messages (50/100), Files (50/100).

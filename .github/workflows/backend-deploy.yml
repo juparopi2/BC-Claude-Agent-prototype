@@ -163,7 +163,7 @@ jobs:
               BC_ENVIRONMENT=production \
               JWT_SECRET=secretref:jwt-secret \
               STORAGE_CONNECTION_STRING=secretref:storage-connection-string \
-              STORAGE_CONTAINER_NAME=agent-files \
+              STORAGE_CONTAINER_NAME=user-files \
               SESSION_SECRET=secretref:session-secret \
               ENCRYPTION_KEY=secretref:encryption-key \
               MICROSOFT_CLIENT_ID=secretref:microsoft-client-id \
@@ -261,7 +261,7 @@ jobs:
               BC_ENVIRONMENT=production \
               JWT_SECRET=secretref:jwt-secret \
               STORAGE_CONNECTION_STRING=secretref:storage-connection-string \
-              STORAGE_CONTAINER_NAME=agent-files \
+              STORAGE_CONTAINER_NAME=user-files \
               SESSION_SECRET=secretref:session-secret \
               ENCRYPTION_KEY=secretref:encryption-key \
               MICROSOFT_CLIENT_ID=secretref:microsoft-client-id \

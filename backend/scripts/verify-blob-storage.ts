@@ -21,7 +21,7 @@ const SQL_CONFIG: sql.config = {
 
 // Blob Storage config
 const BLOB_CONNECTION_STRING = process.env.STORAGE_CONNECTION_STRING || '';
-const BLOB_CONTAINER = process.env.STORAGE_CONTAINER_NAME || 'agent-files';
+const BLOB_CONTAINER = process.env.STORAGE_CONTAINER_NAME || 'user-files';
 
 interface SQLFile {
   id: string;

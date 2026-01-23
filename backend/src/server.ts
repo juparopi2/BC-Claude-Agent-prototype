@@ -7,6 +7,11 @@
  * @module server
  */
 
+// CRITICAL: Initialize Application Insights FIRST before any other imports
+// This ensures proper instrumentation of all dependencies
+import { initializeApplicationInsights } from '@/infrastructure/telemetry/ApplicationInsightsSetup';
+initializeApplicationInsights();
+
 import express, { Request, Response, NextFunction } from 'express';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';

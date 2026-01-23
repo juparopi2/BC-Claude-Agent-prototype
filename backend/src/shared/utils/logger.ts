@@ -35,6 +35,7 @@
 
 import pino from 'pino';
 import { Request } from 'express';
+import path from 'path';
 import '@/types/session.types';
 
 // Environment-based configuration
@@ -89,6 +90,17 @@ if (process.env.ENABLE_FILE_LOGGING === 'true') {
     options: {
       destination: process.env.ERROR_LOG_FILE_PATH || './logs/error.log',
       mkdir: true,
+    },
+  });
+}
+
+// Application Insights transport (production only)
+if (process.env.APPLICATIONINSIGHTS_ENABLED === 'true' && process.env.APPLICATIONINSIGHTS_CONNECTION_STRING) {
+  targets.push({
+    level: logLevel,
+    target: path.join(__dirname, '../../infrastructure/telemetry/PinoApplicationInsightsTransport.js'),
+    options: {
+      connectionString: process.env.APPLICATIONINSIGHTS_CONNECTION_STRING,
     },
   });
 }

@@ -95,6 +95,11 @@ const envSchema = z.object({
   STORAGE_CONNECTION_STRING: z.string().optional(),
   STORAGE_CONTAINER_NAME: z.string().default('user-files'),
 
+  // Application Insights (Telemetry)
+  APPLICATIONINSIGHTS_CONNECTION_STRING: z.string().optional(),
+  APPLICATIONINSIGHTS_ENABLED: z.string().default('false').transform((v) => v === 'true'),
+  APPLICATIONINSIGHTS_SAMPLING_PERCENTAGE: z.string().default('100').transform(Number).pipe(z.number().min(0).max(100)),
+
   // Azure Document Intelligence (OCR)
   AZURE_DI_ENDPOINT: z.string().url().optional(),
   AZURE_DI_KEY: z.string().optional(),

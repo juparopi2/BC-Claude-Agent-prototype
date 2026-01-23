@@ -124,7 +124,8 @@ jobs:
               azure-vision-endpoint=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/AZURE-VISION-ENDPOINT,identityref:system \
               azure-vision-key=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/AZURE-VISION-KEY,identityref:system \
               azure-di-endpoint=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/DocumentIntelligence-Endpoint,identityref:system \
-              azure-di-key=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/DocumentIntelligence-Key,identityref:system
+              azure-di-key=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/DocumentIntelligence-Key,identityref:system \
+              applicationinsights-connectionstring=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/ApplicationInsights-ConnectionString,identityref:system
 
           # Step 4: Update to the actual backend image with env vars
           # Get frontend URL for CORS configuration
@@ -164,6 +165,9 @@ jobs:
               JWT_SECRET=secretref:jwt-secret \
               STORAGE_CONNECTION_STRING=secretref:storage-connection-string \
               STORAGE_CONTAINER_NAME=user-files \
+              APPLICATIONINSIGHTS_CONNECTION_STRING=secretref:applicationinsights-connectionstring \
+              APPLICATIONINSIGHTS_ENABLED=true \
+              APPLICATIONINSIGHTS_SAMPLING_PERCENTAGE=100 \
               SESSION_SECRET=secretref:session-secret \
               ENCRYPTION_KEY=secretref:encryption-key \
               MICROSOFT_CLIENT_ID=secretref:microsoft-client-id \
@@ -220,7 +224,8 @@ jobs:
               azure-vision-endpoint=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/AZURE-VISION-ENDPOINT,identityref:system \
               azure-vision-key=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/AZURE-VISION-KEY,identityref:system \
               azure-di-endpoint=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/DocumentIntelligence-Endpoint,identityref:system \
-              azure-di-key=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/DocumentIntelligence-Key,identityref:system
+              azure-di-key=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/DocumentIntelligence-Key,identityref:system \
+              applicationinsights-connectionstring=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/ApplicationInsights-ConnectionString,identityref:system
           echo "✅ Secrets configured from Key Vault"
 
       - name: Update Container App (if exists)
@@ -262,6 +267,9 @@ jobs:
               JWT_SECRET=secretref:jwt-secret \
               STORAGE_CONNECTION_STRING=secretref:storage-connection-string \
               STORAGE_CONTAINER_NAME=user-files \
+              APPLICATIONINSIGHTS_CONNECTION_STRING=secretref:applicationinsights-connectionstring \
+              APPLICATIONINSIGHTS_ENABLED=true \
+              APPLICATIONINSIGHTS_SAMPLING_PERCENTAGE=100 \
               SESSION_SECRET=secretref:session-secret \
               ENCRYPTION_KEY=secretref:encryption-key \
               MICROSOFT_CLIENT_ID=secretref:microsoft-client-id \

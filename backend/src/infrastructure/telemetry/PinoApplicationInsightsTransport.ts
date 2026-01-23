@@ -237,14 +237,20 @@ export default async function (options: TransportOptions) {
             : new Date();
           const message = logObj.msg || logObj.message || '';
 
+          // Skip logs without message - App Insights requires non-empty message field
+          // Only skip if there's no error either (error logs are valuable even without message)
+          if (!message && !logObj.error) {
+            continue;
+          }
+
           // Map Pino level to App Insights severity
           const severity = mapPinoLevelToSeverity(level);
 
           // Extract custom dimensions
           const customDimensions = extractCustomDimensions(logObj);
 
-          // Build trace message
-          let traceMessage = message;
+          // Build trace message with fallback for logs that only have error
+          let traceMessage = message || '[Error log without message]';
 
           // Append error details if present
           if (logObj.error) {

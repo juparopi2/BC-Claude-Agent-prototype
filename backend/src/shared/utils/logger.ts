@@ -97,22 +97,12 @@ if (process.env.ENABLE_FILE_LOGGING === 'true') {
 // Application Insights transport (production only)
 if (process.env.APPLICATIONINSIGHTS_ENABLED === 'true' && process.env.APPLICATIONINSIGHTS_CONNECTION_STRING) {
   const transportPath = path.join(__dirname, '../../infrastructure/telemetry/PinoApplicationInsightsTransport.js');
-  console.log('[Logger] Adding Application Insights transport:', {
-    enabled: process.env.APPLICATIONINSIGHTS_ENABLED,
-    hasConnectionString: !!process.env.APPLICATIONINSIGHTS_CONNECTION_STRING,
-    transportPath,
-  });
   targets.push({
     level: logLevel,
     target: transportPath,
     options: {
       connectionString: process.env.APPLICATIONINSIGHTS_CONNECTION_STRING,
     },
-  });
-} else {
-  console.log('[Logger] Application Insights transport NOT added:', {
-    enabled: process.env.APPLICATIONINSIGHTS_ENABLED,
-    hasConnectionString: !!process.env.APPLICATIONINSIGHTS_CONNECTION_STRING,
   });
 }
 

@@ -11,12 +11,17 @@
  * - Graceful error handling - never crashes the app
  * - Includes error serialization with stack traces
  *
+ * IMPORTANT: This transport runs in a separate worker thread (Pino's architecture).
+ * It cannot access the main thread's Application Insights client, so it initializes
+ * its own TelemetryClient using the connection string passed via options.
+ *
  * @module infrastructure/telemetry
  */
 
 import build from 'pino-abstract-transport';
-import { getApplicationInsightsClient } from './ApplicationInsightsSetup';
+import * as appInsights from 'applicationinsights';
 import type { SeverityLevel } from 'applicationinsights/out/Declarations/Contracts';
+import type { TelemetryClient } from 'applicationinsights';
 
 /**
  * Pino log levels mapped to numeric values
@@ -154,19 +159,66 @@ function formatError(error: unknown): string {
 }
 
 /**
+ * Transport options interface
+ */
+interface TransportOptions {
+  connectionString?: string;
+}
+
+/**
+ * Creates a TelemetryClient for this worker thread.
+ *
+ * IMPORTANT: We cannot use the main thread's Application Insights client
+ * because Pino transports run in isolated worker threads.
+ * This function creates a dedicated client for the transport worker.
+ *
+ * @param connectionString - Application Insights connection string
+ * @returns TelemetryClient or undefined if not configured
+ */
+function createWorkerClient(connectionString?: string): TelemetryClient | undefined {
+  if (!connectionString) {
+    console.warn('[PinoApplicationInsightsTransport] No connection string provided, traces will not be sent');
+    return undefined;
+  }
+
+  try {
+    // Create a new TelemetryClient for this worker thread
+    const client = new appInsights.TelemetryClient(connectionString);
+
+    // Configure for backend logging
+    client.context.tags[client.context.keys.cloudRole] = 'bcagent-backend';
+    client.context.tags[client.context.keys.cloudRoleInstance] =
+      process.env.HOSTNAME || process.env.COMPUTERNAME || 'pino-worker';
+
+    // Enable tracking
+    client.config.disableAppInsights = false;
+
+    console.log('[PinoApplicationInsightsTransport] ✅ Worker TelemetryClient initialized');
+    return client;
+  } catch (error) {
+    console.error('[PinoApplicationInsightsTransport] Failed to create TelemetryClient:', error);
+    return undefined;
+  }
+}
+
+/**
  * Creates a Pino transport that sends logs to Application Insights.
  *
  * This transport runs in a worker thread (Pino's default behavior).
  * It receives log objects, transforms them, and sends to App Insights.
  *
- * @param options - Transport options (currently none required)
+ * IMPORTANT: This creates its own TelemetryClient because worker threads
+ * cannot access the main thread's Application Insights SDK state.
+ *
+ * @param options - Transport options including connectionString
  * @returns Pino transport
  */
-export default async function (_options: unknown) {
+export default async function (options: TransportOptions) {
+  // Initialize client for this worker thread
+  const client = createWorkerClient(options.connectionString);
+
   return build(
     async function (source) {
-      const client = getApplicationInsightsClient();
-
       // If App Insights not initialized, just consume logs without processing
       if (!client) {
         for await (const _obj of source) {
@@ -205,7 +257,7 @@ export default async function (_options: unknown) {
           // Send trace to Application Insights
           client.trackTrace({
             message: traceMessage,
-            severity,
+            severity: severity as number,
             time: timestamp,
             properties: customDimensions,
           });
@@ -221,7 +273,7 @@ export default async function (_options: unknown) {
 
             client.trackException({
               exception,
-              severity,
+              severity: severity as number,
               time: timestamp,
               properties: customDimensions,
             });
@@ -239,21 +291,14 @@ export default async function (_options: unknown) {
     {
       // Transport options
       parse: 'lines', // Parse newline-delimited JSON
-      close: async (err, client) => {
+      close: async () => {
         // Flush any pending telemetry on shutdown
         if (client) {
-          const appInsightsClient = getApplicationInsightsClient();
-          if (appInsightsClient) {
-            return new Promise<void>((resolve) => {
-              appInsightsClient.flush({
-                callback: () => {
-                  console.log(
-                    '[PinoApplicationInsightsTransport] Telemetry flushed on shutdown'
-                  );
-                  resolve();
-                },
-              });
-            });
+          try {
+            await client.flush();
+            console.log('[PinoApplicationInsightsTransport] Telemetry flushed on shutdown');
+          } catch (flushError) {
+            console.error('[PinoApplicationInsightsTransport] Error flushing telemetry:', flushError);
           }
         }
       },

@@ -186,15 +186,13 @@ function trackToAppInsights(
  * Wrap a Pino logger to also send logs to Application Insights
  *
  * Uses a Proxy to intercept log method calls without modifying Pino's behavior.
+ * The App Insights check is done at log-time (not wrap-time) to handle
+ * module-level loggers created before App Insights initialization.
  */
 function wrapLoggerWithAppInsights(
   pinoLogger: pino.Logger,
   context: Record<string, unknown>
 ): pino.Logger {
-  if (!isApplicationInsightsEnabled()) {
-    return pinoLogger;
-  }
-
   const levels = ['trace', 'debug', 'info', 'warn', 'error', 'fatal'] as const;
 
   return new Proxy(pinoLogger, {
@@ -205,6 +203,10 @@ function wrapLoggerWithAppInsights(
           (target[prop as keyof typeof target] as (...a: unknown[]) => void)(
             ...args
           );
+
+          // Check at log-time if App Insights is enabled
+          // (handles module-level loggers created before initialization)
+          if (!isApplicationInsightsEnabled()) return;
 
           // Extract message (last string arg) and merge context
           const msg =

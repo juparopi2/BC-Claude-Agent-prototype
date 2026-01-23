@@ -281,7 +281,7 @@ export default async function (options: TransportOptions) {
           // Send trace to Application Insights
           client.trackTrace({
             message: traceMessage,
-            severity: severity as number,
+            severity: String(severity),
             time: timestamp,
             properties: customDimensions,
           });
@@ -303,7 +303,7 @@ export default async function (options: TransportOptions) {
 
             client.trackException({
               exception,
-              severity: severity as number,
+              severity: String(severity),
               time: timestamp,
               properties: customDimensions,
             });

@@ -54,13 +54,22 @@ export class EventProcessingWorker {
    * Marks the event as processed in EventStore.
    */
   async process(job: Job<EventProcessingJob>): Promise<void> {
-    const { eventId, sessionId, eventType } = job.data;
+    const { eventId, sessionId, eventType, userId, correlationId } = job.data;
 
-    this.log.debug('Processing event', {
-      jobId: job.id,
-      eventId,
-      eventType,
+    // Create job-scoped logger with user context and timestamp
+    const jobLogger = this.log.child({
+      userId,
       sessionId,
+      eventId,
+      jobId: job.id,
+      jobName: job.name,
+      timestamp: new Date().toISOString(),
+      correlationId,
+      eventType,
+    });
+
+    jobLogger.debug('Processing event', {
+      attemptsMade: job.attemptsMade,
     });
 
     // Mark event as processed in EventStore

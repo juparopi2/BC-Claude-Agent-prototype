@@ -1070,6 +1070,9 @@ export interface FileDeletionJobData {
 
   /** Batch ID to group related deletions for tracking */
   batchId?: string;
+
+  /** Correlation ID for distributed tracing */
+  correlationId?: string;
 }
 
 /**
@@ -1211,6 +1214,9 @@ export interface BulkUploadJobData {
 
   /** Session ID for WebSocket events (optional) */
   sessionId?: string;
+
+  /** Correlation ID for distributed tracing */
+  correlationId?: string;
 }
 
 /**

@@ -52,21 +52,30 @@ export class FileProcessingWorker {
     const sessionId = jobData?.sessionId;
     const mimeType = jobData?.mimeType;
     const fileName = jobData?.fileName;
+    const correlationId = jobData?.correlationId;
 
-    // Immediate logging for debugging
-    this.log.info('File processing job received by worker', {
-      jobId: job.id,
-      fileId,
+    // Create job-scoped logger with user context and timestamp for Application Insights filtering
+    const jobLogger = this.log.child({
       userId,
+      sessionId,
+      fileId,
+      jobId: job.id,
+      jobName: job.name,
+      timestamp: new Date().toISOString(),
+      correlationId,
       mimeType,
       fileName,
+    });
+
+    // Immediate logging for debugging
+    jobLogger.info('File processing job received by worker', {
       attemptsMade: job.attemptsMade,
       hasJobData: !!jobData,
     });
 
     // Validate required fields
     if (!fileId || !userId) {
-      this.log.error('Invalid job data - missing required fields', {
+      jobLogger.error('Invalid job data - missing required fields', {
         jobId: job.id,
         hasFileId: !!fileId,
         hasUserId: !!userId,
@@ -78,24 +87,20 @@ export class FileProcessingWorker {
 
     try {
       // Dynamic import to avoid circular dependencies
-      this.log.debug('Importing FileProcessingService...', { fileId, jobId: job.id });
+      jobLogger.debug('Importing FileProcessingService...');
       const { getFileProcessingService } = await import('@/services/files/FileProcessingService');
 
-      this.log.debug('Getting FileProcessingService singleton...', { fileId, jobId: job.id });
+      jobLogger.debug('Getting FileProcessingService singleton...');
       const fileProcessingService = getFileProcessingService();
 
-      this.log.debug('Calling FileProcessingService.processFile()...', { fileId, jobId: job.id });
+      jobLogger.debug('Calling FileProcessingService.processFile()...');
       await fileProcessingService.processFile(job.data);
 
-      this.log.info('File processing completed', {
-        jobId: job.id,
-        fileId,
-        userId,
-      });
+      jobLogger.info('File processing completed');
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
 
-      this.log.error('File processing job failed', {
+      jobLogger.error('File processing job failed', {
         error: errorMessage,
         stack: error instanceof Error ? error.stack : undefined,
         jobId: job.id,

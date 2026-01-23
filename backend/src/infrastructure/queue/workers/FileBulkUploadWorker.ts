@@ -48,12 +48,21 @@ export class FileBulkUploadWorker {
    * Delegates to BulkUploadProcessor domain module.
    */
   async process(job: Job<BulkUploadJobData>): Promise<void> {
-    this.log.info('Processing bulk upload job', {
+    const { tempId, userId, batchId, fileName, correlationId } = job.data;
+
+    // Create job-scoped logger with user context and timestamp
+    const jobLogger = this.log.child({
+      userId,
+      tempId,
       jobId: job.id,
-      tempId: job.data.tempId,
-      userId: job.data.userId,
-      batchId: job.data.batchId,
-      fileName: job.data.fileName,
+      jobName: job.name,
+      timestamp: new Date().toISOString(),
+      correlationId,
+      batchId,
+      fileName,
+    });
+
+    jobLogger.info('Processing bulk upload job', {
       attemptNumber: job.attemptsMade,
     });
 

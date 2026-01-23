@@ -51,9 +51,21 @@ export class ToolExecutionWorker {
    * @throws Always throws - not implemented
    */
   async process(job: Job<ToolExecutionJob>): Promise<void> {
-    const { sessionId, toolUseId, toolName } = job.data;
+    const { sessionId, toolUseId, toolName, userId, correlationId } = job.data;
 
-    this.log.error('Tool execution queue not implemented', {
+    // Create job-scoped logger with user context and timestamp
+    const jobLogger = this.log.child({
+      userId,
+      sessionId,
+      toolUseId,
+      toolName,
+      jobId: job.id,
+      jobName: job.name,
+      timestamp: new Date().toISOString(),
+      correlationId,
+    });
+
+    jobLogger.error('Tool execution queue not implemented', {
       jobId: job.id,
       toolName,
       toolUseId,

@@ -37,6 +37,10 @@ export interface MessagePersistenceJob {
   inputTokens?: number;
   /** Output tokens generated */
   outputTokens?: number;
+  /** User ID for multi-tenant isolation and log filtering */
+  userId?: string;
+  /** Correlation ID for distributed tracing */
+  correlationId?: string;
 }
 
 /**
@@ -48,6 +52,8 @@ export interface ToolExecutionJob {
   toolName: string;
   toolArgs: Record<string, unknown>;
   userId: string;
+  /** Correlation ID for distributed tracing */
+  correlationId?: string;
 }
 
 /**
@@ -58,6 +64,10 @@ export interface EventProcessingJob {
   sessionId: string;
   eventType: EventType;
   data: Record<string, unknown>;
+  /** User ID for multi-tenant isolation and log filtering */
+  userId?: string;
+  /** Correlation ID for distributed tracing */
+  correlationId?: string;
 }
 
 /**
@@ -76,6 +86,8 @@ export interface UsageAggregationJob {
   periodStart?: string;
   /** Force re-aggregation even if already exists */
   force?: boolean;
+  /** Correlation ID for distributed tracing */
+  correlationId?: string;
 }
 
 /**
@@ -104,6 +116,8 @@ export interface FileProcessingJob {
   attemptNumber?: number;
   /** Maximum retry attempts configured */
   maxAttempts?: number;
+  /** Correlation ID for distributed tracing */
+  correlationId?: string;
 }
 
 /**
@@ -120,6 +134,8 @@ export interface EmbeddingGenerationJob {
     chunkIndex: number;
     tokenCount: number;
   }>;
+  /** Correlation ID for distributed tracing */
+  correlationId?: string;
 }
 
 /**
@@ -140,6 +156,8 @@ export interface FileChunkingJob {
   sessionId?: string;
   /** MIME type to determine chunking strategy */
   mimeType: string;
+  /** Correlation ID for distributed tracing */
+  correlationId?: string;
 }
 
 /**
@@ -154,6 +172,8 @@ export interface CitationPersistenceJob {
   messageId: string;
   /** Session ID for context */
   sessionId: string;
+  /** User ID for multi-tenant isolation and log filtering */
+  userId?: string;
   /** Array of cited files from RAG tool results */
   citations: Array<{
     fileName: string;
@@ -163,6 +183,8 @@ export interface CitationPersistenceJob {
     relevanceScore: number;
     isImage: boolean;
   }>;
+  /** Correlation ID for distributed tracing */
+  correlationId?: string;
 }
 
 /**
@@ -182,6 +204,8 @@ export interface FileCleanupJob {
   failedFileRetentionDays?: number;
   /** Retention days for orphaned chunks (default: 7) */
   orphanedChunkRetentionDays?: number;
+  /** Correlation ID for distributed tracing */
+  correlationId?: string;
 }
 
 /**

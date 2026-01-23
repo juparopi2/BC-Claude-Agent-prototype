@@ -51,14 +51,22 @@ export class FileCleanupWorker {
       userId,
       failedFileRetentionDays = 30,
       orphanedChunkRetentionDays = 7,
+      correlationId,
     } = job.data;
 
-    this.log.info('Processing file cleanup job', {
-      jobId: job.id,
-      type,
+    // Create job-scoped logger with user context and timestamp
+    const jobLogger = this.log.child({
       userId: userId || 'all-users',
+      jobId: job.id,
+      jobName: job.name,
+      timestamp: new Date().toISOString(),
+      correlationId,
+      cleanupType: type,
       failedFileRetentionDays,
       orphanedChunkRetentionDays,
+    });
+
+    jobLogger.info('Processing file cleanup job', {
       attemptNumber: job.attemptsMade,
     });
 
@@ -70,8 +78,7 @@ export class FileCleanupWorker {
       switch (type) {
         case 'failed_files': {
           const result = await cleaner.cleanupOldFailedFiles(failedFileRetentionDays);
-          this.log.info('Failed files cleanup completed', {
-            jobId: job.id,
+          jobLogger.info('Failed files cleanup completed', {
             filesProcessed: result.filesProcessed,
             chunksDeleted: result.totalChunksDeleted,
             searchDocsDeleted: result.totalSearchDocsDeleted,
@@ -81,23 +88,21 @@ export class FileCleanupWorker {
         }
         case 'orphaned_chunks': {
           const count = await cleaner.cleanupOrphanedChunks(orphanedChunkRetentionDays);
-          this.log.info('Orphaned chunks cleanup completed', {
-            jobId: job.id,
+          jobLogger.info('Orphaned chunks cleanup completed', {
             chunksDeleted: count,
           });
           break;
         }
         case 'orphaned_search_docs': {
           const count = await cleaner.cleanupOrphanedSearchDocs();
-          this.log.info('Orphaned search docs cleanup completed', {
-            jobId: job.id,
+          jobLogger.info('Orphaned search docs cleanup completed', {
             searchDocsDeleted: count,
           });
           break;
         }
         case 'daily_full': {
           // Run all cleanup tasks sequentially
-          this.log.info('Starting daily full cleanup', { jobId: job.id });
+          jobLogger.info('Starting daily full cleanup');
 
           // 1. Clean old failed files
           const failedResult = await cleaner.cleanupOldFailedFiles(failedFileRetentionDays);
@@ -108,8 +113,7 @@ export class FileCleanupWorker {
           // 3. Clean orphaned search documents
           const searchDocsDeleted = await cleaner.cleanupOrphanedSearchDocs();
 
-          this.log.info('Daily full cleanup completed', {
-            jobId: job.id,
+          jobLogger.info('Daily full cleanup completed', {
             failedFilesProcessed: failedResult.filesProcessed,
             failedFilesChunksDeleted: failedResult.totalChunksDeleted,
             failedFilesSearchDocsDeleted: failedResult.totalSearchDocsDeleted,
@@ -119,16 +123,13 @@ export class FileCleanupWorker {
           break;
         }
         default:
-          this.log.error('Unknown cleanup job type', { jobId: job.id, type });
+          jobLogger.error('Unknown cleanup job type');
           throw new Error(`Unknown cleanup job type: ${type}`);
       }
     } catch (error) {
-      this.log.error('File cleanup job failed', {
+      jobLogger.error('File cleanup job failed', {
         error: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined,
-        jobId: job.id,
-        type,
-        userId,
         attemptNumber: job.attemptsMade,
       });
       throw error; // Will trigger retry

@@ -53,12 +53,25 @@ export class MessagePersistenceWorker {
     const {
       sessionId, messageId, role, messageType, content, metadata,
       sequenceNumber, eventId, toolUseId, stopReason,
-      model, inputTokens, outputTokens,
+      model, inputTokens, outputTokens, userId, correlationId,
     } = job.data;
+
+    // Create job-scoped logger with user context and timestamp
+    const jobLogger = this.log.child({
+      userId,
+      sessionId,
+      messageId,
+      jobId: job.id,
+      jobName: job.name,
+      timestamp: new Date().toISOString(),
+      correlationId,
+      role,
+      messageType,
+    });
 
     // Validation: Check for undefined messageId
     if (!messageId || messageId === 'undefined' || messageId.trim() === '') {
-      this.log.error('Invalid messageId', {
+      jobLogger.error('Invalid messageId', {
         jobId: job.id,
         messageId,
         sessionId,
@@ -69,7 +82,7 @@ export class MessagePersistenceWorker {
       throw new Error(`Invalid messageId: ${messageId}. Cannot persist message.`);
     }
 
-    this.log.info('Worker picked up message persistence job', {
+    jobLogger.info('Worker picked up message persistence job', {
       jobId: job.id,
       messageId,
       sessionId,
@@ -127,7 +140,7 @@ export class MessagePersistenceWorker {
         params
       );
 
-      this.log.info('Message persisted to database successfully', {
+      jobLogger.info('Message persisted to database successfully', {
         jobId: job.id,
         messageId,
         sessionId,
@@ -140,7 +153,7 @@ export class MessagePersistenceWorker {
         eventId,
       });
     } catch (error) {
-      this.log.error('Failed to persist message to database', {
+      jobLogger.error('Failed to persist message to database', {
         error: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined,
         jobId: job.id,

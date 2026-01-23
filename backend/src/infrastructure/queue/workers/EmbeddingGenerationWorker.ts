@@ -69,12 +69,20 @@ export class EmbeddingGenerationWorker {
    * Process embedding generation job
    */
   async process(job: Job<EmbeddingGenerationJob>): Promise<void> {
-    const { fileId, userId, sessionId, chunks } = job.data;
+    const { fileId, userId, sessionId, chunks, correlationId } = job.data;
 
-    this.log.info('Processing embedding generation job', {
-      jobId: job.id,
-      fileId,
+    // Create job-scoped logger with user context and timestamp
+    const jobLogger = this.log.child({
       userId,
+      sessionId,
+      fileId,
+      jobId: job.id,
+      jobName: job.name,
+      timestamp: new Date().toISOString(),
+      correlationId,
+    });
+
+    jobLogger.info('Processing embedding generation job', {
       chunkCount: chunks.length,
       attemptNumber: job.attemptsMade,
     });
@@ -133,7 +141,7 @@ export class EmbeddingGenerationWorker {
         const chunkId = chunks[i]?.id;
 
         if (!chunkId) {
-          this.log.warn({ fileId, i }, 'Missing chunk ID during update');
+          jobLogger.warn({ fileId, i }, 'Missing chunk ID during update');
           continue;
         }
 
@@ -164,7 +172,7 @@ export class EmbeddingGenerationWorker {
         }
       );
 
-      this.log.info('Embedding generation completed', {
+      jobLogger.info('Embedding generation completed', {
         jobId: job.id,
         fileId,
         chunksIndexed: chunks.length,
@@ -172,7 +180,7 @@ export class EmbeddingGenerationWorker {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
 
-      this.log.error('Embedding generation job failed', {
+      jobLogger.error('Embedding generation job failed', {
         error: errorMessage,
         jobId: job.id,
         fileId,
@@ -187,7 +195,7 @@ export class EmbeddingGenerationWorker {
 
         const decision = await retryManager.shouldRetry(userId, fileId, 'embedding');
 
-        this.log.info('Retry decision for embedding generation', {
+        jobLogger.info('Retry decision for embedding generation', {
           jobId: job.id,
           fileId,
           userId,
@@ -209,7 +217,7 @@ export class EmbeddingGenerationWorker {
 
         // Max retries exceeded - handle permanent failure
         await retryManager.handlePermanentFailure(userId, fileId, errorMessage, sessionId);
-        this.log.warn('Embedding generation permanently failed after max retries', {
+        jobLogger.warn('Embedding generation permanently failed after max retries', {
           jobId: job.id,
           fileId,
           userId,
@@ -222,7 +230,7 @@ export class EmbeddingGenerationWorker {
         if (retryError === error) {
           throw error;
         }
-        this.log.error('Failed to process embedding retry decision', {
+        jobLogger.error('Failed to process embedding retry decision', {
           jobId: job.id,
           fileId,
           error: retryError instanceof Error ? retryError.message : String(retryError),
@@ -234,7 +242,7 @@ export class EmbeddingGenerationWorker {
             { fileId }
           );
         } catch (statusError) {
-          this.log.error('Failed to update embedding_status', {
+          jobLogger.error('Failed to update embedding_status', {
             fileId,
             error: statusError instanceof Error ? statusError.message : String(statusError),
           });

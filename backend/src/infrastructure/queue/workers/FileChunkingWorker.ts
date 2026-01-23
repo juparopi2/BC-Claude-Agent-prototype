@@ -46,13 +46,21 @@ export class FileChunkingWorker {
    * Process file chunking job
    */
   async process(job: Job<FileChunkingJob>): Promise<void> {
-    const { fileId, userId, sessionId, mimeType } = job.data;
+    const { fileId, userId, sessionId, mimeType, correlationId } = job.data;
 
-    this.log.info('Processing file chunking job', {
-      jobId: job.id,
-      fileId,
+    // Create job-scoped logger with user context and timestamp
+    const jobLogger = this.log.child({
       userId,
+      sessionId,
+      fileId,
+      jobId: job.id,
+      jobName: job.name,
+      timestamp: new Date().toISOString(),
+      correlationId,
       mimeType,
+    });
+
+    jobLogger.info('Processing file chunking job', {
       attemptNumber: job.attemptsMade,
     });
 
@@ -63,15 +71,11 @@ export class FileChunkingWorker {
 
       await fileChunkingService.processFileChunks(job.data);
 
-      this.log.info('File chunking completed', {
-        jobId: job.id,
-        fileId,
-        userId,
-      });
+      jobLogger.info('File chunking completed');
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
 
-      this.log.error('File chunking job failed', {
+      jobLogger.error('File chunking job failed', {
         error: errorMessage,
         stack: error instanceof Error ? error.stack : undefined,
         jobId: job.id,
@@ -88,7 +92,7 @@ export class FileChunkingWorker {
 
         const decision = await retryManager.shouldRetry(userId, fileId, 'processing');
 
-        this.log.info('Retry decision for file chunking', {
+        jobLogger.info('Retry decision for file chunking', {
           jobId: job.id,
           fileId,
           userId,

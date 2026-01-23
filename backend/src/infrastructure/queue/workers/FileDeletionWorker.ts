@@ -48,12 +48,21 @@ export class FileDeletionWorker {
    * Delegates to FileDeletionProcessor domain module.
    */
   async process(job: Job<FileDeletionJobData>): Promise<void> {
-    this.log.info('Processing file deletion job', {
+    const { fileId, userId, batchId, deletionReason, correlationId } = job.data;
+
+    // Create job-scoped logger with user context and timestamp
+    const jobLogger = this.log.child({
+      userId,
+      fileId,
       jobId: job.id,
-      fileId: job.data.fileId,
-      userId: job.data.userId,
-      batchId: job.data.batchId,
-      deletionReason: job.data.deletionReason,
+      jobName: job.name,
+      timestamp: new Date().toISOString(),
+      correlationId,
+      batchId,
+      deletionReason,
+    });
+
+    jobLogger.info('Processing file deletion job', {
       attemptNumber: job.attemptsMade,
     });
 

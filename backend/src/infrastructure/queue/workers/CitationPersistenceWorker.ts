@@ -50,13 +50,21 @@ export class CitationPersistenceWorker {
    * Process citation persistence job
    */
   async process(job: Job<CitationPersistenceJob>): Promise<void> {
-    const { messageId, sessionId, citations } = job.data;
+    const { messageId, sessionId, citations, userId, correlationId } = job.data;
 
-    this.log.info('Processing citation persistence job', {
-      jobId: job.id,
-      messageId,
+    // Create job-scoped logger with user context and timestamp
+    const jobLogger = this.log.child({
+      userId,
       sessionId,
+      messageId,
+      jobId: job.id,
+      jobName: job.name,
+      timestamp: new Date().toISOString(),
+      correlationId,
       citationCount: citations.length,
+    });
+
+    jobLogger.info('Processing citation persistence job', {
       attemptNumber: job.attemptsMade,
     });
 
@@ -81,19 +89,11 @@ export class CitationPersistenceWorker {
         );
       }
 
-      this.log.info('Citation persistence completed', {
-        jobId: job.id,
-        messageId,
-        citationCount: citations.length,
-      });
+      jobLogger.info('Citation persistence completed');
     } catch (error) {
-      this.log.error('Citation persistence job failed', {
+      jobLogger.error('Citation persistence job failed', {
         error: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined,
-        jobId: job.id,
-        messageId,
-        sessionId,
-        citationCount: citations.length,
         attemptNumber: job.attemptsMade,
       });
       throw error; // Will trigger retry

@@ -33,7 +33,7 @@ export const createFolderSchema = z.object({
     .max(FILE_VALIDATION.MAX_NAME_LENGTH, `Folder name must be ${FILE_VALIDATION.MAX_NAME_LENGTH} characters or less`)
     .regex(
       FOLDER_NAME_REGEX,
-      'Folder name can only contain letters, numbers, spaces, hyphens, underscores, commas, and periods'
+      'Folder name can only contain letters, numbers, spaces, hyphens, underscores, commas, periods, and ampersands'
     ),
   parentFolderId: z.string().uuid().optional(),
 });
@@ -72,7 +72,7 @@ export const updateFileSchema = z.object({
     .max(FILE_VALIDATION.MAX_NAME_LENGTH, `File name must be ${FILE_VALIDATION.MAX_NAME_LENGTH} characters or less`)
     .regex(
       FOLDER_NAME_REGEX,
-      'File name can only contain letters, numbers, spaces, hyphens, underscores, commas, and periods'
+      'File name can only contain letters, numbers, spaces, hyphens, underscores, commas, periods, and ampersands'
     )
     .optional(),
   parentFolderId: z.string().uuid().nullable().optional(),
@@ -113,3 +113,34 @@ export const retryProcessingSchema = z.object({
 });
 
 export type RetryProcessingInput = z.infer<typeof retryProcessingSchema>;
+
+/**
+ * Schema for batch folder creation request
+ *
+ * Creates multiple folders in a single request, useful for folder upload.
+ * Folders are created in topological order (parents before children).
+ */
+export const createFolderBatchSchema = z.object({
+  folders: z.array(z.object({
+    /** Client-generated temporary ID for correlation */
+    tempId: z.string().min(1, 'tempId is required'),
+    /** Folder name */
+    name: z
+      .string()
+      .min(1, 'Folder name is required')
+      .max(FILE_VALIDATION.MAX_NAME_LENGTH, `Folder name must be ${FILE_VALIDATION.MAX_NAME_LENGTH} characters or less`)
+      .regex(
+        FOLDER_NAME_REGEX,
+        'Folder name can only contain letters, numbers, spaces, hyphens, underscores, commas, periods, and ampersands'
+      ),
+    /**
+     * Parent path for nesting. Use tempId of parent folder.
+     * null = root level (or under targetFolderId if provided)
+     */
+    parentTempId: z.string().nullable(),
+  })).min(1, 'At least one folder required').max(100, 'Maximum 100 folders per batch'),
+  /** Target folder ID where all root folders will be created */
+  targetFolderId: z.string().uuid().nullable().optional(),
+});
+
+export type CreateFolderBatchInput = z.infer<typeof createFolderBatchSchema>;

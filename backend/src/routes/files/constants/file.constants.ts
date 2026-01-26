@@ -21,10 +21,11 @@ export const MULTER_LIMITS = {
 /**
  * Regex pattern for valid folder/file names.
  *
- * Allows: Unicode letters (\p{L}), numbers (\p{N}), spaces, hyphens, underscores, commas, periods.
+ * Allows: Unicode letters (\p{L}), numbers (\p{N}), spaces, hyphens, underscores, commas, periods, ampersands.
  * Supports Danish characters (æ, ø, å), German (ü, ß), and other European diacritics.
+ * Also supports business names with "&" (e.g., "Serman & Tipsmark").
  */
-export const FOLDER_NAME_REGEX = /^[\p{L}\p{N}\s\-_,.]+$/u;
+export const FOLDER_NAME_REGEX = /^[\p{L}\p{N}\s\-_,.&]+$/u;
 
 /**
  * Bulk upload batch configuration

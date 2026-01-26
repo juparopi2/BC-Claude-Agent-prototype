@@ -26,6 +26,10 @@ import type {
   BulkUploadInitResponse,
   BulkUploadCompleteRequest,
   BulkUploadAcceptedResponse,
+  CreateFolderBatchRequest,
+  CreateFolderBatchResponse,
+  RenewSasRequest,
+  RenewSasResponse,
 } from '@bc-agent/shared';
 import { isApiErrorResponse, ErrorCode } from '@bc-agent/shared';
 import { env } from '@/lib/config/env';
@@ -448,6 +452,30 @@ export class FileApiClient {
     return this.postJson<FolderResponse>('/api/files/folders', data);
   }
 
+  /**
+   * Create multiple folders in batch (for folder upload)
+   *
+   * Creates folders in topological order (parents before children).
+   * Used when drag and dropping a folder structure.
+   *
+   * @param data - Batch folder creation request
+   * @returns Created folders with tempId -> folderId mapping
+   *
+   * @example
+   * ```typescript
+   * const result = await fileApi.createFolderBatch({
+   *   folders: [
+   *     { tempId: 'temp-1', name: 'Root', parentTempId: null },
+   *     { tempId: 'temp-2', name: 'Child', parentTempId: 'temp-1' },
+   *   ],
+   *   targetFolderId: 'folder-123',
+   * });
+   * ```
+   */
+  async createFolderBatch(data: CreateFolderBatchRequest): Promise<ApiResponse<CreateFolderBatchResponse>> {
+    return this.postJson<CreateFolderBatchResponse>('/api/files/folders/batch', data);
+  }
+
   // ============================================
   // File Update Endpoint
   // ============================================
@@ -722,6 +750,30 @@ export class FileApiClient {
     request: BulkUploadCompleteRequest
   ): Promise<ApiResponse<BulkUploadAcceptedResponse>> {
     return this.postJson<BulkUploadAcceptedResponse>('/api/files/bulk-upload/complete', request);
+  }
+
+  /**
+   * Renew expired SAS URLs for pending file uploads
+   *
+   * Used when resuming an interrupted upload after SAS URLs have expired.
+   *
+   * @param request - Batch ID and tempIds needing new SAS URLs
+   * @returns Renewed SAS URLs for the requested files
+   *
+   * @example
+   * ```typescript
+   * const result = await fileApi.renewSas({
+   *   batchId: 'batch-123',
+   *   tempIds: ['temp-1', 'temp-2'],
+   * });
+   *
+   * if (result.success) {
+   *   console.log('Renewed SAS URLs:', result.data.files.length);
+   * }
+   * ```
+   */
+  async renewSas(request: RenewSasRequest): Promise<ApiResponse<RenewSasResponse>> {
+    return this.postJson<RenewSasResponse>('/api/files/bulk-upload/renew-sas', request);
   }
 
   /**

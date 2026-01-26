@@ -12,6 +12,7 @@ import { Router } from 'express';
 // Import route modules
 import uploadRouter from './upload.routes';
 import folderRouter from './folder.routes';
+import folderBatchRouter from './folder-batch.routes';
 import duplicatesRouter from './duplicates.routes';
 import searchRouter from './search.routes';
 import bulkRouter from './bulk.routes';
@@ -32,6 +33,9 @@ router.use('/', uploadRouter);
 
 // POST /folders - Create folder
 router.use('/', folderRouter);
+
+// POST /folders/batch - Batch folder creation
+router.use('/', folderBatchRouter);
 
 // POST /check-duplicates - Check for duplicate files
 router.use('/', duplicatesRouter);

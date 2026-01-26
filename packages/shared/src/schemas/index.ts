@@ -238,6 +238,7 @@ export const bulkUploadResultSchema = z.object({
   success: z.boolean(),
   contentHash: z.string().length(64, 'contentHash must be 64 characters (SHA-256 hex)').regex(/^[a-f0-9]+$/i, 'contentHash must be valid hex').optional(),
   error: z.string().optional(),
+  parentFolderId: z.string().uuid('Invalid parent folder ID').nullable().optional(),
 });
 
 export type BulkUploadResultInput = z.infer<typeof bulkUploadResultSchema>;
@@ -254,6 +255,20 @@ export const bulkUploadCompleteRequestSchema = z.object({
 });
 
 export type BulkUploadCompleteRequestInput = z.infer<typeof bulkUploadCompleteRequestSchema>;
+
+/**
+ * Renew SAS URLs Request Schema
+ * Validates POST /api/files/bulk-upload/renew-sas requests
+ * Used for resuming interrupted uploads after SAS URLs expire
+ */
+export const renewSasRequestSchema = z.object({
+  batchId: z.string().uuid('Invalid batch ID'),
+  tempIds: z.array(z.string().min(1, 'tempId is required'))
+    .min(1, 'At least one tempId required')
+    .max(500, 'Maximum 500 tempIds per request'),
+});
+
+export type RenewSasRequestInput = z.infer<typeof renewSasRequestSchema>;
 
 // ============================================
 // Settings Schemas

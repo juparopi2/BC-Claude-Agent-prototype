@@ -145,6 +145,12 @@ export type {
   BulkUploadCompleteRequest,
   BulkUploadAcceptedResponse,
   FileUploadedEvent,
+  // Folder Batch types (folder drag and drop)
+  CreateFolderBatchRequest,
+  CreateFolderBatchResponse,
+  // Renew SAS types (pause/resume support)
+  RenewSasRequest,
+  RenewSasResponse,
 } from './file.types';
 
 // File constants

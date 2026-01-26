@@ -18,12 +18,14 @@ import {
   bulkDeleteRequestSchema,
   bulkUploadInitRequestSchema,
   bulkUploadCompleteRequestSchema,
+  renewSasRequestSchema,
   validateSafe,
   FILE_BULK_UPLOAD_CONFIG,
   type BulkDeleteAcceptedResponse,
   type BulkUploadInitResponse,
   type BulkUploadAcceptedResponse,
   type BulkUploadFileSasInfo,
+  type RenewSasResponse,
 } from '@bc-agent/shared';
 import { getUserId } from './helpers';
 import { getBulkUploadBatchStore } from './state/BulkUploadBatchStore';
@@ -220,7 +222,8 @@ router.post('/bulk-upload/complete', authenticateMicrosoft, async (req: Request,
         sizeBytes: fileMetadata.sizeBytes,
         blobPath: fileMetadata.blobPath,
         contentHash: upload.contentHash,
-        parentFolderId: parentFolderId ?? null,
+        // Use per-file parentFolderId if provided, otherwise fall back to batch-level parentFolderId
+        parentFolderId: upload.parentFolderId ?? parentFolderId ?? null,
         sessionId: batch.sessionId,
       });
       jobIds.push(jobId);
@@ -252,6 +255,119 @@ router.post('/bulk-upload/complete', authenticateMicrosoft, async (req: Request,
     }
 
     sendError(res, ErrorCode.INTERNAL_ERROR, 'Failed to complete bulk upload');
+  }
+});
+
+/**
+ * POST /api/files/bulk-upload/renew-sas
+ *
+ * Renew expired SAS URLs for pending file uploads.
+ * Used when resuming an interrupted upload after a pause.
+ * Returns 200 OK with new SAS URLs for the requested tempIds.
+ *
+ * Request body:
+ * - batchId: string (UUID from original init)
+ * - tempIds: string[] (files that need new SAS URLs)
+ *
+ * Response 200:
+ * - batchId: string
+ * - files: Array<{ tempId, sasUrl, blobPath, expiresAt }>
+ */
+router.post('/bulk-upload/renew-sas', authenticateMicrosoft, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = getUserId(req);
+
+    // Validate request body
+    const validation = validateSafe(renewSasRequestSchema, req.body);
+    if (!validation.success) {
+      sendError(res, ErrorCode.VALIDATION_ERROR, validation.error.errors[0]?.message || 'Invalid request body');
+      return;
+    }
+
+    const { batchId, tempIds } = validation.data;
+
+    // Validate batch exists and belongs to user
+    const batchStore = getBulkUploadBatchStore();
+    const batch = batchStore.get(batchId);
+    if (!batch) {
+      sendError(res, ErrorCode.NOT_FOUND, 'Batch not found or expired');
+      return;
+    }
+
+    if (batch.userId !== userId) {
+      sendError(res, ErrorCode.UNAUTHORIZED, 'Batch belongs to another user');
+      return;
+    }
+
+    logger.info({ userId, batchId, tempIdsCount: tempIds.length }, 'Renewing SAS URLs');
+
+    // Generate new SAS URLs for requested tempIds
+    const fileUploadService = getFileUploadService();
+    const renewedFiles: BulkUploadFileSasInfo[] = [];
+
+    for (const tempId of tempIds) {
+      const fileMetadata = batch.files.find(f => f.tempId === tempId);
+      if (!fileMetadata) {
+        logger.warn({ userId, batchId, tempId }, 'tempId not found in batch');
+        continue;
+      }
+
+      try {
+        const sasInfo = await fileUploadService.generateSasUrlForBulkUpload(
+          userId,
+          fileMetadata.fileName,
+          fileMetadata.mimeType,
+          fileMetadata.sizeBytes,
+          FILE_BULK_UPLOAD_CONFIG.SAS_EXPIRY_MINUTES
+        );
+
+        // Update stored blobPath if it changed (shouldn't, but be safe)
+        fileMetadata.blobPath = sasInfo.blobPath;
+
+        renewedFiles.push({
+          tempId,
+          sasUrl: sasInfo.sasUrl,
+          blobPath: sasInfo.blobPath,
+          expiresAt: sasInfo.expiresAt,
+        });
+      } catch (fileError) {
+        logger.warn({
+          userId,
+          batchId,
+          tempId,
+          error: fileError instanceof Error ? fileError.message : String(fileError),
+        }, 'Failed to renew SAS URL for file');
+      }
+    }
+
+    if (renewedFiles.length === 0) {
+      sendError(res, ErrorCode.NOT_FOUND, 'No valid tempIds found in batch');
+      return;
+    }
+
+    logger.info({
+      userId,
+      batchId,
+      requestedCount: tempIds.length,
+      renewedCount: renewedFiles.length,
+    }, 'SAS URLs renewed');
+
+    // Return renewed SAS URLs
+    const response: RenewSasResponse = {
+      batchId,
+      files: renewedFiles,
+    };
+
+    res.status(200).json(response);
+  } catch (error) {
+    logger.error({ error, userId: req.userId }, 'Renew SAS failed');
+
+    if (error instanceof Error && error.message === 'User not authenticated') {
+      sendError(res, ErrorCode.UNAUTHORIZED, 'User not authenticated');
+      return;
+    }
+
+    sendError(res, ErrorCode.INTERNAL_ERROR, 'Failed to renew SAS URLs');
   }
 });
 

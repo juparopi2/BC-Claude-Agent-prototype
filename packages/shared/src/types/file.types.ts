@@ -440,6 +440,9 @@ export const FILE_UPLOAD_LIMITS = {
 
   /** Maximum files per bulk upload batch */
   MAX_FILES_PER_BULK_UPLOAD: 500,
+
+  /** Maximum files per folder upload session (10,000) */
+  MAX_FILES_PER_FOLDER_UPLOAD: 10_000,
 } as const;
 
 /**
@@ -1153,7 +1156,7 @@ export const FILE_BULK_UPLOAD_CONFIG = {
   MAX_BATCH_SIZE: 500,
 
   /** Queue worker concurrency (parallel processing OK for uploads) */
-  QUEUE_CONCURRENCY: 10,
+  QUEUE_CONCURRENCY: 20,
 
   /** Maximum retry attempts for failed upload jobs */
   MAX_RETRY_ATTEMPTS: 3,
@@ -1161,8 +1164,8 @@ export const FILE_BULK_UPLOAD_CONFIG = {
   /** Initial retry delay in milliseconds */
   RETRY_DELAY_MS: 1000,
 
-  /** SAS URL expiration in minutes */
-  SAS_EXPIRY_MINUTES: 60,
+  /** SAS URL expiration in minutes (3 hours for pause/resume support) */
+  SAS_EXPIRY_MINUTES: 180,
 } as const;
 
 /**
@@ -1322,6 +1325,9 @@ export interface BulkUploadResult {
 
   /** Error message (if upload failed) */
   error?: string;
+
+  /** Parent folder ID for this specific file (null for root level) */
+  parentFolderId?: string | null;
 }
 
 /**
@@ -1421,4 +1427,121 @@ export interface FileUploadedEvent extends BaseFileWebSocketEvent {
 
   /** Error message (only if success=false) */
   error?: string;
+}
+
+// ============================================
+// Batch Folder Creation Types
+// ============================================
+
+/**
+ * Single folder item for batch creation request
+ */
+export interface FolderBatchItem {
+  /** Client-generated temporary ID for correlation */
+  tempId: string;
+
+  /** Folder name */
+  name: string;
+
+  /**
+   * Parent folder tempId for nesting.
+   * null = root level (or under targetFolderId if provided)
+   */
+  parentTempId: string | null;
+}
+
+/**
+ * Request body for batch folder creation (POST /api/files/folders/batch)
+ *
+ * @example
+ * ```typescript
+ * const request: CreateFolderBatchRequest = {
+ *   folders: [
+ *     { tempId: 'temp-1', name: 'Root', parentTempId: null },
+ *     { tempId: 'temp-2', name: 'Child', parentTempId: 'temp-1' },
+ *   ],
+ *   targetFolderId: 'FOLDER-123',
+ * };
+ * ```
+ */
+export interface CreateFolderBatchRequest {
+  /** Array of folders to create (1-100 folders) */
+  folders: FolderBatchItem[];
+
+  /** Target folder ID where all root folders will be created */
+  targetFolderId?: string | null;
+}
+
+/**
+ * Single created folder in batch response
+ */
+export interface CreatedFolderResult {
+  /** Client temp ID for correlation */
+  tempId: string;
+
+  /** Created folder UUID */
+  folderId: string;
+
+  /** Folder path (name only, full path reconstruction is client-side) */
+  path: string;
+}
+
+/**
+ * Response for batch folder creation (POST /api/files/folders/batch)
+ *
+ * @example
+ * ```typescript
+ * const response: CreateFolderBatchResponse = {
+ *   created: [
+ *     { tempId: 'temp-1', folderId: 'FOLDER-ABC', path: 'Root' },
+ *     { tempId: 'temp-2', folderId: 'FOLDER-DEF', path: 'Child' },
+ *   ],
+ * };
+ * ```
+ */
+export interface CreateFolderBatchResponse {
+  /** Array of created folders with tempId -> folderId mapping */
+  created: CreatedFolderResult[];
+}
+
+/**
+ * Request body for renewing SAS URLs (POST /api/files/bulk-upload/renew-sas)
+ *
+ * Used when resuming an interrupted upload after SAS URLs have expired.
+ *
+ * @example
+ * ```typescript
+ * const request: RenewSasRequest = {
+ *   batchId: 'BATCH-123',
+ *   tempIds: ['temp-1', 'temp-2', 'temp-3'],
+ * };
+ * ```
+ */
+export interface RenewSasRequest {
+  /** Batch ID from the original init call */
+  batchId: string;
+
+  /** Array of tempIds that need new SAS URLs */
+  tempIds: string[];
+}
+
+/**
+ * Response for renewing SAS URLs (POST /api/files/bulk-upload/renew-sas)
+ *
+ * @example
+ * ```typescript
+ * const response: RenewSasResponse = {
+ *   batchId: 'BATCH-123',
+ *   files: [
+ *     { tempId: 'temp-1', sasUrl: 'https://...', blobPath: 'users/...', expiresAt: '...' },
+ *   ],
+ * };
+ * ```
+ */
+export interface RenewSasResponse {
+  /** Batch ID (same as request) */
+  batchId: string;
+
+  /** Array of renewed SAS URLs */
+  files: BulkUploadFileSasInfo[];
 }

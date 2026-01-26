@@ -252,6 +252,37 @@ alias health-check='cd /path/to/infrastructure/diagnostics && ./check-file-uploa
 
 ---
 
+## Common Issues
+
+### CORS Errors (Browser file uploads failing)
+
+**Symptom:** Browser console shows:
+```
+Access to XMLHttpRequest at 'https://sabcagentdev.blob.core.windows.net/...'
+from origin 'http://localhost:3000' has been blocked by CORS policy
+```
+
+**Solution:**
+```bash
+# From project root
+bash infrastructure/setup-storage-cors.sh
+
+# Or manually add a CORS rule:
+az storage cors add --account-name sabcagentdev --services b \
+  --methods "GET POST PUT DELETE OPTIONS" \
+  --origins "http://localhost:3000" \
+  --allowed-headers "*" --exposed-headers "*" --max-age 3600
+```
+
+**Verify CORS rules:**
+```bash
+az storage cors list --account-name sabcagentdev --services b
+```
+
+**Note:** CORS is required for browser-based uploads. The backend uses SAS URLs that let browsers upload directly to Azure Blob Storage. Without CORS, browsers block these cross-origin requests.
+
+---
+
 ## Troubleshooting the Scripts
 
 ### "Error: Not authenticated to Azure"

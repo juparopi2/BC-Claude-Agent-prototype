@@ -142,6 +142,12 @@ export type {
   BulkUploadCompleteRequest,
   BulkUploadAcceptedResponse,
   FileUploadedEvent,
+  // Folder Batch types (folder drag and drop)
+  CreateFolderBatchRequest,
+  CreateFolderBatchResponse,
+  // Renew SAS types (pause/resume support)
+  RenewSasRequest,
+  RenewSasResponse,
 
   // Source types (Visual Representation feature)
   SourceType,
@@ -307,6 +313,7 @@ export {
   bulkDeleteRequestSchema,
   bulkUploadInitRequestSchema,
   bulkUploadCompleteRequestSchema,
+  renewSasRequestSchema,
   chatMessageSchema,
   // Settings schemas
   themePreferenceSchema,

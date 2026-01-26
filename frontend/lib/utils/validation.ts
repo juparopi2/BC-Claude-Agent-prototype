@@ -18,16 +18,17 @@
  * - Underscores (_)
  * - Commas (,) - common in Danish business names
  * - Periods (.) - common in filenames and abbreviations
+ * - Ampersands (&) - common in business names (e.g., "Serman & Tipsmark")
  *
  * The 'u' flag enables Unicode mode for \p{} patterns.
  */
-export const FOLDER_NAME_REGEX = /^[\p{L}\p{N}\s\-_,.]+$/u;
+export const FOLDER_NAME_REGEX = /^[\p{L}\p{N}\s\-_,.&]+$/u;
 
 /**
  * Error message for invalid folder names
  */
 export const FOLDER_NAME_ERROR =
-  'Folder name can only contain letters, numbers, spaces, hyphens, underscores, commas, and periods';
+  'Folder name can only contain letters, numbers, spaces, hyphens, underscores, commas, periods, and ampersands';
 
 /**
  * Validation result interface
@@ -102,7 +103,7 @@ export function validateFileName(name: string): ValidationResult {
     return {
       valid: false,
       error:
-        'File name can only contain letters, numbers, spaces, hyphens, underscores, commas, and periods',
+        'File name can only contain letters, numbers, spaces, hyphens, underscores, commas, periods, and ampersands',
     };
   }
 

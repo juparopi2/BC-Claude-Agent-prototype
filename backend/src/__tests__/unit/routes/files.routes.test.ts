@@ -1238,4 +1238,208 @@ describe('Files Routes', () => {
       expect(response.body.code).toBe('VALIDATION_ERROR');
     });
   });
+
+  // ============================================
+  // POST /folders/batch - Batch Folder Creation
+  // ============================================
+  describe('POST /api/files/folders/batch', () => {
+    it('should create single folder', async () => {
+      // Arrange
+      mockFileService.createFolder.mockResolvedValue('NEW-FOLDER-UUID');
+
+      // Act
+      const response = await request(app)
+        .post('/api/files/folders/batch')
+        .send({
+          folders: [
+            { tempId: 'temp-1', name: 'MyFolder', parentTempId: null },
+          ],
+        })
+        .expect(201);
+
+      // Assert
+      expect(response.body.created).toHaveLength(1);
+      expect(response.body.created[0]).toEqual({
+        tempId: 'temp-1',
+        folderId: 'NEW-FOLDER-UUID',
+        path: 'MyFolder',
+      });
+      expect(mockFileService.createFolder).toHaveBeenCalledWith(
+        TEST_USER_ID,
+        'MyFolder',
+        undefined
+      );
+    });
+
+    it('should create nested folders in topological order', async () => {
+      // Arrange - Return different UUIDs for each folder
+      mockFileService.createFolder
+        .mockResolvedValueOnce('PARENT-UUID')
+        .mockResolvedValueOnce('CHILD-UUID');
+
+      // Act - Provide child first to test sorting
+      const response = await request(app)
+        .post('/api/files/folders/batch')
+        .send({
+          folders: [
+            { tempId: 'temp-child', name: 'Child', parentTempId: 'temp-parent' },
+            { tempId: 'temp-parent', name: 'Parent', parentTempId: null },
+          ],
+        })
+        .expect(201);
+
+      // Assert
+      expect(response.body.created).toHaveLength(2);
+
+      // Parent should be created first
+      expect(mockFileService.createFolder).toHaveBeenNthCalledWith(
+        1,
+        TEST_USER_ID,
+        'Parent',
+        undefined
+      );
+
+      // Child should be created second with parent's UUID
+      expect(mockFileService.createFolder).toHaveBeenNthCalledWith(
+        2,
+        TEST_USER_ID,
+        'Child',
+        'PARENT-UUID'
+      );
+    });
+
+    it('should create folders under targetFolderId', async () => {
+      // Arrange
+      mockFileService.createFolder.mockResolvedValue('NEW-FOLDER-UUID');
+
+      // Act
+      const response = await request(app)
+        .post('/api/files/folders/batch')
+        .send({
+          folders: [
+            { tempId: 'temp-1', name: 'SubFolder', parentTempId: null },
+          ],
+          targetFolderId: VALID_FOLDER_UUID,
+        })
+        .expect(201);
+
+      // Assert
+      expect(response.body.created).toHaveLength(1);
+      expect(mockFileService.createFolder).toHaveBeenCalledWith(
+        TEST_USER_ID,
+        'SubFolder',
+        VALID_FOLDER_UUID
+      );
+    });
+
+    it('should validate folder names', async () => {
+      // Act
+      const response = await request(app)
+        .post('/api/files/folders/batch')
+        .send({
+          folders: [
+            { tempId: 'temp-1', name: 'Invalid<Name>', parentTempId: null },
+          ],
+        })
+        .expect(400);
+
+      // Assert
+      expect(response.body.error).toBe('Bad Request');
+    });
+
+    it('should reject batch exceeding 100 folders', async () => {
+      // Arrange - Create array of 101 folders
+      const folders = Array.from({ length: 101 }, (_, i) => ({
+        tempId: `temp-${i}`,
+        name: `Folder${i}`,
+        parentTempId: null,
+      }));
+
+      // Act
+      const response = await request(app)
+        .post('/api/files/folders/batch')
+        .send({ folders })
+        .expect(400);
+
+      // Assert
+      expect(response.body.error).toBe('Bad Request');
+      expect(response.body.message).toContain('100');
+    });
+
+    it('should reject empty folders array', async () => {
+      // Act
+      const response = await request(app)
+        .post('/api/files/folders/batch')
+        .send({ folders: [] })
+        .expect(400);
+
+      // Assert
+      expect(response.body.error).toBe('Bad Request');
+    });
+
+    it('should return error when folder creation fails', async () => {
+      // Arrange
+      mockFileService.createFolder.mockRejectedValue(new Error('Database error'));
+
+      // Act
+      const response = await request(app)
+        .post('/api/files/folders/batch')
+        .send({
+          folders: [
+            { tempId: 'temp-1', name: 'MyFolder', parentTempId: null },
+          ],
+        })
+        .expect(500);
+
+      // Assert
+      expect(response.body.error).toBe('Internal Server Error');
+    });
+
+    it('should handle deeply nested folder structure', async () => {
+      // Arrange - Create 5 levels deep
+      mockFileService.createFolder
+        .mockResolvedValueOnce('UUID-1')
+        .mockResolvedValueOnce('UUID-2')
+        .mockResolvedValueOnce('UUID-3')
+        .mockResolvedValueOnce('UUID-4')
+        .mockResolvedValueOnce('UUID-5');
+
+      // Act
+      const response = await request(app)
+        .post('/api/files/folders/batch')
+        .send({
+          folders: [
+            { tempId: 'temp-5', name: 'Level5', parentTempId: 'temp-4' },
+            { tempId: 'temp-3', name: 'Level3', parentTempId: 'temp-2' },
+            { tempId: 'temp-1', name: 'Level1', parentTempId: null },
+            { tempId: 'temp-4', name: 'Level4', parentTempId: 'temp-3' },
+            { tempId: 'temp-2', name: 'Level2', parentTempId: 'temp-1' },
+          ],
+        })
+        .expect(201);
+
+      // Assert
+      expect(response.body.created).toHaveLength(5);
+
+      // Verify order: Level1 -> Level2 -> Level3 -> Level4 -> Level5
+      expect(mockFileService.createFolder).toHaveBeenNthCalledWith(
+        1,
+        TEST_USER_ID,
+        'Level1',
+        undefined
+      );
+      expect(mockFileService.createFolder).toHaveBeenNthCalledWith(
+        2,
+        TEST_USER_ID,
+        'Level2',
+        'UUID-1'
+      );
+      expect(mockFileService.createFolder).toHaveBeenNthCalledWith(
+        3,
+        TEST_USER_ID,
+        'Level3',
+        'UUID-2'
+      );
+    });
+  });
 });

@@ -69,3 +69,8 @@ echo -e "  - Hot tier: New files (0-30 days)"
 echo -e "  - Cool tier: Older files (30-90 days) - 50% cheaper"
 echo -e "  - Archive tier: Archive files (90-730 days) - 90% cheaper"
 echo -e "  - Auto-delete: After 730 days (2 years retention)"
+
+echo -e "\n${BLUE}IMPORTANT: CORS Configuration${NC}"
+echo -e "For browser-based file uploads to work, you must also configure CORS."
+echo -e "Run: ${GREEN}bash infrastructure/setup-storage-cors.sh${NC}"
+echo -e "This is required for drag-and-drop folder uploads and SAS URL uploads."

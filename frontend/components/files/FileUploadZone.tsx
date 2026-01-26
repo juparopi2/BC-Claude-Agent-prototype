@@ -3,12 +3,17 @@
 import { useCallback, useState } from 'react';
 import { useDropzone, FileRejection } from 'react-dropzone';
 import { FILE_UPLOAD_LIMITS, ALLOWED_MIME_TYPES } from '@bc-agent/shared';
-import { Upload } from 'lucide-react';
+import { Upload, FolderUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Progress } from '@/components/ui/progress';
-import { useFileUpload } from '@/src/domains/files';
+import { useFileUpload, useFolderUpload } from '@/src/domains/files';
 import { useDuplicateStore } from '@/src/domains/files/stores/duplicateStore';
+import { useFolderTreeStore } from '@/src/domains/files/stores/folderTreeStore';
 import { DuplicateFileModal } from '@/components/modals/DuplicateFileModal';
+import { UnsupportedFilesModal } from '@/components/modals/UnsupportedFilesModal';
+import { UploadLimitErrorModal } from '@/components/modals/UploadLimitErrorModal';
+import { FolderUploadProgressModal } from '@/components/modals/FolderUploadProgressModal';
+import { detectDropType, buildFolderStructure } from '@/src/domains/files/utils/folderReader';
 import { toast } from 'sonner';
 
 interface FileUploadZoneProps {
@@ -23,7 +28,16 @@ export function FileUploadZone({
   disabled = false,
 }: FileUploadZoneProps) {
   const { uploadFiles, isUploading, overallProgress: uploadProgress } = useFileUpload();
+  const {
+    uploadFolder,
+    isUploading: isFolderUploading,
+    progress: folderProgress,
+    pause,
+    cancel,
+  } = useFolderUpload();
   const [isDragActive, setIsDragActive] = useState(false);
+  const [isDraggingFolder, setIsDraggingFolder] = useState(false);
+  const currentFolderId = useFolderTreeStore((state) => state.currentFolderId);
 
   // Duplicate detection modal state
   const conflicts = useDuplicateStore((state) => state.conflicts);
@@ -33,8 +47,50 @@ export function FileUploadZone({
   const resolveAllRemaining = useDuplicateStore((state) => state.resolveAllRemaining);
   const closeModal = useDuplicateStore((state) => state.closeModal);
 
+  /**
+   * Handle drag events to detect folder vs files
+   */
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    setIsDragActive(true);
+    // Detect if dragging folder using webkitGetAsEntry
+    const dropType = detectDropType(e.dataTransfer);
+    setIsDraggingFolder(dropType === 'folder' || dropType === 'mixed');
+  }, []);
+
+  /**
+   * Custom drop handler that checks for folders
+   */
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragActive(false);
+    setIsDraggingFolder(false);
+
+    // Detect drop type
+    const dropType = detectDropType(e.dataTransfer);
+
+    if (dropType === 'folder' || dropType === 'mixed') {
+      // Handle folder upload
+      try {
+        const structure = await buildFolderStructure(e.dataTransfer);
+
+        if (structure.validFiles.length === 0 && structure.invalidFiles.length === 0) {
+          toast.error('No files found in folder');
+          return;
+        }
+
+        // Start folder upload (validation and modals handled inside useFolderUpload)
+        await uploadFolder(structure, currentFolderId);
+      } catch (error) {
+        console.error('[FileUploadZone] Folder read error:', error);
+        toast.error('Failed to read folder contents');
+      }
+    }
+    // If 'files' type, let react-dropzone handle it
+  }, [uploadFolder, currentFolderId]);
+
   const onDrop = useCallback(async (acceptedFiles: File[], rejectedFiles: FileRejection[]) => {
     setIsDragActive(false);
+    setIsDraggingFolder(false);
 
     // Handle rejected files
     if (rejectedFiles.length > 0) {
@@ -57,22 +113,43 @@ export function FileUploadZone({
 
   const { getRootProps, getInputProps, isDragAccept, isDragReject } = useDropzone({
     onDrop,
-    onDragEnter: () => setIsDragActive(true),
-    onDragLeave: () => setIsDragActive(false),
+    onDragEnter: handleDragEnter,
+    onDragLeave: () => {
+      setIsDragActive(false);
+      setIsDraggingFolder(false);
+    },
     accept: ALLOWED_MIME_TYPES.reduce((acc, type) => {
       acc[type] = [];
       return acc;
     }, {} as Record<string, string[]>),
     maxSize: FILE_UPLOAD_LIMITS.MAX_FILE_SIZE,
     maxFiles: FILE_UPLOAD_LIMITS.MAX_FILES_PER_BULK_UPLOAD,
-    disabled: disabled || isUploading,
+    disabled: disabled || isUploading || isFolderUploading,
     noClick: true,
     noKeyboard: true,
+    // Use custom drop handler to detect folders
+    onDropAccepted: undefined,
+    onDropRejected: undefined,
   });
+
+  // Override onDrop to use our custom handler
+  const rootProps = getRootProps();
+  rootProps.onDrop = (e: React.DragEvent<HTMLElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const dropType = detectDropType(e.dataTransfer as unknown as DataTransfer);
+    if (dropType === 'folder' || dropType === 'mixed') {
+      handleDrop(e);
+    } else {
+      // Let react-dropzone handle file drops
+      const files = Array.from(e.dataTransfer.files);
+      onDrop(files, []);
+    }
+  };
 
   return (
     <div
-      {...getRootProps()}
+      {...rootProps}
       className={cn(
         'relative h-full transition-colors',
         isDragActive && 'ring-2 ring-primary ring-inset',
@@ -88,21 +165,33 @@ export function FileUploadZone({
       {/* Drag overlay */}
       {isDragActive && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/80 backdrop-blur-sm z-10">
-          <Upload className={cn(
-            'size-12 mb-2',
-            isDragReject ? 'text-destructive' : 'text-primary'
-          )} />
-          <p className="text-sm font-medium">
-            {isDragReject ? 'Invalid file type' : 'Drop files to upload'}
-          </p>
-          <p className="text-xs text-muted-foreground mt-1">
-            Max {FILE_UPLOAD_LIMITS.MAX_FILES_PER_BULK_UPLOAD} files, {FILE_UPLOAD_LIMITS.MAX_FILE_SIZE / 1024 / 1024}MB each
-          </p>
+          {isDraggingFolder ? (
+            <>
+              <FolderUp className="size-12 mb-2 text-primary" />
+              <p className="text-sm font-medium">Drop folder to upload</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                All files will be uploaded preserving folder structure
+              </p>
+            </>
+          ) : (
+            <>
+              <Upload className={cn(
+                'size-12 mb-2',
+                isDragReject ? 'text-destructive' : 'text-primary'
+              )} />
+              <p className="text-sm font-medium">
+                {isDragReject ? 'Invalid file type' : 'Drop files to upload'}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Max {FILE_UPLOAD_LIMITS.MAX_FILES_PER_BULK_UPLOAD} files, {FILE_UPLOAD_LIMITS.MAX_FILE_SIZE / 1024 / 1024}MB each
+              </p>
+            </>
+          )}
         </div>
       )}
 
-      {/* Upload progress overlay */}
-      {isUploading && (
+      {/* File upload progress overlay */}
+      {isUploading && !isFolderUploading && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/80 backdrop-blur-sm z-20">
           <Upload className="size-12 text-primary animate-pulse mb-4" />
           <p className="text-sm font-medium mb-2">Uploading files...</p>
@@ -119,6 +208,20 @@ export function FileUploadZone({
         currentIndex={currentIndex}
         onResolve={resolveConflict}
         onResolveAll={resolveAllRemaining}
+      />
+
+      {/* Unsupported files modal (for folder upload) */}
+      <UnsupportedFilesModal />
+
+      {/* Upload limit error modal (for folder upload) */}
+      <UploadLimitErrorModal />
+
+      {/* Folder upload progress modal */}
+      <FolderUploadProgressModal
+        isOpen={isFolderUploading}
+        progress={folderProgress}
+        onPause={pause}
+        onCancel={cancel}
       />
     </div>
   );

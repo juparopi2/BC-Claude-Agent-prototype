@@ -83,7 +83,7 @@ export const DEFAULT_CONCURRENCY = {
   TOOL_EXECUTION: 5,
   EVENT_PROCESSING: 10,
   USAGE_AGGREGATION: 1,
-  FILE_PROCESSING: 3,
+  FILE_PROCESSING: 8, // Increased from 3 to reduce bulk upload bottleneck
   FILE_CHUNKING: 5,
   EMBEDDING_GENERATION: 5,
   CITATION_PERSISTENCE: 5,
@@ -93,10 +93,13 @@ export const DEFAULT_CONCURRENCY = {
 
 /**
  * Rate Limiting Configuration
+ *
+ * Note: Rate limit was increased from 100 to 1000 to support bulk uploads
+ * of ~280+ files without silent job loss. See plan analysis for details.
  */
 export const RATE_LIMIT = {
-  /** Maximum jobs per session per hour */
-  MAX_JOBS_PER_SESSION: 100,
+  /** Maximum jobs per session per hour (increased from 100 for bulk uploads) */
+  MAX_JOBS_PER_SESSION: 1000,
   /** Rate limit window in seconds (1 hour) */
   WINDOW_SECONDS: 3600,
   /** Redis key prefix for rate limit counters */

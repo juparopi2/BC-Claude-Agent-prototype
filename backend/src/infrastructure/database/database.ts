@@ -346,7 +346,7 @@ export function getDatabaseConfig(): SqlConfig {
       enableArithAbort: true,
     },
     pool: {
-      max: 10,
+      max: 30, // Increased from 10 to support bulk upload concurrency (20 workers)
       min: 1, // Keep 1 connection always alive (prevents cold starts)
       idleTimeoutMillis: 300000, // 5 minutes (increased from 30s to prevent disconnections)
       acquireTimeoutMillis: isE2E ? 60000 : 10000, // 60s for E2E, 10s for normal

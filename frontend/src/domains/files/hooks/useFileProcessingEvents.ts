@@ -19,6 +19,7 @@ import {
   type FileProcessingProgressEvent,
   type FileProcessingCompletedEvent,
   type FileProcessingFailedEvent,
+  type FileUploadedEvent,
 } from '@bc-agent/shared';
 
 /**
@@ -58,6 +59,7 @@ export function useFileProcessingEvents(
   const markCompleted = useFileProcessingStore((state) => state.markCompleted);
   const markFailed = useFileProcessingStore((state) => state.markFailed);
   const updateFileInStore = useFileListStore((state) => state.updateFile);
+  const addFileToStore = useFileListStore((state) => state.addFile);
 
   // Use refs for callbacks to avoid re-subscribing on every render
   const callbacksRef = useRef({
@@ -66,6 +68,7 @@ export function useFileProcessingEvents(
     markCompleted,
     markFailed,
     updateFileInStore,
+    addFileToStore,
   });
 
   // Update refs when callbacks change
@@ -76,15 +79,20 @@ export function useFileProcessingEvents(
       markCompleted,
       markFailed,
       updateFileInStore,
+      addFileToStore,
     };
-  }, [setProcessingStatus, updateProgress, markCompleted, markFailed, updateFileInStore]);
+  }, [setProcessingStatus, updateProgress, markCompleted, markFailed, updateFileInStore, addFileToStore]);
 
   /**
    * Handle file status events (file:status channel)
    */
   const handleFileStatusEvent = useCallback((event: FileWebSocketEvent) => {
-    const { setProcessingStatus: setStatus, markFailed: fail, updateFileInStore: updateFile } =
-      callbacksRef.current;
+    const {
+      setProcessingStatus: setStatus,
+      markFailed: fail,
+      updateFileInStore: updateFile,
+      addFileToStore: addFile,
+    } = callbacksRef.current;
 
     switch (event.type) {
       case FILE_WS_EVENTS.READINESS_CHANGED: {
@@ -114,6 +122,15 @@ export function useFileProcessingEvents(
           lastError: e.error,
           failedAt: e.timestamp,
         });
+        break;
+      }
+
+      case FILE_WS_EVENTS.UPLOADED: {
+        const e = event as FileUploadedEvent;
+        // Add new file to list in real-time (bulk upload completion)
+        if (e.success && e.file) {
+          addFile(e.file);
+        }
         break;
       }
     }

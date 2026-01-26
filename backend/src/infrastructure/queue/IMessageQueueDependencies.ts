@@ -47,6 +47,8 @@ export interface ILoggerMinimal {
   error(...args: unknown[]): void;
   warn(...args: unknown[]): void;
   debug(...args: unknown[]): void;
+  /** Create a child logger with additional context bindings */
+  child(bindings: Record<string, unknown>): ILoggerMinimal;
 }
 
 /**

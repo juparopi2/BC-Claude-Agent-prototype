@@ -264,6 +264,8 @@ export interface CreateFileOptions {
  * - Move: `{ parentFolderId: 'folder-456' }`
  * - Move to root: `{ parentFolderId: null }`
  * - Toggle favorite: `{ isFavorite: true }`
+ * - Update blob path after upload: `{ blobPath: 'users/...' }`
+ * - Set content hash: `{ contentHash: 'sha256-...' }`
  */
 export interface UpdateFileOptions {
   /** New file/folder name */
@@ -274,6 +276,12 @@ export interface UpdateFileOptions {
 
   /** Toggle favorite flag */
   isFavorite?: boolean;
+
+  /** Update blob path (used after upload to replace placeholder) */
+  blobPath?: string;
+
+  /** SHA-256 content hash for duplicate detection */
+  contentHash?: string;
 }
 
 /**

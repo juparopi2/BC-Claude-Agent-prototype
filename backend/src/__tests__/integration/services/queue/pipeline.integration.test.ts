@@ -217,13 +217,12 @@ describe('Embedding Generation Pipeline', () => {
     );
 
     // 4. Create job data
+    // OPTIMIZED: Job now only contains chunk IDs - worker reads text from DB
+    // This reduces Redis memory usage by ~80%
     const jobData: EmbeddingGenerationJob = {
         fileId,
         userId: testUser.id,
-        chunks: [
-            { id: chunk1Id, text: 'Hello world', chunkIndex: 0, tokenCount: 2 },
-            { id: chunk2Id, text: 'Another chunk', chunkIndex: 1, tokenCount: 2 }
-        ]
+        chunkIds: [chunk1Id, chunk2Id],
     };
 
     // 5. Add job

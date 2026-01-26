@@ -19,6 +19,7 @@ import bulkRouter from './bulk.routes';
 import processingRouter from './processing.routes';
 import downloadRouter from './download.routes';
 import crudRouter from './crud.routes';
+import uploadSessionRouter from './upload-session.routes';
 
 const router = Router();
 
@@ -45,6 +46,9 @@ router.use('/', searchRouter);
 
 // POST /bulk-upload/init, POST /bulk-upload/complete, DELETE / (bulk)
 router.use('/', bulkRouter);
+
+// POST /upload-session/* - Folder-based batch upload sessions
+router.use('/', uploadSessionRouter);
 
 // POST /:id/retry-processing - Retry failed file processing
 router.use('/', processingRouter);

@@ -81,6 +81,53 @@ export const JOB_WS_CHANNELS = {
 export type JobWsChannel = (typeof JOB_WS_CHANNELS)[keyof typeof JOB_WS_CHANNELS];
 
 // ============================================================================
+// FOLDER UPLOAD SESSION EVENTS (Folder-Based Batch Processing)
+// ============================================================================
+
+/**
+ * WebSocket channels for folder upload session events.
+ * Channels are the Socket.IO event names used with `io.emit(channel, payload)`.
+ */
+export const FOLDER_WS_CHANNELS = {
+  /** Channel for folder batch and session status events */
+  STATUS: 'folder:status',
+} as const;
+
+/**
+ * Type for folder WebSocket channel names.
+ */
+export type FolderWsChannel = (typeof FOLDER_WS_CHANNELS)[keyof typeof FOLDER_WS_CHANNELS];
+
+/**
+ * Event type values for folder upload session WebSocket events.
+ * These are the `type` field values in the event payload.
+ */
+export const FOLDER_WS_EVENTS = {
+  // Session-level events
+  /** Upload session has started */
+  SESSION_STARTED: 'folder:session_started',
+  /** All folders in session completed successfully */
+  SESSION_COMPLETED: 'folder:session_completed',
+  /** Upload session failed (too many folder failures) */
+  SESSION_FAILED: 'folder:session_failed',
+
+  // Folder batch-level events
+  /** Started processing a folder batch */
+  BATCH_STARTED: 'folder:batch_started',
+  /** Progress update for current folder batch */
+  BATCH_PROGRESS: 'folder:batch_progress',
+  /** Folder batch completed successfully */
+  BATCH_COMPLETED: 'folder:batch_completed',
+  /** Folder batch failed */
+  BATCH_FAILED: 'folder:batch_failed',
+} as const;
+
+/**
+ * Type for folder WebSocket event type values.
+ */
+export type FolderWsEventType = (typeof FOLDER_WS_EVENTS)[keyof typeof FOLDER_WS_EVENTS];
+
+// ============================================================================
 // FUTURE: Other WebSocket events should be added here
 // See D28 in docs/plans/99-FUTURE-DEVELOPMENT.md for centralization plan
 // ============================================================================

@@ -52,6 +52,13 @@ const {
       warn: vi.fn(),
       error: vi.fn(),
       debug: vi.fn(),
+      child: vi.fn(() => ({
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        debug: vi.fn(),
+        child: vi.fn(),
+      })),
     },
     mockExecuteQuery: vi.fn(async () => ({ recordset: [] })),
     mockEventStore: {
@@ -121,12 +128,12 @@ describe('MessageQueue - Embedding Generation', () => {
 
     await mq.waitForReady();
 
+    // OPTIMIZED: Job now only contains chunk IDs, not text content
+    // This reduces Redis memory usage by ~80%
     const jobData: EmbeddingGenerationJob = {
       fileId: 'file-123',
       userId: 'user-456',
-      chunks: [
-          { id: 'c1', text: 'hello', chunkIndex: 0, tokenCount: 10 }
-      ]
+      chunkIds: ['c1'],
     };
 
     const jobId = await mq.addEmbeddingGenerationJob(jobData);

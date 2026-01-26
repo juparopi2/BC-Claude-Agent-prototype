@@ -204,6 +204,35 @@ export type {
   ListChatAttachmentsResponse,
   ResolvedChatAttachment,
   ChatAttachmentCleanupJobData,
+
+  // Upload Session types (Folder-Based Batch Processing)
+  FolderBatchStatus,
+  UploadSessionStatus,
+  FileRegistrationMetadata,
+  FolderBatch,
+  UploadSession,
+  UploadSessionProgress,
+  FolderInput,
+  InitUploadSessionRequest,
+  InitUploadSessionResponse,
+  CreateFolderInSessionResponse,
+  RegisteredFileResult,
+  RegisterFilesResponse,
+  RegisteredFileSasInfo,
+  GetSasUrlsResponse,
+  MarkFileUploadedRequest,
+  MarkFileUploadedResponse,
+  CompleteFolderBatchResponse,
+  GetUploadSessionResponse,
+  // Folder WebSocket event types
+  FolderSessionStartedEvent,
+  FolderSessionCompletedEvent,
+  FolderSessionFailedEvent,
+  FolderBatchStartedEvent,
+  FolderBatchProgressEvent,
+  FolderBatchCompletedEvent,
+  FolderBatchFailedEvent,
+  FolderWebSocketEvent,
 } from './types';
 
 // Type guards (runtime functions, not types)
@@ -283,6 +312,8 @@ export {
   type FileReadinessStateValue,
   // File Deletion Configuration (Bulk Delete)
   FILE_DELETION_CONFIG,
+  // Folder Upload Session Configuration
+  FOLDER_UPLOAD_CONFIG,
   // Auth Constants
   AUTH_SESSION_STATUS,
   AUTH_WS_EVENTS,
@@ -301,6 +332,11 @@ export {
   // Job WebSocket Events (Phase 3, Task 3.3)
   JOB_WS_CHANNELS,
   type JobWsChannel,
+  // Folder Upload Session WebSocket Events
+  FOLDER_WS_CHANNELS,
+  FOLDER_WS_EVENTS,
+  type FolderWsChannel,
+  type FolderWsEventType,
 } from './constants';
 
 // ============================================

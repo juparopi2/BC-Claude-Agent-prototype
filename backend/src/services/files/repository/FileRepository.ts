@@ -318,6 +318,16 @@ export class FileRepository implements IFileRepository {
         params.is_favorite = updates.isFavorite;
       }
 
+      if (updates.blobPath !== undefined) {
+        setClauses.push('blob_path = @blob_path');
+        params.blob_path = updates.blobPath;
+      }
+
+      if (updates.contentHash !== undefined) {
+        setClauses.push('content_hash = @content_hash');
+        params.content_hash = updates.contentHash;
+      }
+
       if (setClauses.length === 1) {
         this.logger.info({ userId, fileId }, 'No updates to apply');
         return;

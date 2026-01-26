@@ -191,7 +191,12 @@ npm run test:e2e:debug   # Debug mode
 #### Type Checking & Linting
 ```bash
 # Full type verification (builds shared first)
+# NOTE: This only checks shared + frontend. Backend type-check uses incremental approach.
 npm run verify:types
+
+# Backend type-check (incremental - only changed files from last commit)
+# IMPORTANT: Do NOT use `npx tsc --noEmit` directly - it consumes too much RAM and crashes.
+npm run -w backend type-check
 
 # Backend lint
 npm run -w backend lint
@@ -199,6 +204,12 @@ npm run -w backend lint
 # Frontend lint
 npm run -w bc-agent-frontend lint
 ```
+
+**Backend Type-Check Details:**
+The backend uses an incremental type-check approach due to memory constraints:
+- Uses `git diff HEAD~1` to find changed `.ts` files
+- Only checks those specific files with `tsc --noEmit`
+- Falls back to build validation if needed: `npm run -w backend build`
 
 ---
 

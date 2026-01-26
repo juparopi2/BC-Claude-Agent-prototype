@@ -6,7 +6,7 @@
  * @module domains/files/emission
  */
 
-// Interface
+// File Event Emitter Interface
 export type {
   IFileEventEmitter,
   FileEventContext,
@@ -16,10 +16,29 @@ export type {
   CompletionStats,
 } from './IFileEventEmitter';
 
-// Implementation
+// File Event Emitter Implementation
 export {
   FileEventEmitter,
   getFileEventEmitter,
   __resetFileEventEmitter,
   type FileEventEmitterDependencies,
 } from './FileEventEmitter';
+
+// Folder Event Emitter Interface
+export type {
+  IFolderEventEmitter,
+  FolderEventContext,
+  SessionStartedPayload,
+  SessionCompletedPayload,
+  SessionFailedPayload,
+  FolderBatchPayload,
+  FolderBatchFailedPayload,
+} from './IFolderEventEmitter';
+
+// Folder Event Emitter Implementation
+export {
+  FolderEventEmitter,
+  getFolderEventEmitter,
+  __resetFolderEventEmitter,
+  type FolderEventEmitterDependencies,
+} from './FolderEventEmitter';

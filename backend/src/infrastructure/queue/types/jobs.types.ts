@@ -122,18 +122,21 @@ export interface FileProcessingJob {
 
 /**
  * Embedding Generation Job Data
+ *
+ * OPTIMIZED: Only stores chunk IDs, not text content.
+ * This reduces Redis memory usage by ~80% for large file batches.
+ * The worker reads chunk text from the database when processing.
  */
 export interface EmbeddingGenerationJob {
   fileId: string;
   userId: string;
   /** Session ID for WebSocket events (optional) */
   sessionId?: string;
-  chunks: Array<{
-    id: string; // chunkId
-    text: string;
-    chunkIndex: number;
-    tokenCount: number;
-  }>;
+  /**
+   * Chunk IDs to process.
+   * Text is read from database to avoid storing large payloads in Redis.
+   */
+  chunkIds: string[];
   /** Correlation ID for distributed tracing */
   correlationId?: string;
 }

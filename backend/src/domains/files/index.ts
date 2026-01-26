@@ -27,3 +27,6 @@ export * from './cleanup';
 
 // Event emission
 export * from './emission';
+
+// Upload session (folder-based batch processing)
+export * from './upload-session';

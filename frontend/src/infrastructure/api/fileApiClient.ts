@@ -30,6 +30,17 @@ import type {
   CreateFolderBatchResponse,
   RenewSasRequest,
   RenewSasResponse,
+  // Upload session types
+  InitUploadSessionRequest,
+  InitUploadSessionResponse,
+  GetUploadSessionResponse,
+  CreateFolderInSessionResponse,
+  RegisterFilesResponse,
+  GetSasUrlsResponse,
+  MarkFileUploadedRequest,
+  MarkFileUploadedResponse,
+  CompleteFolderBatchResponse,
+  FileRegistrationMetadata,
 } from '@bc-agent/shared';
 import { isApiErrorResponse, ErrorCode } from '@bc-agent/shared';
 import { env } from '@/lib/config/env';
@@ -861,6 +872,224 @@ export class FileApiClient {
       xhr.timeout = 300000; // 5 minute timeout for large files
       xhr.send(file);
     });
+  }
+
+  // ============================================
+  // Upload Session Endpoints (Folder-Based Batch Upload)
+  // ============================================
+
+  /**
+   * Initialize a folder-based upload session
+   *
+   * Creates a new upload session with folder batches for tracking progress.
+   * Each folder becomes a batch that's processed sequentially.
+   *
+   * @param request - Folders with their files to upload
+   * @returns Session ID and folder batches
+   *
+   * @example
+   * ```typescript
+   * const result = await fileApi.initUploadSession({
+   *   folders: [
+   *     {
+   *       tempId: 'folder-1',
+   *       name: 'Documents',
+   *       parentTempId: null,
+   *       files: [
+   *         { tempId: 'file-1', fileName: 'doc.pdf', mimeType: 'application/pdf', sizeBytes: 1024 }
+   *       ]
+   *     }
+   *   ],
+   *   targetFolderId: 'FOLDER-123',
+   * });
+   *
+   * if (result.success) {
+   *   console.log('Session ID:', result.data.sessionId);
+   * }
+   * ```
+   */
+  async initUploadSession(
+    request: InitUploadSessionRequest
+  ): Promise<ApiResponse<InitUploadSessionResponse>> {
+    return this.postJson<InitUploadSessionResponse>('/api/files/upload-session/init', request);
+  }
+
+  /**
+   * Get upload session status
+   *
+   * @param sessionId - Session ID
+   * @returns Session state and computed progress
+   */
+  async getUploadSession(sessionId: string): Promise<ApiResponse<GetUploadSessionResponse>> {
+    return this.request<GetUploadSessionResponse>('GET', `/api/files/upload-session/${sessionId}`);
+  }
+
+  /**
+   * Create a folder within an upload session
+   *
+   * Creates the folder in the database and updates batch status to 'registering'.
+   *
+   * @param sessionId - Session ID
+   * @param tempId - Folder temp ID
+   * @returns Created folder ID and updated batch
+   */
+  async createSessionFolder(
+    sessionId: string,
+    tempId: string
+  ): Promise<ApiResponse<CreateFolderInSessionResponse>> {
+    return this.postJson<CreateFolderInSessionResponse>(
+      `/api/files/upload-session/${sessionId}/folder/${tempId}/create`,
+      {}
+    );
+  }
+
+  /**
+   * Register files for early persistence
+   *
+   * Creates file records in the database with 'uploading' state.
+   * Files will appear in the UI immediately.
+   *
+   * @param sessionId - Session ID
+   * @param tempId - Folder temp ID
+   * @param files - File metadata to register
+   * @returns Registered files with database IDs
+   */
+  async registerSessionFiles(
+    sessionId: string,
+    tempId: string,
+    files: FileRegistrationMetadata[]
+  ): Promise<ApiResponse<RegisterFilesResponse>> {
+    return this.postJson<RegisterFilesResponse>(
+      `/api/files/upload-session/${sessionId}/folder/${tempId}/register-files`,
+      { files }
+    );
+  }
+
+  /**
+   * Get SAS URLs for registered files
+   *
+   * @param sessionId - Session ID
+   * @param tempId - Folder temp ID
+   * @param fileIds - File IDs to get URLs for
+   * @returns SAS URLs for each file
+   */
+  async getSessionSasUrls(
+    sessionId: string,
+    tempId: string,
+    fileIds: string[]
+  ): Promise<ApiResponse<GetSasUrlsResponse>> {
+    return this.postJson<GetSasUrlsResponse>(
+      `/api/files/upload-session/${sessionId}/folder/${tempId}/get-sas-urls`,
+      { fileIds }
+    );
+  }
+
+  /**
+   * Mark a file as uploaded
+   *
+   * Updates the file record with blob path and enqueues processing.
+   *
+   * @param sessionId - Session ID
+   * @param tempId - Folder temp ID
+   * @param request - File ID and content hash
+   * @returns Success status and updated batch
+   */
+  async markSessionFileUploaded(
+    sessionId: string,
+    tempId: string,
+    request: MarkFileUploadedRequest
+  ): Promise<ApiResponse<MarkFileUploadedResponse>> {
+    return this.postJson<MarkFileUploadedResponse>(
+      `/api/files/upload-session/${sessionId}/folder/${tempId}/mark-uploaded`,
+      request
+    );
+  }
+
+  /**
+   * Complete a folder batch
+   *
+   * Marks the folder batch as 'processing' and advances to next folder.
+   *
+   * @param sessionId - Session ID
+   * @param tempId - Folder temp ID
+   * @returns Updated batch and session
+   */
+  async completeSessionFolder(
+    sessionId: string,
+    tempId: string
+  ): Promise<ApiResponse<CompleteFolderBatchResponse>> {
+    return this.postJson<CompleteFolderBatchResponse>(
+      `/api/files/upload-session/${sessionId}/folder/${tempId}/complete`,
+      {}
+    );
+  }
+
+  /**
+   * Send heartbeat to keep session alive
+   *
+   * @param sessionId - Session ID
+   * @returns Success status
+   */
+  async heartbeatUploadSession(sessionId: string): Promise<ApiResponse<{ success: boolean }>> {
+    return this.postJson<{ success: boolean }>(
+      `/api/files/upload-session/${sessionId}/heartbeat`,
+      {}
+    );
+  }
+
+  /**
+   * Cancel and delete an upload session
+   *
+   * Use this for stale session recovery when a previous upload failed mid-way.
+   * Partial files in the database will be cleaned by FileCleanupWorker.
+   *
+   * @param sessionId - Session ID to cancel
+   * @returns Success status and whether a session was cancelled
+   *
+   * @example
+   * ```typescript
+   * const result = await fileApi.cancelUploadSession('SESSION-123');
+   *
+   * if (result.success && result.data.cancelled) {
+   *   console.log('Previous session cancelled, can start new upload');
+   * }
+   * ```
+   */
+  async cancelUploadSession(
+    sessionId: string
+  ): Promise<ApiResponse<{ success: boolean; cancelled: boolean }>> {
+    return this.request<{ success: boolean; cancelled: boolean }>(
+      'DELETE',
+      `/api/files/upload-session/${sessionId}`
+    );
+  }
+
+  /**
+   * Cancel the user's current active upload session (if any)
+   *
+   * Useful for auto-recovery when initializing a new upload fails
+   * due to an existing active session.
+   *
+   * @returns Success status and whether a session was cancelled
+   *
+   * @example
+   * ```typescript
+   * // Auto-recover from CONFLICT error
+   * const initResult = await fileApi.initUploadSession(request);
+   * if (!initResult.success && initResult.error.code === 'CONFLICT') {
+   *   const cancelResult = await fileApi.cancelActiveUploadSession();
+   *   if (cancelResult.success && cancelResult.data.cancelled) {
+   *     // Retry init
+   *     const retryResult = await fileApi.initUploadSession(request);
+   *   }
+   * }
+   * ```
+   */
+  async cancelActiveUploadSession(): Promise<ApiResponse<{ success: boolean; cancelled: boolean }>> {
+    return this.postJson<{ success: boolean; cancelled: boolean }>(
+      '/api/files/upload-session/cancel-active',
+      {}
+    );
   }
 }
 

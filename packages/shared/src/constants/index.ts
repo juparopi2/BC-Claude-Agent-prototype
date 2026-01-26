@@ -26,6 +26,11 @@ export {
   // Job failure events (Phase 3, Task 3.3)
   JOB_WS_CHANNELS,
   type JobWsChannel,
+  // Folder upload session events (Folder-Based Batch Processing)
+  FOLDER_WS_CHANNELS,
+  FOLDER_WS_EVENTS,
+  type FolderWsChannel,
+  type FolderWsEventType,
 } from './websocket-events';
 
 // File Processing Status Constants (D25 Sprint 3)
@@ -34,6 +39,8 @@ export {
   EMBEDDING_STATUS,
   FILE_READINESS_STATE,
   FILE_DELETION_CONFIG,
+  // Folder upload session configuration
+  FOLDER_UPLOAD_CONFIG,
   type ProcessingStatusValue,
   type EmbeddingStatusValue,
   type FileReadinessStateValue,

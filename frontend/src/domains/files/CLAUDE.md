@@ -13,6 +13,7 @@ domains/files/
 │   ├── fileProcessingStore.ts   # Processing status tracking
 │   ├── uploadStore.ts           # Upload queue (single files)
 │   ├── uploadLimitStore.ts      # Limit validation state
+│   ├── uploadSessionStore.ts    # Folder-based upload session state
 │   ├── folderTreeStore.ts       # Folder hierarchy
 │   ├── selectionStore.ts        # Multi-select state
 │   ├── duplicateStore.ts        # Duplicate detection
@@ -22,9 +23,10 @@ domains/files/
 ├── hooks/                   # React hooks (logic + effects)
 │   ├── useFiles.ts              # Fetch and manage file list
 │   ├── useFileUpload.ts         # Single/multi file upload
-│   ├── useFolderUpload.ts       # Folder upload orchestration
+│   ├── useFolderUpload.ts       # Folder upload orchestration (folder-based batching)
 │   ├── useFileProcessingEvents.ts # WebSocket event handling
 │   ├── useFileDeleteEvents.ts   # Deletion event handling
+│   ├── useFolderBatchEvents.ts  # Folder batch WebSocket events
 │   ├── useFileSelection.ts      # Selection operations
 │   ├── useFileActions.ts        # File operations (rename, move)
 │   ├── useFileRetry.ts          # Manual retry for failed files
@@ -113,25 +115,71 @@ useFileProcessingEvents({ enabled: true });
 
 ### useFolderUpload
 
-Orchestrates bulk folder upload with pause/resume.
+Orchestrates folder-based batch upload with folder-by-folder progress.
 
 **Flow**:
 1. Read folder structure (webkitdirectory API)
 2. Validate limits (10,000 files max)
-3. Create folders in batch (POST /api/files/folders/batch)
-4. Init bulk upload (POST /api/files/bulk-upload/init)
-5. Upload to Azure Blob via SAS URLs (20 concurrent)
-6. Complete batch (POST /api/files/bulk-upload/complete)
+3. Initialize upload session (POST /api/files/upload-session/init)
+4. For each folder (sequentially):
+   a. Create folder in DB (POST /api/files/upload-session/:id/folder/:tempId/create)
+   b. Register files for early persistence (POST .../register-files)
+   c. Get SAS URLs (POST .../get-sas-urls)
+   d. Upload files in parallel (20 concurrent)
+   e. Mark files uploaded (POST .../mark-uploaded)
+   f. Complete folder batch (POST .../complete)
+5. Session completion via WebSocket events
 
 **Features**:
-- Pause/resume via localStorage
-- Progress tracking (phase, batch, percent)
-- Handles unsupported file types
+- Folder-based batching (1 folder = 1 batch)
+- Early persistence (files visible in UI before blob upload)
+- Real-time progress via WebSocket events
+- Heartbeat to keep session alive
+- Pause/cancel support
 
 ```typescript
-const { uploadFolder, progress, isPaused, pause, resume, cancel } = useFolderUpload();
+const { uploadFolder, progress, isPaused, pause, cancel } = useFolderUpload();
 
 await uploadFolder(folderStructure, targetFolderId);
+```
+
+### uploadSessionStore
+
+Zustand store for tracking folder-based upload session state.
+
+```typescript
+interface UploadSessionState {
+  session: UploadSession | null;
+  isActive: boolean;
+  progress: UploadSessionProgress | null;
+}
+
+// Actions
+setSession(session)           // Set current session
+updateBatch(tempId, updates)  // Update folder batch
+setCurrentFolderIndex(index)  // Set current folder
+clearSession()                // Clear session state
+```
+
+### useFolderBatchEvents
+
+Hook for subscribing to folder batch WebSocket events (folder:status channel).
+
+**Events Handled**:
+- `folder:session_started` → Initialize session in store
+- `folder:batch_started` → Update current folder index
+- `folder:batch_progress` → Update folder batch progress
+- `folder:batch_completed` → Increment completed folders
+- `folder:batch_failed` → Handle folder failure
+- `folder:session_completed` → Mark session complete
+
+```typescript
+useFolderBatchEvents({
+  enabled: true,
+  onBatchComplete: (sessionId, folderIndex, folderName) => {
+    toast.success(`Folder "${folderName}" completed!`);
+  },
+});
 ```
 
 ## WebSocket Event Flow

@@ -3,8 +3,8 @@
 /**
  * FolderUploadProgressModal
  *
- * Modal displaying progress for folder upload operations.
- * Shows overall progress, current batch, speed, and ETA.
+ * Modal displaying progress for folder-based batch upload operations.
+ * Shows folder-by-folder progress with file counts and overall status.
  * Provides pause/cancel controls.
  *
  * @module components/modals/FolderUploadProgressModal
@@ -13,8 +13,10 @@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { FolderUp, Pause, X, Clock, Zap } from 'lucide-react';
+import { FolderUp, Pause, X, Clock, Zap, CheckCircle2, AlertCircle, Folder } from 'lucide-react';
 import type { FolderUploadProgress } from '@/src/domains/files/types/folderUpload.types';
+import { useUploadSessionStore } from '@/src/domains/files/stores/uploadSessionStore';
+import { cn } from '@/lib/utils';
 
 interface FolderUploadProgressModalProps {
   /** Whether the modal is open */
@@ -28,18 +30,30 @@ interface FolderUploadProgressModalProps {
 }
 
 /**
- * Get human-readable phase name
+ * Get human-readable phase name.
+ * Returns null for phases where the label is redundant (e.g., during uploading
+ * the progress bar and folder info already convey the status).
  */
-function getPhaseLabel(phase: FolderUploadProgress['phase']): string {
+function getPhaseLabel(phase: FolderUploadProgress['phase']): string | null {
   switch (phase) {
     case 'idle':
       return 'Preparing...';
+    case 'reading':
+      return 'Reading folder...';
     case 'validating':
       return 'Validating files...';
+    case 'session-init':
+      return 'Initializing session...';
     case 'creating-folders':
       return 'Creating folder structure...';
+    case 'registering':
+      return 'Registering files...';
+    case 'getting-sas':
+      return 'Preparing upload...';
     case 'uploading':
-      return 'Uploading files...';
+      return null; // Progress bar and folder info are sufficient
+    case 'completing':
+      return 'Completing...';
     case 'paused':
       return 'Paused';
     case 'done':
@@ -48,6 +62,30 @@ function getPhaseLabel(phase: FolderUploadProgress['phase']): string {
       return 'Upload failed';
     default:
       return 'Processing...';
+  }
+}
+
+/**
+ * Get folder batch status label
+ */
+function getBatchStatusLabel(status: string): string {
+  switch (status) {
+    case 'pending':
+      return 'Waiting';
+    case 'creating':
+      return 'Creating folder...';
+    case 'registering':
+      return 'Registering files...';
+    case 'uploading':
+      return 'Uploading...';
+    case 'processing':
+      return 'Processing...';
+    case 'completed':
+      return 'Complete';
+    case 'failed':
+      return 'Failed';
+    default:
+      return status;
   }
 }
 
@@ -70,6 +108,12 @@ function formatEta(seconds: number): string {
 /**
  * Modal for displaying folder upload progress
  *
+ * Shows folder-by-folder progress with:
+ * - Current folder name and index
+ * - Files uploaded in current folder
+ * - Overall progress across all folders
+ * - Speed and ETA estimates
+ *
  * @example
  * ```tsx
  * <FolderUploadProgressModal
@@ -86,10 +130,19 @@ export function FolderUploadProgressModal({
   onPause,
   onCancel,
 }: FolderUploadProgressModalProps) {
+  // Get folder-level progress from session store
+  const sessionProgress = useUploadSessionStore((state) => state.progress);
+  const session = useUploadSessionStore((state) => state.session);
+
   const isPaused = progress.phase === 'paused';
   const isComplete = progress.phase === 'done';
   const isError = progress.phase === 'error';
   const canPause = progress.phase === 'uploading';
+
+  // Current folder info
+  const currentFolder = sessionProgress?.currentFolder;
+  const currentFolderIndex = sessionProgress?.currentFolderIndex ?? 0;
+  const totalFolders = sessionProgress?.totalFolders ?? progress.totalBatches;
 
   return (
     <Dialog open={isOpen} onOpenChange={() => {}}>
@@ -110,10 +163,46 @@ export function FolderUploadProgressModal({
         </DialogHeader>
 
         <div className="space-y-4 py-4">
-          {/* Phase indicator */}
-          <div className="text-sm text-muted-foreground text-center">
-            {getPhaseLabel(progress.phase)}
-          </div>
+          {/* Phase indicator - only show if label is not null */}
+          {getPhaseLabel(progress.phase) && (
+            <div className="text-sm text-muted-foreground text-center">
+              {getPhaseLabel(progress.phase)}
+            </div>
+          )}
+
+          {/* Current folder info (folder-based progress) */}
+          {currentFolder && progress.phase === 'uploading' && (
+            <div className="bg-muted/50 rounded-lg p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Folder className="size-4 text-primary" />
+                  <span className="font-medium text-sm truncate max-w-[200px]">
+                    {currentFolder.name}
+                  </span>
+                </div>
+                <span className="text-xs text-muted-foreground">
+                  Folder {currentFolderIndex + 1} of {totalFolders}
+                </span>
+              </div>
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>
+                  {currentFolder.uploadedFiles} / {currentFolder.totalFiles} files
+                </span>
+                <span className={cn(
+                  currentFolder.status === 'completed' && 'text-green-600',
+                  currentFolder.status === 'failed' && 'text-destructive',
+                )}>
+                  {getBatchStatusLabel(currentFolder.status)}
+                </span>
+              </div>
+              {currentFolder.totalFiles > 0 && (
+                <Progress
+                  value={(currentFolder.uploadedFiles / currentFolder.totalFiles) * 100}
+                  className="h-2"
+                />
+              )}
+            </div>
+          )}
 
           {/* Overall progress bar */}
           <div className="space-y-2">
@@ -134,19 +223,40 @@ export function FolderUploadProgressModal({
             </div>
           </div>
 
-          {/* Batch progress */}
-          {progress.totalBatches > 0 && (
+          {/* Folder batches summary */}
+          {session && session.folderBatches.length > 1 && (
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
-                <span>Current Batch</span>
+                <span>Folders</span>
                 <span>
-                  {progress.currentBatch} / {progress.totalBatches}
+                  {sessionProgress?.completedFolders ?? 0} / {totalFolders} completed
                 </span>
               </div>
-              <Progress
-                value={(progress.currentBatch / progress.totalBatches) * 100}
-                className="h-2"
-              />
+              <div className="flex gap-1 flex-wrap">
+                {session.folderBatches.map((batch, idx) => {
+                  const isActive = idx === currentFolderIndex;
+                  const isCompleted = batch.status === 'completed';
+                  const isFailed = batch.status === 'failed';
+
+                  return (
+                    <div
+                      key={batch.tempId}
+                      className={cn(
+                        'size-6 rounded flex items-center justify-center text-xs',
+                        isActive && 'bg-primary text-primary-foreground',
+                        isCompleted && 'bg-green-100 text-green-700',
+                        isFailed && 'bg-red-100 text-red-700',
+                        !isActive && !isCompleted && !isFailed && 'bg-muted text-muted-foreground',
+                      )}
+                      title={`${batch.name}: ${getBatchStatusLabel(batch.status)}`}
+                    >
+                      {isCompleted && <CheckCircle2 className="size-3" />}
+                      {isFailed && <AlertCircle className="size-3" />}
+                      {!isCompleted && !isFailed && idx + 1}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
 

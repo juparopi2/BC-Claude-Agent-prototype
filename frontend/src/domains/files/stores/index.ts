@@ -77,3 +77,10 @@ export {
   type UnsupportedFilesState,
   type UnsupportedFilesResolution,
 } from './unsupportedFilesStore';
+
+export {
+  useUploadSessionStore,
+  resetUploadSessionStore,
+  type UploadSessionState,
+  type UploadSessionActions,
+} from './uploadSessionStore';

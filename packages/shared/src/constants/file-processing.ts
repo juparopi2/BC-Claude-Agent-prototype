@@ -121,3 +121,52 @@ export const FILE_DELETION_CONFIG = {
   /** Initial retry delay in milliseconds (exponential backoff) */
   RETRY_DELAY_MS: 1000,
 } as const;
+
+// ============================================================================
+// FOLDER UPLOAD SESSION CONFIGURATION
+// ============================================================================
+
+/**
+ * Configuration for folder-based upload sessions.
+ * Controls limits, concurrency, and TTL for upload sessions.
+ *
+ * Key Design Decisions:
+ * - Folders processed sequentially for clear progress feedback
+ * - Files within a folder uploaded in parallel (20 concurrent)
+ * - Session stored in Redis with 4-hour TTL
+ *
+ * @example
+ * ```typescript
+ * import { FOLDER_UPLOAD_CONFIG } from '@bc-agent/shared';
+ *
+ * // Validate folder count
+ * if (folders.length > FOLDER_UPLOAD_CONFIG.MAX_FOLDERS_PER_SESSION) {
+ *   throw new Error('Too many folders');
+ * }
+ *
+ * // Configure parallel uploads
+ * const concurrency = FOLDER_UPLOAD_CONFIG.FILE_UPLOAD_CONCURRENCY;
+ * ```
+ */
+export const FOLDER_UPLOAD_CONFIG = {
+  /** Maximum number of folders per upload session */
+  MAX_FOLDERS_PER_SESSION: 50,
+
+  /** Maximum files per folder batch (split folder if exceeded) */
+  MAX_FILES_PER_FOLDER_BATCH: 1000,
+
+  /** Concurrency for file uploads within a folder */
+  FILE_UPLOAD_CONCURRENCY: 20,
+
+  /** Session TTL in milliseconds (4 hours) */
+  SESSION_TTL_MS: 4 * 60 * 60 * 1000,
+
+  /** Heartbeat interval for keeping session alive (1 minute) */
+  HEARTBEAT_INTERVAL_MS: 60 * 1000,
+
+  /** Maximum session inactivity before auto-pause (5 minutes) */
+  MAX_INACTIVITY_MS: 5 * 60 * 1000,
+
+  /** Maximum consecutive folder failures before session abort */
+  MAX_CONSECUTIVE_FAILURES: 3,
+} as const;

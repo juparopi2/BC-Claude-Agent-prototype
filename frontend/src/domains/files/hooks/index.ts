@@ -22,3 +22,7 @@ export {
   useFileDeleteEvents,
   type UseFileDeleteEventsOptions,
 } from './useFileDeleteEvents';
+export {
+  useFolderBatchEvents,
+  type UseFolderBatchEventsOptions,
+} from './useFolderBatchEvents';

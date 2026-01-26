@@ -18,8 +18,9 @@ import type {
   ExtendedThinkingConfig,
   FileWebSocketEvent,
   JobFailedPayload,
+  FolderWebSocketEvent,
 } from '@bc-agent/shared';
-import { FILE_WS_CHANNELS, JOB_WS_CHANNELS } from '@bc-agent/shared';
+import { FILE_WS_CHANNELS, JOB_WS_CHANNELS, FOLDER_WS_CHANNELS } from '@bc-agent/shared';
 import type { SocketConnectOptions, JoinSessionOptions, PendingMessage } from './types';
 import { useAuthStore } from '@/src/domains/auth/stores/authStore';
 import { useConnectionStore } from '@/src/domains/connection';
@@ -64,6 +65,8 @@ export class SocketClient {
   private fileProcessingListeners = new Set<EventCallback<FileWebSocketEvent>>();
   // Job failure event listeners (Phase 3, Task 3.3)
   private jobFailureListeners = new Set<EventCallback<JobFailedPayload>>();
+  // Folder status event listeners (folder-based batch upload)
+  private folderStatusListeners = new Set<EventCallback<FolderWebSocketEvent>>();
   // Pending user room join (D25 race condition fix)
   private pendingUserRoomJoin: string | null = null;
   // Track reconnection attempts for connection store
@@ -422,6 +425,28 @@ export class SocketClient {
   }
 
   /**
+   * Subscribe to folder status events (folder-based batch upload)
+   *
+   * Receives events on the folder:status channel:
+   * - folder:session_started - Upload session began
+   * - folder:session_completed - All folders completed
+   * - folder:session_failed - Session failed
+   * - folder:batch_started - Folder batch began processing
+   * - folder:batch_progress - Progress update on folder
+   * - folder:batch_completed - Folder completed
+   * - folder:batch_failed - Folder failed
+   *
+   * @param callback Event handler
+   * @returns Unsubscribe function
+   */
+  onFolderStatusEvent(callback: EventCallback<FolderWebSocketEvent>): () => void {
+    this.folderStatusListeners.add(callback);
+    return () => {
+      this.folderStatusListeners.delete(callback);
+    };
+  }
+
+  /**
    * Join the user room for file events (D25)
    *
    * Call this after user authentication completes to ensure
@@ -460,6 +485,8 @@ export class SocketClient {
     this.socket.removeAllListeners(FILE_WS_CHANNELS.PROCESSING);
     // Job failure channel (Phase 3, Task 3.3)
     this.socket.removeAllListeners(JOB_WS_CHANNELS.FAILURE);
+    // Folder status channel (folder-based batch upload)
+    this.socket.removeAllListeners(FOLDER_WS_CHANNELS.STATUS);
 
     // Connection events
     this.socket.on('connect', () => {
@@ -569,6 +596,17 @@ export class SocketClient {
           callback(event);
         } catch (err) {
           console.error('[SocketClient] Error in job failure handler:', err);
+        }
+      });
+    });
+
+    // Folder status events (folder-based batch upload)
+    this.socket.on(FOLDER_WS_CHANNELS.STATUS, (event: FolderWebSocketEvent) => {
+      this.folderStatusListeners.forEach((callback) => {
+        try {
+          callback(event);
+        } catch (err) {
+          console.error('[SocketClient] Error in folder status handler:', err);
         }
       });
     });

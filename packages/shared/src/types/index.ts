@@ -260,3 +260,34 @@ export {
   getContentBlockType,
   getMaxSizeForMimeType,
 } from './chat-attachments.types';
+
+// Upload Session types (Folder-Based Batch Processing)
+export type {
+  FolderBatchStatus,
+  UploadSessionStatus,
+  FileRegistrationMetadata,
+  FolderBatch,
+  UploadSession,
+  UploadSessionProgress,
+  FolderInput,
+  InitUploadSessionRequest,
+  InitUploadSessionResponse,
+  CreateFolderInSessionResponse,
+  RegisteredFileResult,
+  RegisterFilesResponse,
+  RegisteredFileSasInfo,
+  GetSasUrlsResponse,
+  MarkFileUploadedRequest,
+  MarkFileUploadedResponse,
+  CompleteFolderBatchResponse,
+  GetUploadSessionResponse,
+  // WebSocket event types
+  FolderSessionStartedEvent,
+  FolderSessionCompletedEvent,
+  FolderSessionFailedEvent,
+  FolderBatchStartedEvent,
+  FolderBatchProgressEvent,
+  FolderBatchCompletedEvent,
+  FolderBatchFailedEvent,
+  FolderWebSocketEvent,
+} from './upload-session.types';

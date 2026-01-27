@@ -15,7 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { FolderUp, Pause, X, CheckCircle2, AlertCircle, Folder } from 'lucide-react';
 import type { FolderUploadProgress } from '@/src/domains/files/types/folderUpload.types';
-import { useUploadSessionStore } from '@/src/domains/files/stores/uploadSessionStore';
+import { useUploadSessionStore, useFolderBatchEvents } from '@/src/domains/files';
 import { cn } from '@/lib/utils';
 
 interface FolderUploadProgressModalProps {
@@ -80,6 +80,12 @@ export function FolderUploadProgressModal({
   // Get folder-level progress from session store
   const sessionProgress = useUploadSessionStore((state) => state.progress);
   const session = useUploadSessionStore((state) => state.session);
+
+  // Subscribe to folder batch WebSocket events when modal is open
+  // This enables real-time updates for folder completion status
+  useFolderBatchEvents({
+    enabled: isOpen,
+  });
 
   const isPaused = progress.phase === 'paused';
   const isComplete = progress.phase === 'done';

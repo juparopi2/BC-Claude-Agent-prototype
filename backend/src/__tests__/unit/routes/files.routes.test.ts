@@ -83,6 +83,14 @@ const mockMessageQueue = {
   addFileChunkingJob: vi.fn().mockResolvedValue('JOB-004'),
 };
 
+const mockSoftDeleteService = {
+  markForDeletion: vi.fn().mockResolvedValue({
+    markedForDeletion: 2,
+    notFoundIds: [],
+    batchId: 'BATCH-UUID-1234-5678-90AB-CDEF12345678',
+  }),
+};
+
 const mockEmbeddingService = {
   generateImageQueryEmbedding: vi.fn(),
 };
@@ -133,6 +141,10 @@ vi.mock('@/domains/files/retry', () => ({
       },
     }),
   })),
+}));
+
+vi.mock('@services/files/operations', () => ({
+  getSoftDeleteService: vi.fn(() => mockSoftDeleteService),
 }));
 
 // Import router after mocks
@@ -1001,10 +1013,13 @@ describe('Files Routes', () => {
   // DELETE / - Bulk Delete
   // ============================================
   describe('DELETE /api/files', () => {
-    it('should enqueue bulk delete jobs', async () => {
-      // Arrange
-      mockFileService.verifyOwnership.mockResolvedValue([VALID_FILE_UUID, VALID_FOLDER_UUID]);
-      mockMessageQueue.addFileDeletionJob.mockResolvedValue('JOB-001');
+    it('should mark files for deletion and return SoftDeleteResult', async () => {
+      // Arrange - Mock soft delete service response
+      mockSoftDeleteService.markForDeletion.mockResolvedValue({
+        markedForDeletion: 2,
+        notFoundIds: [],
+        batchId: 'BATCH-UUID-1234-5678-90AB-CDEF12345678',
+      });
 
       // Act
       const response = await request(app)
@@ -1013,17 +1028,28 @@ describe('Files Routes', () => {
           fileIds: [VALID_FILE_UUID, VALID_FOLDER_UUID],
           deletionReason: 'user_request',
         })
-        .expect(202);
+        .expect(200);
 
-      // Assert
+      // Assert - Check SoftDeleteResult structure
       expect(response.body.batchId).toBeDefined();
-      expect(response.body.jobsEnqueued).toBe(2);
-      expect(response.body.jobIds).toHaveLength(2);
+      expect(response.body.markedForDeletion).toBe(2);
+      expect(response.body.notFoundIds).toEqual([]);
+
+      // Verify markForDeletion was called with correct parameters
+      expect(mockSoftDeleteService.markForDeletion).toHaveBeenCalledWith(
+        TEST_USER_ID,
+        [VALID_FILE_UUID, VALID_FOLDER_UUID],
+        { deletionReason: 'user_request' }
+      );
     });
 
     it('should return 404 when no files are owned by user', async () => {
-      // Arrange
-      mockFileService.verifyOwnership.mockResolvedValue([]);
+      // Arrange - Mock soft delete returning 0 marked files
+      mockSoftDeleteService.markForDeletion.mockResolvedValue({
+        markedForDeletion: 0,
+        notFoundIds: [VALID_FILE_UUID],
+        batchId: 'BATCH-UUID-1234-5678-90AB-CDEF12345678',
+      });
 
       // Act
       const response = await request(app)
@@ -1193,19 +1219,25 @@ describe('Files Routes', () => {
     });
 
     it('should verify file ownership before delete', async () => {
-      // Arrange
-      mockFileService.verifyOwnership.mockResolvedValue([VALID_FILE_UUID]);
+      // Arrange - Mock soft delete service
+      mockSoftDeleteService.markForDeletion.mockResolvedValue({
+        markedForDeletion: 1,
+        notFoundIds: [],
+        batchId: 'BATCH-UUID-1234-5678-90AB-CDEF12345678',
+      });
 
       // Act
       await request(app)
         .delete('/api/files')
         .send({ fileIds: [VALID_FILE_UUID] })
-        .expect(202);
+        .expect(200);
 
-      // Assert
-      expect(mockFileService.verifyOwnership).toHaveBeenCalledWith(
+      // Assert - SoftDeleteService handles ownership verification internally
+      // Note: deletionReason defaults to 'user_request' per schema
+      expect(mockSoftDeleteService.markForDeletion).toHaveBeenCalledWith(
         TEST_USER_ID,
-        [VALID_FILE_UUID]
+        [VALID_FILE_UUID],
+        { deletionReason: 'user_request' }
       );
     });
   });

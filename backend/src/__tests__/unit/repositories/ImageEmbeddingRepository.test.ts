@@ -23,7 +23,7 @@ vi.mock('@/shared/utils/logger', () => ({
 }));
 
 vi.mock('uuid', () => ({
-  v4: vi.fn(() => 'mock-uuid-1234-5678-9012-345678901234'),
+  v4: vi.fn(() => 'MOCK-UUID-1234-5678-9012-345678901234'),
 }));
 
 // Import after mocking
@@ -115,7 +115,7 @@ describe('ImageEmbeddingRepository', () => {
 
       const result = await repository.upsert(upsertParams);
 
-      expect(result).toBe('mock-uuid-1234-5678-9012-345678901234');
+      expect(result).toBe('MOCK-UUID-1234-5678-9012-345678901234');
       expect(mockExecuteQuery).toHaveBeenCalledTimes(2);
 
       // Verify SELECT query (check exists)
@@ -133,7 +133,7 @@ describe('ImageEmbeddingRepository', () => {
         2,
         expect.stringContaining('INSERT INTO image_embeddings'),
         expect.objectContaining({
-          id: 'mock-uuid-1234-5678-9012-345678901234',
+          id: 'MOCK-UUID-1234-5678-9012-345678901234',
           file_id: testFileId,
           user_id: testUserId,
           embedding: JSON.stringify(testEmbedding),

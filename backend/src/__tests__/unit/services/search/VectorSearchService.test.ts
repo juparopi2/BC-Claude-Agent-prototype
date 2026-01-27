@@ -208,7 +208,7 @@ describe('VectorSearchService - Index Management', () => {
         expect(mockSearchClient.search).toHaveBeenCalledWith(
             '*',
             expect.objectContaining({
-                filter: "userId eq 'USER-123'", // Critical security check + D24 normalization
+                filter: "userId eq 'USER-123' and (fileStatus ne 'deleting' or fileStatus eq null)", // Critical security check + D24 normalization + soft delete
                 vectorSearchOptions: expect.objectContaining({
                     queries: expect.arrayContaining([
                         expect.objectContaining({
@@ -236,7 +236,7 @@ describe('VectorSearchService - Index Management', () => {
         expect(mockSearchClient.search).toHaveBeenCalledWith(
             'test query',
             expect.objectContaining({
-                 filter: "userId eq 'USER-123'", // D24 normalization
+                 filter: "userId eq 'USER-123' and (fileStatus ne 'deleting' or fileStatus eq null)", // D24 normalization + soft delete
                  vectorSearchOptions: expect.objectContaining({
                     queries: expect.arrayContaining([
                         expect.objectContaining({
@@ -260,7 +260,7 @@ describe('VectorSearchService - Index Management', () => {
         expect(mockSearchClient.search).toHaveBeenCalledWith(
             '*',
             expect.objectContaining({
-                filter: "(userId eq 'USER-123') and (fileId eq 'f1')" // D24 normalization
+                filter: "(userId eq 'USER-123' and (fileStatus ne 'deleting' or fileStatus eq null)) and (fileId eq 'f1')" // D24 normalization + soft delete
             })
         );
     });
@@ -585,11 +585,11 @@ describe('VectorSearchService - Semantic Search (D26)', () => {
 
       await service.semanticSearch(query);
 
-      // D24: userId normalized to uppercase
+      // D24: userId normalized to uppercase + soft delete filter
       expect(mockSearchClient.search).toHaveBeenCalledWith(
         'test',
         expect.objectContaining({
-          filter: "userId eq 'USER-SECURE-123'"
+          filter: "userId eq 'USER-SECURE-123' and (fileStatus ne 'deleting' or fileStatus eq null)"
         })
       );
     });
@@ -894,7 +894,7 @@ describe('VectorSearchService - D24 UserId Normalization', () => {
       expect(mockSearchClient.search).toHaveBeenCalledWith(
         '*',
         expect.objectContaining({
-          filter: "userId eq 'LOWERCASE-USER-ID' and isImage eq true"
+          filter: "userId eq 'LOWERCASE-USER-ID' and isImage eq true and (fileStatus ne 'deleting' or fileStatus eq null)"
         })
       );
     });
@@ -962,7 +962,7 @@ describe('VectorSearchService - D24 UserId Normalization', () => {
       expect(mockSearchClient.search).toHaveBeenCalledWith(
         '*',
         expect.objectContaining({
-          filter: "userId eq 'MIXEDCASE-USER'"
+          filter: "userId eq 'MIXEDCASE-USER' and (fileStatus ne 'deleting' or fileStatus eq null)"
         })
       );
     });
@@ -979,7 +979,7 @@ describe('VectorSearchService - D24 UserId Normalization', () => {
       expect(mockSearchClient.search).toHaveBeenCalledWith(
         'test',
         expect.objectContaining({
-          filter: "userId eq 'LOWERCASE-ID'"
+          filter: "userId eq 'LOWERCASE-ID' and (fileStatus ne 'deleting' or fileStatus eq null)"
         })
       );
     });
@@ -1021,7 +1021,7 @@ describe('VectorSearchService - D24 UserId Normalization', () => {
       expect(mockSearchClient.search).toHaveBeenCalledWith(
         '*',
         expect.objectContaining({
-          filter: "userId eq 'IMAGE-USER-LOWERCASE' and isImage eq true"
+          filter: "userId eq 'IMAGE-USER-LOWERCASE' and isImage eq true and (fileStatus ne 'deleting' or fileStatus eq null)"
         })
       );
     });
@@ -1037,7 +1037,7 @@ describe('VectorSearchService - D24 UserId Normalization', () => {
       expect(mockSearchClient.search).toHaveBeenCalledWith(
         'test query',
         expect.objectContaining({
-          filter: "userId eq 'SEMANTIC-USER-LOWER'"
+          filter: "userId eq 'SEMANTIC-USER-LOWER' and (fileStatus ne 'deleting' or fileStatus eq null)"
         })
       );
     });

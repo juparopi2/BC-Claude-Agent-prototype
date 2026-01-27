@@ -526,12 +526,27 @@ describe('FileRepository', () => {
       );
     });
 
-    it('throws when file not found', async () => {
+    it('filters out files marked for deletion', async () => {
+      mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+
+      await repository.updateProcessingStatus(testUserId, testFileId, 'completed');
+
+      expect(mockExecuteQuery).toHaveBeenCalledWith(
+        expect.stringContaining('deletion_status IS NULL'),
+        expect.any(Object)
+      );
+    });
+
+    it('returns gracefully when file not found or deleted', async () => {
       mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [0] });
 
-      await expect(
-        repository.updateProcessingStatus(testUserId, testFileId, 'completed')
-      ).rejects.toThrow('File not found or unauthorized');
+      // Should not throw - idempotent behavior for soft delete workflow
+      await repository.updateProcessingStatus(testUserId, testFileId, 'completed');
+
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: testUserId, fileId: testFileId }),
+        expect.stringContaining('Processing status update skipped')
+      );
     });
   });
 

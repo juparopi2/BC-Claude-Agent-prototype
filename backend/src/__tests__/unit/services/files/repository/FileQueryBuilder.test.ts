@@ -44,6 +44,7 @@ describe('FileQueryBuilder', () => {
         });
 
         expect(result.query).toContain('WHERE user_id = @user_id');
+        expect(result.query).toContain('deletion_status IS NULL'); // Soft delete filter
         expect(result.params.user_id).toBe('test-user-123');
       });
     });
@@ -56,6 +57,7 @@ describe('FileQueryBuilder', () => {
         });
 
         expect(result.query).toContain('parent_folder_id IS NULL');
+        expect(result.query).toContain('deletion_status IS NULL'); // Soft delete filter
         expect(result.query).not.toContain('parent_folder_id = @parent_folder_id');
         expect(result.params).not.toHaveProperty('parent_folder_id');
       });
@@ -67,6 +69,7 @@ describe('FileQueryBuilder', () => {
         });
 
         expect(result.query).toContain('parent_folder_id IS NULL');
+        expect(result.query).toContain('deletion_status IS NULL'); // Soft delete filter
         expect(result.params).not.toHaveProperty('parent_folder_id');
       });
 
@@ -77,7 +80,8 @@ describe('FileQueryBuilder', () => {
         });
 
         expect(result.query).toContain('parent_folder_id = @parent_folder_id');
-        expect(result.query).not.toContain('IS NULL');
+        expect(result.query).not.toContain('parent_folder_id IS NULL');
+        expect(result.query).toContain('deletion_status IS NULL'); // Soft delete filter
         expect(result.params.parent_folder_id).toBe('folder-123');
       });
     });
@@ -192,6 +196,7 @@ describe('FileQueryBuilder', () => {
       const result = queryBuilder.buildGetFileCountQuery('test-user');
 
       expect(result.query).toContain('WHERE user_id = @user_id');
+      expect(result.query).toContain('deletion_status IS NULL'); // Soft delete filter
       expect(result.params.user_id).toBe('test-user');
     });
 
@@ -199,6 +204,7 @@ describe('FileQueryBuilder', () => {
       const result = queryBuilder.buildGetFileCountQuery('test-user');
 
       expect(result.query).toContain('SELECT COUNT(*) as count');
+      expect(result.query).toContain('deletion_status IS NULL'); // Soft delete filter
     });
 
     describe('IS NULL handling', () => {
@@ -206,6 +212,7 @@ describe('FileQueryBuilder', () => {
         const result = queryBuilder.buildGetFileCountQuery('test-user');
 
         expect(result.query).toContain('parent_folder_id IS NULL');
+        expect(result.query).toContain('deletion_status IS NULL'); // Soft delete filter
         expect(result.params).not.toHaveProperty('parent_folder_id');
       });
 
@@ -213,6 +220,7 @@ describe('FileQueryBuilder', () => {
         const result = queryBuilder.buildGetFileCountQuery('test-user', null);
 
         expect(result.query).toContain('parent_folder_id IS NULL');
+        expect(result.query).toContain('deletion_status IS NULL'); // Soft delete filter
         expect(result.params).not.toHaveProperty('parent_folder_id');
       });
 
@@ -220,6 +228,8 @@ describe('FileQueryBuilder', () => {
         const result = queryBuilder.buildGetFileCountQuery('test-user', 'folder-123');
 
         expect(result.query).toContain('parent_folder_id = @parent_folder_id');
+        expect(result.query).not.toContain('parent_folder_id IS NULL');
+        expect(result.query).toContain('deletion_status IS NULL'); // Soft delete filter
         expect(result.params.parent_folder_id).toBe('folder-123');
       });
     });
@@ -252,6 +262,7 @@ describe('FileQueryBuilder', () => {
       const result = queryBuilder.buildCheckDuplicateQuery('test-user', 'test.pdf');
 
       expect(result.query).toContain('WHERE user_id = @user_id');
+      expect(result.query).toContain('deletion_status IS NULL'); // Soft delete filter
       expect(result.params.user_id).toBe('test-user');
     });
 
@@ -259,6 +270,7 @@ describe('FileQueryBuilder', () => {
       const result = queryBuilder.buildCheckDuplicateQuery('test-user', 'invoice.pdf');
 
       expect(result.query).toContain('name = @name');
+      expect(result.query).toContain('deletion_status IS NULL'); // Soft delete filter
       expect(result.params.name).toBe('invoice.pdf');
     });
 
@@ -266,6 +278,7 @@ describe('FileQueryBuilder', () => {
       const result = queryBuilder.buildCheckDuplicateQuery('test-user', 'test.pdf');
 
       expect(result.query).toContain('is_folder = 0');
+      expect(result.query).toContain('deletion_status IS NULL'); // Soft delete filter
     });
 
     describe('IS NULL handling', () => {
@@ -273,6 +286,7 @@ describe('FileQueryBuilder', () => {
         const result = queryBuilder.buildCheckDuplicateQuery('test-user', 'test.pdf');
 
         expect(result.query).toContain('parent_folder_id IS NULL');
+        expect(result.query).toContain('deletion_status IS NULL'); // Soft delete filter
         expect(result.params).not.toHaveProperty('parent_folder_id');
       });
 
@@ -280,6 +294,7 @@ describe('FileQueryBuilder', () => {
         const result = queryBuilder.buildCheckDuplicateQuery('test-user', 'test.pdf', null);
 
         expect(result.query).toContain('parent_folder_id IS NULL');
+        expect(result.query).toContain('deletion_status IS NULL'); // Soft delete filter
         expect(result.params).not.toHaveProperty('parent_folder_id');
       });
 
@@ -287,6 +302,8 @@ describe('FileQueryBuilder', () => {
         const result = queryBuilder.buildCheckDuplicateQuery('test-user', 'test.pdf', 'folder-123');
 
         expect(result.query).toContain('parent_folder_id = @parent_folder_id');
+        expect(result.query).not.toContain('parent_folder_id IS NULL');
+        expect(result.query).toContain('deletion_status IS NULL'); // Soft delete filter
         expect(result.params.parent_folder_id).toBe('folder-123');
       });
     });
@@ -340,6 +357,7 @@ describe('FileQueryBuilder', () => {
       const result = queryBuilder.buildFindByContentHashQuery('test-user', 'hash123');
 
       expect(result.query).toContain('WHERE user_id = @user_id');
+      expect(result.query).toContain('deletion_status IS NULL'); // Soft delete filter
       expect(result.params.user_id).toBe('test-user');
     });
 
@@ -347,6 +365,7 @@ describe('FileQueryBuilder', () => {
       const result = queryBuilder.buildFindByContentHashQuery('test-user', 'abc123hash');
 
       expect(result.query).toContain('content_hash = @content_hash');
+      expect(result.query).toContain('deletion_status IS NULL'); // Soft delete filter
       expect(result.params.content_hash).toBe('abc123hash');
     });
 
@@ -354,6 +373,7 @@ describe('FileQueryBuilder', () => {
       const result = queryBuilder.buildFindByContentHashQuery('test-user', 'hash123');
 
       expect(result.query).toContain('is_folder = 0');
+      expect(result.query).toContain('deletion_status IS NULL'); // Soft delete filter
     });
   });
 
@@ -365,12 +385,14 @@ describe('FileQueryBuilder', () => {
       const result = queryBuilder.buildGetFileByIdQuery('test-user', 'file-123');
 
       expect(result.query).toContain('WHERE id = @id AND user_id = @user_id');
+      expect(result.query).toContain('deletion_status IS NULL'); // Soft delete filter
       expect(result.params.user_id).toBe('test-user');
     });
 
     it('includes file id filter', () => {
       const result = queryBuilder.buildGetFileByIdQuery('test-user', 'file-123');
 
+      expect(result.query).toContain('deletion_status IS NULL'); // Soft delete filter
       expect(result.params.id).toBe('file-123');
     });
 
@@ -379,6 +401,7 @@ describe('FileQueryBuilder', () => {
 
       expect(result.query).toContain('SELECT *');
       expect(result.query).toContain('FROM files');
+      expect(result.query).toContain('deletion_status IS NULL'); // Soft delete filter
     });
   });
 
@@ -390,6 +413,7 @@ describe('FileQueryBuilder', () => {
       const result = queryBuilder.buildVerifyOwnershipQuery('test-user', ['id-1', 'id-2']);
 
       expect(result.query).toContain('WHERE user_id = @user_id');
+      expect(result.query).toContain('deletion_status IS NULL'); // Soft delete filter
       expect(result.params.user_id).toBe('test-user');
     });
 
@@ -397,6 +421,7 @@ describe('FileQueryBuilder', () => {
       const result = queryBuilder.buildVerifyOwnershipQuery('test-user', ['id-1', 'id-2']);
 
       expect(result.query).toContain('id IN (@id0, @id1)');
+      expect(result.query).toContain('deletion_status IS NULL'); // Soft delete filter
       expect(result.params.id0).toBe('id-1');
       expect(result.params.id1).toBe('id-2');
     });
@@ -405,6 +430,7 @@ describe('FileQueryBuilder', () => {
       const result = queryBuilder.buildVerifyOwnershipQuery('test-user', ['id-1']);
 
       expect(result.query).toContain('SELECT id');
+      expect(result.query).toContain('deletion_status IS NULL'); // Soft delete filter
     });
   });
 });

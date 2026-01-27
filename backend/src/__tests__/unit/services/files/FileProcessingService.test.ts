@@ -157,6 +157,18 @@ vi.mock('@/shared/utils/logger', () => ({
   createChildLogger: vi.fn(() => mockLogger),
 }));
 
+// Mock FileRepository
+const mockIsFileActiveForProcessing = vi.hoisted(() => vi.fn().mockResolvedValue(true));
+const mockGetFileRepository = vi.hoisted(() =>
+  vi.fn(() => ({
+    isFileActiveForProcessing: mockIsFileActiveForProcessing,
+  }))
+);
+
+vi.mock('@/services/files/repository/FileRepository', () => ({
+  getFileRepository: mockGetFileRepository,
+}));
+
 // ===== TEST SUITE =====
 
 describe('FileProcessingService', () => {
@@ -180,6 +192,7 @@ describe('FileProcessingService', () => {
     mockDownloadFromBlob.mockResolvedValue(Buffer.from('mock file content'));
     mockIsSocketServiceInitialized.mockReturnValue(true);
     mockSocketTo.mockReturnValue({ emit: mockSocketEmit });
+    mockIsFileActiveForProcessing.mockResolvedValue(true); // Mock file is active by default
 
     // Re-setup FileEventEmitter mocks (D25 Sprint 3)
     mockEmitProgress.mockImplementation(() => {});

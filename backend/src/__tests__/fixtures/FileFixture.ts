@@ -113,6 +113,9 @@ export class FileFixture {
       last_processing_error: null,
       last_embedding_error: null,
       failed_at: null,
+      // Soft delete fields
+      deletion_status: null,
+      deleted_at: null,
       created_at: createdAt,
       updated_at: createdAt,
       ...overrides,
@@ -195,6 +198,9 @@ export class FileFixture {
       embeddingRetryCount: 0,
       lastError: null,
       failedAt: null,
+      // Soft delete fields
+      deletionStatus: null,
+      deletedAt: null,
       createdAt,
       updatedAt: createdAt,
       ...overrides,

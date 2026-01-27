@@ -49,6 +49,8 @@ describe('File Types', () => {
         embeddingRetryCount: 0,
         lastError: null,
         failedAt: null,
+        deletionStatus: null, // Default for active files
+        deletedAt: null,
         createdAt: '2025-01-15T10:00:00.000Z',
         updatedAt: '2025-01-15T11:00:00.000Z',
       });

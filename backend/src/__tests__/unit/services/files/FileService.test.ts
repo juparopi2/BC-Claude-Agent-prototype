@@ -272,7 +272,7 @@ describe('FileService', () => {
         const params = queryCall?.[1] as Record<string, unknown>;
 
         expect(query).toContain('AND parent_folder_id = @parent_folder_id');
-        expect(query).not.toContain('IS NULL');
+        expect(query).not.toContain('parent_folder_id IS NULL');
         expect(params).toHaveProperty('parent_folder_id', folderId);
       });
     });

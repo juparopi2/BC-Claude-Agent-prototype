@@ -182,3 +182,59 @@ export const SHUTDOWN_DELAYS = {
   /** Delay between shutdown phases in ms */
   PHASE_DELAY: 100,
 } as const;
+
+/**
+ * Lock Duration Configuration
+ *
+ * Determines how long a job is locked while being processed.
+ * Longer durations prevent false stall detection for slow operations.
+ *
+ * BullMQ defaults: lockDuration=30000ms, lockRenewTime=lockDuration/2
+ * Jobs that exceed lockDuration are marked as "stalled" and retried.
+ */
+export const LOCK_DURATION = {
+  /** Short operations (< 30s typically) - BullMQ default */
+  SHORT: 30000,
+  /** Medium operations (30-60s typically) */
+  MEDIUM: 60000,
+  /** Long operations (60-90s typically) */
+  LONG: 90000,
+  /** Very long operations (OCR, large PDFs, slow I/O) */
+  EXTRA_LONG: 120000,
+} as const;
+
+/**
+ * Max Stalled Count Configuration
+ *
+ * How many times a job can stall before being marked as permanently failed.
+ * A "stall" occurs when lock expires before job completes.
+ */
+export const MAX_STALLED_COUNT = {
+  /** Standard operations - fail quickly on repeated stalls */
+  DEFAULT: 2,
+  /** Operations that may intermittently stall (I/O bound) */
+  TOLERANT: 3,
+} as const;
+
+/**
+ * Lock Configuration per Queue Type
+ *
+ * Maps each queue to appropriate lock settings based on typical job duration.
+ * File operations get longer locks due to variable processing times.
+ */
+export const LOCK_CONFIG: Record<QueueName, { lockDuration: number; maxStalledCount: number }> = {
+  // File operations - can be slow (large PDFs, OCR, network I/O)
+  [QueueName.FILE_PROCESSING]: { lockDuration: LOCK_DURATION.EXTRA_LONG, maxStalledCount: MAX_STALLED_COUNT.TOLERANT },
+  [QueueName.FILE_CHUNKING]: { lockDuration: LOCK_DURATION.MEDIUM, maxStalledCount: MAX_STALLED_COUNT.TOLERANT },
+  [QueueName.EMBEDDING_GENERATION]: { lockDuration: LOCK_DURATION.LONG, maxStalledCount: MAX_STALLED_COUNT.TOLERANT },
+  [QueueName.FILE_BULK_UPLOAD]: { lockDuration: LOCK_DURATION.MEDIUM, maxStalledCount: MAX_STALLED_COUNT.TOLERANT },
+  [QueueName.FILE_CLEANUP]: { lockDuration: LOCK_DURATION.EXTRA_LONG, maxStalledCount: MAX_STALLED_COUNT.TOLERANT },
+  [QueueName.FILE_DELETION]: { lockDuration: LOCK_DURATION.MEDIUM, maxStalledCount: MAX_STALLED_COUNT.TOLERANT },
+
+  // Standard operations - use shorter locks
+  [QueueName.MESSAGE_PERSISTENCE]: { lockDuration: LOCK_DURATION.SHORT, maxStalledCount: MAX_STALLED_COUNT.DEFAULT },
+  [QueueName.TOOL_EXECUTION]: { lockDuration: LOCK_DURATION.MEDIUM, maxStalledCount: MAX_STALLED_COUNT.DEFAULT },
+  [QueueName.EVENT_PROCESSING]: { lockDuration: LOCK_DURATION.SHORT, maxStalledCount: MAX_STALLED_COUNT.DEFAULT },
+  [QueueName.USAGE_AGGREGATION]: { lockDuration: LOCK_DURATION.MEDIUM, maxStalledCount: MAX_STALLED_COUNT.DEFAULT },
+  [QueueName.CITATION_PERSISTENCE]: { lockDuration: LOCK_DURATION.SHORT, maxStalledCount: MAX_STALLED_COUNT.DEFAULT },
+} as const;

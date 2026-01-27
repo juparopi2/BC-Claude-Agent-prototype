@@ -10,7 +10,7 @@
 import { Worker, type Processor, type RedisOptions } from 'bullmq';
 import { createChildLogger } from '@/shared/utils/logger';
 import type { ILoggerMinimal } from '../IMessageQueueDependencies';
-import { QueueName, DEFAULT_CONCURRENCY } from '../constants';
+import { QueueName, DEFAULT_CONCURRENCY, LOCK_CONFIG } from '../constants';
 import { env } from '@/infrastructure/config';
 import { FILE_DELETION_CONFIG, FILE_BULK_UPLOAD_CONFIG } from '@bc-agent/shared';
 
@@ -52,10 +52,14 @@ export class WorkerRegistry {
 
   /**
    * Register a worker for a queue
+   *
+   * Configures lock duration and stalled count per queue type to prevent
+   * false stall detection for long-running operations (e.g., OCR, large PDFs).
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   registerWorker(name: QueueName, processor: Processor<any, any, string>, concurrency?: number): void {
     const resolvedConcurrency = this.resolveConcurrency(name, concurrency);
+    const lockConfig = this.getLockConfig(name);
 
     const worker = new Worker(
       this.getQueueName(name),
@@ -63,11 +67,27 @@ export class WorkerRegistry {
       {
         connection: this.redisConfig,
         concurrency: resolvedConcurrency,
+        lockDuration: lockConfig.lockDuration,
+        maxStalledCount: lockConfig.maxStalledCount,
       }
     );
 
     this.workers.set(name, worker);
-    this.log.debug(`Worker registered: ${name}`, { concurrency: resolvedConcurrency });
+    this.log.debug(`Worker registered: ${name}`, {
+      concurrency: resolvedConcurrency,
+      lockDuration: lockConfig.lockDuration,
+      maxStalledCount: lockConfig.maxStalledCount,
+    });
+  }
+
+  /**
+   * Get lock configuration for a queue
+   *
+   * Returns lock duration and max stalled count based on queue type.
+   * File operations get longer locks due to variable processing times.
+   */
+  private getLockConfig(name: QueueName): { lockDuration: number; maxStalledCount: number } {
+    return LOCK_CONFIG[name];
   }
 
   /**

@@ -60,6 +60,16 @@ export class FileChunkingWorker {
       mimeType,
     });
 
+    // Early exit if file was deleted during queue wait
+    // This prevents race conditions where chunking continues after file deletion
+    const { getFileRepository } = await import('@/services/files/repository/FileRepository');
+    const fileRepository = getFileRepository();
+    const isActive = await fileRepository.isFileActiveForProcessing(userId, fileId);
+    if (!isActive) {
+      jobLogger.info('File deleted or marked for deletion, skipping chunking');
+      return; // Graceful exit - job completes successfully
+    }
+
     jobLogger.info('Processing file chunking job', {
       attemptNumber: job.attemptsMade,
     });

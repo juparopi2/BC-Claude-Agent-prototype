@@ -66,7 +66,7 @@ export interface IEmbeddingResult {
  * Allows for easier testing with mock implementations.
  */
 export interface IEmbeddingServiceMinimal {
-  generateTextEmbeddingsBatch(texts: string[], userId: string): Promise<IEmbeddingResult[]>;
+  generateTextEmbeddingsBatch(texts: string[], userId: string, fileId?: string): Promise<IEmbeddingResult[]>;
 }
 
 /**

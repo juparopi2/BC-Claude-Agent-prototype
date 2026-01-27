@@ -15,4 +15,7 @@ export {
   JOB_PRIORITY,
   CONNECTION_TIMEOUTS,
   SHUTDOWN_DELAYS,
+  LOCK_DURATION,
+  MAX_STALLED_COUNT,
+  LOCK_CONFIG,
 } from './queue.constants';

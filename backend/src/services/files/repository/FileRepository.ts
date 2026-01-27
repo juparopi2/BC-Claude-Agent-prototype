@@ -69,6 +69,7 @@ export interface IFileRepository {
   getChildrenIds(userId: string, folderId: string): Promise<string[]>;
   markForDeletion(userId: string, fileIds: string[]): Promise<MarkForDeletionResult>;
   updateDeletionStatus(userId: string, fileIds: string[], status: 'deleting' | 'failed'): Promise<void>;
+  isFileActiveForProcessing(userId: string, fileId: string): Promise<boolean>;
 }
 
 /**
@@ -367,6 +368,9 @@ export class FileRepository implements IFileRepository {
 
   /**
    * Update file processing status
+   *
+   * Only updates files that exist and are not marked for deletion.
+   * If the file was deleted, logs and returns gracefully instead of throwing.
    */
   public async updateProcessingStatus(
     userId: string,
@@ -392,21 +396,31 @@ export class FileRepository implements IFileRepository {
         params.extracted_text = extractedText;
       }
 
+      // Only update files that are not marked for deletion
       const query = `
         UPDATE files
         SET ${setClauses.join(', ')}
-        WHERE id = @id AND user_id = @user_id
+        WHERE id = @id AND user_id = @user_id AND deletion_status IS NULL
       `;
 
       const result = await executeQuery(query, params);
 
       if (result.rowsAffected[0] === 0) {
-        throw new Error('File not found or unauthorized');
+        // File not found or deleted - log but don't throw
+        // This prevents errors when processing workers try to update deleted files
+        this.logger.info(
+          { userId, fileId, status },
+          'Processing status update skipped - file not found or deleted'
+        );
+        return;
       }
 
       this.logger.info({ userId, fileId, status }, 'Processing status updated');
     } catch (error) {
-      this.logger.error({ error, userId, fileId, status }, 'Failed to update processing status');
+      const errorInfo = error instanceof Error
+        ? { message: error.message, name: error.name }
+        : { value: String(error) };
+      this.logger.error({ errorInfo, userId, fileId, status }, 'Failed to update processing status');
       throw error;
     }
   }
@@ -575,6 +589,45 @@ export class FileRepository implements IFileRepository {
       this.logger.info({ userId, fileCount: fileIds.length, status }, 'Deletion status updated');
     } catch (error) {
       this.logger.error({ error, userId, fileCount: fileIds.length, status }, 'Failed to update deletion status');
+      throw error;
+    }
+  }
+
+  /**
+   * Check if file exists and is not marked for deletion.
+   *
+   * Used by processing services/workers to exit early if file was deleted.
+   * This prevents race conditions where a file is deleted while processing jobs are queued.
+   *
+   * @param userId - User ID
+   * @param fileId - File ID
+   * @returns True if file exists and is active (not deleted), false otherwise
+   */
+  public async isFileActiveForProcessing(userId: string, fileId: string): Promise<boolean> {
+    this.logger.debug({ userId, fileId }, 'Checking if file is active for processing');
+
+    try {
+      const query = `
+        SELECT 1 as active
+        FROM files
+        WHERE id = @id AND user_id = @user_id AND deletion_status IS NULL
+      `;
+
+      const params: SqlParams = {
+        id: fileId,
+        user_id: userId,
+      };
+
+      const result = await executeQuery<{ active: number }>(query, params);
+      const isActive = result.recordset.length > 0;
+
+      this.logger.debug({ userId, fileId, isActive }, 'File active check complete');
+      return isActive;
+    } catch (error) {
+      const errorInfo = error instanceof Error
+        ? { message: error.message, name: error.name }
+        : { value: String(error) };
+      this.logger.error({ errorInfo, userId, fileId }, 'Failed to check if file is active');
       throw error;
     }
   }

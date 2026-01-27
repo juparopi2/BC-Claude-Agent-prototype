@@ -88,10 +88,10 @@ export class ImageEmbeddingRepository {
    * Upsert an image embedding
    *
    * Creates a new embedding record or updates existing one for the file.
-   * Uses MERGE pattern for atomic upsert operation.
+   * Uses conditional INSERT to prevent FK violations if file was deleted.
    *
    * @param params - Embedding data to upsert
-   * @returns ID of the upserted record
+   * @returns ID of the upserted record, or empty string if file was deleted
    */
   async upsert(params: UpsertImageEmbeddingParams): Promise<string> {
     const { fileId, userId, embedding, dimensions, model, modelVersion, caption, captionConfidence } = params;
@@ -100,7 +100,7 @@ export class ImageEmbeddingRepository {
     const existing = await this.getByFileId(fileId, userId);
 
     if (existing) {
-      // Update existing record
+      // Update existing record (no FK issue - record already exists)
       await executeQuery(
         `UPDATE image_embeddings
          SET embedding = @embedding,
@@ -127,12 +127,14 @@ export class ImageEmbeddingRepository {
       return existing.id;
     }
 
-    // Insert new record
-    const id = uuidv4();
-    await executeQuery(
+    // INSERT with subquery that checks file exists and is not deleted
+    // This prevents FK violation even if file deleted between the check above and now
+    const id = uuidv4().toUpperCase(); // All IDs must be UPPERCASE per CLAUDE.md
+    const result = await executeQuery<{ inserted: number }>(
       `INSERT INTO image_embeddings
        (id, file_id, user_id, embedding, dimensions, model, model_version, caption, caption_confidence, created_at)
-       VALUES (@id, @file_id, @user_id, @embedding, @dimensions, @model, @model_version, @caption, @caption_confidence, GETUTCDATE())`,
+       SELECT @id, @file_id, @user_id, @embedding, @dimensions, @model, @model_version, @caption, @caption_confidence, GETUTCDATE()
+       WHERE EXISTS (SELECT 1 FROM files WHERE id = @file_id AND user_id = @user_id AND deletion_status IS NULL)`,
       {
         id,
         file_id: fileId,
@@ -145,6 +147,12 @@ export class ImageEmbeddingRepository {
         caption_confidence: captionConfidence ?? null,
       }
     );
+
+    // If no rows inserted, file was deleted - log and return gracefully
+    if (result.rowsAffected[0] === 0) {
+      logger.info({ fileId, userId }, 'Skipped image embedding insert - file not found or deleted');
+      return ''; // Return empty ID to indicate no insert
+    }
 
     logger.debug({ id, fileId, userId, hasCaption: !!caption }, 'Image embedding inserted');
     return id;

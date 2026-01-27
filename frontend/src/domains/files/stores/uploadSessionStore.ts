@@ -83,10 +83,37 @@ const initialState: UploadSessionState = {
 };
 
 /**
+ * Phase weights for progress calculation
+ *
+ * Each folder batch goes through phases. We weight progress to show
+ * movement during setup phases (creating folder, registering files)
+ * before actual blob uploads begin.
+ *
+ * Weight distribution per folder (out of 100):
+ * - pending: 0% (not started)
+ * - creating: 5% (folder being created in DB)
+ * - registering: 15% (files being registered - early persistence)
+ * - uploading: 20-100% (20% base + 80% proportional to uploadedFiles/totalFiles)
+ * - processing: 100% (all files uploaded, processing jobs enqueued)
+ * - completed: 100% (done)
+ * - failed: 0% (excluded from progress)
+ */
+const PHASE_WEIGHTS: Record<FolderBatchStatus, number> = {
+  pending: 0,
+  creating: 5,
+  registering: 15,
+  uploading: 20, // Base weight, actual upload progress added dynamically
+  processing: 100,
+  completed: 100,
+  failed: 0,
+};
+
+/**
  * Compute progress from session
  *
- * Progress is now based on FILES (not folders) for smoother UX.
- * This fixes the issue where progress showed "0 of 4" until a whole folder completed.
+ * Uses phase-weighted progress so the UI shows movement during setup phases
+ * (creating folder, registering files) before actual blob uploads begin.
+ * This fixes the issue where progress stayed at 0% until files started uploading.
  */
 function computeProgress(session: UploadSession | null): UploadSessionProgress | null {
   if (!session) return null;
@@ -96,16 +123,32 @@ function computeProgress(session: UploadSession | null): UploadSessionProgress |
       ? session.folderBatches[session.currentFolderIndex]!
       : null;
 
-  // Calculate totals across ALL batches (not just completed folders)
+  // Calculate totals across ALL batches
   let totalFiles = 0;
   let uploadedFiles = 0;
+  let totalWeight = 0;
+  let completedWeight = 0;
+
   for (const batch of session.folderBatches) {
     totalFiles += batch.totalFiles;
     uploadedFiles += batch.uploadedFiles;
+    totalWeight += 100; // Each folder contributes 100 points max
+
+    // Get base weight from phase
+    let batchWeight = PHASE_WEIGHTS[batch.status] ?? 0;
+
+    // If uploading, add progress based on uploadedFiles within this batch
+    if (batch.status === 'uploading' && batch.totalFiles > 0) {
+      // 80% of folder progress comes from actual file uploads (20% is base for starting upload phase)
+      const uploadProgress = (batch.uploadedFiles / batch.totalFiles) * 80;
+      batchWeight = 20 + uploadProgress;
+    }
+
+    completedWeight += batchWeight;
   }
 
-  // Calculate percentage based on file counts for smoother progress
-  const overallPercent = totalFiles > 0 ? Math.round((uploadedFiles / totalFiles) * 100) : 0;
+  // Calculate overall percentage from weighted progress
+  const overallPercent = totalWeight > 0 ? Math.round((completedWeight / totalWeight) * 100) : 0;
 
   return {
     sessionId: session.id,

@@ -126,12 +126,17 @@ export const useFileListStore = create<FileListState & FileListActions>()(
     },
 
     updateFile: (id, updates) => {
-      // Normalize ID to lowercase for case-insensitive matching
+      // Normalize ID to uppercase for case-insensitive matching
       const normalizedId = id.toUpperCase();
       set((state) => {
         const fileExists = state.files.some((file) => file.id.toUpperCase() === normalizedId);
         if (!fileExists) {
-          console.warn('[fileListStore] File not found in store, update will have no effect:', normalizedId);
+          // Downgrade to debug level - this can happen legitimately during folder uploads
+          // when WebSocket events arrive before the file list refresh, or when viewing
+          // a different folder than where files are being uploaded
+          if (process.env.NODE_ENV === 'development') {
+            console.debug('[fileListStore] File not found in store (may arrive via refresh):', normalizedId);
+          }
         }
         return {
           files: state.files.map((file) =>

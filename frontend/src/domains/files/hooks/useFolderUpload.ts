@@ -140,6 +140,7 @@ export function useFolderUpload(): UseFolderUploadReturn {
   const showLimitErrors = useUploadLimitStore((state) => state.showErrors);
   const openUnsupportedModal = useUnsupportedFilesStore((state) => state.openModal);
   const setFiles = useFileListStore((state) => state.setFiles);
+  const addFile = useFileListStore((state) => state.addFile);
   const setSession = useUploadSessionStore((state) => state.setSession);
   const updateBatch = useUploadSessionStore((state) => state.updateBatch);
   const clearSession = useUploadSessionStore((state) => state.clearSession);
@@ -309,6 +310,44 @@ export function useFolderUpload(): UseFolderUploadReturn {
         const { registered, folderBatch: updatedBatch2 } = registerResult.data;
         updateBatch(batch.tempId, updatedBatch2);
 
+        // Add registered files to fileListStore immediately
+        // This prevents "File not found in store" warnings from WebSocket events
+        // that may arrive before the HTTP refresh at the end of the upload
+        const currentViewFolderId = useFolderTreeStore.getState().currentFolderId;
+        const shouldAddToStore = folderId === currentViewFolderId;
+
+        if (shouldAddToStore) {
+          for (const reg of registered) {
+            const meta = fileMetadata.find((m) => m.tempId === reg.tempId);
+            if (meta) {
+              addFile({
+                id: reg.fileId,
+                userId: '', // Will be set by backend, not needed for display
+                name: meta.fileName,
+                mimeType: meta.mimeType,
+                sizeBytes: meta.sizeBytes,
+                blobPath: '', // Not uploaded yet
+                isFolder: false,
+                isFavorite: false,
+                readinessState: 'uploading',
+                processingStatus: 'pending',
+                embeddingStatus: 'pending',
+                processingRetryCount: 0,
+                embeddingRetryCount: 0,
+                lastError: null,
+                failedAt: null,
+                hasExtractedText: false,
+                contentHash: null,
+                deletionStatus: null,
+                deletedAt: null,
+                parentFolderId: folderId,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              });
+            }
+          }
+        }
+
         // Create tempId -> File mapping for correlating uploads
         const tempIdToFile = new Map(fileMetadata.map((m, idx) => [m.tempId, files[idx]!]));
 
@@ -401,7 +440,7 @@ export function useFolderUpload(): UseFolderUploadReturn {
         return { success: false, uploadedCount, failedCount: files.length - uploadedCount };
       }
     },
-    [updateBatch, updateProgress]
+    [addFile, updateBatch, updateProgress]
   );
 
   /**

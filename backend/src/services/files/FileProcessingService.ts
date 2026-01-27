@@ -159,6 +159,19 @@ export class FileProcessingService {
       'Starting file processing'
     );
 
+    // Early exit if file was deleted during queue wait
+    // This prevents race conditions where processing continues after file deletion
+    const { getFileRepository } = await import('@/services/files/repository/FileRepository');
+    const fileRepository = getFileRepository();
+    const isActive = await fileRepository.isFileActiveForProcessing(userId, fileId);
+    if (!isActive) {
+      logger.info(
+        { fileId, userId },
+        'File deleted or marked for deletion, skipping processing'
+      );
+      return; // Graceful exit - job completes successfully
+    }
+
     // Create event context for FileEventEmitter
     const eventCtx = { fileId, userId, sessionId };
 

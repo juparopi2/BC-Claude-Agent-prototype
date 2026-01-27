@@ -2,14 +2,16 @@
  * Unit Tests - MessageQueue Rate Limiting
  *
  * Tests for the rate limiting functionality in MessageQueue.
- * Validates multi-tenant safety (100 jobs/session/hour limit).
+ * Validates multi-tenant safety (1000 jobs/session/hour limit).
  *
  * Key behaviors tested:
- * - Rate limit enforcement (100 jobs/session/hour)
+ * - Rate limit enforcement (1000 jobs/session/hour)
  * - Counter reset after 1 hour
  * - Redis failure handling (fail open)
  * - Session isolation
  * - Rate limit status reporting
+ *
+ * Note: Limit was increased from 100 to 1000 to support bulk uploads.
  *
  * @module __tests__/unit/services/queue/MessageQueue.rateLimit
  */
@@ -182,50 +184,47 @@ describe('MessageQueue Rate Limiting', () => {
   // Rate Limit Enforcement
   // ============================================
   describe('Rate Limit Enforcement', () => {
-    it('should allow up to 100 jobs per session per hour', async () => {
+    it('should allow jobs within rate limit', async () => {
       // Arrange
-      const sessionId = 'session-allow-100';
-      const jobs: MessagePersistenceJob[] = [];
+      const sessionId = 'session-allow-jobs';
 
-      // Act - Add 100 jobs
-      for (let i = 0; i < 100; i++) {
-        const job = createMessageJob(sessionId, { messageId: `msg-${i}` });
-        jobs.push(job);
-        await messageQueue.addMessagePersistence(job);
-      }
-
-      // Assert
-      expect(mockQueue.add).toHaveBeenCalledTimes(100);
-
-      const status = await messageQueue.getRateLimitStatus(sessionId);
-      expect(status.count).toBe(100);
-      expect(status.remaining).toBe(0);
-      expect(status.withinLimit).toBe(true);
-    });
-
-    it('should reject job 101 with rate limit error', async () => {
-      // Arrange
-      const sessionId = 'session-reject-101';
-
-      // Add 100 jobs first
-      for (let i = 0; i < 100; i++) {
+      // Act - Add 50 jobs (well under 1000 limit)
+      for (let i = 0; i < 50; i++) {
         await messageQueue.addMessagePersistence(
           createMessageJob(sessionId, { messageId: `msg-${i}` })
         );
       }
 
-      // Act & Assert - Job 101 should throw
-      const job101 = createMessageJob(sessionId, { messageId: 'msg-101' });
-      await expect(messageQueue.addMessagePersistence(job101)).rejects.toThrow(
+      // Assert
+      expect(mockQueue.add).toHaveBeenCalledTimes(50);
+
+      const status = await messageQueue.getRateLimitStatus(sessionId);
+      expect(status.count).toBe(50);
+      expect(status.remaining).toBe(950);
+      expect(status.withinLimit).toBe(true);
+    });
+
+    it('should reject jobs when rate limit exceeded', async () => {
+      // Arrange
+      const sessionId = 'session-reject-over-limit';
+
+      // Mock Redis to simulate we're already at the limit
+      // When incr is called, return 1001 (over the 1000 limit)
+      mockRedis.incr.mockResolvedValueOnce(1001);
+
+      // Act & Assert - Should throw
+      const job = createMessageJob(sessionId, { messageId: 'msg-over-limit' });
+      await expect(messageQueue.addMessagePersistence(job)).rejects.toThrow(
         /Rate limit exceeded for session/
       );
 
       // Verify error message contains session ID and limit
+      mockRedis.incr.mockResolvedValueOnce(1002);
       try {
-        await messageQueue.addMessagePersistence(job101);
+        await messageQueue.addMessagePersistence(job);
       } catch (error) {
         expect((error as Error).message).toContain(sessionId);
-        expect((error as Error).message).toContain('100');
+        expect((error as Error).message).toContain('1000');
       }
     });
 
@@ -253,10 +252,10 @@ describe('MessageQueue Rate Limiting', () => {
       const statusB = await messageQueue.getRateLimitStatus(sessionB);
 
       expect(statusA.count).toBe(50);
-      expect(statusA.remaining).toBe(50);
+      expect(statusA.remaining).toBe(950);
 
       expect(statusB.count).toBe(30);
-      expect(statusB.remaining).toBe(70);
+      expect(statusB.remaining).toBe(970);
     });
 
     it('should not affect other sessions when one is rate limited', async () => {
@@ -264,8 +263,8 @@ describe('MessageQueue Rate Limiting', () => {
       const limitedSession = 'session-limited';
       const normalSession = 'session-normal';
 
-      // Max out the limited session
-      for (let i = 0; i < 100; i++) {
+      // Add some jobs to limited session (simulating partial usage)
+      for (let i = 0; i < 50; i++) {
         await messageQueue.addMessagePersistence(
           createMessageJob(limitedSession, { messageId: `limited-${i}` })
         );
@@ -278,7 +277,7 @@ describe('MessageQueue Rate Limiting', () => {
       // Assert
       const normalStatus = await messageQueue.getRateLimitStatus(normalSession);
       expect(normalStatus.count).toBe(1);
-      expect(normalStatus.remaining).toBe(99);
+      expect(normalStatus.remaining).toBe(999);
     });
 
     it('should return remaining quota in rate limit status', async () => {
@@ -298,8 +297,8 @@ describe('MessageQueue Rate Limiting', () => {
       // Assert
       expect(status).toEqual({
         count: 75,
-        limit: 100,
-        remaining: 25,
+        limit: 1000,
+        remaining: 925,
         withinLimit: true,
       });
     });
@@ -308,17 +307,13 @@ describe('MessageQueue Rate Limiting', () => {
       // Arrange
       const sessionId = 'session-log-violation';
 
-      // Max out the session
-      for (let i = 0; i < 100; i++) {
-        await messageQueue.addMessagePersistence(
-          createMessageJob(sessionId, { messageId: `msg-${i}` })
-        );
-      }
+      // Mock Redis to simulate we're already over the limit
+      mockRedis.incr.mockResolvedValueOnce(1001);
 
-      // Act - Try to add one more
+      // Act - Try to add a job (will be rejected)
       try {
         await messageQueue.addMessagePersistence(
-          createMessageJob(sessionId, { messageId: 'msg-101' })
+          createMessageJob(sessionId, { messageId: 'msg-over-limit' })
         );
       } catch {
         // Expected to throw
@@ -329,7 +324,7 @@ describe('MessageQueue Rate Limiting', () => {
         'Rate limit exceeded for session',
         expect.objectContaining({
           sessionId,
-          limit: 100,
+          limit: 1000,
         })
       );
     });
@@ -398,8 +393,8 @@ describe('MessageQueue Rate Limiting', () => {
       // Assert - Returns defaults
       expect(status).toEqual({
         count: 0,
-        limit: 100,
-        remaining: 100,
+        limit: 1000,
+        remaining: 1000,
         withinLimit: true,
       });
     });
@@ -499,45 +494,46 @@ describe('MessageQueue Rate Limiting', () => {
       expect(status.count).toBe(10);
     });
 
-    it('should handle rate limit at exact boundary (count = 100)', async () => {
+    it('should handle rate limit at exact boundary (count = 1000)', async () => {
       // Arrange
       const sessionId = 'session-boundary';
 
-      // Add exactly 100 jobs
-      for (let i = 0; i < 100; i++) {
-        await messageQueue.addMessagePersistence(
-          createMessageJob(sessionId, { messageId: `msg-${i}` })
-        );
-      }
+      // Mock Redis to simulate we're exactly at 1000
+      mockRedis.incr.mockResolvedValueOnce(1000);
+      mockRedis.get.mockResolvedValueOnce('1000');
+
+      // Add one job (will be at exactly 1000)
+      await messageQueue.addMessagePersistence(
+        createMessageJob(sessionId, { messageId: 'msg-boundary' })
+      );
 
       // Assert - Status shows exactly at limit
       const status = await messageQueue.getRateLimitStatus(sessionId);
-      expect(status.count).toBe(100);
+      expect(status.count).toBe(1000);
       expect(status.remaining).toBe(0);
-      expect(status.withinLimit).toBe(true); // 100 is still within limit (<=)
+      expect(status.withinLimit).toBe(true); // 1000 is still within limit (<=)
     });
 
-    it('should handle rate limit just over boundary (count = 101)', async () => {
+    it('should handle rate limit just over boundary (count = 1001)', async () => {
       // Arrange
       const sessionId = 'session-over-boundary';
 
-      // This simulates counter already being at 100
-      for (let i = 0; i < 100; i++) {
-        await messageQueue.addMessagePersistence(
-          createMessageJob(sessionId, { messageId: `msg-${i}` })
-        );
-      }
+      // Mock Redis to simulate we're already over the limit
+      mockRedis.incr.mockResolvedValueOnce(1001);
 
-      // Try to add 101st
+      // Try to add a job (will be rejected because count > 1000)
       await expect(
         messageQueue.addMessagePersistence(
-          createMessageJob(sessionId, { messageId: 'msg-100' })
+          createMessageJob(sessionId, { messageId: 'msg-over' })
         )
       ).rejects.toThrow();
 
+      // Mock get for status check
+      mockRedis.get.mockResolvedValueOnce('1001');
+
       // Status check still works
       const status = await messageQueue.getRateLimitStatus(sessionId);
-      expect(status.count).toBe(101); // Counter was incremented even though job was rejected
+      expect(status.count).toBe(1001); // Counter was incremented even though job was rejected
       expect(status.withinLimit).toBe(false);
     });
   });
@@ -556,8 +552,8 @@ describe('MessageQueue Rate Limiting', () => {
       // Assert
       expect(status).toEqual({
         count: 0,
-        limit: 100,
-        remaining: 100,
+        limit: 1000,
+        remaining: 1000,
         withinLimit: true,
       });
     });
@@ -579,23 +575,20 @@ describe('MessageQueue Rate Limiting', () => {
       // Assert
       expect(status).toEqual({
         count: 42,
-        limit: 100,
-        remaining: 58,
+        limit: 1000,
+        remaining: 958,
         withinLimit: true,
       });
     });
 
     it('should return correct status for rate-limited session', async () => {
-      // Arrange - Max out session plus one more attempt
+      // Arrange - Mock Redis to simulate over limit
       const sessionId = 'session-maxed';
 
-      for (let i = 0; i < 100; i++) {
-        await messageQueue.addMessagePersistence(
-          createMessageJob(sessionId, { messageId: `msg-${i}` })
-        );
-      }
+      // First call simulates adding a job that puts us over limit
+      mockRedis.incr.mockResolvedValueOnce(1001);
 
-      // Try to exceed (will fail)
+      // Try to add (will fail)
       try {
         await messageQueue.addMessagePersistence(
           createMessageJob(sessionId, { messageId: 'msg-over' })
@@ -604,11 +597,14 @@ describe('MessageQueue Rate Limiting', () => {
         // Expected
       }
 
+      // Mock get for status check
+      mockRedis.get.mockResolvedValueOnce('1001');
+
       // Act
       const status = await messageQueue.getRateLimitStatus(sessionId);
 
       // Assert
-      expect(status.count).toBeGreaterThan(100);
+      expect(status.count).toBeGreaterThan(1000);
       expect(status.remaining).toBe(0);
       expect(status.withinLimit).toBe(false);
     });

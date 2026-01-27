@@ -132,9 +132,12 @@ export type {
   FileWebSocketEvent,
   // Bulk Delete types (Queue-based deletion)
   DeletionReason,
+  DeletionStatus,
   FileDeletionJobData,
   BulkDeleteAcceptedResponse,
+  SoftDeleteResult,
   FileDeletedEvent,
+  FileDeletionStartedEvent,
   // Bulk Upload types (Queue-based upload with SAS URLs)
   BulkUploadJobData,
   BulkUploadFileMetadata,

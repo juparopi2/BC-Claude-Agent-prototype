@@ -171,9 +171,9 @@ export class EmbeddingGenerationWorker {
         vectorSearchService = VectorSearchService.getInstance();
       }
 
-      // 2. Generate embeddings
+      // 2. Generate embeddings (pass fileId for proper usage tracking)
       const texts = chunks.map(c => c.text);
-      const embeddings = await embeddingService.generateTextEmbeddingsBatch(texts, userId);
+      const embeddings = await embeddingService.generateTextEmbeddingsBatch(texts, userId, fileId);
 
       // 3. Validate embeddings count
       if (embeddings.length !== chunks.length) {

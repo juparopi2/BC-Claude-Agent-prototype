@@ -11,6 +11,7 @@ import {
   Star,
   FileCode,
   FileJson,
+  Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -120,6 +121,10 @@ function formatDate(isoDate: string): string {
 interface FileItemProps extends Omit<React.HTMLAttributes<HTMLDivElement>, 'onSelect' | 'onDoubleClick'> {
   file: ParsedFile;
   isSelected?: boolean;
+  /** Whether the file is currently being deleted (soft delete in progress) */
+  isDeleting?: boolean;
+  /** Whether this file has keyboard focus (keyboard navigation) */
+  isFocused?: boolean;
   onSelect: (fileId: string, multi: boolean) => void;
   onDoubleClick: (file: ParsedFile) => void;
   onFavoriteToggle: (fileId: string) => void;
@@ -144,6 +149,8 @@ interface FileItemProps extends Omit<React.HTMLAttributes<HTMLDivElement>, 'onSe
 export const FileItem = memo(forwardRef<HTMLDivElement, FileItemProps>(function FileItem({
   file,
   isSelected,
+  isDeleting,
+  isFocused,
   onSelect,
   onDoubleClick,
   onFavoriteToggle,
@@ -154,17 +161,24 @@ export const FileItem = memo(forwardRef<HTMLDivElement, FileItemProps>(function 
 }, ref) {
   const handleClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
+      // Don't allow interaction while deleting
+      if (isDeleting) {
+        e.preventDefault();
+        return;
+      }
       onClick?.(e);
       if (!e.defaultPrevented) {
         onSelect(file.id, e.ctrlKey || e.metaKey);
       }
     },
-    [file.id, onSelect, onClick]
+    [file.id, onSelect, onClick, isDeleting]
   );
 
   const handleDoubleClick = useCallback(() => {
+    // Don't allow interaction while deleting
+    if (isDeleting) return;
     onDoubleClick(file);
-  }, [file, onDoubleClick]);
+  }, [file, onDoubleClick, isDeleting]);
 
   const handleFavoriteClick = useCallback(
     (e: React.MouseEvent) => {
@@ -200,10 +214,12 @@ export const FileItem = memo(forwardRef<HTMLDivElement, FileItemProps>(function 
     <div
       ref={ref}
       className={cn(
-        'group flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-colors',
+        'group relative flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-colors',
         'hover:bg-accent/50',
         isSelected && 'bg-accent ring-1 ring-primary/20',
+        isFocused && 'ring-2 ring-primary ring-offset-1',
         isProcessing && 'opacity-60',
+        isDeleting && 'opacity-50 pointer-events-none',
         className
       )}
       onClick={handleClick}
@@ -212,9 +228,17 @@ export const FileItem = memo(forwardRef<HTMLDivElement, FileItemProps>(function 
       role="button"
       tabIndex={0}
       aria-pressed={isSelected}
-      aria-label={`${file.isFolder ? 'Folder' : 'File'}: ${file.name}`}
+      aria-label={`${file.isFolder ? 'Folder' : 'File'}: ${file.name}${isDeleting ? ' (deleting)' : ''}`}
+      aria-busy={isDeleting}
       {...props}
     >
+      {/* Deleting overlay */}
+      {isDeleting && (
+        <div className="absolute inset-0 flex items-center justify-center bg-background/50 rounded-lg z-10">
+          <Loader2 className="size-5 animate-spin text-muted-foreground" />
+        </div>
+      )}
+
       {/* Icon */}
       <FileIcon className="shrink-0" file={file} />
 

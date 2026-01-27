@@ -252,6 +252,7 @@ export interface UploadSession {
  * Computed progress information for an upload session
  *
  * Derived from UploadSession for easy progress bar display.
+ * Progress is calculated based on files (not folders) for smoother UX.
  *
  * @example
  * ```typescript
@@ -264,6 +265,8 @@ export interface UploadSession {
  *   completedFolders: 2,
  *   failedFolders: 0,
  *   status: 'active',
+ *   totalFiles: 150,
+ *   uploadedFiles: 50,
  * };
  * ```
  */
@@ -280,7 +283,7 @@ export interface UploadSessionProgress {
   /** Current folder being processed (null if completed/failed) */
   currentFolder: FolderBatch | null;
 
-  /** Overall progress percentage (0-100) */
+  /** Overall progress percentage (0-100), based on file counts */
   overallPercent: number;
 
   /** Completed folder count */
@@ -291,6 +294,12 @@ export interface UploadSessionProgress {
 
   /** Session status */
   status: UploadSessionStatus;
+
+  /** Total files across all folders in the session */
+  totalFiles: number;
+
+  /** Files successfully uploaded across all folders */
+  uploadedFiles: number;
 }
 
 // ============================================================================

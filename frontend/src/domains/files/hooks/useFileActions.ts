@@ -76,6 +76,8 @@ export function useFileActions(): UseFileActionsReturn {
   const addFile = useFileListStore((state) => state.addFile);
   const updateFileInStore = useFileListStore((state) => state.updateFile);
   const deleteFilesFromStore = useFileListStore((state) => state.deleteFiles);
+  const markAsDeleting = useFileListStore((state) => state.markAsDeleting);
+  const cancelDeletion = useFileListStore((state) => state.cancelDeletion);
   const files = useFileListStore((state) => state.files);
 
   // Get folder tree store for updating tree when folders change
@@ -139,14 +141,19 @@ export function useFileActions(): UseFileActionsReturn {
   );
 
   /**
-   * Delete files or folders (bulk delete via queue)
+   * Delete files or folders (two-phase soft delete)
    *
-   * Uses the batch deletion endpoint which queues jobs for async processing.
-   * Files are optimistically removed from the UI immediately.
-   * Actual deletion status is emitted via WebSocket (see useFileDeleteEvents).
+   * Phase 1 (Synchronous): Marks files for deletion in DB
+   * - Files immediately hidden from queries and RAG searches
+   * - Returns 200 OK when marking is complete
+   *
+   * Phase 2 (Async): Physical deletion via queue workers
+   * - Deletion status emitted via WebSocket (see useFileDeleteEvents)
+   *
+   * This eliminates the race condition where files reappear after refresh.
    *
    * @param fileIds - Array of file/folder IDs to delete
-   * @returns true if jobs were enqueued successfully, false on error
+   * @returns true if files were marked for deletion, false on error
    */
   const deleteFiles = useCallback(
     async (fileIds: string[]): Promise<boolean> => {
@@ -155,31 +162,37 @@ export function useFileActions(): UseFileActionsReturn {
       setIsLoading(true);
       setError(null);
 
+      // Mark files as "deleting" in UI (shows overlay)
+      markAsDeleting(fileIds);
+
       try {
         const fileApi = getFileApiClient();
 
-        // Use bulk delete endpoint (returns 202 Accepted)
+        // Use bulk delete endpoint (returns 200 OK with SoftDeleteResult)
         const result = await fileApi.deleteFilesBatch({ fileIds });
 
         if (!result.success) {
+          // Revert UI state on error
+          cancelDeletion(fileIds);
           setError(result.error.message);
           return false;
         }
 
-        // Jobs enqueued - optimistically remove from UI
-        // Actual deletion happens async, errors reported via WebSocket
+        // Phase 1 complete - files are now marked for deletion
+        // They won't reappear even if user refreshes
+        // Phase 2 (physical deletion) happens async via queue workers
+        // WebSocket events will notify when each file is actually deleted
 
-        // Find which files are folders before deleting from store
+        // Find which files are folders before removing from store
         const deletedFolderIds = files
           .filter((f) => fileIds.includes(f.id) && f.isFolder)
           .map((f) => f.id);
 
-        // Remove from file list store
+        // Remove from file list store (files are hidden from server queries anyway)
         deleteFilesFromStore(fileIds);
 
         // Update folder tree cache - remove deleted folders from their parents
         if (deletedFolderIds.length > 0) {
-          // For each deleted folder, remove it from its parent's children in the tree cache
           deletedFolderIds.forEach((folderId) => {
             const file = files.find((f) => f.id === folderId);
             if (file) {
@@ -195,6 +208,8 @@ export function useFileActions(): UseFileActionsReturn {
 
         return true;
       } catch (err) {
+        // Revert UI state on error
+        cancelDeletion(fileIds);
         const message = err instanceof Error ? err.message : 'Failed to delete files';
         setError(message);
         return false;
@@ -202,7 +217,7 @@ export function useFileActions(): UseFileActionsReturn {
         setIsLoading(false);
       }
     },
-    [files, deleteFilesFromStore, setTreeFolders, getChildFolders]
+    [files, markAsDeleting, cancelDeletion, deleteFilesFromStore, setTreeFolders, getChildFolders]
   );
 
   /**

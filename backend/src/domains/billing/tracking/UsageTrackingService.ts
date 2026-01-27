@@ -660,7 +660,7 @@ export class UsageTrackingService {
       let validSessionId = sessionId;
       let finalMetadata = metadata;
 
-      console.log(`[UsageTrackingService] Validating sessionId: ${sessionId}`);
+      this.logger.info({ sessionId }, 'Validating sessionId');
 
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       

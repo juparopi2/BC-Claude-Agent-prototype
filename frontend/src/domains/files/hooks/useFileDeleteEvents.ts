@@ -14,7 +14,9 @@ import {
   FILE_WS_EVENTS,
   type FileWebSocketEvent,
   type FileDeletedEvent,
+  type FileDeletionStartedEvent,
 } from '@bc-agent/shared';
+import { useFileListStore } from '../stores/fileListStore';
 
 /**
  * Options for useFileDeleteEvents hook
@@ -26,6 +28,8 @@ export interface UseFileDeleteEventsOptions {
   onDeletionFailed?: (fileId: string, error: string) => void;
   /** Callback when deletion succeeds (for custom success handling) */
   onDeletionSuccess?: (fileId: string) => void;
+  /** Callback when deletion starts (Phase 2 begins) */
+  onDeletionStarted?: (fileId: string, batchId?: string) => void;
 }
 
 /**
@@ -58,12 +62,17 @@ export interface UseFileDeleteEventsOptions {
 export function useFileDeleteEvents(
   options: UseFileDeleteEventsOptions = {}
 ): void {
-  const { enabled = true, onDeletionFailed, onDeletionSuccess } = options;
+  const { enabled = true, onDeletionFailed, onDeletionSuccess, onDeletionStarted } = options;
+
+  // Get store actions for handling deletion state
+  const confirmDeletion = useFileListStore((state) => state.confirmDeletion);
+  const cancelDeletion = useFileListStore((state) => state.cancelDeletion);
 
   // Use refs for callbacks to avoid re-subscribing on every render
   const callbacksRef = useRef({
     onDeletionFailed,
     onDeletionSuccess,
+    onDeletionStarted,
   });
 
   // Update refs when callbacks change
@@ -71,14 +80,22 @@ export function useFileDeleteEvents(
     callbacksRef.current = {
       onDeletionFailed,
       onDeletionSuccess,
+      onDeletionStarted,
     };
-  }, [onDeletionFailed, onDeletionSuccess]);
+  }, [onDeletionFailed, onDeletionSuccess, onDeletionStarted]);
 
   /**
    * Handle file status events (file:status channel)
    */
   const handleFileStatusEvent = useCallback((event: FileWebSocketEvent) => {
-    // Only handle deletion events
+    // Handle deletion started event (Phase 2 begins)
+    if (event.type === FILE_WS_EVENTS.DELETION_STARTED) {
+      const startedEvent = event as FileDeletionStartedEvent;
+      callbacksRef.current.onDeletionStarted?.(startedEvent.fileId, startedEvent.batchId);
+      return;
+    }
+
+    // Handle deletion completed event
     if (event.type !== FILE_WS_EVENTS.DELETED) {
       return;
     }
@@ -87,17 +104,20 @@ export function useFileDeleteEvents(
     const { fileId, success, error } = deleteEvent;
 
     if (success) {
-      // Deletion succeeded - call success callback if provided
+      // Physical deletion succeeded - confirm in store (removes from deleting set)
+      confirmDeletion(fileId);
+      // Call success callback if provided
       callbacksRef.current.onDeletionSuccess?.(fileId);
     } else {
-      // Deletion failed - show error toast
+      // Deletion failed - restore file visibility and show error
+      cancelDeletion([fileId]);
       const errorMessage = error || 'Failed to delete file';
       toast.error(`Delete failed: ${errorMessage}`);
 
       // Call failure callback if provided
       callbacksRef.current.onDeletionFailed?.(fileId, errorMessage);
     }
-  }, []);
+  }, [confirmDeletion, cancelDeletion]);
 
   // Subscribe to WebSocket events
   useEffect(() => {

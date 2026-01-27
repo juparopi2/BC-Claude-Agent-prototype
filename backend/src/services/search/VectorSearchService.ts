@@ -198,10 +198,12 @@ export class VectorSearchService {
     const { embedding, userId, top = 10, filter } = query;
 
     // Security: Always enforce userId filter (D24: normalize userId)
+    // Also exclude files marked for deletion (fileStatus ne 'deleting')
     const normalizedUserId = this.normalizeUserId(userId);
+    const baseFilter = `userId eq '${normalizedUserId}' and (fileStatus ne 'deleting' or fileStatus eq null)`;
     const searchFilter = filter
-      ? `(userId eq '${normalizedUserId}') and (${filter})`
-      : `userId eq '${normalizedUserId}'`;
+      ? `(${baseFilter}) and (${filter})`
+      : baseFilter;
 
     const searchOptions: Record<string, unknown> = {
       filter: searchFilter,
@@ -252,8 +254,9 @@ export class VectorSearchService {
     const { text, embedding, userId, top = 10 } = query;
 
     // Security: Always enforce userId filter (D24: normalize userId)
+    // Also exclude files marked for deletion (fileStatus ne 'deleting')
     const normalizedUserId = this.normalizeUserId(userId);
-    const searchFilter = `userId eq '${normalizedUserId}'`;
+    const searchFilter = `userId eq '${normalizedUserId}' and (fileStatus ne 'deleting' or fileStatus eq null)`;
 
     const searchOptions: Record<string, unknown> = {
       filter: searchFilter,
@@ -496,8 +499,9 @@ export class VectorSearchService {
     const { embedding, userId, top = 10, minScore = 0 } = query;
 
     // Security: Always enforce userId filter + isImage filter (D24: normalize userId)
+    // Also exclude files marked for deletion (fileStatus ne 'deleting')
     const normalizedUserId = this.normalizeUserId(userId);
-    const searchFilter = `userId eq '${normalizedUserId}' and isImage eq true`;
+    const searchFilter = `userId eq '${normalizedUserId}' and isImage eq true and (fileStatus ne 'deleting' or fileStatus eq null)`;
 
     const searchOptions: Record<string, unknown> = {
       filter: searchFilter,
@@ -618,8 +622,9 @@ export class VectorSearchService {
     } = query;
 
     // Security: Always enforce userId filter (D24: normalize userId)
+    // Also exclude files marked for deletion (fileStatus ne 'deleting')
     const normalizedUserId = this.normalizeUserId(userId);
-    const searchFilter = `userId eq '${normalizedUserId}'`;
+    const searchFilter = `userId eq '${normalizedUserId}' and (fileStatus ne 'deleting' or fileStatus eq null)`;
 
     // Build search options with semantic ranker
     const searchOptions: Record<string, unknown> = {
@@ -750,6 +755,93 @@ export class VectorSearchService {
       { userId, searchType, resultCount, topK },
       'Vector search usage tracked'
     );
+  }
+
+  // ===== Soft Delete Support Methods =====
+
+  /**
+   * Mark all documents for a file as "deleting" in AI Search
+   *
+   * This is Phase 2 of the soft delete workflow. After marking in DB (Phase 1),
+   * we update AI Search so these documents are excluded from RAG searches.
+   *
+   * Uses mergeDocuments to update only the fileStatus field without replacing
+   * the entire document.
+   *
+   * @param fileId - File ID to mark as deleting
+   * @param userId - User ID (for logging and verification)
+   * @returns Number of documents updated
+   */
+  async markFileAsDeleting(fileId: string, userId: string): Promise<number> {
+    if (!this.searchClient) {
+      await this.initializeClients();
+    }
+    if (!this.searchClient) {
+      throw new Error('Failed to initialize search client');
+    }
+
+    const normalizedUserId = this.normalizeUserId(userId);
+    const normalizedFileId = fileId.toUpperCase();
+    const lowercaseFileId = fileId.toLowerCase();
+
+    // Find all chunks for this file (both uppercase and lowercase for legacy data)
+    const searchOptions = {
+      filter: `(userId eq '${normalizedUserId}') and (fileId eq '${lowercaseFileId}' or fileId eq '${normalizedFileId}')`,
+      select: ['chunkId'],
+    };
+
+    logger.info(
+      { fileId, userId, normalizedUserId },
+      'Marking file as deleting in AI Search'
+    );
+
+    const searchResults = await this.searchClient.search('*', searchOptions);
+
+    const chunkIds: string[] = [];
+    for await (const result of searchResults.results) {
+      const doc = result.document as { chunkId?: string };
+      if (doc.chunkId) {
+        chunkIds.push(doc.chunkId);
+      }
+    }
+
+    if (chunkIds.length === 0) {
+      logger.info({ fileId, userId }, 'No documents found to mark as deleting');
+      return 0;
+    }
+
+    // Create merge documents with just the fileStatus update
+    const mergeDocuments = chunkIds.map(chunkId => ({
+      chunkId,
+      fileStatus: 'deleting',
+    }));
+
+    // Batch update in chunks of 1000 (Azure Search limit)
+    const batchSize = 1000;
+    let updatedCount = 0;
+
+    for (let i = 0; i < mergeDocuments.length; i += batchSize) {
+      const batch = mergeDocuments.slice(i, i + batchSize);
+      const result = await this.searchClient.mergeDocuments(batch);
+
+      const succeeded = result.results.filter(r => r.succeeded).length;
+      updatedCount += succeeded;
+
+      const failed = result.results.filter(r => !r.succeeded);
+      if (failed.length > 0) {
+        logger.warn(
+          { fileId, userId, failedCount: failed.length, batch: i / batchSize },
+          'Some documents failed to update fileStatus'
+        );
+      }
+    }
+
+    logger.info(
+      { fileId, userId, updatedCount, totalDocs: chunkIds.length },
+      'File marked as deleting in AI Search'
+    );
+
+    return updatedCount;
   }
 
   // ===== Orphan Detection & Verification Methods (D21, D22, D23) =====

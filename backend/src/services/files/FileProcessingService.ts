@@ -33,7 +33,7 @@ import { TextProcessor } from './processors/TextProcessor';
 import { PdfProcessor } from './processors/PdfProcessor';
 import { DocxProcessor } from './processors/DocxProcessor';
 import { ExcelProcessor } from './processors/ExcelProcessor';
-import { ImageProcessor } from './processors/ImageProcessor';
+import { ImageProcessor, trackImageUsage, type ImageMetadata } from './processors/ImageProcessor';
 import { PROCESSING_STATUS } from '@bc-agent/shared';
 import type { DocumentProcessor, ExtractionResult } from './processors/types';
 import type { FileProcessingJob } from '@/infrastructure/queue/MessageQueue';
@@ -221,6 +221,12 @@ export class FileProcessingService {
           result.imageCaption,
           result.imageCaptionConfidence
         );
+
+        // Track image embedding usage with correct IDs (fire-and-forget)
+        // Tracking was skipped in ImageProcessor because it didn't have real IDs
+        trackImageUsage(userId, fileId, result.metadata as ImageMetadata).catch((err) => {
+          logger.warn({ err, fileId, userId }, 'Failed to track image embedding usage');
+        });
       }
 
       // Step 5: Update database with extracted text and 'completed' status (emit 90% progress)

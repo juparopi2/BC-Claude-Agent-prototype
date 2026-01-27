@@ -9,6 +9,18 @@ import { createChildLogger } from '@/shared/utils/logger';
 
 const logger = createChildLogger({ service: 'EmbeddingService' });
 
+/**
+ * Options for embedding generation methods
+ */
+export interface EmbeddingOptions {
+  /**
+   * Skip usage tracking for this operation.
+   * Use when tracking will be done elsewhere with correct IDs
+   * (e.g., in FileProcessingService after persistence).
+   */
+  skipTracking?: boolean;
+}
+
 export class EmbeddingService {
   private static instance?: EmbeddingService;
   private config: EmbeddingConfig;
@@ -142,8 +154,14 @@ export class EmbeddingService {
    * @param imageBuffer The image binary data
    * @param userId The ID of the user requesting the embedding
    * @param fileId Optional file ID for tracking (defaults to 'direct')
+   * @param options Optional settings (e.g., skipTracking)
    */
-  async generateImageEmbedding(imageBuffer: Buffer, userId: string, fileId = 'direct'): Promise<ImageEmbedding> {
+  async generateImageEmbedding(
+    imageBuffer: Buffer,
+    userId: string,
+    fileId = 'direct',
+    options?: EmbeddingOptions
+  ): Promise<ImageEmbedding> {
       if (!this.config.visionEndpoint || !this.config.visionKey) {
           throw new Error('Azure Vision not configured');
       }
@@ -168,11 +186,13 @@ export class EmbeddingService {
 
       const data = await response.json() as { vector: number[]; modelVersion: string };
 
-      // Track usage for billing (fire-and-forget)
-      // For images, we track count=1 as the "tokens" parameter
-      this.trackImageEmbeddingUsage(userId, fileId, imageBuffer.length).catch((err) => {
-        logger.warn({ err, userId, fileId }, 'Failed to track image embedding usage');
-      });
+      // Track usage for billing (fire-and-forget) - skip if requested
+      // Tracking may be done elsewhere with correct IDs (e.g., FileProcessingService)
+      if (!options?.skipTracking) {
+        this.trackImageEmbeddingUsage(userId, fileId, imageBuffer.length).catch((err) => {
+          logger.warn({ err, userId, fileId }, 'Failed to track image embedding usage');
+        });
+      }
 
       // Response format: { "vector": [...], "modelVersion": "..." }
       return {
@@ -473,12 +493,14 @@ export class EmbeddingService {
    * @param imageBuffer The image binary data (JPEG, PNG, GIF, or WebP)
    * @param userId The ID of the user (for tracking)
    * @param fileId Optional file ID for tracking (defaults to 'direct')
+   * @param options Optional settings (e.g., skipTracking)
    * @returns The generated caption text, or null if captioning fails gracefully
    */
   async generateImageCaption(
     imageBuffer: Buffer,
     userId: string,
-    fileId = 'direct'
+    fileId = 'direct',
+    options?: EmbeddingOptions
   ): Promise<ImageCaptionResult> {
     if (!this.config.visionEndpoint || !this.config.visionKey) {
       throw new Error('Azure Vision not configured');
@@ -516,10 +538,13 @@ export class EmbeddingService {
     const caption = data.captionResult?.text || '';
     const confidence = data.captionResult?.confidence || 0;
 
-    // Track usage for billing (fire-and-forget)
-    this.trackImageCaptionUsage(userId, fileId, imageBuffer.length).catch((err) => {
-      logger.warn({ err, userId, fileId }, 'Failed to track image caption usage');
-    });
+    // Track usage for billing (fire-and-forget) - skip if requested
+    // Tracking may be done elsewhere with correct IDs (e.g., FileProcessingService)
+    if (!options?.skipTracking) {
+      this.trackImageCaptionUsage(userId, fileId, imageBuffer.length).catch((err) => {
+        logger.warn({ err, userId, fileId }, 'Failed to track image caption usage');
+      });
+    }
 
     logger.debug(
       { userId, fileId, captionLength: caption.length, confidence },

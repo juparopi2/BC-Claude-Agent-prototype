@@ -13,7 +13,7 @@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { FolderUp, Pause, X, Clock, Zap, CheckCircle2, AlertCircle, Folder } from 'lucide-react';
+import { FolderUp, Pause, X, CheckCircle2, AlertCircle, Folder } from 'lucide-react';
 import type { FolderUploadProgress } from '@/src/domains/files/types/folderUpload.types';
 import { useUploadSessionStore } from '@/src/domains/files/stores/uploadSessionStore';
 import { cn } from '@/lib/utils';
@@ -27,42 +27,6 @@ interface FolderUploadProgressModalProps {
   onPause: () => void;
   /** Callback to cancel upload */
   onCancel: () => void;
-}
-
-/**
- * Get human-readable phase name.
- * Returns null for phases where the label is redundant (e.g., during uploading
- * the progress bar and folder info already convey the status).
- */
-function getPhaseLabel(phase: FolderUploadProgress['phase']): string | null {
-  switch (phase) {
-    case 'idle':
-      return 'Preparing...';
-    case 'reading':
-      return 'Reading folder...';
-    case 'validating':
-      return 'Validating files...';
-    case 'session-init':
-      return 'Initializing session...';
-    case 'creating-folders':
-      return 'Creating folder structure...';
-    case 'registering':
-      return 'Registering files...';
-    case 'getting-sas':
-      return 'Preparing upload...';
-    case 'uploading':
-      return null; // Progress bar and folder info are sufficient
-    case 'completing':
-      return 'Completing...';
-    case 'paused':
-      return 'Paused';
-    case 'done':
-      return 'Upload complete!';
-    case 'error':
-      return 'Upload failed';
-    default:
-      return 'Processing...';
-  }
 }
 
 /**
@@ -90,29 +54,12 @@ function getBatchStatusLabel(status: string): string {
 }
 
 /**
- * Format ETA in human-readable format
- */
-function formatEta(seconds: number): string {
-  if (seconds <= 0) return '--';
-  if (seconds < 60) return `${seconds}s`;
-  if (seconds < 3600) {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}m ${secs}s`;
-  }
-  const hours = Math.floor(seconds / 3600);
-  const mins = Math.floor((seconds % 3600) / 60);
-  return `${hours}h ${mins}m`;
-}
-
-/**
  * Modal for displaying folder upload progress
  *
  * Shows folder-by-folder progress with:
  * - Current folder name and index
  * - Files uploaded in current folder
- * - Overall progress across all folders
- * - Speed and ETA estimates
+ * - Overall progress across all folders (file count based)
  *
  * @example
  * ```tsx
@@ -163,13 +110,6 @@ export function FolderUploadProgressModal({
         </DialogHeader>
 
         <div className="space-y-4 py-4">
-          {/* Phase indicator - only show if label is not null */}
-          {getPhaseLabel(progress.phase) && (
-            <div className="text-sm text-muted-foreground text-center">
-              {getPhaseLabel(progress.phase)}
-            </div>
-          )}
-
           {/* Current folder info (folder-based progress) */}
           {currentFolder && progress.phase === 'uploading' && (
             <div className="bg-muted/50 rounded-lg p-3 space-y-2">
@@ -260,17 +200,6 @@ export function FolderUploadProgressModal({
             </div>
           )}
 
-          {/* Stats row */}
-          <div className="flex justify-center gap-6 text-xs text-muted-foreground">
-            <div className="flex items-center gap-1">
-              <Zap className="size-3" />
-              <span>{progress.speed} files/sec</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <Clock className="size-3" />
-              <span>ETA: {formatEta(progress.eta)}</span>
-            </div>
-          </div>
         </div>
 
         {/* Actions */}

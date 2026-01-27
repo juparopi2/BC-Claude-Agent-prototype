@@ -141,6 +141,9 @@ export type FolderUploadPhase =
 
 /**
  * Progress information for folder upload
+ *
+ * Simplified: removed speed/ETA for cleaner UX.
+ * Shows file count and percentage only.
  */
 export interface FolderUploadProgress {
   /** Current phase of the upload */
@@ -163,12 +166,6 @@ export interface FolderUploadProgress {
 
   /** Overall progress percentage (0-100) */
   percent: number;
-
-  /** Upload speed in files per second */
-  speed: number;
-
-  /** Estimated time remaining in seconds */
-  eta: number;
 
   /** Current file being uploaded */
   currentFile?: string;

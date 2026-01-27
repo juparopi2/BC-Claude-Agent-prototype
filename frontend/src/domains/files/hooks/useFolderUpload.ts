@@ -52,39 +52,6 @@ import type {
 const UPLOAD_CONCURRENCY = FOLDER_UPLOAD_CONFIG.FILE_UPLOAD_CONCURRENCY;
 
 /**
- * Phase weights for weighted progress calculation.
- * Each phase contributes to a portion of the overall progress bar.
- * Total: 0-100%
- */
-const PHASE_WEIGHTS = {
-  validating: { start: 0, end: 2 },
-  'session-init': { start: 2, end: 5 },
-  'creating-folders': { start: 5, end: 10 },
-  registering: { start: 10, end: 20 },
-  'getting-sas': { start: 20, end: 25 },
-  uploading: { start: 25, end: 100 },
-} as const;
-
-/**
- * EMA alpha factor for smoothing speed calculations.
- * Lower values = more smoothing (0.2 means 20% weight to new value, 80% to history)
- */
-const EMA_ALPHA = 0.2;
-
-/**
- * Calculate weighted progress based on phase and sub-progress within phase
- */
-function calculateWeightedProgress(
-  phase: keyof typeof PHASE_WEIGHTS,
-  subProgress: number = 1
-): number {
-  const weights = PHASE_WEIGHTS[phase];
-  if (!weights) return 0;
-  const range = weights.end - weights.start;
-  return Math.round(weights.start + range * Math.min(subProgress, 1));
-}
-
-/**
  * useFolderUpload return type
  */
 export interface UseFolderUploadReturn {
@@ -127,8 +94,6 @@ const initialProgress: FolderUploadProgress = {
   currentBatch: 0,
   totalBatches: 0,
   percent: 0,
-  speed: 0,
-  eta: 0,
 };
 
 /**
@@ -167,17 +132,9 @@ export function useFolderUpload(): UseFolderUploadReturn {
   // Refs for tracking upload state
   const abortRef = useRef(false);
   const pauseRef = useRef(false);
-  const startTimeRef = useRef<number>(0);
   const uploadedCountRef = useRef(0);
   const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const currentSessionIdRef = useRef<string | null>(null);
-
-  // EMA state for smoothed speed/ETA calculations
-  const etaStateRef = useRef({
-    emaSpeed: 2, // Initial estimate: 2 files/sec (reasonable default)
-    lastUpdateTime: 0,
-    lastUploadedCount: 0,
-  });
 
   // Stores
   const showLimitErrors = useUploadLimitStore((state) => state.showErrors);
@@ -198,48 +155,19 @@ export function useFolderUpload(): UseFolderUploadReturn {
   }, []);
 
   /**
-   * Update progress state with weighted progress and EMA-smoothed ETA
+   * Update progress state
+   *
+   * Simplified: Only tracks phase and file counts.
+   * Percent is calculated from uploadedFiles/totalFiles.
+   * ETA/speed calculations removed for simpler UX.
    */
   const updateProgress = useCallback((updates: Partial<FolderUploadProgress>) => {
     setProgress((prev) => {
       const updated = { ...prev, ...updates };
-      const now = Date.now();
 
-      // Calculate weighted progress based on phase
-      const phase = updated.phase;
-      if (phase && phase in PHASE_WEIGHTS) {
-        // For uploading phase, sub-progress is based on files uploaded
-        const subProgress =
-          phase === 'uploading' && updated.totalFiles > 0
-            ? updated.uploadedFiles / updated.totalFiles
-            : 1; // Other phases complete instantly when transitioned to next phase
-        updated.percent = calculateWeightedProgress(
-          phase as keyof typeof PHASE_WEIGHTS,
-          subProgress
-        );
-      }
-
-      // Calculate speed and ETA using EMA (only during uploading phase with actual uploads)
-      if (startTimeRef.current > 0 && updated.uploadedFiles > 0) {
-        const state = etaStateRef.current;
-        const timeDelta = (now - state.lastUpdateTime) / 1000;
-        const fileDelta = updated.uploadedFiles - state.lastUploadedCount;
-
-        // Only update EMA when we have meaningful deltas (avoid division by tiny numbers)
-        if (timeDelta > 0.1 && fileDelta > 0) {
-          const instantSpeed = fileDelta / timeDelta;
-          // Apply EMA smoothing: newEMA = α * current + (1-α) * previous
-          state.emaSpeed = EMA_ALPHA * instantSpeed + (1 - EMA_ALPHA) * state.emaSpeed;
-        }
-
-        // Update last known values
-        state.lastUpdateTime = now;
-        state.lastUploadedCount = updated.uploadedFiles;
-
-        // Use smoothed speed for display and ETA calculation
-        updated.speed = Math.round(state.emaSpeed);
-        const remaining = updated.totalFiles - updated.uploadedFiles;
-        updated.eta = state.emaSpeed > 0 ? Math.round(remaining / state.emaSpeed) : 0;
+      // Calculate percent based on file counts
+      if (updated.totalFiles > 0) {
+        updated.percent = Math.round((updated.uploadedFiles / updated.totalFiles) * 100);
       }
 
       return updated;
@@ -487,16 +415,6 @@ export function useFolderUpload(): UseFolderUploadReturn {
       setIsUploading(true);
       setIsPaused(false);
       setProgress({ ...initialProgress, totalFiles: structure.validFiles.length });
-
-      // Start timing from the beginning (not just blob uploads)
-      startTimeRef.current = Date.now();
-
-      // Reset EMA state for new upload
-      etaStateRef.current = {
-        emaSpeed: 2, // Reset to default estimate
-        lastUpdateTime: Date.now(),
-        lastUploadedCount: 0,
-      };
 
       const fileApi = getFileApiClient();
       const currentFolderId = useFolderTreeStore.getState().currentFolderId;

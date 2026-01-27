@@ -33,6 +33,7 @@ export type {
   FileSortBy,
   ParsedFile,
   ParsedFileChunk,
+  DeletionStatus,
 } from '@bc-agent/shared';
 
 // Import for local use in this module
@@ -43,6 +44,7 @@ import type {
   ParsedFile,
   ParsedFileChunk,
   FileSortBy,
+  DeletionStatus,
 } from '@bc-agent/shared';
 
 // Import domain service for computing readiness state
@@ -114,6 +116,12 @@ export interface FileDbRecord {
 
   /** UTC timestamp when file permanently failed (Phase 5) */
   failed_at: Date | null;
+
+  /** Deletion status for soft delete workflow (NULL = active) */
+  deletion_status: DeletionStatus;
+
+  /** UTC timestamp when file was marked for deletion (NULL if active) */
+  deleted_at: Date | null;
 
   /** UTC timestamp when file was uploaded */
   created_at: Date;
@@ -326,6 +334,8 @@ export function parseFile(record: FileDbRecord): ParsedFile {
     failedAt: record.failed_at ? record.failed_at.toISOString() : null,
     hasExtractedText: record.extracted_text !== null,
     contentHash: record.content_hash,
+    deletionStatus: record.deletion_status ?? null,
+    deletedAt: record.deleted_at ? record.deleted_at.toISOString() : null,
     createdAt: record.created_at.toISOString(),
     updatedAt: record.updated_at.toISOString(),
   };

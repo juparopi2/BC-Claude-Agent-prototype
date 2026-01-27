@@ -44,6 +44,17 @@ export type ProcessingStatus = 'pending' | 'processing' | 'completed' | 'failed'
 export type EmbeddingStatus = 'pending' | 'processing' | 'completed' | 'failed';
 
 /**
+ * Deletion status for soft delete workflow
+ *
+ * Lifecycle:
+ * - `null`: Active file (not marked for deletion)
+ * - `pending`: Marked for deletion, awaiting physical deletion
+ * - `deleting`: Physical deletion in progress
+ * - `failed`: Deletion failed (can be retried or manually cleaned)
+ */
+export type DeletionStatus = 'pending' | 'deleting' | 'failed' | null;
+
+/**
  * Unified readiness state for frontend display
  *
  * Computed from processing_status + embedding_status to simplify frontend logic.
@@ -175,6 +186,12 @@ export interface ParsedFile {
 
   /** SHA-256 hash of file content for duplicate detection (null for folders) */
   contentHash: string | null;
+
+  /** Deletion status for soft delete workflow (null = active, not marked for deletion) */
+  deletionStatus: DeletionStatus;
+
+  /** ISO 8601 timestamp when file was marked for deletion (null if active) */
+  deletedAt: string | null;
 
   /** ISO 8601 timestamp when file was uploaded */
   createdAt: string;
@@ -1034,7 +1051,8 @@ export type FileWebSocketEvent =
   | FileProcessingCompletedEvent
   | FileProcessingFailedEvent
   | FileDeletedEvent
-  | FileUploadedEvent;
+  | FileUploadedEvent
+  | FileDeletionStartedEvent;
 
 // ============================================
 // Bulk Delete Types (Queue-based deletion)
@@ -1101,6 +1119,61 @@ export interface BulkDeleteAcceptedResponse {
 
   /** Individual job IDs for tracking each file deletion */
   jobIds: string[];
+}
+
+/**
+ * Result of soft delete operation (new two-phase deletion workflow)
+ *
+ * Returns 200 OK after marking files for deletion (Phase 1 complete).
+ * Files are immediately hidden from queries and RAG searches.
+ * Physical deletion happens asynchronously via queue workers.
+ *
+ * @example
+ * ```typescript
+ * const result: SoftDeleteResult = {
+ *   markedForDeletion: 5,
+ *   notFoundIds: ['FILE-999'],
+ *   batchId: 'BATCH-123',
+ * };
+ * ```
+ */
+export interface SoftDeleteResult {
+  /** Number of files successfully marked for deletion */
+  markedForDeletion: number;
+
+  /** File IDs that were not found or already deleted */
+  notFoundIds: string[];
+
+  /** Batch ID for tracking physical deletion progress */
+  batchId: string;
+}
+
+/**
+ * WebSocket event emitted when file deletion has started (soft delete marked)
+ * Channel: file:status
+ *
+ * Emitted immediately after soft delete completes (Phase 1).
+ * Files are hidden from UI but physical deletion is still in progress.
+ *
+ * @example
+ * ```typescript
+ * const event: FileDeletionStartedEvent = {
+ *   type: 'file:deletion_started',
+ *   fileId: 'FILE-123',
+ *   userId: 'USER-456',
+ *   batchId: 'BATCH-789',
+ *   timestamp: '2026-01-27T10:30:00.000Z',
+ * };
+ * ```
+ */
+export interface FileDeletionStartedEvent extends BaseFileWebSocketEvent {
+  type: typeof FILE_WS_EVENTS.DELETION_STARTED;
+
+  /** User ID for multi-tenant filtering */
+  userId: string;
+
+  /** Batch ID for correlating with bulk delete request */
+  batchId?: string;
 }
 
 /**

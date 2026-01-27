@@ -17,6 +17,8 @@ export interface SelectionState {
   selectedFileIds: Set<string>;
   /** ID of the last selected file (for range selection) */
   lastSelectedId: string | null;
+  /** ID of the currently focused file (keyboard navigation) */
+  focusedFileId: string | null;
 }
 
 /**
@@ -35,6 +37,12 @@ export interface SelectionActions {
   hasSelection: () => boolean;
   /** Get count of selected files */
   getSelectedCount: () => number;
+  /** Set focus to a specific file (keyboard navigation) */
+  setFocus: (fileId: string | null) => void;
+  /** Move focus up or down, selecting the new file (deselects others) */
+  moveFocus: (direction: 'up' | 'down', allFileIds: string[]) => void;
+  /** Extend selection from anchor to new focus position (Shift+Arrow) */
+  extendSelection: (direction: 'up' | 'down', allFileIds: string[]) => void;
 }
 
 /**
@@ -43,6 +51,7 @@ export interface SelectionActions {
 const initialState: SelectionState = {
   selectedFileIds: new Set(),
   lastSelectedId: null,
+  focusedFileId: null,
 };
 
 /**
@@ -158,6 +167,86 @@ export const useSelectionStore = create<SelectionState & SelectionActions>()(
     getSelectedCount: () => {
       return get().selectedFileIds.size;
     },
+
+    setFocus: (fileId) => {
+      set({ focusedFileId: fileId });
+    },
+
+    moveFocus: (direction, allFileIds) => {
+      set((state) => {
+        if (allFileIds.length === 0) return state;
+
+        const currentIndex = state.focusedFileId
+          ? allFileIds.indexOf(state.focusedFileId)
+          : -1;
+
+        let newIndex: number;
+        if (direction === 'up') {
+          newIndex = currentIndex <= 0 ? 0 : currentIndex - 1;
+        } else {
+          newIndex = currentIndex >= allFileIds.length - 1
+            ? allFileIds.length - 1
+            : currentIndex + 1;
+        }
+
+        const newFocusId = allFileIds[newIndex] || null;
+
+        return {
+          focusedFileId: newFocusId,
+          selectedFileIds: new Set(newFocusId ? [newFocusId] : []),
+          lastSelectedId: newFocusId,
+        };
+      });
+    },
+
+    extendSelection: (direction, allFileIds) => {
+      set((state) => {
+        if (allFileIds.length === 0) return state;
+
+        const { focusedFileId, lastSelectedId } = state;
+
+        const currentIndex = focusedFileId
+          ? allFileIds.indexOf(focusedFileId)
+          : -1;
+
+        if (currentIndex === -1) {
+          // No focus, start from first/last
+          const startIndex = direction === 'up' ? allFileIds.length - 1 : 0;
+          const startId = allFileIds[startIndex];
+          return {
+            focusedFileId: startId || null,
+            selectedFileIds: new Set(startId ? [startId] : []),
+            lastSelectedId: startId || null,
+          };
+        }
+
+        let newIndex: number;
+        if (direction === 'up') {
+          newIndex = Math.max(0, currentIndex - 1);
+        } else {
+          newIndex = Math.min(allFileIds.length - 1, currentIndex + 1);
+        }
+
+        const newFocusId = allFileIds[newIndex];
+
+        // Extend selection from lastSelectedId (anchor) to newFocusId
+        const anchorIndex = lastSelectedId
+          ? allFileIds.indexOf(lastSelectedId)
+          : currentIndex;
+
+        const [min, max] = anchorIndex < newIndex
+          ? [anchorIndex, newIndex]
+          : [newIndex, anchorIndex];
+
+        const rangeIds = allFileIds.slice(min, max + 1);
+
+        return {
+          focusedFileId: newFocusId || null,
+          selectedFileIds: new Set(rangeIds),
+          // Keep lastSelectedId as anchor for continued Shift+Arrow
+        };
+      });
+    },
   })
 );
 
@@ -168,5 +257,6 @@ export function resetSelectionStore(): void {
   useSelectionStore.setState({
     selectedFileIds: new Set(),
     lastSelectedId: null,
+    focusedFileId: null,
   });
 }

@@ -30,6 +30,8 @@ export interface FileListState {
   isLoading: boolean;
   /** Error message if any */
   error: string | null;
+  /** Set of file IDs currently being deleted (soft delete in progress) */
+  deletingFileIds: Set<string>;
 }
 
 /**
@@ -42,8 +44,14 @@ export interface FileListActions {
   addFile: (file: ParsedFile) => void;
   /** Update a file by ID with partial changes */
   updateFile: (id: string, updates: Partial<ParsedFile>) => void;
-  /** Remove files by IDs */
+  /** Remove files by IDs (hard remove from list) */
   deleteFiles: (ids: string[]) => void;
+  /** Mark files as deleting (soft delete in progress, show visual overlay) */
+  markAsDeleting: (ids: string[]) => void;
+  /** Confirm deletion complete (remove from deleting set and list) */
+  confirmDeletion: (id: string) => void;
+  /** Cancel deletion (remove from deleting set, restore visibility) */
+  cancelDeletion: (ids: string[]) => void;
   /** Append files for pagination (load more) */
   appendFiles: (files: ParsedFile[], hasMore: boolean) => void;
   /** Set loading state */
@@ -65,6 +73,7 @@ const initialState: FileListState = {
   currentLimit: 50,
   isLoading: false,
   error: null,
+  deletingFileIds: new Set(),
 };
 
 /**
@@ -135,7 +144,7 @@ export const useFileListStore = create<FileListState & FileListActions>()(
     deleteFiles: (ids) => {
       if (ids.length === 0) return;
 
-      // Normalize IDs to lowercase for case-insensitive matching
+      // Normalize IDs to uppercase for case-insensitive matching
       const normalizedIds = ids.map((id) => id.toUpperCase());
 
       set((state) => {
@@ -144,10 +153,61 @@ export const useFileListStore = create<FileListState & FileListActions>()(
         );
         const deletedCount = state.files.length - remainingFiles.length;
 
+        // Also remove from deletingFileIds set
+        const newDeletingIds = new Set(state.deletingFileIds);
+        normalizedIds.forEach((id) => newDeletingIds.delete(id));
+
         return {
           files: remainingFiles,
           totalFiles: Math.max(0, state.totalFiles - deletedCount),
+          deletingFileIds: newDeletingIds,
         };
+      });
+    },
+
+    markAsDeleting: (ids) => {
+      if (ids.length === 0) return;
+
+      // Normalize IDs to uppercase for case-insensitive matching
+      const normalizedIds = ids.map((id) => id.toUpperCase());
+
+      set((state) => {
+        const newDeletingIds = new Set(state.deletingFileIds);
+        normalizedIds.forEach((id) => newDeletingIds.add(id));
+        return { deletingFileIds: newDeletingIds };
+      });
+    },
+
+    confirmDeletion: (id) => {
+      const normalizedId = id.toUpperCase();
+
+      set((state) => {
+        const newDeletingIds = new Set(state.deletingFileIds);
+        newDeletingIds.delete(normalizedId);
+
+        const remainingFiles = state.files.filter(
+          (file) => file.id.toUpperCase() !== normalizedId
+        );
+        const deletedCount = state.files.length - remainingFiles.length;
+
+        return {
+          files: remainingFiles,
+          totalFiles: Math.max(0, state.totalFiles - deletedCount),
+          deletingFileIds: newDeletingIds,
+        };
+      });
+    },
+
+    cancelDeletion: (ids) => {
+      if (ids.length === 0) return;
+
+      // Normalize IDs to uppercase for case-insensitive matching
+      const normalizedIds = ids.map((id) => id.toUpperCase());
+
+      set((state) => {
+        const newDeletingIds = new Set(state.deletingFileIds);
+        normalizedIds.forEach((id) => newDeletingIds.delete(id));
+        return { deletingFileIds: newDeletingIds };
       });
     },
 

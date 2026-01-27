@@ -126,6 +126,16 @@ export const indexSchema: SearchIndex = {
       sortable: false,
       facetable: true
     },
+    // ===== Soft Delete Support =====
+    {
+      name: 'fileStatus',
+      type: 'Edm.String',
+      searchable: false,
+      filterable: true, // Critical for excluding deleted files from searches
+      sortable: false,
+      facetable: true,
+      // Values: 'active' (default), 'deleting'
+    },
   ],
 
   vectorSearch: {

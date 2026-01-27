@@ -84,6 +84,9 @@ const initialState: UploadSessionState = {
 
 /**
  * Compute progress from session
+ *
+ * Progress is now based on FILES (not folders) for smoother UX.
+ * This fixes the issue where progress showed "0 of 4" until a whole folder completed.
  */
 function computeProgress(session: UploadSession | null): UploadSessionProgress | null {
   if (!session) return null;
@@ -93,9 +96,16 @@ function computeProgress(session: UploadSession | null): UploadSessionProgress |
       ? session.folderBatches[session.currentFolderIndex]!
       : null;
 
-  const completedCount = session.completedFolders + session.failedFolders;
-  const overallPercent =
-    session.totalFolders > 0 ? Math.round((completedCount / session.totalFolders) * 100) : 0;
+  // Calculate totals across ALL batches (not just completed folders)
+  let totalFiles = 0;
+  let uploadedFiles = 0;
+  for (const batch of session.folderBatches) {
+    totalFiles += batch.totalFiles;
+    uploadedFiles += batch.uploadedFiles;
+  }
+
+  // Calculate percentage based on file counts for smoother progress
+  const overallPercent = totalFiles > 0 ? Math.round((uploadedFiles / totalFiles) * 100) : 0;
 
   return {
     sessionId: session.id,
@@ -106,6 +116,8 @@ function computeProgress(session: UploadSession | null): UploadSessionProgress |
     completedFolders: session.completedFolders,
     failedFolders: session.failedFolders,
     status: session.status,
+    totalFiles,
+    uploadedFiles,
   };
 }
 

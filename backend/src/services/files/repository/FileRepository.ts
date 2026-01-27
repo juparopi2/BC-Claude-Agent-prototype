@@ -42,10 +42,21 @@ export interface FileMetadata {
 }
 
 /**
+ * Result of marking files for deletion
+ */
+export interface MarkForDeletionResult {
+  /** IDs that were successfully marked */
+  markedIds: string[];
+  /** Number of files marked */
+  markedCount: number;
+}
+
+/**
  * Repository interface for dependency injection
  */
 export interface IFileRepository {
   findById(userId: string, fileId: string): Promise<ParsedFile | null>;
+  findByIdIncludingDeleted(userId: string, fileId: string): Promise<ParsedFile | null>;
   findMany(options: GetFilesOptions): Promise<ParsedFile[]>;
   count(userId: string, folderId?: string | null, options?: { favoritesFirst?: boolean }): Promise<number>;
   create(options: CreateFileOptions): Promise<string>;
@@ -56,6 +67,8 @@ export interface IFileRepository {
   delete(userId: string, fileId: string): Promise<void>;
   getFileMetadata(userId: string, fileId: string): Promise<FileMetadata | null>;
   getChildrenIds(userId: string, folderId: string): Promise<string[]>;
+  markForDeletion(userId: string, fileIds: string[]): Promise<MarkForDeletionResult>;
+  updateDeletionStatus(userId: string, fileIds: string[], status: 'deleting' | 'failed'): Promise<void>;
 }
 
 /**
@@ -495,6 +508,108 @@ export class FileRepository implements IFileRepository {
       return result.recordset.map((r) => r.id);
     } catch (error) {
       this.logger.error({ error, userId, folderId }, 'Failed to get children IDs');
+      throw error;
+    }
+  }
+
+  /**
+   * Mark files for deletion (soft delete Phase 1)
+   *
+   * Sets deletion_status = 'pending' and deleted_at = NOW() for files
+   * that are currently active (deletion_status IS NULL).
+   *
+   * @param userId - User ID
+   * @param fileIds - Array of file IDs to mark for deletion
+   * @returns IDs that were successfully marked
+   */
+  public async markForDeletion(userId: string, fileIds: string[]): Promise<MarkForDeletionResult> {
+    if (fileIds.length === 0) {
+      return { markedIds: [], markedCount: 0 };
+    }
+
+    this.logger.info({ userId, fileCount: fileIds.length }, 'Marking files for deletion');
+
+    try {
+      const { query, params } = this.queryBuilder.buildMarkForDeletionQuery(userId, fileIds);
+      const result = await executeQuery<{ id: string }>(query, params as SqlParams);
+
+      const markedIds = result.recordset.map((r) => r.id);
+
+      this.logger.info({
+        userId,
+        requestedCount: fileIds.length,
+        markedCount: markedIds.length,
+      }, 'Files marked for deletion');
+
+      return { markedIds, markedCount: markedIds.length };
+    } catch (error) {
+      this.logger.error({ error, userId, fileCount: fileIds.length }, 'Failed to mark files for deletion');
+      throw error;
+    }
+  }
+
+  /**
+   * Update deletion status for files
+   *
+   * Used during physical deletion process to track progress.
+   *
+   * @param userId - User ID
+   * @param fileIds - Array of file IDs to update
+   * @param status - New deletion status ('deleting' or 'failed')
+   */
+  public async updateDeletionStatus(
+    userId: string,
+    fileIds: string[],
+    status: 'deleting' | 'failed'
+  ): Promise<void> {
+    if (fileIds.length === 0) {
+      return;
+    }
+
+    this.logger.info({ userId, fileCount: fileIds.length, status }, 'Updating deletion status');
+
+    try {
+      const { query, params } = this.queryBuilder.buildUpdateDeletionStatusQuery(userId, fileIds, status);
+      await executeQuery(query, params as SqlParams);
+
+      this.logger.info({ userId, fileCount: fileIds.length, status }, 'Deletion status updated');
+    } catch (error) {
+      this.logger.error({ error, userId, fileCount: fileIds.length, status }, 'Failed to update deletion status');
+      throw error;
+    }
+  }
+
+  /**
+   * Find a single file by ID including deleted files
+   *
+   * Used by deletion worker to process files that are marked for deletion.
+   *
+   * @param userId - User ID
+   * @param fileId - File ID
+   * @returns File or null if not found
+   */
+  public async findByIdIncludingDeleted(userId: string, fileId: string): Promise<ParsedFile | null> {
+    this.logger.info({ userId, fileId }, 'Finding file by ID (including deleted)');
+
+    try {
+      const { query, params } = this.queryBuilder.buildGetFileByIdIncludingDeletedQuery(userId, fileId);
+      const result = await executeQuery<FileDbRecord>(query, params as SqlParams);
+
+      if (result.recordset.length === 0) {
+        this.logger.info({ userId, fileId }, 'File not found');
+        return null;
+      }
+
+      const record = result.recordset[0];
+      if (!record) {
+        this.logger.info({ userId, fileId }, 'File not found');
+        return null;
+      }
+
+      this.logger.info({ userId, fileId }, 'File retrieved (including deleted)');
+      return parseFile(record);
+    } catch (error) {
+      this.logger.error({ error, userId, fileId }, 'Failed to find file by ID (including deleted)');
       throw error;
     }
   }

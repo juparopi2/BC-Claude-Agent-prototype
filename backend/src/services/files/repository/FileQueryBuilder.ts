@@ -74,6 +74,8 @@ export class FileQueryBuilder {
   /**
    * Build query for getting files with filtering, sorting, and pagination
    *
+   * Automatically excludes files marked for deletion (deletion_status IS NOT NULL).
+   *
    * @param options - Query options
    * @returns Query string and parameters
    */
@@ -87,8 +89,8 @@ export class FileQueryBuilder {
       offset = 0,
     } = options;
 
-    // Build WHERE clause
-    let whereClause = 'WHERE user_id = @user_id';
+    // Build WHERE clause - always exclude files marked for deletion
+    let whereClause = 'WHERE user_id = @user_id AND deletion_status IS NULL';
     const params: Record<string, unknown> = {
       user_id: userId,
       offset,
@@ -156,6 +158,8 @@ export class FileQueryBuilder {
   /**
    * Build query for getting file count
    *
+   * Automatically excludes files marked for deletion (deletion_status IS NOT NULL).
+   *
    * @param userId - User ID
    * @param folderId - Folder ID (undefined/null for root)
    * @param options - Additional options
@@ -166,7 +170,8 @@ export class FileQueryBuilder {
     folderId?: string | null,
     options?: GetFileCountOptions
   ): QueryResult {
-    let whereClause = 'WHERE user_id = @user_id';
+    // Always exclude files marked for deletion
+    let whereClause = 'WHERE user_id = @user_id AND deletion_status IS NULL';
     const params: Record<string, unknown> = {
       user_id: userId,
     };
@@ -204,6 +209,8 @@ export class FileQueryBuilder {
   /**
    * Build query for checking duplicate files by name
    *
+   * Automatically excludes files marked for deletion (deletion_status IS NOT NULL).
+   *
    * @param userId - User ID
    * @param fileName - File name to check
    * @param folderId - Folder ID (undefined/null for root)
@@ -230,6 +237,7 @@ export class FileQueryBuilder {
           AND name = @name
           AND parent_folder_id IS NULL
           AND is_folder = 0
+          AND deletion_status IS NULL
       `;
     } else {
       query = `
@@ -239,6 +247,7 @@ export class FileQueryBuilder {
           AND name = @name
           AND parent_folder_id = @parent_folder_id
           AND is_folder = 0
+          AND deletion_status IS NULL
       `;
       params.parent_folder_id = folderId;
     }
@@ -270,6 +279,8 @@ export class FileQueryBuilder {
   /**
    * Build query for finding files by content hash
    *
+   * Automatically excludes files marked for deletion (deletion_status IS NOT NULL).
+   *
    * @param userId - User ID
    * @param contentHash - SHA-256 content hash
    * @returns Query string and parameters
@@ -281,6 +292,7 @@ export class FileQueryBuilder {
       WHERE user_id = @user_id
         AND content_hash = @content_hash
         AND is_folder = 0
+        AND deletion_status IS NULL
     `;
 
     const params: Record<string, unknown> = {
@@ -294,6 +306,8 @@ export class FileQueryBuilder {
   /**
    * Build query for getting a single file by ID with ownership check
    *
+   * Automatically excludes files marked for deletion (deletion_status IS NOT NULL).
+   *
    * @param userId - User ID
    * @param fileId - File ID
    * @returns Query string and parameters
@@ -302,7 +316,7 @@ export class FileQueryBuilder {
     const query = `
       SELECT *
       FROM files
-      WHERE id = @id AND user_id = @user_id
+      WHERE id = @id AND user_id = @user_id AND deletion_status IS NULL
     `;
 
     const params: Record<string, unknown> = {
@@ -316,6 +330,8 @@ export class FileQueryBuilder {
   /**
    * Build query for verifying ownership of multiple files
    *
+   * Automatically excludes files marked for deletion (deletion_status IS NOT NULL).
+   *
    * @param userId - User ID
    * @param fileIds - Array of file IDs to verify
    * @returns Query string and parameters
@@ -326,12 +342,122 @@ export class FileQueryBuilder {
     const query = `
       SELECT id
       FROM files
-      WHERE user_id = @user_id AND id IN (${inClause.placeholders})
+      WHERE user_id = @user_id AND id IN (${inClause.placeholders}) AND deletion_status IS NULL
     `;
 
     const params: Record<string, unknown> = {
       user_id: userId,
       ...inClause.params,
+    };
+
+    return { query, params };
+  }
+
+  /**
+   * Build query for marking files for deletion (soft delete Phase 1)
+   *
+   * @param userId - User ID
+   * @param fileIds - Array of file IDs to mark for deletion
+   * @returns Query string and parameters
+   */
+  public buildMarkForDeletionQuery(userId: string, fileIds: string[]): QueryResult {
+    const inClause = this.buildInClause(fileIds, 'id');
+
+    const query = `
+      UPDATE files
+      SET deletion_status = 'pending',
+          deleted_at = GETUTCDATE(),
+          updated_at = GETUTCDATE()
+      OUTPUT INSERTED.id
+      WHERE user_id = @user_id
+        AND id IN (${inClause.placeholders})
+        AND deletion_status IS NULL
+    `;
+
+    const params: Record<string, unknown> = {
+      user_id: userId,
+      ...inClause.params,
+    };
+
+    return { query, params };
+  }
+
+  /**
+   * Build query for updating deletion status
+   *
+   * @param userId - User ID
+   * @param fileIds - Array of file IDs to update
+   * @param status - New deletion status ('deleting' or 'failed')
+   * @returns Query string and parameters
+   */
+  public buildUpdateDeletionStatusQuery(
+    userId: string,
+    fileIds: string[],
+    status: 'deleting' | 'failed'
+  ): QueryResult {
+    const inClause = this.buildInClause(fileIds, 'id');
+
+    const query = `
+      UPDATE files
+      SET deletion_status = @status,
+          updated_at = GETUTCDATE()
+      WHERE user_id = @user_id
+        AND id IN (${inClause.placeholders})
+    `;
+
+    const params: Record<string, unknown> = {
+      user_id: userId,
+      status,
+      ...inClause.params,
+    };
+
+    return { query, params };
+  }
+
+  /**
+   * Build query for getting files pending deletion (for cleanup job)
+   *
+   * @param maxAgeMinutes - Maximum age in minutes for pending deletions
+   * @param limit - Maximum number of files to return
+   * @returns Query string and parameters
+   */
+  public buildGetPendingDeletionsQuery(maxAgeMinutes: number, limit: number): QueryResult {
+    const query = `
+      SELECT id, user_id, blob_path, name, is_folder
+      FROM files
+      WHERE deletion_status IN ('pending', 'deleting')
+        AND deleted_at < DATEADD(MINUTE, -@max_age, GETUTCDATE())
+      ORDER BY deleted_at ASC
+      OFFSET 0 ROWS
+      FETCH NEXT @limit ROWS ONLY
+    `;
+
+    const params: Record<string, unknown> = {
+      max_age: maxAgeMinutes,
+      limit,
+    };
+
+    return { query, params };
+  }
+
+  /**
+   * Build query for getting file by ID including deleted files
+   * Used by deletion worker to process files marked for deletion
+   *
+   * @param userId - User ID
+   * @param fileId - File ID
+   * @returns Query string and parameters
+   */
+  public buildGetFileByIdIncludingDeletedQuery(userId: string, fileId: string): QueryResult {
+    const query = `
+      SELECT *
+      FROM files
+      WHERE id = @id AND user_id = @user_id
+    `;
+
+    const params: Record<string, unknown> = {
+      id: fileId,
+      user_id: userId,
     };
 
     return { query, params };

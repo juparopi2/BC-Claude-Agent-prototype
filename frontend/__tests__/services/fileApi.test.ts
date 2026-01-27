@@ -44,6 +44,8 @@ const mockFile: ParsedFile = {
   failedAt: null,
   hasExtractedText: true,
   contentHash: 'abc123def456',
+  deletionStatus: null,
+  deletedAt: null,
   createdAt: '2024-01-15T10:30:00.000Z',
   updatedAt: '2024-01-15T10:30:00.000Z',
 };
@@ -67,6 +69,8 @@ const mockFolder: ParsedFile = {
   failedAt: null,
   hasExtractedText: false,
   contentHash: null,
+  deletionStatus: null,
+  deletedAt: null,
   createdAt: '2024-01-15T10:00:00.000Z',
   updatedAt: '2024-01-15T10:00:00.000Z',
 };

@@ -9,7 +9,7 @@
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { authenticateMicrosoft } from '@/domains/auth/middleware/auth-oauth';
-import { getFileService, getFileUploadService } from '@services/files';
+import { getFileUploadService } from '@services/files';
 import { getMessageQueue } from '@/infrastructure/queue/MessageQueue';
 import { sendError } from '@/shared/utils/error-response';
 import { ErrorCode } from '@/shared/constants/errors';
@@ -21,12 +21,13 @@ import {
   renewSasRequestSchema,
   validateSafe,
   FILE_BULK_UPLOAD_CONFIG,
-  type BulkDeleteAcceptedResponse,
+  type SoftDeleteResult,
   type BulkUploadInitResponse,
   type BulkUploadAcceptedResponse,
   type BulkUploadFileSasInfo,
   type RenewSasResponse,
 } from '@bc-agent/shared';
+import { getSoftDeleteService } from '@services/files/operations';
 import { getUserId } from './helpers';
 import { getBulkUploadBatchStore } from './state/BulkUploadBatchStore';
 
@@ -374,18 +375,28 @@ router.post('/bulk-upload/renew-sas', authenticateMicrosoft, async (req: Request
 /**
  * DELETE /api/files (Bulk Delete)
  *
- * Asynchronously deletes multiple files via BullMQ queue.
- * Returns 202 Accepted immediately with batchId for tracking.
- * Deletion status is emitted via WebSocket (FILE_WS_EVENTS.DELETED).
+ * Two-phase soft delete workflow:
+ *
+ * Phase 1 (Synchronous, ~50ms):
+ * - Marks files in DB with deletion_status='pending'
+ * - Files immediately hidden from all queries
+ * - Returns 200 OK with count of marked files
+ *
+ * Phase 2 (Async, fire-and-forget):
+ * - Updates AI Search to exclude from RAG searches
+ * - Enqueues physical deletion jobs
+ * - Physical deletion emits WebSocket events (FILE_WS_EVENTS.DELETED)
+ *
+ * This workflow eliminates the race condition where files reappear after refresh.
  *
  * Request body:
  * - fileIds: string[] (1-100 UUIDs)
  * - deletionReason?: 'user_request' | 'gdpr_erasure' | 'retention_policy' | 'admin_action'
  *
- * Response 202:
- * - batchId: string (for tracking)
- * - jobsEnqueued: number
- * - jobIds: string[]
+ * Response 200:
+ * - markedForDeletion: number (files successfully marked)
+ * - notFoundIds: string[] (files not found or already deleted)
+ * - batchId: string (for tracking physical deletion)
  */
 router.delete('/', authenticateMicrosoft, async (req: Request, res: Response): Promise<void> => {
   try {
@@ -400,62 +411,44 @@ router.delete('/', authenticateMicrosoft, async (req: Request, res: Response): P
 
     const { fileIds, deletionReason } = validation.data;
 
-    // Generate batch ID for tracking (UPPERCASE per CLAUDE.md)
-    const batchId = crypto.randomUUID().toUpperCase();
+    logger.info({ userId, fileCount: fileIds.length, deletionReason }, 'Starting soft delete');
 
-    logger.info({ userId, fileCount: fileIds.length, batchId, deletionReason }, 'Starting bulk delete');
+    // Use SoftDeleteService for two-phase deletion
+    const softDeleteService = getSoftDeleteService();
+    const result: SoftDeleteResult = await softDeleteService.markForDeletion(
+      userId,
+      fileIds,
+      { deletionReason }
+    );
 
-    // Verify ownership before enqueueing jobs
-    const fileService = getFileService();
-    const ownedFiles = await fileService.verifyOwnership(userId, fileIds);
-
-    if (ownedFiles.length === 0) {
+    // If no files were marked, return 404
+    if (result.markedForDeletion === 0) {
       sendError(res, ErrorCode.NOT_FOUND, 'No files found or access denied');
       return;
     }
 
-    // Enqueue deletion jobs (sequential processing avoids deadlocks)
-    const messageQueue = getMessageQueue();
-    const jobIds: string[] = [];
-
-    for (const fileId of ownedFiles) {
-      const jobId = await messageQueue.addFileDeletionJob({
-        fileId,
-        userId,
-        deletionReason,
-        batchId,
-      });
-      jobIds.push(jobId);
-    }
-
     logger.info({
       userId,
-      batchId,
-      jobsEnqueued: jobIds.length,
+      batchId: result.batchId,
+      markedForDeletion: result.markedForDeletion,
+      notFoundCount: result.notFoundIds.length,
       requestedCount: fileIds.length,
-      ownedCount: ownedFiles.length,
-    }, 'Bulk delete jobs enqueued');
+    }, 'Soft delete Phase 1 complete');
 
-    // Return 202 Accepted with tracking info
-    const response: BulkDeleteAcceptedResponse = {
-      batchId,
-      jobsEnqueued: jobIds.length,
-      jobIds,
-    };
-
-    res.status(202).json(response);
+    // Return 200 OK (not 202) - Phase 1 is complete, files are already hidden
+    res.status(200).json(result);
   } catch (error) {
     const errorInfo = error instanceof Error
       ? { message: error.message, stack: error.stack, name: error.name }
       : { value: String(error) };
-    logger.error({ error: errorInfo, userId: req.userId }, 'Bulk delete failed');
+    logger.error({ error: errorInfo, userId: req.userId }, 'Soft delete failed');
 
     if (error instanceof Error && error.message === 'User not authenticated') {
       sendError(res, ErrorCode.UNAUTHORIZED, 'User not authenticated');
       return;
     }
 
-    sendError(res, ErrorCode.INTERNAL_ERROR, 'Failed to enqueue deletion jobs');
+    sendError(res, ErrorCode.INTERNAL_ERROR, 'Failed to mark files for deletion');
   }
 });
 

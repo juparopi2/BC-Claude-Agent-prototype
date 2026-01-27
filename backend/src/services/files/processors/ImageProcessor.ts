@@ -16,6 +16,7 @@ import { EmbeddingService } from '@services/embeddings/EmbeddingService';
 import { getUsageTrackingService } from '@/domains/billing/tracking/UsageTrackingService';
 import type { DocumentProcessor, ExtractionResult, ExtractionMetadata } from './types';
 import { env } from '@/infrastructure/config/environment';
+import crypto from 'crypto';
 
 const logger = createChildLogger({ service: 'ImageProcessor' });
 
@@ -137,16 +138,23 @@ export class ImageProcessor implements DocumentProcessor {
       const embeddingService = EmbeddingService.getInstance();
 
       // Generate embedding and caption in parallel for better performance
+      // Use skipTracking: true because tracking will be done in FileProcessingService
+      // with correct userId and fileId (UUIDs) after persistence
+      const placeholderUserId = crypto.randomUUID().toUpperCase();
+      const placeholderFileId = crypto.randomUUID().toUpperCase();
+
       const [embeddingResult, captionResult] = await Promise.allSettled([
         embeddingService.generateImageEmbedding(
           buffer,
-          'image-processor', // placeholder userId
-          fileName // use fileName as placeholder fileId
+          placeholderUserId,
+          placeholderFileId,
+          { skipTracking: true } // Tracking done in FileProcessingService with real IDs
         ),
         embeddingService.generateImageCaption(
           buffer,
-          'image-processor', // placeholder userId
-          fileName // use fileName as placeholder fileId
+          placeholderUserId,
+          placeholderFileId,
+          { skipTracking: true } // Tracking done in FileProcessingService with real IDs
         ),
       ]);
 

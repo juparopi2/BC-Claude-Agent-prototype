@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import type { ParsedFile } from '@bc-agent/shared';
 import { Folder, Upload } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -10,6 +10,8 @@ import { FileItem } from './FileItem';
 import { FileContextMenu } from './FileContextMenu';
 import { MultiFileContextMenu } from './MultiFileContextMenu';
 import { useFiles, useFileSelection, useFolderNavigation } from '@/src/domains/files';
+import { useFileListStore } from '@/src/domains/files/stores/fileListStore';
+import { useSelectionStore } from '@/src/domains/files/stores/selectionStore';
 import { getFileApiClient } from '@/src/infrastructure/api';
 import { triggerDownload } from '@/lib/download';
 import { FilePreviewModal } from '@/components/modals/FilePreviewModal';
@@ -45,11 +47,61 @@ function isPreviewableFile(mimeType: string): boolean {
 
 export function FileList() {
   const { sortedFiles: files, isLoading, toggleFavorite } = useFiles();
-  const { selectedFileIds, selectFile } = useFileSelection();
+  const { selectedFileIds, selectFile, selectAll } = useFileSelection();
   const { navigateToFolder } = useFolderNavigation();
+
+  // Get deletion state and keyboard navigation from stores
+  const deletingFileIds = useFileListStore((state) => state.deletingFileIds);
+  const focusedFileId = useSelectionStore((state) => state.focusedFileId);
+  const moveFocus = useSelectionStore((state) => state.moveFocus);
+  const extendSelection = useSelectionStore((state) => state.extendSelection);
 
   const [previewModalOpen, setPreviewModalOpen] = useState(false);
   const [activePreviewFile, setActivePreviewFile] = useState<ParsedFile | null>(null);
+
+  // Ref for the container element (for keyboard focus)
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Get all file IDs for keyboard navigation
+  const allFileIds = files.map((f) => f.id);
+
+  // Keyboard navigation handler
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Only handle if container has focus or contains the active element
+      if (
+        !containerRef.current?.contains(document.activeElement) &&
+        document.activeElement !== containerRef.current
+      ) {
+        return;
+      }
+
+      // Ctrl+A / Cmd+A - Select all
+      if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
+        e.preventDefault();
+        selectAll();
+        return;
+      }
+
+      // Arrow Up/Down - Move focus or extend selection
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        const direction = e.key === 'ArrowUp' ? 'up' : 'down';
+
+        if (e.shiftKey) {
+          // Shift+Arrow - Extend selection
+          extendSelection(direction, allFileIds);
+        } else {
+          // Arrow only - Move focus (deselects others)
+          moveFocus(direction, allFileIds);
+        }
+        return;
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [allFileIds, selectAll, moveFocus, extendSelection]);
 
   const handleSelect = useCallback((fileId: string, multi: boolean) => {
     selectFile(fileId, multi);
@@ -160,22 +212,31 @@ export function FileList() {
   // File list
   return (
     <>
-    <ScrollArea className="h-full">
-      <div className="p-2 space-y-0.5">
-        {files.map(file => {
-          const fileItem = (
-            <FileItem
-              file={file}
-              isSelected={selectedFileIds.has(file.id)}
-              onSelect={handleSelect}
-              onDoubleClick={handleDoubleClick}
-              onFavoriteToggle={handleFavoriteToggle}
-            />
-          );
-          return renderWithContextMenu(file, fileItem);
-        })}
-      </div>
-    </ScrollArea>
+    <div
+      ref={containerRef}
+      tabIndex={0}
+      className="outline-none h-full"
+    >
+      <ScrollArea className="h-full">
+        <div className="p-2 space-y-0.5">
+          {files.map((file) => {
+            const normalizedId = file.id.toUpperCase();
+            const fileItem = (
+              <FileItem
+                file={file}
+                isSelected={selectedFileIds.has(file.id)}
+                isDeleting={deletingFileIds.has(normalizedId)}
+                isFocused={focusedFileId === file.id}
+                onSelect={handleSelect}
+                onDoubleClick={handleDoubleClick}
+                onFavoriteToggle={handleFavoriteToggle}
+              />
+            );
+            return renderWithContextMenu(file, fileItem);
+          })}
+        </div>
+      </ScrollArea>
+    </div>
     {activePreviewFile && (
         <FilePreviewModal
           isOpen={previewModalOpen}

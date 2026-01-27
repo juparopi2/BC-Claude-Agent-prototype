@@ -56,6 +56,8 @@ export const FILE_WS_EVENTS = {
   DELETED: 'file:deleted',
   /** File upload completed (success or failure) - used by bulk upload */
   UPLOADED: 'file:uploaded',
+  /** File deletion has started (soft delete marked, physical deletion queued) */
+  DELETION_STARTED: 'file:deletion_started',
 } as const;
 
 /**

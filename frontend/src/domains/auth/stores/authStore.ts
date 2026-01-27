@@ -42,8 +42,10 @@ export interface AuthState {
  * Auth store actions
  */
 export interface AuthActions {
-  /** Check current auth status */
+  /** Check current auth status (deduplicated - concurrent calls share the same promise) */
   checkAuth: () => Promise<boolean>;
+  /** Connect socket and join user room (idempotent - safe to call multiple times) */
+  connectSocket: () => Promise<void>;
   /** Set user profile */
   setUser: (user: UserProfile | null) => void;
   /** Clear auth state (logout) */
@@ -75,62 +77,90 @@ const initialState: AuthState = {
 };
 
 /**
+ * Module-level promise for deduplicating concurrent checkAuth calls.
+ * This ensures that if checkAuth is called multiple times concurrently
+ * (e.g., from tab visibility + health check), they share the same promise.
+ */
+let checkAuthPromise: Promise<boolean> | null = null;
+
+/**
  * Create auth store with persistence
  */
 export const useAuthStore = create<AuthStore>()(
   subscribeWithSelector(
     persist(
-      (set) => ({
+      (set, get) => ({
         ...initialState,
 
         checkAuth: async () => {
-          set({ isLoading: true, error: null, authFailureReason: null });
+          // Deduplicate concurrent calls - share the same promise
+          if (checkAuthPromise !== null) {
+            return checkAuthPromise;
+          }
 
-          const api = getApiClient();
-          const result = await api.checkAuth();
+          checkAuthPromise = (async (): Promise<boolean> => {
+            set({ isLoading: true, error: null, authFailureReason: null });
 
-          if (result.success) {
-            const { authenticated, user } = result.data;
-            set({
-              isAuthenticated: authenticated,
-              user: user || null,
-              isLoading: false,
-              lastChecked: Date.now(),
-              authFailureReason: null,
-            });
+            const api = getApiClient();
+            const result = await api.checkAuth();
 
-            // Connect socket and join user room for file events (D25)
-            // This ensures file processing events are received regardless of chat page
-            if (authenticated && user?.id) {
-              const socketClient = getSocketClient();
-              socketClient.connect({ url: env.wsUrl })
-                .then(() => {
-                  socketClient.joinUserRoom(user.id);
-                })
-                .catch((err) => {
-                  console.error('[AuthStore] Socket connect failed:', err);
-                });
+            if (result.success) {
+              const { authenticated, user } = result.data;
+              set({
+                isAuthenticated: authenticated,
+                user: user || null,
+                isLoading: false,
+                lastChecked: Date.now(),
+                authFailureReason: null,
+              });
+
+              return authenticated;
+            } else {
+              // Determine the failure reason based on the error code
+              let authFailureReason: AuthFailureReason = 'not_authenticated';
+              if (result.error.code === ErrorCode.SESSION_EXPIRED) {
+                authFailureReason = 'session_expired';
+              } else if (result.error.code === ErrorCode.SERVICE_UNAVAILABLE) {
+                authFailureReason = 'network_error';
+              }
+
+              set({
+                isAuthenticated: false,
+                user: null,
+                isLoading: false,
+                error: result.error.message,
+                lastChecked: Date.now(),
+                authFailureReason,
+              });
+              return false;
             }
+          })().finally(() => {
+            checkAuthPromise = null;
+          });
 
-            return authenticated;
-          } else {
-            // Determine the failure reason based on the error code
-            let authFailureReason: AuthFailureReason = 'not_authenticated';
-            if (result.error.code === ErrorCode.SESSION_EXPIRED) {
-              authFailureReason = 'session_expired';
-            } else if (result.error.code === ErrorCode.SERVICE_UNAVAILABLE) {
-              authFailureReason = 'network_error';
-            }
+          return checkAuthPromise;
+        },
 
-            set({
-              isAuthenticated: false,
-              user: null,
-              isLoading: false,
-              error: result.error.message,
-              lastChecked: Date.now(),
-              authFailureReason,
-            });
-            return false;
+        connectSocket: async () => {
+          const { isAuthenticated, user } = get();
+
+          // Only connect if authenticated with a valid user
+          if (!isAuthenticated || !user?.id) {
+            return;
+          }
+
+          const socketClient = getSocketClient();
+
+          // Idempotent: skip if already connected
+          if (socketClient.isConnected) {
+            return;
+          }
+
+          try {
+            await socketClient.connect({ url: env.wsUrl });
+            socketClient.joinUserRoom(user.id);
+          } catch (err) {
+            console.error('[AuthStore] Socket connect failed:', err);
           }
         },
 

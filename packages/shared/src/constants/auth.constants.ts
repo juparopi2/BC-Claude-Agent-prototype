@@ -38,6 +38,8 @@ export const AUTH_TIME_MS = {
   BANNER_UPDATE_INTERVAL: 30 * 1000,
   /** Sesión por defecto (24 horas) */
   DEFAULT_SESSION_MAX_AGE: 24 * 60 * 60 * 1000,
+  /** Debounce for tab visibility events (ms) */
+  VISIBILITY_DEBOUNCE: 300,
 } as const;
 
 /** Códigos de error específicos de auth */

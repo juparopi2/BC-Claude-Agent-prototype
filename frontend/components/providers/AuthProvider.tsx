@@ -8,19 +8,25 @@ import { Loader2 } from 'lucide-react';
 const PUBLIC_ROUTES = ['/login', '/'];
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading, checkAuth } = useAuthStore();
+  const { isAuthenticated, isLoading, checkAuth, connectSocket } = useAuthStore();
   const pathname = usePathname();
   const router = useRouter();
   const [isInitialized, setIsInitialized] = useState(false);
 
   useEffect(() => {
     const initAuth = async () => {
-      await checkAuth();
+      const authenticated = await checkAuth();
       setIsInitialized(true);
+
+      // Connect socket separately after successful auth
+      // This separates concerns: checkAuth only checks auth, connectSocket manages socket
+      if (authenticated) {
+        connectSocket();
+      }
     };
     initAuth();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Only run on mount - checkAuth from Zustand is stable
+  }, []); // Only run on mount - checkAuth and connectSocket from Zustand are stable
 
   useEffect(() => {
     if (!isInitialized || isLoading) return;

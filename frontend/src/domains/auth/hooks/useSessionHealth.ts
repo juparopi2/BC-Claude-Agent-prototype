@@ -15,9 +15,13 @@ import {
 } from '../constants';
 import type { SessionHealthResponse } from '@bc-agent/shared';
 import { env } from '@/lib/config/env';
+import { debounceCancellable } from '@/lib/utils';
 
 /**
- * Hook to track tab visibility state
+ * Hook to track tab visibility state with debouncing
+ *
+ * Debounces visibility changes to prevent rapid-fire state updates
+ * when switching tabs quickly.
  */
 function useTabVisibility(): boolean {
   const [isVisible, setIsVisible] = useState(() =>
@@ -27,13 +31,20 @@ function useTabVisibility(): boolean {
   useEffect(() => {
     if (typeof document === 'undefined') return;
 
+    // Debounce visibility changes to prevent rapid-fire updates
+    const { fn: debouncedSetVisible, cancel } = debounceCancellable(
+      (visible: boolean) => setIsVisible(visible),
+      AUTH_TIME_MS.VISIBILITY_DEBOUNCE
+    );
+
     const handleVisibilityChange = () => {
-      setIsVisible(!document.hidden);
+      debouncedSetVisible(!document.hidden);
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      cancel();
     };
   }, []);
 
@@ -102,15 +113,31 @@ export function useSessionHealth(
   const prevStatusRef = useRef<AuthSessionStatus | null>(null);
   // Track if we need to check immediately when tab becomes visible
   const shouldCheckOnVisibleRef = useRef(false);
+  // Track previous visibility state to detect transitions
+  const prevVisibleRef = useRef(true);
 
   // Get auth state
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  const checkAuth = useAuthStore((s) => s.checkAuth);
+
+  // Use ref pattern for checkAuth to avoid dependency loops.
+  // checkAuth is stable (from Zustand), but including it in useCallback deps
+  // creates circular dependency: fetchHealth -> checkAuth -> re-render -> fetchHealth
+  const checkAuthRef = useRef(useAuthStore.getState().checkAuth);
+  useEffect(() => {
+    // Subscribe to checkAuth changes (though it's stable, this is defensive)
+    return useAuthStore.subscribe(
+      (state) => state.checkAuth,
+      (checkAuth) => {
+        checkAuthRef.current = checkAuth;
+      }
+    );
+  }, []);
 
   // Track tab visibility
   const isTabVisible = useTabVisibility();
 
   // Fetch health status
+  // Note: checkAuth is accessed via ref to avoid circular dependency in useCallback deps
   const fetchHealth = useCallback(async () => {
     if (!isAuthenticated) {
       setHealth(null);
@@ -150,8 +177,9 @@ export function useSessionHealth(
       prevStatusRef.current = currentStatus;
 
       // If needs refresh and authenticated, try to refresh token
+      // Use ref to avoid circular dependency: fetchHealth -> checkAuth -> re-render -> fetchHealth
       if (data.needsRefresh && data.status !== AUTH_SESSION_STATUS.EXPIRED) {
-        await checkAuth(); // This will trigger token refresh if needed
+        await checkAuthRef.current(); // Deduplicated in authStore
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
@@ -160,13 +188,19 @@ export function useSessionHealth(
     } finally {
       setIsLoading(false);
     }
-  }, [isAuthenticated, checkAuth, onExpiring, onExpired]);
+  }, [isAuthenticated, onExpiring, onExpired]);
 
   // Set up polling with tab visibility optimization
+  // Single useEffect handles both polling and visibility changes
   useEffect(() => {
     if (!enabled || !isAuthenticated) {
       return;
     }
+
+    // Track visibility transitions
+    const wasHidden = !prevVisibleRef.current;
+    const isNowVisible = isTabVisible;
+    prevVisibleRef.current = isTabVisible;
 
     // If tab is not visible, mark that we should check when it becomes visible
     if (!isTabVisible) {
@@ -175,7 +209,7 @@ export function useSessionHealth(
     }
 
     // If we're becoming visible again and we missed a check, do it now
-    if (shouldCheckOnVisibleRef.current) {
+    if (wasHidden && isNowVisible && shouldCheckOnVisibleRef.current) {
       shouldCheckOnVisibleRef.current = false;
       fetchHealth();
     }
@@ -192,14 +226,6 @@ export function useSessionHealth(
       clearInterval(intervalId);
     };
   }, [enabled, isAuthenticated, pollInterval, fetchHealth, isTabVisible, health]);
-
-  // Immediate check when tab becomes visible after being hidden
-  useEffect(() => {
-    if (enabled && isAuthenticated && isTabVisible && shouldCheckOnVisibleRef.current) {
-      shouldCheckOnVisibleRef.current = false;
-      fetchHealth();
-    }
-  }, [enabled, isAuthenticated, isTabVisible, fetchHealth]);
 
   // Compute derived values
   const isExpiring = health?.status === AUTH_SESSION_STATUS.EXPIRING;

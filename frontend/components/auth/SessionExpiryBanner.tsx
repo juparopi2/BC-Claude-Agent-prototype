@@ -59,6 +59,7 @@ export function SessionExpiryBanner({
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
 
   const checkAuth = useAuthStore((s) => s.checkAuth);
+  const connectSocket = useAuthStore((s) => s.connectSocket);
 
   const {
     isExpiring,
@@ -109,6 +110,8 @@ export function SessionExpiryBanner({
       const success = await checkAuth();
       if (success) {
         await refresh();
+        // Reconnect socket after session extension
+        await connectSocket();
         onExtended?.();
         setIsDismissed(true);
       }
@@ -117,7 +120,7 @@ export function SessionExpiryBanner({
     } finally {
       setIsExtending(false);
     }
-  }, [checkAuth, refresh, onExtended]);
+  }, [checkAuth, connectSocket, refresh, onExtended]);
 
   // Don't show if not expiring, dismissed, or expired
   if (!isExpiring || isDismissed || isExpired) {

@@ -20,23 +20,29 @@ import { logger } from '@/shared/utils/logger';
 import type { IEmbeddingServiceMinimal, IVectorSearchServiceMinimal } from '@/infrastructure/queue/IMessageQueueDependencies';
 
 // ONLY mock logger (acceptable per audit)
-vi.mock('@/shared/utils/logger', () => ({
-  logger: {
-    info: vi.fn((msg, meta) => console.log('[INFO]', msg, meta || '')),
-    error: vi.fn((msg, meta) => console.error('[ERROR]', msg, meta || '')),
-    warn: vi.fn((msg, meta) => console.warn('[WARN]', msg, meta || '')),
-    debug: vi.fn((msg, meta) => console.debug('[DEBUG]', msg, meta || '')),
-  },
-  createChildLogger: vi.fn(() => ({
+// Factory function must be defined inside the mock to avoid hoisting issues
+vi.mock('@/shared/utils/logger', () => {
+  // Create a factory function for mock logger that supports recursive child() calls
+  const createMockLogger = (): any => ({
     info: vi.fn((msg, meta) => console.log('[INFO]', msg, meta || '')),
     error: vi.fn((msg, meta) => console.error('[ERROR]', msg, meta || '')),
     warn: vi.fn((msg, meta) => console.warn('[WARN]', msg, meta || '')),
     debug: vi.fn((msg, meta) => console.debug('[DEBUG]', msg, meta || '')),
     trace: vi.fn(),
     fatal: vi.fn((msg, meta) => console.error('[FATAL]', msg, meta || '')),
-    child: vi.fn(),
-  })),
-}));
+    child: vi.fn(() => createMockLogger()),
+  });
+
+  return {
+    logger: {
+      info: vi.fn((msg, meta) => console.log('[INFO]', msg, meta || '')),
+      error: vi.fn((msg, meta) => console.error('[ERROR]', msg, meta || '')),
+      warn: vi.fn((msg, meta) => console.warn('[WARN]', msg, meta || '')),
+      debug: vi.fn((msg, meta) => console.debug('[DEBUG]', msg, meta || '')),
+    },
+    createChildLogger: vi.fn(() => createMockLogger()),
+  };
+});
 
 // Note: External services are now injected via DI instead of vi.mock
 // This avoids issues with dynamic imports in workers not picking up mocks

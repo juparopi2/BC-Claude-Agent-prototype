@@ -367,8 +367,8 @@ describe('MessageQueue Integration Tests', () => {
       const status = await messageQueue.getRateLimitStatus(testSession.id);
 
       expect(status.count).toBe(5);
-      expect(status.limit).toBe(100);
-      expect(status.remaining).toBe(95);
+      expect(status.limit).toBe(1000);
+      expect(status.remaining).toBe(995);
       expect(status.withinLimit).toBe(true);
     });
 
@@ -383,7 +383,7 @@ describe('MessageQueue Integration Tests', () => {
       const status = await messageQueue.getRateLimitStatus(newSession.id);
 
       expect(status.count).toBe(0);
-      expect(status.remaining).toBe(100);
+      expect(status.remaining).toBe(1000);
       expect(status.withinLimit).toBe(true);
     });
   });

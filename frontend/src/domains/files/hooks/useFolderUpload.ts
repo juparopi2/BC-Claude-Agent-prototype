@@ -286,6 +286,33 @@ export function useFolderUpload(): UseFolderUploadReturn {
         const { folderId, folderBatch: updatedBatch1 } = createResult.data;
         updateBatch(sessionId, batch.tempId, updatedBatch1);
 
+        // Handle empty folders (folders containing only subfolders, no direct files)
+        if (files.length === 0) {
+          // Register with empty array to trigger state transition
+          const registerResult = await fileApi.registerSessionFiles(
+            sessionId,
+            batch.tempId,
+            []
+          );
+
+          if (!registerResult.success) {
+            console.error('[useFolderUpload] Failed to register empty folder:', registerResult.error);
+            return { success: false, uploadedCount: 0, failedCount: 0 };
+          }
+
+          updateBatch(sessionId, batch.tempId, registerResult.data.folderBatch);
+
+          // Complete the batch immediately (no files to upload)
+          if (!tracking.aborted) {
+            const completeResult = await fileApi.completeSessionFolder(sessionId, batch.tempId);
+            if (completeResult.success) {
+              updateBatch(sessionId, batch.tempId, completeResult.data.folderBatch);
+            }
+          }
+
+          return { success: true, uploadedCount: 0, failedCount: 0 };
+        }
+
         // Step 2: Register files (early persistence)
         const fileMetadata: FileRegistrationMetadata[] = files.map((file, idx) => ({
           tempId: `${batch.tempId}-file-${idx}`,

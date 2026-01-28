@@ -94,6 +94,7 @@ const envSchema = z.object({
   // Storage
   STORAGE_CONNECTION_STRING: z.string().optional(),
   STORAGE_CONTAINER_NAME: z.string().default('user-files'),
+  STORAGE_CONTAINER_NAME_TEST: z.string().default('user-files-test'),
 
   // Application Insights (Telemetry)
   APPLICATIONINSIGHTS_CONNECTION_STRING: z.string().optional(),

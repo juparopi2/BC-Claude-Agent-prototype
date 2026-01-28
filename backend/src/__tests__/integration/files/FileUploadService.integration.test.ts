@@ -1,36 +1,41 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { getFileUploadService, __resetFileUploadService } from '@services/files';
 import { BlobServiceClient } from '@azure/storage-blob';
+import { env } from '@/infrastructure/config/environment';
 
-// Connection string for integration tests
-// Uses STORAGE_CONNECTION_STRING_TEST (Azurite) in local development
-// Falls back to STORAGE_CONNECTION_STRING in CI/CD
-const TEST_CONNECTION_STRING = process.env.STORAGE_CONNECTION_STRING_TEST ||
-  process.env.STORAGE_CONNECTION_STRING ||
-  'DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;' +
-  'AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;' +
-  'BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;';
+// Connection string for integration tests - requires Azure Storage (no Azurite fallback)
+const TEST_CONNECTION_STRING = env.STORAGE_CONNECTION_STRING;
+if (!TEST_CONNECTION_STRING) {
+  throw new Error('STORAGE_CONNECTION_STRING is required for integration tests. Configure it in backend/.env');
+}
 
-const CONTAINER_NAME = 'user-files-test';
+const CONTAINER_NAME = env.STORAGE_CONTAINER_NAME_TEST;
 
-describe('FileUploadService - Azurite Integration Tests', () => {
+describe('FileUploadService - Azure Storage Integration Tests', () => {
   let uploadService: ReturnType<typeof getFileUploadService>;
   let blobServiceClient: BlobServiceClient;
 
   beforeAll(async () => {
-    // Setup test container (Azurite locally, real storage in CI/CD)
+    // Connect to Azure Storage (container already exists in Azure)
     blobServiceClient = BlobServiceClient.fromConnectionString(TEST_CONNECTION_STRING);
     const containerClient = blobServiceClient.getContainerClient(CONTAINER_NAME);
-    await containerClient.createIfNotExists();
+    // Verify container exists (fail fast if not configured)
+    const exists = await containerClient.exists();
+    if (!exists) {
+      throw new Error(`Container '${CONTAINER_NAME}' does not exist in Azure Storage. Create it first.`);
+    }
   });
 
   afterAll(async () => {
-    // Cleanup Azurite container
+    // Cleanup blobs created during tests (container is shared, don't delete it)
     const containerClient = blobServiceClient.getContainerClient(CONTAINER_NAME);
     try {
-      await containerClient.delete();
+      // Delete all blobs with the test prefix
+      for await (const blob of containerClient.listBlobsFlat({ prefix: 'users/test-user/' })) {
+        await containerClient.deleteBlob(blob.name);
+      }
     } catch (error) {
-      // Ignore if container doesn't exist
+      // Ignore cleanup errors
     }
   });
 
@@ -46,7 +51,7 @@ describe('FileUploadService - Azurite Integration Tests', () => {
 
       await uploadService.uploadToBlob(testData, blobPath, 'text/plain');
 
-      // Verify blob exists in Azurite
+      // Verify blob exists in Azure Storage
       const containerClient = blobServiceClient.getContainerClient(CONTAINER_NAME);
       const blobClient = containerClient.getBlobClient(blobPath);
       const exists = await blobClient.exists();
@@ -177,7 +182,7 @@ describe('FileUploadService - Azurite Integration Tests', () => {
 
     it('should handle invalid connection string during construction', async () => {
       // Test with connection string missing BlobEndpoint - this causes error during construction
-      const noEndpointConnString = 'DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;';
+      const noEndpointConnString = 'DefaultEndpointsProtocol=https;AccountName=testaccount;AccountKey=dGVzdGtleQ==;';
       await __resetFileUploadService();
 
       // Error should occur during service construction, not SAS generation
@@ -188,12 +193,12 @@ describe('FileUploadService - Azurite Integration Tests', () => {
 
     it('should handle missing account key during construction', async () => {
       // Azure SDK requires AccountKey in connection string - validation occurs during construction
-      const azuriteNoKeyConnString = 'DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;';
+      const noKeyConnString = 'DefaultEndpointsProtocol=https;AccountName=testaccount;BlobEndpoint=https://testaccount.blob.core.windows.net/;';
       await __resetFileUploadService();
 
       // Error should occur during service construction (BlobServiceClient.fromConnectionString)
       expect(() => {
-        getFileUploadService(CONTAINER_NAME, azuriteNoKeyConnString);
+        getFileUploadService(CONTAINER_NAME, noKeyConnString);
       }).toThrow('Invalid SharedAccessSignature in the provided SAS Connection String');
     });
 

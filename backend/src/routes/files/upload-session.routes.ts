@@ -70,9 +70,10 @@ const initUploadSessionSchema = z.object({
 
 /**
  * Schema for file registration request
+ * Note: min(0) allows empty folders (folders containing only subfolders, no direct files)
  */
 const registerFilesSchema = z.object({
-  files: z.array(fileRegistrationMetadataSchema).min(1).max(500),
+  files: z.array(fileRegistrationMetadataSchema).min(0).max(500),
 });
 
 /**

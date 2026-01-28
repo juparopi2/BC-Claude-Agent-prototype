@@ -1,12 +1,12 @@
 /**
  * Chat Attachment Service Integration Tests
  *
- * Tests ChatAttachmentService against real database and blob storage.
+ * Tests ChatAttachmentService against real database and Azure blob storage.
  * Validates CRUD operations, multi-tenant isolation, and TTL behavior.
  *
  * Requirements:
- * - Database connection (SQL Server or Azurite)
- * - Blob storage (Azurite or Azure Storage)
+ * - Database connection (Azure SQL)
+ * - Azure Blob Storage (no Azurite fallback)
  *
  * @module __tests__/integration/domains/chat-attachments/ChatAttachmentService.integration.test.ts
  */
@@ -27,14 +27,13 @@ import {
 import { executeQuery } from '@/infrastructure/database/database';
 import { getFileUploadService, __resetFileUploadService } from '@/services/files/FileUploadService';
 import { CHAT_ATTACHMENT_CONFIG } from '@bc-agent/shared';
+import { env } from '@/infrastructure/config/environment';
 
-// Azurite connection for tests
-const TEST_CONNECTION_STRING =
-  process.env.STORAGE_CONNECTION_STRING_TEST ||
-  process.env.STORAGE_CONNECTION_STRING ||
-  'DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;' +
-  'AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;' +
-  'BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;';
+// Connection string for integration tests - requires Azure Storage (no Azurite fallback)
+const TEST_CONNECTION_STRING = env.STORAGE_CONNECTION_STRING;
+if (!TEST_CONNECTION_STRING) {
+  throw new Error('STORAGE_CONNECTION_STRING is required for integration tests. Configure it in backend/.env');
+}
 
 const TEST_CONTAINER = 'chat-attachments-test';
 

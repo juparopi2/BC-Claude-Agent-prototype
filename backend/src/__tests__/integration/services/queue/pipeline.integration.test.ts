@@ -257,9 +257,11 @@ describe('Embedding Generation Pipeline', () => {
     await completedPromise;
 
     // 7. Verify injected mocks were called
+    // Note: generateTextEmbeddingsBatch receives (texts, userId, fileId) for usage tracking
     expect(mockEmbeddingService.generateTextEmbeddingsBatch).toHaveBeenCalledWith(
         ['Hello world', 'Another chunk'],
-        testUser.id
+        testUser.id,
+        fileId
     );
 
     expect(mockVectorSearchService.indexChunksBatch).toHaveBeenCalled();

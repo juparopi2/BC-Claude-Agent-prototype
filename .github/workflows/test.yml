@@ -107,9 +107,9 @@ jobs:
       DATABASE_NAME: ${{ secrets.DATABASE_NAME }}
       DATABASE_USER: ${{ secrets.DATABASE_USER }}
       DATABASE_PASSWORD: ${{ secrets.DATABASE_PASSWORD }}
-      STORAGE_CONNECTION_STRING: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;"
-      STORAGE_USER_FILE_CONTAINER_NAME: "user-files"
+      STORAGE_CONNECTION_STRING: ${{ secrets.STORAGE_CONNECTION_STRING }}
       STORAGE_CONTAINER_NAME: "user-files"
+      STORAGE_CONTAINER_NAME_TEST: "user-files-test"
       NODE_ENV: test
 
     steps:
@@ -139,12 +139,6 @@ jobs:
             echo "Attempt $i/30 - Redis not ready, waiting..."
             sleep 1
           done
-
-      - name: Start Azurite
-        run: |
-          npm install -g azurite
-          azurite --silent &
-          sleep 5
 
       - name: Run integration tests
         working-directory: backend
@@ -241,7 +235,9 @@ jobs:
       SESSION_SECRET: test-secret-key-for-ci
       ENCRYPTION_KEY: dGVzdC1lbmNyeXB0aW9uLWtleS0zMi1ieXRlcw==
       ANTHROPIC_API_KEY: mock-api-key
-      STORAGE_CONNECTION_STRING: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;"
+      STORAGE_CONNECTION_STRING: ${{ secrets.STORAGE_CONNECTION_STRING }}
+      STORAGE_CONTAINER_NAME: "user-files"
+      STORAGE_CONTAINER_NAME_TEST: "user-files-test"
 
     steps:
       - name: Checkout code
@@ -270,12 +266,6 @@ jobs:
             echo "Attempt $i/30 - Redis not ready, waiting..."
             sleep 1
           done
-
-      - name: Start Azurite
-        run: |
-          npm install -g azurite
-          azurite --silent &
-          sleep 5
 
       - name: Run E2E tests (mock mode)
         working-directory: backend
@@ -326,7 +316,9 @@ jobs:
       ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
       MICROSOFT_CLIENT_ID: ${{ secrets.MICROSOFT_CLIENT_ID }}
       MICROSOFT_CLIENT_SECRET: ${{ secrets.MICROSOFT_CLIENT_SECRET }}
-      STORAGE_CONNECTION_STRING: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;"
+      STORAGE_CONNECTION_STRING: ${{ secrets.STORAGE_CONNECTION_STRING }}
+      STORAGE_CONTAINER_NAME: "user-files"
+      STORAGE_CONTAINER_NAME_TEST: "user-files-test"
       BACKEND_URL: http://localhost:3002
       FRONTEND_URL: http://localhost:3000
 
@@ -351,12 +343,6 @@ jobs:
             echo "Attempt $i/30 - Redis not ready, waiting..."
             sleep 1
           done
-
-      - name: Start Azurite
-        run: |
-          npm install -g azurite
-          azurite --silent &
-          sleep 5
 
       - name: Install all dependencies
         run: npm ci

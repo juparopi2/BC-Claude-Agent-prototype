@@ -316,6 +316,25 @@ export class UploadSessionManager implements IUploadSessionManager {
       throw new Error(`Folder not yet created for batch ${tempId}`);
     }
 
+    // Handle empty folders (folders containing only subfolders, no direct files)
+    if (files.length === 0) {
+      // Transition directly to 'uploading' (ready for completion)
+      await this.store.updateBatch(sessionId, tempId, {
+        registeredFiles: 0,
+        status: 'uploading',
+      });
+
+      const updatedSession = await this.requireSession(sessionId);
+      const updatedBatch = this.findBatch(updatedSession, tempId);
+
+      this.log.info(
+        { sessionId, tempId, folderName: batch.name },
+        'Empty folder registered (no files)'
+      );
+
+      return { registered: [], folderBatch: updatedBatch };
+    }
+
     const fileRepo = this.getFileRepo();
     const registered: Array<{ tempId: string; fileId: string }> = [];
 

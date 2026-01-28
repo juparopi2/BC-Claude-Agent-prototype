@@ -41,13 +41,17 @@ export type ExecuteQueryFn = <T = Record<string, unknown>>(
  * - logger.info('message', { data })  - message first (also supported)
  *
  * Uses variadic args for maximum flexibility.
+ *
+ * Includes child() method for creating job-scoped loggers that:
+ * - Inherit the service name from the parent logger
+ * - Work correctly with LOG_SERVICES filtering
+ * - Follow standard Pino patterns for context propagation
  */
 export interface ILoggerMinimal {
   info(...args: unknown[]): void;
   error(...args: unknown[]): void;
   warn(...args: unknown[]): void;
   debug(...args: unknown[]): void;
-  /** Create a child logger with additional context bindings */
   child(bindings: Record<string, unknown>): ILoggerMinimal;
 }
 

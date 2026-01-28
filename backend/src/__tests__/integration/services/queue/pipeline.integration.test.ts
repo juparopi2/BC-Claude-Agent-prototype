@@ -23,23 +23,23 @@ import type { IEmbeddingServiceMinimal, IVectorSearchServiceMinimal } from '@/in
 // Factory function must be defined inside the mock to avoid hoisting issues
 vi.mock('@/shared/utils/logger', () => {
   // Create a factory function for mock logger that supports recursive child() calls
-  const createMockLogger = (): any => ({
-    info: vi.fn((msg, meta) => console.log('[INFO]', msg, meta || '')),
-    error: vi.fn((msg, meta) => console.error('[ERROR]', msg, meta || '')),
-    warn: vi.fn((msg, meta) => console.warn('[WARN]', msg, meta || '')),
-    debug: vi.fn((msg, meta) => console.debug('[DEBUG]', msg, meta || '')),
-    trace: vi.fn(),
-    fatal: vi.fn((msg, meta) => console.error('[FATAL]', msg, meta || '')),
-    child: vi.fn(() => createMockLogger()),
-  });
-
-  return {
-    logger: {
+  // IMPORTANT: Must include child() method for workers that use this.log.child()
+  const createMockLogger = (): any => {
+    const mockLogger: any = {
       info: vi.fn((msg, meta) => console.log('[INFO]', msg, meta || '')),
       error: vi.fn((msg, meta) => console.error('[ERROR]', msg, meta || '')),
       warn: vi.fn((msg, meta) => console.warn('[WARN]', msg, meta || '')),
       debug: vi.fn((msg, meta) => console.debug('[DEBUG]', msg, meta || '')),
-    },
+      trace: vi.fn(),
+      fatal: vi.fn((msg, meta) => console.error('[FATAL]', msg, meta || '')),
+      // child() returns another mock logger to support this.log.child() pattern
+      child: vi.fn(() => createMockLogger()),
+    };
+    return mockLogger;
+  };
+
+  return {
+    logger: createMockLogger(),
     createChildLogger: vi.fn(() => createMockLogger()),
   };
 });

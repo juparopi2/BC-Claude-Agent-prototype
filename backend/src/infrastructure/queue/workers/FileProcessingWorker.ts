@@ -55,6 +55,7 @@ export class FileProcessingWorker {
     const correlationId = jobData?.correlationId;
 
     // Create job-scoped logger with user context and timestamp for Application Insights filtering
+    // Uses this.log.child() to inherit service name and work correctly with LOG_SERVICES filtering
     const jobLogger = this.log.child({
       userId,
       sessionId,

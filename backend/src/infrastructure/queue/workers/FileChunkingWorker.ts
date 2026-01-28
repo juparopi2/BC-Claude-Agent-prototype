@@ -49,6 +49,7 @@ export class FileChunkingWorker {
     const { fileId, userId, sessionId, mimeType, correlationId } = job.data;
 
     // Create job-scoped logger with user context and timestamp
+    // Uses this.log.child() to inherit service name and work correctly with LOG_SERVICES filtering
     const jobLogger = this.log.child({
       userId,
       sessionId,

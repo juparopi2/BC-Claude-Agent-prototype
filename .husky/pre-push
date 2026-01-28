@@ -64,20 +64,14 @@ else
   echo "⚠️  Docker not available. Using existing Redis (if configured)."
 fi
 
-# NOTE: Temporarily allow integration tests to pass even with skipped tests
-# TODO: Configure Redis availability in CI/CD for full integration test suite
-# REASON: Some integration tests require Redis container which may not be
-#         available in local pre-push environment. Tests are properly skipped
-#         with TODO comments explaining the requirements.
-# RELATED: backend/src/__tests__/integration/event-ordering/sequence-numbers.integration.test.ts
-npm run test:integration || {
-  echo ""
-  echo "⚠️  Integration tests had failures or skipped tests"
-  echo "✅ Allowing push to continue (skipped tests are acceptable)"
-  echo "💡 Configure Redis for full integration test coverage"
-  echo ""
-  true
-}
+# Integration tests are MANDATORY - Redis must be available
+# Either via Docker container (started above) or local/CI Redis instance
+npm run test:integration
+if [ $? -ne 0 ]; then
+  echo "❌ Backend integration tests failed. Push aborted."
+  echo "💡 Ensure Redis is running (docker-compose -f docker-compose.test.yml up -d)"
+  exit 1
+fi
 
 # Clean up Redis container if we started it
 if [ "$STARTED_REDIS" = true ]; then

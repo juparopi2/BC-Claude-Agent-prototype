@@ -84,3 +84,10 @@ export {
   type UploadSessionState,
   type UploadSessionActions,
 } from './uploadSessionStore';
+
+export {
+  useMultiUploadSessionStore,
+  resetMultiUploadSessionStore,
+  type MultiUploadSessionState,
+  type MultiUploadSessionActions,
+} from './multiUploadSessionStore';

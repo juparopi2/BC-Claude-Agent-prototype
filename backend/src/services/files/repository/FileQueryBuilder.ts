@@ -462,6 +462,110 @@ export class FileQueryBuilder {
 
     return { query, params };
   }
+
+  /**
+   * Build query for checking if a folder with the given name exists
+   *
+   * Checks for exact name match for folders (is_folder = 1).
+   * Automatically excludes folders marked for deletion.
+   *
+   * @param userId - User ID
+   * @param folderName - Folder name to check
+   * @param parentFolderId - Parent folder ID (undefined/null for root)
+   * @returns Query string and parameters
+   */
+  public buildCheckFolderExistsQuery(
+    userId: string,
+    folderName: string,
+    parentFolderId?: string | null
+  ): QueryResult {
+    const isAtRoot = parentFolderId === undefined || parentFolderId === null;
+    const params: Record<string, unknown> = {
+      user_id: userId,
+      name: folderName,
+    };
+
+    let query: string;
+
+    if (isAtRoot) {
+      query = `
+        SELECT id, name
+        FROM files
+        WHERE user_id = @user_id
+          AND name = @name
+          AND parent_folder_id IS NULL
+          AND is_folder = 1
+          AND deletion_status IS NULL
+      `;
+    } else {
+      query = `
+        SELECT id, name
+        FROM files
+        WHERE user_id = @user_id
+          AND name = @name
+          AND parent_folder_id = @parent_folder_id
+          AND is_folder = 1
+          AND deletion_status IS NULL
+      `;
+      params.parent_folder_id = parentFolderId;
+    }
+
+    return { query, params };
+  }
+
+  /**
+   * Build query for finding folders by name pattern
+   *
+   * Finds folders matching a base name or base name with suffix pattern.
+   * E.g., "Documents", "Documents (1)", "Documents (2)", etc.
+   *
+   * @param userId - User ID
+   * @param baseName - Base folder name (without suffix)
+   * @param parentFolderId - Parent folder ID (undefined/null for root)
+   * @returns Query string and parameters
+   */
+  public buildFindFoldersByNamePatternQuery(
+    userId: string,
+    baseName: string,
+    parentFolderId?: string | null
+  ): QueryResult {
+    const isAtRoot = parentFolderId === undefined || parentFolderId === null;
+
+    // Match exact name or name with suffix pattern: "name (N)"
+    // Using LIKE pattern: "baseName" OR "baseName ([0-9]%)"
+    const params: Record<string, unknown> = {
+      user_id: userId,
+      exact_name: baseName,
+      pattern_name: `${baseName} ([0-9]%)`, // SQL LIKE pattern
+    };
+
+    let query: string;
+
+    if (isAtRoot) {
+      query = `
+        SELECT name
+        FROM files
+        WHERE user_id = @user_id
+          AND (name = @exact_name OR name LIKE @pattern_name)
+          AND parent_folder_id IS NULL
+          AND is_folder = 1
+          AND deletion_status IS NULL
+      `;
+    } else {
+      query = `
+        SELECT name
+        FROM files
+        WHERE user_id = @user_id
+          AND (name = @exact_name OR name LIKE @pattern_name)
+          AND parent_folder_id = @parent_folder_id
+          AND is_folder = 1
+          AND deletion_status IS NULL
+      `;
+      params.parent_folder_id = parentFolderId;
+    }
+
+    return { query, params };
+  }
 }
 
 /**

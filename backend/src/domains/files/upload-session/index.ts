@@ -19,6 +19,7 @@ export type {
 export type {
   IUploadSessionManager,
   InitSessionOptions,
+  InitSessionResult,
   CreateFolderResult,
   RegisterFilesResult,
   FileSasInfo,
@@ -41,3 +42,18 @@ export {
   __resetUploadSessionManager,
   type UploadSessionManagerDependencies,
 } from './UploadSessionManager';
+
+// Folder Name Resolver
+export {
+  FolderNameResolver,
+  createFolderNameResolver,
+  type FolderNameResolutionResult,
+} from './FolderNameResolver';
+
+// Session Cancellation Handler
+export {
+  SessionCancellationHandler,
+  getSessionCancellationHandler,
+  __resetSessionCancellationHandler,
+  type SessionCancellationHandlerDependencies,
+} from './SessionCancellationHandler';

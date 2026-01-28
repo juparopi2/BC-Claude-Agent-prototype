@@ -70,6 +70,8 @@ export interface IFileRepository {
   markForDeletion(userId: string, fileIds: string[]): Promise<MarkForDeletionResult>;
   updateDeletionStatus(userId: string, fileIds: string[], status: 'deleting' | 'failed'): Promise<void>;
   isFileActiveForProcessing(userId: string, fileId: string): Promise<boolean>;
+  checkFolderExists(userId: string, name: string, parentId?: string | null): Promise<boolean>;
+  findFoldersByNamePattern(userId: string, baseName: string, parentId?: string | null): Promise<string[]>;
 }
 
 /**
@@ -663,6 +665,82 @@ export class FileRepository implements IFileRepository {
       return parseFile(record);
     } catch (error) {
       this.logger.error({ error, userId, fileId }, 'Failed to find file by ID (including deleted)');
+      throw error;
+    }
+  }
+
+  /**
+   * Check if a folder with the given name exists in the specified parent folder
+   *
+   * @param userId - User ID
+   * @param name - Folder name to check
+   * @param parentId - Parent folder ID (undefined/null for root level)
+   * @returns True if folder exists, false otherwise
+   */
+  public async checkFolderExists(
+    userId: string,
+    name: string,
+    parentId?: string | null
+  ): Promise<boolean> {
+    this.logger.debug({ userId, name, parentId }, 'Checking if folder exists');
+
+    try {
+      const { query, params } = this.queryBuilder.buildCheckFolderExistsQuery(
+        userId,
+        name,
+        parentId
+      );
+      const result = await executeQuery<{ id: string; name: string }>(query, params as SqlParams);
+
+      const exists = result.recordset.length > 0;
+      this.logger.debug({ userId, name, parentId, exists }, 'Folder existence check complete');
+      return exists;
+    } catch (error) {
+      const errorInfo = error instanceof Error
+        ? { message: error.message, name: error.name }
+        : { value: String(error) };
+      this.logger.error({ errorInfo, userId, name, parentId }, 'Failed to check folder existence');
+      throw error;
+    }
+  }
+
+  /**
+   * Find folder names matching a base name pattern
+   *
+   * Returns all folder names that match "baseName" or "baseName (N)".
+   * Used to determine the next available suffix for auto-rename.
+   *
+   * @param userId - User ID
+   * @param baseName - Base folder name (without suffix)
+   * @param parentId - Parent folder ID (undefined/null for root level)
+   * @returns Array of matching folder names
+   */
+  public async findFoldersByNamePattern(
+    userId: string,
+    baseName: string,
+    parentId?: string | null
+  ): Promise<string[]> {
+    this.logger.debug({ userId, baseName, parentId }, 'Finding folders by name pattern');
+
+    try {
+      const { query, params } = this.queryBuilder.buildFindFoldersByNamePatternQuery(
+        userId,
+        baseName,
+        parentId
+      );
+      const result = await executeQuery<{ name: string }>(query, params as SqlParams);
+
+      const names = result.recordset.map(r => r.name);
+      this.logger.debug(
+        { userId, baseName, parentId, matchCount: names.length },
+        'Found folders by name pattern'
+      );
+      return names;
+    } catch (error) {
+      const errorInfo = error instanceof Error
+        ? { message: error.message, name: error.name }
+        : { value: String(error) };
+      this.logger.error({ errorInfo, userId, baseName, parentId }, 'Failed to find folders by name pattern');
       throw error;
     }
   }

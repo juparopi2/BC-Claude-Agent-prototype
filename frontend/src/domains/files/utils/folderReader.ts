@@ -7,7 +7,13 @@
  * @module domains/files/utils/folderReader
  */
 
-import { FILE_UPLOAD_LIMITS, ALLOWED_MIME_TYPES, isAllowedMimeType } from '@bc-agent/shared';
+import {
+  FILE_UPLOAD_LIMITS,
+  ALLOWED_MIME_TYPES,
+  isAllowedMimeType,
+  validateFileName,
+  validateFolderName,
+} from '@bc-agent/shared';
 import type {
   DropType,
   FolderEntry,
@@ -69,12 +75,21 @@ export function detectDropType(dataTransfer: DataTransfer): DropType {
 }
 
 /**
- * Validate a file against allowed types and size limits
+ * Validate a file against allowed types, size limits, and name rules
  *
  * @param file - The File object to validate
  * @returns Validation result with isValid and optional reason
  */
 export function validateFile(file: File): FileValidationResult {
+  // Check file name validation (path traversal, reserved names, etc.)
+  const nameValidation = validateFileName(file.name);
+  if (!nameValidation.isValid) {
+    return {
+      isValid: false,
+      reason: nameValidation.reason ?? 'Invalid file name',
+    };
+  }
+
   // Check MIME type
   if (!isAllowedMimeType(file.type)) {
     return {
@@ -185,6 +200,17 @@ export async function readFolderRecursive(
   }
 
   if (entry.isDirectory) {
+    // Validate folder name
+    const folderNameValidation = validateFolderName(entry.name);
+    if (!folderNameValidation.isValid) {
+      // Skip folders with invalid names entirely (they can't be created)
+      // This prevents issues with path traversal, reserved names, etc.
+      console.warn(
+        `Skipping folder with invalid name "${entry.name}": ${folderNameValidation.reason}`
+      );
+      return null;
+    }
+
     const dirEntry = entry as FileSystemDirectoryEntry;
     const reader = dirEntry.createReader();
     const entries = await readAllDirectoryEntries(reader);
@@ -245,6 +271,73 @@ function collectAllFiles(entry: FolderEntry | FileEntry): FileEntry[] {
 }
 
 /**
+ * Check if a folder has any valid files (recursively)
+ *
+ * A folder is considered "effectively empty" if it has no valid files,
+ * even if it contains subfolders that are also empty.
+ */
+function hasValidFiles(entry: FolderEntry | FileEntry): boolean {
+  if (entry.type === 'file') {
+    return entry.isValid;
+  }
+
+  return entry.children.some((child) => hasValidFiles(child));
+}
+
+/**
+ * Filter out empty folders from the structure (folders with no valid files)
+ *
+ * Recursively removes folders that contain no valid files.
+ * This prevents creating empty folder hierarchies.
+ *
+ * @param folders - Array of folder entries to filter
+ * @returns Filtered array with empty folders removed
+ */
+function filterEmptyFolders(folders: FolderEntry[]): {
+  filtered: FolderEntry[];
+  emptyFolderCount: number;
+} {
+  let emptyFolderCount = 0;
+
+  const filterFolder = (folder: FolderEntry): FolderEntry | null => {
+    // Recursively filter children
+    const filteredChildren: (FolderEntry | FileEntry)[] = [];
+
+    for (const child of folder.children) {
+      if (child.type === 'file') {
+        filteredChildren.push(child);
+      } else {
+        const filteredSubfolder = filterFolder(child);
+        if (filteredSubfolder) {
+          filteredChildren.push(filteredSubfolder);
+        }
+      }
+    }
+
+    // Check if folder is empty after filtering
+    if (!filteredChildren.some((child) => hasValidFiles(child))) {
+      emptyFolderCount++;
+      return null;
+    }
+
+    return {
+      ...folder,
+      children: filteredChildren,
+    };
+  };
+
+  const filtered: FolderEntry[] = [];
+  for (const folder of folders) {
+    const result = filterFolder(folder);
+    if (result) {
+      filtered.push(result);
+    }
+  }
+
+  return { filtered, emptyFolderCount };
+}
+
+/**
  * Build a complete folder structure from a DataTransfer object
  *
  * @param dataTransfer - The DataTransfer object from the drop event
@@ -281,11 +374,14 @@ export async function buildFolderStructure(dataTransfer: DataTransfer): Promise<
     }
   }
 
-  // Collect all files from root folders
+  // Filter out empty folders (folders with no valid files)
+  const { filtered: filteredRootFolders, emptyFolderCount } = filterEmptyFolders(rootFolders);
+
+  // Collect all files from filtered root folders
   const allFiles: FileEntry[] = [...standaloneFiles];
   let totalFolders = 0;
 
-  for (const folder of rootFolders) {
+  for (const folder of filteredRootFolders) {
     allFiles.push(...collectAllFiles(folder));
     const counts = countEntries(folder);
     totalFolders += counts.folders;
@@ -296,12 +392,13 @@ export async function buildFolderStructure(dataTransfer: DataTransfer): Promise<
   const invalidFiles = allFiles.filter((f) => !f.isValid);
 
   return {
-    rootFolders,
+    rootFolders: filteredRootFolders,
     allFiles,
     validFiles,
     invalidFiles,
     totalFiles: allFiles.length,
     totalFolders,
+    emptyFoldersFiltered: emptyFolderCount > 0 ? emptyFolderCount : undefined,
   };
 }
 

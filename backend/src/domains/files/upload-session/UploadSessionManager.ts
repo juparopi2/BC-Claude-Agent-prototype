@@ -14,7 +14,7 @@
  */
 
 import { createChildLogger } from '@/shared/utils/logger';
-import { FOLDER_UPLOAD_CONFIG } from '@bc-agent/shared';
+import { FOLDER_UPLOAD_CONFIG, validateFileName, sanitizeName } from '@bc-agent/shared';
 import type {
   UploadSession,
   FolderBatch,
@@ -30,6 +30,7 @@ import {
 import type {
   IUploadSessionManager,
   InitSessionOptions,
+  InitSessionResult,
   CreateFolderResult,
   RegisterFilesResult,
   FileSasInfo,
@@ -39,6 +40,7 @@ import type {
 import { getFileRepository, type IFileRepository } from '@/services/files/repository';
 import { getFileUploadService, type FileUploadService } from '@/services/files/FileUploadService';
 import { getMessageQueue, type MessageQueue } from '@/infrastructure/queue/MessageQueue';
+import { createFolderNameResolver } from './FolderNameResolver';
 
 /**
  * Dependencies for UploadSessionManager (DI support for testing)
@@ -109,8 +111,10 @@ export class UploadSessionManager implements IUploadSessionManager {
 
   /**
    * Initialize a new upload session
+   *
+   * Resolves duplicate folder names by applying suffixes (1), (2), etc.
    */
-  async initializeSession(options: InitSessionOptions): Promise<UploadSession> {
+  async initializeSession(options: InitSessionOptions): Promise<InitSessionResult> {
     const { userId, folders, targetFolderId } = options;
 
     // Validate folder count
@@ -120,24 +124,49 @@ export class UploadSessionManager implements IUploadSessionManager {
       );
     }
 
-    // Check for existing active session
-    const existingSession = await this.store.getActiveSession(userId);
-    if (existingSession && existingSession.status === 'active') {
-      throw new Error(`User already has an active upload session: ${existingSession.id}`);
+    // Check for concurrent session limit (multi-session support)
+    const activeSessions = await this.store.getActiveSessions(userId);
+    if (activeSessions.length >= FOLDER_UPLOAD_CONFIG.MAX_CONCURRENT_SESSIONS) {
+      throw new Error(
+        `Maximum concurrent sessions (${FOLDER_UPLOAD_CONFIG.MAX_CONCURRENT_SESSIONS}) reached. ` +
+        `Please wait for an upload to complete or cancel one.`
+      );
     }
 
-    // Build folder batches from input
-    const folderBatches: FolderBatch[] = folders.map(folder => ({
-      tempId: folder.tempId,
-      name: folder.name,
-      parentTempId: folder.parentTempId,
-      parentFolderId: folder.parentTempId ? undefined : (targetFolderId ?? undefined),
-      totalFiles: folder.files.length,
-      registeredFiles: 0,
-      uploadedFiles: 0,
-      processedFiles: 0,
-      status: 'pending' as FolderBatchStatus,
-    }));
+    // Resolve folder names to avoid duplicates
+    const fileRepo = this.getFileRepo();
+    const nameResolver = createFolderNameResolver(fileRepo);
+    const nameResolution = await nameResolver.resolveFolderNames(
+      userId,
+      folders,
+      targetFolderId ?? null
+    );
+
+    if (nameResolution.renamedCount > 0) {
+      this.log.info(
+        { userId, renamedCount: nameResolution.renamedCount },
+        'Folders renamed to avoid duplicates'
+      );
+    }
+
+    // Build folder batches from input with resolved names
+    const folderBatches: FolderBatch[] = folders.map(folder => {
+      const resolvedName = nameResolution.resolvedNameMap.get(folder.tempId) ?? folder.name;
+      const wasRenamed = resolvedName !== folder.name;
+
+      return {
+        tempId: folder.tempId,
+        name: resolvedName,
+        originalName: wasRenamed ? folder.name : undefined,
+        parentTempId: folder.parentTempId,
+        parentFolderId: folder.parentTempId ? undefined : (targetFolderId ?? undefined),
+        totalFiles: folder.files.length,
+        registeredFiles: 0,
+        uploadedFiles: 0,
+        processedFiles: 0,
+        status: 'pending' as FolderBatchStatus,
+      };
+    });
 
     // Create session
     const session = await this.store.create({
@@ -153,7 +182,11 @@ export class UploadSessionManager implements IUploadSessionManager {
       'Upload session initialized'
     );
 
-    return { ...session, status: 'active' };
+    return {
+      session: { ...session, status: 'active' },
+      renamedFolderCount: nameResolution.renamedCount,
+      renamedFolders: nameResolution.renamedFolders,
+    };
   }
 
   /**
@@ -165,6 +198,10 @@ export class UploadSessionManager implements IUploadSessionManager {
     const currentFolder = session.currentFolderIndex >= 0 && session.currentFolderIndex < session.folderBatches.length
       ? session.folderBatches[session.currentFolderIndex]!
       : null;
+
+    // Calculate file counts across all folders
+    const totalFiles = session.folderBatches.reduce((sum, b) => sum + b.totalFiles, 0);
+    const uploadedFiles = session.folderBatches.reduce((sum, b) => sum + b.uploadedFiles, 0);
 
     // Calculate overall progress
     const completedCount = session.completedFolders + session.failedFolders;
@@ -181,6 +218,8 @@ export class UploadSessionManager implements IUploadSessionManager {
       completedFolders: session.completedFolders,
       failedFolders: session.failedFolders,
       status: session.status,
+      totalFiles,
+      uploadedFiles,
     };
   }
 
@@ -283,13 +322,35 @@ export class UploadSessionManager implements IUploadSessionManager {
     // Register each file with 'uploading' readiness state
     for (const file of files) {
       try {
+        // Server-side name validation (second line of defense)
+        const nameValidation = validateFileName(file.fileName);
+        let validatedFileName = file.fileName;
+
+        if (!nameValidation.isValid) {
+          // Try to sanitize the name instead of rejecting outright
+          if (nameValidation.sanitized) {
+            validatedFileName = nameValidation.sanitized;
+            this.log.warn(
+              { sessionId, tempId, originalName: file.fileName, sanitizedName: validatedFileName, reason: nameValidation.reason },
+              'File name sanitized due to validation failure'
+            );
+          } else {
+            // Can't sanitize, use generic name
+            validatedFileName = sanitizeName(file.fileName);
+            this.log.warn(
+              { sessionId, tempId, originalName: file.fileName, sanitizedName: validatedFileName, reason: nameValidation.reason },
+              'File name replaced due to validation failure'
+            );
+          }
+        }
+
         // Generate a placeholder blob path (will be updated after upload)
-        const placeholderBlobPath = `users/${session.userId}/files/pending-${Date.now()}-${file.fileName}`;
+        const placeholderBlobPath = `users/${session.userId}/files/pending-${Date.now()}-${validatedFileName}`;
 
         // Create file record with processing status that results in 'uploading' readiness
         const fileId = await fileRepo.create({
           userId: session.userId,
-          name: file.fileName,
+          name: validatedFileName,
           mimeType: file.mimeType,
           sizeBytes: file.sizeBytes,
           blobPath: placeholderBlobPath,
@@ -674,10 +735,26 @@ export class UploadSessionManager implements IUploadSessionManager {
   }
 
   /**
-   * Get user's active session
+   * Get user's active session (legacy - returns first active)
+   *
+   * @deprecated Use getActiveSessions() for multi-session support
    */
   async getActiveSession(userId: string): Promise<UploadSession | null> {
     return this.store.getActiveSession(userId);
+  }
+
+  /**
+   * Get all active sessions for a user (multi-session support)
+   */
+  async getActiveSessions(userId: string): Promise<UploadSession[]> {
+    return this.store.getActiveSessions(userId);
+  }
+
+  /**
+   * Get count of active sessions for a user
+   */
+  async getActiveSessionCount(userId: string): Promise<number> {
+    return this.store.getActiveSessionCount(userId);
   }
 
   // =========================================================================

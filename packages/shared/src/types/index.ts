@@ -275,6 +275,7 @@ export type {
   FolderInput,
   InitUploadSessionRequest,
   InitUploadSessionResponse,
+  RenamedFolderInfo,
   CreateFolderInSessionResponse,
   RegisteredFileResult,
   RegisterFilesResponse,
@@ -284,6 +285,8 @@ export type {
   MarkFileUploadedResponse,
   CompleteFolderBatchResponse,
   GetUploadSessionResponse,
+  GetActiveSessionsResponse,
+  CancelSessionResult,
   // WebSocket event types
   FolderSessionStartedEvent,
   FolderSessionCompletedEvent,

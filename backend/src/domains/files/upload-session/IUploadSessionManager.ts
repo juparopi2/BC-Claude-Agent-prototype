@@ -12,6 +12,7 @@ import type {
   FolderInput,
   UploadSessionProgress,
   FileRegistrationMetadata,
+  RenamedFolderInfo,
 } from '@bc-agent/shared';
 
 /**
@@ -93,6 +94,20 @@ export interface CompleteBatchResult {
 }
 
 /**
+ * Result of session initialization
+ */
+export interface InitSessionResult {
+  /** Created session */
+  session: UploadSession;
+
+  /** Number of folders that were renamed to avoid duplicates */
+  renamedFolderCount: number;
+
+  /** Details of renamed folders (only present if renamedFolderCount > 0) */
+  renamedFolders: RenamedFolderInfo[];
+}
+
+/**
  * Interface for upload session lifecycle management
  */
 export interface IUploadSessionManager {
@@ -101,11 +116,12 @@ export interface IUploadSessionManager {
    *
    * Creates session in Redis with all folder batches in 'pending' status.
    * Validates folder count and structure.
+   * Resolves duplicate folder names by applying suffixes (1), (2), etc.
    *
    * @param options - Session initialization options
-   * @returns Created session
+   * @returns Session with renamed folder information
    */
-  initializeSession(options: InitSessionOptions): Promise<UploadSession>;
+  initializeSession(options: InitSessionOptions): Promise<InitSessionResult>;
 
   /**
    * Get current session progress
@@ -231,10 +247,27 @@ export interface IUploadSessionManager {
   getSession(sessionId: string): Promise<UploadSession | null>;
 
   /**
-   * Get user's active session
+   * Get user's active session (legacy - returns first active)
    *
    * @param userId - User ID
    * @returns Active session or null
+   * @deprecated Use getActiveSessions() for multi-session support
    */
   getActiveSession(userId: string): Promise<UploadSession | null>;
+
+  /**
+   * Get all active sessions for a user (multi-session support)
+   *
+   * @param userId - User ID
+   * @returns Array of active sessions
+   */
+  getActiveSessions(userId: string): Promise<UploadSession[]>;
+
+  /**
+   * Get count of active sessions for a user
+   *
+   * @param userId - User ID
+   * @returns Number of active sessions
+   */
+  getActiveSessionCount(userId: string): Promise<number>;
 }

@@ -142,8 +142,11 @@ export interface FolderBatch {
   /** Database folder ID (assigned after creation) */
   folderId?: string;
 
-  /** Folder name */
+  /** Folder name (may be different from originalName if renamed) */
   name: string;
+
+  /** Original folder name before auto-rename (only set if renamed) */
+  originalName?: string;
 
   /** Parent folder temp ID for nested structure */
   parentTempId?: string | null;
@@ -355,6 +358,29 @@ export interface InitUploadSessionRequest {
 }
 
 /**
+ * Info about a folder that was renamed to avoid duplicates
+ *
+ * @example
+ * ```typescript
+ * const rename: RenamedFolderInfo = {
+ *   tempId: 'temp-folder-123',
+ *   originalName: 'Documents',
+ *   resolvedName: 'Documents (1)',
+ * };
+ * ```
+ */
+export interface RenamedFolderInfo {
+  /** Client-generated temporary ID */
+  tempId: string;
+
+  /** Original folder name before rename */
+  originalName: string;
+
+  /** Resolved name after applying suffix */
+  resolvedName: string;
+}
+
+/**
  * Response for upload session initialization
  * POST /api/files/upload-session/init
  *
@@ -364,6 +390,10 @@ export interface InitUploadSessionRequest {
  *   sessionId: 'SESSION-ABC123',
  *   folderBatches: [...],
  *   expiresAt: '2026-01-16T14:30:00.000Z',
+ *   renamedFolderCount: 2,
+ *   renamedFolders: [
+ *     { tempId: 'temp-1', originalName: 'Docs', resolvedName: 'Docs (1)' }
+ *   ],
  * };
  * ```
  */
@@ -376,6 +406,12 @@ export interface InitUploadSessionResponse {
 
   /** ISO 8601 timestamp when session expires */
   expiresAt: string;
+
+  /** Number of folders that were renamed to avoid duplicates */
+  renamedFolderCount?: number;
+
+  /** Details of renamed folders (only present if renamedFolderCount > 0) */
+  renamedFolders?: RenamedFolderInfo[];
 }
 
 /**
@@ -525,6 +561,66 @@ export interface GetUploadSessionResponse {
 
   /** Computed progress information */
   progress: UploadSessionProgress;
+}
+
+/**
+ * Response for getting all active upload sessions
+ * GET /api/files/upload-session/active
+ *
+ * @example
+ * ```typescript
+ * const response: GetActiveSessionsResponse = {
+ *   sessions: [...],
+ *   count: 2,
+ *   maxConcurrent: 5,
+ * };
+ * ```
+ */
+export interface GetActiveSessionsResponse {
+  /** Array of active upload sessions */
+  sessions: UploadSession[];
+
+  /** Current count of active sessions */
+  count: number;
+
+  /** Maximum concurrent sessions allowed */
+  maxConcurrent: number;
+}
+
+/**
+ * Result of cancelling an upload session with intelligent rollback
+ * POST /api/files/upload-session/:id/cancel
+ *
+ * @example
+ * ```typescript
+ * const result: CancelSessionResult = {
+ *   sessionId: 'SESSION-123',
+ *   filesDeleted: 5,
+ *   blobsDeleted: 3,
+ *   searchDocsDeleted: 10,
+ *   foldersDeleted: 2,
+ *   errors: [],
+ * };
+ * ```
+ */
+export interface CancelSessionResult {
+  /** Session ID that was cancelled */
+  sessionId: string;
+
+  /** Number of file records deleted from database */
+  filesDeleted: number;
+
+  /** Number of blobs deleted from storage */
+  blobsDeleted: number;
+
+  /** Number of AI Search documents deleted */
+  searchDocsDeleted: number;
+
+  /** Number of empty folders deleted */
+  foldersDeleted: number;
+
+  /** Errors encountered during rollback (non-fatal) */
+  errors: Array<{ fileId: string; error: string }>;
 }
 
 // ============================================================================

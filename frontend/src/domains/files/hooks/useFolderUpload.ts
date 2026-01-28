@@ -2,7 +2,8 @@
  * useFolderUpload Hook
  *
  * Main orchestration hook for folder-based batch upload functionality.
- * Each folder is treated as a batch, processed sequentially for clear progress feedback.
+ * Supports multiple concurrent upload sessions - each folder upload
+ * creates an independent session that can be cancelled without affecting others.
  *
  * Flow:
  * 1. Read folder structure (via folderReader)
@@ -16,24 +17,26 @@
  *    e. Complete folder batch
  * 5. Session completion via WebSocket events
  *
+ * Multi-Session Support:
+ * - Users can upload multiple folders simultaneously (up to MAX_CONCURRENT_SESSIONS)
+ * - Each session has independent progress tracking
+ * - Cancelling one session does not affect others
+ *
  * @module domains/files/hooks/useFolderUpload
  */
 
-import { useCallback, useRef, useState, useEffect } from 'react';
+import { useCallback, useRef, useEffect, useMemo } from 'react';
 import { getFileApiClient } from '@/src/infrastructure/api';
-import { useSessionStore } from '@/src/domains/session/stores/sessionStore';
 import { useFileListStore } from '../stores/fileListStore';
 import { useFolderTreeStore } from '../stores/folderTreeStore';
 import { useUploadLimitStore } from '../stores/uploadLimitStore';
 import { useUnsupportedFilesStore } from '../stores/unsupportedFilesStore';
-import { useUploadSessionStore } from '../stores/uploadSessionStore';
-import {
-  clearUploadState,
-} from '../utils/folderUploadPersistence';
-import { FILE_UPLOAD_LIMITS, FOLDER_UPLOAD_CONFIG } from '@bc-agent/shared';
+import { useMultiUploadSessionStore } from '../stores/multiUploadSessionStore';
+import { useShallow } from 'zustand/react/shallow';
+import { FOLDER_UPLOAD_CONFIG } from '@bc-agent/shared';
+import { toast } from 'sonner';
 import type {
   FolderStructure,
-  FolderUploadProgress,
   FolderEntry,
   FileEntry,
 } from '../types/folderUpload.types';
@@ -44,6 +47,7 @@ import type {
   FileRegistrationMetadata,
   FolderBatch,
   RegisteredFileSasInfo,
+  UploadSession,
 } from '@bc-agent/shared';
 
 /**
@@ -55,68 +59,67 @@ const UPLOAD_CONCURRENCY = FOLDER_UPLOAD_CONFIG.FILE_UPLOAD_CONCURRENCY;
  * useFolderUpload return type
  */
 export interface UseFolderUploadReturn {
-  /** Upload a folder structure */
+  /** Upload a folder structure. Returns sessionId for tracking. */
   uploadFolder: (
     structure: FolderStructure,
     targetFolderId: string | null
-  ) => Promise<void>;
+  ) => Promise<string | null>;
 
-  /** Current upload state */
-  isUploading: boolean;
+  /** Cancel a specific upload session */
+  cancelSession: (sessionId: string) => Promise<void>;
 
-  /** Whether upload is paused */
-  isPaused: boolean;
+  /** All active sessions */
+  sessions: UploadSession[];
 
-  /** Upload progress (folder-based) */
-  progress: FolderUploadProgress;
+  /** Whether there are any active uploads */
+  hasActiveUploads: boolean;
 
-  /** Pause the upload */
-  pause: () => void;
+  /** Number of active sessions */
+  activeCount: number;
 
-  /** Resume a paused upload */
-  resume: () => Promise<void>;
-
-  /** Cancel the upload */
-  cancel: () => void;
-
-  /** Check if there's a resumable upload */
-  hasResumableUpload: () => boolean;
+  /** Maximum concurrent sessions allowed */
+  maxConcurrentSessions: number;
 }
 
 /**
- * Initial progress state
+ * Track per-session state
  */
-const initialProgress: FolderUploadProgress = {
-  phase: 'idle',
-  totalFiles: 0,
-  uploadedFiles: 0,
-  failedFiles: 0,
-  currentBatch: 0,
-  totalBatches: 0,
-  percent: 0,
-};
+interface SessionTrackingState {
+  aborted: boolean;
+  uploadedCount: number;
+  heartbeatInterval: ReturnType<typeof setInterval> | null;
+}
 
 /**
- * Hook for managing folder uploads
+ * Hook for managing folder uploads with multi-session support
  *
- * Uses folder-based batching: each folder is a batch processed sequentially.
- * Progress shows "Folder 1 of N: FolderName" for clear user feedback.
+ * Each call to uploadFolder() creates a new independent session.
+ * Sessions can be tracked and cancelled individually.
  *
  * @example
  * ```tsx
  * function FolderDropZone() {
- *   const { uploadFolder, isUploading, progress, pause, cancel } = useFolderUpload();
+ *   const { uploadFolder, sessions, cancelSession, hasActiveUploads } = useFolderUpload();
  *
  *   const handleDrop = async (structure: FolderStructure) => {
- *     await uploadFolder(structure, currentFolderId);
+ *     const sessionId = await uploadFolder(structure, currentFolderId);
+ *     if (sessionId) {
+ *       console.log('Upload started:', sessionId);
+ *     }
  *   };
  *
  *   return (
  *     <div>
- *       {isUploading && (
- *         <span>
- *           Folder {progress.currentBatch} of {progress.totalBatches}
- *         </span>
+ *       {hasActiveUploads && (
+ *         <div>
+ *           {sessions.map(session => (
+ *             <SessionProgress
+ *               key={session.id}
+ *               session={session}
+ *               onCancel={() => cancelSession(session.id)}
+ *             />
+ *           ))}
+ *         </div>
  *       )}
  *     </div>
  *   );
@@ -124,55 +127,62 @@ const initialProgress: FolderUploadProgress = {
  * ```
  */
 export function useFolderUpload(): UseFolderUploadReturn {
-  // State
-  const [isUploading, setIsUploading] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
-  const [progress, setProgress] = useState<FolderUploadProgress>(initialProgress);
-
-  // Refs for tracking upload state
-  const abortRef = useRef(false);
-  const pauseRef = useRef(false);
-  const uploadedCountRef = useRef(0);
-  const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const currentSessionIdRef = useRef<string | null>(null);
+  // Per-session tracking state (keyed by sessionId)
+  const sessionTrackingRef = useRef<Map<string, SessionTrackingState>>(new Map());
 
   // Stores
   const showLimitErrors = useUploadLimitStore((state) => state.showErrors);
   const openUnsupportedModal = useUnsupportedFilesStore((state) => state.openModal);
   const setFiles = useFileListStore((state) => state.setFiles);
   const addFile = useFileListStore((state) => state.addFile);
-  const setSession = useUploadSessionStore((state) => state.setSession);
-  const updateBatch = useUploadSessionStore((state) => state.updateBatch);
-  const clearSession = useUploadSessionStore((state) => state.clearSession);
 
-  // Clean up heartbeat on unmount
+  // Multi-session store
+  const addSession = useMultiUploadSessionStore((state) => state.addSession);
+  const updateSession = useMultiUploadSessionStore((state) => state.updateSession);
+  const updateBatch = useMultiUploadSessionStore((state) => state.updateBatch);
+  const removeSession = useMultiUploadSessionStore((state) => state.removeSession);
+  const sessions = useMultiUploadSessionStore(
+    useShallow((state) =>
+      Array.from(state.sessions.values()).filter(
+        s => s.status === 'active' || s.status === 'initializing'
+      )
+    )
+  );
+  const activeCount = useMultiUploadSessionStore((state) => state.activeCount);
+
+  // Clean up all heartbeats on unmount
   useEffect(() => {
     return () => {
-      if (heartbeatIntervalRef.current) {
-        clearInterval(heartbeatIntervalRef.current);
-        heartbeatIntervalRef.current = null;
+      for (const tracking of sessionTrackingRef.current.values()) {
+        if (tracking.heartbeatInterval) {
+          clearInterval(tracking.heartbeatInterval);
+        }
       }
+      sessionTrackingRef.current.clear();
     };
   }, []);
 
   /**
-   * Update progress state
-   *
-   * Simplified: Only tracks phase and file counts.
-   * Percent is calculated from uploadedFiles/totalFiles.
-   * ETA/speed calculations removed for simpler UX.
+   * Get or create tracking state for a session
    */
-  const updateProgress = useCallback((updates: Partial<FolderUploadProgress>) => {
-    setProgress((prev) => {
-      const updated = { ...prev, ...updates };
+  const getSessionTracking = useCallback((sessionId: string): SessionTrackingState => {
+    let tracking = sessionTrackingRef.current.get(sessionId);
+    if (!tracking) {
+      tracking = { aborted: false, uploadedCount: 0, heartbeatInterval: null };
+      sessionTrackingRef.current.set(sessionId, tracking);
+    }
+    return tracking;
+  }, []);
 
-      // Calculate percent based on file counts
-      if (updated.totalFiles > 0) {
-        updated.percent = Math.round((updated.uploadedFiles / updated.totalFiles) * 100);
-      }
-
-      return updated;
-    });
+  /**
+   * Clean up tracking state for a session
+   */
+  const cleanupSessionTracking = useCallback((sessionId: string) => {
+    const tracking = sessionTrackingRef.current.get(sessionId);
+    if (tracking?.heartbeatInterval) {
+      clearInterval(tracking.heartbeatInterval);
+    }
+    sessionTrackingRef.current.delete(sessionId);
   }, []);
 
   /**
@@ -180,29 +190,20 @@ export function useFolderUpload(): UseFolderUploadReturn {
    */
   const startHeartbeat = useCallback((sessionId: string) => {
     const fileApi = getFileApiClient();
+    const tracking = getSessionTracking(sessionId);
 
     // Clear any existing interval
-    if (heartbeatIntervalRef.current) {
-      clearInterval(heartbeatIntervalRef.current);
+    if (tracking.heartbeatInterval) {
+      clearInterval(tracking.heartbeatInterval);
     }
 
     // Send heartbeat every minute
-    heartbeatIntervalRef.current = setInterval(async () => {
-      if (!pauseRef.current && !abortRef.current) {
+    tracking.heartbeatInterval = setInterval(async () => {
+      if (!tracking.aborted) {
         await fileApi.heartbeatUploadSession(sessionId);
       }
     }, FOLDER_UPLOAD_CONFIG.HEARTBEAT_INTERVAL_MS);
-  }, []);
-
-  /**
-   * Stop heartbeat
-   */
-  const stopHeartbeat = useCallback(() => {
-    if (heartbeatIntervalRef.current) {
-      clearInterval(heartbeatIntervalRef.current);
-      heartbeatIntervalRef.current = null;
-    }
-  }, []);
+  }, [getSessionTracking]);
 
   /**
    * Build folder input structure for session initialization
@@ -267,10 +268,10 @@ export function useFolderUpload(): UseFolderUploadReturn {
     async (
       sessionId: string,
       batch: FolderBatch,
-      files: FileEntry[],
-      targetFolderId: string | null
+      files: FileEntry[]
     ): Promise<{ success: boolean; uploadedCount: number; failedCount: number }> => {
       const fileApi = getFileApiClient();
+      const tracking = getSessionTracking(sessionId);
       let uploadedCount = 0;
       let failedCount = 0;
 
@@ -283,10 +284,7 @@ export function useFolderUpload(): UseFolderUploadReturn {
         }
 
         const { folderId, folderBatch: updatedBatch1 } = createResult.data;
-        updateBatch(batch.tempId, updatedBatch1);
-
-        // Transition to registering phase
-        updateProgress({ phase: 'registering' });
+        updateBatch(sessionId, batch.tempId, updatedBatch1);
 
         // Step 2: Register files (early persistence)
         const fileMetadata: FileRegistrationMetadata[] = files.map((file, idx) => ({
@@ -308,11 +306,9 @@ export function useFolderUpload(): UseFolderUploadReturn {
         }
 
         const { registered, folderBatch: updatedBatch2 } = registerResult.data;
-        updateBatch(batch.tempId, updatedBatch2);
+        updateBatch(sessionId, batch.tempId, updatedBatch2);
 
         // Add registered files to fileListStore immediately
-        // This prevents "File not found in store" warnings from WebSocket events
-        // that may arrive before the HTTP refresh at the end of the upload
         const currentViewFolderId = useFolderTreeStore.getState().currentFolderId;
         const shouldAddToStore = folderId === currentViewFolderId;
 
@@ -322,11 +318,11 @@ export function useFolderUpload(): UseFolderUploadReturn {
             if (meta) {
               addFile({
                 id: reg.fileId,
-                userId: '', // Will be set by backend, not needed for display
+                userId: '',
                 name: meta.fileName,
                 mimeType: meta.mimeType,
                 sizeBytes: meta.sizeBytes,
-                blobPath: '', // Not uploaded yet
+                blobPath: '',
                 isFolder: false,
                 isFavorite: false,
                 readinessState: 'uploading',
@@ -351,9 +347,6 @@ export function useFolderUpload(): UseFolderUploadReturn {
         // Create tempId -> File mapping for correlating uploads
         const tempIdToFile = new Map(fileMetadata.map((m, idx) => [m.tempId, files[idx]!]));
 
-        // Transition to getting-sas phase
-        updateProgress({ phase: 'getting-sas' });
-
         // Step 3: Get SAS URLs
         const fileIds = registered.map((r) => r.fileId);
         const sasResult = await fileApi.getSessionSasUrls(sessionId, batch.tempId, fileIds);
@@ -367,13 +360,10 @@ export function useFolderUpload(): UseFolderUploadReturn {
           sasResult.data.files.map((f) => [f.fileId, f])
         );
 
-        // Transition to uploading phase
-        updateProgress({ phase: 'uploading' });
-
         // Step 4: Upload files in parallel (with concurrency limit)
         const uploadQueue = [...registered];
 
-        while (uploadQueue.length > 0 && !abortRef.current && !pauseRef.current) {
+        while (uploadQueue.length > 0 && !tracking.aborted) {
           const chunk = uploadQueue.splice(0, UPLOAD_CONCURRENCY);
 
           const uploadPromises = chunk.map(async (reg) => {
@@ -402,7 +392,7 @@ export function useFolderUpload(): UseFolderUploadReturn {
                 // Non-fatal, use empty hash
               }
 
-              // Mark as uploaded (include blobPath so DB record gets updated)
+              // Mark as uploaded
               const markResult = await fileApi.markSessionFileUploaded(
                 sessionId,
                 batch.tempId,
@@ -411,9 +401,8 @@ export function useFolderUpload(): UseFolderUploadReturn {
 
               if (markResult.success) {
                 uploadedCount++;
-                uploadedCountRef.current++;
-                updateProgress({ uploadedFiles: uploadedCountRef.current });
-                updateBatch(batch.tempId, markResult.data.folderBatch);
+                tracking.uploadedCount++;
+                updateBatch(sessionId, batch.tempId, markResult.data.folderBatch);
               } else {
                 failedCount++;
               }
@@ -427,10 +416,10 @@ export function useFolderUpload(): UseFolderUploadReturn {
         }
 
         // Step 5: Complete folder batch
-        if (!abortRef.current && !pauseRef.current) {
+        if (!tracking.aborted) {
           const completeResult = await fileApi.completeSessionFolder(sessionId, batch.tempId);
           if (completeResult.success) {
-            updateBatch(batch.tempId, completeResult.data.folderBatch);
+            updateBatch(sessionId, batch.tempId, completeResult.data.folderBatch);
           }
         }
 
@@ -440,21 +429,15 @@ export function useFolderUpload(): UseFolderUploadReturn {
         return { success: false, uploadedCount, failedCount: files.length - uploadedCount };
       }
     },
-    [addFile, updateBatch, updateProgress]
+    [addFile, updateBatch, getSessionTracking]
   );
 
   /**
-   * Main upload function
+   * Main upload function - creates a new session
+   * Returns sessionId on success, null on failure
    */
   const uploadFolder = useCallback(
-    async (structure: FolderStructure, targetFolderId: string | null): Promise<void> => {
-      // Reset state
-      abortRef.current = false;
-      pauseRef.current = false;
-      setIsUploading(true);
-      setIsPaused(false);
-      setProgress({ ...initialProgress, totalFiles: structure.validFiles.length });
-
+    async (structure: FolderStructure, targetFolderId: string | null): Promise<string | null> => {
       const fileApi = getFileApiClient();
       const currentFolderId = useFolderTreeStore.getState().currentFolderId;
 
@@ -463,19 +446,15 @@ export function useFolderUpload(): UseFolderUploadReturn {
         const validation = validateFolderLimits(structure);
         if (!validation.isValid) {
           showLimitErrors(validation.errors);
-          setIsUploading(false);
-          return;
+          return null;
         }
 
         // Step 2: Handle unsupported files
         if (structure.invalidFiles.length > 0) {
-          updateProgress({ phase: 'validating' });
           const resolution = await openUnsupportedModal(structure.invalidFiles);
 
           if (!resolution.proceed) {
-            setIsUploading(false);
-            setProgress(initialProgress);
-            return;
+            return null;
           }
 
           // Filter out skipped files
@@ -487,53 +466,46 @@ export function useFolderUpload(): UseFolderUploadReturn {
             validFiles: filesToUpload,
             totalFiles: filesToUpload.length,
           };
-
-          setProgress((prev) => ({ ...prev, totalFiles: filesToUpload.length }));
         }
 
         // Step 3: Build folder inputs
-        updateProgress({ phase: 'creating-folders' });
         const { folderInputs, fileToFolderMap } = buildFolderInputs(structure);
 
-        // Step 4: Initialize upload session (with auto-recovery for stale sessions)
-        updateProgress({ phase: 'session-init' });
-        let initResult = await fileApi.initUploadSession({
+        // Step 4: Initialize upload session
+        const initResult = await fileApi.initUploadSession({
           folders: folderInputs,
           targetFolderId,
         });
 
-        // Handle CONFLICT (user has an active session from a previous failed upload)
-        if (!initResult.success && initResult.error.code === 'CONFLICT') {
-          console.log('[useFolderUpload] Active session conflict, attempting auto-recovery');
-          updateProgress({ phase: 'validating' });
-
-          // Cancel the active session
-          const cancelResult = await fileApi.cancelActiveUploadSession();
-          if (cancelResult.success && cancelResult.data.cancelled) {
-            console.log('[useFolderUpload] Previous session cancelled, retrying init');
-
-            // Retry initialization
-            initResult = await fileApi.initUploadSession({
-              folders: folderInputs,
-              targetFolderId,
-            });
-          }
-        }
-
+        // Handle CONFLICT (max sessions reached)
         if (!initResult.success) {
+          if (initResult.error.code === 'CONFLICT') {
+            console.error('[useFolderUpload] Max concurrent sessions reached');
+            // Show user-friendly error (handled by component)
+          }
           console.error('[useFolderUpload] Session init failed:', initResult.error);
-          updateProgress({ phase: 'error' });
-          setIsUploading(false);
-          return;
+          return null;
         }
 
-        const { sessionId, folderBatches } = initResult.data;
-        currentSessionIdRef.current = sessionId;
+        const { sessionId, folderBatches, renamedFolderCount, renamedFolders } = initResult.data;
 
-        // Initialize session store
-        setSession({
+        // Show notification if folders were renamed to avoid duplicates
+        if (renamedFolderCount && renamedFolderCount > 0 && renamedFolders) {
+          const renameDetails = renamedFolders
+            .slice(0, 3) // Show max 3 examples
+            .map(r => `"${r.originalName}" → "${r.resolvedName}"`)
+            .join(', ');
+          const suffix = renamedFolderCount > 3 ? ` and ${renamedFolderCount - 3} more` : '';
+          toast.info(
+            `${renamedFolderCount} folder(s) renamed to avoid duplicates`,
+            { description: renameDetails + suffix }
+          );
+        }
+
+        // Initialize session in store
+        const session: UploadSession = {
           id: sessionId,
-          userId: '', // Will be set by backend
+          userId: '',
           totalFolders: folderBatches.length,
           currentFolderIndex: -1,
           completedFolders: 0,
@@ -543,30 +515,25 @@ export function useFolderUpload(): UseFolderUploadReturn {
           createdAt: Date.now(),
           updatedAt: Date.now(),
           expiresAt: Date.now() + FOLDER_UPLOAD_CONFIG.SESSION_TTL_MS,
-        });
+        };
+        addSession(session);
+
+        // Initialize tracking state
+        const tracking = getSessionTracking(sessionId);
+        tracking.uploadedCount = 0;
+        tracking.aborted = false;
 
         // Start heartbeat
         startHeartbeat(sessionId);
 
-        // Reset uploaded count for this session
-        uploadedCountRef.current = 0;
-
-        updateProgress({
-          phase: 'uploading',
-          totalBatches: folderBatches.length,
-          currentBatch: 0,
-        });
-
         // Step 5: Process each folder sequentially
         for (let i = 0; i < folderBatches.length; i++) {
-          if (abortRef.current) break;
-          if (pauseRef.current) {
-            setIsPaused(true);
-            break;
-          }
+          if (tracking.aborted) break;
 
           const batch = folderBatches[i]!;
-          updateProgress({ currentBatch: i + 1 });
+
+          // Update current folder index
+          updateSession(sessionId, { currentFolderIndex: i });
 
           // Get files for this folder
           const folderFiles = structure.validFiles.filter((f) => {
@@ -575,33 +542,40 @@ export function useFolderUpload(): UseFolderUploadReturn {
           });
 
           // Upload the folder batch
-          await uploadFolderBatch(sessionId, batch, folderFiles, targetFolderId);
+          const result = await uploadFolderBatch(sessionId, batch, folderFiles);
+
+          if (!result.success) {
+            updateSession(sessionId, { failedFolders: (session.failedFolders || 0) + 1 });
+          } else {
+            updateSession(sessionId, { completedFolders: (session.completedFolders || 0) + 1 });
+          }
         }
 
         // Step 6: Complete
-        if (!abortRef.current && !pauseRef.current) {
-          updateProgress({ phase: 'done' });
-          clearUploadState();
+        if (!tracking.aborted) {
+          updateSession(sessionId, { status: 'completed' });
+
+          // Refresh file list if in target folder
+          if (targetFolderId === currentFolderId || (targetFolderId === null && currentFolderId === null)) {
+            const result = await fileApi.getFiles({ folderId: currentFolderId ?? undefined });
+            if (result.success) {
+              const { files: fetchedFiles, pagination } = result.data;
+              const hasMoreFiles = pagination.offset + fetchedFiles.length < pagination.total;
+              setFiles(fetchedFiles, pagination.total, hasMoreFiles);
+            }
+          }
+
+          // Clean up after a delay
+          setTimeout(() => {
+            removeSession(sessionId);
+            cleanupSessionTracking(sessionId);
+          }, 3000);
         }
 
-        // Refresh file list if in target folder
-        if (targetFolderId === currentFolderId || (targetFolderId === null && currentFolderId === null)) {
-          const result = await fileApi.getFiles({ folderId: currentFolderId ?? undefined });
-          if (result.success) {
-            const { files: fetchedFiles, pagination } = result.data;
-            const hasMoreFiles = pagination.offset + fetchedFiles.length < pagination.total;
-            setFiles(fetchedFiles, pagination.total, hasMoreFiles);
-          }
-        }
+        return sessionId;
       } catch (error) {
         console.error('[useFolderUpload] Upload failed:', error);
-        updateProgress({ phase: 'error' });
-      } finally {
-        stopHeartbeat();
-        if (!pauseRef.current) {
-          setIsUploading(false);
-          currentSessionIdRef.current = null;
-        }
+        return null;
       }
     },
     [
@@ -609,64 +583,45 @@ export function useFolderUpload(): UseFolderUploadReturn {
       uploadFolderBatch,
       showLimitErrors,
       openUnsupportedModal,
-      updateProgress,
       setFiles,
-      setSession,
+      addSession,
+      updateSession,
+      removeSession,
+      getSessionTracking,
       startHeartbeat,
-      stopHeartbeat,
+      cleanupSessionTracking,
     ]
   );
 
   /**
-   * Pause the upload
+   * Cancel a specific upload session
    */
-  const pause = useCallback(() => {
-    pauseRef.current = true;
-    updateProgress({ phase: 'paused' });
-  }, [updateProgress]);
+  const cancelSession = useCallback(async (sessionId: string) => {
+    const tracking = sessionTrackingRef.current.get(sessionId);
+    if (tracking) {
+      tracking.aborted = true;
+    }
 
-  /**
-   * Resume a paused upload
-   */
-  const resume = useCallback(async () => {
-    // Resume is limited since we can't store File objects
-    // User would need to re-select files for full resume
-    console.warn('[useFolderUpload] Resume not fully implemented - files need re-selection');
-    pauseRef.current = false;
-    setIsPaused(false);
-  }, []);
+    // Cancel on backend
+    const fileApi = getFileApiClient();
+    await fileApi.cancelUploadSession(sessionId);
 
-  /**
-   * Cancel the upload
-   */
-  const cancel = useCallback(() => {
-    abortRef.current = true;
-    pauseRef.current = false;
-    stopHeartbeat();
-    clearUploadState();
-    clearSession();
-    setIsUploading(false);
-    setIsPaused(false);
-    setProgress(initialProgress);
-    currentSessionIdRef.current = null;
-  }, [stopHeartbeat, clearSession]);
+    // Update store
+    updateSession(sessionId, { status: 'failed' });
 
-  /**
-   * Check if there's a resumable upload
-   */
-  const hasResumableUpload = useCallback(() => {
-    // Check if we have an active session
-    return currentSessionIdRef.current !== null;
-  }, []);
+    // Clean up after a short delay
+    setTimeout(() => {
+      removeSession(sessionId);
+      cleanupSessionTracking(sessionId);
+    }, 1000);
+  }, [updateSession, removeSession, cleanupSessionTracking]);
 
   return {
     uploadFolder,
-    isUploading,
-    isPaused,
-    progress,
-    pause,
-    resume,
-    cancel,
-    hasResumableUpload,
+    cancelSession,
+    sessions,
+    hasActiveUploads: activeCount > 0,
+    activeCount,
+    maxConcurrentSessions: FOLDER_UPLOAD_CONFIG.MAX_CONCURRENT_SESSIONS,
   };
 }

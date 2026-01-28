@@ -34,6 +34,7 @@ import type {
   InitUploadSessionRequest,
   InitUploadSessionResponse,
   GetUploadSessionResponse,
+  GetActiveSessionsResponse,
   CreateFolderInSessionResponse,
   RegisterFilesResponse,
   GetSasUrlsResponse,
@@ -1089,6 +1090,31 @@ export class FileApiClient {
     return this.postJson<{ success: boolean; cancelled: boolean }>(
       '/api/files/upload-session/cancel-active',
       {}
+    );
+  }
+
+  /**
+   * Get all active upload sessions for the current user
+   *
+   * Multi-session support: Returns all active sessions for the user.
+   *
+   * @returns Active sessions with count and max concurrent limit
+   *
+   * @example
+   * ```typescript
+   * const result = await fileApi.getActiveUploadSessions();
+   * if (result.success) {
+   *   console.log(`${result.data.count} of ${result.data.maxConcurrent} sessions active`);
+   *   for (const session of result.data.sessions) {
+   *     console.log(`Session ${session.id}: ${session.status}`);
+   *   }
+   * }
+   * ```
+   */
+  async getActiveUploadSessions(): Promise<ApiResponse<GetActiveSessionsResponse>> {
+    return this.request<GetActiveSessionsResponse>(
+      'GET',
+      '/api/files/upload-session/active'
     );
   }
 }

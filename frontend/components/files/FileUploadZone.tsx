@@ -12,7 +12,7 @@ import { useFolderTreeStore } from '@/src/domains/files/stores/folderTreeStore';
 import { DuplicateFileModal } from '@/components/modals/DuplicateFileModal';
 import { UnsupportedFilesModal } from '@/components/modals/UnsupportedFilesModal';
 import { UploadLimitErrorModal } from '@/components/modals/UploadLimitErrorModal';
-import { FolderUploadProgressModal } from '@/components/modals/FolderUploadProgressModal';
+import { MultiUploadProgressPanel } from '@/components/files/MultiUploadProgressPanel';
 import { detectDropType, buildFolderStructure } from '@/src/domains/files/utils/folderReader';
 import { toast } from 'sonner';
 
@@ -30,10 +30,10 @@ export function FileUploadZone({
   const { uploadFiles, isUploading, overallProgress: uploadProgress } = useFileUpload();
   const {
     uploadFolder,
-    isUploading: isFolderUploading,
-    progress: folderProgress,
-    pause,
-    cancel,
+    cancelSession,
+    hasActiveUploads,
+    maxConcurrentSessions,
+    activeCount,
   } = useFolderUpload();
   const [isDragActive, setIsDragActive] = useState(false);
   const [isDraggingFolder, setIsDraggingFolder] = useState(false);
@@ -69,6 +69,14 @@ export function FileUploadZone({
     const dropType = detectDropType(e.dataTransfer);
 
     if (dropType === 'folder' || dropType === 'mixed') {
+      // Check if max concurrent sessions reached
+      if (activeCount >= maxConcurrentSessions) {
+        toast.error(
+          `Maximum ${maxConcurrentSessions} concurrent uploads allowed. Please wait for an upload to complete or cancel one.`
+        );
+        return;
+      }
+
       // Handle folder upload
       try {
         const structure = await buildFolderStructure(e.dataTransfer);
@@ -79,14 +87,19 @@ export function FileUploadZone({
         }
 
         // Start folder upload (validation and modals handled inside useFolderUpload)
-        await uploadFolder(structure, currentFolderId);
+        const sessionId = await uploadFolder(structure, currentFolderId);
+        if (sessionId) {
+          toast.success('Upload started', {
+            description: `Uploading ${structure.validFiles.length} files from ${structure.rootFolders.length} folder(s)`,
+          });
+        }
       } catch (error) {
         console.error('[FileUploadZone] Folder read error:', error);
         toast.error('Failed to read folder contents');
       }
     }
     // If 'files' type, let react-dropzone handle it
-  }, [uploadFolder, currentFolderId]);
+  }, [uploadFolder, currentFolderId, activeCount, maxConcurrentSessions]);
 
   const onDrop = useCallback(async (acceptedFiles: File[], rejectedFiles: FileRejection[]) => {
     setIsDragActive(false);
@@ -124,7 +137,7 @@ export function FileUploadZone({
     }, {} as Record<string, string[]>),
     maxSize: FILE_UPLOAD_LIMITS.MAX_FILE_SIZE,
     maxFiles: FILE_UPLOAD_LIMITS.MAX_FILES_PER_BULK_UPLOAD,
-    disabled: disabled || isUploading || isFolderUploading,
+    disabled: disabled || isUploading,
     noClick: true,
     noKeyboard: true,
     // Use custom drop handler to detect folders
@@ -191,7 +204,7 @@ export function FileUploadZone({
       )}
 
       {/* File upload progress overlay */}
-      {isUploading && !isFolderUploading && (
+      {isUploading && !hasActiveUploads && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/80 backdrop-blur-sm z-20">
           <Upload className="size-12 text-primary animate-pulse mb-4" />
           <p className="text-sm font-medium mb-2">Uploading files...</p>
@@ -216,13 +229,8 @@ export function FileUploadZone({
       {/* Upload limit error modal (for folder upload) */}
       <UploadLimitErrorModal />
 
-      {/* Folder upload progress modal */}
-      <FolderUploadProgressModal
-        isOpen={isFolderUploading}
-        progress={folderProgress}
-        onPause={pause}
-        onCancel={cancel}
-      />
+      {/* Multi-session upload progress panel (floating, bottom-right) */}
+      <MultiUploadProgressPanel onCancelSession={cancelSession} />
     </div>
   );
 }

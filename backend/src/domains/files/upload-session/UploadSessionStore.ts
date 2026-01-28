@@ -30,7 +30,7 @@ import type {
  */
 const KEY_PREFIX = {
   SESSION: 'upload-session:',
-  USER_ACTIVE: 'upload-session:user:',
+  USER_SESSIONS: 'upload-session:user:',
 } as const;
 
 /**
@@ -41,10 +41,10 @@ function sessionKey(sessionId: string): string {
 }
 
 /**
- * Build Redis key for user's active session
+ * Build Redis key for user's sessions SET (multi-session support)
  */
-function userActiveKey(userId: string): string {
-  return `${KEY_PREFIX.USER_ACTIVE}${userId}:active`;
+function userSessionsKey(userId: string): string {
+  return `${KEY_PREFIX.USER_SESSIONS}${userId}:sessions`;
 }
 
 /**
@@ -131,9 +131,11 @@ export class UploadSessionStore implements IUploadSessionStore {
 
     await redis.setEx(sKey, ttlSeconds, JSON.stringify(session));
 
-    // Store user's active session reference
-    const uKey = userActiveKey(userId);
-    await redis.setEx(uKey, ttlSeconds, sessionId);
+    // Add session to user's sessions SET (multi-session support)
+    const uKey = userSessionsKey(userId);
+    await redis.sAdd(uKey, sessionId);
+    // Extend SET TTL to match session TTL (will be extended on each session create/update)
+    await redis.expire(uKey, ttlSeconds);
 
     this.log.info(
       { sessionId, userId, totalFolders: folderBatches.length, ttlSeconds },
@@ -229,18 +231,63 @@ export class UploadSessionStore implements IUploadSessionStore {
   }
 
   /**
-   * Get active session for a user
+   * Get all active sessions for a user (multi-session support)
+   *
+   * Filters out expired or non-active sessions and cleans up stale references.
    */
-  async getActiveSession(userId: string): Promise<UploadSession | null> {
+  async getActiveSessions(userId: string): Promise<UploadSession[]> {
     const redis = this.requireRedis();
-    const uKey = userActiveKey(userId);
+    const uKey = userSessionsKey(userId);
 
-    const sessionId = await redis.get(uKey);
-    if (!sessionId) {
-      return null;
+    const sessionIds = await redis.sMembers(uKey);
+    if (!sessionIds || sessionIds.length === 0) {
+      return [];
     }
 
-    return this.get(sessionId);
+    const sessions: UploadSession[] = [];
+    const staleIds: string[] = [];
+
+    for (const sessionId of sessionIds) {
+      const session = await this.get(sessionId);
+      if (!session) {
+        // Session expired or doesn't exist, mark for cleanup
+        staleIds.push(sessionId);
+      } else if (session.status === 'active' || session.status === 'initializing') {
+        sessions.push(session);
+      } else {
+        // Session completed/failed/expired, mark for cleanup
+        staleIds.push(sessionId);
+      }
+    }
+
+    // Clean up stale session references
+    if (staleIds.length > 0) {
+      await redis.sRem(uKey, staleIds);
+      this.log.debug(
+        { userId, staleIds },
+        'Cleaned up stale session references'
+      );
+    }
+
+    return sessions;
+  }
+
+  /**
+   * Get active session for a user (legacy compatibility - returns first active)
+   *
+   * @deprecated Use getActiveSessions() for multi-session support
+   */
+  async getActiveSession(userId: string): Promise<UploadSession | null> {
+    const sessions = await this.getActiveSessions(userId);
+    return sessions.length > 0 ? sessions[0]! : null;
+  }
+
+  /**
+   * Get count of active sessions for a user
+   */
+  async getActiveSessionCount(userId: string): Promise<number> {
+    const sessions = await this.getActiveSessions(userId);
+    return sessions.length;
   }
 
   /**
@@ -256,13 +303,10 @@ export class UploadSessionStore implements IUploadSessionStore {
     const sKey = sessionKey(sessionId);
     await redis.del(sKey);
 
-    // Delete user active reference if this was their active session
+    // Remove session from user's sessions SET
     if (session) {
-      const uKey = userActiveKey(session.userId);
-      const activeSessionId = await redis.get(uKey);
-      if (activeSessionId === sessionId) {
-        await redis.del(uKey);
-      }
+      const uKey = userSessionsKey(session.userId);
+      await redis.sRem(uKey, sessionId);
     }
 
     this.log.info({ sessionId }, 'Deleted upload session');
@@ -294,12 +338,9 @@ export class UploadSessionStore implements IUploadSessionStore {
     const sKey = sessionKey(sessionId);
     await redis.setEx(sKey, ttlSeconds, JSON.stringify(updatedSession));
 
-    // Also extend user active reference
-    const uKey = userActiveKey(session.userId);
-    const activeSessionId = await redis.get(uKey);
-    if (activeSessionId === sessionId) {
-      await redis.expire(uKey, ttlSeconds);
-    }
+    // Also extend user sessions SET TTL (ensures SET persists while sessions are active)
+    const uKey = userSessionsKey(session.userId);
+    await redis.expire(uKey, ttlSeconds);
 
     this.log.debug({ sessionId, ttlSeconds }, 'Extended session TTL');
   }

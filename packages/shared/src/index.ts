@@ -218,6 +218,7 @@ export type {
   FolderInput,
   InitUploadSessionRequest,
   InitUploadSessionResponse,
+  RenamedFolderInfo,
   CreateFolderInSessionResponse,
   RegisteredFileResult,
   RegisterFilesResponse,
@@ -236,6 +237,9 @@ export type {
   FolderBatchCompletedEvent,
   FolderBatchFailedEvent,
   FolderWebSocketEvent,
+  // Multi-session upload types
+  GetActiveSessionsResponse,
+  CancelSessionResult,
 } from './types';
 
 // Type guards (runtime functions, not types)
@@ -288,6 +292,20 @@ export {
   getContentBlockType,
   getMaxSizeForMimeType,
 } from './types';
+
+// ============================================
+// Utils - Name Validation
+// ============================================
+export {
+  NAME_VALIDATION_CONFIG,
+  validateFileName,
+  validateFolderName,
+  sanitizeName,
+  isWindowsReservedName,
+  validateFilePath,
+  type NameValidationResult,
+  type NameValidationOptions,
+} from './utils/nameValidation';
 
 // ============================================
 // Constants - Error codes, messages, mappings

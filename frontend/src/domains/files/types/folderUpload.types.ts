@@ -74,6 +74,9 @@ export interface FolderStructure {
 
   /** Total folder count */
   totalFolders: number;
+
+  /** Number of empty folders that were filtered out */
+  emptyFoldersFiltered?: number;
 }
 
 /**

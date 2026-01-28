@@ -2,13 +2,17 @@
  * useFolderBatchEvents Hook
  *
  * Hook for subscribing to folder batch WebSocket events and updating
- * the uploadSessionStore. Handles events from the folder:status channel.
+ * the multiUploadSessionStore. Handles events from the folder:status channel.
+ *
+ * Multi-Session Support:
+ * - Routes events to the correct session by sessionId
+ * - Each session is tracked independently in the store
  *
  * @module domains/files/hooks/useFolderBatchEvents
  */
 
 import { useEffect, useRef, useCallback } from 'react';
-import { useUploadSessionStore } from '../stores/uploadSessionStore';
+import { useMultiUploadSessionStore } from '../stores/multiUploadSessionStore';
 import { useFileListStore } from '../stores/fileListStore';
 import { getSocketClient } from '@/src/infrastructure/socket/SocketClient';
 import {
@@ -48,8 +52,8 @@ export interface UseFolderBatchEventsOptions {
  * Hook for subscribing to folder batch WebSocket events
  *
  * Automatically subscribes to the folder:status channel and updates
- * the uploadSessionStore accordingly. Also provides optional callbacks
- * for UI notifications.
+ * the multiUploadSessionStore accordingly. Routes events to the correct
+ * session by sessionId.
  *
  * @param options - Hook options including callbacks
  *
@@ -63,15 +67,13 @@ export interface UseFolderBatchEventsOptions {
  *     },
  *   });
  *
- *   const { progress } = useUploadSessionStore();
+ *   const sessions = useMultiUploadSessionStore(state => state.getActiveSessions());
  *
  *   return (
  *     <div>
- *       {progress && (
- *         <span>
- *           Folder {progress.currentFolderIndex + 1} of {progress.totalFolders}
- *         </span>
- *       )}
+ *       {sessions.map(session => (
+ *         <SessionProgress key={session.id} session={session} />
+ *       ))}
  *     </div>
  *   );
  * }
@@ -88,29 +90,23 @@ export function useFolderBatchEvents(options: UseFolderBatchEventsOptions = {}):
     onBatchFail,
   } = options;
 
-  // Get store actions
-  const setSession = useUploadSessionStore((state) => state.setSession);
-  const updateSession = useUploadSessionStore((state) => state.updateSession);
-  const updateBatch = useUploadSessionStore((state) => state.updateBatch);
-  const setStatus = useUploadSessionStore((state) => state.setStatus);
-  const setCurrentFolderIndex = useUploadSessionStore((state) => state.setCurrentFolderIndex);
-  const incrementCompletedFolders = useUploadSessionStore((state) => state.incrementCompletedFolders);
-  const incrementFailedFolders = useUploadSessionStore((state) => state.incrementFailedFolders);
-  const clearSession = useUploadSessionStore((state) => state.clearSession);
+  // Get store actions from multi-session store
+  const addSession = useMultiUploadSessionStore((state) => state.addSession);
+  const updateSession = useMultiUploadSessionStore((state) => state.updateSession);
+  const updateBatch = useMultiUploadSessionStore((state) => state.updateBatch);
+  const removeSession = useMultiUploadSessionStore((state) => state.removeSession);
+  const getSession = useMultiUploadSessionStore((state) => state.getSession);
 
   // File list store for adding files in real-time
   const addFileToStore = useFileListStore((state) => state.addFile);
 
   // Use refs for callbacks to avoid re-subscribing on every render
   const callbacksRef = useRef({
-    setSession,
+    addSession,
     updateSession,
     updateBatch,
-    setStatus,
-    setCurrentFolderIndex,
-    incrementCompletedFolders,
-    incrementFailedFolders,
-    clearSession,
+    removeSession,
+    getSession,
     addFileToStore,
     onSessionStart,
     onSessionComplete,
@@ -123,14 +119,11 @@ export function useFolderBatchEvents(options: UseFolderBatchEventsOptions = {}):
   // Update refs when callbacks change
   useEffect(() => {
     callbacksRef.current = {
-      setSession,
+      addSession,
       updateSession,
       updateBatch,
-      setStatus,
-      setCurrentFolderIndex,
-      incrementCompletedFolders,
-      incrementFailedFolders,
-      clearSession,
+      removeSession,
+      getSession,
       addFileToStore,
       onSessionStart,
       onSessionComplete,
@@ -140,14 +133,11 @@ export function useFolderBatchEvents(options: UseFolderBatchEventsOptions = {}):
       onBatchFail,
     };
   }, [
-    setSession,
+    addSession,
     updateSession,
     updateBatch,
-    setStatus,
-    setCurrentFolderIndex,
-    incrementCompletedFolders,
-    incrementFailedFolders,
-    clearSession,
+    removeSession,
+    getSession,
     addFileToStore,
     onSessionStart,
     onSessionComplete,
@@ -159,50 +149,56 @@ export function useFolderBatchEvents(options: UseFolderBatchEventsOptions = {}):
 
   /**
    * Handle folder status events (folder:status channel)
+   *
+   * Routes events to the correct session by sessionId
    */
   const handleFolderStatusEvent = useCallback((event: FolderWebSocketEvent) => {
     const callbacks = callbacksRef.current;
+    const sessionId = event.sessionId;
 
     switch (event.type) {
       case FOLDER_WS_EVENTS.SESSION_STARTED: {
         const e = event as FolderSessionStartedEvent;
-        // Create a new session in the store
-        const session: UploadSession = {
-          id: e.sessionId,
-          userId: e.userId,
-          totalFolders: e.totalFolders,
-          currentFolderIndex: -1,
-          completedFolders: 0,
-          failedFolders: 0,
-          status: 'active',
-          folderBatches: [],
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-          expiresAt: Date.now() + 4 * 60 * 60 * 1000, // 4 hours default
-        };
-        callbacks.setSession(session);
+        // Create a new session in the store (if not already created by useFolderUpload)
+        const existingSession = callbacks.getSession(sessionId);
+        if (!existingSession) {
+          const session: UploadSession = {
+            id: e.sessionId,
+            userId: e.userId,
+            totalFolders: e.totalFolders,
+            currentFolderIndex: -1,
+            completedFolders: 0,
+            failedFolders: 0,
+            status: 'active',
+            folderBatches: [],
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            expiresAt: Date.now() + 4 * 60 * 60 * 1000, // 4 hours default
+          };
+          callbacks.addSession(session);
+        }
         callbacks.onSessionStart?.(e.sessionId, e.totalFolders);
         break;
       }
 
       case FOLDER_WS_EVENTS.SESSION_COMPLETED: {
         const e = event as FolderSessionCompletedEvent;
-        callbacks.updateSession({
+        callbacks.updateSession(sessionId, {
           status: 'completed',
           completedFolders: e.completedFolders,
           failedFolders: e.failedFolders,
         });
         callbacks.onSessionComplete?.(e.sessionId, e.completedFolders, e.failedFolders);
-        // Clear session after a delay to let UI show completion
+        // Remove session after a delay to let UI show completion
         setTimeout(() => {
-          callbacks.clearSession();
+          callbacks.removeSession(sessionId);
         }, 3000);
         break;
       }
 
       case FOLDER_WS_EVENTS.SESSION_FAILED: {
         const e = event as FolderSessionFailedEvent;
-        callbacks.updateSession({
+        callbacks.updateSession(sessionId, {
           status: 'failed',
           completedFolders: e.completedFolders,
           failedFolders: e.failedFolders,
@@ -213,8 +209,8 @@ export function useFolderBatchEvents(options: UseFolderBatchEventsOptions = {}):
 
       case FOLDER_WS_EVENTS.BATCH_STARTED: {
         const e = event as FolderBatchStartedEvent;
-        callbacks.setCurrentFolderIndex(e.folderIndex);
-        callbacks.updateBatch(e.folderBatch.tempId, {
+        callbacks.updateSession(sessionId, { currentFolderIndex: e.folderIndex });
+        callbacks.updateBatch(sessionId, e.folderBatch.tempId, {
           ...e.folderBatch,
           status: e.folderBatch.status,
         });
@@ -224,7 +220,7 @@ export function useFolderBatchEvents(options: UseFolderBatchEventsOptions = {}):
 
       case FOLDER_WS_EVENTS.BATCH_PROGRESS: {
         const e = event as FolderBatchProgressEvent;
-        callbacks.updateBatch(e.folderBatch.tempId, {
+        callbacks.updateBatch(sessionId, e.folderBatch.tempId, {
           uploadedFiles: e.folderBatch.uploadedFiles,
           registeredFiles: e.folderBatch.registeredFiles,
           processedFiles: e.folderBatch.processedFiles,
@@ -235,23 +231,35 @@ export function useFolderBatchEvents(options: UseFolderBatchEventsOptions = {}):
 
       case FOLDER_WS_EVENTS.BATCH_COMPLETED: {
         const e = event as FolderBatchCompletedEvent;
-        callbacks.updateBatch(e.folderBatch.tempId, {
+        callbacks.updateBatch(sessionId, e.folderBatch.tempId, {
           ...e.folderBatch,
           status: 'completed',
         });
-        callbacks.incrementCompletedFolders();
+        // Update session completed folders count
+        const session = callbacks.getSession(sessionId);
+        if (session) {
+          callbacks.updateSession(sessionId, {
+            completedFolders: session.completedFolders + 1,
+          });
+        }
         callbacks.onBatchComplete?.(e.sessionId, e.folderIndex, e.folderBatch.name);
         break;
       }
 
       case FOLDER_WS_EVENTS.BATCH_FAILED: {
         const e = event as FolderBatchFailedEvent;
-        callbacks.updateBatch(e.folderBatch.tempId, {
+        callbacks.updateBatch(sessionId, e.folderBatch.tempId, {
           ...e.folderBatch,
           status: 'failed',
           error: e.error,
         });
-        callbacks.incrementFailedFolders();
+        // Update session failed folders count
+        const session = callbacks.getSession(sessionId);
+        if (session) {
+          callbacks.updateSession(sessionId, {
+            failedFolders: session.failedFolders + 1,
+          });
+        }
         callbacks.onBatchFail?.(e.sessionId, e.folderIndex, e.folderBatch.name, e.error);
         break;
       }

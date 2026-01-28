@@ -169,4 +169,7 @@ export const FOLDER_UPLOAD_CONFIG = {
 
   /** Maximum consecutive folder failures before session abort */
   MAX_CONSECUTIVE_FAILURES: 3,
+
+  /** Maximum concurrent upload sessions per user */
+  MAX_CONCURRENT_SESSIONS: 50,
 } as const;

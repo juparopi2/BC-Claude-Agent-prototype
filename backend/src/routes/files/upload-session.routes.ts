@@ -12,6 +12,7 @@ import { authenticateMicrosoft } from '@/domains/auth/middleware/auth-oauth';
 import {
   getUploadSessionManager,
   getFolderEventEmitter,
+  getSessionCancellationHandler,
 } from '@/domains/files';
 import { sendError } from '@/shared/utils/error-response';
 import { ErrorCode } from '@/shared/constants/errors';
@@ -27,7 +28,10 @@ import type {
   MarkFileUploadedResponse,
   CompleteFolderBatchResponse,
   GetUploadSessionResponse,
+  GetActiveSessionsResponse,
+  CancelSessionResult,
 } from '@bc-agent/shared';
+import { FOLDER_UPLOAD_CONFIG } from '@bc-agent/shared';
 
 const logger = createChildLogger({ service: 'UploadSessionRoutes' });
 const router = Router();
@@ -132,7 +136,7 @@ router.post(
       );
 
       const sessionManager = getUploadSessionManager();
-      const session = await sessionManager.initializeSession({
+      const { session, renamedFolderCount, renamedFolders } = await sessionManager.initializeSession({
         userId,
         folders,
         targetFolderId,
@@ -149,6 +153,8 @@ router.post(
         sessionId: session.id,
         folderBatches: session.folderBatches,
         expiresAt: new Date(session.expiresAt).toISOString(),
+        renamedFolderCount: renamedFolderCount > 0 ? renamedFolderCount : undefined,
+        renamedFolders: renamedFolders.length > 0 ? renamedFolders : undefined,
       };
 
       res.status(200).json(response);
@@ -158,12 +164,49 @@ router.post(
         'Failed to initialize upload session'
       );
 
-      if (error instanceof Error && error.message.includes('already has an active')) {
+      if (error instanceof Error && error.message.includes('Maximum concurrent sessions')) {
         sendError(res, ErrorCode.CONFLICT, error.message);
         return;
       }
 
       sendError(res, ErrorCode.INTERNAL_ERROR, 'Failed to initialize upload session');
+    }
+  }
+);
+
+/**
+ * GET /api/files/upload-session/active
+ *
+ * Get all active upload sessions for the current user (multi-session support).
+ *
+ * Response 200:
+ * - sessions: UploadSession[]
+ * - count: number
+ * - maxConcurrent: number
+ */
+router.get(
+  '/upload-session/active',
+  authenticateMicrosoft,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const userId = getUserId(req);
+
+      const sessionManager = getUploadSessionManager();
+      const sessions = await sessionManager.getActiveSessions(userId);
+
+      const response: GetActiveSessionsResponse = {
+        sessions,
+        count: sessions.length,
+        maxConcurrent: FOLDER_UPLOAD_CONFIG.MAX_CONCURRENT_SESSIONS,
+      };
+
+      res.status(200).json(response);
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : String(error) },
+        'Failed to get active upload sessions'
+      );
+      sendError(res, ErrorCode.INTERNAL_ERROR, 'Failed to get active upload sessions');
     }
   }
 );
@@ -656,15 +699,16 @@ router.post(
 /**
  * DELETE /api/files/upload-session/:sessionId
  *
- * Cancel and delete an upload session (for stale session recovery).
- * Use this when a previous upload failed mid-way and you need to clear
- * the session to start a new upload.
- *
- * Note: Partial files in DB will be cleaned by FileCleanupWorker.
+ * Cancel and delete an upload session with intelligent rollback.
+ * Cleans up any files, folders, and blobs created during the upload.
  *
  * Response 200:
- * - success: boolean
- * - cancelled: boolean (true if found and cancelled)
+ * - sessionId: string
+ * - filesDeleted: number
+ * - blobsDeleted: number (async cleanup)
+ * - searchDocsDeleted: number (async cleanup)
+ * - foldersDeleted: number
+ * - errors: Array<{ fileId, error }> (non-fatal errors)
  */
 router.delete(
   '/upload-session/:sessionId',
@@ -679,12 +723,23 @@ router.delete(
         return;
       }
 
-      logger.info({ sessionId, userId }, 'Cancelling upload session');
+      logger.info({ sessionId, userId }, 'Cancelling upload session with rollback');
 
-      const sessionManager = getUploadSessionManager();
-      const cancelled = await sessionManager.cancelSession(sessionId, userId);
+      const cancellationHandler = getSessionCancellationHandler();
+      const result: CancelSessionResult = await cancellationHandler.cancelSession(sessionId, userId);
 
-      res.status(200).json({ success: true, cancelled });
+      // Emit session failed event for WebSocket clients
+      const folderEmitter = getFolderEventEmitter();
+      folderEmitter.emitSessionFailed(
+        { sessionId, userId },
+        {
+          error: 'Session cancelled by user',
+          completedFolders: 0,
+          failedFolders: 0,
+        }
+      );
+
+      res.status(200).json(result);
     } catch (error) {
       logger.error(
         { error: error instanceof Error ? error.message : String(error) },

@@ -92,12 +92,29 @@ export interface IUploadSessionStore {
   updateBatch(sessionId: string, tempId: string, updates: FolderBatchUpdate): Promise<void>;
 
   /**
+   * Get all active sessions for a user (multi-session support)
+   *
+   * @param userId - User ID
+   * @returns Array of active sessions
+   */
+  getActiveSessions(userId: string): Promise<UploadSession[]>;
+
+  /**
    * Get active session for a user (if any)
    *
    * @param userId - User ID
    * @returns Active session or null
+   * @deprecated Use getActiveSessions() for multi-session support
    */
   getActiveSession(userId: string): Promise<UploadSession | null>;
+
+  /**
+   * Get count of active sessions for a user
+   *
+   * @param userId - User ID
+   * @returns Number of active sessions
+   */
+  getActiveSessionCount(userId: string): Promise<number>;
 
   /**
    * Delete a session

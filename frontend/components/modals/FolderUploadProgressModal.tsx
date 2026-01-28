@@ -119,26 +119,15 @@ export function FolderUploadProgressModal({
           {/* Current folder info (folder-based progress) */}
           {currentFolder && progress.phase === 'uploading' && (
             <div className="bg-muted/50 rounded-lg p-3 space-y-2">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Folder className="size-4 text-primary" />
-                  <span className="font-medium text-sm truncate max-w-[200px]">
+                  <span className="font-medium text-sm truncate max-w-[300px]">
                     {currentFolder.name}
                   </span>
                 </div>
                 <span className="text-xs text-muted-foreground">
                   Folder {currentFolderIndex + 1} of {totalFolders}
-                </span>
-              </div>
-              <div className="flex justify-between text-xs text-muted-foreground">
-                <span>
-                  {currentFolder.uploadedFiles} / {currentFolder.totalFiles} files
-                </span>
-                <span className={cn(
-                  currentFolder.status === 'completed' && 'text-green-600',
-                  currentFolder.status === 'failed' && 'text-destructive',
-                )}>
-                  {getBatchStatusLabel(currentFolder.status)}
                 </span>
               </div>
               {currentFolder.totalFiles > 0 && (

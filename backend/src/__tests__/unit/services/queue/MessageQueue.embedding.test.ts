@@ -41,6 +41,7 @@ const {
       getDelayedCount: vi.fn(async () => 0),
     },
     mockWorker: {
+      on: vi.fn(),
       close: vi.fn(),
     },
     mockQueueEvents: {

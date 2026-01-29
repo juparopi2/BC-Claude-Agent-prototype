@@ -78,6 +78,7 @@ const { mockRedis, mockQueue, mockWorker, mockQueueEvents, mockLogger, mockExecu
       close: vi.fn(async () => {}),
     },
     mockWorker: {
+      on: vi.fn(),
       close: vi.fn(async () => {}),
     },
     mockQueueEvents: {

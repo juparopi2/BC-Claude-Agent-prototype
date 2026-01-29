@@ -78,6 +78,7 @@ const {
       }),
     },
     mockWorker: {
+      on: vi.fn(),
       close: vi.fn(async () => {
         callOrder.push('worker');
       }),

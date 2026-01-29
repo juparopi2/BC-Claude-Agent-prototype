@@ -17,6 +17,7 @@ import {
   sendNotFound,
   sendInternalError,
 } from '@/shared/utils/error-response';
+import { AUTH_TIME_MS } from '@bc-agent/shared';
 
 const logger = createChildLogger({ service: 'OAuthMiddleware' });
 
@@ -93,13 +94,19 @@ export async function authenticateMicrosoft(req: Request, res: Response, next: N
       return;
     }
 
-    // Check token expiration and auto-refresh if needed
-    if (oauthSession.tokenExpiresAt && new Date(oauthSession.tokenExpiresAt) <= new Date()) {
-      logger.info('Access token expired, attempting auto-refresh', {
+    // Check token expiration and auto-refresh if needed (proactive: refresh 5 min before expiry)
+    const tokenExpiresAt = oauthSession.tokenExpiresAt ? new Date(oauthSession.tokenExpiresAt) : null;
+    const shouldRefresh = tokenExpiresAt &&
+      tokenExpiresAt.getTime() <= Date.now() + AUTH_TIME_MS.PROACTIVE_REFRESH_BUFFER;
+
+    if (shouldRefresh) {
+      const isExpired = tokenExpiresAt.getTime() <= Date.now();
+      logger.info(isExpired ? 'Access token expired, attempting auto-refresh' : 'Access token expiring soon, proactive refresh', {
         path: req.path,
         method: req.method,
         userId: oauthSession.userId,
         expiresAt: oauthSession.tokenExpiresAt,
+        timeUntilExpiry: tokenExpiresAt.getTime() - Date.now(),
       });
 
       // Attempt to refresh the token automatically

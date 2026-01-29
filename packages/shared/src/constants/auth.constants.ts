@@ -40,6 +40,12 @@ export const AUTH_TIME_MS = {
   DEFAULT_SESSION_MAX_AGE: 24 * 60 * 60 * 1000,
   /** Debounce for tab visibility events (ms) */
   VISIBILITY_DEBOUNCE: 300,
+  /** Buffer de tiempo para refresh proactivo del token OAuth (5 minutos antes de expirar) */
+  PROACTIVE_REFRESH_BUFFER: 5 * 60 * 1000,
+  /** Delay entre reintentos de auth (ms) */
+  AUTH_RETRY_DELAY: 1000,
+  /** Máximo número de reintentos para operaciones con auth */
+  AUTH_MAX_RETRIES: 1,
 } as const;
 
 /** Códigos de error específicos de auth */

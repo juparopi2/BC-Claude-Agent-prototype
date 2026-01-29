@@ -259,6 +259,67 @@ router.get('/callback', async (req: Request, res: Response) => {
 });
 
 /**
+ * POST /api/auth/refresh
+ *
+ * Proactively refresh the OAuth access token.
+ * Allows frontend to refresh tokens before they expire.
+ */
+router.post('/refresh', authenticateMicrosoft, async (req: Request, res: Response) => {
+  try {
+    const oauthSession = req.session?.microsoftOAuth as MicrosoftOAuthSession | undefined;
+
+    if (!oauthSession?.refreshToken) {
+      logger.warn('Token refresh failed: No refresh token available', {
+        userId: req.userId,
+      });
+      sendError(res, ErrorCode.INVALID_TOKEN, 'No refresh token available. Please log in again.');
+      return;
+    }
+
+    // Refresh the token
+    logger.debug('Refreshing access token proactively', { userId: req.userId });
+
+    const refreshed = await oauthService.refreshAccessToken(oauthSession.refreshToken);
+
+    // Update session with new tokens
+    req.session.microsoftOAuth = {
+      ...oauthSession,
+      accessToken: refreshed.accessToken,
+      refreshToken: refreshed.refreshToken,
+      tokenExpiresAt: (refreshed.expiresAt instanceof Date
+        ? refreshed.expiresAt.toISOString()
+        : refreshed.expiresAt) as string,
+    };
+
+    // Force save session to ensure it's persisted
+    await new Promise<void>((resolve, reject) => {
+      req.session.save((err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+
+    logger.info('Access token refreshed successfully via /refresh endpoint', {
+      userId: req.userId,
+      newExpiresAt: refreshed.expiresAt.toISOString(),
+    });
+
+    res.json({
+      success: true,
+      expiresAt: refreshed.expiresAt.toISOString(),
+    });
+  } catch (error) {
+    logger.error('Failed to refresh access token via /refresh endpoint', {
+      error: error instanceof Error
+        ? { message: error.message, stack: error.stack }
+        : { value: String(error) },
+      userId: req.userId,
+    });
+    sendError(res, ErrorCode.SESSION_EXPIRED, 'Failed to refresh access token. Please log in again.');
+  }
+});
+
+/**
  * POST /api/auth/logout
  *
  * Logout user and destroy session.

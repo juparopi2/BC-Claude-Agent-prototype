@@ -176,10 +176,25 @@ export function useSessionHealth(
 
       prevStatusRef.current = currentStatus;
 
-      // If needs refresh and authenticated, try to refresh token
-      // Use ref to avoid circular dependency: fetchHealth -> checkAuth -> re-render -> fetchHealth
+      // If needs refresh and authenticated, try to refresh token proactively
+      // Call dedicated /refresh endpoint first, then update auth state
       if (data.needsRefresh && data.status !== AUTH_SESSION_STATUS.EXPIRED) {
-        await checkAuthRef.current(); // Deduplicated in authStore
+        try {
+          const refreshResponse = await fetch(`${env.apiUrl}/api/auth/refresh`, {
+            method: 'POST',
+            credentials: 'include',
+          });
+
+          if (refreshResponse.ok) {
+            // Refresh successful, update auth state
+            await checkAuthRef.current();
+          } else {
+            // Refresh failed, but token not expired yet - just log
+            console.warn('[useSessionHealth] Proactive token refresh failed:', refreshResponse.status);
+          }
+        } catch (refreshError) {
+          console.error('[useSessionHealth] Error during proactive refresh:', refreshError);
+        }
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';

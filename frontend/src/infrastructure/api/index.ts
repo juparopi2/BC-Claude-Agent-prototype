@@ -46,3 +46,9 @@ export {
   type UploadChatAttachmentResponse,
   type ListChatAttachmentsResponse,
 } from './chatAttachmentApiClient';
+
+// Auth Retry Utility
+export {
+  withAuthRetry,
+  createRetryableApiCall,
+} from './withAuthRetry';

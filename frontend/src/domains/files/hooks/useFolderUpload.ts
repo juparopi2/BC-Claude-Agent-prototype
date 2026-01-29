@@ -26,7 +26,7 @@
  */
 
 import { useCallback, useRef, useEffect, useMemo } from 'react';
-import { getFileApiClient } from '@/src/infrastructure/api';
+import { getFileApiClient, withAuthRetry } from '@/src/infrastructure/api';
 import { useFileListStore } from '../stores/fileListStore';
 import { useFolderTreeStore } from '../stores/folderTreeStore';
 import { useUploadLimitStore } from '../stores/uploadLimitStore';
@@ -392,12 +392,14 @@ export function useFolderUpload(): UseFolderUploadReturn {
         // Create tempId -> File mapping for correlating uploads
         const tempIdToFile = new Map(fileMetadata.map((m, idx) => [m.tempId, files[idx]!]));
 
-        // Step 3: Get SAS URLs (with retry for race condition)
+        // Step 3: Get SAS URLs (with retry for race condition and auth errors)
         const fileIds = registered.map((r) => r.fileId);
         let sasResult: Awaited<ReturnType<typeof fileApi.getSessionSasUrls>> | null = null;
 
         for (let retryAttempt = 0; retryAttempt < GET_SAS_URLS_MAX_RETRIES; retryAttempt++) {
-          sasResult = await fileApi.getSessionSasUrls(sessionId, batch.tempId, fileIds);
+          sasResult = await withAuthRetry(() =>
+            fileApi.getSessionSasUrls(sessionId, batch.tempId, fileIds)
+          );
 
           if (sasResult.success) {
             break;
@@ -456,11 +458,13 @@ export function useFolderUpload(): UseFolderUploadReturn {
                 // Non-fatal, use empty hash
               }
 
-              // Mark as uploaded
-              const markResult = await fileApi.markSessionFileUploaded(
-                sessionId,
-                batch.tempId,
-                { fileId: reg.fileId, contentHash, blobPath: sasInfo.blobPath }
+              // Mark as uploaded (with auth retry)
+              const markResult = await withAuthRetry(() =>
+                fileApi.markSessionFileUploaded(
+                  sessionId,
+                  batch.tempId,
+                  { fileId: reg.fileId, contentHash, blobPath: sasInfo.blobPath }
+                )
               );
 
               if (markResult.success) {
@@ -538,11 +542,13 @@ export function useFolderUpload(): UseFolderUploadReturn {
         // Step 3: Build folder inputs
         const { folderInputs, fileToFolderMap } = buildFolderInputs(structure);
 
-        // Step 4: Initialize upload session
-        const initResult = await fileApi.initUploadSession({
-          folders: folderInputs,
-          targetFolderId,
-        });
+        // Step 4: Initialize upload session (with auth retry)
+        const initResult = await withAuthRetry(() =>
+          fileApi.initUploadSession({
+            folders: folderInputs,
+            targetFolderId,
+          })
+        );
 
         // Handle CONFLICT (max sessions reached)
         if (!initResult.success) {

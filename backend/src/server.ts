@@ -217,6 +217,25 @@ async function initializeApp(): Promise<void> {
     }
     console.log('');
 
+    // Step 4.7: Initialize FileProcessingScheduler (flow control for file processing)
+    console.log('📂 Initializing FileProcessingScheduler...');
+    try {
+      const { getFileProcessingScheduler } = await import('@/domains/files/scheduler');
+      const scheduler = getFileProcessingScheduler();
+      scheduler.start();
+      const config = scheduler.getConfig();
+      console.log('✅ FileProcessingScheduler started');
+      console.log(`   Batch size: ${config.batchSize} files`);
+      console.log(`   Check interval: ${config.checkIntervalMs}ms`);
+      console.log(`   Max queue depth: ${config.maxQueueDepth}`);
+    } catch (error) {
+      // Non-critical: scheduler failure shouldn't prevent server start
+      // Files will be processed but without flow control
+      console.warn('⚠️  FileProcessingScheduler initialization failed:', error instanceof Error ? error.message : 'Unknown error');
+      console.warn('   File processing will work but without flow control');
+    }
+    console.log('');
+
     // Step 5: Initialize BC Client (validate credentials)
     console.log('🔑 Validating Business Central credentials...');
     const bcClient = getBCClient();
@@ -1193,7 +1212,17 @@ async function gracefulShutdown(signal: string): Promise<void> {
       });
     });
 
-    // 3. Close MessageQueue (CRITICAL - drain active jobs before DB closes)
+    // 3. Stop FileProcessingScheduler (prevent new jobs from being enqueued)
+    try {
+      const { getFileProcessingScheduler } = await import('@/domains/files/scheduler');
+      const scheduler = getFileProcessingScheduler();
+      scheduler.stop();
+      console.log('✅ FileProcessingScheduler stopped');
+    } catch {
+      // Non-critical - scheduler may not have been initialized
+    }
+
+    // 4. Close MessageQueue (CRITICAL - drain active jobs before DB closes)
     console.log('🔄 Closing MessageQueue (draining active jobs)...');
     try {
       const messageQueue = getMessageQueue();

@@ -17,6 +17,7 @@ import { getUsageTrackingService } from '@/domains/billing/tracking/UsageTrackin
 import type { DocumentProcessor, ExtractionResult, ExtractionMetadata } from './types';
 import { env } from '@/infrastructure/config/environment';
 import crypto from 'crypto';
+import { compressImageIfNeeded } from '../utils/ImageCompressor';
 
 const logger = createChildLogger({ service: 'ImageProcessor' });
 
@@ -68,6 +69,12 @@ export interface ImageMetadata extends ExtractionMetadata {
   captionGenerated?: boolean;
   /** Confidence score of the generated caption */
   captionConfidence?: number;
+  /** Whether image was compressed before processing */
+  wasCompressed?: boolean;
+  /** Original file size before compression (if compressed) */
+  originalFileSize?: number;
+  /** Compression quality used (if compressed) */
+  compressionQuality?: number;
 }
 
 /**
@@ -96,19 +103,40 @@ export class ImageProcessor implements DocumentProcessor {
       throw new Error(`Failed to process image ${fileName}: Buffer is empty or undefined`);
     }
 
-    logger.info({ fileName, fileSize: buffer.length }, 'Starting image processing');
+    // Compress image if it exceeds Azure Vision's 20MB limit
+    // This automatically handles oversized images instead of rejecting them
+    const compressionResult = await compressImageIfNeeded(buffer, fileName);
+    const processBuffer = compressionResult.buffer;
+
+    if (compressionResult.wasCompressed) {
+      logger.info(
+        {
+          fileName,
+          originalSize: compressionResult.originalSize,
+          finalSize: compressionResult.finalSize,
+          reductionPercent: ((1 - compressionResult.finalSize / compressionResult.originalSize) * 100).toFixed(1),
+          quality: compressionResult.quality,
+        },
+        'Using compressed image for Azure Vision processing'
+      );
+    }
+
+    logger.info({ fileName, fileSize: processBuffer.length }, 'Starting image processing');
 
     try {
-      // Step 1: Detect image format from magic bytes
-      const imageFormat = detectImageFormat(buffer);
+      // Step 1: Detect image format from magic bytes (use processed buffer)
+      const imageFormat = detectImageFormat(processBuffer);
       logger.debug({ fileName, imageFormat }, 'Image format detected');
 
-      // Step 2: Initialize metadata
+      // Step 2: Initialize metadata (with compression info if applicable)
       const metadata: ImageMetadata = {
-        fileSize: buffer.length,
+        fileSize: processBuffer.length,
         ocrUsed: false,
         imageFormat,
         embeddingGenerated: false,
+        wasCompressed: compressionResult.wasCompressed,
+        originalFileSize: compressionResult.wasCompressed ? compressionResult.originalSize : undefined,
+        compressionQuality: compressionResult.quality,
       };
 
       // Step 3: Check if Azure Vision is configured
@@ -145,13 +173,13 @@ export class ImageProcessor implements DocumentProcessor {
 
       const [embeddingResult, captionResult] = await Promise.allSettled([
         embeddingService.generateImageEmbedding(
-          buffer,
+          processBuffer,
           placeholderUserId,
           placeholderFileId,
           { skipTracking: true } // Tracking done in FileProcessingService with real IDs
         ),
         embeddingService.generateImageCaption(
-          buffer,
+          processBuffer,
           placeholderUserId,
           placeholderFileId,
           { skipTracking: true } // Tracking done in FileProcessingService with real IDs
@@ -216,7 +244,7 @@ export class ImageProcessor implements DocumentProcessor {
       // D26: Use caption as text content for better semantic search
       const textContent = generatedCaption
         ? `${generatedCaption} [Image: ${fileName}]`
-        : `[Image: ${fileName}] Format: ${imageFormat}, Size: ${buffer.length} bytes`;
+        : `[Image: ${fileName}] Format: ${imageFormat}, Size: ${processBuffer.length} bytes`;
 
       const result: ExtractionResult = {
         text: textContent,
@@ -231,10 +259,11 @@ export class ImageProcessor implements DocumentProcessor {
       logger.info(
         {
           fileName,
-          fileSize: buffer.length,
+          fileSize: processBuffer.length,
           imageFormat,
           embeddingGenerated: metadata.embeddingGenerated,
           captionGenerated: metadata.captionGenerated,
+          wasCompressed: compressionResult.wasCompressed,
         },
         'Image processing completed'
       );

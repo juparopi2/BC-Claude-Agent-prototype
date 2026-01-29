@@ -22,4 +22,5 @@ export {
   __resetFileRepository,
   type IFileRepository,
   type FileMetadata,
+  type FilePendingProcessing,
 } from './FileRepository';

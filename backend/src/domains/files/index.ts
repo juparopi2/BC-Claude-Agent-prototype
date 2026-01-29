@@ -30,3 +30,6 @@ export * from './emission';
 
 // Upload session (folder-based batch processing)
 export * from './upload-session';
+
+// Processing scheduler (backpressure control)
+export * from './scheduler';

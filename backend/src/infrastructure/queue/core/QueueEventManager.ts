@@ -93,6 +93,18 @@ export class QueueEventManager {
 
     this.queueEvents.set(queueName, queueEvents);
 
+    // Monitor QueueEvents connection health (Redis connection errors)
+    queueEvents.on('error', (error) => {
+      const errorInfo = error instanceof Error
+        ? { message: error.message, name: error.name, code: (error as NodeJS.ErrnoException).code }
+        : { value: String(error) };
+
+      this.log.error({
+        error: errorInfo,
+        queueName,
+      }, `QueueEvents connection error for ${queueName}`);
+    });
+
     queueEvents.on('completed', ({ jobId }) => {
       this.log.debug(`Job completed in ${queueName}`, { jobId });
     });
@@ -225,6 +237,52 @@ export class QueueEventManager {
       stalledAt: new Date().toISOString(),
       suggestion: 'Consider increasing lockDuration or lockRenewTime for this queue',
     }, `Job stalled in ${queueName} - lock expired before completion`);
+
+    // Emit WebSocket notification so frontend can display stalled status
+    // This helps users understand why their file upload appears stuck
+    if (jobData.userId) {
+      try {
+        const jobFailureEmitter = getJobFailureEventEmitter();
+        const jobQueueName = this.mapQueueNameToJobQueueName(queueName);
+
+        if (jobQueueName) {
+          const stalledMessage = processingDurationMs
+            ? `Processing stalled after ${Math.round(processingDurationMs / 1000)}s. System will retry automatically.`
+            : 'Processing stalled. System will retry automatically.';
+
+          const payload = jobFailureEmitter.createPayload(
+            jobId,
+            jobQueueName,
+            stalledMessage,
+            0, // attemptsMade not available for stalled events
+            jobOpts.attempts as number ?? 1,
+            {
+              fileId: jobData.fileId as string | undefined,
+              fileName: jobData.fileName as string | undefined,
+              sessionId: jobData.sessionId as string | undefined,
+              isStalled: true, // Flag to differentiate from regular failures
+            }
+          );
+
+          jobFailureEmitter.emitJobFailed(
+            { userId: jobData.userId as string, sessionId: jobData.sessionId as string | undefined },
+            payload
+          );
+
+          this.log.debug({
+            jobId,
+            queueName,
+            userId: jobData.userId,
+          }, 'Emitted stalled job notification');
+        }
+      } catch (emitError) {
+        this.log.warn({
+          error: emitError instanceof Error ? emitError.message : String(emitError),
+          jobId,
+          queueName,
+        }, 'Failed to emit stalled job notification');
+      }
+    }
   }
 
   /**

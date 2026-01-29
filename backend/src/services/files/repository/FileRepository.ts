@@ -54,6 +54,19 @@ export interface MarkForDeletionResult {
 /**
  * Repository interface for dependency injection
  */
+/**
+ * File record for pending processing query (minimal fields)
+ */
+export interface FilePendingProcessing {
+  id: string;
+  userId: string;
+  name: string;
+  mimeType: string;
+  sizeBytes: number;
+  blobPath: string;
+  parentFolderId: string | null;
+}
+
 export interface IFileRepository {
   findById(userId: string, fileId: string): Promise<ParsedFile | null>;
   findByIdIncludingDeleted(userId: string, fileId: string): Promise<ParsedFile | null>;
@@ -73,6 +86,7 @@ export interface IFileRepository {
   checkFolderExists(userId: string, name: string, parentId?: string | null): Promise<boolean>;
   findFoldersByNamePattern(userId: string, baseName: string, parentId?: string | null): Promise<string[]>;
   findFolderIdByName(userId: string, name: string, parentId?: string | null): Promise<string | null>;
+  getFilesPendingProcessing(limit: number): Promise<FilePendingProcessing[]>;
 }
 
 /**
@@ -785,6 +799,52 @@ export class FileRepository implements IFileRepository {
         ? { message: error.message, name: error.name }
         : { value: String(error) };
       this.logger.error({ errorInfo, userId, name, parentId }, 'Failed to find folder ID by name');
+      throw error;
+    }
+  }
+
+  /**
+   * Get files pending processing
+   *
+   * Used by FileProcessingScheduler to fetch files that have been uploaded
+   * but not yet queued for processing. Implements flow control by allowing
+   * the scheduler to pull files in controlled batches based on queue capacity.
+   *
+   * @param limit - Maximum number of files to return
+   * @returns Array of files pending processing (oldest first)
+   */
+  public async getFilesPendingProcessing(limit: number): Promise<FilePendingProcessing[]> {
+    this.logger.debug({ limit }, 'Getting files pending processing');
+
+    try {
+      const { query, params } = this.queryBuilder.buildGetFilesPendingProcessingQuery(limit);
+      const result = await executeQuery<{
+        id: string;
+        user_id: string;
+        name: string;
+        mime_type: string;
+        size_bytes: number;
+        blob_path: string;
+        parent_folder_id: string | null;
+      }>(query, params as SqlParams);
+
+      const files: FilePendingProcessing[] = result.recordset.map((row) => ({
+        id: row.id,
+        userId: row.user_id,
+        name: row.name,
+        mimeType: row.mime_type,
+        sizeBytes: row.size_bytes,
+        blobPath: row.blob_path,
+        parentFolderId: row.parent_folder_id,
+      }));
+
+      this.logger.debug({ limit, returnedCount: files.length }, 'Files pending processing retrieved');
+      return files;
+    } catch (error) {
+      const errorInfo = error instanceof Error
+        ? { message: error.message, name: error.name }
+        : { value: String(error) };
+      this.logger.error({ errorInfo, limit }, 'Failed to get files pending processing');
       throw error;
     }
   }

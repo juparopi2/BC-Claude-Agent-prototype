@@ -31,6 +31,7 @@ import type {
  * const computer = new ReadinessStateComputer();
  *
  * // File still processing
+ * computer.compute('pending_processing', 'pending'); // => 'processing' (waiting for scheduler)
  * computer.compute('pending', 'pending');     // => 'processing'
  * computer.compute('processing', 'pending');  // => 'processing'
  * computer.compute('completed', 'pending');   // => 'processing'

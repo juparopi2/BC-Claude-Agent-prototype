@@ -516,7 +516,6 @@ export class UploadSessionManager implements IUploadSessionManager {
     }
 
     const fileRepo = this.getFileRepo();
-    const queue = this.getQueue();
 
     try {
       // Update file record with content hash AND the real blob path
@@ -524,11 +523,18 @@ export class UploadSessionManager implements IUploadSessionManager {
       // to the actual path where the file was uploaded (from SAS URL generation)
       await fileRepo.update(session.userId, fileId, { contentHash, blobPath });
 
-      // Update processing status to trigger file processing
-      await fileRepo.updateProcessingStatus(session.userId, fileId, 'pending');
-
-      // Fetch file record to get required fields for processing job
-      const file = await fileRepo.findById(session.userId, fileId);
+      // FLOW CONTROL: Set status to 'pending_processing' instead of 'pending'.
+      // This decouples upload from processing - the FileProcessingScheduler will
+      // pick up files with this status and enqueue them based on queue capacity.
+      //
+      // Benefits:
+      // - Upload completes immediately (no waiting for queue)
+      // - Backend controls processing rate via scheduler
+      // - Prevents Redis OOM from bulk uploads flooding the queue
+      //
+      // The scheduler will change status from 'pending_processing' -> 'pending'
+      // when it enqueues the job.
+      await fileRepo.updateProcessingStatus(session.userId, fileId, 'pending_processing');
 
       this.log.info(
         {
@@ -536,37 +542,8 @@ export class UploadSessionManager implements IUploadSessionManager {
           tempId,
           fileId,
           blobPath,
-          fileMimeType: file?.mimeType,
-          fileName: file?.name,
-          fileExists: !!file,
         },
-        'Preparing file processing job'
-      );
-
-      if (!file) {
-        throw new Error(`File not found after update: ${fileId}`);
-      }
-
-      // Enqueue processing job with ALL required fields
-      const jobId = await queue.addFileProcessingJob({
-        fileId,
-        userId: session.userId,
-        mimeType: file.mimeType,
-        blobPath,
-        fileName: file.name,
-      });
-
-      this.log.info(
-        {
-          sessionId,
-          tempId,
-          fileId,
-          jobId,
-          mimeType: file.mimeType,
-          blobPath,
-          fileName: file.name,
-        },
-        'File processing job enqueued successfully'
+        'File marked for processing (pending_processing status)'
       );
 
       // Update batch uploaded count
@@ -583,9 +560,10 @@ export class UploadSessionManager implements IUploadSessionManager {
         'File marked as uploaded'
       );
 
+      // Note: jobId is no longer returned immediately since we don't enqueue directly.
+      // The FileProcessingScheduler will handle job creation.
       return {
         success: true,
-        jobId,
         folderBatch: updatedBatch,
       };
     } catch (error) {

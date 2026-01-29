@@ -25,12 +25,17 @@ import { FILE_WS_EVENTS } from '../constants/websocket-events';
  * Processing status for async workers (Phase 3)
  *
  * Lifecycle:
- * - `pending`: File uploaded, awaiting processing
+ * - `pending_processing`: File uploaded, waiting for scheduler to enqueue (flow control)
+ * - `pending`: File queued for processing (in BullMQ)
  * - `processing`: Worker is extracting text/generating previews
  * - `completed`: Processing finished successfully
  * - `failed`: Processing failed (check logs for details)
+ *
+ * Note: `pending_processing` was added for flow control (backpressure).
+ * The FileProcessingScheduler picks files with this status and enqueues them
+ * based on queue capacity, transitioning them to `pending`.
  */
-export type ProcessingStatus = 'pending' | 'processing' | 'completed' | 'failed';
+export type ProcessingStatus = 'pending_processing' | 'pending' | 'processing' | 'completed' | 'failed';
 
 /**
  * Embedding status for vector search (Phase 4)

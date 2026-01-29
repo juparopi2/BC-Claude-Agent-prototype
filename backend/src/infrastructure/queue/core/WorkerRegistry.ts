@@ -75,6 +75,9 @@ export class WorkerRegistry {
       }
     );
 
+    // Setup error event handlers for debugging and monitoring
+    this.setupWorkerEventHandlers(worker, name, lockConfig);
+
     this.workers.set(name, worker);
     this.log.info(`Worker registered: ${name}`, {
       concurrency: resolvedConcurrency,
@@ -82,6 +85,58 @@ export class WorkerRegistry {
       maxStalledCount: lockConfig.maxStalledCount,
       lockRenewTime: lockConfig.lockRenewTime ?? 'default',
       stalledInterval: lockConfig.stalledInterval ?? 'default',
+    });
+  }
+
+  /**
+   * Setup event handlers for worker monitoring
+   *
+   * Captures error, failed, and stalled events for debugging Redis connection
+   * issues and lock expiration problems.
+   */
+  private setupWorkerEventHandlers(
+    worker: Worker,
+    queueName: QueueName,
+    lockConfig: ExtendedLockConfig
+  ): void {
+    // Connection/internal errors (e.g., Redis ETIMEDOUT, lock renewal failures)
+    worker.on('error', (error) => {
+      const errorInfo = error instanceof Error
+        ? { message: error.message, name: error.name, code: (error as NodeJS.ErrnoException).code }
+        : { value: String(error) };
+
+      this.log.error({
+        error: errorInfo,
+        queueName,
+      }, `Worker error in ${queueName}`);
+    });
+
+    // Job processing failures (after all retries exhausted)
+    worker.on('failed', (job, error) => {
+      const errorInfo = error instanceof Error
+        ? { message: error.message, name: error.name }
+        : { value: String(error) };
+
+      this.log.warn({
+        jobId: job?.id,
+        jobName: job?.name,
+        error: errorInfo,
+        attemptsMade: job?.attemptsMade,
+        maxAttempts: job?.opts?.attempts,
+        queueName,
+      }, `Job failed in ${queueName}`);
+    });
+
+    // Job stalled (lock expired before completion)
+    worker.on('stalled', (jobId) => {
+      this.log.warn({
+        jobId,
+        queueName,
+        lockDuration: lockConfig.lockDuration,
+        lockRenewTime: lockConfig.lockRenewTime ?? Math.floor(lockConfig.lockDuration / 2),
+        stalledInterval: lockConfig.stalledInterval ?? 30000,
+        suggestion: 'Job lock expired - consider increasing lockDuration or reducing concurrency',
+      }, `Job stalled in ${queueName} - lock expired`);
     });
   }
 

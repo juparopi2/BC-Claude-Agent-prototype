@@ -514,6 +514,35 @@ export class FileQueryBuilder {
   }
 
   /**
+   * Build query for getting files pending processing
+   *
+   * Used by FileProcessingScheduler to fetch files that have been uploaded
+   * but not yet queued for processing. Returns files ordered by upload time
+   * (oldest first) to ensure fair processing order.
+   *
+   * @param limit - Maximum number of files to return
+   * @returns Query string and parameters
+   */
+  public buildGetFilesPendingProcessingQuery(limit: number): QueryResult {
+    const query = `
+      SELECT id, user_id, name, mime_type, size_bytes, blob_path, parent_folder_id
+      FROM files
+      WHERE processing_status = 'pending_processing'
+        AND is_folder = 0
+        AND deletion_status IS NULL
+      ORDER BY created_at ASC
+      OFFSET 0 ROWS
+      FETCH NEXT @limit ROWS ONLY
+    `;
+
+    const params: Record<string, unknown> = {
+      limit,
+    };
+
+    return { query, params };
+  }
+
+  /**
    * Build query for finding folders by name pattern
    *
    * Finds folders matching a base name or base name with suffix pattern.

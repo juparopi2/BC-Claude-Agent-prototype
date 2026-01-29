@@ -194,7 +194,11 @@ export interface IUploadSessionManager {
   /**
    * Mark a file as uploaded
    *
-   * Updates file record with blobPath and enqueues processing job.
+   * Updates file record with blobPath and sets status to 'pending_processing'.
+   * The FileProcessingScheduler will pick up the file and enqueue it for processing
+   * based on queue capacity (flow control / backpressure).
+   *
+   * Note: jobId is no longer returned immediately since enqueuing is decoupled.
    *
    * @param sessionId - Session ID
    * @param tempId - Folder batch temp ID

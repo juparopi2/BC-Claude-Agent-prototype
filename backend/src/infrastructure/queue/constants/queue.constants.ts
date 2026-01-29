@@ -125,23 +125,27 @@ export const DEFAULT_BACKOFF = {
  * Job Retention Configuration
  *
  * How many completed/failed jobs to retain and for how long.
+ *
+ * IMPORTANT: Aggressive cleanup to prevent Redis OOM on Azure Redis Basic tier.
+ * The original values (100 completed, 200 failed) caused memory exhaustion
+ * when processing bulk uploads of 280+ files.
  */
 export const JOB_RETENTION = {
   DEFAULT: {
-    completed: { count: 100, age: 3600 }, // 1 hour
-    failed: { count: 200, age: 86400 },   // 24 hours
+    completed: { count: 20, age: 900 },   // 15 minutes, 20 jobs max
+    failed: { count: 20, age: 1800 },     // 30 minutes, 20 jobs max
   },
   MESSAGE_PERSISTENCE: {
-    completed: { count: 100 },
-    failed: { count: 500, age: 86400 },
+    completed: { count: 20 },
+    failed: { count: 50, age: 3600 },     // 1 hour
   },
   USAGE_AGGREGATION: {
-    completed: { count: 50, age: 3600 },
-    failed: { count: 100, age: 86400 },
+    completed: { count: 20, age: 900 },   // 15 minutes
+    failed: { count: 50, age: 3600 },     // 1 hour
   },
   FILE_CLEANUP: {
-    completed: { count: 50, age: 86400 },
-    failed: { count: 100, age: 604800 }, // 7 days
+    completed: { count: 20, age: 3600 },  // 1 hour
+    failed: { count: 50, age: 86400 },    // 1 day
   },
 } as const;
 

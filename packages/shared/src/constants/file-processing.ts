@@ -23,7 +23,9 @@
  * Matches the ProcessingStatus type in file.types.ts.
  */
 export const PROCESSING_STATUS = {
-  /** File uploaded, awaiting processing */
+  /** File uploaded, waiting for scheduler to enqueue (flow control/backpressure) */
+  PENDING_PROCESSING: 'pending_processing',
+  /** File queued for processing (in BullMQ queue) */
   PENDING: 'pending',
   /** Worker is extracting text/generating previews */
   PROCESSING: 'processing',

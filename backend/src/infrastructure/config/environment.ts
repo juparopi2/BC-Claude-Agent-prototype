@@ -136,6 +136,10 @@ const envSchema = z.object({
   QUEUE_FILE_CHUNKING_CONCURRENCY: z.string().default('5').transform(Number).pipe(z.number().min(1).max(20)),
   QUEUE_EMBEDDING_CONCURRENCY: z.string().default('5').transform(Number).pipe(z.number().min(1).max(20)),
   QUEUE_CITATION_CONCURRENCY: z.string().default('5').transform(Number).pipe(z.number().min(1).max(20)),
+  QUEUE_FILE_BULK_UPLOAD_CONCURRENCY: z.string().default('10').transform(Number).pipe(z.number().min(1).max(30)),
+
+  // Queue Lock Configuration (for long-running jobs like Azure Document Intelligence)
+  QUEUE_FILE_PROCESSING_LOCK_DURATION: z.string().default('300000').transform(Number).pipe(z.number().min(60000).max(600000)),
 });
 
 /**

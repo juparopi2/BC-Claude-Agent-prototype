@@ -18,4 +18,5 @@ export {
   LOCK_DURATION,
   MAX_STALLED_COUNT,
   LOCK_CONFIG,
+  type ExtendedLockConfig,
 } from './queue.constants';

@@ -1223,13 +1223,17 @@ export interface FileDeletedEvent extends BaseFileWebSocketEvent {
  * Configuration for bulk file upload queue processing
  *
  * Mirrors FILE_DELETION_CONFIG pattern for consistency.
+ *
+ * NOTE: QUEUE_CONCURRENCY reduced from 20 to 10 to avoid Redis connection
+ * exhaustion on Azure Redis Basic C0 tier (~256 max connections).
+ * Can be overridden via QUEUE_FILE_BULK_UPLOAD_CONCURRENCY env var.
  */
 export const FILE_BULK_UPLOAD_CONFIG = {
   /** Maximum files per bulk upload batch */
   MAX_BATCH_SIZE: 500,
 
   /** Queue worker concurrency (parallel processing OK for uploads) */
-  QUEUE_CONCURRENCY: 20,
+  QUEUE_CONCURRENCY: 10,
 
   /** Maximum retry attempts for failed upload jobs */
   MAX_RETRY_ATTEMPTS: 3,

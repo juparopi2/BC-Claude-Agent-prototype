@@ -189,7 +189,12 @@ jobs:
               LOG_LEVEL=info \
               ENABLE_PROMPT_CACHING=true \
               ENABLE_EXTENDED_THINKING=true \
-              MAX_CONTEXT_TOKENS=100000
+              MAX_CONTEXT_TOKENS=100000 \
+              QUEUE_FILE_PROCESSING_CONCURRENCY=5 \
+              QUEUE_FILE_BULK_UPLOAD_CONCURRENCY=10 \
+              QUEUE_FILE_CHUNKING_CONCURRENCY=3 \
+              QUEUE_EMBEDDING_CONCURRENCY=3 \
+              QUEUE_FILE_PROCESSING_LOCK_DURATION=300000
 
           # Update ingress configuration for the backend
           az containerapp ingress update \
@@ -291,7 +296,12 @@ jobs:
               LOG_LEVEL=info \
               ENABLE_PROMPT_CACHING=true \
               ENABLE_EXTENDED_THINKING=true \
-              MAX_CONTEXT_TOKENS=100000
+              MAX_CONTEXT_TOKENS=100000 \
+              QUEUE_FILE_PROCESSING_CONCURRENCY=5 \
+              QUEUE_FILE_BULK_UPLOAD_CONCURRENCY=10 \
+              QUEUE_FILE_CHUNKING_CONCURRENCY=3 \
+              QUEUE_EMBEDDING_CONCURRENCY=3 \
+              QUEUE_FILE_PROCESSING_LOCK_DURATION=300000
 
       - name: Configure Ingress
         run: |

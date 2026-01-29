@@ -101,8 +101,8 @@ export class QueueEventManager {
       await this.handleFailedJob(queueName, jobId, failedReason || 'No reason provided');
     });
 
-    queueEvents.on('stalled', ({ jobId }) => {
-      this.log.warn(`Job stalled in ${queueName}`, { jobId });
+    queueEvents.on('stalled', async ({ jobId }) => {
+      await this.handleStalledJob(queueName, jobId);
     });
   }
 
@@ -143,11 +143,8 @@ export class QueueEventManager {
       // Ignore errors when fetching job data
     }
 
-    // Log the failure
+    // Log the failure (context already contains jobId, failedReason, queueName)
     this.log.error({
-      jobId,
-      failedReason,
-      queueName,
       ...context,
       timestamp: new Date().toISOString(),
     }, `Job failed in ${queueName}`);
@@ -169,6 +166,65 @@ export class QueueEventManager {
         }, 'Failed job handler threw an error');
       }
     }
+  }
+
+  /**
+   * Handle stalled job event
+   *
+   * A job becomes "stalled" when its lock expires before completion.
+   * This typically indicates:
+   * 1. Lock duration is too short for the operation
+   * 2. Redis is under heavy load and lock renewal failed
+   * 3. Worker crashed or was forcefully terminated
+   *
+   * This enhanced handler logs detailed context to aid debugging.
+   */
+  private async handleStalledJob(queueName: QueueName, jobId: string): Promise<void> {
+    // Build context with as much job data as possible
+    let jobData: Record<string, unknown> = {};
+    let jobOpts: Record<string, unknown> = {};
+    let processedOn: number | undefined;
+    let timestamp: number | undefined;
+
+    try {
+      const queue = this.getQueue(queueName);
+      if (queue) {
+        const stalledJob = await queue.getJob(jobId);
+        if (stalledJob) {
+          jobData = {
+            userId: stalledJob.data?.userId,
+            sessionId: stalledJob.data?.sessionId,
+            fileId: stalledJob.data?.fileId,
+            fileName: stalledJob.data?.fileName,
+          };
+          jobOpts = {
+            attempts: stalledJob.opts?.attempts,
+          };
+          processedOn = stalledJob.processedOn;
+          timestamp = stalledJob.timestamp;
+        }
+      }
+    } catch {
+      // Ignore errors when fetching job data - still log the stall
+    }
+
+    // Calculate how long the job has been processing (if possible)
+    let processingDurationMs: number | undefined;
+    if (processedOn) {
+      processingDurationMs = Date.now() - processedOn;
+    }
+
+    this.log.warn({
+      jobId,
+      queueName,
+      ...jobData,
+      jobOpts,
+      processedOn: processedOn ? new Date(processedOn).toISOString() : undefined,
+      processingDurationMs,
+      timestamp: timestamp ? new Date(timestamp).toISOString() : undefined,
+      stalledAt: new Date().toISOString(),
+      suggestion: 'Consider increasing lockDuration or lockRenewTime for this queue',
+    }, `Job stalled in ${queueName} - lock expired before completion`);
   }
 
   /**

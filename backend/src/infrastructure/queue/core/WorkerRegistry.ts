@@ -10,7 +10,7 @@
 import { Worker, type Processor, type RedisOptions } from 'bullmq';
 import { createChildLogger } from '@/shared/utils/logger';
 import type { ILoggerMinimal } from '../IMessageQueueDependencies';
-import { QueueName, DEFAULT_CONCURRENCY, LOCK_CONFIG } from '../constants';
+import { QueueName, DEFAULT_CONCURRENCY, LOCK_CONFIG, type ExtendedLockConfig } from '../constants';
 import { env } from '@/infrastructure/config';
 import { FILE_DELETION_CONFIG, FILE_BULK_UPLOAD_CONFIG } from '@bc-agent/shared';
 
@@ -69,24 +69,29 @@ export class WorkerRegistry {
         concurrency: resolvedConcurrency,
         lockDuration: lockConfig.lockDuration,
         maxStalledCount: lockConfig.maxStalledCount,
+        // Pass explicit lockRenewTime and stalledInterval if configured
+        ...(lockConfig.lockRenewTime && { lockRenewTime: lockConfig.lockRenewTime }),
+        ...(lockConfig.stalledInterval && { stalledInterval: lockConfig.stalledInterval }),
       }
     );
 
     this.workers.set(name, worker);
-    this.log.debug(`Worker registered: ${name}`, {
+    this.log.info(`Worker registered: ${name}`, {
       concurrency: resolvedConcurrency,
       lockDuration: lockConfig.lockDuration,
       maxStalledCount: lockConfig.maxStalledCount,
+      lockRenewTime: lockConfig.lockRenewTime ?? 'default',
+      stalledInterval: lockConfig.stalledInterval ?? 'default',
     });
   }
 
   /**
    * Get lock configuration for a queue
    *
-   * Returns lock duration and max stalled count based on queue type.
-   * File operations get longer locks due to variable processing times.
+   * Returns lock duration, max stalled count, and optional lockRenewTime/stalledInterval
+   * based on queue type. File operations get longer locks due to variable processing times.
    */
-  private getLockConfig(name: QueueName): { lockDuration: number; maxStalledCount: number } {
+  private getLockConfig(name: QueueName): ExtendedLockConfig {
     return LOCK_CONFIG[name];
   }
 
@@ -122,6 +127,7 @@ export class WorkerRegistry {
       [QueueName.FILE_CHUNKING]: env.QUEUE_FILE_CHUNKING_CONCURRENCY,
       [QueueName.EMBEDDING_GENERATION]: env.QUEUE_EMBEDDING_CONCURRENCY,
       [QueueName.CITATION_PERSISTENCE]: env.QUEUE_CITATION_CONCURRENCY,
+      [QueueName.FILE_BULK_UPLOAD]: env.QUEUE_FILE_BULK_UPLOAD_CONCURRENCY,
     };
     return envMap[name];
   }

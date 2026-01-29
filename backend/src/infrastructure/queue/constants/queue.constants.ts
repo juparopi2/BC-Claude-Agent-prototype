@@ -201,6 +201,8 @@ export const LOCK_DURATION = {
   LONG: 90000,
   /** Very long operations (OCR, large PDFs, slow I/O) */
   EXTRA_LONG: 120000,
+  /** Ultra long operations (Azure Document Intelligence, large blob downloads) */
+  ULTRA_LONG: 300000,
 } as const;
 
 /**
@@ -217,14 +219,35 @@ export const MAX_STALLED_COUNT = {
 } as const;
 
 /**
+ * Extended lock configuration for queues that need custom renewal/stalled settings
+ */
+export interface ExtendedLockConfig {
+  lockDuration: number;
+  maxStalledCount: number;
+  /** How often to renew the lock (default: lockDuration/2) */
+  lockRenewTime?: number;
+  /** How often to check for stalled jobs (default: 30000ms) */
+  stalledInterval?: number;
+}
+
+/**
  * Lock Configuration per Queue Type
  *
  * Maps each queue to appropriate lock settings based on typical job duration.
  * File operations get longer locks due to variable processing times.
+ *
+ * FILE_PROCESSING uses ULTRA_LONG (5 min) because Azure Document Intelligence
+ * + large blob downloads can take 180+ seconds, causing "Missing lock" errors
+ * with shorter durations.
  */
-export const LOCK_CONFIG: Record<QueueName, { lockDuration: number; maxStalledCount: number }> = {
+export const LOCK_CONFIG: Record<QueueName, ExtendedLockConfig> = {
   // File operations - can be slow (large PDFs, OCR, network I/O)
-  [QueueName.FILE_PROCESSING]: { lockDuration: LOCK_DURATION.EXTRA_LONG, maxStalledCount: MAX_STALLED_COUNT.TOLERANT },
+  [QueueName.FILE_PROCESSING]: {
+    lockDuration: LOCK_DURATION.ULTRA_LONG,  // 5 minutes (was 2 min)
+    maxStalledCount: MAX_STALLED_COUNT.TOLERANT,
+    lockRenewTime: 60000,      // Renew every 60s (explicit)
+    stalledInterval: 120000,   // Check for stalled every 2 min
+  },
   [QueueName.FILE_CHUNKING]: { lockDuration: LOCK_DURATION.MEDIUM, maxStalledCount: MAX_STALLED_COUNT.TOLERANT },
   [QueueName.EMBEDDING_GENERATION]: { lockDuration: LOCK_DURATION.LONG, maxStalledCount: MAX_STALLED_COUNT.TOLERANT },
   [QueueName.FILE_BULK_UPLOAD]: { lockDuration: LOCK_DURATION.MEDIUM, maxStalledCount: MAX_STALLED_COUNT.TOLERANT },

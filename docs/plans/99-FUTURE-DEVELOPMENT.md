@@ -27,6 +27,50 @@ Este documento centraliza todos los planes futuros, organizados por categoría p
 
 ---
 
+## 🔴 Upload Session Resilience (Deferred)
+
+> **Estado**: Documentado para futura implementación. Ver plan original en transcripción de sesión.
+
+### Problema
+Las sesiones de upload se almacenan SOLO en Redis con TTL de 4 horas. Si el TTL expira o Redis desaloja la clave durante uploads largos, la sesión se pierde permanentemente.
+
+**Síntoma**: `Session not found: <SESSION_ID>` durante uploads de muchos archivos.
+
+### Opciones de Implementación
+
+**Opción B1: Quick Fix - Extender TTL en cada operación** (Esfuerzo: Bajo)
+- En `UploadSessionManager`, llamar `extendTTL()` en cada registro de carpeta
+- Reduce la probabilidad de expiración durante uploads activos
+- No resuelve el problema de pérdida por reinicio de Redis
+
+**Opción B2: Medium Fix - Backup en Base de Datos** (Esfuerzo: Medio)
+- Replicar el estado de sesión en SQL Database (tabla `upload_sessions`)
+- En "Session not found", intentar recuperación desde database
+- Requiere cambios de schema y nuevo repository
+
+**Opción B3: Long-term - Event Sourcing para Sesiones** (Esfuerzo: Alto)
+- Registrar todos los eventos de sesión en la base de datos
+- Reconstruir el estado de la sesión desde eventos en caso de cache miss
+- Proporciona audit trail para debugging
+
+### Contexto Técnico
+
+**Flujo actual (Redis-only):**
+```
+┌──────────────┐    ┌───────────┐
+│ Frontend     │───▶│ Redis     │  ← 4-hour TTL
+│ (heartbeat)  │    │ (session) │  ← No backup
+└──────────────┘    └───────────┘
+
+Si TTL expira o Redis desaloja → Sesión perdida
+```
+
+**Archivos afectados:**
+- `backend/src/services/files/upload/UploadSessionManager.ts`
+- `backend/src/services/files/upload/UploadSessionStore.ts`
+
+---
+
 ## 🛠 Deuda Técnica y Mantenimiento
 
 Mejoras en la estabilidad, calidad del código e infraestructura existente.

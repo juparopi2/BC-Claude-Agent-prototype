@@ -13,6 +13,8 @@ import type {
   UploadSessionProgress,
   FileRegistrationMetadata,
   RenamedFolderInfo,
+  FolderConflict,
+  FolderConflictResolution,
 } from '@bc-agent/shared';
 
 /**
@@ -105,6 +107,26 @@ export interface InitSessionResult {
 
   /** Details of renamed folders (only present if renamedFolderCount > 0) */
   renamedFolders: RenamedFolderInfo[];
+
+  /** Conflicts requiring user resolution (when autoResolve: false) */
+  conflicts?: FolderConflict[];
+
+  /** Whether resolution is required before proceeding */
+  requiresResolution?: boolean;
+}
+
+/**
+ * Result of applying conflict resolutions
+ */
+export interface ApplyResolutionsResult {
+  /** Folders that were skipped */
+  skippedFolders: string[];
+
+  /** Folders that were renamed */
+  renamedFolders: RenamedFolderInfo[];
+
+  /** Updated session */
+  session: UploadSession;
 }
 
 /**
@@ -270,4 +292,22 @@ export interface IUploadSessionManager {
    * @returns Number of active sessions
    */
   getActiveSessionCount(userId: string): Promise<number>;
+
+  /**
+   * Apply folder conflict resolutions
+   *
+   * Updates session with user's choices for skip/rename.
+   * Skipped folders are removed from session.
+   * Renamed folders get their name updated in the batch.
+   *
+   * @param sessionId - Session ID
+   * @param userId - User ID (for ownership verification)
+   * @param resolutions - Array of conflict resolutions
+   * @returns Result with skipped/renamed folders and updated session
+   */
+  applyFolderResolutions?(
+    sessionId: string,
+    userId: string,
+    resolutions: FolderConflictResolution[]
+  ): Promise<ApplyResolutionsResult>;
 }

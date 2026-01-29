@@ -32,6 +32,7 @@ import {
   AlertCircle,
   Folder,
   Loader2,
+  RefreshCw,
 } from 'lucide-react';
 import { useMultiUploadSessionStore, useFolderBatchEvents } from '@/src/domains/files';
 import { useShallow } from 'zustand/react/shallow';
@@ -41,6 +42,8 @@ import type { UploadSession, FolderBatch } from '@bc-agent/shared';
 interface MultiUploadProgressPanelProps {
   /** Callback to cancel a session */
   onCancelSession: (sessionId: string) => void;
+  /** Callback to retry a failed folder (optional) */
+  onRetryFolder?: (sessionId: string, tempId: string) => void;
 }
 
 /**
@@ -82,11 +85,13 @@ function BatchStatusIcon({
 function SessionProgressCard({
   session,
   onCancel,
+  onRetryFolder,
   isExpanded,
   onToggleExpand,
 }: {
   session: UploadSession;
   onCancel: () => void;
+  onRetryFolder?: (tempId: string) => void;
   isExpanded: boolean;
   onToggleExpand: () => void;
 }) {
@@ -207,6 +212,7 @@ function SessionProgressCard({
                 <div className="flex gap-1 flex-wrap">
                   {session.folderBatches.map((batch, idx) => {
                     const isCurrentBatch = idx === progress?.currentFolderIndex;
+                    const isFailed = batch.status === 'failed';
                     return (
                       <div
                         key={batch.tempId}
@@ -214,15 +220,27 @@ function SessionProgressCard({
                           'size-5 rounded text-[10px] flex items-center justify-center',
                           isCurrentBatch && 'bg-primary text-primary-foreground',
                           batch.status === 'completed' && !isCurrentBatch && 'bg-green-100',
-                          batch.status === 'failed' && !isCurrentBatch && 'bg-red-100',
+                          isFailed && !isCurrentBatch && 'bg-red-100',
                           batch.status === 'pending' && !isCurrentBatch && 'bg-muted',
                           !['completed', 'failed', 'pending'].includes(batch.status) &&
-                            !isCurrentBatch && 'bg-muted'
+                            !isCurrentBatch && 'bg-muted',
+                          isFailed && onRetryFolder && 'cursor-pointer hover:bg-red-200'
                         )}
-                        title={`${batch.name}: ${batch.status}`}
+                        title={`${batch.name}: ${batch.status}${isFailed && onRetryFolder ? ' (click to retry)' : ''}`}
+                        onClick={() => {
+                          if (isFailed && onRetryFolder) {
+                            onRetryFolder(batch.tempId);
+                          }
+                        }}
                       >
-                        <BatchStatusIcon status={batch.status} isCurrentBatch={isCurrentBatch} />
-                        {batch.status === 'pending' && idx + 1}
+                        {isFailed && onRetryFolder ? (
+                          <RefreshCw className="size-3 text-red-600" />
+                        ) : (
+                          <>
+                            <BatchStatusIcon status={batch.status} isCurrentBatch={isCurrentBatch} />
+                            {batch.status === 'pending' && idx + 1}
+                          </>
+                        )}
                       </div>
                     );
                   })}
@@ -240,6 +258,7 @@ function SessionProgressCard({
  * Floating panel for displaying multiple concurrent upload sessions
  *
  * Automatically shows when there are active uploads and hides when complete.
+ * Can be collapsed to a minimal badge showing upload count with pulse animation.
  *
  * @example
  * ```tsx
@@ -250,8 +269,10 @@ function SessionProgressCard({
  */
 export function MultiUploadProgressPanel({
   onCancelSession,
+  onRetryFolder,
 }: MultiUploadProgressPanelProps) {
   const [expandedSessions, setExpandedSessions] = useState<Set<string>>(new Set());
+  const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
   const sessions = useMultiUploadSessionStore(
     useShallow((state) => Array.from(state.sessions.values()))
   );
@@ -281,29 +302,70 @@ export function MultiUploadProgressPanel({
     });
   };
 
+  const isUploading = activeCount > 0;
+  const statusText = isUploading
+    ? `${activeCount} upload${activeCount > 1 ? 's' : ''} in progress`
+    : 'Uploads complete';
+
+  // Collapsed view: minimal badge with pulse animation
+  if (isPanelCollapsed) {
+    return (
+      <div className="fixed bottom-4 right-4 z-50">
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => setIsPanelCollapsed(false)}
+          className={cn(
+            'shadow-lg gap-2 pr-3',
+            isUploading && 'animate-pulse'
+          )}
+        >
+          <FolderUp className={cn('size-4', isUploading && 'text-primary')} />
+          <span className={cn(isUploading && 'animate-[pulse-text_2s_ease-in-out_infinite]')}>
+            {statusText}
+          </span>
+          <ChevronUp className="size-3 ml-1" />
+        </Button>
+      </div>
+    );
+  }
+
+  // Expanded view: full panel
   return (
-    <div className="fixed bottom-4 right-4 z-50 w-100">
+    <div className="fixed bottom-4 right-4 z-50 w-100 max-h-3/4">
       <Card className="shadow-lg">
         <CardHeader className="px-4">
-          <div className="flex items-center gap-2 text-sm font-medium">
-            <FolderUp className="size-4 text-primary" />
-            <span>
-              {activeCount > 0
-                ? `${activeCount} upload${activeCount > 1 ? 's' : ''} in progress`
-                : 'Uploads complete'}
-            </span>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <FolderUp className={cn('size-4', isUploading && 'text-primary')} />
+              <span className={cn(isUploading && 'animate-[pulse-text_2s_ease-in-out_infinite]')}>
+                {statusText}
+              </span>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-6"
+              onClick={() => setIsPanelCollapsed(true)}
+              title="Collapse panel"
+            >
+              <ChevronDown className="size-4" />
+            </Button>
           </div>
         </CardHeader>
         <CardContent className="pt-0 pb-3 px-4">
+          <div className="max-h-120 overflow-y-auto space-y-2 pr-1">
             {visibleSessions.map((session) => (
               <SessionProgressCard
                 key={session.id}
                 session={session}
                 onCancel={() => onCancelSession(session.id)}
+                onRetryFolder={onRetryFolder ? (tempId) => onRetryFolder(session.id, tempId) : undefined}
                 isExpanded={expandedSessions.has(session.id)}
                 onToggleExpand={() => toggleExpand(session.id)}
               />
             ))}
+          </div>
         </CardContent>
       </Card>
     </div>

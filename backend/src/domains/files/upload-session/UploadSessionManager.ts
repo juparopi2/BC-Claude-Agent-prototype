@@ -36,7 +36,9 @@ import type {
   FileSasInfo,
   MarkUploadedResult,
   CompleteBatchResult,
+  ApplyResolutionsResult,
 } from './IUploadSessionManager';
+import type { FolderConflictResolution, RenamedFolderInfo } from '@bc-agent/shared';
 import { getFileRepository, type IFileRepository } from '@/services/files/repository';
 import { getFileUploadService, type FileUploadService } from '@/services/files/FileUploadService';
 import { getMessageQueue, type MessageQueue } from '@/infrastructure/queue/MessageQueue';
@@ -405,14 +407,44 @@ export class UploadSessionManager implements IUploadSessionManager {
 
   /**
    * Get SAS URLs for registered files
+   *
+   * Includes retry logic to handle race condition where registerFiles() has
+   * completed but the state transition hasn't been reflected in the store yet.
    */
   async getSasUrls(sessionId: string, tempId: string, fileIds: string[]): Promise<FileSasInfo[]> {
-    const session = await this.requireSession(sessionId);
-    const batch = this.findBatch(session, tempId);
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY_MS = 100;
 
-    // Validate state
-    if (batch.status !== 'uploading') {
+    let session: UploadSession | null = null;
+    let batch: FolderBatch | null = null;
+
+    // Retry loop to wait for state transition
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      session = await this.requireSession(sessionId);
+      batch = this.findBatch(session, tempId);
+
+      if (batch.status === 'uploading') {
+        // State is ready, proceed
+        break;
+      }
+
+      if (batch.status === 'registering' && attempt < MAX_RETRIES - 1) {
+        // State transition in progress, wait and retry
+        this.log.info(
+          { sessionId, tempId, attempt, currentStatus: batch.status },
+          'Waiting for batch state transition to uploading'
+        );
+        await this.sleep(RETRY_DELAY_MS * (attempt + 1));
+        continue;
+      }
+
+      // Either not in registering state or max retries reached
       throw new Error(`Cannot get SAS URLs: batch ${tempId} is in ${batch.status} state`);
+    }
+
+    // TypeScript safety - session and batch are guaranteed to be set here
+    if (!session || !batch) {
+      throw new Error(`Cannot get SAS URLs: batch ${tempId} not found`);
     }
 
     const uploadService = this.getUploadService();
@@ -776,6 +808,108 @@ export class UploadSessionManager implements IUploadSessionManager {
     return this.store.getActiveSessionCount(userId);
   }
 
+  /**
+   * Apply folder conflict resolutions
+   *
+   * Updates session based on user's choices:
+   * - 'skip': Remove folder and its files from session (won't be uploaded)
+   * - 'rename': Update folder name in the batch to use suggested name
+   *
+   * @param sessionId - Session ID
+   * @param userId - User ID (for ownership verification)
+   * @param resolutions - Array of conflict resolutions
+   * @returns Result with skipped/renamed folders and updated session
+   */
+  async applyFolderResolutions(
+    sessionId: string,
+    userId: string,
+    resolutions: FolderConflictResolution[]
+  ): Promise<ApplyResolutionsResult> {
+    const session = await this.requireSession(sessionId);
+
+    // Verify ownership
+    if (session.userId !== userId) {
+      throw new Error('Access denied: session belongs to another user');
+    }
+
+    const skippedFolders: string[] = [];
+    const renamedFolders: RenamedFolderInfo[] = [];
+
+    // Process each resolution
+    for (const resolution of resolutions) {
+      const batch = session.folderBatches.find(b => b.tempId === resolution.tempId);
+      if (!batch) {
+        this.log.warn(
+          { sessionId, tempId: resolution.tempId },
+          'Folder batch not found for resolution'
+        );
+        continue;
+      }
+
+      if (resolution.action === 'skip') {
+        // Mark this folder to be skipped
+        skippedFolders.push(resolution.tempId);
+        this.log.info(
+          { sessionId, tempId: resolution.tempId, folderName: batch.name },
+          'Folder will be skipped'
+        );
+      } else if (resolution.action === 'rename') {
+        // The suggested name should already be in originalName vs name in the batch
+        // But we need to ensure the batch uses the resolved name
+        if (batch.originalName && batch.name !== batch.originalName) {
+          // Already renamed during init, just track it
+          renamedFolders.push({
+            tempId: resolution.tempId,
+            originalName: batch.originalName,
+            resolvedName: batch.name,
+          });
+        }
+        this.log.info(
+          { sessionId, tempId: resolution.tempId, folderName: batch.name },
+          'Folder will be renamed'
+        );
+      }
+    }
+
+    // Remove skipped folders from the session
+    if (skippedFolders.length > 0) {
+      // Also need to skip any child folders of skipped folders
+      const allSkippedTempIds = new Set(skippedFolders);
+
+      // Find child folders (folders whose parentTempId is in skipped list)
+      for (const batch of session.folderBatches) {
+        if (batch.parentTempId && allSkippedTempIds.has(batch.parentTempId)) {
+          allSkippedTempIds.add(batch.tempId);
+          skippedFolders.push(batch.tempId);
+        }
+      }
+
+      // Filter out skipped folders
+      const filteredBatches = session.folderBatches.filter(
+        b => !allSkippedTempIds.has(b.tempId)
+      );
+
+      // Update session with filtered batches
+      await this.store.update(sessionId, {
+        folderBatches: filteredBatches,
+        totalFolders: filteredBatches.length,
+      });
+    }
+
+    const updatedSession = await this.requireSession(sessionId);
+
+    this.log.info(
+      { sessionId, skippedCount: skippedFolders.length, renamedCount: renamedFolders.length },
+      'Folder resolutions applied'
+    );
+
+    return {
+      skippedFolders,
+      renamedFolders,
+      session: updatedSession,
+    };
+  }
+
   // =========================================================================
   // PRIVATE HELPERS
   // =========================================================================
@@ -800,6 +934,13 @@ export class UploadSessionManager implements IUploadSessionManager {
       throw new Error(`Folder batch not found: ${tempId} in session ${session.id}`);
     }
     return batch;
+  }
+
+  /**
+   * Sleep for a given number of milliseconds
+   */
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 }
 

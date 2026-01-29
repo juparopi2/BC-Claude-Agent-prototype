@@ -56,6 +56,21 @@ import type {
 const UPLOAD_CONCURRENCY = FOLDER_UPLOAD_CONFIG.FILE_UPLOAD_CONCURRENCY;
 
 /**
+ * Max retries for getSasUrls call (race condition mitigation)
+ */
+const GET_SAS_URLS_MAX_RETRIES = 3;
+
+/**
+ * Base delay for getSasUrls retry in milliseconds
+ */
+const GET_SAS_URLS_RETRY_BASE_DELAY_MS = 100;
+
+/**
+ * Sleep helper function
+ */
+const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
+
+/**
  * useFolderUpload return type
  */
 export interface UseFolderUploadReturn {
@@ -374,12 +389,31 @@ export function useFolderUpload(): UseFolderUploadReturn {
         // Create tempId -> File mapping for correlating uploads
         const tempIdToFile = new Map(fileMetadata.map((m, idx) => [m.tempId, files[idx]!]));
 
-        // Step 3: Get SAS URLs
+        // Step 3: Get SAS URLs (with retry for race condition)
         const fileIds = registered.map((r) => r.fileId);
-        const sasResult = await fileApi.getSessionSasUrls(sessionId, batch.tempId, fileIds);
+        let sasResult: Awaited<ReturnType<typeof fileApi.getSessionSasUrls>> | null = null;
 
-        if (!sasResult.success) {
-          console.error('[useFolderUpload] Failed to get SAS URLs:', sasResult.error);
+        for (let retryAttempt = 0; retryAttempt < GET_SAS_URLS_MAX_RETRIES; retryAttempt++) {
+          sasResult = await fileApi.getSessionSasUrls(sessionId, batch.tempId, fileIds);
+
+          if (sasResult.success) {
+            break;
+          }
+
+          // Check if error is due to 'registering state' race condition
+          const errorMessage = sasResult.error?.message ?? '';
+          if (errorMessage.includes('registering state') && retryAttempt < GET_SAS_URLS_MAX_RETRIES - 1) {
+            console.log(`[useFolderUpload] Retrying getSasUrls (attempt ${retryAttempt + 1}) due to state transition`);
+            await sleep(GET_SAS_URLS_RETRY_BASE_DELAY_MS * (retryAttempt + 1));
+            continue;
+          }
+
+          // Non-retryable error or max retries reached
+          break;
+        }
+
+        if (!sasResult?.success) {
+          console.error('[useFolderUpload] Failed to get SAS URLs:', sasResult?.error);
           return { success: false, uploadedCount, failedCount: files.length };
         }
 

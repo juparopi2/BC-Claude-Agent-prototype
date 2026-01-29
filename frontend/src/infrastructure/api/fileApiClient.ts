@@ -42,6 +42,9 @@ import type {
   MarkFileUploadedResponse,
   CompleteFolderBatchResponse,
   FileRegistrationMetadata,
+  // Folder conflict types
+  FolderConflictResolution,
+  ResolveFolderConflictsResponse,
 } from '@bc-agent/shared';
 import { isApiErrorResponse, ErrorCode } from '@bc-agent/shared';
 import { env } from '@/lib/config/env';
@@ -1115,6 +1118,39 @@ export class FileApiClient {
     return this.request<GetActiveSessionsResponse>(
       'GET',
       '/api/files/upload-session/active'
+    );
+  }
+
+  /**
+   * Resolve folder duplicate conflicts
+   *
+   * Called after initUploadSession returns conflicts to apply user's choices.
+   * Users can choose to 'skip' (don't upload folder) or 'rename' (use suggested name).
+   *
+   * @param sessionId - Session ID
+   * @param resolutions - Array of conflict resolutions
+   * @returns Updated session with skipped/renamed folders
+   *
+   * @example
+   * ```typescript
+   * const result = await fileApi.resolveFolderConflicts('SESSION-123', [
+   *   { tempId: 'folder-1', action: 'rename' },  // Use suggested name
+   *   { tempId: 'folder-2', action: 'skip' },    // Don't upload this folder
+   * ]);
+   *
+   * if (result.success) {
+   *   console.log('Skipped folders:', result.data.skippedFolders);
+   *   console.log('Renamed folders:', result.data.renamedFolders);
+   * }
+   * ```
+   */
+  async resolveFolderConflicts(
+    sessionId: string,
+    resolutions: FolderConflictResolution[]
+  ): Promise<ApiResponse<ResolveFolderConflictsResponse>> {
+    return this.postJson<ResolveFolderConflictsResponse>(
+      `/api/files/upload-session/${sessionId}/resolve-folder-conflicts`,
+      { resolutions }
     );
   }
 }

@@ -30,6 +30,7 @@ import type {
   GetUploadSessionResponse,
   GetActiveSessionsResponse,
   CancelSessionResult,
+  ResolveFolderConflictsResponse,
 } from '@bc-agent/shared';
 import { FOLDER_UPLOAD_CONFIG } from '@bc-agent/shared';
 
@@ -90,6 +91,21 @@ const markUploadedSchema = z.object({
   fileId: z.string().uuid(),
   contentHash: z.string().min(64).max(64), // SHA-256 hex
   blobPath: z.string().min(1), // Required: real blob path from SAS URL generation
+});
+
+/**
+ * Schema for folder conflict resolution
+ */
+const folderConflictResolutionSchema = z.object({
+  tempId: z.string().min(1),
+  action: z.enum(['skip', 'rename'] as const),
+});
+
+/**
+ * Schema for resolve folder conflicts request
+ */
+const resolveFolderConflictsSchema = z.object({
+  resolutions: z.array(folderConflictResolutionSchema).min(1).max(50),
 });
 
 // ============================================================================
@@ -693,6 +709,83 @@ router.post(
         'Failed to extend session TTL'
       );
       sendError(res, ErrorCode.INTERNAL_ERROR, 'Failed to extend session TTL');
+    }
+  }
+);
+
+/**
+ * POST /api/files/upload-session/:sessionId/resolve-folder-conflicts
+ *
+ * Apply user's resolutions for folder name conflicts.
+ * Called after init returns conflicts when autoResolve is false.
+ *
+ * Request body:
+ * - resolutions: Array<{ tempId, action: 'skip' | 'rename' }>
+ *
+ * Response 200:
+ * - success: boolean
+ * - skippedFolders: string[]
+ * - renamedFolders: RenamedFolderInfo[]
+ * - session: UploadSession
+ */
+router.post(
+  '/upload-session/:sessionId/resolve-folder-conflicts',
+  authenticateMicrosoft,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const userId = getUserId(req);
+      const { sessionId } = req.params;
+
+      if (!sessionId) {
+        sendError(res, ErrorCode.VALIDATION_ERROR, 'Session ID is required');
+        return;
+      }
+
+      // Validate request body
+      const validation = validateSafe(resolveFolderConflictsSchema, req.body);
+      if (!validation.success) {
+        sendError(
+          res,
+          ErrorCode.VALIDATION_ERROR,
+          validation.error.errors[0]?.message || 'Invalid request body'
+        );
+        return;
+      }
+
+      const { resolutions } = validation.data;
+
+      logger.info(
+        { sessionId, userId, resolutionCount: resolutions.length },
+        'Resolving folder conflicts'
+      );
+
+      const sessionManager = getUploadSessionManager();
+      const result = await sessionManager.applyFolderResolutions(
+        sessionId,
+        userId,
+        resolutions
+      );
+
+      const response: ResolveFolderConflictsResponse = {
+        success: true,
+        skippedFolders: result.skippedFolders,
+        renamedFolders: result.renamedFolders,
+        session: result.session,
+      };
+
+      res.status(200).json(response);
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : String(error) },
+        'Failed to resolve folder conflicts'
+      );
+
+      if (error instanceof Error && error.message.includes('Access denied')) {
+        sendError(res, ErrorCode.FORBIDDEN, error.message);
+        return;
+      }
+
+      sendError(res, ErrorCode.INTERNAL_ERROR, 'Failed to resolve folder conflicts');
     }
   }
 );

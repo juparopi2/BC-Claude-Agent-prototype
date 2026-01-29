@@ -18,6 +18,36 @@ import type { IFileRepository } from '@/services/files/repository/FileRepository
 import type { FolderInput, RenamedFolderInfo } from '@bc-agent/shared';
 
 /**
+ * Options for folder name resolution
+ */
+export interface FolderNameResolutionOptions {
+  /**
+   * If true, automatically resolve conflicts by renaming folders.
+   * If false, return conflicts for user resolution.
+   * Default: true (backwards compatible)
+   */
+  autoResolve?: boolean;
+}
+
+/**
+ * Conflict info when autoResolve is false
+ */
+export interface FolderConflict {
+  /** Client-generated temporary ID */
+  tempId: string;
+  /** Original folder name */
+  originalName: string;
+  /** Suggested resolved name with suffix */
+  suggestedName: string;
+  /** Parent folder ID (null for root level in target) */
+  parentFolderId: string | null;
+  /** ID of the existing folder with same name */
+  existingFolderId: string;
+  /** Number of files in this folder */
+  fileCount: number;
+}
+
+/**
  * Result of folder name resolution
  */
 export interface FolderNameResolutionResult {
@@ -29,6 +59,12 @@ export interface FolderNameResolutionResult {
 
   /** Map of tempId -> resolved name */
   resolvedNameMap: Map<string, string>;
+
+  /** Conflicts requiring user resolution (only when autoResolve: false) */
+  conflicts?: FolderConflict[];
+
+  /** Whether resolution is required (only when autoResolve: false and conflicts exist) */
+  requiresResolution?: boolean;
 }
 
 /**
@@ -79,13 +115,16 @@ export class FolderNameResolver {
    * @param userId - User ID
    * @param folders - Array of folders to process
    * @param targetFolderId - Target folder ID where root folders will be created
-   * @returns Resolution result with renamed folders info
+   * @param options - Resolution options (autoResolve defaults to true)
+   * @returns Resolution result with renamed folders info or conflicts for user resolution
    */
   async resolveFolderNames(
     userId: string,
     folders: FolderInput[],
-    targetFolderId: string | null
+    targetFolderId: string | null,
+    options?: FolderNameResolutionOptions
   ): Promise<FolderNameResolutionResult> {
+    const autoResolve = options?.autoResolve ?? true;
     this.logger.info(
       { userId, folderCount: folders.length, targetFolderId },
       'Starting folder name resolution'
@@ -103,6 +142,7 @@ export class FolderNameResolver {
 
     const renamedFolders: RenamedFolderInfo[] = [];
     const resolvedNameMap = new Map<string, string>();
+    const conflicts: FolderConflict[] = [];
 
     for (const folder of sortedFolders) {
       // Determine the actual parent folder ID
@@ -127,14 +167,58 @@ export class FolderNameResolver {
       }
       const usedNames = usedNamesInBatch.get(parentKey)!;
 
-      // Resolve the folder name
-      const resolvedName = await this.resolveUniqueName(
-        userId,
-        folder.name,
-        parentFolderId,
-        folder.parentTempId ? null : targetFolderId, // Only check DB for root-level or already-existing parents
-        usedNames
-      );
+      // Check if original name exists
+      const checkDbParentId = folder.parentTempId ? null : targetFolderId;
+      const originalExists = await this.nameExists(userId, folder.name, checkDbParentId, usedNames);
+
+      let resolvedName = folder.name;
+
+      if (originalExists) {
+        // Find suggested name with suffix
+        const suggestedName = await this.findNextAvailableName(
+          userId,
+          folder.name,
+          checkDbParentId,
+          usedNames
+        );
+
+        if (autoResolve) {
+          // Auto-resolve: use suggested name
+          resolvedName = suggestedName;
+          renamedFolders.push({
+            tempId: folder.tempId,
+            originalName: folder.name,
+            resolvedName,
+          });
+          this.logger.info(
+            { tempId: folder.tempId, originalName: folder.name, resolvedName },
+            'Folder renamed to avoid duplicate'
+          );
+        } else {
+          // Manual resolution: collect conflict
+          const existingFolderId = await this.findExistingFolderId(
+            userId,
+            folder.name,
+            checkDbParentId
+          );
+
+          conflicts.push({
+            tempId: folder.tempId,
+            originalName: folder.name,
+            suggestedName,
+            parentFolderId: checkDbParentId,
+            existingFolderId: existingFolderId ?? '',
+            fileCount: folder.files.length,
+          });
+
+          // For now, assume it will be resolved as rename (can be updated later)
+          resolvedName = suggestedName;
+          this.logger.info(
+            { tempId: folder.tempId, originalName: folder.name, suggestedName },
+            'Folder conflict detected, awaiting user resolution'
+          );
+        }
+      }
 
       // Track the resolved name in batch
       usedNames.add(resolvedName);
@@ -149,31 +233,37 @@ export class FolderNameResolver {
       });
 
       resolvedNameMap.set(folder.tempId, resolvedName);
-
-      // Track if renamed
-      if (resolvedName !== folder.name) {
-        renamedFolders.push({
-          tempId: folder.tempId,
-          originalName: folder.name,
-          resolvedName,
-        });
-        this.logger.info(
-          { tempId: folder.tempId, originalName: folder.name, resolvedName },
-          'Folder renamed to avoid duplicate'
-        );
-      }
     }
 
     this.logger.info(
-      { userId, renamedCount: renamedFolders.length },
+      { userId, renamedCount: renamedFolders.length, conflictCount: conflicts.length, autoResolve },
       'Folder name resolution complete'
     );
 
-    return {
+    const result: FolderNameResolutionResult = {
       renamedCount: renamedFolders.length,
       renamedFolders,
       resolvedNameMap,
     };
+
+    // Add conflict info when autoResolve is false
+    if (!autoResolve && conflicts.length > 0) {
+      result.conflicts = conflicts;
+      result.requiresResolution = true;
+    }
+
+    return result;
+  }
+
+  /**
+   * Find the ID of an existing folder by name and parent
+   */
+  private async findExistingFolderId(
+    userId: string,
+    name: string,
+    parentFolderId: string | null
+  ): Promise<string | null> {
+    return this.fileRepo.findFolderIdByName(userId, name, parentFolderId);
   }
 
   /**

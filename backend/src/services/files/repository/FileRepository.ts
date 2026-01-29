@@ -72,6 +72,7 @@ export interface IFileRepository {
   isFileActiveForProcessing(userId: string, fileId: string): Promise<boolean>;
   checkFolderExists(userId: string, name: string, parentId?: string | null): Promise<boolean>;
   findFoldersByNamePattern(userId: string, baseName: string, parentId?: string | null): Promise<string[]>;
+  findFolderIdByName(userId: string, name: string, parentId?: string | null): Promise<string | null>;
 }
 
 /**
@@ -741,6 +742,49 @@ export class FileRepository implements IFileRepository {
         ? { message: error.message, name: error.name }
         : { value: String(error) };
       this.logger.error({ errorInfo, userId, baseName, parentId }, 'Failed to find folders by name pattern');
+      throw error;
+    }
+  }
+
+  /**
+   * Find folder ID by exact name match
+   *
+   * Used for conflict detection to get the existing folder's ID.
+   *
+   * @param userId - User ID
+   * @param name - Exact folder name to find
+   * @param parentId - Parent folder ID (undefined/null for root level)
+   * @returns Folder ID if found, null otherwise
+   */
+  public async findFolderIdByName(
+    userId: string,
+    name: string,
+    parentId?: string | null
+  ): Promise<string | null> {
+    this.logger.debug({ userId, name, parentId }, 'Finding folder ID by name');
+
+    try {
+      // Reuse checkFolderExists query which already returns id
+      const { query, params } = this.queryBuilder.buildCheckFolderExistsQuery(
+        userId,
+        name,
+        parentId
+      );
+      const result = await executeQuery<{ id: string; name: string }>(query, params as SqlParams);
+
+      if (result.recordset.length > 0) {
+        const folderId = result.recordset[0].id;
+        this.logger.debug({ userId, name, parentId, folderId }, 'Found folder by name');
+        return folderId;
+      }
+
+      this.logger.debug({ userId, name, parentId }, 'Folder not found by name');
+      return null;
+    } catch (error) {
+      const errorInfo = error instanceof Error
+        ? { message: error.message, name: error.name }
+        : { value: String(error) };
+      this.logger.error({ errorInfo, userId, name, parentId }, 'Failed to find folder ID by name');
       throw error;
     }
   }

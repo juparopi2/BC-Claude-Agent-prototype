@@ -240,6 +240,13 @@ export type {
   // Multi-session upload types
   GetActiveSessionsResponse,
   CancelSessionResult,
+  // Folder conflict types
+  FolderDuplicateAction,
+  FolderConflict,
+  FolderConflictResolution,
+  ResolveFolderConflictsRequest,
+  ResolveFolderConflictsResponse,
+  InitUploadSessionResponseWithConflicts,
 } from './types';
 
 // Type guards (runtime functions, not types)

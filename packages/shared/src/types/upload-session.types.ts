@@ -624,6 +624,76 @@ export interface CancelSessionResult {
 }
 
 // ============================================================================
+// FOLDER CONFLICT TYPES
+// ============================================================================
+
+/**
+ * Actions available for resolving folder duplicates
+ */
+export type FolderDuplicateAction = 'skip' | 'rename';
+
+/**
+ * Conflict info for a folder with duplicate name
+ */
+export interface FolderConflict {
+  /** Client-generated temporary ID */
+  tempId: string;
+  /** Original folder name */
+  originalName: string;
+  /** Suggested resolved name with suffix */
+  suggestedName: string;
+  /** Parent folder ID (null for root level in target) */
+  parentFolderId: string | null;
+  /** ID of the existing folder with same name */
+  existingFolderId: string;
+  /** Number of files in this folder */
+  fileCount: number;
+}
+
+/**
+ * User's resolution for a folder conflict
+ */
+export interface FolderConflictResolution {
+  /** Temp ID for correlation */
+  tempId: string;
+  /** User action: skip or rename */
+  action: FolderDuplicateAction;
+}
+
+/**
+ * Request body for resolving folder conflicts
+ * POST /api/files/upload-session/:sessionId/resolve-folder-conflicts
+ */
+export interface ResolveFolderConflictsRequest {
+  /** Array of resolutions, one per conflict */
+  resolutions: FolderConflictResolution[];
+}
+
+/**
+ * Response for folder conflict resolution
+ */
+export interface ResolveFolderConflictsResponse {
+  /** Whether resolution was applied successfully */
+  success: boolean;
+  /** Folders that will be skipped */
+  skippedFolders: string[];
+  /** Folders that will be renamed */
+  renamedFolders: RenamedFolderInfo[];
+  /** Updated session */
+  session: UploadSession;
+}
+
+/**
+ * Enhanced InitUploadSessionResponse with optional conflicts
+ */
+export interface InitUploadSessionResponseWithConflicts extends InitUploadSessionResponse {
+  /** Conflicts requiring user resolution (when autoResolve: false) */
+  conflicts?: FolderConflict[];
+  /** Whether resolution is required before proceeding */
+  requiresResolution?: boolean;
+}
+
+// ============================================================================
 // WEBSOCKET EVENT TYPES
 // ============================================================================
 

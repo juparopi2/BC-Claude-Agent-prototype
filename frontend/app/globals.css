@@ -133,3 +133,13 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Upload progress pulse animation */
+@keyframes pulse-text {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}

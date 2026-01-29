@@ -91,3 +91,12 @@ export {
   type MultiUploadSessionState,
   type MultiUploadSessionActions,
 } from './multiUploadSessionStore';
+
+export {
+  useFolderDuplicateStore,
+  resetFolderDuplicateStore,
+  waitForFolderResolution,
+  type FolderDuplicateConflict,
+  type FolderDuplicateResolution,
+  type FolderDuplicateAction,
+} from './folderDuplicateStore';

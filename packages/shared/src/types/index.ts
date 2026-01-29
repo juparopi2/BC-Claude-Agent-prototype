@@ -287,6 +287,13 @@ export type {
   GetUploadSessionResponse,
   GetActiveSessionsResponse,
   CancelSessionResult,
+  // Folder conflict types
+  FolderDuplicateAction,
+  FolderConflict,
+  FolderConflictResolution,
+  ResolveFolderConflictsRequest,
+  ResolveFolderConflictsResponse,
+  InitUploadSessionResponseWithConflicts,
   // WebSocket event types
   FolderSessionStartedEvent,
   FolderSessionCompletedEvent,

@@ -199,7 +199,7 @@ function SessionProgressCard({
               <div className="space-y-1.5">
                 <div className="text-xs text-muted-foreground">
                   {session.completedFolders > 0 && (
-                    <span className="text-green-600">{session.completedFolders} completed</span>
+                    <span className="text-green-600"> {(progress?.currentFolderIndex ?? 0)} completed</span>
                   )}
                   {session.completedFolders > 0 && session.failedFolders > 0 && ' · '}
                   {session.failedFolders > 0 && (

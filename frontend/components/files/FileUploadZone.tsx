@@ -89,8 +89,8 @@ export function FileUploadZone({
         // Start folder upload (validation and modals handled inside useFolderUpload)
         const sessionId = await uploadFolder(structure, currentFolderId);
         if (sessionId) {
-          toast.success('Upload started', {
-            description: `Uploading ${structure.validFiles.length} files from ${structure.rootFolders.length} folder(s)`,
+          toast.success('Upload complete', {
+            description: `${structure.validFiles.length} files uploaded from ${structure.rootFolders.length} folder(s)`,
           });
         }
       } catch (error) {

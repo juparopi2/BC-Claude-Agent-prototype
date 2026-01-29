@@ -321,7 +321,10 @@ export function useFolderUpload(): UseFolderUploadReturn {
           if (!tracking.aborted) {
             const completeResult = await fileApi.completeSessionFolder(sessionId, batch.tempId);
             if (completeResult.success) {
-              updateBatch(sessionId, batch.tempId, completeResult.data.folderBatch);
+              updateBatch(sessionId, batch.tempId, {
+                ...completeResult.data.folderBatch,
+                status: 'completed', // Explicitly ensure status is set
+              });
             }
           }
 
@@ -480,7 +483,10 @@ export function useFolderUpload(): UseFolderUploadReturn {
         if (!tracking.aborted) {
           const completeResult = await fileApi.completeSessionFolder(sessionId, batch.tempId);
           if (completeResult.success) {
-            updateBatch(sessionId, batch.tempId, completeResult.data.folderBatch);
+            updateBatch(sessionId, batch.tempId, {
+              ...completeResult.data.folderBatch,
+              status: 'completed', // Explicitly ensure status is set
+            });
           }
         }
 
@@ -605,10 +611,12 @@ export function useFolderUpload(): UseFolderUploadReturn {
           // Upload the folder batch
           const result = await uploadFolderBatch(sessionId, batch, folderFiles);
 
+          // Get fresh session state to avoid stale counter values
+          const currentSession = useMultiUploadSessionStore.getState().sessions.get(sessionId);
           if (!result.success) {
-            updateSession(sessionId, { failedFolders: (session.failedFolders || 0) + 1 });
+            updateSession(sessionId, { failedFolders: (currentSession?.failedFolders ?? 0) + 1 });
           } else {
-            updateSession(sessionId, { completedFolders: (session.completedFolders || 0) + 1 });
+            updateSession(sessionId, { completedFolders: (currentSession?.completedFolders ?? 0) + 1 });
           }
         }
 

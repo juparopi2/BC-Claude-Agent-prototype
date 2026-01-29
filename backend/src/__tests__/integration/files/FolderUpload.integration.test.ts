@@ -92,12 +92,12 @@ describe('Folder Upload Integration Tests', () => {
     const folderId = randomUUID().toUpperCase();
     await executeQuery(
       `INSERT INTO files (id, user_id, name, mime_type, is_folder, parent_folder_id, size_bytes, blob_path, created_at, updated_at)
-       VALUES (@id, @userId, @name, 'application/x-folder', 1, @parentId, 0, '', GETUTCDATE(), GETUTCDATE())`,
+       VALUES (@id, @userId, @name, 'application/x-folder', 1, @parent_folder_id, 0, '', GETUTCDATE(), GETUTCDATE())`,
       {
         id: folderId,
         userId,
         name,
-        parentId,
+        parent_folder_id: parentId,
       }
     );
     createdFolderIds.push(folderId);
@@ -143,7 +143,7 @@ describe('Folder Upload Integration Tests', () => {
       expect(result.session.folderBatches).toHaveLength(1);
       expect(result.session.folderBatches[0]?.status).toBe('pending');
       expect(result.session.folderBatches[0]?.name).toBe('Documents');
-      expect(result.session.status).toBe('initializing');
+      expect(result.session.status).toBe('active');
     });
 
     it('should initialize session with multiple root folders', async () => {

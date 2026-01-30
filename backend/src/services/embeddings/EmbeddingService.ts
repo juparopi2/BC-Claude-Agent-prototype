@@ -126,16 +126,25 @@ export class EmbeddingService {
 
     const finalResult: TextEmbedding = {
       embedding: embeddingData.embedding,
-      model: this.config.deploymentName, 
+      model: this.config.deploymentName,
       tokenCount: result.usage.total_tokens,
       userId,
       createdAt: new Date(),
       raw: result
     };
 
-    // Store in cache (TBL 7 days = 604800 seconds)
+    // Store in cache (TTL 1 hour = 3600 seconds)
+    // We exclude 'raw' from cache to save memory (~95% reduction per entry)
+    // Embeddings are deterministic so they can be regenerated if needed
     try {
-      await cache.set(cacheKey, JSON.stringify(finalResult), 'EX', 604800);
+      const cacheableResult = {
+        embedding: finalResult.embedding,
+        model: finalResult.model,
+        tokenCount: finalResult.tokenCount,
+        userId: finalResult.userId,
+        createdAt: finalResult.createdAt,
+      };
+      await cache.set(cacheKey, JSON.stringify(cacheableResult), 'EX', 3600);
     } catch (error) {
        logger.error({ err: error }, 'Error writing to cache');
     }
@@ -269,9 +278,9 @@ export class EmbeddingService {
       createdAt: new Date()
     };
 
-    // Cache the result (7 days)
+    // Cache the result (TTL 1 hour to limit memory usage)
     try {
-      await cache.set(cacheKey, JSON.stringify(result), 'EX', 604800);
+      await cache.set(cacheKey, JSON.stringify(result), 'EX', 3600);
     } catch (error) {
       logger.warn({ error }, 'Error caching image query embedding');
     }
@@ -382,8 +391,15 @@ export class EmbeddingService {
         const key = cacheKeys[originalIndex];
         if (!key) return;
 
-        // Cache the new result
-        pipeline.set(key, JSON.stringify(embeddingResult), 'EX', 604800);
+        // Cache the new result (exclude 'raw' to save memory, TTL 1 hour)
+        const cacheableResult = {
+          embedding: embeddingResult.embedding,
+          model: embeddingResult.model,
+          tokenCount: embeddingResult.tokenCount,
+          userId: embeddingResult.userId,
+          createdAt: embeddingResult.createdAt,
+        };
+        pipeline.set(key, JSON.stringify(cacheableResult), 'EX', 3600);
       });
 
       await pipeline.exec();

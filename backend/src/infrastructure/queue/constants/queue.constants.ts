@@ -244,6 +244,26 @@ export interface ExtendedLockConfig {
  * + large blob downloads can take 180+ seconds, causing "Missing lock" errors
  * with shorter durations.
  */
+/**
+ * Embedding Cache Configuration
+ *
+ * Controls how embeddings are cached in Redis to prevent memory exhaustion.
+ * Reduced from 7 days to 1 hour after OOM incident (Jan 2026).
+ *
+ * Key insight: Storing full API response (`raw` field) caused ~2MB per entry.
+ * Now we only cache the essential fields (~50KB per entry).
+ */
+export const EMBEDDING_CACHE = {
+  /** TTL for text embeddings in seconds (1 hour) */
+  TEXT_TTL_SECONDS: 3600,
+  /** TTL for image query embeddings in seconds (1 hour) */
+  IMAGE_QUERY_TTL_SECONDS: 3600,
+  /** Key prefix for text embeddings */
+  TEXT_PREFIX: 'embedding:',
+  /** Key prefix for image query embeddings */
+  IMAGE_QUERY_PREFIX: 'img-query:',
+} as const;
+
 export const LOCK_CONFIG: Record<QueueName, ExtendedLockConfig> = {
   // File operations - can be slow (large PDFs, OCR, network I/O)
   [QueueName.FILE_PROCESSING]: {

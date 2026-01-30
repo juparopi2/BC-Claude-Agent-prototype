@@ -180,6 +180,15 @@ Mejoras perceptibles para el usuario final.
 **Limitaciones:** Files API de Anthropic está en Beta, límites: 500MB/archivo, 100GB/workspace
 **Estimación:** 4-5 días
 
+### Upload UI: Drag-and-Drop Blocking & Spinner Sync (Media)
+**Necesidad:** Mejorar UX previniendo uploads simultáneos accidentales y confirmando visualmente que el proceso ha iniciado correctamente.
+**Specs:**
+- **Bloqueo inmediato:** Al soltar archivo/carpeta, el dropzone se desactiva.
+- **Spinner Sincronizado:** Aparece un spinner de carga que ÚNICAMENTE desaparece cuando el "cart de upload" se ha añadido exitosamente al collapsible "Upload in Progress".
+- **Condición de Terminación:** La señal para ocultar el spinner y desbloquear el dropzone debe ser estrictamente el evento de que el upload ya es visible en la lista de progreso.
+- **Flujo:** Drops -> Spinner + Bloqueo -> Aparece en Collapsible -> Spinner Stop + Desbloqueo.
+**Estimación:** 2-3 días
+
 ---
 
 ## 🟢 Integraciones
@@ -232,8 +241,8 @@ Herramientas para administración y visión del negocio.
 | Categoría | Estimación Total Aprox. |
 |-----------|-------------------------|
 | 🛠 Deuda Técnica | ~15-20 días |
-| ✨ Nuevas Funcionalidades | ~27-32 días |
+| ✨ Nuevas Funcionalidades | ~29-35 días |
 | 🟢 Integraciones | ~20 días |
 | 🚀 Rendimiento | ~11 días |
 | 📊 Analítica | ~10 días |
-| **Total Estimado** | **~83-93 días** |
+| **Total Estimado** | **~85-96 días** |

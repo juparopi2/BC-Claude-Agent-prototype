@@ -44,7 +44,7 @@ const BLOB_CONNECTION_STRING = process.env.STORAGE_CONNECTION_STRING || '';
 const BLOB_CONTAINER = process.env.STORAGE_CONTAINER_NAME || 'user-files';
 
 const SEARCH_ENDPOINT = process.env.AZURE_SEARCH_ENDPOINT || '';
-const SEARCH_KEY = process.env.AZURE_SEARCH_API_KEY || '';
+const SEARCH_KEY = process.env.AZURE_SEARCH_KEY || '';
 const SEARCH_INDEX = process.env.AZURE_SEARCH_INDEX_NAME || 'file-chunks-index';
 
 // Files stuck in processing for more than this duration are flagged
@@ -64,6 +64,8 @@ interface SQLFile {
   is_folder: boolean;
   created_at: Date;
   updated_at: Date;
+  deletion_status: string | null;
+  deleted_at: Date | null;
 }
 
 interface SQLChunk {
@@ -82,7 +84,8 @@ interface IntegrityIssue {
     | 'stuck_processing'
     | 'stuck_embedding'
     | 'orphan_chunk'
-    | 'chunk_mismatch';
+    | 'chunk_mismatch'
+    | 'stuck_deletion';
   severity: 'error' | 'warning';
   fileId?: string;
   fileName?: string;
@@ -95,7 +98,8 @@ interface IntegrityReport {
   userId: string | 'all';
   timestamp: Date;
   summary: {
-    totalFiles: number;
+    totalActiveFiles: number;
+    totalStuckDeletions: number;
     totalChunks: number;
     totalBlobs: number;
     totalSearchDocs: number;
@@ -107,6 +111,7 @@ interface IntegrityReport {
   statusBreakdown: {
     processing: Record<string, number>;
     embedding: Record<string, number>;
+    deletion: Record<string, number>;
   };
 }
 
@@ -165,7 +170,7 @@ async function getFilesFromDB(pool: sql.ConnectionPool, userId: string | null): 
   const request = pool.request();
   let query = `
     SELECT id, user_id, name, blob_path, processing_status, embedding_status,
-           is_folder, created_at, updated_at
+           is_folder, created_at, updated_at, deletion_status, deleted_at
     FROM files
     WHERE is_folder = 0
   `;
@@ -176,6 +181,26 @@ async function getFilesFromDB(pool: sql.ConnectionPool, userId: string | null): 
   }
 
   query += ` ORDER BY created_at DESC`;
+
+  const result = await request.query<SQLFile>(query);
+  return result.recordset;
+}
+
+async function getStuckDeletions(pool: sql.ConnectionPool, userId: string | null): Promise<SQLFile[]> {
+  const request = pool.request();
+  let query = `
+    SELECT id, user_id, name, blob_path, processing_status, embedding_status,
+           is_folder, created_at, updated_at, deletion_status, deleted_at
+    FROM files
+    WHERE deletion_status IS NOT NULL
+  `;
+
+  if (userId) {
+    query += ` AND user_id = @userId`;
+    request.input('userId', sql.UniqueIdentifier, userId);
+  }
+
+  query += ` ORDER BY deleted_at ASC`;
 
   const result = await request.query<SQLFile>(query);
   return result.recordset;
@@ -343,8 +368,39 @@ async function verifyIntegrity(
 
   // 1. Get files from database
   console.log('Fetching files from database...');
-  const files = await getFilesFromDB(pool, userId);
-  console.log(`  Found ${files.length} files in database`);
+  const allFiles = await getFilesFromDB(pool, userId);
+
+  // Filter: Only active files (deletion_status IS NULL) for main verification
+  const files = allFiles.filter((f) => f.deletion_status === null);
+  console.log(`  Found ${files.length} active files in database`);
+
+  // Get stuck deletions separately
+  console.log('Fetching stuck deletions...');
+  const stuckDeletions = await getStuckDeletions(pool, userId);
+  console.log(`  Found ${stuckDeletions.length} stuck deletions`);
+
+  // Add warnings for stuck deletions
+  if (stuckDeletions.length > 0) {
+    const folders = stuckDeletions.filter((f) => f.is_folder);
+    const regularFiles = stuckDeletions.filter((f) => !f.is_folder);
+
+    issues.push({
+      type: 'stuck_deletion',
+      severity: 'warning',
+      details: `${stuckDeletions.length} files/folders with pending deletion (${folders.length} folders, ${regularFiles.length} files)`,
+      suggestion: 'Run: npx tsx scripts/complete-stuck-deletions.ts --userId <ID>',
+    });
+
+    // Group by deletion status
+    const byStatus = new Map<string, number>();
+    for (const file of stuckDeletions) {
+      byStatus.set(file.deletion_status || 'unknown', (byStatus.get(file.deletion_status || 'unknown') || 0) + 1);
+    }
+
+    for (const [status, count] of byStatus) {
+      console.log(`    ${status}: ${count}`);
+    }
+  }
 
   // 2. Get chunks from database
   const fileIds = files.map((f) => f.id);
@@ -386,7 +442,14 @@ async function verifyIntegrity(
   const statusBreakdown = {
     processing: {} as Record<string, number>,
     embedding: {} as Record<string, number>,
+    deletion: {} as Record<string, number>,
   };
+
+  // Count deletion status breakdown from stuck deletions
+  for (const file of stuckDeletions) {
+    const status = file.deletion_status || 'null';
+    statusBreakdown.deletion[status] = (statusBreakdown.deletion[status] || 0) + 1;
+  }
 
   // 6. Verify each file
   console.log('\nVerifying file integrity...\n');
@@ -545,7 +608,8 @@ async function verifyIntegrity(
     userId: userId || 'all',
     timestamp: now,
     summary: {
-      totalFiles: files.length,
+      totalActiveFiles: files.length,
+      totalStuckDeletions: stuckDeletions.length,
       totalChunks,
       totalBlobs: blobs.size,
       totalSearchDocs,
@@ -571,13 +635,22 @@ function printReport(report: IntegrityReport, reportOnly: boolean): void {
   console.log(`Timestamp:  ${report.timestamp.toISOString()}`);
 
   console.log('\n--- Summary ---');
-  console.log(`Total Files:           ${report.summary.totalFiles}`);
+  console.log(`Active Files:          ${report.summary.totalActiveFiles}`);
+  console.log(`Stuck Deletions:       ${report.summary.totalStuckDeletions}`);
   console.log(`Total Chunks:          ${report.summary.totalChunks}`);
   console.log(`Total Blobs:           ${report.summary.totalBlobs}`);
   console.log(`Total Search Docs:     ${report.summary.totalSearchDocs}`);
   console.log(`Issues Found:          ${report.summary.issuesFound}`);
   console.log(`  Errors:              ${report.summary.errorCount}`);
   console.log(`  Warnings:            ${report.summary.warningCount}`);
+
+  if (report.summary.totalStuckDeletions > 0) {
+    console.log('\n--- Stuck Deletions Breakdown ---');
+    for (const [status, count] of Object.entries(report.statusBreakdown.deletion)) {
+      console.log(`  ${status}: ${count}`);
+    }
+    console.log('\n  Run: npx tsx scripts/complete-stuck-deletions.ts --userId <ID>');
+  }
 
   console.log('\n--- Processing Status Breakdown ---');
   for (const [status, count] of Object.entries(report.statusBreakdown.processing)) {

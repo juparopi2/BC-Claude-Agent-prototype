@@ -1,6 +1,442 @@
 # Backend Scripts
 
-This directory contains utility scripts for development, diagnostics, and maintenance.
+Scripts de diagnóstico, mantenimiento y limpieza para el sistema de archivos y colas.
+
+## Quick Reference
+
+| Categoría | Script | Uso Principal |
+|-----------|--------|---------------|
+| **Diagnóstico** | `verify-file-integrity.ts` | Verificación completa de integridad |
+| **Diagnóstico** | `verify-sql-direct.ts` | Inspección directa de DB |
+| **Diagnóstico** | `investigate-files.ts` | Investigar estructura de archivos |
+| **Diagnóstico** | `investigate-deletion-status.ts` | Verificar eliminaciones pendientes |
+| **Limpieza** | `complete-stuck-deletions.ts` | Completar eliminaciones stuck |
+| **Limpieza** | `cleanup-ghost-records.ts` | Limpiar registros sin blob |
+| **Limpieza** | `run-orphan-cleanup.ts` | Limpiar huérfanos (AI Search, blobs, chunks) |
+| **Redis/Queue** | `queue-status.ts` | Estado de colas BullMQ |
+| **Redis/Queue** | `diagnose-redis.ts` | Diagnóstico de Redis |
+| **Redis/Queue** | `check-failed-jobs.ts` | Ver jobs fallidos |
+| **Usuario** | `find-user.ts` | Buscar usuario por nombre |
+
+---
+
+## Diagnóstico de Archivos
+
+### `verify-file-integrity.ts`
+
+**Verificación completa de integridad** entre SQL, Blob Storage y AI Search.
+
+```bash
+npx tsx scripts/verify-file-integrity.ts --userId <USER_ID>
+npx tsx scripts/verify-file-integrity.ts --userId <USER_ID> --fix-orphans
+npx tsx scripts/verify-file-integrity.ts --all --report-only
+```
+
+**Cuándo usar:**
+- Después de errores de procesamiento
+- Para verificar consistencia entre sistemas
+- Periódicamente como health check
+
+**Qué verifica:**
+- Archivos en DB tienen blobs correspondientes
+- Archivos con embeddings tienen documentos en AI Search
+- No hay blobs huérfanos
+- No hay documentos huérfanos en AI Search
+- Archivos stuck en procesamiento
+- Eliminaciones pendientes (deletion_status)
+
+---
+
+### `verify-sql-direct.ts`
+
+**Inspección directa de base de datos** sin abstracciones.
+
+```bash
+npx tsx scripts/verify-sql-direct.ts
+```
+
+**Cuándo usar:**
+- Debugging rápido de estado de archivos
+- Verificar conteos directamente en DB
+- Identificar archivos con deletion_status
+
+---
+
+### `investigate-files.ts`
+
+**Investigación detallada de estructura de archivos** por usuario.
+
+```bash
+npx tsx scripts/investigate-files.ts
+```
+
+**Cuándo usar:**
+- Entender estructura de folders/archivos
+- Identificar archivos huérfanos (parent inválido)
+- Verificar qué debería ver el frontend
+
+---
+
+### `investigate-deletion-status.ts`
+
+**Verificar estado de eliminaciones pendientes**.
+
+```bash
+npx tsx scripts/investigate-deletion-status.ts
+```
+
+**Cuándo usar:**
+- Después de un OOM o crash de Redis
+- Cuando el frontend no muestra archivos esperados
+- Debugging de flujo de eliminación
+
+---
+
+## Limpieza y Reparación
+
+### `complete-stuck-deletions.ts`
+
+**Completa eliminaciones que quedaron stuck** por OOM, crashes o fallos de cola.
+
+```bash
+npx tsx scripts/complete-stuck-deletions.ts --userId <USER_ID> --dry-run
+npx tsx scripts/complete-stuck-deletions.ts --userId <USER_ID>
+npx tsx scripts/complete-stuck-deletions.ts --all --older-than 120
+```
+
+**Cuándo usar:**
+- Cuando `investigate-deletion-status.ts` muestra archivos con deletion_status
+- Después de OOM de Redis
+- Cuando archivos están ocultos del frontend pero no eliminados
+
+**Qué hace:**
+1. Busca archivos con `deletion_status IN ('pending', 'deleting', 'failed')`
+2. Elimina blobs de Azure Storage
+3. Elimina documentos de AI Search
+4. Elimina registros de DB (CASCADE elimina chunks)
+
+---
+
+### `cleanup-ghost-records.ts`
+
+**Limpia registros de DB que no tienen blob** correspondiente.
+
+```bash
+npx tsx scripts/cleanup-ghost-records.ts --userId <USER_ID> --dry-run
+npx tsx scripts/cleanup-ghost-records.ts --userId <USER_ID>
+```
+
+**Cuándo usar:**
+- Cuando uploads fallaron a mitad de proceso
+- Cuando hay registros en DB pero no blobs
+
+**Nota:** Este script detecta "huérfanos visuales" - archivos en folders con deletion_status pendiente.
+
+---
+
+### `run-orphan-cleanup.ts`
+
+**Limpieza completa de recursos huérfanos**.
+
+```bash
+npx tsx scripts/run-orphan-cleanup.ts --userId <USER_ID>
+npx tsx scripts/run-orphan-cleanup.ts --userId <USER_ID> --include-blobs
+npx tsx scripts/run-orphan-cleanup.ts --userId <USER_ID> --include-chunks
+npx tsx scripts/run-orphan-cleanup.ts --all --dry-run
+```
+
+**Cuándo usar:**
+- Limpieza periódica de recursos
+- Después de borrados masivos
+- Cuando AI Search tiene documentos huérfanos
+
+**Qué limpia:**
+- Documentos de AI Search sin archivo en DB
+- Blobs sin registro en DB (con `--include-blobs`)
+- Chunks huérfanos (con `--include-chunks`)
+
+---
+
+## Redis y BullMQ
+
+### `queue-status.ts`
+
+**Estado completo de todas las colas BullMQ**.
+
+```bash
+npx tsx scripts/queue-status.ts
+npx tsx scripts/queue-status.ts --verbose
+npx tsx scripts/queue-status.ts --queue file-processing
+npx tsx scripts/queue-status.ts --show-failed 10
+```
+
+**Cuándo usar:**
+- Monitoreo de colas
+- Debugging de jobs fallidos
+- Verificar backlog de procesamiento
+
+---
+
+### `diagnose-redis.ts`
+
+**Diagnóstico completo de Azure Redis**.
+
+```bash
+npx tsx scripts/diagnose-redis.ts
+npx tsx scripts/diagnose-redis.ts --memory-analysis
+npx tsx scripts/diagnose-redis.ts --connection-test
+npx tsx scripts/diagnose-redis.ts --cleanup-stale
+```
+
+**Cuándo usar:**
+- Errores de lock en BullMQ
+- Problemas de memoria en Redis
+- Verificar tier de Azure Redis
+
+**Qué muestra:**
+- Métricas de memoria
+- Conexiones activas
+- Locks de BullMQ potencialmente stale
+- Recomendaciones de upgrade si aplica
+
+---
+
+### `check-failed-jobs.ts`
+
+**Ver detalles de jobs fallidos** en colas específicas.
+
+```bash
+npx tsx scripts/check-failed-jobs.ts
+```
+
+**Cuándo usar:**
+- Debugging de errores de procesamiento
+- Investigar por qué archivos no se procesaron
+
+---
+
+### `analyze-redis-memory.ts`
+
+**Análisis detallado de memoria Redis** por tipo de key.
+
+```bash
+npx tsx scripts/analyze-redis-memory.ts
+```
+
+**Cuándo usar:**
+- Identificar qué consume memoria
+- Detectar memory leaks (ej: embeddings con 'raw' field)
+
+---
+
+### `redis-cleanup.ts`
+
+**Limpieza de colas BullMQ** para liberar memoria.
+
+```bash
+npx tsx scripts/redis-cleanup.ts --stats    # Solo ver stats
+npx tsx scripts/redis-cleanup.ts --dry-run  # Preview
+npx tsx scripts/redis-cleanup.ts            # Ejecutar
+npx tsx scripts/redis-cleanup.ts --all      # Todas las colas
+```
+
+**Cuándo usar:**
+- Redis con alta memoria
+- Muchos jobs completados/fallidos acumulados
+
+---
+
+### `flush-redis-bullmq.ts`
+
+**Flush completo de datos BullMQ** en Redis.
+
+```bash
+npx tsx scripts/flush-redis-bullmq.ts --dry-run
+npx tsx scripts/flush-redis-bullmq.ts
+npx tsx scripts/flush-redis-bullmq.ts --all  # PELIGROSO: borra TODO
+```
+
+**Cuándo usar:**
+- Reset completo de colas
+- Problemas graves de corrupción
+
+**PRECAUCIÓN:** Pierde todo el historial de jobs.
+
+---
+
+## Usuarios
+
+### `find-user.ts`
+
+**Buscar usuario por nombre o email**.
+
+```bash
+npx tsx scripts/find-user.ts "Juan Pablo"
+npx tsx scripts/find-user.ts "juan@example.com" --exact
+```
+
+**Cuándo usar:**
+- Obtener userId para otros scripts
+- Verificar stats de usuario
+
+---
+
+## Verificación de Storage
+
+### `verify-blob-storage.ts`
+
+**Verificar blobs de un usuario**.
+
+```bash
+npx tsx scripts/verify-blob-storage.ts <USER_ID>
+```
+
+---
+
+### `verify-blob-direct.ts`
+
+**Verificación directa de Azure Blob Storage** sin abstracciones.
+
+```bash
+npx tsx scripts/verify-blob-direct.ts
+```
+
+---
+
+### `verify-ai-search.ts`
+
+**Verificar documentos en AI Search**.
+
+```bash
+npx tsx scripts/verify-ai-search.ts <USER_ID>
+```
+
+---
+
+### `verify-search-schema.ts`
+
+**Verificar y actualizar schema de AI Search**.
+
+```bash
+npx tsx scripts/verify-search-schema.ts
+npx tsx scripts/verify-search-schema.ts --update
+```
+
+---
+
+### `audit-storage.ts`
+
+**Auditoría completa de consistencia** entre SQL, Blob y AI Search.
+
+```bash
+npx tsx scripts/audit-storage.ts
+```
+
+**Nota:** Usa variables de entorno diferentes (`DB_SERVER`, `AZURE_STORAGE_CONNECTION_STRING`).
+
+---
+
+## Purga (Destructivos)
+
+### `purge-all-storage.ts`
+
+**PELIGRO: Borra TODO** - SQL, Blob Storage y AI Search.
+
+```bash
+npx tsx scripts/purge-all-storage.ts
+```
+
+**Solo usar en desarrollo**.
+
+---
+
+### `purge-ai-search.ts`
+
+**Borra todos los documentos de AI Search**.
+
+```bash
+npx tsx scripts/purge-ai-search.ts
+```
+
+---
+
+## Flujo de Trabajo Típico
+
+### Después de OOM de Redis
+
+```bash
+# 1. Ver estado de eliminaciones stuck
+npx tsx scripts/investigate-deletion-status.ts
+
+# 2. Completar eliminaciones (dry-run primero)
+npx tsx scripts/complete-stuck-deletions.ts --userId <ID> --dry-run
+npx tsx scripts/complete-stuck-deletions.ts --userId <ID>
+
+# 3. Verificar integridad
+npx tsx scripts/verify-file-integrity.ts --userId <ID>
+```
+
+### Health Check Periódico
+
+```bash
+# 1. Estado de colas
+npx tsx scripts/queue-status.ts
+
+# 2. Diagnóstico Redis
+npx tsx scripts/diagnose-redis.ts
+
+# 3. Verificar integridad (opcional)
+npx tsx scripts/verify-file-integrity.ts --all --report-only
+```
+
+### Debugging de Archivos Faltantes
+
+```bash
+# 1. Buscar usuario
+npx tsx scripts/find-user.ts "Nombre Usuario"
+
+# 2. Investigar archivos
+npx tsx scripts/investigate-files.ts
+
+# 3. Verificar deletion_status
+npx tsx scripts/investigate-deletion-status.ts
+
+# 4. Verificar integridad completa
+npx tsx scripts/verify-file-integrity.ts --userId <ID>
+```
+
+---
+
+## Notas Importantes
+
+### deletion_status
+
+Los archivos con `deletion_status` NO NULL están **ocultos del frontend**:
+- `pending`: Marcado para eliminar, esperando cola
+- `deleting`: Eliminación en progreso
+- `failed`: Eliminación falló
+
+Si hay archivos stuck, usar `complete-stuck-deletions.ts`.
+
+### Variables de Entorno
+
+La mayoría de scripts usan:
+- `DATABASE_SERVER`, `DATABASE_NAME`, `DATABASE_USER`, `DATABASE_PASSWORD`
+- `STORAGE_CONNECTION_STRING`, `STORAGE_CONTAINER_NAME`
+- `AZURE_SEARCH_ENDPOINT`, `AZURE_SEARCH_KEY`, `AZURE_SEARCH_INDEX_NAME`
+- `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`
+
+Algunos scripts legacy usan nombres diferentes (`DB_SERVER`, `AZURE_STORAGE_CONNECTION_STRING`).
+
+### IDs en UPPERCASE
+
+Todos los IDs (userId, fileId, sessionId) deben ser **UPPERCASE** según las convenciones del proyecto.
+
+---
+
+## Scripts de Desarrollo
+
+This directory also contains utility scripts for development and testing
 
 ## diagnose-claude-response.ts
 

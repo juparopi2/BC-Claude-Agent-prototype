@@ -42,8 +42,10 @@ const { mockOAuthService, mockBCTokenManager, mockExecuteQuery, mockLogger, mock
     mockOAuthService: {
       getAuthCodeUrl: vi.fn(),
       handleAuthCallback: vi.fn(),
+      handleAuthCallbackWithCache: vi.fn(),
       getUserProfile: vi.fn(),
       acquireBCToken: vi.fn(),
+      acquireBCTokenSilent: vi.fn(),
       getConfig: vi.fn(() => ({ tenantId: 'test-tenant-id' })),
     },
     mockBCTokenManager: {
@@ -315,6 +317,7 @@ describe('Auth OAuth Routes', () => {
       const stateMatch = loginResponse.headers.location.match(/state=([a-f0-9]+)/);
       const state = stateMatch ? stateMatch[1] : '';
 
+      // Initial token acquisition
       mockOAuthService.handleAuthCallback.mockResolvedValueOnce({
         access_token: 'test-access-token',
         refresh_token: 'test-refresh-token',
@@ -333,8 +336,16 @@ describe('Auth OAuth Routes', () => {
       // Insert new user
       mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
 
-      // BC token acquisition fails (expected for new user)
-      mockOAuthService.acquireBCToken.mockRejectedValueOnce(new Error('Consent required'));
+      // Cache-based token acquisition (new flow)
+      mockOAuthService.handleAuthCallbackWithCache.mockResolvedValueOnce({
+        access_token: 'cached-access-token',
+        expires_in: 3600,
+        homeAccountId: 'home-account-id-new',
+        scope: 'openid profile email',
+      });
+
+      // BC token acquisition fails via silent refresh (expected for new user)
+      mockOAuthService.acquireBCTokenSilent.mockRejectedValueOnce(new Error('Consent required'));
 
       // Act
       const response = await agent
@@ -366,6 +377,7 @@ describe('Auth OAuth Routes', () => {
       const stateMatch = loginResponse.headers.location.match(/state=([a-f0-9]+)/);
       const state = stateMatch ? stateMatch[1] : '';
 
+      // Initial token acquisition
       mockOAuthService.handleAuthCallback.mockResolvedValueOnce({
         access_token: 'test-access-token',
         refresh_token: 'test-refresh-token',
@@ -386,8 +398,16 @@ describe('Auth OAuth Routes', () => {
       // Update user
       mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
 
-      // BC token fails
-      mockOAuthService.acquireBCToken.mockRejectedValueOnce(new Error('No BC consent'));
+      // Cache-based token acquisition (new flow)
+      mockOAuthService.handleAuthCallbackWithCache.mockResolvedValueOnce({
+        access_token: 'cached-access-token',
+        expires_in: 3600,
+        homeAccountId: 'home-account-id-existing',
+        scope: 'openid profile email',
+      });
+
+      // BC token fails (silent)
+      mockOAuthService.acquireBCTokenSilent.mockRejectedValueOnce(new Error('No BC consent'));
 
       // Act
       const response = await agent
@@ -418,6 +438,7 @@ describe('Auth OAuth Routes', () => {
       const stateMatch = loginResponse.headers.location.match(/state=([a-f0-9]+)/);
       const state = stateMatch ? stateMatch[1] : '';
 
+      // Initial token acquisition
       mockOAuthService.handleAuthCallback.mockResolvedValueOnce({
         access_token: 'test-access-token',
         refresh_token: 'test-refresh-token',
@@ -435,12 +456,20 @@ describe('Auth OAuth Routes', () => {
       });
       mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
 
-      // BC token succeeds
+      // Cache-based token acquisition (returns homeAccountId needed for BC token)
+      mockOAuthService.handleAuthCallbackWithCache.mockResolvedValueOnce({
+        access_token: 'cached-access-token',
+        expires_in: 3600,
+        homeAccountId: 'home-account-id-bc',
+        scope: 'openid profile email',
+      });
+
+      // BC token succeeds via silent refresh (new flow)
       const bcToken = {
         accessToken: 'bc-access-token',
         expiresAt: new Date(Date.now() + 3600000),
       };
-      mockOAuthService.acquireBCToken.mockResolvedValueOnce(bcToken);
+      mockOAuthService.acquireBCTokenSilent.mockResolvedValueOnce(bcToken);
 
       // Act
       await agent.get(`/api/auth/callback?code=test-code&state=${state}`).expect(302);
@@ -725,7 +754,7 @@ describe('Auth OAuth Routes', () => {
     it('should return 401 if refresh token is missing (session expired)', async () => {
       // Arrange
       const app = createTestApp();
-      authenticateAs('user-no-refresh', { refreshToken: undefined });
+      authenticateAs('user-no-refresh', { refreshToken: undefined, homeAccountId: undefined });
 
       // Act
       const response = await request(app)
@@ -734,7 +763,7 @@ describe('Auth OAuth Routes', () => {
 
       // Assert - standardized error format
       expect(response.body.error).toBe('Unauthorized');
-      expect(response.body.message).toContain('Refresh token not found');
+      expect(response.body.message).toContain('Session expired');
       expect(response.body.code).toBe(ErrorCode.SESSION_EXPIRED);
     });
 
@@ -1093,7 +1122,17 @@ describe('Auth OAuth Routes', () => {
 
         mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
         mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
-        mockOAuthService.acquireBCToken.mockRejectedValueOnce(new Error('No BC'));
+
+        // Cache-based token acquisition
+        mockOAuthService.handleAuthCallbackWithCache.mockResolvedValueOnce({
+          access_token: 'cached-token',
+          expires_in: 3600,
+          homeAccountId: 'home-account-null-email',
+          scope: 'openid profile email',
+        });
+
+        // BC token fails
+        mockOAuthService.acquireBCTokenSilent.mockRejectedValueOnce(new Error('No BC'));
 
         // Act
         const response = await agent

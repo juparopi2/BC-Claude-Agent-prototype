@@ -61,6 +61,8 @@ export interface UseSessionHealthOptions {
   onExpiring?: (health: SessionHealthResponse) => void;
   /** Callback when session has expired */
   onExpired?: (health: SessionHealthResponse) => void;
+  /** Callback when proactive token refresh fails */
+  onRefreshFailed?: (health: SessionHealthResponse, error: Error | Response) => void;
 }
 
 /** Return type for useSessionHealth */
@@ -79,6 +81,8 @@ export interface UseSessionHealthResult {
   isExpired: boolean;
   /** Time until expiration in ms */
   timeUntilExpiry: number | null;
+  /** Whether proactive token refresh has failed (user can still operate but should re-login soon) */
+  refreshFailed: boolean;
 }
 
 /**
@@ -103,11 +107,13 @@ export function useSessionHealth(
     enabled = true,
     onExpiring,
     onExpired,
+    onRefreshFailed,
   } = options;
 
   const [health, setHealth] = useState<SessionHealthResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [refreshFailed, setRefreshFailed] = useState(false);
 
   // Track previous status to detect transitions
   const prevStatusRef = useRef<AuthSessionStatus | null>(null);
@@ -186,14 +192,19 @@ export function useSessionHealth(
           });
 
           if (refreshResponse.ok) {
-            // Refresh successful, update auth state
+            // Refresh successful, update auth state and clear failure flag
+            setRefreshFailed(false);
             await checkAuthRef.current();
           } else {
-            // Refresh failed, but token not expired yet - just log
+            // Refresh failed, but token not expired yet - log and notify
             console.warn('[useSessionHealth] Proactive token refresh failed:', refreshResponse.status);
+            setRefreshFailed(true);
+            onRefreshFailed?.(data, refreshResponse);
           }
         } catch (refreshError) {
           console.error('[useSessionHealth] Error during proactive refresh:', refreshError);
+          setRefreshFailed(true);
+          onRefreshFailed?.(data, refreshError instanceof Error ? refreshError : new Error(String(refreshError)));
         }
       }
     } catch (err) {
@@ -203,7 +214,7 @@ export function useSessionHealth(
     } finally {
       setIsLoading(false);
     }
-  }, [isAuthenticated, onExpiring, onExpired]);
+  }, [isAuthenticated, onExpiring, onExpired, onRefreshFailed]);
 
   // Set up polling with tab visibility optimization
   // Single useEffect handles both polling and visibility changes
@@ -255,5 +266,6 @@ export function useSessionHealth(
     isExpiring,
     isExpired,
     timeUntilExpiry,
+    refreshFailed,
   };
 }

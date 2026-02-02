@@ -170,10 +170,27 @@ export const useAuthStore = create<AuthStore>()(
             isAuthenticated: user !== null,
           }),
 
-        logout: () => {
-          // Navigate to logout URL (will clear session on server)
+        logout: async () => {
+          // Call logout endpoint via POST (not GET navigation)
           const api = getApiClient();
-          window.location.href = api.getLogoutUrl();
+          try {
+            await fetch(api.getLogoutUrl(), {
+              method: 'POST',
+              credentials: 'include',
+            });
+          } catch (error) {
+            // Even if logout fails, clear local state and redirect
+            console.warn('[AuthStore] Logout request failed:', error);
+          }
+          // Clear local state
+          set({
+            user: null,
+            isAuthenticated: false,
+            error: null,
+            authFailureReason: null,
+          });
+          // Redirect to login page
+          window.location.href = '/login';
         },
 
         setLoading: (isLoading) => set({ isLoading }),

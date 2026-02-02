@@ -59,8 +59,9 @@ if (isDevelopment) {
     options: {
       colorize: true,
       translateTime: 'SYS:standard',
-      ignore: 'pid,hostname,env',
+      ignore: 'pid,hostname,env,service',  // Also ignore 'service' since it's in messageFormat
       singleLine: false,
+      hideObject: false,  // CRITICAL: Ensures structured data is shown below the message
       messageFormat: '[{service}] {msg}',
     },
   });

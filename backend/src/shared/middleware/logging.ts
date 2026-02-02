@@ -32,9 +32,22 @@
  */
 
 import pinoHttp from 'pino-http';
+import pino from 'pino';
 import { logger } from '@/shared/utils/logger';
 import { RequestHandler } from 'express';
 import type { IncomingMessage, ServerResponse } from 'http';
+
+// Service name for HTTP request logging
+const HTTP_SERVICE_NAME = 'HttpRequest';
+
+// Check if HTTP logs should be shown based on LOG_SERVICES filter
+const allowedServices = process.env.LOG_SERVICES?.split(',').map(s => s.trim()).filter(Boolean) ?? [];
+const shouldLogHttp = allowedServices.length === 0 || allowedServices.includes(HTTP_SERVICE_NAME);
+
+// Use silent logger if HTTP logs are filtered out, otherwise use main logger with service context
+const httpLogger_ = shouldLogHttp
+  ? logger.child({ service: HTTP_SERVICE_NAME })
+  : pino({ level: 'silent' });
 
 /**
  * HTTP request/response logging middleware
@@ -45,7 +58,7 @@ import type { IncomingMessage, ServerResponse } from 'http';
  * - Errors with full stack traces
  */
 export const httpLogger: RequestHandler = pinoHttp({
-  logger,
+  logger: httpLogger_,
 
   // Custom request ID generator
   // Reuses existing X-Request-ID header or generates a new one

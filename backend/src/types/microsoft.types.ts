@@ -82,8 +82,20 @@ export interface MicrosoftOAuthSession {
   displayName?: string;
   email?: string;
   accessToken?: string;
+  /**
+   * MSAL homeAccountId - used for acquireTokenSilent
+   *
+   * This is the preferred method for token refresh. MSAL manages refresh tokens
+   * internally via the token cache (Redis). We only store the account identifier.
+   */
+  homeAccountId?: string;
+  /**
+   * @deprecated Refresh tokens are managed internally by MSAL via Redis cache.
+   * This field is kept for backwards compatibility during migration.
+   * New code should use homeAccountId + acquireTokenSilent instead.
+   */
   refreshToken?: string;
-  tokenExpiresAt?: string;  // ⭐ Changed to string (ISO 8601 format) for session serialization
+  tokenExpiresAt?: string;  // ISO 8601 format for session serialization
 }
 
 /**

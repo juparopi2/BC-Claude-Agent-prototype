@@ -23,6 +23,7 @@ import { createChildLogger } from '@/shared/utils/logger';
 import { ErrorCode } from '@/shared/constants/errors';
 import { sendError } from '@/shared/utils/error-response';
 import { AUTH_TIME_MS } from '@bc-agent/shared';
+import { deleteMsalCache } from '@/domains/auth/oauth/MsalRedisCachePlugin';
 
 const logger = createChildLogger({ service: 'AuthOAuthRoutes' });
 
@@ -140,18 +141,14 @@ router.get('/callback', async (req: Request, res: Response) => {
       delete req.session.oauthState;
     }
 
-    // Exchange code for tokens
-    const tokenResponse = await oauthService.handleAuthCallback(code, state as string);
-
-    // Get user profile from Microsoft Graph
-    const userProfile = await oauthService.getUserProfile(tokenResponse.access_token);
+    // Get user profile first (we need it to check if user exists)
+    // Use legacy handleAuthCallback for initial token acquisition
+    const initialTokenResponse = await oauthService.handleAuthCallback(code, state as string);
+    const userProfile = await oauthService.getUserProfile(initialTokenResponse.access_token);
 
     // Extract real tenant ID from client_info (for multi-tenant apps using "common" authority)
     const realTenantId = extractTenantIdFromClientInfo(client_info as string | undefined);
     logger.info('Extracted tenant ID from client_info', { realTenantId, hasClientInfo: !!client_info });
-
-    // Calculate token expiration
-    const expiresAt = new Date(Date.now() + tokenResponse.expires_in * 1000);
 
     // Check if user exists in database
     const existingUserResult = await executeQuery(
@@ -217,30 +214,49 @@ router.get('/callback', async (req: Request, res: Response) => {
       logger.info('Created new user with Microsoft login', { userId, email: userProfile.mail });
     }
 
-    // Try to acquire Business Central token (may fail if consent not granted yet)
+    // Now that we have userId, acquire tokens with Redis cache persistence
+    // This enables acquireTokenSilent for future token refreshes
+    const tokenResponse = await oauthService.handleAuthCallbackWithCache(code, state as string, userId);
+
+    // Diagnostic logging for token acquisition
+    logger.info({
+      hasAccessToken: !!tokenResponse.access_token,
+      hasHomeAccountId: !!tokenResponse.homeAccountId,
+      expiresIn: tokenResponse.expires_in,
+      scopes: tokenResponse.scope,
+    }, 'Token response received from MSAL with Redis cache');
+
+    // Calculate token expiration
+    const expiresAt = new Date(Date.now() + tokenResponse.expires_in * 1000);
+
+    // Try to acquire Business Central token using silent refresh
     try {
-      if (tokenResponse.refresh_token) {
-        const bcToken = await oauthService.acquireBCToken(tokenResponse.refresh_token);
+      if (tokenResponse.homeAccountId) {
+        const bcToken = await oauthService.acquireBCTokenSilent(userId, tokenResponse.homeAccountId);
         await bcTokenManager.storeBCToken(userId, bcToken);
-        logger.info('Acquired and stored Business Central token', { userId });
+        logger.info('Acquired and stored Business Central token via silent refresh', { userId });
       }
     } catch (bcError) {
       logger.warn('Failed to acquire Business Central token during login (user may need to grant consent)', {
         userId,
-        error: bcError,
+        error: bcError instanceof Error
+          ? { message: bcError.message, name: bcError.name }
+          : { value: String(bcError) },
       });
       // Continue without BC token - user will be prompted to grant consent later
     }
 
     // Create Microsoft OAuth session
+    // Store homeAccountId for future token refreshes via acquireTokenSilent
     const microsoftSession: MicrosoftOAuthSession = {
       userId,
       microsoftId: userProfile.id,
       displayName: userProfile.displayName,
       email: userProfile.mail,
       accessToken: tokenResponse.access_token,
-      refreshToken: tokenResponse.refresh_token,
-      tokenExpiresAt: expiresAt.toISOString(),  // ⭐ Convert Date to string (ISO 8601)
+      homeAccountId: tokenResponse.homeAccountId,  // Used for acquireTokenSilent
+      // refreshToken is managed by MSAL internally via Redis cache
+      tokenExpiresAt: expiresAt.toISOString(),
     };
 
     // Store in express-session
@@ -248,7 +264,13 @@ router.get('/callback', async (req: Request, res: Response) => {
       req.session.microsoftOAuth = microsoftSession;
     }
 
-    logger.info('Microsoft OAuth login successful', { userId, email: userProfile.mail });
+    // Diagnostic: confirm what's being stored in session
+    logger.info({
+      userId,
+      email: userProfile.mail,
+      hasHomeAccountId: !!microsoftSession.homeAccountId,
+      tokenExpiresAt: microsoftSession.tokenExpiresAt,
+    }, 'Microsoft OAuth login successful (cache-based refresh enabled)');
 
     // Redirect to frontend app
     res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/new`);
@@ -262,33 +284,73 @@ router.get('/callback', async (req: Request, res: Response) => {
  * POST /api/auth/refresh
  *
  * Proactively refresh the OAuth access token.
- * Allows frontend to refresh tokens before they expire.
+ * Uses MSAL acquireTokenSilent with Redis-cached tokens.
  */
 router.post('/refresh', authenticateMicrosoft, async (req: Request, res: Response) => {
   try {
     const oauthSession = req.session?.microsoftOAuth as MicrosoftOAuthSession | undefined;
 
-    if (!oauthSession?.refreshToken) {
-      logger.warn('Token refresh failed: No refresh token available', {
+    // Check for homeAccountId (new cache-based approach)
+    if (!oauthSession?.homeAccountId) {
+      // Fall back to legacy refreshToken approach for backwards compatibility
+      if (oauthSession?.refreshToken) {
+        logger.info('Using legacy refresh token approach (no homeAccountId)', {
+          userId: req.userId,
+        });
+
+        const refreshed = await oauthService.refreshAccessToken(oauthSession.refreshToken);
+
+        req.session.microsoftOAuth = {
+          ...oauthSession,
+          accessToken: refreshed.accessToken,
+          refreshToken: refreshed.refreshToken,
+          tokenExpiresAt: (refreshed.expiresAt instanceof Date
+            ? refreshed.expiresAt.toISOString()
+            : refreshed.expiresAt) as string,
+        };
+
+        await new Promise<void>((resolve, reject) => {
+          req.session.save((err) => {
+            if (err) reject(err);
+            else resolve();
+          });
+        });
+
+        res.json({
+          success: true,
+          expiresAt: refreshed.expiresAt.toISOString(),
+        });
+        return;
+      }
+
+      logger.warn('Token refresh failed: No homeAccountId or refreshToken available', {
         userId: req.userId,
+        hasHomeAccountId: !!oauthSession?.homeAccountId,
+        hasRefreshToken: !!oauthSession?.refreshToken,
       });
-      sendError(res, ErrorCode.INVALID_TOKEN, 'No refresh token available. Please log in again.');
+      sendError(res, ErrorCode.SESSION_EXPIRED, 'Session expired. Please log in again.');
       return;
     }
 
-    // Refresh the token
-    logger.debug('Refreshing access token proactively', { userId: req.userId });
+    // Use acquireTokenSilent with Redis cache
+    logger.debug('Refreshing access token via acquireTokenSilent', {
+      userId: req.userId,
+      homeAccountId: oauthSession.homeAccountId,
+    });
 
-    const refreshed = await oauthService.refreshAccessToken(oauthSession.refreshToken);
+    const refreshed = await oauthService.refreshAccessTokenSilent(
+      oauthSession.userId!,
+      oauthSession.homeAccountId
+    );
 
-    // Update session with new tokens
+    // Update session with new access token
+    // Note: homeAccountId stays the same, refreshToken is managed by MSAL cache
     req.session.microsoftOAuth = {
       ...oauthSession,
       accessToken: refreshed.accessToken,
-      refreshToken: refreshed.refreshToken,
-      tokenExpiresAt: (refreshed.expiresAt instanceof Date
+      tokenExpiresAt: refreshed.expiresAt instanceof Date
         ? refreshed.expiresAt.toISOString()
-        : refreshed.expiresAt) as string,
+        : String(refreshed.expiresAt),
     };
 
     // Force save session to ensure it's persisted
@@ -299,14 +361,18 @@ router.post('/refresh', authenticateMicrosoft, async (req: Request, res: Respons
       });
     });
 
-    logger.info('Access token refreshed successfully via /refresh endpoint', {
+    logger.info('Access token refreshed successfully via acquireTokenSilent', {
       userId: req.userId,
-      newExpiresAt: refreshed.expiresAt.toISOString(),
+      newExpiresAt: refreshed.expiresAt instanceof Date
+        ? refreshed.expiresAt.toISOString()
+        : refreshed.expiresAt,
     });
 
     res.json({
       success: true,
-      expiresAt: refreshed.expiresAt.toISOString(),
+      expiresAt: refreshed.expiresAt instanceof Date
+        ? refreshed.expiresAt.toISOString()
+        : refreshed.expiresAt,
     });
   } catch (error) {
     logger.error('Failed to refresh access token via /refresh endpoint', {
@@ -323,10 +389,27 @@ router.post('/refresh', authenticateMicrosoft, async (req: Request, res: Respons
  * POST /api/auth/logout
  *
  * Logout user and destroy session.
+ * Also cleans up MSAL token cache in Redis.
  */
 router.post('/logout', authenticateMicrosoftOptional, async (req: Request, res: Response) => {
   try {
     const userId = req.userId;
+
+    // Clean up MSAL token cache in Redis
+    if (userId) {
+      try {
+        await deleteMsalCache(userId);
+        logger.info('Deleted MSAL cache for user', { userId });
+      } catch (cacheError) {
+        // Log but don't fail logout if cache deletion fails
+        logger.warn('Failed to delete MSAL cache during logout', {
+          userId,
+          error: cacheError instanceof Error
+            ? { message: cacheError.message }
+            : { value: String(cacheError) },
+        });
+      }
+    }
 
     // Destroy session
     if (req.session) {
@@ -460,24 +543,52 @@ router.get('/bc-status', authenticateMicrosoft, async (req: Request, res: Respon
  *
  * Grant Business Central API consent.
  * Acquires BC token with delegated permissions and stores it.
+ * Uses MSAL cache-based token acquisition when available.
  */
 router.post('/bc-consent', authenticateMicrosoft, async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;
+    const homeAccountId = req.microsoftSession?.homeAccountId;
     const refreshToken = req.microsoftSession?.refreshToken;
 
+    // Prefer cache-based approach if homeAccountId is available
+    if (homeAccountId) {
+      try {
+        const bcToken = await oauthService.acquireBCTokenSilent(userId, homeAccountId);
+        await bcTokenManager.storeBCToken(userId, bcToken);
+
+        logger.info('Business Central consent granted via acquireTokenSilent', { userId });
+
+        res.json({
+          success: true,
+          message: 'Business Central access granted successfully',
+          expiresAt: bcToken.expiresAt.toISOString(),
+        });
+        return;
+      } catch (silentError) {
+        // Log but fall through to legacy approach
+        logger.warn('Failed to acquire BC token via silent refresh, trying legacy approach', {
+          userId,
+          error: silentError instanceof Error
+            ? { message: silentError.message }
+            : { value: String(silentError) },
+        });
+      }
+    }
+
+    // Fallback to legacy refresh token approach
     if (!refreshToken) {
-      sendError(res, ErrorCode.SESSION_EXPIRED, 'Refresh token not found in session. Please log in again.');
+      sendError(res, ErrorCode.SESSION_EXPIRED, 'Session expired. Please log in again.');
       return;
     }
 
-    // Acquire Business Central token
+    // Acquire Business Central token using legacy approach
     const bcToken = await oauthService.acquireBCToken(refreshToken);
 
     // Store encrypted BC token
     await bcTokenManager.storeBCToken(userId, bcToken);
 
-    logger.info('Business Central consent granted', { userId });
+    logger.info('Business Central consent granted via legacy refresh token', { userId });
 
     res.json({
       success: true,

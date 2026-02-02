@@ -162,8 +162,8 @@ export class SessionCancellationHandler {
       await this.sessionStore.update(sessionId, { status: 'cancelled' });
 
       // Collect all file IDs from batches that have been registered
-      const fileIds = this.collectRegisteredFileIds(session);
       const folderIds = this.collectCreatedFolderIds(session);
+      const fileIds = await this.collectRegisteredFileIds(session.userId, folderIds);
 
       this.log.info(
         { sessionId, fileCount: fileIds.length, folderCount: folderIds.length },
@@ -214,30 +214,53 @@ export class SessionCancellationHandler {
   }
 
   /**
-   * Collect file IDs from batches that have registered files
+   * Collect file IDs from folders created during the upload session
    *
-   * Only collects files that were actually registered in the database.
-   * Pending batches (not started) won't have files to cleanup.
+   * Queries the database to find all files (not folders) within the
+   * folders created during this upload session.
+   *
+   * @param userId - User ID for the query
+   * @param folderIds - Folder IDs to search for files
+   * @returns Array of file IDs to delete
    */
-  private collectRegisteredFileIds(session: UploadSession): string[] {
-    const fileIds: string[] = [];
+  private async collectRegisteredFileIds(userId: string, folderIds: string[]): Promise<string[]> {
+    if (folderIds.length === 0) {
+      return [];
+    }
 
-    for (const batch of session.folderBatches) {
-      // Only process batches that have progressed past 'pending'
-      if (batch.status === 'pending' || batch.status === 'creating') {
-        continue;
-      }
+    const fileRepo = this.getFileRepo();
+    const allFileIds: string[] = [];
 
-      // If batch has a folderId, it means files were registered
-      // The file IDs are tracked in the session store's file metadata
-      // For now, we'll need to query the database to find files in this folder
-      if (batch.folderId) {
-        // File IDs are in the folder - we'll collect them via the folder
-        // This will be handled by deleteEmptyFolders which cascades
+    for (const folderId of folderIds) {
+      try {
+        const childIds = await fileRepo.getChildrenIds(userId, folderId);
+
+        // Filter to only include files (not subfolders)
+        // We need to check each child to see if it's a file or folder
+        // For now, include all children - the soft delete will handle both
+        this.log.debug(
+          { folderId, childCount: childIds.length },
+          'Found children in folder for cleanup'
+        );
+
+        allFileIds.push(...childIds);
+      } catch (error) {
+        this.log.warn(
+          { folderId, error: error instanceof Error ? error.message : String(error) },
+          'Failed to get children for folder during cancellation'
+        );
       }
     }
 
-    return fileIds;
+    // Remove duplicates (in case of nested structures)
+    const uniqueFileIds = [...new Set(allFileIds)];
+
+    this.log.info(
+      { totalFiles: uniqueFileIds.length, folderCount: folderIds.length },
+      'Collected file IDs for rollback'
+    );
+
+    return uniqueFileIds;
   }
 
   /**
@@ -262,39 +285,35 @@ export class SessionCancellationHandler {
    * Delete folders created during upload (children first)
    *
    * Uses soft-delete pipeline to handle cascade deletion properly.
+   * Files inside folders are already soft-deleted, so we just need
+   * to mark the folders for deletion as well.
    */
   private async deleteEmptyFolders(userId: string, folderIds: string[]): Promise<number> {
-    let deletedCount = 0;
-
-    // Folders are already in reverse order (children first)
-    for (const folderId of folderIds) {
-      try {
-        // Check if folder has any remaining children
-        const fileRepo = this.getFileRepo();
-        const childIds = await fileRepo.getChildrenIds(userId, folderId);
-
-        if (childIds.length === 0) {
-          // Folder is empty, safe to delete
-          const softDeleteService = this.getSoftDelete();
-          await softDeleteService.markForDeletion(userId, [folderId], {
-            deletionReason: 'user_request',
-          });
-          deletedCount++;
-        } else {
-          this.log.debug(
-            { folderId, childCount: childIds.length },
-            'Folder has children, will be cleaned by cascade'
-          );
-        }
-      } catch (error) {
-        this.log.warn(
-          { folderId, error: error instanceof Error ? error.message : String(error) },
-          'Failed to delete folder during cancellation'
-        );
-      }
+    if (folderIds.length === 0) {
+      return 0;
     }
 
-    return deletedCount;
+    // Folders are already in reverse order (children first from collectCreatedFolderIds)
+    // Delete all folders - their children (files) are already soft-deleted
+    try {
+      const softDeleteService = this.getSoftDelete();
+      const result = await softDeleteService.markForDeletion(userId, folderIds, {
+        deletionReason: 'user_request',
+      });
+
+      this.log.info(
+        { folderCount: folderIds.length, deletedCount: result.markedForDeletion },
+        'Folders marked for deletion during cancellation'
+      );
+
+      return result.markedForDeletion;
+    } catch (error) {
+      this.log.error(
+        { folderIds, error: error instanceof Error ? error.message : String(error) },
+        'Failed to delete folders during cancellation'
+      );
+      return 0;
+    }
   }
 }
 

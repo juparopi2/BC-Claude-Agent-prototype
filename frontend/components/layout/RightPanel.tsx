@@ -28,7 +28,7 @@ export default function RightPanel() {
 
   return (
     <div ref={panelRef} className="h-full flex flex-col">
-      <Tabs defaultValue="files" className="flex-1 flex flex-col">
+      <Tabs defaultValue="files" className="flex-1 min-h-0 flex flex-col">
         {/* Tabs Navigation */}
         <TabsList className="w-full">
           <TabsTrigger value="files" className="flex-1">

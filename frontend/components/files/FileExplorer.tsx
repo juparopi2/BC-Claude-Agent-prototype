@@ -33,10 +33,10 @@ export function FileExplorer({ className, isNarrow = false }: FileExplorerProps)
   if (isNarrow) {
     return (
       <TooltipProvider>
-        <div className={cn('flex flex-col h-full', className)}>
+        <div className={cn('flex flex-col h-full min-h-0', className)}>
           <FileToolbar isNarrow />
           <FileBreadcrumb />
-          <FileUploadZone className="flex-1 overflow-hidden">
+          <FileUploadZone className="flex-1 min-h-0 overflow-hidden">
             <FileList />
           </FileUploadZone>
         </div>
@@ -47,10 +47,10 @@ export function FileExplorer({ className, isNarrow = false }: FileExplorerProps)
   // Full layout with sidebar
   return (
     <TooltipProvider>
-      <div className={cn('flex flex-col h-full', className)}>
+      <div className={cn('flex flex-col h-full min-h-0', className)}>
         <FileToolbar />
 
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex flex-1 min-h-0 overflow-hidden">
           {/* Fixed-width sidebar (150px) - conditionally rendered */}
           {isSidebarVisible && (
             <div className="w-[150px] border-r flex-shrink-0">
@@ -59,9 +59,9 @@ export function FileExplorer({ className, isNarrow = false }: FileExplorerProps)
           )}
 
           {/* Main content area */}
-          <div className="flex-1 flex flex-col overflow-hidden">
+          <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
             <FileBreadcrumb />
-            <FileUploadZone className="flex-1 overflow-hidden">
+            <FileUploadZone className="flex-1 min-h-0 overflow-hidden">
               <FileList />
             </FileUploadZone>
           </div>

@@ -163,7 +163,7 @@ export function FileUploadZone({
     <div
       {...rootProps}
       className={cn(
-        'relative h-full transition-colors',
+        'relative h-full min-h-0 transition-colors',
         isDragActive && 'ring-2 ring-primary ring-inset',
         isDragAccept && 'bg-primary/5',
         isDragReject && 'bg-destructive/5 ring-destructive',

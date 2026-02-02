@@ -215,7 +215,7 @@ export function FileList() {
     <div
       ref={containerRef}
       tabIndex={0}
-      className="outline-none h-full"
+      className="outline-none h-full min-h-0"
     >
       <ScrollArea className="h-full">
         <div className="p-2 space-y-0.5">

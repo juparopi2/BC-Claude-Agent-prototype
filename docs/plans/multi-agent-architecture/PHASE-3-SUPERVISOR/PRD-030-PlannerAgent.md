@@ -1,619 +1,415 @@
-# PRD-030: Planner Agent (Supervisor)
+# PRD-030: Supervisor Integration with createSupervisor()
 
 **Estado**: Draft
 **Prioridad**: Alta
 **Dependencias**: PRD-020 (Extended State), PRD-011 (Agent Registry)
-**Bloquea**: PRD-031 (Plan Executor), PRD-032 (Plan Persistence)
+**Bloquea**: PRD-032 (Persistence), Fase 4 (Handoffs)
 
 ---
 
 ## 1. Objetivo
 
-Implementar un agente supervisor que:
-- Analiza la complejidad de queries del usuario
-- Genera planes de ejecución estructurados
-- Decide qué agentes deben ejecutar cada step
-- Proporciona contexto y constraints a cada agente
+Implementar orquestación multi-agente usando `createSupervisor()` nativo de LangGraph:
+- Routing automático basado en LLM (no keywords)
+- Coordinación de múltiples agentes especializados
+- Plan generation y execution manejados internamente
+- Integración con checkpointer para persistencia
 
 ---
 
-## 2. Contexto
-
-### 2.1 Estado Actual
-
-El sistema actual usa un router simple:
-1. Slash commands → Agente específico
-2. Keywords → Agente específico
-3. Ambiguo → LLM clasifica intent
-
-**Problema**: No hay planificación multi-paso ni coordinación.
-
-### 2.2 Arquitectura Objetivo
+## 2. Arquitectura
 
 ```
 User Query
     │
     ▼
-┌─────────────────────┐
-│   PLANNER AGENT     │
-│   (Supervisor)      │
-│                     │
-│  1. Analyze query   │
-│  2. Classify        │
-│  3. Generate plan   │
-│  4. Return plan     │
-└─────────────────────┘
-    │
-    ▼
-PlanState
+┌─────────────────────────────────┐
+│   createSupervisor()            │
+│   ┌─────────────────────────┐   │
+│   │  Router LLM (Haiku)     │   │
+│   │  - Analyzes query       │   │
+│   │  - Selects agent        │   │
+│   │  - Coordinates flow     │   │
+│   └───────────┬─────────────┘   │
+└───────────────┼─────────────────┘
+       ┌────────┼────────┐
+       ▼        ▼        ▼
+┌──────────┐ ┌──────────┐ ┌──────────┐
+│ BC Agent │ │RAG Agent │ │Graph     │
+│          │ │          │ │Agent     │
+└──────────┘ └──────────┘ └──────────┘
+       └────────┼────────┘
+                ▼
+         Final Response
 ```
 
 ---
 
-## 3. Diseño Propuesto
+## 3. Implementación
 
 ### 3.1 Estructura de Archivos
 
 ```
 backend/src/modules/agents/supervisor/
-├── PlannerAgent.ts           # Main planner implementation
-├── prompts/
-│   ├── planner.system.ts     # System prompt
-│   ├── planner.examples.ts   # Few-shot examples
-│   └── index.ts
-├── schemas/
-│   ├── PlanOutputSchema.ts   # Zod schema for LLM output
-│   └── index.ts
-├── utils/
-│   ├── QueryClassifier.ts    # Classify query complexity
-│   └── PlanValidator.ts      # Validate generated plans
+├── supervisor-graph.ts      # Main supervisor setup
+├── supervisor-prompt.ts     # System prompt for routing
+├── agent-builders.ts        # Build react agents from registry
 └── index.ts
 ```
 
-### 3.2 Query Classification
+### 3.2 Supervisor Graph
 
 ```typescript
-// QueryClassifier.ts
+// supervisor-graph.ts
+import { createSupervisor } from "@langchain/langgraph/prebuilt";
+import { createReactAgent } from "@langchain/langgraph/prebuilt";
+import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
+import { getAgentRegistry } from "@/modules/agents/core/registry";
+import { ModelFactory } from "@/shared/models/ModelFactory";
+import { getSupervisorPrompt } from "./supervisor-prompt";
+import { ExtendedAgentStateAnnotation } from "../orchestrator/state";
 
-export type QueryComplexity = 'simple' | 'moderate' | 'complex';
+/**
+ * Build the multi-agent supervisor graph
+ */
+export async function buildSupervisorGraph() {
+  const registry = getAgentRegistry();
 
-export interface QueryClassification {
-  complexity: QueryComplexity;
-  requiresPlanning: boolean;
-  suggestedAgents: string[];
-  reasoning: string;
+  // Build react agents from registry
+  const agents = await buildAgentsFromRegistry();
+
+  // Get router model (fast, cheap)
+  const routerModel = await ModelFactory.create("router");
+
+  // Build supervisor prompt with available agents
+  const agentList = registry.buildSupervisorAgentList();
+  const supervisorPrompt = getSupervisorPrompt(agentList);
+
+  // Create supervisor
+  const supervisor = createSupervisor({
+    agents,
+    model: routerModel,
+    prompt: supervisorPrompt,
+    // Use our extended state schema
+    stateSchema: ExtendedAgentStateAnnotation,
+  });
+
+  return supervisor;
 }
 
 /**
- * Classify query complexity to determine if planning is needed
+ * Compile supervisor with checkpointer for production
  */
-export class QueryClassifier {
-  constructor(private registry: AgentRegistry) {}
+export async function compileSupervisorGraph() {
+  const supervisor = await buildSupervisorGraph();
 
-  /**
-   * Classify without LLM (fast path)
-   */
-  classifyHeuristic(query: string): QueryClassification {
-    const lowerQuery = query.toLowerCase();
+  // Use PostgresSaver for production persistence
+  const checkpointer = PostgresSaver.fromConnString(
+    process.env.DATABASE_URL!
+  );
 
-    // Simple: Direct questions, single-step tasks
-    if (this.isSimpleQuery(lowerQuery)) {
-      return {
-        complexity: 'simple',
-        requiresPlanning: false,
-        suggestedAgents: [this.findBestAgent(query)],
-        reasoning: 'Single-step query, direct routing',
-      };
-    }
+  const graph = supervisor.compile({
+    checkpointer,
+    // Interrupt before sensitive operations (optional)
+    // interruptBefore: ["bc-agent"],
+  });
 
-    // Complex: Multiple parts, comparisons, workflows
-    if (this.isComplexQuery(lowerQuery)) {
-      return {
-        complexity: 'complex',
-        requiresPlanning: true,
-        suggestedAgents: this.findRelevantAgents(query),
-        reasoning: 'Multi-step query requiring coordination',
-      };
-    }
-
-    // Moderate: Might need planning
-    return {
-      complexity: 'moderate',
-      requiresPlanning: true,
-      suggestedAgents: this.findRelevantAgents(query),
-      reasoning: 'Moderate complexity, planning recommended',
-    };
-  }
-
-  private isSimpleQuery(query: string): boolean {
-    const simplePatterns = [
-      /^(what|who|where|when|how much|how many)\s+is/i,
-      /^show\s+me\s+/i,
-      /^get\s+/i,
-      /^find\s+/i,
-      /^list\s+/i,
-    ];
-    return simplePatterns.some(p => p.test(query));
-  }
-
-  private isComplexQuery(query: string): boolean {
-    const complexIndicators = [
-      'and then', 'after that', 'followed by',
-      'compare', 'analyze', 'summarize',
-      'create a report', 'generate a chart',
-      'for each', 'all of the',
-    ];
-    return complexIndicators.some(i => query.includes(i));
-  }
-
-  private findBestAgent(query: string): string {
-    const agent = this.registry.findByKeywords(query);
-    return agent?.id ?? 'orchestrator';
-  }
-
-  private findRelevantAgents(query: string): string[] {
-    // Check all agents for keyword matches
-    const agents: string[] = [];
-    for (const agent of this.registry.getAll()) {
-      if (!agent.isSystemAgent && agent.triggerKeywords?.some(kw =>
-        query.toLowerCase().includes(kw.toLowerCase())
-      )) {
-        agents.push(agent.id);
-      }
-    }
-    return agents.length > 0 ? agents : ['orchestrator'];
-  }
-}
-```
-
-### 3.3 Plan Output Schema
-
-```typescript
-// PlanOutputSchema.ts
-import { z } from 'zod';
-
-/**
- * Schema for LLM plan generation output
- */
-export const PlanOutputSchema = z.object({
-  /** Summary of what the plan will accomplish */
-  summary: z.string().min(10).max(500),
-
-  /** Whether this query actually needs a multi-step plan */
-  requiresMultiStep: z.boolean(),
-
-  /** The execution steps */
-  steps: z.array(z.object({
-    /** Which agent should execute this step */
-    agentId: z.string(),
-
-    /** What the agent should do */
-    task: z.string().min(5).max(500),
-
-    /** Expected output type */
-    expectedOutput: z.enum(['text', 'data', 'visualization', 'confirmation']).optional(),
-
-    /** Why this agent was chosen */
-    reasoning: z.string().max(200).optional(),
-  })).min(1).max(10),
-
-  /** Overall reasoning for the plan */
-  reasoning: z.string().max(500),
-});
-
-export type PlanOutput = z.infer<typeof PlanOutputSchema>;
-
-/**
- * Schema for simple (no-plan) response
- */
-export const SimplePlanOutputSchema = z.object({
-  requiresMultiStep: z.literal(false),
-  directAgentId: z.string(),
-  reasoning: z.string(),
-});
-
-export type SimplePlanOutput = z.infer<typeof SimplePlanOutputSchema>;
-```
-
-### 3.4 Planner Agent
-
-```typescript
-// PlannerAgent.ts
-import { ChatAnthropic } from '@langchain/anthropic';
-import { SystemMessage, HumanMessage } from '@langchain/core/messages';
-import { randomUUID } from 'crypto';
-import { getAgentRegistry } from '@/modules/agents/core/registry';
-import { QueryClassifier } from './utils/QueryClassifier';
-import { PlanOutputSchema, type PlanOutput } from './schemas/PlanOutputSchema';
-import { getPlannerSystemPrompt } from './prompts/planner.system';
-import { getPlannerExamples } from './prompts/planner.examples';
-import type { PlanState, PlanStep } from '@/modules/agents/orchestrator/state/PlanState';
-import type { ExtendedAgentState } from '@/modules/agents/orchestrator/state';
-
-export interface PlannerConfig {
-  /** Model to use for planning (default: haiku for speed) */
-  model?: string;
-
-  /** Maximum steps allowed in a plan */
-  maxSteps?: number;
-
-  /** Whether to use heuristics before LLM */
-  useHeuristics?: boolean;
-
-  /** Temperature for generation */
-  temperature?: number;
+  return graph;
 }
 
-const DEFAULT_CONFIG: Required<PlannerConfig> = {
-  model: 'claude-3-haiku-20240307',
-  maxSteps: 8,
-  useHeuristics: true,
-  temperature: 0.1,
-};
-
 /**
- * Planner Agent - Generates execution plans for complex queries
+ * Build react agents from registry definitions
  */
-export class PlannerAgent {
-  private classifier: QueryClassifier;
-  private llm: ChatAnthropic;
-  private config: Required<PlannerConfig>;
+async function buildAgentsFromRegistry() {
+  const registry = getAgentRegistry();
+  const agents = [];
 
-  constructor(config?: PlannerConfig) {
-    this.config = { ...DEFAULT_CONFIG, ...config };
-    this.classifier = new QueryClassifier(getAgentRegistry());
-    this.llm = new ChatAnthropic({
-      modelName: this.config.model,
-      temperature: this.config.temperature,
-      maxTokens: 1024,
-    });
-  }
-
-  /**
-   * Generate a plan for the given query
-   */
-  async generatePlan(
-    query: string,
-    context: ExtendedAgentState['context']
-  ): Promise<PlanState | null> {
-    const registry = getAgentRegistry();
-
-    // Step 1: Classify query (fast path)
-    if (this.config.useHeuristics) {
-      const classification = this.classifier.classifyHeuristic(query);
-
-      if (!classification.requiresPlanning) {
-        // Simple query - no plan needed, return null to signal direct routing
-        return null;
-      }
+  for (const agentDef of registry.getWorkerAgents()) {
+    const agentWithTools = registry.getWithTools(agentDef.id);
+    if (!agentWithTools) {
+      console.warn(`Agent ${agentDef.id} has no tools registered, skipping`);
+      continue;
     }
 
-    // Step 2: Generate plan with LLM
-    const availableAgents = registry.getAll()
-      .filter(a => !a.isSystemAgent)
-      .map(a => ({
-        id: a.id,
-        name: a.name,
-        description: a.description,
-        capabilities: a.capabilities,
-      }));
+    const model = await ModelFactory.create(agentDef.modelRole);
 
-    const systemPrompt = getPlannerSystemPrompt(availableAgents, this.config.maxSteps);
-    const examples = getPlannerExamples();
-
-    const messages = [
-      new SystemMessage(systemPrompt),
-      ...examples,
-      new HumanMessage(query),
-    ];
-
-    // Generate plan
-    const response = await this.llm.invoke(messages, {
-      response_format: { type: 'json_object' },
+    const agent = createReactAgent({
+      llm: model,
+      tools: agentWithTools.tools,
+      name: agentDef.id,
+      prompt: agentDef.systemPrompt,
     });
 
-    // Parse and validate
-    const content = typeof response.content === 'string'
-      ? response.content
-      : JSON.stringify(response.content);
-
-    const parsed = JSON.parse(content);
-    const validated = PlanOutputSchema.safeParse(parsed);
-
-    if (!validated.success) {
-      throw new Error(`Invalid plan output: ${validated.error.message}`);
-    }
-
-    const output = validated.data;
-
-    // If LLM says no multi-step needed, return null
-    if (!output.requiresMultiStep) {
-      return null;
-    }
-
-    // Step 3: Build PlanState
-    const planId = randomUUID().toUpperCase();
-    const now = new Date().toISOString();
-
-    const steps: PlanStep[] = output.steps.map((step, index) => ({
-      stepId: randomUUID().toUpperCase(),
-      stepIndex: index,
-      agentId: step.agentId,
-      task: step.task,
-      expectedOutput: step.expectedOutput,
-      status: 'pending' as const,
-    }));
-
-    return {
-      planId,
-      query,
-      status: 'executing',
-      steps,
-      currentStepIndex: 0,
-      summary: output.summary,
-      createdAt: now,
-      updatedAt: now,
-    };
+    agents.push(agent);
   }
 
-  /**
-   * Decide if a query needs planning (without generating plan)
-   */
-  needsPlanning(query: string): boolean {
-    const classification = this.classifier.classifyHeuristic(query);
-    return classification.requiresPlanning;
-  }
-}
-
-// Singleton
-let instance: PlannerAgent | null = null;
-
-export function getPlannerAgent(config?: PlannerConfig): PlannerAgent {
-  if (!instance) {
-    instance = new PlannerAgent(config);
-  }
-  return instance;
-}
-
-export function resetPlannerAgent(): void {
-  instance = null;
+  return agents;
 }
 ```
 
-### 3.5 System Prompt
+### 3.3 Supervisor Prompt
 
 ```typescript
-// prompts/planner.system.ts
+// supervisor-prompt.ts
 
-export interface AgentSummary {
-  id: string;
-  name: string;
-  description: string;
-  capabilities: string[];
-}
-
-export function getPlannerSystemPrompt(
-  agents: AgentSummary[],
-  maxSteps: number
-): string {
-  const agentList = agents.map(a =>
-    `- **${a.id}** (${a.name}): ${a.description}\n  Capabilities: ${a.capabilities.join(', ')}`
-  ).join('\n');
-
-  return `You are a planning assistant that breaks down complex user queries into executable steps.
+/**
+ * Build supervisor system prompt with available agents
+ */
+export function getSupervisorPrompt(agentList: string): string {
+  return `You are a supervisor managing specialized AI agents. Your job is to route user requests to the most appropriate agent.
 
 ## Available Agents
 
 ${agentList}
 
-## Your Task
+## Routing Guidelines
 
-Analyze the user's query and either:
-1. Return a multi-step plan if the query requires coordination between agents or multiple operations
-2. Indicate that no plan is needed if it's a simple, single-step query
+1. **Analyze the request**: Understand what the user is asking for
+2. **Match to capabilities**: Choose the agent whose capabilities best match the request
+3. **Handle ambiguity**: If unclear, prefer the more specialized agent
+4. **Coordinate multi-step**: For complex requests, you may call multiple agents in sequence
 
-## Output Format
+## Examples
 
-Return a JSON object with this structure:
+- "Show me customer ABC" → Route to bc-agent (ERP query)
+- "What does the contract say about payment terms?" → Route to rag-agent (document search)
+- "Create a chart of monthly sales" → Route to graph-agent (visualization)
+- "Compare our top customers" → May need bc-agent then graph-agent
 
-For complex queries (multi-step):
-{
-  "summary": "Brief description of what the plan accomplishes",
-  "requiresMultiStep": true,
-  "steps": [
-    {
-      "agentId": "agent-id",
-      "task": "Specific task for this agent",
-      "expectedOutput": "text|data|visualization|confirmation",
-      "reasoning": "Why this agent was chosen"
-    }
-  ],
-  "reasoning": "Overall reasoning for the plan"
-}
+## Response Format
 
-For simple queries (no plan):
-{
-  "requiresMultiStep": false,
-  "directAgentId": "agent-id",
-  "reasoning": "Why this is a simple query"
-}
+Respond with which agent should handle the request and why. The system will route automatically.
 
-## Guidelines
-
-1. Keep plans concise - maximum ${maxSteps} steps
-2. Each step should have a clear, actionable task
-3. Consider dependencies between steps
-4. Match agents to tasks based on their capabilities
-5. Simple queries (single lookup, direct question) don't need plans
-6. Complex queries (comparisons, reports, multi-data) need plans
-
-## Examples of Simple Queries (NO PLAN NEEDED)
-- "Show me customer ABC" → Direct to bc-agent
-- "Search my documents for contracts" → Direct to rag-agent
-- "What is the status of order 123?" → Direct to bc-agent
-
-## Examples of Complex Queries (PLAN NEEDED)
-- "Compare our top 5 customers by revenue and show a chart" → Multiple steps
-- "Find all overdue invoices and summarize the payment patterns" → Analysis + summary
-- "Search my documents for the contract terms and validate against BC data" → RAG + BC coordination
-`;
+Remember: You coordinate, the agents execute. Don't try to answer questions directly - delegate to the appropriate specialist.`;
 }
 ```
 
-### 3.6 Supervisor Node (Graph Integration)
+### 3.4 Usage in Application
 
 ```typescript
-// SupervisorNode.ts - Integration with LangGraph
+// In WebSocket handler or API route
+import { compileSupervisorGraph } from "@/modules/agents/supervisor";
+import { HumanMessage } from "@langchain/core/messages";
 
-import { ExtendedAgentState } from '@/modules/agents/orchestrator/state';
-import { getPlannerAgent } from './PlannerAgent';
-import type { PlanState } from '@/modules/agents/orchestrator/state/PlanState';
+// Initialize once at startup
+let supervisorGraph: Awaited<ReturnType<typeof compileSupervisorGraph>>;
 
-/**
- * Supervisor node for LangGraph
- *
- * Decides whether to generate a plan or route directly.
- */
-export async function supervisorNode(
-  state: ExtendedAgentState
-): Promise<Partial<ExtendedAgentState>> {
-  const planner = getPlannerAgent();
+export async function initializeSupervisor() {
+  supervisorGraph = await compileSupervisorGraph();
+  console.log("Supervisor graph initialized");
+}
 
-  // Get the last user message
-  const lastMessage = state.messages[state.messages.length - 1];
-  const query = typeof lastMessage.content === 'string'
-    ? lastMessage.content
-    : JSON.stringify(lastMessage.content);
+// Handle user message
+export async function handleUserMessage(
+  sessionId: string,
+  userId: string,
+  message: string
+) {
+  const result = await supervisorGraph.invoke(
+    {
+      messages: [new HumanMessage(message)],
+      context: { userId, sessionId },
+    },
+    {
+      configurable: {
+        thread_id: sessionId, // Persistence key
+      },
+    }
+  );
 
-  // Check if in directed mode (user selected agent)
-  if (state.operationMode === 'directed' && state.directedModeContext) {
-    // Skip planning, route directly to selected agent
-    return {
-      activeAgent: state.directedModeContext.targetAgentId,
-      plan: null,
-    };
-  }
+  return result;
+}
+```
 
-  // Generate plan
-  const plan = await planner.generatePlan(query, state.context);
+---
 
-  if (plan === null) {
-    // Simple query - use existing router logic
-    return {
-      activeAgent: 'router', // Signal to use traditional routing
-      plan: null,
-    };
-  }
+## 4. Human-in-the-Loop con interrupt()
 
-  // Return plan for execution
+Para operaciones que requieren aprobación humana:
+
+```typescript
+import { interrupt } from "@langchain/langgraph";
+
+// En el agente que maneja operaciones sensibles
+const bcAgentWithApproval = createReactAgent({
+  llm: model,
+  tools: bcTools.map(tool => {
+    // Wrap sensitive tools with interrupt
+    if (tool.name.includes("create") || tool.name.includes("update")) {
+      return wrapWithApproval(tool);
+    }
+    return tool;
+  }),
+  name: "bc-agent",
+  prompt: bcSystemPrompt,
+});
+
+function wrapWithApproval(tool) {
   return {
-    plan,
-    activeAgent: 'plan-executor',
-    currentAgentIdentity: {
-      agentId: 'supervisor',
-      agentName: 'Supervisor',
-      agentIcon: '🎯',
-      agentColor: '#8B5CF6',
+    ...tool,
+    func: async (args) => {
+      // Pause for human approval
+      const approved = interrupt({
+        type: "approval_request",
+        toolName: tool.name,
+        args,
+        description: tool.description,
+      });
+
+      if (!approved) {
+        return "Operation cancelled by user";
+      }
+
+      return tool.func(args);
     },
   };
 }
 ```
 
----
+### Resuming After Interrupt
 
-## 4. Tests Requeridos
-
-### 4.1 QueryClassifier Tests
 ```typescript
-describe('QueryClassifier', () => {
-  describe('classifyHeuristic', () => {
-    it('classifies simple queries as not requiring planning');
-    it('classifies complex queries as requiring planning');
-    it('identifies relevant agents from keywords');
-  });
-});
-```
+// When user approves/rejects
+export async function handleApprovalResponse(
+  sessionId: string,
+  approved: boolean
+) {
+  // Resume the graph with the approval decision
+  const result = await supervisorGraph.invoke(
+    approved, // This value is returned by interrupt()
+    {
+      configurable: { thread_id: sessionId },
+    }
+  );
 
-### 4.2 PlannerAgent Tests
-```typescript
-describe('PlannerAgent', () => {
-  describe('generatePlan', () => {
-    it('returns null for simple queries');
-    it('generates valid plan for complex queries');
-    it('respects maxSteps limit');
-    it('validates plan output schema');
-    it('handles LLM errors gracefully');
-  });
-
-  describe('needsPlanning', () => {
-    it('returns false for simple queries');
-    it('returns true for complex queries');
-  });
-});
-```
-
-### 4.3 Integration Tests
-```typescript
-describe('Supervisor Node Integration', () => {
-  it('routes directly in directed mode');
-  it('generates plan for complex autonomous queries');
-  it('skips planning for simple queries');
-  it('sets correct agent identity');
-});
+  return result;
+}
 ```
 
 ---
 
-## 5. Criterios de Aceptación
+## 5. Event Emission
 
-- [ ] Simple queries bypass planning (< 200ms)
-- [ ] Complex queries generate valid plans
-- [ ] Plans have 1-8 steps maximum
-- [ ] Each step has valid agentId from registry
-- [ ] Directed mode bypasses supervisor
-- [ ] LLM errors are handled gracefully
-- [ ] Plan output matches Zod schema
+El supervisor emite eventos via LangSmith callbacks y nuestro event system:
+
+```typescript
+import { compileSupervisorGraph } from "./supervisor-graph";
+
+const graph = await compileSupervisorGraph();
+
+// Invoke with callbacks
+const result = await graph.invoke(input, {
+  configurable: { thread_id: sessionId },
+  callbacks: [
+    {
+      handleLLMStart: (llm, prompts) => {
+        emitEvent(sessionId, { type: "llm_start", model: llm.model });
+      },
+      handleLLMEnd: (output) => {
+        emitEvent(sessionId, { type: "llm_end", tokens: output.usage });
+      },
+      handleToolStart: (tool, input) => {
+        emitEvent(sessionId, { type: "tool_use", name: tool.name, input });
+      },
+      handleToolEnd: (output) => {
+        emitEvent(sessionId, { type: "tool_result", output });
+      },
+    },
+  ],
+});
+```
+
+---
+
+## 6. Tests Requeridos
+
+### 6.1 Unit Tests (Deterministic)
+
+```typescript
+describe("Supervisor Prompt", () => {
+  it("includes all agents from registry", () => {
+    const agentList = "- bc-agent: BC Expert\n- rag-agent: Knowledge";
+    const prompt = getSupervisorPrompt(agentList);
+
+    expect(prompt).toContain("bc-agent");
+    expect(prompt).toContain("rag-agent");
+  });
+});
+
+describe("buildAgentsFromRegistry", () => {
+  it("creates react agents for all worker agents");
+  it("skips agents without tools");
+  it("uses correct model for each agent");
+});
+```
+
+### 6.2 LangSmith Evaluations
+
+```typescript
+// Routing accuracy evaluation
+const routingDataset = [
+  { input: "Show customer ABC", expected_agent: "bc-agent" },
+  { input: "Search my documents for contracts", expected_agent: "rag-agent" },
+  { input: "Create a sales chart", expected_agent: "graph-agent" },
+];
+
+await evaluate(supervisorTarget, {
+  data: "supervisor-routing",
+  evaluators: [
+    {
+      evaluate: ({ output, reference }) => ({
+        key: "routing_accuracy",
+        score: output.activeAgent === reference.expected_agent ? 1 : 0,
+      }),
+    },
+  ],
+  numRepetitions: 3,
+});
+```
+
+---
+
+## 7. Criterios de Aceptación
+
+- [ ] `createSupervisor()` routes queries correctly
+- [ ] All agents from registry are available
+- [ ] Checkpointer persists conversation state
+- [ ] `interrupt()` pauses for approval when configured
+- [ ] Events emitted via callbacks
+- [ ] LangSmith routing evaluation >= 90% accuracy
 - [ ] `npm run verify:types` pasa sin errores
 
 ---
 
-## 6. Archivos a Crear
+## 8. Archivos a Crear
 
-- `backend/src/modules/agents/supervisor/PlannerAgent.ts`
-- `backend/src/modules/agents/supervisor/SupervisorNode.ts`
-- `backend/src/modules/agents/supervisor/prompts/planner.system.ts`
-- `backend/src/modules/agents/supervisor/prompts/planner.examples.ts`
-- `backend/src/modules/agents/supervisor/schemas/PlanOutputSchema.ts`
-- `backend/src/modules/agents/supervisor/utils/QueryClassifier.ts`
-- `backend/src/modules/agents/supervisor/utils/PlanValidator.ts`
+- `backend/src/modules/agents/supervisor/supervisor-graph.ts`
+- `backend/src/modules/agents/supervisor/supervisor-prompt.ts`
+- `backend/src/modules/agents/supervisor/agent-builders.ts`
 - `backend/src/modules/agents/supervisor/index.ts`
-- Tests correspondientes
+- `backend/src/__tests__/unit/agents/supervisor/supervisor-prompt.test.ts`
+- `backend/src/__tests__/langsmith/supervisor-routing.ts`
 
 ---
 
-## 7. Riesgos y Mitigaciones
+## 9. Archivos a Modificar
 
-| Riesgo | Probabilidad | Impacto | Mitigación |
-|--------|--------------|---------|------------|
-| LLM genera planes inválidos | Media | Alto | Validación Zod + retry |
-| Latencia alta en planning | Media | Medio | Haiku model + heuristics |
-| Over-planning simple queries | Media | Bajo | Heuristic classifier |
-| Agents no disponibles en plan | Baja | Alto | Validar contra registry |
+- `backend/src/app.ts` (initialize supervisor at startup)
+- `backend/src/services/websocket/ChatMessageHandler.ts` (use supervisor graph)
 
 ---
 
-## 8. Estimación
+## 10. Estimación
 
-- **Desarrollo**: 5-6 días
+- **Desarrollo**: 3-4 días
 - **Testing**: 2-3 días
-- **Prompts tuning**: 2 días
-- **Total**: 9-11 días
+- **Integration**: 1-2 días
+- **Total**: 6-9 días
 
 ---
 
-## 9. Changelog
+## 11. Changelog
 
 | Fecha | Versión | Cambios |
 |-------|---------|---------|
-| 2026-01-21 | 1.0 | Draft inicial |
-
+| 2026-02-02 | 1.0 | Initial draft with createSupervisor() |

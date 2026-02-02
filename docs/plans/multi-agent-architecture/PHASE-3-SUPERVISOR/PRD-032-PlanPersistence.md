@@ -1,718 +1,455 @@
-# PRD-032: Plan Persistence
+# PRD-032: Persistence with PostgresSaver
 
 **Estado**: Draft
 **Prioridad**: Media
-**Dependencias**: PRD-030 (Planner Agent), PRD-031 (Plan Executor)
-**Bloquea**: Ninguno (puede implementarse en paralelo con Fase 4)
+**Dependencias**: PRD-030 (Supervisor Integration)
+**Bloquea**: Ninguno
 
 ---
 
 ## 1. Objetivo
 
-Implementar persistencia de planes para:
-- Histórico de ejecuciones para auditoría
-- Analytics de uso de agentes
-- Debugging post-mortem de fallos
-- Replay de planes exitosos
+Implementar persistencia del grafo usando `PostgresSaver` checkpointer:
+- Persistencia automática de estado de conversación
+- Soporte para resume después de interrupciones
+- Analytics agregados de uso de agentes
 
 ---
 
-## 2. Contexto
+## 2. Arquitectura
 
-### 2.1 Requisitos de Negocio
-
-1. **Auditoría**: Saber qué planes se ejecutaron y sus resultados
-2. **Analytics**: Métricas de uso por agente, tasas de éxito/fallo
-3. **Debugging**: Investigar fallos con contexto completo
-4. **Billing**: Tracking de tokens por plan/step
-
-### 2.2 Decisión Arquitectónica
-
-**Elegido**: Persistir planes en SQL (no solo EventStore)
-
-**Razones**:
-- Queries complejas (joins, agregaciones)
-- Relación clara con sessions
-- Soporte para soft-delete/retention
-
----
-
-## 3. Diseño de Base de Datos
-
-### 3.1 Nuevas Tablas
-
-```sql
--- execution_plans: Tabla principal de planes
-CREATE TABLE execution_plans (
-    id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
-    session_id UNIQUEIDENTIFIER NOT NULL,
-    query NVARCHAR(MAX) NOT NULL,
-    status NVARCHAR(20) NOT NULL CHECK (status IN ('planning', 'executing', 'completed', 'failed', 'cancelled')),
-    summary NVARCHAR(MAX),
-    failure_reason NVARCHAR(MAX),
-    total_steps INT NOT NULL,
-    completed_steps INT NOT NULL DEFAULT 0,
-    failed_steps INT NOT NULL DEFAULT 0,
-    total_input_tokens INT NOT NULL DEFAULT 0,
-    total_output_tokens INT NOT NULL DEFAULT 0,
-    created_at DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
-    updated_at DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
-    completed_at DATETIME2,
-
-    CONSTRAINT FK_execution_plans_sessions FOREIGN KEY (session_id)
-        REFERENCES sessions(id) ON DELETE CASCADE
-);
-
--- plan_steps: Steps individuales del plan
-CREATE TABLE plan_steps (
-    id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
-    plan_id UNIQUEIDENTIFIER NOT NULL,
-    step_index INT NOT NULL,
-    agent_id NVARCHAR(100) NOT NULL,
-    task NVARCHAR(MAX) NOT NULL,
-    expected_output NVARCHAR(50),
-    status NVARCHAR(20) NOT NULL CHECK (status IN ('pending', 'in_progress', 'completed', 'failed', 'skipped')),
-    result NVARCHAR(MAX),
-    error NVARCHAR(MAX),
-    input_tokens INT NOT NULL DEFAULT 0,
-    output_tokens INT NOT NULL DEFAULT 0,
-    started_at DATETIME2,
-    completed_at DATETIME2,
-    created_at DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
-
-    CONSTRAINT FK_plan_steps_plans FOREIGN KEY (plan_id)
-        REFERENCES execution_plans(id) ON DELETE CASCADE,
-    CONSTRAINT UQ_plan_step_index UNIQUE (plan_id, step_index)
-);
-
--- plan_handoffs: Handoffs entre agentes
-CREATE TABLE plan_handoffs (
-    id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
-    plan_id UNIQUEIDENTIFIER NOT NULL,
-    step_id UNIQUEIDENTIFIER,
-    from_agent_id NVARCHAR(100) NOT NULL,
-    to_agent_id NVARCHAR(100) NOT NULL,
-    reason NVARCHAR(50) NOT NULL,
-    explanation NVARCHAR(MAX),
-    timestamp DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
-
-    CONSTRAINT FK_plan_handoffs_plans FOREIGN KEY (plan_id)
-        REFERENCES execution_plans(id) ON DELETE CASCADE,
-    CONSTRAINT FK_plan_handoffs_steps FOREIGN KEY (step_id)
-        REFERENCES plan_steps(id) ON DELETE NO ACTION
-);
-
--- Indexes
-CREATE INDEX IX_execution_plans_session ON execution_plans(session_id);
-CREATE INDEX IX_execution_plans_status ON execution_plans(status);
-CREATE INDEX IX_execution_plans_created ON execution_plans(created_at DESC);
-CREATE INDEX IX_plan_steps_plan ON plan_steps(plan_id);
-CREATE INDEX IX_plan_steps_agent ON plan_steps(agent_id);
-CREATE INDEX IX_plan_handoffs_plan ON plan_handoffs(plan_id);
 ```
-
-### 3.2 Migration Script
-
-```typescript
-// migrations/YYYYMMDD_create_plan_tables.ts
-import { executeQuery } from '@/infrastructure/database/database';
-
-export async function up(): Promise<void> {
-  await executeQuery(`
-    -- Create execution_plans table
-    IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'execution_plans')
-    BEGIN
-      CREATE TABLE execution_plans (
-        id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
-        session_id UNIQUEIDENTIFIER NOT NULL,
-        query NVARCHAR(MAX) NOT NULL,
-        status NVARCHAR(20) NOT NULL,
-        summary NVARCHAR(MAX),
-        failure_reason NVARCHAR(MAX),
-        total_steps INT NOT NULL,
-        completed_steps INT NOT NULL DEFAULT 0,
-        failed_steps INT NOT NULL DEFAULT 0,
-        total_input_tokens INT NOT NULL DEFAULT 0,
-        total_output_tokens INT NOT NULL DEFAULT 0,
-        created_at DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
-        updated_at DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
-        completed_at DATETIME2,
-        CONSTRAINT FK_execution_plans_sessions FOREIGN KEY (session_id)
-          REFERENCES sessions(id) ON DELETE CASCADE
-      );
-    END
-  `);
-
-  await executeQuery(`
-    -- Create plan_steps table
-    IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'plan_steps')
-    BEGIN
-      CREATE TABLE plan_steps (
-        id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
-        plan_id UNIQUEIDENTIFIER NOT NULL,
-        step_index INT NOT NULL,
-        agent_id NVARCHAR(100) NOT NULL,
-        task NVARCHAR(MAX) NOT NULL,
-        expected_output NVARCHAR(50),
-        status NVARCHAR(20) NOT NULL,
-        result NVARCHAR(MAX),
-        error NVARCHAR(MAX),
-        input_tokens INT NOT NULL DEFAULT 0,
-        output_tokens INT NOT NULL DEFAULT 0,
-        started_at DATETIME2,
-        completed_at DATETIME2,
-        created_at DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
-        CONSTRAINT FK_plan_steps_plans FOREIGN KEY (plan_id)
-          REFERENCES execution_plans(id) ON DELETE CASCADE
-      );
-    END
-  `);
-
-  await executeQuery(`
-    -- Create plan_handoffs table
-    IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'plan_handoffs')
-    BEGIN
-      CREATE TABLE plan_handoffs (
-        id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
-        plan_id UNIQUEIDENTIFIER NOT NULL,
-        step_id UNIQUEIDENTIFIER,
-        from_agent_id NVARCHAR(100) NOT NULL,
-        to_agent_id NVARCHAR(100) NOT NULL,
-        reason NVARCHAR(50) NOT NULL,
-        explanation NVARCHAR(MAX),
-        timestamp DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
-        CONSTRAINT FK_plan_handoffs_plans FOREIGN KEY (plan_id)
-          REFERENCES execution_plans(id) ON DELETE CASCADE
-      );
-    END
-  `);
-
-  // Create indexes
-  await executeQuery(`
-    IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_execution_plans_session')
-      CREATE INDEX IX_execution_plans_session ON execution_plans(session_id);
-  `);
-}
-
-export async function down(): Promise<void> {
-  await executeQuery('DROP TABLE IF EXISTS plan_handoffs');
-  await executeQuery('DROP TABLE IF EXISTS plan_steps');
-  await executeQuery('DROP TABLE IF EXISTS execution_plans');
-}
+┌─────────────────────────────────────────────────┐
+│              Supervisor Graph                   │
+│                                                 │
+│  invoke() ─────► state changes ─────► events   │
+│                       │                         │
+└───────────────────────┼─────────────────────────┘
+                        │
+                        ▼
+┌─────────────────────────────────────────────────┐
+│           PostgresSaver Checkpointer            │
+│                                                 │
+│  - Automatic state snapshots                    │
+│  - Thread-based organization                    │
+│  - Handles all serialization                    │
+│                                                 │
+│  Tables (auto-created):                         │
+│  - checkpoints                                  │
+│  - checkpoint_writes                            │
+│  - checkpoint_blobs                             │
+└─────────────────────────────────────────────────┘
+                        │
+                        ▼
+┌─────────────────────────────────────────────────┐
+│        AgentAnalyticsService (Custom)           │
+│                                                 │
+│  - Aggregated usage metrics                     │
+│  - Agent performance stats                      │
+│  - Cost tracking                                │
+│                                                 │
+│  Table: agent_usage_analytics                   │
+└─────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 4. Diseño de Código
+## 3. PostgresSaver Setup
 
-### 4.1 Estructura de Archivos
+### 3.1 Installation
 
-```
-backend/src/domains/plans/
-├── PlanRepository.ts           # CRUD operations
-├── PlanPersistenceService.ts   # Orchestrates persistence
-├── types.ts                    # Types for persistence
-└── index.ts
+```bash
+npm install @langchain/langgraph-checkpoint-postgres
 ```
 
-### 4.2 PlanRepository
+### 3.2 Configuration
 
 ```typescript
-// PlanRepository.ts
-import { executeQuery, SqlParams } from '@/infrastructure/database/database';
-import { createChildLogger } from '@/shared/utils/logger';
-import type { PlanState, PlanStep } from '@/modules/agents/orchestrator/state/PlanState';
-import type { HandoffRecord } from '@/modules/agents/orchestrator/state/HandoffRecord';
+// infrastructure/checkpointer.ts
+import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
+import { createChildLogger } from "@/shared/utils/logger";
 
-export interface PersistedPlan {
-  id: string;
-  sessionId: string;
-  query: string;
-  status: string;
-  summary?: string;
-  failureReason?: string;
-  totalSteps: number;
-  completedSteps: number;
-  failedSteps: number;
-  totalInputTokens: number;
-  totalOutputTokens: number;
-  createdAt: Date;
-  updatedAt: Date;
-  completedAt?: Date;
-}
+const logger = createChildLogger({ service: "Checkpointer" });
 
-export interface PersistedPlanStep {
-  id: string;
-  planId: string;
-  stepIndex: number;
-  agentId: string;
-  task: string;
-  expectedOutput?: string;
-  status: string;
-  result?: string;
-  error?: string;
-  inputTokens: number;
-  outputTokens: number;
-  startedAt?: Date;
-  completedAt?: Date;
-}
-
-export class PlanRepository {
-  private logger = createChildLogger({ service: 'PlanRepository' });
-
-  /**
-   * Create a new plan record
-   */
-  async createPlan(
-    sessionId: string,
-    plan: PlanState
-  ): Promise<string> {
-    const params: SqlParams = {
-      id: plan.planId,
-      sessionId,
-      query: plan.query,
-      status: plan.status,
-      summary: plan.summary ?? null,
-      totalSteps: plan.steps.length,
-    };
-
-    await executeQuery(`
-      INSERT INTO execution_plans (id, session_id, query, status, summary, total_steps)
-      VALUES (@id, @sessionId, @query, @status, @summary, @totalSteps)
-    `, params);
-
-    // Insert steps
-    for (const step of plan.steps) {
-      await this.createStep(plan.planId, step);
-    }
-
-    this.logger.info({ planId: plan.planId, sessionId, stepCount: plan.steps.length }, 'Plan created');
-
-    return plan.planId;
-  }
-
-  /**
-   * Create a step record
-   */
-  async createStep(planId: string, step: PlanStep): Promise<void> {
-    const params: SqlParams = {
-      id: step.stepId,
-      planId,
-      stepIndex: step.stepIndex,
-      agentId: step.agentId,
-      task: step.task,
-      expectedOutput: step.expectedOutput ?? null,
-      status: step.status,
-    };
-
-    await executeQuery(`
-      INSERT INTO plan_steps (id, plan_id, step_index, agent_id, task, expected_output, status)
-      VALUES (@id, @planId, @stepIndex, @agentId, @task, @expectedOutput, @status)
-    `, params);
-  }
-
-  /**
-   * Update step status and result
-   */
-  async updateStep(
-    stepId: string,
-    updates: {
-      status?: string;
-      result?: string;
-      error?: string;
-      inputTokens?: number;
-      outputTokens?: number;
-      startedAt?: Date;
-      completedAt?: Date;
-    }
-  ): Promise<void> {
-    const setClauses: string[] = ['updated_at = GETUTCDATE()'];
-    const params: SqlParams = { stepId };
-
-    if (updates.status !== undefined) {
-      setClauses.push('status = @status');
-      params.status = updates.status;
-    }
-    if (updates.result !== undefined) {
-      setClauses.push('result = @result');
-      params.result = updates.result;
-    }
-    if (updates.error !== undefined) {
-      setClauses.push('error = @error');
-      params.error = updates.error;
-    }
-    if (updates.inputTokens !== undefined) {
-      setClauses.push('input_tokens = @inputTokens');
-      params.inputTokens = updates.inputTokens;
-    }
-    if (updates.outputTokens !== undefined) {
-      setClauses.push('output_tokens = @outputTokens');
-      params.outputTokens = updates.outputTokens;
-    }
-    if (updates.startedAt !== undefined) {
-      setClauses.push('started_at = @startedAt');
-      params.startedAt = updates.startedAt;
-    }
-    if (updates.completedAt !== undefined) {
-      setClauses.push('completed_at = @completedAt');
-      params.completedAt = updates.completedAt;
-    }
-
-    await executeQuery(`
-      UPDATE plan_steps SET ${setClauses.join(', ')} WHERE id = @stepId
-    `, params);
-  }
-
-  /**
-   * Update plan status
-   */
-  async updatePlanStatus(
-    planId: string,
-    status: string,
-    updates?: {
-      summary?: string;
-      failureReason?: string;
-      completedSteps?: number;
-      failedSteps?: number;
-      totalInputTokens?: number;
-      totalOutputTokens?: number;
-    }
-  ): Promise<void> {
-    const setClauses: string[] = ['status = @status', 'updated_at = GETUTCDATE()'];
-    const params: SqlParams = { planId, status };
-
-    if (status === 'completed' || status === 'failed' || status === 'cancelled') {
-      setClauses.push('completed_at = GETUTCDATE()');
-    }
-
-    if (updates?.summary !== undefined) {
-      setClauses.push('summary = @summary');
-      params.summary = updates.summary;
-    }
-    if (updates?.failureReason !== undefined) {
-      setClauses.push('failure_reason = @failureReason');
-      params.failureReason = updates.failureReason;
-    }
-    if (updates?.completedSteps !== undefined) {
-      setClauses.push('completed_steps = @completedSteps');
-      params.completedSteps = updates.completedSteps;
-    }
-    if (updates?.failedSteps !== undefined) {
-      setClauses.push('failed_steps = @failedSteps');
-      params.failedSteps = updates.failedSteps;
-    }
-    if (updates?.totalInputTokens !== undefined) {
-      setClauses.push('total_input_tokens = @totalInputTokens');
-      params.totalInputTokens = updates.totalInputTokens;
-    }
-    if (updates?.totalOutputTokens !== undefined) {
-      setClauses.push('total_output_tokens = @totalOutputTokens');
-      params.totalOutputTokens = updates.totalOutputTokens;
-    }
-
-    await executeQuery(`
-      UPDATE execution_plans SET ${setClauses.join(', ')} WHERE id = @planId
-    `, params);
-  }
-
-  /**
-   * Record a handoff
-   */
-  async createHandoff(planId: string, handoff: HandoffRecord): Promise<void> {
-    const params: SqlParams = {
-      id: handoff.handoffId,
-      planId,
-      stepId: handoff.planStepId ?? null,
-      fromAgentId: handoff.fromAgentId,
-      toAgentId: handoff.toAgentId,
-      reason: handoff.reason,
-      explanation: handoff.explanation ?? null,
-      timestamp: new Date(handoff.timestamp),
-    };
-
-    await executeQuery(`
-      INSERT INTO plan_handoffs (id, plan_id, step_id, from_agent_id, to_agent_id, reason, explanation, timestamp)
-      VALUES (@id, @planId, @stepId, @fromAgentId, @toAgentId, @reason, @explanation, @timestamp)
-    `, params);
-  }
-
-  /**
-   * Get plan by ID
-   */
-  async getById(planId: string): Promise<PersistedPlan | null> {
-    const result = await executeQuery<PersistedPlan>(`
-      SELECT
-        id, session_id as sessionId, query, status, summary,
-        failure_reason as failureReason, total_steps as totalSteps,
-        completed_steps as completedSteps, failed_steps as failedSteps,
-        total_input_tokens as totalInputTokens, total_output_tokens as totalOutputTokens,
-        created_at as createdAt, updated_at as updatedAt, completed_at as completedAt
-      FROM execution_plans
-      WHERE id = @planId
-    `, { planId });
-
-    return result[0] ?? null;
-  }
-
-  /**
-   * Get plans by session
-   */
-  async getBySession(
-    sessionId: string,
-    limit = 20,
-    offset = 0
-  ): Promise<PersistedPlan[]> {
-    return executeQuery<PersistedPlan>(`
-      SELECT
-        id, session_id as sessionId, query, status, summary,
-        failure_reason as failureReason, total_steps as totalSteps,
-        completed_steps as completedSteps, failed_steps as failedSteps,
-        total_input_tokens as totalInputTokens, total_output_tokens as totalOutputTokens,
-        created_at as createdAt, updated_at as updatedAt, completed_at as completedAt
-      FROM execution_plans
-      WHERE session_id = @sessionId
-      ORDER BY created_at DESC
-      OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY
-    `, { sessionId, limit, offset });
-  }
-
-  /**
-   * Get steps for a plan
-   */
-  async getSteps(planId: string): Promise<PersistedPlanStep[]> {
-    return executeQuery<PersistedPlanStep>(`
-      SELECT
-        id, plan_id as planId, step_index as stepIndex, agent_id as agentId,
-        task, expected_output as expectedOutput, status, result, error,
-        input_tokens as inputTokens, output_tokens as outputTokens,
-        started_at as startedAt, completed_at as completedAt
-      FROM plan_steps
-      WHERE plan_id = @planId
-      ORDER BY step_index
-    `, { planId });
-  }
-}
-
-// Singleton
-let instance: PlanRepository | null = null;
-
-export function getPlanRepository(): PlanRepository {
-  if (!instance) {
-    instance = new PlanRepository();
-  }
-  return instance;
-}
-```
-
-### 4.3 PlanPersistenceService
-
-```typescript
-// PlanPersistenceService.ts
-import { getPlanRepository, type PlanRepository } from './PlanRepository';
-import { createChildLogger } from '@/shared/utils/logger';
-import type { PlanState, PlanStep } from '@/modules/agents/orchestrator/state/PlanState';
-import type { HandoffRecord } from '@/modules/agents/orchestrator/state/HandoffRecord';
+let checkpointer: PostgresSaver | null = null;
 
 /**
- * Orchestrates plan persistence operations
+ * Initialize PostgresSaver checkpointer
+ *
+ * Creates tables automatically on first use:
+ * - checkpoints
+ * - checkpoint_writes
+ * - checkpoint_blobs
  */
-export class PlanPersistenceService {
-  private repository: PlanRepository;
-  private logger = createChildLogger({ service: 'PlanPersistenceService' });
-
-  constructor(repository?: PlanRepository) {
-    this.repository = repository ?? getPlanRepository();
+export async function initializeCheckpointer(): Promise<PostgresSaver> {
+  if (checkpointer) {
+    return checkpointer;
   }
 
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) {
+    throw new Error("DATABASE_URL not configured");
+  }
+
+  checkpointer = PostgresSaver.fromConnString(connectionString);
+
+  // Setup creates tables if they don't exist
+  await checkpointer.setup();
+
+  logger.info("PostgresSaver checkpointer initialized");
+
+  return checkpointer;
+}
+
+/**
+ * Get initialized checkpointer instance
+ */
+export function getCheckpointer(): PostgresSaver {
+  if (!checkpointer) {
+    throw new Error("Checkpointer not initialized. Call initializeCheckpointer() first.");
+  }
+  return checkpointer;
+}
+```
+
+### 3.3 Using with Supervisor
+
+```typescript
+// supervisor-graph.ts
+import { getCheckpointer } from "@/infrastructure/checkpointer";
+import { createSupervisor } from "@langchain/langgraph/prebuilt";
+
+export async function compileSupervisorGraph() {
+  const supervisor = await buildSupervisorGraph();
+  const checkpointer = getCheckpointer();
+
+  return supervisor.compile({
+    checkpointer,
+  });
+}
+```
+
+---
+
+## 4. Agent Analytics (Custom)
+
+While PostgresSaver handles conversation state, we need custom analytics for:
+- Agent usage frequency
+- Token consumption by agent
+- Success/failure rates
+- Response latency
+
+### 4.1 Analytics Table
+
+```sql
+-- agent_usage_analytics: Aggregated metrics
+CREATE TABLE agent_usage_analytics (
+    id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+    date DATE NOT NULL,
+    agent_id NVARCHAR(100) NOT NULL,
+
+    -- Counts
+    invocation_count INT NOT NULL DEFAULT 0,
+    success_count INT NOT NULL DEFAULT 0,
+    error_count INT NOT NULL DEFAULT 0,
+
+    -- Tokens
+    total_input_tokens BIGINT NOT NULL DEFAULT 0,
+    total_output_tokens BIGINT NOT NULL DEFAULT 0,
+
+    -- Latency (ms)
+    total_latency_ms BIGINT NOT NULL DEFAULT 0,
+    min_latency_ms INT,
+    max_latency_ms INT,
+
+    -- Metadata
+    created_at DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+    updated_at DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+
+    CONSTRAINT UQ_agent_usage_date UNIQUE (date, agent_id)
+);
+
+CREATE INDEX IX_agent_usage_date ON agent_usage_analytics(date);
+CREATE INDEX IX_agent_usage_agent ON agent_usage_analytics(agent_id);
+```
+
+### 4.2 AgentAnalyticsService
+
+```typescript
+// domains/analytics/AgentAnalyticsService.ts
+import { executeQuery, SqlParams } from "@/infrastructure/database/database";
+import { createChildLogger } from "@/shared/utils/logger";
+
+const logger = createChildLogger({ service: "AgentAnalyticsService" });
+
+export interface AgentInvocationMetrics {
+  agentId: string;
+  success: boolean;
+  inputTokens: number;
+  outputTokens: number;
+  latencyMs: number;
+}
+
+export interface AgentUsageSummary {
+  agentId: string;
+  invocationCount: number;
+  successRate: number;
+  avgLatencyMs: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+}
+
+export class AgentAnalyticsService {
+  private logger = createChildLogger({ service: "AgentAnalyticsService" });
+
   /**
-   * Persist a new plan (called when supervisor generates plan)
+   * Record agent invocation metrics
    */
-  async persistPlan(sessionId: string, plan: PlanState): Promise<void> {
+  async recordInvocation(metrics: AgentInvocationMetrics): Promise<void> {
+    const today = new Date().toISOString().split("T")[0];
+
+    const params: SqlParams = {
+      date: today,
+      agentId: metrics.agentId,
+      successIncrement: metrics.success ? 1 : 0,
+      errorIncrement: metrics.success ? 0 : 1,
+      inputTokens: metrics.inputTokens,
+      outputTokens: metrics.outputTokens,
+      latencyMs: metrics.latencyMs,
+    };
+
     try {
-      await this.repository.createPlan(sessionId, plan);
-      this.logger.info({ planId: plan.planId, sessionId }, 'Plan persisted');
+      // Upsert: update if exists, insert if not
+      await executeQuery(`
+        MERGE agent_usage_analytics AS target
+        USING (SELECT @date AS date, @agentId AS agent_id) AS source
+        ON target.date = source.date AND target.agent_id = source.agent_id
+        WHEN MATCHED THEN
+          UPDATE SET
+            invocation_count = invocation_count + 1,
+            success_count = success_count + @successIncrement,
+            error_count = error_count + @errorIncrement,
+            total_input_tokens = total_input_tokens + @inputTokens,
+            total_output_tokens = total_output_tokens + @outputTokens,
+            total_latency_ms = total_latency_ms + @latencyMs,
+            min_latency_ms = CASE
+              WHEN min_latency_ms IS NULL OR @latencyMs < min_latency_ms
+              THEN @latencyMs ELSE min_latency_ms END,
+            max_latency_ms = CASE
+              WHEN max_latency_ms IS NULL OR @latencyMs > max_latency_ms
+              THEN @latencyMs ELSE max_latency_ms END,
+            updated_at = GETUTCDATE()
+        WHEN NOT MATCHED THEN
+          INSERT (date, agent_id, invocation_count, success_count, error_count,
+                  total_input_tokens, total_output_tokens, total_latency_ms,
+                  min_latency_ms, max_latency_ms)
+          VALUES (@date, @agentId, 1, @successIncrement, @errorIncrement,
+                  @inputTokens, @outputTokens, @latencyMs, @latencyMs, @latencyMs);
+      `, params);
     } catch (error) {
-      this.logger.error({ error, planId: plan.planId }, 'Failed to persist plan');
-      // Don't throw - persistence failure shouldn't block execution
+      // Log but don't throw - analytics shouldn't block main flow
+      this.logger.warn({ error, metrics }, "Failed to record analytics");
     }
   }
 
   /**
-   * Update step status (called during execution)
+   * Get usage summary for all agents in date range
    */
-  async updateStepStatus(
-    stepId: string,
-    status: string,
-    result?: string,
-    error?: string,
-    tokens?: { input: number; output: number }
-  ): Promise<void> {
-    try {
-      await this.repository.updateStep(stepId, {
-        status,
-        result,
-        error,
-        inputTokens: tokens?.input,
-        outputTokens: tokens?.output,
-        startedAt: status === 'in_progress' ? new Date() : undefined,
-        completedAt: ['completed', 'failed', 'skipped'].includes(status) ? new Date() : undefined,
-      });
-    } catch (err) {
-      this.logger.warn({ error: err, stepId }, 'Failed to update step status');
-    }
+  async getUsageSummary(
+    startDate: string,
+    endDate: string
+  ): Promise<AgentUsageSummary[]> {
+    const results = await executeQuery<{
+      agent_id: string;
+      invocation_count: number;
+      success_count: number;
+      total_input_tokens: number;
+      total_output_tokens: number;
+      total_latency_ms: number;
+    }>(`
+      SELECT
+        agent_id,
+        SUM(invocation_count) as invocation_count,
+        SUM(success_count) as success_count,
+        SUM(total_input_tokens) as total_input_tokens,
+        SUM(total_output_tokens) as total_output_tokens,
+        SUM(total_latency_ms) as total_latency_ms
+      FROM agent_usage_analytics
+      WHERE date >= @startDate AND date <= @endDate
+      GROUP BY agent_id
+      ORDER BY invocation_count DESC
+    `, { startDate, endDate });
+
+    return results.map(row => ({
+      agentId: row.agent_id,
+      invocationCount: row.invocation_count,
+      successRate: row.invocation_count > 0
+        ? row.success_count / row.invocation_count
+        : 0,
+      avgLatencyMs: row.invocation_count > 0
+        ? row.total_latency_ms / row.invocation_count
+        : 0,
+      totalInputTokens: row.total_input_tokens,
+      totalOutputTokens: row.total_output_tokens,
+    }));
   }
 
   /**
-   * Finalize plan (called when execution completes)
+   * Get daily usage for a specific agent
    */
-  async finalizePlan(plan: PlanState): Promise<void> {
-    try {
-      const completedSteps = plan.steps.filter(s => s.status === 'completed').length;
-      const failedSteps = plan.steps.filter(s => s.status === 'failed').length;
-
-      await this.repository.updatePlanStatus(plan.planId, plan.status, {
-        summary: plan.summary,
-        failureReason: plan.failureReason,
-        completedSteps,
-        failedSteps,
-      });
-
-      this.logger.info({
-        planId: plan.planId,
-        status: plan.status,
-        completedSteps,
-        failedSteps,
-      }, 'Plan finalized');
-    } catch (error) {
-      this.logger.error({ error, planId: plan.planId }, 'Failed to finalize plan');
-    }
-  }
-
-  /**
-   * Record handoff (called during execution)
-   */
-  async recordHandoff(planId: string, handoff: HandoffRecord): Promise<void> {
-    try {
-      await this.repository.createHandoff(planId, handoff);
-    } catch (error) {
-      this.logger.warn({ error, planId, handoffId: handoff.handoffId }, 'Failed to record handoff');
-    }
+  async getDailyUsage(
+    agentId: string,
+    days: number = 30
+  ): Promise<Array<{ date: string; count: number; tokens: number }>> {
+    return executeQuery(`
+      SELECT
+        CONVERT(VARCHAR, date, 23) as date,
+        invocation_count as count,
+        total_input_tokens + total_output_tokens as tokens
+      FROM agent_usage_analytics
+      WHERE agent_id = @agentId
+        AND date >= DATEADD(day, -@days, GETUTCDATE())
+      ORDER BY date DESC
+    `, { agentId, days });
   }
 }
 
 // Singleton
-let instance: PlanPersistenceService | null = null;
+let analyticsService: AgentAnalyticsService | null = null;
 
-export function getPlanPersistenceService(): PlanPersistenceService {
-  if (!instance) {
-    instance = new PlanPersistenceService();
+export function getAgentAnalyticsService(): AgentAnalyticsService {
+  if (!analyticsService) {
+    analyticsService = new AgentAnalyticsService();
   }
-  return instance;
+  return analyticsService;
 }
 ```
 
----
-
-## 5. Integration
-
-### 5.1 Update PlanExecutor
+### 4.3 Integration with Supervisor
 
 ```typescript
-// In PlanExecutor.ts - add persistence calls
+// Record metrics via LangSmith callbacks
+import { getAgentAnalyticsService } from "@/domains/analytics";
 
-import { getPlanPersistenceService } from '@/domains/plans';
+const graph = await compileSupervisorGraph();
 
-// In execute() method:
-// After plan generation:
-await getPlanPersistenceService().persistPlan(state.context.sessionId, plan);
+const result = await graph.invoke(input, {
+  configurable: { thread_id: sessionId },
+  callbacks: [{
+    handleLLMEnd: (output, runId, parentRunId, tags) => {
+      // Extract agent ID from tags or parent run
+      const agentId = tags?.find(t => t.startsWith("agent:"))?.split(":")[1];
 
-// After each step:
-await getPlanPersistenceService().updateStepStatus(step.stepId, step.status, step.result, step.error);
-
-// After each handoff:
-await getPlanPersistenceService().recordHandoff(plan.planId, handoff);
-
-// At end:
-await getPlanPersistenceService().finalizePlan(plan);
-```
-
----
-
-## 6. Analytics Queries
-
-```sql
--- Plans per day
-SELECT
-    CAST(created_at AS DATE) as date,
-    COUNT(*) as total_plans,
-    SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
-    SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed
-FROM execution_plans
-GROUP BY CAST(created_at AS DATE)
-ORDER BY date DESC;
-
--- Agent usage
-SELECT
-    agent_id,
-    COUNT(*) as total_steps,
-    SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
-    AVG(CAST(output_tokens AS FLOAT)) as avg_tokens
-FROM plan_steps
-GROUP BY agent_id
-ORDER BY total_steps DESC;
-
--- Handoff patterns
-SELECT
-    from_agent_id,
-    to_agent_id,
-    reason,
-    COUNT(*) as count
-FROM plan_handoffs
-GROUP BY from_agent_id, to_agent_id, reason
-ORDER BY count DESC;
-```
-
----
-
-## 7. Tests Requeridos
-
-```typescript
-describe('PlanRepository', () => {
-  it('creates plan with steps');
-  it('updates step status');
-  it('updates plan status');
-  it('records handoffs');
-  it('retrieves plan by ID');
-  it('retrieves plans by session');
-});
-
-describe('PlanPersistenceService', () => {
-  it('persists plan on creation');
-  it('updates step during execution');
-  it('finalizes plan on completion');
-  it('handles persistence errors gracefully');
+      if (agentId) {
+        getAgentAnalyticsService().recordInvocation({
+          agentId,
+          success: true,
+          inputTokens: output.llmOutput?.tokenUsage?.promptTokens ?? 0,
+          outputTokens: output.llmOutput?.tokenUsage?.completionTokens ?? 0,
+          latencyMs: Date.now() - startTime,
+        });
+      }
+    },
+  }],
 });
 ```
 
 ---
 
-## 8. Criterios de Aceptación
+## 5. API Endpoints
 
-- [ ] Plans persisted to SQL
-- [ ] Steps tracked with tokens
-- [ ] Handoffs recorded
-- [ ] Analytics queries work
-- [ ] Persistence failures don't block execution
-- [ ] Migration runs successfully
-- [ ] `npm run verify:types` pasa
+```typescript
+// routes/analytics.ts
+import { Router } from "express";
+import { getAgentAnalyticsService } from "@/domains/analytics";
+import { authenticateMicrosoft } from "@/domains/auth";
+
+const router = Router();
+
+/**
+ * GET /api/analytics/agents
+ *
+ * Get agent usage summary for date range
+ */
+router.get("/agents", authenticateMicrosoft, async (req, res) => {
+  const { startDate, endDate } = req.query;
+
+  const service = getAgentAnalyticsService();
+  const summary = await service.getUsageSummary(
+    startDate as string,
+    endDate as string
+  );
+
+  res.json({ summary });
+});
+
+/**
+ * GET /api/analytics/agents/:id/daily
+ *
+ * Get daily usage for specific agent
+ */
+router.get("/agents/:id/daily", authenticateMicrosoft, async (req, res) => {
+  const { id } = req.params;
+  const { days = 30 } = req.query;
+
+  const service = getAgentAnalyticsService();
+  const usage = await service.getDailyUsage(id, Number(days));
+
+  res.json({ agentId: id, usage });
+});
+
+export default router;
+```
+
+---
+
+## 6. Tests Requeridos
+
+```typescript
+describe("AgentAnalyticsService", () => {
+  it("records invocation metrics");
+  it("aggregates by date correctly");
+  it("calculates success rate");
+  it("handles concurrent updates");
+  it("doesn't throw on record failure");
+});
+
+describe("PostgresSaver Integration", () => {
+  it("persists conversation state");
+  it("resumes from checkpoint");
+  it("handles interrupt/resume");
+});
+```
+
+---
+
+## 7. Criterios de Aceptación
+
+- [ ] PostgresSaver initializes and creates tables
+- [ ] Conversation state persists across restarts
+- [ ] Analytics table records invocations
+- [ ] Usage summary API works correctly
+- [ ] Analytics failures don't block main flow
+- [ ] `npm run verify:types` pasa sin errores
+
+---
+
+## 8. Archivos a Crear
+
+- `backend/src/infrastructure/checkpointer.ts`
+- `backend/src/domains/analytics/AgentAnalyticsService.ts`
+- `backend/src/domains/analytics/index.ts`
+- `backend/src/routes/analytics.ts`
+- `backend/migrations/YYYYMMDD_create_agent_analytics.ts`
 
 ---
 
 ## 9. Estimación
 
-- **Desarrollo**: 3-4 días
+- **PostgresSaver setup**: 1 día
+- **Analytics service**: 2-3 días
+- **API endpoints**: 1 día
 - **Testing**: 1-2 días
-- **Migration**: 1 día
 - **Total**: 5-7 días
 
 ---
@@ -721,5 +458,4 @@ describe('PlanPersistenceService', () => {
 
 | Fecha | Versión | Cambios |
 |-------|---------|---------|
-| 2026-01-21 | 1.0 | Draft inicial |
-
+| 2026-02-02 | 1.0 | Initial draft with PostgresSaver + analytics |

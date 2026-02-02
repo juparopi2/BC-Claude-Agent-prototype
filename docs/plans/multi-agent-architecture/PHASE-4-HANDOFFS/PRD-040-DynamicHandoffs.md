@@ -1,571 +1,323 @@
-# PRD-040: Dynamic Handoffs
+# PRD-040: Dynamic Handoffs with Command Pattern
 
 **Estado**: Draft
 **Prioridad**: Media
-**Dependencias**: PRD-031 (Plan Executor), PRD-020 (Extended State)
+**Dependencias**: PRD-030 (Supervisor Integration)
 **Bloquea**: Fase 5 (Graphing Agent)
 
 ---
 
 ## 1. Objetivo
 
-Implementar handoffs dinámicos que permitan:
-- Agentes delegando a otros agentes durante ejecución
+Implementar handoffs dinámicos entre agentes usando el `Command` pattern nativo de LangGraph:
+- Agentes pueden delegar a otros agentes durante ejecución
 - Re-routing basado en resultados parciales
-- Escalación a supervisor cuando hay problemas
-- Handoffs iniciados por el usuario (cambio de agente)
+- User-initiated agent switching
 
 ---
 
-## 2. Contexto
+## 2. Command Pattern
 
-### 2.1 Tipos de Handoffs
+LangGraph provee `Command` para control de flujo dinámico:
 
-| Tipo | Iniciador | Ejemplo |
-|------|-----------|---------|
-| **Plan Step** | Supervisor | Plan dice: BC-Agent → RAG-Agent |
-| **Capability Match** | Agente | BC-Agent no tiene tool, delega a RAG |
-| **User Request** | Usuario | Usuario selecciona otro agente |
-| **Error Recovery** | Sistema | Agente falla, escalación a supervisor |
-| **Clarification** | Agente | Necesita info adicional |
+```typescript
+import { Command } from "@langchain/langgraph";
 
-### 2.2 Estado Actual
-
-El sistema actual no permite handoffs durante ejecución - el router decide una vez al inicio.
+// Dentro de cualquier nodo del grafo
+return new Command({
+  goto: "target-agent-id",  // Destino
+  update: {                  // Estado a pasar
+    messages: state.messages,
+    context: extractedContext,
+  },
+});
+```
 
 ---
 
-## 3. Diseño Propuesto
+## 3. Tipos de Handoffs
 
-### 3.1 Estructura de Archivos
+| Tipo | Iniciador | Mecanismo |
+|------|-----------|-----------|
+| **Supervisor Routing** | Supervisor | `createSupervisor()` automático |
+| **Agent-to-Agent** | Agente | `Command(goto=...)` |
+| **User Selection** | Usuario | Update state + route |
+
+---
+
+## 4. Implementación
+
+### 4.1 Estructura de Archivos
 
 ```
 backend/src/modules/agents/handoffs/
-├── HandoffManager.ts           # Main handoff coordinator
-├── HandoffValidator.ts         # Validate handoff requests
-├── HandoffCommand.ts           # Command pattern for handoffs
-├── strategies/
-│   ├── PlanStepHandoff.ts      # Handoffs from plan execution
-│   ├── CapabilityHandoff.ts    # Capability-based routing
-│   ├── UserRequestHandoff.ts   # User-initiated handoffs
-│   └── ErrorRecoveryHandoff.ts # Error recovery handoffs
+├── handoff-tools.ts        # Handoff tool for agents
+├── user-handoff.ts         # User-initiated handoffs
 └── index.ts
 ```
 
-### 3.2 Handoff Command
+### 4.2 Handoff Tool para Agentes
 
 ```typescript
-// HandoffCommand.ts
-import { randomUUID } from 'crypto';
-import type { HandoffReason, HandoffRecord } from '@/modules/agents/orchestrator/state/HandoffRecord';
+// handoff-tools.ts
+import { Command } from "@langchain/langgraph";
+import { tool } from "@langchain/core/tools";
+import { z } from "zod";
+import { getAgentRegistry } from "@/modules/agents/core/registry";
 
 /**
- * Command object for requesting a handoff
- *
- * Used by agents to signal they want to delegate to another agent.
- * Follows Command pattern for clear intent and validation.
+ * Create a handoff tool that allows agents to delegate to other agents
  */
-export interface HandoffCommand {
-  /** Type discriminator */
-  type: 'handoff';
+export function createHandoffTool() {
+  return tool(
+    async ({ targetAgent, reason, context }) => {
+      const registry = getAgentRegistry();
 
-  /** Target agent ID */
-  targetAgentId: string;
+      // Validate target agent exists
+      if (!registry.has(targetAgent)) {
+        return `Cannot handoff: agent '${targetAgent}' not found`;
+      }
 
-  /** Reason for handoff */
-  reason: HandoffReason;
+      const agent = registry.get(targetAgent)!;
+      if (agent.isSystemAgent) {
+        return `Cannot handoff to system agent '${targetAgent}'`;
+      }
 
-  /** Human-readable explanation */
-  explanation: string;
+      // Return Command to route to target agent
+      return new Command({
+        goto: targetAgent,
+        update: {
+          handoffReason: reason,
+          handoffContext: context,
+        },
+      });
+    },
+    {
+      name: "transfer_to_agent",
+      description: `Transfer the conversation to another specialized agent.
+Use this when:
+- The current request is better handled by a different specialist
+- You need capabilities you don't have
+- The user explicitly asks for a different agent
 
-  /** Context to pass to target agent */
-  payload?: Record<string, unknown>;
-
-  /** Optional: specific task for target agent */
-  task?: string;
-
-  /** Whether to return control after target completes */
-  returnControl?: boolean;
-}
-
-/**
- * Create a handoff command
- */
-export function createHandoffCommand(
-  targetAgentId: string,
-  reason: HandoffReason,
-  explanation: string,
-  options?: {
-    payload?: Record<string, unknown>;
-    task?: string;
-    returnControl?: boolean;
-  }
-): HandoffCommand {
-  return {
-    type: 'handoff',
-    targetAgentId,
-    reason,
-    explanation,
-    payload: options?.payload,
-    task: options?.task,
-    returnControl: options?.returnControl ?? false,
-  };
-}
-
-/**
- * Check if an object is a handoff command
- */
-export function isHandoffCommand(obj: unknown): obj is HandoffCommand {
-  return (
-    typeof obj === 'object' &&
-    obj !== null &&
-    (obj as HandoffCommand).type === 'handoff' &&
-    typeof (obj as HandoffCommand).targetAgentId === 'string'
+Available agents:
+${getAgentRegistry().getWorkerAgents().map(a =>
+  `- ${a.id}: ${a.description}`
+).join("\n")}`,
+      schema: z.object({
+        targetAgent: z.string().describe("ID of the agent to transfer to"),
+        reason: z.string().describe("Brief explanation of why transferring"),
+        context: z.string().optional().describe("Additional context for target agent"),
+      }),
+    }
   );
 }
+```
+
+### 4.3 Agents con Handoff Capability
+
+```typescript
+// Añadir handoff tool a agentes
+import { createReactAgent } from "@langchain/langgraph/prebuilt";
+import { createHandoffTool } from "@/modules/agents/handoffs";
+
+const bcAgent = createReactAgent({
+  llm: model,
+  tools: [
+    ...bcTools,
+    createHandoffTool(), // Permite delegar a otros agentes
+  ],
+  name: "bc-agent",
+  prompt: bcSystemPrompt,
+});
+```
+
+### 4.4 User-Initiated Handoffs
+
+```typescript
+// user-handoff.ts
+import { getAgentRegistry } from "@/modules/agents/core/registry";
+import { ExtendedAgentState } from "@/modules/agents/orchestrator/state";
 
 /**
- * Convert command to record for persistence
+ * Handle user selection of a different agent
  */
-export function commandToRecord(
-  command: HandoffCommand,
-  fromAgentId: string,
-  planStepId?: string
-): HandoffRecord {
+export function processUserAgentSelection(
+  targetAgentId: string,
+  currentState: ExtendedAgentState
+): Partial<ExtendedAgentState> {
+  const registry = getAgentRegistry();
+  const targetAgent = registry.get(targetAgentId);
+
+  if (!targetAgent) {
+    throw new Error(`Unknown agent: ${targetAgentId}`);
+  }
+
+  if (!targetAgent.isUserSelectable) {
+    throw new Error(`Agent ${targetAgentId} is not user-selectable`);
+  }
+
   return {
-    handoffId: randomUUID().toUpperCase(),
-    fromAgentId,
-    toAgentId: command.targetAgentId,
-    reason: command.reason,
-    explanation: command.explanation,
-    payload: command.payload,
-    planStepId,
-    timestamp: new Date().toISOString(),
+    currentAgentIdentity: {
+      agentId: targetAgent.id,
+      agentName: targetAgent.name,
+      agentIcon: targetAgent.icon,
+      agentColor: targetAgent.color,
+    },
   };
 }
 ```
 
-### 3.3 Handoff Manager
+### 4.5 WebSocket Handler
 
 ```typescript
-// HandoffManager.ts
-import { getAgentRegistry } from '@/modules/agents/core/registry';
-import { HandoffValidator } from './HandoffValidator';
-import { createChildLogger } from '@/shared/utils/logger';
-import type { HandoffCommand } from './HandoffCommand';
-import type { ExtendedAgentState } from '@/modules/agents/orchestrator/state';
-import type { HandoffRecord } from '@/modules/agents/orchestrator/state/HandoffRecord';
+// In ChatMessageHandler.ts
+import { processUserAgentSelection } from "@/modules/agents/handoffs";
 
-export interface HandoffResult {
-  /** Whether handoff was accepted */
-  accepted: boolean;
+socket.on("select_agent", async ({ sessionId, agentId }) => {
+  try {
+    // Validate user owns session
+    await validateSessionOwnership(socket.userId, sessionId);
 
-  /** The handoff record (if accepted) */
-  record?: HandoffRecord;
+    // Process agent selection
+    const stateUpdate = processUserAgentSelection(agentId, currentState);
 
-  /** Reason for rejection (if rejected) */
-  rejectionReason?: string;
-
-  /** Updated state with new agent identity */
-  updatedState?: Partial<ExtendedAgentState>;
-}
-
-/**
- * Manages handoffs between agents
- */
-export class HandoffManager {
-  private validator: HandoffValidator;
-  private logger = createChildLogger({ service: 'HandoffManager' });
-
-  constructor() {
-    this.validator = new HandoffValidator();
-  }
-
-  /**
-   * Process a handoff request from an agent
-   */
-  async processHandoff(
-    command: HandoffCommand,
-    currentState: ExtendedAgentState
-  ): Promise<HandoffResult> {
-    const fromAgentId = currentState.activeAgent;
-
-    // Validate handoff
-    const validation = this.validator.validate(command, currentState);
-    if (!validation.valid) {
-      this.logger.warn({
-        from: fromAgentId,
-        to: command.targetAgentId,
-        reason: validation.reason,
-      }, 'Handoff rejected');
-
-      return {
-        accepted: false,
-        rejectionReason: validation.reason,
-      };
-    }
-
-    // Get target agent info
-    const registry = getAgentRegistry();
-    const targetAgent = registry.get(command.targetAgentId);
-
-    if (!targetAgent) {
-      return {
-        accepted: false,
-        rejectionReason: `Unknown agent: ${command.targetAgentId}`,
-      };
-    }
-
-    // Create handoff record
-    const record: HandoffRecord = {
-      handoffId: require('crypto').randomUUID().toUpperCase(),
-      fromAgentId,
-      toAgentId: command.targetAgentId,
-      reason: command.reason,
-      explanation: command.explanation,
-      payload: command.payload,
-      planStepId: currentState.plan?.steps[currentState.plan.currentStepIndex]?.stepId,
-      timestamp: new Date().toISOString(),
-    };
-
-    this.logger.info({
-      handoffId: record.handoffId,
-      from: fromAgentId,
-      to: command.targetAgentId,
-      reason: command.reason,
-    }, 'Handoff accepted');
-
-    // Build updated state
-    const updatedState: Partial<ExtendedAgentState> = {
-      activeAgent: command.targetAgentId,
-      currentAgentIdentity: {
-        agentId: targetAgent.id,
-        agentName: targetAgent.name,
-        agentIcon: targetAgent.icon,
-        agentColor: targetAgent.color,
-      },
-      handoffHistory: [...currentState.handoffHistory, record],
-    };
-
-    return {
-      accepted: true,
-      record,
-      updatedState,
-    };
-  }
-
-  /**
-   * Process user-initiated agent change
-   */
-  async processUserAgentSelection(
-    targetAgentId: string,
-    currentState: ExtendedAgentState
-  ): Promise<HandoffResult> {
-    const registry = getAgentRegistry();
-    const targetAgent = registry.get(targetAgentId);
-
-    if (!targetAgent) {
-      return {
-        accepted: false,
-        rejectionReason: `Unknown agent: ${targetAgentId}`,
-      };
-    }
-
-    if (!targetAgent.isUserSelectable) {
-      return {
-        accepted: false,
-        rejectionReason: `Agent ${targetAgentId} is not user-selectable`,
-      };
-    }
-
-    const record: HandoffRecord = {
-      handoffId: require('crypto').randomUUID().toUpperCase(),
-      fromAgentId: currentState.activeAgent,
-      toAgentId: targetAgentId,
-      reason: 'user_request',
-      explanation: 'User selected different agent',
-      timestamp: new Date().toISOString(),
-    };
-
-    return {
-      accepted: true,
-      record,
-      updatedState: {
-        activeAgent: targetAgentId,
-        operationMode: 'directed',
-        directedModeContext: {
-          targetAgentId,
-          bypassRouting: true,
-        },
-        currentAgentIdentity: {
-          agentId: targetAgent.id,
-          agentName: targetAgent.name,
-          agentIcon: targetAgent.icon,
-          agentColor: targetAgent.color,
-        },
-        handoffHistory: [...currentState.handoffHistory, record],
-      },
-    };
-  }
-}
-
-// Singleton
-let instance: HandoffManager | null = null;
-
-export function getHandoffManager(): HandoffManager {
-  if (!instance) {
-    instance = new HandoffManager();
-  }
-  return instance;
-}
-```
-
-### 3.4 Handoff Validator
-
-```typescript
-// HandoffValidator.ts
-import { getAgentRegistry } from '@/modules/agents/core/registry';
-import type { HandoffCommand } from './HandoffCommand';
-import type { ExtendedAgentState } from '@/modules/agents/orchestrator/state';
-
-export interface ValidationResult {
-  valid: boolean;
-  reason?: string;
-}
-
-/**
- * Validates handoff requests
- */
-export class HandoffValidator {
-  /**
-   * Validate a handoff command
-   */
-  validate(
-    command: HandoffCommand,
-    state: ExtendedAgentState
-  ): ValidationResult {
-    const registry = getAgentRegistry();
-
-    // Check target agent exists
-    const targetAgent = registry.get(command.targetAgentId);
-    if (!targetAgent) {
-      return {
-        valid: false,
-        reason: `Target agent '${command.targetAgentId}' not found`,
-      };
-    }
-
-    // Check not handing off to self
-    if (command.targetAgentId === state.activeAgent) {
-      return {
-        valid: false,
-        reason: 'Cannot handoff to self',
-      };
-    }
-
-    // Check not handing off to system-only agent (unless from supervisor)
-    if (targetAgent.isSystemAgent && state.activeAgent !== 'supervisor') {
-      return {
-        valid: false,
-        reason: `Cannot handoff to system agent '${command.targetAgentId}'`,
-      };
-    }
-
-    // Check handoff depth (prevent infinite loops)
-    const recentHandoffs = state.handoffHistory.slice(-5);
-    const handoffLoop = recentHandoffs.filter(
-      h => h.toAgentId === command.targetAgentId
-    ).length >= 2;
-
-    if (handoffLoop) {
-      return {
-        valid: false,
-        reason: 'Potential handoff loop detected',
-      };
-    }
-
-    // Check if target has required capabilities (for capability_match reason)
-    if (command.reason === 'capability_match' && command.payload?.requiredCapability) {
-      const capability = command.payload.requiredCapability as string;
-      if (!targetAgent.capabilities.includes(capability as any)) {
-        return {
-          valid: false,
-          reason: `Target agent doesn't have capability: ${capability}`,
-        };
-      }
-    }
-
-    return { valid: true };
-  }
-}
-```
-
-### 3.5 Agent Integration
-
-```typescript
-// Example: How an agent can request a handoff
-
-import { createHandoffCommand, isHandoffCommand } from '@/modules/agents/handoffs';
-
-// In agent node:
-async function bcAgentNode(state: ExtendedAgentState): Promise<Partial<ExtendedAgentState>> {
-  // ... agent logic ...
-
-  // If agent determines it can't handle the request:
-  if (needsDocumentSearch(state)) {
-    const handoffCommand = createHandoffCommand(
-      'rag-agent',
-      'capability_match',
-      'Query requires document search which BC Agent cannot perform',
-      {
-        payload: {
-          searchQuery: extractSearchQuery(state),
-          requiredCapability: 'rag_search',
-        },
-        returnControl: true,
-      }
+    // Update state and emit confirmation
+    await graph.updateState(
+      { configurable: { thread_id: sessionId } },
+      stateUpdate
     );
 
-    // Return command as tool result for graph to process
-    return {
-      toolExecutions: [{
-        toolUseId: 'handoff-request',
-        toolName: '__handoff__',
-        toolInput: handoffCommand,
-        toolOutput: JSON.stringify(handoffCommand),
-        success: true,
-        timestamp: new Date().toISOString(),
-      }],
-    };
+    socket.emit("agent_changed", {
+      sessionId,
+      currentAgent: stateUpdate.currentAgentIdentity,
+    });
+  } catch (error) {
+    socket.emit("error", { message: error.message });
   }
-
-  // Normal response
-  return { /* ... */ };
-}
-```
-
-### 3.6 Graph Integration
-
-```typescript
-// handoffRouter.ts - Conditional edge function
-
-import { isHandoffCommand } from '@/modules/agents/handoffs';
-import { getHandoffManager } from '@/modules/agents/handoffs';
-import type { ExtendedAgentState } from '@/modules/agents/orchestrator/state';
-
-/**
- * Route based on handoff commands in state
- */
-export function routeHandoffs(state: ExtendedAgentState): string {
-  // Check for handoff command in tool executions
-  const handoffExec = state.toolExecutions.find(
-    t => t.toolName === '__handoff__'
-  );
-
-  if (handoffExec && isHandoffCommand(handoffExec.toolInput)) {
-    return 'process_handoff';
-  }
-
-  // Check if plan has more steps
-  if (state.plan && state.plan.currentStepIndex < state.plan.steps.length - 1) {
-    return 'next_step';
-  }
-
-  // Done
-  return 'complete';
-}
-
-/**
- * Process handoff node
- */
-export async function processHandoffNode(
-  state: ExtendedAgentState
-): Promise<Partial<ExtendedAgentState>> {
-  const handoffExec = state.toolExecutions.find(
-    t => t.toolName === '__handoff__'
-  );
-
-  if (!handoffExec || !isHandoffCommand(handoffExec.toolInput)) {
-    throw new Error('No handoff command found');
-  }
-
-  const manager = getHandoffManager();
-  const result = await manager.processHandoff(handoffExec.toolInput, state);
-
-  if (!result.accepted) {
-    // Handoff rejected - return to supervisor
-    return {
-      activeAgent: 'supervisor',
-      // Add error message
-    };
-  }
-
-  return result.updatedState!;
-}
-```
-
----
-
-## 4. WebSocket Events
-
-```typescript
-// Eventos ya definidos en PRD-020 y PRD-031
-// - agent_handoff: Emitido cuando ocurre un handoff
-// - agent_changed: Emitido cuando el agente activo cambia
-```
-
----
-
-## 5. Tests Requeridos
-
-```typescript
-describe('HandoffManager', () => {
-  it('accepts valid handoff');
-  it('rejects handoff to unknown agent');
-  it('rejects handoff to self');
-  it('rejects handoff loop');
-  it('processes user agent selection');
-});
-
-describe('HandoffValidator', () => {
-  it('validates target agent exists');
-  it('validates capability match');
-  it('detects handoff loops');
-});
-
-describe('HandoffCommand', () => {
-  it('creates valid command');
-  it('converts to record');
-  it('identifies command objects');
 });
 ```
 
 ---
 
-## 6. Criterios de Aceptación
+## 5. Swarm Pattern (Optional)
 
-- [ ] Agent-initiated handoffs work
-- [ ] User-initiated handoffs work
-- [ ] Handoff validation prevents loops
-- [ ] Handoff history tracked
-- [ ] Events emitted correctly
-- [ ] Graph routing works
-- [ ] `npm run verify:types` pasa
+Para agentes que se comunican directamente entre sí sin supervisor:
+
+```typescript
+import { createSwarm } from "@langchain/langgraph/prebuilt";
+
+// Cada agente tiene herramientas para handoff
+const bcAgent = createReactAgent({
+  llm: model,
+  tools: [...bcTools, createHandoffTool()],
+  name: "bc-agent",
+});
+
+const ragAgent = createReactAgent({
+  llm: model,
+  tools: [...ragTools, createHandoffTool()],
+  name: "rag-agent",
+});
+
+// Swarm permite comunicación peer-to-peer
+const swarm = createSwarm({
+  agents: [bcAgent, ragAgent],
+  defaultActiveAgent: "bc-agent",
+});
+
+const graph = swarm.compile({ checkpointer });
+```
 
 ---
 
-## 7. Estimación
+## 6. Events
 
-- **Desarrollo**: 4-5 días
-- **Testing**: 2-3 días
-- **Integration**: 2 días
-- **Total**: 8-10 días
+### 6.1 Agent Handoff Event
+
+```typescript
+// Emitido cuando ocurre un handoff
+interface AgentHandoffEvent {
+  type: "agent_handoff";
+  sessionId: string;
+  eventId: string;
+  timestamp: string;
+  fromAgent: AgentIdentity;
+  toAgent: AgentIdentity;
+  reason?: string;
+}
+```
+
+### 6.2 Emitting Handoff Events
+
+```typescript
+// Via LangSmith callbacks
+callbacks: [{
+  handleChainEnd: (outputs, runId, parentRunId, tags) => {
+    // Check if output is a Command
+    if (outputs?.goto) {
+      emitHandoffEvent({
+        fromAgent: currentAgentIdentity,
+        toAgent: getAgentIdentity(outputs.goto),
+        reason: outputs.update?.handoffReason,
+      });
+    }
+  },
+}]
+```
 
 ---
 
-## 8. Changelog
+## 7. Tests Requeridos
+
+```typescript
+describe("createHandoffTool", () => {
+  it("returns Command with correct target");
+  it("validates target agent exists");
+  it("rejects handoff to system agents");
+  it("includes reason and context in Command");
+});
+
+describe("processUserAgentSelection", () => {
+  it("returns updated agent identity");
+  it("throws for unknown agent");
+  it("throws for non-selectable agent");
+});
+```
+
+---
+
+## 8. Criterios de Aceptación
+
+- [ ] Agents can delegate via handoff tool
+- [ ] Users can select different agent
+- [ ] Command pattern routes correctly
+- [ ] Handoff events emitted
+- [ ] State preserved during handoffs
+- [ ] `npm run verify:types` pasa sin errores
+
+---
+
+## 9. Archivos a Crear
+
+- `backend/src/modules/agents/handoffs/handoff-tools.ts`
+- `backend/src/modules/agents/handoffs/user-handoff.ts`
+- `backend/src/modules/agents/handoffs/index.ts`
+- `backend/src/__tests__/unit/agents/handoffs/handoff-tools.test.ts`
+
+---
+
+## 10. Estimación
+
+- **Desarrollo**: 2-3 días
+- **Testing**: 1-2 días
+- **Integration**: 1 día
+- **Total**: 4-6 días
+
+---
+
+## 11. Changelog
 
 | Fecha | Versión | Cambios |
 |-------|---------|---------|
-| 2026-01-21 | 1.0 | Draft inicial |
-
+| 2026-02-02 | 1.0 | Initial draft with Command pattern |

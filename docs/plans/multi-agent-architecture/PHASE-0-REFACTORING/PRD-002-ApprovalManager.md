@@ -1,342 +1,377 @@
-# PRD-002: ApprovalManager Refactoring
+# PRD-002: Human-in-the-Loop with interrupt()
 
 **Estado**: Draft
-**Prioridad**: Alta
-**Dependencias**: Ninguna
-**Bloquea**: PRD-005 (MessageQueue)
+**Prioridad**: Media
+**Dependencias**: PRD-030 (Supervisor Integration)
+**Bloquea**: Ninguno
 
 ---
 
 ## 1. Objetivo
 
-Descomponer `ApprovalManager.ts` (1,133 líneas) en módulos especializados, separando:
-- Gestión de estado de aprobaciones (in-memory promises)
-- Persistencia (DB + EventStore)
-- Generación de summaries
-- Validación de ownership
-- Emisión de eventos WebSocket
+Implementar flujos Human-in-the-Loop usando `interrupt()` nativo de LangGraph para operaciones que requieren aprobación humana.
 
 ---
 
-## 2. Contexto
+## 2. Arquitectura
 
-### 2.1 Estado Actual
-
-`backend/src/domains/approval/ApprovalManager.ts` maneja:
-
-| Responsabilidad | Métodos | Líneas Aprox. |
-|-----------------|---------|---------------|
-| Request workflow | `request()` | ~150 |
-| Response handling | `respondToApproval()`, `respondToApprovalAtomic()` | ~250 |
-| Ownership validation | `validateApprovalOwnership()` | ~150 |
-| Change summary generation | `generateChangeSummary()` | ~100 |
-| Priority/action type | `calculatePriority()`, `getActionType()` | ~50 |
-| Expiration handling | `expireApprovalWithEvent()`, `expireOldApprovals()`, `startExpirationJob()` | ~100 |
-| Pending state management | Map<approvalId, PendingApproval> | ~50 |
-
-### 2.2 Problemas Actuales
-
-1. **Alto acoplamiento**: Socket.IO, DB, EventStore, logic todo junto
-2. **Testing complejo**: Requiere mock de IO, DB, EventStore, timers
-3. **Lógica duplicada**: Patrones de EventStore y emit repetidos
-4. **Estado in-memory**: `pendingApprovals` Map difícil de testear
+```
+User Request
+    │
+    ▼
+┌─────────────────────────────┐
+│     Supervisor Graph        │
+│                             │
+│  ┌─────────────────────┐   │
+│  │  Agent executes     │   │
+│  │  ...                │   │
+│  │  if (sensitive) {   │   │
+│  │    interrupt()  ────┼───┼──► Pausa y guarda estado
+│  │  }                  │   │
+│  └─────────────────────┘   │
+└─────────────────────────────┘
+              │
+              ▼
+       Client shows UI
+              │
+              ▼
+       User approves/rejects
+              │
+              ▼
+┌─────────────────────────────┐
+│   graph.invoke(decision)    │◄── Resume con decisión
+│   interrupt() returns       │
+│   execution continues       │
+└─────────────────────────────┘
+```
 
 ---
 
-## 3. Diseño Propuesto
+## 3. Implementación
 
-### 3.1 Estructura de Módulos
+### 3.1 Básico: Pausar para Aprobación
 
-```
-backend/src/domains/approval/
-├── ApprovalManager.ts           # Facade/Coordinator - ~150 líneas
-├── state/
-│   └── PendingApprovalStore.ts  # In-memory promise management - ~100 líneas
-├── persistence/
-│   ├── ApprovalRepository.ts    # DB operations - ~150 líneas
-│   └── ApprovalEventEmitter.ts  # EventStore + WebSocket - ~150 líneas
-├── validation/
-│   └── ApprovalOwnershipValidator.ts # Ownership checks - ~100 líneas
-├── summary/
-│   └── ChangeSummaryGenerator.ts    # Summary generation - ~150 líneas
-├── expiration/
-│   └── ApprovalExpirationService.ts # Expiration handling - ~100 líneas
-├── types.ts                     # Types compartidos (ya existe)
-└── index.ts                     # Exports públicos
-```
-
-### 3.2 Responsabilidades por Módulo
-
-#### PendingApprovalStore.ts (~100 líneas)
 ```typescript
-interface PendingApproval {
-  resolve: (approved: boolean) => void;
-  reject: (error: Error) => void;
-  timeout: NodeJS.Timeout;
-  sessionId: string;
-  createdAt: Date;
+import { interrupt } from "@langchain/langgraph";
+
+const sensitiveToolNode = async (state) => {
+  // Verificar si requiere aprobación
+  if (isSensitiveOperation(state.toolCall)) {
+    // Pausar ejecución - estado se guarda en checkpointer
+    const approved = interrupt({
+      type: "approval_request",
+      toolName: state.toolCall.name,
+      args: state.toolCall.args,
+      summary: generateSummary(state.toolCall),
+      expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+    });
+
+    // approved contiene la respuesta del usuario
+    if (!approved) {
+      return {
+        messages: [new AIMessage("Operation cancelled by user.")],
+      };
+    }
+
+    // Si el usuario modificó los args
+    if (approved.modifiedArgs) {
+      state.toolCall.args = approved.modifiedArgs;
+    }
+  }
+
+  // Ejecutar operación
+  return await executeTool(state.toolCall);
+};
+```
+
+### 3.2 Flujo Completo
+
+```typescript
+import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
+
+// Compilar grafo con checkpointer (requerido para interrupt)
+const checkpointer = PostgresSaver.fromConnString(process.env.DATABASE_URL);
+const graph = workflow.compile({ checkpointer });
+
+// Paso 1: Usuario envía request
+const config = { configurable: { thread_id: sessionId } };
+const result1 = await graph.invoke(
+  { messages: [new HumanMessage("Create invoice for customer ABC")] },
+  config
+);
+
+// Si hay interrupción, result1 contiene __interrupt__
+if (result1.__interrupt__) {
+  const interruptData = result1.__interrupt__;
+
+  // Paso 2: Enviar al frontend
+  socket.emit("approval_request", {
+    sessionId,
+    ...interruptData,
+  });
+
+  // Paso 3: Usuario decide (async)
+  // ... esperar respuesta del usuario ...
 }
 
-export class PendingApprovalStore {
-  private pending: Map<string, PendingApproval> = new Map();
+// Paso 4: Resumir con decisión del usuario
+const userDecision = {
+  approved: true,
+  // O modifiedArgs si el usuario editó
+};
 
-  add(approvalId: string, handlers: PendingApproval): void;
-  get(approvalId: string): PendingApproval | undefined;
-  remove(approvalId: string): boolean;
-  has(approvalId: string): boolean;
-  resolveAndRemove(approvalId: string, approved: boolean): boolean;
-  rejectAndRemove(approvalId: string, error: Error): boolean;
-  getAll(): Map<string, PendingApproval>;
-  clear(): void; // For testing
+const result2 = await graph.invoke(
+  userDecision, // Este valor se retorna de interrupt()
+  config // Mismo thread_id para resumir
+);
+```
+
+### 3.3 WebSocket Handler
+
+```typescript
+// Backend: Manejar respuesta de aprobación
+socket.on("approval_response", async ({ sessionId, approved, modifiedArgs, reason }) => {
+  try {
+    // Validar ownership
+    await validateSessionOwnership(socket.userId, sessionId);
+
+    // Construir decisión
+    const decision = approved
+      ? { approved: true, modifiedArgs }
+      : { approved: false, reason };
+
+    // Resumir grafo
+    const result = await graph.invoke(
+      decision,
+      { configurable: { thread_id: sessionId } }
+    );
+
+    // Enviar resultado
+    socket.emit("message", {
+      sessionId,
+      content: result.messages[result.messages.length - 1].content,
+    });
+  } catch (error) {
+    socket.emit("error", { message: error.message });
+  }
+});
+```
+
+---
+
+## 4. Operaciones Sensibles
+
+### 4.1 Definir qué Requiere Aprobación
+
+```typescript
+const SENSITIVE_OPERATIONS = [
+  "create_invoice",
+  "update_customer",
+  "delete_order",
+  "post_journal_entry",
+  "send_email",
+];
+
+function isSensitiveOperation(toolCall: ToolCall): boolean {
+  return SENSITIVE_OPERATIONS.includes(toolCall.name);
 }
 ```
 
-#### ApprovalRepository.ts (~150 líneas)
+### 4.2 Wrapper para Tools Sensibles
+
 ```typescript
-export class ApprovalRepository {
-  async create(data: CreateApprovalData): Promise<string>;
-  async findById(approvalId: string): Promise<ApprovalRecord | null>;
-  async findPendingBySession(sessionId: string): Promise<ApprovalRecord[]>;
-  async updateStatus(
-    approvalId: string,
-    status: ApprovalStatus,
-    decidedBy?: string,
-    reason?: string
-  ): Promise<void>;
-  async expireOldPending(): Promise<number>;
-  async findWithSessionOwnership(approvalId: string): Promise<ApprovalWithOwnership | null>;
+import { interrupt } from "@langchain/langgraph";
+import { tool } from "@langchain/core/tools";
+
+function wrapWithApproval<T extends StructuredToolInterface>(
+  originalTool: T,
+  generateSummary: (args: unknown) => string
+): T {
+  return {
+    ...originalTool,
+    func: async (args) => {
+      const approved = interrupt({
+        type: "approval_request",
+        toolName: originalTool.name,
+        args,
+        summary: generateSummary(args),
+      });
+
+      if (!approved) {
+        return "Operation cancelled by user";
+      }
+
+      return originalTool.func(approved.modifiedArgs ?? args);
+    },
+  };
 }
+
+// Uso
+const safeCreateInvoice = wrapWithApproval(
+  createInvoiceTool,
+  (args) => `Create invoice for ${args.customerId} - Amount: ${args.amount}`
+);
 ```
 
-#### ApprovalEventEmitter.ts (~150 líneas)
-```typescript
-export class ApprovalEventEmitter {
-  constructor(
-    private io: SocketServer,
-    private eventStore: EventStore
+---
+
+## 5. Frontend Integration
+
+### 5.1 React Component
+
+```tsx
+interface ApprovalRequest {
+  toolName: string;
+  args: Record<string, unknown>;
+  summary: string;
+  expiresAt: string;
+}
+
+function ApprovalDialog({ request, onRespond }: {
+  request: ApprovalRequest;
+  onRespond: (approved: boolean, modifiedArgs?: Record<string, unknown>) => void;
+}) {
+  const [editedArgs, setEditedArgs] = useState(request.args);
+
+  return (
+    <Dialog open>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Approval Required</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <p>{request.summary}</p>
+
+          <div className="bg-muted p-4 rounded">
+            <pre>{JSON.stringify(editedArgs, null, 2)}</pre>
+          </div>
+
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => onRespond(false)}
+            >
+              Reject
+            </Button>
+            <Button
+              onClick={() => onRespond(true, editedArgs)}
+            >
+              Approve
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
-
-  // Persist to EventStore + emit via WebSocket
-  async emitApprovalRequested(
-    sessionId: string,
-    data: ApprovalRequestedData
-  ): Promise<PersistedEvent>;
-
-  async emitApprovalResolved(
-    sessionId: string,
-    data: ApprovalResolvedData
-  ): Promise<PersistedEvent>;
-
-  async emitApprovalExpired(
-    sessionId: string,
-    approvalId: string
-  ): Promise<PersistedEvent>;
 }
 ```
 
-#### ApprovalOwnershipValidator.ts (~100 líneas)
+### 5.2 Zustand Store
+
 ```typescript
-export class ApprovalOwnershipValidator {
-  constructor(private repository: ApprovalRepository);
-
-  // Non-atomic validation (for read operations)
-  async validate(approvalId: string, userId: string): Promise<ApprovalOwnershipResult>;
-
-  // Atomic validation with row lock (for write operations)
-  async validateAndLock(
-    transaction: Transaction,
-    approvalId: string,
-    userId: string
-  ): Promise<AtomicValidationResult>;
+interface ApprovalStore {
+  pendingApproval: ApprovalRequest | null;
+  setPendingApproval: (approval: ApprovalRequest | null) => void;
+  respond: (approved: boolean, modifiedArgs?: Record<string, unknown>) => void;
 }
-```
 
-#### ChangeSummaryGenerator.ts (~150 líneas)
-```typescript
-export class ChangeSummaryGenerator {
-  // Tool-specific summary generation
-  generate(toolName: string, args: Record<string, unknown>): ChangeSummary;
+const useApprovalStore = create<ApprovalStore>((set, get) => ({
+  pendingApproval: null,
 
-  // Priority calculation
-  calculatePriority(toolName: string): ApprovalPriority;
+  setPendingApproval: (approval) => set({ pendingApproval: approval }),
 
-  // Action type mapping
-  getActionType(toolName: string): 'create' | 'update' | 'delete' | 'custom';
-}
-```
+  respond: async (approved, modifiedArgs) => {
+    const { pendingApproval } = get();
+    if (!pendingApproval) return;
 
-#### ApprovalExpirationService.ts (~100 líneas)
-```typescript
-export class ApprovalExpirationService {
-  constructor(
-    private store: PendingApprovalStore,
-    private repository: ApprovalRepository,
-    private eventEmitter: ApprovalEventEmitter
-  );
+    socket.emit("approval_response", {
+      sessionId: currentSessionId,
+      approved,
+      modifiedArgs,
+    });
 
-  // Expire single approval (called by timeout)
-  async expireApproval(approvalId: string, sessionId: string): Promise<void>;
-
-  // Background job to expire old approvals in DB
-  startExpirationJob(intervalMs: number): void;
-  stopExpirationJob(): void;
-}
-```
-
-#### ApprovalManager.ts (Coordinator - ~150 líneas)
-```typescript
-export class ApprovalManager {
-  private static instance: ApprovalManager | null = null;
-
-  constructor(
-    private store: PendingApprovalStore,
-    private repository: ApprovalRepository,
-    private eventEmitter: ApprovalEventEmitter,
-    private validator: ApprovalOwnershipValidator,
-    private summaryGenerator: ChangeSummaryGenerator,
-    private expirationService: ApprovalExpirationService
-  );
-
-  // Main API (unchanged signatures)
-  async request(options: CreateApprovalOptions): Promise<boolean>;
-  async respondToApproval(approvalId: string, decision: 'approved' | 'rejected', userId: string, reason?: string): Promise<void>;
-  async respondToApprovalAtomic(approvalId: string, decision: 'approved' | 'rejected', userId: string, reason?: string): Promise<AtomicApprovalResponseResult>;
-  async getPendingApprovals(sessionId: string): Promise<ApprovalRequest[]>;
-  async validateApprovalOwnership(approvalId: string, userId: string): Promise<ApprovalOwnershipResult>;
-}
+    set({ pendingApproval: null });
+  },
+}));
 ```
 
 ---
 
-## 4. Plan de Migración (Strangler Fig Pattern)
+## 6. Tests
 
-### Paso 1: Crear PendingApprovalStore (TDD)
-1. Escribir tests unitarios
-2. Implementar PendingApprovalStore
-3. NO modificar ApprovalManager aún
-
-### Paso 2: Crear ApprovalRepository (TDD)
-1. Escribir tests unitarios
-2. Implementar ApprovalRepository
-3. Verificar tests pasan
-
-### Paso 3: Crear ApprovalEventEmitter (TDD)
-1. Escribir tests unitarios con mock de Socket.IO
-2. Implementar ApprovalEventEmitter
-3. Probar degraded mode cuando EventStore falla
-
-### Paso 4: Crear módulos auxiliares (TDD)
-1. ChangeSummaryGenerator
-2. ApprovalOwnershipValidator
-3. ApprovalExpirationService
-
-### Paso 5: Migrar ApprovalManager a Coordinator
-1. Inyectar dependencias via constructor
-2. Delegar a módulos especializados
-3. Tests existentes deben seguir pasando
-
-### Paso 6: Cleanup
-1. Eliminar código duplicado
-2. Actualizar imports en consumidores
-3. Documentar nueva arquitectura
-
----
-
-## 5. Tests Requeridos (TDD)
-
-### 5.1 PendingApprovalStore Tests
 ```typescript
-describe('PendingApprovalStore', () => {
-  it('adds and retrieves pending approval');
-  it('removes pending approval');
-  it('resolves and removes approval');
-  it('returns undefined for non-existent approval');
-  it('clears timeout when removed');
-});
-```
+describe("interrupt() flow", () => {
+  it("pauses execution for approval", async () => {
+    const result = await graph.invoke(
+      { messages: [new HumanMessage("Create invoice")] },
+      { configurable: { thread_id: "test-1" } }
+    );
 
-### 5.2 ApprovalRepository Tests
-```typescript
-describe('ApprovalRepository', () => {
-  it('creates approval with all fields');
-  it('finds approval by ID');
-  it('finds pending approvals for session');
-  it('updates status to approved');
-  it('updates status to rejected with reason');
-  it('expires old pending approvals');
-});
-```
+    expect(result.__interrupt__).toBeDefined();
+    expect(result.__interrupt__.type).toBe("approval_request");
+  });
 
-### 5.3 ApprovalEventEmitter Tests
-```typescript
-describe('ApprovalEventEmitter', () => {
-  it('persists to EventStore and emits to socket');
-  it('continues in degraded mode when EventStore fails');
-  it('includes sequenceNumber when EventStore succeeds');
-  it('emits to correct session room');
-});
-```
+  it("resumes with approval", async () => {
+    // First invoke - triggers interrupt
+    await graph.invoke(input, config);
 
-### 5.4 ApprovalOwnershipValidator Tests
-```typescript
-describe('ApprovalOwnershipValidator', () => {
-  it('returns isOwner:true when user owns session');
-  it('returns isOwner:false when user does not own session');
-  it('returns error:APPROVAL_NOT_FOUND when approval missing');
-  it('returns error:SESSION_NOT_FOUND when session deleted');
-  it('normalizes UUIDs for case-insensitive comparison');
+    // Resume with approval
+    const result = await graph.invoke(
+      { approved: true },
+      config
+    );
+
+    expect(result.__interrupt__).toBeUndefined();
+    expect(result.messages).toContainEqual(
+      expect.objectContaining({ content: expect.stringContaining("created") })
+    );
+  });
+
+  it("cancels on rejection", async () => {
+    await graph.invoke(input, config);
+
+    const result = await graph.invoke(
+      { approved: false, reason: "Wrong customer" },
+      config
+    );
+
+    expect(result.messages).toContainEqual(
+      expect.objectContaining({ content: expect.stringContaining("cancelled") })
+    );
+  });
 });
 ```
 
 ---
 
-## 6. Criterios de Aceptación
+## 7. Criterios de Aceptación
 
-- [ ] Cada nuevo módulo tiene < 200 líneas
-- [ ] ApprovalManager mantiene API pública idéntica
-- [ ] 100% tests existentes siguen pasando
-- [ ] Nuevos módulos tienen >= 80% coverage
-- [ ] Socket.IO emit funciona correctamente
-- [ ] EventStore degraded mode preservado
-- [ ] Atomic transactions funcionan correctamente
-- [ ] `npm run verify:types` pasa sin errores
-
----
-
-## 7. Archivos Afectados
-
-### Crear
-- `backend/src/domains/approval/state/PendingApprovalStore.ts`
-- `backend/src/domains/approval/persistence/ApprovalRepository.ts`
-- `backend/src/domains/approval/persistence/ApprovalEventEmitter.ts`
-- `backend/src/domains/approval/validation/ApprovalOwnershipValidator.ts`
-- `backend/src/domains/approval/summary/ChangeSummaryGenerator.ts`
-- `backend/src/domains/approval/expiration/ApprovalExpirationService.ts`
-- Tests correspondientes en `backend/src/__tests__/unit/approval/`
-
-### Modificar
-- `backend/src/domains/approval/ApprovalManager.ts` (refactor to coordinator)
-- `backend/src/domains/approval/index.ts` (update exports)
+- [ ] `interrupt()` pausa ejecución correctamente
+- [ ] Estado persiste en checkpointer
+- [ ] Resume funciona con thread_id
+- [ ] Frontend muestra diálogo de aprobación
+- [ ] Usuario puede aprobar/rechazar/editar
+- [ ] Expiración manejada (opcional)
+- [ ] `npm run verify:types` pasa
 
 ---
 
-## 8. Riesgos y Mitigaciones
+## 8. Archivos a Crear/Modificar
 
-| Riesgo | Probabilidad | Impacto | Mitigación |
-|--------|--------------|---------|------------|
-| Promise resolution breaks | Media | Alto | Tests exhaustivos de timeout/resolve |
-| WebSocket emit falla | Baja | Medio | Preserve exact emit patterns |
-| Atomic transaction breaks | Media | Alto | Integration tests con DB real |
-| Memory leak in store | Baja | Medio | Clear timeouts on removal |
+- `backend/src/modules/agents/approval/sensitive-tools.ts`
+- `backend/src/services/websocket/handlers/approval.handler.ts`
+- `frontend/src/domains/chat/stores/approval.store.ts`
+- `frontend/src/components/chat/ApprovalDialog.tsx`
 
 ---
 
 ## 9. Estimación
 
-- **Desarrollo**: 4-5 días
-- **Testing**: 2-3 días
-- **Code Review**: 1 día
-- **Total**: 7-9 días
+- **Backend**: 2-3 días
+- **Frontend**: 2-3 días
+- **Testing**: 1-2 días
+- **Total**: 5-8 días
 
 ---
 
@@ -344,5 +379,4 @@ describe('ApprovalOwnershipValidator', () => {
 
 | Fecha | Versión | Cambios |
 |-------|---------|---------|
-| 2026-01-21 | 1.0 | Draft inicial |
-
+| 2026-02-02 | 1.0 | Initial draft with interrupt() pattern |

@@ -822,14 +822,14 @@ router.delete(
       const cancellationHandler = getSessionCancellationHandler();
       const result: CancelSessionResult = await cancellationHandler.cancelSession(sessionId, userId);
 
-      // Emit session failed event for WebSocket clients
+      // Emit session cancelled event for WebSocket clients
       const folderEmitter = getFolderEventEmitter();
-      folderEmitter.emitSessionFailed(
+      folderEmitter.emitSessionCancelled(
         { sessionId, userId },
         {
-          error: 'Session cancelled by user',
-          completedFolders: 0,
-          failedFolders: 0,
+          completedFolders: result.completedFolders,
+          cancelledFolders: result.cancelledFolders,
+          filesRolledBack: result.filesDeleted,
         }
       );
 

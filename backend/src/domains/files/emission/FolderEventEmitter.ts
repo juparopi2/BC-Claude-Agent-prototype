@@ -28,6 +28,7 @@ import type {
   SessionStartedPayload,
   SessionCompletedPayload,
   SessionFailedPayload,
+  SessionCancelledPayload,
   FolderBatchPayload,
   FolderBatchFailedPayload,
 } from './IFolderEventEmitter';
@@ -131,6 +132,32 @@ export class FolderEventEmitter implements IFolderEventEmitter {
     this.log.warn(
       { sessionId: ctx.sessionId, error: payload.error },
       'Emitted session_failed event'
+    );
+  }
+
+  /**
+   * Emit session cancelled event
+   * Channel: folder:status
+   */
+  emitSessionCancelled(ctx: FolderEventContext, payload: SessionCancelledPayload): void {
+    this.emit(ctx, {
+      type: FOLDER_WS_EVENTS.SESSION_CANCELLED,
+      sessionId: ctx.sessionId,
+      userId: ctx.userId,
+      completedFolders: payload.completedFolders,
+      cancelledFolders: payload.cancelledFolders,
+      filesRolledBack: payload.filesRolledBack,
+      timestamp: new Date().toISOString(),
+    });
+
+    this.log.info(
+      {
+        sessionId: ctx.sessionId,
+        completedFolders: payload.completedFolders,
+        cancelledFolders: payload.cancelledFolders,
+        filesRolledBack: payload.filesRolledBack,
+      },
+      'Emitted session_cancelled event'
     );
   }
 

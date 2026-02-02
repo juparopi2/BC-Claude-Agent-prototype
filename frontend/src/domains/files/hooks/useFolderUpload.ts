@@ -681,15 +681,15 @@ export function useFolderUpload(): UseFolderUploadReturn {
     const fileApi = getFileApiClient();
     await fileApi.cancelUploadSession(sessionId);
 
-    // Update store
-    updateSession(sessionId, { status: 'failed' });
+    // Update store (optimistic update - WebSocket event will confirm)
+    updateSession(sessionId, { status: 'cancelled' });
 
-    // Clean up after a short delay
+    // Note: Session removal is handled by useFolderBatchEvents on SESSION_CANCELLED event
+    // We just clean up local tracking after a delay
     setTimeout(() => {
-      removeSession(sessionId);
       cleanupSessionTracking(sessionId);
     }, 1000);
-  }, [updateSession, removeSession, cleanupSessionTracking]);
+  }, [updateSession, cleanupSessionTracking]);
 
   return {
     uploadFolder,

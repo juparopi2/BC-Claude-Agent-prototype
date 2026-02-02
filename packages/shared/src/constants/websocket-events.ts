@@ -112,6 +112,8 @@ export const FOLDER_WS_EVENTS = {
   SESSION_COMPLETED: 'folder:session_completed',
   /** Upload session failed (too many folder failures) */
   SESSION_FAILED: 'folder:session_failed',
+  /** Upload session was cancelled by user */
+  SESSION_CANCELLED: 'folder:session_cancelled',
 
   // Folder batch-level events
   /** Started processing a folder batch */

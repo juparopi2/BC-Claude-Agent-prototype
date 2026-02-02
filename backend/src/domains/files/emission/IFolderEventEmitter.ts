@@ -50,6 +50,15 @@ export interface SessionFailedPayload {
 }
 
 /**
+ * Payload for session cancelled event
+ */
+export interface SessionCancelledPayload {
+  completedFolders: number;
+  cancelledFolders: number;
+  filesRolledBack: number;
+}
+
+/**
  * Payload for folder batch events
  */
 export interface FolderBatchPayload {
@@ -101,6 +110,17 @@ export interface IFolderEventEmitter {
    * @param payload - Failure details
    */
   emitSessionFailed(ctx: FolderEventContext, payload: SessionFailedPayload): void;
+
+  /**
+   * Emit session cancelled event.
+   * Channel: folder:status
+   *
+   * Called when user cancels the upload session.
+   *
+   * @param ctx - Event context
+   * @param payload - Cancellation details including rollback count
+   */
+  emitSessionCancelled(ctx: FolderEventContext, payload: SessionCancelledPayload): void;
 
   /**
    * Emit batch started event.

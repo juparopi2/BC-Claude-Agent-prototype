@@ -109,6 +109,8 @@ export class SessionCancellationHandler {
       this.log.warn({ sessionId }, 'Session not found for cancellation');
       return {
         sessionId,
+        completedFolders: 0,
+        cancelledFolders: 0,
         filesDeleted: 0,
         blobsDeleted: 0,
         searchDocsDeleted: 0,
@@ -130,6 +132,8 @@ export class SessionCancellationHandler {
       await this.sessionStore.delete(sessionId);
       return {
         sessionId,
+        completedFolders: session.totalFolders,
+        cancelledFolders: 0,
         filesDeleted: 0,
         blobsDeleted: 0,
         searchDocsDeleted: 0,
@@ -138,8 +142,14 @@ export class SessionCancellationHandler {
       };
     }
 
+    // Calculate folder counts
+    const completedFolders = session.folderBatches.filter(b => b.status === 'completed').length;
+    const cancelledFolders = session.totalFolders - completedFolders;
+
     const result: CancelSessionResult = {
       sessionId,
+      completedFolders,
+      cancelledFolders,
       filesDeleted: 0,
       blobsDeleted: 0, // Will be updated by async deletion worker
       searchDocsDeleted: 0, // Will be updated by async deletion worker
@@ -148,8 +158,8 @@ export class SessionCancellationHandler {
     };
 
     try {
-      // Mark session as failed first (so no new operations can start)
-      await this.sessionStore.update(sessionId, { status: 'failed' });
+      // Mark session as cancelled first (so no new operations can start)
+      await this.sessionStore.update(sessionId, { status: 'cancelled' });
 
       // Collect all file IDs from batches that have been registered
       const fileIds = this.collectRegisteredFileIds(session);

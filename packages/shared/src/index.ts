@@ -232,6 +232,7 @@ export type {
   FolderSessionStartedEvent,
   FolderSessionCompletedEvent,
   FolderSessionFailedEvent,
+  FolderSessionCancelledEvent,
   FolderBatchStartedEvent,
   FolderBatchProgressEvent,
   FolderBatchCompletedEvent,

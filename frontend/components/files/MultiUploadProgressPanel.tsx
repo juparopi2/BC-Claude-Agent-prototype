@@ -30,6 +30,7 @@ import {
   ChevronUp,
   CheckCircle2,
   AlertCircle,
+  XCircle,
   Folder,
   Loader2,
   RefreshCw,
@@ -101,6 +102,7 @@ function SessionProgressCard({
   const isActive = session.status === 'active' || session.status === 'initializing';
   const isComplete = session.status === 'completed';
   const isFailed = session.status === 'failed';
+  const isCancelled = session.status === 'cancelled';
 
   // Get root folder name for display
   const rootFolderName = session.folderBatches[0]?.name ?? 'Unknown';
@@ -113,7 +115,8 @@ function SessionProgressCard({
     <Card className={cn(
       'transition-colors',
       isComplete && 'border-green-200 bg-green-50/50',
-      isFailed && 'border-red-200 bg-red-50/50'
+      isFailed && 'border-red-200 bg-red-50/50',
+      isCancelled && 'border-amber-200 bg-amber-50/50'
     )}>
       <Collapsible open={isExpanded} onOpenChange={onToggleExpand}>
         <CardHeader className="py-3 px-4">
@@ -122,6 +125,7 @@ function SessionProgressCard({
               {isActive && <Loader2 className="size-4 text-primary animate-spin flex-shrink-0" />}
               {isComplete && <CheckCircle2 className="size-4 text-green-600 flex-shrink-0" />}
               {isFailed && <AlertCircle className="size-4 text-red-600 flex-shrink-0" />}
+              {isCancelled && <XCircle className="size-4 text-amber-600 flex-shrink-0" />}
               <span className="font-medium text-sm truncate max-w-[170px]" title={rootFolderName}>
                 {rootFolderName}
               </span>
@@ -281,9 +285,9 @@ export function MultiUploadProgressPanel({
   // Subscribe to WebSocket events for real-time updates
   useFolderBatchEvents({ enabled: sessions.length > 0 });
 
-  // Filter to active and recently completed sessions
+  // Filter to active, completed, and cancelled sessions (cancelled shows briefly before removal)
   const visibleSessions = sessions.filter(
-    (s) => s.status === 'active' || s.status === 'initializing' || s.status === 'completed'
+    (s) => s.status === 'active' || s.status === 'initializing' || s.status === 'completed' || s.status === 'cancelled'
   );
 
   if (visibleSessions.length === 0) {

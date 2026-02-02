@@ -6,7 +6,7 @@ import { FILE_UPLOAD_LIMITS, ALLOWED_MIME_TYPES } from '@bc-agent/shared';
 import { Upload, FolderUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Progress } from '@/components/ui/progress';
-import { useFileUpload, useFolderUpload } from '@/src/domains/files';
+import { useFileUpload, useFolderUpload, useFolderUploadToasts } from '@/src/domains/files';
 import { useDuplicateStore } from '@/src/domains/files/stores/duplicateStore';
 import { useFolderTreeStore } from '@/src/domains/files/stores/folderTreeStore';
 import { DuplicateFileModal } from '@/components/modals/DuplicateFileModal';
@@ -38,6 +38,9 @@ export function FileUploadZone({
   const [isDragActive, setIsDragActive] = useState(false);
   const [isDraggingFolder, setIsDraggingFolder] = useState(false);
   const currentFolderId = useFolderTreeStore((state) => state.currentFolderId);
+
+  // Show toast notifications for folder upload events (completion, cancellation, failure)
+  useFolderUploadToasts({ enabled: true });
 
   // Duplicate detection modal state
   const conflicts = useDuplicateStore((state) => state.conflicts);
@@ -87,12 +90,8 @@ export function FileUploadZone({
         }
 
         // Start folder upload (validation and modals handled inside useFolderUpload)
-        const sessionId = await uploadFolder(structure, currentFolderId);
-        if (sessionId) {
-          toast.success('Upload complete', {
-            description: `${structure.validFiles.length} files uploaded from ${structure.rootFolders.length} folder(s)`,
-          });
-        }
+        // Toast notifications are handled by useFolderUploadToasts hook via WebSocket events
+        await uploadFolder(structure, currentFolderId);
       } catch (error) {
         console.error('[FileUploadZone] Folder read error:', error);
         toast.error('Failed to read folder contents');

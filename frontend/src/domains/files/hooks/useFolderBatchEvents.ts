@@ -21,6 +21,7 @@ import {
   type FolderSessionStartedEvent,
   type FolderSessionCompletedEvent,
   type FolderSessionFailedEvent,
+  type FolderSessionCancelledEvent,
   type FolderBatchStartedEvent,
   type FolderBatchProgressEvent,
   type FolderBatchCompletedEvent,
@@ -40,6 +41,8 @@ export interface UseFolderBatchEventsOptions {
   onSessionComplete?: (sessionId: string, completedFolders: number, failedFolders: number) => void;
   /** Callback when session fails */
   onSessionFail?: (sessionId: string, error: string) => void;
+  /** Callback when session is cancelled by user */
+  onSessionCancel?: (sessionId: string, filesRolledBack: number) => void;
   /** Callback when a folder batch starts */
   onBatchStart?: (sessionId: string, folderIndex: number, folderName: string) => void;
   /** Callback when a folder batch completes */
@@ -85,6 +88,7 @@ export function useFolderBatchEvents(options: UseFolderBatchEventsOptions = {}):
     onSessionStart,
     onSessionComplete,
     onSessionFail,
+    onSessionCancel,
     onBatchStart,
     onBatchComplete,
     onBatchFail,
@@ -111,6 +115,7 @@ export function useFolderBatchEvents(options: UseFolderBatchEventsOptions = {}):
     onSessionStart,
     onSessionComplete,
     onSessionFail,
+    onSessionCancel,
     onBatchStart,
     onBatchComplete,
     onBatchFail,
@@ -128,6 +133,7 @@ export function useFolderBatchEvents(options: UseFolderBatchEventsOptions = {}):
       onSessionStart,
       onSessionComplete,
       onSessionFail,
+      onSessionCancel,
       onBatchStart,
       onBatchComplete,
       onBatchFail,
@@ -142,6 +148,7 @@ export function useFolderBatchEvents(options: UseFolderBatchEventsOptions = {}):
     onSessionStart,
     onSessionComplete,
     onSessionFail,
+    onSessionCancel,
     onBatchStart,
     onBatchComplete,
     onBatchFail,
@@ -204,6 +211,20 @@ export function useFolderBatchEvents(options: UseFolderBatchEventsOptions = {}):
           failedFolders: e.failedFolders,
         });
         callbacks.onSessionFail?.(e.sessionId, e.error);
+        break;
+      }
+
+      case FOLDER_WS_EVENTS.SESSION_CANCELLED: {
+        const e = event as FolderSessionCancelledEvent;
+        callbacks.updateSession(sessionId, {
+          status: 'cancelled',
+          completedFolders: e.completedFolders,
+        });
+        callbacks.onSessionCancel?.(e.sessionId, e.filesRolledBack);
+        // Remove session after a delay to let UI show cancellation
+        setTimeout(() => {
+          callbacks.removeSession(sessionId);
+        }, 3000);
         break;
       }
 

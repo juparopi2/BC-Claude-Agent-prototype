@@ -59,6 +59,7 @@ export type FolderBatchStatus =
  * - `paused`: Session paused by user (future feature)
  * - `completed`: All folders completed successfully
  * - `failed`: Session failed (too many folder failures)
+ * - `cancelled`: Session cancelled by user (with rollback)
  * - `expired`: Session TTL exceeded (Redis cleanup)
  */
 export type UploadSessionStatus =
@@ -67,6 +68,7 @@ export type UploadSessionStatus =
   | 'paused'
   | 'completed'
   | 'failed'
+  | 'cancelled'
   | 'expired';
 
 // ============================================================================
@@ -595,6 +597,8 @@ export interface GetActiveSessionsResponse {
  * ```typescript
  * const result: CancelSessionResult = {
  *   sessionId: 'SESSION-123',
+ *   completedFolders: 2,
+ *   cancelledFolders: 4,
  *   filesDeleted: 5,
  *   blobsDeleted: 3,
  *   searchDocsDeleted: 10,
@@ -606,6 +610,12 @@ export interface GetActiveSessionsResponse {
 export interface CancelSessionResult {
   /** Session ID that was cancelled */
   sessionId: string;
+
+  /** Number of folders completed before cancellation */
+  completedFolders: number;
+
+  /** Number of folders that were cancelled (not completed) */
+  cancelledFolders: number;
 
   /** Number of file records deleted from database */
   filesDeleted: number;
@@ -796,6 +806,38 @@ export interface FolderSessionFailedEvent extends BaseFolderWebSocketEvent {
 }
 
 /**
+ * Session cancelled event
+ * Channel: folder:status
+ *
+ * Emitted when a session is cancelled by the user with rollback.
+ *
+ * @example
+ * ```typescript
+ * const event: FolderSessionCancelledEvent = {
+ *   type: 'folder:session_cancelled',
+ *   sessionId: 'SESSION-ABC123',
+ *   userId: 'USER-456',
+ *   completedFolders: 2,
+ *   cancelledFolders: 4,
+ *   filesRolledBack: 15,
+ *   timestamp: '2026-01-16T10:35:00.000Z',
+ * };
+ * ```
+ */
+export interface FolderSessionCancelledEvent extends BaseFolderWebSocketEvent {
+  type: typeof FOLDER_WS_EVENTS.SESSION_CANCELLED;
+
+  /** Number of folders completed before cancellation */
+  completedFolders: number;
+
+  /** Number of folders that were cancelled (not completed) */
+  cancelledFolders: number;
+
+  /** Number of files rolled back (deleted) during cancellation */
+  filesRolledBack: number;
+}
+
+/**
  * Folder batch started event
  * Channel: folder:status
  *
@@ -951,6 +993,7 @@ export type FolderWebSocketEvent =
   | FolderSessionStartedEvent
   | FolderSessionCompletedEvent
   | FolderSessionFailedEvent
+  | FolderSessionCancelledEvent
   | FolderBatchStartedEvent
   | FolderBatchProgressEvent
   | FolderBatchCompletedEvent

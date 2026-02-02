@@ -26,3 +26,7 @@ export {
   useFolderBatchEvents,
   type UseFolderBatchEventsOptions,
 } from './useFolderBatchEvents';
+export {
+  useFolderUploadToasts,
+  type UseFolderUploadToastsOptions,
+} from './useFolderUploadToasts';

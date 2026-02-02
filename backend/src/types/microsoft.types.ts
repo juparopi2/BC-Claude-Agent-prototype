@@ -3,6 +3,10 @@
  *
  * This file defines all types related to Microsoft Entra ID OAuth authentication
  * and Business Central API token management.
+ *
+ * Architecture Note:
+ * Refresh tokens are managed internally by MSAL via Redis cache. Only access tokens
+ * are stored in SQL (encrypted). Token refresh is handled by acquireBCTokenSilent().
  */
 
 /**
@@ -46,20 +50,22 @@ export interface MicrosoftUserProfile {
 
 /**
  * Business Central Token Record (stored in database, encrypted)
+ *
+ * Note: Only access token is stored. Refresh tokens are managed by MSAL in Redis.
  */
 export interface BCTokenRecord {
   userId: string;
   accessTokenEncrypted: string;
-  refreshTokenEncrypted: string;
   expiresAt: Date;
 }
 
 /**
- * Decrypted Business Central Token Data
+ * Business Central Token Data (decrypted, for use in API calls)
+ *
+ * Note: refreshToken is optional as refresh is handled by MSAL.
  */
 export interface BCTokenData {
   accessToken: string;
-  refreshToken: string;
   expiresAt: Date;
 }
 
@@ -90,11 +96,14 @@ export interface MicrosoftOAuthSession {
    */
   homeAccountId?: string;
   /**
-   * @deprecated Refresh tokens are managed internally by MSAL via Redis cache.
-   * This field is kept for backwards compatibility during migration.
-   * New code should use homeAccountId + acquireTokenSilent instead.
+   * MSAL cache partition key - the sessionId used to partition MSAL token cache in Redis.
+   *
+   * Using sessionId instead of userId avoids the "chicken and egg" problem during OAuth
+   * callback where we need to exchange the code before we know the userId.
+   *
+   * This key is used with acquireTokenSilent for all token refresh operations.
    */
-  refreshToken?: string;
+  msalPartitionKey?: string;
   tokenExpiresAt?: string;  // ISO 8601 format for session serialization
 }
 

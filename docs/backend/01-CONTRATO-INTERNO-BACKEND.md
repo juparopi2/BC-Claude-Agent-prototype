@@ -1486,6 +1486,61 @@ type NormalizedStopReason =
 
 ---
 
+### 3.14 Autenticación Microsoft OAuth (MSAL Cache-Based)
+
+**Ubicación**: `backend/src/domains/auth/`
+
+**Componentes**:
+- `oauth/MicrosoftOAuthService.ts` - Servicio principal OAuth
+- `oauth/MsalRedisCachePlugin.ts` - Plugin MSAL para cache en Redis
+- `middleware/auth-oauth.ts` - Middleware Express
+- `websocket/socket-auth.middleware.ts` - Middleware WebSocket
+- `services/auth/BCTokenManager.ts` - Gestión de tokens BC encriptados
+
+**Arquitectura**: Token refresh es gestionado internamente por MSAL via Redis cache. Solo los access tokens de BC se almacenan encriptados en SQL.
+
+**Flujo de Autenticación Inicial**:
+```
+1. Usuario inicia login → GET /api/auth/login
+2. Redirect a Microsoft → Authorization Code
+3. Callback → handleAuthCallbackWithCache(code, state, sessionId)
+4. MSAL guarda tokens en Redis (particionado por sessionId)
+5. Session almacena: userId, homeAccountId, msalPartitionKey
+```
+
+**Refresh de Tokens** (automático via MSAL):
+```
+1. Middleware detecta token cerca de expirar
+2. Llama refreshAccessTokenSilent(msalPartitionKey, homeAccountId)
+3. MSAL usa refresh_token interno del cache Redis
+4. Actualiza session con nuevo accessToken
+```
+
+**Business Central Token**:
+```
+1. Usuario solicita acceso BC → POST /api/auth/bc-consent
+2. acquireBCTokenSilent(msalPartitionKey, homeAccountId)
+3. BCTokenManager.storeBCToken() guarda accessToken encriptado en SQL
+4. Auto-refresh via acquireBCTokenSilent en middleware requireBCAccess
+```
+
+**Claves de Session**:
+| Campo | Descripción |
+|-------|-------------|
+| `userId` | ID del usuario en base de datos |
+| `homeAccountId` | MSAL account identifier para acquireTokenSilent |
+| `msalPartitionKey` | sessionId usado para particionar MSAL cache en Redis |
+| `accessToken` | Token actual (no persistido en SQL) |
+| `tokenExpiresAt` | Fecha de expiración (ISO 8601) |
+
+**BCTokenManager (Simplificado)**:
+- `storeBCToken(userId, tokenData)` - Encripta y guarda accessToken en SQL
+- `clearBCToken(userId)` - Limpia tokens BC del usuario
+
+**Nota Arquitectural**: Los refresh tokens son gestionados internamente por MSAL en Redis. No se almacenan en la base de datos SQL. Esto elimina la necesidad de lógica de refresh manual y deduplicación distribuida.
+
+---
+
 ## 4. Tipos de Eventos (Contrato Frontend)
 
 ### 4.1 Eventos Válidos (Arquitectura Síncrona)

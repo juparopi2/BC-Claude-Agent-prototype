@@ -50,7 +50,6 @@ const { mockOAuthService, mockBCTokenManager, mockExecuteQuery, mockLogger, mock
     },
     mockBCTokenManager: {
       storeBCToken: vi.fn(),
-      getBCToken: vi.fn(),
     },
     mockExecuteQuery: vi.fn(),
     mockLogger: {
@@ -167,7 +166,8 @@ function authenticateAs(userId: string, microsoftSession?: Partial<MicrosoftOAut
     displayName: 'Test User',
     email: 'test@example.com',
     accessToken: 'test-access-token',
-    refreshToken: 'test-refresh-token',
+    homeAccountId: 'home-account-id-123',
+    msalPartitionKey: 'session-id-123',
     tokenExpiresAt: new Date(Date.now() + 3600000).toISOString(),
     ...microsoftSession,
   };
@@ -317,13 +317,15 @@ describe('Auth OAuth Routes', () => {
       const stateMatch = loginResponse.headers.location.match(/state=([a-f0-9]+)/);
       const state = stateMatch ? stateMatch[1] : '';
 
-      // Initial token acquisition
-      mockOAuthService.handleAuthCallback.mockResolvedValueOnce({
+      // SINGLE code exchange using sessionId as partition key (new flow)
+      mockOAuthService.handleAuthCallbackWithCache.mockResolvedValueOnce({
         access_token: 'test-access-token',
-        refresh_token: 'test-refresh-token',
         expires_in: 3600,
+        homeAccountId: 'home-account-id-new',
+        scope: 'openid profile email',
       });
 
+      // User profile fetched using the access token from cache call
       mockOAuthService.getUserProfile.mockResolvedValueOnce({
         id: 'ms-id-new-user',
         displayName: 'New User',
@@ -336,14 +338,6 @@ describe('Auth OAuth Routes', () => {
       // Insert new user
       mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
 
-      // Cache-based token acquisition (new flow)
-      mockOAuthService.handleAuthCallbackWithCache.mockResolvedValueOnce({
-        access_token: 'cached-access-token',
-        expires_in: 3600,
-        homeAccountId: 'home-account-id-new',
-        scope: 'openid profile email',
-      });
-
       // BC token acquisition fails via silent refresh (expected for new user)
       mockOAuthService.acquireBCTokenSilent.mockRejectedValueOnce(new Error('Consent required'));
 
@@ -354,6 +348,9 @@ describe('Auth OAuth Routes', () => {
 
       // Assert
       expect(response.headers.location).toBe('http://localhost:3000/new');
+      // Verify only ONE code exchange happened (handleAuthCallbackWithCache)
+      expect(mockOAuthService.handleAuthCallbackWithCache).toHaveBeenCalledTimes(1);
+      expect(mockOAuthService.handleAuthCallback).not.toHaveBeenCalled();
       expect(mockExecuteQuery).toHaveBeenCalledWith(
         expect.stringContaining('INSERT INTO users'),
         expect.objectContaining({
@@ -377,13 +374,15 @@ describe('Auth OAuth Routes', () => {
       const stateMatch = loginResponse.headers.location.match(/state=([a-f0-9]+)/);
       const state = stateMatch ? stateMatch[1] : '';
 
-      // Initial token acquisition
-      mockOAuthService.handleAuthCallback.mockResolvedValueOnce({
+      // SINGLE code exchange using sessionId as partition key (new flow)
+      mockOAuthService.handleAuthCallbackWithCache.mockResolvedValueOnce({
         access_token: 'test-access-token',
-        refresh_token: 'test-refresh-token',
         expires_in: 3600,
+        homeAccountId: 'home-account-id-existing',
+        scope: 'openid profile email',
       });
 
+      // User profile fetched using the access token from cache call
       mockOAuthService.getUserProfile.mockResolvedValueOnce({
         id: 'ms-id-existing',
         displayName: 'Existing User',
@@ -398,14 +397,6 @@ describe('Auth OAuth Routes', () => {
       // Update user
       mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
 
-      // Cache-based token acquisition (new flow)
-      mockOAuthService.handleAuthCallbackWithCache.mockResolvedValueOnce({
-        access_token: 'cached-access-token',
-        expires_in: 3600,
-        homeAccountId: 'home-account-id-existing',
-        scope: 'openid profile email',
-      });
-
       // BC token fails (silent)
       mockOAuthService.acquireBCTokenSilent.mockRejectedValueOnce(new Error('No BC consent'));
 
@@ -416,6 +407,9 @@ describe('Auth OAuth Routes', () => {
 
       // Assert
       expect(response.headers.location).toBe('http://localhost:3000/new');
+      // Verify only ONE code exchange happened (handleAuthCallbackWithCache)
+      expect(mockOAuthService.handleAuthCallbackWithCache).toHaveBeenCalledTimes(1);
+      expect(mockOAuthService.handleAuthCallback).not.toHaveBeenCalled();
       expect(mockExecuteQuery).toHaveBeenCalledWith(
         expect.stringContaining('UPDATE users'),
         expect.objectContaining({
@@ -438,13 +432,15 @@ describe('Auth OAuth Routes', () => {
       const stateMatch = loginResponse.headers.location.match(/state=([a-f0-9]+)/);
       const state = stateMatch ? stateMatch[1] : '';
 
-      // Initial token acquisition
-      mockOAuthService.handleAuthCallback.mockResolvedValueOnce({
+      // SINGLE code exchange using sessionId as partition key (new flow)
+      mockOAuthService.handleAuthCallbackWithCache.mockResolvedValueOnce({
         access_token: 'test-access-token',
-        refresh_token: 'test-refresh-token',
         expires_in: 3600,
+        homeAccountId: 'home-account-id-bc',
+        scope: 'openid profile email',
       });
 
+      // User profile fetched using the access token from cache call
       mockOAuthService.getUserProfile.mockResolvedValueOnce({
         id: 'ms-id-bc',
         displayName: 'BC User',
@@ -455,14 +451,6 @@ describe('Auth OAuth Routes', () => {
         recordset: [{ id: 'bc-user-id', microsoft_id: 'ms-id-bc' }],
       });
       mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
-
-      // Cache-based token acquisition (returns homeAccountId needed for BC token)
-      mockOAuthService.handleAuthCallbackWithCache.mockResolvedValueOnce({
-        access_token: 'cached-access-token',
-        expires_in: 3600,
-        homeAccountId: 'home-account-id-bc',
-        scope: 'openid profile email',
-      });
 
       // BC token succeeds via silent refresh (new flow)
       const bcToken = {
@@ -475,6 +463,9 @@ describe('Auth OAuth Routes', () => {
       await agent.get(`/api/auth/callback?code=test-code&state=${state}`).expect(302);
 
       // Assert
+      // Verify only ONE code exchange happened (handleAuthCallbackWithCache)
+      expect(mockOAuthService.handleAuthCallbackWithCache).toHaveBeenCalledTimes(1);
+      expect(mockOAuthService.handleAuthCallback).not.toHaveBeenCalled();
       expect(mockBCTokenManager.storeBCToken).toHaveBeenCalledWith('bc-user-id', bcToken);
     });
 
@@ -491,7 +482,8 @@ describe('Auth OAuth Routes', () => {
       const stateMatch = loginResponse.headers.location.match(/state=([a-f0-9]+)/);
       const state = stateMatch ? stateMatch[1] : '';
 
-      mockOAuthService.handleAuthCallback.mockRejectedValueOnce(new Error('Token exchange failed'));
+      // handleAuthCallbackWithCache fails (new flow)
+      mockOAuthService.handleAuthCallbackWithCache.mockRejectedValueOnce(new Error('Token exchange failed'));
 
       // Act
       const response = await agent
@@ -733,13 +725,16 @@ describe('Auth OAuth Routes', () => {
     it('should acquire and store BC token successfully', async () => {
       // Arrange
       const app = createTestApp();
-      authenticateAs('user-bc-consent', { refreshToken: 'valid-refresh-token' });
+      authenticateAs('user-bc-consent', {
+        homeAccountId: 'home-account-id-bc',
+        msalPartitionKey: 'session-id-bc',
+      });
 
       const bcToken = {
         accessToken: 'new-bc-token',
         expiresAt: new Date(Date.now() + 3600000),
       };
-      mockOAuthService.acquireBCToken.mockResolvedValueOnce(bcToken);
+      mockOAuthService.acquireBCTokenSilent.mockResolvedValueOnce(bcToken);
 
       // Act
       const response = await request(app)
@@ -748,13 +743,14 @@ describe('Auth OAuth Routes', () => {
 
       // Assert
       expect(response.body.success).toBe(true);
+      expect(mockOAuthService.acquireBCTokenSilent).toHaveBeenCalledWith('session-id-bc', 'home-account-id-bc');
       expect(mockBCTokenManager.storeBCToken).toHaveBeenCalledWith('user-bc-consent', bcToken);
     });
 
-    it('should return 401 if refresh token is missing (session expired)', async () => {
+    it('should return 401 if homeAccountId or msalPartitionKey is missing (session expired)', async () => {
       // Arrange
       const app = createTestApp();
-      authenticateAs('user-no-refresh', { refreshToken: undefined, homeAccountId: undefined });
+      authenticateAs('user-no-cache', { homeAccountId: undefined, msalPartitionKey: undefined });
 
       // Act
       const response = await request(app)
@@ -770,9 +766,12 @@ describe('Auth OAuth Routes', () => {
     it('should return 503 if BC token acquisition fails', async () => {
       // Arrange
       const app = createTestApp();
-      authenticateAs('user-bc-fail', { refreshToken: 'valid-token' });
+      authenticateAs('user-bc-fail', {
+        homeAccountId: 'home-account-id-fail',
+        msalPartitionKey: 'session-id-fail',
+      });
 
-      mockOAuthService.acquireBCToken.mockRejectedValueOnce(new Error('Admin consent required'));
+      mockOAuthService.acquireBCTokenSilent.mockRejectedValueOnce(new Error('Admin consent required'));
 
       // Act
       const response = await request(app)
@@ -821,7 +820,6 @@ describe('Auth OAuth Routes', () => {
           created_at: new Date(),
           is_active: true,
           bc_access_token_encrypted: 'SHOULD_NOT_APPEAR',
-          bc_refresh_token: 'SHOULD_NOT_APPEAR',
         }],
       });
 
@@ -1106,10 +1104,12 @@ describe('Auth OAuth Routes', () => {
         const stateMatch = loginResponse.headers.location.match(/state=([a-f0-9]+)/);
         const state = stateMatch ? stateMatch[1] : '';
 
-        mockOAuthService.handleAuthCallback.mockResolvedValueOnce({
+        // SINGLE code exchange using sessionId as partition key (new flow)
+        mockOAuthService.handleAuthCallbackWithCache.mockResolvedValueOnce({
           access_token: 'test-token',
-          refresh_token: 'test-refresh',
           expires_in: 3600,
+          homeAccountId: 'home-account-null-email',
+          scope: 'openid profile email',
         });
 
         // Profile with null email
@@ -1122,14 +1122,6 @@ describe('Auth OAuth Routes', () => {
 
         mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
         mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
-
-        // Cache-based token acquisition
-        mockOAuthService.handleAuthCallbackWithCache.mockResolvedValueOnce({
-          access_token: 'cached-token',
-          expires_in: 3600,
-          homeAccountId: 'home-account-null-email',
-          scope: 'openid profile email',
-        });
 
         // BC token fails
         mockOAuthService.acquireBCTokenSilent.mockRejectedValueOnce(new Error('No BC'));
@@ -1252,10 +1244,12 @@ describe('Auth OAuth Routes', () => {
         const stateMatch = loginResponse.headers.location.match(/state=([a-f0-9]+)/);
         const state = stateMatch ? stateMatch[1] : '';
 
-        mockOAuthService.handleAuthCallback.mockResolvedValueOnce({
+        // SINGLE code exchange using sessionId as partition key (new flow)
+        mockOAuthService.handleAuthCallbackWithCache.mockResolvedValueOnce({
           access_token: 'test-token',
-          refresh_token: 'test-refresh',
           expires_in: 3600,
+          homeAccountId: 'home-account-concurrent',
+          scope: 'openid profile email',
         });
 
         mockOAuthService.getUserProfile.mockResolvedValueOnce({
@@ -1280,17 +1274,17 @@ describe('Auth OAuth Routes', () => {
     });
 
     describe('BC Token Edge Cases', () => {
-      it('should handle empty refresh token string (session expired)', async () => {
+      it('should handle missing homeAccountId (session expired)', async () => {
         // Arrange
         const app = createTestApp();
-        authenticateAs('user-empty-refresh', { refreshToken: '' });
+        authenticateAs('user-no-home-account', { homeAccountId: undefined, msalPartitionKey: 'session-id' });
 
         // Act
         const response = await request(app)
           .post('/api/auth/bc-consent')
           .expect(401);
 
-        // Assert - standardized error format (empty string is falsy)
+        // Assert - standardized error format
         expect(response.body.error).toBe('Unauthorized');
         expect(response.body.code).toBe(ErrorCode.SESSION_EXPIRED);
       });
@@ -1298,14 +1292,17 @@ describe('Auth OAuth Routes', () => {
       it('should handle BC token with past expiry date', async () => {
         // Arrange
         const app = createTestApp();
-        authenticateAs('user-bc-past', { refreshToken: 'valid-token' });
+        authenticateAs('user-bc-past', {
+          homeAccountId: 'home-account-past',
+          msalPartitionKey: 'session-id-past',
+        });
 
         const pastDate = new Date(Date.now() - 86400000); // 24 hours ago
         const bcToken = {
           accessToken: 'past-bc-token',
           expiresAt: pastDate,
         };
-        mockOAuthService.acquireBCToken.mockResolvedValueOnce(bcToken);
+        mockOAuthService.acquireBCTokenSilent.mockResolvedValueOnce(bcToken);
 
         // Act - should still store it (might be refresh scenario)
         const response = await request(app)
@@ -1320,13 +1317,16 @@ describe('Auth OAuth Routes', () => {
       it('should handle BC token storage failure', async () => {
         // Arrange
         const app = createTestApp();
-        authenticateAs('user-storage-fail', { refreshToken: 'valid-token' });
+        authenticateAs('user-storage-fail', {
+          homeAccountId: 'home-account-storage',
+          msalPartitionKey: 'session-id-storage',
+        });
 
         const bcToken = {
           accessToken: 'new-bc-token',
           expiresAt: new Date(Date.now() + 3600000),
         };
-        mockOAuthService.acquireBCToken.mockResolvedValueOnce(bcToken);
+        mockOAuthService.acquireBCTokenSilent.mockResolvedValueOnce(bcToken);
         mockBCTokenManager.storeBCToken.mockRejectedValueOnce(new Error('Encryption failed'));
 
         // Act

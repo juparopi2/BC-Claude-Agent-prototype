@@ -4,63 +4,50 @@
  * Infrastructure used:
  * - Azure SQL: Real database via setupDatabaseForTests()
  * - Encryption: Real AES-256-GCM via crypto.randomBytes()
- * - Promise Map: Real Map for deduplication
- *
- * Mocks allowed:
- * - Microsoft OAuth API (external service)
- *
- * NO MOCKS of:
- * - BCTokenManager service logic
- * - Database operations (encrypt, persist, retrieve)
- * - Promise deduplication mechanism
  *
  * Purpose:
- * Validates that concurrent refresh token requests are correctly
- * deduplicated, persisted to database, and encrypted securely.
+ * Validates that BC token storage and clearing work correctly with real database.
+ *
+ * Note: Token refresh is handled by MSAL (MicrosoftOAuthService.acquireBCTokenSilent).
+ * This manager only handles encrypted storage of access tokens.
+ *
+ * Updated: 2026-02-02 - Simplified to test only storeBCToken and clearBCToken
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { BCTokenManager } from '../../../services/auth/BCTokenManager';
-import { MicrosoftOAuthService } from '../../../services/auth/MicrosoftOAuthService';
 import { executeQuery } from '@/infrastructure/database/database';
 import { setupDatabaseForTests } from '../helpers/TestDatabaseSetup';
 import crypto from 'crypto';
 
-// Mock only external OAuth service
-const mockOAuthService = {
-  acquireBCToken: vi.fn(),
-} as unknown as MicrosoftOAuthService;
-
-describe('BCTokenManager Integration - Race Condition', () => {
+describe('BCTokenManager Integration', () => {
   // Setup database connection (skip Redis as we don't need it)
   setupDatabaseForTests({ skipRedis: true });
 
   let tokenManager: BCTokenManager;
   const testEncryptionKey = crypto.randomBytes(32).toString('base64');
-  // Generate unique testUserId for each test file run
-  const testUserId = crypto.randomUUID();
+  // Generate unique testUserId for each test file run (UPPERCASE per CLAUDE.md)
+  const testUserId = crypto.randomUUID().toUpperCase();
   // Generate unique email to avoid conflicts with parallel tests
-  const testEmail = `test-race-${Date.now()}-${Math.random().toString(36).substring(7)}@bcagent.test`;
+  const testEmail = `test-bc-token-${Date.now()}-${Math.random().toString(36).substring(7)}@bcagent.test`;
 
   beforeEach(async () => {
     // Initialize service with real encryption key
-    tokenManager = new BCTokenManager(testEncryptionKey, mockOAuthService);
+    tokenManager = new BCTokenManager(testEncryptionKey);
 
     // Clean up test user if exists (including usage_events references)
     await executeQuery('DELETE FROM usage_events WHERE user_id = @id', { id: testUserId });
     await executeQuery('DELETE FROM users WHERE id = @id', { id: testUserId });
 
     // Create test user with unique email
-    // Note: Omitting 'role' as it causes truncation issues in test DB environment
     await executeQuery(
       `INSERT INTO users (id, email, full_name, created_at, updated_at)
-       VALUES (@id, @email, 'Test Race User', GETDATE(), GETDATE())`,
+       VALUES (@id, @email, 'Test BC Token User', GETDATE(), GETDATE())`,
       { id: testUserId, email: testEmail }
     );
 
     vi.clearAllMocks();
   });
-
 
   afterEach(async () => {
     // Cleanup - delete usage_events first to avoid FK constraint
@@ -69,187 +56,148 @@ describe('BCTokenManager Integration - Race Condition', () => {
     vi.restoreAllMocks();
   });
 
-  it('should complete full token lifecycle: refresh → encrypt → persist → retrieve → decrypt', async () => {
+  it('should store encrypted BC token in database', async () => {
     // ========== ARRANGE ==========
-    // Mock OAuth response with realistic token
-    vi.mocked(mockOAuthService.acquireBCToken).mockResolvedValue({
-      accessToken: 'lifecycle_access_token_12345',
-      refreshToken: 'lifecycle_refresh_token_67890',
+    const tokenData = {
+      accessToken: 'test_access_token_12345',
       expiresAt: new Date(Date.now() + 3600000), // 1 hour from now
-    });
+    };
 
-    // ========== ACT: Refresh Token ==========
-    const tokenResult = await tokenManager.getBCToken(testUserId, 'force-refresh-token');
-
-    // ========== ASSERT: Token returned ==========
-    expect(tokenResult.accessToken).toBe('lifecycle_access_token_12345');
-    expect(tokenResult.refreshToken).toBe('lifecycle_refresh_token_67890');
+    // ========== ACT ==========
+    await tokenManager.storeBCToken(testUserId, tokenData);
 
     // ========== ASSERT: Token persisted encrypted in database ==========
     const dbResult = await executeQuery<{
       bc_access_token_encrypted: string;
-      bc_refresh_token_encrypted: string;
+      bc_token_expires_at: Date;
     }>(
-      'SELECT bc_access_token_encrypted, bc_refresh_token_encrypted FROM users WHERE id = @id',
+      'SELECT bc_access_token_encrypted, bc_token_expires_at FROM users WHERE id = @id',
       { id: testUserId }
     );
 
     const user = dbResult.recordset[0];
     expect(user).toBeTruthy();
     expect(user!.bc_access_token_encrypted).toBeTruthy();
-    expect(user!.bc_refresh_token_encrypted).toBeTruthy();
+    expect(user!.bc_token_expires_at).toBeTruthy();
 
-    // Validate token is encrypted (non-empty string, format may vary)
-    expect(user!.bc_access_token_encrypted.length).toBeGreaterThan(0);
+    // Validate token is encrypted (has iv:data:authTag format)
+    const encryptedParts = user!.bc_access_token_encrypted.split(':');
+    expect(encryptedParts).toHaveLength(3);
 
-    // ========== ASSERT: Token can be retrieved and decrypted ==========
-    const retrievedToken = await tokenManager.getBCToken(testUserId, 'force-refresh-token');
-    expect(retrievedToken.accessToken).toBe('lifecycle_access_token_12345');
-    expect(retrievedToken.refreshToken).toBe('lifecycle_refresh_token_67890');
+    // All parts should be base64
+    encryptedParts.forEach(part => {
+      expect(part).toMatch(/^[A-Za-z0-9+/=]+$/);
+    });
 
-    // ========== ASSERT: Calling again returns cached token (no new OAuth call) ==========
-    vi.mocked(mockOAuthService.acquireBCToken).mockClear();
-    const cachedToken = await tokenManager.getBCToken(testUserId, 'force-refresh-token');
-    expect(cachedToken.accessToken).toBe('lifecycle_access_token_12345');
-    expect(mockOAuthService.acquireBCToken).not.toHaveBeenCalled();
+    // Plaintext should NOT be stored
+    expect(user!.bc_access_token_encrypted).not.toContain('test_access_token_12345');
   });
 
-  it('should deduplicate concurrent refreshes with REAL database', async () => {
-    // Arrange: Mock OAuth response
-    let callCount = 0;
-    vi.mocked(mockOAuthService.acquireBCToken).mockImplementation(async () => {
-      callCount++;
-      // Simulate network latency
-      await new Promise(resolve => setTimeout(resolve, 100));
-      return {
-        accessToken: `real-db-token-${callCount}`,
-        refreshToken: 'real-db-refresh',
-        expiresAt: new Date(Date.now() + 3600000),
-      };
-    });
+  it('should update existing token when storing again', async () => {
+    // ========== ARRANGE: Store initial token ==========
+    const initialToken = {
+      accessToken: 'initial_token',
+      expiresAt: new Date(Date.now() + 3600000),
+    };
+    await tokenManager.storeBCToken(testUserId, initialToken);
 
-    // Act: 10 concurrent refreshes
-    // We use 'refresh' mode or ensure no token exists to force refresh
-    const promises = Array.from({ length: 10 }, () =>
-      tokenManager.getBCToken(testUserId, 'force-refresh-token')
-    );
-
-    const results = await Promise.all(promises);
-
-    // Validate: Only 1 OAuth call
-    expect(mockOAuthService.acquireBCToken).toHaveBeenCalledTimes(1);
-
-    // Validate: All results are identical
-    const firstResult = results[0];
-    results.forEach(result => {
-      expect(result.accessToken).toBe('real-db-token-1');
-    });
-
-    // Validate: Token persisted in REAL database
-    const dbResult = await executeQuery(
+    // Get initial encrypted value
+    const initialResult = await executeQuery<{ bc_access_token_encrypted: string }>(
       'SELECT bc_access_token_encrypted FROM users WHERE id = @id',
       { id: testUserId }
     );
-    
-    expect(dbResult.recordset[0].bc_access_token_encrypted).toBeTruthy();
-    
-    // Validate: Can decrypt the stored token
-    // We create a new instance to ensure we read from DB, not memory cache (if any)
-    const newTokenManager = new BCTokenManager(testEncryptionKey, mockOAuthService);
-    // Mock OAuth again to ensure it's NOT called this time (should use DB)
-    vi.mocked(mockOAuthService.acquireBCToken).mockClear();
-    
-    const storedToken = await newTokenManager.getBCToken(testUserId, 'force-refresh-token');
-    expect(storedToken.accessToken).toBe('real-db-token-1');
-    expect(mockOAuthService.acquireBCToken).not.toHaveBeenCalled();
-  });
+    const initialEncrypted = initialResult.recordset[0]!.bc_access_token_encrypted;
 
-  it('should handle encryption/decryption errors gracefully', async () => {
-    // ========== ARRANGE ==========
-    // First, store a valid token
-    vi.mocked(mockOAuthService.acquireBCToken).mockResolvedValue({
-      accessToken: 'valid_token',
-      refreshToken: 'valid_refresh',
-      expiresAt: new Date(Date.now() + 3600000),
-    });
+    // ========== ACT: Store new token ==========
+    const newToken = {
+      accessToken: 'updated_token',
+      expiresAt: new Date(Date.now() + 7200000), // 2 hours
+    };
+    await tokenManager.storeBCToken(testUserId, newToken);
 
-    await tokenManager.getBCToken(testUserId, 'force-refresh-token');
-
-    // ========== ACT: Corrupt the encrypted token in database ==========
-    await executeQuery(
-      'UPDATE users SET bc_access_token_encrypted = @corruptToken WHERE id = @id',
-      { corruptToken: 'INVALID_HEX_STRING_NOT_ENCRYPTED', id: testUserId }
-    );
-
-    // ========== ASSERT: Should handle decryption error gracefully ==========
-    // Create new token manager to clear any caches
-    const newTokenManager = new BCTokenManager(testEncryptionKey, mockOAuthService);
-
-    // The manager should throw an error when encountering corrupted data
-    await expect(newTokenManager.getBCToken(testUserId, 'force-refresh-token')).rejects.toThrow(
-      /Failed to retrieve Business Central token/
-    );
-
-    // ========== ASSERT: System recovers after fixing token ==========
-    // Delete corrupted user and create fresh one
-    await executeQuery('DELETE FROM users WHERE id = @id', { id: testUserId });
-    await executeQuery(
-      `INSERT INTO users (id, email, full_name, created_at, updated_at)
-       VALUES (@id, 'test-recovery@example.com', 'Test Recovery User', GETDATE(), GETDATE())`,
+    // ========== ASSERT: Token was updated ==========
+    const updatedResult = await executeQuery<{ bc_access_token_encrypted: string }>(
+      'SELECT bc_access_token_encrypted FROM users WHERE id = @id',
       { id: testUserId }
     );
+    const updatedEncrypted = updatedResult.recordset[0]!.bc_access_token_encrypted;
 
-    // Mock new token response
-    vi.mocked(mockOAuthService.acquireBCToken).mockResolvedValue({
-      accessToken: 'recovered_token',
-      refreshToken: 'recovered_refresh',
-      expiresAt: new Date(Date.now() + 3600000),
-    });
-
-    // This should work now with fresh user
-    const recoveredToken = await newTokenManager.getBCToken(testUserId, 'force-refresh-token');
-    expect(recoveredToken.accessToken).toBe('recovered_token');
+    // Encrypted value should be different (different plaintext + different IV)
+    expect(updatedEncrypted).not.toBe(initialEncrypted);
   });
 
-  it('should handle token expiration and automatic refresh', async () => {
-    // ========== ARRANGE: Store an expired token ==========
-    // First store a token with very short expiry
-    vi.mocked(mockOAuthService.acquireBCToken).mockResolvedValue({
-      accessToken: 'expired_token',
-      refreshToken: 'expired_refresh',
-      expiresAt: new Date(Date.now() - 1000), // Already expired (1 second ago)
-    });
+  it('should clear BC token from database', async () => {
+    // ========== ARRANGE: Store a token first ==========
+    const tokenData = {
+      accessToken: 'token_to_clear',
+      expiresAt: new Date(Date.now() + 3600000),
+    };
+    await tokenManager.storeBCToken(testUserId, tokenData);
 
-    // Store the expired token
-    await tokenManager.getBCToken(testUserId, 'force-refresh-token');
+    // Verify token was stored
+    const beforeClear = await executeQuery<{ bc_access_token_encrypted: string | null }>(
+      'SELECT bc_access_token_encrypted FROM users WHERE id = @id',
+      { id: testUserId }
+    );
+    expect(beforeClear.recordset[0]!.bc_access_token_encrypted).toBeTruthy();
 
-    // ========== ACT: Request token (should auto-refresh) ==========
-    // Mock new token response
-    vi.mocked(mockOAuthService.acquireBCToken).mockResolvedValue({
-      accessToken: 'fresh_token_after_expiry',
-      refreshToken: 'fresh_refresh',
-      expiresAt: new Date(Date.now() + 3600000), // 1 hour from now
-    });
+    // ========== ACT ==========
+    await tokenManager.clearBCToken(testUserId);
 
-    // Request token - should detect expiration and refresh automatically
-    const refreshedToken = await tokenManager.getBCToken(testUserId, 'force-refresh-token');
-
-    // ========== ASSERT: New token returned ==========
-    expect(refreshedToken.accessToken).toBe('fresh_token_after_expiry');
-
-    // ========== ASSERT: New token persisted in database ==========
-    const dbResult = await executeQuery<{
-      bc_access_token_encrypted: string;
+    // ========== ASSERT: Token fields are NULL ==========
+    const afterClear = await executeQuery<{
+      bc_access_token_encrypted: string | null;
+      bc_token_expires_at: Date | null;
     }>(
-      'SELECT bc_access_token_encrypted FROM users WHERE id = @id',
+      'SELECT bc_access_token_encrypted, bc_token_expires_at FROM users WHERE id = @id',
       { id: testUserId }
     );
 
-    expect(dbResult.recordset[0]?.bc_access_token_encrypted).toBeTruthy();
+    const user = afterClear.recordset[0];
+    expect(user!.bc_access_token_encrypted).toBeNull();
+    expect(user!.bc_token_expires_at).toBeNull();
+  });
 
-    // Verify we can decrypt the new token
-    const newTokenManager = new BCTokenManager(testEncryptionKey, mockOAuthService);
-    const decryptedToken = await newTokenManager.getBCToken(testUserId, 'force-refresh-token');
-    expect(decryptedToken.accessToken).toBe('fresh_token_after_expiry');
+  it('should handle encryption with different key lengths correctly', () => {
+    // Valid 32-byte key (base64 encoded)
+    const validKey = crypto.randomBytes(32).toString('base64');
+    expect(() => new BCTokenManager(validKey)).not.toThrow();
+
+    // Invalid: 16-byte key
+    const shortKey = crypto.randomBytes(16).toString('base64');
+    expect(() => new BCTokenManager(shortKey)).toThrow('ENCRYPTION_KEY must be 32 bytes');
+
+    // Invalid: 64-byte key
+    const longKey = crypto.randomBytes(64).toString('base64');
+    expect(() => new BCTokenManager(longKey)).toThrow('ENCRYPTION_KEY must be 32 bytes');
+  });
+
+  it('should produce different ciphertext for same plaintext (semantic security)', async () => {
+    // ========== ARRANGE ==========
+    const tokenData = {
+      accessToken: 'identical_token_value',
+      expiresAt: new Date(Date.now() + 3600000),
+    };
+
+    // ========== ACT: Store same token twice ==========
+    await tokenManager.storeBCToken(testUserId, tokenData);
+
+    const firstResult = await executeQuery<{ bc_access_token_encrypted: string }>(
+      'SELECT bc_access_token_encrypted FROM users WHERE id = @id',
+      { id: testUserId }
+    );
+    const firstEncrypted = firstResult.recordset[0]!.bc_access_token_encrypted;
+
+    // Store again (overwrites)
+    await tokenManager.storeBCToken(testUserId, tokenData);
+
+    const secondResult = await executeQuery<{ bc_access_token_encrypted: string }>(
+      'SELECT bc_access_token_encrypted FROM users WHERE id = @id',
+      { id: testUserId }
+    );
+    const secondEncrypted = secondResult.recordset[0]!.bc_access_token_encrypted;
+
+    // ========== ASSERT: Different ciphertext due to random IV ==========
+    expect(firstEncrypted).not.toBe(secondEncrypted);
   });
 });

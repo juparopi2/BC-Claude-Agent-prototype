@@ -168,8 +168,6 @@ export interface UserRecord {
   last_microsoft_login: Date | null;
   /** Encrypted Business Central access token */
   bc_access_token_encrypted: string | null;
-  /** Encrypted Business Central refresh token */
-  bc_refresh_token_encrypted: string | null;
   /** Business Central token expiration */
   bc_token_expires_at: Date | null;
   /** Account creation timestamp */

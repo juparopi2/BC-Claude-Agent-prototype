@@ -21,7 +21,7 @@ export interface AuthenticatedSocket extends Socket {
 /** Dependencias inyectables para testing */
 export interface SocketAuthDependencies {
   oauthService: {
-    refreshAccessToken: (refreshToken: string) => Promise<{
+    refreshAccessTokenSilent: (partitionKey: string, homeAccountId: string) => Promise<{
       accessToken: string;
       refreshToken?: string;
       expiresAt: Date | string;
@@ -63,51 +63,56 @@ export function createSocketAuthMiddleware(
 
     // Auto-refresh si expirado
     if (isExpired) {
-      if (session.refreshToken) {
-        try {
-          logger.info('[Socket.IO] Token expired, attempting refresh', {
-            socketId: socket.id,
-            userId: session.userId,
-          });
+      // Require homeAccountId and msalPartitionKey for cache-based refresh
+      if (!session.homeAccountId || !session.msalPartitionKey) {
+        logger.warn('[Socket.IO] Token expired, no homeAccountId/msalPartitionKey (legacy session)', {
+          socketId: socket.id,
+          userId: session.userId,
+          hasHomeAccountId: !!session.homeAccountId,
+          hasMsalPartitionKey: !!session.msalPartitionKey,
+        });
+        return next(new Error('Session expired'));
+      }
 
-          const refreshed = await oauthService.refreshAccessToken(session.refreshToken);
-
-          // Actualizar sesión
-          req.session.microsoftOAuth = {
-            ...session,
-            accessToken: refreshed.accessToken,
-            refreshToken: refreshed.refreshToken,
-            tokenExpiresAt: refreshed.expiresAt instanceof Date
-              ? refreshed.expiresAt.toISOString()
-              : refreshed.expiresAt,
-          };
-
-          // Guardar sesión
-          await new Promise<void>((resolve, reject) => {
-            req.session.save((err) => (err ? reject(err) : resolve()));
-          });
-
-          logger.info('[Socket.IO] Token refreshed successfully', {
-            socketId: socket.id,
-            userId: session.userId,
-          });
-        } catch (err) {
-          const errorInfo = err instanceof Error
-            ? { message: err.message, name: err.name }
-            : { value: String(err) };
-          logger.error('[Socket.IO] Token refresh failed', {
-            socketId: socket.id,
-            userId: session.userId,
-            error: errorInfo,
-          });
-          return next(new Error('Session expired - refresh failed'));
-        }
-      } else {
-        logger.warn('[Socket.IO] Token expired, no refresh token', {
+      try {
+        logger.info('[Socket.IO] Token expired, attempting silent refresh', {
           socketId: socket.id,
           userId: session.userId,
         });
-        return next(new Error('Session expired'));
+
+        const refreshed = await oauthService.refreshAccessTokenSilent(
+          session.msalPartitionKey,
+          session.homeAccountId
+        );
+
+        // Actualizar sesión
+        req.session.microsoftOAuth = {
+          ...session,
+          accessToken: refreshed.accessToken,
+          tokenExpiresAt: refreshed.expiresAt instanceof Date
+            ? refreshed.expiresAt.toISOString()
+            : String(refreshed.expiresAt),
+        };
+
+        // Guardar sesión
+        await new Promise<void>((resolve, reject) => {
+          req.session.save((err) => (err ? reject(err) : resolve()));
+        });
+
+        logger.info('[Socket.IO] Token refreshed successfully via acquireTokenSilent', {
+          socketId: socket.id,
+          userId: session.userId,
+        });
+      } catch (err) {
+        const errorInfo = err instanceof Error
+          ? { message: err.message, name: err.name }
+          : { value: String(err) };
+        logger.error('[Socket.IO] Silent token refresh failed', {
+          socketId: socket.id,
+          userId: session.userId,
+          error: errorInfo,
+        });
+        return next(new Error('Session expired - refresh failed'));
       }
     }
 

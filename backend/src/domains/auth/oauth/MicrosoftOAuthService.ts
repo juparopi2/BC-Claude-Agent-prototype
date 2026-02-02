@@ -397,31 +397,31 @@ export class MicrosoftOAuthService {
    *
    * Prerequisites:
    * - User must have logged in via handleAuthCallbackWithCache
-   * - MSAL cache must exist in Redis for this user
+   * - MSAL cache must exist in Redis for this partition key
    *
-   * @param userId - User ID (cache partition key)
+   * @param partitionKey - Cache partition key (sessionId from login)
    * @param homeAccountId - Account identifier from initial login
    * @returns New access token and expiration
    * @throws Error if account not found in cache (user needs to re-login)
    */
   async refreshAccessTokenSilent(
-    userId: string,
+    partitionKey: string,
     homeAccountId: string
   ): Promise<TokenAcquisitionResult> {
     try {
-      const msalClient = this.createMsalClientWithCache(userId);
+      const msalClient = this.createMsalClientWithCache(partitionKey);
       const tokenCache = msalClient.getTokenCache();
 
       // Get account from cache by homeAccountId
       const account = await tokenCache.getAccountByHomeId(homeAccountId);
 
       if (!account) {
-        this.logger.warn('Account not found in MSAL cache', { userId, homeAccountId });
+        this.logger.warn('Account not found in MSAL cache', { partitionKey, homeAccountId });
         throw new Error('Account not found in cache - user needs to re-login');
       }
 
       this.logger.debug('Found account in MSAL cache, attempting silent token refresh', {
-        userId,
+        partitionKey,
         homeAccountId,
         accountUsername: account.username,
       });
@@ -437,7 +437,7 @@ export class MicrosoftOAuthService {
       }
 
       this.logger.info('Successfully refreshed access token via acquireTokenSilent', {
-        userId,
+        partitionKey,
         scopes: response.scopes,
         expiresOn: response.expiresOn,
         fromCache: response.fromCache,
@@ -453,7 +453,7 @@ export class MicrosoftOAuthService {
       const errorInfo = error instanceof Error
         ? { message: error.message, name: error.name }
         : { value: String(error) };
-      this.logger.error('Failed to refresh access token silently', { error: errorInfo, userId, homeAccountId });
+      this.logger.error('Failed to refresh access token silently', { error: errorInfo, partitionKey, homeAccountId });
 
       // Provide specific error for common cases
       if (error instanceof Error && error.message.includes('cache')) {
@@ -470,22 +470,22 @@ export class MicrosoftOAuthService {
    * Uses MSAL cache to get BC API token without requiring the refresh token
    * to be passed explicitly.
    *
-   * @param userId - User ID (cache partition key)
+   * @param partitionKey - Cache partition key (sessionId from login)
    * @param homeAccountId - Account identifier from initial login
    * @returns BC API access token
    */
   async acquireBCTokenSilent(
-    userId: string,
+    partitionKey: string,
     homeAccountId: string
   ): Promise<TokenAcquisitionResult> {
     try {
-      const msalClient = this.createMsalClientWithCache(userId);
+      const msalClient = this.createMsalClientWithCache(partitionKey);
       const tokenCache = msalClient.getTokenCache();
 
       const account = await tokenCache.getAccountByHomeId(homeAccountId);
 
       if (!account) {
-        this.logger.warn('Account not found in MSAL cache for BC token', { userId, homeAccountId });
+        this.logger.warn('Account not found in MSAL cache for BC token', { partitionKey, homeAccountId });
         throw new Error('Account not found in cache - user needs to re-login');
       }
 
@@ -499,7 +499,7 @@ export class MicrosoftOAuthService {
       }
 
       this.logger.info('Successfully acquired Business Central API token via acquireTokenSilent', {
-        userId,
+        partitionKey,
         scopes: response.scopes,
         expiresOn: response.expiresOn,
       });
@@ -510,7 +510,7 @@ export class MicrosoftOAuthService {
         expiresAt: response.expiresOn || new Date(Date.now() + 3600 * 1000),
       };
     } catch (error) {
-      this.logger.error('Failed to acquire Business Central API token silently', { error, userId, homeAccountId });
+      this.logger.error('Failed to acquire Business Central API token silently', { error, partitionKey, homeAccountId });
       throw new Error('Failed to acquire Business Central access');
     }
   }
@@ -520,17 +520,17 @@ export class MicrosoftOAuthService {
    *
    * Useful for checking if a user has a valid cached session.
    *
-   * @param userId - User ID (cache partition key)
+   * @param partitionKey - Cache partition key (sessionId from login)
    * @param homeAccountId - Account identifier
    * @returns Account info or null if not found
    */
-  async getAccountFromCache(userId: string, homeAccountId: string): Promise<AccountInfo | null> {
+  async getAccountFromCache(partitionKey: string, homeAccountId: string): Promise<AccountInfo | null> {
     try {
-      const msalClient = this.createMsalClientWithCache(userId);
+      const msalClient = this.createMsalClientWithCache(partitionKey);
       const tokenCache = msalClient.getTokenCache();
       return await tokenCache.getAccountByHomeId(homeAccountId);
     } catch (error) {
-      this.logger.warn('Failed to get account from cache', { error, userId, homeAccountId });
+      this.logger.warn('Failed to get account from cache', { error, partitionKey, homeAccountId });
       return null;
     }
   }
@@ -545,7 +545,8 @@ export function createMicrosoftOAuthService(): MicrosoftOAuthService {
     clientSecret: process.env.MICROSOFT_CLIENT_SECRET || '',
     tenantId: process.env.MICROSOFT_TENANT_ID || 'common',
     redirectUri: process.env.MICROSOFT_REDIRECT_URI || 'http://localhost:3002/api/auth/callback',
-    scopes: process.env.MICROSOFT_SCOPES?.split(' ') || ALL_SCOPES,
+    // Hardcoded scopes - always use the full set required for Graph + BC API
+    scopes: ALL_SCOPES,
   };
 
   if (!config.clientId || !config.clientSecret) {

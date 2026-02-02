@@ -109,63 +109,74 @@ export async function authenticateMicrosoft(req: Request, res: Response, next: N
         timeUntilExpiry: tokenExpiresAt.getTime() - Date.now(),
       });
 
-      // Attempt to refresh the token automatically
-      if (oauthSession.refreshToken) {
-        try {
-          const { createMicrosoftOAuthService } = await import('@/domains/auth/oauth/MicrosoftOAuthService');
-          const oauthService = createMicrosoftOAuthService();
+      // Require homeAccountId and msalPartitionKey for cache-based refresh
+      if (!oauthSession.homeAccountId || !oauthSession.msalPartitionKey) {
+        logger.warn('Token expired but no homeAccountId/msalPartitionKey available (legacy session)', {
+          userId: oauthSession.userId,
+          hasHomeAccountId: !!oauthSession.homeAccountId,
+          hasMsalPartitionKey: !!oauthSession.msalPartitionKey,
+        });
 
-          logger.debug('Refreshing access token', { userId: oauthSession.userId });
+        sendError(res, ErrorCode.SESSION_EXPIRED, 'Session expired. Please log in again.');
+        return;
+      }
 
-          const refreshed = await oauthService.refreshAccessToken(oauthSession.refreshToken);
+      // Attempt to refresh the token automatically using MSAL cache
+      try {
+        const { createMicrosoftOAuthService } = await import('@/domains/auth/oauth/MicrosoftOAuthService');
+        const oauthService = createMicrosoftOAuthService();
 
-          // Update session with new tokens
-          req.session.microsoftOAuth = {
-            ...oauthSession,
-            accessToken: refreshed.accessToken,
-            refreshToken: refreshed.refreshToken,
-            tokenExpiresAt: (refreshed.expiresAt instanceof Date
-              ? refreshed.expiresAt.toISOString()
-              : refreshed.expiresAt) as string,  // ⭐ Type assertion for session storage
-          };
+        logger.debug('Refreshing access token via acquireTokenSilent', {
+          userId: oauthSession.userId,
+          msalPartitionKey: oauthSession.msalPartitionKey,
+        });
 
-          // Save session (force save to ensure it's persisted)
-          await new Promise<void>((resolve, reject) => {
-            req.session.save((err) => {
-              if (err) reject(err);
-              else resolve();
-            });
+        const refreshed = await oauthService.refreshAccessTokenSilent(
+          oauthSession.msalPartitionKey,
+          oauthSession.homeAccountId
+        );
+
+        // Update session with new access token
+        req.session.microsoftOAuth = {
+          ...oauthSession,
+          accessToken: refreshed.accessToken,
+          tokenExpiresAt: refreshed.expiresAt instanceof Date
+            ? refreshed.expiresAt.toISOString()
+            : String(refreshed.expiresAt),
+        };
+
+        // Save session (force save to ensure it's persisted)
+        await new Promise<void>((resolve, reject) => {
+          req.session.save((err) => {
+            if (err) reject(err);
+            else resolve();
           });
+        });
 
-          logger.info('Access token refreshed successfully', {
-            userId: oauthSession.userId,
-            newExpiresAt: refreshed.expiresAt.toISOString(),
-          });
+        logger.info('Access token refreshed successfully via acquireTokenSilent', {
+          userId: oauthSession.userId,
+          newExpiresAt: refreshed.expiresAt instanceof Date
+            ? refreshed.expiresAt.toISOString()
+            : refreshed.expiresAt,
+        });
 
-          // Continue with refreshed token
-          req.microsoftSession = req.session.microsoftOAuth;
-          req.userId = oauthSession.userId;
-          req.userEmail = oauthSession.email;
+        // Continue with refreshed token
+        req.microsoftSession = req.session.microsoftOAuth;
+        req.userId = oauthSession.userId;
+        req.userEmail = oauthSession.email;
 
-          next();
-          return;
-        } catch (error) {
-          logger.error('Failed to refresh access token', {
-            error,
-            userId: oauthSession.userId,
-          });
-
-          // Refresh failed, require re-login
-          sendError(res, ErrorCode.SESSION_EXPIRED, 'Failed to refresh access token. Please log in again.');
-          return;
-        }
-      } else {
-        // No refresh token available
-        logger.warn('No refresh token available for auto-refresh', {
+        next();
+        return;
+      } catch (error) {
+        logger.error('Failed to refresh access token via acquireTokenSilent', {
+          error: error instanceof Error
+            ? { message: error.message, stack: error.stack }
+            : { value: String(error) },
           userId: oauthSession.userId,
         });
 
-        sendError(res, ErrorCode.SESSION_EXPIRED, 'Access token expired and no refresh token available. Please log in again.');
+        // Refresh failed, require re-login
+        sendError(res, ErrorCode.SESSION_EXPIRED, 'Failed to refresh access token. Please log in again.');
         return;
       }
     }
@@ -285,19 +296,22 @@ export async function requireBCAccess(req: Request, res: Response, next: NextFun
         path: req.path,
       });
 
-      // Phase 3.1: Auto-refresh BC tokens instead of returning 403
+      // Auto-refresh BC tokens using MSAL cache
       try {
         const oauthSession = req.session?.microsoftOAuth as MicrosoftOAuthSession | undefined;
 
-        if (!oauthSession?.refreshToken) {
-          logger.warn('BC token expired but no refresh token available', {
+        // Require homeAccountId and msalPartitionKey for cache-based refresh
+        if (!oauthSession?.homeAccountId || !oauthSession?.msalPartitionKey) {
+          logger.warn('BC token expired but no homeAccountId/msalPartitionKey available (legacy session)', {
             userId: req.userId,
+            hasHomeAccountId: !!oauthSession?.homeAccountId,
+            hasMsalPartitionKey: !!oauthSession?.msalPartitionKey,
             path: req.path,
           });
           sendError(
             res,
             ErrorCode.SESSION_EXPIRED,
-            'Your session has expired and cannot be refreshed. Please log in again.',
+            'Your session has expired. Please log in again.',
             { consentUrl: '/api/auth/bc-consent' }
           );
           return;
@@ -308,25 +322,31 @@ export async function requireBCAccess(req: Request, res: Response, next: NextFun
         const { createMicrosoftOAuthService } = await import('@/domains/auth/oauth/MicrosoftOAuthService');
 
         const oauthService = createMicrosoftOAuthService();
-        const tokenManager = createBCTokenManager(oauthService);
+        const tokenManager = createBCTokenManager();
 
-        // Refresh BC token using distributed lock (if available)
-        const newToken = await tokenManager.getBCToken(req.userId, oauthSession.refreshToken);
+        // Refresh BC token using silent refresh
+        const bcToken = await oauthService.acquireBCTokenSilent(
+          oauthSession.msalPartitionKey,
+          oauthSession.homeAccountId
+        );
+
+        // Store refreshed BC token
+        await tokenManager.storeBCToken(req.userId, bcToken);
 
         // Attach refreshed token to request
-        req.bcAccessToken = newToken.accessToken;
-        req.bcTokenExpiresAt = newToken.expiresAt;
+        req.bcAccessToken = bcToken.accessToken;
+        req.bcTokenExpiresAt = bcToken.expiresAt;
 
-        logger.info('BC token refreshed successfully', {
+        logger.info('BC token refreshed successfully via acquireTokenSilent', {
           userId: req.userId,
-          newExpiresAt: newToken.expiresAt.toISOString(),
+          newExpiresAt: bcToken.expiresAt.toISOString(),
           path: req.path,
         });
 
         next();
         return;
       } catch (refreshError) {
-        logger.error('Failed to refresh BC token', {
+        logger.error('Failed to refresh BC token via acquireTokenSilent', {
           userId: req.userId,
           path: req.path,
           error: refreshError instanceof Error

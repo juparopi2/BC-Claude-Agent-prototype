@@ -186,9 +186,9 @@ CREATE TABLE users (
   email VARCHAR(255) UNIQUE NOT NULL,
   microsoft_user_id VARCHAR(255) UNIQUE NOT NULL,
 
-  -- BC tokens (encrypted with AES-256-GCM)
+  -- BC access token (encrypted with AES-256-GCM)
+  -- Note: Refresh tokens are managed by MSAL in Redis cache
   bc_access_token_encrypted TEXT,
-  bc_refresh_token_encrypted TEXT,
   bc_token_expires_at TIMESTAMP,
   bc_tenant_id VARCHAR(255),
 

@@ -38,7 +38,7 @@ describe('SocketAuthMiddleware', () => {
 
     mockDeps = {
       oauthService: {
-        refreshAccessToken: vi.fn(),
+        refreshAccessTokenSilent: vi.fn(),
       },
       logger: {
         info: vi.fn(),
@@ -87,7 +87,8 @@ describe('SocketAuthMiddleware', () => {
         userId: 'USER-123',
         email: 'test@example.com',
         accessToken: 'valid-token',
-        refreshToken: 'refresh-token',
+        homeAccountId: 'home-account-123',
+        msalPartitionKey: 'session-id-123',
         tokenExpiresAt: futureDate,
       } as MicrosoftOAuthSession);
 
@@ -104,6 +105,8 @@ describe('SocketAuthMiddleware', () => {
         userId: 'USER-123',
         email: 'test@example.com',
         accessToken: 'valid-token',
+        homeAccountId: 'home-account-123',
+        msalPartitionKey: 'session-id-123',
       } as MicrosoftOAuthSession);
 
       const middleware = createSocketAuthMiddleware(mockDeps);
@@ -114,13 +117,12 @@ describe('SocketAuthMiddleware', () => {
   });
 
   describe('Token Refresh', () => {
-    it('should attempt refresh when token is expired', async () => {
+    it('should attempt silent refresh when token is expired', async () => {
       const pastDate = new Date(Date.now() - 1000).toISOString();
       const newFutureDate = new Date(Date.now() + 60 * 60 * 1000);
 
-      mockDeps.oauthService.refreshAccessToken = vi.fn().mockResolvedValue({
+      mockDeps.oauthService.refreshAccessTokenSilent = vi.fn().mockResolvedValue({
         accessToken: 'new-access-token',
-        refreshToken: 'new-refresh-token',
         expiresAt: newFutureDate,
       });
 
@@ -128,14 +130,15 @@ describe('SocketAuthMiddleware', () => {
         userId: 'USER-123',
         email: 'test@example.com',
         accessToken: 'expired-token',
-        refreshToken: 'refresh-token',
+        homeAccountId: 'home-account-123',
+        msalPartitionKey: 'session-id-123',
         tokenExpiresAt: pastDate,
       } as MicrosoftOAuthSession);
 
       const middleware = createSocketAuthMiddleware(mockDeps);
       await middleware(mockSocket, mockNext);
 
-      expect(mockDeps.oauthService.refreshAccessToken).toHaveBeenCalledWith('refresh-token');
+      expect(mockDeps.oauthService.refreshAccessTokenSilent).toHaveBeenCalledWith('session-id-123', 'home-account-123');
       expect(mockNext).toHaveBeenCalledWith();
       expect(mockDeps.logger.info).toHaveBeenCalledWith(
         expect.stringContaining('Token expired'),
@@ -143,10 +146,10 @@ describe('SocketAuthMiddleware', () => {
       );
     });
 
-    it('should reject when refresh fails', async () => {
+    it('should reject when silent refresh fails', async () => {
       const pastDate = new Date(Date.now() - 1000).toISOString();
 
-      mockDeps.oauthService.refreshAccessToken = vi.fn().mockRejectedValue(
+      mockDeps.oauthService.refreshAccessTokenSilent = vi.fn().mockRejectedValue(
         new Error('Refresh failed')
       );
 
@@ -154,7 +157,8 @@ describe('SocketAuthMiddleware', () => {
         userId: 'USER-123',
         email: 'test@example.com',
         accessToken: 'expired-token',
-        refreshToken: 'refresh-token',
+        homeAccountId: 'home-account-123',
+        msalPartitionKey: 'session-id-123',
         tokenExpiresAt: pastDate,
       } as MicrosoftOAuthSession);
 
@@ -165,14 +169,14 @@ describe('SocketAuthMiddleware', () => {
       expect(mockNext.mock.calls[0][0].message).toContain('refresh failed');
     });
 
-    it('should reject when expired and no refresh token', async () => {
+    it('should reject when expired and no homeAccountId/msalPartitionKey (legacy session)', async () => {
       const pastDate = new Date(Date.now() - 1000).toISOString();
 
       const mockSocket = createMockSocket({
         userId: 'USER-123',
         email: 'test@example.com',
         accessToken: 'expired-token',
-        // No refreshToken
+        // No homeAccountId or msalPartitionKey
         tokenExpiresAt: pastDate,
       } as MicrosoftOAuthSession);
 
@@ -193,7 +197,8 @@ describe('SocketAuthMiddleware', () => {
         userId: 'USER-123',
         email: 'test@example.com',
         accessToken: 'valid-token',
-        refreshToken: 'refresh-token',
+        homeAccountId: 'home-account-123',
+        msalPartitionKey: 'session-id-123',
         tokenExpiresAt: nearFuture,
       } as MicrosoftOAuthSession);
 
@@ -223,7 +228,8 @@ describe('SocketAuthMiddleware', () => {
         userId: 'USER-123',
         email: 'test@example.com',
         accessToken: 'valid-token',
-        refreshToken: 'refresh-token',
+        homeAccountId: 'home-account-123',
+        msalPartitionKey: 'session-id-123',
         tokenExpiresAt: farFuture,
       } as MicrosoftOAuthSession);
 

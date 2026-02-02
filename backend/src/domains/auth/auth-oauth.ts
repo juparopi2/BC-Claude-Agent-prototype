@@ -45,7 +45,7 @@ const router = Router();
 
 // Initialize services
 const oauthService = createMicrosoftOAuthService();
-const bcTokenManager = createBCTokenManager(oauthService);
+const bcTokenManager = createBCTokenManager();
 
 /**
  * GET /api/auth/login
@@ -103,6 +103,19 @@ router.get('/login', async (req: Request, res: Response) => {
  *
  * Handle OAuth callback from Microsoft.
  * Exchanges authorization code for tokens and creates user session.
+ *
+ * IMPORTANT: OAuth authorization codes are ONE-TIME USE. We exchange the code
+ * exactly ONCE using handleAuthCallbackWithCache with sessionId as the MSAL
+ * cache partition key. This avoids the "chicken and egg" problem where we need
+ * userId before exchanging the code.
+ *
+ * Flow:
+ * 1. Validate state (CSRF)
+ * 2. Exchange code for tokens using sessionId as cache partition key
+ * 3. Get user profile using the access token
+ * 4. Lookup/create user in database
+ * 5. Store sessionId as msalPartitionKey in session
+ * 6. Redirect to frontend
  */
 router.get('/callback', async (req: Request, res: Response) => {
   try {
@@ -141,10 +154,26 @@ router.get('/callback', async (req: Request, res: Response) => {
       delete req.session.oauthState;
     }
 
-    // Get user profile first (we need it to check if user exists)
-    // Use legacy handleAuthCallback for initial token acquisition
-    const initialTokenResponse = await oauthService.handleAuthCallback(code, state as string);
-    const userProfile = await oauthService.getUserProfile(initialTokenResponse.access_token);
+    // Use sessionId as the MSAL cache partition key
+    // This avoids the "chicken and egg" problem: we don't have userId yet
+    // but we need a partition key to exchange the code
+    const msalPartitionKey = req.sessionID;
+
+    // Exchange authorization code for tokens ONCE using sessionId as partition key
+    // CRITICAL: OAuth codes are ONE-TIME USE - do not call this twice!
+    const tokenResponse = await oauthService.handleAuthCallbackWithCache(code, state as string, msalPartitionKey);
+
+    // Get user profile using the access token
+    const userProfile = await oauthService.getUserProfile(tokenResponse.access_token);
+
+    // Diagnostic logging for token acquisition
+    logger.info({
+      hasAccessToken: !!tokenResponse.access_token,
+      hasHomeAccountId: !!tokenResponse.homeAccountId,
+      expiresIn: tokenResponse.expires_in,
+      scopes: tokenResponse.scope,
+      msalPartitionKey,
+    }, 'Token response received from MSAL with Redis cache');
 
     // Extract real tenant ID from client_info (for multi-tenant apps using "common" authority)
     const realTenantId = extractTenantIdFromClientInfo(client_info as string | undefined);
@@ -214,25 +243,13 @@ router.get('/callback', async (req: Request, res: Response) => {
       logger.info('Created new user with Microsoft login', { userId, email: userProfile.mail });
     }
 
-    // Now that we have userId, acquire tokens with Redis cache persistence
-    // This enables acquireTokenSilent for future token refreshes
-    const tokenResponse = await oauthService.handleAuthCallbackWithCache(code, state as string, userId);
-
-    // Diagnostic logging for token acquisition
-    logger.info({
-      hasAccessToken: !!tokenResponse.access_token,
-      hasHomeAccountId: !!tokenResponse.homeAccountId,
-      expiresIn: tokenResponse.expires_in,
-      scopes: tokenResponse.scope,
-    }, 'Token response received from MSAL with Redis cache');
-
     // Calculate token expiration
     const expiresAt = new Date(Date.now() + tokenResponse.expires_in * 1000);
 
     // Try to acquire Business Central token using silent refresh
     try {
       if (tokenResponse.homeAccountId) {
-        const bcToken = await oauthService.acquireBCTokenSilent(userId, tokenResponse.homeAccountId);
+        const bcToken = await oauthService.acquireBCTokenSilent(msalPartitionKey, tokenResponse.homeAccountId);
         await bcTokenManager.storeBCToken(userId, bcToken);
         logger.info('Acquired and stored Business Central token via silent refresh', { userId });
       }
@@ -247,7 +264,7 @@ router.get('/callback', async (req: Request, res: Response) => {
     }
 
     // Create Microsoft OAuth session
-    // Store homeAccountId for future token refreshes via acquireTokenSilent
+    // Store homeAccountId and msalPartitionKey for future token refreshes via acquireTokenSilent
     const microsoftSession: MicrosoftOAuthSession = {
       userId,
       microsoftId: userProfile.id,
@@ -255,7 +272,7 @@ router.get('/callback', async (req: Request, res: Response) => {
       email: userProfile.mail,
       accessToken: tokenResponse.access_token,
       homeAccountId: tokenResponse.homeAccountId,  // Used for acquireTokenSilent
-      // refreshToken is managed by MSAL internally via Redis cache
+      msalPartitionKey,  // sessionId used as MSAL cache partition key
       tokenExpiresAt: expiresAt.toISOString(),
     };
 
@@ -269,6 +286,7 @@ router.get('/callback', async (req: Request, res: Response) => {
       userId,
       email: userProfile.mail,
       hasHomeAccountId: !!microsoftSession.homeAccountId,
+      msalPartitionKey: microsoftSession.msalPartitionKey,
       tokenExpiresAt: microsoftSession.tokenExpiresAt,
     }, 'Microsoft OAuth login successful (cache-based refresh enabled)');
 
@@ -290,43 +308,12 @@ router.post('/refresh', authenticateMicrosoft, async (req: Request, res: Respons
   try {
     const oauthSession = req.session?.microsoftOAuth as MicrosoftOAuthSession | undefined;
 
-    // Check for homeAccountId (new cache-based approach)
-    if (!oauthSession?.homeAccountId) {
-      // Fall back to legacy refreshToken approach for backwards compatibility
-      if (oauthSession?.refreshToken) {
-        logger.info('Using legacy refresh token approach (no homeAccountId)', {
-          userId: req.userId,
-        });
-
-        const refreshed = await oauthService.refreshAccessToken(oauthSession.refreshToken);
-
-        req.session.microsoftOAuth = {
-          ...oauthSession,
-          accessToken: refreshed.accessToken,
-          refreshToken: refreshed.refreshToken,
-          tokenExpiresAt: (refreshed.expiresAt instanceof Date
-            ? refreshed.expiresAt.toISOString()
-            : refreshed.expiresAt) as string,
-        };
-
-        await new Promise<void>((resolve, reject) => {
-          req.session.save((err) => {
-            if (err) reject(err);
-            else resolve();
-          });
-        });
-
-        res.json({
-          success: true,
-          expiresAt: refreshed.expiresAt.toISOString(),
-        });
-        return;
-      }
-
-      logger.warn('Token refresh failed: No homeAccountId or refreshToken available', {
+    // Require homeAccountId and msalPartitionKey for cache-based refresh
+    if (!oauthSession?.homeAccountId || !oauthSession?.msalPartitionKey) {
+      logger.warn('Token refresh failed: Missing homeAccountId or msalPartitionKey (session expired or legacy)', {
         userId: req.userId,
         hasHomeAccountId: !!oauthSession?.homeAccountId,
-        hasRefreshToken: !!oauthSession?.refreshToken,
+        hasMsalPartitionKey: !!oauthSession?.msalPartitionKey,
       });
       sendError(res, ErrorCode.SESSION_EXPIRED, 'Session expired. Please log in again.');
       return;
@@ -336,15 +323,16 @@ router.post('/refresh', authenticateMicrosoft, async (req: Request, res: Respons
     logger.debug('Refreshing access token via acquireTokenSilent', {
       userId: req.userId,
       homeAccountId: oauthSession.homeAccountId,
+      msalPartitionKey: oauthSession.msalPartitionKey,
     });
 
     const refreshed = await oauthService.refreshAccessTokenSilent(
-      oauthSession.userId!,
+      oauthSession.msalPartitionKey,
       oauthSession.homeAccountId
     );
 
     // Update session with new access token
-    // Note: homeAccountId stays the same, refreshToken is managed by MSAL cache
+    // Note: homeAccountId and msalPartitionKey stay the same
     req.session.microsoftOAuth = {
       ...oauthSession,
       accessToken: refreshed.accessToken,
@@ -394,16 +382,18 @@ router.post('/refresh', authenticateMicrosoft, async (req: Request, res: Respons
 router.post('/logout', authenticateMicrosoftOptional, async (req: Request, res: Response) => {
   try {
     const userId = req.userId;
+    const msalPartitionKey = req.microsoftSession?.msalPartitionKey;
 
-    // Clean up MSAL token cache in Redis
-    if (userId) {
+    // Clean up MSAL token cache in Redis using the partition key
+    if (msalPartitionKey) {
       try {
-        await deleteMsalCache(userId);
-        logger.info('Deleted MSAL cache for user', { userId });
+        await deleteMsalCache(msalPartitionKey);
+        logger.info('Deleted MSAL cache', { userId, msalPartitionKey });
       } catch (cacheError) {
         // Log but don't fail logout if cache deletion fails
         logger.warn('Failed to delete MSAL cache during logout', {
           userId,
+          msalPartitionKey,
           error: cacheError instanceof Error
             ? { message: cacheError.message }
             : { value: String(cacheError) },
@@ -543,52 +533,30 @@ router.get('/bc-status', authenticateMicrosoft, async (req: Request, res: Respon
  *
  * Grant Business Central API consent.
  * Acquires BC token with delegated permissions and stores it.
- * Uses MSAL cache-based token acquisition when available.
+ * Uses MSAL cache-based token acquisition.
  */
 router.post('/bc-consent', authenticateMicrosoft, async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;
     const homeAccountId = req.microsoftSession?.homeAccountId;
-    const refreshToken = req.microsoftSession?.refreshToken;
+    const msalPartitionKey = req.microsoftSession?.msalPartitionKey;
 
-    // Prefer cache-based approach if homeAccountId is available
-    if (homeAccountId) {
-      try {
-        const bcToken = await oauthService.acquireBCTokenSilent(userId, homeAccountId);
-        await bcTokenManager.storeBCToken(userId, bcToken);
-
-        logger.info('Business Central consent granted via acquireTokenSilent', { userId });
-
-        res.json({
-          success: true,
-          message: 'Business Central access granted successfully',
-          expiresAt: bcToken.expiresAt.toISOString(),
-        });
-        return;
-      } catch (silentError) {
-        // Log but fall through to legacy approach
-        logger.warn('Failed to acquire BC token via silent refresh, trying legacy approach', {
-          userId,
-          error: silentError instanceof Error
-            ? { message: silentError.message }
-            : { value: String(silentError) },
-        });
-      }
-    }
-
-    // Fallback to legacy refresh token approach
-    if (!refreshToken) {
+    // Require homeAccountId and msalPartitionKey for cache-based token acquisition
+    if (!homeAccountId || !msalPartitionKey) {
+      logger.warn('BC consent failed: Missing homeAccountId or msalPartitionKey (session expired or legacy)', {
+        userId,
+        hasHomeAccountId: !!homeAccountId,
+        hasMsalPartitionKey: !!msalPartitionKey,
+      });
       sendError(res, ErrorCode.SESSION_EXPIRED, 'Session expired. Please log in again.');
       return;
     }
 
-    // Acquire Business Central token using legacy approach
-    const bcToken = await oauthService.acquireBCToken(refreshToken);
-
-    // Store encrypted BC token
+    // Acquire BC token via silent refresh using MSAL cache
+    const bcToken = await oauthService.acquireBCTokenSilent(msalPartitionKey, homeAccountId);
     await bcTokenManager.storeBCToken(userId, bcToken);
 
-    logger.info('Business Central consent granted via legacy refresh token', { userId });
+    logger.info('Business Central consent granted via acquireTokenSilent', { userId });
 
     res.json({
       success: true,

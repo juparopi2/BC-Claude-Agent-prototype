@@ -30,6 +30,6 @@ export interface SemanticSearchResponse {
   totalChunksSearched: number;
 }
 
-export const SEMANTIC_THRESHOLD = 0.7;
-export const DEFAULT_MAX_FILES = 5;
-export const DEFAULT_MAX_CHUNKS_PER_FILE = 3;
+export const SEMANTIC_THRESHOLD = 0.55;
+export const DEFAULT_MAX_FILES = 10;
+export const DEFAULT_MAX_CHUNKS_PER_FILE = 5;

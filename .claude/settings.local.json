@@ -188,7 +188,9 @@
       "mcp__context7__query-docs",
       "Bash(Get-ChildItem -Path \"D:\\\\Documents\\\\BC-Claude-Agent-prototype\\\\backend\\\\src\\\\__tests__\" -Recurse -Name)",
       "Bash(Select-String -Pattern \"queue|Queue\" -AllMatches)",
-      "Bash(npx prisma:*)"
+      "Bash(npx prisma:*)",
+      "Bash(set:*)",
+      "Bash(source:*)"
     ],
     "deny": [],
     "ask": []

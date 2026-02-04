@@ -143,13 +143,15 @@ The system decides which agent to activate based on hybrid logic:
 -   **Change routing logic**: `backend/src/modules/agents/orchestrator/router.ts`
 -   **Adjust socket event formats**: Check `docs/plans/Refactor/contracts/02-CONTRATO-BACKEND-FRONTEND.md`. Emission logic is in `backend/src/domains/agent/emission`.
 -   **Pagination configuration**: See `docs/backend/02-PAGINATION.md`. Limits: Sessions (20/50), Messages (50/100), Files (50/100).
+-   **Database schema**: `backend/prisma/schema.prisma` (single source of truth for columns, types, relationships)
+-   **Modify DB schema**: Edit `schema.prisma` -> `npx prisma db push`
 
 ### 4.2 Golden Rules (Pre-Commit)
 1.  **Strict Typing**: No `any`. Use `unknown` with Zod validation if necessary.
 2.  **No Logic in Controllers**: `ChatMessageHandler` only validates and delegates.
 3.  **Tests**: Every change requires a unit test. If touching persistence, integration test.
 4.  **Logging**: Use structured logger (`createChildLogger`). Never `console.log`.
-5.  **IDs**: All UUIDs/GUIDs must be **UPPERCASE** (see Section 12).
+5.  **IDs**: All UUIDs/GUIDs must be **UPPERCASE** (see Section 13).
 
 ### 4.3 Common Commands
 
@@ -334,29 +336,70 @@ it('should emit events', () => {
 
 ---
 
-## 9. Other Key Patterns
+## 9. Database Schema (Prisma)
 
-### 9.1 SQL NULL Comparison
-Never use `column = NULL` in SQL queries. Use `QueryBuilder` for nullable parameters:
+### 9.1 Source of Truth
+The database schema is defined in `backend/prisma/schema.prisma`. This file is the **single source of truth** for:
+- Table and column names
+- Data types
+- Relationships and foreign keys
+- Indexes and constraints
 
-```typescript
-import { createWhereClause } from '@/utils/sql/QueryBuilder';
+**To query the schema**: Read `backend/prisma/schema.prisma` directly.
 
-const { whereClause, params } = createWhereClause()
-  .addCondition('user_id', userId)
-  .addNullableCondition('parent_folder_id', folderId)  // Handles NULL correctly
-  .build();
+### 9.2 Workflow (db push)
+We use `prisma db push` for direct synchronization (no incremental migrations):
+
+```bash
+# Make schema changes
+1. Edit backend/prisma/schema.prisma
+2. npx prisma db push         # Apply changes to DB
+3. npx prisma generate        # Regenerate typed client
+4. Commit schema.prisma
 ```
 
-See `docs/backend/sql-best-practices.md` for detailed guidance.
+### 9.3 Useful Commands
+```bash
+npx prisma db pull     # Sync schema from DB (if external changes occurred)
+npx prisma validate    # Validate schema syntax
+npx prisma format      # Format schema file
+```
 
-### 9.2 WebSocket Events
+> **Note**: `prisma studio` is not supported for SQL Server. Use Azure Data Studio or SSMS for visual database exploration.
+
+### 9.4 Prisma Client
+The singleton client is in `backend/src/infrastructure/database/prisma.ts`. Usage:
+
+```typescript
+import { prisma } from '@/infrastructure/database';
+
+// Typed queries
+const user = await prisma.users.findUnique({ where: { id: userId } });
+const sessions = await prisma.sessions.findMany({ where: { user_id: userId } });
+```
+
+### 9.5 Coexistence with mssql Raw
+During transition, Prisma coexists with the existing `mssql` client. For complex queries requiring raw SQL:
+
+```typescript
+// Prisma raw query (preferred)
+const result = await prisma.$queryRaw`SELECT * FROM users WHERE id = ${userId}`;
+
+// Or use existing executeQuery (legacy)
+import { executeQuery } from '@/infrastructure/database';
+```
+
+---
+
+## 10. Other Key Patterns
+
+### 10.1 WebSocket Events
 Real-time communication uses Socket.IO with typed events from `@bc-agent/shared`:
 - `chat:message` - Send user message
 - `agent:*` events - Stream agent responses
 - `approval:request/resolve` - Human-in-the-loop flow
 
-### 9.3 Test Data (E2E)
+### 10.2 Test Data (E2E)
 E2E test data uses specific prefixes for safe cleanup:
 - User IDs: `e2e00001-...`
 - Session IDs: `e2e10001-...`
@@ -364,9 +407,9 @@ E2E test data uses specific prefixes for safe cleanup:
 
 ---
 
-## 10. Bug Prevention Strategy
+## 11. Bug Prevention Strategy
 
-### 10.1 Common Runtime Errors to Watch For
+### 11.1 Common Runtime Errors to Watch For
 
 **Void functions with `.catch()` or `.then()`:**
 ```typescript
@@ -386,7 +429,7 @@ const result = await this.persistenceCoordinator.persistToolEventsAsync(data);
 persistToolEventsAsync(sessionId: string, data: ToolExecution[]): void { ... }
 ```
 
-### 10.2 Migration Checklist
+### 11.2 Migration Checklist
 
 When removing features (e.g., streaming chunks → sync architecture):
 
@@ -401,7 +444,7 @@ When removing features (e.g., streaming chunks → sync architecture):
 4. **Update test fixtures** - Factory methods, sequences, presets
 5. **Update documentation** - Code comments, CLAUDE.md, contracts
 
-### 10.3 Pre-Commit Verification
+### 11.3 Pre-Commit Verification
 
 Before committing changes, always run:
 ```bash
@@ -415,7 +458,7 @@ npm run -w backend lint
 npm run -w bc-agent-frontend lint
 ```
 
-### 10.4 Error Serialization Pattern
+### 11.4 Error Serialization Pattern
 
 Always serialize Error objects properly for logging:
 ```typescript
@@ -429,7 +472,7 @@ const errorInfo = error instanceof Error
 this.logger.error({ error: errorInfo }, 'Operation failed');
 ```
 
-### 10.5 Type Mismatches Between Modules
+### 11.5 Type Mismatches Between Modules
 
 When types differ between modules (e.g., `FileContextPreparationResult` vs `FileContextResult`):
 
@@ -441,7 +484,7 @@ When types differ between modules (e.g., `FileContextPreparationResult` vs `File
    fileContext: contextResult as unknown,
    ```
 
-### 10.6 Sync Architecture Event Types
+### 11.6 Sync Architecture Event Types
 
 The system uses **synchronous execution** (not streaming). Valid event types:
 - `session_start`, `session_end`, `complete` (lifecycle)
@@ -457,11 +500,11 @@ The system uses **synchronous execution** (not streaming). Valid event types:
 
 ---
 
-## 11. Logging Pattern - Service Context
+## 12. Logging Pattern - Service Context
 
 Always use `createChildLogger` with a service name to enable `LOG_SERVICES` filtering. This allows selective log output during development/debugging.
 
-### 11.1 For Classes
+### 12.1 For Classes
 
 ```typescript
 import { createChildLogger } from '@/shared/utils/logger';
@@ -475,7 +518,7 @@ export class MyService {
 }
 ```
 
-### 11.2 For Routes/Middleware
+### 12.2 For Routes/Middleware
 
 ```typescript
 import { createChildLogger } from '@/shared/utils/logger';
@@ -487,7 +530,7 @@ router.get('/path', (req, res) => {
 });
 ```
 
-### 11.3 For Classes with Dependency Injection
+### 12.3 For Classes with Dependency Injection
 
 ```typescript
 import { createChildLogger } from '@/shared/utils/logger';
@@ -502,12 +545,12 @@ export class MyService {
 }
 ```
 
-### 11.4 Exceptions (use raw `logger` directly)
+### 12.4 Exceptions (use raw `logger` directly)
 
 - `pinoHttp` middleware (`logging.ts`) - requires base logger instance for HTTP logging
 - Shared utilities (`retry.ts`) - not service-scoped
 
-### 11.5 Usage
+### 12.5 Usage
 
 Filter logs by service using `LOG_SERVICES` environment variable:
 
@@ -521,11 +564,11 @@ npm run dev
 
 ---
 
-## 12. ID Standardization (GUID/UUID)
+## 13. ID Standardization (GUID/UUID)
 
 **CRITICAL RULE**: All IDs (User ID, File ID, Session ID, Workspace ID, etc.) that follow GUID/UUID format MUST be **UPPERCASE** throughout the entire system.
 
-### 12.1 Implementation Rules
+### 13.1 Implementation Rules
 1.  **Ingestion Normalization**: When receiving an ID from any external source (API request, CLI input, integration, etc.):
     -   **Backend**: Convert to uppercase immediately upon receipt (e.g., in controllers or DTO transformation). `id.toUpperCase()`.
     -   **Frontend**: Convert to uppercase before sending to backend or storing in state.
@@ -535,7 +578,7 @@ npm run dev
 4.  **Database**: IDs stored in the database (SQL, Redis, etc.) must be uppercase.
 5.  **Constants/Magic Strings**: Any hardcoded IDs in tests or code (e.g., `const TEST_USER_ID = '...'`) must be uppercase.
 
-### 12.2 Examples
+### 13.2 Examples
 ```typescript
 // ✅ CORRECT
 const userId = rawId.toUpperCase();

@@ -1,0 +1,602 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlserver"
+}
+
+model agent_executions {
+  id              String    @id(map: "PK__agent_ex__3213E83F268230FD") @default(dbgenerated("newid()"), map: "DF__agent_execut__id__40058253") @db.UniqueIdentifier
+  session_id      String    @db.UniqueIdentifier
+  agent_type      String    @db.NVarChar(100)
+  action          String    @db.NVarChar(100)
+  input_data      String?   @db.NVarChar(Max)
+  output_data     String?   @db.NVarChar(Max)
+  status          String    @default("started", map: "DF__agent_exe__statu__40F9A68C") @db.NVarChar(50)
+  error_message   String?   @db.NVarChar(Max)
+  error_stack     String?   @db.NVarChar(Max)
+  duration_ms     Int?
+  tokens_used     Int?
+  thinking_tokens Int?
+  created_at      DateTime  @default(dbgenerated("getutcdate()"), map: "DF__agent_exe__creat__41EDCAC5")
+  completed_at    DateTime?
+  sessions        sessions  @relation(fields: [session_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_agent_executions_session")
+
+  @@index([agent_type], map: "idx_agent_executions_agent")
+  @@index([agent_type, status], map: "idx_agent_executions_agent_status")
+  @@index([created_at], map: "idx_agent_executions_created")
+  @@index([session_id], map: "idx_agent_executions_session")
+  @@index([status], map: "idx_agent_executions_status")
+}
+
+model approvals {
+  id                 String    @id(map: "PK__approval__3213E83F0F00F114") @default(dbgenerated("newid()"), map: "DF__approvals__id__09A971A2") @db.UniqueIdentifier
+  session_id         String    @db.UniqueIdentifier
+  message_id         String?   @db.NVarChar(255)
+  action_type        String    @db.NVarChar(100)
+  action_description String    @db.NVarChar(Max)
+  action_data        String?   @db.NVarChar(Max)
+  status             String    @default("pending", map: "DF__approvals__statu__0A9D95DB") @db.NVarChar(50)
+  decided_by_user_id String?   @db.UniqueIdentifier
+  decided_at         DateTime?
+  rejection_reason   String?   @db.NVarChar(Max)
+  created_at         DateTime  @default(dbgenerated("getutcdate()"), map: "DF__approvals__creat__0B91BA14")
+  tool_name          String    @db.NVarChar(100)
+  tool_args          String?   @db.NVarChar(Max)
+  expires_at         DateTime?
+  priority           String    @default("medium", map: "DF__approvals__prior__078C1F06") @db.NVarChar(20)
+  users              users?    @relation(fields: [decided_by_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_approvals_decided_by")
+  messages           messages? @relation(fields: [message_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_approvals_message")
+  sessions           sessions  @relation(fields: [session_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_approvals_session")
+
+  @@index([created_at], map: "idx_approvals_created_at")
+  @@index([session_id], map: "idx_approvals_session_id")
+  @@index([status], map: "idx_approvals_status")
+}
+
+model audit_log {
+  id          String   @id(map: "PK__audit_lo__3213E83F5EBAC4A4") @default(dbgenerated("newid()"), map: "DF__audit_log__id__58D1301D") @db.UniqueIdentifier
+  user_id     String?  @db.UniqueIdentifier
+  session_id  String?  @db.UniqueIdentifier
+  action      String   @db.NVarChar(100)
+  entity_type String?  @db.NVarChar(100)
+  entity_id   String?  @db.UniqueIdentifier
+  details     String?  @db.NVarChar(Max)
+  ip_address  String?  @db.NVarChar(50)
+  user_agent  String?  @db.NVarChar(500)
+  created_at  DateTime @default(dbgenerated("getutcdate()"), map: "DF__audit_log__creat__59C55456")
+  event_type  String   @db.NVarChar(100)
+  event_data  String?  @db.NVarChar(Max)
+  users       users?   @relation(fields: [user_id], references: [id], onUpdate: NoAction, map: "fk_audit_user")
+
+  @@index([action], map: "idx_audit_action")
+  @@index([created_at], map: "idx_audit_created_at")
+  @@index([entity_type, entity_id], map: "idx_audit_entity")
+  @@index([session_id], map: "idx_audit_session_id")
+  @@index([user_id], map: "idx_audit_user_id")
+}
+
+model billing_records {
+  id                   String    @id(map: "PK__billing___3213E83F8DF5D999") @default(dbgenerated("newid()"), map: "DF__billing_reco__id__69C6B1F5") @db.UniqueIdentifier
+  user_id              String    @db.UniqueIdentifier
+  billing_period_start DateTime
+  billing_period_end   DateTime
+  total_tokens         BigInt    @default(0, map: "DF__billing_r__total__6ABAD62E")
+  total_api_calls      Int       @default(0, map: "DF__billing_r__total__6BAEFA67")
+  total_storage_bytes  BigInt    @default(0, map: "DF__billing_r__total__6CA31EA0")
+  base_cost            Decimal   @default(0.0, map: "DF__billing_r__base___6D9742D9") @db.Decimal(18, 8)
+  usage_cost           Decimal   @default(0.0, map: "DF__billing_r__usage__6E8B6712") @db.Decimal(18, 8)
+  overage_cost         Decimal   @default(0.0, map: "DF__billing_r__overa__6F7F8B4B") @db.Decimal(18, 8)
+  total_cost           Decimal   @default(0.0, map: "DF__billing_r__total__7073AF84") @db.Decimal(18, 8)
+  status               String    @default("pending", map: "DF__billing_r__statu__7167D3BD") @db.NVarChar(20)
+  payment_method       String?   @db.NVarChar(50)
+  paid_at              DateTime?
+  created_at           DateTime  @default(dbgenerated("getutcdate()"), map: "DF__billing_r__creat__725BF7F6")
+  updated_at           DateTime  @default(dbgenerated("getutcdate()"), map: "DF__billing_r__updat__73501C2F")
+  users                users     @relation(fields: [user_id], references: [id], onUpdate: NoAction, map: "FK_billing_records_user")
+
+  @@index([status, created_at(sort: Desc)], map: "IX_billing_records_status")
+  @@index([user_id, billing_period_start(sort: Desc)], map: "IX_billing_records_user_period")
+}
+
+model chat_attachments {
+  id                       String                     @id(map: "PK_chat_attachments") @default(dbgenerated("newid()"), map: "DF__chat_attachm__id__62E4AA3C") @db.UniqueIdentifier
+  user_id                  String                     @db.UniqueIdentifier
+  session_id               String                     @db.UniqueIdentifier
+  name                     String                     @db.NVarChar(512)
+  mime_type                String                     @db.VarChar(100)
+  size_bytes               BigInt
+  blob_path                String                     @db.VarChar(2048)
+  content_hash             String?                    @db.VarChar(64)
+  expires_at               DateTime
+  created_at               DateTime                   @default(dbgenerated("getutcdate()"), map: "DF__chat_atta__creat__63D8CE75")
+  is_deleted               Boolean                    @default(false, map: "DF__chat_atta__is_de__64CCF2AE")
+  deleted_at               DateTime?
+  sessions                 sessions                   @relation(fields: [session_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "FK_chat_attachments_session")
+  message_chat_attachments message_chat_attachments[]
+
+  @@index([user_id, session_id], map: "IX_chat_attachments_user_session")
+}
+
+model checkpoints {
+  id              String   @id(map: "PK__checkpoi__3213E83F7632A42C") @default(dbgenerated("newid()"), map: "DF__checkpoints__id__1332DBDC") @db.UniqueIdentifier
+  session_id      String   @db.UniqueIdentifier
+  checkpoint_name String   @db.NVarChar(255)
+  checkpoint_data String   @db.NVarChar(Max)
+  created_at      DateTime @default(dbgenerated("getutcdate()"), map: "DF__checkpoin__creat__14270015")
+  sessions        sessions @relation(fields: [session_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_checkpoints_session")
+
+  @@index([created_at], map: "idx_checkpoints_created_at")
+  @@index([session_id], map: "idx_checkpoints_session_id")
+}
+
+model deletion_audit_log {
+  id                   String    @id(map: "PK__deletion__3213E83F227C67D7") @default(dbgenerated("newid()"), map: "DF__deletion_aud__id__047AA831") @db.UniqueIdentifier
+  user_id              String    @db.UniqueIdentifier
+  resource_type        String    @db.NVarChar(50)
+  resource_id          String    @db.UniqueIdentifier
+  resource_name        String?   @db.NVarChar(500)
+  deletion_reason      String?   @db.NVarChar(255)
+  requested_by         String?   @db.NVarChar(255)
+  deleted_from_db      Boolean?  @default(false, map: "DF__deletion___delet__056ECC6A")
+  deleted_from_blob    Boolean?  @default(false, map: "DF__deletion___delet__0662F0A3")
+  deleted_from_search  Boolean?  @default(false, map: "DF__deletion___delet__075714DC")
+  deleted_from_cache   Boolean?  @default(false, map: "DF__deletion___delet__084B3915")
+  child_files_deleted  Int?      @default(0, map: "DF__deletion___child__093F5D4E")
+  child_chunks_deleted Int?      @default(0, map: "DF__deletion___child__0A338187")
+  requested_at         DateTime? @default(dbgenerated("getutcdate()"), map: "DF__deletion___reque__0B27A5C0")
+  completed_at         DateTime?
+  status               String?   @default("pending", map: "DF__deletion___statu__0C1BC9F9") @db.NVarChar(50)
+  error_details        String?   @db.NVarChar(Max)
+  metadata             String?   @db.NVarChar(Max)
+
+  @@index([resource_type, requested_at(sort: Desc)], map: "IX_deletion_audit_resource_type")
+  @@index([status, requested_at(sort: Desc)], map: "IX_deletion_audit_status")
+  @@index([user_id, requested_at(sort: Desc)], map: "IX_deletion_audit_user_id")
+}
+
+model file_chunks {
+  id                 String    @id(map: "PK__file_chu__3213E83F4561EC3B") @default(dbgenerated("newid()"), map: "DF__file_chunks__id__44952D46") @db.UniqueIdentifier
+  file_id            String    @db.UniqueIdentifier
+  chunk_index        Int
+  chunk_text         String    @db.NVarChar(Max)
+  chunk_tokens       Int
+  search_document_id String?   @db.NVarChar(255)
+  created_at         DateTime? @default(dbgenerated("getutcdate()"), map: "DF__file_chun__creat__4589517F")
+  user_id            String    @db.UniqueIdentifier
+  metadata           String?   @db.NVarChar(Max)
+  files              files     @relation(fields: [file_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "FK__file_chun__file___467D75B8")
+
+  @@index([file_id, chunk_index], map: "IX_file_chunks_file_index")
+  @@index([user_id, file_id], map: "IX_file_chunks_user_file")
+  @@index([user_id], map: "IX_file_chunks_user_id")
+}
+
+model files {
+  id                       String                     @id(map: "PK__files__3213E83F64B37894") @default(dbgenerated("newid()"), map: "DF__files__id__3A179ED3") @db.UniqueIdentifier
+  user_id                  String                     @db.UniqueIdentifier
+  parent_folder_id         String?                    @db.UniqueIdentifier
+  name                     String                     @db.NVarChar(500)
+  mime_type                String                     @db.NVarChar(255)
+  size_bytes               BigInt
+  blob_path                String
+  is_folder                Boolean                    @default(false, map: "DF__files__is_folder__3B0BC30C")
+  is_favorite              Boolean                    @default(false, map: "DF__files__is_favori__3BFFE745")
+  processing_status        String?                    @default("pending", map: "DF__files__processin__3CF40B7E") @db.NVarChar(50)
+  embedding_status         String?                    @default("pending", map: "DF__files__embedding__3DE82FB7") @db.NVarChar(50)
+  extracted_text           String?                    @db.NVarChar(Max)
+  created_at               DateTime?                  @default(dbgenerated("getutcdate()"), map: "DF__files__created_a__3EDC53F0")
+  updated_at               DateTime?                  @default(dbgenerated("getutcdate()"), map: "DF__files__updated_a__3FD07829")
+  source_type              String                     @default("blob_storage", map: "DF__files__source_ty__2AA05119") @db.VarChar(50)
+  external_id              String?                    @db.VarChar(512)
+  external_metadata        String?                    @db.NVarChar(Max)
+  last_synced_at           DateTime?
+  content_hash             String?                    @db.Char(64)
+  processing_retry_count   Int                        @default(0, map: "DF__files__processin__3335971A")
+  embedding_retry_count    Int                        @default(0, map: "DF__files__embedding__3429BB53")
+  last_processing_error    String?
+  last_embedding_error     String?
+  failed_at                DateTime?
+  deletion_status          String?                    @db.NVarChar(20)
+  deleted_at               DateTime?
+  file_chunks              file_chunks[]
+  files                    files?                     @relation("filesTofiles", fields: [parent_folder_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "FK__files__parent_fo__41B8C09B")
+  other_files              files[]                    @relation("filesTofiles")
+  users                    users                      @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "FK__files__user_id__40C49C62")
+  image_embeddings         image_embeddings?
+  message_citations        message_citations[]
+  message_file_attachments message_file_attachments[]
+
+  @@index([embedding_status, created_at], map: "IX_files_embedding_status")
+  @@index([processing_status, created_at], map: "IX_files_processing_status")
+  @@index([user_id, source_type], map: "IX_files_source_type")
+  @@index([user_id, parent_folder_id, name], map: "IX_files_user_folder")
+}
+
+model image_embeddings {
+  id                 String    @id(map: "PK__image_em__3213E83FD31C019B") @default(dbgenerated("newid()"), map: "DF__image_embedd__id__23F3538A") @db.UniqueIdentifier
+  file_id            String    @unique(map: "UQ_image_embeddings_file") @db.UniqueIdentifier
+  user_id            String    @db.UniqueIdentifier
+  embedding          String    @db.NVarChar(Max)
+  dimensions         Int       @default(1024, map: "DF__image_emb__dimen__24E777C3")
+  model              String    @default("azure-vision-vectorize-image", map: "DF__image_emb__model__25DB9BFC") @db.NVarChar(100)
+  model_version      String    @default("2023-04-15", map: "DF__image_emb__model__26CFC035") @db.NVarChar(50)
+  created_at         DateTime  @default(dbgenerated("getutcdate()"), map: "DF__image_emb__creat__27C3E46E")
+  updated_at         DateTime?
+  caption            String?   @db.NVarChar(Max)
+  caption_confidence Float?
+  files              files     @relation(fields: [file_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "FK_image_embeddings_files")
+  users              users     @relation(fields: [user_id], references: [id], onUpdate: NoAction, map: "FK_image_embeddings_users")
+
+  @@index([created_at(sort: Desc)], map: "IX_image_embeddings_created_at")
+  @@index([file_id], map: "IX_image_embeddings_file_id")
+  @@index([user_id], map: "IX_image_embeddings_user_id")
+}
+
+model message_chat_attachments {
+  id                 String           @id(map: "PK_message_chat_attachments") @default(dbgenerated("newid()"), map: "DF__message_chat__id__6B79F03D") @db.UniqueIdentifier
+  message_id         String           @db.NVarChar(255)
+  chat_attachment_id String           @db.UniqueIdentifier
+  created_at         DateTime         @default(dbgenerated("getutcdate()"), map: "DF__message_c__creat__6C6E1476")
+  chat_attachments   chat_attachments @relation(fields: [chat_attachment_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "FK_mca_attachment")
+
+  @@unique([message_id, chat_attachment_id], map: "UQ_message_attachment")
+  @@index([chat_attachment_id], map: "IX_mca_attachment")
+  @@index([message_id], map: "IX_mca_message")
+}
+
+model message_citations {
+  id              String   @id(map: "PK__message___3213E83F97B30FE9") @default(dbgenerated("newid()"), map: "DF__message_cita__id__2D7CBDC4") @db.UniqueIdentifier
+  message_id      String   @db.NVarChar(255)
+  file_id         String?  @db.UniqueIdentifier
+  file_name       String   @db.NVarChar(512)
+  source_type     String   @db.VarChar(50)
+  mime_type       String   @db.VarChar(100)
+  relevance_score Decimal  @db.Decimal(5, 4)
+  is_image        Boolean  @default(false, map: "DF__message_c__is_im__2E70E1FD")
+  excerpt_count   Int      @default(0, map: "DF__message_c__excer__2F650636")
+  created_at      DateTime @default(dbgenerated("getutcdate()"), map: "DF__message_c__creat__30592A6F")
+  files           files?   @relation(fields: [file_id], references: [id], onUpdate: NoAction, map: "FK_message_citations_files")
+
+  @@index([created_at], map: "IX_message_citations_created")
+  @@index([file_id], map: "IX_message_citations_file")
+  @@index([message_id], map: "IX_message_citations_message")
+}
+
+model message_events {
+  id              String     @id(map: "PK__message___3213E83F3327D1FC") @default(dbgenerated("newid()"), map: "DF__message_even__id__214BF109") @db.UniqueIdentifier
+  session_id      String     @db.UniqueIdentifier
+  event_type      String     @db.NVarChar(50)
+  sequence_number Int
+  timestamp       DateTime   @default(dbgenerated("getutcdate()"), map: "DF__message_e__times__22401542")
+  data            String     @db.NVarChar(Max)
+  processed       Boolean    @default(false, map: "DF__message_e__proce__2334397B")
+  sessions        sessions   @relation(fields: [session_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "FK_message_events_sessions")
+  messages        messages[]
+
+  @@unique([session_id, sequence_number], map: "UQ_message_events_session_sequence")
+  @@index([session_id, sequence_number], map: "IX_message_events_session_sequence")
+  @@index([timestamp(sort: Desc)], map: "IX_message_events_timestamp")
+}
+
+model message_file_attachments {
+  id              String    @id(map: "PK__message___3213E83FE352E597") @default(dbgenerated("newid()"), map: "DF__message_file__id__4959E263") @db.UniqueIdentifier
+  message_id      String    @db.NVarChar(255)
+  file_id         String    @db.UniqueIdentifier
+  usage_type      String    @db.NVarChar(50)
+  relevance_score Float?
+  created_at      DateTime? @default(dbgenerated("getutcdate()"), map: "DF__message_f__creat__4A4E069C")
+  files           files     @relation(fields: [file_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "FK__message_f__file___4B422AD5")
+
+  @@index([file_id, created_at], map: "IX_message_file_attachments_file")
+  @@index([message_id, created_at], map: "IX_message_file_attachments_message")
+}
+
+model messages {
+  id              String          @id(map: "PK_messages") @db.NVarChar(255)
+  session_id      String          @db.UniqueIdentifier
+  role            String          @db.NVarChar(50)
+  content         String          @db.NVarChar(Max)
+  metadata        String?         @db.NVarChar(Max)
+  token_count     Int?
+  created_at      DateTime        @default(dbgenerated("getutcdate()"), map: "DF__messages__create__04E4BC85")
+  message_type    String          @db.NVarChar(20)
+  stop_reason     String?         @db.NVarChar(20)
+  sequence_number Int?
+  event_id        String?         @db.UniqueIdentifier
+  tool_use_id     String?         @db.NVarChar(255)
+  model           String?         @db.NVarChar(100)
+  input_tokens    Int?
+  output_tokens   Int?
+  total_tokens    Int?
+  current_todo_id String?         @db.UniqueIdentifier
+  approvals       approvals[]
+  message_events  message_events? @relation(fields: [event_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "FK_messages_event_id")
+  sessions        sessions        @relation(fields: [session_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_messages_session")
+
+  @@index([created_at], map: "idx_messages_created_at")
+  @@index([role], map: "idx_messages_role")
+  @@index([session_id], map: "idx_messages_session_id")
+  @@index([session_id, message_type], map: "idx_messages_session_type")
+  @@index([message_type], map: "idx_messages_type")
+  @@index([session_id, created_at], map: "IX_messages_tokens")
+}
+
+model performance_metrics {
+  id           String    @id(map: "PK__performa__3213E83F2535ECB4") @default(dbgenerated("newid()"), map: "DF__performance___id__6BE40491") @db.UniqueIdentifier
+  session_id   String?   @db.UniqueIdentifier
+  metric_name  String    @db.NVarChar(100)
+  metric_value Float
+  metric_unit  String?   @db.NVarChar(50)
+  tags         String?   @db.NVarChar(Max)
+  created_at   DateTime  @default(dbgenerated("getutcdate()"), map: "DF__performan__creat__6CD828CA")
+  sessions     sessions? @relation(fields: [session_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_metrics_session")
+
+  @@index([created_at], map: "idx_metrics_created")
+  @@index([metric_name], map: "idx_metrics_name")
+  @@index([metric_name, created_at], map: "idx_metrics_name_created")
+  @@index([session_id], map: "idx_metrics_session")
+}
+
+model permission_presets {
+  id          String   @id(map: "PK__permissi__3213E83FD0E303EE") @default(dbgenerated("newid()"), map: "DF__permission_p__id__3A4CA8FD") @db.UniqueIdentifier
+  name        String   @unique(map: "UQ__permissi__72E12F1BBE106145") @db.NVarChar(100)
+  description String?  @db.NVarChar(500)
+  permissions String   @db.NVarChar(Max)
+  is_active   Boolean  @default(true, map: "DF__permissio__is_ac__3B40CD36")
+  created_at  DateTime @default(dbgenerated("getutcdate()"), map: "DF__permissio__creat__3C34F16F")
+  updated_at  DateTime @default(dbgenerated("getutcdate()"), map: "DF__permissio__updat__3D2915A8")
+
+  @@index([is_active], map: "idx_permission_presets_is_active")
+  @@index([name], map: "idx_permission_presets_name")
+}
+
+model quota_alerts {
+  id                BigInt    @id(map: "PK__quota_al__3213E83FC6A065CB") @default(autoincrement())
+  user_id           String    @db.UniqueIdentifier
+  quota_type        String    @db.NVarChar(50)
+  threshold_percent Int
+  threshold_value   BigInt
+  alerted_at        DateTime  @default(dbgenerated("getutcdate()"), map: "DF__quota_ale__alert__7720AD13")
+  acknowledged_at   DateTime?
+  users             users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "FK_quota_alerts_user")
+
+  @@index([user_id, alerted_at(sort: Desc)], map: "IX_quota_alerts_user_alerted")
+}
+
+model session_files {
+  id              String    @id(map: "PK__session___3213E83FEA25EA4B") @default(dbgenerated("newid()"), map: "DF__session_file__id__65370702") @db.UniqueIdentifier
+  session_id      String    @db.UniqueIdentifier
+  file_name       String    @db.NVarChar(255)
+  file_path       String    @db.NVarChar(500)
+  file_type       String    @db.NVarChar(100)
+  file_size_bytes BigInt?
+  mime_type       String?   @db.NVarChar(100)
+  content_hash    String?   @db.NVarChar(255)
+  is_active       Boolean   @default(true, map: "DF__session_f__is_ac__662B2B3B")
+  metadata        String?   @db.NVarChar(Max)
+  created_at      DateTime  @default(dbgenerated("getutcdate()"), map: "DF__session_f__creat__671F4F74")
+  removed_at      DateTime?
+  sessions        sessions  @relation(fields: [session_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_session_files_session")
+
+  @@index([session_id, is_active], map: "idx_session_files_active")
+  @@index([content_hash], map: "idx_session_files_hash")
+  @@index([session_id], map: "idx_session_files_session")
+  @@index([file_type], map: "idx_session_files_type")
+}
+
+model sessions {
+  id                  String                @id(map: "PK__sessions__3213E83F49BB8136") @default(dbgenerated("newid()"), map: "DF__sessions__id__7C4F7684") @db.UniqueIdentifier
+  user_id             String                @db.UniqueIdentifier
+  title               String                @default("New Chat", map: "DF__sessions__title__7D439ABD") @db.NVarChar(500)
+  is_active           Boolean               @default(true, map: "DF__sessions__is_act__7E37BEF6")
+  created_at          DateTime              @default(dbgenerated("getutcdate()"), map: "DF__sessions__create__7F2BE32F")
+  updated_at          DateTime              @default(dbgenerated("getutcdate()"), map: "DF__sessions__update__00200768")
+  agent_executions    agent_executions[]
+  approvals           approvals[]
+  chat_attachments    chat_attachments[]
+  checkpoints         checkpoints[]
+  message_events      message_events[]
+  messages            messages[]
+  performance_metrics performance_metrics[]
+  session_files       session_files[]
+  users               users                 @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_sessions_user")
+  todos               todos[]
+
+  @@index([created_at], map: "idx_sessions_created_at")
+  @@index([is_active], map: "idx_sessions_is_active")
+  @@index([updated_at], map: "idx_sessions_updated_at")
+  @@index([user_id], map: "idx_sessions_user_id")
+}
+
+model todos {
+  id               String    @id(map: "PK__todos__3213E83F8F2C7F83") @default(dbgenerated("newid()"), map: "DF__todos__id__29221CFB") @db.UniqueIdentifier
+  session_id       String    @db.UniqueIdentifier
+  description      String    @db.NVarChar(500)
+  status           String    @default("pending", map: "DF__todos__status__2A164134") @db.NVarChar(50)
+  order_index      Int
+  parent_todo_id   String?   @db.UniqueIdentifier
+  dependencies     String?   @db.NVarChar(Max)
+  created_at       DateTime  @default(dbgenerated("getutcdate()"), map: "DF__todos__created_a__2B0A656D")
+  started_at       DateTime?
+  completed_at     DateTime?
+  metadata         String?   @db.NVarChar(Max)
+  content          String    @db.NVarChar(500)
+  activeForm       String    @db.NVarChar(500)
+  order            Int
+  order_path       String?   @db.NVarChar(50)
+  depth            Int       @default(0, map: "DF__todos__depth__36470DEF")
+  title            String?   @db.NVarChar(255)
+  system_prompt    String?   @db.NVarChar(Max)
+  active_form      String?   @db.NVarChar(255)
+  first_message_id String?   @db.NVarChar(255)
+  last_message_id  String?   @db.NVarChar(255)
+  message_count    Int       @default(0, map: "DF__todos__message_c__373B3228")
+  blocked_by       String?   @db.UniqueIdentifier
+  reopened_from    String?   @db.UniqueIdentifier
+  todos            todos?    @relation("todosTotodos", fields: [parent_todo_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_todos_parent")
+  other_todos      todos[]   @relation("todosTotodos")
+  sessions         sessions  @relation(fields: [session_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_todos_session")
+
+  @@index([session_id, order_index], map: "idx_todos_order")
+  @@index([session_id, order_path], map: "idx_todos_order_path")
+  @@index([parent_todo_id], map: "idx_todos_parent")
+  @@index([session_id], map: "idx_todos_session_id")
+  @@index([status], map: "idx_todos_status")
+}
+
+model token_usage {
+  id                          String   @id(map: "PK__token_us__3213E83FF28FAFA9") @default(dbgenerated("newid()"), map: "DF__token_usage__id__308E3499") @db.UniqueIdentifier
+  user_id                     String   @db.UniqueIdentifier
+  session_id                  String   @db.UniqueIdentifier
+  message_id                  String   @db.NVarChar(255)
+  model                       String   @db.NVarChar(100)
+  request_timestamp           DateTime @default(dbgenerated("getutcdate()"), map: "DF__token_usa__reque__318258D2")
+  input_tokens                Int
+  output_tokens               Int
+  cache_creation_input_tokens Int?
+  cache_read_input_tokens     Int?
+  thinking_enabled            Boolean  @default(false, map: "DF__token_usa__think__32767D0B")
+  thinking_budget             Int?
+  service_tier                String?  @db.NVarChar(20)
+  created_at                  DateTime @default(dbgenerated("getutcdate()"), map: "DF__token_usa__creat__336AA144")
+
+  @@index([message_id], map: "IX_token_usage_message")
+  @@index([model, request_timestamp], map: "IX_token_usage_model")
+  @@index([session_id, request_timestamp], map: "IX_token_usage_session")
+  @@index([user_id, request_timestamp], map: "IX_token_usage_user")
+}
+
+model tool_permissions {
+  id                String   @id(map: "PK__tool_per__3213E83F44FF7117") @default(dbgenerated("newid()"), map: "DF__tool_permiss__id__31B762FC") @db.UniqueIdentifier
+  user_id           String   @db.UniqueIdentifier
+  tool_name         String   @db.NVarChar(100)
+  is_allowed        Boolean  @default(true, map: "DF__tool_perm__is_al__32AB8735")
+  requires_approval Boolean  @default(false, map: "DF__tool_perm__requi__339FAB6E")
+  created_at        DateTime @default(dbgenerated("getutcdate()"), map: "DF__tool_perm__creat__3493CFA7")
+  updated_at        DateTime @default(dbgenerated("getutcdate()"), map: "DF__tool_perm__updat__3587F3E0")
+  users             users    @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_tool_permissions_user")
+
+  @@unique([user_id, tool_name], map: "uq_user_tool")
+  @@index([tool_name], map: "idx_tool_permissions_tool")
+  @@index([user_id], map: "idx_tool_permissions_user")
+}
+
+model usage_aggregates {
+  id                 BigInt   @id(map: "PK__usage_ag__3213E83F2106A27F") @default(autoincrement())
+  user_id            String   @db.UniqueIdentifier
+  period_type        String   @db.NVarChar(20)
+  period_start       DateTime
+  total_events       BigInt   @default(0, map: "DF__usage_agg__total__61316BF4")
+  total_tokens       BigInt   @default(0, map: "DF__usage_agg__total__6225902D")
+  total_api_calls    Int      @default(0, map: "DF__usage_agg__total__6319B466")
+  total_cost         Decimal  @default(0.0, map: "DF__usage_agg__total__640DD89F") @db.Decimal(18, 8)
+  category_breakdown String?  @db.NVarChar(Max)
+  created_at         DateTime @default(dbgenerated("getutcdate()"), map: "DF__usage_agg__creat__6501FCD8")
+  updated_at         DateTime @default(dbgenerated("getutcdate()"), map: "DF__usage_agg__updat__65F62111")
+  users              users    @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "FK_usage_aggregates_user")
+
+  @@unique([user_id, period_type, period_start], map: "UQ_usage_aggregates_period")
+  @@index([user_id, period_type, period_start(sort: Desc)], map: "IX_usage_aggregates_user_period")
+}
+
+model usage_events {
+  id         BigInt   @id(map: "PK__usage_ev__3213E83F17068309") @default(autoincrement())
+  user_id    String   @db.UniqueIdentifier
+  session_id String   @db.UniqueIdentifier
+  category   String   @db.NVarChar(50)
+  event_type String   @db.NVarChar(100)
+  quantity   BigInt
+  unit       String   @db.NVarChar(20)
+  cost       Decimal  @default(0.0, map: "DF__usage_even__cost__4E1E9780") @db.Decimal(18, 8)
+  metadata   String?  @db.NVarChar(Max)
+  created_at DateTime @default(dbgenerated("getutcdate()"), map: "DF__usage_eve__creat__4F12BBB9")
+  users      users    @relation(fields: [user_id], references: [id], onUpdate: NoAction, map: "FK_usage_events_user")
+
+  @@index([category, created_at(sort: Desc)], map: "IX_usage_events_category")
+  @@index([user_id, created_at(sort: Desc)], map: "IX_usage_events_user_created")
+}
+
+model user_feedback {
+  id                        String   @id(map: "PK__user_fee__3213E83FF2C04287") @default(dbgenerated("newid()"), map: "DF__user_feedbac__id__7BE56230") @db.UniqueIdentifier
+  user_id                   String   @db.UniqueIdentifier
+  what_they_like            String?  @db.NVarChar(Max)
+  improvement_opportunities String?  @db.NVarChar(Max)
+  needed_features           String?  @db.NVarChar(Max)
+  additional_comments       String?  @db.NVarChar(Max)
+  feedback_source           String   @default("trial_extension", map: "DF__user_feed__feedb__7CD98669") @db.NVarChar(50)
+  trial_extended            Boolean  @default(false, map: "DF__user_feed__trial__7DCDAAA2")
+  created_at                DateTime @default(dbgenerated("getutcdate()"), map: "DF__user_feed__creat__7EC1CEDB")
+  users                     users    @relation(fields: [user_id], references: [id], onUpdate: NoAction, map: "FK_user_feedback_user")
+
+  @@index([feedback_source, created_at(sort: Desc)], map: "IX_user_feedback_source")
+  @@index([user_id, created_at(sort: Desc)], map: "IX_user_feedback_user_created")
+}
+
+model user_quotas {
+  user_id                String    @id(map: "PK__user_quo__B9BE370FDAE183DD") @db.UniqueIdentifier
+  plan_tier              String    @default("free", map: "DF__user_quot__plan___52E34C9D") @db.NVarChar(20)
+  monthly_token_limit    BigInt    @default(100000, map: "DF__user_quot__month__53D770D6")
+  current_token_usage    BigInt    @default(0, map: "DF__user_quot__curre__54CB950F")
+  monthly_api_call_limit Int       @default(500, map: "DF__user_quot__month__55BFB948")
+  current_api_call_usage Int       @default(0, map: "DF__user_quot__curre__56B3DD81")
+  storage_limit_bytes    BigInt    @default(10485760, map: "DF__user_quot__stora__57A801BA")
+  current_storage_usage  BigInt    @default(0, map: "DF__user_quot__curre__589C25F3")
+  quota_reset_at         DateTime  @default(dbgenerated("dateadd(month,(1),getutcdate())"), map: "DF__user_quot__quota__59904A2C")
+  last_reset_at          DateTime?
+  allow_overage          Boolean   @default(false, map: "DF__user_quot__allow__5A846E65")
+  overage_rate           Decimal?  @db.Decimal(18, 8)
+  created_at             DateTime  @default(dbgenerated("getutcdate()"), map: "DF__user_quot__creat__5B78929E")
+  updated_at             DateTime  @default(dbgenerated("getutcdate()"), map: "DF__user_quot__updat__5C6CB6D7")
+  trial_started_at       DateTime?
+  trial_expires_at       DateTime?
+  trial_extended         Boolean   @default(false, map: "DF__user_quot__trial__7908F585")
+  users                  users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "FK_user_quotas_user")
+}
+
+model user_settings {
+  id          String   @id(map: "PK_user_settings") @default(dbgenerated("newid()"), map: "DF__user_setting__id__4830B400") @db.UniqueIdentifier
+  user_id     String   @unique(map: "IX_user_settings_user_id") @db.UniqueIdentifier
+  theme       String   @default("system", map: "DF__user_sett__theme__4924D839") @db.NVarChar(20)
+  preferences String?  @db.NVarChar(Max)
+  created_at  DateTime @default(dbgenerated("getutcdate()"), map: "DF__user_sett__creat__4A18FC72")
+  updated_at  DateTime @default(dbgenerated("getutcdate()"), map: "DF__user_sett__updat__4B0D20AB")
+  users       users    @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "FK_user_settings_user")
+}
+
+model users {
+  id                        String             @id(map: "PK__users__3213E83F5CD7330A") @default(dbgenerated("newid()"), map: "DF__users__id__75A278F5") @db.UniqueIdentifier
+  email                     String             @unique(map: "UQ__users__AB6E61644C0F4565") @db.NVarChar(255)
+  password_hash             String?            @db.NVarChar(255)
+  full_name                 String?            @db.NVarChar(255)
+  is_active                 Boolean            @default(true, map: "DF__users__is_active__76969D2E")
+  is_admin                  Boolean            @default(false, map: "DF__users__is_admin__778AC167")
+  created_at                DateTime           @default(dbgenerated("getutcdate()"), map: "DF__users__created_a__787EE5A0")
+  updated_at                DateTime           @default(dbgenerated("getutcdate()"), map: "DF__users__updated_a__797309D9")
+  last_login_at             DateTime?
+  role                      String             @default("viewer", map: "DF__users__role__7A3223E8") @db.NVarChar(50)
+  microsoft_id              String?            @db.NVarChar(255)
+  microsoft_email           String?            @db.NVarChar(255)
+  microsoft_tenant_id       String?            @db.NVarChar(255)
+  last_microsoft_login      DateTime?
+  bc_access_token_encrypted String?            @db.NVarChar(Max)
+  bc_token_expires_at       DateTime?
+  approvals                 approvals[]
+  audit_log                 audit_log[]
+  billing_records           billing_records[]
+  files                     files[]
+  image_embeddings          image_embeddings[]
+  quota_alerts              quota_alerts[]
+  sessions                  sessions[]
+  tool_permissions          tool_permissions[]
+  usage_aggregates          usage_aggregates[]
+  usage_events              usage_events[]
+  user_feedback             user_feedback[]
+  user_quotas               user_quotas?
+  user_settings             user_settings?
+
+  @@index([created_at], map: "idx_users_created_at")
+  @@index([email], map: "idx_users_email")
+  @@index([is_active], map: "idx_users_is_active")
+}

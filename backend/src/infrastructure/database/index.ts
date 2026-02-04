@@ -4,3 +4,6 @@
  */
 export * from './database';
 export * from './database-helpers';
+
+// Prisma ORM client
+export { prisma, disconnectPrisma } from './prisma';

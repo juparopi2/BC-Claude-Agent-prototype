@@ -187,7 +187,8 @@
       "Bash(NODE_OPTIONS=\"--max-old-space-size=8192\" npx tsc:*)",
       "mcp__context7__query-docs",
       "Bash(Get-ChildItem -Path \"D:\\\\Documents\\\\BC-Claude-Agent-prototype\\\\backend\\\\src\\\\__tests__\" -Recurse -Name)",
-      "Bash(Select-String -Pattern \"queue|Queue\" -AllMatches)"
+      "Bash(Select-String -Pattern \"queue|Queue\" -AllMatches)",
+      "Bash(npx prisma:*)"
     ],
     "deny": [],
     "ask": []

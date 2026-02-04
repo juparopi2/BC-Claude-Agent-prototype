@@ -22,6 +22,7 @@ import { z } from 'zod';
 import { getUserId } from './helpers';
 import type {
   InitUploadSessionResponse,
+  InitUploadSessionResponseWithSasUrls,
   CreateFolderInSessionResponse,
   RegisterFilesResponse,
   GetSasUrlsResponse,
@@ -67,6 +68,8 @@ const folderInputSchema = z.object({
 const initUploadSessionSchema = z.object({
   folders: z.array(folderInputSchema).min(1).max(50),
   targetFolderId: z.string().uuid().nullable().optional(),
+  /** Enable resumable upload mode with pre-generated SAS URLs */
+  enableResumableUpload: z.boolean().optional().default(false),
 });
 
 /**
@@ -145,19 +148,22 @@ router.post(
         return;
       }
 
-      const { folders, targetFolderId } = validation.data;
+      const { folders, targetFolderId, enableResumableUpload } = validation.data;
 
       logger.info(
-        { userId, folderCount: folders.length, targetFolderId },
+        { userId, folderCount: folders.length, targetFolderId, enableResumableUpload },
         'Initializing upload session'
       );
 
       const sessionManager = getUploadSessionManager();
-      const { session, renamedFolderCount, renamedFolders } = await sessionManager.initializeSession({
+      const initResult = await sessionManager.initializeSession({
         userId,
         folders,
         targetFolderId,
+        enableResumableUpload,
       });
+
+      const { session, renamedFolderCount, renamedFolders, preAllocatedSasUrls, uploadPlan } = initResult;
 
       // Emit session started event
       const folderEmitter = getFolderEventEmitter();
@@ -166,13 +172,20 @@ router.post(
         { totalFolders: session.totalFolders }
       );
 
-      const response: InitUploadSessionResponse = {
+      // Build response - include SAS URLs if resumable upload is enabled
+      const response: InitUploadSessionResponse | InitUploadSessionResponseWithSasUrls = {
         sessionId: session.id,
         folderBatches: session.folderBatches,
         expiresAt: new Date(session.expiresAt).toISOString(),
         renamedFolderCount: renamedFolderCount > 0 ? renamedFolderCount : undefined,
         renamedFolders: renamedFolders.length > 0 ? renamedFolders : undefined,
       };
+
+      // Add resumable upload fields if enabled
+      if (enableResumableUpload && preAllocatedSasUrls && uploadPlan) {
+        (response as InitUploadSessionResponseWithSasUrls).preAllocatedSasUrls = preAllocatedSasUrls;
+        (response as InitUploadSessionResponseWithSasUrls).uploadPlan = uploadPlan;
+      }
 
       res.status(200).json(response);
     } catch (error) {
@@ -879,6 +892,72 @@ router.post(
         'Failed to cancel active upload session'
       );
       sendError(res, ErrorCode.INTERNAL_ERROR, 'Failed to cancel active upload session');
+    }
+  }
+);
+
+/**
+ * POST /api/files/upload-session/:sessionId/refresh-sas-urls
+ *
+ * Refresh expired or soon-to-expire SAS URLs for resumable uploads.
+ * Called when resuming an upload after a long pause.
+ *
+ * Request body (optional):
+ * - folderTempId?: string (refresh only specific folder, or all if omitted)
+ *
+ * Response 200:
+ * - refreshedUrls: Record<string, PreAllocatedSasUrl>
+ * - refreshedCount: number
+ */
+router.post(
+  '/upload-session/:sessionId/refresh-sas-urls',
+  authenticateMicrosoft,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const userId = getUserId(req);
+      const { sessionId } = req.params;
+      const { folderTempId } = req.body as { folderTempId?: string };
+
+      if (!sessionId) {
+        sendError(res, ErrorCode.VALIDATION_ERROR, 'Session ID is required');
+        return;
+      }
+
+      const sessionManager = getUploadSessionManager();
+      const session = await sessionManager.getSession(sessionId);
+
+      if (!session) {
+        sendError(res, ErrorCode.NOT_FOUND, 'Upload session not found');
+        return;
+      }
+
+      if (session.userId !== userId) {
+        sendError(res, ErrorCode.FORBIDDEN, 'Access denied');
+        return;
+      }
+
+      if (!session.uploadPlan) {
+        sendError(res, ErrorCode.VALIDATION_ERROR, 'Session does not have an upload plan (not a resumable session)');
+        return;
+      }
+
+      logger.info(
+        { sessionId, userId, folderTempId },
+        'Refreshing expired SAS URLs'
+      );
+
+      const refreshedUrls = await sessionManager.refreshExpiredSasUrls(sessionId, folderTempId);
+
+      res.status(200).json({
+        refreshedUrls,
+        refreshedCount: Object.keys(refreshedUrls).length,
+      });
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : String(error) },
+        'Failed to refresh SAS URLs'
+      );
+      sendError(res, ErrorCode.INTERNAL_ERROR, 'Failed to refresh SAS URLs');
     }
   }
 );

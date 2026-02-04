@@ -22,6 +22,9 @@ COPY packages/shared/tsup.config.ts ./packages/shared/
 # Copy backend package configuration
 COPY backend/package.json ./backend/
 
+# Copy Prisma schema (required for postinstall: prisma generate)
+COPY backend/prisma ./backend/prisma/
+
 # Copy frontend package.json (required for npm workspaces to resolve all dependencies)
 COPY frontend/package.json ./frontend/
 
@@ -80,6 +83,9 @@ COPY package.json package-lock.json ./
 COPY packages/shared/package.json ./packages/shared/
 COPY backend/package.json ./backend/
 COPY frontend/package.json ./frontend/
+
+# Copy Prisma schema (required for postinstall: prisma generate)
+COPY backend/prisma ./backend/prisma/
 
 # Install production dependencies only
 # --omit=dev excludes devDependencies

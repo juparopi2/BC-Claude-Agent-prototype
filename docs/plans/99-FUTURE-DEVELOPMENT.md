@@ -85,10 +85,6 @@ Mejoras en la estabilidad, calidad del código e infraestructura existente.
 **Solución:** Reenfocar tests a validar estructura, flujo y metadatos, no contenido determinista. Implementar "Ground Truth" real.
 **Estimación:** 5-7 días
 
-### D27: MessageQueue Refactor (Alta)
-**Problema:** `MessageQueue.ts` es un God File de >2000 líneas.
-**Solución:** Descomponer en procesadores individuales, registros de workers y configuraciones separadas.
-**Estimación:** 3-5 días
 
 ### D28: WebSocket Event Constants Centralization (Media)
 **Problema:** Strings mágicos para eventos WS dispersos.
@@ -109,6 +105,15 @@ Mejoras en la estabilidad, calidad del código e infraestructura existente.
 **Solución:** Identificar, refactorizar si es necesario y eliminar métodos marcados como `@deprecated`.
 **Estimación:** 3 días
 
+
+### Implementación de Prisma y Prisma Client (Alta)
+**Necesidad:** Migrar todas las consultas de base de datos existentes en el backend para utilizar Prisma Client, garantizando un tipado seguro (type-safety) y consistencia en el acceso a datos.
+**Tareas:**
+- Identificar archivos en el backend que generan queries manuales (legacy).
+- Actualizar todas las ocurrencias para usar Prisma Client en lugar de la metodología anterior.
+- Asegurar que las ejecuciones sobre la base de datos tengan el tipado correcto.
+**Estimación:** 5 días
+
 ### Tests Pendientes (Maintenance)
 - **D14**: Unimplemented APIs (GDPR, Billing, Usage) - *Cuando existan las features*
 - **D15**: Approval E2E Tests - *Pendiente de refactor ApprovalManager*
@@ -119,11 +124,6 @@ Mejoras en la estabilidad, calidad del código e infraestructura existente.
 ## ✨ Nuevas Funcionalidades
 
 Mejoras perceptibles para el usuario final.
-
-### ApprovalManager Completo (Alta)
-**Necesidad:** Persistencia y gestión robusta de aprobaciones humanas.
-**Requisitos:** Tabla DB `pending_approvals`, API para listar/cancelar, expiración automática (TTL).
-**Estimación:** 5 días
 
 ### D8: Dynamic Model Selection (Media)
 **Necesidad:** Permitir elegir entre Claude Opus, Sonnet, Haiku o modelos de otros proveedores.

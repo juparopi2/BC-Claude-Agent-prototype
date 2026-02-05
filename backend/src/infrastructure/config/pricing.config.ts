@@ -133,6 +133,19 @@ export const UNIT_COSTS = {
    * Slightly higher due to dual index lookup
    */
   hybrid_search_query: 0.001,
+
+  // ===== Audio Transcription Costs (Azure OpenAI GPT-4o-mini-transcribe) =====
+  /**
+   * Audio input token cost
+   * $6.00 per 1M tokens
+   */
+  audio_transcription_input_token: 6.0 / 1_000_000,
+
+  /**
+   * Text output token cost (transcribed text)
+   * $10.00 per 1M tokens
+   */
+  audio_transcription_output_token: 10.0 / 1_000_000,
 } as const;
 
 /**
@@ -367,6 +380,10 @@ export const PAYG_RATES = {
   // Search PAYG
   vector_search_query: UNIT_COSTS.vector_search_query * 1.25,
   hybrid_search_query: UNIT_COSTS.hybrid_search_query * 1.25,
+
+  // Audio Transcription PAYG
+  audio_transcription_input_token: UNIT_COSTS.audio_transcription_input_token * 1.25,
+  audio_transcription_output_token: UNIT_COSTS.audio_transcription_output_token * 1.25,
 } as const;
 
 /**

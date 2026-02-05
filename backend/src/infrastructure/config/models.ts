@@ -419,6 +419,41 @@ export const AzureEmbeddingModels = {
 export type AzureEmbeddingModelId = (typeof AzureEmbeddingModels)[keyof typeof AzureEmbeddingModels];
 
 /**
+ * Azure OpenAI Audio Transcription Models
+ * @see https://learn.microsoft.com/en-us/azure/ai-services/openai/concepts/models#audio-models
+ */
+export const AzureAudioModels = {
+  // GPT-4o Audio Models (2025)
+  GPT_4O_TRANSCRIBE: 'gpt-4o-transcribe',           // High quality, $6/1M audio tokens
+  GPT_4O_MINI_TRANSCRIBE: 'gpt-4o-mini-transcribe', // Cost-effective, $6/1M audio tokens
+  // Whisper Models (Legacy)
+  WHISPER_1: 'whisper-1',                           // $0.006/minute
+} as const;
+
+export type AzureAudioModelId = (typeof AzureAudioModels)[keyof typeof AzureAudioModels];
+
+/**
+ * Azure Audio Transcription Pricing
+ */
+export const AzureAudioPricing: Record<AzureAudioModelId, AzureServicePricing> = {
+  [AzureAudioModels.GPT_4O_TRANSCRIBE]: {
+    pricePerUnit: 6.0,
+    unit: '1M audio tokens',
+    tier: 'premium',
+  },
+  [AzureAudioModels.GPT_4O_MINI_TRANSCRIBE]: {
+    pricePerUnit: 6.0,
+    unit: '1M audio tokens',
+    tier: 'standard',
+  },
+  [AzureAudioModels.WHISPER_1]: {
+    pricePerUnit: 0.006,
+    unit: 'minute',
+    tier: 'standard',
+  },
+};
+
+/**
  * Azure Computer Vision API Versions
  * Different versions have different capabilities for image understanding
  * @see https://learn.microsoft.com/en-us/azure/ai-services/computer-vision/
@@ -523,10 +558,11 @@ export const AzureDocumentPricing: Record<AzureDocumentModelId, AzureServicePric
  * Azure service roles for different use cases
  */
 export type AzureServiceRole =
-  | 'text_embedding'      // Text to vector for semantic search
-  | 'image_embedding'     // Image to vector for visual search
-  | 'document_ocr'        // PDF/document text extraction
-  | 'document_structure'; // Document layout and table extraction
+  | 'text_embedding'        // Text to vector for semantic search
+  | 'image_embedding'       // Image to vector for visual search
+  | 'document_ocr'          // PDF/document text extraction
+  | 'document_structure'    // Document layout and table extraction
+  | 'audio_transcription';  // Speech-to-text transcription
 
 /**
  * Azure service configuration with role metadata
@@ -577,6 +613,14 @@ export const AzureServiceConfigs: Record<AzureServiceRole, AzureServiceConfig> =
     modelId: AzureDocumentModels.PREBUILT_LAYOUT,
     apiVersion: '2024-02-29-preview',
     tier: 'premium',
+  },
+
+  audio_transcription: {
+    role: 'audio_transcription',
+    description: 'Convert speech audio to text using Azure OpenAI',
+    modelId: AzureAudioModels.GPT_4O_MINI_TRANSCRIBE,
+    apiVersion: '2025-03-01-preview',
+    tier: 'standard',
   },
 };
 

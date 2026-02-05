@@ -8,8 +8,23 @@
 
 import { createChildLogger } from '@/shared/utils/logger';
 import { env } from '@/infrastructure/config/environment';
+import { getAzureServiceConfig } from '@/infrastructure/config/models';
 
 const logger = createChildLogger({ service: 'SpeechToTextService' });
+
+/**
+ * Usage information from the transcription API
+ */
+export interface TranscriptionUsage {
+  /** Total input tokens (includes audio tokens) */
+  inputTokens: number;
+  /** Audio tokens (subset of inputTokens) */
+  audioTokens: number;
+  /** Text output tokens (transcribed text) */
+  outputTokens: number;
+  /** Total tokens consumed */
+  totalTokens: number;
+}
 
 /**
  * Result of audio transcription
@@ -21,6 +36,8 @@ export interface TranscriptionResult {
   language?: string;
   /** Duration of the audio in seconds */
   duration?: number;
+  /** Token usage information for billing */
+  usage?: TranscriptionUsage;
 }
 
 /**
@@ -43,6 +60,17 @@ interface AzureTranscriptionResponse {
   language?: string;
   duration?: number;
   task?: string;
+  /** Usage information returned by the API */
+  usage?: {
+    type: string;
+    input_tokens: number;
+    input_token_details?: {
+      text_tokens: number;
+      audio_tokens: number;
+    };
+    output_tokens: number;
+    total_tokens: number;
+  };
 }
 
 /**
@@ -60,12 +88,17 @@ interface AzureTranscriptionResponse {
 export class SpeechToTextService {
   private endpoint: string;
   private apiKey: string;
-  private deployment = 'gpt-4o-mini-transcribe';
-  private apiVersion = '2025-03-01-preview';
+  private deployment: string;
+  private apiVersion: string;
 
   constructor() {
     this.endpoint = env.AZURE_AUDIO_ENDPOINT ?? '';
     this.apiKey = env.AZURE_AUDIO_KEY ?? '';
+
+    // Get model configuration from centralized config
+    const audioConfig = getAzureServiceConfig('audio_transcription');
+    this.deployment = audioConfig.modelId;
+    this.apiVersion = audioConfig.apiVersion;
 
     if (!this.endpoint || !this.apiKey) {
       logger.warn('Azure Audio credentials not configured - transcription will fail');
@@ -73,6 +106,7 @@ export class SpeechToTextService {
       logger.info({
         endpoint: this.endpoint,
         deployment: this.deployment,
+        apiVersion: this.apiVersion,
       }, 'SpeechToTextService initialized');
     }
   }
@@ -147,17 +181,32 @@ export class SpeechToTextService {
       const result = await response.json() as AzureTranscriptionResponse;
       const durationMs = Date.now() - startTime;
 
+      // Extract usage information if available
+      const usage: TranscriptionUsage | undefined = result.usage ? {
+        inputTokens: result.usage.input_tokens,
+        audioTokens: result.usage.input_token_details?.audio_tokens ?? result.usage.input_tokens,
+        outputTokens: result.usage.output_tokens,
+        totalTokens: result.usage.total_tokens,
+      } : undefined;
+
       logger.info({
         textLength: result.text?.length ?? 0,
         language: result.language,
         audioDuration: result.duration,
         requestDurationMs: durationMs,
+        usage: usage ? {
+          inputTokens: usage.inputTokens,
+          audioTokens: usage.audioTokens,
+          outputTokens: usage.outputTokens,
+          totalTokens: usage.totalTokens,
+        } : undefined,
       }, 'Transcription complete');
 
       return {
         text: result.text,
         language: result.language,
         duration: result.duration,
+        usage,
       };
     } catch (error) {
       const durationMs = Date.now() - startTime;

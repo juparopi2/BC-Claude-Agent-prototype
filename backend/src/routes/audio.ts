@@ -8,8 +8,11 @@
 
 import { Router } from 'express';
 import multer from 'multer';
+import crypto from 'crypto';
 import { createChildLogger } from '@/shared/utils/logger';
 import { getSpeechToTextService } from '@/services/audio';
+import { getUsageTrackingService } from '@/domains/billing/tracking';
+import { getAzureServiceConfig } from '@/infrastructure/config/models';
 import type { Request, Response, NextFunction } from 'express';
 
 const logger = createChildLogger({ service: 'AudioRoutes' });
@@ -109,7 +112,32 @@ router.post(
         language: result.language,
         audioDuration: result.duration,
         requestDurationMs: durationMs,
+        usage: result.usage,
       }, 'Transcription completed successfully');
+
+      // Track usage (fire-and-forget)
+      // Note: req.user comes from auth middleware when enabled
+      const userId = (req as Request & { user?: { id: string } }).user?.id;
+      if (result.usage && userId) {
+        const usageService = getUsageTrackingService();
+        const sessionId = (req.body?.sessionId as string) || crypto.randomUUID().toUpperCase();
+        const audioConfig = getAzureServiceConfig('audio_transcription');
+
+        // Fire-and-forget - don't await, don't let errors block response
+        usageService.trackAudioTranscription(
+          userId.toUpperCase(),
+          sessionId.toUpperCase(),
+          result.usage.audioTokens,
+          result.usage.outputTokens,
+          {
+            duration_seconds: result.duration,
+            language: result.language,
+            text_length: result.text.length,
+            model: audioConfig.modelId,
+            filename: originalname,
+          }
+        );
+      }
 
       res.json({
         text: result.text,

@@ -626,6 +626,99 @@ export class UsageTrackingService {
   }
 
   /**
+   * Track audio transcription event
+   *
+   * Records voice input transcription with token-based billing.
+   * Uses Azure OpenAI GPT-4o-mini-transcribe pricing.
+   *
+   * @param userId - User ID
+   * @param sessionId - Session ID (use generated UUID if no session context)
+   * @param audioTokens - Number of audio input tokens
+   * @param outputTokens - Number of text output tokens
+   * @param metadata - Optional metadata (duration_seconds, language, text_length, model)
+   *
+   * @example
+   * ```typescript
+   * await trackAudioTranscription(
+   *   'user-123',
+   *   'session-456',
+   *   150,  // audio input tokens
+   *   45,   // text output tokens
+   *   {
+   *     duration_seconds: 10,
+   *     language: 'en',
+   *     text_length: 185,
+   *     model: 'gpt-4o-mini-transcribe'
+   *   }
+   * );
+   * ```
+   */
+  async trackAudioTranscription(
+    userId: string,
+    sessionId: string,
+    audioTokens: number,
+    outputTokens: number,
+    metadata?: Record<string, unknown>
+  ): Promise<void> {
+    try {
+      // Calculate costs using audio transcription pricing
+      const audioCost = audioTokens * UNIT_COSTS.audio_transcription_input_token;
+      const outputCost = outputTokens * UNIT_COSTS.audio_transcription_output_token;
+      const totalCost = audioCost + outputCost;
+
+      // Log event
+      this.logger.info({
+        userId,
+        sessionId,
+        audioTokens,
+        outputTokens,
+        audioCost,
+        outputCost,
+        totalCost,
+        metadata,
+      }, 'Tracking audio transcription');
+
+      // Insert audio input tokens event
+      await this.insertUsageEvent(
+        userId,
+        sessionId,
+        'ai',
+        'audio_transcription_input',
+        audioTokens,
+        'tokens',
+        audioCost,
+        { ...metadata, token_type: 'audio_input' }
+      );
+
+      // Insert text output tokens event
+      await this.insertUsageEvent(
+        userId,
+        sessionId,
+        'ai',
+        'audio_transcription_output',
+        outputTokens,
+        'tokens',
+        outputCost,
+        { ...metadata, token_type: 'text_output' }
+      );
+
+      // Increment Redis counters
+      await this.incrementRedisCounter(userId, 'audio_transcription_tokens', audioTokens + outputTokens);
+      await this.incrementRedisCounter(userId, 'audio_transcriptions', 1);
+
+    } catch (error) {
+      // Log error but NEVER throw (fire-and-forget)
+      this.logger.error({
+        error: error instanceof Error ? error.message : String(error),
+        userId,
+        sessionId,
+        audioTokens,
+        outputTokens,
+      }, 'Failed to track audio transcription (non-blocking)');
+    }
+  }
+
+  /**
    * Insert usage event into database
    *
    * Private method that handles SQL insertion with parameterized queries.

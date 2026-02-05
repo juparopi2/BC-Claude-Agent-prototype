@@ -544,9 +544,168 @@ describe('Agent Selection Flow', () => {
 
 ---
 
-## 11. Changelog
+---
+
+## 11. Minimal Viable Implementation (Sin AgentRegistry)
+
+Esta sección describe una implementación simplificada que puede ejecutarse **antes** de PRD-011 (AgentRegistry) para obtener feedback rápido del usuario.
+
+### 11.1 Decisiones de Diseño
+
+| Aspecto | Decisión PRD Original | Nueva Decisión | Justificación |
+|---------|----------------------|----------------|---------------|
+| **UI Style** | Pills horizontales | **Dropdown desplegable** | Más compacto, mejor para mobile, menos espacio visual |
+| **"My Files" toggle** | Coexiste separado | **Reemplazar con RAG Agent** | Simplifica UI: 1 control en vez de 2 |
+| **Persistencia** | No especificada | **Sí, localStorage** | UX consistente, reutilizar `uiPreferencesStore` |
+
+### 11.2 Agentes Hardcodeados (Temporal)
+
+Hasta que PRD-011 (AgentRegistry) esté implementado, los agentes se definen como constantes:
+
+```typescript
+// frontend/src/domains/chat/constants/agents.ts
+export const AVAILABLE_AGENTS = [
+  {
+    id: 'auto',
+    name: 'Auto',
+    description: 'Automatic routing to best agent',
+    icon: '🎯',
+    color: '#8B5CF6', // Purple
+  },
+  {
+    id: 'bc-agent',
+    name: 'BC Agent',
+    description: 'Business Central Expert',
+    icon: '📊',
+    color: '#3B82F6', // Blue
+  },
+  {
+    id: 'rag-agent',
+    name: 'RAG Agent',
+    description: 'Knowledge Search (My Files)',
+    icon: '🧠',
+    color: '#10B981', // Emerald
+  },
+] as const;
+```
+
+### 11.3 Diseño Visual del Dropdown
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Chat Input                                                   │
+├─────────────────────────────────────────────────────────────┤
+│ [🧠 Thinking] [▼ Auto Agent]                                │  ← Thinking toggle + Dropdown
+├─────────────────────────────────────────────────────────────┤
+│ Type your message...                                    [➤] │
+└─────────────────────────────────────────────────────────────┘
+
+Dropdown expandido:
+┌──────────────────────┐
+│ 🎯 Auto (routing)    │  ← Default, usa router.ts
+├──────────────────────┤
+│ 📊 BC Agent          │  ← Business Central Expert
+│ 🧠 RAG Agent         │  ← Knowledge Search (= antiguo My Files)
+│ 📈 Graph Agent       │  ← (Futuro, Phase 5)
+└──────────────────────┘
+
+Cuando RAG Agent seleccionado:
+- Dropdown muestra: [🧠 RAG Agent ▼] con color emerald (#10B981)
+- Backend recibe: targetAgentId: 'rag-agent', enableAutoSemanticSearch: true
+```
+
+### 11.4 Mapeo de Colores por Agente
+
+| Agente | Color | Hex | Uso |
+|--------|-------|-----|-----|
+| Auto | Purple | #8B5CF6 | Default, indica routing automático |
+| BC Agent | Blue | #3B82F6 | ERP/Business Central |
+| RAG Agent | Emerald | #10B981 | Knowledge search (reemplaza "My Files") |
+| Graph Agent | Orange | #F97316 | Data visualization (futuro Phase 5) |
+
+### 11.5 Contrato: Campo `targetAgentId`
+
+**Ubicación**: `packages/shared/src/types/websocket.types.ts`
+
+```typescript
+export interface ChatMessageData {
+  message: string;
+  sessionId: string;
+  userId: string;
+  thinking?: ExtendedThinkingConfig;
+  attachments?: string[];
+  chatAttachments?: string[];
+  enableAutoSemanticSearch?: boolean;
+
+  /**
+   * Target agent ID for explicit agent selection.
+   * When provided with value !== 'auto', bypasses automatic routing.
+   * @values 'auto' | 'bc-agent' | 'rag-agent' | 'orchestrator'
+   * @default undefined (automatic routing)
+   */
+  targetAgentId?: string;
+}
+```
+
+### 11.6 Comportamiento en Router
+
+```typescript
+// backend/src/modules/agents/orchestrator/router.ts
+async function routeIntent(state, options) {
+  // 1. Si targetAgentId especificado y no es 'auto', usar directo
+  if (options.targetAgentId && options.targetAgentId !== 'auto') {
+    return {
+      target_agent: options.targetAgentId,
+      reasoning: 'User explicitly selected agent',
+      confidence: 1.0
+    };
+  }
+
+  // 2. Continuar con routing actual (slash commands, keywords, LLM)
+  // ... código existente
+}
+```
+
+### 11.7 Cambios Frontend Requeridos
+
+**Archivo**: `frontend/src/components/chat/ChatInput.tsx`
+
+1. **Eliminar** toggle "My Files" (`enableAutoSemanticSearch`)
+2. **Agregar** dropdown de agentes usando `@radix-ui/react-select` o similar
+3. **Persistir** selección en `uiPreferencesStore.selectedAgentId`
+
+**Lógica de mapeo My Files → RAG Agent:**
+```typescript
+// Cuando RAG Agent está seleccionado, automáticamente habilitar semantic search
+const payload = {
+  ...basePayload,
+  targetAgentId: selectedAgentId,
+  enableAutoSemanticSearch: selectedAgentId === 'rag-agent',
+};
+```
+
+### 11.8 Compatibilidad Hacia Atrás
+
+**Garantía:** El campo `targetAgentId` es **OPCIONAL**. Si no se envía:
+- Comportamiento idéntico al actual
+- Router usa lógica existente (slash commands → keywords → LLM classification)
+- No hay breaking changes para clientes existentes
+
+### 11.9 Archivos a Modificar (Minimal)
+
+| Archivo | Cambio |
+|---------|--------|
+| `packages/shared/src/types/websocket.types.ts` | Agregar `targetAgentId?: string` |
+| `frontend/src/components/chat/ChatInput.tsx` | Reemplazar toggle con dropdown |
+| `frontend/src/domains/ui/stores/uiPreferencesStore.ts` | Agregar `selectedAgentId` |
+| `backend/src/modules/agents/orchestrator/router.ts` | Manejar bypass de routing |
+
+---
+
+## 12. Changelog
 
 | Fecha | Versión | Cambios |
 |-------|---------|---------|
 | 2026-01-21 | 1.0 | Draft inicial |
+| 2026-02-05 | 1.1 | Agregada sección "Minimal Viable Implementation": dropdown design, targetAgentId contract, My Files replacement strategy |
 

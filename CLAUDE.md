@@ -141,7 +141,7 @@ The system decides which agent to activate based on hybrid logic:
 ### 4.1 Where to find things
 -   **Add a new ERP tool**: `backend/src/modules/agents/business-central/tools.ts`
 -   **Change routing logic**: `backend/src/modules/agents/orchestrator/router.ts`
--   **Adjust socket event formats**: Check `docs/plans/Refactor/contracts/02-CONTRATO-BACKEND-FRONTEND.md`. Emission logic is in `backend/src/domains/agent/emission`.
+-   **Adjust socket event formats**: Emission logic is in `backend/src/domains/agent/emission`. See types in `packages/shared/src/types/websocket.types.ts`.
 -   **Pagination configuration**: See `docs/backend/02-PAGINATION.md`. Limits: Sessions (20/50), Messages (50/100), Files (50/100).
 -   **Database schema**: `backend/prisma/schema.prisma` (single source of truth for columns, types, relationships)
 -   **Modify DB schema**: Edit `schema.prisma` -> `npx prisma db push`

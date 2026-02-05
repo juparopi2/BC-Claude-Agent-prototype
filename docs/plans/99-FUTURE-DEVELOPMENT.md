@@ -15,15 +15,20 @@ Este documento centraliza todos los planes futuros, organizados por categoría p
 **Objetivo**: Transformar el sistema de un grafo lineal simple a una arquitectura multi-agente con supervisor centralizado.
 
 **Fases**:
-1. **Fase 0**: Refactoring de God Files (FileService, ApprovalManager, AgentOrchestrator, files.ts, MessageQueue)
-2. **Fase 1**: TDD Foundation y AgentRegistry
-3. **Fase 2**: Extended AgentState Schema
-4. **Fase 3**: Supervisor/Planner Node
-5. **Fase 4**: Handoffs y Re-routing
-6. **Fase 5**: Graphing Agent (Tremor UI)
-7. **Fase 6**: Agent Selection UI
+1. **Fase 0**: ✅ Refactoring de God Files - **COMPLETADO** (2026-01-23)
+   - PRD-001 (FileService), PRD-003 (AgentOrchestrator), PRD-004 (FilesRoutes), PRD-005 (MessageQueue)
+   - Implementado ExecutionContext pattern para arquitectura stateless
+2. **Fase 0.5**: Model Abstraction (`initChatModel()`) - Pendiente
+3. **Fase 1**: TDD Foundation y AgentRegistry - Pendiente
+4. **Fase 2**: Extended AgentState Schema - Pendiente
+5. **Fase 3**: Supervisor/Planner Node - Pendiente
+6. **Fase 4**: Handoffs y Re-routing - Pendiente
+7. **Fase 5**: Graphing Agent (Tremor UI) - Pendiente
+8. **Fase 6**: Agent Selection UI - En preparación (PRD-060 actualizado)
 
-**Estado**: En Progreso - Ver [PRDs detallados](./multi-agent-architecture/)
+**Estado**: En Progreso - Phase 0 Completado, preparando Phase 6 UI
+
+**Próximo paso inmediato**: Agent Selector UI (dropdown para selección de agentes, reemplaza toggle "My Files")
 
 ---
 

@@ -22,6 +22,9 @@ COPY packages/shared/tsup.config.ts ./packages/shared/
 # Copy backend package.json (required for npm workspaces to resolve all dependencies)
 COPY backend/package.json ./backend/
 
+# Copy Prisma schema (required for prisma generate postinstall hook during npm ci)
+COPY backend/prisma/schema.prisma ./backend/prisma/schema.prisma
+
 # Copy frontend package.json
 COPY frontend/package.json ./frontend/
 

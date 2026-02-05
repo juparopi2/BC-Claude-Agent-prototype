@@ -44,6 +44,16 @@ const mockUploadAttachment = vi.fn();
 const mockRemoveAttachment = vi.fn();
 const mockClearAttachments = vi.fn();
 
+// Mock audio recording hook
+const mockAudioRecordingState = {
+  isRecording: false,
+  isTranscribing: false,
+  audioLevel: 0,
+  error: null as string | null,
+  startRecording: vi.fn(),
+  stopRecording: vi.fn(),
+};
+
 vi.mock('@/src/domains/chat', () => ({
   useAgentState: vi.fn(() => mockAgentState),
   useSocketConnection: vi.fn(() => mockSocketConnection),
@@ -55,6 +65,7 @@ vi.mock('@/src/domains/chat', () => ({
     completedAttachmentIds: mockChatAttachmentsState.completedAttachmentIds,
     hasUploading: mockChatAttachmentsState.hasUploading,
   })),
+  useAudioRecording: vi.fn(() => mockAudioRecordingState),
 }));
 
 // Variable to control UI preferences mock
@@ -103,6 +114,13 @@ describe('ChatInput', () => {
       completedAttachmentIds: [],
       hasUploading: false,
     };
+    // Reset audio recording state
+    mockAudioRecordingState.isRecording = false;
+    mockAudioRecordingState.isTranscribing = false;
+    mockAudioRecordingState.audioLevel = 0;
+    mockAudioRecordingState.error = null;
+    mockAudioRecordingState.startRecording = vi.fn();
+    mockAudioRecordingState.stopRecording = vi.fn();
   });
 
   afterEach(() => {

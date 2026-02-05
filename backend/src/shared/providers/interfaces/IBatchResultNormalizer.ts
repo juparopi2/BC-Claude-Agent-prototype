@@ -9,7 +9,6 @@
 
 import type { NormalizedAgentEvent } from '@bc-agent/shared';
 import type { AgentState } from '@/modules/agents/orchestrator/state';
-import type { IProviderAdapter } from './IProviderAdapter';
 
 /**
  * Options for batch result normalization.
@@ -29,15 +28,14 @@ export interface BatchNormalizerOptions {
  * array of canonical NormalizedAgentEvent objects.
  *
  * ## Design
- * - Provider-agnostic: Uses IProviderAdapter for provider-specific logic
+ * - Provider-agnostic: Uses MessageNormalizer for message normalization
  * - Order-preserving: Events maintain their original order from the graph
  * - Complete: Produces all events needed for emission and persistence
  *
  * ## Usage
  * ```typescript
  * const normalizer = getBatchResultNormalizer();
- * const adapter = new AnthropicAdapter(sessionId);
- * const events = normalizer.normalize(state, adapter, { includeComplete: true });
+ * const events = normalizer.normalize(state, sessionId, { includeComplete: true });
  *
  * for (const event of events) {
  *   await emit(event);
@@ -57,13 +55,13 @@ export interface IBatchResultNormalizer {
    * 5. Optionally append complete event
    *
    * @param state - LangGraph AgentState from invoke()
-   * @param adapter - Provider-specific adapter (Anthropic, OpenAI, etc.)
+   * @param sessionId - Session ID for event context
    * @param options - Normalization options
    * @returns Sorted array of normalized events ready for emission
    */
   normalize(
     state: AgentState,
-    adapter: IProviderAdapter,
+    sessionId: string,
     options?: BatchNormalizerOptions
   ): NormalizedAgentEvent[];
 }

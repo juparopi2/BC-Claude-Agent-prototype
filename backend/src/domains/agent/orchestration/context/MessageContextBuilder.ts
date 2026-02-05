@@ -24,7 +24,7 @@ import { HumanMessage } from '@langchain/core/messages';
 import type { LangChainContentBlock, AnthropicAttachmentContentBlock } from '@bc-agent/shared';
 import type { IFileContextPreparer, FileContextPreparationResult } from '@domains/agent/context';
 import type { AttachmentContentResolver } from '@/domains/chat-attachments';
-import { convertToLangChainFormat } from '@shared/providers/adapters/AnthropicAdapter';
+import { convertToLangChainFormat } from '@shared/providers/utils/content-format';
 import { createChildLogger } from '@/shared/utils/logger';
 
 const logger = createChildLogger({ service: 'MessageContextBuilder' });

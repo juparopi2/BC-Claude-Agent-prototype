@@ -7,9 +7,7 @@
  * @module core/langchain/ModelFactory
  */
 
-import { ChatAnthropic } from '@langchain/anthropic';
-import { ChatVertexAI } from '@langchain/google-vertexai';
-import { ChatOpenAI } from '@langchain/openai';
+import { initChatModel } from 'langchain';
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import type { ModelRole, RoleModelConfig } from '@/infrastructure/config/models';
 import { ModelRoleConfigs, AnthropicModels, OpenAIModels, GoogleModels } from '@/infrastructure/config/models';
@@ -71,7 +69,7 @@ export class ModelFactory {
       return this.cache.get(cacheKey)!;
     }
 
-    const model = this.createModel(config);
+    const model = await this.createModel(config);
     this.cache.set(cacheKey, model);
     return model;
   }
@@ -113,7 +111,7 @@ export class ModelFactory {
       return this.cache.get(cacheKey)!;
     }
 
-    const model = this.createModel({
+    const model = await this.createModel({
       ...config,
       provider,
       modelName,
@@ -136,7 +134,7 @@ export class ModelFactory {
       return this.cache.get(cacheKey)!;
     }
 
-    const model = this.createModel({
+    const model = await this.createModel({
       ...config,
       role: 'default',
       description: 'Custom configuration',
@@ -155,40 +153,21 @@ export class ModelFactory {
   }
 
   /**
-   * Internal method to create a model instance based on provider.
+   * Internal method to create a model instance via initChatModel.
+   * Uses the modelString from config which is already in the correct format
+   * for each provider (bare model name for Anthropic, "provider:model" for others).
    */
-  private static createModel(config: RoleModelConfig): BaseChatModel {
-    const { provider, modelName, temperature, maxTokens, streaming = true } = config;
+  private static async createModel(config: RoleModelConfig): Promise<BaseChatModel> {
+    const { modelString, temperature, maxTokens } = config;
 
-    switch (provider) {
-      case 'anthropic':
-        return new ChatAnthropic({
-          modelName,
-          temperature,
-          maxTokens,
-          streaming,
-          apiKey: env.ANTHROPIC_API_KEY,
-        });
-
-      case 'google':
-        return new ChatVertexAI({
-          model: modelName,
-          temperature,
-          maxOutputTokens: maxTokens,
-        });
-
-      case 'openai':
-        return new ChatOpenAI({
-          modelName,
-          temperature,
-          maxTokens,
-          streaming,
-          apiKey: env.AZURE_OPENAI_KEY,
-        });
-
-      default:
-        throw new Error(`Unsupported model provider: ${provider}`);
-    }
+    return await initChatModel(modelString, {
+      temperature,
+      maxTokens,
+      // Explicit API keys - initChatModel reads env vars by default
+      // but our Azure OpenAI key uses a non-standard env var name
+      ...(config.provider === 'openai' ? { apiKey: env.AZURE_OPENAI_KEY } : {}),
+      ...(config.provider === 'anthropic' ? { apiKey: env.ANTHROPIC_API_KEY } : {}),
+    });
   }
 
   /**

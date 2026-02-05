@@ -1,1 +1,1 @@
-export * from './AnthropicAdapter';
+export * from '../utils/content-format';

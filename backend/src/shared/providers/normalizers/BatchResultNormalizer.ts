@@ -11,23 +11,12 @@
  * 2. Merge tool_response events from state.toolExecutions
  * 3. Sort all events by originalIndex
  *
- * ## Key Differences from ResultExtractor
- *
- * ResultExtractor (old):
- * - Returns { thinking, content, toolExecutions, stopReason, usage }
- * - Caller must decide what to emit and when
- * - Conditional logic lives in orchestrator
- *
- * BatchResultNormalizer (new):
- * - Returns NormalizedAgentEvent[]
- * - All decisions made during normalization
- * - Orchestrator just iterates and emits
+ * Uses the provider-agnostic MessageNormalizer instead of provider-specific adapters.
  *
  * @module shared/providers/normalizers/BatchResultNormalizer
  */
 
 import { randomUUID } from 'crypto';
-import type { BaseMessage } from '@langchain/core/messages';
 import { createChildLogger } from '@/shared/utils/logger';
 import type { AgentState, ToolExecution } from '@/modules/agents/orchestrator/state';
 import type {
@@ -36,7 +25,7 @@ import type {
   NormalizedCompleteEvent,
   NormalizedStopReason,
 } from '@bc-agent/shared';
-import type { IProviderAdapter } from '../interfaces/IProviderAdapter';
+import { normalizeAIMessage, normalizeStopReason } from './MessageNormalizer';
 import type { IBatchResultNormalizer, BatchNormalizerOptions } from '../interfaces/IBatchResultNormalizer';
 
 const logger = createChildLogger({ service: 'BatchResultNormalizer' });
@@ -52,8 +41,7 @@ export type { BatchNormalizerOptions };
  * ## Example
  * ```typescript
  * const normalizer = new BatchResultNormalizer();
- * const adapter = new AnthropicAdapter(sessionId);
- * const events = normalizer.normalize(state, adapter);
+ * const events = normalizer.normalize(state, sessionId);
  *
  * for (const event of events) {
  *   await emit(event);
@@ -67,19 +55,19 @@ export class BatchResultNormalizer implements IBatchResultNormalizer {
    *
    * Processing order:
    * 1. Find all AI messages in state.messages
-   * 2. Use adapter to extract events from each message
+   * 2. Use normalizeAIMessage to extract events from each message
    * 3. Create tool_response events from state.toolExecutions
    * 4. Interleave tool_response after corresponding tool_request
    * 5. Sort by originalIndex
    *
    * @param state - LangGraph AgentState from invoke()
-   * @param adapter - Provider-specific adapter
+   * @param sessionId - Session ID for event context
    * @param options - Normalization options
    * @returns Sorted array of normalized events
    */
   normalize(
     state: AgentState,
-    adapter: IProviderAdapter,
+    sessionId: string,
     options?: BatchNormalizerOptions
   ): NormalizedAgentEvent[] {
     const allEvents: NormalizedAgentEvent[] = [];
@@ -87,7 +75,7 @@ export class BatchResultNormalizer implements IBatchResultNormalizer {
     let indexCounter = 0;
 
     logger.debug({
-      sessionId: adapter.sessionId,
+      sessionId,
       messageCount: state.messages?.length ?? 0,
       toolExecutionCount: state.toolExecutions?.length ?? 0,
     }, 'Starting batch normalization');
@@ -109,11 +97,11 @@ export class BatchResultNormalizer implements IBatchResultNormalizer {
         // Normalize with error handling - don't abort entire batch on single message failure
         let messageEvents: NormalizedAgentEvent[] = [];
         try {
-          messageEvents = adapter.normalizeMessage(msg, i);
+          messageEvents = normalizeAIMessage(msg, i, sessionId);
         } catch (error) {
           logger.error(
             {
-              sessionId: adapter.sessionId,
+              sessionId,
               messageIndex: i,
               error: error instanceof Error
                 ? { message: error.message, stack: error.stack, name: error.name }
@@ -128,13 +116,13 @@ export class BatchResultNormalizer implements IBatchResultNormalizer {
         // WARN: AI message that produced no events = potential data loss
         if (messageEvents.length === 0) {
           logger.warn({
-            sessionId: adapter.sessionId,
+            sessionId,
             messageIndex: i,
             messageType: msgType,
             contentType: typeof msg.content,
             contentIsArray: Array.isArray(msg.content),
             contentLength: Array.isArray(msg.content) ? msg.content.length : (typeof msg.content === 'string' ? msg.content.length : 0),
-          }, 'RAW_ANTHROPIC: AI message produced ZERO events - possible data loss');
+          }, 'AI message produced ZERO events - possible data loss');
         }
 
         // Reindex events with global counter
@@ -152,7 +140,7 @@ export class BatchResultNormalizer implements IBatchResultNormalizer {
     const toolExecutions = state.toolExecutions ?? [];
     const toolResponseMap = this.createToolResponseMap(
       toolExecutions,
-      adapter.sessionId,
+      sessionId,
       timestamp
     );
 
@@ -177,11 +165,11 @@ export class BatchResultNormalizer implements IBatchResultNormalizer {
     if (options?.includeComplete) {
       const lastAIMessage = lastAIMessageIndex >= 0 ? messages[lastAIMessageIndex] : null;
       const stopReason = lastAIMessage
-        ? this.extractStopReasonFromMessage(lastAIMessage, adapter)
+        ? this.extractStopReasonFromMessage(lastAIMessage)
         : 'end_turn';
 
       interleavedEvents.push(this.createCompleteEvent(
-        adapter.sessionId,
+        sessionId,
         timestamp,
         stopReason,
         indexCounter++,
@@ -205,7 +193,7 @@ export class BatchResultNormalizer implements IBatchResultNormalizer {
     }).length;
 
     logger.info({
-      sessionId: adapter.sessionId,
+      sessionId,
       eventCount: finalEvents.length,
       aiMessageCount,
       usedModel: state.usedModel ?? 'unknown',
@@ -245,16 +233,15 @@ export class BatchResultNormalizer implements IBatchResultNormalizer {
   }
 
   /**
-   * Extract stop reason from message using adapter.
+   * Extract stop reason from message using provider-agnostic normalizer.
    */
   private extractStopReasonFromMessage(
-    message: BaseMessage,
-    adapter: IProviderAdapter
+    message: import('@langchain/core/messages').BaseMessage
   ): NormalizedStopReason {
     const meta = (message as {
-      response_metadata?: { stop_reason?: string };
+      response_metadata?: { stop_reason?: string; finish_reason?: string };
     }).response_metadata;
-    return adapter.normalizeStopReason(meta?.stop_reason);
+    return normalizeStopReason(meta?.stop_reason ?? meta?.finish_reason);
   }
 
   /**
@@ -284,10 +271,10 @@ export class BatchResultNormalizer implements IBatchResultNormalizer {
    * Map provider stop reason to UI completion reason.
    *
    * Mapping:
-   * - max_tokens → max_turns (token limit reached)
-   * - error → error
-   * - cancelled → user_cancelled
-   * - end_turn, tool_use, etc. → success
+   * - max_tokens -> max_turns (token limit reached)
+   * - error -> error
+   * - cancelled -> user_cancelled
+   * - end_turn, tool_use, etc. -> success
    */
   private mapStopReasonToCompletionReason(
     stopReason: NormalizedStopReason

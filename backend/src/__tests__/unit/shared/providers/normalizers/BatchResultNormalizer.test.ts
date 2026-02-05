@@ -13,12 +13,8 @@ import {
 } from '@/shared/providers/normalizers/BatchResultNormalizer';
 import type { AgentState, ToolExecution } from '@/modules/agents/orchestrator/state';
 import type { BaseMessage } from '@langchain/core/messages';
-import type { IProviderAdapter } from '@/shared/providers/interfaces/IProviderAdapter';
 import type {
-  NormalizedAgentEvent,
   NormalizedToolRequestEvent,
-  NormalizedAssistantMessageEvent,
-  NormalizedThinkingEvent,
 } from '@bc-agent/shared';
 
 // Mock logger
@@ -30,89 +26,6 @@ vi.mock('@/shared/utils/logger', () => ({
     error: vi.fn(),
   }),
 }));
-
-/**
- * Create a mock provider adapter for testing
- */
-function createMockAdapter(sessionId: string): IProviderAdapter {
-  return {
-    provider: 'anthropic',
-    sessionId,
-    normalizeMessage: vi.fn((message: BaseMessage, index: number) => {
-      const content = message.content;
-      const events: NormalizedAgentEvent[] = [];
-      const timestamp = new Date().toISOString();
-      let eventIndex = 0;
-
-      if (typeof content === 'string') {
-        events.push({
-          type: 'assistant_message',
-          eventId: `evt-${index}-${eventIndex++}`,
-          sessionId,
-          timestamp,
-          originalIndex: index * 100 + eventIndex,
-          persistenceStrategy: 'sync_required',
-          provider: 'anthropic',
-          messageId: `msg-${index}`,
-          content,
-          stopReason: 'end_turn',
-          model: 'test-model',
-          tokenUsage: { inputTokens: 10, outputTokens: 5 },
-        } as NormalizedAssistantMessageEvent);
-      } else if (Array.isArray(content)) {
-        for (const block of content) {
-          if (block.type === 'thinking') {
-            events.push({
-              type: 'thinking',
-              eventId: `evt-${index}-${eventIndex++}`,
-              sessionId,
-              timestamp,
-              originalIndex: index * 100 + eventIndex,
-              persistenceStrategy: 'sync_required',
-              provider: 'anthropic',
-              messageId: `msg-${index}`,
-              content: block.thinking,
-            } as NormalizedThinkingEvent);
-          } else if (block.type === 'text') {
-            events.push({
-              type: 'assistant_message',
-              eventId: `evt-${index}-${eventIndex++}`,
-              sessionId,
-              timestamp,
-              originalIndex: index * 100 + eventIndex,
-              persistenceStrategy: 'sync_required',
-              provider: 'anthropic',
-              messageId: `msg-${index}`,
-              content: block.text,
-              stopReason: 'end_turn',
-              model: 'test-model',
-              tokenUsage: { inputTokens: 10, outputTokens: 5 },
-            } as NormalizedAssistantMessageEvent);
-          } else if (block.type === 'tool_use') {
-            events.push({
-              type: 'tool_request',
-              eventId: `evt-${index}-${eventIndex++}`,
-              sessionId,
-              timestamp,
-              originalIndex: index * 100 + eventIndex,
-              persistenceStrategy: 'async_allowed',
-              provider: 'anthropic',
-              toolUseId: block.id,
-              toolName: block.name,
-              args: block.input,
-            } as NormalizedToolRequestEvent);
-          }
-        }
-      }
-
-      return events;
-    }),
-    detectBlockType: vi.fn(),
-    normalizeStopReason: vi.fn(() => 'end_turn'),
-    extractUsage: vi.fn(() => ({ inputTokens: 10, outputTokens: 5 })),
-    extractMessageId: vi.fn(() => 'msg-id'),
-  };
-}
 
 /**
  * Create a mock BaseMessage
@@ -180,24 +93,22 @@ describe('BatchResultNormalizer', () => {
   describe('normalize', () => {
     describe('simple text response', () => {
       it('should produce [assistant_message] array', () => {
-        const adapter = createMockAdapter(sessionId);
         const state = createMockState([
           createMockMessage('Hello from AI'),
         ]);
 
-        const events = normalizer.normalize(state, adapter);
+        const events = normalizer.normalize(state, sessionId);
 
         expect(events).toHaveLength(1);
         expect(events[0].type).toBe('assistant_message');
       });
 
       it('should set originalIndex correctly', () => {
-        const adapter = createMockAdapter(sessionId);
         const state = createMockState([
           createMockMessage('Response'),
         ]);
 
-        const events = normalizer.normalize(state, adapter);
+        const events = normalizer.normalize(state, sessionId);
 
         expect(events[0].originalIndex).toBe(0);
       });
@@ -205,7 +116,6 @@ describe('BatchResultNormalizer', () => {
 
     describe('thinking + response', () => {
       it('should produce [thinking, assistant_message]', () => {
-        const adapter = createMockAdapter(sessionId);
         const state = createMockState([
           createMockMessage([
             { type: 'thinking', thinking: 'Thinking...' },
@@ -213,7 +123,7 @@ describe('BatchResultNormalizer', () => {
           ]),
         ]);
 
-        const events = normalizer.normalize(state, adapter);
+        const events = normalizer.normalize(state, sessionId);
 
         expect(events).toHaveLength(2);
         expect(events[0].type).toBe('thinking');
@@ -221,7 +131,6 @@ describe('BatchResultNormalizer', () => {
       });
 
       it('should preserve order', () => {
-        const adapter = createMockAdapter(sessionId);
         const state = createMockState([
           createMockMessage([
             { type: 'thinking', thinking: 'First' },
@@ -229,7 +138,7 @@ describe('BatchResultNormalizer', () => {
           ]),
         ]);
 
-        const events = normalizer.normalize(state, adapter);
+        const events = normalizer.normalize(state, sessionId);
 
         expect(events[0].originalIndex).toBeLessThan(events[1].originalIndex);
       });
@@ -237,7 +146,6 @@ describe('BatchResultNormalizer', () => {
 
     describe('tool execution', () => {
       it('should produce [tool_request, tool_response, assistant_message]', () => {
-        const adapter = createMockAdapter(sessionId);
         const state = createMockState(
           [
             createMockMessage([
@@ -256,7 +164,7 @@ describe('BatchResultNormalizer', () => {
           ]
         );
 
-        const events = normalizer.normalize(state, adapter);
+        const events = normalizer.normalize(state, sessionId);
 
         const types = events.map(e => e.type);
         expect(types).toContain('tool_request');
@@ -265,7 +173,6 @@ describe('BatchResultNormalizer', () => {
       });
 
       it('should match toolUseId between request and response', () => {
-        const adapter = createMockAdapter(sessionId);
         const state = createMockState(
           [
             createMockMessage([
@@ -282,7 +189,7 @@ describe('BatchResultNormalizer', () => {
           ]
         );
 
-        const events = normalizer.normalize(state, adapter);
+        const events = normalizer.normalize(state, sessionId);
 
         const toolRequest = events.find(e => e.type === 'tool_request') as NormalizedToolRequestEvent;
         const toolResponse = events.find(e => e.type === 'tool_response');
@@ -292,7 +199,6 @@ describe('BatchResultNormalizer', () => {
       });
 
       it('should include tool results from state.toolExecutions', () => {
-        const adapter = createMockAdapter(sessionId);
         const state = createMockState(
           [
             createMockMessage([
@@ -309,7 +215,7 @@ describe('BatchResultNormalizer', () => {
           ]
         );
 
-        const events = normalizer.normalize(state, adapter);
+        const events = normalizer.normalize(state, sessionId);
         const toolResponse = events.find(e => e.type === 'tool_response');
 
         expect(toolResponse).toBeDefined();
@@ -320,7 +226,6 @@ describe('BatchResultNormalizer', () => {
 
     describe('ReAct loops (multiple AI messages)', () => {
       it('should process ALL AI messages (not just last)', () => {
-        const adapter = createMockAdapter(sessionId);
         const state = createMockState([
           createMockMessage('User request', 'human'),
           createMockMessage([
@@ -331,7 +236,7 @@ describe('BatchResultNormalizer', () => {
           createMockMessage('Final answer'),
         ]);
 
-        const events = normalizer.normalize(state, adapter);
+        const events = normalizer.normalize(state, sessionId);
 
         // Should have events from BOTH AI messages
         const types = events.map(e => e.type);
@@ -341,7 +246,6 @@ describe('BatchResultNormalizer', () => {
       });
 
       it('should handle multiple tool calls across messages', () => {
-        const adapter = createMockAdapter(sessionId);
         const state = createMockState(
           [
             createMockMessage([
@@ -360,7 +264,7 @@ describe('BatchResultNormalizer', () => {
           ]
         );
 
-        const events = normalizer.normalize(state, adapter);
+        const events = normalizer.normalize(state, sessionId);
 
         const toolRequests = events.filter(e => e.type === 'tool_request');
         const toolResponses = events.filter(e => e.type === 'tool_response');
@@ -370,14 +274,13 @@ describe('BatchResultNormalizer', () => {
       });
 
       it('should maintain order across all messages', () => {
-        const adapter = createMockAdapter(sessionId);
         const state = createMockState([
           createMockMessage('First AI message'),
           createMockMessage('User reply', 'human'),
           createMockMessage('Second AI message'),
         ]);
 
-        const events = normalizer.normalize(state, adapter);
+        const events = normalizer.normalize(state, sessionId);
 
         // All events should have sequential indices
         for (let i = 1; i < events.length; i++) {
@@ -388,7 +291,6 @@ describe('BatchResultNormalizer', () => {
 
     describe('interleaving', () => {
       it('should interleave tool_response after tool_request', () => {
-        const adapter = createMockAdapter(sessionId);
         const state = createMockState(
           [
             createMockMessage([
@@ -401,7 +303,7 @@ describe('BatchResultNormalizer', () => {
           ]
         );
 
-        const events = normalizer.normalize(state, adapter);
+        const events = normalizer.normalize(state, sessionId);
 
         const toolReqIndex = events.findIndex(e => e.type === 'tool_request');
         const toolRespIndex = events.findIndex(e => e.type === 'tool_response');
@@ -412,28 +314,25 @@ describe('BatchResultNormalizer', () => {
 
     describe('edge cases', () => {
       it('should handle empty messages array', () => {
-        const adapter = createMockAdapter(sessionId);
         const state = createMockState([]);
 
-        const events = normalizer.normalize(state, adapter);
+        const events = normalizer.normalize(state, sessionId);
 
         expect(events).toHaveLength(0);
       });
 
       it('should handle no AI messages', () => {
-        const adapter = createMockAdapter(sessionId);
         const state = createMockState([
           createMockMessage('User message', 'human'),
           createMockMessage('Tool result', 'tool'),
         ]);
 
-        const events = normalizer.normalize(state, adapter);
+        const events = normalizer.normalize(state, sessionId);
 
         expect(events).toHaveLength(0);
       });
 
       it('should handle missing toolExecutions', () => {
-        const adapter = createMockAdapter(sessionId);
         const state = createMockState(
           [
             createMockMessage([
@@ -443,7 +342,7 @@ describe('BatchResultNormalizer', () => {
           [] // No tool executions
         );
 
-        const events = normalizer.normalize(state, adapter);
+        const events = normalizer.normalize(state, sessionId);
 
         const toolRequest = events.find(e => e.type === 'tool_request');
         const toolResponse = events.find(e => e.type === 'tool_response');
@@ -453,25 +352,23 @@ describe('BatchResultNormalizer', () => {
       });
 
       it('should handle undefined messages', () => {
-        const adapter = createMockAdapter(sessionId);
         const state = {
           messages: undefined,
           toolExecutions: [],
         } as unknown as AgentState;
 
-        const events = normalizer.normalize(state, adapter);
+        const events = normalizer.normalize(state, sessionId);
 
         expect(events).toHaveLength(0);
       });
 
       it('should handle undefined toolExecutions', () => {
-        const adapter = createMockAdapter(sessionId);
         const state = {
           messages: [createMockMessage('Test')],
           toolExecutions: undefined,
         } as unknown as AgentState;
 
-        const events = normalizer.normalize(state, adapter);
+        const events = normalizer.normalize(state, sessionId);
 
         expect(events.length).toBeGreaterThan(0);
       });
@@ -479,12 +376,11 @@ describe('BatchResultNormalizer', () => {
 
     describe('complete event', () => {
       it('should include complete event when option is set', () => {
-        const adapter = createMockAdapter(sessionId);
         const state = createMockState([
           createMockMessage('Response'),
         ]);
 
-        const events = normalizer.normalize(state, adapter, { includeComplete: true });
+        const events = normalizer.normalize(state, sessionId, { includeComplete: true });
 
         const completeEvent = events.find(e => e.type === 'complete');
         expect(completeEvent).toBeDefined();
@@ -492,12 +388,11 @@ describe('BatchResultNormalizer', () => {
       });
 
       it('should not include complete event by default', () => {
-        const adapter = createMockAdapter(sessionId);
         const state = createMockState([
           createMockMessage('Response'),
         ]);
 
-        const events = normalizer.normalize(state, adapter);
+        const events = normalizer.normalize(state, sessionId);
 
         const completeEvent = events.find(e => e.type === 'complete');
         expect(completeEvent).toBeUndefined();
@@ -507,7 +402,6 @@ describe('BatchResultNormalizer', () => {
 
   describe('sorting', () => {
     it('should sort events by originalIndex', () => {
-      const adapter = createMockAdapter(sessionId);
       const state = createMockState([
         createMockMessage([
           { type: 'thinking', thinking: 'Think' },
@@ -518,7 +412,7 @@ describe('BatchResultNormalizer', () => {
         { toolUseId: 't1', toolName: 'test', success: true, result: 'OK' },
       ]);
 
-      const events = normalizer.normalize(state, adapter);
+      const events = normalizer.normalize(state, sessionId);
 
       // Verify events are sorted
       for (let i = 1; i < events.length; i++) {

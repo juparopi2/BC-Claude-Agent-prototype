@@ -43,20 +43,15 @@ vi.mock('@/domains/chat-attachments', () => {
   };
 });
 
-// Mock AnthropicAdapter for format conversion
-vi.mock('@shared/providers/adapters/AnthropicAdapter', () => {
+// Mock content-format utility for format conversion
+vi.mock('@shared/providers/utils/content-format', () => {
   return {
-    AnthropicAdapter: vi.fn(() => ({
-      normalizeMessage: vi.fn(),
-      normalizeStopReason: vi.fn(),
-      extractUsage: vi.fn(),
-    })),
     convertToLangChainFormat: vi.fn(),
   };
 });
 
 // Import the conversion function after mocks
-import { convertToLangChainFormat } from '@shared/providers/adapters/AnthropicAdapter';
+import { convertToLangChainFormat } from '@shared/providers/utils/content-format';
 
 /**
  * Build message content exactly as AgentOrchestrator does (lines 200-226)

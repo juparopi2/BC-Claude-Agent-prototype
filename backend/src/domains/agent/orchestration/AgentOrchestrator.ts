@@ -35,7 +35,6 @@
 
 import { createChildLogger } from '@/shared/utils/logger';
 import { orchestratorGraph } from '@/modules/agents/orchestrator/graph';
-import { AnthropicAdapter } from '@shared/providers/adapters/AnthropicAdapter';
 import { getBatchResultNormalizer, type BatchResultNormalizer } from '@shared/providers/normalizers/BatchResultNormalizer';
 import { randomUUID } from 'crypto';
 import type {
@@ -142,8 +141,6 @@ export class AgentOrchestrator implements IAgentOrchestrator {
       'Starting synchronous agent execution'
     );
 
-    const adapter = new AnthropicAdapter(sessionId);
-
     // =========================================================================
     // 3. EMIT SESSION_START
     // =========================================================================
@@ -198,7 +195,6 @@ export class AgentOrchestrator implements IAgentOrchestrator {
         sessionId,
         userId ?? '',
         ctx,
-        adapter,
         {
           attachments: options?.attachments,
           enableAutoSemanticSearch: options?.enableAutoSemanticSearch,

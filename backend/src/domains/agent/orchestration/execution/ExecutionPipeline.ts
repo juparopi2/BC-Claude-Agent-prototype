@@ -21,7 +21,6 @@
 
 import { randomUUID } from 'crypto';
 import type { NormalizedAgentEvent, NormalizedToolRequestEvent } from '@bc-agent/shared';
-import type { IProviderAdapter } from '@shared/providers/interfaces/IProviderAdapter';
 import type { IBatchResultNormalizer } from '@shared/providers/interfaces/IBatchResultNormalizer';
 import type { IPersistenceCoordinator } from '@domains/agent/persistence';
 import type { ICitationExtractor } from '@/domains/agent/citations';
@@ -83,7 +82,6 @@ export class ExecutionPipeline {
    * @param sessionId - Session ID
    * @param userId - User ID
    * @param ctx - Execution context
-   * @param adapter - Provider adapter for normalization
    * @param options - Execution options
    * @returns Pipeline result
    */
@@ -92,7 +90,6 @@ export class ExecutionPipeline {
     sessionId: string,
     userId: string,
     ctx: ExecutionContextSync,
-    adapter: IProviderAdapter,
     options?: PipelineExecutionOptions
   ): Promise<PipelineExecutionResult> {
     const {
@@ -118,7 +115,7 @@ export class ExecutionPipeline {
       {
         sessionId,
         hasContextText: !!contextResult.contextText,
-        attachedFiles: contextResult.attachedFileIds?.length ?? 0,
+        attachedFiles: contextResult.filesIncluded?.length ?? 0,
       },
       'Message context built'
     );
@@ -129,7 +126,7 @@ export class ExecutionPipeline {
     });
 
     // Stage 3: Normalize results
-    const normalizedEvents = normalizer.normalize(graphResult, adapter, {
+    const normalizedEvents = normalizer.normalize(graphResult, sessionId, {
       includeComplete: true,
     });
 

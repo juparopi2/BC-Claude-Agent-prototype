@@ -1,15 +1,15 @@
 /**
- * AnthropicAdapter Unit Tests
+ * MessageNormalizer Unit Tests
  *
- * Tests for the Anthropic provider adapter that normalizes
- * LangChain messages to NormalizedAgentEvent[].
+ * Tests for the provider-agnostic message normalizer that converts
+ * LangChain AIMessages to NormalizedAgentEvent[].
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { AnthropicAdapter } from '@/shared/providers/adapters/AnthropicAdapter';
+import { describe, it, expect, vi } from 'vitest';
+import { normalizeAIMessage, normalizeStopReason } from '@/shared/providers/normalizers/MessageNormalizer';
 import type { BaseMessage } from '@langchain/core/messages';
 
-// Mock logger to avoid actual logging during tests
+// Mock logger
 vi.mock('@/shared/utils/logger', () => ({
   createChildLogger: () => ({
     debug: vi.fn(),
@@ -19,58 +19,37 @@ vi.mock('@/shared/utils/logger', () => ({
   }),
 }));
 
-// Mock models config
-vi.mock('@/infrastructure/config/models', () => ({
-  AnthropicModels: {
-    SONNET_4_5: 'claude-sonnet-4-5-20250929',
-  },
-}));
+const SESSION_ID = 'test-session-123';
 
 /**
  * Helper to create a mock BaseMessage
  */
 function createMockMessage(options: {
   content: string | Array<{ type: string; [key: string]: unknown }>;
+  type?: 'ai' | 'human' | 'tool';
   responseMetadata?: Record<string, unknown>;
   usageMetadata?: Record<string, unknown>;
   id?: string;
+  tool_calls?: Array<{ id?: string; name: string; args: Record<string, unknown> }>;
 }): BaseMessage {
   return {
-    _getType: () => 'ai',
+    _getType: () => options.type ?? 'ai',
     content: options.content,
     response_metadata: options.responseMetadata,
     usage_metadata: options.usageMetadata,
     id: options.id,
     additional_kwargs: {},
+    tool_calls: options.tool_calls,
     name: undefined,
   } as unknown as BaseMessage;
 }
 
-describe('AnthropicAdapter', () => {
-  let adapter: AnthropicAdapter;
-  const sessionId = 'test-session-123';
-
-  beforeEach(() => {
-    adapter = new AnthropicAdapter(sessionId);
-  });
-
-  describe('constructor', () => {
-    it('should use model from config by default', () => {
-      expect(adapter.provider).toBe('anthropic');
-      expect(adapter.sessionId).toBe(sessionId);
-    });
-
-    it('should accept custom default model', () => {
-      const customAdapter = new AnthropicAdapter(sessionId, 'custom-model');
-      expect(customAdapter.sessionId).toBe(sessionId);
-    });
-  });
-
-  describe('normalizeMessage', () => {
+describe('MessageNormalizer', () => {
+  describe('normalizeAIMessage', () => {
     describe('simple text message', () => {
       it('should produce assistant_message event for string content', () => {
         const message = createMockMessage({
-          content: 'Hello, I am Claude!',
+          content: 'Hello, I am an AI!',
           responseMetadata: {
             stop_reason: 'end_turn',
             model: 'claude-sonnet-4-5-20250929',
@@ -79,14 +58,14 @@ describe('AnthropicAdapter', () => {
           id: 'msg_123',
         });
 
-        const events = adapter.normalizeMessage(message, 0);
+        const events = normalizeAIMessage(message, 0, SESSION_ID);
 
         expect(events).toHaveLength(1);
         expect(events[0].type).toBe('assistant_message');
-        expect(events[0].sessionId).toBe(sessionId);
+        expect(events[0].sessionId).toBe(SESSION_ID);
         expect(events[0].persistenceStrategy).toBe('sync_required');
         expect(events[0]).toMatchObject({
-          content: 'Hello, I am Claude!',
+          content: 'Hello, I am an AI!',
           stopReason: 'end_turn',
           model: 'claude-sonnet-4-5-20250929',
         });
@@ -98,7 +77,7 @@ describe('AnthropicAdapter', () => {
           responseMetadata: { stop_reason: 'end_turn' },
         });
 
-        const events = adapter.normalizeMessage(message, 0);
+        const events = normalizeAIMessage(message, 0, SESSION_ID);
 
         expect(events).toHaveLength(0);
       });
@@ -119,7 +98,7 @@ describe('AnthropicAdapter', () => {
           id: 'msg_456',
         });
 
-        const events = adapter.normalizeMessage(message, 0);
+        const events = normalizeAIMessage(message, 0, SESSION_ID);
 
         expect(events).toHaveLength(2);
         expect(events[0].type).toBe('thinking');
@@ -144,15 +123,14 @@ describe('AnthropicAdapter', () => {
           responseMetadata: { stop_reason: 'end_turn' },
         });
 
-        const events = adapter.normalizeMessage(message, 5);
+        const events = normalizeAIMessage(message, 5, SESSION_ID);
 
-        // Events should have increasing originalIndex values
         expect(events[0].originalIndex).toBeLessThan(events[1].originalIndex);
       });
     });
 
-    describe('tool_use message', () => {
-      it('should produce tool_request event', () => {
+    describe('tool_use message (content blocks)', () => {
+      it('should produce tool_request event from content blocks', () => {
         const message = createMockMessage({
           content: [
             {
@@ -165,7 +143,7 @@ describe('AnthropicAdapter', () => {
           responseMetadata: { stop_reason: 'tool_use' },
         });
 
-        const events = adapter.normalizeMessage(message, 0);
+        const events = normalizeAIMessage(message, 0, SESSION_ID);
 
         expect(events).toHaveLength(1);
         expect(events[0].type).toBe('tool_request');
@@ -177,7 +155,7 @@ describe('AnthropicAdapter', () => {
         });
       });
 
-      it('should extract toolArgs from block.input', () => {
+      it('should extract complex tool args', () => {
         const complexArgs = {
           filters: { status: 'active', type: 'invoice' },
           limit: 10,
@@ -196,68 +174,84 @@ describe('AnthropicAdapter', () => {
           responseMetadata: { stop_reason: 'tool_use' },
         });
 
-        const events = adapter.normalizeMessage(message, 0);
+        const events = normalizeAIMessage(message, 0, SESSION_ID);
 
-        expect(events[0]).toMatchObject({
-          args: complexArgs,
+        expect(events[0]).toMatchObject({ args: complexArgs });
+      });
+    });
+
+    describe('tool_calls (LangChain standard)', () => {
+      it('should use tool_calls when no tool_use content blocks exist', () => {
+        const message = createMockMessage({
+          content: [],
+          tool_calls: [
+            { id: 'call_abc', name: 'get_weather', args: { city: 'London' } },
+          ],
+          responseMetadata: { finish_reason: 'tool_calls' },
         });
+
+        const events = normalizeAIMessage(message, 0, SESSION_ID);
+
+        expect(events).toHaveLength(1);
+        expect(events[0].type).toBe('tool_request');
+        expect(events[0]).toMatchObject({
+          toolUseId: 'call_abc',
+          toolName: 'get_weather',
+          args: { city: 'London' },
+        });
+      });
+
+      it('should prefer tool_use content blocks over tool_calls', () => {
+        const message = createMockMessage({
+          content: [
+            { type: 'tool_use', id: 'toolu_from_content', name: 'search', input: { q: 'test' } },
+          ],
+          tool_calls: [
+            { id: 'call_from_toolcalls', name: 'search', args: { q: 'test' } },
+          ],
+          responseMetadata: { stop_reason: 'tool_use' },
+        });
+
+        const events = normalizeAIMessage(message, 0, SESSION_ID);
+
+        const toolReq = events.find(e => e.type === 'tool_request');
+        expect((toolReq as { toolUseId: string }).toolUseId).toBe('toolu_from_content');
       });
     });
 
     describe('mixed content blocks', () => {
       it('should handle thinking + text + tool_use in semantic order', () => {
-        // Anthropic sends mixed content in a single message.
-        // The adapter emits events in semantic order: thinking -> text -> tools
-        // This ensures the assistant's explanation appears before tool execution.
         const message = createMockMessage({
           content: [
             { type: 'thinking', thinking: 'Analyzing the request...' },
             { type: 'text', text: 'I will search for that.' },
-            {
-              type: 'tool_use',
-              id: 'toolu_mixed',
-              name: 'search',
-              input: { q: 'test' },
-            },
+            { type: 'tool_use', id: 'toolu_mixed', name: 'search', input: { q: 'test' } },
           ],
           responseMetadata: { stop_reason: 'tool_use' },
         });
 
-        const events = adapter.normalizeMessage(message, 0);
+        const events = normalizeAIMessage(message, 0, SESSION_ID);
 
         expect(events).toHaveLength(3);
         expect(events[0].type).toBe('thinking');
-        expect(events[1].type).toBe('assistant_message'); // Text comes before tools
+        expect(events[1].type).toBe('assistant_message');
         expect(events[2].type).toBe('tool_request');
       });
 
       it('should produce events in semantic order (text before tools)', () => {
-        // Even when tool_use blocks appear before text in the raw message,
-        // the adapter reorders them semantically: thinking -> text -> tools
         const message = createMockMessage({
           content: [
             { type: 'thinking', thinking: 'First' },
-            {
-              type: 'tool_use',
-              id: 'toolu_1',
-              name: 'tool1',
-              input: {},
-            },
-            {
-              type: 'tool_use',
-              id: 'toolu_2',
-              name: 'tool2',
-              input: {},
-            },
+            { type: 'tool_use', id: 'toolu_1', name: 'tool1', input: {} },
+            { type: 'tool_use', id: 'toolu_2', name: 'tool2', input: {} },
             { type: 'text', text: 'Final' },
           ],
           responseMetadata: { stop_reason: 'tool_use' },
         });
 
-        const events = adapter.normalizeMessage(message, 0);
+        const events = normalizeAIMessage(message, 0, SESSION_ID);
 
         expect(events).toHaveLength(4);
-        // Verify semantic order: thinking, text, then tools
         expect(events.map(e => e.type)).toEqual([
           'thinking',
           'assistant_message',
@@ -269,72 +263,110 @@ describe('AnthropicAdapter', () => {
 
     describe('non-AI messages', () => {
       it('should return empty array for human messages', () => {
-        const message = {
-          _getType: () => 'human',
-          content: 'User input',
-        } as unknown as BaseMessage;
+        const message = createMockMessage({ content: 'User input', type: 'human' });
 
-        const events = adapter.normalizeMessage(message, 0);
+        const events = normalizeAIMessage(message, 0, SESSION_ID);
 
         expect(events).toHaveLength(0);
       });
 
       it('should return empty array for tool messages', () => {
-        const message = {
-          _getType: () => 'tool',
-          content: 'Tool result',
-        } as unknown as BaseMessage;
+        const message = createMockMessage({ content: 'Tool result', type: 'tool' });
 
-        const events = adapter.normalizeMessage(message, 0);
+        const events = normalizeAIMessage(message, 0, SESSION_ID);
 
         expect(events).toHaveLength(0);
+      });
+    });
+
+    describe('provider detection', () => {
+      it('should detect anthropic from model name', () => {
+        const message = createMockMessage({
+          content: 'Test',
+          responseMetadata: { model: 'claude-sonnet-4-5-20250929' },
+        });
+
+        const events = normalizeAIMessage(message, 0, SESSION_ID);
+
+        expect(events[0].provider).toBe('anthropic');
+      });
+
+      it('should detect openai from model name', () => {
+        const message = createMockMessage({
+          content: 'Test',
+          responseMetadata: { model: 'gpt-4o' },
+        });
+
+        const events = normalizeAIMessage(message, 0, SESSION_ID);
+
+        expect(events[0].provider).toBe('openai');
+      });
+
+      it('should detect google from model name', () => {
+        const message = createMockMessage({
+          content: 'Test',
+          responseMetadata: { model: 'gemini-2.0-flash' },
+        });
+
+        const events = normalizeAIMessage(message, 0, SESSION_ID);
+
+        expect(events[0].provider).toBe('google');
       });
     });
   });
 
   describe('normalizeStopReason', () => {
-    it('should map end_turn to end_turn', () => {
-      expect(adapter.normalizeStopReason('end_turn')).toBe('end_turn');
+    it('should map Anthropic end_turn', () => {
+      expect(normalizeStopReason('end_turn')).toBe('end_turn');
     });
 
-    it('should map stop to end_turn', () => {
-      expect(adapter.normalizeStopReason('stop')).toBe('end_turn');
+    it('should map OpenAI stop to end_turn', () => {
+      expect(normalizeStopReason('stop')).toBe('end_turn');
     });
 
-    it('should map tool_use to tool_use', () => {
-      expect(adapter.normalizeStopReason('tool_use')).toBe('tool_use');
+    it('should map Anthropic tool_use', () => {
+      expect(normalizeStopReason('tool_use')).toBe('tool_use');
     });
 
-    it('should map max_tokens to max_tokens', () => {
-      expect(adapter.normalizeStopReason('max_tokens')).toBe('max_tokens');
+    it('should map OpenAI tool_calls to tool_use', () => {
+      expect(normalizeStopReason('tool_calls')).toBe('tool_use');
+    });
+
+    it('should map Anthropic max_tokens', () => {
+      expect(normalizeStopReason('max_tokens')).toBe('max_tokens');
+    });
+
+    it('should map OpenAI length to max_tokens', () => {
+      expect(normalizeStopReason('length')).toBe('max_tokens');
     });
 
     it('should map stop_sequence to end_turn', () => {
-      expect(adapter.normalizeStopReason('stop_sequence')).toBe('end_turn');
+      expect(normalizeStopReason('stop_sequence')).toBe('end_turn');
     });
 
-    it('should default unknown to end_turn with warning', () => {
-      const result = adapter.normalizeStopReason('unknown_reason');
-      expect(result).toBe('end_turn');
+    it('should default unknown to end_turn', () => {
+      expect(normalizeStopReason('unknown_reason')).toBe('end_turn');
     });
 
-    it('should handle undefined stop reason', () => {
-      expect(adapter.normalizeStopReason(undefined)).toBe('end_turn');
+    it('should handle undefined', () => {
+      expect(normalizeStopReason(undefined)).toBe('end_turn');
     });
   });
 
-  describe('extractUsage', () => {
+  describe('usage extraction', () => {
     it('should extract from response_metadata.usage', () => {
       const message = createMockMessage({
         content: 'test',
         responseMetadata: {
           usage: { input_tokens: 100, output_tokens: 50 },
+          model: 'claude-sonnet-4-5-20250929',
         },
+        id: 'msg-1',
       });
 
-      const usage = adapter.extractUsage(message);
+      const events = normalizeAIMessage(message, 0, SESSION_ID);
 
-      expect(usage).toEqual({
+      expect((events[0] as { tokenUsage: unknown }).tokenUsage).toEqual({
         inputTokens: 100,
         outputTokens: 50,
       });
@@ -344,11 +376,12 @@ describe('AnthropicAdapter', () => {
       const message = createMockMessage({
         content: 'test',
         usageMetadata: { input_tokens: 200, output_tokens: 75 },
+        id: 'msg-2',
       });
 
-      const usage = adapter.extractUsage(message);
+      const events = normalizeAIMessage(message, 0, SESSION_ID);
 
-      expect(usage).toEqual({
+      expect((events[0] as { tokenUsage: unknown }).tokenUsage).toEqual({
         inputTokens: 200,
         outputTokens: 75,
       });
@@ -358,57 +391,50 @@ describe('AnthropicAdapter', () => {
       const message = createMockMessage({
         content: [
           { type: 'thinking', thinking: 'Thinking...', thinking_tokens: 150 },
-          { type: 'text', text: 'Response' },
         ],
         responseMetadata: {
           usage: { input_tokens: 100, output_tokens: 50 },
+          model: 'claude-sonnet-4-5-20250929',
         },
+        id: 'msg-3',
       });
 
-      const usage = adapter.extractUsage(message);
+      const events = normalizeAIMessage(message, 0, SESSION_ID);
+      const thinkingEvent = events.find(e => e.type === 'thinking');
 
-      expect(usage).toEqual({
-        inputTokens: 100,
-        outputTokens: 50,
+      expect(thinkingEvent).toBeDefined();
+      expect((thinkingEvent as { tokenUsage?: unknown }).tokenUsage).toEqual({
+        inputTokens: 0,
+        outputTokens: 0,
         thinkingTokens: 150,
       });
     });
 
-    it('should return null if no usage found', () => {
-      const message = createMockMessage({ content: 'test' });
-
-      const usage = adapter.extractUsage(message);
-
-      expect(usage).toBeNull();
-    });
-
-    it('should handle missing token values with defaults', () => {
+    it('should default to zero usage when none found', () => {
       const message = createMockMessage({
         content: 'test',
-        responseMetadata: {
-          usage: {},
-        },
+        id: 'msg-4',
       });
 
-      const usage = adapter.extractUsage(message);
+      const events = normalizeAIMessage(message, 0, SESSION_ID);
 
-      expect(usage).toEqual({
+      expect((events[0] as { tokenUsage: unknown }).tokenUsage).toEqual({
         inputTokens: 0,
         outputTokens: 0,
       });
     });
   });
 
-  describe('extractMessageId', () => {
+  describe('message ID extraction', () => {
     it('should extract id from message property', () => {
       const message = createMockMessage({
         content: 'test',
         id: 'msg_direct_id',
       });
 
-      const messageId = adapter.extractMessageId(message);
+      const events = normalizeAIMessage(message, 0, SESSION_ID);
 
-      expect(messageId).toBe('msg_direct_id');
+      expect((events[0] as { messageId: string }).messageId).toBe('msg_direct_id');
     });
 
     it('should extract id from response_metadata', () => {
@@ -417,84 +443,19 @@ describe('AnthropicAdapter', () => {
         responseMetadata: { id: 'msg_meta_id' },
       });
 
-      const messageId = adapter.extractMessageId(message);
+      const events = normalizeAIMessage(message, 0, SESSION_ID);
 
-      expect(messageId).toBe('msg_meta_id');
+      expect((events[0] as { messageId: string }).messageId).toBe('msg_meta_id');
     });
 
     it('should generate UUID fallback when no id found', () => {
       const message = createMockMessage({ content: 'test' });
 
-      const messageId = adapter.extractMessageId(message);
+      const events = normalizeAIMessage(message, 0, SESSION_ID);
 
-      // Should be a valid UUID format
-      expect(messageId).toMatch(
+      expect((events[0] as { messageId: string }).messageId).toMatch(
         /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
       );
-    });
-  });
-
-  describe('detectBlockType', () => {
-    it('should detect thinking blocks', () => {
-      expect(adapter.detectBlockType({ type: 'thinking' })).toBe('thinking');
-    });
-
-    it('should detect text blocks', () => {
-      expect(adapter.detectBlockType({ type: 'text' })).toBe('text');
-    });
-
-    it('should detect text_delta blocks as text', () => {
-      expect(adapter.detectBlockType({ type: 'text_delta' })).toBe('text');
-    });
-
-    it('should detect tool_use blocks', () => {
-      expect(adapter.detectBlockType({ type: 'tool_use' })).toBe('tool_use');
-    });
-
-    it('should return null for unknown block types', () => {
-      expect(adapter.detectBlockType({ type: 'unknown' })).toBeNull();
-    });
-  });
-
-  describe('token usage in events', () => {
-    it('should include tokenUsage in thinking event when available', () => {
-      const message = createMockMessage({
-        content: [
-          { type: 'thinking', thinking: 'Thinking...', thinking_tokens: 100 },
-        ],
-        responseMetadata: {
-          usage: { input_tokens: 50, output_tokens: 30 },
-        },
-      });
-
-      const events = adapter.normalizeMessage(message, 0);
-      const thinkingEvent = events.find(e => e.type === 'thinking');
-
-      expect(thinkingEvent).toBeDefined();
-      expect((thinkingEvent as { tokenUsage?: unknown }).tokenUsage).toEqual({
-        inputTokens: 0,
-        outputTokens: 0,
-        thinkingTokens: 100,
-      });
-    });
-
-    it('should include full tokenUsage in assistant_message event', () => {
-      const message = createMockMessage({
-        content: 'Hello!',
-        responseMetadata: {
-          stop_reason: 'end_turn',
-          usage: { input_tokens: 100, output_tokens: 50 },
-        },
-      });
-
-      const events = adapter.normalizeMessage(message, 0);
-      const msgEvent = events.find(e => e.type === 'assistant_message');
-
-      expect(msgEvent).toBeDefined();
-      expect((msgEvent as { tokenUsage?: unknown }).tokenUsage).toEqual({
-        inputTokens: 100,
-        outputTokens: 50,
-      });
     });
   });
 });

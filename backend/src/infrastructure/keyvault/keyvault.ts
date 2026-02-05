@@ -45,6 +45,9 @@ export const SECRET_NAMES = {
   AZURE_VISION_KEY: 'AZURE-VISION-KEY',
   DOCUMENT_INTELLIGENCE_ENDPOINT: 'DocumentIntelligence-Endpoint',
   DOCUMENT_INTELLIGENCE_KEY: 'DocumentIntelligence-Key',
+  // Azure Audio Services (Speech-to-Text)
+  AZURE_AUDIO_ENDPOINT: 'AZURE-AUDIO-ENDPOINT',
+  AZURE_AUDIO_KEY: 'AZURE-AUDIO-KEY',
 } as const;
 
 /**

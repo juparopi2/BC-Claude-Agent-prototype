@@ -1,120 +1,180 @@
-import { BaseChatModel } from '@langchain/core/language_models/chat_models';
+/**
+ * ModelFactory - Universal Chat Model Initialization
+ *
+ * Provides a unified interface for creating chat models across different providers.
+ * Uses role-based configuration for consistent model selection.
+ *
+ * @module core/langchain/ModelFactory
+ */
+
 import { ChatAnthropic } from '@langchain/anthropic';
 import { ChatVertexAI } from '@langchain/google-vertexai';
 import { ChatOpenAI } from '@langchain/openai';
+import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
+import type { ModelRole, RoleModelConfig } from '@/infrastructure/config/models';
+import { ModelRoleConfigs, AnthropicModels, OpenAIModels, GoogleModels } from '@/infrastructure/config/models';
 import { env } from '@/infrastructure/config/environment';
-import { getModelConfig } from '@/infrastructure/config/models';
 
 export type ModelProvider = 'anthropic' | 'google' | 'openai';
 
+/**
+ * Model configuration for direct instantiation.
+ * For role-based usage, prefer ModelFactory.create(role).
+ */
 export interface ModelConfig {
   provider: ModelProvider;
   modelName: string;
   temperature?: number;
   maxTokens?: number;
   streaming?: boolean;
-  /**
-   * Enable prompt caching for Anthropic models.
-   * When enabled, cache control breakpoints can be set on system prompts and tools
-   * to reduce costs and latency for repeated content.
-   * @see https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching
-   */
-  enableCaching?: boolean;
-  /**
-   * Enable extended thinking for Anthropic models.
-   * When enabled, Claude uses internal reasoning before responding.
-   * @see https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking
-   */
-  enableThinking?: boolean;
-  /**
-   * Budget for extended thinking in tokens.
-   * Only used when enableThinking is true.
-   * Must be >= 1024 and less than maxTokens.
-   */
-  thinkingBudget?: number;
 }
 
+/**
+ * Cache key for model instances
+ */
+function getCacheKey(provider: string, modelName: string, config: { temperature?: number; maxTokens?: number }): string {
+  return `${provider}:${modelName}:t${config.temperature ?? 'default'}:m${config.maxTokens ?? 'default'}`;
+}
+
+/**
+ * ModelFactory provides a unified interface for creating chat models
+ * across different providers using LangChain provider packages.
+ */
 export class ModelFactory {
+  private static cache = new Map<string, BaseChatModel>();
+
   /**
-   * Creates a configured ChatModel instance based on the provider
+   * Creates a chat model for a specific role.
+   * Uses role configuration from ModelRoleConfigs.
+   *
+   * @param role - The model role (e.g., 'bc_agent', 'rag_agent', 'router')
+   * @returns Promise<BaseChatModel> - Configured chat model instance
+   *
+   * @example
+   * ```typescript
+   * const model = await ModelFactory.create('bc_agent');
+   * const response = await model.invoke([new HumanMessage('Hello')]);
+   * ```
    */
-  static create(config: ModelConfig): BaseChatModel {
-    const {
+  static async create(role: ModelRole): Promise<BaseChatModel> {
+    const config = ModelRoleConfigs[role];
+    if (!config) {
+      throw new Error(`Unknown model role: ${role}`);
+    }
+
+    const cacheKey = getCacheKey(config.provider, config.modelName, {
+      temperature: config.temperature,
+      maxTokens: config.maxTokens,
+    });
+
+    if (this.cache.has(cacheKey)) {
+      return this.cache.get(cacheKey)!;
+    }
+
+    const model = this.createModel(config);
+    this.cache.set(cacheKey, model);
+    return model;
+  }
+
+  /**
+   * Creates a chat model for a specific role with a different provider.
+   * Useful for A/B testing or provider fallback scenarios.
+   *
+   * @param role - The model role
+   * @param provider - Target provider ('anthropic', 'openai', 'google')
+   * @returns Promise<BaseChatModel>
+   */
+  static async createWithProvider(role: ModelRole, provider: ModelProvider): Promise<BaseChatModel> {
+    const config = ModelRoleConfigs[role];
+    if (!config) {
+      throw new Error(`Unknown model role: ${role}`);
+    }
+
+    // Determine model name for the provider
+    let modelName: string;
+    if (provider === config.provider) {
+      modelName = config.modelName;
+    } else {
+      // Default fallback models per provider (using constants)
+      const fallbackModels: Record<ModelProvider, string> = {
+        anthropic: AnthropicModels.HAIKU_4_5,
+        openai: OpenAIModels.GPT_4O_MINI,
+        google: GoogleModels.GEMINI_2_FLASH,
+      };
+      modelName = fallbackModels[provider];
+    }
+
+    const cacheKey = getCacheKey(provider, modelName, {
+      temperature: config.temperature,
+      maxTokens: config.maxTokens,
+    });
+
+    if (this.cache.has(cacheKey)) {
+      return this.cache.get(cacheKey)!;
+    }
+
+    const model = this.createModel({
+      ...config,
       provider,
       modelName,
-      temperature = 0.7,
-      maxTokens,
-      streaming = true,
-      enableCaching = false,
-      enableThinking = false,
-      thinkingBudget,
-    } = config;
+    });
+    this.cache.set(cacheKey, model);
+    return model;
+  }
+
+  /**
+   * Creates a chat model from explicit configuration.
+   * For advanced use cases where role config doesn't fit.
+   */
+  static async createFromConfig(config: ModelConfig): Promise<BaseChatModel> {
+    const cacheKey = getCacheKey(config.provider, config.modelName, {
+      temperature: config.temperature,
+      maxTokens: config.maxTokens,
+    });
+
+    if (this.cache.has(cacheKey)) {
+      return this.cache.get(cacheKey)!;
+    }
+
+    const model = this.createModel({
+      ...config,
+      role: 'default',
+      description: 'Custom configuration',
+      modelString: `${config.provider}:${config.modelName}`,
+    } as RoleModelConfig);
+
+    this.cache.set(cacheKey, model);
+    return model;
+  }
+
+  /**
+   * Creates a default model using the 'default' role configuration.
+   */
+  static async createDefault(): Promise<BaseChatModel> {
+    return this.create('default');
+  }
+
+  /**
+   * Internal method to create a model instance based on provider.
+   */
+  private static createModel(config: RoleModelConfig): BaseChatModel {
+    const { provider, modelName, temperature, maxTokens, streaming = true } = config;
 
     switch (provider) {
-      case 'anthropic': {
-        // Prepare thinking configuration
-        let thinkingConfig: { type: 'enabled'; budget_tokens: number } | { type: 'disabled' } | undefined;
-
-        if (enableThinking) {
-          // Validate thinking budget
-          let budget = thinkingBudget ?? 2048; // Default to 2048 tokens
-          
-          if (budget < 1024) {
-             budget = 1024; // Minimum required by Anthropic
-          }
-          
-          // Safety: Ensure budget doesn't exceed maxTokens
-          if (maxTokens && budget >= maxTokens) {
-             // AUTO-FIX: Clamp budget to 80% of maxTokens to prevent crash
-             budget = Math.floor(maxTokens * 0.8);
-             if (budget < 1024) budget = 1024; // Hard floor
-          }
-
-          if (maxTokens && budget >= maxTokens) {
-             throw new Error(`Thinking budget (${budget}) must be less than maxTokens (${maxTokens})`);
-          }
-
-          thinkingConfig = {
-            type: 'enabled',
-            budget_tokens: budget,
-          };
-        } else {
-          thinkingConfig = { type: 'disabled' };
-        }
-
-        // Prepare client options with beta headers
-        // Always include PDF beta for document support (required for multi-modal PDF uploads)
-        // Combine with caching beta header when caching is enabled
-        const betaFeatures = ['pdfs-2024-09-25'];
-        if (enableCaching) {
-          betaFeatures.push('prompt-caching-2024-07-31');
-        }
-
-        const clientOptions = {
-          defaultHeaders: {
-            'anthropic-beta': betaFeatures.join(','),
-          },
-        };
-
+      case 'anthropic':
         return new ChatAnthropic({
           modelName,
-          // Temperature must be omitted/undefined when thinking is enabled
-          temperature: enableThinking ? undefined : temperature,
+          temperature,
           maxTokens,
           streaming,
           apiKey: env.ANTHROPIC_API_KEY,
-          thinking: thinkingConfig,
-          clientOptions,
         });
-      }
 
       case 'google':
-        // Ensure Google credentials are set in env or via ADC
         return new ChatVertexAI({
           model: modelName,
           temperature,
           maxOutputTokens: maxTokens,
-          // VertexAI handles auth via GoogleAuth library automatically if GOOGLE_APPLICATION_CREDENTIALS is set
         });
 
       case 'openai':
@@ -123,9 +183,7 @@ export class ModelFactory {
           temperature,
           maxTokens,
           streaming,
-          apiKey: env.AZURE_OPENAI_KEY, // Mapping Azure key if using Azure, or standard OpenAI
-          // If using Azure OpenAI specifically, we might need different config class
-          // For now assuming standard OpenAI interface or Azure-compatible base
+          apiKey: env.AZURE_OPENAI_KEY,
         });
 
       default:
@@ -134,10 +192,47 @@ export class ModelFactory {
   }
 
   /**
-   * Create default model using centralized configuration
+   * Check if a model role supports a specific feature.
+   * Note: Feature detection is best-effort.
    */
-  static createDefault(): BaseChatModel {
-    // Use 'default' role from centralized config
-    return this.create(getModelConfig('default'));
+  static async supportsFeature(role: ModelRole, feature: string): Promise<boolean> {
+    try {
+      const model = await this.create(role);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const modelAny = model as any;
+      return modelAny.profile?.[feature] ?? modelAny[feature] ?? false;
+    } catch {
+      return false;
+    }
   }
+
+  /**
+   * Clears the model cache.
+   * Useful for testing or when credentials change.
+   */
+  static clearCache(): void {
+    this.cache.clear();
+  }
+
+  /**
+   * Gets cache statistics for monitoring.
+   */
+  static getCacheStats(): { size: number; keys: string[] } {
+    return {
+      size: this.cache.size,
+      keys: Array.from(this.cache.keys()),
+    };
+  }
+}
+
+/**
+ * Helper function to get model config for a role.
+ * Re-exported for convenience.
+ */
+export function getModelConfig(role: ModelRole): RoleModelConfig {
+  const config = ModelRoleConfigs[role];
+  if (!config) {
+    throw new Error(`Unknown model role: ${role}`);
+  }
+  return config;
 }

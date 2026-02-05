@@ -23,3 +23,5 @@ export { FileThumbnail } from './FileThumbnail';
 export type { FileThumbnailProps } from './FileThumbnail';
 export { MessageAttachmentCarousel } from './MessageAttachmentCarousel';
 export type { MessageAttachmentCarouselProps } from './MessageAttachmentCarousel';
+export { AudioRecordingIndicator } from './AudioRecordingIndicator';
+export type { AudioRecordingIndicatorProps } from './AudioRecordingIndicator';

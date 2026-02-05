@@ -1,6 +1,6 @@
 import { Annotation, messagesStateReducer } from '@langchain/langgraph';
 import { BaseMessage } from '@langchain/core/messages';
-import { ModelConfig } from '../../../core/langchain/ModelFactory';
+import type { ModelRole } from '@/infrastructure/config/models';
 import type { FileContextPreparationResult } from '@domains/agent/context/types';
 
 /**
@@ -53,12 +53,9 @@ export const AgentStateAnnotation = Annotation.Root({
   context: Annotation<{
     userId?: string;
     sessionId?: string;
-    modelPreferences?: ModelConfig;
+    /** Preferred model role (default uses role-based config) */
+    preferredModelRole?: ModelRole;
     options?: {
-      /** Enable Claude's extended thinking mode */
-      enableThinking?: boolean;
-      /** Token budget for extended thinking (min 1024) */
-      thinkingBudget?: number;
       /** Array of file IDs to attach to the conversation */
       attachments?: string[];
       /** Enable automatic semantic search for relevant chunks */

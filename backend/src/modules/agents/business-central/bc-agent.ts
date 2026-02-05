@@ -66,21 +66,12 @@ export class BusinessCentralAgent extends BaseAgent {
     }, 'BCAgent: Starting invocation');
 
     // Use centralized model configuration for BC Agent role
-    // Read enableThinking from state.context.options (passed from user's frontend toggle)
-    const enableThinking = state.context?.options?.enableThinking ?? false;
-    const thinkingBudget = state.context?.options?.thinkingBudget ?? 10000;
-
     const bcConfig = getModelConfig('bc_agent');
-    const model = ModelFactory.create({
-      ...bcConfig,
-      enableThinking,
-      thinkingBudget,
-    });
+    const model = await ModelFactory.create('bc_agent');
 
     logger.debug({
-      enableThinking,
-      thinkingBudget: enableThinking ? thinkingBudget : undefined,
-    }, 'BCAgent: Model config with thinking settings');
+      modelString: bcConfig.modelString,
+    }, 'BCAgent: Model initialized');
 
     // Bind all 7 BC meta-tools to the model
     const tools: StructuredToolInterface[] = [

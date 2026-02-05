@@ -119,6 +119,10 @@ const envSchema = z.object({
   AZURE_VISION_ENDPOINT: z.string().url().optional(),
   AZURE_VISION_KEY: z.string().optional(),
 
+  // Azure Audio Services (Speech-to-Text)
+  AZURE_AUDIO_ENDPOINT: z.string().url().optional(),
+  AZURE_AUDIO_KEY: z.string().optional(),
+
   // BullMQ Configuration
   BULLMQ_CONNECTION_TIMEOUT: z.string().default('30000').transform(Number).pipe(z.number().min(5000).max(120000)),
 

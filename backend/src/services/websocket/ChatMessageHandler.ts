@@ -142,37 +142,14 @@ export class ChatMessageHandler {
         hasExecuteMethod: typeof orchestrator?.executeAgentSync === 'function'
       });
 
-      // ⭐ Phase 1F: Extract and validate Extended Thinking config from request
-      const thinkingConfig = data.thinking;
-
-      // Validate thinkingBudget if provided (Anthropic requires 1024 <= budget <= 100000)
-      if (thinkingConfig?.enableThinking && thinkingConfig.thinkingBudget !== undefined) {
-        const MIN_THINKING_BUDGET = 1024;
-        const MAX_THINKING_BUDGET = 100000;
-
-        if (thinkingConfig.thinkingBudget < MIN_THINKING_BUDGET || thinkingConfig.thinkingBudget > MAX_THINKING_BUDGET) {
-          this.logger.warn('Invalid thinkingBudget, rejecting request', {
-            sessionId,
-            userId,
-            thinkingBudget: thinkingConfig.thinkingBudget,
-            minAllowed: MIN_THINKING_BUDGET,
-            maxAllowed: MAX_THINKING_BUDGET,
-          });
-          socket.emit('agent:error', {
-            error: `Invalid thinkingBudget: must be between ${MIN_THINKING_BUDGET} and ${MAX_THINKING_BUDGET}`,
-            sessionId,
-          });
-          return;
-        }
-      }
+      // Note: Extended thinking options (enableThinking, thinkingBudget) are no longer used
+      // The frontend may still send them for backward compatibility, but they are ignored
+      // Model configuration is now role-based via ModelFactory
 
       this.logger.info('📞 Calling executeAgentSync...', {
         sessionId,
         userId,
         messageLength: message.length,
-        // Log thinking config if provided
-        enableThinking: thinkingConfig?.enableThinking,
-        thinkingBudget: thinkingConfig?.thinkingBudget,
       });
 
       await orchestrator.executeAgentSync(
@@ -181,8 +158,6 @@ export class ChatMessageHandler {
         (event: AgentEvent) => this.handleAgentEvent(event, io, sessionId, userId),
         userId,
         {
-          enableThinking: thinkingConfig?.enableThinking,
-          thinkingBudget: thinkingConfig?.thinkingBudget,
           attachments: data.attachments,
           chatAttachments: data.chatAttachments,
           enableAutoSemanticSearch: data.enableAutoSemanticSearch,

@@ -1,108 +1,129 @@
-import { describe, it, expect } from 'vitest';
-import { ModelFactory, ModelConfig } from './ModelFactory';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { ModelFactory } from './ModelFactory';
+
+// Mock the provider classes
+vi.mock('@langchain/anthropic', () => ({
+  ChatAnthropic: vi.fn().mockImplementation(() => ({
+    invoke: vi.fn(),
+    bindTools: vi.fn(),
+    withStructuredOutput: vi.fn(),
+  })),
+}));
+
+vi.mock('@langchain/google-vertexai', () => ({
+  ChatVertexAI: vi.fn().mockImplementation(() => ({
+    invoke: vi.fn(),
+    bindTools: vi.fn(),
+  })),
+}));
+
+vi.mock('@langchain/openai', () => ({
+  ChatOpenAI: vi.fn().mockImplementation(() => ({
+    invoke: vi.fn(),
+    bindTools: vi.fn(),
+  })),
+}));
 
 describe('ModelFactory', () => {
-  describe('Prompt Caching', () => {
-    it('should create model with caching disabled by default', () => {
-      const config: ModelConfig = {
-        provider: 'anthropic',
-        modelName: 'claude-3-5-sonnet-20241022',
-      };
+  beforeEach(() => {
+    // Clear cache before each test
+    ModelFactory.clearCache();
+  });
 
-      // Should not throw
-      expect(() => ModelFactory.create(config)).not.toThrow();
+  describe('create', () => {
+    it('should create model by role', async () => {
+      const model = await ModelFactory.create('bc_agent');
+      expect(model).toBeDefined();
+      expect(model.invoke).toBeDefined();
     });
 
-    it('should create model with caching enabled', () => {
-      const config: ModelConfig = {
-        provider: 'anthropic',
-        modelName: 'claude-3-5-sonnet-20241022',
-        enableCaching: true,
-      };
+    it('should create model for different roles', async () => {
+      const bcModel = await ModelFactory.create('bc_agent');
+      const ragModel = await ModelFactory.create('rag_agent');
+      const routerModel = await ModelFactory.create('router');
 
-      // Should not throw
-      expect(() => ModelFactory.create(config)).not.toThrow();
+      expect(bcModel).toBeDefined();
+      expect(ragModel).toBeDefined();
+      expect(routerModel).toBeDefined();
+    });
+
+    it('should throw for unknown role', async () => {
+      await expect(ModelFactory.create('unknown_role' as never)).rejects.toThrow('Unknown model role');
+    });
+
+    it('should cache models with same configuration', async () => {
+      const model1 = await ModelFactory.create('bc_agent');
+      const model2 = await ModelFactory.create('bc_agent');
+
+      // Should be the same cached instance
+      expect(model1).toBe(model2);
+    });
+
+    it('should not cache models with different configurations', async () => {
+      const model1 = await ModelFactory.create('bc_agent');
+      const model2 = await ModelFactory.create('rag_agent');
+
+      // Should be different instances
+      expect(model1).not.toBe(model2);
     });
   });
 
-  describe('Extended Thinking', () => {
-    it('should create model with thinking disabled by default', () => {
-      const config: ModelConfig = {
-        provider: 'anthropic',
-        modelName: 'claude-3-5-sonnet-20241022',
-      };
-
-      // Should not throw
-      expect(() => ModelFactory.create(config)).not.toThrow();
+  describe('createWithProvider', () => {
+    it('should create model with specified provider', async () => {
+      const model = await ModelFactory.createWithProvider('bc_agent', 'openai');
+      expect(model).toBeDefined();
     });
 
-    it('should create model with thinking enabled and default budget', () => {
-      const config: ModelConfig = {
-        provider: 'anthropic',
-        modelName: 'claude-3-5-sonnet-20241022',
-        enableThinking: true,
-        maxTokens: 4096,
-      };
-
-      // Should not throw
-      expect(() => ModelFactory.create(config)).not.toThrow();
-    });
-
-    it('should create model with thinking enabled and custom budget', () => {
-      const config: ModelConfig = {
-        provider: 'anthropic',
-        modelName: 'claude-3-5-sonnet-20241022',
-        enableThinking: true,
-        thinkingBudget: 1500,
-        maxTokens: 4096,
-      };
-
-      // Should not throw
-      expect(() => ModelFactory.create(config)).not.toThrow();
-    });
-
-    // NOTE: ModelFactory now auto-adjusts invalid thinkingBudget values instead of throwing
-    // This is more robust behavior that prevents runtime errors
-    it('should auto-adjust thinking budget if less than 1024', () => {
-      const config: ModelConfig = {
-        provider: 'anthropic',
-        modelName: 'claude-3-5-sonnet-20241022',
-        enableThinking: true,
-        thinkingBudget: 500, // Less than 1024 minimum
-        maxTokens: 4096,
-      };
-
-      // Should NOT throw - ModelFactory auto-adjusts to 1024
-      expect(() => ModelFactory.create(config)).not.toThrow();
-    });
-
-    it('should auto-adjust thinking budget if greater than maxTokens', () => {
-      const config: ModelConfig = {
-        provider: 'anthropic',
-        modelName: 'claude-3-5-sonnet-20241022',
-        enableThinking: true,
-        thinkingBudget: 5000, // Greater than maxTokens
-        maxTokens: 4096,
-      };
-
-      // Should NOT throw - ModelFactory auto-adjusts to maxTokens * 0.95
-      expect(() => ModelFactory.create(config)).not.toThrow();
+    it('should throw for unknown role', async () => {
+      await expect(ModelFactory.createWithProvider('unknown_role' as never, 'openai')).rejects.toThrow('Unknown model role');
     });
   });
 
-  describe('Combined Features', () => {
-    it('should create model with both caching and thinking enabled', () => {
-      const config: ModelConfig = {
+  describe('createFromConfig', () => {
+    it('should create model from explicit config', async () => {
+      const model = await ModelFactory.createFromConfig({
         provider: 'anthropic',
-        modelName: 'claude-3-5-sonnet-20241022',
-        enableCaching: true,
-        enableThinking: true,
-        thinkingBudget: 2048,
-        maxTokens: 4096,
-      };
+        modelName: 'claude-sonnet-4-5-20250929',
+        temperature: 0.5,
+        maxTokens: 8192,
+      });
 
-      // Should not throw
-      expect(() => ModelFactory.create(config)).not.toThrow();
+      expect(model).toBeDefined();
+    });
+  });
+
+  describe('createDefault', () => {
+    it('should create default model', async () => {
+      const model = await ModelFactory.createDefault();
+      expect(model).toBeDefined();
+    });
+  });
+
+  describe('supportsFeature', () => {
+    it('should check if model supports a feature', async () => {
+      const supportsTools = await ModelFactory.supportsFeature('bc_agent', 'tools');
+      expect(typeof supportsTools).toBe('boolean');
+    });
+  });
+
+  describe('cache management', () => {
+    it('should clear cache', async () => {
+      await ModelFactory.create('bc_agent');
+      const statsBefore = ModelFactory.getCacheStats();
+      expect(statsBefore.size).toBeGreaterThan(0);
+
+      ModelFactory.clearCache();
+      const statsAfter = ModelFactory.getCacheStats();
+      expect(statsAfter.size).toBe(0);
+    });
+
+    it('should return cache statistics', async () => {
+      await ModelFactory.create('bc_agent');
+      await ModelFactory.create('rag_agent');
+
+      const stats = ModelFactory.getCacheStats();
+      expect(stats.size).toBe(2);
+      expect(stats.keys).toHaveLength(2);
     });
   });
 });

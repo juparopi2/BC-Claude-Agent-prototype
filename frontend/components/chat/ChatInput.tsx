@@ -11,13 +11,14 @@
 
 import { useState, useRef, useEffect, KeyboardEvent } from 'react';
 import { useUIPreferencesStore } from '@/src/domains/ui';
-import { useAgentState, useSocketConnection, useChatAttachments } from '@/src/domains/chat';
+import { useAgentState, useSocketConnection, useChatAttachments, useAudioRecording } from '@/src/domains/chat';
+import { env } from '@/lib/config/env';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Toggle } from '@/components/ui/toggle';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Send, Square, Brain, WifiOff, Mic, Paperclip, Globe, Loader2, FolderSearch } from 'lucide-react';
-import { FileAttachmentChip } from '@/src/presentation/chat';
+import { FileAttachmentChip, AudioRecordingIndicator } from '@/src/presentation/chat';
 
 /**
  * Pending file info (for pending mode)
@@ -119,12 +120,24 @@ export default function ChatInput({
   } = useChatAttachments();
 
   // In pending mode, use pending files; otherwise use chat attachments
-  const displayAttachments = pendingMode ? pendingFiles : chatAttachments;
   const hasFiles = pendingMode ? pendingFiles.length > 0 : chatAttachments.length > 0;
   const isUploading = pendingMode ? false : hasUploading;
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Audio recording hook
+  const {
+    isRecording,
+    audioLevel,
+    duration: recordingDuration,
+    isSupported: isAudioSupported,
+    startRecording,
+    stopRecording,
+  } = useAudioRecording();
+
+  // Track if we're transcribing audio
+  const [isTranscribing, setIsTranscribing] = useState(false);
 
   // Use socket from parent if provided, otherwise create local instance
   const shouldUseLocalSocket = propsIsConnected === undefined && !onSend && !!sessionId;
@@ -227,6 +240,53 @@ export default function ChatInput({
 
   const handleStop = () => {
     if (sessionId) stopAgent();
+  };
+
+  /**
+   * Handle microphone button click
+   * - If recording: stop and transcribe
+   * - If not recording: start recording
+   */
+  const handleMicClick = async () => {
+    if (isRecording) {
+      const blob = await stopRecording();
+      if (blob && blob.size > 0) {
+        setIsTranscribing(true);
+        try {
+          // Send to transcription API
+          const formData = new FormData();
+          formData.append('file', blob, 'recording.webm');
+
+          const response = await fetch(`${env.apiUrl}/api/audio/transcribe`, {
+            method: 'POST',
+            body: formData,
+          });
+
+          if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Transcription failed');
+          }
+
+          const result = await response.json();
+
+          // Append transcribed text to message
+          if (result.text) {
+            const currentMsg = message.trim();
+            const newText = currentMsg
+              ? `${currentMsg} ${result.text}`
+              : result.text;
+            setMessage(newText);
+          }
+        } catch (err) {
+          console.error('Transcription error:', err);
+          // Could show toast here
+        } finally {
+          setIsTranscribing(false);
+        }
+      }
+    } else {
+      await startRecording();
+    }
   };
 
   // Determine toggle styles based on state manually to ensure visibility
@@ -332,17 +392,35 @@ export default function ChatInput({
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="ghost" size="sm" disabled className="gap-1.5">
-                    <Mic className="size-3.5" />
+                  <Button
+                    variant={isRecording ? "destructive" : "ghost"}
+                    size="sm"
+                    className="gap-1.5"
+                    disabled={!isAudioSupported || effectiveIsBusy || disabled || isTranscribing}
+                    onClick={handleMicClick}
+                  >
+                    {isRecording ? (
+                      <AudioRecordingIndicator level={audioLevel} duration={recordingDuration} />
+                    ) : isTranscribing ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <Mic className="size-3.5" />
+                    )}
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p className="text-xs">Voice input (coming soon)</p>
+                  <p className="text-xs">
+                    {!isAudioSupported
+                      ? 'Voice input not supported'
+                      : isRecording
+                        ? 'Click to stop recording'
+                        : isTranscribing
+                          ? 'Transcribing...'
+                          : 'Click to start voice input'}
+                  </p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
-
-
 
             <TooltipProvider>
               <Tooltip>

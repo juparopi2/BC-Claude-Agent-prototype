@@ -76,6 +76,7 @@ export {
   usePagination,
   useSocketConnection,
   usePendingChat,
+  useAudioRecording,
   type UseMessagesReturn,
   type UseSendMessageReturn,
   type SendMessageOptions,
@@ -87,4 +88,6 @@ export {
   type UseSocketConnectionOptions,
   type UseSocketConnectionReturn,
   type UsePendingChatReturn,
+  type AudioRecordingState,
+  type UseAudioRecordingResult,
 } from './hooks';

@@ -12,7 +12,7 @@
  * - Economic: Cheapest model for simple tasks (Haiku)
  */
 
-import { ModelConfig, ModelProvider } from '@/core/langchain/ModelFactory';
+import type { ModelProvider } from '@/core/langchain/ModelFactory';
 
 // =============================================================================
 // ANTHROPIC MODEL IDENTIFIERS
@@ -41,6 +41,54 @@ export const AnthropicModels = {
 } as const;
 
 export type AnthropicModelId = (typeof AnthropicModels)[keyof typeof AnthropicModels];
+
+// =============================================================================
+// OPENAI MODEL IDENTIFIERS
+// These are fallback models for provider switching
+// =============================================================================
+
+/**
+ * OpenAI model identifiers for fallback scenarios.
+ */
+export const OpenAIModels = {
+  // GPT-4o Series
+  GPT_4O: 'gpt-4o',
+  GPT_4O_MINI: 'gpt-4o-mini',
+  // GPT-4 Series
+  GPT_4_TURBO: 'gpt-4-turbo',
+  GPT_4: 'gpt-4',
+  // GPT-3.5 Series
+  GPT_35_TURBO: 'gpt-3.5-turbo',
+  // Embeddings
+  TEXT_EMBEDDING_3_SMALL: 'text-embedding-3-small',
+  TEXT_EMBEDDING_3_LARGE: 'text-embedding-3-large',
+} as const;
+
+export type OpenAIModelId = (typeof OpenAIModels)[keyof typeof OpenAIModels];
+
+/**
+ * Google/Vertex AI model identifiers for fallback scenarios.
+ */
+export const GoogleModels = {
+  // Gemini 2.x Series
+  GEMINI_2_FLASH: 'gemini-2.0-flash',
+  GEMINI_2_PRO: 'gemini-2.0-pro',
+  // Gemini 1.5 Series
+  GEMINI_15_FLASH: 'gemini-1.5-flash',
+  GEMINI_15_PRO: 'gemini-1.5-pro',
+} as const;
+
+export type GoogleModelId = (typeof GoogleModels)[keyof typeof GoogleModels];
+
+/**
+ * Fallback model strings for provider switching.
+ * Format: "provider:model-name" for initChatModel compatibility.
+ */
+export const FallbackModels = {
+  OPENAI_GPT4O: `openai:${OpenAIModels.GPT_4O}`,
+  OPENAI_GPT4O_MINI: `openai:${OpenAIModels.GPT_4O_MINI}`,
+  GOOGLE_GEMINI_FLASH: `google:${GoogleModels.GEMINI_2_FLASH}`,
+} as const;
 
 // =============================================================================
 // MODEL PRICING (per million tokens)
@@ -112,11 +160,21 @@ export type ModelRole =
   | 'default';        // Fallback for unspecified uses
 
 /**
- * Extended model config with role metadata
+ * Extended model config with role metadata.
+ * Uses modelString for initChatModel() format.
  */
-export interface RoleModelConfig extends ModelConfig {
+export interface RoleModelConfig {
   role: ModelRole;
   description: string;
+  /** Model string for initChatModel (e.g., "claude-sonnet-4-5-20250929" or "openai:gpt-4o") */
+  modelString: string;
+  /** Fallback model string for provider switching (e.g., "openai:gpt-4o") */
+  fallback?: string;
+  provider: ModelProvider;
+  modelName: string;
+  temperature: number;
+  maxTokens?: number;
+  streaming?: boolean;
   estimatedTokensPerCall?: {
     input: number;
     output: number;
@@ -135,13 +193,13 @@ export const ModelRoleConfigs: Record<ModelRole, RoleModelConfig> = {
   orchestrator: {
     role: 'orchestrator',
     description: 'Complex orchestration, multi-step planning, and tool coordination',
+    modelString: AnthropicModels.SONNET_4_5,
+    fallback: FallbackModels.OPENAI_GPT4O,
     provider: 'anthropic' as ModelProvider,
     modelName: AnthropicModels.SONNET_4_5,
     temperature: 0.7,
-    maxTokens: 32000, // Increased for deep thinking workflows
+    maxTokens: 32000,
     streaming: true,
-    enableThinking: true,
-    thinkingBudget: 16000,
     estimatedTokensPerCall: {
       input: 2000,
       output: 2000,
@@ -151,6 +209,8 @@ export const ModelRoleConfigs: Record<ModelRole, RoleModelConfig> = {
   router: {
     role: 'router',
     description: 'Fast intent classification and query routing',
+    modelString: AnthropicModels.HAIKU_3_5,
+    fallback: FallbackModels.OPENAI_GPT4O_MINI,
     provider: 'anthropic' as ModelProvider,
     modelName: AnthropicModels.HAIKU_3_5,
     temperature: 0.0, // Deterministic routing
@@ -165,14 +225,13 @@ export const ModelRoleConfigs: Record<ModelRole, RoleModelConfig> = {
   bc_agent: {
     role: 'bc_agent',
     description: 'Business Central operations and API interactions',
+    modelString: AnthropicModels.HAIKU_4_5,
+    fallback: FallbackModels.OPENAI_GPT4O_MINI,
     provider: 'anthropic' as ModelProvider,
     modelName: AnthropicModels.HAIKU_4_5,
     temperature: 0.3, // More deterministic for BC operations
-    maxTokens: 32000, // Increased to support long tool sequences
+    maxTokens: 32000,
     streaming: true,
-    enableCaching: true, // Cache BC tool definitions
-    enableThinking: true, // Enable thinking for complex BC logic
-    thinkingBudget: 4096,
     estimatedTokensPerCall: {
       input: 3000,
       output: 4000,
@@ -181,11 +240,13 @@ export const ModelRoleConfigs: Record<ModelRole, RoleModelConfig> = {
 
   rag_agent: {
     role: 'rag_agent',
-    description: 'RAG retrieval and knowledge synthesis - smarter model for reasoning',
+    description: 'RAG retrieval and knowledge synthesis',
+    modelString: AnthropicModels.HAIKU_4_5,
+    fallback: FallbackModels.OPENAI_GPT4O_MINI,
     provider: 'anthropic' as ModelProvider,
-    modelName: AnthropicModels.HAIKU_4_5, // Upgraded to Sonnet 4.5 as requested
+    modelName: AnthropicModels.HAIKU_4_5,
     temperature: 0.5,
-    maxTokens: 16384, // Increased for document synthesis
+    maxTokens: 16384,
     streaming: true,
     estimatedTokensPerCall: {
       input: 2000,
@@ -196,8 +257,10 @@ export const ModelRoleConfigs: Record<ModelRole, RoleModelConfig> = {
   session_title: {
     role: 'session_title',
     description: 'Generate concise session titles from conversation',
+    modelString: AnthropicModels.HAIKU_3_5,
+    fallback: FallbackModels.OPENAI_GPT4O_MINI,
     provider: 'anthropic' as ModelProvider,
-    modelName: AnthropicModels.HAIKU_3_5, // Economic for simple task
+    modelName: AnthropicModels.HAIKU_3_5,
     temperature: 0.7,
     maxTokens: 50,
     streaming: false,
@@ -210,8 +273,9 @@ export const ModelRoleConfigs: Record<ModelRole, RoleModelConfig> = {
   embedding: {
     role: 'embedding',
     description: 'Text embeddings for semantic search (OpenAI)',
+    modelString: `openai:${OpenAIModels.TEXT_EMBEDDING_3_SMALL}`,
     provider: 'openai' as ModelProvider,
-    modelName: 'text-embedding-3-small',
+    modelName: OpenAIModels.TEXT_EMBEDDING_3_SMALL,
     temperature: 0,
     streaming: false,
     estimatedTokensPerCall: {
@@ -223,6 +287,8 @@ export const ModelRoleConfigs: Record<ModelRole, RoleModelConfig> = {
   default: {
     role: 'default',
     description: 'Default fallback model for unspecified uses',
+    modelString: AnthropicModels.HAIKU_4_5,
+    fallback: FallbackModels.OPENAI_GPT4O_MINI,
     provider: 'anthropic' as ModelProvider,
     modelName: AnthropicModels.HAIKU_4_5,
     temperature: 0.7,
@@ -242,17 +308,14 @@ export const ModelRoleConfigs: Record<ModelRole, RoleModelConfig> = {
 /**
  * Get model configuration by role.
  * @param role - The model role
- * @returns ModelConfig ready for ModelFactory.create()
+ * @returns RoleModelConfig with all settings for the role
  */
-export function getModelConfig(role: ModelRole): ModelConfig {
+export function getModelConfig(role: ModelRole): RoleModelConfig {
   const config = ModelRoleConfigs[role];
   if (!config) {
     throw new Error(`Unknown model role: ${role}`);
   }
-
-  // Return only ModelConfig fields (exclude role metadata)
-  const { role: _role, description: _desc, estimatedTokensPerCall: _est, ...modelConfig } = config;
-  return modelConfig;
+  return config;
 }
 
 /**

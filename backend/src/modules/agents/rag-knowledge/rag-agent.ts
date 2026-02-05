@@ -38,22 +38,13 @@ export class RAGAgent extends BaseAgent {
          };
      }
 
-     // Use centralized model configuration for RAG Agent role (economic model)
-     // Read enableThinking from state.context.options (passed from user's frontend toggle)
-     const enableThinking = state.context?.options?.enableThinking ?? false;
-     const thinkingBudget = state.context?.options?.thinkingBudget ?? 2048;
-
+     // Use centralized model configuration for RAG Agent role
      const ragConfig = getModelConfig('rag_agent');
-     const model = ModelFactory.create({
-       ...ragConfig,
-       enableThinking,
-       thinkingBudget,
-     });
+     const model = await ModelFactory.create('rag_agent');
 
      logger.debug({
-       enableThinking,
-       thinkingBudget: enableThinking ? thinkingBudget : undefined,
-     }, 'RAGAgent: Model config with thinking settings');
+       modelString: ragConfig.modelString,
+     }, 'RAGAgent: Model initialized');
 
      // Create tool instance bound to the current user
      const searchTool = createKnowledgeSearchTool(userId);

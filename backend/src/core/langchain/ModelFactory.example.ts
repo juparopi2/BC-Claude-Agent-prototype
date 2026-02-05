@@ -1,57 +1,74 @@
 /**
- * Usage examples for ModelFactory with Prompt Caching and Extended Thinking
+ * Usage examples for ModelFactory with initChatModel
+ *
+ * The new ModelFactory uses LangChain's initChatModel() for multi-provider support.
+ * Models are configured by role, making it easy to switch providers.
  */
 
 import { ModelFactory } from './ModelFactory';
 
-// Example 1: Basic usage without caching or thinking
-const basicModel = ModelFactory.create({
-  provider: 'anthropic',
-  modelName: 'claude-3-5-sonnet-20241022',
-  temperature: 0.7,
-  maxTokens: 4096,
-});
+// Example 1: Create model by role (recommended)
+// This is the standard pattern for all agent code
+async function roleBasedExample() {
+  const bcModel = await ModelFactory.create('bc_agent');
+  const ragModel = await ModelFactory.create('rag_agent');
+  const routerModel = await ModelFactory.create('router');
 
-// Example 2: Enable Prompt Caching for repeated prompts
-// Use this when you have system prompts or tools that are repeated across requests
-const cachedModel = ModelFactory.create({
-  provider: 'anthropic',
-  modelName: 'claude-3-5-sonnet-20241022',
-  enableCaching: true, // Enables prompt caching beta feature
-  temperature: 0.7,
-  maxTokens: 4096,
-});
+  // Use the model
+  // const response = await bcModel.invoke([new HumanMessage('Hello')]);
+  return { bcModel, ragModel, routerModel };
+}
 
-// Example 3: Enable Extended Thinking for complex reasoning
-// Use this when you need Claude to think through problems step by step
-const thinkingModel = ModelFactory.create({
-  provider: 'anthropic',
-  modelName: 'claude-3-5-sonnet-20241022',
-  enableThinking: true, // Enables extended thinking
-  thinkingBudget: 2048, // Allocate 2048 tokens for thinking (min: 1024)
-  maxTokens: 8192, // Must be greater than thinkingBudget
-  temperature: 0.7,
-});
+// Example 2: Create model with different provider
+// Useful for A/B testing or provider fallback
+async function providerSwitchExample() {
+  // Use OpenAI instead of default Anthropic
+  const openAiModel = await ModelFactory.createWithProvider('bc_agent', 'openai');
 
-// Example 4: Combine both features for optimal performance
-// Best for complex, repeated queries that benefit from both caching and reasoning
-const optimizedModel = ModelFactory.create({
-  provider: 'anthropic',
-  modelName: 'claude-3-5-sonnet-20241022',
-  enableCaching: true, // Cache system prompts and tools
-  enableThinking: true, // Enable reasoning process
-  thinkingBudget: 3072, // More tokens for complex reasoning
-  maxTokens: 8192,
-  temperature: 0.7,
-});
+  // Use Google
+  const googleModel = await ModelFactory.createWithProvider('rag_agent', 'google');
 
-// Example 5: Use with default settings
-const defaultModel = ModelFactory.createDefault();
+  return { openAiModel, googleModel };
+}
+
+// Example 3: Create model from explicit config
+// For advanced use cases where role config doesn't fit
+async function explicitConfigExample() {
+  const model = await ModelFactory.createFromConfig({
+    provider: 'anthropic',
+    modelName: 'claude-sonnet-4-5-20250929',
+    temperature: 0.5,
+    maxTokens: 8192,
+  });
+
+  return model;
+}
+
+// Example 4: Default model
+// Uses the 'default' role configuration
+async function defaultModelExample() {
+  const defaultModel = await ModelFactory.createDefault();
+  return defaultModel;
+}
+
+// Example 5: Check cache statistics
+function cacheStatsExample() {
+  const stats = ModelFactory.getCacheStats();
+  console.log(`Cache size: ${stats.size}`);
+  console.log(`Cached models: ${stats.keys.join(', ')}`);
+}
+
+// Example 6: Clear cache (useful for testing)
+function clearCacheExample() {
+  ModelFactory.clearCache();
+  console.log('Model cache cleared');
+}
 
 export {
-  basicModel,
-  cachedModel,
-  thinkingModel,
-  optimizedModel,
-  defaultModel,
+  roleBasedExample,
+  providerSwitchExample,
+  explicitConfigExample,
+  defaultModelExample,
+  cacheStatsExample,
+  clearCacheExample,
 };

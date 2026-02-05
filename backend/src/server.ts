@@ -46,6 +46,7 @@ import gdprRoutes from './routes/gdpr';
 import adminRoutes from './routes/admin';
 import settingsRoutes from './routes/settings';
 import chatAttachmentsRoutes from './routes/chat-attachments';
+import audioRoutes from './routes/audio';
 import { authenticateMicrosoft } from '@domains/auth/middleware/auth-oauth';
 import { httpLogger } from '@shared/middleware/logging';
 import { validateSessionOwnership } from '@shared/utils/session-ownership';
@@ -819,6 +820,8 @@ function configureRoutes(): void {
     app.use('/api/admin', adminRoutes);
     // User settings endpoints (requires database)
     app.use('/api/user', settingsRoutes);
+    // Audio services endpoints (transcription)
+    app.use('/api/audio', audioRoutes);
   }
 
   // Client log ingestion endpoint

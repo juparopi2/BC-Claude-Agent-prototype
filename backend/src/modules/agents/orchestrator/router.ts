@@ -117,7 +117,8 @@ export async function routeIntent(state: AgentState): Promise<Partial<AgentState
 
   // 4. Use LLM for Soft Routing (using centralized config)
   const routerConfig = getModelConfig('router');
-  const model = ModelFactory.create(routerConfig).withStructuredOutput(RouterOutputSchema);
+  const baseModel = await ModelFactory.create('router');
+  const model = baseModel.withStructuredOutput(RouterOutputSchema);
 
   // Build context-aware system prompt
   const contextSignals = `

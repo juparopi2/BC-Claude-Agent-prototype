@@ -33,3 +33,10 @@ export {
   useMessageChatAttachments,
   type UseMessageChatAttachmentsReturn,
 } from './useMessageChatAttachments';
+
+// Audio Recording Hook
+export {
+  useAudioRecording,
+  type AudioRecordingState,
+  type UseAudioRecordingResult,
+} from './useAudioRecording';

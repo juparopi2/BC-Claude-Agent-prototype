@@ -2,7 +2,7 @@
 
 **Estado**: Draft
 **Prioridad**: Media
-**Dependencias**: PRD-030 (Planner Agent), PRD-031 (Plan Executor)
+**Dependencias**: PRD-030 (Supervisor Integration - ✅ COMPLETADO)
 **Bloquea**: Ninguno
 
 ---
@@ -737,4 +737,19 @@ describe('usePlanTracking', () => {
 | Fecha | Versión | Cambios |
 |-------|---------|---------|
 | 2026-01-21 | 1.0 | Draft inicial |
+| 2026-02-06 | 1.1 | **POST PRD-030**: Dependencia actualizada. PRD-031 (Plan Executor) fue ELIMINADO - `createSupervisor()` maneja planes internamente. PRD-030 completado con supervisor integration. Plan tracking debe derivarse del flujo de mensajes del supervisor (no hay campo `state.plan`). Los events `plan_generated`, `plan_step_started`, `plan_step_completed` aún no se emiten desde el backend - necesitan implementación en PRD-061 o como extensión del result-adapter. |
+
+---
+
+## 11. Notas Post-PRD-030
+
+> **IMPORTANTE**: `createSupervisor()` NO expone un "plan" formal como estructura de datos. El supervisor decide dinámicamente qué agente llamar basado en resultados parciales. Para visualizar "pasos" en el UI, se necesita:
+>
+> 1. **Opción A (Recomendada)**: Inferir pasos del flujo de mensajes - cada invocación a un agente child se detecta como un "step". El `result-adapter.ts` ya detecta identity de agente por cada AIMessage.
+>
+> 2. **Opción B**: Pedir al supervisor que genere un plan explícito en su primera respuesta (via prompt engineering) y emitir `plan_generated` event.
+>
+> 3. **Opción C**: Simplificar PRD-061 a un "Agent Activity Timeline" en lugar de "Plan Visualization" - mostrar secuencia de agentes invocados con sus resultados.
+>
+> Los events `plan_generated`, `plan_step_started`, `plan_step_completed` definidos en §3.3 **NO existen** aún en el backend. Deben implementarse como parte de este PRD.
 

@@ -21,10 +21,12 @@ import {
 import type { AgentEvent } from '@bc-agent/shared';
 
 // Mock the graph
-vi.mock('@/modules/agents/orchestrator/graph', () => ({
-  orchestratorGraph: {
+vi.mock('@/modules/agents/supervisor', () => ({
+  getSupervisorGraphAdapter: vi.fn().mockReturnValue({
     invoke: vi.fn(),
-  },
+  }),
+  initializeSupervisorGraph: vi.fn(),
+  resumeSupervisor: vi.fn(),
 }));
 
 vi.mock('@langchain/core/messages', async (importOriginal) => {
@@ -99,7 +101,7 @@ vi.mock('@/domains/chat-attachments', () => ({
   })),
 }));
 
-import { orchestratorGraph } from '@/modules/agents/orchestrator/graph';
+import { getSupervisorGraphAdapter } from '@/modules/agents/supervisor';
 import { AIMessage } from '@langchain/core/messages';
 
 describe('ErrorHandling', () => {
@@ -148,7 +150,7 @@ describe('ErrorHandling', () => {
     });
 
     it('should NOT throw when userId is provided with attachments', async () => {
-      vi.mocked(orchestratorGraph.invoke).mockResolvedValue({
+      vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockResolvedValue({
         messages: [
           { content: 'User', _getType: () => 'human' },
           new AIMessage({
@@ -169,7 +171,7 @@ describe('ErrorHandling', () => {
     });
 
     it('should NOT throw when no attachments and no semantic search (userId optional)', async () => {
-      vi.mocked(orchestratorGraph.invoke).mockResolvedValue({
+      vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockResolvedValue({
         messages: [
           { content: 'User', _getType: () => 'human' },
           new AIMessage({
@@ -193,7 +195,7 @@ describe('ErrorHandling', () => {
   describe('Graph execution errors', () => {
     it('should emit error event when graph.invoke() fails', async () => {
       const graphError = new Error('Graph execution failed: rate limit exceeded');
-      vi.mocked(orchestratorGraph.invoke).mockRejectedValue(graphError);
+      vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockRejectedValue(graphError);
 
       const events: AgentEvent[] = [];
       const orchestrator = createAgentOrchestrator();
@@ -210,7 +212,7 @@ describe('ErrorHandling', () => {
 
     it('should include original error message in error event', async () => {
       const originalError = new Error('Connection timeout to Anthropic API');
-      vi.mocked(orchestratorGraph.invoke).mockRejectedValue(originalError);
+      vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockRejectedValue(originalError);
 
       const events: AgentEvent[] = [];
       const orchestrator = createAgentOrchestrator();
@@ -227,7 +229,7 @@ describe('ErrorHandling', () => {
 
     it('should handle non-Error thrown values', async () => {
       // Some code might throw strings or other values
-      vi.mocked(orchestratorGraph.invoke).mockRejectedValue('String error');
+      vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockRejectedValue('String error');
 
       const events: AgentEvent[] = [];
       const orchestrator = createAgentOrchestrator();
@@ -244,7 +246,7 @@ describe('ErrorHandling', () => {
 
     it('should re-throw the original error after emitting', async () => {
       const originalError = new Error('API unavailable');
-      vi.mocked(orchestratorGraph.invoke).mockRejectedValue(originalError);
+      vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockRejectedValue(originalError);
 
       const orchestrator = createAgentOrchestrator();
 
@@ -256,7 +258,7 @@ describe('ErrorHandling', () => {
 
   describe('Error event format', () => {
     it('error event should have correct structure', async () => {
-      vi.mocked(orchestratorGraph.invoke).mockRejectedValue(new Error('Test error'));
+      vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockRejectedValue(new Error('Test error'));
 
       const events: AgentEvent[] = [];
       const orchestrator = createAgentOrchestrator();
@@ -279,7 +281,7 @@ describe('ErrorHandling', () => {
     });
 
     it('error event should be transient (not persisted)', async () => {
-      vi.mocked(orchestratorGraph.invoke).mockRejectedValue(new Error('Test'));
+      vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockRejectedValue(new Error('Test'));
 
       const events: AgentEvent[] = [];
       const orchestrator = createAgentOrchestrator();
@@ -297,7 +299,7 @@ describe('ErrorHandling', () => {
 
   describe('Timeout handling', () => {
     it('should pass timeout to graph.invoke via AbortSignal', async () => {
-      vi.mocked(orchestratorGraph.invoke).mockResolvedValue({
+      vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockResolvedValue({
         messages: [
           { content: 'User', _getType: () => 'human' },
           new AIMessage({
@@ -313,7 +315,7 @@ describe('ErrorHandling', () => {
         timeoutMs: 60000,
       });
 
-      expect(orchestratorGraph.invoke).toHaveBeenCalledWith(
+      expect((getSupervisorGraphAdapter() as any).invoke).toHaveBeenCalledWith(
         expect.any(Object),
         expect.objectContaining({
           recursionLimit: 50,
@@ -323,7 +325,7 @@ describe('ErrorHandling', () => {
     });
 
     it('should use default timeout of 300000ms (5 minutes)', async () => {
-      vi.mocked(orchestratorGraph.invoke).mockResolvedValue({
+      vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockResolvedValue({
         messages: [
           { content: 'User', _getType: () => 'human' },
           new AIMessage({
@@ -338,7 +340,7 @@ describe('ErrorHandling', () => {
       await orchestrator.executeAgentSync(prompt, sessionId, vi.fn(), 'user-123');
 
       // Verify invoke was called with AbortSignal.timeout
-      expect(orchestratorGraph.invoke).toHaveBeenCalledWith(
+      expect((getSupervisorGraphAdapter() as any).invoke).toHaveBeenCalledWith(
         expect.any(Object),
         expect.objectContaining({
           signal: expect.any(AbortSignal),
@@ -348,7 +350,7 @@ describe('ErrorHandling', () => {
 
     it('should emit error event on timeout abort', async () => {
       const timeoutError = new DOMException('The operation was aborted', 'AbortError');
-      vi.mocked(orchestratorGraph.invoke).mockRejectedValue(timeoutError);
+      vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockRejectedValue(timeoutError);
 
       const events: AgentEvent[] = [];
       const orchestrator = createAgentOrchestrator();
@@ -366,7 +368,7 @@ describe('ErrorHandling', () => {
 
   describe('Early error scenarios', () => {
     it('should emit session_start and user_message before error', async () => {
-      vi.mocked(orchestratorGraph.invoke).mockRejectedValue(new Error('Graph failed'));
+      vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockRejectedValue(new Error('Graph failed'));
 
       const events: AgentEvent[] = [];
       const orchestrator = createAgentOrchestrator();
@@ -385,7 +387,7 @@ describe('ErrorHandling', () => {
     });
 
     it('should NOT emit complete event on error', async () => {
-      vi.mocked(orchestratorGraph.invoke).mockRejectedValue(new Error('Failed'));
+      vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockRejectedValue(new Error('Failed'));
 
       const events: AgentEvent[] = [];
       const orchestrator = createAgentOrchestrator();
@@ -403,7 +405,7 @@ describe('ErrorHandling', () => {
 
   describe('Error code classification', () => {
     it('should use EXECUTION_FAILED code for graph errors', async () => {
-      vi.mocked(orchestratorGraph.invoke).mockRejectedValue(new Error('Any error'));
+      vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockRejectedValue(new Error('Any error'));
 
       const events: AgentEvent[] = [];
       const orchestrator = createAgentOrchestrator();
@@ -421,7 +423,7 @@ describe('ErrorHandling', () => {
 
   describe('Callback error handling', () => {
     it('should handle undefined callback gracefully', async () => {
-      vi.mocked(orchestratorGraph.invoke).mockResolvedValue({
+      vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockResolvedValue({
         messages: [
           { content: 'User', _getType: () => 'human' },
           new AIMessage({
@@ -441,7 +443,7 @@ describe('ErrorHandling', () => {
     });
 
     it('should continue execution even without callback', async () => {
-      vi.mocked(orchestratorGraph.invoke).mockResolvedValue({
+      vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockResolvedValue({
         messages: [
           { content: 'User', _getType: () => 'human' },
           new AIMessage({

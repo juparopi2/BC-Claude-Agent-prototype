@@ -49,6 +49,7 @@ import chatAttachmentsRoutes from './routes/chat-attachments';
 import audioRoutes from './routes/audio';
 import agentsRoutes from './routes/agents';
 import { registerAgents } from '@/modules/agents/core/registry/registerAgents';
+import { initializeSupervisorGraph, resumeSupervisor } from '@/modules/agents/supervisor';
 import { authenticateMicrosoft } from '@domains/auth/middleware/auth-oauth';
 import { httpLogger } from '@shared/middleware/logging';
 import { validateSessionOwnership } from '@shared/utils/session-ownership';
@@ -268,6 +269,12 @@ async function initializeApp(): Promise<void> {
     console.log('✅ Agent definitions registered');
     console.log('');
 
+    // Step 7.6: Initialize Supervisor Graph (multi-agent coordination)
+    console.log('🤖 Initializing Supervisor Graph...');
+    await initializeSupervisorGraph();
+    console.log('✅ Supervisor graph initialized');
+    console.log('');
+
     // Step 8: Initialize Agent Orchestrator (refactored from DirectAgentService)
     console.log('🤖 Initializing Agent Orchestrator...');
     // Initialize singleton (will be used by routes/socket handlers)
@@ -275,7 +282,7 @@ async function initializeApp(): Promise<void> {
     if (env.ANTHROPIC_API_KEY) {
       console.log('✅ Agent Orchestrator initialized');
       console.log(`   Model: ${env.ANTHROPIC_MODEL}`);
-      console.log(`   Strategy: Direct API with modular orchestration`);
+      console.log(`   Strategy: Supervisor multi-agent with LangGraph`);
       console.log(`   Tools: 115 BC entities (vendored from data files)`);
     } else {
       console.warn('⚠️  Agent Orchestrator: ANTHROPIC_API_KEY not configured');
@@ -1001,6 +1008,78 @@ function configureSocketIO(): void {
       }
     });
 
+    // Handler: Supervisor interrupt resume
+    // Resumes a supervisor execution that was paused by an interrupt() call
+    socket.on('supervisor:resume', async (data: {
+      sessionId: string;
+      response: unknown;
+    }) => {
+      const { sessionId, response } = data;
+      const authenticatedUserId = authSocket.userId;
+
+      if (!authenticatedUserId) {
+        socket.emit('agent:event', {
+          type: 'error',
+          error: 'Socket not authenticated. Please reconnect.',
+          sessionId,
+        });
+        return;
+      }
+
+      try {
+        // Validate session ownership
+        const ownershipResult = await validateSessionOwnership(sessionId, authenticatedUserId);
+        if (!ownershipResult.isOwner) {
+          socket.emit('agent:event', {
+            type: 'error',
+            error: 'Unauthorized: Session does not belong to user',
+            sessionId,
+          });
+          return;
+        }
+
+        logger.info({ sessionId, userId: authenticatedUserId }, 'Resuming supervisor after interrupt');
+
+        const result = await resumeSupervisor(sessionId, response);
+
+        // Emit the resumed result events
+        if (result.messages?.length) {
+          const lastMsg = result.messages[result.messages.length - 1];
+          const content = typeof lastMsg?.content === 'string' ? lastMsg.content : JSON.stringify(lastMsg?.content);
+
+          io.to(sessionId).emit('agent:event', {
+            type: 'message',
+            sessionId,
+            content,
+            messageId: `resume-${Date.now()}`,
+            timestamp: new Date().toISOString(),
+            persistenceState: 'transient',
+            agentIdentity: result.currentAgentIdentity,
+          });
+        }
+
+        io.to(sessionId).emit('agent:event', {
+          type: 'complete',
+          sessionId,
+          reason: 'resumed',
+          timestamp: new Date().toISOString(),
+        });
+
+      } catch (error) {
+        logger.error({
+          error: error instanceof Error ? error.message : String(error),
+          sessionId,
+          userId: authenticatedUserId,
+        }, 'Supervisor resume failed');
+
+        socket.emit('agent:event', {
+          type: 'error',
+          error: error instanceof Error ? error.message : 'Resume failed',
+          sessionId,
+        });
+      }
+    });
+
     // Handler: Join session
     // Security: Validates user owns the session before allowing them to join the room
     // This prevents users from receiving events from other users' sessions
@@ -1140,6 +1219,7 @@ function configureSocketIO(): void {
       const knownEvents = [
         'chat:message',
         'approval:response',
+        'supervisor:resume',
         'session:join',
         'session:leave',
         'user:join',

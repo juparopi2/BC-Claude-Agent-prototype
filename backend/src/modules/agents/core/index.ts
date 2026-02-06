@@ -1,7 +1,7 @@
 /**
  * Agents Core Module
  *
- * Re-exports from registry, definitions, and existing AgentFactory.
+ * Re-exports from registry and definitions.
  *
  * @module modules/agents/core
  */
@@ -26,6 +26,3 @@ export {
   ragAgentDefinition,
   supervisorDefinition,
 } from './definitions';
-
-// Existing AgentFactory
-export { type IAgentNode, BaseAgent } from './AgentFactory';

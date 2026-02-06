@@ -1,6 +1,5 @@
 
 import { AgentState, ToolExecution } from '../orchestrator/state';
-import { BaseAgent } from '../core/AgentFactory';
 import { ModelFactory } from '../../../core/langchain/ModelFactory';
 import { getModelConfig, ModelRoleConfigs } from '@/infrastructure/config/models';
 import { RunnableConfig } from '@langchain/core/runnables';
@@ -56,7 +55,11 @@ CRITICAL INSTRUCTIONS:
  * - Invoice creation
  * - Inventory checks
  */
-export class BusinessCentralAgent extends BaseAgent {
+/**
+ * @deprecated Use createReactAgent from supervisor/agent-builders.ts instead.
+ * Kept for backward compatibility during migration.
+ */
+export class BusinessCentralAgent {
   name = 'business-central';
   description = 'Specialized agent for Microsoft Business Central ERP operations.';
 

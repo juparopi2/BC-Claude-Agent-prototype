@@ -152,6 +152,7 @@ export const AnthropicPricing: Record<AnthropicModelId, ModelPricing> = {
  */
 export type ModelRole =
   | 'orchestrator'    // Complex orchestration and decision-making
+  | 'supervisor'      // Lightweight supervisor routing between agents
   | 'router'          // Fast intent classification and routing
   | 'bc_agent'        // Business Central operations
   | 'rag_agent'       // RAG/Knowledge retrieval
@@ -203,6 +204,22 @@ export const ModelRoleConfigs: Record<ModelRole, RoleModelConfig> = {
     estimatedTokensPerCall: {
       input: 2000,
       output: 2000,
+    },
+  },
+
+  supervisor: {
+    role: 'supervisor',
+    description: 'Lightweight supervisor for routing between specialist agents',
+    modelString: AnthropicModels.HAIKU_3_5,
+    fallback: FallbackModels.OPENAI_GPT4O_MINI,
+    provider: 'anthropic' as ModelProvider,
+    modelName: AnthropicModels.HAIKU_3_5,
+    temperature: 0.0, // Deterministic routing
+    maxTokens: 1024,
+    streaming: false,
+    estimatedTokensPerCall: {
+      input: 800,
+      output: 200,
     },
   },
 

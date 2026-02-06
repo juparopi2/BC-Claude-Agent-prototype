@@ -34,7 +34,7 @@
  */
 
 import { createChildLogger } from '@/shared/utils/logger';
-import { orchestratorGraph } from '@/modules/agents/orchestrator/graph';
+import { getSupervisorGraphAdapter } from '@/modules/agents/supervisor';
 import { getBatchResultNormalizer, type BatchResultNormalizer } from '@shared/providers/normalizers/BatchResultNormalizer';
 import { randomUUID } from 'crypto';
 import type {
@@ -58,6 +58,7 @@ import { getEventStore, type EventStore } from '@services/events/EventStore';
 import { getCitationExtractor, type ICitationExtractor } from '@/domains/agent/citations';
 import { createMessageContextBuilder, type MessageContextBuilder } from './context/MessageContextBuilder';
 import { createGraphExecutor, type GraphExecutor } from './execution/GraphExecutor';
+import type { ICompiledGraph } from './execution/GraphExecutor';
 import { createExecutionPipeline, type ExecutionPipeline } from './execution/ExecutionPipeline';
 
 /**
@@ -70,6 +71,7 @@ export interface AgentOrchestratorDependencies {
   eventStore?: EventStore;
   citationExtractor?: ICitationExtractor;
   attachmentContentResolver?: AttachmentContentResolver;
+  graph?: ICompiledGraph;
 }
 
 /**
@@ -102,7 +104,7 @@ export class AgentOrchestrator implements IAgentOrchestrator {
       fileContextPreparer,
       attachmentContentResolver
     );
-    this.graphExecutor = createGraphExecutor(orchestratorGraph);
+    this.graphExecutor = createGraphExecutor(deps?.graph ?? getSupervisorGraphAdapter());
     this.executionPipeline = createExecutionPipeline({
       messageContextBuilder: this.messageContextBuilder,
       graphExecutor: this.graphExecutor,

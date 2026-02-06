@@ -29,10 +29,12 @@ import type { MessageQueue } from '@/infrastructure/queue/MessageQueue';
 // ============================================================================
 
 // Mock LangGraph
-vi.mock('@/modules/agents/orchestrator/graph', () => ({
-  orchestratorGraph: {
+vi.mock('@/modules/agents/supervisor', () => ({
+  getSupervisorGraphAdapter: vi.fn().mockReturnValue({
     invoke: vi.fn(),
-  },
+  }),
+  initializeSupervisorGraph: vi.fn(),
+  resumeSupervisor: vi.fn(),
 }));
 
 // Mock FileService
@@ -68,7 +70,7 @@ vi.mock('@/services/files/context/PromptBuilder', () => ({
 }));
 
 // Import after mocks are set up
-import { orchestratorGraph } from '@/modules/agents/orchestrator/graph';
+import { getSupervisorGraphAdapter } from '@/modules/agents/supervisor';
 import { FileService } from '@/services/files/FileService';
 import { getSemanticSearchService } from '@/services/semantic-search/SemanticSearchService';
 
@@ -117,7 +119,7 @@ describe('AgentOrchestrator Integration', () => {
     __resetAgentOrchestrator();
 
     // Get references to mocked module functions
-    mockInvoke = orchestratorGraph.invoke as Mock;
+    mockInvoke = (getSupervisorGraphAdapter() as any).invoke as Mock;
     mockGetFile = FileService.getInstance().getFile as Mock;
     mockSearchRelevantFiles = getSemanticSearchService().searchRelevantFiles as Mock;
 

@@ -18,10 +18,12 @@ import type { AgentEvent } from '@bc-agent/shared';
 import { AIMessage } from '@langchain/core/messages';
 
 // Mock external dependencies for the real AgentOrchestrator
-vi.mock('@/modules/agents/orchestrator/graph', () => ({
-  orchestratorGraph: {
+vi.mock('@/modules/agents/supervisor', () => ({
+  getSupervisorGraphAdapter: vi.fn().mockReturnValue({
     invoke: vi.fn(),
-  },
+  }),
+  initializeSupervisorGraph: vi.fn(),
+  resumeSupervisor: vi.fn(),
 }));
 
 vi.mock('@langchain/core/messages', async (importOriginal) => {
@@ -64,7 +66,7 @@ vi.mock('@domains/agent/persistence', () => ({
 }));
 
 // Now import with mocks in place
-import { orchestratorGraph } from '@/modules/agents/orchestrator/graph';
+import { getSupervisorGraphAdapter } from '@/modules/agents/supervisor';
 import {
   createAgentOrchestrator,
   __resetAgentOrchestrator,
@@ -104,7 +106,7 @@ describe('OrchestratorParity', () => {
     __resetAgentOrchestrator();
 
     // Setup mock for invoke to return proper result
-    vi.mocked(orchestratorGraph.invoke).mockResolvedValue(
+    vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockResolvedValue(
       createMockInvokeResult('Done')
     );
   });

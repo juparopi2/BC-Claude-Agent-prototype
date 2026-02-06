@@ -1,0 +1,255 @@
+/**
+ * Supervisor Graph
+ *
+ * Core module that builds, compiles, and adapts the createSupervisor() graph.
+ * Implements ICompiledGraph interface so it integrates seamlessly with
+ * the existing GraphExecutor → ExecutionPipeline → EventProcessor chain.
+ *
+ * @module modules/agents/supervisor/supervisor-graph
+ */
+
+import { MemorySaver, Command } from '@langchain/langgraph';
+import { createSupervisor } from '@langchain/langgraph-supervisor';
+import { HumanMessage } from '@langchain/core/messages';
+import type { AgentId } from '@bc-agent/shared';
+import { ModelFactory } from '@/core/langchain/ModelFactory';
+import type { ICompiledGraph } from '@/domains/agent/orchestration/execution/GraphExecutor';
+import type { AgentState } from '../orchestrator/state';
+import { buildSupervisorPrompt } from './supervisor-prompt';
+import { buildReactAgents, type BuiltAgent } from './agent-builders';
+import { detectSlashCommand } from './slash-command-router';
+import { adaptSupervisorResult } from './result-adapter';
+import { createChildLogger } from '@/shared/utils/logger';
+
+const logger = createChildLogger({ service: 'SupervisorGraph' });
+
+/**
+ * Module-level singleton state.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let compiledSupervisor: any = null;
+let agentMap: Map<AgentId, BuiltAgent> = new Map();
+let checkpointer: MemorySaver | null = null;
+let initialized = false;
+
+/**
+ * Initialize the supervisor graph.
+ *
+ * Called once at server startup after registerAgents().
+ * Builds all ReAct agents, compiles the supervisor, and stores the singleton.
+ */
+export async function initializeSupervisorGraph(): Promise<void> {
+  if (initialized) {
+    logger.info('Supervisor graph already initialized, skipping');
+    return;
+  }
+
+  logger.info('Initializing supervisor graph...');
+
+  // 1. Build ReAct agents from registry
+  const builtAgents = await buildReactAgents();
+
+  // Store in map for direct agent invocation (slash commands)
+  agentMap = new Map();
+  for (const built of builtAgents) {
+    agentMap.set(built.id, built);
+  }
+
+  // 2. Create supervisor model
+  const supervisorModel = await ModelFactory.create('supervisor');
+
+  // 3. Build dynamic prompt
+  const prompt = buildSupervisorPrompt();
+
+  // 4. Create checkpointer for interrupt/resume
+  checkpointer = new MemorySaver();
+
+  // 5. Create and compile supervisor
+  const workflow = createSupervisor({
+    agents: builtAgents.map(a => a.agent),
+    llm: supervisorModel,
+    prompt,
+  });
+
+  compiledSupervisor = workflow.compile({ checkpointer });
+
+  initialized = true;
+
+  logger.info(
+    {
+      agentCount: builtAgents.length,
+      agentIds: builtAgents.map(a => a.id),
+    },
+    'Supervisor graph initialized successfully'
+  );
+}
+
+/**
+ * Supervisor Graph Adapter
+ *
+ * Implements ICompiledGraph so it can be used as a drop-in replacement
+ * for the old orchestratorGraph in GraphExecutor.
+ *
+ * Flow:
+ * 1. Extract userId/sessionId from inputs.context
+ * 2. Check for slash commands → direct agent invocation
+ * 3. Normal → supervisor.invoke() with configurable userId
+ * 4. Adapt result → AgentState for event pipeline
+ */
+class SupervisorGraphAdapter implements ICompiledGraph {
+  async invoke(
+    inputs: unknown,
+    options?: { recursionLimit?: number; signal?: AbortSignal }
+  ): Promise<AgentState> {
+    if (!compiledSupervisor) {
+      throw new Error('Supervisor graph not initialized. Call initializeSupervisorGraph() first.');
+    }
+
+    const typedInputs = inputs as {
+      messages: unknown[];
+      context?: {
+        userId?: string;
+        sessionId?: string;
+        options?: Record<string, unknown>;
+      };
+    };
+
+    const userId = typedInputs.context?.userId ?? '';
+    const sessionId = typedInputs.context?.sessionId ?? '';
+    const messages = typedInputs.messages ?? [];
+
+    // Get the user's prompt from the last message
+    const lastMessage = messages[messages.length - 1];
+    const prompt = typeof lastMessage === 'object' && lastMessage !== null && 'content' in lastMessage
+      ? String((lastMessage as { content: unknown }).content)
+      : '';
+
+    // 1. Check for slash commands (bypass supervisor LLM)
+    const slashResult = detectSlashCommand(prompt);
+    if (slashResult.isSlashCommand && slashResult.targetAgentId) {
+      const targetAgent = agentMap.get(slashResult.targetAgentId);
+      if (targetAgent) {
+        logger.info(
+          { targetAgentId: slashResult.targetAgentId, command: prompt.split(' ')[0] },
+          'Slash command detected, invoking agent directly'
+        );
+
+        const agentResult = await targetAgent.agent.invoke(
+          {
+            messages: [new HumanMessage(slashResult.cleanedPrompt)],
+          },
+          {
+            configurable: {
+              thread_id: `slash-${sessionId}-${Date.now()}`,
+              userId,
+            },
+            recursionLimit: options?.recursionLimit ?? 50,
+            signal: options?.signal,
+          }
+        );
+
+        return adaptSupervisorResult(agentResult, sessionId);
+      }
+    }
+
+    // 2. Normal flow → supervisor LLM routes
+    logger.debug(
+      { sessionId, userId, messageCount: messages.length },
+      'Invoking supervisor graph'
+    );
+
+    const threadId = `session-${sessionId}`;
+
+    const result = await compiledSupervisor.invoke(
+      {
+        messages: [new HumanMessage(prompt)],
+      },
+      {
+        configurable: {
+          thread_id: threadId,
+          userId,
+        },
+        recursionLimit: options?.recursionLimit ?? 50,
+        signal: options?.signal,
+      }
+    );
+
+    // 3. Check for interrupts
+    const state = await compiledSupervisor.getState({ configurable: { thread_id: threadId } });
+    const isInterrupted = state?.tasks?.some(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (t: any) => t.interrupts && t.interrupts.length > 0
+    );
+
+    if (isInterrupted) {
+      logger.info({ sessionId, threadId }, 'Supervisor execution interrupted, awaiting user input');
+
+      const interruptValue = state.tasks
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ?.flatMap((t: any) => t.interrupts || [])
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ?.map((i: any) => i.value)?.[0];
+
+      return adaptSupervisorResult(result, sessionId, {
+        isInterrupted: true,
+        question: typeof interruptValue === 'string' ? interruptValue : JSON.stringify(interruptValue),
+      });
+    }
+
+    return adaptSupervisorResult(result, sessionId);
+  }
+}
+
+/**
+ * Resume a supervisor execution after an interrupt.
+ *
+ * @param sessionId - Session ID (maps to thread_id)
+ * @param userResponse - User's response to the interrupt
+ * @returns AgentState result
+ */
+export async function resumeSupervisor(
+  sessionId: string,
+  userResponse: unknown
+): Promise<AgentState> {
+  if (!compiledSupervisor) {
+    throw new Error('Supervisor graph not initialized');
+  }
+
+  const threadId = `session-${sessionId}`;
+
+  logger.info({ sessionId, threadId }, 'Resuming supervisor after interrupt');
+
+  const result = await compiledSupervisor.invoke(
+    new Command({ resume: userResponse }),
+    {
+      configurable: { thread_id: threadId },
+    }
+  );
+
+  return adaptSupervisorResult(result, sessionId);
+}
+
+/**
+ * Get the SupervisorGraphAdapter singleton.
+ * Implements ICompiledGraph for drop-in replacement in GraphExecutor.
+ */
+let adapterInstance: SupervisorGraphAdapter | null = null;
+
+export function getSupervisorGraphAdapter(): ICompiledGraph {
+  if (!adapterInstance) {
+    adapterInstance = new SupervisorGraphAdapter();
+  }
+  return adapterInstance;
+}
+
+/**
+ * Reset supervisor state (for testing).
+ * @internal
+ */
+export function __resetSupervisorGraph(): void {
+  compiledSupervisor = null;
+  agentMap = new Map();
+  checkpointer = null;
+  initialized = false;
+  adapterInstance = null;
+}

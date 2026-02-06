@@ -708,4 +708,21 @@ const payload = {
 |-------|---------|---------|
 | 2026-01-21 | 1.0 | Draft inicial |
 | 2026-02-05 | 1.1 | Agregada sección "Minimal Viable Implementation": dropdown design, targetAgentId contract, My Files replacement strategy |
+| 2026-02-06 | 1.2 | **POST PRD-030**: Referencias actualizadas. `router.ts` fue eliminado en PRD-030. Routing ahora via `supervisor-graph.ts` (supervisor LLM) + `slash-command-router.ts`. §11.6 aplica al `SupervisorGraphAdapter` en lugar de router.ts. `targetAgentId` bypass debe integrarse en el supervisor adapter. Frontend debe también manejar: (1) `agent_changed` event para actualizar badges, (2) `approval_requested` con UI para interrupt/resume, (3) nuevo campo `currentAgentIdentity` en `agentStateStore`. |
+
+---
+
+## 13. Notas Post-PRD-030
+
+> **IMPORTANTE**: Las siguientes secciones del PRD original tienen referencias desactualizadas:
+>
+> - **§11.6** referencia `router.ts` → fue eliminado. El bypass de routing con `targetAgentId` ahora debe implementarse en `SupervisorGraphAdapter.invoke()` dentro de `supervisor-graph.ts`.
+> - **§3.8** WebSocket handler para `agent_changed` → el backend ya emite este evento. El frontend necesita agregar el handler descrito.
+> - **§4.1** `ChatMessageHandler.ts` → El `targetAgentId` debe propagarse via `context.options` o `context.metadata` para que el supervisor adapter lo use.
+>
+> Adicionalmente, este PRD DEBE incluir:
+> - Handler de `agent_changed` en `processAgentEventSync.ts` (actualmente cae en default case)
+> - Campo `currentAgentIdentity: AgentIdentity | null` en `agentStateStore.ts`
+> - UI para `approval_requested` / interrupt prompt (modal o inline)
+> - Respuesta a interrupts via `supervisor:resume` socket event
 

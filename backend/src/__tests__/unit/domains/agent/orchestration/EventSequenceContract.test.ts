@@ -26,10 +26,12 @@ import {
 } from '@domains/agent/orchestration/AgentOrchestrator';
 
 // Mock the graph
-vi.mock('@/modules/agents/orchestrator/graph', () => ({
-  orchestratorGraph: {
+vi.mock('@/modules/agents/supervisor', () => ({
+  getSupervisorGraphAdapter: vi.fn().mockReturnValue({
     invoke: vi.fn(),
-  },
+  }),
+  initializeSupervisorGraph: vi.fn(),
+  resumeSupervisor: vi.fn(),
 }));
 
 vi.mock('@langchain/core/messages', async (importOriginal) => {
@@ -105,7 +107,7 @@ vi.mock('@/domains/chat-attachments', () => ({
   })),
 }));
 
-import { orchestratorGraph } from '@/modules/agents/orchestrator/graph';
+import { getSupervisorGraphAdapter } from '@/modules/agents/supervisor';
 
 /**
  * Create a mock graph result with simple text response
@@ -239,7 +241,7 @@ describe('EventSequenceContract', () => {
 
   describe('Contract Rule 1: session_start is ALWAYS first event', () => {
     it('should emit session_start as first event for simple response', async () => {
-      vi.mocked(orchestratorGraph.invoke).mockResolvedValue(createSimpleResponse('Hello'));
+      vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockResolvedValue(createSimpleResponse('Hello'));
 
       const events: AgentEvent[] = [];
       const orchestrator = createAgentOrchestrator();
@@ -249,7 +251,7 @@ describe('EventSequenceContract', () => {
     });
 
     it('should emit session_start as first event for complex response with tools', async () => {
-      vi.mocked(orchestratorGraph.invoke).mockResolvedValue(
+      vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockResolvedValue(
         createToolResponse('search', 'Results', 'Done')
       );
 
@@ -261,7 +263,7 @@ describe('EventSequenceContract', () => {
     });
 
     it('session_start should contain required fields', async () => {
-      vi.mocked(orchestratorGraph.invoke).mockResolvedValue(createSimpleResponse('Hi'));
+      vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockResolvedValue(createSimpleResponse('Hi'));
 
       const events: AgentEvent[] = [];
       const orchestrator = createAgentOrchestrator();
@@ -278,7 +280,7 @@ describe('EventSequenceContract', () => {
 
   describe('Contract Rule 2: user_message_confirmed IMMEDIATELY follows session_start', () => {
     it('should emit user_message_confirmed as second event', async () => {
-      vi.mocked(orchestratorGraph.invoke).mockResolvedValue(createSimpleResponse('Response'));
+      vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockResolvedValue(createSimpleResponse('Response'));
 
       const events: AgentEvent[] = [];
       const orchestrator = createAgentOrchestrator();
@@ -289,7 +291,7 @@ describe('EventSequenceContract', () => {
     });
 
     it('user_message_confirmed should contain message content', async () => {
-      vi.mocked(orchestratorGraph.invoke).mockResolvedValue(createSimpleResponse('Response'));
+      vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockResolvedValue(createSimpleResponse('Response'));
 
       const events: AgentEvent[] = [];
       const orchestrator = createAgentOrchestrator();
@@ -306,7 +308,7 @@ describe('EventSequenceContract', () => {
 
   describe('Contract Rule 3: thinking_complete comes before tool events', () => {
     it('should emit thinking_complete before any tool_use', async () => {
-      vi.mocked(orchestratorGraph.invoke).mockResolvedValue(
+      vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockResolvedValue(
         createFullResponse('Let me think...', 'search', 'Found data', 'Here is the answer')
       );
 
@@ -326,7 +328,7 @@ describe('EventSequenceContract', () => {
     });
 
     it('should include thinking content in thinking_complete', async () => {
-      vi.mocked(orchestratorGraph.invoke).mockResolvedValue(
+      vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockResolvedValue(
         createThinkingResponse('Deep analysis here', 'Final answer')
       );
 
@@ -345,7 +347,7 @@ describe('EventSequenceContract', () => {
 
   describe('Contract Rule 4: tool_use/tool_result maintain pairing', () => {
     it('should emit tool_result immediately after corresponding tool_use', async () => {
-      vi.mocked(orchestratorGraph.invoke).mockResolvedValue(
+      vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockResolvedValue(
         createToolResponse('search_bc', 'Found 5 vendors', 'Here are the vendors')
       );
 
@@ -362,7 +364,7 @@ describe('EventSequenceContract', () => {
     });
 
     it('should match toolUseId between tool_use and tool_result', async () => {
-      vi.mocked(orchestratorGraph.invoke).mockResolvedValue(
+      vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockResolvedValue(
         createToolResponse('get_entity', 'Entity data', 'Response')
       );
 
@@ -377,7 +379,7 @@ describe('EventSequenceContract', () => {
     });
 
     it('tool_use should contain args', async () => {
-      vi.mocked(orchestratorGraph.invoke).mockResolvedValue(
+      vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockResolvedValue(
         createToolResponse('search', 'results', 'done')
       );
 
@@ -395,7 +397,7 @@ describe('EventSequenceContract', () => {
     });
 
     it('tool_result should contain result and success status', async () => {
-      vi.mocked(orchestratorGraph.invoke).mockResolvedValue(
+      vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockResolvedValue(
         createToolResponse('search', 'Found results', 'done')
       );
 
@@ -415,7 +417,7 @@ describe('EventSequenceContract', () => {
 
   describe('Contract Rule 5: message comes after all tool events', () => {
     it('should emit message after all tool_use/tool_result pairs', async () => {
-      vi.mocked(orchestratorGraph.invoke).mockResolvedValue(
+      vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockResolvedValue(
         createToolResponse('search', 'results', 'Final answer')
       );
 
@@ -435,7 +437,7 @@ describe('EventSequenceContract', () => {
     });
 
     it('message should contain response content', async () => {
-      vi.mocked(orchestratorGraph.invoke).mockResolvedValue(
+      vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockResolvedValue(
         createSimpleResponse('This is the assistant response')
       );
 
@@ -457,7 +459,7 @@ describe('EventSequenceContract', () => {
 
   describe('Contract Rule 6: complete is ALWAYS last event', () => {
     it('should emit complete as last event for simple response', async () => {
-      vi.mocked(orchestratorGraph.invoke).mockResolvedValue(createSimpleResponse('Done'));
+      vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockResolvedValue(createSimpleResponse('Done'));
 
       const events: AgentEvent[] = [];
       const orchestrator = createAgentOrchestrator();
@@ -467,7 +469,7 @@ describe('EventSequenceContract', () => {
     });
 
     it('should emit complete as last event for complex response', async () => {
-      vi.mocked(orchestratorGraph.invoke).mockResolvedValue(
+      vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockResolvedValue(
         createFullResponse('thinking', 'tool', 'result', 'answer')
       );
 
@@ -479,7 +481,7 @@ describe('EventSequenceContract', () => {
     });
 
     it('complete should have transient persistenceState', async () => {
-      vi.mocked(orchestratorGraph.invoke).mockResolvedValue(createSimpleResponse('Done'));
+      vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockResolvedValue(createSimpleResponse('Done'));
 
       const events: AgentEvent[] = [];
       const orchestrator = createAgentOrchestrator();
@@ -490,7 +492,7 @@ describe('EventSequenceContract', () => {
     });
 
     it('complete should have reason field', async () => {
-      vi.mocked(orchestratorGraph.invoke).mockResolvedValue(createSimpleResponse('Done'));
+      vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockResolvedValue(createSimpleResponse('Done'));
 
       const events: AgentEvent[] = [];
       const orchestrator = createAgentOrchestrator();
@@ -503,7 +505,7 @@ describe('EventSequenceContract', () => {
 
   describe('Contract Rule 7: All events have ascending eventIndex', () => {
     it('should emit events with strictly ascending eventIndex', async () => {
-      vi.mocked(orchestratorGraph.invoke).mockResolvedValue(
+      vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockResolvedValue(
         createFullResponse('thinking', 'search', 'results', 'answer')
       );
 
@@ -519,7 +521,7 @@ describe('EventSequenceContract', () => {
     });
 
     it('eventIndex should start at 0', async () => {
-      vi.mocked(orchestratorGraph.invoke).mockResolvedValue(createSimpleResponse('Hi'));
+      vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockResolvedValue(createSimpleResponse('Hi'));
 
       const events: (AgentEvent & { eventIndex?: number })[] = [];
       const orchestrator = createAgentOrchestrator();
@@ -531,7 +533,7 @@ describe('EventSequenceContract', () => {
 
   describe('Contract Rule 8: All events have required fields', () => {
     it('every event should have eventId', async () => {
-      vi.mocked(orchestratorGraph.invoke).mockResolvedValue(
+      vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockResolvedValue(
         createToolResponse('tool', 'result', 'done')
       );
 
@@ -547,7 +549,7 @@ describe('EventSequenceContract', () => {
     });
 
     it('every event should have sessionId', async () => {
-      vi.mocked(orchestratorGraph.invoke).mockResolvedValue(createSimpleResponse('done'));
+      vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockResolvedValue(createSimpleResponse('done'));
 
       const events: AgentEvent[] = [];
       const orchestrator = createAgentOrchestrator();
@@ -559,7 +561,7 @@ describe('EventSequenceContract', () => {
     });
 
     it('every event should have timestamp', async () => {
-      vi.mocked(orchestratorGraph.invoke).mockResolvedValue(createSimpleResponse('done'));
+      vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockResolvedValue(createSimpleResponse('done'));
 
       const events: AgentEvent[] = [];
       const orchestrator = createAgentOrchestrator();
@@ -575,7 +577,7 @@ describe('EventSequenceContract', () => {
 
   describe('Contract Rule 9: persistenceState values are correct', () => {
     it('session_start should be transient', async () => {
-      vi.mocked(orchestratorGraph.invoke).mockResolvedValue(createSimpleResponse('done'));
+      vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockResolvedValue(createSimpleResponse('done'));
 
       const events: AgentEvent[] = [];
       const orchestrator = createAgentOrchestrator();
@@ -586,7 +588,7 @@ describe('EventSequenceContract', () => {
     });
 
     it('user_message_confirmed should be persisted', async () => {
-      vi.mocked(orchestratorGraph.invoke).mockResolvedValue(createSimpleResponse('done'));
+      vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockResolvedValue(createSimpleResponse('done'));
 
       const events: AgentEvent[] = [];
       const orchestrator = createAgentOrchestrator();
@@ -597,7 +599,7 @@ describe('EventSequenceContract', () => {
     });
 
     it('message should have persisted state after persistence completes', async () => {
-      vi.mocked(orchestratorGraph.invoke).mockResolvedValue(createSimpleResponse('done'));
+      vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockResolvedValue(createSimpleResponse('done'));
 
       const events: AgentEvent[] = [];
       const orchestrator = createAgentOrchestrator();
@@ -609,7 +611,7 @@ describe('EventSequenceContract', () => {
     });
 
     it('complete should be transient', async () => {
-      vi.mocked(orchestratorGraph.invoke).mockResolvedValue(createSimpleResponse('done'));
+      vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockResolvedValue(createSimpleResponse('done'));
 
       const events: AgentEvent[] = [];
       const orchestrator = createAgentOrchestrator();
@@ -622,7 +624,7 @@ describe('EventSequenceContract', () => {
 
   describe('Full sequence verification', () => {
     it('should emit events in correct order for simple response', async () => {
-      vi.mocked(orchestratorGraph.invoke).mockResolvedValue(createSimpleResponse('Hello'));
+      vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockResolvedValue(createSimpleResponse('Hello'));
 
       const events: AgentEvent[] = [];
       const orchestrator = createAgentOrchestrator();
@@ -638,7 +640,7 @@ describe('EventSequenceContract', () => {
     });
 
     it('should emit events in correct order for tool response', async () => {
-      vi.mocked(orchestratorGraph.invoke).mockResolvedValue(
+      vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockResolvedValue(
         createToolResponse('search', 'results', 'Final answer')
       );
 

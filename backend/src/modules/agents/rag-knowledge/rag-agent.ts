@@ -1,6 +1,5 @@
 
 import { AgentState, ToolExecution } from '../orchestrator/state';
-import { BaseAgent } from '../core/AgentFactory';
 import { ModelFactory } from '../../../core/langchain/ModelFactory';
 import { getModelConfig, ModelRoleConfigs } from '@/infrastructure/config/models';
 import { RunnableConfig } from '@langchain/core/runnables';
@@ -18,7 +17,11 @@ const logger = createChildLogger({ service: 'RAGAgent' });
  * Handles semantic search and context retrieval.
  * Uses the SemanticSearchService to find relevant documents based on user queries.
  */
-export class RAGAgent extends BaseAgent {
+/**
+ * @deprecated Use createReactAgent from supervisor/agent-builders.ts instead.
+ * Kept for backward compatibility during migration.
+ */
+export class RAGAgent {
   name = "rag-knowledge";
   description = "Agent for searching and retrieving information from the semantic knowledge base.";
 

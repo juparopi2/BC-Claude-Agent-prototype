@@ -474,3 +474,4 @@ describe("PostgresSaver Integration", () => {
 |-------|---------|---------|
 | 2026-02-02 | 1.0 | Initial draft with PostgresSaver + analytics |
 | 2026-02-06 | 1.1 | **Corrección**: Import de `createSupervisor` corregido a `@langchain/langgraph-supervisor` (paquete separado). Agregada sección de pre-requisitos de instalación con ambos paquetes (`-checkpoint-postgres` y `-supervisor`). PRD-020 completado: `ExtendedAgentStateAnnotation` disponible para uso con checkpointer. |
+| 2026-02-06 | 1.2 | **PRD-030 completado**: Supervisor usa `MemorySaver` como MVP. Este PRD debe reemplazar `MemorySaver` con persistencia durable. **NOTA CRITICA**: Proyecto usa Azure SQL (MSSQL), no PostgreSQL. `PostgresSaver` NO es compatible. Opciones: (1) Custom MSSQL checkpointer, (2) Redis-based checkpointer, (3) Evaluar `@langchain/langgraph-checkpoint` base class para implementación custom. Requiere investigación. |

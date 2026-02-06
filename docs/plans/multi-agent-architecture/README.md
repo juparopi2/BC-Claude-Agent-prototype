@@ -2,7 +2,7 @@
 
 **Estado**: En Progreso
 **Fecha Inicio**: 2026-01-21
-**Versión del Plan**: 2.0 (Actualizado con Patrones Nativos LangGraph)
+**Versión del Plan**: 2.3 (PRD-030 Completado - Supervisor Integration)
 
 ---
 
@@ -198,18 +198,27 @@ console.log(anthropic.profile?.reasoningOutput); // true para extended thinking
 - `AgentChangedEvent` + Zod schemas listos para Phase 6 (frontend badges)
 
 ### Fase 3: Supervisor con createSupervisor()
-**Estado**: 🔴 No Iniciado
+**Estado**: 🟡 En Progreso (PRD-030 ✅)
 **Objetivo**: Implementar orquestación usando patrones nativos
 
-| PRD | Componente | Estado |
-|-----|------------|--------|
-| [PRD-030](./PHASE-3-SUPERVISOR/PRD-030-PlannerAgent.md) | Supervisor Integration con `createSupervisor()` | 🔴 |
-| ~~PRD-031~~ | ~~PlanExecutor~~ | ❌ ELIMINADO |
-| [PRD-032](./PHASE-3-SUPERVISOR/PRD-032-PlanPersistence.md) | PostgresSaver + Analytics (simplificado) | 🔴 |
+| PRD | Componente | Estado | Fecha |
+|-----|------------|--------|-------|
+| [PRD-030](./PHASE-3-SUPERVISOR/PRD-030-PlannerAgent.md) | Supervisor Integration con `createSupervisor()` | ✅ Completado | 2026-02-06 |
+| ~~PRD-031~~ | ~~PlanExecutor~~ | ❌ ELIMINADO | - |
+| [PRD-032](./PHASE-3-SUPERVISOR/PRD-032-PlanPersistence.md) | Persistencia durable + Analytics | 🔴 | - |
 
 > **Nota PRD-031**: ELIMINADO. `createSupervisor()` maneja la ejecución de steps automáticamente.
 >
 > **Pre-requisito de instalación** (descubierto en PRD-011): `createSupervisor` requiere paquete separado `@langchain/langgraph-supervisor`. PostgresSaver requiere `@langchain/langgraph-checkpoint-postgres`. Ninguno está incluido en `@langchain/langgraph`.
+
+**Métricas PRD-030:**
+- 13 archivos creados, 6 modificados, 4 eliminados (deprecated code cleanup)
+- 44 tests nuevos (5 archivos), 0 regresiones (2986 tests backend pasan)
+- `MemorySaver` para MVP (MemorySaver in-memory; PRD-032 proveerá persistencia durable con MSSQL)
+- RAG tool refactorizado: `config.configurable.userId` reemplaza closure `toolFactory(userId)`
+- Slash commands preservados: `/bc`, `/search`, `/rag` bypass supervisor LLM
+- `interrupt()` + `Command({ resume })` implementados con WebSocket `supervisor:resume`
+- Old code eliminado: `router.ts`, `graph.ts`, `check_graph.ts`, `AgentFactory.ts`
 
 ### Fase 4: Handoffs con Command()
 **Estado**: 🔴 No Iniciado
@@ -274,10 +283,10 @@ FASE 1: TDD Foundation
 FASE 2: Extended State
 └── PRD-020: MessagesAnnotation + AgentIdentity ──────────► FASE 3
 
-FASE 3: Supervisor
-├── PRD-030: createSupervisor() Integration ───────────┐
-├── PRD-031: [ELIMINADO] ──────────────────────────────┤
-└── PRD-032: PostgresSaver + Analytics ────────────────┴──► FASE 4
+FASE 3: Supervisor (PRD-030 ✅)
+├── PRD-030: createSupervisor() Integration [✅ COMPLETADO] ──┐
+├── PRD-031: [ELIMINADO] ─────────────────────────────────────┤
+└── PRD-032: Persistencia Durable + Analytics ────────────────┴──► FASE 4
 
 FASE 4: Handoffs
 └── PRD-040: Command(goto=...) Pattern ───────────────────► FASE 5
@@ -361,3 +370,4 @@ npm run test:e2e
 | 2026-02-02 | 2.0 | Actualización con patrones nativos LangGraph, eliminación de PRD-031, deprecation de PRD-002, adición de PRD-006 |
 | 2026-02-06 | 2.1 | PRD-011 completado. Corrección: `createSupervisor` requiere `@langchain/langgraph-supervisor` (paquete separado, no está en `@langchain/langgraph/prebuilt`). Actualizado ejemplo en §3.1 y PRD-030. |
 | 2026-02-06 | 2.2 | PRD-020 completado (Fase 2). `ExtendedAgentStateAnnotation` con `currentAgentIdentity` y `AgentContext` enriquecido. Backward compat via alias. Corregidos imports erróneos de `createSupervisor` en PRD-032 y PRD-050. Corregido PRD-050 para usar `state.messages` en lugar de `state.plan?.steps` inexistente. Agregados pre-requisitos de instalación de paquetes en PRDs de Fase 3 y 5. |
+| 2026-02-06 | 2.3 | **PRD-030 completado** (Fase 3 parcial). Supervisor Integration implementado: `createSupervisor()` + `createReactAgent()` + `MemorySaver` + `interrupt()`/`Command({ resume })`. 13 archivos creados, 6 modificados, 4 eliminados (deprecated code). 44 tests nuevos, 2986 tests totales pasando. `MemorySaver` como MVP checkpointer (PRD-032 proveerá MSSQL persistence). RAG tool refactorizado a static con `config.configurable`. Old routing eliminado (`router.ts`, `graph.ts`, `AgentFactory.ts`). PRD-032 desbloqueado. |

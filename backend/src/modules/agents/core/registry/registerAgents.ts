@@ -20,7 +20,7 @@ import {
   buildKnowledgeBaseWorkflowTool,
   getEndpointDocumentationTool,
 } from '@/modules/agents/business-central/tools';
-import { createKnowledgeSearchTool } from '@/modules/agents/rag-knowledge/tools';
+import { knowledgeSearchTool } from '@/modules/agents/rag-knowledge/tools';
 import { createChildLogger } from '@/shared/utils/logger';
 
 const logger = createChildLogger({ service: 'RegisterAgents' });
@@ -29,7 +29,7 @@ const logger = createChildLogger({ service: 'RegisterAgents' });
  * Register all agents and their tools in the AgentRegistry.
  *
  * - BC Agent: 7 static tools from business-central/tools.ts
- * - RAG Agent: dynamic tool factory (user-scoped via createKnowledgeSearchTool)
+ * - RAG Agent: 1 static tool (userId resolved at runtime via config.configurable)
  * - Supervisor: no tools (orchestrates other agents)
  */
 export function registerAgents(): void {
@@ -54,9 +54,9 @@ export function registerAgents(): void {
     ],
   });
 
-  // RAG Agent with dynamic tool factory (tools require userId at creation time)
+  // RAG Agent with static tool (userId resolved via config.configurable at runtime)
   registry.registerWithTools(ragAgentDefinition, {
-    toolFactory: (userId: string) => [createKnowledgeSearchTool(userId)],
+    staticTools: [knowledgeSearchTool],
   });
 
   // Supervisor (no tools - orchestrates other agents)

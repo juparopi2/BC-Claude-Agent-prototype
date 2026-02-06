@@ -8,6 +8,7 @@ import { AIMessage, ToolMessage, BaseMessage } from '@langchain/core/messages';
 import { createKnowledgeSearchTool } from './tools';
 import { createChildLogger } from '@/shared/utils/logger';
 import { StructuredToolInterface } from '@langchain/core/tools';
+import { AGENT_ID, AGENT_DISPLAY_NAME, AGENT_ICON, AGENT_COLOR } from '@bc-agent/shared';
 
 const logger = createChildLogger({ service: 'RAGAgent' });
 
@@ -188,6 +189,12 @@ export class RAGAgent extends BaseAgent {
         messages: newMessages,
         toolExecutions: toolExecutions, // Return tool executions for event emission
         usedModel: actualModelName, // Track model for billing and traceability
+        currentAgentIdentity: {
+          agentId: AGENT_ID.RAG_AGENT,
+          agentName: AGENT_DISPLAY_NAME[AGENT_ID.RAG_AGENT],
+          agentIcon: AGENT_ICON[AGENT_ID.RAG_AGENT],
+          agentColor: AGENT_COLOR[AGENT_ID.RAG_AGENT],
+        },
      };
   }
 }

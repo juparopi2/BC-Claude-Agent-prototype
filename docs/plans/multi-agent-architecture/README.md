@@ -182,12 +182,20 @@ console.log(anthropic.profile?.reasoningOutput); // true para extended thinking
 - Descubrimiento: `createSupervisor` requiere paquete `@langchain/langgraph-supervisor` (corregido en PRD-030)
 
 ### Fase 2: Extended State Schema
-**Estado**: 🔴 No Iniciado
-**Objetivo**: Extender AgentState usando MessagesAnnotation
+**Estado**: ✅ COMPLETADO (2026-02-06)
+**Objetivo**: Extender AgentState con identity tracking y contexto enriquecido
 
-| PRD | Componente | Estado |
-|-----|------------|--------|
-| [PRD-020](./PHASE-2-EXTENDED-STATE/PRD-020-ExtendedAgentState.md) | AgentIdentity, AgentContext (simplificado) | 🔴 |
+| PRD | Componente | Estado | Fecha |
+|-----|------------|--------|-------|
+| [PRD-020](./PHASE-2-EXTENDED-STATE/PRD-020-ExtendedAgentState.md) | AgentIdentity, AgentContext, ExtendedAgentStateAnnotation | ✅ Completado | 2026-02-06 |
+
+**Métricas PRD-020:**
+- 7 archivos creados, 7 modificados, 0 archivos breaking (backward compat via alias)
+- 26 tests nuevos (12 reducer + 14 contract), 0 regresiones (2942 tests backend pasan)
+- `AgentStateAnnotation` es ahora alias de `ExtendedAgentStateAnnotation` (15+ archivos sin cambios)
+- `activeAgent` preservado para routing; `currentAgentIdentity` es complementario (para UI)
+- Import de `createSupervisor` corregido en PRD docs: `@langchain/langgraph-supervisor` (paquete separado)
+- `AgentChangedEvent` + Zod schemas listos para Phase 6 (frontend badges)
 
 ### Fase 3: Supervisor con createSupervisor()
 **Estado**: 🔴 No Iniciado
@@ -200,6 +208,8 @@ console.log(anthropic.profile?.reasoningOutput); // true para extended thinking
 | [PRD-032](./PHASE-3-SUPERVISOR/PRD-032-PlanPersistence.md) | PostgresSaver + Analytics (simplificado) | 🔴 |
 
 > **Nota PRD-031**: ELIMINADO. `createSupervisor()` maneja la ejecución de steps automáticamente.
+>
+> **Pre-requisito de instalación** (descubierto en PRD-011): `createSupervisor` requiere paquete separado `@langchain/langgraph-supervisor`. PostgresSaver requiere `@langchain/langgraph-checkpoint-postgres`. Ninguno está incluido en `@langchain/langgraph`.
 
 ### Fase 4: Handoffs con Command()
 **Estado**: 🔴 No Iniciado
@@ -216,6 +226,8 @@ console.log(anthropic.profile?.reasoningOutput); // true para extended thinking
 | PRD | Componente | Estado |
 |-----|------------|--------|
 | [PRD-050](./PHASE-5-GRAPHING-AGENT/PRD-050-GraphingAgent.md) | GraphingAgent con Tremor UI | 🔴 |
+
+> **Pre-requisitos**: Requiere `@langchain/langgraph-supervisor` y `@tremor/react`. El agent node debe retornar `currentAgentIdentity` (patrón establecido en PRD-020). Los datos se extraen de `state.messages` (no hay campo `plan` en el state; `createSupervisor()` maneja planes internamente).
 
 ### Fase 6: UI Components
 **Estado**: 🔴 No Iniciado
@@ -348,3 +360,4 @@ npm run test:e2e
 | 2026-01-21 | 1.0 | Creación inicial del plan y estructura de PRDs |
 | 2026-02-02 | 2.0 | Actualización con patrones nativos LangGraph, eliminación de PRD-031, deprecation de PRD-002, adición de PRD-006 |
 | 2026-02-06 | 2.1 | PRD-011 completado. Corrección: `createSupervisor` requiere `@langchain/langgraph-supervisor` (paquete separado, no está en `@langchain/langgraph/prebuilt`). Actualizado ejemplo en §3.1 y PRD-030. |
+| 2026-02-06 | 2.2 | PRD-020 completado (Fase 2). `ExtendedAgentStateAnnotation` con `currentAgentIdentity` y `AgentContext` enriquecido. Backward compat via alias. Corregidos imports erróneos de `createSupervisor` en PRD-032 y PRD-050. Corregido PRD-050 para usar `state.messages` en lugar de `state.plan?.steps` inexistente. Agregados pre-requisitos de instalación de paquetes en PRDs de Fase 3 y 5. |

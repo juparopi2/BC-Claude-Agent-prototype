@@ -1,7 +1,11 @@
 import { Annotation, messagesStateReducer } from '@langchain/langgraph';
 import { BaseMessage } from '@langchain/core/messages';
-import type { ModelRole } from '@/infrastructure/config/models';
-import type { FileContextPreparationResult } from '@domains/agent/context/types';
+import { AgentIdentityAnnotation } from './state/AgentIdentity';
+import { AgentContextAnnotation } from './state/AgentContext';
+
+// Re-export state sub-modules for external consumers
+export { DEFAULT_AGENT_IDENTITY } from './state/AgentIdentity';
+export type { AgentContext } from './state/AgentContext';
 
 /**
  * Tool execution record for tracking tool calls made by agents.
@@ -23,15 +27,18 @@ export interface ToolExecution {
 }
 
 /**
- * Shared State Schema for the Agent Graph
+ * Extended Agent State Schema (PRD-020)
  *
- * Using LangGraph's Annotation system to define the reducer logic.
- * 'messages' uses the built-in reducer to append new messages.
+ * Extends the original AgentStateAnnotation with:
+ * - currentAgentIdentity: Tracks which agent generated the response (for UI)
+ * - context: Merged existing + new fields (searchContext, bcCompanyId, metadata)
+ *
+ * All existing fields are preserved for backward compatibility.
  */
-export const AgentStateAnnotation = Annotation.Root({
+export const ExtendedAgentStateAnnotation = Annotation.Root({
   /**
    * The conversation history.
-   * Uses simple concatenation reducer.
+   * Uses LangGraph's built-in message reducer.
    */
   messages: Annotation<BaseMessage[]>({
     reducer: messagesStateReducer,
@@ -39,37 +46,28 @@ export const AgentStateAnnotation = Annotation.Root({
   }),
 
   /**
+   * Agent identity for UI display (PRD-020).
+   * Tracks which agent generated the current response.
+   * Reducer: replace entirely (each agent sets its own identity).
+   */
+  currentAgentIdentity: AgentIdentityAnnotation,
+
+  /**
+   * Shared context accessible to all agents.
+   * Merged existing fields (userId, sessionId, options, fileContext)
+   * with new PRD-020 fields (searchContext, bcCompanyId, metadata).
+   * Reducer: shallow merge.
+   */
+  context: AgentContextAnnotation,
+
+  /**
    * The ID of the currently active agent node.
    * Used for routing and UI feedback.
+   * Preserved for backward compatibility with graph.ts conditional edges.
    */
   activeAgent: Annotation<string>({
     reducer: (x, y) => y ?? x ?? "orchestrator",
     default: () => "orchestrator",
-  }),
-
-  /**
-   * Context variables accessible to all agents.
-   */
-  context: Annotation<{
-    userId?: string;
-    sessionId?: string;
-    /** Preferred model role (default uses role-based config) */
-    preferredModelRole?: ModelRole;
-    options?: {
-      /** Array of file IDs to attach to the conversation */
-      attachments?: string[];
-      /** Enable automatic semantic search for relevant chunks */
-      enableAutoSemanticSearch?: boolean;
-      /** Enable extended thinking mode (Anthropic models only) */
-      enableThinking?: boolean;
-      /** Token budget for extended thinking (minimum 1024) */
-      thinkingBudget?: number;
-    };
-    /** File context prepared for injection into prompts */
-    fileContext?: FileContextPreparationResult;
-  }>({
-    reducer: (x, y) => ({ ...x, ...y }),
-    default: () => ({}),
   }),
 
   /**
@@ -93,4 +91,14 @@ export const AgentStateAnnotation = Annotation.Root({
   }),
 });
 
-export type AgentState = typeof AgentStateAnnotation.State;
+/**
+ * Backward compatibility alias.
+ * All 15+ files that import AgentStateAnnotation continue to work unchanged.
+ */
+export const AgentStateAnnotation = ExtendedAgentStateAnnotation;
+
+/** Full agent state type (extended) */
+export type AgentState = typeof ExtendedAgentStateAnnotation.State;
+
+/** Alias for AgentState (explicit naming for PRD-020 consumers) */
+export type ExtendedAgentState = AgentState;

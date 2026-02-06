@@ -328,6 +328,20 @@ export type {
   ResolveChatAttachmentsParsed,
 } from './chat-attachments.schemas';
 
+// ============================================
+// Agent Identity Schemas (PRD-020)
+// ============================================
+
+export {
+  AgentIdentitySchema,
+  AgentChangedEventSchema,
+} from './agent-identity.schema';
+
+export type {
+  AgentIdentityInput,
+  AgentChangedEventInput,
+} from './agent-identity.schema';
+
 /**
  * Re-export Zod for consumers who need to extend schemas
  */

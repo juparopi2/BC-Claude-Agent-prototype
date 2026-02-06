@@ -1,5 +1,5 @@
 import { StateGraph, START, END } from '@langchain/langgraph';
-import { AgentStateAnnotation, AgentState } from './state';
+import { AgentStateAnnotation, AgentState, DEFAULT_AGENT_IDENTITY } from './state';
 import { routeIntent } from './router';
 import { bcAgentNode } from '../business-central/bc-agent';
 import { ragAgentNode } from '../rag-knowledge/rag-agent';
@@ -8,7 +8,8 @@ import { HumanMessage } from '@langchain/core/messages';
 // Orchestrator Node
 const orchestratorNode = async (_state: AgentState) => {
     return {
-        messages: [new HumanMessage({ content: "[Orchestrator] I am here to help. Please clarify your intent." })]
+        messages: [new HumanMessage({ content: "[Orchestrator] I am here to help. Please clarify your intent." })],
+        currentAgentIdentity: DEFAULT_AGENT_IDENTITY,
     };
 };
 

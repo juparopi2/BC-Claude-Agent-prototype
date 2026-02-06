@@ -27,6 +27,7 @@ export type {
   UserMessageConfirmedEvent,
   TurnPausedEvent,
   ContentRefusedEvent,
+  AgentChangedEvent,
   AgentEvent,
   AgentExecutionResult,
   CitedFile,
@@ -305,6 +306,9 @@ export type {
   FolderBatchFailedEvent,
   FolderWebSocketEvent,
 } from './upload-session.types';
+
+// Agent Identity types (PRD-020)
+export type { AgentIdentity } from './agent-identity.types';
 
 // Agent Registry types (PRD-011)
 export type {

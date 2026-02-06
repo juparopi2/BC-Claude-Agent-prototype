@@ -2,7 +2,7 @@
 
 **Estado**: Draft
 **Prioridad**: Media
-**Dependencias**: PRD-011 (Agent Registry), PRD-040 (Dynamic Handoffs)
+**Dependencias**: PRD-011 (Agent Registry), PRD-020 (Extended State), PRD-040 (Dynamic Handoffs)
 **Bloquea**: Ninguno
 
 ---
@@ -26,7 +26,36 @@ Implementar un agente especializado en visualización de datos que:
 3. **Flexibilidad**: Frontend puede evolucionar independientemente
 4. **Performance**: Modelo optimizado para generación de schemas
 
-### 2.2 Tremor UI
+### 2.2 Pre-requisitos de Paquetes
+
+> **IMPORTANTE** (descubierto durante PRD-011/PRD-020): La integración del Graphing Agent con la arquitectura multi-agente requiere los siguientes paquetes que son instalaciones **separadas**:
+>
+> ```bash
+> # Supervisor (para registrar este agente en el grafo supervisor)
+> npm install @langchain/langgraph-supervisor
+>
+> # Checkpointer (para persistencia de estado)
+> npm install @langchain/langgraph-checkpoint-postgres
+>
+> # Tremor UI (frontend - para renderizar visualizaciones)
+> npm install @tremor/react
+> ```
+>
+> Imports correctos:
+> ```typescript
+> import { createSupervisor } from "@langchain/langgraph-supervisor";  // NO de @langchain/langgraph/prebuilt
+> import { createReactAgent } from "@langchain/langgraph/prebuilt";    // Este SÍ está en prebuilt
+> ```
+
+### 2.3 ExtendedAgentState (PRD-020)
+
+> El Graphing Agent utiliza `ExtendedAgentState` (implementado en PRD-020), que incluye:
+> - `currentAgentIdentity`: Cada agent node retorna su identidad para el UI
+> - `context`: Contexto compartido con `searchContext`, `bcCompanyId`, `metadata`
+>
+> **NOTA**: El PRD-020 original proponía `state.plan?.steps` para tracking de planes. Esto **no se implementó** en el state porque `createSupervisor()` maneja planes internamente. El Graphing Agent debe obtener datos de los mensajes previos en `state.messages`, no de un campo `plan`.
+
+### 2.4 Tremor UI
 
 [Tremor](https://www.tremor.so/) es una librería React para dashboards:
 - BarChart, LineChart, AreaChart, DonutChart
@@ -524,23 +553,29 @@ Generate the appropriate chart configuration.`,
 }
 
 // Graph node
+// NOTA: ExtendedAgentState (PRD-020) NO tiene campo `plan` — createSupervisor()
+// maneja planes internamente. Los datos se extraen de state.messages.
 export async function graphingAgentNode(
   state: ExtendedAgentState
 ): Promise<Partial<ExtendedAgentState>> {
   const agent = new GraphingAgent();
 
-  // Extract data from previous step results
-  const previousData = extractDataFromState(state);
-  const userIntent = state.plan?.steps[state.plan.currentStepIndex]?.task
-    || 'Create a visualization';
+  // Extract data from previous messages (tool results, etc.)
+  const previousData = extractDataFromMessages(state.messages);
+  const lastUserMessage = state.messages
+    .filter(m => m._getType?.() === 'human')
+    .pop();
+  const userIntent = typeof lastUserMessage?.content === 'string'
+    ? lastUserMessage.content
+    : 'Create a visualization';
 
   const chartConfig = await agent.generateVisualization(
     previousData,
     userIntent
   );
 
-  // Return as special visualization message
   const { AIMessage } = await import('@langchain/core/messages');
+  const { AGENT_ID, AGENT_DISPLAY_NAME, AGENT_ICON, AGENT_COLOR } = await import('@bc-agent/shared');
 
   return {
     messages: [
@@ -554,17 +589,23 @@ export async function graphingAgentNode(
         },
       }),
     ],
+    // PRD-020: Set agent identity for UI
+    currentAgentIdentity: {
+      agentId: 'graphing-agent',
+      agentName: 'Data Visualization Expert',
+      agentIcon: '📊',
+      agentColor: '#F59E0B',
+    },
   };
 }
 
-function extractDataFromState(state: ExtendedAgentState): unknown[] {
-  // Look for data in previous step results
-  const previousSteps = state.plan?.steps.filter(s => s.status === 'completed') || [];
-
-  for (const step of previousSteps.reverse()) {
-    if (step.result) {
+function extractDataFromMessages(messages: BaseMessage[]): unknown[] {
+  // Look for data in tool result messages (from BC Agent, RAG Agent, etc.)
+  for (const msg of [...messages].reverse()) {
+    if (msg._getType?.() === 'tool') {
       try {
-        const parsed = JSON.parse(step.result);
+        const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+        const parsed = JSON.parse(content);
         if (Array.isArray(parsed)) return parsed;
         if (parsed.data && Array.isArray(parsed.data)) return parsed.data;
       } catch {
@@ -759,4 +800,5 @@ describe('Chart Tools', () => {
 | Fecha | Versión | Cambios |
 |-------|---------|---------|
 | 2026-01-21 | 1.0 | Draft inicial |
+| 2026-02-06 | 1.1 | Actualizado con pre-requisitos de paquetes (`@langchain/langgraph-supervisor`, `-checkpoint-postgres`). Corregido `graphingAgentNode` para usar `state.messages` en lugar de `state.plan?.steps` (el campo `plan` no existe en `ExtendedAgentState`, `createSupervisor()` maneja planes internamente). Agregado `currentAgentIdentity` al return del agent node (PRD-020). Añadida dependencia explícita a PRD-020. |
 

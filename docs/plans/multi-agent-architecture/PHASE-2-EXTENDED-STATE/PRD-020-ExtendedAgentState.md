@@ -1,6 +1,6 @@
 # PRD-020: Extended AgentState Schema
 
-**Estado**: Draft
+**Estado**: ✅ COMPLETADO (2026-02-06)
 **Prioridad**: Alta
 **Dependencias**: PRD-010 (Test Strategy), PRD-011 (AgentRegistry)
 **Bloquea**: Fase 3 (Supervisor), Fase 4 (Handoffs)
@@ -240,7 +240,8 @@ export const AgentChangedEventSchema = BaseAgentEventSchema.extend({
 ## 5. Usage with createSupervisor()
 
 ```typescript
-import { createSupervisor } from "@langchain/langgraph/prebuilt";
+// NOTA: createSupervisor es un paquete separado (npm install @langchain/langgraph-supervisor)
+import { createSupervisor } from "@langchain/langgraph-supervisor";
 import { ExtendedAgentStateAnnotation } from "./state";
 
 // createSupervisor manages agent routing automatically
@@ -349,13 +350,13 @@ describe("Extended State Contracts", () => {
 
 ## 8. Criterios de Aceptación
 
-- [ ] `ExtendedAgentStateAnnotation` compiles without errors
-- [ ] Reducers work correctly with MessagesAnnotation
-- [ ] AgentIdentity updates correctly in agent nodes
-- [ ] AgentContext merges fields as expected
-- [ ] WebSocket events validated by schemas
-- [ ] Tests pass for all reducers
-- [ ] `npm run verify:types` pasa sin errores
+- [x] `ExtendedAgentStateAnnotation` compiles without errors
+- [x] Reducers work correctly with MessagesAnnotation
+- [x] AgentIdentity updates correctly in agent nodes
+- [x] AgentContext merges fields as expected
+- [x] WebSocket events validated by schemas
+- [x] Tests pass for all reducers
+- [x] `npm run verify:types` pasa sin errores
 
 ---
 
@@ -392,8 +393,56 @@ describe("Extended State Contracts", () => {
 
 ---
 
-## 12. Changelog
+## 12. Notas de Implementación (2026-02-06)
+
+### Decisiones tomadas durante la implementación
+
+1. **Backward compatibility via alias**: `AgentStateAnnotation` se convierte en alias de `ExtendedAgentStateAnnotation`. Los 15+ archivos que importan `AgentStateAnnotation` o `AgentState` no requirieron cambios. El tipo se ensanchó (más campos), no se estrechó.
+
+2. **`activeAgent` preservado**: El PRD original sugería que `currentAgentIdentity` reemplazaría a `activeAgent`, pero `graph.ts` usa `state.activeAgent` en conditional edges para routing. Son complementarios: `activeAgent` para routing interno del grafo, `currentAgentIdentity` para el UI.
+
+3. **Context merged, not replaced**: El PRD proponía reemplazar `context` con `AgentContext`. En cambio, se **movió** la definición inline a una interface `AgentContext` que preserva todos los campos existentes (`preferredModelRole`, `options`, `fileContext` como `FileContextPreparationResult`) y añade los nuevos (`searchContext`, `bcCompanyId`, `metadata`).
+
+4. **Import de createSupervisor corregido**: La §5 original tenía `from "@langchain/langgraph/prebuilt"`. Corregido a `from "@langchain/langgraph-supervisor"` (paquete separado, descubierto durante PRD-011).
+
+5. **No se usó `MessagesAnnotation.spec` spread**: Se mantuvo el `messagesStateReducer` explícito para compatibilidad con el patrón existente. Funcionalmente equivalente.
+
+### Archivos creados (7)
+
+| Archivo | Propósito |
+|---------|-----------|
+| `packages/shared/src/types/agent-identity.types.ts` | Tipo `AgentIdentity` (frontend + backend) |
+| `packages/shared/src/schemas/agent-identity.schema.ts` | Zod schemas `AgentIdentitySchema`, `AgentChangedEventSchema` |
+| `backend/src/modules/agents/orchestrator/state/AgentIdentity.ts` | Annotation + `DEFAULT_AGENT_IDENTITY` |
+| `backend/src/modules/agents/orchestrator/state/AgentContext.ts` | Annotation + `AgentContext` interface |
+| `backend/src/modules/agents/orchestrator/state/index.ts` | Barrel export |
+| `backend/src/__tests__/unit/agents/state/reducers.test.ts` | 12 tests unitarios |
+| `backend/src/__tests__/contracts/extended-state.contract.test.ts` | 14 tests de contrato |
+
+### Archivos modificados (7)
+
+| Archivo | Cambio |
+|---------|--------|
+| `backend/src/modules/agents/orchestrator/state.ts` | `ExtendedAgentStateAnnotation` + alias backward compat |
+| `packages/shared/src/types/agent.types.ts` | `agent_changed` type + `AgentChangedEvent` interface |
+| `packages/shared/src/types/index.ts` | Export `AgentIdentity`, `AgentChangedEvent` |
+| `packages/shared/src/schemas/index.ts` | Export schemas Zod |
+| `backend/src/modules/agents/business-central/bc-agent.ts` | Retorna `currentAgentIdentity` |
+| `backend/src/modules/agents/rag-knowledge/rag-agent.ts` | Retorna `currentAgentIdentity` |
+| `backend/src/modules/agents/orchestrator/graph.ts` | Orchestrator node retorna `DEFAULT_AGENT_IDENTITY` |
+
+### Métricas
+
+- **26 tests nuevos**: 12 reducer + 14 contract, todos passing
+- **2942 tests backend**: 0 regresiones
+- **0 archivos breaking**: Estrategia de alias asegura backward compat
+- **build:shared + verify:types + frontend lint**: Todo passing
+
+---
+
+## 13. Changelog
 
 | Fecha | Versión | Cambios |
 |-------|---------|---------|
 | 2026-02-02 | 1.0 | Initial draft with MessagesAnnotation base |
+| 2026-02-06 | 2.0 | **COMPLETADO**. Implementación con backward compat via alias, context merged, activeAgent preservado, import de createSupervisor corregido. 7 archivos creados, 7 modificados, 26 tests nuevos. |

@@ -9,6 +9,7 @@
 
 import type { SourceType, FetchStrategy } from './source.types';
 import type { ChatAttachmentSummary } from './chat-attachments.types';
+import type { AgentIdentity } from './agent-identity.types';
 
 /**
  * Provider-agnostic stop reason.
@@ -55,7 +56,8 @@ export type AgentEventType =
   | 'approval_resolved'
   | 'user_message_confirmed'
   | 'turn_paused'
-  | 'content_refused';
+  | 'content_refused'
+  | 'agent_changed';
 
 /**
  * Persistence State
@@ -420,8 +422,21 @@ export interface ContentRefusedEvent extends BaseAgentEvent {
 }
 
 /**
+ * Agent Changed Event (PRD-020)
+ * Emitted when the active agent changes during multi-agent orchestration.
+ * Frontend uses this to display agent badges and transition indicators.
+ */
+export interface AgentChangedEvent extends BaseAgentEvent {
+  type: 'agent_changed';
+  /** Identity of the previous agent */
+  previousAgent: AgentIdentity;
+  /** Identity of the new active agent */
+  currentAgent: AgentIdentity;
+}
+
+/**
  * Agent Event
- * Discriminated union of all 13 agent event types (sync architecture - no chunks)
+ * Discriminated union of all 14 agent event types (sync architecture - no chunks)
  *
  * Frontend should use switch statement on event.type for type narrowing:
  * @example
@@ -452,7 +467,8 @@ export type AgentEvent =
   | ApprovalResolvedEvent
   | UserMessageConfirmedEvent
   | TurnPausedEvent
-  | ContentRefusedEvent;
+  | ContentRefusedEvent
+  | AgentChangedEvent;
 
 /**
  * Agent Execution Result

@@ -58,9 +58,22 @@ Implementar persistencia del grafo usando `PostgresSaver` checkpointer:
 
 ### 3.1 Installation
 
-```bash
-npm install @langchain/langgraph-checkpoint-postgres
-```
+> **IMPORTANTE** (descubierto durante PRD-011/PRD-020): Los siguientes paquetes son necesarios y NO están incluidos en `@langchain/langgraph`:
+>
+> ```bash
+> # Checkpointer para persistencia de estado del grafo
+> npm install @langchain/langgraph-checkpoint-postgres
+>
+> # Supervisor para orquestación multi-agente (requerido por PRD-030)
+> npm install @langchain/langgraph-supervisor
+> ```
+>
+> Imports correctos:
+> ```typescript
+> import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
+> import { createSupervisor } from "@langchain/langgraph-supervisor";  // NO de @langchain/langgraph/prebuilt
+> import { createReactAgent } from "@langchain/langgraph/prebuilt";    // Este SÍ está en prebuilt
+> ```
 
 ### 3.2 Configuration
 
@@ -117,7 +130,8 @@ export function getCheckpointer(): PostgresSaver {
 ```typescript
 // supervisor-graph.ts
 import { getCheckpointer } from "@/infrastructure/checkpointer";
-import { createSupervisor } from "@langchain/langgraph/prebuilt";
+// NOTA: createSupervisor es un paquete separado (NO está en prebuilt)
+import { createSupervisor } from "@langchain/langgraph-supervisor";
 
 export async function compileSupervisorGraph() {
   const supervisor = await buildSupervisorGraph();
@@ -459,3 +473,4 @@ describe("PostgresSaver Integration", () => {
 | Fecha | Versión | Cambios |
 |-------|---------|---------|
 | 2026-02-02 | 1.0 | Initial draft with PostgresSaver + analytics |
+| 2026-02-06 | 1.1 | **Corrección**: Import de `createSupervisor` corregido a `@langchain/langgraph-supervisor` (paquete separado). Agregada sección de pre-requisitos de instalación con ambos paquetes (`-checkpoint-postgres` y `-supervisor`). PRD-020 completado: `ExtendedAgentStateAnnotation` disponible para uso con checkpointer. |

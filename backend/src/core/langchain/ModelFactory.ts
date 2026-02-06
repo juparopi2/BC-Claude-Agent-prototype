@@ -8,6 +8,7 @@
  */
 
 import { initChatModel } from 'langchain';
+import { ChatAnthropic } from '@langchain/anthropic';
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import type { ModelRole, RoleModelConfig } from '@/infrastructure/config/models';
 import { ModelRoleConfigs, AnthropicModels, OpenAIModels, GoogleModels } from '@/infrastructure/config/models';
@@ -168,6 +169,50 @@ export class ModelFactory {
       ...(config.provider === 'openai' ? { apiKey: env.AZURE_OPENAI_KEY } : {}),
       ...(config.provider === 'anthropic' ? { apiKey: env.ANTHROPIC_API_KEY } : {}),
     });
+  }
+
+  /**
+   * Creates a ChatAnthropic model instance with extended thinking enabled.
+   *
+   * Thinking is an instance-level property in @langchain/anthropic — it cannot be
+   * passed via .invoke() or .bind(). This method creates a separate model instance
+   * with thinking configured at construction time.
+   *
+   * Constraints (Anthropic API):
+   * - temperature must be undefined (defaults to 1) when thinking is enabled
+   * - budget_tokens >= 1024
+   * - maxTokens > budget_tokens
+   *
+   * @param role - The model role (used for maxTokens config)
+   * @param budget - Token budget for thinking (default: 10000, minimum: 1024)
+   * @returns Promise<BaseChatModel> - ChatAnthropic instance with thinking enabled
+   */
+  static async createForThinking(
+    role: ModelRole,
+    budget: number = 10000
+  ): Promise<BaseChatModel> {
+    const config = ModelRoleConfigs[role];
+
+    // Use orchestrator model (Sonnet) for thinking — Haiku doesn't support extended thinking
+    const thinkingModelName = ModelRoleConfigs['orchestrator'].modelName;
+    const maxTokens = Math.max(config.maxTokens ?? 16384, budget + 4096);
+
+    const cacheKey = `thinking:${thinkingModelName}:b${budget}:m${maxTokens}`;
+    if (this.cache.has(cacheKey)) {
+      return this.cache.get(cacheKey)!;
+    }
+
+    // Use ChatAnthropic directly — initChatModel doesn't support the thinking param
+    const model = new ChatAnthropic({
+      model: thinkingModelName,
+      maxTokens,
+      thinking: { type: 'enabled', budget_tokens: budget },
+      apiKey: env.ANTHROPIC_API_KEY,
+      // temperature NOT set — Anthropic requires temperature=1 for thinking (default)
+    });
+
+    this.cache.set(cacheKey, model as unknown as BaseChatModel);
+    return model as unknown as BaseChatModel;
   }
 
   /**

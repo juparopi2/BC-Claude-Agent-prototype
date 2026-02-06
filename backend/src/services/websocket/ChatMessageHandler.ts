@@ -142,14 +142,12 @@ export class ChatMessageHandler {
         hasExecuteMethod: typeof orchestrator?.executeAgentSync === 'function'
       });
 
-      // Note: Extended thinking options (enableThinking, thinkingBudget) are no longer used
-      // The frontend may still send them for backward compatibility, but they are ignored
-      // Model configuration is now role-based via ModelFactory
-
       this.logger.info('📞 Calling executeAgentSync...', {
         sessionId,
         userId,
         messageLength: message.length,
+        enableThinking: data.thinking?.enableThinking,
+        thinkingBudget: data.thinking?.thinkingBudget,
       });
 
       await orchestrator.executeAgentSync(
@@ -161,6 +159,8 @@ export class ChatMessageHandler {
           attachments: data.attachments,
           chatAttachments: data.chatAttachments,
           enableAutoSemanticSearch: data.enableAutoSemanticSearch,
+          enableThinking: data.thinking?.enableThinking,
+          thinkingBudget: data.thinking?.thinkingBudget,
         }
       );
 

@@ -2,7 +2,7 @@
 import { AgentState, ToolExecution } from '../orchestrator/state';
 import { BaseAgent } from '../core/AgentFactory';
 import { ModelFactory } from '../../../core/langchain/ModelFactory';
-import { getModelConfig } from '@/infrastructure/config/models';
+import { getModelConfig, ModelRoleConfigs } from '@/infrastructure/config/models';
 import { RunnableConfig } from '@langchain/core/runnables';
 import { AIMessage, ToolMessage, BaseMessage } from '@langchain/core/messages';
 import { createKnowledgeSearchTool } from './tools';
@@ -40,10 +40,17 @@ export class RAGAgent extends BaseAgent {
 
      // Use centralized model configuration for RAG Agent role
      const ragConfig = getModelConfig('rag_agent');
-     const model = await ModelFactory.create('rag_agent');
+     const enableThinking = state.context.options?.enableThinking ?? false;
+     const thinkingBudget = state.context.options?.thinkingBudget ?? 10000;
+
+     const model = enableThinking
+       ? await ModelFactory.createForThinking('rag_agent', thinkingBudget)
+       : await ModelFactory.create('rag_agent');
 
      logger.debug({
        modelString: ragConfig.modelString,
+       enableThinking,
+       thinkingBudget: enableThinking ? thinkingBudget : undefined,
      }, 'RAGAgent: Model initialized');
 
      // Create tool instance bound to the current user
@@ -172,10 +179,15 @@ export class RAGAgent extends BaseAgent {
        toolExecutionsCount: toolExecutions.length
      }, 'RAGAgent: Invocation complete');
 
+     // Track actual model used (thinking mode uses orchestrator/Sonnet model)
+     const actualModelName = enableThinking
+       ? ModelRoleConfigs['orchestrator'].modelName
+       : ragConfig.modelName;
+
      return {
         messages: newMessages,
         toolExecutions: toolExecutions, // Return tool executions for event emission
-        usedModel: ragConfig.modelName, // Track model for billing and traceability
+        usedModel: actualModelName, // Track model for billing and traceability
      };
   }
 }

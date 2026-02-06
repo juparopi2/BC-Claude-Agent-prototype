@@ -2,7 +2,7 @@
 import { AgentState, ToolExecution } from '../orchestrator/state';
 import { BaseAgent } from '../core/AgentFactory';
 import { ModelFactory } from '../../../core/langchain/ModelFactory';
-import { getModelConfig } from '@/infrastructure/config/models';
+import { getModelConfig, ModelRoleConfigs } from '@/infrastructure/config/models';
 import { RunnableConfig } from '@langchain/core/runnables';
 import {
   listAllEntitiesTool,
@@ -67,10 +67,17 @@ export class BusinessCentralAgent extends BaseAgent {
 
     // Use centralized model configuration for BC Agent role
     const bcConfig = getModelConfig('bc_agent');
-    const model = await ModelFactory.create('bc_agent');
+    const enableThinking = state.context.options?.enableThinking ?? false;
+    const thinkingBudget = state.context.options?.thinkingBudget ?? 10000;
+
+    const model = enableThinking
+      ? await ModelFactory.createForThinking('bc_agent', thinkingBudget)
+      : await ModelFactory.create('bc_agent');
 
     logger.debug({
       modelString: bcConfig.modelString,
+      enableThinking,
+      thinkingBudget: enableThinking ? thinkingBudget : undefined,
     }, 'BCAgent: Model initialized');
 
     // Bind all 7 BC meta-tools to the model
@@ -221,11 +228,16 @@ export class BusinessCentralAgent extends BaseAgent {
       toolExecutionsCount: toolExecutions.length
     }, 'BCAgent: Invocation complete');
 
+    // Track actual model used (thinking mode uses orchestrator/Sonnet model)
+    const actualModelName = enableThinking
+      ? ModelRoleConfigs['orchestrator'].modelName
+      : bcConfig.modelName;
+
     // Return the response as a partial state update (appending to messages)
     return {
       messages: newMessages,
       toolExecutions: toolExecutions, // Return tool executions for event emission
-      usedModel: bcConfig.modelName, // Track model for billing and traceability
+      usedModel: actualModelName, // Track model for billing and traceability
     };
   }
 }

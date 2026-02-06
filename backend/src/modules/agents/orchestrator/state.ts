@@ -60,6 +60,10 @@ export const AgentStateAnnotation = Annotation.Root({
       attachments?: string[];
       /** Enable automatic semantic search for relevant chunks */
       enableAutoSemanticSearch?: boolean;
+      /** Enable extended thinking mode (Anthropic models only) */
+      enableThinking?: boolean;
+      /** Token budget for extended thinking (minimum 1024) */
+      thinkingBudget?: number;
     };
     /** File context prepared for injection into prompts */
     fileContext?: FileContextPreparationResult;

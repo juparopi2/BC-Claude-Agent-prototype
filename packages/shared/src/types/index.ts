@@ -305,3 +305,9 @@ export type {
   FolderBatchFailedEvent,
   FolderWebSocketEvent,
 } from './upload-session.types';
+
+// Agent Registry types (PRD-011)
+export type {
+  AgentUISummary,
+  AgentListResponse,
+} from './agent-registry.types';

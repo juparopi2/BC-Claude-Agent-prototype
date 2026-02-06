@@ -15,6 +15,30 @@ Implementar orquestación multi-agente usando `createSupervisor()` nativo de Lan
 - Plan generation y execution manejados internamente
 - Integración con checkpointer para persistencia
 
+### Pre-requisitos de instalación
+
+> **IMPORTANTE** (descubierto durante PRD-011): `createSupervisor` NO está en `@langchain/langgraph/prebuilt`.
+> Es un paquete separado que debe instalarse:
+>
+> ```bash
+> npm install @langchain/langgraph-supervisor
+> ```
+>
+> El import correcto es:
+> ```typescript
+> import { createSupervisor } from "@langchain/langgraph-supervisor";
+> ```
+>
+> `createReactAgent` sí está en `@langchain/langgraph/prebuilt` (correcto como estaba).
+
+### Integración con Agent Registry (PRD-011)
+
+El Agent Registry ya está implementado y disponible. Este PRD debe consumirlo:
+- `registry.getWorkerAgents()` → agentes para crear con `createReactAgent()`
+- `registry.getToolsForAgent(agentId, userId)` → tools resueltos (estáticos + factory)
+- `registry.buildSupervisorAgentList()` → prompt formateado para el supervisor
+- `registry.getAgentsForSupervisor()` → `{ name, description }[]` para configuración
+
 ---
 
 ## 2. Arquitectura
@@ -61,7 +85,7 @@ backend/src/modules/agents/supervisor/
 
 ```typescript
 // supervisor-graph.ts
-import { createSupervisor } from "@langchain/langgraph/prebuilt";
+import { createSupervisor } from "@langchain/langgraph-supervisor";
 import { createReactAgent } from "@langchain/langgraph/prebuilt";
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 import { getAgentRegistry } from "@/modules/agents/core/registry";
@@ -413,3 +437,4 @@ await evaluate(supervisorTarget, {
 | Fecha | Versión | Cambios |
 |-------|---------|---------|
 | 2026-02-02 | 1.0 | Initial draft with createSupervisor() |
+| 2026-02-06 | 1.1 | **Corrección**: `createSupervisor` requiere paquete `@langchain/langgraph-supervisor` (no está en prebuilt). Agregada sección de pre-requisitos y notas de integración con Agent Registry (PRD-011 completado). |

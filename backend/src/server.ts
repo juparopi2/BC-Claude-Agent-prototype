@@ -47,6 +47,8 @@ import adminRoutes from './routes/admin';
 import settingsRoutes from './routes/settings';
 import chatAttachmentsRoutes from './routes/chat-attachments';
 import audioRoutes from './routes/audio';
+import agentsRoutes from './routes/agents';
+import { registerAgents } from '@/modules/agents/core/registry/registerAgents';
 import { authenticateMicrosoft } from '@domains/auth/middleware/auth-oauth';
 import { httpLogger } from '@shared/middleware/logging';
 import { validateSessionOwnership } from '@shared/utils/session-ownership';
@@ -258,6 +260,12 @@ async function initializeApp(): Promise<void> {
     console.log('✅ Initializing Todo Manager...');
     getTodoManager(io); // Initialize singleton
     console.log('✅ Todo Manager initialized');
+    console.log('');
+
+    // Step 7.5: Register Agent Definitions
+    console.log('📋 Registering Agent Definitions...');
+    registerAgents();
+    console.log('✅ Agent definitions registered');
     console.log('');
 
     // Step 8: Initialize Agent Orchestrator (refactored from DirectAgentService)
@@ -823,6 +831,9 @@ function configureRoutes(): void {
     // Audio services endpoints (transcription)
     app.use('/api/audio', audioRoutes);
   }
+
+  // Agent registry endpoint (PRD-011)
+  app.use('/api/agents', agentsRoutes);
 
   // Client log ingestion endpoint
   app.use('/api', logsRoutes);

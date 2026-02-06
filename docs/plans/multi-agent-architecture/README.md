@@ -64,7 +64,8 @@ Este proyecto transforma el sistema BC Agent desde un grafo lineal simple hacia 
 ### 3.1 `createSupervisor()` - Orquestación Multi-Agente
 
 ```typescript
-import { createSupervisor } from "@langchain/langgraph/prebuilt";
+// NOTA: createSupervisor es un paquete separado (npm install @langchain/langgraph-supervisor)
+import { createSupervisor } from "@langchain/langgraph-supervisor";
 import { ChatAnthropic } from "@langchain/anthropic";
 
 const supervisor = createSupervisor({
@@ -165,13 +166,20 @@ console.log(anthropic.profile?.reasoningOutput); // true para extended thinking
 | [PRD-006](./PHASE-0-REFACTORING/PRD-006-ModelAbstraction.md) | Multi-provider abstraction con `initChatModel()` | 🔴 |
 
 ### Fase 1: Fundación TDD y Agent Registry
-**Estado**: 🔴 No Iniciado
+**Estado**: 🟡 En Progreso
 **Objetivo**: Infraestructura de testing y registro de agentes
 
-| PRD | Componente | Estado |
-|-----|------------|--------|
-| [PRD-010](./PHASE-1-TDD-FOUNDATION/PRD-010-TestFixtures.md) | LangSmith Evaluations (reformulado) | 🔴 |
-| [PRD-011](./PHASE-1-TDD-FOUNDATION/PRD-011-AgentRegistry.md) | AgentRegistry (simplificado) | 🔴 |
+| PRD | Componente | Estado | Fecha |
+|-----|------------|--------|-------|
+| [PRD-010](./PHASE-1-TDD-FOUNDATION/PRD-010-TestFixtures.md) | LangSmith Evaluations (reformulado) | 🔴 | - |
+| [PRD-011](./PHASE-1-TDD-FOUNDATION/PRD-011-AgentRegistry.md) | AgentRegistry (simplificado) | ✅ Completado | 2026-02-06 |
+
+**Métricas PRD-011:**
+- 12 archivos creados, 4 modificados
+- 26 tests unitarios, 0 regresiones (2916 tests backend pasan)
+- Constantes centralizadas en `@bc-agent/shared` (single source of truth)
+- API endpoint `GET /api/agents` autenticado
+- Descubrimiento: `createSupervisor` requiere paquete `@langchain/langgraph-supervisor` (corregido en PRD-030)
 
 ### Fase 2: Extended State Schema
 **Estado**: 🔴 No Iniciado
@@ -323,7 +331,8 @@ npm run test:e2e
 
 | Recurso | URL |
 |---------|-----|
-| LangGraph Prebuilts | https://langchain-ai.github.io/langgraphjs/reference/functions/langgraph_prebuilt.createSupervisor.html |
+| LangGraph Supervisor (paquete separado) | https://www.npmjs.com/package/@langchain/langgraph-supervisor |
+| LangGraph Prebuilts (createReactAgent) | https://langchain-ai.github.io/langgraphjs/reference/functions/langgraph_prebuilt.createReactAgent.html |
 | initChatModel | https://js.langchain.com/docs/how_to/chat_models_universal_init/ |
 | PostgresSaver | https://langchain-ai.github.io/langgraphjs/reference/classes/checkpoint_postgres.PostgresSaver.html |
 | interrupt() | https://langchain-ai.github.io/langgraphjs/how-tos/human_in_the_loop/breakpoints/ |
@@ -338,3 +347,4 @@ npm run test:e2e
 |-------|---------|---------|
 | 2026-01-21 | 1.0 | Creación inicial del plan y estructura de PRDs |
 | 2026-02-02 | 2.0 | Actualización con patrones nativos LangGraph, eliminación de PRD-031, deprecation de PRD-002, adición de PRD-006 |
+| 2026-02-06 | 2.1 | PRD-011 completado. Corrección: `createSupervisor` requiere `@langchain/langgraph-supervisor` (paquete separado, no está en `@langchain/langgraph/prebuilt`). Actualizado ejemplo en §3.1 y PRD-030. |

@@ -66,3 +66,16 @@ export {
   SETTINGS_API,
   SETTINGS_TAB,
 } from './settings.constants';
+
+// Agent Registry Constants (PRD-011)
+export {
+  AGENT_ID,
+  AGENT_DISPLAY_NAME,
+  AGENT_ICON,
+  AGENT_COLOR,
+  AGENT_DESCRIPTION,
+  AGENT_CAPABILITY,
+  AGENT_API,
+  type AgentId,
+  type AgentCapability,
+} from './agent-registry.constants';

@@ -1,6 +1,6 @@
 # PRD-011: Agent Registry (Simplificado)
 
-**Estado**: Draft (Simplificado)
+**Estado**: ✅ COMPLETADO (2026-02-06)
 **Prioridad**: Alta
 **Dependencias**: PRD-010 (Test Strategy)
 **Bloquea**: Fase 2 (Extended State), Fase 3 (Supervisor)
@@ -615,14 +615,14 @@ describe("AgentRegistry", () => {
 
 ## 6. Criterios de Aceptación
 
-- [ ] AgentRegistry singleton works correctly
-- [ ] All existing agents registered
-- [ ] `getAgentsForSupervisor()` returns correct format
-- [ ] `buildSupervisorAgentList()` generates valid prompt section
-- [ ] UI summary excludes sensitive data
-- [ ] API endpoint returns agent list
-- [ ] Tests cover all functionality
-- [ ] `npm run verify:types` pasa sin errores
+- [x] AgentRegistry singleton works correctly
+- [x] All existing agents registered
+- [x] `getAgentsForSupervisor()` returns correct format
+- [x] `buildSupervisorAgentList()` generates valid prompt section
+- [x] UI summary excludes sensitive data
+- [x] API endpoint returns agent list
+- [x] Tests cover all functionality (26 tests)
+- [x] `npm run verify:types` pasa sin errores
 
 ---
 
@@ -668,9 +668,81 @@ backend/src/__tests__/unit/agents/AgentRegistry.test.ts
 
 ---
 
-## 10. Changelog
+## 10. Notas de Implementación
+
+### Decisiones tomadas durante la implementación (2026-02-06)
+
+**1. Constantes centralizadas en `@bc-agent/shared`** (no estaba en el PRD original)
+
+El PRD original tenía los tipos y constantes solo en el backend. Durante la implementación se decidió mover IDs, colores, iconos, nombres y capabilities al shared package para que el frontend pueda importar los mismos valores sin duplicación.
+
+Archivos creados:
+- `packages/shared/src/constants/agent-registry.constants.ts`
+- `packages/shared/src/types/agent-registry.types.ts`
+
+**2. Patrón `AgentToolConfig` con `toolFactory`** (diferencia vs PRD)
+
+El PRD mostraba `registerWithTools(definition, tools)` con tools estáticos. En la práctica, RAG tools requieren `userId` en tiempo de creación (`createKnowledgeSearchTool(userId)`) por aislamiento multi-tenant. Se implementó:
+
+```typescript
+interface AgentToolConfig {
+  staticTools?: StructuredToolInterface[];     // BC Agent: 7 tools fijos
+  toolFactory?: (userId: string) => StructuredToolInterface[];  // RAG Agent: dinámico
+}
+```
+
+**3. Corrección de import de `createSupervisor`** (descubierta durante investigación)
+
+El PRD indicaba `import { createSupervisor } from "@langchain/langgraph/prebuilt"`. Esto es **incorrecto**. El import correcto es:
+```typescript
+import { createSupervisor } from "@langchain/langgraph-supervisor";
+```
+Esto es un paquete separado que debe instalarse. Se documentó en PRD-030.
+
+**4. Implementación aditiva (no destructiva)**
+
+No se modificaron `graph.ts` ni `router.ts`. El registro coexiste con `AgentFactory.ts` (IAgentNode/BaseAgent) que sigue en uso activo por el graph. La migración se hará en Phase 3.
+
+### Archivos creados
+
+| Archivo | Propósito |
+|---------|-----------|
+| `packages/shared/src/constants/agent-registry.constants.ts` | Constantes visuales |
+| `packages/shared/src/types/agent-registry.types.ts` | Tipos frontend-safe |
+| `backend/src/modules/agents/core/registry/AgentDefinition.ts` | Tipos backend-only |
+| `backend/src/modules/agents/core/registry/AgentRegistry.ts` | Singleton registry |
+| `backend/src/modules/agents/core/registry/registerAgents.ts` | Bootstrap de registro |
+| `backend/src/modules/agents/core/registry/index.ts` | Barrel export |
+| `backend/src/modules/agents/core/definitions/bc-agent.definition.ts` | Definición BC Agent |
+| `backend/src/modules/agents/core/definitions/rag-agent.definition.ts` | Definición RAG Agent |
+| `backend/src/modules/agents/core/definitions/supervisor.definition.ts` | Definición Supervisor |
+| `backend/src/modules/agents/core/definitions/index.ts` | Barrel export |
+| `backend/src/modules/agents/core/index.ts` | Core barrel export |
+| `backend/src/routes/agents.ts` | REST API (`GET /api/agents`) |
+| `backend/src/modules/agents/core/registry/AgentRegistry.test.ts` | 26 unit tests |
+
+### Archivos modificados
+
+| Archivo | Cambio |
+|---------|--------|
+| `packages/shared/src/constants/index.ts` | Export agent registry constants |
+| `packages/shared/src/types/index.ts` | Export agent registry types |
+| `packages/shared/src/index.ts` | Barrel exports |
+| `backend/src/server.ts` | `registerAgents()` al arrancar + mount `/api/agents` |
+
+### Verificación
+
+- 26/26 tests unitarios del registry pasan
+- 2916/2916 tests del backend pasan (0 regresiones)
+- `verify:types` limpio
+- Backend lint: 0 errores
+
+---
+
+## 11. Changelog
 
 | Fecha | Versión | Cambios |
 |-------|---------|---------|
 | 2026-01-21 | 1.0 | Draft inicial con keyword routing |
 | 2026-02-02 | 2.0 | Simplificado: Eliminado keyword routing, agregado createSupervisor() integration |
+| 2026-02-06 | 3.0 | **COMPLETADO**: Implementación con constantes en shared, toolFactory pattern, API endpoint, 26 tests |

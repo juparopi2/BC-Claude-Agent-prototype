@@ -190,7 +190,8 @@
       "Bash(Select-String -Pattern \"queue|Queue\" -AllMatches)",
       "Bash(npx prisma:*)",
       "Bash(set:*)",
-      "Bash(source:*)"
+      "Bash(source:*)",
+      "Bash(npx -w backend vitest run:*)"
     ],
     "deny": [],
     "ask": []

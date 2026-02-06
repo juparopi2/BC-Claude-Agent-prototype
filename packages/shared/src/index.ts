@@ -252,6 +252,10 @@ export type {
   ResolveFolderConflictsRequest,
   ResolveFolderConflictsResponse,
   InitUploadSessionResponseWithConflicts,
+
+  // Agent Registry types (PRD-011)
+  AgentUISummary,
+  AgentListResponse,
 } from './types';
 
 // Type guards (runtime functions, not types)
@@ -370,6 +374,17 @@ export {
   FOLDER_WS_EVENTS,
   type FolderWsChannel,
   type FolderWsEventType,
+
+  // Agent Registry Constants (PRD-011)
+  AGENT_ID,
+  AGENT_DISPLAY_NAME,
+  AGENT_ICON,
+  AGENT_COLOR,
+  AGENT_DESCRIPTION,
+  AGENT_CAPABILITY,
+  AGENT_API,
+  type AgentId,
+  type AgentCapability,
 } from './constants';
 
 // ============================================

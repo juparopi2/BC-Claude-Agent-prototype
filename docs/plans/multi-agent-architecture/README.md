@@ -2,7 +2,7 @@
 
 **Estado**: En Progreso
 **Fecha Inicio**: 2026-01-21
-**Versión del Plan**: 2.3 (PRD-030 Completado - Supervisor Integration)
+**Versión del Plan**: 2.4 (PRD-032 Completado - Durable Persistence + Analytics)
 
 ---
 
@@ -25,7 +25,7 @@ Este proyecto transforma el sistema BC Agent desde un grafo lineal simple hacia 
 | Custom ApprovalManager | `interrupt()` | No refactorizar |
 | Custom HandoffManager | `Command(goto=...)` | ~70% código |
 | Custom ModelFactory | `initChatModel()` | ~80% código |
-| Custom persistence | `PostgresSaver` | ~80% código |
+| Custom persistence | `MSSQLSaver` (custom checkpointer) | ~80% código |
 
 ---
 
@@ -52,8 +52,8 @@ Este proyecto transforma el sistema BC Agent desde un grafo lineal simple hacia 
                                     │
                                     ▼
                     ┌─────────────────────────────────┐
-                    │   PostgresSaver Checkpointer   │ ◄── Persistencia
-                    │   (Thread state automático)    │     automática
+                    │   MSSQLSaver Checkpointer      │ ◄── Persistencia
+                    │   (Custom, Prisma + Azure SQL) │     durable
                     └─────────────────────────────────┘
 ```
 
@@ -198,27 +198,36 @@ console.log(anthropic.profile?.reasoningOutput); // true para extended thinking
 - `AgentChangedEvent` + Zod schemas listos para Phase 6 (frontend badges)
 
 ### Fase 3: Supervisor con createSupervisor()
-**Estado**: 🟡 En Progreso (PRD-030 ✅)
+**Estado**: ✅ COMPLETADO (2026-02-06)
 **Objetivo**: Implementar orquestación usando patrones nativos
 
 | PRD | Componente | Estado | Fecha |
 |-----|------------|--------|-------|
 | [PRD-030](./PHASE-3-SUPERVISOR/PRD-030-PlannerAgent.md) | Supervisor Integration con `createSupervisor()` | ✅ Completado | 2026-02-06 |
 | ~~PRD-031~~ | ~~PlanExecutor~~ | ❌ ELIMINADO | - |
-| [PRD-032](./PHASE-3-SUPERVISOR/PRD-032-PlanPersistence.md) | Persistencia durable + Analytics | 🔴 | - |
+| [PRD-032](./PHASE-3-SUPERVISOR/PRD-032-PlanPersistence.md) | Durable Persistence + Agent Analytics | ✅ Completado | 2026-02-06 |
 
 > **Nota PRD-031**: ELIMINADO. `createSupervisor()` maneja la ejecución de steps automáticamente.
 >
-> **Pre-requisito de instalación** (descubierto en PRD-011): `createSupervisor` requiere paquete separado `@langchain/langgraph-supervisor`. PostgresSaver requiere `@langchain/langgraph-checkpoint-postgres`. Ninguno está incluido en `@langchain/langgraph`.
+> **Pre-requisito de instalación** (descubierto en PRD-011): `createSupervisor` requiere paquete separado `@langchain/langgraph-supervisor`. No se requiere `@langchain/langgraph-checkpoint-postgres` ya que se implementó un checkpointer custom para MSSQL (`MSSQLSaver`).
 
 **Métricas PRD-030:**
 - 13 archivos creados, 6 modificados, 4 eliminados (deprecated code cleanup)
 - 44 tests nuevos (5 archivos), 0 regresiones (2986 tests backend pasan)
-- `MemorySaver` para MVP (MemorySaver in-memory; PRD-032 proveerá persistencia durable con MSSQL)
+- `MemorySaver` para MVP (reemplazado por `MSSQLSaver` en PRD-032)
 - RAG tool refactorizado: `config.configurable.userId` reemplaza closure `toolFactory(userId)`
 - Slash commands preservados: `/bc`, `/search`, `/rag` bypass supervisor LLM
 - `interrupt()` + `Command({ resume })` implementados con WebSocket `supervisor:resume`
 - Old code eliminado: `router.ts`, `graph.ts`, `check_graph.ts`, `AgentFactory.ts`
+
+**Métricas PRD-032:**
+- 7 archivos creados, 4 modificados
+- 34 tests nuevos (21 MSSQLSaver + 13 AgentAnalyticsService), 0 regresiones (3020 tests backend pasan)
+- `MSSQLSaver`: Checkpointer custom extendiendo `BaseCheckpointSaver` con Prisma + Azure SQL
+- `AgentAnalyticsService`: Tracking de invocaciones con MERGE upsert atómico
+- API endpoints: `GET /api/analytics/agents` y `GET /api/analytics/agents/:id/daily`
+- Prisma schema: 3 tablas nuevas (`langgraph_checkpoints`, `langgraph_checkpoint_writes`, `agent_usage_analytics`), 1 eliminada (`checkpoints`)
+- Estado de conversación persiste entre reinicios del servidor
 
 ### Fase 4: Handoffs con Command()
 **Estado**: 🔴 No Iniciado
@@ -256,7 +265,7 @@ console.log(anthropic.profile?.reasoningOutput); // true para extended thinking
 | **Patrón Orquestación** | `createSupervisor()` | Prebuilt, probado, reduce ~90% código custom |
 | **Human-in-the-Loop** | `interrupt()` nativo | Eliminates custom ApprovalManager refactoring |
 | **Handoffs** | `Command(goto=...)` | Pattern nativo, elimina HandoffManager |
-| **Persistencia** | `PostgresSaver` checkpointer | Automatic state persistence |
+| **Persistencia** | `MSSQLSaver` custom checkpointer (Prisma + Azure SQL) | Durable state persistence compatible con MSSQL |
 | **Model Abstraction** | `initChatModel()` | Multi-provider, feature detection con profile |
 | **Testing LLM** | LangSmith evaluations | No FakeChatModel - test real behavior |
 | **Modelo Supervisor** | Haiku (económico) | Rápido y barato para routing |
@@ -283,10 +292,10 @@ FASE 1: TDD Foundation
 FASE 2: Extended State
 └── PRD-020: MessagesAnnotation + AgentIdentity ──────────► FASE 3
 
-FASE 3: Supervisor (PRD-030 ✅)
+FASE 3: Supervisor (✅ COMPLETADO)
 ├── PRD-030: createSupervisor() Integration [✅ COMPLETADO] ──┐
 ├── PRD-031: [ELIMINADO] ─────────────────────────────────────┤
-└── PRD-032: Persistencia Durable + Analytics ────────────────┴──► FASE 4
+└── PRD-032: MSSQLSaver + Analytics [✅ COMPLETADO] ──────────┴──► FASE 4
 
 FASE 4: Handoffs
 └── PRD-040: Command(goto=...) Pattern ───────────────────► FASE 5
@@ -322,7 +331,7 @@ FASE 6: UI
 | `createSupervisor()` no cubre caso de uso | Baja | Alto | Evaluar primero con POC |
 | `initChatModel()` no soporta Anthropic features | Media | Medio | Verificar beta features (PDF, caching) |
 | LangSmith evaluations lentas | Media | Bajo | Usar `num_repetitions` bajo en CI |
-| PostgresSaver performance | Baja | Medio | Índices apropiados en thread_id |
+| MSSQLSaver performance | Baja | Medio | Índices compuestos en thread_id + checkpoint_ns; VarBinary(Max) soporta hasta 2GB |
 | Migración rompe flujos existentes | Media | Alto | Feature flags, gradual rollout |
 
 ---
@@ -355,7 +364,7 @@ npm run test:e2e
 | LangGraph Supervisor (paquete separado) | https://www.npmjs.com/package/@langchain/langgraph-supervisor |
 | LangGraph Prebuilts (createReactAgent) | https://langchain-ai.github.io/langgraphjs/reference/functions/langgraph_prebuilt.createReactAgent.html |
 | initChatModel | https://js.langchain.com/docs/how_to/chat_models_universal_init/ |
-| PostgresSaver | https://langchain-ai.github.io/langgraphjs/reference/classes/checkpoint_postgres.PostgresSaver.html |
+| BaseCheckpointSaver (base for MSSQLSaver) | https://langchain-ai.github.io/langgraphjs/reference/classes/langgraph_checkpoint.BaseCheckpointSaver.html |
 | interrupt() | https://langchain-ai.github.io/langgraphjs/how-tos/human_in_the_loop/breakpoints/ |
 | Command Pattern | https://langchain-ai.github.io/langgraphjs/how-tos/command/ |
 | LangSmith Evaluation | https://docs.smith.langchain.com/evaluation |
@@ -371,3 +380,4 @@ npm run test:e2e
 | 2026-02-06 | 2.1 | PRD-011 completado. Corrección: `createSupervisor` requiere `@langchain/langgraph-supervisor` (paquete separado, no está en `@langchain/langgraph/prebuilt`). Actualizado ejemplo en §3.1 y PRD-030. |
 | 2026-02-06 | 2.2 | PRD-020 completado (Fase 2). `ExtendedAgentStateAnnotation` con `currentAgentIdentity` y `AgentContext` enriquecido. Backward compat via alias. Corregidos imports erróneos de `createSupervisor` en PRD-032 y PRD-050. Corregido PRD-050 para usar `state.messages` en lugar de `state.plan?.steps` inexistente. Agregados pre-requisitos de instalación de paquetes en PRDs de Fase 3 y 5. |
 | 2026-02-06 | 2.3 | **PRD-030 completado** (Fase 3 parcial). Supervisor Integration implementado: `createSupervisor()` + `createReactAgent()` + `MemorySaver` + `interrupt()`/`Command({ resume })`. 13 archivos creados, 6 modificados, 4 eliminados (deprecated code). 44 tests nuevos, 2986 tests totales pasando. `MemorySaver` como MVP checkpointer (PRD-032 proveerá MSSQL persistence). RAG tool refactorizado a static con `config.configurable`. Old routing eliminado (`router.ts`, `graph.ts`, `AgentFactory.ts`). PRD-032 desbloqueado. |
+| 2026-02-06 | 2.4 | **PRD-032 completado** (Fase 3 completa). `MSSQLSaver` custom checkpointer implementado extendiendo `BaseCheckpointSaver` con Prisma + Azure SQL (no se necesita PostgreSQL). `AgentAnalyticsService` con MERGE upsert atómico para métricas de uso. API endpoints de analytics. 7 archivos nuevos, 4 modificados. 34 tests nuevos, 3020 tests totales. Tabla `checkpoints` (legacy) eliminada, reemplazada por `langgraph_checkpoints` + `langgraph_checkpoint_writes`. GAP-002 resuelto (MSSQL checkpointer). Fase 4 (Handoffs) desbloqueada. |

@@ -1,7 +1,7 @@
 # Success Criteria & Verification Checklist
 
 **Documento**: Entregables y criterios de verificación por fase
-**Última Actualización**: 2026-02-06
+**Última Actualización**: 2026-02-06 (PRD-032 completado)
 **Propósito**: Base de conocimiento para validar que cada fase funciona correctamente y que no hay regresiones
 
 ---
@@ -14,7 +14,7 @@
 | Fase 0.5: Model Abstraction | 🔴 NO INICIADO | - | PRD-006 |
 | Fase 1: TDD Foundation | 🟡 PARCIAL | PRD-011 | PRD-010 |
 | Fase 2: Extended State | ✅ COMPLETADO | PRD-020 | - |
-| Fase 3: Supervisor | 🟡 PARCIAL | PRD-030 | PRD-032 |
+| Fase 3: Supervisor | ✅ COMPLETADO | PRD-030, PRD-032 | - |
 | Fase 4: Handoffs | 🔴 NO INICIADO | - | PRD-040 |
 | Fase 5: Graphing Agent | 🔴 NO INICIADO | - | PRD-050 |
 | Fase 6: UI | 🔴 NO INICIADO | - | PRD-060, PRD-061 |
@@ -75,12 +75,11 @@
 
 ---
 
-## Fase 3: Supervisor - Verificación 🟡
+## Fase 3: Supervisor - Verificación ✅
 
 ### Entregables Completados (PRD-030)
 - [x] `createSupervisor()` compila con BC Agent + RAG Agent
 - [x] `createReactAgent()` instances con tools y prompts del registry
-- [x] `MemorySaver` checkpointer para interrupt/resume
 - [x] Slash commands preservados: `/bc`, `/search`, `/rag` bypass supervisor
 - [x] `SupervisorGraphAdapter` implementa `ICompiledGraph`
 - [x] `result-adapter.ts` mapea output → `AgentState` (identity, tools, model)
@@ -88,10 +87,13 @@
 - [x] WebSocket `supervisor:resume` handler en server.ts
 - [x] Old code eliminado: `router.ts`, `graph.ts`, `AgentFactory.ts`, `check_graph.ts`
 
-### Pendiente (PRD-032)
-- [ ] Persistencia durable (reemplazar MemorySaver)
-- [ ] AgentAnalyticsService para métricas de uso
-- [ ] API endpoints de analytics
+### Entregables Completados (PRD-032)
+- [x] `MSSQLSaver` custom checkpointer (reemplaza `MemorySaver`)
+- [x] Persistencia durable en Azure SQL via Prisma
+- [x] `AgentAnalyticsService` con MERGE upsert atómico
+- [x] API endpoints: `GET /api/analytics/agents`, `GET /api/analytics/agents/:id/daily`
+- [x] Prisma schema: 3 tablas nuevas, 1 eliminada (legacy `checkpoints`)
+- [x] 34 tests nuevos (21 MSSQLSaver + 13 Analytics), 3020 tests totales
 
 ### Escenarios de Verificación E2E (PRD-030)
 
@@ -127,10 +129,11 @@
 | Riesgo | Qué Verificar | Comando |
 |--------|---------------|---------|
 | Event pipeline breaks | Events emitidos correctamente al frontend | Manual: enviar mensaje y verificar events en browser console |
-| WebSocket disconnect durante interrupt | MemorySaver pierde estado si server reinicia | Verificar que interrupt sin restart funcione |
+| Checkpoint persistence | Estado persiste entre reinicios | Enviar mensaje → reiniciar server → enviar follow-up (contexto debe mantenerse) |
 | Tool execution deduplication | No duplicate tool events | Check `seenToolIds` en ExecutionContext |
 | userId propagation | RAG Agent recibe userId via configurable | Verificar semantic search filtra por user |
 | Model billing accuracy | `usedModel` matches actual model invoked | Check response metadata |
+| Analytics no bloquea flujo | `recordInvocation` falla sin afectar invoke | Simular DB failure, verificar que invoke completa |
 
 ---
 
@@ -152,24 +155,19 @@
 
 **Recomendación**: Agregar a PRD-060 (Agent Selector UI) o crear un PRD nuevo PRD-033 específico.
 
-### GAP-002: PRD-032 Checkpointer Incompatible con Azure SQL
+### ~~GAP-002: PRD-032 Checkpointer Incompatible con Azure SQL~~ ✅ RESUELTO
 
-**Descripción**: PRD-032 propone `PostgresSaver` pero el proyecto usa Azure SQL (MSSQL). `@langchain/langgraph-checkpoint-postgres` NO funciona con MSSQL.
+**Resolución**: Se implementó `MSSQLSaver` custom checkpointer extendiendo `BaseCheckpointSaver` de `@langchain/langgraph-checkpoint` con Prisma Client. No se necesitó `@langchain/langgraph-checkpoint-postgres`. Resuelto en PRD-032.
 
-**Opciones**:
-1. Custom MSSQL checkpointer extendiendo `BaseCheckpointSaver`
-2. Redis-based checkpointer (`@langchain/langgraph-checkpoint-redis` si existe)
-3. Mantener `MemorySaver` + guardar state manualmente en MSSQL
+### GAP-003: Supervisor Error Handling & Retry ⚠️ PARCIALMENTE RESUELTO
 
-**Recomendación**: PRD-032 necesita re-scoping significativo antes de implementación.
+**Descripción**: Si el supervisor LLM falla (rate limit, timeout, network error), no hay retry logic ni fallback.
 
-### GAP-003: Supervisor Error Handling & Retry
+**Parcialmente resuelto**: Con `MSSQLSaver` (PRD-032), el estado de conversación ahora persiste entre reinicios del servidor. Sin embargo, no hay retry logic para fallos de LLM.
 
-**Descripción**: Si el supervisor LLM falla (rate limit, timeout, network error), no hay retry logic ni fallback. El `MemorySaver` no persiste entre restarts.
+**Impacto residual**: Rate limits de Haiku pueden bloquear routing. No hay fallback automático.
 
-**Impacto**: Conversaciones en curso se pierden si el server reinicia. Rate limits de Haiku pueden bloquear routing.
-
-**Recomendación**: Agregar a PRD-032 o crear PRD-033.
+**Recomendación**: Crear PRD-033 para retry logic y error recovery.
 
 ### GAP-004: Agent Changed Event no emitido por Supervisor
 
@@ -206,7 +204,7 @@
 npm run build:shared                    # Build shared package
 npm run verify:types                    # Type check shared + frontend
 npm run -w backend lint                 # Backend lint (0 errors)
-npm run -w backend test:unit            # Full backend unit tests (2986+)
+npm run -w backend test:unit            # Full backend unit tests (3020+)
 npx vitest run "supervisor"             # Supervisor-specific tests (44)
 
 # Tests específicos por módulo
@@ -215,6 +213,8 @@ npx vitest run "result-adapter"         # Result adapter tests
 npx vitest run "slash-command"          # Slash command routing
 npx vitest run "supervisor-prompt"      # Prompt generation tests
 npx vitest run "supervisor-graph"       # Graph adapter tests
+npx vitest run "MSSQLSaver"            # Checkpointer tests (21)
+npx vitest run "AgentAnalyticsService"  # Analytics tests (13)
 
 # Frontend (cuando PRD-060+ se implemente)
 npm run -w bc-agent-frontend test       # Frontend tests
@@ -228,3 +228,4 @@ npm run -w bc-agent-frontend lint       # Frontend lint
 | Fecha | Cambios |
 |-------|---------|
 | 2026-02-06 | Creación inicial: criterios de verificación para Fases 0-3. Identificados 6 gaps no cubiertos en PRDs existentes. |
+| 2026-02-06 | PRD-032 completado. Fase 3 marcada como ✅ COMPLETADO. GAP-002 resuelto (MSSQLSaver). GAP-003 parcialmente resuelto (persistencia durable). Agregados tests de checkpointer y analytics a comandos de verificación. |

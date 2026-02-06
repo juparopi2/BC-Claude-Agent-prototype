@@ -48,8 +48,10 @@ import settingsRoutes from './routes/settings';
 import chatAttachmentsRoutes from './routes/chat-attachments';
 import audioRoutes from './routes/audio';
 import agentsRoutes from './routes/agents';
+import analyticsRoutes from './routes/analytics';
 import { registerAgents } from '@/modules/agents/core/registry/registerAgents';
 import { initializeSupervisorGraph, resumeSupervisor } from '@/modules/agents/supervisor';
+import { initializeCheckpointer } from '@/infrastructure/checkpointer';
 import { authenticateMicrosoft } from '@domains/auth/middleware/auth-oauth';
 import { httpLogger } from '@shared/middleware/logging';
 import { validateSessionOwnership } from '@shared/utils/session-ownership';
@@ -269,7 +271,13 @@ async function initializeApp(): Promise<void> {
     console.log('✅ Agent definitions registered');
     console.log('');
 
-    // Step 7.6: Initialize Supervisor Graph (multi-agent coordination)
+    // Step 7.6: Initialize MSSQL Checkpointer (must happen before supervisor)
+    console.log('💾 Initializing MSSQL Checkpointer...');
+    await initializeCheckpointer();
+    console.log('✅ MSSQL Checkpointer initialized');
+    console.log('');
+
+    // Step 7.7: Initialize Supervisor Graph (multi-agent coordination)
     console.log('🤖 Initializing Supervisor Graph...');
     await initializeSupervisorGraph();
     console.log('✅ Supervisor graph initialized');
@@ -841,6 +849,11 @@ function configureRoutes(): void {
 
   // Agent registry endpoint (PRD-011)
   app.use('/api/agents', agentsRoutes);
+
+  // Agent analytics endpoint (PRD-032)
+  if (isDatabaseAvailable) {
+    app.use('/api/analytics', analyticsRoutes);
+  }
 
   // Client log ingestion endpoint
   app.use('/api', logsRoutes);

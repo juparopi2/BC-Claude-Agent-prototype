@@ -30,6 +30,18 @@ vi.mock('@langchain/langgraph/prebuilt', () => ({
   }),
 }));
 
+// Mock checkpointer to avoid database connection
+vi.mock('@/infrastructure/checkpointer', () => ({
+  getCheckpointer: vi.fn().mockReturnValue({}),
+}));
+
+// Mock analytics to avoid database connection
+vi.mock('@/domains/analytics', () => ({
+  getAgentAnalyticsService: vi.fn().mockReturnValue({
+    recordInvocation: vi.fn().mockResolvedValue(undefined),
+  }),
+}));
+
 describe('supervisor-graph', () => {
   beforeEach(() => {
     // Reset the supervisor graph singleton before each test

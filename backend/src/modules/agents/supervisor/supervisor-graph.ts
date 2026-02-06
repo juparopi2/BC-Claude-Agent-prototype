@@ -8,7 +8,7 @@
  * @module modules/agents/supervisor/supervisor-graph
  */
 
-import { MemorySaver, Command } from '@langchain/langgraph';
+import { Command } from '@langchain/langgraph';
 import { createSupervisor } from '@langchain/langgraph-supervisor';
 import { HumanMessage } from '@langchain/core/messages';
 import type { AgentId } from '@bc-agent/shared';
@@ -18,8 +18,10 @@ import type { AgentState } from '../orchestrator/state';
 import { buildSupervisorPrompt } from './supervisor-prompt';
 import { buildReactAgents, type BuiltAgent } from './agent-builders';
 import { detectSlashCommand } from './slash-command-router';
-import { adaptSupervisorResult } from './result-adapter';
+import { adaptSupervisorResult, detectAgentIdentity } from './result-adapter';
 import { createChildLogger } from '@/shared/utils/logger';
+import { getCheckpointer } from '@/infrastructure/checkpointer';
+import { getAgentAnalyticsService } from '@/domains/analytics';
 
 const logger = createChildLogger({ service: 'SupervisorGraph' });
 
@@ -29,7 +31,6 @@ const logger = createChildLogger({ service: 'SupervisorGraph' });
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let compiledSupervisor: any = null;
 let agentMap: Map<AgentId, BuiltAgent> = new Map();
-let checkpointer: MemorySaver | null = null;
 let initialized = false;
 
 /**
@@ -61,8 +62,8 @@ export async function initializeSupervisorGraph(): Promise<void> {
   // 3. Build dynamic prompt
   const prompt = buildSupervisorPrompt();
 
-  // 4. Create checkpointer for interrupt/resume
-  checkpointer = new MemorySaver();
+  // 4. Get durable checkpointer (initialized in server.ts before this)
+  const checkpointer = getCheckpointer();
 
   // 5. Create and compile supervisor
   const workflow = createSupervisor({
@@ -159,20 +160,46 @@ class SupervisorGraphAdapter implements ICompiledGraph {
     );
 
     const threadId = `session-${sessionId}`;
+    const startTime = Date.now();
+    let invocationSuccess = true;
 
-    const result = await compiledSupervisor.invoke(
-      {
-        messages: [new HumanMessage(prompt)],
-      },
-      {
-        configurable: {
-          thread_id: threadId,
-          userId,
+    let result: { messages: unknown[] };
+    try {
+      result = await compiledSupervisor.invoke(
+        {
+          messages: [new HumanMessage(prompt)],
         },
-        recursionLimit: options?.recursionLimit ?? 50,
-        signal: options?.signal,
-      }
-    );
+        {
+          configurable: {
+            thread_id: threadId,
+            userId,
+          },
+          recursionLimit: options?.recursionLimit ?? 50,
+          signal: options?.signal,
+        }
+      );
+    } catch (error) {
+      invocationSuccess = false;
+      // Record failed invocation analytics (fire-and-forget)
+      getAgentAnalyticsService().recordInvocation({
+        agentId: 'supervisor',
+        success: false,
+        inputTokens: 0,
+        outputTokens: 0,
+        latencyMs: Date.now() - startTime,
+      });
+      throw error;
+    }
+
+    // Record successful invocation analytics (fire-and-forget)
+    const identity = detectAgentIdentity(result.messages as import('@langchain/core/messages').BaseMessage[]);
+    getAgentAnalyticsService().recordInvocation({
+      agentId: identity.agentId,
+      success: invocationSuccess,
+      inputTokens: 0,
+      outputTokens: 0,
+      latencyMs: Date.now() - startTime,
+    });
 
     // 3. Check for interrupts
     const state = await compiledSupervisor.getState({ configurable: { thread_id: threadId } });
@@ -249,7 +276,6 @@ export function getSupervisorGraphAdapter(): ICompiledGraph {
 export function __resetSupervisorGraph(): void {
   compiledSupervisor = null;
   agentMap = new Map();
-  checkpointer = null;
   initialized = false;
   adapterInstance = null;
 }

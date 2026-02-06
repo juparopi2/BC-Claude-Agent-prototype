@@ -119,16 +119,50 @@ model chat_attachments {
   @@index([user_id, session_id], map: "IX_chat_attachments_user_session")
 }
 
-model checkpoints {
-  id              String   @id(map: "PK__checkpoi__3213E83F7632A42C") @default(dbgenerated("newid()"), map: "DF__checkpoints__id__1332DBDC") @db.UniqueIdentifier
-  session_id      String   @db.UniqueIdentifier
-  checkpoint_name String   @db.NVarChar(255)
-  checkpoint_data String   @db.NVarChar(Max)
-  created_at      DateTime @default(dbgenerated("getutcdate()"), map: "DF__checkpoin__creat__14270015")
-  sessions        sessions @relation(fields: [session_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_checkpoints_session")
+model langgraph_checkpoints {
+  thread_id            String   @db.NVarChar(255)
+  checkpoint_ns        String   @default("") @db.NVarChar(255)
+  checkpoint_id        String   @db.NVarChar(255)
+  parent_checkpoint_id String?  @db.NVarChar(255)
+  checkpoint_data      Bytes    @db.VarBinary(Max)
+  metadata             Bytes    @db.VarBinary(Max)
+  created_at           DateTime @default(dbgenerated("getutcdate()"))
 
-  @@index([created_at], map: "idx_checkpoints_created_at")
-  @@index([session_id], map: "idx_checkpoints_session_id")
+  @@id([thread_id, checkpoint_ns, checkpoint_id])
+  @@index([thread_id, checkpoint_ns, created_at(sort: Desc)])
+}
+
+model langgraph_checkpoint_writes {
+  thread_id     String @db.NVarChar(255)
+  checkpoint_ns String @default("") @db.NVarChar(255)
+  checkpoint_id String @db.NVarChar(255)
+  task_id       String @db.NVarChar(255)
+  idx           Int
+  channel       String @db.NVarChar(255)
+  type          String @db.NVarChar(255)
+  value         Bytes  @db.VarBinary(Max)
+
+  @@id([thread_id, checkpoint_ns, checkpoint_id, task_id, idx])
+}
+
+model agent_usage_analytics {
+  id                  String   @id @default(dbgenerated("newid()")) @db.UniqueIdentifier
+  date                DateTime @db.Date
+  agent_id            String   @db.NVarChar(100)
+  invocation_count    Int      @default(0)
+  success_count       Int      @default(0)
+  error_count         Int      @default(0)
+  total_input_tokens  BigInt   @default(0)
+  total_output_tokens BigInt   @default(0)
+  total_latency_ms    BigInt   @default(0)
+  min_latency_ms      Int?
+  max_latency_ms      Int?
+  created_at          DateTime @default(dbgenerated("getutcdate()"))
+  updated_at          DateTime @default(dbgenerated("getutcdate()"))
+
+  @@unique([date, agent_id])
+  @@index([date])
+  @@index([agent_id])
 }
 
 model deletion_audit_log {
@@ -396,7 +430,6 @@ model sessions {
   agent_executions    agent_executions[]
   approvals           approvals[]
   chat_attachments    chat_attachments[]
-  checkpoints         checkpoints[]
   message_events      message_events[]
   messages            messages[]
   performance_metrics performance_metrics[]

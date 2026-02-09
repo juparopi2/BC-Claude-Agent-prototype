@@ -48,9 +48,6 @@ export interface PendingChatState {
   /** Specific agent to route to (null = auto-route) */
   selectedAgent: 'bc' | 'rag' | 'orchestrator' | null;
 
-  /** Slash command to execute (e.g., '/search') */
-  slashCommand: string | null;
-
   /** File IDs mentioned via @mentions */
   mentionedFileIds: string[];
 
@@ -70,7 +67,6 @@ export interface PendingChatActions {
   setThinkingBudget: (budget: number) => void;
   setUseMyContext: (enabled: boolean) => void;
   setSelectedAgent: (agent: PendingChatState['selectedAgent']) => void;
-  setSlashCommand: (command: string | null) => void;
   addMentionedFile: (fileId: string) => void;
   removeMentionedFile: (fileId: string) => void;
   addPendingFile: (file: PendingFileInfo) => void;
@@ -93,7 +89,6 @@ const initialState: PendingChatState = {
   thinkingBudget: 10000,
   useMyContext: false,
   selectedAgent: null,
-  slashCommand: null,
   mentionedFileIds: [],
   pendingFiles: [],
   hasPendingChat: false,
@@ -117,8 +112,6 @@ export const usePendingChatStore = create<PendingChatStore>()(
       setUseMyContext: (enabled) => set({ useMyContext: enabled }),
 
       setSelectedAgent: (agent) => set({ selectedAgent: agent }),
-
-      setSlashCommand: (command) => set({ slashCommand: command }),
 
       addMentionedFile: (fileId) =>
         set((state) => ({
@@ -155,7 +148,6 @@ export const usePendingChatStore = create<PendingChatStore>()(
         thinkingBudget: state.thinkingBudget,
         useMyContext: state.useMyContext,
         selectedAgent: state.selectedAgent,
-        slashCommand: state.slashCommand,
         mentionedFileIds: state.mentionedFileIds,
         // Include file metadata (but actual File objects are lost on refresh)
         pendingFiles: state.pendingFiles,

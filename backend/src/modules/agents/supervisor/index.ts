@@ -14,7 +14,6 @@ export {
 } from './supervisor-graph';
 
 export { buildSupervisorPrompt } from './supervisor-prompt';
-export { detectSlashCommand, type SlashCommandResult } from './slash-command-router';
 export { buildReactAgents, type BuiltAgent } from './agent-builders';
 export {
   adaptSupervisorResult,

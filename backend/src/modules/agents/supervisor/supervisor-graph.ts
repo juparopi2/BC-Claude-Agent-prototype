@@ -17,7 +17,7 @@ import type { ICompiledGraph } from '@/domains/agent/orchestration/execution/Gra
 import type { AgentState } from '../orchestrator/state';
 import { buildSupervisorPrompt } from './supervisor-prompt';
 import { buildReactAgents, type BuiltAgent } from './agent-builders';
-import { detectSlashCommand } from './slash-command-router';
+
 import { adaptSupervisorResult, detectAgentIdentity } from './result-adapter';
 import { createChildLogger } from '@/shared/utils/logger';
 import { getCheckpointer } from '@/infrastructure/checkpointer';
@@ -50,7 +50,7 @@ export async function initializeSupervisorGraph(): Promise<void> {
   // 1. Build ReAct agents from registry
   const builtAgents = await buildReactAgents();
 
-  // Store in map for direct agent invocation (slash commands)
+  // Store in map for direct agent invocation (targetAgentId bypass)
   agentMap = new Map();
   for (const built of builtAgents) {
     agentMap.set(built.id, built);
@@ -99,7 +99,7 @@ export async function initializeSupervisorGraph(): Promise<void> {
  *
  * Flow:
  * 1. Extract userId/sessionId from inputs.context
- * 2. Check for slash commands → direct agent invocation
+ * 2. Check for targetAgentId → direct agent invocation (bypass supervisor LLM)
  * 3. Normal → supervisor.invoke() with configurable userId
  * 4. Adapt result → AgentState for event pipeline
  */
@@ -117,7 +117,10 @@ class SupervisorGraphAdapter implements ICompiledGraph {
       context?: {
         userId?: string;
         sessionId?: string;
-        options?: Record<string, unknown>;
+        options?: {
+          targetAgentId?: string;
+          [key: string]: unknown;
+        };
       };
     };
 
@@ -131,23 +134,23 @@ class SupervisorGraphAdapter implements ICompiledGraph {
       ? String((lastMessage as { content: unknown }).content)
       : '';
 
-    // 1. Check for slash commands (bypass supervisor LLM)
-    const slashResult = detectSlashCommand(prompt);
-    if (slashResult.isSlashCommand && slashResult.targetAgentId) {
-      const targetAgent = agentMap.get(slashResult.targetAgentId);
+    // 1. Check for targetAgentId (direct agent invocation, bypass supervisor LLM)
+    const targetAgentId = typedInputs.context?.options?.targetAgentId;
+    if (targetAgentId && targetAgentId !== 'auto') {
+      const targetAgent = agentMap.get(targetAgentId as AgentId);
       if (targetAgent) {
         logger.info(
-          { targetAgentId: slashResult.targetAgentId, command: prompt.split(' ')[0] },
-          'Slash command detected, invoking agent directly'
+          { targetAgentId },
+          'Direct agent invocation via targetAgentId, bypassing supervisor LLM'
         );
 
         const agentResult = await targetAgent.agent.invoke(
           {
-            messages: [new HumanMessage(slashResult.cleanedPrompt)],
+            messages: [new HumanMessage(prompt)],
           },
           {
             configurable: {
-              thread_id: `slash-${sessionId}-${Date.now()}`,
+              thread_id: `directed-${sessionId}-${Date.now()}`,
               userId,
             },
             recursionLimit: options?.recursionLimit ?? 50,
@@ -157,9 +160,13 @@ class SupervisorGraphAdapter implements ICompiledGraph {
 
         return adaptSupervisorResult(agentResult as { messages: BaseMessage[] }, sessionId);
       }
+      logger.warn(
+        { targetAgentId },
+        'targetAgentId specified but agent not found in agentMap, falling through to supervisor'
+      );
     }
 
-    // 2. Normal flow → supervisor LLM routes
+    // 2. Normal flow → supervisor LLM routes (auto mode)
     logger.debug(
       { sessionId, userId, messageCount: messages.length },
       'Invoking supervisor graph'

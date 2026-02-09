@@ -121,12 +121,10 @@ A user message flows through 8 strict layers (synchronous execution):
     -   Guarantees global order with `sequenceNumber`.
     -   Handles "Append-Only" strategy in EventStore + MessageQueue (Two-Phase).
 
-### 3.2 Agent Routing (`orchestrator/router.ts`)
-The system decides which agent to activate based on hybrid logic:
-1.  **Slash Commands** (Max Priority): `/bc` -> ERP Agent, `/search` -> RAG.
-2.  **Keywords** (Deterministic rules): "invoice", "vendor", "inventory", "ERP", "Business Central" -> ERP Agent.
-3.  **Context**: If files attached -> RAG Agent.
-4.  **LLM Router**: If ambiguous, an LLM classifies the intent.
+### 3.2 Agent Routing (`supervisor-graph.ts`)
+The system decides which agent to activate based on:
+1.  **Direct Invocation** (Max Priority): When `targetAgentId` is specified in context options, the supervisor LLM is bypassed and the target agent is invoked directly.
+2.  **Supervisor LLM** (Default): Analyzes the user's message and routes to the appropriate agent based on content, keyword hints in its system prompt, and conversation history.
 
 ### 3.3 ERP Agent (`bc-agent.ts`)
 -   **Role**: ERP system expert (currently Business Central, designed to be extensible).

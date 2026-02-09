@@ -191,7 +191,10 @@
       "Bash(npx prisma:*)",
       "Bash(set:*)",
       "Bash(source:*)",
-      "Bash(npx -w backend vitest run:*)"
+      "Bash(npx -w backend vitest run:*)",
+      "WebFetch(domain:help.openai.com)",
+      "WebFetch(domain:support.discord.com)",
+      "WebFetch(domain:friendify.net)"
     ],
     "deny": [],
     "ask": []

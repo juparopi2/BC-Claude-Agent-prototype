@@ -74,10 +74,19 @@ let mockUIPreferencesState = {
   setEnableThinking: vi.fn(),
   useMyContext: false,
   setUseMyContext: vi.fn(),
+  selectedAgentId: 'auto',
+  setSelectedAgentId: vi.fn(),
 };
 
 vi.mock('@/src/domains/ui', () => ({
   useUIPreferencesStore: vi.fn((selector) => selector(mockUIPreferencesState)),
+}));
+
+// Mock AgentSelectorDropdown to avoid store dependencies
+vi.mock('@/src/presentation/chat/AgentSelectorDropdown', () => ({
+  AgentSelectorDropdown: ({ disabled }: { disabled?: boolean }) => (
+    <button data-testid="agent-selector" disabled={disabled}>Auto</button>
+  ),
 }));
 
 // Mock Sonner toast
@@ -107,6 +116,8 @@ describe('ChatInput', () => {
       setEnableThinking: vi.fn(),
       useMyContext: false,
       setUseMyContext: vi.fn(),
+      selectedAgentId: 'auto',
+      setSelectedAgentId: vi.fn(),
     };
     // Reset chat attachments state
     mockChatAttachmentsState = {
@@ -277,10 +288,7 @@ describe('ChatInput', () => {
       expect(mockSetEnableThinking).toHaveBeenCalledWith(true);
     });
 
-    it('toggles Semantic Search (My Files)', async () => {
-      const mockSetUseMyContext = vi.fn();
-      mockUIPreferencesState.setUseMyContext = mockSetUseMyContext;
-
+    it('renders agent selector dropdown', () => {
       render(
         <ChatInput
           sessionId="session-1"
@@ -289,13 +297,9 @@ describe('ChatInput', () => {
         />
       );
 
-      // Find the "My Files" toggle
-      const contextToggle = screen.getByRole('button', { name: /my files/i });
-      expect(contextToggle).toBeInTheDocument();
-
-      fireEvent.click(contextToggle);
-
-      expect(mockSetUseMyContext).toHaveBeenCalledWith(true);
+      // Agent selector should be present
+      const agentSelector = screen.getByTestId('agent-selector');
+      expect(agentSelector).toBeInTheDocument();
     });
 
     it('sends message with enableThinking=true when toggle is on', async () => {
@@ -324,8 +328,8 @@ describe('ChatInput', () => {
       );
     });
 
-    it('sends message with enableAutoSemanticSearch=true when My Files toggle is on', async () => {
-      mockUIPreferencesState.useMyContext = true;
+    it('sends message with enableAutoSemanticSearch and targetAgentId when RAG agent selected', async () => {
+      mockUIPreferencesState.selectedAgentId = 'rag-agent';
 
       const user = userEvent.setup();
 
@@ -345,6 +349,7 @@ describe('ChatInput', () => {
         'Search in my files',
         expect.objectContaining({
           enableAutoSemanticSearch: true,
+          targetAgentId: 'rag-agent',
         })
       );
     });

@@ -17,6 +17,7 @@ import {
 } from '../stores/pendingChatStore';
 import { pendingFileManager } from '../services/pendingFileManager';
 import { useSessionStore } from '@/src/domains/session';
+import { useUIPreferencesStore } from '@/src/domains/ui';
 
 // ============================================================================
 // Types
@@ -35,6 +36,8 @@ export interface UsePendingChatReturn {
   thinkingBudget: number;
   /** Whether to search user's files for context */
   useMyContext: boolean;
+  /** Selected agent ID ('auto' or AGENT_ID value) */
+  selectedAgentId: string;
   /** Metadata for pending files */
   pendingFiles: PendingFileInfo[];
   /** Whether there's a pending chat ready to process */
@@ -49,6 +52,8 @@ export interface UsePendingChatReturn {
   setThinkingBudget: (budget: number) => void;
   /** Toggle semantic search on user files */
   setUseMyContext: (enabled: boolean) => void;
+  /** Set selected agent ID */
+  setSelectedAgentId: (agentId: string) => void;
   /** Add a file to pending (returns tempId) */
   addFile: (file: File) => string;
   /** Remove a file by tempId */
@@ -119,6 +124,10 @@ export function usePendingChat(): UsePendingChatReturn {
   const useMyContext = usePendingChatStore((s) => s.useMyContext);
   const pendingFiles = usePendingChatStore((s) => s.pendingFiles);
   const hasPendingChat = usePendingChatStore((s) => s.hasPendingChat);
+
+  // Agent selection from UI preferences (persisted separately)
+  const selectedAgentId = useUIPreferencesStore((s) => s.selectedAgentId);
+  const setSelectedAgentId = useUIPreferencesStore((s) => s.setSelectedAgentId);
 
   // Store actions
   const setMessage = usePendingChatStore((s) => s.setMessage);
@@ -229,6 +238,7 @@ export function usePendingChat(): UsePendingChatReturn {
     enableThinking,
     thinkingBudget,
     useMyContext,
+    selectedAgentId,
     pendingFiles,
     hasPendingChat,
 
@@ -237,6 +247,7 @@ export function usePendingChat(): UsePendingChatReturn {
     setEnableThinking,
     setThinkingBudget: setThinkingBudgetAction,
     setUseMyContext,
+    setSelectedAgentId,
     addFile,
     removeFile,
 

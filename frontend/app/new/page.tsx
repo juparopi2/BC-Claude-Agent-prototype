@@ -9,7 +9,7 @@
  *
  * Flow:
  * 1. User enters message and/or attaches files
- * 2. User configures options (thinking, my files)
+ * 2. User configures options (thinking, agent selector)
  * 3. User clicks Send
  * 4. Store is marked ready, session is created
  * 5. Navigation to /chat/[sessionId]
@@ -32,11 +32,11 @@ export default function Home() {
   const {
     message,
     enableThinking,
-    useMyContext,
+    selectedAgentId,
     pendingFiles,
     setMessage,
     setEnableThinking,
-    setUseMyContext,
+    setSelectedAgentId,
     addFile,
     removeFile,
     submit,
@@ -162,9 +162,9 @@ export default function Home() {
           disabled={isSubmitting}
           // Controlled options (synced with pending chat store)
           enableThinkingControlled={enableThinking}
-          useMyContextControlled={useMyContext}
+          selectedAgentIdControlled={selectedAgentId}
           onEnableThinkingChange={setEnableThinking}
-          onUseMyContextChange={setUseMyContext}
+          onSelectedAgentIdChange={setSelectedAgentId}
         />
       </div>
     </MainLayout>

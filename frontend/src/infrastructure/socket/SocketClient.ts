@@ -265,6 +265,7 @@ export class SocketClient {
     data: Omit<ChatMessageData, 'thinking'> & {
       thinking?: ExtendedThinkingConfig;
       attachments?: string[];
+      targetAgentId?: string;
     }
   ): void {
     if (!this.socket?.connected) {

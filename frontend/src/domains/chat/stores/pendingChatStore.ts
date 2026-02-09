@@ -45,8 +45,8 @@ export interface PendingChatState {
 
   // Future options (extensible)
 
-  /** Specific agent to route to (null = auto-route) */
-  selectedAgent: 'bc' | 'rag' | 'orchestrator' | null;
+  /** Specific agent to route to (null = auto-route via supervisor) */
+  selectedAgent: string | null;
 
   /** File IDs mentioned via @mentions */
   mentionedFileIds: string[];
@@ -66,7 +66,7 @@ export interface PendingChatActions {
   setEnableThinking: (enabled: boolean) => void;
   setThinkingBudget: (budget: number) => void;
   setUseMyContext: (enabled: boolean) => void;
-  setSelectedAgent: (agent: PendingChatState['selectedAgent']) => void;
+  setSelectedAgent: (agent: string | null) => void;
   addMentionedFile: (fileId: string) => void;
   removeMentionedFile: (fileId: string) => void;
   addPendingFile: (file: PendingFileInfo) => void;

@@ -204,6 +204,7 @@ export class AgentOrchestrator implements IAgentOrchestrator {
           enableThinking: options?.enableThinking,
           thinkingBudget: options?.thinkingBudget,
           timeoutMs: ctx.timeoutMs,
+          targetAgentId: options?.targetAgentId,
         }
       );
 

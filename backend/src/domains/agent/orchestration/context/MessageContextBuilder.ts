@@ -48,6 +48,8 @@ export interface MessageContextOptions {
   enableThinking?: boolean;
   /** Token budget for extended thinking */
   thinkingBudget?: number;
+  /** Target agent ID for explicit agent selection */
+  targetAgentId?: string;
 }
 
 /**
@@ -65,6 +67,7 @@ export interface MessageContextBuildResult {
       options: {
         enableThinking: boolean;
         thinkingBudget: number;
+        targetAgentId?: string;
       };
     };
   };
@@ -140,6 +143,7 @@ export function buildGraphInputs(
       options: {
         enableThinking: options?.enableThinking ?? false,
         thinkingBudget: options?.thinkingBudget ?? 10000,
+        targetAgentId: options?.targetAgentId,
       },
     },
   };

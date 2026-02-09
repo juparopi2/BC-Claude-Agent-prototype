@@ -2,9 +2,10 @@
 
 import { useEffect, useRef, useCallback, useLayoutEffect } from 'react';
 import { usePathname } from 'next/navigation';
+import { getSocketClient } from '@/src/infrastructure/socket';
 import { useFilePreviewStore, useFiles, useGoToFilePath } from '@/src/domains/files';
 import { useAuthStore, selectUserInitials } from '@/src/domains/auth';
-import { useMessages, useAgentState, useCitationStore, usePagination, useChatAttachmentStore } from '@/src/domains/chat';
+import { useMessages, useAgentState, useAgentStateStore, useCitationStore, usePagination, useChatAttachmentStore } from '@/src/domains/chat';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Loader2 } from 'lucide-react';
 import { isToolUseMessage, isToolResultMessage, isThinkingMessage, type ChatAttachmentSummary } from '@bc-agent/shared';
@@ -12,6 +13,8 @@ import {
   MessageBubble,
   ThinkingBlock,
   ToolCard,
+  AgentBadge,
+  ApprovalDialog,
 } from '@/src/presentation/chat';
 import { SourcePreviewModal } from '@/components/modals/SourcePreviewModal';
 import type { CitationInfo } from '@/lib/types/citation.types';
@@ -25,6 +28,7 @@ export default function ChatContainer() {
   // Use domain hooks for messages and agent state
   const { messages, isEmpty } = useMessages();
   const { isAgentBusy, isPaused, pauseReason } = useAgentState();
+  const currentAgentIdentity = useAgentStateStore((s) => s.currentAgentIdentity);
   
   // Pagination hook
   const { 
@@ -59,6 +63,20 @@ export default function ChatContainer() {
 
   // User initials for MessageBubble avatar
   const userInitials = useAuthStore(selectUserInitials);
+  const userId = useAuthStore((s) => s.user?.id);
+
+  /**
+   * Handle approval response - sends to server via socket
+   */
+  const handleApprovalResponse = useCallback((approvalId: string, approved: boolean, reason?: string) => {
+    if (!userId) return;
+    getSocketClient().respondToApproval({
+      approvalId,
+      decision: approved ? 'approved' : 'rejected',
+      userId,
+      reason,
+    });
+  }, [userId]);
 
   /**
    * Handle citation click - lookup file and open preview modal
@@ -281,19 +299,33 @@ export default function ChatContainer() {
 
           // Render standard messages
           return (
-            <MessageBubble
-              key={message.id}
-              message={message}
-              userInitials={userInitials}
-              citationFileMap={citationFileMap}
-              onCitationOpen={handleCitationOpen}
-              messageCitations={getMessageCitations(message.id)}
-              onCitationInfoOpen={handleCitationInfoOpen}
-              messageAttachments={getMessageAttachments(message.id)}
-              onAttachmentClick={handleAttachmentClick}
-            />
+            <div key={message.id}>
+              {message.role === 'assistant' && currentAgentIdentity && (
+                <div className="mb-1">
+                  <AgentBadge
+                    agentId={currentAgentIdentity.agentId}
+                    agentName={currentAgentIdentity.agentName}
+                    icon={currentAgentIdentity.agentIcon}
+                    color={currentAgentIdentity.agentColor}
+                  />
+                </div>
+              )}
+              <MessageBubble
+                message={message}
+                userInitials={userInitials}
+                citationFileMap={citationFileMap}
+                onCitationOpen={handleCitationOpen}
+                messageCitations={getMessageCitations(message.id)}
+                onCitationInfoOpen={handleCitationInfoOpen}
+                messageAttachments={getMessageAttachments(message.id)}
+                onAttachmentClick={handleAttachmentClick}
+              />
+            </div>
           );
         })}
+
+        {/* Approval Dialog (inline, before busy indicator) */}
+        <ApprovalDialog onRespond={handleApprovalResponse} />
 
         {isAgentBusy && (
           <div className="flex items-center gap-3 text-muted-foreground">

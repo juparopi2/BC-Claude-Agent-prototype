@@ -9,6 +9,7 @@
 
 import type {
   AgentEvent,
+  AgentChangedEvent,
   MessageEvent,
   ToolUseEvent,
   ToolResultEvent,
@@ -301,6 +302,26 @@ export function processAgentEventSync(
 
     // NOTE: Chunk types (thinking_chunk, message_chunk, message_partial) have been removed
     // from AgentEventType - sync architecture uses complete messages only
+
+    case 'agent_changed': {
+      const agentChangedEvent = event as AgentChangedEvent;
+      agentStateStore.getState().setCurrentAgentIdentity(agentChangedEvent.currentAgent);
+      break;
+    }
+
+    case 'content_refused': {
+      agentStateStore.getState().setAgentBusy(false);
+      callbacks?.onAgentBusyChange?.(false);
+      callbacks?.onError?.((event as { reason?: string }).reason ?? 'Content refused by policy');
+      break;
+    }
+
+    case 'session_end': {
+      agentStateStore.getState().setAgentBusy(false);
+      agentStateStore.getState().setCurrentAgentIdentity(null);
+      callbacks?.onAgentBusyChange?.(false);
+      break;
+    }
 
     // Thinking event (may be emitted by some flows - ignore as we handle thinking_complete)
     case 'thinking':

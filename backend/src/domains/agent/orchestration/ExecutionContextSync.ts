@@ -69,6 +69,12 @@ export interface ExecuteSyncOptions {
    * These are ephemeral attachments (not KB files), sent directly to the model.
    */
   chatAttachments?: string[];
+
+  /**
+   * Target agent ID for explicit agent selection.
+   * When provided, bypasses supervisor LLM routing and invokes the agent directly.
+   */
+  targetAgentId?: string;
 }
 
 /**

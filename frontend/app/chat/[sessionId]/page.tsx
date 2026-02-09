@@ -33,6 +33,7 @@ import {
   getPendingChatStore,
   pendingFileManager,
 } from '@/src/domains/chat';
+import { useUIPreferencesStore } from '@/src/domains/ui';
 
 export default function ChatPage() {
   const params = useParams();
@@ -145,11 +146,14 @@ export default function ChatPage() {
 
         // 2. Send message with options and attachments
         if (store.message.trim() || uploadedIds.length > 0) {
+          const agentId = useUIPreferencesStore.getState().selectedAgentId;
+          const isDirected = agentId !== 'auto';
           sendMessage(store.message, {
             enableThinking: store.enableThinking || undefined,
             thinkingBudget: store.enableThinking ? store.thinkingBudget : undefined,
-            enableAutoSemanticSearch: store.useMyContext || undefined,
+            enableAutoSemanticSearch: agentId === 'rag-agent' || store.useMyContext || undefined,
             chatAttachments: uploadedIds.length > 0 ? uploadedIds : undefined,
+            targetAgentId: isDirected ? agentId : undefined,
           });
         }
 

@@ -17,8 +17,8 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Toggle } from '@/components/ui/toggle';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Send, Square, Brain, WifiOff, Mic, Paperclip, Globe, Loader2, FolderSearch } from 'lucide-react';
-import { FileAttachmentChip, AudioRecordingIndicator } from '@/src/presentation/chat';
+import { Send, Square, Brain, WifiOff, Mic, Paperclip, Globe, Loader2 } from 'lucide-react';
+import { FileAttachmentChip, AgentSelectorDropdown, AudioRecordingIndicator } from '@/src/presentation/chat';
 
 /**
  * Pending file info (for pending mode)
@@ -37,7 +37,7 @@ export interface ChatInputProps {
   // Socket state from parent (avoids duplicate useSocket calls)
   isConnected?: boolean;
   isReconnecting?: boolean;
-  sendMessage?: (message: string, options?: { enableThinking?: boolean; thinkingBudget?: number; attachments?: string[]; chatAttachments?: string[]; enableAutoSemanticSearch?: boolean }) => void;
+  sendMessage?: (message: string, options?: { enableThinking?: boolean; thinkingBudget?: number; attachments?: string[]; chatAttachments?: string[]; enableAutoSemanticSearch?: boolean; targetAgentId?: string }) => void;
   stopAgent?: () => void;
 
   // ============================================
@@ -61,12 +61,12 @@ export interface ChatInputProps {
   // Controlled options (can be used in pendingMode)
   /** Controlled enableThinking value */
   enableThinkingControlled?: boolean;
-  /** Controlled useMyContext value */
-  useMyContextControlled?: boolean;
+  /** Controlled selectedAgentId value */
+  selectedAgentIdControlled?: string;
   /** Enable thinking change handler */
   onEnableThinkingChange?: (enabled: boolean) => void;
-  /** Use my context change handler */
-  onUseMyContextChange?: (enabled: boolean) => void;
+  /** Selected agent change handler */
+  onSelectedAgentIdChange?: (agentId: string) => void;
 }
 
 export default function ChatInput({
@@ -86,9 +86,9 @@ export default function ChatInput({
   onFileRemove,
   // Controlled options
   enableThinkingControlled,
-  useMyContextControlled,
+  selectedAgentIdControlled,
   onEnableThinkingChange,
-  onUseMyContextChange,
+  onSelectedAgentIdChange,
 }: ChatInputProps) {
   // Internal message state (used when NOT in pending mode)
   const [internalMessage, setInternalMessage] = useState('');
@@ -100,14 +100,12 @@ export default function ChatInput({
   // Use persistent UI preferences from store
   const storeEnableThinking = useUIPreferencesStore((s) => s.enableThinking);
   const storeSetEnableThinking = useUIPreferencesStore((s) => s.setEnableThinking);
-  const storeUseMyContext = useUIPreferencesStore((s) => s.useMyContext);
-  const storeSetUseMyContext = useUIPreferencesStore((s) => s.setUseMyContext);
+  const storeSelectedAgentId = useUIPreferencesStore((s) => s.selectedAgentId);
 
   // Use controlled or store values
   const enableThinking = enableThinkingControlled ?? storeEnableThinking;
-  const useMyContext = useMyContextControlled ?? storeUseMyContext;
+  const selectedAgentId = selectedAgentIdControlled ?? storeSelectedAgentId;
   const setEnableThinking = onEnableThinkingChange ?? storeSetEnableThinking;
-  const setUseMyContext = onUseMyContextChange ?? storeSetUseMyContext;
 
   // Use chat attachments hook for ephemeral file uploads (normal mode only)
   const {
@@ -181,9 +179,11 @@ export default function ChatInput({
   const handleSend = () => {
     if (!canSend) return;
 
+    const isDirected = selectedAgentId !== 'auto';
+
     if (onSend) {
       // Simple callback mode (works for both pending and normal mode without sessionId)
-      onSend(message, { enableThinking, useMyContext });
+      onSend(message, { enableThinking, useMyContext: selectedAgentId === 'rag-agent' });
     } else {
       // Full message mode (requires sessionId/socket)
       const options = {
@@ -191,7 +191,8 @@ export default function ChatInput({
         thinkingBudget: enableThinking ? 10000 : undefined,
         // Use chatAttachments for ephemeral files sent directly to Anthropic
         chatAttachments: completedAttachmentIds.length > 0 ? completedAttachmentIds : undefined,
-        enableAutoSemanticSearch: useMyContext,
+        enableAutoSemanticSearch: selectedAgentId === 'rag-agent',
+        targetAgentId: isDirected ? selectedAgentId : undefined,
       };
       sendMessage(message, options);
     }
@@ -294,10 +295,6 @@ export default function ChatInput({
     ? "gap-1.5 bg-amber-500 text-white hover:bg-amber-600 hover:text-white dark:bg-amber-600 dark:hover:bg-amber-700 dark:hover:text-white"
     : "gap-1.5";
 
-  const contextToggleClasses = useMyContext
-    ? "gap-1.5 bg-emerald-500 text-white hover:bg-emerald-600 hover:text-white dark:bg-emerald-600 dark:hover:bg-emerald-700 dark:hover:text-white"
-    : "gap-1.5";
-
   return (
     <div className="border-t bg-background" data-testid="chat-input">
       <div className="max-w-3xl mx-auto px-4 py-3 space-y-3">
@@ -368,25 +365,11 @@ export default function ChatInput({
             </Tooltip>
           </TooltipProvider>
 
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Toggle
-                  pressed={useMyContext}
-                  onPressedChange={setUseMyContext}
-                  size="sm"
-                  className={contextToggleClasses}
-                  disabled={effectiveIsBusy || disabled}
-                >
-                  <FolderSearch className="size-3.5" />
-                  <span className="text-xs">My Files</span>
-                </Toggle>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p className="text-xs">Search your uploaded files for relevant context</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <AgentSelectorDropdown
+            disabled={effectiveIsBusy || disabled}
+            value={selectedAgentIdControlled}
+            onChange={onSelectedAgentIdChange}
+          />
 
           <div className="flex items-center gap-1 ml-auto">
             <TooltipProvider>
@@ -425,9 +408,9 @@ export default function ChatInput({
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     className="gap-1.5"
                     disabled={effectiveIsBusy || disabled}
                     onClick={() => fileInputRef.current?.click()}

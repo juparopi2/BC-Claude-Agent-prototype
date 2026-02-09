@@ -13,25 +13,31 @@ import { persist } from 'zustand/middleware';
 export interface UIPreferencesState {
   /** Enable extended thinking mode for complex queries */
   enableThinking: boolean;
-  /** Enable automatic semantic search in user's files */
+  /** @deprecated Use selectedAgentId === 'rag-agent' instead */
   useMyContext: boolean;
   /** Show/hide the file explorer sidebar */
   isFileSidebarVisible: boolean;
+  /** Selected agent ID for explicit routing. 'auto' = supervisor decides */
+  selectedAgentId: string;
 }
 
 export interface UIPreferencesActions {
   /** Set extended thinking mode */
   setEnableThinking: (enabled: boolean) => void;
-  /** Set My Files context search */
+  /** @deprecated Use setSelectedAgentId instead */
   setUseMyContext: (enabled: boolean) => void;
   /** Toggle extended thinking mode */
   toggleThinking: () => void;
-  /** Toggle My Files context search */
+  /** @deprecated Use setSelectedAgentId instead */
   toggleMyContext: () => void;
   /** Set file sidebar visibility */
   setFileSidebarVisible: (visible: boolean) => void;
   /** Toggle file sidebar visibility */
   toggleFileSidebar: () => void;
+  /** Set selected agent ID */
+  setSelectedAgentId: (agentId: string) => void;
+  /** Reset agent selection to 'auto' */
+  resetAgentSelection: () => void;
   /** Reset all preferences to defaults */
   resetPreferences: () => void;
 }
@@ -42,6 +48,7 @@ const initialState: UIPreferencesState = {
   enableThinking: false,
   useMyContext: false,
   isFileSidebarVisible: true,
+  selectedAgentId: 'auto',
 };
 
 /**
@@ -74,6 +81,12 @@ export const useUIPreferencesStore = create<UIPreferencesStore>()(
       toggleMyContext: () => set((state) => ({ useMyContext: !state.useMyContext })),
       toggleFileSidebar: () => set((state) => ({ isFileSidebarVisible: !state.isFileSidebarVisible })),
 
+      setSelectedAgentId: (agentId) => set({
+        selectedAgentId: agentId,
+        useMyContext: agentId === 'rag-agent',
+      }),
+      resetAgentSelection: () => set({ selectedAgentId: 'auto', useMyContext: false }),
+
       resetPreferences: () => set(initialState),
     }),
     {
@@ -83,6 +96,7 @@ export const useUIPreferencesStore = create<UIPreferencesStore>()(
         enableThinking: state.enableThinking,
         useMyContext: state.useMyContext,
         isFileSidebarVisible: state.isFileSidebarVisible,
+        selectedAgentId: state.selectedAgentId,
       }),
     }
   )

@@ -25,3 +25,6 @@ export { MessageAttachmentCarousel } from './MessageAttachmentCarousel';
 export type { MessageAttachmentCarouselProps } from './MessageAttachmentCarousel';
 export { AudioRecordingIndicator } from './AudioRecordingIndicator';
 export type { AudioRecordingIndicatorProps } from './AudioRecordingIndicator';
+export { AgentSelectorDropdown } from './AgentSelectorDropdown';
+export { AgentBadge } from './AgentBadge';
+export { ApprovalDialog } from './ApprovalDialog';

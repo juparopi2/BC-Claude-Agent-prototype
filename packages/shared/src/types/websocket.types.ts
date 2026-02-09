@@ -91,6 +91,14 @@ export interface ChatMessageData {
    * Array of UUIDs corresponding to chat_attachments table.
    */
   chatAttachments?: string[];
+
+  /**
+   * Target agent ID for explicit agent selection.
+   * When provided with value !== 'auto', bypasses supervisor LLM routing.
+   * @values 'auto' | AGENT_ID values from @bc-agent/shared
+   * @default undefined (automatic routing via supervisor)
+   */
+  targetAgentId?: string;
 }
 
 /**

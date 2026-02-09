@@ -1,6 +1,6 @@
 # PRD-060: Agent Selector UI
 
-**Estado**: Draft
+**Estado**: ✅ COMPLETADO (2026-02-09)
 **Prioridad**: Media
 **Dependencias**: PRD-011 (Agent Registry), PRD-040 (Dynamic Handoffs), PRD-050 (Graphing Agent - opcional)
 **Bloquea**: PRD-070 (Agent-Specific Rendering Framework)
@@ -508,19 +508,19 @@ describe('Approval Flow', () => {
 
 ## 6. Criterios de Aceptacion
 
-- [ ] Agent selector visible in chat input area
-- [ ] Auto mode is default
-- [ ] Selection persists across sessions (localStorage)
-- [ ] Agent badge shows on assistant messages
-- [ ] Active agent updates from `agent_changed` events (GAP-001 resolved)
-- [ ] `agent_changed` event emitted for supervisor automatic routing (GAP-004 resolved)
-- [ ] `content_refused` and `session_end` handled in event processor
-- [ ] `currentAgentIdentity` in `agentStateStore` tracks active agent
-- [ ] Approval UI works with `supervisor:resume` socket event
-- [ ] Graphing Agent pill included (📈 `#F59E0B`)
-- [ ] Responsive on mobile
-- [ ] Accessible (keyboard, screen reader)
-- [ ] `npm run verify:types` pasa
+- [x] Agent selector visible in chat input area (`AgentSelectorDropdown` - shadcn Select dropdown)
+- [x] Auto mode is default (`selectedAgentId: 'auto'` in `uiPreferencesStore`)
+- [x] Selection persists across sessions (localStorage via Zustand persist)
+- [x] Agent badge shows on assistant messages (`AgentBadge` in `ChatContainer`)
+- [x] Active agent updates from `agent_changed` events (case in `processAgentEventSync.ts`)
+- [x] `agent_changed` event emitted for supervisor automatic routing (GAP-004 resolved)
+- [x] `content_refused` and `session_end` handled in event processor
+- [x] `currentAgentIdentity` in `agentStateStore` tracks active agent
+- [x] Approval UI works with `supervisor:resume` socket event (`ApprovalDialog` component)
+- [x] Graphing Agent option included (📈 `#F59E0B`) in dropdown
+- [x] Responsive on mobile (compact dropdown design)
+- [x] Accessible (keyboard, screen reader - shadcn/Radix provides ARIA)
+- [x] `npm run verify:types` pasa (0 errors)
 
 ---
 
@@ -758,3 +758,4 @@ Este PRD implementa explicitamente las siguientes resoluciones:
 | 2026-02-05 | 1.1 | Agregada seccion "Minimal Viable Implementation": dropdown design, targetAgentId contract, My Files replacement strategy |
 | 2026-02-06 | 1.2 | POST PRD-030: Referencias actualizadas. `router.ts` fue eliminado en PRD-030. Routing ahora via `supervisor-graph.ts`. |
 | 2026-02-09 | 2.0 | **UPDATE COMPLETO**: Eliminadas todas las referencias a `router.ts` (GAP-006). `targetAgentId` bypass ahora en `SupervisorGraphAdapter.invoke()` de `supervisor-graph.ts`. Agregado Graphing Agent pill (📈, `#F59E0B` amber). Color de Graph Agent unificado a `#F59E0B` (era `#F97316`). Incorporadas notas Post-PRD-030 al body del PRD: `agentStateStore` con `currentAgentIdentity`, handlers para `agent_changed`/`content_refused`/`session_end`, `ApprovalDialog` component, `supervisor:resume` response. Agregado Plan de Resolucion GAP-001 (seccion 12). Nueva dependencia opcional: PRD-050. Nuevo campo `Bloquea: PRD-070`. |
+| 2026-02-09 | 3.0 | **✅ IMPLEMENTACIÓN COMPLETADA**. Diferencias vs draft: dropdown (shadcn Select) en lugar de pills, constantes de `@bc-agent/shared` en lugar de API `/api/agents`, `uiPreferencesStore` extendido (no nuevo `agentSelectionStore`). **Backend**: `targetAgentId` threaded por ChatMessageHandler → AgentOrchestrator → ExecutionPipeline → MessageContextBuilder (5 archivos). **Frontend**: `AgentSelectorDropdown.tsx`, `AgentBadge.tsx`, `ApprovalDialog.tsx` creados. ChatInput actualizado (My Files toggle → AgentSelectorDropdown). ChatContainer con AgentBadge + ApprovalDialog. `processAgentEventSync.ts` con 3 nuevos cases. `SocketClient` + `useSocketConnection` soportan `targetAgentId`. 4 archivos nuevos, 14 modificados, 2 tests actualizados. Verificación: 3104 backend tests, 666 frontend tests, 0 errores tipo, 0 errores lint. GAPs resueltos: GAP-001, GAP-004, GAP-006. |

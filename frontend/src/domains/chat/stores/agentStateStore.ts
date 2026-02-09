@@ -9,6 +9,7 @@
 
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
+import type { AgentIdentity } from '@bc-agent/shared/types';
 
 // ============================================================================
 // Types
@@ -21,6 +22,8 @@ export interface AgentState {
   isPaused: boolean;
   /** Reason for pause if paused */
   pauseReason: string | null;
+  /** Current active agent identity (from agent_changed events) */
+  currentAgentIdentity: AgentIdentity | null;
 }
 
 export interface AgentStateActions {
@@ -28,6 +31,8 @@ export interface AgentStateActions {
   setAgentBusy: (busy: boolean) => void;
   /** Set paused state with optional reason */
   setPaused: (paused: boolean, reason?: string) => void;
+  /** Set current agent identity */
+  setCurrentAgentIdentity: (identity: AgentIdentity | null) => void;
   /** Reset all state */
   reset: () => void;
 }
@@ -42,6 +47,7 @@ const initialState: AgentState = {
   isAgentBusy: false,
   isPaused: false,
   pauseReason: null,
+  currentAgentIdentity: null,
 };
 
 // ============================================================================
@@ -61,6 +67,10 @@ export const useAgentStateStore = create<AgentStateStore>()(
         isPaused: paused,
         pauseReason: paused ? (reason ?? null) : null,
       });
+    },
+
+    setCurrentAgentIdentity: (identity: AgentIdentity | null) => {
+      set({ currentAgentIdentity: identity });
     },
 
     reset: () => {

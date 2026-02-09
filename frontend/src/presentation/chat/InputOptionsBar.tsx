@@ -1,7 +1,7 @@
 /**
  * InputOptionsBar Component
  *
- * Toggle options for chat input (thinking mode, context search).
+ * Toggle options for chat input (thinking mode, agent selector).
  * Single TooltipProvider wrapping all toggles for better performance.
  *
  * @module presentation/chat/InputOptionsBar
@@ -9,18 +9,19 @@
 
 import { Toggle } from '@/components/ui/toggle';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Brain, FolderSearch } from 'lucide-react';
+import { Brain } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { AgentSelectorDropdown } from './AgentSelectorDropdown';
 
 interface InputOptionsBarProps {
   /** Whether extended thinking is enabled */
   enableThinking: boolean;
   /** Callback when thinking toggle changes */
   onThinkingChange: (enabled: boolean) => void;
-  /** Whether to search user's context files */
-  useMyContext: boolean;
-  /** Callback when context toggle changes */
-  onContextChange: (enabled: boolean) => void;
+  /** Selected agent ID */
+  selectedAgentId?: string;
+  /** Callback when agent selection changes */
+  onAgentChange?: (agentId: string) => void;
   /** Whether the controls are disabled */
   disabled?: boolean;
 }
@@ -31,17 +32,13 @@ interface InputOptionsBarProps {
 export function InputOptionsBar({
   enableThinking,
   onThinkingChange,
-  useMyContext,
-  onContextChange,
+  selectedAgentId,
+  onAgentChange,
   disabled = false,
 }: InputOptionsBarProps) {
   // Dynamic toggle styles based on state
   const thinkingToggleClasses = enableThinking
     ? 'gap-1.5 bg-amber-500 text-white hover:bg-amber-600 hover:text-white dark:bg-amber-600 dark:hover:bg-amber-700 dark:hover:text-white'
-    : 'gap-1.5';
-
-  const contextToggleClasses = useMyContext
-    ? 'gap-1.5 bg-emerald-500 text-white hover:bg-emerald-600 hover:text-white dark:bg-emerald-600 dark:hover:bg-emerald-700 dark:hover:text-white'
     : 'gap-1.5';
 
   return (
@@ -65,26 +62,13 @@ export function InputOptionsBar({
             <p className="text-xs">Enable extended thinking for complex queries</p>
           </TooltipContent>
         </Tooltip>
-
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Toggle
-              pressed={useMyContext}
-              onPressedChange={onContextChange}
-              size="sm"
-              className={cn(contextToggleClasses)}
-              disabled={disabled}
-              data-testid="context-toggle"
-            >
-              <FolderSearch className="size-3.5" />
-              <span className="text-xs">My Files</span>
-            </Toggle>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p className="text-xs">Search your uploaded files for relevant context</p>
-          </TooltipContent>
-        </Tooltip>
       </TooltipProvider>
+
+      <AgentSelectorDropdown
+        disabled={disabled}
+        value={selectedAgentId}
+        onChange={onAgentChange}
+      />
     </div>
   );
 }

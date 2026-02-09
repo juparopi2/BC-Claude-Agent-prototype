@@ -162,6 +162,7 @@ export class ChatMessageHandler {
           enableAutoSemanticSearch: data.enableAutoSemanticSearch,
           enableThinking: data.thinking?.enableThinking,
           thinkingBudget: data.thinking?.thinkingBudget,
+          targetAgentId: data.targetAgentId,
         }
       );
 

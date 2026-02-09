@@ -2,7 +2,7 @@
 
 **Estado**: En Progreso
 **Fecha Inicio**: 2026-01-21
-**Versión del Plan**: 3.1 (PRD-050 Graphing Agent completado)
+**Versión del Plan**: 3.2 (PRD-060 Agent Selector UI completado)
 
 ---
 
@@ -273,13 +273,26 @@ console.log(anthropic.profile?.reasoningOutput); // true para extended thinking
 > **Nota**: La implementación final difiere del draft PRD-050 v2.0: `scatter` reemplazado por `combo` (ComboChart - bar + line), tool names simplificados (`list_available_charts`/`get_chart_details`/`validate_chart_config`), DonutChart usa `category`/`value` keys (no `{name,value}[]`), modelo Haiku 4.5 con temp 0.2 (no Sonnet). Frontend diferido a siguiente iteración con Tremor copy-paste approach (TW4 + React 19 compatible).
 
 ### Fase 6: UI Components
-**Estado**: 🔴 No Iniciado
+**Estado**: 🟡 En Progreso
 **Objetivo**: UI para selección de agentes y timeline de actividad
 
-| PRD | Componente | Estado |
-|-----|------------|--------|
-| [PRD-060](./PHASE-6-UI/PRD-060-AgentSelector.md) | Agent Selector UI (4 agents: Auto + BC + RAG + Graphing) | 🔴 |
+| PRD | Componente | Estado | Fecha |
+|-----|------------|--------|-------|
+| [PRD-060](./PHASE-6-UI/PRD-060-AgentSelector.md) | Agent Selector UI (dropdown + badges + approval dialog) | ✅ Completado | 2026-02-09 |
 | [PRD-061](./PHASE-6-UI/PRD-061-PlanVisualization.md) | Agent Activity Timeline | 🔴 |
+
+**Métricas PRD-060:**
+- 4 archivos creados (frontend), 14 archivos modificados (5 backend + 9 frontend), 2 test files actualizados
+- 0 regresiones: 3104 tests backend pasan, 666 tests frontend pasan
+- **Backend**: `targetAgentId` threaded a través de 5 capas: `ChatMessageData` → `ChatMessageHandler` → `AgentOrchestrator` → `ExecutionPipeline` → `MessageContextBuilder` → `SupervisorGraphAdapter`
+- **Frontend stores**: `uiPreferencesStore` con `selectedAgentId` (localStorage persist), `agentStateStore` con `currentAgentIdentity: AgentIdentity`
+- **Frontend events**: 3 nuevos cases en `processAgentEventSync.ts`: `agent_changed`, `content_refused`, `session_end`
+- **Nuevos componentes**: `AgentSelectorDropdown` (shadcn Select, 4 opciones: Auto/BC/RAG/Charts), `AgentBadge` (inline badge en mensajes), `ApprovalDialog` (inline card HITL)
+- **ChatInput**: Toggle "My Files" reemplazado por `AgentSelectorDropdown`; `handleSend()` incluye `targetAgentId` y `enableAutoSemanticSearch` derivados de `selectedAgentId`
+- **ChatContainer**: `AgentBadge` en mensajes assistant, `ApprovalDialog` inline para interrupt/resume
+- **SocketClient + useSocketConnection**: `targetAgentId` soportado en `sendMessage()`
+- **Backward compat**: `useMyContext` sincronizado con `selectedAgentId === 'rag-agent'`; `targetAgentId` es opcional (undefined = routing automático)
+- GAPs resueltos: GAP-001 (frontend event handling), GAP-004 (agent_changed processing), GAP-006 (sin refs a router.ts)
 
 ### Fase 7: Agent-Specific UI Rendering
 **Estado**: 🔴 No Iniciado
@@ -339,9 +352,9 @@ FASE 4: Handoffs (✅ COMPLETADO)
 FASE 5: Graphing Agent (✅ COMPLETADO)
 └── PRD-050: GraphingAgent [✅ COMPLETADO] ────────────────► FASE 6
 
-FASE 6: UI
-├── PRD-060: AgentSelector (depende PRD-050 para graphing pill)
-└── PRD-061: Agent Activity Timeline ─────────────────────► FASE 7
+FASE 6: UI (🟡 En Progreso)
+├── PRD-060: AgentSelector [✅ COMPLETADO] ──────────────────────┐
+└── PRD-061: Agent Activity Timeline ────────────────────────────┴──► FASE 7
 
 FASE 7: Agent-Specific UI Rendering
 ├── PRD-070: Rendering Framework (depende PRD-050, PRD-060) ──┐
@@ -424,3 +437,4 @@ npm run test:e2e
 | 2026-02-09 | 2.5 | **PRD-040 completado** (Fase 4 completa). Dynamic handoffs con `Command.PARENT` + `getCurrentTaskInput()` pattern oficial de LangGraph. `createAgentHandoffTool()` factory crea `transfer_to_<agent>` tools inyectados en `createReactAgent()`. `addHandoffBackMessages: true` en supervisor. `detectHandoffs()` en result-adapter. WebSocket `agent:select` handler con ownership validation. `session-ownership.ts` migrado de raw SQL a Prisma. `HandoffType` + `AgentSelectData` types en `@bc-agent/shared`. 7 archivos nuevos, 8 modificados, 3 test files actualizados. 16 tests nuevos, 3036 tests totales. Fase 5 (Graphing Agent) desbloqueada. |
 | 2026-02-09 | 3.0 | **Documentación Fases 5-7 actualizada**. PRD-050 reescrito v2.0: 10 chart types catalog-driven (bar, stacked_bar, line, area, donut, bar_list, kpi, kpi_grid, table, scatter), 3 tools (`list_chart_types`, `get_chart_schema`, `generate_chart_config`), Zod schemas per-type, Tremor mapping, `_type: 'chart_config'` discriminador. PRD-060 v2.0: GAP-006 resuelto (sin refs a `router.ts`), graphing agent pill (📈, #F59E0B), `agentStateStore` con `currentAgentIdentity`, `ApprovalDialog` para interrupt/resume. PRD-061 v2.0: renombrado a "Agent Activity Timeline" (Opción C), usa eventos existentes (`agent_changed`, `tool_use`, `tool_result`), sin dependencia a PRD-031 eliminado. **Nueva Fase 7**: PRD-070 (Agent-Specific Rendering Framework con `_type` discriminator, renderer registry lazy-loaded, `AgentResultRenderer` component) y PRD-071 (RAG Citation UI con `CitationResultSchema`, passages con relevance scores, `CitationCard`/`CitationList` components). Eliminada ref a `@langchain/langgraph-checkpoint-postgres` (sistema usa `MSSQLSaver`). |
 | 2026-02-09 | 3.1 | **PRD-050 completado** (Fase 5 completa, backend-only). 10 chart types catalog-driven implementados: `scatter` reemplazado por `combo` (ComboChart - bar+line combinado, no soportado nativamente por Tremor scatter). 3 tools LangChain: `list_available_charts`, `get_chart_details`, `validate_chart_config` (nombres simplificados vs draft). Zod schemas con constraints estrictos (min data points, min categories stacking, Tremor color palette 9 colores). `ChartConfigSchema` discriminated union en `@bc-agent/shared`. Agent definition con Haiku 4.5 (temp 0.2, JSON determinístico). Slash commands `/chart` y `/graph`. Auto-cascading: handoff tools, supervisor prompt, agent builders sin cambios manuales. 11 archivos nuevos, 9 modificados, 2 tests actualizados. 71 tests nuevos, 3119 tests totales. Frontend (ChartRenderer + Tremor copy-paste) diferido a PRD-070. |
+| 2026-02-09 | 3.2 | **PRD-060 completado** (Fase 6 parcial). Agent Selector UI implementado full-stack. **Backend**: `targetAgentId` threaded por 5 capas (ChatMessageData → ChatMessageHandler → AgentOrchestrator → ExecutionPipeline → MessageContextBuilder). **Frontend**: `AgentSelectorDropdown` (shadcn Select) reemplaza toggle "My Files" en ChatInput. `AgentBadge` en mensajes assistant. `ApprovalDialog` inline para HITL interrupt/resume. `uiPreferencesStore` con `selectedAgentId` persistido en localStorage. `agentStateStore` extendido con `currentAgentIdentity`. 3 nuevos event cases en `processAgentEventSync.ts` (`agent_changed`, `content_refused`, `session_end`). `SocketClient` + `useSocketConnection` soportan `targetAgentId`. 4 archivos nuevos, 14 modificados, 2 test files actualizados. 0 regresiones (3104 backend + 666 frontend tests). GAPs resueltos: GAP-001, GAP-004, GAP-006. Fase 7 parcialmente desbloqueada (PRD-061 pendiente). |

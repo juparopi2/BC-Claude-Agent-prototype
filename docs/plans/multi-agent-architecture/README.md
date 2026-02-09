@@ -2,7 +2,7 @@
 
 **Estado**: En Progreso
 **Fecha Inicio**: 2026-01-21
-**Versión del Plan**: 2.5 (PRD-040 Completado - Dynamic Handoffs with Command Pattern)
+**Versión del Plan**: 3.0 (Fase 7 agregada - Agent-Specific UI Rendering)
 
 ---
 
@@ -45,7 +45,8 @@ Este proyecto transforma el sistema BC Agent desde un grafo lineal simple hacia 
     │ Agent()     │          │ Agent()     │          │ Agent()     │
     │             │          │             │          │             │
     │  BC Agent   │          │  RAG Agent  │          │Graph Agent  │
-    │  + 7 tools  │          │  + search   │          │  + tremor   │
+    │  + 7 tools  │          │  + search   │          │  + 3 tools  │
+    │  + handoffs │          │  + handoffs │          │  + handoffs │
     └──────┬──────┘          └──────┬──────┘          └──────┬──────┘
            │                        │                        │
            └────────────────────────┴────────────────────────┘
@@ -251,22 +252,33 @@ console.log(anthropic.profile?.reasoningOutput); // true para extended thinking
 
 ### Fase 5: Graphing Agent
 **Estado**: 🔴 No Iniciado
-**Objetivo**: Agente especializado en visualización de datos
+**Objetivo**: Agente especializado en visualización de datos con 10 tipos de gráfica
 
 | PRD | Componente | Estado |
 |-----|------------|--------|
-| [PRD-050](./PHASE-5-GRAPHING-AGENT/PRD-050-GraphingAgent.md) | GraphingAgent con Tremor UI | 🔴 |
+| [PRD-050](./PHASE-5-GRAPHING-AGENT/PRD-050-GraphingAgent.md) | GraphingAgent con Tremor UI (10 chart types, catalog-driven tools) | 🔴 |
 
-> **Pre-requisitos**: Requiere `@langchain/langgraph-supervisor` y `@tremor/react`. El agent node debe retornar `currentAgentIdentity` (patrón establecido en PRD-020). Los datos se extraen de `state.messages` (no hay campo `plan` en el state; `createSupervisor()` maneja planes internamente).
+> **Pre-requisitos**: Requiere `@langchain/langgraph-supervisor` (ya instalado) y `@tremor/react` (frontend). El agent node usa `createReactAgent()` con 3 tools catalog-driven (`list_chart_types`, `get_chart_schema`, `generate_chart_config`). `_type: 'chart_config'` discriminador para rendering especializado (PRD-070). No requiere `@langchain/langgraph-checkpoint-postgres` (sistema usa `MSSQLSaver`).
 
 ### Fase 6: UI Components
 **Estado**: 🔴 No Iniciado
-**Objetivo**: UI para selección de agentes y visualización de planes
+**Objetivo**: UI para selección de agentes y timeline de actividad
 
 | PRD | Componente | Estado |
 |-----|------------|--------|
-| [PRD-060](./PHASE-6-UI/PRD-060-AgentSelector.md) | Agent Selector UI | 🔴 |
-| [PRD-061](./PHASE-6-UI/PRD-061-PlanVisualization.md) | Plan Visualization Panel | 🔴 |
+| [PRD-060](./PHASE-6-UI/PRD-060-AgentSelector.md) | Agent Selector UI (4 agents: Auto + BC + RAG + Graphing) | 🔴 |
+| [PRD-061](./PHASE-6-UI/PRD-061-PlanVisualization.md) | Agent Activity Timeline | 🔴 |
+
+### Fase 7: Agent-Specific UI Rendering
+**Estado**: 🔴 No Iniciado
+**Objetivo**: Framework de rendering personalizado por agente + Citation UI para RAG
+
+| PRD | Componente | Estado |
+|-----|------------|--------|
+| [PRD-070](./PHASE-7-AGENT-UI/PRD-070-AgentSpecificRendering.md) | Agent-Specific Rendering Framework (`_type` discriminator) | 🔴 |
+| [PRD-071](./PHASE-7-AGENT-UI/PRD-071-RAGCitationUI.md) | RAG Citation UI + Tool Improvements | 🔴 |
+
+> **Patrón clave**: Tool results con `_type` discriminator (`'chart_config'`, `'citation_result'`) se renderizan con componentes especializados (ChartRenderer, CitationRenderer). Sin `_type` → fallback a MarkdownRenderer. Renderers lazy-loaded via registry extensible.
 
 ---
 
@@ -316,8 +328,12 @@ FASE 5: Graphing Agent
 └── PRD-050: GraphingAgent ───────────────────────────────► FASE 6
 
 FASE 6: UI
-├── PRD-060: AgentSelector
-└── PRD-061: PlanVisualization ───────────────────────────► COMPLETADO
+├── PRD-060: AgentSelector (depende PRD-050 para graphing pill)
+└── PRD-061: Agent Activity Timeline ─────────────────────► FASE 7
+
+FASE 7: Agent-Specific UI Rendering
+├── PRD-070: Rendering Framework (depende PRD-050, PRD-060) ──┐
+└── PRD-071: RAG Citation UI (depende PRD-070) ───────────────┴──► COMPLETADO
 ```
 
 ---
@@ -394,3 +410,4 @@ npm run test:e2e
 | 2026-02-06 | 2.3 | **PRD-030 completado** (Fase 3 parcial). Supervisor Integration implementado: `createSupervisor()` + `createReactAgent()` + `MemorySaver` + `interrupt()`/`Command({ resume })`. 13 archivos creados, 6 modificados, 4 eliminados (deprecated code). 44 tests nuevos, 2986 tests totales pasando. `MemorySaver` como MVP checkpointer (PRD-032 proveerá MSSQL persistence). RAG tool refactorizado a static con `config.configurable`. Old routing eliminado (`router.ts`, `graph.ts`, `AgentFactory.ts`). PRD-032 desbloqueado. |
 | 2026-02-06 | 2.4 | **PRD-032 completado** (Fase 3 completa). `MSSQLSaver` custom checkpointer implementado extendiendo `BaseCheckpointSaver` con Prisma + Azure SQL (no se necesita PostgreSQL). `AgentAnalyticsService` con MERGE upsert atómico para métricas de uso. API endpoints de analytics. 7 archivos nuevos, 4 modificados. 34 tests nuevos, 3020 tests totales. Tabla `checkpoints` (legacy) eliminada, reemplazada por `langgraph_checkpoints` + `langgraph_checkpoint_writes`. GAP-002 resuelto (MSSQL checkpointer). Fase 4 (Handoffs) desbloqueada. |
 | 2026-02-09 | 2.5 | **PRD-040 completado** (Fase 4 completa). Dynamic handoffs con `Command.PARENT` + `getCurrentTaskInput()` pattern oficial de LangGraph. `createAgentHandoffTool()` factory crea `transfer_to_<agent>` tools inyectados en `createReactAgent()`. `addHandoffBackMessages: true` en supervisor. `detectHandoffs()` en result-adapter. WebSocket `agent:select` handler con ownership validation. `session-ownership.ts` migrado de raw SQL a Prisma. `HandoffType` + `AgentSelectData` types en `@bc-agent/shared`. 7 archivos nuevos, 8 modificados, 3 test files actualizados. 16 tests nuevos, 3036 tests totales. Fase 5 (Graphing Agent) desbloqueada. |
+| 2026-02-09 | 3.0 | **Documentación Fases 5-7 actualizada**. PRD-050 reescrito v2.0: 10 chart types catalog-driven (bar, stacked_bar, line, area, donut, bar_list, kpi, kpi_grid, table, scatter), 3 tools (`list_chart_types`, `get_chart_schema`, `generate_chart_config`), Zod schemas per-type, Tremor mapping, `_type: 'chart_config'` discriminador. PRD-060 v2.0: GAP-006 resuelto (sin refs a `router.ts`), graphing agent pill (📈, #F59E0B), `agentStateStore` con `currentAgentIdentity`, `ApprovalDialog` para interrupt/resume. PRD-061 v2.0: renombrado a "Agent Activity Timeline" (Opción C), usa eventos existentes (`agent_changed`, `tool_use`, `tool_result`), sin dependencia a PRD-031 eliminado. **Nueva Fase 7**: PRD-070 (Agent-Specific Rendering Framework con `_type` discriminator, renderer registry lazy-loaded, `AgentResultRenderer` component) y PRD-071 (RAG Citation UI con `CitationResultSchema`, passages con relevance scores, `CitationCard`/`CitationList` components). Eliminada ref a `@langchain/langgraph-checkpoint-postgres` (sistema usa `MSSQLSaver`). |

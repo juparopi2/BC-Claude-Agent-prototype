@@ -1,649 +1,504 @@
-# PRD-050: Graphing Agent (Data Visualization)
+# PRD-050: Graphing Agent (Data Visualization) - v2.0
 
 **Estado**: Draft
 **Prioridad**: Media
 **Dependencias**: PRD-011 (Agent Registry), PRD-020 (Extended State), PRD-040 (Dynamic Handoffs)
-**Bloquea**: Ninguno
+**Bloquea**: PRD-070 (Agent-Specific Rendering Framework)
 
 ---
 
 ## 1. Objetivo
 
-Implementar un agente especializado en visualización de datos que:
-- Genera configuraciones de gráficas a partir de datos
-- Usa Tremor UI components para renderizado
-- Se integra con BC-Agent y RAG-Agent para obtener datos
-- Produce JSON schemas que el frontend renderiza
+Implementar un agente especializado en visualizacion de datos que:
+- Genera configuraciones de graficas a partir de datos usando una **arquitectura catalog-driven**
+- Soporta **10 tipos de graficas** con Zod schemas estrictos por tipo
+- Usa **Tremor UI** components para renderizado en frontend
+- Produce resultados con `_type: 'chart_config'` para rendering especializado (PRD-070)
+- Se integra con BC-Agent y RAG-Agent via handoffs bidireccionales (PRD-040)
 
 ---
 
 ## 2. Contexto
 
-### 2.1 Por qué un Agente Separado
+### 2.1 Por que un Agente Separado
 
-1. **Especialización**: Visualización requiere conocimiento específico
-2. **Reutilización**: Puede ser llamado por múltiples agentes
-3. **Flexibilidad**: Frontend puede evolucionar independientemente
-4. **Performance**: Modelo optimizado para generación de schemas
+1. **Especializacion**: Visualizacion requiere conocimiento especifico de tipos de graficas, data shapes, y mejores practicas de presentacion
+2. **Reutilizacion**: Puede ser invocado por BC-Agent (datos ERP) o RAG-Agent (datos de documentos) via handoffs
+3. **Flexibilidad**: Frontend puede evolucionar los componentes de graficas independientemente
+4. **Performance**: Modelo optimizado para generacion de schemas JSON, no requiere extended thinking
 
 ### 2.2 Pre-requisitos de Paquetes
 
-> **IMPORTANTE** (descubierto durante PRD-011/PRD-020): La integración del Graphing Agent con la arquitectura multi-agente requiere los siguientes paquetes que son instalaciones **separadas**:
->
-> ```bash
-> # Supervisor (para registrar este agente en el grafo supervisor)
-> npm install @langchain/langgraph-supervisor
->
-> # Checkpointer (para persistencia de estado)
-> npm install @langchain/langgraph-checkpoint-postgres
->
-> # Tremor UI (frontend - para renderizar visualizaciones)
-> npm install @tremor/react
-> ```
->
-> Imports correctos:
-> ```typescript
-> import { createSupervisor } from "@langchain/langgraph-supervisor";  // NO de @langchain/langgraph/prebuilt
-> import { createReactAgent } from "@langchain/langgraph/prebuilt";    // Este SÍ está en prebuilt
-> ```
+Solo se requiere instalar el paquete de UI en frontend:
+
+```bash
+# Frontend - Tremor UI para renderizar visualizaciones
+npm install @tremor/react
+```
+
+> **NOTA**: No se requiere `@langchain/langgraph-checkpoint-postgres` - el sistema usa `MSSQLSaver` (PRD-032). `@langchain/langgraph-supervisor` ya esta instalado (PRD-030).
 
 ### 2.3 ExtendedAgentState (PRD-020)
 
-> El Graphing Agent utiliza `ExtendedAgentState` (implementado en PRD-020), que incluye:
-> - `currentAgentIdentity`: Cada agent node retorna su identidad para el UI
-> - `context`: Contexto compartido con `searchContext`, `bcCompanyId`, `metadata`
->
-> **NOTA**: El PRD-020 original proponía `state.plan?.steps` para tracking de planes. Esto **no se implementó** en el state porque `createSupervisor()` maneja planes internamente. El Graphing Agent debe obtener datos de los mensajes previos en `state.messages`, no de un campo `plan`.
+El Graphing Agent utiliza `ExtendedAgentState` (implementado en PRD-020), que incluye:
+- `currentAgentIdentity`: Cada agent node retorna su identidad para el UI
+- `context`: Contexto compartido con `searchContext`, `bcCompanyId`, `metadata`
 
-### 2.4 Tremor UI
+> **NOTA**: No existe campo `state.plan` en `ExtendedAgentState`. `createSupervisor()` maneja planes internamente. El Graphing Agent obtiene datos de `state.messages` (tool results previos de otros agentes).
 
-[Tremor](https://www.tremor.so/) es una librería React para dashboards:
-- BarChart, LineChart, AreaChart, DonutChart
-- Cards, Tables, KPIs
-- TypeScript-first, Tailwind-based
+### 2.4 Tremor UI Library
+
+[Tremor](https://www.tremor.so/) es una libreria React para dashboards y visualizacion de datos:
+- **Componentes nativos**: `BarChart`, `LineChart`, `AreaChart`, `DonutChart`, `ScatterChart`, `BarList`
+- **TypeScript-first**, Tailwind-based
+- **Componentes custom**: `KPICard` y `DataTable` se construyen con Tremor primitives (Card, Table)
+
+### 2.5 Arquitectura Catalog-Driven
+
+En lugar de tools genericos que intentan adivinar el tipo de grafica, el Graphing Agent usa un **catalogo de tipos** que el LLM puede navegar:
+
+1. **`list_chart_types`**: LLM descubre los 10 tipos disponibles y sus casos de uso
+2. **`get_chart_schema`**: LLM obtiene el schema exacto (campos, constraints, ejemplo) para un tipo especifico
+3. **`generate_chart_config`**: LLM produce la configuracion y el tool la valida contra Zod
+
+Este patron elimina la ambiguedad y reduce errores de generacion.
 
 ---
 
-## 3. Diseño Propuesto
+## 3. Chart Type Catalog (10 Tipos)
 
-### 3.1 Estructura de Archivos
+| # | Type ID | Tremor Component | Data Shape | Min/Max | Business Use |
+|---|---------|-----------------|------------|---------|-------------|
+| 1 | `bar` | `<BarChart>` | `Record[], index, categories` | 1-100 rows, 1-10 cats | Revenue by quarter, sales comparison |
+| 2 | `stacked_bar` | `<BarChart type="stacked">` | `Record[], index, categories` | 1-100 rows, 2-10 cats | Revenue composition, cost breakdown |
+| 3 | `line` | `<LineChart>` | `Record[], index, categories` | 2-500 rows, 1-10 cats | Monthly trends, cash flow, time series |
+| 4 | `area` | `<AreaChart>` | `Record[], index, categories` | 2-500 rows, 1-10 cats | Cumulative revenue, market share |
+| 5 | `donut` | `<DonutChart>` | `{name, value}[]` | 2-12 segments | Expense distribution, revenue segments |
+| 6 | `bar_list` | `<BarList>` | `{name, value}[]` | 1-30 items | Top N rankings, performance |
+| 7 | `kpi` | Custom `<KPICard>` | Single metric object | 1 metric | Total revenue, YoY growth |
+| 8 | `kpi_grid` | Grid of `<KPICard>` | Array of metrics | 2-8 KPIs | Dashboard overview, summary panels |
+| 9 | `table` | Custom `<DataTable>` | `Record[], columns` | 1-500 rows, 1-20 cols | Transaction details, inventory list |
+| 10 | `scatter` | `<ScatterChart>` | `Record[], x, y, category` | 2-200 points | Price/volume correlation, profitability |
 
-```
-backend/src/modules/agents/graphing/
-├── GraphingAgent.ts            # Main agent implementation
-├── tools/
-│   ├── formatDataForChart.ts   # Transform data for visualization
-│   ├── selectChartType.ts      # Choose appropriate chart
-│   └── generateTremorConfig.ts # Generate Tremor component config
-├── schemas/
-│   ├── ChartConfigSchema.ts    # Zod schemas for chart configs
-│   ├── TremorComponents.ts     # Type definitions for Tremor
-│   └── index.ts
-├── prompts/
-│   └── graphing.system.ts      # System prompt
-├── graphing-agent.definition.ts # Agent registry definition
-└── index.ts
-```
+### 3.1 Zod Schemas por Tipo
 
-### 3.2 Chart Configuration Schemas
+Cada tipo tiene su **schema Zod** con validaciones estrictas. Todos los schemas incluyen `_type: z.literal('chart_config')` como discriminador para el frontend (PRD-070).
 
 ```typescript
-// schemas/ChartConfigSchema.ts
-import { z } from 'zod';
-
-/**
- * Base chart configuration
- */
-export const BaseChartConfigSchema = z.object({
-  /** Chart title */
-  title: z.string(),
-
-  /** Chart subtitle/description */
-  subtitle: z.string().optional(),
-
-  /** Chart type */
-  type: z.enum([
-    'bar', 'line', 'area', 'donut', 'scatter',
-    'table', 'kpi', 'progress'
-  ]),
-
-  /** Width (responsive by default) */
-  width: z.enum(['sm', 'md', 'lg', 'full']).default('full'),
-
-  /** Height in pixels */
-  height: z.number().min(100).max(800).default(300),
+// Shared base fields
+const ChartBaseSchema = z.object({
+  _type: z.literal('chart_config'),
+  chartType: z.string(),
+  title: z.string().min(1).max(200),
+  subtitle: z.string().max(300).optional(),
 });
 
-/**
- * Bar chart configuration
- */
-export const BarChartConfigSchema = BaseChartConfigSchema.extend({
-  type: z.literal('bar'),
-
-  /** Data array */
-  data: z.array(z.record(z.union([z.string(), z.number()]))),
-
-  /** X-axis category key */
-  index: z.string(),
-
-  /** Y-axis value categories */
-  categories: z.array(z.string()),
-
-  /** Colors for each category */
-  colors: z.array(z.string()).optional(),
-
-  /** Show stacked bars */
-  stack: z.boolean().default(false),
-
-  /** Horizontal orientation */
+// 1. Bar Chart
+const BarChartConfigSchema = ChartBaseSchema.extend({
+  chartType: z.literal('bar'),
+  data: z.array(z.record(z.union([z.string(), z.number()]))).min(1).max(100),
+  index: z.string().min(1),
+  categories: z.array(z.string()).min(1).max(10),
+  colors: z.array(z.string()).max(10).optional(),
   layout: z.enum(['vertical', 'horizontal']).default('vertical'),
-
-  /** Value formatter */
-  valueFormatter: z.string().optional(), // e.g., "(value) => `$${value}`"
-
-  /** Show legend */
   showLegend: z.boolean().default(true),
-
-  /** Y-axis label */
-  yAxisLabel: z.string().optional(),
-
-  /** X-axis label */
+  showGridLines: z.boolean().default(true),
+  valueFormatter: z.string().optional(),
   xAxisLabel: z.string().optional(),
+  yAxisLabel: z.string().optional(),
 });
 
-/**
- * Line chart configuration
- */
-export const LineChartConfigSchema = BaseChartConfigSchema.extend({
-  type: z.literal('line'),
+// 2. Stacked Bar Chart
+const StackedBarChartConfigSchema = ChartBaseSchema.extend({
+  chartType: z.literal('stacked_bar'),
+  data: z.array(z.record(z.union([z.string(), z.number()]))).min(1).max(100),
+  index: z.string().min(1),
+  categories: z.array(z.string()).min(2).max(10), // min 2: stacking requires multiple series
+  colors: z.array(z.string()).max(10).optional(),
+  layout: z.enum(['vertical', 'horizontal']).default('vertical'),
+  showLegend: z.boolean().default(true),
+  showGridLines: z.boolean().default(true),
+  valueFormatter: z.string().optional(),
+  xAxisLabel: z.string().optional(),
+  yAxisLabel: z.string().optional(),
+});
 
-  data: z.array(z.record(z.union([z.string(), z.number()]))),
-  index: z.string(),
-  categories: z.array(z.string()),
-  colors: z.array(z.string()).optional(),
-
-  /** Connect null values */
+// 3. Line Chart
+const LineChartConfigSchema = ChartBaseSchema.extend({
+  chartType: z.literal('line'),
+  data: z.array(z.record(z.union([z.string(), z.number()]))).min(2).max(500), // min 2 points
+  index: z.string().min(1),
+  categories: z.array(z.string()).min(1).max(10),
+  colors: z.array(z.string()).max(10).optional(),
   connectNulls: z.boolean().default(false),
-
-  /** Show data points */
   showMarker: z.boolean().default(true),
-
-  /** Curved lines */
   curveType: z.enum(['linear', 'natural', 'monotone', 'step']).default('linear'),
+  showLegend: z.boolean().default(true),
+  showGridLines: z.boolean().default(true),
+  xAxisLabel: z.string().optional(),
+  yAxisLabel: z.string().optional(),
 });
 
-/**
- * Donut chart configuration
- */
-export const DonutChartConfigSchema = BaseChartConfigSchema.extend({
-  type: z.literal('donut'),
+// 4. Area Chart
+const AreaChartConfigSchema = ChartBaseSchema.extend({
+  chartType: z.literal('area'),
+  data: z.array(z.record(z.union([z.string(), z.number()]))).min(2).max(500),
+  index: z.string().min(1),
+  categories: z.array(z.string()).min(1).max(10),
+  colors: z.array(z.string()).max(10).optional(),
+  stacked: z.boolean().default(false),
+  showLegend: z.boolean().default(true),
+  showGridLines: z.boolean().default(true),
+  xAxisLabel: z.string().optional(),
+  yAxisLabel: z.string().optional(),
+});
 
+// 5. Donut Chart
+const DonutChartConfigSchema = ChartBaseSchema.extend({
+  chartType: z.literal('donut'),
   data: z.array(z.object({
     name: z.string(),
     value: z.number(),
-  })),
-
-  /** Category key for labels */
-  category: z.string().default('name'),
-
-  /** Value key */
-  value: z.string().default('value'),
-
-  /** Show as ring (vs full pie) */
+  })).min(2).max(12), // max 12: more segments become illegible
+  colors: z.array(z.string()).max(12).optional(),
   variant: z.enum(['donut', 'pie']).default('donut'),
-
-  /** Center label */
   label: z.string().optional(),
-
-  /** Show tooltip */
   showTooltip: z.boolean().default(true),
+  showLabel: z.boolean().default(true),
+  valueFormatter: z.string().optional(),
 });
 
-/**
- * KPI card configuration
- */
-export const KPIConfigSchema = BaseChartConfigSchema.extend({
-  type: z.literal('kpi'),
+// 6. Bar List
+const BarListConfigSchema = ChartBaseSchema.extend({
+  chartType: z.literal('bar_list'),
+  data: z.array(z.object({
+    name: z.string(),
+    value: z.number(),
+  })).min(1).max(30),
+  color: z.string().optional(),
+  showAnimation: z.boolean().default(true),
+  valueFormatter: z.string().optional(),
+  sortOrder: z.enum(['ascending', 'descending', 'none']).default('descending'),
+});
 
-  /** Main metric value */
-  metric: z.string(),
-
-  /** Metric label */
-  metricLabel: z.string(),
-
-  /** Comparison value (e.g., "+12%") */
+// 7. KPI Card
+const KPIConfigSchema = ChartBaseSchema.extend({
+  chartType: z.literal('kpi'),
+  metric: z.string().min(1),
+  metricLabel: z.string().min(1),
   delta: z.string().optional(),
-
-  /** Delta type for styling */
   deltaType: z.enum(['increase', 'decrease', 'unchanged']).optional(),
-
-  /** Icon name */
   icon: z.string().optional(),
+  valuePrefix: z.string().optional(), // e.g., "$"
+  valueSuffix: z.string().optional(), // e.g., "%"
 });
 
-/**
- * Table configuration
- */
-export const TableConfigSchema = BaseChartConfigSchema.extend({
-  type: z.literal('table'),
+// 8. KPI Grid
+const KPIGridConfigSchema = ChartBaseSchema.extend({
+  chartType: z.literal('kpi_grid'),
+  metrics: z.array(z.object({
+    metric: z.string().min(1),
+    metricLabel: z.string().min(1),
+    delta: z.string().optional(),
+    deltaType: z.enum(['increase', 'decrease', 'unchanged']).optional(),
+    icon: z.string().optional(),
+    valuePrefix: z.string().optional(),
+    valueSuffix: z.string().optional(),
+  })).min(2).max(8), // min 2 KPIs, max 8 per grid
+  columns: z.number().min(2).max(4).default(3),
+});
 
-  /** Table data */
-  data: z.array(z.record(z.unknown())),
-
-  /** Column definitions */
+// 9. Table
+const TableConfigSchema = ChartBaseSchema.extend({
+  chartType: z.literal('table'),
+  data: z.array(z.record(z.unknown())).min(1).max(500),
   columns: z.array(z.object({
     key: z.string(),
     header: z.string(),
     type: z.enum(['text', 'number', 'currency', 'date', 'badge']).default('text'),
     align: z.enum(['left', 'center', 'right']).default('left'),
-  })),
-
-  /** Enable sorting */
+  })).min(1).max(20),
   sortable: z.boolean().default(true),
-
-  /** Show pagination */
   paginate: z.boolean().default(true),
-
-  /** Rows per page */
-  pageSize: z.number().default(10),
+  pageSize: z.number().min(5).max(100).default(10),
 });
 
-/**
- * Union of all chart configs
- */
-export const ChartConfigSchema = z.discriminatedUnion('type', [
+// 10. Scatter Chart
+const ScatterChartConfigSchema = ChartBaseSchema.extend({
+  chartType: z.literal('scatter'),
+  data: z.array(z.record(z.union([z.string(), z.number()]))).min(2).max(200),
+  x: z.string().min(1),
+  y: z.string().min(1),
+  category: z.string().optional(),
+  size: z.string().optional(),
+  colors: z.array(z.string()).max(10).optional(),
+  showLegend: z.boolean().default(true),
+  showGridLines: z.boolean().default(true),
+  xAxisLabel: z.string().optional(),
+  yAxisLabel: z.string().optional(),
+});
+
+// Discriminated union of all chart configs
+const ChartConfigSchema = z.discriminatedUnion('chartType', [
   BarChartConfigSchema,
+  StackedBarChartConfigSchema,
   LineChartConfigSchema,
+  AreaChartConfigSchema,
   DonutChartConfigSchema,
+  BarListConfigSchema,
   KPIConfigSchema,
+  KPIGridConfigSchema,
   TableConfigSchema,
+  ScatterChartConfigSchema,
 ]);
 
-export type ChartConfig = z.infer<typeof ChartConfigSchema>;
-export type BarChartConfig = z.infer<typeof BarChartConfigSchema>;
-export type LineChartConfig = z.infer<typeof LineChartConfigSchema>;
-export type DonutChartConfig = z.infer<typeof DonutChartConfigSchema>;
-export type KPIConfig = z.infer<typeof KPIConfigSchema>;
-export type TableConfig = z.infer<typeof TableConfigSchema>;
+type ChartConfig = z.infer<typeof ChartConfigSchema>;
 ```
 
-### 3.3 Graphing Agent Tools
+---
+
+## 4. Tool Architecture (3 Catalog-Driven Tools)
+
+### 4.1 Tool 1: `list_chart_types`
 
 ```typescript
-// tools/formatDataForChart.ts
+// tools/list-chart-types.ts
 import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
+import { CHART_REGISTRY } from '../schemas/chart-registry';
 
-export const formatDataForChart = tool(
-  async ({ data, targetFormat, xAxis, yAxes, aggregation }) => {
-    // Transform raw data into chart-ready format
-    const formatted = [];
-
-    // Group by xAxis
-    const groups = new Map<string, Record<string, number>>();
-
-    for (const row of data) {
-      const key = String(row[xAxis]);
-      if (!groups.has(key)) {
-        groups.set(key, { [xAxis]: row[xAxis] });
-      }
-      const group = groups.get(key)!;
-
-      for (const yAxis of yAxes) {
-        const value = Number(row[yAxis]) || 0;
-        const existing = group[yAxis] || 0;
-
-        switch (aggregation) {
-          case 'sum':
-            group[yAxis] = existing + value;
-            break;
-          case 'avg':
-            group[`${yAxis}_sum`] = (group[`${yAxis}_sum`] || 0) + value;
-            group[`${yAxis}_count`] = (group[`${yAxis}_count`] || 0) + 1;
-            group[yAxis] = group[`${yAxis}_sum`] / group[`${yAxis}_count`];
-            break;
-          case 'count':
-            group[yAxis] = existing + 1;
-            break;
-          case 'max':
-            group[yAxis] = Math.max(existing, value);
-            break;
-          case 'min':
-            group[yAxis] = group[yAxis] === undefined ? value : Math.min(existing, value);
-            break;
-        }
-      }
-    }
-
-    return Array.from(groups.values());
+export const listChartTypes = tool(
+  async () => {
+    return CHART_REGISTRY.map(entry => ({
+      id: entry.id,
+      name: entry.name,
+      description: entry.description,
+      bestFor: entry.bestFor,
+      dataShape: entry.dataShape,
+      constraints: entry.constraints,
+    }));
   },
   {
-    name: 'format_data_for_chart',
-    description: 'Transform raw data into chart-ready format with aggregation',
-    schema: z.object({
-      data: z.array(z.record(z.unknown())).describe('Raw data array'),
-      targetFormat: z.enum(['bar', 'line', 'donut', 'table']),
-      xAxis: z.string().describe('Field to use for X axis / categories'),
-      yAxes: z.array(z.string()).describe('Fields to use for Y axis values'),
-      aggregation: z.enum(['sum', 'avg', 'count', 'max', 'min']).default('sum'),
-    }),
-  }
-);
-
-// tools/selectChartType.ts
-export const selectChartType = tool(
-  async ({ dataCharacteristics, userIntent }) => {
-    const { rowCount, columnCount, hasTimeSeries, categoricalColumns, numericColumns } = dataCharacteristics;
-
-    // Decision tree for chart type
-    if (userIntent?.includes('trend') || userIntent?.includes('over time') || hasTimeSeries) {
-      return { chartType: 'line', reason: 'Time series data best shown as line chart' };
-    }
-
-    if (userIntent?.includes('distribution') || userIntent?.includes('breakdown')) {
-      if (categoricalColumns === 1 && numericColumns === 1) {
-        return { chartType: 'donut', reason: 'Simple distribution shown as donut' };
-      }
-      return { chartType: 'bar', reason: 'Multi-category distribution as bar chart' };
-    }
-
-    if (userIntent?.includes('compare') || userIntent?.includes('comparison')) {
-      return { chartType: 'bar', reason: 'Comparison best shown as bar chart' };
-    }
-
-    if (rowCount > 20 || columnCount > 5) {
-      return { chartType: 'table', reason: 'Large dataset best shown as table' };
-    }
-
-    if (numericColumns === 1 && categoricalColumns === 0) {
-      return { chartType: 'kpi', reason: 'Single metric as KPI card' };
-    }
-
-    return { chartType: 'bar', reason: 'Default to bar chart for general data' };
-  },
-  {
-    name: 'select_chart_type',
-    description: 'Determine the best chart type for the given data',
-    schema: z.object({
-      dataCharacteristics: z.object({
-        rowCount: z.number(),
-        columnCount: z.number(),
-        hasTimeSeries: z.boolean(),
-        categoricalColumns: z.number(),
-        numericColumns: z.number(),
-      }),
-      userIntent: z.string().optional(),
-    }),
-  }
-);
-
-// tools/generateTremorConfig.ts
-export const generateTremorConfig = tool(
-  async ({ chartType, data, options }) => {
-    const baseConfig = {
-      type: chartType,
-      title: options.title || 'Chart',
-      subtitle: options.subtitle,
-      height: options.height || 300,
-      width: 'full',
-    };
-
-    switch (chartType) {
-      case 'bar':
-        return {
-          ...baseConfig,
-          data,
-          index: options.xAxis,
-          categories: options.yAxes,
-          colors: options.colors || ['blue', 'cyan', 'indigo'],
-          stack: options.stacked || false,
-          showLegend: options.yAxes.length > 1,
-        };
-
-      case 'line':
-        return {
-          ...baseConfig,
-          data,
-          index: options.xAxis,
-          categories: options.yAxes,
-          colors: options.colors || ['blue', 'emerald'],
-          curveType: 'monotone',
-        };
-
-      case 'donut':
-        return {
-          ...baseConfig,
-          data: data.map(d => ({
-            name: d[options.xAxis],
-            value: d[options.yAxes[0]],
-          })),
-          category: 'name',
-          value: 'value',
-          variant: 'donut',
-        };
-
-      case 'kpi':
-        const value = data[0]?.[options.yAxes[0]] || 0;
-        return {
-          ...baseConfig,
-          metric: String(value),
-          metricLabel: options.title,
-          delta: options.delta,
-          deltaType: options.deltaType,
-        };
-
-      case 'table':
-        return {
-          ...baseConfig,
-          data,
-          columns: Object.keys(data[0] || {}).map(key => ({
-            key,
-            header: key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
-            type: typeof data[0][key] === 'number' ? 'number' : 'text',
-          })),
-          sortable: true,
-          paginate: data.length > 10,
-        };
-
-      default:
-        throw new Error(`Unknown chart type: ${chartType}`);
-    }
-  },
-  {
-    name: 'generate_tremor_config',
-    description: 'Generate Tremor component configuration from data',
-    schema: z.object({
-      chartType: z.enum(['bar', 'line', 'donut', 'kpi', 'table']),
-      data: z.array(z.record(z.unknown())),
-      options: z.object({
-        title: z.string(),
-        subtitle: z.string().optional(),
-        xAxis: z.string(),
-        yAxes: z.array(z.string()),
-        colors: z.array(z.string()).optional(),
-        stacked: z.boolean().optional(),
-        height: z.number().optional(),
-        delta: z.string().optional(),
-        deltaType: z.enum(['increase', 'decrease', 'unchanged']).optional(),
-      }),
-    }),
+    name: 'list_chart_types',
+    description: 'List all available chart types with descriptions, data shapes, and constraints. Call this FIRST to understand what visualizations are available.',
+    schema: z.object({}),
   }
 );
 ```
 
-### 3.4 Graphing Agent
+**Input**: ninguno
+**Output**: array de `{ id, name, description, bestFor, dataShape, constraints }`
+**Proposito**: LLM navega el catalogo antes de elegir un tipo
+
+### 4.2 Tool 2: `get_chart_schema`
 
 ```typescript
-// GraphingAgent.ts
-import { ChatAnthropic } from '@langchain/anthropic';
-import { createReactAgent } from '@langchain/langgraph/prebuilt';
-import { formatDataForChart, selectChartType, generateTremorConfig } from './tools';
-import { getGraphingSystemPrompt } from './prompts/graphing.system';
-import type { ExtendedAgentState } from '@/modules/agents/orchestrator/state';
-import type { ChartConfig } from './schemas/ChartConfigSchema';
+// tools/get-chart-schema.ts
+import { tool } from '@langchain/core/tools';
+import { z } from 'zod';
+import { CHART_REGISTRY } from '../schemas/chart-registry';
 
-/**
- * Graphing Agent - Specializes in data visualization
- */
-export class GraphingAgent {
-  private agent: ReturnType<typeof createReactAgent>;
-
-  constructor() {
-    const llm = new ChatAnthropic({
-      modelName: 'claude-3-5-sonnet-20241022',
-      temperature: 0.1,
-      maxTokens: 4096,
-    });
-
-    const tools = [
-      formatDataForChart,
-      selectChartType,
-      generateTremorConfig,
-    ];
-
-    this.agent = createReactAgent({
-      llm,
-      tools,
-      messageModifier: getGraphingSystemPrompt(),
-    });
-  }
-
-  /**
-   * Generate visualization config from data and intent
-   */
-  async generateVisualization(
-    data: unknown[],
-    userIntent: string,
-    context?: Record<string, unknown>
-  ): Promise<ChartConfig> {
-    const result = await this.agent.invoke({
-      messages: [
-        {
-          role: 'user',
-          content: `Create a visualization for this data:
-
-Data:
-${JSON.stringify(data.slice(0, 10), null, 2)}
-${data.length > 10 ? `... (${data.length - 10} more rows)` : ''}
-
-User request: ${userIntent}
-
-${context ? `Additional context: ${JSON.stringify(context)}` : ''}
-
-Generate the appropriate chart configuration.`,
-        },
-      ],
-    });
-
-    // Extract chart config from agent response
-    const lastMessage = result.messages[result.messages.length - 1];
-    const content = typeof lastMessage.content === 'string'
-      ? lastMessage.content
-      : JSON.stringify(lastMessage.content);
-
-    // Parse JSON from response
-    const jsonMatch = content.match(/```json\n([\s\S]*?)\n```/);
-    if (jsonMatch) {
-      return JSON.parse(jsonMatch[1]);
+export const getChartSchema = tool(
+  async ({ chartType }) => {
+    const entry = CHART_REGISTRY.find(e => e.id === chartType);
+    if (!entry) {
+      return { error: `Unknown chart type: ${chartType}. Use list_chart_types to see available types.` };
     }
-
-    // Try direct JSON parse
-    return JSON.parse(content);
+    return {
+      chartType: entry.id,
+      requiredFields: entry.requiredFields,
+      optionalFields: entry.optionalFields,
+      constraints: entry.constraints,
+      example: entry.example,
+    };
+  },
+  {
+    name: 'get_chart_schema',
+    description: 'Get the exact schema (required fields, optional fields, constraints, example) for a specific chart type. Call this AFTER list_chart_types to understand what data to produce.',
+    schema: z.object({
+      chartType: z.string().describe('Chart type ID from list_chart_types'),
+    }),
   }
-}
-
-// Graph node
-// NOTA: ExtendedAgentState (PRD-020) NO tiene campo `plan` — createSupervisor()
-// maneja planes internamente. Los datos se extraen de state.messages.
-export async function graphingAgentNode(
-  state: ExtendedAgentState
-): Promise<Partial<ExtendedAgentState>> {
-  const agent = new GraphingAgent();
-
-  // Extract data from previous messages (tool results, etc.)
-  const previousData = extractDataFromMessages(state.messages);
-  const lastUserMessage = state.messages
-    .filter(m => m._getType?.() === 'human')
-    .pop();
-  const userIntent = typeof lastUserMessage?.content === 'string'
-    ? lastUserMessage.content
-    : 'Create a visualization';
-
-  const chartConfig = await agent.generateVisualization(
-    previousData,
-    userIntent
-  );
-
-  const { AIMessage } = await import('@langchain/core/messages');
-  const { AGENT_ID, AGENT_DISPLAY_NAME, AGENT_ICON, AGENT_COLOR } = await import('@bc-agent/shared');
-
-  return {
-    messages: [
-      new AIMessage({
-        content: JSON.stringify({
-          type: 'visualization',
-          config: chartConfig,
-        }),
-        additional_kwargs: {
-          visualization: chartConfig,
-        },
-      }),
-    ],
-    // PRD-020: Set agent identity for UI
-    currentAgentIdentity: {
-      agentId: 'graphing-agent',
-      agentName: 'Data Visualization Expert',
-      agentIcon: '📊',
-      agentColor: '#F59E0B',
-    },
-  };
-}
-
-function extractDataFromMessages(messages: BaseMessage[]): unknown[] {
-  // Look for data in tool result messages (from BC Agent, RAG Agent, etc.)
-  for (const msg of [...messages].reverse()) {
-    if (msg._getType?.() === 'tool') {
-      try {
-        const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
-        const parsed = JSON.parse(content);
-        if (Array.isArray(parsed)) return parsed;
-        if (parsed.data && Array.isArray(parsed.data)) return parsed.data;
-      } catch {
-        // Not JSON, continue
-      }
-    }
-  }
-
-  return [];
-}
+);
 ```
 
-### 3.5 Agent Definition
+**Input**: `{ chartType: ChartTypeId }`
+**Output**: descripcion JSON del Zod schema (campos requeridos, opcionales, constraints, ejemplo)
+**Proposito**: LLM sabe exactamente que datos producir
+
+### 4.3 Tool 3: `generate_chart_config`
+
+```typescript
+// tools/generate-chart-config.ts
+import { tool } from '@langchain/core/tools';
+import { z } from 'zod';
+import { ChartConfigSchema } from '@bc-agent/shared';
+
+export const generateChartConfig = tool(
+  async ({ chartType, config }) => {
+    const fullConfig = { ...config, chartType, _type: 'chart_config' as const };
+    const result = ChartConfigSchema.safeParse(fullConfig);
+
+    if (!result.success) {
+      return {
+        valid: false,
+        errors: result.error.issues.map(issue => ({
+          path: issue.path.join('.'),
+          message: issue.message,
+        })),
+      };
+    }
+
+    return {
+      valid: true,
+      config: result.data,
+    };
+  },
+  {
+    name: 'generate_chart_config',
+    description: 'Validate and generate a chart configuration. Validates against the Zod schema for the chart type. Returns validated config on success or validation errors on failure.',
+    schema: z.object({
+      chartType: z.string().describe('Chart type ID'),
+      config: z.record(z.unknown()).describe('Chart configuration matching the schema from get_chart_schema'),
+    }),
+  }
+);
+```
+
+**Input**: `{ chartType: ChartTypeId, config: Record<string, unknown> }`
+**Validacion**: contra Zod schema del chart type
+**Output**: `{ valid: true, config: ChartConfig }` o `{ valid: false, errors: ZodError[] }`
+**Discriminador**: Config validado incluye `_type: 'chart_config'` para rendering frontend (PRD-070)
+
+---
+
+## 5. Backend Implementation
+
+### 5.1 Shared Package Changes (`@bc-agent/shared`)
+
+#### 5.1.1 Constants (`constants/agent-registry.constants.ts`)
+
+```typescript
+// Agregar al objeto AGENT_ID
+AGENT_ID.GRAPHING_AGENT = 'graphing-agent';
+
+// Agregar a AGENT_DISPLAY_NAME
+AGENT_DISPLAY_NAME['graphing-agent'] = 'Data Visualization Expert';
+
+// Agregar a AGENT_ICON
+AGENT_ICON['graphing-agent'] = '📈';  // NOTA: BC Agent usa 📊, diferente icono
+
+// Agregar a AGENT_COLOR
+AGENT_COLOR['graphing-agent'] = '#F59E0B';  // Amber
+
+// Agregar a AGENT_DESCRIPTION
+AGENT_DESCRIPTION['graphing-agent'] = 'Creates charts, graphs, and data tables from your data using Tremor UI components';
+```
+
+#### 5.1.2 Nuevo `types/chart-config.types.ts`
+
+Exportar: `ChartType`, per-type config interfaces, union `ChartConfig`
+
+#### 5.1.3 Nuevo `schemas/chart-config.schema.ts`
+
+Exportar: Zod schemas para 10 tipos + `ChartConfigSchema` discriminated union (como se muestra en seccion 3.1)
+
+#### 5.1.4 `AgentId` type
+
+Se extiende automaticamente al agregar entrada a `AGENT_ID` constants.
+
+### 5.2 Backend File Structure
+
+```
+backend/src/modules/agents/graphing/
+├── tools/
+│   ├── list-chart-types.ts           # Tool 1: Navigate chart catalog
+│   ├── get-chart-schema.ts           # Tool 2: Get schema for specific type
+│   └── generate-chart-config.ts      # Tool 3: Validate and generate config
+├── schemas/
+│   ├── chart-registry.ts             # Catalog of 10 types with metadata
+│   └── index.ts
+├── prompts/
+│   └── graphing.system.ts            # System prompt for graphing agent
+├── graphing-agent.definition.ts      # Agent registry definition (PRD-011)
+└── index.ts
+```
+
+### 5.3 Chart Registry (Catalog)
+
+```typescript
+// schemas/chart-registry.ts
+export interface ChartRegistryEntry {
+  id: string;
+  name: string;
+  description: string;
+  bestFor: string[];
+  dataShape: string;
+  constraints: string;
+  requiredFields: Record<string, string>;
+  optionalFields: Record<string, string>;
+  example: Record<string, unknown>;
+}
+
+export const CHART_REGISTRY: ChartRegistryEntry[] = [
+  {
+    id: 'bar',
+    name: 'Bar Chart',
+    description: 'Vertical or horizontal bars comparing values across categories',
+    bestFor: ['comparisons', 'rankings', 'quarterly revenue', 'sales by region'],
+    dataShape: 'Record[] with index (category) and numeric categories',
+    constraints: '1-100 rows, 1-10 categories',
+    requiredFields: { data: 'Record[]', index: 'string (category field)', categories: 'string[] (value fields)' },
+    optionalFields: { colors: 'string[]', layout: '"vertical"|"horizontal"', showLegend: 'boolean', valueFormatter: 'string' },
+    example: {
+      chartType: 'bar',
+      title: 'Revenue by Quarter',
+      data: [{ quarter: 'Q1', revenue: 45000 }, { quarter: 'Q2', revenue: 52000 }],
+      index: 'quarter',
+      categories: ['revenue'],
+    },
+  },
+  // ... 9 more entries for each chart type
+];
+```
+
+### 5.4 Agent Definition (PRD-011 Pattern)
 
 ```typescript
 // graphing-agent.definition.ts
-import { AgentDefinitionInput } from '../core/registry/AgentDefinition';
+import type { AgentDefinitionInput } from '../core/registry/AgentDefinition';
 
 export const graphingAgentDefinition: AgentDefinitionInput = {
   id: 'graphing-agent',
   name: 'Data Visualization Expert',
-  description: 'Creates charts, graphs, and tables from your data',
+  description: 'Creates charts, graphs, and data tables from your data',
 
-  icon: '📊',
+  icon: '📈',
   color: '#F59E0B', // Amber
 
-  capabilities: ['data_viz'],
+  capabilities: ['data_viz', 'charts', 'tables', 'kpis'],
 
   tools: [
-    { name: 'format_data_for_chart', description: 'Transform data for charts' },
-    { name: 'select_chart_type', description: 'Choose best chart type' },
-    { name: 'generate_tremor_config', description: 'Generate chart config' },
+    { name: 'list_chart_types', description: 'List all available chart types' },
+    { name: 'get_chart_schema', description: 'Get schema for a chart type' },
+    { name: 'generate_chart_config', description: 'Validate and generate chart config' },
   ],
 
-  systemPrompt: `You are a data visualization expert...`,
+  systemPrompt: `You are a data visualization expert. You help users create clear,
+informative charts and visualizations from their data.
+
+Workflow:
+1. Call list_chart_types to see available chart types
+2. Choose the best chart type for the user's data and intent
+3. Call get_chart_schema to get the exact schema for that type
+4. Call generate_chart_config with the properly formatted data
+
+Always prefer the simplest chart type that conveys the information effectively.
+Use KPI cards for single metrics, donut for proportions, bar for comparisons,
+line for trends, and table for detailed data.`,
 
   modelConfig: {
-    preferredModel: 'claude-3-5-sonnet',
+    preferredModel: 'claude-sonnet-4-5-20250929',
     maxTokens: 4096,
     temperature: 0.1,
   },
@@ -654,151 +509,316 @@ export const graphingAgentDefinition: AgentDefinitionInput = {
   triggerKeywords: [
     'chart', 'graph', 'visualize', 'visualization',
     'plot', 'bar chart', 'line chart', 'pie chart',
-    'show me a graph', 'create a chart',
+    'show me a graph', 'create a chart', 'dashboard',
+    'KPI', 'metrics', 'scatter plot',
   ],
   triggerPatterns: [
-    /create\s+a?\s*(chart|graph|visualization)/i,
-    /show\s+(me\s+)?a?\s*(chart|graph)/i,
+    /create\s+a?\s*(chart|graph|visualization|dashboard)/i,
+    /show\s+(me\s+)?a?\s*(chart|graph|plot)/i,
     /visualize\s+(the\s+)?data/i,
+    /make\s+a?\s*(bar|line|pie|donut|scatter)\s*(chart|graph|plot)?/i,
   ],
 };
 ```
 
----
-
-## 4. Frontend Integration
-
-### 4.1 Chart Renderer Component
+### 5.5 Agent Node (Graph Integration)
 
 ```typescript
-// frontend/src/components/chat/ChartRenderer.tsx
-import {
-  BarChart, LineChart, DonutChart, Card, Table
-} from '@tremor/react';
+// Agent node for supervisor graph
+// Data is extracted from state.messages, NOT from state.plan (which doesn't exist)
+export async function createGraphingAgentNode() {
+  const llm = await initChatModel('claude-sonnet-4-5-20250929', {
+    temperature: 0.1,
+    maxTokens: 4096,
+  });
+
+  const tools = [listChartTypes, getChartSchema, generateChartConfig];
+  // Handoff tools injected by buildHandoffToolsForAgent() (PRD-040)
+
+  return createReactAgent({
+    llm,
+    tools,
+    name: AGENT_ID.GRAPHING_AGENT,
+    prompt: getGraphingSystemPrompt(),
+  });
+}
+```
+
+### 5.6 Handoff Integration (PRD-040)
+
+`buildHandoffToolsForAgent()` automatically injects handoff tools:
+- Graphing Agent receives: `transfer_to_bc-agent`, `transfer_to_rag-agent`
+- BC Agent receives: `transfer_to_rag-agent`, `transfer_to_graphing-agent`
+- RAG Agent receives: `transfer_to_bc-agent`, `transfer_to_graphing-agent`
+
+---
+
+## 6. Frontend Integration
+
+### 6.1 File Structure
+
+```
+frontend/src/components/chat/ChartRenderer/
+├── ChartRenderer.tsx             # Main switch by chartType
+├── charts/
+│   ├── BarChartView.tsx          # bar
+│   ├── StackedBarChartView.tsx   # stacked_bar
+│   ├── LineChartView.tsx         # line
+│   ├── AreaChartView.tsx         # area
+│   ├── DonutChartView.tsx        # donut
+│   ├── BarListView.tsx           # bar_list
+│   ├── KPICard.tsx               # kpi
+│   ├── KPIGrid.tsx               # kpi_grid
+│   ├── DataTable.tsx             # table
+│   └── ScatterChartView.tsx      # scatter
+└── index.ts
+```
+
+### 6.2 ChartRenderer Component
+
+```tsx
+// ChartRenderer.tsx
 import type { ChartConfig } from '@bc-agent/shared';
+import { BarChartView } from './charts/BarChartView';
+import { StackedBarChartView } from './charts/StackedBarChartView';
+import { LineChartView } from './charts/LineChartView';
+import { AreaChartView } from './charts/AreaChartView';
+import { DonutChartView } from './charts/DonutChartView';
+import { BarListView } from './charts/BarListView';
+import { KPICard } from './charts/KPICard';
+import { KPIGrid } from './charts/KPIGrid';
+import { DataTable } from './charts/DataTable';
+import { ScatterChartView } from './charts/ScatterChartView';
 
 interface ChartRendererProps {
   config: ChartConfig;
 }
 
 export function ChartRenderer({ config }: ChartRendererProps) {
-  switch (config.type) {
-    case 'bar':
-      return (
-        <Card>
-          <h3 className="text-lg font-medium">{config.title}</h3>
-          {config.subtitle && <p className="text-sm text-gray-500">{config.subtitle}</p>}
-          <BarChart
-            data={config.data}
-            index={config.index}
-            categories={config.categories}
-            colors={config.colors}
-            stack={config.stack}
-            layout={config.layout}
-            showLegend={config.showLegend}
-            className="h-72 mt-4"
-          />
-        </Card>
-      );
-
-    case 'line':
-      return (
-        <Card>
-          <h3 className="text-lg font-medium">{config.title}</h3>
-          <LineChart
-            data={config.data}
-            index={config.index}
-            categories={config.categories}
-            colors={config.colors}
-            curveType={config.curveType}
-            className="h-72 mt-4"
-          />
-        </Card>
-      );
-
-    case 'donut':
-      return (
-        <Card>
-          <h3 className="text-lg font-medium">{config.title}</h3>
-          <DonutChart
-            data={config.data}
-            category={config.category}
-            value={config.value}
-            variant={config.variant}
-            className="h-72 mt-4"
-          />
-        </Card>
-      );
-
-    // ... other chart types
-
+  switch (config.chartType) {
+    case 'bar':           return <BarChartView config={config} />;
+    case 'stacked_bar':   return <StackedBarChartView config={config} />;
+    case 'line':          return <LineChartView config={config} />;
+    case 'area':          return <AreaChartView config={config} />;
+    case 'donut':         return <DonutChartView config={config} />;
+    case 'bar_list':      return <BarListView config={config} />;
+    case 'kpi':           return <KPICard config={config} />;
+    case 'kpi_grid':      return <KPIGrid config={config} />;
+    case 'table':         return <DataTable config={config} />;
+    case 'scatter':       return <ScatterChartView config={config} />;
     default:
-      return <div>Unsupported chart type</div>;
+      return <div className="text-sm text-gray-500">Unsupported chart type</div>;
   }
 }
 ```
 
-### 4.2 Message Handler
+### 6.3 Detection in MessageList
 
-```typescript
-// In MessageList.tsx - detect visualization messages
-function renderMessage(message: AgentMessage) {
-  // Check for visualization content
-  if (message.visualization) {
-    return <ChartRenderer config={message.visualization} />;
+Cuando un `tool_result` contiene `_type: 'chart_config'`, el MessageList renderiza `<ChartRenderer>` en lugar de JSON crudo. Este mecanismo se formaliza en PRD-070 (Agent-Specific Rendering Framework).
+
+```tsx
+// In MessageList.tsx (simplified)
+function renderToolResult(result: unknown) {
+  if (isChartConfig(result)) {
+    return <ChartRenderer config={result} />;
   }
+  return <MarkdownRenderer content={JSON.stringify(result)} />;
+}
 
-  // Regular message
-  return <MarkdownRenderer content={message.content} />;
+function isChartConfig(value: unknown): value is ChartConfig {
+  return typeof value === 'object' && value !== null && '_type' in value
+    && (value as Record<string, unknown>)._type === 'chart_config';
+}
+```
+
+### 6.4 Example: BarChartView
+
+```tsx
+// charts/BarChartView.tsx
+import { BarChart, Card } from '@tremor/react';
+import type { BarChartConfig } from '@bc-agent/shared';
+
+interface BarChartViewProps {
+  config: BarChartConfig;
+}
+
+export function BarChartView({ config }: BarChartViewProps) {
+  return (
+    <Card className="mt-4">
+      <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">
+        {config.title}
+      </h3>
+      {config.subtitle && (
+        <p className="text-sm text-gray-500 mt-1">{config.subtitle}</p>
+      )}
+      <BarChart
+        data={config.data}
+        index={config.index}
+        categories={config.categories}
+        colors={config.colors}
+        layout={config.layout}
+        showLegend={config.showLegend}
+        showGridLines={config.showGridLines}
+        className="h-72 mt-4"
+      />
+    </Card>
+  );
 }
 ```
 
 ---
 
-## 5. Tests Requeridos
+## 7. Tests Requeridos
+
+### 7.1 Schema Validation Tests
 
 ```typescript
-describe('GraphingAgent', () => {
-  it('selects bar chart for comparison data');
-  it('selects line chart for time series');
-  it('selects donut for distribution');
-  it('generates valid Tremor config');
-  it('handles empty data gracefully');
-});
+describe('Chart Config Schemas', () => {
+  describe('BarChartConfigSchema', () => {
+    it('validates correct bar chart config');
+    it('rejects missing required fields (data, index, categories)');
+    it('rejects data array exceeding 100 rows');
+    it('rejects categories exceeding 10');
+  });
 
-describe('Chart Tools', () => {
-  it('formats data with aggregation');
-  it('generates correct bar config');
-  it('generates correct line config');
+  describe('StackedBarChartConfigSchema', () => {
+    it('requires minimum 2 categories for stacking');
+    it('rejects single category');
+  });
+
+  describe('LineChartConfigSchema', () => {
+    it('requires minimum 2 data points');
+    it('rejects single data point');
+  });
+
+  describe('DonutChartConfigSchema', () => {
+    it('requires minimum 2 segments');
+    it('rejects more than 12 segments');
+  });
+
+  describe('ScatterChartConfigSchema', () => {
+    it('validates with x and y fields');
+    it('validates with optional category and size fields');
+    it('rejects missing x or y field');
+  });
+
+  describe('KPIGridConfigSchema', () => {
+    it('requires minimum 2 metrics');
+    it('rejects more than 8 metrics');
+  });
+
+  describe('ChartConfigSchema (discriminated union)', () => {
+    it('correctly discriminates by chartType');
+    it('all 10 chart types are valid');
+    it('rejects unknown chartType');
+  });
+});
+```
+
+### 7.2 Tool Tests
+
+```typescript
+describe('Graphing Agent Tools', () => {
+  describe('list_chart_types', () => {
+    it('returns catalog of 10 chart types');
+    it('each entry has id, name, description, bestFor, dataShape');
+  });
+
+  describe('get_chart_schema', () => {
+    it('returns schema for valid chart type');
+    it('returns error for unknown chart type');
+    it('includes required fields, optional fields, constraints, example');
+  });
+
+  describe('generate_chart_config', () => {
+    it('validates and returns config for valid bar chart');
+    it('validates and returns config for valid scatter chart');
+    it('returns validation errors for invalid config');
+    it('adds _type: chart_config discriminator to output');
+  });
+});
+```
+
+### 7.3 Frontend Component Tests
+
+```typescript
+describe('ChartRenderer', () => {
+  it('renders BarChartView for bar chartType');
+  it('renders ScatterChartView for scatter chartType');
+  it('renders KPIGrid for kpi_grid chartType');
+  it('shows fallback for unknown chartType');
 });
 ```
 
 ---
 
-## 6. Criterios de Aceptación
+## 8. Criterios de Aceptacion
 
-- [ ] Generates valid Tremor configs
-- [ ] All chart types work
-- [ ] Frontend renders charts
-- [ ] Integrates with plan execution
-- [ ] Agent registered in registry
+- [ ] `AGENT_ID.GRAPHING_AGENT` existe en `@bc-agent/shared` constants
+- [ ] Graphing agent registrado en AgentRegistry con 3 tools
+- [ ] `list_chart_types` retorna catalogo de 10 tipos
+- [ ] `get_chart_schema` retorna schema correcto por tipo
+- [ ] `generate_chart_config` valida y retorna o rechaza configs
+- [ ] Zod schemas validan correctamente los 10 tipos con constraints
+- [ ] `_type: 'chart_config'` discriminador presente en configs validados
+- [ ] Frontend `ChartRenderer` renderiza los 10 tipos via Tremor
+- [ ] Handoff tools inyectados: `transfer_to_bc-agent`, `transfer_to_rag-agent`
+- [ ] Agent node retorna `currentAgentIdentity` (PRD-020 pattern)
 - [ ] `npm run verify:types` pasa
+- [ ] `npm run -w backend test:unit` pasa sin regresiones
 
 ---
 
-## 7. Estimación
+## 9. Archivos a Crear/Modificar
 
-- **Backend Agent**: 4-5 días
-- **Frontend Components**: 3-4 días
-- **Testing**: 2-3 días
-- **Total**: 9-12 días
+### Crear
+
+| # | Archivo | Descripcion |
+|---|---------|-------------|
+| 1 | `packages/shared/src/types/chart-config.types.ts` | TypeScript types for 10 chart configs |
+| 2 | `packages/shared/src/schemas/chart-config.schema.ts` | Zod schemas for 10 chart configs |
+| 3 | `backend/src/modules/agents/graphing/tools/list-chart-types.ts` | Tool 1 |
+| 4 | `backend/src/modules/agents/graphing/tools/get-chart-schema.ts` | Tool 2 |
+| 5 | `backend/src/modules/agents/graphing/tools/generate-chart-config.ts` | Tool 3 |
+| 6 | `backend/src/modules/agents/graphing/schemas/chart-registry.ts` | Chart catalog (10 entries) |
+| 7 | `backend/src/modules/agents/graphing/schemas/index.ts` | Barrel export |
+| 8 | `backend/src/modules/agents/graphing/prompts/graphing.system.ts` | System prompt |
+| 9 | `backend/src/modules/agents/graphing/graphing-agent.definition.ts` | Registry definition |
+| 10 | `backend/src/modules/agents/graphing/index.ts` | Barrel export |
+| 11 | `frontend/src/components/chat/ChartRenderer/ChartRenderer.tsx` | Main renderer switch |
+| 12 | `frontend/src/components/chat/ChartRenderer/charts/*.tsx` | 10 chart view components |
+| 13 | `frontend/src/components/chat/ChartRenderer/index.ts` | Barrel export |
+
+### Modificar
+
+| # | Archivo | Cambio |
+|---|---------|--------|
+| 1 | `packages/shared/src/index.ts` | Export chart types and schemas |
+| 2 | `packages/shared/src/schemas/agent-identity.schema.ts` | (no change needed, extends automatically) |
+| 3 | `backend/src/modules/agents/core/registry/AgentRegistry.ts` | Register graphing agent |
+| 4 | `backend/src/modules/agents/supervisor/agent-builders.ts` | Create graphing agent node |
+| 5 | `backend/src/modules/agents/supervisor/supervisor-graph.ts` | Add graphing agent to supervisor |
+| 6 | `backend/src/modules/agents/handoffs/handoff-tool-builder.ts` | Include graphing agent in handoff matrix |
 
 ---
 
-## 8. Changelog
+## 10. Estimacion
 
-| Fecha | Versión | Cambios |
+| Componente | Dias |
+|-----------|------|
+| Shared package (types + schemas) | 1-2 |
+| Backend tools + registry + catalog | 2-3 |
+| Backend agent integration (supervisor, handoffs) | 1-2 |
+| Frontend ChartRenderer + 10 chart views | 3-4 |
+| Testing (schemas, tools, components) | 2-3 |
+| **Total** | **9-14 dias** |
+
+---
+
+## 11. Changelog
+
+| Fecha | Version | Cambios |
 |-------|---------|---------|
-| 2026-01-21 | 1.0 | Draft inicial |
-| 2026-02-06 | 1.1 | Actualizado con pre-requisitos de paquetes (`@langchain/langgraph-supervisor`, `-checkpoint-postgres`). Corregido `graphingAgentNode` para usar `state.messages` en lugar de `state.plan?.steps` (el campo `plan` no existe en `ExtendedAgentState`, `createSupervisor()` maneja planes internamente). Agregado `currentAgentIdentity` al return del agent node (PRD-020). Añadida dependencia explícita a PRD-020. |
-
+| 2026-01-21 | 1.0 | Draft inicial con 5 chart types y 3 tools genericos |
+| 2026-02-06 | 1.1 | Actualizado con pre-requisitos de paquetes (`@langchain/langgraph-supervisor`, `-checkpoint-postgres`). Corregido `graphingAgentNode` para usar `state.messages` en lugar de `state.plan?.steps`. Agregado `currentAgentIdentity` al return del agent node (PRD-020). |
+| 2026-02-09 | 2.0 | **REWRITE COMPLETO**: Expandido de 5 a 10 chart types (agregados `stacked_bar`, `area`, `bar_list`, `kpi_grid`, `scatter`; eliminado `combo` sin soporte nativo Tremor). Arquitectura rediseñada a catalog-driven con 3 tools (`list_chart_types`, `get_chart_schema`, `generate_chart_config`). Zod schemas estrictos por tipo con validaciones (min/max rows, min categories para stacking, etc.). Eliminada referencia a `@langchain/langgraph-checkpoint-postgres` (sistema usa `MSSQLSaver` PRD-032). Icon cambiado de 📊 a 📈 (BC Agent ya usa 📊). Color unificado a `#F59E0B` (amber). Agregado `_type: 'chart_config'` como discriminador frontend (PRD-070). Agregada integracion con handoffs bidireccionales (PRD-040). Nuevo campo `Bloquea: PRD-070`. |

@@ -1,7 +1,7 @@
 # Success Criteria & Verification Checklist
 
 **Documento**: Entregables y criterios de verificación por fase
-**Última Actualización**: 2026-02-09 (PRD-040 completado)
+**Última Actualización**: 2026-02-09 (Documentación Fases 5-7 actualizada)
 **Propósito**: Base de conocimiento para validar que cada fase funciona correctamente y que no hay regresiones
 
 ---
@@ -16,8 +16,9 @@
 | Fase 2: Extended State | ✅ COMPLETADO | PRD-020 | - |
 | Fase 3: Supervisor | ✅ COMPLETADO | PRD-030, PRD-032 | - |
 | Fase 4: Handoffs | ✅ COMPLETADO | PRD-040 | - |
-| Fase 5: Graphing Agent | 🔴 NO INICIADO | - | PRD-050 |
-| Fase 6: UI | 🔴 NO INICIADO | - | PRD-060, PRD-061 |
+| Fase 5: Graphing Agent | 🔴 NO INICIADO | - | PRD-050 (10 chart types, Tremor) |
+| Fase 6: UI | 🔴 NO INICIADO | - | PRD-060 (Agent Selector), PRD-061 (Activity Timeline) |
+| Fase 7: Agent-Specific UI | 🔴 NO INICIADO | - | PRD-070 (Rendering Framework), PRD-071 (Citation UI) |
 
 ---
 
@@ -183,23 +184,124 @@
 
 ---
 
+## Fase 5: Graphing Agent - Verificación 🔴
+
+### Entregables Esperados (PRD-050)
+- [ ] `AGENT_ID.GRAPHING_AGENT = 'graphing-agent'` en `@bc-agent/shared` constants
+- [ ] `AGENT_DISPLAY_NAME['graphing-agent'] = 'Data Visualization Expert'`
+- [ ] `AGENT_ICON['graphing-agent'] = '📈'`, `AGENT_COLOR['graphing-agent'] = '#F59E0B'`
+- [ ] Graphing Agent registrado en `AgentRegistry` con 3 tools
+- [ ] `list_chart_types` tool retorna catálogo de 10 tipos con `{ id, name, description, bestFor, dataShape }`
+- [ ] `get_chart_schema` tool retorna schema JSON per chart type (campos, constraints, ejemplo)
+- [ ] `generate_chart_config` tool valida contra Zod schema y retorna `{ valid: true, config }` o `{ valid: false, errors }`
+- [ ] Config validado incluye `_type: 'chart_config'` como discriminador para PRD-070
+- [ ] 10 Zod schemas: `bar`, `stacked_bar`, `line`, `area`, `donut`, `bar_list`, `kpi`, `kpi_grid`, `table`, `scatter`
+- [ ] `ChartConfigSchema` discriminated union en `@bc-agent/shared`
+- [ ] Frontend `ChartRenderer` renderiza los 10 tipos usando Tremor components
+- [ ] Handoff tools inyectados: `transfer_to_bc-agent`, `transfer_to_rag-agent`
+- [ ] `@tremor/react` instalado como frontend dependency
+
+### Criterios de Verificación
+```bash
+npx vitest run "chart-config"     # Chart schema validation (10 types)
+npx vitest run "graphing"         # Graphing agent tool tests
+npx vitest run "agent-builders"   # Verify handoff injection includes graphing agent
+```
+
+### Danger Points
+| Riesgo | Qué Verificar | Mitigación |
+|--------|---------------|------------|
+| ScatterChart API Tremor | Props exactas de `<ScatterChart>` | Verificar contra docs Tremor (Context7) |
+| Chart data validation | Zod schemas rejectan data malformada | Unit tests con edge cases (empty arrays, >max items) |
+| `stacked_bar` min 2 categories | Schema enforce `categories.min(2)` | Test: single category → ZodError |
+
+---
+
+## Fase 6: UI Components - Verificación 🔴
+
+### Entregables Esperados (PRD-060)
+- [ ] Agent selector pills en ChatInput: Auto (🎯), BC Agent (📊), RAG Agent (🧠), Graph Agent (📈)
+- [ ] `agentStateStore` con `currentAgentIdentity: AgentIdentity | null`
+- [ ] Case `agent_changed` en `processAgentEventSync.ts` actualiza `currentAgentIdentity`
+- [ ] Case `content_refused` y `session_end` en event handler
+- [ ] `ApprovalDialog` component para `approval_requested` events
+- [ ] Respuesta UI via `supervisor:resume` WebSocket event
+- [ ] `targetAgentId` bypass en `SupervisorGraphAdapter.invoke()` (no en router.ts eliminado)
+- [ ] Graph Agent pill con color `#F59E0B` (amber) e icon `📈`
+
+### Entregables Esperados (PRD-061)
+- [ ] `activityTimelineStore.ts` con `AgentActivityEntry[]` tracking
+- [ ] Timeline driven por eventos existentes: `agent_changed`, `tool_use`, `tool_result`, `message`, `complete`
+- [ ] `ActivityTimeline` component con entries colapsables
+- [ ] `useActivityTimeline` hook mapea eventos a timeline entries
+- [ ] Sin dependencia a PRD-031 (eliminado) ni eventos inexistentes (`plan_generated`, etc.)
+
+### Criterios de Verificación
+```bash
+npm run -w bc-agent-frontend test   # Frontend tests
+npm run -w bc-agent-frontend lint   # Frontend lint
+npm run verify:types                # Type check shared + frontend
+```
+
+### GAPs Resueltos en Fase 6
+- **GAP-001**: `agent_changed` procesado en frontend, `agentStateStore` con `currentAgentIdentity`, `ApprovalDialog` para interrupt/resume
+- **GAP-004**: `agent_changed` emitido para supervisor routing (complementa user selection de PRD-040)
+- **GAP-006**: Sin referencias a `router.ts` ni PRD-031
+
+---
+
+## Fase 7: Agent-Specific UI Rendering - Verificación 🔴
+
+### Entregables Esperados (PRD-070)
+- [ ] `isAgentRenderedResult()` type guard exportado desde `@bc-agent/shared`
+- [ ] `AgentRenderedResultType` union type: `'chart_config' | 'citation_result' | 'bc_entity'`
+- [ ] `AgentRenderedResultBase` interface con `_type: string` discriminador
+- [ ] `rendererRegistry.ts` extensible con `registerRenderer()` / `getRendererLoader()`
+- [ ] Renderers lazy-loaded via `React.lazy()` + dynamic import
+- [ ] `AgentResultRenderer` component con `Suspense` fallback (loading skeleton)
+- [ ] `chart_config` → `ChartRenderer` (PRD-050)
+- [ ] `citation_result` → `CitationRenderer` (PRD-071)
+- [ ] Unknown `_type` → fallback a `MarkdownRenderer` (sin breaking changes)
+- [ ] Missing `_type` → fallback a `MarkdownRenderer`
+- [ ] Integration transparente con `MessageList.tsx`
+
+### Entregables Esperados (PRD-071)
+- [ ] `CitationResultSchema` Zod schema con `_type: 'citation_result'` discriminador
+- [ ] `CitedDocumentSchema` con metadata: nombre, tipo, tamaño, lastModified
+- [ ] `CitationPassageSchema` con excerpt, startOffset, endOffset, relevanceScore
+- [ ] `knowledgeSearchTool` output enriquecido con metadata de citaciones
+- [ ] `CitationRenderer` registrado en PRD-070 renderer registry
+- [ ] `CitationCard` component: file name, relevance badge, excerpt, source icon
+- [ ] `CitationList` component: collapsible list de `CitationCard`s
+- [ ] Relevance color coding: green >= 80%, yellow >= 60%, gray < 60%
+- [ ] `citationStore.ts` (Zustand) para expanded/collapsed state
+
+### Criterios de Verificación
+```bash
+npx vitest run "citation"           # Citation schema + rendering tests
+npx vitest run "agent-rendered"     # isAgentRenderedResult type guard tests
+npx vitest run "renderer"           # Renderer registry tests
+npm run -w bc-agent-frontend test   # Full frontend tests
+npm run verify:types                # Type check
+```
+
+---
+
 ## Gaps Identificados (No Cubiertos en Ningún PRD)
 
-### GAP-001: Frontend WebSocket Event Handling para Multi-Agent ⚠️ CRITICO
+### GAP-001: Frontend WebSocket Event Handling para Multi-Agent ⚠️ PLAN DE RESOLUCIÓN → PRD-060
 
-**Descripción**: El backend emite eventos nuevos (`agent_changed`, `approval_requested` con datos de interrupt, `supervisor:resume`) pero el frontend NO los procesa. Esto rompe la experiencia de usuario.
+**Descripción**: El backend emite eventos nuevos (`agent_changed`, `approval_requested` con datos de interrupt, `supervisor:resume`) pero el frontend NO los procesa.
 
-**Detalle**:
-- `agent_changed` event: backend lo emite, frontend lo ignora (cae en `default` case de `processAgentEventSync.ts`)
-- `approval_requested`: store existe (`approvalStore`) pero NO hay componente UI para mostrar la solicitud al usuario
-- `supervisor:resume`: NO hay UI para que el usuario responda a interrupts
-- `content_refused`: NO hay case en frontend event handler
-- `session_end`: NO hay case en frontend event handler
-- `agentStateStore` NO tiene campo `currentAgentIdentity` - no puede mostrar qué agente está activo
+**Plan de resolución (PRD-060 v2.0)**:
+- `agent_changed` event: nuevo case en `processAgentEventSync.ts` actualiza `agentStateStore.currentAgentIdentity`
+- `approval_requested`: `ApprovalDialog` component UI con approve/reject buttons
+- `supervisor:resume`: UI responde via WebSocket `supervisor:resume` event
+- `content_refused`: nuevo case en frontend event handler
+- `session_end`: nuevo case en frontend event handler
+- `agentStateStore` extendido con `currentAgentIdentity: AgentIdentity | null`
 
-**Impacto**: Sin esto, el usuario no sabe qué agente está respondiendo, no puede aprobar/rechazar operaciones, y el interrupt/resume flow no funciona end-to-end.
-
-**Recomendación**: Agregar a PRD-060 (Agent Selector UI) o crear un PRD nuevo PRD-033 específico.
+**Estado**: Diseño completo en PRD-060. Pendiente de implementación.
 
 ### ~~GAP-002: PRD-032 Checkpointer Incompatible con Azure SQL~~ ✅ RESUELTO
 
@@ -215,18 +317,21 @@
 
 **Recomendación**: Crear PRD-033 para retry logic y error recovery.
 
-### GAP-004: Agent Changed Event no emitido por Supervisor ⚠️ PARCIALMENTE RESUELTO
+### GAP-004: Agent Changed Event no emitido por Supervisor ⚠️ PLAN DE RESOLUCIÓN → PRD-060
 
-**Descripción**: El `result-adapter.ts` detecta qué agente respondió, pero el `agent_changed` event type no se emite explícitamente cuando el supervisor cambia entre agentes. Solo se incluye `currentAgentIdentity` en el state.
+**Descripción**: El `result-adapter.ts` detecta qué agente respondió, pero el `agent_changed` event type no se emite explícitamente cuando el supervisor cambia entre agentes.
 
 **Parcialmente resuelto (PRD-040)**:
 - `agent_changed` ahora se emite para user-initiated selection via `agent:select` WebSocket handler
 - `ChatMessageHandler` tiene case `agent_changed` explícito con logging de `previousAgent`, `currentAgent`, `handoffType`
 - `detectHandoffs()` en result-adapter detecta agent-to-agent handoffs via `transfer_to_*` ToolMessages
 
-**Impacto residual**: El supervisor automatic routing aún no emite `agent_changed` events (solo agent-to-agent handoffs y user selection lo hacen). Frontend aún no procesa estos events.
+**Plan de resolución (PRD-060 v2.0)**:
+- Frontend procesa `agent_changed` events via `processAgentEventSync.ts`
+- `agentStateStore` actualiza `currentAgentIdentity` en cada cambio
+- Agent selector pills reflejan agente activo con highlight visual
 
-**Recomendación**: Agregar emisión de `agent_changed` en `EventProcessor`/`AgentOrchestrator` cuando `currentAgentIdentity` cambia vs valor anterior. Completar en PRD-060.
+**Estado**: Diseño completo en PRD-060. Pendiente emisión para supervisor automatic routing.
 
 ### GAP-005: Supervisor Prompt no tiene info de "cuándo usar interrupt()"
 
@@ -236,15 +341,17 @@
 
 **Recomendación**: Mejorar prompt en implementación actual o en PRD-040.
 
-### GAP-006: PRD-060/061 tienen dependencias desactualizadas
+### ~~GAP-006: PRD-060/061 tienen dependencias desactualizadas~~ ✅ RESUELTO
 
-**Descripción**:
-- PRD-060 referencia `router.ts` para bypass de routing → `router.ts` ya no existe (eliminado en PRD-030)
-- PRD-061 lista `PRD-031 (Plan Executor)` como dependencia → PRD-031 fue ELIMINADO
-- PRD-060 §11.6 muestra código de `router.ts` → debe usar `slash-command-router.ts` o `supervisor-graph.ts`
-- PRD-060 necesita integrar `targetAgentId` con el supervisor adapter, no con el router
+**Resolución**: PRD-060 v2.0 y PRD-061 v2.0 reescritos. Eliminadas todas las referencias a `router.ts` (eliminado en PRD-030) y PRD-031 (eliminado). PRD-060 ahora referencia `SupervisorGraphAdapter.invoke()` para `targetAgentId` bypass. PRD-061 renombrado a "Agent Activity Timeline" sin dependencia a PRD-031.
 
-**Recomendación**: Actualizar PRD-060 y PRD-061 para reflejar la arquitectura post-PRD-030.
+### GAP-007: ScatterChart Tremor API ⚠️ VERIFICAR
+
+**Descripción**: PRD-050 incluye `scatter` como chart type #10 usando `<ScatterChart>` de Tremor. La API exacta de props (especialmente `x`, `y`, `size`, `category`) debe verificarse contra la versión instalada de `@tremor/react`.
+
+**Impacto**: Bajo. Solo afecta implementación de scatter chart view.
+
+**Recomendación**: Verificar API de Tremor ScatterChart al implementar PRD-050 (usar Context7 MCP).
 
 ---
 
@@ -258,7 +365,7 @@ npm run -w backend lint                 # Backend lint (0 errors)
 npm run -w backend test:unit            # Full backend unit tests (3036+)
 npx vitest run "supervisor"             # Supervisor-specific tests (44)
 
-# Tests específicos por módulo
+# Tests específicos por módulo (Fases 0-4)
 npx vitest run "agent-builders"         # Agent builder tests (8, includes handoff injection)
 npx vitest run "result-adapter"         # Result adapter tests (includes detectHandoffs)
 npx vitest run "slash-command"          # Slash command routing
@@ -269,7 +376,16 @@ npx vitest run "AgentAnalyticsService"  # Analytics tests (13)
 npx vitest run "handoff"               # Handoff-specific tests (15)
 npx vitest run "session-ownership"      # Session ownership tests (48, Prisma-based)
 
-# Frontend (cuando PRD-060+ se implemente)
+# Tests Fase 5 (Graphing Agent)
+npx vitest run "chart-config"           # Chart schema validation (10 types)
+npx vitest run "graphing"               # Graphing agent tool tests
+
+# Tests Fase 7 (Agent-Specific UI)
+npx vitest run "agent-rendered"         # isAgentRenderedResult type guard tests
+npx vitest run "renderer"               # Renderer registry tests
+npx vitest run "citation"               # Citation schema + rendering tests
+
+# Frontend (Fases 6-7)
 npm run -w bc-agent-frontend test       # Frontend tests
 npm run -w bc-agent-frontend lint       # Frontend lint
 ```
@@ -283,3 +399,4 @@ npm run -w bc-agent-frontend lint       # Frontend lint
 | 2026-02-06 | Creación inicial: criterios de verificación para Fases 0-3. Identificados 6 gaps no cubiertos en PRDs existentes. |
 | 2026-02-06 | PRD-032 completado. Fase 3 marcada como ✅ COMPLETADO. GAP-002 resuelto (MSSQLSaver). GAP-003 parcialmente resuelto (persistencia durable). Agregados tests de checkpointer y analytics a comandos de verificación. |
 | 2026-02-09 | PRD-040 completado. Fase 4 marcada como ✅ COMPLETADO. Dynamic handoffs con Command pattern oficial LangGraph. `session-ownership.ts` migrado a Prisma. 16 tests nuevos, 3036 tests totales. Fase 5 desbloqueada. GAP-004 parcialmente resuelto (`agent_changed` ahora se emite en user selection y tiene case explícito en ChatMessageHandler). |
+| 2026-02-09 | Documentación Fases 5-7 actualizada. PRD-050 reescrito v2.0 (10 chart types, catalog-driven, Tremor). PRD-060 v2.0 (GAP-006 resuelto, graphing agent pill, `agentStateStore`). PRD-061 v2.0 (Agent Activity Timeline, Opción C). **Nueva Fase 7**: PRD-070 (Rendering Framework con `_type` discriminator) + PRD-071 (RAG Citation UI). GAP-006 resuelto. GAP-007 creado (ScatterChart API). Agregados criterios de verificación para Fases 5, 6, 7 con comandos de test específicos. |

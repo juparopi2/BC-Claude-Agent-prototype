@@ -1,55 +1,76 @@
-# PRD-061: Plan Visualization UI
+# PRD-061: Agent Activity Timeline
 
 **Estado**: Draft
 **Prioridad**: Media
-**Dependencias**: PRD-030 (Supervisor Integration - ✅ COMPLETADO)
+**Dependencias**: PRD-030 (Supervisor Integration - COMPLETADO), PRD-040 (Dynamic Handoffs - COMPLETADO), PRD-060 (Agent Selector UI)
 **Bloquea**: Ninguno
 
 ---
 
 ## 1. Objetivo
 
-Implementar UI para visualizar planes de ejecución:
-- Mostrar plan generado por el supervisor
-- Indicar progreso de cada step
-- Identificar qué agente ejecuta cada step
-- Mostrar errores y resultados parciales
+Implementar un **Agent Activity Timeline** que muestre la secuencia cronologica de invocaciones de agentes durante la ejecucion del supervisor. Ya que `createSupervisor()` no expone un plan formal como estructura de datos, el UI muestra:
+
+- Secuencia de agentes invocados con timestamps
+- Tools utilizados por cada agente
+- Resumen de resultados por agente
+- Handoffs entre agentes (agent-to-agent y supervisor routing)
+- Estado actual de la ejecucion (en progreso, completado, error)
+
+> **Justificacion del enfoque**: `createSupervisor()` decide dinamicamente que agente llamar basado en resultados parciales. No existe un "plan" previo con pasos definidos. El Activity Timeline es un registro observacional del flujo de ejecucion real, no una prediccion.
 
 ---
 
 ## 2. Contexto
 
-### 2.1 Por qué es Importante
+### 2.1 Por que Activity Timeline (no Plan Visualization)
 
-1. **Transparencia**: Usuario entiende qué está haciendo el sistema
-2. **Feedback**: Ver progreso en tiempo real
-3. **Debug**: Identificar dónde falló algo
-4. **Confianza**: Usuario ve que hay un plan estructurado
+1. **Transparencia**: Usuario ve que agentes participaron y que hicieron
+2. **Debug**: Identificar donde fallo algo en una cadena multi-agente
+3. **Confianza**: Usuario ve que el sistema coordina multiples especialistas
+4. **Alineacion con arquitectura**: Refleja el comportamiento real del supervisor (dinamico, no pre-planificado)
 
-### 2.2 Diseño Visual
+### 2.2 Eventos WebSocket Existentes (no se necesitan nuevos)
+
+El timeline se construye a partir de eventos que el backend **ya emite**:
+
+| Evento | Uso en Timeline |
+|--------|----------------|
+| `agent_changed` | Nueva entry de actividad (agent transition) |
+| `tool_use` | Tracking de tools dentro de entry actual |
+| `tool_result` | Resultado de tool (exito/error) |
+| `message` | Resumen de resultado del agente |
+| `complete` | Finalizar timeline |
+| `error` | Marcar fallo en entry actual |
+
+> **NOTA**: Los eventos `plan_generated`, `plan_step_started`, `plan_step_completed` propuestos en la version 1.0 de este PRD **NO existen** y **NO se implementaran**. El enfoque Activity Timeline los reemplaza completamente.
+
+### 2.3 Diseno Visual
 
 ```
-┌─────────────────────────────────────────────────────┐
-│ 📋 Plan: Compare top customers by revenue          │
-├─────────────────────────────────────────────────────┤
-│                                                     │
-│  ✅ Step 1: Get customer data                      │
-│     📊 BC Agent                                     │
-│     "Retrieved 5 customers with revenue data"      │
-│                                                     │
-│  🔄 Step 2: Analyze revenue patterns               │
-│     🧠 RAG Agent (in progress)                      │
-│     ░░░░░░░░░░░░░░░░░░░░░░                         │
-│                                                     │
-│  ⏳ Step 3: Create comparison chart                │
-│     📈 Graphing Agent (pending)                     │
-│                                                     │
-└─────────────────────────────────────────────────────┘
+Agent Activity
+├── 🎯 Supervisor -> BC Agent (supervisor_routing)
+│   └── 📊 BC Agent (completed)                    0.8s
+│       ├── Tool: searchEntityOperations
+│       ├── Tool: getEntityFields
+│       └── "Found 5 customers matching criteria..."
+│
+├── 🔄 BC Agent -> RAG Agent (agent_handoff)
+│   └── 🧠 RAG Agent (completed)                   1.2s
+│       ├── Tool: knowledgeSearchTool
+│       └── "Found relevant contract clauses..."
+│
+├── 🔄 RAG Agent -> Graphing Agent (agent_handoff)
+│   └── 📈 Graphing Agent (in progress)             ...
+│       ├── Tool: list_chart_types
+│       └── Tool: generate_chart_config (running)
+│
+└── Timeline: 3 agents invoked, 2 completed
 ```
 
 ---
 
-## 3. Diseño Propuesto
+## 3. Diseno Propuesto
 
 ### 3.1 Estructura de Archivos (Frontend)
 
@@ -57,299 +78,322 @@ Implementar UI para visualizar planes de ejecución:
 frontend/src/
 ├── domains/chat/
 │   ├── stores/
-│   │   └── planStore.ts              # Zustand store for plans
+│   │   └── activityTimelineStore.ts    # Zustand store for timeline
 │   └── hooks/
-│       └── usePlanTracking.ts        # WebSocket event handling
+│       └── useActivityTimeline.ts      # WebSocket event mapping
 ├── components/chat/
-│   └── PlanVisualization/
-│       ├── PlanVisualization.tsx     # Main component
-│       ├── PlanHeader.tsx            # Plan title/summary
-│       ├── PlanStep.tsx              # Individual step
-│       ├── PlanProgress.tsx          # Overall progress bar
-│       ├── PlanCollapsed.tsx         # Collapsed view
+│   └── ActivityTimeline/
+│       ├── ActivityTimeline.tsx         # Main component
+│       ├── ActivityEntry.tsx            # Individual agent activity
+│       ├── ActivityToolList.tsx         # Tools used within an entry
+│       ├── ActivityHeader.tsx           # Timeline header with stats
+│       ├── ActivityCollapsed.tsx        # Collapsed/minimized view
 │       └── index.ts
-└── types/
-    └── plan.types.ts                  # Plan types
 ```
 
-### 3.2 Plan Store
+### 3.2 Activity Timeline Store
 
 ```typescript
-// planStore.ts
+// activityTimelineStore.ts
 import { create } from 'zustand';
+import type { AgentIdentity } from '@bc-agent/shared';
 
-export interface PlanStep {
-  stepId: string;
-  stepIndex: number;
-  agentId: string;
-  agentName: string;
-  agentIcon?: string;
-  agentColor?: string;
-  task: string;
-  status: 'pending' | 'in_progress' | 'completed' | 'failed' | 'skipped';
-  result?: string;
-  error?: string;
-  startedAt?: string;
-  completedAt?: string;
+export interface ToolActivity {
+  toolName: string;
+  status: 'running' | 'completed' | 'failed';
+  durationMs?: number;
+  toolUseId?: string;
 }
 
-export interface Plan {
-  planId: string;
-  query: string;
-  status: 'planning' | 'executing' | 'completed' | 'failed' | 'cancelled';
-  steps: PlanStep[];
-  currentStepIndex: number;
-  summary?: string;
-  failureReason?: string;
-  createdAt: string;
+export interface AgentActivityEntry {
+  /** Unique entry ID */
+  entryId: string;
+  /** Agent that performed this activity */
+  agentIdentity: AgentIdentity;
+  /** Status of this agent's work */
+  status: 'active' | 'completed' | 'failed';
+  /** Tools used by this agent */
+  toolsUsed: ToolActivity[];
+  /** Summary of result (from message event) */
+  resultSummary: string | null;
+  /** How this agent was invoked */
+  handoffType: 'supervisor_routing' | 'agent_handoff' | 'user_selection';
+  /** Previous agent (for handoff display) */
+  previousAgent: AgentIdentity | null;
+  /** Reason for handoff */
+  handoffReason: string | null;
+  /** Timestamps */
+  startedAt: string;
+  completedAt: string | null;
 }
 
-interface PlanState {
-  // Current active plan (null if no plan)
-  currentPlan: Plan | null;
-
-  // Historical plans for this session
-  sessionPlans: Plan[];
-
-  // UI state
+interface ActivityTimelineState {
+  /** All activity entries for current execution */
+  entries: AgentActivityEntry[];
+  /** Whether the timeline is active (execution in progress) */
+  isActive: boolean;
+  /** UI state */
   isExpanded: boolean;
   isMinimized: boolean;
 
   // Actions
-  setPlan: (plan: Plan) => void;
-  updatePlanStatus: (status: Plan['status'], reason?: string) => void;
-  updateStepStatus: (
-    stepId: string,
-    status: PlanStep['status'],
-    result?: string,
-    error?: string
-  ) => void;
-  setCurrentStepIndex: (index: number) => void;
-  clearPlan: () => void;
+  addEntry: (entry: AgentActivityEntry) => void;
+  updateCurrentEntry: (update: Partial<AgentActivityEntry>) => void;
+  addToolToCurrentEntry: (tool: ToolActivity) => void;
+  updateToolInCurrentEntry: (toolUseId: string, update: Partial<ToolActivity>) => void;
+  completeCurrentEntry: (resultSummary: string) => void;
+  failCurrentEntry: (error: string) => void;
+  setActive: (active: boolean) => void;
+  clearTimeline: () => void;
   toggleExpanded: () => void;
   toggleMinimized: () => void;
 }
 
-export const usePlanStore = create<PlanState>((set, get) => ({
-  currentPlan: null,
-  sessionPlans: [],
+export const useActivityTimelineStore = create<ActivityTimelineState>((set, get) => ({
+  entries: [],
+  isActive: false,
   isExpanded: true,
   isMinimized: false,
 
-  setPlan: (plan) => set({
-    currentPlan: plan,
-    isExpanded: true,
-    isMinimized: false,
+  addEntry: (entry) => set((state) => ({
+    entries: [...state.entries, entry],
+    isActive: true,
+  })),
+
+  updateCurrentEntry: (update) => set((state) => {
+    const entries = [...state.entries];
+    if (entries.length > 0) {
+      entries[entries.length - 1] = { ...entries[entries.length - 1], ...update };
+    }
+    return { entries };
   }),
 
-  updatePlanStatus: (status, reason) => set((state) => ({
-    currentPlan: state.currentPlan
-      ? { ...state.currentPlan, status, failureReason: reason }
-      : null,
-  })),
-
-  updateStepStatus: (stepId, status, result, error) => set((state) => {
-    if (!state.currentPlan) return state;
-
-    const steps = state.currentPlan.steps.map(step =>
-      step.stepId === stepId
-        ? {
-            ...step,
-            status,
-            result,
-            error,
-            startedAt: status === 'in_progress' ? new Date().toISOString() : step.startedAt,
-            completedAt: ['completed', 'failed', 'skipped'].includes(status)
-              ? new Date().toISOString()
-              : step.completedAt,
-          }
-        : step
-    );
-
-    return {
-      currentPlan: { ...state.currentPlan, steps },
-    };
+  addToolToCurrentEntry: (tool) => set((state) => {
+    const entries = [...state.entries];
+    if (entries.length > 0) {
+      const current = entries[entries.length - 1];
+      entries[entries.length - 1] = {
+        ...current,
+        toolsUsed: [...current.toolsUsed, tool],
+      };
+    }
+    return { entries };
   }),
 
-  setCurrentStepIndex: (index) => set((state) => ({
-    currentPlan: state.currentPlan
-      ? { ...state.currentPlan, currentStepIndex: index }
-      : null,
-  })),
+  updateToolInCurrentEntry: (toolUseId, update) => set((state) => {
+    const entries = [...state.entries];
+    if (entries.length > 0) {
+      const current = entries[entries.length - 1];
+      entries[entries.length - 1] = {
+        ...current,
+        toolsUsed: current.toolsUsed.map(t =>
+          t.toolUseId === toolUseId ? { ...t, ...update } : t
+        ),
+      };
+    }
+    return { entries };
+  }),
 
-  clearPlan: () => set((state) => ({
-    currentPlan: null,
-    sessionPlans: state.currentPlan
-      ? [...state.sessionPlans, state.currentPlan]
-      : state.sessionPlans,
-  })),
+  completeCurrentEntry: (resultSummary) => set((state) => {
+    const entries = [...state.entries];
+    if (entries.length > 0) {
+      entries[entries.length - 1] = {
+        ...entries[entries.length - 1],
+        status: 'completed',
+        resultSummary,
+        completedAt: new Date().toISOString(),
+      };
+    }
+    return { entries };
+  }),
+
+  failCurrentEntry: (error) => set((state) => {
+    const entries = [...state.entries];
+    if (entries.length > 0) {
+      entries[entries.length - 1] = {
+        ...entries[entries.length - 1],
+        status: 'failed',
+        resultSummary: error,
+        completedAt: new Date().toISOString(),
+      };
+    }
+    return { entries };
+  }),
+
+  setActive: (active) => set({ isActive: active }),
+
+  clearTimeline: () => set({
+    entries: [],
+    isActive: false,
+  }),
 
   toggleExpanded: () => set((state) => ({ isExpanded: !state.isExpanded })),
   toggleMinimized: () => set((state) => ({ isMinimized: !state.isMinimized })),
 }));
 ```
 
-### 3.3 WebSocket Event Handling
+### 3.3 WebSocket Event Mapping
 
 ```typescript
-// usePlanTracking.ts
+// useActivityTimeline.ts
 import { useEffect } from 'react';
-import { usePlanStore } from '../stores/planStore';
-import { useSocket } from '@/lib/socket';
+import { useActivityTimelineStore } from '../stores/activityTimelineStore';
+import type { AgentEvent, AgentChangedEvent, ToolUseEvent, ToolResultEvent } from '@bc-agent/shared';
 
-export function usePlanTracking() {
-  const socket = useSocket();
-  const {
-    setPlan,
-    updatePlanStatus,
-    updateStepStatus,
-    setCurrentStepIndex,
-    clearPlan,
-  } = usePlanStore();
+export function useActivityTimeline() {
+  const store = useActivityTimelineStore();
 
-  useEffect(() => {
-    if (!socket) return;
+  // Called from the main event processor (processAgentEventSync.ts)
+  function handleAgentEvent(event: AgentEvent) {
+    switch (event.type) {
+      case 'agent_changed': {
+        const e = event as AgentChangedEvent;
+        store.addEntry({
+          entryId: event.eventId,
+          agentIdentity: e.currentAgent,
+          status: 'active',
+          toolsUsed: [],
+          resultSummary: null,
+          handoffType: e.handoffType ?? 'supervisor_routing',
+          previousAgent: e.previousAgent,
+          handoffReason: e.reason ?? null,
+          startedAt: event.timestamp,
+          completedAt: null,
+        });
+        break;
+      }
 
-    // Plan generated
-    socket.on('plan_generated', (event) => {
-      setPlan({
-        planId: event.planId,
-        query: event.query,
-        status: 'executing',
-        steps: event.steps.map((s, i) => ({
-          ...s,
-          status: i === 0 ? 'pending' : 'pending',
-        })),
-        currentStepIndex: 0,
-        createdAt: event.timestamp,
-      });
-    });
+      case 'tool_use': {
+        const e = event as ToolUseEvent;
+        store.addToolToCurrentEntry({
+          toolName: e.toolName,
+          status: 'running',
+          toolUseId: e.toolUseId,
+        });
+        break;
+      }
 
-    // Step started
-    socket.on('plan_step_started', (event) => {
-      updateStepStatus(event.stepId, 'in_progress');
-      setCurrentStepIndex(event.stepIndex);
-    });
+      case 'tool_result': {
+        const e = event as ToolResultEvent;
+        if (e.toolUseId) {
+          store.updateToolInCurrentEntry(e.toolUseId, {
+            status: e.success ? 'completed' : 'failed',
+            durationMs: e.durationMs,
+          });
+        }
+        break;
+      }
 
-    // Step completed
-    socket.on('plan_step_completed', (event) => {
-      updateStepStatus(
-        event.stepId,
-        event.status,
-        event.result,
-        event.error
-      );
-    });
+      case 'message': {
+        // Use first ~100 chars of message as result summary
+        const content = (event as { content: string }).content;
+        const summary = content.length > 100
+          ? content.substring(0, 100) + '...'
+          : content;
+        store.completeCurrentEntry(summary);
+        break;
+      }
 
-    // Plan completed
-    socket.on('plan_completed', (event) => {
-      updatePlanStatus(event.status, event.failureReason);
+      case 'error': {
+        const e = event as { error: string };
+        store.failCurrentEntry(e.error);
+        break;
+      }
 
-      // Auto-minimize after completion
-      setTimeout(() => {
-        usePlanStore.getState().toggleMinimized();
-      }, 3000);
-    });
+      case 'complete': {
+        store.setActive(false);
+        // Auto-minimize after 3 seconds
+        setTimeout(() => {
+          useActivityTimelineStore.getState().toggleMinimized();
+        }, 3000);
+        break;
+      }
 
-    return () => {
-      socket.off('plan_generated');
-      socket.off('plan_step_started');
-      socket.off('plan_step_completed');
-      socket.off('plan_completed');
-    };
-  }, [socket]);
+      case 'session_start': {
+        store.clearTimeline();
+        store.setActive(true);
+        break;
+      }
+    }
+  }
+
+  return { handleAgentEvent };
 }
 ```
 
-### 3.4 Plan Visualization Component
+### 3.4 Activity Timeline Component
 
 ```tsx
-// PlanVisualization.tsx
-import { usePlanStore } from '@/domains/chat/stores/planStore';
-import { PlanHeader } from './PlanHeader';
-import { PlanStep } from './PlanStep';
-import { PlanProgress } from './PlanProgress';
-import { PlanCollapsed } from './PlanCollapsed';
+// ActivityTimeline.tsx
+import { useActivityTimelineStore } from '@/domains/chat/stores/activityTimelineStore';
+import { ActivityHeader } from './ActivityHeader';
+import { ActivityEntry } from './ActivityEntry';
+import { ActivityCollapsed } from './ActivityCollapsed';
 import { cn } from '@/lib/utils';
 
-export function PlanVisualization() {
+export function ActivityTimeline() {
   const {
-    currentPlan,
+    entries,
+    isActive,
     isExpanded,
     isMinimized,
     toggleExpanded,
     toggleMinimized,
-  } = usePlanStore();
+  } = useActivityTimelineStore();
 
-  if (!currentPlan) return null;
+  // Don't show if no entries
+  if (entries.length === 0) return null;
 
   // Minimized view (floating badge)
   if (isMinimized) {
     return (
-      <PlanCollapsed
-        plan={currentPlan}
+      <ActivityCollapsed
+        entries={entries}
+        isActive={isActive}
         onExpand={() => toggleMinimized()}
       />
     );
   }
 
-  // Calculate progress
-  const completedSteps = currentPlan.steps.filter(
-    s => s.status === 'completed'
-  ).length;
-  const progress = (completedSteps / currentPlan.steps.length) * 100;
+  const completedCount = entries.filter(e => e.status === 'completed').length;
+  const failedCount = entries.filter(e => e.status === 'failed').length;
 
   return (
     <div className={cn(
       'fixed bottom-24 right-4 w-96 bg-white dark:bg-gray-900',
       'rounded-lg shadow-xl border border-gray-200 dark:border-gray-700',
       'transition-all duration-300 ease-in-out',
-      'z-50'
+      'z-50 max-h-[60vh] flex flex-col'
     )}>
       {/* Header */}
-      <PlanHeader
-        query={currentPlan.query}
-        status={currentPlan.status}
+      <ActivityHeader
+        totalEntries={entries.length}
+        completedCount={completedCount}
+        failedCount={failedCount}
+        isActive={isActive}
         isExpanded={isExpanded}
         onToggleExpand={toggleExpanded}
         onMinimize={toggleMinimized}
       />
 
-      {/* Progress bar */}
-      <PlanProgress
-        progress={progress}
-        status={currentPlan.status}
-      />
-
-      {/* Steps (collapsible) */}
+      {/* Entries (collapsible, scrollable) */}
       {isExpanded && (
-        <div className="max-h-80 overflow-y-auto p-4 space-y-3">
-          {currentPlan.steps.map((step, index) => (
-            <PlanStep
-              key={step.stepId}
-              step={step}
-              stepNumber={index + 1}
-              isActive={index === currentPlan.currentStepIndex}
+        <div className="overflow-y-auto p-4 space-y-3">
+          {entries.map((entry, index) => (
+            <ActivityEntry
+              key={entry.entryId}
+              entry={entry}
+              isLast={index === entries.length - 1}
             />
           ))}
         </div>
       )}
 
-      {/* Footer with summary (when completed) */}
-      {currentPlan.status === 'completed' && currentPlan.summary && (
-        <div className="px-4 py-3 border-t border-gray-100 dark:border-gray-800">
-          <p className="text-sm text-gray-600 dark:text-gray-400">
-            {currentPlan.summary}
-          </p>
-        </div>
-      )}
-
-      {/* Error footer (when failed) */}
-      {currentPlan.status === 'failed' && currentPlan.failureReason && (
-        <div className="px-4 py-3 border-t border-red-100 bg-red-50 dark:bg-red-900/20">
-          <p className="text-sm text-red-600 dark:text-red-400">
-            {currentPlan.failureReason}
-          </p>
+      {/* Footer summary */}
+      {!isActive && entries.length > 0 && (
+        <div className="px-4 py-2 border-t border-gray-100 dark:border-gray-800 text-xs text-gray-500">
+          {completedCount} agent{completedCount !== 1 ? 's' : ''} invoked
+          {failedCount > 0 && `, ${failedCount} failed`}
         </div>
       )}
     </div>
@@ -357,262 +401,144 @@ export function PlanVisualization() {
 }
 ```
 
-### 3.5 Plan Step Component
+### 3.5 Activity Entry Component
 
 ```tsx
-// PlanStep.tsx
+// ActivityEntry.tsx
 import { cn } from '@/lib/utils';
-import { CheckCircle, Circle, Loader2, XCircle, SkipForward } from 'lucide-react';
-import type { PlanStep as PlanStepType } from '../stores/planStore';
+import { CheckCircle, Loader2, XCircle } from 'lucide-react';
+import { ActivityToolList } from './ActivityToolList';
+import type { AgentActivityEntry } from '../stores/activityTimelineStore';
 
-interface PlanStepProps {
-  step: PlanStepType;
-  stepNumber: number;
-  isActive: boolean;
+interface ActivityEntryProps {
+  entry: AgentActivityEntry;
+  isLast: boolean;
 }
 
 const statusIcons = {
-  pending: Circle,
-  in_progress: Loader2,
+  active: Loader2,
   completed: CheckCircle,
   failed: XCircle,
-  skipped: SkipForward,
 };
 
 const statusColors = {
-  pending: 'text-gray-400',
-  in_progress: 'text-blue-500',
+  active: 'text-blue-500',
   completed: 'text-green-500',
   failed: 'text-red-500',
-  skipped: 'text-yellow-500',
 };
 
-export function PlanStep({ step, stepNumber, isActive }: PlanStepProps) {
-  const StatusIcon = statusIcons[step.status];
+export function ActivityEntry({ entry, isLast }: ActivityEntryProps) {
+  const StatusIcon = statusIcons[entry.status];
+  const elapsed = entry.completedAt
+    ? ((new Date(entry.completedAt).getTime() - new Date(entry.startedAt).getTime()) / 1000).toFixed(1)
+    : null;
 
   return (
-    <div className={cn(
-      'flex gap-3 p-3 rounded-lg transition-colors',
-      isActive && 'bg-blue-50 dark:bg-blue-900/20',
-      step.status === 'failed' && 'bg-red-50 dark:bg-red-900/20'
-    )}>
-      {/* Status Icon */}
-      <div className="flex-shrink-0 pt-0.5">
-        <StatusIcon
-          className={cn(
-            'w-5 h-5',
-            statusColors[step.status],
-            step.status === 'in_progress' && 'animate-spin'
-          )}
-        />
-      </div>
+    <div className="relative">
+      {/* Connection line to next entry */}
+      {!isLast && (
+        <div className="absolute left-[11px] top-8 bottom-0 w-0.5 bg-gray-200 dark:bg-gray-700" />
+      )}
 
-      {/* Content */}
-      <div className="flex-1 min-w-0">
-        {/* Step header */}
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-medium text-gray-500">
-            Step {stepNumber}
-          </span>
-          <span
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium"
-            style={{
-              backgroundColor: `${step.agentColor}20`,
-              color: step.agentColor,
-            }}
-          >
-            {step.agentIcon && <span>{step.agentIcon}</span>}
-            {step.agentName}
-          </span>
+      <div className="flex gap-3">
+        {/* Status Icon */}
+        <div className="flex-shrink-0 pt-0.5">
+          <StatusIcon
+            className={cn(
+              'w-6 h-6',
+              statusColors[entry.status],
+              entry.status === 'active' && 'animate-spin'
+            )}
+          />
         </div>
 
-        {/* Task */}
-        <p className="mt-1 text-sm text-gray-900 dark:text-gray-100">
-          {step.task}
-        </p>
+        {/* Content */}
+        <div className="flex-1 min-w-0 pb-4">
+          {/* Handoff indicator */}
+          {entry.previousAgent && (
+            <div className="text-xs text-gray-400 mb-1">
+              {entry.handoffType === 'agent_handoff' ? '🔄' : '🎯'}{' '}
+              {entry.previousAgent.agentIcon} {entry.previousAgent.agentName} ->{' '}
+              {entry.agentIdentity.agentIcon} {entry.agentIdentity.agentName}
+              {entry.handoffReason && (
+                <span className="italic ml-1">({entry.handoffReason})</span>
+              )}
+            </div>
+          )}
 
-        {/* Result (if completed) */}
-        {step.status === 'completed' && step.result && (
-          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 truncate">
-            ✓ {step.result}
-          </p>
-        )}
+          {/* Agent identity */}
+          <div className="flex items-center gap-2">
+            <span
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium"
+              style={{
+                backgroundColor: `${entry.agentIdentity.agentColor}20`,
+                color: entry.agentIdentity.agentColor,
+              }}
+            >
+              {entry.agentIdentity.agentIcon} {entry.agentIdentity.agentName}
+            </span>
+            <span className="text-xs text-gray-400">
+              ({entry.status})
+            </span>
+            {elapsed && (
+              <span className="text-xs text-gray-400">{elapsed}s</span>
+            )}
+          </div>
 
-        {/* Error (if failed) */}
-        {step.status === 'failed' && step.error && (
-          <p className="mt-1 text-xs text-red-500">
-            ✗ {step.error}
-          </p>
-        )}
+          {/* Tools used */}
+          {entry.toolsUsed.length > 0 && (
+            <ActivityToolList tools={entry.toolsUsed} />
+          )}
+
+          {/* Result summary */}
+          {entry.resultSummary && (
+            <p className={cn(
+              'mt-1 text-xs truncate',
+              entry.status === 'failed'
+                ? 'text-red-500'
+                : 'text-gray-500 dark:text-gray-400'
+            )}>
+              {entry.status === 'failed' ? '✗' : '✓'} {entry.resultSummary}
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 ```
 
-### 3.6 Plan Header Component
+### 3.6 Activity Tool List
 
 ```tsx
-// PlanHeader.tsx
-import { ChevronDown, ChevronUp, Minus, X } from 'lucide-react';
+// ActivityToolList.tsx
 import { cn } from '@/lib/utils';
+import { Loader2 } from 'lucide-react';
+import type { ToolActivity } from '../stores/activityTimelineStore';
 
-interface PlanHeaderProps {
-  query: string;
-  status: string;
-  isExpanded: boolean;
-  onToggleExpand: () => void;
-  onMinimize: () => void;
+interface ActivityToolListProps {
+  tools: ToolActivity[];
 }
 
-const statusLabels = {
-  planning: 'Planning...',
-  executing: 'Executing',
-  completed: 'Completed',
-  failed: 'Failed',
-  cancelled: 'Cancelled',
-};
-
-const statusDots = {
-  planning: 'bg-yellow-500 animate-pulse',
-  executing: 'bg-blue-500 animate-pulse',
-  completed: 'bg-green-500',
-  failed: 'bg-red-500',
-  cancelled: 'bg-gray-500',
-};
-
-export function PlanHeader({
-  query,
-  status,
-  isExpanded,
-  onToggleExpand,
-  onMinimize,
-}: PlanHeaderProps) {
+export function ActivityToolList({ tools }: ActivityToolListProps) {
   return (
-    <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-800">
-      <div className="flex items-center gap-3 min-w-0">
-        {/* Status dot */}
-        <div className={cn('w-2 h-2 rounded-full', statusDots[status])} />
-
-        {/* Title */}
-        <div className="min-w-0">
-          <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
-            📋 Plan
-          </h3>
-          <p className="text-xs text-gray-500 truncate">
-            {query}
-          </p>
-        </div>
-      </div>
-
-      {/* Actions */}
-      <div className="flex items-center gap-1">
-        <span className="text-xs text-gray-500 mr-2">
-          {statusLabels[status]}
-        </span>
-
-        <button
-          onClick={onToggleExpand}
-          className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
-          aria-label={isExpanded ? 'Collapse' : 'Expand'}
-        >
-          {isExpanded ? (
-            <ChevronUp className="w-4 h-4 text-gray-500" />
+    <div className="mt-1 space-y-0.5">
+      {tools.map((tool, i) => (
+        <div key={tool.toolUseId ?? i} className="flex items-center gap-1.5 text-xs text-gray-400">
+          {tool.status === 'running' ? (
+            <Loader2 className="w-3 h-3 animate-spin" />
+          ) : tool.status === 'failed' ? (
+            <span className="text-red-400">✗</span>
           ) : (
-            <ChevronDown className="w-4 h-4 text-gray-500" />
+            <span className="text-green-400">✓</span>
           )}
-        </button>
-
-        <button
-          onClick={onMinimize}
-          className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
-          aria-label="Minimize"
-        >
-          <Minus className="w-4 h-4 text-gray-500" />
-        </button>
-      </div>
+          <span className="font-mono">{tool.toolName}</span>
+          {tool.durationMs !== undefined && (
+            <span className="text-gray-500">({tool.durationMs}ms)</span>
+          )}
+        </div>
+      ))}
     </div>
-  );
-}
-```
-
-### 3.7 Plan Progress Component
-
-```tsx
-// PlanProgress.tsx
-import { cn } from '@/lib/utils';
-
-interface PlanProgressProps {
-  progress: number;
-  status: string;
-}
-
-export function PlanProgress({ progress, status }: PlanProgressProps) {
-  const barColor = {
-    planning: 'bg-yellow-500',
-    executing: 'bg-blue-500',
-    completed: 'bg-green-500',
-    failed: 'bg-red-500',
-    cancelled: 'bg-gray-500',
-  }[status] || 'bg-blue-500';
-
-  return (
-    <div className="h-1 bg-gray-100 dark:bg-gray-800">
-      <div
-        className={cn(
-          'h-full transition-all duration-500 ease-out',
-          barColor,
-          status === 'executing' && 'animate-pulse'
-        )}
-        style={{ width: `${progress}%` }}
-      />
-    </div>
-  );
-}
-```
-
-### 3.8 Collapsed View
-
-```tsx
-// PlanCollapsed.tsx
-import { cn } from '@/lib/utils';
-import type { Plan } from '../stores/planStore';
-
-interface PlanCollapsedProps {
-  plan: Plan;
-  onExpand: () => void;
-}
-
-export function PlanCollapsed({ plan, onExpand }: PlanCollapsedProps) {
-  const completedSteps = plan.steps.filter(s => s.status === 'completed').length;
-  const totalSteps = plan.steps.length;
-
-  return (
-    <button
-      onClick={onExpand}
-      className={cn(
-        'fixed bottom-24 right-4 z-50',
-        'flex items-center gap-2 px-4 py-2 rounded-full',
-        'bg-white dark:bg-gray-900 shadow-lg',
-        'border border-gray-200 dark:border-gray-700',
-        'hover:shadow-xl transition-shadow',
-        'text-sm font-medium'
-      )}
-    >
-      <span>📋</span>
-      <span className="text-gray-900 dark:text-gray-100">
-        Plan: {completedSteps}/{totalSteps} steps
-      </span>
-      {plan.status === 'executing' && (
-        <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
-      )}
-      {plan.status === 'completed' && (
-        <span className="text-green-500">✓</span>
-      )}
-      {plan.status === 'failed' && (
-        <span className="text-red-500">✗</span>
-      )}
-    </button>
   );
 }
 ```
@@ -622,43 +548,61 @@ export function PlanCollapsed({ plan, onExpand }: PlanCollapsedProps) {
 ## 4. Tests Requeridos
 
 ```typescript
-describe('PlanVisualization', () => {
-  it('renders when plan exists');
-  it('hides when no plan');
-  it('shows all steps');
-  it('highlights active step');
-  it('shows completion status');
-  it('shows error state');
+describe('ActivityTimeline', () => {
+  it('renders when entries exist');
+  it('hides when no entries');
+  it('shows all activity entries');
+  it('highlights active entry with spinner');
+  it('shows completed entries with checkmark');
+  it('shows failed entries with error icon');
   it('toggles expanded state');
-  it('minimizes to badge');
+  it('minimizes to floating badge');
+  it('auto-minimizes after completion');
 });
 
-describe('PlanStep', () => {
-  it('shows correct icon for status');
-  it('shows agent badge');
-  it('shows result when completed');
-  it('shows error when failed');
+describe('ActivityEntry', () => {
+  it('shows agent identity badge with correct color/icon');
+  it('shows handoff indicator with previous agent');
+  it('shows tool list when tools used');
+  it('shows result summary when completed');
+  it('shows error message when failed');
+  it('shows elapsed time when completed');
 });
 
-describe('usePlanTracking', () => {
-  it('creates plan on plan_generated');
-  it('updates step on plan_step_started');
-  it('updates step on plan_step_completed');
-  it('finalizes on plan_completed');
+describe('activityTimelineStore', () => {
+  it('adds entry on agent_changed');
+  it('adds tool on tool_use');
+  it('updates tool on tool_result');
+  it('completes entry on message');
+  it('fails entry on error');
+  it('clears timeline on session_start');
+  it('sets inactive on complete');
+});
+
+describe('useActivityTimeline', () => {
+  it('maps agent_changed to addEntry');
+  it('maps tool_use to addToolToCurrentEntry');
+  it('maps tool_result to updateToolInCurrentEntry');
+  it('maps message to completeCurrentEntry');
+  it('maps complete to setActive(false)');
 });
 ```
 
 ---
 
-## 5. Criterios de Aceptación
+## 5. Criterios de Aceptacion
 
-- [ ] Plan visualization appears when plan generated
-- [ ] Steps show correct status icons
-- [ ] Progress bar animates correctly
-- [ ] Can expand/collapse steps
-- [ ] Can minimize to badge
-- [ ] Shows results and errors
-- [ ] Auto-minimizes after completion
+- [ ] Timeline appears when agents are invoked during execution
+- [ ] Each agent invocation creates a new entry with identity badge
+- [ ] Handoff type and reason displayed (supervisor_routing / agent_handoff / user_selection)
+- [ ] Tools tracked within each entry (running, completed, failed states)
+- [ ] Result summary shown when agent completes
+- [ ] Error shown when agent fails
+- [ ] Elapsed time per agent displayed
+- [ ] Can expand/collapse entries
+- [ ] Can minimize to floating badge
+- [ ] Auto-minimizes after execution completes
+- [ ] Uses ONLY existing WebSocket events (no new backend events needed)
 - [ ] Accessible (keyboard, screen reader)
 - [ ] `npm run verify:types` pasa
 
@@ -666,90 +610,64 @@ describe('usePlanTracking', () => {
 
 ## 6. Archivos a Crear (Frontend)
 
-- `frontend/src/domains/chat/stores/planStore.ts`
-- `frontend/src/domains/chat/hooks/usePlanTracking.ts`
-- `frontend/src/components/chat/PlanVisualization/PlanVisualization.tsx`
-- `frontend/src/components/chat/PlanVisualization/PlanHeader.tsx`
-- `frontend/src/components/chat/PlanVisualization/PlanStep.tsx`
-- `frontend/src/components/chat/PlanVisualization/PlanProgress.tsx`
-- `frontend/src/components/chat/PlanVisualization/PlanCollapsed.tsx`
-- `frontend/src/types/plan.types.ts`
+- `frontend/src/domains/chat/stores/activityTimelineStore.ts`
+- `frontend/src/domains/chat/hooks/useActivityTimeline.ts`
+- `frontend/src/components/chat/ActivityTimeline/ActivityTimeline.tsx`
+- `frontend/src/components/chat/ActivityTimeline/ActivityEntry.tsx`
+- `frontend/src/components/chat/ActivityTimeline/ActivityToolList.tsx`
+- `frontend/src/components/chat/ActivityTimeline/ActivityHeader.tsx`
+- `frontend/src/components/chat/ActivityTimeline/ActivityCollapsed.tsx`
 - Tests correspondientes
 
 ---
 
 ## 7. Archivos a Modificar
 
-- `frontend/src/app/chat/page.tsx` (add PlanVisualization)
-- `frontend/src/lib/socket.ts` (add plan event types)
+- `frontend/src/app/chat/page.tsx` (add ActivityTimeline component)
+- `frontend/src/domains/chat/` event processor (call `handleAgentEvent()` from useActivityTimeline)
 
 ---
 
 ## 8. Animaciones
 
-### Step Transitions
+### Entry Transitions
 
 ```css
-/* En globals.css o tailwind config */
-@keyframes step-enter {
+@keyframes entry-enter {
   from {
     opacity: 0;
-    transform: translateX(-10px);
+    transform: translateY(-5px);
   }
   to {
     opacity: 1;
-    transform: translateX(0);
+    transform: translateY(0);
   }
 }
 
-.plan-step-enter {
-  animation: step-enter 0.3s ease-out;
-}
-```
-
-### Progress Bar
-
-```css
-@keyframes progress-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.7; }
-}
-
-.progress-executing {
-  animation: progress-pulse 2s ease-in-out infinite;
+.activity-entry-enter {
+  animation: entry-enter 0.2s ease-out;
 }
 ```
 
 ---
 
-## 9. Estimación
+## 9. Estimacion
 
-- **Components**: 3-4 días
-- **Store + Hooks**: 1-2 días
-- **Animations**: 1 día
-- **Testing**: 1-2 días
-- **Total**: 6-9 días
+| Componente | Dias |
+|-----------|------|
+| Store + hooks | 1-2 |
+| Components (5 components) | 2-3 |
+| Animations | 0.5 |
+| Integration with event processor | 1 |
+| Testing | 1-2 |
+| **Total** | **5-8 dias** |
 
 ---
 
 ## 10. Changelog
 
-| Fecha | Versión | Cambios |
+| Fecha | Version | Cambios |
 |-------|---------|---------|
-| 2026-01-21 | 1.0 | Draft inicial |
-| 2026-02-06 | 1.1 | **POST PRD-030**: Dependencia actualizada. PRD-031 (Plan Executor) fue ELIMINADO - `createSupervisor()` maneja planes internamente. PRD-030 completado con supervisor integration. Plan tracking debe derivarse del flujo de mensajes del supervisor (no hay campo `state.plan`). Los events `plan_generated`, `plan_step_started`, `plan_step_completed` aún no se emiten desde el backend - necesitan implementación en PRD-061 o como extensión del result-adapter. |
-
----
-
-## 11. Notas Post-PRD-030
-
-> **IMPORTANTE**: `createSupervisor()` NO expone un "plan" formal como estructura de datos. El supervisor decide dinámicamente qué agente llamar basado en resultados parciales. Para visualizar "pasos" en el UI, se necesita:
->
-> 1. **Opción A (Recomendada)**: Inferir pasos del flujo de mensajes - cada invocación a un agente child se detecta como un "step". El `result-adapter.ts` ya detecta identity de agente por cada AIMessage.
->
-> 2. **Opción B**: Pedir al supervisor que genere un plan explícito en su primera respuesta (via prompt engineering) y emitir `plan_generated` event.
->
-> 3. **Opción C**: Simplificar PRD-061 a un "Agent Activity Timeline" en lugar de "Plan Visualization" - mostrar secuencia de agentes invocados con sus resultados.
->
-> Los events `plan_generated`, `plan_step_started`, `plan_step_completed` definidos en §3.3 **NO existen** aún en el backend. Deben implementarse como parte de este PRD.
-
+| 2026-01-21 | 1.0 | Draft inicial como "Plan Visualization UI" con eventos `plan_generated`, `plan_step_started`, `plan_step_completed` |
+| 2026-02-06 | 1.1 | POST PRD-030: Dependencia actualizada. PRD-031 (Plan Executor) fue ELIMINADO. Plan tracking debe derivarse del flujo de mensajes del supervisor. Los events `plan_generated`, etc. no existen en backend. Tres opciones propuestas (A: infer, B: prompt, C: timeline). |
+| 2026-02-09 | 2.0 | **REWRITE COMPLETO como "Agent Activity Timeline"** (Opcion C adoptada). Renombrado de "Plan Visualization UI" a "Agent Activity Timeline". Eliminada toda referencia a PRD-031 (eliminado). Eliminados eventos inexistentes (`plan_generated`, `plan_step_started`, `plan_step_completed`). Rediseñado para usar eventos existentes (`agent_changed`, `tool_use`, `tool_result`, `message`, `complete`). Store reescrito de `planStore` (Plan/PlanStep) a `activityTimelineStore` (AgentActivityEntry/ToolActivity). Components rediseñados: Timeline con entries cronologicas en vez de steps numerados. Dependencia actualizada: PRD-030 + PRD-040 (completados) + PRD-060. |

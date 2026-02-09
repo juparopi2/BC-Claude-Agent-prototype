@@ -10,7 +10,7 @@
 
 import { Command } from '@langchain/langgraph';
 import { createSupervisor } from '@langchain/langgraph-supervisor';
-import { HumanMessage } from '@langchain/core/messages';
+import { HumanMessage, type BaseMessage } from '@langchain/core/messages';
 import type { AgentId } from '@bc-agent/shared';
 import { ModelFactory } from '@/core/langchain/ModelFactory';
 import type { ICompiledGraph } from '@/domains/agent/orchestration/execution/GraphExecutor';
@@ -66,13 +66,19 @@ export async function initializeSupervisorGraph(): Promise<void> {
   const checkpointer = getCheckpointer();
 
   // 5. Create and compile supervisor
+  // NOTE: Type casts required due to duplicate @langchain/core packages
+  // (root node_modules has different version than backend node_modules).
+  // Structurally identical at runtime. Fix: root package.json overrides.
   const workflow = createSupervisor({
     agents: builtAgents.map(a => a.agent),
-    llm: supervisorModel,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    llm: supervisorModel as any,
     prompt,
+    addHandoffBackMessages: true,
   });
 
-  compiledSupervisor = workflow.compile({ checkpointer });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  compiledSupervisor = workflow.compile({ checkpointer: checkpointer as any });
 
   initialized = true;
 
@@ -149,7 +155,7 @@ class SupervisorGraphAdapter implements ICompiledGraph {
           }
         );
 
-        return adaptSupervisorResult(agentResult, sessionId);
+        return adaptSupervisorResult(agentResult as { messages: BaseMessage[] }, sessionId);
       }
     }
 
@@ -163,7 +169,7 @@ class SupervisorGraphAdapter implements ICompiledGraph {
     const startTime = Date.now();
     let invocationSuccess = true;
 
-    let result: { messages: unknown[] };
+    let result: { messages: BaseMessage[] };
     try {
       result = await compiledSupervisor.invoke(
         {
@@ -192,7 +198,7 @@ class SupervisorGraphAdapter implements ICompiledGraph {
     }
 
     // Record successful invocation analytics (fire-and-forget)
-    const identity = detectAgentIdentity(result.messages as import('@langchain/core/messages').BaseMessage[]);
+    const identity = detectAgentIdentity(result.messages);
     getAgentAnalyticsService().recordInvocation({
       agentId: identity.agentId,
       success: invocationSuccess,

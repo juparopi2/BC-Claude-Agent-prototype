@@ -44,9 +44,11 @@ export type {
   UserMessageConfirmedEvent,
   TurnPausedEvent,
   ContentRefusedEvent,
+  AgentChangedEvent,
   AgentEvent,
   AgentExecutionResult,
   CitedFile,
+  HandoffType,
   TransientEventType,
 
   // WebSocket types
@@ -56,6 +58,7 @@ export type {
   ApprovalResponseData,
   ApprovalRequestData,
   AgentErrorData,
+  AgentSelectData,
   SessionReadyEvent,
   SessionJoinedEvent,
   WebSocketEvents,

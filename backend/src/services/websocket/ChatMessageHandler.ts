@@ -26,6 +26,7 @@ import type {
 } from '@/types';
 import type { ChatMessageData } from '@/types/websocket.types';
 import { getAgentOrchestrator } from '@domains/agent/orchestration';
+import type { AgentChangedEvent } from '@bc-agent/shared';
 import { createChildLogger } from '@/shared/utils/logger';
 import { validateSessionOwnership } from '@/shared/utils/session-ownership';
 import { normalizeUUID } from '@/shared/utils/uuid';
@@ -359,6 +360,17 @@ export class ChatMessageHandler {
             userId,
             messageId: (event as { messageId?: string }).messageId,
             reason: (event as { reason?: string }).reason,
+          });
+          break;
+
+        case 'agent_changed':
+          // PRD-040: Agent transition event (supervisor routing, agent handoff, or user selection)
+          this.logger.info('Agent changed event', {
+            sessionId,
+            userId,
+            previousAgent: (event as AgentChangedEvent).previousAgent?.agentId,
+            currentAgent: (event as AgentChangedEvent).currentAgent?.agentId,
+            handoffType: (event as AgentChangedEvent).handoffType,
           });
           break;
 

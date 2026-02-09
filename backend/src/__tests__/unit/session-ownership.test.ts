@@ -15,9 +15,14 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-// Mock database module - use vi.fn() inside factory
-vi.mock('@/infrastructure/database/database', () => ({
-  executeQuery: vi.fn(),
+// Mock prisma module - use vi.hoisted() since vi.mock is hoisted to top of file
+const mockFindUnique = vi.hoisted(() => vi.fn());
+vi.mock('@/infrastructure/database/prisma', () => ({
+  prisma: {
+    sessions: {
+      findUnique: mockFindUnique,
+    },
+  },
 }));
 
 // Mock logger to avoid output during tests
@@ -43,10 +48,6 @@ import {
   requireSessionOwnership,
   requireSessionOwnershipMiddleware,
 } from '@/shared/utils/session-ownership';
-import { executeQuery } from '@/infrastructure/database/database';
-
-// Get the mocked version
-const mockExecuteQuery = vi.mocked(executeQuery);
 
 describe('Session Ownership Utilities', () => {
   beforeEach(() => {
@@ -64,12 +65,7 @@ describe('Session Ownership Utilities', () => {
 
     it('should return isOwner=true when user owns the session', async () => {
       // Arrange: Session exists and user is owner
-      mockExecuteQuery.mockResolvedValueOnce({
-        recordset: [{ user_id: ownerUserId }],
-        rowsAffected: [1],
-        output: {},
-        recordsets: [],
-      });
+      mockFindUnique.mockResolvedValueOnce({ user_id: ownerUserId });
 
       // Act
       const result = await validateSessionOwnership(validSessionId, ownerUserId);
@@ -77,20 +73,15 @@ describe('Session Ownership Utilities', () => {
       // Assert
       expect(result.isOwner).toBe(true);
       expect(result.error).toBeUndefined();
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('SELECT user_id FROM sessions'),
-        { sessionId: validSessionId }
-      );
+      expect(mockFindUnique).toHaveBeenCalledWith({
+        where: { id: validSessionId },
+        select: { user_id: true },
+      });
     });
 
     it('should return isOwner=false with NOT_OWNER error when user does not own session', async () => {
       // Arrange: Session exists but different owner
-      mockExecuteQuery.mockResolvedValueOnce({
-        recordset: [{ user_id: ownerUserId }],
-        rowsAffected: [1],
-        output: {},
-        recordsets: [],
-      });
+      mockFindUnique.mockResolvedValueOnce({ user_id: ownerUserId });
 
       // Act
       const result = await validateSessionOwnership(validSessionId, otherUserId);
@@ -103,12 +94,7 @@ describe('Session Ownership Utilities', () => {
 
     it('should return isOwner=false with SESSION_NOT_FOUND error when session does not exist', async () => {
       // Arrange: Session not found
-      mockExecuteQuery.mockResolvedValueOnce({
-        recordset: [],
-        rowsAffected: [0],
-        output: {},
-        recordsets: [],
-      });
+      mockFindUnique.mockResolvedValueOnce(null);
 
       // Act
       const result = await validateSessionOwnership('non-existent-session', ownerUserId);
@@ -125,7 +111,7 @@ describe('Session Ownership Utilities', () => {
       // Assert
       expect(result.isOwner).toBe(false);
       expect(result.error).toBe('INVALID_INPUT');
-      expect(mockExecuteQuery).not.toHaveBeenCalled();
+      expect(mockFindUnique).not.toHaveBeenCalled();
     });
 
     it('should return isOwner=false with INVALID_INPUT error when userId is empty', async () => {
@@ -135,12 +121,12 @@ describe('Session Ownership Utilities', () => {
       // Assert
       expect(result.isOwner).toBe(false);
       expect(result.error).toBe('INVALID_INPUT');
-      expect(mockExecuteQuery).not.toHaveBeenCalled();
+      expect(mockFindUnique).not.toHaveBeenCalled();
     });
 
     it('should return isOwner=false with DATABASE_ERROR error when query fails', async () => {
       // Arrange: Database error
-      mockExecuteQuery.mockRejectedValueOnce(new Error('Connection failed'));
+      mockFindUnique.mockRejectedValueOnce(new Error('Connection failed'));
 
       // Act
       const result = await validateSessionOwnership(validSessionId, ownerUserId);
@@ -182,12 +168,7 @@ describe('Session Ownership Utilities', () => {
 
     it('should not throw when user owns the session', async () => {
       // Arrange
-      mockExecuteQuery.mockResolvedValueOnce({
-        recordset: [{ user_id: ownerUserId }],
-        rowsAffected: [1],
-        output: {},
-        recordsets: [],
-      });
+      mockFindUnique.mockResolvedValueOnce({ user_id: ownerUserId });
 
       // Act & Assert
       await expect(requireSessionOwnership(validSessionId, ownerUserId)).resolves.not.toThrow();
@@ -195,12 +176,7 @@ describe('Session Ownership Utilities', () => {
 
     it('should throw "Unauthorized" error when user does not own session', async () => {
       // Arrange
-      mockExecuteQuery.mockResolvedValueOnce({
-        recordset: [{ user_id: ownerUserId }],
-        rowsAffected: [1],
-        output: {},
-        recordsets: [],
-      });
+      mockFindUnique.mockResolvedValueOnce({ user_id: ownerUserId });
 
       // Act & Assert
       await expect(requireSessionOwnership(validSessionId, otherUserId))
@@ -209,12 +185,7 @@ describe('Session Ownership Utilities', () => {
 
     it('should throw "not found" error when session does not exist', async () => {
       // Arrange
-      mockExecuteQuery.mockResolvedValueOnce({
-        recordset: [],
-        rowsAffected: [0],
-        output: {},
-        recordsets: [],
-      });
+      mockFindUnique.mockResolvedValueOnce(null);
 
       // Act & Assert
       await expect(requireSessionOwnership('non-existent', ownerUserId))
@@ -235,12 +206,7 @@ describe('Session Ownership Utilities', () => {
 
     it('should call next() when user owns the session', async () => {
       // Arrange
-      mockExecuteQuery.mockResolvedValueOnce({
-        recordset: [{ user_id: ownerUserId }],
-        rowsAffected: [1],
-        output: {},
-        recordsets: [],
-      });
+      mockFindUnique.mockResolvedValueOnce({ user_id: ownerUserId });
 
       const middleware = requireSessionOwnershipMiddleware('sessionId');
       const req = { params: { sessionId: validSessionId }, userId: ownerUserId };
@@ -260,12 +226,7 @@ describe('Session Ownership Utilities', () => {
 
     it('should return 403 when user does not own the session', async () => {
       // Arrange
-      mockExecuteQuery.mockResolvedValueOnce({
-        recordset: [{ user_id: ownerUserId }],
-        rowsAffected: [1],
-        output: {},
-        recordsets: [],
-      });
+      mockFindUnique.mockResolvedValueOnce({ user_id: ownerUserId });
 
       const middleware = requireSessionOwnershipMiddleware('sessionId');
       const req = { params: { sessionId: validSessionId }, userId: otherUserId };
@@ -289,12 +250,7 @@ describe('Session Ownership Utilities', () => {
 
     it('should return 404 when session does not exist', async () => {
       // Arrange
-      mockExecuteQuery.mockResolvedValueOnce({
-        recordset: [],
-        rowsAffected: [0],
-        output: {},
-        recordsets: [],
-      });
+      mockFindUnique.mockResolvedValueOnce(null);
 
       const middleware = requireSessionOwnershipMiddleware('sessionId');
       const req = { params: { sessionId: 'non-existent' }, userId: ownerUserId };
@@ -362,12 +318,7 @@ describe('Session Ownership Utilities', () => {
 
     it('should use custom parameter name when specified', async () => {
       // Arrange
-      mockExecuteQuery.mockResolvedValueOnce({
-        recordset: [{ user_id: ownerUserId }],
-        rowsAffected: [1],
-        output: {},
-        recordsets: [],
-      });
+      mockFindUnique.mockResolvedValueOnce({ user_id: ownerUserId });
 
       const middleware = requireSessionOwnershipMiddleware('customSessionId');
       const req = { params: { customSessionId: validSessionId }, userId: ownerUserId };
@@ -382,10 +333,10 @@ describe('Session Ownership Utilities', () => {
 
       // Assert
       expect(next).toHaveBeenCalled();
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.any(String),
-        { sessionId: validSessionId }
-      );
+      expect(mockFindUnique).toHaveBeenCalledWith({
+        where: { id: validSessionId },
+        select: { user_id: true },
+      });
     });
   });
 
@@ -396,12 +347,7 @@ describe('Session Ownership Utilities', () => {
       const userBId = 'user-b-victim';
       const userBSessionId = 'session-belongs-to-user-b';
 
-      mockExecuteQuery.mockResolvedValueOnce({
-        recordset: [{ user_id: userBId }],
-        rowsAffected: [1],
-        output: {},
-        recordsets: [],
-      });
+      mockFindUnique.mockResolvedValueOnce({ user_id: userBId });
 
       // Act: User A tries to access User B's session
       const result = await validateSessionOwnership(userBSessionId, userAId);
@@ -428,12 +374,7 @@ describe('Session Ownership Utilities', () => {
       const userId = 'legitimate-user';
       const sessionId = 'legitimate-session';
 
-      mockExecuteQuery.mockResolvedValueOnce({
-        recordset: [{ user_id: userId }],
-        rowsAffected: [1],
-        output: {},
-        recordsets: [],
-      });
+      mockFindUnique.mockResolvedValueOnce({ user_id: userId });
 
       // Act
       const ownershipResult = await validateSessionOwnership(sessionId, userId);

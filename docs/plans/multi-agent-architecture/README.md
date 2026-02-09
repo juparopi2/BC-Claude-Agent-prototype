@@ -2,7 +2,7 @@
 
 **Estado**: En Progreso
 **Fecha Inicio**: 2026-01-21
-**Versión del Plan**: 2.4 (PRD-032 Completado - Durable Persistence + Analytics)
+**Versión del Plan**: 2.5 (PRD-040 Completado - Dynamic Handoffs with Command Pattern)
 
 ---
 
@@ -230,12 +230,24 @@ console.log(anthropic.profile?.reasoningOutput); // true para extended thinking
 - Estado de conversación persiste entre reinicios del servidor
 
 ### Fase 4: Handoffs con Command()
-**Estado**: 🔴 No Iniciado
+**Estado**: ✅ COMPLETADO (2026-02-09)
 **Objetivo**: Delegación dinámica usando Command pattern nativo
 
-| PRD | Componente | Estado |
-|-----|------------|--------|
-| [PRD-040](./PHASE-4-HANDOFFS/PRD-040-DynamicHandoffs.md) | Command(goto=...) pattern | 🔴 |
+| PRD | Componente | Estado | Fecha |
+|-----|------------|--------|-------|
+| [PRD-040](./PHASE-4-HANDOFFS/PRD-040-DynamicHandoffs.md) | Command(goto=...) pattern + User Selection | ✅ Completado | 2026-02-09 |
+
+**Métricas PRD-040:**
+- 7 archivos creados, 8 modificados, 3 archivos de test actualizados (Prisma migration)
+- 15 tests nuevos (4 handoff-tools + 6 builder + 5 user-handoff) + 1 test nuevo en agent-builders, 0 regresiones (3036 tests backend pasan)
+- `createAgentHandoffTool()` factory usando `Command.PARENT` + `getCurrentTaskInput()` (patrón oficial LangGraph)
+- `buildHandoffToolsForAgent()`: BC Agent recibe `transfer_to_rag-agent`, RAG Agent recibe `transfer_to_bc-agent`
+- `addHandoffBackMessages: true` en `createSupervisor()` para historial de transiciones explícito
+- `detectHandoffs()` en result-adapter.ts escanea ToolMessages con patrón `transfer_to_*`
+- WebSocket `agent:select` handler para selección de agente por usuario con ownership validation
+- `session-ownership.ts` migrado de raw SQL (`executeQuery`) a Prisma (`prisma.sessions.findUnique`)
+- `HandoffType = 'supervisor_routing' | 'agent_handoff' | 'user_selection'` en `@bc-agent/shared`
+- `AgentChangedEvent` extendido con `handoffType` y `reason` opcionales
 
 ### Fase 5: Graphing Agent
 **Estado**: 🔴 No Iniciado
@@ -297,8 +309,8 @@ FASE 3: Supervisor (✅ COMPLETADO)
 ├── PRD-031: [ELIMINADO] ─────────────────────────────────────┤
 └── PRD-032: MSSQLSaver + Analytics [✅ COMPLETADO] ──────────┴──► FASE 4
 
-FASE 4: Handoffs
-└── PRD-040: Command(goto=...) Pattern ───────────────────► FASE 5
+FASE 4: Handoffs (✅ COMPLETADO)
+└── PRD-040: Command(goto=...) + User Selection [✅ COMPLETADO] ──► FASE 5
 
 FASE 5: Graphing Agent
 └── PRD-050: GraphingAgent ───────────────────────────────► FASE 6
@@ -381,3 +393,4 @@ npm run test:e2e
 | 2026-02-06 | 2.2 | PRD-020 completado (Fase 2). `ExtendedAgentStateAnnotation` con `currentAgentIdentity` y `AgentContext` enriquecido. Backward compat via alias. Corregidos imports erróneos de `createSupervisor` en PRD-032 y PRD-050. Corregido PRD-050 para usar `state.messages` en lugar de `state.plan?.steps` inexistente. Agregados pre-requisitos de instalación de paquetes en PRDs de Fase 3 y 5. |
 | 2026-02-06 | 2.3 | **PRD-030 completado** (Fase 3 parcial). Supervisor Integration implementado: `createSupervisor()` + `createReactAgent()` + `MemorySaver` + `interrupt()`/`Command({ resume })`. 13 archivos creados, 6 modificados, 4 eliminados (deprecated code). 44 tests nuevos, 2986 tests totales pasando. `MemorySaver` como MVP checkpointer (PRD-032 proveerá MSSQL persistence). RAG tool refactorizado a static con `config.configurable`. Old routing eliminado (`router.ts`, `graph.ts`, `AgentFactory.ts`). PRD-032 desbloqueado. |
 | 2026-02-06 | 2.4 | **PRD-032 completado** (Fase 3 completa). `MSSQLSaver` custom checkpointer implementado extendiendo `BaseCheckpointSaver` con Prisma + Azure SQL (no se necesita PostgreSQL). `AgentAnalyticsService` con MERGE upsert atómico para métricas de uso. API endpoints de analytics. 7 archivos nuevos, 4 modificados. 34 tests nuevos, 3020 tests totales. Tabla `checkpoints` (legacy) eliminada, reemplazada por `langgraph_checkpoints` + `langgraph_checkpoint_writes`. GAP-002 resuelto (MSSQL checkpointer). Fase 4 (Handoffs) desbloqueada. |
+| 2026-02-09 | 2.5 | **PRD-040 completado** (Fase 4 completa). Dynamic handoffs con `Command.PARENT` + `getCurrentTaskInput()` pattern oficial de LangGraph. `createAgentHandoffTool()` factory crea `transfer_to_<agent>` tools inyectados en `createReactAgent()`. `addHandoffBackMessages: true` en supervisor. `detectHandoffs()` en result-adapter. WebSocket `agent:select` handler con ownership validation. `session-ownership.ts` migrado de raw SQL a Prisma. `HandoffType` + `AgentSelectData` types en `@bc-agent/shared`. 7 archivos nuevos, 8 modificados, 3 test files actualizados. 16 tests nuevos, 3036 tests totales. Fase 5 (Graphing Agent) desbloqueada. |

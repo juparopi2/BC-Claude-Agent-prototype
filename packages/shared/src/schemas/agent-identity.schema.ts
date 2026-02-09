@@ -33,6 +33,8 @@ export const AgentChangedEventSchema = z.object({
   persistenceState: z.enum(['pending', 'queued', 'persisted', 'failed', 'transient']),
   previousAgent: AgentIdentitySchema,
   currentAgent: AgentIdentitySchema,
+  handoffType: z.enum(['supervisor_routing', 'agent_handoff', 'user_selection']).optional(),
+  reason: z.string().optional(),
 });
 
 export type AgentChangedEventInput = z.infer<typeof AgentChangedEventSchema>;

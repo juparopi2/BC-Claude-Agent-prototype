@@ -2,10 +2,21 @@ import { Annotation, messagesStateReducer } from '@langchain/langgraph';
 import { BaseMessage } from '@langchain/core/messages';
 import { AgentIdentityAnnotation } from './state/AgentIdentity';
 import { AgentContextAnnotation } from './state/AgentContext';
+import type { AgentIdentity, HandoffType } from '@bc-agent/shared';
 
 // Re-export state sub-modules for external consumers
 export { DEFAULT_AGENT_IDENTITY } from './state/AgentIdentity';
 export type { AgentContext } from './state/AgentContext';
+
+/**
+ * Detected handoff between agents (PRD-040).
+ * Metadata produced by result-adapter, not part of LangGraph state flow.
+ */
+export interface HandoffDetectionInfo {
+  fromAgent: AgentIdentity;
+  toAgent: AgentIdentity;
+  handoffType: HandoffType;
+}
 
 /**
  * Tool execution record for tracking tool calls made by agents.
@@ -88,6 +99,16 @@ export const ExtendedAgentStateAnnotation = Annotation.Root({
   usedModel: Annotation<string | null>({
     reducer: (_, y) => y ?? null,
     default: () => null,
+  }),
+
+  /**
+   * Detected agent handoffs during execution (PRD-040).
+   * Populated by result-adapter after supervisor invocation.
+   * Used for emitting agent_changed events with handoff context.
+   */
+  handoffs: Annotation<HandoffDetectionInfo[]>({
+    reducer: (existing, incoming) => [...(existing || []), ...(incoming || [])],
+    default: () => [],
   }),
 });
 

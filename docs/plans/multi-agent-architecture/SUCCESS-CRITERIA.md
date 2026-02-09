@@ -1,7 +1,7 @@
 # Success Criteria & Verification Checklist
 
 **Documento**: Entregables y criterios de verificación por fase
-**Última Actualización**: 2026-02-06 (PRD-032 completado)
+**Última Actualización**: 2026-02-09 (PRD-040 completado)
 **Propósito**: Base de conocimiento para validar que cada fase funciona correctamente y que no hay regresiones
 
 ---
@@ -15,7 +15,7 @@
 | Fase 1: TDD Foundation | 🟡 PARCIAL | PRD-011 | PRD-010 |
 | Fase 2: Extended State | ✅ COMPLETADO | PRD-020 | - |
 | Fase 3: Supervisor | ✅ COMPLETADO | PRD-030, PRD-032 | - |
-| Fase 4: Handoffs | 🔴 NO INICIADO | - | PRD-040 |
+| Fase 4: Handoffs | ✅ COMPLETADO | PRD-040 | - |
 | Fase 5: Graphing Agent | 🔴 NO INICIADO | - | PRD-050 |
 | Fase 6: UI | 🔴 NO INICIADO | - | PRD-060, PRD-061 |
 
@@ -32,7 +32,7 @@
 
 ### Criterios de Verificación Permanentes
 - [ ] Ningún archivo >300 líneas en los módulos refactorizados
-- [ ] `npm run -w backend test:unit` pasa (2986+ tests)
+- [ ] `npm run -w backend test:unit` pasa (3036+ tests)
 - [ ] `npm run verify:types` pasa sin errores
 
 ---
@@ -137,6 +137,52 @@
 
 ---
 
+## Fase 4: Handoffs - Verificación ✅
+
+### Entregables Completados (PRD-040)
+- [x] `createAgentHandoffTool()` factory con `Command.PARENT` + `getCurrentTaskInput()` (patrón oficial LangGraph)
+- [x] `buildHandoffToolsForAgent()`: genera `transfer_to_<target>` tools per-agent desde registry
+- [x] BC Agent: 7 domain tools + `transfer_to_rag-agent` handoff tool
+- [x] RAG Agent: 1 search tool + `transfer_to_bc-agent` handoff tool
+- [x] `addHandoffBackMessages: true` en `createSupervisor()` para historial de transiciones
+- [x] `detectHandoffs()` en result-adapter.ts escanea ToolMessages con patrón `transfer_to_*`
+- [x] `HandoffDetectionInfo` type con `fromAgent`/`toAgent` identity pairs
+- [x] WebSocket `agent:select` handler con session ownership validation
+- [x] `processUserAgentSelection()` valida: agent exists, user-selectable, not system agent
+- [x] `agent_changed` event emitido con `handoffType: 'user_selection'`
+- [x] Case `agent_changed` explícito en `ChatMessageHandler` switch (ya no cae en `default`)
+- [x] `session-ownership.ts` migrado de `executeQuery` (raw SQL) a `prisma.sessions.findUnique()`
+- [x] `HandoffType` + `AgentSelectData` + Zod schemas en `@bc-agent/shared`
+
+### Escenarios de Verificación E2E (PRD-040)
+
+#### Agent-to-Agent Handoffs
+- [ ] BC Agent delega a RAG Agent via `transfer_to_rag-agent` tool
+- [ ] RAG Agent delega a BC Agent via `transfer_to_bc-agent` tool
+- [ ] Handoff tool no requiere args del LLM (target baked-in)
+- [ ] Message history preservado durante handoff (`addHandoffBackMessages`)
+
+#### User-Initiated Agent Selection
+- [ ] Frontend envía `agent:select` → backend valida ownership → emite `agent_changed`
+- [ ] Selección de agent no existente → error handled gracefully
+- [ ] Selección de supervisor (system agent) → rejected
+
+#### Handoff Detection
+- [ ] `detectHandoffs()` detecta `transfer_to_*` ToolMessages en result
+- [ ] `adaptSupervisorResult()` incluye handoff info en state
+- [ ] `agent_changed` event incluye `handoffType` discriminator
+
+### Danger Points / Regresiones a Monitorear
+
+| Riesgo | Qué Verificar | Comando |
+|--------|---------------|---------|
+| Circular handoffs (A→B→A→...) | `recursionLimit: 50` previene loops infinitos | Verificar que supervisor termina |
+| `getCurrentTaskInput()` fuera de contexto | Solo se llama dentro de `createReactAgent` ToolNode | Verificar que handoff tools solo se usan en react agents |
+| Session ownership Prisma migration | Tests de ownership siguen pasando | `npx vitest run "session-ownership"` |
+| Handoff tool schema vacío | LLM no pasa args innecesarios | Verificar `z.object({})` en tool schema |
+
+---
+
 ## Gaps Identificados (No Cubiertos en Ningún PRD)
 
 ### GAP-001: Frontend WebSocket Event Handling para Multi-Agent ⚠️ CRITICO
@@ -169,13 +215,18 @@
 
 **Recomendación**: Crear PRD-033 para retry logic y error recovery.
 
-### GAP-004: Agent Changed Event no emitido por Supervisor
+### GAP-004: Agent Changed Event no emitido por Supervisor ⚠️ PARCIALMENTE RESUELTO
 
 **Descripción**: El `result-adapter.ts` detecta qué agente respondió, pero el `agent_changed` event type no se emite explícitamente cuando el supervisor cambia entre agentes. Solo se incluye `currentAgentIdentity` en el state.
 
-**Impacto**: Frontend no recibe `agent_changed` events para actualizar UI badges.
+**Parcialmente resuelto (PRD-040)**:
+- `agent_changed` ahora se emite para user-initiated selection via `agent:select` WebSocket handler
+- `ChatMessageHandler` tiene case `agent_changed` explícito con logging de `previousAgent`, `currentAgent`, `handoffType`
+- `detectHandoffs()` en result-adapter detecta agent-to-agent handoffs via `transfer_to_*` ToolMessages
 
-**Recomendación**: Agregar emisión de `agent_changed` event en `EventProcessor` o `AgentOrchestrator` cuando `currentAgentIdentity` cambia respecto al valor anterior. Incluir en PRD-060.
+**Impacto residual**: El supervisor automatic routing aún no emite `agent_changed` events (solo agent-to-agent handoffs y user selection lo hacen). Frontend aún no procesa estos events.
+
+**Recomendación**: Agregar emisión de `agent_changed` en `EventProcessor`/`AgentOrchestrator` cuando `currentAgentIdentity` cambia vs valor anterior. Completar en PRD-060.
 
 ### GAP-005: Supervisor Prompt no tiene info de "cuándo usar interrupt()"
 
@@ -204,17 +255,19 @@
 npm run build:shared                    # Build shared package
 npm run verify:types                    # Type check shared + frontend
 npm run -w backend lint                 # Backend lint (0 errors)
-npm run -w backend test:unit            # Full backend unit tests (3020+)
+npm run -w backend test:unit            # Full backend unit tests (3036+)
 npx vitest run "supervisor"             # Supervisor-specific tests (44)
 
 # Tests específicos por módulo
-npx vitest run "agent-builders"         # Agent builder tests
-npx vitest run "result-adapter"         # Result adapter tests
+npx vitest run "agent-builders"         # Agent builder tests (8, includes handoff injection)
+npx vitest run "result-adapter"         # Result adapter tests (includes detectHandoffs)
 npx vitest run "slash-command"          # Slash command routing
 npx vitest run "supervisor-prompt"      # Prompt generation tests
 npx vitest run "supervisor-graph"       # Graph adapter tests
 npx vitest run "MSSQLSaver"            # Checkpointer tests (21)
 npx vitest run "AgentAnalyticsService"  # Analytics tests (13)
+npx vitest run "handoff"               # Handoff-specific tests (15)
+npx vitest run "session-ownership"      # Session ownership tests (48, Prisma-based)
 
 # Frontend (cuando PRD-060+ se implemente)
 npm run -w bc-agent-frontend test       # Frontend tests
@@ -229,3 +282,4 @@ npm run -w bc-agent-frontend lint       # Frontend lint
 |-------|---------|
 | 2026-02-06 | Creación inicial: criterios de verificación para Fases 0-3. Identificados 6 gaps no cubiertos en PRDs existentes. |
 | 2026-02-06 | PRD-032 completado. Fase 3 marcada como ✅ COMPLETADO. GAP-002 resuelto (MSSQLSaver). GAP-003 parcialmente resuelto (persistencia durable). Agregados tests de checkpointer y analytics a comandos de verificación. |
+| 2026-02-09 | PRD-040 completado. Fase 4 marcada como ✅ COMPLETADO. Dynamic handoffs con Command pattern oficial LangGraph. `session-ownership.ts` migrado a Prisma. 16 tests nuevos, 3036 tests totales. Fase 5 desbloqueada. GAP-004 parcialmente resuelto (`agent_changed` ahora se emite en user selection y tiene case explícito en ChatMessageHandler). |

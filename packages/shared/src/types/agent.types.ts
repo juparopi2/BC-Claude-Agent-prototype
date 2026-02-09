@@ -12,6 +12,16 @@ import type { ChatAttachmentSummary } from './chat-attachments.types';
 import type { AgentIdentity } from './agent-identity.types';
 
 /**
+ * Handoff Type (PRD-040)
+ * Indicates how an agent transition occurred.
+ *
+ * - 'supervisor_routing': Supervisor LLM decided which agent to use
+ * - 'agent_handoff': One agent delegated to another mid-execution via Command pattern
+ * - 'user_selection': User explicitly selected an agent from the UI
+ */
+export type HandoffType = 'supervisor_routing' | 'agent_handoff' | 'user_selection';
+
+/**
  * Provider-agnostic stop reason.
  * Covers all possible reasons why an LLM stopped generating.
  *
@@ -432,6 +442,10 @@ export interface AgentChangedEvent extends BaseAgentEvent {
   previousAgent: AgentIdentity;
   /** Identity of the new active agent */
   currentAgent: AgentIdentity;
+  /** How the agent transition occurred (PRD-040) */
+  handoffType?: HandoffType;
+  /** Reason for the handoff (e.g., "User needs document analysis") */
+  reason?: string;
 }
 
 /**

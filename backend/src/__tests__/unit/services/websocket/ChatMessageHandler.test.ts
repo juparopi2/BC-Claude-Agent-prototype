@@ -57,14 +57,13 @@ vi.mock('@domains/agent/orchestration', () => ({
   getAgentOrchestrator: vi.fn(() => mockAgentOrchestratorMethods),
 }));
 
-// ===== MOCK DATABASE FOR SESSION OWNERSHIP (added for F4-003) =====
-vi.mock('@/infrastructure/database/database', () => ({
-  executeQuery: vi.fn().mockResolvedValue({
-    recordset: [{ user_id: 'test-user-456' }], // Default: user owns the session
-    rowsAffected: [1],
-    output: {},
-    recordsets: [],
-  }),
+// ===== MOCK PRISMA FOR SESSION OWNERSHIP (migrated from executeQuery) =====
+vi.mock('@/infrastructure/database/prisma', () => ({
+  prisma: {
+    sessions: {
+      findUnique: vi.fn().mockResolvedValue({ user_id: 'test-user-456' }), // Default: user owns the session
+    },
+  },
 }));
 
 // ===== MOCK LOGGER (vi.hoisted pattern) =====

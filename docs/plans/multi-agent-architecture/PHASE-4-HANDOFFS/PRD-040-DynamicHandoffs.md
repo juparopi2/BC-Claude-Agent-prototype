@@ -1,9 +1,9 @@
 # PRD-040: Dynamic Handoffs with Command Pattern
 
-**Estado**: Draft
+**Estado**: ✅ COMPLETADO (2026-02-09)
 **Prioridad**: Media
-**Dependencias**: PRD-030 (Supervisor Integration)
-**Bloquea**: Fase 5 (Graphing Agent)
+**Dependencias**: PRD-030 (Supervisor Integration), PRD-011 (Agent Registry), PRD-020 (Extended State)
+**Bloquea**: Fase 5 (Graphing Agent), PRD-060 (Agent Selector UI)
 
 ---
 
@@ -289,21 +289,53 @@ describe("processUserAgentSelection", () => {
 
 ## 8. Criterios de Aceptación
 
-- [ ] Agents can delegate via handoff tool
-- [ ] Users can select different agent
-- [ ] Command pattern routes correctly
-- [ ] Handoff events emitted
-- [ ] State preserved during handoffs
-- [ ] `npm run verify:types` pasa sin errores
+- [x] Agents can delegate via handoff tool (`createAgentHandoffTool` + `Command.PARENT`)
+- [x] Users can select different agent (WebSocket `agent:select` handler)
+- [x] Command pattern routes correctly (`transfer_to_*` tools with `Command.PARENT`)
+- [x] Handoff events emitted (`agent_changed` with `handoffType` discriminator)
+- [x] State preserved during handoffs (`addHandoffBackMessages: true`)
+- [x] `npm run verify:types` pasa sin errores
+- [x] `npm run -w backend test:unit` pasa (3036 tests, 0 failures)
+- [x] `npm run -w backend lint` pasa (0 errors)
 
 ---
 
-## 9. Archivos a Crear
+## 9. Archivos Creados/Modificados
 
-- `backend/src/modules/agents/handoffs/handoff-tools.ts`
-- `backend/src/modules/agents/handoffs/user-handoff.ts`
-- `backend/src/modules/agents/handoffs/index.ts`
-- `backend/src/__tests__/unit/agents/handoffs/handoff-tools.test.ts`
+### Archivos Nuevos (7)
+| Archivo | Propósito |
+|---------|-----------|
+| `backend/src/modules/agents/handoffs/handoff-tools.ts` | `createAgentHandoffTool()` factory con `Command.PARENT` + `getCurrentTaskInput()` |
+| `backend/src/modules/agents/handoffs/handoff-tool-builder.ts` | `buildHandoffToolsForAgent()` - genera N-1 tools por worker agent |
+| `backend/src/modules/agents/handoffs/user-handoff.ts` | `processUserAgentSelection()` - validación de selección por usuario |
+| `backend/src/modules/agents/handoffs/index.ts` | Barrel exports |
+| `backend/src/__tests__/unit/agents/handoffs/handoff-tools.test.ts` | 4 tests unitarios |
+| `backend/src/__tests__/unit/agents/handoffs/handoff-tool-builder.test.ts` | 6 tests unitarios |
+| `backend/src/__tests__/unit/agents/handoffs/user-handoff.test.ts` | 5 tests unitarios |
+
+### Archivos Modificados (8)
+| Archivo | Cambio |
+|---------|--------|
+| `packages/shared/src/types/agent.types.ts` | `HandoffType`, `AgentChangedEvent` extendido |
+| `packages/shared/src/types/websocket.types.ts` | `AgentSelectData`, `agent:select` event |
+| `packages/shared/src/schemas/agent-identity.schema.ts` | `handoffType` y `reason` en schema |
+| `backend/src/modules/agents/supervisor/agent-builders.ts` | Inyección de handoff tools |
+| `backend/src/modules/agents/supervisor/supervisor-graph.ts` | `addHandoffBackMessages: true` |
+| `backend/src/modules/agents/supervisor/result-adapter.ts` | `detectHandoffs()` function |
+| `backend/src/services/websocket/ChatMessageHandler.ts` | Case `agent_changed` explícito |
+| `backend/src/server.ts` | `agent:select` socket handler |
+
+### Migración Prisma (1)
+| Archivo | Cambio |
+|---------|--------|
+| `backend/src/shared/utils/session-ownership.ts` | `executeQuery` → `prisma.sessions.findUnique()` |
+
+### Tests Actualizados (3)
+| Archivo | Cambio |
+|---------|--------|
+| `backend/src/__tests__/unit/session-ownership.test.ts` | Mock migrado a Prisma |
+| `backend/src/__tests__/unit/utils/session-ownership.security.test.ts` | Mock migrado a Prisma |
+| `backend/src/__tests__/unit/agents/supervisor/agent-builders.test.ts` | Test PRD-040 handoff tools |
 
 ---
 
@@ -321,3 +353,4 @@ describe("processUserAgentSelection", () => {
 | Fecha | Versión | Cambios |
 |-------|---------|---------|
 | 2026-02-02 | 1.0 | Initial draft with Command pattern |
+| 2026-02-09 | 2.0 | **COMPLETADO**. Implementación final difiere del draft en diseño de handoff tools: se usa patrón oficial LangGraph (`getCurrentTaskInput()` + `Command.PARENT` + `ToolMessage`) en lugar de `transfer_to_agent` genérico con schema de args. Cada agente recibe tools `transfer_to_<target>` pre-built (target baked-in, no args para el LLM). Se agregó `handoff-tool-builder.ts` para construir tools per-agent desde el registry. `addHandoffBackMessages: true` para historial explícito. `detectHandoffs()` en result-adapter. WebSocket `agent:select` con ownership validation. `session-ownership.ts` migrado a Prisma. `HandoffType` discriminator en `@bc-agent/shared`. 16 tests nuevos, 3036 tests totales pasando. |

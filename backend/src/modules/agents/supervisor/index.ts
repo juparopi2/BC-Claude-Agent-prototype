@@ -21,6 +21,7 @@ export {
   detectAgentIdentity,
   extractToolExecutions,
   extractUsedModel,
+  detectHandoffs,
   type InterruptInfo,
 } from './result-adapter';
 export { SupervisorStateAnnotation, type SupervisorState } from './supervisor-state';

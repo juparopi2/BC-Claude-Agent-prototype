@@ -51,6 +51,8 @@ import agentsRoutes from './routes/agents';
 import analyticsRoutes from './routes/analytics';
 import { registerAgents } from '@/modules/agents/core/registry/registerAgents';
 import { initializeSupervisorGraph, resumeSupervisor } from '@/modules/agents/supervisor';
+import { processUserAgentSelection } from '@/modules/agents/handoffs';
+import type { AgentSelectData } from '@bc-agent/shared';
 import { initializeCheckpointer } from '@/infrastructure/checkpointer';
 import { authenticateMicrosoft } from '@domains/auth/middleware/auth-oauth';
 import { httpLogger } from '@shared/middleware/logging';
@@ -1192,6 +1194,52 @@ function configureSocketIO(): void {
       });
 
       socket.emit('session:left', { sessionId });
+    });
+
+    // Handler: User explicitly selects an agent (PRD-040)
+    socket.on('agent:select', async (data: AgentSelectData) => {
+      const { sessionId, agentId } = data;
+      const authenticatedUserId = authSocket.userId;
+
+      if (!authenticatedUserId) {
+        socket.emit('agent:error', { error: 'Socket not authenticated', sessionId });
+        return;
+      }
+
+      try {
+        const ownershipResult = await validateSessionOwnership(sessionId, authenticatedUserId);
+        if (!ownershipResult.isOwner) {
+          socket.emit('agent:error', { error: 'Unauthorized: Session does not belong to user', sessionId });
+          return;
+        }
+
+        const { targetAgent } = processUserAgentSelection(agentId);
+
+        io.to(sessionId).emit('agent:event', {
+          type: 'agent_changed',
+          sessionId,
+          timestamp: new Date().toISOString(),
+          eventId: `agent-select-${Date.now()}`,
+          persistenceState: 'transient',
+          previousAgent: { agentId: 'supervisor', agentName: 'Supervisor' },
+          currentAgent: targetAgent,
+          handoffType: 'user_selection',
+        });
+
+        logger.info({ sessionId, userId: authenticatedUserId, targetAgentId: agentId }, 'User selected agent');
+      } catch (error) {
+        logger.error({
+          error: error instanceof Error ? error.message : String(error),
+          sessionId,
+          userId: authenticatedUserId,
+          targetAgentId: agentId,
+        }, 'Agent selection failed');
+
+        socket.emit('agent:error', {
+          error: error instanceof Error ? error.message : 'Agent selection failed',
+          sessionId,
+        });
+      }
     });
 
     // Handler: Join user room for file events

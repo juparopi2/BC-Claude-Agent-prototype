@@ -89,5 +89,29 @@ describe('agent-builders', () => {
         expect(registryEntry?.name).toBe(agent.name);
       });
     });
+
+    it('should include handoff tools alongside domain tools (PRD-040)', async () => {
+      const { createReactAgent } = await import('@langchain/langgraph/prebuilt');
+      const mockCreateReactAgent = vi.mocked(createReactAgent);
+
+      await buildReactAgents();
+
+      // Each call to createReactAgent should include handoff tools
+      for (const call of mockCreateReactAgent.mock.calls) {
+        const config = call[0] as { tools: unknown[]; name: string };
+        const tools = config.tools;
+        const agentName = config.name;
+
+        // Each worker agent should have at least 1 handoff tool (transfer to the other worker)
+        const handoffTools = (tools as { name: string }[]).filter(
+          (t) => typeof t.name === 'string' && t.name.startsWith('transfer_to_')
+        );
+        expect(handoffTools.length).toBeGreaterThanOrEqual(1);
+
+        // Should not have self-transfer
+        const selfTransfer = handoffTools.find((t) => t.name === `transfer_to_${agentName}`);
+        expect(selfTransfer).toBeUndefined();
+      }
+    });
   });
 });

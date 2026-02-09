@@ -12,7 +12,7 @@
  */
 
 import { timingSafeEqual } from 'crypto';
-import { executeQuery } from '@/infrastructure/database/database';
+import { prisma } from '@/infrastructure/database/prisma';
 import { createChildLogger } from '@/shared/utils/logger';
 import { normalizeUUID } from '@/shared/utils/uuid';
 
@@ -28,13 +28,6 @@ export interface SessionOwnershipResult {
   error?: 'SESSION_NOT_FOUND' | 'NOT_OWNER' | 'DATABASE_ERROR' | 'INVALID_INPUT';
   /** Session's actual owner ID (for debugging, not exposed to clients) */
   actualOwner?: string;
-}
-
-/**
- * Database row type for session ownership query
- */
-interface SessionOwnerRow {
-  user_id: string;
 }
 
 /**
@@ -73,13 +66,13 @@ export async function validateSessionOwnership(
     };
   }
   try {
-    const result = await executeQuery<SessionOwnerRow>(
-      `SELECT user_id FROM sessions WHERE id = @sessionId`,
-      { sessionId }
-    );
+    const session = await prisma.sessions.findUnique({
+      where: { id: sessionId },
+      select: { user_id: true },
+    });
 
     // Session not found
-    if (!result.recordset || result.recordset.length === 0) {
+    if (!session) {
       logger.debug('Session not found during ownership validation', { sessionId });
       return {
         isOwner: false,
@@ -87,29 +80,17 @@ export async function validateSessionOwnership(
       };
     }
 
-    const sessionOwner = result.recordset[0];
-
-    // Additional safety check (TypeScript noUncheckedIndexedAccess)
-    if (!sessionOwner) {
-      logger.debug('Session not found during ownership validation (empty row)', { sessionId });
-      return {
-        isOwner: false,
-        error: 'SESSION_NOT_FOUND',
-      };
-    }
-
     // Validate ownership using timing-safe comparison
-    if (!timingSafeCompare(sessionOwner.user_id, userId)) {
+    if (!timingSafeCompare(session.user_id, userId)) {
       logger.warn('Session ownership validation failed - user does not own session', {
         sessionId,
         requestingUserId: userId,
-        // Don't log actual owner for security, but include for debugging if needed
         ownershipMismatch: true,
       });
       return {
         isOwner: false,
         error: 'NOT_OWNER',
-        actualOwner: sessionOwner.user_id, // For internal debugging only
+        actualOwner: session.user_id, // For internal debugging only
       };
     }
 

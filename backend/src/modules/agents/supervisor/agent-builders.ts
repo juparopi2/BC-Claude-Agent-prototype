@@ -12,6 +12,7 @@ import type { CompiledStateGraph } from '@langchain/langgraph';
 import type { AgentId } from '@bc-agent/shared';
 import { ModelFactory } from '@/core/langchain/ModelFactory';
 import { getAgentRegistry } from '../core/registry/AgentRegistry';
+import { buildHandoffToolsForAgent } from '../handoffs';
 import { createChildLogger } from '@/shared/utils/logger';
 
 const logger = createChildLogger({ service: 'AgentBuilders' });
@@ -42,9 +43,9 @@ export async function buildReactAgents(): Promise<BuiltAgent[]> {
   const builtAgents: BuiltAgent[] = [];
 
   for (const agentDef of workerAgents) {
-    const tools = registry.getToolsForAgent(agentDef.id);
+    const domainTools = registry.getToolsForAgent(agentDef.id);
 
-    if (tools.length === 0) {
+    if (domainTools.length === 0) {
       logger.warn(
         { agentId: agentDef.id },
         'Skipping agent with no tools'
@@ -52,11 +53,14 @@ export async function buildReactAgents(): Promise<BuiltAgent[]> {
       continue;
     }
 
+    const handoffTools = buildHandoffToolsForAgent(agentDef.id);
+    const allTools = [...domainTools, ...handoffTools];
+
     const model = await ModelFactory.create(agentDef.modelRole);
 
     const agent = createReactAgent({
       llm: model,
-      tools,
+      tools: allTools,
       name: agentDef.id,
       prompt: agentDef.systemPrompt,
     });
@@ -68,7 +72,13 @@ export async function buildReactAgents(): Promise<BuiltAgent[]> {
     });
 
     logger.info(
-      { agentId: agentDef.id, toolCount: tools.length, modelRole: agentDef.modelRole },
+      {
+        agentId: agentDef.id,
+        domainToolCount: domainTools.length,
+        handoffToolCount: handoffTools.length,
+        totalToolCount: allTools.length,
+        modelRole: agentDef.modelRole,
+      },
       'Built ReAct agent'
     );
   }

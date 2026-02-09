@@ -10,6 +10,23 @@
 import type { AgentEvent } from './agent.types';
 
 /**
+ * Agent Select Data (Client -> Server) (PRD-040)
+ *
+ * User explicitly selects an agent from the frontend UI.
+ * Triggers an agent_changed event with handoffType: 'user_selection'.
+ */
+export interface AgentSelectData {
+  /** Session ID (UUID) */
+  sessionId: string;
+
+  /** Target agent ID from AGENT_ID constants */
+  agentId: string;
+
+  /** User ID (from Microsoft OAuth) */
+  userId: string;
+}
+
+/**
  * Extended Thinking Configuration (Client -> Server)
  *
  * Optional configuration for Claude's Extended Thinking feature.
@@ -190,6 +207,9 @@ export interface WebSocketEvents {
 
   /** User leaves a session room */
   'session:leave': (data: { sessionId: string }) => void;
+
+  /** User explicitly selects an agent (PRD-040) */
+  'agent:select': (data: AgentSelectData) => void;
 
   // ========== Server -> Client ==========
 

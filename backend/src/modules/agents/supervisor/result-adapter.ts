@@ -9,7 +9,7 @@
 
 import type { BaseMessage } from '@langchain/core/messages';
 import { AIMessage, ToolMessage } from '@langchain/core/messages';
-import type { AgentState, ToolExecution } from '../orchestrator/state';
+import type { AgentState, ToolExecution, HandoffDetectionInfo } from '../orchestrator/state';
 import type { AgentIdentity } from '@bc-agent/shared';
 import {
   AGENT_ID,
@@ -113,6 +113,62 @@ export function extractUsedModel(messages: BaseMessage[]): string | null {
 }
 
 /**
+ * Detect agent-to-agent handoffs from supervisor messages.
+ *
+ * Scans ToolMessages for `transfer_to_*` patterns that indicate
+ * an agent used a handoff tool to delegate to another agent.
+ */
+export function detectHandoffs(messages: BaseMessage[]): HandoffDetectionInfo[] {
+  const handoffs: HandoffDetectionInfo[] = [];
+  const transferPattern = /^transfer_to_(.+)$/;
+
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    if (!(msg instanceof ToolMessage)) continue;
+
+    const toolName = (msg as ToolMessage & { name?: string }).name;
+    if (!toolName) continue;
+
+    const match = transferPattern.exec(toolName);
+    if (!match || !match[1]) continue;
+
+    const targetAgentId = match[1];
+    if (!KNOWN_AGENT_IDS.has(targetAgentId as typeof AGENT_ID[keyof typeof AGENT_ID])) continue;
+
+    const toAgentId = targetAgentId as typeof AGENT_ID[keyof typeof AGENT_ID];
+
+    // Find the source agent by scanning backward for the nearest AIMessage with a name
+    let fromIdentity = DEFAULT_AGENT_IDENTITY;
+    for (let j = i - 1; j >= 0; j--) {
+      const prev = messages[j];
+      if (prev instanceof AIMessage && prev.name && KNOWN_AGENT_IDS.has(prev.name as typeof AGENT_ID[keyof typeof AGENT_ID])) {
+        const fromId = prev.name as typeof AGENT_ID[keyof typeof AGENT_ID];
+        fromIdentity = {
+          agentId: fromId,
+          agentName: AGENT_DISPLAY_NAME[fromId],
+          agentIcon: AGENT_ICON[fromId],
+          agentColor: AGENT_COLOR[fromId],
+        };
+        break;
+      }
+    }
+
+    handoffs.push({
+      fromAgent: fromIdentity,
+      toAgent: {
+        agentId: toAgentId,
+        agentName: AGENT_DISPLAY_NAME[toAgentId],
+        agentIcon: AGENT_ICON[toAgentId],
+        agentColor: AGENT_COLOR[toAgentId],
+      },
+      handoffType: 'agent_handoff',
+    });
+  }
+
+  return handoffs;
+}
+
+/**
  * Interrupt result indicator.
  */
 export interface InterruptInfo {
@@ -142,12 +198,14 @@ export function adaptSupervisorResult(
   const identity = detectAgentIdentity(messages);
   const toolExecutions = extractToolExecutions(messages);
   const usedModel = extractUsedModel(messages);
+  const handoffs = detectHandoffs(messages);
 
   logger.debug({
     sessionId,
     messageCount: messages.length,
     agentId: identity.agentId,
     toolExecutionCount: toolExecutions.length,
+    handoffCount: handoffs.length,
     usedModel,
     isInterrupted: interrupt?.isInterrupted ?? false,
   }, 'Adapted supervisor result');
@@ -162,5 +220,6 @@ export function adaptSupervisorResult(
     activeAgent: identity.agentId,
     toolExecutions,
     usedModel: usedModel ?? null,
+    handoffs,
   };
 }

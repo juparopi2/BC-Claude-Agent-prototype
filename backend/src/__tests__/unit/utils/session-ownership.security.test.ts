@@ -11,9 +11,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { timingSafeEqual } from 'crypto';
 
-// Mock database module
-vi.mock('@/infrastructure/database/database', () => ({
-  executeQuery: vi.fn(),
+// Mock prisma module - use vi.hoisted() since vi.mock is hoisted to top of file
+const mockFindUnique = vi.hoisted(() => vi.fn());
+vi.mock('@/infrastructure/database/prisma', () => ({
+  prisma: {
+    sessions: {
+      findUnique: mockFindUnique,
+    },
+  },
 }));
 
 // Mock logger
@@ -38,9 +43,6 @@ import {
   validateSessionOwnership,
   timingSafeCompare,
 } from '@/shared/utils/session-ownership';
-import { executeQuery } from '@/infrastructure/database/database';
-
-const mockExecuteQuery = vi.mocked(executeQuery);
 
 describe('Session Ownership Security', () => {
   beforeEach(() => {
@@ -183,12 +185,7 @@ describe('Session Ownership Security', () => {
     const attackerUserId = 'user-attacker';
 
     it('should successfully validate when user owns session', async () => {
-      mockExecuteQuery.mockResolvedValueOnce({
-        recordset: [{ user_id: ownerUserId }],
-        rowsAffected: [1],
-        output: {},
-        recordsets: [],
-      });
+      mockFindUnique.mockResolvedValueOnce({ user_id: ownerUserId });
 
       const result = await validateSessionOwnership(validSessionId, ownerUserId);
 
@@ -197,12 +194,7 @@ describe('Session Ownership Security', () => {
     });
 
     it('should reject with NOT_OWNER when user does not own session', async () => {
-      mockExecuteQuery.mockResolvedValueOnce({
-        recordset: [{ user_id: ownerUserId }],
-        rowsAffected: [1],
-        output: {},
-        recordsets: [],
-      });
+      mockFindUnique.mockResolvedValueOnce({ user_id: ownerUserId });
 
       const result = await validateSessionOwnership(validSessionId, attackerUserId);
 
@@ -224,12 +216,7 @@ describe('Session Ownership Security', () => {
       ];
 
       for (const attempt of attempts) {
-        mockExecuteQuery.mockResolvedValueOnce({
-          recordset: [{ user_id: correctOwner }],
-          rowsAffected: [1],
-          output: {},
-          recordsets: [],
-        });
+        mockFindUnique.mockResolvedValueOnce({ user_id: correctOwner });
 
         const result = await validateSessionOwnership(validSessionId, attempt);
 
@@ -240,12 +227,7 @@ describe('Session Ownership Security', () => {
     });
 
     it('should handle session not found before comparing user IDs', async () => {
-      mockExecuteQuery.mockResolvedValueOnce({
-        recordset: [],
-        rowsAffected: [0],
-        output: {},
-        recordsets: [],
-      });
+      mockFindUnique.mockResolvedValueOnce(null);
 
       const result = await validateSessionOwnership(validSessionId, attackerUserId);
 

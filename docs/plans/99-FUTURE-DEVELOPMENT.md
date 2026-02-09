@@ -85,6 +85,14 @@ Mejoras en la estabilidad, calidad del código e infraestructura existente.
 **Solución:** Implementar SERIALIZABLE transaction o SQL MERGE con locking.
 **Estimación:** 1-2 días
 
+### Refactor Server.ts (God File) (Alta)
+**Problema:** `backend/src/server.ts` es un "God File" que acumula múltiples responsabilidades (HTTP, WebSockets, inicialización de DB, manejo de errores global), violando principios de diseño y dificultando el mantenimiento.
+**Solución:** 
+- Descomponer el archivo siguiendo el principio de **Screaming Architecture**.
+- Separar responsabilidades en módulos independientes y cohesivos.
+- Establecer un **Safety Net** robusto: Implementar pruebas unitarias y de integración que cubran la funcionalidad actual antes de refactorizar (si no existen o son insuficientes).
+**Estimación:** 3-5 días
+
 ### D19: Refactor E2E Tests - Nueva Filosofía (Alta)
 **Problema:** 56 failures en E2E tests reales debido a validaciones frágiles de contenido.
 **Solución:** Reenfocar tests a validar estructura, flujo y metadatos, no contenido determinista. Implementar "Ground Truth" real.

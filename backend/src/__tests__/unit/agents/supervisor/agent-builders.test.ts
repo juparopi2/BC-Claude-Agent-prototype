@@ -22,6 +22,13 @@ vi.mock('@langchain/langgraph/prebuilt', () => ({
   }),
 }));
 
+// Mock graphing tools to avoid import issues
+vi.mock('@/modules/agents/graphing/tools', () => ({
+  listAvailableChartsTool: { name: 'list_available_charts', description: 'List charts', schema: {} },
+  getChartDetailsTool: { name: 'get_chart_details', description: 'Chart details', schema: {} },
+  validateChartConfigTool: { name: 'validate_chart_config', description: 'Validate config', schema: {} },
+}));
+
 describe('agent-builders', () => {
   beforeEach(() => {
     resetAgentRegistry();
@@ -29,10 +36,10 @@ describe('agent-builders', () => {
   });
 
   describe('buildReactAgents', () => {
-    it('should build agents for BC and RAG', async () => {
+    it('should build agents for BC, RAG, and Graphing', async () => {
       const agents = await buildReactAgents();
 
-      expect(agents).toHaveLength(2);
+      expect(agents).toHaveLength(3);
     });
 
     it('should create agents with id, name, and agent properties', async () => {

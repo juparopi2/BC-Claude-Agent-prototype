@@ -28,6 +28,8 @@ export interface SlashCommandResult {
  * - /bc <query>     → BC Agent
  * - /search <query> → RAG Agent
  * - /rag <query>    → RAG Agent
+ * - /chart <query>  → Graphing Agent
+ * - /graph <query>  → Graphing Agent
  *
  * @param prompt - Raw user input
  * @returns SlashCommandResult with detection info and cleaned prompt
@@ -56,6 +58,22 @@ export function detectSlashCommand(prompt: string): SlashCommandResult {
       isSlashCommand: true,
       targetAgentId: AGENT_ID.RAG_AGENT,
       cleanedPrompt: trimmed.slice(4).trim() || trimmed,
+    };
+  }
+
+  if (trimmed.startsWith('/chart')) {
+    return {
+      isSlashCommand: true,
+      targetAgentId: AGENT_ID.GRAPHING_AGENT,
+      cleanedPrompt: trimmed.slice(6).trim() || trimmed,
+    };
+  }
+
+  if (trimmed.startsWith('/graph')) {
+    return {
+      isSlashCommand: true,
+      targetAgentId: AGENT_ID.GRAPHING_AGENT,
+      cleanedPrompt: trimmed.slice(6).trim() || trimmed,
     };
   }
 

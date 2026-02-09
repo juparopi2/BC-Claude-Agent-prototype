@@ -342,6 +342,26 @@ export type {
   AgentChangedEventInput,
 } from './agent-identity.schema';
 
+// ============================================
+// Chart Config Schemas (PRD-050 Graphing Agent)
+// ============================================
+
+export {
+  TremorColorSchema,
+  ChartTypeSchema,
+  BarChartConfigSchema,
+  StackedBarChartConfigSchema,
+  LineChartConfigSchema,
+  AreaChartConfigSchema,
+  DonutChartConfigSchema,
+  BarListConfigSchema,
+  ComboChartConfigSchema,
+  KpiConfigSchema,
+  KpiGridConfigSchema,
+  TableConfigSchema,
+  ChartConfigSchema,
+} from './chart-config.schemas';
+
 /**
  * Re-export Zod for consumers who need to extend schemas
  */

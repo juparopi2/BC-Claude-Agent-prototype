@@ -31,7 +31,8 @@ ${agentList}
 ROUTING GUIDELINES:
 1. For ERP/Business Central queries (customers, vendors, invoices, inventory, sales orders, etc.) → route to bc-agent.
 2. For document/knowledge searches, file analysis, or questions about uploaded documents → route to rag-agent.
-3. For multi-step tasks that require information from multiple agents, call agents sequentially:
+3. For data visualization, charts, graphs, KPIs, dashboards, or visual data presentation → route to graphing-agent.
+4. For multi-step tasks that require information from multiple agents, call agents sequentially:
    - First gather the needed information from one agent
    - Then use that result to inform the next agent call
    - Synthesize all results into a coherent response

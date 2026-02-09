@@ -1,9 +1,11 @@
 # PRD-050: Graphing Agent (Data Visualization) - v2.0
 
-**Estado**: Draft
+**Estado**: ✅ Completado (Backend) - 2026-02-09
 **Prioridad**: Media
 **Dependencias**: PRD-011 (Agent Registry), PRD-020 (Extended State), PRD-040 (Dynamic Handoffs)
 **Bloquea**: PRD-070 (Agent-Specific Rendering Framework)
+
+> **Nota de Implementación**: La implementación backend se completó con diferencias respecto al draft v2.0. Ver sección 11 (Changelog) para detalles. Frontend diferido a PRD-070.
 
 ---
 
@@ -754,18 +756,18 @@ describe('ChartRenderer', () => {
 
 ## 8. Criterios de Aceptacion
 
-- [ ] `AGENT_ID.GRAPHING_AGENT` existe en `@bc-agent/shared` constants
-- [ ] Graphing agent registrado en AgentRegistry con 3 tools
-- [ ] `list_chart_types` retorna catalogo de 10 tipos
-- [ ] `get_chart_schema` retorna schema correcto por tipo
-- [ ] `generate_chart_config` valida y retorna o rechaza configs
-- [ ] Zod schemas validan correctamente los 10 tipos con constraints
-- [ ] `_type: 'chart_config'` discriminador presente en configs validados
-- [ ] Frontend `ChartRenderer` renderiza los 10 tipos via Tremor
-- [ ] Handoff tools inyectados: `transfer_to_bc-agent`, `transfer_to_rag-agent`
-- [ ] Agent node retorna `currentAgentIdentity` (PRD-020 pattern)
-- [ ] `npm run verify:types` pasa
-- [ ] `npm run -w backend test:unit` pasa sin regresiones
+- [x] `AGENT_ID.GRAPHING_AGENT` existe en `@bc-agent/shared` constants
+- [x] Graphing agent registrado en AgentRegistry con 3 tools
+- [x] `list_available_charts` retorna catalogo de 10 tipos (nombre final simplificado)
+- [x] `get_chart_details` retorna schema correcto por tipo (nombre final simplificado)
+- [x] `validate_chart_config` valida y retorna o rechaza configs (nombre final simplificado)
+- [x] Zod schemas validan correctamente los 10 tipos con constraints
+- [x] `_type: 'chart_config'` discriminador presente en configs validados
+- [ ] Frontend `ChartRenderer` renderiza los 10 tipos via Tremor *(diferido a PRD-070)*
+- [x] Handoff tools inyectados: `transfer_to_bc-agent`, `transfer_to_rag-agent` (auto-cascading)
+- [x] Agent node retorna `currentAgentIdentity` (PRD-020 pattern, via definition systemPrompt)
+- [x] `npm run verify:types` pasa (shared + frontend)
+- [x] `npm run -w backend test:unit` pasa sin regresiones (3119 tests, 0 failures)
 
 ---
 
@@ -822,3 +824,4 @@ describe('ChartRenderer', () => {
 | 2026-01-21 | 1.0 | Draft inicial con 5 chart types y 3 tools genericos |
 | 2026-02-06 | 1.1 | Actualizado con pre-requisitos de paquetes (`@langchain/langgraph-supervisor`, `-checkpoint-postgres`). Corregido `graphingAgentNode` para usar `state.messages` en lugar de `state.plan?.steps`. Agregado `currentAgentIdentity` al return del agent node (PRD-020). |
 | 2026-02-09 | 2.0 | **REWRITE COMPLETO**: Expandido de 5 a 10 chart types (agregados `stacked_bar`, `area`, `bar_list`, `kpi_grid`, `scatter`; eliminado `combo` sin soporte nativo Tremor). Arquitectura rediseñada a catalog-driven con 3 tools (`list_chart_types`, `get_chart_schema`, `generate_chart_config`). Zod schemas estrictos por tipo con validaciones (min/max rows, min categories para stacking, etc.). Eliminada referencia a `@langchain/langgraph-checkpoint-postgres` (sistema usa `MSSQLSaver` PRD-032). Icon cambiado de 📊 a 📈 (BC Agent ya usa 📊). Color unificado a `#F59E0B` (amber). Agregado `_type: 'chart_config'` como discriminador frontend (PRD-070). Agregada integracion con handoffs bidireccionales (PRD-040). Nuevo campo `Bloquea: PRD-070`. |
+| 2026-02-09 | 3.0 | **IMPLEMENTACIÓN BACKEND COMPLETADA**. Diferencias vs draft v2.0: (1) `scatter` reemplazado por `combo` (ComboChart bar+line, Tremor no tiene ScatterChart nativo en copy-paste approach); (2) Tool names simplificados: `list_available_charts`, `get_chart_details`, `validate_chart_config`; (3) DonutChart usa `category`/`value` string keys (Tremor API real) en vez de `{name,value}[]`; (4) Modelo Haiku 4.5 con temp 0.2 (JSON determinístico) en vez de Sonnet; (5) Tremor colors validados como literal union de 9 colores named; (6) Estructura plana (`graphing/tools.ts`, `graphing/chart-registry.ts`) sin subdirectorios; (7) Frontend diferido a PRD-070 (Tremor copy-paste approach con `recharts` engine, compatible TW4 + React 19). **Archivos**: 11 creados, 9 modificados, 2 tests existentes actualizados. **Tests**: 71 nuevos (43 schemas, 10 tools, 8 registry, 10 definition, 12 slash-commands), 3119 totales, 0 regresiones. **Slash commands**: `/chart`, `/graph` → routing directo. **Auto-cascading**: handoff tools, supervisor prompt, agent builders detectan nuevo agente automáticamente. |

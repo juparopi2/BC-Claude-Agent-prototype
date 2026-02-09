@@ -259,6 +259,22 @@ export type {
   // Agent Registry types (PRD-011)
   AgentUISummary,
   AgentListResponse,
+
+  // Chart Config types (PRD-050 Graphing Agent)
+  ChartType,
+  TremorColor,
+  BaseChartConfig,
+  BarChartConfig,
+  StackedBarChartConfig,
+  LineChartConfig,
+  AreaChartConfig,
+  DonutChartConfig,
+  BarListConfig,
+  ComboChartConfig,
+  KpiConfig,
+  KpiGridConfig,
+  TableConfig,
+  ChartConfig,
 } from './types';
 
 // Type guards (runtime functions, not types)
@@ -411,4 +427,18 @@ export {
   listChatAttachmentsSchema,
   validateChatAttachmentMimeType,
   validateChatAttachmentSize,
+  // Chart Config schemas (PRD-050 Graphing Agent)
+  ChartConfigSchema,
+  ChartTypeSchema,
+  TremorColorSchema,
+  BarChartConfigSchema,
+  StackedBarChartConfigSchema,
+  LineChartConfigSchema,
+  AreaChartConfigSchema,
+  DonutChartConfigSchema,
+  BarListConfigSchema,
+  ComboChartConfigSchema,
+  KpiConfigSchema,
+  KpiGridConfigSchema,
+  TableConfigSchema,
 } from './schemas';

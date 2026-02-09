@@ -2,7 +2,7 @@
 
 **Estado**: En Progreso
 **Fecha Inicio**: 2026-01-21
-**Versión del Plan**: 3.0 (Fase 7 agregada - Agent-Specific UI Rendering)
+**Versión del Plan**: 3.1 (PRD-050 Graphing Agent completado)
 
 ---
 
@@ -251,14 +251,26 @@ console.log(anthropic.profile?.reasoningOutput); // true para extended thinking
 - `AgentChangedEvent` extendido con `handoffType` y `reason` opcionales
 
 ### Fase 5: Graphing Agent
-**Estado**: 🔴 No Iniciado
+**Estado**: ✅ COMPLETADO (2026-02-09)
 **Objetivo**: Agente especializado en visualización de datos con 10 tipos de gráfica
 
-| PRD | Componente | Estado |
-|-----|------------|--------|
-| [PRD-050](./PHASE-5-GRAPHING-AGENT/PRD-050-GraphingAgent.md) | GraphingAgent con Tremor UI (10 chart types, catalog-driven tools) | 🔴 |
+| PRD | Componente | Estado | Fecha |
+|-----|------------|--------|-------|
+| [PRD-050](./PHASE-5-GRAPHING-AGENT/PRD-050-GraphingAgent.md) | GraphingAgent Backend (10 chart types, catalog-driven tools) | ✅ Completado | 2026-02-09 |
 
-> **Pre-requisitos**: Requiere `@langchain/langgraph-supervisor` (ya instalado) y `@tremor/react` (frontend). El agent node usa `createReactAgent()` con 3 tools catalog-driven (`list_chart_types`, `get_chart_schema`, `generate_chart_config`). `_type: 'chart_config'` discriminador para rendering especializado (PRD-070). No requiere `@langchain/langgraph-checkpoint-postgres` (sistema usa `MSSQLSaver`).
+**Métricas PRD-050:**
+- 11 archivos creados, 9 modificados, 2 test files existentes actualizados
+- 71 tests nuevos (5 archivos: schemas 43, tools 10, registry 8, definition 10, slash-commands 12), 0 regresiones (3119 tests backend pasan)
+- 10 chart types: bar, stacked_bar, line, area, donut, bar_list, combo, kpi, kpi_grid, table
+- 3 LangChain tools catalog-driven: `list_available_charts`, `get_chart_details`, `validate_chart_config`
+- Zod schemas con constraints estrictos por tipo + discriminated union `ChartConfigSchema`
+- `_type: 'chart_config'` discriminador para PRD-070 frontend rendering
+- Tremor color palette validada: 9 named colors (no hex)
+- Slash commands: `/chart`, `/graph` → routing directo al Graphing Agent
+- Auto-cascading: handoff tools (`transfer_to_graphing-agent`), supervisor prompt, agent builders - sin cambios manuales
+- Scope: Backend-only. Frontend (ChartRenderer + Tremor copy-paste components) diferido a PRD-070
+
+> **Nota**: La implementación final difiere del draft PRD-050 v2.0: `scatter` reemplazado por `combo` (ComboChart - bar + line), tool names simplificados (`list_available_charts`/`get_chart_details`/`validate_chart_config`), DonutChart usa `category`/`value` keys (no `{name,value}[]`), modelo Haiku 4.5 con temp 0.2 (no Sonnet). Frontend diferido a siguiente iteración con Tremor copy-paste approach (TW4 + React 19 compatible).
 
 ### Fase 6: UI Components
 **Estado**: 🔴 No Iniciado
@@ -324,8 +336,8 @@ FASE 3: Supervisor (✅ COMPLETADO)
 FASE 4: Handoffs (✅ COMPLETADO)
 └── PRD-040: Command(goto=...) + User Selection [✅ COMPLETADO] ──► FASE 5
 
-FASE 5: Graphing Agent
-└── PRD-050: GraphingAgent ───────────────────────────────► FASE 6
+FASE 5: Graphing Agent (✅ COMPLETADO)
+└── PRD-050: GraphingAgent [✅ COMPLETADO] ────────────────► FASE 6
 
 FASE 6: UI
 ├── PRD-060: AgentSelector (depende PRD-050 para graphing pill)
@@ -411,3 +423,4 @@ npm run test:e2e
 | 2026-02-06 | 2.4 | **PRD-032 completado** (Fase 3 completa). `MSSQLSaver` custom checkpointer implementado extendiendo `BaseCheckpointSaver` con Prisma + Azure SQL (no se necesita PostgreSQL). `AgentAnalyticsService` con MERGE upsert atómico para métricas de uso. API endpoints de analytics. 7 archivos nuevos, 4 modificados. 34 tests nuevos, 3020 tests totales. Tabla `checkpoints` (legacy) eliminada, reemplazada por `langgraph_checkpoints` + `langgraph_checkpoint_writes`. GAP-002 resuelto (MSSQL checkpointer). Fase 4 (Handoffs) desbloqueada. |
 | 2026-02-09 | 2.5 | **PRD-040 completado** (Fase 4 completa). Dynamic handoffs con `Command.PARENT` + `getCurrentTaskInput()` pattern oficial de LangGraph. `createAgentHandoffTool()` factory crea `transfer_to_<agent>` tools inyectados en `createReactAgent()`. `addHandoffBackMessages: true` en supervisor. `detectHandoffs()` en result-adapter. WebSocket `agent:select` handler con ownership validation. `session-ownership.ts` migrado de raw SQL a Prisma. `HandoffType` + `AgentSelectData` types en `@bc-agent/shared`. 7 archivos nuevos, 8 modificados, 3 test files actualizados. 16 tests nuevos, 3036 tests totales. Fase 5 (Graphing Agent) desbloqueada. |
 | 2026-02-09 | 3.0 | **Documentación Fases 5-7 actualizada**. PRD-050 reescrito v2.0: 10 chart types catalog-driven (bar, stacked_bar, line, area, donut, bar_list, kpi, kpi_grid, table, scatter), 3 tools (`list_chart_types`, `get_chart_schema`, `generate_chart_config`), Zod schemas per-type, Tremor mapping, `_type: 'chart_config'` discriminador. PRD-060 v2.0: GAP-006 resuelto (sin refs a `router.ts`), graphing agent pill (📈, #F59E0B), `agentStateStore` con `currentAgentIdentity`, `ApprovalDialog` para interrupt/resume. PRD-061 v2.0: renombrado a "Agent Activity Timeline" (Opción C), usa eventos existentes (`agent_changed`, `tool_use`, `tool_result`), sin dependencia a PRD-031 eliminado. **Nueva Fase 7**: PRD-070 (Agent-Specific Rendering Framework con `_type` discriminator, renderer registry lazy-loaded, `AgentResultRenderer` component) y PRD-071 (RAG Citation UI con `CitationResultSchema`, passages con relevance scores, `CitationCard`/`CitationList` components). Eliminada ref a `@langchain/langgraph-checkpoint-postgres` (sistema usa `MSSQLSaver`). |
+| 2026-02-09 | 3.1 | **PRD-050 completado** (Fase 5 completa, backend-only). 10 chart types catalog-driven implementados: `scatter` reemplazado por `combo` (ComboChart - bar+line combinado, no soportado nativamente por Tremor scatter). 3 tools LangChain: `list_available_charts`, `get_chart_details`, `validate_chart_config` (nombres simplificados vs draft). Zod schemas con constraints estrictos (min data points, min categories stacking, Tremor color palette 9 colores). `ChartConfigSchema` discriminated union en `@bc-agent/shared`. Agent definition con Haiku 4.5 (temp 0.2, JSON determinístico). Slash commands `/chart` y `/graph`. Auto-cascading: handoff tools, supervisor prompt, agent builders sin cambios manuales. 11 archivos nuevos, 9 modificados, 2 tests actualizados. 71 tests nuevos, 3119 tests totales. Frontend (ChartRenderer + Tremor copy-paste) diferido a PRD-070. |

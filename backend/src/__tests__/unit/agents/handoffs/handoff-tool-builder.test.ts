@@ -18,6 +18,12 @@ vi.mock('@/modules/agents/rag-knowledge/tools', () => ({
   knowledgeSearchTool: { name: 'knowledgeSearch', description: 'Search knowledge', schema: {} },
 }));
 
+vi.mock('@/modules/agents/graphing/tools', () => ({
+  listAvailableChartsTool: { name: 'list_available_charts', description: 'List charts', schema: {} },
+  getChartDetailsTool: { name: 'get_chart_details', description: 'Chart details', schema: {} },
+  validateChartConfigTool: { name: 'validate_chart_config', description: 'Validate config', schema: {} },
+}));
+
 describe('handoff-tool-builder', () => {
   beforeEach(() => {
     resetAgentRegistry();
@@ -28,8 +34,8 @@ describe('handoff-tool-builder', () => {
     it('should create N-1 handoff tools (one per other worker agent)', () => {
       const tools = buildHandoffToolsForAgent('bc-agent');
 
-      // BC agent should get a handoff tool to RAG agent (the only other worker)
-      expect(tools).toHaveLength(1);
+      // BC agent should get handoff tools to RAG and Graphing agents (other workers)
+      expect(tools).toHaveLength(2);
     });
 
     it('should not create self-transfer tool', () => {

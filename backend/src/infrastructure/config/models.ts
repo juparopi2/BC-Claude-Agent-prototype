@@ -156,6 +156,7 @@ export type ModelRole =
   | 'router'          // Fast intent classification and routing
   | 'bc_agent'        // Business Central operations
   | 'rag_agent'       // RAG/Knowledge retrieval
+  | 'graphing_agent'  // Data visualization and chart configuration
   | 'session_title'   // Generate session titles
   | 'embedding'       // Text embeddings (special case, not LLM)
   | 'default';        // Fallback for unspecified uses
@@ -268,6 +269,22 @@ export const ModelRoleConfigs: Record<ModelRole, RoleModelConfig> = {
     estimatedTokensPerCall: {
       input: 2000,
       output: 1000,
+    },
+  },
+
+  graphing_agent: {
+    role: 'graphing_agent',
+    description: 'Data visualization and chart configuration generation',
+    modelString: AnthropicModels.HAIKU_4_5,
+    fallback: FallbackModels.OPENAI_GPT4O_MINI,
+    provider: 'anthropic' as ModelProvider,
+    modelName: AnthropicModels.HAIKU_4_5,
+    temperature: 0.2,
+    maxTokens: 16384,
+    streaming: true,
+    estimatedTokensPerCall: {
+      input: 2000,
+      output: 3000,
     },
   },
 

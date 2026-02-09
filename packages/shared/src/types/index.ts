@@ -317,3 +317,21 @@ export type {
   AgentUISummary,
   AgentListResponse,
 } from './agent-registry.types';
+
+// Chart Config types (PRD-050 Graphing Agent)
+export type {
+  ChartType,
+  TremorColor,
+  BaseChartConfig,
+  BarChartConfig,
+  StackedBarChartConfig,
+  LineChartConfig,
+  AreaChartConfig,
+  DonutChartConfig,
+  BarListConfig,
+  ComboChartConfig,
+  KpiConfig,
+  KpiGridConfig,
+  TableConfig,
+  ChartConfig,
+} from './chart-config.types';

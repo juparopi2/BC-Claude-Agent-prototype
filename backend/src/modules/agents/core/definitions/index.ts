@@ -6,4 +6,5 @@
 
 export { bcAgentDefinition } from './bc-agent.definition';
 export { ragAgentDefinition } from './rag-agent.definition';
+export { graphingAgentDefinition } from './graphing-agent.definition';
 export { supervisorDefinition } from './supervisor.definition';

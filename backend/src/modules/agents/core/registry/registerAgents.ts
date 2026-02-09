@@ -10,6 +10,7 @@
 import { getAgentRegistry } from './AgentRegistry';
 import { bcAgentDefinition } from '../definitions/bc-agent.definition';
 import { ragAgentDefinition } from '../definitions/rag-agent.definition';
+import { graphingAgentDefinition } from '../definitions/graphing-agent.definition';
 import { supervisorDefinition } from '../definitions/supervisor.definition';
 import {
   listAllEntitiesTool,
@@ -21,6 +22,11 @@ import {
   getEndpointDocumentationTool,
 } from '@/modules/agents/business-central/tools';
 import { knowledgeSearchTool } from '@/modules/agents/rag-knowledge/tools';
+import {
+  listAvailableChartsTool,
+  getChartDetailsTool,
+  validateChartConfigTool,
+} from '@/modules/agents/graphing/tools';
 import { createChildLogger } from '@/shared/utils/logger';
 
 const logger = createChildLogger({ service: 'RegisterAgents' });
@@ -30,6 +36,7 @@ const logger = createChildLogger({ service: 'RegisterAgents' });
  *
  * - BC Agent: 7 static tools from business-central/tools.ts
  * - RAG Agent: 1 static tool (userId resolved at runtime via config.configurable)
+ * - Graphing Agent: 3 catalog-driven tools from graphing/tools.ts
  * - Supervisor: no tools (orchestrates other agents)
  */
 export function registerAgents(): void {
@@ -59,11 +66,16 @@ export function registerAgents(): void {
     staticTools: [knowledgeSearchTool],
   });
 
+  // Graphing Agent with 3 catalog-driven tools
+  registry.registerWithTools(graphingAgentDefinition, {
+    staticTools: [listAvailableChartsTool, getChartDetailsTool, validateChartConfigTool],
+  });
+
   // Supervisor (no tools - orchestrates other agents)
   registry.register(supervisorDefinition);
 
   logger.info(
     { agentCount: registry.size },
-    'All agents registered successfully'
+    'All 4 agents registered successfully'
   );
 }

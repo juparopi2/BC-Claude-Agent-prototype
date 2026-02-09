@@ -9,8 +9,14 @@
 
 ## 1. Objetivo
 
-Establecer un patron frontend donde cada agente puede producir output especializado que recibe **rendering custom** en vez de markdown plano. El framework provee:
+Establecer un patron frontend donde:
 
+1. **Cada mensaje muestra que agente lo genero** (per-message agent attribution via `AgentBadge`)
+2. Cada agente puede producir output especializado que recibe **rendering custom** en vez de markdown plano
+
+El framework provee:
+
+- **Per-message agent attribution**: Cada mensaje de assistant muestra un badge con el agente que lo genero (nombre, icono, color)
 - Un **discriminador estandar** (`_type`) en payloads de tool results para identificar el tipo de rendering
 - Un **renderer registry** extensible que mapea `_type` valores a componentes React
 - Integracion transparente con `MessageList.tsx` existente sin romper backward compatibility
@@ -22,7 +28,9 @@ Establecer un patron frontend donde cada agente puede producir output especializ
 
 ### 2.1 Problema Actual
 
-Hoy, todos los tool results se renderizan como JSON formateado o texto plano en el chat. Esto es inadecuado para:
+**Agent attribution**: Actualmente los mensajes no indican que agente los genero. El tipo `Message` en `@bc-agent/shared` no tiene campo de identidad de agente. Solo existe un tracking global (`agentStateStore.currentAgentIdentity`) que se actualiza con eventos `agent_changed`, pero los mensajes individuales no llevan esta informacion. En un flujo multi-agente (Supervisor -> BC Agent -> RAG Agent -> Graphing Agent), el usuario no puede ver que agente produjo cada respuesta. El componente `AgentBadge` ya existe (PRD-060) pero no se usa en mensajes.
+
+**Tool result rendering**: Todos los tool results se renderizan como JSON formateado o texto plano en el chat. Esto es inadecuado para:
 - **Graficas** (PRD-050): Un JSON de chart config deberia renderizarse como un `<BarChart>` interactivo de Tremor
 - **Citaciones** (PRD-071): Un resultado de RAG deberia mostrar citation cards interactivas con excerpts y relevance scores
 - **Entidades BC** (futuro): Un resultado de Business Central podria mostrar entity cards con acciones
@@ -63,7 +71,119 @@ Cada agente que produce output especializado incluye un campo `_type` en su tool
 
 ## 3. Diseno Propuesto
 
-### 3.1 Estructura de Archivos (Frontend)
+### 3.1 Per-Message Agent Attribution
+
+#### 3.1.1 Cambio en tipos de mensaje (`@bc-agent/shared`)
+
+Agregar campo opcional `agent_identity` a los tipos base de mensaje:
+
+```typescript
+// En message.types.ts - agregar a MessageBase o a cada tipo de mensaje assistant
+import type { AgentIdentity } from './agent-identity.types';
+
+// Campo adicional en StandardMessage, ThinkingMessage, ToolUseMessage, ToolResultMessage
+/** Identity of the agent that generated this message. Only present for role='assistant' messages. */
+agent_identity?: AgentIdentity;
+```
+
+El campo es opcional para mantener backward compatibility (mensajes historicos no lo tendran).
+
+#### 3.1.2 Backend: Incluir agent identity en eventos emitidos
+
+El backend ya detecta la identidad del agente activo via `detectAgentIdentity()` en `result-adapter.ts` y la emite en eventos `agent_changed`. El cambio necesario es **propagar** esa identidad a los eventos de mensaje:
+
+```typescript
+// En la emision de eventos 'message', 'tool_use', 'tool_result', 'thinking_complete'
+// Incluir el agentIdentity del agente que los produjo
+
+// Opcion de implementacion:
+// 1. El BatchResultNormalizer ya tiene acceso al state que contiene handoffs/agent info
+// 2. Cada NormalizedEvent puede llevar un campo agent_identity
+// 3. Al emitir via WebSocket, el campo se propaga al frontend
+```
+
+Datos disponibles en backend (ya existentes):
+- `detectAgentIdentity(messages)` retorna `AgentIdentity` del ultimo agente activo
+- `AGENT_DISPLAY_NAME`, `AGENT_ICON`, `AGENT_COLOR` constantes en `@bc-agent/shared`
+- Eventos `agent_changed` ya llevan `currentAgent: AgentIdentity`
+
+#### 3.1.3 Frontend: Almacenar agent identity por mensaje
+
+En `processAgentEventSync.ts`, al crear mensajes en el store, incluir la identidad del agente:
+
+```typescript
+// Estrategia: usar agentStateStore.currentAgentIdentity al momento de crear el mensaje
+// ya que agent_changed siempre se emite ANTES de los mensajes del agente
+
+case 'message': {
+  const currentAgent = agentStateStore.getState().currentAgentIdentity;
+  messageStore.getState().addMessage({
+    // ...existing fields
+    agent_identity: currentAgent ?? undefined,
+  });
+  break;
+}
+
+case 'tool_use': {
+  const currentAgent = agentStateStore.getState().currentAgentIdentity;
+  messageStore.getState().addMessage({
+    // ...existing fields
+    agent_identity: currentAgent ?? undefined,
+  });
+  break;
+}
+```
+
+#### 3.1.4 Frontend: Renderizar AgentBadge en MessageBubble
+
+El componente `AgentBadge` (PRD-060) ya existe. Integrarlo en `MessageBubble.tsx`:
+
+```tsx
+// En MessageBubble.tsx
+import { AgentBadge } from './AgentBadge';
+
+// Para mensajes de assistant que tengan agent_identity
+{message.role === 'assistant' && message.agent_identity && (
+  <AgentBadge
+    agentId={message.agent_identity.agentId}
+    agentName={message.agent_identity.agentName}
+    agentIcon={message.agent_identity.agentIcon}
+    agentColor={message.agent_identity.agentColor}
+    size="sm"
+  />
+)}
+```
+
+#### 3.1.5 Diseno Visual
+
+```
+┌─────────────────────────────────────────────────┐
+│  🏢 BC Agent                                    │  <-- AgentBadge (sm)
+│  Found 5 customers matching "Contoso":          │
+│  1. Contoso Ltd (CU001)                         │
+│  2. Contoso Electronics (CU002)                 │
+│  ...                                            │
+└─────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────┐
+│  🧠 RAG Agent                                   │  <-- Badge diferente
+│  Found relevant contract clauses for Contoso:   │
+│  [CitationCard]  [CitationCard]                 │
+└─────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────┐
+│  📈 Graphing Agent                              │  <-- Badge diferente
+│  [BarChart: Revenue by Quarter]                 │
+└─────────────────────────────────────────────────┘
+```
+
+Cada mensaje de assistant muestra claramente que agente lo genero. Los tool_use cards tambien muestran el badge del agente que invoco la tool.
+
+> **Nota**: PRD-061 (Agent Activity Timeline) fue **ELIMINADO** ya que la per-message attribution provee la misma visibilidad de forma mas natural e integrada en el flujo del chat.
+
+---
+
+### 3.2 Estructura de Archivos - Agent Result Rendering (Frontend)
 
 ```
 frontend/src/components/chat/AgentResultRenderer/
@@ -85,7 +205,7 @@ frontend/src/components/chat/CitationRenderer/
 └── index.ts
 ```
 
-### 3.2 Shared Package Types (`@bc-agent/shared`)
+### 3.3 Shared Package Types (`@bc-agent/shared`)
 
 ```typescript
 // types/agent-rendered-result.types.ts
@@ -122,7 +242,7 @@ export function isAgentRenderedResult(value: unknown): value is AgentRenderedRes
 }
 ```
 
-### 3.3 Renderer Registry
+### 3.4 Renderer Registry
 
 ```typescript
 // rendererRegistry.ts
@@ -179,7 +299,7 @@ registerRenderer('citation_result', () =>
 );
 ```
 
-### 3.4 AgentResultRenderer Component
+### 3.5 AgentResultRenderer Component
 
 ```tsx
 // AgentResultRenderer.tsx
@@ -222,7 +342,7 @@ export function AgentResultRenderer({ result, fallback }: AgentResultRendererPro
 }
 ```
 
-### 3.5 Integration con MessageList.tsx
+### 3.6 Integration con MessageList.tsx
 
 ```tsx
 // In MessageList.tsx - updated tool_result rendering
@@ -307,7 +427,29 @@ Backend Agent Tool -> tool_result event -> WebSocket -> Frontend
 
 ## 5. Tests Requeridos
 
-### 5.1 Unit Tests
+### 5.1 Per-Message Agent Attribution Tests
+
+```typescript
+describe('per-message agent attribution', () => {
+  describe('processAgentEventSync - agent identity propagation', () => {
+    it('attaches currentAgentIdentity to assistant StandardMessage');
+    it('attaches currentAgentIdentity to ToolUseMessage');
+    it('attaches currentAgentIdentity to ThinkingMessage');
+    it('sets agent_identity as undefined when no currentAgentIdentity');
+    it('does not attach agent_identity to user messages');
+  });
+
+  describe('MessageBubble - AgentBadge rendering', () => {
+    it('renders AgentBadge for assistant messages with agent_identity');
+    it('does not render AgentBadge for user messages');
+    it('does not render AgentBadge when agent_identity is undefined');
+    it('passes correct agentName, agentIcon, agentColor to AgentBadge');
+    it('renders AgentBadge on ToolCard when agent_identity present');
+  });
+});
+```
+
+### 5.2 Agent Result Renderer Unit Tests
 
 ```typescript
 describe('isAgentRenderedResult', () => {
@@ -326,7 +468,7 @@ describe('rendererRegistry', () => {
 });
 ```
 
-### 5.2 Component Tests
+### 5.3 Agent Result Renderer Component Tests
 
 ```typescript
 describe('AgentResultRenderer', () => {
@@ -342,6 +484,15 @@ describe('AgentResultRenderer', () => {
 
 ## 6. Criterios de Aceptacion
 
+### Per-Message Agent Attribution
+- [ ] `Message` types include optional `agent_identity?: AgentIdentity` field
+- [ ] `processAgentEventSync` attaches `currentAgentIdentity` to assistant messages at creation time
+- [ ] `MessageBubble` renders `AgentBadge` for assistant messages with `agent_identity`
+- [ ] `ToolCard` renders `AgentBadge` for tool messages with `agent_identity`
+- [ ] No badge rendered for user messages or messages without `agent_identity`
+- [ ] Backward compatible: historic messages without `agent_identity` render normally
+
+### Agent Result Rendering
 - [ ] `isAgentRenderedResult()` type guard exported from `@bc-agent/shared`
 - [ ] `AgentRenderedResultType` union type exported from `@bc-agent/shared`
 - [ ] Renderer registry is extensible (new renderers can be added without modifying existing code)
@@ -352,6 +503,8 @@ describe('AgentResultRenderer', () => {
 - [ ] Renderers are lazy-loaded (code splitting)
 - [ ] Loading skeleton shown during lazy load
 - [ ] No breaking changes to existing tool result rendering
+
+### General
 - [ ] `npm run verify:types` pasa
 - [ ] `npm run -w bc-agent-frontend test` pasa
 
@@ -374,8 +527,12 @@ describe('AgentResultRenderer', () => {
 
 | # | Archivo | Cambio |
 |---|---------|--------|
-| 1 | `packages/shared/src/index.ts` | Export `isAgentRenderedResult`, `AgentRenderedResultType` |
-| 2 | `frontend/src/components/chat/MessageList.tsx` | Use `AgentResultRenderer` for tool results |
+| 1 | `packages/shared/src/types/message.types.ts` | Add `agent_identity?: AgentIdentity` to assistant message types |
+| 2 | `packages/shared/src/index.ts` | Export `isAgentRenderedResult`, `AgentRenderedResultType` |
+| 3 | `frontend/src/domains/chat/services/processAgentEventSync.ts` | Attach `currentAgentIdentity` when creating messages |
+| 4 | `frontend/src/components/chat/MessageBubble.tsx` | Render `AgentBadge` for assistant messages with `agent_identity` |
+| 5 | `frontend/src/components/chat/ToolCard.tsx` | Render `AgentBadge` for tool cards with `agent_identity` |
+| 6 | `frontend/src/components/chat/MessageList.tsx` | Use `AgentResultRenderer` for tool results |
 
 ---
 
@@ -383,11 +540,12 @@ describe('AgentResultRenderer', () => {
 
 | Componente | Dias |
 |-----------|------|
-| Shared package types + type guard | 0.5 |
+| Per-message agent attribution (types + event processing + UI) | 1-2 |
+| Shared package types + type guard (result rendering) | 0.5 |
 | Renderer registry + AgentResultRenderer | 1-2 |
 | Integration with MessageList.tsx | 0.5-1 |
-| Testing | 1 |
-| **Total** | **3-4 dias** |
+| Testing | 1-2 |
+| **Total** | **4-7 dias** |
 
 ---
 
@@ -396,3 +554,4 @@ describe('AgentResultRenderer', () => {
 | Fecha | Version | Cambios |
 |-------|---------|---------|
 | 2026-02-09 | 1.0 | Draft inicial. Framework de rendering agent-specific con discriminador `_type`, renderer registry lazy-loaded, integracion con MessageList.tsx. Soporta `chart_config` (PRD-050) y `citation_result` (PRD-071) con fallback a MarkdownRenderer. |
+| 2026-02-09 | 1.1 | Agregado per-message agent attribution (seccion 3.1). Cada mensaje de assistant muestra `AgentBadge` con el agente que lo genero. Campo `agent_identity?: AgentIdentity` agregado a tipos de mensaje. PRD-061 (Agent Activity Timeline) ELIMINADO - esta funcionalidad lo reemplaza. |

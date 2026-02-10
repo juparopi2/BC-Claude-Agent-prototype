@@ -121,7 +121,7 @@ export class EmbeddingGenerationWorker {
    * This significantly reduces Redis memory usage.
    */
   async process(job: Job<EmbeddingGenerationJob>): Promise<void> {
-    const { fileId, userId, sessionId, chunkIds, correlationId } = job.data;
+    const { fileId, userId, sessionId, chunkIds, mimeType, correlationId } = job.data;
 
     // Create job-scoped logger with user context and timestamp
     // Uses this.log.child() to inherit service name and work correctly with LOG_SERVICES filtering
@@ -207,6 +207,7 @@ export class EmbeddingGenerationWorker {
           tokenCount: chunk.tokenCount,
           embeddingModel: embedding.model,
           createdAt: new Date(),
+          mimeType,
         };
       });
 

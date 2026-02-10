@@ -139,6 +139,8 @@ export interface EmbeddingGenerationJob {
    * Text is read from database to avoid storing large payloads in Redis.
    */
   chunkIds: string[];
+  /** MIME type of the source file (for AI Search field population) */
+  mimeType: string;
   /** Correlation ID for distributed tracing */
   correlationId?: string;
 }

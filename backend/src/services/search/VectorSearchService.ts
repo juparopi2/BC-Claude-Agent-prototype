@@ -173,7 +173,10 @@ export class VectorSearchService {
       chunkIndex: chunk.chunkIndex,
       tokenCount: chunk.tokenCount,
       embeddingModel: chunk.embeddingModel,
-      createdAt: chunk.createdAt
+      createdAt: chunk.createdAt,
+      mimeType: chunk.mimeType || null,
+      fileStatus: 'active',
+      isImage: false,
     }));
 
     const result = await this.searchClient.uploadDocuments(documents);
@@ -439,7 +442,7 @@ export class VectorSearchService {
       throw new Error('Failed to initialize search client');
     }
 
-    const { fileId, userId, embedding, fileName, caption } = params;
+    const { fileId, userId, embedding, fileName, caption, mimeType } = params;
     const normalizedFileId = fileId.toUpperCase();
     const normalizedUserId = userId.toUpperCase();
     const documentId = `img_${normalizedFileId}`;
@@ -462,6 +465,8 @@ export class VectorSearchService {
       embeddingModel: 'azure-vision-vectorize-image',
       createdAt: new Date(),
       isImage: true,
+      mimeType: mimeType || null,
+      fileStatus: 'active',
     };
 
     const result = await this.searchClient.uploadDocuments([document]);

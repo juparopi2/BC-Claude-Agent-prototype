@@ -69,6 +69,8 @@ export interface ImageIndexParams {
   fileName: string;
   /** AI-generated caption/description for improved search relevance (D26 feature) */
   caption?: string;
+  /** File MIME type for AI Search field population */
+  mimeType?: string;
 }
 
 /**

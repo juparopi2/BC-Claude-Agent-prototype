@@ -167,7 +167,7 @@ export class FileChunkingService {
       const totalTokens = chunks.reduce((sum, chunk) => sum + chunk.tokenCount, 0);
 
       // 8. Enqueue embedding generation job
-      const embeddingJobId = await this.enqueueEmbeddingJob(fileId, userId, chunkRecords);
+      const embeddingJobId = await this.enqueueEmbeddingJob(fileId, userId, chunkRecords, mimeType);
 
       // 9. Update embedding status to 'queued'
       await this.updateEmbeddingStatus(fileId, 'queued');
@@ -278,13 +278,14 @@ export class FileChunkingService {
         return;
       }
 
-      // Get file name from files table
-      const fileResult = await executeQuery<{ name: string }>(
-        `SELECT name FROM files WHERE id = @fileId AND user_id = @userId`,
+      // Get file name and mime_type from files table
+      const fileResult = await executeQuery<{ name: string; mime_type: string | null }>(
+        `SELECT name, mime_type FROM files WHERE id = @fileId AND user_id = @userId`,
         { fileId, userId }
       );
 
       const fileName = fileResult.recordset[0]?.name || 'unknown.jpg';
+      const fileMimeType = fileResult.recordset[0]?.mime_type ?? undefined;
 
       // Index in Azure AI Search
       const { VectorSearchService } = await import('@services/search/VectorSearchService');
@@ -296,6 +297,7 @@ export class FileChunkingService {
         embedding: embeddingRecord.embedding,
         fileName,
         caption: embeddingRecord.caption ?? undefined,
+        mimeType: fileMimeType,
       });
 
       // Mark as completed
@@ -437,7 +439,8 @@ export class FileChunkingService {
   private async enqueueEmbeddingJob(
     fileId: string,
     userId: string,
-    chunks: Array<{ id: string; text: string; chunkIndex: number; tokenCount: number }>
+    chunks: Array<{ id: string; text: string; chunkIndex: number; tokenCount: number }>,
+    mimeType: string
   ): Promise<string> {
     // Dynamic import to avoid circular dependencies
     const { getMessageQueue } = await import('@/infrastructure/queue/MessageQueue');
@@ -450,6 +453,7 @@ export class FileChunkingService {
       fileId,
       userId,
       chunkIds: chunks.map(chunk => chunk.id),
+      mimeType,
     };
 
     const jobId = await messageQueue.addEmbeddingGenerationJob(jobData);

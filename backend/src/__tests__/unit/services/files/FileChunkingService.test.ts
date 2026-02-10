@@ -212,4 +212,220 @@ describe('FileChunkingService', () => {
       );
     });
   });
+
+  describe('processFileChunks - image files', () => {
+    const mockImageJobData: FileChunkingJob = {
+      fileId: 'test-image-id',
+      userId: 'test-user-id',
+      sessionId: 'test-session-id',
+      mimeType: 'image/jpeg',
+    };
+
+    it('should index image embedding with contentVector when caption exists', async () => {
+      const mockEmbeddingRecord = {
+        embedding: new Array(1024).fill(0.1),
+        caption: 'An invoice from Acme Corp',
+      };
+
+      const mockCaptionEmbedding = {
+        embedding: new Array(1536).fill(0.2),
+        model: 'text-embedding-3-small',
+        tokenCount: 5,
+      };
+
+      const mockIndexImageEmbedding = vi.fn().mockResolvedValue('img_TEST-IMAGE-ID');
+
+      // Mock updateEmbeddingStatus (processing)
+      mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
+
+      // Mock ImageEmbeddingRepository
+      vi.doMock('@/repositories/ImageEmbeddingRepository', () => ({
+        getImageEmbeddingRepository: () => ({
+          getByFileId: vi.fn().mockResolvedValue(mockEmbeddingRecord),
+        }),
+      }));
+
+      // Mock file name query
+      mockExecuteQuery.mockResolvedValueOnce({
+        recordset: [{ name: 'invoice.jpg', mime_type: 'image/jpeg' }],
+      });
+
+      // Mock EmbeddingService for caption text embedding
+      vi.doMock('@/services/embeddings/EmbeddingService', () => ({
+        EmbeddingService: {
+          getInstance: () => ({
+            generateTextEmbedding: vi.fn().mockResolvedValue(mockCaptionEmbedding),
+          }),
+        },
+      }));
+
+      // Mock VectorSearchService
+      vi.doMock('@services/search/VectorSearchService', () => ({
+        VectorSearchService: {
+          getInstance: () => ({
+            indexImageEmbedding: mockIndexImageEmbedding,
+          }),
+        },
+      }));
+
+      // Mock updateEmbeddingStatus (completed)
+      mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
+
+      // Mock FileEventEmitter
+      vi.doMock('@/domains/files/emission/FileEventEmitter', () => ({
+        getFileEventEmitter: () => ({
+          emitReadinessChanged: vi.fn(),
+        }),
+      }));
+      vi.doMock('@bc-agent/shared', () => ({
+        FILE_READINESS_STATE: { PROCESSING: 'processing', READY: 'ready' },
+        PROCESSING_STATUS: { COMPLETED: 'completed' },
+        EMBEDDING_STATUS: { COMPLETED: 'completed' },
+      }));
+
+      const result = await service.processFileChunks(mockImageJobData);
+
+      expect(result.chunkCount).toBe(0);
+      expect(result.totalTokens).toBe(0);
+
+      // Verify indexImageEmbedding was called with contentVector
+      expect(mockIndexImageEmbedding).toHaveBeenCalledWith(
+        expect.objectContaining({
+          fileId: 'test-image-id',
+          userId: 'test-user-id',
+          caption: 'An invoice from Acme Corp',
+          contentVector: mockCaptionEmbedding.embedding,
+        })
+      );
+    });
+
+    it('should proceed without contentVector when caption text embedding fails', async () => {
+      const mockEmbeddingRecord = {
+        embedding: new Array(1024).fill(0.1),
+        caption: 'A photo of something',
+      };
+
+      const mockIndexImageEmbedding = vi.fn().mockResolvedValue('img_TEST-IMAGE-ID');
+
+      // Mock updateEmbeddingStatus (processing)
+      mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
+
+      // Mock ImageEmbeddingRepository
+      vi.doMock('@/repositories/ImageEmbeddingRepository', () => ({
+        getImageEmbeddingRepository: () => ({
+          getByFileId: vi.fn().mockResolvedValue(mockEmbeddingRecord),
+        }),
+      }));
+
+      // Mock file name query
+      mockExecuteQuery.mockResolvedValueOnce({
+        recordset: [{ name: 'photo.jpg', mime_type: 'image/jpeg' }],
+      });
+
+      // Mock EmbeddingService to fail
+      vi.doMock('@/services/embeddings/EmbeddingService', () => ({
+        EmbeddingService: {
+          getInstance: () => ({
+            generateTextEmbedding: vi.fn().mockRejectedValue(new Error('Embedding API down')),
+          }),
+        },
+      }));
+
+      // Mock VectorSearchService
+      vi.doMock('@services/search/VectorSearchService', () => ({
+        VectorSearchService: {
+          getInstance: () => ({
+            indexImageEmbedding: mockIndexImageEmbedding,
+          }),
+        },
+      }));
+
+      // Mock updateEmbeddingStatus (completed)
+      mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
+
+      // Mock FileEventEmitter
+      vi.doMock('@/domains/files/emission/FileEventEmitter', () => ({
+        getFileEventEmitter: () => ({
+          emitReadinessChanged: vi.fn(),
+        }),
+      }));
+      vi.doMock('@bc-agent/shared', () => ({
+        FILE_READINESS_STATE: { PROCESSING: 'processing', READY: 'ready' },
+        PROCESSING_STATUS: { COMPLETED: 'completed' },
+        EMBEDDING_STATUS: { COMPLETED: 'completed' },
+      }));
+
+      const result = await service.processFileChunks(mockImageJobData);
+
+      expect(result.chunkCount).toBe(0);
+
+      // Should still call indexImageEmbedding but without contentVector
+      expect(mockIndexImageEmbedding).toHaveBeenCalledWith(
+        expect.objectContaining({
+          fileId: 'test-image-id',
+          contentVector: undefined,
+        })
+      );
+    });
+
+    it('should skip contentVector generation when no caption exists', async () => {
+      const mockEmbeddingRecord = {
+        embedding: new Array(1024).fill(0.1),
+        caption: null,
+      };
+
+      const mockIndexImageEmbedding = vi.fn().mockResolvedValue('img_TEST-IMAGE-ID');
+
+      // Mock updateEmbeddingStatus (processing)
+      mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
+
+      // Mock ImageEmbeddingRepository
+      vi.doMock('@/repositories/ImageEmbeddingRepository', () => ({
+        getImageEmbeddingRepository: () => ({
+          getByFileId: vi.fn().mockResolvedValue(mockEmbeddingRecord),
+        }),
+      }));
+
+      // Mock file name query
+      mockExecuteQuery.mockResolvedValueOnce({
+        recordset: [{ name: 'photo.jpg', mime_type: 'image/jpeg' }],
+      });
+
+      // Mock VectorSearchService
+      vi.doMock('@services/search/VectorSearchService', () => ({
+        VectorSearchService: {
+          getInstance: () => ({
+            indexImageEmbedding: mockIndexImageEmbedding,
+          }),
+        },
+      }));
+
+      // Mock updateEmbeddingStatus (completed)
+      mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
+
+      // Mock FileEventEmitter
+      vi.doMock('@/domains/files/emission/FileEventEmitter', () => ({
+        getFileEventEmitter: () => ({
+          emitReadinessChanged: vi.fn(),
+        }),
+      }));
+      vi.doMock('@bc-agent/shared', () => ({
+        FILE_READINESS_STATE: { PROCESSING: 'processing', READY: 'ready' },
+        PROCESSING_STATUS: { COMPLETED: 'completed' },
+        EMBEDDING_STATUS: { COMPLETED: 'completed' },
+      }));
+
+      const result = await service.processFileChunks(mockImageJobData);
+
+      expect(result.chunkCount).toBe(0);
+
+      // Should call indexImageEmbedding without contentVector
+      expect(mockIndexImageEmbedding).toHaveBeenCalledWith(
+        expect.objectContaining({
+          fileId: 'test-image-id',
+          contentVector: undefined,
+        })
+      );
+    });
+  });
 });

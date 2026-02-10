@@ -287,6 +287,29 @@ export class FileChunkingService {
       const fileName = fileResult.recordset[0]?.name || 'unknown.jpg';
       const fileMimeType = fileResult.recordset[0]?.mime_type ?? undefined;
 
+      // Generate text embedding from caption for contentVector search path
+      let captionContentVector: number[] | undefined;
+      if (embeddingRecord.caption) {
+        try {
+          const { EmbeddingService } = await import('@/services/embeddings/EmbeddingService');
+          const embeddingService = EmbeddingService.getInstance();
+          const captionEmbedding = await embeddingService.generateTextEmbedding(
+            embeddingRecord.caption, userId, fileId
+          );
+          captionContentVector = captionEmbedding.embedding;
+        } catch (error) {
+          // Non-fatal: image still findable via imageVector and Semantic Ranker
+          logger.warn(
+            {
+              error: error instanceof Error ? error.message : String(error),
+              fileId,
+              userId,
+            },
+            'Failed to generate text embedding from caption - image still searchable via imageVector'
+          );
+        }
+      }
+
       // Index in Azure AI Search
       const { VectorSearchService } = await import('@services/search/VectorSearchService');
       const vectorSearchService = VectorSearchService.getInstance();
@@ -298,6 +321,7 @@ export class FileChunkingService {
         fileName,
         caption: embeddingRecord.caption ?? undefined,
         mimeType: fileMimeType,
+        contentVector: captionContentVector,
       });
 
       // Mark as completed

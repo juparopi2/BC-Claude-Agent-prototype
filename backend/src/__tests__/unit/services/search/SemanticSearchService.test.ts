@@ -573,7 +573,8 @@ describe('SemanticSearchService', () => {
       expect(textResult?.topChunks.length).toBeGreaterThan(0);
 
       expect(imageResult?.isImage).toBe(true);
-      expect(imageResult?.topChunks).toHaveLength(0); // Images don't have chunks
+      expect(imageResult?.topChunks).toHaveLength(1); // Images include caption as single chunk
+      expect(imageResult?.topChunks[0]?.content).toContain('[Image:');
     });
 
     it('should continue with text-only search if image query embedding fails', async () => {

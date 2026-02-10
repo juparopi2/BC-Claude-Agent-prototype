@@ -442,7 +442,7 @@ export class VectorSearchService {
       throw new Error('Failed to initialize search client');
     }
 
-    const { fileId, userId, embedding, fileName, caption, mimeType } = params;
+    const { fileId, userId, embedding, fileName, caption, mimeType, contentVector } = params;
     const normalizedFileId = fileId.toUpperCase();
     const normalizedUserId = userId.toUpperCase();
     const documentId = `img_${normalizedFileId}`;
@@ -453,12 +453,11 @@ export class VectorSearchService {
       ? `${caption} [Image: ${fileName}]`
       : `[Image: ${fileName}]`;
 
-    const document = {
+    const document: Record<string, unknown> = {
       chunkId: documentId,
       fileId: normalizedFileId,
       userId: normalizedUserId,
       content,
-      // contentVector intentionally omitted - images use imageVector only
       imageVector: embedding,
       chunkIndex: 0,
       tokenCount: 0,
@@ -469,6 +468,11 @@ export class VectorSearchService {
       fileStatus: 'active',
     };
 
+    // Add text embedding of caption for contentVector search path (if available)
+    if (contentVector && contentVector.length > 0) {
+      document.contentVector = contentVector;
+    }
+
     const result = await this.searchClient.uploadDocuments([document]);
 
     const failed = result.results.filter(r => !r.succeeded);
@@ -478,7 +482,7 @@ export class VectorSearchService {
     }
 
     logger.info(
-      { documentId, fileId, userId, dimensions: embedding.length, hasCaption: !!caption },
+      { documentId, fileId, userId, dimensions: embedding.length, hasCaption: !!caption, hasContentVector: !!contentVector },
       'Image embedding indexed'
     );
     return documentId;

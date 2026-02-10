@@ -301,17 +301,51 @@ async function verifySQLSection(
       },
     });
 
+    const withCaption = embeddings.filter((e) => e.caption !== null && e.caption !== '');
+    const withoutCaption = embeddings.filter((e) => e.caption === null || e.caption === '');
+    const captionPercent = embeddings.length > 0 ? ((withCaption.length / embeddings.length) * 100).toFixed(1) : '0.0';
+
     printStatus('Total image embeddings', embeddings.length);
+    printStatus('With captions', `${withCaption.length} / ${embeddings.length} (${captionPercent}%)`, withCaption.length === embeddings.length ? 'ok' : 'warn');
+
+    if (withoutCaption.length > 0) {
+      hasWarnings = true;
+      printStatus('Missing captions', withoutCaption.length, 'warn');
+      if (!options.reportOnly) {
+        // Look up file names for images missing captions
+        const missingCaptionFileIds = withoutCaption.map((e) => e.file_id);
+        const missingCaptionFiles = await prisma.files.findMany({
+          where: { id: { in: missingCaptionFileIds } },
+          select: { id: true, name: true },
+        });
+        const fileNameMap = new Map(missingCaptionFiles.map((f) => [f.id, f.name]));
+        withoutCaption.forEach((emb) => {
+          const name = fileNameMap.get(emb.file_id) || emb.file_id.substring(0, 8) + '...';
+          console.log(`    ⚠ ${name} - no caption`);
+        });
+      }
+    }
 
     if (embeddings.length > 0 && !options.reportOnly) {
-      console.log('\n  Sample embeddings:');
-      embeddings.slice(0, 5).forEach((emb) => {
+      // Show all embeddings with their caption status
+      const allFileIds = embeddings.map((e) => e.file_id);
+      const allFiles = await prisma.files.findMany({
+        where: { id: { in: allFileIds } },
+        select: { id: true, name: true },
+      });
+      const allFileNameMap = new Map(allFiles.map((f) => [f.id, f.name]));
+
+      console.log('\n  All image embeddings:');
+      embeddings.forEach((emb) => {
+        const name = allFileNameMap.get(emb.file_id) || emb.file_id.substring(0, 8) + '...';
         const confidence = emb.caption_confidence !== null ? (emb.caption_confidence * 100).toFixed(1) : 'N/A';
-        console.log(`    - File: ${emb.file_id.substring(0, 8)}...`);
-        console.log(`      Caption: ${emb.caption || 'N/A'}`);
-        console.log(`      Confidence: ${confidence}%`);
-        console.log(`      Dimensions: ${emb.dimensions || 'N/A'}`);
-        console.log(`      Model: ${emb.model || 'N/A'}`);
+        const captionPreview = emb.caption
+          ? emb.caption.length > 80 ? emb.caption.substring(0, 77) + '...' : emb.caption
+          : '(no caption)';
+        const icon = emb.caption ? '✓' : '⚠';
+        console.log(`    ${icon} ${name}`);
+        console.log(`      Caption: ${captionPreview}`);
+        console.log(`      Confidence: ${confidence}% | Dims: ${emb.dimensions || 'N/A'} | Model: ${emb.model || 'N/A'}`);
       });
     }
   }
@@ -552,25 +586,69 @@ async function verifySearchSection(
     printStatus('Orphan search documents', 0, 'ok');
   }
 
-  // mimeType field population
+  // Field coverage analysis with image/text breakdown
   printSubsection('Field Coverage');
+
+  // Split docs into image and text categories
+  const imageDocs = searchDocs.filter((d) => d.isImage === true || d.chunkId.startsWith('img_'));
+  const textDocs = searchDocs.filter((d) => d.isImage !== true && !d.chunkId.startsWith('img_'));
+  const totalDocs = searchDocs.length;
+
+  printStatus('Total search documents', totalDocs);
+  printStatus('  Image documents', imageDocs.length);
+  printStatus('  Text chunk documents', textDocs.length);
+
+  // Helper to report field coverage with severity
+  function reportFieldCoverage(fieldName: string, populated: number, total: number, expectedPercent: number = 100): void {
+    const percent = total > 0 ? ((populated / total) * 100).toFixed(1) : '0.0';
+    const severity = parseFloat(percent) >= expectedPercent ? 'ok' : parseFloat(percent) === 0 ? 'error' : 'warn';
+    printStatus(`${fieldName}`, `${populated} / ${total} (${percent}%)`, severity);
+    if (severity === 'error') {
+      hasErrors = true;
+    } else if (severity === 'warn') {
+      hasWarnings = true;
+    }
+  }
+
+  console.log('\n  Overall field coverage:');
   const docsWithMimeType = searchDocs.filter((d) => d.mimeType !== undefined && d.mimeType !== null).length;
-  const mimeTypePercent = searchDocs.length > 0 ? ((docsWithMimeType / searchDocs.length) * 100).toFixed(1) : '0.0';
-  printStatus('Documents with mimeType', `${docsWithMimeType} / ${searchDocs.length} (${mimeTypePercent}%)`);
+  reportFieldCoverage('  mimeType', docsWithMimeType, totalDocs);
 
   const docsWithContent = searchDocs.filter((d) => d.content !== undefined && d.content !== null && d.content.length > 0).length;
-  const contentPercent = searchDocs.length > 0 ? ((docsWithContent / searchDocs.length) * 100).toFixed(1) : '0.0';
-  printStatus('Documents with content', `${docsWithContent} / ${searchDocs.length} (${contentPercent}%)`);
+  reportFieldCoverage('  content', docsWithContent, totalDocs);
 
   const docsWithIsImage = searchDocs.filter((d) => d.isImage !== undefined && d.isImage !== null).length;
-  const isImagePercent = searchDocs.length > 0 ? ((docsWithIsImage / searchDocs.length) * 100).toFixed(1) : '0.0';
-  printStatus('Documents with isImage', `${docsWithIsImage} / ${searchDocs.length} (${isImagePercent}%)`);
+  reportFieldCoverage('  isImage', docsWithIsImage, totalDocs);
 
   const docsWithFileStatus = searchDocs.filter((d) => d.fileStatus !== undefined && d.fileStatus !== null).length;
-  const fileStatusPercent = searchDocs.length > 0 ? ((docsWithFileStatus / searchDocs.length) * 100).toFixed(1) : '0.0';
-  printStatus('Documents with fileStatus', `${docsWithFileStatus} / ${searchDocs.length} (${fileStatusPercent}%)`);
+  reportFieldCoverage('  fileStatus', docsWithFileStatus, totalDocs);
+
+  // Breakdown by category
+  if (imageDocs.length > 0) {
+    console.log('\n  Image document field coverage:');
+    const imgWithMime = imageDocs.filter((d) => d.mimeType !== undefined && d.mimeType !== null).length;
+    reportFieldCoverage('    mimeType', imgWithMime, imageDocs.length);
+    const imgWithContent = imageDocs.filter((d) => d.content !== undefined && d.content !== null && d.content.length > 0).length;
+    reportFieldCoverage('    content', imgWithContent, imageDocs.length);
+    const imgWithStatus = imageDocs.filter((d) => d.fileStatus !== undefined && d.fileStatus !== null).length;
+    reportFieldCoverage('    fileStatus', imgWithStatus, imageDocs.length);
+  }
+
+  if (textDocs.length > 0) {
+    console.log('\n  Text chunk field coverage:');
+    const txtWithMime = textDocs.filter((d) => d.mimeType !== undefined && d.mimeType !== null).length;
+    reportFieldCoverage('    mimeType', txtWithMime, textDocs.length);
+    const txtWithContent = textDocs.filter((d) => d.content !== undefined && d.content !== null && d.content.length > 0).length;
+    reportFieldCoverage('    content', txtWithContent, textDocs.length);
+    const txtWithIsImage = textDocs.filter((d) => d.isImage !== undefined && d.isImage !== null).length;
+    reportFieldCoverage('    isImage', txtWithIsImage, textDocs.length);
+    const txtWithStatus = textDocs.filter((d) => d.fileStatus !== undefined && d.fileStatus !== null).length;
+    reportFieldCoverage('    fileStatus', txtWithStatus, textDocs.length);
+  }
 
   // Compare chunk counts: DB vs Search
+  // Images go directly to AI Search without creating file_chunks DB records,
+  // so we need to account for that: image files have expected search count = 1, DB chunks = 0
   printSubsection('Chunk Count Comparison');
   const fileIds = dbFiles.map((f) => f.id);
   const dbChunks = fileIds.length > 0
@@ -580,13 +658,22 @@ async function verifySearchSection(
       })
     : [];
 
+  // Fetch image_embeddings to identify image files
+  const imageEmbeddings = fileIds.length > 0
+    ? await prisma.image_embeddings.findMany({
+        where: { file_id: { in: fileIds } },
+        select: { file_id: true },
+      })
+    : [];
+  const imageFileIds = new Set(imageEmbeddings.map((ie) => ie.file_id));
+
   const dbChunksByFile = new Map<string, number>();
   dbChunks.forEach((chunk) => {
     dbChunksByFile.set(chunk.file_id, (dbChunksByFile.get(chunk.file_id) || 0) + 1);
   });
 
   let mismatchCount = 0;
-  const mismatches: Array<{ fileId: string; dbCount: number; searchCount: number }> = [];
+  const mismatches: Array<{ fileId: string; fileName: string; expectedCount: number; searchCount: number; isImage: boolean }> = [];
 
   // Build case-insensitive map for search docs
   const docsByFileUpper = new Map<string, SearchDoc[]>();
@@ -595,23 +682,35 @@ async function verifySearchSection(
   });
 
   dbFiles.forEach((file) => {
-    const dbCount = dbChunksByFile.get(file.id) || 0;
+    const isImage = imageFileIds.has(file.id);
+    const dbChunkCount = dbChunksByFile.get(file.id) || 0;
     const searchCount = docsByFileUpper.get(file.id.toUpperCase())?.length || 0;
-    if (dbCount !== searchCount) {
+
+    // For images: expected search count = 1 (single image doc), DB chunks = 0
+    // For text/PDF: expected search count = DB chunk count
+    const expectedCount = isImage ? 1 : dbChunkCount;
+
+    if (expectedCount !== searchCount) {
       mismatchCount++;
-      mismatches.push({ fileId: file.id, dbCount, searchCount });
+      mismatches.push({ fileId: file.id, fileName: file.name, expectedCount, searchCount, isImage });
     }
   });
+
+  const imageFileCount = imageFileIds.size;
+  const textFileCount = dbFiles.length - imageFileCount;
+  printStatus('Image files (expected 1 search doc each)', imageFileCount);
+  printStatus('Text/PDF files (expected DB chunk count each)', textFileCount);
 
   if (mismatchCount > 0) {
     printStatus('Files with chunk count mismatch', mismatchCount, 'warn');
     hasWarnings = true;
     if (!options.reportOnly) {
-      mismatches.slice(0, 5).forEach((m) => {
-        console.log(`    - File ${m.fileId.substring(0, 8)}...: DB=${m.dbCount}, Search=${m.searchCount}`);
+      mismatches.slice(0, 10).forEach((m) => {
+        const type = m.isImage ? '[IMAGE]' : '[TEXT]';
+        console.log(`    - ${type} ${m.fileName} (${m.fileId.substring(0, 8)}...): expected=${m.expectedCount}, search=${m.searchCount}`);
       });
-      if (mismatches.length > 5) {
-        console.log(`    ... and ${mismatches.length - 5} more`);
+      if (mismatches.length > 10) {
+        console.log(`    ... and ${mismatches.length - 10} more`);
       }
     }
   } else {

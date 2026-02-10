@@ -157,7 +157,7 @@ export class SemanticSearchService {
           fileId,
           fileName,
           relevanceScore: data.maxScore,
-          topChunks: data.isImage ? [] : sortedChunks, // Images don't expose chunks
+          topChunks: sortedChunks, // Include caption chunk for images (limited to 1 at line 143)
           isImage: data.isImage,
           mimeType,
         });

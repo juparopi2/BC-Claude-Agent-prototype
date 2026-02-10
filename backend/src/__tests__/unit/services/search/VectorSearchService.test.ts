@@ -164,14 +164,73 @@ describe('VectorSearchService - Index Management', () => {
     });
 
     it('should throw error if indexing fails', async () => {
-       const mockResult = { 
+       const mockResult = {
           results: [
               { key: '1', succeeded: false, statusCode: 400, errorMessage: 'Bad Request' }
-          ] 
+          ]
       };
       mockSearchClient.uploadDocuments.mockResolvedValue(mockResult);
 
       await expect(service.indexChunk(mockChunk)).rejects.toThrow('Failed to index documents');
+    });
+  });
+
+  describe('Image Indexing', () => {
+    it('should index image without contentVector', async () => {
+      const mockResult = { results: [{ key: 'img_FILE-123', succeeded: true, statusCode: 201 }] };
+      mockSearchClient.uploadDocuments.mockResolvedValue(mockResult);
+
+      await service.indexImageEmbedding({
+        fileId: 'file-123',
+        userId: 'user-123',
+        embedding: new Array(1024).fill(0.1),
+        fileName: 'photo.jpg',
+        caption: 'A warehouse photo',
+      });
+
+      const callArgs = mockSearchClient.uploadDocuments.mock.calls[0][0];
+      expect(callArgs).toHaveLength(1);
+      expect(callArgs[0].imageVector).toHaveLength(1024);
+      expect(callArgs[0].content).toBe('A warehouse photo [Image: photo.jpg]');
+      expect(callArgs[0].isImage).toBe(true);
+      expect(callArgs[0].contentVector).toBeUndefined();
+    });
+
+    it('should index image with contentVector when provided', async () => {
+      const mockResult = { results: [{ key: 'img_FILE-123', succeeded: true, statusCode: 201 }] };
+      mockSearchClient.uploadDocuments.mockResolvedValue(mockResult);
+
+      const contentVector = new Array(1536).fill(0.2);
+      await service.indexImageEmbedding({
+        fileId: 'file-123',
+        userId: 'user-123',
+        embedding: new Array(1024).fill(0.1),
+        fileName: 'photo.jpg',
+        caption: 'A warehouse photo',
+        contentVector,
+      });
+
+      const callArgs = mockSearchClient.uploadDocuments.mock.calls[0][0];
+      expect(callArgs).toHaveLength(1);
+      expect(callArgs[0].imageVector).toHaveLength(1024);
+      expect(callArgs[0].contentVector).toEqual(contentVector);
+      expect(callArgs[0].isImage).toBe(true);
+    });
+
+    it('should not include contentVector when it is an empty array', async () => {
+      const mockResult = { results: [{ key: 'img_FILE-123', succeeded: true, statusCode: 201 }] };
+      mockSearchClient.uploadDocuments.mockResolvedValue(mockResult);
+
+      await service.indexImageEmbedding({
+        fileId: 'file-123',
+        userId: 'user-123',
+        embedding: new Array(1024).fill(0.1),
+        fileName: 'photo.jpg',
+        contentVector: [],
+      });
+
+      const callArgs = mockSearchClient.uploadDocuments.mock.calls[0][0];
+      expect(callArgs[0].contentVector).toBeUndefined();
     });
   });
 

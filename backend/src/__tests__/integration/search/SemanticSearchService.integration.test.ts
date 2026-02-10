@@ -125,7 +125,7 @@ describe.skipIf(!runIntegrationTests)('SemanticSearchService Integration - Unifi
 
         if (imageResult) {
             expect(imageResult.isImage).toBe(true);
-            expect(imageResult.topChunks).toHaveLength(0); // Images don't have chunks
+            expect(imageResult.topChunks).toHaveLength(1); // Images include caption as single chunk
         }
     });
 

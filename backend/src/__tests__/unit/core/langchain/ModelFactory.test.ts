@@ -35,11 +35,19 @@ vi.mock('@langchain/anthropic', () => ({
   ChatAnthropic: MockChatAnthropic,
 }));
 
-// Mock initChatModel (used by create() method, not createForThinking())
-const mockInitChatModel = vi.hoisted(() => vi.fn());
+vi.mock('@langchain/openai', () => ({
+  ChatOpenAI: vi.fn((config: any) => ({
+    model: config.model,
+    maxTokens: config.maxTokens,
+    apiKey: config.apiKey,
+  })),
+}));
 
-vi.mock('langchain', () => ({
-  initChatModel: mockInitChatModel,
+vi.mock('@langchain/google-vertexai', () => ({
+  ChatVertexAI: vi.fn((config: any) => ({
+    model: config.model,
+    maxOutputTokens: config.maxOutputTokens,
+  })),
 }));
 
 // Mock environment config

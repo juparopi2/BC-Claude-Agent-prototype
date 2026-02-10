@@ -1,4 +1,5 @@
-export { AgentAnalyticsService } from './AgentAnalyticsService';
+import { AgentAnalyticsService } from './AgentAnalyticsService';
+export { AgentAnalyticsService };
 export type { AgentInvocationMetrics, AgentUsageSummary, DailyUsage } from './AgentAnalyticsService';
 
 // Singleton

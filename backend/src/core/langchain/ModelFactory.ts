@@ -7,8 +7,9 @@
  * @module core/langchain/ModelFactory
  */
 
-import { initChatModel } from 'langchain';
 import { ChatAnthropic } from '@langchain/anthropic';
+import { ChatOpenAI } from '@langchain/openai';
+import { ChatVertexAI } from '@langchain/google-vertexai';
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import type { ModelRole, RoleModelConfig } from '@/infrastructure/config/models';
 import { ModelRoleConfigs, AnthropicModels, OpenAIModels, GoogleModels } from '@/infrastructure/config/models';
@@ -154,21 +155,42 @@ export class ModelFactory {
   }
 
   /**
-   * Internal method to create a model instance via initChatModel.
-   * Uses the modelString from config which is already in the correct format
-   * for each provider (bare model name for Anthropic, "provider:model" for others).
+   * Internal method to create a model instance using direct provider constructors.
+   * Avoids initChatModel's ConfigurableModel wrapper which calls JSON.stringify
+   * on config (crashes with circular refs from LangGraph checkpointer objects).
    */
   private static async createModel(config: RoleModelConfig): Promise<BaseChatModel> {
-    const { modelString, temperature, maxTokens } = config;
+    const { provider, modelName, temperature, maxTokens } = config;
 
-    return await initChatModel(modelString, {
-      temperature,
-      maxTokens,
-      // Explicit API keys - initChatModel reads env vars by default
-      // but our Azure OpenAI key uses a non-standard env var name
-      ...(config.provider === 'openai' ? { apiKey: env.AZURE_OPENAI_KEY } : {}),
-      ...(config.provider === 'anthropic' ? { apiKey: env.ANTHROPIC_API_KEY } : {}),
-    });
+    switch (provider) {
+      case 'anthropic':
+        return new ChatAnthropic({
+          model: modelName,
+          temperature,
+          maxTokens,
+          apiKey: env.ANTHROPIC_API_KEY,
+        }) as unknown as BaseChatModel;
+
+      case 'openai':
+        return new ChatOpenAI({
+          model: modelName,
+          temperature,
+          maxTokens,
+          apiKey: env.AZURE_OPENAI_KEY,
+        }) as unknown as BaseChatModel;
+
+      case 'google':
+        return new ChatVertexAI({
+          model: modelName,
+          temperature,
+          maxOutputTokens: maxTokens,
+        }) as unknown as BaseChatModel;
+
+      default: {
+        const _exhaustive: never = provider;
+        throw new Error(`Unsupported model provider: ${_exhaustive}`);
+      }
+    }
   }
 
   /**

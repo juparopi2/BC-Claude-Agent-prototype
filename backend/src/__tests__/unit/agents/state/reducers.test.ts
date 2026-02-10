@@ -58,7 +58,7 @@ describe('AgentIdentityAnnotation', () => {
   it('should use default when not explicitly set', () => {
     const defaultIdentity = { ...DEFAULT_AGENT_IDENTITY };
     expect(defaultIdentity.agentId).toBe(AGENT_ID.SUPERVISOR);
-    expect(defaultIdentity.agentName).toBe('Supervisor');
+    expect(defaultIdentity.agentName).toBe(AGENT_DISPLAY_NAME[AGENT_ID.SUPERVISOR]);
   });
 });
 

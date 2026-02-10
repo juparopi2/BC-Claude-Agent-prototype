@@ -12,6 +12,7 @@
 
 import { Button } from '@/components/ui/button';
 import { useApprovalStore, getPendingApprovalsArray } from '@/src/domains/chat/stores/approvalStore';
+import { useShallow } from 'zustand/react/shallow';
 import { Check, X, AlertTriangle, Shield } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ApprovalPriority } from '@bc-agent/shared';
@@ -68,7 +69,7 @@ function truncateArgs(args: Record<string, unknown>, maxLength: number = 200): s
 // ============================================================================
 
 export function ApprovalDialog({ onRespond }: ApprovalDialogProps) {
-  const pendingApprovals = useApprovalStore(getPendingApprovalsArray);
+  const pendingApprovals = useApprovalStore(useShallow(getPendingApprovalsArray));
 
   // No pending approvals - don't render anything
   if (pendingApprovals.length === 0) {

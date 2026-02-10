@@ -360,7 +360,7 @@ export default function ChatInput({
                 </Toggle>
               </TooltipTrigger>
               <TooltipContent>
-                <p className="text-xs">Enable extended thinking for complex queries</p>
+                <p className="text-xs">Enable deep reasoning for complex or multi-step questions</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>

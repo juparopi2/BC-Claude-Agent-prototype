@@ -18,15 +18,15 @@ Este documento centraliza todos los planes futuros, organizados por categoría p
 1. **Fase 0**: ✅ Refactoring de God Files - **COMPLETADO** (2026-01-23)
    - PRD-001 (FileService), PRD-003 (AgentOrchestrator), PRD-004 (FilesRoutes), PRD-005 (MessageQueue)
    - Implementado ExecutionContext pattern para arquitectura stateless
-2. **Fase 0.5**: Model Abstraction (`initChatModel()`) - Pendiente
-3. **Fase 1**: TDD Foundation y AgentRegistry - Pendiente
+2. **Fase 0.5**: ✅ Model Abstraction (ModelFactory + ChatAnthropic directo) - **COMPLETADO**
+3. **Fase 1**: ✅ TDD Foundation y AgentRegistry - **COMPLETADO**
 4. **Fase 2**: Extended AgentState Schema - Pendiente
 5. **Fase 3**: Supervisor/Planner Node - Pendiente
 6. **Fase 4**: Handoffs y Re-routing - Pendiente
-7. **Fase 5**: Graphing Agent (Tremor UI) - Pendiente
+7. **Fase 5**: ✅ Graphing Agent (Tremor UI) - **COMPLETADO**
 8. **Fase 6**: Agent Selection UI - En preparación (PRD-060 actualizado)
 
-**Estado**: En Progreso - Phase 0 Completado, preparando Phase 6 UI
+**Estado**: En Progreso - Phases 0, 0.5, 1, 5 Completados. System prompts alineados con product context.
 
 **Próximo paso inmediato**: Agent Selector UI (dropdown para selección de agentes, reemplaza toggle "My Files")
 
@@ -116,7 +116,13 @@ Mejoras en la estabilidad, calidad del código e infraestructura existente.
 ### Cleanup Deprecated Methods (Media)
 **Problema:** Existe código marcado como `@deprecated` que debe ser eliminado para mantener el código limpio.
 **Solución:** Identificar, refactorizar si es necesario y eliminar métodos marcados como `@deprecated`.
+**Nota:** Legacy agents (`bc-agent.ts`, `rag-agent.ts`) coexisten con registry-based agents. Migration pending for Phase 3.
 **Estimación:** 3 días
+
+### PowerPoint (.pptx) Support (Baja)
+**Problema:** El sistema no soporta archivos PowerPoint (.pptx) en el pipeline de RAG.
+**Solución:** Agregar procesador de texto para PPTX (e.g., `pptx-parser` o similar), agregar MIME type `application/vnd.openxmlformats-officedocument.presentationml.presentation` a `ALLOWED_MIME_TYPES`, y agregar a `FILE_TYPE_CATEGORIES.documents`.
+**Estimación:** 1-2 días
 
 
 ### Implementación de Prisma y Prisma Client (Alta)
@@ -157,6 +163,7 @@ Mejoras perceptibles para el usuario final.
 ### Knowledge Base Brain UI (Alta)
 **Necesidad:** Feedback visual claro cuando el sistema usa RAG, elevando la percepción de inteligencia.
 **Specs:** Icono "Cerebro Verde", animación de pulso, citas interactivas con deep-links y tooltips de contexto.
+**Nota:** RAG agent prompt mejorado con file type awareness y tool de búsqueda filtrada (`filtered_knowledge_search`).
 **Estimación:** 4 días
 
 ### User-Defined Agents & Selector (Alta)
@@ -165,10 +172,11 @@ Mejoras perceptibles para el usuario final.
 **Estimación:** 7 días
 
 
-### Graphing Agent (Data Visualization) (Alta)
+### Graphing Agent (Data Visualization) (Alta) — Parcialmente completado
 **Necesidad:** Permitir al usuario visualizar información comparativa o numérica (ej. ventas año actual vs anterior) mediante diagramas generados dinámicamente.
 **Specs:** Agente intermedio que procesa datos numéricos de otros agentes (BC/RAG). Responsable de cálculos, aproximaciones, selección del tipo de gráfico óptimo (ej. Tremor UI) y formateo de datos/leyendas para una visualización correcta. Requiere lógica en Backend y componentes dinámicos en Frontend.
-**Estimación:** 7 días
+**Estado:** Agent implementado con 10 chart types (bar, stacked_bar, line, area, donut, bar_list, combo, kpi, kpi_grid, table). System prompt alineado con frontend chart types y contexto corporativo.
+**Estimación:** 7 días (restante: integración con datos reales de otros agentes)
 
 ### @Mention para Knowledge Base Files (Alta)
 **Necesidad:** Permitir al usuario seleccionar archivos específicos de su Knowledge Base usando `@filename` en el input del chat, en lugar de depender solo de semantic search automático.
@@ -200,6 +208,7 @@ Mejoras perceptibles para el usuario final.
 - **Spinner Sincronizado:** Aparece un spinner de carga que ÚNICAMENTE desaparece cuando el "cart de upload" se ha añadido exitosamente al collapsible "Upload in Progress".
 - **Condición de Terminación:** La señal para ocultar el spinner y desbloquear el dropzone debe ser estrictamente el evento de que el upload ya es visible en la lista de progreso.
 - **Flujo:** Drops -> Spinner + Bloqueo -> Aparece en Collapsible -> Spinner Stop + Desbloqueo.
+**Nota:** File size/extension hints agregados al drag overlay y chat attachment tooltip.
 **Estimación:** 2-3 días
 
 ---

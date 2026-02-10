@@ -418,6 +418,14 @@ export {
   AGENT_API,
   type AgentId,
   type AgentCapability,
+
+  // File Type Categories (RAG Filtered Search)
+  FILE_TYPE_CATEGORIES,
+  FILE_TYPE_DISPLAY,
+  SUPPORTED_EXTENSIONS_DISPLAY,
+  getMimeTypesForCategory,
+  getValidCategories,
+  type FileTypeCategory,
 } from './constants';
 
 // ============================================

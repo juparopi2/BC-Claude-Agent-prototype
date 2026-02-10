@@ -624,7 +624,12 @@ export class VectorSearchService {
     // Security: Always enforce userId filter (D24: normalize userId)
     // Also exclude files marked for deletion (fileStatus ne 'deleting')
     const normalizedUserId = this.normalizeUserId(userId);
-    const searchFilter = `userId eq '${normalizedUserId}' and (fileStatus ne 'deleting' or fileStatus eq null)`;
+    let searchFilter = `userId eq '${normalizedUserId}' and (fileStatus ne 'deleting' or fileStatus eq null)`;
+
+    // Append additional filter if provided (e.g., mimeType filtering for RAG filtered search)
+    if (query.additionalFilter) {
+      searchFilter += ` and ${query.additionalFilter}`;
+    }
 
     // Build search options with semantic ranker
     const searchOptions: Record<string, unknown> = {

@@ -113,7 +113,7 @@ describe('SessionTitleGenerator', () => {
       expect(title).toBe(expectedTitle);
       expect(mockModelInvoke).toHaveBeenCalledWith(
         expect.arrayContaining([
-          expect.objectContaining({ content: expect.stringContaining('Maximum 50 characters') }),
+          expect.objectContaining({ content: expect.stringContaining('Business Central') }),
           expect.objectContaining({ content: userMessage }),
         ])
       );

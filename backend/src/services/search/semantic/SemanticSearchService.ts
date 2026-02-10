@@ -33,6 +33,7 @@ export class SemanticSearchService {
       maxFiles = DEFAULT_MAX_FILES,
       maxChunksPerFile = DEFAULT_MAX_CHUNKS_PER_FILE,
       excludeFileIds = [],
+      filterMimeTypes,
     } = options;
 
     try {
@@ -54,6 +55,13 @@ export class SemanticSearchService {
       // 2. D26: Execute unified semantic search with reranking
       //    This combines text + image results and uses Azure AI Search Semantic Ranker
       //    to normalize scores across different vector spaces
+
+      // Build additional OData filter for mimeType filtering (RAG filtered search)
+      let additionalFilter: string | undefined;
+      if (filterMimeTypes && filterMimeTypes.length > 0) {
+        additionalFilter = `search.in(mimeType, '${filterMimeTypes.join(',')}', ',')`;
+      }
+
       const semanticResults = await vectorSearchService.semanticSearch({
         text: query,
         textEmbedding: textEmbedding.embedding,
@@ -62,6 +70,7 @@ export class SemanticSearchService {
         fetchTopK: maxFiles * maxChunksPerFile * 3, // Fetch more candidates for reranking
         finalTopK: maxFiles * maxChunksPerFile * 2, // After reranking, still need to group
         minScore: threshold,
+        additionalFilter,
       });
 
       // 3. Filter excluded files

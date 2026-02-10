@@ -195,7 +195,7 @@ export function FileUploadZone({
                 {isDragReject ? 'Invalid file type' : 'Drop files to upload'}
               </p>
               <p className="text-xs text-muted-foreground mt-1">
-                Max {FILE_UPLOAD_LIMITS.MAX_FILES_PER_BULK_UPLOAD} files, {FILE_UPLOAD_LIMITS.MAX_FILE_SIZE / 1024 / 1024}MB each
+                PDF, Word, Excel, images, and more — max {FILE_UPLOAD_LIMITS.MAX_FILE_SIZE / 1024 / 1024}MB per file
               </p>
             </>
           )}

@@ -14,6 +14,7 @@ export interface FileChunkWithEmbedding {
   tokenCount: number;
   embeddingModel: string; // Added for cost tracking
   createdAt: Date;
+  mimeType?: string; // File MIME type for filtered search
 }
 
 /**
@@ -111,6 +112,8 @@ export interface SemanticSearchQuery {
   finalTopK?: number;
   /** Minimum score threshold for results */
   minScore?: number;
+  /** Additional OData filter to append (e.g., mimeType filtering) */
+  additionalFilter?: string;
 }
 
 /**

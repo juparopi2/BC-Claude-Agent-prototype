@@ -5,6 +5,7 @@ export interface SemanticSearchOptions {
   maxFiles?: number;       // Default: 5
   maxChunksPerFile?: number; // Default: 3
   excludeFileIds?: string[];
+  filterMimeTypes?: string[];  // MIME types to filter results (for RAG filtered search)
 }
 
 export interface SemanticChunk {

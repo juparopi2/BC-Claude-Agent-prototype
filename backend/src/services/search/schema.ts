@@ -126,6 +126,14 @@ export const indexSchema: SearchIndex = {
       sortable: false,
       facetable: true
     },
+    {
+      name: 'mimeType',
+      type: 'Edm.String',
+      searchable: false,
+      filterable: true,  // For file type filtering (RAG filtered search)
+      sortable: false,
+      facetable: true,   // For analytics
+    },
     // ===== Soft Delete Support =====
     {
       name: 'fileStatus',

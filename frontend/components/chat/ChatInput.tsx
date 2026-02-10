@@ -419,7 +419,7 @@ export default function ChatInput({
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p className="text-xs">Attach files</p>
+                  <p className="text-xs">Attach files (docs: max 32MB | images: max 20MB)</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>

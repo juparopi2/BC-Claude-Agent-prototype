@@ -79,3 +79,13 @@ export {
   type AgentId,
   type AgentCapability,
 } from './agent-registry.constants';
+
+// File Type Categories (RAG Filtered Search)
+export {
+  FILE_TYPE_CATEGORIES,
+  FILE_TYPE_DISPLAY,
+  SUPPORTED_EXTENSIONS_DISPLAY,
+  getMimeTypesForCategory,
+  getValidCategories,
+  type FileTypeCategory,
+} from './file-type-categories';

@@ -4,12 +4,6 @@
  * This file defines all AI model configurations used across the application.
  * Models are organized by ROLE, not by name, allowing easy swapping and
  * cost optimization based on task requirements.
- *
- * Philosophy:
- * - Orchestrator: Most powerful model for complex decision-making (Opus)
- * - Router: Fast, economic model for intent classification (Haiku)
- * - Execution: Balanced model for task execution (Sonnet)
- * - Economic: Cheapest model for simple tasks (Haiku)
  */
 
 import type { ModelProvider } from '@/core/langchain/ModelFactory';
@@ -25,43 +19,22 @@ import type { ModelProvider } from '@/core/langchain/ModelFactory';
  * Using const assertion for type safety while allowing string extensibility.
  */
 export const AnthropicModels = {
-  // Claude 4.5 Series (2025)
-  OPUS_4_5: 'claude-opus-4-5-20250929',
-  SONNET_4_5: 'claude-sonnet-4-5-20250929',
   HAIKU_4_5: 'claude-haiku-4-5-20251001',
-
-  // Claude 3.5 Series (Legacy 2024)
-  SONNET_3_5: 'claude-3-5-sonnet-20241022',
   HAIKU_3_5: 'claude-3-5-haiku-20241022',
-
-  // Claude 3 Series (Legacy)
-  OPUS_3: 'claude-3-opus-20240229',
-  SONNET_3: 'claude-3-sonnet-20240229',
-  HAIKU_3: 'claude-3-haiku-20240307',
 } as const;
 
 export type AnthropicModelId = (typeof AnthropicModels)[keyof typeof AnthropicModels];
 
 // =============================================================================
 // OPENAI MODEL IDENTIFIERS
-// These are fallback models for provider switching
+// Fallback model for provider switching
 // =============================================================================
 
 /**
  * OpenAI model identifiers for fallback scenarios.
  */
 export const OpenAIModels = {
-  // GPT-4o Series
-  GPT_4O: 'gpt-4o',
   GPT_4O_MINI: 'gpt-4o-mini',
-  // GPT-4 Series
-  GPT_4_TURBO: 'gpt-4-turbo',
-  GPT_4: 'gpt-4',
-  // GPT-3.5 Series
-  GPT_35_TURBO: 'gpt-3.5-turbo',
-  // Embeddings
-  TEXT_EMBEDDING_3_SMALL: 'text-embedding-3-small',
-  TEXT_EMBEDDING_3_LARGE: 'text-embedding-3-large',
 } as const;
 
 export type OpenAIModelId = (typeof OpenAIModels)[keyof typeof OpenAIModels];
@@ -70,12 +43,7 @@ export type OpenAIModelId = (typeof OpenAIModels)[keyof typeof OpenAIModels];
  * Google/Vertex AI model identifiers for fallback scenarios.
  */
 export const GoogleModels = {
-  // Gemini 2.x Series
   GEMINI_2_FLASH: 'gemini-2.0-flash',
-  GEMINI_2_PRO: 'gemini-2.0-pro',
-  // Gemini 1.5 Series
-  GEMINI_15_FLASH: 'gemini-1.5-flash',
-  GEMINI_15_PRO: 'gemini-1.5-pro',
 } as const;
 
 export type GoogleModelId = (typeof GoogleModels)[keyof typeof GoogleModels];
@@ -85,61 +53,9 @@ export type GoogleModelId = (typeof GoogleModels)[keyof typeof GoogleModels];
  * Format: "provider:model-name" for initChatModel compatibility.
  */
 export const FallbackModels = {
-  OPENAI_GPT4O: `openai:${OpenAIModels.GPT_4O}`,
   OPENAI_GPT4O_MINI: `openai:${OpenAIModels.GPT_4O_MINI}`,
   GOOGLE_GEMINI_FLASH: `google:${GoogleModels.GEMINI_2_FLASH}`,
 } as const;
-
-// =============================================================================
-// MODEL PRICING (per million tokens)
-// @see https://www.anthropic.com/pricing
-// =============================================================================
-
-export interface ModelPricing {
-  inputPerMillion: number;
-  outputPerMillion: number;
-  cachedInputPerMillion?: number; // For prompt caching
-}
-
-export const AnthropicPricing: Record<AnthropicModelId, ModelPricing> = {
-  [AnthropicModels.OPUS_4_5]: {
-    inputPerMillion: 5.0,
-    outputPerMillion: 25.0,
-    cachedInputPerMillion: 0.5,
-  },
-  [AnthropicModels.SONNET_4_5]: {
-    inputPerMillion: 3.0,
-    outputPerMillion: 15.0,
-    cachedInputPerMillion: 0.3,
-  },
-  [AnthropicModels.HAIKU_4_5]: {
-    inputPerMillion: 1.0,
-    outputPerMillion: 5.0,
-    cachedInputPerMillion: 0.1,
-  },
-  [AnthropicModels.SONNET_3_5]: {
-    inputPerMillion: 3.0,
-    outputPerMillion: 15.0,
-    cachedInputPerMillion: 0.3,
-  },
-  [AnthropicModels.HAIKU_3_5]: {
-    inputPerMillion: 0.8,
-    outputPerMillion: 4.0,
-    cachedInputPerMillion: 0.08,
-  },
-  [AnthropicModels.OPUS_3]: {
-    inputPerMillion: 15.0,
-    outputPerMillion: 75.0,
-  },
-  [AnthropicModels.SONNET_3]: {
-    inputPerMillion: 3.0,
-    outputPerMillion: 15.0,
-  },
-  [AnthropicModels.HAIKU_3]: {
-    inputPerMillion: 0.25,
-    outputPerMillion: 1.25,
-  },
-};
 
 // =============================================================================
 // MODEL ROLES
@@ -151,36 +67,27 @@ export const AnthropicPricing: Record<AnthropicModelId, ModelPricing> = {
  * This allows swapping models without changing business logic.
  */
 export type ModelRole =
-  | 'orchestrator'    // Complex orchestration and decision-making
   | 'supervisor'      // Lightweight supervisor routing between agents
-  | 'router'          // Fast intent classification and routing
   | 'bc_agent'        // Business Central operations
   | 'rag_agent'       // RAG/Knowledge retrieval
   | 'graphing_agent'  // Data visualization and chart configuration
-  | 'session_title'   // Generate session titles
-  | 'embedding'       // Text embeddings (special case, not LLM)
-  | 'default';        // Fallback for unspecified uses
+  | 'session_title';  // Generate session titles
 
 /**
  * Extended model config with role metadata.
- * Uses modelString for initChatModel() format.
  */
 export interface RoleModelConfig {
   role: ModelRole;
   description: string;
-  /** Model string for initChatModel (e.g., "claude-sonnet-4-5-20250929" or "openai:gpt-4o") */
+  /** Model string identifier (e.g., "claude-haiku-4-5-20251001") */
   modelString: string;
-  /** Fallback model string for provider switching (e.g., "openai:gpt-4o") */
+  /** Fallback model string for provider switching (e.g., "openai:gpt-4o-mini") */
   fallback?: string;
   provider: ModelProvider;
   modelName: string;
   temperature: number;
   maxTokens?: number;
   streaming?: boolean;
-  estimatedTokensPerCall?: {
-    input: number;
-    output: number;
-  };
 }
 
 // =============================================================================
@@ -192,52 +99,16 @@ export interface RoleModelConfig {
  * Change these to swap models across the entire application.
  */
 export const ModelRoleConfigs: Record<ModelRole, RoleModelConfig> = {
-  orchestrator: {
-    role: 'orchestrator',
-    description: 'Complex orchestration, multi-step planning, and tool coordination',
-    modelString: AnthropicModels.SONNET_4_5,
-    fallback: FallbackModels.OPENAI_GPT4O,
-    provider: 'anthropic' as ModelProvider,
-    modelName: AnthropicModels.SONNET_4_5,
-    temperature: 0.7,
-    maxTokens: 32000,
-    streaming: true,
-    estimatedTokensPerCall: {
-      input: 2000,
-      output: 2000,
-    },
-  },
-
   supervisor: {
     role: 'supervisor',
     description: 'Lightweight supervisor for routing between specialist agents',
-    modelString: AnthropicModels.HAIKU_3_5,
+    modelString: AnthropicModels.HAIKU_4_5,
     fallback: FallbackModels.OPENAI_GPT4O_MINI,
     provider: 'anthropic' as ModelProvider,
-    modelName: AnthropicModels.HAIKU_3_5,
+    modelName: AnthropicModels.HAIKU_4_5,
     temperature: 0.0, // Deterministic routing
-    maxTokens: 1024,
-    streaming: false,
-    estimatedTokensPerCall: {
-      input: 800,
-      output: 200,
-    },
-  },
-
-  router: {
-    role: 'router',
-    description: 'Fast intent classification and query routing',
-    modelString: AnthropicModels.HAIKU_3_5,
-    fallback: FallbackModels.OPENAI_GPT4O_MINI,
-    provider: 'anthropic' as ModelProvider,
-    modelName: AnthropicModels.HAIKU_3_5,
-    temperature: 0.0, // Deterministic routing
-    maxTokens: 512,
-    streaming: false, // No need for streaming in router
-    estimatedTokensPerCall: {
-      input: 500,
-      output: 100,
-    },
+    maxTokens: 2048,
+    streaming: true,
   },
 
   bc_agent: {
@@ -250,10 +121,6 @@ export const ModelRoleConfigs: Record<ModelRole, RoleModelConfig> = {
     temperature: 0.3, // More deterministic for BC operations
     maxTokens: 32000,
     streaming: true,
-    estimatedTokensPerCall: {
-      input: 3000,
-      output: 4000,
-    },
   },
 
   rag_agent: {
@@ -266,10 +133,6 @@ export const ModelRoleConfigs: Record<ModelRole, RoleModelConfig> = {
     temperature: 0.5,
     maxTokens: 16384,
     streaming: true,
-    estimatedTokensPerCall: {
-      input: 2000,
-      output: 1000,
-    },
   },
 
   graphing_agent: {
@@ -282,10 +145,6 @@ export const ModelRoleConfigs: Record<ModelRole, RoleModelConfig> = {
     temperature: 0.2,
     maxTokens: 16384,
     streaming: true,
-    estimatedTokensPerCall: {
-      input: 2000,
-      output: 3000,
-    },
   },
 
   session_title: {
@@ -298,40 +157,6 @@ export const ModelRoleConfigs: Record<ModelRole, RoleModelConfig> = {
     temperature: 0.7,
     maxTokens: 50,
     streaming: false,
-    estimatedTokensPerCall: {
-      input: 200,
-      output: 20,
-    },
-  },
-
-  embedding: {
-    role: 'embedding',
-    description: 'Text embeddings for semantic search (OpenAI)',
-    modelString: `openai:${OpenAIModels.TEXT_EMBEDDING_3_SMALL}`,
-    provider: 'openai' as ModelProvider,
-    modelName: OpenAIModels.TEXT_EMBEDDING_3_SMALL,
-    temperature: 0,
-    streaming: false,
-    estimatedTokensPerCall: {
-      input: 500,
-      output: 0, // Embeddings don't have output tokens
-    },
-  },
-
-  default: {
-    role: 'default',
-    description: 'Default fallback model for unspecified uses',
-    modelString: AnthropicModels.HAIKU_4_5,
-    fallback: FallbackModels.OPENAI_GPT4O_MINI,
-    provider: 'anthropic' as ModelProvider,
-    modelName: AnthropicModels.HAIKU_4_5,
-    temperature: 0.7,
-    maxTokens: 4096,
-    streaming: true,
-    estimatedTokensPerCall: {
-      input: 1000,
-      output: 500,
-    },
   },
 };
 
@@ -357,81 +182,6 @@ export function getModelConfig(role: ModelRole): RoleModelConfig {
  */
 export function getModelName(role: ModelRole): string {
   return ModelRoleConfigs[role].modelName;
-}
-
-/**
- * Estimate cost for a model role based on token counts
- */
-export function estimateCost(
-  role: ModelRole,
-  inputTokens: number,
-  outputTokens: number
-): { cost: number; breakdown: { input: number; output: number } } {
-  const config = ModelRoleConfigs[role];
-
-  // Only Anthropic models have pricing defined
-  if (config.provider !== 'anthropic') {
-    return { cost: 0, breakdown: { input: 0, output: 0 } };
-  }
-
-  const pricing = AnthropicPricing[config.modelName as AnthropicModelId];
-  if (!pricing) {
-    return { cost: 0, breakdown: { input: 0, output: 0 } };
-  }
-
-  const inputCost = (inputTokens / 1_000_000) * pricing.inputPerMillion;
-  const outputCost = (outputTokens / 1_000_000) * pricing.outputPerMillion;
-
-  return {
-    cost: inputCost + outputCost,
-    breakdown: { input: inputCost, output: outputCost },
-  };
-}
-
-/**
- * Get monthly cost estimate for a role based on estimated usage
- * @param role - Model role
- * @param sessionsPerMonth - Expected sessions per month
- * @param callsPerSession - Average calls per session for this role
- */
-export function estimateMonthlyCost(
-  role: ModelRole,
-  sessionsPerMonth: number,
-  callsPerSession: number = 1
-): number {
-  const config = ModelRoleConfigs[role];
-  const estimated = config.estimatedTokensPerCall;
-
-  if (!estimated) return 0;
-
-  const totalCalls = sessionsPerMonth * callsPerSession;
-  const totalInput = totalCalls * estimated.input;
-  const totalOutput = totalCalls * estimated.output;
-
-  return estimateCost(role, totalInput, totalOutput).cost;
-}
-
-/**
- * Print a summary of all model configurations and estimated costs
- */
-export function printModelSummary(sessionsPerMonth: number = 1000): void {
-  console.log('\n=== Model Configuration Summary ===\n');
-
-  let totalMonthlyCost = 0;
-
-  for (const [role, config] of Object.entries(ModelRoleConfigs)) {
-    const monthlyCost = estimateMonthlyCost(role as ModelRole, sessionsPerMonth);
-    totalMonthlyCost += monthlyCost;
-
-    console.log(`[${role.toUpperCase()}]`);
-    console.log(`  Model: ${config.modelName}`);
-    console.log(`  Provider: ${config.provider}`);
-    console.log(`  Description: ${config.description}`);
-    console.log(`  Est. Monthly Cost (${sessionsPerMonth} sessions): $${monthlyCost.toFixed(2)}`);
-    console.log('');
-  }
-
-  console.log(`=== TOTAL ESTIMATED MONTHLY COST: $${totalMonthlyCost.toFixed(2)} ===\n`);
 }
 
 // =============================================================================
@@ -467,27 +217,6 @@ export const AzureAudioModels = {
 export type AzureAudioModelId = (typeof AzureAudioModels)[keyof typeof AzureAudioModels];
 
 /**
- * Azure Audio Transcription Pricing
- */
-export const AzureAudioPricing: Record<AzureAudioModelId, AzureServicePricing> = {
-  [AzureAudioModels.GPT_4O_TRANSCRIBE]: {
-    pricePerUnit: 6.0,
-    unit: '1M audio tokens',
-    tier: 'premium',
-  },
-  [AzureAudioModels.GPT_4O_MINI_TRANSCRIBE]: {
-    pricePerUnit: 6.0,
-    unit: '1M audio tokens',
-    tier: 'standard',
-  },
-  [AzureAudioModels.WHISPER_1]: {
-    pricePerUnit: 0.006,
-    unit: 'minute',
-    tier: 'standard',
-  },
-};
-
-/**
  * Azure Computer Vision API Versions
  * Different versions have different capabilities for image understanding
  * @see https://learn.microsoft.com/en-us/azure/ai-services/computer-vision/
@@ -514,75 +243,6 @@ export const AzureDocumentModels = {
 } as const;
 
 export type AzureDocumentModelId = (typeof AzureDocumentModels)[keyof typeof AzureDocumentModels];
-
-/**
- * Azure AI Services Pricing (per unit)
- * @see https://azure.microsoft.com/en-us/pricing/details/cognitive-services/
- */
-export interface AzureServicePricing {
-  pricePerUnit: number;
-  unit: string;
-  tier: 'free' | 'standard' | 'premium';
-}
-
-export const AzureEmbeddingPricing: Record<AzureEmbeddingModelId, AzureServicePricing> = {
-  [AzureEmbeddingModels.TEXT_EMBEDDING_3_SMALL]: {
-    pricePerUnit: 0.02,
-    unit: '1M tokens',
-    tier: 'standard',
-  },
-  [AzureEmbeddingModels.TEXT_EMBEDDING_3_LARGE]: {
-    pricePerUnit: 0.13,
-    unit: '1M tokens',
-    tier: 'premium',
-  },
-  [AzureEmbeddingModels.TEXT_EMBEDDING_ADA_002]: {
-    pricePerUnit: 0.10,
-    unit: '1M tokens',
-    tier: 'standard',
-  },
-};
-
-export const AzureVisionPricing: Record<AzureVisionModelId, AzureServicePricing> = {
-  [AzureVisionModels.VECTORIZE_2023_04_15]: {
-    pricePerUnit: 1.0,
-    unit: '1K images',
-    tier: 'standard',
-  },
-  [AzureVisionModels.VECTORIZE_2024_02_01]: {
-    pricePerUnit: 1.0,
-    unit: '1K images',
-    tier: 'standard',
-  },
-};
-
-export const AzureDocumentPricing: Record<AzureDocumentModelId, AzureServicePricing> = {
-  [AzureDocumentModels.PREBUILT_READ]: {
-    pricePerUnit: 1.5,
-    unit: '1K pages',
-    tier: 'standard',
-  },
-  [AzureDocumentModels.PREBUILT_LAYOUT]: {
-    pricePerUnit: 10.0,
-    unit: '1K pages',
-    tier: 'premium',
-  },
-  [AzureDocumentModels.PREBUILT_DOCUMENT]: {
-    pricePerUnit: 10.0,
-    unit: '1K pages',
-    tier: 'premium',
-  },
-  [AzureDocumentModels.PREBUILT_INVOICE]: {
-    pricePerUnit: 10.0,
-    unit: '1K pages',
-    tier: 'premium',
-  },
-  [AzureDocumentModels.PREBUILT_RECEIPT]: {
-    pricePerUnit: 10.0,
-    unit: '1K pages',
-    tier: 'premium',
-  },
-};
 
 // =============================================================================
 // AZURE AI SERVICE ROLES
@@ -667,60 +327,4 @@ export function getAzureServiceConfig(role: AzureServiceRole): AzureServiceConfi
     throw new Error(`Unknown Azure service role: ${role}`);
   }
   return config;
-}
-
-/**
- * Get Azure model ID by role
- */
-export function getAzureModelId(role: AzureServiceRole): string {
-  return AzureServiceConfigs[role].modelId;
-}
-
-/**
- * Get Azure API version by role
- */
-export function getAzureApiVersion(role: AzureServiceRole): string {
-  return AzureServiceConfigs[role].apiVersion;
-}
-
-// =============================================================================
-// PREMIUM TIER CONFIGURATIONS (for high-value customers)
-// =============================================================================
-
-/**
- * Premium configuration overrides for customers requiring higher accuracy
- * Use these when standard tier doesn't meet quality requirements
- */
-export const PremiumAzureServiceConfigs: Partial<Record<AzureServiceRole, AzureServiceConfig>> = {
-  text_embedding: {
-    role: 'text_embedding',
-    description: 'Premium text embeddings with 3072 dimensions for better semantic accuracy',
-    modelId: AzureEmbeddingModels.TEXT_EMBEDDING_3_LARGE,
-    apiVersion: '2024-06-01',
-    dimensions: 3072,
-    tier: 'premium',
-  },
-
-  document_ocr: {
-    role: 'document_ocr',
-    description: 'Premium document extraction with table and structure support',
-    modelId: AzureDocumentModels.PREBUILT_LAYOUT,
-    apiVersion: '2024-02-29-preview',
-    tier: 'premium',
-  },
-};
-
-/**
- * Get configuration for a specific tier
- * @param role - Azure service role
- * @param tier - 'standard' or 'premium'
- */
-export function getAzureServiceConfigByTier(
-  role: AzureServiceRole,
-  tier: 'standard' | 'premium' = 'standard'
-): AzureServiceConfig {
-  if (tier === 'premium' && PremiumAzureServiceConfigs[role]) {
-    return PremiumAzureServiceConfigs[role]!;
-  }
-  return AzureServiceConfigs[role];
 }

@@ -1,7 +1,7 @@
 
 import { AgentState, ToolExecution } from '../orchestrator/state';
 import { ModelFactory } from '../../../core/langchain/ModelFactory';
-import { getModelConfig, ModelRoleConfigs } from '@/infrastructure/config/models';
+import { getModelConfig } from '@/infrastructure/config/models';
 import { RunnableConfig } from '@langchain/core/runnables';
 import {
   listAllEntitiesTool,
@@ -19,7 +19,7 @@ import { AGENT_ID, AGENT_DISPLAY_NAME, AGENT_ICON, AGENT_COLOR } from '@bc-agent
 
 const logger = createChildLogger({ service: 'BCAgent' });
 
-// System prompt for the Business Central agent
+// System prompt for the Business Central agent (used by legacy class below)
 const BC_AGENT_SYSTEM_PROMPT = `You are a specialized ERP assistant with access to tools for querying Business Central entities and operations.
 
 Your responsibilities:
@@ -27,15 +27,6 @@ Your responsibilities:
 - Use the available tools to discover entities, search operations, and get detailed information
 - Provide clear, helpful explanations of ERP concepts and data
 - Format results in a user-friendly way
-
-Available tools:
-- list_all_entities: Get a complete list of all ERP entities
-- search_entity_operations: Search for specific operations by keyword
-- get_entity_details: Get detailed information about a specific entity
-- get_entity_relationships: Discover relationships between entities
-- validate_workflow_structure: Validate multi-step workflows
-- build_knowledge_base_workflow: Build comprehensive workflow documentation
-- get_endpoint_documentation: Get detailed API documentation
 
 CRITICAL INSTRUCTIONS:
 - You MUST use the available tools for ALL ERP queries
@@ -71,17 +62,10 @@ export class BusinessCentralAgent {
 
     // Use centralized model configuration for BC Agent role
     const bcConfig = getModelConfig('bc_agent');
-    const enableThinking = state.context.options?.enableThinking ?? false;
-    const thinkingBudget = state.context.options?.thinkingBudget ?? 10000;
-
-    const model = enableThinking
-      ? await ModelFactory.createForThinking('bc_agent', thinkingBudget)
-      : await ModelFactory.create('bc_agent');
+    const model = await ModelFactory.create('bc_agent');
 
     logger.debug({
       modelString: bcConfig.modelString,
-      enableThinking,
-      thinkingBudget: enableThinking ? thinkingBudget : undefined,
     }, 'BCAgent: Model initialized');
 
     // Bind all 7 BC meta-tools to the model
@@ -232,16 +216,11 @@ export class BusinessCentralAgent {
       toolExecutionsCount: toolExecutions.length
     }, 'BCAgent: Invocation complete');
 
-    // Track actual model used (thinking mode uses orchestrator/Sonnet model)
-    const actualModelName = enableThinking
-      ? ModelRoleConfigs['orchestrator'].modelName
-      : bcConfig.modelName;
-
     // Return the response as a partial state update (appending to messages)
     return {
       messages: newMessages,
       toolExecutions: toolExecutions, // Return tool executions for event emission
-      usedModel: actualModelName, // Track model for billing and traceability
+      usedModel: bcConfig.modelName, // Track model for billing and traceability
       currentAgentIdentity: {
         agentId: AGENT_ID.BC_AGENT,
         agentName: AGENT_DISPLAY_NAME[AGENT_ID.BC_AGENT],

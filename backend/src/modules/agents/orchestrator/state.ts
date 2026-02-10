@@ -77,8 +77,8 @@ export const ExtendedAgentStateAnnotation = Annotation.Root({
    * Preserved for backward compatibility with graph.ts conditional edges.
    */
   activeAgent: Annotation<string>({
-    reducer: (x, y) => y ?? x ?? "orchestrator",
-    default: () => "orchestrator",
+    reducer: (x, y) => y ?? x ?? "supervisor",
+    default: () => "supervisor",
   }),
 
   /**

@@ -1,67 +1,18 @@
 /**
  * Session Title Generator Service
  *
- * Generates concise, meaningful titles for chat sessions using Claude API.
+ * Generates concise, meaningful titles for chat sessions using ModelFactory.
  * Extracted from DirectAgentService to follow Single Responsibility Principle.
  *
  * @module services/sessions/SessionTitleGenerator
  */
 
-import Anthropic from '@anthropic-ai/sdk';
-import { env } from '@/infrastructure/config/environment';
-import { getModelName } from '@/infrastructure/config/models';
+import { HumanMessage, SystemMessage } from '@langchain/core/messages';
+import { ModelFactory } from '@/core/langchain/ModelFactory';
 import { createChildLogger } from '@/shared/utils/logger';
 import { executeQuery, SqlParams } from '@/infrastructure/database/database';
 
-/**
- * Session Title Generator Class
- */
-export class SessionTitleGenerator {
-  private static instance: SessionTitleGenerator | null = null;
-  private anthropic: Anthropic;
-  private logger = createChildLogger({ service: 'SessionTitleGenerator' });
-
-  private constructor() {
-    this.anthropic = new Anthropic({
-      apiKey: env.ANTHROPIC_API_KEY,
-    });
-
-    this.logger.info('SessionTitleGenerator initialized');
-  }
-
-  /**
-   * Get singleton instance
-   */
-  public static getInstance(): SessionTitleGenerator {
-    if (!SessionTitleGenerator.instance) {
-      SessionTitleGenerator.instance = new SessionTitleGenerator();
-    }
-    return SessionTitleGenerator.instance;
-  }
-
-  /**
-   * Generate Title for Session
-   *
-   * Creates a concise title (max 50 chars) based on the user's first message.
-   * Uses Claude API with a specific system prompt for title generation.
-   *
-   * @param userMessage - First message from user
-   * @returns Generated title
-   *
-   * @example
-   * ```typescript
-   * const generator = getSessionTitleGenerator();
-   * const title = await generator.generateTitle('Show me all customers');
-   * // Returns: "List All Customers"
-   * ```
-   */
-  public async generateTitle(userMessage: string): Promise<string> {
-    try {
-      this.logger.debug('Generating session title', {
-        messageLength: userMessage.length,
-      });
-
-      const systemPrompt = `You are a helpful assistant that generates concise titles for chat sessions.
+const SESSION_TITLE_SYSTEM_PROMPT = `You are a helpful assistant that generates concise titles for chat sessions.
 
 Rules:
 - Maximum 50 characters
@@ -83,27 +34,63 @@ Title: "Q3 2024 Revenue Report"
 
 Now generate a title for the user's message:`;
 
-      // Use centralized model configuration for session titles (economic model)
-      const response = await this.anthropic.messages.create({
-        model: getModelName('session_title'),
-        max_tokens: 100,
-        temperature: 0.3, // Lower temperature for more consistent titles
-        system: systemPrompt,
-        messages: [
-          {
-            role: 'user',
-            content: userMessage,
-          },
-        ],
+/**
+ * Session Title Generator Class
+ */
+export class SessionTitleGenerator {
+  private static instance: SessionTitleGenerator | null = null;
+  private logger = createChildLogger({ service: 'SessionTitleGenerator' });
+
+  private constructor() {
+    this.logger.info('SessionTitleGenerator initialized');
+  }
+
+  /**
+   * Get singleton instance
+   */
+  public static getInstance(): SessionTitleGenerator {
+    if (!SessionTitleGenerator.instance) {
+      SessionTitleGenerator.instance = new SessionTitleGenerator();
+    }
+    return SessionTitleGenerator.instance;
+  }
+
+  /**
+   * Generate Title for Session
+   *
+   * Creates a concise title (max 50 chars) based on the user's first message.
+   * Uses ModelFactory with the 'session_title' role for consistent model selection.
+   *
+   * @param userMessage - First message from user
+   * @returns Generated title
+   *
+   * @example
+   * ```typescript
+   * const generator = getSessionTitleGenerator();
+   * const title = await generator.generateTitle('Show me all customers');
+   * // Returns: "List All Customers"
+   * ```
+   */
+  public async generateTitle(userMessage: string): Promise<string> {
+    try {
+      this.logger.debug('Generating session title', {
+        messageLength: userMessage.length,
       });
 
+      const model = await ModelFactory.create('session_title');
+
+      const response = await model.invoke([
+        new SystemMessage(SESSION_TITLE_SYSTEM_PROMPT),
+        new HumanMessage(userMessage),
+      ]);
+
       // Extract text from response
-      const titleBlock = response.content[0];
-      if (!titleBlock || titleBlock.type !== 'text') {
-        throw new Error('Invalid response from Claude API');
+      const content = response.content;
+      if (typeof content !== 'string') {
+        throw new Error('Invalid response from model');
       }
 
-      let title = titleBlock.text.trim();
+      let title = content.trim();
 
       // Sanitize title
       title = this.sanitizeTitle(title);
@@ -194,7 +181,7 @@ Now generate a title for the user's message:`;
    *
    * Removes unwanted characters and formats the title.
    *
-   * @param title - Raw title from Claude
+   * @param title - Raw title from model
    * @returns Sanitized title
    */
   private sanitizeTitle(title: string): string {
@@ -209,7 +196,7 @@ Now generate a title for the user's message:`;
    * Generate Fallback Title
    *
    * Creates a simple title from the first words of the message.
-   * Used when Claude API fails or returns invalid title.
+   * Used when model fails or returns invalid title.
    *
    * @param userMessage - User message
    * @returns Fallback title
@@ -258,7 +245,7 @@ Now generate a title for the user's message:`;
     const successfulResults: Array<{ sessionId: string; title: string }> = [];
 
     results.forEach((result, index) => {
-      const session = sessions[index];  // ⭐ Cache to avoid multiple undefined checks
+      const session = sessions[index];
 
       if (result.status === 'fulfilled') {
         successfulResults.push(result.value);

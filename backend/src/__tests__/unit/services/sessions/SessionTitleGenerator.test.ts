@@ -1,19 +1,16 @@
 /**
  * SessionTitleGenerator Unit Tests
  *
- * Tests for session title generation using Claude API.
+ * Tests for session title generation using ModelFactory.
  * Covers title generation, sanitization, database updates, batch operations,
  * and error handling with fallback strategies.
  *
- * Created: 2025-11-19 (Phase 4, Task 4.2)
  * Coverage Target: 75%+
- * Test Count: 12
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { SessionTitleGenerator, getSessionTitleGenerator } from '@/services/sessions/SessionTitleGenerator';
-import type { TextBlock } from '@/types/sdk';
-import { getModelName } from '@/infrastructure/config/models';
+import { AIMessage } from '@langchain/core/messages';
 
 // ============================================================================
 // MOCKS SETUP
@@ -42,22 +39,13 @@ vi.mock('@/shared/utils/logger', () => ({
   createChildLogger: () => mockLogger,  // Regular function, not vi.fn()
 }));
 
-// Mock environment config
-vi.mock('@/config', () => ({
-  env: {
-    ANTHROPIC_API_KEY: 'test-api-key',
-    ANTHROPIC_MODEL: 'claude-3-5-sonnet-20241022',
-  },
-}));
+// Mock ModelFactory with vi.hoisted to ensure availability during mock hoisting
+const mockModelCreate = vi.hoisted(() => vi.fn());
+const mockModelInvoke = vi.hoisted(() => vi.fn());
 
-// Mock Anthropic SDK
-const mockAnthropicCreate = vi.fn();
-
-vi.mock('@anthropic-ai/sdk', () => ({
-  default: class MockAnthropic {
-    messages = {
-      create: mockAnthropicCreate,
-    };
+vi.mock('@/core/langchain/ModelFactory', () => ({
+  ModelFactory: {
+    create: mockModelCreate,
   },
 }));
 
@@ -70,6 +58,11 @@ describe('SessionTitleGenerator', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+
+    // Re-set up ModelFactory.create mock after clearAllMocks
+    mockModelCreate.mockResolvedValue({
+      invoke: (...args: unknown[]) => mockModelInvoke(...args),
+    });
 
     // Reset singleton instance for fresh tests
     // @ts-expect-error - Accessing private static member for testing
@@ -111,30 +104,19 @@ describe('SessionTitleGenerator', () => {
       const userMessage = 'Show me all customers from Spain';
       const expectedTitle = 'List Spanish Customers';
 
-      mockAnthropicCreate.mockResolvedValueOnce({
-        content: [
-          {
-            type: 'text',
-            text: expectedTitle,
-          } as TextBlock,
-        ],
-      });
+      mockModelInvoke.mockResolvedValueOnce(
+        new AIMessage({ content: expectedTitle })
+      );
 
       const title = await generator.generateTitle(userMessage);
 
       expect(title).toBe(expectedTitle);
-      expect(mockAnthropicCreate).toHaveBeenCalledWith({
-        model: getModelName('session_title'), // Centralized config - changes propagate automatically
-        max_tokens: 100,
-        temperature: 0.3,
-        system: expect.stringContaining('Maximum 50 characters'),
-        messages: [
-          {
-            role: 'user',
-            content: userMessage,
-          },
-        ],
-      });
+      expect(mockModelInvoke).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({ content: expect.stringContaining('Maximum 50 characters') }),
+          expect.objectContaining({ content: userMessage }),
+        ])
+      );
       expect(mockLogger.debug).toHaveBeenCalledWith('Generating session title', {
         messageLength: userMessage.length,
       });
@@ -144,33 +126,23 @@ describe('SessionTitleGenerator', () => {
       const userMessage = 'a'.repeat(1500); // Very long message
       const expectedTitle = 'Long Message Summary';
 
-      mockAnthropicCreate.mockResolvedValueOnce({
-        content: [
-          {
-            type: 'text',
-            text: expectedTitle,
-          } as TextBlock,
-        ],
-      });
+      mockModelInvoke.mockResolvedValueOnce(
+        new AIMessage({ content: expectedTitle })
+      );
 
       const title = await generator.generateTitle(userMessage);
 
       expect(title).toBe(expectedTitle);
-      expect(mockAnthropicCreate).toHaveBeenCalled();
+      expect(mockModelInvoke).toHaveBeenCalled();
     });
 
     it('should enforce 50 character limit with ellipsis', async () => {
       const userMessage = 'Create new item';
       const longTitle = 'This Is A Very Long Title That Exceeds The Maximum Fifty Character Limit';
 
-      mockAnthropicCreate.mockResolvedValueOnce({
-        content: [
-          {
-            type: 'text',
-            text: longTitle,
-          } as TextBlock,
-        ],
-      });
+      mockModelInvoke.mockResolvedValueOnce(
+        new AIMessage({ content: longTitle })
+      );
 
       const title = await generator.generateTitle(userMessage);
 
@@ -183,14 +155,9 @@ describe('SessionTitleGenerator', () => {
     it('should handle empty message with fallback', async () => {
       const userMessage = '';
 
-      mockAnthropicCreate.mockResolvedValueOnce({
-        content: [
-          {
-            type: 'text',
-            text: '', // Empty response
-          } as TextBlock,
-        ],
-      });
+      mockModelInvoke.mockResolvedValueOnce(
+        new AIMessage({ content: '' })
+      );
 
       const title = await generator.generateTitle(userMessage);
 
@@ -207,14 +174,9 @@ describe('SessionTitleGenerator', () => {
       const userMessage = 'List customers';
       const rawTitle = '"List Customers"';
 
-      mockAnthropicCreate.mockResolvedValueOnce({
-        content: [
-          {
-            type: 'text',
-            text: rawTitle,
-          } as TextBlock,
-        ],
-      });
+      mockModelInvoke.mockResolvedValueOnce(
+        new AIMessage({ content: rawTitle })
+      );
 
       const title = await generator.generateTitle(userMessage);
 
@@ -226,14 +188,9 @@ describe('SessionTitleGenerator', () => {
       const userMessage = 'Create item';
       const rawTitle = 'Create   New    Item'; // Multiple spaces
 
-      mockAnthropicCreate.mockResolvedValueOnce({
-        content: [
-          {
-            type: 'text',
-            text: rawTitle,
-          } as TextBlock,
-        ],
-      });
+      mockModelInvoke.mockResolvedValueOnce(
+        new AIMessage({ content: rawTitle })
+      );
 
       const title = await generator.generateTitle(userMessage);
 
@@ -299,16 +256,10 @@ describe('SessionTitleGenerator', () => {
         { sessionId: 'session-3', userMessage: 'Show revenue' },
       ];
 
-      mockAnthropicCreate
-        .mockResolvedValueOnce({
-          content: [{ type: 'text', text: 'List Customers' } as TextBlock],
-        })
-        .mockResolvedValueOnce({
-          content: [{ type: 'text', text: 'Create Item' } as TextBlock],
-        })
-        .mockResolvedValueOnce({
-          content: [{ type: 'text', text: 'Show Revenue' } as TextBlock],
-        });
+      mockModelInvoke
+        .mockResolvedValueOnce(new AIMessage({ content: 'List Customers' }))
+        .mockResolvedValueOnce(new AIMessage({ content: 'Create Item' }))
+        .mockResolvedValueOnce(new AIMessage({ content: 'Show Revenue' }));
 
       const results = await generator.batchGenerateTitles(sessions);
 
@@ -338,10 +289,8 @@ describe('SessionTitleGenerator', () => {
         { sessionId: 'session-2', userMessage: 'Create item' },
       ];
 
-      mockAnthropicCreate
-        .mockResolvedValueOnce({
-          content: [{ type: 'text', text: 'List Customers' } as TextBlock],
-        })
+      mockModelInvoke
+        .mockResolvedValueOnce(new AIMessage({ content: 'List Customers' }))
         .mockRejectedValueOnce(new Error('API error'));
 
       const results = await generator.batchGenerateTitles(sessions);
@@ -369,10 +318,10 @@ describe('SessionTitleGenerator', () => {
   // ==========================================================================
 
   describe('Error Handling', () => {
-    it('should use fallback on Claude API errors', async () => {
+    it('should use fallback on model errors', async () => {
       const userMessage = 'Show me all customers from Spain and Portugal';
 
-      mockAnthropicCreate.mockRejectedValueOnce(new Error('API rate limit exceeded'));
+      mockModelInvoke.mockRejectedValueOnce(new Error('API rate limit exceeded'));
 
       const title = await generator.generateTitle(userMessage);
 
@@ -387,17 +336,13 @@ describe('SessionTitleGenerator', () => {
       );
     });
 
-    it('should use fallback on invalid response type', async () => {
+    it('should use fallback on non-string response content', async () => {
       const userMessage = 'Create new item';
 
-      mockAnthropicCreate.mockResolvedValueOnce({
-        content: [
-          {
-            type: 'tool_use', // Wrong type (not 'text')
-            name: 'some_tool',
-          },
-        ],
-      });
+      // Return AIMessage with array content (non-string)
+      mockModelInvoke.mockResolvedValueOnce(
+        new AIMessage({ content: [{ type: 'text', text: 'Title' }] })
+      );
 
       const title = await generator.generateTitle(userMessage);
 
@@ -417,15 +362,15 @@ describe('SessionTitleGenerator', () => {
       const userMessage = 'Show all vendors';
       const expectedTitle = 'List All Vendors';
 
-      mockAnthropicCreate.mockResolvedValueOnce({
-        content: [{ type: 'text', text: expectedTitle } as TextBlock],
-      });
+      mockModelInvoke.mockResolvedValueOnce(
+        new AIMessage({ content: expectedTitle })
+      );
       mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
 
       const title = await generator.generateAndUpdateTitle(sessionId, userMessage);
 
       expect(title).toBe(expectedTitle);
-      expect(mockAnthropicCreate).toHaveBeenCalled();
+      expect(mockModelInvoke).toHaveBeenCalled();
       expect(mockExecuteQuery).toHaveBeenCalledWith(
         expect.stringContaining('UPDATE sessions'),
         expect.objectContaining({

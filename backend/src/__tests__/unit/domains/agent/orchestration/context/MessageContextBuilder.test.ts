@@ -103,7 +103,7 @@ function buildGraphInputs(
         ? { content: messageContent, _getType: () => 'human' }
         : { content: messageContent, _getType: () => 'human' },
     ],
-    activeAgent: 'orchestrator',
+    activeAgent: 'supervisor',
     context: {
       userId,
       sessionId,
@@ -284,7 +284,7 @@ describe('MessageContextBuilder', () => {
 
       const inputs = buildGraphInputs(messageContent, userId, sessionId, contextResult);
 
-      expect(inputs.activeAgent).toBe('orchestrator');
+      expect(inputs.activeAgent).toBe('supervisor');
       expect(inputs.messages).toHaveLength(1);
       expect(inputs.context.userId).toBe(userId);
       expect(inputs.context.sessionId).toBe(sessionId);

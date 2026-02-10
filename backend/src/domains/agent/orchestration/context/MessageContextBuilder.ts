@@ -133,9 +133,9 @@ export function buildGraphInputs(
     messages: [
       typeof messageContent === 'string'
         ? new HumanMessage(messageContent)
-        : new HumanMessage({ content: messageContent }),
+        : new HumanMessage({ content: Array.isArray(messageContent) ? messageContent : [messageContent] }),
     ],
-    activeAgent: 'orchestrator',
+    activeAgent: 'supervisor',
     context: {
       userId,
       sessionId,

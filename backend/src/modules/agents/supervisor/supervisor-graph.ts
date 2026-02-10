@@ -11,7 +11,7 @@
 import { Command } from '@langchain/langgraph';
 import { createSupervisor } from '@langchain/langgraph-supervisor';
 import { HumanMessage, type BaseMessage } from '@langchain/core/messages';
-import type { AgentId } from '@bc-agent/shared';
+import { AGENT_ID, type AgentId } from '@bc-agent/shared';
 import { ModelFactory } from '@/core/langchain/ModelFactory';
 import type { ICompiledGraph } from '@/domains/agent/orchestration/execution/GraphExecutor';
 import type { AgentState } from '../orchestrator/state';
@@ -195,7 +195,7 @@ class SupervisorGraphAdapter implements ICompiledGraph {
       invocationSuccess = false;
       // Record failed invocation analytics (fire-and-forget)
       getAgentAnalyticsService().recordInvocation({
-        agentId: 'supervisor',
+        agentId: AGENT_ID.SUPERVISOR,
         success: false,
         inputTokens: 0,
         outputTokens: 0,

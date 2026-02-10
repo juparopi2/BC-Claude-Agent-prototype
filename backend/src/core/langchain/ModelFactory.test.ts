@@ -1,13 +1,15 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ModelFactory } from './ModelFactory';
 
-// Mock the provider classes
+// Mock the provider classes with vi.hoisted for proper mock factory hoisting
+const mockChatAnthropicConstructor = vi.hoisted(() => vi.fn().mockImplementation(() => ({
+  invoke: vi.fn(),
+  bindTools: vi.fn(),
+  withStructuredOutput: vi.fn(),
+})));
+
 vi.mock('@langchain/anthropic', () => ({
-  ChatAnthropic: vi.fn().mockImplementation(() => ({
-    invoke: vi.fn(),
-    bindTools: vi.fn(),
-    withStructuredOutput: vi.fn(),
-  })),
+  ChatAnthropic: mockChatAnthropicConstructor,
 }));
 
 vi.mock('@langchain/google-vertexai', () => ({
@@ -28,6 +30,7 @@ describe('ModelFactory', () => {
   beforeEach(() => {
     // Clear cache before each test
     ModelFactory.clearCache();
+    vi.clearAllMocks();
   });
 
   describe('create', () => {
@@ -40,11 +43,11 @@ describe('ModelFactory', () => {
     it('should create model for different roles', async () => {
       const bcModel = await ModelFactory.create('bc_agent');
       const ragModel = await ModelFactory.create('rag_agent');
-      const routerModel = await ModelFactory.create('router');
+      const supervisorModel = await ModelFactory.create('supervisor');
 
       expect(bcModel).toBeDefined();
       expect(ragModel).toBeDefined();
-      expect(routerModel).toBeDefined();
+      expect(supervisorModel).toBeDefined();
     });
 
     it('should throw for unknown role', async () => {
@@ -66,6 +69,40 @@ describe('ModelFactory', () => {
       // Should be different instances
       expect(model1).not.toBe(model2);
     });
+
+    it('should pass streaming to ChatAnthropic constructor', async () => {
+      await ModelFactory.create('bc_agent');
+
+      expect(mockChatAnthropicConstructor).toHaveBeenCalledWith(
+        expect.objectContaining({
+          streaming: true,
+        })
+      );
+    });
+
+    it('should pass clientOptions.timeout to ChatAnthropic constructor', async () => {
+      await ModelFactory.create('bc_agent');
+
+      expect(mockChatAnthropicConstructor).toHaveBeenCalledWith(
+        expect.objectContaining({
+          clientOptions: {
+            timeout: 15 * 60 * 1000,
+          },
+        })
+      );
+    });
+
+    it('should include streaming in cache key', async () => {
+      // bc_agent has streaming: true, session_title has streaming: false
+      await ModelFactory.create('bc_agent');
+      await ModelFactory.create('session_title');
+
+      const stats = ModelFactory.getCacheStats();
+      const keys = stats.keys;
+      // Both should have different streaming in cache key
+      expect(keys.some(k => k.includes(':strue'))).toBe(true);
+      expect(keys.some(k => k.includes(':sfalse'))).toBe(true);
+    });
   });
 
   describe('createWithProvider', () => {
@@ -83,18 +120,11 @@ describe('ModelFactory', () => {
     it('should create model from explicit config', async () => {
       const model = await ModelFactory.createFromConfig({
         provider: 'anthropic',
-        modelName: 'claude-sonnet-4-5-20250929',
+        modelName: 'claude-haiku-4-5-20251001',
         temperature: 0.5,
         maxTokens: 8192,
       });
 
-      expect(model).toBeDefined();
-    });
-  });
-
-  describe('createDefault', () => {
-    it('should create default model', async () => {
-      const model = await ModelFactory.createDefault();
       expect(model).toBeDefined();
     });
   });

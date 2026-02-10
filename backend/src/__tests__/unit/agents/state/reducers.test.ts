@@ -76,7 +76,7 @@ describe('AgentContextAnnotation', () => {
     const ctx = {
       userId: 'USER-123',
       sessionId: 'SESSION-456',
-      preferredModelRole: 'orchestrator' as const,
+      preferredModelRole: 'supervisor' as const,
       options: {
         attachments: ['file-1'],
         enableAutoSemanticSearch: true,
@@ -123,8 +123,8 @@ describe('ExtendedAgentStateAnnotation', () => {
 
 describe('Backward compatibility', () => {
   it('should have activeAgent field with orchestrator default', () => {
-    // The activeAgent reducer: (x, y) => y ?? x ?? "orchestrator"
-    // Default: () => "orchestrator"
+    // The activeAgent reducer: (x, y) => y ?? x ?? "supervisor"
+    // Default: () => "supervisor"
     const spec = ExtendedAgentStateAnnotation.spec;
     expect(spec).toHaveProperty('activeAgent');
   });

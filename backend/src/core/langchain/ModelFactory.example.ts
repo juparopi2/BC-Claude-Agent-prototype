@@ -1,7 +1,7 @@
 /**
- * Usage examples for ModelFactory with initChatModel
+ * Usage examples for ModelFactory
  *
- * The new ModelFactory uses LangChain's initChatModel() for multi-provider support.
+ * ModelFactory uses direct LangChain provider constructors for multi-provider support.
  * Models are configured by role, making it easy to switch providers.
  */
 
@@ -12,11 +12,11 @@ import { ModelFactory } from './ModelFactory';
 async function roleBasedExample() {
   const bcModel = await ModelFactory.create('bc_agent');
   const ragModel = await ModelFactory.create('rag_agent');
-  const routerModel = await ModelFactory.create('router');
+  const supervisorModel = await ModelFactory.create('supervisor');
 
   // Use the model
   // const response = await bcModel.invoke([new HumanMessage('Hello')]);
-  return { bcModel, ragModel, routerModel };
+  return { bcModel, ragModel, supervisorModel };
 }
 
 // Example 2: Create model with different provider
@@ -36,7 +36,7 @@ async function providerSwitchExample() {
 async function explicitConfigExample() {
   const model = await ModelFactory.createFromConfig({
     provider: 'anthropic',
-    modelName: 'claude-sonnet-4-5-20250929',
+    modelName: 'claude-haiku-4-5-20251001',
     temperature: 0.5,
     maxTokens: 8192,
   });
@@ -44,21 +44,14 @@ async function explicitConfigExample() {
   return model;
 }
 
-// Example 4: Default model
-// Uses the 'default' role configuration
-async function defaultModelExample() {
-  const defaultModel = await ModelFactory.createDefault();
-  return defaultModel;
-}
-
-// Example 5: Check cache statistics
+// Example 4: Check cache statistics
 function cacheStatsExample() {
   const stats = ModelFactory.getCacheStats();
   console.log(`Cache size: ${stats.size}`);
   console.log(`Cached models: ${stats.keys.join(', ')}`);
 }
 
-// Example 6: Clear cache (useful for testing)
+// Example 5: Clear cache (useful for testing)
 function clearCacheExample() {
   ModelFactory.clearCache();
   console.log('Model cache cleared');
@@ -68,7 +61,6 @@ export {
   roleBasedExample,
   providerSwitchExample,
   explicitConfigExample,
-  defaultModelExample,
   cacheStatsExample,
   clearCacheExample,
 };

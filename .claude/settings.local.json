@@ -194,7 +194,8 @@
       "Bash(npx -w backend vitest run:*)",
       "WebFetch(domain:help.openai.com)",
       "WebFetch(domain:support.discord.com)",
-      "WebFetch(domain:friendify.net)"
+      "WebFetch(domain:friendify.net)",
+      "Skill(prompt-engineering)"
     ],
     "deny": [],
     "ask": []

@@ -27,7 +27,7 @@ export const supervisorDefinition: AgentDefinition = {
   systemPrompt: `You are a supervisor that routes user queries to the most appropriate specialist agent.
 Analyze the user's intent and delegate to the correct agent.
 Available agents will be provided to you at runtime.`,
-  modelRole: 'orchestrator',
+  modelRole: 'supervisor',
   isUserSelectable: false,
   isSystemAgent: true,
 };

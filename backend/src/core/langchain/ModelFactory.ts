@@ -32,8 +32,8 @@ export interface ModelConfig {
 /**
  * Cache key for model instances
  */
-function getCacheKey(provider: string, modelName: string, config: { temperature?: number; maxTokens?: number }): string {
-  return `${provider}:${modelName}:t${config.temperature ?? 'default'}:m${config.maxTokens ?? 'default'}`;
+function getCacheKey(provider: string, modelName: string, config: { temperature?: number; maxTokens?: number; streaming?: boolean }): string {
+  return `${provider}:${modelName}:t${config.temperature ?? 'default'}:m${config.maxTokens ?? 'default'}:s${config.streaming ?? 'default'}`;
 }
 
 /**
@@ -47,7 +47,7 @@ export class ModelFactory {
    * Creates a chat model for a specific role.
    * Uses role configuration from ModelRoleConfigs.
    *
-   * @param role - The model role (e.g., 'bc_agent', 'rag_agent', 'router')
+   * @param role - The model role (e.g., 'bc_agent', 'rag_agent', 'supervisor')
    * @returns Promise<BaseChatModel> - Configured chat model instance
    *
    * @example
@@ -65,6 +65,7 @@ export class ModelFactory {
     const cacheKey = getCacheKey(config.provider, config.modelName, {
       temperature: config.temperature,
       maxTokens: config.maxTokens,
+      streaming: config.streaming,
     });
 
     if (this.cache.has(cacheKey)) {
@@ -107,6 +108,7 @@ export class ModelFactory {
     const cacheKey = getCacheKey(provider, modelName, {
       temperature: config.temperature,
       maxTokens: config.maxTokens,
+      streaming: config.streaming,
     });
 
     if (this.cache.has(cacheKey)) {
@@ -130,6 +132,7 @@ export class ModelFactory {
     const cacheKey = getCacheKey(config.provider, config.modelName, {
       temperature: config.temperature,
       maxTokens: config.maxTokens,
+      streaming: config.streaming,
     });
 
     if (this.cache.has(cacheKey)) {
@@ -138,7 +141,7 @@ export class ModelFactory {
 
     const model = await this.createModel({
       ...config,
-      role: 'default',
+      role: 'supervisor' as ModelRole, // Dummy role for type compatibility; not used by createModel
       description: 'Custom configuration',
       modelString: `${config.provider}:${config.modelName}`,
     } as RoleModelConfig);
@@ -148,19 +151,12 @@ export class ModelFactory {
   }
 
   /**
-   * Creates a default model using the 'default' role configuration.
-   */
-  static async createDefault(): Promise<BaseChatModel> {
-    return this.create('default');
-  }
-
-  /**
    * Internal method to create a model instance using direct provider constructors.
    * Avoids initChatModel's ConfigurableModel wrapper which calls JSON.stringify
    * on config (crashes with circular refs from LangGraph checkpointer objects).
    */
   private static async createModel(config: RoleModelConfig): Promise<BaseChatModel> {
-    const { provider, modelName, temperature, maxTokens } = config;
+    const { provider, modelName, temperature, maxTokens, streaming } = config;
 
     switch (provider) {
       case 'anthropic':
@@ -168,7 +164,11 @@ export class ModelFactory {
           model: modelName,
           temperature,
           maxTokens,
+          streaming,
           apiKey: env.ANTHROPIC_API_KEY,
+          clientOptions: {
+            timeout: 15 * 60 * 1000, // 15 min safety net
+          },
         }) as unknown as BaseChatModel;
 
       case 'openai':
@@ -191,50 +191,6 @@ export class ModelFactory {
         throw new Error(`Unsupported model provider: ${_exhaustive}`);
       }
     }
-  }
-
-  /**
-   * Creates a ChatAnthropic model instance with extended thinking enabled.
-   *
-   * Thinking is an instance-level property in @langchain/anthropic — it cannot be
-   * passed via .invoke() or .bind(). This method creates a separate model instance
-   * with thinking configured at construction time.
-   *
-   * Constraints (Anthropic API):
-   * - temperature must be undefined (defaults to 1) when thinking is enabled
-   * - budget_tokens >= 1024
-   * - maxTokens > budget_tokens
-   *
-   * @param role - The model role (used for maxTokens config)
-   * @param budget - Token budget for thinking (default: 10000, minimum: 1024)
-   * @returns Promise<BaseChatModel> - ChatAnthropic instance with thinking enabled
-   */
-  static async createForThinking(
-    role: ModelRole,
-    budget: number = 10000
-  ): Promise<BaseChatModel> {
-    const config = ModelRoleConfigs[role];
-
-    // Use orchestrator model (Sonnet) for thinking — Haiku doesn't support extended thinking
-    const thinkingModelName = ModelRoleConfigs['orchestrator'].modelName;
-    const maxTokens = Math.max(config.maxTokens ?? 16384, budget + 4096);
-
-    const cacheKey = `thinking:${thinkingModelName}:b${budget}:m${maxTokens}`;
-    if (this.cache.has(cacheKey)) {
-      return this.cache.get(cacheKey)!;
-    }
-
-    // Use ChatAnthropic directly — initChatModel doesn't support the thinking param
-    const model = new ChatAnthropic({
-      model: thinkingModelName,
-      maxTokens,
-      thinking: { type: 'enabled', budget_tokens: budget },
-      apiKey: env.ANTHROPIC_API_KEY,
-      // temperature NOT set — Anthropic requires temperature=1 for thinking (default)
-    });
-
-    this.cache.set(cacheKey, model as unknown as BaseChatModel);
-    return model as unknown as BaseChatModel;
   }
 
   /**

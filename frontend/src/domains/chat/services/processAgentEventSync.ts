@@ -139,6 +139,9 @@ export function processAgentEventSync(
       // This happens for async_allowed events that are emitted before persistence
       const eventWithIndex = event as { eventIndex?: number };
 
+      // Attach current agent identity for per-message attribution (PRD-070)
+      const thinkingAgent = agentStateStore.getState().currentAgentIdentity;
+
       // Add thinking message
       // FIX: Use eventId directly (no prefix) to match DB messageId
       messageStore.getState().addMessage({
@@ -149,6 +152,7 @@ export function processAgentEventSync(
         content: thinkingEvent.content,
         sequence_number: event.sequenceNumber || eventWithIndex.eventIndex || 0,
         created_at: new Date().toISOString(),
+        ...(thinkingAgent && { agent_identity: thinkingAgent }),
       });
       break;
     }
@@ -158,6 +162,9 @@ export function processAgentEventSync(
       // FIX: Use eventIndex as fallback when sequenceNumber is not yet available
       // Tool events use async_allowed persistence, so they are emitted before DB write
       const eventWithIndex = event as { eventIndex?: number };
+
+      // Attach current agent identity for per-message attribution (PRD-070)
+      const toolAgent = agentStateStore.getState().currentAgentIdentity;
 
       // FIX: Use toolUseId as message ID to match DB storage (Anthropic's toolu_* ID)
       // Fallback to eventId if toolUseId is not available (shouldn't happen in practice)
@@ -173,6 +180,7 @@ export function processAgentEventSync(
         tool_use_id: toolId,
         sequence_number: event.sequenceNumber || eventWithIndex.eventIndex || 0,
         created_at: new Date().toISOString(),
+        ...(toolAgent && { agent_identity: toolAgent }),
       });
       break;
     }
@@ -215,6 +223,9 @@ export function processAgentEventSync(
       // FIX: Use eventIndex as fallback when sequenceNumber is not yet available
       const eventWithIndex = event as { eventIndex?: number };
 
+      // Attach current agent identity for per-message attribution (PRD-070)
+      const msgAgent = agentStateStore.getState().currentAgentIdentity;
+
       // Add final message
       messageStore.getState().addMessage({
         type: 'standard',
@@ -230,6 +241,7 @@ export function processAgentEventSync(
         } : undefined,
         stop_reason: msgEvent.stopReason || undefined,
         model: msgEvent.model,
+        ...(msgAgent && { agent_identity: msgAgent }),
       });
       break;
     }

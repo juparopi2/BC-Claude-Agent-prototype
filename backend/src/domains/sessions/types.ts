@@ -8,6 +8,7 @@
  */
 
 import type { StopReason, TextCitation } from '@anthropic-ai/sdk/resources/messages';
+import type { AgentIdentity } from '@bc-agent/shared';
 
 // ============================================
 // Database Row Types
@@ -44,6 +45,7 @@ export interface DbMessageRow {
   output_tokens: number | null;
   event_id: string | null;
   tool_use_id: string | null;
+  agent_id: string | null;
 }
 
 // ============================================
@@ -100,6 +102,7 @@ export interface BaseMessage {
   sequence_number: number;
   created_at: string;
   event_id?: string;
+  agent_identity?: AgentIdentity;
 }
 
 /**

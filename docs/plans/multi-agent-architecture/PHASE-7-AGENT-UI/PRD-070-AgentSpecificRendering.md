@@ -1,6 +1,6 @@
 # PRD-070: Agent-Specific UI Rendering Framework
 
-**Estado**: Draft
+**Estado**: ✅ Completado - 2026-02-09
 **Prioridad**: Alta
 **Dependencias**: PRD-050 (Graphing Agent), PRD-060 (Agent Selector UI)
 **Bloquea**: PRD-071 (RAG Citation UI)
@@ -485,28 +485,44 @@ describe('AgentResultRenderer', () => {
 ## 6. Criterios de Aceptacion
 
 ### Per-Message Agent Attribution
-- [ ] `Message` types include optional `agent_identity?: AgentIdentity` field
-- [ ] `processAgentEventSync` attaches `currentAgentIdentity` to assistant messages at creation time
-- [ ] `MessageBubble` renders `AgentBadge` for assistant messages with `agent_identity`
-- [ ] `ToolCard` renders `AgentBadge` for tool messages with `agent_identity`
-- [ ] No badge rendered for user messages or messages without `agent_identity`
-- [ ] Backward compatible: historic messages without `agent_identity` render normally
+- [x] `Message` types include optional `agent_identity?: AgentIdentity` field
+- [x] `processAgentEventSync` attaches `currentAgentIdentity` to assistant messages at creation time
+- [x] `MessageBubble` renders `AgentBadge` for assistant messages with `agent_identity`
+- [x] `ToolCard` renders `AgentBadge` for tool messages with `agent_identity`
+- [x] No badge rendered for user messages or messages without `agent_identity`
+- [x] Backward compatible: historic messages without `agent_identity` render normally
 
 ### Agent Result Rendering
-- [ ] `isAgentRenderedResult()` type guard exported from `@bc-agent/shared`
-- [ ] `AgentRenderedResultType` union type exported from `@bc-agent/shared`
-- [ ] Renderer registry is extensible (new renderers can be added without modifying existing code)
-- [ ] `chart_config` renders via `ChartRenderer` (PRD-050)
-- [ ] `citation_result` renders via `CitationRenderer` (PRD-071)
-- [ ] Unknown `_type` values fall back to `MarkdownRenderer`
-- [ ] Missing `_type` falls back to `MarkdownRenderer`
-- [ ] Renderers are lazy-loaded (code splitting)
-- [ ] Loading skeleton shown during lazy load
-- [ ] No breaking changes to existing tool result rendering
+- [x] `isAgentRenderedResult()` type guard exported from `@bc-agent/shared`
+- [x] `AgentRenderedResultType` union type exported from `@bc-agent/shared`
+- [x] Renderer registry is extensible (new renderers can be added without modifying existing code)
+- [x] `chart_config` renders via `ChartRenderer` (PRD-050)
+- [x] `citation_result` renders via `CitationRenderer` placeholder (PRD-071 implementation pending)
+- [x] Unknown `_type` values fall back to JSON fallback
+- [x] Missing `_type` falls back to JSON fallback
+- [x] Renderers are lazy-loaded (code splitting)
+- [x] Loading skeleton shown during lazy load
+- [x] No breaking changes to existing tool result rendering
+
+### Database & Persistence (Added during implementation)
+- [x] `agent_id` column added to `messages` table with `idx_messages_agent_id` index
+- [x] `MessageService.ts` migrated from raw SQL (`executeQuery`) to Prisma Client (7 methods)
+- [x] `MessagePersistenceWorker.ts` migrated from raw MERGE SQL to `prisma.messages.upsert()`
+- [x] `agentId` threaded through `MessagePersistenceJob` type and queue facade
+- [x] `messageTransformer.ts` reconstructs `agent_identity` from `agent_id` + shared constants
+
+### ChartRenderer (PRD-050 Frontend - 10 chart types)
+- [x] `recharts` installed as charting engine (Tremor copy-paste approach, no `@tremor/react` npm dep)
+- [x] 10 chart view components: Bar, StackedBar, Line, Area, Donut, BarList, Combo, Kpi, KpiGrid, Table
+- [x] Color utility (`chartUtils.ts`) with 9 Tremor named colors mapped to hex
+- [x] Dark mode support via Tailwind dark: variants
+- [x] Interactive features: tooltips, legend filtering, active dot states, legend scroll
 
 ### General
-- [ ] `npm run verify:types` pasa
-- [ ] `npm run -w bc-agent-frontend test` pasa
+- [x] `npm run verify:types` pasa (0 errors)
+- [x] `npm run -w bc-agent-frontend test` pasa (697 tests, 0 failures)
+- [x] `npm run -w backend test:unit` pasa (3105 tests, 0 failures)
+- [x] `npm run -w backend build` pasa (552 files compiled)
 
 ---
 
@@ -555,3 +571,4 @@ describe('AgentResultRenderer', () => {
 |-------|---------|---------|
 | 2026-02-09 | 1.0 | Draft inicial. Framework de rendering agent-specific con discriminador `_type`, renderer registry lazy-loaded, integracion con MessageList.tsx. Soporta `chart_config` (PRD-050) y `citation_result` (PRD-071) con fallback a MarkdownRenderer. |
 | 2026-02-09 | 1.1 | Agregado per-message agent attribution (seccion 3.1). Cada mensaje de assistant muestra `AgentBadge` con el agente que lo genero. Campo `agent_identity?: AgentIdentity` agregado a tipos de mensaje. PRD-061 (Agent Activity Timeline) ELIMINADO - esta funcionalidad lo reemplaza. |
+| 2026-02-09 | 2.0 | **IMPLEMENTACIÓN COMPLETADA**. Diferencias vs draft: (1) Componentes ubicados en `frontend/src/presentation/chat/` (no `components/chat/`) siguiendo estructura existente del proyecto; (2) ChartRenderer usa `recharts` directamente (Tremor copy-paste approach), NO `@tremor/react` npm package — compatible con TW4 + React 19; (3) `combo` chart type en lugar de `scatter` (consistente con PRD-050 backend); (4) Fallback usa `JsonView` existente, no `MarkdownRenderer`; (5) `MessageService.ts` y `MessagePersistenceWorker.ts` migrados completamente de raw SQL (`executeQuery`) a Prisma Client; (6) `agent_id` column + index agregado a tabla `messages` en Prisma schema; (7) `messageTransformer.ts` reconstruye `agent_identity` desde `agent_id` + constants de `@bc-agent/shared`. **Archivos**: 22+ creados (shared types, renderer framework, 10 chart views, chart utils, citation placeholder, tests), 12 modificados (shared index, Prisma schema, MessageService, MessagePersistenceWorker, jobs types, messageTransformer, processAgentEventSync, MessageBubble, ToolCard, ChatContainer). **Tests**: 3105 backend + 697 frontend, 0 regresiones. **Dependencias instaladas**: `recharts` en frontend workspace. |

@@ -178,6 +178,7 @@ export class PersistenceCoordinator implements IPersistenceCoordinator {
         model: data.model,
         inputTokens: data.tokenUsage?.inputTokens,
         outputTokens: data.tokenUsage?.outputTokens,
+        agentId: data.agentId,
       });
 
       // 4. Return PersistedEvent
@@ -248,6 +249,7 @@ export class PersistenceCoordinator implements IPersistenceCoordinator {
         eventId: dbEvent.id,
         inputTokens: data.tokenUsage?.inputTokens,
         outputTokens: data.tokenUsage?.outputTokens,
+        agentId: data.agentId,
       });
 
       // 4. Return PersistedEvent

@@ -19,7 +19,7 @@ import { getMessageQueue } from '@/infrastructure/queue/MessageQueue';
 import { createChildLogger } from '@/shared/utils/logger';
 import type { Logger } from 'pino';
 import { randomUUID } from 'crypto';
-import { executeQuery, SqlParams } from '@/infrastructure/database/database';
+import { prisma } from '@/infrastructure/database/prisma';
 import { ParsedMessage, MessageDbRecord, parseMessageMetadata } from '@/types/message.types';
 
 /**
@@ -118,37 +118,32 @@ export class MessageService {
         });
 
         try {
-          const params: SqlParams = {
-            id: messageId,
-            session_id: sessionId,
-            role: 'user',
-            message_type: 'text',
-            content,
-            metadata: JSON.stringify({ user_id: userId }),
-            token_count: null,
-            stop_reason: null,
-            // ⭐ CRITICAL: Include sequence_number and event_id from EventStore
-            sequence_number: event.sequence_number,
-            event_id: event.id,
-            created_at: new Date(),
-            // ⭐ Token tracking columns (null for user messages, populated for assistant)
-            model: null,
-            input_tokens: null,
-            output_tokens: null,
-          };
-
-          // ⭐ UPDATED 2025-12-23: Use MERGE (upsert) to prevent PK violations
-          await executeQuery(
-            `
-            MERGE INTO messages WITH (HOLDLOCK) AS target
-            USING (SELECT @id AS id) AS source
-            ON target.id = source.id
-            WHEN NOT MATCHED THEN
-              INSERT (id, session_id, role, message_type, content, metadata, token_count, stop_reason, sequence_number, event_id, created_at, model, input_tokens, output_tokens)
-              VALUES (@id, @session_id, @role, @message_type, @content, @metadata, @token_count, @stop_reason, @sequence_number, @event_id, @created_at, @model, @input_tokens, @output_tokens);
-            `,
-            params
-          );
+          // ⭐ UPDATED 2025-12-23: Use Prisma upsert to prevent PK violations
+          await prisma.messages.upsert({
+            where: { id: messageId },
+            create: {
+              id: messageId,
+              session_id: sessionId,
+              role: 'user',
+              message_type: 'text',
+              content,
+              metadata: JSON.stringify({ user_id: userId }),
+              token_count: null,
+              stop_reason: null,
+              // ⭐ CRITICAL: Include sequence_number and event_id from EventStore
+              sequence_number: event.sequence_number,
+              event_id: event.id,
+              created_at: new Date(),
+              // ⭐ Token tracking columns (null for user messages, populated for assistant)
+              model: null,
+              input_tokens: null,
+              output_tokens: null,
+              total_tokens: null,
+              agent_id: null,
+              current_todo_id: null,
+            },
+            update: {},
+          });
 
           this.logger.warn('⚠️  Message persisted via fallback (direct DB write)', {
             sessionId,
@@ -373,29 +368,24 @@ export class MessageService {
       // La llamada a appendEvent() generaba un NUEVO sequence, causando duplicados
 
       // ✅ Actualizar messages table usando tool_use_id
-      const params: SqlParams = {
-        tool_use_id: toolUseId,  // ⬅️ FIXED: Use tool_use_id column, not id
-        session_id: sessionId,
-        metadata: JSON.stringify({
-          tool_name: toolName,
-          tool_args: toolArgs,
-          tool_result: result,
+      await prisma.messages.updateMany({
+        where: {
           tool_use_id: toolUseId,
-          status: success ? 'success' : 'error',
-          success,
-          error_message: error || null,
-          user_id: userId,  // ⭐ Audit trail
-        }),
-      };
-
-      await executeQuery(
-        `
-        UPDATE messages
-        SET metadata = @metadata
-        WHERE tool_use_id = @tool_use_id AND session_id = @session_id
-        `,
-        params
-      );
+          session_id: sessionId,
+        },
+        data: {
+          metadata: JSON.stringify({
+            tool_name: toolName,
+            tool_args: toolArgs,
+            tool_result: result,
+            tool_use_id: toolUseId,
+            status: success ? 'success' : 'error',
+            success,
+            error_message: error || null,
+            user_id: userId,  // ⭐ Audit trail
+          }),
+        },
+      });
 
       this.logger.debug('Tool result updated', {
         sessionId,
@@ -435,26 +425,19 @@ export class MessageService {
       // ⭐ UPDATED 2025-11-24: Added Phase 1A token tracking columns
       // ⭐ CRITICAL: ORDER BY sequence_number ASC ensures correct message ordering
       // (fallback to created_at for any NULL sequence_numbers, though these should not exist)
-      let query = `
-        SELECT id, session_id, role, message_type, content, metadata,
-               token_count, stop_reason, sequence_number, event_id, tool_use_id,
-               model, input_tokens, output_tokens, created_at
-        FROM messages
-        WHERE session_id = @session_id
-        ORDER BY sequence_number ASC, created_at ASC
-      `;
+      const rows = await prisma.messages.findMany({
+        where: { session_id: sessionId },
+        orderBy: [
+          { sequence_number: 'asc' },
+          { created_at: 'asc' },
+        ],
+        ...(limit !== undefined && {
+          skip: offset || 0,
+          take: limit,
+        }),
+      });
 
-      const params: SqlParams = { session_id: sessionId };
-
-      if (limit !== undefined) {
-        query += ` OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY`;
-        params.offset = offset || 0;
-        params.limit = limit;
-      }
-
-      const result = await executeQuery<MessageDbRecord>(query, params);
-
-      return (result.recordset || []).map((row) => parseMessageMetadata(row));
+      return rows.map((row) => parseMessageMetadata(row as unknown as MessageDbRecord));
     } catch (error) {
       this.logger.error('Failed to get messages by session', { error, sessionId });
       throw error;
@@ -470,23 +453,15 @@ export class MessageService {
   public async getMessageById(messageId: string): Promise<ParsedMessage | null> {
     try {
       // ⭐ UPDATED 2025-11-24: Added Phase 1A token tracking columns
-      const result = await executeQuery<MessageDbRecord>(
-        `
-        SELECT id, session_id, role, message_type, content, metadata,
-               token_count, stop_reason, sequence_number, event_id, tool_use_id,
-               model, input_tokens, output_tokens, created_at
-        FROM messages
-        WHERE id = @id
-        `,
-        { id: messageId }
-      );
+      const row = await prisma.messages.findUnique({
+        where: { id: messageId },
+      });
 
-      if (!result.recordset || result.recordset.length === 0) {
+      if (!row) {
         return null;
       }
 
-      // Safe to use non-null assertion since we checked length above
-      return parseMessageMetadata(result.recordset[0]!);
+      return parseMessageMetadata(row as unknown as MessageDbRecord);
     } catch (error) {
       this.logger.error('Failed to get message by ID', { error, messageId });
       throw error;
@@ -503,15 +478,11 @@ export class MessageService {
    */
   public async deleteMessagesBySession(sessionId: string): Promise<number> {
     try {
-      const result = await executeQuery(
-        `
-        DELETE FROM messages
-        WHERE session_id = @session_id
-        `,
-        { session_id: sessionId }
-      );
+      const result = await prisma.messages.deleteMany({
+        where: { session_id: sessionId },
+      });
 
-      const deletedCount = result.rowsAffected?.[0] ?? 0;
+      const deletedCount = result.count;
 
       this.logger.info('Messages deleted for session', { sessionId, deletedCount });
 
@@ -530,16 +501,9 @@ export class MessageService {
    */
   public async getMessageCount(sessionId: string): Promise<number> {
     try {
-      const result = await executeQuery<{ count: number }>(
-        `
-        SELECT COUNT(*) AS count
-        FROM messages
-        WHERE session_id = @session_id
-        `,
-        { session_id: sessionId }
-      );
-
-      return result.recordset[0]?.count ?? 0;
+      return await prisma.messages.count({
+        where: { session_id: sessionId },
+      });
     } catch (error) {
       this.logger.error('Failed to get message count', { error, sessionId });
       return 0;
@@ -557,16 +521,9 @@ export class MessageService {
    */
   public async isFirstUserMessage(sessionId: string): Promise<boolean> {
     try {
-      const result = await executeQuery<{ count: number }>(
-        `
-        SELECT COUNT(*) AS count
-        FROM messages
-        WHERE session_id = @session_id AND role = 'user'
-        `,
-        { session_id: sessionId }
-      );
-
-      const userMessageCount = result.recordset[0]?.count ?? 0;
+      const userMessageCount = await prisma.messages.count({
+        where: { session_id: sessionId, role: 'user' },
+      });
       return userMessageCount === 1;
     } catch (error) {
       this.logger.error('Failed to check if first user message', { error, sessionId });

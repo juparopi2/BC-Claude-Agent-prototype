@@ -65,7 +65,8 @@ export async function processNormalizedEvent(
   ctx: ExecutionContextSync,
   sessionId: string,
   agentMessageId: string,
-  deps: EventProcessorDependencies
+  deps: EventProcessorDependencies,
+  agentId?: string
 ): Promise<void> {
   const { persistenceCoordinator, citationExtractor } = deps;
 
@@ -80,7 +81,8 @@ export async function processNormalizedEvent(
       sessionId,
       agentMessageId,
       persistenceCoordinator,
-      preAllocatedSeq
+      preAllocatedSeq,
+      agentId
     );
   }
 

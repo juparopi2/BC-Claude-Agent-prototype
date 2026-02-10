@@ -16,6 +16,8 @@ import type {
   ToolResultMessageResponse,
 } from '@/domains/sessions';
 import { normalizeToolArgs } from '@/domains/agent/tools';
+import type { AgentIdentity, AgentId } from '@bc-agent/shared';
+import { AGENT_DISPLAY_NAME, AGENT_ICON, AGENT_COLOR } from '@bc-agent/shared';
 
 /**
  * Try to parse a JSON string, return the original string if parsing fails
@@ -26,6 +28,22 @@ export function tryParseJSON(str: string): unknown {
   } catch {
     return str;
   }
+}
+
+/**
+ * Reconstruct agent identity from agent_id using shared constants.
+ */
+function buildAgentIdentity(agentId: string | null): AgentIdentity | undefined {
+  if (!agentId) return undefined;
+  const id = agentId as AgentId;
+  const name = AGENT_DISPLAY_NAME[id];
+  if (!name) return undefined;
+  return {
+    agentId: id,
+    agentName: name,
+    agentIcon: AGENT_ICON[id],
+    agentColor: AGENT_COLOR[id],
+  };
 }
 
 /**
@@ -57,12 +75,14 @@ export function transformMessage(row: DbMessageRow): MessageResponse {
     : undefined;
 
   // Base fields shared by all message types
+  const agentIdentity = buildAgentIdentity(row.agent_id);
   const base = {
     id: row.id,
     session_id: row.session_id,
     sequence_number: row.sequence_number ?? 0,
     created_at: row.created_at.toISOString(),
     event_id: row.event_id || undefined,
+    ...(agentIdentity && { agent_identity: agentIdentity }),
   };
 
   // Transform based on message type

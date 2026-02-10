@@ -345,6 +345,7 @@ model messages {
   output_tokens   Int?
   total_tokens    Int?
   current_todo_id String?         @db.UniqueIdentifier
+  agent_id        String?         @db.NVarChar(100)
   approvals       approvals[]
   message_events  message_events? @relation(fields: [event_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "FK_messages_event_id")
   sessions        sessions        @relation(fields: [session_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_messages_session")
@@ -355,6 +356,7 @@ model messages {
   @@index([session_id, message_type], map: "idx_messages_session_type")
   @@index([message_type], map: "idx_messages_type")
   @@index([session_id, created_at], map: "IX_messages_tokens")
+  @@index([agent_id], map: "idx_messages_agent_id")
 }
 
 model performance_metrics {

@@ -62,7 +62,8 @@ export async function persistSyncEvent(
   sessionId: string,
   agentMessageId: string,
   persistenceCoordinator: IPersistenceCoordinator,
-  preAllocatedSeq?: number
+  preAllocatedSeq?: number,
+  agentId?: string
 ): Promise<PersistedEvent | undefined> {
   switch (event.type) {
     case 'thinking': {
@@ -76,6 +77,7 @@ export async function persistSyncEvent(
             inputTokens: 0,
             outputTokens: 0,
           },
+          agentId,
         },
         preAllocatedSeq
       );
@@ -95,6 +97,7 @@ export async function persistSyncEvent(
             inputTokens: msgEvent.tokenUsage.inputTokens,
             outputTokens: msgEvent.tokenUsage.outputTokens,
           },
+          agentId,
         },
         preAllocatedSeq
       );

@@ -8,6 +8,7 @@ import { Wrench, ChevronRight, ChevronDown, Clock, CheckCircle2, XCircle, Loader
 import { cn } from '@/lib/utils';
 import JsonView from '@uiw/react-json-view';
 import { useTheme } from 'next-themes';
+import { AgentResultRenderer } from './AgentResultRenderer';
 
 /**
  * Custom transparent theme for JsonView in light mode
@@ -218,13 +219,18 @@ export function ToolCard({
             {displayStatus === 'completed' && displayResult !== undefined && (
               <div className="p-2 bg-emerald-50 dark:bg-emerald-900/40 border border-emerald-200 dark:border-emerald-700 rounded-lg">
                 <div className="text-xs font-medium text-emerald-700 dark:text-emerald-300 mb-1">Result</div>
-                <JsonView
-                  value={tryParseJSON(displayResult)}
-                  style={theme === 'dark' ? transparentDarkTheme : transparentLightTheme}
-                  collapsed={2}
-                  displayDataTypes={false}
-                  displayObjectSize={true}
-                  enableClipboard={true}
+                <AgentResultRenderer
+                  result={displayResult}
+                  fallback={
+                    <JsonView
+                      value={tryParseJSON(displayResult)}
+                      style={theme === 'dark' ? transparentDarkTheme : transparentLightTheme}
+                      collapsed={2}
+                      displayDataTypes={false}
+                      displayObjectSize={true}
+                      enableClipboard={true}
+                    />
+                  }
                 />
               </div>
             )}

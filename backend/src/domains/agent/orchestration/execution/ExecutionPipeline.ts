@@ -148,6 +148,9 @@ export class ExecutionPipeline {
     }, 'Pre-allocated sequence numbers for events');
 
     // Stage 5: Process and emit events
+    // Extract agentId from graph result for per-message attribution (PRD-070)
+    const agentId = graphResult.currentAgentIdentity?.agentId;
+
     let finalContent = '';
     let finalMessageId: string = agentMessageId;
     const toolsUsed: string[] = [];
@@ -158,7 +161,8 @@ export class ExecutionPipeline {
         ctx,
         sessionId,
         agentMessageId,
-        { persistenceCoordinator, citationExtractor }
+        { persistenceCoordinator, citationExtractor },
+        agentId
       );
 
       // Track state from assistant_message

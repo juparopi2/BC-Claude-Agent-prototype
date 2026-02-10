@@ -2,7 +2,7 @@
 
 **Estado**: En Progreso
 **Fecha Inicio**: 2026-01-21
-**Versión del Plan**: 3.2 (PRD-060 Agent Selector UI completado)
+**Versión del Plan**: 3.3 (PRD-070 Agent-Specific Rendering + PRD-050 Frontend completados)
 
 ---
 
@@ -256,7 +256,7 @@ console.log(anthropic.profile?.reasoningOutput); // true para extended thinking
 
 | PRD | Componente | Estado | Fecha |
 |-----|------------|--------|-------|
-| [PRD-050](./PHASE-5-GRAPHING-AGENT/PRD-050-GraphingAgent.md) | GraphingAgent Backend (10 chart types, catalog-driven tools) | ✅ Completado | 2026-02-09 |
+| [PRD-050](./PHASE-5-GRAPHING-AGENT/PRD-050-GraphingAgent.md) | GraphingAgent Backend + Frontend (10 chart types, catalog-driven tools, ChartRenderer) | ✅ Completado | 2026-02-09 |
 
 **Métricas PRD-050:**
 - 11 archivos creados, 9 modificados, 2 test files existentes actualizados
@@ -295,15 +295,25 @@ console.log(anthropic.profile?.reasoningOutput); // true para extended thinking
 - GAPs resueltos: GAP-001 (frontend event handling), GAP-004 (agent_changed processing), GAP-006 (sin refs a router.ts)
 
 ### Fase 7: Agent-Specific UI Rendering
-**Estado**: 🔴 No Iniciado
+**Estado**: 🟡 En Progreso
 **Objetivo**: Framework de rendering personalizado por agente + Citation UI para RAG
 
-| PRD | Componente | Estado |
-|-----|------------|--------|
-| [PRD-070](./PHASE-7-AGENT-UI/PRD-070-AgentSpecificRendering.md) | Agent-Specific Rendering Framework (`_type` discriminator) | 🔴 |
-| [PRD-071](./PHASE-7-AGENT-UI/PRD-071-RAGCitationUI.md) | RAG Citation UI + Tool Improvements | 🔴 |
+| PRD | Componente | Estado | Fecha |
+|-----|------------|--------|-------|
+| [PRD-070](./PHASE-7-AGENT-UI/PRD-070-AgentSpecificRendering.md) | Agent-Specific Rendering Framework (`_type` discriminator) + ChartRenderer (10 types) + Per-message attribution + Prisma migration | ✅ Completado | 2026-02-09 |
+| [PRD-071](./PHASE-7-AGENT-UI/PRD-071-RAGCitationUI.md) | RAG Citation UI + Tool Improvements | 🔴 (desbloqueado) |
 
-> **Patrón clave**: Tool results con `_type` discriminator (`'chart_config'`, `'citation_result'`) se renderizan con componentes especializados (ChartRenderer, CitationRenderer). Sin `_type` → fallback a MarkdownRenderer. Renderers lazy-loaded via registry extensible.
+**Métricas PRD-070:**
+- 22+ archivos creados (shared types, renderer framework, 10 chart views, chart utils, citation placeholder, tests), 12 modificados
+- 0 regresiones: 3105 tests backend pasan, 697 tests frontend pasan
+- **Per-message agent attribution**: `agent_identity?: AgentIdentity` en `BaseMessage`, `AgentBadge` en `MessageBubble` y `ToolCard`, `processAgentEventSync` propaga identidad desde `agentStateStore`
+- **Renderer framework**: `AgentResultRenderer` con registry lazy-loaded, discriminador `_type`, `Suspense` fallback
+- **ChartRenderer** (PRD-050 frontend): 10 chart views usando `recharts` (Tremor copy-paste approach, sin `@tremor/react` npm). Bar, StackedBar, Line, Area, Donut, BarList, Combo, Kpi, KpiGrid, Table. Dark mode, tooltips, legend filtering
+- **Database**: `agent_id` column + index en tabla `messages`. `MessageService.ts` (7 métodos) y `MessagePersistenceWorker.ts` migrados de raw SQL (`executeQuery`) a Prisma Client. `messageTransformer.ts` reconstruye `agent_identity` desde `agent_id` + shared constants
+- **CitationRenderer**: Placeholder registrado en registry (implementación real en PRD-071)
+- **Dependencia instalada**: `recharts` en frontend workspace
+
+> **Patrón clave**: Tool results con `_type` discriminator (`'chart_config'`, `'citation_result'`) se renderizan con componentes especializados (ChartRenderer, CitationRenderer). Sin `_type` → fallback a JSON view. Renderers lazy-loaded via registry extensible.
 
 ---
 
@@ -356,9 +366,9 @@ FASE 6: UI (🟡 En Progreso)
 ├── PRD-060: AgentSelector [✅ COMPLETADO] ──────────────────────┐
 └── PRD-061: Agent Activity Timeline ────────────────────────────┴──► FASE 7
 
-FASE 7: Agent-Specific UI Rendering
-├── PRD-070: Rendering Framework (depende PRD-050, PRD-060) ──┐
-└── PRD-071: RAG Citation UI (depende PRD-070) ───────────────┴──► COMPLETADO
+FASE 7: Agent-Specific UI Rendering (🟡 En Progreso)
+├── PRD-070: Rendering Framework [✅ COMPLETADO] ─────────────┐
+└── PRD-071: RAG Citation UI (depende PRD-070 ✅) ────────────┴──► COMPLETADO
 ```
 
 ---
@@ -438,3 +448,4 @@ npm run test:e2e
 | 2026-02-09 | 3.0 | **Documentación Fases 5-7 actualizada**. PRD-050 reescrito v2.0: 10 chart types catalog-driven (bar, stacked_bar, line, area, donut, bar_list, kpi, kpi_grid, table, scatter), 3 tools (`list_chart_types`, `get_chart_schema`, `generate_chart_config`), Zod schemas per-type, Tremor mapping, `_type: 'chart_config'` discriminador. PRD-060 v2.0: GAP-006 resuelto (sin refs a `router.ts`), graphing agent pill (📈, #F59E0B), `agentStateStore` con `currentAgentIdentity`, `ApprovalDialog` para interrupt/resume. PRD-061 v2.0: renombrado a "Agent Activity Timeline" (Opción C), usa eventos existentes (`agent_changed`, `tool_use`, `tool_result`), sin dependencia a PRD-031 eliminado. **Nueva Fase 7**: PRD-070 (Agent-Specific Rendering Framework con `_type` discriminator, renderer registry lazy-loaded, `AgentResultRenderer` component) y PRD-071 (RAG Citation UI con `CitationResultSchema`, passages con relevance scores, `CitationCard`/`CitationList` components). Eliminada ref a `@langchain/langgraph-checkpoint-postgres` (sistema usa `MSSQLSaver`). |
 | 2026-02-09 | 3.1 | **PRD-050 completado** (Fase 5 completa, backend-only). 10 chart types catalog-driven implementados: `scatter` reemplazado por `combo` (ComboChart - bar+line combinado, no soportado nativamente por Tremor scatter). 3 tools LangChain: `list_available_charts`, `get_chart_details`, `validate_chart_config` (nombres simplificados vs draft). Zod schemas con constraints estrictos (min data points, min categories stacking, Tremor color palette 9 colores). `ChartConfigSchema` discriminated union en `@bc-agent/shared`. Agent definition con Haiku 4.5 (temp 0.2, JSON determinístico). Slash commands `/chart` y `/graph`. Auto-cascading: handoff tools, supervisor prompt, agent builders sin cambios manuales. 11 archivos nuevos, 9 modificados, 2 tests actualizados. 71 tests nuevos, 3119 tests totales. Frontend (ChartRenderer + Tremor copy-paste) diferido a PRD-070. |
 | 2026-02-09 | 3.2 | **PRD-060 completado** (Fase 6 parcial). Agent Selector UI implementado full-stack. **Backend**: `targetAgentId` threaded por 5 capas (ChatMessageData → ChatMessageHandler → AgentOrchestrator → ExecutionPipeline → MessageContextBuilder). **Frontend**: `AgentSelectorDropdown` (shadcn Select) reemplaza toggle "My Files" en ChatInput. `AgentBadge` en mensajes assistant. `ApprovalDialog` inline para HITL interrupt/resume. `uiPreferencesStore` con `selectedAgentId` persistido en localStorage. `agentStateStore` extendido con `currentAgentIdentity`. 3 nuevos event cases en `processAgentEventSync.ts` (`agent_changed`, `content_refused`, `session_end`). `SocketClient` + `useSocketConnection` soportan `targetAgentId`. 4 archivos nuevos, 14 modificados, 2 test files actualizados. 0 regresiones (3104 backend + 666 frontend tests). GAPs resueltos: GAP-001, GAP-004, GAP-006. Fase 7 parcialmente desbloqueada (PRD-061 pendiente). |
+| 2026-02-09 | 3.3 | **PRD-070 completado** (Fase 7 parcial) + **PRD-050 frontend completado**. Implementación completa del framework de rendering agent-specific. **Per-message attribution**: `agent_identity?: AgentIdentity` en `BaseMessage`, `AgentBadge` per-message en `MessageBubble`/`ToolCard`, global badge removido de `ChatContainer`. **Renderer framework**: `AgentResultRenderer` con registry lazy-loaded + `Suspense`, discriminador `_type`. **ChartRenderer** (PRD-050 frontend): 10 chart views con `recharts` (Tremor copy-paste approach, sin npm package), color utils, dark mode, tooltips, legend filtering. **Prisma migration**: `MessageService.ts` (7 métodos) y `MessagePersistenceWorker.ts` migrados de raw SQL (`executeQuery`) a Prisma Client (`upsert`, `findMany`, `updateMany`, `count`, etc.). `agent_id` column + index en `messages` table. `messageTransformer` reconstruye `agent_identity` desde DB. **Shared**: `AgentRenderedResultBase`, `isAgentRenderedResult()` type guard, `AgentIdentity` export fix. **Tests**: 22+ archivos creados, 12 modificados. 3105 backend + 697 frontend tests, 0 regresiones. PRD-071 desbloqueado. |

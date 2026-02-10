@@ -14,6 +14,7 @@
  */
 
 import type { ChatAttachmentSummary } from './chat-attachments.types';
+import type { AgentIdentity } from './agent-identity.types';
 
 /**
  * Base fields shared by all message types.
@@ -38,6 +39,9 @@ export interface BaseMessage {
 
   /** Event ID from EventStore (for correlation with message_events table) */
   event_id?: string;
+
+  /** Agent identity for per-message attribution (PRD-070) */
+  agent_identity?: AgentIdentity;
 }
 
 /**

@@ -28,3 +28,6 @@ export type { AudioRecordingIndicatorProps } from './AudioRecordingIndicator';
 export { AgentSelectorDropdown } from './AgentSelectorDropdown';
 export { AgentBadge } from './AgentBadge';
 export { ApprovalDialog } from './ApprovalDialog';
+export { AgentResultRenderer } from './AgentResultRenderer';
+export { ChartRenderer } from './ChartRenderer';
+export { CitationRenderer } from './CitationRenderer';

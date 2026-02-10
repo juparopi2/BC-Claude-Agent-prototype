@@ -15,8 +15,7 @@ import { MessageService, getMessageService } from '../../../../services/messages
 import { getEventStore } from '../../../../services/events/EventStore';
 import { getMessageQueue } from '@/infrastructure/queue/MessageQueue';
 import { createChildLogger } from '@/shared/utils/logger';
-import { executeQuery } from '@/infrastructure/database/database';
-import { ParsedMessage, MessageDbRecord } from '../../../../types/message.types';
+import { MessageDbRecord } from '../../../../types/message.types';
 import { randomUUID } from 'crypto';
 
 // ===== MOCK EVENT STORE (vi.hoisted pattern) =====
@@ -38,13 +37,20 @@ vi.mock('@/infrastructure/queue/MessageQueue', () => ({
   getMessageQueue: vi.fn(() => mockMessageQueueMethods),
 }));
 
-// ===== MOCK DATABASE (vi.hoisted pattern) =====
-const mockExecuteQuery = vi.hoisted(() =>
-  vi.fn().mockResolvedValue({ recordset: [], rowsAffected: [1] })
-);
+// ===== MOCK PRISMA CLIENT (vi.hoisted pattern) =====
+const mockPrismaMessages = vi.hoisted(() => ({
+  upsert: vi.fn().mockResolvedValue({}),
+  updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+  findMany: vi.fn().mockResolvedValue([]),
+  findUnique: vi.fn().mockResolvedValue(null),
+  deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+  count: vi.fn().mockResolvedValue(0),
+}));
 
-vi.mock('@/infrastructure/database/database', () => ({
-  executeQuery: mockExecuteQuery,
+vi.mock('@/infrastructure/database/prisma', () => ({
+  prisma: {
+    messages: mockPrismaMessages,
+  },
 }));
 
 // ===== MOCK LOGGER (vi.hoisted pattern) =====
@@ -82,7 +88,12 @@ describe('MessageService', () => {
 
     mockMessageQueueMethods.addMessagePersistence.mockResolvedValue({ id: 'job-123' });
 
-    mockExecuteQuery.mockResolvedValue({ recordset: [], rowsAffected: [1] });
+    mockPrismaMessages.upsert.mockResolvedValue({});
+    mockPrismaMessages.updateMany.mockResolvedValue({ count: 1 });
+    mockPrismaMessages.findMany.mockResolvedValue([]);
+    mockPrismaMessages.findUnique.mockResolvedValue(null);
+    mockPrismaMessages.deleteMany.mockResolvedValue({ count: 0 });
+    mockPrismaMessages.count.mockResolvedValue(0);
 
     // Reset singleton instance
     (MessageService as any).instance = null;
@@ -180,6 +191,43 @@ describe('MessageService', () => {
         })
       );
     });
+
+    it('should fallback to Prisma upsert when queue fails', async () => {
+      mockMessageQueueMethods.addMessagePersistence.mockRejectedValueOnce(
+        new Error('Queue unavailable')
+      );
+
+      const result = await messageService.saveUserMessage(
+        testSessionId,
+        testUserId,
+        'Hello via fallback'
+      );
+
+      // Verify Prisma upsert was called as fallback
+      expect(mockPrismaMessages.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: result.messageId },
+          create: expect.objectContaining({
+            id: result.messageId,
+            session_id: testSessionId,
+            role: 'user',
+            message_type: 'text',
+            content: 'Hello via fallback',
+            sequence_number: 1,
+            event_id: 'evt-123',
+          }),
+          update: {},
+        })
+      );
+
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        '⚠️  Message persisted via fallback (direct DB write)',
+        expect.objectContaining({
+          sessionId: testSessionId,
+          messageId: result.messageId,
+        })
+      );
+    });
   });
 
   // ========== PHASE 1B: saveAgentMessage() and saveThinkingMessage() REMOVED ==========
@@ -188,17 +236,6 @@ describe('MessageService', () => {
    *
    * These methods were deprecated and removed in Phase 1B.
    *
-   * **Why removed?**
-   * - DirectAgentService now handles persistence directly via EventStore + MessageQueue
-   * - Eliminates redundant layer and ensures Anthropic message IDs flow correctly
-   * - ChatMessageHandler no longer calls these methods (fallback logic removed)
-   *
-   * **Migration path:**
-   * - Agent messages: Use DirectAgentService (writes to EventStore + MessageQueue)
-   * - User messages: Use saveUserMessage() (tested below)
-   * - Tool results: Use updateToolResult() (tested below)
-   *
-   * **Removed tests**: 8 tests (5 for saveAgentMessage, 3 for saveThinkingMessage)
    * **Removed**: 2025-11-24
    */
 
@@ -252,7 +289,7 @@ describe('MessageService', () => {
       );
     });
 
-    it('should update tool result with success status', async () => {
+    it('should update tool result with success status via Prisma updateMany', async () => {
       const toolUseId = 'tool-123';
       const toolName = 'list_all_entities';
       const toolArgs = { entity: 'customer' };
@@ -268,21 +305,21 @@ describe('MessageService', () => {
         true // success
       );
 
-      // ⭐ PHASE 1B: updateToolResult uses tool_use_id in WHERE clause
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('WHERE tool_use_id = @tool_use_id'),
-        expect.objectContaining({
+      expect(mockPrismaMessages.updateMany).toHaveBeenCalledWith({
+        where: {
           tool_use_id: toolUseId,
           session_id: testSessionId,
-          metadata: expect.stringMatching(/"status":"success"/),
-        })
-      );
+        },
+        data: {
+          metadata: expect.any(String),
+        },
+      });
 
-      // Verify metadata contains all required fields
-      const metadataArg = vi.mocked(mockExecuteQuery).mock.calls[0]![1]! as {
-        metadata: string;
+      // Verify metadata contents
+      const callArgs = mockPrismaMessages.updateMany.mock.calls[0]![0] as {
+        data: { metadata: string };
       };
-      const metadata = JSON.parse(metadataArg.metadata);
+      const metadata = JSON.parse(callArgs.data.metadata);
       expect(metadata).toMatchObject({
         tool_name: toolName,
         tool_args: toolArgs,
@@ -312,37 +349,27 @@ describe('MessageService', () => {
         errorMsg
       );
 
-      // ⭐ PHASE 1B: updateToolResult uses tool_use_id in WHERE clause
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('WHERE tool_use_id = @tool_use_id'),
-        expect.objectContaining({
+      expect(mockPrismaMessages.updateMany).toHaveBeenCalledWith({
+        where: {
           tool_use_id: toolUseId,
           session_id: testSessionId,
-          metadata: expect.stringMatching(/"status":"error"/),
-        })
-      );
+        },
+        data: {
+          metadata: expect.any(String),
+        },
+      });
 
-      // Verify error message in metadata
-      const metadataArg = vi.mocked(mockExecuteQuery).mock.calls[0]![1]! as {
-        metadata: string;
+      // Verify error metadata
+      const callArgs = mockPrismaMessages.updateMany.mock.calls[0]![0] as {
+        data: { metadata: string };
       };
-      const metadata = JSON.parse(metadataArg.metadata);
+      const metadata = JSON.parse(callArgs.data.metadata);
       expect(metadata).toMatchObject({
         status: 'error',
         success: false,
         error_message: errorMsg,
       });
     });
-
-    /**
-     * ⭐ PHASE 1B: updateToolResult() NO LONGER appends event
-     *
-     * The appendEvent() call was removed because DirectAgentService already persists
-     * the tool_result event. Calling appendEvent() here would create duplicate sequence numbers.
-     *
-     * Test removed: "should append event on tool completion"
-     * Removed: 2025-11-24
-     */
 
     it('should preserve tool args when updating result', async () => {
       const toolUseId = 'tool-999';
@@ -360,11 +387,10 @@ describe('MessageService', () => {
         true
       );
 
-      // Verify tool args preserved in UPDATE
-      const metadataArg = vi.mocked(mockExecuteQuery).mock.calls[0]![1]! as {
-        metadata: string;
+      const callArgs = mockPrismaMessages.updateMany.mock.calls[0]![0] as {
+        data: { metadata: string };
       };
-      const metadata = JSON.parse(metadataArg.metadata);
+      const metadata = JSON.parse(callArgs.data.metadata);
 
       expect(metadata.tool_args).toEqual({
         entity: 'customer',
@@ -376,7 +402,7 @@ describe('MessageService', () => {
   // ========== SUITE 5: QUERY METHODS (5 TESTS) ==========
   describe('Query Methods', () => {
     it('should get messages by session with pagination', async () => {
-      const mockMessages: MessageDbRecord[] = [
+      const mockRows = [
         {
           id: 'msg-1',
           session_id: testSessionId,
@@ -387,6 +413,12 @@ describe('MessageService', () => {
           created_at: new Date('2025-01-01T10:00:00Z'),
           sequence_number: 1,
           event_id: 'evt-1',
+          token_count: null,
+          stop_reason: null,
+          tool_use_id: null,
+          model: null,
+          input_tokens: null,
+          output_tokens: null,
         },
         {
           id: 'msg-2',
@@ -398,10 +430,16 @@ describe('MessageService', () => {
           created_at: new Date('2025-01-01T10:00:05Z'),
           sequence_number: 2,
           event_id: 'evt-2',
+          token_count: null,
+          stop_reason: null,
+          tool_use_id: null,
+          model: null,
+          input_tokens: null,
+          output_tokens: null,
         },
       ];
 
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: mockMessages });
+      mockPrismaMessages.findMany.mockResolvedValueOnce(mockRows);
 
       const messages = await messageService.getMessagesBySession(testSessionId, 10, 0);
 
@@ -409,19 +447,19 @@ describe('MessageService', () => {
       expect(messages[0]!.id).toBe('msg-1');
       expect(messages[1]!.id).toBe('msg-2');
 
-      // Verify SQL query with pagination
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY'),
-        expect.objectContaining({
-          session_id: testSessionId,
-          offset: 0,
-          limit: 10,
-        })
-      );
+      expect(mockPrismaMessages.findMany).toHaveBeenCalledWith({
+        where: { session_id: testSessionId },
+        orderBy: [
+          { sequence_number: 'asc' },
+          { created_at: 'asc' },
+        ],
+        skip: 0,
+        take: 10,
+      });
     });
 
     it('should get message by ID', async () => {
-      const mockMessage = {
+      const mockRow = {
         id: 'msg-123',
         session_id: testSessionId,
         role: 'user',
@@ -431,9 +469,15 @@ describe('MessageService', () => {
         created_at: new Date(),
         sequence_number: 1,
         event_id: 'evt-1',
-      } as unknown as MessageDbRecord;
+        token_count: null,
+        stop_reason: null,
+        tool_use_id: null,
+        model: null,
+        input_tokens: null,
+        output_tokens: null,
+      };
 
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [mockMessage] });
+      mockPrismaMessages.findUnique.mockResolvedValueOnce(mockRow);
 
       const message = await messageService.getMessageById('msg-123');
 
@@ -441,15 +485,13 @@ describe('MessageService', () => {
       expect(message?.id).toBe('msg-123');
       expect(message?.content).toBe('Hello');
 
-      // Verify SQL query
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('WHERE id = @id'),
-        { id: 'msg-123' }
-      );
+      expect(mockPrismaMessages.findUnique).toHaveBeenCalledWith({
+        where: { id: 'msg-123' },
+      });
     });
 
     it('should return null when message not found', async () => {
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
+      mockPrismaMessages.findUnique.mockResolvedValueOnce(null);
 
       const message = await messageService.getMessageById('nonexistent');
 
@@ -457,34 +499,30 @@ describe('MessageService', () => {
     });
 
     it('should get message count for session', async () => {
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [{ count: 42 }] });
+      mockPrismaMessages.count.mockResolvedValueOnce(42);
 
       const count = await messageService.getMessageCount(testSessionId);
 
       expect(count).toBe(42);
 
-      // Verify SQL query
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('COUNT(*)'),
-        { session_id: testSessionId }
-      );
+      expect(mockPrismaMessages.count).toHaveBeenCalledWith({
+        where: { session_id: testSessionId },
+      });
     });
 
     it('should check if first user message', async () => {
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [{ count: 1 }] });
+      mockPrismaMessages.count.mockResolvedValueOnce(1);
 
       const isFirst = await messageService.isFirstUserMessage(testSessionId);
 
       expect(isFirst).toBe(true);
 
-      // Verify SQL query filters by role='user'
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringMatching(/WHERE.*role = 'user'/),
-        { session_id: testSessionId }
-      );
+      expect(mockPrismaMessages.count).toHaveBeenCalledWith({
+        where: { session_id: testSessionId, role: 'user' },
+      });
 
       // Test with multiple user messages
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [{ count: 3 }] });
+      mockPrismaMessages.count.mockResolvedValueOnce(3);
       const isNotFirst = await messageService.isFirstUserMessage(testSessionId);
       expect(isNotFirst).toBe(false);
     });
@@ -493,21 +531,19 @@ describe('MessageService', () => {
   // ========== SUITE 6: DELETE MESSAGES (3 TESTS) ==========
   describe('deleteMessagesBySession()', () => {
     it('should delete all messages for session', async () => {
-      mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [5] });
+      mockPrismaMessages.deleteMany.mockResolvedValueOnce({ count: 5 });
 
       const count = await messageService.deleteMessagesBySession(testSessionId);
 
       expect(count).toBe(5);
 
-      // Verify SQL DELETE query
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('DELETE FROM messages'),
-        { session_id: testSessionId }
-      );
+      expect(mockPrismaMessages.deleteMany).toHaveBeenCalledWith({
+        where: { session_id: testSessionId },
+      });
     });
 
     it('should log delete count', async () => {
-      mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [3] });
+      mockPrismaMessages.deleteMany.mockResolvedValueOnce({ count: 3 });
 
       await messageService.deleteMessagesBySession(testSessionId);
 
@@ -521,7 +557,7 @@ describe('MessageService', () => {
     });
 
     it('should return 0 when no messages deleted', async () => {
-      mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [0] });
+      mockPrismaMessages.deleteMany.mockResolvedValueOnce({ count: 0 });
 
       const count = await messageService.deleteMessagesBySession(testSessionId);
 
@@ -529,67 +565,7 @@ describe('MessageService', () => {
     });
   });
 
-  // ========== SUITE 7: REPLAY MESSAGES (2 TESTS - SKIPPED) ==========
-  /**
-   * SKIPPED: replayMessages() deliberadamente NO implementado.
-   *
-   * ══════════════════════════════════════════════════════════════════════════════
-   * CONTEXTO TÉCNICO
-   * ══════════════════════════════════════════════════════════════════════════════
-   *
-   * La arquitectura actual usa un flujo de 2 pasos para persistencia de mensajes:
-   *
-   *   1. EventStore.appendEvent() → Log inmutable de eventos con sequence_number
-   *      atómico (Redis INCR). Operación síncrona (~10ms).
-   *
-   *   2. MessageQueue.addMessagePersistence() → Materializa mensajes en tabla SQL
-   *      `messages`. Operación async via BullMQ para eliminar 600ms de latencia.
-   *
-   * replayMessages() sería para reconstruir la tabla `messages` desde `message_events`.
-   * Esto NO es necesario en operación normal porque:
-   *
-   *   - getMessagesBySession() lee directamente de tabla `messages`
-   *   - El streaming WebSocket funciona con eventos en tiempo real
-   *   - El frontend carga historial de sesiones desde tabla `messages`
-   *   - La consistencia eventual (EventStore → MessageQueue → SQL) es suficiente
-   *
-   * Ver implementación en MessageService.ts:582-593 que lanza:
-   *   "Message replay is not implemented. Messages are materialized via
-   *    MessageQueue.processMessagePersistence()..."
-   *
-   * ══════════════════════════════════════════════════════════════════════════════
-   * IMPLICACIONES DE NEGOCIO
-   * ══════════════════════════════════════════════════════════════════════════════
-   *
-   * ✅ NO AFECTA (operación normal):
-   *   - Chat en tiempo real: Usuario envía mensaje → respuesta Claude funciona
-   *   - Persistencia de mensajes: EventStore + MessageQueue guardan correctamente
-   *   - WebSocket streaming: Eventos se transmiten al frontend sin problemas
-   *   - Historial de sesiones: Frontend carga historial desde tabla `messages`
-   *   - Multi-tenant: Aislamiento userId + sessionId funciona correctamente
-   *   - Rate limiting: 100 jobs/session/hour funciona vía Redis counters
-   *   - Token tracking: inputTokens/outputTokens se persisten correctamente
-   *
-   * ⚠️  SÍ AFECTARÍA (escenarios edge):
-   *   - DISASTER RECOVERY: Si tabla `messages` se corrompe/pierde, no hay
-   *     mecanismo automático para reconstruirla desde `message_events`
-   *   - DEBUGGING AVANZADO: No se puede reproducir secuencia exacta de eventos
-   *     para diagnosticar problemas de consistencia
-   *   - MIGRACIÓN DE ESQUEMA: Si cambia estructura de `messages`, no hay
-   *     replay para repoblar con nuevo formato
-   *   - AUDITORÍA: No hay forma de verificar que `messages` coincide con
-   *     `message_events` (aunque ambas tablas existen)
-   *
-   * ══════════════════════════════════════════════════════════════════════════════
-   * DECISIÓN
-   * ══════════════════════════════════════════════════════════════════════════════
-   *
-   * Feature de baja prioridad. El 99.9% de casos de uso funcionan sin replay.
-   * Se mantiene el stub para futura implementación si surge necesidad real.
-   *
-   * Fecha: 2025-11-27
-   * Referencia: TASK-004 diagnostic plan (delightful-hatching-shore.md)
-   */
+  // ========== SUITE 7: REPLAY MESSAGES ==========
   describe('replayMessages()', () => {
     it('should throw "Not implemented" error', async () => {
       await expect(messageService.replayMessages('session-123')).rejects.toThrow(

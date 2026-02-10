@@ -41,6 +41,8 @@ export interface MessagePersistenceJob {
   userId?: string;
   /** Correlation ID for distributed tracing */
   correlationId?: string;
+  /** Agent ID for per-message attribution (PRD-070) */
+  agentId?: string;
 }
 
 /**

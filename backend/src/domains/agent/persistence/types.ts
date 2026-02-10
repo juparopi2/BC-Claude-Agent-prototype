@@ -93,6 +93,8 @@ export interface AgentMessageData {
     outputTokens: number;
   };
   model?: string;
+  /** Agent ID for per-message attribution (PRD-070) */
+  agentId?: string;
 }
 
 /**
@@ -105,6 +107,8 @@ export interface ThinkingData {
     inputTokens: number;
     outputTokens: number;
   };
+  /** Agent ID for per-message attribution (PRD-070) */
+  agentId?: string;
 }
 
 /**

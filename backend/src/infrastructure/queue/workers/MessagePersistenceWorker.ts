@@ -9,8 +9,9 @@
 
 import type { Job } from 'bullmq';
 import { createChildLogger } from '@/shared/utils/logger';
-import { executeQuery, type SqlParams } from '@/infrastructure/database/database';
-import type { ILoggerMinimal, ExecuteQueryFn } from '../IMessageQueueDependencies';
+import { prisma as defaultPrisma } from '@/infrastructure/database/prisma';
+import type { PrismaClient } from '@prisma/client';
+import type { ILoggerMinimal } from '../IMessageQueueDependencies';
 import type { MessagePersistenceJob } from '../types';
 
 /**
@@ -18,7 +19,7 @@ import type { MessagePersistenceJob } from '../types';
  */
 export interface MessagePersistenceWorkerDependencies {
   logger?: ILoggerMinimal;
-  executeQuery?: ExecuteQueryFn;
+  prisma?: PrismaClient;
 }
 
 /**
@@ -28,11 +29,11 @@ export class MessagePersistenceWorker {
   private static instance: MessagePersistenceWorker | null = null;
 
   private readonly log: ILoggerMinimal;
-  private readonly executeQueryFn: ExecuteQueryFn;
+  private readonly prisma: PrismaClient;
 
   constructor(deps?: MessagePersistenceWorkerDependencies) {
     this.log = deps?.logger ?? createChildLogger({ service: 'MessagePersistenceWorker' });
-    this.executeQueryFn = deps?.executeQuery ?? executeQuery;
+    this.prisma = deps?.prisma ?? defaultPrisma;
   }
 
   public static getInstance(deps?: MessagePersistenceWorkerDependencies): MessagePersistenceWorker {
@@ -53,7 +54,7 @@ export class MessagePersistenceWorker {
     const {
       sessionId, messageId, role, messageType, content, metadata,
       sequenceNumber, eventId, toolUseId, stopReason,
-      model, inputTokens, outputTokens, userId, correlationId,
+      model, inputTokens, outputTokens, userId, correlationId, agentId,
     } = job.data;
 
     // Create job-scoped logger with user context and timestamp
@@ -110,36 +111,29 @@ export class MessagePersistenceWorker {
         ? inputTokens + outputTokens
         : null;
 
-      const params: SqlParams = {
-        id: messageId,
-        session_id: sessionId,
-        role,
-        message_type: messageType,
-        content,
-        metadata: metadata ? JSON.stringify(metadata) : '{}',
-        sequence_number: sequenceNumber ?? null,
-        event_id: eventId ?? null,
-        token_count: totalTokens,
-        stop_reason: stopReason ?? null,
-        tool_use_id: finalToolUseId,
-        created_at: new Date(),
-        model: model ?? null,
-        input_tokens: inputTokens ?? null,
-        output_tokens: outputTokens ?? null,
-      };
-
-      // Use MERGE (upsert) to prevent PK violations on retries
-      await this.executeQueryFn(
-        `
-        MERGE INTO messages WITH (HOLDLOCK) AS target
-        USING (SELECT @id AS id) AS source
-        ON target.id = source.id
-        WHEN NOT MATCHED THEN
-          INSERT (id, session_id, role, message_type, content, metadata, sequence_number, event_id, token_count, stop_reason, tool_use_id, created_at, model, input_tokens, output_tokens)
-          VALUES (@id, @session_id, @role, @message_type, @content, @metadata, @sequence_number, @event_id, @token_count, @stop_reason, @tool_use_id, @created_at, @model, @input_tokens, @output_tokens);
-        `,
-        params
-      );
+      // Use Prisma upsert to prevent PK violations on retries
+      await this.prisma.messages.upsert({
+        where: { id: messageId },
+        create: {
+          id: messageId,
+          session_id: sessionId,
+          role,
+          message_type: messageType,
+          content,
+          metadata: metadata ? JSON.stringify(metadata) : '{}',
+          sequence_number: sequenceNumber ?? null,
+          event_id: eventId ?? null,
+          token_count: totalTokens,
+          stop_reason: stopReason ?? null,
+          tool_use_id: finalToolUseId,
+          created_at: new Date(),
+          model: model ?? null,
+          input_tokens: inputTokens ?? null,
+          output_tokens: outputTokens ?? null,
+          agent_id: agentId ?? null,
+        },
+        update: {}, // No-op on conflict - idempotent insert
+      });
 
       jobLogger.info('Message persisted to database successfully', {
         jobId: job.id,

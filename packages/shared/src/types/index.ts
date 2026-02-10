@@ -335,3 +335,11 @@ export type {
   TableConfig,
   ChartConfig,
 } from './chart-config.types';
+
+// Agent Rendered Result types (PRD-070)
+export type {
+  AgentRenderedResultType,
+  AgentRenderedResultBase,
+} from './agent-rendered-result.types';
+
+export { isAgentRenderedResult } from './agent-rendered-result.types';

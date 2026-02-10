@@ -22,6 +22,11 @@ vi.mock('@/infrastructure/config/environment', () => ({
   },
 }));
 
+// Mock Prisma to prevent database connection initialization
+vi.mock('@/infrastructure/database/prisma', () => ({
+  prisma: {},
+}));
+
 // Mock UsageTrackingService to prevent Redis initialization
 vi.mock('@/domains/billing/tracking/UsageTrackingService', () => ({
   getUsageTrackingService: vi.fn(() => ({

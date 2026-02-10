@@ -1,8 +1,8 @@
 # PRD-071: RAG Citation UI + Tool Improvements
 
-**Estado**: Draft
+**Estado**: Draft (Desbloqueado - PRD-070 completado 2026-02-09)
 **Prioridad**: Media
-**Dependencias**: PRD-070 (Agent-Specific Rendering Framework), PRD-060 (Agent Selector UI)
+**Dependencias**: PRD-070 (Agent-Specific Rendering Framework) ✅, PRD-060 (Agent Selector UI) ✅
 **Bloquea**: Ninguno
 
 ---
@@ -596,3 +596,4 @@ describe('CitationPassage', () => {
 | Fecha | Version | Cambios |
 |-------|---------|---------|
 | 2026-02-09 | 1.0 | Draft inicial. Citation rendering con discriminador `_type: 'citation_result'` (PRD-070 pattern). Backend: `CitationResultSchema` con documents/passages agrupados, `knowledgeSearchTool` output enriquecido. Frontend: `CitationRenderer`, `CitationCard`, `CitationPassage`, `CitationList`, `CitationIcon`. Relevance color-coding. Backward compatible via `summary` field. `InlineCitation` marcado como future enhancement. |
+| 2026-02-09 | 1.1 | Dependencia PRD-070 completada. `CitationRenderer` placeholder ya registrado en renderer registry de PRD-070 (`registerRenderer('citation_result', ...)`). Implementación real de componentes de citación pendiente. PRD desbloqueado. |

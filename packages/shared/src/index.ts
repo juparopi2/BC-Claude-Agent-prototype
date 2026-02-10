@@ -275,6 +275,13 @@ export type {
   KpiGridConfig,
   TableConfig,
   ChartConfig,
+
+  // Agent Identity types (PRD-020/070)
+  AgentIdentity,
+
+  // Agent Rendered Result types (PRD-070)
+  AgentRenderedResultType,
+  AgentRenderedResultBase,
 } from './types';
 
 // Type guards (runtime functions, not types)
@@ -299,6 +306,8 @@ export {
   isNormalizedToolResponseEvent,
   isNormalizedAssistantMessageEvent,
   isNormalizedCompleteEvent,
+  // Agent Rendered Result type guard (PRD-070)
+  isAgentRenderedResult,
 } from './types';
 
 // File constants

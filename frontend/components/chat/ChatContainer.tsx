@@ -5,10 +5,10 @@ import { usePathname } from 'next/navigation';
 import { getSocketClient } from '@/src/infrastructure/socket';
 import { useFilePreviewStore, useFiles, useGoToFilePath } from '@/src/domains/files';
 import { useAuthStore, selectUserInitials } from '@/src/domains/auth';
-import { useMessages, useAgentState, useAgentStateStore, useCitationStore, usePagination, useChatAttachmentStore } from '@/src/domains/chat';
+import { useMessages, useAgentState, useCitationStore, usePagination, useChatAttachmentStore } from '@/src/domains/chat';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Loader2 } from 'lucide-react';
-import { isToolUseMessage, isToolResultMessage, isThinkingMessage, type ChatAttachmentSummary } from '@bc-agent/shared';
+import { isToolUseMessage, isToolResultMessage, isThinkingMessage, type ChatAttachmentSummary, type ToolUseMessage } from '@bc-agent/shared';
 import {
   MessageBubble,
   ThinkingBlock,
@@ -28,7 +28,6 @@ export default function ChatContainer() {
   // Use domain hooks for messages and agent state
   const { messages, isEmpty } = useMessages();
   const { isAgentBusy, isPaused, pauseReason } = useAgentState();
-  const currentAgentIdentity = useAgentStateStore((s) => s.currentAgentIdentity);
   
   // Pagination hook
   const { 
@@ -273,22 +272,34 @@ export default function ChatContainer() {
             if (message.status === 'pending') {
               return null;
             }
+            const toolMsg = message as ToolUseMessage;
             return (
-              <ToolCard
-                key={message.id}
-                toolName={message.tool_name}
-                toolArgs={message.tool_args}
-                status={
-                  message.status === 'error'
-                    ? 'failed'
-                    : message.status === 'success'
-                    ? 'completed'
-                    : 'pending'
-                }
-                result={message.result}
-                error={message.error_message}
-                durationMs={message.duration_ms}
-              />
+              <div key={message.id}>
+                {toolMsg.agent_identity && (
+                  <div className="mb-1">
+                    <AgentBadge
+                      agentId={toolMsg.agent_identity.agentId}
+                      agentName={toolMsg.agent_identity.agentName}
+                      icon={toolMsg.agent_identity.agentIcon}
+                      color={toolMsg.agent_identity.agentColor}
+                    />
+                  </div>
+                )}
+                <ToolCard
+                  toolName={message.tool_name}
+                  toolArgs={message.tool_args}
+                  status={
+                    message.status === 'error'
+                      ? 'failed'
+                      : message.status === 'success'
+                      ? 'completed'
+                      : 'pending'
+                  }
+                  result={message.result}
+                  error={message.error_message}
+                  durationMs={message.duration_ms}
+                />
+              </div>
             );
           }
 
@@ -300,13 +311,13 @@ export default function ChatContainer() {
           // Render standard messages
           return (
             <div key={message.id}>
-              {message.role === 'assistant' && currentAgentIdentity && (
+              {message.role === 'assistant' && message.agent_identity && (
                 <div className="mb-1">
                   <AgentBadge
-                    agentId={currentAgentIdentity.agentId}
-                    agentName={currentAgentIdentity.agentName}
-                    icon={currentAgentIdentity.agentIcon}
-                    color={currentAgentIdentity.agentColor}
+                    agentId={message.agent_identity.agentId}
+                    agentName={message.agent_identity.agentName}
+                    icon={message.agent_identity.agentIcon}
+                    color={message.agent_identity.agentColor}
                   />
                 </div>
               )}

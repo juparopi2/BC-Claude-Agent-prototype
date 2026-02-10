@@ -13,10 +13,9 @@
 import { z } from 'zod';
 import { tool } from '@langchain/core/tools';
 import type { RunnableConfig } from '@langchain/core/runnables';
+import type { CitationResult, CitedDocument, CitationPassage } from '@bc-agent/shared';
 import { getSemanticSearchService, SEMANTIC_THRESHOLD } from '@/services/search/semantic';
 import {
-  type StructuredSearchResult,
-  type SearchSource,
   createEmptySearchResult,
   createErrorSearchResult,
 } from './schemas';
@@ -68,32 +67,30 @@ export const knowledgeSearchTool = tool(
         return JSON.stringify(emptyResult);
       }
 
-      // Map SemanticSearchResult to SearchSource[]
-      const sources: SearchSource[] = results.results.map((r) => ({
+      // Build CitationResult for rich rendering (PRD-071)
+      const documents: CitedDocument[] = results.results.map((r) => ({
         fileId: r.fileId,
         fileName: r.fileName,
-        sourceType: 'blob_storage' as const, // Current implementation only supports blob
         mimeType: r.mimeType ?? 'application/octet-stream',
-        relevanceScore: r.relevanceScore,
+        sourceType: 'blob_storage' as const,
         isImage: r.isImage ?? false,
-        excerpts: r.topChunks.map((chunk) => ({
-          content: chunk.content,
-          score: chunk.score,
-          chunkIndex: chunk.chunkIndex,
+        documentRelevance: r.relevanceScore,
+        passages: r.topChunks.map((chunk, idx): CitationPassage => ({
+          citationId: `${r.fileId}-${idx}`,
+          excerpt: chunk.content.slice(0, 500),
+          relevanceScore: chunk.score,
         })),
       }));
 
-      // Build structured result
-      const structuredResult: StructuredSearchResult = {
-        sources,
-        searchMetadata: {
-          query,
-          totalChunksSearched: results.totalChunksSearched,
-          threshold: results.threshold,
-        },
+      const citationResult: CitationResult = {
+        _type: 'citation_result',
+        documents,
+        summary: `Found ${results.results.length} relevant document${results.results.length !== 1 ? 's' : ''} for "${query}"`,
+        totalResults: results.results.length,
+        query,
       };
 
-      return JSON.stringify(structuredResult);
+      return JSON.stringify(citationResult);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       // Return structured error response (still valid JSON)

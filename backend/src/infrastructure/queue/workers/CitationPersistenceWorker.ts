@@ -9,8 +9,8 @@
 
 import type { Job } from 'bullmq';
 import { createChildLogger } from '@/shared/utils/logger';
-import { executeQuery } from '@/infrastructure/database/database';
-import type { ILoggerMinimal, ExecuteQueryFn } from '../IMessageQueueDependencies';
+import { prisma } from '@/infrastructure/database/prisma';
+import type { ILoggerMinimal } from '../IMessageQueueDependencies';
 import type { CitationPersistenceJob } from '../types';
 
 /**
@@ -18,7 +18,6 @@ import type { CitationPersistenceJob } from '../types';
  */
 export interface CitationPersistenceWorkerDependencies {
   logger?: ILoggerMinimal;
-  executeQuery?: ExecuteQueryFn;
 }
 
 /**
@@ -28,11 +27,9 @@ export class CitationPersistenceWorker {
   private static instance: CitationPersistenceWorker | null = null;
 
   private readonly log: ILoggerMinimal;
-  private readonly executeQueryFn: ExecuteQueryFn;
 
   constructor(deps?: CitationPersistenceWorkerDependencies) {
     this.log = deps?.logger ?? createChildLogger({ service: 'CitationPersistenceWorker' });
-    this.executeQueryFn = deps?.executeQuery ?? executeQuery;
   }
 
   public static getInstance(deps?: CitationPersistenceWorkerDependencies): CitationPersistenceWorker {
@@ -69,25 +66,18 @@ export class CitationPersistenceWorker {
     });
 
     try {
-      // Insert each citation into message_citations table
-      for (const cite of citations) {
-        await this.executeQueryFn(
-          `
-          INSERT INTO message_citations
-          (message_id, file_id, file_name, source_type, mime_type, relevance_score, is_image)
-          VALUES (@messageId, @fileId, @fileName, @sourceType, @mimeType, @relevanceScore, @isImage)
-          `,
-          {
-            messageId,
-            fileId: cite.fileId,
-            fileName: cite.fileName,
-            sourceType: cite.sourceType,
-            mimeType: cite.mimeType,
-            relevanceScore: cite.relevanceScore,
-            isImage: cite.isImage ? 1 : 0,
-          }
-        );
-      }
+      await prisma.message_citations.createMany({
+        data: citations.map((cite) => ({
+          message_id: messageId,
+          file_id: cite.fileId,
+          file_name: cite.fileName,
+          source_type: cite.sourceType,
+          mime_type: cite.mimeType,
+          relevance_score: cite.relevanceScore,
+          is_image: cite.isImage,
+          excerpt_count: 0,
+        })),
+      });
 
       jobLogger.info('Citation persistence completed');
     } catch (error) {

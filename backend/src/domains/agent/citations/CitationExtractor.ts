@@ -8,7 +8,7 @@
  */
 
 import { createChildLogger } from '@/shared/utils/logger';
-import { getFetchStrategy, type CitedFile } from '@bc-agent/shared';
+import { getFetchStrategy, type CitedFile, type CitationResult } from '@bc-agent/shared';
 import { parseStructuredSearchResult } from '@/modules/agents/rag-knowledge/schemas';
 import { CITATION_PRODUCING_TOOLS, type ICitationExtractor } from './types';
 
@@ -61,14 +61,22 @@ export class CitationExtractor implements ICitationExtractor {
     }
 
     try {
-      // Parse and validate using Zod schema
+      // Parse JSON first
+      const parsed = JSON.parse(resultJson);
+
+      // New format: CitationResult with _type discriminator (PRD-071)
+      if (parsed && typeof parsed === 'object' && parsed._type === 'citation_result' && Array.isArray(parsed.documents)) {
+        return this.extractFromCitationResult(parsed as CitationResult, toolName);
+      }
+
+      // Legacy format: StructuredSearchResult (backward compatibility)
       const parseResult = parseStructuredSearchResult(resultJson);
 
       if (!parseResult.success) {
         this.logger.warn(
           {
             toolName,
-            errors: parseResult.error.issues.slice(0, 3), // Limit error details
+            errors: parseResult.error.issues.slice(0, 3),
           },
           'Tool result does not match structured schema - returning empty citations'
         );
@@ -77,13 +85,11 @@ export class CitationExtractor implements ICitationExtractor {
 
       const { sources } = parseResult.data;
 
-      // No sources found
       if (!sources || sources.length === 0) {
         this.logger.debug({ toolName }, 'No sources found in search result');
         return [];
       }
 
-      // Map SearchSource[] to CitedFile[]
       const citations: CitedFile[] = sources.map((source) => ({
         fileName: source.fileName,
         fileId: source.fileId,
@@ -100,7 +106,7 @@ export class CitationExtractor implements ICitationExtractor {
           citationCount: citations.length,
           fileNames: citations.map((c) => c.fileName),
         },
-        'Successfully extracted citations from tool result'
+        'Successfully extracted citations from tool result (legacy format)'
       );
 
       return citations;
@@ -121,6 +127,37 @@ export class CitationExtractor implements ICitationExtractor {
 
       return [];
     }
+  }
+
+  /**
+   * Extract citations from the new CitationResult format (PRD-071).
+   */
+  private extractFromCitationResult(result: CitationResult, toolName: string): CitedFile[] {
+    if (!result.documents || result.documents.length === 0) {
+      this.logger.debug({ toolName }, 'No documents in citation result');
+      return [];
+    }
+
+    const citations: CitedFile[] = result.documents.map((doc) => ({
+      fileName: doc.fileName,
+      fileId: doc.fileId,
+      sourceType: doc.sourceType,
+      mimeType: doc.mimeType,
+      relevanceScore: doc.documentRelevance,
+      isImage: doc.isImage,
+      fetchStrategy: getFetchStrategy(doc.sourceType),
+    }));
+
+    this.logger.debug(
+      {
+        toolName,
+        citationCount: citations.length,
+        fileNames: citations.map((c) => c.fileName),
+      },
+      'Successfully extracted citations from citation result format'
+    );
+
+    return citations;
   }
 }
 

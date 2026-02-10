@@ -3,7 +3,7 @@
 **Estado**: ✅ Completado - 2026-02-09
 **Prioridad**: Alta
 **Dependencias**: PRD-050 (Graphing Agent), PRD-060 (Agent Selector UI)
-**Bloquea**: PRD-071 (RAG Citation UI)
+**Bloquea**: PRD-071 (RAG Citation UI) ✅
 
 ---
 

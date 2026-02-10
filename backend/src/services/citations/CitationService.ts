@@ -7,32 +7,14 @@
  * @module services/citations/CitationService
  */
 
-import { executeQuery } from '@/infrastructure/database/database';
+import { prisma } from '@/infrastructure/database/prisma';
 import { createChildLogger } from '@/shared/utils/logger';
-import type { CitedFile, SourceType, FetchStrategy } from '@bc-agent/shared';
+import { getFetchStrategy, type CitedFile, type SourceType } from '@bc-agent/shared';
 
 /**
  * Singleton instance
  */
 let instance: CitationService | null = null;
-
-/**
- * Get fetch strategy based on source type.
- * Determines how frontend should retrieve file content.
- */
-function getFetchStrategy(sourceType: string): FetchStrategy {
-  switch (sourceType) {
-    case 'blob_storage':
-      return 'internal_api';
-    case 'sharepoint':
-    case 'onedrive':
-      return 'oauth_proxy';
-    case 'web':
-      return 'external';
-    default:
-      return 'internal_api';
-  }
-}
 
 /**
  * Citation Service class.
@@ -56,44 +38,37 @@ export class CitationService {
     }
 
     try {
-      // Build parameterized query with positional parameters
-      const placeholders = messageIds.map((_, i) => `@id${i}`).join(',');
-      const params: Record<string, string> = {};
-      messageIds.forEach((id, i) => {
-        params[`id${i}`] = id;
+      const rows = await prisma.message_citations.findMany({
+        where: {
+          message_id: { in: messageIds },
+        },
+        orderBy: [
+          { message_id: 'asc' },
+          { relevance_score: 'desc' },
+        ],
+        select: {
+          message_id: true,
+          file_id: true,
+          file_name: true,
+          source_type: true,
+          mime_type: true,
+          relevance_score: true,
+          is_image: true,
+        },
       });
-
-      const result = await executeQuery<{
-        message_id: string;
-        file_id: string | null;
-        file_name: string;
-        source_type: string;
-        mime_type: string;
-        relevance_score: number;
-        is_image: boolean;
-      }>(
-        `
-        SELECT message_id, file_id, file_name, source_type,
-               mime_type, relevance_score, is_image
-        FROM message_citations
-        WHERE message_id IN (${placeholders})
-        ORDER BY message_id, relevance_score DESC
-        `,
-        params
-      );
 
       // Group citations by message_id
       const citationMap = new Map<string, CitedFile[]>();
-      for (const row of result.recordset || []) {
+      for (const row of rows) {
         const citations = citationMap.get(row.message_id) ?? [];
         citations.push({
           fileName: row.file_name,
           fileId: row.file_id,
           sourceType: row.source_type as SourceType,
           mimeType: row.mime_type,
-          relevanceScore: row.relevance_score,
+          relevanceScore: Number(row.relevance_score),
           isImage: row.is_image,
-          fetchStrategy: getFetchStrategy(row.source_type),
+          fetchStrategy: getFetchStrategy(row.source_type as SourceType),
         });
         citationMap.set(row.message_id, citations);
       }

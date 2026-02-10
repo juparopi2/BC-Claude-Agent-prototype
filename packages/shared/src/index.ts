@@ -282,6 +282,11 @@ export type {
   // Agent Rendered Result types (PRD-070)
   AgentRenderedResultType,
   AgentRenderedResultBase,
+
+  // Citation Result types (PRD-071)
+  CitationPassage,
+  CitedDocument,
+  CitationResult,
 } from './types';
 
 // Type guards (runtime functions, not types)
@@ -436,6 +441,10 @@ export {
   listChatAttachmentsSchema,
   validateChatAttachmentMimeType,
   validateChatAttachmentSize,
+  // Citation Result schemas (PRD-071)
+  CitationPassageSchema,
+  CitedDocumentSchema,
+  CitationResultSchema,
   // Chart Config schemas (PRD-050 Graphing Agent)
   ChartConfigSchema,
   ChartTypeSchema,

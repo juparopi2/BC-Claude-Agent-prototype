@@ -19,6 +19,28 @@ vi.mock('@/infrastructure/database/database', () => ({
   executeQuery: vi.fn()
 }));
 
+vi.mock('@/infrastructure/database/prisma', () => ({
+  prisma: {
+    message_citations: {
+      findMany: vi.fn().mockResolvedValue([]),
+    },
+  },
+}));
+
+// Mock CitationService to prevent Prisma usage during module load
+vi.mock('@/services/citations', () => ({
+  getCitationService: vi.fn(() => ({
+    getCitationsForMessages: vi.fn().mockResolvedValue(new Map()),
+  })),
+}));
+
+// Mock MessageChatAttachmentService to prevent any other transitive dependencies
+vi.mock('@/services/files/MessageChatAttachmentService', () => ({
+  getMessageChatAttachmentService: vi.fn(() => ({
+    getAttachmentsForMessages: vi.fn().mockResolvedValue(new Map()),
+  })),
+}));
+
 vi.mock('crypto', () => ({
   default: {
     randomUUID: vi.fn()
@@ -65,7 +87,16 @@ describe('Sessions Routes', () => {
   let mockRandomUUID: Mock;
 
   beforeEach(() => {
+    // Clear all mocks including queued return values
     vi.clearAllMocks();
+
+    // Get fresh references to mocks
+    mockExecuteQuery = executeQuery as Mock;
+    mockRandomUUID = crypto.randomUUID as Mock;
+
+    // Explicitly reset mock state to remove any queued return values
+    mockExecuteQuery.mockReset();
+    mockRandomUUID.mockReset();
 
     // Setup Express app with router
     app = express();
@@ -78,9 +109,6 @@ describe('Sessions Routes', () => {
     });
 
     app.use('/api/chat/sessions', sessionsRouter);
-
-    mockExecuteQuery = executeQuery as Mock;
-    mockRandomUUID = crypto.randomUUID as Mock;
   });
 
   describe('GET /api/chat/sessions', () => {
@@ -396,8 +424,9 @@ describe('Sessions Routes', () => {
       // Now includes pagination info
       expect(response.body.pagination).toBeDefined();
       expect(response.body.pagination.hasMore).toBe(false);
-      // 4 queries: session ownership, messages, citations, chat attachments
-      expect(mockExecuteQuery).toHaveBeenCalledTimes(4);
+      // 2 queries: session ownership, messages
+      // (citations and chat attachments are now mocked at service level)
+      expect(mockExecuteQuery).toHaveBeenCalledTimes(2);
       expect(mockExecuteQuery).toHaveBeenNthCalledWith(
         2,
         expect.stringContaining('ORDER BY sequence_number DESC'),

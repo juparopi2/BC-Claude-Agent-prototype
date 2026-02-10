@@ -1,6 +1,6 @@
 # PRD-071: RAG Citation UI + Tool Improvements
 
-**Estado**: Draft (Desbloqueado - PRD-070 completado 2026-02-09)
+**Estado**: ✅ Completado - 2026-02-09
 **Prioridad**: Media
 **Dependencias**: PRD-070 (Agent-Specific Rendering Framework) ✅, PRD-060 (Agent Selector UI) ✅
 **Bloquea**: Ninguno
@@ -528,19 +528,19 @@ describe('CitationPassage', () => {
 
 ## 7. Criterios de Aceptacion
 
-- [ ] `CitationResultSchema` Zod schema exported from `@bc-agent/shared`
-- [ ] `knowledgeSearchTool` returns `_type: 'citation_result'` in output
-- [ ] Citation results grouped by document with per-passage excerpts
-- [ ] `CitationRenderer` registered in PRD-070 renderer registry
-- [ ] `CitationCard` shows file name, type icon, passage count, relevance
-- [ ] `CitationPassage` shows excerpt and page number
-- [ ] `CitationList` is collapsible with document count header
-- [ ] Clicking document card expands/collapses passages
-- [ ] Relevance score color-coded (green >= 80%, yellow >= 60%, gray < 60%)
-- [ ] Backward compatible: `summary` field works as text if frontend lacks PRD-070
-- [ ] `npm run verify:types` pasa
-- [ ] `npm run -w backend test:unit` pasa
-- [ ] `npm run -w bc-agent-frontend test` pasa
+- [x] `CitationResultSchema` Zod schema exported from `@bc-agent/shared`
+- [x] `knowledgeSearchTool` returns `_type: 'citation_result'` in output
+- [x] Citation results grouped by document with per-passage excerpts
+- [x] `CitationRenderer` registered in PRD-070 renderer registry
+- [x] `CitationCard` shows file name, type icon, passage count, relevance
+- [x] `CitationPassage` shows excerpt and page number
+- [x] `CitationList` is collapsible with document count header
+- [x] Clicking document card expands/collapses passages
+- [x] Relevance score color-coded (green >= 80%, yellow >= 60%, gray < 60%)
+- [x] Backward compatible: `summary` field works as text if frontend lacks PRD-070
+- [x] `npm run build:shared` pasa
+- [x] `npm run -w backend test:unit` pasa (135 passed, 3128 tests)
+- [x] `npm run -w bc-agent-frontend test` pasa (46 files, 713 tests)
 
 ---
 
@@ -597,3 +597,4 @@ describe('CitationPassage', () => {
 |-------|---------|---------|
 | 2026-02-09 | 1.0 | Draft inicial. Citation rendering con discriminador `_type: 'citation_result'` (PRD-070 pattern). Backend: `CitationResultSchema` con documents/passages agrupados, `knowledgeSearchTool` output enriquecido. Frontend: `CitationRenderer`, `CitationCard`, `CitationPassage`, `CitationList`, `CitationIcon`. Relevance color-coding. Backward compatible via `summary` field. `InlineCitation` marcado como future enhancement. |
 | 2026-02-09 | 1.1 | Dependencia PRD-070 completada. `CitationRenderer` placeholder ya registrado en renderer registry de PRD-070 (`registerRenderer('citation_result', ...)`). Implementación real de componentes de citación pendiente. PRD desbloqueado. |
+| 2026-02-09 | 2.0 | **Implementación completada.** Cambios realizados: **Shared**: `citation-result.schemas.ts` con `CitationPassageSchema`, `CitedDocumentSchema`, `CitationResultSchema` (Zod + tipos inferidos); barrel exports actualizados en `schemas/index.ts`, `types/index.ts`, `index.ts`. **Backend**: `knowledgeSearchTool` retorna `CitationResult` con `_type: 'citation_result'`; `CitationExtractor` soporta formato nuevo + legacy (backward compat); `CitationService` y `CitationPersistenceWorker` migrados de raw SQL (`executeQuery`) a Prisma Client. **Frontend**: 5 componentes creados (`CitationIcon`, `CitationPassage`, `CitationCard`, `CitationList`) + `CitationRenderer` reemplazado de placeholder a implementación real con validación Zod. **Tests**: 56 tests nuevos — schema validation (17), tools output (6), CitationExtractor (10), CitationService (7), CitationRenderer frontend (16). `InlineCitation` diferido a futuro PRD. Todos los tests pasan: backend 135 files/3128 tests, frontend 46 files/713 tests. |

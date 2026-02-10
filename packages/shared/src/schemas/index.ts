@@ -343,6 +343,22 @@ export type {
 } from './agent-identity.schema';
 
 // ============================================
+// Citation Result Schemas (PRD-071)
+// ============================================
+
+export {
+  CitationPassageSchema,
+  CitedDocumentSchema,
+  CitationResultSchema,
+} from './citation-result.schemas';
+
+export type {
+  CitationPassage,
+  CitedDocument,
+  CitationResult,
+} from './citation-result.schemas';
+
+// ============================================
 // Chart Config Schemas (PRD-050 Graphing Agent)
 // ============================================
 

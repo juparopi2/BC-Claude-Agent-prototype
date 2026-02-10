@@ -243,7 +243,48 @@ vi.mock('@/shared/utils/session-ownership', () => ({
   validateUserIdMatch: vi.fn((requestedId, authenticatedId) => requestedId === authenticatedId),
 }));
 
-// Mock database for sessions route
+// Mock Prisma client for sessions route (SessionService uses Prisma)
+vi.mock('@/infrastructure/database/prisma', () => ({
+  prisma: {
+    sessions: {
+      findMany: vi.fn().mockResolvedValue([]),
+      findFirst: vi.fn().mockResolvedValue(null),
+      create: vi.fn().mockResolvedValue({}),
+      updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+    },
+    messages: {
+      findMany: vi.fn().mockResolvedValue([]),
+      count: vi.fn().mockResolvedValue(0),
+    },
+    message_citations: {
+      findMany: vi.fn().mockResolvedValue([]),
+    },
+  },
+}));
+
+// Mock CitationService to prevent transitive Prisma usage
+vi.mock('@/services/citations', () => ({
+  getCitationService: vi.fn(() => ({
+    getCitationsForMessages: vi.fn().mockResolvedValue(new Map()),
+  })),
+}));
+
+// Mock MessageChatAttachmentService to prevent transitive dependencies
+vi.mock('@/services/files/MessageChatAttachmentService', () => ({
+  getMessageChatAttachmentService: vi.fn(() => ({
+    getAttachmentsForMessages: vi.fn().mockResolvedValue(new Map()),
+  })),
+}));
+
+// Mock SessionTitleGenerator
+vi.mock('@/services/sessions/SessionTitleGenerator', () => ({
+  getSessionTitleGenerator: vi.fn(() => ({
+    generateTitle: vi.fn().mockResolvedValue('Generated Title'),
+  })),
+}));
+
+// Mock database for token-usage route (still uses executeQuery)
 vi.mock('@/infrastructure/database/database', () => ({
   executeQuery: vi.fn().mockResolvedValue({
     recordset: [],

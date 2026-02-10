@@ -11,16 +11,22 @@ import { describe, it, expect, vi, beforeEach, Mock } from 'vitest';
 import request from 'supertest';
 import express, { Application } from 'express';
 import sessionsRouter from '@/routes/sessions';
-import { executeQuery } from '@/infrastructure/database/database';
 import crypto from 'crypto';
 
-// Mock dependencies
-vi.mock('@/infrastructure/database/database', () => ({
-  executeQuery: vi.fn()
-}));
-
+// Mock Prisma client (used by SessionService and CitationService)
 vi.mock('@/infrastructure/database/prisma', () => ({
   prisma: {
+    sessions: {
+      findMany: vi.fn(),
+      findFirst: vi.fn(),
+      create: vi.fn(),
+      updateMany: vi.fn(),
+      deleteMany: vi.fn(),
+    },
+    messages: {
+      findMany: vi.fn(),
+      count: vi.fn(),
+    },
     message_citations: {
       findMany: vi.fn().mockResolvedValue([]),
     },
@@ -81,9 +87,13 @@ vi.mock('@/services/sessions/SessionTitleGenerator', () => ({
   })),
 }));
 
+import { prisma } from '@/infrastructure/database/prisma';
+
+const mockSessions = vi.mocked(prisma.sessions);
+const mockMessages = vi.mocked(prisma.messages);
+
 describe('Sessions Routes', () => {
   let app: Application;
-  let mockExecuteQuery: Mock;
   let mockRandomUUID: Mock;
 
   beforeEach(() => {
@@ -91,11 +101,9 @@ describe('Sessions Routes', () => {
     vi.clearAllMocks();
 
     // Get fresh references to mocks
-    mockExecuteQuery = executeQuery as Mock;
     mockRandomUUID = crypto.randomUUID as Mock;
 
     // Explicitly reset mock state to remove any queued return values
-    mockExecuteQuery.mockReset();
     mockRandomUUID.mockReset();
 
     // Setup Express app with router
@@ -114,7 +122,7 @@ describe('Sessions Routes', () => {
   describe('GET /api/chat/sessions', () => {
     it('should return all sessions for authenticated user with pagination', async () => {
       // Arrange
-      const mockSessions = [
+      const mockSessionRows = [
         {
           id: 'session-1',
           user_id: 'test-user-123',
@@ -133,7 +141,7 @@ describe('Sessions Routes', () => {
         }
       ];
 
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: mockSessions });
+      mockSessions.findMany.mockResolvedValueOnce(mockSessionRows as never);
 
       // Act
       const response = await request(app)
@@ -155,15 +163,16 @@ describe('Sessions Routes', () => {
         id: 'session-2',
         status: 'completed' // is_active: false → completed
       });
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('SELECT'),
-        expect.objectContaining({ userId: 'test-user-123', fetchLimit: 21 })
-      );
+      expect(mockSessions.findMany).toHaveBeenCalledWith({
+        where: { user_id: 'test-user-123' },
+        orderBy: { updated_at: 'desc' },
+        take: 21,
+      });
     });
 
     it('should return empty array when user has no sessions', async () => {
       // Arrange
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
+      mockSessions.findMany.mockResolvedValueOnce([] as never);
 
       // Act
       const response = await request(app)
@@ -180,7 +189,7 @@ describe('Sessions Routes', () => {
 
     it('should return 500 on database error', async () => {
       // Arrange
-      mockExecuteQuery.mockRejectedValueOnce(new Error('Database connection lost'));
+      mockSessions.findMany.mockRejectedValueOnce(new Error('Database connection lost') as never);
 
       // Act
       const response = await request(app)
@@ -209,7 +218,7 @@ describe('Sessions Routes', () => {
         updated_at: new Date('2024-01-05')
       };
 
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [mockCreatedSession] });
+      mockSessions.create.mockResolvedValueOnce(mockCreatedSession as never);
 
       // Act
       const response = await request(app)
@@ -224,14 +233,14 @@ describe('Sessions Routes', () => {
         title: 'My Custom Title',
         status: 'active'
       });
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('INSERT INTO sessions'),
-        expect.objectContaining({
-          sessionId: uppercaseSessionId,
-          userId: 'test-user-123',
-          title: 'My Custom Title'
-        })
-      );
+      expect(mockSessions.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          id: uppercaseSessionId,
+          user_id: 'test-user-123',
+          title: 'My Custom Title',
+          is_active: true,
+        }),
+      });
     });
 
     it('should create session with default title when not provided', async () => {
@@ -249,7 +258,7 @@ describe('Sessions Routes', () => {
         updated_at: new Date()
       };
 
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [mockCreatedSession] });
+      mockSessions.create.mockResolvedValueOnce(mockCreatedSession as never);
 
       // Act
       const response = await request(app)
@@ -280,7 +289,7 @@ describe('Sessions Routes', () => {
     it('should return 500 when database insert fails', async () => {
       // Arrange
       mockRandomUUID.mockReturnValueOnce('failing-session');
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [] }); // Empty result
+      mockSessions.create.mockRejectedValueOnce(new Error('Database insert failed') as never);
 
       // Act
       const response = await request(app)
@@ -309,9 +318,9 @@ describe('Sessions Routes', () => {
         updated_at: new Date('2024-01-10')
       };
 
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [mockSession] });
+      mockSessions.findFirst.mockResolvedValueOnce(mockSession as never);
       // Second query: message count
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [{ count: 5 }] });
+      mockMessages.count.mockResolvedValueOnce(5 as never);
 
       // Act
       const response = await request(app)
@@ -325,15 +334,14 @@ describe('Sessions Routes', () => {
         title: 'Specific Session'
       });
       expect(response.body.messageCount).toBe(5);
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('WHERE id = @sessionId AND user_id = @userId'),
-        { sessionId: GET_SESSION_UUID, userId: 'test-user-123' }
-      );
+      expect(mockSessions.findFirst).toHaveBeenCalledWith({
+        where: { id: GET_SESSION_UUID, user_id: 'test-user-123' },
+      });
     });
 
     it('should return 404 when session does not exist', async () => {
       // Arrange - Use valid UUID format so it reaches database query
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
+      mockSessions.findFirst.mockResolvedValueOnce(null as never);
 
       // Act
       const response = await request(app)
@@ -347,7 +355,7 @@ describe('Sessions Routes', () => {
 
     it('should return 404 when user does not own the session', async () => {
       // Arrange - Session belongs to different user (use valid UUID)
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [] }); // No results due to ownership check
+      mockSessions.findFirst.mockResolvedValueOnce(null as never); // No results due to ownership check
 
       // Act
       const response = await request(app)
@@ -368,12 +376,10 @@ describe('Sessions Routes', () => {
     it('should return messages for a session with default pagination', async () => {
       // Arrange
       // First query: verify session ownership
-      mockExecuteQuery.mockResolvedValueOnce({
-        recordset: [{ id: VALID_SESSION_UUID }]
-      });
+      mockSessions.findFirst.mockResolvedValueOnce({ id: VALID_SESSION_UUID } as never);
 
       // Second query: get messages (returned in DESC order, reversed in code)
-      const mockMessages = [
+      const mockMsgs = [
         {
           id: 'msg-2',
           session_id: VALID_SESSION_UUID,
@@ -384,7 +390,13 @@ describe('Sessions Routes', () => {
           stop_reason: 'end_turn',
           token_count: 10,
           sequence_number: 2,
-          created_at: new Date('2024-01-15T10:00:05Z')
+          created_at: new Date('2024-01-15T10:00:05Z'),
+          model: null,
+          input_tokens: null,
+          output_tokens: null,
+          event_id: null,
+          tool_use_id: null,
+          agent_id: null,
         },
         {
           id: 'msg-1',
@@ -396,17 +408,17 @@ describe('Sessions Routes', () => {
           stop_reason: null,
           token_count: 5,
           sequence_number: 1,
-          created_at: new Date('2024-01-15T10:00:00Z')
+          created_at: new Date('2024-01-15T10:00:00Z'),
+          model: null,
+          input_tokens: null,
+          output_tokens: null,
+          event_id: null,
+          tool_use_id: null,
+          agent_id: null,
         }
       ];
 
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: mockMessages });
-
-      // Third query: get citations for assistant message (msg-2)
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
-
-      // Fourth query: get chat attachments for user message (msg-1)
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
+      mockMessages.findMany.mockResolvedValueOnce(mockMsgs as never);
 
       // Act
       const response = await request(app)
@@ -424,21 +436,20 @@ describe('Sessions Routes', () => {
       // Now includes pagination info
       expect(response.body.pagination).toBeDefined();
       expect(response.body.pagination.hasMore).toBe(false);
-      // 2 queries: session ownership, messages
-      // (citations and chat attachments are now mocked at service level)
-      expect(mockExecuteQuery).toHaveBeenCalledTimes(2);
-      expect(mockExecuteQuery).toHaveBeenNthCalledWith(
-        2,
-        expect.stringContaining('ORDER BY sequence_number DESC'),
-        expect.objectContaining({ sessionId: VALID_SESSION_UUID, fetchLimit: 51 })
-      );
+      // 1 findFirst (ownership) + 1 messages.findMany
+      expect(mockSessions.findFirst).toHaveBeenCalledTimes(1);
+      expect(mockMessages.findMany).toHaveBeenCalledWith({
+        where: { session_id: VALID_SESSION_UUID },
+        orderBy: { sequence_number: 'desc' },
+        take: 51,
+      });
     });
 
     it('should handle custom pagination parameters', async () => {
       // Arrange - Use valid UUID
       const paginationSessionUUID = '33333333-3333-3333-3333-333333333333';
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [{ id: paginationSessionUUID }] });
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
+      mockSessions.findFirst.mockResolvedValueOnce({ id: paginationSessionUUID } as never);
+      mockMessages.findMany.mockResolvedValueOnce([] as never);
 
       // Act - Now using cursor-based pagination with before parameter
       const response = await request(app)
@@ -446,11 +457,11 @@ describe('Sessions Routes', () => {
         .expect(200);
 
       // Assert - fetchLimit is limit + 1 for hasMore check
-      expect(mockExecuteQuery).toHaveBeenNthCalledWith(
-        2,
-        expect.any(String),
-        expect.objectContaining({ fetchLimit: 11 })
-      );
+      expect(mockMessages.findMany).toHaveBeenCalledWith({
+        where: { session_id: paginationSessionUUID },
+        orderBy: { sequence_number: 'desc' },
+        take: 11,
+      });
     });
 
     it('should return 400 when pagination params are invalid', async () => {
@@ -465,7 +476,7 @@ describe('Sessions Routes', () => {
 
     it('should return 404 when session does not exist or user lacks access', async () => {
       // Arrange - Session ownership check fails (use valid UUID)
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
+      mockSessions.findFirst.mockResolvedValueOnce(null as never);
 
       // Act
       const response = await request(app)
@@ -480,11 +491,11 @@ describe('Sessions Routes', () => {
     it('should handle thinking and tool_use message types', async () => {
       // Arrange - Use valid UUID
       const typesSessionUUID = '66666666-6666-6666-6666-666666666666';
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [{ id: typesSessionUUID }] });
+      mockSessions.findFirst.mockResolvedValueOnce({ id: typesSessionUUID } as never);
 
       // Note: Messages are fetched ORDER BY sequence_number DESC, then reversed
       // So mockMessages should be in DESC order (newest first)
-      const mockMessages = [
+      const mockMsgs = [
         {
           id: 'msg-tool',
           session_id: typesSessionUUID,
@@ -500,7 +511,13 @@ describe('Sessions Routes', () => {
           stop_reason: 'tool_use',
           token_count: 50,
           sequence_number: 2,
-          created_at: new Date()
+          created_at: new Date(),
+          model: null,
+          input_tokens: null,
+          output_tokens: null,
+          event_id: null,
+          tool_use_id: null,
+          agent_id: null,
         },
         {
           id: 'msg-thinking',
@@ -512,11 +529,17 @@ describe('Sessions Routes', () => {
           stop_reason: null,
           token_count: 20,
           sequence_number: 1,
-          created_at: new Date()
+          created_at: new Date(),
+          model: null,
+          input_tokens: null,
+          output_tokens: null,
+          event_id: null,
+          tool_use_id: null,
+          agent_id: null,
         }
       ];
 
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: mockMessages });
+      mockMessages.findMany.mockResolvedValueOnce(mockMsgs as never);
 
       // Act
       const response = await request(app)
@@ -552,10 +575,10 @@ describe('Sessions Routes', () => {
 
     it('should update session title successfully', async () => {
       // Arrange
-      // First query: UPDATE
-      mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+      // First query: updateMany
+      mockSessions.updateMany.mockResolvedValueOnce({ count: 1 } as never);
 
-      // Second query: SELECT updated session
+      // Second query: findFirst to get updated session
       const mockUpdatedSession = {
         id: PATCH_SESSION_UUID,
         user_id: 'test-user-123',
@@ -564,7 +587,7 @@ describe('Sessions Routes', () => {
         created_at: new Date('2024-01-20'),
         updated_at: new Date('2024-01-21')
       };
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [mockUpdatedSession] });
+      mockSessions.findFirst.mockResolvedValueOnce(mockUpdatedSession as never);
 
       // Act
       const response = await request(app)
@@ -575,29 +598,23 @@ describe('Sessions Routes', () => {
       // Assert - Route returns unwrapped session (REST standard, no success wrapper)
       expect(response.body.title).toBe('Updated Title');
       expect(response.body.id).toBe(PATCH_SESSION_UUID);
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('UPDATE sessions'),
-        expect.objectContaining({
-          sessionId: PATCH_SESSION_UUID,
-          userId: 'test-user-123',
-          title: 'Updated Title'
-        })
-      );
+      expect(mockSessions.updateMany).toHaveBeenCalledWith({
+        where: { id: PATCH_SESSION_UUID, user_id: 'test-user-123' },
+        data: expect.objectContaining({ title: 'Updated Title' }),
+      });
     });
 
     it('should trim whitespace from title', async () => {
       // Arrange
-      mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
-      mockExecuteQuery.mockResolvedValueOnce({
-        recordset: [{
-          id: PATCH_TRIM_UUID,
-          user_id: 'test-user-123',
-          title: 'Trimmed Title',
-          is_active: true,
-          created_at: new Date(),
-          updated_at: new Date()
-        }]
-      });
+      mockSessions.updateMany.mockResolvedValueOnce({ count: 1 } as never);
+      mockSessions.findFirst.mockResolvedValueOnce({
+        id: PATCH_TRIM_UUID,
+        user_id: 'test-user-123',
+        title: 'Trimmed Title',
+        is_active: true,
+        created_at: new Date(),
+        updated_at: new Date()
+      } as never);
 
       // Act
       await request(app)
@@ -606,10 +623,10 @@ describe('Sessions Routes', () => {
         .expect(200);
 
       // Assert
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({ title: 'Trimmed Title' })
-      );
+      expect(mockSessions.updateMany).toHaveBeenCalledWith({
+        where: { id: PATCH_TRIM_UUID, user_id: 'test-user-123' },
+        data: expect.objectContaining({ title: 'Trimmed Title' }),
+      });
     });
 
     it('should return 400 when title is missing', async () => {
@@ -649,7 +666,7 @@ describe('Sessions Routes', () => {
 
     it('should return 404 when session does not exist or user lacks access', async () => {
       // Arrange - No rows affected (use valid UUID)
-      mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [0] });
+      mockSessions.updateMany.mockResolvedValueOnce({ count: 0 } as never);
 
       // Act
       const response = await request(app)
@@ -671,7 +688,7 @@ describe('Sessions Routes', () => {
 
     it('should delete session successfully (CASCADE delete)', async () => {
       // Arrange
-      mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+      mockSessions.deleteMany.mockResolvedValueOnce({ count: 1 } as never);
 
       // Act - Route returns 204 No Content (REST standard for successful DELETE)
       await request(app)
@@ -679,15 +696,14 @@ describe('Sessions Routes', () => {
         .expect(204);
 
       // Assert - No body with 204, just verify DB call
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('DELETE FROM sessions'),
-        { sessionId: DELETE_SESSION_UUID, userId: 'test-user-123' }
-      );
+      expect(mockSessions.deleteMany).toHaveBeenCalledWith({
+        where: { id: DELETE_SESSION_UUID, user_id: 'test-user-123' },
+      });
     });
 
     it('should return 404 when session does not exist', async () => {
       // Arrange
-      mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [0] });
+      mockSessions.deleteMany.mockResolvedValueOnce({ count: 0 } as never);
 
       // Act
       const response = await request(app)
@@ -701,7 +717,7 @@ describe('Sessions Routes', () => {
 
     it('should return 404 when user does not own the session', async () => {
       // Arrange - No rows affected due to ownership check
-      mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [0] });
+      mockSessions.deleteMany.mockResolvedValueOnce({ count: 0 } as never);
 
       // Act
       const response = await request(app)
@@ -716,7 +732,7 @@ describe('Sessions Routes', () => {
 
     it('should return 500 on database error', async () => {
       // Arrange
-      mockExecuteQuery.mockRejectedValueOnce(new Error('Constraint violation'));
+      mockSessions.deleteMany.mockRejectedValueOnce(new Error('Constraint violation') as never);
 
       // Act
       const response = await request(app)

@@ -7,7 +7,7 @@
  * @module services/sessions/SessionService
  */
 
-import { executeQuery } from '@/infrastructure/database/database';
+import { prisma } from '@/infrastructure/database/prisma';
 import { createChildLogger } from '@/shared/utils/logger';
 import type {
   DbSessionRow,
@@ -45,28 +45,14 @@ export class SessionService {
     // Fetch one extra to determine hasMore
     const fetchLimit = limit + 1;
 
-    const query = `
-      SELECT
-        id,
-        user_id,
-        title,
-        is_active,
-        created_at,
-        updated_at
-      FROM sessions
-      WHERE user_id = @userId
-        ${before ? 'AND updated_at < @before' : ''}
-      ORDER BY updated_at DESC
-      OFFSET 0 ROWS FETCH NEXT @fetchLimit ROWS ONLY
-    `;
-
-    const params: Record<string, unknown> = { userId, fetchLimit };
-    if (before) {
-      params.before = new Date(before);
-    }
-
-    const result = await executeQuery<DbSessionRow>(query, params);
-    const rows = result.recordset || [];
+    const rows = await prisma.sessions.findMany({
+      where: {
+        user_id: userId,
+        ...(before ? { updated_at: { lt: new Date(before) } } : {}),
+      },
+      orderBy: { updated_at: 'desc' },
+      take: fetchLimit,
+    }) as unknown as DbSessionRow[];
 
     // Check if there are more results
     const hasMore = rows.length > limit;
@@ -74,7 +60,7 @@ export class SessionService {
 
     // Calculate next cursor
     const nextCursor = hasMore && sessions.length > 0
-      ? sessions[sessions.length - 1].updated_at
+      ? sessions[sessions.length - 1]!.updated_at
       : null;
 
     logger.info(
@@ -96,25 +82,15 @@ export class SessionService {
    * @returns Session or null if not found/unauthorized
    */
   async getSession(sessionId: string, userId: string): Promise<SessionResponse | null> {
-    const query = `
-      SELECT
-        id,
-        user_id,
-        title,
-        is_active,
-        created_at,
-        updated_at
-      FROM sessions
-      WHERE id = @sessionId AND user_id = @userId
-    `;
+    const row = await prisma.sessions.findFirst({
+      where: { id: sessionId, user_id: userId },
+    }) as unknown as DbSessionRow | null;
 
-    const result = await executeQuery<DbSessionRow>(query, { sessionId, userId });
-
-    if (result.recordset.length === 0 || !result.recordset[0]) {
+    if (!row) {
       return null;
     }
 
-    return transformSession(result.recordset[0]);
+    return transformSession(row);
   }
 
   /**
@@ -124,9 +100,7 @@ export class SessionService {
    * @returns Message count
    */
   async getMessageCount(sessionId: string): Promise<number> {
-    const query = `SELECT COUNT(*) as count FROM messages WHERE session_id = @sessionId`;
-    const result = await executeQuery<{ count: number }>(query, { sessionId });
-    return result.recordset[0]?.count ?? 0;
+    return prisma.messages.count({ where: { session_id: sessionId } });
   }
 
   /**
@@ -138,20 +112,20 @@ export class SessionService {
    * @returns Created session
    */
   async createSession(userId: string, sessionId: string, title: string): Promise<SessionResponse> {
-    const query = `
-      INSERT INTO sessions (id, user_id, title, is_active, created_at, updated_at)
-      OUTPUT INSERTED.id, INSERTED.user_id, INSERTED.title, INSERTED.is_active, INSERTED.created_at, INSERTED.updated_at
-      VALUES (@sessionId, @userId, @title, 1, GETUTCDATE(), GETUTCDATE())
-    `;
-
-    const result = await executeQuery<DbSessionRow>(query, { sessionId, userId, title });
-
-    if (result.recordset.length === 0 || !result.recordset[0]) {
-      throw new Error('Failed to create session: No result returned');
-    }
+    const now = new Date();
+    const row = await prisma.sessions.create({
+      data: {
+        id: sessionId,
+        user_id: userId,
+        title,
+        is_active: true,
+        created_at: now,
+        updated_at: now,
+      },
+    }) as unknown as DbSessionRow;
 
     logger.info({ sessionId, userId }, 'Session created');
-    return transformSession(result.recordset[0]);
+    return transformSession(row);
   }
 
   /**
@@ -163,33 +137,26 @@ export class SessionService {
    * @returns Updated session or null if not found/unauthorized
    */
   async updateSessionTitle(sessionId: string, userId: string, title: string): Promise<SessionResponse | null> {
-    const updateQuery = `
-      UPDATE sessions
-      SET title = @title, updated_at = GETUTCDATE()
-      WHERE id = @sessionId AND user_id = @userId
-    `;
+    const updateResult = await prisma.sessions.updateMany({
+      where: { id: sessionId, user_id: userId },
+      data: { title, updated_at: new Date() },
+    });
 
-    const updateResult = await executeQuery(updateQuery, { sessionId, userId, title });
-
-    if (updateResult.rowsAffected[0] === 0) {
+    if (updateResult.count === 0) {
       return null;
     }
 
     // Fetch updated session
-    const selectQuery = `
-      SELECT id, user_id, title, is_active, created_at, updated_at
-      FROM sessions
-      WHERE id = @sessionId
-    `;
+    const row = await prisma.sessions.findFirst({
+      where: { id: sessionId },
+    }) as unknown as DbSessionRow | null;
 
-    const result = await executeQuery<DbSessionRow>(selectQuery, { sessionId });
-
-    if (!result.recordset[0]) {
+    if (!row) {
       return null;
     }
 
     logger.info({ sessionId }, 'Session title updated');
-    return transformSession(result.recordset[0]);
+    return transformSession(row);
   }
 
   /**
@@ -200,14 +167,11 @@ export class SessionService {
    * @returns True if deleted, false if not found/unauthorized
    */
   async deleteSession(sessionId: string, userId: string): Promise<boolean> {
-    const query = `
-      DELETE FROM sessions
-      WHERE id = @sessionId AND user_id = @userId
-    `;
+    const result = await prisma.sessions.deleteMany({
+      where: { id: sessionId, user_id: userId },
+    });
 
-    const result = await executeQuery(query, { sessionId, userId });
-
-    if (result.rowsAffected[0] === 0) {
+    if (result.count === 0) {
       return false;
     }
 
@@ -223,9 +187,11 @@ export class SessionService {
    * @returns True if session exists and belongs to user
    */
   async verifySessionOwnership(sessionId: string, userId: string): Promise<boolean> {
-    const query = `SELECT id FROM sessions WHERE id = @sessionId AND user_id = @userId`;
-    const result = await executeQuery<{ id: string }>(query, { sessionId, userId });
-    return result.recordset.length > 0;
+    const row = await prisma.sessions.findFirst({
+      where: { id: sessionId, user_id: userId },
+      select: { id: true },
+    });
+    return row !== null;
   }
 
   // ============================================
@@ -253,48 +219,25 @@ export class SessionService {
 
     // Query messages ordered by sequence_number DESC (to get latest first when paginating)
     // Then reverse in code to return chronological order
-    const query = `
-      SELECT
-        id,
-        session_id,
-        role,
-        message_type,
-        content,
-        metadata,
-        stop_reason,
-        token_count,
-        sequence_number,
-        created_at,
-        model,
-        input_tokens,
-        output_tokens,
-        event_id,
-        tool_use_id
-      FROM messages
-      WHERE session_id = @sessionId
-        ${before ? 'AND sequence_number < @before' : ''}
-      ORDER BY sequence_number DESC
-      OFFSET 0 ROWS FETCH NEXT @fetchLimit ROWS ONLY
-    `;
-
-    const params: Record<string, unknown> = { sessionId, fetchLimit };
-    if (before) {
-      params.before = before;
-    }
-
-    const result = await executeQuery<DbMessageRow>(query, params);
-    const rows = result.recordset || [];
+    const rows = await prisma.messages.findMany({
+      where: {
+        session_id: sessionId,
+        ...(before ? { sequence_number: { lt: before } } : {}),
+      },
+      orderBy: { sequence_number: 'desc' },
+      take: fetchLimit,
+    }) as unknown as DbMessageRow[];
 
     // Check if there are more (older) results
     const hasMore = rows.length > limit;
     const messagesDesc = rows.slice(0, limit);
 
     // Reverse to get chronological order (oldest first)
-    const messages = messagesDesc.reverse().map(transformMessage);
+    const messages = [...messagesDesc].reverse().map(transformMessage);
 
     // Next cursor is the smallest sequence_number (oldest message returned)
     const nextCursor = hasMore && messagesDesc.length > 0
-      ? messagesDesc[messagesDesc.length - 1].sequence_number
+      ? messagesDesc[messagesDesc.length - 1]!.sequence_number
       : null;
 
     logger.debug(

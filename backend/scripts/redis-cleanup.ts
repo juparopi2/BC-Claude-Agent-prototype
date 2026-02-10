@@ -2,12 +2,20 @@
  * Redis Cleanup Script
  *
  * Cleans up BullMQ queues and Redis memory for fresh testing.
- * Run with: npx ts-node -r tsconfig-paths/register scripts/redis-cleanup.ts
+ * Also absorbs functionality from flush-redis-bullmq.ts (use --flush-history).
+ *
+ * Usage:
+ *   npx tsx scripts/redis-cleanup.ts --stats          # Show stats only
+ *   npx tsx scripts/redis-cleanup.ts --dry-run        # Preview cleanup
+ *   npx tsx scripts/redis-cleanup.ts                  # Clean file queues
+ *   npx tsx scripts/redis-cleanup.ts --all            # Clean all queues
+ *   npx tsx scripts/redis-cleanup.ts --flush-history  # Nuclear: delete ALL BullMQ data + caches
  *
  * Options:
- *   --dry-run    Show what would be deleted without actually deleting
- *   --stats      Show memory stats only
- *   --all        Clean all queues (default: only file-related queues)
+ *   --dry-run         Show what would be deleted without actually deleting
+ *   --stats           Show memory stats only
+ *   --all             Clean all queues (default: only file-related queues)
+ *   --flush-history   Delete ALL BullMQ data, embedding cache, rate limiters, etc.
  */
 
 import Redis from 'ioredis';
@@ -47,12 +55,36 @@ const ALL_QUEUES = [
   'citation-persistence',
 ];
 
-function parseArgs(): { dryRun: boolean; statsOnly: boolean; allQueues: boolean } {
+function parseArgs(): { dryRun: boolean; statsOnly: boolean; allQueues: boolean; flushHistory: boolean } {
   const args = process.argv.slice(2);
+
+  if (args.includes('--help') || args.includes('-h')) {
+    console.log(`
+Redis Cleanup Script
+
+Usage:
+  npx tsx scripts/redis-cleanup.ts [options]
+
+Options:
+  --stats           Show memory stats only (no cleanup)
+  --dry-run         Preview what would be deleted
+  --all             Clean all queues (default: file-related only)
+  --flush-history   Nuclear: delete ALL BullMQ data, caches, rate limiters
+
+Examples:
+  npx tsx scripts/redis-cleanup.ts --stats
+  npx tsx scripts/redis-cleanup.ts --dry-run
+  npx tsx scripts/redis-cleanup.ts --all
+  npx tsx scripts/redis-cleanup.ts --flush-history --dry-run
+`);
+    process.exit(0);
+  }
+
   return {
     dryRun: args.includes('--dry-run'),
     statsOnly: args.includes('--stats'),
     allQueues: args.includes('--all'),
+    flushHistory: args.includes('--flush-history'),
   };
 }
 
@@ -171,14 +203,15 @@ function formatBytes(bytes: number): string {
 }
 
 async function main() {
-  const { dryRun, statsOnly, allQueues } = parseArgs();
-  const queues = allQueues ? ALL_QUEUES : FILE_QUEUES;
+  const { dryRun, statsOnly, allQueues, flushHistory } = parseArgs();
+  const queues = allQueues || flushHistory ? ALL_QUEUES : FILE_QUEUES;
 
   console.log('='.repeat(60));
   console.log('Redis Cleanup Script');
   console.log('='.repeat(60));
-  console.log(`Mode: ${statsOnly ? 'Stats Only' : dryRun ? 'Dry Run' : 'LIVE CLEANUP'}`);
-  console.log(`Queues: ${allQueues ? 'All' : 'File-related only'}`);
+  const mode = statsOnly ? 'Stats Only' : dryRun ? 'Dry Run' : flushHistory ? 'FLUSH HISTORY (nuclear)' : 'LIVE CLEANUP';
+  console.log(`Mode: ${mode}`);
+  console.log(`Queues: ${allQueues || flushHistory ? 'All' : 'File-related only'}`);
   console.log(`Queue prefix: ${QUEUE_PREFIX || '(none)'}`);
   console.log('');
 
@@ -276,6 +309,37 @@ async function main() {
         console.log(`  Deleted ${rateLimitKeys.length} rate limiter keys`);
       }
       deletedTotal += rateLimitKeys.length;
+    }
+
+    // Flush history mode (absorbed from flush-redis-bullmq.ts)
+    // Deletes additional patterns: embedding cache, upload sessions, event store, etc.
+    if (flushHistory) {
+      console.log('\n--- Flush History: Additional Patterns ---\n');
+      const extraPatterns = [
+        'embedding:*',
+        'ratelimit:*',
+        'usage:*',
+        'upload-session:*',
+        'sess:*',
+        'event-store:*',
+        'local:*',
+      ];
+
+      for (const pattern of extraPatterns) {
+        const keys = await redis.keys(pattern);
+        if (keys.length > 0) {
+          if (dryRun) {
+            console.log(`  [DRY RUN] ${pattern}: ${keys.length} keys`);
+          } else {
+            for (let i = 0; i < keys.length; i += 1000) {
+              const batch = keys.slice(i, i + 1000);
+              await redis.del(...batch);
+            }
+            console.log(`  ${pattern}: deleted ${keys.length} keys`);
+          }
+          deletedTotal += dryRun ? 0 : keys.length;
+        }
+      }
     }
 
     console.log('\n' + '='.repeat(60));

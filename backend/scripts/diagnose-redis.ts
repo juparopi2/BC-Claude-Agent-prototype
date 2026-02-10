@@ -2,11 +2,14 @@
  * Redis Diagnostics Script
  *
  * Comprehensive diagnostic tool for Azure Redis instance.
+ * Also absorbs functionality from analyze-redis-memory.ts (use --memory-analysis).
+ *
  * Helps identify issues related to:
  * - Connection limits (Azure Basic C0 = 256 connections)
  * - Memory pressure (Azure Basic C0 = 250MB)
  * - Lock-related BullMQ issues
  * - Key distribution and cleanup
+ * - Embedding memory leaks (raw field detection)
  *
  * Usage:
  *   npx tsx scripts/diagnose-redis.ts
@@ -240,6 +243,84 @@ async function analyzeKeys(connection: IORedis): Promise<KeyAnalysis[]> {
   }
 
   return analysis.sort((a, b) => b.count - a.count);
+}
+
+/**
+ * Deep memory analysis (absorbed from analyze-redis-memory.ts).
+ * Shows prefix-level grouping, embedding leak detection, and top largest keys.
+ */
+async function deepMemoryAnalysis(connection: IORedis): Promise<void> {
+  console.log('\n=== DEEP MEMORY ANALYSIS ===\n');
+
+  const keys = await connection.keys('*');
+  console.log(`Total keys: ${keys.length}`);
+
+  // Group by prefix (first segment)
+  const groups: Record<string, number> = {};
+  for (const key of keys) {
+    const prefix = key.split(':')[0];
+    groups[prefix] = (groups[prefix] || 0) + 1;
+  }
+
+  console.log('\n--- Keys by Prefix ---');
+  for (const [prefix, count] of Object.entries(groups).sort((a, b) => b[1] - a[1])) {
+    console.log(`  ${prefix.padEnd(30)} ${count.toString().padStart(6)}`);
+  }
+
+  // Embedding leak detection
+  const embeddingKeys = keys.filter(k => k.startsWith('embedding:'));
+  if (embeddingKeys.length > 0) {
+    console.log(`\n--- Embedding Analysis (${embeddingKeys.length} keys) ---`);
+    let totalSize = 0;
+    let hasRawField = 0;
+    const sampleSize = Math.min(5, embeddingKeys.length);
+
+    for (const key of embeddingKeys.slice(0, sampleSize)) {
+      const val = await connection.get(key);
+      const size = val ? val.length : 0;
+      totalSize += size;
+      console.log(`  ${key.substring(0, 55)}... ${Math.round(size / 1024)}KB`);
+
+      if (val) {
+        try {
+          const parsed = JSON.parse(val);
+          console.log(`    fields: ${Object.keys(parsed).join(', ')}`);
+          if (parsed.raw) {
+            hasRawField++;
+            console.log('    WARNING: Has "raw" field (memory leak!)');
+          }
+        } catch {
+          console.log('    (not JSON)');
+        }
+      }
+    }
+
+    if (sampleSize > 0) {
+      const avgSize = Math.round(totalSize / sampleSize / 1024);
+      const estTotal = Math.round(totalSize / sampleSize * embeddingKeys.length / 1024 / 1024);
+      console.log(`\n  Avg size: ${avgSize}KB`);
+      console.log(`  Est. total embedding mem: ${estTotal}MB`);
+      if (hasRawField > 0) {
+        console.log(`  WARNING: ${hasRawField}/${sampleSize} sampled keys have "raw" field leak`);
+      }
+    }
+  }
+
+  // Top largest keys (sample first 100)
+  console.log('\n--- Top 10 Largest Keys (sampled) ---');
+  const keySizes: { key: string; size: number }[] = [];
+  for (const key of keys.slice(0, 100)) {
+    try {
+      const mem = await connection.memory('USAGE', key);
+      if (typeof mem === 'number') keySizes.push({ key, size: mem });
+    } catch {
+      // MEMORY USAGE not always available
+    }
+  }
+  keySizes.sort((a, b) => b.size - a.size);
+  for (const { key, size } of keySizes.slice(0, 10)) {
+    console.log(`  ${key.substring(0, 55).padEnd(55)} ${Math.round(size / 1024).toString().padStart(6)}KB`);
+  }
 }
 
 // ============================================================================
@@ -573,6 +654,11 @@ async function main() {
 
     // Print results
     printDiagnostics(result, lockInfo);
+
+    // Deep memory analysis if requested (absorbed from analyze-redis-memory.ts)
+    if (args.memoryAnalysis) {
+      await deepMemoryAnalysis(connection);
+    }
 
     // Cleanup stale locks if requested
     if (args.cleanupStale && lockInfo.staleLocks.length > 0) {

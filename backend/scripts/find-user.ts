@@ -1,30 +1,21 @@
 /**
  * Find User by Name
  *
- * Searches for users by name (partial match) in the database.
+ * Searches for users by name or email (partial or exact match) in the database.
  *
  * Usage:
  *   npx tsx scripts/find-user.ts "Juan Pablo"
  *   npx tsx scripts/find-user.ts "romero" --exact
+ *   npx tsx scripts/find-user.ts "juan" --files
  */
 
 import 'dotenv/config';
-import sql from 'mssql';
+import { createPrisma } from './_shared/prisma';
+import { getPositionalArg, hasFlag } from './_shared/args';
 
 // ============================================================================
-// Configuration
+// Types
 // ============================================================================
-
-const SQL_CONFIG: sql.config = {
-  server: process.env.DATABASE_SERVER || '',
-  database: process.env.DATABASE_NAME || '',
-  user: process.env.DATABASE_USER || '',
-  password: process.env.DATABASE_PASSWORD || '',
-  options: {
-    encrypt: true,
-    trustServerCertificate: false,
-  },
-};
 
 interface UserRecord {
   id: string;
@@ -40,11 +31,17 @@ interface UserStats {
   total_folders: number;
 }
 
+interface FileDetails {
+  processing: Record<string, number>;
+  embeddings: Record<string, number>;
+  stuck_deletions: number;
+}
+
 // ============================================================================
 // Argument Parsing
 // ============================================================================
 
-function parseArgs(): { searchTerm: string; exactMatch: boolean } {
+function parseArgs(): { searchTerm: string; exactMatch: boolean; showFiles: boolean } {
   const args = process.argv.slice(2);
 
   if (args.length === 0 || args[0] === '--help' || args[0] === '-h') {
@@ -52,24 +49,32 @@ function parseArgs(): { searchTerm: string; exactMatch: boolean } {
 Find User Script
 
 Usage:
-  npx tsx scripts/find-user.ts "<search term>" [--exact]
+  npx tsx scripts/find-user.ts "<search term>" [--exact] [--files]
 
 Arguments:
   <search term>  Name or email to search for (partial match by default)
   --exact        Use exact match instead of partial match
+  --files        Show detailed file statistics (processing, embeddings, stuck deletions)
 
 Examples:
   npx tsx scripts/find-user.ts "Juan Pablo"
   npx tsx scripts/find-user.ts "juan.pablo@example.com" --exact
   npx tsx scripts/find-user.ts "romero"
+  npx tsx scripts/find-user.ts "juan" --files
 `);
     process.exit(0);
   }
 
-  const exactMatch = args.includes('--exact');
-  const searchTerm = args.filter((arg) => !arg.startsWith('--'))[0] || '';
+  const searchTerm = getPositionalArg() || '';
+  const exactMatch = hasFlag('--exact');
+  const showFiles = hasFlag('--files');
 
-  return { searchTerm, exactMatch };
+  if (!searchTerm) {
+    console.error('ERROR: Search term is required');
+    process.exit(1);
+  }
+
+  return { searchTerm, exactMatch, showFiles };
 }
 
 // ============================================================================
@@ -77,60 +82,124 @@ Examples:
 // ============================================================================
 
 async function findUsers(
-  pool: sql.ConnectionPool,
+  prisma: ReturnType<typeof createPrisma>,
   searchTerm: string,
   exactMatch: boolean
 ): Promise<UserRecord[]> {
-  const request = pool.request();
+  const whereClause = exactMatch
+    ? {
+        OR: [{ full_name: searchTerm }, { email: searchTerm }],
+      }
+    : {
+        OR: [{ full_name: { contains: searchTerm } }, { email: { contains: searchTerm } }],
+      };
 
-  let query: string;
-  if (exactMatch) {
-    query = `
-      SELECT id, email, full_name, created_at, last_microsoft_login
-      FROM users
-      WHERE full_name = @searchTerm OR email = @searchTerm
-      ORDER BY full_name, created_at DESC
-    `;
-    request.input('searchTerm', sql.NVarChar(255), searchTerm);
-  } else {
-    query = `
-      SELECT id, email, full_name, created_at, last_microsoft_login
-      FROM users
-      WHERE full_name LIKE @searchPattern OR email LIKE @searchPattern
-      ORDER BY full_name, created_at DESC
-    `;
-    request.input('searchPattern', sql.NVarChar(255), `%${searchTerm}%`);
-  }
+  const users = await prisma.users.findMany({
+    where: whereClause,
+    select: {
+      id: true,
+      email: true,
+      full_name: true,
+      created_at: true,
+      last_microsoft_login: true,
+    },
+    orderBy: [{ full_name: 'asc' }, { created_at: 'desc' }],
+  });
 
-  const result = await request.query<UserRecord>(query);
-  return result.recordset;
+  return users.map((u) => ({
+    ...u,
+    id: u.id.toUpperCase(),
+  }));
 }
 
-async function getUserStats(pool: sql.ConnectionPool, userId: string): Promise<UserStats> {
-  const request = pool.request();
-  request.input('userId', sql.UniqueIdentifier, userId);
-
-  const [sessionsResult, filesResult] = await Promise.all([
-    request.query<{ count: number }>(`
-      SELECT COUNT(*) as count FROM sessions WHERE user_id = @userId
-    `),
-    pool.request().input('userId', sql.UniqueIdentifier, userId).query<{
-      total_files: number;
-      total_folders: number;
-    }>(`
-      SELECT
-        SUM(CASE WHEN is_folder = 0 THEN 1 ELSE 0 END) as total_files,
-        SUM(CASE WHEN is_folder = 1 THEN 1 ELSE 0 END) as total_folders
-      FROM files
-      WHERE user_id = @userId
-    `),
+async function getUserStats(
+  prisma: ReturnType<typeof createPrisma>,
+  userId: string
+): Promise<UserStats> {
+  const [sessionCount, fileStats] = await Promise.all([
+    prisma.sessions.count({ where: { user_id: userId } }),
+    prisma.files.groupBy({
+      by: ['is_folder'],
+      where: { user_id: userId },
+      _count: true,
+    }),
   ]);
 
+  const fileCount = fileStats.find((s) => s.is_folder === false)?._count || 0;
+  const folderCount = fileStats.find((s) => s.is_folder === true)?._count || 0;
+
   return {
-    total_sessions: sessionsResult.recordset[0]?.count || 0,
-    total_files: filesResult.recordset[0]?.total_files || 0,
-    total_folders: filesResult.recordset[0]?.total_folders || 0,
+    total_sessions: sessionCount,
+    total_files: fileCount,
+    total_folders: folderCount,
   };
+}
+
+async function getFileDetails(
+  prisma: ReturnType<typeof createPrisma>,
+  userId: string
+): Promise<FileDetails> {
+  const [processingGroups, embeddingGroups, stuckCount] = await Promise.all([
+    prisma.files.groupBy({
+      by: ['processing_status'],
+      where: { user_id: userId, is_folder: false, deletion_status: null },
+      _count: true,
+    }),
+    prisma.files.groupBy({
+      by: ['embedding_status'],
+      where: { user_id: userId, is_folder: false, deletion_status: null },
+      _count: true,
+    }),
+    prisma.files.count({
+      where: { user_id: userId, deletion_status: { not: null } },
+    }),
+  ]);
+
+  const processing: Record<string, number> = {};
+  for (const group of processingGroups) {
+    if (group.processing_status) {
+      processing[group.processing_status] = group._count;
+    }
+  }
+
+  const embeddings: Record<string, number> = {};
+  for (const group of embeddingGroups) {
+    if (group.embedding_status) {
+      embeddings[group.embedding_status] = group._count;
+    }
+  }
+
+  return {
+    processing,
+    embeddings,
+    stuck_deletions: stuckCount,
+  };
+}
+
+// ============================================================================
+// Display Utilities
+// ============================================================================
+
+function formatFileDetails(details: FileDetails): string {
+  const lines: string[] = [];
+  lines.push('\n  File Details:');
+
+  // Processing status
+  const processingParts = Object.entries(details.processing)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([status, count]) => `${status}=${count}`);
+  lines.push(`    Processing: ${processingParts.join(', ') || 'none'}`);
+
+  // Embedding status
+  const embeddingParts = Object.entries(details.embeddings)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([status, count]) => `${status}=${count}`);
+  lines.push(`    Embeddings: ${embeddingParts.join(', ') || 'none'}`);
+
+  // Stuck deletions
+  lines.push(`    Stuck Deletions: ${details.stuck_deletions}`);
+
+  return lines.join('\n');
 }
 
 // ============================================================================
@@ -138,21 +207,20 @@ async function getUserStats(pool: sql.ConnectionPool, userId: string): Promise<U
 // ============================================================================
 
 async function main() {
-  const { searchTerm, exactMatch } = parseArgs();
+  const { searchTerm, exactMatch, showFiles } = parseArgs();
 
   console.log('=== FIND USER ===\n');
   console.log(`Search term: "${searchTerm}"`);
-  console.log(`Match type: ${exactMatch ? 'exact' : 'partial'}\n`);
-
-  if (!SQL_CONFIG.server) {
-    console.error('ERROR: DATABASE_SERVER environment variable not set');
-    process.exit(1);
+  console.log(`Match type: ${exactMatch ? 'exact' : 'partial'}`);
+  if (showFiles) {
+    console.log('File details: enabled');
   }
+  console.log();
 
-  const pool = await sql.connect(SQL_CONFIG);
+  const prisma = createPrisma();
 
   try {
-    const users = await findUsers(pool, searchTerm, exactMatch);
+    const users = await findUsers(prisma, searchTerm, exactMatch);
 
     if (users.length === 0) {
       console.log('No users found matching the search criteria.');
@@ -163,7 +231,7 @@ async function main() {
     console.log('-'.repeat(80));
 
     for (const user of users) {
-      const stats = await getUserStats(pool, user.id);
+      const stats = await getUserStats(prisma, user.id);
 
       console.log(`
 User ID:      ${user.id}
@@ -173,8 +241,14 @@ Created:      ${user.created_at.toISOString()}
 Last Login:   ${user.last_microsoft_login?.toISOString() || '(never)'}
 Sessions:     ${stats.total_sessions}
 Files:        ${stats.total_files}
-Folders:      ${stats.total_folders}
-`);
+Folders:      ${stats.total_folders}`);
+
+      if (showFiles) {
+        const fileDetails = await getFileDetails(prisma, user.id);
+        console.log(formatFileDetails(fileDetails));
+      }
+
+      console.log();
       console.log('-'.repeat(80));
     }
 
@@ -182,17 +256,17 @@ Folders:      ${stats.total_folders}
     if (users.length === 1) {
       const userId = users[0].id;
       console.log('\nQuick commands for this user:\n');
-      console.log(`  # Verify file integrity`);
-      console.log(`  npx tsx scripts/verify-file-integrity.ts --userId ${userId}\n`);
+      console.log(`  # Verify storage integrity`);
+      console.log(`  npx tsx scripts/verify-storage.ts --userId ${userId}\n`);
       console.log(`  # Check queue status`);
       console.log(`  npx tsx scripts/queue-status.ts\n`);
-      console.log(`  # Run orphan cleanup`);
-      console.log(`  npx tsx scripts/run-orphan-cleanup.ts --userId ${userId}\n`);
+      console.log(`  # Run storage cleanup`);
+      console.log(`  npx tsx scripts/fix-storage.ts --userId ${userId}\n`);
       console.log(`  # Verify blob storage`);
       console.log(`  npx tsx scripts/verify-blob-storage.ts ${userId}\n`);
     }
   } finally {
-    await pool.close();
+    await prisma.$disconnect();
   }
 }
 

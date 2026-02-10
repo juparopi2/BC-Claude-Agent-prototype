@@ -7,10 +7,13 @@
  * - Rate limit status
  * - Redis memory usage
  *
+ * Also absorbs functionality from check-failed-jobs.ts (use --verbose for detailed error view).
+ *
  * Usage:
  *   npx tsx scripts/queue-status.ts
  *   npx tsx scripts/queue-status.ts --verbose
  *   npx tsx scripts/queue-status.ts --queue file-processing
+ *   npx tsx scripts/queue-status.ts --show-failed 20 --verbose
  */
 
 import 'dotenv/config';
@@ -253,9 +256,19 @@ function printQueueStatus(status: QueueStatus, verbose: boolean): void {
       console.log(`      Time: ${job.timestamp.toISOString()}`);
 
       if (verbose) {
-        console.log(`      Data: ${JSON.stringify(job.data, null, 2).substring(0, 200)}...`);
+        // Detailed data view (absorbed from check-failed-jobs.ts)
+        console.log('      Data:');
+        for (const [key, value] of Object.entries(job.data)) {
+          const val = typeof value === 'string' && value.length > 60
+            ? value.substring(0, 60) + '...'
+            : JSON.stringify(value);
+          console.log(`        ${key}: ${val}`);
+        }
         if (job.stackTrace.length > 0) {
-          console.log(`      Stack: ${job.stackTrace[0]}`);
+          console.log('      Stack trace:');
+          for (const line of job.stackTrace.slice(0, 5)) {
+            console.log(`        ${line}`);
+          }
         }
       }
     }

@@ -238,6 +238,15 @@ Conexión con servicios externos y nuevos proveedores de IA.
 **Objetivo:** Soporte para Gemini.
 **Estimación:** 10 días
 
+### Azure AI Foundry Investigation & Migration (Alta)
+**Necesidad:** Investigar y configurar el uso de recursos de Azure AI Foundry como proveedor centralizado de modelos (LLMs). Evaluar si debe ser la opción principal o fallback basándose en una comparativa de precios y características frente al proveedor directo actual (Cloud).
+**Estrategia:**
+- Si el pricing es igual o mejor en Azure Foundry: Migrar como opción **Principal**.
+- Si no: Mantener como opción de **Fallback** o descartar.
+- Investigar configuración para "building centralizado" usando recursos de Azure.
+**Estimación:** 3-5 días (Investigación) + 10 días (Migración si aplica)
+
+
 ---
 
 ## 🚀 Rendimiento y Escalabilidad

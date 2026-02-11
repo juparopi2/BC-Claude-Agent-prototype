@@ -510,6 +510,13 @@ export class FileProcessingService {
     const { getMessageQueue } = await import('@/infrastructure/queue/MessageQueue');
     const messageQueue = getMessageQueue();
 
+    logger.debug({
+      fileId, userId,
+      mimeType,
+      mimeTypeType: typeof mimeType,
+      mimeTypeValue: mimeType === null ? 'NULL' : mimeType === undefined ? 'UNDEFINED' : mimeType,
+    }, '[TRACE] enqueueChunkingJob - mimeType being sent to chunking worker');
+
     const jobId = await messageQueue.addFileChunkingJob({
       fileId,
       userId,

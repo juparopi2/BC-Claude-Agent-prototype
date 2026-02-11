@@ -247,6 +247,9 @@ export interface UploadSession {
 
   /** Timestamp when session expires (ms since epoch) */
   expiresAt: number;
+
+  /** Upload plan for resumable uploads (optional) */
+  uploadPlan?: Record<string, unknown>;
 }
 
 // ============================================================================
@@ -691,6 +694,16 @@ export interface ResolveFolderConflictsResponse {
   renamedFolders: RenamedFolderInfo[];
   /** Updated session */
   session: UploadSession;
+}
+
+/**
+ * Enhanced InitUploadSessionResponse with pre-allocated SAS URLs for resumable uploads
+ */
+export interface InitUploadSessionResponseWithSasUrls extends InitUploadSessionResponse {
+  /** Pre-allocated SAS URLs keyed by file temp ID */
+  preAllocatedSasUrls: Record<string, { sasUrl: string; blobPath: string; expiresAt: string }>;
+  /** Upload plan with folder-to-file mapping */
+  uploadPlan: Record<string, unknown>;
 }
 
 /**

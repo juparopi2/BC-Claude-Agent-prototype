@@ -107,6 +107,13 @@ export class FileChunkingService {
   public async processFileChunks(jobData: FileChunkingJob): Promise<ChunkingResult> {
     const { fileId, userId, mimeType, sessionId } = jobData;
 
+    logger.debug({
+      fileId, userId, mimeType,
+      mimeTypeType: typeof mimeType,
+      mimeTypeValue: mimeType === null ? 'NULL' : mimeType === undefined ? 'UNDEFINED' : mimeType,
+      isImageMime: IMAGE_MIME_TYPES.has(mimeType),
+    }, '[TRACE] processFileChunks entry - mimeType from job data');
+
     logger.info({ fileId, userId, mimeType }, 'Starting file chunking');
 
     // Handle images separately - they don't have text to chunk
@@ -287,6 +294,15 @@ export class FileChunkingService {
       const fileName = fileResult.recordset[0]?.name || 'unknown.jpg';
       const fileMimeType = fileResult.recordset[0]?.mime_type ?? undefined;
 
+      logger.debug({
+        fileId, userId,
+        dbMimeType: fileResult.recordset[0]?.mime_type,
+        dbMimeTypeType: typeof fileResult.recordset[0]?.mime_type,
+        resolvedMimeType: fileMimeType,
+        resolvedMimeTypeType: typeof fileMimeType,
+        dbRecordFound: !!fileResult.recordset[0],
+      }, '[TRACE] indexImageEmbedding - mimeType from DB re-read (image path)');
+
       // Generate text embedding from caption for contentVector search path
       let captionContentVector: number[] | undefined;
       if (embeddingRecord.caption) {
@@ -331,6 +347,14 @@ export class FileChunkingService {
       // Index in Azure AI Search
       const { VectorSearchService } = await import('@services/search/VectorSearchService');
       const vectorSearchService = VectorSearchService.getInstance();
+
+      logger.debug({
+        fileId, userId,
+        mimeTypePassedToVSS: fileMimeType,
+        mimeTypePassedToVSSType: typeof fileMimeType,
+        hasCaption: !!embeddingRecord.caption,
+        hasCaptionContentVector: !!captionContentVector,
+      }, '[TRACE] indexImageEmbedding - about to call VectorSearchService.indexImageEmbedding');
 
       await vectorSearchService.indexImageEmbedding({
         fileId,
@@ -497,6 +521,13 @@ export class FileChunkingService {
       chunkIds: chunks.map(chunk => chunk.id),
       mimeType,
     };
+
+    logger.debug({
+      fileId, userId,
+      mimeTypeInJobData: jobData.mimeType,
+      mimeTypeInJobDataType: typeof jobData.mimeType,
+      chunkCount: chunks.length,
+    }, '[TRACE] enqueueEmbeddingJob - mimeType being sent to embedding worker');
 
     const jobId = await messageQueue.addEmbeddingGenerationJob(jobData);
 

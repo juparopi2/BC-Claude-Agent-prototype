@@ -150,9 +150,18 @@ router.post(
 
       const { folders, targetFolderId, enableResumableUpload } = validation.data;
 
+      const totalFiles = folders.reduce((sum, f) => sum + (f.files?.length || 0), 0);
+
       logger.info(
-        { userId, folderCount: folders.length, targetFolderId, enableResumableUpload },
-        'Initializing upload session'
+        {
+          userId,
+          folderCount: folders.length,
+          totalFiles,
+          targetFolderId,
+          enableResumableUpload,
+          folderNames: folders.map(f => f.name),
+        },
+        '[TRACE] upload-session init - request received'
       );
 
       const sessionManager = getUploadSessionManager();
@@ -164,6 +173,16 @@ router.post(
       });
 
       const { session, renamedFolderCount, renamedFolders, preAllocatedSasUrls, uploadPlan } = initResult;
+
+      logger.info(
+        {
+          sessionId: session.id,
+          totalFolders: session.totalFolders,
+          totalFiles,
+          folderNames: folders.map(f => f.name),
+        },
+        '[TRACE] upload-session init - session created'
+      );
 
       // Emit session started event
       const folderEmitter = getFolderEventEmitter();
@@ -579,6 +598,11 @@ router.post(
           totalFolders: session.totalFolders,
           folderBatch: result.folderBatch,
         }
+      );
+
+      logger.debug(
+        { sessionId, tempId, fileId, blobPath, success: result.success },
+        '[TRACE] mark-uploaded - file marked successfully'
       );
 
       const response: MarkFileUploadedResponse = {

@@ -29,6 +29,9 @@ export interface InitSessionOptions {
 
   /** Target folder ID where root folders will be created */
   targetFolderId?: string | null;
+
+  /** Enable resumable upload mode with pre-generated SAS URLs */
+  enableResumableUpload?: boolean;
 }
 
 /**
@@ -113,6 +116,12 @@ export interface InitSessionResult {
 
   /** Whether resolution is required before proceeding */
   requiresResolution?: boolean;
+
+  /** Pre-allocated SAS URLs for resumable upload (when enableResumableUpload: true) */
+  preAllocatedSasUrls?: Record<string, FileSasInfo>;
+
+  /** Upload plan for resumable upload (when enableResumableUpload: true) */
+  uploadPlan?: Record<string, unknown>;
 }
 
 /**

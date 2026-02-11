@@ -255,6 +255,7 @@ export type {
   ResolveFolderConflictsRequest,
   ResolveFolderConflictsResponse,
   InitUploadSessionResponseWithConflicts,
+  InitUploadSessionResponseWithSasUrls,
 
   // Agent Registry types (PRD-011)
   AgentUISummary,

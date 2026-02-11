@@ -542,8 +542,9 @@ export class UploadSessionManager implements IUploadSessionManager {
           tempId,
           fileId,
           blobPath,
+          fileStatus: 'pending_processing',
         },
-        'File marked for processing (pending_processing status)'
+        '[TRACE] markFileUploaded - file set to pending_processing'
       );
 
       // Update batch uploaded count
@@ -886,6 +887,33 @@ export class UploadSessionManager implements IUploadSessionManager {
       renamedFolders,
       session: updatedSession,
     };
+  }
+
+  // =========================================================================
+  // RESUMABLE UPLOAD SUPPORT
+  // =========================================================================
+
+  /**
+   * Refresh expired SAS URLs for a resumable upload session
+   *
+   * @param sessionId - Session ID
+   * @param folderTempId - Optional folder temp ID to refresh (all if omitted)
+   * @returns Map of refreshed SAS URLs keyed by file temp ID
+   */
+  async refreshExpiredSasUrls(
+    sessionId: string,
+    folderTempId?: string
+  ): Promise<Record<string, { sasUrl: string; blobPath: string; expiresAt: string }>> {
+    await this.requireSession(sessionId);
+
+    this.log.info(
+      { sessionId, folderTempId },
+      'Refreshing expired SAS URLs (stub - resumable upload not yet implemented)'
+    );
+
+    // TODO: Implement SAS URL refresh for resumable uploads
+    // For now, return empty map since resumable upload is not yet fully implemented
+    return {};
   }
 
   // =========================================================================

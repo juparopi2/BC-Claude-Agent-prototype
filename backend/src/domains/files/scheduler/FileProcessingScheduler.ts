@@ -236,6 +236,19 @@ export class FileProcessingScheduler {
         return;
       }
 
+      this.log.info(
+        {
+          pendingCount: files.length,
+          batchSize,
+          queueDepth,
+          availableSlots,
+          fileIds: files.map(f => f.id),
+          fileNames: files.map(f => f.name),
+          mimeTypes: files.map(f => f.mimeType),
+        },
+        '[TRACE] processNextBatch - found pending files'
+      );
+
       // 4. Enqueue files and update their status
       await this.enqueueFiles(files);
 
@@ -282,6 +295,16 @@ export class FileProcessingScheduler {
     const queue = this.getQueue();
     const fileRepo = this.getFileRepo();
 
+    this.log.info(
+      {
+        fileCount: files.length,
+        fileIds: files.map(f => f.id),
+        fileNames: files.map(f => f.name),
+        mimeTypes: files.map(f => f.mimeType),
+      },
+      '[TRACE] enqueueFiles - batch about to be enqueued'
+    );
+
     for (const file of files) {
       try {
         // Enqueue the processing job
@@ -298,8 +321,8 @@ export class FileProcessingScheduler {
         await fileRepo.updateProcessingStatus(file.userId, file.id, 'pending');
 
         this.log.debug(
-          { fileId: file.id, jobId, fileName: file.name },
-          'File enqueued for processing'
+          { fileId: file.id, jobId, fileName: file.name, mimeType: file.mimeType },
+          '[TRACE] enqueueFiles - file enqueued successfully'
         );
       } catch (error) {
         const errorInfo = error instanceof Error

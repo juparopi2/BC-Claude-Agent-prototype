@@ -179,6 +179,21 @@ export class VectorSearchService {
       isImage: false,
     }));
 
+    // Per-document mimeType trace for diagnosing per-chunk field gaps
+    for (let i = 0; i < documents.length; i++) {
+      const doc = documents[i]!;
+      logger.debug({
+        docIndex: i,
+        chunkId: doc.chunkId,
+        fileId: doc.fileId,
+        mimeType: doc.mimeType,
+        mimeTypeType: typeof doc.mimeType,
+        isImage: doc.isImage,
+        fileStatus: doc.fileStatus,
+        hasContentVector: !!doc.contentVector,
+      }, '[TRACE] indexChunksBatch - per-document field values');
+    }
+
     // Diagnostic: log field values for first document to trace field coverage gaps
     if (documents.length > 0) {
       const sample = documents[0]!;
@@ -492,6 +507,21 @@ export class VectorSearchService {
       mimeType: mimeType || null,
       fileStatus: 'active',
     };
+
+    logger.debug({
+      documentId,
+      fileId: normalizedFileId,
+      userId: normalizedUserId,
+      mimeTypeParam: mimeType,
+      mimeTypeParamType: typeof mimeType,
+      mimeTypeInDoc: document.mimeType,
+      mimeTypeInDocType: typeof document.mimeType,
+      mimeTypeOrNullResult: mimeType || null,
+      isImage: document.isImage,
+      fileStatus: document.fileStatus,
+      hasImageVector: !!document.imageVector,
+      contentLength: typeof document.content === 'string' ? (document.content as string).length : 0,
+    }, '[TRACE] indexImageEmbedding - mimeType before SDK upload');
 
     // Add text embedding of caption for contentVector search path (if available)
     if (contentVector && contentVector.length > 0) {

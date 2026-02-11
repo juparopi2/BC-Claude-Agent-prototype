@@ -297,6 +297,7 @@ export type {
   ResolveFolderConflictsRequest,
   ResolveFolderConflictsResponse,
   InitUploadSessionResponseWithConflicts,
+  InitUploadSessionResponseWithSasUrls,
   // WebSocket event types
   FolderSessionStartedEvent,
   FolderSessionCompletedEvent,

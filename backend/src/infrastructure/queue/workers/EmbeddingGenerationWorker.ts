@@ -135,6 +135,13 @@ export class EmbeddingGenerationWorker {
       correlationId,
     });
 
+    jobLogger.debug({
+      mimeType,
+      mimeTypeType: typeof mimeType,
+      mimeTypeValue: mimeType === null ? 'NULL' : mimeType === undefined ? 'UNDEFINED' : mimeType,
+      chunkCount: chunkIds.length,
+    }, '[TRACE] EmbeddingGenerationWorker.process entry - mimeType from job data');
+
     // Early exit if file was deleted during queue wait
     // This prevents race conditions where embedding generation continues after file deletion
     const { getFileRepository } = await import('@/services/files/repository/FileRepository');
@@ -210,6 +217,16 @@ export class EmbeddingGenerationWorker {
           mimeType,
         };
       });
+
+      jobLogger.debug({
+        fileId,
+        mimeTypeInChunks: mimeType,
+        mimeTypeInChunksType: typeof mimeType,
+        chunkCount: chunksWithEmbeddings.length,
+        sampleChunkId: chunksWithEmbeddings[0]?.chunkId,
+        sampleMimeType: chunksWithEmbeddings[0]?.mimeType,
+        sampleMimeTypeType: typeof chunksWithEmbeddings[0]?.mimeType,
+      }, '[TRACE] EmbeddingGenerationWorker - chunks prepared for indexing');
 
       // 5. Index in Azure AI Search
       const searchDocIds = await vectorSearchService.indexChunksBatch(chunksWithEmbeddings);

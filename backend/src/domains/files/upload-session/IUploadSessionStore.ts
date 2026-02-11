@@ -52,6 +52,10 @@ export interface SessionUpdate {
   failedFolders?: number;
   status?: UploadSessionStatus;
   updatedAt?: number;
+  /** Updated folder batches (used when removing skipped folders) */
+  folderBatches?: FolderBatch[];
+  /** Updated total folder count (used when removing skipped folders) */
+  totalFolders?: number;
 }
 
 /**

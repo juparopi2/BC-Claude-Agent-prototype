@@ -144,6 +144,19 @@ export class BatchResultNormalizer implements IBatchResultNormalizer {
       timestamp
     );
 
+    // Diagnostic: log tool_response map for debugging interleaving mismatches
+    if (toolResponseMap.size > 0 || allEvents.some(e => e.type === 'tool_request')) {
+      const requestIds = allEvents
+        .filter(e => e.type === 'tool_request')
+        .map(e => (e as { toolUseId: string }).toolUseId);
+      logger.debug({
+        sessionId,
+        toolResponseMapKeys: [...toolResponseMap.keys()],
+        toolRequestIds: requestIds,
+        matchCount: requestIds.filter(id => toolResponseMap.has(id)).length,
+      }, 'Tool interleaving diagnostics');
+    }
+
     // 3. Interleave tool_response events after their corresponding tool_request
     const interleavedEvents: NormalizedAgentEvent[] = [];
     for (const event of allEvents) {
@@ -151,7 +164,8 @@ export class BatchResultNormalizer implements IBatchResultNormalizer {
 
       // If this is a tool_request, insert the corresponding tool_response
       if (event.type === 'tool_request') {
-        const toolResponse = toolResponseMap.get(event.toolUseId);
+        const toolUseId = (event as { toolUseId: string }).toolUseId;
+        const toolResponse = toolResponseMap.get(toolUseId);
         if (toolResponse) {
           interleavedEvents.push({
             ...toolResponse,

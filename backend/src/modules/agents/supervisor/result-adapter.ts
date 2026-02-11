@@ -8,7 +8,6 @@
  */
 
 import type { BaseMessage } from '@langchain/core/messages';
-import { AIMessage, ToolMessage } from '@langchain/core/messages';
 import type { AgentState, ToolExecution, HandoffDetectionInfo } from '../orchestrator/state';
 import type { AgentIdentity } from '@bc-agent/shared';
 import {
@@ -34,7 +33,9 @@ const KNOWN_AGENT_IDS = new Set(Object.values(AGENT_ID));
 export function detectAgentIdentity(messages: BaseMessage[]): AgentIdentity {
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i];
-    if (msg instanceof AIMessage && msg.name && KNOWN_AGENT_IDS.has(msg.name as typeof AGENT_ID[keyof typeof AGENT_ID])) {
+    if (!msg) continue;
+    const msgType = msg._getType?.();
+    if ((msgType === 'ai' || msgType === 'assistant') && msg.name && KNOWN_AGENT_IDS.has(msg.name as typeof AGENT_ID[keyof typeof AGENT_ID])) {
       const agentId = msg.name as typeof AGENT_ID[keyof typeof AGENT_ID];
       return {
         agentId,
@@ -54,39 +55,42 @@ export function detectAgentIdentity(messages: BaseMessage[]): AgentIdentity {
  */
 export function extractToolExecutions(messages: BaseMessage[]): ToolExecution[] {
   const toolExecutions: ToolExecution[] = [];
-  const toolMessageMap = new Map<string, ToolMessage>();
 
   // First pass: collect all ToolMessages by tool_call_id
+  // Use _getType() instead of instanceof — @langchain/anthropic creates AIMessageChunk
+  // (NOT a subclass of AIMessage), so instanceof fails for Anthropic messages.
+  const toolMessageMap = new Map<string, BaseMessage>();
   for (const msg of messages) {
-    if (msg instanceof ToolMessage) {
-      const toolCallId = msg.tool_call_id;
+    if (msg._getType?.() === 'tool') {
+      const toolCallId = (msg as unknown as { tool_call_id?: string }).tool_call_id;
       if (toolCallId) {
         toolMessageMap.set(toolCallId, msg);
       }
     }
   }
 
-  // Second pass: match AIMessage tool_calls with ToolMessages
+  // Second pass: match AI message tool_calls with ToolMessages
   for (const msg of messages) {
-    if (msg instanceof AIMessage) {
-      const toolCalls = (msg as AIMessage & { tool_calls?: Array<{ name: string; args: Record<string, unknown>; id: string }> }).tool_calls;
-      if (!toolCalls) continue;
+    const msgType = msg._getType?.();
+    if (msgType !== 'ai' && msgType !== 'assistant') continue;
 
-      for (const toolCall of toolCalls) {
-        const toolMsg = toolMessageMap.get(toolCall.id);
-        const resultStr = toolMsg
-          ? (typeof toolMsg.content === 'string' ? toolMsg.content : JSON.stringify(toolMsg.content))
-          : '';
+    const toolCalls = (msg as unknown as { tool_calls?: Array<{ name: string; args: Record<string, unknown>; id: string }> }).tool_calls;
+    if (!toolCalls) continue;
 
-        toolExecutions.push({
-          toolUseId: toolCall.id,
-          toolName: toolCall.name,
-          args: toolCall.args,
-          result: resultStr,
-          success: !resultStr.startsWith('Error'),
-          ...(resultStr.startsWith('Error') ? { error: resultStr } : {}),
-        });
-      }
+    for (const toolCall of toolCalls) {
+      const toolMsg = toolMessageMap.get(toolCall.id);
+      const resultStr = toolMsg
+        ? (typeof toolMsg.content === 'string' ? toolMsg.content : JSON.stringify(toolMsg.content))
+        : '';
+
+      toolExecutions.push({
+        toolUseId: toolCall.id,
+        toolName: toolCall.name,
+        args: toolCall.args,
+        result: resultStr,
+        success: !resultStr.startsWith('Error'),
+        ...(resultStr.startsWith('Error') ? { error: resultStr } : {}),
+      });
     }
   }
 
@@ -99,8 +103,10 @@ export function extractToolExecutions(messages: BaseMessage[]): ToolExecution[] 
 export function extractUsedModel(messages: BaseMessage[]): string | null {
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i];
-    if (msg instanceof AIMessage) {
-      const metadata = (msg as AIMessage & { response_metadata?: Record<string, unknown> }).response_metadata;
+    if (!msg) continue;
+    const msgType = msg._getType?.();
+    if (msgType === 'ai' || msgType === 'assistant') {
+      const metadata = (msg as unknown as { response_metadata?: Record<string, unknown> }).response_metadata;
       if (metadata?.model) {
         return metadata.model as string;
       }
@@ -124,9 +130,10 @@ export function detectHandoffs(messages: BaseMessage[]): HandoffDetectionInfo[] 
 
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i];
-    if (!(msg instanceof ToolMessage)) continue;
+    if (!msg) continue;
+    if (msg._getType?.() !== 'tool') continue;
 
-    const toolName = (msg as ToolMessage & { name?: string }).name;
+    const toolName = (msg as unknown as { name?: string }).name;
     if (!toolName) continue;
 
     const match = transferPattern.exec(toolName);
@@ -137,11 +144,13 @@ export function detectHandoffs(messages: BaseMessage[]): HandoffDetectionInfo[] 
 
     const toAgentId = targetAgentId as typeof AGENT_ID[keyof typeof AGENT_ID];
 
-    // Find the source agent by scanning backward for the nearest AIMessage with a name
+    // Find the source agent by scanning backward for the nearest AI message with a name
     let fromIdentity = DEFAULT_AGENT_IDENTITY;
     for (let j = i - 1; j >= 0; j--) {
       const prev = messages[j];
-      if (prev instanceof AIMessage && prev.name && KNOWN_AGENT_IDS.has(prev.name as typeof AGENT_ID[keyof typeof AGENT_ID])) {
+      if (!prev) continue;
+      const prevType = prev._getType?.();
+      if ((prevType === 'ai' || prevType === 'assistant') && prev.name && KNOWN_AGENT_IDS.has(prev.name as typeof AGENT_ID[keyof typeof AGENT_ID])) {
         const fromId = prev.name as typeof AGENT_ID[keyof typeof AGENT_ID];
         fromIdentity = {
           agentId: fromId,

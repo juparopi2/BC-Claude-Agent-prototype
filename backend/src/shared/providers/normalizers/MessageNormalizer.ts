@@ -296,10 +296,30 @@ export function normalizeAIMessage(
       event.sourceAgentId = sourceAgentId;
       if (isHandoffBack) {
         event.isInternal = true;
-        event.persistenceStrategy = 'transient';
+        (event as { persistenceStrategy: string }).persistenceStrategy = 'transient';
       }
       events.push(event);
     }
+
+    // String content messages may still have tool_calls (e.g. handoff-back messages
+    // created by langgraph-supervisor with addHandoffBackMessages: true).
+    // Extract tool_request events so they can be paired with tool_response in BatchResultNormalizer.
+    const toolCalls = (message as { tool_calls?: LangChainToolCall[] }).tool_calls;
+    if (toolCalls?.length) {
+      for (const tc of toolCalls) {
+        const toolEvent = createToolRequestEvent(
+          sessionId, tc.id ?? randomUUID(), tc.name, tc.args, provider,
+          timestamp, messageIndex * 100 + eventIndex++
+        );
+        toolEvent.sourceAgentId = sourceAgentId;
+        if (isHandoffBack) {
+          toolEvent.isInternal = true;
+          (toolEvent as { persistenceStrategy: string }).persistenceStrategy = 'transient';
+        }
+        events.push(toolEvent);
+      }
+    }
+
     return events;
   }
 
@@ -382,7 +402,7 @@ export function normalizeAIMessage(
       msgEvent.sourceAgentId = sourceAgentId;
       if (isHandoffBackArray) {
         msgEvent.isInternal = true;
-        msgEvent.persistenceStrategy = 'transient';
+        (msgEvent as { persistenceStrategy: string }).persistenceStrategy = 'transient';
       }
       events.push(msgEvent);
     }

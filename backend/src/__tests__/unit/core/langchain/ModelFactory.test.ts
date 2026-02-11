@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { ModelFactory } from './ModelFactory';
+import { ModelFactory } from '@/core/langchain/ModelFactory';
 
 // Mock the provider classes with vi.hoisted for proper mock factory hoisting
 const mockChatAnthropicConstructor = vi.hoisted(() => vi.fn().mockImplementation(() => ({
@@ -85,14 +85,61 @@ describe('ModelFactory', () => {
 
       expect(mockChatAnthropicConstructor).toHaveBeenCalledWith(
         expect.objectContaining({
-          clientOptions: {
+          clientOptions: expect.objectContaining({
             timeout: 15 * 60 * 1000,
-          },
+          }),
         })
       );
     });
 
-    it('should include streaming in cache key', async () => {
+    it('should pass thinking config to ChatAnthropic constructor', async () => {
+      await ModelFactory.create('bc_agent');
+
+      expect(mockChatAnthropicConstructor).toHaveBeenCalledWith(
+        expect.objectContaining({
+          thinking: { type: 'enabled', budget_tokens: 5000 },
+        })
+      );
+    });
+
+    it('should omit temperature when thinking is enabled', async () => {
+      await ModelFactory.create('bc_agent');
+
+      const call = mockChatAnthropicConstructor.mock.calls[0][0];
+      expect(call.thinking).toEqual({ type: 'enabled', budget_tokens: 5000 });
+      expect(call.temperature).toBeUndefined();
+    });
+
+    it('should pass temperature when thinking is disabled', async () => {
+      await ModelFactory.create('supervisor');
+
+      const call = mockChatAnthropicConstructor.mock.calls[0][0];
+      expect(call.thinking).toBeUndefined();
+      expect(call.temperature).toBeDefined();
+      expect(typeof call.temperature).toBe('number');
+    });
+
+    it('should pass prompt caching headers to ChatAnthropic constructor', async () => {
+      await ModelFactory.create('bc_agent');
+
+      expect(mockChatAnthropicConstructor).toHaveBeenCalledWith(
+        expect.objectContaining({
+          clientOptions: expect.objectContaining({
+            defaultHeaders: { 'anthropic-beta': 'prompt-caching-2024-07-31' },
+          }),
+        })
+      );
+    });
+
+    it('should not pass thinking config when disabled', async () => {
+      await ModelFactory.create('supervisor');
+
+      // Supervisor has thinking: { type: 'disabled' }, so thinking should NOT be passed
+      const call = mockChatAnthropicConstructor.mock.calls[0][0];
+      expect(call.thinking).toBeUndefined();
+    });
+
+    it('should include streaming and thinking in cache key', async () => {
       // bc_agent has streaming: true, session_title has streaming: false
       await ModelFactory.create('bc_agent');
       await ModelFactory.create('session_title');
@@ -102,6 +149,9 @@ describe('ModelFactory', () => {
       // Both should have different streaming in cache key
       expect(keys.some(k => k.includes(':strue'))).toBe(true);
       expect(keys.some(k => k.includes(':sfalse'))).toBe(true);
+      // bc_agent has thinking enabled, session_title has none
+      expect(keys.some(k => k.includes(':thenabled'))).toBe(true);
+      expect(keys.some(k => k.includes(':thnone'))).toBe(true);
     });
   });
 

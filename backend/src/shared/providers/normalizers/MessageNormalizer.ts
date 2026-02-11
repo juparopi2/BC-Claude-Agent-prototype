@@ -245,6 +245,13 @@ function extractModel(message: BaseMessage): string {
  * @param sessionId - Session ID for event context
  * @returns Array of normalized events extracted from this message
  */
+/**
+ * Pattern to detect framework-generated handoff-back messages.
+ * These are auto-created by `addHandoffBackMessages: true` in createSupervisor
+ * and have no response_metadata (no usage data).
+ */
+const HANDOFF_BACK_PATTERN = /^(Transferring|transferring)\s+(back\s+)?to\s+\w+/i;
+
 export function normalizeAIMessage(
   message: BaseMessage,
   messageIndex: number,
@@ -260,6 +267,9 @@ export function normalizeAIMessage(
     return events;
   }
 
+  // Extract source agent ID from LangGraph AIMessage.name field (per-message attribution)
+  const sourceAgentId = (message as { name?: string }).name || undefined;
+
   const content = message.content;
   const messageId = extractMessageId(message, sessionId);
   const usage = extractUsage(message);
@@ -269,11 +279,22 @@ export function normalizeAIMessage(
 
   // Handle string content (simple case)
   if (typeof content === 'string') {
+    // Filter framework-generated handoff-back messages (no usage data, matches pattern)
+    if (HANDOFF_BACK_PATTERN.test(content.trim()) && !usage) {
+      logger.debug(
+        { sessionId, messageIndex, content: content.substring(0, 60) },
+        'Filtered handoff-back message'
+      );
+      return events;
+    }
+
     if (content.trim()) {
-      events.push(createAssistantMessageEvent(
+      const event = createAssistantMessageEvent(
         sessionId, messageId, content, stopReason, model, usage, provider,
         timestamp, messageIndex * 100 + eventIndex++
-      ));
+      );
+      event.sourceAgentId = sourceAgentId;
+      events.push(event);
     }
     return events;
   }
@@ -301,10 +322,12 @@ export function normalizeAIMessage(
         case 'tool_use':
           if ('id' in block && 'name' in block) {
             const toolBlock = block as ToolUseBlock;
-            toolRequests.push(createToolRequestEvent(
+            const toolEvent = createToolRequestEvent(
               sessionId, toolBlock.id, toolBlock.name, toolBlock.input, provider,
               timestamp, messageIndex * 100 + eventIndex++
-            ));
+            );
+            toolEvent.sourceAgentId = sourceAgentId;
+            toolRequests.push(toolEvent);
           }
           break;
       }
@@ -315,30 +338,47 @@ export function normalizeAIMessage(
       const toolCalls = (message as { tool_calls?: LangChainToolCall[] }).tool_calls;
       if (toolCalls?.length) {
         for (const tc of toolCalls) {
-          toolRequests.push(createToolRequestEvent(
+          const toolEvent = createToolRequestEvent(
             sessionId, tc.id ?? randomUUID(), tc.name, tc.args, provider,
             timestamp, messageIndex * 100 + eventIndex++
-          ));
+          );
+          toolEvent.sourceAgentId = sourceAgentId;
+          toolRequests.push(toolEvent);
         }
       }
+    }
+
+    // Filter handoff-back text content (no usage = framework-generated)
+    if (HANDOFF_BACK_PATTERN.test(textContent.trim()) && !usage) {
+      logger.debug(
+        { sessionId, messageIndex, content: textContent.substring(0, 60) },
+        'Filtered handoff-back message (array content)'
+      );
+      // Still emit tool requests if any (unlikely for handoff-back, but safe)
+      events.push(...toolRequests);
+      return events;
     }
 
     // Emit in semantic order: thinking -> text -> tools
 
     // 1. Thinking first
     if (thinkingContent) {
-      events.push(createThinkingEvent(
+      const thinkingEvent = createThinkingEvent(
         sessionId, messageId, thinkingContent, usage?.thinkingTokens, provider,
         timestamp, messageIndex * 100 + eventIndex++
-      ));
+      );
+      thinkingEvent.sourceAgentId = sourceAgentId;
+      events.push(thinkingEvent);
     }
 
     // 2. Assistant message (text) before tools
     if (textContent.trim()) {
-      events.push(createAssistantMessageEvent(
+      const msgEvent = createAssistantMessageEvent(
         sessionId, messageId, textContent, stopReason, model, usage, provider,
         timestamp, messageIndex * 100 + eventIndex++
-      ));
+      );
+      msgEvent.sourceAgentId = sourceAgentId;
+      events.push(msgEvent);
     }
 
     // 3. Tool requests last

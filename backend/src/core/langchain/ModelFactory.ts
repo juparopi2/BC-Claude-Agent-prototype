@@ -32,8 +32,9 @@ export interface ModelConfig {
 /**
  * Cache key for model instances
  */
-function getCacheKey(provider: string, modelName: string, config: { temperature?: number; maxTokens?: number; streaming?: boolean }): string {
-  return `${provider}:${modelName}:t${config.temperature ?? 'default'}:m${config.maxTokens ?? 'default'}:s${config.streaming ?? 'default'}`;
+function getCacheKey(provider: string, modelName: string, config: { temperature?: number; maxTokens?: number; streaming?: boolean; thinking?: { type: string } }): string {
+  const thinkingKey = config.thinking?.type ?? 'none';
+  return `${provider}:${modelName}:t${config.temperature ?? 'default'}:m${config.maxTokens ?? 'default'}:s${config.streaming ?? 'default'}:th${thinkingKey}`;
 }
 
 /**
@@ -66,6 +67,7 @@ export class ModelFactory {
       temperature: config.temperature,
       maxTokens: config.maxTokens,
       streaming: config.streaming,
+      thinking: config.thinking,
     });
 
     if (this.cache.has(cacheKey)) {
@@ -109,6 +111,7 @@ export class ModelFactory {
       temperature: config.temperature,
       maxTokens: config.maxTokens,
       streaming: config.streaming,
+      thinking: config.thinking,
     });
 
     if (this.cache.has(cacheKey)) {
@@ -159,17 +162,31 @@ export class ModelFactory {
     const { provider, modelName, temperature, maxTokens, streaming } = config;
 
     switch (provider) {
-      case 'anthropic':
+      case 'anthropic': {
+        // Build default headers for prompt caching
+        const defaultHeaders: Record<string, string> | undefined = config.promptCaching
+          ? { 'anthropic-beta': 'prompt-caching-2024-07-31' }
+          : undefined;
+
+        // Build thinking config (only pass if enabled)
+        const thinking = config.thinking?.type === 'enabled'
+          ? config.thinking
+          : undefined;
+
         return new ChatAnthropic({
           model: modelName,
-          temperature,
+          // Omit temperature when thinking is enabled (API requires temperature=1)
+          ...(thinking ? {} : { temperature }),
           maxTokens,
           streaming,
           apiKey: env.ANTHROPIC_API_KEY,
+          ...(thinking && { thinking }),
           clientOptions: {
             timeout: 15 * 60 * 1000, // 15 min safety net
+            ...(defaultHeaders && { defaultHeaders }),
           },
         }) as unknown as BaseChatModel;
+      }
 
       case 'openai':
         return new ChatOpenAI({

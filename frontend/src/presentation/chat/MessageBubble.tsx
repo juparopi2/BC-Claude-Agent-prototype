@@ -15,8 +15,13 @@ import { MarkdownRenderer } from './MarkdownRenderer';
 import { PersistenceIndicator } from './PersistenceIndicator';
 import { SourceCarousel } from './SourceCarousel';
 import { MessageAttachmentCarousel } from './MessageAttachmentCarousel';
-import { isThinkingMessage, isStandardMessage, isToolResultMessage, type Message, type PersistenceState, type ChatAttachmentSummary } from '@bc-agent/shared';
+import {
+  isThinkingMessage, isStandardMessage, isToolResultMessage,
+  type Message, type PersistenceState, type ChatAttachmentSummary,
+  type AgentIdentity, AGENT_COLOR, AGENT_ICON, AGENT_DESCRIPTION, type AgentId,
+} from '@bc-agent/shared';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { Bot } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { CitationFileMap, CitationInfo } from '@/lib/types/citation.types';
@@ -99,20 +104,51 @@ export default function MessageBubble({
       )}
       data-testid={isUser ? 'user-message' : 'assistant-message'}
     >
-      <Avatar className="size-8 shrink-0">
-        <AvatarFallback
-          className={cn(
-            'border',
-            isUser ? 'bg-primary text-primary-foreground' : 'bg-muted'
-          )}
-        >
-          {isUser ? (
-            <span className="text-xs font-semibold">{userInitials}</span>
-          ) : (
-            <Bot className="size-4" />
-          )}
-        </AvatarFallback>
-      </Avatar>
+      {(() => {
+        const agentIdentity = !isUser ? message.agent_identity as AgentIdentity | undefined : undefined;
+        const agentIcon = agentIdentity?.agentIcon ?? (agentIdentity?.agentId ? AGENT_ICON[agentIdentity.agentId as AgentId] : undefined);
+        const agentColor = agentIdentity?.agentColor ?? (agentIdentity?.agentId ? AGENT_COLOR[agentIdentity.agentId as AgentId] : undefined);
+        const agentName = agentIdentity?.agentName;
+        const agentDesc = agentIdentity?.agentId ? AGENT_DESCRIPTION[agentIdentity.agentId as AgentId] : undefined;
+
+        const avatar = (
+          <Avatar className="size-8 shrink-0">
+            <AvatarFallback
+              className={cn(
+                'border',
+                isUser ? 'bg-primary text-primary-foreground' : 'bg-muted'
+              )}
+              style={agentColor ? {
+                backgroundColor: `${agentColor}26`,
+                borderColor: agentColor,
+                color: agentColor,
+              } : undefined}
+            >
+              {isUser ? (
+                <span className="text-xs font-semibold">{userInitials}</span>
+              ) : agentIcon ? (
+                <span className="text-sm">{agentIcon}</span>
+              ) : (
+                <Bot className="size-4" />
+              )}
+            </AvatarFallback>
+          </Avatar>
+        );
+
+        if (!isUser && agentName) {
+          return (
+            <Tooltip>
+              <TooltipTrigger asChild>{avatar}</TooltipTrigger>
+              <TooltipContent side="right">
+                <p className="font-medium">{agentName}</p>
+                {agentDesc && <p className="text-xs opacity-75">{agentDesc}</p>}
+              </TooltipContent>
+            </Tooltip>
+          );
+        }
+
+        return avatar;
+      })()}
 
       <div className="flex flex-col gap-1 min-w-0">
         <div

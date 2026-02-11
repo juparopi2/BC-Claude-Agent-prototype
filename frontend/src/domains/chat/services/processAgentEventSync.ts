@@ -159,6 +159,12 @@ export function processAgentEventSync(
 
     case 'tool_use': {
       const toolEvent = event as ToolUseEvent;
+
+      // Skip handoff transfer tools - agent_changed event handles the transition UI
+      if (toolEvent.toolName?.startsWith('transfer_to_')) {
+        break;
+      }
+
       // FIX: Use eventIndex as fallback when sequenceNumber is not yet available
       // Tool events use async_allowed persistence, so they are emitted before DB write
       const eventWithIndex = event as { eventIndex?: number };
@@ -187,6 +193,12 @@ export function processAgentEventSync(
 
     case 'tool_result': {
       const resultEvent = event as ToolResultEvent;
+
+      // Skip handoff transfer tool results - matches tool_use filter above
+      if (resultEvent.toolName?.startsWith('transfer_to_')) {
+        break;
+      }
+
       const toolId = resultEvent.toolUseId;
       // FIX: Get sequence from tool_result event for completion position
       const eventWithIndex = event as { eventIndex?: number };

@@ -9,8 +9,10 @@
 
 import { createReactAgent } from '@langchain/langgraph/prebuilt';
 import type { CompiledStateGraph } from '@langchain/langgraph';
+import { SystemMessage } from '@langchain/core/messages';
 import type { AgentId } from '@bc-agent/shared';
 import { ModelFactory } from '@/core/langchain/ModelFactory';
+import { getModelConfig } from '@/infrastructure/config/models';
 import { getAgentRegistry } from '../core/registry/AgentRegistry';
 import { buildHandoffToolsForAgent } from '../handoffs';
 import { createChildLogger } from '@/shared/utils/logger';
@@ -58,11 +60,24 @@ export async function buildReactAgents(): Promise<BuiltAgent[]> {
 
     const model = await ModelFactory.create(agentDef.modelRole);
 
+    // Use SystemMessage with cache_control for prompt caching when enabled
+    const modelConfig = getModelConfig(agentDef.modelRole);
+    const prompt = modelConfig.promptCaching
+      ? new SystemMessage({
+          content: [{
+            type: 'text',
+            text: agentDef.systemPrompt,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            cache_control: { type: 'ephemeral' } as any,
+          }],
+        })
+      : agentDef.systemPrompt;
+
     const agent = createReactAgent({
       llm: model,
       tools: allTools,
       name: agentDef.id,
-      prompt: agentDef.systemPrompt,
+      prompt,
     });
 
     builtAgents.push({

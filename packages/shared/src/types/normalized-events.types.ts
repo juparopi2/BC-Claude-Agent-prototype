@@ -103,6 +103,13 @@ export interface BaseNormalizedEvent {
   provider?: NormalizedProvider;
 
   /**
+   * Source agent ID that produced this event.
+   * Extracted from LangGraph AIMessage.name field per-message.
+   * Used for per-event agent attribution instead of batch-level identity.
+   */
+  sourceAgentId?: string;
+
+  /**
    * Pre-allocated sequence number for deterministic ordering.
    *
    * When set, this sequence number was reserved atomically BEFORE

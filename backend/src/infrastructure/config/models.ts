@@ -76,6 +76,14 @@ export type ModelRole =
 /**
  * Extended model config with role metadata.
  */
+/**
+ * Anthropic extended thinking configuration.
+ * When enabled, the model uses a "thinking" step before generating output.
+ */
+export type ThinkingConfig =
+  | { type: 'enabled'; budget_tokens: number }
+  | { type: 'disabled' };
+
 export interface RoleModelConfig {
   role: ModelRole;
   description: string;
@@ -88,6 +96,10 @@ export interface RoleModelConfig {
   temperature: number;
   maxTokens?: number;
   streaming?: boolean;
+  /** Anthropic extended thinking configuration */
+  thinking?: ThinkingConfig;
+  /** Enable Anthropic prompt caching (adds beta header) */
+  promptCaching?: boolean;
 }
 
 // =============================================================================
@@ -109,6 +121,8 @@ export const ModelRoleConfigs: Record<ModelRole, RoleModelConfig> = {
     temperature: 0.0, // Deterministic routing
     maxTokens: 2048,
     streaming: true,
+    thinking: { type: 'disabled' }, // Supervisor doesn't need thinking (routing only)
+    promptCaching: true,
   },
 
   bc_agent: {
@@ -121,6 +135,8 @@ export const ModelRoleConfigs: Record<ModelRole, RoleModelConfig> = {
     temperature: 0.3, // More deterministic for BC operations
     maxTokens: 32000,
     streaming: true,
+    thinking: { type: 'enabled', budget_tokens: 5000 },
+    promptCaching: true,
   },
 
   rag_agent: {
@@ -133,6 +149,8 @@ export const ModelRoleConfigs: Record<ModelRole, RoleModelConfig> = {
     temperature: 0.5,
     maxTokens: 16384,
     streaming: true,
+    thinking: { type: 'enabled', budget_tokens: 5000 },
+    promptCaching: true,
   },
 
   graphing_agent: {
@@ -145,6 +163,8 @@ export const ModelRoleConfigs: Record<ModelRole, RoleModelConfig> = {
     temperature: 0.2,
     maxTokens: 16384,
     streaming: true,
+    thinking: { type: 'enabled', budget_tokens: 5000 },
+    promptCaching: true,
   },
 
   session_title: {

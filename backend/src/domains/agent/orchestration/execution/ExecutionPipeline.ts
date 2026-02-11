@@ -20,12 +20,20 @@
  */
 
 import { randomUUID } from 'crypto';
-import type { NormalizedAgentEvent, NormalizedToolRequestEvent } from '@bc-agent/shared';
+import type { NormalizedAgentEvent, NormalizedToolRequestEvent, AgentIdentity } from '@bc-agent/shared';
+import {
+  AGENT_ID,
+  AGENT_DISPLAY_NAME,
+  AGENT_ICON,
+  AGENT_COLOR,
+  type AgentId,
+} from '@bc-agent/shared';
 import type { IBatchResultNormalizer } from '@shared/providers/interfaces/IBatchResultNormalizer';
 import type { IPersistenceCoordinator } from '@domains/agent/persistence';
 import type { ICitationExtractor } from '@/domains/agent/citations';
 import type { EventStore } from '@services/events/EventStore';
 import type { ExecutionContextSync } from '../ExecutionContextSync';
+import { getNextEventIndex } from '../ExecutionContextSync';
 import type { AgentExecutionResult } from '../types';
 import type { MessageContextBuilder, MessageContextOptions } from '../context/MessageContextBuilder';
 import type { GraphExecutor } from './GraphExecutor';
@@ -147,22 +155,32 @@ export class ExecutionPipeline {
       assignments: getSequenceDebugInfo(normalizedEvents),
     }, 'Pre-allocated sequence numbers for events');
 
-    // Stage 5: Process and emit events
-    // Extract agentId from graph result for per-message attribution (PRD-070)
-    const agentId = graphResult.currentAgentIdentity?.agentId;
+    // Stage 5: Process and emit events with per-event agent attribution
+    // Fallback agentId from batch-level detection (used when sourceAgentId missing)
+    const fallbackAgentId = graphResult.currentAgentIdentity?.agentId;
 
     let finalContent = '';
     let finalMessageId: string = agentMessageId;
     const toolsUsed: string[] = [];
+    let previousAgentId: string | undefined;
 
     for (const event of normalizedEvents) {
+      // Per-event agent attribution: prefer sourceAgentId, fall back to batch identity
+      const eventAgentId = event.sourceAgentId || fallbackAgentId;
+
+      // Emit agent_changed event when agent transitions (skip for 'complete' events)
+      if (eventAgentId && eventAgentId !== previousAgentId && event.type !== 'complete') {
+        emitAgentChanged(ctx, sessionId, previousAgentId, eventAgentId);
+        previousAgentId = eventAgentId;
+      }
+
       await processNormalizedEvent(
         event,
         ctx,
         sessionId,
         agentMessageId,
         { persistenceCoordinator, citationExtractor },
-        agentId
+        eventAgentId
       );
 
       // Track state from assistant_message
@@ -172,10 +190,12 @@ export class ExecutionPipeline {
         finalMessageId = tracked.finalMessageId!;
       }
 
-      // Track tools used
+      // Track tools used (skip handoff tools)
       if (event.type === 'tool_request') {
         const toolEvent = event as NormalizedToolRequestEvent;
-        toolsUsed.push(toolEvent.toolName);
+        if (!toolEvent.toolName.startsWith('transfer_to_')) {
+          toolsUsed.push(toolEvent.toolName);
+        }
       }
     }
 
@@ -210,4 +230,70 @@ export function createExecutionPipeline(
   deps: ExecutionPipelineDependencies
 ): ExecutionPipeline {
   return new ExecutionPipeline(deps);
+}
+
+// ============================================================================
+// Agent Changed Emission
+// ============================================================================
+
+/** Known agent IDs for identity lookup */
+const KNOWN_AGENT_IDS = new Set(Object.values(AGENT_ID));
+
+/**
+ * Build AgentIdentity from an agent ID string.
+ * Returns undefined if the agentId is not a known agent.
+ */
+function buildAgentIdentity(agentId: string): AgentIdentity | undefined {
+  if (!KNOWN_AGENT_IDS.has(agentId as AgentId)) return undefined;
+  const id = agentId as AgentId;
+  return {
+    agentId: id,
+    agentName: AGENT_DISPLAY_NAME[id],
+    agentIcon: AGENT_ICON[id],
+    agentColor: AGENT_COLOR[id],
+  };
+}
+
+/**
+ * Emit an agent_changed event when the active agent transitions.
+ *
+ * @param ctx - Execution context with callback
+ * @param sessionId - Session ID
+ * @param previousAgentId - Previous agent ID (undefined for first agent)
+ * @param currentAgentId - New active agent ID
+ */
+function emitAgentChanged(
+  ctx: ExecutionContextSync,
+  sessionId: string,
+  previousAgentId: string | undefined,
+  currentAgentId: string
+): void {
+  if (!ctx.callback) return;
+
+  const currentIdentity = buildAgentIdentity(currentAgentId);
+  if (!currentIdentity) return;
+
+  const previousIdentity = previousAgentId
+    ? buildAgentIdentity(previousAgentId) ?? { agentId: previousAgentId as AgentId, agentName: previousAgentId }
+    : { agentId: 'supervisor' as AgentId, agentName: 'Orchestrator', agentIcon: '🎯', agentColor: '#8B5CF6' };
+
+  ctx.callback({
+    type: 'agent_changed',
+    eventId: randomUUID(),
+    sessionId,
+    timestamp: new Date().toISOString(),
+    eventIndex: getNextEventIndex(ctx),
+    previousAgent: previousIdentity,
+    currentAgent: currentIdentity,
+  });
+
+  logger.debug(
+    {
+      sessionId,
+      previousAgentId,
+      currentAgentId,
+      currentAgentName: currentIdentity.agentName,
+    },
+    'Emitted agent_changed event'
+  );
 }

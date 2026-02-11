@@ -10,9 +10,10 @@
 
 import { Command } from '@langchain/langgraph';
 import { createSupervisor } from '@langchain/langgraph-supervisor';
-import { HumanMessage, type BaseMessage } from '@langchain/core/messages';
+import { HumanMessage, SystemMessage, type BaseMessage } from '@langchain/core/messages';
 import { AGENT_ID, type AgentId } from '@bc-agent/shared';
 import { ModelFactory } from '@/core/langchain/ModelFactory';
+import { getModelConfig } from '@/infrastructure/config/models';
 import type { ICompiledGraph } from '@/domains/agent/orchestration/execution/GraphExecutor';
 import type { AgentState } from '../orchestrator/state';
 import { buildSupervisorPrompt } from './supervisor-prompt';
@@ -59,8 +60,19 @@ export async function initializeSupervisorGraph(): Promise<void> {
   // 2. Create supervisor model
   const supervisorModel = await ModelFactory.create('supervisor');
 
-  // 3. Build dynamic prompt
-  const prompt = buildSupervisorPrompt();
+  // 3. Build dynamic prompt with optional cache_control for prompt caching
+  const promptText = buildSupervisorPrompt();
+  const supervisorConfig = getModelConfig('supervisor');
+  const prompt = supervisorConfig.promptCaching
+    ? new SystemMessage({
+        content: [{
+          type: 'text',
+          text: promptText,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          cache_control: { type: 'ephemeral' } as any,
+        }],
+      })
+    : promptText;
 
   // 4. Get durable checkpointer (initialized in server.ts before this)
   const checkpointer = getCheckpointer();

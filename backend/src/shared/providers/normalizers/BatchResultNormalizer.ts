@@ -161,6 +161,17 @@ export class BatchResultNormalizer implements IBatchResultNormalizer {
       }
     }
 
+    // 3.5 Mark handoff tool events (transfer_to_*) as transient so they don't persist
+    for (const event of interleavedEvents) {
+      if (
+        (event.type === 'tool_request' || event.type === 'tool_response') &&
+        'toolName' in event &&
+        (event as { toolName: string }).toolName.startsWith('transfer_to_')
+      ) {
+        (event as { persistenceStrategy: string }).persistenceStrategy = 'transient';
+      }
+    }
+
     // 4. Optional: complete event
     if (options?.includeComplete) {
       const lastAIMessage = lastAIMessageIndex >= 0 ? messages[lastAIMessageIndex] : null;

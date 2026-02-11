@@ -31,11 +31,9 @@ export default function Home() {
   // Use pending chat hook for state management
   const {
     message,
-    enableThinking,
     selectedAgentId,
     pendingFiles,
     setMessage,
-    setEnableThinking,
     setSelectedAgentId,
     addFile,
     removeFile,
@@ -161,9 +159,7 @@ export default function Home() {
           onSend={handleSend}
           disabled={isSubmitting}
           // Controlled options (synced with pending chat store)
-          enableThinkingControlled={enableThinking}
           selectedAgentIdControlled={selectedAgentId}
-          onEnableThinkingChange={setEnableThinking}
           onSelectedAgentIdChange={setSelectedAgentId}
         />
       </div>

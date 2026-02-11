@@ -18,6 +18,9 @@ vi.mock('@langchain/langgraph-supervisor', () => ({
   createSupervisor: vi.fn().mockReturnValue({
     compile: vi.fn().mockReturnValue({
       invoke: vi.fn().mockResolvedValue({ messages: [] }),
+      stream: vi.fn().mockReturnValue((async function* () {
+        yield { messages: [] };
+      })()),
       getState: vi.fn().mockResolvedValue({ tasks: [] }),
     }),
   }),

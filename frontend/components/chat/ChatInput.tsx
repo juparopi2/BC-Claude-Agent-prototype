@@ -31,7 +31,7 @@ export interface PendingFileDisplay {
 
 export interface ChatInputProps {
   sessionId?: string;
-  onSend?: (message: string, options?: { enableThinking: boolean; useMyContext: boolean }) => void;
+  onSend?: (message: string, options?: { useMyContext: boolean }) => void;
   disabled?: boolean;
   // Socket state from parent (avoids duplicate useSocket calls)
   isConnected?: boolean;
@@ -58,12 +58,8 @@ export interface ChatInputProps {
   onFileRemove?: (tempId: string) => void;
 
   // Controlled options (can be used in pendingMode)
-  /** Controlled enableThinking value */
-  enableThinkingControlled?: boolean;
   /** Controlled selectedAgentId value */
   selectedAgentIdControlled?: string;
-  /** Enable thinking change handler */
-  onEnableThinkingChange?: (enabled: boolean) => void;
   /** Selected agent change handler */
   onSelectedAgentIdChange?: (agentId: string) => void;
 }
@@ -84,9 +80,7 @@ export default function ChatInput({
   onFileSelect,
   onFileRemove,
   // Controlled options
-  enableThinkingControlled,
   selectedAgentIdControlled,
-  onEnableThinkingChange,
   onSelectedAgentIdChange,
 }: ChatInputProps) {
   // Internal message state (used when NOT in pending mode)
@@ -97,16 +91,10 @@ export default function ChatInput({
   const setMessage = pendingMode ? (onMessageChange ?? (() => {})) : setInternalMessage;
 
   // Use persistent UI preferences from store
-  const storeEnableThinking = useUIPreferencesStore((s) => s.enableThinking);
-  const storeSetEnableThinking = useUIPreferencesStore((s) => s.setEnableThinking);
   const storeSelectedAgentId = useUIPreferencesStore((s) => s.selectedAgentId);
-  const showAgentWorkflow = useUIPreferencesStore((s) => s.showAgentWorkflow);
-  const toggleAgentWorkflow = useUIPreferencesStore((s) => s.toggleAgentWorkflow);
 
   // Use controlled or store values
-  const enableThinking = enableThinkingControlled ?? storeEnableThinking;
   const selectedAgentId = selectedAgentIdControlled ?? storeSelectedAgentId;
-  const setEnableThinking = onEnableThinkingChange ?? storeSetEnableThinking;
 
   // Use chat attachments hook for ephemeral file uploads (normal mode only)
   const {
@@ -184,12 +172,12 @@ export default function ChatInput({
 
     if (onSend) {
       // Simple callback mode (works for both pending and normal mode without sessionId)
-      onSend(message, { enableThinking, useMyContext: selectedAgentId === 'rag-agent' });
+      onSend(message, { useMyContext: selectedAgentId === 'rag-agent' });
     } else {
       // Full message mode (requires sessionId/socket)
       const options = {
-        enableThinking,
-        thinkingBudget: enableThinking ? 10000 : undefined,
+        enableThinking: true,
+        thinkingBudget: 10000,
         // Use chatAttachments for ephemeral files sent directly to Anthropic
         chatAttachments: completedAttachmentIds.length > 0 ? completedAttachmentIds : undefined,
         enableAutoSemanticSearch: selectedAgentId === 'rag-agent',
@@ -341,12 +329,8 @@ export default function ChatInput({
         {/* Options Row */}
         <div className="flex items-center gap-2">
           <InputOptionsBar
-            enableThinking={enableThinking}
-            onThinkingChange={setEnableThinking}
             selectedAgentId={selectedAgentIdControlled}
             onAgentChange={onSelectedAgentIdChange}
-            showAgentWorkflow={showAgentWorkflow}
-            onWorkflowChange={toggleAgentWorkflow}
             disabled={effectiveIsBusy || disabled}
           />
 

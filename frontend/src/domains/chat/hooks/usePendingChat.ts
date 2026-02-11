@@ -19,6 +19,7 @@ import { pendingFileManager } from '../services/pendingFileManager';
 import { useSessionStore } from '@/src/domains/session';
 import { useUIPreferencesStore } from '@/src/domains/ui';
 
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -30,8 +31,6 @@ export interface UsePendingChatReturn {
   // State (from store)
   /** User message to send */
   message: string;
-  /** Whether extended thinking is enabled (persisted in UIPreferencesStore) */
-  enableThinking: boolean;
   /** Whether to search user's files for context */
   useMyContext: boolean;
   /** Selected agent ID ('auto' or AGENT_ID value) */
@@ -44,8 +43,6 @@ export interface UsePendingChatReturn {
   // Actions
   /** Set the message text */
   setMessage: (msg: string) => void;
-  /** Toggle extended thinking (persisted in UIPreferencesStore) */
-  setEnableThinking: (enabled: boolean) => void;
   /** Toggle semantic search on user files */
   setUseMyContext: (enabled: boolean) => void;
   /** Set selected agent ID */
@@ -120,8 +117,6 @@ export function usePendingChat(): UsePendingChatReturn {
   const hasPendingChat = usePendingChatStore((s) => s.hasPendingChat);
 
   // UI preferences (persisted in localStorage via UIPreferencesStore)
-  const enableThinking = useUIPreferencesStore((s) => s.enableThinking);
-  const setEnableThinking = useUIPreferencesStore((s) => s.setEnableThinking);
   const selectedAgentId = useUIPreferencesStore((s) => s.selectedAgentId);
   const setSelectedAgentId = useUIPreferencesStore((s) => s.setSelectedAgentId);
 
@@ -229,7 +224,6 @@ export function usePendingChat(): UsePendingChatReturn {
   return {
     // State
     message,
-    enableThinking,
     useMyContext,
     selectedAgentId,
     pendingFiles,
@@ -237,7 +231,6 @@ export function usePendingChat(): UsePendingChatReturn {
 
     // Actions
     setMessage,
-    setEnableThinking,
     setUseMyContext,
     setSelectedAgentId,
     addFile,

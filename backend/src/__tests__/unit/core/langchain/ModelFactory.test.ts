@@ -94,7 +94,7 @@ describe('ModelFactory', () => {
     });
 
     it('should pass thinking config to ChatAnthropic constructor', async () => {
-      await ModelFactory.create('bc_agent');
+      await ModelFactory.create('supervisor');
 
       expect(mockChatAnthropicConstructor).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -104,7 +104,7 @@ describe('ModelFactory', () => {
     });
 
     it('should omit temperature when thinking is enabled', async () => {
-      await ModelFactory.create('bc_agent');
+      await ModelFactory.create('supervisor');
 
       const call = mockChatAnthropicConstructor.mock.calls[0][0];
       expect(call.thinking).toEqual({ type: 'enabled', budget_tokens: 5000 });
@@ -112,7 +112,7 @@ describe('ModelFactory', () => {
     });
 
     it('should pass temperature when thinking is disabled', async () => {
-      await ModelFactory.create('supervisor');
+      await ModelFactory.create('bc_agent');
 
       const call = mockChatAnthropicConstructor.mock.calls[0][0];
       expect(call.thinking).toBeUndefined();
@@ -133,16 +133,16 @@ describe('ModelFactory', () => {
     });
 
     it('should not pass thinking config when disabled', async () => {
-      await ModelFactory.create('supervisor');
+      await ModelFactory.create('bc_agent');
 
-      // Supervisor has thinking: { type: 'disabled' }, so thinking should NOT be passed
+      // bc_agent has thinking: { type: 'disabled' }, so thinking should NOT be passed
       const call = mockChatAnthropicConstructor.mock.calls[0][0];
       expect(call.thinking).toBeUndefined();
     });
 
     it('should include streaming and thinking in cache key', async () => {
-      // bc_agent has streaming: true, session_title has streaming: false
-      await ModelFactory.create('bc_agent');
+      // supervisor has streaming: true + thinking enabled, session_title has streaming: false + no thinking
+      await ModelFactory.create('supervisor');
       await ModelFactory.create('session_title');
 
       const stats = ModelFactory.getCacheStats();
@@ -150,7 +150,7 @@ describe('ModelFactory', () => {
       // Both should have different streaming in cache key
       expect(keys.some(k => k.includes(':strue'))).toBe(true);
       expect(keys.some(k => k.includes(':sfalse'))).toBe(true);
-      // bc_agent has thinking enabled, session_title has none
+      // supervisor has thinking enabled, session_title has none
       expect(keys.some(k => k.includes(':thenabled'))).toBe(true);
       expect(keys.some(k => k.includes(':thnone'))).toBe(true);
     });

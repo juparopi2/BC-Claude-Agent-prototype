@@ -5,10 +5,19 @@
  * Models are organized by ROLE, not by name, allowing easy swapping and
  * cost optimization based on task requirements.
  *
- * CRITICAL CONSTRAINTS:
- * - Anthropic: temperature + thinking cannot coexist (see CLAUDE.md Section 11.7)
- * - When thinking.type === 'enabled', do NOT set temperature field
- * - ModelFactory handles this, but config should not create the conflict
+ * CRITICAL CONSTRAINTS (Anthropic API):
+ * 1. temperature + thinking cannot coexist
+ *    - When thinking.type === 'enabled', do NOT set temperature field
+ *    - ModelFactory handles this, but config should not create the conflict
+ *
+ * Role Summary:
+ * | Role            | Thinking | Temperature |
+ * |-----------------|----------|-------------|
+ * | supervisor      | enabled  | omitted     |
+ * | bc_agent        | disabled | 0.3         |
+ * | rag_agent       | disabled | 0.5         |
+ * | graphing_agent  | disabled | 0.2         |
+ * | session_title   | disabled | 0.7         |
  *
  * @see backend/src/core/langchain/CLAUDE.md - Full domain documentation
  * @see backend/src/core/langchain/ModelFactory.ts - Factory implementation
@@ -124,12 +133,12 @@ export const ModelRoleConfigs: Record<ModelRole, RoleModelConfig> = {
     description: 'Lightweight supervisor for routing between specialist agents',
     modelString: AnthropicModels.HAIKU_4_5,
     fallback: FallbackModels.OPENAI_GPT4O_MINI,
-    provider: 'anthropic' as ModelProvider,
+    provider: 'anthropic',
     modelName: AnthropicModels.HAIKU_4_5,
-    temperature: 0.0, // Deterministic routing
-    maxTokens: 2048,
+    temperature: 0.0, // Omitted at runtime when thinking is enabled (API→1.0)
+    maxTokens: 16384, // Must be > budget_tokens when thinking is enabled
     streaming: true,
-    thinking: { type: 'disabled' }, // Supervisor doesn't need thinking (routing only)
+    thinking: { type: 'enabled', budget_tokens: 5000 }, // Safe: supervisor has no tool_choice
     promptCaching: true,
   },
 
@@ -138,12 +147,12 @@ export const ModelRoleConfigs: Record<ModelRole, RoleModelConfig> = {
     description: 'Business Central operations and API interactions',
     modelString: AnthropicModels.HAIKU_4_5,
     fallback: FallbackModels.OPENAI_GPT4O_MINI,
-    provider: 'anthropic' as ModelProvider,
+    provider: 'anthropic',
     modelName: AnthropicModels.HAIKU_4_5,
     temperature: 0.3, // More deterministic for BC operations
     maxTokens: 32000,
     streaming: true,
-    thinking: { type: 'enabled', budget_tokens: 5000 },
+    thinking: { type: 'disabled' }, // Disabled for now (can be enabled in future)
     promptCaching: true,
   },
 
@@ -152,12 +161,12 @@ export const ModelRoleConfigs: Record<ModelRole, RoleModelConfig> = {
     description: 'RAG retrieval and knowledge synthesis',
     modelString: AnthropicModels.HAIKU_4_5,
     fallback: FallbackModels.OPENAI_GPT4O_MINI,
-    provider: 'anthropic' as ModelProvider,
+    provider: 'anthropic',
     modelName: AnthropicModels.HAIKU_4_5,
     temperature: 0.5,
     maxTokens: 16384,
     streaming: true,
-    thinking: { type: 'enabled', budget_tokens: 5000 },
+    thinking: { type: 'disabled' }, // Disabled for now (can be enabled in future)
     promptCaching: true,
   },
 
@@ -166,12 +175,12 @@ export const ModelRoleConfigs: Record<ModelRole, RoleModelConfig> = {
     description: 'Data visualization and chart configuration generation',
     modelString: AnthropicModels.HAIKU_4_5,
     fallback: FallbackModels.OPENAI_GPT4O_MINI,
-    provider: 'anthropic' as ModelProvider,
+    provider: 'anthropic',
     modelName: AnthropicModels.HAIKU_4_5,
     temperature: 0.2,
     maxTokens: 16384,
     streaming: true,
-    thinking: { type: 'enabled', budget_tokens: 5000 },
+    thinking: { type: 'disabled' }, // Disabled for now (can be enabled in future)
     promptCaching: true,
   },
 
@@ -180,7 +189,7 @@ export const ModelRoleConfigs: Record<ModelRole, RoleModelConfig> = {
     description: 'Generate concise session titles from conversation',
     modelString: AnthropicModels.HAIKU_3_5,
     fallback: FallbackModels.OPENAI_GPT4O_MINI,
-    provider: 'anthropic' as ModelProvider,
+    provider: 'anthropic',
     modelName: AnthropicModels.HAIKU_3_5,
     temperature: 0.7,
     maxTokens: 50,

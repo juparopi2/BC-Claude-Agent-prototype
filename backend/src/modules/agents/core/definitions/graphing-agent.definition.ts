@@ -47,7 +47,7 @@ AVAILABLE CHART TYPES (10):
 bar, stacked_bar, line, area, donut, bar_list, combo, kpi, kpi_grid, table
 
 CRITICAL EXECUTION RULES:
-1. You MUST call tools for EVERY user message. This is non-negotiable.
+1. You SHOULD call your tools for EVERY user message. NEVER answer from training data — ground all answers in tool results. After receiving tool results, synthesize a clear response.
 2. NEVER generate chart configurations from memory. ALWAYS validate against tool results.
 3. Think step by step:
    - Step 1: Call list_available_charts to see all chart types with their data shapes

@@ -17,9 +17,11 @@ import {
 // Mocks - use vi.hoisted() so they are available in vi.mock() factories
 // ============================================================================
 
-const { mockAgentInvoke, mockSupervisorInvoke } = vi.hoisted(() => ({
+const { mockAgentInvoke, mockSupervisorStream } = vi.hoisted(() => ({
   mockAgentInvoke: vi.fn().mockResolvedValue({ messages: [] }),
-  mockSupervisorInvoke: vi.fn().mockResolvedValue({ messages: [] }),
+  mockSupervisorStream: vi.fn().mockReturnValue((async function* () {
+    yield { messages: [] };
+  })()),
 }));
 
 // Mock ModelFactory
@@ -38,7 +40,8 @@ vi.mock('@/core/langchain/ModelFactory', () => ({
 vi.mock('@langchain/langgraph-supervisor', () => ({
   createSupervisor: vi.fn().mockReturnValue({
     compile: vi.fn().mockReturnValue({
-      invoke: mockSupervisorInvoke,
+      invoke: vi.fn().mockResolvedValue({ messages: [] }),
+      stream: mockSupervisorStream,
       getState: vi.fn().mockResolvedValue({ tasks: [] }),
     }),
   }),
@@ -87,7 +90,9 @@ describe('targetAgentId routing', () => {
   beforeEach(async () => {
     __resetSupervisorGraph();
     mockAgentInvoke.mockClear();
-    mockSupervisorInvoke.mockClear();
+    mockSupervisorStream.mockClear().mockReturnValue((async function* () {
+      yield { messages: [] };
+    })());
     await initializeSupervisorGraph();
   });
 
@@ -107,8 +112,8 @@ describe('targetAgentId routing', () => {
 
     // The agent's invoke should be called (direct invocation)
     expect(mockAgentInvoke).toHaveBeenCalled();
-    // Supervisor LLM should NOT be called
-    expect(mockSupervisorInvoke).not.toHaveBeenCalled();
+    // Supervisor stream should NOT be called
+    expect(mockSupervisorStream).not.toHaveBeenCalled();
   });
 
   it('should pass prompt through unmodified (no prefix stripping)', async () => {
@@ -146,8 +151,8 @@ describe('targetAgentId routing', () => {
       },
     });
 
-    // Supervisor should be called (fallthrough)
-    expect(mockSupervisorInvoke).toHaveBeenCalled();
+    // Supervisor stream should be called (fallthrough)
+    expect(mockSupervisorStream).toHaveBeenCalled();
     // Direct agent invoke should NOT be called
     expect(mockAgentInvoke).not.toHaveBeenCalled();
   });
@@ -163,8 +168,8 @@ describe('targetAgentId routing', () => {
       },
     });
 
-    // Supervisor should be called (fallthrough)
-    expect(mockSupervisorInvoke).toHaveBeenCalled();
+    // Supervisor stream should be called (fallthrough)
+    expect(mockSupervisorStream).toHaveBeenCalled();
     // Direct agent invoke should NOT be called
     expect(mockAgentInvoke).not.toHaveBeenCalled();
   });
@@ -183,8 +188,8 @@ describe('targetAgentId routing', () => {
       },
     });
 
-    // Supervisor should be called (fallthrough after warning)
-    expect(mockSupervisorInvoke).toHaveBeenCalled();
+    // Supervisor stream should be called (fallthrough after warning)
+    expect(mockSupervisorStream).toHaveBeenCalled();
     // Direct agent invoke should NOT be called
     expect(mockAgentInvoke).not.toHaveBeenCalled();
   });

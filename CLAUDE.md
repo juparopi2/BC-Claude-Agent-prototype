@@ -515,13 +515,20 @@ The system uses **synchronous execution** (not streaming). Valid event types:
 
 ### 11.7 LLM Provider API Constraints
 
-**Anthropic: Temperature + Extended Thinking Mutual Exclusion**
+**Anthropic: Key Constraints**
 
-When extended thinking is enabled:
-- Temperature MUST be omitted (API defaults to 1.0)
-- Passing temperature causes runtime crash
-- ModelFactory.ts handles this automatically
-- Parameterized test verifies ALL roles
+1. **Temperature + Extended Thinking**: When thinking is enabled, temperature MUST be omitted (API defaults to 1.0). Passing temperature causes runtime crash.
+2. **max_tokens > budget_tokens**: When thinking is enabled, `maxTokens` MUST be greater than `thinking.budget_tokens`. Otherwise API rejects the request.
+
+**Current Role Configuration:**
+
+| Role | Thinking | Temperature | Rationale |
+|---|---|---|---|
+| `supervisor` | enabled (5000) | omitted | Deeper reasoning for routing |
+| `bc_agent` | disabled | 0.3 | Deterministic for BC operations |
+| `rag_agent` | disabled | 0.5 | Balanced for retrieval |
+| `graphing_agent` | disabled | 0.2 | Deterministic for chart config |
+| `session_title` | disabled | 0.7 | Simple generation |
 
 **If you add a new ModelRole** in `backend/src/infrastructure/config/models.ts`:
 1. If `thinking: { type: 'enabled' }` → DO NOT add `temperature` field

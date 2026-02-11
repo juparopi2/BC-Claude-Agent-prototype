@@ -7,9 +7,6 @@ import { registerAgents } from '@modules/agents/core/registry/registerAgents';
 vi.mock('@/core/langchain/ModelFactory', () => ({
   ModelFactory: {
     create: vi.fn().mockResolvedValue({
-      bindTools: vi.fn().mockReturnValue({
-        invoke: vi.fn().mockResolvedValue({ content: 'test' }),
-      }),
       invoke: vi.fn().mockResolvedValue({ content: 'test' }),
     }),
   },
@@ -97,27 +94,38 @@ describe('agent-builders', () => {
       });
     });
 
-    it('should include handoff tools alongside domain tools (PRD-040)', async () => {
+    it('should NOT include handoff tools (supervisor handles routing)', async () => {
       const { createReactAgent } = await import('@langchain/langgraph/prebuilt');
       const mockCreateReactAgent = vi.mocked(createReactAgent);
 
       await buildReactAgents();
 
-      // Each call to createReactAgent should include handoff tools
       for (const call of mockCreateReactAgent.mock.calls) {
-        const config = call[0] as { tools: unknown[]; name: string };
+        const config = call[0] as { tools: Array<{ name: string }>; name: string };
         const tools = config.tools;
-        const agentName = config.name;
 
-        // Each worker agent should have at least 1 handoff tool (transfer to the other worker)
-        const handoffTools = (tools as { name: string }[]).filter(
+        // No tool should be a handoff/transfer tool
+        const handoffTools = tools.filter(
           (t) => typeof t.name === 'string' && t.name.startsWith('transfer_to_')
         );
-        expect(handoffTools.length).toBeGreaterThanOrEqual(1);
+        expect(handoffTools).toHaveLength(0);
+      }
+    });
 
-        // Should not have self-transfer
-        const selfTransfer = handoffTools.find((t) => t.name === `transfer_to_${agentName}`);
-        expect(selfTransfer).toBeUndefined();
+    it('should pass model directly to createReactAgent (no tool_choice binding)', async () => {
+      const { ModelFactory } = await import('@/core/langchain/ModelFactory');
+      const mockModel = await ModelFactory.create('bc_agent');
+
+      const { createReactAgent } = await import('@langchain/langgraph/prebuilt');
+      const mockCreateReactAgent = vi.mocked(createReactAgent);
+
+      await buildReactAgents();
+
+      // Verify model is passed as llm (not a bindTools result)
+      for (const call of mockCreateReactAgent.mock.calls) {
+        const config = call[0] as { llm: unknown };
+        // The llm should be the model itself, not a result of bindTools
+        expect(config.llm).toBe(mockModel);
       }
     });
   });

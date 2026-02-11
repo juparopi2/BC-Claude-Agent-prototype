@@ -11,6 +11,7 @@
 import { Command } from '@langchain/langgraph';
 import { createSupervisor } from '@langchain/langgraph-supervisor';
 import { HumanMessage, SystemMessage, type BaseMessage } from '@langchain/core/messages';
+import type { LanguageModelLike } from '@langchain/core/language_models/base';
 import { AGENT_ID, type AgentId } from '@bc-agent/shared';
 import { ModelFactory } from '@/core/langchain/ModelFactory';
 import { getModelConfig } from '@/infrastructure/config/models';
@@ -26,11 +27,35 @@ import { getAgentAnalyticsService } from '@/domains/analytics';
 
 const logger = createChildLogger({ service: 'SupervisorGraph' });
 
+/** Supervisor graph state shape */
+interface SupervisorState {
+  messages: BaseMessage[];
+}
+
+/** Graph task with optional interrupts (from getState) */
+interface GraphTask {
+  interrupts?: Array<{ value: unknown }>;
+}
+
+/** Compiled supervisor graph interface (subset we actually use) */
+interface CompiledSupervisorGraph {
+  invoke(
+    input: SupervisorState | Command,
+    config?: Record<string, unknown>
+  ): Promise<SupervisorState>;
+  stream(
+    input: SupervisorState,
+    config?: Record<string, unknown>
+  ): AsyncIterable<SupervisorState>;
+  getState(config: Record<string, unknown>): Promise<{
+    tasks?: GraphTask[];
+  }>;
+}
+
 /**
  * Module-level singleton state.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let compiledSupervisor: any = null;
+let compiledSupervisor: CompiledSupervisorGraph | null = null;
 let agentMap: Map<AgentId, BuiltAgent> = new Map();
 let initialized = false;
 
@@ -68,8 +93,7 @@ export async function initializeSupervisorGraph(): Promise<void> {
         content: [{
           type: 'text',
           text: promptText,
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          cache_control: { type: 'ephemeral' } as any,
+          cache_control: { type: 'ephemeral' } as { type: 'ephemeral' },
         }],
       })
     : promptText;
@@ -82,15 +106,13 @@ export async function initializeSupervisorGraph(): Promise<void> {
   // (root node_modules has different version than backend node_modules).
   // Structurally identical at runtime. Fix: root package.json overrides.
   const workflow = createSupervisor({
-    agents: builtAgents.map(a => a.agent),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    llm: supervisorModel as any,
+    agents: builtAgents.map(a => a.agent) as Parameters<typeof createSupervisor>[0]['agents'],
+    llm: supervisorModel as LanguageModelLike,
     prompt,
     addHandoffBackMessages: true,
   });
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  compiledSupervisor = workflow.compile({ checkpointer: checkpointer as any });
+  compiledSupervisor = workflow.compile({ checkpointer }) as unknown as CompiledSupervisorGraph;
 
   initialized = true;
 
@@ -186,25 +208,38 @@ class SupervisorGraphAdapter implements ICompiledGraph {
 
     const threadId = `session-${sessionId}`;
     const startTime = Date.now();
-    let invocationSuccess = true;
 
-    let result: { messages: BaseMessage[] };
+    let result: SupervisorState = { messages: [] };
     try {
-      result = await compiledSupervisor.invoke(
+      const stream = await compiledSupervisor.stream(
+        { messages: [new HumanMessage(prompt)] },
         {
-          messages: [new HumanMessage(prompt)],
-        },
-        {
-          configurable: {
-            thread_id: threadId,
-            userId,
-          },
+          configurable: { thread_id: threadId, userId },
           recursionLimit: options?.recursionLimit ?? 50,
           signal: options?.signal,
+          streamMode: 'values',
         }
       );
+
+      let stepCount = 0;
+      for await (const state of stream) {
+        stepCount++;
+        const lastMsg = state.messages?.at(-1);
+        logger.debug(
+          {
+            sessionId,
+            step: stepCount,
+            messageCount: state.messages?.length ?? 0,
+            lastMessageType: lastMsg?.constructor?.name ?? 'unknown',
+            lastMessageName: (lastMsg as { name?: string })?.name,
+          },
+          'Graph step'
+        );
+        result = state;
+      }
+
+      logger.info({ sessionId, totalSteps: stepCount }, 'Supervisor graph completed');
     } catch (error) {
-      invocationSuccess = false;
       // Record failed invocation analytics (fire-and-forget)
       getAgentAnalyticsService().recordInvocation({
         agentId: AGENT_ID.SUPERVISOR,
@@ -220,7 +255,7 @@ class SupervisorGraphAdapter implements ICompiledGraph {
     const identity = detectAgentIdentity(result.messages);
     getAgentAnalyticsService().recordInvocation({
       agentId: identity.agentId,
-      success: invocationSuccess,
+      success: true,
       inputTokens: 0,
       outputTokens: 0,
       latencyMs: Date.now() - startTime,
@@ -229,18 +264,15 @@ class SupervisorGraphAdapter implements ICompiledGraph {
     // 3. Check for interrupts
     const state = await compiledSupervisor.getState({ configurable: { thread_id: threadId } });
     const isInterrupted = state?.tasks?.some(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (t: any) => t.interrupts && t.interrupts.length > 0
+      (t: GraphTask) => t.interrupts && t.interrupts.length > 0
     );
 
     if (isInterrupted) {
       logger.info({ sessionId, threadId }, 'Supervisor execution interrupted, awaiting user input');
 
       const interruptValue = state.tasks
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ?.flatMap((t: any) => t.interrupts || [])
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ?.map((i: any) => i.value)?.[0];
+        ?.flatMap((t: GraphTask) => t.interrupts || [])
+        ?.map((i: { value: unknown }) => i.value)?.[0];
 
       return adaptSupervisorResult(result, sessionId, {
         isInterrupted: true,

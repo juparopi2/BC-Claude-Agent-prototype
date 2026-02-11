@@ -45,12 +45,18 @@ Related: infrastructure/config/models.ts (source of truth for roles)
 - Implementation in ModelFactory.ts: `...(thinking ? {} : { temperature })`
 - Prevention: parameterized test iterates ALL roles from ModelRoleConfigs
 
+### Anthropic: max_tokens > budget_tokens
+
+- **CRITICAL**: when thinking is enabled, `maxTokens` MUST be greater than `thinking.budget_tokens`
+- Violation causes: `"max_tokens must be greater than thinking.budget_tokens"`
+- Supervisor raised from 2048 → 16384 to accommodate budget_tokens: 5000
+
 ### Adding a New Role
 
 1. Edit `infrastructure/config/models.ts` → add to `ModelRoleConfigs`
 2. If `thinking.type === 'enabled'` → do NOT add temperature to config
 3. Run `npm run -w backend test:unit` to verify parameterized tests pass
-4. ModelFactory handles the exclusion automatically, but config should not create conflicts
+4. ModelFactory handles temperature exclusion automatically, but config should not create conflicts
 
 ## Testing Patterns
 
@@ -64,6 +70,7 @@ Related: infrastructure/config/models.ts (source of truth for roles)
 | Error | Cause | Fix |
 |-------|-------|-----|
 | `temperature is not supported when thinking is enabled` | Config has both temperature and thinking enabled | Remove temperature from role config in models.ts |
+| `max_tokens must be greater than thinking.budget_tokens` | maxTokens is less than or equal to budget_tokens | Increase maxTokens in models.ts to be > budget_tokens |
 | `Cannot read property of undefined` in tests | Running `npx vitest` from root | Use `npm run -w backend test:unit` instead |
 | Cache key collision | Same provider+model but different thinking config | Verify cache key includes `:th{thinking}` suffix |
 

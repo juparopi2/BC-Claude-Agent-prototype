@@ -149,8 +149,8 @@ export default function ChatPage() {
           const uiPrefs = useUIPreferencesStore.getState();
           const isDirected = uiPrefs.selectedAgentId !== 'auto';
           sendMessage(store.message, {
-            enableThinking: uiPrefs.enableThinking || undefined,
-            thinkingBudget: uiPrefs.enableThinking ? 10000 : undefined,
+            enableThinking: true,
+            thinkingBudget: 10000,
             enableAutoSemanticSearch: uiPrefs.selectedAgentId === 'rag-agent' || store.useMyContext || undefined,
             chatAttachments: uploadedIds.length > 0 ? uploadedIds : undefined,
             targetAgentId: isDirected ? uiPrefs.selectedAgentId : undefined,

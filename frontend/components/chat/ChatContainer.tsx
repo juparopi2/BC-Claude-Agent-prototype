@@ -6,7 +6,6 @@ import { getSocketClient } from '@/src/infrastructure/socket';
 import { useFilePreviewStore, useFiles, useGoToFilePath } from '@/src/domains/files';
 import { useAuthStore, selectUserInitials } from '@/src/domains/auth';
 import { useMessages, useAgentState, useCitationStore, usePagination, useChatAttachmentStore, useAgentWorkflow, type AgentProcessingGroup } from '@/src/domains/chat';
-import { useUIPreferencesStore } from '@/src/domains/ui/stores/uiPreferencesStore';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Loader2 } from 'lucide-react';
 import { isToolUseMessage, isToolResultMessage, isThinkingMessage, isStandardMessage, type ChatAttachmentSummary, type ToolUseMessage, type Message } from '@bc-agent/shared';
@@ -67,9 +66,8 @@ export default function ChatContainer() {
   const userInitials = useAuthStore(selectUserInitials);
   const userId = useAuthStore((s) => s.user?.id);
 
-  // Agent workflow groups (PRD-061)
+  // Agent workflow groups (PRD-061) — always shown when groups exist
   const { groups: workflowGroups, toggleGroupCollapse, hasGroups } = useAgentWorkflow();
-  const showAgentWorkflow = useUIPreferencesStore((s) => s.showAgentWorkflow);
 
   /**
    * Handle approval response - sends to server via socket
@@ -448,7 +446,7 @@ export default function ChatContainer() {
         </div>
 
         {/* Render messages: workflow mode or flat mode (PRD-061) */}
-        {showAgentWorkflow && hasGroups
+        {hasGroups
           ? renderWorkflowGroups(messages, workflowGroups)
           : messages.map((message) => renderMessage(message))
         }

@@ -37,7 +37,7 @@ export type EventEmitCallback = (event: AgentEvent) => void;
 export interface ExecuteSyncOptions {
   /**
    * Whether Extended Thinking is enabled.
-   * @default false
+   * @default true
    */
   enableThinking?: boolean;
 
@@ -197,7 +197,7 @@ export interface ExecutionContextSync {
 
   /**
    * Whether Extended Thinking is enabled for this execution.
-   * @default false
+   * @default true
    */
   readonly enableThinking: boolean;
 
@@ -264,7 +264,7 @@ export function createExecutionContextSync(
     totalOutputTokens: 0,
 
     // Options
-    enableThinking: options?.enableThinking ?? false,
+    enableThinking: options?.enableThinking ?? true,
     thinkingBudget: options?.thinkingBudget ?? 10000,
     timeoutMs: options?.timeoutMs ?? 300000,
   };

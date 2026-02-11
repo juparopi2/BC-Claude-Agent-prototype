@@ -1,7 +1,7 @@
 /**
  * InputOptionsBar Component Tests
  *
- * Tests for the input options toggle bar.
+ * Tests for the input options bar (agent selector only).
  *
  * @module __tests__/presentation/chat/InputOptionsBar
  */
@@ -24,7 +24,6 @@ vi.mock('@/src/presentation/chat/AgentSelectorDropdown', () => ({
 }));
 
 describe('InputOptionsBar', () => {
-  const mockOnThinkingChange = vi.fn();
   const mockOnAgentChange = vi.fn();
 
   beforeEach(() => {
@@ -32,61 +31,27 @@ describe('InputOptionsBar', () => {
   });
 
   describe('Rendering', () => {
-    it('renders thinking toggle', () => {
-      render(
-        <InputOptionsBar
-          enableThinking={false}
-          onThinkingChange={mockOnThinkingChange}
-        />
-      );
-
-      expect(screen.getByText('Thinking')).toBeInTheDocument();
-    });
-
     it('renders agent selector', () => {
       render(
-        <InputOptionsBar
-          enableThinking={false}
-          onThinkingChange={mockOnThinkingChange}
-        />
+        <InputOptionsBar />
       );
 
       expect(screen.getByTestId('agent-selector')).toBeInTheDocument();
     });
 
-    it('shows active state when thinking enabled', () => {
+    it('renders options bar container', () => {
       render(
-        <InputOptionsBar
-          enableThinking={true}
-          onThinkingChange={mockOnThinkingChange}
-        />
+        <InputOptionsBar />
       );
 
-      const thinkingToggle = screen.getByTestId('thinking-toggle');
-      expect(thinkingToggle).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByTestId('input-options-bar')).toBeInTheDocument();
     });
   });
 
   describe('Interactions', () => {
-    it('calls onThinkingChange when thinking toggle clicked', () => {
-      render(
-        <InputOptionsBar
-          enableThinking={false}
-          onThinkingChange={mockOnThinkingChange}
-        />
-      );
-
-      const toggle = screen.getByTestId('thinking-toggle');
-      fireEvent.click(toggle);
-
-      expect(mockOnThinkingChange).toHaveBeenCalledWith(true);
-    });
-
     it('calls onAgentChange when agent selector clicked', () => {
       render(
         <InputOptionsBar
-          enableThinking={false}
-          onThinkingChange={mockOnThinkingChange}
           onAgentChange={mockOnAgentChange}
         />
       );
@@ -100,8 +65,6 @@ describe('InputOptionsBar', () => {
     it('passes selectedAgentId to agent selector', () => {
       render(
         <InputOptionsBar
-          enableThinking={false}
-          onThinkingChange={mockOnThinkingChange}
           selectedAgentId="rag-agent"
           onAgentChange={mockOnAgentChange}
         />
@@ -112,51 +75,15 @@ describe('InputOptionsBar', () => {
   });
 
   describe('Disabled State', () => {
-    it('disables toggles when disabled prop is true', () => {
+    it('disables agent selector when disabled prop is true', () => {
       render(
         <InputOptionsBar
-          enableThinking={false}
-          onThinkingChange={mockOnThinkingChange}
           disabled={true}
         />
       );
 
-      const thinkingToggle = screen.getByTestId('thinking-toggle');
       const agentSelector = screen.getByTestId('agent-selector');
-
-      expect(thinkingToggle).toBeDisabled();
       expect(agentSelector).toBeDisabled();
-    });
-
-    it('does not call handlers when disabled and clicked', () => {
-      render(
-        <InputOptionsBar
-          enableThinking={false}
-          onThinkingChange={mockOnThinkingChange}
-          disabled={true}
-        />
-      );
-
-      const thinkingToggle = screen.getByTestId('thinking-toggle');
-      fireEvent.click(thinkingToggle);
-
-      expect(mockOnThinkingChange).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('Tooltips', () => {
-    it('shows tooltips on hover', async () => {
-      render(
-        <InputOptionsBar
-          enableThinking={false}
-          onThinkingChange={mockOnThinkingChange}
-        />
-      );
-
-      // The tooltip content should exist but may be hidden
-      // Just verify the toggles exist for now
-      expect(screen.getByTestId('thinking-toggle')).toBeInTheDocument();
-      expect(screen.getByTestId('agent-selector')).toBeInTheDocument();
     });
   });
 });

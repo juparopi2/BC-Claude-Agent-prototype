@@ -70,8 +70,6 @@ vi.mock('@/src/domains/chat', () => ({
 
 // Variable to control UI preferences mock
 let mockUIPreferencesState = {
-  enableThinking: false,
-  setEnableThinking: vi.fn(),
   useMyContext: false,
   setUseMyContext: vi.fn(),
   selectedAgentId: 'auto',
@@ -112,8 +110,6 @@ describe('ChatInput', () => {
     mockSocketConnection.isConnected = true;
     mockSocketConnection.isReconnecting = false;
     mockUIPreferencesState = {
-      enableThinking: false,
-      setEnableThinking: vi.fn(),
       useMyContext: false,
       setUseMyContext: vi.fn(),
       selectedAgentId: 'auto',
@@ -157,7 +153,8 @@ describe('ChatInput', () => {
       expect(mockSendMessage).toHaveBeenCalledWith(
         'Hello world',
         expect.objectContaining({
-          enableThinking: false,
+          enableThinking: true,
+          thinkingBudget: 10000,
         })
       );
     });
@@ -266,28 +263,7 @@ describe('ChatInput', () => {
     });
   });
 
-  describe('Toggles', () => {
-    it('toggles Extended Thinking', async () => {
-      const mockSetEnableThinking = vi.fn();
-      mockUIPreferencesState.setEnableThinking = mockSetEnableThinking;
-
-      render(
-        <ChatInput
-          sessionId="session-1"
-          isConnected={true}
-          sendMessage={mockSendMessage}
-        />
-      );
-
-      // Find the thinking toggle by its text content
-      const thinkingToggle = screen.getByRole('button', { name: /thinking/i });
-      expect(thinkingToggle).toBeInTheDocument();
-
-      fireEvent.click(thinkingToggle);
-
-      expect(mockSetEnableThinking).toHaveBeenCalledWith(true);
-    });
-
+  describe('Options', () => {
     it('renders agent selector dropdown', () => {
       render(
         <ChatInput
@@ -302,9 +278,7 @@ describe('ChatInput', () => {
       expect(agentSelector).toBeInTheDocument();
     });
 
-    it('sends message with enableThinking=true when toggle is on', async () => {
-      mockUIPreferencesState.enableThinking = true;
-
+    it('always sends enableThinking=true with thinkingBudget', async () => {
       const user = userEvent.setup();
 
       render(
@@ -596,8 +570,8 @@ describe('ChatInput', () => {
       const textarea = screen.getByRole('textbox');
       expect(textarea).toBeDisabled();
 
-      const thinkingToggle = screen.getByRole('button', { name: /thinking/i });
-      expect(thinkingToggle).toBeDisabled();
+      const agentSelector = screen.getByTestId('agent-selector');
+      expect(agentSelector).toBeDisabled();
     });
   });
 });

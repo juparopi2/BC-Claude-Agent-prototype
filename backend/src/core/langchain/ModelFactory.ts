@@ -217,9 +217,11 @@ export class ModelFactory {
   static async supportsFeature(role: ModelRole, feature: string): Promise<boolean> {
     try {
       const model = await this.create(role);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const modelAny = model as any;
-      return modelAny.profile?.[feature] ?? modelAny[feature] ?? false;
+      const modelRecord = model as unknown as Record<string, unknown>;
+      if ('profile' in model && model.profile && typeof model.profile === 'object') {
+        return Boolean((model.profile as Record<string, unknown>)[feature]);
+      }
+      return feature in modelRecord ? Boolean(modelRecord[feature]) : false;
     } catch {
       return false;
     }

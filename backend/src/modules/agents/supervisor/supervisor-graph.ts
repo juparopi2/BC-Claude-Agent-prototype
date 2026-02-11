@@ -110,6 +110,7 @@ export async function initializeSupervisorGraph(): Promise<void> {
     llm: supervisorModel as LanguageModelLike,
     prompt,
     addHandoffBackMessages: true,
+    outputMode: 'full_history',
   });
 
   compiledSupervisor = workflow.compile({ checkpointer }) as unknown as CompiledSupervisorGraph;
@@ -186,6 +187,7 @@ class SupervisorGraphAdapter implements ICompiledGraph {
             configurable: {
               thread_id: `directed-${sessionId}-${Date.now()}`,
               userId,
+              invocationId: `inv-${Date.now()}`,
             },
             recursionLimit: options?.recursionLimit ?? 50,
             signal: options?.signal,
@@ -211,10 +213,11 @@ class SupervisorGraphAdapter implements ICompiledGraph {
 
     let result: SupervisorState = { messages: [] };
     try {
+      const invocationId = `inv-${Date.now()}`;
       const stream = await compiledSupervisor.stream(
         { messages: [new HumanMessage(prompt)] },
         {
-          configurable: { thread_id: threadId, userId },
+          configurable: { thread_id: threadId, userId, invocationId },
           recursionLimit: options?.recursionLimit ?? 50,
           signal: options?.signal,
           streamMode: 'values',

@@ -13,6 +13,7 @@
 
 import { createReactAgent } from '@langchain/langgraph/prebuilt';
 import { SystemMessage } from '@langchain/core/messages';
+import { RunnableBinding } from '@langchain/core/runnables';
 import type { AgentId } from '@bc-agent/shared';
 import { ModelFactory } from '@/core/langchain/ModelFactory';
 import { getModelConfig } from '@/infrastructure/config/models';
@@ -90,6 +91,13 @@ export async function buildReactAgents(): Promise<BuiltAgent[]> {
     // The enforcer returns a pre-bound RunnableBinding that createReactAgent
     // detects as already bound (_shouldBindTools → false), so it won't re-bind.
     const enforcedModel = createFirstCallEnforcer(model, domainTools);
+
+    if (!RunnableBinding.isRunnableBinding(enforcedModel)) {
+      logger.error(
+        { agentId: agentDef.id },
+        'CRITICAL: Enforcer is NOT a RunnableBinding — _shouldBindTools will re-bind and bypass enforcement!'
+      );
+    }
 
     const agent = createReactAgent({
       llm: enforcedModel,

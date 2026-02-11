@@ -1,18 +1,19 @@
 /**
  * FirstCallToolEnforcer - Hybrid tool enforcement for ReAct agents
  *
- * Forces tool_choice: 'any' on the first LLM call per thread_id, then
+ * Forces tool_choice: 'any' on the first LLM call per invocation, then
  * switches to 'auto' for subsequent calls. This guarantees at least one
  * domain tool call per invocation while allowing natural ReAct termination.
  *
  * Mechanism:
  * - Creates two bound models: forced (tool_choice: 'any') and auto (default 'auto')
- * - Overrides invoke() on the forced model to switch based on call count per thread_id
+ * - Overrides invoke() on the forced model to switch based on call count per key
+ * - Key priority: invocationId (unique per user message) > thread_id > '__default__'
  * - Returns a RunnableBinding that createReactAgent's _shouldBindTools() recognizes
- *   as pre-bound (kwargs.tools present), so it skips re-binding
+ *   as pre-bound (config.tools present via ChatAnthropic.withConfig), so it skips re-binding
  *
- * Thread safety: Uses a Map<thread_id, callCount> for concurrent invocations.
- * Each thread_id is unique per invocation (e.g., `${sessionId}-${Date.now()}`).
+ * Thread safety: Uses a Map<key, callCount> for concurrent invocations.
+ * invocationId format: `inv-${Date.now()}` (generated per supervisor stream/invoke call).
  *
  * @module core/langchain/FirstCallToolEnforcer
  */
@@ -21,6 +22,7 @@ import type { BaseChatModel } from '@langchain/core/language_models/chat_models'
 import type { StructuredToolInterface } from '@langchain/core/tools';
 import type { Runnable, RunnableConfig } from '@langchain/core/runnables';
 import type { BaseLanguageModelInput } from '@langchain/core/language_models/base';
+import { RunnableBinding } from '@langchain/core/runnables';
 import { createChildLogger } from '@/shared/utils/logger';
 
 const logger = createChildLogger({ service: 'FirstCallToolEnforcer' });
@@ -34,8 +36,9 @@ const MAX_TRACKED_THREADS = 100;
  * - First LLM call per thread_id: tool_choice 'any' (must call a tool)
  * - Subsequent calls per thread_id: tool_choice 'auto' (can respond with text)
  *
- * The returned object is a RunnableBinding with kwargs.tools set, so
- * createReactAgent's _shouldBindTools() returns false (skips re-binding).
+ * The returned object is a RunnableBinding with config.tools set
+ * (ChatAnthropic.bindTools uses withConfig, storing tools in config not kwargs).
+ * createReactAgent's _shouldBindTools() checks config.tools as fallback → returns false.
  *
  * @param model - Base chat model (must support bindTools)
  * @param tools - Domain tools to bind
@@ -56,6 +59,30 @@ export function createFirstCallEnforcer(
   const forcedBound = model.bindTools(tools, { tool_choice: 'any' });
   const autoBound = model.bindTools(tools);
 
+  // Diagnostic: verify the binding structure at creation time
+  const binding = forcedBound as unknown as {
+    bound?: unknown;
+    kwargs?: Record<string, unknown>;
+    config?: Record<string, unknown>;
+  };
+  const isBinding = RunnableBinding.isRunnableBinding(forcedBound);
+  const hasConfigTools = Array.isArray(binding.config?.tools);
+  const hasKwargsTools = Array.isArray(binding.kwargs?.tools);
+  const toolChoice = binding.config?.tool_choice ?? binding.kwargs?.tool_choice;
+
+  logger.info(
+    {
+      isRunnableBinding: isBinding,
+      hasConfigTools,
+      hasKwargsTools,
+      configToolCount: hasConfigTools ? (binding.config!.tools as unknown[]).length : 0,
+      toolChoice,
+      kwargsKeys: binding.kwargs ? Object.keys(binding.kwargs) : [],
+      configKeys: binding.config ? Object.keys(binding.config) : [],
+    },
+    'Created enforcer binding — diagnostics'
+  );
+
   // Per-thread call tracking for concurrent safety
   const callCounts = new Map<string, number>();
 
@@ -70,10 +97,10 @@ export function createFirstCallEnforcer(
     input: BaseLanguageModelInput,
     options?: Partial<RunnableConfig>,
   ): Promise<unknown> => {
-    const threadId = (
-      options?.configurable as Record<string, unknown> | undefined
-    )?.thread_id as string | undefined;
-    const key = threadId ?? '__default__';
+    const configurable = options?.configurable as Record<string, unknown> | undefined;
+    const invocationId = configurable?.invocationId as string | undefined;
+    const threadId = configurable?.thread_id as string | undefined;
+    const key = invocationId ?? threadId ?? '__default__';
 
     const count = (callCounts.get(key) ?? 0) + 1;
     callCounts.set(key, count);
@@ -87,14 +114,14 @@ export function createFirstCallEnforcer(
     }
 
     if (count === 1) {
-      logger.debug(
+      logger.info(
         { threadId, callCount: count },
-        'Enforced tool_choice: any (first call)'
+        'ENFORCING tool_choice: any (first call)'
       );
       return originalForcedInvoke(input, options);
     }
 
-    logger.debug(
+    logger.info(
       { threadId, callCount: count },
       'Using tool_choice: auto (subsequent call)'
     );

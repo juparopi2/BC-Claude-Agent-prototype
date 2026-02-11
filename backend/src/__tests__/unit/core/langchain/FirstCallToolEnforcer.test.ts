@@ -191,5 +191,40 @@ describe('FirstCallToolEnforcer', () => {
       expect(result).toBeDefined();
       expect(model.bindTools).toHaveBeenCalledWith(tools, { tool_choice: 'any' });
     });
+
+    it('should use invocationId as key when provided (per-invocation reset)', async () => {
+      const { model, forcedInvoke, autoInvoke } = createMockModel();
+      const result = createFirstCallEnforcer(model, createMockTools());
+
+      const threadId = 'session-ABC';
+
+      // First invocation: forced then auto
+      await result.invoke('input', { configurable: { thread_id: threadId, invocationId: 'inv-1' } });
+      await result.invoke('input', { configurable: { thread_id: threadId, invocationId: 'inv-1' } });
+
+      // Second invocation (same thread_id, new invocationId): forced again
+      await result.invoke('input', { configurable: { thread_id: threadId, invocationId: 'inv-2' } });
+      await result.invoke('input', { configurable: { thread_id: threadId, invocationId: 'inv-2' } });
+
+      // Each invocationId gets its own forced + auto cycle
+      expect(forcedInvoke).toHaveBeenCalledTimes(2);
+      expect(autoInvoke).toHaveBeenCalledTimes(2);
+    });
+
+    it('should fall back to thread_id when invocationId not provided', async () => {
+      const { model, forcedInvoke, autoInvoke } = createMockModel();
+      const result = createFirstCallEnforcer(model, createMockTools());
+
+      const config = { configurable: { thread_id: 'thread-fallback' } };
+
+      // Without invocationId, uses thread_id as key (original behavior)
+      await result.invoke('input 1', config);
+      await result.invoke('input 2', config);
+      await result.invoke('input 3', config);
+
+      // Only first call is forced, rest auto (same thread_id key persists)
+      expect(forcedInvoke).toHaveBeenCalledTimes(1);
+      expect(autoInvoke).toHaveBeenCalledTimes(2);
+    });
   });
 });

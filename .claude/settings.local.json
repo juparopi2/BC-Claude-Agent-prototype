@@ -195,7 +195,8 @@
       "WebFetch(domain:help.openai.com)",
       "WebFetch(domain:support.discord.com)",
       "WebFetch(domain:friendify.net)",
-      "Skill(prompt-engineering)"
+      "Skill(prompt-engineering)",
+      "Bash(npx -w backend tsx scripts/inspect-session.ts:*)"
     ],
     "deny": [],
     "ask": []

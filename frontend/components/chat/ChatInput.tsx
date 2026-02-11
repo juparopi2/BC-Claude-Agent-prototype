@@ -15,10 +15,9 @@ import { useAgentState, useSocketConnection, useChatAttachments, useAudioRecordi
 import { env } from '@/lib/config/env';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Toggle } from '@/components/ui/toggle';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Send, Square, Brain, WifiOff, Mic, Paperclip, Globe, Loader2 } from 'lucide-react';
-import { FileAttachmentChip, AgentSelectorDropdown, AudioRecordingIndicator } from '@/src/presentation/chat';
+import { Send, Square, WifiOff, Mic, Paperclip, Globe, Loader2 } from 'lucide-react';
+import { FileAttachmentChip, InputOptionsBar, AudioRecordingIndicator } from '@/src/presentation/chat';
 
 /**
  * Pending file info (for pending mode)
@@ -101,6 +100,8 @@ export default function ChatInput({
   const storeEnableThinking = useUIPreferencesStore((s) => s.enableThinking);
   const storeSetEnableThinking = useUIPreferencesStore((s) => s.setEnableThinking);
   const storeSelectedAgentId = useUIPreferencesStore((s) => s.selectedAgentId);
+  const showAgentWorkflow = useUIPreferencesStore((s) => s.showAgentWorkflow);
+  const toggleAgentWorkflow = useUIPreferencesStore((s) => s.toggleAgentWorkflow);
 
   // Use controlled or store values
   const enableThinking = enableThinkingControlled ?? storeEnableThinking;
@@ -290,11 +291,6 @@ export default function ChatInput({
     }
   };
 
-  // Determine toggle styles based on state manually to ensure visibility
-  const thinkingToggleClasses = enableThinking
-    ? "gap-1.5 bg-amber-500 text-white hover:bg-amber-600 hover:text-white dark:bg-amber-600 dark:hover:bg-amber-700 dark:hover:text-white"
-    : "gap-1.5";
-
   return (
     <div className="border-t bg-background" data-testid="chat-input">
       <div className="max-w-3xl mx-auto px-4 py-3 space-y-3">
@@ -344,31 +340,14 @@ export default function ChatInput({
 
         {/* Options Row */}
         <div className="flex items-center gap-2">
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Toggle
-                  pressed={enableThinking}
-                  onPressedChange={setEnableThinking}
-                  size="sm"
-                  className={thinkingToggleClasses}
-                  disabled={effectiveIsBusy || disabled}
-                  data-testid="thinking-toggle"
-                >
-                  <Brain className="size-3.5" />
-                  <span className="text-xs">Thinking</span>
-                </Toggle>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p className="text-xs">Enable deep reasoning for complex or multi-step questions</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          <AgentSelectorDropdown
+          <InputOptionsBar
+            enableThinking={enableThinking}
+            onThinkingChange={setEnableThinking}
+            selectedAgentId={selectedAgentIdControlled}
+            onAgentChange={onSelectedAgentIdChange}
+            showAgentWorkflow={showAgentWorkflow}
+            onWorkflowChange={toggleAgentWorkflow}
             disabled={effectiveIsBusy || disabled}
-            value={selectedAgentIdControlled}
-            onChange={onSelectedAgentIdChange}
           />
 
           <div className="flex items-center gap-1 ml-auto">

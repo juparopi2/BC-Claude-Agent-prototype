@@ -24,6 +24,13 @@ export {
   type AgentState,
   type AgentStateActions,
   type AgentStateStore,
+  // Agent Workflow Store
+  getAgentWorkflowStore,
+  useAgentWorkflowStore,
+  type AgentProcessingGroup,
+  type AgentWorkflowState,
+  type AgentWorkflowActions,
+  type AgentWorkflowStore,
   // Approval Store
   getApprovalStore,
   useApprovalStore,
@@ -70,6 +77,7 @@ export {
 export {
   useMessages,
   useAgentState,
+  useAgentWorkflow,
   useSendMessage,
   useFileAttachments,
   useChatAttachments,

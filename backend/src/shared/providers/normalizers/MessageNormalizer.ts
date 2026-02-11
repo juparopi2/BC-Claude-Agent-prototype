@@ -279,13 +279,13 @@ export function normalizeAIMessage(
 
   // Handle string content (simple case)
   if (typeof content === 'string') {
-    // Filter framework-generated handoff-back messages (no usage data, matches pattern)
-    if (HANDOFF_BACK_PATTERN.test(content.trim()) && !usage) {
+    // Tag framework-generated handoff-back messages as internal (PRD-061)
+    const isHandoffBack = HANDOFF_BACK_PATTERN.test(content.trim()) && !usage;
+    if (isHandoffBack) {
       logger.debug(
         { sessionId, messageIndex, content: content.substring(0, 60) },
-        'Filtered handoff-back message'
+        'Tagged handoff-back message as internal'
       );
-      return events;
     }
 
     if (content.trim()) {
@@ -294,6 +294,10 @@ export function normalizeAIMessage(
         timestamp, messageIndex * 100 + eventIndex++
       );
       event.sourceAgentId = sourceAgentId;
+      if (isHandoffBack) {
+        event.isInternal = true;
+        event.persistenceStrategy = 'transient';
+      }
       events.push(event);
     }
     return events;
@@ -348,15 +352,13 @@ export function normalizeAIMessage(
       }
     }
 
-    // Filter handoff-back text content (no usage = framework-generated)
-    if (HANDOFF_BACK_PATTERN.test(textContent.trim()) && !usage) {
+    // Tag handoff-back text content as internal (PRD-061)
+    const isHandoffBackArray = HANDOFF_BACK_PATTERN.test(textContent.trim()) && !usage;
+    if (isHandoffBackArray) {
       logger.debug(
         { sessionId, messageIndex, content: textContent.substring(0, 60) },
-        'Filtered handoff-back message (array content)'
+        'Tagged handoff-back message as internal (array content)'
       );
-      // Still emit tool requests if any (unlikely for handoff-back, but safe)
-      events.push(...toolRequests);
-      return events;
     }
 
     // Emit in semantic order: thinking -> text -> tools
@@ -378,6 +380,10 @@ export function normalizeAIMessage(
         timestamp, messageIndex * 100 + eventIndex++
       );
       msgEvent.sourceAgentId = sourceAgentId;
+      if (isHandoffBackArray) {
+        msgEvent.isInternal = true;
+        msgEvent.persistenceStrategy = 'transient';
+      }
       events.push(msgEvent);
     }
 

@@ -161,7 +161,7 @@ export class BatchResultNormalizer implements IBatchResultNormalizer {
       }
     }
 
-    // 3.5 Mark handoff tool events (transfer_to_*) as transient so they don't persist
+    // 3.5 Mark handoff tool events (transfer_to_*) as transient and internal (PRD-061)
     for (const event of interleavedEvents) {
       if (
         (event.type === 'tool_request' || event.type === 'tool_response') &&
@@ -169,6 +169,7 @@ export class BatchResultNormalizer implements IBatchResultNormalizer {
         (event as { toolName: string }).toolName.startsWith('transfer_to_')
       ) {
         (event as { persistenceStrategy: string }).persistenceStrategy = 'transient';
+        (event as { isInternal: boolean }).isInternal = true;
       }
     }
 

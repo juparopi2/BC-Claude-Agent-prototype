@@ -52,6 +52,7 @@ export function convertToAgentEvent(
     sessionId: normalized.sessionId,
     timestamp: normalized.timestamp,
     persistenceState: mapPersistenceStrategy(normalized.persistenceStrategy),
+    ...(normalized.isInternal && { isInternal: true }),
   };
 
   switch (normalized.type) {

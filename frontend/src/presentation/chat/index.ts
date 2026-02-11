@@ -31,3 +31,5 @@ export { ApprovalDialog } from './ApprovalDialog';
 export { AgentResultRenderer } from './AgentResultRenderer';
 export { ChartRenderer } from './ChartRenderer';
 export { CitationRenderer } from './CitationRenderer';
+export { AgentProcessingSection } from './AgentProcessingSection';
+export { AgentTransitionIndicator } from './AgentTransitionIndicator';

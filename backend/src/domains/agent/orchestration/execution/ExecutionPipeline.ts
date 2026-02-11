@@ -283,8 +283,10 @@ function emitAgentChanged(
     sessionId,
     timestamp: new Date().toISOString(),
     eventIndex: getNextEventIndex(ctx),
+    persistenceState: 'transient',
     previousAgent: previousIdentity,
     currentAgent: currentIdentity,
+    handoffType: previousAgentId ? 'agent_handoff' : 'supervisor_routing',
   });
 
   logger.debug(

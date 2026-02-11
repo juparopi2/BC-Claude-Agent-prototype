@@ -25,6 +25,7 @@ import { getAgentStateStore } from '../stores/agentStateStore';
 import { getApprovalStore } from '../stores/approvalStore';
 import { getCitationStore } from '../stores/citationStore';
 import { getChatAttachmentStore } from '../stores/chatAttachmentStore';
+import { getAgentWorkflowStore } from '../stores/agentWorkflowStore';
 
 /**
  * Callbacks for UI state updates.
@@ -79,6 +80,9 @@ export function processAgentEventSync(
       agentStateStore.getState().reset();
       agentStateStore.getState().setAgentBusy(true);
       callbacks?.onAgentBusyChange?.(true);
+
+      // Start new workflow turn (PRD-061)
+      getAgentWorkflowStore().getState().startTurn();
       break;
     }
 
@@ -154,14 +158,18 @@ export function processAgentEventSync(
         created_at: new Date().toISOString(),
         ...(thinkingAgent && { agent_identity: thinkingAgent }),
       });
+
+      // Track message in workflow group (PRD-061)
+      getAgentWorkflowStore().getState().addMessageToCurrentGroup(event.eventId);
       break;
     }
 
     case 'tool_use': {
       const toolEvent = event as ToolUseEvent;
 
-      // Skip handoff transfer tools - agent_changed event handles the transition UI
+      // Track transfer tools in workflow store but don't add to message list (PRD-061)
       if (toolEvent.toolName?.startsWith('transfer_to_')) {
+        // Transfer tools are internal workflow artifacts, tracked but not displayed as messages
         break;
       }
 
@@ -188,6 +196,9 @@ export function processAgentEventSync(
         created_at: new Date().toISOString(),
         ...(toolAgent && { agent_identity: toolAgent }),
       });
+
+      // Track message in workflow group (PRD-061)
+      getAgentWorkflowStore().getState().addMessageToCurrentGroup(toolId);
       break;
     }
 
@@ -227,6 +238,8 @@ export function processAgentEventSync(
         error_message: resultEvent.error,
         sequence_number: event.sequenceNumber || eventWithIndex.eventIndex || toolMessage.sequence_number,
       } as Partial<Message>);
+
+      // Tool result updates existing message, no need to add to workflow group again
       break;
     }
 
@@ -255,6 +268,10 @@ export function processAgentEventSync(
         model: msgEvent.model,
         ...(msgAgent && { agent_identity: msgAgent }),
       });
+
+      // Track message in workflow group (PRD-061)
+      // Mark as internal if stopReason is 'tool_use' (intermediate message, not final response)
+      getAgentWorkflowStore().getState().addMessageToCurrentGroup(msgEvent.messageId);
       break;
     }
 
@@ -264,6 +281,11 @@ export function processAgentEventSync(
       agentStateStore.getState().setAgentBusy(false);
       agentStateStore.getState().setPaused(false);
       callbacks?.onAgentBusyChange?.(false);
+
+      // Mark last group as final and end turn (PRD-061)
+      const workflowStore = getAgentWorkflowStore();
+      workflowStore.getState().markLastGroupFinal();
+      workflowStore.getState().endTurn();
 
       // Handle citations if present
       if (completeEvent.citedFiles && completeEvent.citedFiles.length > 0) {
@@ -330,6 +352,16 @@ export function processAgentEventSync(
     case 'agent_changed': {
       const agentChangedEvent = event as AgentChangedEvent;
       agentStateStore.getState().setCurrentAgentIdentity(agentChangedEvent.currentAgent);
+
+      // Create new workflow group for the new agent (PRD-061)
+      getAgentWorkflowStore().getState().addGroup(
+        agentChangedEvent.currentAgent,
+        {
+          fromAgent: agentChangedEvent.previousAgent,
+          handoffType: agentChangedEvent.handoffType ?? 'supervisor_routing',
+          reason: agentChangedEvent.reason,
+        }
+      );
       break;
     }
 
@@ -344,6 +376,9 @@ export function processAgentEventSync(
       agentStateStore.getState().setAgentBusy(false);
       agentStateStore.getState().setCurrentAgentIdentity(null);
       callbacks?.onAgentBusyChange?.(false);
+
+      // End workflow turn (PRD-061)
+      getAgentWorkflowStore().getState().endTurn();
       break;
     }
 

@@ -2,7 +2,7 @@
 
 **Estado**: En Progreso
 **Fecha Inicio**: 2026-01-21
-**Versión del Plan**: 3.3 (PRD-070 Agent-Specific Rendering + PRD-050 Frontend completados)
+**Versión del Plan**: 3.4 (Fase 6 completada: PRD-061 + PRD-062)
 
 ---
 
@@ -273,13 +273,14 @@ console.log(anthropic.profile?.reasoningOutput); // true para extended thinking
 > **Nota**: La implementación final difiere del draft PRD-050 v2.0: `scatter` reemplazado por `combo` (ComboChart - bar + line), tool names simplificados (`list_available_charts`/`get_chart_details`/`validate_chart_config`), DonutChart usa `category`/`value` keys (no `{name,value}[]`), modelo Haiku 4.5 con temp 0.2 (no Sonnet). Frontend diferido a siguiente iteración con Tremor copy-paste approach (TW4 + React 19 compatible).
 
 ### Fase 6: UI Components
-**Estado**: 🟡 En Progreso
-**Objetivo**: UI para selección de agentes y timeline de actividad
+**Estado**: ✅ COMPLETADO (2026-02-11)
+**Objetivo**: UI para selección de agentes y visibilidad del workflow
 
 | PRD | Componente | Estado | Fecha |
 |-----|------------|--------|-------|
 | [PRD-060](./PHASE-6-UI/PRD-060-AgentSelector.md) | Agent Selector UI (dropdown + badges + approval dialog) | ✅ Completado | 2026-02-09 |
-| [PRD-061](./PHASE-6-UI/PRD-061-PlanVisualization.md) | Agent Activity Timeline | 🔴 |
+| [PRD-061](./PHASE-6-UI/PRD-061-AgentWorkflowVisibility.md) | Agent Workflow Visibility (collapsible sections + transitions) | ✅ Completado | 2026-02-11 |
+| [PRD-062](./PHASE-6-UI/PRD-062-ToolEnforcementPromptEngineering.md) | Tool Enforcement & Prompt Engineering | ✅ Completado | 2026-02-11 |
 
 **Métricas PRD-060:**
 - 4 archivos creados (frontend), 14 archivos modificados (5 backend + 9 frontend), 2 test files actualizados
@@ -293,6 +294,23 @@ console.log(anthropic.profile?.reasoningOutput); // true para extended thinking
 - **SocketClient + useSocketConnection**: `targetAgentId` soportado en `sendMessage()`
 - **Backward compat**: `useMyContext` sincronizado con `selectedAgentId === 'rag-agent'`; `targetAgentId` es opcional (undefined = routing automático)
 - GAPs resueltos: GAP-001 (frontend event handling), GAP-004 (agent_changed processing), GAP-006 (sin refs a router.ts)
+
+**Métricas PRD-061:**
+- 6 archivos creados (shared + backend + frontend), 8 archivos modificados
+- 0 regresiones: backend y frontend tests pasan
+- **Shared**: `isInternal?: boolean` field en `BaseAgentEvent`, `BaseMessage`, `BaseNormalizedEvent`
+- **Backend**: `MessageNormalizer` tags handoff-back messages con `isInternal`, `BatchResultNormalizer` marca transfer tools, `ExecutionPipeline` popula `handoffType`, `EventConverter` propaga `isInternal`
+- **Frontend stores**: `agentWorkflowStore` con `AgentProcessingGroup[]` tracking, `uiPreferencesStore` toggle `showAgentWorkflow`
+- **Event processing**: `processAgentEventSync` integra workflow lifecycle (`startTurn`, `addGroup`, `addMessageToCurrentGroup`, `markLastGroupFinal`)
+- **UI Components**: `AgentProcessingSection` (collapsible con shadcn), `AgentTransitionIndicator` (handoff divider), `ChatContainer` conditional rendering, `InputOptionsBar` workflow toggle
+- **Persistencia**: Transiciones transient, handoff-back messages persisten con `isInternal`, `reconstructFromMessages()` reconstruye grupos en session reload
+
+**Métricas PRD-062:**
+- 5 archivos modificados
+- 0 regresiones: backend tests pasan
+- **Tool enforcement**: `tool_choice: 'any'` en `agent-builders.ts` fuerza tool usage mecánicamente
+- **Prompt engineering**: 4 agent prompts mejorados con Critical Execution Rules, chain-of-thought, tool mapping, no-fabrication policy
+- **Bug fix**: `supervisor-graph.ts` excluye `'supervisor'` del targetAgentId warning check
 
 ### Fase 7: Agent-Specific UI Rendering
 **Estado**: 🟡 En Progreso
@@ -370,9 +388,10 @@ FASE 4: Handoffs (✅ COMPLETADO)
 FASE 5: Graphing Agent (✅ COMPLETADO)
 └── PRD-050: GraphingAgent [✅ COMPLETADO] ────────────────► FASE 6
 
-FASE 6: UI (🟡 En Progreso)
+FASE 6: UI (✅ COMPLETADO)
 ├── PRD-060: AgentSelector [✅ COMPLETADO] ──────────────────────┐
-└── PRD-061: Agent Activity Timeline ────────────────────────────┴──► FASE 7
+├── PRD-061: Agent Workflow Visibility [✅ COMPLETADO] ──────────┤
+└── PRD-062: Tool Enforcement [✅ COMPLETADO] ───────────────────┴──► FASE 7
 
 FASE 7: Agent-Specific UI Rendering (🟡 En Progreso)
 ├── PRD-070: Rendering Framework [✅ COMPLETADO] ─────────────┐
@@ -460,3 +479,4 @@ npm run test:e2e
 | 2026-02-09 | 3.1 | **PRD-050 completado** (Fase 5 completa, backend-only). 10 chart types catalog-driven implementados: `scatter` reemplazado por `combo` (ComboChart - bar+line combinado, no soportado nativamente por Tremor scatter). 3 tools LangChain: `list_available_charts`, `get_chart_details`, `validate_chart_config` (nombres simplificados vs draft). Zod schemas con constraints estrictos (min data points, min categories stacking, Tremor color palette 9 colores). `ChartConfigSchema` discriminated union en `@bc-agent/shared`. Agent definition con Haiku 4.5 (temp 0.2, JSON determinístico). Slash commands `/chart` y `/graph`. Auto-cascading: handoff tools, supervisor prompt, agent builders sin cambios manuales. 11 archivos nuevos, 9 modificados, 2 tests actualizados. 71 tests nuevos, 3119 tests totales. Frontend (ChartRenderer + Tremor copy-paste) diferido a PRD-070. |
 | 2026-02-09 | 3.2 | **PRD-060 completado** (Fase 6 parcial). Agent Selector UI implementado full-stack. **Backend**: `targetAgentId` threaded por 5 capas (ChatMessageData → ChatMessageHandler → AgentOrchestrator → ExecutionPipeline → MessageContextBuilder). **Frontend**: `AgentSelectorDropdown` (shadcn Select) reemplaza toggle "My Files" en ChatInput. `AgentBadge` en mensajes assistant. `ApprovalDialog` inline para HITL interrupt/resume. `uiPreferencesStore` con `selectedAgentId` persistido en localStorage. `agentStateStore` extendido con `currentAgentIdentity`. 3 nuevos event cases en `processAgentEventSync.ts` (`agent_changed`, `content_refused`, `session_end`). `SocketClient` + `useSocketConnection` soportan `targetAgentId`. 4 archivos nuevos, 14 modificados, 2 test files actualizados. 0 regresiones (3104 backend + 666 frontend tests). GAPs resueltos: GAP-001, GAP-004, GAP-006. Fase 7 parcialmente desbloqueada (PRD-061 pendiente). |
 | 2026-02-09 | 3.3 | **PRD-070 completado** (Fase 7 parcial) + **PRD-050 frontend completado**. Implementación completa del framework de rendering agent-specific. **Per-message attribution**: `agent_identity?: AgentIdentity` en `BaseMessage`, `AgentBadge` per-message en `MessageBubble`/`ToolCard`, global badge removido de `ChatContainer`. **Renderer framework**: `AgentResultRenderer` con registry lazy-loaded + `Suspense`, discriminador `_type`. **ChartRenderer** (PRD-050 frontend): 10 chart views con `recharts` (Tremor copy-paste approach, sin npm package), color utils, dark mode, tooltips, legend filtering. **Prisma migration**: `MessageService.ts` (7 métodos) y `MessagePersistenceWorker.ts` migrados de raw SQL (`executeQuery`) a Prisma Client (`upsert`, `findMany`, `updateMany`, `count`, etc.). `agent_id` column + index en `messages` table. `messageTransformer` reconstruye `agent_identity` desde DB. **Shared**: `AgentRenderedResultBase`, `isAgentRenderedResult()` type guard, `AgentIdentity` export fix. **Tests**: 22+ archivos creados, 12 modificados. 3105 backend + 697 frontend tests, 0 regresiones. PRD-071 desbloqueado. |
+| 2026-02-11 | 3.4 | **Fase 6 completada**. PRD-061 (Agent Workflow Visibility) + PRD-062 (Tool Enforcement) implementados. **PRD-061**: `isInternal` field en shared types, `agentWorkflowStore` con `AgentProcessingGroup[]` tracking, `AgentProcessingSection` collapsible component, `AgentTransitionIndicator` handoff divider, `ChatContainer` conditional workflow rendering, workflow toggle en `InputOptionsBar`. Handoff-back messages ahora persisten con `isInternal: true` (antes filtrados). **PRD-062**: `tool_choice: 'any'` mecánico en agent builders, prompts mejorados para 4 agentes (BC, RAG, Graphing, Supervisor) con Critical Execution Rules y tool mapping explícito, fix targetAgentId warning (excluir supervisor). 6 archivos creados, 13 modificados. 0 regresiones. Fase 7 (PRD-071 RAG Citation UI) desbloqueada. |

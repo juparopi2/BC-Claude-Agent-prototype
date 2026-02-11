@@ -19,6 +19,8 @@ export interface UIPreferencesState {
   isFileSidebarVisible: boolean;
   /** Selected agent ID for explicit routing. 'auto' = supervisor decides */
   selectedAgentId: string;
+  /** Show/hide agent workflow sections in chat (PRD-061) */
+  showAgentWorkflow: boolean;
 }
 
 export interface UIPreferencesActions {
@@ -38,6 +40,8 @@ export interface UIPreferencesActions {
   setSelectedAgentId: (agentId: string) => void;
   /** Reset agent selection to 'auto' */
   resetAgentSelection: () => void;
+  /** Toggle agent workflow visibility */
+  toggleAgentWorkflow: () => void;
   /** Reset all preferences to defaults */
   resetPreferences: () => void;
 }
@@ -49,6 +53,7 @@ const initialState: UIPreferencesState = {
   useMyContext: false,
   isFileSidebarVisible: true,
   selectedAgentId: 'auto',
+  showAgentWorkflow: true,
 };
 
 /**
@@ -87,6 +92,8 @@ export const useUIPreferencesStore = create<UIPreferencesStore>()(
       }),
       resetAgentSelection: () => set({ selectedAgentId: 'auto', useMyContext: false }),
 
+      toggleAgentWorkflow: () => set((state) => ({ showAgentWorkflow: !state.showAgentWorkflow })),
+
       resetPreferences: () => set(initialState),
     }),
     {
@@ -97,6 +104,7 @@ export const useUIPreferencesStore = create<UIPreferencesStore>()(
         useMyContext: state.useMyContext,
         isFileSidebarVisible: state.isFileSidebarVisible,
         selectedAgentId: state.selectedAgentId,
+        showAgentWorkflow: state.showAgentWorkflow,
       }),
     }
   )

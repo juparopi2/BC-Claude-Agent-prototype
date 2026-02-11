@@ -11,6 +11,7 @@
 
 export { useMessages, type UseMessagesReturn } from './useMessages';
 export { useAgentState } from './useAgentState';
+export { useAgentWorkflow, type AgentProcessingGroup } from './useAgentWorkflow';
 export { useSendMessage, type UseSendMessageReturn, type SendMessageOptions } from './useSendMessage';
 export { useFileAttachments, type Attachment, type UseFileAttachmentsResult } from './useFileAttachments';
 export {

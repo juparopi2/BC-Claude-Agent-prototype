@@ -5,16 +5,19 @@ import { usePathname } from 'next/navigation';
 import { getSocketClient } from '@/src/infrastructure/socket';
 import { useFilePreviewStore, useFiles, useGoToFilePath } from '@/src/domains/files';
 import { useAuthStore, selectUserInitials } from '@/src/domains/auth';
-import { useMessages, useAgentState, useCitationStore, usePagination, useChatAttachmentStore } from '@/src/domains/chat';
+import { useMessages, useAgentState, useCitationStore, usePagination, useChatAttachmentStore, useAgentWorkflow, type AgentProcessingGroup } from '@/src/domains/chat';
+import { useUIPreferencesStore } from '@/src/domains/ui/stores/uiPreferencesStore';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Loader2 } from 'lucide-react';
-import { isToolUseMessage, isToolResultMessage, isThinkingMessage, type ChatAttachmentSummary, type ToolUseMessage } from '@bc-agent/shared';
+import { isToolUseMessage, isToolResultMessage, isThinkingMessage, isStandardMessage, type ChatAttachmentSummary, type ToolUseMessage, type Message } from '@bc-agent/shared';
 import {
   MessageBubble,
   ThinkingBlock,
   ToolCard,
   AgentBadge,
   ApprovalDialog,
+  AgentProcessingSection,
+  AgentTransitionIndicator,
 } from '@/src/presentation/chat';
 import { SourcePreviewModal } from '@/components/modals/SourcePreviewModal';
 import type { CitationInfo } from '@/lib/types/citation.types';
@@ -63,6 +66,10 @@ export default function ChatContainer() {
   // User initials for MessageBubble avatar
   const userInitials = useAuthStore(selectUserInitials);
   const userId = useAuthStore((s) => s.user?.id);
+
+  // Agent workflow groups (PRD-061)
+  const { groups: workflowGroups, toggleGroupCollapse, hasGroups } = useAgentWorkflow();
+  const showAgentWorkflow = useUIPreferencesStore((s) => s.showAgentWorkflow);
 
   /**
    * Handle approval response - sends to server via socket
@@ -162,6 +169,194 @@ export default function ChatContainer() {
   const previousScrollHeightRef = useRef<number>(0);
   const isAutoScrollingRef = useRef(false);
 
+  /**
+   * Render a single message by type.
+   * Extracted to be reusable by both flat and grouped rendering modes (PRD-061).
+   */
+  const renderMessage = useCallback((message: Message) => {
+    // Render thinking messages
+    if (isThinkingMessage(message)) {
+      return (
+        <div key={message.id} className="space-y-3">
+          <ThinkingBlock
+            content={message.content}
+            isStreaming={false}
+          />
+        </div>
+      );
+    }
+
+    // Render tool_use messages ONLY when they have result (text-first strategy)
+    if (isToolUseMessage(message)) {
+      if (message.status === 'pending') {
+        return null;
+      }
+      const toolMsg = message as ToolUseMessage;
+      return (
+        <div key={message.id}>
+          {toolMsg.agent_identity && (
+            <div className="mb-1">
+              <AgentBadge
+                agentId={toolMsg.agent_identity.agentId}
+                agentName={toolMsg.agent_identity.agentName}
+                icon={toolMsg.agent_identity.agentIcon}
+                color={toolMsg.agent_identity.agentColor}
+              />
+            </div>
+          )}
+          <ToolCard
+            toolName={message.tool_name}
+            toolArgs={message.tool_args}
+            status={
+              message.status === 'error'
+                ? 'failed'
+                : message.status === 'success'
+                ? 'completed'
+                : 'pending'
+            }
+            result={message.result}
+            error={message.error_message}
+            durationMs={message.duration_ms}
+          />
+        </div>
+      );
+    }
+
+    // Skip tool_result messages
+    if (isToolResultMessage(message)) {
+      return null;
+    }
+
+    // Render standard messages
+    return (
+      <div key={message.id}>
+        {message.role === 'assistant' && message.agent_identity && (
+          <div className="mb-1">
+            <AgentBadge
+              agentId={message.agent_identity.agentId}
+              agentName={message.agent_identity.agentName}
+              icon={message.agent_identity.agentIcon}
+              color={message.agent_identity.agentColor}
+            />
+          </div>
+        )}
+        <MessageBubble
+          message={message}
+          userInitials={userInitials}
+          citationFileMap={citationFileMap}
+          onCitationOpen={handleCitationOpen}
+          messageCitations={getMessageCitations(message.id)}
+          onCitationInfoOpen={handleCitationInfoOpen}
+          messageAttachments={getMessageAttachments(message.id)}
+          onAttachmentClick={handleAttachmentClick}
+        />
+      </div>
+    );
+  }, [userInitials, citationFileMap, handleCitationOpen, getMessageCitations, handleCitationInfoOpen, getMessageAttachments, handleAttachmentClick]);
+
+  /**
+   * Render messages in workflow mode: grouped by agent processing sections (PRD-061).
+   * User messages are rendered outside sections. Agent messages are grouped into collapsible sections.
+   */
+  const renderWorkflowGroups = useCallback((
+    allMessages: Message[],
+    groups: AgentProcessingGroup[]
+  ) => {
+    // Build a Set of all message IDs that belong to groups
+    const groupedMessageIds = new Set<string>();
+    for (const group of groups) {
+      for (const id of group.messageIds) {
+        groupedMessageIds.add(id);
+      }
+    }
+
+    // Split messages: user messages are always shown flat, grouped messages go into sections
+    const elements: React.ReactNode[] = [];
+    let lastRenderedGroupIdx = -1;
+
+    for (const message of allMessages) {
+      // User messages are always rendered flat (outside sections)
+      if (message.role === 'user') {
+        elements.push(renderMessage(message));
+        continue;
+      }
+
+      // Check if this message belongs to any group
+      if (groupedMessageIds.has(message.id)) {
+        // Find which group this message belongs to
+        const groupIdx = groups.findIndex(g => g.messageIds.includes(message.id));
+        if (groupIdx >= 0 && groupIdx !== lastRenderedGroupIdx) {
+          // Render transition indicator between groups
+          const group = groups[groupIdx];
+          if (groupIdx > 0 && group.transition) {
+            elements.push(
+              <AgentTransitionIndicator
+                key={`transition-${group.id}`}
+                fromAgent={group.transition.fromAgent}
+                toAgent={group.agent}
+                handoffType={group.transition.handoffType}
+                reason={group.transition.reason}
+              />
+            );
+          }
+
+          // Render the entire agent section
+          const groupMessages = group.messageIds
+            .map(id => allMessages.find(m => m.id === id))
+            .filter((m): m is Message => m !== undefined);
+
+          // Determine which messages are "final" (non-internal, end_turn)
+          const finalMessages: Message[] = [];
+          const internalMessages: Message[] = [];
+
+          for (const gMsg of groupMessages) {
+            const isFinalResponse = group.isFinal
+              && isStandardMessage(gMsg)
+              && gMsg.role === 'assistant'
+              && (!gMsg.stop_reason || gMsg.stop_reason === 'end_turn')
+              && !gMsg.isInternal;
+
+            if (isFinalResponse) {
+              finalMessages.push(gMsg);
+            } else {
+              internalMessages.push(gMsg);
+            }
+          }
+
+          // Render collapsible section with internal messages
+          if (internalMessages.length > 0) {
+            elements.push(
+              <AgentProcessingSection
+                key={`section-${group.id}`}
+                agent={group.agent}
+                stepCount={internalMessages.length}
+                isCollapsed={group.isCollapsed}
+                onToggle={() => toggleGroupCollapse(group.id)}
+                isFinal={group.isFinal}
+              >
+                {internalMessages.map(m => renderMessage(m))}
+              </AgentProcessingSection>
+            );
+          }
+
+          // Render final messages outside the collapsible
+          for (const fm of finalMessages) {
+            elements.push(renderMessage(fm));
+          }
+
+          lastRenderedGroupIdx = groupIdx;
+        }
+        // Skip individual rendering since we rendered the whole group
+        continue;
+      }
+
+      // Messages not in any group: render flat (backward compatibility)
+      elements.push(renderMessage(message));
+    }
+
+    return elements;
+  }, [renderMessage, toggleGroupCollapse]);
+
   // Auto-scroll to bottom when new messages arrive (only if we were near bottom or it's a new message)
   // Simplified: Auto-scroll on new message if it's the latest one
   useEffect(() => {
@@ -252,88 +447,11 @@ export default function ChatContainer() {
            )}
         </div>
 
-        {messages.map((message) => {
-          // Render thinking messages
-          if (isThinkingMessage(message)) {
-            return (
-              <div key={message.id} className="space-y-3">
-                <ThinkingBlock
-                  content={message.content}
-                  isStreaming={false}
-                />
-              </div>
-            );
-          }
-
-          // Render tool_use messages ONLY when they have result (text-first strategy)
-          if (isToolUseMessage(message)) {
-            // Skip pending tools - wait for result to arrive before displaying
-            // This ensures text messages appear at their natural position
-            if (message.status === 'pending') {
-              return null;
-            }
-            const toolMsg = message as ToolUseMessage;
-            return (
-              <div key={message.id}>
-                {toolMsg.agent_identity && (
-                  <div className="mb-1">
-                    <AgentBadge
-                      agentId={toolMsg.agent_identity.agentId}
-                      agentName={toolMsg.agent_identity.agentName}
-                      icon={toolMsg.agent_identity.agentIcon}
-                      color={toolMsg.agent_identity.agentColor}
-                    />
-                  </div>
-                )}
-                <ToolCard
-                  toolName={message.tool_name}
-                  toolArgs={message.tool_args}
-                  status={
-                    message.status === 'error'
-                      ? 'failed'
-                      : message.status === 'success'
-                      ? 'completed'
-                      : 'pending'
-                  }
-                  result={message.result}
-                  error={message.error_message}
-                  durationMs={message.duration_ms}
-                />
-              </div>
-            );
-          }
-
-          // Skip tool_result messages (they're displayed with tool_use)
-          if (isToolResultMessage(message)) {
-            return null;
-          }
-
-          // Render standard messages
-          return (
-            <div key={message.id}>
-              {message.role === 'assistant' && message.agent_identity && (
-                <div className="mb-1">
-                  <AgentBadge
-                    agentId={message.agent_identity.agentId}
-                    agentName={message.agent_identity.agentName}
-                    icon={message.agent_identity.agentIcon}
-                    color={message.agent_identity.agentColor}
-                  />
-                </div>
-              )}
-              <MessageBubble
-                message={message}
-                userInitials={userInitials}
-                citationFileMap={citationFileMap}
-                onCitationOpen={handleCitationOpen}
-                messageCitations={getMessageCitations(message.id)}
-                onCitationInfoOpen={handleCitationInfoOpen}
-                messageAttachments={getMessageAttachments(message.id)}
-                onAttachmentClick={handleAttachmentClick}
-              />
-            </div>
-          );
-        })}
+        {/* Render messages: workflow mode or flat mode (PRD-061) */}
+        {showAgentWorkflow && hasGroups
+          ? renderWorkflowGroups(messages, workflowGroups)
+          : messages.map((message) => renderMessage(message))
+        }
 
         {/* Approval Dialog (inline, before busy indicator) */}
         <ApprovalDialog onRespond={handleApprovalResponse} />

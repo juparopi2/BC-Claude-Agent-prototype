@@ -148,7 +148,7 @@ class SupervisorGraphAdapter implements ICompiledGraph {
 
     // 1. Check for targetAgentId (direct agent invocation, bypass supervisor LLM)
     const targetAgentId = typedInputs.context?.options?.targetAgentId;
-    if (targetAgentId && targetAgentId !== 'auto') {
+    if (targetAgentId && targetAgentId !== 'auto' && targetAgentId !== 'supervisor') {
       const targetAgent = agentMap.get(targetAgentId as AgentId);
       if (targetAgent) {
         logger.info(
@@ -172,9 +172,9 @@ class SupervisorGraphAdapter implements ICompiledGraph {
 
         return adaptSupervisorResult(agentResult as { messages: BaseMessage[] }, sessionId);
       }
-      logger.warn(
+      logger.debug(
         { targetAgentId },
-        'targetAgentId specified but agent not found in agentMap, falling through to supervisor'
+        'targetAgentId not found in worker agentMap, using supervisor routing'
       );
     }
 

@@ -29,6 +29,16 @@ export {
   type AgentStateStore,
 } from './agentStateStore';
 
+// Agent Workflow Store
+export {
+  getAgentWorkflowStore,
+  useAgentWorkflowStore,
+  type AgentProcessingGroup,
+  type AgentWorkflowState,
+  type AgentWorkflowActions,
+  type AgentWorkflowStore,
+} from './agentWorkflowStore';
+
 // Approval Store
 export {
   getApprovalStore,

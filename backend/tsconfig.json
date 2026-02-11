@@ -8,9 +8,9 @@
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
     /* Modules */
-    "module": "commonjs",
+    "module": "ESNext",
     "rootDir": "./src",
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "baseUrl": "./",
     "paths": {
       "@/*": [

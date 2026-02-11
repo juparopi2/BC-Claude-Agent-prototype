@@ -73,8 +73,12 @@ export async function buildReactAgents(): Promise<BuiltAgent[]> {
         })
       : agentDef.systemPrompt;
 
+    // Bind tools with tool_choice to force tool usage
+    // All our providers (Anthropic, OpenAI, Google) support bindTools
+    const llmWithToolChoice = model.bindTools!(allTools, { tool_choice: 'any' });
+
     const agent = createReactAgent({
-      llm: model,
+      llm: llmWithToolChoice,
       tools: allTools,
       name: agentDef.id,
       prompt,
@@ -93,6 +97,7 @@ export async function buildReactAgents(): Promise<BuiltAgent[]> {
         handoffToolCount: handoffTools.length,
         totalToolCount: allTools.length,
         modelRole: agentDef.modelRole,
+        toolChoiceEnforced: true,
       },
       'Built ReAct agent'
     );

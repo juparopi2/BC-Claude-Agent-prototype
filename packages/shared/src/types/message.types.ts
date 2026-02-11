@@ -42,6 +42,13 @@ export interface BaseMessage {
 
   /** Agent identity for per-message attribution (PRD-070) */
   agent_identity?: AgentIdentity;
+
+  /**
+   * Marks messages as internal workflow artifacts (PRD-061).
+   * Internal messages are shown inside collapsible agent sections, not in the main chat flow.
+   * Examples: handoff-back messages, intermediate agent responses with stopReason 'tool_use'.
+   */
+  isInternal?: boolean;
 }
 
 /**

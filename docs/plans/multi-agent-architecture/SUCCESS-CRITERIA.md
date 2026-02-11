@@ -17,7 +17,7 @@
 | Fase 3: Supervisor | ✅ COMPLETADO | PRD-030, PRD-032 | - |
 | Fase 4: Handoffs | ✅ COMPLETADO | PRD-040 | - |
 | Fase 5: Graphing Agent | ✅ COMPLETADO | PRD-050 | - |
-| Fase 6: UI | 🟡 PARCIAL | PRD-060 | PRD-061 (Activity Timeline) |
+| Fase 6: UI | ✅ COMPLETADO | PRD-060, PRD-061, PRD-062 | - |
 | Fase 7: Agent-Specific UI | 🔴 NO INICIADO | - | PRD-070 (Rendering Framework), PRD-071 (Citation UI) |
 
 ---
@@ -217,7 +217,7 @@ npx vitest run "agent-builders"   # Verify handoff injection includes graphing a
 
 ---
 
-## Fase 6: UI Components - Verificación 🟡
+## Fase 6: UI Components - Verificación ✅
 
 ### Entregables Completados (PRD-060)
 - [x] Agent selector dropdown en ChatInput: Auto (🎯), BC Expert (📊), Knowledge (🧠), Charts (📈) - shadcn Select
@@ -236,30 +236,74 @@ npx vitest run "agent-builders"   # Verify handoff injection includes graphing a
 - [x] Toggle "My Files" reemplazado por `AgentSelectorDropdown`
 - [x] `/new` page y `/chat/[sessionId]` page actualizados para agent routing
 
-### Entregables Esperados (PRD-061)
-- [ ] `activityTimelineStore.ts` con `AgentActivityEntry[]` tracking
-- [ ] Timeline driven por eventos existentes: `agent_changed`, `tool_use`, `tool_result`, `message`, `complete`
-- [ ] `ActivityTimeline` component con entries colapsables
-- [ ] `useActivityTimeline` hook mapea eventos a timeline entries
-- [ ] Sin dependencia a PRD-031 (eliminado) ni eventos inexistentes (`plan_generated`, etc.)
+### Entregables Completados (PRD-061)
+- [x] `isInternal?: boolean` field en `BaseAgentEvent`, `BaseMessage`, `BaseNormalizedEvent` (shared)
+- [x] `MessageNormalizer.ts` tags handoff-back messages con `isInternal: true` (no filtra)
+- [x] `BatchResultNormalizer.ts` marca `transfer_to_*` tool events con `isInternal: true`
+- [x] `ExecutionPipeline.ts` popula `handoffType` en eventos `agent_changed`
+- [x] `EventConverter.ts` propaga `isInternal` de NormalizedEvent a AgentEvent
+- [x] `agentWorkflowStore` con `AgentProcessingGroup[]` tracking (startTurn, addGroup, markLastGroupFinal)
+- [x] `uiPreferencesStore` toggle `showAgentWorkflow` persistido en localStorage
+- [x] `processAgentEventSync.ts` integra workflow lifecycle (session_start, agent_changed, thinking_complete, tool_use, message, complete)
+- [x] `AgentProcessingSection` component: collapsible sections per-agent con shadcn Collapsible
+- [x] `AgentTransitionIndicator` component: divider visual entre agentes con handoff type + reason
+- [x] `ChatContainer` conditional rendering: workflow sections vs flat message list
+- [x] `InputOptionsBar` workflow toggle con icono Layers
+- [x] `reconstructFromMessages()` reconstruye workflow groups desde `agent_identity` en session reload
+- [x] Handoff-back messages persisten en DB con `isInternal: true`
 
-### Criterios de Verificación
+### Entregables Completados (PRD-062)
+- [x] `tool_choice: 'any'` enforcement en `agent-builders.ts` (fuerza tool usage mecánicamente)
+- [x] BC Agent prompt mejorado con 5 Critical Execution Rules + tool mapping explícito (7 tools)
+- [x] RAG Agent prompt mejorado con 4 Critical Execution Rules + search tool mapping
+- [x] Graphing Agent prompt mejorado con 6 Critical Execution Rules + validation workflow
+- [x] Supervisor prompt mejorado: router-only, no direct answers policy
+- [x] Fix targetAgentId warning en `supervisor-graph.ts` (excluir `'supervisor'` del check, cambiar warn a debug)
+
+### Criterios de Verificación (Fase 6)
 ```bash
+# Type check y tests
+npm run build:shared                # Build shared package
+npm run verify:types                # Type check shared + frontend
+npm run -w backend test:unit        # Backend tests
 npm run -w bc-agent-frontend test   # Frontend tests
 npm run -w bc-agent-frontend lint   # Frontend lint
-npm run verify:types                # Type check shared + frontend
+
+# Tests específicos PRD-061
+npx vitest run "agentWorkflowStore"        # Workflow store tests
+npx vitest run "AgentProcessingSection"    # UI component tests
+
+# Tests específicos PRD-062
+npx vitest run "agent-builders"            # Tool choice enforcement tests
+npx vitest run "bc-agent"                  # BC Agent definition tests
+npx vitest run "rag-agent"                 # RAG Agent definition tests
+npx vitest run "graphing-agent"            # Graphing Agent definition tests
+
+# Manual: verificar workflow visibility
+# 1. Enviar mensaje que trigger handoffs (e.g., "List customers and search for invoices")
+# 2. Verificar en UI: secciones colapsables por agente, AgentTransitionIndicator entre ellos
+# 3. Verificar workflow toggle persiste en localStorage
+# 4. Verificar que mensajes finales (end_turn, !isInternal) aparecen fuera del collapsible
+
+# Manual: verificar tool enforcement (PRD-062)
+npx tsx scripts/inspect-session.ts "<session-id>" --verbose --events
+# Esperar: mensajes tool_use con domain tools (listAllEntities, searchEntityOperations, etc.)
+# NO esperar: mensajes text genéricos sin tool calls
 ```
 
 ### GAPs Resueltos en Fase 6
-- **GAP-001**: `agent_changed` procesado en frontend, `agentStateStore` con `currentAgentIdentity`, `ApprovalDialog` para interrupt/resume
-- **GAP-004**: `agent_changed` emitido para supervisor routing (complementa user selection de PRD-040)
-- **GAP-006**: Sin referencias a `router.ts` ni PRD-031
+- **GAP-001**: `agent_changed` procesado en frontend, `agentStateStore` con `currentAgentIdentity`, `ApprovalDialog` para interrupt/resume (PRD-060)
+- **GAP-004**: `agent_changed` emitido para supervisor routing (complementa user selection de PRD-040) (PRD-060)
+- **GAP-006**: Sin referencias a `router.ts` ni PRD-031 (PRD-060)
+- **GAP-008**: Tool usage enforcement con `tool_choice: 'any'` + prompt engineering mejorado (PRD-062)
 
 ---
 
-## Fase 7: Agent-Specific UI Rendering - Verificación 🔴
+## Fase 7: Agent-Specific UI Rendering - Verificación 🟡
 
-### Entregables Esperados (PRD-070)
+**Estado**: 🟡 PARCIAL (PRD-070 completado, PRD-071 pendiente)
+
+### Entregables Completados (PRD-070)
 - [ ] `isAgentRenderedResult()` type guard exportado desde `@bc-agent/shared`
 - [ ] `AgentRenderedResultType` union type: `'chart_config' | 'citation_result' | 'bc_entity'`
 - [ ] `AgentRenderedResultBase` interface con `_type: string` discriminador

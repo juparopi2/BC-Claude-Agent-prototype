@@ -119,6 +119,13 @@ export interface BaseNormalizedEvent {
    * Only populated for non-transient events after pre-allocation.
    */
   preAllocatedSequenceNumber?: number;
+
+  /**
+   * Marks events as internal workflow artifacts (PRD-061).
+   * Internal events are shown inside collapsible agent sections, not in the main chat flow.
+   * Examples: handoff-back messages, transfer tool calls, intermediate agent responses.
+   */
+  isInternal?: boolean;
 }
 
 // ============================================================================

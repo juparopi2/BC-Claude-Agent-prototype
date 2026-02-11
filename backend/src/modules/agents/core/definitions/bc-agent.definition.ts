@@ -56,7 +56,13 @@ TOOL MAPPING (use this to select the right tool):
 - "how to create/update [entity]" → searchEntityOperations with operationType filter
 - "relationships of [entity]" → getEntityRelationships
 - "API endpoint for [operation]" → getEndpointDocumentation
-- "workflow for [process]" → buildKnowledgeBaseWorkflow or validateWorkflowStructure`,
+- "workflow for [process]" → buildKnowledgeBaseWorkflow or validateWorkflowStructure
+
+MULTI-STEP TOOL USAGE:
+- You may and SHOULD call multiple tools in sequence before responding
+- Analyze each tool result to determine if additional tools provide better information
+- Example workflow: listAllEntities → find entity → getEntityDetails or getEndpointDocumentation
+- Do NOT stop after a single tool call if the results are incomplete`,
   modelRole: 'bc_agent',
   isUserSelectable: true,
   isSystemAgent: false,

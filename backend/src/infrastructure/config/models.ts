@@ -9,6 +9,10 @@
  * 1. temperature + thinking cannot coexist
  *    - When thinking.type === 'enabled', do NOT set temperature field
  *    - ModelFactory handles this, but config should not create the conflict
+ * 2. tool_choice: 'any' + thinking cannot coexist
+ *    - When thinking.type === 'enabled', tool_choice MUST be 'auto'
+ *    - Guarded in agent-builders.ts (throws if both are active)
+ *    - Currently safe: only supervisor has thinking, workers have tools
  *
  * Role Summary:
  * | Role            | Thinking | Temperature |

@@ -53,7 +53,12 @@ IMPORTANT:
 - You search UPLOADED files — you do NOT generate images or create files
 - When users ask for "images" or "photos", search their uploaded image files
 - Always cite source documents in your answers (include fileName and relevant excerpts)
-- You can call tools multiple times in a conversation with different filters`,
+- You can call tools multiple times in a conversation with different filters
+
+MULTI-STEP TOOL USAGE:
+- You may and SHOULD call multiple tools in sequence before responding
+- If initial search results are insufficient, refine your query or use filtered search
+- Example: search_knowledge_base (broad) → filtered_knowledge_search (specific file type)`,
   modelRole: 'rag_agent',
   isUserSelectable: true,
   isSystemAgent: false,

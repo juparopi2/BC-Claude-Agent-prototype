@@ -9,6 +9,7 @@ Role-based configuration with intelligent caching and provider-specific constrai
 
 ```
 core/langchain/
+├── FirstCallToolEnforcer.ts   # Hybrid tool_choice enforcement for ReAct agents
 ├── ModelFactory.ts            # Universal factory with cache
 ├── ModelFactory.example.ts    # Usage examples
 └── CLAUDE.md                  # This file
@@ -51,12 +52,30 @@ Related: infrastructure/config/models.ts (source of truth for roles)
 - Violation causes: `"max_tokens must be greater than thinking.budget_tokens"`
 - Supervisor raised from 2048 → 16384 to accommodate budget_tokens: 5000
 
+### Anthropic: tool_choice + Thinking Mutual Exclusion
+
+- **CRITICAL**: thinking enabled → tool_choice MUST be 'auto' (default)
+- Using tool_choice: 'any' with thinking causes API rejection
+- Guarded in `agent-builders.ts`: throws at startup if agent has thinking + tools
+- `FirstCallToolEnforcer.ts` only applies to worker agents (thinking disabled)
+- Prevention: parameterized test in `agent-builders.test.ts` validates all agents
+
+### FirstCallToolEnforcer
+
+- **Location**: `core/langchain/FirstCallToolEnforcer.ts`
+- **Purpose**: Forces tool_choice: 'any' on first LLM call, then 'auto' for subsequent calls
+- **Mechanism**: Overrides `invoke()` on a pre-bound `RunnableBinding`, switching between forced/auto models based on call count per thread_id
+- **Thread safety**: Uses Map<thread_id, callCount> for concurrent invocations (evicts at 100 entries)
+- **Integration**: `agent-builders.ts` wraps each worker model with `createFirstCallEnforcer(model, tools)`
+- **Why RunnableBinding**: createReactAgent's `_shouldBindTools()` checks `RunnableBinding.isRunnableBinding(llm)` and `kwargs.tools` — pre-bound models skip re-binding
+
 ### Adding a New Role
 
 1. Edit `infrastructure/config/models.ts` → add to `ModelRoleConfigs`
 2. If `thinking.type === 'enabled'` → do NOT add temperature to config
-3. Run `npm run -w backend test:unit` to verify parameterized tests pass
-4. ModelFactory handles temperature exclusion automatically, but config should not create conflicts
+3. If agent has tools + thinking enabled → `agent-builders.ts` will throw (guard)
+4. Run `npm run -w backend test:unit` to verify parameterized tests pass
+5. ModelFactory handles temperature exclusion automatically, but config should not create conflicts
 
 ## Testing Patterns
 

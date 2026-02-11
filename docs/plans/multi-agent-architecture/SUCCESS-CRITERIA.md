@@ -1,7 +1,7 @@
 # Success Criteria & Verification Checklist
 
 **Documento**: Entregables y criterios de verificación por fase
-**Última Actualización**: 2026-02-09 (Documentación Fases 5-7 actualizada)
+**Última Actualización**: 2026-02-11 (Phase 9 planificado, PRD-062/PRD-080 status corregidos)
 **Propósito**: Base de conocimiento para validar que cada fase funciona correctamente y que no hay regresiones
 
 ---
@@ -19,6 +19,8 @@
 | Fase 5: Graphing Agent | ✅ COMPLETADO | PRD-050 | - |
 | Fase 6: UI | ✅ COMPLETADO | PRD-060, PRD-061, PRD-062 | - |
 | Fase 7: Agent-Specific UI | 🔴 NO INICIADO | - | PRD-070 (Rendering Framework), PRD-071 (Citation UI) |
+| Fase 8: Optimization | 🟡 PARCIAL | PRD-080 (infra only) | PRD-080 Phase 8.3 (cache metrics) |
+| Fase 9: Graph Optimization | 🟡 PARCIAL | PRD-090 | PRD-091 (Event Integrity) |
 
 ---
 
@@ -253,7 +255,7 @@ npx vitest run "agent-builders"   # Verify handoff injection includes graphing a
 - [x] Handoff-back messages persisten en DB con `isInternal: true`
 
 ### Entregables Completados (PRD-062)
-- [x] `tool_choice: 'any'` enforcement en `agent-builders.ts` (fuerza tool usage mecánicamente)
+- [x] ~~`tool_choice: 'any'` enforcement en `agent-builders.ts`~~ **IMPLEMENTADO via PRD-090** — `FirstCallToolEnforcer` hybrid approach (tool_choice: 'any' on first call, 'auto' on subsequent). See GAP-008 resolved.
 - [x] BC Agent prompt mejorado con 5 Critical Execution Rules + tool mapping explícito (7 tools)
 - [x] RAG Agent prompt mejorado con 4 Critical Execution Rules + search tool mapping
 - [x] Graphing Agent prompt mejorado con 6 Critical Execution Rules + validation workflow
@@ -295,7 +297,7 @@ npx tsx scripts/inspect-session.ts "<session-id>" --verbose --events
 - **GAP-001**: `agent_changed` procesado en frontend, `agentStateStore` con `currentAgentIdentity`, `ApprovalDialog` para interrupt/resume (PRD-060)
 - **GAP-004**: `agent_changed` emitido para supervisor routing (complementa user selection de PRD-040) (PRD-060)
 - **GAP-006**: Sin referencias a `router.ts` ni PRD-031 (PRD-060)
-- **GAP-008**: Tool usage enforcement con `tool_choice: 'any'` + prompt engineering mejorado (PRD-062)
+- **GAP-008**: Tool usage enforcement implemented via PRD-090 (`FirstCallToolEnforcer` hybrid approach) + prompt engineering from PRD-062
 
 ---
 
@@ -335,6 +337,87 @@ npx vitest run "renderer"           # Renderer registry tests
 npm run -w bc-agent-frontend test   # Full frontend tests
 npm run verify:types                # Type check
 ```
+
+---
+
+## Fase 8: Optimization - Verificación 🟡
+
+**Estado**: 🟡 PARCIAL (Infrastructure completada, métricas pendientes)
+
+### Entregables Completados (PRD-080 — Infrastructure Only)
+- [x] `promptCaching: true` en todos los agent configs (`models.ts:142,156,170,184`)
+- [x] `cache_control: { type: 'ephemeral' }` en system prompts (`agent-builders.ts:66-73`, `supervisor-graph.ts:91-99`)
+- [x] `anthropic-beta: prompt-caching-2024-07-31` header en `ModelFactory.ts:167-169`
+
+### Pendiente (PRD-080 Phase 8.3)
+- [ ] Cache hit metrics tracking en `AgentAnalyticsService`
+- [ ] Dashboard de cache hit rate por agente
+- [ ] Alertas si cache hit rate cae por debajo de umbral
+
+### Criterios de Verificación
+```bash
+# Verify prompt caching headers are sent
+# Check response headers for cache_creation_input_tokens vs cache_read_input_tokens
+# Currently requires manual log inspection — automated metrics pending Phase 8.3
+```
+
+---
+
+## Fase 9: Graph Optimization - Verificación 🟡
+
+**Estado**: 🟡 PLANIFICADO (PRD-090 y PRD-091 documentados, implementación pendiente)
+
+### PRD-090: Agent Graph Logic Optimization ✅
+- [x] Hybrid first-step tool enforcement (`tool_choice: 'any'` on first call, `'auto'` on subsequent)
+- [x] `FirstCallToolEnforcer` utility in `core/langchain/FirstCallToolEnforcer.ts`
+- [x] `tool_choice` + thinking guard in `agent-builders.ts` (throws if both active)
+- [x] Multi-step reasoning instructions in BC, RAG, and Graphing agent prompts
+- [x] Unit tests: `FirstCallToolEnforcer.test.ts` (10 tests), `agent-builders.test.ts` (updated)
+- [ ] End-to-end verification: BC Agent calls `get_endpoint_documentation` for endpoint queries
+
+### PRD-091: Event Transmission, Persistence & Integrity Verification
+- [ ] `message_type: 'transition'` for persisting `agent_changed` events
+- [ ] `EventSequencer` counts transition events for sequence pre-allocation
+- [ ] `EventPersister` handles transition message persistence
+- [ ] `ChatMessageHandler` false CRITICAL log fix (check `isInternal`)
+- [ ] `reconstructFromMessages()` uses transition messages for explicit group boundaries
+- [ ] Supervisor empty message investigation (bookkeeping vs lost content)
+- [ ] `TransitionMessageResponse` type in `@bc-agent/shared`
+- [ ] Frontend `TransitionMessage` renderer component
+
+### Criterios de Verificación
+```bash
+# PRD-090: Tool enforcement
+npm run -w backend test:unit              # All tests pass
+npx vitest run "agent-builders"           # Tool enforcement tests
+npx vitest run "FirstCallToolEnforcer"    # Wrapper tests (new)
+npx vitest run "ModelFactory"             # Guard tests
+
+# PRD-091: Event integrity
+npx vitest run "EventPersister"           # Transition persistence tests
+npx vitest run "EventSequencer"           # Sequence counting tests
+npx vitest run "agentWorkflowStore"       # Reconstruction tests
+npx vitest run "ChatMessageHandler"       # Fixed CRITICAL log tests
+
+# Manual: tool enforcement
+# 1. Send "What endpoints does Customer have?" → logs show domain tool_use events
+# 2. npx tsx scripts/inspect-session.ts "<id>" --verbose --events
+
+# Manual: event integrity
+# 1. Send multi-agent query → verify agent transitions visible live
+# 2. Refresh page → verify transitions still visible after reload
+# 3. SELECT * FROM messages WHERE message_type = 'transition'
+```
+
+### Danger Points / Regresiones a Monitorear
+
+| Riesgo | Qué Verificar | Comando/Acción |
+|--------|---------------|----------------|
+| `tool_choice: 'any'` infinite loop (GAP-009) | Hybrid enforcement terminates naturally (not at recursionLimit: 50) | Check log: `totalSteps` should be 3-8, not 50 |
+| `tool_choice` + thinking constraint | Workers with thinking disabled can use `tool_choice: 'any'`; if thinking is later enabled, `tool_choice` MUST be removed | `npx vitest run "ModelFactory"` parameterized test |
+| Transition message persistence | `message_type: 'transition'` rows in DB don't break existing queries | `SELECT COUNT(*) FROM messages GROUP BY message_type` |
+| `reconstructFromMessages()` backward compat | Old sessions without transition messages still reconstruct correctly | Load a pre-Phase-9 session and verify workflow groups appear |
+| Sequence number allocation | Transition events get unique sequence numbers | `npx vitest run "EventSequencer"` |
 
 ---
 
@@ -381,6 +464,19 @@ npm run verify:types                # Type check
 ### ~~GAP-006: PRD-060/061 tienen dependencias desactualizadas~~ ✅ RESUELTO
 
 **Resolución**: PRD-060 v2.0 y PRD-061 v2.0 reescritos. Eliminadas todas las referencias a `router.ts` (eliminado en PRD-030) y PRD-031 (eliminado). PRD-060 ahora referencia `SupervisorGraphAdapter.invoke()` para `targetAgentId` bypass. PRD-061 renombrado a "Agent Activity Timeline" sin dependencia a PRD-031.
+
+### ~~GAP-008: Tool Choice Enforcement NOT Implemented~~ ✅ RESUELTO
+
+**Resolución (PRD-090)**: `FirstCallToolEnforcer` in `core/langchain/FirstCallToolEnforcer.ts` implements hybrid enforcement:
+- First LLM call per thread_id: `tool_choice: 'any'` (must call a domain tool)
+- Subsequent calls: `tool_choice: 'auto'` (natural ReAct termination)
+- Integrated in `agent-builders.ts`: all worker agents use enforced model
+- Guard: throws if agent has `thinking.type === 'enabled'` with tools (Anthropic constraint)
+- Tests: 10 unit tests in `FirstCallToolEnforcer.test.ts`, updated `agent-builders.test.ts`
+
+### ~~GAP-009: `tool_choice: 'any'` Infinite Loop Risk in ReAct Agents~~ ✅ RESUELTO
+
+**Resolución (PRD-090)**: The hybrid approach in `FirstCallToolEnforcer` prevents infinite loops by only forcing `tool_choice: 'any'` on the first call. Subsequent calls use `'auto'`, allowing the agent to generate a final text response and terminate naturally. Agents complete in 2-6 ReAct iterations, not 50.
 
 ### GAP-007: ScatterChart Tremor API ⚠️ VERIFICAR
 
@@ -430,6 +526,15 @@ npx vitest run "citation"               # Citation schema + rendering tests
 # Frontend (Fases 6-7)
 npm run -w bc-agent-frontend test       # Frontend tests
 npm run -w bc-agent-frontend lint       # Frontend lint
+
+# Tests Fase 9 (Graph Optimization + Event Integrity)
+npx vitest run "agent-builders"           # Tool enforcement tests (updated)
+npx vitest run "FirstCallToolEnforcer"    # Hybrid tool enforcement wrapper tests (new)
+npx vitest run "ModelFactory"             # Guard tests (tool_choice+thinking)
+npx vitest run "EventPersister"           # Transition persistence tests
+npx vitest run "EventSequencer"           # Sequence counting tests
+npx vitest run "agentWorkflowStore"       # Reconstruction tests (updated)
+npx vitest run "ChatMessageHandler"       # Fixed CRITICAL log tests
 ```
 
 ---
@@ -443,3 +548,5 @@ npm run -w bc-agent-frontend lint       # Frontend lint
 | 2026-02-09 | PRD-040 completado. Fase 4 marcada como ✅ COMPLETADO. Dynamic handoffs con Command pattern oficial LangGraph. `session-ownership.ts` migrado a Prisma. 16 tests nuevos, 3036 tests totales. Fase 5 desbloqueada. GAP-004 parcialmente resuelto (`agent_changed` ahora se emite en user selection y tiene case explícito en ChatMessageHandler). |
 | 2026-02-09 | Documentación Fases 5-7 actualizada. PRD-050 reescrito v2.0 (10 chart types, catalog-driven, Tremor). PRD-060 v2.0 (GAP-006 resuelto, graphing agent pill, `agentStateStore`). PRD-061 v2.0 (Agent Activity Timeline, Opción C). **Nueva Fase 7**: PRD-070 (Rendering Framework con `_type` discriminator) + PRD-071 (RAG Citation UI). GAP-006 resuelto. GAP-007 creado (ScatterChart API). Agregados criterios de verificación para Fases 5, 6, 7 con comandos de test específicos. |
 | 2026-02-09 | **PRD-050 y PRD-060 completados**. Fase 5 marcada ✅ (backend-only, frontend diferido a PRD-070). Fase 6 marcada 🟡 (PRD-060 completado, PRD-061 pendiente). PRD-060: Agent Selector UI full-stack implementado — `AgentSelectorDropdown` (shadcn Select), `AgentBadge`, `ApprovalDialog`, `targetAgentId` threaded por 5 capas backend, 3 nuevos event cases frontend. GAP-001 resuelto (frontend event handling). GAP-004 resuelto (agent_changed processing). Test counts actualizados: 3104 backend, 666 frontend. Agregados comandos de test específicos para Fase 6. |
+| 2026-02-11 | **Fase 9 planificada**. PRD-090 (Graph Logic Optimization) y PRD-091 (Event Integrity Verification) creados. GAP-008 reabierto: `tool_choice: 'any'` nunca fue implementado en `agent-builders.ts` (PRD-062 falsely marked complete). GAP-009 creado: `tool_choice: 'any'` causa infinite loop en ReAct agents, requiere enfoque hibrido (first-call-only enforcement). PRD-080 documentado como parcialmente completo (infrastructure done, metrics pending). Fase 8 agregada al status table. Comandos de verificacion Fase 9 agregados. |
+| 2026-02-11 | **PRD-090 implementado**. `FirstCallToolEnforcer` en `core/langchain/FirstCallToolEnforcer.ts`: hybrid tool_choice enforcement (any→auto). Integrado en `agent-builders.ts` con thinking guard. Multi-step tool usage prompts en BC, RAG, y Graphing agents. GAP-008 y GAP-009 resueltos. 10 tests nuevos (FirstCallToolEnforcer), agent-builders tests actualizados. Documentación actualizada: `models.ts` header, `core/langchain/CLAUDE.md`. |

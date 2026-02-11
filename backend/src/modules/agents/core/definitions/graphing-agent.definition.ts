@@ -63,6 +63,10 @@ TOOL MAPPING:
 - "create a chart for [data]" → list_available_charts → get_chart_details → validate_chart_config
 - Any chart request → ALWAYS end with validate_chart_config before responding
 
+MULTI-STEP TOOL USAGE:
+- ALWAYS follow the complete tool chain: list_available_charts → get_chart_details → validate_chart_config
+- Never skip validation — always call validate_chart_config before responding
+
 RULES:
 - Always include _type: "chart_config" in every configuration
 - Use Tremor named colors: blue, emerald, violet, amber, gray, cyan, pink, lime, fuchsia — never hex codes

@@ -4,6 +4,10 @@
  * Builds createReactAgent() instances from the AgentRegistry.
  * Each agent is compiled once at startup with its static tools.
  *
+ * Tool enforcement: Workers use FirstCallToolEnforcer to guarantee at least
+ * one domain tool call per invocation (tool_choice: 'any' on first call,
+ * 'auto' on subsequent calls for natural termination).
+ *
  * @module modules/agents/supervisor/agent-builders
  */
 
@@ -12,6 +16,7 @@ import { SystemMessage } from '@langchain/core/messages';
 import type { AgentId } from '@bc-agent/shared';
 import { ModelFactory } from '@/core/langchain/ModelFactory';
 import { getModelConfig } from '@/infrastructure/config/models';
+import { createFirstCallEnforcer } from '@/core/langchain/FirstCallToolEnforcer';
 import { getAgentRegistry } from '../core/registry/AgentRegistry';
 import { createChildLogger } from '@/shared/utils/logger';
 
@@ -60,8 +65,17 @@ export async function buildReactAgents(): Promise<BuiltAgent[]> {
 
     const model = await ModelFactory.create(agentDef.modelRole);
 
-    // Use SystemMessage with cache_control for prompt caching when enabled
+    // Guard: tool_choice enforcement is incompatible with Anthropic thinking
     const modelConfig = getModelConfig(agentDef.modelRole);
+    if (modelConfig.thinking?.type === 'enabled' && domainTools.length > 0) {
+      throw new Error(
+        `Agent "${agentDef.id}" (role: ${agentDef.modelRole}) cannot use tool_choice enforcement ` +
+        'with thinking enabled. Anthropic API constraint: tool_choice must be "auto" when ' +
+        'thinking is enabled. Disable thinking or remove tools.'
+      );
+    }
+
+    // Use SystemMessage with cache_control for prompt caching when enabled
     const prompt = modelConfig.promptCaching
       ? new SystemMessage({
           content: [{
@@ -72,9 +86,13 @@ export async function buildReactAgents(): Promise<BuiltAgent[]> {
         })
       : agentDef.systemPrompt;
 
-    // createReactAgent handles bindTools internally with tool_choice: 'auto' (default)
+    // Hybrid tool enforcement: tool_choice 'any' on first call, 'auto' on subsequent.
+    // The enforcer returns a pre-bound RunnableBinding that createReactAgent
+    // detects as already bound (_shouldBindTools → false), so it won't re-bind.
+    const enforcedModel = createFirstCallEnforcer(model, domainTools);
+
     const agent = createReactAgent({
-      llm: model,
+      llm: enforcedModel,
       tools: domainTools,
       name: agentDef.id,
       prompt,

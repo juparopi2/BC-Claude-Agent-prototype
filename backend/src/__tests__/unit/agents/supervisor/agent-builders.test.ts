@@ -3,14 +3,48 @@ import { buildReactAgents } from '@modules/agents/supervisor/agent-builders';
 import { getAgentRegistry, resetAgentRegistry } from '@modules/agents/core/registry/AgentRegistry';
 import { registerAgents } from '@modules/agents/core/registry/registerAgents';
 
+// vi.hoisted ensures these are initialized before vi.mock factories run
+const { mockModel, mockEnforcerResult, mockCreateFirstCallEnforcer, mockGetModelConfig } = vi.hoisted(() => {
+  const model = {
+    invoke: vi.fn().mockResolvedValue({ content: 'test' }),
+    bindTools: vi.fn(),
+  };
+  const enforcerResult = {
+    invoke: vi.fn().mockResolvedValue({ content: 'enforced' }),
+    kwargs: { tools: [{ name: 'mock_tool' }] },
+  };
+  const createEnforcer = vi.fn().mockReturnValue(enforcerResult);
+  const getConfig = vi.fn();
+  return {
+    mockModel: model,
+    mockEnforcerResult: enforcerResult,
+    mockCreateFirstCallEnforcer: createEnforcer,
+    mockGetModelConfig: getConfig,
+  };
+});
+
 // Mock ModelFactory to avoid real API calls
 vi.mock('@/core/langchain/ModelFactory', () => ({
   ModelFactory: {
-    create: vi.fn().mockResolvedValue({
-      invoke: vi.fn().mockResolvedValue({ content: 'test' }),
-    }),
+    create: vi.fn().mockResolvedValue(mockModel),
   },
 }));
+
+// Mock FirstCallToolEnforcer
+vi.mock('@/core/langchain/FirstCallToolEnforcer', () => ({
+  createFirstCallEnforcer: (...args: unknown[]) => mockCreateFirstCallEnforcer(...args),
+}));
+
+// Mock getModelConfig — defaults set in beforeEach, overridable per-test
+vi.mock('@/infrastructure/config/models', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/infrastructure/config/models')>();
+  // Wire the hoisted mock to delegate to real implementation by default
+  mockGetModelConfig.mockImplementation(actual.getModelConfig);
+  return {
+    ...actual,
+    getModelConfig: mockGetModelConfig,
+  };
+});
 
 // Mock createReactAgent since it needs a real model
 vi.mock('@langchain/langgraph/prebuilt', () => ({
@@ -30,6 +64,9 @@ describe('agent-builders', () => {
   beforeEach(() => {
     resetAgentRegistry();
     registerAgents();
+    vi.clearAllMocks();
+    // Restore default enforcer mock
+    mockCreateFirstCallEnforcer.mockReturnValue(mockEnforcerResult);
   });
 
   describe('buildReactAgents', () => {
@@ -112,21 +149,60 @@ describe('agent-builders', () => {
       }
     });
 
-    it('should pass model directly to createReactAgent (no tool_choice binding)', async () => {
-      const { ModelFactory } = await import('@/core/langchain/ModelFactory');
-      const mockModel = await ModelFactory.create('bc_agent');
-
+    it('should pass enforced model (not raw model) to createReactAgent', async () => {
       const { createReactAgent } = await import('@langchain/langgraph/prebuilt');
       const mockCreateReactAgent = vi.mocked(createReactAgent);
 
       await buildReactAgents();
 
-      // Verify model is passed as llm (not a bindTools result)
+      // Verify the enforced model is passed as llm, not the raw model
       for (const call of mockCreateReactAgent.mock.calls) {
         const config = call[0] as { llm: unknown };
-        // The llm should be the model itself, not a result of bindTools
-        expect(config.llm).toBe(mockModel);
+        expect(config.llm).toBe(mockEnforcerResult);
+        expect(config.llm).not.toBe(mockModel);
       }
+    });
+
+    it('should call createFirstCallEnforcer with model and domain tools for each agent', async () => {
+      await buildReactAgents();
+
+      // 3 worker agents: BC, RAG, Graphing
+      expect(mockCreateFirstCallEnforcer).toHaveBeenCalledTimes(3);
+
+      // Each call should receive the model and an array of tools
+      for (const call of mockCreateFirstCallEnforcer.mock.calls) {
+        expect(call[0]).toBe(mockModel);
+        expect(Array.isArray(call[1])).toBe(true);
+        expect((call[1] as unknown[]).length).toBeGreaterThan(0);
+      }
+    });
+
+    it('should throw if agent has thinking enabled with tools', async () => {
+      const { getModelConfig: realGetModelConfig } =
+        await vi.importActual<typeof import('@/infrastructure/config/models')>(
+          '@/infrastructure/config/models'
+        );
+
+      // Override: return thinking enabled for bc_agent role
+      mockGetModelConfig.mockImplementation((role: string) => {
+        if (role === 'bc_agent') {
+          return {
+            role: 'bc_agent',
+            description: 'test',
+            modelString: 'test-model',
+            provider: 'anthropic' as const,
+            modelName: 'test-model',
+            temperature: 0.3,
+            maxTokens: 16384,
+            thinking: { type: 'enabled' as const, budget_tokens: 5000 },
+          };
+        }
+        return realGetModelConfig(role as import('@/infrastructure/config/models').ModelRole);
+      });
+
+      await expect(buildReactAgents()).rejects.toThrow(
+        'cannot use tool_choice enforcement with thinking enabled'
+      );
     });
   });
 });

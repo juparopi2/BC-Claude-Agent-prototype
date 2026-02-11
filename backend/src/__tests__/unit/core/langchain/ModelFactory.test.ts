@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ModelFactory } from '@/core/langchain/ModelFactory';
+import { ModelRoleConfigs, type ModelRole } from '@/infrastructure/config/models';
 
 // Mock the provider classes with vi.hoisted for proper mock factory hoisting
 const mockChatAnthropicConstructor = vi.hoisted(() => vi.fn().mockImplementation(() => ({
@@ -183,6 +184,45 @@ describe('ModelFactory', () => {
     it('should check if model supports a feature', async () => {
       const supportsTools = await ModelFactory.supportsFeature('bc_agent', 'tools');
       expect(typeof supportsTools).toBe('boolean');
+    });
+  });
+
+  describe('Temperature + Thinking Mutual Exclusion (API Constraint)', () => {
+    it('should omit temperature for ALL roles with thinking enabled', async () => {
+      const rolesWithThinking = Object.entries(ModelRoleConfigs)
+        .filter(([_, config]) => config.thinking?.type === 'enabled')
+        .map(([role]) => role as ModelRole);
+
+      expect(rolesWithThinking.length).toBeGreaterThan(0);
+
+      for (const role of rolesWithThinking) {
+        ModelFactory.clearCache();
+        vi.clearAllMocks();
+        await ModelFactory.create(role);
+
+        const call = mockChatAnthropicConstructor.mock.calls[0][0];
+        expect(call.thinking).toBeDefined();
+        expect(call.temperature).toBeUndefined();
+      }
+    });
+
+    it('should pass temperature for ALL roles with thinking disabled or absent', async () => {
+      const rolesWithoutThinking = Object.entries(ModelRoleConfigs)
+        .filter(([_, config]) => config.thinking?.type !== 'enabled')
+        .map(([role]) => role as ModelRole);
+
+      expect(rolesWithoutThinking.length).toBeGreaterThan(0);
+
+      for (const role of rolesWithoutThinking) {
+        ModelFactory.clearCache();
+        vi.clearAllMocks();
+        await ModelFactory.create(role);
+
+        const call = mockChatAnthropicConstructor.mock.calls[0][0];
+        expect(call.temperature).toBeDefined();
+        expect(typeof call.temperature).toBe('number');
+        expect(call.thinking).toBeUndefined();
+      }
     });
   });
 

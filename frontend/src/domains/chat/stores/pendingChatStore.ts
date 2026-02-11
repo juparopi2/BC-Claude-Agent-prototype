@@ -34,12 +34,6 @@ export interface PendingChatState {
   /** User message to send */
   message: string;
 
-  /** Enable extended thinking for complex queries */
-  enableThinking: boolean;
-
-  /** Thinking budget (tokens) when thinking is enabled */
-  thinkingBudget: number;
-
   /** Enable automatic semantic search on user's files */
   useMyContext: boolean;
 
@@ -63,8 +57,6 @@ export interface PendingChatState {
  */
 export interface PendingChatActions {
   setMessage: (message: string) => void;
-  setEnableThinking: (enabled: boolean) => void;
-  setThinkingBudget: (budget: number) => void;
   setUseMyContext: (enabled: boolean) => void;
   setSelectedAgent: (agent: string | null) => void;
   addMentionedFile: (fileId: string) => void;
@@ -85,8 +77,6 @@ export type PendingChatStore = PendingChatState & PendingChatActions;
 
 const initialState: PendingChatState = {
   message: '',
-  enableThinking: false,
-  thinkingBudget: 10000,
   useMyContext: false,
   selectedAgent: null,
   mentionedFileIds: [],
@@ -104,10 +94,6 @@ export const usePendingChatStore = create<PendingChatStore>()(
       ...initialState,
 
       setMessage: (message) => set({ message }),
-
-      setEnableThinking: (enabled) => set({ enableThinking: enabled }),
-
-      setThinkingBudget: (budget) => set({ thinkingBudget: budget }),
 
       setUseMyContext: (enabled) => set({ useMyContext: enabled }),
 
@@ -144,8 +130,6 @@ export const usePendingChatStore = create<PendingChatStore>()(
       // are in pendingFileManager and will be lost on refresh
       partialize: (state) => ({
         message: state.message,
-        enableThinking: state.enableThinking,
-        thinkingBudget: state.thinkingBudget,
         useMyContext: state.useMyContext,
         selectedAgent: state.selectedAgent,
         mentionedFileIds: state.mentionedFileIds,

@@ -4,6 +4,14 @@
  * This file defines all AI model configurations used across the application.
  * Models are organized by ROLE, not by name, allowing easy swapping and
  * cost optimization based on task requirements.
+ *
+ * CRITICAL CONSTRAINTS:
+ * - Anthropic: temperature + thinking cannot coexist (see CLAUDE.md Section 11.7)
+ * - When thinking.type === 'enabled', do NOT set temperature field
+ * - ModelFactory handles this, but config should not create the conflict
+ *
+ * @see backend/src/core/langchain/CLAUDE.md - Full domain documentation
+ * @see backend/src/core/langchain/ModelFactory.ts - Factory implementation
  */
 
 import type { ModelProvider } from '@/core/langchain/ModelFactory';

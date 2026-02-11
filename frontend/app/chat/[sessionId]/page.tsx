@@ -146,14 +146,14 @@ export default function ChatPage() {
 
         // 2. Send message with options and attachments
         if (store.message.trim() || uploadedIds.length > 0) {
-          const agentId = useUIPreferencesStore.getState().selectedAgentId;
-          const isDirected = agentId !== 'auto';
+          const uiPrefs = useUIPreferencesStore.getState();
+          const isDirected = uiPrefs.selectedAgentId !== 'auto';
           sendMessage(store.message, {
-            enableThinking: store.enableThinking || undefined,
-            thinkingBudget: store.enableThinking ? store.thinkingBudget : undefined,
-            enableAutoSemanticSearch: agentId === 'rag-agent' || store.useMyContext || undefined,
+            enableThinking: uiPrefs.enableThinking || undefined,
+            thinkingBudget: uiPrefs.enableThinking ? 10000 : undefined,
+            enableAutoSemanticSearch: uiPrefs.selectedAgentId === 'rag-agent' || store.useMyContext || undefined,
             chatAttachments: uploadedIds.length > 0 ? uploadedIds : undefined,
-            targetAgentId: isDirected ? agentId : undefined,
+            targetAgentId: isDirected ? uiPrefs.selectedAgentId : undefined,
           });
         }
 

@@ -211,6 +211,23 @@ The backend uses an incremental type-check approach due to memory constraints:
 - Only checks those specific files with `tsc --noEmit`
 - Falls back to build validation if needed: `npm run -w backend build`
 
+### 4.4 Test Organization & Conventions
+
+**Backend**: Tests in `__tests__/{type}/path/matching/source/`:
+- Unit: `backend/src/__tests__/unit/core/langchain/ModelFactory.test.ts`
+- Integration: `backend/src/__tests__/integration/...`
+- E2E: `backend/src/__tests__/e2e/...`
+
+**Frontend**: Co-located with components.
+
+**CRITICAL: Always use workspace-scoped commands:**
+- `npm run -w backend test:unit -- -t "TestName"`
+- `npx vitest run "TestName"` (fails due to @/ alias resolution from root)
+
+**Test Patterns:**
+- `expect.objectContaining()` for constructor/config assertions (resilient to new fields)
+- Tests paramétricos: iterate configs to cover future roles/entities automatically
+
 ---
 
 ## 5. Technical Glossary
@@ -495,6 +512,23 @@ The system uses **synchronous execution** (not streaming). Valid event types:
 - `turn_paused`, `content_refused` (SDK 0.71+)
 
 **Removed types** (DO NOT USE): `thinking_chunk`, `message_chunk`, `message_partial`
+
+### 11.7 LLM Provider API Constraints
+
+**Anthropic: Temperature + Extended Thinking Mutual Exclusion**
+
+When extended thinking is enabled:
+- Temperature MUST be omitted (API defaults to 1.0)
+- Passing temperature causes runtime crash
+- ModelFactory.ts handles this automatically
+- Parameterized test verifies ALL roles
+
+**If you add a new ModelRole** in `backend/src/infrastructure/config/models.ts`:
+1. If `thinking: { type: 'enabled' }` → DO NOT add `temperature` field
+2. Run `npm run -w backend test:unit` → parameterized test validates
+3. See `backend/src/core/langchain/CLAUDE.md` for details
+
+**Other providers**: OpenAI and Google have no known mutual exclusions.
 
 ---
 

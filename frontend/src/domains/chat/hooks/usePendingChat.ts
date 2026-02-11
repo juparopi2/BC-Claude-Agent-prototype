@@ -30,10 +30,8 @@ export interface UsePendingChatReturn {
   // State (from store)
   /** User message to send */
   message: string;
-  /** Whether extended thinking is enabled */
+  /** Whether extended thinking is enabled (persisted in UIPreferencesStore) */
   enableThinking: boolean;
-  /** Thinking budget tokens */
-  thinkingBudget: number;
   /** Whether to search user's files for context */
   useMyContext: boolean;
   /** Selected agent ID ('auto' or AGENT_ID value) */
@@ -46,10 +44,8 @@ export interface UsePendingChatReturn {
   // Actions
   /** Set the message text */
   setMessage: (msg: string) => void;
-  /** Toggle extended thinking */
+  /** Toggle extended thinking (persisted in UIPreferencesStore) */
   setEnableThinking: (enabled: boolean) => void;
-  /** Set thinking budget */
-  setThinkingBudget: (budget: number) => void;
   /** Toggle semantic search on user files */
   setUseMyContext: (enabled: boolean) => void;
   /** Set selected agent ID */
@@ -119,20 +115,18 @@ export function usePendingChat(): UsePendingChatReturn {
 
   // Store state
   const message = usePendingChatStore((s) => s.message);
-  const enableThinking = usePendingChatStore((s) => s.enableThinking);
-  const thinkingBudget = usePendingChatStore((s) => s.thinkingBudget);
   const useMyContext = usePendingChatStore((s) => s.useMyContext);
   const pendingFiles = usePendingChatStore((s) => s.pendingFiles);
   const hasPendingChat = usePendingChatStore((s) => s.hasPendingChat);
 
-  // Agent selection from UI preferences (persisted separately)
+  // UI preferences (persisted in localStorage via UIPreferencesStore)
+  const enableThinking = useUIPreferencesStore((s) => s.enableThinking);
+  const setEnableThinking = useUIPreferencesStore((s) => s.setEnableThinking);
   const selectedAgentId = useUIPreferencesStore((s) => s.selectedAgentId);
   const setSelectedAgentId = useUIPreferencesStore((s) => s.setSelectedAgentId);
 
   // Store actions
   const setMessage = usePendingChatStore((s) => s.setMessage);
-  const setEnableThinking = usePendingChatStore((s) => s.setEnableThinking);
-  const setThinkingBudgetAction = usePendingChatStore((s) => s.setThinkingBudget);
   const setUseMyContext = usePendingChatStore((s) => s.setUseMyContext);
   const addPendingFile = usePendingChatStore((s) => s.addPendingFile);
   const removePendingFile = usePendingChatStore((s) => s.removePendingFile);
@@ -236,7 +230,6 @@ export function usePendingChat(): UsePendingChatReturn {
     // State
     message,
     enableThinking,
-    thinkingBudget,
     useMyContext,
     selectedAgentId,
     pendingFiles,
@@ -245,7 +238,6 @@ export function usePendingChat(): UsePendingChatReturn {
     // Actions
     setMessage,
     setEnableThinking,
-    setThinkingBudget: setThinkingBudgetAction,
     setUseMyContext,
     setSelectedAgentId,
     addFile,

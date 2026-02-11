@@ -25,6 +25,8 @@ Este documento centraliza todos los planes futuros, organizados por categoría p
 6. **Fase 4**: Handoffs y Re-routing - Pendiente
 7. **Fase 5**: ✅ Graphing Agent (Tremor UI) - **COMPLETADO**
 8. **Fase 6**: Agent Selection UI - En preparación (PRD-060 actualizado)
+9. **Fase 7**: ✅ Agent-Specific UI Rendering - **COMPLETADO** (2026-02-09)
+10. **Fase 8**: 🟡 Optimization (Prompt Caching) - **Planificado** (PRD-080)
 
 **Estado**: En Progreso - Phases 0, 0.5, 1, 5 Completados. System prompts alineados con product context.
 
@@ -144,7 +146,17 @@ Mejoras en la estabilidad, calidad del código e infraestructura existente.
 
 Mejoras perceptibles para el usuario final.
 
+
+### Mobile First & iFrame Experience (Alta)
+**Necesidad:** Rediseñar y adaptar la interfaz bajo una filosofía *Mobile First* para garantizar una experiencia totalmente responsiva y funcional en dispositivos móviles (navegador/app futura). Además, preparar el frontend para ser embebido vía iFrame en aplicaciones de terceros como funcionalidad futura.
+**Specs:**
+- Revisión completa de patrones de diseño UI/UX para asegurar consistencia y usabilidad en móviles.
+- Verificación exhaustiva de responsiveness en todo el frontend.
+- Adaptaciones para soporte de iFrame (viewport, escalado, eliminación de elementos fijos conflictivos).
+**Estimación:** 7-10 días
+
 ### D8: Dynamic Model Selection (Media)
+
 **Necesidad:** Permitir elegir entre Claude Opus, Sonnet, Haiku o modelos de otros proveedores.
 **Estimación:** 2 días
 
@@ -231,11 +243,6 @@ Conexión con servicios externos y nuevos proveedores de IA.
 ## 🚀 Rendimiento y Escalabilidad
 
 Optimizaciones de velocidad y costos.
-
-### Prompt Caching (Alta)
-**Objetivo:** Usar Anthropic Prompt Caching.
-**Impacto:** Reducción de costos (~90% input) y latencia (~50%) en contextos repetitivos.
-**Estimación:** 3 días
 
 ### Batch API Support (Baja)
 **Objetivo:** Procesamiento masivo offline (ej. analizar 100 documentos).

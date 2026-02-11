@@ -303,6 +303,14 @@ console.log(anthropic.profile?.reasoningOutput); // true para extended thinking
 | [PRD-070](./PHASE-7-AGENT-UI/PRD-070-AgentSpecificRendering.md) | Agent-Specific Rendering Framework (`_type` discriminator) + ChartRenderer (10 types) + Per-message attribution + Prisma migration | ✅ Completado | 2026-02-09 |
 | [PRD-071](./PHASE-7-AGENT-UI/PRD-071-RAGCitationUI.md) | RAG Citation UI + Tool Improvements | 🔴 (desbloqueado) |
 
+### Fase 8: Optimizaciones (NUEVA)
+**Estado**: 🟡 Planificado
+**Objetivo**: Eficiencia de costos y rendimiento con Prompt Caching
+
+| PRD | Componente | Estado | Fecha |
+|-----|------------|--------|-------|
+| [PRD-080](./PHASE-8-OPTIMIZATION/PRD-080-PromptCaching.md) | Prompt Caching (Haiku 4.5/Sonnet 3.5) - 75% Cost Reduction | 🟡 |
+
 **Métricas PRD-070:**
 - 22+ archivos creados (shared types, renderer framework, 10 chart views, chart utils, citation placeholder, tests), 12 modificados
 - 0 regresiones: 3105 tests backend pasan, 697 tests frontend pasan
@@ -368,7 +376,10 @@ FASE 6: UI (🟡 En Progreso)
 
 FASE 7: Agent-Specific UI Rendering (🟡 En Progreso)
 ├── PRD-070: Rendering Framework [✅ COMPLETADO] ─────────────┐
-└── PRD-071: RAG Citation UI (depende PRD-070 ✅) ────────────┴──► COMPLETADO
+└── PRD-071: RAG Citation UI (depende PRD-070 ✅) ────────────┴──► FASE 8
+
+FASE 8: Optimization (🟡 Planificado)
+└── PRD-080: Prompt Caching (Cost Efficiency) ──────────────────► COMPLETADO
 ```
 
 ---

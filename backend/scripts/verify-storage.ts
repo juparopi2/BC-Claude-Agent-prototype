@@ -28,6 +28,9 @@ interface SearchDoc {
   content?: string;
   isImage?: boolean;
   fileStatus?: string;
+  // Vector fields - populated via getDocument() calls, not in search select
+  contentVector?: number[];
+  imageVector?: number[];
 }
 
 interface FileRecord {
@@ -102,14 +105,14 @@ Options:
   --all                 Verify all users in the database
   --section <name>      Run only specific section: sql, blob, search, schema
   --folder-tree         Display folder hierarchy in SQL section
-  --check-embeddings    Show image embedding details in SQL section
+  --check-embeddings    Show image embedding details in SQL + vector coverage in Search
   --report-only         Skip detailed output, show only summary
   --help               Show this help message
 
 Sections:
   SQL     - File counts, status distribution, stuck deletions, chunks
   Blob    - Blob existence, orphans, missing files
-  Search  - Document counts, orphans, field coverage, mimeType population
+  Search  - Document counts, orphans, field coverage, vector field coverage (with --check-embeddings)
   Schema  - Index schema validation against expected schema
 
 Exit Codes:
@@ -504,7 +507,7 @@ async function verifySearchSection(
   userId: string,
   prisma: ReturnType<typeof createPrisma>,
   searchClient: SearchClient<SearchDoc> | null,
-  options: { reportOnly: boolean }
+  options: { checkEmbeddings: boolean; reportOnly: boolean }
 ): Promise<{ hasErrors: boolean; hasWarnings: boolean }> {
   let hasErrors = false;
   let hasWarnings = false;
@@ -644,6 +647,64 @@ async function verifySearchSection(
     reportFieldCoverage('    isImage', txtWithIsImage, textDocs.length);
     const txtWithStatus = textDocs.filter((d) => d.fileStatus !== undefined && d.fileStatus !== null).length;
     reportFieldCoverage('    fileStatus', txtWithStatus, textDocs.length);
+  }
+
+  // Image Vector Coverage - checks contentVector (1536d) and imageVector (1024d) via getDocument
+  // This is gated behind --check-embeddings because it fetches full documents including large vector arrays
+  if (options.checkEmbeddings && imageDocs.length > 0) {
+    printSubsection('Image Vector Coverage');
+    console.log('  (Fetching full documents to inspect vector fields...)\n');
+
+    let withContent = 0;
+    let withContentVector = 0;
+    let withImageVector = 0;
+
+    // Build file name lookup from DB
+    const imageFileIds = [...new Set(imageDocs.map((d) => d.fileId))];
+    const imageFiles = imageFileIds.length > 0
+      ? await prisma.files.findMany({
+          where: { id: { in: imageFileIds } },
+          select: { id: true, name: true },
+        })
+      : [];
+    const imageFileNameMap = new Map(imageFiles.map((f) => [f.id, f.name]));
+
+    for (const doc of imageDocs) {
+      try {
+        const fullDoc = await searchClient!.getDocument(doc.chunkId);
+        const hasContent = !!fullDoc.content && fullDoc.content.length > 0;
+        const hasContentVec = !!fullDoc.contentVector && fullDoc.contentVector.length > 0;
+        const hasImageVec = !!fullDoc.imageVector && fullDoc.imageVector.length > 0;
+
+        if (hasContent) withContent++;
+        if (hasContentVec) withContentVector++;
+        if (hasImageVec) withImageVector++;
+
+        if (!options.reportOnly) {
+          const fileName = imageFileNameMap.get(doc.fileId) || doc.fileId.substring(0, 8) + '...';
+          const contentPreview = fullDoc.content
+            ? fullDoc.content.length > 70 ? fullDoc.content.substring(0, 67) + '...' : fullDoc.content
+            : '(empty)';
+
+          console.log(`  ${doc.chunkId}:`);
+          console.log(`    File:          ${fileName}`);
+          console.log(`    Content:       ${contentPreview}`);
+          console.log(`    imageVector:   ${hasImageVec ? `${fullDoc.imageVector!.length}d` : 'MISSING'} ${hasImageVec ? '✓' : '✗'}`);
+          console.log(`    contentVector: ${hasContentVec ? `${fullDoc.contentVector!.length}d` : 'MISSING'} ${hasContentVec ? '✓' : '✗'}`);
+          console.log();
+        }
+      } catch (error) {
+        const errorInfo = error instanceof Error ? error.message : String(error);
+        console.log(`  ✗ Failed to fetch ${doc.chunkId}: ${errorInfo}`);
+        hasErrors = true;
+      }
+    }
+
+    console.log('  Summary:');
+    reportFieldCoverage('  content (caption)', withContent, imageDocs.length);
+    reportFieldCoverage('  imageVector (1024d)', withImageVector, imageDocs.length);
+    // contentVector may be absent for captionless images - 80% threshold allows graceful degradation
+    reportFieldCoverage('  contentVector (1536d)', withContentVector, imageDocs.length, 80);
   }
 
   // Compare chunk counts: DB vs Search
@@ -936,7 +997,7 @@ async function main(): Promise<void> {
       }
 
       if (!section || section === 'search') {
-        const result = await verifySearchSection(currentUserId, prisma, searchClient, options);
+        const result = await verifySearchSection(currentUserId, prisma, searchClient, { checkEmbeddings, reportOnly });
         globalResult.hasErrors = globalResult.hasErrors || result.hasErrors;
         globalResult.hasWarnings = globalResult.hasWarnings || result.hasWarnings;
         globalResult.sections.search = true;

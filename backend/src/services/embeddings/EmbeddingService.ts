@@ -109,11 +109,23 @@ export class EmbeddingService {
     }
 
     const client = this.getClient();
-    const result = await client.embeddings.create({
-      input: [text],
-      model: this.config.deploymentName
-    });
-    
+    let result;
+    try {
+      result = await client.embeddings.create({
+        input: [text],
+        model: this.config.deploymentName
+      });
+    } catch (apiError) {
+      const errorInfo = apiError instanceof Error
+        ? { message: apiError.message, name: apiError.name, cause: (apiError as { status?: number }).status }
+        : { value: String(apiError) };
+      logger.error(
+        { error: errorInfo, userId, fileId, textLength: text.length, model: this.config.deploymentName },
+        'Azure OpenAI embeddings API call failed'
+      );
+      throw apiError;
+    }
+
     // Validate we got at least one embedding
     if (!result.data || result.data.length === 0) {
       throw new Error('No embedding returned from service');

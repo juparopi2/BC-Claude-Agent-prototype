@@ -74,6 +74,8 @@ export const indexSchema: SearchIndex = {
       name: 'contentVector',
       type: 'Collection(Edm.Single)',
       searchable: true,
+      stored: true,
+      hidden: false, // Retrievable in getDocument/search results (for verification scripts)
       vectorSearchDimensions: 1536,
       vectorSearchProfileName: TEXT_PROFILE_NAME,
     },
@@ -115,6 +117,8 @@ export const indexSchema: SearchIndex = {
       name: 'imageVector',
       type: 'Collection(Edm.Single)',
       searchable: true,
+      stored: true,
+      hidden: false, // Retrievable in getDocument/search results (for verification scripts)
       vectorSearchDimensions: 1024, // Azure Computer Vision VectorizeImage dimensions
       vectorSearchProfileName: IMAGE_PROFILE_NAME,
     },

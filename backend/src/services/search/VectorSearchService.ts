@@ -179,15 +179,40 @@ export class VectorSearchService {
       isImage: false,
     }));
 
+    // Diagnostic: log field values for first document to trace field coverage gaps
+    if (documents.length > 0) {
+      const sample = documents[0]!;
+      logger.info(
+        {
+          sampleChunkId: sample.chunkId,
+          fileId: sample.fileId,
+          mimeType: sample.mimeType,
+          mimeTypeType: typeof sample.mimeType,
+          isImage: sample.isImage,
+          fileStatus: sample.fileStatus,
+          hasContentVector: !!sample.contentVector,
+          contentVectorLength: sample.contentVector?.length ?? 0,
+          totalDocuments: documents.length,
+        },
+        'Indexing text chunks batch - field diagnostic'
+      );
+    }
+
     const result = await this.searchClient.uploadDocuments(documents);
-    
+
     const failed = result.results.filter(r => !r.succeeded);
     if (failed.length > 0) {
       logger.error({ failedCount: failed.length, errors: failed }, 'Failed to index some documents');
       throw new Error(`Failed to index documents: ${failed.map(f => f.errorMessage || 'Unknown error').join(', ')}`);
     }
 
-    return result.results.map(r => r.key).filter((key): key is string => key !== undefined);
+    const successKeys = result.results.map(r => r.key).filter((key): key is string => key !== undefined);
+    logger.info(
+      { indexedCount: successKeys.length, totalAttempted: documents.length },
+      'Text chunks batch indexed successfully'
+    );
+
+    return successKeys;
   }
 
   async search(query: SearchQuery): Promise<SearchResult[]> {
@@ -473,6 +498,26 @@ export class VectorSearchService {
       document.contentVector = contentVector;
     }
 
+    // Diagnostic: log all field values to trace field coverage gaps
+    logger.info(
+      {
+        documentId,
+        fileId: normalizedFileId,
+        userId: normalizedUserId,
+        mimeType: document.mimeType,
+        mimeTypeType: typeof document.mimeType,
+        isImage: document.isImage,
+        fileStatus: document.fileStatus,
+        hasImageVector: !!document.imageVector,
+        hasContentVector: !!document.contentVector,
+        contentVectorLength: (document.contentVector as number[] | undefined)?.length ?? 0,
+        contentPreview: typeof document.content === 'string' ? document.content.substring(0, 80) : '(none)',
+        documentFieldCount: Object.keys(document).length,
+        documentFields: Object.keys(document),
+      },
+      'Indexing image embedding - field diagnostic'
+    );
+
     const result = await this.searchClient.uploadDocuments([document]);
 
     const failed = result.results.filter(r => !r.succeeded);
@@ -483,7 +528,7 @@ export class VectorSearchService {
 
     logger.info(
       { documentId, fileId, userId, dimensions: embedding.length, hasCaption: !!caption, hasContentVector: !!contentVector },
-      'Image embedding indexed'
+      'Image embedding indexed successfully'
     );
     return documentId;
   }

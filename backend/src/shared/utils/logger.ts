@@ -79,7 +79,7 @@ if (isDevelopment) {
 // File output (optional, for production persistence)
 if (process.env.ENABLE_FILE_LOGGING === 'true') {
   targets.push({
-    level: 'info',
+    level: process.env.LOG_FILE_LEVEL || 'info',
     target: 'pino/file',
     options: {
       destination: process.env.LOG_FILE_PATH || './logs/app.log',

@@ -293,21 +293,39 @@ export class FileChunkingService {
         try {
           const { EmbeddingService } = await import('@/services/embeddings/EmbeddingService');
           const embeddingService = EmbeddingService.getInstance();
+          logger.info(
+            { fileId, userId, captionLength: embeddingRecord.caption.length },
+            'Generating contentVector from caption'
+          );
           const captionEmbedding = await embeddingService.generateTextEmbedding(
             embeddingRecord.caption, userId, fileId
           );
           captionContentVector = captionEmbedding.embedding;
+          logger.info(
+            { fileId, userId, dimensions: captionContentVector.length },
+            'contentVector generated successfully from caption'
+          );
         } catch (error) {
           // Non-fatal: image still findable via imageVector and Semantic Ranker
-          logger.warn(
+          const errorInfo = error instanceof Error
+            ? { message: error.message, name: error.name, stack: error.stack?.split('\n').slice(0, 3).join(' | ') }
+            : { value: String(error) };
+          logger.error(
             {
-              error: error instanceof Error ? error.message : String(error),
+              error: errorInfo,
               fileId,
               userId,
+              captionLength: embeddingRecord.caption.length,
+              captionPreview: embeddingRecord.caption.substring(0, 80),
             },
-            'Failed to generate text embedding from caption - image still searchable via imageVector'
+            'FAILED to generate contentVector from caption - image missing from hybrid text search'
           );
         }
+      } else {
+        logger.warn(
+          { fileId, userId },
+          'No caption available for contentVector generation'
+        );
       }
 
       // Index in Azure AI Search

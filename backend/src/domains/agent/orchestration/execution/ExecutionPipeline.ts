@@ -21,6 +21,7 @@
 
 import { randomUUID } from 'crypto';
 import type { NormalizedAgentEvent, NormalizedToolRequestEvent, AgentIdentity } from '@bc-agent/shared';
+import { isInternalTool } from '@bc-agent/shared';
 import {
   AGENT_ID,
   AGENT_DISPLAY_NAME,
@@ -171,6 +172,16 @@ export class ExecutionPipeline {
       // Emit agent_changed event when agent transitions (skip for 'complete' events)
       if (eventAgentId && eventAgentId !== previousAgentId && event.type !== 'complete') {
         emitAgentChanged(ctx, sessionId, previousAgentId, eventAgentId);
+
+        // Persist agent transition for audit trail
+        persistenceCoordinator.persistAgentChangedAsync(sessionId, {
+          eventId: randomUUID(),
+          previousAgentId,
+          currentAgentId: eventAgentId,
+          handoffType: previousAgentId ? 'agent_handoff' : 'supervisor_routing',
+          timestamp: new Date().toISOString(),
+        });
+
         previousAgentId = eventAgentId;
       }
 
@@ -190,10 +201,10 @@ export class ExecutionPipeline {
         finalMessageId = tracked.finalMessageId!;
       }
 
-      // Track tools used (skip handoff tools)
+      // Track tools used (skip internal infrastructure tools)
       if (event.type === 'tool_request') {
         const toolEvent = event as NormalizedToolRequestEvent;
-        if (!toolEvent.toolName.startsWith('transfer_to_')) {
+        if (!isInternalTool(toolEvent.toolName)) {
           toolsUsed.push(toolEvent.toolName);
         }
       }

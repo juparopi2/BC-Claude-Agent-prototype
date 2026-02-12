@@ -78,3 +78,21 @@ export type AgentCapability = (typeof AGENT_CAPABILITY)[keyof typeof AGENT_CAPAB
 export const AGENT_API = {
   BASE: '/api/agents',
 } as const;
+
+// ============================================
+// INTERNAL TOOL DETECTION
+// ============================================
+
+/**
+ * Prefixes for internal infrastructure tools (handoff, transfer-back).
+ * These tools are NOT user-facing and should be filtered from the UI.
+ */
+export const INTERNAL_TOOL_PREFIXES = ['transfer_to_', 'transfer_back_to_'] as const;
+
+/**
+ * Check if a tool name is an internal infrastructure tool.
+ * Internal tools (handoffs, transfer-backs) should be hidden from the chat UI.
+ */
+export function isInternalTool(toolName: string): boolean {
+  return INTERNAL_TOOL_PREFIXES.some(prefix => toolName.startsWith(prefix));
+}

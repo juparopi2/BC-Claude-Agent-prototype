@@ -3,7 +3,7 @@
  *
  * Tracks agent processing groups during multi-agent execution.
  * Each group represents one agent's processing phase within a turn.
- * Used by PRD-061 to render collapsible agent sections in the chat UI.
+ * Used by PRD-061/092 to render agent-grouped sections in the chat UI.
  *
  * @module domains/chat/stores/agentWorkflowStore
  */
@@ -27,8 +27,6 @@ export interface AgentProcessingGroup {
   agent: AgentIdentity;
   /** Message IDs belonging to this group (thinking, tool_use, messages) */
   messageIds: string[];
-  /** Whether this group is collapsed in the UI */
-  isCollapsed: boolean;
   /** Whether this is the final agent that produces the user-facing response */
   isFinal: boolean;
   /** Transition info (how we got to this agent) */
@@ -64,10 +62,6 @@ export interface AgentWorkflowActions {
   addMessageToCurrentGroup: (messageId: string) => void;
   /** Mark the last group as final (on complete event) */
   markLastGroupFinal: () => void;
-  /** Toggle collapse state of a group */
-  toggleGroupCollapse: (groupId: string) => void;
-  /** Set collapse state of a group */
-  setGroupCollapsed: (groupId: string, collapsed: boolean) => void;
   /** Reconstruct groups from persisted messages (session reload) */
   reconstructFromMessages: (messages: Message[]) => void;
   /** End the current turn */
@@ -121,7 +115,6 @@ export const useAgentWorkflowStore = create<AgentWorkflowStore>()(
           id: createGroupId(),
           agent,
           messageIds: [],
-          isCollapsed: true, // Default: collapsed (non-final groups)
           isFinal: false,
           transition,
         };
@@ -155,32 +148,15 @@ export const useAgentWorkflowStore = create<AgentWorkflowStore>()(
         groups[lastIdx] = {
           ...groups[lastIdx],
           isFinal: true,
-          isCollapsed: false, // Final group is expanded by default
         };
         return { groups };
       });
     },
 
-    toggleGroupCollapse: (groupId) => {
-      set((state) => {
-        const groups = state.groups.map((g) =>
-          g.id === groupId ? { ...g, isCollapsed: !g.isCollapsed } : g
-        );
-        return { groups };
-      });
-    },
-
-    setGroupCollapsed: (groupId, collapsed) => {
-      set((state) => {
-        const groups = state.groups.map((g) =>
-          g.id === groupId ? { ...g, isCollapsed: collapsed } : g
-        );
-        return { groups };
-      });
-    },
-
     reconstructFromMessages: (messages) => {
-      // Reconstruct groups from agent_identity field on persisted messages
+      // Reconstruct groups from agent_identity field on persisted messages.
+      // Messages without agent_identity are assigned to the current group
+      // (handles missing agent_id on thinking/tool events from DB).
       const groups: AgentProcessingGroup[] = [];
       let currentAgentId: string | undefined;
       groupCounter = 0;
@@ -189,7 +165,15 @@ export const useAgentWorkflowStore = create<AgentWorkflowStore>()(
         if (msg.role !== 'assistant' && (msg as { role: string }).role !== 'assistant') continue;
 
         const agentIdentity = msg.agent_identity;
-        if (!agentIdentity) continue;
+
+        // If no agent_identity, assign to current group (if one exists)
+        if (!agentIdentity) {
+          if (groups.length > 0) {
+            groups[groups.length - 1].messageIds.push(msg.id);
+          }
+          // Skip messages with no identity and no existing group
+          continue;
+        }
 
         if (agentIdentity.agentId !== currentAgentId) {
           // New agent group
@@ -198,7 +182,6 @@ export const useAgentWorkflowStore = create<AgentWorkflowStore>()(
             id: createGroupId(),
             agent: agentIdentity,
             messageIds: [msg.id],
-            isCollapsed: true,
             isFinal: false,
             transition: previousGroup
               ? {
@@ -217,7 +200,6 @@ export const useAgentWorkflowStore = create<AgentWorkflowStore>()(
       // Mark last group as final
       if (groups.length > 0) {
         groups[groups.length - 1].isFinal = true;
-        groups[groups.length - 1].isCollapsed = false;
       }
 
       set({

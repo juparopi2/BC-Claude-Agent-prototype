@@ -25,6 +25,7 @@ import type {
   NormalizedCompleteEvent,
   NormalizedStopReason,
 } from '@bc-agent/shared';
+import { isInternalTool } from '@bc-agent/shared';
 import { normalizeAIMessage, normalizeStopReason } from './MessageNormalizer';
 import type { IBatchResultNormalizer, BatchNormalizerOptions } from '../interfaces/IBatchResultNormalizer';
 
@@ -175,14 +176,14 @@ export class BatchResultNormalizer implements IBatchResultNormalizer {
       }
     }
 
-    // 3.5 Mark handoff tool events (transfer_to_*) as transient and internal (PRD-061)
+    // 3.5 Mark internal tool events (transfer_to_*, transfer_back_to_*) as transient (PRD-061/092)
     for (const event of interleavedEvents) {
       if (
         (event.type === 'tool_request' || event.type === 'tool_response') &&
         'toolName' in event &&
-        (event as { toolName: string }).toolName.startsWith('transfer_to_')
+        isInternalTool((event as { toolName: string }).toolName)
       ) {
-        (event as { persistenceStrategy: string }).persistenceStrategy = 'transient';
+        (event as { persistenceStrategy: string }).persistenceStrategy = 'async_allowed';
         (event as { isInternal: boolean }).isInternal = true;
       }
     }

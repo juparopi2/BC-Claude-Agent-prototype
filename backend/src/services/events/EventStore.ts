@@ -38,7 +38,8 @@ export type EventType =
   | 'session_started'
   | 'session_ended'
   | 'error_occurred'
-  | 'citations_created';
+  | 'citations_created'
+  | 'agent_changed';
 
 /**
  * Base Event

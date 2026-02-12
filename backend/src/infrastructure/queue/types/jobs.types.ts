@@ -20,7 +20,7 @@ export interface MessagePersistenceJob {
   sessionId: string;
   messageId: string;
   role: 'user' | 'assistant' | 'system';
-  messageType: 'text' | 'thinking' | 'tool_use' | 'tool_result' | 'error';
+  messageType: 'text' | 'thinking' | 'tool_use' | 'tool_result' | 'error' | 'agent_changed';
   content: string;
   metadata?: Record<string, unknown>;
   /** Sequence number from EventStore */
@@ -43,6 +43,8 @@ export interface MessagePersistenceJob {
   correlationId?: string;
   /** Agent ID for per-message attribution (PRD-070) */
   agentId?: string;
+  /** Whether this is an internal infrastructure event (audit-only, not user-visible) */
+  isInternal?: boolean;
 }
 
 /**

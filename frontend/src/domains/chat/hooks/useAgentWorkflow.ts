@@ -15,12 +15,10 @@ import type { AgentProcessingGroup } from '../stores/agentWorkflowStore';
 export function useAgentWorkflow() {
   const groups = useAgentWorkflowStore((s) => s.groups);
   const isTurnActive = useAgentWorkflowStore((s) => s.isTurnActive);
-  const toggleGroupCollapse = useAgentWorkflowStore((s) => s.toggleGroupCollapse);
 
   return {
     groups,
     isTurnActive,
-    toggleGroupCollapse,
     hasGroups: groups.length > 0,
   };
 }

@@ -627,3 +627,118 @@ const sessionId = "A1B2C3D4-E5F6-7890-1234-567890ABCDEF";
 const userId = rawId.toLowerCase(); // Never lowercase
 const sessionId = "a1b2c3d4-e5f6-7890-1234-567890abcdef";
 ```
+
+---
+
+## 14. Multi-Agent Architecture Principles
+
+This section documents the fundamental principles governing the multi-agent system. These are **architectural invariants** — they apply regardless of which agents exist, which LLM providers are used, or how the UI is designed.
+
+### 14.1 Event Lifecycle
+
+Every agent interaction produces events that flow through a well-defined lifecycle:
+
+```
+Creation → Normalization → Attribution → Filtering → Persistence → Reconstruction
+```
+
+1. **Creation**: LLM providers produce raw responses (thinking blocks, text, tool calls). The format varies by provider.
+2. **Normalization**: Raw responses are converted into a provider-agnostic `NormalizedAgentEvent[]`. This is the canonical event format used by all downstream stages.
+3. **Attribution**: Each event is tagged with its originating agent identity (`sourceAgentId`). This enables the UI to group events by agent.
+4. **Filtering**: Internal infrastructure events (routing, handoffs) are separated from user-facing events. Filtering happens at multiple layers (normalization, WebSocket processing, rendering).
+5. **Persistence**: Events are saved according to their persistence strategy. Sequence numbers are pre-allocated atomically to guarantee global ordering.
+6. **Reconstruction**: On page reload, the frontend reconstructs the UI from persisted events. The reconstructed UI must match what the user saw during live execution.
+
+**Key invariant**: Information available at step N must be propagated to all subsequent steps. If attribution is set at step 3, it must survive through persistence (step 5) and be available at reconstruction (step 6).
+
+### 14.2 Internal vs External Event Classification
+
+Multi-agent systems produce two categories of events:
+
+- **External events**: User-facing content (thinking, tool calls, assistant messages). Persisted, emitted via WebSocket, and rendered in the UI.
+- **Internal events**: Infrastructure artifacts (agent routing, handoff-back signals, transfer tools, agent transitions). Persisted for audit trail (with `is_internal=true`) but NOT emitted via WebSocket and filtered from the API on page reload.
+
+**Core principle: Persistence != Visibility.** All substantive events are persisted for audit and debugging. Visibility is a separate concern handled by:
+1. Backend EventProcessor: suppresses WebSocket emission for `isInternal` events
+2. Backend SessionService: filters `is_internal` events from the reload API query
+3. Frontend processAgentEventSync: defense-in-depth filtering
+
+**Principle**: Internal event detection MUST be centralized in the shared package (`@bc-agent/shared`). Both frontend and backend must use the same classification logic. Scattered hardcoded checks (e.g., `startsWith('transfer_to_')`) across modules create inconsistencies when new internal patterns are added.
+
+**What makes an event internal**:
+- Tool calls that perform agent-to-agent routing (transfer tools)
+- Messages produced as side effects of orchestration (handoff acknowledgments)
+- Agent transition events (`agent_changed`)
+- Any event where `isInternal: true` is set by the normalization layer
+
+### 14.3 Agent Attribution Invariant
+
+**Every persisted assistant-side event MUST carry the identity of the agent that produced it.**
+
+This includes:
+- Thinking/reasoning events
+- Tool request and tool response events
+- Final assistant message events
+
+Without agent attribution, the system cannot:
+- Group events by agent in the UI
+- Show agent badges and visual indicators
+- Reconstruct the same grouped layout on page reload
+
+**Attribution flow**: The agent identity originates from the LangGraph execution context. The normalization layer attaches `sourceAgentId` to each event. All persistence paths must propagate this field to the database `agent_id` column.
+
+**Common failure mode**: A new persistence path is added (e.g., for a new event type) that doesn't include `agentId` in its write operation. This causes the field to be `null` in the database, breaking frontend reconstruction for those events.
+
+### 14.4 Persistence Strategy Classification
+
+Each normalized event declares how it should be persisted:
+
+| Strategy | Meaning | Examples |
+|---|---|---|
+| `sync_required` | Must be persisted synchronously before emission | User messages (need sequence number for ordering) |
+| `async_allowed` | Can be persisted asynchronously after emission | Assistant messages, tool events, internal tools |
+| `transient` | Must NOT be persisted | Completion signals |
+
+**Note**: Internal events (transfer tools, agent transitions) are `async_allowed` with `isInternal: true`. They are persisted with `is_internal=true` in the database for audit trail but not emitted via WebSocket. The `transient` strategy is now reserved for truly ephemeral events like completion signals.
+
+**Principle**: The persistence layer must respect the declared strategy. Logging alerts (CRITICAL/ERROR) should only fire for events that SHOULD have been persisted but weren't — not for intentionally transient events.
+
+### 14.5 Frontend Reconstruction Fidelity
+
+**The UI shown during live execution must match the UI shown after a page reload.**
+
+This is a system-level contract between backend persistence and frontend reconstruction:
+
+1. **Live path**: WebSocket events → frontend stores → render
+2. **Reload path**: Database query → message transformation → frontend stores → render
+
+Both paths must produce the same visual result. When they diverge, it indicates one of:
+- Missing data in the database (attribution, event type, content)
+- Frontend reconstruction logic that doesn't handle all message variations
+- Events that were visible live but not persisted (missing persistence path)
+
+**Testing approach**: After any change to event processing or persistence, verify both the live experience AND the reloaded experience show consistent results.
+
+### 14.6 Supervisor-Worker Separation
+
+The multi-agent system follows a **supervisor-worker** pattern:
+
+- **Supervisor**: Analyzes intent, routes to workers, and synthesizes final responses. May have extended thinking enabled for deeper reasoning.
+- **Workers**: Domain-specific agents (ERP, RAG, etc.) that execute tasks using domain tools. Operate with deterministic temperature settings.
+
+**Key constraints**:
+- The supervisor exclusively controls agent routing — workers never decide which agent runs next
+- Workers must use domain tools on their first call (enforced by the tool enforcement layer) to ensure grounded responses
+- Each worker has its own system prompt, tool set, and model configuration optimized for its domain
+- Thinking and tool_choice cannot coexist (Anthropic constraint) — only the supervisor uses thinking; workers use tool enforcement instead
+
+### 14.7 Shared Package as Source of Truth
+
+The `@bc-agent/shared` package is the **single source of truth** for cross-cutting agent definitions:
+
+- **Agent identifiers**: IDs, display names, icons, colors
+- **Event type definitions**: All normalized event types and their shapes
+- **Classification logic**: Internal tool detection, event categorization
+- **Type contracts**: Interfaces shared between frontend and backend
+
+**Principle**: When a concept needs to be consistent across frontend and backend (e.g., "is this tool internal?"), it MUST be defined in the shared package. Duplicating logic across packages creates drift.

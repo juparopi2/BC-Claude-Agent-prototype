@@ -8,15 +8,13 @@ import { useAuthStore, selectUserInitials } from '@/src/domains/auth';
 import { useMessages, useAgentState, useCitationStore, usePagination, useChatAttachmentStore, useAgentWorkflow, type AgentProcessingGroup } from '@/src/domains/chat';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Loader2 } from 'lucide-react';
-import { isToolUseMessage, isToolResultMessage, isThinkingMessage, isStandardMessage, type ChatAttachmentSummary, type ToolUseMessage, type Message } from '@bc-agent/shared';
+import { isToolUseMessage, isToolResultMessage, isThinkingMessage, type ChatAttachmentSummary, type Message } from '@bc-agent/shared';
 import {
   MessageBubble,
   ThinkingBlock,
   ToolCard,
-  AgentBadge,
   ApprovalDialog,
-  AgentProcessingSection,
-  AgentTransitionIndicator,
+  AgentGroupedSection,
 } from '@/src/presentation/chat';
 import { SourcePreviewModal } from '@/components/modals/SourcePreviewModal';
 import type { CitationInfo } from '@/lib/types/citation.types';
@@ -66,8 +64,8 @@ export default function ChatContainer() {
   const userInitials = useAuthStore(selectUserInitials);
   const userId = useAuthStore((s) => s.user?.id);
 
-  // Agent workflow groups (PRD-061) — always shown when groups exist
-  const { groups: workflowGroups, toggleGroupCollapse, hasGroups } = useAgentWorkflow();
+  // Agent workflow groups (PRD-061/092) — always shown when groups exist
+  const { groups: workflowGroups, hasGroups } = useAgentWorkflow();
 
   /**
    * Handle approval response - sends to server via socket
@@ -189,19 +187,8 @@ export default function ChatContainer() {
       if (message.status === 'pending') {
         return null;
       }
-      const toolMsg = message as ToolUseMessage;
       return (
         <div key={message.id}>
-          {toolMsg.agent_identity && (
-            <div className="mb-1">
-              <AgentBadge
-                agentId={toolMsg.agent_identity.agentId}
-                agentName={toolMsg.agent_identity.agentName}
-                icon={toolMsg.agent_identity.agentIcon}
-                color={toolMsg.agent_identity.agentColor}
-              />
-            </div>
-          )}
           <ToolCard
             toolName={message.tool_name}
             toolArgs={message.tool_args}
@@ -225,19 +212,9 @@ export default function ChatContainer() {
       return null;
     }
 
-    // Render standard messages
+    // Render standard messages (agent badge shown at group level, not per-message)
     return (
       <div key={message.id}>
-        {message.role === 'assistant' && message.agent_identity && (
-          <div className="mb-1">
-            <AgentBadge
-              agentId={message.agent_identity.agentId}
-              agentName={message.agent_identity.agentName}
-              icon={message.agent_identity.agentIcon}
-              color={message.agent_identity.agentColor}
-            />
-          </div>
-        )}
         <MessageBubble
           message={message}
           userInitials={userInitials}
@@ -253,8 +230,9 @@ export default function ChatContainer() {
   }, [userInitials, citationFileMap, handleCitationOpen, getMessageCitations, handleCitationInfoOpen, getMessageAttachments, handleAttachmentClick]);
 
   /**
-   * Render messages in workflow mode: grouped by agent processing sections (PRD-061).
-   * User messages are rendered outside sections. Agent messages are grouped into collapsible sections.
+   * Render messages in workflow mode: grouped by agent sections (PRD-092).
+   * User messages are rendered outside sections. Agent messages are grouped
+   * with a colored vertical line and agent badge at the top of each group.
    */
   const renderWorkflowGroups = useCallback((
     allMessages: Message[],
@@ -268,7 +246,6 @@ export default function ChatContainer() {
       }
     }
 
-    // Split messages: user messages are always shown flat, grouped messages go into sections
     const elements: React.ReactNode[] = [];
     let lastRenderedGroupIdx = -1;
 
@@ -284,67 +261,27 @@ export default function ChatContainer() {
         // Find which group this message belongs to
         const groupIdx = groups.findIndex(g => g.messageIds.includes(message.id));
         if (groupIdx >= 0 && groupIdx !== lastRenderedGroupIdx) {
-          // Render transition indicator between groups
           const group = groups[groupIdx];
-          if (groupIdx > 0 && group.transition) {
-            elements.push(
-              <AgentTransitionIndicator
-                key={`transition-${group.id}`}
-                fromAgent={group.transition.fromAgent}
-                toAgent={group.agent}
-                handoffType={group.transition.handoffType}
-                reason={group.transition.reason}
-              />
-            );
-          }
 
-          // Render the entire agent section
+          // Gather all group messages
           const groupMessages = group.messageIds
             .map(id => allMessages.find(m => m.id === id))
             .filter((m): m is Message => m !== undefined);
 
-          // Determine which messages are "final" (non-internal, end_turn)
-          const finalMessages: Message[] = [];
-          const internalMessages: Message[] = [];
-
-          for (const gMsg of groupMessages) {
-            const isFinalResponse = group.isFinal
-              && isStandardMessage(gMsg)
-              && gMsg.role === 'assistant'
-              && (!gMsg.stop_reason || gMsg.stop_reason === 'end_turn')
-              && !gMsg.isInternal;
-
-            if (isFinalResponse) {
-              finalMessages.push(gMsg);
-            } else {
-              internalMessages.push(gMsg);
-            }
-          }
-
-          // Render collapsible section with internal messages
-          if (internalMessages.length > 0) {
+          // Render agent-grouped section (badge + vertical line, no collapsibles)
+          if (groupMessages.length > 0) {
             elements.push(
-              <AgentProcessingSection
+              <AgentGroupedSection
                 key={`section-${group.id}`}
                 agent={group.agent}
-                stepCount={internalMessages.length}
-                isCollapsed={group.isCollapsed}
-                onToggle={() => toggleGroupCollapse(group.id)}
-                isFinal={group.isFinal}
               >
-                {internalMessages.map(m => renderMessage(m))}
-              </AgentProcessingSection>
+                {groupMessages.map(m => renderMessage(m))}
+              </AgentGroupedSection>
             );
-          }
-
-          // Render final messages outside the collapsible
-          for (const fm of finalMessages) {
-            elements.push(renderMessage(fm));
           }
 
           lastRenderedGroupIdx = groupIdx;
         }
-        // Skip individual rendering since we rendered the whole group
         continue;
       }
 
@@ -353,7 +290,7 @@ export default function ChatContainer() {
     }
 
     return elements;
-  }, [renderMessage, toggleGroupCollapse]);
+  }, [renderMessage]);
 
   // Auto-scroll to bottom when new messages arrive (only if we were near bottom or it's a new message)
   // Simplified: Auto-scroll on new message if it's the latest one

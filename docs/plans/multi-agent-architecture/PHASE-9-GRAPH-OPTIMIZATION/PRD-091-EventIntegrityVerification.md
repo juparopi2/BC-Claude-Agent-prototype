@@ -1,6 +1,6 @@
 # PRD-091: Event Transmission, Persistence & Integrity Verification
 
-**Estado**: 🟡 PLANIFICADO
+**Estado**: 🟠 EN PROGRESO (60%)
 **Fecha**: 2026-02-11
 **Fase**: 9 (Graph Optimization)
 **Dependencias**: PRD-061 (Agent Workflow Visibility), PRD-090 (Graph Logic Optimization)
@@ -510,3 +510,4 @@ npm run -w bc-agent-frontend test         # Frontend tests
 | Fecha | Cambios |
 |-------|---------|
 | 2026-02-11 | Creacion inicial: analisis de integridad de eventos, root cause por elemento faltante, estrategia de remediacion en 5 fases. |
+| 2026-02-12 | Scope revision per PRD-092: Phase 9.A marked "Completed by PRD-090". Phase 9.B DEFERRED (no consumer for transitions after PRD-092 removes transition UI). Phase 9.D COMPLETE (isInternal check added). Phase 9.E revised to "fix agent_id on all persisted messages" — agentId now propagated through tool persistence chain. New Phase 9.F: INTERNAL_TOOL_PREFIXES + isInternalTool() added to @bc-agent/shared. |

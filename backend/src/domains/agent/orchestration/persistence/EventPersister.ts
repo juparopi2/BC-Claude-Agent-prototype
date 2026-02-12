@@ -133,7 +133,8 @@ export function persistAsyncEvent(
   sessionId: string,
   ctx: ExecutionContextSync,
   persistenceCoordinator: IPersistenceCoordinator,
-  preAllocatedSeq?: number
+  preAllocatedSeq?: number,
+  agentId?: string
 ): void {
   // Handle tool_request: Register in lifecycle manager with pre-allocated seq
   if (event.type === 'tool_request') {
@@ -148,7 +149,8 @@ export function persistAsyncEvent(
       toolReqEvent.toolUseId,
       toolReqEvent.toolName,
       normalizedArgs,
-      preAllocatedSeq
+      preAllocatedSeq,
+      (event as { isInternal?: boolean }).isInternal
     );
 
     logger.debug(
@@ -188,6 +190,8 @@ export function persistAsyncEvent(
         timestamp: completeState.completedAt?.toISOString() ?? new Date().toISOString(),
         preAllocatedToolUseSeq: completeState.preAllocatedToolUseSeq,
         preAllocatedToolResultSeq: completeState.preAllocatedToolResultSeq,
+        agentId,
+        isInternal: completeState.isInternal,
       };
 
       // Fire-and-forget persistence

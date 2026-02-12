@@ -97,6 +97,12 @@ export interface ToolState {
    * Set when tool_response completes the lifecycle.
    */
   preAllocatedToolResultSeq?: number;
+
+  /**
+   * Whether this tool is an internal infrastructure tool (e.g., transfer_to_*).
+   * Internal tools are persisted for audit but not visible to users.
+   */
+  isInternal?: boolean;
 }
 
 /**
@@ -135,6 +141,8 @@ export interface IToolPersistenceCoordinator {
       preAllocatedToolUseSeq?: number;
       /** Pre-allocated sequence for tool_use_completed event */
       preAllocatedToolResultSeq?: number;
+      /** Whether this is an internal infrastructure tool */
+      isInternal?: boolean;
     }>
   ): void;
 }
@@ -171,7 +179,8 @@ export interface IToolLifecycleManager {
     toolUseId: string,
     toolName: string,
     args: Record<string, unknown>,
-    preAllocatedSeq?: number
+    preAllocatedSeq?: number,
+    isInternal?: boolean
   ): void;
 
   /**

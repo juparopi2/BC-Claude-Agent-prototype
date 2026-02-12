@@ -20,6 +20,7 @@ import type {
   Message,
   ChatAttachmentSummary,
 } from '@bc-agent/shared';
+import { isInternalTool } from '@bc-agent/shared';
 import { getMessageStore } from '../stores/messageStore';
 import { getAgentStateStore } from '../stores/agentStateStore';
 import { getApprovalStore } from '../stores/approvalStore';
@@ -167,9 +168,8 @@ export function processAgentEventSync(
     case 'tool_use': {
       const toolEvent = event as ToolUseEvent;
 
-      // Track transfer tools in workflow store but don't add to message list (PRD-061)
-      if (toolEvent.toolName?.startsWith('transfer_to_')) {
-        // Transfer tools are internal workflow artifacts, tracked but not displayed as messages
+      // Filter internal infrastructure tools (transfer_to_*, transfer_back_to_*)
+      if (toolEvent.toolName && isInternalTool(toolEvent.toolName)) {
         break;
       }
 
@@ -205,8 +205,8 @@ export function processAgentEventSync(
     case 'tool_result': {
       const resultEvent = event as ToolResultEvent;
 
-      // Skip handoff transfer tool results - matches tool_use filter above
-      if (resultEvent.toolName?.startsWith('transfer_to_')) {
+      // Skip internal infrastructure tool results (matches tool_use filter)
+      if (resultEvent.toolName && isInternalTool(resultEvent.toolName)) {
         break;
       }
 
@@ -245,6 +245,12 @@ export function processAgentEventSync(
 
     case 'message': {
       const msgEvent = event as MessageEvent;
+
+      // Filter internal messages (e.g., handoff-back confirmations)
+      if ((event as { isInternal?: boolean }).isInternal) {
+        break;
+      }
+
       // FIX: Use eventIndex as fallback when sequenceNumber is not yet available
       const eventWithIndex = event as { eventIndex?: number };
 

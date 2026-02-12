@@ -277,14 +277,22 @@ export class ChatMessageHandler {
         case 'message':
           // ✅ PHASE 1B: Persistence handled by AgentOrchestrator
           // AgentOrchestrator writes directly to EventStore + MessageQueue
-          // No fallback needed - if persistenceState is not 'persisted', it's a critical bug
+          // Internal events are now persisted for audit but NOT emitted via WebSocket.
+          // This check is defense-in-depth — internal events should never reach here.
           if ((event as MessageEvent).persistenceState !== 'persisted') {
-            this.logger.error('❌ CRITICAL: Complete message NOT marked as persisted by AgentOrchestrator', {
-              messageId: (event as MessageEvent).messageId,
-              sequenceNumber: (event as MessageEvent).sequenceNumber,
-              errorContext: 'AgentOrchestrator must persist before emitting'
-            });
-            // We log error but don't throw to avoid crashing the socket connection for the user
+            const isInternal = (event as { isInternal?: boolean }).isInternal;
+            if (isInternal) {
+              this.logger.debug('Internal message skipped persistence (expected)', {
+                messageId: (event as MessageEvent).messageId,
+                persistenceState: (event as MessageEvent).persistenceState,
+              });
+            } else {
+              this.logger.error('❌ CRITICAL: Complete message NOT marked as persisted by AgentOrchestrator', {
+                messageId: (event as MessageEvent).messageId,
+                sequenceNumber: (event as MessageEvent).sequenceNumber,
+                errorContext: 'AgentOrchestrator must persist before emitting'
+              });
+            }
           } else {
              this.logger.info('✅ Complete message confirmed persisted', {
                 messageId: (event as MessageEvent).messageId,

@@ -55,6 +55,7 @@ export class MessagePersistenceWorker {
       sessionId, messageId, role, messageType, content, metadata,
       sequenceNumber, eventId, toolUseId, stopReason,
       model, inputTokens, outputTokens, userId, correlationId, agentId,
+      isInternal,
     } = job.data;
 
     // Create job-scoped logger with user context and timestamp
@@ -131,6 +132,7 @@ export class MessagePersistenceWorker {
           input_tokens: inputTokens ?? null,
           output_tokens: outputTokens ?? null,
           agent_id: agentId ?? null,
+          is_internal: isInternal ?? false,
         },
         update: {}, // No-op on conflict - idempotent insert
       });

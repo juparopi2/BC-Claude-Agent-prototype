@@ -494,6 +494,8 @@ export class PersistenceCoordinator implements IPersistenceCoordinator {
             sequenceNumber: toolUseDbEvent.sequence_number,
             eventId: toolUseDbEvent.id,
             toolUseId: exec.toolUseId,
+            agentId: exec.agentId,
+            isInternal: exec.isInternal,
           });
 
           const toolResultPayload = {
@@ -530,6 +532,8 @@ export class PersistenceCoordinator implements IPersistenceCoordinator {
             sequenceNumber: toolResultDbEvent.sequence_number,
             eventId: toolResultDbEvent.id,
             toolUseId: exec.toolUseId,
+            agentId: exec.agentId,
+            isInternal: exec.isInternal,
           });
 
           this.logger.info(
@@ -553,6 +557,93 @@ export class PersistenceCoordinator implements IPersistenceCoordinator {
             'Failed to persist tool events'
           );
         }
+      }
+    })();
+  }
+
+  /**
+   * Persist an agent_changed transition event for audit trail.
+   * Fire-and-forget: reserves sequence, appends to EventStore, queues DB write.
+   *
+   * @param sessionId - Session ID
+   * @param data - Agent transition data
+   */
+  persistAgentChangedAsync(sessionId: string, data: {
+    eventId: string;
+    previousAgentId?: string;
+    currentAgentId: string;
+    handoffType: string;
+    timestamp: string;
+  }): void {
+    // Use IIFE for background processing
+    (async () => {
+      try {
+        // 1. Reserve a single sequence number
+        const reserved = await this.eventStore.reserveSequenceNumbers(sessionId, 1);
+        const sequenceNumber = reserved[0]!; // Always 1 element since count=1
+
+        // 2. Append to EventStore with pre-allocated sequence
+        const dbEvent = await this.eventStore.appendEventWithSequence(
+          sessionId,
+          'agent_changed',
+          {
+            event_id: data.eventId,
+            previous_agent_id: data.previousAgentId ?? null,
+            current_agent_id: data.currentAgentId,
+            handoff_type: data.handoffType,
+            timestamp: data.timestamp,
+            persistenceState: 'persisted',
+          },
+          sequenceNumber
+        );
+
+        // 3. Queue DB write with is_internal=true
+        await this.messageQueue.addMessagePersistence({
+          sessionId,
+          messageId: data.eventId,
+          role: 'assistant',
+          messageType: 'agent_changed',
+          content: JSON.stringify({
+            previousAgentId: data.previousAgentId,
+            currentAgentId: data.currentAgentId,
+            handoffType: data.handoffType,
+          }),
+          metadata: {
+            previous_agent_id: data.previousAgentId,
+            current_agent_id: data.currentAgentId,
+            handoff_type: data.handoffType,
+          },
+          sequenceNumber: dbEvent.sequence_number,
+          eventId: dbEvent.id,
+          agentId: data.currentAgentId,
+          isInternal: true,
+        });
+
+        this.logger.info(
+          {
+            sessionId,
+            eventId: data.eventId,
+            previousAgentId: data.previousAgentId,
+            currentAgentId: data.currentAgentId,
+            sequenceNumber: dbEvent.sequence_number,
+          },
+          'Agent transition persisted for audit'
+        );
+      } catch (err) {
+        // Log error but don't throw (fire-and-forget)
+        const errorInfo = err instanceof Error
+          ? { message: err.message, stack: err.stack, name: err.name }
+          : { value: String(err) };
+
+        this.logger.error(
+          {
+            error: errorInfo,
+            sessionId,
+            eventId: data.eventId,
+            currentAgentId: data.currentAgentId,
+          },
+          'Failed to persist agent transition'
+        );
       }
     })();
   }

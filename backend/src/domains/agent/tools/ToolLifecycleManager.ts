@@ -81,7 +81,8 @@ export class ToolLifecycleManager implements IToolLifecycleManager {
     toolUseId: string,
     toolName: string,
     args: Record<string, unknown>,
-    preAllocatedSeq?: number
+    preAllocatedSeq?: number,
+    isInternal?: boolean
   ): void {
     // Check for duplicate request (should not happen but defensive)
     if (this.pendingTools.has(toolUseId)) {
@@ -100,6 +101,7 @@ export class ToolLifecycleManager implements IToolLifecycleManager {
       args,
       requestedAt: new Date(),
       preAllocatedToolUseSeq: preAllocatedSeq,
+      isInternal,
     };
 
     this.pendingTools.set(toolUseId, toolState);

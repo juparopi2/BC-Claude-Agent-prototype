@@ -60,6 +60,15 @@ Related: infrastructure/config/models.ts (source of truth for roles)
 - `FirstCallToolEnforcer.ts` only applies to worker agents (thinking disabled)
 - Prevention: parameterized test in `agent-builders.test.ts` validates all agents
 
+### Supervisor vs Worker Model Strategy
+
+The multi-agent system uses fundamentally different model configurations for supervisor and workers:
+
+- **Supervisor**: Thinking enabled, no tools, no tool enforcement. Optimized for reasoning about routing decisions.
+- **Workers**: Thinking disabled, domain tools, FirstCallToolEnforcer active. Optimized for grounded, tool-using responses.
+
+This split exists because Anthropic's API prohibits combining thinking with tool_choice. Rather than a limitation, this creates a clean separation: the supervisor reasons deeply about *what* to do, while workers execute *how* to do it using tools.
+
 ### FirstCallToolEnforcer
 
 - **Location**: `core/langchain/FirstCallToolEnforcer.ts`

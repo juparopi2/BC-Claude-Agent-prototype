@@ -222,6 +222,11 @@ export class SessionService {
     const rows = await prisma.messages.findMany({
       where: {
         session_id: sessionId,
+        // Filter out internal events (audit-only, not user-visible)
+        OR: [
+          { is_internal: false },
+          { is_internal: null },   // Backward compat for pre-migration rows
+        ],
         ...(before ? { sequence_number: { lt: before } } : {}),
       },
       orderBy: { sequence_number: 'desc' },

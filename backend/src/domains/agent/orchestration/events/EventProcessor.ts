@@ -105,8 +105,10 @@ export async function processNormalizedEvent(
     agentEvent.sequenceNumber = persistResult.sequenceNumber;
   }
 
-  // STEP 4: Emit to WebSocket
-  emitEventSync(ctx, agentEvent);
+  // STEP 4: Emit to WebSocket (skip internal events — they are persisted but not user-visible)
+  if (!(event as { isInternal?: boolean }).isInternal) {
+    emitEventSync(ctx, agentEvent);
+  }
 
   // STEP 5: Extract citations from tool_response events
   if (event.type === 'tool_response') {
@@ -120,7 +122,7 @@ export async function processNormalizedEvent(
 
   // STEP 7: Handle async persistence
   if (allowsAsyncPersistence(event)) {
-    persistAsyncEvent(event, sessionId, ctx, persistenceCoordinator, preAllocatedSeq);
+    persistAsyncEvent(event, sessionId, ctx, persistenceCoordinator, preAllocatedSeq, agentId);
   }
 }
 

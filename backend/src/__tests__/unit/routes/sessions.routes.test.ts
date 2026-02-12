@@ -439,7 +439,13 @@ describe('Sessions Routes', () => {
       // 1 findFirst (ownership) + 1 messages.findMany
       expect(mockSessions.findFirst).toHaveBeenCalledTimes(1);
       expect(mockMessages.findMany).toHaveBeenCalledWith({
-        where: { session_id: VALID_SESSION_UUID },
+        where: {
+          session_id: VALID_SESSION_UUID,
+          OR: [
+            { is_internal: false },
+            { is_internal: null },
+          ],
+        },
         orderBy: { sequence_number: 'desc' },
         take: 51,
       });
@@ -458,7 +464,13 @@ describe('Sessions Routes', () => {
 
       // Assert - fetchLimit is limit + 1 for hasMore check
       expect(mockMessages.findMany).toHaveBeenCalledWith({
-        where: { session_id: paginationSessionUUID },
+        where: {
+          session_id: paginationSessionUUID,
+          OR: [
+            { is_internal: false },
+            { is_internal: null },
+          ],
+        },
         orderBy: { sequence_number: 'desc' },
         take: 11,
       });

@@ -160,6 +160,10 @@ export interface ToolExecution {
    * When provided, uses appendEventWithSequence instead of appendEvent.
    */
   preAllocatedToolResultSeq?: number;
+  /** Agent ID that executed this tool (for per-message attribution) */
+  agentId?: string;
+  /** Whether this is an internal infrastructure tool (audit-only, not user-visible) */
+  isInternal?: boolean;
 }
 
 /**
@@ -268,6 +272,20 @@ export interface IPersistenceCoordinator {
       isImage: boolean;
     }>
   ): void;
+
+  /**
+   * Persist an agent_changed transition event for audit trail.
+   * Fire-and-forget: reserves sequence, appends to EventStore, queues DB write.
+   * @param sessionId - Session ID
+   * @param data - Agent transition data
+   */
+  persistAgentChangedAsync(sessionId: string, data: {
+    eventId: string;
+    previousAgentId?: string;
+    currentAgentId: string;
+    handoffType: string;
+    timestamp: string;
+  }): void;
 
   /**
    * Persist message-to-chat-attachment links asynchronously (fire-and-forget).

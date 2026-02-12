@@ -76,6 +76,8 @@ export {
   AGENT_DESCRIPTION,
   AGENT_CAPABILITY,
   AGENT_API,
+  INTERNAL_TOOL_PREFIXES,
+  isInternalTool,
   type AgentId,
   type AgentCapability,
 } from './agent-registry.constants';

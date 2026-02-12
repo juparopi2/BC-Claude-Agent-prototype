@@ -1,7 +1,7 @@
 # PRD-091: Event Transmission, Persistence & Integrity Verification
 
-**Estado**: 🟠 EN PROGRESO (60%)
-**Fecha**: 2026-02-11
+**Estado**: 🟢 COMPLETE (Phase 9.B + 9.D)
+**Fecha**: 2026-02-12
 **Fase**: 9 (Graph Optimization)
 **Dependencias**: PRD-061 (Agent Workflow Visibility), PRD-090 (Graph Logic Optimization)
 
@@ -78,29 +78,29 @@ Step 4: 7 messages
 
 ## 3. Root Cause Analysis per Missing Element
 
-### 3.1 `agent_changed` Events — Transient by Design
+### 3.1 `agent_changed` Events — Now Persisted with `is_internal=true`
 
-`agent_changed` events are emitted by `ExecutionPipeline.ts` during live execution but with `persistenceStrategy: 'transient'`. They are **never written to the database**.
+**✅ COMPLETE (Phase 9.B)**: `agent_changed` events are now persisted to the database with `is_internal=true` and `message_type: 'agent_changed'` via `PersistenceCoordinator.persistAgentChangedAsync()`. They are emitted via WebSocket during live execution for real-time UI updates, but also written to the database for audit trail and historical analysis.
 
-**Impact**: No transition indicators on page reload. The `AgentTransitionIndicator` component (PRD-061) only works during live execution.
+**Impact**: Transition indicators are visible during live execution. On page reload, these events are stored in the database but filtered from the API response by the `is_internal` flag in `SessionService.getSessionMessages()`. This ensures the database has a complete audit trail of all agent transitions while the user-facing API returns only content-bearing messages.
 
-**Root cause**: No `message_type` for transitions exists in the database schema. The `messages` table only supports: `text`, `thinking`, `tool_use`, `tool_result`.
+**Implementation**: The `messages` table now has an `is_internal` column (BIT, defaults to 0). Internal events like agent transitions are marked `is_internal=1` during persistence.
 
-### 3.2 Supervisor Routing Context — Partially Lost
+### 3.2 Supervisor Routing Context — Now Persisted for Audit
 
-The supervisor's `transfer_to_bc-agent` tool call is correctly marked as transient/internal by `BatchResultNormalizer.ts:164-174`:
+The supervisor's `transfer_to_bc-agent` tool call is now marked with `persistenceStrategy: 'async_allowed'` (changed from `'transient'`) in `BatchResultNormalizer.ts:164-174`:
 
 ```typescript
 // BatchResultNormalizer.ts:164-174
 if (event.toolName.startsWith('transfer_to_')) {
-  event.persistenceStrategy = 'transient';
+  event.persistenceStrategy = 'async_allowed';  // Changed from 'transient'
   event.isInternal = true;
 }
 ```
 
-**Impact**: The routing decision is invisible on reload. Users only see the result (BC agent response) but not why that agent was chosen.
+**Impact**: The routing decision is now persisted to the database with `is_internal=true` for audit purposes. On page reload, these internal tool calls are filtered from the API response, so users still only see the result (BC agent response) but not the internal routing mechanism. However, the database contains a complete record of all supervisor routing decisions for debugging and analytics.
 
-**Acceptable for now**: Handoff tools are internal infrastructure, not user-facing content. But agent transitions (the fact that a handoff occurred) should be visible.
+**Acceptable design**: Handoff tools are internal infrastructure, not user-facing content. Persisting them as internal events preserves the audit trail without cluttering the user experience.
 
 ### 3.3 Domain Tool Calls — Not Happening
 
@@ -140,24 +140,15 @@ for (let i = 0; i < messages.length; i++) {
 }
 ```
 
-### 3.5 Orchestrator Return Flow — Correctly Hidden
+### 3.5 Orchestrator Return Flow — Persisted for Audit, Hidden from Users
 
-The `transfer_back_to_supervisor` tool call is internal LangGraph machinery. It should NOT be visible to users on reload. The current behavior (transient/internal) is correct.
+The `transfer_back_to_supervisor` tool call is internal LangGraph machinery. It is now persisted with `is_internal=true` for audit trail but filtered from API responses. Users never see it on reload.
 
-### 3.6 ChatMessageHandler "CRITICAL" False Alarm
+### 3.6 ChatMessageHandler Internal Event Check — Now Defense-in-Depth
 
-At `ChatMessageHandler.ts:281-293`:
+**✅ COMPLETE (Phase 9.D)**: At `ChatMessageHandler.ts:281-293`, the handler checks for unpersisted messages. With the new architecture, internal events are no longer emitted via WebSocket (suppressed in `EventProcessor`), so the handler should never see them. The check now serves as defense-in-depth to catch any pipeline bugs where internal events leak through.
 
-```typescript
-case 'message':
-  if ((event as MessageEvent).persistenceState !== 'persisted') {
-    this.logger.error('CRITICAL: Complete message NOT marked as persisted...', { ... });
-  }
-```
-
-This check fires for **all** message events, including transient ones (handoff-back messages with `isInternal: true`). These messages are intentionally not persisted, but the handler doesn't distinguish between "should be persisted but wasn't" and "intentionally transient".
-
-**Impact**: Misleading CRITICAL log entries that create noise in error monitoring.
+**Implementation**: `EventProcessor.processEvent()` now suppresses internal events before WebSocket emission. The handler's check for `isInternal` is retained as a safety net, but should never trigger under normal operation.
 
 ---
 
@@ -170,23 +161,28 @@ This check fires for **all** message events, including transient ones (handoff-b
 | `thinking` | Supervisor extended thinking | Persisted with `sequenceNumber` |
 | `assistant_message` | Domain agent response | Persisted with `sequenceNumber` |
 | `user_message_confirmed` | User input | Persisted before agent execution |
+| `agent_changed` | Agent transitions | **✅ NOW**: Persisted with `is_internal=true` |
 
 ### Tier 2: Should Be Persisted (Action Required)
 
 | Event | Source | Current Status | Proposed Fix |
 |-------|--------|---------------|-------------|
-| `agent_changed` | Agent transitions | Transient | New `message_type: 'transition'` |
 | `tool_use` | Domain tool calls | N/A (tools not called yet) | Will flow automatically after PRD-090 |
 | `tool_result` | Domain tool results | N/A (tools not called yet) | Will flow automatically after PRD-090 |
 
-### Tier 3: Correctly Transient (No Changes Needed)
+### Tier 3: Internal Events — Persisted for Audit, Filtered from API
+
+| Event | Source | Status |
+|-------|--------|--------|
+| `transfer_to_*` tool events | Supervisor handoff tools | **✅ NOW**: Persisted with `is_internal=true`, filtered from API |
+| `transfer_back_to_*` messages | Worker return-to-supervisor | **✅ NOW**: Persisted with `is_internal=true`, filtered from API |
+
+### Tier 4: Correctly Transient (No Changes Needed)
 
 | Event | Source | Rationale |
 |-------|--------|-----------|
 | `session_start` | Session lifecycle | UI-only, reconstructed on reload |
 | `complete` | Execution completion | UI-only, no content to persist |
-| `transfer_to_*` tool events | Supervisor handoff tools | Internal infrastructure |
-| `transfer_back_to_*` messages | Worker return-to-supervisor | Internal infrastructure, `isInternal: true` |
 | Supervisor final empty message | `createSupervisor` bookkeeping (if confirmed) | No user-facing content |
 
 ---
@@ -271,7 +267,7 @@ reconstructFromMessages: (messages) => {
 With PRD-090 (agents call tools) + Phase 9.B (persist transitions):
 
 - **More messages per group**: thinking + tool_use + tool_result + assistant_message per agent
-- **Explicit transitions**: `message_type: 'transition'` messages provide exact `fromAgent`, `toAgent`, `handoffType`
+- **Explicit transitions**: `message_type: 'agent_changed'` messages provide exact `fromAgent`, `toAgent`, `handoffType`
 - **Richer reconstruction**: Groups have intermediate workflow steps visible on reload
 
 ---
@@ -285,66 +281,41 @@ With PRD-090 (agents call tools) + Phase 9.B (persist transitions):
 - Groups in `reconstructFromMessages()` get richer content automatically
 - The "Missing on reload" experience improves significantly without schema changes
 
-### Phase 9.B: Persist Agent Transitions as `message_type: 'transition'`
+### Phase 9.B: Persist Internal Events with `is_internal` Flag
+
+**✅ COMPLETE (2026-02-12)**
 
 #### Database Schema Change
 
-Add `'transition'` as a valid value for the `message_type` column in `messages` table:
+Added `is_internal` column to `messages` table:
 
-```prisma
-// backend/prisma/schema.prisma
-// message_type column: currently NVarChar(20), stores 'text', 'thinking', 'tool_use', 'tool_result'
-// Add: 'transition' for agent_changed events
+```sql
+-- backend/prisma/schema.prisma
+// is_internal column: BIT, defaults to 0
+// Marks events that are persisted for audit but filtered from user-facing API
 ```
 
-Note: Since `message_type` is `NVarChar(20)` (not a Prisma enum), no migration is needed — just ensure the value `'transition'` is accepted by all consumers.
+#### Implementation Details
 
-#### Persist `agent_changed` Events
+1. **New `is_internal` column**: Added to `messages` table (BIT type, defaults to 0)
 
-In `ExecutionPipeline.ts`, change `agent_changed` events from transient emission to persisted events:
+2. **New `message_type: 'agent_changed'`**: Added to supported message types alongside `'text'`, `'thinking'`, `'tool_use'`, `'tool_result'`
 
-```typescript
-// Current: transient emission only
-emitEvent({
-  type: 'agent_changed',
-  persistenceStrategy: 'transient',
-  ...
-});
+3. **`PersistenceCoordinator.persistAgentChangedAsync()`**: New method to persist agent transition events with `is_internal=true`
 
-// Proposed: persist as lightweight message
-emitEvent({
-  type: 'agent_changed',
-  persistenceStrategy: 'async_allowed',  // Changed from 'transient'
-  ...
-});
-```
+4. **`EventType` union updated**: Added `'agent_changed'` to the backend EventType union in `packages/shared/src/types/event.types.ts`
 
-Persist as a `messages` row with:
-- `role: 'system'`
-- `message_type: 'transition'`
-- `content: JSON.stringify({ fromAgent, toAgent, handoffType, reason })`
-- `agent_id: toAgent.agentId`
-- `sequence_number`: from pre-allocated sequences (must be counted in `EventSequencer`)
+5. **Job types updated**: BullMQ job types now include `'agent_changed'` in the persistence pipeline
 
-#### Update Event Counting
+6. **Transfer tool persistence**: Changed from `'transient'` to `'async_allowed'` with `isInternal: true` in `BatchResultNormalizer.ts`
 
-`EventSequencer.ts` must count transition events in the sequence pre-allocation:
+7. **WebSocket emission suppression**: `EventProcessor` now filters internal events before WebSocket emission
 
-```typescript
-// Count transition events for sequence number reservation
-const transitionCount = events.filter(e => e.type === 'agent_changed').length;
-totalEventsToReserve += transitionCount;
-```
+8. **API query filtering**: `SessionService.getSessionMessages()` filters `is_internal=1` events from API responses
 
-#### Update Persistence Handler
+**Design choice**: The implementation uses `is_internal` column + `message_type: 'agent_changed'` rather than the originally proposed `message_type: 'transition'`. This provides more flexibility for future internal event types.
 
-`EventPersister.ts` must handle the new `'transition'` message type:
-
-```typescript
-case 'agent_changed':
-  await this.persistTransition(event, sequenceNumber, sessionId);
-  break;
-```
+**Audit trail preserved**: All internal events (agent transitions, transfer tools) are written to the database for debugging and analytics, but filtered from user-facing queries.
 
 ### Phase 9.C: Investigate Supervisor Empty Message
 
@@ -354,39 +325,46 @@ case 'agent_changed':
 4. If bookkeeping: add `name` check to suppress the "ZERO events" warning
 5. If lost content: fix the stream/adapt pipeline
 
-### Phase 9.D: Fix ChatMessageHandler "CRITICAL" False Alarm
+### Phase 9.D: Fix EventProcessor Internal Event Suppression
 
-Update the check at `ChatMessageHandler.ts:281-293` to distinguish transient from persistence-required messages:
+**✅ COMPLETE (2026-02-12)**
+
+Updated `EventProcessor.processEvent()` to suppress internal events before WebSocket emission:
 
 ```typescript
-case 'message':
-  const msgEvent = event as MessageEvent;
-  // Only log CRITICAL for messages that SHOULD be persisted
-  if (msgEvent.persistenceState !== 'persisted' && !msgEvent.isInternal) {
-    this.logger.error('CRITICAL: Complete message NOT marked as persisted...', { ... });
-  } else if (msgEvent.isInternal) {
-    this.logger.debug('Internal message (transient, not persisted)', {
-      messageId: msgEvent.messageId,
-      isInternal: true,
-    });
-  } else {
-    this.logger.info('Complete message confirmed persisted', { ... });
+// EventProcessor.ts
+async processEvent(event: NormalizedAgentEvent, ctx: ExecutionContext) {
+  // Suppress internal events from WebSocket emission
+  if (event.isInternal) {
+    this.logger.debug({ eventType: event.type, isInternal: true },
+      'Suppressing internal event from WebSocket emission');
+    return;
   }
-  break;
+
+  // Emit to WebSocket for user-facing events only
+  this.agentEventEmitter.emit(event, ctx);
+
+  // Persist according to strategy (internal events handled separately)
+  // ...
+}
 ```
+
+**ChatMessageHandler check now defense-in-depth**: The handler's check for `isInternal` should never trigger under normal operation, since internal events are suppressed earlier in the pipeline. The check remains as a safety net to catch pipeline bugs.
 
 ### Phase 9.E: Enhanced `reconstructFromMessages()` for Rich Workflow Reconstruction
 
-With new `'transition'` messages in the database:
+**DEFERRED**: With PRD-092 removing the transition UI components, there is no consumer for reconstructed agent transitions. This phase is deferred until a future need arises for transition visualization on reload.
 
-1. **Update `messageTransformer.ts`**: Add `'transition'` case to transform DB rows into `TransitionMessageResponse` objects
+When implemented:
 
-2. **Add `TransitionMessageResponse` type** to `@bc-agent/shared`:
+1. **Update `messageTransformer.ts`**: Add `'agent_changed'` case to transform DB rows into `AgentChangedMessageResponse` objects
+
+2. **Add `AgentChangedMessageResponse` type** to `@bc-agent/shared`:
    ```typescript
-   export interface TransitionMessageResponse {
+   export interface AgentChangedMessageResponse {
      id: string;
      role: 'system';
-     message_type: 'transition';
+     message_type: 'agent_changed';
      content: {
        fromAgent: AgentIdentity;
        toAgent: AgentIdentity;
@@ -395,14 +373,15 @@ With new `'transition'` messages in the database:
      };
      agent_identity: AgentIdentity;
      sequence_number: number;
+     is_internal: boolean;  // always true
      created_at: string;
    }
    ```
 
-3. **Update `reconstructFromMessages()`**: Use transition messages for explicit group boundaries instead of inferring from `agent_identity` changes:
+3. **Update `reconstructFromMessages()`**: Use agent_changed messages for explicit group boundaries instead of inferring from `agent_identity` changes:
    ```typescript
-   // If message is a transition, create new group with exact transition info
-   if (msg.message_type === 'transition') {
+   // If message is agent_changed, create new group with exact transition info
+   if (msg.message_type === 'agent_changed' && !msg.is_internal) {
      const transition = JSON.parse(msg.content);
      groups.push({
        agent: transition.toAgent,
@@ -416,9 +395,9 @@ With new `'transition'` messages in the database:
    }
    ```
 
-4. **Backward compatibility**: Fall back to current `agent_identity`-based grouping when transition messages are absent (older sessions)
+4. **Backward compatibility**: Fall back to current `agent_identity`-based grouping when agent_changed messages are absent (older sessions)
 
-5. **Frontend renderer**: Create a `TransitionMessage` component to visually render transition messages (reuse `AgentTransitionIndicator` styling)
+5. **Frontend renderer**: Create an `AgentChangedMessage` component to visually render transition messages (reuse `AgentTransitionIndicator` styling)
 
 ---
 
@@ -439,39 +418,40 @@ npx tsx scripts/queue-status.ts --verbose
 
 ---
 
-## 9. Files to Investigate/Modify (Future Implementation)
+## 9. Files to Investigate/Modify
 
 ### Backend — Persistence
 
-| File | Change | Priority |
-|------|--------|----------|
-| `backend/prisma/schema.prisma` | Document `'transition'` as valid `message_type` value | P1 |
-| `backend/src/domains/agent/orchestration/execution/ExecutionPipeline.ts` | Change `agent_changed` from transient to `async_allowed` | P0 |
-| `backend/src/domains/agent/orchestration/events/EventSequencer.ts` | Count transition events for sequence pre-allocation | P0 |
-| `backend/src/domains/agent/orchestration/persistence/EventPersister.ts` | Handle `'transition'` message type persistence | P0 |
-| `backend/src/modules/agents/supervisor/result-adapter.ts` | Add message content diagnostic logging | P1 |
-| `backend/src/shared/providers/normalizers/BatchResultNormalizer.ts` | Suppress "ZERO events" warning for expected empty messages | P2 |
+| File | Change | Priority | Status |
+|------|--------|----------|--------|
+| `backend/prisma/schema.prisma` | Add `is_internal` column to messages table | P0 | ✅ COMPLETE |
+| `backend/src/domains/agent/persistence/PersistenceCoordinator.ts` | Add `persistAgentChangedAsync()` method | P0 | ✅ COMPLETE |
+| `backend/src/domains/agent/orchestration/events/EventProcessor.ts` | Suppress internal events from WebSocket emission | P0 | ✅ COMPLETE |
+| `backend/src/shared/providers/normalizers/BatchResultNormalizer.ts` | Change transfer tools to `'async_allowed'` with `isInternal: true` | P0 | ✅ COMPLETE |
+| `backend/src/modules/agents/supervisor/result-adapter.ts` | Add message content diagnostic logging | P1 | ⏳ DEFERRED |
+| `backend/src/services/sessions/SessionService.ts` | Filter `is_internal=1` from API responses | P0 | ✅ COMPLETE |
 
 ### Backend — API
 
-| File | Change | Priority |
-|------|--------|----------|
-| `backend/src/services/sessions/transformers/messageTransformer.ts` | Add `'transition'` case | P1 |
-| `backend/src/domains/sessions/types.ts` | Add `TransitionMessageResponse` type | P1 |
-| `backend/src/services/websocket/ChatMessageHandler.ts` | Fix false CRITICAL log (check `isInternal`) | P1 |
+| File | Change | Priority | Status |
+|------|--------|----------|--------|
+| `backend/src/services/sessions/transformers/messageTransformer.ts` | Add `'agent_changed'` case | P1 | ⏳ DEFERRED |
+| `backend/src/domains/sessions/types.ts` | Add `AgentChangedMessageResponse` type | P1 | ⏳ DEFERRED |
+| `backend/src/services/websocket/ChatMessageHandler.ts` | Internal event check now defense-in-depth | P1 | ✅ COMPLETE |
 
 ### Shared Types
 
-| File | Change | Priority |
-|------|--------|----------|
-| `packages/shared/src/types/message.types.ts` | Add `TransitionMessage` type to `MessageResponse` union | P1 |
+| File | Change | Priority | Status |
+|------|--------|----------|--------|
+| `packages/shared/src/types/event.types.ts` | Add `'agent_changed'` to EventType union | P0 | ✅ COMPLETE |
+| `packages/shared/src/types/message.types.ts` | Add `AgentChangedMessage` type to `MessageResponse` union | P1 | ⏳ DEFERRED |
 
 ### Frontend
 
-| File | Change | Priority |
-|------|--------|----------|
-| `frontend/src/domains/chat/stores/agentWorkflowStore.ts` | Enhanced `reconstructFromMessages()` with transition messages | P1 |
-| `frontend/src/presentation/chat/` or `frontend/src/components/chat/` | `TransitionMessage` renderer component | P2 |
+| File | Change | Priority | Status |
+|------|--------|----------|--------|
+| `frontend/src/domains/chat/stores/agentWorkflowStore.ts` | Enhanced `reconstructFromMessages()` with agent_changed messages | P1 | ⏳ DEFERRED |
+| `frontend/src/presentation/chat/` or `frontend/src/components/chat/` | `AgentChangedMessage` renderer component | P2 | ⏳ DEFERRED |
 
 ---
 
@@ -479,28 +459,30 @@ npx tsx scripts/queue-status.ts --verbose
 
 After implementation:
 
-1. **Reload fidelity**: After refresh, agent transitions are visible between message groups
-2. **Tool events visible on reload**: Once PRD-090 is implemented, tool_use/tool_result events appear on reload
-3. **No false CRITICAL logs**: ChatMessageHandler only logs CRITICAL for genuinely un-persisted messages
-4. **Backward compatible**: Old sessions (without transition messages) still reconstruct correctly
-5. **`reconstructFromMessages()`** produces groups identical to live execution (within transient-event limits)
+1. **✅ Internal event audit trail**: `agent_changed` and transfer tool events are persisted with `is_internal=true`
+2. **✅ No WebSocket pollution**: Internal events are suppressed before WebSocket emission
+3. **✅ Clean API responses**: `is_internal=1` events are filtered from user-facing queries
+4. **✅ No false CRITICAL logs**: ChatMessageHandler check is now defense-in-depth
+5. **⏳ Reload fidelity (DEFERRED)**: After Phase 9.E, agent transitions will be visible on reload
+6. **⏳ Tool events visible on reload (BLOCKED by PRD-090)**: Once PRD-090 is implemented, tool_use/tool_result events will appear on reload
 
 ### Verification Commands
 
 ```bash
 # After implementation
 npm run -w backend test:unit              # All tests pass
-npx vitest run "EventPersister"           # Transition persistence tests
-npx vitest run "EventSequencer"           # Sequence counting tests
-npx vitest run "agentWorkflowStore"       # Reconstruction tests (updated)
-npx vitest run "ChatMessageHandler"       # Fixed CRITICAL log tests
+npx vitest run "PersistenceCoordinator"   # Agent changed persistence tests
+npx vitest run "EventProcessor"           # Internal event suppression tests
+npx vitest run "SessionService"           # API filtering tests
+npx vitest run "ChatMessageHandler"       # Defense-in-depth check tests
 npm run -w bc-agent-frontend test         # Frontend tests
 
 # Manual verification
 # 1. Send multi-agent query → verify agent transitions visible live
-# 2. Refresh page → verify transitions still visible
-# 3. Inspect DB: SELECT * FROM messages WHERE message_type = 'transition'
-# 4. Check logs for absence of false CRITICAL entries
+# 2. Check WebSocket traffic → verify NO internal events emitted
+# 3. Inspect DB: SELECT * FROM messages WHERE is_internal = 1
+# 4. Query API: GET /api/sessions/{id}/messages → verify internal events filtered
+# 5. Check logs for absence of false CRITICAL entries
 ```
 
 ---
@@ -511,3 +493,4 @@ npm run -w bc-agent-frontend test         # Frontend tests
 |-------|---------|
 | 2026-02-11 | Creacion inicial: analisis de integridad de eventos, root cause por elemento faltante, estrategia de remediacion en 5 fases. |
 | 2026-02-12 | Scope revision per PRD-092: Phase 9.A marked "Completed by PRD-090". Phase 9.B DEFERRED (no consumer for transitions after PRD-092 removes transition UI). Phase 9.D COMPLETE (isInternal check added). Phase 9.E revised to "fix agent_id on all persisted messages" — agentId now propagated through tool persistence chain. New Phase 9.F: INTERNAL_TOOL_PREFIXES + isInternalTool() added to @bc-agent/shared. |
+| 2026-02-12 | **Phase 9.B COMPLETE**: Internal events (transfer tools, agent transitions) now persisted with `is_internal=true` for audit trail. New `is_internal` column in messages table (BIT, defaults to 0). `PersistenceCoordinator.persistAgentChangedAsync()` method added. Transfer tools changed from `'transient'` to `'async_allowed'` with `isInternal: true` in BatchResultNormalizer. WebSocket emission suppressed for internal events in EventProcessor. API query filters `is_internal=1` in SessionService. **Phase 9.D COMPLETE**: Internal events suppressed in EventProcessor before WebSocket emission. ChatMessageHandler check now serves as defense-in-depth (should never trigger under normal operation). Implementation uses `is_internal` column + `message_type: 'agent_changed'` instead of originally proposed `message_type: 'transition'`. EventType union updated with `'agent_changed'`. BullMQ job types updated to include agent_changed persistence. Phase 9.E DEFERRED until future need for transition visualization on reload. |

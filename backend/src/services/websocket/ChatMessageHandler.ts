@@ -17,6 +17,7 @@ import type { Server, Socket } from 'socket.io';
 import type {
   AgentEvent,
   ThinkingEvent,
+  ThinkingCompleteEvent,
   MessageEvent,
   ToolUseEvent,
   ToolResultEvent,
@@ -348,7 +349,13 @@ export class ChatMessageHandler {
           this.logger.debug('User message confirmed event', { sessionId, userId });
           break;
 
-        // NOTE: thinking_chunk case removed - sync architecture uses thinking_complete only
+        case 'thinking_complete':
+          // Thinking events converted by EventConverter from 'thinking' → 'thinking_complete'
+          // Persistence already handled by AgentOrchestrator (EventPersister)
+          this.logger.debug('Thinking complete event', {
+            sequenceNumber: (event as ThinkingCompleteEvent).sequenceNumber,
+          });
+          break;
 
         case 'turn_paused':
           // ⭐ SDK 0.71: Long agentic turn was paused

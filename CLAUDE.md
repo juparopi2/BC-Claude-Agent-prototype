@@ -358,7 +358,9 @@ The database schema is defined in `backend/prisma/schema.prisma`. This file is t
 - Table and column names
 - Data types
 - Relationships and foreign keys
-- Indexes and constraints
+- Indexes and unique constraints
+
+**CHECK constraints** are enforced at the database level but NOT representable in Prisma schema DSL. They are documented as `///` comments above the relevant models in the schema file. When adding new enum-like values (message types, event types, roles), the corresponding CHECK constraint must be updated via raw SQL. See `backend/prisma/CLAUDE.md` for the full constraint inventory and update procedures.
 
 **To query the schema**: Read `backend/prisma/schema.prisma` directly.
 

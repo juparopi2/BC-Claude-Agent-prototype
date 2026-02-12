@@ -61,9 +61,9 @@ Instead of collapsible sections, use **visual grouping with persistent visibilit
 
 Internal events should never reach the frontend WebSocket handlers:
 
-1. **Backend filtering**: `ChatMessageHandler` checks `isInternal` flag before emitting
+1. **Backend filtering**: `EventProcessor` suppresses WebSocket emission for `isInternal` events
 2. **Type safety**: Frontend message types exclude internal event types
-3. **Persistence alignment**: Only events intended for user consumption are emitted AND persisted
+3. **Persistence ≠ Visibility**: Internal events ARE persisted (with `is_internal=true` for audit trail) but NOT emitted via WebSocket and filtered from the reload API query
 
 ### 2.3 Reconstruction Consistency
 
@@ -149,7 +149,7 @@ Page refresh must produce identical UI to live execution:
 2. **Consistent message transformation**:
    - `messageTransformer.ts` ensures DB messages have same shape as WebSocket events
    - `agent_identity` field preserved consistently
-   - `isInternal` field never set on persisted messages (internal events don't persist)
+   - Internal events persisted with `is_internal=true` but filtered from API query (SessionService)
 
 3. **Testing**:
    - Add test: send multi-agent query, verify live grouping
@@ -267,4 +267,4 @@ npm run -w bc-agent-frontend test
 
 | Fecha | Cambios |
 |-------|---------|
-| 2026-02-12 | Creation: Sprint 1 COMPLETE (internal event filtering), Sprint 2 COMPLETE (remove transition indicators, implement AgentGroupedSection, fix reconstruction consistency, cleanup collapsibles). Sprint 3 IN PROGRESS (agentId propagation through tool chain). |
+| 2026-02-12 | Creation: Sprint 1 COMPLETE (internal event filtering), Sprint 2 COMPLETE (remove transition indicators, implement AgentGroupedSection, fix reconstruction consistency, cleanup collapsibles). Sprint 3 IN PROGRESS (agentId propagation through tool chain). Updated: internal events now persisted with `is_internal=true` for audit (Persistence ≠ Visibility principle). EventProcessor suppresses WebSocket emission. SessionService filters `is_internal` from API. |

@@ -298,6 +298,12 @@ model message_citations {
   @@index([message_id], map: "IX_message_citations_message")
 }
 
+/// CHECK constraints (enforced by DB, not representable in Prisma DSL):
+/// - CK_message_events_valid_type: event_type IN ('user_message_sent','agent_thinking_started','agent_thinking_completed',
+///   'agent_thinking_block','agent_message_sent','agent_message_chunk','session_started','session_ended',
+///   'tool_use_requested','tool_use_completed','error_occurred','todo_created','todo_updated',
+///   'approval_requested','approval_completed','citations_created','agent_changed')
+/// - CK_message_events_sequence_positive: sequence_number >= 0
 model message_events {
   id              String     @id(map: "PK__message___3213E83F3327D1FC") @default(dbgenerated("newid()"), map: "DF__message_even__id__214BF109") @db.UniqueIdentifier
   session_id      String     @db.UniqueIdentifier
@@ -327,6 +333,11 @@ model message_file_attachments {
   @@index([message_id, created_at], map: "IX_message_file_attachments_message")
 }
 
+/// CHECK constraints (enforced by DB, not representable in Prisma DSL):
+/// - chk_messages_role: role IN ('user','assistant','system','tool')
+/// - chk_messages_type: message_type IN ('text','thinking','redacted_thinking','tool_use',
+///   'server_tool_use','web_search_tool_result','tool_result','error','agent_changed')
+/// - chk_messages_stop_reason: stop_reason IN ('end_turn','tool_use','max_tokens','stop_sequence','pause_turn','refusal')
 model messages {
   id              String          @id(map: "PK_messages") @db.NVarChar(255)
   session_id      String          @db.UniqueIdentifier

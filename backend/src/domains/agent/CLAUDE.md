@@ -178,7 +178,8 @@ When introducing a new type of agent event:
 3. If persisted: add persistence path that includes `agentId` in the database write
 4. If visible: ensure the frontend WebSocket processor handles the new type
 5. If internal: register the classification pattern in the shared package
-6. Verify reconstruction: reload the page and confirm the event appears correctly
+6. **Update DB CHECK constraints**: If the event introduces new `message_type` or `event_type` values, update the corresponding CHECK constraint in Azure SQL (see `backend/prisma/CLAUDE.md` → "CHECK Constraints")
+7. Verify reconstruction: reload the page and confirm the event appears correctly
 
 ## Adding New Agents
 

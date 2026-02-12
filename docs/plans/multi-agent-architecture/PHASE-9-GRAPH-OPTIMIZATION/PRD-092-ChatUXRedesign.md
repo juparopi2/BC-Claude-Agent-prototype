@@ -1,6 +1,6 @@
 # PRD-092: Chat UX Redesign — Agent-Grouped Messages
 
-**Estado**: 🟠 EN PROGRESO (Sprint 1 + Sprint 2 COMPLETE, Sprint 3 IN PROGRESS)
+**Estado**: 🟠 EN PROGRESO (Sprint 1 + Sprint 2 COMPLETE, Sprint 3 IN PROGRESS, Phase 92.6 COMPLETE)
 **Fecha**: 2026-02-12
 **Fase**: 9 (Graph Optimization)
 **Dependencias**: PRD-061 (Agent Workflow Visibility), PRD-090 (Graph Logic Optimization), PRD-091 (Event Integrity)
@@ -263,8 +263,29 @@ npm run -w bc-agent-frontend test
 
 ---
 
+### Phase 92.6: Fix Agent Grouping Bugs — ✅ COMPLETE
+
+**Status**: COMPLETE (2026-02-12)
+
+**Objective**: Fix two critical bugs that break the multi-agent grouped UX.
+
+**Bug 1: Live grouping fragmented**
+- **Root cause**: `tool_response` events from `BatchResultNormalizer.createToolResponseMap()` had no `sourceAgentId`. The `ExecutionPipeline` fallback resolved them to `'supervisor'`, causing spurious `agent_changed` emissions that fragmented a single agent group into multiple.
+- **Fix**: In `BatchResultNormalizer.ts`, copy `sourceAgentId` from the `tool_request` to its matched `tool_response` during interleaving. The agent that requested a tool owns its response.
+- **File**: `backend/src/shared/providers/normalizers/BatchResultNormalizer.ts` (+1 line)
+
+**Bug 2: Refresh loses grouping**
+- **Root cause**: `agentWorkflowStore.reconstructFromMessages()` was defined but never called. On page load, `ChatPage.tsx` set messages but never triggered group reconstruction, so `groups = []` and messages rendered flat.
+- **Fix**: In `ChatPage.tsx`, import `getAgentWorkflowStore`, reset workflow store on session change, and call `reconstructFromMessages()` after `setMessages()`.
+- **File**: `frontend/app/chat/[sessionId]/page.tsx` (+4 lines)
+
+**Result**: Consecutive events from the same agent render in a single group both live and after refresh.
+
+---
+
 ## Changelog
 
 | Fecha | Cambios |
 |-------|---------|
 | 2026-02-12 | Creation: Sprint 1 COMPLETE (internal event filtering), Sprint 2 COMPLETE (remove transition indicators, implement AgentGroupedSection, fix reconstruction consistency, cleanup collapsibles). Sprint 3 IN PROGRESS (agentId propagation through tool chain). Updated: internal events now persisted with `is_internal=true` for audit (Persistence ≠ Visibility principle). EventProcessor suppresses WebSocket emission. SessionService filters `is_internal` from API. |
+| 2026-02-12 | Phase 92.6 COMPLETE: Fixed two agent grouping bugs — (1) tool_response sourceAgentId propagation in BatchResultNormalizer eliminates spurious agent transitions, (2) reconstructFromMessages() call in ChatPage.tsx restores grouping on page refresh. |

@@ -29,6 +29,7 @@ import {
   getAgentStateStore,
   getCitationStore,
   getChatAttachmentStore,
+  getAgentWorkflowStore,
   usePendingChatStore,
   getPendingChatStore,
   pendingFileManager,
@@ -81,6 +82,7 @@ export default function ChatPage() {
       messageStore.getState().reset();
       agentStateStore.getState().reset();
       citationStore.getState().clearCitations();
+      getAgentWorkflowStore().getState().reset();
 
       // Select the session in the session store
       await selectSession(sessionId);
@@ -90,6 +92,7 @@ export default function ChatPage() {
       const result = await api.getMessages(sessionId);
       if (result.success) {
         messageStore.getState().setMessages(result.data);
+        getAgentWorkflowStore().getState().reconstructFromMessages(result.data);
 
         // Hydrate citations from loaded messages (for source carousel)
         const messagesWithCitations = result.data

@@ -171,6 +171,7 @@ export class BatchResultNormalizer implements IBatchResultNormalizer {
           interleavedEvents.push({
             ...toolResponse,
             originalIndex: event.originalIndex + 0.5, // Between request and next event
+            sourceAgentId: event.sourceAgentId, // Inherit agent from tool_request
           });
         }
       }

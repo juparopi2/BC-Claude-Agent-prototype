@@ -156,6 +156,10 @@ describe('AgentOrchestrator Integration', () => {
       mockMessageQueue as MessageQueue
     );
 
+    // Mock Prisma-dependent methods (test session IDs are not valid UUIDs)
+    vi.spyOn(persistenceCoordinator, 'getCheckpointMessageCount').mockResolvedValue(0);
+    vi.spyOn(persistenceCoordinator, 'updateCheckpointMessageCount').mockResolvedValue();
+
     // Setup default mock behaviors for other services
     mockGetFile.mockResolvedValue(null);
     mockSearchRelevantFiles.mockResolvedValue([]);

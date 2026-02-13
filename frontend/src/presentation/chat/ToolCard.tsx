@@ -129,6 +129,15 @@ export function ToolCard({
   const isChartCompleted = isChartResult && status === 'completed';
 
   const [isOpen, setIsOpen] = useState(false);
+  const [hasBeenManuallyToggled, setHasBeenManuallyToggled] = useState(false);
+
+  // Auto-expand for completed chart results, but let user toggle afterward
+  const effectiveIsOpen = (!hasBeenManuallyToggled && isChartCompleted) || isOpen;
+
+  const handleOpenChange = (open: boolean) => {
+    setHasBeenManuallyToggled(true);
+    setIsOpen(open);
+  };
 
   // Extract values
   const displayName = chartTitle ?? toolName;
@@ -202,9 +211,6 @@ export function ToolCard({
     ? 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300'
     : config.badgeClass;
 
-  // Auto-expand for completed chart results
-  const effectiveIsOpen = isChartCompleted || isOpen;
-
   return (
     <div className="flex gap-3 py-2" data-testid="tool-card">
       {/* Avatar icon - chart icon for chart results, wrench for others */}
@@ -214,7 +220,7 @@ export function ToolCard({
         </AvatarFallback>
       </Avatar>
 
-      <Collapsible open={effectiveIsOpen} onOpenChange={setIsOpen} className="flex-1 min-w-0">
+      <Collapsible open={effectiveIsOpen} onOpenChange={handleOpenChange} className="flex-1 min-w-0">
         <CollapsibleTrigger className="flex items-center gap-2 w-full text-left">
           {effectiveIsOpen ? <ChevronDown className="size-4 shrink-0" /> : <ChevronRight className="size-4 shrink-0" />}
           <span className="font-medium text-sm truncate">{displayName}</span>

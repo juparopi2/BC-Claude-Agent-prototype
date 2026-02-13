@@ -16,14 +16,26 @@ interface AgentResultRendererProps {
  * Falls back to provided fallback (typically JsonView) for unknown types.
  */
 export function AgentResultRenderer({ result, fallback }: AgentResultRendererProps) {
-  const resultType = isAgentRenderedResult(result) ? result._type : null;
+  // Parse JSON strings — tool results arrive as strings via WebSocket
+  // but as objects on page reload (messageTransformer parses them)
+  const parsedResult = useMemo(() => {
+    if (typeof result === 'string') {
+      try {
+        const parsed = JSON.parse(result);
+        if (parsed && typeof parsed === 'object') return parsed;
+      } catch { /* not valid JSON, fall through */ }
+    }
+    return result;
+  }, [result]);
+
+  const resultType = isAgentRenderedResult(parsedResult) ? parsedResult._type : null;
 
   const rendererElement = useMemo(() => {
     if (!resultType) return null;
     const Renderer = getRenderer(resultType);
     if (!Renderer) return null;
-    return createElement(Renderer, { data: result });
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- result identity is tied to resultType
+    return createElement(Renderer, { data: parsedResult });
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- parsedResult identity is tied to resultType
   }, [resultType]);
 
   if (!rendererElement) {

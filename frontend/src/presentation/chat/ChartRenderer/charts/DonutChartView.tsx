@@ -37,6 +37,7 @@ export function DonutChartView({ config }: DonutChartViewProps) {
           <Tooltip
             contentStyle={{
               backgroundColor: 'var(--color-popover, #fff)',
+              color: 'var(--color-popover-foreground, #000)',
               border: '1px solid var(--color-border, #e5e7eb)',
               borderRadius: '8px',
               fontSize: '12px',

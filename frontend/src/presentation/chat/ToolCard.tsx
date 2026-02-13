@@ -1,13 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Wrench, ChevronRight, ChevronDown, Clock, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
+import { Wrench, ChevronRight, ChevronDown, Clock, CheckCircle2, XCircle, Loader2, BarChart3 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import JsonView from '@uiw/react-json-view';
 import { useTheme } from 'next-themes';
+import { isAgentRenderedResult } from '@bc-agent/shared';
 import { AgentResultRenderer } from './AgentResultRenderer';
 
 /**
@@ -110,11 +111,27 @@ export function ToolCard({
   status,
   durationMs,
 }: ToolCardProps) {
-  const [isOpen, setIsOpen] = useState(false);
   const { theme } = useTheme();
 
+  // Parse result for chart detection (strings from WebSocket, objects from reload)
+  const parsedResult = useMemo(() => {
+    if (typeof result === 'string') {
+      try {
+        const p = JSON.parse(result);
+        if (p && typeof p === 'object') return p;
+      } catch { /* ignore */ }
+    }
+    return result;
+  }, [result]);
+
+  const isChartResult = isAgentRenderedResult(parsedResult) && parsedResult._type === 'chart_config';
+  const chartTitle = isChartResult ? (parsedResult as { title?: string }).title : null;
+  const isChartCompleted = isChartResult && status === 'completed';
+
+  const [isOpen, setIsOpen] = useState(false);
+
   // Extract values
-  const displayName = toolName;
+  const displayName = chartTitle ?? toolName;
   const displayArgs = toolArgs;
   const displayResult = result;
   const displayError = error;
@@ -172,24 +189,40 @@ export function ToolCard({
   const config = statusConfig[displayStatus];
   const StatusIcon = config.icon;
 
+  // Chart-specific overrides
+  const avatarClass = isChartCompleted
+    ? 'bg-amber-100 dark:bg-amber-900'
+    : config.avatarClass;
+  const avatarIconClass = isChartCompleted
+    ? 'text-amber-600 dark:text-amber-400'
+    : config.iconClass;
+  const AvatarIcon = isChartResult ? BarChart3 : Wrench;
+  const badgeLabel = isChartCompleted ? 'Chart' : config.label;
+  const badgeClass = isChartCompleted
+    ? 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300'
+    : config.badgeClass;
+
+  // Auto-expand for completed chart results
+  const effectiveIsOpen = isChartCompleted || isOpen;
+
   return (
     <div className="flex gap-3 py-2" data-testid="tool-card">
-      {/* Avatar with wrench icon - color changes based on status */}
+      {/* Avatar icon - chart icon for chart results, wrench for others */}
       <Avatar className="size-8 shrink-0">
-        <AvatarFallback className={cn('border-0', config.avatarClass)}>
-          <Wrench className={cn('size-4', config.iconClass)} />
+        <AvatarFallback className={cn('border-0', avatarClass)}>
+          <AvatarIcon className={cn('size-4', avatarIconClass)} />
         </AvatarFallback>
       </Avatar>
 
-      <Collapsible open={isOpen} onOpenChange={setIsOpen} className="flex-1 min-w-0">
+      <Collapsible open={effectiveIsOpen} onOpenChange={setIsOpen} className="flex-1 min-w-0">
         <CollapsibleTrigger className="flex items-center gap-2 w-full text-left">
-          {isOpen ? <ChevronDown className="size-4 shrink-0" /> : <ChevronRight className="size-4 shrink-0" />}
+          {effectiveIsOpen ? <ChevronDown className="size-4 shrink-0" /> : <ChevronRight className="size-4 shrink-0" />}
           <span className="font-medium text-sm truncate">{displayName}</span>
 
           {/* Status badge with icon */}
-          <Badge variant="secondary" className={cn('ml-auto shrink-0', config.badgeClass)}>
+          <Badge variant="secondary" className={cn('ml-auto shrink-0', badgeClass)}>
             <StatusIcon className={cn('size-3 mr-1', config.animate && 'animate-spin')} />
-            {config.label}
+            {badgeLabel}
           </Badge>
 
           {/* Duration */}

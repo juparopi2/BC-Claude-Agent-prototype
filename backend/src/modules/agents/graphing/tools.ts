@@ -88,10 +88,9 @@ export const validateChartConfigTool = tool(
     const result = ChartConfigSchema.safeParse(config);
 
     if (result.success) {
-      return JSON.stringify({
-        valid: true,
-        chartType: result.data.chartType,
-      });
+      // Return the validated config with _type: 'chart_config'
+      // This triggers the frontend's ChartRenderer to display an interactive chart
+      return JSON.stringify(result.data);
     }
 
     const errors = result.error.errors.map(e => ({
@@ -106,7 +105,7 @@ export const validateChartConfigTool = tool(
   },
   {
     name: 'validate_chart_config',
-    description: 'Validates a chart configuration object against the schema. Returns validation result with any errors. Use this before returning a chart config to the user.',
+    description: 'Validates and delivers a chart to the user. If valid, the chart renders interactively in the UI. If invalid, returns errors for correction. Always call this as the final step.',
     schema: z.object({
       config: z.record(z.unknown()).describe('The chart configuration object to validate'),
     }),

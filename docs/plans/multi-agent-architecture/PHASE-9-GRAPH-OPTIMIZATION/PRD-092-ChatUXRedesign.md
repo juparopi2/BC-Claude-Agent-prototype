@@ -1,6 +1,6 @@
 # PRD-092: Chat UX Redesign — Agent-Grouped Messages
 
-**Estado**: 🟠 EN PROGRESO (Sprint 1 + Sprint 2 COMPLETE, Sprint 3 IN PROGRESS, Phase 92.6 COMPLETE)
+**Estado**: 🟠 EN PROGRESO (Sprint 1 + Sprint 2 COMPLETE, Sprint 3 IN PROGRESS, Phase 92.7 COMPLETE)
 **Fecha**: 2026-02-12
 **Fase**: 9 (Graph Optimization)
 **Dependencias**: PRD-061 (Agent Workflow Visibility), PRD-090 (Graph Logic Optimization), PRD-091 (Event Integrity)
@@ -283,9 +283,39 @@ npm run -w bc-agent-frontend test
 
 ---
 
+### Phase 92.7: Graphing Agent Chart Delivery via `validate_chart_config` — ✅ COMPLETE
+
+**Status**: COMPLETE (2026-02-13)
+
+**Objective**: Make `validate_chart_config` deliver interactive charts directly in the UI instead of returning `{ valid: true }` and relying on the agent to paste JSON code blocks.
+
+**Problem**:
+The frontend already had a full chart rendering pipeline (`AgentResultRenderer` → `ChartRenderer` → 10 recharts views) that activates when a tool result has `_type: 'chart_config'`. But this pipeline was never triggered because:
+1. `validate_chart_config` returned `{ valid: true, chartType }` instead of the validated config
+2. The system prompt instructed the agent to output charts as JSON code blocks in text
+3. `AgentResultRenderer` didn't parse JSON strings (WebSocket sends strings, reload sends objects)
+4. `ToolCard` showed "validate_chart_config" with a wrench icon instead of chart-specific UX
+
+**Changes**:
+
+| File | Change |
+|------|--------|
+| `backend/src/modules/agents/graphing/tools.ts` | On valid config, return `result.data` (full config with `_type: 'chart_config'`) instead of `{ valid: true }`. Updated tool description to "validates and delivers a chart". Error path unchanged. |
+| `backend/src/modules/agents/core/definitions/graphing-agent.definition.ts` | Rewrote Steps 5-6: `validate_chart_config` delivers charts, agent writes only a brief confirmation. Added CHART DELIVERY section prohibiting JSON code blocks. Updated TOOL MAPPING. |
+| `frontend/src/presentation/chat/AgentResultRenderer/AgentResultRenderer.tsx` | Added `useMemo` JSON string parsing before `_type` detection. Ensures both live (WebSocket strings) and reload (parsed objects) trigger `ChartRenderer`. |
+| `frontend/src/presentation/chat/ToolCard.tsx` | Chart-aware rendering: `BarChart3` icon, chart title as display name, amber avatar/badge colors, "Chart" badge label, auto-expand for completed chart results. |
+| `backend/src/modules/agents/graphing/__tests__/tools.test.ts` | Updated valid config assertions to expect full chart config object (`_type`, `chartType`, `title`, `data`) instead of `{ valid: true }`. |
+
+**Reconstruction fidelity** (Section 14.5 of CLAUDE.md): The `AgentResultRenderer` JSON parsing ensures live and reload paths produce the same interactive chart, not raw JSON on one path and a chart on the other.
+
+**Result**: Charts render interactively inside the `ToolCard` result area. The agent's text response is a brief confirmation instead of a raw JSON dump.
+
+---
+
 ## Changelog
 
 | Fecha | Cambios |
 |-------|---------|
 | 2026-02-12 | Creation: Sprint 1 COMPLETE (internal event filtering), Sprint 2 COMPLETE (remove transition indicators, implement AgentGroupedSection, fix reconstruction consistency, cleanup collapsibles). Sprint 3 IN PROGRESS (agentId propagation through tool chain). Updated: internal events now persisted with `is_internal=true` for audit (Persistence ≠ Visibility principle). EventProcessor suppresses WebSocket emission. SessionService filters `is_internal` from API. |
 | 2026-02-12 | Phase 92.6 COMPLETE: Fixed two agent grouping bugs — (1) tool_response sourceAgentId propagation in BatchResultNormalizer eliminates spurious agent transitions, (2) reconstructFromMessages() call in ChatPage.tsx restores grouping on page refresh. |
+| 2026-02-13 | Phase 92.7 COMPLETE: Chart delivery via `validate_chart_config` — tool returns full config with `_type: 'chart_config'`, AgentResultRenderer parses JSON strings for reconstruction fidelity, ToolCard renders chart-aware UX (BarChart3 icon, chart title, amber colors, auto-expand). |

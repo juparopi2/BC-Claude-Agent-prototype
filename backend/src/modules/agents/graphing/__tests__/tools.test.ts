@@ -81,7 +81,7 @@ describe('Graphing Agent Tools', () => {
   });
 
   describe('validate_chart_config', () => {
-    it('should validate a correct bar config', async () => {
+    it('should return the validated chart config on success', async () => {
       const config = {
         _type: 'chart_config',
         chartType: 'bar',
@@ -92,8 +92,13 @@ describe('Graphing Agent Tools', () => {
       };
       const result = await validateChartConfigTool.invoke({ config });
       const parsed = JSON.parse(result);
-      expect(parsed.valid).toBe(true);
+      // Returns the full validated config (not { valid: true })
+      expect(parsed._type).toBe('chart_config');
       expect(parsed.chartType).toBe('bar');
+      expect(parsed.title).toBe('Test');
+      expect(parsed.data).toEqual([{ x: 'A', y: 10 }]);
+      expect(parsed.index).toBe('x');
+      expect(parsed.categories).toEqual(['y']);
     });
 
     it('should return errors for invalid config', async () => {
@@ -128,7 +133,7 @@ describe('Graphing Agent Tools', () => {
       }
     });
 
-    it('should validate a correct kpi config', async () => {
+    it('should return the validated kpi config on success', async () => {
       const config = {
         _type: 'chart_config',
         chartType: 'kpi',
@@ -138,8 +143,12 @@ describe('Graphing Agent Tools', () => {
       };
       const result = await validateChartConfigTool.invoke({ config });
       const parsed = JSON.parse(result);
-      expect(parsed.valid).toBe(true);
+      // Returns the full validated config (not { valid: true })
+      expect(parsed._type).toBe('chart_config');
       expect(parsed.chartType).toBe('kpi');
+      expect(parsed.title).toBe('Revenue');
+      expect(parsed.metric).toBe('$100K');
+      expect(parsed.label).toBe('Total');
     });
   });
 });

@@ -1,8 +1,10 @@
 'use client';
 
+import { useMemo } from 'react';
 import { CitationResultSchema } from '@bc-agent/shared';
 import type { RendererProps } from '../AgentResultRenderer/types';
 import { CitationList } from './CitationList';
+import { citedDocumentsToCitationInfos } from './citationUtils';
 
 /**
  * CitationRenderer - Renders rich citation cards with source attribution.
@@ -10,6 +12,12 @@ import { CitationList } from './CitationList';
  */
 export function CitationRenderer({ data }: RendererProps) {
   const parsed = CitationResultSchema.safeParse(data);
+
+  const citationInfos = useMemo(
+    () => (parsed.success ? citedDocumentsToCitationInfos(parsed.data.documents) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [parsed.success, parsed.success ? parsed.data.documents : null],
+  );
 
   if (!parsed.success) {
     return (
@@ -28,7 +36,7 @@ export function CitationRenderer({ data }: RendererProps) {
       {summary && (
         <p className="text-sm text-muted-foreground">{summary}</p>
       )}
-      <CitationList documents={documents} totalResults={totalResults} query={query} />
+      <CitationList documents={documents} totalResults={totalResults} query={query} citationInfos={citationInfos} />
     </div>
   );
 }

@@ -178,6 +178,7 @@ export const filteredKnowledgeSearchTool = tool(
         summary: `Found ${results.results.length} ${fileTypeCategory} file(s) for "${query}"`,
         totalResults: results.results.length,
         query,
+        fileTypeCategory: fileTypeCategory as FileTypeCategory,
       };
 
       return JSON.stringify(citationResult);

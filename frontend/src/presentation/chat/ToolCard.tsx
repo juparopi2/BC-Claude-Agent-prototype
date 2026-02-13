@@ -4,11 +4,11 @@ import { useState, useMemo } from 'react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Wrench, ChevronRight, ChevronDown, Clock, CheckCircle2, XCircle, Loader2, BarChart3 } from 'lucide-react';
+import { Wrench, ChevronRight, ChevronDown, Clock, CheckCircle2, XCircle, Loader2, BarChart3, FileText, ImageIcon, Code, Table, FileSearch } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import JsonView from '@uiw/react-json-view';
 import { useTheme } from 'next-themes';
-import { isAgentRenderedResult } from '@bc-agent/shared';
+import { isAgentRenderedResult, AGENT_COLOR, AGENT_ID } from '@bc-agent/shared';
 import { AgentResultRenderer } from './AgentResultRenderer';
 
 /**
@@ -128,11 +128,16 @@ export function ToolCard({
   const chartTitle = isChartResult ? (parsedResult as { title?: string }).title : null;
   const isChartCompleted = isChartResult && status === 'completed';
 
+  const isCitationResult = isAgentRenderedResult(parsedResult) && parsedResult._type === 'citation_result';
+  const citationData = isCitationResult ? (parsedResult as unknown as { query: string; fileTypeCategory?: string }) : null;
+  const citationTitle = citationData?.query ?? null;
+  const isCitationCompleted = isCitationResult && status === 'completed';
+
   const [isOpen, setIsOpen] = useState(false);
   const [hasBeenManuallyToggled, setHasBeenManuallyToggled] = useState(false);
 
-  // Auto-expand for completed chart results, but let user toggle afterward
-  const effectiveIsOpen = (!hasBeenManuallyToggled && isChartCompleted) || isOpen;
+  // Auto-expand for completed chart/citation results, but let user toggle afterward
+  const effectiveIsOpen = (!hasBeenManuallyToggled && (isChartCompleted || isCitationCompleted)) || isOpen;
 
   const handleOpenChange = (open: boolean) => {
     setHasBeenManuallyToggled(true);
@@ -140,7 +145,7 @@ export function ToolCard({
   };
 
   // Extract values
-  const displayName = chartTitle ?? toolName;
+  const displayName = chartTitle ?? citationTitle ?? toolName;
   const displayArgs = toolArgs;
   const displayResult = result;
   const displayError = error;
@@ -198,25 +203,51 @@ export function ToolCard({
   const config = statusConfig[displayStatus];
   const StatusIcon = config.icon;
 
-  // Chart-specific overrides
-  const avatarClass = isChartCompleted
-    ? 'bg-amber-100 dark:bg-amber-900'
-    : config.avatarClass;
+  // Citation icon based on fileTypeCategory
+  const citationIconMap: Record<string, typeof FileText> = {
+    documents: FileText,
+    images: ImageIcon,
+    code: Code,
+    spreadsheets: Table,
+  };
+  const CitationIcon = citationData?.fileTypeCategory
+    ? citationIconMap[citationData.fileTypeCategory] ?? FileSearch
+    : FileSearch;
+
+  // Result-type-specific overrides for avatar icon, colors, and badge
+  // Citation color sourced from AGENT_COLOR to stay consistent with the RAG agent UI
+  const ragColor = AGENT_COLOR[AGENT_ID.RAG_AGENT]; // #10B981
+  const AvatarIcon = isChartResult ? BarChart3 : isCitationResult ? CitationIcon : Wrench;
+  const avatarClass = (isChartCompleted || isCitationCompleted) ? '' : config.avatarClass;
+  const avatarStyle: React.CSSProperties | undefined = isChartCompleted
+    ? { backgroundColor: '#F59E0B26' }
+    : isCitationCompleted
+      ? { backgroundColor: `${ragColor}1A` }
+      : undefined;
   const avatarIconClass = isChartCompleted
     ? 'text-amber-600 dark:text-amber-400'
-    : config.iconClass;
-  const AvatarIcon = isChartResult ? BarChart3 : Wrench;
-  const badgeLabel = isChartCompleted ? 'Chart' : config.label;
+    : isCitationCompleted
+      ? ''
+      : config.iconClass;
+  const avatarIconStyle: React.CSSProperties | undefined = isCitationCompleted
+    ? { color: ragColor }
+    : undefined;
+  const badgeLabel = isChartCompleted ? 'Chart' : isCitationCompleted ? 'Search' : config.label;
   const badgeClass = isChartCompleted
     ? 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300'
-    : config.badgeClass;
+    : isCitationCompleted
+      ? ''
+      : config.badgeClass;
+  const badgeStyle: React.CSSProperties | undefined = isCitationCompleted
+    ? { backgroundColor: `${ragColor}1A`, color: ragColor }
+    : undefined;
 
   return (
     <div className="flex gap-3 py-2" data-testid="tool-card">
-      {/* Avatar icon - chart icon for chart results, wrench for others */}
+      {/* Avatar icon - contextual: chart, citation category, or wrench */}
       <Avatar className="size-8 shrink-0">
-        <AvatarFallback className={cn('border-0', avatarClass)}>
-          <AvatarIcon className={cn('size-4', avatarIconClass)} />
+        <AvatarFallback className={cn('border-0', avatarClass)} style={avatarStyle}>
+          <AvatarIcon className={cn('size-4', avatarIconClass)} style={avatarIconStyle} />
         </AvatarFallback>
       </Avatar>
 
@@ -226,7 +257,7 @@ export function ToolCard({
           <span className="font-medium text-sm truncate">{displayName}</span>
 
           {/* Status badge with icon */}
-          <Badge variant="secondary" className={cn('ml-auto shrink-0', badgeClass)}>
+          <Badge variant="secondary" className={cn('ml-auto shrink-0', badgeClass)} style={badgeStyle}>
             <StatusIcon className={cn('size-3 mr-1', config.animate && 'animate-spin')} />
             {badgeLabel}
           </Badge>

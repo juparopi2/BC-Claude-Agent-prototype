@@ -79,6 +79,8 @@ export const CitationResultSchema = z.object({
   totalResults: z.number().int().nonnegative(),
   /** Original search query */
   query: z.string(),
+  /** File type category filter used (only present for filtered searches) */
+  fileTypeCategory: z.enum(['images', 'documents', 'spreadsheets', 'code']).optional(),
 });
 
 // ============================================

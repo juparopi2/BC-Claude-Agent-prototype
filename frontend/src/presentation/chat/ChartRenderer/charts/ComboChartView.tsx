@@ -31,6 +31,8 @@ export function ComboChartView({ config }: ComboChartViewProps) {
               borderRadius: '8px',
               fontSize: '12px',
             }}
+            itemStyle={{ color: 'var(--color-popover-foreground, #000)' }}
+            labelStyle={{ color: 'var(--color-popover-foreground, #000)' }}
           />
           <Legend />
           {config.barCategories.map((cat) => (

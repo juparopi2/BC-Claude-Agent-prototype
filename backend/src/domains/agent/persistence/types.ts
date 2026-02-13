@@ -301,4 +301,20 @@ export interface IPersistenceCoordinator {
    * @param timeoutMs - Max wait time (default 30000ms)
    */
   awaitPersistence(jobId: string, timeoutMs?: number): Promise<void>;
+
+  /**
+   * Get the number of messages in the LangGraph checkpoint at the end of the last turn.
+   * Used by ExecutionPipeline to skip historical messages during normalization.
+   * @param sessionId - Session ID
+   * @returns Number of messages in the checkpoint (0 for first turn)
+   */
+  getCheckpointMessageCount(sessionId: string): Promise<number>;
+
+  /**
+   * Update the checkpoint message count after successful normalization.
+   * Stores the total state.messages.length so the next turn knows what to skip.
+   * @param sessionId - Session ID
+   * @param count - Total message count in the LangGraph state after this turn
+   */
+  updateCheckpointMessageCount(sessionId: string, count: number): Promise<void>;
 }

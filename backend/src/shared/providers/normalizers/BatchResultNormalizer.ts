@@ -75,16 +75,30 @@ export class BatchResultNormalizer implements IBatchResultNormalizer {
     const timestamp = new Date().toISOString();
     let indexCounter = 0;
 
+    // Delta tracking (PRD-100): skip historical messages from previous turns
+    const allMessages = state.messages ?? [];
+    const skipCount = options?.skipMessages ?? 0;
+    const effectiveSkip = Math.min(skipCount, allMessages.length);
+
+    if (skipCount > 0 && effectiveSkip !== skipCount) {
+      logger.warn({
+        sessionId, skipCount, actualMessageCount: allMessages.length, effectiveSkip,
+      }, 'skipMessages exceeds message count — possible checkpoint/DB desync');
+    }
+
+    const messages = effectiveSkip > 0 ? allMessages.slice(effectiveSkip) : allMessages;
+
     logger.debug({
       sessionId,
-      messageCount: state.messages?.length ?? 0,
+      totalMessageCount: allMessages.length,
+      skippedMessages: effectiveSkip,
+      processingMessageCount: messages.length,
       toolExecutionCount: state.toolExecutions?.length ?? 0,
     }, 'Starting batch normalization');
 
     // 1. Process ALL AI messages in order (not just last)
     // This enables proper ReAct loop support where multiple AI messages
     // contain thinking, tool_requests, and final responses
-    const messages = state.messages ?? [];
     let lastAIMessageIndex = -1;
 
     for (let i = 0; i < messages.length; i++) {

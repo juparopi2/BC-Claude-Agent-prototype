@@ -60,6 +60,7 @@ import { createMessageContextBuilder, type MessageContextBuilder } from './conte
 import { createGraphExecutor, type GraphExecutor } from './execution/GraphExecutor';
 import type { ICompiledGraph } from './execution/GraphExecutor';
 import { createExecutionPipeline, type ExecutionPipeline } from './execution/ExecutionPipeline';
+import { getUsageTrackingService } from '@/domains/billing/tracking/UsageTrackingService';
 
 /**
  * Dependencies for AgentOrchestrator (for testing).
@@ -212,6 +213,24 @@ export class AgentOrchestrator implements IAgentOrchestrator {
         { sessionId, executionId: ctx.executionId },
         'Synchronous agent execution completed'
       );
+
+      // Fire-and-forget AI usage tracking (billing)
+      const tokenUsage = pipelineResult.result.tokenUsage;
+      if (userId && tokenUsage && (tokenUsage.inputTokens > 0 || tokenUsage.outputTokens > 0)) {
+        getUsageTrackingService().trackClaudeUsage(
+          userId,
+          sessionId,
+          tokenUsage.inputTokens,
+          tokenUsage.outputTokens,
+          pipelineResult.usedModel ?? 'unknown',
+          { messageId: pipelineResult.result.messageId }
+        ).catch((err: unknown) => {
+          this.logger.warn({
+            error: err instanceof Error ? err.message : String(err),
+            userId, sessionId,
+          }, 'Failed to track Claude usage (non-blocking)');
+        });
+      }
 
       return pipelineResult.result;
     } catch (error) {

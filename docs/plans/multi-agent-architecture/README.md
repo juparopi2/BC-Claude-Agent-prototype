@@ -329,6 +329,26 @@ console.log(anthropic.profile?.reasoningOutput); // true para extended thinking
 |-----|------------|--------|-------|
 | [PRD-080](./PHASE-8-OPTIMIZATION/PRD-080-PromptCaching.md) | Prompt Caching (Haiku 4.5/Sonnet 3.5) - 75% Cost Reduction | 🟡 |
 
+### Fase 9: Graph Optimization
+**Estado**: 🟡 Planificado
+**Objetivo**: Tool enforcement y event integrity
+
+| PRD | Componente | Estado | Fecha |
+|-----|------------|--------|-------|
+| [PRD-090](./PHASE-9-GRAPH-OPTIMIZATION/PRD-090-GraphLogicOptimization.md) | Agent Graph Logic Optimization | ✅ Completado | 2026-02-11 |
+| [PRD-091](./PHASE-9-GRAPH-OPTIMIZATION/PRD-091-EventIntegrityVerification.md) | Event Transmission, Persistence & Integrity Verification | 🔴 |
+
+### Fase 10: Bug Resolution
+**Estado**: 🔴 NO INICIADO
+**Objetivo**: Diagnóstico y resolución de bugs críticos identificados post-graphing-agent
+
+| PRD | Componente | Estado | Fecha |
+|-----|------------|--------|-------|
+| [PRD-100](./PHASE-10-BUG-RESOLUTION/PRD-100-ConversationHistoryReplay.md) | ConversationHistoryReplay (P0 CRITICAL) | 🔴 | - |
+| [PRD-101](./PHASE-10-BUG-RESOLUTION/PRD-101-UIGroupingAndRenderingBugs.md) | UIGroupingAndRenderingBugs (P1) | 🔴 | - |
+| [PRD-102](./PHASE-10-BUG-RESOLUTION/PRD-102-EventPipelineIntegrity.md) | EventPipelineIntegrity (P1) | 🔴 | - |
+| [PRD-103](./PHASE-10-BUG-RESOLUTION/PRD-103-RAGCitationsComponentInteractivity.md) | RAGCitationsComponentInteractivity (P1) | 🔴 | - |
+
 **Métricas PRD-070:**
 - 22+ archivos creados (shared types, renderer framework, 10 chart views, chart utils, citation placeholder, tests), 12 modificados
 - 0 regresiones: 3105 tests backend pasan, 697 tests frontend pasan
@@ -398,7 +418,17 @@ FASE 7: Agent-Specific UI Rendering (🟡 En Progreso)
 └── PRD-071: RAG Citation UI (depende PRD-070 ✅) ────────────┴──► FASE 8
 
 FASE 8: Optimization (🟡 Planificado)
-└── PRD-080: Prompt Caching (Cost Efficiency) ──────────────────► COMPLETADO
+└── PRD-080: Prompt Caching (Cost Efficiency) ──────────────────► FASE 9
+
+FASE 9: Graph Optimization (🟡 Planificado)
+├── PRD-090: Agent Graph Logic Optimization [✅ COMPLETADO] ──────┐
+└── PRD-091: Event Integrity Verification ───────────────────────┴──► FASE 10
+
+FASE 10: Bug Resolution (🔴 No Iniciado)
+├── PRD-100: ConversationHistoryReplay (P0 CRITICAL) ────────────┐
+├── PRD-101: UIGroupingAndRenderingBugs (P1) ────────────────────┤
+├── PRD-102: EventPipelineIntegrity (P1) ───────────────────────┤
+└── PRD-103: RAGCitationsComponentInteractivity (P1) ────────────┴──► COMPLETADO
 ```
 
 ---
@@ -480,3 +510,4 @@ npm run test:e2e
 | 2026-02-09 | 3.2 | **PRD-060 completado** (Fase 6 parcial). Agent Selector UI implementado full-stack. **Backend**: `targetAgentId` threaded por 5 capas (ChatMessageData → ChatMessageHandler → AgentOrchestrator → ExecutionPipeline → MessageContextBuilder). **Frontend**: `AgentSelectorDropdown` (shadcn Select) reemplaza toggle "My Files" en ChatInput. `AgentBadge` en mensajes assistant. `ApprovalDialog` inline para HITL interrupt/resume. `uiPreferencesStore` con `selectedAgentId` persistido en localStorage. `agentStateStore` extendido con `currentAgentIdentity`. 3 nuevos event cases en `processAgentEventSync.ts` (`agent_changed`, `content_refused`, `session_end`). `SocketClient` + `useSocketConnection` soportan `targetAgentId`. 4 archivos nuevos, 14 modificados, 2 test files actualizados. 0 regresiones (3104 backend + 666 frontend tests). GAPs resueltos: GAP-001, GAP-004, GAP-006. Fase 7 parcialmente desbloqueada (PRD-061 pendiente). |
 | 2026-02-09 | 3.3 | **PRD-070 completado** (Fase 7 parcial) + **PRD-050 frontend completado**. Implementación completa del framework de rendering agent-specific. **Per-message attribution**: `agent_identity?: AgentIdentity` en `BaseMessage`, `AgentBadge` per-message en `MessageBubble`/`ToolCard`, global badge removido de `ChatContainer`. **Renderer framework**: `AgentResultRenderer` con registry lazy-loaded + `Suspense`, discriminador `_type`. **ChartRenderer** (PRD-050 frontend): 10 chart views con `recharts` (Tremor copy-paste approach, sin npm package), color utils, dark mode, tooltips, legend filtering. **Prisma migration**: `MessageService.ts` (7 métodos) y `MessagePersistenceWorker.ts` migrados de raw SQL (`executeQuery`) a Prisma Client (`upsert`, `findMany`, `updateMany`, `count`, etc.). `agent_id` column + index en `messages` table. `messageTransformer` reconstruye `agent_identity` desde DB. **Shared**: `AgentRenderedResultBase`, `isAgentRenderedResult()` type guard, `AgentIdentity` export fix. **Tests**: 22+ archivos creados, 12 modificados. 3105 backend + 697 frontend tests, 0 regresiones. PRD-071 desbloqueado. |
 | 2026-02-11 | 3.4 | **Fase 6 completada**. PRD-061 (Agent Workflow Visibility) + PRD-062 (Tool Enforcement) implementados. **PRD-061**: `isInternal` field en shared types, `agentWorkflowStore` con `AgentProcessingGroup[]` tracking, `AgentProcessingSection` collapsible component, `AgentTransitionIndicator` handoff divider, `ChatContainer` conditional workflow rendering, workflow toggle en `InputOptionsBar`. Handoff-back messages ahora persisten con `isInternal: true` (antes filtrados). **PRD-062**: `tool_choice: 'any'` mecánico en agent builders, prompts mejorados para 4 agentes (BC, RAG, Graphing, Supervisor) con Critical Execution Rules y tool mapping explícito, fix targetAgentId warning (excluir supervisor). 6 archivos creados, 13 modificados. 0 regresiones. Fase 7 (PRD-071 RAG Citation UI) desbloqueada. |
+| 2026-02-13 | 3.5 | **Fase 10 agregada**. Nuevos PRDs: PRD-100 (ConversationHistoryReplay - P0 CRITICAL, segundo turno replaya eventos del primero), PRD-101 (UIGroupingAndRenderingBugs - P1, React key collision y duplicación visual), PRD-102 (EventPipelineIntegrity - P1, model unknown, processed flag, agent_changed internal), PRD-103 (RAGCitationsComponentInteractivity - P1, file display sin interactividad). Fase 10 identifica bugs críticos post-graphing-agent para diagnóstico y resolución sistemática. |

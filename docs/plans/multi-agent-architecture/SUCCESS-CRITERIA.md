@@ -21,6 +21,7 @@
 | Fase 7: Agent-Specific UI | 🔴 NO INICIADO | - | PRD-070 (Rendering Framework), PRD-071 (Citation UI) |
 | Fase 8: Optimization | 🟡 PARCIAL | PRD-080 (infra only) | PRD-080 Phase 8.3 (cache metrics) |
 | Fase 9: Graph Optimization | 🟡 PARCIAL | PRD-090 | PRD-091 (Event Integrity) |
+| Fase 10: Bug Resolution | 🔴 NO INICIADO | - | PRD-100, PRD-101, PRD-102, PRD-103 |
 
 ---
 
@@ -539,6 +540,100 @@ npx vitest run "ChatMessageHandler"       # Fixed CRITICAL log tests
 
 ---
 
+## Fase 10: Bug Resolution - Verificación 🔴
+
+**Estado**: 🔴 NO INICIADO
+
+### PRD-100: ConversationHistoryReplay (P0 CRITICAL)
+
+**Problema**: En el segundo turno de conversación, el frontend replaya TODOS los eventos del primer turno, generando un flujo duplicado completo.
+
+**Entregables Esperados**:
+- [ ] Root cause identificado en event pipeline (WebSocket emission o frontend processing)
+- [ ] Fix implementado sin afectar session reload (must distinguish live events from replay)
+- [ ] Tests E2E: segundo turno NO reproduce eventos del primero
+- [ ] Verificación manual: logs del navegador NO muestran eventos duplicados
+
+### PRD-101: UIGroupingAndRenderingBugs (P1)
+
+**Problema**: React key collision y duplicación visual de secciones de agentes en workflow view.
+
+**Entregables Esperados**:
+- [ ] `AgentProcessingSection` key generation fixed (unique per group)
+- [ ] `reconstructFromMessages()` NO genera grupos duplicados
+- [ ] `agentWorkflowStore` state transitions validadas (startTurn, addGroup, markLastGroupFinal)
+- [ ] Tests unitarios: workflow store con multiple agent transitions
+- [ ] Visual QA: workflow view NO muestra secciones duplicadas
+
+### PRD-102: EventPipelineIntegrity (P1)
+
+**Problema**: Varios eventos carecen de metadata crítica (model unknown, processed flag inconsistente, agent_changed como externo).
+
+**Entregables Esperados**:
+- [ ] `BatchResultNormalizer` marca `agent_changed` como `isInternal: true`
+- [ ] `MessageNormalizer` propaga `usedModel` correctamente desde AIMessage metadata
+- [ ] `processed` flag en `message_events` table validado contra persistenceStrategy
+- [ ] Tests unitarios: normalizers + converters preservan metadata
+- [ ] Database audit query: 0% eventos con `model = 'unknown'` en mensajes assistant
+
+### PRD-103: RAGCitationsComponentInteractivity (P1)
+
+**Problema**: RAG citation UI muestra file display sin click handler, thumbnail, o file preview modal.
+
+**Entregables Esperados**:
+- [ ] `CitationCard` component con click handler para preview
+- [ ] `FilePreviewModal` integrado con RAG citations
+- [ ] File thumbnails renderizados (PDF, images, docs icons)
+- [ ] Tests unitarios: CitationCard click triggers modal
+- [ ] Visual QA: click en citación abre file preview
+
+### Criterios de Verificación (Fase 10)
+
+```bash
+# Full test suite (must pass after fixes)
+npm run -w backend test:unit              # 3119+ tests
+npm run -w bc-agent-frontend test         # 697+ tests
+npm run verify:types                      # Type check
+
+# Specific test suites
+npx vitest run "BatchResultNormalizer"    # PRD-102: agent_changed internal
+npx vitest run "MessageNormalizer"        # PRD-102: usedModel propagation
+npx vitest run "agentWorkflowStore"       # PRD-101: workflow grouping
+npx vitest run "CitationCard"             # PRD-103: citation interactivity
+
+# Manual E2E verification
+# PRD-100: Conversation replay
+# 1. Enviar mensaje 1 → recibir respuesta
+# 2. Enviar mensaje 2 → verificar browser console NO muestra eventos del turno 1
+# 3. Refresh page → verificar ambos turnos se reconstruyen correctamente
+
+# PRD-101: UI grouping
+# 1. Enviar query multi-agent → verificar workflow view NO duplica secciones
+# 2. Refresh page → verificar reconstruction NO genera duplicados
+
+# PRD-102: Event integrity
+# SELECT agent_id, model, is_internal, message_type, COUNT(*)
+# FROM messages
+# WHERE session_id = '<test-session>'
+# GROUP BY agent_id, model, is_internal, message_type;
+# Verificar: model != 'unknown', agent_changed tiene is_internal=true
+
+# PRD-103: Citation interactivity
+# 1. Enviar RAG query → click en citation card
+# 2. Verificar file preview modal abre con thumbnail/content
+```
+
+### Danger Points / Regresiones a Monitorear
+
+| Riesgo | Qué Verificar | Comando/Acción |
+|--------|---------------|----------------|
+| Event deduplication breaks session reload | Fix para PRD-100 NO debe filtrar eventos durante reconstruction | Load old session after fix, verify all messages visible |
+| Key generation breaks with rapid messages | React keys must be unique across concurrent agent executions | Send 3 messages in quick succession, verify no key warnings |
+| `isInternal` propagation breaks persistence | `agent_changed` with `isInternal: true` must persist to DB | `SELECT * FROM messages WHERE message_type = 'transition'` |
+| Citation modal breaks file list | File preview modal must coexist with main FileList component | Open citation modal → close → verify FileList still functional |
+
+---
+
 ## Changelog
 
 | Fecha | Cambios |
@@ -550,3 +645,4 @@ npx vitest run "ChatMessageHandler"       # Fixed CRITICAL log tests
 | 2026-02-09 | **PRD-050 y PRD-060 completados**. Fase 5 marcada ✅ (backend-only, frontend diferido a PRD-070). Fase 6 marcada 🟡 (PRD-060 completado, PRD-061 pendiente). PRD-060: Agent Selector UI full-stack implementado — `AgentSelectorDropdown` (shadcn Select), `AgentBadge`, `ApprovalDialog`, `targetAgentId` threaded por 5 capas backend, 3 nuevos event cases frontend. GAP-001 resuelto (frontend event handling). GAP-004 resuelto (agent_changed processing). Test counts actualizados: 3104 backend, 666 frontend. Agregados comandos de test específicos para Fase 6. |
 | 2026-02-11 | **Fase 9 planificada**. PRD-090 (Graph Logic Optimization) y PRD-091 (Event Integrity Verification) creados. GAP-008 reabierto: `tool_choice: 'any'` nunca fue implementado en `agent-builders.ts` (PRD-062 falsely marked complete). GAP-009 creado: `tool_choice: 'any'` causa infinite loop en ReAct agents, requiere enfoque hibrido (first-call-only enforcement). PRD-080 documentado como parcialmente completo (infrastructure done, metrics pending). Fase 8 agregada al status table. Comandos de verificacion Fase 9 agregados. |
 | 2026-02-11 | **PRD-090 implementado**. `FirstCallToolEnforcer` en `core/langchain/FirstCallToolEnforcer.ts`: hybrid tool_choice enforcement (any→auto). Integrado en `agent-builders.ts` con thinking guard. Multi-step tool usage prompts en BC, RAG, y Graphing agents. GAP-008 y GAP-009 resueltos. 10 tests nuevos (FirstCallToolEnforcer), agent-builders tests actualizados. Documentación actualizada: `models.ts` header, `core/langchain/CLAUDE.md`. |
+| 2026-02-13 | **Fase 10 agregada**. Nuevos PRDs para Bug Resolution: PRD-100 (ConversationHistoryReplay - P0 CRITICAL, segundo turno replaya eventos del primero), PRD-101 (UIGroupingAndRenderingBugs - P1, React key collision y duplicación visual), PRD-102 (EventPipelineIntegrity - P1, model unknown, processed flag, agent_changed internal), PRD-103 (RAGCitationsComponentInteractivity - P1, file display sin interactividad). Criterios de verificación, danger points, y comandos de test agregados para diagnóstico sistemático. |

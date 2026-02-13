@@ -59,7 +59,7 @@ export async function executeGraph(
   inputs: unknown,
   options: GraphExecutionOptions
 ): Promise<AgentState> {
-  const { timeoutMs, recursionLimit = 50 } = options;
+  const { timeoutMs, recursionLimit = 100 } = options;
 
   logger.debug(
     { timeoutMs, recursionLimit },

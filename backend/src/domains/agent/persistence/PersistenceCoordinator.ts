@@ -19,6 +19,7 @@
 import { createChildLogger } from '@/shared/utils/logger';
 import { getEventStore, type EventStore } from '@services/events/EventStore';
 import { getMessageQueue, type MessageQueue, QueueName } from '@/infrastructure/queue/MessageQueue';
+import { prisma } from '@/infrastructure/database/prisma';
 import { v4 as uuidv4 } from 'uuid';
 import type {
   IPersistenceCoordinator,
@@ -758,6 +759,33 @@ export class PersistenceCoordinator implements IPersistenceCoordinator {
         );
       }
     })();
+  }
+
+  /**
+   * Get the number of messages in the LangGraph checkpoint at the end of the last turn.
+   * Used by ExecutionPipeline to skip historical messages during normalization.
+   * @param sessionId - Session ID
+   * @returns Number of messages in the checkpoint (0 for first turn)
+   */
+  async getCheckpointMessageCount(sessionId: string): Promise<number> {
+    const session = await prisma.sessions.findUnique({
+      where: { id: sessionId },
+      select: { checkpoint_message_count: true },
+    });
+    return session?.checkpoint_message_count ?? 0;
+  }
+
+  /**
+   * Update the checkpoint message count after successful normalization.
+   * Stores the total state.messages.length so the next turn knows what to skip.
+   * @param sessionId - Session ID
+   * @param count - Total message count in the LangGraph state after this turn
+   */
+  async updateCheckpointMessageCount(sessionId: string, count: number): Promise<void> {
+    await prisma.sessions.update({
+      where: { id: sessionId },
+      data: { checkpoint_message_count: count },
+    });
   }
 
   /**

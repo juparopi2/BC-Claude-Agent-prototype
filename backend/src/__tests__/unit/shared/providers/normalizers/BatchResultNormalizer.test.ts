@@ -420,4 +420,134 @@ describe('BatchResultNormalizer', () => {
       }
     });
   });
+
+  describe('skipMessages (PRD-100 delta tracking)', () => {
+    it('should skip historical messages when skipMessages is set', () => {
+      // Simulate turn 2: 2 turn-1 messages (human + AI) + 2 turn-2 messages (human + AI)
+      const state = createMockState([
+        createMockMessage('Turn 1 question', 'human'),
+        createMockMessage('Turn 1 answer'),
+        createMockMessage('Turn 2 question', 'human'),
+        createMockMessage('Turn 2 answer'),
+      ]);
+
+      // Skip the first 2 messages (turn 1)
+      const events = normalizer.normalize(state, sessionId, { skipMessages: 2 });
+
+      // Should only have events from turn 2's AI message
+      const assistantMessages = events.filter(e => e.type === 'assistant_message');
+      expect(assistantMessages).toHaveLength(1);
+    });
+
+    it('should produce all events when skipMessages is 0', () => {
+      const state = createMockState([
+        createMockMessage('Turn 1 question', 'human'),
+        createMockMessage('Turn 1 answer'),
+        createMockMessage('Turn 2 question', 'human'),
+        createMockMessage('Turn 2 answer'),
+      ]);
+
+      // skipMessages: 0 = skip nothing (backward compat with default)
+      const events = normalizer.normalize(state, sessionId, { skipMessages: 0 });
+
+      // Should have events from BOTH AI messages
+      const assistantMessages = events.filter(e => e.type === 'assistant_message');
+      expect(assistantMessages).toHaveLength(2);
+    });
+
+    it('should handle skipMessages larger than message count gracefully', () => {
+      const state = createMockState([
+        createMockMessage('Only one AI message'),
+      ]);
+
+      // Skip more messages than exist — should not crash
+      const events = normalizer.normalize(state, sessionId, { skipMessages: 100 });
+
+      // All messages skipped — no events (except possibly complete)
+      expect(events).toHaveLength(0);
+    });
+
+    it('should correctly interleave tool_response for new messages only', () => {
+      // Turn 1 had a tool call, turn 2 has a new tool call
+      const state = createMockState(
+        [
+          createMockMessage('Turn 1 question', 'human'),
+          createMockMessage([
+            { type: 'tool_use', id: 'toolu_old', name: 'search', input: {} },
+          ]),
+          createMockMessage('Tool result 1', 'tool'),
+          createMockMessage('Turn 1 answer'),
+          createMockMessage('Turn 2 question', 'human'),
+          createMockMessage([
+            { type: 'tool_use', id: 'toolu_new', name: 'analyze', input: {} },
+          ]),
+          createMockMessage('Tool result 2', 'tool'),
+          createMockMessage('Turn 2 answer'),
+        ],
+        [
+          { toolUseId: 'toolu_old', toolName: 'search', success: true, result: 'Old result' },
+          { toolUseId: 'toolu_new', toolName: 'analyze', success: true, result: 'New result' },
+        ]
+      );
+
+      // Skip first 4 messages (turn 1: human, AI tool_use, tool, AI answer)
+      const events = normalizer.normalize(state, sessionId, { skipMessages: 4 });
+
+      // Should only have events from turn 2 messages
+      const toolRequests = events.filter(e => e.type === 'tool_request');
+      const toolResponses = events.filter(e => e.type === 'tool_response');
+
+      expect(toolRequests).toHaveLength(1);
+      expect((toolRequests[0] as NormalizedToolRequestEvent).toolUseId).toBe('toolu_new');
+
+      expect(toolResponses).toHaveLength(1);
+      expect((toolResponses[0] as { toolUseId: string }).toolUseId).toBe('toolu_new');
+    });
+
+    it('should maintain originalIndex continuity starting from 0', () => {
+      const state = createMockState([
+        createMockMessage('Turn 1 question', 'human'),
+        createMockMessage([
+          { type: 'thinking', thinking: 'Old thinking' },
+          { type: 'text', text: 'Old response' },
+        ]),
+        createMockMessage('Turn 2 question', 'human'),
+        createMockMessage([
+          { type: 'thinking', thinking: 'New thinking' },
+          { type: 'text', text: 'New response' },
+        ]),
+      ]);
+
+      // Skip 2 messages (turn 1)
+      const events = normalizer.normalize(state, sessionId, { skipMessages: 2 });
+
+      // Indices should start from 0, not from some offset
+      expect(events[0].originalIndex).toBe(0);
+      for (let i = 1; i < events.length; i++) {
+        expect(events[i].originalIndex).toBe(i);
+      }
+    });
+
+    it('should preserve complete event when skipMessages and includeComplete are set', () => {
+      const state = createMockState([
+        createMockMessage('Turn 1 question', 'human'),
+        createMockMessage('Turn 1 answer'),
+        createMockMessage('Turn 2 question', 'human'),
+        createMockMessage('Turn 2 answer'),
+      ]);
+
+      const events = normalizer.normalize(state, sessionId, {
+        skipMessages: 2,
+        includeComplete: true,
+      });
+
+      const completeEvent = events.find(e => e.type === 'complete');
+      expect(completeEvent).toBeDefined();
+      expect(completeEvent?.persistenceStrategy).toBe('transient');
+
+      // Should have assistant_message + complete
+      const assistantMessages = events.filter(e => e.type === 'assistant_message');
+      expect(assistantMessages).toHaveLength(1);
+    });
+  });
 });

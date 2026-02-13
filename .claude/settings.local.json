@@ -197,7 +197,10 @@
       "WebFetch(domain:friendify.net)",
       "Skill(prompt-engineering)",
       "Bash(npx -w backend tsx scripts/inspect-session.ts:*)",
-      "Bash(cmd //c \"taskkill /PID 34048 /F\")"
+      "Bash(cmd //c \"taskkill /PID 34048 /F\")",
+      "mcp__playwright__browser_evaluate",
+      "mcp__playwright__browser_press_key",
+      "mcp__playwright__browser_console_messages"
     ],
     "deny": [],
     "ask": []

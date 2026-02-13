@@ -44,6 +44,16 @@ import {
 import type { EventStore, BaseEvent } from '@services/events/EventStore';
 import type { MessageQueue } from '@/infrastructure/queue/MessageQueue';
 
+// Mock Prisma to prevent database connection during tests
+vi.mock('@/infrastructure/database/prisma', () => ({
+  prisma: {
+    sessions: {
+      findUnique: vi.fn().mockResolvedValue({ checkpoint_message_count: 0 }),
+      update: vi.fn().mockResolvedValue({}),
+    },
+  },
+}));
+
 // Mock external services to prevent Redis connections
 vi.mock('@services/events/EventStore', () => ({
   getEventStore: vi.fn(() => ({

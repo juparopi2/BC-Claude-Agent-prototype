@@ -435,12 +435,13 @@ model session_files {
 }
 
 model sessions {
-  id                  String                @id(map: "PK__sessions__3213E83F49BB8136") @default(dbgenerated("newid()"), map: "DF__sessions__id__7C4F7684") @db.UniqueIdentifier
-  user_id             String                @db.UniqueIdentifier
-  title               String                @default("New Chat", map: "DF__sessions__title__7D439ABD") @db.NVarChar(500)
-  is_active           Boolean               @default(true, map: "DF__sessions__is_act__7E37BEF6")
-  created_at          DateTime              @default(dbgenerated("getutcdate()"), map: "DF__sessions__create__7F2BE32F")
-  updated_at          DateTime              @default(dbgenerated("getutcdate()"), map: "DF__sessions__update__00200768")
+  id                       String                @id(map: "PK__sessions__3213E83F49BB8136") @default(dbgenerated("newid()"), map: "DF__sessions__id__7C4F7684") @db.UniqueIdentifier
+  user_id                  String                @db.UniqueIdentifier
+  title                    String                @default("New Chat", map: "DF__sessions__title__7D439ABD") @db.NVarChar(500)
+  is_active                Boolean               @default(true, map: "DF__sessions__is_act__7E37BEF6")
+  created_at               DateTime              @default(dbgenerated("getutcdate()"), map: "DF__sessions__create__7F2BE32F")
+  updated_at               DateTime              @default(dbgenerated("getutcdate()"), map: "DF__sessions__update__00200768")
+  checkpoint_message_count Int                   @default(0)
   agent_executions    agent_executions[]
   approvals           approvals[]
   chat_attachments    chat_attachments[]

@@ -18,6 +18,8 @@ export interface BatchNormalizerOptions {
   includeComplete?: boolean;
   /** User ID (for session_start if needed) */
   userId?: string;
+  /** Skip first N messages (historical from previous turns loaded by checkpointer) */
+  skipMessages?: number;
 }
 
 /**

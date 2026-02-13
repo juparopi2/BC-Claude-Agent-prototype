@@ -527,6 +527,56 @@ describe('UsageTrackingService', () => {
     });
   });
 
+  describe('trackClaudeUsage cost calculations', () => {
+    it('should calculate correct cost for input tokens', async () => {
+      const userId = '123E4567-E89B-12D3-A456-426614174000';
+      const sessionId = '987FCDEB-51A2-43D7-8765-BA9876543210';
+
+      await service.trackClaudeUsage(userId, sessionId, 1_000_000, 0, 'claude-haiku-4-5-20251001');
+
+      // Input cost for 1M tokens at $3.00/M = $3.00
+      expect(mockRequest.input).toHaveBeenCalledWith('cost', 1_000_000 * UNIT_COSTS.claude_input_token);
+    });
+
+    it('should calculate correct cost for output tokens', async () => {
+      const userId = '123E4567-E89B-12D3-A456-426614174000';
+      const sessionId = '987FCDEB-51A2-43D7-8765-BA9876543210';
+
+      await service.trackClaudeUsage(userId, sessionId, 0, 1_000_000, 'claude-haiku-4-5-20251001');
+
+      // Output cost for 1M tokens at $15.00/M = $15.00
+      expect(mockRequest.input).toHaveBeenCalledWith('cost', 1_000_000 * UNIT_COSTS.claude_output_token);
+    });
+
+    it('should include cache token costs when provided', async () => {
+      const userId = '123E4567-E89B-12D3-A456-426614174000';
+      const sessionId = '987FCDEB-51A2-43D7-8765-BA9876543210';
+
+      await service.trackClaudeUsage(userId, sessionId, 100_000, 50_000, 'claude-haiku-4-5-20251001', {
+        cache_write_tokens: 10_000,
+        cache_read_tokens: 5_000,
+      });
+
+      // 4 insert calls: input, output, cache_write, cache_read
+      expect(mockPool.request).toHaveBeenCalledTimes(4);
+
+      // Verify cache write cost
+      expect(mockRequest.input).toHaveBeenCalledWith('cost', 10_000 * UNIT_COSTS.cache_write_token);
+      // Verify cache read cost
+      expect(mockRequest.input).toHaveBeenCalledWith('cost', 5_000 * UNIT_COSTS.cache_read_token);
+    });
+
+    it('should not track cache events when cache tokens are zero', async () => {
+      const userId = '123E4567-E89B-12D3-A456-426614174000';
+      const sessionId = '987FCDEB-51A2-43D7-8765-BA9876543210';
+
+      await service.trackClaudeUsage(userId, sessionId, 100, 50, 'claude-sonnet-4-5-20250929');
+
+      // Only 2 calls: input + output (no cache)
+      expect(mockPool.request).toHaveBeenCalledTimes(2);
+    });
+  });
+
   describe('Error Handling', () => {
     it('should never throw errors from public methods', async () => {
       // Make all operations fail

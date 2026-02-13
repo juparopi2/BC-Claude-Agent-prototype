@@ -76,6 +76,8 @@ export interface PipelineExecutionResult {
   result: AgentExecutionResult;
   /** Normalized events processed */
   events: NormalizedAgentEvent[];
+  /** Model used by the agent (for billing) */
+  usedModel: string | null;
 }
 
 /**
@@ -129,15 +131,28 @@ export class ExecutionPipeline {
       'Message context built'
     );
 
+    // Stage 1.5: Read historical message count for delta tracking (PRD-100)
+    const checkpointMessageCount = await persistenceCoordinator.getCheckpointMessageCount(sessionId);
+
     // Stage 2: Execute graph
     const graphResult = await graphExecutor.execute(inputs, {
       timeoutMs: options?.timeoutMs ?? ctx.timeoutMs,
     });
 
-    // Stage 3: Normalize results
+    // Stage 3: Normalize results (skip historical messages from previous turns)
     const normalizedEvents = normalizer.normalize(graphResult, sessionId, {
       includeComplete: true,
+      skipMessages: checkpointMessageCount,
     });
+
+    if (checkpointMessageCount > 0) {
+      logger.info({
+        sessionId,
+        checkpointMessageCount,
+        totalMessagesAfterExecution: graphResult.messages?.length ?? 0,
+        newMessages: (graphResult.messages?.length ?? 0) - checkpointMessageCount,
+      }, 'Delta tracking: skipping historical messages');
+    }
 
     logger.info({
       sessionId,
@@ -213,6 +228,12 @@ export class ExecutionPipeline {
     // Stage 6: Finalize tool lifecycle
     await ctx.toolLifecycleManager.finalizeAndPersistOrphans(sessionId, persistenceCoordinator);
 
+    // Stage 7: Update checkpoint message count for next turn (PRD-100)
+    const totalMessages = graphResult.messages?.length ?? 0;
+    if (totalMessages > 0) {
+      await persistenceCoordinator.updateCheckpointMessageCount(sessionId, totalMessages);
+    }
+
     return {
       result: {
         sessionId,
@@ -227,6 +248,7 @@ export class ExecutionPipeline {
         success: true,
       },
       events: normalizedEvents,
+      usedModel: graphResult.usedModel ?? null,
     };
   }
 }

@@ -189,7 +189,7 @@ class SupervisorGraphAdapter implements ICompiledGraph {
               userId,
               invocationId: `inv-${Date.now()}`,
             },
-            recursionLimit: options?.recursionLimit ?? 50,
+            recursionLimit: options?.recursionLimit ?? 100,
             signal: options?.signal,
           }
         );
@@ -218,7 +218,7 @@ class SupervisorGraphAdapter implements ICompiledGraph {
         { messages: [new HumanMessage(prompt)] },
         {
           configurable: { thread_id: threadId, userId, invocationId },
-          recursionLimit: options?.recursionLimit ?? 50,
+          recursionLimit: options?.recursionLimit ?? 100,
           signal: options?.signal,
           streamMode: 'values',
         }

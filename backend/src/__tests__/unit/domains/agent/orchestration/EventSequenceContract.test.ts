@@ -78,7 +78,10 @@ vi.mock('@domains/agent/persistence', () => ({
     }),
     persistToolEventsAsync: vi.fn(),
     persistCitationsAsync: vi.fn(),
+    persistAgentChangedAsync: vi.fn(),
     awaitPersistence: vi.fn().mockResolvedValue(undefined),
+    getCheckpointMessageCount: vi.fn().mockResolvedValue(0),
+    updateCheckpointMessageCount: vi.fn().mockResolvedValue(undefined),
   })),
 }));
 
@@ -104,6 +107,12 @@ vi.mock('@/domains/chat-attachments', () => ({
   })),
   getChatAttachmentService: vi.fn(() => ({
     getAttachmentSummaries: vi.fn().mockResolvedValue([]),
+  })),
+}));
+
+vi.mock('@/domains/billing/tracking/UsageTrackingService', () => ({
+  getUsageTrackingService: vi.fn(() => ({
+    trackClaudeUsage: vi.fn().mockResolvedValue(undefined),
   })),
 }));
 

@@ -73,7 +73,10 @@ vi.mock('@domains/agent/persistence', () => ({
     }),
     persistToolEventsAsync: vi.fn(),
     persistCitationsAsync: vi.fn(),
+    persistAgentChangedAsync: vi.fn(),
     awaitPersistence: vi.fn().mockResolvedValue(undefined),
+    getCheckpointMessageCount: vi.fn().mockResolvedValue(0),
+    updateCheckpointMessageCount: vi.fn().mockResolvedValue(undefined),
   })),
 }));
 
@@ -98,6 +101,13 @@ vi.mock('@/domains/chat-attachments', () => ({
   })),
   getChatAttachmentService: vi.fn(() => ({
     getAttachmentSummaries: vi.fn().mockResolvedValue([]),
+  })),
+}));
+
+const mockTrackClaudeUsage = vi.fn().mockResolvedValue(undefined);
+vi.mock('@/domains/billing/tracking/UsageTrackingService', () => ({
+  getUsageTrackingService: vi.fn(() => ({
+    trackClaudeUsage: mockTrackClaudeUsage,
   })),
 }));
 
@@ -318,7 +328,7 @@ describe('ErrorHandling', () => {
       expect((getSupervisorGraphAdapter() as any).invoke).toHaveBeenCalledWith(
         expect.any(Object),
         expect.objectContaining({
-          recursionLimit: 50,
+          recursionLimit: 100,
           signal: expect.any(AbortSignal),
         })
       );
@@ -418,6 +428,75 @@ describe('ErrorHandling', () => {
 
       const errorEvent = events.find(e => e.type === 'error') as { code: string } | undefined;
       expect(errorEvent?.code).toBe('EXECUTION_FAILED');
+    });
+  });
+
+  describe('AI cost tracking integration', () => {
+    it('should call trackClaudeUsage after successful execution with tokens', async () => {
+      vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockResolvedValue({
+        messages: [
+          { content: 'User', _getType: () => 'human' },
+          new AIMessage({
+            content: 'Response',
+            response_metadata: { stop_reason: 'end_turn' },
+            usage_metadata: { input_tokens: 500, output_tokens: 200, total_tokens: 700 },
+          }),
+        ],
+        toolExecutions: [],
+        usedModel: 'claude-sonnet-4-5-20250929',
+      });
+
+      const orchestrator = createAgentOrchestrator();
+      await orchestrator.executeAgentSync(prompt, sessionId, vi.fn(), 'user-123');
+
+      // Allow microtask queue to flush (fire-and-forget promise)
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      expect(mockTrackClaudeUsage).toHaveBeenCalledWith(
+        'user-123',
+        sessionId,
+        500,
+        200,
+        'claude-sonnet-4-5-20250929',
+        expect.objectContaining({ messageId: expect.any(String) })
+      );
+    });
+
+    it('should NOT call trackClaudeUsage when execution fails', async () => {
+      vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockRejectedValue(
+        new Error('Graph execution failed')
+      );
+
+      const orchestrator = createAgentOrchestrator();
+
+      try {
+        await orchestrator.executeAgentSync(prompt, sessionId, vi.fn(), 'user-123');
+      } catch {
+        // Expected to throw
+      }
+
+      expect(mockTrackClaudeUsage).not.toHaveBeenCalled();
+    });
+
+    it('should NOT call trackClaudeUsage when userId is missing', async () => {
+      vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockResolvedValue({
+        messages: [
+          { content: 'User', _getType: () => 'human' },
+          new AIMessage({
+            content: 'Response',
+            response_metadata: { stop_reason: 'end_turn' },
+          }),
+        ],
+        toolExecutions: [],
+        usedModel: 'claude-sonnet-4-5-20250929',
+      });
+
+      const orchestrator = createAgentOrchestrator();
+      await orchestrator.executeAgentSync(prompt, sessionId, vi.fn());
+
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      expect(mockTrackClaudeUsage).not.toHaveBeenCalled();
     });
   });
 

@@ -30,6 +30,8 @@ export class UsageTracker implements IUsageTracker {
   private totalInputTokens = 0;
   private totalOutputTokens = 0;
   private eventCount = 0;
+  private totalCacheCreationTokens = 0;
+  private totalCacheReadTokens = 0;
 
   /**
    * Add usage from a single event.
@@ -46,6 +48,8 @@ export class UsageTracker implements IUsageTracker {
       this.totalInputTokens += inputTokens;
       this.totalOutputTokens += outputTokens;
       this.eventCount++;
+      this.totalCacheCreationTokens += data.cacheCreationTokens || 0;
+      this.totalCacheReadTokens += data.cacheReadTokens || 0;
     }
   }
 
@@ -58,6 +62,8 @@ export class UsageTracker implements IUsageTracker {
       totalOutputTokens: this.totalOutputTokens,
       totalTokens: this.totalInputTokens + this.totalOutputTokens,
       eventCount: this.eventCount,
+      totalCacheCreationTokens: this.totalCacheCreationTokens,
+      totalCacheReadTokens: this.totalCacheReadTokens,
     };
   }
 
@@ -96,6 +102,8 @@ export class UsageTracker implements IUsageTracker {
     this.totalInputTokens = 0;
     this.totalOutputTokens = 0;
     this.eventCount = 0;
+    this.totalCacheCreationTokens = 0;
+    this.totalCacheReadTokens = 0;
   }
 }
 

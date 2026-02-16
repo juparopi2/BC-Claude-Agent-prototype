@@ -13,6 +13,10 @@ export interface UsageData {
   inputTokens: number;
   /** Output tokens generated */
   outputTokens: number;
+  /** Tokens written to prompt cache (Anthropic) */
+  cacheCreationTokens?: number;
+  /** Tokens read from prompt cache (Anthropic) */
+  cacheReadTokens?: number;
 }
 
 /**
@@ -27,6 +31,10 @@ export interface AccumulatedUsage {
   totalTokens: number;
   /** Number of usage events accumulated */
   eventCount: number;
+  /** Total cache creation tokens across all events */
+  totalCacheCreationTokens: number;
+  /** Total cache read tokens across all events */
+  totalCacheReadTokens: number;
 }
 
 /**

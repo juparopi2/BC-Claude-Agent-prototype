@@ -191,6 +191,25 @@ export interface ExecutionContextSync {
    */
   totalOutputTokens: number;
 
+  /**
+   * Total cache creation tokens in this execution (Anthropic prompt caching).
+   * MUTABLE: Accumulated after each assistant_message.
+   */
+  totalCacheCreationTokens: number;
+
+  /**
+   * Total cache read tokens in this execution (Anthropic prompt caching).
+   * MUTABLE: Accumulated after each assistant_message.
+   */
+  totalCacheReadTokens: number;
+
+  /**
+   * Per-agent token breakdown for billing attribution.
+   * Key: agentId, Value: accumulated token usage for that agent.
+   * MUTABLE: Updated after each assistant_message.
+   */
+  readonly perAgentUsage: Map<string, { inputTokens: number; outputTokens: number; cacheCreationTokens: number; cacheReadTokens: number }>;
+
   // ============================================================================
   // Options (Immutable)
   // ============================================================================
@@ -262,6 +281,9 @@ export function createExecutionContextSync(
     // Usage Tracking
     totalInputTokens: 0,
     totalOutputTokens: 0,
+    totalCacheCreationTokens: 0,
+    totalCacheReadTokens: 0,
+    perAgentUsage: new Map(),
 
     // Options
     enableThinking: options?.enableThinking ?? true,
@@ -320,10 +342,18 @@ export function getTotalTokensSync(ctx: ExecutionContextSync): number {
  */
 export function setUsageSync(
   ctx: ExecutionContextSync,
-  usage: { inputTokens?: number; outputTokens?: number }
+  usage: {
+    inputTokens?: number;
+    outputTokens?: number;
+    cacheCreationTokens?: number;
+    cacheReadTokens?: number;
+  }
 ): void {
-  ctx.totalInputTokens = usage.inputTokens ?? 0;
-  ctx.totalOutputTokens = usage.outputTokens ?? 0;
+  // ACCUMULATE instead of overwrite — multi-agent turns have multiple assistant_messages
+  ctx.totalInputTokens += usage.inputTokens ?? 0;
+  ctx.totalOutputTokens += usage.outputTokens ?? 0;
+  ctx.totalCacheCreationTokens += usage.cacheCreationTokens ?? 0;
+  ctx.totalCacheReadTokens += usage.cacheReadTokens ?? 0;
 }
 
 /**

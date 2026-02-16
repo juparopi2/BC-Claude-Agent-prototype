@@ -223,7 +223,14 @@ export class AgentOrchestrator implements IAgentOrchestrator {
           tokenUsage.inputTokens,
           tokenUsage.outputTokens,
           pipelineResult.usedModel ?? 'unknown',
-          { messageId: pipelineResult.result.messageId }
+          {
+            messageId: pipelineResult.result.messageId,
+            cache_write_tokens: tokenUsage.cacheCreationTokens,
+            cache_read_tokens: tokenUsage.cacheReadTokens,
+            per_agent_usage: ctx.perAgentUsage.size > 0
+              ? Object.fromEntries(ctx.perAgentUsage)
+              : undefined,
+          }
         ).catch((err: unknown) => {
           this.logger.warn({
             error: err instanceof Error ? err.message : String(err),

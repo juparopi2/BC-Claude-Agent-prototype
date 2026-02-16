@@ -507,6 +507,8 @@ export interface AgentExecutionResult {
     outputTokens: number;
     thinkingTokens?: number;
     totalTokens: number;
+    cacheCreationTokens?: number;
+    cacheReadTokens?: number;
   };
   /** Input tokens (flat structure) */
   inputTokens?: number;

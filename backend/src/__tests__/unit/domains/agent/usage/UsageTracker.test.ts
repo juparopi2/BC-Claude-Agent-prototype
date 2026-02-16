@@ -317,4 +317,41 @@ describe('UsageTracker', () => {
       expect(tracker.hasUsage()).toBe(true);
     });
   });
+
+  describe('cache token tracking', () => {
+    it('should accumulate cache creation tokens', () => {
+      tracker.addUsage({ inputTokens: 100, outputTokens: 50, cacheCreationTokens: 3000, cacheReadTokens: 0 });
+      tracker.addUsage({ inputTokens: 200, outputTokens: 100, cacheCreationTokens: 500, cacheReadTokens: 0 });
+
+      const accumulated = tracker.getAccumulated();
+      expect(accumulated.totalCacheCreationTokens).toBe(3500);
+      expect(accumulated.totalCacheReadTokens).toBe(0);
+    });
+
+    it('should accumulate cache read tokens', () => {
+      tracker.addUsage({ inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 2000 });
+      tracker.addUsage({ inputTokens: 200, outputTokens: 100, cacheCreationTokens: 0, cacheReadTokens: 1500 });
+
+      const accumulated = tracker.getAccumulated();
+      expect(accumulated.totalCacheCreationTokens).toBe(0);
+      expect(accumulated.totalCacheReadTokens).toBe(3500);
+    });
+
+    it('should handle undefined cache tokens (non-Anthropic providers)', () => {
+      tracker.addUsage({ inputTokens: 100, outputTokens: 50 });
+
+      const accumulated = tracker.getAccumulated();
+      expect(accumulated.totalCacheCreationTokens).toBe(0);
+      expect(accumulated.totalCacheReadTokens).toBe(0);
+    });
+
+    it('should reset cache token counters', () => {
+      tracker.addUsage({ inputTokens: 100, outputTokens: 50, cacheCreationTokens: 3000, cacheReadTokens: 2000 });
+      tracker.reset();
+
+      const accumulated = tracker.getAccumulated();
+      expect(accumulated.totalCacheCreationTokens).toBe(0);
+      expect(accumulated.totalCacheReadTokens).toBe(0);
+    });
+  });
 });

@@ -243,6 +243,8 @@ export class ExecutionPipeline {
           inputTokens: ctx.totalInputTokens,
           outputTokens: ctx.totalOutputTokens,
           totalTokens: ctx.totalInputTokens + ctx.totalOutputTokens,
+          cacheCreationTokens: ctx.totalCacheCreationTokens || undefined,
+          cacheReadTokens: ctx.totalCacheReadTokens || undefined,
         },
         toolsUsed,
         success: true,

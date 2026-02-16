@@ -71,6 +71,10 @@ export interface NormalizedTokenUsage {
   thinkingTokens?: number;
   /** Cached tokens (prompt caching) */
   cachedTokens?: number;
+  /** Tokens written to prompt cache (Anthropic) */
+  cacheCreationTokens?: number;
+  /** Tokens read from prompt cache (Anthropic) */
+  cacheReadTokens?: number;
 }
 
 /**

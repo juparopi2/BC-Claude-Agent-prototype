@@ -425,6 +425,97 @@ describe('MessageNormalizer', () => {
     });
   });
 
+  describe('cache token extraction', () => {
+    it('should extract cache tokens from usage_metadata.input_token_details', () => {
+      const message = createMockMessage({
+        content: 'test',
+        usageMetadata: {
+          input_tokens: 100,
+          output_tokens: 50,
+          input_token_details: {
+            cache_creation: 2921,
+            cache_read: 500,
+          },
+        },
+        id: 'msg-cache-1',
+      });
+
+      const events = normalizeAIMessage(message, 0, SESSION_ID);
+
+      expect((events[0] as { tokenUsage: unknown }).tokenUsage).toEqual({
+        inputTokens: 100,
+        outputTokens: 50,
+        cacheCreationTokens: 2921,
+        cacheReadTokens: 500,
+      });
+    });
+
+    it('should extract cache tokens from response_metadata.usage (raw Anthropic)', () => {
+      const message = createMockMessage({
+        content: 'test',
+        responseMetadata: {
+          usage: {
+            input_tokens: 19,
+            output_tokens: 355,
+            cache_creation_input_tokens: 2921,
+            cache_read_input_tokens: 0,
+          },
+          model: 'claude-haiku-4-5-20251001',
+        },
+        id: 'msg-cache-2',
+      });
+
+      const events = normalizeAIMessage(message, 0, SESSION_ID);
+
+      expect((events[0] as { tokenUsage: unknown }).tokenUsage).toEqual({
+        inputTokens: 19,
+        outputTokens: 355,
+        cacheCreationTokens: 2921,
+        cacheReadTokens: 0,
+      });
+    });
+
+    it('should NOT set cache tokens when not present (non-Anthropic provider)', () => {
+      const message = createMockMessage({
+        content: 'test',
+        usageMetadata: {
+          input_tokens: 100,
+          output_tokens: 50,
+        },
+        id: 'msg-no-cache',
+      });
+
+      const events = normalizeAIMessage(message, 0, SESSION_ID);
+
+      const tokenUsage = (events[0] as { tokenUsage: Record<string, unknown> }).tokenUsage;
+      expect(tokenUsage.inputTokens).toBe(100);
+      expect(tokenUsage.outputTokens).toBe(50);
+      expect(tokenUsage.cacheCreationTokens).toBeUndefined();
+      expect(tokenUsage.cacheReadTokens).toBeUndefined();
+    });
+
+    it('should handle zero cache_read in input_token_details', () => {
+      const message = createMockMessage({
+        content: 'test',
+        usageMetadata: {
+          input_tokens: 100,
+          output_tokens: 50,
+          input_token_details: {
+            cache_creation: 0,
+            cache_read: 0,
+          },
+        },
+        id: 'msg-zero-cache',
+      });
+
+      const events = normalizeAIMessage(message, 0, SESSION_ID);
+
+      const tokenUsage = (events[0] as { tokenUsage: Record<string, unknown> }).tokenUsage;
+      expect(tokenUsage.cacheCreationTokens).toBe(0);
+      expect(tokenUsage.cacheReadTokens).toBe(0);
+    });
+  });
+
   describe('message ID extraction', () => {
     it('should extract id from message property', () => {
       const message = createMockMessage({

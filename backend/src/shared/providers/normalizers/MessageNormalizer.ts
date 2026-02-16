@@ -153,6 +153,23 @@ function extractUsage(message: BaseMessage): NormalizedTokenUsage | null {
       inputTokens: usageMeta.input_tokens ?? 0,
       outputTokens: usageMeta.output_tokens ?? 0,
     };
+
+    // Extract cache tokens from LangChain input_token_details (Anthropic provider)
+    const details = (usageMeta as {
+      input_token_details?: {
+        cache_creation?: number;
+        cache_read?: number;
+      };
+    }).input_token_details;
+    if (details) {
+      if (typeof details.cache_creation === 'number') {
+        usage.cacheCreationTokens = details.cache_creation;
+      }
+      if (typeof details.cache_read === 'number') {
+        usage.cacheReadTokens = details.cache_read;
+      }
+    }
+
     extractThinkingTokens(message, usage);
     return usage;
   }
@@ -172,6 +189,19 @@ function extractUsage(message: BaseMessage): NormalizedTokenUsage | null {
       inputTokens: responseMeta.usage.input_tokens ?? 0,
       outputTokens: responseMeta.usage.output_tokens ?? 0,
     };
+
+    // Extract cache tokens from raw Anthropic response_metadata.usage
+    const rawUsage = responseMeta.usage as {
+      cache_creation_input_tokens?: number;
+      cache_read_input_tokens?: number;
+    };
+    if (typeof rawUsage.cache_creation_input_tokens === 'number') {
+      usage.cacheCreationTokens = rawUsage.cache_creation_input_tokens;
+    }
+    if (typeof rawUsage.cache_read_input_tokens === 'number') {
+      usage.cacheReadTokens = rawUsage.cache_read_input_tokens;
+    }
+
     extractThinkingTokens(message, usage);
     return usage;
   }

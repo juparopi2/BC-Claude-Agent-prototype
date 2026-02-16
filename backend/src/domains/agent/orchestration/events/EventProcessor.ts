@@ -151,7 +151,18 @@ export function trackAssistantMessageState(
   setUsageSync(ctx, {
     inputTokens: msgEvent.tokenUsage.inputTokens,
     outputTokens: msgEvent.tokenUsage.outputTokens,
+    cacheCreationTokens: msgEvent.tokenUsage.cacheCreationTokens,
+    cacheReadTokens: msgEvent.tokenUsage.cacheReadTokens,
   });
+
+  // Accumulate per-agent usage for billing attribution
+  const agentId = msgEvent.sourceAgentId ?? 'unknown';
+  const existing = ctx.perAgentUsage.get(agentId) ?? { inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0 };
+  existing.inputTokens += msgEvent.tokenUsage.inputTokens;
+  existing.outputTokens += msgEvent.tokenUsage.outputTokens;
+  existing.cacheCreationTokens += msgEvent.tokenUsage.cacheCreationTokens ?? 0;
+  existing.cacheReadTokens += msgEvent.tokenUsage.cacheReadTokens ?? 0;
+  ctx.perAgentUsage.set(agentId, existing);
 
   return {
     finalContent: msgEvent.content,

@@ -1,10 +1,11 @@
 # PRD-101: Errores de Agrupación y Renderizado en UI
 
-**Estado**: 🔴 NO INICIADO
+**Estado**: 🟡 EN PROGRESO (~20%)
 **Fecha**: 2026-02-13
+**Fecha Auditoría**: 2026-02-16
 **Fase**: 10 (Bug Resolution)
 **Prioridad**: P1 - HIGH
-**Dependencias**: PRD-100 (para evitar duplicación visual durante ejecución en vivo)
+**Dependencias**: PRD-100 ✅ (completado — duplicación visual mitigada)
 
 ---
 
@@ -358,8 +359,31 @@ La reconstrucción con encabezados sintéticos garantiza que estas sesiones se r
 
 ---
 
-## 11. Changelog
+## 11. Estado de Implementación (Auditoría 2026-02-16)
+
+### Sub-issue 1: Colisión de React Keys — ❌ NO IMPLEMENTADO
+- `createGroupId()` sigue usando `grp-${++groupCounter}-${Date.now()}`
+- No se agregó dependencia `uuid` al frontend
+- **Esfuerzo restante**: ~30min
+
+### Sub-issue 2: Encabezado faltante en reload — ⚠️ PARCIAL
+- `reconstructFromMessages()` existe en `agentWorkflowStore.ts` (línea 158)
+- Usa campo `agent_identity` de mensajes persistidos para detectar cambios de agente
+- Crea grupos con transitions correctamente
+- **Faltante**: No inyecta eventos `agent_changed` sintéticos cuando no existe `agent_identity`
+- **Esfuerzo restante**: ~2h
+
+### Sub-issue 3: Deduplicación en frontend — ⚠️ PARCIAL
+- `messageStore.ts` línea 119: `addMessage()` tiene dedup con `state.messages.some(m => m.id === message.id)`
+- Funciona correctamente pero usa O(n) scan en vez de Set<string>
+- **Faltante**: Optimización a Set-based para alto volumen WebSocket
+- **Esfuerzo restante**: ~30min
+
+---
+
+## 12. Changelog
 
 | Fecha | Autor | Cambios |
 |-------|-------|---------|
 | 2026-02-13 | Juan Pablo | Creación inicial del PRD |
+| 2026-02-16 | Claude | Auditoría: actualizado estado a EN PROGRESO, documentado avance parcial |

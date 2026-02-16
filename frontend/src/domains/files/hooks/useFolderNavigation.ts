@@ -10,52 +10,8 @@
 import { useCallback } from 'react';
 import { useFolderTreeStore } from '../stores/folderTreeStore';
 import { getFileApiClient } from '@/src/infrastructure/api';
+import { buildPathToFolder } from '../utils/folderPathBuilder';
 import type { ParsedFile } from '@bc-agent/shared';
-
-/**
- * Build the breadcrumb path from root to a given folder
- * by walking up the parent chain using the treeFolders cache.
- *
- * @param folder - The target folder to build path for
- * @returns Array of folders from root to target (inclusive)
- */
-function buildPathToFolder(folder: ParsedFile): ParsedFile[] {
-  const path: ParsedFile[] = [folder];
-  const { treeFolders } = useFolderTreeStore.getState();
-
-  let currentParentId = folder.parentFolderId;
-
-  // Walk up the tree until we reach root (null parentFolderId)
-  while (currentParentId !== null) {
-    // Search for parent in all cached folder lists
-    let parentFolder: ParsedFile | undefined;
-
-    // Check root folders
-    const rootFolders = treeFolders['root'] || [];
-    parentFolder = rootFolders.find((f) => f.id === currentParentId);
-
-    // If not in root, search in all cached children
-    if (!parentFolder) {
-      for (const folderId of Object.keys(treeFolders)) {
-        const children = treeFolders[folderId];
-        parentFolder = children?.find((f) => f.id === currentParentId);
-        if (parentFolder) break;
-      }
-    }
-
-    if (parentFolder) {
-      // Add parent to the beginning of the path
-      path.unshift(parentFolder);
-      currentParentId = parentFolder.parentFolderId;
-    } else {
-      // Parent not found in cache - stop walking
-      // This can happen if not all folders are loaded yet
-      break;
-    }
-  }
-
-  return path;
-}
 
 /**
  * useFolderNavigation return type
@@ -217,8 +173,6 @@ export function useFolderNavigation(): UseFolderNavigationReturn {
   // Navigate to folder with optional folder data for breadcrumb path construction
   const navigateToFolder = useCallback(
     (folderId: string | null, folderData?: ParsedFile) => {
-
-
       if (folderId === null) {
         setCurrentFolderAction(null, []);
         return;
@@ -227,13 +181,9 @@ export function useFolderNavigation(): UseFolderNavigationReturn {
       if (folderData) {
         // Build the correct path from root to this folder
         // by walking up using parentFolderId
-        const newPath = buildPathToFolder(folderData);
+        const { treeFolders } = useFolderTreeStore.getState();
+        const newPath = buildPathToFolder(folderData, treeFolders);
         setCurrentFolderAction(folderId, newPath);
-
-        // Verify state was updated
-        setTimeout(() => {
-          const state = useFolderTreeStore.getState();
-        }, 100);
       } else {
         // No folder data provided - keep current path
         // This is a fallback for cases where folder data isn't available

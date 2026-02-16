@@ -1,8 +1,10 @@
 # PHASE-10: Bug Resolution
 
-**Estado**: 🔴 NO INICIADO
+**Estado**: 🟡 EN PROGRESO
 **Fecha Inicio**: 2026-02-13
+**Fecha Auditoría**: 2026-02-16
 **Prioridad Global**: P0-P1 (CRITICAL y HIGH)
+**Progreso Global**: ~55% (1 completado, 3 en progreso)
 
 ---
 
@@ -20,25 +22,31 @@ Esta fase aborda bugs críticos y de alta prioridad detectados durante la valida
 
 ## PRDs Incluidos
 
-### PRD-100: Duplicación de Eventos por Replay del Historial
+### PRD-100: Duplicación de Eventos por Replay del Historial ✅ COMPLETADO
 **Prioridad**: P0 - CRITICAL
+**Estado**: ✅ Completado (commit `a38c84b`)
 **Problema**: BatchResultNormalizer procesa todo el historial de conversación en cada turno, causando duplicación de eventos y desperdicio de números de secuencia.
-**Impacto**: 2 turnos = 69 mensajes, 100 eventos (45% overhead)
+**Solución**: Delta tracking con `skipMessages` en BatchResultNormalizer + checkpoint en sessions table.
 
-### PRD-101: Errores de Agrupación y Renderizado en UI
+### PRD-101: Errores de Agrupación y Renderizado en UI 🟡 ~20%
 **Prioridad**: P1 - HIGH
+**Estado**: 🟡 En progreso (dedup parcial implementada, keys y headers pendientes)
 **Problema**: Colisiones de React keys, encabezados faltantes en reload, preocupación por duplicación visual.
-**Impacto**: Warnings en consola, UI inconsistente entre live y reload
+**Pendiente**: UUID para createGroupId(), headers sintéticos en reload, optimización de dedup a Set.
 
-### PRD-102: Integridad del Pipeline de Eventos
+### PRD-102: Integridad del Pipeline de Eventos 🟡 ~50%
 **Prioridad**: P1 - HIGH
+**Estado**: 🟡 En progreso (modelo y is_internal resueltos, processed flag y script pendientes)
 **Problema**: Modelo "unknown" en eventos, flag processed siempre false, agent_changed con is_internal=false.
-**Impacto**: Imposible calcular costos, auditar pipeline, o generar reportes precisos
+**Completado**: Extracción de modelo, propagación de is_internal en agent_changed.
+**Pendiente**: markProcessed() en worker, fix de inspect-session.ts.
 
-### PRD-103: Interactividad de Componentes de Citaciones RAG
+### PRD-103: Interactividad de Componentes de Citaciones RAG 🟡 ~85%
 **Prioridad**: P1 - HIGH
+**Estado**: 🟡 En progreso (CitationRenderer rediseñado, falta wiring en ToolCard)
 **Problema**: Referencias de archivos en resultados RAG carecen de onClick, menú contextual, miniaturas, y modal de vista previa.
-**Impacto**: UX inconsistente, funcionalidad esperada ausente
+**Completado**: CitationRenderer carousel, CitationCard con click/context menu, SourcePreviewModal, FileThumbnail.
+**Pendiente**: Conectar CitationCard click a SourcePreviewModal dentro de ToolCard/AgentResultRenderer.
 
 ---
 
@@ -65,25 +73,27 @@ PRD-103 (RAG Citations)
 ## Métricas de Éxito Global
 
 ### Integridad de Datos
-- [ ] 0% overhead en conteo de eventos (eventos == mensajes)
-- [ ] 100% de eventos tienen modelo correcto (no "unknown")
-- [ ] 100% de eventos procesados tienen flag processed=true
-- [ ] 100% de agent_changed tienen is_internal=true
+- [x] 0% overhead en conteo de eventos (eventos == mensajes) — **PRD-100 ✅**
+- [x] 100% de eventos tienen modelo correcto (no "unknown") — **PRD-102.1 ✅**
+- [ ] 100% de eventos procesados tienen flag processed=true — **PRD-102.2 ❌**
+- [x] 100% de agent_changed tienen is_internal=true — **PRD-102.3 ✅**
 
 ### Experiencia de Usuario
-- [ ] 0 warnings de React key collision
-- [ ] 100% de grupos de agentes muestran encabezado en reload
-- [ ] 100% de referencias de archivos RAG son interactivas
-- [ ] Comportamiento consistente entre live execution y page reload
+- [ ] 0 warnings de React key collision — **PRD-101.1 ❌**
+- [ ] 100% de grupos de agentes muestran encabezado en reload — **PRD-101.2 ⚠️ parcial**
+- [ ] 100% de referencias de archivos RAG son interactivas — **PRD-103 ⚠️ parcial (falta ToolCard)**
+- [ ] Comportamiento consistente entre live execution y page reload — **PRD-101.2 ⚠️**
 
 ### Auditabilidad
-- [ ] Script inspect-session.ts muestra nombres de herramientas correctos
-- [ ] Query de eventos permite filtrar por modelo usado
-- [ ] Query de eventos permite filtrar por estado de procesamiento
+- [ ] Script inspect-session.ts muestra nombres de herramientas correctos — **PRD-102.4 ❌**
+- [x] Query de eventos permite filtrar por modelo usado — **PRD-102.1 ✅**
+- [ ] Query de eventos permite filtrar por estado de procesamiento — **PRD-102.2 ❌**
 
 ---
 
 ## Estimación de Esfuerzo
+
+### Estimación Original
 
 | PRD | Investigación | Implementación | Testing | Total |
 |-----|---------------|----------------|---------|-------|
@@ -93,7 +103,16 @@ PRD-103 (RAG Citations)
 | PRD-103 | 2h | 7h | 2h | 11h |
 | **TOTAL** | **6h** | **18h** | **8h** | **32h** |
 
-**Estimación**: 4 días laborables (8h/día)
+### Esfuerzo Restante (Auditoría 2026-02-16)
+
+| PRD | Completado | Restante | Detalle |
+|-----|-----------|----------|---------|
+| PRD-100 | ✅ 100% | 0h | Delta tracking completo con tests |
+| PRD-101 | ~20% | ~3h | UUID keys (30min), synthetic headers (2h), Set dedup (30min) |
+| PRD-102 | ~50% | ~2.5h | markProcessed (2h), fix script (15min) |
+| PRD-103 | ~85% | ~1.5h | Wire CitationCard click → SourcePreviewModal en ToolCard |
+| Testing | — | ~3h | Validación cross-PRD |
+| **TOTAL** | — | **~10h** | Reducido de 32h originales |
 
 ---
 
@@ -213,3 +232,5 @@ GROUP BY processed;
 | Fecha | Autor | Cambios |
 |-------|-------|---------|
 | 2026-02-13 | Juan Pablo | Creación inicial del README de fase |
+| 2026-02-13 | Juan Pablo | Implementación de PRD-100 completo + parciales de PRD-102 y PRD-103 (commit a38c84b, a49e8bf) |
+| 2026-02-16 | Claude | Auditoría completa: actualización de estados, métricas, y estimaciones restantes |

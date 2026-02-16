@@ -1,10 +1,12 @@
 # PRD-103: Interactividad de Componentes de Citaciones RAG
 
-**Estado**: 🔴 NO INICIADO
+**Estado**: 🟡 EN PROGRESO (~85% — CitationRenderer rediseñado, falta wiring en ToolCard)
 **Fecha**: 2026-02-13
+**Fecha Auditoría**: 2026-02-16
 **Fase**: 10 (Bug Resolution)
 **Prioridad**: P1 - HIGH
 **Dependencias**: Ninguna
+**Commit parcial**: `a49e8bf` (PRD-103b)
 
 ---
 
@@ -533,8 +535,45 @@ function SourcePreviewModal({ file }: Props) {
 
 ---
 
-## 12. Changelog
+## 12. Estado de Implementación (Auditoría 2026-02-16)
+
+### Implementado (commit `a49e8bf` — PRD-103b)
+
+**Componentes creados/rediseñados**:
+| Componente | Archivo | Funcionalidad |
+|------------|---------|---------------|
+| `CitationRenderer` | `presentation/chat/CitationRenderer/CitationRenderer.tsx` | Carrusel horizontal, validación con Zod, badges de relevancia (5 niveles de color) |
+| `CitationCard` | `presentation/chat/CitationRenderer/CitationCard.tsx` | Thumbnails, onClick, context menu ("Preview file", "Go to path"), keyboard accessible |
+| `CitationList` | `presentation/chat/CitationRenderer/CitationList.tsx` | Layout de cards con overflow indicator |
+| `citationUtils` | `presentation/chat/CitationRenderer/citationUtils.ts` | Conversión `citedDocumentToCitationInfo`, mapeo de fetchStrategy |
+| `FileThumbnail` | `presentation/chat/FileThumbnail.tsx` | Thumbnails de imagen, íconos por tipo de archivo, lazy loading |
+| `SourceCarousel` | `presentation/chat/SourceCarousel.tsx` | Carrusel scrollable con source badges y dedup |
+| `CitationLink` | `presentation/chat/CitationLink.tsx` | Links inline con íconos y tooltips |
+| `SourcePreviewModal` | `components/modals/SourcePreviewModal.tsx` | Preview multi-formato (PDF, imagen, código), navegación con flechas, "Go to Path" |
+| `filePreviewStore` | `domains/files/stores/filePreviewStore.ts` | Zustand store: `openCitationPreview`, `navigateNext/Prev`, `closePreview` |
+| `useGoToFilePath` | `domains/files/hooks/useGoToFilePath.ts` | Navegación a archivo en file browser |
+
+**Tests**: `frontend/__tests__/components/chat/CitationRenderer.test.tsx`
+
+**Integración en ChatContainer**:
+- `handleCitationOpen`, `handleCitationInfoOpen`, `handleGoToPath` implementados
+- Chat attachments convertidos a CitationInfo para preview unificado
+
+### Pendiente
+
+| Item | Descripción | Esfuerzo |
+|------|-------------|----------|
+| Wiring en ToolCard | CitationCard dentro de `AgentResultRenderer` → `ToolCard` no abre `SourcePreviewModal` al hacer click | ~1.5h |
+| Context menu en tool results | Context menu existe en CitationCard pero no está conectado en el contexto de tool results | Incluido arriba |
+
+**Nota**: El PRD original proponía crear `IFileReference` compartido y `FileReference` component. La implementación real usa `CitationInfo` como interfaz unificada con `citationUtils.ts` para conversión — enfoque equivalente pero con naming diferente.
+
+---
+
+## 13. Changelog
 
 | Fecha | Autor | Cambios |
 |-------|-------|---------|
 | 2026-02-13 | Juan Pablo | Creación inicial del PRD |
+| 2026-02-14 | Juan Pablo | Implementación PRD-103b: CitationRenderer rediseñado (commit a49e8bf) |
+| 2026-02-16 | Claude | Auditoría: actualizado estado a EN PROGRESO 85%, documentado avance |

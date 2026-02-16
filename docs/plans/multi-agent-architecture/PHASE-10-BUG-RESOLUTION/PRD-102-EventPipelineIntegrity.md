@@ -1,7 +1,8 @@
 # PRD-102: Integridad del Pipeline de Eventos
 
-**Estado**: 🔴 NO INICIADO
+**Estado**: 🟡 EN PROGRESO (~50% — 2/4 sub-issues completados)
 **Fecha**: 2026-02-13
+**Fecha Auditoría**: 2026-02-16
 **Fase**: 10 (Bug Resolution)
 **Prioridad**: P1 - HIGH
 **Dependencias**: Ninguna
@@ -541,8 +542,39 @@ WHERE event_type = 'agent_changed'
 
 ---
 
-## 11. Changelog
+## 11. Estado de Implementación (Auditoría 2026-02-16)
+
+### Sub-issue 1: Modelo "unknown" — ✅ COMPLETADO
+- `result-adapter.ts`: Función `extractUsedModel()` (línea 101) extrae modelo de `response_metadata` del último AIMessage
+- `state.ts`: Campo `usedModel: Annotation<string | null>` en estado LangGraph
+- `BatchResultNormalizer.ts`: Propaga `state.usedModel` a eventos normalizados
+- `MessageNormalizer.ts`: `extractModel()` (línea 222) lee `response_metadata.model` o `response_metadata.model_name`
+- `ExecutionPipeline.ts`: Retorna `usedModel: graphResult.usedModel ?? null`
+- Tests en `result-adapter.test.ts`
+- **Commit**: `a38c84b`
+
+### Sub-issue 2: Flag processed=false — ❌ NO IMPLEMENTADO
+- `EventStore.ts` crea eventos con `processed: false` (líneas 240, 313)
+- `MessagePersistenceWorker.ts` escribe mensajes pero **nunca** actualiza `processed`
+- No existe método `markProcessed()` en ningún servicio
+- **Esfuerzo restante**: ~2h (crear `markProcessed()` en EventStore + llamar desde worker)
+
+### Sub-issue 3: agent_changed is_internal=false — ✅ COMPLETADO
+- `PersistenceCoordinator.ts` línea 620: `persistAgentChangedAsync()` establece `isInternal: true`
+- `MessagePersistenceWorker.ts` línea 135: Persiste `is_internal: isInternal ?? false` correctamente
+- **Commit**: `a38c84b`
+
+### Sub-issue 4: inspect-session.ts tool=unknown — ❌ BUG CONFIRMADO
+- Script lee `meta.name` (línea 388) pero metadata se persiste con clave `tool_name`
+- Fix trivial: cambiar a `meta.tool_name ?? meta.name ?? 'unknown'`
+- **Esfuerzo restante**: ~15min
+
+---
+
+## 12. Changelog
 
 | Fecha | Autor | Cambios |
 |-------|-------|---------|
 | 2026-02-13 | Juan Pablo | Creación inicial del PRD |
+| 2026-02-13 | Juan Pablo | Implementación de sub-issues 1 y 3 (commit a38c84b) |
+| 2026-02-16 | Claude | Auditoría: actualizado estado a EN PROGRESO 50%, documentado avance |

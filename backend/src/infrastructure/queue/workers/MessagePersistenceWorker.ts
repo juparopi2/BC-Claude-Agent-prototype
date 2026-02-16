@@ -11,8 +11,9 @@ import type { Job } from 'bullmq';
 import { createChildLogger } from '@/shared/utils/logger';
 import { prisma as defaultPrisma } from '@/infrastructure/database/prisma';
 import type { PrismaClient } from '@prisma/client';
-import type { ILoggerMinimal } from '../IMessageQueueDependencies';
+import type { ILoggerMinimal, IEventStoreMinimal } from '../IMessageQueueDependencies';
 import type { MessagePersistenceJob } from '../types';
+import { getEventStore } from '@/services/events/EventStore';
 
 /**
  * Dependencies for MessagePersistenceWorker
@@ -20,6 +21,7 @@ import type { MessagePersistenceJob } from '../types';
 export interface MessagePersistenceWorkerDependencies {
   logger?: ILoggerMinimal;
   prisma?: PrismaClient;
+  eventStore?: IEventStoreMinimal;
 }
 
 /**
@@ -30,10 +32,15 @@ export class MessagePersistenceWorker {
 
   private readonly log: ILoggerMinimal;
   private readonly prisma: PrismaClient;
+  private readonly eventStoreGetter: () => IEventStoreMinimal;
 
   constructor(deps?: MessagePersistenceWorkerDependencies) {
     this.log = deps?.logger ?? createChildLogger({ service: 'MessagePersistenceWorker' });
     this.prisma = deps?.prisma ?? defaultPrisma;
+    const eventStoreOverride = deps?.eventStore;
+    this.eventStoreGetter = eventStoreOverride
+      ? () => eventStoreOverride
+      : () => getEventStore();
   }
 
   public static getInstance(deps?: MessagePersistenceWorkerDependencies): MessagePersistenceWorker {
@@ -136,6 +143,13 @@ export class MessagePersistenceWorker {
         },
         update: {}, // No-op on conflict - idempotent insert
       });
+
+      // Mark the source event as processed (Phase 2 complete)
+      if (eventId) {
+        const eventStore = this.eventStoreGetter();
+        await eventStore.markAsProcessed(eventId);
+        jobLogger.debug({ eventId }, 'Event marked as processed');
+      }
 
       jobLogger.info('Message persisted to database successfully', {
         jobId: job.id,

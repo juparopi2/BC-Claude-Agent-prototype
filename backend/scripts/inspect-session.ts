@@ -385,8 +385,8 @@ function formatMessageContent(msg: MessageRecord, verbose: boolean): string {
     try {
       if (msg.metadata) {
         const meta = JSON.parse(msg.metadata);
-        if (meta.name) toolName = meta.name;
-        if (meta.input) toolArgs = JSON.stringify(meta.input);
+        if (meta.tool_name) toolName = meta.tool_name;
+        if (meta.tool_args) toolArgs = JSON.stringify(meta.tool_args);
       }
     } catch {
       // Fallback to content parsing

@@ -1,6 +1,6 @@
 # PRD-103: Interactividad de Componentes de Citaciones RAG
 
-**Estado**: 🟡 EN PROGRESO (~85% — CitationRenderer rediseñado, falta wiring en ToolCard)
+**Estado**: 🟢 COMPLETADO (100%)
 **Fecha**: 2026-02-13
 **Fecha Auditoría**: 2026-02-16
 **Fase**: 10 (Bug Resolution)
@@ -559,12 +559,17 @@ function SourcePreviewModal({ file }: Props) {
 - `handleCitationOpen`, `handleCitationInfoOpen`, `handleGoToPath` implementados
 - Chat attachments convertidos a CitationInfo para preview unificado
 
-### Pendiente
+### Verificado como Funcional (2026-02-16)
 
-| Item | Descripción | Esfuerzo |
-|------|-------------|----------|
-| Wiring en ToolCard | CitationCard dentro de `AgentResultRenderer` → `ToolCard` no abre `SourcePreviewModal` al hacer click | ~1.5h |
-| Context menu en tool results | Context menu existe en CitationCard pero no está conectado en el contexto de tool results | Incluido arriba |
+| Item | Verificación | Resultado |
+|------|-------------|-----------|
+| Wiring en ToolCard | Integration test: CitationCard click inside ToolCard's Collapsible calls `openCitationPreview` | ✅ Funciona — no se requirió fix |
+| Context menu en tool results | Integration test: "Preview file" y "Go to path" conectados correctamente | ✅ Funciona — no se requirió fix |
+| Event bubbling | CitationCard clicks inside `CollapsibleContent` no afectan `CollapsibleTrigger` | ✅ Radix Collapsible maneja scoping correctamente |
+
+**Análisis**: Los items "Pendiente" fueron escritos ANTES del commit `a49e8bf` y no fueron re-verificados. La implementación de CitationCard usa `useFilePreviewStore` directamente (sin depender de props del parent), por lo que el wiring funciona independientemente de dónde se renderice el componente.
+
+**Test de integración**: `frontend/__tests__/components/chat/ToolCardCitationIntegration.test.tsx` (5 tests)
 
 **Nota**: El PRD original proponía crear `IFileReference` compartido y `FileReference` component. La implementación real usa `CitationInfo` como interfaz unificada con `citationUtils.ts` para conversión — enfoque equivalente pero con naming diferente.
 
@@ -577,3 +582,4 @@ function SourcePreviewModal({ file }: Props) {
 | 2026-02-13 | Juan Pablo | Creación inicial del PRD |
 | 2026-02-14 | Juan Pablo | Implementación PRD-103b: CitationRenderer rediseñado (commit a49e8bf) |
 | 2026-02-16 | Claude | Auditoría: actualizado estado a EN PROGRESO 85%, documentado avance |
+| 2026-02-16 | Claude | Verificación: wiring confirmado funcional via integration test (5 tests). Estado → COMPLETADO 100% |

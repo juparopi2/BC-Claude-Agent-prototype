@@ -200,7 +200,9 @@
       "Bash(cmd //c \"taskkill /PID 34048 /F\")",
       "mcp__playwright__browser_evaluate",
       "mcp__playwright__browser_press_key",
-      "mcp__playwright__browser_console_messages"
+      "mcp__playwright__browser_console_messages",
+      "Bash(npx playwright-mcp:*)",
+      "Bash(npx @playwright/test:*)"
     ],
     "deny": [],
     "ask": []

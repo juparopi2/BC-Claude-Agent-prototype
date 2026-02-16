@@ -2,121 +2,12 @@
 
 import { memo, useCallback, forwardRef } from 'react';
 import type { ParsedFile } from '@bc-agent/shared';
-import {
-  Folder,
-  FileText,
-  Image as ImageIcon,
-  FileSpreadsheet,
-  File,
-  Star,
-  FileCode,
-  FileJson,
-  Loader2,
-} from 'lucide-react';
+import { Star, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { FileStatusIndicator } from './FileStatusIndicator';
-
-/**
- * FileIcon component - renders the appropriate icon based on file type
- */
-function FileIcon({ file, className }: { file: ParsedFile; className?: string }) {
-  const iconClassName = cn(
-    'size-5 flex-shrink-0',
-    file.isFolder ? 'text-amber-500' : 'text-muted-foreground',
-    className
-  );
-
-  // Folders
-  if (file.isFolder) {
-    return <Folder className={iconClassName} />;
-  }
-
-  const mimeType = file.mimeType;
-
-  // Images
-  if (mimeType.startsWith('image/')) {
-    return <ImageIcon className={iconClassName} />;
-  }
-
-  // Documents
-  if (mimeType === 'application/pdf') {
-    return <FileText className={iconClassName} />;
-  }
-  if (
-    mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
-    mimeType === 'text/plain' ||
-    mimeType === 'text/markdown'
-  ) {
-    return <FileText className={iconClassName} />;
-  }
-
-  // Spreadsheets
-  if (
-    mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
-    mimeType === 'text/csv'
-  ) {
-    return <FileSpreadsheet className={iconClassName} />;
-  }
-
-  // Code files
-  if (mimeType === 'text/javascript' || mimeType === 'text/html' || mimeType === 'text/css') {
-    return <FileCode className={iconClassName} />;
-  }
-
-  // JSON
-  if (mimeType === 'application/json') {
-    return <FileJson className={iconClassName} />;
-  }
-
-  // Default fallback
-  return <File className={iconClassName} />;
-}
-
-/**
- * Format file size for display
- */
-function formatFileSize(bytes: number | string): string {
-  // Parse bytes to number
-  const parsedBytes = typeof bytes === 'string' ? Number(bytes) : bytes;
-  
-  // Handle invalid input types
-  if (typeof parsedBytes !== 'number' || isNaN(parsedBytes) || parsedBytes < 0) {
-    return '—';
-  }
-  if (parsedBytes === 0) return '—';
-
-  const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
-  const i = Math.floor(Math.log(parsedBytes) / Math.log(1024));
-
-  // Extra safety check for array bounds
-  if (i < 0 || i >= units.length) return '—';
-
-  return `${(parsedBytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0)} ${units[i]}`;
-}
-
-/**
- * Format date for display
- */
-function formatDate(isoDate: string): string {
-  // Handle invalid input
-  if (!isoDate || typeof isoDate !== 'string') {
-    return '—';
-  }
-
-  const date = new Date(isoDate);
-
-  // Check if date is valid
-  if (isNaN(date.getTime())) {
-    return '—';
-  }
-
-  return date.toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
-}
+import { FileIcon } from './FileIcon';
+import { formatFileSize, formatDate } from '@/src/domains/files/utils/fileFormatters';
 
 interface FileItemProps extends Omit<React.HTMLAttributes<HTMLDivElement>, 'onSelect' | 'onDoubleClick'> {
   file: ParsedFile;

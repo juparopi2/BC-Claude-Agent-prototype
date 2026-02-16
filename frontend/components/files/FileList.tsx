@@ -14,7 +14,7 @@ import { useFileListStore } from '@/src/domains/files/stores/fileListStore';
 import { useSelectionStore } from '@/src/domains/files/stores/selectionStore';
 import { getFileApiClient } from '@/src/infrastructure/api';
 import { triggerDownload } from '@/lib/download';
-import { FilePreviewModal } from '@/components/modals/FilePreviewModal';
+import { FilePreviewModal } from '@/components/files/modals/FilePreviewModal';
 
 /**
  * Check if a file type can be previewed

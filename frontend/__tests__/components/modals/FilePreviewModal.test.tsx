@@ -9,7 +9,7 @@
 
 import { describe, it, expect, vi, beforeEach, Mock } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { FilePreviewModal } from '@/components/modals/FilePreviewModal';
+import { FilePreviewModal } from '@/components/files/modals/FilePreviewModal';
 import { TooltipProvider } from '@/components/ui/tooltip';
 
 // Wrap components that need Tooltip context

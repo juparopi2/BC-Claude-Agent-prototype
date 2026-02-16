@@ -62,6 +62,38 @@ describe('MessageStore', () => {
       expect(sorted[1]?.sequence_number).toBe(2);
     });
 
+    it('should build messageIdIndex from loaded messages', () => {
+      const messages: Message[] = [
+        {
+          type: 'standard',
+          id: 'msg-a',
+          session_id: 'session-1',
+          role: 'user',
+          content: 'A',
+          sequence_number: 1,
+          created_at: '2024-01-01T00:00:00Z',
+        },
+        {
+          type: 'standard',
+          id: 'msg-b',
+          session_id: 'session-1',
+          role: 'assistant',
+          content: 'B',
+          sequence_number: 2,
+          created_at: '2024-01-01T00:00:01Z',
+        },
+      ];
+
+      act(() => {
+        getMessageStore().getState().setMessages(messages);
+      });
+
+      const state = getMessageStore().getState();
+      expect(state.messageIdIndex.has('msg-a')).toBe(true);
+      expect(state.messageIdIndex.has('msg-b')).toBe(true);
+      expect(state.messageIdIndex.size).toBe(2);
+    });
+
     it('should merge tool_result data into corresponding tool_use messages', () => {
       const toolUseId = 'toolu_abc123';
       const messages: Message[] = [
@@ -137,6 +169,28 @@ describe('MessageStore', () => {
       expect(sorted).toHaveLength(2);
       expect(sorted[0]?.id).toBe('msg-1');
       expect(sorted[1]?.id).toBe('msg-2');
+    });
+
+    it('should deduplicate via messageIdIndex (O(1) Set lookup)', () => {
+      const msg: Message = {
+        type: 'standard',
+        id: 'msg-dup',
+        session_id: 'session-1',
+        role: 'user',
+        content: 'Hello',
+        sequence_number: 1,
+        created_at: '2024-01-01T00:00:00Z',
+      };
+
+      act(() => {
+        getMessageStore().getState().addMessage(msg);
+        getMessageStore().getState().addMessage(msg); // duplicate
+      });
+
+      const state = getMessageStore().getState();
+      expect(state.messages).toHaveLength(1);
+      expect(state.messageIdIndex.has('msg-dup')).toBe(true);
+      expect(state.messageIdIndex.size).toBe(1);
     });
   });
 
@@ -301,6 +355,8 @@ describe('MessageStore', () => {
       expect(state.messages).toHaveLength(1);
       expect(state.messages[0]?.id).toBe('msg-real-456');
       expect(state.messages[0]?.sequence_number).toBe(5);
+      // messageIdIndex updated
+      expect(state.messageIdIndex.has('msg-real-456')).toBe(true);
     });
 
     it('should fallback to content+timestamp matching when tempId does not match', () => {
@@ -543,6 +599,7 @@ describe('MessageStore', () => {
 
       const state = getMessageStore().getState();
       expect(state.messages).toHaveLength(0);
+      expect(state.messageIdIndex.size).toBe(0);
       expect(state.optimisticMessages.size).toBe(0);
     });
   });

@@ -11,6 +11,7 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import type { AgentIdentity, HandoffType, Message } from '@bc-agent/shared';
+import { AGENT_ID, AGENT_DISPLAY_NAME, AGENT_ICON, AGENT_COLOR } from '@bc-agent/shared';
 
 // ============================================================================
 // Types
@@ -86,11 +87,16 @@ const initialState: AgentWorkflowState = {
 // Helpers
 // ============================================================================
 
-let groupCounter = 0;
-
 function createGroupId(): string {
-  return `grp-${++groupCounter}-${Date.now()}`;
+  return `grp-${crypto.randomUUID().toUpperCase()}`;
 }
+
+const FALLBACK_AGENT_IDENTITY: AgentIdentity = {
+  agentId: AGENT_ID.SUPERVISOR,
+  agentName: AGENT_DISPLAY_NAME[AGENT_ID.SUPERVISOR],
+  agentIcon: AGENT_ICON[AGENT_ID.SUPERVISOR],
+  agentColor: AGENT_COLOR[AGENT_ID.SUPERVISOR],
+};
 
 // ============================================================================
 // Store Creation
@@ -101,7 +107,6 @@ export const useAgentWorkflowStore = create<AgentWorkflowStore>()(
     ...initialState,
 
     startTurn: () => {
-      groupCounter = 0;
       set({
         groups: [],
         activeGroupIndex: -1,
@@ -159,19 +164,27 @@ export const useAgentWorkflowStore = create<AgentWorkflowStore>()(
       // (handles missing agent_id on thinking/tool events from DB).
       const groups: AgentProcessingGroup[] = [];
       let currentAgentId: string | undefined;
-      groupCounter = 0;
 
       for (const msg of messages) {
         if (msg.role !== 'assistant' && (msg as { role: string }).role !== 'assistant') continue;
 
         const agentIdentity = msg.agent_identity;
 
-        // If no agent_identity, assign to current group (if one exists)
+        // If no agent_identity, assign to current group or create fallback
         if (!agentIdentity) {
           if (groups.length > 0) {
             groups[groups.length - 1].messageIds.push(msg.id);
+          } else {
+            // Create fallback group for orphaned messages without agent_identity
+            groups.push({
+              id: createGroupId(),
+              agent: FALLBACK_AGENT_IDENTITY,
+              messageIds: [msg.id],
+              isFinal: false,
+              transition: undefined,
+            });
+            currentAgentId = FALLBACK_AGENT_IDENTITY.agentId;
           }
-          // Skip messages with no identity and no existing group
           continue;
         }
 
@@ -214,7 +227,6 @@ export const useAgentWorkflowStore = create<AgentWorkflowStore>()(
     },
 
     reset: () => {
-      groupCounter = 0;
       set(initialState);
     },
   }))

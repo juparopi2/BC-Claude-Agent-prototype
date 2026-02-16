@@ -31,6 +31,8 @@ export interface EventMetadata {
 export interface MessageState {
   /** Persisted messages from backend */
   messages: Message[];
+  /** O(1) lookup index for message deduplication */
+  messageIdIndex: Set<string>;
   /** Temporary user messages pending confirmation */
   optimisticMessages: Map<string, Message>;
   /** Event metadata by message ID (Gap #3: for debugging) */
@@ -68,6 +70,7 @@ export type MessageStore = MessageState & MessageActions;
 
 const initialState: MessageState = {
   messages: [],
+  messageIdIndex: new Set(),
   optimisticMessages: new Map(),
   eventMetadata: new Map(),
 };
@@ -115,18 +118,22 @@ const createMessageStore = () =>
             return m;
           });
 
-        set({ messages: mergedMessages.sort(sortMessages) });
+        const sorted = mergedMessages.sort(sortMessages);
+        set({ messages: sorted, messageIdIndex: new Set(sorted.map((m) => m.id)) });
       },
 
       addMessage: (message) =>
         set((state) => {
-          // Deduplication: Skip if message with same ID already exists
-          if (state.messages.some((m) => m.id === message.id)) {
+          // O(1) deduplication via Set index
+          if (state.messageIdIndex.has(message.id)) {
             console.debug('[messageStore] Skipping duplicate message:', message.id);
             return state;
           }
+          const newIndex = new Set(state.messageIdIndex);
+          newIndex.add(message.id);
           return {
             messages: [...state.messages, message].sort(sortMessages),
+            messageIdIndex: newIndex,
           };
         }),
 
@@ -181,9 +188,12 @@ const createMessageStore = () =>
             }
           }
 
+          const newIndex = new Set(state.messageIdIndex);
+          newIndex.add(confirmedMessage.id);
           return {
             optimisticMessages: newOptimistic,
             messages: [...state.messages, confirmedMessage].sort(sortMessages),
+            messageIdIndex: newIndex,
           };
         }),
 

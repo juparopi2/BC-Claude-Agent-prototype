@@ -223,7 +223,17 @@ Mejoras perceptibles para el usuario final.
 **Nota:** File size/extension hints agregados al drag overlay y chat attachment tooltip.
 **Estimación:** 2-3 días
 
+### Migración a Sileo (Media)
+**Necesidad:** Migrar componentes clave (File Upload, Toasts) y la estética general a la librería "Sileo" para mejorar la experiencia de usuario y consistencia visual.
+**Specs:**
+- Investigar capacidades de "Sileo" (ver qué más ofrece además de Upload y Toasts).
+- Reemplazar implementación actual de File Upload.
+- Reemplazar Toasts actuales (Success/Error).
+- Migrar estética general hacia el estilo de Sileo.
+**Estimación:** 5-7 días
+
 ---
+
 
 ## 🟢 Integraciones
 

@@ -52,7 +52,7 @@ This section consolidates all `@deprecated` markers from PRDs 00-06 into a singl
 | `backend/src/domains/files/bulk-upload/BulkUploadProcessor.ts` | V2 batch orchestrator | PRD-03 |
 | `backend/src/domains/files/bulk-upload/BulkUploadBatchStore.ts` | `upload_batches` table | PRD-03 |
 | `backend/src/domains/files/scheduler/FileProcessingScheduler.ts` | Direct enqueue from confirm | PRD-04 |
-| `backend/src/services/files/FileDuplicateService.ts` | `DuplicateDetectionServiceV2` | PRD-02 |
+| `backend/src/services/files/operations/FileDuplicateService.ts` | `DuplicateDetectionServiceV2` | PRD-02 |
 | `backend/src/services/files/PartialDataCleaner.ts` | `StuckFileRecoveryJob` + `OrphanCleanupJob` | PRD-05 |
 
 ### 2.3 Backend - Repository & Data Access (3 files)
@@ -134,13 +134,32 @@ These files were created by PRD-01 and are **permanent** (NOT deprecated — the
 - Added `pipeline_status String? @db.NVarChar(50)` column to `files` table
 - Added index `IX_files_pipeline_status` on `[pipeline_status, created_at]`
 
-### 2.11 Configuration - Feature Flags (1 flag)
+### 2.11 PRD-02 Implementation Artifacts (Completed 2026-02-17)
+
+These files were created by PRD-02 and are **permanent** (NOT deprecated — they stay after PRD-07):
+
+| File | Purpose |
+|------|---------|
+| `packages/shared/src/types/duplicate-detection.types.ts` | V2 duplicate detection types + Zod schemas |
+| `backend/src/services/files/DuplicateDetectionServiceV2.ts` | 3-scope batch duplicate detection service |
+| `backend/src/routes/v2/uploads/duplicate-detection.routes.ts` | POST /api/v2/uploads/check-duplicates |
+| `@@index([user_id, content_hash])` in `backend/prisma/schema.prisma` | Content hash lookup index |
+
+**Deprecation markers added by PRD-02** (to be removed in PRD-07):
+
+| Marker | File | What to Remove |
+|--------|------|----------------|
+| `@deprecated(PRD-02)` | `backend/src/services/files/operations/FileDuplicateService.ts` | Entire class + singleton + interface |
+| Deprecation warning log | `backend/src/routes/files/duplicates.routes.ts` | Entire route file |
+| Legacy V1 types | `packages/shared/src/types/file.types.ts` | `DuplicateCheckItem`, `CheckDuplicatesRequest`, `DuplicateResult`, `CheckDuplicatesResponse`, `DuplicateAction` |
+
+### 2.12 Configuration - Feature Flags (1 flag)
 
 | Flag | Files | Action | PRD |
 |------|-------|--------|-----|
 | `USE_V2_UPLOAD_PIPELINE` | Various | Remove (V2 is now default) | PRD-06 |
 
-### 2.12 Routes - API Versioning
+### 2.13 Routes - API Versioning
 
 | Old Path | New Path | PRD |
 |----------|----------|-----|

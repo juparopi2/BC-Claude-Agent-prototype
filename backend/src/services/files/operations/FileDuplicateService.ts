@@ -42,6 +42,7 @@ export interface BatchHashDuplicateResult {
 
 /**
  * Interface for dependency injection
+ * @deprecated(PRD-02) Use DuplicateDetectionServiceV2 instead
  */
 export interface IFileDuplicateService {
   checkByName(userId: string, fileName: string, folderId?: string | null): Promise<DuplicateCheckResult>;
@@ -52,6 +53,7 @@ export interface IFileDuplicateService {
 
 /**
  * FileDuplicateService - Duplicate file detection
+ * @deprecated(PRD-02) Use DuplicateDetectionServiceV2 instead
  */
 export class FileDuplicateService implements IFileDuplicateService {
   private static instance: FileDuplicateService | null = null;
@@ -219,6 +221,7 @@ export class FileDuplicateService implements IFileDuplicateService {
 
 /**
  * Get singleton instance of FileDuplicateService
+ * @deprecated(PRD-02) Use getDuplicateDetectionServiceV2() instead
  */
 export function getFileDuplicateService(): FileDuplicateService {
   return FileDuplicateService.getInstance();

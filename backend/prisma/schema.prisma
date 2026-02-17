@@ -251,6 +251,7 @@ model files {
   @@index([processing_status, created_at], map: "IX_files_processing_status")
   @@index([user_id, source_type], map: "IX_files_source_type")
   @@index([user_id, parent_folder_id, name], map: "IX_files_user_folder")
+  @@index([user_id, content_hash], map: "IX_files_user_content_hash")
 }
 
 model image_embeddings {

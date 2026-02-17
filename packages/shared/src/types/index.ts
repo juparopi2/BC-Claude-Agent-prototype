@@ -117,6 +117,26 @@ export type {
   DuplicateResult,
   CheckDuplicatesResponse,
   DuplicateAction,
+  // Duplicate Detection V2 types (PRD-02)
+} from './file.types';
+
+export type {
+  DuplicateMatchType,
+  DuplicateScope,
+  DuplicateMatchInfo,
+  DuplicateCheckInputV2,
+  CheckDuplicatesRequestV2,
+  DuplicateCheckResultV2,
+  DuplicateCheckSummary,
+  CheckDuplicatesResponseV2,
+} from './duplicate-detection.types';
+
+export {
+  duplicateCheckInputV2Schema,
+  checkDuplicatesRequestV2Schema,
+} from './duplicate-detection.types';
+
+export type {
   // Retry & Cleanup types (D25 Sprint 2)
   RetryPhase,
   RetryScope,

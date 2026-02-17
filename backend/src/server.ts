@@ -50,6 +50,7 @@ import audioRoutes from './routes/audio';
 import agentsRoutes from './routes/agents';
 import analyticsRoutes from './routes/analytics';
 import uploadHealthRoutes from '@/routes/v2/uploads/health.routes';
+import duplicateDetectionV2Routes from '@/routes/v2/uploads/duplicate-detection.routes';
 import { registerAgents } from '@/modules/agents/core/registry/registerAgents';
 import { initializeSupervisorGraph, resumeSupervisor } from '@/modules/agents/supervisor';
 import { processUserAgentSelection } from '@/modules/agents/handoffs';
@@ -861,6 +862,11 @@ function configureRoutes(): void {
   // Upload pipeline health endpoint (PRD-01)
   if (isDatabaseAvailable) {
     app.use('/api/v2/uploads/health', uploadHealthRoutes);
+  }
+
+  // Duplicate detection V2 endpoint (PRD-02)
+  if (isDatabaseAvailable) {
+    app.use('/api/v2/uploads/check-duplicates', duplicateDetectionV2Routes);
   }
 
   // Client log ingestion endpoint

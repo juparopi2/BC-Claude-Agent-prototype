@@ -112,6 +112,15 @@ export type {
   DuplicateResult,
   CheckDuplicatesResponse,
   DuplicateAction,
+  // Duplicate Detection V2 types (PRD-02)
+  DuplicateMatchType,
+  DuplicateScope,
+  DuplicateMatchInfo,
+  DuplicateCheckInputV2,
+  CheckDuplicatesRequestV2,
+  DuplicateCheckResultV2,
+  DuplicateCheckSummary,
+  CheckDuplicatesResponseV2,
   // Retry & Cleanup types
   RetryPhase,
   RetryScope,
@@ -341,6 +350,12 @@ export {
   isImageMimeType,
   getContentBlockType,
   getMaxSizeForMimeType,
+} from './types';
+
+// Duplicate Detection V2 schemas (PRD-02)
+export {
+  duplicateCheckInputV2Schema,
+  checkDuplicatesRequestV2Schema,
 } from './types';
 
 // ============================================

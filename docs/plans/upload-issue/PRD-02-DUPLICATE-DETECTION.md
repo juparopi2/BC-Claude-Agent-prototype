@@ -1,6 +1,6 @@
 # PRD-02: Unified Duplicate Detection Service
 
-**Status**: Draft
+**Status**: Completed (2026-02-17)
 **Created**: 2026-02-10
 **Author**: System Architect
 **Epic**: Upload Pipeline Rewrite
@@ -1088,6 +1088,45 @@ curl -X POST http://localhost:3002/api/v2/uploads/check-duplicates \
 - **Duplicate rate metrics**: Track how often users upload duplicates
 - **Storage savings**: Calculate storage saved by blocking duplicates
 - **User behavior**: Identify users who frequently upload duplicates
+
+---
+
+## Implementation Notes (2026-02-17)
+
+### Gaps Resolved
+
+| Gap | PRD-02 Spec | Actual Resolution |
+|-----|-------------|-------------------|
+| No `upload_batches` table | Scope 3 JOINs `upload_batches` | Query `pipeline_status IN ('registered','uploaded')` directly |
+| Column name | `folder_id` | Use correct column `parent_folder_id` |
+| SQL injection risk | `buildInClause` with string concatenation | Prisma typed queries exclusively |
+| Missing index | Assumes content_hash index exists | Added `@@index([user_id, content_hash])` in schema.prisma |
+| Column type | Spec assumes `size` (number) | Prisma model uses `size_bytes` (BigInt); service converts via `Number()` in response mapping |
+
+### Files Created/Modified
+
+| Action | File | Purpose |
+|--------|------|---------|
+| Modify | `backend/prisma/schema.prisma` | Added `IX_files_user_content_hash` index |
+| Create | `packages/shared/src/types/duplicate-detection.types.ts` | V2 types + Zod schemas |
+| Modify | `packages/shared/src/types/index.ts` | Wire V2 type exports |
+| Modify | `packages/shared/src/index.ts` | Wire V2 package exports + Zod schema exports |
+| Create | `backend/src/services/files/DuplicateDetectionServiceV2.ts` | Core 3-scope batch service |
+| Create | `backend/src/routes/v2/uploads/duplicate-detection.routes.ts` | POST /api/v2/uploads/check-duplicates |
+| Modify | `backend/src/server.ts` | Route registration |
+| Create | `backend/src/__tests__/unit/services/files/DuplicateDetectionServiceV2.test.ts` | 20 service tests |
+| Create | `backend/src/__tests__/unit/routes/v2/duplicate-detection.test.ts` | 18 route tests |
+| Modify | `backend/src/services/files/operations/FileDuplicateService.ts` | `@deprecated(PRD-02)` markers |
+| Modify | `backend/src/routes/files/duplicates.routes.ts` | Deprecation warning log |
+
+### Design Decisions
+
+1. **No `upload_batches` table needed**: Upload sessions are Redis-based. Instead, Scope 3 queries `pipeline_status IN ('registered','uploaded')` directly on the `files` table.
+2. **Case-insensitive hash comparison**: Content hashes are compared using `.toLowerCase()` to handle mixed-case hex from different sources.
+3. **Match type priority**: `name_and_content` > `content` > `name`. Content-only matches are ranked higher than name-only because they represent identical file contents regardless of location.
+4. **Scope priority**: `storage` > `pipeline` > `upload`. Storage matches are most authoritative since those files are fully processed.
+5. **Promise.all for scope queries**: All 3 scope queries run in parallel for optimal performance (max 3 DB queries regardless of batch size).
+6. **BigInt → number conversion**: Prisma returns `size_bytes` as `BigInt`; the service converts to `number` via `Number()` for the `DuplicateMatchInfo.fileSize` response field.
 
 ---
 

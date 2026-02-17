@@ -27,6 +27,8 @@ const router = Router();
  * Returns which files are duplicates and their existing file info.
  */
 router.post('/check-duplicates', authenticateMicrosoft, async (req: Request, res: Response): Promise<void> => {
+  logger.warn('Deprecated: POST /api/files/check-duplicates — use POST /api/v2/uploads/check-duplicates instead (PRD-02)');
+
   try {
     const userId = getUserId(req);
 

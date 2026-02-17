@@ -429,6 +429,17 @@ export {
   getMimeTypesForCategory,
   getValidCategories,
   type FileTypeCategory,
+
+  // Pipeline Status (PRD-01)
+  PIPELINE_STATUS,
+  PIPELINE_TRANSITIONS,
+  canTransition,
+  getValidTransitions,
+  getTransitionErrorMessage,
+  PipelineTransitionError,
+  type PipelineStatus,
+  type PipelineStatusValue,
+  type TransitionResult,
 } from './constants';
 
 // ============================================

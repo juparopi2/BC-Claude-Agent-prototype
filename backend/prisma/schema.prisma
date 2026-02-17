@@ -217,8 +217,12 @@ model files {
   blob_path                String
   is_folder                Boolean                    @default(false, map: "DF__files__is_folder__3B0BC30C")
   is_favorite              Boolean                    @default(false, map: "DF__files__is_favori__3BFFE745")
+  /// @deprecated(PRD-01) Use pipeline_status instead. Dropped in PRD-07.
   processing_status        String?                    @default("pending", map: "DF__files__processin__3CF40B7E") @db.NVarChar(50)
+  /// @deprecated(PRD-01) Use pipeline_status instead. Dropped in PRD-07.
   embedding_status         String?                    @default("pending", map: "DF__files__embedding__3DE82FB7") @db.NVarChar(50)
+  /// New unified pipeline status (PRD-01). Nullable during migration, required after PRD-07.
+  pipeline_status          String?                    @db.NVarChar(50)
   extracted_text           String?                    @db.NVarChar(Max)
   created_at               DateTime?                  @default(dbgenerated("getutcdate()"), map: "DF__files__created_a__3EDC53F0")
   updated_at               DateTime?                  @default(dbgenerated("getutcdate()"), map: "DF__files__updated_a__3FD07829")
@@ -243,6 +247,7 @@ model files {
   message_file_attachments message_file_attachments[]
 
   @@index([embedding_status, created_at], map: "IX_files_embedding_status")
+  @@index([pipeline_status, created_at], map: "IX_files_pipeline_status")
   @@index([processing_status, created_at], map: "IX_files_processing_status")
   @@index([user_id, source_type], map: "IX_files_source_type")
   @@index([user_id, parent_folder_id, name], map: "IX_files_user_folder")

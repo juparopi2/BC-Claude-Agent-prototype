@@ -82,6 +82,19 @@ export {
   type AgentCapability,
 } from './agent-registry.constants';
 
+// Pipeline Status (PRD-01)
+export {
+  PIPELINE_STATUS,
+  PIPELINE_TRANSITIONS,
+  canTransition,
+  getValidTransitions,
+  getTransitionErrorMessage,
+  PipelineTransitionError,
+  type PipelineStatus,
+  type PipelineStatusValue,
+  type TransitionResult,
+} from './pipeline-status';
+
 // File Type Categories (RAG Filtered Search)
 export {
   FILE_TYPE_CATEGORIES,

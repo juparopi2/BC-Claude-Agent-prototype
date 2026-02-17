@@ -1,8 +1,9 @@
 # PRD-01: Foundation — State Machine & Prisma File Repository
 
-**Status**: Draft
+**Status**: Completed ✅
 **Author**: System
 **Date**: 2026-02-10
+**Completed**: 2026-02-17
 **Epic**: Unified Upload Pipeline Rewrite
 
 ---
@@ -597,18 +598,18 @@ export class PipelineTransitionError extends Error {
 
 ### 5.1 Functional Requirements
 
-- [ ] State machine rejects invalid transitions with descriptive error messages
-- [ ] `transitionStatus()` correctly handles concurrent modifications (0 rows updated)
-- [ ] All 8 states are reachable via valid transition paths
-- [ ] `FAILED` state is reachable from all active states
-- [ ] Health endpoint returns accurate state distribution matching database
+- [x] State machine rejects invalid transitions with descriptive error messages
+- [x] `transitionStatus()` correctly handles concurrent modifications (0 rows updated)
+- [x] All 8 states are reachable via valid transition paths
+- [x] `FAILED` state is reachable from all active states
+- [x] Health endpoint returns accurate state distribution matching database
 
 ### 5.2 Non-Functional Requirements
 
-- [ ] 100% unit test coverage on state machine transitions (56 test cases: 8 states × 7 potential transitions)
-- [ ] Atomic status updates complete in <10ms (single SQL UPDATE)
-- [ ] No silent failures (all errors logged with context)
-- [ ] All IDs are UPPERCASE (enforcement at ingestion)
+- [x] 100% unit test coverage on state machine transitions (64 test cases: 8 states × 8 potential transitions)
+- [x] Atomic status updates complete in <10ms (single SQL UPDATE)
+- [x] No silent failures (all errors logged with context)
+- [x] All IDs are UPPERCASE (enforcement at ingestion)
 
 ### 5.3 Testability
 
@@ -691,34 +692,27 @@ export class FileRepositoryV2 {
 
 ### 8.1 Code Deliverables
 
-- [ ] `backend/src/domains/files/state-machine/PipelineStatus.ts`
-- [ ] `backend/src/domains/files/state-machine/transitions.ts`
-- [ ] `backend/src/domains/files/state-machine/index.ts` (barrel export)
-- [ ] `backend/src/domains/files/repository/FileRepositoryV2.ts`
-- [ ] `backend/src/routes/v2/uploads/health.routes.ts`
-- [ ] `packages/shared/src/types/pipeline-status.types.ts`
-- [ ] `packages/shared/src/index.ts` (export new types)
+- [x] `packages/shared/src/constants/pipeline-status.ts` — Types, constants, transitions, pure functions
+- [x] `backend/src/domains/files/state-machine/PipelineStateMachine.ts` — Backend wrapper with logging
+- [x] `backend/src/domains/files/state-machine/index.ts` — Barrel export
+- [x] `backend/src/services/files/repository/FileRepositoryV2.ts` — Prisma repository
+- [x] `backend/src/routes/v2/uploads/health.routes.ts` — Health endpoint
+- [x] `packages/shared/src/constants/index.ts` — Updated exports
+- [x] `packages/shared/src/index.ts` — Updated barrel exports
 
 ### 8.2 Database Deliverables
 
-- [ ] `backend/prisma/schema.prisma` updated with:
+- [x] `backend/prisma/schema.prisma` updated with:
   - New `pipeline_status String?` column on `files` table
   - Index on `pipeline_status` for query performance
   - Deprecation comments on old columns
 
 ### 8.3 Test Deliverables
 
-- [ ] `backend/src/domains/files/state-machine/__tests__/transitions.test.ts`
-  - Test all 56 valid/invalid transition combinations
-  - Test `canTransition()` edge cases
-  - Test `getValidTransitions()` completeness
-- [ ] `backend/src/domains/files/repository/__tests__/FileRepositoryV2.test.ts`
-  - Test atomic transitions with concurrent modifications
-  - Test query methods (`findByStatus`, `countByStatus`)
-  - Test error handling (invalid transitions, database errors)
-- [ ] `backend/src/routes/v2/uploads/__tests__/health.routes.test.ts`
-  - Test health endpoint response structure
-  - Test state distribution accuracy
+- [x] `packages/shared/src/constants/__tests__/pipeline-status.test.ts` — 92 tests (64-case transition matrix, getValidTransitions, error messages, PipelineTransitionError)
+- [x] `backend/src/__tests__/unit/domains/files/PipelineStateMachine.test.ts` — 11 tests
+- [x] `backend/src/__tests__/unit/services/files/FileRepositoryV2.test.ts` — 12 tests
+- [x] `backend/src/__tests__/unit/routes/v2/upload-health.test.ts` — 20 tests
 
 ### 8.4 Documentation Deliverables
 
@@ -742,9 +736,9 @@ export class FileRepositoryV2 {
 - [ ] Verify all transitions logged with correct metadata
 
 **Automated Testing**:
-- [ ] `npm run -w backend test:unit` passes (100% coverage on state machine)
-- [ ] `npm run verify:types` passes
-- [ ] `npm run -w backend lint` passes
+- [x] `npm run -w backend test:unit` passes (3225 tests, 0 failures)
+- [x] `npm run verify:types` passes (0 errors)
+- [x] `npm run -w backend lint` passes (0 errors, 67 pre-existing warnings)
 
 **Database Verification**:
 ```sql
@@ -775,6 +769,44 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 curl -s -H "Authorization: Bearer $TOKEN" \
   http://localhost:3002/api/v2/uploads/health \
   | jq '.transitions.registered'  # Expected: ["uploaded", "failed"]
+```
+
+---
+
+## 9. Implementation Notes (Post-Completion)
+
+### 9.1 Design Decisions (Deviations from Original PRD)
+
+1. **`const` object + type union instead of `enum`**: The PRD proposed `enum PipelineStatus`, but the entire codebase uses `const` objects + type unions (e.g., `PROCESSING_STATUS`, `EMBEDDING_STATUS`). Implementation follows the existing pattern for consistency.
+
+2. **Shared package as source of truth**: Types, transitions, and pure functions live in `@bc-agent/shared` (not in `backend/src/domains/files/`). Per CLAUDE.md §14.7: "When a concept needs to be consistent across frontend and backend, it MUST be defined in the shared package."
+
+3. **`failed → queued` transition included**: The PRD showed `failed` as terminal, but noted manual retry could move back to QUEUED. Since `POST /api/files/:id/retry-processing` already exists, the transition `failed → queued` is included in the transition map (13 valid transitions instead of 12).
+
+4. **Repository in `services/files/repository/`**: `FileRepositoryV2.ts` lives alongside the existing `FileRepository.ts` in the services layer (not in `domains/files/repository/` as the PRD proposed). This follows the existing project structure.
+
+5. **Multi-tenant isolation**: All repository queries include `user_id` in WHERE clauses and `deletion_status: null` filter, matching the existing `FileRepository` security pattern.
+
+### 9.2 Test Coverage Summary
+
+| Test Suite | Tests | File |
+|------------|-------|------|
+| Pipeline Status (shared) | 92 | `packages/shared/src/constants/__tests__/pipeline-status.test.ts` |
+| PipelineStateMachine | 11 | `backend/src/__tests__/unit/domains/files/PipelineStateMachine.test.ts` |
+| FileRepositoryV2 | 12 | `backend/src/__tests__/unit/services/files/FileRepositoryV2.test.ts` |
+| Upload Health Route | 20 | `backend/src/__tests__/unit/routes/v2/upload-health.test.ts` |
+| **Total** | **135** | |
+
+### 9.3 Verification Results
+
+```
+npm run build:shared           ✅ Clean build
+npm run verify:types           ✅ 0 errors
+npm run -w backend test:unit   ✅ 3225 tests passed, 0 failures (141 files)
+npm run -w backend lint        ✅ 0 errors (67 pre-existing warnings)
+npx prisma validate            ✅ Schema valid
+npx prisma db push             ✅ Already in sync
+npx prisma generate            ✅ Client regenerated
 ```
 
 ---

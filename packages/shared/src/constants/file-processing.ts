@@ -21,6 +21,8 @@
 /**
  * Processing status values for file text extraction.
  * Matches the ProcessingStatus type in file.types.ts.
+ *
+ * @deprecated (PRD-01) Use PIPELINE_STATUS instead. Removed in PRD-07.
  */
 export const PROCESSING_STATUS = {
   /** File uploaded, waiting for scheduler to enqueue (flow control/backpressure) */
@@ -48,6 +50,8 @@ export type ProcessingStatusValue = (typeof PROCESSING_STATUS)[keyof typeof PROC
 /**
  * Embedding status values for vector search indexing.
  * Matches the EmbeddingStatus type in file.types.ts.
+ *
+ * @deprecated (PRD-01) Use PIPELINE_STATUS instead. Removed in PRD-07.
  */
 export const EMBEDDING_STATUS = {
   /** Text extraction not complete yet */

@@ -110,13 +110,37 @@ This section consolidates all `@deprecated` markers from PRDs 00-06 into a singl
 | `PROCESSING_STATUS` | `PIPELINE_STATUS` | PRD-01 |
 | `EMBEDDING_STATUS` | `PIPELINE_STATUS` | PRD-01 |
 
-### 2.10 Configuration - Feature Flags (1 flag)
+### 2.10 PRD-01 Implementation Artifacts (Completed 2026-02-17)
+
+These files were created by PRD-01 and are **permanent** (NOT deprecated — they stay after PRD-07):
+
+| File | Purpose |
+|------|---------|
+| `packages/shared/src/constants/pipeline-status.ts` | PIPELINE_STATUS, transitions, pure functions, TransitionResult, PipelineTransitionError |
+| `backend/src/domains/files/state-machine/PipelineStateMachine.ts` | Backend wrapper with structured logging |
+| `backend/src/domains/files/state-machine/index.ts` | Barrel export + re-exports |
+| `backend/src/services/files/repository/FileRepositoryV2.ts` | Prisma repository with atomic CAS transitions |
+| `backend/src/routes/v2/uploads/health.routes.ts` | GET /api/v2/uploads/health endpoint |
+
+**Deprecation markers added by PRD-01** (to be removed in PRD-07):
+- `@deprecated(PRD-01)` on `PROCESSING_STATUS` in `packages/shared/src/constants/file-processing.ts`
+- `@deprecated(PRD-01)` on `EMBEDDING_STATUS` in `packages/shared/src/constants/file-processing.ts`
+- `@deprecated(PRD-01)` on `ProcessingStatus` type in `packages/shared/src/types/file.types.ts`
+- `@deprecated(PRD-01)` on `EmbeddingStatus` type in `packages/shared/src/types/file.types.ts`
+- `@deprecated(PRD-01)` on `processing_status` column in `backend/prisma/schema.prisma`
+- `@deprecated(PRD-01)` on `embedding_status` column in `backend/prisma/schema.prisma`
+
+**Database changes by PRD-01**:
+- Added `pipeline_status String? @db.NVarChar(50)` column to `files` table
+- Added index `IX_files_pipeline_status` on `[pipeline_status, created_at]`
+
+### 2.11 Configuration - Feature Flags (1 flag)
 
 | Flag | Files | Action | PRD |
 |------|-------|--------|-----|
 | `USE_V2_UPLOAD_PIPELINE` | Various | Remove (V2 is now default) | PRD-06 |
 
-### 2.11 Routes - API Versioning
+### 2.12 Routes - API Versioning
 
 | Old Path | New Path | PRD |
 |----------|----------|-----|
@@ -853,7 +877,7 @@ However, the following **migration artifacts** should be retained for future ref
 
 ### Required PRDs (Must be 100% Complete)
 - ✅ **PRD-00**: Frontend blob upload with Uppy
-- ✅ **PRD-01**: State machine and `pipeline_status` column
+- ✅ **PRD-01**: State machine and `pipeline_status` column — **Completed 2026-02-17**
 - ✅ **PRD-02**: Duplicate detection V2
 - ✅ **PRD-03**: Batch orchestrator V2
 - ✅ **PRD-04**: Processing pipeline V2

@@ -34,6 +34,8 @@ import { FILE_WS_EVENTS } from '../constants/websocket-events';
  * Note: `pending_processing` was added for flow control (backpressure).
  * The FileProcessingScheduler picks files with this status and enqueues them
  * based on queue capacity, transitioning them to `pending`.
+ *
+ * @deprecated (PRD-01) Use PipelineStatus from '@bc-agent/shared' instead. Removed in PRD-07.
  */
 export type ProcessingStatus = 'pending_processing' | 'pending' | 'processing' | 'completed' | 'failed';
 
@@ -45,6 +47,8 @@ export type ProcessingStatus = 'pending_processing' | 'pending' | 'processing' |
  * - `processing`: Embedding model is generating vectors
  * - `completed`: Embeddings stored in Azure AI Search
  * - `failed`: Embedding generation failed
+ *
+ * @deprecated (PRD-01) Use PipelineStatus from '@bc-agent/shared' instead. Removed in PRD-07.
  */
 export type EmbeddingStatus = 'pending' | 'processing' | 'completed' | 'failed';
 

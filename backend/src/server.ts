@@ -49,6 +49,7 @@ import chatAttachmentsRoutes from './routes/chat-attachments';
 import audioRoutes from './routes/audio';
 import agentsRoutes from './routes/agents';
 import analyticsRoutes from './routes/analytics';
+import uploadHealthRoutes from '@/routes/v2/uploads/health.routes';
 import { registerAgents } from '@/modules/agents/core/registry/registerAgents';
 import { initializeSupervisorGraph, resumeSupervisor } from '@/modules/agents/supervisor';
 import { processUserAgentSelection } from '@/modules/agents/handoffs';
@@ -855,6 +856,11 @@ function configureRoutes(): void {
   // Agent analytics endpoint (PRD-032)
   if (isDatabaseAvailable) {
     app.use('/api/analytics', analyticsRoutes);
+  }
+
+  // Upload pipeline health endpoint (PRD-01)
+  if (isDatabaseAvailable) {
+    app.use('/api/v2/uploads/health', uploadHealthRoutes);
   }
 
   // Client log ingestion endpoint

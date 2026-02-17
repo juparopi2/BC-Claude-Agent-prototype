@@ -266,6 +266,20 @@ export type {
   InitUploadSessionResponseWithConflicts,
   InitUploadSessionResponseWithSasUrls,
 
+  // Upload Batch types (PRD-03)
+  BatchStatus,
+  ManifestFileItem,
+  ManifestFolderItem,
+  CreateBatchRequest,
+  BatchFileResult,
+  BatchFolderResult,
+  CreateBatchResponse,
+  BatchProgress,
+  ConfirmFileResponse,
+  BatchFileStatus,
+  BatchStatusResponse,
+  CancelBatchResponse,
+
   // Agent Registry types (PRD-011)
   AgentUISummary,
   AgentListResponse,
@@ -356,6 +370,14 @@ export {
 export {
   duplicateCheckInputV2Schema,
   checkDuplicatesRequestV2Schema,
+} from './types';
+
+// Upload Batch schemas & constants (PRD-03)
+export {
+  BATCH_STATUS,
+  manifestFileItemSchema,
+  manifestFolderItemSchema,
+  createBatchRequestSchema,
 } from './types';
 
 // ============================================

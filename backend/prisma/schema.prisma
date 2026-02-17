@@ -211,6 +211,7 @@ model files {
   id                       String                     @id(map: "PK__files__3213E83F64B37894") @default(dbgenerated("newid()"), map: "DF__files__id__3A179ED3") @db.UniqueIdentifier
   user_id                  String                     @db.UniqueIdentifier
   parent_folder_id         String?                    @db.UniqueIdentifier
+  batch_id                 String?                    @db.UniqueIdentifier
   name                     String                     @db.NVarChar(500)
   mime_type                String                     @db.NVarChar(255)
   size_bytes               BigInt
@@ -252,6 +253,23 @@ model files {
   @@index([user_id, source_type], map: "IX_files_source_type")
   @@index([user_id, parent_folder_id, name], map: "IX_files_user_folder")
   @@index([user_id, content_hash], map: "IX_files_user_content_hash")
+  @@index([batch_id], map: "files_batch_id_idx")
+}
+
+model upload_batches {
+  id              String    @id @default(dbgenerated("newid()")) @db.UniqueIdentifier
+  user_id         String    @db.UniqueIdentifier
+  status          String    @default("active") @db.NVarChar(50)
+  total_files     Int
+  confirmed_count Int       @default(0)
+  created_at      DateTime  @default(dbgenerated("getutcdate()"))
+  updated_at      DateTime  @default(dbgenerated("getutcdate()"))
+  expires_at      DateTime
+  metadata        String?   @db.NVarChar(Max)
+  users           users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([user_id, status])
+  @@index([status, expires_at])
 }
 
 model image_embeddings {
@@ -641,6 +659,7 @@ model users {
   billing_records           billing_records[]
   files                     files[]
   image_embeddings          image_embeddings[]
+  upload_batches            upload_batches[]
   quota_alerts              quota_alerts[]
   sessions                  sessions[]
   tool_permissions          tool_permissions[]

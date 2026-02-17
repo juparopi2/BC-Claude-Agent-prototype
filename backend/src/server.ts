@@ -51,6 +51,7 @@ import agentsRoutes from './routes/agents';
 import analyticsRoutes from './routes/analytics';
 import uploadHealthRoutes from '@/routes/v2/uploads/health.routes';
 import duplicateDetectionV2Routes from '@/routes/v2/uploads/duplicate-detection.routes';
+import batchUploadV2Routes from '@/routes/v2/uploads/batch.routes';
 import { registerAgents } from '@/modules/agents/core/registry/registerAgents';
 import { initializeSupervisorGraph, resumeSupervisor } from '@/modules/agents/supervisor';
 import { processUserAgentSelection } from '@/modules/agents/handoffs';
@@ -867,6 +868,11 @@ function configureRoutes(): void {
   // Duplicate detection V2 endpoint (PRD-02)
   if (isDatabaseAvailable) {
     app.use('/api/v2/uploads/check-duplicates', duplicateDetectionV2Routes);
+  }
+
+  // Batch Upload V2 endpoints (PRD-03)
+  if (isDatabaseAvailable) {
+    app.use('/api/v2/uploads/batches', batchUploadV2Routes);
   }
 
   // Client log ingestion endpoint

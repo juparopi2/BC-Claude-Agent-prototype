@@ -330,6 +330,29 @@ export type {
   FolderWebSocketEvent,
 } from './upload-session.types';
 
+// Upload Batch types (PRD-03)
+export type {
+  BatchStatus,
+  ManifestFileItem,
+  ManifestFolderItem,
+  CreateBatchRequest,
+  BatchFileResult,
+  BatchFolderResult,
+  CreateBatchResponse,
+  BatchProgress,
+  ConfirmFileResponse,
+  BatchFileStatus,
+  BatchStatusResponse,
+  CancelBatchResponse,
+} from './upload-batch.types';
+
+export {
+  BATCH_STATUS,
+  manifestFileItemSchema,
+  manifestFolderItemSchema,
+  createBatchRequestSchema,
+} from './upload-batch.types';
+
 // Agent Identity types (PRD-020)
 export type { AgentIdentity } from './agent-identity.types';
 

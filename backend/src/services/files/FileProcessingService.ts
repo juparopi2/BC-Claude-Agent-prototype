@@ -42,6 +42,14 @@ import type { ProcessingStatus } from '@/types/file.types';
 const logger = createChildLogger({ service: 'FileProcessingService' });
 
 /**
+ * Options for processFile (PRD-04 V2 compatibility)
+ */
+export interface ProcessFileOptions {
+  /** When true, skip the fire-and-forget enqueue of the chunking job (V2 Flow handles sequencing) */
+  skipNextStageEnqueue?: boolean;
+}
+
+/**
  * File Processing Service
  *
  * Singleton service that orchestrates document text extraction.
@@ -140,9 +148,10 @@ export class FileProcessingService {
    * 5. Emit WebSocket events for progress tracking
    *
    * @param job - File processing job from MessageQueue
+   * @param options - Optional processing options (V2 pipeline compatibility)
    * @throws Error if processing fails (will trigger BullMQ retry)
    */
-  public async processFile(job: FileProcessingJob): Promise<void> {
+  public async processFile(job: FileProcessingJob, options?: ProcessFileOptions): Promise<void> {
     const {
       fileId,
       userId,
@@ -248,9 +257,12 @@ export class FileProcessingService {
 
       // Step 5.5: Enqueue file chunking job (fire-and-forget)
       // This triggers the chunking → embedding → AI Search indexing pipeline
-      this.enqueueChunkingJob(userId, fileId, sessionId, mimeType).catch((err) => {
-        logger.warn({ err, fileId, userId }, 'Failed to enqueue chunking job');
-      });
+      // V2 pipeline (PRD-04): Skip enqueue when BullMQ Flow handles sequencing
+      if (!options?.skipNextStageEnqueue) {
+        this.enqueueChunkingJob(userId, fileId, sessionId, mimeType).catch((err) => {
+          logger.warn({ err, fileId, userId }, 'Failed to enqueue chunking job');
+        });
+      }
 
       // Step 6: Emit completion event (100% progress)
       this.emitCompletion(eventCtx, result);

@@ -180,6 +180,57 @@ export class QueueManager {
       removeOnFail: JOB_RETENTION.DEFAULT.failed,
     });
 
+    // V2 Pipeline Queues (PRD-04)
+    this.createQueue(QueueName.V2_FILE_EXTRACT, {
+      attempts: DEFAULT_BACKOFF.V2_FILE_EXTRACT.attempts,
+      backoff: {
+        type: DEFAULT_BACKOFF.V2_FILE_EXTRACT.type,
+        delay: DEFAULT_BACKOFF.V2_FILE_EXTRACT.delay,
+      },
+      removeOnComplete: JOB_RETENTION.V2_FILE_PROCESSING.completed,
+      removeOnFail: JOB_RETENTION.V2_FILE_PROCESSING.failed,
+    });
+
+    this.createQueue(QueueName.V2_FILE_CHUNK, {
+      attempts: DEFAULT_BACKOFF.V2_FILE_CHUNK.attempts,
+      backoff: {
+        type: DEFAULT_BACKOFF.V2_FILE_CHUNK.type,
+        delay: DEFAULT_BACKOFF.V2_FILE_CHUNK.delay,
+      },
+      removeOnComplete: JOB_RETENTION.V2_FILE_PROCESSING.completed,
+      removeOnFail: JOB_RETENTION.V2_FILE_PROCESSING.failed,
+    });
+
+    this.createQueue(QueueName.V2_FILE_EMBED, {
+      attempts: DEFAULT_BACKOFF.V2_FILE_EMBED.attempts,
+      backoff: {
+        type: DEFAULT_BACKOFF.V2_FILE_EMBED.type,
+        delay: DEFAULT_BACKOFF.V2_FILE_EMBED.delay,
+      },
+      removeOnComplete: JOB_RETENTION.V2_FILE_PROCESSING.completed,
+      removeOnFail: JOB_RETENTION.V2_FILE_PROCESSING.failed,
+    });
+
+    this.createQueue(QueueName.V2_FILE_PIPELINE_COMPLETE, {
+      attempts: DEFAULT_BACKOFF.V2_FILE_PIPELINE_COMPLETE.attempts,
+      backoff: {
+        type: DEFAULT_BACKOFF.V2_FILE_PIPELINE_COMPLETE.type,
+        delay: DEFAULT_BACKOFF.V2_FILE_PIPELINE_COMPLETE.delay,
+      },
+      removeOnComplete: JOB_RETENTION.V2_FILE_PROCESSING.completed,
+      removeOnFail: JOB_RETENTION.V2_FILE_PROCESSING.failed,
+    });
+
+    this.createQueue(QueueName.V2_DLQ, {
+      attempts: DEFAULT_BACKOFF.V2_DLQ.attempts,
+      backoff: {
+        type: DEFAULT_BACKOFF.V2_DLQ.type,
+        delay: DEFAULT_BACKOFF.V2_DLQ.delay,
+      },
+      removeOnComplete: JOB_RETENTION.V2_FILE_PROCESSING.completed,
+      removeOnFail: JOB_RETENTION.V2_FILE_PROCESSING.failed,
+    });
+
     this.log.info('All queues initialized', {
       queues: Array.from(this.queues.keys()),
     });

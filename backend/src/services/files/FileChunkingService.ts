@@ -68,6 +68,14 @@ interface FileForChunking {
 }
 
 /**
+ * Options for processFileChunks (PRD-04 V2 compatibility)
+ */
+export interface ProcessFileChunksOptions {
+  /** When true, skip the fire-and-forget enqueue of the embedding job (V2 Flow handles sequencing) */
+  skipNextStageEnqueue?: boolean;
+}
+
+/**
  * File Chunking Service Class
  *
  * Singleton service that chunks extracted text and prepares for embedding.
@@ -102,9 +110,10 @@ export class FileChunkingService {
    * Main entry point called by MessageQueue worker.
    *
    * @param jobData - File chunking job data
+   * @param options - Optional processing options (V2 pipeline compatibility)
    * @returns Chunking result
    */
-  public async processFileChunks(jobData: FileChunkingJob): Promise<ChunkingResult> {
+  public async processFileChunks(jobData: FileChunkingJob, options?: ProcessFileChunksOptions): Promise<ChunkingResult> {
     const { fileId, userId, mimeType, sessionId } = jobData;
 
     logger.debug({
@@ -174,10 +183,16 @@ export class FileChunkingService {
       const totalTokens = chunks.reduce((sum, chunk) => sum + chunk.tokenCount, 0);
 
       // 8. Enqueue embedding generation job
-      const embeddingJobId = await this.enqueueEmbeddingJob(fileId, userId, chunkRecords, mimeType);
+      // V2 pipeline (PRD-04): Skip enqueue when BullMQ Flow handles sequencing
+      let embeddingJobId: string | undefined;
+      if (!options?.skipNextStageEnqueue) {
+        embeddingJobId = await this.enqueueEmbeddingJob(fileId, userId, chunkRecords, mimeType);
+      }
 
-      // 9. Update embedding status to 'queued'
-      await this.updateEmbeddingStatus(fileId, 'queued');
+      // 9. Update embedding status to 'queued' (only for V1 path)
+      if (!options?.skipNextStageEnqueue) {
+        await this.updateEmbeddingStatus(fileId, 'queued');
+      }
 
       logger.info({
         fileId,

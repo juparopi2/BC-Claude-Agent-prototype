@@ -105,9 +105,9 @@ describe('PipelineStateMachine', () => {
     it('should throw PipelineTransitionError for invalid skip-ahead transitions', () => {
       const machine = getPipelineStateMachine();
 
-      // Cannot skip stages
+      // Cannot skip stages (registered → queued is now valid per PRD-04)
       expect(() => {
-        machine.validateTransition(PIPELINE_STATUS.REGISTERED, PIPELINE_STATUS.QUEUED);
+        machine.validateTransition(PIPELINE_STATUS.REGISTERED, PIPELINE_STATUS.EMBEDDING);
       }).toThrow(PipelineTransitionError);
 
       expect(() => {

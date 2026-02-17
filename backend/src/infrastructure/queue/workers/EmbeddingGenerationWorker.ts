@@ -48,6 +48,9 @@ interface ChunkFromDB {
 
 /**
  * EmbeddingGenerationWorker
+ *
+ * @deprecated PRD-04 — Replaced by FileEmbedWorkerV2.
+ * Will be removed after PRD-07 migration completes.
  */
 export class EmbeddingGenerationWorker {
   private static instance: EmbeddingGenerationWorker | null = null;

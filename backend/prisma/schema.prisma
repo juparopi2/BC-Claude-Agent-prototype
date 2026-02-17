@@ -262,6 +262,7 @@ model upload_batches {
   status          String    @default("active") @db.NVarChar(50)
   total_files     Int
   confirmed_count Int       @default(0)
+  processed_count Int       @default(0)
   created_at      DateTime  @default(dbgenerated("getutcdate()"))
   updated_at      DateTime  @default(dbgenerated("getutcdate()"))
   expires_at      DateTime

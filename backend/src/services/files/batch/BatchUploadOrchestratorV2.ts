@@ -294,10 +294,12 @@ export class BatchUploadOrchestratorV2 {
     const confirmed = updatedBatch?.confirmed_count ?? 0;
     const total = updatedBatch?.total_files ?? 0;
 
-    // 7. Enqueue processing job
+    // 7. Enqueue V2 processing flow (PRD-04)
+    // BullMQ Flow guarantees: extract → chunk → embed → pipeline-complete
     const queue = getMessageQueue();
-    await queue.addFileProcessingJob({
+    await queue.addFileProcessingFlow({
       fileId,
+      batchId,
       userId,
       mimeType: file.mime_type,
       blobPath: file.blob_path,

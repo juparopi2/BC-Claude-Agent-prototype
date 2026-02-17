@@ -21,6 +21,9 @@ export interface FileProcessingWorkerDependencies {
 
 /**
  * FileProcessingWorker
+ *
+ * @deprecated PRD-04 — Replaced by FileExtractWorkerV2.
+ * Will be removed after PRD-07 migration completes.
  */
 export class FileProcessingWorker {
   private static instance: FileProcessingWorker | null = null;

@@ -24,6 +24,11 @@ export enum QueueName {
   FILE_CLEANUP = 'file-cleanup',
   FILE_DELETION = 'file-deletion',
   FILE_BULK_UPLOAD = 'file-bulk-upload',
+  V2_FILE_EXTRACT = 'v2-file-extract',
+  V2_FILE_CHUNK = 'v2-file-chunk',
+  V2_FILE_EMBED = 'v2-file-embed',
+  V2_FILE_PIPELINE_COMPLETE = 'v2-file-pipeline-complete',
+  V2_DLQ = 'v2-dead-letter-queue',
 }
 
 /**
@@ -51,6 +56,11 @@ export const JOB_NAMES = {
   },
   FILE_DELETION: 'delete-file',
   FILE_BULK_UPLOAD: 'upload-file',
+  V2_FILE_EXTRACT: 'v2-extract-file',
+  V2_FILE_CHUNK: 'v2-chunk-file',
+  V2_FILE_EMBED: 'v2-embed-file',
+  V2_FILE_PIPELINE_COMPLETE: 'v2-pipeline-complete',
+  V2_DLQ: 'v2-dead-letter',
 } as const;
 
 /**
@@ -89,6 +99,11 @@ export const DEFAULT_CONCURRENCY = {
   CITATION_PERSISTENCE: 5,
   FILE_CLEANUP: 1,
   // FILE_DELETION and FILE_BULK_UPLOAD use values from @bc-agent/shared
+  V2_FILE_EXTRACT: 8,
+  V2_FILE_CHUNK: 5,
+  V2_FILE_EMBED: 5,
+  V2_FILE_PIPELINE_COMPLETE: 10,
+  V2_DLQ: 1,
 } as const;
 
 /**
@@ -119,6 +134,11 @@ export const DEFAULT_BACKOFF = {
   EMBEDDING_GENERATION: { type: 'exponential' as const, delay: 2000, attempts: 3 },
   CITATION_PERSISTENCE: { type: 'exponential' as const, delay: 1000, attempts: 3 },
   FILE_CLEANUP: { type: 'exponential' as const, delay: 10000, attempts: 3 },
+  V2_FILE_EXTRACT: { type: 'exponential' as const, delay: 5000, attempts: 3 },
+  V2_FILE_CHUNK: { type: 'exponential' as const, delay: 3000, attempts: 3 },
+  V2_FILE_EMBED: { type: 'exponential' as const, delay: 3000, attempts: 3 },
+  V2_FILE_PIPELINE_COMPLETE: { type: 'exponential' as const, delay: 1000, attempts: 2 },
+  V2_DLQ: { type: 'exponential' as const, delay: 10000, attempts: 1 },
 } as const;
 
 /**
@@ -147,6 +167,10 @@ export const JOB_RETENTION = {
     completed: { count: 20, age: 3600 },  // 1 hour
     failed: { count: 50, age: 86400 },    // 1 day
   },
+  V2_FILE_PROCESSING: {
+    completed: { count: 50, age: 3600 },   // 1 hour
+    failed: { count: 100, age: 86400 },    // 24 hours (DLQ takes over)
+  },
 } as const;
 
 /**
@@ -162,6 +186,11 @@ export const JOB_PRIORITY = {
   FILE_CHUNKING: 3,
   FILE_DELETION: 3,
   FILE_BULK_UPLOAD: 3,
+  V2_FILE_EXTRACT: 3,
+  V2_FILE_CHUNK: 3,
+  V2_FILE_EMBED: 2,
+  V2_FILE_PIPELINE_COMPLETE: 4,
+  V2_DLQ: 10,
   CITATION_PERSISTENCE: 4,
   USAGE_AGGREGATION: 5,
   FILE_CLEANUP: 10,        // Lowest - background maintenance
@@ -277,6 +306,18 @@ export const LOCK_CONFIG: Record<QueueName, ExtendedLockConfig> = {
   [QueueName.FILE_BULK_UPLOAD]: { lockDuration: LOCK_DURATION.MEDIUM, maxStalledCount: MAX_STALLED_COUNT.TOLERANT },
   [QueueName.FILE_CLEANUP]: { lockDuration: LOCK_DURATION.EXTRA_LONG, maxStalledCount: MAX_STALLED_COUNT.TOLERANT },
   [QueueName.FILE_DELETION]: { lockDuration: LOCK_DURATION.MEDIUM, maxStalledCount: MAX_STALLED_COUNT.TOLERANT },
+
+  // V2 File Pipeline - new orchestrated pipeline
+  [QueueName.V2_FILE_EXTRACT]: {
+    lockDuration: LOCK_DURATION.ULTRA_LONG,  // 5 min (Azure Doc Intelligence)
+    maxStalledCount: MAX_STALLED_COUNT.TOLERANT,
+    lockRenewTime: 60000,
+    stalledInterval: 120000,
+  },
+  [QueueName.V2_FILE_CHUNK]: { lockDuration: LOCK_DURATION.MEDIUM, maxStalledCount: MAX_STALLED_COUNT.TOLERANT },
+  [QueueName.V2_FILE_EMBED]: { lockDuration: LOCK_DURATION.LONG, maxStalledCount: MAX_STALLED_COUNT.TOLERANT },
+  [QueueName.V2_FILE_PIPELINE_COMPLETE]: { lockDuration: LOCK_DURATION.SHORT, maxStalledCount: MAX_STALLED_COUNT.DEFAULT },
+  [QueueName.V2_DLQ]: { lockDuration: LOCK_DURATION.SHORT, maxStalledCount: MAX_STALLED_COUNT.DEFAULT },
 
   // Standard operations - use shorter locks
   [QueueName.MESSAGE_PERSISTENCE]: { lockDuration: LOCK_DURATION.SHORT, maxStalledCount: MAX_STALLED_COUNT.DEFAULT },

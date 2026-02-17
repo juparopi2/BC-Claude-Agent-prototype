@@ -114,6 +114,9 @@ vi.mock('bullmq', () => ({
   Queue: vi.fn(() => mockQueue),
   Worker: vi.fn(() => mockWorker),
   QueueEvents: vi.fn(() => mockQueueEvents),
+  FlowProducer: vi.fn(() => ({
+    close: vi.fn(async () => {}),
+  })),
 }));
 
 // Mock logger
@@ -175,22 +178,25 @@ describe('MessageQueue.close()', () => {
     // Assert: Check call order
     // Expected: worker(s), queueEvents(s), queue(s)
     // Note: Redis is injected (ownsRedisConnection = false), so quit() is NOT called
-    // Each queue has: worker, queueEvents, queue
-    // With 11 queues (including file-cleanup, file-deletion, file-bulk-upload): 11 workers, 11 queueEvents, 11 queues
-    expect(capturedCallOrder).toHaveLength(33); // 11 + 11 + 11
+    // V1: 11 queues with workers + V2: 4 queues with workers + 1 DLQ queue (no worker) = 15 workers, 16 queueEvents, 16 queues
+    const numWorkers = 15;
+    const numQueueEvents = 16;
+    const numQueues = 16;
+    const total = numWorkers + numQueueEvents + numQueues;
+    expect(capturedCallOrder).toHaveLength(total);
 
-    // Workers first (indices 0-10)
-    for (let i = 0; i < 11; i++) {
+    // Workers first
+    for (let i = 0; i < numWorkers; i++) {
       expect(capturedCallOrder[i]).toBe('worker');
     }
 
-    // QueueEvents second (indices 11-21)
-    for (let i = 11; i < 22; i++) {
+    // QueueEvents second
+    for (let i = numWorkers; i < numWorkers + numQueueEvents; i++) {
       expect(capturedCallOrder[i]).toBe('queueEvents');
     }
 
-    // Queues third (indices 22-32)
-    for (let i = 22; i < 33; i++) {
+    // Queues third
+    for (let i = numWorkers + numQueueEvents; i < total; i++) {
       expect(capturedCallOrder[i]).toBe('queue');
     }
 
@@ -347,7 +353,11 @@ describe('MessageQueue.close()', () => {
       await Promise.resolve();
       expect(mockQueueEvents.close).toHaveBeenCalled();
 
-      // Fast-forward another 100ms: Queues should close after delay
+      // Fast-forward another 100ms: FlowProducerManager close + delay
+      await vi.advanceTimersByTimeAsync(100);
+      await Promise.resolve();
+
+      // Fast-forward another 100ms: Queues should close after FlowProducer delay
       await vi.advanceTimersByTimeAsync(100);
       await Promise.resolve();
       expect(mockQueue.close).toHaveBeenCalled();

@@ -108,6 +108,10 @@ vi.mock('bullmq', () => ({
   Queue: vi.fn(() => mockQueue),
   Worker: vi.fn(() => mockWorker),
   QueueEvents: vi.fn(() => mockQueueEvents),
+  FlowProducer: vi.fn(() => ({
+    close: vi.fn(async () => {}),
+    add: vi.fn(async () => ({})),
+  })),
 }));
 
 // Mock logger - use regular function to survive vi.resetAllMocks()

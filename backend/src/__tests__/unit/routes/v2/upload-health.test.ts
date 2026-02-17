@@ -112,7 +112,7 @@ describe('Upload Health Route (PRD-01)', () => {
       // Transitions should be an object mapping states to valid target states
       expect(response.body.transitions).toBeInstanceOf(Object);
       expect(Object.keys(response.body.transitions)).toHaveLength(8);
-      expect(response.body.transitions.registered).toEqual(['uploaded', 'failed']);
+      expect(response.body.transitions.registered).toEqual(['uploaded', 'queued', 'failed']);
       expect(response.body.transitions.uploaded).toEqual(['queued', 'failed']);
       expect(response.body.transitions.queued).toEqual(['extracting', 'failed']);
       expect(response.body.transitions.extracting).toEqual(['chunking', 'failed']);
@@ -219,7 +219,7 @@ describe('Upload Health Route (PRD-01)', () => {
       // Verify JSON serialization works correctly
       const serialized = JSON.stringify(response.body.transitions);
       const parsed = JSON.parse(serialized);
-      expect(parsed.registered).toEqual(['uploaded', 'failed']);
+      expect(parsed.registered).toEqual(['uploaded', 'queued', 'failed']);
     });
   });
 

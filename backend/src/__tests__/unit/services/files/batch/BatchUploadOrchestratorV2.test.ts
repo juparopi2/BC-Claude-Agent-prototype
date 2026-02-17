@@ -54,6 +54,7 @@ vi.mock('@/services/files/FileUploadService', () => ({
 // Mock MessageQueue (singleton instance)
 const mockMessageQueueInstance = {
   addFileProcessingJob: vi.fn(),
+  addFileProcessingFlow: vi.fn(),
 };
 
 vi.mock('@/infrastructure/queue', () => ({
@@ -802,13 +803,15 @@ describe('BatchUploadOrchestratorV2', () => {
       expect(mockPrisma.$executeRaw).toHaveBeenCalled();
 
       // Verify job enqueued
-      expect(mockMessageQueue.addFileProcessingJob).toHaveBeenCalledWith({
-        fileId: TEST_FILE_ID,
-        userId: TEST_USER_ID,
-        mimeType: 'application/pdf',
-        blobPath: 'users/USER/files/test.pdf',
-        fileName: 'test.pdf',
-      });
+      expect(mockMessageQueue.addFileProcessingFlow).toHaveBeenCalledWith(
+        expect.objectContaining({
+          fileId: TEST_FILE_ID,
+          userId: TEST_USER_ID,
+          mimeType: 'application/pdf',
+          blobPath: 'users/USER/files/test.pdf',
+          fileName: 'test.pdf',
+        }),
+      );
     });
 
     it('auto-completes batch when last file confirmed', async () => {

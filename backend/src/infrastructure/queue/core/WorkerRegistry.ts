@@ -214,6 +214,17 @@ export class WorkerRegistry {
         return FILE_DELETION_CONFIG.QUEUE_CONCURRENCY;
       case QueueName.FILE_BULK_UPLOAD:
         return FILE_BULK_UPLOAD_CONFIG.QUEUE_CONCURRENCY;
+      // V2 Pipeline (PRD-04)
+      case QueueName.V2_FILE_EXTRACT:
+        return DEFAULT_CONCURRENCY.V2_FILE_EXTRACT;
+      case QueueName.V2_FILE_CHUNK:
+        return DEFAULT_CONCURRENCY.V2_FILE_CHUNK;
+      case QueueName.V2_FILE_EMBED:
+        return DEFAULT_CONCURRENCY.V2_FILE_EMBED;
+      case QueueName.V2_FILE_PIPELINE_COMPLETE:
+        return DEFAULT_CONCURRENCY.V2_FILE_PIPELINE_COMPLETE;
+      case QueueName.V2_DLQ:
+        return DEFAULT_CONCURRENCY.V2_DLQ;
       default:
         return 1;
     }

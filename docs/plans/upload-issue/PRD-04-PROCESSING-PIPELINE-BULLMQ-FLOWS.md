@@ -1,7 +1,8 @@
 # PRD-04: Event-Driven Processing Pipeline with BullMQ Flows
 
-**Status**: Draft
+**Status**: Completed
 **Created**: 2026-02-10
+**Completed**: 2026-02-17
 **Owner**: Backend Team
 **Epic**: File Upload System Overhaul
 
@@ -1357,6 +1358,93 @@ describe('Processing Flow Integration', () => {
 
 - **Scalability**: Support 10,000 files/day with <0.1% failure rate
 - **Operational Overhead**: Zero manual interventions required for stuck files
+
+---
+
+## 13. Implementation Artifacts (Completed 2026-02-17)
+
+### 13.1 Permanent Files (NOT deprecated — stay after PRD-07)
+
+| File | Purpose |
+|------|---------|
+| `backend/src/infrastructure/queue/core/FlowProducerManager.ts` | FlowProducer singleton lifecycle (init, addFlow, close) |
+| `backend/src/infrastructure/queue/flow/ProcessingFlowFactory.ts` | Per-file BullMQ Flow tree builder (correct nesting: pipeline-complete → embed → chunk → extract) |
+| `backend/src/infrastructure/queue/flow/index.ts` | Barrel export for flow module |
+| `backend/src/infrastructure/queue/workers/v2/FileExtractWorkerV2.ts` | Extract stage: CAS `queued → extracting → chunking`, delegates to FileProcessingService |
+| `backend/src/infrastructure/queue/workers/v2/FileChunkWorkerV2.ts` | Chunk stage: verifies `chunking` state, delegates to FileChunkingService, CAS `chunking → embedding` |
+| `backend/src/infrastructure/queue/workers/v2/FileEmbedWorkerV2.ts` | Embed stage: generates embeddings, indexes in AI Search, CAS `embedding → ready`, dual-writes legacy `embedding_status` |
+| `backend/src/infrastructure/queue/workers/v2/FilePipelineCompleteWorker.ts` | Batch progress: increments `processed_count`, detects batch completion |
+| `backend/src/infrastructure/queue/workers/v2/index.ts` | Barrel export for V2 workers |
+| `backend/src/services/queue/DLQService.ts` | Dead letter queue: list failed files, retry single/bulk, creates new V2 Flows |
+| `backend/src/routes/v2/uploads/dlq.routes.ts` | DLQ API: GET /api/v2/uploads/dlq, POST .../retry, POST .../retry-all |
+| `packages/shared/src/types/dlq.types.ts` | DLQ shared types: `FailedPipelineStage`, `DLQEntry`, `DLQListResponse` |
+| `packages/shared/src/types/file-pipeline-events.types.ts` | V2 WebSocket event types: `FilePipelineStatusChangedEvent`, `BatchFileProcessedEvent`, `BatchCompletedEvent` |
+
+### 13.2 Test Files
+
+| File | Tests | Coverage |
+|------|-------|----------|
+| `backend/src/__tests__/unit/infrastructure/queue/flow/ProcessingFlowFactory.test.ts` | 7 | Flow nesting, jobId idempotency, retry config, determinism |
+| `backend/src/__tests__/unit/infrastructure/queue/workers/v2/FileExtractWorkerV2.test.ts` | 4 | CAS claim, concurrent modification skip, failure → DLQ, state advance failure |
+| `backend/src/__tests__/unit/infrastructure/queue/workers/v2/FileChunkWorkerV2.test.ts` | 4 | State verify, process + advance, failure → failed, advance failure |
+| `backend/src/__tests__/unit/infrastructure/queue/workers/v2/FileEmbedWorkerV2.test.ts` | 8 | Full pipeline, zero chunks (image), wrong state, failures, count mismatch, factory |
+| `backend/src/__tests__/unit/infrastructure/queue/workers/v2/FilePipelineCompleteWorker.test.ts` | 4 | Batch not complete, batch complete, failed file, error handling |
+| `backend/src/__tests__/unit/services/queue/DLQService.test.ts` | 7 | List entries, pagination, retry success/failure/not found, retry all, empty list |
+
+### 13.3 Modified Files
+
+| File | Change |
+|------|--------|
+| `backend/src/infrastructure/queue/constants/queue.constants.ts` | Added 5 V2 queue names (`V2_FILE_EXTRACT`, `V2_FILE_CHUNK`, `V2_FILE_EMBED`, `V2_FILE_PIPELINE_COMPLETE`, `V2_DLQ`), concurrency, backoff, lock, retention configs |
+| `backend/src/infrastructure/queue/MessageQueue.ts` | FlowProducerManager init/close, `addFileProcessingFlow()` method, V2 worker registration, V2 queues in failed job handler |
+| `backend/src/infrastructure/queue/core/QueueManager.ts` | V2 queue initialization (5 queues with default job options) |
+| `backend/src/infrastructure/queue/core/WorkerRegistry.ts` | V2 concurrency defaults in `getDefaultConcurrency()` |
+| `backend/src/services/files/batch/BatchUploadOrchestratorV2.ts` | `confirmFile()` switched from `addFileProcessingJob()` to `addFileProcessingFlow()` with `batchId` |
+| `backend/src/services/files/FileProcessingService.ts` | Added `skipNextStageEnqueue?: boolean` option to `processFile()` — V2 passes `true` to skip V1 fire-and-forget chunking enqueue |
+| `backend/src/services/files/FileChunkingService.ts` | Added `skipNextStageEnqueue?: boolean` option to `processFileChunks()` — V2 passes `true` to skip V1 fire-and-forget embedding enqueue |
+| `packages/shared/src/constants/pipeline-status.ts` | Added `registered → queued` to `PIPELINE_TRANSITIONS` (legalizes what PRD-03 already does) |
+| `packages/shared/src/types/index.ts` | Exports for DLQ types and V2 pipeline event types |
+| `backend/prisma/schema.prisma` | Added `processed_count Int @default(0)` to `upload_batches` model |
+| `backend/src/server.ts` | Registered DLQ routes at `/api/v2/uploads/dlq` |
+
+### 13.4 Deprecation Markers Added by PRD-04 (to be removed in PRD-07)
+
+| Marker | File | What It Replaces |
+|--------|------|------------------|
+| `@deprecated PRD-04 — Replaced by FileExtractWorkerV2` | `backend/src/infrastructure/queue/workers/FileProcessingWorker.ts` | V1 extract worker (thin wrapper, fire-and-forget chaining) |
+| `@deprecated PRD-04 — Replaced by FileChunkWorkerV2` | `backend/src/infrastructure/queue/workers/FileChunkingWorker.ts` | V1 chunk worker (fire-and-forget embedding enqueue) |
+| `@deprecated PRD-04 — Replaced by FileEmbedWorkerV2` | `backend/src/infrastructure/queue/workers/EmbeddingGenerationWorker.ts` | V1 embed worker (no state machine transitions) |
+| `@deprecated PRD-04 — Use addFileProcessingFlow()` | `MessageQueue.addFileProcessingJob()` method | V1 single-job enqueue (no Flow dependencies) |
+
+### 13.5 Key Design Decisions Made During Implementation
+
+1. **Flow nesting is inverted from the draft**: The PRD draft (section 3.1) had extract as parent → chunk as child. BullMQ children execute FIRST. Correct nesting: `pipeline-complete` (root, runs LAST) → `embed` → `chunk` → `extract` (deepest, runs FIRST).
+
+2. **Per-file Flows only (no batch-level Flow)**: PRD-03 confirms files one at a time via `confirmFile()`. BullMQ Flows require the full tree at creation time. Batch tracking uses DB-based `processed_count` counter instead.
+
+3. **`skipNextStageEnqueue` pattern**: V2 workers reuse existing `FileProcessingService` and `FileChunkingService` logic but pass `{ skipNextStageEnqueue: true }` to skip V1's fire-and-forget enqueue to the next stage. BullMQ Flow handles sequencing.
+
+4. **Dual-write during migration**: V2 workers update `pipeline_status` via `FileRepositoryV2.transitionStatus()` AND legacy `processing_status`/`embedding_status` columns. Both systems see consistent state until PRD-07 removes legacy columns.
+
+5. **DLQ uses DB query, not BullMQ job listing**: `DLQService.listEntries()` queries `files WHERE pipeline_status = 'failed'` from Prisma, not from a BullMQ queue. Simpler, paginated, and works with existing auth middleware.
+
+6. **V2 workers coexist with V1**: V1 workers use `FILE_PROCESSING`, `FILE_CHUNKING`, `EMBEDDING_GENERATION` queue names. V2 workers use `V2_FILE_EXTRACT`, `V2_FILE_CHUNK`, `V2_FILE_EMBED`. No conflicts. Both sets are registered in `MessageQueue.initializeWorkers()`.
+
+### 13.6 Database Changes
+
+| Change | Table | Details |
+|--------|-------|---------|
+| New column | `upload_batches` | `processed_count Int @default(0)` — tracks how many files completed all pipeline stages |
+
+### 13.7 Open Questions Resolved
+
+| Question | Resolution |
+|----------|------------|
+| BullMQ Flow execution order | Confirmed: children execute first (deepest first). Flow tree inverted from draft. |
+| Batch-level vs per-file Flows | Per-file only. PRD-03 confirms one file at a time; batch tracking via `processed_count` in DB. |
+| State transition bugs in draft | Fixed: each worker transitions FROM entry state TO exit state. No same-from/to no-ops. |
+| `uploaded → queued` misalignment | Fixed: `registered → queued` added to `PIPELINE_TRANSITIONS`. PRD-03's `confirmFile()` already does this transition. |
+| Frontend scope (useFileProcessingEvents) | Deferred to PRD-06 as planned. PRD-04 is backend-only. |
 
 ---
 

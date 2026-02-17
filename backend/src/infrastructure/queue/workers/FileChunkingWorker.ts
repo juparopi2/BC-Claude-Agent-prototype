@@ -21,6 +21,9 @@ export interface FileChunkingWorkerDependencies {
 
 /**
  * FileChunkingWorker
+ *
+ * @deprecated PRD-04 — Replaced by FileChunkWorkerV2.
+ * Will be removed after PRD-07 migration completes.
  */
 export class FileChunkingWorker {
   private static instance: FileChunkingWorker | null = null;

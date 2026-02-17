@@ -76,6 +76,13 @@ import { getCitationPersistenceWorker } from './workers/CitationPersistenceWorke
 import { getFileCleanupWorker } from './workers/FileCleanupWorker';
 import { getFileDeletionWorker } from './workers/FileDeletionWorker';
 import { getFileBulkUploadWorker } from './workers/FileBulkUploadWorker';
+import { getFileExtractWorkerV2 } from './workers/v2/FileExtractWorkerV2';
+import { getFileChunkWorkerV2 } from './workers/v2/FileChunkWorkerV2';
+import { getFileEmbedWorkerV2 } from './workers/v2/FileEmbedWorkerV2';
+import { getFilePipelineCompleteWorker } from './workers/v2/FilePipelineCompleteWorker';
+import type { V2ExtractJobData, V2ChunkJobData, V2EmbedJobData, V2PipelineCompleteJobData } from './workers/v2';
+import { FlowProducerManager } from './core/FlowProducerManager';
+import { ProcessingFlowFactory, type FileFlowParams } from './flow';
 
 /**
  * Message Queue Manager Class
@@ -92,6 +99,7 @@ export class MessageQueue {
   private eventManager: QueueEventManager;
   private scheduledJobManager: ScheduledJobManager;
   private rateLimiter: RateLimiter;
+  private flowProducerManager: FlowProducerManager | null = null;
 
   // Dependencies
   private log: ILoggerMinimal;
@@ -183,6 +191,13 @@ export class MessageQueue {
 
     // Initialize queues
     this.queueManager.initializeQueues();
+
+    // Initialize FlowProducerManager (PRD-04)
+    this.flowProducerManager = new FlowProducerManager({
+      redisConfig: this.redisManager.getConnectionConfig(),
+      queueNamePrefix: dependencies?.queueNamePrefix || '',
+      logger: this.log,
+    });
 
     // Initialize workers with extracted worker classes
     this.initializeWorkers(dependencies);
@@ -306,6 +321,31 @@ export class MessageQueue {
       async (job: Job<BulkUploadJobData>) => fileBulkUploadWorker.process(job)
     );
 
+    // V2 Pipeline Workers (PRD-04)
+    const fileExtractWorkerV2 = getFileExtractWorkerV2({ logger: this.log });
+    this.workerRegistry.registerWorker(
+      QueueName.V2_FILE_EXTRACT,
+      async (job: Job<V2ExtractJobData>) => fileExtractWorkerV2.process(job)
+    );
+
+    const fileChunkWorkerV2 = getFileChunkWorkerV2({ logger: this.log });
+    this.workerRegistry.registerWorker(
+      QueueName.V2_FILE_CHUNK,
+      async (job: Job<V2ChunkJobData>) => fileChunkWorkerV2.process(job)
+    );
+
+    const fileEmbedWorkerV2 = getFileEmbedWorkerV2({ logger: this.log });
+    this.workerRegistry.registerWorker(
+      QueueName.V2_FILE_EMBED,
+      async (job: Job<V2EmbedJobData>) => fileEmbedWorkerV2.process(job)
+    );
+
+    const filePipelineCompleteWorker = getFilePipelineCompleteWorker({ logger: this.log });
+    this.workerRegistry.registerWorker(
+      QueueName.V2_FILE_PIPELINE_COMPLETE,
+      async (job: Job<V2PipelineCompleteJobData>) => filePipelineCompleteWorker.process(job)
+    );
+
     this.log.info('All workers initialized', {
       workers: Array.from(this.workerRegistry.getAllWorkers().keys()),
     });
@@ -325,7 +365,10 @@ export class MessageQueue {
 
     const isFileQueue = queueName === QueueName.FILE_PROCESSING ||
                         queueName === QueueName.FILE_CHUNKING ||
-                        queueName === QueueName.EMBEDDING_GENERATION;
+                        queueName === QueueName.EMBEDDING_GENERATION ||
+                        queueName === QueueName.V2_FILE_EXTRACT ||
+                        queueName === QueueName.V2_FILE_CHUNK ||
+                        queueName === QueueName.V2_FILE_EMBED;
 
     if (isFileQueue && fileId && userId) {
       try {
@@ -515,6 +558,8 @@ export class MessageQueue {
 
   /**
    * Add File Processing Job to Queue
+   *
+   * @deprecated PRD-04 — Use addFileProcessingFlow() instead.
    */
   public async addFileProcessingJob(data: FileProcessingJob): Promise<string> {
     await this.waitForReady();
@@ -680,6 +725,42 @@ export class MessageQueue {
   }
 
   /**
+   * Add File Processing Flow (V2 Pipeline - PRD-04)
+   *
+   * Creates a BullMQ Flow tree that guarantees sequential execution:
+   * extract → chunk → embed → pipeline-complete
+   *
+   * Replaces the fire-and-forget chain of addFileProcessingJob → addFileChunkingJob → addEmbeddingGenerationJob
+   *
+   * @param params - File flow parameters (fileId, batchId, userId, mimeType, blobPath, fileName)
+   */
+  public async addFileProcessingFlow(params: FileFlowParams): Promise<void> {
+    await this.waitForReady();
+
+    if (!this.flowProducerManager) {
+      throw new Error('FlowProducerManager not initialized');
+    }
+
+    const withinLimit = await this.rateLimiter.checkLimit(`file:${params.userId}`);
+    if (!withinLimit) {
+      throw new Error(
+        `Rate limit exceeded for user ${params.userId}. Max ${RATE_LIMIT.MAX_JOBS_PER_SESSION} file processing jobs per hour.`
+      );
+    }
+
+    const flow = ProcessingFlowFactory.createFileFlow(params);
+    await this.flowProducerManager.addFlow(flow);
+
+    this.log.info('V2 file processing flow added', {
+      fileId: params.fileId,
+      batchId: params.batchId,
+      userId: params.userId,
+      mimeType: params.mimeType,
+      fileName: params.fileName,
+    });
+  }
+
+  /**
    * Get Rate Limit Status for Session
    */
   public async getRateLimitStatus(sessionId: string): Promise<{
@@ -776,6 +857,18 @@ export class MessageQueue {
     this.log.debug('Phase 2: Closing queue events...');
     const eventErrors = await this.eventManager.closeAll();
     errors.push(...eventErrors);
+
+    await new Promise(resolve => setTimeout(resolve, SHUTDOWN_DELAYS.PHASE_DELAY));
+
+    // Phase 2.5: Close FlowProducerManager
+    if (this.flowProducerManager) {
+      try {
+        await this.flowProducerManager.close();
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err));
+        errors.push(error);
+      }
+    }
 
     await new Promise(resolve => setTimeout(resolve, SHUTDOWN_DELAYS.PHASE_DELAY));
 

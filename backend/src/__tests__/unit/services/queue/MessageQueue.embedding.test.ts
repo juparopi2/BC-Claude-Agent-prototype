@@ -81,6 +81,10 @@ vi.mock('bullmq', () => ({
   }),
   Worker: vi.fn(() => mockWorker),
   QueueEvents: vi.fn(() => mockQueueEvents),
+  FlowProducer: vi.fn(() => ({
+    close: vi.fn(async () => {}),
+    add: vi.fn(async () => ({})),
+  })),
 }));
 
 vi.mock('@/shared/utils/logger', () => ({

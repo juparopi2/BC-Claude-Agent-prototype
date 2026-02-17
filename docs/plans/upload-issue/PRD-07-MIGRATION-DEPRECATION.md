@@ -51,7 +51,7 @@ This section consolidates all `@deprecated` markers from PRDs 00-06 into a singl
 | `backend/src/domains/files/upload-session/FolderNameResolver.ts` | Logic absorbed into V2 | PRD-03 |
 | `backend/src/domains/files/bulk-upload/BulkUploadProcessor.ts` | V2 batch orchestrator | PRD-03 |
 | `backend/src/domains/files/bulk-upload/BulkUploadBatchStore.ts` | `upload_batches` table | PRD-03 |
-| `backend/src/domains/files/scheduler/FileProcessingScheduler.ts` | Direct enqueue from confirm | PRD-04 |
+| `backend/src/domains/files/scheduler/FileProcessingScheduler.ts` | `FlowProducerManager` + `ProcessingFlowFactory` (direct enqueue from `confirmFile()`) | PRD-04 |
 | `backend/src/services/files/operations/FileDuplicateService.ts` | `DuplicateDetectionServiceV2` | PRD-02 |
 | `backend/src/services/files/PartialDataCleaner.ts` | `StuckFileRecoveryJob` + `OrphanCleanupJob` | PRD-05 |
 
@@ -67,10 +67,10 @@ This section consolidates all `@deprecated` markers from PRDs 00-06 into a singl
 
 | File | Replacement | PRD |
 |------|-------------|-----|
-| `backend/src/infrastructure/queue/workers/FileProcessingWorker.ts` | V2 worker with state machine | PRD-04 |
-| `backend/src/infrastructure/queue/workers/FileChunkingWorker.ts` | V2 Flow child worker | PRD-04 |
-| `backend/src/infrastructure/queue/workers/EmbeddingGenerationWorker.ts` | V2 Flow child worker | PRD-04 |
-| `backend/src/infrastructure/queue/workers/FileBulkUploadWorker.ts` | Eliminated (V2 handles inline) | PRD-04 |
+| `backend/src/infrastructure/queue/workers/FileProcessingWorker.ts` | `workers/v2/FileExtractWorkerV2.ts` (CAS state machine + FlowProducer) | PRD-04 |
+| `backend/src/infrastructure/queue/workers/FileChunkingWorker.ts` | `workers/v2/FileChunkWorkerV2.ts` (BullMQ Flow child) | PRD-04 |
+| `backend/src/infrastructure/queue/workers/EmbeddingGenerationWorker.ts` | `workers/v2/FileEmbedWorkerV2.ts` (BullMQ Flow child) | PRD-04 |
+| `backend/src/infrastructure/queue/workers/FileBulkUploadWorker.ts` | Eliminated — V2 batch orchestrator handles DB record creation inline | PRD-04 |
 | `backend/src/infrastructure/queue/workers/FileCleanupWorker.ts` | `OrphanCleanupJob` | PRD-05 |
 | `backend/src/infrastructure/queue/RateLimiter.ts` | BullMQ native rate limiting | PRD-04 |
 
@@ -159,7 +159,131 @@ These files were created by PRD-02 and are **permanent** (NOT deprecated — the
 |------|-------|--------|-----|
 | `USE_V2_UPLOAD_PIPELINE` | Various | Remove (V2 is now default) | PRD-06 |
 
-### 2.13 Routes - API Versioning
+### 2.13 PRD-03 Implementation Artifacts (Completed 2026-02-17)
+
+These files were created by PRD-03 and are **permanent** (NOT deprecated — they stay after PRD-07):
+
+| File | Purpose |
+|------|---------|
+| `packages/shared/src/types/upload-batch.types.ts` | BATCH_STATUS constants, Zod schemas (manifest, createBatchRequest), response interfaces |
+| `backend/src/services/files/batch/errors.ts` | 9 domain error classes (BatchNotFoundError, BatchExpiredError, etc.) |
+| `backend/src/services/files/batch/BatchUploadOrchestratorV2.ts` | Unified 3-phase atomic upload orchestrator |
+| `backend/src/services/files/batch/index.ts` | Barrel export for batch module |
+| `backend/src/services/files/batch/CLAUDE.md` | Module documentation |
+| `backend/src/routes/v2/uploads/batch.routes.ts` | POST /, POST /:batchId/files/:fileId/confirm, GET /:batchId, DELETE /:batchId |
+| `backend/src/__tests__/unit/services/files/batch/BatchUploadOrchestratorV2.test.ts` | 29 orchestrator unit tests |
+| `backend/src/__tests__/unit/routes/v2/batch-upload.test.ts` | 17 route controller unit tests |
+
+**Database changes by PRD-03**:
+- Added `upload_batches` model with id, user_id, status, total_files, confirmed_count, created_at, updated_at, expires_at, metadata
+- Added `batch_id String? @db.UniqueIdentifier` column to `files` table
+- Added index `files_batch_id_idx` on `[batch_id]` in files table
+- Added indexes `upload_batches_user_id_status_idx` and `upload_batches_status_expires_at_idx` on upload_batches
+- Added FK `upload_batches_user_id_fkey` from upload_batches.user_id to users.id (CASCADE delete)
+
+**Deprecation markers added by PRD-03** (to be removed in PRD-07):
+None — PRD-03 doesn't deprecate any existing code. It adds the V2 batch system that will eventually replace the legacy upload paths listed in sections 2.1 and 2.2.
+
+**What PRD-03 replaces (legacy code to remove in PRD-07)**:
+These legacy files (already listed in sections 2.1-2.2) are now functionally replaced by the V2 batch orchestrator:
+- `backend/src/routes/files/upload-session.routes.ts` (990 lines) → `POST /api/v2/uploads/batches`
+- `backend/src/routes/files/upload.routes.ts` (209 lines) → V2 batch with single file
+- `backend/src/routes/files/bulk.routes.ts` (456 lines) → V2 batch orchestrator
+- `backend/src/domains/files/upload-session/UploadSessionManager.ts` → `BatchUploadOrchestratorV2`
+- `backend/src/domains/files/upload-session/UploadSessionStore.ts` → `upload_batches` SQL table
+- `backend/src/domains/files/upload-session/FolderNameResolver.ts` → Topological sort in orchestrator
+- `backend/src/domains/files/bulk-upload/BulkUploadProcessor.ts` → V2 batch orchestrator
+- `backend/src/domains/files/bulk-upload/BulkUploadBatchStore.ts` → `upload_batches` SQL table
+
+### 2.14 PRD-04 Implementation Artifacts (Completed 2026-02-17)
+
+These files were created by PRD-04 and are **permanent** (NOT deprecated — they stay after PRD-07):
+
+**Flow Infrastructure (3 files)**:
+
+| File | Purpose |
+|------|---------|
+| `backend/src/infrastructure/queue/core/FlowProducerManager.ts` | FlowProducer singleton, lifecycle, graceful shutdown |
+| `backend/src/infrastructure/queue/flow/ProcessingFlowFactory.ts` | Per-file Flow tree builder (extract → chunk → embed → pipeline-complete) |
+| `backend/src/infrastructure/queue/flow/index.ts` | Barrel export |
+
+**V2 Workers (5 files)**:
+
+| File | Purpose |
+|------|---------|
+| `backend/src/infrastructure/queue/workers/v2/FileExtractWorkerV2.ts` | Extract stage — CAS `queued → extracting`, delegates to `FileProcessingService` |
+| `backend/src/infrastructure/queue/workers/v2/FileChunkWorkerV2.ts` | Chunk stage — verifies `chunking` state, delegates to `FileChunkingService` |
+| `backend/src/infrastructure/queue/workers/v2/FileEmbedWorkerV2.ts` | Embed stage — verifies `embedding` state, generates vectors + indexes |
+| `backend/src/infrastructure/queue/workers/v2/FilePipelineCompleteWorker.ts` | Batch tracker — increments `processed_count`, detects batch completion |
+| `backend/src/infrastructure/queue/workers/v2/index.ts` | Barrel export |
+
+**DLQ Service (1 file)**:
+
+| File | Purpose |
+|------|---------|
+| `backend/src/services/queue/DLQService.ts` | Dead letter queue: list, retry single, retry all |
+
+**DLQ Routes (1 file)**:
+
+| File | Purpose |
+|------|---------|
+| `backend/src/routes/v2/uploads/dlq.routes.ts` | `GET /api/v2/uploads/dlq`, `POST .../retry`, `POST .../retry-all` |
+
+**Shared Types (1 file)**:
+
+| File | Purpose |
+|------|---------|
+| `packages/shared/src/types/dlq.types.ts` | `DLQEntry`, `DLQListResponse` interfaces |
+
+**Test Files (6 suites, 34 tests)**:
+
+| File | Tests |
+|------|-------|
+| `backend/src/__tests__/unit/infrastructure/queue/flow/ProcessingFlowFactory.test.ts` | 7 |
+| `backend/src/__tests__/unit/infrastructure/queue/workers/v2/FileExtractWorkerV2.test.ts` | 4 |
+| `backend/src/__tests__/unit/infrastructure/queue/workers/v2/FileChunkWorkerV2.test.ts` | 4 |
+| `backend/src/__tests__/unit/infrastructure/queue/workers/v2/FileEmbedWorkerV2.test.ts` | 8 |
+| `backend/src/__tests__/unit/infrastructure/queue/workers/v2/FilePipelineCompleteWorker.test.ts` | 4 |
+| `backend/src/__tests__/unit/services/queue/DLQService.test.ts` | 7 |
+
+**Deprecation markers added by PRD-04** (to be removed in PRD-07):
+
+| Marker | File | What to Remove |
+|--------|------|----------------|
+| `@deprecated(PRD-04)` | `backend/src/infrastructure/queue/workers/FileProcessingWorker.ts` | Entire file — replaced by `FileExtractWorkerV2` |
+| `@deprecated(PRD-04)` | `backend/src/infrastructure/queue/workers/FileChunkingWorker.ts` | Entire file — replaced by `FileChunkWorkerV2` |
+| `@deprecated(PRD-04)` | `backend/src/infrastructure/queue/workers/EmbeddingGenerationWorker.ts` | Entire file — replaced by `FileEmbedWorkerV2` |
+| `@deprecated(PRD-04)` | `backend/src/infrastructure/queue/workers/FileBulkUploadWorker.ts` | Entire file — replaced by V2 batch orchestrator |
+| `@deprecated(PRD-04)` | `backend/src/domains/files/scheduler/FileProcessingScheduler.ts` | Entire file — replaced by direct FlowProducer enqueue |
+| `@deprecated(PRD-04)` | `MessageQueue.addFileProcessingJob()` | Method only — replaced by `addFileProcessingFlow()` |
+
+**Database changes by PRD-04**:
+- Added `processed_count Int @default(0)` to `upload_batches` model
+
+**Modified files by PRD-04** (existing files that received changes):
+
+| File | Change |
+|------|--------|
+| `backend/src/infrastructure/queue/constants/queue.constants.ts` | V2 queue names (`V2_FILE_EXTRACT`, etc.), concurrency, backoff config |
+| `backend/src/infrastructure/queue/MessageQueue.ts` | `addFileProcessingFlow()` method + FlowProducerManager init/close |
+| `backend/src/infrastructure/queue/core/WorkerRegistry.ts` | Register 4 V2 workers |
+| `backend/src/services/files/batch/BatchUploadOrchestratorV2.ts` | `confirmFile()` → calls `addFileProcessingFlow()` instead of `addFileProcessingJob()` |
+| `backend/src/services/files/FileProcessingService.ts` | `skipNextStageEnqueue` option for V2 compatibility |
+| `backend/src/services/files/FileChunkingService.ts` | `skipNextStageEnqueue` option for V2 compatibility |
+| `packages/shared/src/constants/pipeline-status.ts` | Added `registered → queued` transition |
+| `packages/shared/src/types/index.ts` | Export `dlq.types.ts` |
+| `backend/prisma/schema.prisma` | `processed_count` on `upload_batches` |
+| `backend/src/server.ts` | DLQ routes registration |
+
+**Key design decisions**:
+1. **Per-file Flows only** — no batch-level Flow (PRD-03 confirms files one-at-a-time)
+2. **Inverted nesting** — `pipeline-complete` is root (runs LAST), `extract` is deepest child (runs FIRST)
+3. **`skipNextStageEnqueue` pattern** — V2 workers reuse V1 services but skip fire-and-forget chaining
+4. **Dual-write migration** — V2 workers update both `pipeline_status` AND legacy columns
+5. **DLQService integration** — workers use `getDLQService().addToDeadLetter()` on permanent failure
+6. **`registered → queued` legalized** — PRD-03 already did this transition; PRD-04 added it to the validation map
+
+### 2.15 Routes - API Versioning
 
 | Old Path | New Path | PRD |
 |----------|----------|-----|
@@ -432,30 +556,41 @@ rm backend/src/infrastructure/queue/workers/FileCleanupWorker.ts
 rm backend/src/infrastructure/queue/RateLimiter.ts
 ```
 
-**Update Worker Registration**: `backend/src/infrastructure/queue/workers/index.ts`
+**Also remove from `MessageQueue.ts`**:
+- `addFileProcessingJob()` method (`@deprecated(PRD-04)` — replaced by `addFileProcessingFlow()`)
+- V1 queue name entries from `QueueName` enum: `FILE_PROCESSING`, `FILE_CHUNKING`, `FILE_BULK_UPLOAD`
+  (V2 uses: `V2_FILE_EXTRACT`, `V2_FILE_CHUNK`, `V2_FILE_EMBED`, `V2_FILE_PIPELINE_COMPLETE`)
+
+**Update Worker Registration**: `backend/src/infrastructure/queue/core/WorkerRegistry.ts`
 
 ```typescript
-// REMOVE these lines:
-import { FileProcessingWorker } from './FileProcessingWorker';
-import { FileChunkingWorker } from './FileChunkingWorker';
-import { EmbeddingGenerationWorker } from './EmbeddingGenerationWorker';
-import { FileBulkUploadWorker } from './FileBulkUploadWorker';
-import { FileCleanupWorker } from './FileCleanupWorker';
+// REMOVE these V1 worker registrations:
+import { FileProcessingWorker } from '../workers/FileProcessingWorker';
+import { FileChunkingWorker } from '../workers/FileChunkingWorker';
+import { EmbeddingGenerationWorker } from '../workers/EmbeddingGenerationWorker';
+import { FileBulkUploadWorker } from '../workers/FileBulkUploadWorker';
+import { FileCleanupWorker } from '../workers/FileCleanupWorker';
 
-// KEEP only V2 workers:
-import { FileProcessingWorkerV2 } from './FileProcessingWorkerV2';
-import { FileChunkingWorkerV2 } from './FileChunkingWorkerV2';
-import { EmbeddingGenerationWorkerV2 } from './EmbeddingGenerationWorkerV2';
+// KEEP V2 workers (already registered by PRD-04):
+import { FileExtractWorkerV2 } from '../workers/v2/FileExtractWorkerV2';
+import { FileChunkWorkerV2 } from '../workers/v2/FileChunkWorkerV2';
+import { FileEmbedWorkerV2 } from '../workers/v2/FileEmbedWorkerV2';
+import { FilePipelineCompleteWorker } from '../workers/v2/FilePipelineCompleteWorker';
 ```
 
 **Verification**:
 ```bash
-# No imports of old workers
-grep -rn "FileProcessingWorker'\|FileChunkingWorker'\|FileBulkUploadWorker" --include="*.ts" backend/src/ | grep -v "V2"
+# No imports of old workers (V2 workers have different names: FileExtractWorkerV2, FileChunkWorkerV2, FileEmbedWorkerV2)
+grep -rn "FileProcessingWorker\b\|FileChunkingWorker\|EmbeddingGenerationWorker\|FileBulkUploadWorker\|FileCleanupWorker" --include="*.ts" backend/src/ | grep -v "test\|__tests__\|@deprecated"
 
 # BullMQ queues should start without errors
 npm run -w backend dev  # Check logs for worker initialization
 ```
+
+**Clean up V2 compatibility flags** (added by PRD-04 for dual V1/V2 operation):
+- `FileProcessingService.ts`: Remove `skipNextStageEnqueue` option — make "skip" the permanent behavior (no enqueue to next stage, Flow handles it)
+- `FileChunkingService.ts`: Remove `skipNextStageEnqueue` option — same reasoning
+- V2 workers: Remove `skipNextStageEnqueue: true` parameter (now default behavior)
 
 **Commit**: `git commit -m "chore(PRD-07): remove legacy workers (6 files)"`
 
@@ -897,9 +1032,9 @@ However, the following **migration artifacts** should be retained for future ref
 ### Required PRDs (Must be 100% Complete)
 - ✅ **PRD-00**: Frontend blob upload with Uppy
 - ✅ **PRD-01**: State machine and `pipeline_status` column — **Completed 2026-02-17**
-- ✅ **PRD-02**: Duplicate detection V2
-- ✅ **PRD-03**: Batch orchestrator V2
-- ✅ **PRD-04**: Processing pipeline V2
+- ✅ **PRD-02**: Duplicate detection V2 — **Completed 2026-02-17**
+- ✅ **PRD-03**: Batch orchestrator V2 — **Completed 2026-02-17**
+- ✅ **PRD-04**: Processing pipeline V2 (BullMQ Flows) — **Completed 2026-02-17**
 - ✅ **PRD-05**: Error recovery V2
 - ✅ **PRD-06**: Frontend V2 wiring
 

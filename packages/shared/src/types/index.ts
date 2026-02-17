@@ -394,3 +394,17 @@ export type {
   CitedDocument,
   CitationResult,
 } from '../schemas/citation-result.schemas';
+
+// DLQ types (PRD-04)
+export type {
+  FailedPipelineStage,
+  DLQEntry,
+  DLQListResponse,
+} from './dlq.types';
+
+// V2 File Pipeline Event types (PRD-04)
+export type {
+  FilePipelineStatusChangedEvent,
+  BatchFileProcessedEvent,
+  BatchCompletedEvent,
+} from './file-pipeline-events.types';

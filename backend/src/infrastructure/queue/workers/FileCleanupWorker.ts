@@ -4,6 +4,11 @@
  * Cleans up old failed files, orphaned chunks, and orphaned search documents.
  * Runs as scheduled background job.
  *
+ * @deprecated PRD-05 — Superseded by MaintenanceWorker + OrphanCleanupService.
+ * The V2 pipeline uses dedicated services (StuckFileRecoveryService, OrphanCleanupService,
+ * BatchTimeoutService) orchestrated by MaintenanceWorker. This worker remains for
+ * V1 pipeline files until PRD-07 completes the migration.
+ *
  * @module infrastructure/queue/workers
  */
 

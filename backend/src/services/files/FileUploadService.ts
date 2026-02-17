@@ -446,6 +446,70 @@ export class FileUploadService {
   }
 
   /**
+   * 10. List all blob paths under a prefix
+   *
+   * @param prefix - Blob path prefix to filter by (e.g., 'users/USER-123/files/')
+   * @returns Array of blob path strings
+   */
+  public async listBlobs(prefix: string): Promise<string[]> {
+    try {
+      const blobPaths: string[] = [];
+
+      // Iterate through all blobs matching the prefix
+      for await (const blob of this.containerClient.listBlobsFlat({ prefix })) {
+        blobPaths.push(blob.name);
+      }
+
+      this.logger.debug({ prefix, count: blobPaths.length }, 'Listed blobs under prefix');
+      return blobPaths;
+    } catch (error) {
+      this.logger.error({ error, prefix }, 'Failed to list blobs');
+      throw error;
+    }
+  }
+
+  /**
+   * 11. Get blob properties (size and last modified date)
+   *
+   * @param blobPath - Blob path in container
+   * @returns Object with size and lastModified, or null if blob does not exist
+   */
+  public async getBlobProperties(blobPath: string): Promise<{ size: number; lastModified: Date } | null> {
+    const blockBlobClient = this.containerClient.getBlockBlobClient(blobPath);
+
+    try {
+      const properties = await blockBlobClient.getProperties();
+
+      const result = {
+        size: properties.contentLength ?? 0,
+        lastModified: properties.lastModified ?? new Date(),
+      };
+
+      this.logger.debug({ blobPath, size: result.size, lastModified: result.lastModified }, 'Retrieved blob properties');
+      return result;
+    } catch (error: unknown) {
+      // Return null if blob doesn't exist (404 / BlobNotFound)
+      if (error && typeof error === 'object' && 'statusCode' in error) {
+        const statusCode = (error as { statusCode?: number }).statusCode;
+        if (statusCode === 404) {
+          this.logger.debug({ blobPath }, 'Blob does not exist');
+          return null;
+        }
+      }
+
+      // Check error name for BlobNotFound
+      if (error instanceof Error && error.name === 'BlobNotFound') {
+        this.logger.debug({ blobPath }, 'Blob does not exist');
+        return null;
+      }
+
+      // Rethrow all other errors
+      this.logger.error({ error, blobPath }, 'Failed to get blob properties');
+      throw error;
+    }
+  }
+
+  /**
    * Sanitize filename for Azure Blob Storage paths
    *
    * ⚠️ WARNING: This function STRIPS ALL Unicode characters (æøå, emoji, –, •, etc.)

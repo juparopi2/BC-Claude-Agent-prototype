@@ -29,6 +29,7 @@ export enum QueueName {
   V2_FILE_EMBED = 'v2-file-embed',
   V2_FILE_PIPELINE_COMPLETE = 'v2-file-pipeline-complete',
   V2_DLQ = 'v2-dead-letter-queue',
+  V2_MAINTENANCE = 'v2-maintenance',
 }
 
 /**
@@ -61,6 +62,11 @@ export const JOB_NAMES = {
   V2_FILE_EMBED: 'v2-embed-file',
   V2_FILE_PIPELINE_COMPLETE: 'v2-pipeline-complete',
   V2_DLQ: 'v2-dead-letter',
+  V2_MAINTENANCE: {
+    STUCK_FILE_RECOVERY: 'v2-stuck-file-recovery',
+    ORPHAN_CLEANUP: 'v2-orphan-cleanup',
+    BATCH_TIMEOUT: 'v2-batch-timeout',
+  },
 } as const;
 
 /**
@@ -80,6 +86,10 @@ export const CRON_PATTERNS = {
   MONTHLY_1ST_AT_0030: '30 0 1 * *',
   /** Every day at 03:00 UTC (cleanup) */
   DAILY_AT_0300: '0 3 * * *',
+  /** Every 15 minutes (stuck file recovery) */
+  EVERY_15_MIN: '*/15 * * * *',
+  /** Every hour at :00 (batch timeout) */
+  HOURLY: '0 * * * *',
 } as const;
 
 /**
@@ -104,6 +114,7 @@ export const DEFAULT_CONCURRENCY = {
   V2_FILE_EMBED: 5,
   V2_FILE_PIPELINE_COMPLETE: 10,
   V2_DLQ: 1,
+  V2_MAINTENANCE: 1,
 } as const;
 
 /**
@@ -139,6 +150,7 @@ export const DEFAULT_BACKOFF = {
   V2_FILE_EMBED: { type: 'exponential' as const, delay: 3000, attempts: 3 },
   V2_FILE_PIPELINE_COMPLETE: { type: 'exponential' as const, delay: 1000, attempts: 2 },
   V2_DLQ: { type: 'exponential' as const, delay: 10000, attempts: 1 },
+  V2_MAINTENANCE: { type: 'exponential' as const, delay: 5000, attempts: 2 },
 } as const;
 
 /**
@@ -191,6 +203,7 @@ export const JOB_PRIORITY = {
   V2_FILE_EMBED: 2,
   V2_FILE_PIPELINE_COMPLETE: 4,
   V2_DLQ: 10,
+  V2_MAINTENANCE: 10,
   CITATION_PERSISTENCE: 4,
   USAGE_AGGREGATION: 5,
   FILE_CLEANUP: 10,        // Lowest - background maintenance
@@ -318,6 +331,7 @@ export const LOCK_CONFIG: Record<QueueName, ExtendedLockConfig> = {
   [QueueName.V2_FILE_EMBED]: { lockDuration: LOCK_DURATION.LONG, maxStalledCount: MAX_STALLED_COUNT.TOLERANT },
   [QueueName.V2_FILE_PIPELINE_COMPLETE]: { lockDuration: LOCK_DURATION.SHORT, maxStalledCount: MAX_STALLED_COUNT.DEFAULT },
   [QueueName.V2_DLQ]: { lockDuration: LOCK_DURATION.SHORT, maxStalledCount: MAX_STALLED_COUNT.DEFAULT },
+  [QueueName.V2_MAINTENANCE]: { lockDuration: LOCK_DURATION.EXTRA_LONG, maxStalledCount: MAX_STALLED_COUNT.TOLERANT },
 
   // Standard operations - use shorter locks
   [QueueName.MESSAGE_PERSISTENCE]: { lockDuration: LOCK_DURATION.SHORT, maxStalledCount: MAX_STALLED_COUNT.DEFAULT },

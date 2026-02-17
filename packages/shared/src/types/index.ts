@@ -408,3 +408,17 @@ export type {
   BatchFileProcessedEvent,
   BatchCompletedEvent,
 } from './file-pipeline-events.types';
+
+// Upload Dashboard types (PRD-05)
+export type {
+  QueueDepth,
+  UploadDashboard,
+  StuckFileDetails,
+  StuckFilesResponse,
+  OrphanReport,
+  RetryResponse,
+  BulkRetryResponse,
+  StuckFileRecoveryMetrics,
+  OrphanCleanupMetrics,
+  BatchTimeoutMetrics,
+} from './upload-dashboard.types';

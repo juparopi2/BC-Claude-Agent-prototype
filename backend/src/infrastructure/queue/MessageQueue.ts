@@ -80,6 +80,7 @@ import { getFileExtractWorkerV2 } from './workers/v2/FileExtractWorkerV2';
 import { getFileChunkWorkerV2 } from './workers/v2/FileChunkWorkerV2';
 import { getFileEmbedWorkerV2 } from './workers/v2/FileEmbedWorkerV2';
 import { getFilePipelineCompleteWorker } from './workers/v2/FilePipelineCompleteWorker';
+import { getMaintenanceWorker, type MaintenanceJobData } from './workers/v2/MaintenanceWorker';
 import type { V2ExtractJobData, V2ChunkJobData, V2EmbedJobData, V2PipelineCompleteJobData } from './workers/v2';
 import { FlowProducerManager } from './core/FlowProducerManager';
 import { ProcessingFlowFactory, type FileFlowParams } from './flow';
@@ -344,6 +345,13 @@ export class MessageQueue {
     this.workerRegistry.registerWorker(
       QueueName.V2_FILE_PIPELINE_COMPLETE,
       async (job: Job<V2PipelineCompleteJobData>) => filePipelineCompleteWorker.process(job)
+    );
+
+    // V2 Maintenance Worker (PRD-05)
+    const maintenanceWorker = getMaintenanceWorker({ logger: this.log });
+    this.workerRegistry.registerWorker(
+      QueueName.V2_MAINTENANCE,
+      async (job: Job<MaintenanceJobData>) => maintenanceWorker.process(job)
     );
 
     this.log.info('All workers initialized', {

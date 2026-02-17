@@ -39,6 +39,7 @@ export class ScheduledJobManager {
   async initializeScheduledJobs(): Promise<void> {
     await this.initializeUsageAggregationJobs();
     await this.initializeFileCleanupJobs();
+    await this.initializeMaintenanceJobs();
   }
 
   /**
@@ -142,6 +143,64 @@ export class ScheduledJobManager {
       });
     } catch (error) {
       this.log.error('Failed to initialize file cleanup scheduled jobs', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      // Don't throw - scheduled jobs are optional
+    }
+  }
+
+  /**
+   * Initialize V2 maintenance scheduled jobs (PRD-05)
+   */
+  private async initializeMaintenanceJobs(): Promise<void> {
+    const queue = this.getQueue(QueueName.V2_MAINTENANCE);
+    if (!queue) {
+      this.log.warn('V2 maintenance queue not available for scheduled jobs');
+      return;
+    }
+
+    try {
+      await this.removeExistingRepeatableJobs(queue);
+
+      // Stuck file recovery (every 15 minutes)
+      await queue.add(
+        JOB_NAMES.V2_MAINTENANCE.STUCK_FILE_RECOVERY,
+        { type: 'stuck-file-recovery' },
+        {
+          repeat: { pattern: CRON_PATTERNS.EVERY_15_MIN },
+          jobId: JOB_NAMES.V2_MAINTENANCE.STUCK_FILE_RECOVERY,
+        }
+      );
+
+      // Orphan cleanup (daily at 03:00 UTC)
+      await queue.add(
+        JOB_NAMES.V2_MAINTENANCE.ORPHAN_CLEANUP,
+        { type: 'orphan-cleanup' },
+        {
+          repeat: { pattern: CRON_PATTERNS.DAILY_AT_0300 },
+          jobId: JOB_NAMES.V2_MAINTENANCE.ORPHAN_CLEANUP,
+        }
+      );
+
+      // Batch timeout (every hour)
+      await queue.add(
+        JOB_NAMES.V2_MAINTENANCE.BATCH_TIMEOUT,
+        { type: 'batch-timeout' },
+        {
+          repeat: { pattern: CRON_PATTERNS.HOURLY },
+          jobId: JOB_NAMES.V2_MAINTENANCE.BATCH_TIMEOUT,
+        }
+      );
+
+      this.log.info('Scheduled maintenance jobs initialized (PRD-05)', {
+        jobs: [
+          JOB_NAMES.V2_MAINTENANCE.STUCK_FILE_RECOVERY,
+          JOB_NAMES.V2_MAINTENANCE.ORPHAN_CLEANUP,
+          JOB_NAMES.V2_MAINTENANCE.BATCH_TIMEOUT,
+        ],
+      });
+    } catch (error) {
+      this.log.error('Failed to initialize maintenance scheduled jobs', {
         error: error instanceof Error ? error.message : String(error),
       });
       // Don't throw - scheduled jobs are optional

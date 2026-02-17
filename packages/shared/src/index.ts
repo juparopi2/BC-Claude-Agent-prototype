@@ -311,6 +311,18 @@ export type {
   CitationPassage,
   CitedDocument,
   CitationResult,
+
+  // Upload Dashboard types (PRD-05)
+  QueueDepth,
+  UploadDashboard,
+  StuckFileDetails,
+  StuckFilesResponse,
+  OrphanReport,
+  RetryResponse,
+  BulkRetryResponse,
+  StuckFileRecoveryMetrics,
+  OrphanCleanupMetrics,
+  BatchTimeoutMetrics,
 } from './types';
 
 // Type guards (runtime functions, not types)

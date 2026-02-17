@@ -231,6 +231,17 @@ export class QueueManager {
       removeOnFail: JOB_RETENTION.V2_FILE_PROCESSING.failed,
     });
 
+    // V2 Maintenance Queue (PRD-05)
+    this.createQueue(QueueName.V2_MAINTENANCE, {
+      attempts: DEFAULT_BACKOFF.V2_MAINTENANCE.attempts,
+      backoff: {
+        type: DEFAULT_BACKOFF.V2_MAINTENANCE.type,
+        delay: DEFAULT_BACKOFF.V2_MAINTENANCE.delay,
+      },
+      removeOnComplete: JOB_RETENTION.FILE_CLEANUP.completed,
+      removeOnFail: JOB_RETENTION.FILE_CLEANUP.failed,
+    });
+
     this.log.info('All queues initialized', {
       queues: Array.from(this.queues.keys()),
     });

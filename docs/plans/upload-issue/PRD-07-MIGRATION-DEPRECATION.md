@@ -53,7 +53,7 @@ This section consolidates all `@deprecated` markers from PRDs 00-06 into a singl
 | `backend/src/domains/files/bulk-upload/BulkUploadBatchStore.ts` | `upload_batches` table | PRD-03 |
 | `backend/src/domains/files/scheduler/FileProcessingScheduler.ts` | `FlowProducerManager` + `ProcessingFlowFactory` (direct enqueue from `confirmFile()`) | PRD-04 |
 | `backend/src/services/files/operations/FileDuplicateService.ts` | `DuplicateDetectionServiceV2` | PRD-02 |
-| `backend/src/services/files/PartialDataCleaner.ts` | `StuckFileRecoveryJob` + `OrphanCleanupJob` | PRD-05 |
+| `backend/src/domains/files/cleanup/PartialDataCleaner.ts` | `OrphanCleanupService` + `StuckFileRecoveryService` | PRD-05 |
 
 ### 2.3 Backend - Repository & Data Access (3 files)
 
@@ -71,7 +71,7 @@ This section consolidates all `@deprecated` markers from PRDs 00-06 into a singl
 | `backend/src/infrastructure/queue/workers/FileChunkingWorker.ts` | `workers/v2/FileChunkWorkerV2.ts` (BullMQ Flow child) | PRD-04 |
 | `backend/src/infrastructure/queue/workers/EmbeddingGenerationWorker.ts` | `workers/v2/FileEmbedWorkerV2.ts` (BullMQ Flow child) | PRD-04 |
 | `backend/src/infrastructure/queue/workers/FileBulkUploadWorker.ts` | Eliminated — V2 batch orchestrator handles DB record creation inline | PRD-04 |
-| `backend/src/infrastructure/queue/workers/FileCleanupWorker.ts` | `OrphanCleanupJob` | PRD-05 |
+| `backend/src/infrastructure/queue/workers/FileCleanupWorker.ts` | `MaintenanceWorker` + `OrphanCleanupService` + `BatchTimeoutService` | PRD-05 |
 | `backend/src/infrastructure/queue/RateLimiter.ts` | BullMQ native rate limiting | PRD-04 |
 
 ### 2.5 Backend - Database Schema (2 columns)
@@ -283,7 +283,70 @@ These files were created by PRD-04 and are **permanent** (NOT deprecated — the
 5. **DLQService integration** — workers use `getDLQService().addToDeadLetter()` on permanent failure
 6. **`registered → queued` legalized** — PRD-03 already did this transition; PRD-04 added it to the validation map
 
-### 2.15 Routes - API Versioning
+### 2.15 PRD-05 Implementation Artifacts (Completed 2026-02-17)
+
+These files were created by PRD-05 and are **permanent** (NOT deprecated — they stay after PRD-07):
+
+**Domain Services (3 files)**:
+
+| File | Purpose |
+|------|---------|
+| `backend/src/domains/files/recovery/StuckFileRecoveryService.ts` | Stuck file detection + retry via V2 Flow, permanent failure after max retries |
+| `backend/src/domains/files/cleanup/OrphanCleanupService.ts` | 3-scope cleanup: orphan blobs, abandoned uploads, old failures |
+| `backend/src/domains/files/cleanup/BatchTimeoutService.ts` | Expire timed-out batches, delete unconfirmed `registered` files |
+
+**Infrastructure (1 file)**:
+
+| File | Purpose |
+|------|---------|
+| `backend/src/infrastructure/queue/workers/v2/MaintenanceWorker.ts` | Routes V2_MAINTENANCE queue jobs to the 3 domain services |
+
+**Routes (1 file)**:
+
+| File | Purpose |
+|------|---------|
+| `backend/src/routes/v2/uploads/dashboard.routes.ts` | 5 endpoints: overview, stuck list, orphan report, single retry, bulk retry |
+
+**Shared Types (1 file)**:
+
+| File | Purpose |
+|------|---------|
+| `packages/shared/src/types/upload-dashboard.types.ts` | `StuckFileRecoveryMetrics`, `OrphanCleanupMetrics`, `BatchTimeoutMetrics`, `UploadDashboard`, `StuckFileInfo`, `OrphanReport`, `RetryResponse`, `BulkRetryResponse` |
+
+**Test Files (5 suites, 89 tests)**:
+
+| File | Tests |
+|------|-------|
+| `backend/src/__tests__/unit/domains/files/recovery/StuckFileRecoveryService.test.ts` | 25 |
+| `backend/src/__tests__/unit/domains/files/cleanup/OrphanCleanupService.test.ts` | 31 |
+| `backend/src/__tests__/unit/domains/files/cleanup/BatchTimeoutService.test.ts` | 6 |
+| `backend/src/__tests__/unit/infrastructure/queue/workers/v2/MaintenanceWorker.test.ts` | 5 |
+| `backend/src/__tests__/unit/routes/v2/upload-dashboard.test.ts` | 22 |
+
+**Deprecation markers added by PRD-05** (to be removed in PRD-07):
+
+| Marker | File | What to Remove | Replaced By |
+|--------|------|----------------|-------------|
+| `@deprecated PRD-05` | `backend/src/infrastructure/queue/workers/FileCleanupWorker.ts` | Entire file — replaced by `MaintenanceWorker` + `OrphanCleanupService` + `BatchTimeoutService` |
+| `@deprecated PRD-05` | `backend/src/domains/files/cleanup/PartialDataCleaner.ts` | Entire file — replaced by `OrphanCleanupService` + `StuckFileRecoveryService` |
+
+**Database changes by PRD-05**:
+- Added `pipeline_retry_count Int @default(0)` to `files` model
+
+**Modified files by PRD-05** (existing files that received changes):
+
+| File | Change |
+|------|--------|
+| `backend/src/services/files/repository/FileRepositoryV2.ts` | Added `transitionStatusWithRetry()`, `findStuckFiles()`, `findAbandonedFiles()`, `forceStatus()` |
+| `backend/src/services/files/FileUploadService.ts` | Added `listBlobs(prefix)`, `getBlobProperties(blobPath)` |
+| `backend/src/infrastructure/queue/constants/queue.constants.ts` | Added `V2_MAINTENANCE` queue, job names, cron patterns, concurrency/backoff configs |
+| `backend/src/infrastructure/queue/core/ScheduledJobManager.ts` | Added `initializeMaintenanceJobs()` with 3 repeatable jobs |
+| `backend/src/infrastructure/queue/MessageQueue.ts` | Registered V2_MAINTENANCE queue + MaintenanceWorker |
+| `backend/src/server.ts` | Mounted dashboard routes at `/api/v2/uploads` |
+| `packages/shared/src/types/index.ts` + `packages/shared/src/index.ts` | Export `upload-dashboard.types.ts` |
+| `backend/prisma/schema.prisma` | `pipeline_retry_count` on `files` |
+
+### 2.16 Routes - API Versioning
 
 | Old Path | New Path | PRD |
 |----------|----------|-----|
@@ -1035,7 +1098,7 @@ However, the following **migration artifacts** should be retained for future ref
 - ✅ **PRD-02**: Duplicate detection V2 — **Completed 2026-02-17**
 - ✅ **PRD-03**: Batch orchestrator V2 — **Completed 2026-02-17**
 - ✅ **PRD-04**: Processing pipeline V2 (BullMQ Flows) — **Completed 2026-02-17**
-- ✅ **PRD-05**: Error recovery V2
+- ✅ **PRD-05**: Error recovery V2 — **Completed 2026-02-17**
 - ✅ **PRD-06**: Frontend V2 wiring
 
 ### System Requirements

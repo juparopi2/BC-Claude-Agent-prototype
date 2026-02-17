@@ -1,7 +1,8 @@
 # PRD-05: Error Recovery, Cleanup & Observability
 
-**Status**: Draft
+**Status**: Completed
 **Created**: 2026-02-10
+**Completed**: 2026-02-17
 **Owner**: Backend Team
 **Dependencies**: PRD-01 (State Machine), PRD-04 (DLQ & Flow Producer)
 
@@ -1567,6 +1568,69 @@ class OrphanDetector {
                       │ Return JSON    │
                       └────────────────┘
 ```
+
+---
+
+## 15. Implementation Artifacts (Completed 2026-02-17)
+
+This section records the actual implementation for incremental deprecation tracking by PRD-07.
+
+### 15.1 New Permanent Files (6 source + 5 test files)
+
+| File | Purpose |
+|------|---------|
+| `backend/src/domains/files/recovery/StuckFileRecoveryService.ts` | Stuck file detection (>15min in non-terminal states), retry via V2 Flow, permanent failure after max retries |
+| `backend/src/domains/files/cleanup/OrphanCleanupService.ts` | 3-scope cleanup: orphan blobs, abandoned uploads, old failures |
+| `backend/src/domains/files/cleanup/BatchTimeoutService.ts` | Expire active batches past `expires_at`, delete unconfirmed `registered` files |
+| `backend/src/infrastructure/queue/workers/v2/MaintenanceWorker.ts` | Routes `V2_MAINTENANCE` queue jobs to the 3 services above |
+| `backend/src/routes/v2/uploads/dashboard.routes.ts` | 5 endpoints: GET /, GET /stuck, GET /orphans, POST /stuck/:fileId/retry, POST /stuck/retry-all |
+| `packages/shared/src/types/upload-dashboard.types.ts` | `StuckFileRecoveryMetrics`, `OrphanCleanupMetrics`, `BatchTimeoutMetrics`, `UploadDashboard`, `StuckFileInfo`, `OrphanReport`, `RetryResponse`, `BulkRetryResponse` |
+
+**Test Files (89 tests total)**:
+
+| File | Tests |
+|------|-------|
+| `backend/src/__tests__/unit/domains/files/recovery/StuckFileRecoveryService.test.ts` | 25 |
+| `backend/src/__tests__/unit/domains/files/cleanup/OrphanCleanupService.test.ts` | 31 |
+| `backend/src/__tests__/unit/domains/files/cleanup/BatchTimeoutService.test.ts` | 6 |
+| `backend/src/__tests__/unit/infrastructure/queue/workers/v2/MaintenanceWorker.test.ts` | 5 |
+| `backend/src/__tests__/unit/routes/v2/upload-dashboard.test.ts` | 22 |
+
+### 15.2 Modified Files (8 files)
+
+| File | Change |
+|------|--------|
+| `backend/prisma/schema.prisma` | Added `pipeline_retry_count Int @default(0)` to files model |
+| `backend/src/services/files/repository/FileRepositoryV2.ts` | Added `transitionStatusWithRetry()`, `findStuckFiles()`, `findAbandonedFiles()`, `forceStatus()` |
+| `backend/src/services/files/FileUploadService.ts` | Added `listBlobs(prefix)`, `getBlobProperties(blobPath)` |
+| `backend/src/infrastructure/queue/constants/queue.constants.ts` | Added `V2_MAINTENANCE` queue name, `JOB_NAMES.V2_MAINTENANCE.*`, cron patterns `EVERY_15_MIN`/`HOURLY`, concurrency/backoff/lock/retention configs |
+| `backend/src/infrastructure/queue/core/ScheduledJobManager.ts` | Added `initializeMaintenanceJobs()` with 3 repeatable jobs |
+| `backend/src/infrastructure/queue/MessageQueue.ts` | Registered V2_MAINTENANCE queue + MaintenanceWorker |
+| `backend/src/server.ts` | Mounted dashboard routes at `/api/v2/uploads` |
+| `packages/shared/src/types/index.ts` + `packages/shared/src/index.ts` | Export `upload-dashboard.types.ts` |
+
+### 15.3 Deprecation Markers Added by PRD-05
+
+These markers signal to PRD-07 that these files should be removed during the migration:
+
+| Marker | File | What to Remove | Replaced By |
+|--------|------|----------------|-------------|
+| `@deprecated PRD-05` | `backend/src/infrastructure/queue/workers/FileCleanupWorker.ts` | Entire file | `MaintenanceWorker` + `OrphanCleanupService` + `BatchTimeoutService` |
+| `@deprecated PRD-05` | `backend/src/domains/files/cleanup/PartialDataCleaner.ts` | Entire file | `OrphanCleanupService` (orphan/failed cleanup) + `StuckFileRecoveryService` (recovery) |
+
+### 15.4 Database Changes
+
+- Added `pipeline_retry_count Int @default(0)` to `files` model in `schema.prisma`
+- Prisma client regenerated
+
+### 15.5 Key Design Decisions
+
+1. **Services, not Jobs**: Implemented `StuckFileRecoveryService`, `OrphanCleanupService`, `BatchTimeoutService` as domain services (not BullMQ jobs directly). The `MaintenanceWorker` delegates to them, keeping concerns separated.
+2. **Dynamic imports**: All Prisma and service dependencies use dynamic `import()` inside methods to avoid circular initialization at module load time.
+3. **Singleton getters**: Each service uses `get*Service()` getter function pattern, consistent with the codebase.
+4. **No notification system**: User notifications (file failure, deletion warnings) deferred — not implemented in PRD-05. Only structured logging is emitted.
+5. **Batch timeout uses `expires_at`**: Instead of a configurable threshold, `BatchTimeoutService` checks `upload_batches.expires_at` column (already set at batch creation time by PRD-03).
+6. **Per-file iteration**: Both `BatchTimeoutService` and `OrphanCleanupService` iterate files one-by-one with per-file try/catch for graceful partial failure handling.
 
 ---
 

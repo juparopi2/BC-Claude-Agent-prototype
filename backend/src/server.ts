@@ -53,6 +53,7 @@ import uploadHealthRoutes from '@/routes/v2/uploads/health.routes';
 import duplicateDetectionV2Routes from '@/routes/v2/uploads/duplicate-detection.routes';
 import batchUploadV2Routes from '@/routes/v2/uploads/batch.routes';
 import dlqRoutes from '@/routes/v2/uploads/dlq.routes';
+import dashboardRoutes from '@/routes/v2/uploads/dashboard.routes';
 import { registerAgents } from '@/modules/agents/core/registry/registerAgents';
 import { initializeSupervisorGraph, resumeSupervisor } from '@/modules/agents/supervisor';
 import { processUserAgentSelection } from '@/modules/agents/handoffs';
@@ -879,6 +880,11 @@ function configureRoutes(): void {
   // Dead Letter Queue endpoints (PRD-04)
   if (isDatabaseAvailable) {
     app.use('/api/v2/uploads/dlq', dlqRoutes);
+  }
+
+  // Upload Dashboard endpoints (PRD-05)
+  if (isDatabaseAvailable) {
+    app.use('/api/v2/uploads/dashboard', dashboardRoutes);
   }
 
   // Client log ingestion endpoint

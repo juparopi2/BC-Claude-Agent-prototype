@@ -9,6 +9,9 @@
  * - Eventual consistency: Best-effort cleanup, logs failures
  * - Reuses OrphanCleanupJob for AI Search operations
  *
+ * @deprecated PRD-05 — Superseded by OrphanCleanupService for V2 pipeline files.
+ * This service remains active for V1 pipeline files until PRD-07 completes the migration.
+ *
  * @module domains/files/cleanup
  */
 

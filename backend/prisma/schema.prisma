@@ -234,6 +234,8 @@ model files {
   content_hash             String?                    @db.Char(64)
   processing_retry_count   Int                        @default(0, map: "DF__files__processin__3335971A")
   embedding_retry_count    Int                        @default(0, map: "DF__files__embedding__3429BB53")
+  /// V2 pipeline retry count (PRD-05). Incremented on each automatic recovery attempt.
+  pipeline_retry_count     Int                        @default(0)
   last_processing_error    String?
   last_embedding_error     String?
   failed_at                DateTime?

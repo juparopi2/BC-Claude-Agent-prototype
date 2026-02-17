@@ -202,7 +202,8 @@
       "mcp__playwright__browser_press_key",
       "mcp__playwright__browser_console_messages",
       "Bash(npx playwright-mcp:*)",
-      "Bash(npx @playwright/test:*)"
+      "Bash(npx @playwright/test:*)",
+      "Bash(npx -w bc-agent-frontend vitest run:*)"
     ],
     "deny": [],
     "ask": []

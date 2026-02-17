@@ -17,7 +17,6 @@ import { server } from '../../vitest.setup';
 import type {
   FilesListResponse,
   FolderResponse,
-  UploadFilesResponse,
   ParsedFile,
 } from '@bc-agent/shared';
 
@@ -255,63 +254,6 @@ describe('FileApiClient - Parameter Serialization', () => {
         name: 'Nested Folder',
         parentFolderId: 'folder-parent',
       });
-    });
-  });
-
-  describe('uploadFiles() - FormData Handling', () => {
-    it('Test 8: should OMIT parentFolderId when uploading to root', async () => {
-      let capturedFormData: FormData | null = null;
-
-      server.use(
-        http.post(`${API_URL}/api/files/upload`, async ({ request }) => {
-          capturedFormData = await request.formData();
-          const response: UploadFilesResponse = {
-            files: [mockFile],
-          };
-          return HttpResponse.json(response);
-        })
-      );
-
-      // Create mock file
-      const mockFileBlob = new File(['test content'], 'test.txt', {
-        type: 'text/plain',
-      });
-
-      // Upload without parentFolderId (undefined)
-      await api.uploadFiles([mockFileBlob], undefined);
-
-      // Verify parentFolderId is NOT in FormData
-      expect(capturedFormData).not.toBeNull();
-      expect(capturedFormData!.has('parentFolderId')).toBe(false);
-      expect(capturedFormData!.has('files')).toBe(true);
-    });
-
-    it('Test 9: should INCLUDE parentFolderId when uploading to subfolder', async () => {
-      let capturedFormData: FormData | null = null;
-
-      server.use(
-        http.post(`${API_URL}/api/files/upload`, async ({ request }) => {
-          capturedFormData = await request.formData();
-          const response: UploadFilesResponse = {
-            files: [{ ...mockFile, parentFolderId: 'folder-upload' }],
-          };
-          return HttpResponse.json(response);
-        })
-      );
-
-      // Create mock file
-      const mockFileBlob = new File(['test content'], 'test.txt', {
-        type: 'text/plain',
-      });
-
-      // Upload with parentFolderId
-      await api.uploadFiles([mockFileBlob], 'folder-upload');
-
-      // Verify parentFolderId IS in FormData
-      expect(capturedFormData).not.toBeNull();
-      expect(capturedFormData!.has('parentFolderId')).toBe(true);
-      expect(capturedFormData!.get('parentFolderId')).toBe('folder-upload');
-      expect(capturedFormData!.has('files')).toBe(true);
     });
   });
 

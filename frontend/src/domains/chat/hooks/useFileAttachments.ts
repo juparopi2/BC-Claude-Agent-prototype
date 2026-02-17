@@ -2,14 +2,14 @@
  * useFileAttachments Hook
  *
  * Manages file attachment uploads with progress tracking.
- * Extracted from ChatInput.tsx for reusability.
+ * Uses Uppy + @uppy/xhr-upload for multipart FormData uploads.
  *
  * @module domains/chat/hooks/useFileAttachments
  */
 
 import { useState, useMemo, useCallback } from 'react';
-import { getFileApiClient } from '@/src/infrastructure/api';
 import { useSessionStore } from '@/src/domains/session/stores/sessionStore';
+import { createFormUploadUppy } from '@/src/infrastructure/upload';
 import { toast } from 'sonner';
 
 export interface Attachment {
@@ -56,56 +56,68 @@ export function useFileAttachments(): UseFileAttachmentsResult {
     const tempId = crypto.randomUUID();
 
     // Add attachment with uploading status
-    const newAttachment: Attachment = {
+    setAttachments(prev => [...prev, {
       tempId,
       name: file.name,
       type: file.type,
       size: file.size,
       status: 'uploading',
       progress: 0,
-    };
+    }]);
 
-    setAttachments(prev => [...prev, newAttachment]);
+    const sessionId = useSessionStore.getState().currentSession?.id;
+    const uppy = createFormUploadUppy({ concurrency: 1 });
 
-    try {
-      const fileApi = getFileApiClient();
-      // Get sessionId for WebSocket event targeting (D25)
-      const sessionId = useSessionStore.getState().currentSession?.id;
-      const result = await fileApi.uploadFiles([file], undefined, sessionId, (progress) => {
-        setAttachments(prev =>
-          prev.map(a =>
-            a.tempId === tempId ? { ...a, progress } : a
-          )
-        );
-      });
+    uppy.addFile({
+      name: file.name,
+      type: file.type || 'application/octet-stream',
+      data: file,
+      meta: {
+        queueItemId: tempId,
+        sessionId: sessionId ?? undefined,
+      },
+    });
 
-      if (result.success) {
-        const uploadedFile = result.data.files[0];
-        if (uploadedFile) {
-          setAttachments(prev =>
-            prev.map(a =>
-              a.tempId === tempId
-                ? { ...a, status: 'completed', fileId: uploadedFile.id, progress: 100 }
-                : a
-            )
-          );
-        } else {
-          throw new Error('Upload succeeded but no file returned');
-        }
-      } else {
-        throw new Error(result.error?.message || 'Upload failed');
+    uppy.on('upload-progress', (_f, progress) => {
+      if (progress.bytesTotal && progress.bytesTotal > 0) {
+        const pct = Math.round((progress.bytesUploaded / progress.bytesTotal) * 100);
+        setAttachments(prev => prev.map(a =>
+          a.tempId === tempId ? { ...a, progress: pct } : a
+        ));
       }
-    } catch (error) {
-      console.error('File upload error:', error);
-      setAttachments(prev =>
-        prev.map(a =>
+    });
+
+    uppy.on('upload-success', (_f, response) => {
+      const body = response?.body as unknown as { files?: Array<{ id: string }> } | undefined;
+      const uploadedFile = body?.files?.[0];
+      if (uploadedFile) {
+        setAttachments(prev => prev.map(a =>
           a.tempId === tempId
-            ? { ...a, status: 'error', error: 'Upload failed', progress: 0 }
+            ? { ...a, status: 'completed', fileId: uploadedFile.id, progress: 100 }
             : a
-        )
-      );
+        ));
+      } else {
+        setAttachments(prev => prev.map(a =>
+          a.tempId === tempId
+            ? { ...a, status: 'error', error: 'Upload succeeded but no file returned', progress: 0 }
+            : a
+        ));
+        toast.error(`Failed to upload ${file.name}`);
+      }
+      uppy.destroy();
+    });
+
+    uppy.on('upload-error', (_f, error) => {
+      setAttachments(prev => prev.map(a =>
+        a.tempId === tempId
+          ? { ...a, status: 'error', error: 'Upload failed', progress: 0 }
+          : a
+      ));
       toast.error(`Failed to upload ${file.name}`);
-    }
+      uppy.destroy();
+    });
+
+    await uppy.upload();
   }, []);
 
   const removeAttachment = useCallback((tempId: string) => {

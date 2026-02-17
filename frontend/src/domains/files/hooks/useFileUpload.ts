@@ -6,8 +6,8 @@
  * Includes duplicate detection and conflict resolution.
  *
  * Supports two upload modes:
- * - Traditional: For ≤20 files, uses multipart upload with duplicate detection
- * - Bulk: For >20 files, uses SAS URLs for direct-to-blob uploads
+ * - Traditional: For ≤20 files, uses Uppy + @uppy/xhr-upload with duplicate detection
+ * - Bulk: For >20 files, uses Uppy + @uppy/aws-s3 for direct-to-blob uploads
  *
  * @module domains/files/hooks/useFileUpload
  */
@@ -21,6 +21,7 @@ import { useSessionStore } from '@/src/domains/session/stores/sessionStore';
 import { getFileApiClient } from '@/src/infrastructure/api';
 import { computeFileHashesWithIds, computeFileSha256, type FileHashResult } from '@/lib/utils/hash';
 import { FILE_UPLOAD_LIMITS, type BulkUploadFileSasInfo } from '@bc-agent/shared';
+import { createBlobUploadUppy, createFormUploadUppy } from '@/src/infrastructure/upload';
 
 /**
  * Number of concurrent uploads for bulk upload flow
@@ -124,47 +125,61 @@ export function useFileUpload(): UseFileUploadReturn {
     targetFolderId: string | null;
   } | null>(null);
 
-  // Helper function to upload a single file
+  // Helper function to upload a single file via Uppy
   const uploadSingleFile = useCallback(
     async (
       file: File,
       queueItemId: string,
       targetFolderId: string | null,
-      fileApi: ReturnType<typeof getFileApiClient>
+      _fileApi: ReturnType<typeof getFileApiClient>
     ) => {
+      const sessionId = useSessionStore.getState().currentSession?.id;
+      const uppy = createFormUploadUppy({ concurrency: 1 });
+
+      uppy.addFile({
+        name: file.name,
+        type: file.type || 'application/octet-stream',
+        data: file,
+        meta: {
+          queueItemId,
+          parentFolderId: targetFolderId ?? undefined,
+          sessionId: sessionId ?? undefined,
+        },
+      });
+
       startUploadAction(queueItemId);
 
-      // Get sessionId for WebSocket event targeting (D25)
-      const sessionId = useSessionStore.getState().currentSession?.id;
-
-      try {
-        const result = await fileApi.uploadFiles(
-          [file],
-          targetFolderId ?? undefined,
-          sessionId,
-          (progress) => {
-            updateProgressAction(queueItemId, progress);
+      return new Promise<{ success: true; file: unknown } | { success: false; error: string }>((resolve) => {
+        uppy.on('upload-progress', (_uppyFile, progress) => {
+          if (progress.bytesTotal && progress.bytesTotal > 0) {
+            updateProgressAction(queueItemId, Math.round((progress.bytesUploaded / progress.bytesTotal) * 100));
           }
-        );
+        });
 
-        if (result.success && result.data.files.length > 0) {
-          completeUploadAction(queueItemId, result.data.files[0]);
-          // Add to file list if we're in the same folder
-          const currentFolder = useFolderTreeStore.getState().currentFolderId;
-          if (targetFolderId === currentFolder || (targetFolderId === null && currentFolder === null)) {
-            addFile(result.data.files[0]);
+        uppy.on('upload-success', (_uppyFile, response) => {
+          const body = response?.body as unknown as { files?: Array<import('@bc-agent/shared').ParsedFile> } | undefined;
+          const resultFile = body?.files?.[0] ?? null;
+          if (resultFile) {
+            completeUploadAction(queueItemId, resultFile);
+            // Add to file list if in same folder
+            const currentFolder = useFolderTreeStore.getState().currentFolderId;
+            if (targetFolderId === currentFolder || (targetFolderId === null && currentFolder === null)) {
+              addFile(resultFile);
+            }
           }
-          return { success: true as const, file: result.data.files[0] };
-        } else {
-          const errorMsg = result.success ? 'No file returned' : result.error.message;
+          uppy.destroy();
+          resolve({ success: true, file: resultFile });
+        });
+
+        uppy.on('upload-error', (_uppyFile, error) => {
+          const errorMsg = error?.message ?? 'Upload failed';
           failUploadAction(queueItemId, errorMsg);
-          return { success: false as const, error: errorMsg };
-        }
-      } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : 'Upload failed';
-        failUploadAction(queueItemId, errorMsg);
-        return { success: false as const, error: errorMsg };
-      }
+          uppy.destroy();
+          resolve({ success: false, error: errorMsg });
+        });
+
+        uppy.upload();
+      });
     },
     [startUploadAction, updateProgressAction, completeUploadAction, failUploadAction, addFile]
   );
@@ -172,12 +187,12 @@ export function useFileUpload(): UseFileUploadReturn {
   /**
    * Execute bulk upload flow for >20 files
    *
-   * Uses SAS URLs for direct-to-blob uploads (bypasses backend memory).
-   * Uploads in parallel batches of BULK_UPLOAD_CONCURRENCY files.
+   * Uses Uppy + @uppy/aws-s3 with SAS URLs for direct-to-blob uploads.
+   * Automatically handles concurrency and retries.
    *
    * Flow:
    * 1. Call initBulkUpload to get SAS URLs
-   * 2. Upload files directly to Azure Blob in parallel
+   * 2. Upload files via Uppy to Azure Blob
    * 3. Call completeBulkUpload to confirm and enqueue processing
    * 4. Files are created via WebSocket events (file:uploaded)
    */
@@ -232,7 +247,73 @@ export function useFileUpload(): UseFileUploadReturn {
         sasInfoList.map((info: BulkUploadFileSasInfo) => [info.tempId, info])
       );
 
-      // Step 3: Upload files to Azure Blob in parallel batches
+      // Step 3: Upload files via Uppy
+      const uppy = createBlobUploadUppy({ concurrency: BULK_UPLOAD_CONCURRENCY });
+
+      // Track tempId -> metadata for post-upload processing
+      const uppyFileIdToTempId = new Map<string, string>();
+      const successfulTempIds = new Set<string>();
+
+      for (const meta of filesMetadata) {
+        const sasInfo = sasInfoMap.get(meta.tempId);
+        const queueItem = fileToQueueItem.get(meta.file);
+
+        if (!sasInfo || !queueItem) continue;
+
+        startUploadAction(queueItem.id);
+
+        const uppyFileId = uppy.addFile({
+          name: meta.fileName,
+          type: meta.mimeType,
+          data: meta.file,
+          meta: {
+            sasUrl: sasInfo.sasUrl,
+            correlationId: meta.tempId,
+            contentType: meta.mimeType,
+            blobPath: sasInfo.blobPath,
+          },
+        });
+        uppyFileIdToTempId.set(uppyFileId, meta.tempId);
+      }
+
+      // Wire progress events
+      uppy.on('upload-progress', (uppyFile, progress) => {
+        if (!uppyFile) return;
+        const tempId = uppyFileIdToTempId.get(uppyFile.id);
+        if (!tempId) return;
+        const meta = filesMetadata.find((m) => m.tempId === tempId);
+        if (!meta) return;
+        const queueItem = fileToQueueItem.get(meta.file);
+        if (!queueItem) return;
+        if (progress.bytesTotal && progress.bytesTotal > 0) {
+          updateProgressAction(queueItem.id, Math.round((progress.bytesUploaded / progress.bytesTotal) * 100));
+        }
+      });
+
+      uppy.on('upload-success', (uppyFile) => {
+        if (!uppyFile) return;
+        const tempId = uppyFileIdToTempId.get(uppyFile.id);
+        if (tempId) {
+          successfulTempIds.add(tempId);
+        }
+      });
+
+      uppy.on('upload-error', (uppyFile, error) => {
+        if (!uppyFile) return;
+        const tempId = uppyFileIdToTempId.get(uppyFile.id);
+        if (!tempId) return;
+        const meta = filesMetadata.find((m) => m.tempId === tempId);
+        if (!meta) return;
+        const queueItem = fileToQueueItem.get(meta.file);
+        if (!queueItem) return;
+        failUploadAction(queueItem.id, error?.message ?? 'Upload failed');
+      });
+
+      // Execute upload
+      await uppy.upload();
+      uppy.destroy();
+
+      // Step 4: Compute hashes for successful uploads
       const uploadResults: Array<{
         tempId: string;
         success: boolean;
@@ -240,75 +321,21 @@ export function useFileUpload(): UseFileUploadReturn {
         error?: string;
       }> = [];
 
-      // Process files in batches of BULK_UPLOAD_CONCURRENCY
-      for (let i = 0; i < filesMetadata.length; i += BULK_UPLOAD_CONCURRENCY) {
-        const batch = filesMetadata.slice(i, i + BULK_UPLOAD_CONCURRENCY);
-
-        const batchPromises = batch.map(async (meta) => {
-          const sasInfo = sasInfoMap.get(meta.tempId);
-          const queueItem = fileToQueueItem.get(meta.file);
-
-          if (!sasInfo || !queueItem) {
-            return {
-              tempId: meta.tempId,
-              success: false,
-              error: 'SAS URL not found',
-            };
-          }
-
-          // Mark as uploading
-          startUploadAction(queueItem.id);
-
+      for (const meta of filesMetadata) {
+        if (successfulTempIds.has(meta.tempId)) {
+          let contentHash: string | undefined;
           try {
-            // Compute content hash while uploading is not possible, so do it after
-            // For now, skip hash computation for bulk uploads (can be added later)
-            const uploadResult = await fileApi.uploadToBlob(
-              meta.file,
-              sasInfo.sasUrl,
-              (progress) => {
-                updateProgressAction(queueItem.id, progress);
-              }
-            );
-
-            if (uploadResult.success) {
-              // Compute hash after successful upload
-              let contentHash: string | undefined;
-              try {
-                contentHash = await computeFileSha256(meta.file);
-              } catch {
-                // Hash computation failure is non-fatal
-                console.warn(`Failed to compute hash for ${meta.fileName}`);
-              }
-
-              return {
-                tempId: meta.tempId,
-                success: true,
-                contentHash,
-              };
-            } else {
-              failUploadAction(queueItem.id, uploadResult.error);
-              return {
-                tempId: meta.tempId,
-                success: false,
-                error: uploadResult.error,
-              };
-            }
-          } catch (err) {
-            const errorMsg = err instanceof Error ? err.message : 'Upload failed';
-            failUploadAction(queueItem.id, errorMsg);
-            return {
-              tempId: meta.tempId,
-              success: false,
-              error: errorMsg,
-            };
+            contentHash = await computeFileSha256(meta.file);
+          } catch {
+            console.warn(`Failed to compute hash for ${meta.fileName}`);
           }
-        });
-
-        const batchResults = await Promise.all(batchPromises);
-        uploadResults.push(...batchResults);
+          uploadResults.push({ tempId: meta.tempId, success: true, contentHash });
+        } else {
+          uploadResults.push({ tempId: meta.tempId, success: false, error: 'Upload failed' });
+        }
       }
 
-      // Step 4: Complete bulk upload (enqueue processing jobs)
+      // Step 5: Complete bulk upload (enqueue processing jobs)
       const successfulUploads = uploadResults.filter((r) => r.success);
 
       if (successfulUploads.length === 0) {
@@ -324,27 +351,20 @@ export function useFileUpload(): UseFileUploadReturn {
 
       if (!completeResult.success) {
         console.error('Failed to complete bulk upload:', completeResult.error);
-        // Files were uploaded but won't be processed - this is a partial failure
-        // The blob files exist but DB records won't be created
-        // In production, we'd want to handle this more gracefully
       }
 
-      // Note: File creation happens asynchronously via WebSocket events
-      // The queue items will be marked complete when we receive file:uploaded events
-      // For now, mark successful uploads as complete (they're uploaded to blob)
+      // Mark successful uploads as complete in the queue
       for (const result of uploadResults) {
         if (result.success) {
           const meta = filesMetadata.find((m) => m.tempId === result.tempId);
           if (meta) {
             const queueItem = fileToQueueItem.get(meta.file);
             if (queueItem) {
-              // Mark as complete - file is uploaded, DB record pending
               completeUploadAction(queueItem.id, null);
             }
           }
         }
       }
-
     },
     [startUploadAction, updateProgressAction, completeUploadAction, failUploadAction]
   );

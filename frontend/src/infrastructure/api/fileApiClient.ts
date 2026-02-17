@@ -2,7 +2,7 @@
  * File API Client
  *
  * Handles all file management API operations.
- * Uses XMLHttpRequest for upload progress tracking.
+ * Upload transport is handled by Uppy (see infrastructure/upload/).
  *
  * @module infrastructure/api/fileApiClient
  */
@@ -14,7 +14,6 @@ import type {
   FilesListResponse,
   FileResponse,
   FolderResponse,
-  UploadFilesResponse,
   ApiErrorResponse,
   CheckDuplicatesRequest,
   CheckDuplicatesResponse,
@@ -62,9 +61,9 @@ export type ApiResponse<T> =
  * Provides type-safe methods for all file-related backend REST endpoints.
  *
  * Key Features:
- * - XMLHttpRequest for upload progress tracking
  * - Session-based authentication with credentials
  * - Type-safe with shared types from @bc-agent/shared
+ * - Upload transport handled by Uppy (see infrastructure/upload/)
  *
  * @example
  * ```typescript
@@ -75,11 +74,6 @@ export type ApiResponse<T> =
  * if (result.success) {
  *   console.log(result.data.files);
  * }
- *
- * // Upload with progress
- * await fileApi.uploadFiles(files, undefined, (progress) => {
- *   console.log(`Upload: ${progress}%`);
- * });
  * ```
  */
 export class FileApiClient {
@@ -265,146 +259,6 @@ export class FileApiClient {
    */
   async getFile(fileId: string): Promise<ApiResponse<FileResponse>> {
     return this.request<FileResponse>('GET', `/api/files/${fileId}`);
-  }
-
-  // ============================================
-  // File Upload Endpoint
-  // ============================================
-
-  /**
-   * Upload files with progress tracking
-   *
-   * Uses XMLHttpRequest instead of fetch to support upload progress callbacks.
-   * Supports multiple file uploads in a single request.
-   *
-   * @param files - Array of File objects to upload
-   * @param parentFolderId - Optional parent folder ID (undefined = root level)
-   * @param sessionId - Optional session ID for WebSocket event targeting
-   * @param onProgress - Optional progress callback (0-100)
-   * @returns Uploaded files with metadata
-   *
-   * @example
-   * ```typescript
-   * const files = [file1, file2];
-   * const result = await fileApi.uploadFiles(
-   *   files,
-   *   'folder-123',
-   *   'session-uuid',
-   *   (progress) => console.log(`Upload: ${progress}%`)
-   * );
-   *
-   * if (result.success) {
-   *   console.log('Uploaded:', result.data.files);
-   * }
-   * ```
-   */
-  async uploadFiles(
-    files: File[],
-    parentFolderId?: string,
-    sessionId?: string,
-    onProgress?: (progress: number) => void
-  ): Promise<ApiResponse<UploadFilesResponse>> {
-    return new Promise((resolve) => {
-      const xhr = new XMLHttpRequest();
-      const formData = new FormData();
-
-      // Append all files to form data
-      files.forEach((file) => formData.append('files', file));
-
-      // Append optional parent folder ID
-      if (parentFolderId !== undefined) {
-        formData.append('parentFolderId', parentFolderId);
-      }
-
-      // Append sessionId for WebSocket event targeting (D25)
-      if (sessionId) {
-        formData.append('sessionId', sessionId);
-      }
-
-      // Upload progress tracking
-      xhr.upload.addEventListener('progress', (event) => {
-        if (event.lengthComputable && onProgress) {
-          const progress = Math.round((event.loaded / event.total) * 100);
-          onProgress(progress);
-        }
-      });
-
-      // Upload complete
-      xhr.addEventListener('load', () => {
-        try {
-          const data = JSON.parse(xhr.responseText);
-
-          if (xhr.status >= 200 && xhr.status < 300) {
-            resolve({ success: true, data: data as UploadFilesResponse });
-          } else {
-            // Server returned an error
-            if (isApiErrorResponse(data)) {
-              resolve({ success: false, error: data });
-            } else {
-              resolve({
-                success: false,
-                error: {
-                  error: xhr.statusText,
-                  message: data.message || 'Upload failed',
-                  code: ErrorCode.INTERNAL_ERROR,
-                },
-              });
-            }
-          }
-        } catch (error) {
-          resolve({
-            success: false,
-            error: {
-              error: 'Parse Error',
-              message: error instanceof Error ? error.message : 'Invalid response',
-              code: ErrorCode.INTERNAL_ERROR,
-            },
-          });
-        }
-      });
-
-      // Network error
-      xhr.addEventListener('error', () => {
-        resolve({
-          success: false,
-          error: {
-            error: 'Network Error',
-            message: 'Failed to upload files',
-            code: ErrorCode.SERVICE_UNAVAILABLE,
-          },
-        });
-      });
-
-      // Upload timeout
-      xhr.addEventListener('timeout', () => {
-        resolve({
-          success: false,
-          error: {
-            error: 'Timeout',
-            message: 'Upload request timed out',
-            code: ErrorCode.SERVICE_UNAVAILABLE,
-          },
-        });
-      });
-
-      // Upload aborted
-      xhr.addEventListener('abort', () => {
-        resolve({
-          success: false,
-          error: {
-            error: 'Aborted',
-            message: 'Upload was cancelled',
-            code: ErrorCode.INTERNAL_ERROR,
-          },
-        });
-      });
-
-      // Send request
-      xhr.open('POST', `${this.baseUrl}/api/files/upload`);
-      xhr.withCredentials = true; // Include session cookies
-      xhr.timeout = 120000; // 2 minute timeout for large files
-      xhr.send(formData);
-    });
   }
 
   // ============================================
@@ -723,10 +577,7 @@ export class FileApiClient {
    *
    * if (result.success) {
    *   console.log('Batch ID:', result.data.batchId);
-   *   // Upload files directly to Azure Blob using sasUrl
-   *   for (const file of result.data.files) {
-   *     await fileApi.uploadToBlob(fileBlob, file.sasUrl);
-   *   }
+   *   // Upload files via Uppy using sasUrl from each file entry
    * }
    * ```
    */
@@ -789,93 +640,6 @@ export class FileApiClient {
    */
   async renewSas(request: RenewSasRequest): Promise<ApiResponse<RenewSasResponse>> {
     return this.postJson<RenewSasResponse>('/api/files/bulk-upload/renew-sas', request);
-  }
-
-  /**
-   * Upload file directly to Azure Blob Storage using SAS URL
-   *
-   * Uses XMLHttpRequest for progress tracking.
-   * This bypasses the backend - file goes directly to Azure.
-   *
-   * @param file - File to upload
-   * @param sasUrl - Pre-signed SAS URL from initBulkUpload
-   * @param onProgress - Optional progress callback (0-100)
-   * @returns Upload result
-   *
-   * @example
-   * ```typescript
-   * const result = await fileApi.uploadToBlob(
-   *   file,
-   *   sasUrl,
-   *   (progress) => console.log(`Upload: ${progress}%`)
-   * );
-   *
-   * if (result.success) {
-   *   console.log('File uploaded to blob');
-   * } else {
-   *   console.error('Upload failed:', result.error);
-   * }
-   * ```
-   */
-  async uploadToBlob(
-    file: File,
-    sasUrl: string,
-    onProgress?: (progress: number) => void
-  ): Promise<{ success: true } | { success: false; error: string }> {
-    return new Promise((resolve) => {
-      const xhr = new XMLHttpRequest();
-
-      // Upload progress tracking
-      xhr.upload.addEventListener('progress', (event) => {
-        if (event.lengthComputable && onProgress) {
-          const progress = Math.round((event.loaded / event.total) * 100);
-          onProgress(progress);
-        }
-      });
-
-      // Upload complete
-      xhr.addEventListener('load', () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          resolve({ success: true });
-        } else {
-          resolve({
-            success: false,
-            error: `Upload failed with status ${xhr.status}: ${xhr.statusText}`,
-          });
-        }
-      });
-
-      // Network error
-      xhr.addEventListener('error', () => {
-        resolve({
-          success: false,
-          error: 'Network error during upload',
-        });
-      });
-
-      // Upload timeout
-      xhr.addEventListener('timeout', () => {
-        resolve({
-          success: false,
-          error: 'Upload request timed out',
-        });
-      });
-
-      // Upload aborted
-      xhr.addEventListener('abort', () => {
-        resolve({
-          success: false,
-          error: 'Upload was cancelled',
-        });
-      });
-
-      // Send request to Azure Blob Storage
-      xhr.open('PUT', sasUrl);
-      xhr.setRequestHeader('x-ms-blob-type', 'BlockBlob');
-      xhr.setRequestHeader('Content-Type', file.type);
-      xhr.timeout = 300000; // 5 minute timeout for large files
-      xhr.send(file);
-    });
   }
 
   // ============================================

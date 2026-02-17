@@ -42,6 +42,7 @@ import type {
 } from '../types/folderUpload.types';
 import { validateFolderLimits } from '../types/folderUpload.types';
 import { computeFileSha256 } from '@/lib/utils/hash';
+import { createBlobUploadUppy } from '@/src/infrastructure/upload';
 import type {
   FolderInput,
   FileRegistrationMetadata,
@@ -103,6 +104,7 @@ interface SessionTrackingState {
   aborted: boolean;
   uploadedCount: number;
   heartbeatInterval: ReturnType<typeof setInterval> | null;
+  activeUppy: ReturnType<typeof createBlobUploadUppy> | null;
 }
 
 /**
@@ -183,7 +185,7 @@ export function useFolderUpload(): UseFolderUploadReturn {
   const getSessionTracking = useCallback((sessionId: string): SessionTrackingState => {
     let tracking = sessionTrackingRef.current.get(sessionId);
     if (!tracking) {
-      tracking = { aborted: false, uploadedCount: 0, heartbeatInterval: null };
+      tracking = { aborted: false, uploadedCount: 0, heartbeatInterval: null, activeUppy: null };
       sessionTrackingRef.current.set(sessionId, tracking);
     }
     return tracking;
@@ -426,44 +428,63 @@ export function useFolderUpload(): UseFolderUploadReturn {
           sasResult.data.files.map((f) => [f.fileId, f])
         );
 
-        // Step 4: Upload files in parallel (with concurrency limit)
-        const uploadQueue = [...registered];
+        // Step 4: Upload files via Uppy (with concurrency limit)
+        const uppy = createBlobUploadUppy({ concurrency: UPLOAD_CONCURRENCY });
+        tracking.activeUppy = uppy;
 
-        while (uploadQueue.length > 0 && !tracking.aborted) {
-          const chunk = uploadQueue.splice(0, UPLOAD_CONCURRENCY);
+        // Build a map of uppyFileId -> { reg, file, sasInfo } for post-upload callbacks
+        const fileCompletionMap = new Map<string, {
+          reg: (typeof registered)[number];
+          file: FileEntry;
+          sasInfo: RegisteredFileSasInfo;
+        }>();
 
-          const uploadPromises = chunk.map(async (reg) => {
-            const sasInfo = sasInfoMap.get(reg.fileId);
-            const file = tempIdToFile.get(reg.tempId);
+        for (const reg of registered) {
+          const sasInfo = sasInfoMap.get(reg.fileId);
+          const file = tempIdToFile.get(reg.tempId);
 
-            if (!sasInfo || !file) {
-              failedCount++;
-              return;
-            }
+          if (!sasInfo || !file) {
+            failedCount++;
+            continue;
+          }
 
+          const uppyFileId = uppy.addFile({
+            name: file.name,
+            type: file.file.type || 'application/octet-stream',
+            data: file.file,
+            meta: {
+              sasUrl: sasInfo.sasUrl,
+              correlationId: reg.fileId,
+              contentType: file.file.type || 'application/octet-stream',
+              blobPath: sasInfo.blobPath,
+            },
+          });
+          fileCompletionMap.set(uppyFileId, { reg, file, sasInfo });
+        }
+
+        // Track completed upload promises for post-upload processing
+        const postUploadPromises: Promise<void>[] = [];
+
+        uppy.on('upload-success', (uppyFile) => {
+          if (!uppyFile) return;
+          const entry = fileCompletionMap.get(uppyFile.id);
+          if (!entry) return;
+
+          // Queue post-upload processing (hash + mark uploaded)
+          const promise = (async () => {
             try {
-              // Upload to blob
-              const uploadResult = await fileApi.uploadToBlob(file.file, sasInfo.sasUrl);
-
-              if (!uploadResult.success) {
-                failedCount++;
-                return;
-              }
-
-              // Compute content hash
               let contentHash = '';
               try {
-                contentHash = await computeFileSha256(file.file);
+                contentHash = await computeFileSha256(entry.file.file);
               } catch {
                 // Non-fatal, use empty hash
               }
 
-              // Mark as uploaded (with auth retry)
               const markResult = await withAuthRetry(() =>
                 fileApi.markSessionFileUploaded(
                   sessionId,
                   batch.tempId,
-                  { fileId: reg.fileId, contentHash, blobPath: sasInfo.blobPath }
+                  { fileId: entry.reg.fileId, contentHash, blobPath: entry.sasInfo.blobPath }
                 )
               );
 
@@ -475,13 +496,27 @@ export function useFolderUpload(): UseFolderUploadReturn {
                 failedCount++;
               }
             } catch (error) {
-              console.error('[useFolderUpload] File upload error:', error);
+              console.error('[useFolderUpload] Post-upload processing error:', error);
               failedCount++;
             }
-          });
+          })();
+          postUploadPromises.push(promise);
+        });
 
-          await Promise.all(uploadPromises);
+        uppy.on('upload-error', () => {
+          failedCount++;
+        });
+
+        // Execute upload (Uppy handles concurrency internally)
+        if (!tracking.aborted) {
+          await uppy.upload();
         }
+
+        // Wait for all post-upload processing to complete
+        await Promise.all(postUploadPromises);
+
+        tracking.activeUppy = null;
+        uppy.destroy();
 
         // Step 5: Complete folder batch
         if (!tracking.aborted) {
@@ -675,6 +710,12 @@ export function useFolderUpload(): UseFolderUploadReturn {
     const tracking = sessionTrackingRef.current.get(sessionId);
     if (tracking) {
       tracking.aborted = true;
+      // Cancel any active Uppy upload
+      if (tracking.activeUppy) {
+        tracking.activeUppy.cancelAll();
+        tracking.activeUppy.destroy();
+        tracking.activeUppy = null;
+      }
     }
 
     // Cancel on backend

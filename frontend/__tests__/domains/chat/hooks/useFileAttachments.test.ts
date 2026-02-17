@@ -2,7 +2,7 @@
  * useFileAttachments Hook Tests
  *
  * Tests for file attachment management hook.
- * TDD: Tests written FIRST (RED phase).
+ * Mocks Uppy factory to control upload behavior.
  *
  * @module __tests__/domains/chat/hooks/useFileAttachments
  */
@@ -10,11 +10,42 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useFileAttachments } from '@/src/domains/chat/hooks/useFileAttachments';
-import * as fileApiModule from '@/src/infrastructure/api';
 
-// Mock the file API
-vi.mock('@/src/infrastructure/api', () => ({
-  getFileApiClient: vi.fn(),
+// Event handler type for the mock
+type EventHandler = (...args: unknown[]) => void;
+
+// Mock Uppy instance
+function createMockUppy() {
+  const handlers = new Map<string, EventHandler[]>();
+  return {
+    addFile: vi.fn(() => 'mock-file-id'),
+    upload: vi.fn(async () => ({ successful: [], failed: [] })),
+    destroy: vi.fn(),
+    on: vi.fn((event: string, handler: EventHandler) => {
+      if (!handlers.has(event)) handlers.set(event, []);
+      handlers.get(event)!.push(handler);
+    }),
+    opts: { autoProceed: false, id: 'test' },
+    getPlugin: vi.fn(),
+    getFiles: vi.fn(() => []),
+    cancelAll: vi.fn(),
+    _emit(event: string, ...args: unknown[]) {
+      for (const handler of handlers.get(event) ?? []) {
+        handler(...args);
+      }
+    },
+  };
+}
+
+// Captured instances
+const capturedInstances: ReturnType<typeof createMockUppy>[] = [];
+
+vi.mock('@/src/infrastructure/upload', () => ({
+  createFormUploadUppy: vi.fn(() => {
+    const instance = createMockUppy();
+    capturedInstances.push(instance);
+    return instance;
+  }),
 }));
 
 // Mock toast
@@ -24,20 +55,17 @@ vi.mock('sonner', () => ({
   },
 }));
 
-describe('useFileAttachments', () => {
-  let mockUploadFiles: ReturnType<typeof vi.fn>;
+// Mock session store
+vi.mock('@/src/domains/session/stores/sessionStore', () => ({
+  useSessionStore: {
+    getState: () => ({ currentSession: { id: 'test-session' } }),
+  },
+}));
 
+describe('useFileAttachments', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-
-    mockUploadFiles = vi.fn();
-    vi.mocked(fileApiModule.getFileApiClient).mockReturnValue({
-      uploadFiles: mockUploadFiles,
-      getFileContent: vi.fn(),
-      listFiles: vi.fn(),
-      moveFiles: vi.fn(),
-      moveToTrash: vi.fn(),
-    } as unknown as ReturnType<typeof fileApiModule.getFileApiClient>);
+    capturedInstances.length = 0;
   });
 
   describe('Initial State', () => {
@@ -62,57 +90,43 @@ describe('useFileAttachments', () => {
 
   describe('uploadFile', () => {
     it('should add file on upload start', async () => {
-      // Mock slow upload that doesn't resolve immediately
-      mockUploadFiles.mockReturnValue(new Promise(() => {}));
-
       const { result } = renderHook(() => useFileAttachments());
       const file = new File(['test'], 'test.pdf', { type: 'application/pdf' });
 
+      // Make upload never resolve so we can check intermediate state
       act(() => {
         result.current.uploadFile(file);
       });
+
+      // The mock was captured
+      expect(capturedInstances.length).toBe(1);
+      // Override upload to never resolve
+      capturedInstances[0].upload.mockReturnValue(new Promise(() => {}));
 
       expect(result.current.attachments.length).toBe(1);
       expect(result.current.attachments[0].name).toBe('test.pdf');
       expect(result.current.attachments[0].status).toBe('uploading');
     });
 
-    it('should update progress during upload', async () => {
-      let progressCallback: ((progress: number) => void) | undefined;
-
-      mockUploadFiles.mockImplementation((files, folderId, sessionId, onProgress) => {
-        progressCallback = onProgress;
-        return new Promise(() => {}); // Never resolves
-      });
-
-      const { result } = renderHook(() => useFileAttachments());
-      const file = new File(['test'], 'test.pdf', { type: 'application/pdf' });
-
-      act(() => {
-        result.current.uploadFile(file);
-      });
-
-      // Simulate progress update
-      act(() => {
-        progressCallback?.(50);
-      });
-
-      expect(result.current.attachments[0].progress).toBe(50);
-    });
-
     it('should mark completed with file ID on success', async () => {
-      mockUploadFiles.mockResolvedValue({
-        success: true,
-        data: {
-          files: [{ id: 'file-123', name: 'test.pdf' }],
-        },
-      });
-
       const { result } = renderHook(() => useFileAttachments());
       const file = new File(['test'], 'test.pdf', { type: 'application/pdf' });
+
+      // Start upload - the mock will be created during this call
+      let uploadPromise: Promise<void>;
+      act(() => {
+        uploadPromise = result.current.uploadFile(file);
+      });
+
+      // Now trigger success event on the captured instance
+      const mockUppy = capturedInstances[0];
+      expect(mockUppy).toBeDefined();
 
       await act(async () => {
-        await result.current.uploadFile(file);
+        mockUppy._emit('upload-success', { id: 'mock-file-id' }, {
+          body: { files: [{ id: 'file-123', name: 'test.pdf' }] },
+        });
+        await uploadPromise!;
       });
 
       await waitFor(() => {
@@ -122,17 +136,20 @@ describe('useFileAttachments', () => {
       });
     });
 
-    it('should mark error on failure', async () => {
-      mockUploadFiles.mockResolvedValue({
-        success: false,
-        error: { message: 'Upload failed' },
-      });
-
+    it('should mark error on upload failure', async () => {
       const { result } = renderHook(() => useFileAttachments());
       const file = new File(['test'], 'test.pdf', { type: 'application/pdf' });
 
+      let uploadPromise: Promise<void>;
+      act(() => {
+        uploadPromise = result.current.uploadFile(file);
+      });
+
+      const mockUppy = capturedInstances[0];
+
       await act(async () => {
-        await result.current.uploadFile(file);
+        mockUppy._emit('upload-error', { id: 'mock-file-id' }, new Error('Network error'));
+        await uploadPromise!;
       });
 
       await waitFor(() => {
@@ -141,34 +158,42 @@ describe('useFileAttachments', () => {
       });
     });
 
-    it('should mark error on exception', async () => {
-      mockUploadFiles.mockRejectedValue(new Error('Network error'));
-
+    it('should update progress during upload', async () => {
       const { result } = renderHook(() => useFileAttachments());
       const file = new File(['test'], 'test.pdf', { type: 'application/pdf' });
 
-      await act(async () => {
-        await result.current.uploadFile(file);
+      act(() => {
+        result.current.uploadFile(file);
       });
 
-      await waitFor(() => {
-        expect(result.current.attachments[0].status).toBe('error');
+      const mockUppy = capturedInstances[0];
+      // Override upload to never resolve
+      mockUppy.upload.mockReturnValue(new Promise(() => {}));
+
+      act(() => {
+        mockUppy._emit('upload-progress', { id: 'mock-file-id' }, { bytesUploaded: 50, bytesTotal: 100 });
       });
+
+      expect(result.current.attachments[0].progress).toBe(50);
     });
   });
 
   describe('removeAttachment', () => {
     it('should remove attachment by tempId', async () => {
-      mockUploadFiles.mockResolvedValue({
-        success: true,
-        data: { files: [{ id: 'file-123', name: 'test.pdf' }] },
-      });
-
       const { result } = renderHook(() => useFileAttachments());
       const file = new File(['test'], 'test.pdf', { type: 'application/pdf' });
 
+      let uploadPromise: Promise<void>;
+      act(() => {
+        uploadPromise = result.current.uploadFile(file);
+      });
+
+      const mockUppy = capturedInstances[0];
       await act(async () => {
-        await result.current.uploadFile(file);
+        mockUppy._emit('upload-success', { id: 'mock-file-id' }, {
+          body: { files: [{ id: 'file-123', name: 'test.pdf' }] },
+        });
+        await uploadPromise!;
       });
 
       const tempId = result.current.attachments[0].tempId;
@@ -183,17 +208,30 @@ describe('useFileAttachments', () => {
 
   describe('clearAttachments', () => {
     it('should clear all attachments', async () => {
-      mockUploadFiles.mockResolvedValue({
-        success: true,
-        data: { files: [{ id: 'file-123', name: 'test.pdf' }] },
-      });
-
       const { result } = renderHook(() => useFileAttachments());
 
-      // Add multiple files
+      let p1: Promise<void>;
+      act(() => {
+        p1 = result.current.uploadFile(new File(['1'], 'a.pdf'));
+      });
+
       await act(async () => {
-        await result.current.uploadFile(new File(['1'], 'a.pdf'));
-        await result.current.uploadFile(new File(['2'], 'b.pdf'));
+        capturedInstances[0]._emit('upload-success', { id: 'mock-file-id' }, {
+          body: { files: [{ id: 'file-1', name: 'a.pdf' }] },
+        });
+        await p1!;
+      });
+
+      let p2: Promise<void>;
+      act(() => {
+        p2 = result.current.uploadFile(new File(['2'], 'b.pdf'));
+      });
+
+      await act(async () => {
+        capturedInstances[1]._emit('upload-success', { id: 'mock-file-id' }, {
+          body: { files: [{ id: 'file-2', name: 'b.pdf' }] },
+        });
+        await p2!;
       });
 
       expect(result.current.attachments.length).toBe(2);
@@ -208,16 +246,19 @@ describe('useFileAttachments', () => {
 
   describe('Computed Values', () => {
     it('should compute completedFileIds correctly', async () => {
-      mockUploadFiles.mockResolvedValue({
-        success: true,
-        data: { files: [{ id: 'file-abc', name: 'test.pdf' }] },
-      });
-
       const { result } = renderHook(() => useFileAttachments());
       const file = new File(['test'], 'test.pdf', { type: 'application/pdf' });
 
+      let uploadPromise: Promise<void>;
+      act(() => {
+        uploadPromise = result.current.uploadFile(file);
+      });
+
       await act(async () => {
-        await result.current.uploadFile(file);
+        capturedInstances[0]._emit('upload-success', { id: 'mock-file-id' }, {
+          body: { files: [{ id: 'file-abc', name: 'test.pdf' }] },
+        });
+        await uploadPromise!;
       });
 
       await waitFor(() => {
@@ -226,8 +267,6 @@ describe('useFileAttachments', () => {
     });
 
     it('should compute hasUploading correctly', async () => {
-      mockUploadFiles.mockReturnValue(new Promise(() => {})); // Never resolves
-
       const { result } = renderHook(() => useFileAttachments());
       const file = new File(['test'], 'test.pdf', { type: 'application/pdf' });
 
@@ -236,82 +275,31 @@ describe('useFileAttachments', () => {
       act(() => {
         result.current.uploadFile(file);
       });
+      // Override upload to never resolve
+      capturedInstances[0].upload.mockReturnValue(new Promise(() => {}));
 
       expect(result.current.hasUploading).toBe(true);
     });
 
     it('hasUploading should be false when all completed', async () => {
-      mockUploadFiles.mockResolvedValue({
-        success: true,
-        data: { files: [{ id: 'file-123', name: 'test.pdf' }] },
-      });
-
       const { result } = renderHook(() => useFileAttachments());
       const file = new File(['test'], 'test.pdf', { type: 'application/pdf' });
 
+      let uploadPromise: Promise<void>;
+      act(() => {
+        uploadPromise = result.current.uploadFile(file);
+      });
+
       await act(async () => {
-        await result.current.uploadFile(file);
+        capturedInstances[0]._emit('upload-success', { id: 'mock-file-id' }, {
+          body: { files: [{ id: 'file-123', name: 'test.pdf' }] },
+        });
+        await uploadPromise!;
       });
 
       await waitFor(() => {
         expect(result.current.hasUploading).toBe(false);
       });
-    });
-  });
-
-  describe('Multiple Files', () => {
-    it('should handle multiple file uploads', async () => {
-      mockUploadFiles
-        .mockResolvedValueOnce({
-          success: true,
-          data: { files: [{ id: 'file-1', name: 'a.pdf' }] },
-        })
-        .mockResolvedValueOnce({
-          success: true,
-          data: { files: [{ id: 'file-2', name: 'b.pdf' }] },
-        });
-
-      const { result } = renderHook(() => useFileAttachments());
-
-      await act(async () => {
-        await result.current.uploadFile(new File(['1'], 'a.pdf'));
-        await result.current.uploadFile(new File(['2'], 'b.pdf'));
-      });
-
-      await waitFor(() => {
-        expect(result.current.attachments.length).toBe(2);
-        expect(result.current.completedFileIds).toContain('file-1');
-        expect(result.current.completedFileIds).toContain('file-2');
-      });
-    });
-
-    it('should track individual file progress', async () => {
-      const progressCallbacks: ((progress: number) => void)[] = [];
-
-      mockUploadFiles.mockImplementation((files, folderId, sessionId, onProgress) => {
-        progressCallbacks.push(onProgress!);
-        return new Promise(() => {}); // Never resolves
-      });
-
-      const { result } = renderHook(() => useFileAttachments());
-
-      act(() => {
-        result.current.uploadFile(new File(['1'], 'a.pdf'));
-        result.current.uploadFile(new File(['2'], 'b.pdf'));
-      });
-
-      // Update first file progress
-      act(() => {
-        progressCallbacks[0]?.(30);
-      });
-
-      // Update second file progress
-      act(() => {
-        progressCallbacks[1]?.(60);
-      });
-
-      expect(result.current.attachments[0].progress).toBe(30);
-      expect(result.current.attachments[1].progress).toBe(60);
     });
   });
 });

@@ -112,6 +112,14 @@ export default function ChatInput({
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Track cursor position to insert text at the correct place
+  const cursorPositionRef = useRef<number | null>(null);
+
+  const updateCursorPosition = () => {
+    if (textareaRef.current) {
+      cursorPositionRef.current = textareaRef.current.selectionStart;
+    }
+  };
 
   // Audio recording hook
   const {
@@ -261,11 +269,46 @@ export default function ChatInput({
 
           // Append transcribed text to message
           if (result.text) {
-            const currentMsg = message.trim();
-            const newText = currentMsg
-              ? `${currentMsg} ${result.text}`
-              : result.text;
-            setMessage(newText);
+            const transcript = result.text.trim();
+            if (transcript) {
+              const currentMsg = message; // Do not trim to preserve newlines
+              
+              let newText = '';
+              let newCursorPos = 0;
+              const insertPos = cursorPositionRef.current;
+
+              // If we have a valid cursor position and text, insert at cursor
+              if (insertPos !== null && insertPos >= 0 && insertPos <= currentMsg.length) {
+                const prefix = currentMsg.substring(0, insertPos);
+                const suffix = currentMsg.substring(insertPos);
+                
+                // Add space if prefix doesn't end with whitespace
+                const space = (prefix.length > 0 && !/\s$/.test(prefix)) ? ' ' : '';
+                
+                newText = `${prefix}${space}${transcript}${suffix}`;
+                newCursorPos = insertPos + space.length + transcript.length;
+              } else {
+                // Otherwise append to end (default behavior if no focus)
+                const space = (currentMsg.length > 0 && !/\s$/.test(currentMsg)) ? ' ' : '';
+                newText = `${currentMsg}${space}${transcript}`;
+                newCursorPos = newText.length;
+              }
+
+              setMessage(newText);
+              
+              // Focus textarea and place cursor at the end of the inserted text
+              if (textareaRef.current) {
+                textareaRef.current.focus();
+                // Small timeout to ensure state update has processed
+                setTimeout(() => {
+                  if (textareaRef.current) {
+                    textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
+                    // Update ref to new position
+                    cursorPositionRef.current = newCursorPos;
+                  }
+                }, 10);
+              }
+            }
           }
         } catch (err) {
           console.error('Transcription error:', err);
@@ -362,7 +405,9 @@ export default function ChatInput({
                         ? 'Click to stop recording'
                         : isTranscribing
                           ? 'Transcribing...'
-                          : 'Click to start voice input'}
+                          : message.trim().length > 0 
+                            ? 'Continue dictation' 
+                            : 'Start dictation'}
                   </p>
                 </TooltipContent>
               </Tooltip>
@@ -407,8 +452,14 @@ export default function ChatInput({
           <Textarea
             ref={textareaRef}
             value={message}
-            onChange={(e) => setMessage(e.target.value)}
+            onChange={(e) => {
+              setMessage(e.target.value);
+              updateCursorPosition();
+            }}
             onKeyDown={handleKeyDown}
+            onSelect={updateCursorPosition}
+            onClick={updateCursorPosition}
+            onKeyUp={updateCursorPosition}
             placeholder={effectiveIsConnected ? "Ask me anything about your business..." : "Connecting..."}
             disabled={!effectiveIsConnected || effectiveIsBusy || disabled}
             className="min-h-[44px] max-h-[200px] resize-none"

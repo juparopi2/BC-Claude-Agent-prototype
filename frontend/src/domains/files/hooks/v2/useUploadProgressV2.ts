@@ -11,7 +11,7 @@ import { useBatchUploadStoreV2 } from '../../stores/v2/batchUploadStoreV2';
 import { useShallow } from 'zustand/react/shallow';
 import { PIPELINE_STATUS } from '@bc-agent/shared';
 
-export type UploadPhaseV2 = 'uploading' | 'processing' | 'completed' | 'failed';
+export type UploadPhaseV2 = 'preparing' | 'uploading' | 'processing' | 'completed' | 'failed';
 
 export interface UploadCountsV2 {
   total: number;
@@ -78,5 +78,5 @@ export function useUploadProgressV2(): UploadProgressV2 {
       counts: { total, uploaded, confirmed, processing, ready, failed },
       currentPhase,
     };
-  }, [files]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [files]);
 }

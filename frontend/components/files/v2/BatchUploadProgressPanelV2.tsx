@@ -36,6 +36,7 @@ export function BatchUploadProgressPanelV2({ onCancel }: BatchUploadProgressPane
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [showFiles, setShowFiles] = useState(false);
 
+  const preparing = useBatchUploadStoreV2((s) => s.preparing);
   const activeBatch = useBatchUploadStoreV2((s) => s.activeBatch);
   const files = useBatchUploadStoreV2(useShallow((s) => s.files));
   const error = useBatchUploadStoreV2((s) => s.error);
@@ -87,7 +88,33 @@ export function BatchUploadProgressPanelV2({ onCancel }: BatchUploadProgressPane
     };
   }, [currentPhase, counts.total, resetStore]);
 
-  if (!activeBatch) return null;
+  if (!activeBatch && !preparing) return null;
+
+  // Preparing skeleton — shown immediately after drop, before batch is created
+  if (preparing && !activeBatch) {
+    return (
+      <div className="fixed bottom-4 right-4 z-50 w-96">
+        <Card className="shadow-lg">
+          <CardHeader className="px-4">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <Upload className="size-4 text-primary animate-pulse" />
+              <span>Preparing upload...</span>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0 pb-3 px-4 space-y-3">
+            <p className="text-xs text-muted-foreground">
+              {preparing.fileCount} file{preparing.fileCount !== 1 ? 's' : ''}
+              {preparing.hasFolders ? ' (with folders)' : ''}
+            </p>
+            <div className="space-y-2">
+              <div className="h-1.5 bg-muted rounded-full animate-pulse" />
+              <div className="h-1.5 bg-muted rounded-full animate-pulse" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   const fileArray = Array.from(files.values());
 

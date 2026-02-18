@@ -40,7 +40,13 @@ export interface ActiveBatch {
   expiresAt: string;
 }
 
+export interface PreparingState {
+  fileCount: number;
+  hasFolders: boolean;
+}
+
 export interface BatchUploadState {
+  preparing: PreparingState | null;
   activeBatch: ActiveBatch | null;
   files: Map<string, BatchFileState>;
   isUploading: boolean;
@@ -49,6 +55,7 @@ export interface BatchUploadState {
 }
 
 export interface BatchUploadActions {
+  startPreparing: (fileCount: number, hasFolders: boolean) => void;
   setActiveBatch: (response: CreateBatchResponse, fileNames: Map<string, string>) => void;
   updateFileUploadProgress: (fileId: string, progress: number) => void;
   updateFilePipelineStatus: (fileId: string, status: PipelineStatus) => void;
@@ -64,6 +71,7 @@ export interface BatchUploadActions {
 // ============================================
 
 const initialState: BatchUploadState = {
+  preparing: null,
   activeBatch: null,
   files: new Map(),
   isUploading: false,
@@ -74,6 +82,16 @@ const initialState: BatchUploadState = {
 export const useBatchUploadStoreV2 = create<BatchUploadState & BatchUploadActions>()(
   (set) => ({
     ...initialState,
+
+    startPreparing: (fileCount, hasFolders) =>
+      set({
+        preparing: { fileCount, hasFolders },
+        activeBatch: null,
+        files: new Map(),
+        isUploading: false,
+        isPaused: false,
+        error: null,
+      }),
 
     setActiveBatch: (response, fileNames) => {
       const files = new Map<string, BatchFileState>();
@@ -89,6 +107,7 @@ export const useBatchUploadStoreV2 = create<BatchUploadState & BatchUploadAction
       }
 
       set({
+        preparing: null,
         activeBatch: {
           batchId: response.batchId,
           status: response.status,

@@ -40,7 +40,7 @@ export interface UseBatchUploadV2Return {
 /**
  * Recursively collect all files from folder entries with their parentTempId
  */
-function collectFolderFiles(
+export function collectFolderFiles(
   folders: FolderEntry[],
   parentTempId?: string
 ): { files: { file: File; parentTempId: string }[]; manifoldFolders: ManifestFolderItem[] } {
@@ -67,6 +67,31 @@ function collectFolderFiles(
   }
 
   return { files, manifoldFolders: manifestFolders };
+}
+
+/**
+ * Merge standalone files with files extracted from folders, deduplicating
+ * any file that appears in both lists (by File object reference).
+ *
+ * Defense-in-depth: even if the call site already filters standalone files,
+ * this function ensures no duplicates reach the manifest.
+ */
+export function mergeFilesWithFolderContents(
+  files: File[],
+  folders?: FolderEntry[],
+): { allFiles: { file: File; parentTempId?: string }[]; manifestFolders: ManifestFolderItem[] } {
+  if (folders && folders.length > 0) {
+    const collected = collectFolderFiles(folders);
+    const folderFileRefs = new Set(collected.files.map((f) => f.file));
+    const standaloneFiles = files
+      .filter((f) => !folderFileRefs.has(f))
+      .map((f) => ({ file: f }));
+    return {
+      allFiles: [...standaloneFiles, ...collected.files],
+      manifestFolders: collected.manifoldFolders,
+    };
+  }
+  return { allFiles: files.map((f) => ({ file: f })), manifestFolders: [] };
 }
 
 /**
@@ -151,24 +176,24 @@ export function useBatchUploadV2(): UseBatchUploadV2Return {
       abortRef.current = false;
 
       try {
-        // 1. Collect all files (flat + from folders)
-        let allFiles: { file: File; parentTempId?: string }[] = files.map((f) => ({ file: f }));
-        let manifestFolders: ManifestFolderItem[] = [];
-
-        if (folders && folders.length > 0) {
-          const collected = collectFolderFiles(folders);
-          allFiles = [...allFiles, ...collected.files];
-          manifestFolders = collected.manifoldFolders;
-        }
+        // 1. Collect all files (flat + from folders), deduplicating any overlap
+        const { allFiles, manifestFolders } = mergeFilesWithFolderContents(files, folders);
 
         if (allFiles.length === 0) return null;
+
+        // Show preparing panel immediately (before any async work)
+        const { startPreparing } = useBatchUploadStoreV2.getState();
+        startPreparing(allFiles.length, (folders?.length ?? 0) > 0);
 
         // 2. Hash computation
         const hashResults = await computeFileHashesWithIds(
           allFiles.map((f) => f.file)
         );
 
-        if (abortRef.current) return null;
+        if (abortRef.current) {
+          resetStore();
+          return null;
+        }
 
         // 3. Duplicate check
         const dupInput = hashResults.map((h, i) => ({
@@ -180,15 +205,24 @@ export function useBatchUploadV2(): UseBatchUploadV2Return {
         }));
 
         const dupResult = await checkAndResolve(dupInput);
-        if (!dupResult) return null; // cancelled
-        if (abortRef.current) return null;
+        if (!dupResult) {
+          resetStore(); // cancelled — clear preparing state
+          return null;
+        }
+        if (abortRef.current) {
+          resetStore();
+          return null;
+        }
 
         // Filter out skipped files
         const skippedSet = new Set(dupResult.skipped);
         const proceedHashes = hashResults.filter((h) => !skippedSet.has(h.tempId));
         const proceedFiles = allFiles.filter((_, i) => !skippedSet.has(hashResults[i]!.tempId));
 
-        if (proceedHashes.length === 0) return null;
+        if (proceedHashes.length === 0) {
+          resetStore(); // all files skipped — clear preparing state
+          return null;
+        }
 
         // 4. Build manifest
         const manifestFiles: ManifestFileItem[] = proceedHashes.map((h, i) => ({
@@ -209,7 +243,7 @@ export function useBatchUploadV2(): UseBatchUploadV2Return {
         });
 
         if (!batchResponse.success) {
-          setError(batchResponse.error.message);
+          resetStore(); // clear preparing state
           return null;
         }
 
@@ -254,12 +288,19 @@ export function useBatchUploadV2(): UseBatchUploadV2Return {
 
         return batch.batchId;
       } catch (error) {
-        const msg = error instanceof Error ? error.message : 'Upload failed';
-        setError(msg);
+        const { activeBatch: currentBatch } = useBatchUploadStoreV2.getState();
+        if (currentBatch) {
+          // Batch already created — keep panel visible with error
+          const msg = error instanceof Error ? error.message : 'Upload failed';
+          setError(msg);
+        } else {
+          // Still preparing — clear panel entirely
+          resetStore();
+        }
         return null;
       }
     },
-    [setActiveBatch, setError, uploadBlobs, confirmFiles, checkAndResolve]
+    [setActiveBatch, setError, uploadBlobs, confirmFiles, checkAndResolve, resetStore]
   );
 
   // ============================================

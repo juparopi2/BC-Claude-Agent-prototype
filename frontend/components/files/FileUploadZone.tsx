@@ -100,9 +100,12 @@ export function FileUploadZone({
             toast.error('No files found in folder');
             return;
           }
-          // V2: Single startUpload handles both files and folders
-          const flatFiles = structure.validFiles.map((f) => f.file);
-          await startUploadV2(flatFiles, structure.rootFolders, currentFolderId);
+          // Only pass standalone files (not inside any folder).
+          // Nested files are already in rootFolders and will be extracted by collectFolderFiles().
+          const standaloneFiles = structure.validFiles
+            .filter((f) => !f.path.includes('/'))
+            .map((f) => f.file);
+          await startUploadV2(standaloneFiles, structure.rootFolders, currentFolderId);
         }
         // File-only drops handled by onDrop below
       } catch (error) {

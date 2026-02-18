@@ -41,9 +41,12 @@ interface FileRecord {
   blob_path: string | null;
   processing_status: string | null;
   embedding_status: string | null;
+  pipeline_status: string | null;
+  pipeline_retry_count: number;
   deletion_status: string | null;
   size_bytes: bigint | null;
   mime_type: string | null;
+  batch_id: string | null;
 }
 
 interface ChunkRecord {
@@ -175,9 +178,12 @@ async function verifySQLSection(
       blob_path: true,
       processing_status: true,
       embedding_status: true,
+      pipeline_status: true,
+      pipeline_retry_count: true,
       deletion_status: true,
       size_bytes: true,
       mime_type: true,
+      batch_id: true,
     },
   });
 
@@ -189,8 +195,8 @@ async function verifySQLSection(
   printStatus('Files', regularFiles.length);
   printStatus('Folders', folders.length);
 
-  // Processing status breakdown
-  printSubsection('Processing Status Distribution');
+  // Processing status breakdown (V1 - legacy)
+  printSubsection('Processing Status Distribution (V1)');
   const processingCounts: StatusCounts = {
     pending: 0,
     processing: 0,
@@ -221,8 +227,8 @@ async function verifySQLSection(
     hasWarnings = true;
   }
 
-  // Embedding status breakdown
-  printSubsection('Embedding Status Distribution');
+  // Embedding status breakdown (V1 - legacy)
+  printSubsection('Embedding Status Distribution (V1)');
   const embeddingCounts: StatusCounts = {
     pending: 0,
     processing: 0,
@@ -248,6 +254,100 @@ async function verifySQLSection(
 
   if (embeddingCounts.failed > 0) {
     hasErrors = true;
+  }
+
+  // V2 Pipeline status breakdown
+  printSubsection('Pipeline Status Distribution (V2)');
+  const pipelineStates = ['registered', 'uploaded', 'queued', 'extracting', 'chunking', 'embedding', 'ready', 'failed'] as const;
+  const pipelineCounts: Record<string, number> = {};
+  let pipelineNull = 0;
+
+  for (const state of pipelineStates) {
+    pipelineCounts[state] = 0;
+  }
+
+  // Count pipeline_status for ALL files (not just regularFiles, since V2 includes folders too)
+  const allUserFiles = await prisma.files.findMany({
+    where: { user_id: userId, is_folder: false, deletion_status: null },
+    select: { pipeline_status: true },
+  });
+
+  allUserFiles.forEach((f) => {
+    const status = f.pipeline_status?.toLowerCase();
+    if (status && status in pipelineCounts) {
+      pipelineCounts[status]++;
+    } else if (f.pipeline_status === null) {
+      pipelineNull++;
+    } else {
+      pipelineCounts[f.pipeline_status ?? 'unknown'] = (pipelineCounts[f.pipeline_status ?? 'unknown'] || 0) + 1;
+    }
+  });
+
+  const hasV2Files = allUserFiles.some((f) => f.pipeline_status !== null);
+  const stuckV2States = ['registered', 'uploaded', 'queued', 'extracting', 'chunking', 'embedding'];
+  let stuckV2Count = 0;
+
+  for (const state of pipelineStates) {
+    const count = pipelineCounts[state];
+    let severity: 'ok' | 'warn' | 'error' | undefined;
+    if (state === 'ready' && count > 0) severity = 'ok';
+    if (state === 'failed' && count > 0) severity = 'error';
+    if (stuckV2States.includes(state) && count > 0) {
+      severity = 'warn';
+      stuckV2Count += count;
+    }
+    printStatus(state.charAt(0).toUpperCase() + state.slice(1), String(count).padStart(6), severity);
+  }
+
+  printStatus('No pipeline_status (V1 files)', String(pipelineNull).padStart(6));
+
+  if (pipelineCounts['failed'] > 0) {
+    hasErrors = true;
+  }
+  if (stuckV2Count > 0) {
+    hasWarnings = true;
+    printStatus('Stuck in non-terminal V2 state', stuckV2Count, 'warn');
+  }
+
+  // Upload batches
+  printSubsection('Upload Batches (V2)');
+  const batches = await prisma.upload_batches.findMany({
+    where: { user_id: userId },
+    select: { id: true, status: true, total_files: true, confirmed_count: true, processed_count: true, created_at: true, expires_at: true },
+    orderBy: { created_at: 'desc' },
+  });
+
+  const batchStatusCounts: Record<string, number> = { active: 0, completed: 0, expired: 0, cancelled: 0 };
+  batches.forEach((b) => {
+    const s = b.status.toLowerCase();
+    batchStatusCounts[s] = (batchStatusCounts[s] || 0) + 1;
+  });
+
+  printStatus('Total batches', batches.length);
+  printStatus('Active', String(batchStatusCounts.active).padStart(6), batchStatusCounts.active > 0 ? 'warn' : undefined);
+  printStatus('Completed', String(batchStatusCounts.completed).padStart(6), batchStatusCounts.completed > 0 ? 'ok' : undefined);
+  printStatus('Expired', String(batchStatusCounts.expired).padStart(6), batchStatusCounts.expired > 0 ? 'warn' : undefined);
+  printStatus('Cancelled', String(batchStatusCounts.cancelled).padStart(6));
+
+  if (batchStatusCounts.expired > 0) {
+    hasWarnings = true;
+    if (!options.reportOnly) {
+      const expiredBatches = batches.filter((b) => b.status === 'expired');
+      expiredBatches.forEach((b) => {
+        console.log(`    - Batch ${b.id.substring(0, 8)}... (${b.confirmed_count}/${b.total_files} confirmed, expired ${b.expires_at.toISOString()})`);
+      });
+    }
+  }
+
+  if (batchStatusCounts.active > 0) {
+    hasWarnings = true;
+    if (!options.reportOnly) {
+      const activeBatches = batches.filter((b) => b.status === 'active');
+      activeBatches.forEach((b) => {
+        const isExpired = b.expires_at < new Date();
+        console.log(`    - Batch ${b.id.substring(0, 8)}... (${b.confirmed_count}/${b.total_files} confirmed${isExpired ? ', PAST EXPIRY' : ''})`);
+      });
+    }
   }
 
   // Stuck deletions
@@ -372,7 +472,8 @@ function buildFolderTree(files: FileRecord[]): string {
   function renderNode(file: FileRecord, prefix: string, isLast: boolean): string {
     const connector = isLast ? '└── ' : '├── ';
     const icon = file.is_folder ? '📁' : '📄';
-    const status = file.processing_status ? ` [${file.processing_status}]` : '';
+    const displayStatus = file.pipeline_status || file.processing_status;
+    const status = displayStatus ? ` [${displayStatus}]` : '';
     const size = file.size_bytes !== null && !file.is_folder ? ` (${formatBytes(file.size_bytes)})` : '';
     let result = `${prefix}${connector}${icon} ${file.name}${status}${size}\n`;
 

@@ -26,6 +26,7 @@ import {
   FileAlreadyConfirmedError,
   BlobNotFoundError,
   ConcurrentModificationError,
+  InvalidTargetFolderError,
   ManifestValidationError,
 } from '@/services/files/batch';
 import { sendError } from '@/shared/utils/error-response';
@@ -56,7 +57,7 @@ function handleDomainError(res: Response, error: unknown): void {
     sendError(res, ErrorCode.STATE_CONFLICT, error.message);
     return;
   }
-  if (error instanceof BlobNotFoundError || error instanceof ManifestValidationError) {
+  if (error instanceof BlobNotFoundError || error instanceof ManifestValidationError || error instanceof InvalidTargetFolderError) {
     sendError(res, ErrorCode.VALIDATION_ERROR, error.message);
     return;
   }

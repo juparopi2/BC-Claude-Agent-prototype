@@ -86,10 +86,10 @@ describe('ProcessingFlowFactory', () => {
       const flow = ProcessingFlowFactory.createFileFlow(SAMPLE_PARAMS);
       const fileId = SAMPLE_PARAMS.fileId;
 
-      expect(flow.opts?.jobId).toBe(`pipeline-complete:${fileId}`);
-      expect(flow.children![0]!.opts?.jobId).toBe(`embed:${fileId}`);
-      expect(flow.children![0]!.children![0]!.opts?.jobId).toBe(`chunk:${fileId}`);
-      expect(flow.children![0]!.children![0]!.children![0]!.opts?.jobId).toBe(`extract:${fileId}`);
+      expect(flow.opts?.jobId).toBe(`pipeline-complete--${fileId}`);
+      expect(flow.children![0]!.opts?.jobId).toBe(`embed--${fileId}`);
+      expect(flow.children![0]!.children![0]!.opts?.jobId).toBe(`chunk--${fileId}`);
+      expect(flow.children![0]!.children![0]!.children![0]!.opts?.jobId).toBe(`extract--${fileId}`);
     });
 
     it('should configure retry attempts on all stages', () => {

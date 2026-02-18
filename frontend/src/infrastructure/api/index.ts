@@ -47,6 +47,13 @@ export {
   type ListChatAttachmentsResponse,
 } from './chatAttachmentApiClient';
 
+// File API Client V2 (Batch Upload)
+export {
+  FileApiClientV2,
+  getFileApiClientV2,
+  resetFileApiClientV2,
+} from './fileApiClientV2';
+
 // Auth Retry Utility
 export {
   withAuthRetry,

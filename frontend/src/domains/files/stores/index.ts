@@ -100,3 +100,18 @@ export {
   type FolderDuplicateResolution,
   type FolderDuplicateAction,
 } from './folderDuplicateStore';
+
+// V2 Stores (Batch Upload Pipeline)
+export {
+  useBatchUploadStoreV2,
+  resetBatchUploadStoreV2,
+  type BatchUploadState,
+  type BatchUploadActions,
+  type BatchFileState,
+  type ActiveBatch,
+  useDuplicateStoreV2,
+  resetDuplicateStoreV2,
+  type DuplicateStoreV2State,
+  type DuplicateStoreV2Actions,
+  type DuplicateActionV2,
+} from './v2';

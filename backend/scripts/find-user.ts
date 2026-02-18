@@ -34,7 +34,9 @@ interface UserStats {
 interface FileDetails {
   processing: Record<string, number>;
   embeddings: Record<string, number>;
+  pipeline: Record<string, number>;
   stuck_deletions: number;
+  active_batches: number;
 }
 
 // ============================================================================
@@ -139,7 +141,7 @@ async function getFileDetails(
   prisma: ReturnType<typeof createPrisma>,
   userId: string
 ): Promise<FileDetails> {
-  const [processingGroups, embeddingGroups, stuckCount] = await Promise.all([
+  const [processingGroups, embeddingGroups, pipelineGroups, stuckCount, activeBatchCount] = await Promise.all([
     prisma.files.groupBy({
       by: ['processing_status'],
       where: { user_id: userId, is_folder: false, deletion_status: null },
@@ -150,8 +152,16 @@ async function getFileDetails(
       where: { user_id: userId, is_folder: false, deletion_status: null },
       _count: true,
     }),
+    prisma.files.groupBy({
+      by: ['pipeline_status'],
+      where: { user_id: userId, is_folder: false, deletion_status: null },
+      _count: true,
+    }),
     prisma.files.count({
       where: { user_id: userId, deletion_status: { not: null } },
+    }),
+    prisma.upload_batches.count({
+      where: { user_id: userId, status: { in: ['active', 'expired'] } },
     }),
   ]);
 
@@ -169,10 +179,19 @@ async function getFileDetails(
     }
   }
 
+  const pipeline: Record<string, number> = {};
+  for (const group of pipelineGroups) {
+    if (group.pipeline_status) {
+      pipeline[group.pipeline_status] = group._count;
+    }
+  }
+
   return {
     processing,
     embeddings,
+    pipeline,
     stuck_deletions: stuckCount,
+    active_batches: activeBatchCount,
   };
 }
 
@@ -184,20 +203,31 @@ function formatFileDetails(details: FileDetails): string {
   const lines: string[] = [];
   lines.push('\n  File Details:');
 
-  // Processing status
+  // V2 Pipeline status (new state machine)
+  const pipelineParts = Object.entries(details.pipeline)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([status, count]) => `${status}=${count}`);
+  lines.push(`    Pipeline (V2): ${pipelineParts.join(', ') || 'none'}`);
+
+  // V1 Processing status (legacy)
   const processingParts = Object.entries(details.processing)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([status, count]) => `${status}=${count}`);
-  lines.push(`    Processing: ${processingParts.join(', ') || 'none'}`);
+  lines.push(`    Processing (V1): ${processingParts.join(', ') || 'none'}`);
 
-  // Embedding status
+  // V1 Embedding status (legacy)
   const embeddingParts = Object.entries(details.embeddings)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([status, count]) => `${status}=${count}`);
-  lines.push(`    Embeddings: ${embeddingParts.join(', ') || 'none'}`);
+  lines.push(`    Embeddings (V1): ${embeddingParts.join(', ') || 'none'}`);
 
   // Stuck deletions
   lines.push(`    Stuck Deletions: ${details.stuck_deletions}`);
+
+  // Active/expired batches
+  if (details.active_batches > 0) {
+    lines.push(`    Active/Expired Batches: ${details.active_batches}`);
+  }
 
   return lines.join('\n');
 }

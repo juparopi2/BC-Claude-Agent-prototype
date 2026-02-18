@@ -51,6 +51,7 @@ export const createBatchRequestSchema = z.object({
   folders: z.array(manifestFolderItemSchema).max(200).optional(),
   metadata: z.record(z.unknown()).optional(),
   skipDuplicateCheck: z.boolean().optional(),
+  targetFolderId: z.string().uuid().toUpperCase().nullable().optional(),
 });
 
 export type CreateBatchRequest = z.infer<typeof createBatchRequestSchema>;

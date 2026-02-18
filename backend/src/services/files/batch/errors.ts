@@ -63,6 +63,13 @@ export class ConcurrentModificationError extends Error {
   }
 }
 
+export class InvalidTargetFolderError extends Error {
+  constructor(folderId: string) {
+    super(`Target folder not found or is not a folder: ${folderId}`);
+    this.name = 'InvalidTargetFolderError';
+  }
+}
+
 export class ManifestValidationError extends Error {
   public readonly details?: Record<string, unknown>;
 

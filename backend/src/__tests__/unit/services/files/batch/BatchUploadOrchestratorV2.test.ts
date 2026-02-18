@@ -85,6 +85,7 @@ import {
   FileAlreadyConfirmedError,
   BlobNotFoundError,
   ConcurrentModificationError,
+  InvalidTargetFolderError,
   ManifestValidationError,
 } from '@/services/files/batch/errors';
 import { prisma } from '@/infrastructure/database/prisma';
@@ -1046,6 +1047,171 @@ describe('BatchUploadOrchestratorV2', () => {
       await expect(orchestrator.cancelBatch(TEST_USER_ID, TEST_BATCH_ID)).rejects.toThrow(
         BatchCancelledError,
       );
+    });
+  });
+
+  // ==========================================================================
+  // targetFolderId
+  // ==========================================================================
+
+  describe('targetFolderId', () => {
+    const TARGET_FOLDER_ID = 'AAAA1111-2222-3333-4444-555566667777';
+
+    it('assigns targetFolderId to root-level files and folders', async () => {
+      // Mock target folder validation
+      mockPrisma.files.findFirst.mockResolvedValue({
+        id: TARGET_FOLDER_ID,
+      });
+
+      let folderCreateCount = 0;
+      mockTx.files.create.mockImplementation((args: any) => {
+        if (args.data.is_folder) {
+          folderCreateCount++;
+          return Promise.resolve({ id: `FOLDER-${folderCreateCount}`, ...args.data });
+        }
+        return Promise.resolve({ id: TEST_FILE_ID, ...args.data });
+      });
+
+      const request: CreateBatchRequest = {
+        files: [
+          {
+            tempId: 'f1',
+            fileName: 'report.pdf',
+            mimeType: 'application/pdf',
+            sizeBytes: 1024,
+          },
+        ],
+        folders: [
+          {
+            tempId: 'fold1',
+            folderName: 'Documents',
+          },
+        ],
+        targetFolderId: TARGET_FOLDER_ID,
+      };
+
+      await orchestrator.createBatch(TEST_USER_ID, request);
+
+      // Root folder should have targetFolderId as parent
+      const folderCall = mockTx.files.create.mock.calls.find(
+        (call: any) => call[0].data.is_folder && call[0].data.name === 'Documents',
+      );
+      expect(folderCall![0].data.parent_folder_id).toBe(TARGET_FOLDER_ID);
+
+      // Root file should have targetFolderId as parent
+      const fileCall = mockTx.files.create.mock.calls.find(
+        (call: any) => !call[0].data.is_folder,
+      );
+      expect(fileCall![0].data.parent_folder_id).toBe(TARGET_FOLDER_ID);
+    });
+
+    it('child items use their parent tempId, not targetFolderId', async () => {
+      // Mock target folder validation
+      mockPrisma.files.findFirst.mockResolvedValue({
+        id: TARGET_FOLDER_ID,
+      });
+
+      let folderCreateCount = 0;
+      mockTx.files.create.mockImplementation((args: any) => {
+        if (args.data.is_folder) {
+          folderCreateCount++;
+          return Promise.resolve({ id: `FOLDER-${folderCreateCount}`, ...args.data });
+        }
+        return Promise.resolve({ id: TEST_FILE_ID, ...args.data });
+      });
+
+      const request: CreateBatchRequest = {
+        files: [
+          {
+            tempId: 'f1',
+            fileName: 'nested.pdf',
+            mimeType: 'application/pdf',
+            sizeBytes: 1024,
+            parentTempId: 'fold-child',
+          },
+        ],
+        folders: [
+          {
+            tempId: 'fold-parent',
+            folderName: 'Parent',
+          },
+          {
+            tempId: 'fold-child',
+            folderName: 'Child',
+            parentTempId: 'fold-parent',
+          },
+        ],
+        targetFolderId: TARGET_FOLDER_ID,
+      };
+
+      await orchestrator.createBatch(TEST_USER_ID, request);
+
+      // Root folder "Parent" → parent is targetFolderId
+      const parentFolderCall = mockTx.files.create.mock.calls.find(
+        (call: any) => call[0].data.is_folder && call[0].data.name === 'Parent',
+      );
+      expect(parentFolderCall![0].data.parent_folder_id).toBe(TARGET_FOLDER_ID);
+
+      // Child folder "Child" → parent is resolved from Parent's real ID
+      const childFolderCall = mockTx.files.create.mock.calls.find(
+        (call: any) => call[0].data.is_folder && call[0].data.name === 'Child',
+      );
+      expect(childFolderCall![0].data.parent_folder_id).toBe('FOLDER-1');
+
+      // File with parentTempId → parent is resolved from Child's real ID
+      const fileCall = mockTx.files.create.mock.calls.find(
+        (call: any) => !call[0].data.is_folder,
+      );
+      expect(fileCall![0].data.parent_folder_id).toBe('FOLDER-2');
+    });
+
+    it('throws InvalidTargetFolderError for non-existent folder', async () => {
+      // Mock target folder not found
+      mockPrisma.files.findFirst.mockResolvedValue(null);
+
+      const request: CreateBatchRequest = {
+        files: [
+          {
+            tempId: 'f1',
+            fileName: 'test.pdf',
+            mimeType: 'application/pdf',
+            sizeBytes: 1024,
+          },
+        ],
+        targetFolderId: 'NONEXISTENT-FOLDER-ID-1234-567890ABCDEF',
+      };
+
+      await expect(orchestrator.createBatch(TEST_USER_ID, request)).rejects.toThrow(
+        InvalidTargetFolderError,
+      );
+      await expect(orchestrator.createBatch(TEST_USER_ID, request)).rejects.toThrow(
+        'Target folder not found or is not a folder',
+      );
+    });
+
+    it('does not validate when targetFolderId is null/undefined', async () => {
+      const request: CreateBatchRequest = {
+        files: [
+          {
+            tempId: 'f1',
+            fileName: 'test.pdf',
+            mimeType: 'application/pdf',
+            sizeBytes: 1024,
+          },
+        ],
+      };
+
+      await orchestrator.createBatch(TEST_USER_ID, request);
+
+      // findFirst should NOT have been called for target folder validation
+      // (it's only called inside the transaction for duplicate check, not pre-transaction)
+      expect(mockPrisma.files.findFirst).not.toHaveBeenCalled();
+
+      // Files should have null parent_folder_id
+      const fileCall = mockTx.files.create.mock.calls.find(
+        (call: any) => !call[0].data.is_folder,
+      );
+      expect(fileCall![0].data.parent_folder_id).toBeNull();
     });
   });
 });

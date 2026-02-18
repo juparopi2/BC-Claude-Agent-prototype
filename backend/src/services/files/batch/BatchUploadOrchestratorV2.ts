@@ -39,6 +39,7 @@ import {
   FileAlreadyConfirmedError,
   BlobNotFoundError,
   ConcurrentModificationError,
+  InvalidTargetFolderError,
   ManifestValidationError,
 } from './errors';
 
@@ -77,9 +78,26 @@ export class BatchUploadOrchestratorV2 {
       : [];
 
     const skipDuplicateCheck = request.skipDuplicateCheck ?? false;
+    const targetFolderId: string | null = request.targetFolderId ?? null;
+
+    // Validate targetFolderId exists and belongs to user
+    if (targetFolderId) {
+      const targetFolder = await this.prisma.files.findFirst({
+        where: {
+          id: targetFolderId,
+          user_id: userId,
+          is_folder: true,
+          deletion_status: null,
+        },
+        select: { id: true },
+      });
+      if (!targetFolder) {
+        throw new InvalidTargetFolderError(targetFolderId);
+      }
+    }
 
     logger.info(
-      { userId, fileCount: request.files.length, folderCount: sortedFolders.length, skipDuplicateCheck },
+      { userId, fileCount: request.files.length, folderCount: sortedFolders.length, skipDuplicateCheck, targetFolderId },
       'Creating batch',
     );
 
@@ -123,7 +141,7 @@ export class BatchUploadOrchestratorV2 {
         for (const folder of sortedFolders) {
           const parentFolderId = folder.parentTempId
             ? tempIdToFolderId.get(folder.parentTempId) ?? null
-            : null;
+            : targetFolderId;
 
           const created = await tx.files.create({
             data: {
@@ -164,7 +182,7 @@ export class BatchUploadOrchestratorV2 {
           // Resolve parent folder
           const parentFolderId = file.parentTempId
             ? tempIdToFolderId.get(file.parentTempId) ?? null
-            : null;
+            : targetFolderId;
 
           // Create file record
           const created = await tx.files.create({
@@ -219,6 +237,8 @@ export class BatchUploadOrchestratorV2 {
     batchId: string,
     fileId: string,
   ): Promise<ConfirmFileResponse> {
+    logger.debug({ userId, batchId, fileId }, 'confirmFile: start');
+
     // 1. Find and validate batch
     const batch = await (this.prisma as Record<string, unknown> & typeof this.prisma).upload_batches.findFirst({
       where: { id: batchId, user_id: userId },
@@ -236,6 +256,7 @@ export class BatchUploadOrchestratorV2 {
     if (batch.status === BATCH_STATUS.COMPLETED) {
       throw new BatchAlreadyCompleteError(batchId);
     }
+    logger.debug({ batchId, status: batch.status }, 'confirmFile: step 1 OK — batch validated');
 
     // 2. Find and validate file
     const file = await this.prisma.files.findFirst({
@@ -248,6 +269,7 @@ export class BatchUploadOrchestratorV2 {
     if (file.pipeline_status !== PIPELINE_STATUS.REGISTERED) {
       throw new FileAlreadyConfirmedError(fileId, file.pipeline_status ?? 'unknown');
     }
+    logger.debug({ fileId, blobPath: file.blob_path }, 'confirmFile: step 2 OK — file validated');
 
     // 3. Verify blob exists in Azure Storage
     const fileUploadService = getFileUploadService();
@@ -255,6 +277,7 @@ export class BatchUploadOrchestratorV2 {
     if (!blobExists) {
       throw new BlobNotFoundError(fileId, file.blob_path);
     }
+    logger.debug({ fileId }, 'confirmFile: step 3 OK — blob exists');
 
     // 4. CAS transition: registered → queued (atomic)
     const updated = await this.prisma.files.updateMany({
@@ -272,6 +295,7 @@ export class BatchUploadOrchestratorV2 {
     if (updated.count === 0) {
       throw new ConcurrentModificationError(fileId);
     }
+    logger.debug({ fileId }, 'confirmFile: step 4 OK — CAS transition registered→queued');
 
     // 5. Atomic counter increment + auto-complete batch
     await this.prisma.$executeRaw`
@@ -285,6 +309,7 @@ export class BatchUploadOrchestratorV2 {
       WHERE id = ${batchId}
         AND user_id = ${userId}
     `;
+    logger.debug({ batchId }, 'confirmFile: step 5 OK — counter incremented');
 
     // 6. Read back batch for progress
     const updatedBatch = await (this.prisma as Record<string, unknown> & typeof this.prisma).upload_batches.findFirst({
@@ -293,6 +318,7 @@ export class BatchUploadOrchestratorV2 {
 
     const confirmed = updatedBatch?.confirmed_count ?? 0;
     const total = updatedBatch?.total_files ?? 0;
+    logger.debug({ batchId, confirmed, total }, 'confirmFile: step 6 OK — batch read back');
 
     // 7. Enqueue V2 processing flow (PRD-04)
     // BullMQ Flow guarantees: extract → chunk → embed → pipeline-complete
@@ -308,7 +334,7 @@ export class BatchUploadOrchestratorV2 {
 
     logger.info(
       { userId, batchId, fileId, confirmed, total },
-      'File confirmed and enqueued',
+      'File confirmed and enqueued (step 7 OK)',
     );
 
     return {

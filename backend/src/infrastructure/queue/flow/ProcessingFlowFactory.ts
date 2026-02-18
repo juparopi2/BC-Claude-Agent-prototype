@@ -44,18 +44,21 @@ export class ProcessingFlowFactory {
    * 3. embed    (child of pipeline-complete)
    * 4. pipeline-complete (root parent — runs LAST)
    *
-   * Each job uses `jobId` = `${stage}:${fileId}` for idempotent adds
+   * Each job uses `jobId` = `${stage}--${fileId}` for idempotent adds
    * (BullMQ deduplicates by jobId within a queue).
+   *
+   * NOTE: BullMQ forbids `:` in custom jobIds (reserved for Redis key
+   * namespacing). We use `--` as the separator instead.
    */
   static createFileFlow(params: FileFlowParams): FlowJob {
     const { fileId, batchId, userId, mimeType, blobPath, fileName } = params;
 
     return {
-      name: `pipeline-complete:${fileId}`,
+      name: `pipeline-complete--${fileId}`,
       queueName: QueueName.V2_FILE_PIPELINE_COMPLETE,
       data: { fileId, batchId, userId },
       opts: {
-        jobId: `pipeline-complete:${fileId}`,
+        jobId: `pipeline-complete--${fileId}`,
         attempts: DEFAULT_BACKOFF.V2_FILE_PIPELINE_COMPLETE.attempts,
         backoff: {
           type: DEFAULT_BACKOFF.V2_FILE_PIPELINE_COMPLETE.type,
@@ -64,11 +67,11 @@ export class ProcessingFlowFactory {
       },
       children: [
         {
-          name: `embed:${fileId}`,
+          name: `embed--${fileId}`,
           queueName: QueueName.V2_FILE_EMBED,
           data: { fileId, batchId, userId },
           opts: {
-            jobId: `embed:${fileId}`,
+            jobId: `embed--${fileId}`,
             attempts: DEFAULT_BACKOFF.V2_FILE_EMBED.attempts,
             backoff: {
               type: DEFAULT_BACKOFF.V2_FILE_EMBED.type,
@@ -77,11 +80,11 @@ export class ProcessingFlowFactory {
           },
           children: [
             {
-              name: `chunk:${fileId}`,
+              name: `chunk--${fileId}`,
               queueName: QueueName.V2_FILE_CHUNK,
               data: { fileId, batchId, userId, mimeType },
               opts: {
-                jobId: `chunk:${fileId}`,
+                jobId: `chunk--${fileId}`,
                 attempts: DEFAULT_BACKOFF.V2_FILE_CHUNK.attempts,
                 backoff: {
                   type: DEFAULT_BACKOFF.V2_FILE_CHUNK.type,
@@ -90,7 +93,7 @@ export class ProcessingFlowFactory {
               },
               children: [
                 {
-                  name: `extract:${fileId}`,
+                  name: `extract--${fileId}`,
                   queueName: QueueName.V2_FILE_EXTRACT,
                   data: {
                     fileId,
@@ -101,7 +104,7 @@ export class ProcessingFlowFactory {
                     fileName,
                   },
                   opts: {
-                    jobId: `extract:${fileId}`,
+                    jobId: `extract--${fileId}`,
                     attempts: DEFAULT_BACKOFF.V2_FILE_EXTRACT.attempts,
                     backoff: {
                       type: DEFAULT_BACKOFF.V2_FILE_EXTRACT.type,

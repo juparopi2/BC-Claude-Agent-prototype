@@ -21,5 +21,6 @@ export {
   FileAlreadyConfirmedError,
   BlobNotFoundError,
   ConcurrentModificationError,
+  InvalidTargetFolderError,
   ManifestValidationError,
 } from './errors';

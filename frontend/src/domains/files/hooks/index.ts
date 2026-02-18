@@ -30,3 +30,18 @@ export {
   useFolderUploadToasts,
   type UseFolderUploadToastsOptions,
 } from './useFolderUploadToasts';
+
+// V2 Hooks (Batch Upload Pipeline)
+export {
+  useBatchUploadV2,
+  type UseBatchUploadV2Return,
+  useBlobUploadV2,
+  type BlobUploadFile,
+  type BlobUploadResult,
+  useFileConfirmV2,
+  useDuplicateResolutionV2,
+  useUploadProgressV2,
+  type UploadProgressV2,
+  type UploadCountsV2,
+  type UploadPhaseV2,
+} from './v2';

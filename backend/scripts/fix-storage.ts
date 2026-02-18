@@ -78,6 +78,7 @@ interface Args {
   stuckDeletions: boolean;
   ghostRecords: boolean;
   orphans: boolean;
+  v2Pipeline: boolean;
   help: boolean;
 }
 
@@ -96,6 +97,7 @@ function parseArgs(): Args {
     stuckDeletions: hasFlag('--stuck-deletions'),
     ghostRecords: hasFlag('--ghost-records'),
     orphans: hasFlag('--orphans'),
+    v2Pipeline: hasFlag('--v2-pipeline'),
     help: hasFlag('--help'),
   };
 }
@@ -108,12 +110,14 @@ Performs three phases of storage integrity repair:
   Phase 1: Stuck Deletions - Complete files stuck in deletion_status
   Phase 2: Ghost Records - Remove DB records where blob doesn't exist
   Phase 3: Orphan Cleanup - Remove orphaned blobs, search docs, and chunks
+  Phase 4: V2 Pipeline - Clean stuck V2 pipeline files and expired batches
 
 Usage:
   npx tsx backend/scripts/fix-storage.ts --userId <ID> --dry-run
   npx tsx backend/scripts/fix-storage.ts --userId <ID> --stuck-deletions
   npx tsx backend/scripts/fix-storage.ts --userId <ID> --ghost-records
   npx tsx backend/scripts/fix-storage.ts --userId <ID> --orphans
+  npx tsx backend/scripts/fix-storage.ts --userId <ID> --v2-pipeline
   npx tsx backend/scripts/fix-storage.ts --userId <ID>
   npx tsx backend/scripts/fix-storage.ts --all --dry-run
 
@@ -124,12 +128,14 @@ Options:
   --stuck-deletions    Run Phase 1 only (stuck deletions)
   --ghost-records      Run Phase 2 only (ghost records)
   --orphans            Run Phase 3 only (orphan cleanup)
+  --v2-pipeline        Run Phase 4 only (V2 pipeline cleanup)
   --help               Show this help message
 
 Examples:
   npx tsx backend/scripts/fix-storage.ts --userId ABC123 --dry-run
   npx tsx backend/scripts/fix-storage.ts --userId ABC123
   npx tsx backend/scripts/fix-storage.ts --all --stuck-deletions --dry-run
+  npx tsx backend/scripts/fix-storage.ts --userId ABC123 --v2-pipeline --dry-run
 `);
 }
 
@@ -727,6 +733,204 @@ async function runOrphanCleanup(
 }
 
 // ============================================================================
+// Phase 4: V2 Pipeline Cleanup
+// ============================================================================
+
+/** Non-terminal V2 pipeline states that indicate a stuck file */
+const STUCK_PIPELINE_STATES = ['registered', 'uploaded', 'queued', 'extracting', 'chunking', 'embedding'];
+
+async function runV2PipelineCleanup(
+  prisma: PrismaClient,
+  containerClient: ContainerClient | null,
+  searchClient: SearchClient<SearchDocument> | null,
+  userId: string | null,
+  dryRun: boolean
+): Promise<PhaseResult> {
+  console.log('\n' + '='.repeat(80));
+  console.log('PHASE 4: V2 PIPELINE CLEANUP');
+  console.log('='.repeat(80));
+
+  const result: PhaseResult = {
+    phase: 'V2 Pipeline Cleanup',
+    itemsFound: 0,
+    itemsProcessed: 0,
+    succeeded: 0,
+    failed: 0,
+    errors: [],
+  };
+
+  // 4.1: Failed V2 pipeline files
+  console.log('\n--- 4.1: Failed V2 Pipeline Files ---');
+  const failedWhere = userId
+    ? { user_id: userId, pipeline_status: 'failed', deletion_status: null }
+    : { pipeline_status: 'failed', deletion_status: null };
+
+  const failedFiles = await prisma.files.findMany({
+    where: failedWhere,
+    select: {
+      id: true,
+      user_id: true,
+      name: true,
+      is_folder: true,
+      blob_path: true,
+      deletion_status: true,
+      deleted_at: true,
+      parent_folder_id: true,
+      pipeline_status: true,
+      pipeline_retry_count: true,
+      batch_id: true,
+    },
+  });
+
+  result.itemsFound += failedFiles.length;
+
+  if (failedFiles.length === 0) {
+    console.log('No failed V2 pipeline files found.');
+  } else {
+    console.log(`Found ${failedFiles.length} failed V2 pipeline files`);
+
+    for (const file of failedFiles) {
+      console.log(`\n[FAILED] ${file.name}`);
+      console.log(`  ID: ${file.id}`);
+      console.log(`  Pipeline: ${file.pipeline_status} | Retries: ${file.pipeline_retry_count}`);
+      console.log(`  Batch: ${file.batch_id || 'none'}`);
+
+      result.itemsProcessed++;
+
+      const stuckFile: StuckFile = {
+        id: file.id,
+        user_id: file.user_id,
+        name: file.name,
+        is_folder: file.is_folder,
+        blob_path: file.blob_path,
+        deletion_status: file.pipeline_status!,
+        deleted_at: file.deleted_at,
+        parent_folder_id: file.parent_folder_id,
+      };
+
+      const fileResult = await deleteSingleFile(prisma, containerClient, searchClient, stuckFile, '  ', dryRun);
+      if (fileResult.success) {
+        result.succeeded++;
+      } else {
+        result.failed++;
+        result.errors.push(`Failed to delete V2 file ${file.name}: ${fileResult.error}`);
+      }
+    }
+  }
+
+  // 4.2: Stuck V2 pipeline files (non-terminal, non-failed states)
+  console.log('\n--- 4.2: Stuck V2 Pipeline Files ---');
+  const stuckWhere = userId
+    ? { user_id: userId, pipeline_status: { in: STUCK_PIPELINE_STATES }, deletion_status: null }
+    : { pipeline_status: { in: STUCK_PIPELINE_STATES }, deletion_status: null };
+
+  const stuckFiles = await prisma.files.findMany({
+    where: stuckWhere,
+    select: {
+      id: true,
+      user_id: true,
+      name: true,
+      is_folder: true,
+      blob_path: true,
+      deletion_status: true,
+      deleted_at: true,
+      parent_folder_id: true,
+      pipeline_status: true,
+      pipeline_retry_count: true,
+      batch_id: true,
+    },
+  });
+
+  result.itemsFound += stuckFiles.length;
+
+  if (stuckFiles.length === 0) {
+    console.log('No stuck V2 pipeline files found.');
+  } else {
+    console.log(`Found ${stuckFiles.length} stuck V2 pipeline files`);
+
+    for (const file of stuckFiles) {
+      console.log(`\n[STUCK] ${file.name}`);
+      console.log(`  ID: ${file.id}`);
+      console.log(`  Pipeline: ${file.pipeline_status} | Retries: ${file.pipeline_retry_count}`);
+      console.log(`  Batch: ${file.batch_id || 'none'}`);
+
+      result.itemsProcessed++;
+
+      // Reset stuck files to 'failed' so they can be retried or cleaned up
+      if (dryRun) {
+        console.log(`  [DRY RUN] Would mark as 'failed' for manual retry or cleanup`);
+        result.succeeded++;
+      } else {
+        try {
+          await prisma.files.update({
+            where: { id: file.id },
+            data: { pipeline_status: 'failed' },
+          });
+          console.log(`  Pipeline status: ${file.pipeline_status} -> failed`);
+          result.succeeded++;
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          console.error(`  ERROR: ${errorMsg}`);
+          result.failed++;
+          result.errors.push(`Failed to update stuck file ${file.name}: ${errorMsg}`);
+        }
+      }
+    }
+  }
+
+  // 4.3: Expired/cancelled upload batches cleanup
+  console.log('\n--- 4.3: Expired/Cancelled Upload Batches ---');
+  const batchWhere = userId
+    ? { user_id: userId, status: { in: ['expired', 'cancelled'] } }
+    : { status: { in: ['expired', 'cancelled'] } };
+
+  const staleBatches = await prisma.upload_batches.findMany({
+    where: batchWhere,
+    select: { id: true, user_id: true, status: true, total_files: true, confirmed_count: true, created_at: true },
+    orderBy: { created_at: 'asc' },
+  });
+
+  result.itemsFound += staleBatches.length;
+
+  if (staleBatches.length === 0) {
+    console.log('No expired/cancelled batches found.');
+  } else {
+    console.log(`Found ${staleBatches.length} expired/cancelled batches`);
+
+    for (const batch of staleBatches) {
+      console.log(`\n[BATCH] ${batch.id}`);
+      console.log(`  Status: ${batch.status} | Files: ${batch.confirmed_count}/${batch.total_files} | Created: ${batch.created_at.toISOString()}`);
+
+      result.itemsProcessed++;
+
+      if (dryRun) {
+        console.log(`  [DRY RUN] Would delete batch record`);
+        result.succeeded++;
+      } else {
+        try {
+          await prisma.upload_batches.delete({ where: { id: batch.id } });
+          console.log(`  Batch record: Deleted`);
+          result.succeeded++;
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          console.error(`  ERROR: ${errorMsg}`);
+          result.failed++;
+          result.errors.push(`Failed to delete batch ${batch.id}: ${errorMsg}`);
+        }
+      }
+    }
+  }
+
+  console.log('\n--- Phase 4 Summary ---');
+  console.log(`Found: ${result.itemsFound}`);
+  console.log(`Processed: ${result.itemsProcessed}`);
+  console.log(`Succeeded: ${result.succeeded}`);
+  console.log(`Failed: ${result.failed}`);
+
+  return result;
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 
@@ -758,17 +962,19 @@ async function main(): Promise<void> {
   const searchClient = createSearchClient<SearchDocument>();
 
   // Determine which phases to run
-  const runAllPhases = !args.stuckDeletions && !args.ghostRecords && !args.orphans;
+  const runAllPhases = !args.stuckDeletions && !args.ghostRecords && !args.orphans && !args.v2Pipeline;
   const phases = {
     phase1: runAllPhases || args.stuckDeletions,
     phase2: runAllPhases || args.ghostRecords,
     phase3: runAllPhases || args.orphans,
+    phase4: runAllPhases || args.v2Pipeline,
   };
 
   console.log('\nPhases to run:');
   console.log(`  Phase 1 (Stuck Deletions): ${phases.phase1 ? 'YES' : 'NO'}`);
   console.log(`  Phase 2 (Ghost Records): ${phases.phase2 ? 'YES' : 'NO'}`);
   console.log(`  Phase 3 (Orphan Cleanup): ${phases.phase3 ? 'YES' : 'NO'}`);
+  console.log(`  Phase 4 (V2 Pipeline):    ${phases.phase4 ? 'YES' : 'NO'}`);
 
   const phaseResults: PhaseResult[] = [];
 
@@ -815,6 +1021,12 @@ async function main(): Promise<void> {
       // Phase 3: Orphan Cleanup
       if (phases.phase3) {
         const result = await runOrphanCleanup(prisma, containerClient, searchClient, currentUserId, args.dryRun);
+        phaseResults.push(result);
+      }
+
+      // Phase 4: V2 Pipeline Cleanup
+      if (phases.phase4) {
+        const result = await runV2PipelineCleanup(prisma, containerClient, searchClient, currentUserId, args.dryRun);
         phaseResults.push(result);
       }
     }

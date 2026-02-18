@@ -10,9 +10,11 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useFileProcessingStore } from '../stores/fileProcessingStore';
 import { useFileListStore } from '../stores/fileListStore';
+import { useBatchUploadStoreV2 } from '../stores/v2/batchUploadStoreV2';
 import { getSocketClient } from '@/src/infrastructure/socket/SocketClient';
 import {
   FILE_WS_EVENTS,
+  PIPELINE_STATUS,
   type FileWebSocketEvent,
   type FileReadinessChangedEvent,
   type FilePermanentlyFailedEvent,
@@ -20,6 +22,7 @@ import {
   type FileProcessingCompletedEvent,
   type FileProcessingFailedEvent,
   type FileUploadedEvent,
+  type PipelineStatus,
 } from '@bc-agent/shared';
 
 /**
@@ -61,6 +64,11 @@ export function useFileProcessingEvents(
   const updateFileInStore = useFileListStore((state) => state.updateFile);
   const addFileToStore = useFileListStore((state) => state.addFile);
 
+  // V2 batch store actions
+  const v2UpdatePipeline = useBatchUploadStoreV2((state) => state.updateFilePipelineStatus);
+  const v2MarkFailed = useBatchUploadStoreV2((state) => state.markFileFailed);
+  const v2Files = useBatchUploadStoreV2((state) => state.files);
+
   // Use refs for callbacks to avoid re-subscribing on every render
   const callbacksRef = useRef({
     setProcessingStatus,
@@ -69,6 +77,9 @@ export function useFileProcessingEvents(
     markFailed,
     updateFileInStore,
     addFileToStore,
+    v2UpdatePipeline,
+    v2MarkFailed,
+    v2Files,
   });
 
   // Update refs when callbacks change
@@ -80,8 +91,11 @@ export function useFileProcessingEvents(
       markFailed,
       updateFileInStore,
       addFileToStore,
+      v2UpdatePipeline,
+      v2MarkFailed,
+      v2Files,
     };
-  }, [setProcessingStatus, updateProgress, markCompleted, markFailed, updateFileInStore, addFileToStore]);
+  }, [setProcessingStatus, updateProgress, markCompleted, markFailed, updateFileInStore, addFileToStore, v2UpdatePipeline, v2MarkFailed, v2Files]);
 
   /**
    * Handle file status events (file:status channel)
@@ -92,6 +106,9 @@ export function useFileProcessingEvents(
       markFailed: fail,
       updateFileInStore: updateFile,
       addFileToStore: addFile,
+      v2UpdatePipeline: updateV2Pipeline,
+      v2MarkFailed: failV2,
+      v2Files,
     } = callbacksRef.current;
 
     switch (event.type) {
@@ -107,6 +124,18 @@ export function useFileProcessingEvents(
           processingStatus: e.processingStatus,
           embeddingStatus: e.embeddingStatus,
         });
+        // V2: Update batch store if file belongs to active batch
+        if (v2Files.has(e.fileId)) {
+          const readinessToPipeline: Record<string, PipelineStatus> = {
+            processing: PIPELINE_STATUS.EXTRACTING,
+            ready: PIPELINE_STATUS.READY,
+            failed: PIPELINE_STATUS.FAILED,
+          };
+          const pipelineStatus = readinessToPipeline[e.readinessState];
+          if (pipelineStatus) {
+            updateV2Pipeline(e.fileId, pipelineStatus);
+          }
+        }
         break;
       }
 
@@ -122,6 +151,10 @@ export function useFileProcessingEvents(
           lastError: e.error,
           failedAt: e.timestamp,
         });
+        // V2: Update batch store if file belongs to active batch
+        if (v2Files.has(e.fileId)) {
+          failV2(e.fileId, e.error);
+        }
         break;
       }
 
@@ -145,6 +178,8 @@ export function useFileProcessingEvents(
       updateProgress: progress,
       markCompleted: complete,
       updateFileInStore: updateFile,
+      v2UpdatePipeline: updateV2Pipeline,
+      v2Files,
     } = callbacksRef.current;
 
     switch (event.type) {
@@ -156,6 +191,10 @@ export function useFileProcessingEvents(
         updateFile(e.fileId, {
           readinessState: 'processing',
         });
+        // V2: Update batch store with extracting status
+        if (v2Files.has(e.fileId)) {
+          updateV2Pipeline(e.fileId, PIPELINE_STATUS.EXTRACTING);
+        }
         break;
       }
 
@@ -168,6 +207,10 @@ export function useFileProcessingEvents(
           readinessState: 'ready',
           processingStatus: 'completed',
         });
+        // V2: Update batch store with ready status
+        if (v2Files.has(e.fileId)) {
+          updateV2Pipeline(e.fileId, PIPELINE_STATUS.READY);
+        }
         break;
       }
 

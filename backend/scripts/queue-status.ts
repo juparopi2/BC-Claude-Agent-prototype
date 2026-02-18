@@ -35,6 +35,7 @@ const QUEUE_PREFIX = process.env.QUEUE_NAME_PREFIX || 'bcagent';
 
 // All queue names in the system
 const ALL_QUEUE_NAMES = [
+  // V1 queues
   'message-persistence',
   'tool-execution',
   'event-processing',
@@ -46,6 +47,11 @@ const ALL_QUEUE_NAMES = [
   'file-cleanup',
   'file-deletion',
   'file-bulk-upload',
+  // V2 pipeline queues (BullMQ Flows)
+  'v2-file-extract',
+  'v2-file-chunk',
+  'v2-file-embed',
+  'v2-file-pipeline-complete',
 ];
 
 // ============================================================================

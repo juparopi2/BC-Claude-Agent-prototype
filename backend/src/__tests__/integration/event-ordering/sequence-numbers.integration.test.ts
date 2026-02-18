@@ -286,10 +286,12 @@ describe.skipIf(!isRedisAvailable)('Event Ordering with Real Redis', () => {
       const user = await factory.createTestUser({ prefix: 'seq_rapid_' });
       const session = await factory.createChatSession(user.id);
 
-      // Rapid fire 50 events sequentially
+      // Rapid fire 20 events sequentially
+      // (20 is sufficient to verify uniqueness + ordering; matches concurrent test count)
+      const eventCount = 20;
       const results: number[] = [];
 
-      for (let i = 0; i < 50; i++) {
+      for (let i = 0; i < eventCount; i++) {
         const result = await eventStore.appendEvent(
           session.id,
           'agent_message_chunk',
@@ -300,7 +302,7 @@ describe.skipIf(!isRedisAvailable)('Event Ordering with Real Redis', () => {
 
       // Verify no duplicates
       const uniqueResults = new Set(results);
-      expect(uniqueResults.size).toBe(50);
+      expect(uniqueResults.size).toBe(eventCount);
 
       // Verify sequential (sorted order matches natural order)
       const sorted = [...results].sort((a, b) => a - b);

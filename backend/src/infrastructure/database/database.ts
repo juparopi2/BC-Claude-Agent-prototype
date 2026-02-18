@@ -202,10 +202,15 @@ function inferSqlType(key: string, value: unknown): ISqlType | (() => ISqlType) 
   // - camelCase: sessionId, userId, etc.
   // - exact match: id
   if (key.endsWith('_id') || key === 'id' || key.endsWith('Id')) {
+    // Allow null for optional UUID parameters
+    if (value === null) {
+      return sql.UniqueIdentifier;
+    }
+
     // Validate UUID format before attempting SQL binding
     if (typeof value !== 'string') {
       throw new Error(
-        `Invalid UUID parameter '${key}': expected string, got ${typeof value}`
+        `Invalid UUID parameter '${key}': expected string or null, got ${typeof value}`
       );
     }
 

@@ -352,6 +352,76 @@ These files were created by PRD-05 and are **permanent** (NOT deprecated — the
 |----------|----------|-----|
 | `/api/v2/uploads/*` | `/api/uploads/*` | PRD-07 |
 
+### 2.17 Integration Tests — V2 Replacements (Added 2026-02-17)
+
+The V2 system introduced a complete integration test suite under `backend/src/__tests__/integration/files/v2/`. These tests replace the legacy integration tests and must be **renamed** (remove `V2` suffix and `/v2/` directory) when PRD-07 is executed.
+
+**V2 Integration Test Helper (permanent, rename during PRD-07)**:
+
+| File | Purpose |
+|------|---------|
+| `backend/src/__tests__/integration/helpers/V2PipelineTestHelper.ts` | Shared helper: test users, files with `pipeline_status`, batches, FK-aware cleanup |
+
+**V2 Integration Test Suites (permanent, rename during PRD-07)**:
+
+| V2 Test File | Tests | PRD |
+|--------------|-------|-----|
+| `backend/src/__tests__/integration/files/v2/FileRepositoryV2.integration.test.ts` | CAS state machine, atomicity, multi-tenant isolation, stuck/abandoned file queries | PRD-01 |
+| `backend/src/__tests__/integration/files/v2/DuplicateDetectionServiceV2.integration.test.ts` | 3-scope detection, scope priority, batch ops, multi-tenant | PRD-02 |
+| `backend/src/__tests__/integration/files/v2/BatchUploadOrchestratorV2.integration.test.ts` | Atomic batch creation, Phase C confirmation, error cases, rollback, manifest validation | PRD-03 |
+| `backend/src/__tests__/integration/files/v2/RecoveryAndCleanup.integration.test.ts` | Stuck file recovery, batch timeout, orphan cleanup | PRD-05 |
+| `backend/src/__tests__/integration/files/v2/V2PipelineRegression.integration.test.ts` | Regression tests for original bugs (data loss, non-atomic transitions, silent failures) | PRD-01–05 |
+
+**Legacy Integration Tests to Delete (replaced by V2 suite above)**:
+
+| Legacy Test File | Replaced By | Notes |
+|------------------|-------------|-------|
+| `backend/src/__tests__/integration/files/DuplicateDetection.integration.test.ts` | `DuplicateDetectionServiceV2.integration.test.ts` | V1 used `FileDuplicateService`; V2 uses 3-scope `DuplicateDetectionServiceV2` |
+| `backend/src/__tests__/integration/files/FileUploadService.integration.test.ts` | `BatchUploadOrchestratorV2.integration.test.ts` | V1 tested individual file upload; V2 tests unified batch orchestrator |
+| `backend/src/__tests__/integration/files/FolderUpload.integration.test.ts` | `BatchUploadOrchestratorV2.integration.test.ts` | V1 tested folder upload as separate path; V2 handles folders within batch manifest |
+| `backend/src/__tests__/integration/files/file-retry-processing.test.ts` | `RecoveryAndCleanup.integration.test.ts` + `V2PipelineRegression.integration.test.ts` | V1 tested polling-based retry; V2 tests `StuckFileRecoveryService` + CAS-based retry |
+| `backend/src/__tests__/integration/files/FileDeletionCascade.integration.test.ts` | `RecoveryAndCleanup.integration.test.ts` (partial) | Cascade logic still relevant; review if covered or retain |
+
+**PRD-07 Rename Actions for Tests**:
+
+During Stage 3, after all legacy tests are deleted:
+
+1. **Move** `v2/` directory contents up to `files/`:
+   ```bash
+   mv backend/src/__tests__/integration/files/v2/*.ts backend/src/__tests__/integration/files/
+   rmdir backend/src/__tests__/integration/files/v2/
+   ```
+
+2. **Rename** test files (remove `V2` suffix):
+   ```bash
+   mv FileRepositoryV2.integration.test.ts → FileRepository.integration.test.ts
+   mv DuplicateDetectionServiceV2.integration.test.ts → DuplicateDetection.integration.test.ts
+   mv BatchUploadOrchestratorV2.integration.test.ts → BatchUploadOrchestrator.integration.test.ts
+   mv RecoveryAndCleanup.integration.test.ts → RecoveryAndCleanup.integration.test.ts  # (no change)
+   mv V2PipelineRegression.integration.test.ts → PipelineRegression.integration.test.ts
+   ```
+
+3. **Rename** helper:
+   ```bash
+   mv V2PipelineTestHelper.ts → PipelineTestHelper.ts
+   ```
+
+4. **Update** all internal imports and class names:
+   - `V2PipelineTestHelper` → `PipelineTestHelper`
+   - `createV2PipelineTestHelper` → `createPipelineTestHelper`
+   - `FileRepositoryV2` references in test descriptions → `FileRepository`
+   - `DuplicateDetectionServiceV2` in describe blocks → `DuplicateDetectionService`
+   - `BatchUploadOrchestratorV2` in describe blocks → `BatchUploadOrchestrator`
+   - Remove all `V2` and `PRD-XX` suffixes from test describe strings
+
+5. **Update** `helpers/index.ts` export:
+   ```typescript
+   // BEFORE:
+   export * from './V2PipelineTestHelper';
+   // AFTER:
+   export * from './PipelineTestHelper';
+   ```
+
 ---
 
 ## 3. Solution: Three-Stage Migration
@@ -1148,6 +1218,33 @@ SELECT COUNT(*) FROM files WHERE pipeline_status IN ('extracting', 'chunking', '
 4. **Error Handling**: Trigger a processing failure (invalid file)
 5. **API Endpoint Verification**: `curl` all endpoints (see Stage 3.9)
 
+### V2 Integration Test Suite (Added 2026-02-17)
+
+The V2 pipeline has a dedicated integration test suite that validates all PRD-01 through PRD-05 functionality against real Azure SQL + Redis infrastructure:
+
+```bash
+# Run all V2 integration tests (requires Docker Redis on port 6399 + Azure SQL)
+npx vitest run "v2/"
+
+# Run individual suites
+npx vitest run "FileRepositoryV2.integration"
+npx vitest run "DuplicateDetectionServiceV2.integration"
+npx vitest run "BatchUploadOrchestratorV2.integration"
+npx vitest run "RecoveryAndCleanup.integration"
+npx vitest run "V2PipelineRegression.integration"
+```
+
+**Test counts by file**:
+| File | Test Cases | Coverage |
+|------|-----------|----------|
+| `FileRepositoryV2.integration.test.ts` | ~40 | CAS transitions, atomicity, multi-tenant, stuck/abandoned queries |
+| `DuplicateDetectionServiceV2.integration.test.ts` | ~15 | 3-scope detection, priority, batch ops, multi-tenant |
+| `BatchUploadOrchestratorV2.integration.test.ts` | ~30 | Atomic creation, Phase C confirm, 8 error cases, rollback, cancel |
+| `RecoveryAndCleanup.integration.test.ts` | ~13 | StuckFileRecovery, BatchTimeout, OrphanCleanup |
+| `V2PipelineRegression.integration.test.ts` | ~12 | Original bug regressions: data loss, CAS races, silent failures |
+
+These tests should be run **before** and **after** PRD-07 migration to validate nothing breaks.
+
 ### Regression Testing
 Run full test suite after each subsection commit:
 ```bash
@@ -1566,7 +1663,24 @@ Print this checklist and check off files as deleted:
 - [ ] `frontend/src/domains/files/stores/uploadStore.ts`
 - [ ] `frontend/src/domains/files/stores/duplicateStore.ts`
 
-**Total Files**: 29
+### Legacy Integration Tests (delete after V2 tests are promoted)
+- [ ] `backend/src/__tests__/integration/files/DuplicateDetection.integration.test.ts`
+- [ ] `backend/src/__tests__/integration/files/FileUploadService.integration.test.ts`
+- [ ] `backend/src/__tests__/integration/files/FolderUpload.integration.test.ts`
+- [ ] `backend/src/__tests__/integration/files/file-retry-processing.test.ts`
+- [ ] `backend/src/__tests__/integration/files/FileDeletionCascade.integration.test.ts` *(review: retain if cascade logic not covered by V2)*
+
+### V2 Test Renames (remove V2 suffix + move out of v2/ directory)
+- [ ] `v2/FileRepositoryV2.integration.test.ts` → `FileRepository.integration.test.ts`
+- [ ] `v2/DuplicateDetectionServiceV2.integration.test.ts` → `DuplicateDetection.integration.test.ts`
+- [ ] `v2/BatchUploadOrchestratorV2.integration.test.ts` → `BatchUploadOrchestrator.integration.test.ts`
+- [ ] `v2/RecoveryAndCleanup.integration.test.ts` → `RecoveryAndCleanup.integration.test.ts`
+- [ ] `v2/V2PipelineRegression.integration.test.ts` → `PipelineRegression.integration.test.ts`
+- [ ] `helpers/V2PipelineTestHelper.ts` → `helpers/PipelineTestHelper.ts`
+- [ ] Update `helpers/index.ts` export
+- [ ] Update all internal imports and class/function names (remove `V2` prefix)
+
+**Total Files**: 29 (source) + 5 (legacy tests to delete) + 6 (V2 test renames)
 
 ---
 

@@ -2,7 +2,7 @@
  * useBlobUploadV2 Hook
  *
  * Wraps Uppy blob upload for V2 batch uploads.
- * Reads SAS URLs from batch response and uploads files directly to Azure Blob.
+ * Supports multiple concurrent batches via a per-batch Uppy instance Map.
  *
  * @module domains/files/hooks/v2/useBlobUploadV2
  */
@@ -27,18 +27,19 @@ export interface BlobUploadResult {
 
 /**
  * Hook for uploading files to Azure Blob via Uppy (V2)
+ * Manages per-batch Uppy instances for concurrent uploads.
  */
 export function useBlobUploadV2() {
   const updateProgress = useBatchUploadStoreV2((s) => s.updateFileUploadProgress);
   const markFailed = useBatchUploadStoreV2((s) => s.markFileFailed);
-  const uppyRef = useRef<ReturnType<typeof createBlobUploadUppy> | null>(null);
+  const uppyMapRef = useRef<Map<string, ReturnType<typeof createBlobUploadUppy>>>(new Map());
 
   const uploadBlobs = useCallback(
-    async (files: BlobUploadFile[]): Promise<BlobUploadResult[]> => {
+    async (batchKey: string, files: BlobUploadFile[]): Promise<BlobUploadResult[]> => {
       if (files.length === 0) return [];
 
       const uppy = createBlobUploadUppy({ concurrency: 5 });
-      uppyRef.current = uppy;
+      uppyMapRef.current.set(batchKey, uppy);
 
       const results = new Map<string, BlobUploadResult>();
       const fileIdByUppyId = new Map<string, string>();
@@ -66,7 +67,7 @@ export function useBlobUploadV2() {
           const fileId = fileIdByUppyId.get(file.id);
           if (fileId && progress.bytesTotal && progress.bytesTotal > 0) {
             const pct = Math.round((progress.bytesUploaded / progress.bytesTotal) * 100);
-            updateProgress(fileId, pct);
+            updateProgress(batchKey, fileId, pct);
           }
         });
 
@@ -76,7 +77,7 @@ export function useBlobUploadV2() {
           const fileId = fileIdByUppyId.get(file.id);
           if (fileId) {
             results.set(fileId, { fileId, success: true });
-            updateProgress(fileId, 100);
+            updateProgress(batchKey, fileId, 100);
           }
         });
 
@@ -87,7 +88,7 @@ export function useBlobUploadV2() {
           const errMsg = error?.message ?? 'Blob upload failed';
           if (fileId) {
             results.set(fileId, { fileId, success: false, error: errMsg });
-            markFailed(fileId, errMsg);
+            markFailed(batchKey, fileId, errMsg);
           }
         });
 
@@ -100,7 +101,7 @@ export function useBlobUploadV2() {
 
           uppy.clear();
           uppy.destroy();
-          uppyRef.current = null;
+          uppyMapRef.current.delete(batchKey);
           resolve(finalResults);
         });
 
@@ -111,14 +112,24 @@ export function useBlobUploadV2() {
     [updateProgress, markFailed]
   );
 
-  const cancel = useCallback(() => {
-    if (uppyRef.current) {
-      uppyRef.current.cancelAll();
-      uppyRef.current.clear();
-      uppyRef.current.destroy();
-      uppyRef.current = null;
+  const cancelByBatchKey = useCallback((batchKey: string) => {
+    const uppy = uppyMapRef.current.get(batchKey);
+    if (uppy) {
+      uppy.cancelAll();
+      uppy.clear();
+      uppy.destroy();
+      uppyMapRef.current.delete(batchKey);
     }
   }, []);
 
-  return { uploadBlobs, cancel };
+  const cancelAll = useCallback(() => {
+    for (const [key, uppy] of uppyMapRef.current) {
+      uppy.cancelAll();
+      uppy.clear();
+      uppy.destroy();
+      uppyMapRef.current.delete(key);
+    }
+  }, []);
+
+  return { uploadBlobs, cancelByBatchKey, cancelAll };
 }

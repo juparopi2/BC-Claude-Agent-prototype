@@ -5,6 +5,8 @@
  * Replaces useFileUpload + useFolderUpload with a unified flow:
  * hash -> duplicate check -> manifest -> batch create -> blob upload -> confirm
  *
+ * Supports multiple concurrent batches via batchKey-based state isolation.
+ *
  * @module domains/files/hooks/v2/useBatchUploadV2
  */
 
@@ -21,8 +23,16 @@ import { useFileConfirmV2 } from './useFileConfirmV2';
 import { useDuplicateResolutionV2 } from './useDuplicateResolutionV2';
 import type { FolderEntry, FileEntry } from '../../types/folderUpload.types';
 
-const BATCH_LOCALSTORAGE_KEY = 'v2_activeBatchId';
+const BATCHES_LOCALSTORAGE_KEY = 'v2_activeBatches';
+const LEGACY_BATCH_LOCALSTORAGE_KEY = 'v2_activeBatchId';
 const BATCH_TTL_HOURS = 4;
+const MAX_CONCURRENT_BATCHES = 5;
+
+interface StoredBatchRef {
+  batchId: string;
+  batchKey: string;
+  ts: number;
+}
 
 export interface UseBatchUploadV2Return {
   startUpload: (
@@ -30,11 +40,11 @@ export interface UseBatchUploadV2Return {
     folders?: FolderEntry[],
     targetFolderId?: string | null
   ) => Promise<string | null>;
-  cancelBatch: (batchId?: string) => Promise<void>;
-  pause: () => void;
-  resume: () => void;
-  isUploading: boolean;
-  activeBatch: ReturnType<typeof useBatchUploadStoreV2.getState>['activeBatch'];
+  cancelBatch: (batchKey: string) => Promise<void>;
+  pause: (batchKey: string) => void;
+  resume: (batchKey: string) => void;
+  hasActiveUploads: boolean;
+  activeBatchCount: number;
 }
 
 /**
@@ -94,74 +104,156 @@ export function mergeFilesWithFolderContents(
   return { allFiles: files.map((f) => ({ file: f })), manifestFolders: [] };
 }
 
+// ============================================
+// localStorage helpers
+// ============================================
+
+function loadBatchRefs(): StoredBatchRef[] {
+  try {
+    const raw = localStorage.getItem(BATCHES_LOCALSTORAGE_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw) as StoredBatchRef[];
+  } catch {
+    return [];
+  }
+}
+
+function saveBatchRef(ref: StoredBatchRef): void {
+  const refs = loadBatchRefs();
+  refs.push(ref);
+  localStorage.setItem(BATCHES_LOCALSTORAGE_KEY, JSON.stringify(refs));
+}
+
+function removeBatchRef(batchKey: string): void {
+  const refs = loadBatchRefs().filter((r) => r.batchKey !== batchKey);
+  if (refs.length === 0) {
+    localStorage.removeItem(BATCHES_LOCALSTORAGE_KEY);
+  } else {
+    localStorage.setItem(BATCHES_LOCALSTORAGE_KEY, JSON.stringify(refs));
+  }
+}
+
+function clearAllBatchRefs(): void {
+  localStorage.removeItem(BATCHES_LOCALSTORAGE_KEY);
+}
+
+/**
+ * Migrate from legacy single-key localStorage to the new array format.
+ */
+function migrateLegacyLocalStorage(): void {
+  const legacyId = localStorage.getItem(LEGACY_BATCH_LOCALSTORAGE_KEY);
+  if (!legacyId) return;
+
+  const legacyTs = localStorage.getItem(`${LEGACY_BATCH_LOCALSTORAGE_KEY}_ts`);
+  const ts = legacyTs ? Number(legacyTs) : Date.now();
+
+  const existing = loadBatchRefs();
+  // Only migrate if not already present
+  if (!existing.some((r) => r.batchId === legacyId)) {
+    saveBatchRef({
+      batchId: legacyId,
+      batchKey: `legacy-${legacyId}`,
+      ts,
+    });
+  }
+
+  localStorage.removeItem(LEGACY_BATCH_LOCALSTORAGE_KEY);
+  localStorage.removeItem(`${LEGACY_BATCH_LOCALSTORAGE_KEY}_ts`);
+}
+
+/**
+ * Generate a unique batchKey for client-side tracking.
+ */
+function generateBatchKey(): string {
+  return `batch-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
 /**
  * Main V2 batch upload hook
  */
 export function useBatchUploadV2(): UseBatchUploadV2Return {
-  const activeBatch = useBatchUploadStoreV2((s) => s.activeBatch);
-  const isUploading = useBatchUploadStoreV2((s) => s.isUploading);
-  const setActiveBatch = useBatchUploadStoreV2((s) => s.setActiveBatch);
+  const hasActiveUploads = useBatchUploadStoreV2((s) => s.hasActiveUploads);
+  const batches = useBatchUploadStoreV2((s) => s.batches);
+  const addPreparing = useBatchUploadStoreV2((s) => s.addPreparing);
+  const activateBatch = useBatchUploadStoreV2((s) => s.activateBatch);
   const setError = useBatchUploadStoreV2((s) => s.setError);
   const setPaused = useBatchUploadStoreV2((s) => s.setPaused);
+  const removeBatch = useBatchUploadStoreV2((s) => s.removeBatch);
   const resetStore = useBatchUploadStoreV2((s) => s.reset);
 
-  const { uploadBlobs, cancel: cancelBlobs } = useBlobUploadV2();
-  const { confirmFiles, abort: abortConfirm } = useFileConfirmV2();
+  const { uploadBlobs, cancelByBatchKey: cancelBlobsByBatchKey, cancelAll: cancelAllBlobs } = useBlobUploadV2();
+  const { confirmFiles, abortByBatchKey: abortConfirmByBatchKey, abortAll: abortAllConfirms } = useFileConfirmV2();
   const { checkAndResolve } = useDuplicateResolutionV2();
-  const abortRef = useRef(false);
+  const abortMapRef = useRef<Map<string, boolean>>(new Map());
+
+  // Count active batches (preparing or active phase)
+  const activeBatchCount = (() => {
+    let count = 0;
+    for (const entry of batches.values()) {
+      if (entry.phase === 'preparing' || entry.phase === 'active') {
+        count++;
+      }
+    }
+    return count;
+  })();
 
   // ============================================
   // Crash Recovery
   // ============================================
   useEffect(() => {
-    const savedBatchId = localStorage.getItem(BATCH_LOCALSTORAGE_KEY);
-    if (!savedBatchId) return;
+    // Migrate legacy single-key localStorage
+    migrateLegacyLocalStorage();
 
-    // Check age
-    const savedAt = localStorage.getItem(`${BATCH_LOCALSTORAGE_KEY}_ts`);
-    if (savedAt) {
-      const ageHours = (Date.now() - Number(savedAt)) / (1000 * 60 * 60);
-      if (ageHours > BATCH_TTL_HOURS) {
-        localStorage.removeItem(BATCH_LOCALSTORAGE_KEY);
-        localStorage.removeItem(`${BATCH_LOCALSTORAGE_KEY}_ts`);
-        return;
-      }
-    }
+    const refs = loadBatchRefs();
+    if (refs.length === 0) return;
 
-    // Recover batch status
     const api = getFileApiClientV2();
-    api.getBatchStatus(savedBatchId).then((response) => {
-      if (!response.success) {
-        localStorage.removeItem(BATCH_LOCALSTORAGE_KEY);
-        localStorage.removeItem(`${BATCH_LOCALSTORAGE_KEY}_ts`);
-        return;
+    const now = Date.now();
+
+    for (const ref of refs) {
+      // Check age
+      const ageHours = (now - ref.ts) / (1000 * 60 * 60);
+      if (ageHours > BATCH_TTL_HOURS) {
+        removeBatchRef(ref.batchKey);
+        continue;
       }
 
-      const batch = response.data;
-      if (batch.status === 'completed' || batch.status === 'expired' || batch.status === 'cancelled') {
-        localStorage.removeItem(BATCH_LOCALSTORAGE_KEY);
-        localStorage.removeItem(`${BATCH_LOCALSTORAGE_KEY}_ts`);
-        return;
-      }
+      // Recover batch status
+      api.getBatchStatus(ref.batchId).then((response) => {
+        if (!response.success) {
+          removeBatchRef(ref.batchKey);
+          return;
+        }
 
-      // Restore batch in store (status-only, no blob re-upload)
-      const fileNames = new Map<string, string>();
-      const filesForResponse = batch.files.map((f) => {
-        fileNames.set(f.fileId, f.name);
-        return { tempId: f.fileId, fileId: f.fileId, sasUrl: '', blobPath: '' };
+        const batch = response.data;
+        if (batch.status === 'completed' || batch.status === 'expired' || batch.status === 'cancelled') {
+          removeBatchRef(ref.batchKey);
+          return;
+        }
+
+        // Restore batch in store (status-only, no blob re-upload)
+        const { addPreparing: addPrep, activateBatch: activate } = useBatchUploadStoreV2.getState();
+        addPrep(ref.batchKey, batch.files.length, false);
+
+        const fileNames = new Map<string, string>();
+        const filesForResponse = batch.files.map((f) => {
+          fileNames.set(f.fileId, f.name);
+          return { tempId: f.fileId, fileId: f.fileId, sasUrl: '', blobPath: '' };
+        });
+
+        activate(
+          ref.batchKey,
+          {
+            batchId: batch.batchId,
+            status: batch.status,
+            files: filesForResponse,
+            folders: [],
+            expiresAt: batch.expiresAt,
+          },
+          fileNames
+        );
       });
-
-      setActiveBatch(
-        {
-          batchId: batch.batchId,
-          status: batch.status,
-          files: filesForResponse,
-          folders: [],
-          expiresAt: batch.expiresAt,
-        },
-        fileNames
-      );
-    });
+    }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ============================================
@@ -173,7 +265,8 @@ export function useBatchUploadV2(): UseBatchUploadV2Return {
       folders?: FolderEntry[],
       targetFolderId?: string | null
     ): Promise<string | null> => {
-      abortRef.current = false;
+      const batchKey = generateBatchKey();
+      abortMapRef.current.set(batchKey, false);
 
       try {
         // 1. Collect all files (flat + from folders), deduplicating any overlap
@@ -182,16 +275,15 @@ export function useBatchUploadV2(): UseBatchUploadV2Return {
         if (allFiles.length === 0) return null;
 
         // Show preparing panel immediately (before any async work)
-        const { startPreparing } = useBatchUploadStoreV2.getState();
-        startPreparing(allFiles.length, (folders?.length ?? 0) > 0);
+        addPreparing(batchKey, allFiles.length, (folders?.length ?? 0) > 0);
 
         // 2. Hash computation
         const hashResults = await computeFileHashesWithIds(
           allFiles.map((f) => f.file)
         );
 
-        if (abortRef.current) {
-          resetStore();
+        if (abortMapRef.current.get(batchKey)) {
+          removeBatch(batchKey);
           return null;
         }
 
@@ -206,11 +298,11 @@ export function useBatchUploadV2(): UseBatchUploadV2Return {
 
         const dupResult = await checkAndResolve(dupInput);
         if (!dupResult) {
-          resetStore(); // cancelled — clear preparing state
+          removeBatch(batchKey); // cancelled
           return null;
         }
-        if (abortRef.current) {
-          resetStore();
+        if (abortMapRef.current.get(batchKey)) {
+          removeBatch(batchKey);
           return null;
         }
 
@@ -220,7 +312,7 @@ export function useBatchUploadV2(): UseBatchUploadV2Return {
         const proceedFiles = allFiles.filter((_, i) => !skippedSet.has(hashResults[i]!.tempId));
 
         if (proceedHashes.length === 0) {
-          resetStore(); // all files skipped — clear preparing state
+          removeBatch(batchKey); // all files skipped
           return null;
         }
 
@@ -243,24 +335,23 @@ export function useBatchUploadV2(): UseBatchUploadV2Return {
         });
 
         if (!batchResponse.success) {
-          resetStore(); // clear preparing state
+          removeBatch(batchKey);
           return null;
         }
 
         const batch = batchResponse.data;
 
         // 6. Save to localStorage for crash recovery
-        localStorage.setItem(BATCH_LOCALSTORAGE_KEY, batch.batchId);
-        localStorage.setItem(`${BATCH_LOCALSTORAGE_KEY}_ts`, String(Date.now()));
+        saveBatchRef({ batchId: batch.batchId, batchKey, ts: Date.now() });
 
         // 7. Set active batch in store
         const fileNames = new Map<string, string>();
         for (const h of proceedHashes) {
           fileNames.set(h.tempId, h.file.name);
         }
-        setActiveBatch(batch, fileNames);
+        activateBatch(batchKey, batch, fileNames);
 
-        if (abortRef.current) return batch.batchId;
+        if (abortMapRef.current.get(batchKey)) return batch.batchId;
 
         // 8. Upload blobs via Uppy
         const blobFiles = batch.files.map((bf) => {
@@ -274,8 +365,8 @@ export function useBatchUploadV2(): UseBatchUploadV2Return {
           };
         });
 
-        const uploadResults = await uploadBlobs(blobFiles);
-        if (abortRef.current) return batch.batchId;
+        const uploadResults = await uploadBlobs(batchKey, blobFiles);
+        if (abortMapRef.current.get(batchKey)) return batch.batchId;
 
         // 9. Confirm successful uploads
         const successFileIds = uploadResults
@@ -283,60 +374,61 @@ export function useBatchUploadV2(): UseBatchUploadV2Return {
           .map((r) => r.fileId);
 
         if (successFileIds.length > 0) {
-          await confirmFiles(batch.batchId, successFileIds);
+          await confirmFiles(batchKey, batch.batchId, successFileIds);
         }
 
+        abortMapRef.current.delete(batchKey);
         return batch.batchId;
       } catch (error) {
-        const { activeBatch: currentBatch } = useBatchUploadStoreV2.getState();
-        if (currentBatch) {
+        const currentEntry = useBatchUploadStoreV2.getState().batches.get(batchKey);
+        if (currentEntry?.activeBatch) {
           // Batch already created — keep panel visible with error
           const msg = error instanceof Error ? error.message : 'Upload failed';
-          setError(msg);
+          setError(batchKey, msg);
         } else {
-          // Still preparing — clear panel entirely
-          resetStore();
+          // Still preparing — remove batch entry entirely
+          removeBatch(batchKey);
         }
+        abortMapRef.current.delete(batchKey);
         return null;
       }
     },
-    [setActiveBatch, setError, uploadBlobs, confirmFiles, checkAndResolve, resetStore]
+    [addPreparing, activateBatch, setError, removeBatch, uploadBlobs, confirmFiles, checkAndResolve]
   );
 
   // ============================================
   // Cancel
   // ============================================
   const cancelBatch = useCallback(
-    async (batchId?: string) => {
-      abortRef.current = true;
-      cancelBlobs();
-      abortConfirm();
+    async (batchKey: string) => {
+      abortMapRef.current.set(batchKey, true);
+      cancelBlobsByBatchKey(batchKey);
+      abortConfirmByBatchKey(batchKey);
 
-      const id = batchId ?? activeBatch?.batchId;
-      if (id) {
+      const entry = useBatchUploadStoreV2.getState().batches.get(batchKey);
+      const batchId = entry?.activeBatch?.batchId;
+      if (batchId) {
         const api = getFileApiClientV2();
-        await api.cancelBatch(id);
+        await api.cancelBatch(batchId);
       }
 
-      localStorage.removeItem(BATCH_LOCALSTORAGE_KEY);
-      localStorage.removeItem(`${BATCH_LOCALSTORAGE_KEY}_ts`);
-      resetStore();
+      removeBatchRef(batchKey);
+      removeBatch(batchKey);
+      abortMapRef.current.delete(batchKey);
     },
-    [activeBatch, cancelBlobs, abortConfirm, resetStore]
+    [cancelBlobsByBatchKey, abortConfirmByBatchKey, removeBatch]
   );
 
   // ============================================
   // Pause / Resume
   // ============================================
-  const pause = useCallback(() => {
-    setPaused(true);
-    cancelBlobs();
-  }, [setPaused, cancelBlobs]);
+  const pause = useCallback((batchKey: string) => {
+    setPaused(batchKey, true);
+    cancelBlobsByBatchKey(batchKey);
+  }, [setPaused, cancelBlobsByBatchKey]);
 
-  const resume = useCallback(() => {
-    setPaused(false);
-    // Resuming blob uploads requires re-creating Uppy, which is not supported
-    // in the initial implementation. Show current status only.
+  const resume = useCallback((batchKey: string) => {
+    setPaused(batchKey, false);
   }, [setPaused]);
 
   return {
@@ -344,7 +436,7 @@ export function useBatchUploadV2(): UseBatchUploadV2Return {
     cancelBatch,
     pause,
     resume,
-    isUploading,
-    activeBatch,
+    hasActiveUploads,
+    activeBatchCount,
   };
 }

@@ -64,10 +64,10 @@ export function useFileProcessingEvents(
   const updateFileInStore = useFileListStore((state) => state.updateFile);
   const addFileToStore = useFileListStore((state) => state.addFile);
 
-  // V2 batch store actions
-  const v2UpdatePipeline = useBatchUploadStoreV2((state) => state.updateFilePipelineStatus);
-  const v2MarkFailed = useBatchUploadStoreV2((state) => state.markFileFailed);
-  const v2Files = useBatchUploadStoreV2((state) => state.files);
+  // V2 batch store actions (by-fileId variants for WebSocket compat)
+  const v2UpdatePipelineByFileId = useBatchUploadStoreV2((state) => state.updateFilePipelineStatusByFileId);
+  const v2MarkFailedByFileId = useBatchUploadStoreV2((state) => state.markFileFailedByFileId);
+  const v2HasFileId = useBatchUploadStoreV2((state) => state.hasFileId);
 
   // Use refs for callbacks to avoid re-subscribing on every render
   const callbacksRef = useRef({
@@ -77,9 +77,9 @@ export function useFileProcessingEvents(
     markFailed,
     updateFileInStore,
     addFileToStore,
-    v2UpdatePipeline,
-    v2MarkFailed,
-    v2Files,
+    v2UpdatePipelineByFileId,
+    v2MarkFailedByFileId,
+    v2HasFileId,
   });
 
   // Update refs when callbacks change
@@ -91,11 +91,11 @@ export function useFileProcessingEvents(
       markFailed,
       updateFileInStore,
       addFileToStore,
-      v2UpdatePipeline,
-      v2MarkFailed,
-      v2Files,
+      v2UpdatePipelineByFileId,
+      v2MarkFailedByFileId,
+      v2HasFileId,
     };
-  }, [setProcessingStatus, updateProgress, markCompleted, markFailed, updateFileInStore, addFileToStore, v2UpdatePipeline, v2MarkFailed, v2Files]);
+  }, [setProcessingStatus, updateProgress, markCompleted, markFailed, updateFileInStore, addFileToStore, v2UpdatePipelineByFileId, v2MarkFailedByFileId, v2HasFileId]);
 
   /**
    * Handle file status events (file:status channel)
@@ -106,9 +106,9 @@ export function useFileProcessingEvents(
       markFailed: fail,
       updateFileInStore: updateFile,
       addFileToStore: addFile,
-      v2UpdatePipeline: updateV2Pipeline,
-      v2MarkFailed: failV2,
-      v2Files,
+      v2UpdatePipelineByFileId: updateV2Pipeline,
+      v2MarkFailedByFileId: failV2,
+      v2HasFileId: hasV2File,
     } = callbacksRef.current;
 
     switch (event.type) {
@@ -124,8 +124,8 @@ export function useFileProcessingEvents(
           processingStatus: e.processingStatus,
           embeddingStatus: e.embeddingStatus,
         });
-        // V2: Update batch store if file belongs to active batch
-        if (v2Files.has(e.fileId)) {
+        // V2: Update batch store if file belongs to any batch
+        if (hasV2File(e.fileId)) {
           const readinessToPipeline: Record<string, PipelineStatus> = {
             processing: PIPELINE_STATUS.EXTRACTING,
             ready: PIPELINE_STATUS.READY,
@@ -151,8 +151,8 @@ export function useFileProcessingEvents(
           lastError: e.error,
           failedAt: e.timestamp,
         });
-        // V2: Update batch store if file belongs to active batch
-        if (v2Files.has(e.fileId)) {
+        // V2: Update batch store if file belongs to any batch
+        if (hasV2File(e.fileId)) {
           failV2(e.fileId, e.error);
         }
         break;
@@ -178,8 +178,8 @@ export function useFileProcessingEvents(
       updateProgress: progress,
       markCompleted: complete,
       updateFileInStore: updateFile,
-      v2UpdatePipeline: updateV2Pipeline,
-      v2Files,
+      v2UpdatePipelineByFileId: updateV2Pipeline,
+      v2HasFileId: hasV2File,
     } = callbacksRef.current;
 
     switch (event.type) {
@@ -192,7 +192,7 @@ export function useFileProcessingEvents(
           readinessState: 'processing',
         });
         // V2: Update batch store with extracting status
-        if (v2Files.has(e.fileId)) {
+        if (hasV2File(e.fileId)) {
           updateV2Pipeline(e.fileId, PIPELINE_STATUS.EXTRACTING);
         }
         break;
@@ -208,7 +208,7 @@ export function useFileProcessingEvents(
           processingStatus: 'completed',
         });
         // V2: Update batch store with ready status
-        if (v2Files.has(e.fileId)) {
+        if (hasV2File(e.fileId)) {
           updateV2Pipeline(e.fileId, PIPELINE_STATUS.READY);
         }
         break;

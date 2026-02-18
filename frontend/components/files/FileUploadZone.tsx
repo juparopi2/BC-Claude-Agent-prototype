@@ -26,6 +26,8 @@ import { BatchUploadProgressPanelV2 } from '@/components/files/v2/BatchUploadPro
  */
 const USE_V2_UPLOAD = process.env.NEXT_PUBLIC_USE_V2_UPLOAD === 'true';
 
+const MAX_CONCURRENT_BATCHES = 5;
+
 interface FileUploadZoneProps {
   children: React.ReactNode;
   className?: string;
@@ -42,16 +44,17 @@ export function FileUploadZone({
   const {
     uploadFolder,
     cancelSession,
-    hasActiveUploads,
+    hasActiveUploads: v1HasActiveUploads,
     maxConcurrentSessions,
-    activeCount,
+    activeCount: v1ActiveCount,
   } = useFolderUpload();
 
   // V2 hooks (always called for hook rules compliance)
   const {
     startUpload: startUploadV2,
     cancelBatch,
-    isUploading: isUploadingV2,
+    hasActiveUploads: v2HasActiveUploads,
+    activeBatchCount,
   } = useBatchUploadV2();
 
   const [isDragActive, setIsDragActive] = useState(false);
@@ -69,8 +72,8 @@ export function FileUploadZone({
   const resolveAllRemaining = useDuplicateStore((state) => state.resolveAllRemaining);
   const closeModal = useDuplicateStore((state) => state.closeModal);
 
-  // Unified isUploading
-  const isUploading = USE_V2_UPLOAD ? isUploadingV2 : isUploadingV1;
+  // Unified isUploading — for V2, we use hasActiveUploads (allows concurrent drops)
+  const isUploading = USE_V2_UPLOAD ? false : isUploadingV1;
 
   /**
    * Handle drag events to detect folder vs files
@@ -80,6 +83,17 @@ export function FileUploadZone({
     const dropType = detectDropType(e.dataTransfer);
     setIsDraggingFolder(dropType === 'folder' || dropType === 'mixed');
   }, []);
+
+  /**
+   * V2 concurrent limit check
+   */
+  const checkV2ConcurrentLimit = useCallback((): boolean => {
+    if (activeBatchCount >= MAX_CONCURRENT_BATCHES) {
+      toast.error(`Maximum ${MAX_CONCURRENT_BATCHES} concurrent uploads. Wait for one to complete.`);
+      return false;
+    }
+    return true;
+  }, [activeBatchCount]);
 
   /**
    * Custom drop handler that checks for folders
@@ -93,6 +107,8 @@ export function FileUploadZone({
 
     if (USE_V2_UPLOAD) {
       // V2: Unified path for both files and folders
+      if (!checkV2ConcurrentLimit()) return;
+
       try {
         if (dropType === 'folder' || dropType === 'mixed') {
           const structure = await buildFolderStructure(e.dataTransfer);
@@ -115,7 +131,7 @@ export function FileUploadZone({
     } else {
       // V1: Original folder handling
       if (dropType === 'folder' || dropType === 'mixed') {
-        if (activeCount >= maxConcurrentSessions) {
+        if (v1ActiveCount >= maxConcurrentSessions) {
           toast.error(
             `Maximum ${maxConcurrentSessions} concurrent uploads allowed. Please wait for an upload to complete or cancel one.`
           );
@@ -136,8 +152,8 @@ export function FileUploadZone({
       }
     }
   }, [
-    uploadFolder, currentFolderId, activeCount, maxConcurrentSessions,
-    startUploadV2,
+    uploadFolder, currentFolderId, v1ActiveCount, maxConcurrentSessions,
+    startUploadV2, checkV2ConcurrentLimit,
   ]);
 
   const onDrop = useCallback(async (acceptedFiles: File[], rejectedFiles: FileRejection[]) => {
@@ -158,13 +174,13 @@ export function FileUploadZone({
       }
 
       if (USE_V2_UPLOAD) {
-        // V2: A single-file upload is just a "batch of 1"
+        if (!checkV2ConcurrentLimit()) return;
         await startUploadV2(acceptedFiles, undefined, currentFolderId);
       } else {
         await uploadFiles(acceptedFiles);
       }
     }
-  }, [uploadFiles, startUploadV2, currentFolderId]);
+  }, [uploadFiles, startUploadV2, currentFolderId, checkV2ConcurrentLimit]);
 
   const { getRootProps, getInputProps, isDragAccept, isDragReject } = useDropzone({
     onDrop,
@@ -244,7 +260,7 @@ export function FileUploadZone({
       )}
 
       {/* V1: File upload progress overlay */}
-      {!USE_V2_UPLOAD && isUploadingV1 && !hasActiveUploads && (
+      {!USE_V2_UPLOAD && isUploadingV1 && !v1HasActiveUploads && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/80 backdrop-blur-sm z-20">
           <Upload className="size-12 text-primary animate-pulse mb-4" />
           <p className="text-sm font-medium mb-2">Uploading files...</p>
@@ -281,7 +297,7 @@ export function FileUploadZone({
 
       {/* V2: Batch upload progress panel (floating, bottom-right) */}
       {USE_V2_UPLOAD && (
-        <BatchUploadProgressPanelV2 onCancel={() => cancelBatch()} />
+        <BatchUploadProgressPanelV2 onCancel={(batchKey) => cancelBatch(batchKey)} />
       )}
     </div>
   );
@@ -294,12 +310,17 @@ export function useFileUploadTrigger() {
   // V1
   const { uploadFiles, isUploading: isUploadingV1 } = useFileUpload();
   // V2
-  const { startUpload: startUploadV2, isUploading: isUploadingV2 } = useBatchUploadV2();
+  const { startUpload: startUploadV2, hasActiveUploads, activeBatchCount } = useBatchUploadV2();
   const currentFolderId = useFolderTreeStore((state) => state.currentFolderId);
 
-  const isUploading = USE_V2_UPLOAD ? isUploadingV2 : isUploadingV1;
+  const isUploading = USE_V2_UPLOAD ? hasActiveUploads : isUploadingV1;
 
   const openFilePicker = useCallback(() => {
+    if (USE_V2_UPLOAD && activeBatchCount >= MAX_CONCURRENT_BATCHES) {
+      toast.error(`Maximum ${MAX_CONCURRENT_BATCHES} concurrent uploads. Wait for one to complete.`);
+      return;
+    }
+
     const input = document.createElement('input');
     input.type = 'file';
     input.multiple = true;
@@ -317,7 +338,7 @@ export function useFileUploadTrigger() {
     };
 
     input.click();
-  }, [uploadFiles, startUploadV2, currentFolderId]);
+  }, [uploadFiles, startUploadV2, currentFolderId, activeBatchCount]);
 
   return { openFilePicker, isUploading };
 }

@@ -44,7 +44,7 @@ export function useDuplicateResolutionV2() {
         return { proceed: files, skipped: [], renames: new Map(), replacements: new Map() };
       }
 
-      const { results } = response.data;
+      const { results, targetFolderPath } = response.data;
       const hasDuplicates = results.some((r) => r.isDuplicate);
 
       if (!hasDuplicates) {
@@ -52,7 +52,7 @@ export function useDuplicateResolutionV2() {
       }
 
       // Open modal and wait for resolution
-      setResults(results);
+      setResults(results, targetFolderPath);
 
       return new Promise<DuplicateResolutionResult | null>((resolve) => {
         const checkResolved = () => {

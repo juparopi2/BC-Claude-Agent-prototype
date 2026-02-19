@@ -695,6 +695,12 @@ export interface DuplicateCheckResult {
   /** Folder ID of existing file (if duplicate found) */
   existingFolderId?: string;
 
+  /** Display name of folder containing existing file — added 2026-02-19 */
+  folderName?: string | null;
+
+  /** Full folder path of existing file (e.g., "Projects / Q1") — added 2026-02-19 */
+  folderPath?: string | null;
+
   /** Human-readable reason for the action */
   reason?: string;
 }
@@ -728,6 +734,9 @@ export interface DuplicateCheckResponse {
 
   /** Summary statistics */
   summary: DuplicateCheckSummary;
+
+  /** Destination folder path (null = root) — added 2026-02-19 */
+  targetFolderPath: string | null;
 }
 ```
 
@@ -1127,6 +1136,52 @@ curl -X POST http://localhost:3002/api/v2/uploads/check-duplicates \
 4. **Scope priority**: `storage` > `pipeline` > `upload`. Storage matches are most authoritative since those files are fully processed.
 5. **Promise.all for scope queries**: All 3 scope queries run in parallel for optimal performance (max 3 DB queries regardless of batch size).
 6. **BigInt → number conversion**: Prisma returns `size_bytes` as `BigInt`; the service converts to `number` via `Number()` for the `DuplicateMatchInfo.fileSize` response field.
+
+### Post-Implementation Improvements (2026-02-19)
+
+#### Folder Path Resolution
+
+Added `resolveFolderPaths()` private method to `DuplicateDetectionServiceV2` that resolves the full folder hierarchy path for matched files and the target upload folder. This enables the frontend to display contextual location information (e.g., "Located in: Projects / Q1 Reports") in the duplicate resolution modal.
+
+**Implementation details**:
+- Iteratively fetches ancestor folders up to 10 levels deep with a `folderCache` to avoid redundant queries
+- Queries `files` table where `is_folder = true` (folders are stored as file records)
+- Builds path strings in "Root / Sub / Leaf" format
+- Handles orphan folders gracefully (missing parents stop path construction)
+
+#### New Response Fields
+
+| Field | Location | Type | Description |
+|-------|----------|------|-------------|
+| `folderName` | `DuplicateMatchInfo` | `string \| null` | Display name of the folder containing the existing duplicate |
+| `folderPath` | `DuplicateMatchInfo` | `string \| null` | Full path from root (e.g., "Projects / Q1 Reports") |
+| `targetFolderPath` | `CheckDuplicatesResponseV2` | `string \| null` | Full path of the destination folder (`null` = root) |
+
+#### `deletion_status` Consistency Fix
+
+All three scope queries now consistently filter `deletion_status IS NULL` (previously missing from some pipeline and upload scope queries). This prevents soft-deleted files from appearing as false-positive duplicates.
+
+#### Route Handler Update
+
+`duplicate-detection.routes.ts` now passes `targetFolderPath` from the service response through to the API response body, enabling the frontend to display the upload destination path.
+
+#### New Test Coverage
+
+| Test File | New Tests | Purpose |
+|-----------|-----------|---------|
+| `DuplicateDetectionServiceV2.test.ts` | +5 folder path tests | Root folder, nested 2-level path, multi-folder batch, missing folder graceful handling, orphan folder |
+| `DuplicateDetectionServiceV2.test.ts` | +1 deletion_status test | Verifies soft-deleted files excluded from all scopes |
+| `duplicate-detection.test.ts` | +1 route test | Verifies `targetFolderPath` in API response |
+
+#### Updated Files Created/Modified
+
+| Action | File | Changes |
+|--------|------|---------|
+| Modify | `packages/shared/src/types/duplicate-detection.types.ts` | Added `folderName`, `folderPath` to `DuplicateMatchInfo`; added `targetFolderPath` to `CheckDuplicatesResponseV2` |
+| Modify | `backend/src/services/files/DuplicateDetectionServiceV2.ts` | Added `resolveFolderPaths()`, folder path enrichment in `checkDuplicates()`, `deletion_status` consistency fix |
+| Modify | `backend/src/routes/v2/uploads/duplicate-detection.routes.ts` | Pass `targetFolderPath` in response |
+| Modify | `backend/src/__tests__/unit/services/files/DuplicateDetectionServiceV2.test.ts` | +6 new tests (folder paths + deletion_status) |
+| Modify | `backend/src/__tests__/unit/routes/v2/duplicate-detection.test.ts` | +1 new test (targetFolderPath in response) |
 
 ---
 

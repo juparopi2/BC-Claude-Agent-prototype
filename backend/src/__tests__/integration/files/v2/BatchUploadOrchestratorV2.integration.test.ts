@@ -24,12 +24,25 @@ const mockGenerateSasUrl = vi.fn().mockImplementation(async (userId: string, fil
   sasUrl: `https://fake.blob.core/container/users/${userId}/files/${fileName}?sig=xxx`,
   blobPath: `users/${userId}/files/${fileName}`,
 }));
+const mockGenerateBulkSasUrls = vi.fn().mockImplementation(
+  async (userId: string, files: Array<{ tempId: string; fileName: string }>) => {
+    const map = new Map<string, { sasUrl: string; blobPath: string }>();
+    for (const file of files) {
+      map.set(file.tempId, {
+        sasUrl: `https://fake.blob.core/container/users/${userId}/files/${file.fileName}?sig=xxx`,
+        blobPath: `users/${userId}/files/${file.fileName}`,
+      });
+    }
+    return map;
+  },
+);
 const mockBlobExists = vi.fn().mockResolvedValue(true);
 const mockDeleteFromBlob = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('@/services/files/FileUploadService', () => ({
   getFileUploadService: vi.fn(() => ({
     generateSasUrlForBulkUpload: mockGenerateSasUrl,
+    generateBulkSasUrls: mockGenerateBulkSasUrls,
     blobExists: mockBlobExists,
     deleteFromBlob: mockDeleteFromBlob,
   })),
@@ -84,6 +97,18 @@ describe('BatchUploadOrchestratorV2 — Integration (PRD-03)', () => {
       sasUrl: `https://fake.blob.core/container/users/${userId}/files/${fileName}?sig=xxx`,
       blobPath: `users/${userId}/files/${fileName}`,
     }));
+    mockGenerateBulkSasUrls.mockImplementation(
+      async (userId: string, files: Array<{ tempId: string; fileName: string }>) => {
+        const map = new Map<string, { sasUrl: string; blobPath: string }>();
+        for (const file of files) {
+          map.set(file.tempId, {
+            sasUrl: `https://fake.blob.core/container/users/${userId}/files/${file.fileName}?sig=xxx`,
+            blobPath: `users/${userId}/files/${file.fileName}`,
+          });
+        }
+        return map;
+      },
+    );
     mockAddFileProcessingFlow.mockResolvedValue(undefined);
   }, 15000);
 
@@ -286,18 +311,9 @@ describe('BatchUploadOrchestratorV2 — Integration (PRD-03)', () => {
         { userId: TEST_USER_A, status: PIPELINE_STATUS.REGISTERED }
       );
 
-      // Mock to succeed on first call, fail on second
-      let callCount = 0;
-      mockGenerateSasUrl.mockImplementation(async (userId: string, fileName: string) => {
-        callCount++;
-        if (callCount === 2) {
-          throw new Error('Simulated SAS URL generation failure');
-        }
-        return {
-          sasUrl: `https://fake.blob.core/container/users/${userId}/files/${fileName}?sig=xxx`,
-          blobPath: `users/${userId}/files/${fileName}`,
-        };
-      });
+      // SAS generation now happens pre-transaction via generateBulkSasUrls
+      // Failure here means no DB writes occur at all (no transaction started)
+      mockGenerateBulkSasUrls.mockRejectedValueOnce(new Error('Simulated SAS URL generation failure'));
 
       const request: CreateBatchRequest = {
         files: [
@@ -310,7 +326,7 @@ describe('BatchUploadOrchestratorV2 — Integration (PRD-03)', () => {
       // Expect error to be thrown
       await expect(orchestrator.createBatch(TEST_USER_A, request)).rejects.toThrow('Simulated SAS URL generation failure');
 
-      // Verify no NEW registered files created (transaction rolled back)
+      // Verify no NEW registered files created (no transaction was started)
       const filesAfter = await executeQuery<{ count: number }>(
         'SELECT COUNT(*) as count FROM files WHERE user_id = @userId AND pipeline_status = @status',
         { userId: TEST_USER_A, status: PIPELINE_STATUS.REGISTERED }

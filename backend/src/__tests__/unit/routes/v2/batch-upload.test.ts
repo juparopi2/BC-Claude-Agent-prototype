@@ -104,6 +104,12 @@ vi.mock('@/services/files/batch', () => ({
       this.name = 'ConcurrentModificationError';
     }
   },
+  InvalidTargetFolderError: class extends Error {
+    constructor(folderId: string) {
+      super(`Invalid target folder: ${folderId}`);
+      this.name = 'InvalidTargetFolderError';
+    }
+  },
   ManifestValidationError: class extends Error {
     constructor(msg: string) {
       super(msg);

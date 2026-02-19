@@ -26,6 +26,8 @@ export interface DuplicateMatchInfo {
   fileSize: number | null;
   pipelineStatus: string | null;
   folderId: string | null;
+  folderName: string | null;
+  folderPath: string | null;
 }
 
 // ============================================
@@ -78,6 +80,8 @@ export interface DuplicateCheckSummary {
 export interface CheckDuplicatesResponseV2 {
   results: DuplicateCheckResultV2[];
   summary: DuplicateCheckSummary;
+  /** Destination folder path (null = root) */
+  targetFolderPath: string | null;
 }
 
 // ============================================

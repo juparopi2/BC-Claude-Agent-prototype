@@ -53,14 +53,14 @@ router.post('/', authenticateMicrosoft, async (req: Request, res: Response): Pro
     );
 
     const service = getDuplicateDetectionServiceV2();
-    const { results, summary } = await service.checkDuplicates(files, userId, targetFolderId);
+    const { results, summary, targetFolderPath } = await service.checkDuplicates(files, userId, targetFolderId);
 
     logger.info(
       { userId, totalChecked: summary.totalChecked, totalDuplicates: summary.totalDuplicates },
       'V2 duplicate check completed',
     );
 
-    res.json({ results, summary });
+    res.json({ results, summary, targetFolderPath });
   } catch (error) {
     const errorInfo = error instanceof Error
       ? { message: error.message, stack: error.stack, name: error.name }

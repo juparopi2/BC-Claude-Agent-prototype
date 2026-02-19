@@ -510,6 +510,108 @@ export class FileUploadService {
   }
 
   /**
+   * 9. Generate SAS URLs for multiple files in bulk (outside transaction)
+   *
+   * Generates all SAS URLs in parallel with controlled concurrency.
+   * Designed to run BEFORE a database transaction to avoid transaction timeout.
+   *
+   * @param userId - User ID for multi-tenant isolation
+   * @param files - Array of file metadata to generate SAS URLs for
+   * @param expiryMinutes - SAS token expiry time in minutes (default: 60)
+   * @returns Map keyed by tempId with sasUrl and blobPath
+   */
+  public async generateBulkSasUrls(
+    userId: string,
+    files: Array<{ tempId: string; fileName: string; mimeType: string; sizeBytes: number }>,
+    expiryMinutes: number = 60,
+  ): Promise<Map<string, { sasUrl: string; blobPath: string }>> {
+    // 1. Validate ALL files first (fail-fast before any SAS generation)
+    for (const file of files) {
+      this.validateFileType(file.mimeType);
+      this.validateFileSize(file.sizeBytes, file.mimeType);
+    }
+
+    // 2. Parse credentials ONCE
+    const { accountName, accountKey } = this.parseStorageCredentials();
+    const sharedKeyCredential = new StorageSharedKeyCredential(accountName, accountKey);
+    const expiresOn = new Date(Date.now() + expiryMinutes * 60 * 1000);
+
+    // 3. Generate all SAS URLs in parallel (batches of 50)
+    const CONCURRENCY = 50;
+    const results = new Map<string, { sasUrl: string; blobPath: string }>();
+
+    for (let i = 0; i < files.length; i += CONCURRENCY) {
+      const chunk = files.slice(i, i + CONCURRENCY);
+      const chunkResults = await Promise.all(
+        chunk.map((file) =>
+          this.generateSingleSasUrl(userId, file, sharedKeyCredential, expiresOn),
+        ),
+      );
+      for (const result of chunkResults) {
+        results.set(result.tempId, { sasUrl: result.sasUrl, blobPath: result.blobPath });
+      }
+    }
+
+    this.logger.info(
+      { userId, fileCount: files.length, expiryMinutes },
+      'Bulk SAS URLs generated',
+    );
+
+    return results;
+  }
+
+  /**
+   * Parse storage credentials from connection string.
+   * Extracts account name and key for SAS token generation.
+   */
+  private parseStorageCredentials(): { accountName: string; accountKey: string } {
+    const connString = env.STORAGE_CONNECTION_STRING;
+    if (!connString) {
+      throw new Error('STORAGE_CONNECTION_STRING is required for SAS token generation');
+    }
+
+    const accountNameMatch = connString.match(/AccountName=([^;]+)/);
+    const accountKeyMatch = connString.match(/AccountKey=([^;]+)/);
+
+    if (!accountNameMatch?.[1] || !accountKeyMatch?.[1]) {
+      throw new Error('Invalid connection string format');
+    }
+
+    return {
+      accountName: accountNameMatch[1],
+      accountKey: accountKeyMatch[1],
+    };
+  }
+
+  /**
+   * Generate a single SAS URL using pre-parsed credentials.
+   */
+  private generateSingleSasUrl(
+    userId: string,
+    file: { tempId: string; fileName: string },
+    sharedKeyCredential: StorageSharedKeyCredential,
+    expiresOn: Date,
+  ): { tempId: string; sasUrl: string; blobPath: string } {
+    const blobPath = this.generateBlobPath(userId, file.fileName);
+    const blockBlobClient = this.containerClient.getBlockBlobClient(blobPath);
+
+    const sasToken = generateBlobSASQueryParameters(
+      {
+        containerName: this.containerName,
+        blobName: blobPath,
+        permissions: BlobSASPermissions.parse('cw'),
+        startsOn: new Date(),
+        expiresOn,
+      },
+      sharedKeyCredential,
+    ).toString();
+
+    const sasUrl = `${blockBlobClient.url}?${sasToken}`;
+
+    return { tempId: file.tempId, sasUrl, blobPath };
+  }
+
+  /**
    * Sanitize filename for Azure Blob Storage paths
    *
    * ⚠️ WARNING: This function STRIPS ALL Unicode characters (æøå, emoji, –, •, etc.)

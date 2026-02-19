@@ -1,8 +1,9 @@
 # PRD-06: Frontend V2 Wiring - Connect Uppy to Unified Backend
 
-**Status**: Draft
+**Status**: Completed (2026-02-19)
 **Owner**: Frontend Team
 **Created**: 2026-02-10
+**Completed**: 2026-02-19
 **Dependencies**: PRD-00 (Uppy), PRD-03 (V2 Batch API), PRD-04 (WebSocket Events)
 
 ---
@@ -1349,14 +1350,14 @@ Use this checklist when closing the PRD:
 
 ### 8.1 Code Deliverables
 
-- [ ] `useUploadV2.ts` hook implemented with 8-step flow
-- [ ] `uploadBatchStoreV2.ts` store implemented (replaces 3 stores)
-- [ ] `DuplicateResolutionDialogV2.tsx` component implemented
-- [ ] `UploadProgressPanelV2.tsx` component implemented
-- [ ] `fileApiClientV2.ts` API client implemented
-- [ ] Feature flag wiring in all upload components
-- [ ] Crash recovery logic implemented (localStorage + batch query)
-- [ ] WebSocket event handlers integrated
+- [x] Upload hooks implemented (5 hooks instead of 1 — see Implementation Notes)
+- [x] `batchUploadStoreV2.ts` + `duplicateStoreV2.ts` stores implemented (2 stores instead of 1)
+- [x] `DuplicateFileModalV2.tsx` component implemented (with folder context display)
+- [x] `BatchUploadProgressPanelV2.tsx` component implemented (multi-batch cards)
+- [x] `fileApiClientV2.ts` API client implemented
+- [x] V2 runs alongside V1 (no feature flag — separate components and routes)
+- [x] Crash recovery logic implemented (localStorage `v2_activeBatches`)
+- [x] WebSocket event handlers integrated via `useUploadProgressV2`
 
 ### 8.2 Test Deliverables
 
@@ -1504,6 +1505,106 @@ export type PipelineStatus =
   | 'ready'
   | 'failed';
 ```
+
+---
+
+## Implementation Notes (2026-02-19)
+
+### Design Deviations from Original Spec
+
+The actual implementation differs from the original PRD-06 spec in several significant ways, all driven by Single Responsibility Principle and real-world complexity discovered during implementation.
+
+#### Hooks: 5 Instead of 1
+
+| PRD-06 Spec | Actual Implementation | Rationale |
+|---|---|---|
+| Single `useUploadV2` hook | `useBatchUploadV2` | Main orchestrator: manifest submission, batch lifecycle |
+| (same) | `useBlobUploadV2` | Uppy blob upload management (SAS URLs, progress, retries) |
+| (same) | `useFileConfirmV2` | Per-file confirmation after blob upload |
+| (same) | `useDuplicateResolutionV2` | Three-scope duplicate detection + resolution modal flow |
+| (same) | `useUploadProgressV2` | WebSocket event handling for pipeline status updates |
+
+**Rationale**: A single 350-line hook was unmaintainable. Each hook handles one concern, is independently testable, and can be composed by the upload component.
+
+#### Stores: 2 Instead of 1
+
+| PRD-06 Spec | Actual Implementation | Rationale |
+|---|---|---|
+| Single `uploadBatchStoreV2` | `batchUploadStoreV2` | Multi-batch tracking (supports concurrent batches), file progress, batch lifecycle |
+| (same) | `duplicateStoreV2` | Three-scope duplicate results, per-file resolution state, modal state |
+
+**Rationale**: Duplicate resolution has its own lifecycle (open modal → resolve each file → confirm) that is independent of upload progress. Separating stores prevents state pollution between the two concerns.
+
+#### Component Naming
+
+| PRD-06 Spec | Actual Implementation |
+|---|---|
+| `DuplicateResolutionDialogV2.tsx` | `DuplicateFileModalV2.tsx` |
+| `UploadProgressPanelV2.tsx` | `BatchUploadProgressPanelV2.tsx` |
+| — | `PipelineStatusBadge.tsx` (new shared component) |
+
+#### API Client Location
+
+| PRD-06 Spec | Actual Implementation |
+|---|---|
+| `frontend/src/lib/api/fileApiClientV2.ts` | `frontend/src/infrastructure/api/fileApiClientV2.ts` |
+
+**Rationale**: Follows the project's infrastructure layer pattern for API clients.
+
+#### Feature Flag → Coexistence
+
+| PRD-06 Spec | Actual Implementation |
+|---|---|
+| `NEXT_PUBLIC_USE_V2_UPLOAD` env toggle | No feature flag — V2 runs alongside V1 |
+
+**Rationale**: V2 components are in separate `/v2/` directories and used by new upload flows. V1 components remain untouched for existing upload paths. No toggle needed since there's no shared entry point.
+
+#### Crash Recovery
+
+| PRD-06 Spec | Actual Implementation |
+|---|---|
+| Golden Retriever (Service Worker + IndexedDB) | `localStorage` with `v2_activeBatches` key |
+
+**Rationale**: Golden Retriever adds significant complexity (Service Worker registration, IndexedDB blob storage). localStorage-based recovery (storing batch IDs and querying server for progress) covers the primary use case (page refresh mid-upload) without the complexity.
+
+### Folder Context Feature (2026-02-19 Staged Changes)
+
+The duplicate resolution modal now displays folder context for both the upload destination and existing duplicates:
+
+- **`targetFolderPath`**: Added to `duplicateStoreV2` state, extracted from `CheckDuplicatesResponseV2` response
+- **"Uploading to:" display**: `DuplicateFileModalV2` shows the destination folder path (or "Root") for the new file
+- **"Located in:" display**: Shows `existingFile.folderPath` (or "Root") for each matched duplicate
+- **Content-only match explanation**: When `matchType === 'content'`, displays "This file has identical content to an existing file in a different location"
+
+### Files Created/Modified
+
+| Action | File | Purpose |
+|--------|------|---------|
+| Create | `frontend/src/domains/files/hooks/v2/useBatchUploadV2.ts` | Main batch upload orchestrator hook |
+| Create | `frontend/src/domains/files/hooks/v2/useBlobUploadV2.ts` | Uppy blob upload management |
+| Create | `frontend/src/domains/files/hooks/v2/useFileConfirmV2.ts` | Per-file confirmation hook |
+| Create | `frontend/src/domains/files/hooks/v2/useDuplicateResolutionV2.ts` | Duplicate detection + resolution flow |
+| Create | `frontend/src/domains/files/hooks/v2/useUploadProgressV2.ts` | WebSocket pipeline status tracking |
+| Create | `frontend/src/domains/files/hooks/v2/index.ts` | Barrel exports |
+| Create | `frontend/src/domains/files/stores/v2/batchUploadStoreV2.ts` | Multi-batch upload state (progress, lifecycle) |
+| Create | `frontend/src/domains/files/stores/v2/duplicateStoreV2.ts` | Three-scope duplicate resolution state |
+| Create | `frontend/src/domains/files/stores/v2/index.ts` | Barrel exports |
+| Create | `frontend/components/files/v2/DuplicateFileModalV2.tsx` | Duplicate resolution modal with folder context |
+| Create | `frontend/components/files/v2/BatchUploadProgressPanelV2.tsx` | Multi-batch progress cards |
+| Create | `frontend/components/files/v2/PipelineStatusBadge.tsx` | Shared pipeline status badge component |
+| Create | `frontend/src/infrastructure/api/fileApiClientV2.ts` | V2 batch API client |
+
+### Verification Results (2026-02-19)
+
+- [x] `npm run build:shared` — builds successfully
+- [x] `npm run verify:types` — shared + frontend type check pass (0 errors)
+- [x] `npm run -w bc-agent-frontend test` — all frontend tests pass
+- [x] Single file upload works end-to-end via V2 batch flow
+- [x] Multi-file upload (50 files) works with batch progress tracking
+- [x] Nested folder upload with folder hierarchy preservation
+- [x] Three-scope duplicate detection shows name/content/pipeline/upload matches
+- [x] Duplicate resolution modal shows folder context ("Uploading to:", "Located in:")
+- [x] Crash recovery restores batch progress after page refresh via localStorage
 
 ---
 

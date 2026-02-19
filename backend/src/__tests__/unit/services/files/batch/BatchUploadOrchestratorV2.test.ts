@@ -44,6 +44,7 @@ vi.mock('@/infrastructure/database/prisma', () => ({
 // Mock FileUploadService (singleton instance)
 const mockFileUploadServiceInstance = {
   generateSasUrlForBulkUpload: vi.fn(),
+  generateBulkSasUrls: vi.fn(),
   blobExists: vi.fn(),
 };
 
@@ -131,6 +132,7 @@ describe('BatchUploadOrchestratorV2', () => {
       },
       files: {
         create: vi.fn(),
+        createMany: vi.fn(),
         findFirst: vi.fn(),
         findMany: vi.fn(),
         updateMany: vi.fn(),
@@ -151,26 +153,42 @@ describe('BatchUploadOrchestratorV2', () => {
       metadata: null,
     });
 
+    // files.create is only used for folders now (files use createMany)
     mockTx.files.create.mockResolvedValue({
-      id: TEST_FILE_ID,
+      id: TEST_FOLDER_ID,
       user_id: TEST_USER_ID,
-      name: 'test.pdf',
-      mime_type: 'application/pdf',
-      size_bytes: BigInt(1024),
-      blob_path: 'users/USER/files/test.pdf',
+      name: 'Folder',
+      mime_type: 'inode/directory',
+      size_bytes: BigInt(0),
+      blob_path: '',
       source_type: 'blob_storage',
-      is_folder: false,
-      pipeline_status: PIPELINE_STATUS.REGISTERED,
+      is_folder: true,
       parent_folder_id: null,
       batch_id: TEST_BATCH_ID,
-      content_hash: null,
     });
+
+    // files.createMany for bulk file inserts
+    mockTx.files.createMany.mockResolvedValue({ count: 1 });
 
     mockFileUploadService.generateSasUrlForBulkUpload.mockResolvedValue({
       sasUrl: 'https://test.blob.core.windows.net/sas',
       blobPath: 'users/USER/files/test.pdf',
       expiresAt: '2024-12-31T00:00:00.000Z',
     });
+
+    // Default mock for bulk SAS URL generation (pre-transaction)
+    mockFileUploadService.generateBulkSasUrls.mockImplementation(
+      async (_userId: string, files: Array<{ tempId: string }>) => {
+        const map = new Map<string, { sasUrl: string; blobPath: string }>();
+        for (const file of files) {
+          map.set(file.tempId, {
+            sasUrl: 'https://test.blob.core.windows.net/sas',
+            blobPath: 'users/USER/files/test.pdf',
+          });
+        }
+        return map;
+      },
+    );
 
     // Mock DuplicateDetectionServiceV2 instance
     mockCheckDuplicates = vi.fn().mockResolvedValue({
@@ -421,10 +439,8 @@ describe('BatchUploadOrchestratorV2', () => {
 
       await orchestrator.createBatch(TEST_USER_ID, request);
 
-      // Verify folder creation order: parent before child
-      const folderCalls = mockTx.files.create.mock.calls.filter(
-        (call) => call[0].data.is_folder === true,
-      );
+      // Verify folder creation order: parent before child (files use createMany, not create)
+      const folderCalls = mockTx.files.create.mock.calls;
 
       expect(folderCalls).toHaveLength(2);
       expect(folderCalls[0][0].data.name).toBe('Parent');
@@ -461,9 +477,8 @@ describe('BatchUploadOrchestratorV2', () => {
 
       await orchestrator.createBatch(TEST_USER_ID, request);
 
-      const folderCalls = mockTx.files.create.mock.calls.filter(
-        (call) => call[0].data.is_folder === true,
-      );
+      // Only folders use tx.files.create (files use createMany)
+      const folderCalls = mockTx.files.create.mock.calls;
 
       expect(folderCalls).toHaveLength(3);
       expect(folderCalls[0][0].data.name).toBe('Grandparent');
@@ -495,9 +510,8 @@ describe('BatchUploadOrchestratorV2', () => {
 
       await orchestrator.createBatch(TEST_USER_ID, request);
 
-      const folderCalls = mockTx.files.create.mock.calls.filter(
-        (call) => call[0].data.is_folder === true,
-      );
+      // Only folders use tx.files.create
+      const folderCalls = mockTx.files.create.mock.calls;
 
       expect(folderCalls).toHaveLength(2);
       // Both should have null parent_folder_id
@@ -561,9 +575,9 @@ describe('BatchUploadOrchestratorV2', () => {
 
       const result = await orchestrator.createBatch(TEST_USER_ID, request);
 
-      // Verify shape
+      // Verify shape (batchId is pre-generated UUID, not from DB)
       expect(result).toMatchObject({
-        batchId: TEST_BATCH_ID,
+        batchId: expect.stringMatching(/^[A-F0-9-]+$/),
         status: BATCH_STATUS.ACTIVE,
         files: expect.arrayContaining([
           expect.objectContaining({
@@ -586,7 +600,7 @@ describe('BatchUploadOrchestratorV2', () => {
       expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
     });
 
-    it('runs duplicate check inside transaction with tx client', async () => {
+    it('runs duplicate check before transaction with main prisma client', async () => {
       const request: CreateBatchRequest = {
         files: [
           {
@@ -600,7 +614,9 @@ describe('BatchUploadOrchestratorV2', () => {
 
       await orchestrator.createBatch(TEST_USER_ID, request);
 
-      // Verify DuplicateDetectionServiceV2 was constructed (mocked class)
+      // Verify DuplicateDetectionServiceV2 was constructed with main prisma client (not tx)
+      expect(DuplicateDetectionServiceV2).toHaveBeenCalledWith(mockPrisma);
+
       expect(mockCheckDuplicates).toHaveBeenCalledWith(
         expect.arrayContaining([
           expect.objectContaining({
@@ -634,22 +650,6 @@ describe('BatchUploadOrchestratorV2', () => {
     });
 
     it('resolves folder hierarchy correctly', async () => {
-      // Mock folder creation to return sequential IDs
-      let folderCreateCallCount = 0;
-      mockTx.files.create.mockImplementation((args: any) => {
-        if (args.data.is_folder) {
-          folderCreateCallCount++;
-          return Promise.resolve({
-            id: `FOLDER-ID-${folderCreateCallCount}`,
-            ...args.data,
-          });
-        }
-        return Promise.resolve({
-          id: TEST_FILE_ID,
-          ...args.data,
-        });
-      });
-
       const request: CreateBatchRequest = {
         files: [
           {
@@ -675,26 +675,32 @@ describe('BatchUploadOrchestratorV2', () => {
 
       await orchestrator.createBatch(TEST_USER_ID, request);
 
-      const fileCalls = mockTx.files.create.mock.calls;
+      // Folders still use tx.files.create (sequential for FK ordering)
+      const folderCalls = mockTx.files.create.mock.calls;
+      expect(folderCalls).toHaveLength(2);
 
-      // Find parent folder creation
-      const parentFolderCall = fileCalls.find(
-        (call) => call[0].data.is_folder && call[0].data.name === 'Parent',
+      // Parent folder: no parent (null since no targetFolderId)
+      const parentFolderCall = folderCalls.find(
+        (call: any) => call[0].data.name === 'Parent',
       );
       expect(parentFolderCall![0].data.parent_folder_id).toBeNull();
 
-      // Find child folder creation
-      const childFolderCall = fileCalls.find(
-        (call) => call[0].data.is_folder && call[0].data.name === 'Child',
+      // Child folder: parent_folder_id = pre-generated parent ID
+      const childFolderCall = folderCalls.find(
+        (call: any) => call[0].data.name === 'Child',
       );
-      expect(childFolderCall![0].data.parent_folder_id).toBe('FOLDER-ID-1'); // Parent ID
+      const parentPreGenId = parentFolderCall![0].data.id;
+      expect(childFolderCall![0].data.parent_folder_id).toBe(parentPreGenId);
 
-      // Find file creation
-      const fileCall = fileCalls.find((call) => !call[0].data.is_folder);
-      expect(fileCall![0].data.parent_folder_id).toBe('FOLDER-ID-2'); // Child ID
+      // Files use tx.files.createMany — verify parent_folder_id resolves to child folder
+      const createManyCalls = mockTx.files.createMany.mock.calls;
+      expect(createManyCalls.length).toBeGreaterThanOrEqual(1);
+      const fileData = createManyCalls[0][0].data[0];
+      const childPreGenId = childFolderCall![0].data.id;
+      expect(fileData.parent_folder_id).toBe(childPreGenId);
     });
 
-    it('generates SAS URLs via FileUploadService', async () => {
+    it('generates SAS URLs via FileUploadService.generateBulkSasUrls (pre-transaction)', async () => {
       const request: CreateBatchRequest = {
         files: [
           {
@@ -708,27 +714,24 @@ describe('BatchUploadOrchestratorV2', () => {
 
       await orchestrator.createBatch(TEST_USER_ID, request);
 
-      expect(mockFileUploadService.generateSasUrlForBulkUpload).toHaveBeenCalledWith(
+      expect(mockFileUploadService.generateBulkSasUrls).toHaveBeenCalledWith(
         TEST_USER_ID,
-        'document.pdf',
-        'application/pdf',
-        3072,
+        [
+          {
+            tempId: 'temp-f1',
+            fileName: 'document.pdf',
+            mimeType: 'application/pdf',
+            sizeBytes: 3072,
+          },
+        ],
         240, // SAS_EXPIRY_MINUTES
       );
+
+      // generateSasUrlForBulkUpload should NOT be called (replaced by bulk method)
+      expect(mockFileUploadService.generateSasUrlForBulkUpload).not.toHaveBeenCalled();
     });
 
-    it('all IDs are UPPERCASE', async () => {
-      mockTx.upload_batches.create.mockResolvedValue({
-        id: 'batch-lowercase-id',
-      });
-
-      mockTx.files.create.mockImplementation((args: any) => {
-        if (args.data.is_folder) {
-          return Promise.resolve({ id: 'folder-lowercase-id', ...args.data });
-        }
-        return Promise.resolve({ id: 'file-lowercase-id', ...args.data });
-      });
-
+    it('all IDs are UPPERCASE (pre-generated UUIDs)', async () => {
       const request: CreateBatchRequest = {
         files: [
           {
@@ -748,10 +751,10 @@ describe('BatchUploadOrchestratorV2', () => {
 
       const result = await orchestrator.createBatch(TEST_USER_ID, request);
 
-      // All IDs should be uppercase
-      expect(result.batchId).toBe('BATCH-LOWERCASE-ID');
-      expect(result.files[0].fileId).toBe('FILE-LOWERCASE-ID');
-      expect(result.folders[0].folderId).toBe('FOLDER-LOWERCASE-ID');
+      // All pre-generated IDs should be uppercase UUIDs
+      expect(result.batchId).toMatch(/^[A-F0-9-]+$/);
+      expect(result.files[0].fileId).toMatch(/^[A-F0-9-]+$/);
+      expect(result.folders[0].folderId).toMatch(/^[A-F0-9-]+$/);
     });
   });
 
@@ -1064,15 +1067,6 @@ describe('BatchUploadOrchestratorV2', () => {
         id: TARGET_FOLDER_ID,
       });
 
-      let folderCreateCount = 0;
-      mockTx.files.create.mockImplementation((args: any) => {
-        if (args.data.is_folder) {
-          folderCreateCount++;
-          return Promise.resolve({ id: `FOLDER-${folderCreateCount}`, ...args.data });
-        }
-        return Promise.resolve({ id: TEST_FILE_ID, ...args.data });
-      });
-
       const request: CreateBatchRequest = {
         files: [
           {
@@ -1099,26 +1093,17 @@ describe('BatchUploadOrchestratorV2', () => {
       );
       expect(folderCall![0].data.parent_folder_id).toBe(TARGET_FOLDER_ID);
 
-      // Root file should have targetFolderId as parent
-      const fileCall = mockTx.files.create.mock.calls.find(
-        (call: any) => !call[0].data.is_folder,
-      );
-      expect(fileCall![0].data.parent_folder_id).toBe(TARGET_FOLDER_ID);
+      // Root file (via createMany) should have targetFolderId as parent
+      const createManyCalls = mockTx.files.createMany.mock.calls;
+      expect(createManyCalls.length).toBeGreaterThanOrEqual(1);
+      const fileData = createManyCalls[0][0].data[0];
+      expect(fileData.parent_folder_id).toBe(TARGET_FOLDER_ID);
     });
 
     it('child items use their parent tempId, not targetFolderId', async () => {
       // Mock target folder validation
       mockPrisma.files.findFirst.mockResolvedValue({
         id: TARGET_FOLDER_ID,
-      });
-
-      let folderCreateCount = 0;
-      mockTx.files.create.mockImplementation((args: any) => {
-        if (args.data.is_folder) {
-          folderCreateCount++;
-          return Promise.resolve({ id: `FOLDER-${folderCreateCount}`, ...args.data });
-        }
-        return Promise.resolve({ id: TEST_FILE_ID, ...args.data });
       });
 
       const request: CreateBatchRequest = {
@@ -1153,17 +1138,18 @@ describe('BatchUploadOrchestratorV2', () => {
       );
       expect(parentFolderCall![0].data.parent_folder_id).toBe(TARGET_FOLDER_ID);
 
-      // Child folder "Child" → parent is resolved from Parent's real ID
+      // Child folder "Child" → parent is resolved from Parent's pre-generated ID
       const childFolderCall = mockTx.files.create.mock.calls.find(
         (call: any) => call[0].data.is_folder && call[0].data.name === 'Child',
       );
-      expect(childFolderCall![0].data.parent_folder_id).toBe('FOLDER-1');
+      const parentPreGenId = parentFolderCall![0].data.id;
+      expect(childFolderCall![0].data.parent_folder_id).toBe(parentPreGenId);
 
-      // File with parentTempId → parent is resolved from Child's real ID
-      const fileCall = mockTx.files.create.mock.calls.find(
-        (call: any) => !call[0].data.is_folder,
-      );
-      expect(fileCall![0].data.parent_folder_id).toBe('FOLDER-2');
+      // File with parentTempId (via createMany) → parent is resolved from Child's pre-generated ID
+      const childPreGenId = childFolderCall![0].data.id;
+      const createManyCalls = mockTx.files.createMany.mock.calls;
+      const fileData = createManyCalls[0][0].data[0];
+      expect(fileData.parent_folder_id).toBe(childPreGenId);
     });
 
     it('throws InvalidTargetFolderError for non-existent folder', async () => {
@@ -1205,14 +1191,13 @@ describe('BatchUploadOrchestratorV2', () => {
       await orchestrator.createBatch(TEST_USER_ID, request);
 
       // findFirst should NOT have been called for target folder validation
-      // (it's only called inside the transaction for duplicate check, not pre-transaction)
       expect(mockPrisma.files.findFirst).not.toHaveBeenCalled();
 
-      // Files should have null parent_folder_id
-      const fileCall = mockTx.files.create.mock.calls.find(
-        (call: any) => !call[0].data.is_folder,
-      );
-      expect(fileCall![0].data.parent_folder_id).toBeNull();
+      // Files (via createMany) should have null parent_folder_id
+      const createManyCalls = mockTx.files.createMany.mock.calls;
+      expect(createManyCalls.length).toBeGreaterThanOrEqual(1);
+      const fileData = createManyCalls[0][0].data[0];
+      expect(fileData.parent_folder_id).toBeNull();
     });
   });
 });

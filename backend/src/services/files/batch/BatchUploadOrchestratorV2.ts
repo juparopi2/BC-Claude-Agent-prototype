@@ -12,6 +12,7 @@
  * @module services/files/batch/BatchUploadOrchestratorV2
  */
 
+import { randomUUID } from 'node:crypto';
 import { createChildLogger } from '@/shared/utils/logger';
 import { prisma as defaultPrisma } from '@/infrastructure/database/prisma';
 import { getFileUploadService } from '@/services/files/FileUploadService';
@@ -23,6 +24,7 @@ import type {
   ManifestFolderItem,
   CreateBatchResponse,
   ConfirmFileResponse,
+  BatchStatus,
   BatchStatusResponse,
   CancelBatchResponse,
   BatchFileResult,
@@ -101,29 +103,58 @@ export class BatchUploadOrchestratorV2 {
       'Creating batch',
     );
 
-    // Run everything in a single transaction
+    // Pre-transaction: Generate all SAS URLs in bulk (no DB dependency)
+    // This avoids ~300ms/file crypto signing inside the Prisma transaction timeout.
+    const fileUploadService = getFileUploadService();
+    const sasMap = await fileUploadService.generateBulkSasUrls(
+      userId,
+      request.files.map((f) => ({
+        tempId: f.tempId,
+        fileName: f.fileName,
+        mimeType: f.mimeType,
+        sizeBytes: f.sizeBytes,
+      })),
+      SAS_EXPIRY_MINUTES,
+    );
+
+    // Pre-transaction: Duplicate detection (read-only, no transactional guarantee needed)
+    let duplicates: DuplicateCheckResultV2[] | undefined;
+    if (!skipDuplicateCheck) {
+      const dupService = new DuplicateDetectionServiceV2(this.prisma);
+      const dupInputs: DuplicateCheckInputV2[] = request.files.map((f) => ({
+        tempId: f.tempId,
+        fileName: f.fileName,
+        fileSize: f.sizeBytes,
+        contentHash: f.contentHash,
+      }));
+      const dupResult = await dupService.checkDuplicates(dupInputs, userId, targetFolderId ?? undefined);
+      if (dupResult.summary.totalDuplicates > 0) {
+        duplicates = dupResult.results.filter((r) => r.isDuplicate);
+      }
+    }
+
+    // Pre-transaction: Pre-generate all UUIDs (enables createMany + response mapping)
+    const batchId = randomUUID().toUpperCase();
+
+    const folderIdMap = new Map<string, string>();
+    for (const folder of sortedFolders) {
+      folderIdMap.set(folder.tempId, randomUUID().toUpperCase());
+    }
+
+    const fileIdMap = new Map<string, string>();
+    for (const file of request.files) {
+      fileIdMap.set(file.tempId, randomUUID().toUpperCase());
+    }
+
+    // Run DB writes in a single transaction (fast: only bulk inserts, no reads)
+    const CHUNK_SIZE = 100;
     const result = await this.prisma.$transaction(
       async (tx) => {
-        // Duplicate detection (inside TX for snapshot isolation)
-        let duplicates: DuplicateCheckResultV2[] | undefined;
-        if (!skipDuplicateCheck) {
-          const dupService = new DuplicateDetectionServiceV2(tx as unknown as PrismaClient);
-          const dupInputs: DuplicateCheckInputV2[] = request.files.map((f) => ({
-            tempId: f.tempId,
-            fileName: f.fileName,
-            fileSize: f.sizeBytes,
-            contentHash: f.contentHash,
-          }));
-          const dupResult = await dupService.checkDuplicates(dupInputs, userId, targetFolderId ?? undefined);
-          if (dupResult.summary.totalDuplicates > 0) {
-            duplicates = dupResult.results.filter((r) => r.isDuplicate);
-          }
-        }
-
-        // Create batch record
+        // Create batch record with pre-generated ID
         const expiresAt = new Date(Date.now() + BATCH_TTL_MS);
-        const batch = await (tx as Record<string, unknown> & typeof tx).upload_batches.create({
+        await (tx as Record<string, unknown> & typeof tx).upload_batches.create({
           data: {
+            id: batchId,
             user_id: userId,
             status: BATCH_STATUS.ACTIVE,
             total_files: request.files.length,
@@ -132,19 +163,19 @@ export class BatchUploadOrchestratorV2 {
             metadata: request.metadata ? JSON.stringify(request.metadata) : null,
           },
         });
-        const batchId = (batch.id as string).toUpperCase();
 
-        // Create folders (topologically sorted — parents first)
-        const tempIdToFolderId = new Map<string, string>();
+        // Create folders (topologically sorted — parents first, sequential for FK ordering)
         const folderResults: BatchFolderResult[] = [];
 
         for (const folder of sortedFolders) {
+          const folderId = folderIdMap.get(folder.tempId)!;
           const parentFolderId = folder.parentTempId
-            ? tempIdToFolderId.get(folder.parentTempId) ?? null
+            ? folderIdMap.get(folder.parentTempId) ?? targetFolderId
             : targetFolderId;
 
-          const created = await tx.files.create({
+          await tx.files.create({
             data: {
+              id: folderId,
               user_id: userId,
               name: folder.folderName,
               is_folder: true,
@@ -160,76 +191,76 @@ export class BatchUploadOrchestratorV2 {
             },
           });
 
-          const folderId = created.id.toUpperCase();
-          tempIdToFolderId.set(folder.tempId, folderId);
           folderResults.push({ tempId: folder.tempId, folderId });
         }
 
-        // Create files with SAS URLs
-        const fileUploadService = getFileUploadService();
-        const fileResults: BatchFileResult[] = [];
+        // Batch soft-delete replaced files (single updateMany instead of per-file update)
+        const replaceFileIds = request.files
+          .filter((f) => f.replaceFileId)
+          .map((f) => f.replaceFileId!);
 
-        for (const file of request.files) {
-          // Generate SAS URL
-          const { sasUrl, blobPath } = await fileUploadService.generateSasUrlForBulkUpload(
-            userId,
-            file.fileName,
-            file.mimeType,
-            file.sizeBytes,
-            SAS_EXPIRY_MINUTES,
+        if (replaceFileIds.length > 0) {
+          await tx.files.updateMany({
+            where: { id: { in: replaceFileIds } },
+            data: { deletion_status: 'pending', deleted_at: new Date() },
+          });
+          logger.debug(
+            { replaceFileIds, count: replaceFileIds.length },
+            'Batch soft-deleted existing files for replacement',
           );
+        }
 
-          // Resolve parent folder
-          const parentFolderId = file.parentTempId
-            ? tempIdToFolderId.get(file.parentTempId) ?? null
-            : targetFolderId;
-
-          // Handle "Replace" — soft-delete the existing file inside the same transaction
-          if (file.replaceFileId) {
-            await tx.files.update({
-              where: { id: file.replaceFileId },
-              data: { deletion_status: 'pending', deleted_at: new Date() },
-            });
-            logger.debug(
-              { replaceFileId: file.replaceFileId, newFileName: file.fileName },
-              'Soft-deleted existing file for replacement',
-            );
+        // Build all file data using pre-generated IDs and SAS URLs
+        const fileDataArray = request.files.map((file) => {
+          const sasData = sasMap.get(file.tempId);
+          if (!sasData) {
+            throw new Error(`Missing pre-generated SAS URL for tempId: ${file.tempId}`);
           }
 
-          // Create file record
-          const created = await tx.files.create({
-            data: {
-              user_id: userId,
-              name: file.fileName,
-              mime_type: file.mimeType,
-              size_bytes: BigInt(file.sizeBytes),
-              blob_path: blobPath,
-              source_type: 'blob_storage',
-              is_folder: false,
-              is_favorite: false,
-              processing_retry_count: 0,
-              embedding_retry_count: 0,
-              pipeline_status: PIPELINE_STATUS.REGISTERED,
-              parent_folder_id: parentFolderId,
-              batch_id: batchId,
-              content_hash: file.contentHash ?? null,
-            },
-          });
+          return {
+            id: fileIdMap.get(file.tempId)!,
+            user_id: userId,
+            name: file.fileName,
+            mime_type: file.mimeType,
+            size_bytes: BigInt(file.sizeBytes),
+            blob_path: sasData.blobPath,
+            source_type: 'blob_storage',
+            is_folder: false,
+            is_favorite: false,
+            processing_retry_count: 0,
+            embedding_retry_count: 0,
+            pipeline_status: PIPELINE_STATUS.REGISTERED,
+            parent_folder_id: file.parentTempId
+              ? folderIdMap.get(file.parentTempId) ?? targetFolderId
+              : targetFolderId,
+            batch_id: batchId,
+            content_hash: file.contentHash ?? null,
+          };
+        });
 
-          const fileId = created.id.toUpperCase();
-          fileResults.push({ tempId: file.tempId, fileId, sasUrl, blobPath });
+        // Insert files in chunks of 100 (SQL Server 2100-param limit / ~15 cols = 140 max)
+        for (let i = 0; i < fileDataArray.length; i += CHUNK_SIZE) {
+          await tx.files.createMany({ data: fileDataArray.slice(i, i + CHUNK_SIZE) });
         }
+
+        // Build file results from pre-generated IDs
+        const fileResults: BatchFileResult[] = request.files.map((file) => ({
+          tempId: file.tempId,
+          fileId: fileIdMap.get(file.tempId)!,
+          sasUrl: sasMap.get(file.tempId)!.sasUrl,
+          blobPath: sasMap.get(file.tempId)!.blobPath,
+        }));
 
         return {
           batchId,
-          status: BATCH_STATUS.ACTIVE as const,
+          status: BATCH_STATUS.ACTIVE,
           files: fileResults,
           folders: folderResults,
           duplicates,
           expiresAt: expiresAt.toISOString(),
         };
       },
-      { timeout: 30000 },
+      { timeout: 120_000 },
     );
 
     logger.info(
@@ -383,7 +414,7 @@ export class BatchUploadOrchestratorV2 {
 
     return {
       batchId: (batch.id as string).toUpperCase(),
-      status: batch.status as string,
+      status: batch.status as BatchStatus,
       totalFiles: batch.total_files as number,
       confirmedCount: batch.confirmed_count as number,
       createdAt: new Date(batch.created_at as Date).toISOString(),

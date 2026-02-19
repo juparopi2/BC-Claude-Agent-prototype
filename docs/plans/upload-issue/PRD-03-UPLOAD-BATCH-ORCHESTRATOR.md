@@ -410,6 +410,8 @@ async createBatch(userId: string, manifest: UploadManifest): Promise<BatchCreati
 - Any failure at any step rolls back everything
 - No partial state survives
 
+> **Note (2026-02-19)**: The actual implementation moves SAS URL generation and duplicate detection outside the transaction for performance. See **Section 17** for the optimized architecture.
+
 ---
 
 ## 6. API Specification
@@ -1453,7 +1455,142 @@ The following decisions were made during implementation that differ from the ori
 
 ---
 
-## 17. Risk Assessment (Original)
+## 17. Post-Implementation Optimizations (2026-02-19)
+
+The following performance optimizations were applied to `BatchUploadOrchestratorV2.createBatch()` after real-world testing revealed transaction timeouts on batches with 100+ files.
+
+### 17.1 Pre-Transaction Architecture
+
+**Problem**: SAS URL generation (~300ms/file for crypto signing) and duplicate detection (database reads) were running inside the Prisma `$transaction`, causing timeouts on large batches (100+ files would exceed 30s).
+
+**Solution**: Moved both operations OUTSIDE the transaction:
+
+```
+BEFORE (all inside $transaction):
+  TX START → dedup → batch insert → folder inserts → [SAS gen + file create] x N → TX COMMIT
+
+AFTER (pre-transaction + fast TX):
+  1. generateBulkSasUrls()          ← outside TX (parallel, ~2s for 500 files)
+  2. checkDuplicates()              ← outside TX (read-only)
+  3. pre-generate UUIDs             ← outside TX (crypto.randomUUID)
+  4. TX START → batch insert → folder inserts → createMany files → TX COMMIT
+```
+
+**Rationale**: SAS generation and duplicate detection are read-only operations that don't need transactional guarantees. Moving them out reduces the transaction window from ~60s to ~2s for a 500-file batch.
+
+### 17.2 Bulk SAS URL Generation
+
+New `FileUploadService.generateBulkSasUrls()` method:
+- Validates all files first (fail-fast before any SAS generation)
+- Parses storage credentials ONCE (not per-file)
+- Generates SAS URLs in parallel batches of 50 (`Promise.all` with controlled concurrency)
+- Returns `Map<tempId, { sasUrl, blobPath }>` for O(1) lookup during file record creation
+
+**Performance**: ~2s for 500 files (vs ~150s sequential inside TX).
+
+### 17.3 `createMany()` with Chunking
+
+**Problem**: Sequential `tx.files.create()` calls inside the transaction were slow (one DB round-trip per file) and SQL Server has a 2,100 parameter limit per query.
+
+**Solution**: Replaced with `tx.files.createMany()` in chunks of 100 records:
+
+```typescript
+const CHUNK_SIZE = 100;  // ~15 columns × 100 = 1,500 params (under 2,100 limit)
+for (let i = 0; i < fileDataArray.length; i += CHUNK_SIZE) {
+  await tx.files.createMany({ data: fileDataArray.slice(i, i + CHUNK_SIZE) });
+}
+```
+
+**Trade-off**: `createMany()` doesn't return created records, so UUIDs must be pre-generated (see 17.4).
+
+### 17.4 UUID Pre-generation Strategy
+
+All file and folder UUIDs are generated before the transaction starts using `crypto.randomUUID().toUpperCase()`:
+
+```typescript
+// Pre-generate all IDs
+const batchId = randomUUID().toUpperCase();
+const folderIdMap = new Map<string, string>();  // tempId → real UUID
+const fileIdMap = new Map<string, string>();    // tempId → real UUID
+
+// Inside TX: use pre-generated IDs in createMany data
+await tx.files.createMany({ data: fileDataArray.map(f => ({ id: fileIdMap.get(f.tempId)!, ... })) });
+
+// Build response from pre-generated IDs (no need for DB return values)
+const fileResults = request.files.map(f => ({
+  tempId: f.tempId,
+  fileId: fileIdMap.get(f.tempId)!,
+  sasUrl: sasMap.get(f.tempId)!.sasUrl,
+}));
+```
+
+This eliminates the need for sequential `create()` calls that return the generated ID.
+
+### 17.5 Transaction Timeout Increase
+
+**Changed**: `{ timeout: 30000 }` → `{ timeout: 120_000 }` (30s → 120s)
+
+**Rationale**: Even with optimizations, 500-file batches with folder creation can take 5-10s for the database writes alone. The 120s timeout provides headroom for edge cases (slow DB, large folder hierarchies) without being so long that it masks actual problems.
+
+### 17.6 Batch Soft-Delete for Replacements
+
+**Changed**: Sequential `tx.files.update()` per replaced file → single `tx.files.updateMany()` for all replacements:
+
+```typescript
+const replaceFileIds = request.files.filter(f => f.replaceFileId).map(f => f.replaceFileId!);
+if (replaceFileIds.length > 0) {
+  await tx.files.updateMany({
+    where: { id: { in: replaceFileIds } },
+    data: { deletion_status: 'pending', deleted_at: new Date() },
+  });
+}
+```
+
+### 17.7 Duplicate Detection Uses Main Client
+
+Since duplicate detection now runs outside the transaction, it uses the main `PrismaClient` singleton instead of the transaction client (`tx`). This avoids snapshot isolation overhead for read-only queries.
+
+### Updated Sequence Diagram (Post-Optimization)
+
+```
+Client                  API Server              Database            Azure Storage
+  │                         │                       │                      │
+  │  POST /batches          │                       │                      │
+  │ (manifest)              │                       │                      │
+  ├────────────────────────▶│                       │                      │
+  │                         │                       │                      │
+  │                         │ [PRE-TX] Bulk SAS gen │                      │
+  │                         │ (parallel, 50/batch)  │                      │
+  │                         ├─────────────────────────────────────────────▶│
+  │                         │◀─────────────────────────────────────────────┤
+  │                         │                       │                      │
+  │                         │ [PRE-TX] Dedup check  │                      │
+  │                         ├──────────────────────▶│                      │
+  │                         │◀──────────────────────┤                      │
+  │                         │                       │                      │
+  │                         │ [PRE-TX] Pre-gen UUIDs│                      │
+  │                         │ (batchId + all files) │                      │
+  │                         │                       │                      │
+  │                         │ BEGIN TX              │                      │
+  │                         ├──────────────────────▶│                      │
+  │                         │ INSERT upload_batch   │                      │
+  │                         ├──────────────────────▶│                      │
+  │                         │ INSERT folders (topo) │                      │
+  │                         ├──────────────────────▶│                      │
+  │                         │ createMany files      │                      │
+  │                         │ (chunks of 100)       │                      │
+  │                         ├──────────────────────▶│                      │
+  │                         │ COMMIT TX             │                      │
+  │                         ├──────────────────────▶│                      │
+  │                         │                       │                      │
+  │  201 Created            │                       │                      │
+  │ (batchId, SAS URLs)     │                       │                      │
+  │◀────────────────────────┤                       │                      │
+```
+
+---
+
+## 18. Risk Assessment (Original, Partially Mitigated)
 
 ### High Risk
 
@@ -1475,7 +1612,7 @@ The following decisions were made during implementation that differ from the ori
 
 ---
 
-## 18. Metrics & Monitoring (Original)
+## 19. Metrics & Monitoring (Original)
 
 ### Key Metrics
 

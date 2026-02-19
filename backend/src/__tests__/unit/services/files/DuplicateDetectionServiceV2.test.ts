@@ -53,7 +53,7 @@ describe('DuplicateDetectionServiceV2', () => {
   describe('checkDuplicates', () => {
     // Test 1: Empty input
     it('should return empty results and zero summary for empty input', async () => {
-      const { results, summary } = await service.checkDuplicates([], TEST_USER_ID);
+      const { results, summary, targetFolderPath } = await service.checkDuplicates([], TEST_USER_ID);
 
       expect(results).toEqual([]);
       expect(summary).toEqual({
@@ -62,6 +62,7 @@ describe('DuplicateDetectionServiceV2', () => {
         byScope: { storage: 0, pipeline: 0, upload: 0 },
         byMatchType: { name: 0, content: 0, name_and_content: 0 },
       });
+      expect(targetFolderPath).toBeNull();
 
       // No DB calls when input is empty
       expect(mockFindMany).not.toHaveBeenCalled();
@@ -93,7 +94,7 @@ describe('DuplicateDetectionServiceV2', () => {
         .mockResolvedValueOnce([]) // pipeline
         .mockResolvedValueOnce([]); // upload
 
-      const { results, summary } = await service.checkDuplicates(inputs, TEST_USER_ID);
+      const { results, summary, targetFolderPath } = await service.checkDuplicates(inputs, TEST_USER_ID);
 
       expect(results).toEqual([
         {
@@ -108,6 +109,8 @@ describe('DuplicateDetectionServiceV2', () => {
             fileSize: 1024,
             pipelineStatus: PIPELINE_STATUS.READY,
             folderId: null,
+            folderName: null,
+            folderPath: null,
           },
           suggestedName: 'report (1).pdf',
         },
@@ -119,6 +122,7 @@ describe('DuplicateDetectionServiceV2', () => {
         byScope: { storage: 1, pipeline: 0, upload: 0 },
         byMatchType: { name: 1, content: 0, name_and_content: 0 },
       });
+      expect(targetFolderPath).toBeNull();
     });
 
     // Test 3: Storage scope - name match (null/legacy)
@@ -144,7 +148,11 @@ describe('DuplicateDetectionServiceV2', () => {
           },
         ])
         .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([]);
+        .mockResolvedValueOnce([])
+        // resolveFolderPaths — resolve TEST_FOLDER_ID
+        .mockResolvedValueOnce([
+          { id: TEST_FOLDER_ID, name: 'TestFolder', parent_folder_id: null },
+        ]);
 
       const { results } = await service.checkDuplicates(inputs, TEST_USER_ID);
 
@@ -218,7 +226,11 @@ describe('DuplicateDetectionServiceV2', () => {
           },
         ])
         .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([]);
+        .mockResolvedValueOnce([])
+        // resolveFolderPaths — resolve TEST_FOLDER_ID
+        .mockResolvedValueOnce([
+          { id: TEST_FOLDER_ID, name: 'TestFolder', parent_folder_id: null },
+        ]);
 
       const { results, summary } = await service.checkDuplicates(inputs, TEST_USER_ID);
 
@@ -254,7 +266,11 @@ describe('DuplicateDetectionServiceV2', () => {
           },
         ])
         .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([]);
+        .mockResolvedValueOnce([])
+        // resolveFolderPaths — resolve TEST_FOLDER_ID (existing file's folder)
+        .mockResolvedValueOnce([
+          { id: TEST_FOLDER_ID, name: 'TestFolder', parent_folder_id: null },
+        ]);
 
       const { results } = await service.checkDuplicates(inputs, TEST_USER_ID);
 
@@ -859,6 +875,10 @@ describe('DuplicateDetectionServiceV2', () => {
         .mockResolvedValueOnce([  // fetchSiblingNames → all files in TEST_FOLDER_ID
           { name: 'report.pdf' },
           { name: 'report (1).pdf' },
+        ])
+        // resolveFolderPaths — resolve TEST_FOLDER_ID (target + existing file folder)
+        .mockResolvedValueOnce([
+          { id: TEST_FOLDER_ID, name: 'TestFolder', parent_folder_id: null },
         ]);
 
       const { results } = await service.checkDuplicates(inputs, TEST_USER_ID, TEST_FOLDER_ID);
@@ -898,6 +918,10 @@ describe('DuplicateDetectionServiceV2', () => {
           { name: 'data.xlsx' },
           { name: 'data (1).xlsx' },
           { name: 'data (2).xlsx' },
+        ])
+        // resolveFolderPaths — resolve TEST_FOLDER_ID
+        .mockResolvedValueOnce([
+          { id: TEST_FOLDER_ID, name: 'TestFolder', parent_folder_id: null },
         ]);
 
       const { results } = await service.checkDuplicates(inputs, TEST_USER_ID, TEST_FOLDER_ID);
@@ -1034,6 +1058,202 @@ describe('DuplicateDetectionServiceV2', () => {
           fileId: 'FILE-BOTH-MATCH',
         },
       });
+    });
+  });
+
+  describe('folder path resolution', () => {
+    it('should resolve single-level folder path for existing file', async () => {
+      const inputs: DuplicateCheckInputV2[] = [
+        { tempId: 'temp-fp-1', fileName: 'report.pdf', folderId: TEST_FOLDER_ID, contentHash: undefined },
+      ];
+
+      mockFindMany
+        // storage scope — file in TEST_FOLDER_ID
+        .mockResolvedValueOnce([
+          {
+            id: TEST_FILE_ID,
+            name: 'report.pdf',
+            size_bytes: BigInt(1024),
+            pipeline_status: PIPELINE_STATUS.READY,
+            parent_folder_id: TEST_FOLDER_ID,
+            content_hash: null,
+          },
+        ])
+        .mockResolvedValueOnce([]) // pipeline
+        .mockResolvedValueOnce([]) // upload
+        // resolveFolderPaths — fetch TEST_FOLDER_ID folder record
+        .mockResolvedValueOnce([
+          { id: TEST_FOLDER_ID, name: 'Reports', parent_folder_id: null },
+        ]);
+
+      const { results } = await service.checkDuplicates(inputs, TEST_USER_ID);
+
+      expect(results[0].existingFile).toMatchObject({
+        folderName: 'Reports',
+        folderPath: 'Reports',
+      });
+    });
+
+    it('should resolve nested folder path (2 levels)', async () => {
+      const PARENT_FOLDER_ID = 'FOLD-PARENT00-1111-2222-3333-444444444444';
+      const CHILD_FOLDER_ID = 'FOLD-CHILD000-1111-2222-3333-444444444444';
+
+      const inputs: DuplicateCheckInputV2[] = [
+        { tempId: 'temp-fp-2', fileName: 'data.csv', folderId: CHILD_FOLDER_ID, contentHash: undefined },
+      ];
+
+      mockFindMany
+        .mockResolvedValueOnce([
+          {
+            id: TEST_FILE_ID,
+            name: 'data.csv',
+            size_bytes: BigInt(512),
+            pipeline_status: PIPELINE_STATUS.READY,
+            parent_folder_id: CHILD_FOLDER_ID,
+            content_hash: null,
+          },
+        ])
+        .mockResolvedValueOnce([]) // pipeline
+        .mockResolvedValueOnce([]) // upload
+        // First folder fetch — child folder
+        .mockResolvedValueOnce([
+          { id: CHILD_FOLDER_ID, name: 'Q4', parent_folder_id: PARENT_FOLDER_ID },
+        ])
+        // Second folder fetch — parent folder (ancestor)
+        .mockResolvedValueOnce([
+          { id: PARENT_FOLDER_ID, name: 'Projects', parent_folder_id: null },
+        ]);
+
+      const { results } = await service.checkDuplicates(inputs, TEST_USER_ID);
+
+      expect(results[0].existingFile).toMatchObject({
+        folderName: 'Q4',
+        folderPath: 'Projects / Q4',
+      });
+    });
+
+    it('should resolve targetFolderPath from targetFolderId', async () => {
+      const inputs: DuplicateCheckInputV2[] = [
+        { tempId: 'temp-fp-3', fileName: 'report.pdf', contentHash: undefined },
+      ];
+
+      mockFindMany
+        .mockResolvedValueOnce([
+          {
+            id: TEST_FILE_ID,
+            name: 'report.pdf',
+            size_bytes: BigInt(1024),
+            pipeline_status: PIPELINE_STATUS.READY,
+            parent_folder_id: TEST_FOLDER_ID,
+            content_hash: null,
+          },
+        ])
+        .mockResolvedValueOnce([]) // pipeline
+        .mockResolvedValueOnce([]) // upload
+        .mockResolvedValueOnce([   // fetchSiblingNames
+          { name: 'report.pdf' },
+        ])
+        // resolveFolderPaths — resolve TEST_FOLDER_ID (both target + existing file folder)
+        .mockResolvedValueOnce([
+          { id: TEST_FOLDER_ID, name: 'Reports', parent_folder_id: null },
+        ]);
+
+      const { targetFolderPath } = await service.checkDuplicates(inputs, TEST_USER_ID, TEST_FOLDER_ID);
+
+      expect(targetFolderPath).toBe('Reports');
+    });
+
+    it('should return null folderName/folderPath for root-level files', async () => {
+      const inputs: DuplicateCheckInputV2[] = [
+        { tempId: 'temp-fp-4', fileName: 'root.pdf', folderId: null, contentHash: undefined },
+      ];
+
+      mockFindMany
+        .mockResolvedValueOnce([
+          {
+            id: TEST_FILE_ID,
+            name: 'root.pdf',
+            size_bytes: BigInt(256),
+            pipeline_status: PIPELINE_STATUS.READY,
+            parent_folder_id: null,
+            content_hash: null,
+          },
+        ])
+        .mockResolvedValueOnce([]) // pipeline
+        .mockResolvedValueOnce([]); // upload
+
+      const { results, targetFolderPath } = await service.checkDuplicates(inputs, TEST_USER_ID);
+
+      expect(results[0].existingFile).toMatchObject({
+        folderName: null,
+        folderPath: null,
+      });
+      expect(targetFolderPath).toBeNull();
+    });
+
+    it('should return null folderName/folderPath for orphaned folder reference', async () => {
+      const ORPHAN_FOLDER_ID = 'FOLD-ORPHAN00-1111-2222-3333-444444444444';
+
+      const inputs: DuplicateCheckInputV2[] = [
+        { tempId: 'temp-fp-5', fileName: 'orphan.pdf', folderId: ORPHAN_FOLDER_ID, contentHash: undefined },
+      ];
+
+      mockFindMany
+        .mockResolvedValueOnce([
+          {
+            id: TEST_FILE_ID,
+            name: 'orphan.pdf',
+            size_bytes: BigInt(128),
+            pipeline_status: PIPELINE_STATUS.READY,
+            parent_folder_id: ORPHAN_FOLDER_ID,
+            content_hash: null,
+          },
+        ])
+        .mockResolvedValueOnce([]) // pipeline
+        .mockResolvedValueOnce([]) // upload
+        // resolveFolderPaths — folder not found in DB
+        .mockResolvedValueOnce([]);
+
+      const { results } = await service.checkDuplicates(inputs, TEST_USER_ID);
+
+      expect(results[0].existingFile).toMatchObject({
+        folderName: null,
+        folderPath: null,
+      });
+    });
+  });
+
+  describe('deletion_status filtering verification', () => {
+    it('should include deletion_status: null in fetchSiblingNames query when targetFolderId is provided', async () => {
+      const inputs: DuplicateCheckInputV2[] = [
+        { tempId: 'temp-del-1', fileName: 'test.pdf', folderId: null, contentHash: undefined },
+      ];
+
+      mockFindMany.mockResolvedValue([]);
+
+      await service.checkDuplicates(inputs, TEST_USER_ID, TEST_FOLDER_ID);
+
+      // Calls: 3 scopes + fetchSiblingNames + resolveFolderPaths (for targetFolderId)
+      expect(mockFindMany).toHaveBeenCalledTimes(5);
+      const siblingQuery = mockFindMany.mock.calls[3][0];
+      expect(siblingQuery.where.deletion_status).toBeNull();
+      expect(siblingQuery.where.parent_folder_id).toBe(TEST_FOLDER_ID);
+    });
+
+    it('should exclude files with non-null deletion_status from all 3 scope queries', async () => {
+      const inputs: DuplicateCheckInputV2[] = [
+        { tempId: 'temp-del-2', fileName: 'test.pdf', folderId: null, contentHash: 'hash123' },
+      ];
+
+      mockFindMany.mockResolvedValue([]);
+
+      await service.checkDuplicates(inputs, TEST_USER_ID);
+
+      // All 3 scope queries should filter deletion_status: null
+      for (let i = 0; i < 3; i++) {
+        const query = mockFindMany.mock.calls[i][0];
+        expect(query.where.deletion_status).toBeNull();
+      }
     });
   });
 });

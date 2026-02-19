@@ -21,10 +21,11 @@ export interface DuplicateStoreV2State {
   resolutions: Map<string, DuplicateActionV2>;
   isModalOpen: boolean;
   isCancelled: boolean;
+  targetFolderPath: string | null;
 }
 
 export interface DuplicateStoreV2Actions {
-  setResults: (results: DuplicateCheckResultV2[]) => void;
+  setResults: (results: DuplicateCheckResultV2[], targetFolderPath?: string | null) => void;
   resolveOne: (tempId: string, action: DuplicateActionV2) => void;
   resolveAllRemaining: (action: DuplicateActionV2) => void;
   isAllResolved: () => boolean;
@@ -45,19 +46,21 @@ const initialState: DuplicateStoreV2State = {
   resolutions: new Map(),
   isModalOpen: false,
   isCancelled: false,
+  targetFolderPath: null,
 };
 
 export const useDuplicateStoreV2 = create<DuplicateStoreV2State & DuplicateStoreV2Actions>()(
   (set, get) => ({
     ...initialState,
 
-    setResults: (results) => {
+    setResults: (results, targetFolderPath) => {
       const duplicates = results.filter((r) => r.isDuplicate);
       set({
         results,
         resolutions: new Map(),
         isCancelled: false,
         isModalOpen: duplicates.length > 0,
+        targetFolderPath: targetFolderPath ?? null,
       });
     },
 

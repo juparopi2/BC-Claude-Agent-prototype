@@ -17,11 +17,24 @@ const mockGenerateSasUrl = vi.fn().mockImplementation(async (userId: string, fil
   sasUrl: `https://fake.blob.core/container/users/${userId}/files/${fileName}?sig=xxx`,
   blobPath: `users/${userId}/files/${fileName}`,
 }));
+const mockGenerateBulkSasUrls = vi.fn().mockImplementation(
+  async (userId: string, files: Array<{ tempId: string; fileName: string }>) => {
+    const map = new Map<string, { sasUrl: string; blobPath: string }>();
+    for (const file of files) {
+      map.set(file.tempId, {
+        sasUrl: `https://fake.blob.core/container/users/${userId}/files/${file.fileName}?sig=xxx`,
+        blobPath: `users/${userId}/files/${file.fileName}`,
+      });
+    }
+    return map;
+  },
+);
 const mockBlobExists = vi.fn().mockResolvedValue(true);
 
 vi.mock('@/services/files/FileUploadService', () => ({
   getFileUploadService: vi.fn(() => ({
     generateSasUrlForBulkUpload: mockGenerateSasUrl,
+    generateBulkSasUrls: mockGenerateBulkSasUrls,
     blobExists: mockBlobExists,
     deleteFromBlob: vi.fn().mockResolvedValue(undefined),
   })),
@@ -62,6 +75,18 @@ describe('V2 Pipeline Regression — Original Bug Scenarios', () => {
       sasUrl: `https://fake.blob.core/container/users/${uid}/files/${fileName}?sig=xxx`,
       blobPath: `users/${uid}/files/${fileName}`,
     }));
+    mockGenerateBulkSasUrls.mockImplementation(
+      async (uid: string, files: Array<{ tempId: string; fileName: string }>) => {
+        const map = new Map<string, { sasUrl: string; blobPath: string }>();
+        for (const file of files) {
+          map.set(file.tempId, {
+            sasUrl: `https://fake.blob.core/container/users/${uid}/files/${file.fileName}?sig=xxx`,
+            blobPath: `users/${uid}/files/${file.fileName}`,
+          });
+        }
+        return map;
+      },
+    );
 
     helper = createV2PipelineTestHelper();
     const user = await helper.createTestUser();
@@ -92,10 +117,9 @@ describe('V2 Pipeline Regression — Original Bug Scenarios', () => {
     it('No partial data after transaction failure', { timeout: 15000 }, async () => {
       const orchestrator = new BatchUploadOrchestratorV2();
 
-      // Mock to succeed first call, fail second
-      mockGenerateSasUrl
-        .mockResolvedValueOnce({ sasUrl: 'https://fake/1?sig=x', blobPath: 'users/x/files/1' })
-        .mockRejectedValueOnce(new Error('SAS URL generation failed'));
+      // SAS generation now happens pre-transaction via generateBulkSasUrls
+      // Failure here means no DB writes occur at all
+      mockGenerateBulkSasUrls.mockRejectedValueOnce(new Error('SAS URL generation failed'));
 
       const request: CreateBatchRequest = {
         files: [

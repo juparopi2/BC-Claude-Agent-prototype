@@ -22,7 +22,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import { AlertTriangle, File, SkipForward, Replace, Copy } from 'lucide-react';
+import { AlertTriangle, File, FolderOpen, SkipForward, Replace, Copy } from 'lucide-react';
 import type { DuplicateScope, DuplicateMatchType } from '@bc-agent/shared';
 import {
   useDuplicateStoreV2,
@@ -75,6 +75,7 @@ export function DuplicateFileModalV2() {
   const results = useDuplicateStoreV2((s) => s.results);
   const resolutions = useDuplicateStoreV2((s) => s.resolutions);
   const isModalOpen = useDuplicateStoreV2((s) => s.isModalOpen);
+  const targetFolderPath = useDuplicateStoreV2((s) => s.targetFolderPath);
   const resolveOne = useDuplicateStoreV2((s) => s.resolveOne);
   const resolveAllRemaining = useDuplicateStoreV2((s) => s.resolveAllRemaining);
   const cancel = useDuplicateStoreV2((s) => s.cancel);
@@ -136,17 +137,21 @@ export function DuplicateFileModalV2() {
 
           {/* New file info */}
           <div className="rounded-lg border p-3 bg-muted/50">
+            <p className="text-xs text-muted-foreground mb-1">New file:</p>
+            <div className="flex items-center gap-2">
+              <File className="size-4 text-blue-500 flex-shrink-0" />
+              <span className="font-medium truncate flex-1">{current.fileName}</span>
+            </div>
+            <div className="flex items-center gap-1.5 mt-1.5">
+              <FolderOpen className="size-3.5 text-muted-foreground flex-shrink-0" />
+              <span className="text-xs text-muted-foreground">
+                Uploading to: <span className="font-medium">{targetFolderPath ?? 'Root'}</span>
+              </span>
+            </div>
             {current.suggestedName && (
-              <>
-              <p className="text-xs text-muted-foreground mb-1">New file:</p>
-              <div className="flex items-center gap-2">
-                <File className="size-4 text-blue-500 flex-shrink-0" />
-                <span className="font-medium truncate flex-1">{current.suggestedName}</span>
-              </div>
               <p className="text-xs text-muted-foreground mt-1">
                 Keep Both will rename to: <span className="font-medium">{current.suggestedName}</span>
               </p>
-              </>
             )}
           </div>
 
@@ -163,12 +168,25 @@ export function DuplicateFileModalV2() {
                   {formatFileSize(current.existingFile.fileSize)}
                 </span>
               </div>
+              <div className="flex items-center gap-1.5 mt-1.5">
+                <FolderOpen className="size-3.5 text-muted-foreground flex-shrink-0" />
+                <span className="text-xs text-muted-foreground">
+                  Located in: <span className="font-medium">{current.existingFile.folderPath ?? 'Root'}</span>
+                </span>
+              </div>
               {current.existingFile.pipelineStatus && (
                 <p className="text-xs text-muted-foreground mt-1">
                   Status: {current.existingFile.pipelineStatus}
                 </p>
               )}
             </div>
+          )}
+
+          {/* Content-only match explanation */}
+          {current.matchType === 'content' && (
+            <p className="text-xs text-muted-foreground italic px-1">
+              This file has identical content to an existing file in a different location.
+            </p>
           )}
 
           {/* Apply to all checkbox */}

@@ -17,6 +17,7 @@ import { createChildLogger } from '@/shared/utils/logger';
 import { prisma as defaultPrisma } from '@/infrastructure/database/prisma';
 import { PIPELINE_STATUS, generateUniqueFileName } from '@bc-agent/shared';
 import type {
+  CheckDuplicatesResponseV2,
   DuplicateCheckInputV2,
   DuplicateCheckResultV2,
   DuplicateCheckSummary,
@@ -69,11 +70,12 @@ export class DuplicateDetectionServiceV2 {
     inputs: DuplicateCheckInputV2[],
     userId: string,
     targetFolderId?: string,
-  ): Promise<{ results: DuplicateCheckResultV2[]; summary: DuplicateCheckSummary }> {
+  ): Promise<CheckDuplicatesResponseV2> {
     if (inputs.length === 0) {
       return {
         results: [],
         summary: this.emptySummary(0),
+        targetFolderPath: null,
       };
     }
 
@@ -100,12 +102,44 @@ export class DuplicateDetectionServiceV2 {
     const results = this.aggregateResults(inputs, storageFiles, pipelineFiles, uploadFiles, targetFolderId, siblingNames);
     const summary = this.generateSummary(inputs.length, results);
 
+    // Resolve folder paths for matched files and target folder
+    const folderIdsToResolve = new Set<string>();
+    if (targetFolderId) folderIdsToResolve.add(targetFolderId);
+    for (const result of results) {
+      if (result.existingFile?.folderId) {
+        folderIdsToResolve.add(result.existingFile.folderId);
+      }
+    }
+
+    const folderPathMap = folderIdsToResolve.size > 0
+      ? await this.resolveFolderPaths(userId, folderIdsToResolve)
+      : new Map<string, { name: string; path: string }>();
+
+    // Enrich results with folder info
+    for (const result of results) {
+      if (result.existingFile) {
+        const folderId = result.existingFile.folderId;
+        if (folderId && folderPathMap.has(folderId)) {
+          const info = folderPathMap.get(folderId)!;
+          result.existingFile.folderName = info.name;
+          result.existingFile.folderPath = info.path;
+        } else {
+          result.existingFile.folderName = null;
+          result.existingFile.folderPath = null;
+        }
+      }
+    }
+
+    const targetFolderPath = targetFolderId && folderPathMap.has(targetFolderId)
+      ? folderPathMap.get(targetFolderId)!.path
+      : null;
+
     logger.info(
       { userId, totalChecked: summary.totalChecked, totalDuplicates: summary.totalDuplicates },
       'Duplicate detection completed',
     );
 
-    return { results, summary };
+    return { results, summary, targetFolderPath };
   }
 
   // --------------------------------------------------------------------------
@@ -250,6 +284,82 @@ export class DuplicateDetectionServiceV2 {
   }
 
   // --------------------------------------------------------------------------
+  // Folder Path Resolution
+  // --------------------------------------------------------------------------
+
+  /**
+   * Resolve folder names and full paths for a set of folder IDs.
+   * Iteratively fetches ancestor folders up to 10 levels deep.
+   *
+   * @returns Map of folderId → { name, path } where path is "Root / Sub / Leaf"
+   */
+  private async resolveFolderPaths(
+    userId: string,
+    folderIds: Set<string>,
+  ): Promise<Map<string, { name: string; path: string }>> {
+    const result = new Map<string, { name: string; path: string }>();
+    if (folderIds.size === 0) return result;
+
+    // Collect all folder records we need (iteratively fetch ancestors)
+    const folderCache = new Map<string, { name: string; parentId: string | null }>();
+    let idsToFetch = [...folderIds];
+
+    for (let depth = 0; depth < 10 && idsToFetch.length > 0; depth++) {
+      const unfetched = idsToFetch.filter((id) => !folderCache.has(id));
+      if (unfetched.length === 0) break;
+
+      const folders = await this.prisma.files.findMany({
+        where: {
+          id: { in: unfetched },
+          user_id: userId,
+          is_folder: true,
+        },
+        select: { id: true, name: true, parent_folder_id: true },
+      });
+
+      const nextIds: string[] = [];
+      for (const folder of folders) {
+        folderCache.set(folder.id, { name: folder.name, parentId: folder.parent_folder_id });
+        if (folder.parent_folder_id && !folderCache.has(folder.parent_folder_id)) {
+          nextIds.push(folder.parent_folder_id);
+        }
+      }
+
+      // Mark unfetched IDs not found in DB as orphans (won't be resolved)
+      for (const id of unfetched) {
+        if (!folderCache.has(id)) {
+          folderCache.set(id, { name: '', parentId: null });
+        }
+      }
+
+      idsToFetch = nextIds;
+    }
+
+    // Build paths from root → leaf for each requested folder
+    for (const folderId of folderIds) {
+      const cached = folderCache.get(folderId);
+      if (!cached || !cached.name) {
+        // Orphan or not found — skip
+        continue;
+      }
+
+      const segments: string[] = [];
+      let currentId: string | null = folderId;
+
+      while (currentId) {
+        const folder = folderCache.get(currentId);
+        if (!folder || !folder.name) break;
+        segments.unshift(folder.name);
+        currentId = folder.parentId;
+      }
+
+      result.set(folderId, { name: cached.name, path: segments.join(' / ') });
+    }
+
+    return result;
+  }
+
+  // --------------------------------------------------------------------------
   // Aggregation
   // --------------------------------------------------------------------------
 
@@ -377,6 +487,8 @@ export class DuplicateDetectionServiceV2 {
         fileSize: Number(bestFile.size_bytes),
         pipelineStatus: bestFile.pipeline_status,
         folderId: bestFile.parent_folder_id,
+        folderName: null,
+        folderPath: null,
       },
     };
   }

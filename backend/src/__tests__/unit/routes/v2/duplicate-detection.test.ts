@@ -95,6 +95,8 @@ describe('Duplicate Detection Route (PRD-02)', () => {
               fileSize: 1024,
               pipelineStatus: 'ready',
               folderId: null,
+              folderName: null,
+              folderPath: null,
             },
           },
         ],
@@ -104,6 +106,7 @@ describe('Duplicate Detection Route (PRD-02)', () => {
           byScope: { storage: 1, pipeline: 0, upload: 0 },
           byMatchType: { name: 0, content: 1, name_and_content: 0 },
         },
+        targetFolderPath: null,
       });
 
       const requestBody = {
@@ -133,6 +136,7 @@ describe('Duplicate Detection Route (PRD-02)', () => {
       // Assert - Response shape
       expect(response.body).toHaveProperty('results');
       expect(response.body).toHaveProperty('summary');
+      expect(response.body).toHaveProperty('targetFolderPath', null);
 
       // Results array
       expect(response.body.results).toBeInstanceOf(Array);
@@ -155,7 +159,8 @@ describe('Duplicate Detection Route (PRD-02)', () => {
       expect(mockCheckDuplicates).toHaveBeenCalledTimes(1);
       expect(mockCheckDuplicates).toHaveBeenCalledWith(
         requestBody.files,
-        'USER-12345678-1234-1234-1234-123456789ABC'
+        'USER-12345678-1234-1234-1234-123456789ABC',
+        undefined,
       );
     });
 
@@ -538,6 +543,7 @@ describe('Duplicate Detection Route (PRD-02)', () => {
           byScope: { storage: 0, pipeline: 0, upload: 0 },
           byMatchType: { name: 0, content: 0, name_and_content: 0 },
         },
+        targetFolderPath: null,
       });
 
       const requestBody = {
@@ -562,7 +568,8 @@ describe('Duplicate Detection Route (PRD-02)', () => {
       expect(response.body.results[0].tempId).toBe('temp-full');
       expect(mockCheckDuplicates).toHaveBeenCalledWith(
         requestBody.files,
-        'USER-12345678-1234-1234-1234-123456789ABC'
+        'USER-12345678-1234-1234-1234-123456789ABC',
+        undefined,
       );
     });
 

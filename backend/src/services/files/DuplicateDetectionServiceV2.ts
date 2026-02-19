@@ -15,7 +15,7 @@
 
 import { createChildLogger } from '@/shared/utils/logger';
 import { prisma as defaultPrisma } from '@/infrastructure/database/prisma';
-import { PIPELINE_STATUS } from '@bc-agent/shared';
+import { PIPELINE_STATUS, generateUniqueFileName } from '@bc-agent/shared';
 import type {
   DuplicateCheckInputV2,
   DuplicateCheckResultV2,
@@ -68,6 +68,7 @@ export class DuplicateDetectionServiceV2 {
   async checkDuplicates(
     inputs: DuplicateCheckInputV2[],
     userId: string,
+    targetFolderId?: string,
   ): Promise<{ results: DuplicateCheckResultV2[]; summary: DuplicateCheckSummary }> {
     if (inputs.length === 0) {
       return {
@@ -83,19 +84,20 @@ export class DuplicateDetectionServiceV2 {
     ];
 
     logger.debug(
-      { userId, inputCount: inputs.length, uniqueNames: fileNames.length, uniqueHashes: contentHashes.length },
+      { userId, inputCount: inputs.length, uniqueNames: fileNames.length, uniqueHashes: contentHashes.length, targetFolderId },
       'Starting duplicate detection',
     );
 
-    // Run all 3 scope queries in parallel (max 3 DB queries regardless of batch size)
-    const [storageFiles, pipelineFiles, uploadFiles] = await Promise.all([
+    // Run all 3 scope queries + sibling names query in parallel
+    const [storageFiles, pipelineFiles, uploadFiles, siblingNames] = await Promise.all([
       this.checkStorageScope(userId, fileNames, contentHashes),
       this.checkPipelineScope(userId, fileNames, contentHashes),
       this.checkUploadScope(userId, fileNames, contentHashes),
+      this.fetchSiblingNames(userId, targetFolderId),
     ]);
 
     // Aggregate: first match wins per tempId (storage > pipeline > upload)
-    const results = this.aggregateResults(inputs, storageFiles, pipelineFiles, uploadFiles);
+    const results = this.aggregateResults(inputs, storageFiles, pipelineFiles, uploadFiles, targetFolderId, siblingNames);
     const summary = this.generateSummary(inputs.length, results);
 
     logger.info(
@@ -217,6 +219,37 @@ export class DuplicateDetectionServiceV2 {
   }
 
   // --------------------------------------------------------------------------
+  // Sibling Names (for suggestedName computation)
+  // --------------------------------------------------------------------------
+
+  /**
+   * Fetch ALL file names in the target folder (not just matched ones).
+   * This ensures generateUniqueFileName has the complete picture, handling cases
+   * like "a (1).jpg" already existing when suggesting a name for "a.jpg".
+   */
+  private async fetchSiblingNames(
+    userId: string,
+    targetFolderId?: string,
+  ): Promise<Map<string, Set<string>>> {
+    const namesByFolder = new Map<string, Set<string>>();
+    if (!targetFolderId) return namesByFolder;
+
+    const siblings = await this.prisma.files.findMany({
+      where: {
+        user_id: userId,
+        parent_folder_id: targetFolderId,
+        deletion_status: null,
+        is_folder: false,
+      },
+      select: { name: true },
+    });
+
+    const names = new Set(siblings.map((f) => f.name));
+    namesByFolder.set(targetFolderId, names);
+    return namesByFolder;
+  }
+
+  // --------------------------------------------------------------------------
   // Aggregation
   // --------------------------------------------------------------------------
 
@@ -229,24 +262,56 @@ export class DuplicateDetectionServiceV2 {
     storageFiles: DbFileMatch[],
     pipelineFiles: DbFileMatch[],
     uploadFiles: DbFileMatch[],
+    targetFolderId?: string,
+    siblingNames?: Map<string, Set<string>>,
   ): DuplicateCheckResultV2[] {
+    // Use the pre-fetched sibling names (complete set for target folder),
+    // falling back to names from matched files for non-target folders
+    const namesByFolder = siblingNames ?? new Map<string, Set<string>>();
+
+    // Also add names from matched files for folders not covered by the sibling query
+    const allDbFiles = [...storageFiles, ...pipelineFiles, ...uploadFiles];
+    for (const file of allDbFiles) {
+      const folderKey = file.parent_folder_id ?? '__root__';
+      if (!namesByFolder.has(folderKey)) {
+        namesByFolder.set(folderKey, new Set());
+      }
+      namesByFolder.get(folderKey)!.add(file.name);
+    }
+
     return inputs.map((input) => {
+      // Resolve the effective folder: use input.folderId (nested folder uploads),
+      // fall back to targetFolderId (upload destination), then root.
+      const effectiveFolderId = input.folderId ?? targetFolderId ?? null;
+
       // Try each scope in priority order
       const match =
-        this.findBestMatch(input, storageFiles, 'storage') ??
-        this.findBestMatch(input, pipelineFiles, 'pipeline') ??
-        this.findBestMatch(input, uploadFiles, 'upload');
+        this.findBestMatch(input, storageFiles, 'storage', effectiveFolderId) ??
+        this.findBestMatch(input, pipelineFiles, 'pipeline', effectiveFolderId) ??
+        this.findBestMatch(input, uploadFiles, 'upload', effectiveFolderId);
 
       if (!match) {
-        return { tempId: input.tempId, isDuplicate: false };
+        return { tempId: input.tempId, fileName: input.fileName, isDuplicate: false };
       }
+
+      // Compute suggestedName for "Keep Both" action
+      const folderKey = effectiveFolderId ?? '__root__';
+      const folderNames = namesByFolder.get(folderKey) ?? new Set<string>();
+      const suggestedName = generateUniqueFileName(input.fileName, folderNames);
+
+      logger.debug(
+        { tempId: input.tempId, fileName: input.fileName, folderKey, siblingCount: folderNames.size, suggestedName },
+        'Computed suggestedName for duplicate',
+      );
 
       return {
         tempId: input.tempId,
+        fileName: input.fileName,
         isDuplicate: true,
         scope: match.scope,
         matchType: match.matchType,
         existingFile: match.existingFile,
+        suggestedName,
       };
     });
   }
@@ -256,13 +321,14 @@ export class DuplicateDetectionServiceV2 {
    *
    * Match type priority:
    * 1. name_and_content — both name+folder AND hash match (strongest signal)
-   * 2. content — hash match only (cross-folder, more significant than name-only)
-   * 3. name — name+folder match only
+   * 2. name — name+folder match (same-name file is the most relevant for Replace/Keep Both)
+   * 3. content — hash match only (cross-folder fallback when no name match exists)
    */
   private findBestMatch(
     input: DuplicateCheckInputV2,
     files: DbFileMatch[],
     scope: DuplicateScope,
+    effectiveFolderId?: string | null,
   ): ScopedMatch | null {
     let nameMatch: DbFileMatch | null = null;
     let hashMatch: DbFileMatch | null = null;
@@ -271,7 +337,7 @@ export class DuplicateDetectionServiceV2 {
     for (const file of files) {
       const nameMatches =
         file.name === input.fileName &&
-        (file.parent_folder_id ?? null) === (input.folderId ?? null);
+        (file.parent_folder_id?.toUpperCase() ?? null) === (effectiveFolderId?.toUpperCase() ?? null);
 
       const hashMatches =
         !!input.contentHash &&
@@ -288,15 +354,19 @@ export class DuplicateDetectionServiceV2 {
       }
     }
 
-    // Priority: name_and_content > content > name
-    const bestFile = bothMatch ?? hashMatch ?? nameMatch;
+    // Priority: name_and_content > name > content
+    // Name match is preferred over content-only because:
+    // 1. The modal shows existingFile — same-name file is most intuitive
+    // 2. Replace action targets existingFile — must be the same-name file
+    // 3. Content-only match is a cross-name fallback (e.g., renamed copy)
+    const bestFile = bothMatch ?? nameMatch ?? hashMatch;
     if (!bestFile) return null;
 
     const matchType: DuplicateMatchType = bothMatch
       ? 'name_and_content'
-      : hashMatch
-        ? 'content'
-        : 'name';
+      : nameMatch
+        ? 'name'
+        : 'content';
 
     return {
       scope,

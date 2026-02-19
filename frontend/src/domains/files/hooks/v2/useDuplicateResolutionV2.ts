@@ -17,6 +17,10 @@ interface DuplicateResolutionResult {
   proceed: DuplicateCheckInputV2[];
   /** TempIds of files skipped by user */
   skipped: string[];
+  /** Map of tempId → suggestedName for "Keep Both" files */
+  renames: Map<string, string>;
+  /** Map of tempId → existingFileId for "Replace" files */
+  replacements: Map<string, string>;
 }
 
 /**
@@ -26,22 +30,25 @@ export function useDuplicateResolutionV2() {
   const setResults = useDuplicateStoreV2((s) => s.setResults);
 
   const checkAndResolve = useCallback(
-    async (files: DuplicateCheckInputV2[]): Promise<DuplicateResolutionResult | null> => {
-      if (files.length === 0) return { proceed: [], skipped: [] };
+    async (files: DuplicateCheckInputV2[], targetFolderId?: string | null): Promise<DuplicateResolutionResult | null> => {
+      if (files.length === 0) return { proceed: [], skipped: [], renames: new Map(), replacements: new Map() };
 
       const api = getFileApiClientV2();
-      const response = await api.checkDuplicates({ files });
+      const response = await api.checkDuplicates({
+        files,
+        ...(targetFolderId ? { targetFolderId } : {}),
+      });
 
       if (!response.success) {
         // If check fails, proceed with all files (best-effort)
-        return { proceed: files, skipped: [] };
+        return { proceed: files, skipped: [], renames: new Map(), replacements: new Map() };
       }
 
       const { results } = response.data;
       const hasDuplicates = results.some((r) => r.isDuplicate);
 
       if (!hasDuplicates) {
-        return { proceed: files, skipped: [] };
+        return { proceed: files, skipped: [], renames: new Map(), replacements: new Map() };
       }
 
       // Open modal and wait for resolution
@@ -60,10 +67,12 @@ export function useDuplicateResolutionV2() {
 
           if (state.isAllResolved()) {
             const skipped = state.getSkippedTempIds();
+            const renames = state.getKeepRenames();
+            const replacements = state.getReplacementTargets();
             const skippedSet = new Set(skipped);
             const proceed = files.filter((f) => !skippedSet.has(f.tempId));
             state.reset();
-            resolve({ proceed, skipped });
+            resolve({ proceed, skipped, renames, replacements });
             return;
           }
 

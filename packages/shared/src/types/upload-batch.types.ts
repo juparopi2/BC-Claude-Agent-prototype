@@ -34,6 +34,7 @@ export const manifestFileItemSchema = z.object({
   sizeBytes: z.number().int().positive(),
   contentHash: z.string().regex(/^[a-fA-F0-9]{64}$/).optional(),
   parentTempId: z.string().min(1).optional(),
+  replaceFileId: z.string().min(1).optional(),
 });
 
 export type ManifestFileItem = z.infer<typeof manifestFileItemSchema>;

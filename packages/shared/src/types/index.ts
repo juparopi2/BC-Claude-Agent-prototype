@@ -129,6 +129,7 @@ export type {
   DuplicateCheckResultV2,
   DuplicateCheckSummary,
   CheckDuplicatesResponseV2,
+  DuplicateResolutionAction,
 } from './duplicate-detection.types';
 
 export {

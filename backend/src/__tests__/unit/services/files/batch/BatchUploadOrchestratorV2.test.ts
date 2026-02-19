@@ -610,6 +610,7 @@ describe('BatchUploadOrchestratorV2', () => {
           }),
         ]),
         TEST_USER_ID,
+        undefined, // targetFolderId
       );
     });
 

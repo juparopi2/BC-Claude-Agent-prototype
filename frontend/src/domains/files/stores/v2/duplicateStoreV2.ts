@@ -29,6 +29,8 @@ export interface DuplicateStoreV2Actions {
   resolveAllRemaining: (action: DuplicateActionV2) => void;
   isAllResolved: () => boolean;
   getSkippedTempIds: () => string[];
+  getKeepRenames: () => Map<string, string>;
+  getReplacementTargets: () => Map<string, string>;
   closeModal: () => void;
   cancel: () => void;
   reset: () => void;
@@ -109,6 +111,36 @@ export const useDuplicateStoreV2 = create<DuplicateStoreV2State & DuplicateStore
         }
       });
       return skipped;
+    },
+
+    getKeepRenames: () => {
+      const { results, resolutions } = get();
+      const renames = new Map<string, string>();
+      for (const result of results) {
+        if (
+          result.isDuplicate &&
+          resolutions.get(result.tempId) === 'keep' &&
+          result.suggestedName
+        ) {
+          renames.set(result.tempId, result.suggestedName);
+        }
+      }
+      return renames;
+    },
+
+    getReplacementTargets: () => {
+      const { results, resolutions } = get();
+      const replacements = new Map<string, string>();
+      for (const result of results) {
+        if (
+          result.isDuplicate &&
+          resolutions.get(result.tempId) === 'replace' &&
+          result.existingFile
+        ) {
+          replacements.set(result.tempId, result.existingFile.fileId);
+        }
+      }
+      return replacements;
     },
 
     closeModal: () => set({ isModalOpen: false }),

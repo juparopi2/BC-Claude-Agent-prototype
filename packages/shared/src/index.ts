@@ -121,6 +121,7 @@ export type {
   DuplicateCheckResultV2,
   DuplicateCheckSummary,
   CheckDuplicatesResponseV2,
+  DuplicateResolutionAction,
   // Retry & Cleanup types
   RetryPhase,
   RetryScope,
@@ -405,6 +406,15 @@ export {
   type NameValidationResult,
   type NameValidationOptions,
 } from './utils/nameValidation';
+
+// ============================================
+// Utils - File Name Resolver (duplicate rename)
+// ============================================
+export {
+  splitFileName,
+  extractSuffix,
+  generateUniqueFileName,
+} from './utils/fileNameResolver';
 
 // ============================================
 // Constants - Error codes, messages, mappings

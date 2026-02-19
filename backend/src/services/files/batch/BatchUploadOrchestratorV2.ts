@@ -114,7 +114,7 @@ export class BatchUploadOrchestratorV2 {
             fileSize: f.sizeBytes,
             contentHash: f.contentHash,
           }));
-          const dupResult = await dupService.checkDuplicates(dupInputs, userId);
+          const dupResult = await dupService.checkDuplicates(dupInputs, userId, targetFolderId ?? undefined);
           if (dupResult.summary.totalDuplicates > 0) {
             duplicates = dupResult.results.filter((r) => r.isDuplicate);
           }
@@ -183,6 +183,18 @@ export class BatchUploadOrchestratorV2 {
           const parentFolderId = file.parentTempId
             ? tempIdToFolderId.get(file.parentTempId) ?? null
             : targetFolderId;
+
+          // Handle "Replace" — soft-delete the existing file inside the same transaction
+          if (file.replaceFileId) {
+            await tx.files.update({
+              where: { id: file.replaceFileId },
+              data: { deletion_status: 'pending', deleted_at: new Date() },
+            });
+            logger.debug(
+              { replaceFileId: file.replaceFileId, newFileName: file.fileName },
+              'Soft-deleted existing file for replacement',
+            );
+          }
 
           // Create file record
           const created = await tx.files.create({

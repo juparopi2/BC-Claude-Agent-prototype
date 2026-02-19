@@ -45,15 +45,15 @@ router.post('/', authenticateMicrosoft, async (req: Request, res: Response): Pro
       return;
     }
 
-    const { files } = validation.data;
+    const { files, targetFolderId } = validation.data;
 
     logger.info(
-      { userId, fileCount: files.length },
+      { userId, fileCount: files.length, targetFolderId },
       'V2 duplicate check requested',
     );
 
     const service = getDuplicateDetectionServiceV2();
-    const { results, summary } = await service.checkDuplicates(files, userId);
+    const { results, summary } = await service.checkDuplicates(files, userId, targetFolderId);
 
     logger.info(
       { userId, totalChecked: summary.totalChecked, totalDuplicates: summary.totalDuplicates },

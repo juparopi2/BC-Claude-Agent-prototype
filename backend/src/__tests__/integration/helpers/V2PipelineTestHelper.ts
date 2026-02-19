@@ -278,7 +278,17 @@ export class V2PipelineTestHelper {
       }
     }
 
-    // 2. Delete files (FK to users and upload_batches)
+    // 2. Detach parent references (avoids FK self-reference conflicts during deletion)
+    if (this.createdFileIds.length > 0) {
+      for (const fileId of this.createdFileIds) {
+        await executeQuery(
+          `UPDATE files SET parent_folder_id = NULL WHERE parent_folder_id = @fileId`,
+          { fileId }
+        );
+      }
+    }
+
+    // 3. Delete files (FK to users and upload_batches)
     if (this.createdFileIds.length > 0) {
       for (const fileId of this.createdFileIds) {
         await executeQuery(
@@ -288,7 +298,7 @@ export class V2PipelineTestHelper {
       }
     }
 
-    // 3. Delete upload_batches (FK to users)
+    // 4. Delete upload_batches (FK to users)
     if (this.createdBatchIds.length > 0) {
       for (const batchId of this.createdBatchIds) {
         await executeQuery(

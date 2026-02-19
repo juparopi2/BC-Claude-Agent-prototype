@@ -296,7 +296,7 @@ export function useBatchUploadV2(): UseBatchUploadV2Return {
           folderId: allFiles[i]?.parentTempId,
         }));
 
-        const dupResult = await checkAndResolve(dupInput);
+        const dupResult = await checkAndResolve(dupInput, targetFolderId);
         if (!dupResult) {
           removeBatch(batchKey); // cancelled
           return null;
@@ -316,14 +316,17 @@ export function useBatchUploadV2(): UseBatchUploadV2Return {
           return null;
         }
 
-        // 4. Build manifest
+        // 4. Build manifest (apply renames for "Keep Both" and replacements for "Replace")
         const manifestFiles: ManifestFileItem[] = proceedHashes.map((h, i) => ({
           tempId: h.tempId,
-          fileName: h.file.name,
+          fileName: dupResult.renames.get(h.tempId) ?? h.file.name,
           mimeType: h.file.type || 'application/octet-stream',
           sizeBytes: h.file.size,
           contentHash: h.hash,
           parentTempId: proceedFiles[i]?.parentTempId,
+          ...(dupResult.replacements.has(h.tempId)
+            ? { replaceFileId: dupResult.replacements.get(h.tempId) }
+            : {}),
         }));
 
         // 5. Create batch
@@ -347,7 +350,7 @@ export function useBatchUploadV2(): UseBatchUploadV2Return {
         // 7. Set active batch in store
         const fileNames = new Map<string, string>();
         for (const h of proceedHashes) {
-          fileNames.set(h.tempId, h.file.name);
+          fileNames.set(h.tempId, dupResult.renames.get(h.tempId) ?? h.file.name);
         }
         activateBatch(batchKey, batch, fileNames);
 

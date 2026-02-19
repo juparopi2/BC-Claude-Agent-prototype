@@ -136,11 +136,18 @@ export function DuplicateFileModalV2() {
 
           {/* New file info */}
           <div className="rounded-lg border p-3 bg-muted/50">
-            <p className="text-xs text-muted-foreground mb-1">New file:</p>
-            <div className="flex items-center gap-2">
-              <File className="size-4 text-blue-500 flex-shrink-0" />
-              <span className="font-medium truncate flex-1">{current.tempId}</span>
-            </div>
+            {current.suggestedName && (
+              <>
+              <p className="text-xs text-muted-foreground mb-1">New file:</p>
+              <div className="flex items-center gap-2">
+                <File className="size-4 text-blue-500 flex-shrink-0" />
+                <span className="font-medium truncate flex-1">{current.suggestedName}</span>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Keep Both will rename to: <span className="font-medium">{current.suggestedName}</span>
+              </p>
+              </>
+            )}
           </div>
 
           {/* Existing file info */}
@@ -193,12 +200,10 @@ export function DuplicateFileModalV2() {
             <Replace className="size-4 mr-2" />
             Replace
           </Button>
-          {current.matchType === 'content' && (
-            <Button variant="secondary" onClick={() => handleAction('keep')} className="w-full sm:w-auto">
-              <Copy className="size-4 mr-2" />
-              Keep Both
-            </Button>
-          )}
+          <Button variant="secondary" onClick={() => handleAction('keep')} className="w-full sm:w-auto">
+            <Copy className="size-4 mr-2" />
+            Keep Both
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

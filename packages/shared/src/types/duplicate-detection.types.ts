@@ -44,19 +44,26 @@ export interface DuplicateCheckInputV2 {
 /** Request body for POST /api/v2/uploads/check-duplicates */
 export interface CheckDuplicatesRequestV2 {
   files: DuplicateCheckInputV2[];
+  /** Target folder UUID — used for name matching and suggestedName computation */
+  targetFolderId?: string;
 }
 
 // ============================================
 // Response Types
 // ============================================
 
+/** Action the user chose for a duplicate file */
+export type DuplicateResolutionAction = 'skip' | 'replace' | 'keep';
+
 /** Result for a single file check */
 export interface DuplicateCheckResultV2 {
   tempId: string;
+  fileName: string;
   isDuplicate: boolean;
   scope?: DuplicateScope;
   matchType?: DuplicateMatchType;
   existingFile?: DuplicateMatchInfo;
+  suggestedName?: string;
 }
 
 /** Summary statistics for the batch check */
@@ -96,4 +103,5 @@ export const checkDuplicatesRequestV2Schema = z.object({
     .array(duplicateCheckInputV2Schema)
     .min(1, 'At least one file is required')
     .max(1000, 'Maximum 1000 files per batch'),
+  targetFolderId: z.string().min(1).optional(),
 });

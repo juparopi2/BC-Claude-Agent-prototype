@@ -164,10 +164,46 @@ export class BatchUploadOrchestratorV2 {
           },
         });
 
+        // Build replace folder lookup
+        const replaceFolderMap = new Map<string, string>();
+        if (request.replaceFolderMappings) {
+          for (const mapping of request.replaceFolderMappings) {
+            replaceFolderMap.set(mapping.tempId, mapping.existingFolderId);
+          }
+        }
+
+        // Soft-delete existing files in replaced folders
+        if (replaceFolderMap.size > 0) {
+          const existingFolderIds = [...replaceFolderMap.values()];
+          await tx.files.updateMany({
+            where: {
+              parent_folder_id: { in: existingFolderIds },
+              user_id: userId,
+              is_folder: false,
+              deletion_status: null,
+            },
+            data: { deletion_status: 'pending', deleted_at: new Date() },
+          });
+          logger.debug(
+            { existingFolderIds, count: existingFolderIds.length },
+            'Soft-deleted existing files in replaced folders',
+          );
+        }
+
         // Create folders (topologically sorted — parents first, sequential for FK ordering)
+        // For replaced folders: don't create new folder, map tempId to existingFolderId
         const folderResults: BatchFolderResult[] = [];
 
         for (const folder of sortedFolders) {
+          const existingFolderId = replaceFolderMap.get(folder.tempId);
+
+          if (existingFolderId) {
+            // Replace: reuse existing folder, don't create new one
+            folderIdMap.set(folder.tempId, existingFolderId);
+            folderResults.push({ tempId: folder.tempId, folderId: existingFolderId });
+            continue;
+          }
+
           const folderId = folderIdMap.get(folder.tempId)!;
           const parentFolderId = folder.parentTempId
             ? folderIdMap.get(folder.parentTempId) ?? targetFolderId

@@ -122,6 +122,11 @@ export type {
   DuplicateCheckSummary,
   CheckDuplicatesResponseV2,
   DuplicateResolutionAction,
+  // Folder Duplicate Detection V2 types
+  FolderDuplicateCheckInput,
+  CheckFolderDuplicatesRequestV2,
+  FolderDuplicateCheckResult,
+  CheckFolderDuplicatesResponseV2,
   // Retry & Cleanup types
   RetryPhase,
   RetryScope,
@@ -271,6 +276,7 @@ export type {
   BatchStatus,
   ManifestFileItem,
   ManifestFolderItem,
+  ReplaceFolderMapping,
   CreateBatchRequest,
   BatchFileResult,
   BatchFolderResult,
@@ -383,6 +389,9 @@ export {
 export {
   duplicateCheckInputV2Schema,
   checkDuplicatesRequestV2Schema,
+  // Folder Duplicate Detection V2 schemas
+  folderDuplicateCheckInputSchema,
+  checkFolderDuplicatesRequestV2Schema,
 } from './types';
 
 // Upload Batch schemas & constants (PRD-03)
@@ -390,6 +399,7 @@ export {
   BATCH_STATUS,
   manifestFileItemSchema,
   manifestFolderItemSchema,
+  replaceFolderMappingSchema,
   createBatchRequestSchema,
 } from './types';
 

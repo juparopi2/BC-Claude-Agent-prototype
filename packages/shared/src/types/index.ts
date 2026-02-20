@@ -138,6 +138,18 @@ export {
 } from './duplicate-detection.types';
 
 export type {
+  FolderDuplicateCheckInput,
+  CheckFolderDuplicatesRequestV2,
+  FolderDuplicateCheckResult,
+  CheckFolderDuplicatesResponseV2,
+} from './folder-duplicate-detection.types';
+
+export {
+  folderDuplicateCheckInputSchema,
+  checkFolderDuplicatesRequestV2Schema,
+} from './folder-duplicate-detection.types';
+
+export type {
   // Retry & Cleanup types (D25 Sprint 2)
   RetryPhase,
   RetryScope,
@@ -336,6 +348,7 @@ export type {
   BatchStatus,
   ManifestFileItem,
   ManifestFolderItem,
+  ReplaceFolderMapping,
   CreateBatchRequest,
   BatchFileResult,
   BatchFolderResult,
@@ -351,6 +364,7 @@ export {
   BATCH_STATUS,
   manifestFileItemSchema,
   manifestFolderItemSchema,
+  replaceFolderMappingSchema,
   createBatchRequestSchema,
 } from './upload-batch.types';
 

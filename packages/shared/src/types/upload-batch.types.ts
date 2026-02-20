@@ -47,12 +47,20 @@ export const manifestFolderItemSchema = z.object({
 
 export type ManifestFolderItem = z.infer<typeof manifestFolderItemSchema>;
 
+export const replaceFolderMappingSchema = z.object({
+  tempId: z.string().min(1),
+  existingFolderId: z.string().min(1),
+});
+
+export type ReplaceFolderMapping = z.infer<typeof replaceFolderMappingSchema>;
+
 export const createBatchRequestSchema = z.object({
   files: z.array(manifestFileItemSchema).min(1).max(500),
   folders: z.array(manifestFolderItemSchema).max(200).optional(),
   metadata: z.record(z.unknown()).optional(),
   skipDuplicateCheck: z.boolean().optional(),
   targetFolderId: z.string().uuid().toUpperCase().nullable().optional(),
+  replaceFolderMappings: z.array(replaceFolderMappingSchema).max(200).optional(),
 });
 
 export type CreateBatchRequest = z.infer<typeof createBatchRequestSchema>;

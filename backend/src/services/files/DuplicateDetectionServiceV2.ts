@@ -103,11 +103,13 @@ export class DuplicateDetectionServiceV2 {
     const summary = this.generateSummary(inputs.length, results);
 
     // Resolve folder paths for matched files and target folder
+    // Normalize all IDs to uppercase for consistent Map lookups (Section 13)
+    const normalizedTargetFolderId = targetFolderId?.toUpperCase();
     const folderIdsToResolve = new Set<string>();
-    if (targetFolderId) folderIdsToResolve.add(targetFolderId);
+    if (normalizedTargetFolderId) folderIdsToResolve.add(normalizedTargetFolderId);
     for (const result of results) {
       if (result.existingFile?.folderId) {
-        folderIdsToResolve.add(result.existingFile.folderId);
+        folderIdsToResolve.add(result.existingFile.folderId.toUpperCase());
       }
     }
 
@@ -118,7 +120,7 @@ export class DuplicateDetectionServiceV2 {
     // Enrich results with folder info
     for (const result of results) {
       if (result.existingFile) {
-        const folderId = result.existingFile.folderId;
+        const folderId = result.existingFile.folderId?.toUpperCase();
         if (folderId && folderPathMap.has(folderId)) {
           const info = folderPathMap.get(folderId)!;
           result.existingFile.folderName = info.name;
@@ -130,8 +132,8 @@ export class DuplicateDetectionServiceV2 {
       }
     }
 
-    const targetFolderPath = targetFolderId && folderPathMap.has(targetFolderId)
-      ? folderPathMap.get(targetFolderId)!.path
+    const targetFolderPath = normalizedTargetFolderId && folderPathMap.has(normalizedTargetFolderId)
+      ? folderPathMap.get(normalizedTargetFolderId)!.path
       : null;
 
     logger.info(
@@ -300,9 +302,12 @@ export class DuplicateDetectionServiceV2 {
     const result = new Map<string, { name: string; path: string }>();
     if (folderIds.size === 0) return result;
 
+    // Normalize all input IDs to uppercase for consistent Map lookups (Section 13)
+    const normalizedFolderIds = new Set([...folderIds].map(id => id.toUpperCase()));
+
     // Collect all folder records we need (iteratively fetch ancestors)
     const folderCache = new Map<string, { name: string; parentId: string | null }>();
-    let idsToFetch = [...folderIds];
+    let idsToFetch = [...normalizedFolderIds];
 
     for (let depth = 0; depth < 10 && idsToFetch.length > 0; depth++) {
       const unfetched = idsToFetch.filter((id) => !folderCache.has(id));
@@ -319,9 +324,11 @@ export class DuplicateDetectionServiceV2 {
 
       const nextIds: string[] = [];
       for (const folder of folders) {
-        folderCache.set(folder.id, { name: folder.name, parentId: folder.parent_folder_id });
-        if (folder.parent_folder_id && !folderCache.has(folder.parent_folder_id)) {
-          nextIds.push(folder.parent_folder_id);
+        const normalizedId = folder.id.toUpperCase();
+        const normalizedParentId = folder.parent_folder_id?.toUpperCase() ?? null;
+        folderCache.set(normalizedId, { name: folder.name, parentId: normalizedParentId });
+        if (normalizedParentId && !folderCache.has(normalizedParentId)) {
+          nextIds.push(normalizedParentId);
         }
       }
 
@@ -336,7 +343,7 @@ export class DuplicateDetectionServiceV2 {
     }
 
     // Build paths from root → leaf for each requested folder
-    for (const folderId of folderIds) {
+    for (const folderId of normalizedFolderIds) {
       const cached = folderCache.get(folderId);
       if (!cached || !cached.name) {
         // Orphan or not found — skip

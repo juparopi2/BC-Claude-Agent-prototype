@@ -107,5 +107,5 @@ export const checkDuplicatesRequestV2Schema = z.object({
     .array(duplicateCheckInputV2Schema)
     .min(1, 'At least one file is required')
     .max(1000, 'Maximum 1000 files per batch'),
-  targetFolderId: z.string().min(1).optional(),
+  targetFolderId: z.string().min(1).toUpperCase().optional(),
 });

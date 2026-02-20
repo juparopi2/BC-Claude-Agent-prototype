@@ -15,12 +15,15 @@ import type {
   ManifestFileItem,
   ManifestFolderItem,
 } from '@bc-agent/shared';
+import { PIPELINE_STATUS } from '@bc-agent/shared';
 import { computeFileHashesWithIds } from '@/lib/utils/hash';
 import { getFileApiClientV2 } from '@/src/infrastructure/api/fileApiClientV2';
 import { useBatchUploadStoreV2 } from '../../stores/v2/batchUploadStoreV2';
 import { useBlobUploadV2 } from './useBlobUploadV2';
 import { useFileConfirmV2 } from './useFileConfirmV2';
 import { useDuplicateResolutionV2 } from './useDuplicateResolutionV2';
+import { useFolderDuplicateResolutionV2 } from './useFolderDuplicateResolutionV2';
+import type { FolderDuplicateCheckInput, ReplaceFolderMapping } from '@bc-agent/shared';
 import type { FolderEntry, FileEntry } from '../../types/folderUpload.types';
 
 const BATCHES_LOCALSTORAGE_KEY = 'v2_activeBatches';
@@ -184,6 +187,7 @@ export function useBatchUploadV2(): UseBatchUploadV2Return {
   const { uploadBlobs, cancelByBatchKey: cancelBlobsByBatchKey, cancelAll: cancelAllBlobs } = useBlobUploadV2();
   const { confirmFiles, abortByBatchKey: abortConfirmByBatchKey, abortAll: abortAllConfirms } = useFileConfirmV2();
   const { checkAndResolve } = useDuplicateResolutionV2();
+  const { checkAndResolveFolders } = useFolderDuplicateResolutionV2();
   const abortMapRef = useRef<Map<string, boolean>>(new Map());
 
   // Count active batches (preparing or active phase)
@@ -218,9 +222,10 @@ export function useBatchUploadV2(): UseBatchUploadV2Return {
         continue;
       }
 
-      // Recover batch status
+      // Recover batch status from backend
       api.getBatchStatus(ref.batchId).then((response) => {
         if (!response.success) {
+          // Backend still down or batch not found — clean up to prevent stuck modal
           removeBatchRef(ref.batchKey);
           return;
         }
@@ -231,27 +236,34 @@ export function useBatchUploadV2(): UseBatchUploadV2Return {
           return;
         }
 
-        // Restore batch in store (status-only, no blob re-upload)
-        const { addPreparing: addPrep, activateBatch: activate } = useBatchUploadStoreV2.getState();
-        addPrep(ref.batchKey, batch.files.length, false);
+        // Skip batches with no files (already cleaned up or mismatched)
+        if (batch.files.length === 0) {
+          removeBatchRef(ref.batchKey);
+          return;
+        }
 
-        const fileNames = new Map<string, string>();
-        const filesForResponse = batch.files.map((f) => {
-          fileNames.set(f.fileId, f.name);
-          return { tempId: f.fileId, fileId: f.fileId, sasUrl: '', blobPath: '' };
-        });
+        // Restore batch with real file states from the backend
+        const { restoreBatch: restore } = useBatchUploadStoreV2.getState();
+        restore(ref.batchKey, batch);
 
-        activate(
-          ref.batchKey,
-          {
-            batchId: batch.batchId,
-            status: batch.status,
-            files: filesForResponse,
-            folders: [],
-            expiresAt: batch.expiresAt,
-          },
-          fileNames
-        );
+        // Re-confirm files stuck at REGISTERED (blob uploaded, confirm never called)
+        const registeredFileIds = batch.files
+          .filter((f) => !f.pipelineStatus || f.pipelineStatus === PIPELINE_STATUS.REGISTERED)
+          .map((f) => f.fileId);
+
+        if (registeredFileIds.length > 0) {
+          // Fire-and-forget: confirmFiles updates store as each file confirms/fails
+          confirmFiles(ref.batchKey, batch.batchId, registeredFileIds);
+        }
+
+        // If all files are already READY, clean up localStorage so auto-close kicks in
+        const restored = useBatchUploadStoreV2.getState().batches.get(ref.batchKey);
+        if (restored?.phase === 'completed') {
+          removeBatchRef(ref.batchKey);
+        }
+      }).catch(() => {
+        // API call failed (backend unreachable) — remove ref to prevent infinite stuck modal
+        removeBatchRef(ref.batchKey);
       });
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -287,20 +299,137 @@ export function useBatchUploadV2(): UseBatchUploadV2Return {
           return null;
         }
 
-        // 3. Duplicate check
-        const dupInput = hashResults.map((h, i) => ({
-          tempId: h.tempId,
-          fileName: h.file.name,
-          fileSize: h.file.size,
-          contentHash: h.hash,
-          folderId: allFiles[i]?.parentTempId,
-        }));
+        // 3. Folder-level duplicate check (before file-level)
+        let finalManifestFolders = [...manifestFolders];
+        let finalAllFiles = [...allFiles];
+        let finalHashResults = [...hashResults];
+        const folderReplaceMappings: ReplaceFolderMapping[] = [];
+        const skipFileDupCheckTempIds = new Set<string>();
 
-        const dupResult = await checkAndResolve(dupInput, targetFolderId);
-        if (!dupResult) {
-          removeBatch(batchKey); // cancelled
-          return null;
+        if (finalManifestFolders.length > 0) {
+          // Count files per root folder for the modal display
+          const folderInputs: FolderDuplicateCheckInput[] = finalManifestFolders
+            .filter((f) => !f.parentTempId)
+            .map((f) => ({
+              tempId: f.tempId,
+              folderName: f.folderName,
+              fileCount: finalAllFiles.filter((af) => af.parentTempId === f.tempId).length,
+            }));
+
+          if (folderInputs.length > 0) {
+            const folderResult = await checkAndResolveFolders(folderInputs, targetFolderId);
+            if (!folderResult) {
+              removeBatch(batchKey); // cancelled
+              return null;
+            }
+            if (abortMapRef.current.get(batchKey)) {
+              removeBatch(batchKey);
+              return null;
+            }
+
+            // Collect all descendant tempIds of a folder (recursive)
+            const getDescendantFolderTempIds = (parentTempId: string): string[] => {
+              const descendants: string[] = [];
+              for (const folder of finalManifestFolders) {
+                if (folder.parentTempId === parentTempId) {
+                  descendants.push(folder.tempId);
+                  descendants.push(...getDescendantFolderTempIds(folder.tempId));
+                }
+              }
+              return descendants;
+            };
+
+            // Apply SKIP: remove folder + all descendant folders + their files
+            for (const skippedId of folderResult.skippedFolderIds) {
+              const allFolderIds = [skippedId, ...getDescendantFolderTempIds(skippedId)];
+              const folderIdSet = new Set(allFolderIds);
+
+              finalManifestFolders = finalManifestFolders.filter((f) => !folderIdSet.has(f.tempId));
+
+              // Remove files belonging to skipped folders
+              const removedFileIndices = new Set<number>();
+              finalAllFiles = finalAllFiles.filter((f, idx) => {
+                if (f.parentTempId && folderIdSet.has(f.parentTempId)) {
+                  removedFileIndices.add(idx);
+                  return false;
+                }
+                return true;
+              });
+              finalHashResults = finalHashResults.filter((_, idx) => !removedFileIndices.has(idx));
+            }
+
+            // Apply KEEP BOTH: rename folder, skip file-level dup check for its files
+            for (const [tempId, newName] of folderResult.keepBothRenames) {
+              const folder = finalManifestFolders.find((f) => f.tempId === tempId);
+              if (folder) {
+                folder.folderName = newName;
+              }
+              // Files in renamed folders don't need file-level dup check (new folder = no conflicts)
+              const allFolderIds = [tempId, ...getDescendantFolderTempIds(tempId)];
+              for (const fid of allFolderIds) {
+                finalAllFiles.forEach((f, idx) => {
+                  if (f.parentTempId === fid) {
+                    skipFileDupCheckTempIds.add(finalHashResults[idx]!.tempId);
+                  }
+                });
+              }
+            }
+
+            // Apply REPLACE: keep folder in manifest but build replaceFolderMappings
+            // Files in replaced folders skip file-level dup check
+            for (const [tempId, existingFolderId] of folderResult.replaceFolderIds) {
+              folderReplaceMappings.push({ tempId, existingFolderId });
+              // Files in replaced folders don't need file-level dup check
+              const allFolderIds = [tempId, ...getDescendantFolderTempIds(tempId)];
+              for (const fid of allFolderIds) {
+                finalAllFiles.forEach((f, idx) => {
+                  if (f.parentTempId === fid) {
+                    skipFileDupCheckTempIds.add(finalHashResults[idx]!.tempId);
+                  }
+                });
+              }
+            }
+
+            // If all files removed, abort
+            if (finalAllFiles.length === 0) {
+              removeBatch(batchKey);
+              return null;
+            }
+          }
         }
+
+        // 4. File-level duplicate check (only for files not in keep_both or replace folders)
+        const fileDupInput = finalHashResults
+          .filter((h) => !skipFileDupCheckTempIds.has(h.tempId))
+          .map((h) => {
+            const originalIdx = finalHashResults.indexOf(h);
+            return {
+              tempId: h.tempId,
+              fileName: h.file.name,
+              fileSize: h.file.size,
+              contentHash: h.hash,
+              folderId: finalAllFiles[originalIdx]?.parentTempId,
+            };
+          });
+
+        // Build dup result combining skipped-by-folder-dup files
+        let dupResult: { skipped: string[]; renames: Map<string, string>; replacements: Map<string, string> };
+
+        if (fileDupInput.length > 0) {
+          const fileDupResult = await checkAndResolve(fileDupInput, targetFolderId);
+          if (!fileDupResult) {
+            removeBatch(batchKey); // cancelled
+            return null;
+          }
+          dupResult = {
+            skipped: fileDupResult.skipped,
+            renames: fileDupResult.renames,
+            replacements: fileDupResult.replacements,
+          };
+        } else {
+          dupResult = { skipped: [], renames: new Map(), replacements: new Map() };
+        }
+
         if (abortMapRef.current.get(batchKey)) {
           removeBatch(batchKey);
           return null;
@@ -308,15 +437,15 @@ export function useBatchUploadV2(): UseBatchUploadV2Return {
 
         // Filter out skipped files
         const skippedSet = new Set(dupResult.skipped);
-        const proceedHashes = hashResults.filter((h) => !skippedSet.has(h.tempId));
-        const proceedFiles = allFiles.filter((_, i) => !skippedSet.has(hashResults[i]!.tempId));
+        const proceedHashes = finalHashResults.filter((h) => !skippedSet.has(h.tempId));
+        const proceedFiles = finalAllFiles.filter((_, i) => !skippedSet.has(finalHashResults[i]!.tempId));
 
         if (proceedHashes.length === 0) {
           removeBatch(batchKey); // all files skipped
           return null;
         }
 
-        // 4. Build manifest (apply renames for "Keep Both" and replacements for "Replace")
+        // 5. Build manifest (apply renames for "Keep Both" and replacements for "Replace")
         const manifestFiles: ManifestFileItem[] = proceedHashes.map((h, i) => ({
           tempId: h.tempId,
           fileName: dupResult.renames.get(h.tempId) ?? h.file.name,
@@ -329,12 +458,13 @@ export function useBatchUploadV2(): UseBatchUploadV2Return {
             : {}),
         }));
 
-        // 5. Create batch
+        // 6. Create batch
         const api = getFileApiClientV2();
         const batchResponse = await api.createBatch({
           files: manifestFiles,
-          folders: manifestFolders.length > 0 ? manifestFolders : undefined,
+          folders: finalManifestFolders.length > 0 ? finalManifestFolders : undefined,
           targetFolderId: targetFolderId ?? undefined,
+          ...(folderReplaceMappings.length > 0 ? { replaceFolderMappings: folderReplaceMappings } : {}),
         });
 
         if (!batchResponse.success) {
@@ -344,10 +474,10 @@ export function useBatchUploadV2(): UseBatchUploadV2Return {
 
         const batch = batchResponse.data;
 
-        // 6. Save to localStorage for crash recovery
+        // 7. Save to localStorage for crash recovery
         saveBatchRef({ batchId: batch.batchId, batchKey, ts: Date.now() });
 
-        // 7. Set active batch in store
+        // 8. Set active batch in store
         const fileNames = new Map<string, string>();
         for (const h of proceedHashes) {
           fileNames.set(h.tempId, dupResult.renames.get(h.tempId) ?? h.file.name);
@@ -356,7 +486,7 @@ export function useBatchUploadV2(): UseBatchUploadV2Return {
 
         if (abortMapRef.current.get(batchKey)) return batch.batchId;
 
-        // 8. Upload blobs via Uppy
+        // 9. Upload blobs via Uppy
         const blobFiles = batch.files.map((bf) => {
           const hashResult = proceedHashes.find((h) => h.tempId === bf.tempId);
           return {
@@ -371,7 +501,7 @@ export function useBatchUploadV2(): UseBatchUploadV2Return {
         const uploadResults = await uploadBlobs(batchKey, blobFiles);
         if (abortMapRef.current.get(batchKey)) return batch.batchId;
 
-        // 9. Confirm successful uploads
+        // 10. Confirm successful uploads
         const successFileIds = uploadResults
           .filter((r) => r.success)
           .map((r) => r.fileId);
@@ -396,7 +526,7 @@ export function useBatchUploadV2(): UseBatchUploadV2Return {
         return null;
       }
     },
-    [addPreparing, activateBatch, setError, removeBatch, uploadBlobs, confirmFiles, checkAndResolve]
+    [addPreparing, activateBatch, setError, removeBatch, uploadBlobs, confirmFiles, checkAndResolve, checkAndResolveFolders]
   );
 
   // ============================================
@@ -411,8 +541,12 @@ export function useBatchUploadV2(): UseBatchUploadV2Return {
       const entry = useBatchUploadStoreV2.getState().batches.get(batchKey);
       const batchId = entry?.activeBatch?.batchId;
       if (batchId) {
-        const api = getFileApiClientV2();
-        await api.cancelBatch(batchId);
+        try {
+          const api = getFileApiClientV2();
+          await api.cancelBatch(batchId);
+        } catch {
+          // Batch may already be completed/cancelled on backend — proceed with local cleanup
+        }
       }
 
       removeBatchRef(batchKey);

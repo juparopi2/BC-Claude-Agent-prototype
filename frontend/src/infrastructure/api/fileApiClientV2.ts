@@ -10,6 +10,8 @@
 import type {
   CheckDuplicatesRequestV2,
   CheckDuplicatesResponseV2,
+  CheckFolderDuplicatesRequestV2,
+  CheckFolderDuplicatesResponseV2,
   CreateBatchRequest,
   CreateBatchResponse,
   ConfirmFileResponse,
@@ -135,6 +137,18 @@ export class FileApiClientV2 {
   ): Promise<ApiResponse<CheckDuplicatesResponseV2>> {
     return this.postJson<CheckDuplicatesResponseV2>(
       '/api/v2/uploads/check-duplicates',
+      req
+    );
+  }
+
+  /**
+   * Check for duplicate folders at the target location
+   */
+  async checkFolderDuplicates(
+    req: CheckFolderDuplicatesRequestV2
+  ): Promise<ApiResponse<CheckFolderDuplicatesResponseV2>> {
+    return this.postJson<CheckFolderDuplicatesResponseV2>(
+      '/api/v2/uploads/check-folder-duplicates',
       req
     );
   }

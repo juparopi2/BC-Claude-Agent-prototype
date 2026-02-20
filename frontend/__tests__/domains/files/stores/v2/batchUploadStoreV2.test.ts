@@ -12,7 +12,7 @@ import {
   useBatchUploadStoreV2,
   resetBatchUploadStoreV2,
 } from '@/src/domains/files/stores/v2/batchUploadStoreV2';
-import type { CreateBatchResponse, BatchProgress, PipelineStatus, BatchStatusResponse } from '@bc-agent/shared';
+import type { CreateBatchResponse, BatchProgress, BatchStatusResponse } from '@bc-agent/shared';
 import { PIPELINE_STATUS, BATCH_STATUS } from '@bc-agent/shared';
 
 function getStore() {

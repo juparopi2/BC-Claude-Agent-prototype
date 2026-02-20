@@ -51,6 +51,7 @@ import agentsRoutes from './routes/agents';
 import analyticsRoutes from './routes/analytics';
 import uploadHealthRoutes from '@/routes/v2/uploads/health.routes';
 import duplicateDetectionV2Routes from '@/routes/v2/uploads/duplicate-detection.routes';
+import folderDuplicateDetectionV2Routes from '@/routes/v2/uploads/folder-duplicate-detection.routes';
 import batchUploadV2Routes from '@/routes/v2/uploads/batch.routes';
 import dlqRoutes from '@/routes/v2/uploads/dlq.routes';
 import dashboardRoutes from '@/routes/v2/uploads/dashboard.routes';
@@ -870,6 +871,11 @@ function configureRoutes(): void {
   // Duplicate detection V2 endpoint (PRD-02)
   if (isDatabaseAvailable) {
     app.use('/api/v2/uploads/check-duplicates', duplicateDetectionV2Routes);
+  }
+
+  // Folder duplicate detection V2 endpoint
+  if (isDatabaseAvailable) {
+    app.use('/api/v2/uploads/check-folder-duplicates', folderDuplicateDetectionV2Routes);
   }
 
   // Batch Upload V2 endpoints (PRD-03)

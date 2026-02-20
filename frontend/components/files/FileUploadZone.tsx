@@ -19,6 +19,7 @@ import { toast } from 'sonner';
 // V2 imports
 import { useBatchUploadV2 } from '@/src/domains/files/hooks/v2/useBatchUploadV2';
 import { DuplicateFileModalV2 } from '@/components/files/v2/DuplicateFileModalV2';
+import { DuplicateFolderModalV2 } from '@/components/files/v2/DuplicateFolderModalV2';
 import { BatchUploadProgressPanelV2 } from '@/components/files/v2/BatchUploadProgressPanelV2';
 
 /**
@@ -280,6 +281,9 @@ export function FileUploadZone({
           onResolveAll={resolveAllRemaining}
         />
       )}
+
+      {/* V2: Duplicate folder detection modal */}
+      {USE_V2_UPLOAD && <DuplicateFolderModalV2 />}
 
       {/* V2: Duplicate file detection modal */}
       {USE_V2_UPLOAD && <DuplicateFileModalV2 />}

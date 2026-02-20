@@ -45,6 +45,12 @@ export interface UseFolderNavigationReturn {
   initFolderTree: () => Promise<void>;
   /** Navigate to folder with optional folder data for breadcrumb path */
   navigateToFolder: (folderId: string | null, folderData?: ParsedFile) => void;
+  /** Add or update a folder in the cached children of a parent */
+  upsertTreeFolder: (parentId: string, folder: ParsedFile) => void;
+  /** Remove a folder from the cached children of a parent */
+  removeTreeFolder: (parentId: string, folderId: string) => void;
+  /** Invalidate cached children for a parent, forcing re-fetch on next expand */
+  invalidateTreeFolder: (parentId: string) => void;
 }
 
 /**
@@ -95,6 +101,9 @@ export function useFolderNavigation(): UseFolderNavigationReturn {
   const isFolderExpandedFn = useFolderTreeStore((state) => state.isFolderExpanded);
   const isFolderLoadingFn = useFolderTreeStore((state) => state.isFolderLoading);
   const getChildFoldersFn = useFolderTreeStore((state) => state.getChildFolders);
+  const upsertTreeFolderAction = useFolderTreeStore((state) => state.upsertTreeFolder);
+  const removeTreeFolderAction = useFolderTreeStore((state) => state.removeTreeFolder);
+  const invalidateTreeFolderAction = useFolderTreeStore((state) => state.invalidateTreeFolder);
 
   // Wrap actions in useCallback for stable references
   const setCurrentFolder = useCallback(
@@ -148,6 +157,27 @@ export function useFolderNavigation(): UseFolderNavigationReturn {
       return getChildFoldersFn(parentId);
     },
     [getChildFoldersFn]
+  );
+
+  const upsertTreeFolder = useCallback(
+    (parentId: string, folder: ParsedFile) => {
+      upsertTreeFolderAction(parentId, folder);
+    },
+    [upsertTreeFolderAction]
+  );
+
+  const removeTreeFolder = useCallback(
+    (parentId: string, folderId: string) => {
+      removeTreeFolderAction(parentId, folderId);
+    },
+    [removeTreeFolderAction]
+  );
+
+  const invalidateTreeFolder = useCallback(
+    (parentId: string) => {
+      invalidateTreeFolderAction(parentId);
+    },
+    [invalidateTreeFolderAction]
   );
 
   // Initialize folder tree by loading root folders from API
@@ -209,5 +239,8 @@ export function useFolderNavigation(): UseFolderNavigationReturn {
     getChildFolders,
     initFolderTree,
     navigateToFolder,
+    upsertTreeFolder,
+    removeTreeFolder,
+    invalidateTreeFolder,
   };
 }

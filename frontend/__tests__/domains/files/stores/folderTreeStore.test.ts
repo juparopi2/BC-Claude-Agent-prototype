@@ -336,6 +336,121 @@ describe('folderTreeStore', () => {
     });
   });
 
+  describe('upsertTreeFolder', () => {
+    it('should add folder to cached parent children', () => {
+      const { setTreeFolders, upsertTreeFolder, getChildFolders } = useFolderTreeStore.getState();
+
+      setTreeFolders('parent-1', [createMockFolder({ id: 'existing-1' })]);
+      upsertTreeFolder('parent-1', createMockFolder({ id: 'new-1', name: 'New Folder' }));
+
+      const children = getChildFolders('parent-1');
+      expect(children).toHaveLength(2);
+      expect(children[1].id).toBe('new-1');
+    });
+
+    it('should replace existing folder by ID (no duplicate)', () => {
+      const { setTreeFolders, upsertTreeFolder, getChildFolders } = useFolderTreeStore.getState();
+
+      setTreeFolders('parent-1', [
+        createMockFolder({ id: 'folder-1', name: 'Old Name' }),
+        createMockFolder({ id: 'folder-2' }),
+      ]);
+      upsertTreeFolder('parent-1', createMockFolder({ id: 'folder-1', name: 'Updated Name' }));
+
+      const children = getChildFolders('parent-1');
+      expect(children).toHaveLength(2);
+      expect(children[0].name).toBe('Updated Name');
+    });
+
+    it('should be no-op if parent not in cache', () => {
+      const { upsertTreeFolder } = useFolderTreeStore.getState();
+
+      upsertTreeFolder('uncached-parent', createMockFolder({ id: 'new-1' }));
+
+      const state = useFolderTreeStore.getState();
+      expect(state.treeFolders['uncached-parent']).toBeUndefined();
+    });
+
+    it('should not affect other parents', () => {
+      const { setTreeFolders, upsertTreeFolder, getChildFolders } = useFolderTreeStore.getState();
+
+      setTreeFolders('parent-1', [createMockFolder({ id: 'child-1' })]);
+      setTreeFolders('parent-2', [createMockFolder({ id: 'child-2' })]);
+
+      upsertTreeFolder('parent-1', createMockFolder({ id: 'new-1' }));
+
+      expect(getChildFolders('parent-1')).toHaveLength(2);
+      expect(getChildFolders('parent-2')).toHaveLength(1);
+    });
+  });
+
+  describe('removeTreeFolder', () => {
+    it('should remove folder from cached parent children', () => {
+      const { setTreeFolders, removeTreeFolder, getChildFolders } = useFolderTreeStore.getState();
+
+      setTreeFolders('parent-1', [
+        createMockFolder({ id: 'folder-1' }),
+        createMockFolder({ id: 'folder-2' }),
+      ]);
+      removeTreeFolder('parent-1', 'folder-1');
+
+      const children = getChildFolders('parent-1');
+      expect(children).toHaveLength(1);
+      expect(children[0].id).toBe('folder-2');
+    });
+
+    it('should be no-op if parent not in cache', () => {
+      const { removeTreeFolder } = useFolderTreeStore.getState();
+
+      removeTreeFolder('uncached-parent', 'folder-1');
+
+      const state = useFolderTreeStore.getState();
+      expect(state.treeFolders['uncached-parent']).toBeUndefined();
+    });
+
+    it('should be no-op if folder ID not found in parent', () => {
+      const { setTreeFolders, removeTreeFolder, getChildFolders } = useFolderTreeStore.getState();
+
+      setTreeFolders('parent-1', [createMockFolder({ id: 'folder-1' })]);
+      removeTreeFolder('parent-1', 'non-existent');
+
+      expect(getChildFolders('parent-1')).toHaveLength(1);
+    });
+  });
+
+  describe('invalidateTreeFolder', () => {
+    it('should remove cache entry for parent', () => {
+      const { setTreeFolders, invalidateTreeFolder } = useFolderTreeStore.getState();
+
+      setTreeFolders('parent-1', [createMockFolder({ id: 'child-1' })]);
+      invalidateTreeFolder('parent-1');
+
+      const state = useFolderTreeStore.getState();
+      expect(state.treeFolders['parent-1']).toBeUndefined();
+    });
+
+    it('should not affect other parents', () => {
+      const { setTreeFolders, invalidateTreeFolder, getChildFolders } = useFolderTreeStore.getState();
+
+      setTreeFolders('parent-1', [createMockFolder({ id: 'child-1' })]);
+      setTreeFolders('parent-2', [createMockFolder({ id: 'child-2' })]);
+
+      invalidateTreeFolder('parent-1');
+
+      expect(useFolderTreeStore.getState().treeFolders['parent-1']).toBeUndefined();
+      expect(getChildFolders('parent-2')).toHaveLength(1);
+    });
+
+    it('should be no-op if parent not in cache', () => {
+      const { setTreeFolders, invalidateTreeFolder, getChildFolders } = useFolderTreeStore.getState();
+
+      setTreeFolders('parent-1', [createMockFolder({ id: 'child-1' })]);
+      invalidateTreeFolder('non-existent');
+
+      expect(getChildFolders('parent-1')).toHaveLength(1);
+    });
+  });
+
   describe('resetFolderTreeStore', () => {
     it('should reset store to initial values (test utility)', () => {
       const { setCurrentFolder, toggleFolderExpanded } = useFolderTreeStore.getState();

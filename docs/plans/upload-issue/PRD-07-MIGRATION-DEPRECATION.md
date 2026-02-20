@@ -81,12 +81,17 @@ This section consolidates all `@deprecated` markers from PRDs 00-06 into a singl
 | `processing_status` | `files` | `pipeline_status` | PRD-01 |
 | `embedding_status` | `files` | `pipeline_status` | PRD-01 |
 
-### 2.6 Frontend - Hooks (2 files)
+### 2.6 Frontend - Hooks (5 files)
 
-| File | Replacement | PRD |
-|------|-------------|-----|
-| `frontend/src/domains/files/hooks/useFileUpload.ts` | `useUploadV2` | PRD-06 |
-| `frontend/src/domains/files/hooks/useFolderUpload.ts` | `useUploadV2` | PRD-06 |
+| File | Replacement | PRD | Notes |
+|------|-------------|-----|-------|
+| `frontend/src/domains/files/hooks/useFileUpload.ts` | `useBatchUploadV2` | PRD-06 | V1 single/bulk upload orchestration |
+| `frontend/src/domains/files/hooks/useFolderUpload.ts` | `useBatchUploadV2` | PRD-06 | V1 folder upload + tree sync (dead code under V2) |
+| `frontend/src/domains/files/hooks/useFolderBatchEvents.ts` | N/A (V2 has no folder batch WebSocket events) | PRD-06 | V1 folder:status WebSocket handler — dead code under V2, `onTreeRefreshNeeded` never fires |
+| `frontend/src/domains/files/hooks/useFolderUploadToasts.ts` | Built into `BatchUploadProgressPanelV2` | PRD-06 | Explicitly disabled for V2 (`enabled: !USE_V2_UPLOAD`) |
+| `frontend/src/domains/files/hooks/useFolderNavigation.ts` | Retained — shared by both V1 and V2 | — | Exposes `upsertTreeFolder`, `removeTreeFolder`, `invalidateTreeFolder` — used by V2 via direct store access |
+
+> **Note (2026-02-20)**: `useFolderUpload.ts`, `useFolderBatchEvents.ts`, and `useFolderUploadToasts.ts` contain V1 folder tree synchronization logic that is **dead code** when `NEXT_PUBLIC_USE_V2_UPLOAD=true`. V2 folder tree sync was added directly to `useBatchUploadV2.ts` (see PRD-06 implementation notes, 2026-02-20). `useFolderNavigation.ts` is NOT deprecated — it exposes tree store actions used by both pipelines.
 
 ### 2.7 Frontend - Stores (5 files)
 
@@ -729,13 +734,18 @@ npm run -w backend dev  # Check logs for worker initialization
 
 ---
 
-#### 3.5 Remove Frontend Hooks (2 files)
+#### 3.5 Remove Frontend Hooks (4 files)
 
 **Files to Delete**:
 ```bash
 rm frontend/src/domains/files/hooks/useFileUpload.ts
 rm frontend/src/domains/files/hooks/useFolderUpload.ts
+rm frontend/src/domains/files/hooks/useFolderBatchEvents.ts
+rm frontend/src/domains/files/hooks/useFolderUploadToasts.ts
 ```
+
+**Files to KEEP** (shared by V2):
+- `useFolderNavigation.ts` — exposes tree store actions (`upsertTreeFolder`, `removeTreeFolder`, `invalidateTreeFolder`) used by V2 via direct store access
 
 **Update Re-exports**: `frontend/src/domains/files/hooks/index.ts`
 
@@ -743,30 +753,33 @@ rm frontend/src/domains/files/hooks/useFolderUpload.ts
 // REMOVE:
 export { useFileUpload } from './useFileUpload';
 export { useFolderUpload } from './useFolderUpload';
+export { useFolderBatchEvents } from './useFolderBatchEvents';
+export { useFolderUploadToasts } from './useFolderUploadToasts';
 
 // KEEP:
-export { useUploadV2 } from './useUploadV2';
+export { useBatchUploadV2 } from './v2/useBatchUploadV2';
+export { useFolderNavigation } from './useFolderNavigation';
 ```
 
 **Search and Replace in Components**:
 
 ```bash
 # Find all usages
-grep -rn "useFileUpload\|useFolderUpload" --include="*.tsx" --include="*.ts" frontend/src/
+grep -rn "useFileUpload\|useFolderUpload\|useFolderBatchEvents\|useFolderUploadToasts" --include="*.tsx" --include="*.ts" frontend/src/
 
-# Replace with useUploadV2 (manual review recommended)
+# Replace with useBatchUploadV2 (manual review recommended)
 ```
 
 **Verification**:
 ```bash
 # No imports of old hooks
-grep -rn "from.*useFileUpload\|from.*useFolderUpload" --include="*.ts" --include="*.tsx" frontend/src/
+grep -rn "from.*useFileUpload\|from.*useFolderUpload\b\|from.*useFolderBatchEvents\|from.*useFolderUploadToasts" --include="*.ts" --include="*.tsx" frontend/src/
 
 # Type check
 npm run verify:types
 ```
 
-**Commit**: `git commit -m "chore(PRD-07): remove legacy upload hooks (2 files)"`
+**Commit**: `git commit -m "chore(PRD-07): remove legacy upload hooks (4 files)"`
 
 ---
 
@@ -1060,12 +1073,12 @@ npm run -w bc-agent-frontend build
 - Make `pipeline_status` NOT NULL
 - Regenerate Prisma client
 
-**Code Removal** (29 files total):
+**Code Removal** (31 files total):
 - 4 backend route files (~1,655 lines)
 - 8 backend domain logic files
 - 3 backend repository/data access files
 - 6 backend worker files
-- 2 frontend hook files
+- 4 frontend hook files (useFileUpload, useFolderUpload, useFolderBatchEvents, useFolderUploadToasts)
 - 4 frontend store files
 - 1 partial API client cleanup
 - 1 shared types file (2 enums removed)
@@ -1109,7 +1122,7 @@ npm run -w bc-agent-frontend build
 - [ ] All old domain logic files deleted (8 files)
 - [ ] All old repository files deleted (3 files)
 - [ ] All old worker files deleted (6 files)
-- [ ] All old frontend hooks deleted (2 files)
+- [ ] All old frontend hooks deleted (4 files)
 - [ ] All old frontend stores deleted (4 files)
 
 ### Build & Type Safety
@@ -1425,7 +1438,7 @@ grep -rn "UploadSessionManager\|FileProcessingScheduler\|FileDuplicateService" -
 grep -rn "FileProcessingWorker\|FileChunkingWorker\|FileBulkUploadWorker" --include="*.ts" backend/src/ | grep -v "V2"
 
 # Zero old hook imports
-grep -rn "useFileUpload\|useFolderUpload" --include="*.ts" --include="*.tsx" frontend/src/ | grep "from"
+grep -rn "useFileUpload\|useFolderUpload\b\|useFolderBatchEvents\|useFolderUploadToasts" --include="*.ts" --include="*.tsx" frontend/src/ | grep "from"
 
 # Zero old store imports
 grep -rn "uploadSessionStore\|multiUploadSessionStore\|uploadStore\|duplicateStore" --include="*.ts" --include="*.tsx" frontend/src/ | grep "from"
@@ -1470,7 +1483,7 @@ Upon completion of PRD-07, the following artifacts must be delivered:
 - [ ] Migration script: `backend/scripts/migrate-pipeline-status.ts`
 - [ ] Updated `schema.prisma` with only `pipeline_status` column
 - [ ] Regenerated Prisma client
-- [ ] All deprecated files removed (29 files)
+- [ ] All deprecated files removed (31 files)
 - [ ] All deprecated code references removed
 
 ### Database Artifacts
@@ -1586,7 +1599,7 @@ Execute rollback if any of the following occur in first 48 hours:
 
 PRD-07 is considered **COMPLETE** when all of the following are true:
 
-- ✅ All 29 deprecated files removed
+- ✅ All 31 deprecated files removed
 - ✅ All validation commands pass (Section 12)
 - ✅ Production deployment successful with 0 rollbacks
 - ✅ 7-day monitoring period complete with no critical issues
@@ -1656,6 +1669,8 @@ Print this checklist and check off files as deleted:
 ### Frontend Hooks
 - [ ] `frontend/src/domains/files/hooks/useFileUpload.ts`
 - [ ] `frontend/src/domains/files/hooks/useFolderUpload.ts`
+- [ ] `frontend/src/domains/files/hooks/useFolderBatchEvents.ts`
+- [ ] `frontend/src/domains/files/hooks/useFolderUploadToasts.ts`
 
 ### Frontend Stores
 - [ ] `frontend/src/domains/files/stores/uploadSessionStore.ts`
@@ -1680,7 +1695,7 @@ Print this checklist and check off files as deleted:
 - [ ] Update `helpers/index.ts` export
 - [ ] Update all internal imports and class/function names (remove `V2` prefix)
 
-**Total Files**: 29 (source) + 5 (legacy tests to delete) + 6 (V2 test renames)
+**Total Files**: 31 (source) + 5 (legacy tests to delete) + 6 (V2 test renames)
 
 ---
 

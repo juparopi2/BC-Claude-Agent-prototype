@@ -19,10 +19,12 @@ import { PIPELINE_STATUS } from '@bc-agent/shared';
 import { computeFileHashesWithIds } from '@/lib/utils/hash';
 import { getFileApiClientV2 } from '@/src/infrastructure/api/fileApiClientV2';
 import { useBatchUploadStoreV2 } from '../../stores/v2/batchUploadStoreV2';
+import { useFolderTreeStore } from '../../stores/folderTreeStore';
 import { useBlobUploadV2 } from './useBlobUploadV2';
 import { useFileConfirmV2 } from './useFileConfirmV2';
 import { useDuplicateResolutionV2 } from './useDuplicateResolutionV2';
 import { useFolderDuplicateResolutionV2 } from './useFolderDuplicateResolutionV2';
+import { getFileApiClient } from '@/src/infrastructure/api';
 import type { FolderDuplicateCheckInput, ReplaceFolderMapping } from '@bc-agent/shared';
 import type { FolderEntry, FileEntry } from '../../types/folderUpload.types';
 
@@ -484,6 +486,48 @@ export function useBatchUploadV2(): UseBatchUploadV2Return {
         }
         activateBatch(batchKey, batch, fileNames);
 
+        // 8b. Sync folder tree with newly created folders
+        if (batch.folders.length > 0) {
+          const tempIdToFolderId = new Map(batch.folders.map((f) => [f.tempId, f.folderId]));
+          const treeStore = useFolderTreeStore.getState();
+
+          for (const mf of finalManifestFolders) {
+            const folderId = tempIdToFolderId.get(mf.tempId);
+            if (!folderId) continue;
+
+            const parentKey = mf.parentTempId
+              ? (tempIdToFolderId.get(mf.parentTempId) ?? mf.parentTempId)
+              : (targetFolderId ?? 'root');
+
+            treeStore.upsertTreeFolder(parentKey, {
+              id: folderId,
+              name: mf.folderName,
+              isFolder: true,
+              parentFolderId: mf.parentTempId
+                ? (tempIdToFolderId.get(mf.parentTempId) ?? null)
+                : (targetFolderId ?? null),
+              userId: '',
+              mimeType: 'inode/directory',
+              sizeBytes: 0,
+              blobPath: '',
+              isFavorite: false,
+              processingStatus: 'completed',
+              embeddingStatus: 'completed',
+              readinessState: 'ready',
+              processingRetryCount: 0,
+              embeddingRetryCount: 0,
+              lastError: null,
+              failedAt: null,
+              hasExtractedText: false,
+              contentHash: null,
+              deletionStatus: null,
+              deletedAt: null,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            });
+          }
+        }
+
         if (abortMapRef.current.get(batchKey)) return batch.batchId;
 
         // 9. Upload blobs via Uppy
@@ -508,6 +552,34 @@ export function useBatchUploadV2(): UseBatchUploadV2Return {
 
         if (successFileIds.length > 0) {
           await confirmFiles(batchKey, batch.batchId, successFileIds);
+        }
+
+        // 11. Refresh folder tree after upload completes
+        if (finalManifestFolders.length > 0) {
+          try {
+            const fileApiV1 = getFileApiClient();
+            const treeResult = await fileApiV1.getFiles({ folderId: undefined });
+            if (treeResult.success) {
+              const rootFolders = treeResult.data.files.filter((f) => f.isFolder);
+              useFolderTreeStore.getState().setTreeFolders('root', rootFolders);
+            }
+          } catch {
+            // Non-critical: tree will refresh on next navigation
+          }
+
+          // Invalidate parent folders so they re-fetch on next expand
+          const tempIdToFolderId = new Map(batch.folders.map((f) => [f.tempId, f.folderId]));
+          const parentIds = new Set<string>();
+          for (const mf of finalManifestFolders) {
+            if (mf.parentTempId) {
+              const parentId = tempIdToFolderId.get(mf.parentTempId);
+              if (parentId) parentIds.add(parentId);
+            }
+          }
+          if (targetFolderId) parentIds.add(targetFolderId);
+          for (const parentId of parentIds) {
+            useFolderTreeStore.getState().invalidateTreeFolder(parentId);
+          }
         }
 
         abortMapRef.current.delete(batchKey);
@@ -552,6 +624,18 @@ export function useBatchUploadV2(): UseBatchUploadV2Return {
       removeBatchRef(batchKey);
       removeBatch(batchKey);
       abortMapRef.current.delete(batchKey);
+
+      // Refresh folder tree to remove any partially-created folders
+      try {
+        const fileApiV1 = getFileApiClient();
+        const treeResult = await fileApiV1.getFiles({ folderId: undefined });
+        if (treeResult.success) {
+          const rootFolders = treeResult.data.files.filter((f) => f.isFolder);
+          useFolderTreeStore.getState().setTreeFolders('root', rootFolders);
+        }
+      } catch {
+        // Non-critical: tree will refresh on next navigation
+      }
     },
     [cancelBlobsByBatchKey, abortConfirmByBatchKey, removeBatch]
   );

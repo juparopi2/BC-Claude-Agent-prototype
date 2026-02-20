@@ -1606,6 +1606,35 @@ The duplicate resolution modal now displays folder context for both the upload d
 - [x] Duplicate resolution modal shows folder context ("Uploading to:", "Located in:")
 - [x] Crash recovery restores batch progress after page refresh via localStorage
 
+### Folder Tree Sync Gap Discovery & Fix (2026-02-20)
+
+**Problem discovered**: When V2 upload pipeline (`NEXT_PUBLIC_USE_V2_UPLOAD=true`) was active, uploading a folder by drag-and-drop created the folder in the file explorer but the sidebar folder tree (`FolderTree` component) never updated. The root cause was that `useBatchUploadV2.ts` never interacted with `folderTreeStore`:
+
+1. `useBatchUploadV2.ts` did not import or use `folderTreeStore` at any point
+2. `useFolderUploadToasts` was explicitly disabled for V2 (line 66 in `FileUploadZone`: `enabled: !USE_V2_UPLOAD`)
+3. V1 folder tree sync improvements (`useFolderUpload.ts` calling `upsertTreeFolder`, `useFolderBatchEvents.ts` with `onTreeRefreshNeeded`) were dead code when V2 was active
+4. V2 does not use WebSocket events for folder status, so `useFolderBatchEvents` callbacks never fired
+
+**Fix applied**: Three changes to `useBatchUploadV2.ts`:
+
+| Location | Change | Purpose |
+|----------|--------|---------|
+| After `activateBatch()` (step 8b) | `upsertTreeFolder()` for each created folder | Immediate sidebar update — folders appear in tree instantly |
+| After `confirmFiles()` (step 11) | `getFiles()` → `setTreeFolders('root', ...)` + `invalidateTreeFolder()` per parent | Authoritative refresh — replaces placeholder data with real API data |
+| In `cancelBatch()` | `getFiles()` → `setTreeFolders('root', ...)` | Clean up — removes any partially-created folders from tree |
+
+**Key design decisions**:
+- `upsertTreeFolder` is a no-op when the parent is not cached. This is correct: root (`treeFolders['root']`) is always cached (loaded on mount), and non-cached parents will show folders when the user expands them.
+- The post-confirm refresh uses `getFileApiClient()` (V1 API) for `getFiles()` since the V1 file listing endpoint is the source of truth for tree data. This is not a V1 dependency — it's the standard file listing API.
+- Cancel refresh is fire-and-forget (non-critical) — tree will self-correct on next user navigation.
+
+**V1 folder hooks status**: The V1 tree sync code in `useFolderUpload.ts`, `useFolderBatchEvents.ts`, and `useFolderUploadToasts.ts` remains correct for V1 mode but is dead code when `NEXT_PUBLIC_USE_V2_UPLOAD=true`. These will be removed in PRD-07.
+
+**Verification** (2026-02-20):
+- [x] `npm run verify:types` — 0 errors
+- [x] `npm run -w bc-agent-frontend lint` — 0 new warnings
+- [x] `npm run -w bc-agent-frontend test -- folderTreeStore` — 42 tests pass
+
 ---
 
 **End of PRD-06**

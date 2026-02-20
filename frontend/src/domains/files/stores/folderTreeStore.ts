@@ -52,6 +52,12 @@ export interface FolderTreeActions {
   isFolderExpanded: (folderId: string) => boolean;
   /** Get children of a folder from cache */
   getChildFolders: (parentId: string) => ParsedFile[];
+  /** Add or update a folder in the cached children of a parent. No-op if parent not cached. */
+  upsertTreeFolder: (parentId: string, folder: ParsedFile) => void;
+  /** Remove a folder from the cached children of a parent. No-op if parent not cached. */
+  removeTreeFolder: (parentId: string, folderId: string) => void;
+  /** Invalidate (delete) cached children for a parent, forcing re-fetch on next expand. */
+  invalidateTreeFolder: (parentId: string) => void;
 }
 
 /**
@@ -189,6 +195,48 @@ export const useFolderTreeStore = create<FolderTreeState & FolderTreeActions>()(
 
       getChildFolders: (parentId) => {
         return get().treeFolders[parentId] || [];
+      },
+
+      upsertTreeFolder: (parentId, folder) => {
+        set((state) => {
+          const existing = state.treeFolders[parentId];
+          // No-op if parent not cached (folder will appear when user expands that node)
+          if (!existing) return state;
+
+          const idx = existing.findIndex((f) => f.id === folder.id);
+          const updated = idx >= 0
+            ? existing.map((f, i) => (i === idx ? folder : f))
+            : [...existing, folder];
+
+          return {
+            treeFolders: { ...state.treeFolders, [parentId]: updated },
+          };
+        });
+      },
+
+      removeTreeFolder: (parentId, folderId) => {
+        set((state) => {
+          const existing = state.treeFolders[parentId];
+          if (!existing) return state;
+
+          return {
+            treeFolders: {
+              ...state.treeFolders,
+              [parentId]: existing.filter((f) => f.id !== folderId),
+            },
+          };
+        });
+      },
+
+      invalidateTreeFolder: (parentId) => {
+        set((state) => {
+          if (!(parentId in state.treeFolders)) return state;
+
+          const treeFolders = Object.fromEntries(
+            Object.entries(state.treeFolders).filter(([key]) => key !== parentId)
+          );
+          return { treeFolders };
+        });
       },
     }),
     {

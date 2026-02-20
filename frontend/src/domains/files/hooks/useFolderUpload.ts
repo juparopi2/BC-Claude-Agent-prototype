@@ -303,6 +303,33 @@ export function useFolderUpload(): UseFolderUploadReturn {
         const { folderId, folderBatch: updatedBatch1 } = createResult.data;
         updateBatch(sessionId, batch.tempId, updatedBatch1);
 
+        // Update folder tree cache so sidebar shows the new folder immediately
+        const parentKey = updatedBatch1.parentFolderId ?? 'root';
+        useFolderTreeStore.getState().upsertTreeFolder(parentKey, {
+          id: folderId,
+          userId: '',
+          name: updatedBatch1.name,
+          mimeType: '',
+          sizeBytes: 0,
+          blobPath: '',
+          isFolder: true,
+          isFavorite: false,
+          readinessState: 'ready',
+          processingStatus: 'completed',
+          embeddingStatus: 'pending',
+          processingRetryCount: 0,
+          embeddingRetryCount: 0,
+          lastError: null,
+          failedAt: null,
+          hasExtractedText: false,
+          contentHash: null,
+          deletionStatus: null,
+          deletedAt: null,
+          parentFolderId: updatedBatch1.parentFolderId ?? null,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+
         // Handle empty folders (folders containing only subfolders, no direct files)
         if (files.length === 0) {
           // Register with empty array to trigger state transition
@@ -672,6 +699,20 @@ export function useFolderUpload(): UseFolderUploadReturn {
               const { files: fetchedFiles, pagination } = result.data;
               const hasMoreFiles = pagination.offset + fetchedFiles.length < pagination.total;
               setFiles(fetchedFiles, pagination.total, hasMoreFiles);
+            }
+          }
+
+          // Refresh root folders in tree (always, regardless of current view)
+          const treeResult = await fileApi.getFiles({ folderId: undefined });
+          if (treeResult.success) {
+            const rootFolders = treeResult.data.files.filter((f: { isFolder: boolean }) => f.isFolder);
+            useFolderTreeStore.getState().setTreeFolders('root', rootFolders);
+          }
+
+          // Invalidate cache for parents affected by upload (forces re-fetch on expand)
+          for (const batch of folderBatches) {
+            if (batch.parentFolderId) {
+              useFolderTreeStore.getState().invalidateTreeFolder(batch.parentFolderId);
             }
           }
 

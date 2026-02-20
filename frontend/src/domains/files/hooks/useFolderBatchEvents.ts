@@ -49,6 +49,8 @@ export interface UseFolderBatchEventsOptions {
   onBatchComplete?: (sessionId: string, folderIndex: number, folderName: string) => void;
   /** Callback when a folder batch fails */
   onBatchFail?: (sessionId: string, folderIndex: number, folderName: string, error: string) => void;
+  /** Callback when folder tree should be refreshed (safety net for post-upload sync) */
+  onTreeRefreshNeeded?: () => void;
 }
 
 /**
@@ -92,6 +94,7 @@ export function useFolderBatchEvents(options: UseFolderBatchEventsOptions = {}):
     onBatchStart,
     onBatchComplete,
     onBatchFail,
+    onTreeRefreshNeeded,
   } = options;
 
   // Get store actions from multi-session store
@@ -119,6 +122,7 @@ export function useFolderBatchEvents(options: UseFolderBatchEventsOptions = {}):
     onBatchStart,
     onBatchComplete,
     onBatchFail,
+    onTreeRefreshNeeded,
   });
 
   // Update refs when callbacks change
@@ -137,6 +141,7 @@ export function useFolderBatchEvents(options: UseFolderBatchEventsOptions = {}):
       onBatchStart,
       onBatchComplete,
       onBatchFail,
+      onTreeRefreshNeeded,
     };
   }, [
     addSession,
@@ -152,6 +157,7 @@ export function useFolderBatchEvents(options: UseFolderBatchEventsOptions = {}):
     onBatchStart,
     onBatchComplete,
     onBatchFail,
+    onTreeRefreshNeeded,
   ]);
 
   /**
@@ -196,6 +202,8 @@ export function useFolderBatchEvents(options: UseFolderBatchEventsOptions = {}):
           failedFolders: e.failedFolders,
         });
         callbacks.onSessionComplete?.(e.sessionId, e.completedFolders, e.failedFolders);
+        // Safety net: refresh folder tree in case HTTP refresh in useFolderUpload failed
+        callbacks.onTreeRefreshNeeded?.();
         // Remove session after a delay to let UI show completion
         setTimeout(() => {
           callbacks.removeSession(sessionId);
@@ -221,6 +229,8 @@ export function useFolderBatchEvents(options: UseFolderBatchEventsOptions = {}):
           completedFolders: e.completedFolders,
         });
         callbacks.onSessionCancel?.(e.sessionId, e.filesRolledBack);
+        // Safety net: refresh folder tree to reflect any partial uploads or rollbacks
+        callbacks.onTreeRefreshNeeded?.();
         // Remove session after a delay to let UI show cancellation
         setTimeout(() => {
           callbacks.removeSession(sessionId);

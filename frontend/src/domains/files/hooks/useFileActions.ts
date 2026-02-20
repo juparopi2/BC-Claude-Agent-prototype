@@ -81,8 +81,8 @@ export function useFileActions(): UseFileActionsReturn {
   const files = useFileListStore((state) => state.files);
 
   // Get folder tree store for updating tree when folders change
-  const setTreeFolders = useFolderTreeStore((state) => state.setTreeFolders);
-  const getChildFolders = useFolderTreeStore((state) => state.getChildFolders);
+  const upsertTreeFolder = useFolderTreeStore((state) => state.upsertTreeFolder);
+  const removeTreeFolder = useFolderTreeStore((state) => state.removeTreeFolder);
   const currentFolderId = useFolderTreeStore((state) => state.currentFolderId);
 
   /**
@@ -120,9 +120,7 @@ export function useFileActions(): UseFileActionsReturn {
           }
 
           // Update folder tree cache
-          const cacheKey = parentFolderId || 'root';
-          const currentChildren = getChildFolders(cacheKey);
-          setTreeFolders(cacheKey, [...currentChildren, newFolder]);
+          upsertTreeFolder(parentFolderId || 'root', newFolder);
 
           return newFolder;
         } else {
@@ -137,7 +135,7 @@ export function useFileActions(): UseFileActionsReturn {
         setIsLoading(false);
       }
     },
-    [addFile, setTreeFolders, getChildFolders, currentFolderId]
+    [addFile, upsertTreeFolder, currentFolderId]
   );
 
   /**
@@ -196,12 +194,7 @@ export function useFileActions(): UseFileActionsReturn {
           deletedFolderIds.forEach((folderId) => {
             const file = files.find((f) => f.id === folderId);
             if (file) {
-              const cacheKey = file.parentFolderId || 'root';
-              const currentChildren = getChildFolders(cacheKey);
-              setTreeFolders(
-                cacheKey,
-                currentChildren.filter((f) => f.id !== folderId)
-              );
+              removeTreeFolder(file.parentFolderId || 'root', folderId);
             }
           });
         }
@@ -217,7 +210,7 @@ export function useFileActions(): UseFileActionsReturn {
         setIsLoading(false);
       }
     },
-    [files, markAsDeleting, cancelDeletion, deleteFilesFromStore, setTreeFolders, getChildFolders]
+    [files, markAsDeleting, cancelDeletion, deleteFilesFromStore, removeTreeFolder]
   );
 
   /**
@@ -245,14 +238,7 @@ export function useFileActions(): UseFileActionsReturn {
           // If it's a folder, update in tree cache
           const file = files.find((f) => f.id === fileId);
           if (file?.isFolder) {
-            const cacheKey = file.parentFolderId || 'root';
-            const currentChildren = getChildFolders(cacheKey);
-            setTreeFolders(
-              cacheKey,
-              currentChildren.map((f) =>
-                f.id === fileId ? { ...f, name: updatedFile.name } : f
-              )
-            );
+            upsertTreeFolder(file.parentFolderId || 'root', { ...file, name: updatedFile.name });
           }
 
           return updatedFile;
@@ -268,7 +254,7 @@ export function useFileActions(): UseFileActionsReturn {
         setIsLoading(false);
       }
     },
-    [files, updateFileInStore, setTreeFolders, getChildFolders]
+    [files, updateFileInStore, upsertTreeFolder]
   );
 
   /**

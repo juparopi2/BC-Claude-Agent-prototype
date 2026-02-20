@@ -8,7 +8,10 @@
  * @module domains/files/hooks/useFolderUploadToasts
  */
 
+import { useCallback } from 'react';
 import { useFolderBatchEvents } from './useFolderBatchEvents';
+import { useFolderTreeStore } from '../stores/folderTreeStore';
+import { getFileApiClient } from '@/src/infrastructure/api';
 import { toast } from 'sonner';
 
 /**
@@ -42,8 +45,23 @@ export function useFolderUploadToasts(
 ): void {
   const { enabled = true } = options;
 
+  // Refresh root folders in tree as safety net
+  const handleTreeRefreshNeeded = useCallback(async () => {
+    try {
+      const fileApi = getFileApiClient();
+      const result = await fileApi.getFiles({ folderId: undefined });
+      if (result.success) {
+        const rootFolders = result.data.files.filter((f: { isFolder: boolean }) => f.isFolder);
+        useFolderTreeStore.getState().setTreeFolders('root', rootFolders);
+      }
+    } catch {
+      // Non-critical: tree will be refreshed on next navigation
+    }
+  }, []);
+
   useFolderBatchEvents({
     enabled,
+    onTreeRefreshNeeded: handleTreeRefreshNeeded,
     onSessionComplete: (sessionId, completedFolders, failedFolders) => {
       if (failedFolders === 0) {
         toast.success('Upload complete', {

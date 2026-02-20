@@ -9,6 +9,7 @@
  */
 
 import { useCallback, useRef } from 'react';
+import { ErrorCode } from '@bc-agent/shared';
 import { getFileApiClientV2 } from '@/src/infrastructure/api/fileApiClientV2';
 import { useBatchUploadStoreV2 } from '../../stores/v2/batchUploadStoreV2';
 
@@ -52,9 +53,18 @@ export function useFileConfirmV2() {
               removeBatchFromLocalStorage(batchKey);
             }
           } else {
-            const errMsg = response.error.message;
-            markFileFailed(batchKey, fileId, errMsg);
-            results.push({ fileId, success: false, error: errMsg });
+            // 409 STATE_CONFLICT / ALREADY_EXISTS = file already confirmed
+            // (race condition during recovery or double-click). Not a real failure.
+            const isAlreadyConfirmed = response.error.code === ErrorCode.STATE_CONFLICT
+              || response.error.code === ErrorCode.ALREADY_EXISTS;
+
+            if (isAlreadyConfirmed) {
+              results.push({ fileId, success: true });
+            } else {
+              const errMsg = response.error.message;
+              markFileFailed(batchKey, fileId, errMsg);
+              results.push({ fileId, success: false, error: errMsg });
+            }
           }
         }
       };

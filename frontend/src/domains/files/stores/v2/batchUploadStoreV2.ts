@@ -12,7 +12,9 @@ import type {
   CreateBatchResponse,
   BatchProgress,
   PipelineStatus,
+  BatchStatusResponse,
 } from '@bc-agent/shared';
+import { PIPELINE_STATUS } from '@bc-agent/shared';
 
 // ============================================
 // Types
@@ -74,6 +76,8 @@ export interface BatchUploadActions {
   setPaused: (batchKey: string, paused: boolean) => void;
   setError: (batchKey: string, error: string | null) => void;
   removeBatch: (batchKey: string) => void;
+  /** Restore a batch from backend status (crash recovery) */
+  restoreBatch: (batchKey: string, batchStatus: BatchStatusResponse) => void;
   /** Find owner batch by fileId and update pipeline status */
   updateFilePipelineStatusByFileId: (fileId: string, status: PipelineStatus) => void;
   /** Find owner batch by fileId and mark failed */
@@ -305,6 +309,66 @@ export const useBatchUploadStoreV2 = create<BatchUploadState & BatchUploadAction
       set((state) => {
         const newBatches = new Map(state.batches);
         newBatches.delete(batchKey);
+
+        return {
+          batches: newBatches,
+          hasActiveUploads: computeHasActiveUploads(newBatches),
+        };
+      });
+    },
+
+    restoreBatch: (batchKey, batchStatus) => {
+      set((state) => {
+        const files = new Map<string, BatchFileState>();
+        let readyCount = 0;
+        let failedCount = 0;
+
+        for (const f of batchStatus.files) {
+          const isRegistered = !f.pipelineStatus || f.pipelineStatus === PIPELINE_STATUS.REGISTERED;
+          const isFailed = f.pipelineStatus === PIPELINE_STATUS.FAILED;
+
+          if (f.pipelineStatus === PIPELINE_STATUS.READY) readyCount++;
+          if (isFailed) failedCount++;
+
+          files.set(f.fileId, {
+            fileId: f.fileId,
+            tempId: f.fileId,
+            fileName: f.name,
+            uploadProgress: 100,   // All restored files had blobs uploaded before crash
+            pipelineStatus: (f.pipelineStatus as PipelineStatus) ?? null,
+            confirmed: !isRegistered,
+            ...(isFailed ? { error: 'Processing failed' } : {}),
+          });
+        }
+
+        const total = batchStatus.files.length;
+        let phase: BatchPhase;
+        if (readyCount === total) {
+          phase = 'completed';
+        } else if (failedCount > 0 && readyCount + failedCount === total) {
+          phase = 'failed';
+        } else {
+          phase = 'active';
+        }
+
+        const newBatches = new Map(state.batches);
+        newBatches.set(batchKey, {
+          batchKey,
+          phase,
+          preparing: null,
+          activeBatch: {
+            batchId: batchStatus.batchId,
+            status: batchStatus.status,
+            totalFiles: total,
+            confirmedCount: batchStatus.confirmedCount,
+            expiresAt: batchStatus.expiresAt,
+          },
+          files,
+          isUploading: phase === 'active',
+          isPaused: false,
+          error: null,
+          createdAt: Date.now(),
+        });
 
         return {
           batches: newBatches,

@@ -12,7 +12,7 @@ import {
   useBatchUploadStoreV2,
   resetBatchUploadStoreV2,
 } from '@/src/domains/files/stores/v2/batchUploadStoreV2';
-import type { CreateBatchResponse, BatchProgress, PipelineStatus } from '@bc-agent/shared';
+import type { CreateBatchResponse, BatchProgress, PipelineStatus, BatchStatusResponse } from '@bc-agent/shared';
 import { PIPELINE_STATUS, BATCH_STATUS } from '@bc-agent/shared';
 
 function getStore() {
@@ -367,5 +367,142 @@ describe('batchUploadStoreV2', () => {
     const state = getStore();
     expect(state.batches.size).toBe(0);
     expect(state.hasActiveUploads).toBe(false);
+  });
+
+  // ============================================
+  // restoreBatch (crash recovery)
+  // ============================================
+
+  function makeBatchStatusResponse(
+    batchId: string,
+    files: { fileId: string; name: string; pipelineStatus: string | null }[],
+    overrides?: Partial<BatchStatusResponse>,
+  ): BatchStatusResponse {
+    return {
+      batchId,
+      status: BATCH_STATUS.ACTIVE,
+      totalFiles: files.length,
+      confirmedCount: files.filter((f) => f.pipelineStatus && f.pipelineStatus !== PIPELINE_STATUS.REGISTERED).length,
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+      files,
+      ...overrides,
+    };
+  }
+
+  it('restoreBatch with all files READY sets phase to completed', () => {
+    const store = getStore();
+    const status = makeBatchStatusResponse('B1', [
+      { fileId: 'F1', name: 'doc.pdf', pipelineStatus: PIPELINE_STATUS.READY },
+      { fileId: 'F2', name: 'img.png', pipelineStatus: PIPELINE_STATUS.READY },
+    ]);
+
+    store.restoreBatch('batch-1', status);
+
+    const state = getStore();
+    const b1 = state.batches.get('batch-1')!;
+    expect(b1.phase).toBe('completed');
+    expect(b1.isUploading).toBe(false);
+    expect(b1.activeBatch?.batchId).toBe('B1');
+    expect(b1.files.size).toBe(2);
+
+    const f1 = b1.files.get('F1')!;
+    expect(f1.confirmed).toBe(true);
+    expect(f1.uploadProgress).toBe(100);
+    expect(f1.pipelineStatus).toBe(PIPELINE_STATUS.READY);
+
+    expect(state.hasActiveUploads).toBe(false);
+  });
+
+  it('restoreBatch with all files REGISTERED sets phase to active with 100% upload progress', () => {
+    const store = getStore();
+    const status = makeBatchStatusResponse('B1', [
+      { fileId: 'F1', name: 'doc.pdf', pipelineStatus: PIPELINE_STATUS.REGISTERED },
+      { fileId: 'F2', name: 'img.png', pipelineStatus: null },
+    ]);
+
+    store.restoreBatch('batch-1', status);
+
+    const state = getStore();
+    const b1 = state.batches.get('batch-1')!;
+    expect(b1.phase).toBe('active');
+    expect(b1.isUploading).toBe(true);
+
+    // REGISTERED files still need re-confirmation, but blobs were uploaded before crash
+    const f1 = b1.files.get('F1')!;
+    expect(f1.confirmed).toBe(false);
+    expect(f1.uploadProgress).toBe(100);
+
+    const f2 = b1.files.get('F2')!;
+    expect(f2.confirmed).toBe(false);
+    expect(f2.uploadProgress).toBe(100);
+
+    expect(state.hasActiveUploads).toBe(true);
+  });
+
+  it('restoreBatch with mixed states (some READY, some processing) sets phase to active', () => {
+    const store = getStore();
+    const status = makeBatchStatusResponse('B1', [
+      { fileId: 'F1', name: 'doc.pdf', pipelineStatus: PIPELINE_STATUS.READY },
+      { fileId: 'F2', name: 'img.png', pipelineStatus: PIPELINE_STATUS.EXTRACTING },
+      { fileId: 'F3', name: 'data.csv', pipelineStatus: PIPELINE_STATUS.REGISTERED },
+    ]);
+
+    store.restoreBatch('batch-1', status);
+
+    const state = getStore();
+    const b1 = state.batches.get('batch-1')!;
+    expect(b1.phase).toBe('active');
+
+    // F1: READY → confirmed, 100%
+    expect(b1.files.get('F1')!.confirmed).toBe(true);
+    expect(b1.files.get('F1')!.uploadProgress).toBe(100);
+
+    // F2: EXTRACTING → confirmed (past registration), 100%
+    expect(b1.files.get('F2')!.confirmed).toBe(true);
+    expect(b1.files.get('F2')!.uploadProgress).toBe(100);
+
+    // F3: REGISTERED → not confirmed, but blob was uploaded before crash
+    expect(b1.files.get('F3')!.confirmed).toBe(false);
+    expect(b1.files.get('F3')!.uploadProgress).toBe(100);
+  });
+
+  it('restoreBatch with failed + ready files sets phase to failed', () => {
+    const store = getStore();
+    const status = makeBatchStatusResponse('B1', [
+      { fileId: 'F1', name: 'doc.pdf', pipelineStatus: PIPELINE_STATUS.READY },
+      { fileId: 'F2', name: 'bad.pdf', pipelineStatus: PIPELINE_STATUS.FAILED },
+    ]);
+
+    store.restoreBatch('batch-1', status);
+
+    const state = getStore();
+    const b1 = state.batches.get('batch-1')!;
+    expect(b1.phase).toBe('failed');
+
+    expect(b1.files.get('F2')!.error).toBe('Processing failed');
+    expect(b1.files.get('F2')!.confirmed).toBe(true);
+
+    expect(state.hasActiveUploads).toBe(false);
+  });
+
+  it('restoreBatch does not affect existing batches', () => {
+    const store = getStore();
+
+    // Pre-existing batch
+    store.addPreparing('batch-1', 1, false);
+    const resp = makeBatchResponse('B1', [{ tempId: 't1', fileId: 'F1' }]);
+    store.activateBatch('batch-1', resp, makeFileNames([['t1', 'a.pdf']]));
+
+    // Restore a different batch
+    const status = makeBatchStatusResponse('B2', [
+      { fileId: 'F2', name: 'doc.pdf', pipelineStatus: PIPELINE_STATUS.READY },
+    ]);
+    store.restoreBatch('batch-2', status);
+
+    const state = getStore();
+    expect(state.batches.size).toBe(2);
+    expect(state.batches.get('batch-1')!.phase).toBe('active');
+    expect(state.batches.get('batch-2')!.phase).toBe('completed');
   });
 });

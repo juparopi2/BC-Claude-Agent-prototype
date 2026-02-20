@@ -88,7 +88,7 @@ export function DuplicateFolderModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && handleAction('cancel')}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <AlertTriangle className="size-5 text-amber-500" />
@@ -101,25 +101,25 @@ export function DuplicateFolderModal({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
+        <div className="space-y-4 py-4 overflow-hidden">
           {/* New folder info */}
-          <div className="rounded-lg border p-3 bg-muted/50">
+          <div className="rounded-lg border p-3 bg-muted/50 overflow-hidden">
             <p className="text-xs text-muted-foreground mb-1">Folder to upload:</p>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 min-w-0">
               <Folder className="size-4 text-blue-500 flex-shrink-0" />
-              <span className="font-medium truncate flex-1">{currentConflict.originalName}</span>
-              <span className="text-xs text-muted-foreground">
+              <span className="font-medium truncate" title={currentConflict.originalName}>{currentConflict.originalName}</span>
+              <span className="text-xs text-muted-foreground flex-shrink-0">
                 {currentConflict.fileCount} file{currentConflict.fileCount !== 1 ? 's' : ''}
               </span>
             </div>
           </div>
 
           {/* Existing folder info */}
-          <div className="rounded-lg border p-3">
+          <div className="rounded-lg border p-3 overflow-hidden">
             <p className="text-xs text-muted-foreground mb-1">Existing folder:</p>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 min-w-0">
               <Folder className="size-4 text-green-500 flex-shrink-0" />
-              <span className="font-medium truncate flex-1">
+              <span className="font-medium truncate" title={currentConflict.originalName}>
                 {currentConflict.originalName}
               </span>
             </div>
@@ -131,11 +131,11 @@ export function DuplicateFolderModal({
           </div>
 
           {/* Suggested rename */}
-          <div className="rounded-lg border border-dashed border-primary/50 p-3 bg-primary/5">
+          <div className="rounded-lg border border-dashed border-primary/50 p-3 bg-primary/5 overflow-hidden">
             <p className="text-xs text-muted-foreground mb-1">Rename option:</p>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 min-w-0">
               <Edit2 className="size-4 text-primary flex-shrink-0" />
-              <span className="font-medium truncate flex-1">{currentConflict.suggestedName}</span>
+              <span className="font-medium truncate" title={currentConflict.suggestedName}>{currentConflict.suggestedName}</span>
             </div>
           </div>
 

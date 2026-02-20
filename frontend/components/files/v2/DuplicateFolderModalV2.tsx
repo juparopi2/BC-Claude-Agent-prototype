@@ -124,32 +124,32 @@ function FolderDuplicateContent({
         </DialogDescription>
       </DialogHeader>
 
-      <div className="space-y-3 py-4">
+      <div className="space-y-3 py-4 overflow-hidden">
         {/* New folder info */}
-        <div className="rounded-lg border p-3 bg-muted/50">
+        <div className="rounded-lg border p-3 bg-muted/50 overflow-hidden">
           <p className="text-xs text-muted-foreground mb-1">New folder:</p>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 min-w-0">
             <Folder className="size-4 text-blue-500 flex-shrink-0" />
-            <span className="font-medium truncate flex-1">{current.folderName}</span>
+            <span className="font-medium truncate" title={current.folderName}>{current.folderName}</span>
           </div>
-          <div className="flex items-center gap-1.5 mt-1.5">
+          <div className="flex items-center gap-1.5 mt-1.5 min-w-0">
             <FolderOpen className="size-3.5 text-muted-foreground flex-shrink-0" />
-            <span className="text-xs text-muted-foreground">
+            <span className="text-xs text-muted-foreground truncate">
               Uploading to: <span className="font-medium">{targetFolderPath ?? 'Root'}</span>
             </span>
           </div>
         </div>
 
         {/* Existing folder info */}
-        <div className="rounded-lg border p-3">
+        <div className="rounded-lg border p-3 overflow-hidden">
           <p className="text-xs text-muted-foreground mb-1">Existing folder:</p>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 min-w-0">
             <Folder className="size-4 text-green-500 flex-shrink-0" />
-            <span className="font-medium truncate flex-1">{current.folderName}</span>
+            <span className="font-medium truncate" title={current.folderName}>{current.folderName}</span>
           </div>
-          <div className="flex items-center gap-1.5 mt-1.5">
+          <div className="flex items-center gap-1.5 mt-1.5 min-w-0">
             <FolderOpen className="size-3.5 text-muted-foreground flex-shrink-0" />
-            <span className="text-xs text-muted-foreground">
+            <span className="text-xs text-muted-foreground truncate">
               Located at: <span className="font-medium">{targetFolderPath ?? 'Root'}</span>
             </span>
           </div>
@@ -170,10 +170,14 @@ function FolderDuplicateContent({
           {nameError && (
             <p className="text-xs text-destructive">{nameError}</p>
           )}
+
           {current.suggestedName && (
-            <p className="text-xs text-muted-foreground">
-              Auto-rename suggestion: <span className="font-medium">{current.suggestedName}</span>
+            <>
+            <p className="text-xs -foreground truncate" title={current.suggestedName}>
+              Auto-rename suggestion:
             </p>
+            <p className="text-xs text-muted-foreground truncate font-medium">{current.suggestedName}</p>
+            </>
           )}
         </div>
 
@@ -238,7 +242,7 @@ export function DuplicateFolderModalV2() {
 
   return (
     <Dialog open={isModalOpen} onOpenChange={(open) => !open && cancel()}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-2xl">
         <FolderDuplicateContent
           key={current.tempId}
           current={current}

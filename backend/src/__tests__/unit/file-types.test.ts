@@ -40,9 +40,8 @@ describe('File Types', () => {
         blobPath: dbRecord.blob_path,
         isFolder: false,
         isFavorite: true,
-        processingStatus: 'completed',
-        embeddingStatus: 'pending',
-        readinessState: 'processing', // completed + pending = processing
+        pipelineStatus: 'ready', // from pipeline_status
+        readinessState: expect.any(String), // computed from pipeline_status
         hasExtractedText: true, // Computed from extracted_text !== null
         contentHash: null, // Fixture default is null
         processingRetryCount: 0,
@@ -118,7 +117,7 @@ describe('FileFixture', () => {
       expect(file.mime_type).toBe('application/pdf');
       expect(file.size_bytes).toBe(1024000);
       expect(file.is_folder).toBe(false);
-      expect(file.processing_status).toBe('completed');
+      expect(file.pipeline_status).toBe('ready');
       expect(file.created_at).toBeInstanceOf(Date);
     });
 
@@ -193,8 +192,7 @@ describe('FileFixture', () => {
       expect(invoice.name).toBe('invoice-2024-12.pdf');
       expect(invoice.user_id).toBe('user-123');
       expect(invoice.mime_type).toBe('application/pdf');
-      expect(invoice.processing_status).toBe('completed');
-      expect(invoice.embedding_status).toBe('completed');
+      expect(invoice.pipeline_status).toBe('ready');
       expect(invoice.extracted_text).toContain('Invoice');
       expect(invoice.is_favorite).toBe(true);
     });
@@ -222,8 +220,7 @@ describe('FileFixture', () => {
     it('should create file with chunks', () => {
       const { file, chunks } = FileFixture.Presets.fileWithChunks('user-123');
 
-      expect(file.processing_status).toBe('completed');
-      expect(file.embedding_status).toBe('completed');
+      expect(file.pipeline_status).toBe('ready');
       expect(chunks).toHaveLength(3);
       expect(chunks[0].chunk_index).toBe(0);
       expect(chunks[1].chunk_index).toBe(1);

@@ -341,32 +341,32 @@ describe('FileProcessingService', () => {
 
   // ========== SUITE 3: STATUS UPDATES (3 TESTS) ==========
   describe('Status Updates', () => {
-    it('should update status to "processing" at start', async () => {
+    it('should update status to "extracting" at start', async () => {
       const job = createMockJob();
 
       await service.processFile(job);
 
-      // Verify first updateProcessingStatus call (processing)
+      // Verify first updateProcessingStatus call (extracting)
       expect(mockUpdateProcessingStatus).toHaveBeenNthCalledWith(
         1,
         'test-user-456',
         'test-file-123',
-        'processing',
+        'extracting',
         undefined
       );
     });
 
-    it('should update status to "completed" with extracted text on success', async () => {
+    it('should update status to "chunking" with extracted text on success', async () => {
       const job = createMockJob();
 
       await service.processFile(job);
 
-      // Verify second updateProcessingStatus call (completed)
+      // Verify second updateProcessingStatus call (chunking)
       expect(mockUpdateProcessingStatus).toHaveBeenNthCalledWith(
         2,
         'test-user-456',
         'test-file-123',
-        'completed',
+        'chunking',
         'Extracted plain text content'
       );
     });
@@ -404,7 +404,7 @@ describe('FileProcessingService', () => {
         }),
         expect.objectContaining({
           progress: 0,
-          status: 'processing',
+          status: 'extracting',
           attemptNumber: 1,
           maxAttempts: 2,
         })

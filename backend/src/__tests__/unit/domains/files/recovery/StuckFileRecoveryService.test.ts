@@ -21,13 +21,13 @@ import {
 
 // ===== MOCK DEPENDENCIES =====
 
-// Mock FileRepositoryV2
+// Mock FileRepository
 const mockFindStuckFiles = vi.fn();
 const mockTransitionStatusWithRetry = vi.fn();
 const mockForceStatus = vi.fn();
 
-vi.mock('@/services/files/repository/FileRepositoryV2', () => ({
-  getFileRepositoryV2: vi.fn(() => ({
+vi.mock('@/services/files/repository/FileRepository', () => ({
+  getFileRepository: vi.fn(() => ({
     findStuckFiles: mockFindStuckFiles,
     transitionStatusWithRetry: mockTransitionStatusWithRetry,
     forceStatus: mockForceStatus,

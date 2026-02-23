@@ -49,10 +49,8 @@ export interface CreateTestFileOptions {
   mimeType?: string;
   /** Extracted text for EXTRACTED_TEXT strategy */
   extractedText?: string;
-  /** Processing status (default: completed) */
-  processingStatus?: 'pending' | 'processing' | 'completed' | 'failed';
-  /** Embedding status (default: pending) */
-  embeddingStatus?: 'pending' | 'processing' | 'completed' | 'failed';
+  /** Pipeline status (e.g. 'ready', 'extracting', 'failed') */
+  pipelineStatus?: string;
 }
 
 /**
@@ -101,7 +99,7 @@ export class FileTestHelper {
 
     // Update extracted_text and status if provided
     // Build dynamic UPDATE query to avoid NULL assignment validation issues
-    if (options.extractedText || options.processingStatus || options.embeddingStatus) {
+    if (options.extractedText || options.pipelineStatus) {
       const setClauses: string[] = [];
       const params: Record<string, unknown> = { fileId };
 
@@ -109,13 +107,9 @@ export class FileTestHelper {
         setClauses.push('extracted_text = @extractedText');
         params.extractedText = options.extractedText;
       }
-      if (options.processingStatus) {
-        setClauses.push('processing_status = @processingStatus');
-        params.processingStatus = options.processingStatus;
-      }
-      if (options.embeddingStatus) {
-        setClauses.push('embedding_status = @embeddingStatus');
-        params.embeddingStatus = options.embeddingStatus;
+      if (options.pipelineStatus) {
+        setClauses.push('pipeline_status = @pipelineStatus');
+        params.pipelineStatus = options.pipelineStatus;
       }
 
       setClauses.push('updated_at = GETUTCDATE()');
@@ -176,7 +170,7 @@ export class FileTestHelper {
       name: options?.name || `${TEST_PREFIX}image_${Date.now()}.png`,
       content: pngHeader,
       mimeType: 'image/png',
-      processingStatus: 'completed',
+      pipelineStatus: 'ready',
     });
   }
 

@@ -34,20 +34,11 @@ import { PdfProcessor } from './processors/PdfProcessor';
 import { DocxProcessor } from './processors/DocxProcessor';
 import { ExcelProcessor } from './processors/ExcelProcessor';
 import { ImageProcessor, trackImageUsage, type ImageMetadata } from './processors/ImageProcessor';
-import { PROCESSING_STATUS } from '@bc-agent/shared';
 import type { DocumentProcessor, ExtractionResult } from './processors/types';
-import type { FileProcessingJob } from '@/infrastructure/queue/MessageQueue';
-import type { ProcessingStatus } from '@/types/file.types';
+import type { FileProcessingJob } from '@/infrastructure/queue/types';
+import { PIPELINE_STATUS, type PipelineStatus } from '@bc-agent/shared';
 
 const logger = createChildLogger({ service: 'FileProcessingService' });
-
-/**
- * Options for processFile (PRD-04 V2 compatibility)
- */
-export interface ProcessFileOptions {
-  /** When true, skip the fire-and-forget enqueue of the chunking job (V2 Flow handles sequencing) */
-  skipNextStageEnqueue?: boolean;
-}
 
 /**
  * File Processing Service
@@ -148,10 +139,9 @@ export class FileProcessingService {
    * 5. Emit WebSocket events for progress tracking
    *
    * @param job - File processing job from MessageQueue
-   * @param options - Optional processing options (V2 pipeline compatibility)
    * @throws Error if processing fails (will trigger BullMQ retry)
    */
-  public async processFile(job: FileProcessingJob, options?: ProcessFileOptions): Promise<void> {
+  public async processFile(job: FileProcessingJob): Promise<void> {
     const {
       fileId,
       userId,
@@ -185,9 +175,9 @@ export class FileProcessingService {
     const eventCtx = { fileId, userId, sessionId };
 
     try {
-      // Step 1: Update status to 'processing' and emit 0% progress
-      await this.updateStatus(userId, fileId, PROCESSING_STATUS.PROCESSING);
-      this.emitProgress(eventCtx, 0, PROCESSING_STATUS.PROCESSING, attemptNumber, maxAttempts);
+      // Step 1: Update status to 'extracting' and emit 0% progress
+      await this.updateStatus(userId, fileId, PIPELINE_STATUS.EXTRACTING);
+      this.emitProgress(eventCtx, 0, PIPELINE_STATUS.EXTRACTING, attemptNumber, maxAttempts);
 
       // Step 2: Download blob from storage (emit 20% progress)
       const fileUploadService = getFileUploadService();
@@ -197,7 +187,7 @@ export class FileProcessingService {
         containerName: (fileUploadService as unknown as { containerName: string }).containerName,
       }, 'Downloading blob for file processing');
       const buffer = await fileUploadService.downloadFromBlob(blobPath);
-      this.emitProgress(eventCtx, 20, PROCESSING_STATUS.PROCESSING, attemptNumber, maxAttempts);
+      this.emitProgress(eventCtx, 20, PIPELINE_STATUS.EXTRACTING, attemptNumber, maxAttempts);
 
       logger.info(
         { fileId, bufferSize: buffer.length },
@@ -209,14 +199,14 @@ export class FileProcessingService {
       if (!processor) {
         throw new Error(`No processor found for MIME type: ${mimeType}`);
       }
-      this.emitProgress(eventCtx, 30, PROCESSING_STATUS.PROCESSING, attemptNumber, maxAttempts);
+      this.emitProgress(eventCtx, 30, PIPELINE_STATUS.EXTRACTING, attemptNumber, maxAttempts);
 
       logger.debug({ fileId, mimeType, processor: processor.constructor.name }, 'Processor selected');
 
       // Step 4: Extract text (emit 70% progress after completion)
       logger.debug({ fileId, fileName }, 'Extracting text from document');
       const result: ExtractionResult = await processor.extractText(buffer, fileName);
-      this.emitProgress(eventCtx, 70, PROCESSING_STATUS.PROCESSING, attemptNumber, maxAttempts);
+      this.emitProgress(eventCtx, 70, PIPELINE_STATUS.EXTRACTING, attemptNumber, maxAttempts);
 
       logger.info(
         {
@@ -251,18 +241,13 @@ export class FileProcessingService {
         });
       }
 
-      // Step 5: Update database with extracted text and 'completed' status (emit 90% progress)
-      await this.updateStatus(userId, fileId, PROCESSING_STATUS.COMPLETED, result.text);
-      this.emitProgress(eventCtx, 90, PROCESSING_STATUS.PROCESSING, attemptNumber, maxAttempts);
+      // Step 5: Update database with extracted text and 'chunking' status (emit 90% progress)
+      await this.updateStatus(userId, fileId, PIPELINE_STATUS.CHUNKING, result.text);
+      this.emitProgress(eventCtx, 90, PIPELINE_STATUS.EXTRACTING, attemptNumber, maxAttempts);
 
-      // Step 5.5: Enqueue file chunking job (fire-and-forget)
-      // This triggers the chunking → embedding → AI Search indexing pipeline
-      // V2 pipeline (PRD-04): Skip enqueue when BullMQ Flow handles sequencing
-      if (!options?.skipNextStageEnqueue) {
-        this.enqueueChunkingJob(userId, fileId, sessionId, mimeType).catch((err) => {
-          logger.warn({ err, fileId, userId }, 'Failed to enqueue chunking job');
-        });
-      }
+      // Step 5.5: Chunking is handled by the pipeline (BullMQ Flow).
+      // The FileChunkWorker processes the next stage automatically.
+      // No explicit enqueue is needed here.
 
       // Step 6: Emit completion event (100% progress)
       this.emitCompletion(eventCtx, result);
@@ -284,7 +269,7 @@ export class FileProcessingService {
       );
 
       // Update database status
-      await this.updateStatus(userId, fileId, PROCESSING_STATUS.FAILED);
+      await this.updateStatus(userId, fileId, PIPELINE_STATUS.FAILED);
 
       // Emit error event
       this.emitError(eventCtx, errorMessage);
@@ -305,7 +290,7 @@ export class FileProcessingService {
   private async updateStatus(
     userId: string,
     fileId: string,
-    status: ProcessingStatus,
+    status: PipelineStatus,
     extractedText?: string
   ): Promise<void> {
     try {
@@ -337,7 +322,7 @@ export class FileProcessingService {
   private emitProgress(
     ctx: { fileId: string; userId: string; sessionId?: string },
     progress: number,
-    status: ProcessingStatus,
+    status: PipelineStatus,
     attemptNumber: number,
     maxAttempts: number
   ): void {
@@ -501,46 +486,6 @@ export class FileProcessingService {
     }
   }
 
-  /**
-   * Enqueue file chunking job
-   *
-   * Triggers the chunking → embedding → AI Search indexing pipeline.
-   * This is a fire-and-forget operation - errors are logged but don't fail processing.
-   *
-   * @param userId - User ID
-   * @param fileId - File ID
-   * @param sessionId - Session ID (optional)
-   * @param mimeType - File MIME type
-   */
-  private async enqueueChunkingJob(
-    userId: string,
-    fileId: string,
-    sessionId: string | undefined,
-    mimeType: string
-  ): Promise<void> {
-    // Dynamic import to avoid circular dependencies
-    const { getMessageQueue } = await import('@/infrastructure/queue/MessageQueue');
-    const messageQueue = getMessageQueue();
-
-    logger.debug({
-      fileId, userId,
-      mimeType,
-      mimeTypeType: typeof mimeType,
-      mimeTypeValue: mimeType === null ? 'NULL' : mimeType === undefined ? 'UNDEFINED' : mimeType,
-    }, '[TRACE] enqueueChunkingJob - mimeType being sent to chunking worker');
-
-    const jobId = await messageQueue.addFileChunkingJob({
-      fileId,
-      userId,
-      sessionId,
-      mimeType,
-    });
-
-    logger.info(
-      { fileId, userId, jobId, mimeType },
-      'File chunking job enqueued'
-    );
-  }
 }
 
 /**

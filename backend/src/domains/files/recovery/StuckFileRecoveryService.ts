@@ -34,7 +34,7 @@ export class StuckFileRecoveryService {
    * Files are "stuck" when they remain in a non-terminal processing state
    * (queued, extracting, chunking, embedding) beyond the configured threshold.
    *
-   * - Files with `pipeline_retry_count < maxRetries` are re-enqueued via V2 Flow.
+   * - Files with `pipeline_retry_count < maxRetries` are re-enqueued via processing flow.
    * - Files exceeding max retries are permanently failed.
    */
   async run(
@@ -49,10 +49,10 @@ export class StuckFileRecoveryService {
     };
 
     try {
-      const { getFileRepositoryV2 } = await import(
-        '@/services/files/repository/FileRepositoryV2'
+      const { getFileRepository } = await import(
+        '@/services/files/repository/FileRepository'
       );
-      const repo = getFileRepositoryV2();
+      const repo = getFileRepository();
 
       const stuckFiles = await repo.findStuckFiles(thresholdMs);
       metrics.totalStuck = stuckFiles.length;
@@ -95,7 +95,7 @@ export class StuckFileRecoveryService {
   }
 
   /**
-   * Re-enqueue a stuck file by transitioning it to queued and creating a new V2 Flow.
+   * Re-enqueue a stuck file by transitioning it to queued and creating a new processing flow.
    */
   private async recoverFile(
     repo: {
@@ -136,7 +136,7 @@ export class StuckFileRecoveryService {
         return false;
       }
 
-      // Create new V2 Flow
+      // Create new processing flow
       const { prisma } = await import('@/infrastructure/database/prisma');
       const fileDetails = await prisma.files.findFirst({
         where: { id: file.id, user_id: file.user_id },

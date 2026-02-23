@@ -36,22 +36,6 @@ export {
 } from './FileDeletionWorker';
 export type { FileDeletionWorkerDependencies } from './FileDeletionWorker';
 
-// File Bulk Upload Worker
-export {
-  FileBulkUploadWorker,
-  getFileBulkUploadWorker,
-  __resetFileBulkUploadWorker,
-} from './FileBulkUploadWorker';
-export type { FileBulkUploadWorkerDependencies } from './FileBulkUploadWorker';
-
-// File Cleanup Worker
-export {
-  FileCleanupWorker,
-  getFileCleanupWorker,
-  __resetFileCleanupWorker,
-} from './FileCleanupWorker';
-export type { FileCleanupWorkerDependencies } from './FileCleanupWorker';
-
 // Usage Aggregation Worker
 export {
   UsageAggregationWorker,
@@ -68,26 +52,39 @@ export {
 } from './MessagePersistenceWorker';
 export type { MessagePersistenceWorkerDependencies } from './MessagePersistenceWorker';
 
-// File Processing Worker
+// File pipeline workers
 export {
-  FileProcessingWorker,
-  getFileProcessingWorker,
-  __resetFileProcessingWorker,
-} from './FileProcessingWorker';
-export type { FileProcessingWorkerDependencies } from './FileProcessingWorker';
+  FileExtractWorker,
+  getFileExtractWorker,
+  type ExtractJobData,
+  type FileExtractWorkerDependencies,
+} from './FileExtractWorker';
 
-// File Chunking Worker
 export {
-  FileChunkingWorker,
-  getFileChunkingWorker,
-  __resetFileChunkingWorker,
-} from './FileChunkingWorker';
-export type { FileChunkingWorkerDependencies } from './FileChunkingWorker';
+  FileChunkWorker,
+  getFileChunkWorker,
+  type ChunkJobData,
+  type FileChunkWorkerDependencies,
+} from './FileChunkWorker';
 
-// Embedding Generation Worker
 export {
-  EmbeddingGenerationWorker,
-  getEmbeddingGenerationWorker,
-  __resetEmbeddingGenerationWorker,
-} from './EmbeddingGenerationWorker';
-export type { EmbeddingGenerationWorkerDependencies } from './EmbeddingGenerationWorker';
+  FileEmbedWorker,
+  getFileEmbedWorker,
+  type EmbedJobData,
+  type FileEmbedWorkerDependencies,
+} from './FileEmbedWorker';
+
+export {
+  FilePipelineCompleteWorker,
+  getFilePipelineCompleteWorker,
+  type PipelineCompleteJobData,
+  type FilePipelineCompleteWorkerDependencies,
+} from './FilePipelineCompleteWorker';
+
+export {
+  MaintenanceWorker,
+  getMaintenanceWorker,
+  __resetMaintenanceWorker,
+  type MaintenanceJobData,
+  type MaintenanceWorkerDeps,
+} from './MaintenanceWorker';

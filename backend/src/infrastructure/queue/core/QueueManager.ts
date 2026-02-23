@@ -17,7 +17,6 @@ import {
 } from '../constants';
 import {
   FILE_DELETION_CONFIG,
-  FILE_BULK_UPLOAD_CONFIG,
 } from '@bc-agent/shared';
 
 /**
@@ -103,39 +102,6 @@ export class QueueManager {
       removeOnFail: JOB_RETENTION.USAGE_AGGREGATION.failed,
     });
 
-    // File Processing Queue
-    this.createQueue(QueueName.FILE_PROCESSING, {
-      attempts: DEFAULT_BACKOFF.FILE_PROCESSING.attempts,
-      backoff: {
-        type: DEFAULT_BACKOFF.FILE_PROCESSING.type,
-        delay: DEFAULT_BACKOFF.FILE_PROCESSING.delay,
-      },
-      removeOnComplete: JOB_RETENTION.DEFAULT.completed,
-      removeOnFail: JOB_RETENTION.DEFAULT.failed,
-    });
-
-    // File Chunking Queue
-    this.createQueue(QueueName.FILE_CHUNKING, {
-      attempts: DEFAULT_BACKOFF.FILE_CHUNKING.attempts,
-      backoff: {
-        type: DEFAULT_BACKOFF.FILE_CHUNKING.type,
-        delay: DEFAULT_BACKOFF.FILE_CHUNKING.delay,
-      },
-      removeOnComplete: JOB_RETENTION.DEFAULT.completed,
-      removeOnFail: JOB_RETENTION.DEFAULT.failed,
-    });
-
-    // Embedding Generation Queue
-    this.createQueue(QueueName.EMBEDDING_GENERATION, {
-      attempts: DEFAULT_BACKOFF.EMBEDDING_GENERATION.attempts,
-      backoff: {
-        type: DEFAULT_BACKOFF.EMBEDDING_GENERATION.type,
-        delay: DEFAULT_BACKOFF.EMBEDDING_GENERATION.delay,
-      },
-      removeOnComplete: JOB_RETENTION.DEFAULT.completed,
-      removeOnFail: JOB_RETENTION.DEFAULT.failed,
-    });
-
     // Citation Persistence Queue
     this.createQueue(QueueName.CITATION_PERSISTENCE, {
       attempts: DEFAULT_BACKOFF.CITATION_PERSISTENCE.attempts,
@@ -145,17 +111,6 @@ export class QueueManager {
       },
       removeOnComplete: JOB_RETENTION.DEFAULT.completed,
       removeOnFail: JOB_RETENTION.DEFAULT.failed,
-    });
-
-    // File Cleanup Queue
-    this.createQueue(QueueName.FILE_CLEANUP, {
-      attempts: DEFAULT_BACKOFF.FILE_CLEANUP.attempts,
-      backoff: {
-        type: DEFAULT_BACKOFF.FILE_CLEANUP.type,
-        delay: DEFAULT_BACKOFF.FILE_CLEANUP.delay,
-      },
-      removeOnComplete: JOB_RETENTION.FILE_CLEANUP.completed,
-      removeOnFail: JOB_RETENTION.FILE_CLEANUP.failed,
     });
 
     // File Deletion Queue
@@ -169,74 +124,63 @@ export class QueueManager {
       removeOnFail: JOB_RETENTION.DEFAULT.failed,
     });
 
-    // File Bulk Upload Queue
-    this.createQueue(QueueName.FILE_BULK_UPLOAD, {
-      attempts: FILE_BULK_UPLOAD_CONFIG.MAX_RETRY_ATTEMPTS,
+    // File Pipeline Queues (PRD-04)
+    this.createQueue(QueueName.FILE_EXTRACT, {
+      attempts: DEFAULT_BACKOFF.FILE_EXTRACT.attempts,
       backoff: {
-        type: 'exponential',
-        delay: FILE_BULK_UPLOAD_CONFIG.RETRY_DELAY_MS,
+        type: DEFAULT_BACKOFF.FILE_EXTRACT.type,
+        delay: DEFAULT_BACKOFF.FILE_EXTRACT.delay,
       },
-      removeOnComplete: JOB_RETENTION.DEFAULT.completed,
-      removeOnFail: JOB_RETENTION.DEFAULT.failed,
+      removeOnComplete: JOB_RETENTION.FILE_PROCESSING_PIPELINE.completed,
+      removeOnFail: JOB_RETENTION.FILE_PROCESSING_PIPELINE.failed,
     });
 
-    // V2 Pipeline Queues (PRD-04)
-    this.createQueue(QueueName.V2_FILE_EXTRACT, {
-      attempts: DEFAULT_BACKOFF.V2_FILE_EXTRACT.attempts,
+    this.createQueue(QueueName.FILE_CHUNK, {
+      attempts: DEFAULT_BACKOFF.FILE_CHUNK.attempts,
       backoff: {
-        type: DEFAULT_BACKOFF.V2_FILE_EXTRACT.type,
-        delay: DEFAULT_BACKOFF.V2_FILE_EXTRACT.delay,
+        type: DEFAULT_BACKOFF.FILE_CHUNK.type,
+        delay: DEFAULT_BACKOFF.FILE_CHUNK.delay,
       },
-      removeOnComplete: JOB_RETENTION.V2_FILE_PROCESSING.completed,
-      removeOnFail: JOB_RETENTION.V2_FILE_PROCESSING.failed,
+      removeOnComplete: JOB_RETENTION.FILE_PROCESSING_PIPELINE.completed,
+      removeOnFail: JOB_RETENTION.FILE_PROCESSING_PIPELINE.failed,
     });
 
-    this.createQueue(QueueName.V2_FILE_CHUNK, {
-      attempts: DEFAULT_BACKOFF.V2_FILE_CHUNK.attempts,
+    this.createQueue(QueueName.FILE_EMBED, {
+      attempts: DEFAULT_BACKOFF.FILE_EMBED.attempts,
       backoff: {
-        type: DEFAULT_BACKOFF.V2_FILE_CHUNK.type,
-        delay: DEFAULT_BACKOFF.V2_FILE_CHUNK.delay,
+        type: DEFAULT_BACKOFF.FILE_EMBED.type,
+        delay: DEFAULT_BACKOFF.FILE_EMBED.delay,
       },
-      removeOnComplete: JOB_RETENTION.V2_FILE_PROCESSING.completed,
-      removeOnFail: JOB_RETENTION.V2_FILE_PROCESSING.failed,
+      removeOnComplete: JOB_RETENTION.FILE_PROCESSING_PIPELINE.completed,
+      removeOnFail: JOB_RETENTION.FILE_PROCESSING_PIPELINE.failed,
     });
 
-    this.createQueue(QueueName.V2_FILE_EMBED, {
-      attempts: DEFAULT_BACKOFF.V2_FILE_EMBED.attempts,
+    this.createQueue(QueueName.FILE_PIPELINE_COMPLETE, {
+      attempts: DEFAULT_BACKOFF.FILE_PIPELINE_COMPLETE.attempts,
       backoff: {
-        type: DEFAULT_BACKOFF.V2_FILE_EMBED.type,
-        delay: DEFAULT_BACKOFF.V2_FILE_EMBED.delay,
+        type: DEFAULT_BACKOFF.FILE_PIPELINE_COMPLETE.type,
+        delay: DEFAULT_BACKOFF.FILE_PIPELINE_COMPLETE.delay,
       },
-      removeOnComplete: JOB_RETENTION.V2_FILE_PROCESSING.completed,
-      removeOnFail: JOB_RETENTION.V2_FILE_PROCESSING.failed,
+      removeOnComplete: JOB_RETENTION.FILE_PROCESSING_PIPELINE.completed,
+      removeOnFail: JOB_RETENTION.FILE_PROCESSING_PIPELINE.failed,
     });
 
-    this.createQueue(QueueName.V2_FILE_PIPELINE_COMPLETE, {
-      attempts: DEFAULT_BACKOFF.V2_FILE_PIPELINE_COMPLETE.attempts,
+    this.createQueue(QueueName.DLQ, {
+      attempts: DEFAULT_BACKOFF.DLQ.attempts,
       backoff: {
-        type: DEFAULT_BACKOFF.V2_FILE_PIPELINE_COMPLETE.type,
-        delay: DEFAULT_BACKOFF.V2_FILE_PIPELINE_COMPLETE.delay,
+        type: DEFAULT_BACKOFF.DLQ.type,
+        delay: DEFAULT_BACKOFF.DLQ.delay,
       },
-      removeOnComplete: JOB_RETENTION.V2_FILE_PROCESSING.completed,
-      removeOnFail: JOB_RETENTION.V2_FILE_PROCESSING.failed,
+      removeOnComplete: JOB_RETENTION.FILE_PROCESSING_PIPELINE.completed,
+      removeOnFail: JOB_RETENTION.FILE_PROCESSING_PIPELINE.failed,
     });
 
-    this.createQueue(QueueName.V2_DLQ, {
-      attempts: DEFAULT_BACKOFF.V2_DLQ.attempts,
+    // Maintenance Queue (PRD-05)
+    this.createQueue(QueueName.FILE_MAINTENANCE, {
+      attempts: DEFAULT_BACKOFF.FILE_MAINTENANCE.attempts,
       backoff: {
-        type: DEFAULT_BACKOFF.V2_DLQ.type,
-        delay: DEFAULT_BACKOFF.V2_DLQ.delay,
-      },
-      removeOnComplete: JOB_RETENTION.V2_FILE_PROCESSING.completed,
-      removeOnFail: JOB_RETENTION.V2_FILE_PROCESSING.failed,
-    });
-
-    // V2 Maintenance Queue (PRD-05)
-    this.createQueue(QueueName.V2_MAINTENANCE, {
-      attempts: DEFAULT_BACKOFF.V2_MAINTENANCE.attempts,
-      backoff: {
-        type: DEFAULT_BACKOFF.V2_MAINTENANCE.type,
-        delay: DEFAULT_BACKOFF.V2_MAINTENANCE.delay,
+        type: DEFAULT_BACKOFF.FILE_MAINTENANCE.type,
+        delay: DEFAULT_BACKOFF.FILE_MAINTENANCE.delay,
       },
       removeOnComplete: JOB_RETENTION.FILE_CLEANUP.completed,
       removeOnFail: JOB_RETENTION.FILE_CLEANUP.failed,

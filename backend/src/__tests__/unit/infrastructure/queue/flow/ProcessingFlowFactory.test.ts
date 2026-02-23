@@ -21,22 +21,22 @@ describe('ProcessingFlowFactory', () => {
       const flow = ProcessingFlowFactory.createFileFlow(SAMPLE_PARAMS);
 
       // Root: pipeline-complete (runs LAST)
-      expect(flow.queueName).toBe(QueueName.V2_FILE_PIPELINE_COMPLETE);
+      expect(flow.queueName).toBe(QueueName.FILE_PIPELINE_COMPLETE);
       expect(flow.children).toHaveLength(1);
 
       // Child of root: embed (runs 3rd)
       const embedJob = flow.children![0]!;
-      expect(embedJob.queueName).toBe(QueueName.V2_FILE_EMBED);
+      expect(embedJob.queueName).toBe(QueueName.FILE_EMBED);
       expect(embedJob.children).toHaveLength(1);
 
       // Child of embed: chunk (runs 2nd)
       const chunkJob = embedJob.children![0]!;
-      expect(chunkJob.queueName).toBe(QueueName.V2_FILE_CHUNK);
+      expect(chunkJob.queueName).toBe(QueueName.FILE_CHUNK);
       expect(chunkJob.children).toHaveLength(1);
 
       // Deepest child: extract (runs FIRST)
       const extractJob = chunkJob.children![0]!;
-      expect(extractJob.queueName).toBe(QueueName.V2_FILE_EXTRACT);
+      expect(extractJob.queueName).toBe(QueueName.FILE_EXTRACT);
       expect(extractJob.children).toBeUndefined();
     });
 

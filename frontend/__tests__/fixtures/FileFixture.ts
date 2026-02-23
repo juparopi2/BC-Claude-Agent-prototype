@@ -7,7 +7,7 @@
  * @module __tests__/fixtures/FileFixture
  */
 
-import type { ParsedFile, ProcessingStatus, EmbeddingStatus, FileReadinessState } from '@bc-agent/shared';
+import type { ParsedFile, FileReadinessState } from '@bc-agent/shared';
 
 /**
  * Creates a mock ParsedFile with all required fields.
@@ -23,8 +23,7 @@ export const createMockParsedFile = (overrides: Partial<ParsedFile> = {}): Parse
   blobPath: 'users/user-1/files/test-file.txt',
   isFolder: false,
   isFavorite: false,
-  processingStatus: 'completed' as ProcessingStatus,
-  embeddingStatus: 'completed' as EmbeddingStatus,
+  pipelineStatus: 'ready',
   readinessState: 'ready' as FileReadinessState,
   processingRetryCount: 0,
   embeddingRetryCount: 0,
@@ -50,9 +49,8 @@ export const createMockFolder = (overrides: Partial<ParsedFile> = {}): ParsedFil
     blobPath: '', // Folders don't have blob paths
     isFolder: true,
     hasExtractedText: false,
-    processingStatus: 'pending' as ProcessingStatus,
-    embeddingStatus: 'pending' as EmbeddingStatus,
-    readinessState: 'processing' as FileReadinessState, // Folders are typically in processing until completed
+    pipelineStatus: 'uploading',
+    readinessState: 'uploading' as FileReadinessState, // Folders are typically in uploading state initially
     ...overrides,
   });
 

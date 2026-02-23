@@ -42,11 +42,11 @@ vi.mock('@/services/files/FileUploadService', () => ({
   })),
 }));
 
-// ===== MOCK FILE REPOSITORY V2 =====
+// ===== MOCK FILE REPOSITORY =====
 const mockFindAbandonedFiles = vi.hoisted(() => vi.fn().mockResolvedValue([]));
 
-vi.mock('@/services/files/repository/FileRepositoryV2', () => ({
-  getFileRepositoryV2: vi.fn(() => ({
+vi.mock('@/services/files/repository/FileRepository', () => ({
+  getFileRepository: vi.fn(() => ({
     findAbandonedFiles: mockFindAbandonedFiles,
   })),
 }));

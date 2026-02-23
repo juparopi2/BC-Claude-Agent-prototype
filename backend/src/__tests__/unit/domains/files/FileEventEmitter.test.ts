@@ -106,8 +106,6 @@ describe('FileEventEmitter', () => {
       emitter.emitReadinessChanged(ctx, {
         previousState: 'uploading',
         newState: 'processing',
-        processingStatus: 'processing',
-        embeddingStatus: 'pending',
       });
 
       expect(mockTo).toHaveBeenCalledWith('session-789');
@@ -119,8 +117,6 @@ describe('FileEventEmitter', () => {
           userId: 'user-456',
           readinessState: 'processing',
           previousState: 'uploading',
-          processingStatus: 'processing',
-          embeddingStatus: 'pending',
         })
       );
     });
@@ -131,8 +127,6 @@ describe('FileEventEmitter', () => {
 
       emitter.emitReadinessChanged(ctx, {
         newState: 'ready',
-        processingStatus: 'completed',
-        embeddingStatus: 'completed',
       });
 
       expect(mockEmit).toHaveBeenCalledWith(
@@ -151,24 +145,18 @@ describe('FileEventEmitter', () => {
       emitter.emitReadinessChanged(ctx, {
         previousState: 'uploading',
         newState: 'processing',
-        processingStatus: 'processing',
-        embeddingStatus: 'pending',
       });
 
       // processing -> ready
       emitter.emitReadinessChanged(ctx, {
         previousState: 'processing',
         newState: 'ready',
-        processingStatus: 'completed',
-        embeddingStatus: 'completed',
       });
 
       // processing -> failed
       emitter.emitReadinessChanged(ctx, {
         previousState: 'processing',
         newState: 'failed',
-        processingStatus: 'failed',
-        embeddingStatus: 'pending',
       });
 
       // 3 events x 2 rooms (userId + sessionId) = 6 emit calls
@@ -181,8 +169,6 @@ describe('FileEventEmitter', () => {
 
       emitter.emitReadinessChanged(ctx, {
         newState: 'processing',
-        processingStatus: 'processing',
-        embeddingStatus: 'pending',
       });
 
       expect(mockTo).not.toHaveBeenCalled();
@@ -195,8 +181,6 @@ describe('FileEventEmitter', () => {
 
       emitter.emitReadinessChanged(ctx, {
         newState: 'processing',
-        processingStatus: 'processing',
-        embeddingStatus: 'pending',
       });
 
       expect(mockTo).toHaveBeenCalledWith('user:user-456');
@@ -210,8 +194,6 @@ describe('FileEventEmitter', () => {
 
       emitter.emitReadinessChanged(ctx, {
         newState: 'ready',
-        processingStatus: 'completed',
-        embeddingStatus: 'completed',
       });
 
       expect(mockTo).not.toHaveBeenCalled();
@@ -426,7 +408,7 @@ describe('FileEventEmitter', () => {
         expect.objectContaining({
           type: FILE_WS_EVENTS.PROCESSING_COMPLETED,
           fileId: 'file-123',
-          status: 'completed',
+          status: 'ready',
           progress: 100,
           stats: {
             textLength: 5000,
@@ -551,8 +533,6 @@ describe('FileEventEmitter', () => {
       expect(() => {
         emitter.emitReadinessChanged(ctx, {
           newState: 'ready',
-          processingStatus: 'completed',
-          embeddingStatus: 'completed',
         });
       }).not.toThrow();
     });
@@ -567,8 +547,6 @@ describe('FileEventEmitter', () => {
 
       emitter.emitReadinessChanged(ctx, {
         newState: 'ready',
-        processingStatus: 'completed',
-        embeddingStatus: 'completed',
       });
 
       expect(mockLogger.error).toHaveBeenCalled();
@@ -601,8 +579,6 @@ describe('FileEventEmitter', () => {
 
       emitter.emitReadinessChanged(ctx, {
         newState: 'processing',
-        processingStatus: 'processing',
-        embeddingStatus: 'pending',
       });
 
       expect(mockLogger.debug).toHaveBeenCalled();
@@ -614,8 +590,6 @@ describe('FileEventEmitter', () => {
 
       emitter.emitReadinessChanged(ctx, {
         newState: 'processing',
-        processingStatus: 'processing',
-        embeddingStatus: 'pending',
       });
 
       expect(mockLogger.debug).toHaveBeenCalled();
@@ -659,8 +633,6 @@ describe('FileEventEmitter', () => {
       const ctx = createTestContext();
       emitter.emitReadinessChanged(ctx, {
         newState: 'processing',
-        processingStatus: 'processing',
-        embeddingStatus: 'pending',
       });
 
       expect(customIsSocketReady).toHaveBeenCalled();

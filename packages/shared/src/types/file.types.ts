@@ -22,37 +22,6 @@
 import { FILE_WS_EVENTS } from '../constants/websocket-events';
 
 /**
- * Processing status for async workers (Phase 3)
- *
- * Lifecycle:
- * - `pending_processing`: File uploaded, waiting for scheduler to enqueue (flow control)
- * - `pending`: File queued for processing (in BullMQ)
- * - `processing`: Worker is extracting text/generating previews
- * - `completed`: Processing finished successfully
- * - `failed`: Processing failed (check logs for details)
- *
- * Note: `pending_processing` was added for flow control (backpressure).
- * The FileProcessingScheduler picks files with this status and enqueues them
- * based on queue capacity, transitioning them to `pending`.
- *
- * @deprecated (PRD-01) Use PipelineStatus from '@bc-agent/shared' instead. Removed in PRD-07.
- */
-export type ProcessingStatus = 'pending_processing' | 'pending' | 'processing' | 'completed' | 'failed';
-
-/**
- * Embedding status for vector search (Phase 4)
- *
- * Lifecycle:
- * - `pending`: Text extracted, awaiting embedding generation
- * - `processing`: Embedding model is generating vectors
- * - `completed`: Embeddings stored in Azure AI Search
- * - `failed`: Embedding generation failed
- *
- * @deprecated (PRD-01) Use PipelineStatus from '@bc-agent/shared' instead. Removed in PRD-07.
- */
-export type EmbeddingStatus = 'pending' | 'processing' | 'completed' | 'failed';
-
-/**
  * Deletion status for soft delete workflow
  *
  * Lifecycle:
@@ -66,16 +35,14 @@ export type DeletionStatus = 'pending' | 'deleting' | 'failed' | null;
 /**
  * Unified readiness state for frontend display
  *
- * Computed from processing_status + embedding_status to simplify frontend logic.
+ * Computed from pipeline_status via computeReadinessState().
  * The frontend should NOT compute this; it's computed by the backend.
  *
  * States:
- * - `uploading`: File is being uploaded (frontend-only during upload progress)
- * - `processing`: File uploaded, processing or embedding in progress
- * - `ready`: Both processing and embedding completed successfully
- * - `failed`: Either processing or embedding failed permanently
- *
- * Priority: failed > processing > ready
+ * - `uploading`: File registered or uploaded, not yet queued (registered, uploaded)
+ * - `processing`: File queued or actively being processed (queued, extracting, chunking, embedding)
+ * - `ready`: All processing complete (ready)
+ * - `failed`: Processing failed (failed)
  */
 export type FileReadinessState = 'uploading' | 'processing' | 'ready' | 'failed';
 
@@ -133,8 +100,8 @@ export type SortOrder = 'asc' | 'desc';
  *   blobPath: 'users/user-123/files/2024-01-15-document.pdf',
  *   isFolder: false,
  *   isFavorite: false,
- *   processingStatus: 'completed',
- *   embeddingStatus: 'completed',
+ *   pipelineStatus: 'ready',
+ *   readinessState: 'ready',
  *   hasExtractedText: true,
  *   createdAt: '2024-01-15T10:30:00.000Z',
  *   updatedAt: '2024-01-15T10:30:00.000Z',
@@ -169,13 +136,10 @@ export interface ParsedFile {
   /** User-set favorite flag */
   isFavorite: boolean;
 
-  /** Processing status (Phase 3) */
-  processingStatus: ProcessingStatus;
+  /** Pipeline status (raw value from database) */
+  pipelineStatus: string;
 
-  /** Embedding status (Phase 4) */
-  embeddingStatus: EmbeddingStatus;
-
-  /** Unified readiness state computed from processing + embedding status */
+  /** Unified readiness state computed from pipeline status */
   readinessState: FileReadinessState;
 
   /** Number of processing retry attempts */
@@ -531,99 +495,6 @@ export function isAllowedMimeType(mimeType: string): mimeType is AllowedMimeType
 }
 
 // ============================================
-// Duplicate Detection Types
-// ============================================
-
-/**
- * Single file to check for duplicates (content-based)
- *
- * Used in batch duplicate checking before upload.
- * The tempId allows correlating results back to client-side file references.
- *
- * @example
- * ```typescript
- * const item: DuplicateCheckItem = {
- *   tempId: 'temp-abc123',
- *   contentHash: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
- *   fileName: 'document.pdf',
- * };
- * ```
- */
-export interface DuplicateCheckItem {
-  /** Client-generated temporary ID for correlation */
-  tempId: string;
-
-  /** SHA-256 content hash (64-character hex string) */
-  contentHash: string;
-
-  /** Original filename (for display purposes) */
-  fileName: string;
-}
-
-/**
- * Request body for checking duplicates by content hash
- *
- * @example
- * ```typescript
- * const request: CheckDuplicatesRequest = {
- *   files: [
- *     { tempId: 'temp-1', contentHash: 'abc...', fileName: 'doc1.pdf' },
- *     { tempId: 'temp-2', contentHash: 'def...', fileName: 'doc2.pdf' },
- *   ],
- * };
- * ```
- */
-export interface CheckDuplicatesRequest {
-  /** Array of files to check (1-50 files) */
-  files: DuplicateCheckItem[];
-}
-
-/**
- * Single duplicate check result
- *
- * Indicates whether a file with matching content hash exists.
- * If duplicate, includes the existing file details.
- */
-export interface DuplicateResult {
-  /** Client temp ID for correlation */
-  tempId: string;
-
-  /** Whether a duplicate exists */
-  isDuplicate: boolean;
-
-  /** Existing file if duplicate found */
-  existingFile?: ParsedFile;
-}
-
-/**
- * Response for duplicate check API endpoint
- *
- * @example
- * ```typescript
- * const response: CheckDuplicatesResponse = {
- *   results: [
- *     { tempId: 'temp-1', isDuplicate: true, existingFile: { ... } },
- *     { tempId: 'temp-2', isDuplicate: false },
- *   ],
- * };
- * ```
- */
-export interface CheckDuplicatesResponse {
-  /** Results for each file checked */
-  results: DuplicateResult[];
-}
-
-/**
- * User action for handling duplicate files during upload
- *
- * Actions:
- * - `replace`: Delete existing file and upload new one
- * - `skip`: Skip uploading this file
- * - `cancel`: Cancel entire upload operation
- */
-export type DuplicateAction = 'replace' | 'skip' | 'cancel';
-
-// ============================================
 // Retry & Cleanup Types (D25 Sprint 2)
 // ============================================
 
@@ -860,8 +731,6 @@ interface BaseFileWebSocketEvent {
  *   userId: 'user-456',
  *   previousState: 'processing',
  *   readinessState: 'ready',
- *   processingStatus: 'completed',
- *   embeddingStatus: 'completed',
  *   timestamp: '2026-01-14T10:30:00.000Z',
  * };
  * ```
@@ -877,12 +746,6 @@ export interface FileReadinessChangedEvent extends BaseFileWebSocketEvent {
 
   /** New readiness state */
   readinessState: FileReadinessState;
-
-  /** Current processing status */
-  processingStatus: ProcessingStatus;
-
-  /** Current embedding status */
-  embeddingStatus: EmbeddingStatus;
 }
 
 /**
@@ -951,8 +814,8 @@ export interface FileProcessingProgressEvent extends BaseFileWebSocketEvent {
   /** Progress percentage (0-100) */
   progress: number;
 
-  /** Current processing status */
-  status: ProcessingStatus;
+  /** Current pipeline status */
+  status: string;
 
   /** Current retry attempt number (1-based) */
   attemptNumber: number;

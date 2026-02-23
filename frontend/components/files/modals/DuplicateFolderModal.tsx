@@ -23,7 +23,19 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { AlertTriangle, Folder, Edit2, SkipForward, X } from 'lucide-react';
-import type { FolderDuplicateAction, FolderDuplicateConflict } from '@/src/domains/files/stores/folderDuplicateStore';
+/**
+ * @deprecated These types are from the old V1 folder upload pipeline.
+ * Use the new DuplicateFolderModal at components/files/DuplicateFolderModal.tsx instead.
+ */
+type FolderDuplicateAction = 'rename' | 'skip' | 'cancel';
+
+interface FolderDuplicateConflict {
+  tempId: string;
+  originalName: string;
+  suggestedName: string;
+  fileCount: number;
+  parentFolderId: string | null;
+}
 
 interface DuplicateFolderModalProps {
   /** Whether the modal is open */

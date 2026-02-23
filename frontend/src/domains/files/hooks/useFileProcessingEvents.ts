@@ -10,7 +10,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useFileProcessingStore } from '../stores/fileProcessingStore';
 import { useFileListStore } from '../stores/fileListStore';
-import { useBatchUploadStoreV2 } from '../stores/v2/batchUploadStoreV2';
+import { useBatchUploadStore } from '../stores/uploadBatchStore';
 import { getSocketClient } from '@/src/infrastructure/socket/SocketClient';
 import {
   FILE_WS_EVENTS,
@@ -64,10 +64,10 @@ export function useFileProcessingEvents(
   const updateFileInStore = useFileListStore((state) => state.updateFile);
   const addFileToStore = useFileListStore((state) => state.addFile);
 
-  // V2 batch store actions (by-fileId variants for WebSocket compat)
-  const v2UpdatePipelineByFileId = useBatchUploadStoreV2((state) => state.updateFilePipelineStatusByFileId);
-  const v2MarkFailedByFileId = useBatchUploadStoreV2((state) => state.markFileFailedByFileId);
-  const v2HasFileId = useBatchUploadStoreV2((state) => state.hasFileId);
+  // Batch store actions (by-fileId variants for WebSocket compat)
+  const batchUpdatePipelineByFileId = useBatchUploadStore((state) => state.updateFilePipelineStatusByFileId);
+  const batchMarkFailedByFileId = useBatchUploadStore((state) => state.markFileFailedByFileId);
+  const batchHasFileId = useBatchUploadStore((state) => state.hasFileId);
 
   // Use refs for callbacks to avoid re-subscribing on every render
   const callbacksRef = useRef({
@@ -77,9 +77,9 @@ export function useFileProcessingEvents(
     markFailed,
     updateFileInStore,
     addFileToStore,
-    v2UpdatePipelineByFileId,
-    v2MarkFailedByFileId,
-    v2HasFileId,
+    batchUpdatePipelineByFileId,
+    batchMarkFailedByFileId,
+    batchHasFileId,
   });
 
   // Update refs when callbacks change
@@ -91,11 +91,11 @@ export function useFileProcessingEvents(
       markFailed,
       updateFileInStore,
       addFileToStore,
-      v2UpdatePipelineByFileId,
-      v2MarkFailedByFileId,
-      v2HasFileId,
+      batchUpdatePipelineByFileId,
+      batchMarkFailedByFileId,
+      batchHasFileId,
     };
-  }, [setProcessingStatus, updateProgress, markCompleted, markFailed, updateFileInStore, addFileToStore, v2UpdatePipelineByFileId, v2MarkFailedByFileId, v2HasFileId]);
+  }, [setProcessingStatus, updateProgress, markCompleted, markFailed, updateFileInStore, addFileToStore, batchUpdatePipelineByFileId, batchMarkFailedByFileId, batchHasFileId]);
 
   /**
    * Handle file status events (file:status channel)
@@ -106,9 +106,9 @@ export function useFileProcessingEvents(
       markFailed: fail,
       updateFileInStore: updateFile,
       addFileToStore: addFile,
-      v2UpdatePipelineByFileId: updateV2Pipeline,
-      v2MarkFailedByFileId: failV2,
-      v2HasFileId: hasV2File,
+      batchUpdatePipelineByFileId: updateBatchPipeline,
+      batchMarkFailedByFileId: failBatch,
+      batchHasFileId: hasBatchFile,
     } = callbacksRef.current;
 
     switch (event.type) {
@@ -121,11 +121,9 @@ export function useFileProcessingEvents(
         // Update file list store
         updateFile(e.fileId, {
           readinessState: e.readinessState,
-          processingStatus: e.processingStatus,
-          embeddingStatus: e.embeddingStatus,
         });
-        // V2: Update batch store if file belongs to any batch
-        if (hasV2File(e.fileId)) {
+        // Update batch store if file belongs to any batch
+        if (hasBatchFile(e.fileId)) {
           const readinessToPipeline: Record<string, PipelineStatus> = {
             processing: PIPELINE_STATUS.EXTRACTING,
             ready: PIPELINE_STATUS.READY,
@@ -133,7 +131,7 @@ export function useFileProcessingEvents(
           };
           const pipelineStatus = readinessToPipeline[e.readinessState];
           if (pipelineStatus) {
-            updateV2Pipeline(e.fileId, pipelineStatus);
+            updateBatchPipeline(e.fileId, pipelineStatus);
           }
         }
         break;
@@ -151,9 +149,9 @@ export function useFileProcessingEvents(
           lastError: e.error,
           failedAt: e.timestamp,
         });
-        // V2: Update batch store if file belongs to any batch
-        if (hasV2File(e.fileId)) {
-          failV2(e.fileId, e.error);
+        // Update batch store if file belongs to any batch
+        if (hasBatchFile(e.fileId)) {
+          failBatch(e.fileId, e.error);
         }
         break;
       }
@@ -178,8 +176,8 @@ export function useFileProcessingEvents(
       updateProgress: progress,
       markCompleted: complete,
       updateFileInStore: updateFile,
-      v2UpdatePipelineByFileId: updateV2Pipeline,
-      v2HasFileId: hasV2File,
+      batchUpdatePipelineByFileId: updateBatchPipeline,
+      batchHasFileId: hasBatchFile,
     } = callbacksRef.current;
 
     switch (event.type) {
@@ -191,9 +189,9 @@ export function useFileProcessingEvents(
         updateFile(e.fileId, {
           readinessState: 'processing',
         });
-        // V2: Update batch store with extracting status
-        if (hasV2File(e.fileId)) {
-          updateV2Pipeline(e.fileId, PIPELINE_STATUS.EXTRACTING);
+        // Update batch store with extracting status
+        if (hasBatchFile(e.fileId)) {
+          updateBatchPipeline(e.fileId, PIPELINE_STATUS.EXTRACTING);
         }
         break;
       }
@@ -205,11 +203,10 @@ export function useFileProcessingEvents(
         // Update file list store with ready state
         updateFile(e.fileId, {
           readinessState: 'ready',
-          processingStatus: 'completed',
         });
-        // V2: Update batch store with ready status
-        if (hasV2File(e.fileId)) {
-          updateV2Pipeline(e.fileId, PIPELINE_STATUS.READY);
+        // Update batch store with ready status
+        if (hasBatchFile(e.fileId)) {
+          updateBatchPipeline(e.fileId, PIPELINE_STATUS.READY);
         }
         break;
       }

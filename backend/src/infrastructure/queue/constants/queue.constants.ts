@@ -17,19 +17,14 @@ export enum QueueName {
   TOOL_EXECUTION = 'tool-execution',
   EVENT_PROCESSING = 'event-processing',
   USAGE_AGGREGATION = 'usage-aggregation',
-  FILE_PROCESSING = 'file-processing',
-  FILE_CHUNKING = 'file-chunking',
-  EMBEDDING_GENERATION = 'embedding-generation',
   CITATION_PERSISTENCE = 'citation-persistence',
-  FILE_CLEANUP = 'file-cleanup',
   FILE_DELETION = 'file-deletion',
-  FILE_BULK_UPLOAD = 'file-bulk-upload',
-  V2_FILE_EXTRACT = 'v2-file-extract',
-  V2_FILE_CHUNK = 'v2-file-chunk',
-  V2_FILE_EMBED = 'v2-file-embed',
-  V2_FILE_PIPELINE_COMPLETE = 'v2-file-pipeline-complete',
-  V2_DLQ = 'v2-dead-letter-queue',
-  V2_MAINTENANCE = 'v2-maintenance',
+  FILE_EXTRACT = 'file-extract',
+  FILE_CHUNK = 'file-chunk',
+  FILE_EMBED = 'file-embed',
+  FILE_PIPELINE_COMPLETE = 'file-pipeline-complete',
+  DLQ = 'dead-letter-queue',
+  FILE_MAINTENANCE = 'maintenance',
 }
 
 /**
@@ -48,24 +43,17 @@ export const JOB_NAMES = {
     MONTHLY_INVOICES: 'scheduled-monthly-invoices',
     QUOTA_RESET: 'scheduled-quota-reset',
   },
-  FILE_PROCESSING: 'process-file',
-  FILE_CHUNKING: 'chunk-file',
-  EMBEDDING_GENERATION: 'generate-embeddings',
   CITATION_PERSISTENCE: 'persist-citations',
-  FILE_CLEANUP: {
-    DAILY: 'scheduled-daily-cleanup',
-  },
   FILE_DELETION: 'delete-file',
-  FILE_BULK_UPLOAD: 'upload-file',
-  V2_FILE_EXTRACT: 'v2-extract-file',
-  V2_FILE_CHUNK: 'v2-chunk-file',
-  V2_FILE_EMBED: 'v2-embed-file',
-  V2_FILE_PIPELINE_COMPLETE: 'v2-pipeline-complete',
-  V2_DLQ: 'v2-dead-letter',
-  V2_MAINTENANCE: {
-    STUCK_FILE_RECOVERY: 'v2-stuck-file-recovery',
-    ORPHAN_CLEANUP: 'v2-orphan-cleanup',
-    BATCH_TIMEOUT: 'v2-batch-timeout',
+  FILE_EXTRACT: 'extract-file',
+  FILE_CHUNK: 'chunk-file',
+  FILE_EMBED: 'embed-file',
+  FILE_PIPELINE_COMPLETE: 'pipeline-complete',
+  DLQ: 'dead-letter',
+  FILE_MAINTENANCE: {
+    STUCK_FILE_RECOVERY: 'stuck-file-recovery',
+    ORPHAN_CLEANUP: 'orphan-cleanup',
+    BATCH_TIMEOUT: 'batch-timeout',
   },
 } as const;
 
@@ -103,18 +91,14 @@ export const DEFAULT_CONCURRENCY = {
   TOOL_EXECUTION: 5,
   EVENT_PROCESSING: 10,
   USAGE_AGGREGATION: 1,
-  FILE_PROCESSING: 8, // Increased from 3 to reduce bulk upload bottleneck
-  FILE_CHUNKING: 5,
-  EMBEDDING_GENERATION: 5,
   CITATION_PERSISTENCE: 5,
-  FILE_CLEANUP: 1,
-  // FILE_DELETION and FILE_BULK_UPLOAD use values from @bc-agent/shared
-  V2_FILE_EXTRACT: 8,
-  V2_FILE_CHUNK: 5,
-  V2_FILE_EMBED: 5,
-  V2_FILE_PIPELINE_COMPLETE: 10,
-  V2_DLQ: 1,
-  V2_MAINTENANCE: 1,
+  // FILE_DELETION uses value from @bc-agent/shared
+  FILE_EXTRACT: 8,
+  FILE_CHUNK: 5,
+  FILE_EMBED: 5,
+  FILE_PIPELINE_COMPLETE: 10,
+  DLQ: 1,
+  FILE_MAINTENANCE: 1,
 } as const;
 
 /**
@@ -140,17 +124,13 @@ export const DEFAULT_BACKOFF = {
   TOOL_EXECUTION: { type: 'exponential' as const, delay: 2000, attempts: 2 },
   EVENT_PROCESSING: { type: 'exponential' as const, delay: 500, attempts: 3 },
   USAGE_AGGREGATION: { type: 'exponential' as const, delay: 5000, attempts: 3 },
-  FILE_PROCESSING: { type: 'exponential' as const, delay: 5000, attempts: 2 },
-  FILE_CHUNKING: { type: 'exponential' as const, delay: 2000, attempts: 2 },
-  EMBEDDING_GENERATION: { type: 'exponential' as const, delay: 2000, attempts: 3 },
   CITATION_PERSISTENCE: { type: 'exponential' as const, delay: 1000, attempts: 3 },
-  FILE_CLEANUP: { type: 'exponential' as const, delay: 10000, attempts: 3 },
-  V2_FILE_EXTRACT: { type: 'exponential' as const, delay: 5000, attempts: 3 },
-  V2_FILE_CHUNK: { type: 'exponential' as const, delay: 3000, attempts: 3 },
-  V2_FILE_EMBED: { type: 'exponential' as const, delay: 3000, attempts: 3 },
-  V2_FILE_PIPELINE_COMPLETE: { type: 'exponential' as const, delay: 1000, attempts: 2 },
-  V2_DLQ: { type: 'exponential' as const, delay: 10000, attempts: 1 },
-  V2_MAINTENANCE: { type: 'exponential' as const, delay: 5000, attempts: 2 },
+  FILE_EXTRACT: { type: 'exponential' as const, delay: 5000, attempts: 3 },
+  FILE_CHUNK: { type: 'exponential' as const, delay: 3000, attempts: 3 },
+  FILE_EMBED: { type: 'exponential' as const, delay: 3000, attempts: 3 },
+  FILE_PIPELINE_COMPLETE: { type: 'exponential' as const, delay: 1000, attempts: 2 },
+  DLQ: { type: 'exponential' as const, delay: 10000, attempts: 1 },
+  FILE_MAINTENANCE: { type: 'exponential' as const, delay: 5000, attempts: 2 },
 } as const;
 
 /**
@@ -179,7 +159,7 @@ export const JOB_RETENTION = {
     completed: { count: 20, age: 3600 },  // 1 hour
     failed: { count: 50, age: 86400 },    // 1 day
   },
-  V2_FILE_PROCESSING: {
+  FILE_PROCESSING_PIPELINE: {
     completed: { count: 50, age: 3600 },   // 1 hour
     failed: { count: 100, age: 86400 },    // 24 hours (DLQ takes over)
   },
@@ -193,20 +173,15 @@ export const JOB_RETENTION = {
 export const JOB_PRIORITY = {
   MESSAGE_PERSISTENCE: 1,  // Highest - user messages
   TOOL_EXECUTION: 2,
-  EMBEDDING_GENERATION: 2,
-  FILE_PROCESSING: 3,
-  FILE_CHUNKING: 3,
   FILE_DELETION: 3,
-  FILE_BULK_UPLOAD: 3,
-  V2_FILE_EXTRACT: 3,
-  V2_FILE_CHUNK: 3,
-  V2_FILE_EMBED: 2,
-  V2_FILE_PIPELINE_COMPLETE: 4,
-  V2_DLQ: 10,
-  V2_MAINTENANCE: 10,
+  FILE_EXTRACT: 3,
+  FILE_CHUNK: 3,
+  FILE_EMBED: 2,
+  FILE_PIPELINE_COMPLETE: 4,
+  DLQ: 10,
+  FILE_MAINTENANCE: 10,
   CITATION_PERSISTENCE: 4,
   USAGE_AGGREGATION: 5,
-  FILE_CLEANUP: 10,        // Lowest - background maintenance
 } as const;
 
 /**
@@ -227,6 +202,35 @@ export const CONNECTION_TIMEOUTS = {
 export const SHUTDOWN_DELAYS = {
   /** Delay between shutdown phases in ms */
   PHASE_DELAY: 100,
+} as const;
+
+/**
+ * Lock Duration Configuration
+ *
+ * Determines how long a job is locked while being processed.
+ * Longer durations prevent false stall detection for slow operations.
+ *
+ * BullMQ defaults: lockDuration=30000ms, lockRenewTime=lockDuration/2
+ * Jobs that exceed lockDuration are marked as "stalled" and retried.
+ */
+/**
+ * Embedding Cache Configuration
+ *
+ * Controls how embeddings are cached in Redis to prevent memory exhaustion.
+ * Reduced from 7 days to 1 hour after OOM incident (Jan 2026).
+ *
+ * Key insight: Storing full API response (`raw` field) caused ~2MB per entry.
+ * Now we only cache the essential fields (~50KB per entry).
+ */
+export const EMBEDDING_CACHE = {
+  /** TTL for text embeddings in seconds (1 hour) */
+  TEXT_TTL_SECONDS: 3600,
+  /** TTL for image query embeddings in seconds (1 hour) */
+  IMAGE_QUERY_TTL_SECONDS: 3600,
+  /** Key prefix for text embeddings */
+  TEXT_PREFIX: 'embedding:',
+  /** Key prefix for image query embeddings */
+  IMAGE_QUERY_PREFIX: 'img-query:',
 } as const;
 
 /**
@@ -280,58 +284,28 @@ export interface ExtendedLockConfig {
  * Lock Configuration per Queue Type
  *
  * Maps each queue to appropriate lock settings based on typical job duration.
- * File operations get longer locks due to variable processing times.
+ * File pipeline operations get longer locks due to variable processing times.
  *
- * FILE_PROCESSING uses ULTRA_LONG (5 min) because Azure Document Intelligence
+ * FILE_EXTRACT uses ULTRA_LONG (5 min) because Azure Document Intelligence
  * + large blob downloads can take 180+ seconds, causing "Missing lock" errors
  * with shorter durations.
  */
-/**
- * Embedding Cache Configuration
- *
- * Controls how embeddings are cached in Redis to prevent memory exhaustion.
- * Reduced from 7 days to 1 hour after OOM incident (Jan 2026).
- *
- * Key insight: Storing full API response (`raw` field) caused ~2MB per entry.
- * Now we only cache the essential fields (~50KB per entry).
- */
-export const EMBEDDING_CACHE = {
-  /** TTL for text embeddings in seconds (1 hour) */
-  TEXT_TTL_SECONDS: 3600,
-  /** TTL for image query embeddings in seconds (1 hour) */
-  IMAGE_QUERY_TTL_SECONDS: 3600,
-  /** Key prefix for text embeddings */
-  TEXT_PREFIX: 'embedding:',
-  /** Key prefix for image query embeddings */
-  IMAGE_QUERY_PREFIX: 'img-query:',
-} as const;
-
 export const LOCK_CONFIG: Record<QueueName, ExtendedLockConfig> = {
-  // File operations - can be slow (large PDFs, OCR, network I/O)
-  [QueueName.FILE_PROCESSING]: {
-    lockDuration: LOCK_DURATION.ULTRA_LONG,  // 5 minutes (was 2 min)
-    maxStalledCount: MAX_STALLED_COUNT.TOLERANT,
-    lockRenewTime: 60000,      // Renew every 60s (explicit)
-    stalledInterval: 120000,   // Check for stalled every 2 min
-  },
-  [QueueName.FILE_CHUNKING]: { lockDuration: LOCK_DURATION.MEDIUM, maxStalledCount: MAX_STALLED_COUNT.TOLERANT },
-  [QueueName.EMBEDDING_GENERATION]: { lockDuration: LOCK_DURATION.LONG, maxStalledCount: MAX_STALLED_COUNT.TOLERANT },
-  [QueueName.FILE_BULK_UPLOAD]: { lockDuration: LOCK_DURATION.MEDIUM, maxStalledCount: MAX_STALLED_COUNT.TOLERANT },
-  [QueueName.FILE_CLEANUP]: { lockDuration: LOCK_DURATION.EXTRA_LONG, maxStalledCount: MAX_STALLED_COUNT.TOLERANT },
+  // File deletion
   [QueueName.FILE_DELETION]: { lockDuration: LOCK_DURATION.MEDIUM, maxStalledCount: MAX_STALLED_COUNT.TOLERANT },
 
-  // V2 File Pipeline - new orchestrated pipeline
-  [QueueName.V2_FILE_EXTRACT]: {
+  // File Pipeline - orchestrated pipeline
+  [QueueName.FILE_EXTRACT]: {
     lockDuration: LOCK_DURATION.ULTRA_LONG,  // 5 min (Azure Doc Intelligence)
     maxStalledCount: MAX_STALLED_COUNT.TOLERANT,
     lockRenewTime: 60000,
     stalledInterval: 120000,
   },
-  [QueueName.V2_FILE_CHUNK]: { lockDuration: LOCK_DURATION.MEDIUM, maxStalledCount: MAX_STALLED_COUNT.TOLERANT },
-  [QueueName.V2_FILE_EMBED]: { lockDuration: LOCK_DURATION.LONG, maxStalledCount: MAX_STALLED_COUNT.TOLERANT },
-  [QueueName.V2_FILE_PIPELINE_COMPLETE]: { lockDuration: LOCK_DURATION.SHORT, maxStalledCount: MAX_STALLED_COUNT.DEFAULT },
-  [QueueName.V2_DLQ]: { lockDuration: LOCK_DURATION.SHORT, maxStalledCount: MAX_STALLED_COUNT.DEFAULT },
-  [QueueName.V2_MAINTENANCE]: { lockDuration: LOCK_DURATION.EXTRA_LONG, maxStalledCount: MAX_STALLED_COUNT.TOLERANT },
+  [QueueName.FILE_CHUNK]: { lockDuration: LOCK_DURATION.MEDIUM, maxStalledCount: MAX_STALLED_COUNT.TOLERANT },
+  [QueueName.FILE_EMBED]: { lockDuration: LOCK_DURATION.LONG, maxStalledCount: MAX_STALLED_COUNT.TOLERANT },
+  [QueueName.FILE_PIPELINE_COMPLETE]: { lockDuration: LOCK_DURATION.SHORT, maxStalledCount: MAX_STALLED_COUNT.DEFAULT },
+  [QueueName.DLQ]: { lockDuration: LOCK_DURATION.SHORT, maxStalledCount: MAX_STALLED_COUNT.DEFAULT },
+  [QueueName.FILE_MAINTENANCE]: { lockDuration: LOCK_DURATION.EXTRA_LONG, maxStalledCount: MAX_STALLED_COUNT.TOLERANT },
 
   // Standard operations - use shorter locks
   [QueueName.MESSAGE_PERSISTENCE]: { lockDuration: LOCK_DURATION.SHORT, maxStalledCount: MAX_STALLED_COUNT.DEFAULT },

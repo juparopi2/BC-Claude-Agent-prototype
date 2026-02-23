@@ -1,11 +1,11 @@
 /**
  * DLQService (PRD-04)
  *
- * Manages the V2 dead letter queue for permanently failed file processing jobs.
+ * Manages the dead letter queue for permanently failed file processing jobs.
  * Provides listing, single retry, and bulk retry operations.
  *
- * DLQ entries are stored as BullMQ jobs in the V2_DLQ queue.
- * Retry creates a new V2 Flow via ProcessingFlowFactory.
+ * DLQ entries are stored as BullMQ jobs in the DLQ queue.
+ * Retry creates a new processing flow via ProcessingFlowFactory.
  *
  * @module services/queue
  */
@@ -95,13 +95,13 @@ export class DLQService {
   }
 
   /**
-   * Retry a single failed file by creating a new V2 Flow.
+   * Retry a single failed file by creating a new processing flow.
    */
   async retryFile(fileId: string, userId: string): Promise<{ success: boolean; error?: string }> {
-    const { getFileRepositoryV2 } = await import(
-      '@/services/files/repository/FileRepositoryV2'
+    const { getFileRepository } = await import(
+      '@/services/files/repository/FileRepository'
     );
-    const repo = getFileRepositoryV2();
+    const repo = getFileRepository();
 
     // 1. Transition failed → queued
     const result = await repo.transitionStatus(
@@ -126,7 +126,7 @@ export class DLQService {
       return { success: false, error: 'File not found' };
     }
 
-    // 3. Create new V2 Flow
+    // 3. Create new processing flow
     const { getMessageQueue } = await import('@/infrastructure/queue/MessageQueue');
     const queue = getMessageQueue();
     await queue.addFileProcessingFlow({
@@ -138,7 +138,7 @@ export class DLQService {
       fileName: file.name,
     });
 
-    logger.info({ fileId, userId }, 'File retried via V2 Flow');
+    logger.info({ fileId, userId }, 'File retried via processing flow');
     return { success: true };
   }
 

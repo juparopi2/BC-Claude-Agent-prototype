@@ -47,8 +47,8 @@ vi.mock('@/shared/utils/logger', () => ({
   createChildLogger: vi.fn(() => mockLogger),
 }));
 
-vi.mock('@/services/files/repository/FileRepositoryV2', () => ({
-  getFileRepositoryV2: vi.fn(() => ({
+vi.mock('@/services/files/repository/FileRepository', () => ({
+  getFileRepository: vi.fn(() => ({
     transitionStatus: mockTransitionStatus,
   })),
 }));
@@ -72,7 +72,7 @@ vi.mock('@/infrastructure/queue/MessageQueue', () => ({
       })),
     },
   })),
-  QueueName: { V2_DLQ: 'v2-dead-letter-queue' },
+  QueueName: { DLQ: 'v2-dead-letter-queue' },
 }));
 
 import { DLQService } from '@/services/queue/DLQService';

@@ -23,19 +23,43 @@ vi.mock('@/shared/utils/logger', () => ({
   }),
 }));
 
+// Mock FileService to prevent FileRepository → prisma cascade.
+// FileContextPreparer imports FileService statically; prisma requires DB env vars at load time.
+vi.mock('@/services/files/FileService', () => ({
+  FileService: {
+    getInstance: vi.fn(() => ({
+      getFile: vi.fn(),
+      getFiles: vi.fn(),
+    })),
+  },
+  getFileService: vi.fn(() => ({
+    getFile: vi.fn(),
+    getFiles: vi.fn(),
+  })),
+}));
+
 // Helper to create a mock ParsedFile
 function createMockParsedFile(overrides: Partial<ParsedFile> = {}): ParsedFile {
   return {
     id: 'file-1',
     userId: 'user-1',
+    parentFolderId: null,
     name: 'test-file.txt',
     mimeType: 'text/plain',
     sizeBytes: 1024,
     blobPath: 'path/to/blob',
     hasExtractedText: true,
-    embeddingStatus: 'completed',
-    createdAt: new Date(),
-    updatedAt: new Date(),
+    pipelineStatus: 'ready',
+    readinessState: 'ready',
+    processingRetryCount: 0,
+    embeddingRetryCount: 0,
+    lastError: null,
+    failedAt: null,
+    contentHash: null,
+    deletionStatus: null,
+    deletedAt: null,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
     isFavorite: false,
     isFolder: false,
     ...overrides,

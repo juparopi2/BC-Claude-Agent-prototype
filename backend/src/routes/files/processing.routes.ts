@@ -21,16 +21,18 @@ const router = Router();
 /**
  * POST /api/files/:id/retry-processing
  *
- * Retry processing for a failed file.
+ * Retry processing for a failed file using the pipeline.
  *
  * Body:
  * - scope: 'full' (re-process from start) or 'embedding_only' (only re-do embeddings)
+ *
+ * Both scopes use the BullMQ Flow pipeline (extract → chunk → embed → pipeline-complete).
+ * The pipeline uses CAS state transitions, so re-enqueuing is idempotent.
  *
  * Responses:
  * - 200: Retry initiated successfully
  * - 400: File is not in failed state
  * - 404: File not found
- * - 429: Rate limit exceeded
  */
 router.post(
   '/:id/retry-processing',
@@ -86,33 +88,28 @@ router.post(
         return;
       }
 
-      // Enqueue processing job
+      // Enqueue processing via pipeline (PRD-07)
+      // Both 'full' and 'embedding_only' scopes use the BullMQ Flow.
+      // The pipeline uses CAS state transitions, so re-enqueueing is idempotent.
       const messageQueue = getMessageQueue();
-      let jobId: string;
 
-      if (scope === 'full') {
-        // Re-process entire file
-        jobId = await messageQueue.addFileProcessingJob({
-          fileId: id,
-          userId,
-          mimeType: result.file.mimeType,
-          blobPath: result.file.blobPath,
-          fileName: result.file.name,
-        });
-      } else {
-        // Only re-do embedding
-        jobId = await messageQueue.addFileChunkingJob({
-          fileId: id,
-          userId,
-          mimeType: result.file.mimeType,
-        });
-      }
+      // Generate a retry-specific batch ID (uppercase per CLAUDE.md ID standardization)
+      const retryBatchId = crypto.randomUUID().toUpperCase();
 
-      logger.info({ userId, fileId: id, jobId, scope }, 'Retry initiated successfully');
+      await messageQueue.addFileProcessingFlow({
+        fileId: id,
+        batchId: retryBatchId,
+        userId,
+        mimeType: result.file.mimeType,
+        blobPath: result.file.blobPath,
+        fileName: result.file.name,
+      });
+
+      logger.info({ userId, fileId: id, retryBatchId, scope }, 'Retry initiated successfully via pipeline');
 
       res.json({
         file: result.file,
-        jobId,
+        batchId: retryBatchId,
         message: 'Processing retry initiated',
       });
     } catch (error) {

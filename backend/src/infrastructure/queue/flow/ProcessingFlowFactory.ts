@@ -55,46 +55,46 @@ export class ProcessingFlowFactory {
 
     return {
       name: `pipeline-complete--${fileId}`,
-      queueName: QueueName.V2_FILE_PIPELINE_COMPLETE,
+      queueName: QueueName.FILE_PIPELINE_COMPLETE,
       data: { fileId, batchId, userId },
       opts: {
         jobId: `pipeline-complete--${fileId}`,
-        attempts: DEFAULT_BACKOFF.V2_FILE_PIPELINE_COMPLETE.attempts,
+        attempts: DEFAULT_BACKOFF.FILE_PIPELINE_COMPLETE.attempts,
         backoff: {
-          type: DEFAULT_BACKOFF.V2_FILE_PIPELINE_COMPLETE.type,
-          delay: DEFAULT_BACKOFF.V2_FILE_PIPELINE_COMPLETE.delay,
+          type: DEFAULT_BACKOFF.FILE_PIPELINE_COMPLETE.type,
+          delay: DEFAULT_BACKOFF.FILE_PIPELINE_COMPLETE.delay,
         },
       },
       children: [
         {
           name: `embed--${fileId}`,
-          queueName: QueueName.V2_FILE_EMBED,
+          queueName: QueueName.FILE_EMBED,
           data: { fileId, batchId, userId },
           opts: {
             jobId: `embed--${fileId}`,
-            attempts: DEFAULT_BACKOFF.V2_FILE_EMBED.attempts,
+            attempts: DEFAULT_BACKOFF.FILE_EMBED.attempts,
             backoff: {
-              type: DEFAULT_BACKOFF.V2_FILE_EMBED.type,
-              delay: DEFAULT_BACKOFF.V2_FILE_EMBED.delay,
+              type: DEFAULT_BACKOFF.FILE_EMBED.type,
+              delay: DEFAULT_BACKOFF.FILE_EMBED.delay,
             },
           },
           children: [
             {
               name: `chunk--${fileId}`,
-              queueName: QueueName.V2_FILE_CHUNK,
+              queueName: QueueName.FILE_CHUNK,
               data: { fileId, batchId, userId, mimeType },
               opts: {
                 jobId: `chunk--${fileId}`,
-                attempts: DEFAULT_BACKOFF.V2_FILE_CHUNK.attempts,
+                attempts: DEFAULT_BACKOFF.FILE_CHUNK.attempts,
                 backoff: {
-                  type: DEFAULT_BACKOFF.V2_FILE_CHUNK.type,
-                  delay: DEFAULT_BACKOFF.V2_FILE_CHUNK.delay,
+                  type: DEFAULT_BACKOFF.FILE_CHUNK.type,
+                  delay: DEFAULT_BACKOFF.FILE_CHUNK.delay,
                 },
               },
               children: [
                 {
                   name: `extract--${fileId}`,
-                  queueName: QueueName.V2_FILE_EXTRACT,
+                  queueName: QueueName.FILE_EXTRACT,
                   data: {
                     fileId,
                     batchId,
@@ -105,10 +105,10 @@ export class ProcessingFlowFactory {
                   },
                   opts: {
                     jobId: `extract--${fileId}`,
-                    attempts: DEFAULT_BACKOFF.V2_FILE_EXTRACT.attempts,
+                    attempts: DEFAULT_BACKOFF.FILE_EXTRACT.attempts,
                     backoff: {
-                      type: DEFAULT_BACKOFF.V2_FILE_EXTRACT.type,
-                      delay: DEFAULT_BACKOFF.V2_FILE_EXTRACT.delay,
+                      type: DEFAULT_BACKOFF.FILE_EXTRACT.type,
+                      delay: DEFAULT_BACKOFF.FILE_EXTRACT.delay,
                     },
                   },
                 },

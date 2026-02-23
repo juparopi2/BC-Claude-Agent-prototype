@@ -1,5 +1,5 @@
 /**
- * Duplicate Detection Types V2 (PRD-02)
+ * Duplicate Detection Types (PRD-02)
  *
  * Types and Zod schemas for the batch-optimized duplicate detection service.
  * Checks 3 scopes (storage, pipeline, upload) in max 3 DB queries.
@@ -35,7 +35,7 @@ export interface DuplicateMatchInfo {
 // ============================================
 
 /** Input for checking a single file */
-export interface DuplicateCheckInputV2 {
+export interface DuplicateCheckInput {
   tempId: string;
   fileName: string;
   fileSize?: number;
@@ -44,8 +44,8 @@ export interface DuplicateCheckInputV2 {
 }
 
 /** Request body for POST /api/v2/uploads/check-duplicates */
-export interface CheckDuplicatesRequestV2 {
-  files: DuplicateCheckInputV2[];
+export interface CheckDuplicatesRequest {
+  files: DuplicateCheckInput[];
   /** Target folder UUID — used for name matching and suggestedName computation */
   targetFolderId?: string;
 }
@@ -58,7 +58,7 @@ export interface CheckDuplicatesRequestV2 {
 export type DuplicateResolutionAction = 'skip' | 'replace' | 'keep';
 
 /** Result for a single file check */
-export interface DuplicateCheckResultV2 {
+export interface DuplicateCheckResult {
   tempId: string;
   fileName: string;
   isDuplicate: boolean;
@@ -77,8 +77,8 @@ export interface DuplicateCheckSummary {
 }
 
 /** Response body for POST /api/v2/uploads/check-duplicates */
-export interface CheckDuplicatesResponseV2 {
-  results: DuplicateCheckResultV2[];
+export interface CheckDuplicatesResponse {
+  results: DuplicateCheckResult[];
   summary: DuplicateCheckSummary;
   /** Destination folder path (null = root) */
   targetFolderPath: string | null;
@@ -89,7 +89,7 @@ export interface CheckDuplicatesResponseV2 {
 // ============================================
 
 /** Validates a single file input for duplicate checking */
-export const duplicateCheckInputV2Schema = z.object({
+export const duplicateCheckInputSchema = z.object({
   tempId: z.string().min(1, 'tempId is required'),
   fileName: z.string().min(1, 'fileName is required'),
   fileSize: z.number().int().positive().optional(),
@@ -102,9 +102,9 @@ export const duplicateCheckInputV2Schema = z.object({
 });
 
 /** Validates the full duplicate check request (max 1000 files) */
-export const checkDuplicatesRequestV2Schema = z.object({
+export const checkDuplicatesRequestSchema = z.object({
   files: z
-    .array(duplicateCheckInputV2Schema)
+    .array(duplicateCheckInputSchema)
     .min(1, 'At least one file is required')
     .max(1000, 'Maximum 1000 files per batch'),
   targetFolderId: z.string().min(1).toUpperCase().optional(),

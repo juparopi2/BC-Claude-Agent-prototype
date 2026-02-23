@@ -12,7 +12,7 @@
  * @module domains/files/retry
  */
 
-import type { EmbeddingStatus } from '@bc-agent/shared';
+import type { PipelineStatus } from '@bc-agent/shared';
 
 /**
  * Scope for clearing failed status.
@@ -34,7 +34,7 @@ export type ClearFailedScope = 'full' | 'embedding_only';
  * - setLastEmbeddingError: Store last embedding error message
  * - markAsPermanentlyFailed: Mark file as permanently failed
  * - clearFailedStatus: Reset retry state for manual retry
- * - updateEmbeddingStatus: Update embedding status
+ * - updatePipelineStatus: Update pipeline status
  */
 export interface IFileRetryService {
   /**
@@ -115,18 +115,18 @@ export interface IFileRetryService {
   clearFailedStatus(userId: string, fileId: string, scope?: ClearFailedScope): Promise<void>;
 
   /**
-   * Update embedding status.
+   * Update pipeline status.
    *
-   * Updates the embedding_status column for a file.
+   * Updates the pipeline_status column for a file.
    *
    * @param userId - User ID for multi-tenant isolation
    * @param fileId - File ID to update
-   * @param status - New embedding status
+   * @param status - New pipeline status
    * @throws Error if file not found or unauthorized
    */
-  updateEmbeddingStatus(
+  updatePipelineStatus(
     userId: string,
     fileId: string,
-    status: EmbeddingStatus
+    status: PipelineStatus
   ): Promise<void>;
 }

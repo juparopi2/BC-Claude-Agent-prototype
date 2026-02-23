@@ -21,7 +21,7 @@ import {
   getSocketIO,
   isSocketServiceInitialized,
 } from '@/services/websocket/SocketService';
-import { FILE_WS_CHANNELS, FILE_WS_EVENTS, PROCESSING_STATUS } from '@bc-agent/shared';
+import { FILE_WS_CHANNELS, FILE_WS_EVENTS, PIPELINE_STATUS } from '@bc-agent/shared';
 import type { Logger } from 'pino';
 import type { Server as SocketServer } from 'socket.io';
 import type {
@@ -82,8 +82,6 @@ export class FileEventEmitter implements IFileEventEmitter {
       userId: ctx.userId,
       previousState: payload.previousState,
       readinessState: payload.newState,
-      processingStatus: payload.processingStatus,
-      embeddingStatus: payload.embeddingStatus,
       timestamp: new Date().toISOString(),
     });
 
@@ -152,7 +150,7 @@ export class FileEventEmitter implements IFileEventEmitter {
     this.emit(ctx, FILE_WS_CHANNELS.PROCESSING, {
       type: FILE_WS_EVENTS.PROCESSING_COMPLETED,
       fileId: ctx.fileId,
-      status: PROCESSING_STATUS.COMPLETED,
+      status: PIPELINE_STATUS.READY,
       stats,
       progress: 100,
       timestamp: new Date().toISOString(),
@@ -169,7 +167,7 @@ export class FileEventEmitter implements IFileEventEmitter {
     this.emit(ctx, FILE_WS_CHANNELS.PROCESSING, {
       type: FILE_WS_EVENTS.PROCESSING_FAILED,
       fileId: ctx.fileId,
-      status: PROCESSING_STATUS.FAILED,
+      status: PIPELINE_STATUS.FAILED,
       error: errorMessage,
       timestamp: new Date().toISOString(),
     });

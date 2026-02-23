@@ -95,8 +95,6 @@ export { isApiErrorResponse, isValidErrorCode } from './error.types';
 
 // File Types
 export type {
-  ProcessingStatus,
-  EmbeddingStatus,
   FileUsageType,
   FileSortBy,
   FileDbRecord,

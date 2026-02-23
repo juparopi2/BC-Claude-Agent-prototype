@@ -20,9 +20,8 @@ import {
   type RetryScope,
   type RetryPhase,
   type ParsedFile,
-  type ProcessingStatus,
-  PROCESSING_STATUS,
 } from '@bc-agent/shared';
+import { type PipelineStatus, PIPELINE_STATUS } from '@bc-agent/shared';
 import type { IProcessingRetryManager } from './IProcessingRetryManager';
 import type { IFileRetryService } from './IFileRetryService';
 import { getFileRetryService } from './FileRetryService';
@@ -39,7 +38,7 @@ export interface ProcessingRetryManagerDependencies {
   logger?: Logger;
   eventEmitter?: IFileEventEmitter;
   getFile?: (userId: string, fileId: string) => Promise<ParsedFile | null>;
-  updateProcessingStatus?: (userId: string, fileId: string, status: ProcessingStatus) => Promise<void>;
+  updateProcessingStatus?: (userId: string, fileId: string, status: PipelineStatus) => Promise<void>;
   cleanupForFile?: (userId: string, fileId: string) => Promise<void>;
 }
 
@@ -54,7 +53,7 @@ export class ProcessingRetryManager implements IProcessingRetryManager {
   private readonly config: FileProcessingConfig;
   private readonly eventEmitter: IFileEventEmitter;
   private readonly getFileFn: (userId: string, fileId: string) => Promise<ParsedFile | null>;
-  private readonly updateProcessingStatusFn: (userId: string, fileId: string, status: ProcessingStatus) => Promise<void>;
+  private readonly updateProcessingStatusFn: (userId: string, fileId: string, status: PipelineStatus) => Promise<void>;
   private readonly cleanupForFileFn: (userId: string, fileId: string) => Promise<void>;
 
   private constructor(deps?: ProcessingRetryManagerDependencies) {
@@ -168,11 +167,11 @@ export class ProcessingRetryManager implements IProcessingRetryManager {
 
     // 4. Update status based on scope
     if (scope === 'full') {
-      // Reset processing status and re-enqueue from start
-      await this.updateProcessingStatusFn(userId, fileId, 'pending');
+      // Reset pipeline status and re-enqueue from start
+      await this.updateProcessingStatusFn(userId, fileId, PIPELINE_STATUS.QUEUED);
     } else {
       // Only re-do embedding (processing was successful)
-      await this.retryService.updateEmbeddingStatus(userId, fileId, 'pending');
+      await this.retryService.updatePipelineStatus(userId, fileId, PIPELINE_STATUS.QUEUED);
     }
 
     // 5. Get updated file
@@ -236,10 +235,8 @@ export class ProcessingRetryManager implements IProcessingRetryManager {
 
     // Emit readiness_changed to 'failed'
     this.eventEmitter.emitReadinessChanged(ctx, {
-      previousState: PROCESSING_STATUS.PROCESSING,
-      newState: PROCESSING_STATUS.FAILED,
-      processingStatus: PROCESSING_STATUS.FAILED,
-      embeddingStatus: file?.embeddingStatus ?? PROCESSING_STATUS.PENDING,
+      previousState: 'processing',
+      newState: 'failed',
     });
   }
 
@@ -272,17 +269,17 @@ export class ProcessingRetryManager implements IProcessingRetryManager {
   private async defaultUpdateProcessingStatus(
     userId: string,
     fileId: string,
-    status: ProcessingStatus
+    status: PipelineStatus
   ): Promise<void> {
     const { FileService } = await import('@/services/files/FileService');
     const fileService = FileService.getInstance();
     await fileService.updateProcessingStatus(userId, fileId, status);
   }
 
-  private async defaultCleanupForFile(userId: string, fileId: string): Promise<void> {
-    const { getPartialDataCleaner } = await import('../cleanup');
-    const cleaner = getPartialDataCleaner();
-    await cleaner.cleanupForFile(userId, fileId);
+  private async defaultCleanupForFile(_userId: string, _fileId: string): Promise<void> {
+    // Per-file cleanup is handled by the scheduled OrphanCleanupService.
+    // This is a no-op; partial data (chunks, search docs) will be cleaned
+    // during the next maintenance cycle.
   }
 }
 

@@ -8,8 +8,6 @@
 
 export { useFileSelection, type UseFileSelectionReturn } from './useFileSelection';
 export { useFiles, type UseFilesReturn } from './useFiles';
-export { useFileUpload, type UseFileUploadReturn } from './useFileUpload';
-export { useFolderUpload, type UseFolderUploadReturn } from './useFolderUpload';
 export { useFolderNavigation, type UseFolderNavigationReturn } from './useFolderNavigation';
 export { useFileActions, type UseFileActionsReturn } from './useFileActions';
 export { useGoToFilePath, type UseGoToFilePathReturn } from './useGoToFilePath';
@@ -22,26 +20,27 @@ export {
   useFileDeleteEvents,
   type UseFileDeleteEventsOptions,
 } from './useFileDeleteEvents';
-export {
-  useFolderBatchEvents,
-  type UseFolderBatchEventsOptions,
-} from './useFolderBatchEvents';
-export {
-  useFolderUploadToasts,
-  type UseFolderUploadToastsOptions,
-} from './useFolderUploadToasts';
 
-// V2 Hooks (Batch Upload Pipeline)
+// Hooks (Batch Upload Pipeline)
 export {
-  useBatchUploadV2,
-  type UseBatchUploadV2Return,
-  useBlobUploadV2,
+  useBatchUpload,
+  type UseBatchUploadReturn,
+} from './useBatchUpload';
+export {
+  useBlobUpload,
   type BlobUploadFile,
   type BlobUploadResult,
-  useFileConfirmV2,
-  useDuplicateResolutionV2,
-  useUploadProgressV2,
-  type UploadProgressV2,
-  type UploadCountsV2,
-  type UploadPhaseV2,
-} from './v2';
+} from './useBlobUpload';
+export { useFileConfirm } from './useFileConfirm';
+export { useDuplicateResolution } from './useDuplicateResolution';
+export {
+  useFolderDuplicateResolution,
+  type FolderDuplicateResolutionResult,
+} from './useFolderDuplicateResolution';
+export {
+  useUploadProgress,
+  computeBatchProgress,
+  type UploadProgress,
+  type UploadCounts,
+  type UploadPhase,
+} from './useUploadProgress';

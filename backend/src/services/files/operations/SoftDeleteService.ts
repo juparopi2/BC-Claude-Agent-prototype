@@ -84,7 +84,7 @@ export class SoftDeleteService implements ISoftDeleteService {
    * 4. Returns immediately with count of marked files
    *
    * After this method returns:
-   * - Files are hidden from all queries (FileQueryBuilder filters them)
+   * - Files are hidden from all queries (FileRepository filters them)
    * - Files are excluded from RAG searches (once AI Search updates)
    * - Physical deletion happens asynchronously via queue workers
    *

@@ -4,9 +4,6 @@
  * @module infrastructure/queue/core
  */
 
-export { RateLimiter, getRateLimiter, __resetRateLimiter } from './RateLimiter';
-export type { RateLimiterDependencies, RateLimitStatus } from './RateLimiter';
-
 export { RedisConnectionManager } from './RedisConnectionManager';
 export type { RedisConnectionManagerDependencies } from './RedisConnectionManager';
 

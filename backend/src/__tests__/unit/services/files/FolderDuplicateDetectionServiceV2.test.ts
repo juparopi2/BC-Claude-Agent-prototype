@@ -1,5 +1,5 @@
 /**
- * FolderDuplicateDetectionServiceV2 Unit Tests
+ * FolderDuplicateDetectionService Unit Tests
  *
  * Tests root-level folder duplicate detection against existing folders
  * in the target location.
@@ -7,10 +7,10 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
-  FolderDuplicateDetectionServiceV2,
-  getFolderDuplicateDetectionServiceV2,
-  __resetFolderDuplicateDetectionServiceV2,
-} from '@/services/files/FolderDuplicateDetectionServiceV2';
+  FolderDuplicateDetectionService,
+  getFolderDuplicateDetectionService,
+  __resetFolderDuplicateDetectionService,
+} from '@/services/files/FolderDuplicateDetectionService';
 import type { FolderDuplicateCheckInput } from '@bc-agent/shared';
 
 // Mock Prisma client
@@ -40,13 +40,13 @@ const TEST_USER_ID = 'USER-12345678-1234-1234-1234-123456789ABC';
 const TEST_FOLDER_ID = 'FOLD-11111111-2222-3333-4444-555555555555';
 const TEST_TARGET_FOLDER_ID = 'FOLD-AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE';
 
-describe('FolderDuplicateDetectionServiceV2', () => {
-  let service: FolderDuplicateDetectionServiceV2;
+describe('FolderDuplicateDetectionService', () => {
+  let service: FolderDuplicateDetectionService;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    __resetFolderDuplicateDetectionServiceV2();
-    service = new FolderDuplicateDetectionServiceV2();
+    __resetFolderDuplicateDetectionService();
+    service = new FolderDuplicateDetectionService();
   });
 
   describe('checkFolderDuplicates', () => {
@@ -401,18 +401,18 @@ describe('FolderDuplicateDetectionServiceV2', () => {
 
   describe('singleton', () => {
     // Test 18: Singleton returns same instance
-    it('should return the same instance from getFolderDuplicateDetectionServiceV2', () => {
-      const instance1 = getFolderDuplicateDetectionServiceV2();
-      const instance2 = getFolderDuplicateDetectionServiceV2();
+    it('should return the same instance from getFolderDuplicateDetectionService', () => {
+      const instance1 = getFolderDuplicateDetectionService();
+      const instance2 = getFolderDuplicateDetectionService();
 
       expect(instance1).toBe(instance2);
     });
 
     // Test 19: Reset clears singleton
-    it('should create a new instance after __resetFolderDuplicateDetectionServiceV2', () => {
-      const instance1 = getFolderDuplicateDetectionServiceV2();
-      __resetFolderDuplicateDetectionServiceV2();
-      const instance2 = getFolderDuplicateDetectionServiceV2();
+    it('should create a new instance after __resetFolderDuplicateDetectionService', () => {
+      const instance1 = getFolderDuplicateDetectionService();
+      __resetFolderDuplicateDetectionService();
+      const instance2 = getFolderDuplicateDetectionService();
 
       expect(instance1).not.toBe(instance2);
     });

@@ -12,7 +12,8 @@
 
 import { createChildLogger } from '@/shared/utils/logger';
 import type { Logger } from 'pino';
-import { UpdateFileOptions, ProcessingStatus } from '@/types/file.types';
+import { UpdateFileOptions } from '@/types/file.types';
+import type { PipelineStatus } from '@bc-agent/shared';
 import { getFileRepository, type IFileRepository } from '../repository/FileRepository';
 
 /**
@@ -22,7 +23,7 @@ export interface IFileMetadataService {
   update(userId: string, fileId: string, updates: UpdateFileOptions): Promise<void>;
   toggleFavorite(userId: string, fileId: string): Promise<boolean>;
   move(userId: string, fileId: string, newParentId: string | null): Promise<void>;
-  updateProcessingStatus(userId: string, fileId: string, status: ProcessingStatus, extractedText?: string): Promise<void>;
+  updateProcessingStatus(userId: string, fileId: string, status: PipelineStatus, extractedText?: string): Promise<void>;
 }
 
 /**
@@ -132,7 +133,7 @@ export class FileMetadataService implements IFileMetadataService {
   public async updateProcessingStatus(
     userId: string,
     fileId: string,
-    status: ProcessingStatus,
+    status: PipelineStatus,
     extractedText?: string
   ): Promise<void> {
     this.logger.info({ userId, fileId, status, hasText: !!extractedText }, 'Updating processing status');

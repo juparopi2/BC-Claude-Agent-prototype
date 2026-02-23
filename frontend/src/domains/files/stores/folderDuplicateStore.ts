@@ -1,259 +1,167 @@
 /**
  * Folder Duplicate Store
  *
- * Manages state for duplicate folder detection during upload.
- * Tracks conflicts, user resolutions, and modal visibility.
+ * Zustand store for folder-level duplicate detection.
+ * Supports skip, replace, keep_both, and cancel actions.
  *
  * @module domains/files/stores/folderDuplicateStore
  */
 
 import { create } from 'zustand';
+import type { FolderDuplicateCheckResult } from '@bc-agent/shared';
 
-/**
- * Actions available for resolving folder duplicates
- */
-export type FolderDuplicateAction = 'skip' | 'rename' | 'cancel';
+// ============================================
+// Types
+// ============================================
 
-/**
- * Single duplicate folder conflict detected during upload
- */
-export interface FolderDuplicateConflict {
-  /** Client-generated temp ID for correlation */
-  tempId: string;
-  /** Original folder name */
-  originalName: string;
-  /** Suggested name with suffix (e.g., "Documents (1)") */
-  suggestedName: string;
-  /** Parent folder ID (null for root level) */
-  parentFolderId: string | null;
-  /** ID of the existing folder with same name */
-  existingFolderId: string;
-  /** Number of files in this folder */
-  fileCount: number;
-}
+export type FolderDuplicateAction = 'skip' | 'replace' | 'keep_both';
 
-/**
- * User's resolution for a folder duplicate conflict
- */
 export interface FolderDuplicateResolution {
-  /** Temp ID for correlation */
   tempId: string;
-  /** User action: skip or rename */
-  action: Exclude<FolderDuplicateAction, 'cancel'>;
-  /** Resolved name to use (original if skip, suggested if rename) */
+  action: FolderDuplicateAction;
+  /** For keep_both: the resolved folder name (auto or custom) */
   resolvedName: string;
+  /** For replace: the existing folder ID to reuse */
+  existingFolderId?: string;
 }
 
-/**
- * Folder duplicate store state
- */
-interface FolderDuplicateState {
-  /** List of detected conflicts */
-  conflicts: FolderDuplicateConflict[];
-  /** Current conflict index being shown */
-  currentIndex: number;
-  /** User resolutions for each conflict */
-  resolutions: FolderDuplicateResolution[];
-  /** Whether the conflict modal is open */
+export interface FolderDuplicateStoreState {
+  results: FolderDuplicateCheckResult[];
+  resolutions: Map<string, FolderDuplicateResolution>;
   isModalOpen: boolean;
-  /** Whether the upload was cancelled */
   isCancelled: boolean;
-  /** Session ID this duplicate check is for */
-  sessionId: string | null;
+  targetFolderPath: string | null;
 }
 
-/**
- * Folder duplicate store actions
- */
-interface FolderDuplicateActions {
-  /** Set detected conflicts and open modal */
-  setConflicts: (sessionId: string, conflicts: FolderDuplicateConflict[]) => void;
-  /** Resolve a single conflict */
-  resolveConflict: (tempId: string, action: FolderDuplicateAction) => void;
-  /** Apply action to all remaining conflicts */
-  resolveAllRemaining: (action: Exclude<FolderDuplicateAction, 'cancel'>) => void;
-  /** Open the modal */
-  openModal: () => void;
-  /** Close the modal */
-  closeModal: () => void;
-  /** Reset all state */
-  reset: () => void;
-  /** Get resolution for a tempId */
-  getResolution: (tempId: string) => FolderDuplicateResolution | undefined;
-  /** Check if all conflicts are resolved */
+export interface FolderDuplicateStoreActions {
+  setResults: (results: FolderDuplicateCheckResult[], targetFolderPath?: string | null) => void;
+  resolveOne: (resolution: FolderDuplicateResolution) => void;
+  resolveAllRemaining: (action: FolderDuplicateAction) => void;
   isAllResolved: () => boolean;
-  /** Get all resolutions */
-  getResolutions: () => FolderDuplicateResolution[];
-  /** Get current conflict */
-  getCurrentConflict: () => FolderDuplicateConflict | undefined;
+  getSkippedTempIds: () => string[];
+  getKeepBothRenames: () => Map<string, string>;
+  getReplaceFolderIds: () => Map<string, string>;
+  cancel: () => void;
+  reset: () => void;
 }
 
-const initialState: FolderDuplicateState = {
-  conflicts: [],
-  currentIndex: 0,
-  resolutions: [],
+// ============================================
+// Store
+// ============================================
+
+const initialState: FolderDuplicateStoreState = {
+  results: [],
+  resolutions: new Map(),
   isModalOpen: false,
   isCancelled: false,
-  sessionId: null,
+  targetFolderPath: null,
 };
 
-/**
- * Zustand store for duplicate folder management
- *
- * @example
- * ```tsx
- * function UploadComponent() {
- *   const { conflicts, isModalOpen, resolveConflict } = useFolderDuplicateStore();
- *
- *   // Show modal when conflicts detected
- *   useEffect(() => {
- *     if (conflicts.length > 0) {
- *       // Modal opens automatically via setConflicts
- *     }
- *   }, [conflicts]);
- * }
- * ```
- */
-export const useFolderDuplicateStore = create<FolderDuplicateState & FolderDuplicateActions>()(
+export const useFolderDuplicateStore = create<FolderDuplicateStoreState & FolderDuplicateStoreActions>()(
   (set, get) => ({
     ...initialState,
 
-    setConflicts: (sessionId, conflicts) => {
+    setResults: (results, targetFolderPath) => {
+      const duplicates = results.filter((r) => r.isDuplicate);
       set({
-        sessionId,
-        conflicts,
-        currentIndex: 0,
-        resolutions: [],
+        results,
+        resolutions: new Map(),
         isCancelled: false,
+        isModalOpen: duplicates.length > 0,
+        targetFolderPath: targetFolderPath ?? null,
       });
-      if (conflicts.length > 0) {
-        set({ isModalOpen: true });
-      }
     },
 
-    resolveConflict: (tempId, action) => {
-      if (action === 'cancel') {
-        // Cancel means abort entire upload
-        set({
-          isModalOpen: false,
-          conflicts: [],
-          resolutions: [],
-          isCancelled: true,
-        });
-        return;
-      }
+    resolveOne: (resolution) => {
+      set((state) => {
+        const resolutions = new Map(state.resolutions);
+        resolutions.set(resolution.tempId, resolution);
 
-      const { conflicts, currentIndex, resolutions } = get();
-      const conflict = conflicts.find((c) => c.tempId === tempId);
+        const duplicates = state.results.filter((r) => r.isDuplicate);
+        const allResolved = duplicates.every((r) => resolutions.has(r.tempId));
 
-      if (conflict) {
-        const resolution: FolderDuplicateResolution = {
-          tempId,
-          action,
-          resolvedName: action === 'rename' ? conflict.suggestedName : conflict.originalName,
+        return {
+          resolutions,
+          isModalOpen: !allResolved,
         };
-
-        const newResolutions = [...resolutions, resolution];
-        const newIndex = currentIndex + 1;
-
-        if (newIndex >= conflicts.length) {
-          // All conflicts resolved
-          set({
-            resolutions: newResolutions,
-            currentIndex: newIndex,
-            isModalOpen: false,
-          });
-        } else {
-          set({ resolutions: newResolutions, currentIndex: newIndex });
-        }
-      }
+      });
     },
 
     resolveAllRemaining: (action) => {
-      const { conflicts, currentIndex, resolutions } = get();
-      const newResolutions = [...resolutions];
+      set((state) => {
+        const resolutions = new Map(state.resolutions);
+        const duplicates = state.results.filter((r) => r.isDuplicate);
 
-      for (let i = currentIndex; i < conflicts.length; i++) {
-        const conflict = conflicts[i];
-        if (conflict) {
-          newResolutions.push({
-            tempId: conflict.tempId,
-            action,
-            resolvedName: action === 'rename' ? conflict.suggestedName : conflict.originalName,
-          });
+        for (const dup of duplicates) {
+          if (!resolutions.has(dup.tempId)) {
+            const resolution: FolderDuplicateResolution = {
+              tempId: dup.tempId,
+              action,
+              resolvedName: action === 'keep_both'
+                ? (dup.suggestedName ?? dup.folderName)
+                : dup.folderName,
+              ...(action === 'replace' && dup.existingFolderId
+                ? { existingFolderId: dup.existingFolderId }
+                : {}),
+            };
+            resolutions.set(dup.tempId, resolution);
+          }
         }
-      }
 
-      set({
-        resolutions: newResolutions,
-        currentIndex: conflicts.length,
-        isModalOpen: false,
+        return {
+          resolutions,
+          isModalOpen: false,
+        };
       });
     },
 
-    openModal: () => set({ isModalOpen: true }),
-    closeModal: () => set({ isModalOpen: false }),
-
-    reset: () => set(initialState),
-
-    getResolution: (tempId) => {
-      return get().resolutions.find((r) => r.tempId === tempId);
-    },
-
     isAllResolved: () => {
-      const { conflicts, resolutions, isCancelled } = get();
+      const { results, resolutions, isCancelled } = get();
       if (isCancelled) return true;
-      if (conflicts.length === 0) return true;
-      return resolutions.length >= conflicts.length;
+      const duplicates = results.filter((r) => r.isDuplicate);
+      if (duplicates.length === 0) return true;
+      return duplicates.every((r) => resolutions.has(r.tempId));
     },
 
-    getResolutions: () => {
-      return get().resolutions;
+    getSkippedTempIds: () => {
+      const { resolutions } = get();
+      const skipped: string[] = [];
+      resolutions.forEach((res) => {
+        if (res.action === 'skip') {
+          skipped.push(res.tempId);
+        }
+      });
+      return skipped;
     },
 
-    getCurrentConflict: () => {
-      const { conflicts, currentIndex } = get();
-      return conflicts[currentIndex];
+    getKeepBothRenames: () => {
+      const { resolutions } = get();
+      const renames = new Map<string, string>();
+      resolutions.forEach((res) => {
+        if (res.action === 'keep_both') {
+          renames.set(res.tempId, res.resolvedName);
+        }
+      });
+      return renames;
     },
+
+    getReplaceFolderIds: () => {
+      const { resolutions } = get();
+      const replaceIds = new Map<string, string>();
+      resolutions.forEach((res) => {
+        if (res.action === 'replace' && res.existingFolderId) {
+          replaceIds.set(res.tempId, res.existingFolderId);
+        }
+      });
+      return replaceIds;
+    },
+
+    cancel: () => set({ isModalOpen: false, isCancelled: true }),
+
+    reset: () => set({ ...initialState, resolutions: new Map() }),
   })
 );
 
-/**
- * Reset store to initial state (for testing)
- */
 export function resetFolderDuplicateStore(): void {
-  useFolderDuplicateStore.setState(initialState);
-}
-
-/**
- * Wait for folder conflict resolution
- *
- * Returns a promise that resolves when all conflicts are resolved
- * or the upload is cancelled.
- *
- * @returns Promise with resolutions array, or null if cancelled
- */
-export function waitForFolderResolution(): Promise<FolderDuplicateResolution[] | null> {
-  return new Promise((resolve) => {
-    const unsubscribe = useFolderDuplicateStore.subscribe((state) => {
-      if (state.isCancelled) {
-        unsubscribe();
-        resolve(null);
-        return;
-      }
-
-      if (state.conflicts.length > 0 && state.resolutions.length >= state.conflicts.length) {
-        unsubscribe();
-        resolve(state.resolutions);
-        return;
-      }
-
-      // Check if modal was closed without resolving (edge case)
-      if (!state.isModalOpen && state.conflicts.length > 0 && state.resolutions.length === 0) {
-        unsubscribe();
-        resolve(null);
-        return;
-      }
-    });
-  });
+  useFolderDuplicateStore.setState({ ...initialState, resolutions: new Map() });
 }

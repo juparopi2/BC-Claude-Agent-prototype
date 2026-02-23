@@ -13,4 +13,4 @@ export * from './TestDataCleanup';
 export * from './TestDatabaseSetup';
 export * from './SocketIOServerFactory';
 export * from './cleanupTestConnections';
-export * from './V2PipelineTestHelper';
+export * from './PipelineTestHelper';

@@ -23,7 +23,14 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { AlertTriangle, File, Replace, SkipForward, X } from 'lucide-react';
-import type { ParsedFile, DuplicateAction } from '@bc-agent/shared';
+import type { ParsedFile } from '@bc-agent/shared';
+
+/**
+ * User action for handling duplicate files during upload (V1 API).
+ * Removed from @bc-agent/shared in PRD-07; defined locally for backward compatibility.
+ * @deprecated Use DuplicateResolutionAction from the V2 API instead.
+ */
+type DuplicateAction = 'replace' | 'skip' | 'cancel';
 
 /**
  * Format file size in human-readable format

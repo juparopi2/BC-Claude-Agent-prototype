@@ -131,10 +131,10 @@ export class OrphanCleanupService {
    * Scope 2: Delete files stuck in 'registered' status (upload started but never confirmed).
    */
   private async cleanupAbandonedUploads(thresholdMs: number): Promise<number> {
-    const { getFileRepositoryV2 } = await import('@/services/files/repository/FileRepositoryV2');
+    const { getFileRepository } = await import('@/services/files/repository/FileRepository');
     const { getFileUploadService } = await import('@/services/files/FileUploadService');
     const { prisma } = await import('@/infrastructure/database/prisma');
-    const repo = getFileRepositoryV2();
+    const repo = getFileRepository();
     const uploadService = getFileUploadService();
 
     const abandonedFiles = await repo.findAbandonedFiles(thresholdMs);

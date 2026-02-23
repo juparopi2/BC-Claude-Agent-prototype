@@ -12,7 +12,7 @@ import { createChildLogger } from '@/shared/utils/logger';
 import type { ILoggerMinimal } from '../IMessageQueueDependencies';
 import { QueueName, DEFAULT_CONCURRENCY, LOCK_CONFIG, type ExtendedLockConfig } from '../constants';
 import { env } from '@/infrastructure/config';
-import { FILE_DELETION_CONFIG, FILE_BULK_UPLOAD_CONFIG } from '@bc-agent/shared';
+import { FILE_DELETION_CONFIG } from '@bc-agent/shared';
 
 /**
  * Dependencies for WorkerRegistry
@@ -178,11 +178,7 @@ export class WorkerRegistry {
       [QueueName.TOOL_EXECUTION]: env.QUEUE_TOOL_CONCURRENCY,
       [QueueName.EVENT_PROCESSING]: env.QUEUE_EVENT_CONCURRENCY,
       [QueueName.USAGE_AGGREGATION]: env.QUEUE_USAGE_CONCURRENCY,
-      [QueueName.FILE_PROCESSING]: env.QUEUE_FILE_PROCESSING_CONCURRENCY,
-      [QueueName.FILE_CHUNKING]: env.QUEUE_FILE_CHUNKING_CONCURRENCY,
-      [QueueName.EMBEDDING_GENERATION]: env.QUEUE_EMBEDDING_CONCURRENCY,
       [QueueName.CITATION_PERSISTENCE]: env.QUEUE_CITATION_CONCURRENCY,
-      [QueueName.FILE_BULK_UPLOAD]: env.QUEUE_FILE_BULK_UPLOAD_CONCURRENCY,
     };
     return envMap[name];
   }
@@ -200,31 +196,21 @@ export class WorkerRegistry {
         return DEFAULT_CONCURRENCY.EVENT_PROCESSING;
       case QueueName.USAGE_AGGREGATION:
         return DEFAULT_CONCURRENCY.USAGE_AGGREGATION;
-      case QueueName.FILE_PROCESSING:
-        return DEFAULT_CONCURRENCY.FILE_PROCESSING;
-      case QueueName.FILE_CHUNKING:
-        return DEFAULT_CONCURRENCY.FILE_CHUNKING;
-      case QueueName.EMBEDDING_GENERATION:
-        return DEFAULT_CONCURRENCY.EMBEDDING_GENERATION;
       case QueueName.CITATION_PERSISTENCE:
         return DEFAULT_CONCURRENCY.CITATION_PERSISTENCE;
-      case QueueName.FILE_CLEANUP:
-        return DEFAULT_CONCURRENCY.FILE_CLEANUP;
       case QueueName.FILE_DELETION:
         return FILE_DELETION_CONFIG.QUEUE_CONCURRENCY;
-      case QueueName.FILE_BULK_UPLOAD:
-        return FILE_BULK_UPLOAD_CONFIG.QUEUE_CONCURRENCY;
-      // V2 Pipeline (PRD-04)
-      case QueueName.V2_FILE_EXTRACT:
-        return DEFAULT_CONCURRENCY.V2_FILE_EXTRACT;
-      case QueueName.V2_FILE_CHUNK:
-        return DEFAULT_CONCURRENCY.V2_FILE_CHUNK;
-      case QueueName.V2_FILE_EMBED:
-        return DEFAULT_CONCURRENCY.V2_FILE_EMBED;
-      case QueueName.V2_FILE_PIPELINE_COMPLETE:
-        return DEFAULT_CONCURRENCY.V2_FILE_PIPELINE_COMPLETE;
-      case QueueName.V2_DLQ:
-        return DEFAULT_CONCURRENCY.V2_DLQ;
+      // File Pipeline (PRD-04)
+      case QueueName.FILE_EXTRACT:
+        return DEFAULT_CONCURRENCY.FILE_EXTRACT;
+      case QueueName.FILE_CHUNK:
+        return DEFAULT_CONCURRENCY.FILE_CHUNK;
+      case QueueName.FILE_EMBED:
+        return DEFAULT_CONCURRENCY.FILE_EMBED;
+      case QueueName.FILE_PIPELINE_COMPLETE:
+        return DEFAULT_CONCURRENCY.FILE_PIPELINE_COMPLETE;
+      case QueueName.DLQ:
+        return DEFAULT_CONCURRENCY.DLQ;
       default:
         return 1;
     }

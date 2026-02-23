@@ -124,8 +124,8 @@ model langgraph_checkpoints {
   checkpoint_ns        String   @default("") @db.NVarChar(255)
   checkpoint_id        String   @db.NVarChar(255)
   parent_checkpoint_id String?  @db.NVarChar(255)
-  checkpoint_data      Bytes    @db.VarBinary(Max)
-  metadata             Bytes    @db.VarBinary(Max)
+  checkpoint_data      Bytes
+  metadata             Bytes
   created_at           DateTime @default(dbgenerated("getutcdate()"))
 
   @@id([thread_id, checkpoint_ns, checkpoint_id])
@@ -140,7 +140,7 @@ model langgraph_checkpoint_writes {
   idx           Int
   channel       String @db.NVarChar(255)
   type          String @db.NVarChar(255)
-  value         Bytes  @db.VarBinary(Max)
+  value         Bytes
 
   @@id([thread_id, checkpoint_ns, checkpoint_id, task_id, idx])
 }
@@ -211,19 +211,12 @@ model files {
   id                       String                     @id(map: "PK__files__3213E83F64B37894") @default(dbgenerated("newid()"), map: "DF__files__id__3A179ED3") @db.UniqueIdentifier
   user_id                  String                     @db.UniqueIdentifier
   parent_folder_id         String?                    @db.UniqueIdentifier
-  batch_id                 String?                    @db.UniqueIdentifier
   name                     String                     @db.NVarChar(500)
   mime_type                String                     @db.NVarChar(255)
   size_bytes               BigInt
   blob_path                String
   is_folder                Boolean                    @default(false, map: "DF__files__is_folder__3B0BC30C")
   is_favorite              Boolean                    @default(false, map: "DF__files__is_favori__3BFFE745")
-  /// @deprecated(PRD-01) Use pipeline_status instead. Dropped in PRD-07.
-  processing_status        String?                    @default("pending", map: "DF__files__processin__3CF40B7E") @db.NVarChar(50)
-  /// @deprecated(PRD-01) Use pipeline_status instead. Dropped in PRD-07.
-  embedding_status         String?                    @default("pending", map: "DF__files__embedding__3DE82FB7") @db.NVarChar(50)
-  /// New unified pipeline status (PRD-01). Nullable during migration, required after PRD-07.
-  pipeline_status          String?                    @db.NVarChar(50)
   extracted_text           String?                    @db.NVarChar(Max)
   created_at               DateTime?                  @default(dbgenerated("getutcdate()"), map: "DF__files__created_a__3EDC53F0")
   updated_at               DateTime?                  @default(dbgenerated("getutcdate()"), map: "DF__files__updated_a__3FD07829")
@@ -234,13 +227,16 @@ model files {
   content_hash             String?                    @db.Char(64)
   processing_retry_count   Int                        @default(0, map: "DF__files__processin__3335971A")
   embedding_retry_count    Int                        @default(0, map: "DF__files__embedding__3429BB53")
-  /// V2 pipeline retry count (PRD-05). Incremented on each automatic recovery attempt.
-  pipeline_retry_count     Int                        @default(0)
   last_processing_error    String?
   last_embedding_error     String?
   failed_at                DateTime?
   deletion_status          String?                    @db.NVarChar(20)
   deleted_at               DateTime?
+  /// Unified pipeline status (PRD-01). Required after PRD-07 migration.
+  pipeline_status          String                     @db.NVarChar(50)
+  batch_id                 String?                    @db.UniqueIdentifier
+  /// V2 pipeline retry count (PRD-05). Incremented on each automatic recovery attempt.
+  pipeline_retry_count     Int                        @default(0)
   file_chunks              file_chunks[]
   files                    files?                     @relation("filesTofiles", fields: [parent_folder_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "FK__files__parent_fo__41B8C09B")
   other_files              files[]                    @relation("filesTofiles")
@@ -249,27 +245,25 @@ model files {
   message_citations        message_citations[]
   message_file_attachments message_file_attachments[]
 
-  @@index([embedding_status, created_at], map: "IX_files_embedding_status")
   @@index([pipeline_status, created_at], map: "IX_files_pipeline_status")
-  @@index([processing_status, created_at], map: "IX_files_processing_status")
   @@index([user_id, source_type], map: "IX_files_source_type")
   @@index([user_id, parent_folder_id, name], map: "IX_files_user_folder")
   @@index([user_id, content_hash], map: "IX_files_user_content_hash")
-  @@index([batch_id], map: "files_batch_id_idx")
+  @@index([batch_id])
 }
 
 model upload_batches {
-  id              String    @id @default(dbgenerated("newid()")) @db.UniqueIdentifier
-  user_id         String    @db.UniqueIdentifier
-  status          String    @default("active") @db.NVarChar(50)
+  id              String   @id @default(dbgenerated("newid()")) @db.UniqueIdentifier
+  user_id         String   @db.UniqueIdentifier
+  status          String   @default("active") @db.NVarChar(50)
   total_files     Int
-  confirmed_count Int       @default(0)
-  processed_count Int       @default(0)
-  created_at      DateTime  @default(dbgenerated("getutcdate()"))
-  updated_at      DateTime  @default(dbgenerated("getutcdate()"))
+  confirmed_count Int      @default(0)
+  created_at      DateTime @default(dbgenerated("getutcdate()"))
+  updated_at      DateTime @default(dbgenerated("getutcdate()"))
   expires_at      DateTime
-  metadata        String?   @db.NVarChar(Max)
-  users           users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  metadata        String?  @db.NVarChar(Max)
+  processed_count Int      @default(0)
+  users           users    @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([user_id, status])
   @@index([status, expires_at])
@@ -327,9 +321,9 @@ model message_citations {
 
 /// CHECK constraints (enforced by DB, not representable in Prisma DSL):
 /// - CK_message_events_valid_type: event_type IN ('user_message_sent','agent_thinking_started','agent_thinking_completed',
-///   'agent_thinking_block','agent_message_sent','agent_message_chunk','session_started','session_ended',
-///   'tool_use_requested','tool_use_completed','error_occurred','todo_created','todo_updated',
-///   'approval_requested','approval_completed','citations_created','agent_changed')
+/// 'agent_thinking_block','agent_message_sent','agent_message_chunk','session_started','session_ended',
+/// 'tool_use_requested','tool_use_completed','error_occurred','todo_created','todo_updated',
+/// 'approval_requested','approval_completed','citations_created','agent_changed')
 /// - CK_message_events_sequence_positive: sequence_number >= 0
 model message_events {
   id              String     @id(map: "PK__message___3213E83F3327D1FC") @default(dbgenerated("newid()"), map: "DF__message_even__id__214BF109") @db.UniqueIdentifier
@@ -363,7 +357,7 @@ model message_file_attachments {
 /// CHECK constraints (enforced by DB, not representable in Prisma DSL):
 /// - chk_messages_role: role IN ('user','assistant','system','tool')
 /// - chk_messages_type: message_type IN ('text','thinking','redacted_thinking','tool_use',
-///   'server_tool_use','web_search_tool_result','tool_result','error','agent_changed')
+/// 'server_tool_use','web_search_tool_result','tool_result','error','agent_changed')
 /// - chk_messages_stop_reason: stop_reason IN ('end_turn','tool_use','max_tokens','stop_sequence','pause_turn','refusal')
 model messages {
   id              String          @id(map: "PK_messages") @db.NVarChar(255)
@@ -469,15 +463,15 @@ model sessions {
   created_at               DateTime              @default(dbgenerated("getutcdate()"), map: "DF__sessions__create__7F2BE32F")
   updated_at               DateTime              @default(dbgenerated("getutcdate()"), map: "DF__sessions__update__00200768")
   checkpoint_message_count Int                   @default(0)
-  agent_executions    agent_executions[]
-  approvals           approvals[]
-  chat_attachments    chat_attachments[]
-  message_events      message_events[]
-  messages            messages[]
-  performance_metrics performance_metrics[]
-  session_files       session_files[]
-  users               users                 @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_sessions_user")
-  todos               todos[]
+  agent_executions         agent_executions[]
+  approvals                approvals[]
+  chat_attachments         chat_attachments[]
+  message_events           message_events[]
+  messages                 messages[]
+  performance_metrics      performance_metrics[]
+  session_files            session_files[]
+  users                    users                 @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_sessions_user")
+  todos                    todos[]
 
   @@index([created_at], map: "idx_sessions_created_at")
   @@index([is_active], map: "idx_sessions_is_active")
@@ -662,10 +656,10 @@ model users {
   billing_records           billing_records[]
   files                     files[]
   image_embeddings          image_embeddings[]
-  upload_batches            upload_batches[]
   quota_alerts              quota_alerts[]
   sessions                  sessions[]
   tool_permissions          tool_permissions[]
+  upload_batches            upload_batches[]
   usage_aggregates          usage_aggregates[]
   usage_events              usage_events[]
   user_feedback             user_feedback[]
@@ -676,3 +670,5 @@ model users {
   @@index([email], map: "idx_users_email")
   @@index([is_active], map: "idx_users_is_active")
 }
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.

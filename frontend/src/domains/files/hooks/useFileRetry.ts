@@ -100,8 +100,7 @@ export function useFileRetry(): UseFileRetryReturn {
         // Update file list store with new file data from response
         updateFileInStore(fileId, {
           readinessState: result.data.file.readinessState,
-          processingStatus: result.data.file.processingStatus,
-          embeddingStatus: result.data.file.embeddingStatus,
+          pipelineStatus: result.data.file.pipelineStatus,
           processingRetryCount: result.data.file.processingRetryCount,
           embeddingRetryCount: result.data.file.embeddingRetryCount,
           lastError: result.data.file.lastError,

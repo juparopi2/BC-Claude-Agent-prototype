@@ -15,8 +15,6 @@ import type {
   FileResponse,
   FolderResponse,
   ApiErrorResponse,
-  CheckDuplicatesRequest,
-  CheckDuplicatesResponse,
   RetryProcessingRequest,
   RetryProcessingResponse,
   BulkDeleteAcceptedResponse,
@@ -46,7 +44,23 @@ import type {
   ResolveFolderConflictsResponse,
 } from '@bc-agent/shared';
 import { isApiErrorResponse, ErrorCode } from '@bc-agent/shared';
+import type { ParsedFile } from '@bc-agent/shared';
 import { env } from '@/lib/config/env';
+
+// ============================================
+// Legacy V1 Duplicate Detection Types (deprecated - use CheckDuplicatesRequest from @bc-agent/shared)
+// These were removed from @bc-agent/shared in PRD-07.
+// ============================================
+
+/** @deprecated Use CheckDuplicatesRequest from @bc-agent/shared instead */
+interface LegacyCheckDuplicatesRequest {
+  files: Array<{ tempId: string; contentHash: string; fileName: string }>;
+}
+
+/** @deprecated Use CheckDuplicatesResponse from @bc-agent/shared instead */
+interface LegacyCheckDuplicatesResponse {
+  results: Array<{ tempId: string; isDuplicate: boolean; existingFile?: ParsedFile }>;
+}
 
 /**
  * API Response wrapper
@@ -290,9 +304,9 @@ export class FileApiClient {
    * ```
    */
   async checkDuplicates(
-    request: CheckDuplicatesRequest
-  ): Promise<ApiResponse<CheckDuplicatesResponse>> {
-    return this.postJson<CheckDuplicatesResponse>('/api/files/check-duplicates', request);
+    request: LegacyCheckDuplicatesRequest
+  ): Promise<ApiResponse<LegacyCheckDuplicatesResponse>> {
+    return this.postJson<LegacyCheckDuplicatesResponse>('/api/files/check-duplicates', request);
   }
 
   // ============================================

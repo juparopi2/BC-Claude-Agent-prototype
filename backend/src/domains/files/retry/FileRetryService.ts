@@ -17,7 +17,7 @@
  * - setLastEmbeddingError (was method 18)
  * - markAsPermanentlyFailed (was method 19)
  * - clearFailedStatus (was method 20)
- * - updateEmbeddingStatus (was method 21)
+ * - updatePipelineStatus (was method 21)
  *
  * @module domains/files/retry
  */
@@ -25,7 +25,7 @@
 import { createChildLogger } from '@/shared/utils/logger';
 import { executeQuery, SqlParams } from '@/infrastructure/database/database';
 import type { Logger } from 'pino';
-import type { EmbeddingStatus } from '@bc-agent/shared';
+import type { PipelineStatus } from '@bc-agent/shared';
 import type { IFileRetryService, ClearFailedScope } from './IFileRetryService';
 
 export class FileRetryService implements IFileRetryService {
@@ -312,23 +312,23 @@ export class FileRetryService implements IFileRetryService {
   }
 
   /**
-   * Update embedding status.
+   * Update pipeline status.
    *
    * @param userId - User ID for ownership check
    * @param fileId - File ID
-   * @param status - New embedding status
+   * @param status - New pipeline status
    */
-  public async updateEmbeddingStatus(
+  public async updatePipelineStatus(
     userId: string,
     fileId: string,
-    status: EmbeddingStatus
+    status: PipelineStatus
   ): Promise<void> {
-    this.logger.info({ userId, fileId, status }, 'Updating embedding status');
+    this.logger.info({ userId, fileId, status }, 'Updating pipeline status');
 
     try {
       const query = `
         UPDATE files
-        SET embedding_status = @status,
+        SET pipeline_status = @status,
             updated_at = GETUTCDATE()
         WHERE id = @id AND user_id = @user_id
       `;
@@ -345,9 +345,9 @@ export class FileRetryService implements IFileRetryService {
         throw new Error('File not found or unauthorized');
       }
 
-      this.logger.info({ userId, fileId, status }, 'Embedding status updated');
+      this.logger.info({ userId, fileId, status }, 'Pipeline status updated');
     } catch (error) {
-      this.logger.error({ error, userId, fileId, status }, 'Failed to update embedding status');
+      this.logger.error({ error, userId, fileId, status }, 'Failed to update pipeline status');
       throw error;
     }
   }

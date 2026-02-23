@@ -35,14 +35,10 @@ export {
 
 // File Processing Status Constants (D25 Sprint 3)
 export {
-  PROCESSING_STATUS,
-  EMBEDDING_STATUS,
   FILE_READINESS_STATE,
   FILE_DELETION_CONFIG,
   // Folder upload session configuration
   FOLDER_UPLOAD_CONFIG,
-  type ProcessingStatusValue,
-  type EmbeddingStatusValue,
   type FileReadinessStateValue,
 } from './file-processing';
 
@@ -89,6 +85,7 @@ export {
   canTransition,
   getValidTransitions,
   getTransitionErrorMessage,
+  computeReadinessState,
   PipelineTransitionError,
   type PipelineStatus,
   type PipelineStatusValue,

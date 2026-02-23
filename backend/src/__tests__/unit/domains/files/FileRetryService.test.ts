@@ -14,7 +14,7 @@
  * - setLastEmbeddingError()
  * - markAsPermanentlyFailed()
  * - clearFailedStatus()
- * - updateEmbeddingStatus()
+ * - updatePipelineStatus()
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -330,15 +330,15 @@ describe('FileRetryService', () => {
     });
   });
 
-  // ========== SUITE 7: updateEmbeddingStatus ==========
-  describe('updateEmbeddingStatus()', () => {
+  // ========== SUITE 7: updatePipelineStatus ==========
+  describe('updatePipelineStatus()', () => {
     it('should update status to "pending"', async () => {
       mockExecuteQuery.mockResolvedValueOnce({ recordset: [], rowsAffected: [1] });
 
-      await retryService.updateEmbeddingStatus(testUserId, testFileId, 'pending');
+      await retryService.updatePipelineStatus(testUserId, testFileId, 'pending');
 
       expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('embedding_status = @status'),
+        expect.stringContaining('pipeline_status = @status'),
         expect.objectContaining({
           status: 'pending',
         })
@@ -348,12 +348,12 @@ describe('FileRetryService', () => {
     it('should update status to "completed"', async () => {
       mockExecuteQuery.mockResolvedValueOnce({ recordset: [], rowsAffected: [1] });
 
-      await retryService.updateEmbeddingStatus(testUserId, testFileId, 'completed');
+      await retryService.updatePipelineStatus(testUserId, testFileId, 'ready');
 
       expect(mockExecuteQuery).toHaveBeenCalledWith(
         expect.anything(),
         expect.objectContaining({
-          status: 'completed',
+          status: 'ready',
         })
       );
     });
@@ -361,7 +361,7 @@ describe('FileRetryService', () => {
     it('should update status to "failed"', async () => {
       mockExecuteQuery.mockResolvedValueOnce({ recordset: [], rowsAffected: [1] });
 
-      await retryService.updateEmbeddingStatus(testUserId, testFileId, 'failed');
+      await retryService.updatePipelineStatus(testUserId, testFileId, 'failed');
 
       expect(mockExecuteQuery).toHaveBeenCalledWith(
         expect.anything(),
@@ -374,7 +374,7 @@ describe('FileRetryService', () => {
     it('should enforce multi-tenant isolation with user_id filter', async () => {
       mockExecuteQuery.mockResolvedValueOnce({ recordset: [], rowsAffected: [1] });
 
-      await retryService.updateEmbeddingStatus(testUserId, testFileId, 'completed');
+      await retryService.updatePipelineStatus(testUserId, testFileId, 'ready');
 
       expect(mockExecuteQuery).toHaveBeenCalledWith(
         expect.stringContaining('WHERE id = @id AND user_id = @user_id'),
@@ -389,7 +389,7 @@ describe('FileRetryService', () => {
       mockExecuteQuery.mockResolvedValueOnce({ recordset: [], rowsAffected: [0] });
 
       await expect(
-        retryService.updateEmbeddingStatus(testUserId, testFileId, 'completed')
+        retryService.updatePipelineStatus(testUserId, testFileId, 'ready')
       ).rejects.toThrow('File not found or unauthorized');
     });
   });

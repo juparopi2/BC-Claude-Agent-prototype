@@ -100,6 +100,11 @@ describe('useFileActions', () => {
         data: { folder: newFolder },
       });
 
+      // Initialize root tree cache so upsertTreeFolder doesn't no-op
+      act(() => {
+        useFolderTreeStore.getState().setTreeFolders('root', []);
+      });
+
       const { result } = renderHook(() => useFileActions());
 
       await act(async () => {

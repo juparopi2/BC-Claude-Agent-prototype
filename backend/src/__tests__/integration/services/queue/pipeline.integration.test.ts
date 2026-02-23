@@ -182,8 +182,8 @@ describe('Embedding Generation Pipeline', () => {
 
     // 2. Create file record in database (required for worker's UPDATE statement)
     await executeQuery(
-      `INSERT INTO files (id, user_id, name, blob_path, mime_type, size_bytes, processing_status, embedding_status, created_at, updated_at)
-       VALUES (@fileId, @userId, @name, @blobPath, @mimeType, @sizeBytes, @processingStatus, @embeddingStatus, GETDATE(), GETDATE())`,
+      `INSERT INTO files (id, user_id, name, blob_path, mime_type, size_bytes, pipeline_status, created_at, updated_at)
+       VALUES (@fileId, @userId, @name, @blobPath, @mimeType, @sizeBytes, @pipelineStatus, GETDATE(), GETDATE())`,
       {
         fileId,
         userId: testUser.id,
@@ -191,8 +191,7 @@ describe('Embedding Generation Pipeline', () => {
         blobPath: `users/${testUser.id}/files/${fileId}/test-file.txt`,
         mimeType: 'text/plain',
         sizeBytes: 100,
-        processingStatus: 'completed',
-        embeddingStatus: 'pending',
+        pipelineStatus: 'embedding',
       }
     );
 
@@ -267,11 +266,11 @@ describe('Embedding Generation Pipeline', () => {
     expect(mockVectorSearchService.indexChunksBatch).toHaveBeenCalled();
 
     // 8. Verify database was updated
-    const fileResult = await executeQuery<{ embedding_status: string }>(
-      'SELECT embedding_status FROM files WHERE id = @fileId',
+    const fileResult = await executeQuery<{ pipeline_status: string }>(
+      'SELECT pipeline_status FROM files WHERE id = @fileId',
       { fileId }
     );
-    expect(fileResult.recordset[0]?.embedding_status).toBe('completed');
+    expect(fileResult.recordset[0]?.pipeline_status).toBe('ready');
 
     // 9. Cleanup test data (in case factory cleanup doesn't cover it)
     await executeQuery('DELETE FROM file_chunks WHERE file_id = @fileId', { fileId });

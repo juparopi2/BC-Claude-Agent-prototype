@@ -12,11 +12,7 @@
  * @module domains/files/emission
  */
 
-import type {
-  FileReadinessState,
-  ProcessingStatus,
-  EmbeddingStatus,
-} from '@bc-agent/shared';
+import type { FileReadinessState } from '@bc-agent/shared';
 
 /**
  * Context for event emission (from job data or service call)
@@ -33,8 +29,6 @@ export interface FileEventContext {
 export interface ReadinessChangedPayload {
   previousState?: FileReadinessState;
   newState: FileReadinessState;
-  processingStatus: ProcessingStatus;
-  embeddingStatus: EmbeddingStatus;
 }
 
 /**
@@ -52,7 +46,7 @@ export interface PermanentlyFailedPayload {
  */
 export interface ProcessingProgressPayload {
   progress: number;
-  status: ProcessingStatus;
+  status: string;
   attemptNumber: number;
   maxAttempts: number;
 }

@@ -1,194 +1,159 @@
 /**
  * Duplicate Store
  *
- * Manages state for duplicate file detection during upload.
- * Tracks conflicts, user resolutions, and modal visibility.
+ * Zustand store for three-scope duplicate detection.
+ * Supports storage, pipeline, and upload scope with match type info.
  *
  * @module domains/files/stores/duplicateStore
  */
 
 import { create } from 'zustand';
-import type { ParsedFile, DuplicateAction } from '@bc-agent/shared';
+import type { DuplicateCheckResult } from '@bc-agent/shared';
 
-/**
- * Single duplicate conflict detected during upload
- */
-export interface DuplicateConflict {
-  /** Client-generated temp ID for correlation */
-  tempId: string;
-  /** New file being uploaded */
-  newFile: File;
-  /** Existing file in storage with same content hash */
-  existingFile: ParsedFile;
-  /** Content hash (SHA-256) */
-  hash: string;
-}
+// ============================================
+// Types
+// ============================================
 
-/**
- * User's resolution for a duplicate conflict
- */
-export interface DuplicateResolution {
-  /** Temp ID for correlation */
-  tempId: string;
-  /** User action: replace or skip */
-  action: Exclude<DuplicateAction, 'cancel'>;
-  /** Existing file ID to delete (if replacing) */
-  existingFileId?: string;
-}
+export type DuplicateAction = 'skip' | 'replace' | 'keep';
 
-/**
- * Duplicate store state
- */
-interface DuplicateState {
-  /** List of detected conflicts */
-  conflicts: DuplicateConflict[];
-  /** Current conflict index being shown */
-  currentIndex: number;
-  /** User resolutions for each conflict */
-  resolutions: DuplicateResolution[];
-  /** Whether the conflict modal is open */
+export interface DuplicateStoreState {
+  results: DuplicateCheckResult[];
+  resolutions: Map<string, DuplicateAction>;
   isModalOpen: boolean;
-  /** Whether the upload was cancelled */
   isCancelled: boolean;
+  targetFolderPath: string | null;
 }
 
-/**
- * Duplicate store actions
- */
-interface DuplicateActions {
-  /** Set detected conflicts and open modal */
-  setConflicts: (conflicts: DuplicateConflict[]) => void;
-  /** Resolve a single conflict */
-  resolveConflict: (tempId: string, action: DuplicateAction) => void;
-  /** Apply action to all remaining conflicts */
-  resolveAllRemaining: (action: Exclude<DuplicateAction, 'cancel'>) => void;
-  /** Open the modal */
-  openModal: () => void;
-  /** Close the modal */
-  closeModal: () => void;
-  /** Reset all state */
-  reset: () => void;
-  /** Get resolution for a tempId */
-  getResolution: (tempId: string) => DuplicateResolution | undefined;
-  /** Check if all conflicts are resolved */
+export interface DuplicateStoreActions {
+  setResults: (results: DuplicateCheckResult[], targetFolderPath?: string | null) => void;
+  resolveOne: (tempId: string, action: DuplicateAction) => void;
+  resolveAllRemaining: (action: DuplicateAction) => void;
   isAllResolved: () => boolean;
+  getSkippedTempIds: () => string[];
+  getKeepRenames: () => Map<string, string>;
+  getReplacementTargets: () => Map<string, string>;
+  closeModal: () => void;
+  cancel: () => void;
+  reset: () => void;
 }
 
-const initialState: DuplicateState = {
-  conflicts: [],
-  currentIndex: 0,
-  resolutions: [],
+// ============================================
+// Store
+// ============================================
+
+const initialState: DuplicateStoreState = {
+  results: [],
+  resolutions: new Map(),
   isModalOpen: false,
   isCancelled: false,
+  targetFolderPath: null,
 };
 
-/**
- * Zustand store for duplicate file management
- *
- * @example
- * ```tsx
- * function UploadComponent() {
- *   const { conflicts, isModalOpen, resolveConflict } = useDuplicateStore();
- *
- *   // Show modal when conflicts detected
- *   useEffect(() => {
- *     if (conflicts.length > 0) {
- *       // Modal opens automatically via setConflicts
- *     }
- *   }, [conflicts]);
- * }
- * ```
- */
-export const useDuplicateStore = create<DuplicateState & DuplicateActions>()(
+export const useDuplicateStore = create<DuplicateStoreState & DuplicateStoreActions>()(
   (set, get) => ({
     ...initialState,
 
-    setConflicts: (conflicts) => {
+    setResults: (results, targetFolderPath) => {
+      const duplicates = results.filter((r) => r.isDuplicate);
       set({
-        conflicts,
-        currentIndex: 0,
-        resolutions: [],
+        results,
+        resolutions: new Map(),
         isCancelled: false,
+        isModalOpen: duplicates.length > 0,
+        targetFolderPath: targetFolderPath ?? null,
       });
-      if (conflicts.length > 0) {
-        set({ isModalOpen: true });
-      }
     },
 
-    resolveConflict: (tempId, action) => {
-      if (action === 'cancel') {
-        // Cancel means abort entire upload
-        set({
-          isModalOpen: false,
-          conflicts: [],
-          resolutions: [],
-          isCancelled: true,
-        });
-        return;
-      }
+    resolveOne: (tempId, action) => {
+      set((state) => {
+        const resolutions = new Map(state.resolutions);
+        resolutions.set(tempId, action);
 
-      const { conflicts, currentIndex, resolutions } = get();
-      const conflict = conflicts.find((c) => c.tempId === tempId);
+        const duplicates = state.results.filter((r) => r.isDuplicate);
+        const allResolved = duplicates.every((r) => resolutions.has(r.tempId));
 
-      if (conflict) {
-        const resolution: DuplicateResolution = {
-          tempId,
-          action,
-          existingFileId: action === 'replace' ? conflict.existingFile.id : undefined,
+        return {
+          resolutions,
+          isModalOpen: !allResolved,
         };
-
-        const newResolutions = [...resolutions, resolution];
-        const newIndex = currentIndex + 1;
-
-        if (newIndex >= conflicts.length) {
-          // All conflicts resolved
-          set({
-            resolutions: newResolutions,
-            currentIndex: newIndex,
-            isModalOpen: false,
-          });
-        } else {
-          set({ resolutions: newResolutions, currentIndex: newIndex });
-        }
-      }
+      });
     },
 
     resolveAllRemaining: (action) => {
-      const { conflicts, currentIndex, resolutions } = get();
-      const newResolutions = [...resolutions];
+      set((state) => {
+        const resolutions = new Map(state.resolutions);
+        const duplicates = state.results.filter((r) => r.isDuplicate);
 
-      for (let i = currentIndex; i < conflicts.length; i++) {
-        const conflict = conflicts[i];
-        if (conflict) {
-          newResolutions.push({
-            tempId: conflict.tempId,
-            action,
-            existingFileId: action === 'replace' ? conflict.existingFile.id : undefined,
-          });
+        for (const dup of duplicates) {
+          if (!resolutions.has(dup.tempId)) {
+            resolutions.set(dup.tempId, action);
+          }
         }
-      }
 
-      set({
-        resolutions: newResolutions,
-        currentIndex: conflicts.length,
-        isModalOpen: false,
+        return {
+          resolutions,
+          isModalOpen: false,
+        };
       });
     },
 
-    openModal: () => set({ isModalOpen: true }),
+    isAllResolved: () => {
+      const { results, resolutions, isCancelled } = get();
+      if (isCancelled) return true;
+      const duplicates = results.filter((r) => r.isDuplicate);
+      if (duplicates.length === 0) return true;
+      return duplicates.every((r) => resolutions.has(r.tempId));
+    },
+
+    getSkippedTempIds: () => {
+      const { resolutions } = get();
+      const skipped: string[] = [];
+      resolutions.forEach((action, tempId) => {
+        if (action === 'skip') {
+          skipped.push(tempId);
+        }
+      });
+      return skipped;
+    },
+
+    getKeepRenames: () => {
+      const { results, resolutions } = get();
+      const renames = new Map<string, string>();
+      for (const result of results) {
+        if (
+          result.isDuplicate &&
+          resolutions.get(result.tempId) === 'keep' &&
+          result.suggestedName
+        ) {
+          renames.set(result.tempId, result.suggestedName);
+        }
+      }
+      return renames;
+    },
+
+    getReplacementTargets: () => {
+      const { results, resolutions } = get();
+      const replacements = new Map<string, string>();
+      for (const result of results) {
+        if (
+          result.isDuplicate &&
+          resolutions.get(result.tempId) === 'replace' &&
+          result.existingFile
+        ) {
+          replacements.set(result.tempId, result.existingFile.fileId);
+        }
+      }
+      return replacements;
+    },
+
     closeModal: () => set({ isModalOpen: false }),
 
-    reset: () => set(initialState),
+    cancel: () => set({ isModalOpen: false, isCancelled: true }),
 
-    getResolution: (tempId) => {
-      return get().resolutions.find((r) => r.tempId === tempId);
-    },
-
-    isAllResolved: () => {
-      const { conflicts, resolutions, isCancelled } = get();
-      if (isCancelled) return true;
-      if (conflicts.length === 0) return true;
-      return resolutions.length >= conflicts.length;
-    },
+    reset: () => set({ ...initialState, resolutions: new Map() }),
   })
 );
+
+export function resetDuplicateStore(): void {
+  useDuplicateStore.setState({ ...initialState, resolutions: new Map() });
+}

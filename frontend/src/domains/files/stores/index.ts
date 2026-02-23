@@ -35,26 +35,11 @@ export {
 } from './fileListStore';
 
 export {
-  useUploadStore,
-  resetUploadStore,
-  type UploadState,
-  type UploadActions,
-  type UploadItem,
-  type UploadStatus,
-} from './uploadStore';
-
-export {
   useFolderTreeStore,
   resetFolderTreeStore,
   type FolderTreeState,
   type FolderTreeActions,
 } from './folderTreeStore';
-
-export {
-  useDuplicateStore,
-  type DuplicateConflict,
-  type DuplicateResolution,
-} from './duplicateStore';
 
 export {
   useFileProcessingStore,
@@ -79,39 +64,28 @@ export {
 } from './unsupportedFilesStore';
 
 export {
-  useUploadSessionStore,
-  resetUploadSessionStore,
-  type UploadSessionState,
-  type UploadSessionActions,
-} from './uploadSessionStore';
-
-export {
-  useMultiUploadSessionStore,
-  resetMultiUploadSessionStore,
-  type MultiUploadSessionState,
-  type MultiUploadSessionActions,
-} from './multiUploadSessionStore';
-
-export {
   useFolderDuplicateStore,
   resetFolderDuplicateStore,
-  waitForFolderResolution,
-  type FolderDuplicateConflict,
-  type FolderDuplicateResolution,
+  type FolderDuplicateStoreState,
+  type FolderDuplicateStoreActions,
   type FolderDuplicateAction,
+  type FolderDuplicateResolution,
 } from './folderDuplicateStore';
 
-// V2 Stores (Batch Upload Pipeline)
+// Stores (Batch Upload Pipeline)
 export {
-  useBatchUploadStoreV2,
-  resetBatchUploadStoreV2,
+  useBatchUploadStore,
+  resetBatchUploadStore,
   type BatchUploadState,
   type BatchUploadActions,
   type BatchFileState,
   type ActiveBatch,
-  useDuplicateStoreV2,
-  resetDuplicateStoreV2,
-  type DuplicateStoreV2State,
-  type DuplicateStoreV2Actions,
-  type DuplicateActionV2,
-} from './v2';
+} from './uploadBatchStore';
+
+export {
+  useDuplicateStore,
+  resetDuplicateStore,
+  type DuplicateStoreState,
+  type DuplicateStoreActions,
+  type DuplicateAction,
+} from './duplicateStore';

@@ -49,12 +49,12 @@ import chatAttachmentsRoutes from './routes/chat-attachments';
 import audioRoutes from './routes/audio';
 import agentsRoutes from './routes/agents';
 import analyticsRoutes from './routes/analytics';
-import uploadHealthRoutes from '@/routes/v2/uploads/health.routes';
-import duplicateDetectionV2Routes from '@/routes/v2/uploads/duplicate-detection.routes';
-import folderDuplicateDetectionV2Routes from '@/routes/v2/uploads/folder-duplicate-detection.routes';
-import batchUploadV2Routes from '@/routes/v2/uploads/batch.routes';
-import dlqRoutes from '@/routes/v2/uploads/dlq.routes';
-import dashboardRoutes from '@/routes/v2/uploads/dashboard.routes';
+import uploadHealthRoutes from '@/routes/uploads/health.routes';
+import duplicateDetectionRoutes from '@/routes/uploads/duplicate-detection.routes';
+import folderDuplicateDetectionRoutes from '@/routes/uploads/folder-duplicate-detection.routes';
+import batchUploadRoutes from '@/routes/uploads/batch.routes';
+import dlqRoutes from '@/routes/uploads/dlq.routes';
+import dashboardRoutes from '@/routes/uploads/dashboard.routes';
 import { registerAgents } from '@/modules/agents/core/registry/registerAgents';
 import { initializeSupervisorGraph, resumeSupervisor } from '@/modules/agents/supervisor';
 import { processUserAgentSelection } from '@/modules/agents/handoffs';
@@ -231,24 +231,6 @@ async function initializeApp(): Promise<void> {
     }
     console.log('');
 
-    // Step 4.7: Initialize FileProcessingScheduler (flow control for file processing)
-    console.log('📂 Initializing FileProcessingScheduler...');
-    try {
-      const { getFileProcessingScheduler } = await import('@/domains/files/scheduler');
-      const scheduler = getFileProcessingScheduler();
-      scheduler.start();
-      const config = scheduler.getConfig();
-      console.log('✅ FileProcessingScheduler started');
-      console.log(`   Batch size: ${config.batchSize} files`);
-      console.log(`   Check interval: ${config.checkIntervalMs}ms`);
-      console.log(`   Max queue depth: ${config.maxQueueDepth}`);
-    } catch (error) {
-      // Non-critical: scheduler failure shouldn't prevent server start
-      // Files will be processed but without flow control
-      console.warn('⚠️  FileProcessingScheduler initialization failed:', error instanceof Error ? error.message : 'Unknown error');
-      console.warn('   File processing will work but without flow control');
-    }
-    console.log('');
 
     // Step 5: Initialize BC Client (validate credentials)
     console.log('🔑 Validating Business Central credentials...');
@@ -865,32 +847,32 @@ function configureRoutes(): void {
 
   // Upload pipeline health endpoint (PRD-01)
   if (isDatabaseAvailable) {
-    app.use('/api/v2/uploads/health', uploadHealthRoutes);
+    app.use('/api/uploads/health', uploadHealthRoutes);
   }
 
-  // Duplicate detection V2 endpoint (PRD-02)
+  // Duplicate detection endpoint (PRD-02)
   if (isDatabaseAvailable) {
-    app.use('/api/v2/uploads/check-duplicates', duplicateDetectionV2Routes);
+    app.use('/api/uploads/check-duplicates', duplicateDetectionRoutes);
   }
 
-  // Folder duplicate detection V2 endpoint
+  // Folder duplicate detection endpoint
   if (isDatabaseAvailable) {
-    app.use('/api/v2/uploads/check-folder-duplicates', folderDuplicateDetectionV2Routes);
+    app.use('/api/uploads/check-folder-duplicates', folderDuplicateDetectionRoutes);
   }
 
-  // Batch Upload V2 endpoints (PRD-03)
+  // Batch Upload endpoints (PRD-03)
   if (isDatabaseAvailable) {
-    app.use('/api/v2/uploads/batches', batchUploadV2Routes);
+    app.use('/api/uploads/batches', batchUploadRoutes);
   }
 
   // Dead Letter Queue endpoints (PRD-04)
   if (isDatabaseAvailable) {
-    app.use('/api/v2/uploads/dlq', dlqRoutes);
+    app.use('/api/uploads/dlq', dlqRoutes);
   }
 
   // Upload Dashboard endpoints (PRD-05)
   if (isDatabaseAvailable) {
-    app.use('/api/v2/uploads/dashboard', dashboardRoutes);
+    app.use('/api/uploads/dashboard', dashboardRoutes);
   }
 
   // Client log ingestion endpoint
@@ -1403,17 +1385,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
       });
     });
 
-    // 3. Stop FileProcessingScheduler (prevent new jobs from being enqueued)
-    try {
-      const { getFileProcessingScheduler } = await import('@/domains/files/scheduler');
-      const scheduler = getFileProcessingScheduler();
-      scheduler.stop();
-      console.log('✅ FileProcessingScheduler stopped');
-    } catch {
-      // Non-critical - scheduler may not have been initialized
-    }
-
-    // 4. Close MessageQueue (CRITICAL - drain active jobs before DB closes)
+    // 3. Close MessageQueue (CRITICAL - drain active jobs before DB closes)
     console.log('🔄 Closing MessageQueue (draining active jobs)...');
     try {
       const messageQueue = getMessageQueue();

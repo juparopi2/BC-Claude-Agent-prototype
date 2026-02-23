@@ -39,8 +39,6 @@ import {
   FileChunkDbRecord,
   ParsedFileChunk,
   MessageFileAttachmentDbRecord,
-  ProcessingStatus,
-  EmbeddingStatus,
   FileUsageType,
   FileReadinessState,
 } from '@/types/file.types';
@@ -103,8 +101,7 @@ export class FileFixture {
       blob_path: FileFixture.generateBlobPath(userId, name),
       is_folder: false,
       is_favorite: false,
-      processing_status: 'completed' as ProcessingStatus,
-      embedding_status: 'pending' as EmbeddingStatus,
+      pipeline_status: 'ready',
       extracted_text: null,
       content_hash: null,
       // Retry tracking fields (D25 robustness)
@@ -188,9 +185,8 @@ export class FileFixture {
       blobPath: FileFixture.generateBlobPath(userId, name),
       isFolder: false,
       isFavorite: false,
-      processingStatus: 'completed',
-      embeddingStatus: 'pending',
-      readinessState: 'processing' as FileReadinessState, // Default: completed + pending = processing
+      pipelineStatus: 'ready',
+      readinessState: 'ready' as FileReadinessState,
       hasExtractedText: false,
       contentHash: null,
       // Retry tracking fields (D25 robustness)
@@ -331,8 +327,7 @@ export class FileFixture {
         name: 'invoice-2024-12.pdf',
         mime_type: 'application/pdf',
         size_bytes: 245760, // ~240 KB
-        processing_status: 'completed',
-        embedding_status: 'completed',
+        pipeline_status: 'ready',
         extracted_text: 'Invoice #INV-2024-12-001\nDate: December 31, 2024\nAmount Due: $1,250.00',
         is_favorite: true,
       }),
@@ -346,8 +341,7 @@ export class FileFixture {
         name: 'project-proposal.docx',
         mime_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         size_bytes: 512000, // ~500 KB
-        processing_status: 'completed',
-        embedding_status: 'pending',
+        pipeline_status: 'extracting',
       }),
 
     /**
@@ -359,8 +353,7 @@ export class FileFixture {
         name: 'budget-2024.xlsx',
         mime_type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         size_bytes: 102400, // ~100 KB
-        processing_status: 'completed',
-        embedding_status: 'completed',
+        pipeline_status: 'ready',
       }),
 
     /**
@@ -372,8 +365,7 @@ export class FileFixture {
         name: 'screenshot.png',
         mime_type: 'image/png',
         size_bytes: 2048000, // ~2 MB
-        processing_status: 'pending',
-        embedding_status: 'pending',
+        pipeline_status: 'registered',
       }),
 
     /**
@@ -385,8 +377,7 @@ export class FileFixture {
         name: 'annual-report-2024.pdf',
         mime_type: 'application/pdf',
         size_bytes: 52428800, // 50 MB
-        processing_status: 'failed',
-        embedding_status: 'pending',
+        pipeline_status: 'failed',
       }),
 
     /**
@@ -463,8 +454,7 @@ export class FileFixture {
         user_id: userId,
         name: 'long-document.pdf',
         size_bytes: 5120000, // 5 MB
-        processing_status: 'completed',
-        embedding_status: 'completed',
+        pipeline_status: 'ready',
         extracted_text: 'This is a long document with multiple pages...',
       });
 
@@ -538,8 +528,7 @@ export class FileFixture {
       FileFixture.createFileDbRecord({
         user_id: userId,
         name: 'retry-test.pdf',
-        processing_status: 'failed',
-        embedding_status: 'pending',
+        pipeline_status: 'failed',
         processing_retry_count: 2,
         embedding_retry_count: 1,
         last_processing_error: 'OCR extraction timeout after 30 seconds',
@@ -555,8 +544,7 @@ export class FileFixture {
       FileFixture.createFileDbRecord({
         user_id: userId,
         name: 'permanently-failed.pdf',
-        processing_status: 'failed',
-        embedding_status: 'pending',
+        pipeline_status: 'failed',
         processing_retry_count: 3,
         embedding_retry_count: 0,
         last_processing_error: 'Maximum retries exceeded: OCR service unavailable',
@@ -572,8 +560,7 @@ export class FileFixture {
       FileFixture.createFileDbRecord({
         user_id: userId,
         name: 'embedding-failed.pdf',
-        processing_status: 'completed',
-        embedding_status: 'failed',
+        pipeline_status: 'failed',
         processing_retry_count: 0,
         embedding_retry_count: 2,
         last_processing_error: null,

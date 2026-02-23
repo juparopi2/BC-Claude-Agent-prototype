@@ -118,11 +118,40 @@ export function getTransitionErrorMessage(from: PipelineStatus, to: PipelineStat
 }
 
 // ============================================================================
+// READINESS STATE COMPUTATION
+// ============================================================================
+
+import type { FileReadinessState } from '../types/file.types';
+
+/**
+ * Compute the user-facing readiness state from a pipeline status value.
+ *
+ * Replaces the removed `ReadinessStateComputer` class with a pure function.
+ *
+ * @param pipelineStatus - Current pipeline status value
+ * @returns Simplified readiness state for UI display
+ */
+export function computeReadinessState(pipelineStatus: string): FileReadinessState {
+  switch (pipelineStatus) {
+    case PIPELINE_STATUS.REGISTERED:
+    case PIPELINE_STATUS.UPLOADED:
+      return 'uploading';
+    case PIPELINE_STATUS.FAILED:
+      return 'failed';
+    case PIPELINE_STATUS.READY:
+      return 'ready';
+    default:
+      // queued, extracting, chunking, embedding
+      return 'processing';
+  }
+}
+
+// ============================================================================
 // TRANSITION RESULT TYPE
 // ============================================================================
 
 /**
- * Result of an attempted state transition (used by FileRepositoryV2).
+ * Result of an attempted state transition (used by FileRepository).
  */
 export interface TransitionResult {
   /** Whether the transition succeeded */

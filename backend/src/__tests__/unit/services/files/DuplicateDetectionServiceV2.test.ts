@@ -1,5 +1,5 @@
 /**
- * DuplicateDetectionServiceV2 Tests (PRD-02)
+ * DuplicateDetectionService Tests (PRD-02)
  *
  * Tests batch-optimized duplicate detection across 3 scopes (storage, pipeline, upload).
  * Validates match type logic, scope priority, and query safety.
@@ -7,12 +7,12 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
-  DuplicateDetectionServiceV2,
-  getDuplicateDetectionServiceV2,
-  __resetDuplicateDetectionServiceV2,
-} from '@/services/files/DuplicateDetectionServiceV2';
+  DuplicateDetectionService,
+  getDuplicateDetectionService,
+  __resetDuplicateDetectionService,
+} from '@/services/files/DuplicateDetectionService';
 import { PIPELINE_STATUS } from '@bc-agent/shared';
-import type { DuplicateCheckInputV2 } from '@bc-agent/shared';
+import type { DuplicateCheckInput } from '@bc-agent/shared';
 
 // Mock Prisma client
 vi.mock('@/infrastructure/database/prisma', () => ({
@@ -37,8 +37,8 @@ import { prisma } from '@/infrastructure/database/prisma';
 
 const mockFindMany = vi.mocked(prisma.files.findMany);
 
-describe('DuplicateDetectionServiceV2', () => {
-  let service: DuplicateDetectionServiceV2;
+describe('DuplicateDetectionService', () => {
+  let service: DuplicateDetectionService;
 
   const TEST_USER_ID = 'USER-12345678-1234-1234-1234-123456789ABC';
   const TEST_FILE_ID = 'FILE-AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE';
@@ -46,8 +46,8 @@ describe('DuplicateDetectionServiceV2', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    __resetDuplicateDetectionServiceV2();
-    service = new DuplicateDetectionServiceV2();
+    __resetDuplicateDetectionService();
+    service = new DuplicateDetectionService();
   });
 
   describe('checkDuplicates', () => {
@@ -70,7 +70,7 @@ describe('DuplicateDetectionServiceV2', () => {
 
     // Test 2: Storage scope - name match (ready)
     it('should detect duplicate in storage scope with ready status by name+folder', async () => {
-      const inputs: DuplicateCheckInputV2[] = [
+      const inputs: DuplicateCheckInput[] = [
         {
           tempId: 'temp-001',
           fileName: 'report.pdf',
@@ -127,7 +127,7 @@ describe('DuplicateDetectionServiceV2', () => {
 
     // Test 3: Storage scope - name match (null/legacy)
     it('should detect duplicate in storage scope with null pipeline_status by name+folder', async () => {
-      const inputs: DuplicateCheckInputV2[] = [
+      const inputs: DuplicateCheckInput[] = [
         {
           tempId: 'temp-002',
           fileName: 'legacy-doc.txt',
@@ -168,7 +168,7 @@ describe('DuplicateDetectionServiceV2', () => {
 
     // Test 4: Storage scope - hash match
     it('should detect duplicate in storage scope by content hash only', async () => {
-      const inputs: DuplicateCheckInputV2[] = [
+      const inputs: DuplicateCheckInput[] = [
         {
           tempId: 'temp-003',
           fileName: 'new-name.pdf',
@@ -205,7 +205,7 @@ describe('DuplicateDetectionServiceV2', () => {
 
     // Test 5: Storage scope - name_and_content match
     it('should detect duplicate in storage scope with both name+folder and hash match', async () => {
-      const inputs: DuplicateCheckInputV2[] = [
+      const inputs: DuplicateCheckInput[] = [
         {
           tempId: 'temp-004',
           fileName: 'report.pdf',
@@ -245,7 +245,7 @@ describe('DuplicateDetectionServiceV2', () => {
 
     // Test 6: Storage scope - different folder no name match
     it('should not match by name if folder differs, but match by hash if provided', async () => {
-      const inputs: DuplicateCheckInputV2[] = [
+      const inputs: DuplicateCheckInput[] = [
         {
           tempId: 'temp-005',
           fileName: 'report.pdf',
@@ -283,7 +283,7 @@ describe('DuplicateDetectionServiceV2', () => {
 
     // Test 7: Pipeline scope - match in active statuses
     it('should detect duplicate in pipeline scope with extracting status', async () => {
-      const inputs: DuplicateCheckInputV2[] = [
+      const inputs: DuplicateCheckInput[] = [
         {
           tempId: 'temp-006',
           fileName: 'processing.pdf',
@@ -322,7 +322,7 @@ describe('DuplicateDetectionServiceV2', () => {
 
     // Test 8: Upload scope - match in registered/uploaded
     it('should detect duplicate in upload scope with registered status', async () => {
-      const inputs: DuplicateCheckInputV2[] = [
+      const inputs: DuplicateCheckInput[] = [
         {
           tempId: 'temp-007',
           fileName: 'upload.pdf',
@@ -358,7 +358,7 @@ describe('DuplicateDetectionServiceV2', () => {
 
     // Test 9: Priority - storage wins over pipeline
     it('should prioritize storage match over pipeline match', async () => {
-      const inputs: DuplicateCheckInputV2[] = [
+      const inputs: DuplicateCheckInput[] = [
         {
           tempId: 'temp-008',
           fileName: 'priority.pdf',
@@ -404,7 +404,7 @@ describe('DuplicateDetectionServiceV2', () => {
 
     // Test 10: Priority - pipeline wins over upload
     it('should prioritize pipeline match over upload match', async () => {
-      const inputs: DuplicateCheckInputV2[] = [
+      const inputs: DuplicateCheckInput[] = [
         {
           tempId: 'temp-009',
           fileName: 'priority2.pdf',
@@ -450,7 +450,7 @@ describe('DuplicateDetectionServiceV2', () => {
 
     // Test 11: Batch - mixed results
     it('should handle batch with multiple inputs and different results', async () => {
-      const inputs: DuplicateCheckInputV2[] = [
+      const inputs: DuplicateCheckInput[] = [
         {
           tempId: 'temp-010',
           fileName: 'found-storage.pdf',
@@ -525,7 +525,7 @@ describe('DuplicateDetectionServiceV2', () => {
 
     // Test 12: Summary - accurate counts
     it('should generate accurate summary counts for all match types and scopes', async () => {
-      const inputs: DuplicateCheckInputV2[] = [
+      const inputs: DuplicateCheckInput[] = [
         {
           tempId: 'temp-013',
           fileName: 'name-match.pdf',
@@ -588,7 +588,7 @@ describe('DuplicateDetectionServiceV2', () => {
 
     // Test 13: No hash inputs
     it('should handle inputs with no content hashes gracefully', async () => {
-      const inputs: DuplicateCheckInputV2[] = [
+      const inputs: DuplicateCheckInput[] = [
         {
           tempId: 'temp-016',
           fileName: 'no-hash.pdf',
@@ -620,12 +620,12 @@ describe('DuplicateDetectionServiceV2', () => {
 
       // Verify storage query doesn't include content_hash in OR clause
       const storageQuery = mockFindMany.mock.calls[0][0];
-      expect(storageQuery.where.AND[0].OR).toHaveLength(1); // Only name, no hash
+      expect(storageQuery.where.OR).toHaveLength(1); // Only name, no hash
     });
 
     // Test 14: Query safety - user_id
     it('should include user_id in all scope queries', async () => {
-      const inputs: DuplicateCheckInputV2[] = [
+      const inputs: DuplicateCheckInput[] = [
         {
           tempId: 'temp-017',
           fileName: 'test.pdf',
@@ -649,7 +649,7 @@ describe('DuplicateDetectionServiceV2', () => {
 
     // Test 15: Query safety - deletion_status null
     it('should include deletion_status: null in all scope queries', async () => {
-      const inputs: DuplicateCheckInputV2[] = [
+      const inputs: DuplicateCheckInput[] = [
         {
           tempId: 'temp-018',
           fileName: 'test.pdf',
@@ -671,7 +671,7 @@ describe('DuplicateDetectionServiceV2', () => {
 
     // Test 16: Query safety - is_folder false
     it('should include is_folder: false in all scope queries', async () => {
-      const inputs: DuplicateCheckInputV2[] = [
+      const inputs: DuplicateCheckInput[] = [
         {
           tempId: 'temp-019',
           fileName: 'test.pdf',
@@ -692,25 +692,25 @@ describe('DuplicateDetectionServiceV2', () => {
     });
 
     // Test 17: Singleton - get returns same instance
-    it('should return the same instance from getDuplicateDetectionServiceV2', () => {
-      const instance1 = getDuplicateDetectionServiceV2();
-      const instance2 = getDuplicateDetectionServiceV2();
+    it('should return the same instance from getDuplicateDetectionService', () => {
+      const instance1 = getDuplicateDetectionService();
+      const instance2 = getDuplicateDetectionService();
 
       expect(instance1).toBe(instance2);
     });
 
     // Test 18: Singleton - __reset clears
-    it('should create new instance after __resetDuplicateDetectionServiceV2', () => {
-      const instance1 = getDuplicateDetectionServiceV2();
-      __resetDuplicateDetectionServiceV2();
-      const instance2 = getDuplicateDetectionServiceV2();
+    it('should create new instance after __resetDuplicateDetectionService', () => {
+      const instance1 = getDuplicateDetectionService();
+      __resetDuplicateDetectionService();
+      const instance2 = getDuplicateDetectionService();
 
       expect(instance1).not.toBe(instance2);
     });
 
     // Test 19: Hash comparison case-insensitive
     it('should match hashes case-insensitively', async () => {
-      const inputs: DuplicateCheckInputV2[] = [
+      const inputs: DuplicateCheckInput[] = [
         {
           tempId: 'temp-020',
           fileName: 'case-test.pdf',
@@ -743,7 +743,7 @@ describe('DuplicateDetectionServiceV2', () => {
 
     // Test 20: No match returns isDuplicate false
     it('should return isDuplicate: false when no match in any scope', async () => {
-      const inputs: DuplicateCheckInputV2[] = [
+      const inputs: DuplicateCheckInput[] = [
         {
           tempId: 'temp-021',
           fileName: 'unique.pdf',
@@ -775,7 +775,7 @@ describe('DuplicateDetectionServiceV2', () => {
   describe('suggestedName — literal name behavior', () => {
     // Test 21: Literal name — no suffix stripping
     it('should treat file (1).pdf literally and suggest file (1) (1).pdf, not file (2).pdf', async () => {
-      const inputs: DuplicateCheckInputV2[] = [
+      const inputs: DuplicateCheckInput[] = [
         {
           tempId: 'temp-literal-1',
           fileName: 'file (1).pdf',
@@ -811,7 +811,7 @@ describe('DuplicateDetectionServiceV2', () => {
 
     // Test 22: Literal name — no family grouping across siblings
     it('should not group "file (1).pdf" into the "file" family when computing suggestedName', async () => {
-      const inputs: DuplicateCheckInputV2[] = [
+      const inputs: DuplicateCheckInput[] = [
         {
           tempId: 'temp-literal-2',
           fileName: 'file (1).pdf',
@@ -847,7 +847,7 @@ describe('DuplicateDetectionServiceV2', () => {
 
     // Test 23: suggestedName increments correctly with siblings (multiple iterations)
     it('should suggest report (2).pdf when report.pdf and report (1).pdf already exist as siblings', async () => {
-      const inputs: DuplicateCheckInputV2[] = [
+      const inputs: DuplicateCheckInput[] = [
         {
           tempId: 'temp-incr',
           fileName: 'report.pdf',
@@ -891,7 +891,7 @@ describe('DuplicateDetectionServiceV2', () => {
 
     // Test 24: suggestedName with targetFolderId — literal name with siblings
     it('should suggest data (1) (1).xlsx (not data (3).xlsx) when data (1).xlsx is the literal input', async () => {
-      const inputs: DuplicateCheckInputV2[] = [
+      const inputs: DuplicateCheckInput[] = [
         {
           tempId: 'temp-literal-folder',
           fileName: 'data (1).xlsx',
@@ -939,7 +939,7 @@ describe('DuplicateDetectionServiceV2', () => {
     // Test 25: When name match and content match exist on DIFFERENT files,
     // existingFile should be the name-matched file (not the content-matched one)
     it('should return name-matched file as existingFile, not content-matched renamed copy', async () => {
-      const inputs: DuplicateCheckInputV2[] = [
+      const inputs: DuplicateCheckInput[] = [
         {
           tempId: 'temp-priority-1',
           fileName: '20251031_075420.jpg',
@@ -988,7 +988,7 @@ describe('DuplicateDetectionServiceV2', () => {
 
     // Test 26: When ONLY content match exists (no name match), content match is used
     it('should fall back to content match when no name match exists', async () => {
-      const inputs: DuplicateCheckInputV2[] = [
+      const inputs: DuplicateCheckInput[] = [
         {
           tempId: 'temp-priority-2',
           fileName: 'new-name.pdf',
@@ -1026,7 +1026,7 @@ describe('DuplicateDetectionServiceV2', () => {
 
     // Test 27: name_and_content still wins when both match on the SAME file
     it('should return name_and_content when both match on the same file', async () => {
-      const inputs: DuplicateCheckInputV2[] = [
+      const inputs: DuplicateCheckInput[] = [
         {
           tempId: 'temp-priority-3',
           fileName: 'report.pdf',
@@ -1063,7 +1063,7 @@ describe('DuplicateDetectionServiceV2', () => {
 
   describe('folder path resolution', () => {
     it('should resolve single-level folder path for existing file', async () => {
-      const inputs: DuplicateCheckInputV2[] = [
+      const inputs: DuplicateCheckInput[] = [
         { tempId: 'temp-fp-1', fileName: 'report.pdf', folderId: TEST_FOLDER_ID, contentHash: undefined },
       ];
 
@@ -1098,7 +1098,7 @@ describe('DuplicateDetectionServiceV2', () => {
       const PARENT_FOLDER_ID = 'FOLD-PARENT00-1111-2222-3333-444444444444';
       const CHILD_FOLDER_ID = 'FOLD-CHILD000-1111-2222-3333-444444444444';
 
-      const inputs: DuplicateCheckInputV2[] = [
+      const inputs: DuplicateCheckInput[] = [
         { tempId: 'temp-fp-2', fileName: 'data.csv', folderId: CHILD_FOLDER_ID, contentHash: undefined },
       ];
 
@@ -1133,7 +1133,7 @@ describe('DuplicateDetectionServiceV2', () => {
     });
 
     it('should resolve targetFolderPath from targetFolderId', async () => {
-      const inputs: DuplicateCheckInputV2[] = [
+      const inputs: DuplicateCheckInput[] = [
         { tempId: 'temp-fp-3', fileName: 'report.pdf', contentHash: undefined },
       ];
 
@@ -1164,7 +1164,7 @@ describe('DuplicateDetectionServiceV2', () => {
     });
 
     it('should return null folderName/folderPath for root-level files', async () => {
-      const inputs: DuplicateCheckInputV2[] = [
+      const inputs: DuplicateCheckInput[] = [
         { tempId: 'temp-fp-4', fileName: 'root.pdf', folderId: null, contentHash: undefined },
       ];
 
@@ -1194,7 +1194,7 @@ describe('DuplicateDetectionServiceV2', () => {
     it('should return null folderName/folderPath for orphaned folder reference', async () => {
       const ORPHAN_FOLDER_ID = 'FOLD-ORPHAN00-1111-2222-3333-444444444444';
 
-      const inputs: DuplicateCheckInputV2[] = [
+      const inputs: DuplicateCheckInput[] = [
         { tempId: 'temp-fp-5', fileName: 'orphan.pdf', folderId: ORPHAN_FOLDER_ID, contentHash: undefined },
       ];
 
@@ -1225,7 +1225,7 @@ describe('DuplicateDetectionServiceV2', () => {
 
   describe('deletion_status filtering verification', () => {
     it('should include deletion_status: null in fetchSiblingNames query when targetFolderId is provided', async () => {
-      const inputs: DuplicateCheckInputV2[] = [
+      const inputs: DuplicateCheckInput[] = [
         { tempId: 'temp-del-1', fileName: 'test.pdf', folderId: null, contentHash: undefined },
       ];
 
@@ -1241,7 +1241,7 @@ describe('DuplicateDetectionServiceV2', () => {
     });
 
     it('should exclude files with non-null deletion_status from all 3 scope queries', async () => {
-      const inputs: DuplicateCheckInputV2[] = [
+      const inputs: DuplicateCheckInput[] = [
         { tempId: 'temp-del-2', fileName: 'test.pdf', folderId: null, contentHash: 'hash123' },
       ];
 

@@ -119,8 +119,7 @@ describe('FileChunkingService', () => {
           user_id: 'test-user-id',
           mime_type: 'text/plain',
           extracted_text: null,
-          processing_status: 'completed',
-          embedding_status: 'pending',
+          pipeline_status: 'chunking',
         }],
       });
 
@@ -140,13 +139,12 @@ describe('FileChunkingService', () => {
           user_id: 'test-user-id',
           mime_type: 'text/plain',
           extracted_text: 'Some text content',
-          processing_status: 'processing',
-          embedding_status: 'pending',
+          pipeline_status: 'extracting',
         }],
       });
 
       await expect(service.processFileChunks(mockJobData)).rejects.toThrow(
-        'File processing not completed: processing'
+        'File not in chunking status: extracting'
       );
     });
 
@@ -159,17 +157,12 @@ describe('FileChunkingService', () => {
             user_id: 'test-user-id',
             mime_type: 'text/plain',
             extracted_text: 'This is the extracted text content from the file.',
-            processing_status: 'completed',
-            embedding_status: 'pending',
+            pipeline_status: 'chunking',
           }],
         })
-        // Mock update embedding status to 'processing'
-        .mockResolvedValueOnce({ recordset: [] })
         // Mock insert chunk 1
         .mockResolvedValueOnce({ recordset: [] })
         // Mock insert chunk 2
-        .mockResolvedValueOnce({ recordset: [] })
-        // Mock update embedding status to 'queued'
         .mockResolvedValueOnce({ recordset: [] });
 
       const result = await service.processFileChunks(mockJobData);
@@ -178,11 +171,11 @@ describe('FileChunkingService', () => {
         fileId: 'test-file-id',
         chunkCount: 2,
         totalTokens: 220, // 100 + 120
-        embeddingJobId: 'mock-embedding-job-id',
+        embeddingJobId: undefined,
       });
     });
 
-    it('should update embedding status to failed on error', async () => {
+    it('should rethrow error on chunk insert failure', async () => {
       // Mock file query
       mockExecuteQuery
         .mockResolvedValueOnce({
@@ -191,25 +184,13 @@ describe('FileChunkingService', () => {
             user_id: 'test-user-id',
             mime_type: 'text/plain',
             extracted_text: 'Some content',
-            processing_status: 'completed',
-            embedding_status: 'pending',
+            pipeline_status: 'chunking',
           }],
         })
-        // Mock update embedding status to 'processing'
-        .mockResolvedValueOnce({ recordset: [] })
         // Mock chunk insert failure
         .mockRejectedValueOnce(new Error('Database error'));
 
-      // Should also update status to 'failed' on error
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
-
       await expect(service.processFileChunks(mockJobData)).rejects.toThrow('Database error');
-
-      // Verify status was updated to 'failed'
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('embedding_status'),
-        expect.objectContaining({ status: 'failed' })
-      );
     });
   });
 
@@ -279,8 +260,6 @@ describe('FileChunkingService', () => {
       }));
       vi.doMock('@bc-agent/shared', () => ({
         FILE_READINESS_STATE: { PROCESSING: 'processing', READY: 'ready' },
-        PROCESSING_STATUS: { COMPLETED: 'completed' },
-        EMBEDDING_STATUS: { COMPLETED: 'completed' },
       }));
 
       const result = await service.processFileChunks(mockImageJobData);
@@ -351,8 +330,6 @@ describe('FileChunkingService', () => {
       }));
       vi.doMock('@bc-agent/shared', () => ({
         FILE_READINESS_STATE: { PROCESSING: 'processing', READY: 'ready' },
-        PROCESSING_STATUS: { COMPLETED: 'completed' },
-        EMBEDDING_STATUS: { COMPLETED: 'completed' },
       }));
 
       const result = await service.processFileChunks(mockImageJobData);
@@ -411,8 +388,6 @@ describe('FileChunkingService', () => {
       }));
       vi.doMock('@bc-agent/shared', () => ({
         FILE_READINESS_STATE: { PROCESSING: 'processing', READY: 'ready' },
-        PROCESSING_STATUS: { COMPLETED: 'completed' },
-        EMBEDDING_STATUS: { COMPLETED: 'completed' },
       }));
 
       const result = await service.processFileChunks(mockImageJobData);

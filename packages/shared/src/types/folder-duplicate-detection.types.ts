@@ -1,5 +1,5 @@
 /**
- * Folder Duplicate Detection Types V2
+ * Folder Duplicate Detection Types
  *
  * Types and Zod schemas for folder-level duplicate detection.
  * Checks root-level manifest folders against existing folders in the target location.
@@ -22,7 +22,7 @@ export interface FolderDuplicateCheckInput {
 }
 
 /** Request body for POST /api/v2/uploads/check-folder-duplicates */
-export interface CheckFolderDuplicatesRequestV2 {
+export interface CheckFolderDuplicatesRequest {
   folders: FolderDuplicateCheckInput[];
   targetFolderId?: string;
 }
@@ -42,7 +42,7 @@ export interface FolderDuplicateCheckResult {
 }
 
 /** Response body for POST /api/v2/uploads/check-folder-duplicates */
-export interface CheckFolderDuplicatesResponseV2 {
+export interface CheckFolderDuplicatesResponse {
   results: FolderDuplicateCheckResult[];
   targetFolderPath: string | null;
 }
@@ -60,7 +60,7 @@ export const folderDuplicateCheckInputSchema = z.object({
 });
 
 /** Validates the full folder duplicate check request (max 200 folders) */
-export const checkFolderDuplicatesRequestV2Schema = z.object({
+export const checkFolderDuplicatesRequestSchema = z.object({
   folders: z
     .array(folderDuplicateCheckInputSchema)
     .min(1, 'At least one folder is required')

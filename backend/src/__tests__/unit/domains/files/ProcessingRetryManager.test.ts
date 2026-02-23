@@ -33,7 +33,7 @@ const mockSetLastProcessingError = vi.hoisted(() => vi.fn().mockResolvedValue(un
 const mockSetLastEmbeddingError = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 const mockMarkAsPermanentlyFailed = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 const mockClearFailedStatus = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
-const mockUpdateEmbeddingStatus = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+const mockUpdatePipelineStatus = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 
 vi.mock('@/domains/files/retry/FileRetryService', () => ({
   getFileRetryService: vi.fn(() => ({
@@ -43,7 +43,7 @@ vi.mock('@/domains/files/retry/FileRetryService', () => ({
     setLastEmbeddingError: mockSetLastEmbeddingError,
     markAsPermanentlyFailed: mockMarkAsPermanentlyFailed,
     clearFailedStatus: mockClearFailedStatus,
-    updateEmbeddingStatus: mockUpdateEmbeddingStatus,
+    updatePipelineStatus: mockUpdatePipelineStatus,
   })),
   __resetFileRetryService: vi.fn(),
 }));
@@ -61,7 +61,7 @@ vi.mock('@/services/files/FileService', () => ({
   },
 }));
 
-// ===== MOCK PARTIAL DATA CLEANER =====
+// ===== MOCK ORPHAN CLEANUP SERVICE =====
 const mockCleanupForFile = vi.hoisted(() =>
   vi.fn().mockResolvedValue({
     fileId: 'test-file',
@@ -72,7 +72,7 @@ const mockCleanupForFile = vi.hoisted(() =>
 );
 
 vi.mock('@/domains/files/cleanup', () => ({
-  getPartialDataCleaner: vi.fn(() => ({
+  getOrphanCleanupService: vi.fn(() => ({
     cleanupForFile: mockCleanupForFile,
   })),
 }));
@@ -135,8 +135,7 @@ describe('ProcessingRetryManager', () => {
     blobPath: 'users/test-user/files/test.pdf',
     isFolder: false,
     isFavorite: false,
-    processingStatus: 'failed',
-    embeddingStatus: 'pending',
+    pipelineStatus: 'failed',
     readinessState: 'failed',
     processingRetryCount: 0,
     embeddingRetryCount: 0,
@@ -144,6 +143,8 @@ describe('ProcessingRetryManager', () => {
     failedAt: new Date().toISOString(),
     hasExtractedText: false,
     contentHash: null,
+    deletionStatus: null,
+    deletedAt: null,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     ...overrides,
@@ -291,21 +292,20 @@ describe('ProcessingRetryManager', () => {
 
       await retryManager.executeManualRetry(testUserId, testFileId, 'full');
 
-      expect(mockUpdateProcessingStatus).toHaveBeenCalledWith(testUserId, testFileId, 'pending');
+      expect(mockUpdateProcessingStatus).toHaveBeenCalledWith(testUserId, testFileId, 'queued');
     });
 
-    it('should update embedding status for scope=embedding_only', async () => {
+    it('should update pipeline status for scope=embedding_only', async () => {
       mockGetFile
         .mockResolvedValueOnce(createMockFile({
           readinessState: 'failed',
-          processingStatus: 'completed',
-          embeddingStatus: 'failed',
+          pipelineStatus: 'failed',
         }))
         .mockResolvedValue(createMockFile({ readinessState: 'processing' }));
 
       await retryManager.executeManualRetry(testUserId, testFileId, 'embedding_only');
 
-      expect(mockUpdateEmbeddingStatus).toHaveBeenCalledWith(testUserId, testFileId, 'pending');
+      expect(mockUpdatePipelineStatus).toHaveBeenCalledWith(testUserId, testFileId, 'queued');
     });
 
     it('should return updated file and success on completion', async () => {
@@ -339,22 +339,12 @@ describe('ProcessingRetryManager', () => {
       );
     });
 
-    it('should trigger cleanup via PartialDataCleaner', async () => {
-      await retryManager.handlePermanentFailure(testUserId, testFileId, 'Error');
-
-      expect(mockCleanupForFile).toHaveBeenCalledWith(testUserId, testFileId);
-    });
-
-    it('should log but not fail if cleanup errors', async () => {
-      mockCleanupForFile.mockRejectedValue(new Error('Cleanup failed'));
-
-      // Should not throw
+    it('should call cleanup (no-op) without throwing', async () => {
+      // Cleanup is now a no-op — OrphanCleanupService handles bulk cleanup on a schedule.
+      // Verify handlePermanentFailure completes without error.
       await expect(
         retryManager.handlePermanentFailure(testUserId, testFileId, 'Error')
       ).resolves.not.toThrow();
-
-      // Should log the error
-      expect(mockLogger.error).toHaveBeenCalled();
     });
   });
 

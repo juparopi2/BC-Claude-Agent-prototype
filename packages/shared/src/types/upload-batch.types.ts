@@ -8,7 +8,7 @@
  */
 
 import { z } from 'zod';
-import type { DuplicateCheckResultV2 } from './duplicate-detection.types';
+import type { DuplicateCheckResult } from './duplicate-detection.types';
 
 // ============================================================================
 // Batch Status Constants
@@ -86,7 +86,7 @@ export interface CreateBatchResponse {
   status: BatchStatus;
   files: BatchFileResult[];
   folders: BatchFolderResult[];
-  duplicates?: DuplicateCheckResultV2[];
+  duplicates?: DuplicateCheckResult[];
   expiresAt: string;
 }
 

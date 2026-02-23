@@ -1,5 +1,5 @@
 /**
- * BatchUploadOrchestratorV2 Tests (PRD-03)
+ * BatchUploadOrchestrator Tests (PRD-03)
  *
  * Tests the unified 3-phase atomic upload pipeline: manifest validation,
  * topological folder sorting, transaction integrity, duplicate detection,
@@ -62,9 +62,9 @@ vi.mock('@/infrastructure/queue', () => ({
   getMessageQueue: () => mockMessageQueueInstance,
 }));
 
-// Mock DuplicateDetectionServiceV2
-vi.mock('@/services/files/DuplicateDetectionServiceV2', () => ({
-  DuplicateDetectionServiceV2: vi.fn().mockImplementation(() => ({
+// Mock DuplicateDetectionService
+vi.mock('@/services/files/DuplicateDetectionService', () => ({
+  DuplicateDetectionService: vi.fn().mockImplementation(() => ({
     checkDuplicates: vi.fn(),
   })),
 }));
@@ -76,7 +76,7 @@ import type {
   ManifestFileItem,
   ManifestFolderItem,
 } from '@bc-agent/shared';
-import { BatchUploadOrchestratorV2 } from '@/services/files/batch/BatchUploadOrchestratorV2';
+import { BatchUploadOrchestrator } from '@/services/files/batch/BatchUploadOrchestrator';
 import {
   BatchNotFoundError,
   BatchExpiredError,
@@ -92,7 +92,7 @@ import {
 import { prisma } from '@/infrastructure/database/prisma';
 import { getFileUploadService } from '@/services/files/FileUploadService';
 import { getMessageQueue } from '@/infrastructure/queue';
-import { DuplicateDetectionServiceV2 } from '@/services/files/DuplicateDetectionServiceV2';
+import { DuplicateDetectionService } from '@/services/files/DuplicateDetectionService';
 
 // ============================================================================
 // Test Constants
@@ -107,8 +107,8 @@ const TEST_FOLDER_ID = 'FOLD-1111-2222-3333-444455555555';
 // Tests
 // ============================================================================
 
-describe('BatchUploadOrchestratorV2', () => {
-  let orchestrator: BatchUploadOrchestratorV2;
+describe('BatchUploadOrchestrator', () => {
+  let orchestrator: BatchUploadOrchestrator;
   let mockPrisma: any;
   let mockTx: any;
   let mockFileUploadService: any;
@@ -190,7 +190,7 @@ describe('BatchUploadOrchestratorV2', () => {
       },
     );
 
-    // Mock DuplicateDetectionServiceV2 instance
+    // Mock DuplicateDetectionService instance
     mockCheckDuplicates = vi.fn().mockResolvedValue({
       results: [],
       summary: {
@@ -201,7 +201,7 @@ describe('BatchUploadOrchestratorV2', () => {
       },
     });
 
-    vi.mocked(DuplicateDetectionServiceV2).mockImplementation(() => ({
+    vi.mocked(DuplicateDetectionService).mockImplementation(() => ({
       checkDuplicates: mockCheckDuplicates,
     }) as any);
 
@@ -233,7 +233,7 @@ describe('BatchUploadOrchestratorV2', () => {
 
     mockPrisma.$executeRaw.mockResolvedValue(undefined);
 
-    orchestrator = new BatchUploadOrchestratorV2(mockPrisma as any);
+    orchestrator = new BatchUploadOrchestrator(mockPrisma as any);
   });
 
   // ==========================================================================
@@ -614,8 +614,8 @@ describe('BatchUploadOrchestratorV2', () => {
 
       await orchestrator.createBatch(TEST_USER_ID, request);
 
-      // Verify DuplicateDetectionServiceV2 was constructed with main prisma client (not tx)
-      expect(DuplicateDetectionServiceV2).toHaveBeenCalledWith(mockPrisma);
+      // Verify DuplicateDetectionService was constructed with main prisma client (not tx)
+      expect(DuplicateDetectionService).toHaveBeenCalledWith(mockPrisma);
 
       expect(mockCheckDuplicates).toHaveBeenCalledWith(
         expect.arrayContaining([

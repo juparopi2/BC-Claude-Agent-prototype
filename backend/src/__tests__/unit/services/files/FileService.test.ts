@@ -1,30 +1,84 @@
 /**
  * FileService Unit Tests
  *
- * Comprehensive tests for FileService which provides CRUD operations for files
- * and folders with multi-tenant isolation.
+ * Tests FileService facade which delegates to FileRepository,
+ * FileDeletionService, FileDuplicateService, and FileMetadataService.
  *
- * Pattern: vi.hoisted() + manual re-setup in beforeEach
- * Based on: MessageService.test.ts (passing pattern)
- *
- * Coverage Target: >90% (FileService.ts is 504 lines)
+ * Mock strategy: vi.fn() repository methods. Sub-services are real
+ * implementations that use the mocked repository.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { FileService, getFileService } from '@/services/files/FileService';
 import { FileFixture } from '@/__tests__/fixtures/FileFixture';
-import type { FileDbRecord } from '@/types/file.types';
 
-// ===== MOCK DATABASE (vi.hoisted pattern) =====
-const mockExecuteQuery = vi.hoisted(() =>
-  vi.fn().mockResolvedValue({ recordset: [], rowsAffected: [1] })
-);
-
-vi.mock('@/infrastructure/database/database', () => ({
-  executeQuery: mockExecuteQuery,
+// ===== MOCK PRISMA (prevent module-level DB config error) =====
+vi.mock('@/infrastructure/database/prisma', () => ({
+  prisma: {
+    files: {
+      findMany: vi.fn().mockResolvedValue([]),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      groupBy: vi.fn().mockResolvedValue([]),
+      findFirst: vi.fn().mockResolvedValue(null),
+    },
+  },
+  disconnectPrisma: vi.fn(),
 }));
 
-// ===== MOCK LOGGER (vi.hoisted pattern) =====
+// ===== MOCK FileRepository with vi.fn() methods =====
+const mockRepo = vi.hoisted(() => ({
+  findMany: vi.fn().mockResolvedValue([]),
+  findById: vi.fn().mockResolvedValue(null),
+  findByIdIncludingDeleted: vi.fn().mockResolvedValue(null),
+  count: vi.fn().mockResolvedValue(0),
+  create: vi.fn().mockResolvedValue('MOCK-UUID-1'),
+  createFolder: vi.fn().mockResolvedValue('MOCK-UUID-1'),
+  findIdsByOwner: vi.fn().mockResolvedValue([]),
+  update: vi.fn().mockResolvedValue(undefined),
+  updateProcessingStatus: vi.fn().mockResolvedValue(undefined),
+  delete: vi.fn().mockResolvedValue(undefined),
+  getFileMetadata: vi.fn().mockResolvedValue(null),
+  getChildrenIds: vi.fn().mockResolvedValue([]),
+  findByName: vi.fn().mockResolvedValue(null),
+  findByContentHash: vi.fn().mockResolvedValue([]),
+  markForDeletion: vi.fn().mockResolvedValue({ markedIds: [], markedCount: 0 }),
+  updateDeletionStatus: vi.fn().mockResolvedValue(undefined),
+  isFileActiveForProcessing: vi.fn().mockResolvedValue(true),
+  transitionStatus: vi.fn().mockResolvedValue({ success: true }),
+  getPipelineStatus: vi.fn().mockResolvedValue(null),
+  findByStatus: vi.fn().mockResolvedValue([]),
+  getStatusDistribution: vi.fn().mockResolvedValue({}),
+  transitionStatusWithRetry: vi.fn().mockResolvedValue({ success: true }),
+  findStuckFiles: vi.fn().mockResolvedValue([]),
+  findAbandonedFiles: vi.fn().mockResolvedValue([]),
+  forceStatus: vi.fn().mockResolvedValue({ success: true }),
+  checkFolderExists: vi.fn().mockResolvedValue(false),
+  findFoldersByNamePattern: vi.fn().mockResolvedValue([]),
+  findFolderIdByName: vi.fn().mockResolvedValue(null),
+  getFilesPendingProcessing: vi.fn().mockResolvedValue([]),
+}));
+
+vi.mock('@/services/files/repository/FileRepository', () => ({
+  getFileRepository: vi.fn(() => mockRepo),
+  __resetFileRepository: vi.fn(),
+  FileRepository: vi.fn(),
+}));
+
+// ===== MOCK domains/files/retry (prevent cascade) =====
+vi.mock('@/domains/files/retry', () => ({
+  getFileRetryService: vi.fn(() => ({
+    incrementProcessingRetryCount: vi.fn().mockResolvedValue(1),
+    incrementEmbeddingRetryCount: vi.fn().mockResolvedValue(1),
+    setLastProcessingError: vi.fn().mockResolvedValue(undefined),
+    setLastEmbeddingError: vi.fn().mockResolvedValue(undefined),
+    markAsPermanentlyFailed: vi.fn().mockResolvedValue(undefined),
+    clearFailedStatus: vi.fn().mockResolvedValue(undefined),
+    updateEmbeddingStatus: vi.fn().mockResolvedValue(undefined),
+  })),
+  getProcessingRetryManager: vi.fn(() => ({ executeManualRetry: vi.fn() })),
+}));
+
+// ===== MOCK LOGGER =====
 const mockLogger = vi.hoisted(() => ({
   info: vi.fn(),
   error: vi.fn(),
@@ -37,35 +91,26 @@ vi.mock('@/shared/utils/logger', () => ({
   createChildLogger: vi.fn(() => mockLogger),
 }));
 
-// ===== MOCK DELETION AUDIT SERVICE (vi.hoisted pattern) =====
+// ===== MOCK DELETION AUDIT SERVICE =====
 const mockAuditService = vi.hoisted(() => ({
   logDeletionRequest: vi.fn().mockResolvedValue('audit-id-123'),
   updateStorageStatus: vi.fn().mockResolvedValue(undefined),
   markCompleted: vi.fn().mockResolvedValue(undefined),
 }));
 
-// Mock using the path that matches the import in FileService.ts: './DeletionAuditService'
-// Vitest resolves relative paths from the source file, so we use the full path
 vi.mock('@services/files/DeletionAuditService', () => ({
   getDeletionAuditService: vi.fn(() => mockAuditService),
 }));
 
-// ===== MOCK VECTOR SEARCH SERVICE (vi.hoisted pattern) =====
+// ===== MOCK VECTOR SEARCH SERVICE =====
 const mockVectorSearchService = vi.hoisted(() => ({
   deleteChunksForFile: vi.fn().mockResolvedValue(undefined),
 }));
 
-// Mock using the exact path from FileService.ts import: '@services/search/VectorSearchService'
 vi.mock('@services/search/VectorSearchService', () => ({
   VectorSearchService: {
     getInstance: vi.fn(() => mockVectorSearchService),
   },
-}));
-
-// ===== MOCK crypto.randomUUID (vi.hoisted pattern) =====
-let mockUuidCounter = 0;
-vi.mock('crypto', () => ({
-  randomUUID: vi.fn(() => `mock-uuid-${++mockUuidCounter}`),
 }));
 
 describe('FileService', () => {
@@ -76,10 +121,37 @@ describe('FileService', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockUuidCounter = 0; // Reset UUID counter
 
-    // Re-setup mock implementations after clearAllMocks
-    mockExecuteQuery.mockResolvedValue({ recordset: [], rowsAffected: [1] });
+    // Re-setup default mock implementations after clearAllMocks
+    mockRepo.findMany.mockResolvedValue([]);
+    mockRepo.findById.mockResolvedValue(null);
+    mockRepo.findByIdIncludingDeleted.mockResolvedValue(null);
+    mockRepo.count.mockResolvedValue(0);
+    mockRepo.create.mockResolvedValue('MOCK-UUID-1');
+    mockRepo.createFolder.mockResolvedValue('MOCK-UUID-1');
+    mockRepo.findIdsByOwner.mockResolvedValue([]);
+    mockRepo.update.mockResolvedValue(undefined);
+    mockRepo.updateProcessingStatus.mockResolvedValue(undefined);
+    mockRepo.delete.mockResolvedValue(undefined);
+    mockRepo.getFileMetadata.mockResolvedValue(null);
+    mockRepo.getChildrenIds.mockResolvedValue([]);
+    mockRepo.findByName.mockResolvedValue(null);
+    mockRepo.findByContentHash.mockResolvedValue([]);
+    mockRepo.markForDeletion.mockResolvedValue({ markedIds: [], markedCount: 0 });
+    mockRepo.updateDeletionStatus.mockResolvedValue(undefined);
+    mockRepo.isFileActiveForProcessing.mockResolvedValue(true);
+    mockRepo.transitionStatus.mockResolvedValue({ success: true });
+    mockRepo.getPipelineStatus.mockResolvedValue(null);
+    mockRepo.findByStatus.mockResolvedValue([]);
+    mockRepo.getStatusDistribution.mockResolvedValue({});
+    mockRepo.transitionStatusWithRetry.mockResolvedValue({ success: true });
+    mockRepo.findStuckFiles.mockResolvedValue([]);
+    mockRepo.findAbandonedFiles.mockResolvedValue([]);
+    mockRepo.forceStatus.mockResolvedValue({ success: true });
+    mockRepo.checkFolderExists.mockResolvedValue(false);
+    mockRepo.findFoldersByNamePattern.mockResolvedValue([]);
+    mockRepo.findFolderIdByName.mockResolvedValue(null);
+    mockRepo.getFilesPendingProcessing.mockResolvedValue([]);
 
     // Re-setup audit service mocks
     mockAuditService.logDeletionRequest.mockResolvedValue('audit-id-123');
@@ -89,97 +161,82 @@ describe('FileService', () => {
     // Re-setup vector search service mocks
     mockVectorSearchService.deleteChunksForFile.mockResolvedValue(undefined);
 
-    // Reset singleton instance
-    (FileService as any).instance = null;
+    // Reset FileService singleton
+    (FileService as unknown as { instance: FileService | null }).instance = null;
     fileService = getFileService();
   });
 
-  // ========== SUITE 1: GET FILES (6 TESTS) ==========
+  // ========== SUITE 1: GET FILES (8 TESTS) ==========
   describe('getFiles()', () => {
-    it('should enforce multi-tenant isolation with user_id filter', async () => {
-      const mockFiles = [FileFixture.createFileDbRecord({ user_id: testUserId })];
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: mockFiles });
+    it('should enforce multi-tenant isolation by passing userId to findMany', async () => {
+      const parsedFile = FileFixture.createParsedFile({ userId: testUserId });
+      mockRepo.findMany.mockResolvedValueOnce([parsedFile]);
 
-      await fileService.getFiles({ userId: testUserId });
+      const files = await fileService.getFiles({ userId: testUserId });
 
-      // Verify WHERE clause includes user_id
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('WHERE user_id = @user_id'),
-        expect.objectContaining({
-          user_id: testUserId,
-        })
+      expect(mockRepo.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: testUserId })
       );
+      expect(files).toHaveLength(1);
+      expect(files[0]!.userId).toBe(testUserId);
     });
 
     it('should filter by folderId when provided', async () => {
       const folderId = 'folder-123';
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
+      mockRepo.findMany.mockResolvedValueOnce([]);
 
       await fileService.getFiles({ userId: testUserId, folderId });
 
-      // Verify WHERE clause includes parent_folder_id
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('AND parent_folder_id = @parent_folder_id'),
-        expect.objectContaining({
-          user_id: testUserId,
-          parent_folder_id: folderId,
-        })
+      expect(mockRepo.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: testUserId, folderId })
       );
     });
 
-    it('should filter favorites when favorites=true', async () => {
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
+    it('should pass favoritesFirst option to findMany', async () => {
+      mockRepo.findMany.mockResolvedValueOnce([]);
 
       await fileService.getFiles({ userId: testUserId, favoritesFirst: true });
 
-      // Verify WHERE clause includes is_favorite logic for favorites first mode at root
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('AND (is_favorite = 1 OR parent_folder_id IS NULL)'),
-        expect.objectContaining({
-          user_id: testUserId,
-        })
+      expect(mockRepo.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: testUserId, favoritesFirst: true })
       );
     });
 
-    it('should sort by name when sortBy=name', async () => {
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
+    it('should pass sortBy=name to findMany', async () => {
+      mockRepo.findMany.mockResolvedValueOnce([]);
 
       await fileService.getFiles({ userId: testUserId, sortBy: 'name' });
 
-      // Verify ORDER BY clause (folders first, then by name)
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('ORDER BY is_folder DESC, name ASC'),
-        expect.anything()
+      expect(mockRepo.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: testUserId, sortBy: 'name' })
       );
     });
 
-    it('should sort by size when sortBy=size', async () => {
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
+    it('should pass sortBy=size to findMany', async () => {
+      mockRepo.findMany.mockResolvedValueOnce([]);
 
       await fileService.getFiles({ userId: testUserId, sortBy: 'size' });
 
-      // Verify ORDER BY clause (folders first, then by size)
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('ORDER BY is_folder DESC, size_bytes DESC'),
-        expect.anything()
+      expect(mockRepo.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: testUserId, sortBy: 'size' })
       );
     });
 
-    it('should sort by date (default) when sortBy=date', async () => {
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
+    it('should pass sortBy=date to findMany', async () => {
+      mockRepo.findMany.mockResolvedValueOnce([]);
 
       await fileService.getFiles({ userId: testUserId, sortBy: 'date' });
 
-      // Verify ORDER BY clause (folders first, then by date)
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('ORDER BY is_folder DESC, created_at DESC'),
-        expect.anything()
+      expect(mockRepo.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: testUserId, sortBy: 'date' })
       );
     });
 
-    it('should apply pagination with limit and offset', async () => {
-      const mockFiles = FileFixture.createMultipleFiles(5, { user_id: testUserId });
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: mockFiles });
+    it('should apply pagination options to findMany', async () => {
+      const parsedFiles = Array.from({ length: 5 }, (_, i) =>
+        FileFixture.createParsedFile({ userId: testUserId, name: `file-${i + 1}.pdf` })
+      );
+      mockRepo.findMany.mockResolvedValueOnce(parsedFiles);
 
       const files = await fileService.getFiles({
         userId: testUserId,
@@ -187,221 +244,78 @@ describe('FileService', () => {
         offset: 20,
       });
 
-      // Verify pagination parameters
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('OFFSET @offset ROWS'),
+      expect(mockRepo.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          user_id: testUserId,
-          offset: 20,
+          userId: testUserId,
           limit: 10,
+          offset: 20,
         })
       );
-
-      // Verify parsed files returned
       expect(files).toHaveLength(5);
       expect(files[0]!.userId).toBe(testUserId);
     });
 
-    it('should log error when query fails', async () => {
+    it('should propagate error when findMany rejects', async () => {
       const testError = new Error('Database error');
-      mockExecuteQuery.mockRejectedValueOnce(testError);
+      mockRepo.findMany.mockRejectedValueOnce(testError);
 
       await expect(fileService.getFiles({ userId: testUserId })).rejects.toThrow(
         'Database error'
       );
-
-      expect(mockLogger.error).toHaveBeenCalledWith(
-        expect.objectContaining({ error: testError, userId: testUserId }),
-        'Failed to get files'
-      );
-    });
-  });
-
-  // ========== SUITE 12: SQL NULL COMPARISON SAFETY (5 TESTS) ==========
-  describe('SQL NULL Comparison Safety', () => {
-    /**
-     * CRITICAL: Test SQL NULL handling pattern
-     *
-     * SQL Behavior:
-     * - `column = NULL` → always FALSE (incorrect)
-     * - `column IS NULL` → correct
-     *
-     * This suite verifies that FileService constructs queries correctly
-     * when filtering by NULL parent_folder_id (root-level files).
-     */
-
-    describe('getFiles() with NULL parent_folder_id', () => {
-      it('should use IS NULL when folderId is undefined (all files)', async () => {
-        mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
-
-        await fileService.getFiles({ userId: testUserId });
-
-        // Verify query uses IS NULL operator (NOT "= @parent_folder_id")
-        const queryCall = mockExecuteQuery.mock.calls[0];
-        const query = queryCall?.[0] as string;
-        const params = queryCall?.[1] as Record<string, unknown>;
-
-        // Critical assertions:
-        expect(query).toContain('AND parent_folder_id IS NULL');
-        expect(query).not.toContain('parent_folder_id = @parent_folder_id');
-        expect(params).not.toHaveProperty('parent_folder_id');
-      });
-
-      it('should use IS NULL when folderId is explicitly null (root files)', async () => {
-        mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
-
-        await fileService.getFiles({ userId: testUserId, folderId: null });
-
-        const queryCall = mockExecuteQuery.mock.calls[0];
-        const query = queryCall?.[0] as string;
-        const params = queryCall?.[1] as Record<string, unknown>;
-
-        expect(query).toContain('AND parent_folder_id IS NULL');
-        expect(query).not.toContain('parent_folder_id = @parent_folder_id');
-        expect(params).not.toHaveProperty('parent_folder_id');
-      });
-
-      it('should use parameterized query when folderId is UUID string', async () => {
-        const folderId = 'folder-uuid-123';
-        mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
-
-        await fileService.getFiles({ userId: testUserId, folderId });
-
-        const queryCall = mockExecuteQuery.mock.calls[0];
-        const query = queryCall?.[0] as string;
-        const params = queryCall?.[1] as Record<string, unknown>;
-
-        expect(query).toContain('AND parent_folder_id = @parent_folder_id');
-        expect(query).not.toContain('parent_folder_id IS NULL');
-        expect(params).toHaveProperty('parent_folder_id', folderId);
-      });
-    });
-
-    describe('getFileCount() with NULL parent_folder_id', () => {
-      it('should use IS NULL for root folder when folderId is undefined', async () => {
-        mockExecuteQuery.mockResolvedValueOnce({ recordset: [{ count: 42 }] });
-
-        const count = await fileService.getFileCount(testUserId);
-
-        const queryCall = mockExecuteQuery.mock.calls[0];
-        const query = queryCall?.[0] as string;
-        const params = queryCall?.[1] as Record<string, unknown>;
-
-        // Root folder uses IS NULL, no parameter for parent_folder_id
-        expect(query).toContain('AND parent_folder_id IS NULL');
-        expect(query).not.toContain('parent_folder_id = @parent_folder_id');
-        expect(params).not.toHaveProperty('parent_folder_id');
-        expect(count).toBe(42);
-      });
-
-      it('should use IS NULL when folderId is explicitly null', async () => {
-        // BUG DETECTION: This test will FAIL with current implementation
-        // Current code at line 471-474 uses `folderId !== undefined`,
-        // which is TRUE when folderId=null, causing params.parent_folder_id = null
-        mockExecuteQuery.mockResolvedValueOnce({ recordset: [{ count: 15 }] });
-
-        const count = await fileService.getFileCount(testUserId, null);
-
-        const queryCall = mockExecuteQuery.mock.calls[0];
-        const query = queryCall?.[0] as string;
-        const params = queryCall?.[1] as Record<string, unknown>;
-
-        // These assertions will FAIL with current buggy implementation:
-        expect(query).toContain('AND parent_folder_id IS NULL');
-        expect(query).not.toContain('parent_folder_id = @parent_folder_id');
-        expect(params).not.toHaveProperty('parent_folder_id');
-        expect(count).toBe(15);
-      });
     });
   });
 
   // ========== SUITE 2: GET FILE (3 TESTS) ==========
   describe('getFile()', () => {
     it('should return parsed file when found', async () => {
-      const mockFile = FileFixture.createFileDbRecord({
+      const parsedFile = FileFixture.createParsedFile({
         id: testFileId,
-        user_id: testUserId,
+        userId: testUserId,
       });
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [mockFile] });
+      mockRepo.findById.mockResolvedValueOnce(parsedFile);
 
       const file = await fileService.getFile(testUserId, testFileId);
 
       expect(file).toBeDefined();
       expect(file?.id).toBe(testFileId);
       expect(file?.userId).toBe(testUserId);
-
-      // Verify ownership validation
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('WHERE id = @id AND user_id = @user_id'),
-        expect.objectContaining({
-          id: testFileId,
-          user_id: testUserId,
-        })
-      );
+      expect(mockRepo.findById).toHaveBeenCalledWith(testUserId, testFileId);
     });
 
     it('should return null when file not found', async () => {
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
+      mockRepo.findById.mockResolvedValueOnce(null);
 
       const file = await fileService.getFile(testUserId, 'nonexistent');
 
       expect(file).toBeNull();
-      expect(mockLogger.info).toHaveBeenCalledWith(
-        expect.objectContaining({ userId: testUserId, fileId: 'nonexistent' }),
-        'File not found'
-      );
+      expect(mockRepo.findById).toHaveBeenCalledWith(testUserId, 'nonexistent');
     });
 
-    it('should enforce multi-tenant isolation with user_id', async () => {
+    it('should enforce multi-tenant isolation by passing userId to findById', async () => {
       const differentUserId = 'other-user-789';
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
+      mockRepo.findById.mockResolvedValueOnce(null);
 
       const file = await fileService.getFile(differentUserId, testFileId);
 
       expect(file).toBeNull();
-
-      // Verify user_id filter prevents cross-user access
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('WHERE id = @id AND user_id = @user_id'),
-        expect.objectContaining({
-          id: testFileId,
-          user_id: differentUserId,
-        })
-      );
+      expect(mockRepo.findById).toHaveBeenCalledWith(differentUserId, testFileId);
     });
   });
 
   // ========== SUITE 3: CREATE FOLDER (2 TESTS) ==========
   describe('createFolder()', () => {
     it('should create root folder when parentId not provided', async () => {
-      mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+      mockRepo.createFolder.mockResolvedValueOnce('MOCK-UUID-1');
 
       const folderId = await fileService.createFolder(testUserId, 'Documents');
 
       expect(folderId).toBe('MOCK-UUID-1');
-
-      // Verify INSERT with folder-specific values
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('INSERT INTO files'),
-        expect.objectContaining({
-          id: 'MOCK-UUID-1',
-          user_id: testUserId,
-          parent_folder_id: null, // Root folder
-          name: 'Documents',
-          mime_type: 'inode/directory',
-          size_bytes: 0,
-          blob_path: '',
-          is_folder: true,
-          is_favorite: false,
-          processing_status: 'completed',
-          embedding_status: 'completed',
-        })
-      );
+      expect(mockRepo.createFolder).toHaveBeenCalledWith(testUserId, 'Documents', undefined);
     });
 
     it('should create subfolder when parentId provided', async () => {
       const parentFolderId = 'parent-folder-456';
-      mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+      mockRepo.createFolder.mockResolvedValueOnce('MOCK-UUID-1');
 
       const folderId = await fileService.createFolder(
         testUserId,
@@ -410,23 +324,14 @@ describe('FileService', () => {
       );
 
       expect(folderId).toBe('MOCK-UUID-1');
-
-      // Verify parent_folder_id is set
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('INSERT INTO files'),
-        expect.objectContaining({
-          parent_folder_id: parentFolderId,
-          name: 'Invoices',
-          is_folder: true,
-        })
-      );
+      expect(mockRepo.createFolder).toHaveBeenCalledWith(testUserId, 'Invoices', parentFolderId);
     });
   });
 
   // ========== SUITE 4: CREATE FILE RECORD (2 TESTS) ==========
   describe('createFileRecord()', () => {
-    it('should create file record with generated UUID', async () => {
-      mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+    it('should create file record and return generated ID', async () => {
+      mockRepo.create.mockResolvedValueOnce('MOCK-UUID-1');
 
       const fileId = await fileService.createFileRecord({
         userId: testUserId,
@@ -437,29 +342,20 @@ describe('FileService', () => {
       });
 
       expect(fileId).toBe('MOCK-UUID-1');
-
-      // Verify INSERT with file-specific values
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('INSERT INTO files'),
+      expect(mockRepo.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          id: 'MOCK-UUID-1',
-          user_id: testUserId,
-          parent_folder_id: null,
+          userId: testUserId,
           name: 'invoice.pdf',
-          mime_type: 'application/pdf',
-          size_bytes: 512000,
-          blob_path: 'users/test-user/files/invoice.pdf',
-          is_folder: false,
-          is_favorite: false,
-          processing_status: 'pending',
-          embedding_status: 'pending',
+          mimeType: 'application/pdf',
+          sizeBytes: 512000,
+          blobPath: 'users/test-user/files/invoice.pdf',
         })
       );
     });
 
     it('should create file record with parent folder', async () => {
       const parentFolderId = 'folder-789';
-      mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+      mockRepo.create.mockResolvedValueOnce('MOCK-UUID-1');
 
       const fileId = await fileService.createFileRecord({
         userId: testUserId,
@@ -471,72 +367,59 @@ describe('FileService', () => {
       });
 
       expect(fileId).toBe('MOCK-UUID-1');
-
-      // Verify parent_folder_id is set
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('INSERT INTO files'),
-        expect.objectContaining({
-          parent_folder_id: parentFolderId,
-        })
+      expect(mockRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ parentFolderId })
       );
     });
   });
 
   // ========== SUITE 5: UPDATE FILE (4 TESTS) ==========
   describe('updateFile()', () => {
-    it('should update file name with dynamic SET clause', async () => {
-      mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+    it('should update file name via FileMetadataService', async () => {
+      mockRepo.update.mockResolvedValueOnce(undefined);
 
       await fileService.updateFile(testUserId, testFileId, {
         name: 'renamed-file.pdf',
       });
 
-      // Verify dynamic SET clause (updated_at is always first)
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringMatching(/SET updated_at = GETUTCDATE\(\).*name = @name/),
-        expect.objectContaining({
-          id: testFileId,
-          user_id: testUserId,
-          name: 'renamed-file.pdf',
-        })
+      expect(mockRepo.update).toHaveBeenCalledWith(
+        testUserId,
+        testFileId,
+        expect.objectContaining({ name: 'renamed-file.pdf' })
       );
     });
 
-    it('should update parent folder with dynamic SET clause', async () => {
+    it('should update parent folder via FileMetadataService', async () => {
       const newParentId = 'new-parent-789';
-      mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+      mockRepo.update.mockResolvedValueOnce(undefined);
 
       await fileService.updateFile(testUserId, testFileId, {
         parentFolderId: newParentId,
       });
 
-      // Verify dynamic SET clause
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringMatching(/SET.*parent_folder_id = @parent_folder_id/),
-        expect.objectContaining({
-          parent_folder_id: newParentId,
-        })
+      expect(mockRepo.update).toHaveBeenCalledWith(
+        testUserId,
+        testFileId,
+        expect.objectContaining({ parentFolderId: newParentId })
       );
     });
 
-    it('should update favorite status with dynamic SET clause', async () => {
-      mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+    it('should update favorite status via FileMetadataService', async () => {
+      mockRepo.update.mockResolvedValueOnce(undefined);
 
       await fileService.updateFile(testUserId, testFileId, {
         isFavorite: true,
       });
 
-      // Verify dynamic SET clause
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringMatching(/SET.*is_favorite = @is_favorite/),
-        expect.objectContaining({
-          is_favorite: true,
-        })
+      expect(mockRepo.update).toHaveBeenCalledWith(
+        testUserId,
+        testFileId,
+        expect.objectContaining({ isFavorite: true })
       );
     });
 
-    it('should throw error when file not found or unauthorized', async () => {
-      mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [0] });
+    it('should throw and log error when update rejects', async () => {
+      mockRepo.update.mockRejectedValueOnce(new Error('File not found or unauthorized'));
 
       await expect(
         fileService.updateFile(testUserId, testFileId, { name: 'new-name.pdf' })
@@ -547,7 +430,7 @@ describe('FileService', () => {
           userId: testUserId,
           fileId: testFileId,
         }),
-        'Failed to update file'
+        'Failed to update file metadata'
       );
     });
   });
@@ -555,54 +438,46 @@ describe('FileService', () => {
   // ========== SUITE 6: TOGGLE FAVORITE (2 TESTS) ==========
   describe('toggleFavorite()', () => {
     it('should toggle favorite from false to true', async () => {
-      const mockFile = FileFixture.createFileDbRecord({
+      const parsedFile = FileFixture.createParsedFile({
         id: testFileId,
-        user_id: testUserId,
-        is_favorite: false,
+        userId: testUserId,
+        isFavorite: false,
       });
 
-      // First getFile() call
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [mockFile] });
-      // Then UPDATE call
-      mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+      // findById call for current status
+      mockRepo.findById.mockResolvedValueOnce(parsedFile);
+      // update call with toggled status
+      mockRepo.update.mockResolvedValueOnce(undefined);
 
       const newStatus = await fileService.toggleFavorite(testUserId, testFileId);
 
       expect(newStatus).toBe(true);
-
-      // Verify UPDATE with new status
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('UPDATE files'),
-        expect.objectContaining({
-          id: testFileId,
-          user_id: testUserId,
-          is_favorite: true, // Toggled
-        })
+      expect(mockRepo.update).toHaveBeenCalledWith(
+        testUserId,
+        testFileId,
+        expect.objectContaining({ isFavorite: true })
       );
     });
 
     it('should toggle favorite from true to false', async () => {
-      const mockFile = FileFixture.createFileDbRecord({
+      const parsedFile = FileFixture.createParsedFile({
         id: testFileId,
-        user_id: testUserId,
-        is_favorite: true,
+        userId: testUserId,
+        isFavorite: true,
       });
 
-      // First getFile() call
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [mockFile] });
-      // Then UPDATE call
-      mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+      // findById call for current status
+      mockRepo.findById.mockResolvedValueOnce(parsedFile);
+      // update call with toggled status
+      mockRepo.update.mockResolvedValueOnce(undefined);
 
       const newStatus = await fileService.toggleFavorite(testUserId, testFileId);
 
       expect(newStatus).toBe(false);
-
-      // Verify UPDATE with new status
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('UPDATE files'),
-        expect.objectContaining({
-          is_favorite: false, // Toggled
-        })
+      expect(mockRepo.update).toHaveBeenCalledWith(
+        testUserId,
+        testFileId,
+        expect.objectContaining({ isFavorite: false })
       );
     });
   });
@@ -611,18 +486,14 @@ describe('FileService', () => {
   describe('moveFile()', () => {
     it('should move file to different folder', async () => {
       const newParentId = 'folder-999';
-      mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+      mockRepo.update.mockResolvedValueOnce(undefined);
 
       await fileService.moveFile(testUserId, testFileId, newParentId);
 
-      // Verify UPDATE with new parent_folder_id
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('UPDATE files'),
-        expect.objectContaining({
-          id: testFileId,
-          user_id: testUserId,
-          parent_folder_id: newParentId,
-        })
+      expect(mockRepo.update).toHaveBeenCalledWith(
+        testUserId,
+        testFileId,
+        expect.objectContaining({ parentFolderId: newParentId })
       );
 
       expect(mockLogger.info).toHaveBeenCalledWith(
@@ -632,16 +503,14 @@ describe('FileService', () => {
     });
 
     it('should move file to root (null parent)', async () => {
-      mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+      mockRepo.update.mockResolvedValueOnce(undefined);
 
       await fileService.moveFile(testUserId, testFileId, null);
 
-      // Verify UPDATE with null parent_folder_id
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('UPDATE files'),
-        expect.objectContaining({
-          parent_folder_id: null, // Move to root
-        })
+      expect(mockRepo.update).toHaveBeenCalledWith(
+        testUserId,
+        testFileId,
+        expect.objectContaining({ parentFolderId: null })
       );
     });
   });
@@ -651,49 +520,36 @@ describe('FileService', () => {
     it('should return blob_path array for file deletion', async () => {
       const blobPath = 'users/test-user/files/invoice.pdf';
 
-      // First SELECT to get blob_path
-      mockExecuteQuery.mockResolvedValueOnce({
-        recordset: [{ blob_path: blobPath, is_folder: false }],
+      mockRepo.getFileMetadata.mockResolvedValueOnce({
+        blobPath,
+        isFolder: false,
+        name: 'invoice.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 1024,
       });
-      // Then DELETE
-      mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+      mockRepo.delete.mockResolvedValueOnce(undefined);
 
       const returnedBlobPaths = await fileService.deleteFile(testUserId, testFileId);
 
-      // Implementation returns array of blob paths to delete
       expect(returnedBlobPaths).toEqual([blobPath]);
-
-      // Verify SELECT and DELETE queries
-      expect(mockExecuteQuery).toHaveBeenNthCalledWith(
-        1,
-        expect.stringContaining('SELECT blob_path, is_folder'),
-        expect.objectContaining({ id: testFileId, user_id: testUserId })
-      );
-
-      expect(mockExecuteQuery).toHaveBeenNthCalledWith(
-        2,
-        expect.stringContaining('DELETE FROM files'),
-        expect.objectContaining({ id: testFileId, user_id: testUserId })
-      );
+      expect(mockRepo.getFileMetadata).toHaveBeenCalledWith(testUserId, testFileId);
+      expect(mockRepo.delete).toHaveBeenCalledWith(testUserId, testFileId);
     });
 
-    it('should return empty array for folder deletion (no blob to clean up)', async () => {
-      // First SELECT to get blob_path (folder has no blob)
-      mockExecuteQuery.mockResolvedValueOnce({
-        recordset: [{ blob_path: '', is_folder: true }],
+    it('should return empty array for empty folder deletion', async () => {
+      mockRepo.getFileMetadata.mockResolvedValueOnce({
+        blobPath: '',
+        isFolder: true,
+        name: 'Documents',
+        mimeType: 'inode/directory',
+        sizeBytes: 0,
       });
-      // Second SELECT to get children (empty folder)
-      mockExecuteQuery.mockResolvedValueOnce({
-        recordset: [],
-      });
-      // Then DELETE the folder
-      mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+      mockRepo.getChildrenIds.mockResolvedValueOnce([]);
+      mockRepo.delete.mockResolvedValueOnce(undefined);
 
       const returnedBlobPaths = await fileService.deleteFile(testUserId, testFileId);
 
-      // Empty folder returns empty array (no blobs to clean up)
       expect(returnedBlobPaths).toEqual([]);
-
       expect(mockLogger.info).toHaveBeenCalledWith(
         expect.objectContaining({ fileId: testFileId, isFolder: true }),
         'Record deleted from DB'
@@ -704,50 +560,30 @@ describe('FileService', () => {
   // ========== SUITE 9: GET FILE COUNT (3 TESTS) ==========
   describe('getFileCount()', () => {
     it('should get root file count when folderId not provided', async () => {
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [{ count: 42 }] });
+      mockRepo.count.mockResolvedValueOnce(42);
 
       const count = await fileService.getFileCount(testUserId);
 
       expect(count).toBe(42);
-
-      // Verify WHERE clause includes user_id and parent_folder_id IS NULL for root
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('AND parent_folder_id IS NULL'),
-        expect.objectContaining({
-          user_id: testUserId,
-        })
-      );
+      expect(mockRepo.count).toHaveBeenCalledWith(testUserId, undefined, undefined);
     });
 
     it('should get folder file count when folderId provided', async () => {
       const folderId = 'folder-123';
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [{ count: 15 }] });
+      mockRepo.count.mockResolvedValueOnce(15);
 
       const count = await fileService.getFileCount(testUserId, folderId);
 
       expect(count).toBe(15);
-
-      // Verify WHERE clause includes parent_folder_id
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('AND parent_folder_id = @parent_folder_id'),
-        expect.objectContaining({
-          user_id: testUserId,
-          parent_folder_id: folderId,
-        })
-      );
+      expect(mockRepo.count).toHaveBeenCalledWith(testUserId, folderId, undefined);
     });
 
     it('should return 0 for empty folder', async () => {
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [{ count: 0 }] });
+      mockRepo.count.mockResolvedValueOnce(0);
 
       const count = await fileService.getFileCount(testUserId, 'empty-folder');
 
       expect(count).toBe(0);
-
-      expect(mockLogger.info).toHaveBeenCalledWith(
-        expect.objectContaining({ userId: testUserId, folderId: 'empty-folder', count: 0 }),
-        'File count retrieved'
-      );
     });
   });
 
@@ -765,41 +601,24 @@ describe('FileService', () => {
 
   // ========== SUITE 11: ERROR HANDLING (2 TESTS) ==========
   describe('Error Handling', () => {
-    it('should log error and rethrow on createFolder failure', async () => {
+    it('should propagate error on createFolder failure', async () => {
       const testError = new Error('Database connection failed');
-      mockExecuteQuery.mockRejectedValueOnce(testError);
+      mockRepo.createFolder.mockRejectedValueOnce(testError);
 
       await expect(fileService.createFolder(testUserId, 'TestFolder')).rejects.toThrow(
         'Database connection failed'
       );
-
-      expect(mockLogger.error).toHaveBeenCalledWith(
-        expect.objectContaining({
-          error: testError,
-          userId: testUserId,
-          name: 'TestFolder',
-        }),
-        'Failed to create folder'
-      );
     });
 
-    it('should log error and rethrow on getFileCount failure', async () => {
+    it('should propagate error on getFileCount failure', async () => {
       const testError = new Error('Query timeout');
-      mockExecuteQuery.mockRejectedValueOnce(testError);
+      mockRepo.count.mockRejectedValueOnce(testError);
 
       await expect(fileService.getFileCount(testUserId)).rejects.toThrow('Query timeout');
-
-      expect(mockLogger.error).toHaveBeenCalledWith(
-        expect.objectContaining({
-          error: testError,
-          userId: testUserId,
-        }),
-        'Failed to get file count'
-      );
     });
   });
 
-  // ========== SUITE 13: GDPR-COMPLIANT DELETION CASCADE (15 TESTS) ==========
+  // ========== SUITE 12: GDPR-COMPLIANT DELETION CASCADE (15 TESTS) ==========
   describe('GDPR-Compliant Deletion Cascade', () => {
     /**
      * GDPR Article 17 - Right to Erasure
@@ -814,22 +633,17 @@ describe('FileService', () => {
       it('should create audit record before deletion', async () => {
         const blobPath = 'users/test-user/files/invoice.pdf';
 
-        // SELECT to get file metadata
-        mockExecuteQuery.mockResolvedValueOnce({
-          recordset: [{
-            blob_path: blobPath,
-            is_folder: false,
-            name: 'invoice.pdf',
-            mime_type: 'application/pdf',
-            size_bytes: 1024,
-          }],
+        mockRepo.getFileMetadata.mockResolvedValueOnce({
+          blobPath,
+          isFolder: false,
+          name: 'invoice.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: 1024,
         });
-        // DELETE from files
-        mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+        mockRepo.delete.mockResolvedValueOnce(undefined);
 
         await fileService.deleteFile(testUserId, testFileId);
 
-        // Verify audit record was created
         expect(mockAuditService.logDeletionRequest).toHaveBeenCalledWith({
           userId: testUserId,
           resourceType: 'file',
@@ -845,20 +659,15 @@ describe('FileService', () => {
       });
 
       it('should create audit record with folder resourceType for folders', async () => {
-        // SELECT to get folder metadata
-        mockExecuteQuery.mockResolvedValueOnce({
-          recordset: [{
-            blob_path: '',
-            is_folder: true,
-            name: 'Documents',
-            mime_type: 'inode/directory',
-            size_bytes: 0,
-          }],
+        mockRepo.getFileMetadata.mockResolvedValueOnce({
+          blobPath: '',
+          isFolder: true,
+          name: 'Documents',
+          mimeType: 'inode/directory',
+          sizeBytes: 0,
         });
-        // SELECT children (empty folder)
-        mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
-        // DELETE folder
-        mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+        mockRepo.getChildrenIds.mockResolvedValueOnce([]);
+        mockRepo.delete.mockResolvedValueOnce(undefined);
 
         await fileService.deleteFile(testUserId, testFileId);
 
@@ -870,16 +679,14 @@ describe('FileService', () => {
       });
 
       it('should use custom deletionReason when provided', async () => {
-        mockExecuteQuery.mockResolvedValueOnce({
-          recordset: [{
-            blob_path: 'test.pdf',
-            is_folder: false,
-            name: 'test.pdf',
-            mime_type: 'application/pdf',
-            size_bytes: 100,
-          }],
+        mockRepo.getFileMetadata.mockResolvedValueOnce({
+          blobPath: 'test.pdf',
+          isFolder: false,
+          name: 'test.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: 100,
         });
-        mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+        mockRepo.delete.mockResolvedValueOnce(undefined);
 
         await fileService.deleteFile(testUserId, testFileId, { deletionReason: 'gdpr_erasure' });
 
@@ -891,16 +698,14 @@ describe('FileService', () => {
       });
 
       it('should skip audit when skipAudit option is true', async () => {
-        mockExecuteQuery.mockResolvedValueOnce({
-          recordset: [{
-            blob_path: 'test.pdf',
-            is_folder: false,
-            name: 'test.pdf',
-            mime_type: 'application/pdf',
-            size_bytes: 100,
-          }],
+        mockRepo.getFileMetadata.mockResolvedValueOnce({
+          blobPath: 'test.pdf',
+          isFolder: false,
+          name: 'test.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: 100,
         });
-        mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+        mockRepo.delete.mockResolvedValueOnce(undefined);
 
         await fileService.deleteFile(testUserId, testFileId, { skipAudit: true });
 
@@ -908,20 +713,17 @@ describe('FileService', () => {
       });
 
       it('should update audit record after DB deletion success', async () => {
-        mockExecuteQuery.mockResolvedValueOnce({
-          recordset: [{
-            blob_path: 'test.pdf',
-            is_folder: false,
-            name: 'test.pdf',
-            mime_type: 'application/pdf',
-            size_bytes: 100,
-          }],
+        mockRepo.getFileMetadata.mockResolvedValueOnce({
+          blobPath: 'test.pdf',
+          isFolder: false,
+          name: 'test.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: 100,
         });
-        mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+        mockRepo.delete.mockResolvedValueOnce(undefined);
 
         await fileService.deleteFile(testUserId, testFileId);
 
-        // Verify DB deletion status was updated
         expect(mockAuditService.updateStorageStatus).toHaveBeenCalledWith(
           'audit-id-123',
           expect.objectContaining({
@@ -931,16 +733,14 @@ describe('FileService', () => {
       });
 
       it('should mark audit as completed after successful deletion', async () => {
-        mockExecuteQuery.mockResolvedValueOnce({
-          recordset: [{
-            blob_path: 'test.pdf',
-            is_folder: false,
-            name: 'test.pdf',
-            mime_type: 'application/pdf',
-            size_bytes: 100,
-          }],
+        mockRepo.getFileMetadata.mockResolvedValueOnce({
+          blobPath: 'test.pdf',
+          isFolder: false,
+          name: 'test.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: 100,
         });
-        mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+        mockRepo.delete.mockResolvedValueOnce(undefined);
 
         await fileService.deleteFile(testUserId, testFileId);
 
@@ -948,18 +748,15 @@ describe('FileService', () => {
       });
 
       it('should mark audit as partial if AI Search cleanup fails', async () => {
-        mockExecuteQuery.mockResolvedValueOnce({
-          recordset: [{
-            blob_path: 'test.pdf',
-            is_folder: false,
-            name: 'test.pdf',
-            mime_type: 'application/pdf',
-            size_bytes: 100,
-          }],
+        mockRepo.getFileMetadata.mockResolvedValueOnce({
+          blobPath: 'test.pdf',
+          isFolder: false,
+          name: 'test.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: 100,
         });
-        mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+        mockRepo.delete.mockResolvedValueOnce(undefined);
 
-        // AI Search cleanup fails
         mockVectorSearchService.deleteChunksForFile.mockRejectedValueOnce(
           new Error('AI Search unavailable')
         );
@@ -970,18 +767,15 @@ describe('FileService', () => {
       });
 
       it('should continue deletion even if audit logging fails', async () => {
-        mockExecuteQuery.mockResolvedValueOnce({
-          recordset: [{
-            blob_path: 'test.pdf',
-            is_folder: false,
-            name: 'test.pdf',
-            mime_type: 'application/pdf',
-            size_bytes: 100,
-          }],
+        mockRepo.getFileMetadata.mockResolvedValueOnce({
+          blobPath: 'test.pdf',
+          isFolder: false,
+          name: 'test.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: 100,
         });
-        mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+        mockRepo.delete.mockResolvedValueOnce(undefined);
 
-        // Audit logging fails
         mockAuditService.logDeletionRequest.mockRejectedValueOnce(new Error('Audit DB error'));
 
         const blobPaths = await fileService.deleteFile(testUserId, testFileId);
@@ -997,16 +791,14 @@ describe('FileService', () => {
 
     describe('AI Search Cleanup', () => {
       it('should delete AI Search embeddings for file', async () => {
-        mockExecuteQuery.mockResolvedValueOnce({
-          recordset: [{
-            blob_path: 'test.pdf',
-            is_folder: false,
-            name: 'test.pdf',
-            mime_type: 'application/pdf',
-            size_bytes: 100,
-          }],
+        mockRepo.getFileMetadata.mockResolvedValueOnce({
+          blobPath: 'test.pdf',
+          isFolder: false,
+          name: 'test.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: 100,
         });
-        mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+        mockRepo.delete.mockResolvedValueOnce(undefined);
 
         await fileService.deleteFile(testUserId, testFileId);
 
@@ -1017,35 +809,30 @@ describe('FileService', () => {
       });
 
       it('should NOT call AI Search for folder deletion', async () => {
-        mockExecuteQuery.mockResolvedValueOnce({
-          recordset: [{
-            blob_path: '',
-            is_folder: true,
-            name: 'Documents',
-            mime_type: 'inode/directory',
-            size_bytes: 0,
-          }],
+        mockRepo.getFileMetadata.mockResolvedValueOnce({
+          blobPath: '',
+          isFolder: true,
+          name: 'Documents',
+          mimeType: 'inode/directory',
+          sizeBytes: 0,
         });
-        mockExecuteQuery.mockResolvedValueOnce({ recordset: [] }); // No children
-        mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+        mockRepo.getChildrenIds.mockResolvedValueOnce([]);
+        mockRepo.delete.mockResolvedValueOnce(undefined);
 
         await fileService.deleteFile(testUserId, testFileId);
 
-        // VectorSearchService should not be called for empty folder
         expect(mockVectorSearchService.deleteChunksForFile).not.toHaveBeenCalled();
       });
 
       it('should continue deletion if AI Search cleanup fails (eventual consistency)', async () => {
-        mockExecuteQuery.mockResolvedValueOnce({
-          recordset: [{
-            blob_path: 'important.pdf',
-            is_folder: false,
-            name: 'important.pdf',
-            mime_type: 'application/pdf',
-            size_bytes: 5000,
-          }],
+        mockRepo.getFileMetadata.mockResolvedValueOnce({
+          blobPath: 'important.pdf',
+          isFolder: false,
+          name: 'important.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: 5000,
         });
-        mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+        mockRepo.delete.mockResolvedValueOnce(undefined);
 
         mockVectorSearchService.deleteChunksForFile.mockRejectedValueOnce(
           new Error('AI Search timeout')
@@ -1056,7 +843,6 @@ describe('FileService', () => {
         // Deletion succeeds despite AI Search failure
         expect(blobPaths).toEqual(['important.pdf']);
 
-        // Warning logged for later cleanup
         expect(mockLogger.warn).toHaveBeenCalledWith(
           expect.objectContaining({ fileId: testFileId }),
           'Failed to delete AI Search embeddings (will be cleaned by orphan cleanup job)'
@@ -1064,16 +850,14 @@ describe('FileService', () => {
       });
 
       it('should log success when AI Search embeddings deleted', async () => {
-        mockExecuteQuery.mockResolvedValueOnce({
-          recordset: [{
-            blob_path: 'test.pdf',
-            is_folder: false,
-            name: 'test.pdf',
-            mime_type: 'application/pdf',
-            size_bytes: 100,
-          }],
+        mockRepo.getFileMetadata.mockResolvedValueOnce({
+          blobPath: 'test.pdf',
+          isFolder: false,
+          name: 'test.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: 100,
         });
-        mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+        mockRepo.delete.mockResolvedValueOnce(undefined);
 
         await fileService.deleteFile(testUserId, testFileId);
 
@@ -1089,45 +873,34 @@ describe('FileService', () => {
         const childFileId = 'child-file-456';
         const childBlobPath = 'users/test-user/files/child.pdf';
 
-        // Parent folder query
-        mockExecuteQuery.mockResolvedValueOnce({
-          recordset: [{
-            blob_path: '',
-            is_folder: true,
-            name: 'Documents',
-            mime_type: 'inode/directory',
-            size_bytes: 0,
-          }],
+        // Parent folder metadata
+        mockRepo.getFileMetadata.mockResolvedValueOnce({
+          blobPath: '',
+          isFolder: true,
+          name: 'Documents',
+          mimeType: 'inode/directory',
+          sizeBytes: 0,
         });
 
-        // Children query - one child file
-        mockExecuteQuery.mockResolvedValueOnce({
-          recordset: [{ id: childFileId }],
+        // Children: one child file
+        mockRepo.getChildrenIds.mockResolvedValueOnce([childFileId]);
+
+        // Child file metadata (recursive call)
+        mockRepo.getFileMetadata.mockResolvedValueOnce({
+          blobPath: childBlobPath,
+          isFolder: false,
+          name: 'child.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: 2000,
         });
 
-        // Child file query (recursive call)
-        mockExecuteQuery.mockResolvedValueOnce({
-          recordset: [{
-            blob_path: childBlobPath,
-            is_folder: false,
-            name: 'child.pdf',
-            mime_type: 'application/pdf',
-            size_bytes: 2000,
-          }],
-        });
-
-        // Child file delete
-        mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
-
-        // Parent folder delete
-        mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+        // delete calls: child then parent
+        mockRepo.delete.mockResolvedValueOnce(undefined); // child
+        mockRepo.delete.mockResolvedValueOnce(undefined); // parent
 
         const blobPaths = await fileService.deleteFile(testUserId, testFileId);
 
-        // Should return child blob path
         expect(blobPaths).toContain(childBlobPath);
-
-        // AI Search should be called for child file
         expect(mockVectorSearchService.deleteChunksForFile).toHaveBeenCalledWith(
           childFileId,
           testUserId
@@ -1137,38 +910,29 @@ describe('FileService', () => {
       it('should skip audit for recursive child deletions', async () => {
         const childFileId = 'child-file-789';
 
-        // Parent folder query
-        mockExecuteQuery.mockResolvedValueOnce({
-          recordset: [{
-            blob_path: '',
-            is_folder: true,
-            name: 'Parent',
-            mime_type: 'inode/directory',
-            size_bytes: 0,
-          }],
+        // Parent folder metadata
+        mockRepo.getFileMetadata.mockResolvedValueOnce({
+          blobPath: '',
+          isFolder: true,
+          name: 'Parent',
+          mimeType: 'inode/directory',
+          sizeBytes: 0,
         });
 
-        // Children query
-        mockExecuteQuery.mockResolvedValueOnce({
-          recordset: [{ id: childFileId }],
+        // Children: one child
+        mockRepo.getChildrenIds.mockResolvedValueOnce([childFileId]);
+
+        // Child file metadata
+        mockRepo.getFileMetadata.mockResolvedValueOnce({
+          blobPath: 'child.pdf',
+          isFolder: false,
+          name: 'child.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: 500,
         });
 
-        // Child file query
-        mockExecuteQuery.mockResolvedValueOnce({
-          recordset: [{
-            blob_path: 'child.pdf',
-            is_folder: false,
-            name: 'child.pdf',
-            mime_type: 'application/pdf',
-            size_bytes: 500,
-          }],
-        });
-
-        // Child delete
-        mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
-
-        // Parent delete
-        mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+        mockRepo.delete.mockResolvedValueOnce(undefined); // child
+        mockRepo.delete.mockResolvedValueOnce(undefined); // parent
 
         await fileService.deleteFile(testUserId, testFileId);
 
@@ -1183,46 +947,53 @@ describe('FileService', () => {
       });
 
       it('should track childFilesDeleted count in audit', async () => {
-        // Parent folder
-        mockExecuteQuery.mockResolvedValueOnce({
-          recordset: [{
-            blob_path: '',
-            is_folder: true,
-            name: 'Folder',
-            mime_type: 'inode/directory',
-            size_bytes: 0,
-          }],
+        // Parent folder metadata
+        mockRepo.getFileMetadata.mockResolvedValueOnce({
+          blobPath: '',
+          isFolder: true,
+          name: 'Folder',
+          mimeType: 'inode/directory',
+          sizeBytes: 0,
         });
 
         // 3 children
-        mockExecuteQuery.mockResolvedValueOnce({
-          recordset: [{ id: 'child-1' }, { id: 'child-2' }, { id: 'child-3' }],
-        });
+        mockRepo.getChildrenIds.mockResolvedValueOnce(['child-1', 'child-2', 'child-3']);
 
-        // Child 1 query and delete
-        mockExecuteQuery.mockResolvedValueOnce({
-          recordset: [{ blob_path: 'c1.pdf', is_folder: false, name: 'c1.pdf', mime_type: 'application/pdf', size_bytes: 100 }],
+        // Child 1 metadata + delete
+        mockRepo.getFileMetadata.mockResolvedValueOnce({
+          blobPath: 'c1.pdf',
+          isFolder: false,
+          name: 'c1.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: 100,
         });
-        mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+        mockRepo.delete.mockResolvedValueOnce(undefined);
 
-        // Child 2 query and delete
-        mockExecuteQuery.mockResolvedValueOnce({
-          recordset: [{ blob_path: 'c2.pdf', is_folder: false, name: 'c2.pdf', mime_type: 'application/pdf', size_bytes: 200 }],
+        // Child 2 metadata + delete
+        mockRepo.getFileMetadata.mockResolvedValueOnce({
+          blobPath: 'c2.pdf',
+          isFolder: false,
+          name: 'c2.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: 200,
         });
-        mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+        mockRepo.delete.mockResolvedValueOnce(undefined);
 
-        // Child 3 query and delete
-        mockExecuteQuery.mockResolvedValueOnce({
-          recordset: [{ blob_path: 'c3.pdf', is_folder: false, name: 'c3.pdf', mime_type: 'application/pdf', size_bytes: 300 }],
+        // Child 3 metadata + delete
+        mockRepo.getFileMetadata.mockResolvedValueOnce({
+          blobPath: 'c3.pdf',
+          isFolder: false,
+          name: 'c3.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: 300,
         });
-        mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+        mockRepo.delete.mockResolvedValueOnce(undefined);
 
         // Parent delete
-        mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+        mockRepo.delete.mockResolvedValueOnce(undefined);
 
         await fileService.deleteFile(testUserId, testFileId);
 
-        // Verify childFilesDeleted was tracked
         expect(mockAuditService.updateStorageStatus).toHaveBeenCalledWith(
           'audit-id-123',
           expect.objectContaining({
@@ -1235,18 +1006,16 @@ describe('FileService', () => {
 
     describe('Error Handling', () => {
       it('should mark audit as failed when deletion throws', async () => {
-        mockExecuteQuery.mockResolvedValueOnce({
-          recordset: [{
-            blob_path: 'test.pdf',
-            is_folder: false,
-            name: 'test.pdf',
-            mime_type: 'application/pdf',
-            size_bytes: 100,
-          }],
+        mockRepo.getFileMetadata.mockResolvedValueOnce({
+          blobPath: 'test.pdf',
+          isFolder: false,
+          name: 'test.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: 100,
         });
 
         // DELETE fails
-        mockExecuteQuery.mockRejectedValueOnce(new Error('FK violation'));
+        mockRepo.delete.mockRejectedValueOnce(new Error('FK violation'));
 
         await expect(fileService.deleteFile(testUserId, testFileId)).rejects.toThrow('FK violation');
 
@@ -1258,23 +1027,20 @@ describe('FileService', () => {
       });
     });
 
-    // ========== Post-Delete Verification (D23) ==========
-    describe('Post-Delete Verification (D23)', () => {
+    // ========== Post-Delete Verification ==========
+    describe('Post-Delete Verification', () => {
       it('should call VectorSearchService.deleteChunksForFile after DB deletion', async () => {
-        mockExecuteQuery.mockResolvedValueOnce({
-          recordset: [{
-            blob_path: 'cascade-test.pdf',
-            is_folder: false,
-            name: 'cascade-test.pdf',
-            mime_type: 'application/pdf',
-            size_bytes: 100,
-          }],
+        mockRepo.getFileMetadata.mockResolvedValueOnce({
+          blobPath: 'cascade-test.pdf',
+          isFolder: false,
+          name: 'cascade-test.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: 100,
         });
-        mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+        mockRepo.delete.mockResolvedValueOnce(undefined);
 
         await fileService.deleteFile(testUserId, testFileId);
 
-        // Verify VectorSearchService was called AFTER DB deletion
         expect(mockVectorSearchService.deleteChunksForFile).toHaveBeenCalledWith(
           testFileId,
           testUserId
@@ -1286,37 +1052,46 @@ describe('FileService', () => {
         const childFileId1 = 'child-cascade-1';
         const childFileId2 = 'child-cascade-2';
 
-        // Parent folder query
-        mockExecuteQuery.mockResolvedValueOnce({
-          recordset: [{ blob_path: '', is_folder: true, name: 'CascadeFolder', mime_type: 'inode/directory', size_bytes: 0 }],
+        // Parent folder metadata
+        mockRepo.getFileMetadata.mockResolvedValueOnce({
+          blobPath: '',
+          isFolder: true,
+          name: 'CascadeFolder',
+          mimeType: 'inode/directory',
+          sizeBytes: 0,
         });
-        // Children query
-        mockExecuteQuery.mockResolvedValueOnce({
-          recordset: [{ id: childFileId1 }, { id: childFileId2 }],
+        // Children
+        mockRepo.getChildrenIds.mockResolvedValueOnce([childFileId1, childFileId2]);
+        // Child 1 metadata + delete
+        mockRepo.getFileMetadata.mockResolvedValueOnce({
+          blobPath: 'c1.pdf',
+          isFolder: false,
+          name: 'c1.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: 100,
         });
-        // Child 1 query + delete
-        mockExecuteQuery.mockResolvedValueOnce({
-          recordset: [{ blob_path: 'c1.pdf', is_folder: false, name: 'c1.pdf', mime_type: 'application/pdf', size_bytes: 100 }],
+        mockRepo.delete.mockResolvedValueOnce(undefined);
+        // Child 2 metadata + delete
+        mockRepo.getFileMetadata.mockResolvedValueOnce({
+          blobPath: 'c2.pdf',
+          isFolder: false,
+          name: 'c2.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: 200,
         });
-        mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
-        // Child 2 query + delete
-        mockExecuteQuery.mockResolvedValueOnce({
-          recordset: [{ blob_path: 'c2.pdf', is_folder: false, name: 'c2.pdf', mime_type: 'application/pdf', size_bytes: 200 }],
-        });
-        mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+        mockRepo.delete.mockResolvedValueOnce(undefined);
         // Parent folder delete
-        mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
+        mockRepo.delete.mockResolvedValueOnce(undefined);
 
         await fileService.deleteFile(testUserId, testFileId);
 
-        // Should call for each child file
         expect(mockVectorSearchService.deleteChunksForFile).toHaveBeenCalledTimes(2);
         expect(mockVectorSearchService.deleteChunksForFile).toHaveBeenCalledWith(childFileId1, testUserId);
         expect(mockVectorSearchService.deleteChunksForFile).toHaveBeenCalledWith(childFileId2, testUserId);
       });
 
       it('should not call deleteChunksForFile when file not found (idempotent)', async () => {
-        mockExecuteQuery.mockResolvedValueOnce({ recordset: [] }); // File not found
+        mockRepo.getFileMetadata.mockResolvedValueOnce(null);
 
         const result = await fileService.deleteFile(testUserId, 'non-existent-file');
 
@@ -1326,11 +1101,11 @@ describe('FileService', () => {
     });
   });
 
-  // ========== SUITE 14: DUPLICATE FILE DETECTION (D20) ==========
-  describe('Duplicate File Detection (D20)', () => {
+  // ========== SUITE 13: DUPLICATE FILE DETECTION ==========
+  describe('Duplicate File Detection', () => {
     describe('checkDuplicate()', () => {
       it('should return isDuplicate=false when no matching file exists', async () => {
-        mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
+        mockRepo.findByName.mockResolvedValueOnce(null);
 
         const result = await fileService.checkDuplicate(testUserId, 'new-file.pdf');
 
@@ -1339,12 +1114,12 @@ describe('FileService', () => {
       });
 
       it('should return isDuplicate=true with existing file when match found', async () => {
-        const existingFile = FileFixture.createFileDbRecord({
+        const existingFile = FileFixture.createParsedFile({
           id: 'existing-123',
-          user_id: testUserId,
+          userId: testUserId,
           name: 'duplicate.pdf',
         });
-        mockExecuteQuery.mockResolvedValueOnce({ recordset: [existingFile] });
+        mockRepo.findByName.mockResolvedValueOnce(existingFile);
 
         const result = await fileService.checkDuplicate(testUserId, 'duplicate.pdf');
 
@@ -1354,99 +1129,63 @@ describe('FileService', () => {
       });
 
       it('should check in specific folder when folderId provided', async () => {
-        mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
+        mockRepo.findByName.mockResolvedValueOnce(null);
 
         await fileService.checkDuplicate(testUserId, 'file.pdf', 'folder-123');
 
-        expect(mockExecuteQuery).toHaveBeenCalledWith(
-          expect.stringContaining('AND parent_folder_id = @parent_folder_id'),
-          expect.objectContaining({
-            user_id: testUserId,
-            name: 'file.pdf',
-            parent_folder_id: 'folder-123',
-          })
-        );
+        expect(mockRepo.findByName).toHaveBeenCalledWith(testUserId, 'file.pdf', 'folder-123');
       });
 
       it('should check in root when folderId is null', async () => {
-        mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
+        mockRepo.findByName.mockResolvedValueOnce(null);
 
         await fileService.checkDuplicate(testUserId, 'file.pdf', null);
 
-        expect(mockExecuteQuery).toHaveBeenCalledWith(
-          expect.stringContaining('AND parent_folder_id IS NULL'),
-          expect.objectContaining({
-            user_id: testUserId,
-            name: 'file.pdf',
-          })
-        );
+        expect(mockRepo.findByName).toHaveBeenCalledWith(testUserId, 'file.pdf', null);
       });
 
       it('should check in root when folderId is undefined', async () => {
-        mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
+        mockRepo.findByName.mockResolvedValueOnce(null);
 
         await fileService.checkDuplicate(testUserId, 'root-file.pdf');
 
-        expect(mockExecuteQuery).toHaveBeenCalledWith(
-          expect.stringContaining('AND parent_folder_id IS NULL'),
-          expect.anything()
-        );
+        expect(mockRepo.findByName).toHaveBeenCalledWith(testUserId, 'root-file.pdf', null);
       });
 
-      it('should only check files (not folders)', async () => {
-        mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
-
-        await fileService.checkDuplicate(testUserId, 'Documents');
-
-        expect(mockExecuteQuery).toHaveBeenCalledWith(
-          expect.stringContaining('AND is_folder = 0'),
-          expect.anything()
-        );
-      });
-
-      it('should enforce multi-tenant isolation with userId filter', async () => {
-        mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
+      it('should enforce multi-tenant isolation by passing userId to findByName', async () => {
+        mockRepo.findByName.mockResolvedValueOnce(null);
 
         await fileService.checkDuplicate(testUserId, 'secure-file.pdf');
 
-        expect(mockExecuteQuery).toHaveBeenCalledWith(
-          expect.stringContaining('WHERE user_id = @user_id'),
-          expect.objectContaining({
-            user_id: testUserId,
-          })
+        // Verify that userId is the first argument (multi-tenant isolation)
+        expect(mockRepo.findByName).toHaveBeenCalledWith(
+          testUserId,
+          'secure-file.pdf',
+          null
         );
       });
 
-      it('should throw error and log on database failure', async () => {
+      it('should throw error on database failure', async () => {
         const dbError = new Error('Connection timeout');
-        mockExecuteQuery.mockRejectedValueOnce(dbError);
+        mockRepo.findByName.mockRejectedValueOnce(dbError);
 
         await expect(
           fileService.checkDuplicate(testUserId, 'error-file.pdf')
         ).rejects.toThrow('Connection timeout');
-
-        expect(mockLogger.error).toHaveBeenCalledWith(
-          expect.objectContaining({
-            error: dbError,
-            userId: testUserId,
-            fileName: 'error-file.pdf',
-          }),
-          'Failed to check for duplicate'
-        );
       });
     });
 
     describe('checkDuplicatesBatch()', () => {
-      it('should check multiple files in parallel', async () => {
+      it('should check multiple files sequentially', async () => {
         // First check - no duplicate
-        mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
+        mockRepo.findByName.mockResolvedValueOnce(null);
         // Second check - duplicate found
-        const existingFile = FileFixture.createFileDbRecord({
+        const existingFile = FileFixture.createParsedFile({
           id: 'dup-batch-123',
-          user_id: testUserId,
+          userId: testUserId,
           name: 'existing.pdf',
         });
-        mockExecuteQuery.mockResolvedValueOnce({ recordset: [existingFile] });
+        mockRepo.findByName.mockResolvedValueOnce(existingFile);
 
         const results = await fileService.checkDuplicatesBatch(testUserId, [
           { name: 'new.pdf' },
@@ -1462,22 +1201,25 @@ describe('FileService', () => {
       });
 
       it('should handle mixed folderId values', async () => {
-        mockExecuteQuery.mockResolvedValue({ recordset: [] });
+        mockRepo.findByName.mockResolvedValue(null);
 
         await fileService.checkDuplicatesBatch(testUserId, [
-          { name: 'root.pdf' },                    // Root (undefined)
+          { name: 'root.pdf' },                    // Root (undefined → null)
           { name: 'folder.pdf', folderId: 'f1' }, // In folder f1
           { name: 'root2.pdf', folderId: null },  // Root (explicit null)
         ]);
 
-        expect(mockExecuteQuery).toHaveBeenCalledTimes(3);
+        expect(mockRepo.findByName).toHaveBeenCalledTimes(3);
+        expect(mockRepo.findByName).toHaveBeenNthCalledWith(1, testUserId, 'root.pdf', null);
+        expect(mockRepo.findByName).toHaveBeenNthCalledWith(2, testUserId, 'folder.pdf', 'f1');
+        expect(mockRepo.findByName).toHaveBeenNthCalledWith(3, testUserId, 'root2.pdf', null);
       });
 
       it('should return empty array for empty input', async () => {
         const results = await fileService.checkDuplicatesBatch(testUserId, []);
 
         expect(results).toEqual([]);
-        expect(mockExecuteQuery).not.toHaveBeenCalled();
+        expect(mockRepo.findByName).not.toHaveBeenCalled();
       });
     });
   });

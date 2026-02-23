@@ -1,7 +1,7 @@
 /**
  * Message Queue Service (Multi-Tenant Safe) - Facade
  *
- * Implements message queue system using BullMQ with rate limiting.
+ * Implements message queue system using BullMQ.
  * This facade coordinates extracted components for modularity.
  *
  * Architecture:
@@ -26,11 +26,11 @@ import type {
   IEmbeddingServiceMinimal,
   IVectorSearchServiceMinimal,
 } from './IMessageQueueDependencies';
-import type { FileDeletionJobData, BulkUploadJobData } from '@bc-agent/shared';
+import type { FileDeletionJobData } from '@bc-agent/shared';
 
 // Re-export from constants for backward compatibility
 export { QueueName } from './constants';
-import { QueueName, JOB_PRIORITY, RATE_LIMIT, SHUTDOWN_DELAYS } from './constants';
+import { QueueName, JOB_PRIORITY, SHUTDOWN_DELAYS } from './constants';
 
 // Re-export types for backward compatibility
 export type {
@@ -38,22 +38,14 @@ export type {
   ToolExecutionJob,
   EventProcessingJob,
   UsageAggregationJob,
-  FileProcessingJob,
-  EmbeddingGenerationJob,
-  FileChunkingJob,
   CitationPersistenceJob,
-  FileCleanupJob,
 } from './types';
 import type {
   MessagePersistenceJob,
   ToolExecutionJob,
   EventProcessingJob,
   UsageAggregationJob,
-  FileProcessingJob,
-  EmbeddingGenerationJob,
-  FileChunkingJob,
   CitationPersistenceJob,
-  FileCleanupJob,
 } from './types';
 
 // Core components
@@ -62,26 +54,20 @@ import { QueueManager } from './core/QueueManager';
 import { WorkerRegistry } from './core/WorkerRegistry';
 import { QueueEventManager } from './core/QueueEventManager';
 import { ScheduledJobManager } from './core/ScheduledJobManager';
-import { RateLimiter } from './core/RateLimiter';
 
 // Workers
 import { getMessagePersistenceWorker } from './workers/MessagePersistenceWorker';
 import { getToolExecutionWorker } from './workers/ToolExecutionWorker';
 import { getEventProcessingWorker } from './workers/EventProcessingWorker';
 import { getUsageAggregationWorker } from './workers/UsageAggregationWorker';
-import { getFileProcessingWorker } from './workers/FileProcessingWorker';
-import { getFileChunkingWorker } from './workers/FileChunkingWorker';
-import { getEmbeddingGenerationWorker } from './workers/EmbeddingGenerationWorker';
 import { getCitationPersistenceWorker } from './workers/CitationPersistenceWorker';
-import { getFileCleanupWorker } from './workers/FileCleanupWorker';
 import { getFileDeletionWorker } from './workers/FileDeletionWorker';
-import { getFileBulkUploadWorker } from './workers/FileBulkUploadWorker';
-import { getFileExtractWorkerV2 } from './workers/v2/FileExtractWorkerV2';
-import { getFileChunkWorkerV2 } from './workers/v2/FileChunkWorkerV2';
-import { getFileEmbedWorkerV2 } from './workers/v2/FileEmbedWorkerV2';
-import { getFilePipelineCompleteWorker } from './workers/v2/FilePipelineCompleteWorker';
-import { getMaintenanceWorker, type MaintenanceJobData } from './workers/v2/MaintenanceWorker';
-import type { V2ExtractJobData, V2ChunkJobData, V2EmbedJobData, V2PipelineCompleteJobData } from './workers/v2';
+import { getFileExtractWorker } from './workers/FileExtractWorker';
+import { getFileChunkWorker } from './workers/FileChunkWorker';
+import { getFileEmbedWorker } from './workers/FileEmbedWorker';
+import { getFilePipelineCompleteWorker } from './workers/FilePipelineCompleteWorker';
+import { getMaintenanceWorker, type MaintenanceJobData } from './workers/MaintenanceWorker';
+import type { ExtractJobData, ChunkJobData, EmbedJobData, PipelineCompleteJobData } from './workers';
 import { FlowProducerManager } from './core/FlowProducerManager';
 import { ProcessingFlowFactory, type FileFlowParams } from './flow';
 
@@ -99,7 +85,6 @@ export class MessageQueue {
   private workerRegistry: WorkerRegistry;
   private eventManager: QueueEventManager;
   private scheduledJobManager: ScheduledJobManager;
-  private rateLimiter: RateLimiter;
   private flowProducerManager: FlowProducerManager | null = null;
 
   // Dependencies
@@ -158,12 +143,6 @@ export class MessageQueue {
     // Initialize ScheduledJobManager
     this.scheduledJobManager = new ScheduledJobManager({
       getQueue: (name) => this.queueManager.getQueue(name),
-      logger: this.log,
-    });
-
-    // Initialize RateLimiter
-    this.rateLimiter = new RateLimiter({
-      redis: this.redisManager.getConnection(),
       logger: this.log,
     });
 
@@ -266,46 +245,11 @@ export class MessageQueue {
       async (job: Job<UsageAggregationJob>) => usageAggregationWorker.process(job)
     );
 
-    // File Processing Worker
-    const fileProcessingWorker = getFileProcessingWorker(workerDeps);
-    this.workerRegistry.registerWorker(
-      QueueName.FILE_PROCESSING,
-      async (job: Job<FileProcessingJob>) => {
-        this.log.info({
-          jobId: job.id,
-          fileId: job.data?.fileId,
-          attemptsMade: job.attemptsMade,
-        }, '[WORKER-ENTRY] File processing worker callback started');
-        return fileProcessingWorker.process(job);
-      }
-    );
-
-    // File Chunking Worker
-    const fileChunkingWorker = getFileChunkingWorker(workerDeps);
-    this.workerRegistry.registerWorker(
-      QueueName.FILE_CHUNKING,
-      async (job: Job<FileChunkingJob>) => fileChunkingWorker.process(job)
-    );
-
-    // Embedding Generation Worker
-    const embeddingGenerationWorker = getEmbeddingGenerationWorker(workerDeps);
-    this.workerRegistry.registerWorker(
-      QueueName.EMBEDDING_GENERATION,
-      async (job: Job<EmbeddingGenerationJob>) => embeddingGenerationWorker.process(job)
-    );
-
     // Citation Persistence Worker
     const citationPersistenceWorker = getCitationPersistenceWorker(workerDeps);
     this.workerRegistry.registerWorker(
       QueueName.CITATION_PERSISTENCE,
       async (job: Job<CitationPersistenceJob>) => citationPersistenceWorker.process(job)
-    );
-
-    // File Cleanup Worker
-    const fileCleanupWorker = getFileCleanupWorker(workerDeps);
-    this.workerRegistry.registerWorker(
-      QueueName.FILE_CLEANUP,
-      async (job: Job<FileCleanupJob>) => fileCleanupWorker.process(job)
     );
 
     // File Deletion Worker
@@ -315,42 +259,35 @@ export class MessageQueue {
       async (job: Job<FileDeletionJobData>) => fileDeletionWorker.process(job)
     );
 
-    // File Bulk Upload Worker
-    const fileBulkUploadWorker = getFileBulkUploadWorker(workerDeps);
+    // File Pipeline Workers (PRD-04)
+    const fileExtractWorker = getFileExtractWorker({ logger: this.log });
     this.workerRegistry.registerWorker(
-      QueueName.FILE_BULK_UPLOAD,
-      async (job: Job<BulkUploadJobData>) => fileBulkUploadWorker.process(job)
+      QueueName.FILE_EXTRACT,
+      async (job: Job<ExtractJobData>) => fileExtractWorker.process(job)
     );
 
-    // V2 Pipeline Workers (PRD-04)
-    const fileExtractWorkerV2 = getFileExtractWorkerV2({ logger: this.log });
+    const fileChunkWorker = getFileChunkWorker({ logger: this.log });
     this.workerRegistry.registerWorker(
-      QueueName.V2_FILE_EXTRACT,
-      async (job: Job<V2ExtractJobData>) => fileExtractWorkerV2.process(job)
+      QueueName.FILE_CHUNK,
+      async (job: Job<ChunkJobData>) => fileChunkWorker.process(job)
     );
 
-    const fileChunkWorkerV2 = getFileChunkWorkerV2({ logger: this.log });
+    const fileEmbedWorker = getFileEmbedWorker({ logger: this.log });
     this.workerRegistry.registerWorker(
-      QueueName.V2_FILE_CHUNK,
-      async (job: Job<V2ChunkJobData>) => fileChunkWorkerV2.process(job)
-    );
-
-    const fileEmbedWorkerV2 = getFileEmbedWorkerV2({ logger: this.log });
-    this.workerRegistry.registerWorker(
-      QueueName.V2_FILE_EMBED,
-      async (job: Job<V2EmbedJobData>) => fileEmbedWorkerV2.process(job)
+      QueueName.FILE_EMBED,
+      async (job: Job<EmbedJobData>) => fileEmbedWorker.process(job)
     );
 
     const filePipelineCompleteWorker = getFilePipelineCompleteWorker({ logger: this.log });
     this.workerRegistry.registerWorker(
-      QueueName.V2_FILE_PIPELINE_COMPLETE,
-      async (job: Job<V2PipelineCompleteJobData>) => filePipelineCompleteWorker.process(job)
+      QueueName.FILE_PIPELINE_COMPLETE,
+      async (job: Job<PipelineCompleteJobData>) => filePipelineCompleteWorker.process(job)
     );
 
-    // V2 Maintenance Worker (PRD-05)
+    // Maintenance Worker (PRD-05)
     const maintenanceWorker = getMaintenanceWorker({ logger: this.log });
     this.workerRegistry.registerWorker(
-      QueueName.V2_MAINTENANCE,
+      QueueName.FILE_MAINTENANCE,
       async (job: Job<MaintenanceJobData>) => maintenanceWorker.process(job)
     );
 
@@ -371,12 +308,9 @@ export class MessageQueue {
   }): Promise<void> {
     const { queueName, userId, fileId, sessionId, failedReason } = context;
 
-    const isFileQueue = queueName === QueueName.FILE_PROCESSING ||
-                        queueName === QueueName.FILE_CHUNKING ||
-                        queueName === QueueName.EMBEDDING_GENERATION ||
-                        queueName === QueueName.V2_FILE_EXTRACT ||
-                        queueName === QueueName.V2_FILE_CHUNK ||
-                        queueName === QueueName.V2_FILE_EMBED;
+    const isFileQueue = queueName === QueueName.FILE_EXTRACT ||
+                        queueName === QueueName.FILE_CHUNK ||
+                        queueName === QueueName.FILE_EMBED;
 
     if (isFileQueue && fileId && userId) {
       try {
@@ -445,7 +379,7 @@ export class MessageQueue {
   // ==================== PUBLIC API (unchanged) ====================
 
   /**
-   * Add Message to Persistence Queue (with rate limiting)
+   * Add Message to Persistence Queue
    */
   public async addMessagePersistence(data: MessagePersistenceJob): Promise<string> {
     await this.waitForReady();
@@ -453,14 +387,6 @@ export class MessageQueue {
     const queue = this.queueManager.getQueue(QueueName.MESSAGE_PERSISTENCE);
     if (!queue) {
       throw new Error('Message persistence queue not initialized');
-    }
-
-    // Check rate limit
-    const withinLimit = await this.rateLimiter.checkLimit(data.sessionId);
-    if (!withinLimit) {
-      throw new Error(
-        `Rate limit exceeded for session ${data.sessionId}. Max ${RATE_LIMIT.MAX_JOBS_PER_SESSION} jobs per hour.`
-      );
     }
 
     const job = await queue.add('persist-message', data, {
@@ -522,24 +448,6 @@ export class MessageQueue {
   }
 
   /**
-   * Add Embedding Generation Job
-   */
-  async addEmbeddingGenerationJob(data: EmbeddingGenerationJob): Promise<string> {
-    await this.waitForReady();
-
-    const queue = this.queueManager.getQueue(QueueName.EMBEDDING_GENERATION);
-    if (!queue) {
-      throw new Error('Embedding generation queue not initialized');
-    }
-
-    const job = await queue.add('generate-embeddings', data, {
-      priority: JOB_PRIORITY.EMBEDDING_GENERATION,
-    });
-
-    return job.id || '';
-  }
-
-  /**
    * Add Usage Aggregation Job to Queue
    */
   public async addUsageAggregationJob(data: UsageAggregationJob): Promise<string> {
@@ -565,73 +473,6 @@ export class MessageQueue {
   }
 
   /**
-   * Add File Processing Job to Queue
-   *
-   * @deprecated PRD-04 — Use addFileProcessingFlow() instead.
-   */
-  public async addFileProcessingJob(data: FileProcessingJob): Promise<string> {
-    await this.waitForReady();
-
-    const queue = this.queueManager.getQueue(QueueName.FILE_PROCESSING);
-    if (!queue) {
-      throw new Error('File processing queue not initialized');
-    }
-
-    const withinLimit = await this.rateLimiter.checkLimit(`file:${data.userId}`);
-    if (!withinLimit) {
-      throw new Error(
-        `Rate limit exceeded for user ${data.userId}. Max ${RATE_LIMIT.MAX_JOBS_PER_SESSION} file processing jobs per hour.`
-      );
-    }
-
-    const job = await queue.add('process-file', data, {
-      priority: JOB_PRIORITY.FILE_PROCESSING,
-    });
-
-    this.log.info('File processing job added to queue', {
-      jobId: job.id,
-      fileId: data.fileId,
-      userId: data.userId,
-      mimeType: data.mimeType,
-      fileName: data.fileName,
-    });
-
-    return job.id || '';
-  }
-
-  /**
-   * Add File Chunking Job
-   */
-  public async addFileChunkingJob(data: FileChunkingJob): Promise<string> {
-    await this.waitForReady();
-
-    const queue = this.queueManager.getQueue(QueueName.FILE_CHUNKING);
-    if (!queue) {
-      throw new Error('File chunking queue not initialized');
-    }
-
-    const withinLimit = await this.rateLimiter.checkLimit(`chunking:${data.userId}`);
-    if (!withinLimit) {
-      throw new Error(
-        `Rate limit exceeded for user ${data.userId}. Max ${RATE_LIMIT.MAX_JOBS_PER_SESSION} chunking jobs per hour.`
-      );
-    }
-
-    const job = await queue.add('chunk-file', data, {
-      priority: JOB_PRIORITY.FILE_CHUNKING,
-    });
-
-    this.log.info('File chunking job added to queue', {
-      jobId: job.id,
-      fileId: data.fileId,
-      userId: data.userId,
-      mimeType: data.mimeType,
-    });
-
-    return job.id || '';
-  }
-
-  /**
    * Add Citation Persistence Job
    */
   public async addCitationPersistence(data: CitationPersistenceJob): Promise<string> {
@@ -651,30 +492,6 @@ export class MessageQueue {
       messageId: data.messageId,
       sessionId: data.sessionId,
       citationCount: data.citations.length,
-    });
-
-    return job.id || '';
-  }
-
-  /**
-   * Add File Cleanup Job
-   */
-  public async addFileCleanupJob(data: FileCleanupJob): Promise<string> {
-    await this.waitForReady();
-
-    const queue = this.queueManager.getQueue(QueueName.FILE_CLEANUP);
-    if (!queue) {
-      throw new Error('File cleanup queue not initialized');
-    }
-
-    const job = await queue.add(`cleanup-${data.type}`, data, {
-      priority: JOB_PRIORITY.FILE_CLEANUP,
-    });
-
-    this.log.info('File cleanup job added to queue', {
-      jobId: job.id,
-      type: data.type,
-      userId: data.userId || 'all-users',
     });
 
     return job.id || '';
@@ -707,38 +524,10 @@ export class MessageQueue {
   }
 
   /**
-   * Add File Bulk Upload Job
-   */
-  public async addFileBulkUploadJob(data: BulkUploadJobData): Promise<string> {
-    await this.waitForReady();
-
-    const queue = this.queueManager.getQueue(QueueName.FILE_BULK_UPLOAD);
-    if (!queue) {
-      throw new Error('File bulk upload queue not initialized');
-    }
-
-    const job = await queue.add('upload-file', data, {
-      priority: JOB_PRIORITY.FILE_BULK_UPLOAD,
-    });
-
-    this.log.info('File bulk upload job added to queue', {
-      jobId: job.id,
-      tempId: data.tempId,
-      userId: data.userId,
-      batchId: data.batchId,
-      fileName: data.fileName,
-    });
-
-    return job.id || '';
-  }
-
-  /**
-   * Add File Processing Flow (V2 Pipeline - PRD-04)
+   * Add File Processing Flow (PRD-04)
    *
    * Creates a BullMQ Flow tree that guarantees sequential execution:
    * extract → chunk → embed → pipeline-complete
-   *
-   * Replaces the fire-and-forget chain of addFileProcessingJob → addFileChunkingJob → addEmbeddingGenerationJob
    *
    * @param params - File flow parameters (fileId, batchId, userId, mimeType, blobPath, fileName)
    */
@@ -749,35 +538,16 @@ export class MessageQueue {
       throw new Error('FlowProducerManager not initialized');
     }
 
-    const withinLimit = await this.rateLimiter.checkLimit(`file:${params.userId}`);
-    if (!withinLimit) {
-      throw new Error(
-        `Rate limit exceeded for user ${params.userId}. Max ${RATE_LIMIT.MAX_JOBS_PER_SESSION} file processing jobs per hour.`
-      );
-    }
-
     const flow = ProcessingFlowFactory.createFileFlow(params);
     await this.flowProducerManager.addFlow(flow);
 
-    this.log.info('V2 file processing flow added', {
+    this.log.info('File processing flow added', {
       fileId: params.fileId,
       batchId: params.batchId,
       userId: params.userId,
       mimeType: params.mimeType,
       fileName: params.fileName,
     });
-  }
-
-  /**
-   * Get Rate Limit Status for Session
-   */
-  public async getRateLimitStatus(sessionId: string): Promise<{
-    count: number;
-    limit: number;
-    remaining: number;
-    withinLimit: boolean;
-  }> {
-    return this.rateLimiter.getStatus(sessionId);
   }
 
   /**

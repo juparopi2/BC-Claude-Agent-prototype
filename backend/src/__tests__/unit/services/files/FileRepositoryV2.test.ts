@@ -1,12 +1,12 @@
 /**
- * FileRepositoryV2 Tests (PRD-01)
+ * FileRepository Tests (PRD-01)
  *
  * Tests Prisma-based unified pipeline_status repository.
  * Validates optimistic concurrency, state machine transitions, and status distribution.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { FileRepositoryV2, __resetFileRepositoryV2 } from '@/services/files/repository/FileRepositoryV2';
+import { FileRepository, __resetFileRepository } from '@/services/files/repository/FileRepository';
 import { PIPELINE_STATUS } from '@bc-agent/shared';
 
 // Mock Prisma client
@@ -27,16 +27,16 @@ const mockUpdateMany = vi.mocked(prisma.files.updateMany);
 const mockFindFirst = vi.mocked(prisma.files.findFirst);
 const mockGroupBy = vi.mocked(prisma.files.groupBy);
 
-describe('FileRepositoryV2', () => {
-  let repository: FileRepositoryV2;
+describe('FileRepository', () => {
+  let repository: FileRepository;
 
   const TEST_FILE_ID = 'FILE-12345678-1234-1234-1234-123456789ABC';
   const TEST_USER_ID = 'USER-87654321-4321-4321-4321-CBA987654321';
 
   beforeEach(() => {
     vi.clearAllMocks();
-    __resetFileRepositoryV2();
-    repository = new FileRepositoryV2();
+    __resetFileRepository();
+    repository = new FileRepository();
   });
 
   describe('transitionStatus', () => {
@@ -249,7 +249,6 @@ describe('FileRepositoryV2', () => {
         by: ['pipeline_status'],
         _count: { id: true },
         where: {
-          pipeline_status: { not: null },
           deletion_status: null,
         },
       });

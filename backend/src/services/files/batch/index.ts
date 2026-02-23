@@ -7,10 +7,10 @@
  */
 
 export {
-  BatchUploadOrchestratorV2,
-  getBatchUploadOrchestratorV2,
-  __resetBatchUploadOrchestratorV2,
-} from './BatchUploadOrchestratorV2';
+  BatchUploadOrchestrator,
+  getBatchUploadOrchestrator,
+  __resetBatchUploadOrchestrator,
+} from './BatchUploadOrchestrator';
 
 export {
   BatchNotFoundError,

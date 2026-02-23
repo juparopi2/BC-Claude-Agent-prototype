@@ -332,12 +332,8 @@ export class QueueEventManager {
    */
   private mapQueueNameToJobQueueName(queueName: QueueName): JobQueueName | null {
     const mapping: Partial<Record<QueueName, JobQueueName>> = {
-      [QueueName.FILE_PROCESSING]: 'file-processing',
-      [QueueName.FILE_CHUNKING]: 'file-chunking',
-      [QueueName.EMBEDDING_GENERATION]: 'embedding-generation',
       [QueueName.MESSAGE_PERSISTENCE]: 'message-persistence',
       [QueueName.TOOL_EXECUTION]: 'tool-execution',
-      [QueueName.FILE_BULK_UPLOAD]: 'file-bulk-upload',
       [QueueName.FILE_DELETION]: 'file-deletion',
     };
 

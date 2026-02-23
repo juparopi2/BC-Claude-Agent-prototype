@@ -18,7 +18,68 @@ vi.mock('@/shared/utils/logger', () => ({
   })),
 }));
 
-import { fixFilenameMojibake } from '@/routes/files';
+// Mock services that transitively import @/infrastructure/database/prisma
+// (FileRepository imports prisma at module level which requires DB env vars)
+vi.mock('@/infrastructure/database/prisma', () => ({
+  prisma: {
+    files: { findMany: vi.fn(), updateMany: vi.fn(), groupBy: vi.fn() },
+  },
+  disconnectPrisma: vi.fn(),
+}));
+
+vi.mock('@services/files', () => ({
+  getFileService: vi.fn(() => ({
+    getFile: vi.fn(),
+    getFiles: vi.fn(),
+    getFileCount: vi.fn(),
+    createFolder: vi.fn(),
+    createFileRecord: vi.fn(),
+    updateFile: vi.fn(),
+    deleteFile: vi.fn(),
+    verifyOwnership: vi.fn(),
+  })),
+  getFileUploadService: vi.fn(() => ({
+    validateFileType: vi.fn(),
+    generateBlobPath: vi.fn(),
+    uploadToBlob: vi.fn(),
+    downloadFromBlob: vi.fn(),
+    deleteFromBlob: vi.fn(),
+    generateSasUrlForBulkUpload: vi.fn(),
+  })),
+}));
+
+vi.mock('@/infrastructure/queue/MessageQueue', () => ({
+  getMessageQueue: vi.fn(() => ({
+    addFileProcessingFlow: vi.fn(),
+    addFileDeletionJob: vi.fn(),
+  })),
+}));
+
+vi.mock('@/domains/auth/middleware/auth-oauth', () => ({
+  authenticateMicrosoft: vi.fn(),
+}));
+
+vi.mock('@services/files/operations', () => ({
+  getSoftDeleteService: vi.fn(() => ({ markForDeletion: vi.fn() })),
+}));
+
+vi.mock('@/domains/billing/tracking/UsageTrackingService', () => ({
+  getUsageTrackingService: vi.fn(() => ({ trackFileUpload: vi.fn() })),
+}));
+
+vi.mock('@/services/embeddings/EmbeddingService', () => ({
+  EmbeddingService: { getInstance: vi.fn(() => ({ generateImageQueryEmbedding: vi.fn() })) },
+}));
+
+vi.mock('@/services/search/VectorSearchService', () => ({
+  VectorSearchService: { getInstance: vi.fn(() => ({ searchImages: vi.fn() })) },
+}));
+
+vi.mock('@/domains/files/retry', () => ({
+  getProcessingRetryManager: vi.fn(() => ({ executeManualRetry: vi.fn() })),
+}));
+
+import { fixFilenameMojibake } from '@/routes/files/helpers/filename.helper';
 
 /**
  * Helper function to simulate mojibake corruption

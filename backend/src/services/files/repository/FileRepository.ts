@@ -1,38 +1,44 @@
 /**
- * FileRepository
+ * FileRepository (PRD-01)
  *
- * Responsible for database operations on files.
- * Uses FileQueryBuilder for SQL construction.
+ * Prisma-based repository for the unified pipeline_status column.
+ * Implements optimistic concurrency via atomic WHERE-clause guards.
  *
- * Key Responsibilities:
- * - CRUD operations for files and folders
- * - Multi-tenant isolation (all queries include user_id)
- * - Result parsing (snake_case -> camelCase)
+ * Key features:
+ * - `transitionStatus()` — atomic CAS (Compare-And-Swap) on pipeline_status
+ * - Multi-tenant isolation (user_id in every WHERE clause)
+ * - Soft-delete aware (deletion_status IS NULL filter)
+ * - Full CRUD for files and folders
  *
- * Design:
- * - Uses dependency injection for testability
- * - Delegates query construction to FileQueryBuilder
- * - All IDs are UPPERCASE per project convention
+ * @module services/files/repository
  */
 
-import { createChildLogger } from '@/shared/utils/logger';
-import { executeQuery, SqlParams } from '@/infrastructure/database/database';
-import type { Logger } from 'pino';
 import { randomUUID } from 'crypto';
+import { createChildLogger } from '@/shared/utils/logger';
+import { prisma as defaultPrisma } from '@/infrastructure/database/prisma';
 import {
-  FileDbRecord,
-  ParsedFile,
+  canTransition,
+  getTransitionErrorMessage,
+  PIPELINE_STATUS,
+  type PipelineStatus,
+  type TransitionResult,
+} from '@bc-agent/shared';
+import type { PrismaClient } from '@prisma/client';
+import {
+  type FileDbRecord,
+  type ParsedFile,
   parseFile,
-  GetFilesOptions,
-  CreateFileOptions,
-  UpdateFileOptions,
-  ProcessingStatus,
+  type GetFilesOptions,
+  type CreateFileOptions,
+  type UpdateFileOptions,
 } from '@/types/file.types';
-import { getFileQueryBuilder, type FileQueryBuilder } from './FileQueryBuilder';
 
-/**
- * File metadata for deletion operations
- */
+const logger = createChildLogger({ service: 'FileRepository' });
+
+// ============================================================================
+// Supporting Types
+// ============================================================================
+
 export interface FileMetadata {
   blobPath: string;
   isFolder: boolean;
@@ -41,22 +47,11 @@ export interface FileMetadata {
   sizeBytes: number;
 }
 
-/**
- * Result of marking files for deletion
- */
 export interface MarkForDeletionResult {
-  /** IDs that were successfully marked */
   markedIds: string[];
-  /** Number of files marked */
   markedCount: number;
 }
 
-/**
- * Repository interface for dependency injection
- */
-/**
- * File record for pending processing query (minimal fields)
- */
 export interface FilePendingProcessing {
   id: string;
   userId: string;
@@ -68,6 +63,7 @@ export interface FilePendingProcessing {
 }
 
 export interface IFileRepository {
+  // CRUD methods
   findById(userId: string, fileId: string): Promise<ParsedFile | null>;
   findByIdIncludingDeleted(userId: string, fileId: string): Promise<ParsedFile | null>;
   findMany(options: GetFilesOptions): Promise<ParsedFile[]>;
@@ -76,7 +72,7 @@ export interface IFileRepository {
   createFolder(userId: string, name: string, parentId?: string): Promise<string>;
   findIdsByOwner(userId: string, fileIds: string[]): Promise<string[]>;
   update(userId: string, fileId: string, updates: UpdateFileOptions): Promise<void>;
-  updateProcessingStatus(userId: string, fileId: string, status: ProcessingStatus, extractedText?: string): Promise<void>;
+  updateProcessingStatus(userId: string, fileId: string, status: PipelineStatus, extractedText?: string): Promise<void>;
   delete(userId: string, fileId: string): Promise<void>;
   getFileMetadata(userId: string, fileId: string): Promise<FileMetadata | null>;
   getChildrenIds(userId: string, folderId: string): Promise<string[]>;
@@ -87,779 +83,1278 @@ export interface IFileRepository {
   findFoldersByNamePattern(userId: string, baseName: string, parentId?: string | null): Promise<string[]>;
   findFolderIdByName(userId: string, name: string, parentId?: string | null): Promise<string | null>;
   getFilesPendingProcessing(limit: number): Promise<FilePendingProcessing[]>;
+  findByName(userId: string, fileName: string, folderId: string | null): Promise<ParsedFile | null>;
+  findByContentHash(userId: string, contentHash: string): Promise<ParsedFile[]>;
+  // Pipeline methods
+  transitionStatus(fileId: string, userId: string, from: PipelineStatus, to: PipelineStatus): Promise<TransitionResult>;
+  getPipelineStatus(fileId: string, userId: string): Promise<PipelineStatus | null>;
+  findByStatus(status: PipelineStatus, options?: { limit?: number; userId?: string }): Promise<Array<{ id: string; user_id: string; name: string; pipeline_status: string; created_at: Date | null }>>;
+  getStatusDistribution(): Promise<Record<PipelineStatus, number>>;
+  transitionStatusWithRetry(fileId: string, userId: string, from: PipelineStatus, to: PipelineStatus, retryIncrement?: number): Promise<TransitionResult>;
+  findStuckFiles(thresholdMs: number, userId?: string): Promise<Array<{ id: string; user_id: string; name: string; pipeline_status: string; pipeline_retry_count: number; updated_at: Date | null; created_at: Date | null }>>;
+  findAbandonedFiles(thresholdMs: number, userId?: string): Promise<Array<{ id: string; user_id: string; name: string; blob_path: string; created_at: Date | null }>>;
+  forceStatus(fileId: string, userId: string, status: PipelineStatus): Promise<{ success: boolean; error?: string }>;
 }
 
-/**
- * FileRepository - Database operations for files
- */
+// ============================================================================
+// Repository Implementation
+// ============================================================================
+
 export class FileRepository implements IFileRepository {
-  private static instance: FileRepository | null = null;
-  private logger: Logger;
-  private queryBuilder: FileQueryBuilder;
+  private readonly prisma: PrismaClient;
 
-  private constructor(deps?: { queryBuilder?: FileQueryBuilder }) {
-    this.logger = createChildLogger({ service: 'FileRepository' });
-    this.queryBuilder = deps?.queryBuilder ?? getFileQueryBuilder();
+  constructor(prismaClient?: PrismaClient) {
+    this.prisma = prismaClient ?? defaultPrisma;
   }
 
-  public static getInstance(): FileRepository {
-    if (!FileRepository.instance) {
-      FileRepository.instance = new FileRepository();
-    }
-    return FileRepository.instance;
-  }
+  // --------------------------------------------------------------------------
+  // findById
+  // --------------------------------------------------------------------------
 
   /**
-   * Find a single file by ID with ownership check
+   * Find a file by ID, excluding soft-deleted files.
+   *
+   * @param userId - Owner UUID (UPPERCASE)
+   * @param fileId - File UUID (UPPERCASE)
+   * @returns ParsedFile or null if not found / soft-deleted
    */
-  public async findById(userId: string, fileId: string): Promise<ParsedFile | null> {
-    this.logger.info({ userId, fileId }, 'Finding file by ID');
-
-    try {
-      const { query, params } = this.queryBuilder.buildGetFileByIdQuery(userId, fileId);
-      const result = await executeQuery<FileDbRecord>(query, params as SqlParams);
-
-      if (result.recordset.length === 0) {
-        this.logger.info({ userId, fileId }, 'File not found');
-        return null;
-      }
-
-      const record = result.recordset[0];
-      if (!record) {
-        this.logger.info({ userId, fileId }, 'File not found');
-        return null;
-      }
-
-      this.logger.info({ userId, fileId }, 'File retrieved');
-      return parseFile(record);
-    } catch (error) {
-      this.logger.error({ error, userId, fileId }, 'Failed to find file by ID');
-      throw error;
-    }
-  }
-
-  /**
-   * Find multiple files with filtering, sorting, and pagination
-   */
-  public async findMany(options: GetFilesOptions): Promise<ParsedFile[]> {
-    const { userId, folderId, sortBy, favoritesFirst, limit, offset } = options;
-
-    this.logger.info({ userId, folderId, sortBy, favoritesFirst, limit, offset }, 'Getting files');
-
-    try {
-      const { query, params } = this.queryBuilder.buildGetFilesQuery(options);
-      const result = await executeQuery<FileDbRecord>(query, params as SqlParams);
-
-      this.logger.info({ userId, count: result.recordset.length }, 'Files retrieved');
-
-      return result.recordset.map((record) => parseFile(record));
-    } catch (error) {
-      this.logger.error({ error, userId, folderId }, 'Failed to get files');
-      throw error;
-    }
-  }
-
-  /**
-   * Count files in a folder
-   */
-  public async count(
-    userId: string,
-    folderId?: string | null,
-    options?: { favoritesFirst?: boolean }
-  ): Promise<number> {
-    this.logger.info({ userId, folderId, options }, 'Getting file count');
-
-    try {
-      const { query, params } = this.queryBuilder.buildGetFileCountQuery(userId, folderId, options);
-      const result = await executeQuery<{ count: number }>(query, params as SqlParams);
-
-      const record = result.recordset[0];
-      if (!record) {
-        throw new Error('Failed to get file count');
-      }
-
-      const count = record.count;
-      this.logger.info({ userId, folderId, count }, 'File count retrieved');
-
-      return count;
-    } catch (error) {
-      this.logger.error({ error, userId, folderId }, 'Failed to get file count');
-      throw error;
-    }
-  }
-
-  /**
-   * Create a file record
-   */
-  public async create(options: CreateFileOptions): Promise<string> {
-    // All IDs must be UPPERCASE per CLAUDE.md
-    const fileId = randomUUID().toUpperCase();
-    const { userId, name, mimeType, sizeBytes, blobPath, parentFolderId, contentHash } = options;
-
-    // Prevent storing blob path as name (catches bugs early)
-    if (name.match(/^\d{13}-/) || name.includes('users/')) {
-      this.logger.error({ name, blobPath }, 'Invalid file name: looks like blob path');
-      throw new Error('File name cannot be a blob path. Use original filename.');
-    }
-
-    this.logger.info({ userId, name, sizeBytes, fileId, hasHash: !!contentHash }, 'Creating file record');
-
-    try {
-      const query = `
-        INSERT INTO files (
-          id, user_id, parent_folder_id, name, mime_type, size_bytes, blob_path,
-          is_folder, is_favorite, processing_status, embedding_status, extracted_text,
-          content_hash, created_at, updated_at
-        )
-        VALUES (
-          @id, @user_id, @parent_folder_id, @name, @mime_type, @size_bytes, @blob_path,
-          @is_folder, @is_favorite, @processing_status, @embedding_status, @extracted_text,
-          @content_hash, GETUTCDATE(), GETUTCDATE()
-        )
-      `;
-
-      const params: SqlParams = {
+  async findById(userId: string, fileId: string): Promise<ParsedFile | null> {
+    const record = await this.prisma.files.findFirst({
+      where: {
         id: fileId,
         user_id: userId,
-        parent_folder_id: parentFolderId || null,
-        name,
-        mime_type: mimeType,
-        size_bytes: sizeBytes,
-        blob_path: blobPath,
-        is_folder: false,
-        is_favorite: false,
-        processing_status: 'pending',
-        embedding_status: 'pending',
-        extracted_text: null,
-        content_hash: contentHash || null,
-      };
+        deletion_status: null,
+      },
+    });
 
-      await executeQuery(query, params);
-
-      this.logger.info({ userId, fileId }, 'File record created');
-      return fileId;
-    } catch (error) {
-      this.logger.error({ error, userId, name }, 'Failed to create file record');
-      throw error;
-    }
+    if (!record) return null;
+    return parseFile(record as unknown as FileDbRecord);
   }
 
+  // --------------------------------------------------------------------------
+  // findByIdIncludingDeleted
+  // --------------------------------------------------------------------------
+
   /**
-   * Create a folder
+   * Find a file by ID, including soft-deleted files.
+   *
+   * @param userId - Owner UUID (UPPERCASE)
+   * @param fileId - File UUID (UPPERCASE)
+   * @returns ParsedFile or null if not found
    */
-  public async createFolder(userId: string, name: string, parentId?: string): Promise<string> {
-    // All IDs must be UPPERCASE per CLAUDE.md
+  async findByIdIncludingDeleted(userId: string, fileId: string): Promise<ParsedFile | null> {
+    const record = await this.prisma.files.findFirst({
+      where: {
+        id: fileId,
+        user_id: userId,
+      },
+    });
+
+    if (!record) return null;
+    return parseFile(record as unknown as FileDbRecord);
+  }
+
+  // --------------------------------------------------------------------------
+  // findMany
+  // --------------------------------------------------------------------------
+
+  /**
+   * Find files with filtering, sorting, and pagination.
+   *
+   * Behavior by folderId:
+   * - undefined: all files for user (no folder filter)
+   * - null: root-level only (parent_folder_id IS NULL)
+   * - string: files in that specific folder
+   *
+   * favoritesFirst at root: includes favorites from all folders + all root items
+   * favoritesFirst in folder: includes all folder contents, favorites sorted first
+   *
+   * @param options - Query options
+   * @returns Array of parsed files
+   */
+  async findMany(options: GetFilesOptions): Promise<ParsedFile[]> {
+    const {
+      userId,
+      folderId,
+      sortBy = 'date',
+      favoritesFirst = false,
+      limit = 50,
+      offset = 0,
+    } = options;
+
+    // Build WHERE clause
+    const where: Record<string, unknown> = {
+      user_id: userId,
+      deletion_status: null,
+    };
+
+    if (folderId === undefined) {
+      // No folder filter — return all files
+    } else if (folderId === null) {
+      // Root level
+      if (favoritesFirst) {
+        // Favorites from any folder + all root items
+        where['OR'] = [
+          { is_favorite: true },
+          { parent_folder_id: null },
+        ];
+      } else {
+        where['parent_folder_id'] = null;
+      }
+    } else {
+      // Specific folder
+      where['parent_folder_id'] = folderId;
+    }
+
+    // Build ORDER BY clause
+    const orderBy: Array<Record<string, 'asc' | 'desc'>> = [];
+    if (favoritesFirst) orderBy.push({ is_favorite: 'desc' });
+    orderBy.push({ is_folder: 'desc' });
+    switch (sortBy) {
+      case 'name':
+        orderBy.push({ name: 'asc' });
+        break;
+      case 'size':
+        orderBy.push({ size_bytes: 'desc' });
+        break;
+      default:
+        orderBy.push({ created_at: 'desc' });
+    }
+
+    const records = await this.prisma.files.findMany({
+      where,
+      orderBy,
+      skip: offset,
+      take: limit,
+    });
+
+    return records.map((r) => parseFile(r as unknown as FileDbRecord));
+  }
+
+  // --------------------------------------------------------------------------
+  // count
+  // --------------------------------------------------------------------------
+
+  /**
+   * Count files matching the given folder and favorites criteria.
+   * Uses the same WHERE logic as findMany (without pagination).
+   *
+   * @param userId        - Owner UUID (UPPERCASE)
+   * @param folderId      - Folder filter (undefined = all, null = root, string = folder)
+   * @param options       - Optional favoritesFirst flag
+   * @returns File count
+   */
+  async count(
+    userId: string,
+    folderId?: string | null,
+    options?: { favoritesFirst?: boolean },
+  ): Promise<number> {
+    const favoritesFirst = options?.favoritesFirst ?? false;
+
+    const where: Record<string, unknown> = {
+      user_id: userId,
+      deletion_status: null,
+    };
+
+    if (folderId === undefined) {
+      // No folder filter
+    } else if (folderId === null) {
+      if (favoritesFirst) {
+        where['OR'] = [
+          { is_favorite: true },
+          { parent_folder_id: null },
+        ];
+      } else {
+        where['parent_folder_id'] = null;
+      }
+    } else {
+      where['parent_folder_id'] = folderId;
+    }
+
+    return this.prisma.files.count({ where });
+  }
+
+  // --------------------------------------------------------------------------
+  // create
+  // --------------------------------------------------------------------------
+
+  /**
+   * Create a new file record in the database.
+   *
+   * Generates a new UPPERCASE UUID for the file.
+   * Sets pipeline_status to REGISTERED initially.
+   *
+   * @param options - File creation options
+   * @returns The new file ID (UPPERCASE UUID)
+   */
+  async create(options: CreateFileOptions): Promise<string> {
+    const fileId = randomUUID().toUpperCase();
+    const now = new Date();
+
+    await this.prisma.files.create({
+      data: {
+        id: fileId,
+        user_id: options.userId,
+        name: options.name,
+        mime_type: options.mimeType,
+        size_bytes: options.sizeBytes,
+        blob_path: options.blobPath,
+        parent_folder_id: options.parentFolderId ?? null,
+        content_hash: options.contentHash ?? null,
+        is_folder: false,
+        is_favorite: false,
+        pipeline_status: PIPELINE_STATUS.REGISTERED,
+        extracted_text: null,
+        processing_retry_count: 0,
+        embedding_retry_count: 0,
+        last_processing_error: null,
+        last_embedding_error: null,
+        failed_at: null,
+        deletion_status: null,
+        deleted_at: null,
+        created_at: now,
+        updated_at: now,
+      },
+    });
+
+    logger.debug({ fileId, userId: options.userId, name: options.name }, 'File record created');
+    return fileId;
+  }
+
+  // --------------------------------------------------------------------------
+  // createFolder
+  // --------------------------------------------------------------------------
+
+  /**
+   * Create a new folder record in the database.
+   *
+   * Folders are immediately READY (no processing required).
+   *
+   * @param userId   - Owner UUID (UPPERCASE)
+   * @param name     - Folder name
+   * @param parentId - Parent folder ID (undefined = root level)
+   * @returns The new folder ID (UPPERCASE UUID)
+   */
+  async createFolder(userId: string, name: string, parentId?: string): Promise<string> {
     const folderId = randomUUID().toUpperCase();
+    const now = new Date();
 
-    this.logger.info({ userId, name, parentId, folderId }, 'Creating folder');
-
-    try {
-      const query = `
-        INSERT INTO files (
-          id, user_id, parent_folder_id, name, mime_type, size_bytes, blob_path,
-          is_folder, is_favorite, processing_status, embedding_status, extracted_text,
-          created_at, updated_at
-        )
-        VALUES (
-          @id, @user_id, @parent_folder_id, @name, @mime_type, @size_bytes, @blob_path,
-          @is_folder, @is_favorite, @processing_status, @embedding_status, @extracted_text,
-          GETUTCDATE(), GETUTCDATE()
-        )
-      `;
-
-      const params: SqlParams = {
+    await this.prisma.files.create({
+      data: {
         id: folderId,
         user_id: userId,
-        parent_folder_id: parentId || null,
         name,
         mime_type: 'inode/directory',
         size_bytes: 0,
         blob_path: '',
+        parent_folder_id: parentId ?? null,
+        content_hash: null,
         is_folder: true,
         is_favorite: false,
-        processing_status: 'completed',
-        embedding_status: 'completed',
+        pipeline_status: PIPELINE_STATUS.READY,
         extracted_text: null,
-      };
+        processing_retry_count: 0,
+        embedding_retry_count: 0,
+        last_processing_error: null,
+        last_embedding_error: null,
+        failed_at: null,
+        deletion_status: null,
+        deleted_at: null,
+        created_at: now,
+        updated_at: now,
+      },
+    });
 
-      await executeQuery(query, params);
-
-      this.logger.info({ userId, folderId }, 'Folder created');
-      return folderId;
-    } catch (error) {
-      this.logger.error({ error, userId, name, parentId }, 'Failed to create folder');
-      throw error;
-    }
+    logger.debug({ folderId, userId, name }, 'Folder record created');
+    return folderId;
   }
 
+  // --------------------------------------------------------------------------
+  // findIdsByOwner
+  // --------------------------------------------------------------------------
+
   /**
-   * Find IDs of files owned by user (batch ownership check)
+   * Find which of the given file IDs belong to this user.
+   *
+   * Used for ownership verification before operations.
+   *
+   * @param userId  - Owner UUID (UPPERCASE)
+   * @param fileIds - Array of file IDs to check
+   * @returns Array of file IDs that belong to this user
    */
-  public async findIdsByOwner(userId: string, fileIds: string[]): Promise<string[]> {
-    if (fileIds.length === 0) {
-      return [];
-    }
+  async findIdsByOwner(userId: string, fileIds: string[]): Promise<string[]> {
+    if (fileIds.length === 0) return [];
 
-    this.logger.info({ userId, fileCount: fileIds.length }, 'Verifying file ownership');
+    const records = await this.prisma.files.findMany({
+      where: {
+        id: { in: fileIds },
+        user_id: userId,
+      },
+      select: { id: true },
+    });
 
-    try {
-      const { query, params } = this.queryBuilder.buildVerifyOwnershipQuery(userId, fileIds);
-      const result = await executeQuery<{ id: string }>(query, params as SqlParams);
-      const ownedIds = result.recordset.map((r) => r.id);
-
-      this.logger.info({
-        userId,
-        requestedCount: fileIds.length,
-        ownedCount: ownedIds.length,
-      }, 'Ownership verification complete');
-
-      return ownedIds;
-    } catch (error) {
-      this.logger.error({ error, userId, fileCount: fileIds.length }, 'Failed to verify file ownership');
-      throw error;
-    }
+    return records.map((r) => r.id);
   }
 
-  /**
-   * Update file metadata
-   */
-  public async update(userId: string, fileId: string, updates: UpdateFileOptions): Promise<void> {
-    this.logger.info({ userId, fileId, updates }, 'Updating file');
+  // --------------------------------------------------------------------------
+  // update
+  // --------------------------------------------------------------------------
 
-    try {
-      // Build SET clause dynamically
-      const setClauses: string[] = ['updated_at = GETUTCDATE()'];
-      const params: SqlParams = {
+  /**
+   * Partially update a file record.
+   *
+   * Builds update data dynamically from provided fields.
+   * Always sets updated_at to the current timestamp.
+   *
+   * @param userId  - Owner UUID (UPPERCASE)
+   * @param fileId  - File UUID (UPPERCASE)
+   * @param updates - Fields to update
+   */
+  async update(userId: string, fileId: string, updates: UpdateFileOptions): Promise<void> {
+    const data: Record<string, unknown> = {
+      updated_at: new Date(),
+    };
+
+    if (updates.name !== undefined) {
+      data['name'] = updates.name;
+    }
+    if (updates.parentFolderId !== undefined) {
+      data['parent_folder_id'] = updates.parentFolderId;
+    }
+    if (updates.isFavorite !== undefined) {
+      data['is_favorite'] = updates.isFavorite;
+    }
+    if (updates.blobPath !== undefined) {
+      data['blob_path'] = updates.blobPath;
+    }
+    if (updates.contentHash !== undefined) {
+      data['content_hash'] = updates.contentHash;
+    }
+
+    await this.prisma.files.updateMany({
+      where: {
         id: fileId,
         user_id: userId,
-      };
-
-      if (updates.name !== undefined) {
-        setClauses.push('name = @name');
-        params.name = updates.name;
-      }
-
-      if (updates.parentFolderId !== undefined) {
-        setClauses.push('parent_folder_id = @parent_folder_id');
-        params.parent_folder_id = updates.parentFolderId;
-      }
-
-      if (updates.isFavorite !== undefined) {
-        setClauses.push('is_favorite = @is_favorite');
-        params.is_favorite = updates.isFavorite;
-      }
-
-      if (updates.blobPath !== undefined) {
-        setClauses.push('blob_path = @blob_path');
-        params.blob_path = updates.blobPath;
-      }
-
-      if (updates.contentHash !== undefined) {
-        setClauses.push('content_hash = @content_hash');
-        params.content_hash = updates.contentHash;
-      }
-
-      if (setClauses.length === 1) {
-        this.logger.info({ userId, fileId }, 'No updates to apply');
-        return;
-      }
-
-      const query = `
-        UPDATE files
-        SET ${setClauses.join(', ')}
-        WHERE id = @id AND user_id = @user_id
-      `;
-
-      const result = await executeQuery(query, params);
-
-      if (result.rowsAffected[0] === 0) {
-        throw new Error('File not found or unauthorized');
-      }
-
-      this.logger.info({ userId, fileId }, 'File updated');
-    } catch (error) {
-      this.logger.error({ error, userId, fileId, updates }, 'Failed to update file');
-      throw error;
-    }
+      },
+      data,
+    });
   }
 
+  // --------------------------------------------------------------------------
+  // updateProcessingStatus
+  // --------------------------------------------------------------------------
+
   /**
-   * Update file processing status
+   * Update the pipeline_status of a file.
    *
-   * Only updates files that exist and are not marked for deletion.
-   * If the file was deleted, logs and returns gracefully instead of throwing.
+   * Optionally also updates extracted_text when text extraction completes.
+   * Only operates on active (non-deleted) files.
+   *
+   * @param userId        - Owner UUID (UPPERCASE)
+   * @param fileId        - File UUID (UPPERCASE)
+   * @param status        - New pipeline status
+   * @param extractedText - Extracted text content (optional)
    */
-  public async updateProcessingStatus(
+  async updateProcessingStatus(
     userId: string,
     fileId: string,
-    status: ProcessingStatus,
-    extractedText?: string
+    status: PipelineStatus,
+    extractedText?: string,
   ): Promise<void> {
-    this.logger.info({ userId, fileId, status, hasText: !!extractedText }, 'Updating processing status');
+    const data: Record<string, unknown> = {
+      pipeline_status: status,
+      updated_at: new Date(),
+    };
 
-    try {
-      const setClauses: string[] = [
-        'processing_status = @status',
-        'updated_at = GETUTCDATE()',
-      ];
-      const params: SqlParams = {
+    if (extractedText !== undefined) {
+      data['extracted_text'] = extractedText;
+    }
+
+    const result = await this.prisma.files.updateMany({
+      where: {
         id: fileId,
         user_id: userId,
-        status,
-      };
+        deletion_status: null,
+      },
+      data,
+    });
 
-      if (extractedText !== undefined) {
-        setClauses.push('extracted_text = @extracted_text');
-        params.extracted_text = extractedText;
-      }
-
-      // Only update files that are not marked for deletion
-      const query = `
-        UPDATE files
-        SET ${setClauses.join(', ')}
-        WHERE id = @id AND user_id = @user_id AND deletion_status IS NULL
-      `;
-
-      const result = await executeQuery(query, params);
-
-      if (result.rowsAffected[0] === 0) {
-        // File not found or deleted - log but don't throw
-        // This prevents errors when processing workers try to update deleted files
-        this.logger.info(
-          { userId, fileId, status },
-          'Processing status update skipped - file not found or deleted'
-        );
-        return;
-      }
-
-      this.logger.info({ userId, fileId, status }, 'Processing status updated');
-    } catch (error) {
-      const errorInfo = error instanceof Error
-        ? { message: error.message, name: error.name }
-        : { value: String(error) };
-      this.logger.error({ errorInfo, userId, fileId, status }, 'Failed to update processing status');
-      throw error;
+    if (result.count === 0) {
+      logger.warn({ fileId, userId, status }, 'updateProcessingStatus: file not found or soft-deleted, update skipped');
     }
   }
 
-  /**
-   * Delete a file record
-   */
-  public async delete(userId: string, fileId: string): Promise<void> {
-    this.logger.info({ userId, fileId }, 'Deleting file record');
-
-    try {
-      const query = `
-        DELETE FROM files
-        WHERE id = @id AND user_id = @user_id
-      `;
-
-      const params: SqlParams = {
-        id: fileId,
-        user_id: userId,
-      };
-
-      await executeQuery(query, params);
-
-      this.logger.info({ userId, fileId }, 'File record deleted');
-    } catch (error) {
-      this.logger.error({ error, userId, fileId }, 'Failed to delete file record');
-      throw error;
-    }
-  }
+  // --------------------------------------------------------------------------
+  // delete
+  // --------------------------------------------------------------------------
 
   /**
-   * Get file metadata for deletion operations
-   */
-  public async getFileMetadata(userId: string, fileId: string): Promise<FileMetadata | null> {
-    this.logger.info({ userId, fileId }, 'Getting file metadata');
-
-    try {
-      const query = `
-        SELECT blob_path, is_folder, name, mime_type, size_bytes
-        FROM files
-        WHERE id = @id AND user_id = @user_id
-      `;
-
-      const params: SqlParams = {
-        id: fileId,
-        user_id: userId,
-      };
-
-      const result = await executeQuery<{
-        blob_path: string;
-        is_folder: boolean;
-        name: string;
-        mime_type: string;
-        size_bytes: number;
-      }>(query, params);
-
-      if (result.recordset.length === 0) {
-        return null;
-      }
-
-      const record = result.recordset[0];
-      if (!record) {
-        return null;
-      }
-
-      return {
-        blobPath: record.blob_path,
-        isFolder: record.is_folder,
-        name: record.name,
-        mimeType: record.mime_type,
-        sizeBytes: record.size_bytes,
-      };
-    } catch (error) {
-      this.logger.error({ error, userId, fileId }, 'Failed to get file metadata');
-      throw error;
-    }
-  }
-
-  /**
-   * Get IDs of children in a folder
-   */
-  public async getChildrenIds(userId: string, folderId: string): Promise<string[]> {
-    this.logger.info({ userId, folderId }, 'Getting children IDs');
-
-    try {
-      const query = `
-        SELECT id
-        FROM files
-        WHERE parent_folder_id = @id AND user_id = @user_id
-      `;
-
-      const params: SqlParams = {
-        id: folderId,
-        user_id: userId,
-      };
-
-      const result = await executeQuery<{ id: string }>(query, params);
-
-      return result.recordset.map((r) => r.id);
-    } catch (error) {
-      this.logger.error({ error, userId, folderId }, 'Failed to get children IDs');
-      throw error;
-    }
-  }
-
-  /**
-   * Mark files for deletion (soft delete Phase 1)
+   * Hard delete a file record from the database.
    *
-   * Sets deletion_status = 'pending' and deleted_at = NOW() for files
-   * that are currently active (deletion_status IS NULL).
+   * WARNING: This is a permanent deletion with no recovery.
+   * For user-initiated deletions, use markForDeletion() instead.
    *
-   * @param userId - User ID
+   * @param userId - Owner UUID (UPPERCASE)
+   * @param fileId - File UUID (UPPERCASE)
+   */
+  async delete(userId: string, fileId: string): Promise<void> {
+    await this.prisma.files.deleteMany({
+      where: {
+        id: fileId,
+        user_id: userId,
+      },
+    });
+  }
+
+  // --------------------------------------------------------------------------
+  // getFileMetadata
+  // --------------------------------------------------------------------------
+
+  /**
+   * Retrieve lightweight file metadata for blob operations.
+   *
+   * @param userId - Owner UUID (UPPERCASE)
+   * @param fileId - File UUID (UPPERCASE)
+   * @returns FileMetadata or null if not found
+   */
+  async getFileMetadata(userId: string, fileId: string): Promise<FileMetadata | null> {
+    const record = await this.prisma.files.findFirst({
+      where: {
+        id: fileId,
+        user_id: userId,
+      },
+      select: {
+        blob_path: true,
+        is_folder: true,
+        name: true,
+        mime_type: true,
+        size_bytes: true,
+      },
+    });
+
+    if (!record) return null;
+
+    return {
+      blobPath: record.blob_path,
+      isFolder: record.is_folder,
+      name: record.name,
+      mimeType: record.mime_type,
+      sizeBytes: Number(record.size_bytes),
+    };
+  }
+
+  // --------------------------------------------------------------------------
+  // getChildrenIds
+  // --------------------------------------------------------------------------
+
+  /**
+   * Get IDs of all direct children of a folder.
+   *
+   * @param userId   - Owner UUID (UPPERCASE)
+   * @param folderId - Folder UUID (UPPERCASE)
+   * @returns Array of child file/folder IDs
+   */
+  async getChildrenIds(userId: string, folderId: string): Promise<string[]> {
+    const records = await this.prisma.files.findMany({
+      where: {
+        user_id: userId,
+        parent_folder_id: folderId,
+      },
+      select: { id: true },
+    });
+
+    return records.map((r) => r.id);
+  }
+
+  // --------------------------------------------------------------------------
+  // markForDeletion
+  // --------------------------------------------------------------------------
+
+  /**
+   * Soft-delete files by setting deletion_status to 'pending'.
+   *
+   * Only marks files that are currently active (deletion_status IS NULL).
+   * Returns the IDs that were actually marked (not-found IDs are omitted).
+   *
+   * @param userId  - Owner UUID (UPPERCASE)
    * @param fileIds - Array of file IDs to mark for deletion
-   * @returns IDs that were successfully marked
+   * @returns IDs that were marked and their count
    */
-  public async markForDeletion(userId: string, fileIds: string[]): Promise<MarkForDeletionResult> {
+  async markForDeletion(userId: string, fileIds: string[]): Promise<MarkForDeletionResult> {
     if (fileIds.length === 0) {
       return { markedIds: [], markedCount: 0 };
     }
 
-    this.logger.info({ userId, fileCount: fileIds.length }, 'Marking files for deletion');
+    // Step 1: Find which files are active and owned by this user
+    const activeFiles = await this.prisma.files.findMany({
+      where: {
+        id: { in: fileIds },
+        user_id: userId,
+        deletion_status: null,
+      },
+      select: { id: true },
+    });
 
-    try {
-      const { query, params } = this.queryBuilder.buildMarkForDeletionQuery(userId, fileIds);
-      const result = await executeQuery<{ id: string }>(query, params as SqlParams);
-
-      const markedIds = result.recordset.map((r) => r.id);
-
-      this.logger.info({
-        userId,
-        requestedCount: fileIds.length,
-        markedCount: markedIds.length,
-      }, 'Files marked for deletion');
-
-      return { markedIds, markedCount: markedIds.length };
-    } catch (error) {
-      this.logger.error({ error, userId, fileCount: fileIds.length }, 'Failed to mark files for deletion');
-      throw error;
+    if (activeFiles.length === 0) {
+      return { markedIds: [], markedCount: 0 };
     }
+
+    const activeIds = activeFiles.map((f) => f.id);
+
+    // Step 2: Mark them as pending deletion
+    await this.prisma.files.updateMany({
+      where: {
+        id: { in: activeIds },
+        user_id: userId,
+      },
+      data: {
+        deletion_status: 'pending',
+        deleted_at: new Date(),
+        updated_at: new Date(),
+      },
+    });
+
+    logger.debug({ userId, markedCount: activeIds.length }, 'Files marked for deletion');
+
+    return {
+      markedIds: activeIds,
+      markedCount: activeIds.length,
+    };
   }
 
+  // --------------------------------------------------------------------------
+  // updateDeletionStatus
+  // --------------------------------------------------------------------------
+
   /**
-   * Update deletion status for files
+   * Update the deletion_status for a set of files.
    *
-   * Used during physical deletion process to track progress.
+   * Used by the deletion queue worker to transition from 'pending' to
+   * 'deleting' or 'failed'.
    *
-   * @param userId - User ID
+   * @param userId  - Owner UUID (UPPERCASE)
    * @param fileIds - Array of file IDs to update
-   * @param status - New deletion status ('deleting' or 'failed')
+   * @param status  - New deletion status
    */
-  public async updateDeletionStatus(
+  async updateDeletionStatus(
     userId: string,
     fileIds: string[],
-    status: 'deleting' | 'failed'
+    status: 'deleting' | 'failed',
   ): Promise<void> {
-    if (fileIds.length === 0) {
-      return;
-    }
+    if (fileIds.length === 0) return;
 
-    this.logger.info({ userId, fileCount: fileIds.length, status }, 'Updating deletion status');
-
-    try {
-      const { query, params } = this.queryBuilder.buildUpdateDeletionStatusQuery(userId, fileIds, status);
-      await executeQuery(query, params as SqlParams);
-
-      this.logger.info({ userId, fileCount: fileIds.length, status }, 'Deletion status updated');
-    } catch (error) {
-      this.logger.error({ error, userId, fileCount: fileIds.length, status }, 'Failed to update deletion status');
-      throw error;
-    }
+    await this.prisma.files.updateMany({
+      where: {
+        id: { in: fileIds },
+        user_id: userId,
+      },
+      data: {
+        deletion_status: status,
+        updated_at: new Date(),
+      },
+    });
   }
 
+  // --------------------------------------------------------------------------
+  // isFileActiveForProcessing
+  // --------------------------------------------------------------------------
+
   /**
-   * Check if file exists and is not marked for deletion.
+   * Check if a file is active (not soft-deleted) and ready for processing.
    *
-   * Used by processing services/workers to exit early if file was deleted.
-   * This prevents race conditions where a file is deleted while processing jobs are queued.
+   * Used by queue workers to verify a file hasn't been deleted while
+   * it was waiting in the queue.
    *
-   * @param userId - User ID
-   * @param fileId - File ID
-   * @returns True if file exists and is active (not deleted), false otherwise
+   * @param userId - Owner UUID (UPPERCASE)
+   * @param fileId - File UUID (UPPERCASE)
+   * @returns true if the file is active and owned by the user
    */
-  public async isFileActiveForProcessing(userId: string, fileId: string): Promise<boolean> {
-    this.logger.debug({ userId, fileId }, 'Checking if file is active for processing');
-
-    try {
-      const query = `
-        SELECT 1 as active
-        FROM files
-        WHERE id = @id AND user_id = @user_id AND deletion_status IS NULL
-      `;
-
-      const params: SqlParams = {
+  async isFileActiveForProcessing(userId: string, fileId: string): Promise<boolean> {
+    const record = await this.prisma.files.findFirst({
+      where: {
         id: fileId,
         user_id: userId,
-      };
+        deletion_status: null,
+      },
+      select: { id: true },
+    });
 
-      const result = await executeQuery<{ active: number }>(query, params);
-      const isActive = result.recordset.length > 0;
-
-      this.logger.debug({ userId, fileId, isActive }, 'File active check complete');
-      return isActive;
-    } catch (error) {
-      const errorInfo = error instanceof Error
-        ? { message: error.message, name: error.name }
-        : { value: String(error) };
-      this.logger.error({ errorInfo, userId, fileId }, 'Failed to check if file is active');
-      throw error;
-    }
+    return record !== null;
   }
 
+  // --------------------------------------------------------------------------
+  // findByName
+  // --------------------------------------------------------------------------
+
   /**
-   * Find a single file by ID including deleted files
+   * Find a file by name within a specific folder (or at root).
    *
-   * Used by deletion worker to process files that are marked for deletion.
+   * Used for duplicate detection during upload.
    *
-   * @param userId - User ID
-   * @param fileId - File ID
-   * @returns File or null if not found
+   * @param userId    - Owner UUID (UPPERCASE)
+   * @param fileName  - Exact file name to search for
+   * @param folderId  - Folder to search in (null = root)
+   * @returns ParsedFile or null if not found
    */
-  public async findByIdIncludingDeleted(userId: string, fileId: string): Promise<ParsedFile | null> {
-    this.logger.info({ userId, fileId }, 'Finding file by ID (including deleted)');
+  async findByName(
+    userId: string,
+    fileName: string,
+    folderId: string | null,
+  ): Promise<ParsedFile | null> {
+    const record = await this.prisma.files.findFirst({
+      where: {
+        user_id: userId,
+        name: fileName,
+        parent_folder_id: folderId,
+        is_folder: false,
+        deletion_status: null,
+      },
+    });
 
-    try {
-      const { query, params } = this.queryBuilder.buildGetFileByIdIncludingDeletedQuery(userId, fileId);
-      const result = await executeQuery<FileDbRecord>(query, params as SqlParams);
-
-      if (result.recordset.length === 0) {
-        this.logger.info({ userId, fileId }, 'File not found');
-        return null;
-      }
-
-      const record = result.recordset[0];
-      if (!record) {
-        this.logger.info({ userId, fileId }, 'File not found');
-        return null;
-      }
-
-      this.logger.info({ userId, fileId }, 'File retrieved (including deleted)');
-      return parseFile(record);
-    } catch (error) {
-      this.logger.error({ error, userId, fileId }, 'Failed to find file by ID (including deleted)');
-      throw error;
-    }
+    if (!record) return null;
+    return parseFile(record as unknown as FileDbRecord);
   }
 
+  // --------------------------------------------------------------------------
+  // findByContentHash
+  // --------------------------------------------------------------------------
+
   /**
-   * Check if a folder with the given name exists in the specified parent folder
+   * Find all files matching a content hash (duplicate detection).
    *
-   * @param userId - User ID
-   * @param name - Folder name to check
-   * @param parentId - Parent folder ID (undefined/null for root level)
-   * @returns True if folder exists, false otherwise
+   * @param userId      - Owner UUID (UPPERCASE)
+   * @param contentHash - SHA-256 hash of file content
+   * @returns Array of matching ParsedFiles
    */
-  public async checkFolderExists(
+  async findByContentHash(userId: string, contentHash: string): Promise<ParsedFile[]> {
+    const records = await this.prisma.files.findMany({
+      where: {
+        user_id: userId,
+        content_hash: contentHash,
+        is_folder: false,
+        deletion_status: null,
+      },
+    });
+
+    return records.map((r) => parseFile(r as unknown as FileDbRecord));
+  }
+
+  // --------------------------------------------------------------------------
+  // checkFolderExists
+  // --------------------------------------------------------------------------
+
+  /**
+   * Check if a folder with the given name exists at the specified location.
+   *
+   * @param userId   - Owner UUID (UPPERCASE)
+   * @param name     - Exact folder name
+   * @param parentId - Parent folder ID (null/undefined = root)
+   * @returns true if a matching folder exists
+   */
+  async checkFolderExists(
     userId: string,
     name: string,
-    parentId?: string | null
+    parentId?: string | null,
   ): Promise<boolean> {
-    this.logger.debug({ userId, name, parentId }, 'Checking if folder exists');
-
-    try {
-      const { query, params } = this.queryBuilder.buildCheckFolderExistsQuery(
-        userId,
+    const record = await this.prisma.files.findFirst({
+      where: {
+        user_id: userId,
         name,
-        parentId
-      );
-      const result = await executeQuery<{ id: string; name: string }>(query, params as SqlParams);
+        is_folder: true,
+        deletion_status: null,
+        parent_folder_id: parentId ?? null,
+      },
+      select: { id: true },
+    });
 
-      const exists = result.recordset.length > 0;
-      this.logger.debug({ userId, name, parentId, exists }, 'Folder existence check complete');
-      return exists;
-    } catch (error) {
-      const errorInfo = error instanceof Error
-        ? { message: error.message, name: error.name }
-        : { value: String(error) };
-      this.logger.error({ errorInfo, userId, name, parentId }, 'Failed to check folder existence');
-      throw error;
-    }
+    return record !== null;
   }
 
+  // --------------------------------------------------------------------------
+  // findFoldersByNamePattern
+  // --------------------------------------------------------------------------
+
   /**
-   * Find folder names matching a base name pattern
+   * Find folder names matching a base name or the "baseName (N)" pattern.
    *
-   * Returns all folder names that match "baseName" or "baseName (N)".
-   * Used to determine the next available suffix for auto-rename.
+   * Used by the folder name resolver to determine the next available suffix
+   * when creating a folder with a conflicting name.
    *
-   * @param userId - User ID
-   * @param baseName - Base folder name (without suffix)
-   * @param parentId - Parent folder ID (undefined/null for root level)
+   * @param userId    - Owner UUID (UPPERCASE)
+   * @param baseName  - Base folder name to search for
+   * @param parentId  - Parent folder ID (null/undefined = root)
    * @returns Array of matching folder names
    */
-  public async findFoldersByNamePattern(
+  async findFoldersByNamePattern(
     userId: string,
     baseName: string,
-    parentId?: string | null
+    parentId?: string | null,
   ): Promise<string[]> {
-    this.logger.debug({ userId, baseName, parentId }, 'Finding folders by name pattern');
+    const records = await this.prisma.files.findMany({
+      where: {
+        user_id: userId,
+        is_folder: true,
+        deletion_status: null,
+        parent_folder_id: parentId ?? null,
+        OR: [
+          { name: baseName },
+          { name: { startsWith: `${baseName} (` } },
+        ],
+      },
+      select: { name: true },
+    });
 
-    try {
-      const { query, params } = this.queryBuilder.buildFindFoldersByNamePatternQuery(
-        userId,
-        baseName,
-        parentId
-      );
-      const result = await executeQuery<{ name: string }>(query, params as SqlParams);
-
-      const names = result.recordset.map(r => r.name);
-      this.logger.debug(
-        { userId, baseName, parentId, matchCount: names.length },
-        'Found folders by name pattern'
-      );
-      return names;
-    } catch (error) {
-      const errorInfo = error instanceof Error
-        ? { message: error.message, name: error.name }
-        : { value: String(error) };
-      this.logger.error({ errorInfo, userId, baseName, parentId }, 'Failed to find folders by name pattern');
-      throw error;
-    }
+    return records.map((r) => r.name);
   }
 
+  // --------------------------------------------------------------------------
+  // findFolderIdByName
+  // --------------------------------------------------------------------------
+
   /**
-   * Find folder ID by exact name match
+   * Find the ID of a folder by its exact name at a given location.
    *
-   * Used for conflict detection to get the existing folder's ID.
-   *
-   * @param userId - User ID
-   * @param name - Exact folder name to find
-   * @param parentId - Parent folder ID (undefined/null for root level)
-   * @returns Folder ID if found, null otherwise
+   * @param userId   - Owner UUID (UPPERCASE)
+   * @param name     - Exact folder name
+   * @param parentId - Parent folder ID (null/undefined = root)
+   * @returns Folder ID or null if not found
    */
-  public async findFolderIdByName(
+  async findFolderIdByName(
     userId: string,
     name: string,
-    parentId?: string | null
+    parentId?: string | null,
   ): Promise<string | null> {
-    this.logger.debug({ userId, name, parentId }, 'Finding folder ID by name');
-
-    try {
-      // Reuse checkFolderExists query which already returns id
-      const { query, params } = this.queryBuilder.buildCheckFolderExistsQuery(
-        userId,
+    const record = await this.prisma.files.findFirst({
+      where: {
+        user_id: userId,
         name,
-        parentId
-      );
-      const result = await executeQuery<{ id: string; name: string }>(query, params as SqlParams);
+        is_folder: true,
+        deletion_status: null,
+        parent_folder_id: parentId ?? null,
+      },
+      select: { id: true },
+    });
 
-      if (result.recordset.length > 0) {
-        const folderId = result.recordset[0].id;
-        this.logger.debug({ userId, name, parentId, folderId }, 'Found folder by name');
-        return folderId;
-      }
-
-      this.logger.debug({ userId, name, parentId }, 'Folder not found by name');
-      return null;
-    } catch (error) {
-      const errorInfo = error instanceof Error
-        ? { message: error.message, name: error.name }
-        : { value: String(error) };
-      this.logger.error({ errorInfo, userId, name, parentId }, 'Failed to find folder ID by name');
-      throw error;
-    }
+    return record?.id ?? null;
   }
+
+  // --------------------------------------------------------------------------
+  // getFilesPendingProcessing
+  // --------------------------------------------------------------------------
 
   /**
-   * Get files pending processing
+   * Find files in 'queued' status waiting to be processed.
    *
-   * Used by FileProcessingScheduler to fetch files that have been uploaded
-   * but not yet queued for processing. Implements flow control by allowing
-   * the scheduler to pull files in controlled batches based on queue capacity.
+   * Returns files ordered by creation date (oldest first) up to the
+   * specified limit. Used by the processing scheduler.
    *
    * @param limit - Maximum number of files to return
-   * @returns Array of files pending processing (oldest first)
+   * @returns Array of files pending processing
    */
-  public async getFilesPendingProcessing(limit: number): Promise<FilePendingProcessing[]> {
-    this.logger.debug({ limit }, 'Getting files pending processing');
+  async getFilesPendingProcessing(limit: number): Promise<FilePendingProcessing[]> {
+    const records = await this.prisma.files.findMany({
+      where: {
+        pipeline_status: PIPELINE_STATUS.QUEUED,
+        is_folder: false,
+        deletion_status: null,
+      },
+      select: {
+        id: true,
+        user_id: true,
+        name: true,
+        mime_type: true,
+        size_bytes: true,
+        blob_path: true,
+        parent_folder_id: true,
+      },
+      orderBy: { created_at: 'asc' },
+      take: limit,
+    });
 
-    try {
-      const { query, params } = this.queryBuilder.buildGetFilesPendingProcessingQuery(limit);
-      const result = await executeQuery<{
-        id: string;
-        user_id: string;
-        name: string;
-        mime_type: string;
-        size_bytes: number;
-        blob_path: string;
-        parent_folder_id: string | null;
-      }>(query, params as SqlParams);
+    return records.map((r) => ({
+      id: r.id,
+      userId: r.user_id,
+      name: r.name,
+      mimeType: r.mime_type,
+      sizeBytes: Number(r.size_bytes),
+      blobPath: r.blob_path,
+      parentFolderId: r.parent_folder_id,
+    }));
+  }
 
-      const files: FilePendingProcessing[] = result.recordset.map((row) => ({
-        id: row.id,
-        userId: row.user_id,
-        name: row.name,
-        mimeType: row.mime_type,
-        sizeBytes: row.size_bytes,
-        blobPath: row.blob_path,
-        parentFolderId: row.parent_folder_id,
-      }));
+  // --------------------------------------------------------------------------
+  // transitionStatus — atomic optimistic-concurrency update
+  // --------------------------------------------------------------------------
 
-      this.logger.debug({ limit, returnedCount: files.length }, 'Files pending processing retrieved');
-      return files;
-    } catch (error) {
-      const errorInfo = error instanceof Error
-        ? { message: error.message, name: error.name }
-        : { value: String(error) };
-      this.logger.error({ errorInfo, limit }, 'Failed to get files pending processing');
-      throw error;
+  /**
+   * Atomically transition a file's pipeline_status using optimistic concurrency.
+   *
+   * The UPDATE only succeeds when:
+   *   - `id` matches
+   *   - `user_id` matches (multi-tenant isolation)
+   *   - `pipeline_status` equals the expected `from` value (no concurrent change)
+   *   - `deletion_status IS NULL` (file not soft-deleted)
+   *
+   * @param fileId   - File UUID (UPPERCASE)
+   * @param userId   - Owner UUID (UPPERCASE)
+   * @param from     - Expected current status
+   * @param to       - Desired target status
+   * @returns TransitionResult indicating success or failure reason
+   */
+  async transitionStatus(
+    fileId: string,
+    userId: string,
+    from: PipelineStatus,
+    to: PipelineStatus,
+  ): Promise<TransitionResult> {
+    // Validate the transition is legal before hitting the DB
+    if (!canTransition(from, to)) {
+      logger.warn({ fileId, userId, from, to }, 'Invalid pipeline transition rejected');
+      return {
+        success: false,
+        previousStatus: from,
+        error: getTransitionErrorMessage(from, to),
+      };
     }
+
+    // Atomic CAS: UPDATE … WHERE pipeline_status = @from
+    const result = await this.prisma.files.updateMany({
+      where: {
+        id: fileId,
+        user_id: userId,
+        pipeline_status: from,
+        deletion_status: null,
+      },
+      data: {
+        pipeline_status: to,
+        updated_at: new Date(),
+      },
+    });
+
+    if (result.count === 1) {
+      logger.debug({ fileId, from, to }, 'Pipeline transition succeeded');
+      return { success: true, previousStatus: from };
+    }
+
+    // CAS failed — read current status for diagnostics
+    const current = await this.prisma.files.findFirst({
+      where: { id: fileId, user_id: userId },
+      select: { pipeline_status: true, deletion_status: true },
+    });
+
+    if (!current) {
+      logger.warn({ fileId, userId }, 'Pipeline transition failed: file not found');
+      return { success: false, previousStatus: from, error: 'File not found' };
+    }
+
+    if (current.deletion_status !== null) {
+      logger.warn({ fileId, userId }, 'Pipeline transition failed: file is soft-deleted');
+      return { success: false, previousStatus: from, error: 'File is soft-deleted' };
+    }
+
+    const actualStatus = (current.pipeline_status ?? 'unknown') as PipelineStatus;
+    logger.warn(
+      { fileId, expectedStatus: from, actualStatus },
+      'Pipeline transition failed: concurrent modification',
+    );
+
+    return {
+      success: false,
+      previousStatus: actualStatus,
+      error: `Concurrent modification: expected '${from}', found '${actualStatus}'`,
+    };
+  }
+
+  // --------------------------------------------------------------------------
+  // getPipelineStatus
+  // --------------------------------------------------------------------------
+
+  /**
+   * Read the current pipeline_status for a file.
+   *
+   * @param fileId - File UUID (UPPERCASE)
+   * @param userId - Owner UUID (UPPERCASE)
+   * @returns Current PipelineStatus, or `null` if file not found or status not set
+   */
+  async getPipelineStatus(fileId: string, userId: string): Promise<PipelineStatus | null> {
+    const file = await this.prisma.files.findFirst({
+      where: { id: fileId, user_id: userId, deletion_status: null },
+      select: { pipeline_status: true },
+    });
+
+    if (!file || !file.pipeline_status) {
+      return null;
+    }
+
+    return file.pipeline_status as PipelineStatus;
+  }
+
+  // --------------------------------------------------------------------------
+  // findByStatus
+  // --------------------------------------------------------------------------
+
+  /**
+   * Find files with a given pipeline_status, ordered by created_at ASC.
+   *
+   * @param status  - Pipeline status to filter by
+   * @param options - Optional limit and userId filter
+   * @returns Array of file records with id, user_id, name, pipeline_status, created_at
+   */
+  async findByStatus(
+    status: PipelineStatus,
+    options?: { limit?: number; userId?: string },
+  ): Promise<Array<{ id: string; user_id: string; name: string; pipeline_status: string; created_at: Date | null }>> {
+    const where: Record<string, unknown> = {
+      pipeline_status: status,
+      deletion_status: null,
+    };
+
+    if (options?.userId) {
+      where.user_id = options.userId;
+    }
+
+    const files = await this.prisma.files.findMany({
+      where,
+      select: {
+        id: true,
+        user_id: true,
+        name: true,
+        pipeline_status: true,
+        created_at: true,
+      },
+      orderBy: { created_at: 'asc' },
+      take: options?.limit,
+    });
+
+    return files as Array<{ id: string; user_id: string; name: string; pipeline_status: string; created_at: Date | null }>;
+  }
+
+  // --------------------------------------------------------------------------
+  // getStatusDistribution
+  // --------------------------------------------------------------------------
+
+  /**
+   * Get a count of files grouped by pipeline_status.
+   *
+   * Only includes files that have a non-null pipeline_status and are not soft-deleted.
+   * Returns all 8 pipeline status keys, defaulting to 0 for missing groups.
+   *
+   * @returns Record mapping each PipelineStatus to its file count
+   */
+  async getStatusDistribution(): Promise<Record<PipelineStatus, number>> {
+    const groups = await this.prisma.files.groupBy({
+      by: ['pipeline_status'],
+      _count: { id: true },
+      where: {
+        deletion_status: null,
+      },
+    });
+
+    // Initialize all statuses to 0
+    const distribution = Object.fromEntries(
+      Object.values(PIPELINE_STATUS).map((s) => [s, 0]),
+    ) as Record<PipelineStatus, number>;
+
+    // Fill in actual counts
+    // Note: Prisma's groupBy _count type is complex; cast via unknown for runtime access
+    for (const group of groups) {
+      const status = group.pipeline_status as PipelineStatus;
+      if (status in distribution) {
+        const countObj = group._count as unknown as { id: number };
+        distribution[status] = countObj.id ?? 0;
+      }
+    }
+
+    return distribution;
+  }
+
+  // --------------------------------------------------------------------------
+  // transitionStatusWithRetry (PRD-05)
+  // --------------------------------------------------------------------------
+
+  /**
+   * Atomically transition a file's pipeline_status and increment retry count.
+   *
+   * Same as `transitionStatus()` but also increments `pipeline_retry_count` atomically.
+   * Used by the DLQ recovery service to track retry attempts while transitioning status.
+   *
+   * @param fileId        - File UUID (UPPERCASE)
+   * @param userId        - Owner UUID (UPPERCASE)
+   * @param from          - Expected current status
+   * @param to            - Desired target status
+   * @param retryIncrement - Amount to increment retry count by (default: 1)
+   * @returns TransitionResult indicating success or failure reason
+   */
+  async transitionStatusWithRetry(
+    fileId: string,
+    userId: string,
+    from: PipelineStatus,
+    to: PipelineStatus,
+    retryIncrement: number = 1,
+  ): Promise<TransitionResult> {
+    // Validate the transition is legal before hitting the DB
+    if (!canTransition(from, to)) {
+      logger.warn({ fileId, userId, from, to }, 'Invalid pipeline transition rejected');
+      return {
+        success: false,
+        previousStatus: from,
+        error: getTransitionErrorMessage(from, to),
+      };
+    }
+
+    // Atomic CAS with retry increment
+    const result = await this.prisma.files.updateMany({
+      where: {
+        id: fileId,
+        user_id: userId,
+        pipeline_status: from,
+        deletion_status: null,
+      },
+      data: {
+        pipeline_status: to,
+        pipeline_retry_count: { increment: retryIncrement },
+        updated_at: new Date(),
+      },
+    });
+
+    if (result.count === 1) {
+      logger.debug({ fileId, from, to, retryIncrement }, 'Pipeline transition with retry succeeded');
+      return { success: true, previousStatus: from };
+    }
+
+    // CAS failed — read current status for diagnostics
+    const current = await this.prisma.files.findFirst({
+      where: { id: fileId, user_id: userId },
+      select: { pipeline_status: true, deletion_status: true },
+    });
+
+    if (!current) {
+      logger.warn({ fileId, userId }, 'Pipeline transition failed: file not found');
+      return { success: false, previousStatus: from, error: 'File not found' };
+    }
+
+    if (current.deletion_status !== null) {
+      logger.warn({ fileId, userId }, 'Pipeline transition failed: file is soft-deleted');
+      return { success: false, previousStatus: from, error: 'File is soft-deleted' };
+    }
+
+    const actualStatus = (current.pipeline_status ?? 'unknown') as PipelineStatus;
+    logger.warn(
+      { fileId, expectedStatus: from, actualStatus },
+      'Pipeline transition failed: concurrent modification',
+    );
+
+    return {
+      success: false,
+      previousStatus: actualStatus,
+      error: `Concurrent modification: expected '${from}', found '${actualStatus}'`,
+    };
+  }
+
+  // --------------------------------------------------------------------------
+  // findStuckFiles (PRD-05)
+  // --------------------------------------------------------------------------
+
+  /**
+   * Find files stuck in non-terminal pipeline states beyond a threshold.
+   *
+   * Returns files in active processing states (queued, extracting, chunking, embedding)
+   * that have not been updated recently, indicating a potential stall or failure.
+   *
+   * Used by the DLQ recovery service to detect and recover stuck processing jobs.
+   *
+   * @param thresholdMs - Time threshold in milliseconds (files older than now - thresholdMs)
+   * @param userId      - Optional user filter for multi-tenant isolation
+   * @returns Array of stuck file records with status and retry metadata
+   */
+  async findStuckFiles(
+    thresholdMs: number,
+    userId?: string,
+  ): Promise<Array<{
+    id: string;
+    user_id: string;
+    name: string;
+    pipeline_status: string;
+    pipeline_retry_count: number;
+    updated_at: Date | null;
+    created_at: Date | null;
+  }>> {
+    const threshold = new Date(Date.now() - thresholdMs);
+
+    const where: Record<string, unknown> = {
+      pipeline_status: {
+        in: [
+          PIPELINE_STATUS.QUEUED,
+          PIPELINE_STATUS.EXTRACTING,
+          PIPELINE_STATUS.CHUNKING,
+          PIPELINE_STATUS.EMBEDDING,
+        ],
+      },
+      updated_at: { lt: threshold },
+      deletion_status: null,
+    };
+
+    if (userId) {
+      where.user_id = userId;
+    }
+
+    const files = await this.prisma.files.findMany({
+      where,
+      select: {
+        id: true,
+        user_id: true,
+        name: true,
+        pipeline_status: true,
+        pipeline_retry_count: true,
+        updated_at: true,
+        created_at: true,
+      },
+      orderBy: { updated_at: 'asc' },
+      take: 200,
+    });
+
+    return files as Array<{
+      id: string;
+      user_id: string;
+      name: string;
+      pipeline_status: string;
+      pipeline_retry_count: number;
+      updated_at: Date | null;
+      created_at: Date | null;
+    }>;
+  }
+
+  // --------------------------------------------------------------------------
+  // findAbandonedFiles (PRD-05)
+  // --------------------------------------------------------------------------
+
+  /**
+   * Find files stuck in 'registered' status beyond a threshold.
+   *
+   * Returns files that completed the upload registration phase but never
+   * transitioned to 'uploaded' or subsequent processing states. This indicates
+   * the client likely crashed or disconnected during the upload process.
+   *
+   * Used by the DLQ cleanup service to recover orphaned blob registrations.
+   *
+   * @param thresholdMs - Time threshold in milliseconds (files older than now - thresholdMs)
+   * @param userId      - Optional user filter for multi-tenant isolation
+   * @returns Array of abandoned file records with blob metadata
+   */
+  async findAbandonedFiles(
+    thresholdMs: number,
+    userId?: string,
+  ): Promise<Array<{
+    id: string;
+    user_id: string;
+    name: string;
+    blob_path: string;
+    created_at: Date | null;
+  }>> {
+    const threshold = new Date(Date.now() - thresholdMs);
+
+    const where: Record<string, unknown> = {
+      pipeline_status: PIPELINE_STATUS.REGISTERED,
+      created_at: { lt: threshold },
+      deletion_status: null,
+    };
+
+    if (userId) {
+      where.user_id = userId;
+    }
+
+    const files = await this.prisma.files.findMany({
+      where,
+      select: {
+        id: true,
+        user_id: true,
+        name: true,
+        blob_path: true,
+        created_at: true,
+      },
+      orderBy: { created_at: 'asc' },
+      take: 500,
+    });
+
+    return files as Array<{
+      id: string;
+      user_id: string;
+      name: string;
+      blob_path: string;
+      created_at: Date | null;
+    }>;
+  }
+
+  // --------------------------------------------------------------------------
+  // forceStatus (PRD-05)
+  // --------------------------------------------------------------------------
+
+  /**
+   * Force a file to a specific pipeline_status, bypassing state machine validation.
+   *
+   * WARNING: This method bypasses the state machine and should only be used for
+   * administrative recovery operations (e.g., resetting a stuck file to allow
+   * manual re-processing). Normal application code should use `transitionStatus()`.
+   *
+   * Used by the DLQ service for force-resetting files that are in invalid states.
+   *
+   * @param fileId - File UUID (UPPERCASE)
+   * @param userId - Owner UUID (UPPERCASE)
+   * @param status - Target pipeline status (no validation performed)
+   * @returns Success flag and optional error message
+   */
+  async forceStatus(
+    fileId: string,
+    userId: string,
+    status: PipelineStatus,
+  ): Promise<{ success: boolean; error?: string }> {
+    logger.warn(
+      { fileId, userId, status },
+      'FORCE STATUS: Bypassing state machine for administrative recovery',
+    );
+
+    const result = await this.prisma.files.updateMany({
+      where: {
+        id: fileId,
+        user_id: userId,
+        deletion_status: null,
+      },
+      data: {
+        pipeline_status: status,
+        updated_at: new Date(),
+      },
+    });
+
+    if (result.count === 1) {
+      logger.info({ fileId, status }, 'Force status update succeeded');
+      return { success: true };
+    }
+
+    logger.error({ fileId, userId }, 'Force status update failed: file not found or soft-deleted');
+    return { success: false, error: 'File not found or soft-deleted' };
   }
 }
 
+// ============================================================================
+// Singleton
+// ============================================================================
+
+let instance: FileRepository | undefined;
+
 /**
- * Get singleton instance of FileRepository
+ * Get the FileRepository singleton.
  */
 export function getFileRepository(): FileRepository {
-  return FileRepository.getInstance();
+  if (!instance) {
+    instance = new FileRepository();
+  }
+  return instance;
 }
 
 /**
- * Reset singleton for testing
+ * Reset the singleton (for tests only).
+ * @internal
  */
 export function __resetFileRepository(): void {
-  (FileRepository as unknown as { instance: FileRepository | null }).instance = null;
+  instance = undefined;
 }

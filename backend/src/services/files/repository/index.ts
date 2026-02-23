@@ -2,19 +2,8 @@
  * File Repository Module Exports
  *
  * This module contains:
- * - FileQueryBuilder: SQL query construction
- * - FileRepository: Database operations
+ * - FileRepository: Prisma-based file CRUD and pipeline status operations
  */
-
-export {
-  FileQueryBuilder,
-  getFileQueryBuilder,
-  __resetFileQueryBuilder,
-  type QueryResult,
-  type GetFilesQueryOptions,
-  type GetFileCountOptions,
-  type InClauseResult,
-} from './FileQueryBuilder';
 
 export {
   FileRepository,
@@ -22,5 +11,6 @@ export {
   __resetFileRepository,
   type IFileRepository,
   type FileMetadata,
+  type MarkForDeletionResult,
   type FilePendingProcessing,
 } from './FileRepository';

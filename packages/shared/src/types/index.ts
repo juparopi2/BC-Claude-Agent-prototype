@@ -95,8 +95,6 @@ export {
 } from './message.types';
 
 export type {
-  ProcessingStatus,
-  EmbeddingStatus,
   FileReadinessState,
   FileUsageType,
   FileSortBy,
@@ -111,42 +109,35 @@ export type {
   FolderResponse,
   UploadFilesResponse,
   AllowedMimeType,
-  // Duplicate detection types
-  DuplicateCheckItem,
-  CheckDuplicatesRequest,
-  DuplicateResult,
-  CheckDuplicatesResponse,
-  DuplicateAction,
-  // Duplicate Detection V2 types (PRD-02)
 } from './file.types';
 
 export type {
   DuplicateMatchType,
   DuplicateScope,
   DuplicateMatchInfo,
-  DuplicateCheckInputV2,
-  CheckDuplicatesRequestV2,
-  DuplicateCheckResultV2,
+  DuplicateCheckInput,
+  CheckDuplicatesRequest,
+  DuplicateCheckResult,
   DuplicateCheckSummary,
-  CheckDuplicatesResponseV2,
+  CheckDuplicatesResponse,
   DuplicateResolutionAction,
 } from './duplicate-detection.types';
 
 export {
-  duplicateCheckInputV2Schema,
-  checkDuplicatesRequestV2Schema,
+  duplicateCheckInputSchema,
+  checkDuplicatesRequestSchema,
 } from './duplicate-detection.types';
 
 export type {
   FolderDuplicateCheckInput,
-  CheckFolderDuplicatesRequestV2,
+  CheckFolderDuplicatesRequest,
   FolderDuplicateCheckResult,
-  CheckFolderDuplicatesResponseV2,
+  CheckFolderDuplicatesResponse,
 } from './folder-duplicate-detection.types';
 
 export {
   folderDuplicateCheckInputSchema,
-  checkFolderDuplicatesRequestV2Schema,
+  checkFolderDuplicatesRequestSchema,
 } from './folder-duplicate-detection.types';
 
 export type {

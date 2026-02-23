@@ -96,12 +96,12 @@ describe('FileService - SQL NULL Comparison Integration', () => {
     const query = `
       INSERT INTO files (
         id, user_id, parent_folder_id, name, mime_type, size_bytes, blob_path,
-        is_folder, is_favorite, processing_status, embedding_status, extracted_text,
+        is_folder, is_favorite, pipeline_status, extracted_text,
         created_at, updated_at
       )
       VALUES (
         @id, @user_id, @parent_folder_id, @name, @mime_type, @size_bytes, @blob_path,
-        @is_folder, @is_favorite, @processing_status, @embedding_status, @extracted_text,
+        @is_folder, @is_favorite, @pipeline_status, @extracted_text,
         GETUTCDATE(), GETUTCDATE()
       )
     `;
@@ -116,8 +116,7 @@ describe('FileService - SQL NULL Comparison Integration', () => {
       blob_path: file.is_folder ? '' : `users/${file.user_id}/files/${file.name}`,
       is_folder: file.is_folder,
       is_favorite: false,
-      processing_status: 'completed',
-      embedding_status: file.is_folder ? 'completed' : 'pending',
+      pipeline_status: 'ready',
       extracted_text: null,
     };
 

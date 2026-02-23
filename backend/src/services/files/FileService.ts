@@ -19,13 +19,12 @@ import {
   GetFilesOptions,
   CreateFileOptions,
   UpdateFileOptions,
-  ProcessingStatus,
 } from '@/types/file.types';
-import { getFileRepository, type IFileRepository } from './repository/FileRepository';
+import { type PipelineStatus } from '@bc-agent/shared';
+import { getFileRepository, FileRepository } from './repository/FileRepository';
 import { getFileDeletionService, type IFileDeletionService, type DeletionOptions } from './operations/FileDeletionService';
 import { getFileDuplicateService, type IFileDuplicateService } from './operations/FileDuplicateService';
 import { getFileMetadataService, type IFileMetadataService } from './operations/FileMetadataService';
-import { getFileRetryService } from '@/domains/files/retry';
 
 /**
  * File Service - Facade for file operations
@@ -33,13 +32,13 @@ import { getFileRetryService } from '@/domains/files/retry';
 export class FileService {
   private static instance: FileService | null = null;
   private logger: Logger;
-  private repository: IFileRepository;
+  private repository: FileRepository;
   private deletionService: IFileDeletionService;
   private duplicateService: IFileDuplicateService;
   private metadataService: IFileMetadataService;
 
   private constructor(deps?: {
-    repository?: IFileRepository;
+    repository?: FileRepository;
     deletionService?: IFileDeletionService;
     duplicateService?: IFileDuplicateService;
     metadataService?: IFileMetadataService;
@@ -156,7 +155,7 @@ export class FileService {
   public async updateProcessingStatus(
     userId: string,
     fileId: string,
-    status: ProcessingStatus,
+    status: PipelineStatus,
     extractedText?: string
   ): Promise<void> {
     return this.metadataService.updateProcessingStatus(userId, fileId, status, extractedText);
@@ -222,85 +221,6 @@ export class FileService {
     return this.duplicateService.checkByHashBatch(userId, items);
   }
 
-  // ========================================================================
-  // RETRY TRACKING (delegate to FileRetryService)
-  // These methods are deprecated but kept for backward compatibility.
-  // Prefer using getFileRetryService() directly in new code.
-  // ========================================================================
-
-  /**
-   * @deprecated Prefer using getFileRetryService().incrementProcessingRetryCount() directly
-   */
-  public async incrementProcessingRetryCount(
-    userId: string,
-    fileId: string
-  ): Promise<number> {
-    return getFileRetryService().incrementProcessingRetryCount(userId, fileId);
-  }
-
-  /**
-   * @deprecated Prefer using getFileRetryService().incrementEmbeddingRetryCount() directly
-   */
-  public async incrementEmbeddingRetryCount(
-    userId: string,
-    fileId: string
-  ): Promise<number> {
-    return getFileRetryService().incrementEmbeddingRetryCount(userId, fileId);
-  }
-
-  /**
-   * @deprecated Prefer using getFileRetryService().setLastProcessingError() directly
-   */
-  public async setLastProcessingError(
-    userId: string,
-    fileId: string,
-    errorMessage: string
-  ): Promise<void> {
-    return getFileRetryService().setLastProcessingError(userId, fileId, errorMessage);
-  }
-
-  /**
-   * @deprecated Prefer using getFileRetryService().setLastEmbeddingError() directly
-   */
-  public async setLastEmbeddingError(
-    userId: string,
-    fileId: string,
-    errorMessage: string
-  ): Promise<void> {
-    return getFileRetryService().setLastEmbeddingError(userId, fileId, errorMessage);
-  }
-
-  /**
-   * @deprecated Prefer using getFileRetryService().markAsPermanentlyFailed() directly
-   */
-  public async markAsPermanentlyFailed(
-    userId: string,
-    fileId: string
-  ): Promise<void> {
-    return getFileRetryService().markAsPermanentlyFailed(userId, fileId);
-  }
-
-  /**
-   * @deprecated Prefer using getFileRetryService().clearFailedStatus() directly
-   */
-  public async clearFailedStatus(
-    userId: string,
-    fileId: string,
-    scope: 'full' | 'embedding_only' = 'full'
-  ): Promise<void> {
-    return getFileRetryService().clearFailedStatus(userId, fileId, scope);
-  }
-
-  /**
-   * @deprecated Prefer using getFileRetryService().updateEmbeddingStatus() directly
-   */
-  public async updateEmbeddingStatus(
-    userId: string,
-    fileId: string,
-    status: 'pending' | 'processing' | 'completed' | 'failed'
-  ): Promise<void> {
-    return getFileRetryService().updateEmbeddingStatus(userId, fileId, status);
-  }
 }
 
 /**

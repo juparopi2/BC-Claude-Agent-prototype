@@ -2,14 +2,12 @@
  * File Chunking Service
  *
  * Orchestrates the chunking of extracted text from files:
- * - Reads extracted_text from files with processing_status='completed'
+ * - Reads extracted_text from files with pipeline_status='chunking'
  * - Applies appropriate chunking strategy based on MIME type
  * - Inserts chunks into file_chunks table
- * - Enqueues EmbeddingGenerationJob for vector indexing
- * - Updates embedding_status to 'queued'
  *
- * This service bridges the gap between text extraction (FileProcessingService)
- * and embedding generation (EmbeddingService via MessageQueue).
+ * Embedding generation is handled by the pipeline (FileEmbedWorker),
+ * which runs automatically after chunking via BullMQ Flow sequencing.
  *
  * @module services/files/FileChunkingService
  */
@@ -19,7 +17,7 @@ import { executeQuery, SqlParams } from '@/infrastructure/database/database';
 import { createChildLogger } from '@/shared/utils/logger';
 import { ChunkingStrategyFactory } from '../chunking/ChunkingStrategyFactory';
 import type { ChunkingOptions } from '../chunking/types';
-import type { FileChunkingJob, EmbeddingGenerationJob } from '@/infrastructure/queue/MessageQueue';
+import type { FileChunkingJob } from '@/infrastructure/queue/types';
 
 // Child logger for this service (uses createChildLogger for LOG_SERVICES filtering)
 const logger = createChildLogger({ service: 'FileChunkingService' });
@@ -63,16 +61,7 @@ interface FileForChunking {
   userId: string;
   mimeType: string;
   extractedText: string | null;
-  processingStatus: string;
-  embeddingStatus: string;
-}
-
-/**
- * Options for processFileChunks (PRD-04 V2 compatibility)
- */
-export interface ProcessFileChunksOptions {
-  /** When true, skip the fire-and-forget enqueue of the embedding job (V2 Flow handles sequencing) */
-  skipNextStageEnqueue?: boolean;
+  pipelineStatus: string;
 }
 
 /**
@@ -110,10 +99,9 @@ export class FileChunkingService {
    * Main entry point called by MessageQueue worker.
    *
    * @param jobData - File chunking job data
-   * @param options - Optional processing options (V2 pipeline compatibility)
    * @returns Chunking result
    */
-  public async processFileChunks(jobData: FileChunkingJob, options?: ProcessFileChunksOptions): Promise<ChunkingResult> {
+  public async processFileChunks(jobData: FileChunkingJob): Promise<ChunkingResult> {
     const { fileId, userId, mimeType, sessionId } = jobData;
 
     logger.debug({
@@ -160,12 +148,10 @@ export class FileChunkingService {
     }
 
     // 2. Validate processing status
-    if (file.processingStatus !== 'completed') {
-      throw new Error(`File processing not completed: ${file.processingStatus}`);
+    // In the pipeline (PRD-07), files are in 'chunking' status when this runs.
+    if (file.pipelineStatus !== 'chunking') {
+      throw new Error(`File not in chunking status: ${file.pipelineStatus}`);
     }
-
-    // 3. Update embedding status to 'processing'
-    await this.updateEmbeddingStatus(fileId, 'processing');
 
     try {
       // 4. Select chunking strategy based on MIME type
@@ -177,22 +163,15 @@ export class FileChunkingService {
       logger.info({ fileId, chunkCount: chunks.length }, 'Generated chunks');
 
       // 6. Insert chunks into database
-      const chunkRecords = await this.insertChunks(fileId, userId, chunks);
+      await this.insertChunks(fileId, userId, chunks);
 
       // 7. Calculate total tokens
       const totalTokens = chunks.reduce((sum, chunk) => sum + chunk.tokenCount, 0);
 
-      // 8. Enqueue embedding generation job
-      // V2 pipeline (PRD-04): Skip enqueue when BullMQ Flow handles sequencing
-      let embeddingJobId: string | undefined;
-      if (!options?.skipNextStageEnqueue) {
-        embeddingJobId = await this.enqueueEmbeddingJob(fileId, userId, chunkRecords, mimeType);
-      }
-
-      // 9. Update embedding status to 'queued' (only for V1 path)
-      if (!options?.skipNextStageEnqueue) {
-        await this.updateEmbeddingStatus(fileId, 'queued');
-      }
+      // 8. Embedding is handled by the pipeline (BullMQ Flow).
+      // The FileEmbedWorker processes the next stage automatically.
+      // No explicit enqueue is needed here.
+      const embeddingJobId: string | undefined = undefined;
 
       logger.info({
         fileId,
@@ -208,8 +187,6 @@ export class FileChunkingService {
         embeddingJobId,
       };
     } catch (error) {
-      // Revert status on failure
-      await this.updateEmbeddingStatus(fileId, 'failed');
       throw error;
     }
   }
@@ -227,10 +204,9 @@ export class FileChunkingService {
       user_id: string;
       mime_type: string;
       extracted_text: string | null;
-      processing_status: string;
-      embedding_status: string;
+      pipeline_status: string;
     }>(
-      `SELECT id, user_id, mime_type, extracted_text, processing_status, embedding_status
+      `SELECT id, user_id, mime_type, extracted_text, pipeline_status
        FROM files
        WHERE id = @fileId AND user_id = @userId`,
       { fileId, userId }
@@ -246,27 +222,8 @@ export class FileChunkingService {
       userId: row.user_id,
       mimeType: row.mime_type,
       extractedText: row.extracted_text,
-      processingStatus: row.processing_status,
-      embeddingStatus: row.embedding_status,
+      pipelineStatus: row.pipeline_status,
     };
-  }
-
-  /**
-   * Update embedding status
-   *
-   * @param fileId - File ID
-   * @param status - New embedding status
-   */
-  private async updateEmbeddingStatus(
-    fileId: string,
-    status: 'pending' | 'processing' | 'queued' | 'completed' | 'failed'
-  ): Promise<void> {
-    await executeQuery(
-      `UPDATE files SET embedding_status = @status, updated_at = GETUTCDATE() WHERE id = @fileId`,
-      { fileId, status }
-    );
-
-    logger.debug({ fileId, status }, 'Updated embedding status');
   }
 
   /**
@@ -282,9 +239,6 @@ export class FileChunkingService {
    */
   private async indexImageEmbedding(fileId: string, userId: string, sessionId?: string): Promise<void> {
     try {
-      // Mark as processing
-      await this.updateEmbeddingStatus(fileId, 'processing');
-
       const { getImageEmbeddingRepository } = await import(
         '@/repositories/ImageEmbeddingRepository'
       );
@@ -292,8 +246,7 @@ export class FileChunkingService {
       const embeddingRecord = await repository.getByFileId(fileId, userId);
 
       if (!embeddingRecord) {
-        logger.warn({ fileId, userId }, 'No image embedding found - marking as completed without indexing');
-        await this.updateEmbeddingStatus(fileId, 'completed');
+        logger.warn({ fileId, userId }, 'No image embedding found - skipping indexing');
 
         // Emit readiness_changed event even when no embedding (file is still "ready")
         await this.emitReadinessChanged(fileId, userId, sessionId);
@@ -381,9 +334,6 @@ export class FileChunkingService {
         contentVector: captionContentVector,
       });
 
-      // Mark as completed
-      await this.updateEmbeddingStatus(fileId, 'completed');
-
       logger.info(
         {
           fileId,
@@ -406,7 +356,6 @@ export class FileChunkingService {
         'Failed to index image embedding'
       );
 
-      await this.updateEmbeddingStatus(fileId, 'failed');
       throw error;
     }
   }
@@ -423,9 +372,7 @@ export class FileChunkingService {
   private async emitReadinessChanged(fileId: string, userId: string, sessionId?: string): Promise<void> {
     try {
       const { getFileEventEmitter } = await import('@/domains/files/emission/FileEventEmitter');
-      const { FILE_READINESS_STATE, PROCESSING_STATUS, EMBEDDING_STATUS } = await import(
-        '@bc-agent/shared'
-      );
+      const { FILE_READINESS_STATE } = await import('@bc-agent/shared');
 
       const eventEmitter = getFileEventEmitter();
 
@@ -434,8 +381,6 @@ export class FileChunkingService {
         {
           previousState: FILE_READINESS_STATE.PROCESSING,
           newState: FILE_READINESS_STATE.READY,
-          processingStatus: PROCESSING_STATUS.COMPLETED,
-          embeddingStatus: EMBEDDING_STATUS.COMPLETED,
         }
       );
 
@@ -506,50 +451,6 @@ export class FileChunkingService {
     return chunkRecords;
   }
 
-  /**
-   * Enqueue embedding generation job
-   *
-   * OPTIMIZED: Only passes chunk IDs to reduce Redis memory usage.
-   * The worker reads chunk text from the database when processing.
-   *
-   * @param fileId - File ID
-   * @param userId - User ID
-   * @param chunks - Chunk records with IDs
-   * @returns Job ID
-   */
-  private async enqueueEmbeddingJob(
-    fileId: string,
-    userId: string,
-    chunks: Array<{ id: string; text: string; chunkIndex: number; tokenCount: number }>,
-    mimeType: string
-  ): Promise<string> {
-    // Dynamic import to avoid circular dependencies
-    const { getMessageQueue } = await import('@/infrastructure/queue/MessageQueue');
-    const messageQueue = getMessageQueue();
-
-    // OPTIMIZATION: Only store chunk IDs, not text content
-    // This reduces Redis memory by ~80% for large file batches
-    // Worker reads text from database when processing
-    const jobData: EmbeddingGenerationJob = {
-      fileId,
-      userId,
-      chunkIds: chunks.map(chunk => chunk.id),
-      mimeType,
-    };
-
-    logger.debug({
-      fileId, userId,
-      mimeTypeInJobData: jobData.mimeType,
-      mimeTypeInJobDataType: typeof jobData.mimeType,
-      chunkCount: chunks.length,
-    }, '[TRACE] enqueueEmbeddingJob - mimeType being sent to embedding worker');
-
-    const jobId = await messageQueue.addEmbeddingGenerationJob(jobData);
-
-    logger.info({ fileId, jobId, chunkCount: chunks.length }, 'Enqueued embedding generation job (optimized: IDs only)');
-
-    return jobId;
-  }
 }
 
 /**

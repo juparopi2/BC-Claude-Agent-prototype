@@ -26,8 +26,6 @@
 // Re-export types from @bc-agent/shared for internal use
 // These types are defined once in shared package and used across all packages
 export type {
-  ProcessingStatus,
-  EmbeddingStatus,
   FileReadinessState,
   FileUsageType,
   FileSortBy,
@@ -38,8 +36,6 @@ export type {
 
 // Import for local use in this module
 import type {
-  ProcessingStatus,
-  EmbeddingStatus,
   FileUsageType,
   ParsedFile,
   ParsedFileChunk,
@@ -47,8 +43,7 @@ import type {
   DeletionStatus,
 } from '@bc-agent/shared';
 
-// Import domain service for computing readiness state
-import { getReadinessStateComputer } from '@/domains/files/status';
+import { computeReadinessState } from '@bc-agent/shared';
 
 /**
  * Database record for files table
@@ -90,11 +85,8 @@ export interface FileDbRecord {
   /** User-set favorite flag */
   is_favorite: boolean;
 
-  /** Processing status (Phase 3: OCR, preview generation) */
-  processing_status: ProcessingStatus;
-
-  /** Embedding status (Phase 4: vector search) */
-  embedding_status: EmbeddingStatus;
+  /** Pipeline status (Pipeline: registered → queued → extracting → chunking → embedding → ready | failed) */
+  pipeline_status: string;
 
   /** Extracted text content (NULL until processing completes) */
   extracted_text: string | null;
@@ -325,9 +317,8 @@ export function parseFile(record: FileDbRecord): ParsedFile {
     blobPath: record.blob_path,
     isFolder: record.is_folder,
     isFavorite: record.is_favorite,
-    processingStatus: record.processing_status,
-    embeddingStatus: record.embedding_status,
-    readinessState: getReadinessStateComputer().compute(record.processing_status, record.embedding_status),
+    pipelineStatus: record.pipeline_status,
+    readinessState: computeReadinessState(record.pipeline_status),
     processingRetryCount: record.processing_retry_count ?? 0,
     embeddingRetryCount: record.embedding_retry_count ?? 0,
     lastError,

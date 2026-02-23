@@ -21,15 +21,6 @@ export {
   type FileMetadata,
 } from './repository';
 
-export {
-  FileQueryBuilder,
-  getFileQueryBuilder,
-  __resetFileQueryBuilder,
-  type QueryResult,
-  type GetFilesQueryOptions,
-  type GetFileCountOptions,
-  type InClauseResult,
-} from './repository';
 
 // ========================================================================
 // Operations Layer (new exports)

@@ -90,8 +90,6 @@ export type {
   Message,
 
   // File types
-  ProcessingStatus,
-  EmbeddingStatus,
   FileReadinessState,
   FileUsageType,
   FileSortBy,
@@ -106,27 +104,21 @@ export type {
   FolderResponse,
   UploadFilesResponse,
   AllowedMimeType,
-  // Duplicate detection types
-  DuplicateCheckItem,
-  CheckDuplicatesRequest,
-  DuplicateResult,
-  CheckDuplicatesResponse,
-  DuplicateAction,
-  // Duplicate Detection V2 types (PRD-02)
+  // Duplicate Detection types (PRD-02)
   DuplicateMatchType,
   DuplicateScope,
   DuplicateMatchInfo,
-  DuplicateCheckInputV2,
-  CheckDuplicatesRequestV2,
-  DuplicateCheckResultV2,
+  DuplicateCheckInput,
+  CheckDuplicatesRequest,
+  DuplicateCheckResult,
   DuplicateCheckSummary,
-  CheckDuplicatesResponseV2,
+  CheckDuplicatesResponse,
   DuplicateResolutionAction,
-  // Folder Duplicate Detection V2 types
+  // Folder Duplicate Detection types
   FolderDuplicateCheckInput,
-  CheckFolderDuplicatesRequestV2,
+  CheckFolderDuplicatesRequest,
   FolderDuplicateCheckResult,
-  CheckFolderDuplicatesResponseV2,
+  CheckFolderDuplicatesResponse,
   // Retry & Cleanup types
   RetryPhase,
   RetryScope,
@@ -385,13 +377,13 @@ export {
   getMaxSizeForMimeType,
 } from './types';
 
-// Duplicate Detection V2 schemas (PRD-02)
+// Duplicate Detection schemas (PRD-02)
 export {
-  duplicateCheckInputV2Schema,
-  checkDuplicatesRequestV2Schema,
-  // Folder Duplicate Detection V2 schemas
+  duplicateCheckInputSchema,
+  checkDuplicatesRequestSchema,
+  // Folder Duplicate Detection schemas
   folderDuplicateCheckInputSchema,
-  checkFolderDuplicatesRequestV2Schema,
+  checkFolderDuplicatesRequestSchema,
 } from './types';
 
 // Upload Batch schemas & constants (PRD-03)
@@ -401,6 +393,13 @@ export {
   manifestFolderItemSchema,
   replaceFolderMappingSchema,
   createBatchRequestSchema,
+} from './types';
+
+// DLQ types (PRD-04)
+export type {
+  FailedPipelineStage,
+  DLQEntry,
+  DLQListResponse,
 } from './types';
 
 // ============================================
@@ -444,11 +443,7 @@ export {
   type FileWsChannel,
   type FileWsEventType,
   // File Processing Status Constants (D25 Sprint 3)
-  PROCESSING_STATUS,
-  EMBEDDING_STATUS,
   FILE_READINESS_STATE,
-  type ProcessingStatusValue,
-  type EmbeddingStatusValue,
   type FileReadinessStateValue,
   // File Deletion Configuration (Bulk Delete)
   FILE_DELETION_CONFIG,
@@ -505,6 +500,7 @@ export {
   canTransition,
   getValidTransitions,
   getTransitionErrorMessage,
+  computeReadinessState,
   PipelineTransitionError,
   type PipelineStatus,
   type PipelineStatusValue,

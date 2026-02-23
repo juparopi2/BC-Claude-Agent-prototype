@@ -5,27 +5,15 @@ import { useDropzone, FileRejection } from 'react-dropzone';
 import { FILE_UPLOAD_LIMITS, ALLOWED_MIME_TYPES } from '@bc-agent/shared';
 import { Upload, FolderUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Progress } from '@/components/ui/progress';
-import { useFileUpload, useFolderUpload, useFolderUploadToasts } from '@/src/domains/files';
-import { useDuplicateStore } from '@/src/domains/files/stores/duplicateStore';
 import { useFolderTreeStore } from '@/src/domains/files/stores/folderTreeStore';
-import { DuplicateFileModal } from '@/components/files/modals/DuplicateFileModal';
 import { UnsupportedFilesModal } from '@/components/files/modals/UnsupportedFilesModal';
 import { UploadLimitErrorModal } from '@/components/modals/UploadLimitErrorModal';
-import { MultiUploadProgressPanel } from '@/components/files/MultiUploadProgressPanel';
 import { detectDropType, buildFolderStructure } from '@/src/domains/files/utils/folderReader';
 import { toast } from 'sonner';
-
-// V2 imports
-import { useBatchUploadV2 } from '@/src/domains/files/hooks/v2/useBatchUploadV2';
-import { DuplicateFileModalV2 } from '@/components/files/v2/DuplicateFileModalV2';
-import { DuplicateFolderModalV2 } from '@/components/files/v2/DuplicateFolderModalV2';
-import { BatchUploadProgressPanelV2 } from '@/components/files/v2/BatchUploadProgressPanelV2';
-
-/**
- * Feature flag: when true, uses V2 batch upload pipeline
- */
-const USE_V2_UPLOAD = process.env.NEXT_PUBLIC_USE_V2_UPLOAD === 'true';
+import { useBatchUpload } from '@/src/domains/files/hooks/useBatchUpload';
+import { DuplicateFileModal } from '@/components/files/DuplicateFileModal';
+import { DuplicateFolderModal } from '@/components/files/DuplicateFolderModal';
+import { BatchUploadProgressPanel } from '@/components/files/BatchUploadProgressPanel';
 
 const MAX_CONCURRENT_BATCHES = 5;
 
@@ -40,41 +28,15 @@ export function FileUploadZone({
   className,
   disabled = false,
 }: FileUploadZoneProps) {
-  // V1 hooks (always called for hook rules compliance)
-  const { uploadFiles, isUploading: isUploadingV1, overallProgress: uploadProgress } = useFileUpload();
-  const {
-    uploadFolder,
-    cancelSession,
-    hasActiveUploads: v1HasActiveUploads,
-    maxConcurrentSessions,
-    activeCount: v1ActiveCount,
-  } = useFolderUpload();
-
-  // V2 hooks (always called for hook rules compliance)
   const {
     startUpload: startUploadV2,
     cancelBatch,
-    hasActiveUploads: v2HasActiveUploads,
     activeBatchCount,
-  } = useBatchUploadV2();
+  } = useBatchUpload();
 
   const [isDragActive, setIsDragActive] = useState(false);
   const [isDraggingFolder, setIsDraggingFolder] = useState(false);
   const currentFolderId = useFolderTreeStore((state) => state.currentFolderId);
-
-  // Show toast notifications for folder upload events (V1 only)
-  useFolderUploadToasts({ enabled: !USE_V2_UPLOAD });
-
-  // V1 Duplicate detection modal state
-  const conflicts = useDuplicateStore((state) => state.conflicts);
-  const currentIndex = useDuplicateStore((state) => state.currentIndex);
-  const isModalOpen = useDuplicateStore((state) => state.isModalOpen);
-  const resolveConflict = useDuplicateStore((state) => state.resolveConflict);
-  const resolveAllRemaining = useDuplicateStore((state) => state.resolveAllRemaining);
-  const closeModal = useDuplicateStore((state) => state.closeModal);
-
-  // Unified isUploading — for V2, we use hasActiveUploads (allows concurrent drops)
-  const isUploading = USE_V2_UPLOAD ? false : isUploadingV1;
 
   /**
    * Handle drag events to detect folder vs files
@@ -86,9 +48,9 @@ export function FileUploadZone({
   }, []);
 
   /**
-   * V2 concurrent limit check
+   * Concurrent batch limit check
    */
-  const checkV2ConcurrentLimit = useCallback((): boolean => {
+  const checkConcurrentLimit = useCallback((): boolean => {
     if (activeBatchCount >= MAX_CONCURRENT_BATCHES) {
       toast.error(`Maximum ${MAX_CONCURRENT_BATCHES} concurrent uploads. Wait for one to complete.`);
       return false;
@@ -106,56 +68,28 @@ export function FileUploadZone({
 
     const dropType = detectDropType(e.dataTransfer);
 
-    if (USE_V2_UPLOAD) {
-      // V2: Unified path for both files and folders
-      if (!checkV2ConcurrentLimit()) return;
+    if (!checkConcurrentLimit()) return;
 
-      try {
-        if (dropType === 'folder' || dropType === 'mixed') {
-          const structure = await buildFolderStructure(e.dataTransfer);
-          if (structure.validFiles.length === 0 && structure.invalidFiles.length === 0) {
-            toast.error('No files found in folder');
-            return;
-          }
-          // Only pass standalone files (not inside any folder).
-          // Nested files are already in rootFolders and will be extracted by collectFolderFiles().
-          const standaloneFiles = structure.validFiles
-            .filter((f) => !f.path.includes('/'))
-            .map((f) => f.file);
-          await startUploadV2(standaloneFiles, structure.rootFolders, currentFolderId);
-        }
-        // File-only drops handled by onDrop below
-      } catch (error) {
-        console.error('[FileUploadZone] Folder read error:', error);
-        toast.error('Failed to read folder contents');
-      }
-    } else {
-      // V1: Original folder handling
+    try {
       if (dropType === 'folder' || dropType === 'mixed') {
-        if (v1ActiveCount >= maxConcurrentSessions) {
-          toast.error(
-            `Maximum ${maxConcurrentSessions} concurrent uploads allowed. Please wait for an upload to complete or cancel one.`
-          );
+        const structure = await buildFolderStructure(e.dataTransfer);
+        if (structure.validFiles.length === 0 && structure.invalidFiles.length === 0) {
+          toast.error('No files found in folder');
           return;
         }
-
-        try {
-          const structure = await buildFolderStructure(e.dataTransfer);
-          if (structure.validFiles.length === 0 && structure.invalidFiles.length === 0) {
-            toast.error('No files found in folder');
-            return;
-          }
-          await uploadFolder(structure, currentFolderId);
-        } catch (error) {
-          console.error('[FileUploadZone] Folder read error:', error);
-          toast.error('Failed to read folder contents');
-        }
+        // Only pass standalone files (not inside any folder).
+        // Nested files are already in rootFolders and will be extracted by collectFolderFiles().
+        const standaloneFiles = structure.validFiles
+          .filter((f) => !f.path.includes('/'))
+          .map((f) => f.file);
+        await startUploadV2(standaloneFiles, structure.rootFolders, currentFolderId);
       }
+      // File-only drops handled by onDrop below
+    } catch (error) {
+      console.error('[FileUploadZone] Folder read error:', error);
+      toast.error('Failed to read folder contents');
     }
-  }, [
-    uploadFolder, currentFolderId, v1ActiveCount, maxConcurrentSessions,
-    startUploadV2, checkV2ConcurrentLimit,
-  ]);
+  }, [currentFolderId, startUploadV2, checkConcurrentLimit]);
 
   const onDrop = useCallback(async (acceptedFiles: File[], rejectedFiles: FileRejection[]) => {
     setIsDragActive(false);
@@ -174,14 +108,10 @@ export function FileUploadZone({
         return;
       }
 
-      if (USE_V2_UPLOAD) {
-        if (!checkV2ConcurrentLimit()) return;
-        await startUploadV2(acceptedFiles, undefined, currentFolderId);
-      } else {
-        await uploadFiles(acceptedFiles);
-      }
+      if (!checkConcurrentLimit()) return;
+      await startUploadV2(acceptedFiles, undefined, currentFolderId);
     }
-  }, [uploadFiles, startUploadV2, currentFolderId, checkV2ConcurrentLimit]);
+  }, [startUploadV2, currentFolderId, checkConcurrentLimit]);
 
   const { getRootProps, getInputProps, isDragAccept, isDragReject } = useDropzone({
     onDrop,
@@ -196,7 +126,7 @@ export function FileUploadZone({
     }, {} as Record<string, string[]>),
     maxSize: FILE_UPLOAD_LIMITS.MAX_FILE_SIZE,
     maxFiles: FILE_UPLOAD_LIMITS.MAX_FILES_PER_BULK_UPLOAD,
-    disabled: disabled || isUploading,
+    disabled: disabled,
     noClick: true,
     noKeyboard: true,
     onDropAccepted: undefined,
@@ -260,33 +190,11 @@ export function FileUploadZone({
         </div>
       )}
 
-      {/* V1: File upload progress overlay */}
-      {!USE_V2_UPLOAD && isUploadingV1 && !v1HasActiveUploads && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/80 backdrop-blur-sm z-20">
-          <Upload className="size-12 text-primary animate-pulse mb-4" />
-          <p className="text-sm font-medium mb-2">Uploading files...</p>
-          <Progress value={uploadProgress} className="w-48 h-2" />
-          <p className="text-xs text-muted-foreground mt-2">{uploadProgress}%</p>
-        </div>
-      )}
+      {/* Duplicate folder detection modal */}
+      <DuplicateFolderModal />
 
-      {/* V1: Duplicate file detection modal */}
-      {!USE_V2_UPLOAD && (
-        <DuplicateFileModal
-          isOpen={isModalOpen}
-          onClose={closeModal}
-          conflicts={conflicts}
-          currentIndex={currentIndex}
-          onResolve={resolveConflict}
-          onResolveAll={resolveAllRemaining}
-        />
-      )}
-
-      {/* V2: Duplicate folder detection modal */}
-      {USE_V2_UPLOAD && <DuplicateFolderModalV2 />}
-
-      {/* V2: Duplicate file detection modal */}
-      {USE_V2_UPLOAD && <DuplicateFileModalV2 />}
+      {/* Duplicate file detection modal */}
+      <DuplicateFileModal />
 
       {/* Unsupported files modal (for folder upload) */}
       <UnsupportedFilesModal />
@@ -294,15 +202,8 @@ export function FileUploadZone({
       {/* Upload limit error modal (for folder upload) */}
       <UploadLimitErrorModal />
 
-      {/* V1: Multi-session upload progress panel (floating, bottom-right) */}
-      {!USE_V2_UPLOAD && (
-        <MultiUploadProgressPanel onCancelSession={cancelSession} />
-      )}
-
-      {/* V2: Batch upload progress panel (floating, bottom-right) */}
-      {USE_V2_UPLOAD && (
-        <BatchUploadProgressPanelV2 onCancel={(batchKey) => cancelBatch(batchKey)} />
-      )}
+      {/* Batch upload progress panel (floating, bottom-right) */}
+      <BatchUploadProgressPanel onCancel={(batchKey) => cancelBatch(batchKey)} />
     </div>
   );
 }
@@ -311,16 +212,11 @@ export function FileUploadZone({
  * Hook to trigger file picker programmatically
  */
 export function useFileUploadTrigger() {
-  // V1
-  const { uploadFiles, isUploading: isUploadingV1 } = useFileUpload();
-  // V2
-  const { startUpload: startUploadV2, hasActiveUploads, activeBatchCount } = useBatchUploadV2();
+  const { startUpload: startUploadV2, hasActiveUploads, activeBatchCount } = useBatchUpload();
   const currentFolderId = useFolderTreeStore((state) => state.currentFolderId);
 
-  const isUploading = USE_V2_UPLOAD ? hasActiveUploads : isUploadingV1;
-
   const openFilePicker = useCallback(() => {
-    if (USE_V2_UPLOAD && activeBatchCount >= MAX_CONCURRENT_BATCHES) {
+    if (activeBatchCount >= MAX_CONCURRENT_BATCHES) {
       toast.error(`Maximum ${MAX_CONCURRENT_BATCHES} concurrent uploads. Wait for one to complete.`);
       return;
     }
@@ -333,16 +229,12 @@ export function useFileUploadTrigger() {
     input.onchange = async (e) => {
       const files = Array.from((e.target as HTMLInputElement).files || []);
       if (files.length > 0) {
-        if (USE_V2_UPLOAD) {
-          await startUploadV2(files, undefined, currentFolderId);
-        } else {
-          await uploadFiles(files, currentFolderId);
-        }
+        await startUploadV2(files, undefined, currentFolderId);
       }
     };
 
     input.click();
-  }, [uploadFiles, startUploadV2, currentFolderId, activeBatchCount]);
+  }, [startUploadV2, currentFolderId, activeBatchCount]);
 
-  return { openFilePicker, isUploading };
+  return { openFilePicker, isUploading: hasActiveUploads };
 }

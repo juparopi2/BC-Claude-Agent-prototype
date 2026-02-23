@@ -10,11 +10,12 @@ import { Router, Request, Response } from 'express';
 import { ZodError } from 'zod';
 import { authenticateMicrosoft } from '@/domains/auth/middleware/auth-oauth';
 import { getFileService, getFileUploadService } from '@services/files';
+import { getSoftDeleteService } from '@services/files/operations';
 import { sendError } from '@/shared/utils/error-response';
 import { ErrorCode } from '@/shared/constants/errors';
 import { createChildLogger } from '@/shared/utils/logger';
 import { getUserId } from './helpers';
-import { getFilesSchema, fileIdSchema, updateFileSchema } from './schemas/file.schemas';
+import { getFilesSchema, fileIdSchema, updateFileSchema, bulkDeleteSchema } from './schemas/file.schemas';
 
 const logger = createChildLogger({ service: 'FileCrudRoutes' });
 const router = Router();
@@ -207,6 +208,50 @@ router.patch('/:id', authenticateMicrosoft, async (req: Request, res: Response):
     }
 
     sendError(res, ErrorCode.INTERNAL_ERROR, 'Failed to update file');
+  }
+});
+
+/**
+ * DELETE /api/files
+ * Bulk delete files (soft delete via SoftDeleteService)
+ */
+router.delete('/', authenticateMicrosoft, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = getUserId(req);
+
+    const validation = bulkDeleteSchema.safeParse(req.body);
+    if (!validation.success) {
+      sendError(res, ErrorCode.VALIDATION_ERROR, validation.error.errors[0]?.message || 'Invalid request body');
+      return;
+    }
+
+    const { fileIds, deletionReason } = validation.data;
+
+    logger.info({ userId, fileCount: fileIds.length, deletionReason }, 'Bulk delete requested');
+
+    const softDeleteService = getSoftDeleteService();
+    const result = await softDeleteService.markForDeletion(userId, fileIds, { deletionReason });
+
+    logger.info(
+      { userId, markedForDeletion: result.markedForDeletion, notFoundIds: result.notFoundIds, batchId: result.batchId },
+      'Bulk delete completed (Phase 1)'
+    );
+
+    res.status(200).json(result);
+  } catch (error) {
+    logger.error({ error, userId: req.userId }, 'Bulk delete failed');
+
+    if (error instanceof ZodError) {
+      sendError(res, ErrorCode.VALIDATION_ERROR, error.errors[0]?.message || 'Validation failed');
+      return;
+    }
+
+    if (error instanceof Error && error.message === 'User not authenticated') {
+      sendError(res, ErrorCode.UNAUTHORIZED, 'User not authenticated');
+      return;
+    }
+
+    sendError(res, ErrorCode.INTERNAL_ERROR, 'Failed to delete files');
   }
 });
 

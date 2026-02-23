@@ -742,10 +742,135 @@ describe('Files Routes', () => {
   });
 
   // ============================================
-  // NOTE: POST /api/files/bulk-upload/init, /bulk-upload/complete, and
-  // DELETE /api/files (bulk delete) routes were removed in PRD-07 migration.
-  // These are now handled via the upload-session workflow.
-  // Tests for those routes have been removed.
+  // DELETE / - Bulk Delete Files
+  // ============================================
+  describe('DELETE /api/files (bulk delete)', () => {
+    const VALID_FILE_UUID_2 = 'B2B2B2B2-B2B2-B2B2-B2B2-B2B2B2B2B2B2';
+
+    beforeEach(() => {
+      mockSoftDeleteService.markForDeletion.mockResolvedValue({
+        markedForDeletion: 2,
+        notFoundIds: [],
+        batchId: 'BATCH-UUID-1234-5678-90AB-CDEF12345678',
+      });
+    });
+
+    it('should return 200 with SoftDeleteResult on success', async () => {
+      // Act
+      const response = await request(app)
+        .delete('/api/files')
+        .send({ fileIds: [VALID_FILE_UUID, VALID_FILE_UUID_2] })
+        .expect(200);
+
+      // Assert
+      expect(response.body).toEqual({
+        markedForDeletion: 2,
+        notFoundIds: [],
+        batchId: 'BATCH-UUID-1234-5678-90AB-CDEF12345678',
+      });
+      expect(mockSoftDeleteService.markForDeletion).toHaveBeenCalledWith(
+        TEST_USER_ID,
+        [VALID_FILE_UUID, VALID_FILE_UUID_2],
+        { deletionReason: 'user_request' }
+      );
+    });
+
+    it('should pass custom deletionReason to service', async () => {
+      // Act
+      await request(app)
+        .delete('/api/files')
+        .send({ fileIds: [VALID_FILE_UUID], deletionReason: 'gdpr_erasure' })
+        .expect(200);
+
+      // Assert
+      expect(mockSoftDeleteService.markForDeletion).toHaveBeenCalledWith(
+        TEST_USER_ID,
+        [VALID_FILE_UUID],
+        { deletionReason: 'gdpr_erasure' }
+      );
+    });
+
+    it('should return 200 with notFoundIds for partially missing files', async () => {
+      // Arrange
+      mockSoftDeleteService.markForDeletion.mockResolvedValue({
+        markedForDeletion: 1,
+        notFoundIds: [VALID_FILE_UUID_2],
+        batchId: 'BATCH-UUID-1234-5678-90AB-CDEF12345678',
+      });
+
+      // Act
+      const response = await request(app)
+        .delete('/api/files')
+        .send({ fileIds: [VALID_FILE_UUID, VALID_FILE_UUID_2] })
+        .expect(200);
+
+      // Assert
+      expect(response.body.markedForDeletion).toBe(1);
+      expect(response.body.notFoundIds).toEqual([VALID_FILE_UUID_2]);
+    });
+
+    it('should return 400 for empty fileIds array', async () => {
+      // Act
+      const response = await request(app)
+        .delete('/api/files')
+        .send({ fileIds: [] })
+        .expect(400);
+
+      // Assert
+      expect(response.body.error).toBe('Bad Request');
+      expect(response.body.message).toContain('At least one file ID required');
+    });
+
+    it('should return 400 for missing fileIds', async () => {
+      // Act
+      const response = await request(app)
+        .delete('/api/files')
+        .send({})
+        .expect(400);
+
+      // Assert
+      expect(response.body.error).toBe('Bad Request');
+    });
+
+    it('should return 400 for invalid UUID in fileIds', async () => {
+      // Act
+      const response = await request(app)
+        .delete('/api/files')
+        .send({ fileIds: ['not-a-uuid'] })
+        .expect(400);
+
+      // Assert
+      expect(response.body.error).toBe('Bad Request');
+    });
+
+    it('should return 500 when service throws', async () => {
+      // Arrange
+      mockSoftDeleteService.markForDeletion.mockRejectedValue(new Error('Database error'));
+
+      // Act
+      const response = await request(app)
+        .delete('/api/files')
+        .send({ fileIds: [VALID_FILE_UUID] })
+        .expect(500);
+
+      // Assert
+      expect(response.body.error).toBe('Internal Server Error');
+    });
+
+    it('should not conflict with DELETE /:id route', async () => {
+      // Arrange - Single file delete should still work
+      mockFileService.deleteFile.mockResolvedValue(['users/test/file.pdf']);
+
+      // Act
+      await request(app)
+        .delete(`/api/files/${VALID_FILE_UUID}`)
+        .expect(204);
+
+      // Assert - Should call FileService, not SoftDeleteService
+      expect(mockFileService.deleteFile).toHaveBeenCalledWith(TEST_USER_ID, VALID_FILE_UUID);
+      expect(mockSoftDeleteService.markForDeletion).not.toHaveBeenCalled();
+    });
+  });
 
   // ============================================
   // DELETE /:id - Delete Single File

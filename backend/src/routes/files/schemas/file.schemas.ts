@@ -7,6 +7,7 @@
  */
 
 import { z } from 'zod';
+import { FILE_DELETION_CONFIG } from '@bc-agent/shared';
 import {
   FOLDER_NAME_REGEX,
   FILE_VALIDATION,
@@ -144,3 +145,17 @@ export const createFolderBatchSchema = z.object({
 });
 
 export type CreateFolderBatchInput = z.infer<typeof createFolderBatchSchema>;
+
+/**
+ * Schema for bulk delete request body
+ */
+export const bulkDeleteSchema = z.object({
+  fileIds: z.array(z.string().uuid())
+    .min(1, 'At least one file ID required')
+    .max(FILE_DELETION_CONFIG.MAX_BATCH_SIZE, `Maximum ${FILE_DELETION_CONFIG.MAX_BATCH_SIZE} files per delete request`),
+  deletionReason: z.enum(['user_request', 'gdpr_erasure', 'retention_policy', 'admin_action'])
+    .optional()
+    .default('user_request'),
+});
+
+export type BulkDeleteInput = z.infer<typeof bulkDeleteSchema>;

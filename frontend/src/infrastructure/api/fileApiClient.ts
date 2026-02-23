@@ -17,7 +17,7 @@ import type {
   ApiErrorResponse,
   RetryProcessingRequest,
   RetryProcessingResponse,
-  BulkDeleteAcceptedResponse,
+  SoftDeleteResult,
   DeletionReason,
   BulkUploadInitRequest,
   BulkUploadInitResponse,
@@ -444,8 +444,8 @@ export class FileApiClient {
   async deleteFilesBatch(request: {
     fileIds: string[];
     deletionReason?: DeletionReason;
-  }): Promise<ApiResponse<BulkDeleteAcceptedResponse>> {
-    return this.request<BulkDeleteAcceptedResponse>('DELETE', '/api/files', request);
+  }): Promise<ApiResponse<SoftDeleteResult>> {
+    return this.request<SoftDeleteResult>('DELETE', '/api/files', request);
   }
 
   // ============================================

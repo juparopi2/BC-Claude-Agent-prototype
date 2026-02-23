@@ -32,8 +32,6 @@ interface UserStats {
 }
 
 interface FileDetails {
-  processing: Record<string, number>;
-  embeddings: Record<string, number>;
   pipeline: Record<string, number>;
   stuck_deletions: number;
   active_batches: number;
@@ -141,17 +139,7 @@ async function getFileDetails(
   prisma: ReturnType<typeof createPrisma>,
   userId: string
 ): Promise<FileDetails> {
-  const [processingGroups, embeddingGroups, pipelineGroups, stuckCount, activeBatchCount] = await Promise.all([
-    prisma.files.groupBy({
-      by: ['processing_status'],
-      where: { user_id: userId, is_folder: false, deletion_status: null },
-      _count: true,
-    }),
-    prisma.files.groupBy({
-      by: ['embedding_status'],
-      where: { user_id: userId, is_folder: false, deletion_status: null },
-      _count: true,
-    }),
+  const [pipelineGroups, stuckCount, activeBatchCount] = await Promise.all([
     prisma.files.groupBy({
       by: ['pipeline_status'],
       where: { user_id: userId, is_folder: false, deletion_status: null },
@@ -165,20 +153,6 @@ async function getFileDetails(
     }),
   ]);
 
-  const processing: Record<string, number> = {};
-  for (const group of processingGroups) {
-    if (group.processing_status) {
-      processing[group.processing_status] = group._count;
-    }
-  }
-
-  const embeddings: Record<string, number> = {};
-  for (const group of embeddingGroups) {
-    if (group.embedding_status) {
-      embeddings[group.embedding_status] = group._count;
-    }
-  }
-
   const pipeline: Record<string, number> = {};
   for (const group of pipelineGroups) {
     if (group.pipeline_status) {
@@ -187,8 +161,6 @@ async function getFileDetails(
   }
 
   return {
-    processing,
-    embeddings,
     pipeline,
     stuck_deletions: stuckCount,
     active_batches: activeBatchCount,
@@ -203,23 +175,11 @@ function formatFileDetails(details: FileDetails): string {
   const lines: string[] = [];
   lines.push('\n  File Details:');
 
-  // V2 Pipeline status (new state machine)
+  // Pipeline status distribution
   const pipelineParts = Object.entries(details.pipeline)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([status, count]) => `${status}=${count}`);
-  lines.push(`    Pipeline (V2): ${pipelineParts.join(', ') || 'none'}`);
-
-  // V1 Processing status (legacy)
-  const processingParts = Object.entries(details.processing)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([status, count]) => `${status}=${count}`);
-  lines.push(`    Processing (V1): ${processingParts.join(', ') || 'none'}`);
-
-  // V1 Embedding status (legacy)
-  const embeddingParts = Object.entries(details.embeddings)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([status, count]) => `${status}=${count}`);
-  lines.push(`    Embeddings (V1): ${embeddingParts.join(', ') || 'none'}`);
+  lines.push(`    Pipeline: ${pipelineParts.join(', ') || 'none'}`);
 
   // Stuck deletions
   lines.push(`    Stuck Deletions: ${details.stuck_deletions}`);

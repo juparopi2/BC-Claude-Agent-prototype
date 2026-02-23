@@ -39,9 +39,7 @@ interface FileRecord {
   is_folder: boolean;
   parent_folder_id: string | null;
   blob_path: string | null;
-  processing_status: string | null;
-  embedding_status: string | null;
-  pipeline_status: string | null;
+  pipeline_status: string;
   pipeline_retry_count: number;
   deletion_status: string | null;
   size_bytes: bigint | null;
@@ -62,14 +60,6 @@ interface ImageEmbeddingRecord {
   caption_confidence: number | null;
   dimensions: string | null;
   model: string | null;
-}
-
-interface StatusCounts {
-  pending: number;
-  processing: number;
-  completed: number;
-  failed: number;
-  null: number;
 }
 
 interface VerificationResult {
@@ -176,8 +166,6 @@ async function verifySQLSection(
       is_folder: true,
       parent_folder_id: true,
       blob_path: true,
-      processing_status: true,
-      embedding_status: true,
       pipeline_status: true,
       pipeline_retry_count: true,
       deletion_status: true,
@@ -195,72 +183,10 @@ async function verifySQLSection(
   printStatus('Files', regularFiles.length);
   printStatus('Folders', folders.length);
 
-  // Processing status breakdown (V1 - legacy)
-  printSubsection('Processing Status Distribution (V1)');
-  const processingCounts: StatusCounts = {
-    pending: 0,
-    processing: 0,
-    completed: 0,
-    failed: 0,
-    null: 0,
-  };
-
-  regularFiles.forEach((f) => {
-    const status = f.processing_status?.toLowerCase() as keyof StatusCounts | undefined;
-    if (status && status in processingCounts) {
-      processingCounts[status]++;
-    } else {
-      processingCounts.null++;
-    }
-  });
-
-  printStatus('Pending', String(processingCounts.pending).padStart(6));
-  printStatus('Processing', String(processingCounts.processing).padStart(6));
-  printStatus('Completed', String(processingCounts.completed).padStart(6), processingCounts.completed > 0 ? 'ok' : undefined);
-  printStatus('Failed', String(processingCounts.failed).padStart(6), processingCounts.failed > 0 ? 'error' : undefined);
-  printStatus('Null/Unknown', String(processingCounts.null).padStart(6), processingCounts.null > 0 ? 'warn' : undefined);
-
-  if (processingCounts.failed > 0) {
-    hasErrors = true;
-  }
-  if (processingCounts.null > 0) {
-    hasWarnings = true;
-  }
-
-  // Embedding status breakdown (V1 - legacy)
-  printSubsection('Embedding Status Distribution (V1)');
-  const embeddingCounts: StatusCounts = {
-    pending: 0,
-    processing: 0,
-    completed: 0,
-    failed: 0,
-    null: 0,
-  };
-
-  regularFiles.forEach((f) => {
-    const status = f.embedding_status?.toLowerCase() as keyof StatusCounts | undefined;
-    if (status && status in embeddingCounts) {
-      embeddingCounts[status]++;
-    } else {
-      embeddingCounts.null++;
-    }
-  });
-
-  printStatus('Pending', String(embeddingCounts.pending).padStart(6));
-  printStatus('Processing', String(embeddingCounts.processing).padStart(6));
-  printStatus('Completed', String(embeddingCounts.completed).padStart(6), embeddingCounts.completed > 0 ? 'ok' : undefined);
-  printStatus('Failed', String(embeddingCounts.failed).padStart(6), embeddingCounts.failed > 0 ? 'error' : undefined);
-  printStatus('Null/Unknown', String(embeddingCounts.null).padStart(6), embeddingCounts.null > 0 ? 'warn' : undefined);
-
-  if (embeddingCounts.failed > 0) {
-    hasErrors = true;
-  }
-
-  // V2 Pipeline status breakdown
-  printSubsection('Pipeline Status Distribution (V2)');
+  // Pipeline status breakdown
+  printSubsection('Pipeline Status Distribution');
   const pipelineStates = ['registered', 'uploaded', 'queued', 'extracting', 'chunking', 'embedding', 'ready', 'failed'] as const;
   const pipelineCounts: Record<string, number> = {};
-  let pipelineNull = 0;
 
   for (const state of pipelineStates) {
     pipelineCounts[state] = 0;
@@ -273,17 +199,14 @@ async function verifySQLSection(
   });
 
   allUserFiles.forEach((f) => {
-    const status = f.pipeline_status?.toLowerCase();
-    if (status && status in pipelineCounts) {
+    const status = f.pipeline_status.toLowerCase();
+    if (status in pipelineCounts) {
       pipelineCounts[status]++;
-    } else if (f.pipeline_status === null) {
-      pipelineNull++;
     } else {
-      pipelineCounts[f.pipeline_status ?? 'unknown'] = (pipelineCounts[f.pipeline_status ?? 'unknown'] || 0) + 1;
+      pipelineCounts[f.pipeline_status] = (pipelineCounts[f.pipeline_status] || 0) + 1;
     }
   });
 
-  const hasV2Files = allUserFiles.some((f) => f.pipeline_status !== null);
   const stuckV2States = ['registered', 'uploaded', 'queued', 'extracting', 'chunking', 'embedding'];
   let stuckV2Count = 0;
 
@@ -298,8 +221,6 @@ async function verifySQLSection(
     }
     printStatus(state.charAt(0).toUpperCase() + state.slice(1), String(count).padStart(6), severity);
   }
-
-  printStatus('No pipeline_status (V1 files)', String(pipelineNull).padStart(6));
 
   if (pipelineCounts['failed'] > 0) {
     hasErrors = true;
@@ -472,7 +393,7 @@ function buildFolderTree(files: FileRecord[]): string {
   function renderNode(file: FileRecord, prefix: string, isLast: boolean): string {
     const connector = isLast ? '└── ' : '├── ';
     const icon = file.is_folder ? '📁' : '📄';
-    const displayStatus = file.pipeline_status || file.processing_status;
+    const displayStatus = file.pipeline_status;
     const status = displayStatus ? ` [${displayStatus}]` : '';
     const size = file.size_bytes !== null && !file.is_folder ? ` (${formatBytes(file.size_bytes)})` : '';
     let result = `${prefix}${connector}${icon} ${file.name}${status}${size}\n`;

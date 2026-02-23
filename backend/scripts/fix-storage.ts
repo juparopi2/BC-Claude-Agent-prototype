@@ -44,7 +44,7 @@ interface GhostFile {
   id: string;
   name: string;
   blob_path: string | null;
-  processing_status: string | null;
+  pipeline_status: string;
   created_at: Date;
 }
 
@@ -411,7 +411,7 @@ async function getActiveFiles(prisma: PrismaClient, userId: string): Promise<Gho
       id: true,
       name: true,
       blob_path: true,
-      processing_status: true,
+      pipeline_status: true,
       created_at: true,
     },
   });
@@ -491,7 +491,7 @@ async function runGhostRecords(
       console.log(`\n[GHOST] ${ghost.name}`);
       console.log(`  ID: ${ghost.id}`);
       console.log(`  Blob path: ${ghost.blob_path}`);
-      console.log(`  Processing status: ${ghost.processing_status}`);
+      console.log(`  Pipeline status: ${ghost.pipeline_status}`);
 
       result.itemsProcessed++;
 

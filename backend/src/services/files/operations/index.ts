@@ -29,3 +29,10 @@ export {
   __resetFileMetadataService,
   type IFileMetadataService,
 } from './FileMetadataService';
+
+export {
+  FileDuplicateService,
+  getFileDuplicateService,
+  __resetFileDuplicateService,
+  type IFileDuplicateService,
+} from './FileDuplicateService';

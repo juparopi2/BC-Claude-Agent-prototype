@@ -65,6 +65,19 @@ describe('File Types', () => {
       expect(parsed.hasExtractedText).toBe(false);
     });
 
+    it('should convert BigInt size_bytes to number (Prisma returns BigInt for SQL bigint columns)', () => {
+      const dbRecord = FileFixture.createFileDbRecord({
+        size_bytes: BigInt(1024) as unknown as number,
+      });
+
+      const parsed = parseFile(dbRecord);
+
+      expect(parsed.sizeBytes).toBe(1024);
+      expect(typeof parsed.sizeBytes).toBe('number');
+      // Verify it's JSON-serializable (BigInt would throw)
+      expect(() => JSON.stringify(parsed)).not.toThrow();
+    });
+
     it('should handle folder records correctly', () => {
       const folder = FileFixture.createFolder({
         name: 'My Documents',

@@ -315,7 +315,7 @@ export class FileProcessingService {
    *
    * @param ctx - Event context (fileId, userId, sessionId)
    * @param progress - Progress percentage (0-100)
-   * @param status - Processing status (from PROCESSING_STATUS constants)
+   * @param status - Pipeline status (from PIPELINE_STATUS constants)
    * @param attemptNumber - Current retry attempt (1-based)
    * @param maxAttempts - Maximum retry attempts configured
    */

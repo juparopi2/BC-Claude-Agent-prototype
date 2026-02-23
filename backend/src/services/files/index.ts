@@ -38,9 +38,6 @@ export {
   getFileDuplicateService,
   __resetFileDuplicateService,
   type IFileDuplicateService,
-  type DuplicateCheckResult,
-  type BatchNameDuplicateResult,
-  type BatchHashDuplicateResult,
 } from './operations';
 
 export {

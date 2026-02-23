@@ -448,25 +448,17 @@ async function getEmbeddingDetails(
   const totalChunks = chunkAgg._count;
   const totalChunkTokens = chunkAgg._sum.chunk_tokens ?? 0;
 
-  const filesProcessed = await prisma.files.count({
+  const filesReady = await prisma.files.count({
     where: {
       user_id: { in: userIds },
-      processing_status: 'completed',
+      pipeline_status: 'ready',
       created_at: { gte: since },
     },
   });
 
-  const filesEmbedded = await prisma.files.count({
-    where: {
-      user_id: { in: userIds },
-      embedding_status: 'completed',
-      created_at: { gte: since },
-    },
-  });
+  const avgChunksPerFile = filesReady > 0 ? totalChunks / filesReady : 0;
 
-  const avgChunksPerFile = filesEmbedded > 0 ? totalChunks / filesEmbedded : 0;
-
-  return { totalChunks, totalChunkTokens, filesProcessed, filesEmbedded, avgChunksPerFile };
+  return { totalChunks, totalChunkTokens, filesProcessed: filesReady, filesEmbedded: filesReady, avgChunksPerFile };
 }
 
 /** Get per-model AI cost breakdown (verbose mode). */

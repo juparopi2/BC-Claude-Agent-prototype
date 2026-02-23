@@ -272,6 +272,7 @@ export class BatchUploadOrchestrator {
               : targetFolderId,
             batch_id: batchId,
             content_hash: file.contentHash ?? null,
+            file_modified_at: file.lastModified ? new Date(file.lastModified) : null,
           };
         });
 

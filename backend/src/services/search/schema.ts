@@ -148,6 +148,15 @@ export const indexSchema: SearchIndex = {
       facetable: true,
       // Values: 'active' (default), 'deleting'
     },
+    // ===== File Metadata =====
+    {
+      name: 'fileModifiedAt',
+      type: 'Edm.DateTimeOffset',
+      searchable: false,
+      filterable: true,
+      sortable: true,
+      facetable: false,
+    },
   ],
 
   vectorSearch: {

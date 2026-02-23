@@ -215,7 +215,9 @@ export class FileRepository implements IFileRepository {
       case 'size':
         orderBy.push({ size_bytes: 'desc' });
         break;
+      case 'date':
       default:
+        orderBy.push({ file_modified_at: 'desc' });
         orderBy.push({ created_at: 'desc' });
     }
 
@@ -298,6 +300,7 @@ export class FileRepository implements IFileRepository {
         blob_path: options.blobPath,
         parent_folder_id: options.parentFolderId ?? null,
         content_hash: options.contentHash ?? null,
+        file_modified_at: options.fileModifiedAt ? new Date(options.fileModifiedAt) : null,
         is_folder: false,
         is_favorite: false,
         pipeline_status: PIPELINE_STATUS.REGISTERED,

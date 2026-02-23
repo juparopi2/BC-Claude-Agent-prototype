@@ -82,7 +82,7 @@ function sortFiles(
         comparison = a.name.localeCompare(b.name);
         break;
       case 'date':
-        comparison = new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime();
+        comparison = new Date(a.fileModifiedAt ?? a.createdAt).getTime() - new Date(b.fileModifiedAt ?? b.createdAt).getTime();
         break;
       case 'size':
         comparison = a.sizeBytes - b.sizeBytes;

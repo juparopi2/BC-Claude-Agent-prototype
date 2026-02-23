@@ -10,6 +10,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { FileSortBy, SortOrder } from '@bc-agent/shared';
+import type { VisibilityState, ColumnSizingState } from '@tanstack/react-table';
 
 /**
  * Sort and filter state
@@ -21,6 +22,12 @@ export interface SortFilterState {
   sortOrder: SortOrder;
   /** Show favorites first (sort preference, not a filter) */
   showFavoritesFirst: boolean;
+  /** TanStack Table column visibility state */
+  columnVisibility: VisibilityState;
+  /** TanStack Table column order */
+  columnOrder: string[];
+  /** TanStack Table column sizing state */
+  columnSizing: ColumnSizingState;
 }
 
 /**
@@ -35,7 +42,29 @@ export interface SortFilterActions {
   toggleFavoritesFirst: () => void;
   /** Set favorites first explicitly */
   setShowFavoritesFirst: (show: boolean) => void;
+  /** Set column visibility */
+  setColumnVisibility: (visibility: VisibilityState) => void;
+  /** Set column order */
+  setColumnOrder: (order: string[]) => void;
+  /** Set column sizing */
+  setColumnSizing: (sizing: ColumnSizingState) => void;
+  /** Reset table preferences to defaults */
+  resetTablePreferences: () => void;
 }
+
+const DEFAULT_COLUMN_VISIBILITY: VisibilityState = {
+  favorite: true,
+  name: true,
+  size: true,
+  dateModified: true,
+  dateUploaded: false,
+  status: true,
+  type: false,
+};
+
+const DEFAULT_COLUMN_ORDER: string[] = [
+  'favorite', 'name', 'size', 'dateModified', 'dateUploaded', 'status', 'type',
+];
 
 /**
  * Initial state
@@ -44,6 +73,9 @@ const initialState: SortFilterState = {
   sortBy: 'date',
   sortOrder: 'desc',
   showFavoritesFirst: false,
+  columnVisibility: DEFAULT_COLUMN_VISIBILITY,
+  columnOrder: DEFAULT_COLUMN_ORDER,
+  columnSizing: {},
 };
 
 /**
@@ -91,6 +123,26 @@ export const useSortFilterStore = create<SortFilterState & SortFilterActions>()(
       setShowFavoritesFirst: (show) => {
         set({ showFavoritesFirst: show });
       },
+
+      setColumnVisibility: (visibility) => {
+        set({ columnVisibility: visibility });
+      },
+
+      setColumnOrder: (order) => {
+        set({ columnOrder: order });
+      },
+
+      setColumnSizing: (sizing) => {
+        set({ columnSizing: sizing });
+      },
+
+      resetTablePreferences: () => {
+        set({
+          columnVisibility: DEFAULT_COLUMN_VISIBILITY,
+          columnOrder: DEFAULT_COLUMN_ORDER,
+          columnSizing: {},
+        });
+      },
     }),
     {
       name: 'bc-agent-file-sort-filter',
@@ -98,6 +150,9 @@ export const useSortFilterStore = create<SortFilterState & SortFilterActions>()(
         sortBy: state.sortBy,
         sortOrder: state.sortOrder,
         showFavoritesFirst: state.showFavoritesFirst,
+        columnVisibility: state.columnVisibility,
+        columnOrder: state.columnOrder,
+        columnSizing: state.columnSizing,
       }),
     }
   )
@@ -109,3 +164,6 @@ export const useSortFilterStore = create<SortFilterState & SortFilterActions>()(
 export function resetSortFilterStore(): void {
   useSortFilterStore.setState(initialState);
 }
+
+// Re-export defaults for use in other modules
+export { DEFAULT_COLUMN_VISIBILITY, DEFAULT_COLUMN_ORDER };

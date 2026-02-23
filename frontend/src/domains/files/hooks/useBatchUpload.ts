@@ -454,6 +454,7 @@ export function useBatchUpload(): UseBatchUploadReturn {
           mimeType: h.file.type || 'application/octet-stream',
           sizeBytes: h.file.size,
           contentHash: h.hash,
+          lastModified: h.file.lastModified,
           parentTempId: proceedFiles[i]?.parentTempId,
           ...(dupResult.replacements.has(h.tempId)
             ? { replaceFileId: dupResult.replacements.get(h.tempId) }
@@ -521,6 +522,7 @@ export function useBatchUpload(): UseBatchUploadReturn {
               contentHash: null,
               deletionStatus: null,
               deletedAt: null,
+              fileModifiedAt: null,
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
             });

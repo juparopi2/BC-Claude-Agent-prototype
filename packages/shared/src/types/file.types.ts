@@ -166,6 +166,9 @@ export interface ParsedFile {
   /** ISO 8601 timestamp when file was marked for deletion (null if active) */
   deletedAt: string | null;
 
+  /** ISO 8601 timestamp of the file's original modification date from the user's filesystem (null for folders or legacy files) */
+  fileModifiedAt: string | null;
+
   /** ISO 8601 timestamp when file was uploaded */
   createdAt: string;
 

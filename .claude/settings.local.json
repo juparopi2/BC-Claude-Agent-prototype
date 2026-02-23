@@ -204,7 +204,8 @@
       "Bash(npx playwright-mcp:*)",
       "Bash(npx @playwright/test:*)",
       "Bash(npx -w bc-agent-frontend vitest run:*)",
-      "mcp__playwright__browser_file_upload"
+      "mcp__playwright__browser_file_upload",
+      "WebFetch(domain:ui.shadcn.com)"
     ],
     "deny": [],
     "ask": []

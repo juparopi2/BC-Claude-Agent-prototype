@@ -8,7 +8,7 @@ import { useUIPreferencesStore } from '@/src/domains/ui';
 import { FileToolbar } from './FileToolbar';
 import { FileBreadcrumb } from './FileBreadcrumb';
 import { FileUploadZone } from './FileUploadZone';
-import { FileList } from './FileList';
+import { FileDataTable } from './FileDataTable';
 import { FolderTree } from './FolderTree';
 
 interface FileExplorerProps {
@@ -37,7 +37,7 @@ export function FileExplorer({ className, isNarrow = false }: FileExplorerProps)
           <FileToolbar isNarrow />
           <FileBreadcrumb />
           <FileUploadZone className="flex-1 min-h-0 overflow-hidden">
-            <FileList />
+            <FileDataTable />
           </FileUploadZone>
         </div>
       </TooltipProvider>
@@ -62,7 +62,7 @@ export function FileExplorer({ className, isNarrow = false }: FileExplorerProps)
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
             <FileBreadcrumb />
             <FileUploadZone className="flex-1 min-h-0 overflow-hidden">
-              <FileList />
+              <FileDataTable />
             </FileUploadZone>
           </div>
         </div>

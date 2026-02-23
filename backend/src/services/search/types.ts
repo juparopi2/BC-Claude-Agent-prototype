@@ -15,6 +15,7 @@ export interface FileChunkWithEmbedding {
   embeddingModel: string; // Added for cost tracking
   createdAt: Date;
   mimeType?: string; // File MIME type for filtered search
+  fileModifiedAt?: string; // ISO 8601 timestamp of original file modification date
 }
 
 /**

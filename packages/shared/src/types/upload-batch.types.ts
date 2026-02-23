@@ -33,6 +33,7 @@ export const manifestFileItemSchema = z.object({
   mimeType: z.string().min(1).max(255),
   sizeBytes: z.number().int().positive(),
   contentHash: z.string().regex(/^[a-fA-F0-9]{64}$/).optional(),
+  lastModified: z.number().int().positive().optional(),
   parentTempId: z.string().min(1).optional(),
   replaceFileId: z.string().min(1).optional(),
 });

@@ -175,6 +175,7 @@ export class VectorSearchService {
       embeddingModel: chunk.embeddingModel,
       createdAt: chunk.createdAt,
       mimeType: chunk.mimeType || null,
+      fileModifiedAt: chunk.fileModifiedAt || null,
       fileStatus: 'active',
       isImage: false,
     }));

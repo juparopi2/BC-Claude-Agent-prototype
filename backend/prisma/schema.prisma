@@ -237,6 +237,7 @@ model files {
   batch_id                 String?                    @db.UniqueIdentifier
   /// V2 pipeline retry count (PRD-05). Incremented on each automatic recovery attempt.
   pipeline_retry_count     Int                        @default(0)
+  file_modified_at         DateTime?
   file_chunks              file_chunks[]
   files                    files?                     @relation("filesTofiles", fields: [parent_folder_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "FK__files__parent_fo__41B8C09B")
   other_files              files[]                    @relation("filesTofiles")

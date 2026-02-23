@@ -107,6 +107,7 @@ export const mockFiles: ParsedFile[] = [
     contentHash: 'abc123def456',
     deletionStatus: null,
     deletedAt: null,
+    fileModifiedAt: null,
     createdAt: '2024-01-15T10:30:00.000Z',
     updatedAt: '2024-01-15T10:30:00.000Z',
   },
@@ -130,6 +131,7 @@ export const mockFiles: ParsedFile[] = [
     contentHash: null,
     deletionStatus: null,
     deletedAt: null,
+    fileModifiedAt: null,
     createdAt: '2024-01-14T10:00:00.000Z',
     updatedAt: '2024-01-14T10:00:00.000Z',
   },
@@ -300,6 +302,7 @@ export const handlers = [
       contentHash: null,
       deletionStatus: null,
       deletedAt: null,
+      fileModifiedAt: null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };

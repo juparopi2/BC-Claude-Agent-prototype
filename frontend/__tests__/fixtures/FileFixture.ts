@@ -33,6 +33,7 @@ export const createMockParsedFile = (overrides: Partial<ParsedFile> = {}): Parse
   contentHash: null,
   deletionStatus: null,
   deletedAt: null,
+  fileModifiedAt: null,
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
   ...overrides,

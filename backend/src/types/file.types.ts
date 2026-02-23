@@ -115,6 +115,9 @@ export interface FileDbRecord {
   /** UTC timestamp when file was marked for deletion (NULL if active) */
   deleted_at: Date | null;
 
+  /** UTC timestamp of the file's original modification date from the user's filesystem */
+  file_modified_at: Date | null;
+
   /** UTC timestamp when file was uploaded */
   created_at: Date;
 
@@ -253,6 +256,9 @@ export interface CreateFileOptions {
 
   /** SHA-256 content hash for duplicate detection (optional) */
   contentHash?: string;
+
+  /** Original file modification date from user's filesystem (ms since epoch) */
+  fileModifiedAt?: number;
 }
 
 /**
@@ -327,6 +333,7 @@ export function parseFile(record: FileDbRecord): ParsedFile {
     contentHash: record.content_hash,
     deletionStatus: record.deletion_status ?? null,
     deletedAt: record.deleted_at ? record.deleted_at.toISOString() : null,
+    fileModifiedAt: record.file_modified_at ? record.file_modified_at.toISOString() : null,
     createdAt: record.created_at.toISOString(),
     updatedAt: record.updated_at.toISOString(),
   };

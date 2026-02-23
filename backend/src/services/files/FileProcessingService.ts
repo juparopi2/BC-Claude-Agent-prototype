@@ -2,13 +2,17 @@
  * File Processing Service
  *
  * Orchestrates document text extraction for uploaded files.
- * Called by MessageQueue background workers via dynamic import.
+ * Called by queue workers (FileExtractWorker) via dynamic import.
  *
  * Architecture:
  * - Processor registry maps MIME types to extraction strategies
  * - Downloads files from Azure Blob Storage
- * - Updates database with extracted text and status
+ * - Saves extracted text to database (without changing pipeline_status)
  * - Emits WebSocket progress events to connected clients
+ *
+ * IMPORTANT: This service does NOT manage pipeline_status transitions.
+ * Workers own state transitions via CAS (Compare-And-Swap).
+ * See FileExtractWorker for the CAS flow.
  *
  * Processors:
  * - PDF: PdfProcessor (Azure Document Intelligence with OCR)
@@ -131,12 +135,13 @@ export class FileProcessingService {
   /**
    * Process uploaded file
    *
-   * Orchestrates the complete processing pipeline:
-   * 1. Update status to 'processing'
-   * 2. Download blob from storage
-   * 3. Extract text using appropriate processor
-   * 4. Update database with extracted text and 'completed' status
-   * 5. Emit WebSocket events for progress tracking
+   * Orchestrates text extraction (does NOT manage pipeline_status):
+   * 1. Download blob from storage
+   * 2. Extract text using appropriate processor
+   * 3. Save extracted text to database
+   * 4. Emit WebSocket events for progress tracking
+   *
+   * Pipeline_status transitions are owned by the calling worker (CAS).
    *
    * @param job - File processing job from MessageQueue
    * @throws Error if processing fails (will trigger BullMQ retry)
@@ -175,8 +180,7 @@ export class FileProcessingService {
     const eventCtx = { fileId, userId, sessionId };
 
     try {
-      // Step 1: Update status to 'extracting' and emit 0% progress
-      await this.updateStatus(userId, fileId, PIPELINE_STATUS.EXTRACTING);
+      // Step 1: Emit 0% progress (worker already transitioned to EXTRACTING via CAS)
       this.emitProgress(eventCtx, 0, PIPELINE_STATUS.EXTRACTING, attemptNumber, maxAttempts);
 
       // Step 2: Download blob from storage (emit 20% progress)
@@ -241,8 +245,9 @@ export class FileProcessingService {
         });
       }
 
-      // Step 5: Update database with extracted text and 'chunking' status (emit 90% progress)
-      await this.updateStatus(userId, fileId, PIPELINE_STATUS.CHUNKING, result.text);
+      // Step 5: Save extracted text to database (emit 90% progress)
+      // Worker owns the extracting → chunking CAS transition after this returns.
+      await FileService.getInstance().saveExtractedText(userId, fileId, result.text);
       this.emitProgress(eventCtx, 90, PIPELINE_STATUS.EXTRACTING, attemptNumber, maxAttempts);
 
       // Step 5.5: Chunking is handled by the pipeline (BullMQ Flow).
@@ -253,7 +258,7 @@ export class FileProcessingService {
       this.emitCompletion(eventCtx, result);
       logger.info({ fileId, userId }, 'File processing completed successfully');
     } catch (error) {
-      // On error: Update status to 'failed' and emit error event
+      // On error: emit error event and rethrow (worker owns CAS to FAILED)
       const errorMessage = error instanceof Error ? error.message : String(error);
 
       logger.error(
@@ -268,41 +273,10 @@ export class FileProcessingService {
         'File processing failed'
       );
 
-      // Update database status
-      await this.updateStatus(userId, fileId, PIPELINE_STATUS.FAILED);
-
-      // Emit error event
+      // Emit error event (worker handles CAS transition to FAILED)
       this.emitError(eventCtx, errorMessage);
 
       // Rethrow to trigger BullMQ retry
-      throw error;
-    }
-  }
-
-  /**
-   * Update file processing status in database
-   *
-   * @param userId - User ID for ownership check
-   * @param fileId - File ID
-   * @param status - New processing status
-   * @param extractedText - Optional extracted text (for 'completed' status)
-   */
-  private async updateStatus(
-    userId: string,
-    fileId: string,
-    status: PipelineStatus,
-    extractedText?: string
-  ): Promise<void> {
-    try {
-      const fileService = FileService.getInstance();
-      await fileService.updateProcessingStatus(userId, fileId, status, extractedText);
-
-      logger.debug({ userId, fileId, status, hasText: !!extractedText }, 'Status updated in database');
-    } catch (error) {
-      logger.error(
-        { error, userId, fileId, status },
-        'Failed to update processing status in database'
-      );
       throw error;
     }
   }

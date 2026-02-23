@@ -146,6 +146,39 @@ describe('FileExtractWorker', () => {
     );
   });
 
+  it('should succeed with CAS extracting → chunking when service does not race', async () => {
+    // This verifies that after removing status transitions from FileProcessingService,
+    // the worker's CAS extracting → chunking succeeds without concurrent modification.
+    mockTransitionStatus
+      .mockResolvedValueOnce({ success: true, previousStatus: 'queued' })    // queued → extracting
+      .mockResolvedValueOnce({ success: true, previousStatus: 'extracting' }); // extracting → chunking (no race!)
+
+    mockProcessFile.mockResolvedValue(undefined);
+
+    const job = createMockJob(SAMPLE_JOB_DATA);
+    await worker.process(job);
+
+    // Both CAS transitions should succeed — no concurrent modification
+    expect(mockTransitionStatus).toHaveBeenCalledTimes(2);
+    expect(mockTransitionStatus).toHaveBeenNthCalledWith(
+      1,
+      SAMPLE_JOB_DATA.fileId,
+      SAMPLE_JOB_DATA.userId,
+      'queued',
+      'extracting',
+    );
+    expect(mockTransitionStatus).toHaveBeenNthCalledWith(
+      2,
+      SAMPLE_JOB_DATA.fileId,
+      SAMPLE_JOB_DATA.userId,
+      'extracting',
+      'chunking',
+    );
+
+    // Service should have been called
+    expect(mockProcessFile).toHaveBeenCalledOnce();
+  });
+
   it('should throw when state advance to chunking fails after extraction', async () => {
     // CAS claim succeeds, but state advance fails
     mockTransitionStatus

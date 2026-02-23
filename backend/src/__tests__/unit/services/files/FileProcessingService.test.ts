@@ -2,7 +2,13 @@
  * FileProcessingService Unit Tests
  *
  * Comprehensive tests for FileProcessingService orchestration logic.
- * Tests verify processor routing, status updates, WebSocket events, and error handling.
+ * Tests verify processor routing, text saving, WebSocket events, and error handling.
+ *
+ * IMPORTANT: FileProcessingService does NOT manage pipeline_status transitions.
+ * Workers own state transitions via CAS. This service only:
+ * - Extracts text via processors
+ * - Saves extracted text via saveExtractedText (no status change)
+ * - Emits WebSocket progress events
  *
  * Pattern: vi.hoisted() + manual re-setup in beforeEach
  * Based on: FileService.test.ts (passing pattern)
@@ -19,9 +25,11 @@ import type { ExtractionResult } from '@/services/files/processors/types';
 
 // Mock FileService
 const mockUpdateProcessingStatus = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+const mockSaveExtractedText = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 const mockFileServiceGetInstance = vi.hoisted(() =>
   vi.fn(() => ({
     updateProcessingStatus: mockUpdateProcessingStatus,
+    saveExtractedText: mockSaveExtractedText,
   }))
 );
 
@@ -189,6 +197,7 @@ describe('FileProcessingService', () => {
 
     // Re-setup mock implementations after clearAllMocks
     mockUpdateProcessingStatus.mockResolvedValue(undefined);
+    mockSaveExtractedText.mockResolvedValue(undefined);
     mockDownloadFromBlob.mockResolvedValue(Buffer.from('mock file content'));
     mockIsSocketServiceInitialized.mockReturnValue(true);
     mockSocketTo.mockReturnValue({ emit: mockSocketEmit });
@@ -339,52 +348,39 @@ describe('FileProcessingService', () => {
     });
   });
 
-  // ========== SUITE 3: STATUS UPDATES (3 TESTS) ==========
-  describe('Status Updates', () => {
-    it('should update status to "extracting" at start', async () => {
+  // ========== SUITE 3: TEXT SAVING (no status transitions) ==========
+  describe('Text Saving (no status transitions)', () => {
+    it('should save extracted text via saveExtractedText', async () => {
       const job = createMockJob();
 
       await service.processFile(job);
 
-      // Verify first updateProcessingStatus call (extracting)
-      expect(mockUpdateProcessingStatus).toHaveBeenNthCalledWith(
-        1,
+      expect(mockSaveExtractedText).toHaveBeenCalledWith(
         'test-user-456',
         'test-file-123',
-        'extracting',
-        undefined
-      );
-    });
-
-    it('should update status to "chunking" with extracted text on success', async () => {
-      const job = createMockJob();
-
-      await service.processFile(job);
-
-      // Verify second updateProcessingStatus call (chunking)
-      expect(mockUpdateProcessingStatus).toHaveBeenNthCalledWith(
-        2,
-        'test-user-456',
-        'test-file-123',
-        'chunking',
         'Extracted plain text content'
       );
     });
 
-    it('should update status to "failed" on error', async () => {
+    it('should NOT call updateProcessingStatus (worker responsibility)', async () => {
+      const job = createMockJob();
+
+      await service.processFile(job);
+
+      // Service must NOT touch pipeline_status — that's the worker's job via CAS
+      expect(mockUpdateProcessingStatus).not.toHaveBeenCalled();
+    });
+
+    it('should NOT set FAILED on error (worker responsibility)', async () => {
       const job = createMockJob();
       const testError = new Error('Processor failure');
       mockTextProcessorExtractText.mockRejectedValueOnce(testError);
 
       await expect(service.processFile(job)).rejects.toThrow('Processor failure');
 
-      // Verify updateProcessingStatus was called with 'failed'
-      expect(mockUpdateProcessingStatus).toHaveBeenCalledWith(
-        'test-user-456',
-        'test-file-123',
-        'failed',
-        undefined
-      );
+      // Service must NOT transition to FAILED — worker handles CAS to FAILED
+      expect(mockUpdateProcessingStatus).not.toHaveBeenCalled();
+      expect(mockSaveExtractedText).not.toHaveBeenCalled();
     });
   });
 
@@ -538,22 +534,17 @@ describe('FileProcessingService', () => {
     });
   });
 
-  // ========== SUITE 6: ERROR HANDLING (5 TESTS) ==========
+  // ========== SUITE 6: ERROR HANDLING (4 TESTS) ==========
   describe('Error Handling', () => {
-    it('should rethrow error after updating status to "failed"', async () => {
+    it('should rethrow error without updating status (worker responsibility)', async () => {
       const job = createMockJob();
       const testError = new Error('Processor crashed');
       mockTextProcessorExtractText.mockRejectedValueOnce(testError);
 
       await expect(service.processFile(job)).rejects.toThrow('Processor crashed');
 
-      // Verify status was updated to 'failed'
-      expect(mockUpdateProcessingStatus).toHaveBeenCalledWith(
-        'test-user-456',
-        'test-file-123',
-        'failed',
-        undefined
-      );
+      // Service must NOT touch pipeline_status — worker handles CAS to FAILED
+      expect(mockUpdateProcessingStatus).not.toHaveBeenCalled();
     });
 
     it('should log detailed error information', async () => {
@@ -600,30 +591,8 @@ describe('FileProcessingService', () => {
 
       await expect(service.processFile(job)).rejects.toThrow('Blob not found');
 
-      // Verify status was updated to 'failed'
-      expect(mockUpdateProcessingStatus).toHaveBeenCalledWith(
-        'test-user-456',
-        'test-file-123',
-        'failed',
-        undefined
-      );
-    });
-
-    it('should handle database update failure during error recovery', async () => {
-      const job = createMockJob();
-      const processorError = new Error('Extraction failed');
-      const dbError = new Error('Database connection lost');
-
-      mockTextProcessorExtractText.mockRejectedValueOnce(processorError);
-      // First call is 'processing' status (succeeds), second call is 'failed' status (fails)
-      mockUpdateProcessingStatus.mockResolvedValueOnce(undefined);
-      mockUpdateProcessingStatus.mockRejectedValueOnce(dbError);
-
-      // Should throw the database error (second failure)
-      await expect(service.processFile(job)).rejects.toThrow('Database connection lost');
-
-      // Verify error was logged (processor error triggers logging before DB error)
-      expect(mockLogger.error).toHaveBeenCalled();
+      // Service must NOT touch pipeline_status — worker handles CAS to FAILED
+      expect(mockUpdateProcessingStatus).not.toHaveBeenCalled();
     });
   });
 

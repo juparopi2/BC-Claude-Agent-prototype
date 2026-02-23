@@ -161,6 +161,15 @@ export class FileService {
     return this.metadataService.updateProcessingStatus(userId, fileId, status, extractedText);
   }
 
+  /**
+   * Save extracted text without changing pipeline_status.
+   *
+   * Used by FileProcessingService — workers own status transitions via CAS.
+   */
+  public async saveExtractedText(userId: string, fileId: string, extractedText: string): Promise<void> {
+    return this.repository.saveExtractedText(userId, fileId, extractedText);
+  }
+
   // ========================================================================
   // DELETE OPERATIONS (delegate to FileDeletionService)
   // ========================================================================

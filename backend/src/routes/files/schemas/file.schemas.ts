@@ -45,7 +45,7 @@ export type CreateFolderInput = z.infer<typeof createFolderSchema>;
  * Schema for get files query parameters
  */
 export const getFilesSchema = z.object({
-  folderId: z.string().uuid().optional(),
+  folderId: z.string().uuid().optional().transform(val => val ?? null),
   sortBy: z.enum(['name', 'date', 'size']).optional().default('date'),
   favoritesFirst: z.coerce.boolean().optional(),
   limit: z.coerce.number().int().min(1).max(FILE_PAGINATION.MAX_LIMIT).optional().default(FILE_PAGINATION.DEFAULT_LIMIT),

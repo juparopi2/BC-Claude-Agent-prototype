@@ -186,7 +186,7 @@ export function useFolderNavigation(): UseFolderNavigationReturn {
     try {
       const fileApi = getFileApiClient();
       const result = await fileApi.getFiles({
-        folderId: undefined, // root level
+        folderId: null, // root level
       });
       if (result.success) {
         // Filter only folders for the tree

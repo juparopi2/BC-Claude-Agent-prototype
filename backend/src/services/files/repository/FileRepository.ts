@@ -73,6 +73,7 @@ export interface IFileRepository {
   findIdsByOwner(userId: string, fileIds: string[]): Promise<string[]>;
   update(userId: string, fileId: string, updates: UpdateFileOptions): Promise<void>;
   updateProcessingStatus(userId: string, fileId: string, status: PipelineStatus, extractedText?: string): Promise<void>;
+  saveExtractedText(userId: string, fileId: string, extractedText: string): Promise<void>;
   delete(userId: string, fileId: string): Promise<void>;
   getFileMetadata(userId: string, fileId: string): Promise<FileMetadata | null>;
   getChildrenIds(userId: string, folderId: string): Promise<string[]>;
@@ -162,8 +163,7 @@ export class FileRepository implements IFileRepository {
    * Find files with filtering, sorting, and pagination.
    *
    * Behavior by folderId:
-   * - undefined: all files for user (no folder filter)
-   * - null: root-level only (parent_folder_id IS NULL)
+   * - undefined/null: root-level only (parent_folder_id IS NULL)
    * - string: files in that specific folder
    *
    * favoritesFirst at root: includes favorites from all folders + all root items
@@ -188,10 +188,8 @@ export class FileRepository implements IFileRepository {
       deletion_status: null,
     };
 
-    if (folderId === undefined) {
-      // No folder filter — return all files
-    } else if (folderId === null) {
-      // Root level
+    if (folderId === undefined || folderId === null) {
+      // Root level (undefined treated same as null — defensive)
       if (favoritesFirst) {
         // Favorites from any folder + all root items
         where['OR'] = [
@@ -256,9 +254,8 @@ export class FileRepository implements IFileRepository {
       deletion_status: null,
     };
 
-    if (folderId === undefined) {
-      // No folder filter
-    } else if (folderId === null) {
+    if (folderId === undefined || folderId === null) {
+      // Root level (undefined treated same as null — defensive)
       if (favoritesFirst) {
         where['OR'] = [
           { is_favorite: true },
@@ -438,6 +435,30 @@ export class FileRepository implements IFileRepository {
       },
       data,
     });
+  }
+
+  // --------------------------------------------------------------------------
+  // saveExtractedText
+  // --------------------------------------------------------------------------
+
+  /**
+   * Save extracted text to a file record without changing pipeline_status.
+   *
+   * Used by FileProcessingService after text extraction. The worker (not the
+   * service) owns pipeline_status transitions via CAS.
+   *
+   * @param userId        - Owner UUID (UPPERCASE)
+   * @param fileId        - File UUID (UPPERCASE)
+   * @param extractedText - Extracted text content
+   */
+  async saveExtractedText(userId: string, fileId: string, extractedText: string): Promise<void> {
+    const result = await this.prisma.files.updateMany({
+      where: { id: fileId, user_id: userId, deletion_status: null },
+      data: { extracted_text: extractedText, updated_at: new Date() },
+    });
+    if (result.count === 0) {
+      logger.warn({ fileId, userId }, 'saveExtractedText: file not found or soft-deleted');
+    }
   }
 
   // --------------------------------------------------------------------------

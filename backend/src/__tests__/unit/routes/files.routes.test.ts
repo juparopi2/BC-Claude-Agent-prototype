@@ -373,6 +373,27 @@ describe('Files Routes', () => {
       });
     });
 
+    it('should default folderId to null when not provided (root-level only)', async () => {
+      // Arrange
+      mockFileService.getFiles.mockResolvedValue([sampleFile]);
+      mockFileService.getFileCount.mockResolvedValue(1);
+
+      // Act
+      await request(app)
+        .get('/api/files')
+        .expect(200);
+
+      // Assert — folderId should be null (not undefined), ensuring root-level filter
+      expect(mockFileService.getFiles).toHaveBeenCalledWith(
+        expect.objectContaining({ folderId: null })
+      );
+      expect(mockFileService.getFileCount).toHaveBeenCalledWith(
+        TEST_USER_ID,
+        null,
+        expect.any(Object)
+      );
+    });
+
     it('should filter files by folder', async () => {
       // Arrange
       mockFileService.getFiles.mockResolvedValue([sampleFile]);

@@ -164,7 +164,7 @@ export function useFiles(): UseFilesReturn {
 
         // Build fetch options - backend handles the root vs folder logic
         const fetchOptions: GetFilesOptions = {
-          folderId: folderId ?? undefined,
+          folderId: folderId ?? null,
         };
 
         // Add favoritesFirst if enabled - backend handles:
@@ -246,7 +246,7 @@ export function useFiles(): UseFilesReturn {
 
     // Build fetch options - backend handles root vs folder logic
     const fetchOptions: GetFilesOptions = {
-      folderId: folderId ?? undefined,
+      folderId: folderId ?? null,
     };
 
     if (currentShowFavoritesFirst) {

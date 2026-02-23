@@ -234,8 +234,8 @@ export class FileApiClient {
   async getFiles(options?: GetFilesOptions): Promise<ApiResponse<FilesListResponse>> {
     const params = new URLSearchParams();
 
-    // Only include folderId if it's a valid string (not null/undefined)
-    // Omitting folderId means "list root folder"
+    // Only include folderId if targeting a specific folder.
+    // Omitting folderId → backend defaults to root level (parent_folder_id IS NULL).
     if (options?.folderId !== undefined && options.folderId !== null) {
       params.set('folderId', options.folderId);
     }

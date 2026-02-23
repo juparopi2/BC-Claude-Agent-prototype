@@ -557,7 +557,7 @@ export function useBatchUpload(): UseBatchUploadReturn {
         if (finalManifestFolders.length > 0) {
           try {
             const fileApiV1 = getFileApiClient();
-            const treeResult = await fileApiV1.getFiles({ folderId: undefined });
+            const treeResult = await fileApiV1.getFiles({ folderId: null });
             if (treeResult.success) {
               const rootFolders = treeResult.data.files.filter((f) => f.isFolder);
               useFolderTreeStore.getState().setTreeFolders('root', rootFolders);
@@ -627,7 +627,7 @@ export function useBatchUpload(): UseBatchUploadReturn {
       // Refresh folder tree to remove any partially-created folders
       try {
         const fileApiV1 = getFileApiClient();
-        const treeResult = await fileApiV1.getFiles({ folderId: undefined });
+        const treeResult = await fileApiV1.getFiles({ folderId: null });
         if (treeResult.success) {
           const rootFolders = treeResult.data.files.filter((f) => f.isFolder);
           useFolderTreeStore.getState().setTreeFolders('root', rootFolders);

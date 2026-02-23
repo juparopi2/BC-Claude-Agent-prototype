@@ -731,6 +731,63 @@ describe('BatchUploadOrchestrator', () => {
       expect(mockFileUploadService.generateSasUrlForBulkUpload).not.toHaveBeenCalled();
     });
 
+    it('sets file_modified_at for folder when lastModified is provided', async () => {
+      const request: CreateBatchRequest = {
+        files: [
+          {
+            tempId: 'f1',
+            fileName: 'test.pdf',
+            mimeType: 'application/pdf',
+            sizeBytes: 1024,
+            parentTempId: 'fold1',
+          },
+        ],
+        folders: [
+          {
+            tempId: 'fold1',
+            folderName: 'Docs',
+            lastModified: 1700100000000,
+          },
+        ],
+      };
+
+      await orchestrator.createBatch(TEST_USER_ID, request);
+
+      const folderCall = mockTx.files.create.mock.calls.find(
+        (call: any) => call[0].data.name === 'Docs',
+      );
+      expect(folderCall).toBeDefined();
+      expect(folderCall![0].data.file_modified_at).toEqual(new Date(1700100000000));
+    });
+
+    it('sets file_modified_at to null for folder when lastModified is omitted', async () => {
+      const request: CreateBatchRequest = {
+        files: [
+          {
+            tempId: 'f1',
+            fileName: 'test.pdf',
+            mimeType: 'application/pdf',
+            sizeBytes: 1024,
+            parentTempId: 'fold1',
+          },
+        ],
+        folders: [
+          {
+            tempId: 'fold1',
+            folderName: 'NoDate',
+          },
+        ],
+      };
+
+      await orchestrator.createBatch(TEST_USER_ID, request);
+
+      const folderCall = mockTx.files.create.mock.calls.find(
+        (call: any) => call[0].data.name === 'NoDate',
+      );
+      expect(folderCall).toBeDefined();
+      expect(folderCall![0].data.file_modified_at).toBeNull();
+    });
+
     it('all IDs are UPPERCASE (pre-generated UUIDs)', async () => {
       const request: CreateBatchRequest = {
         files: [

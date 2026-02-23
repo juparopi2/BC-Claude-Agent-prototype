@@ -44,6 +44,7 @@ export const manifestFolderItemSchema = z.object({
   tempId: z.string().min(1),
   folderName: z.string().min(1).max(500),
   parentTempId: z.string().min(1).optional(),
+  lastModified: z.number().int().positive().optional(),
 });
 
 export type ManifestFolderItem = z.infer<typeof manifestFolderItemSchema>;

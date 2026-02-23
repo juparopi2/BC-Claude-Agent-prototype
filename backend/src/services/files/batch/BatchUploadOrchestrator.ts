@@ -225,6 +225,7 @@ export class BatchUploadOrchestrator {
               pipeline_status: PIPELINE_STATUS.READY,
               parent_folder_id: parentFolderId,
               batch_id: batchId,
+              file_modified_at: folder.lastModified ? new Date(folder.lastModified) : null,
             },
           });
 

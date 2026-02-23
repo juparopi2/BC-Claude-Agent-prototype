@@ -67,7 +67,7 @@ export function Header({
 
       {/* Center Section: Environment Selector Placeholder */}
       <div className="flex items-center">
-        <span className="text-sm text-muted-foreground">Environment Selector</span>
+        <span className="text-sm text-muted-foreground"></span>
       </div>
 
       {/* Right Section: Panel Toggle + User Menu */}

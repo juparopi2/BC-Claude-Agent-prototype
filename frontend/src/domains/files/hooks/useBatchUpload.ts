@@ -64,21 +64,34 @@ export function collectFolderFiles(
 
   for (const folder of folders) {
     const folderTempId = `folder-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-    manifestFolders.push({
-      tempId: folderTempId,
-      folderName: folder.name,
-      parentTempId,
-    });
+    let maxLastModified = 0;
 
     for (const child of folder.children) {
       if (child.type === 'file') {
-        files.push({ file: (child as FileEntry).file, parentTempId: folderTempId });
+        const file = (child as FileEntry).file;
+        files.push({ file, parentTempId: folderTempId });
+        if (file.lastModified > maxLastModified) {
+          maxLastModified = file.lastModified;
+        }
       } else if (child.type === 'folder') {
         const nested = collectFolderFiles([child as FolderEntry], folderTempId);
         files.push(...nested.files);
         manifestFolders.push(...nested.manifoldFolders);
+
+        // Bubble up nested subfolder date
+        const childFolder = nested.manifoldFolders.find((f) => f.parentTempId === folderTempId);
+        if (childFolder?.lastModified && childFolder.lastModified > maxLastModified) {
+          maxLastModified = childFolder.lastModified;
+        }
       }
     }
+
+    manifestFolders.push({
+      tempId: folderTempId,
+      folderName: folder.name,
+      parentTempId,
+      ...(maxLastModified > 0 ? { lastModified: maxLastModified } : {}),
+    });
   }
 
   return { files, manifoldFolders: manifestFolders };
@@ -522,7 +535,7 @@ export function useBatchUpload(): UseBatchUploadReturn {
               contentHash: null,
               deletionStatus: null,
               deletedAt: null,
-              fileModifiedAt: null,
+              fileModifiedAt: mf.lastModified ? new Date(mf.lastModified).toISOString() : null,
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
             });

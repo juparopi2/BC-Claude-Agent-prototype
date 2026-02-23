@@ -173,4 +173,72 @@ describe('collectFolderFiles', () => {
     expect(parentIds[1]).toBeDefined();
     expect(parentIds[0]).not.toBe(parentIds[1]);
   });
+
+  it('derives folder lastModified from max of children file dates', () => {
+    const older = new File([], 'old.pdf', { lastModified: 1700000000000 });
+    const newer = new File([], 'new.pdf', { lastModified: 1700100000000 });
+
+    const folder = createFolderEntry('Docs', [
+      createFileEntry(older, 'Docs/old.pdf'),
+      createFileEntry(newer, 'Docs/new.pdf'),
+    ]);
+
+    const result = collectFolderFiles([folder]);
+
+    const manifestFolder = result.manifoldFolders.find((f) => f.folderName === 'Docs');
+    expect(manifestFolder?.lastModified).toBe(1700100000000);
+  });
+
+  it('propagates nested subfolder dates bottom-up', () => {
+    const deepFile = new File([], 'deep.pdf', { lastModified: 1700200000000 });
+    const shallowFile = new File([], 'shallow.pdf', { lastModified: 1700000000000 });
+
+    const subFolder = createFolderEntry('Sub', [
+      createFileEntry(deepFile, 'Root/Sub/deep.pdf'),
+    ], 'Root/Sub');
+
+    const rootFolder = createFolderEntry('Root', [
+      createFileEntry(shallowFile, 'Root/shallow.pdf'),
+      subFolder,
+    ]);
+
+    const result = collectFolderFiles([rootFolder]);
+
+    // Sub folder should have the deep file's date
+    const subManifest = result.manifoldFolders.find((f) => f.folderName === 'Sub');
+    expect(subManifest?.lastModified).toBe(1700200000000);
+
+    // Root folder should bubble up the deep file's date (newer than shallow)
+    const rootManifest = result.manifoldFolders.find((f) => f.folderName === 'Root');
+    expect(rootManifest?.lastModified).toBe(1700200000000);
+  });
+
+  it('empty folder has no lastModified', () => {
+    const emptyFolder = createFolderEntry('Empty', []);
+
+    const result = collectFolderFiles([emptyFolder]);
+
+    const manifestFolder = result.manifoldFolders.find((f) => f.folderName === 'Empty');
+    expect(manifestFolder?.lastModified).toBeUndefined();
+  });
+
+  it('multiple root folders get independent dates', () => {
+    const file1 = new File([], 'a.pdf', { lastModified: 1700000000000 });
+    const file2 = new File([], 'b.pdf', { lastModified: 1700500000000 });
+
+    const folder1 = createFolderEntry('FolderA', [
+      createFileEntry(file1, 'FolderA/a.pdf'),
+    ]);
+    const folder2 = createFolderEntry('FolderB', [
+      createFileEntry(file2, 'FolderB/b.pdf'),
+    ]);
+
+    const result = collectFolderFiles([folder1, folder2]);
+
+    const manifestA = result.manifoldFolders.find((f) => f.folderName === 'FolderA');
+    const manifestB = result.manifoldFolders.find((f) => f.folderName === 'FolderB');
+
+    expect(manifestA?.lastModified).toBe(1700000000000);
+    expect(manifestB?.lastModified).toBe(1700500000000);
+  });
 });

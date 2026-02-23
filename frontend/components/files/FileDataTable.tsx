@@ -38,7 +38,7 @@ import {
 import { restrictToHorizontalAxis } from '@dnd-kit/modifiers';
 import { CSS } from '@dnd-kit/utilities';
 import type { ParsedFile } from '@bc-agent/shared';
-import { Folder, Upload, Settings2, GripVertical } from 'lucide-react';
+import { Folder, Upload, GripVertical } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -47,13 +47,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
@@ -69,16 +62,6 @@ import { getFileApiClient } from '@/src/infrastructure/api';
 import { triggerDownload } from '@/lib/download';
 import { toast } from 'sonner';
 
-// Column display names for the visibility dropdown
-const COLUMN_DISPLAY_NAMES: Record<string, string> = {
-  favorite: 'Favorite',
-  name: 'Name',
-  size: 'Size',
-  dateModified: 'Date Modified',
-  dateUploaded: 'Date Uploaded',
-  status: 'Status',
-  type: 'Type',
-};
 
 function isPreviewableFile(mimeType: string): boolean {
   if (mimeType === 'application/pdf') return true;
@@ -409,32 +392,6 @@ export function FileDataTable() {
   return (
     <>
       <div ref={containerRef} tabIndex={0} className="outline-none h-full min-h-0 flex flex-col">
-        {/* Toolbar: Column visibility toggle */}
-        <div className="flex items-center justify-end px-2 py-1">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="h-7 text-xs">
-                <Settings2 className="mr-1.5 size-3.5" />
-                Columns
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {table
-                .getAllColumns()
-                .filter((col) => col.getCanHide())
-                .map((column) => (
-                  <DropdownMenuCheckboxItem
-                    key={column.id}
-                    checked={column.getIsVisible()}
-                    onCheckedChange={(value) => column.toggleVisibility(!!value)}
-                  >
-                    {COLUMN_DISPLAY_NAMES[column.id] ?? column.id}
-                  </DropdownMenuCheckboxItem>
-                ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-
         {/* Table */}
         <ScrollArea className="flex-1 min-h-0">
           <DndContext

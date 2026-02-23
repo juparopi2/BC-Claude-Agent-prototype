@@ -1,17 +1,31 @@
 'use client';
 
 import { useCallback, useState, useEffect, useRef } from 'react';
-import { Upload, Star, RefreshCw, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { Upload, Star, RefreshCw, PanelLeftClose, PanelLeftOpen, Settings2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Toggle } from '@/components/ui/toggle';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { CreateFolderDialog } from './CreateFolderDialog';
-import { FileSortControls } from './FileSortControls';
 import { useFileUploadTrigger } from './FileUploadZone';
 import { useSortFilterStore } from '@/src/domains/files/stores/sortFilterStore';
 import { useFiles } from '@/src/domains/files';
 import { useUIPreferencesStore } from '@/src/domains/ui';
 import { cn } from '@/lib/utils';
+
+/** Columns that support visibility toggling (excludes favorite and name which are always visible) */
+const TOGGLEABLE_COLUMNS: { id: string; label: string }[] = [
+  { id: 'size', label: 'Size' },
+  { id: 'dateModified', label: 'Date Modified' },
+  { id: 'dateUploaded', label: 'Date Uploaded' },
+  { id: 'status', label: 'Status' },
+  { id: 'type', label: 'Type' },
+];
 
 interface FileToolbarProps {
   className?: string;
@@ -20,7 +34,7 @@ interface FileToolbarProps {
 
 export function FileToolbar({ className, isNarrow = false }: FileToolbarProps) {
   const { openFilePicker, isUploading } = useFileUploadTrigger();
-  const { showFavoritesFirst, toggleFavoritesFirst } = useSortFilterStore();
+  const { showFavoritesFirst, toggleFavoritesFirst, columnVisibility, setColumnVisibility } = useSortFilterStore();
   const { isFileSidebarVisible: isSidebarVisible, toggleFileSidebar: toggleSidebar } = useUIPreferencesStore();
   const { isLoading, refreshCurrentFolder } = useFiles();
 
@@ -128,9 +142,6 @@ export function FileToolbar({ className, isNarrow = false }: FileToolbarProps) {
           </TooltipContent>
         </Tooltip>
 
-        {/* Sort controls */}
-        <FileSortControls isCompact={isCompact} />
-
         {/* Refresh button */}
         <Tooltip>
           <TooltipTrigger asChild>
@@ -149,6 +160,33 @@ export function FileToolbar({ className, isNarrow = false }: FileToolbarProps) {
           </TooltipTrigger>
           <TooltipContent>Refresh</TooltipContent>
         </Tooltip>
+
+        {/* Column visibility toggle */}
+        <DropdownMenu>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-8">
+                  <Settings2 className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent>Toggle columns</TooltipContent>
+          </Tooltip>
+          <DropdownMenuContent align="end">
+            {TOGGLEABLE_COLUMNS.map((col) => (
+              <DropdownMenuCheckboxItem
+                key={col.id}
+                checked={columnVisibility[col.id] !== false}
+                onCheckedChange={(checked) => {
+                  setColumnVisibility({ ...columnVisibility, [col.id]: !!checked });
+                }}
+              >
+                {col.label}
+              </DropdownMenuCheckboxItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </div>
   );

@@ -24,6 +24,5 @@ export { FolderTree } from './FolderTree';
 export { FolderTreeItem } from './FolderTreeItem';
 
 // Controls
-export { FileSortControls } from './FileSortControls';
 export { CreateFolderDialog } from './CreateFolderDialog';
 export { FileContextMenu } from './FileContextMenu';

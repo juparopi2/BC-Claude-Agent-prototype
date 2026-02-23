@@ -669,4 +669,197 @@ describe('SemanticSearchService', () => {
       expect(result.results[0]?.isImage).toBe(false);
     });
   });
+
+  describe('image search mode', () => {
+    const mockImageQueryEmbedding: ImageEmbedding = {
+      embedding: new Array(1024).fill(0.2),
+      model: 'vectorize-text-2023-04-15',
+      imageSize: 0,
+      userId,
+      createdAt: new Date(),
+    };
+
+    it('should only generate image embedding in image mode (skip text embedding)', async () => {
+      mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue(mockImageQueryEmbedding);
+      mockVectorSearchService.semanticSearch.mockResolvedValue([]);
+
+      await service.searchRelevantFiles({
+        userId,
+        query,
+        searchMode: 'image',
+      });
+
+      // Should call image embedding but NOT text embedding
+      expect(mockEmbeddingService.generateImageQueryEmbedding).toHaveBeenCalledWith(
+        query, userId, 'visual-search'
+      );
+      expect(mockEmbeddingService.generateTextEmbedding).not.toHaveBeenCalled();
+    });
+
+    it('should pass searchMode: image to vectorSearchService.semanticSearch', async () => {
+      mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue(mockImageQueryEmbedding);
+      mockVectorSearchService.semanticSearch.mockResolvedValue([]);
+
+      await service.searchRelevantFiles({
+        userId,
+        query,
+        searchMode: 'image',
+      });
+
+      expect(mockVectorSearchService.semanticSearch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          searchMode: 'image',
+          imageEmbedding: mockImageQueryEmbedding.embedding,
+        })
+      );
+
+      // textEmbedding should not be present
+      const callArgs = mockVectorSearchService.semanticSearch.mock.calls[0][0];
+      expect(callArgs.textEmbedding).toBeUndefined();
+    });
+
+    it('should add isImage eq true filter in image mode', async () => {
+      mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue(mockImageQueryEmbedding);
+      mockVectorSearchService.semanticSearch.mockResolvedValue([]);
+
+      await service.searchRelevantFiles({
+        userId,
+        query,
+        searchMode: 'image',
+      });
+
+      expect(mockVectorSearchService.semanticSearch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          additionalFilter: 'isImage eq true',
+        })
+      );
+    });
+
+    it('should combine isImage filter with date filter in image mode', async () => {
+      mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue(mockImageQueryEmbedding);
+      mockVectorSearchService.semanticSearch.mockResolvedValue([]);
+
+      await service.searchRelevantFiles({
+        userId,
+        query,
+        searchMode: 'image',
+        dateFilter: { from: '2025-03-01', to: '2025-03-31' },
+      });
+
+      expect(mockVectorSearchService.semanticSearch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          additionalFilter: 'isImage eq true and fileModifiedAt ge 2025-03-01T00:00:00Z and fileModifiedAt le 2025-03-31T23:59:59Z',
+        })
+      );
+    });
+  });
+
+  describe('date filter', () => {
+    const mockTextEmbedding: TextEmbedding = {
+      embedding: new Array(1536).fill(0.1),
+      model: 'text-embedding-3-small',
+      tokenCount: 10,
+      userId,
+      createdAt: new Date(),
+    };
+
+    const mockImageQueryEmbedding: ImageEmbedding = {
+      embedding: new Array(1024).fill(0.2),
+      model: 'vectorize-text-2023-04-15',
+      imageSize: 0,
+      userId,
+      createdAt: new Date(),
+    };
+
+    it('should add dateFrom filter in text mode', async () => {
+      mockEmbeddingService.generateTextEmbedding.mockResolvedValue(mockTextEmbedding);
+      mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue(mockImageQueryEmbedding);
+      mockVectorSearchService.semanticSearch.mockResolvedValue([]);
+
+      await service.searchRelevantFiles({
+        userId,
+        query,
+        dateFilter: { from: '2025-01-01' },
+      });
+
+      expect(mockVectorSearchService.semanticSearch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          additionalFilter: 'fileModifiedAt ge 2025-01-01T00:00:00Z',
+        })
+      );
+    });
+
+    it('should add dateTo filter in text mode', async () => {
+      mockEmbeddingService.generateTextEmbedding.mockResolvedValue(mockTextEmbedding);
+      mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue(mockImageQueryEmbedding);
+      mockVectorSearchService.semanticSearch.mockResolvedValue([]);
+
+      await service.searchRelevantFiles({
+        userId,
+        query,
+        dateFilter: { to: '2025-06-30' },
+      });
+
+      expect(mockVectorSearchService.semanticSearch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          additionalFilter: 'fileModifiedAt le 2025-06-30T23:59:59Z',
+        })
+      );
+    });
+
+    it('should combine dateFrom and dateTo filters', async () => {
+      mockEmbeddingService.generateTextEmbedding.mockResolvedValue(mockTextEmbedding);
+      mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue(mockImageQueryEmbedding);
+      mockVectorSearchService.semanticSearch.mockResolvedValue([]);
+
+      await service.searchRelevantFiles({
+        userId,
+        query,
+        dateFilter: { from: '2025-01-01', to: '2025-12-31' },
+      });
+
+      expect(mockVectorSearchService.semanticSearch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          additionalFilter: 'fileModifiedAt ge 2025-01-01T00:00:00Z and fileModifiedAt le 2025-12-31T23:59:59Z',
+        })
+      );
+    });
+
+    it('should combine mimeType filter with date filter', async () => {
+      mockEmbeddingService.generateTextEmbedding.mockResolvedValue(mockTextEmbedding);
+      mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue(mockImageQueryEmbedding);
+      mockVectorSearchService.semanticSearch.mockResolvedValue([]);
+
+      await service.searchRelevantFiles({
+        userId,
+        query,
+        filterMimeTypes: ['application/pdf'],
+        dateFilter: { from: '2025-03-01' },
+      });
+
+      expect(mockVectorSearchService.semanticSearch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          additionalFilter: "search.in(mimeType, 'application/pdf', ',') and fileModifiedAt ge 2025-03-01T00:00:00Z",
+        })
+      );
+    });
+
+    it('should not add date filter when dateFilter is undefined', async () => {
+      mockEmbeddingService.generateTextEmbedding.mockResolvedValue(mockTextEmbedding);
+      mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue(mockImageQueryEmbedding);
+      mockVectorSearchService.semanticSearch.mockResolvedValue([]);
+
+      await service.searchRelevantFiles({
+        userId,
+        query,
+        // no dateFilter
+      });
+
+      expect(mockVectorSearchService.semanticSearch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          additionalFilter: undefined,
+        })
+      );
+    });
+  });
 });

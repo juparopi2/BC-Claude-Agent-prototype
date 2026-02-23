@@ -1,4 +1,14 @@
 
+/** Search mode controls scoring and ranking strategy */
+export type SearchMode = 'text' | 'image';
+
+/** Vector weight constants — tunable per search mode */
+export const VECTOR_WEIGHTS = {
+  TEXT_MODE_CONTENT: 1.0,    // text mode: contentVector (primary)
+  TEXT_MODE_IMAGE: 0.5,      // text mode: imageVector (secondary)
+  IMAGE_MODE_IMAGE: 3.0,     // image mode: imageVector (PRIMARY)
+  IMAGE_MODE_CONTENT: 0.5,   // image mode: contentVector (caption boost)
+} as const;
 
 /**
  * Interface representing a file chunk with its embedding, ready for indexing.
@@ -16,6 +26,8 @@ export interface FileChunkWithEmbedding {
   createdAt: Date;
   mimeType?: string; // File MIME type for filtered search
   fileModifiedAt?: string; // ISO 8601 timestamp of original file modification date
+  fileName?: string; // Original file name for search
+  sizeBytes?: number; // File size in bytes for filtering
 }
 
 /**
@@ -74,6 +86,8 @@ export interface ImageIndexParams {
   mimeType?: string;
   /** Text embedding (1536d) of the caption for contentVector search path */
   contentVector?: number[];
+  /** File size in bytes for filtering */
+  sizeBytes?: number;
 }
 
 /**
@@ -119,6 +133,8 @@ export interface SemanticSearchQuery {
   minScore?: number;
   /** Additional OData filter to append (e.g., mimeType filtering) */
   additionalFilter?: string;
+  /** Search mode: 'text' (default) uses Semantic Ranker, 'image' prioritizes visual similarity */
+  searchMode?: SearchMode;
 }
 
 /**

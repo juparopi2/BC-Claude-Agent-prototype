@@ -15,6 +15,7 @@
     "capture:websocket": "tsx scripts/capture-websocket-events.ts",
     "capture:anthropic": "tsx scripts/capture-anthropic-response.ts",
     "validate-mocks": "tsx scripts/validate-mocks.ts",
+    "update-search-schema": "tsx scripts/update-search-schema.ts",
     "test": "vitest run && npm run test:integration",
     "test:unit": "vitest run --exclude '**/*.integration.test.ts'",
     "test:integration": "vitest run --config vitest.integration.config.ts",

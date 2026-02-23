@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { VectorSearchService } from '../../../../services/search/VectorSearchService';
 import { SearchIndexClient, SearchClient } from '@azure/search-documents';
 import { indexSchema, INDEX_NAME, SEMANTIC_CONFIG_NAME } from '../../../../services/search/schema';
-import { SearchQuery, HybridSearchQuery, SemanticSearchQuery } from '../../../../services/search/types';
+import { SearchQuery, HybridSearchQuery, SemanticSearchQuery, VECTOR_WEIGHTS } from '../../../../services/search/types';
 
 // Mock Azure SDK
 vi.mock('@azure/search-documents', () => {
@@ -714,6 +714,164 @@ describe('VectorSearchService - Semantic Search (D26)', () => {
         })
       );
     });
+  });
+});
+
+describe('VectorSearchService - Image Search Mode', () => {
+  let service: VectorSearchService;
+  let mockIndexClient: any;
+  let mockSearchClient: any;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIndexClient = { getIndex: vi.fn(), createIndex: vi.fn(), deleteIndex: vi.fn(), getServiceStatistics: vi.fn(), listIndexes: vi.fn() };
+    mockSearchClient = { getDocumentsCount: vi.fn(), uploadDocuments: vi.fn(), deleteDocuments: vi.fn(), search: vi.fn() };
+    service = VectorSearchService.getInstance();
+    service.initializeClients(mockIndexClient as unknown as SearchIndexClient, mockSearchClient as unknown as SearchClient<any>);
+  });
+
+  it('should disable Semantic Ranker when searchMode is image', async () => {
+    const mockResults = createSemanticSearchResults([{ chunkId: '1', score: 0.8, isImage: true }]);
+    mockSearchClient.search.mockResolvedValue(mockResults);
+
+    const query: SemanticSearchQuery = {
+      text: 'red trucks',
+      imageEmbedding: new Array(1024).fill(0.2),
+      userId: 'user-123',
+      searchMode: 'image',
+    };
+
+    await service.semanticSearch(query);
+
+    const callArgs = mockSearchClient.search.mock.calls[0][1];
+    expect(callArgs.queryType).toBeUndefined();
+    expect(callArgs.semanticSearchOptions).toBeUndefined();
+  });
+
+  it('should enable Semantic Ranker when searchMode is text (default)', async () => {
+    const mockResults = createSemanticSearchResults([]);
+    mockSearchClient.search.mockResolvedValue(mockResults);
+
+    const query: SemanticSearchQuery = {
+      text: 'test query',
+      userId: 'user-123',
+    };
+
+    await service.semanticSearch(query);
+
+    const callArgs = mockSearchClient.search.mock.calls[0][1];
+    expect(callArgs.queryType).toBe('semantic');
+    expect(callArgs.semanticSearchOptions).toBeDefined();
+  });
+
+  it('should apply IMAGE_MODE weights when searchMode is image', async () => {
+    const mockResults = createSemanticSearchResults([{ chunkId: '1', score: 0.8, isImage: true }]);
+    mockSearchClient.search.mockResolvedValue(mockResults);
+
+    const query: SemanticSearchQuery = {
+      text: 'red color',
+      textEmbedding: new Array(1536).fill(0.1),
+      imageEmbedding: new Array(1024).fill(0.2),
+      userId: 'user-123',
+      searchMode: 'image',
+    };
+
+    await service.semanticSearch(query);
+
+    const callArgs = mockSearchClient.search.mock.calls[0][1];
+    const vectorQueries = callArgs.vectorSearchOptions.queries;
+    expect(vectorQueries).toHaveLength(2);
+
+    // contentVector query should have IMAGE_MODE_CONTENT weight
+    const contentQuery = vectorQueries.find((q: any) => q.fields[0] === 'contentVector');
+    expect(contentQuery.weight).toBe(VECTOR_WEIGHTS.IMAGE_MODE_CONTENT);
+
+    // imageVector query should have IMAGE_MODE_IMAGE weight
+    const imageQuery = vectorQueries.find((q: any) => q.fields[0] === 'imageVector');
+    expect(imageQuery.weight).toBe(VECTOR_WEIGHTS.IMAGE_MODE_IMAGE);
+  });
+
+  it('should apply TEXT_MODE weights when searchMode is text', async () => {
+    const mockResults = createSemanticSearchResults([]);
+    mockSearchClient.search.mockResolvedValue(mockResults);
+
+    const query: SemanticSearchQuery = {
+      text: 'test query',
+      textEmbedding: new Array(1536).fill(0.1),
+      imageEmbedding: new Array(1024).fill(0.2),
+      userId: 'user-123',
+      searchMode: 'text',
+    };
+
+    await service.semanticSearch(query);
+
+    const callArgs = mockSearchClient.search.mock.calls[0][1];
+    const vectorQueries = callArgs.vectorSearchOptions.queries;
+
+    const contentQuery = vectorQueries.find((q: any) => q.fields[0] === 'contentVector');
+    expect(contentQuery.weight).toBe(VECTOR_WEIGHTS.TEXT_MODE_CONTENT);
+
+    const imageQuery = vectorQueries.find((q: any) => q.fields[0] === 'imageVector');
+    expect(imageQuery.weight).toBe(VECTOR_WEIGHTS.TEXT_MODE_IMAGE);
+  });
+
+  it('should use vectorScore (not rerankerScore) when searchMode is image', async () => {
+    const mockResults = createSemanticSearchResults([
+      { chunkId: '1', score: 0.7, rerankerScore: 3.2, isImage: true }
+    ]);
+    mockSearchClient.search.mockResolvedValue(mockResults);
+
+    const query: SemanticSearchQuery = {
+      text: 'sunset',
+      imageEmbedding: new Array(1024).fill(0.2),
+      userId: 'user-123',
+      searchMode: 'image',
+    };
+
+    const results = await service.semanticSearch(query);
+
+    // Image mode: should use vectorScore (0.7), NOT rerankerScore/4 (0.8)
+    expect(results[0].score).toBe(0.7);
+    expect(results[0].vectorScore).toBe(0.7);
+  });
+
+  it('should use rerankerScore in text mode when available', async () => {
+    const mockResults = createSemanticSearchResults([
+      { chunkId: '1', score: 0.7, rerankerScore: 3.2 }
+    ]);
+    mockSearchClient.search.mockResolvedValue(mockResults);
+
+    const query: SemanticSearchQuery = {
+      text: 'test',
+      userId: 'user-123',
+      searchMode: 'text',
+    };
+
+    const results = await service.semanticSearch(query);
+
+    // Text mode: should use rerankerScore/4 = 0.8
+    expect(results[0].score).toBe(0.8);
+  });
+
+  it('should default to text searchMode when not specified', async () => {
+    const mockResults = createSemanticSearchResults([
+      { chunkId: '1', score: 0.7, rerankerScore: 2.0 }
+    ]);
+    mockSearchClient.search.mockResolvedValue(mockResults);
+
+    const query: SemanticSearchQuery = {
+      text: 'test',
+      userId: 'user-123',
+      // searchMode not specified
+    };
+
+    const results = await service.semanticSearch(query);
+
+    // Default (text mode): should use rerankerScore
+    expect(results[0].score).toBe(0.5); // 2.0 / 4
+
+    const callArgs = mockSearchClient.search.mock.calls[0][1];
+    expect(callArgs.queryType).toBe('semantic');
   });
 });
 

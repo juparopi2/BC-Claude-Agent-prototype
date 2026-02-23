@@ -157,6 +157,23 @@ export const indexSchema: SearchIndex = {
       sortable: true,
       facetable: false,
     },
+    {
+      name: 'fileName',
+      type: 'Edm.String',
+      searchable: true,
+      filterable: true,
+      sortable: false,
+      facetable: false,
+      analyzerName: 'standard.lucene',
+    },
+    {
+      name: 'sizeBytes',
+      type: 'Edm.Int64',
+      searchable: false,
+      filterable: true,
+      sortable: true,
+      facetable: false,
+    },
   ],
 
   vectorSearch: {

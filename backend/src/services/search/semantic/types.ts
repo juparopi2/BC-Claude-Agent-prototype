@@ -6,6 +6,8 @@ export interface SemanticSearchOptions {
   maxChunksPerFile?: number; // Default: 3
   excludeFileIds?: string[];
   filterMimeTypes?: string[];  // MIME types to filter results (for RAG filtered search)
+  searchMode?: import('@/services/search/types').SearchMode;  // 'text' (default) | 'image'
+  dateFilter?: { from?: string; to?: string };  // ISO date range filter on fileModifiedAt
 }
 
 export interface SemanticChunk {

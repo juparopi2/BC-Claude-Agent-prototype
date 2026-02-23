@@ -21,7 +21,12 @@ import {
   buildKnowledgeBaseWorkflowTool,
   getEndpointDocumentationTool,
 } from '@/modules/agents/business-central/tools';
-import { knowledgeSearchTool, filteredKnowledgeSearchTool } from '@/modules/agents/rag-knowledge/tools';
+import {
+  knowledgeSearchTool,
+  filteredKnowledgeSearchTool,
+  visualImageSearchTool,
+  findSimilarImagesTool,
+} from '@/modules/agents/rag-knowledge/tools';
 import {
   listAvailableChartsTool,
   getChartDetailsTool,
@@ -35,7 +40,7 @@ const logger = createChildLogger({ service: 'RegisterAgents' });
  * Register all agents and their tools in the AgentRegistry.
  *
  * - BC Agent: 7 static tools from business-central/tools.ts
- * - RAG Agent: 2 static tools (userId resolved at runtime via config.configurable)
+ * - RAG Agent: 4 static tools (userId resolved at runtime via config.configurable)
  * - Graphing Agent: 3 catalog-driven tools from graphing/tools.ts
  * - Supervisor: no tools (orchestrates other agents)
  */
@@ -63,7 +68,12 @@ export function registerAgents(): void {
 
   // RAG Agent with static tools (userId resolved via config.configurable at runtime)
   registry.registerWithTools(ragAgentDefinition, {
-    staticTools: [knowledgeSearchTool, filteredKnowledgeSearchTool],
+    staticTools: [
+      knowledgeSearchTool,
+      filteredKnowledgeSearchTool,
+      visualImageSearchTool,
+      findSimilarImagesTool,
+    ],
   });
 
   // Graphing Agent with 3 catalog-driven tools

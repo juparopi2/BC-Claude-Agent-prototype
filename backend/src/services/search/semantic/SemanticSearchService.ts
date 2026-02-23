@@ -34,44 +34,76 @@ export class SemanticSearchService {
       maxChunksPerFile = DEFAULT_MAX_CHUNKS_PER_FILE,
       excludeFileIds = [],
       filterMimeTypes,
+      searchMode = 'text',
+      dateFilter,
     } = options;
 
     try {
       const embeddingService = EmbeddingService.getInstance();
       const vectorSearchService = VectorSearchService.getInstance();
 
-      // 1. Generate BOTH embeddings in parallel:
-      //    - Text embedding (1536d) for text chunk search
-      //    - Image query embedding (1024d) for image search
-      const [textEmbedding, imageQueryEmbedding] = await Promise.all([
-        embeddingService.generateTextEmbedding(query, userId, 'semantic-search'),
-        embeddingService.generateImageQueryEmbedding(query, userId, 'semantic-search').catch(err => {
-          // Image search is optional - don't fail if Vision API is unavailable
-          this.logger.warn({ err: err instanceof Error ? err.message : String(err) }, 'Image query embedding failed, skipping image search');
-          return null;
-        }),
-      ]);
+      // Build additional OData filters
+      const filterParts: string[] = [];
 
-      // 2. D26: Execute unified semantic search with reranking
-      //    This combines text + image results and uses Azure AI Search Semantic Ranker
-      //    to normalize scores across different vector spaces
-
-      // Build additional OData filter for mimeType filtering (RAG filtered search)
-      let additionalFilter: string | undefined;
+      // mimeType filtering (RAG filtered search)
       if (filterMimeTypes && filterMimeTypes.length > 0) {
-        additionalFilter = `search.in(mimeType, '${filterMimeTypes.join(',')}', ',')`;
+        filterParts.push(`search.in(mimeType, '${filterMimeTypes.join(',')}', ',')`);
       }
 
-      const semanticResults = await vectorSearchService.semanticSearch({
-        text: query,
-        textEmbedding: textEmbedding.embedding,
-        imageEmbedding: imageQueryEmbedding?.embedding,
-        userId,
-        fetchTopK: maxFiles * maxChunksPerFile * 3, // Fetch more candidates for reranking
-        finalTopK: maxFiles * maxChunksPerFile * 2, // After reranking, still need to group
-        minScore: threshold,
-        additionalFilter,
-      });
+      // Date range filtering on fileModifiedAt
+      if (dateFilter?.from) {
+        filterParts.push(`fileModifiedAt ge ${dateFilter.from}T00:00:00Z`);
+      }
+      if (dateFilter?.to) {
+        filterParts.push(`fileModifiedAt le ${dateFilter.to}T23:59:59Z`);
+      }
+
+      const additionalFilter = filterParts.length > 0 ? filterParts.join(' and ') : undefined;
+
+      let semanticResults: import('@/services/search/types').SemanticSearchResult[];
+
+      if (searchMode === 'image') {
+        // Image mode: only generate image query embedding (1024d)
+        // Visual similarity is the primary signal — no text embedding needed
+        const imageQueryEmbedding = await embeddingService.generateImageQueryEmbedding(query, userId, 'visual-search');
+
+        semanticResults = await vectorSearchService.semanticSearch({
+          text: query,
+          imageEmbedding: imageQueryEmbedding.embedding,
+          // textEmbedding omitted intentionally — visual similarity is primary
+          userId,
+          fetchTopK: maxFiles * maxChunksPerFile * 3,
+          finalTopK: maxFiles * maxChunksPerFile * 2,
+          minScore: threshold,
+          additionalFilter: additionalFilter
+            ? `isImage eq true and ${additionalFilter}`
+            : 'isImage eq true',
+          searchMode: 'image',
+        });
+      } else {
+        // Text mode: generate BOTH embeddings in parallel
+        //    - Text embedding (1536d) for text chunk search
+        //    - Image query embedding (1024d) for image search
+        const [textEmbedding, imageQueryEmbedding] = await Promise.all([
+          embeddingService.generateTextEmbedding(query, userId, 'semantic-search'),
+          embeddingService.generateImageQueryEmbedding(query, userId, 'semantic-search').catch(err => {
+            // Image search is optional - don't fail if Vision API is unavailable
+            this.logger.warn({ err: err instanceof Error ? err.message : String(err) }, 'Image query embedding failed, skipping image search');
+            return null;
+          }),
+        ]);
+
+        semanticResults = await vectorSearchService.semanticSearch({
+          text: query,
+          textEmbedding: textEmbedding.embedding,
+          imageEmbedding: imageQueryEmbedding?.embedding,
+          userId,
+          fetchTopK: maxFiles * maxChunksPerFile * 3,
+          finalTopK: maxFiles * maxChunksPerFile * 2,
+          minScore: threshold,
+          additionalFilter,
+        });
+      }
 
       // 3. Filter excluded files
       const filteredResults = semanticResults.filter(
@@ -179,7 +211,8 @@ export class SemanticSearchService {
         matchingFiles: finalResults.length,
         textResults: textCount,
         imageResults: imageCount,
-        useSemanticReranking: true,
+        useSemanticReranking: searchMode !== 'image',
+        searchMode,
       }, 'D26: Unified semantic search with reranking completed');
 
       return {

@@ -13,6 +13,7 @@ import {
   ImageSearchResult,
   SemanticSearchQuery,
   SemanticSearchResult,
+  VECTOR_WEIGHTS,
 } from './types';
 import { getUsageTrackingService } from '@/domains/billing/tracking/UsageTrackingService';
 
@@ -178,6 +179,8 @@ export class VectorSearchService {
       fileModifiedAt: chunk.fileModifiedAt || null,
       fileStatus: 'active',
       isImage: false,
+      fileName: chunk.fileName || null,
+      sizeBytes: chunk.sizeBytes ?? null,
     }));
 
     // Per-document mimeType trace for diagnosing per-chunk field gaps
@@ -483,7 +486,7 @@ export class VectorSearchService {
       throw new Error('Failed to initialize search client');
     }
 
-    const { fileId, userId, embedding, fileName, caption, mimeType, contentVector } = params;
+    const { fileId, userId, embedding, fileName, caption, mimeType, contentVector, sizeBytes } = params;
     const normalizedFileId = fileId.toUpperCase();
     const normalizedUserId = userId.toUpperCase();
     const documentId = `img_${normalizedFileId}`;
@@ -507,6 +510,8 @@ export class VectorSearchService {
       isImage: true,
       mimeType: mimeType || null,
       fileStatus: 'active',
+      fileName: fileName || null,
+      sizeBytes: sizeBytes ?? null,
     };
 
     logger.debug({
@@ -635,10 +640,10 @@ export class VectorSearchService {
   }
 
   /**
-   * Update index schema with image search fields
+   * Update index schema to match the canonical definition in schema.ts.
    *
-   * Performs in-place update to add imageVector and isImage fields.
-   * Can be called safely multiple times (idempotent).
+   * Compares current index fields against the schema and applies updates
+   * if any fields are missing. Can be called safely multiple times (idempotent).
    */
   async updateIndexSchema(): Promise<void> {
     if (!this.indexClient) {
@@ -651,21 +656,32 @@ export class VectorSearchService {
     try {
       // Get current index
       const currentIndex = await this.indexClient.getIndex(INDEX_NAME);
+      const existingFieldNames = new Set(currentIndex.fields.map(f => f.name));
 
-      // Check if imageVector already exists
-      const hasImageVector = currentIndex.fields.some(f => f.name === 'imageVector');
+      // Detect missing fields by comparing with canonical schema
+      const expectedFieldNames = indexSchema.fields.map(f => f.name);
+      const missingFields = expectedFieldNames.filter(name => !existingFieldNames.has(name));
 
-      if (hasImageVector) {
-        logger.info('Index already has imageVector field - no update needed');
+      if (missingFields.length === 0) {
+        logger.info(
+          { existingFieldCount: existingFieldNames.size },
+          'Index schema is up-to-date — no missing fields'
+        );
         return;
       }
 
-      logger.info('Updating index schema with image search fields...');
+      logger.info(
+        { missingFields, existingFieldCount: existingFieldNames.size },
+        'Updating index schema — adding missing fields...'
+      );
 
-      // Update to new schema
+      // createOrUpdateIndex merges new fields into the existing index
       await this.indexClient.createOrUpdateIndex(indexSchema);
 
-      logger.info('Index schema updated with image search fields successfully');
+      logger.info(
+        { addedFields: missingFields },
+        'Index schema updated successfully'
+      );
     } catch (error) {
       logger.error({ error }, 'Failed to update index schema');
       throw error;
@@ -704,6 +720,7 @@ export class VectorSearchService {
       fetchTopK = 30,
       finalTopK = 10,
       minScore = 0,
+      searchMode = 'text',
     } = query;
 
     // Security: Always enforce userId filter (D24: normalize userId)
@@ -716,18 +733,23 @@ export class VectorSearchService {
       searchFilter += ` and ${query.additionalFilter}`;
     }
 
-    // Build search options with semantic ranker
+    // Build search options — conditionally enable Semantic Ranker
+    // Image mode: disable Semantic Ranker since it only reads the content (caption) field,
+    // which defeats the purpose of visual similarity search via imageVector
     const searchOptions: Record<string, unknown> = {
       filter: searchFilter,
       top: fetchTopK,
-      queryType: 'semantic',
-      semanticSearchOptions: {
-        configurationName: SEMANTIC_CONFIG_NAME,
-      },
       select: ['chunkId', 'fileId', 'content', 'chunkIndex', 'isImage'],
     };
 
-    // Add vector search queries if embeddings provided
+    if (searchMode !== 'image') {
+      searchOptions.queryType = 'semantic';
+      searchOptions.semanticSearchOptions = {
+        configurationName: SEMANTIC_CONFIG_NAME,
+      };
+    }
+
+    // Add vector search queries if embeddings provided — with mode-dependent weights
     const vectorQueries: Array<Record<string, unknown>> = [];
 
     if (textEmbedding && textEmbedding.length > 0) {
@@ -736,6 +758,7 @@ export class VectorSearchService {
         vector: textEmbedding,
         fields: ['contentVector'],
         kNearestNeighborsCount: fetchTopK,
+        weight: searchMode === 'image' ? VECTOR_WEIGHTS.IMAGE_MODE_CONTENT : VECTOR_WEIGHTS.TEXT_MODE_CONTENT,
       });
     }
 
@@ -745,6 +768,7 @@ export class VectorSearchService {
         vector: imageEmbedding,
         fields: ['imageVector'],
         kNearestNeighborsCount: fetchTopK,
+        weight: searchMode === 'image' ? VECTOR_WEIGHTS.IMAGE_MODE_IMAGE : VECTOR_WEIGHTS.TEXT_MODE_IMAGE,
       });
     }
 
@@ -771,11 +795,11 @@ export class VectorSearchService {
       const rerankerScore = (result as unknown as { rerankerScore?: number }).rerankerScore;
 
       // Calculate combined score:
-      // - If rerankerScore exists, use it (normalized to 0-1 scale)
-      // - Otherwise fall back to vector score
-      const score = rerankerScore !== undefined
-        ? rerankerScore / 4  // Normalize 0-4 to 0-1
-        : vectorScore;
+      // - Image mode: always use vectorScore (Semantic Ranker is disabled, pure visual similarity)
+      // - Text mode: prefer rerankerScore if available (normalized to 0-1), else vectorScore
+      const score = (searchMode === 'image')
+        ? vectorScore
+        : (rerankerScore !== undefined ? rerankerScore / 4 : vectorScore);
 
       // Filter by minimum score
       if (score < minScore) continue;
@@ -810,6 +834,7 @@ export class VectorSearchService {
         resultCount: finalResults.length,
         hasTextEmbedding: !!textEmbedding,
         hasImageEmbedding: !!imageEmbedding,
+        searchMode,
       },
       'Semantic search completed (D26)'
     );

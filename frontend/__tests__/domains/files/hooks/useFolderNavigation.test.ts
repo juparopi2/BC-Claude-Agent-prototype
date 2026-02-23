@@ -271,4 +271,134 @@ describe('useFolderNavigation', () => {
       expect(result.current.getChildFolders('parent-id')).toHaveLength(1);
     });
   });
+
+  describe('navigateToFolder', () => {
+    it('should navigate to null (root) with empty path', () => {
+      const { result } = renderHook(() => useFolderNavigation());
+
+      // Start at some folder
+      act(() => {
+        result.current.setCurrentFolder('folder-1', [
+          createMockFolder({ id: 'folder-1', name: 'F1' }),
+        ]);
+      });
+
+      act(() => {
+        result.current.navigateToFolder(null);
+      });
+
+      expect(result.current.currentFolderId).toBeNull();
+      expect(result.current.folderPath).toEqual([]);
+    });
+
+    it('should preserve current path when no folderData provided', () => {
+      const { result } = renderHook(() => useFolderNavigation());
+      const existingPath = [createMockFolder({ id: 'L1', name: 'Level 1' })];
+
+      act(() => {
+        result.current.setCurrentFolder('L1', existingPath);
+      });
+
+      act(() => {
+        result.current.navigateToFolder('L1');
+      });
+
+      expect(result.current.currentFolderId).toBe('L1');
+      expect(result.current.folderPath).toHaveLength(1);
+      expect(result.current.folderPath[0].name).toBe('Level 1');
+    });
+
+    it('should drill-down from root with cold cache (append child)', () => {
+      const { result } = renderHook(() => useFolderNavigation());
+
+      // At root (currentFolderId = null, folderPath = [])
+      const childFolder = createMockFolder({
+        id: 'L1',
+        name: 'Level 1',
+        parentFolderId: null, // direct child of root
+      });
+
+      act(() => {
+        result.current.navigateToFolder('L1', childFolder);
+      });
+
+      expect(result.current.currentFolderId).toBe('L1');
+      expect(result.current.folderPath).toHaveLength(1);
+      expect(result.current.folderPath[0].name).toBe('Level 1');
+    });
+
+    it('should drill-down multi-level with cold cache (append path)', () => {
+      const { result } = renderHook(() => useFolderNavigation());
+
+      // Navigate root -> L1
+      const L1 = createMockFolder({
+        id: 'L1',
+        name: 'Level 1',
+        parentFolderId: null,
+      });
+      act(() => {
+        result.current.navigateToFolder('L1', L1);
+      });
+
+      // Navigate L1 -> L2
+      const L2 = createMockFolder({
+        id: 'L2',
+        name: 'Level 2',
+        parentFolderId: 'L1',
+      });
+      act(() => {
+        result.current.navigateToFolder('L2', L2);
+      });
+
+      // Navigate L2 -> L3
+      const L3 = createMockFolder({
+        id: 'L3',
+        name: 'Level 3',
+        parentFolderId: 'L2',
+      });
+      act(() => {
+        result.current.navigateToFolder('L3', L3);
+      });
+
+      expect(result.current.currentFolderId).toBe('L3');
+      expect(result.current.folderPath).toHaveLength(3);
+      expect(result.current.folderPath.map((f) => f.name)).toEqual([
+        'Level 1',
+        'Level 2',
+        'Level 3',
+      ]);
+    });
+
+    it('should use cached path when cache is warm (complete from root)', () => {
+      const { result } = renderHook(() => useFolderNavigation());
+
+      // Simulate warm cache: root has L1, L1 has L2
+      const L1 = createMockFolder({
+        id: 'L1',
+        name: 'Level 1',
+        parentFolderId: null,
+      });
+      const L2 = createMockFolder({
+        id: 'L2',
+        name: 'Level 2',
+        parentFolderId: 'L1',
+      });
+
+      act(() => {
+        result.current.setTreeFolders('root', [L1]);
+        result.current.setTreeFolders('L1', [L2]);
+      });
+
+      act(() => {
+        result.current.navigateToFolder('L2', L2);
+      });
+
+      expect(result.current.currentFolderId).toBe('L2');
+      expect(result.current.folderPath).toHaveLength(2);
+      expect(result.current.folderPath.map((f) => f.name)).toEqual([
+        'Level 1',
+        'Level 2',
+      ]);
+    });
+  });
 });

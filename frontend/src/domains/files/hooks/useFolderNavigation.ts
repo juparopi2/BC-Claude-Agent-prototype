@@ -209,11 +209,20 @@ export function useFolderNavigation(): UseFolderNavigationReturn {
       }
 
       if (folderData) {
-        // Build the correct path from root to this folder
-        // by walking up using parentFolderId
-        const { treeFolders } = useFolderTreeStore.getState();
-        const newPath = buildPathToFolder(folderData, treeFolders);
-        setCurrentFolderAction(folderId, newPath);
+        const { treeFolders, folderPath: currentPath, currentFolderId } =
+          useFolderTreeStore.getState();
+        const cachedPath = buildPathToFolder(folderData, treeFolders);
+
+        const isPathComplete =
+          cachedPath.length > 0 && cachedPath[0].parentFolderId === null;
+
+        if (isPathComplete) {
+          setCurrentFolderAction(folderId, cachedPath);
+        } else if (folderData.parentFolderId === currentFolderId) {
+          setCurrentFolderAction(folderId, [...currentPath, folderData]);
+        } else {
+          setCurrentFolderAction(folderId, cachedPath);
+        }
       } else {
         // No folder data provided - keep current path
         // This is a fallback for cases where folder data isn't available

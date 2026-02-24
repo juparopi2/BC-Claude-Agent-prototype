@@ -568,6 +568,40 @@ describe('ChatInput', () => {
     });
   });
 
+  describe('Audio Reactive Rings', () => {
+    it('renders audio rings when recording', () => {
+      mockAudioRecordingState.isRecording = true;
+      mockAudioRecordingState.audioLevel = 50;
+
+      render(
+        <ChatInput
+          sessionId="session-1"
+          isConnected={true}
+          sendMessage={mockSendMessage}
+        />
+      );
+
+      // The send/mic area should have rings
+      const rings = screen.getAllByTestId('audio-ring-inner');
+      expect(rings.length).toBeGreaterThan(0);
+    });
+
+    it('does not render audio rings when not recording', () => {
+      mockAudioRecordingState.isRecording = false;
+
+      render(
+        <ChatInput
+          sessionId="session-1"
+          isConnected={true}
+          sendMessage={mockSendMessage}
+        />
+      );
+
+      expect(screen.queryByTestId('audio-ring-inner')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('audio-ring-outer')).not.toBeInTheDocument();
+    });
+  });
+
   describe('Disabled prop', () => {
     it('disables all controls when disabled=true', () => {
       render(

@@ -230,6 +230,28 @@ export class FileService {
     return this.duplicateService.checkByHashBatch(userId, items);
   }
 
+  // ========================================================================
+  // SEARCH OPERATIONS (delegate to FileRepository)
+  // ========================================================================
+
+  /**
+   * Search files by name across all folders.
+   */
+  public async searchByName(
+    userId: string,
+    query: string,
+    options: { limit?: number } = {}
+  ): Promise<ParsedFile[]> {
+    return this.repository.searchByName(userId, query, options);
+  }
+
+  /**
+   * Get all descendant file IDs for a folder.
+   */
+  public async getDescendantFileIds(userId: string, folderId: string): Promise<string[]> {
+    return this.repository.getDescendantFileIds(userId, folderId);
+  }
+
 }
 
 /**

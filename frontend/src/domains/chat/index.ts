@@ -64,6 +64,13 @@ export {
   type ChatAttachmentActions,
   type ChatAttachmentStore,
   type MessageWithChatAttachments,
+  // File Mention Store
+  useFileMentionStore,
+  getFileMentionStore,
+  resetFileMentionStore,
+  type FileMentionState,
+  type FileMentionActions,
+  type FileMentionStore,
 } from './stores';
 
 // Services

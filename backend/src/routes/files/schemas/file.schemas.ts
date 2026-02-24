@@ -50,6 +50,7 @@ export const getFilesSchema = z.object({
   favoritesFirst: z.coerce.boolean().optional(),
   limit: z.coerce.number().int().min(1).max(FILE_PAGINATION.MAX_LIMIT).optional().default(FILE_PAGINATION.DEFAULT_LIMIT),
   offset: z.coerce.number().int().min(0).optional().default(FILE_PAGINATION.DEFAULT_OFFSET),
+  search: z.string().max(200).optional(),
 });
 
 export type GetFilesInput = z.infer<typeof getFilesSchema>;

@@ -48,6 +48,7 @@ export class SemanticSearchHandler implements ISemanticSearchHandler {
     const threshold = options?.threshold ?? SEMANTIC_SEARCH_THRESHOLD;
     const maxFiles = options?.maxFiles ?? SEMANTIC_SEARCH_MAX_FILES;
     const excludeFileIds = options?.excludeFileIds ?? [];
+    const scopeFileIds = options?.scopeFileIds ?? [];
 
     this.logger.debug(
       {
@@ -56,6 +57,7 @@ export class SemanticSearchHandler implements ISemanticSearchHandler {
         threshold,
         maxFiles,
         excludeCount: excludeFileIds.length,
+        scopeCount: scopeFileIds.length,
       },
       'Starting semantic search'
     );
@@ -68,6 +70,14 @@ export class SemanticSearchHandler implements ISemanticSearchHandler {
         maxFiles,
         excludeFileIds,
       };
+
+      // Add scope filter for @mentions
+      if (scopeFileIds.length > 0) {
+        const scopeFilter = `search.in(fileId, '${scopeFileIds.join(',')}', ',')`;
+        serviceOptions.additionalFilter = serviceOptions.additionalFilter
+          ? `(${serviceOptions.additionalFilter}) and (${scopeFilter})`
+          : scopeFilter;
+      }
 
       const response = await this.searchService!.searchRelevantFiles(serviceOptions);
 

@@ -75,6 +75,18 @@ export interface ExecuteSyncOptions {
    * When provided, bypasses supervisor LLM routing and invokes the agent directly.
    */
   targetAgentId?: string;
+
+  /**
+   * File/folder IDs from @mentions to scope RAG search.
+   * Folder IDs are expanded to descendant file IDs on the backend.
+   */
+  mentionedFileIds?: string[];
+
+  /**
+   * KB image IDs to send directly to Anthropic vision API.
+   * These are Knowledge Base files from blob storage.
+   */
+  visionFileIds?: string[];
 }
 
 /**

@@ -11,13 +11,15 @@
 
 import { useState, useRef, useEffect, KeyboardEvent } from 'react';
 import { useUIPreferencesStore } from '@/src/domains/ui';
-import { useAgentState, useSocketConnection, useChatAttachments, useAudioRecording } from '@/src/domains/chat';
+import { useAgentState, useSocketConnection, useChatAttachments, useAudioRecording, useFileMentionStore } from '@/src/domains/chat';
 import { env } from '@/lib/config/env';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Send, Square, WifiOff, Mic, Paperclip, Globe, Loader2 } from 'lucide-react';
-import { FileAttachmentChip, InputOptionsBar, AudioRecordingIndicator } from '@/src/presentation/chat';
+import { FileAttachmentChip, InputOptionsBar, AudioRecordingIndicator, MentionAutocomplete, MentionChip } from '@/src/presentation/chat';
+import type { FileMention, ParsedFile } from '@bc-agent/shared';
+import { cn } from '@/lib/utils';
 
 /**
  * Pending file info (for pending mode)
@@ -36,7 +38,7 @@ export interface ChatInputProps {
   // Socket state from parent (avoids duplicate useSocket calls)
   isConnected?: boolean;
   isReconnecting?: boolean;
-  sendMessage?: (message: string, options?: { enableThinking?: boolean; thinkingBudget?: number; attachments?: string[]; chatAttachments?: string[]; enableAutoSemanticSearch?: boolean; targetAgentId?: string }) => void;
+  sendMessage?: (message: string, options?: { enableThinking?: boolean; thinkingBudget?: number; attachments?: string[]; chatAttachments?: string[]; enableAutoSemanticSearch?: boolean; targetAgentId?: string; mentionedFileIds?: string[]; visionFileIds?: string[] }) => void;
   stopAgent?: () => void;
 
   // ============================================
@@ -121,6 +123,99 @@ export default function ChatInput({
     }
   };
 
+  // @ mention autocomplete state
+  const [isAutocompleteOpen, setIsAutocompleteOpen] = useState(false);
+  const [autocompleteQuery, setAutocompleteQuery] = useState('');
+  const [atTriggerPosition, setAtTriggerPosition] = useState<number | null>(null);
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
+
+  // File mentions store (for normal mode)
+  const mentions = useFileMentionStore((s) => s.mentions);
+  const addMention = useFileMentionStore((s) => s.addMention);
+  const removeMention = useFileMentionStore((s) => s.removeMention);
+  const toggleMentionMode = useFileMentionStore((s) => s.toggleMode);
+  const clearMentions = useFileMentionStore((s) => s.clearMentions);
+
+  // Drag and drop state
+  const [isDragOver, setIsDragOver] = useState(false);
+
+  /**
+   * Detect @ trigger in textarea and manage autocomplete
+   */
+  const handleAtDetection = (value: string, cursorPos: number) => {
+    const textBeforeCursor = value.substring(0, cursorPos);
+    // Find @ at start of input or preceded by whitespace
+    const atMatch = textBeforeCursor.match(/(^|\s)@(\S*)$/);
+    if (atMatch) {
+      setIsAutocompleteOpen(true);
+      setAutocompleteQuery(atMatch[2]); // text after @
+      setAtTriggerPosition(cursorPos - atMatch[2].length - 1); // position of @
+      setHighlightedIndex(0);
+    } else {
+      setIsAutocompleteOpen(false);
+      setAutocompleteQuery('');
+      setAtTriggerPosition(null);
+    }
+  };
+
+  /**
+   * Handle selecting a file from autocomplete
+   */
+  const handleMentionSelect = (file: ParsedFile) => {
+    addMention({
+      fileId: file.id,
+      name: file.name,
+      isFolder: file.isFolder,
+      mimeType: file.mimeType || '',
+      mode: 'rag_context',
+    });
+
+    // Remove the @query text from message
+    if (atTriggerPosition !== null) {
+      const cursorPos = textareaRef.current?.selectionStart ?? message.length;
+      const before = message.substring(0, atTriggerPosition);
+      const after = message.substring(cursorPos);
+      setMessage(`${before}${after}`);
+    }
+
+    // Close autocomplete
+    setIsAutocompleteOpen(false);
+    setAutocompleteQuery('');
+    setAtTriggerPosition(null);
+
+    // Refocus textarea
+    textareaRef.current?.focus();
+  };
+
+  /**
+   * Handle drag-and-drop of files from file panel
+   */
+  const handleDragOver = (e: React.DragEvent) => {
+    if (e.dataTransfer.types.includes('application/x-file-mention')) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+      setIsDragOver(true);
+    }
+  };
+
+  const handleDragLeave = () => {
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    const data = e.dataTransfer.getData('application/x-file-mention');
+    if (data) {
+      try {
+        const mention: FileMention = JSON.parse(data);
+        addMention(mention);
+      } catch {
+        // Ignore invalid data
+      }
+    }
+  };
+
   // Audio recording hook
   const {
     isRecording,
@@ -156,9 +251,10 @@ export default function ChatInput({
   const effectiveIsBusy = sessionId ? isAgentBusy : false;
 
   // Determine what attachments count as "ready to send"
+  const hasMentions = mentions.length > 0;
   const hasReadyAttachments = pendingMode
     ? pendingFiles.length > 0
-    : completedAttachmentIds.length > 0;
+    : completedAttachmentIds.length > 0 || hasMentions;
 
   const canSend = (message.trim().length > 0 || hasReadyAttachments) &&
     effectiveIsConnected && !effectiveIsBusy && !disabled && !isUploading;
@@ -178,6 +274,10 @@ export default function ChatInput({
 
     const isDirected = selectedAgentId !== 'auto';
 
+    // Extract mention IDs by mode
+    const ragMentions = mentions.filter((m) => m.mode === 'rag_context').map((m) => m.fileId);
+    const visionMentions = mentions.filter((m) => m.mode === 'direct_vision').map((m) => m.fileId);
+
     if (onSend) {
       // Simple callback mode (works for both pending and normal mode without sessionId)
       onSend(message, { useMyContext: selectedAgentId === 'rag-agent' });
@@ -188,8 +288,10 @@ export default function ChatInput({
         thinkingBudget: 10000,
         // Use chatAttachments for ephemeral files sent directly to Anthropic
         chatAttachments: completedAttachmentIds.length > 0 ? completedAttachmentIds : undefined,
-        enableAutoSemanticSearch: selectedAgentId === 'rag-agent',
+        enableAutoSemanticSearch: selectedAgentId === 'rag-agent' || ragMentions.length > 0,
         targetAgentId: isDirected ? selectedAgentId : undefined,
+        mentionedFileIds: ragMentions.length > 0 ? ragMentions : undefined,
+        visionFileIds: visionMentions.length > 0 ? visionMentions : undefined,
       };
       sendMessage(message, options);
     }
@@ -199,7 +301,11 @@ export default function ChatInput({
     if (!pendingMode) {
       setMessage('');
       clearAttachments();
+      clearMentions();
     }
+
+    // Close autocomplete
+    setIsAutocompleteOpen(false);
 
     // Reset textarea height
     if (textareaRef.current) {
@@ -230,6 +336,27 @@ export default function ChatInput({
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    // Handle autocomplete keyboard navigation
+    if (isAutocompleteOpen) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setIsAutocompleteOpen(false);
+        return;
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setHighlightedIndex((prev) => prev + 1);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setHighlightedIndex((prev) => Math.max(0, prev - 1));
+        return;
+      }
+      // Enter in autocomplete handled via MentionAutocomplete component's highlighted item
+      // (we don't have results count here, so we just close autocomplete on Enter)
+    }
+
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -323,7 +450,13 @@ export default function ChatInput({
   };
 
   return (
-    <div className="border-t bg-background" data-testid="chat-input">
+    <div
+      className={cn("border-t bg-background", isDragOver && "ring-2 ring-emerald-500/50")}
+      data-testid="chat-input"
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
       <div className="max-w-3xl mx-auto px-4 py-3 space-y-3">
         {/* Hidden File Input */}
         <input
@@ -333,6 +466,20 @@ export default function ChatInput({
           className="hidden"
           onChange={handleFileSelect}
         />
+
+        {/* Mention Chips (@ mentions and drag-drop) */}
+        {mentions.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {mentions.map((mention) => (
+              <MentionChip
+                key={mention.fileId}
+                mention={mention}
+                onToggleMode={() => toggleMentionMode(mention.fileId)}
+                onRemove={() => removeMention(mention.fileId)}
+              />
+            ))}
+          </div>
+        )}
 
         {/* Attachments List (Ephemeral or Pending) */}
         {hasFiles && (
@@ -448,13 +595,27 @@ export default function ChatInput({
         </div>
 
         {/* Input Row */}
-        <div className="flex items-end gap-2">
+        <div className="relative flex items-end gap-2">
+          {/* @ Mention Autocomplete */}
+          <MentionAutocomplete
+            query={autocompleteQuery}
+            isOpen={isAutocompleteOpen}
+            onSelect={handleMentionSelect}
+            onClose={() => setIsAutocompleteOpen(false)}
+            highlightedIndex={highlightedIndex}
+            onHighlightChange={setHighlightedIndex}
+          />
+
           <Textarea
             ref={textareaRef}
             value={message}
             onChange={(e) => {
-              setMessage(e.target.value);
+              const value = e.target.value;
+              setMessage(value);
               updateCursorPosition();
+              // Detect @ for autocomplete
+              const cursorPos = e.target.selectionStart ?? value.length;
+              handleAtDetection(value, cursorPos);
             }}
             onKeyDown={handleKeyDown}
             onSelect={updateCursorPosition}

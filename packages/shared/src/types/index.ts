@@ -52,6 +52,12 @@ export type {
   WebSocketEvents,
 } from './websocket.types';
 
+// File Mention types (@ mentions in chat input)
+export type {
+  FileMentionMode,
+  FileMention,
+} from './file-mention.types';
+
 // Approval types
 export type {
   ApprovalStatus,

@@ -30,6 +30,9 @@ export interface SemanticSearchOptions {
 
   /** File IDs to exclude from results */
   excludeFileIds?: string[];
+
+  /** Restrict search to specific file IDs (from @mentions) */
+  scopeFileIds?: string[];
 }
 
 /**
@@ -110,6 +113,9 @@ export interface FileContextOptions {
 
   /** Max files from semantic search (if enabled) */
   maxSemanticFiles?: number;
+
+  /** File/folder IDs from @mentions to scope semantic search */
+  scopeFileIds?: string[];
 }
 
 /**

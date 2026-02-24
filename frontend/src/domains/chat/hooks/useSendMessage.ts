@@ -23,6 +23,10 @@ export interface SendMessageOptions {
   thinkingBudget?: number;
   /** Enable automatic semantic search */
   enableAutoSemanticSearch?: boolean;
+  /** File/folder IDs from @mentions to scope RAG search */
+  mentionedFileIds?: string[];
+  /** KB image IDs for direct vision */
+  visionFileIds?: string[];
 }
 
 /**
@@ -108,6 +112,8 @@ export function useSendMessage(sessionId: string): UseSendMessageReturn {
         thinkingBudget: options?.thinkingBudget,
         attachments: options?.attachments,
         enableAutoSemanticSearch: options?.enableAutoSemanticSearch,
+        mentionedFileIds: options?.mentionedFileIds,
+        visionFileIds: options?.visionFileIds,
       });
     },
     [socketSendMessage]

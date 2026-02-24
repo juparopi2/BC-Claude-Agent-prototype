@@ -36,6 +36,7 @@ export class SemanticSearchService {
       filterMimeTypes,
       searchMode = 'text',
       dateFilter,
+      additionalFilter: callerAdditionalFilter,
     } = options;
 
     try {
@@ -44,6 +45,11 @@ export class SemanticSearchService {
 
       // Build additional OData filters
       const filterParts: string[] = [];
+
+      // Caller-supplied filter (e.g., @mention scope)
+      if (callerAdditionalFilter) {
+        filterParts.push(callerAdditionalFilter);
+      }
 
       // mimeType filtering (RAG filtered search)
       if (filterMimeTypes && filterMimeTypes.length > 0) {

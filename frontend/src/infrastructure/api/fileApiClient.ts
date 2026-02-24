@@ -275,6 +275,21 @@ export class FileApiClient {
     return this.request<FileResponse>('GET', `/api/files/${fileId}`);
   }
 
+  /**
+   * Search files by name across all folders.
+   * Used for @mention autocomplete in chat input.
+   *
+   * @param query - Search term to match against file names
+   * @param limit - Maximum results (default 10)
+   * @returns Files matching the query (folders first, then by name)
+   */
+  async searchFiles(query: string, limit: number = 10): Promise<ApiResponse<FilesListResponse>> {
+    const params = new URLSearchParams();
+    params.set('search', query);
+    params.set('limit', limit.toString());
+    return this.request<FilesListResponse>('GET', `/api/files?${params.toString()}`);
+  }
+
   // ============================================
   // Duplicate Detection Endpoint
   // ============================================

@@ -12,6 +12,7 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import type { FileMention, FileMentionMode } from '@bc-agent/shared';
 
 // ============================================================================
 // Types
@@ -42,8 +43,8 @@ export interface PendingChatState {
   /** Specific agent to route to (null = auto-route via supervisor) */
   selectedAgent: string | null;
 
-  /** File IDs mentioned via @mentions */
-  mentionedFileIds: string[];
+  /** File/folder mentions via @mentions or drag-drop */
+  mentions: FileMention[];
 
   /** Metadata for pending files (actual File objects in pendingFileManager) */
   pendingFiles: PendingFileInfo[];
@@ -59,8 +60,9 @@ export interface PendingChatActions {
   setMessage: (message: string) => void;
   setUseMyContext: (enabled: boolean) => void;
   setSelectedAgent: (agent: string | null) => void;
-  addMentionedFile: (fileId: string) => void;
-  removeMentionedFile: (fileId: string) => void;
+  addMention: (mention: FileMention) => void;
+  removeMention: (fileId: string) => void;
+  toggleMentionMode: (fileId: string) => void;
   addPendingFile: (file: PendingFileInfo) => void;
   removePendingFile: (tempId: string) => void;
   /** Mark state as ready for processing (sets hasPendingChat = true) */
@@ -79,7 +81,7 @@ const initialState: PendingChatState = {
   message: '',
   useMyContext: false,
   selectedAgent: null,
-  mentionedFileIds: [],
+  mentions: [],
   pendingFiles: [],
   hasPendingChat: false,
 };
@@ -99,14 +101,24 @@ export const usePendingChatStore = create<PendingChatStore>()(
 
       setSelectedAgent: (agent) => set({ selectedAgent: agent }),
 
-      addMentionedFile: (fileId) =>
+      addMention: (mention) =>
+        set((state) => {
+          if (state.mentions.some((m) => m.fileId === mention.fileId)) return state;
+          return { mentions: [...state.mentions, mention] };
+        }),
+
+      removeMention: (fileId) =>
         set((state) => ({
-          mentionedFileIds: [...state.mentionedFileIds, fileId],
+          mentions: state.mentions.filter((m) => m.fileId !== fileId),
         })),
 
-      removeMentionedFile: (fileId) =>
+      toggleMentionMode: (fileId) =>
         set((state) => ({
-          mentionedFileIds: state.mentionedFileIds.filter((id) => id !== fileId),
+          mentions: state.mentions.map((m) =>
+            m.fileId === fileId
+              ? { ...m, mode: (m.mode === 'rag_context' ? 'direct_vision' : 'rag_context') as FileMentionMode }
+              : m
+          ),
         })),
 
       addPendingFile: (file) =>
@@ -132,7 +144,7 @@ export const usePendingChatStore = create<PendingChatStore>()(
         message: state.message,
         useMyContext: state.useMyContext,
         selectedAgent: state.selectedAgent,
-        mentionedFileIds: state.mentionedFileIds,
+        mentions: state.mentions,
         // Include file metadata (but actual File objects are lost on refresh)
         pendingFiles: state.pendingFiles,
         hasPendingChat: state.hasPendingChat,

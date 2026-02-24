@@ -368,6 +368,18 @@ export function FileDataTable() {
         )}
         onClick={(e) => handleRowClick(file, e)}
         onDoubleClick={() => handleDoubleClick(file)}
+        draggable
+        onDragStart={(e) => {
+          const mention = {
+            fileId: file.id,
+            name: file.name,
+            isFolder: file.isFolder,
+            mimeType: file.mimeType || '',
+            mode: 'rag_context' as const,
+          };
+          e.dataTransfer.setData('application/x-file-mention', JSON.stringify(mention));
+          e.dataTransfer.effectAllowed = 'copy';
+        }}
       >
         {row.getVisibleCells().map((cell) => (
           <DragAlongCell key={cell.id} cell={cell} />

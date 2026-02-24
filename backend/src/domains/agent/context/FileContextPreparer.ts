@@ -65,13 +65,24 @@ export class FileContextPreparer implements IFileContextPreparer {
     options?: FileContextOptions
   ): Promise<FileContextPreparationResult> {
     const attachmentIds = options?.attachments ?? [];
-    const enableSemanticSearch = options?.enableAutoSemanticSearch ?? false;
+    const scopeFileIds = options?.scopeFileIds ?? [];
+
+    // Resolve folder IDs → descendant file IDs
+    let resolvedScopeIds: string[] = [];
+    if (scopeFileIds.length > 0) {
+      resolvedScopeIds = await this.resolveScope(userId, scopeFileIds);
+    }
+
+    // If scope is provided, automatically enable scoped semantic search
+    const enableSemanticSearch = options?.enableAutoSemanticSearch || resolvedScopeIds.length > 0;
 
     this.logger.debug(
       {
         userId,
         attachmentCount: attachmentIds.length,
         enableSemanticSearch,
+        scopeFileIds: scopeFileIds.length,
+        resolvedScopeIds: resolvedScopeIds.length,
         promptLength: prompt.length,
       },
       'Starting file context preparation'
@@ -87,7 +98,8 @@ export class FileContextPreparer implements IFileContextPreparer {
         userId,
         prompt,
         attachmentIds,
-        options
+        options,
+        resolvedScopeIds
       );
     }
 
@@ -195,17 +207,19 @@ export class FileContextPreparer implements IFileContextPreparer {
     userId: string,
     query: string,
     excludeFileIds: string[],
-    options?: FileContextOptions
+    options?: FileContextOptions,
+    scopeFileIds?: string[]
   ): Promise<SearchResult[]> {
     try {
       const results = await this.searchHandler!.search(userId, query, {
         threshold: options?.semanticThreshold,
         maxFiles: options?.maxSemanticFiles,
         excludeFileIds,
+        scopeFileIds,
       });
 
       this.logger.debug(
-        { userId, resultsCount: results.length },
+        { userId, resultsCount: results.length, hasScope: (scopeFileIds?.length ?? 0) > 0 },
         'Semantic search completed'
       );
 
@@ -217,6 +231,27 @@ export class FileContextPreparer implements IFileContextPreparer {
       );
       return [];
     }
+  }
+
+  /**
+   * Resolves scope file IDs, expanding folders to their descendant file IDs.
+   */
+  private async resolveScope(userId: string, scopeFileIds: string[]): Promise<string[]> {
+    const allIds: string[] = [];
+
+    for (const id of scopeFileIds) {
+      const file = await this.fileService!.getFile(userId, id);
+      if (!file) continue;
+
+      if (file.isFolder) {
+        const descendants = await this.fileService!.getDescendantFileIds(userId, id);
+        allIds.push(...descendants);
+      } else {
+        allIds.push(id);
+      }
+    }
+
+    return [...new Set(allIds)]; // Deduplicate
   }
 
   /**
@@ -275,6 +310,10 @@ export class FileContextPreparer implements IFileContextPreparer {
             lastError: null,
             failedAt: null,
             contentHash: null,
+            pipelineStatus: '',
+            deletionStatus: null,
+            deletedAt: null,
+            fileModifiedAt: null,
           } as ParsedFile,
           source: 'semantic_search',
           score: result.score,

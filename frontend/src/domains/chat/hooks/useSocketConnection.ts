@@ -55,6 +55,8 @@ export interface UseSocketConnectionReturn {
       chatAttachments?: string[];
       enableAutoSemanticSearch?: boolean;
       targetAgentId?: string;
+      mentionedFileIds?: string[];
+      visionFileIds?: string[];
     }
   ) => void;
   /** Stop the agent */
@@ -239,6 +241,8 @@ export function useSocketConnection(
         chatAttachments?: string[];
         enableAutoSemanticSearch?: boolean;
         targetAgentId?: string;
+        mentionedFileIds?: string[];
+        visionFileIds?: string[];
       }
     ) => {
       if (!user?.id || !currentSessionRef.current) {
@@ -282,6 +286,8 @@ export function useSocketConnection(
         chatAttachments: opts?.chatAttachments,
         enableAutoSemanticSearch: opts?.enableAutoSemanticSearch,
         targetAgentId: opts?.targetAgentId,
+        mentionedFileIds: opts?.mentionedFileIds,
+        visionFileIds: opts?.visionFileIds,
       });
 
       // Update reconnecting state based on pending messages

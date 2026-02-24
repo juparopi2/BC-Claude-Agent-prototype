@@ -99,6 +99,20 @@ export interface ChatMessageData {
    * @default undefined (automatic routing via supervisor)
    */
   targetAgentId?: string;
+
+  /**
+   * File/folder IDs mentioned via @mentions to scope RAG search.
+   * Folder IDs are expanded to descendant file IDs on the backend.
+   * When present, semantic search is automatically scoped to these files.
+   */
+  mentionedFileIds?: string[];
+
+  /**
+   * KB image IDs to send directly to Anthropic vision API.
+   * These are Knowledge Base files retrieved from blob storage and
+   * converted to base64 image content blocks.
+   */
+  visionFileIds?: string[];
 }
 
 /**

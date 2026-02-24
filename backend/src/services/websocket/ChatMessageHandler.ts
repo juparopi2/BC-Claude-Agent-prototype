@@ -164,6 +164,8 @@ export class ChatMessageHandler {
           enableThinking: data.thinking?.enableThinking,
           thinkingBudget: data.thinking?.thinkingBudget,
           targetAgentId: data.targetAgentId,
+          mentionedFileIds: data.mentionedFileIds,
+          visionFileIds: data.visionFileIds,
         }
       );
 

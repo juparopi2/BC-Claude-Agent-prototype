@@ -83,3 +83,13 @@ export {
   type ChatAttachmentStore,
   type MessageWithChatAttachments,
 } from './chatAttachmentStore';
+
+// File Mention Store
+export {
+  useFileMentionStore,
+  getFileMentionStore,
+  resetFileMentionStore,
+  type FileMentionState,
+  type FileMentionActions,
+  type FileMentionStore,
+} from './fileMentionStore';

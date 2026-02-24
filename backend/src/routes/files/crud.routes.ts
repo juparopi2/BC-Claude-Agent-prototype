@@ -36,7 +36,16 @@ router.get('/', authenticateMicrosoft, async (req: Request, res: Response): Prom
       return;
     }
 
-    const { folderId, sortBy, favoritesFirst, limit, offset } = validation.data;
+    const { folderId, sortBy, favoritesFirst, limit, offset, search } = validation.data;
+
+    // If search parameter provided, use search endpoint
+    if (search) {
+      logger.info({ userId, search, limit }, 'Searching files by name');
+      const fileService = getFileService();
+      const results = await fileService.searchByName(userId, search, { limit });
+      res.json({ files: results, total: results.length });
+      return;
+    }
 
     logger.info({ userId, folderId, sortBy, favoritesFirst, limit, offset }, 'Getting files');
 

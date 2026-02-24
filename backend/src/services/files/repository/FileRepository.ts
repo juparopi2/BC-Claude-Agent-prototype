@@ -86,6 +86,8 @@ export interface IFileRepository {
   getFilesPendingProcessing(limit: number): Promise<FilePendingProcessing[]>;
   findByName(userId: string, fileName: string, folderId: string | null): Promise<ParsedFile | null>;
   findByContentHash(userId: string, contentHash: string): Promise<ParsedFile[]>;
+  searchByName(userId: string, query: string, options?: { limit?: number }): Promise<ParsedFile[]>;
+  getDescendantFileIds(userId: string, folderId: string): Promise<string[]>;
   // Pipeline methods
   transitionStatus(fileId: string, userId: string, from: PipelineStatus, to: PipelineStatus): Promise<TransitionResult>;
   getPipelineStatus(fileId: string, userId: string): Promise<PipelineStatus | null>;
@@ -1307,6 +1309,66 @@ export class FileRepository implements IFileRepository {
       blob_path: string;
       created_at: Date | null;
     }>;
+  }
+
+  // --------------------------------------------------------------------------
+  // searchByName
+  // --------------------------------------------------------------------------
+
+  /**
+   * Search files by name across all folders.
+   * Returns files matching the query, folders first.
+   */
+  async searchByName(
+    userId: string,
+    query: string,
+    options: { limit?: number } = {}
+  ): Promise<ParsedFile[]> {
+    const limit = options.limit ?? 10;
+    const records = await this.prisma.files.findMany({
+      where: {
+        user_id: userId,
+        deletion_status: null,
+        name: { contains: query },
+      },
+      orderBy: [
+        { is_folder: 'desc' },
+        { name: 'asc' },
+      ],
+      take: limit,
+    });
+    return records.map(r => parseFile(r as unknown as FileDbRecord));
+  }
+
+  // --------------------------------------------------------------------------
+  // getDescendantFileIds
+  // --------------------------------------------------------------------------
+
+  /**
+   * Get all descendant non-folder file IDs for a folder.
+   * Uses recursive CTE with max depth of 20.
+   * Caps results at 200 files.
+   */
+  async getDescendantFileIds(userId: string, folderId: string): Promise<string[]> {
+    const MAX_DESCENDANTS = 200;
+    const result = await this.prisma.$queryRaw<Array<{ id: string }>>`
+      ;WITH descendants AS (
+        SELECT id, is_folder
+        FROM files
+        WHERE parent_folder_id = ${folderId}
+          AND user_id = ${userId}
+          AND deletion_status IS NULL
+        UNION ALL
+        SELECT f.id, f.is_folder
+        FROM files f
+        INNER JOIN descendants d ON f.parent_folder_id = d.id
+        WHERE f.user_id = ${userId}
+          AND f.deletion_status IS NULL
+      )
+      SELECT TOP(${MAX_DESCENDANTS}) id FROM descendants WHERE is_folder = 0
+      OPTION (MAXRECURSION 20)
+    `;
+    return result.map(r => r.id);
   }
 
   // --------------------------------------------------------------------------

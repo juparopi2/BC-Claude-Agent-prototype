@@ -44,3 +44,6 @@ export {
   type UploadCounts,
   type UploadPhase,
 } from './useUploadProgress';
+
+// File Mention Search Hook
+export { useFileMentionSearch } from './useFileMentionSearch';

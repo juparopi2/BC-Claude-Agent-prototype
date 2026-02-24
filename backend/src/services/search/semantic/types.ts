@@ -8,6 +8,7 @@ export interface SemanticSearchOptions {
   filterMimeTypes?: string[];  // MIME types to filter results (for RAG filtered search)
   searchMode?: import('@/services/search/types').SearchMode;  // 'text' (default) | 'image'
   dateFilter?: { from?: string; to?: string };  // ISO date range filter on fileModifiedAt
+  additionalFilter?: string;  // Additional OData filter expression (e.g., for @mention scope)
 }
 
 export interface SemanticChunk {

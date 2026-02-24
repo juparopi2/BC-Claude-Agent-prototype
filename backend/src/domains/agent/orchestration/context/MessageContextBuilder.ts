@@ -20,7 +20,7 @@
  * ```
  */
 
-import { HumanMessage } from '@langchain/core/messages';
+import { HumanMessage, type MessageContent as LCMessageContent } from '@langchain/core/messages';
 import type { LangChainContentBlock, AnthropicAttachmentContentBlock } from '@bc-agent/shared';
 import type { IFileContextPreparer, FileContextPreparationResult } from '@domains/agent/context';
 import type { AttachmentContentResolver } from '@/domains/chat-attachments';
@@ -30,9 +30,14 @@ import { createChildLogger } from '@/shared/utils/logger';
 const logger = createChildLogger({ service: 'MessageContextBuilder' });
 
 /**
- * Content block type for message building.
+ * Content block item for multi-modal message arrays.
  */
-type ContentBlock = string | { type: 'text'; text: string } | LangChainContentBlock;
+type ContentBlockItem = { type: 'text'; text: string } | LangChainContentBlock;
+
+/**
+ * Content for a message: either a simple string or an array of content blocks.
+ */
+type MessageContent = string | ContentBlockItem[];
 
 /**
  * Options for building message context.
@@ -50,6 +55,10 @@ export interface MessageContextOptions {
   thinkingBudget?: number;
   /** Target agent ID for explicit agent selection */
   targetAgentId?: string;
+  /** File/folder IDs from @mentions to scope semantic search */
+  mentionedFileIds?: string[];
+  /** KB image IDs for direct vision */
+  visionFileIds?: string[];
 }
 
 /**
@@ -87,10 +96,10 @@ export function buildMessageContent(
   prompt: string,
   contextResult: FileContextPreparationResult,
   langChainBlocks: LangChainContentBlock[]
-): ContentBlock | ContentBlock[] {
+): MessageContent {
   if (langChainBlocks.length > 0) {
     // Use multi-modal format with content array
-    const contentBlocks: ContentBlock[] = [];
+    const contentBlocks: ContentBlockItem[] = [];
 
     // Add document/image blocks first
     contentBlocks.push(...langChainBlocks);
@@ -123,7 +132,7 @@ export function buildMessageContent(
  * @returns Graph inputs object
  */
 export function buildGraphInputs(
-  messageContent: ContentBlock | ContentBlock[],
+  messageContent: MessageContent,
   userId: string | undefined,
   sessionId: string,
   contextResult: FileContextPreparationResult,
@@ -133,7 +142,8 @@ export function buildGraphInputs(
     messages: [
       typeof messageContent === 'string'
         ? new HumanMessage(messageContent)
-        : new HumanMessage({ content: Array.isArray(messageContent) ? messageContent : [messageContent] }),
+        // ContentBlockItem[] maps to LangChain ContentBlock[] at runtime
+        : new HumanMessage({ content: messageContent as unknown as LCMessageContent }),
     ],
     activeAgent: 'supervisor',
     context: {
@@ -177,6 +187,7 @@ export class MessageContextBuilder {
     const contextResult = await this.fileContextPreparer.prepare(userId, prompt, {
       attachments: options?.attachments,
       enableAutoSemanticSearch: options?.enableAutoSemanticSearch,
+      scopeFileIds: options?.mentionedFileIds,
     });
 
     // Step 2: Resolve chat attachments to content blocks
@@ -195,6 +206,18 @@ export class MessageContextBuilder {
       );
     }
 
+    // Step 2b: Resolve vision files (KB images sent directly to Anthropic)
+    if (options?.visionFileIds?.length && userId) {
+      const visionBlocks = await this.resolveVisionFiles(userId, options.visionFileIds);
+      for (const block of visionBlocks) {
+        anthropicBlocks.push(block);
+      }
+      logger.debug(
+        { sessionId, visionCount: visionBlocks.length },
+        'Resolved vision files for message'
+      );
+    }
+
     // Step 3: Convert to LangChain format
     const langChainBlocks = convertToLangChainFormat(anthropicBlocks);
 
@@ -205,6 +228,58 @@ export class MessageContextBuilder {
     const inputs = buildGraphInputs(messageContent, userId, sessionId, contextResult, options);
 
     return { inputs, contextResult };
+  }
+
+  /**
+   * Resolve KB image files for direct vision.
+   * Downloads from blob storage and converts to base64 image blocks.
+   */
+  private async resolveVisionFiles(
+    userId: string,
+    fileIds: string[]
+  ): Promise<AnthropicAttachmentContentBlock[]> {
+    const { getFileService } = await import('@/services/files/FileService');
+    const { getFileUploadService } = await import('@/services/files/FileUploadService');
+    const { isImageMimeType } = await import('@bc-agent/shared');
+
+    const blocks: AnthropicAttachmentContentBlock[] = [];
+    const fileService = getFileService();
+    const uploadService = getFileUploadService();
+
+    for (const fileId of fileIds) {
+      try {
+        const file = await fileService.getFile(userId, fileId);
+        if (!file || !isImageMimeType(file.mimeType)) {
+          logger.warn({ fileId, userId }, 'Vision file not found or not an image, skipping');
+          continue;
+        }
+
+        // Skip oversized files (30MB limit for Anthropic)
+        if (file.sizeBytes > 30 * 1024 * 1024) {
+          logger.warn({ fileId, sizeBytes: file.sizeBytes }, 'Vision file too large, skipping');
+          continue;
+        }
+
+        const buffer = await uploadService.downloadFromBlob(file.blobPath);
+        const base64Data = buffer.toString('base64');
+
+        blocks.push({
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: file.mimeType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+            data: base64Data,
+          },
+        });
+      } catch (error) {
+        const errorInfo = error instanceof Error
+          ? { message: error.message, name: error.name }
+          : { value: String(error) };
+        logger.warn({ fileId, userId, error: errorInfo }, 'Failed to resolve vision file, skipping');
+      }
+    }
+
+    return blocks;
   }
 }
 

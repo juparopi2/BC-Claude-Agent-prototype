@@ -1,7 +1,7 @@
 export interface SemanticSearchOptions {
   userId: string;
   query: string;
-  threshold?: number;      // Default: 0.7
+  threshold?: number;      // Default: 0.55 
   maxFiles?: number;       // Default: 5
   maxChunksPerFile?: number; // Default: 3
   excludeFileIds?: string[];

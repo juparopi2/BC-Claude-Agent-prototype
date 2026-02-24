@@ -38,6 +38,8 @@ import type {
   FileContextPreparationResult,
   FileReference,
   SearchResult,
+  MentionScope,
+  MentionedFileRef,
 } from './types';
 import {
   SemanticSearchHandler,
@@ -67,10 +69,12 @@ export class FileContextPreparer implements IFileContextPreparer {
     const attachmentIds = options?.attachments ?? [];
     const scopeFileIds = options?.scopeFileIds ?? [];
 
-    // Resolve folder IDs → descendant file IDs
+    // Resolve folder IDs → descendant file IDs + collect mention metadata
+    let mentionScope: MentionScope | undefined;
     let resolvedScopeIds: string[] = [];
     if (scopeFileIds.length > 0) {
-      resolvedScopeIds = await this.resolveScope(userId, scopeFileIds);
+      mentionScope = await this.resolveMentions(userId, scopeFileIds);
+      resolvedScopeIds = mentionScope.scopeFileIds;
     }
 
     // If scope is provided, automatically enable scoped semantic search
@@ -114,6 +118,7 @@ export class FileContextPreparer implements IFileContextPreparer {
         filesIncluded: [],
         semanticSearchUsed: enableSemanticSearch,
         totalFilesProcessed: 0,
+        mentionScope,
       };
     }
 
@@ -160,6 +165,7 @@ export class FileContextPreparer implements IFileContextPreparer {
       filesIncluded,
       semanticSearchUsed: enableSemanticSearch,
       totalFilesProcessed: allFiles.length,
+      mentionScope,
     };
   }
 
@@ -234,14 +240,23 @@ export class FileContextPreparer implements IFileContextPreparer {
   }
 
   /**
-   * Resolves scope file IDs, expanding folders to their descendant file IDs.
+   * Resolves scope file IDs, expanding folders to their descendant file IDs,
+   * and collects metadata about each @mention for LLM context.
    */
-  private async resolveScope(userId: string, scopeFileIds: string[]): Promise<string[]> {
+  private async resolveMentions(userId: string, scopeFileIds: string[]): Promise<MentionScope> {
     const allIds: string[] = [];
+    const mentionedFiles: MentionedFileRef[] = [];
 
     for (const id of scopeFileIds) {
       const file = await this.fileService!.getFile(userId, id);
       if (!file) continue;
+
+      mentionedFiles.push({
+        fileId: file.id,
+        fileName: file.name,
+        isFolder: file.isFolder,
+        mimeType: file.mimeType,
+      });
 
       if (file.isFolder) {
         const descendants = await this.fileService!.getDescendantFileIds(userId, id);
@@ -251,7 +266,10 @@ export class FileContextPreparer implements IFileContextPreparer {
       }
     }
 
-    return [...new Set(allIds)]; // Deduplicate
+    return {
+      scopeFileIds: [...new Set(allIds)],
+      mentionedFiles,
+    };
   }
 
   /**

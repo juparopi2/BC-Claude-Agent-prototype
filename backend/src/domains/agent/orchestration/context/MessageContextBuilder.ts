@@ -22,7 +22,7 @@
 
 import { HumanMessage, type MessageContent as LCMessageContent } from '@langchain/core/messages';
 import type { LangChainContentBlock, AnthropicAttachmentContentBlock } from '@bc-agent/shared';
-import type { IFileContextPreparer, FileContextPreparationResult } from '@domains/agent/context';
+import type { IFileContextPreparer, FileContextPreparationResult, MentionScope } from '@domains/agent/context';
 import type { AttachmentContentResolver } from '@/domains/chat-attachments';
 import { convertToLangChainFormat } from '@shared/providers/utils/content-format';
 import { createChildLogger } from '@/shared/utils/logger';
@@ -80,11 +80,30 @@ export interface MessageContextBuildResult {
         thinkingBudget: number;
         targetAgentId?: string;
         enableWebSearch?: boolean;
+        scopeFileIds?: string[];
       };
     };
   };
   /** File context result for tracking */
   contextResult: FileContextPreparationResult;
+}
+
+/**
+ * Build XML annotation describing user @mentions for LLM context.
+ * Placed before <documents> so the LLM sees mention intent first.
+ */
+function buildMentionsAnnotation(mentionScope: MentionScope): string {
+  const lines: string[] = ['<user_mentions>'];
+  for (const m of mentionScope.mentionedFiles) {
+    if (m.isFolder) {
+      const descendantCount = mentionScope.scopeFileIds.length;
+      lines.push(`<mention type="folder" id="${m.fileId}" name="${m.fileName}" descendant_count="${descendantCount}" />`);
+    } else {
+      lines.push(`<mention type="file" id="${m.fileId}" name="${m.fileName}" mime_type="${m.mimeType}" />`);
+    }
+  }
+  lines.push('</user_mentions>');
+  return lines.join('\n');
 }
 
 /**
@@ -100,12 +119,22 @@ export function buildMessageContent(
   contextResult: FileContextPreparationResult,
   langChainBlocks: LangChainContentBlock[]
 ): MessageContent {
+  // Build mentions annotation if scope is present
+  const mentionsXml = contextResult.mentionScope?.mentionedFiles.length
+    ? buildMentionsAnnotation(contextResult.mentionScope)
+    : '';
+
   if (langChainBlocks.length > 0) {
     // Use multi-modal format with content array
     const contentBlocks: ContentBlockItem[] = [];
 
     // Add document/image blocks first
     contentBlocks.push(...langChainBlocks);
+
+    // Add mentions annotation before context text
+    if (mentionsXml) {
+      contentBlocks.push({ type: 'text', text: mentionsXml });
+    }
 
     // Add context text if present
     if (contextResult.contextText) {
@@ -118,9 +147,11 @@ export function buildMessageContent(
     return contentBlocks;
   } else {
     // Use simple string format (original behavior)
-    return contextResult.contextText
-      ? `${contextResult.contextText}\n\n${prompt}`
-      : prompt;
+    const parts: string[] = [];
+    if (mentionsXml) parts.push(mentionsXml);
+    if (contextResult.contextText) parts.push(contextResult.contextText);
+    parts.push(prompt);
+    return parts.join('\n\n');
   }
 }
 
@@ -158,6 +189,7 @@ export function buildGraphInputs(
         thinkingBudget: options?.thinkingBudget ?? 10000,
         targetAgentId: options?.targetAgentId,
         enableWebSearch: options?.enableWebSearch,
+        scopeFileIds: contextResult.mentionScope?.scopeFileIds,
       },
     },
   };

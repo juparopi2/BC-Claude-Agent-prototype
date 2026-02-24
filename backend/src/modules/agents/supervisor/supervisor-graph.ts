@@ -173,6 +173,7 @@ class SupervisorGraphAdapter implements ICompiledGraph {
     // 1. Check for targetAgentId (direct agent invocation, bypass supervisor LLM)
     const targetAgentId = typedInputs.context?.options?.targetAgentId;
     const enableWebSearch = typedInputs.context?.options?.enableWebSearch;
+    const scopeFileIds = typedInputs.context?.options?.scopeFileIds as string[] | undefined;
 
     if (targetAgentId && targetAgentId !== 'auto' && targetAgentId !== 'supervisor') {
       // When web search is enabled with a non-research target, fall through to supervisor
@@ -200,6 +201,7 @@ class SupervisorGraphAdapter implements ICompiledGraph {
                 thread_id: `directed-${sessionId}-${Date.now()}`,
                 userId,
                 invocationId: `inv-${Date.now()}`,
+                scopeFileIds,
               },
               recursionLimit: options?.recursionLimit ?? 100,
               signal: options?.signal,
@@ -241,7 +243,7 @@ class SupervisorGraphAdapter implements ICompiledGraph {
       const stream = await compiledSupervisor.stream(
         { messages: [new HumanMessage(supervisorPrompt)] },
         {
-          configurable: { thread_id: threadId, userId, invocationId },
+          configurable: { thread_id: threadId, userId, invocationId, scopeFileIds },
           recursionLimit: options?.recursionLimit ?? 100,
           signal: options?.signal,
           streamMode: 'values',

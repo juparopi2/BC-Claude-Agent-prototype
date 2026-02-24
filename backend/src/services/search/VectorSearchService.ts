@@ -777,8 +777,13 @@ export class VectorSearchService {
       searchOptions.vectorSearchOptions = { queries: vectorQueries };
     }
 
-    // Execute hybrid search with semantic ranking
-    const searchResults = await this.searchClient.search(text, searchOptions);
+    // Execute search:
+    // - Image mode: pass '*' to skip keyword search and get pure vector similarity scores (0-1).
+    //   Without this, Azure uses RRF to fuse keyword + vector results, producing scores ~0.016
+    //   that are incompatible with the cosine-based minScore threshold (~0.47).
+    // - Text mode: pass user query for keyword+vector hybrid, scored by Semantic Ranker (0-4→0-1).
+    const searchText = searchMode === 'image' ? '*' : text;
+    const searchResults = await this.searchClient.search(searchText, searchOptions);
 
     // Process results
     const results: SemanticSearchResult[] = [];

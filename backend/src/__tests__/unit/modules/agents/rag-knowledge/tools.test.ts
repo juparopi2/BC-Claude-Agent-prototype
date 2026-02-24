@@ -32,6 +32,13 @@ vi.mock('@/repositories/ImageEmbeddingRepository', () => ({
   }),
 }));
 
+const mockGetFile = vi.fn();
+vi.mock('@/services/files/FileService', () => ({
+  getFileService: () => ({
+    getFile: mockGetFile,
+  }),
+}));
+
 import { knowledgeSearchTool, visualImageSearchTool, findSimilarImagesTool } from '@/modules/agents/rag-knowledge/tools';
 
 describe('knowledgeSearchTool', () => {
@@ -286,6 +293,8 @@ describe('visualImageSearchTool', () => {
 describe('findSimilarImagesTool', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default: return a file for getFile lookups
+    mockGetFile.mockResolvedValue({ id: 'FILE-1', name: 'source.jpg', mimeType: 'image/jpeg' });
   });
 
   it('returns similar images excluding the source image', async () => {

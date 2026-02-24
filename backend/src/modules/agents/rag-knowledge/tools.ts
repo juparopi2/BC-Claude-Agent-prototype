@@ -18,6 +18,7 @@ import { getMimeTypesForCategory, getValidCategories } from '@bc-agent/shared';
 import { getSemanticSearchService, SEMANTIC_THRESHOLD } from '@/services/search/semantic';
 import { VectorSearchService } from '@/services/search/VectorSearchService';
 import { getImageEmbeddingRepository } from '@/repositories/ImageEmbeddingRepository';
+import { getFileService } from '@/services/files/FileService';
 import {
   createEmptySearchResult,
   createErrorSearchResult,
@@ -25,9 +26,19 @@ import {
 
 /**
  * RAG tool threshold multiplier for broader recall.
- * Applied to SEMANTIC_THRESHOLD (0.7) to get ~0.6.
+ * Applied to SEMANTIC_THRESHOLD (0.55) to get ~0.47.
  */
 const RAG_THRESHOLD_MULTIPLIER = 0.85;
+
+/**
+ * Build an OData scope filter from @mention scopeFileIds in LangGraph config.
+ * Returns undefined if no scope is active (tools search globally).
+ */
+function buildScopeFilter(config: RunnableConfig): string | undefined {
+  const scopeFileIds = config?.configurable?.scopeFileIds as string[] | undefined;
+  if (!scopeFileIds?.length) return undefined;
+  return `search.in(fileId, '${scopeFileIds.join(',')}', ',')`;
+}
 
 /**
  * Static knowledge search tool that reads userId from config.configurable.
@@ -61,7 +72,8 @@ export const knowledgeSearchTool = tool(
         userId,
         query,
         maxFiles: 5,
-        threshold: SEMANTIC_THRESHOLD * RAG_THRESHOLD_MULTIPLIER, // ~0.6: Broader recall than default
+        threshold: SEMANTIC_THRESHOLD * RAG_THRESHOLD_MULTIPLIER, // ~0.47: Broader recall than default
+        additionalFilter: buildScopeFilter(config),
       });
 
       // No results case - return structured empty response
@@ -152,6 +164,7 @@ export const filteredKnowledgeSearchTool = tool(
         threshold: SEMANTIC_THRESHOLD * RAG_THRESHOLD_MULTIPLIER,
         filterMimeTypes: [...mimeTypes],
         dateFilter: (dateFrom || dateTo) ? { from: dateFrom, to: dateTo } : undefined,
+        additionalFilter: buildScopeFilter(config),
       });
 
       // No results case
@@ -229,6 +242,7 @@ export const visualImageSearchTool = tool(
         threshold: SEMANTIC_THRESHOLD * RAG_THRESHOLD_MULTIPLIER,
         searchMode: 'image',
         dateFilter: (dateFrom || dateTo) ? { from: dateFrom, to: dateTo } : undefined,
+        additionalFilter: buildScopeFilter(config),
       });
 
       if (results.results.length === 0) {
@@ -295,7 +309,12 @@ export const findSimilarImagesTool = tool(
     }
 
     try {
-      // 1. Get the source image's embedding from DB
+      // 1. Look up source file name for user-friendly display
+      const fileService = getFileService();
+      const sourceFile = await fileService.getFile(userId, fileId.toUpperCase());
+      const fileName = sourceFile?.name ?? fileId;
+
+      // 2. Get the source image's embedding from DB
       const repo = getImageEmbeddingRepository();
       const sourceEmbedding = await repo.getByFileId(fileId.toUpperCase(), userId);
       if (!sourceEmbedding) {
@@ -306,7 +325,8 @@ export const findSimilarImagesTool = tool(
         return JSON.stringify(errorResult);
       }
 
-      // 2. Use existing searchImages() — pure vector on imageVector, no Semantic Ranker
+      // 3. Use existing searchImages() — pure vector on imageVector, no Semantic Ranker
+      // NOTE: No scope filter applied — user wants to find similar across ALL images
       const vectorSearchService = VectorSearchService.getInstance();
       const results = await vectorSearchService.searchImages({
         embedding: sourceEmbedding.embedding,
@@ -314,7 +334,7 @@ export const findSimilarImagesTool = tool(
         top: maxResults + 1, // +1 to exclude self
       });
 
-      // 3. Exclude the source image from results
+      // 4. Exclude the source image from results
       const filtered = results.filter(r => r.fileId.toUpperCase() !== fileId.toUpperCase());
       const finalResults = filtered.slice(0, maxResults);
 
@@ -340,9 +360,9 @@ export const findSimilarImagesTool = tool(
       const citationResult: CitationResult = {
         _type: 'citation_result',
         documents,
-        summary: `Found ${finalResults.length} image(s) similar to the reference image`,
+        summary: `Found ${finalResults.length} image(s) similar to "${fileName}"`,
         totalResults: finalResults.length,
-        query: `similar to ${fileId}`,
+        query: `similar to ${fileName}`,
       };
 
       return JSON.stringify(citationResult);

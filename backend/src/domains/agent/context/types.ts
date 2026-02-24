@@ -71,6 +71,24 @@ export interface ISemanticSearchHandler {
   ): Promise<SearchResult[]>;
 }
 
+// === Mention Scope Types ===
+
+/** Metadata about a single @mentioned file/folder */
+export interface MentionedFileRef {
+  fileId: string;
+  fileName: string;
+  isFolder: boolean;
+  mimeType: string;
+}
+
+/** Resolved mention scope: separated into folder scope + individual file references */
+export interface MentionScope {
+  /** File IDs from resolved folders — used as search filter */
+  scopeFileIds: string[];
+  /** Metadata about each @mention for LLM context */
+  mentionedFiles: MentionedFileRef[];
+}
+
 // === FileContextPreparer Types (for future implementation) ===
 
 /**
@@ -133,6 +151,9 @@ export interface FileContextPreparationResult {
 
   /** Total number of files processed */
   totalFilesProcessed: number;
+
+  /** Resolved @mention scope (undefined if no mentions) */
+  mentionScope?: MentionScope;
 }
 
 /**

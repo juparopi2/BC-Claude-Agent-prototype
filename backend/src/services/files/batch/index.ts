@@ -23,4 +23,5 @@ export {
   ConcurrentModificationError,
   InvalidTargetFolderError,
   ManifestValidationError,
+  FileTypeNotAllowedError,
 } from './errors';

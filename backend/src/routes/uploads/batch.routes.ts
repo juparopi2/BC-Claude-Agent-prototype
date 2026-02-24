@@ -28,6 +28,7 @@ import {
   ConcurrentModificationError,
   InvalidTargetFolderError,
   ManifestValidationError,
+  FileTypeNotAllowedError,
 } from '@/services/files/batch';
 import { sendError } from '@/shared/utils/error-response';
 import { ErrorCode } from '@/shared/constants/errors';
@@ -57,7 +58,7 @@ function handleDomainError(res: Response, error: unknown): void {
     sendError(res, ErrorCode.STATE_CONFLICT, error.message);
     return;
   }
-  if (error instanceof BlobNotFoundError || error instanceof ManifestValidationError || error instanceof InvalidTargetFolderError) {
+  if (error instanceof BlobNotFoundError || error instanceof ManifestValidationError || error instanceof InvalidTargetFolderError || error instanceof FileTypeNotAllowedError) {
     sendError(res, ErrorCode.VALIDATION_ERROR, error.message);
     return;
   }

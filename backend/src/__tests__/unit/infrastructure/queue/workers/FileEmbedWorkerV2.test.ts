@@ -160,7 +160,7 @@ describe('FileEmbedWorker', () => {
 
       // Verify mimeType query
       expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('SELECT mime_type FROM files'),
+        expect.stringContaining('SELECT mime_type, file_modified_at, name, size_bytes FROM files'),
         { fileId: SAMPLE_JOB_DATA.fileId, userId: SAMPLE_JOB_DATA.userId },
       );
 

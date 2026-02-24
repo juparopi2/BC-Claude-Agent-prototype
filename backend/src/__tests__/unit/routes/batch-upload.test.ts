@@ -116,6 +116,14 @@ vi.mock('@/services/files/batch', () => ({
       this.name = 'ManifestValidationError';
     }
   },
+  FileTypeNotAllowedError: class extends Error {
+    public readonly mimeType: string;
+    constructor(mimeType: string, allowedTypes: string) {
+      super(`File type not allowed: ${mimeType}. Allowed types: ${allowedTypes}`);
+      this.name = 'FileTypeNotAllowedError';
+      this.mimeType = mimeType;
+    }
+  },
 }));
 
 // Import mocked error classes for test assertions

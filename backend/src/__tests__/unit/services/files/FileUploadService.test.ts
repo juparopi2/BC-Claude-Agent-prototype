@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { FileUploadService, getFileUploadService, __resetFileUploadService } from '@services/files';
+import { FileTypeNotAllowedError } from '@services/files/batch/errors';
 
 // Mock logger only
 const mockLogger = vi.hoisted(() => ({
@@ -236,23 +237,23 @@ describe('FileUploadService', () => {
       }).not.toThrow();
     });
 
-    it('should throw error for disallowed MIME type', () => {
+    it('should throw FileTypeNotAllowedError for disallowed MIME type', () => {
       const service = getFileUploadService();
 
       expect(() => {
         service.validateFileType('application/x-executable');
-      }).toThrow('File type not allowed: application/x-executable');
+      }).toThrow(FileTypeNotAllowedError);
 
       expect(() => {
         service.validateFileType('application/x-msdownload');
-      }).toThrow('File type not allowed: application/x-msdownload');
+      }).toThrow(FileTypeNotAllowedError);
 
       expect(() => {
         service.validateFileType('video/mp4');
-      }).toThrow('File type not allowed: video/mp4');
+      }).toThrow(FileTypeNotAllowedError);
     });
 
-    it('should throw descriptive error message with the invalid MIME type', () => {
+    it('should include MIME type and allowed types in error message', () => {
       const service = getFileUploadService();
       const invalidMimeType = 'application/x-dangerous';
 
@@ -260,10 +261,12 @@ describe('FileUploadService', () => {
         service.validateFileType(invalidMimeType);
         expect.fail('Should have thrown error');
       } catch (error) {
-        expect(error).toBeInstanceOf(Error);
-        expect((error as Error).message).toContain(invalidMimeType);
-        expect((error as Error).message).toContain('File type not allowed');
-        expect((error as Error).message).toContain('Allowed types:');
+        expect(error).toBeInstanceOf(FileTypeNotAllowedError);
+        const typedError = error as FileTypeNotAllowedError;
+        expect(typedError.mimeType).toBe(invalidMimeType);
+        expect(typedError.message).toContain('File type not allowed');
+        expect(typedError.message).toContain(invalidMimeType);
+        expect(typedError.message).toContain('Allowed types:');
       }
     });
   });

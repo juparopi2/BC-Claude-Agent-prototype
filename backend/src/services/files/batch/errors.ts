@@ -79,3 +79,13 @@ export class ManifestValidationError extends Error {
     this.details = details;
   }
 }
+
+export class FileTypeNotAllowedError extends Error {
+  public readonly mimeType: string;
+
+  constructor(mimeType: string, allowedTypes: string) {
+    super(`File type not allowed: ${mimeType}. Allowed types: ${allowedTypes}`);
+    this.name = 'FileTypeNotAllowedError';
+    this.mimeType = mimeType;
+  }
+}

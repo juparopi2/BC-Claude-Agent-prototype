@@ -11,6 +11,7 @@
  */
 
 import { useCallback, useEffect, useRef } from 'react';
+import { toast } from 'sonner';
 import type {
   ManifestFileItem,
   ManifestFolderItem,
@@ -484,6 +485,9 @@ export function useBatchUpload(): UseBatchUploadReturn {
         });
 
         if (!batchResponse.success) {
+          const rawMessage = batchResponse.error?.message ?? 'Upload failed';
+          const dotIndex = rawMessage.indexOf('. Allowed types:');
+          toast.error(dotIndex > 0 ? rawMessage.substring(0, dotIndex) : rawMessage);
           removeBatch(batchKey);
           return null;
         }

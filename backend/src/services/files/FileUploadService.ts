@@ -2,6 +2,7 @@ import { BlobServiceClient, ContainerClient, BlobSASPermissions, generateBlobSAS
 import { env } from '@/infrastructure/config/environment';
 import { createChildLogger } from '@/shared/utils/logger';
 import { getUsageTrackingService } from '@/domains/billing/tracking/UsageTrackingService';
+import { FileTypeNotAllowedError } from '@/services/files/batch/errors';
 import type { Logger } from 'pino';
 
 // File type whitelist
@@ -129,7 +130,7 @@ export class FileUploadService {
   public validateFileType(mimeType: string): void {
     if (!ALLOWED_MIME_TYPES.includes(mimeType)) {
       this.logger.warn({ mimeType }, 'File type not allowed');
-      throw new Error(`File type not allowed: ${mimeType}. Allowed types: ${ALLOWED_MIME_TYPES.join(', ')}`);
+      throw new FileTypeNotAllowedError(mimeType, ALLOWED_MIME_TYPES.join(', '));
     }
 
     this.logger.debug({ mimeType }, 'File type validated');

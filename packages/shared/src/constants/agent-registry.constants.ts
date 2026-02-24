@@ -65,6 +65,17 @@ export const AGENT_DESCRIPTION: Record<AgentId, string> = {
 } as const;
 
 // ============================================
+// AGENT UI ORDER (for dropdowns and lists)
+// ============================================
+export const AGENT_UI_ORDER: readonly AgentId[] = [
+  AGENT_ID.SUPERVISOR,
+  AGENT_ID.BC_AGENT,
+  AGENT_ID.RAG_AGENT,
+  AGENT_ID.GRAPHING_AGENT,
+  AGENT_ID.RESEARCH_AGENT,
+] as const;
+
+// ============================================
 // CAPABILITY TYPES
 // ============================================
 export const AGENT_CAPABILITY = {

@@ -17,9 +17,16 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Send, Square, WifiOff, Mic, Paperclip, Globe, Loader2 } from 'lucide-react';
-import { FileAttachmentChip, InputOptionsBar, AudioRecordingIndicator, MentionAutocomplete, MentionChip } from '@/src/presentation/chat';
+import { FileAttachmentChip, InputOptionsBar, MentionAutocomplete, MentionChip } from '@/src/presentation/chat';
 import type { FileMention, ParsedFile } from '@bc-agent/shared';
 import { cn } from '@/lib/utils';
+
+/** Format seconds as MM:SS */
+function formatRecordingDuration(seconds: number): string {
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
 
 /**
  * Pending file info (for pending mode)
@@ -219,7 +226,6 @@ export default function ChatInput({
   // Audio recording hook
   const {
     isRecording,
-    audioLevel,
     duration: recordingDuration,
     isSupported: isAudioSupported,
     startRecording,
@@ -532,40 +538,41 @@ export default function ChatInput({
           />
 
           <div className="flex items-center gap-1 ml-auto">
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant={isRecording ? "destructive" : "ghost"}
-                    size="sm"
-                    className="gap-1.5"
-                    disabled={!isAudioSupported || effectiveIsBusy || disabled || isTranscribing}
-                    onClick={handleMicClick}
-                  >
-                    {isRecording ? (
-                      <AudioRecordingIndicator level={audioLevel} duration={recordingDuration} />
-                    ) : isTranscribing ? (
-                      <Loader2 className="size-3.5 animate-spin" />
-                    ) : (
-                      <Mic className="size-3.5" />
-                    )}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p className="text-xs">
-                    {!isAudioSupported
-                      ? 'Voice input not supported'
-                      : isRecording
-                        ? 'Click to stop recording'
-                        : isTranscribing
-                          ? 'Transcribing...'
-                          : message.trim().length > 0 
-                            ? 'Continue dictation' 
-                            : 'Start dictation'}
-                  </p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            {/* Mic button — visible in options row when there's text (continue dictation) */}
+            {canSend && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant={isRecording ? "destructive" : "ghost"}
+                      size="sm"
+                      className="gap-1.5 animate-in fade-in slide-in-from-right-1 duration-200"
+                      disabled={!isAudioSupported || effectiveIsBusy || disabled || isTranscribing}
+                      onClick={handleMicClick}
+                    >
+                      {isRecording ? (
+                        <Mic className="size-3.5 text-white animate-pulse" />
+                      ) : isTranscribing ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <Mic className="size-3.5" />
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="text-xs">
+                      {!isAudioSupported
+                        ? 'Voice input not supported'
+                        : isRecording
+                          ? 'Stop recording'
+                          : isTranscribing
+                            ? 'Transcribing...'
+                            : 'Continue dictation'}
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
 
             <TooltipProvider>
               <Tooltip>
@@ -640,26 +647,55 @@ export default function ChatInput({
             rows={1}
           />
 
-          {showStopButton ? (
-            <Button
-              onClick={handleStop}
-              size="icon"
-              variant="destructive"
-              className="shrink-0"
-            >
-              <Square className="size-4" />
-            </Button>
-          ) : (
-            <Button
-              onClick={handleSend}
-              disabled={!canSend}
-              size="icon"
-              className="shrink-0"
-              data-testid="send-button"
-            >
-              <Send className="size-4" />
-            </Button>
-          )}
+          <div className="relative shrink-0">
+            {isRecording && (
+              <div className="absolute -top-7 left-1/2 -translate-x-1/2 bg-destructive text-destructive-foreground text-xs font-medium px-2 py-0.5 rounded-full tabular-nums animate-in fade-in slide-in-from-bottom-1">
+                {formatRecordingDuration(recordingDuration)}
+              </div>
+            )}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  {showStopButton ? (
+                    <Button onClick={handleStop} size="icon" variant="destructive">
+                      <Square className="size-4" />
+                    </Button>
+                  ) : (
+                    <Button
+                      onClick={canSend ? handleSend : handleMicClick}
+                      disabled={canSend ? false : (!isAudioSupported || effectiveIsBusy || disabled || isTranscribing)}
+                      size="icon"
+                      variant={isRecording ? 'destructive' : 'default'}
+                      className="transition-all duration-200"
+                      data-testid="send-button"
+                    >
+                      <span className="transition-transform duration-200">
+                        {isRecording ? (
+                          <Mic className="size-4 text-white animate-pulse" />
+                        ) : isTranscribing ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : canSend ? (
+                          <Send className="size-4" />
+                        ) : (
+                          <Mic className="size-4" />
+                        )}
+                      </span>
+                    </Button>
+                  )}
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p className="text-xs">
+                    {showStopButton ? 'Stop agent'
+                      : isRecording ? 'Stop recording'
+                      : isTranscribing ? 'Transcribing...'
+                      : canSend ? 'Send message'
+                      : !isAudioSupported ? 'Voice input not supported'
+                      : 'Start dictation'}
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
         </div>
 
         {/* Connection Status */}

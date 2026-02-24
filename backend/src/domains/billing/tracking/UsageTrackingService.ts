@@ -719,6 +719,68 @@ export class UsageTrackingService {
   }
 
   /**
+   * Track Anthropic server tool usage (web_search, code_execution).
+   *
+   * Pricing:
+   * - web_search: $10 per 1,000 queries
+   * - code_execution: FREE when used with web_search (our default)
+   *
+   * @param userId - User ID
+   * @param sessionId - Session ID
+   * @param webSearchRequests - Number of web search requests
+   * @param codeExecutionRequests - Number of code execution requests
+   * @param metadata - Optional metadata (messageId, model, etc.)
+   */
+  async trackServerToolUsage(
+    userId: string,
+    sessionId: string,
+    webSearchRequests: number,
+    codeExecutionRequests: number,
+    metadata?: Record<string, unknown>
+  ): Promise<void> {
+    try {
+      // Track web search usage (the expensive one)
+      if (webSearchRequests > 0) {
+        const webSearchCost = webSearchRequests * UNIT_COSTS.web_search_query;
+
+        this.logger.info({
+          userId, sessionId, webSearchRequests, cost: webSearchCost, metadata,
+        }, 'Tracking web search usage');
+
+        await this.insertUsageEvent(
+          userId, sessionId, 'search', 'web_search_query',
+          webSearchRequests, 'queries', webSearchCost,
+          { ...metadata, tool: 'web_search' }
+        );
+
+        await this.incrementRedisCounter(userId, 'web_search_queries', webSearchRequests);
+      }
+
+      // Track code execution usage (free with web_search, tracked for analytics)
+      if (codeExecutionRequests > 0) {
+        const codeExecCost = codeExecutionRequests * UNIT_COSTS.code_execution_request;
+
+        this.logger.info({
+          userId, sessionId, codeExecutionRequests, cost: codeExecCost, metadata,
+        }, 'Tracking code execution usage');
+
+        await this.insertUsageEvent(
+          userId, sessionId, 'ai', 'code_execution_request',
+          codeExecutionRequests, 'executions', codeExecCost,
+          { ...metadata, tool: 'code_execution' }
+        );
+
+        await this.incrementRedisCounter(userId, 'code_execution_requests', codeExecutionRequests);
+      }
+    } catch (error) {
+      this.logger.error({
+        error: error instanceof Error ? error.message : String(error),
+        userId, sessionId, webSearchRequests, codeExecutionRequests,
+      }, 'Failed to track server tool usage (non-blocking)');
+    }
+  }
+
+  /**
    * Insert usage event into database
    *
    * Private method that handles SQL insertion with parameterized queries.

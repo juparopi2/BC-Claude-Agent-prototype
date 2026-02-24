@@ -153,6 +153,7 @@ export function trackAssistantMessageState(
     outputTokens: msgEvent.tokenUsage.outputTokens,
     cacheCreationTokens: msgEvent.tokenUsage.cacheCreationTokens,
     cacheReadTokens: msgEvent.tokenUsage.cacheReadTokens,
+    serverToolUse: msgEvent.tokenUsage.serverToolUse,
   });
 
   // Accumulate per-agent usage for billing attribution

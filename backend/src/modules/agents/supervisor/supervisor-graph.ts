@@ -172,44 +172,55 @@ class SupervisorGraphAdapter implements ICompiledGraph {
 
     // 1. Check for targetAgentId (direct agent invocation, bypass supervisor LLM)
     const targetAgentId = typedInputs.context?.options?.targetAgentId;
+    const enableWebSearch = typedInputs.context?.options?.enableWebSearch;
+
     if (targetAgentId && targetAgentId !== 'auto' && targetAgentId !== 'supervisor') {
-      const targetAgent = agentMap.get(targetAgentId as AgentId);
-      if (targetAgent) {
+      // When web search is enabled with a non-research target, fall through to supervisor
+      // so it can coordinate research-agent first, then the target agent.
+      if (enableWebSearch && targetAgentId !== AGENT_ID.RESEARCH_AGENT) {
         logger.info(
-          { targetAgentId },
-          'Direct agent invocation via targetAgentId, bypassing supervisor LLM'
+          { targetAgentId, sessionId },
+          'Web search enabled with non-research target — using supervisor for coordination'
         );
+        // Fall through to supervisor routing below
+      } else {
+        const targetAgent = agentMap.get(targetAgentId as AgentId);
+        if (targetAgent) {
+          logger.info(
+            { targetAgentId },
+            'Direct agent invocation via targetAgentId, bypassing supervisor LLM'
+          );
 
-        const agentResult = await targetAgent.agent.invoke(
-          {
-            messages: [new HumanMessage(prompt)],
-          },
-          {
-            configurable: {
-              thread_id: `directed-${sessionId}-${Date.now()}`,
-              userId,
-              invocationId: `inv-${Date.now()}`,
+          const agentResult = await targetAgent.agent.invoke(
+            {
+              messages: [new HumanMessage(prompt)],
             },
-            recursionLimit: options?.recursionLimit ?? 100,
-            signal: options?.signal,
-          }
-        );
+            {
+              configurable: {
+                thread_id: `directed-${sessionId}-${Date.now()}`,
+                userId,
+                invocationId: `inv-${Date.now()}`,
+              },
+              recursionLimit: options?.recursionLimit ?? 100,
+              signal: options?.signal,
+            }
+          );
 
-        return adaptSupervisorResult(agentResult as { messages: BaseMessage[] }, sessionId);
+          return adaptSupervisorResult(agentResult as { messages: BaseMessage[] }, sessionId);
+        }
+        logger.debug(
+          { targetAgentId },
+          'targetAgentId not found in worker agentMap, using supervisor routing'
+        );
       }
-      logger.debug(
-        { targetAgentId },
-        'targetAgentId not found in worker agentMap, using supervisor routing'
-      );
     }
 
     // 2. Normal flow → supervisor LLM routes (auto mode)
 
     // Augment prompt with web search hint when enableWebSearch is true.
     // This guides the supervisor to prefer the research-agent for the current request.
-    const enableWebSearch = typedInputs.context?.options?.enableWebSearch;
     const supervisorPrompt = enableWebSearch
-      ? `[WEB SEARCH ENABLED] The user wants real-time web information. Route to research-agent.\n\n${prompt}`
+      ? `[WEB SEARCH ENABLED] You MUST route this request to research-agent for web research.\n\n${prompt}`
       : prompt;
 
     if (enableWebSearch) {

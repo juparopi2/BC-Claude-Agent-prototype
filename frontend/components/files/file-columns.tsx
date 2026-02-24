@@ -93,7 +93,7 @@ export function createFileColumns(callbacks: {
         );
       },
       size: 300,
-      minSize: 150,
+      minSize: 100,
       enableHiding: false,
     },
     // Size column

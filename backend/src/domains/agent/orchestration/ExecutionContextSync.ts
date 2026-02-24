@@ -223,6 +223,18 @@ export interface ExecutionContextSync {
   totalCacheReadTokens: number;
 
   /**
+   * Web search requests count in this execution (Anthropic server tool).
+   * MUTABLE: Accumulated after each assistant_message with server tool usage.
+   */
+  totalWebSearchRequests: number;
+
+  /**
+   * Code execution requests count in this execution (Anthropic server tool).
+   * MUTABLE: Accumulated after each assistant_message with server tool usage.
+   */
+  totalCodeExecutionRequests: number;
+
+  /**
    * Per-agent token breakdown for billing attribution.
    * Key: agentId, Value: accumulated token usage for that agent.
    * MUTABLE: Updated after each assistant_message.
@@ -302,6 +314,8 @@ export function createExecutionContextSync(
     totalOutputTokens: 0,
     totalCacheCreationTokens: 0,
     totalCacheReadTokens: 0,
+    totalWebSearchRequests: 0,
+    totalCodeExecutionRequests: 0,
     perAgentUsage: new Map(),
 
     // Options
@@ -366,6 +380,10 @@ export function setUsageSync(
     outputTokens?: number;
     cacheCreationTokens?: number;
     cacheReadTokens?: number;
+    serverToolUse?: {
+      webSearchRequests?: number;
+      codeExecutionRequests?: number;
+    };
   }
 ): void {
   // ACCUMULATE instead of overwrite — multi-agent turns have multiple assistant_messages
@@ -373,6 +391,12 @@ export function setUsageSync(
   ctx.totalOutputTokens += usage.outputTokens ?? 0;
   ctx.totalCacheCreationTokens += usage.cacheCreationTokens ?? 0;
   ctx.totalCacheReadTokens += usage.cacheReadTokens ?? 0;
+
+  // Accumulate server tool usage (Anthropic web_search, code_execution)
+  if (usage.serverToolUse) {
+    ctx.totalWebSearchRequests += usage.serverToolUse.webSearchRequests ?? 0;
+    ctx.totalCodeExecutionRequests += usage.serverToolUse.codeExecutionRequests ?? 0;
+  }
 }
 
 /**

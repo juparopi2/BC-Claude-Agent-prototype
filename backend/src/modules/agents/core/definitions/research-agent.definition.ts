@@ -62,7 +62,12 @@ RESPONSE FORMAT:
 - Use markdown headings, bullet points, and tables for clarity
 - Include source URLs when citing web results
 - For code execution results, explain what the code did and show key outputs
-- Be concise but thorough — prioritize actionable insights`,
+- Be concise but thorough — prioritize actionable insights
+
+COST AWARENESS:
+- web_search costs $10 per 1,000 queries. Prefer web_fetch (free) when the URL is known.
+- Only use web_search for genuinely unknown information lookups.
+- Batch related questions into a single well-crafted search query when possible.`,
   modelRole: 'research_agent',
   isUserSelectable: true,
   isSystemAgent: false,

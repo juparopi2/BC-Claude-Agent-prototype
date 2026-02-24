@@ -184,6 +184,20 @@ function extractUsage(message: BaseMessage): NormalizedTokenUsage | null {
       }
     }
 
+    // Extract server tool use counts (Anthropic web_search, code_execution)
+    const serverToolUse = (usageMeta as {
+      server_tool_use?: {
+        web_search_requests?: number;
+        code_execution_requests?: number;
+      };
+    }).server_tool_use;
+    if (serverToolUse) {
+      usage.serverToolUse = {
+        webSearchRequests: serverToolUse.web_search_requests,
+        codeExecutionRequests: serverToolUse.code_execution_requests,
+      };
+    }
+
     extractThinkingTokens(message, usage);
     return usage;
   }
@@ -214,6 +228,20 @@ function extractUsage(message: BaseMessage): NormalizedTokenUsage | null {
     }
     if (typeof rawUsage.cache_read_input_tokens === 'number') {
       usage.cacheReadTokens = rawUsage.cache_read_input_tokens;
+    }
+
+    // Extract server tool use counts from raw Anthropic response_metadata.usage
+    const rawServerToolUse = (responseMeta.usage as {
+      server_tool_use?: {
+        web_search_requests?: number;
+        code_execution_requests?: number;
+      };
+    }).server_tool_use;
+    if (rawServerToolUse) {
+      usage.serverToolUse = {
+        webSearchRequests: rawServerToolUse.web_search_requests,
+        codeExecutionRequests: rawServerToolUse.code_execution_requests,
+      };
     }
 
     extractThinkingTokens(message, usage);

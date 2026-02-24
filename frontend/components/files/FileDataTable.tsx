@@ -92,6 +92,8 @@ function DraggableHeader({ header }: { header: Header<ParsedFile, unknown> }) {
     opacity: isDragging ? 0.5 : 1,
     position: 'relative',
     width: header.getSize(),
+    maxWidth: header.getSize(),
+    overflow: 'hidden',
     zIndex: isDragging ? 1 : 0,
   };
 
@@ -144,6 +146,8 @@ function DragAlongCell({ cell }: { cell: Cell<ParsedFile, unknown> }) {
     transform: CSS.Translate.toString(transform),
     opacity: isDragging ? 0.5 : 1,
     width: cell.column.getSize(),
+    maxWidth: cell.column.getSize(),
+    overflow: 'hidden',
     zIndex: isDragging ? 1 : 0,
   };
 
@@ -412,7 +416,7 @@ export function FileDataTable() {
             modifiers={[restrictToHorizontalAxis]}
             onDragEnd={handleDragEnd}
           >
-            <Table style={{ width: table.getTotalSize() }}>
+            <Table style={{ width: table.getTotalSize(), tableLayout: 'fixed' }}>
               <TableHeader className="group/header sticky top-0 bg-background z-10">
                 {table.getHeaderGroups().map((headerGroup) => (
                   <TableRow key={headerGroup.id}>

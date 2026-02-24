@@ -242,6 +242,25 @@ export class AgentOrchestrator implements IAgentOrchestrator {
         });
       }
 
+      // Fire-and-forget server tool usage tracking (web_search, code_execution)
+      if (userId && (ctx.totalWebSearchRequests > 0 || ctx.totalCodeExecutionRequests > 0)) {
+        getUsageTrackingService().trackServerToolUsage(
+          userId,
+          sessionId,
+          ctx.totalWebSearchRequests,
+          ctx.totalCodeExecutionRequests,
+          {
+            messageId: pipelineResult.result.messageId,
+            model: pipelineResult.usedModel ?? 'unknown',
+          }
+        ).catch((err: unknown) => {
+          this.logger.warn({
+            error: err instanceof Error ? err.message : String(err),
+            userId, sessionId,
+          }, 'Failed to track server tool usage (non-blocking)');
+        });
+      }
+
       return pipelineResult.result;
     } catch (error) {
       const errorInfo = error instanceof Error

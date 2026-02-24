@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { AGENT_ID, AGENT_ICON, AGENT_COLOR, AGENT_DISPLAY_NAME, AGENT_DESCRIPTION } from '@bc-agent/shared';
+import { AGENT_ICON, AGENT_COLOR, AGENT_DISPLAY_NAME, AGENT_DESCRIPTION, AGENT_UI_ORDER } from '@bc-agent/shared';
 import { useUIPreferencesStore } from '@/src/domains/ui';
 import { useAgentStateStore } from '@/src/domains/chat/stores/agentStateStore';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -9,36 +9,13 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Check, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-const AGENT_OPTIONS = [
-  {
-    id: AGENT_ID.SUPERVISOR,
-    name: AGENT_DISPLAY_NAME[AGENT_ID.SUPERVISOR],
-    icon: AGENT_ICON[AGENT_ID.SUPERVISOR],
-    color: AGENT_COLOR[AGENT_ID.SUPERVISOR],
-    description: AGENT_DESCRIPTION[AGENT_ID.SUPERVISOR],
-  },
-  {
-    id: AGENT_ID.BC_AGENT,
-    name: AGENT_DISPLAY_NAME[AGENT_ID.BC_AGENT],
-    icon: AGENT_ICON[AGENT_ID.BC_AGENT],
-    color: AGENT_COLOR[AGENT_ID.BC_AGENT],
-    description: AGENT_DESCRIPTION[AGENT_ID.BC_AGENT],
-  },
-  {
-    id: AGENT_ID.RAG_AGENT,
-    name: AGENT_DISPLAY_NAME[AGENT_ID.RAG_AGENT],
-    icon: AGENT_ICON[AGENT_ID.RAG_AGENT],
-    color: AGENT_COLOR[AGENT_ID.RAG_AGENT],
-    description: AGENT_DESCRIPTION[AGENT_ID.RAG_AGENT],
-  },
-  {
-    id: AGENT_ID.GRAPHING_AGENT,
-    name: AGENT_DISPLAY_NAME[AGENT_ID.GRAPHING_AGENT],
-    icon: AGENT_ICON[AGENT_ID.GRAPHING_AGENT],
-    color: AGENT_COLOR[AGENT_ID.GRAPHING_AGENT],
-    description: AGENT_DESCRIPTION[AGENT_ID.GRAPHING_AGENT],
-  },
-];
+const AGENT_OPTIONS = AGENT_UI_ORDER.map((id) => ({
+  id,
+  name: AGENT_DISPLAY_NAME[id],
+  icon: AGENT_ICON[id],
+  color: AGENT_COLOR[id],
+  description: AGENT_DESCRIPTION[id],
+}));
 
 interface AgentSelectorDropdownProps {
   disabled?: boolean;

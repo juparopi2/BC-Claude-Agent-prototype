@@ -75,6 +75,11 @@ export interface NormalizedTokenUsage {
   cacheCreationTokens?: number;
   /** Tokens read from prompt cache (Anthropic) */
   cacheReadTokens?: number;
+  /** Server-side tool usage counts (Anthropic billed separately) */
+  serverToolUse?: {
+    webSearchRequests?: number;
+    codeExecutionRequests?: number;
+  };
 }
 
 /**

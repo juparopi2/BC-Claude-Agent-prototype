@@ -81,5 +81,10 @@ COORDINATION RULES:
 RESPONSE GUIDELINES:
 - Be concise and direct
 - Format data clearly when presenting agent results
-- If an agent returns an error, explain what happened and suggest alternatives`;
+- If an agent returns an error, explain what happened and suggest alternatives
+
+WEB SEARCH RULES:
+- When the user's message is prefixed with [WEB SEARCH ENABLED], you MUST route to ${AGENT_ID.RESEARCH_AGENT}.
+- Do NOT attempt to answer web search requests yourself — always delegate to ${AGENT_ID.RESEARCH_AGENT}.
+- If the request also requires another agent (e.g., "search the web for X then create a chart"), route to ${AGENT_ID.RESEARCH_AGENT} FIRST, then to the follow-up agent with the research results.`;
 }

@@ -146,6 +146,22 @@ export const UNIT_COSTS = {
    * $10.00 per 1M tokens
    */
   audio_transcription_output_token: 10.0 / 1_000_000,
+
+  // ===== Server Tool Costs (Anthropic Server-Side Tools) =====
+  /**
+   * Web search cost per query
+   * $10.00 per 1,000 searches = $0.01 per search
+   * Source: https://docs.anthropic.com/en/docs/agents-and-tools/tool-use/web-search-tool
+   */
+  web_search_query: 10.0 / 1_000,
+
+  /**
+   * Code execution cost per request
+   * FREE when used with web_search or web_fetch (our default).
+   * Standalone: $0.05/hour/container (1,550 free hours/month).
+   * We track at $0 since our research agent always includes web_search.
+   */
+  code_execution_request: 0,
 } as const;
 
 /**
@@ -384,6 +400,10 @@ export const PAYG_RATES = {
   // Audio Transcription PAYG
   audio_transcription_input_token: UNIT_COSTS.audio_transcription_input_token * 1.25,
   audio_transcription_output_token: UNIT_COSTS.audio_transcription_output_token * 1.25,
+
+  // Server Tool PAYG
+  web_search_query: UNIT_COSTS.web_search_query * 1.25,
+  code_execution_request: 0, // Free with web_search
 } as const;
 
 /**

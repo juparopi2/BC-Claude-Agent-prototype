@@ -54,6 +54,15 @@ const mockAudioRecordingState = {
   stopRecording: vi.fn(),
 };
 
+// Mock mention store
+const mockMentionStoreState = {
+  mentions: [] as Array<{ fileId: string; name: string; isFolder: boolean; mimeType: string; mode: string }>,
+  addMention: vi.fn(),
+  removeMention: vi.fn(),
+  toggleMode: vi.fn(),
+  clearMentions: vi.fn(),
+};
+
 vi.mock('@/src/domains/chat', () => ({
   useAgentState: vi.fn(() => mockAgentState),
   useSocketConnection: vi.fn(() => mockSocketConnection),
@@ -66,6 +75,9 @@ vi.mock('@/src/domains/chat', () => ({
     hasUploading: mockChatAttachmentsState.hasUploading,
   })),
   useAudioRecording: vi.fn(() => mockAudioRecordingState),
+  useFileMentionStore: vi.fn((selector: (state: typeof mockMentionStoreState) => unknown) =>
+    selector(mockMentionStoreState)
+  ),
 }));
 
 // Variable to control UI preferences mock

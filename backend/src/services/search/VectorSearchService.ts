@@ -180,7 +180,7 @@ export class VectorSearchService {
       fileStatus: 'active',
       isImage: false,
       fileName: chunk.fileName || null,
-      sizeBytes: chunk.sizeBytes ?? null,
+      sizeBytes: chunk.sizeBytes != null ? String(chunk.sizeBytes) : null,
     }));
 
     // Per-document mimeType trace for diagnosing per-chunk field gaps
@@ -511,7 +511,7 @@ export class VectorSearchService {
       mimeType: mimeType || null,
       fileStatus: 'active',
       fileName: fileName || null,
-      sizeBytes: sizeBytes ?? null,
+      sizeBytes: sizeBytes != null ? String(sizeBytes) : null,
       fileModifiedAt: fileModifiedAt || null,
     };
 

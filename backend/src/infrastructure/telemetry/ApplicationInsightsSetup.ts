@@ -153,8 +153,8 @@ export function flushApplicationInsights(callback?: (v: string) => void): void {
     return;
   }
 
-  appInsights.defaultClient.flush({
-    callback: (response) => {
+  (appInsights.defaultClient as unknown as { flush(opts?: { callback?: (v: string) => void }): void }).flush({
+    callback: (response: string) => {
       console.log('[ApplicationInsights] Telemetry flushed:', response);
       callback?.(response);
     },

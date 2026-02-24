@@ -104,7 +104,7 @@ export class ContextRetrievalService {
       mimeType: file.mimeType,
       sizeBytes: file.sizeBytes,
       hasExtractedText: file.hasExtractedText,
-      embeddingStatus: file.embeddingStatus,
+      pipelineStatus: file.pipelineStatus,
     };
 
     const { strategy, reason } = this.strategyFactory.selectStrategy(fileForStrategy);

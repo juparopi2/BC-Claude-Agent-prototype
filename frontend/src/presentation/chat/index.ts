@@ -36,5 +36,8 @@ export { AgentTransitionIndicator } from './AgentTransitionIndicator';
 export { AgentGroupedSection } from './AgentGroupedSection';
 export { MentionAutocomplete } from './MentionAutocomplete';
 export { MentionChip } from './MentionChip';
+export { InlineMention } from './InlineMention';
+export { MentionAwareContent } from './MentionAwareContent';
+export { MentionHighlightOverlay } from './MentionHighlightOverlay';
 export { AudioReactiveMicButton } from './AudioReactiveMicButton';
 export type { AudioReactiveMicButtonProps } from './AudioReactiveMicButton';

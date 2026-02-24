@@ -181,7 +181,7 @@ describe('AgentRegistry', () => {
     it('should filter agents by capability', () => {
       const erpAgents = registry.getByCapability(AGENT_CAPABILITY.ERP_QUERY);
       expect(erpAgents).toHaveLength(1);
-      expect(erpAgents[0].id).toBe(AGENT_ID.BC_AGENT);
+      expect(erpAgents[0]!.id).toBe(AGENT_ID.BC_AGENT);
     });
 
     it('should report correct size', () => {
@@ -243,7 +243,7 @@ describe('AgentRegistry', () => {
       const summaries = registry.getUISummary();
       expect(summaries).toHaveLength(1); // Only user-selectable
 
-      const summary = summaries[0];
+      const summary = summaries[0]!;
       expect(summary.id).toBe(AGENT_ID.BC_AGENT);
       expect(summary.name).toBeDefined();
       expect(summary.description).toBeDefined();
@@ -252,14 +252,14 @@ describe('AgentRegistry', () => {
       expect(summary.capabilities).toBeDefined();
 
       // Ensure backend-only fields are NOT present
-      expect((summary as Record<string, unknown>)['systemPrompt']).toBeUndefined();
-      expect((summary as Record<string, unknown>)['modelRole']).toBeUndefined();
+      expect((summary as unknown as Record<string, unknown>)['systemPrompt']).toBeUndefined();
+      expect((summary as unknown as Record<string, unknown>)['modelRole']).toBeUndefined();
     });
 
     it('should only include user-selectable agents in UI summary', () => {
       const summaries = registry.getUISummary();
       expect(summaries).toHaveLength(1);
-      expect(summaries[0].id).toBe(AGENT_ID.BC_AGENT);
+      expect(summaries[0]!.id).toBe(AGENT_ID.BC_AGENT);
     });
   });
 

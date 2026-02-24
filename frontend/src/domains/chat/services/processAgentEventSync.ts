@@ -96,6 +96,7 @@ export function processAgentEventSync(
         sessionId?: string;
         chatAttachmentIds?: string[];
         chatAttachments?: ChatAttachmentSummary[];
+        mentions?: import('@bc-agent/shared').FileMention[];
       };
 
       // Ensure agent is marked busy
@@ -108,7 +109,7 @@ export function processAgentEventSync(
       // Clear all optimistic messages (simpler approach)
       messageStore.getState().clearAllOptimisticMessages();
 
-      // Add confirmed message
+      // Add confirmed message (include mentions for inline rendering)
       messageStore.getState().addMessage({
         type: 'standard',
         id: confirmedEvent.messageId,
@@ -117,6 +118,7 @@ export function processAgentEventSync(
         content: confirmedEvent.content,
         sequence_number: confirmedEvent.sequenceNumber,
         created_at: new Date().toISOString(),
+        mentions: confirmedEvent.mentions,
       });
 
       // Store chat attachments - prefer full summaries over IDs-only

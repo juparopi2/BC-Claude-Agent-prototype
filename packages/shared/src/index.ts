@@ -211,6 +211,8 @@ export type {
   ParsedChatAttachment,
   AnthropicDocumentBlock,
   AnthropicImageBlock,
+  AnthropicFileDocumentBlock,
+  AnthropicFileImageBlock,
   AnthropicAttachmentContentBlock,
   LangChainImageBlock,
   LangChainTextBlock,

@@ -25,7 +25,6 @@ import { getAllChartTypes, getChartTypeMetadata } from './chart-registry';
 // Tool 1: List Available Charts
 // ============================================
 
-// @ts-expect-error TS2589: Type instantiation is excessively deep (LangChain tool() + Zod)
 export const listAvailableChartsTool = tool(
   async () => {
     const chartTypes = getAllChartTypes();
@@ -53,7 +52,6 @@ export const listAvailableChartsTool = tool(
 // Tool 2: Get Chart Details
 // ============================================
 
-// @ts-expect-error TS2589: Type instantiation is excessively deep (LangChain tool() + Zod)
 export const getChartDetailsTool = tool(
   async (input) => {
     const { chart_type } = input;
@@ -81,7 +79,6 @@ export const getChartDetailsTool = tool(
 // Tool 3: Validate Chart Config
 // ============================================
 
-// @ts-expect-error TS2589: Type instantiation is excessively deep (LangChain tool() + Zod)
 export const validateChartConfigTool = tool(
   async (input) => {
     const { config } = input;

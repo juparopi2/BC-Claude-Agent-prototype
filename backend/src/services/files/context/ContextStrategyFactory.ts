@@ -47,7 +47,7 @@ export class ContextStrategyFactory {
    *   mimeType: 'application/pdf',
    *   sizeBytes: 1_000_000,
    *   hasExtractedText: true,
-   *   embeddingStatus: 'completed'
+   *   pipelineStatus: 'ready'
    * });
    * // result.strategy === 'EXTRACTED_TEXT'
    * ```
@@ -61,8 +61,8 @@ export class ContextStrategyFactory {
       };
     }
 
-    // Rule 2: Large files (>=30MB) with completed embeddings → RAG
-    if (file.sizeBytes >= MAX_DIRECT_SIZE && file.embeddingStatus === 'completed') {
+    // Rule 2: Large files (>=30MB) with completed pipeline (ready for RAG) → RAG
+    if (file.sizeBytes >= MAX_DIRECT_SIZE && file.pipelineStatus === 'ready') {
       return {
         strategy: 'RAG_CHUNKS',
         reason: 'Large file with embeddings - using RAG chunks',

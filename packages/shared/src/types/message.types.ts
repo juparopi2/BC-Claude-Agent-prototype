@@ -15,6 +15,7 @@
 
 import type { ChatAttachmentSummary } from './chat-attachments.types';
 import type { AgentIdentity } from './agent-identity.types';
+import type { FileMention } from './file-mention.types';
 
 /**
  * Base fields shared by all message types.
@@ -109,6 +110,13 @@ export interface StandardMessage extends BaseMessage {
    * Only present on user messages that had attachments.
    */
   chatAttachments?: ChatAttachmentSummary[];
+
+  /**
+   * @mentions associated with this user message (persisted for reconstruction).
+   * Contains file/folder references that were @mentioned in the message.
+   * Only present on user messages that had mentions.
+   */
+  mentions?: FileMention[];
 }
 
 /**

@@ -209,7 +209,7 @@ export class AgentAnalyticsService {
         invocationCount > 0 ? Math.round(totalLatencyMs / invocationCount) : 0;
 
       return {
-        date: row.date.toISOString().split('T')[0], // YYYY-MM-DD format
+        date: row.date.toISOString().split('T')[0] ?? '', // YYYY-MM-DD format
         invocationCount,
         successCount: row.success_count,
         errorCount: row.error_count,

@@ -30,6 +30,8 @@ describe('BusinessCentralAgent', () => {
       context: {},
       toolExecutions: [],
       usedModel: '',
+      currentAgentIdentity: { agentId: 'bc-agent' as import('@bc-agent/shared').AgentId, agentName: 'Business Central' },
+      handoffs: [],
     };
   });
 

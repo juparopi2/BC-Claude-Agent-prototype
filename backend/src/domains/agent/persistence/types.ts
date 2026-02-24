@@ -5,6 +5,8 @@
  * Used by PersistenceCoordinator and error handling throughout the agent domain.
  */
 
+import type { FileMention } from '@bc-agent/shared';
+
 /**
  * Categories of persistence errors for debugging and retry logic.
  * Each category maps to a specific root cause.
@@ -175,6 +177,12 @@ export interface PersistUserMessageOptions {
    * These are ephemeral attachments uploaded via /api/chat/attachments.
    */
   chatAttachmentIds?: string[];
+
+  /**
+   * Full mention metadata to persist with the user message.
+   * Stored in the metadata JSON column for reconstruction on reload.
+   */
+  mentions?: FileMention[];
 }
 
 /**

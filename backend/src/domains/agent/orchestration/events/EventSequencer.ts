@@ -63,7 +63,7 @@ export function assignPreAllocatedSequences(
 
   for (const event of events) {
     if (event.persistenceStrategy !== 'transient') {
-      const seq = sequences[seqIndex++];
+      const seq = sequences[seqIndex++] as number;
       event.preAllocatedSequenceNumber = seq;
       assignments.set(event.eventId, seq);
     }

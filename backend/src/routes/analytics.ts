@@ -71,7 +71,7 @@ router.get('/agents', authenticateMicrosoft, async (req: Request, res: Response)
  */
 router.get('/agents/:id/daily', authenticateMicrosoft, async (req: Request, res: Response): Promise<void> => {
   try {
-    const agentId = req.params.id;
+    const agentId = req.params.id ?? '';
     const days = req.query.days ? parseInt(req.query.days as string, 10) : 30;
 
     if (isNaN(days) || days < 1 || days > 365) {

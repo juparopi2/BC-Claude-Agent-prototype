@@ -141,14 +141,14 @@ export const logger = pino(
   transport
 );
 
-// Map Pino levels to App Insights severity (SeverityLevel enum values)
-const SEVERITY_MAP: Record<string, number> = {
-  trace: 0, // Verbose
-  debug: 0, // Verbose
-  info: 1, // Information
-  warn: 2, // Warning
-  error: 3, // Error
-  fatal: 4, // Critical
+// Map Pino levels to App Insights severity (KnownSeverityLevel string values)
+const SEVERITY_MAP: Record<string, string> = {
+  trace: 'Verbose',
+  debug: 'Verbose',
+  info: 'Information',
+  warn: 'Warning',
+  error: 'Error',
+  fatal: 'Critical',
 };
 
 /**
@@ -178,7 +178,7 @@ function trackToAppInsights(
 
   client.trackTrace({
     message: msg,
-    severity: SEVERITY_MAP[level] ?? 1,
+    severity: SEVERITY_MAP[level] ?? 'Information',
     properties,
   });
 }

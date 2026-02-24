@@ -26,7 +26,7 @@ describe('ContextStrategyFactory', () => {
           mimeType: 'image/png',
           sizeBytes: 2_000_000, // 2MB
           hasExtractedText: false,
-          embeddingStatus: 'pending',
+          pipelineStatus: 'pending',
         };
         const result = factory.selectStrategy(file);
         expect(result.strategy).toBe('DIRECT_CONTENT');
@@ -38,7 +38,7 @@ describe('ContextStrategyFactory', () => {
           mimeType: 'image/jpeg',
           sizeBytes: 5_000_000,
           hasExtractedText: false,
-          embeddingStatus: 'pending',
+          pipelineStatus: 'pending',
         };
         expect(factory.selectStrategy(file).strategy).toBe('DIRECT_CONTENT');
       });
@@ -48,7 +48,7 @@ describe('ContextStrategyFactory', () => {
           mimeType: 'image/webp',
           sizeBytes: 1_000_000,
           hasExtractedText: false,
-          embeddingStatus: 'pending',
+          pipelineStatus: 'pending',
         };
         expect(factory.selectStrategy(file).strategy).toBe('DIRECT_CONTENT');
       });
@@ -58,7 +58,7 @@ describe('ContextStrategyFactory', () => {
           mimeType: 'image/gif',
           sizeBytes: 3_000_000,
           hasExtractedText: false,
-          embeddingStatus: 'pending',
+          pipelineStatus: 'pending',
         };
         expect(factory.selectStrategy(file).strategy).toBe('DIRECT_CONTENT');
       });
@@ -70,7 +70,7 @@ describe('ContextStrategyFactory', () => {
           mimeType: 'application/pdf',
           sizeBytes: 1_000_000, // 1MB
           hasExtractedText: true,
-          embeddingStatus: 'completed',
+          pipelineStatus: 'completed',
         };
         expect(factory.selectStrategy(file).strategy).toBe('EXTRACTED_TEXT');
       });
@@ -80,7 +80,7 @@ describe('ContextStrategyFactory', () => {
           mimeType: 'application/pdf',
           sizeBytes: 10_000_000, // 10MB
           hasExtractedText: false,
-          embeddingStatus: 'pending',
+          pipelineStatus: 'pending',
         };
         expect(factory.selectStrategy(file).strategy).toBe('DIRECT_CONTENT');
       });
@@ -92,7 +92,7 @@ describe('ContextStrategyFactory', () => {
           mimeType: 'text/plain',
           sizeBytes: 50_000, // 50KB
           hasExtractedText: false,
-          embeddingStatus: 'pending',
+          pipelineStatus: 'pending',
         };
         expect(factory.selectStrategy(file).strategy).toBe('DIRECT_CONTENT');
       });
@@ -102,7 +102,7 @@ describe('ContextStrategyFactory', () => {
           mimeType: 'text/plain',
           sizeBytes: 100_000,
           hasExtractedText: true,
-          embeddingStatus: 'completed',
+          pipelineStatus: 'completed',
         };
         expect(factory.selectStrategy(file).strategy).toBe('EXTRACTED_TEXT');
       });
@@ -112,7 +112,7 @@ describe('ContextStrategyFactory', () => {
           mimeType: 'text/markdown',
           sizeBytes: 20_000,
           hasExtractedText: false,
-          embeddingStatus: 'pending',
+          pipelineStatus: 'pending',
         };
         expect(factory.selectStrategy(file).strategy).toBe('DIRECT_CONTENT');
       });
@@ -122,7 +122,7 @@ describe('ContextStrategyFactory', () => {
           mimeType: 'text/html',
           sizeBytes: 30_000,
           hasExtractedText: false,
-          embeddingStatus: 'pending',
+          pipelineStatus: 'pending',
         };
         expect(factory.selectStrategy(file).strategy).toBe('DIRECT_CONTENT');
       });
@@ -134,7 +134,7 @@ describe('ContextStrategyFactory', () => {
           mimeType: 'text/plain',
           sizeBytes: 50_000_000, // 50MB
           hasExtractedText: true,
-          embeddingStatus: 'completed',
+          pipelineStatus: 'ready',
         };
         expect(factory.selectStrategy(file).strategy).toBe('RAG_CHUNKS');
       });
@@ -144,7 +144,7 @@ describe('ContextStrategyFactory', () => {
           mimeType: 'application/pdf',
           sizeBytes: 40_000_000, // 40MB
           hasExtractedText: true,
-          embeddingStatus: 'pending',
+          pipelineStatus: 'pending',
         };
         expect(factory.selectStrategy(file).strategy).toBe('EXTRACTED_TEXT');
       });
@@ -154,7 +154,7 @@ describe('ContextStrategyFactory', () => {
           mimeType: 'text/plain',
           sizeBytes: 35_000_000,
           hasExtractedText: true,
-          embeddingStatus: 'failed',
+          pipelineStatus: 'failed',
         };
         expect(factory.selectStrategy(file).strategy).toBe('EXTRACTED_TEXT');
       });
@@ -166,7 +166,7 @@ describe('ContextStrategyFactory', () => {
           mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
           sizeBytes: 500_000,
           hasExtractedText: true,
-          embeddingStatus: 'completed',
+          pipelineStatus: 'completed',
         };
         expect(factory.selectStrategy(file).strategy).toBe('EXTRACTED_TEXT');
       });
@@ -176,7 +176,7 @@ describe('ContextStrategyFactory', () => {
           mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
           sizeBytes: 200_000,
           hasExtractedText: false,
-          embeddingStatus: 'pending',
+          pipelineStatus: 'pending',
         };
         // DOCX is not natively supported by Claude, so fallback to direct
         expect(factory.selectStrategy(file).strategy).toBe('DIRECT_CONTENT');
@@ -189,7 +189,7 @@ describe('ContextStrategyFactory', () => {
           mimeType: 'text/csv',
           sizeBytes: 100_000,
           hasExtractedText: true,
-          embeddingStatus: 'completed',
+          pipelineStatus: 'completed',
         };
         expect(factory.selectStrategy(file).strategy).toBe('EXTRACTED_TEXT');
       });
@@ -199,7 +199,7 @@ describe('ContextStrategyFactory', () => {
           mimeType: 'text/csv',
           sizeBytes: 50_000,
           hasExtractedText: false,
-          embeddingStatus: 'pending',
+          pipelineStatus: 'pending',
         };
         // CSV can be sent directly as text
         expect(factory.selectStrategy(file).strategy).toBe('DIRECT_CONTENT');
@@ -212,7 +212,7 @@ describe('ContextStrategyFactory', () => {
           mimeType: 'text/plain',
           sizeBytes: 0,
           hasExtractedText: false,
-          embeddingStatus: 'pending',
+          pipelineStatus: 'pending',
         };
         expect(factory.selectStrategy(file).strategy).toBe('DIRECT_CONTENT');
       });
@@ -222,7 +222,7 @@ describe('ContextStrategyFactory', () => {
           mimeType: 'application/pdf',
           sizeBytes: 30 * 1024 * 1024, // Exactly 30MB
           hasExtractedText: true,
-          embeddingStatus: 'completed',
+          pipelineStatus: 'ready',
         };
         // At boundary, with embeddings → RAG
         expect(factory.selectStrategy(file).strategy).toBe('RAG_CHUNKS');
@@ -233,7 +233,7 @@ describe('ContextStrategyFactory', () => {
           mimeType: 'application/x-unknown',
           sizeBytes: 100_000,
           hasExtractedText: true,
-          embeddingStatus: 'completed',
+          pipelineStatus: 'completed',
         };
         expect(factory.selectStrategy(file).strategy).toBe('EXTRACTED_TEXT');
       });
@@ -243,7 +243,7 @@ describe('ContextStrategyFactory', () => {
           mimeType: 'application/x-unknown',
           sizeBytes: 100_000,
           hasExtractedText: false,
-          embeddingStatus: 'pending',
+          pipelineStatus: 'pending',
         };
         // Fallback to direct
         expect(factory.selectStrategy(file).strategy).toBe('DIRECT_CONTENT');

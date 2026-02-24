@@ -41,6 +41,20 @@ export const FILE_VALIDATION = {
 } as const;
 
 /**
+ * Multer upload limits
+ */
+export const MULTER_LIMITS = {
+  /** Maximum file size: 50MB */
+  FILE_SIZE: 50 * 1024 * 1024,
+
+  /** Maximum number of files per request */
+  MAX_FILES: 10,
+
+  /** Maximum field size: 1MB */
+  FIELD_SIZE: 1 * 1024 * 1024,
+} as const;
+
+/**
  * File list pagination constants
  */
 export const FILE_PAGINATION = {

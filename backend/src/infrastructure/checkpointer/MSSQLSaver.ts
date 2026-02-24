@@ -362,7 +362,7 @@ export class MSSQLSaver extends BaseCheckpointSaver {
         if (options?.filter) {
           let match = true;
           for (const [key, value] of Object.entries(options.filter)) {
-            if (metadata[key] !== value) {
+            if ((metadata as Record<string, unknown>)[key] !== value) {
               match = false;
               break;
             }
@@ -531,7 +531,9 @@ export class MSSQLSaver extends BaseCheckpointSaver {
 
     try {
       for (let i = 0; i < writes.length; i++) {
-        const [channel, value] = writes[i];
+        const write = writes[i];
+        if (!write) continue;
+        const [channel, value] = write;
 
         // Determine index: use WRITES_IDX_MAP for special channels, otherwise sequential
         const idx = WRITES_IDX_MAP[channel] ?? i;

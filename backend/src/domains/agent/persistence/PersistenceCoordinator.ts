@@ -96,7 +96,7 @@ export class PersistenceCoordinator implements IPersistenceCoordinator {
         role: 'user',
         messageType: 'text',
         content,
-        metadata: {},
+        metadata: options?.mentions?.length ? { mentions: options.mentions } : {},
         sequenceNumber: dbEvent.sequence_number,
         eventId: dbEvent.id,
       });

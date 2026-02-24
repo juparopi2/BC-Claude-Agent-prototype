@@ -162,7 +162,10 @@ export class AgentOrchestrator implements IAgentOrchestrator {
     const userMessageResult = await this.persistenceCoordinator.persistUserMessage(
       sessionId,
       prompt,
-      { chatAttachmentIds: options?.chatAttachments }
+      {
+        chatAttachmentIds: options?.chatAttachments,
+        mentions: options?.mentions,
+      }
     );
 
     // Fetch attachment summaries for frontend rendering
@@ -187,6 +190,7 @@ export class AgentOrchestrator implements IAgentOrchestrator {
       persistenceState: 'persisted',
       chatAttachmentIds: options?.chatAttachments,
       chatAttachments: chatAttachmentSummaries,
+      mentions: options?.mentions,
     });
 
     try {

@@ -12,6 +12,7 @@
 
 import { ThinkingBlock } from './ThinkingBlock';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { MentionAwareContent } from './MentionAwareContent';
 import { PersistenceIndicator } from './PersistenceIndicator';
 import { SourceCarousel } from './SourceCarousel';
 import { MessageAttachmentCarousel } from './MessageAttachmentCarousel';
@@ -19,6 +20,7 @@ import {
   isThinkingMessage, isStandardMessage, isToolResultMessage,
   type Message, type PersistenceState, type ChatAttachmentSummary,
   type AgentIdentity, AGENT_COLOR, AGENT_ICON, AGENT_DESCRIPTION, type AgentId,
+  type FileMention,
 } from '@bc-agent/shared';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
@@ -157,11 +159,18 @@ export default function MessageBubble({
             isUser ? 'bg-primary text-primary-foreground' : 'bg-muted'
           )}
         >
-          <MarkdownRenderer
-            content={message.content}
-            citationFileMap={citationFileMap}
-            onCitationOpen={onCitationOpen}
-          />
+          {isUser && message.mentions && message.mentions.length > 0 ? (
+            <MentionAwareContent
+              content={message.content}
+              mentions={message.mentions}
+            />
+          ) : (
+            <MarkdownRenderer
+              content={message.content}
+              citationFileMap={citationFileMap}
+              onCitationOpen={onCitationOpen}
+            />
+          )}
         </div>
 
         {/* MessageAttachmentCarousel for user messages with attachments */}

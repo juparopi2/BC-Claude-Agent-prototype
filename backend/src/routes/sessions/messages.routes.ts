@@ -110,7 +110,7 @@ router.get('/:sessionId/messages', authenticateMicrosoft, async (req: Request, r
           if (message.type === 'standard' && message.role === 'assistant') {
             const messageCitations = citationsMap.get(message.id);
             if (messageCitations && messageCitations.length > 0) {
-              (message as Record<string, unknown>).citedFiles = messageCitations;
+              (message as unknown as Record<string, unknown>).citedFiles = messageCitations;
             }
           }
         }
@@ -143,7 +143,7 @@ router.get('/:sessionId/messages', authenticateMicrosoft, async (req: Request, r
           if (message.type === 'standard' && message.role === 'user') {
             const messageAttachments = attachmentsMap.get(message.id);
             if (messageAttachments && messageAttachments.length > 0) {
-              (message as Record<string, unknown>).chatAttachments = messageAttachments;
+              (message as unknown as Record<string, unknown>).chatAttachments = messageAttachments;
             }
           }
         }

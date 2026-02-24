@@ -5,7 +5,6 @@
  * Types for determining how to include file content in LLM context.
  */
 
-import type { EmbeddingStatus } from '@/types/file.types';
 
 /**
  * Strategy for how to include file content in LLM context
@@ -35,8 +34,8 @@ export interface FileForStrategy {
   /** True if text has been extracted from the file */
   hasExtractedText: boolean;
 
-  /** Current status of embedding generation */
-  embeddingStatus: EmbeddingStatus;
+  /** Current pipeline status (unified processing state) */
+  pipelineStatus: string;
 }
 
 /**

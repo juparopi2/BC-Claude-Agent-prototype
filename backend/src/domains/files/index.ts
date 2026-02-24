@@ -5,7 +5,6 @@
  *
  * Submodules:
  * - config: Centralized configuration
- * - status: Readiness state computation (ReadinessStateComputer)
  * - retry: Retry tracking and orchestration (FileRetryService, ProcessingRetryManager)
  * - cleanup: Partial data cleanup (PartialDataCleaner)
  * - emission: WebSocket event emission (FileEventEmitter)
@@ -16,9 +15,6 @@
 // Configuration
 export * from './config';
 
-// Status computation
-export * from './status';
-
 // Retry tracking
 export * from './retry';
 
@@ -27,9 +23,3 @@ export * from './cleanup';
 
 // Event emission
 export * from './emission';
-
-// Upload session (folder-based batch processing)
-export * from './upload-session';
-
-// Processing scheduler (backpressure control)
-export * from './scheduler';

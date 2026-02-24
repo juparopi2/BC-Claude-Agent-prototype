@@ -48,6 +48,8 @@ describe('RAGAgent', () => {
       },
       toolExecutions: [],
       usedModel: '',
+      currentAgentIdentity: { agentId: 'rag-agent' as import('@bc-agent/shared').AgentId, agentName: 'Knowledge Base Expert' },
+      handoffs: [],
     };
   });
 

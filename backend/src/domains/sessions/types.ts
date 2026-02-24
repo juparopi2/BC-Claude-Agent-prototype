@@ -8,7 +8,7 @@
  */
 
 import type { StopReason, TextCitation } from '@anthropic-ai/sdk/resources/messages';
-import type { AgentIdentity } from '@bc-agent/shared';
+import type { AgentIdentity, FileMention } from '@bc-agent/shared';
 
 // ============================================
 // Database Row Types
@@ -117,6 +117,12 @@ export interface StandardMessageResponse extends BaseMessage {
   model?: string;
   citations?: TextCitation[];
   citations_count?: number;
+  /**
+   * @mentions associated with this user message (persisted for reconstruction).
+   * Contains file/folder references that were @mentioned in the message.
+   * Only present on user messages that had mentions.
+   */
+  mentions?: FileMention[];
 }
 
 /**

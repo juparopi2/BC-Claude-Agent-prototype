@@ -8,6 +8,7 @@
  */
 
 import type { AgentEvent } from './agent.types';
+import type { FileMention } from './file-mention.types';
 
 /**
  * Agent Select Data (Client -> Server) (PRD-040)
@@ -113,6 +114,13 @@ export interface ChatMessageData {
    * converted to base64 image content blocks.
    */
   visionFileIds?: string[];
+
+  /**
+   * Full mention metadata for persistence and reconstruction.
+   * Contains file/folder references with display names and modes.
+   * Sent alongside mentionedFileIds (which contains just the IDs for scoping).
+   */
+  mentions?: FileMention[];
 
   /**
    * Enable web search capability for this message.

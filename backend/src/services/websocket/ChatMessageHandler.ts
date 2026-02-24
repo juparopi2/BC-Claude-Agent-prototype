@@ -167,6 +167,7 @@ export class ChatMessageHandler {
           mentionedFileIds: data.mentionedFileIds,
           visionFileIds: data.visionFileIds,
           enableWebSearch: data.enableWebSearch,
+          mentions: data.mentions,
         }
       );
 

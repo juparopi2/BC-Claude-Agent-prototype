@@ -71,8 +71,8 @@ describe('Graphing Agent Tools', () => {
     it('should work for all valid chart types', async () => {
       const chartTypes = ['bar', 'stacked_bar', 'line', 'area', 'donut', 'bar_list', 'combo', 'kpi', 'kpi_grid', 'table'];
       for (const chartType of chartTypes) {
-        const result = await getChartDetailsTool.invoke({ chart_type: chartType });
-        const parsed = JSON.parse(result);
+        const result = await getChartDetailsTool.invoke({ chart_type: chartType as import('@bc-agent/shared').ChartType });
+        const parsed = JSON.parse(result as string);
         expect(parsed.id).toBe(chartType);
         expect(parsed).toHaveProperty('name');
         expect(parsed).toHaveProperty('example');

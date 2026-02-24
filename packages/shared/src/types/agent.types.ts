@@ -10,6 +10,7 @@
 import type { SourceType, FetchStrategy } from './source.types';
 import type { ChatAttachmentSummary } from './chat-attachments.types';
 import type { AgentIdentity } from './agent-identity.types';
+import type { FileMention } from './file-mention.types';
 
 /**
  * Handoff Type (PRD-040)
@@ -405,6 +406,12 @@ export interface UserMessageConfirmedEvent extends BaseAgentEvent {
    * doesn't need to fetch separately or display placeholders.
    */
   chatAttachments?: ChatAttachmentSummary[];
+  /**
+   * @mentions associated with this user message.
+   * Included in the confirmation event so the frontend can render
+   * inline mention badges on the live message immediately.
+   */
+  mentions?: FileMention[];
 }
 
 /**

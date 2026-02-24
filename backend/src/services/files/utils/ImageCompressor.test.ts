@@ -340,7 +340,7 @@ describe('ImageCompressor', () => {
       it('should have descending quality levels', () => {
         const levels = COMPRESSION_CONSTANTS.JPEG_QUALITY_LEVELS;
         for (let i = 1; i < levels.length; i++) {
-          expect(levels[i]).toBeLessThan(levels[i - 1]);
+          expect(levels[i]).toBeLessThan(levels[i - 1]!);
         }
       });
     });

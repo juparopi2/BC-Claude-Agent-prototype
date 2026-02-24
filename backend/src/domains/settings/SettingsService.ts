@@ -94,7 +94,7 @@ export class SettingsService {
         };
       }
 
-      const row = result.recordset[0];
+      const row = result.recordset[0]!;
 
       return {
         theme: row.theme as UserSettings['theme'],

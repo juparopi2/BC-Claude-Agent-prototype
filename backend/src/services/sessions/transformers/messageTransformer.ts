@@ -149,6 +149,7 @@ export function transformMessage(row: DbMessageRow): MessageResponse {
         model: row.model || undefined,
         citations: metadata.citations as StandardMessageResponse['citations'],
         citations_count: metadata.citations_count as number | undefined,
+        mentions: (metadata.mentions as StandardMessageResponse['mentions']) || undefined,
       };
       return standardMessage;
     }

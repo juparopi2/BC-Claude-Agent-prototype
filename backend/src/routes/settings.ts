@@ -17,6 +17,7 @@ import { createChildLogger } from '@/shared/utils/logger';
 import { ErrorCode } from '@/shared/constants/errors';
 import { sendError } from '@/shared/utils/error-response';
 import { validateSafe, updateUserSettingsSchema } from '@bc-agent/shared';
+import type { UserSettings } from '@bc-agent/shared';
 
 const logger = createChildLogger({ service: 'SettingsRoutes' });
 const router = Router();
@@ -95,7 +96,7 @@ router.patch('/settings', authenticateMicrosoft, async (req: Request, res: Respo
 
     const settings = await getSettingsService().updateUserSettings(
       normalizedUserId,
-      validation.data
+      validation.data as Partial<UserSettings>
     );
 
     logger.info({ userId: normalizedUserId, theme: settings.theme }, 'User settings updated');

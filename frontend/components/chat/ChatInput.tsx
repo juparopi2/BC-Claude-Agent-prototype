@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Send, Square, WifiOff, Mic, Paperclip, Globe, Loader2 } from 'lucide-react';
-import { FileAttachmentChip, InputOptionsBar, MentionAutocomplete, MentionChip, AudioReactiveMicButton } from '@/src/presentation/chat';
+import { FileAttachmentChip, InputOptionsBar, MentionAutocomplete, MentionChip, AudioReactiveMicButton, MentionHighlightOverlay } from '@/src/presentation/chat';
 import type { FileMention, ParsedFile } from '@bc-agent/shared';
 import { cn } from '@/lib/utils';
 
@@ -45,7 +45,7 @@ export interface ChatInputProps {
   // Socket state from parent (avoids duplicate useSocket calls)
   isConnected?: boolean;
   isReconnecting?: boolean;
-  sendMessage?: (message: string, options?: { enableThinking?: boolean; thinkingBudget?: number; attachments?: string[]; chatAttachments?: string[]; enableAutoSemanticSearch?: boolean; targetAgentId?: string; mentionedFileIds?: string[]; visionFileIds?: string[]; enableWebSearch?: boolean }) => void;
+  sendMessage?: (message: string, options?: { enableThinking?: boolean; thinkingBudget?: number; attachments?: string[]; chatAttachments?: string[]; enableAutoSemanticSearch?: boolean; targetAgentId?: string; mentionedFileIds?: string[]; visionFileIds?: string[]; enableWebSearch?: boolean; mentions?: FileMention[] }) => void;
   stopAgent?: () => void;
 
   // ============================================
@@ -151,6 +151,21 @@ export default function ChatInput({
    */
   const handleAtDetection = (value: string, cursorPos: number) => {
     const textBeforeCursor = value.substring(0, cursorPos);
+
+    // Don't trigger autocomplete inside an existing @[...] marker
+    // Check if we're between an unclosed @[ and the cursor
+    const lastOpenBracket = textBeforeCursor.lastIndexOf('@[');
+    if (lastOpenBracket >= 0) {
+      const closingBracket = textBeforeCursor.indexOf(']', lastOpenBracket);
+      if (closingBracket < 0) {
+        // Inside an unclosed @[...] — don't trigger autocomplete
+        setIsAutocompleteOpen(false);
+        setAutocompleteQuery('');
+        setAtTriggerPosition(null);
+        return;
+      }
+    }
+
     // Find @ at start of input or preceded by whitespace
     const atMatch = textBeforeCursor.match(/(^|\s)@(\S*)$/);
     if (atMatch) {
@@ -177,12 +192,22 @@ export default function ChatInput({
       mode: 'rag_context',
     });
 
-    // Remove the @query text from message
+    // Replace @query with @[Name] inline
     if (atTriggerPosition !== null) {
       const cursorPos = textareaRef.current?.selectionStart ?? message.length;
       const before = message.substring(0, atTriggerPosition);
       const after = message.substring(cursorPos);
-      setMessage(`${before}${after}`);
+      const marker = `@[${file.name}] `;
+      const newMessage = `${before}${marker}${after}`;
+      setMessage(newMessage);
+
+      // Place cursor after the inserted marker
+      const newCursorPos = atTriggerPosition + marker.length;
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
+        }
+      }, 10);
     }
 
     // Close autocomplete
@@ -192,6 +217,19 @@ export default function ChatInput({
 
     // Refocus textarea
     textareaRef.current?.focus();
+  };
+
+  /**
+   * Remove a mention chip and its corresponding @[Name] marker from text
+   */
+  const handleRemoveMention = (fileId: string) => {
+    const mention = mentions.find(m => m.fileId === fileId);
+    if (mention) {
+      const marker = `@[${mention.name}]`;
+      const cleaned = message.replace(marker, '').replace(/  +/g, ' ').trim();
+      setMessage(cleaned);
+    }
+    removeMention(fileId);
   };
 
   /**
@@ -303,6 +341,7 @@ export default function ChatInput({
         mentionedFileIds: ragMentions.length > 0 ? ragMentions : undefined,
         visionFileIds: visionMentions.length > 0 ? visionMentions : undefined,
         enableWebSearch: webSearchEnabled || undefined,
+        mentions: mentions.length > 0 ? [...mentions] : undefined,
       };
       sendMessage(message, options);
     }
@@ -489,7 +528,7 @@ export default function ChatInput({
                 key={mention.fileId}
                 mention={mention}
                 onToggleMode={() => toggleMentionMode(mention.fileId)}
-                onRemove={() => removeMention(mention.fileId)}
+                onRemove={() => handleRemoveMention(mention.fileId)}
               />
             ))}
           </div>
@@ -636,26 +675,37 @@ export default function ChatInput({
             onHighlightChange={setHighlightedIndex}
           />
 
-          <Textarea
-            ref={textareaRef}
-            value={message}
-            onChange={(e) => {
-              const value = e.target.value;
-              setMessage(value);
-              updateCursorPosition();
-              // Detect @ for autocomplete
-              const cursorPos = e.target.selectionStart ?? value.length;
-              handleAtDetection(value, cursorPos);
-            }}
-            onKeyDown={handleKeyDown}
-            onSelect={updateCursorPosition}
-            onClick={updateCursorPosition}
-            onKeyUp={updateCursorPosition}
-            placeholder={effectiveIsConnected ? "Ask me anything about your business..." : "Connecting..."}
-            disabled={!effectiveIsConnected || effectiveIsBusy || disabled}
-            className="min-h-[44px] max-h-[200px] resize-none"
-            rows={1}
-          />
+          <div className="relative flex-1">
+            <MentionHighlightOverlay
+              text={message}
+              mentions={mentions}
+              textareaRef={textareaRef}
+            />
+            <Textarea
+              ref={textareaRef}
+              value={message}
+              onChange={(e) => {
+                const value = e.target.value;
+                setMessage(value);
+                updateCursorPosition();
+                // Detect @ for autocomplete
+                const cursorPos = e.target.selectionStart ?? value.length;
+                handleAtDetection(value, cursorPos);
+              }}
+              onKeyDown={handleKeyDown}
+              onSelect={updateCursorPosition}
+              onClick={updateCursorPosition}
+              onKeyUp={updateCursorPosition}
+              placeholder={effectiveIsConnected ? "Ask me anything about your business..." : "Connecting..."}
+              disabled={!effectiveIsConnected || effectiveIsBusy || disabled}
+              className={cn(
+                "min-h-[44px] max-h-[200px] resize-none",
+                mentions.length > 0 && "!text-transparent caret-foreground selection:bg-primary/20"
+              )}
+              style={mentions.length > 0 ? { caretColor: 'hsl(var(--foreground))' } : undefined}
+              rows={1}
+            />
+          </div>
 
           <div className="relative shrink-0">
             {isRecording && !canSend && (

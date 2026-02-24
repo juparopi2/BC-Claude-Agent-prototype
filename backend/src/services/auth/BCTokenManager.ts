@@ -59,42 +59,6 @@ export class BCTokenManager {
     }
   }
 
-  /**
-   * Decrypt a token using AES-256-GCM
-   *
-   * @param ciphertext - Encrypted token (format: iv:encryptedData:authTag)
-   * @returns Decrypted token
-   */
-  private decryptToken(ciphertext: string): string {
-    try {
-      const parts = ciphertext.split(':');
-      if (parts.length !== 3) {
-        throw new Error('Invalid ciphertext format');
-      }
-
-      const [ivBase64, encryptedBase64, authTagBase64] = parts;
-
-      // Validate all parts exist (should always be true after length check)
-      if (!ivBase64 || !encryptedBase64 || !authTagBase64) {
-        throw new Error('Missing encryption components');
-      }
-
-      const iv = Buffer.from(ivBase64, 'base64');
-      const encrypted = Buffer.from(encryptedBase64, 'base64');
-      const authTag = Buffer.from(authTagBase64, 'base64');
-
-      const decipher = crypto.createDecipheriv(ENCRYPTION_ALGORITHM, this.encryptionKey, iv);
-      decipher.setAuthTag(authTag);
-
-      let decrypted = decipher.update(encrypted, undefined, 'utf8');
-      decrypted += decipher.final('utf8');
-
-      return decrypted;
-    } catch (error) {
-      this.logger.error('Token decryption failed', { error });
-      throw new Error('Failed to decrypt token');
-    }
-  }
 
   /**
    * Store encrypted BC access token for a user in the database

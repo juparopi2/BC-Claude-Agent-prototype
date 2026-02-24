@@ -20,7 +20,7 @@
  */
 
 import { randomUUID } from 'crypto';
-import type { AgentEvent, CitedFile } from '@bc-agent/shared';
+import type { AgentEvent, CitedFile, FileMention } from '@bc-agent/shared';
 import {
   createToolLifecycleManager,
   type ToolLifecycleManager,
@@ -94,6 +94,12 @@ export interface ExecuteSyncOptions {
    * @default false
    */
   enableWebSearch?: boolean;
+
+  /**
+   * Full mention metadata for persistence.
+   * Stored in user message metadata JSON for reconstruction.
+   */
+  mentions?: FileMention[];
 }
 
 /**

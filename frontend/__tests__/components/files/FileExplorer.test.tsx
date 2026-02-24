@@ -121,7 +121,7 @@ describe('FileExplorer', () => {
 
       // Wait for fetchFiles to be called with undefined (root folder)
       await waitFor(() => {
-        expect(mockGetFiles).toHaveBeenCalledWith({ folderId: undefined });
+        expect(mockGetFiles).toHaveBeenCalledWith({ folderId: null });
       });
 
       // Wait for files to be loaded into store
@@ -202,7 +202,7 @@ describe('FileExplorer', () => {
 
       // Wait for initial fetch
       await waitFor(() => {
-        expect(mockGetFiles).toHaveBeenCalledWith({ folderId: undefined });
+        expect(mockGetFiles).toHaveBeenCalledWith({ folderId: null });
       });
 
       // Navigate to folder by updating folderTreeStore
@@ -266,7 +266,7 @@ describe('FileExplorer', () => {
 
       // Wait for fetchFiles to be called with undefined (root)
       await waitFor(() => {
-        expect(mockGetFiles).toHaveBeenCalledWith({ folderId: undefined });
+        expect(mockGetFiles).toHaveBeenCalledWith({ folderId: null });
       });
 
       // Verify we're at root

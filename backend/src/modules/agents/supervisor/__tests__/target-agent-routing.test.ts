@@ -132,7 +132,7 @@ describe('targetAgentId routing', () => {
     });
 
     // The prompt should be passed as-is, not stripped
-    const invokeCall = mockAgentInvoke.mock.calls[0];
+    const invokeCall = mockAgentInvoke.mock.calls[0]!;
     const messagesArg = invokeCall[0].messages;
     expect(messagesArg[0].content).toBe(originalPrompt);
   });

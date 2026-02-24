@@ -49,7 +49,7 @@ router.get('/:id', authenticateMicrosoft, (req: Request, res: Response): void =>
   const agent = agents.find(a => a.id === agentId);
 
   if (!agent) {
-    sendNotFound(res, ErrorCode.NOT_FOUND, `Agent "${agentId}" not found`);
+    sendNotFound(res, ErrorCode.NOT_FOUND);
     return;
   }
 

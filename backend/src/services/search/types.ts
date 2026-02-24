@@ -88,6 +88,8 @@ export interface ImageIndexParams {
   contentVector?: number[];
   /** File size in bytes for filtering */
   sizeBytes?: number;
+  /** ISO 8601 timestamp of original file modification date */
+  fileModifiedAt?: string;
 }
 
 /**

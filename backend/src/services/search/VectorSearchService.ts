@@ -486,7 +486,7 @@ export class VectorSearchService {
       throw new Error('Failed to initialize search client');
     }
 
-    const { fileId, userId, embedding, fileName, caption, mimeType, contentVector, sizeBytes } = params;
+    const { fileId, userId, embedding, fileName, caption, mimeType, contentVector, sizeBytes, fileModifiedAt } = params;
     const normalizedFileId = fileId.toUpperCase();
     const normalizedUserId = userId.toUpperCase();
     const documentId = `img_${normalizedFileId}`;
@@ -512,6 +512,7 @@ export class VectorSearchService {
       fileStatus: 'active',
       fileName: fileName || null,
       sizeBytes: sizeBytes ?? null,
+      fileModifiedAt: fileModifiedAt || null,
     };
 
     logger.debug({

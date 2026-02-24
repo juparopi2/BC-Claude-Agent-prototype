@@ -15,6 +15,7 @@
  *   npx tsx backend/scripts/reset-user-data.ts --confirm       # Skip confirmation
  *   npx tsx backend/scripts/reset-user-data.ts --dry-run       # Preview only
  *   npx tsx backend/scripts/reset-user-data.ts --skip-redis    # Skip Redis flush
+ *   npx tsx backend/scripts/reset-user-data.ts --skip-files    # Preserve files/blobs/search
  *   npx tsx backend/scripts/reset-user-data.ts --help
  */
 import 'dotenv/config';
@@ -59,6 +60,7 @@ ${BOLD}Flags:${RESET}
   --confirm      Skip interactive confirmation
   --dry-run      Preview what would be deleted (no changes)
   --skip-redis   Skip Redis cleanup
+  --skip-files   Preserve files, blobs, and search index (clean sessions/chats only)
   --help         Show this help
 
 ${BOLD}What gets deleted:${RESET}
@@ -69,19 +71,33 @@ ${BOLD}What gets deleted:${RESET}
   AI Search    all documents in '${INDEX_NAME}' index
   Redis        all BullMQ queues, caches, rate limiters, event store
 
+${BOLD}With --skip-files:${RESET}
+  PRESERVED  files table, file_chunks, image_embeddings, blobs, search index
+  DELETED    sessions, messages, events, usage, checkpoints, Redis
+
 ${BOLD}What is PRESERVED:${RESET}
   users table, user_settings, permission_presets
 `);
 }
 
-function printWarning(): void {
-  console.log(`
+function printWarning(skipFiles: boolean): void {
+  if (skipFiles) {
+    console.log(`
+${YELLOW}${BOLD}╔══════════════════════════════════════════════════════════════╗${RESET}
+${YELLOW}${BOLD}║  SESSION RESET — Chat history will be PERMANENTLY DELETED   ║${RESET}
+${YELLOW}${BOLD}║  SQL (sessions/messages/events) + Redis                     ║${RESET}
+${YELLOW}${BOLD}║  Files, blobs, and search index are PRESERVED.              ║${RESET}
+${YELLOW}${BOLD}╚══════════════════════════════════════════════════════════════╝${RESET}
+`);
+  } else {
+    console.log(`
 ${RED}${BOLD}╔══════════════════════════════════════════════════════════════╗${RESET}
 ${RED}${BOLD}║  NUCLEAR RESET — ALL user data will be PERMANENTLY DELETED  ║${RESET}
 ${RED}${BOLD}║  SQL + Blob Storage + AI Search + Redis                     ║${RESET}
 ${RED}${BOLD}║  This action is IRREVERSIBLE.                               ║${RESET}
 ${RED}${BOLD}╚══════════════════════════════════════════════════════════════╝${RESET}
 `);
+  }
 }
 
 async function confirm(): Promise<boolean> {
@@ -105,7 +121,7 @@ function logStep(label: string, count: number, dryRun: boolean): void {
 }
 
 // ─── Phase 1: SQL Database ──────────────────────────────────────
-async function resetDatabase(dryRun: boolean): Promise<PhaseResult> {
+async function resetDatabase(dryRun: boolean, skipFiles: boolean): Promise<PhaseResult> {
   logPhase('SQL Database');
   const prisma = createPrisma();
   const deleted: Record<string, number> = {};
@@ -138,9 +154,9 @@ async function resetDatabase(dryRun: boolean): Promise<PhaseResult> {
       todos: await prisma.todos.count(),
       sessions: await prisma.sessions.count(),
       // These cascade from files:
-      file_chunks: await prisma.file_chunks.count(),
-      image_embeddings: await prisma.image_embeddings.count(),
-      files: await prisma.files.count(),
+      file_chunks: skipFiles ? 0 : await prisma.file_chunks.count(),
+      image_embeddings: skipFiles ? 0 : await prisma.image_embeddings.count(),
+      files: skipFiles ? 0 : await prisma.files.count(),
       // LangGraph:
       langgraph_checkpoints: await prisma.langgraph_checkpoints.count(),
       langgraph_checkpoint_writes: await prisma.langgraph_checkpoint_writes.count(),
@@ -208,8 +224,12 @@ async function resetDatabase(dryRun: boolean): Promise<PhaseResult> {
     logStep(`sessions (+ cascaded children)`, deleted.sessions, false);
 
     // 7. Files (CASCADE: file_chunks, image_embeddings)
-    deleted.files = (await prisma.files.deleteMany({})).count;
-    logStep(`files (+ cascaded chunks/embeddings)`, deleted.files, false);
+    if (!skipFiles) {
+      deleted.files = (await prisma.files.deleteMany({})).count;
+      logStep(`files (+ cascaded chunks/embeddings)`, deleted.files, false);
+    } else {
+      logStep('files (SKIPPED --skip-files)', 0, false);
+    }
 
     // 8. LangGraph state (large VarBinary(Max) rows — batch delete to avoid timeout)
     deleted.langgraph_checkpoint_writes = 0;
@@ -473,13 +493,15 @@ async function main(): Promise<void> {
   const dryRun = hasFlag('--dry-run');
   const autoConfirm = hasFlag('--confirm');
   const skipRedis = hasFlag('--skip-redis');
+  const skipFiles = hasFlag('--skip-files');
 
   console.log(`${BOLD}Full User Data Reset${RESET}`);
   console.log(`Mode: ${dryRun ? 'DRY RUN (preview only)' : 'LIVE — data WILL be deleted'}`);
   if (skipRedis) console.log(`Redis: SKIPPED (--skip-redis)`);
+  if (skipFiles) console.log(`Files: PRESERVED (--skip-files)`);
 
   if (!dryRun) {
-    printWarning();
+    printWarning(skipFiles);
     if (!autoConfirm) {
       const ok = await confirm();
       if (!ok) {
@@ -492,9 +514,15 @@ async function main(): Promise<void> {
   const results: PhaseResult[] = [];
 
   try {
-    results.push(await resetDatabase(dryRun));
-    results.push(await resetBlobStorage(dryRun));
-    results.push(await resetAISearch(dryRun));
+    results.push(await resetDatabase(dryRun, skipFiles));
+
+    if (!skipFiles) {
+      results.push(await resetBlobStorage(dryRun));
+      results.push(await resetAISearch(dryRun));
+    } else {
+      results.push({ name: 'Blob Storage', deleted: {}, skipped: true });
+      results.push({ name: 'AI Search', deleted: {}, skipped: true });
+    }
 
     if (!skipRedis) {
       results.push(await resetRedis(dryRun));

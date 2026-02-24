@@ -115,14 +115,16 @@ export class FileEmbedWorker {
         );
       }
 
-      // 4. Get file mimeType and file_modified_at for search indexing
-      const fileResult = await executeQuery<{ mime_type: string; file_modified_at: Date | null }>(
-        `SELECT mime_type, file_modified_at FROM files WHERE id = @fileId AND user_id = @userId`,
+      // 4. Get file mimeType, file_modified_at, name, and size_bytes for search indexing
+      const fileResult = await executeQuery<{ mime_type: string; file_modified_at: Date | null; name: string; size_bytes: number | null }>(
+        `SELECT mime_type, file_modified_at, name, size_bytes FROM files WHERE id = @fileId AND user_id = @userId`,
         { fileId, userId },
       );
       const mimeType = fileResult.recordset[0]?.mime_type;
       const fileModifiedAtRaw = fileResult.recordset[0]?.file_modified_at;
       const fileModifiedAt = fileModifiedAtRaw ? fileModifiedAtRaw.toISOString() : undefined;
+      const fileName = fileResult.recordset[0]?.name;
+      const sizeBytes = fileResult.recordset[0]?.size_bytes ?? undefined;
 
       // 5. Index in Azure AI Search
       const { VectorSearchService } = await import('@/services/search/VectorSearchService');
@@ -140,6 +142,8 @@ export class FileEmbedWorker {
         createdAt: new Date(),
         mimeType,
         fileModifiedAt,
+        fileName,
+        sizeBytes,
       }));
 
       const searchDocIds = await vectorSearchService.indexChunksBatch(chunksWithEmbeddings);

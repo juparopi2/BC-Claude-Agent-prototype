@@ -253,14 +253,17 @@ export class FileChunkingService {
         return;
       }
 
-      // Get file name and mime_type from files table
-      const fileResult = await executeQuery<{ name: string; mime_type: string | null }>(
-        `SELECT name, mime_type FROM files WHERE id = @fileId AND user_id = @userId`,
+      // Get file name, mime_type, file_modified_at, and size_bytes from files table
+      const fileResult = await executeQuery<{ name: string; mime_type: string | null; file_modified_at: Date | null; size_bytes: number | null }>(
+        `SELECT name, mime_type, file_modified_at, size_bytes FROM files WHERE id = @fileId AND user_id = @userId`,
         { fileId, userId }
       );
 
       const fileName = fileResult.recordset[0]?.name || 'unknown.jpg';
       const fileMimeType = fileResult.recordset[0]?.mime_type ?? undefined;
+      const fileModifiedAtRaw = fileResult.recordset[0]?.file_modified_at;
+      const fileModifiedAt = fileModifiedAtRaw ? fileModifiedAtRaw.toISOString() : undefined;
+      const sizeBytes = fileResult.recordset[0]?.size_bytes ?? undefined;
 
       logger.debug({
         fileId, userId,
@@ -332,6 +335,8 @@ export class FileChunkingService {
         caption: embeddingRecord.caption ?? undefined,
         mimeType: fileMimeType,
         contentVector: captionContentVector,
+        fileModifiedAt,
+        sizeBytes,
       });
 
       logger.info(

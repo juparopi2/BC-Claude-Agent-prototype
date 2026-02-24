@@ -168,7 +168,7 @@ export const indexSchema: SearchIndex = {
     },
     {
       name: 'sizeBytes',
-      type: 'Edm.Int64',
+      type: 'Edm.Int32',
       searchable: false,
       filterable: true,
       sortable: true,

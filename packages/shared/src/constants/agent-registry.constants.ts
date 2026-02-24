@@ -15,6 +15,7 @@ export const AGENT_ID = {
   RAG_AGENT: 'rag-agent',
   SUPERVISOR: 'supervisor',
   GRAPHING_AGENT: 'graphing-agent',
+  RESEARCH_AGENT: 'research-agent',
 } as const;
 
 export type AgentId = (typeof AGENT_ID)[keyof typeof AGENT_ID];
@@ -27,6 +28,7 @@ export const AGENT_DISPLAY_NAME: Record<AgentId, string> = {
   [AGENT_ID.RAG_AGENT]: 'Knowledge Base Expert',
   [AGENT_ID.SUPERVISOR]: 'Orchestrator',
   [AGENT_ID.GRAPHING_AGENT]: 'Data Visualization Expert',
+  [AGENT_ID.RESEARCH_AGENT]: 'Research & Analysis',
 } as const;
 
 // ============================================
@@ -37,6 +39,7 @@ export const AGENT_ICON: Record<AgentId, string> = {
   [AGENT_ID.RAG_AGENT]: '🧠',
   [AGENT_ID.SUPERVISOR]: '🎯',
   [AGENT_ID.GRAPHING_AGENT]: '📈',
+  [AGENT_ID.RESEARCH_AGENT]: '🔬',
 } as const;
 
 // ============================================
@@ -47,6 +50,7 @@ export const AGENT_COLOR: Record<AgentId, string> = {
   [AGENT_ID.RAG_AGENT]: '#10B981',
   [AGENT_ID.SUPERVISOR]: '#8B5CF6',
   [AGENT_ID.GRAPHING_AGENT]: '#F59E0B',
+  [AGENT_ID.RESEARCH_AGENT]: '#6366F1',
 } as const;
 
 // ============================================
@@ -57,6 +61,7 @@ export const AGENT_DESCRIPTION: Record<AgentId, string> = {
   [AGENT_ID.RAG_AGENT]: 'Searches and analyzes uploaded documents using semantic search. Can answer questions based on document content.',
   [AGENT_ID.SUPERVISOR]: 'Automatically routes your question to the best specialist agent based on content analysis.',
   [AGENT_ID.GRAPHING_AGENT]: 'Creates data visualizations, charts, and dashboards from structured data. Supports bar, line, area, donut, combo charts, tables, and KPIs.',
+  [AGENT_ID.RESEARCH_AGENT]: 'Performs web research, data analysis, code execution, and document generation using real-time web search and Python sandbox.',
 } as const;
 
 // ============================================
@@ -68,6 +73,9 @@ export const AGENT_CAPABILITY = {
   RAG_SEARCH: 'rag_search',
   DATA_VIZ: 'data_viz',
   GENERAL: 'general',
+  WEB_RESEARCH: 'web_research',
+  CODE_EXECUTION: 'code_execution',
+  DATA_ANALYSIS: 'data_analysis',
 } as const;
 
 export type AgentCapability = (typeof AGENT_CAPABILITY)[keyof typeof AGENT_CAPABILITY];

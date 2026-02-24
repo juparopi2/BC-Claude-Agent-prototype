@@ -19,7 +19,11 @@ import type {
  * - Native Anthropic: { type: 'image', source: { type: 'base64', media_type, data } }
  * - LangChain expects: { type: 'image_url', image_url: { url: 'data:mime;base64,data' } }
  *
- * Documents pass through unchanged (LangChain accepts Anthropic format).
+ * Files API references (source.type === 'file') are passed through directly
+ * for both images and documents — LangChain's ChatAnthropic forwards Anthropic-native
+ * content blocks, so the file reference is sent as-is to the Anthropic API.
+ *
+ * Documents (base64 source) pass through unchanged (LangChain accepts Anthropic format).
  *
  * @see https://github.com/langchain-ai/langchainjs/issues/7839
  *
@@ -30,8 +34,17 @@ export function convertToLangChainFormat(
   contentBlocks: AnthropicAttachmentContentBlock[]
 ): LangChainContentBlock[] {
   return contentBlocks.map((block): LangChainContentBlock => {
+    // Files API references: pass through as-is (Anthropic native format)
+    // LangChain ChatAnthropic forwards these directly to the Anthropic API
+    if (block.source.type === 'file') {
+      return {
+        type: block.type,
+        source: block.source,
+      } as LangChainContentBlock;
+    }
+
     if (block.type === 'image') {
-      // Convert Anthropic native image format to LangChain image_url format
+      // Convert Anthropic native base64 image format to LangChain image_url format
       return {
         type: 'image_url',
         image_url: {
@@ -40,7 +53,7 @@ export function convertToLangChainFormat(
       };
     }
 
-    // Documents: LangChain accepts Anthropic format directly
+    // Documents (base64): LangChain accepts Anthropic format directly
     // Return with the full source object structure
     return {
       type: 'document',

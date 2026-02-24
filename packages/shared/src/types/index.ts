@@ -273,6 +273,8 @@ export type {
   ParsedChatAttachment,
   AnthropicDocumentBlock,
   AnthropicImageBlock,
+  AnthropicFileDocumentBlock,
+  AnthropicFileImageBlock,
   AnthropicAttachmentContentBlock,
   UploadChatAttachmentRequest,
   UploadChatAttachmentResponse,

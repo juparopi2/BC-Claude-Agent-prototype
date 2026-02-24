@@ -272,6 +272,7 @@ describe('FileContextPreparer', () => {
         threshold: undefined,
         maxFiles: undefined,
         excludeFileIds: [],
+        scopeFileIds: [],
       });
       expect(result.semanticSearchUsed).toBe(true);
     });
@@ -310,6 +311,7 @@ describe('FileContextPreparer', () => {
         threshold: 0.85,
         maxFiles: 3,
         excludeFileIds: [],
+        scopeFileIds: [],
       });
     });
 
@@ -343,6 +345,7 @@ describe('FileContextPreparer', () => {
         threshold: undefined,
         maxFiles: undefined,
         excludeFileIds: ['attachment-1'],
+        scopeFileIds: [],
       });
     });
   });

@@ -32,6 +32,7 @@
 import { createChildLogger } from '@/shared/utils/logger';
 import { getChatAttachmentService, type IChatAttachmentService } from '@/domains/chat-attachments';
 import { getFileUploadService } from '@/services/files/FileUploadService';
+import { getAnthropicFilesService } from '@/services/files/AnthropicFilesService';
 
 /**
  * Result of a cleanup run
@@ -125,7 +126,7 @@ export class ChatAttachmentCleanupJob {
         'Found attachments past grace period for deletion'
       );
 
-      // Step 3: Delete blobs
+      // Step 3: Delete blobs and Anthropic Files API entries
       const blobPathsToDelete: string[] = [];
       for (const attachment of attachmentsToDelete) {
         try {
@@ -142,6 +143,12 @@ export class ChatAttachmentCleanupJob {
             'Failed to delete blob'
           );
           // Continue with other deletions - don't fail the whole batch
+        }
+
+        // Delete from Anthropic Files API (non-critical — failure is logged, not propagated)
+        if (attachment.anthropicFileId) {
+          const anthropicFilesService = getAnthropicFilesService();
+          await anthropicFilesService.deleteFile(attachment.anthropicFileId);
         }
       }
 

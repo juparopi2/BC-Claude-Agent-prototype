@@ -97,6 +97,7 @@ export class ChatAttachmentFixture {
       size_bytes: 1024000, // 1 MB
       blob_path: ChatAttachmentFixture.generateBlobPath(userId, sessionId, name),
       content_hash: null,
+      anthropic_file_id: null,
       expires_at: expiresAt,
       created_at: createdAt,
       is_deleted: false,

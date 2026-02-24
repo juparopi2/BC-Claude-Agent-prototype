@@ -42,6 +42,7 @@ export type {
   BaseAgentEvent,
   SessionStartEvent,
   ThinkingEvent,
+  ThinkingCompleteEvent,
   MessageEvent,
   Citation,  // RAG source attribution
   ToolUseEvent,
@@ -52,6 +53,8 @@ export type {
   ApprovalRequestedEvent,
   ApprovalResolvedEvent,
   UserMessageConfirmedEvent,
+  TurnPausedEvent,
+  ContentRefusedEvent,
   AgentEvent,
   AgentExecutionResult,
   AgentType,

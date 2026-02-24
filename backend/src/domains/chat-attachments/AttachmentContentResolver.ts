@@ -20,6 +20,8 @@ import {
   type AnthropicAttachmentContentBlock,
   type ChatAttachmentDbRecord,
   type ResolvedChatAttachment,
+  type AnthropicFileDocumentBlock,
+  type AnthropicFileImageBlock,
 } from '@bc-agent/shared';
 import type { Logger } from 'pino';
 
@@ -85,7 +87,27 @@ export class AttachmentContentResolver {
           continue;
         }
 
-        // Download file from blob storage
+        // Prefer Files API reference if available — no blob download needed
+        if (record.anthropic_file_id) {
+          const contentBlock = this.createFileReferenceBlock(record);
+
+          results.push({
+            id: record.id,
+            name: record.name,
+            mimeType: record.mime_type,
+            // Buffer is empty when using Files API reference — content lives on Anthropic's servers
+            buffer: Buffer.alloc(0),
+            contentBlock,
+          });
+
+          this.logger.debug(
+            { attachmentId, name: record.name, mimeType: record.mime_type, anthropicFileId: record.anthropic_file_id },
+            'Resolved attachment via Anthropic Files API reference'
+          );
+          continue;
+        }
+
+        // Fallback: Download file from blob storage and base64-encode
         const buffer = await fileUploadService.downloadFromBlob(record.blob_path);
 
         // Create content block
@@ -101,7 +123,7 @@ export class AttachmentContentResolver {
 
         this.logger.debug(
           { attachmentId, name: record.name, mimeType: record.mime_type },
-          'Resolved attachment'
+          'Resolved attachment via base64 fallback'
         );
       } catch (error) {
         const errorInfo = error instanceof Error
@@ -122,6 +144,39 @@ export class AttachmentContentResolver {
     );
 
     return results;
+  }
+
+  /**
+   * Create Anthropic content block using a Files API file reference.
+   *
+   * Used when the attachment has been pre-uploaded to Anthropic's Files API.
+   * This avoids blob download and base64 encoding entirely.
+   *
+   * @param record - Attachment database record (must have anthropic_file_id)
+   * @returns File-reference content block (document or image)
+   */
+  private createFileReferenceBlock(
+    record: ChatAttachmentDbRecord
+  ): AnthropicFileDocumentBlock | AnthropicFileImageBlock {
+    const fileId = record.anthropic_file_id as string;
+
+    if (isImageMimeType(record.mime_type)) {
+      return {
+        type: 'image',
+        source: {
+          type: 'file',
+          file_id: fileId,
+        },
+      };
+    }
+
+    return {
+      type: 'document',
+      source: {
+        type: 'file',
+        file_id: fileId,
+      },
+    };
   }
 
   /**

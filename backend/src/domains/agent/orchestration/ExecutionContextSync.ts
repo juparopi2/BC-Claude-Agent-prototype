@@ -87,6 +87,13 @@ export interface ExecuteSyncOptions {
    * These are Knowledge Base files from blob storage.
    */
   visionFileIds?: string[];
+
+  /**
+   * Enable web search capability for this message.
+   * When true, the supervisor prompt is augmented with a hint to prefer research-agent.
+   * @default false
+   */
+  enableWebSearch?: boolean;
 }
 
 /**

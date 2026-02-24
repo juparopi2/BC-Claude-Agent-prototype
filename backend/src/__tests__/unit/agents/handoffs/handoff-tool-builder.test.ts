@@ -17,6 +17,14 @@ vi.mock('@/modules/agents/business-central/tools', () => ({
 vi.mock('@/modules/agents/rag-knowledge/tools', () => ({
   knowledgeSearchTool: { name: 'knowledgeSearch', description: 'Search knowledge', schema: {} },
   filteredKnowledgeSearchTool: { name: 'filteredKnowledgeSearch', description: 'Filtered search', schema: {} },
+  visualImageSearchTool: { name: 'visualImageSearch', description: 'Visual image search', schema: {} },
+  findSimilarImagesTool: { name: 'findSimilarImages', description: 'Find similar images', schema: {} },
+}));
+
+vi.mock('@/modules/agents/research/tools', () => ({
+  webSearchTool: { name: 'web_search', description: 'Web search', type: 'web_search_20250305' },
+  webFetchTool: { name: 'web_fetch', description: 'Web fetch', type: 'web_fetch_20250910' },
+  codeExecutionTool: { name: 'code_execution', description: 'Code execution', type: 'code_execution_20250825' },
 }));
 
 vi.mock('@/modules/agents/graphing/tools', () => ({
@@ -35,8 +43,8 @@ describe('handoff-tool-builder', () => {
     it('should create N-1 handoff tools (one per other worker agent)', () => {
       const tools = buildHandoffToolsForAgent('bc-agent');
 
-      // BC agent should get handoff tools to RAG and Graphing agents (other workers)
-      expect(tools).toHaveLength(2);
+      // BC agent should get handoff tools to RAG, Graphing, and Research agents (other workers)
+      expect(tools).toHaveLength(3);
     });
 
     it('should not create self-transfer tool', () => {

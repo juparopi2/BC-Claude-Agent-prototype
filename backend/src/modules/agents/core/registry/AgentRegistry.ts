@@ -7,13 +7,13 @@
  * @module modules/agents/core/registry/AgentRegistry
  */
 
-import type { StructuredToolInterface } from '@langchain/core/tools';
 import type { AgentCapability, AgentId, AgentUISummary } from '@bc-agent/shared';
 import { createChildLogger } from '@/shared/utils/logger';
 import type {
   AgentDefinition,
   AgentToolConfig,
   AgentWithTools,
+  AnyAgentTool,
   SupervisorAgentInfo,
 } from './AgentDefinition';
 
@@ -153,14 +153,14 @@ export class AgentRegistry {
 
   /**
    * Resolve tools for an agent.
-   * Static tools are returned directly.
+   * Static tools are returned directly (supports both StructuredToolInterface and ServerTool).
    * Tool factories require a userId to create user-scoped tools.
    */
-  getToolsForAgent(agentId: AgentId, userId?: string): StructuredToolInterface[] {
+  getToolsForAgent(agentId: AgentId, userId?: string): AnyAgentTool[] {
     const config = this.toolConfigs.get(agentId);
     if (!config) return [];
 
-    const tools: StructuredToolInterface[] = [];
+    const tools: AnyAgentTool[] = [];
 
     if (config.staticTools) {
       tools.push(...config.staticTools);

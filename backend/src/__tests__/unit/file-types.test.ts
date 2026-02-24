@@ -48,6 +48,7 @@ describe('File Types', () => {
         embeddingRetryCount: 0,
         lastError: null,
         failedAt: null,
+        fileModifiedAt: null, // Default for files without original modification date
         deletionStatus: null, // Default for active files
         deletedAt: null,
         createdAt: '2025-01-15T10:00:00.000Z',

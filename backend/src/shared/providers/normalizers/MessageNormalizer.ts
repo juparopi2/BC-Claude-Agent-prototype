@@ -17,6 +17,7 @@ import type {
   NormalizedThinkingEvent,
   NormalizedAssistantMessageEvent,
   NormalizedToolRequestEvent,
+  NormalizedToolResponseEvent,
   NormalizedStopReason,
   NormalizedTokenUsage,
   NormalizedProvider,
@@ -47,7 +48,20 @@ interface ToolUseBlock {
   input: Record<string, unknown>;
 }
 
-type ContentBlock = ThinkingBlock | TextBlock | ToolUseBlock;
+interface ServerToolUseBlock {
+  type: 'server_tool_use';
+  id: string;
+  name: string;
+  input: Record<string, unknown>;
+}
+
+interface ServerToolResultBlock {
+  type: string; // 'web_search_tool_result' | 'code_execution_tool_result' | etc.
+  tool_use_id: string;
+  content: unknown;
+}
+
+type ContentBlock = ThinkingBlock | TextBlock | ToolUseBlock | ServerToolUseBlock | ServerToolResultBlock;
 
 /**
  * LangChain standardized tool call (from AIMessage.tool_calls).
@@ -384,6 +398,34 @@ export function normalizeAIMessage(
             toolRequests.push(toolEvent);
           }
           break;
+        case 'server_tool_use': {
+          // Server-side tool invocation (web_search, code_execution, etc.)
+          const serverBlock = block as ServerToolUseBlock;
+          if (serverBlock.id && serverBlock.name) {
+            const toolEvent = createToolRequestEvent(
+              sessionId, serverBlock.id, serverBlock.name, serverBlock.input ?? {}, provider,
+              timestamp, messageIndex * 100 + eventIndex++
+            );
+            toolEvent.sourceAgentId = sourceAgentId;
+            toolRequests.push(toolEvent);
+          }
+          break;
+        }
+        default: {
+          // Handle server tool result blocks (web_search_tool_result, code_execution_tool_result, etc.)
+          const resultBlock = block as { type?: string; tool_use_id?: string; content?: unknown };
+          if (resultBlock.type?.endsWith('_tool_result') && resultBlock.tool_use_id) {
+            // Extract the tool name from the result type (e.g., 'web_search_tool_result' → 'web_search')
+            const toolName = resultBlock.type.replace('_tool_result', '');
+            const toolResponseEvent = createToolResponseEvent(
+              sessionId, resultBlock.tool_use_id, toolName, resultBlock.content, provider,
+              timestamp, messageIndex * 100 + eventIndex++
+            );
+            toolResponseEvent.sourceAgentId = sourceAgentId;
+            events.push(toolResponseEvent);
+          }
+          break;
+        }
       }
     }
 
@@ -520,5 +562,36 @@ function createAssistantMessageEvent(
     stopReason,
     model,
     tokenUsage: usage ?? { inputTokens: 0, outputTokens: 0 },
+  };
+}
+
+function createToolResponseEvent(
+  sessionId: string,
+  toolUseId: string,
+  toolName: string,
+  result: unknown,
+  provider: NormalizedProvider | undefined,
+  timestamp: string,
+  originalIndex: number
+): NormalizedToolResponseEvent {
+  // Serialize the result to a string since NormalizedToolResponseEvent.result is string | undefined
+  const resultStr = result === undefined || result === null
+    ? undefined
+    : typeof result === 'string'
+      ? result
+      : JSON.stringify(result);
+
+  return {
+    type: 'tool_response',
+    eventId: randomUUID(),
+    sessionId,
+    timestamp,
+    originalIndex,
+    persistenceStrategy: 'async_allowed',
+    provider,
+    toolUseId,
+    toolName,
+    result: resultStr,
+    success: true,
   };
 }

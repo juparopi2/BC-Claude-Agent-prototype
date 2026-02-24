@@ -208,6 +208,7 @@ export class AgentOrchestrator implements IAgentOrchestrator {
           targetAgentId: options?.targetAgentId,
           mentionedFileIds: options?.mentionedFileIds,
           visionFileIds: options?.visionFileIds,
+          enableWebSearch: options?.enableWebSearch,
         }
       );
 

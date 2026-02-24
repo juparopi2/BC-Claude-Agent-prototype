@@ -1,7 +1,7 @@
 # Futuros Desarrollos y Deuda Técnica
 
 **Estado**: Organizado
-**Última actualización**: 2026-01-21
+**Última actualización**: 2026-02-23
 
 Este documento centraliza todos los planes futuros, organizados por categoría para facilitar la priorización y ejecución.
 
@@ -190,7 +190,7 @@ Mejoras perceptibles para el usuario final.
 **Estado:** Agent implementado con 10 chart types (bar, stacked_bar, line, area, donut, bar_list, combo, kpi, kpi_grid, table). System prompt alineado con frontend chart types y contexto corporativo.
 **Estimación:** 7 días (restante: integración con datos reales de otros agentes)
 
-### @Mention para Knowledge Base Files (Alta)
+### @Mention para Knowledge Base Files (Alta) — COMPLETADO
 **Necesidad:** Permitir al usuario seleccionar archivos específicos de su Knowledge Base usando `@filename` en el input del chat, en lugar de depender solo de semantic search automático.
 **Contexto:** Actualmente el usuario puede: (1) adjuntar archivos nuevos que se procesan completamente, o (2) habilitar "Search in my files" que busca automáticamente. No hay forma de decir "usa específicamente este archivo de mi KB".
 **Specs:**
@@ -201,7 +201,7 @@ Mejoras perceptibles para el usuario final.
 **Dependencias:** Requiere que Chat Attachments Refactor esté implementado primero (separación de flujos)
 **Estimación:** 5-7 días
 
-### Anthropic Files API Integration (Media)
+### Anthropic Files API Integration (Media) — EN PROGRESO
 **Necesidad:** Optimizar el manejo de archivos grandes o repetidos usando la Files API de Anthropic en lugar de base64 en cada request.
 **Contexto:** Actualmente todos los attachments se envían como base64 en cada mensaje. Para archivos >10MB o que se usan repetidamente en la misma sesión, es más eficiente usar la Files API de Anthropic (upload una vez, referenciar por `file_id`).
 **Specs:**
@@ -231,6 +231,74 @@ Mejoras perceptibles para el usuario final.
 - Reemplazar Toasts actuales (Success/Error).
 - Migrar estética general hacia el estilo de Sileo.
 **Estimación:** 5-7 días
+
+### Interleaved Thinking (Media)
+**Necesidad:** Habilitar el pensamiento del modelo entre llamadas a herramientas, permitiendo cadenas de razonamiento más profundas durante la ejecución de tools.
+**Contexto:** Actualmente el thinking ocurre una sola vez antes de la primera tool call. Con Interleaved Thinking, el modelo puede razonar entre cada tool call, mejorando la calidad de decisiones complejas multi-step.
+**Requisitos técnicos:**
+- Requiere actualización al modelo Claude 4+ (actualmente en Claude 3.x)
+- Beta header: `interleaved-thinking-2025-05-14`
+- Ajustes en `AnthropicAdapter` para procesar thinking blocks intercalados con tool_use blocks
+- Actualizar `BatchResultNormalizer` para manejar la nueva secuencia de eventos
+**Estimación:** 3-5 días
+
+### MCP Connector / SharePoint-OneDrive Integration (Alta)
+**Necesidad:** Conectar el sistema con Microsoft Graph API para acceder a documentos de SharePoint y OneDrive directamente desde el chat, sin necesidad de subir archivos manualmente.
+**Contexto:** Actualmente los usuarios deben subir archivos manualmente a la Knowledge Base. Con un MCP server para Microsoft Graph, el sistema podría leer documentos directamente desde SharePoint/OneDrive del tenant del usuario.
+**Specs:**
+- Crear MCP server para Microsoft Graph API (`mcp-server/microsoft-graph/`)
+- Flujo OAuth para autenticación con Microsoft 365 (delegated permissions)
+- Parámetro `mcp_servers` en la Messages API de Anthropic
+- Beta header: `mcp-client-2025-11-20`
+- Tools expuestos: `list_sharepoint_files`, `read_sharepoint_document`, `search_sharepoint`
+- Integración con el sistema de permisos y multi-tenancy existente
+**Estimación:** 10-15 días
+
+### Tool Search (Baja)
+**Necesidad:** Optimizar el contexto enviado al modelo cuando el sistema cuenta con 50+ tools, reduciendo drásticamente el consumo de tokens.
+**Contexto:** A medida que se agreguen más agentes y herramientas, el listado completo de tools en cada request puede consumir hasta un 85% del contexto útil. Tool Search filtra automáticamente las tools relevantes para cada consulta.
+**Specs:**
+- Feature flags: `toolSearchRegex_20251119` (filtro por regex) o `toolSearchBM25_20251119` (búsqueda semántica BM25)
+- Solo relevante cuando el sistema supere 50 tools en total
+- Configuración en `ModelFactory` o en el payload de cada agente
+- Ahorro estimado: ~85% de tokens de contexto dedicados a tool definitions
+**Estimación:** 2-3 días
+
+### Artifacts UI (Media)
+**Necesidad:** Panel de salida interactivo para visualizar y manipular artefactos generados por los agentes (código ejecutable, documentos, visualizaciones, formularios).
+**Contexto:** Inspirado en la UI de Claude.ai Artifacts. Permite al usuario interactuar con outputs complejos sin que estos saturen el hilo de conversación.
+**Specs:**
+- Panel lateral o modal con iframe sandboxed para renderizar HTML/React generado
+- Tipos de artefactos soportados: código (con syntax highlighting + copy), documentos Markdown, visualizaciones (HTML con D3/Chart.js), formularios interactivos
+- NO es una feature de la API de Anthropic — requiere implementación frontend completa
+- Comunicación segura entre iframe y app principal mediante `postMessage`
+- Persistencia de artefactos en DB vinculados al mensaje que los generó
+- Componente `ArtifactPanel` en frontend con soporte para múltiples tipos
+**Estimación:** 10-15 días
+
+### Deep Research Mode (Media)
+**Necesidad:** Modo de investigación profunda que combina búsqueda web, lectura de páginas y síntesis para responder preguntas complejas que requieren múltiples fuentes externas.
+**Contexto:** Pattern agentic sobre el Research Agent existente. El sistema ejecuta un loop autónomo: busca → lee → procesa → sintetiza, hasta reunir suficiente información para responder.
+**Specs:**
+- Loop agentic: `web_search` → `web_fetch` → `code_execution` (opcional, para procesar datos) → síntesis
+- Sistema de prompt especializado para Research Agent con instrucciones de iteración
+- Lógica de terminación: máximo de iteraciones configurables, o cuando el agente evalúa suficiente información
+- Indicador visual de progreso en frontend ("Researching... step 3/10")
+- Citar fuentes en el output final con URLs y snippets relevantes
+- Integración con herramientas de Anthropic (`web_search_tool`, `web_fetch_tool`) vía beta headers
+**Estimación:** 5-7 días
+
+### User-Customizable Agent System Prompts (Alta)
+**Necesidad:** Permitir a los usuarios crear sus propios agentes personalizados con system prompts customizados, usando los agentes base del sistema como punto de partida.
+**Contexto:** Actualmente los system prompts son fijos y definidos por el sistema. Empresas y usuarios avanzados necesitan poder adaptar el comportamiento de los agentes a su dominio específico (ej. "Experto en Contabilidad para PyMEs", "Asistente Jurídico").
+**Specs:**
+- Nueva tabla en DB: `user_agents` (id, user_id, name, base_agent_id, system_prompt, is_active, created_at)
+- API endpoints: `POST /api/agents/custom`, `GET /api/agents/custom`, `PUT /api/agents/custom/:id`, `DELETE /api/agents/custom/:id`
+- Frontend: UI de gestión de agentes en Settings con editor de system prompt (textarea con syntax highlighting)
+- AgentRegistry: soportar carga dinámica de agentes de usuario junto a agentes del sistema
+- Selector de agentes en chat actualizado para mostrar agentes personalizados del usuario
+- Límites de seguridad: validación de contenido del prompt, longitud máxima, rate limiting en creación
+**Estimación:** 7-10 días
 
 ---
 
@@ -289,8 +357,8 @@ Herramientas para administración y visión del negocio.
 | Categoría | Estimación Total Aprox. |
 |-----------|-------------------------|
 | 🛠 Deuda Técnica | ~15-20 días |
-| ✨ Nuevas Funcionalidades | ~29-35 días |
+| ✨ Nuevas Funcionalidades | ~66-90 días |
 | 🟢 Integraciones | ~20 días |
 | 🚀 Rendimiento | ~11 días |
 | 📊 Analítica | ~10 días |
-| **Total Estimado** | **~85-96 días** |
+| **Total Estimado** | **~122-151 días** |

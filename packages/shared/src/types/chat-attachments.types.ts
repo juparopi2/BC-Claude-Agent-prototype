@@ -152,6 +152,9 @@ export interface ChatAttachmentDbRecord {
   /** SHA-256 content hash (for potential dedup, optional) */
   content_hash: string | null;
 
+  /** Anthropic Files API file ID for efficient referencing (optional optimization) */
+  anthropic_file_id: string | null;
+
   /** ISO 8601 timestamp when attachment expires */
   expires_at: Date;
 
@@ -301,9 +304,50 @@ export interface AnthropicImageBlock {
 }
 
 /**
+ * Anthropic document content block using Files API reference.
+ *
+ * Used when a file has been pre-uploaded to Anthropic's Files API.
+ * More efficient than base64 for repeated use.
+ * @see https://docs.anthropic.com/en/docs/build-with-claude/files
+ */
+export interface AnthropicFileDocumentBlock {
+  type: 'document';
+  source: {
+    type: 'file';
+    file_id: string;
+  };
+  /** Optional cache control for prompt caching */
+  cache_control?: {
+    type: 'ephemeral';
+  };
+}
+
+/**
+ * Anthropic image content block using Files API reference.
+ *
+ * Used when an image has been pre-uploaded to Anthropic's Files API.
+ * @see https://docs.anthropic.com/en/docs/build-with-claude/files
+ */
+export interface AnthropicFileImageBlock {
+  type: 'image';
+  source: {
+    type: 'file';
+    file_id: string;
+  };
+  /** Optional cache control for prompt caching */
+  cache_control?: {
+    type: 'ephemeral';
+  };
+}
+
+/**
  * Union of content blocks that can be created from chat attachments
  */
-export type AnthropicAttachmentContentBlock = AnthropicDocumentBlock | AnthropicImageBlock;
+export type AnthropicAttachmentContentBlock =
+  | AnthropicDocumentBlock
+  | AnthropicImageBlock
+  | AnthropicFileDocumentBlock
+  | AnthropicFileImageBlock;
 
 /**
  * Check if a MIME type should be treated as an image
@@ -343,15 +387,22 @@ export interface LangChainTextBlock {
  * LangChain document content block
  *
  * Documents can use either simplified base64 string or full source object.
- * LangChain accepts the same format as Anthropic for documents.
+ * LangChain accepts the same format as Anthropic for documents, including
+ * Files API file references ({ type: 'file', file_id: '...' }).
  */
 export interface LangChainDocumentBlock {
   type: 'document';
-  source: string | {
-    type: 'base64';
-    media_type: string;
-    data: string;
-  };
+  source:
+    | string
+    | {
+        type: 'base64';
+        media_type: string;
+        data: string;
+      }
+    | {
+        type: 'file';
+        file_id: string;
+      };
 }
 
 /**

@@ -113,6 +113,13 @@ export interface ChatMessageData {
    * converted to base64 image content blocks.
    */
   visionFileIds?: string[];
+
+  /**
+   * Enable web search capability for this message.
+   * When true, routes to research-agent for real-time web information.
+   * @default false
+   */
+  enableWebSearch?: boolean;
 }
 
 /**

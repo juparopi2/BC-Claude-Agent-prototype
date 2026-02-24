@@ -163,9 +163,13 @@ export class ModelFactory {
 
     switch (provider) {
       case 'anthropic': {
-        // Build default headers for prompt caching
-        const defaultHeaders: Record<string, string> | undefined = config.promptCaching
-          ? { 'anthropic-beta': 'prompt-caching-2024-07-31' }
+        // Build beta headers list
+        const betaHeaders: string[] = [];
+        if (config.promptCaching) betaHeaders.push('prompt-caching-2024-07-31');
+        if (config.serverTools?.includes('code_execution')) betaHeaders.push('code-execution-2025-08-25');
+
+        const defaultHeaders: Record<string, string> | undefined = betaHeaders.length > 0
+          ? { 'anthropic-beta': betaHeaders.join(',') }
           : undefined;
 
         // Build thinking config (only pass if enabled)

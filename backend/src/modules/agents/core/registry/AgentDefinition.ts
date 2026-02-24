@@ -7,7 +7,7 @@
  * @module modules/agents/core/registry/AgentDefinition
  */
 
-import type { StructuredToolInterface } from '@langchain/core/tools';
+import type { ServerTool, StructuredToolInterface } from '@langchain/core/tools';
 import type { AgentCapability, AgentId } from '@bc-agent/shared';
 import type { ModelRole } from '@/infrastructure/config/models';
 
@@ -25,15 +25,22 @@ export interface AgentDefinition {
   isSystemAgent: boolean;
 }
 
-/** Tool configuration supporting both static and dynamic tools */
+/**
+ * Union type for agent tools.
+ * ClientTool: LangChain StructuredToolInterface instances (local execution).
+ * ServerTool: Anthropic server-side tool config objects (e.g., webSearch, codeExecution).
+ */
+export type AnyAgentTool = StructuredToolInterface | ServerTool;
+
+/** Tool configuration supporting both static and dynamic tools (client or server-side) */
 export interface AgentToolConfig {
-  staticTools?: StructuredToolInterface[];
+  staticTools?: AnyAgentTool[];
   toolFactory?: (userId: string) => StructuredToolInterface[];
 }
 
 /** Agent with resolved tools */
 export interface AgentWithTools extends AgentDefinition {
-  tools: StructuredToolInterface[];
+  tools: AnyAgentTool[];
 }
 
 /** Agent info for createSupervisor() integration (Phase 3) */

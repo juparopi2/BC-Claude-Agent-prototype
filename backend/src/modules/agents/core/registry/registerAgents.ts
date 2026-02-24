@@ -11,6 +11,7 @@ import { getAgentRegistry } from './AgentRegistry';
 import { bcAgentDefinition } from '../definitions/bc-agent.definition';
 import { ragAgentDefinition } from '../definitions/rag-agent.definition';
 import { graphingAgentDefinition } from '../definitions/graphing-agent.definition';
+import { researchAgentDefinition } from '../definitions/research-agent.definition';
 import { supervisorDefinition } from '../definitions/supervisor.definition';
 import {
   listAllEntitiesTool,
@@ -32,6 +33,11 @@ import {
   getChartDetailsTool,
   validateChartConfigTool,
 } from '@/modules/agents/graphing/tools';
+import {
+  webSearchTool,
+  webFetchTool,
+  codeExecutionTool,
+} from '@/modules/agents/research/tools';
 import { createChildLogger } from '@/shared/utils/logger';
 
 const logger = createChildLogger({ service: 'RegisterAgents' });
@@ -42,6 +48,7 @@ const logger = createChildLogger({ service: 'RegisterAgents' });
  * - BC Agent: 7 static tools from business-central/tools.ts
  * - RAG Agent: 4 static tools (userId resolved at runtime via config.configurable)
  * - Graphing Agent: 3 catalog-driven tools from graphing/tools.ts
+ * - Research Agent: 3 Anthropic server-side tools (web search, web fetch, code execution)
  * - Supervisor: no tools (orchestrates other agents)
  */
 export function registerAgents(): void {
@@ -81,11 +88,16 @@ export function registerAgents(): void {
     staticTools: [listAvailableChartsTool, getChartDetailsTool, validateChartConfigTool],
   });
 
+  // Research Agent with 3 Anthropic server-side tools
+  registry.registerWithTools(researchAgentDefinition, {
+    staticTools: [webSearchTool, webFetchTool, codeExecutionTool],
+  });
+
   // Supervisor (no tools - orchestrates other agents)
   registry.register(supervisorDefinition);
 
   logger.info(
     { agentCount: registry.size },
-    'All 4 agents registered successfully'
+    'All 5 agents registered successfully'
   );
 }

@@ -18,6 +18,14 @@ vi.mock('@/modules/agents/business-central/tools', () => ({
 vi.mock('@/modules/agents/rag-knowledge/tools', () => ({
   knowledgeSearchTool: { name: 'knowledgeSearch', description: 'Search knowledge', schema: {} },
   filteredKnowledgeSearchTool: { name: 'filteredKnowledgeSearch', description: 'Filtered search', schema: {} },
+  visualImageSearchTool: { name: 'visualImageSearch', description: 'Visual image search', schema: {} },
+  findSimilarImagesTool: { name: 'findSimilarImages', description: 'Find similar images', schema: {} },
+}));
+
+vi.mock('@/modules/agents/research/tools', () => ({
+  webSearchTool: { name: 'web_search', description: 'Web search', type: 'web_search_20250305' },
+  webFetchTool: { name: 'web_fetch', description: 'Web fetch', type: 'web_fetch_20250910' },
+  codeExecutionTool: { name: 'code_execution', description: 'Code execution', type: 'code_execution_20250825' },
 }));
 
 describe('user-handoff', () => {

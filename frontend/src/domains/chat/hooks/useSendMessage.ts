@@ -27,6 +27,8 @@ export interface SendMessageOptions {
   mentionedFileIds?: string[];
   /** KB image IDs for direct vision */
   visionFileIds?: string[];
+  /** Enable web search for real-time web information */
+  enableWebSearch?: boolean;
 }
 
 /**
@@ -114,6 +116,7 @@ export function useSendMessage(sessionId: string): UseSendMessageReturn {
         enableAutoSemanticSearch: options?.enableAutoSemanticSearch,
         mentionedFileIds: options?.mentionedFileIds,
         visionFileIds: options?.visionFileIds,
+        enableWebSearch: options?.enableWebSearch,
       });
     },
     [socketSendMessage]

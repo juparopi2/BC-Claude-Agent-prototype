@@ -154,6 +154,7 @@ class SupervisorGraphAdapter implements ICompiledGraph {
         sessionId?: string;
         options?: {
           targetAgentId?: string;
+          enableWebSearch?: boolean;
           [key: string]: unknown;
         };
       };
@@ -203,6 +204,18 @@ class SupervisorGraphAdapter implements ICompiledGraph {
     }
 
     // 2. Normal flow → supervisor LLM routes (auto mode)
+
+    // Augment prompt with web search hint when enableWebSearch is true.
+    // This guides the supervisor to prefer the research-agent for the current request.
+    const enableWebSearch = typedInputs.context?.options?.enableWebSearch;
+    const supervisorPrompt = enableWebSearch
+      ? `[WEB SEARCH ENABLED] The user wants real-time web information. Route to research-agent.\n\n${prompt}`
+      : prompt;
+
+    if (enableWebSearch) {
+      logger.info({ sessionId }, 'Web search enabled — augmenting supervisor prompt with research-agent hint');
+    }
+
     logger.debug(
       { sessionId, userId, messageCount: messages.length },
       'Invoking supervisor graph'
@@ -215,7 +228,7 @@ class SupervisorGraphAdapter implements ICompiledGraph {
     try {
       const invocationId = `inv-${Date.now()}`;
       const stream = await compiledSupervisor.stream(
-        { messages: [new HumanMessage(prompt)] },
+        { messages: [new HumanMessage(supervisorPrompt)] },
         {
           configurable: { thread_id: threadId, userId, invocationId },
           recursionLimit: options?.recursionLimit ?? 100,

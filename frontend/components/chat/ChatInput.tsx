@@ -38,7 +38,7 @@ export interface ChatInputProps {
   // Socket state from parent (avoids duplicate useSocket calls)
   isConnected?: boolean;
   isReconnecting?: boolean;
-  sendMessage?: (message: string, options?: { enableThinking?: boolean; thinkingBudget?: number; attachments?: string[]; chatAttachments?: string[]; enableAutoSemanticSearch?: boolean; targetAgentId?: string; mentionedFileIds?: string[]; visionFileIds?: string[] }) => void;
+  sendMessage?: (message: string, options?: { enableThinking?: boolean; thinkingBudget?: number; attachments?: string[]; chatAttachments?: string[]; enableAutoSemanticSearch?: boolean; targetAgentId?: string; mentionedFileIds?: string[]; visionFileIds?: string[]; enableWebSearch?: boolean }) => void;
   stopAgent?: () => void;
 
   // ============================================
@@ -229,6 +229,9 @@ export default function ChatInput({
   // Track if we're transcribing audio
   const [isTranscribing, setIsTranscribing] = useState(false);
 
+  // Web search toggle state
+  const [webSearchEnabled, setWebSearchEnabled] = useState(false);
+
   // Use socket from parent if provided, otherwise create local instance
   const shouldUseLocalSocket = propsIsConnected === undefined && !onSend && !!sessionId;
   const localSocket = useSocketConnection({
@@ -292,6 +295,7 @@ export default function ChatInput({
         targetAgentId: isDirected ? selectedAgentId : undefined,
         mentionedFileIds: ragMentions.length > 0 ? ragMentions : undefined,
         visionFileIds: visionMentions.length > 0 ? visionMentions : undefined,
+        enableWebSearch: webSearchEnabled || undefined,
       };
       sendMessage(message, options);
     }
@@ -303,6 +307,9 @@ export default function ChatInput({
       clearAttachments();
       clearMentions();
     }
+
+    // Reset web search toggle after sending
+    setWebSearchEnabled(false);
 
     // Close autocomplete
     setIsAutocompleteOpen(false);
@@ -582,12 +589,18 @@ export default function ChatInput({
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="ghost" size="sm" disabled className="gap-1.5">
+                  <Button
+                    variant={webSearchEnabled ? "secondary" : "ghost"}
+                    size="sm"
+                    className={cn("gap-1.5", webSearchEnabled && "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400")}
+                    disabled={effectiveIsBusy || disabled}
+                    onClick={() => setWebSearchEnabled(!webSearchEnabled)}
+                  >
                     <Globe className="size-3.5" />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p className="text-xs">Web search (coming soon)</p>
+                  <p className="text-xs">Web search</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>

@@ -59,6 +59,8 @@ export interface MessageContextOptions {
   mentionedFileIds?: string[];
   /** KB image IDs for direct vision */
   visionFileIds?: string[];
+  /** Enable web search capability — supervisor will be hinted to prefer research-agent */
+  enableWebSearch?: boolean;
 }
 
 /**
@@ -77,6 +79,7 @@ export interface MessageContextBuildResult {
         enableThinking: boolean;
         thinkingBudget: number;
         targetAgentId?: string;
+        enableWebSearch?: boolean;
       };
     };
   };
@@ -154,6 +157,7 @@ export function buildGraphInputs(
         enableThinking: options?.enableThinking ?? false,
         thinkingBudget: options?.thinkingBudget ?? 10000,
         targetAgentId: options?.targetAgentId,
+        enableWebSearch: options?.enableWebSearch,
       },
     },
   };

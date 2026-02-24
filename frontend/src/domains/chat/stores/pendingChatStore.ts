@@ -51,6 +51,9 @@ export interface PendingChatState {
 
   /** Flag indicating pending state exists and is ready to process */
   hasPendingChat: boolean;
+
+  /** Enable web search for real-time web information */
+  enableWebSearch: boolean;
 }
 
 /**
@@ -59,6 +62,7 @@ export interface PendingChatState {
 export interface PendingChatActions {
   setMessage: (message: string) => void;
   setUseMyContext: (enabled: boolean) => void;
+  setEnableWebSearch: (enabled: boolean) => void;
   setSelectedAgent: (agent: string | null) => void;
   addMention: (mention: FileMention) => void;
   removeMention: (fileId: string) => void;
@@ -84,6 +88,7 @@ const initialState: PendingChatState = {
   mentions: [],
   pendingFiles: [],
   hasPendingChat: false,
+  enableWebSearch: false,
 };
 
 // ============================================================================
@@ -98,6 +103,8 @@ export const usePendingChatStore = create<PendingChatStore>()(
       setMessage: (message) => set({ message }),
 
       setUseMyContext: (enabled) => set({ useMyContext: enabled }),
+
+      setEnableWebSearch: (enabled) => set({ enableWebSearch: enabled }),
 
       setSelectedAgent: (agent) => set({ selectedAgent: agent }),
 
@@ -148,6 +155,7 @@ export const usePendingChatStore = create<PendingChatStore>()(
         // Include file metadata (but actual File objects are lost on refresh)
         pendingFiles: state.pendingFiles,
         hasPendingChat: state.hasPendingChat,
+        enableWebSearch: state.enableWebSearch,
       }),
     }
   )

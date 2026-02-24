@@ -166,6 +166,7 @@ export class ChatMessageHandler {
           targetAgentId: data.targetAgentId,
           mentionedFileIds: data.mentionedFileIds,
           visionFileIds: data.visionFileIds,
+          enableWebSearch: data.enableWebSearch,
         }
       );
 
@@ -395,7 +396,7 @@ export class ChatMessageHandler {
         default:
           // Exhaustiveness check - TypeScript will error if we miss a case
           // const _exhaustiveCheck: never = event; // Commented out to avoid build errors if new types added
-          this.logger.warn('Unknown event type', { type: event.type, sessionId });
+          this.logger.warn('Unknown event type', { type: (event as { type: string }).type, sessionId });
       }
     } catch (error) {
       this.logger.error('Error handling agent event', {

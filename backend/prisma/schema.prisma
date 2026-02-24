@@ -109,6 +109,7 @@ model chat_attachments {
   size_bytes               BigInt
   blob_path                String                     @db.VarChar(2048)
   content_hash             String?                    @db.VarChar(64)
+  anthropic_file_id        String?                    @db.NVarChar(255)
   expires_at               DateTime
   created_at               DateTime                   @default(dbgenerated("getutcdate()"), map: "DF__chat_atta__creat__63D8CE75")
   is_deleted               Boolean                    @default(false, map: "DF__chat_atta__is_de__64CCF2AE")

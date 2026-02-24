@@ -21,6 +21,7 @@
  * | bc_agent        | disabled | 0.3         |
  * | rag_agent       | disabled | 0.5         |
  * | graphing_agent  | disabled | 0.2         |
+ * | research_agent  | disabled | 0.5         |
  * | session_title   | disabled | 0.7         |
  *
  * @see backend/src/core/langchain/CLAUDE.md - Full domain documentation
@@ -88,11 +89,12 @@ export const FallbackModels = {
  * This allows swapping models without changing business logic.
  */
 export type ModelRole =
-  | 'supervisor'      // Lightweight supervisor routing between agents
-  | 'bc_agent'        // Business Central operations
-  | 'rag_agent'       // RAG/Knowledge retrieval
-  | 'graphing_agent'  // Data visualization and chart configuration
-  | 'session_title';  // Generate session titles
+  | 'supervisor'        // Lightweight supervisor routing between agents
+  | 'bc_agent'          // Business Central operations
+  | 'rag_agent'         // RAG/Knowledge retrieval
+  | 'graphing_agent'    // Data visualization and chart configuration
+  | 'research_agent'    // Web research, data analysis, and code execution
+  | 'session_title';    // Generate session titles
 
 /**
  * Extended model config with role metadata.
@@ -121,6 +123,8 @@ export interface RoleModelConfig {
   thinking?: ThinkingConfig;
   /** Enable Anthropic prompt caching (adds beta header) */
   promptCaching?: boolean;
+  /** Anthropic server-side tools to enable (adds beta headers) */
+  serverTools?: string[];
 }
 
 // =============================================================================
@@ -186,6 +190,21 @@ export const ModelRoleConfigs: Record<ModelRole, RoleModelConfig> = {
     streaming: true,
     thinking: { type: 'disabled' }, // Disabled for now (can be enabled in future)
     promptCaching: true,
+  },
+
+  research_agent: {
+    role: 'research_agent',
+    description: 'Web research, data analysis, and code execution',
+    modelString: AnthropicModels.HAIKU_4_5,
+    fallback: FallbackModels.OPENAI_GPT4O_MINI,
+    provider: 'anthropic',
+    modelName: AnthropicModels.HAIKU_4_5,
+    temperature: 0.5,
+    maxTokens: 32000,
+    streaming: true,
+    thinking: { type: 'disabled' },
+    promptCaching: true,
+    serverTools: ['web_search', 'web_fetch', 'code_execution'],
   },
 
   session_title: {

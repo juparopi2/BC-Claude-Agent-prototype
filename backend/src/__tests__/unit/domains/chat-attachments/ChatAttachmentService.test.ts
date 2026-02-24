@@ -56,6 +56,17 @@ vi.mock('@/services/files/FileUploadService', () => ({
   })),
 }));
 
+// ===== MOCK ANTHROPIC FILES SERVICE (fire-and-forget uploads) =====
+const mockAnthropicUploadFile = vi.hoisted(() => vi.fn().mockResolvedValue('file_test123'));
+const mockAnthropicDeleteFile = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+
+vi.mock('@/services/files/AnthropicFilesService', () => ({
+  getAnthropicFilesService: vi.fn(() => ({
+    uploadFile: mockAnthropicUploadFile,
+    deleteFile: mockAnthropicDeleteFile,
+  })),
+}));
+
 // Import service after mocks
 import {
   ChatAttachmentService,
@@ -582,20 +593,24 @@ describe('ChatAttachmentService', () => {
   // ========== SUITE 7: getDeletedAttachments ==========
   describe('getDeletedAttachments()', () => {
     it('should return soft-deleted attachments for blob cleanup', async () => {
-      const deletedRecords = [
-        ChatAttachmentFixture.Presets.deletedAttachment(),
-        ChatAttachmentFixture.Presets.deletedAttachment(),
+      // Mock returns the columns we SELECT: id, blob_path, anthropic_file_id
+      const mockDbRows = [
+        { id: 'ATTACHMENT-001', blob_path: 'chat-attachments/user1/session1/doc1.pdf', anthropic_file_id: null },
+        { id: 'ATTACHMENT-002', blob_path: 'chat-attachments/user2/session2/doc2.pdf', anthropic_file_id: 'file_abc123' },
       ];
 
       mockExecuteQuery.mockResolvedValueOnce({
-        recordset: deletedRecords,
+        recordset: mockDbRows,
         rowsAffected: [2],
       });
 
       const result = await service.getDeletedAttachments(100);
 
       expect(result).toHaveLength(2);
-      expect(result[0]!.is_deleted).toBe(true);
+      // Result is AttachmentForCleanup[] (camelCase)
+      expect(result[0]!.blobPath).toBe('chat-attachments/user1/session1/doc1.pdf');
+      expect(result[0]!.anthropicFileId).toBeNull();
+      expect(result[1]!.anthropicFileId).toBe('file_abc123');
     });
 
     it('should respect batch limit', async () => {

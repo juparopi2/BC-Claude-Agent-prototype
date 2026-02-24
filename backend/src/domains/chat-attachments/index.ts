@@ -23,6 +23,8 @@ export {
 export type {
   UploadAttachmentOptions,
   DeleteAttachmentResult,
+  AttachmentForCleanup,
+  IChatAttachmentService,
 } from './ChatAttachmentService';
 
 // Content Resolver

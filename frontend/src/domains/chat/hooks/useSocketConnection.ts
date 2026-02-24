@@ -57,6 +57,7 @@ export interface UseSocketConnectionReturn {
       targetAgentId?: string;
       mentionedFileIds?: string[];
       visionFileIds?: string[];
+      enableWebSearch?: boolean;
     }
   ) => void;
   /** Stop the agent */
@@ -243,6 +244,7 @@ export function useSocketConnection(
         targetAgentId?: string;
         mentionedFileIds?: string[];
         visionFileIds?: string[];
+        enableWebSearch?: boolean;
       }
     ) => {
       if (!user?.id || !currentSessionRef.current) {
@@ -288,6 +290,7 @@ export function useSocketConnection(
         targetAgentId: opts?.targetAgentId,
         mentionedFileIds: opts?.mentionedFileIds,
         visionFileIds: opts?.visionFileIds,
+        enableWebSearch: opts?.enableWebSearch,
       });
 
       // Update reconnecting state based on pending messages

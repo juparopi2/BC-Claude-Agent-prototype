@@ -20,6 +20,7 @@ import { randomUUID } from 'crypto';
 import { executeQuery } from '@/infrastructure/database/database';
 import { createChildLogger } from '@/shared/utils/logger';
 import { getFileUploadService } from '@/services/files/FileUploadService';
+import { getAnthropicFilesService } from '@/services/files/AnthropicFilesService';
 import {
   CHAT_ATTACHMENT_CONFIG,
   CHAT_ATTACHMENT_ALLOWED_MIME_TYPES,
@@ -53,6 +54,31 @@ export interface UploadAttachmentOptions {
 export interface DeleteAttachmentResult {
   id: string;
   blobPath: string;
+}
+
+/**
+ * Attachment record for cleanup operations (camelCase for internal use)
+ */
+export interface AttachmentForCleanup {
+  id: string;
+  blobPath: string;
+  anthropicFileId: string | null;
+}
+
+/**
+ * Interface for ChatAttachmentService (used for DI in tests and jobs)
+ */
+export interface IChatAttachmentService {
+  uploadAttachment(options: UploadAttachmentOptions): Promise<ParsedChatAttachment>;
+  getAttachment(userId: string, attachmentId: string): Promise<ParsedChatAttachment | null>;
+  getAttachmentsByIds(userId: string, attachmentIds: string[]): Promise<ParsedChatAttachment[]>;
+  getAttachmentsBySession(userId: string, sessionId: string): Promise<ParsedChatAttachment[]>;
+  getAttachmentRecord(userId: string, attachmentId: string): Promise<ChatAttachmentDbRecord | null>;
+  getAttachmentSummaries(userId: string, attachmentIds: string[]): Promise<ChatAttachmentSummary[]>;
+  deleteAttachment(userId: string, attachmentId: string): Promise<DeleteAttachmentResult | null>;
+  markExpiredForDeletion(): Promise<number>;
+  getDeletedAttachments(limit: number): Promise<AttachmentForCleanup[]>;
+  hardDeleteAttachments(attachmentIds: string[]): Promise<number>;
 }
 
 // ============================================
@@ -166,6 +192,11 @@ export class ChatAttachmentService {
 
     this.logger.info({ attachmentId, userId, sessionId, fileName, ttlHours }, 'Chat attachment uploaded');
 
+    // Fire-and-forget: Upload to Anthropic Files API for efficient referencing.
+    // Does NOT block the upload response — anthropic_file_id is an optional optimization.
+    // Falls back to base64 encoding if this fails.
+    this.uploadToAnthropicFilesApi(attachmentId, buffer, fileName, mimeType);
+
     return parseChatAttachment(result.recordset[0]);
   }
 
@@ -219,7 +250,7 @@ export class ChatAttachmentService {
 
     // Build parameterized IN clause
     const idParams = attachmentIds.map((_, i) => `@id${i}`).join(', ');
-    const params: Record<string, unknown> = { user_id: userId };
+    const params: Record<string, string> = { user_id: userId };
     attachmentIds.forEach((id, i) => {
       params[`id${i}`] = id;
     });
@@ -310,7 +341,7 @@ export class ChatAttachmentService {
 
     // Build parameterized IN clause
     const idParams = attachmentIds.map((_, i) => `@id${i}`).join(', ');
-    const params: Record<string, unknown> = { user_id: userId };
+    const params: Record<string, string> = { user_id: userId };
     attachmentIds.forEach((id, i) => {
       params[`id${i}`] = id;
     });
@@ -427,21 +458,30 @@ export class ChatAttachmentService {
    * Get soft-deleted attachments ready for hard delete
    *
    * Returns attachments deleted beyond the grace period.
+   * Includes anthropic_file_id for cleanup of Anthropic Files API uploads.
    *
    * @param limit - Maximum number of records to return
-   * @returns Array of raw records for blob cleanup
+   * @returns Array of cleanup records (camelCase) for blob and Anthropic Files cleanup
    */
-  async getDeletedAttachments(limit: number): Promise<ChatAttachmentDbRecord[]> {
+  async getDeletedAttachments(limit: number): Promise<AttachmentForCleanup[]> {
     const query = `
-      SELECT TOP (@limit) *
+      SELECT TOP (@limit) id, blob_path, anthropic_file_id
       FROM chat_attachments
       WHERE is_deleted = 1
         AND deleted_at < DATEADD(HOUR, -${CHAT_ATTACHMENT_CONFIG.GRACE_PERIOD_HOURS}, GETUTCDATE())
     `;
 
-    const result = await executeQuery<ChatAttachmentDbRecord>(query, { limit });
+    const result = await executeQuery<{
+      id: string;
+      blob_path: string;
+      anthropic_file_id: string | null;
+    }>(query, { limit });
 
-    return result.recordset;
+    return result.recordset.map((record) => ({
+      id: record.id,
+      blobPath: record.blob_path,
+      anthropicFileId: record.anthropic_file_id,
+    }));
   }
 
   /**
@@ -459,7 +499,7 @@ export class ChatAttachmentService {
 
     // Build parameterized IN clause
     const idParams = attachmentIds.map((_, i) => `@id${i}`).join(', ');
-    const params: Record<string, unknown> = {};
+    const params: Record<string, string> = {};
     attachmentIds.forEach((id, i) => {
       params[`id${i}`] = id;
     });
@@ -483,6 +523,64 @@ export class ChatAttachmentService {
   // ========================================
   // Private Helpers
   // ========================================
+
+  /**
+   * Fire-and-forget wrapper to upload a file to the Anthropic Files API
+   * and persist the returned file_id in the database.
+   *
+   * Errors are logged as warnings and do not propagate — base64 fallback
+   * remains available in AttachmentContentResolver.
+   */
+  private uploadToAnthropicFilesApi(
+    attachmentId: string,
+    buffer: Buffer,
+    fileName: string,
+    mimeType: string
+  ): void {
+    const anthropicFilesService = getAnthropicFilesService();
+
+    anthropicFilesService
+      .uploadFile(buffer, fileName, mimeType)
+      .then(async (anthropicFileId) => {
+        await this.updateAnthropicFileId(attachmentId, anthropicFileId);
+      })
+      .catch((error: unknown) => {
+        this.logger.warn(
+          {
+            error: error instanceof Error ? error.message : String(error),
+            attachmentId,
+          },
+          'Anthropic Files API upload failed — will use base64 fallback'
+        );
+      });
+  }
+
+  /**
+   * Update the anthropic_file_id for an attachment record.
+   *
+   * @param attachmentId - Attachment ID to update
+   * @param anthropicFileId - Anthropic Files API file ID
+   */
+  private async updateAnthropicFileId(
+    attachmentId: string,
+    anthropicFileId: string
+  ): Promise<void> {
+    const query = `
+      UPDATE chat_attachments
+      SET anthropic_file_id = @anthropic_file_id
+      WHERE id = @id AND is_deleted = 0
+    `;
+
+    await executeQuery(query, {
+      id: attachmentId,
+      anthropic_file_id: anthropicFileId,
+    });
+
+    this.logger.debug(
+      { attachmentId, anthropicFileId },
+      'Updated chat attachment with Anthropic file ID'
+    );
+  }
 
   /**
    * Sanitize filename for blob storage path

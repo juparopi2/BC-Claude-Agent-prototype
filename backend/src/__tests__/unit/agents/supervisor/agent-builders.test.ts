@@ -4,10 +4,13 @@ import { getAgentRegistry, resetAgentRegistry } from '@modules/agents/core/regis
 import { registerAgents } from '@modules/agents/core/registry/registerAgents';
 
 // vi.hoisted ensures these are initialized before vi.mock factories run
-const { mockModel, mockEnforcerResult, mockCreateFirstCallEnforcer, mockGetModelConfig } = vi.hoisted(() => {
+const { mockModel, mockBoundModel, mockEnforcerResult, mockCreateFirstCallEnforcer, mockGetModelConfig } = vi.hoisted(() => {
+  const boundModel = {
+    invoke: vi.fn().mockResolvedValue({ content: 'bound' }),
+  };
   const model = {
     invoke: vi.fn().mockResolvedValue({ content: 'test' }),
-    bindTools: vi.fn(),
+    bindTools: vi.fn().mockReturnValue(boundModel),
   };
   const enforcerResult = {
     invoke: vi.fn().mockResolvedValue({ content: 'enforced' }),
@@ -17,6 +20,7 @@ const { mockModel, mockEnforcerResult, mockCreateFirstCallEnforcer, mockGetModel
   const getConfig = vi.fn();
   return {
     mockModel: model,
+    mockBoundModel: boundModel,
     mockEnforcerResult: enforcerResult,
     mockCreateFirstCallEnforcer: createEnforcer,
     mockGetModelConfig: getConfig,
@@ -60,6 +64,32 @@ vi.mock('@/modules/agents/graphing/tools', () => ({
   validateChartConfigTool: { name: 'validate_chart_config', description: 'Validate config', schema: {} },
 }));
 
+// Mock research tools (Anthropic server-side tools) to avoid import issues
+vi.mock('@/modules/agents/research/tools', () => ({
+  webSearchTool: { name: 'web_search', description: 'Web search', type: 'web_search_20250305' },
+  webFetchTool: { name: 'web_fetch', description: 'Web fetch', type: 'web_fetch_20250910' },
+  codeExecutionTool: { name: 'code_execution', description: 'Code execution', type: 'code_execution_20250825' },
+}));
+
+// Mock RAG tools to include the new visual search tools
+vi.mock('@/modules/agents/rag-knowledge/tools', () => ({
+  knowledgeSearchTool: { name: 'knowledgeSearch', description: 'Search knowledge', schema: {} },
+  filteredKnowledgeSearchTool: { name: 'filteredKnowledgeSearch', description: 'Filtered search', schema: {} },
+  visualImageSearchTool: { name: 'visualImageSearch', description: 'Visual image search', schema: {} },
+  findSimilarImagesTool: { name: 'findSimilarImages', description: 'Find similar images', schema: {} },
+}));
+
+// Mock BC tools to avoid file system dependencies
+vi.mock('@/modules/agents/business-central/tools', () => ({
+  listAllEntitiesTool: { name: 'listAllEntities', description: 'List entities', schema: {} },
+  searchEntityOperationsTool: { name: 'searchEntityOperations', description: 'Search', schema: {} },
+  getEntityDetailsTool: { name: 'getEntityDetails', description: 'Details', schema: {} },
+  getEntityRelationshipsTool: { name: 'getEntityRelationships', description: 'Relations', schema: {} },
+  validateWorkflowStructureTool: { name: 'validateWorkflowStructure', description: 'Validate', schema: {} },
+  buildKnowledgeBaseWorkflowTool: { name: 'buildKnowledgeBaseWorkflow', description: 'Build', schema: {} },
+  getEndpointDocumentationTool: { name: 'getEndpointDocumentation', description: 'Docs', schema: {} },
+}));
+
 describe('agent-builders', () => {
   beforeEach(() => {
     resetAgentRegistry();
@@ -70,10 +100,10 @@ describe('agent-builders', () => {
   });
 
   describe('buildReactAgents', () => {
-    it('should build agents for BC, RAG, and Graphing', async () => {
+    it('should build agents for BC, RAG, Graphing, and Research', async () => {
       const agents = await buildReactAgents();
 
-      expect(agents).toHaveLength(3);
+      expect(agents).toHaveLength(4);
     });
 
     it('should create agents with id, name, and agent properties', async () => {
@@ -149,14 +179,22 @@ describe('agent-builders', () => {
       }
     });
 
-    it('should pass enforced model (not raw model) to createReactAgent', async () => {
+    it('should pass enforced model (not raw model) to createReactAgent for client-tool agents', async () => {
       const { createReactAgent } = await import('@langchain/langgraph/prebuilt');
       const mockCreateReactAgent = vi.mocked(createReactAgent);
 
       await buildReactAgents();
 
-      // Verify the enforced model is passed as llm, not the raw model
-      for (const call of mockCreateReactAgent.mock.calls) {
+      // Verify the enforced model is passed for agents with client-side tools (BC, RAG, Graphing).
+      // Research agent uses Anthropic server-side tools and binds directly — its llm is not the enforcer.
+      const clientToolAgentNames = ['bc-agent', 'rag-agent', 'graphing-agent'];
+      const clientToolCalls = mockCreateReactAgent.mock.calls.filter((call) => {
+        const config = call[0] as { name?: string };
+        return clientToolAgentNames.includes(config.name ?? '');
+      });
+
+      expect(clientToolCalls).toHaveLength(3);
+      for (const call of clientToolCalls) {
         const config = call[0] as { llm: unknown };
         expect(config.llm).toBe(mockEnforcerResult);
         expect(config.llm).not.toBe(mockModel);
@@ -166,7 +204,8 @@ describe('agent-builders', () => {
     it('should call createFirstCallEnforcer with model and domain tools for each agent', async () => {
       await buildReactAgents();
 
-      // 3 worker agents: BC, RAG, Graphing
+      // 3 client-tool worker agents: BC, RAG, Graphing
+      // Research agent uses Anthropic server-side tools (bindTools directly), no enforcer needed
       expect(mockCreateFirstCallEnforcer).toHaveBeenCalledTimes(3);
 
       // Each call should receive the model and an array of tools

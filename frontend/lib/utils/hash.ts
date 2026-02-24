@@ -84,16 +84,16 @@ export interface FileHashResult {
  * ```
  */
 export async function computeFileHashesWithIds(files: File[]): Promise<FileHashResult[]> {
-  const results: FileHashResult[] = [];
+  const results: FileHashResult[] = new Array(files.length);
 
   await Promise.all(
     files.map(async (file, index) => {
       const hash = await computeFileSha256(file);
-      results.push({
+      results[index] = {
         file,
         hash,
         tempId: `temp-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 9)}`,
-      });
+      };
     })
   );
 

@@ -69,7 +69,15 @@ export function collectFolderFiles(
 
     for (const child of folder.children) {
       if (child.type === 'file') {
-        const file = (child as FileEntry).file;
+        const fileEntry = child as FileEntry;
+        const file = fileEntry.file;
+        // Defense-in-depth: verify browser-reported path matches expected parent
+        if (fileEntry.browserPath && !fileEntry.browserPath.startsWith(`/${folder.name}/`)) {
+          console.warn(
+            '[collectFolderFiles] Path mismatch: file "%s" has browserPath "%s" but parent folder is "%s"',
+            fileEntry.name, fileEntry.browserPath, folder.name
+          );
+        }
         files.push({ file, parentTempId: folderTempId });
         if (file.lastModified > maxLastModified) {
           maxLastModified = file.lastModified;
@@ -300,6 +308,12 @@ export function useBatchUpload(): UseBatchUploadReturn {
         // 1. Collect all files (flat + from folders), deduplicating any overlap
         const { allFiles, manifestFolders } = mergeFilesWithFolderContents(files, folders);
 
+        // Map File reference → parentTempId for order-independent lookup.
+        // This replaces fragile index-based correlation between allFiles and hashResults.
+        const fileToParentTempId = new Map<File, string | undefined>(
+          allFiles.map((f) => [f.file, f.parentTempId])
+        );
+
         if (allFiles.length === 0) return null;
 
         // Show preparing panel immediately (before any async work)
@@ -417,16 +431,13 @@ export function useBatchUpload(): UseBatchUploadReturn {
         // 4. File-level duplicate check (only for files not in keep_both or replace folders)
         const fileDupInput = finalHashResults
           .filter((h) => !skipFileDupCheckTempIds.has(h.tempId))
-          .map((h) => {
-            const originalIdx = finalHashResults.indexOf(h);
-            return {
-              tempId: h.tempId,
-              fileName: h.file.name,
-              fileSize: h.file.size,
-              contentHash: h.hash,
-              folderId: finalAllFiles[originalIdx]?.parentTempId,
-            };
-          });
+          .map((h) => ({
+            tempId: h.tempId,
+            fileName: h.file.name,
+            fileSize: h.file.size,
+            contentHash: h.hash,
+            folderId: fileToParentTempId.get(h.file),
+          }));
 
         // Build dup result combining skipped-by-folder-dup files
         let dupResult: { skipped: string[]; renames: Map<string, string>; replacements: Map<string, string> };
@@ -454,7 +465,6 @@ export function useBatchUpload(): UseBatchUploadReturn {
         // Filter out skipped files
         const skippedSet = new Set(dupResult.skipped);
         const proceedHashes = finalHashResults.filter((h) => !skippedSet.has(h.tempId));
-        const proceedFiles = finalAllFiles.filter((_, i) => !skippedSet.has(finalHashResults[i]!.tempId));
 
         if (proceedHashes.length === 0) {
           removeBatch(batchKey); // all files skipped
@@ -462,14 +472,14 @@ export function useBatchUpload(): UseBatchUploadReturn {
         }
 
         // 5. Build manifest (apply renames for "Keep Both" and replacements for "Replace")
-        const manifestFiles: ManifestFileItem[] = proceedHashes.map((h, i) => ({
+        const manifestFiles: ManifestFileItem[] = proceedHashes.map((h) => ({
           tempId: h.tempId,
           fileName: dupResult.renames.get(h.tempId) ?? h.file.name,
           mimeType: h.file.type || 'application/octet-stream',
           sizeBytes: h.file.size,
           contentHash: h.hash,
           lastModified: h.file.lastModified,
-          parentTempId: proceedFiles[i]?.parentTempId,
+          parentTempId: fileToParentTempId.get(h.file),
           ...(dupResult.replacements.has(h.tempId)
             ? { replaceFileId: dupResult.replacements.get(h.tempId) }
             : {}),

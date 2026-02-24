@@ -43,6 +43,12 @@ export interface FileEntry {
    */
   path: string;
 
+  /**
+   * Full path reported by the browser's FileSystem API (entry.fullPath).
+   * Used for defense-in-depth cross-verification of folder assignment.
+   */
+  browserPath?: string;
+
   /** The actual File object from the browser */
   file: File;
 

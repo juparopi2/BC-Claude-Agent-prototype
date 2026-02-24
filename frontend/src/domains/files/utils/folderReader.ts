@@ -178,10 +178,13 @@ export async function readFolderRecursive(
       const file = await readFileEntry(fileEntry);
       const validation = validateFile(file);
 
+      console.debug('[folderReader] file: %s | browserPath: %s | computedPath: %s', entry.name, entry.fullPath, currentPath);
+
       return {
         type: 'file',
         name: entry.name,
         path: currentPath,
+        browserPath: entry.fullPath,
         file,
         isValid: validation.isValid,
         invalidReason: validation.reason,
@@ -192,6 +195,7 @@ export async function readFolderRecursive(
         type: 'file',
         name: entry.name,
         path: currentPath,
+        browserPath: entry.fullPath,
         file: new File([], entry.name), // Placeholder file
         isValid: false,
         invalidReason: `Failed to read file: ${error instanceof Error ? error.message : 'Unknown error'}`,
@@ -214,6 +218,8 @@ export async function readFolderRecursive(
     const dirEntry = entry as FileSystemDirectoryEntry;
     const reader = dirEntry.createReader();
     const entries = await readAllDirectoryEntries(reader);
+
+    console.debug('[folderReader] dir: %s | browserPath: %s | %d entries', entry.name, entry.fullPath, entries.length);
 
     const children: (FolderEntry | FileEntry)[] = [];
 
@@ -390,6 +396,11 @@ export async function buildFolderStructure(dataTransfer: DataTransfer): Promise<
   // Separate valid and invalid files
   const validFiles = allFiles.filter((f) => f.isValid);
   const invalidFiles = allFiles.filter((f) => !f.isValid);
+
+  console.debug(
+    '[folderReader] buildFolderStructure summary: %d folders, %d files (%d valid, %d invalid), %d empty filtered',
+    totalFolders, allFiles.length, validFiles.length, invalidFiles.length, emptyFolderCount
+  );
 
   return {
     rootFolders: filteredRootFolders,

@@ -75,8 +75,11 @@ export {
   AGENT_API,
   INTERNAL_TOOL_PREFIXES,
   isInternalTool,
+  SERVER_TOOL_NAMES,
+  isServerToolName,
   type AgentId,
   type AgentCapability,
+  type ServerToolName,
 } from './agent-registry.constants';
 
 // Pipeline Status (PRD-01)

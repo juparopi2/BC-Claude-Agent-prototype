@@ -30,3 +30,16 @@ registerRenderer('chart_config', () =>
 registerRenderer('citation_result', () =>
   import('../CitationRenderer').then(m => ({ default: m.CitationRenderer as ComponentType<RendererProps> }))
 );
+
+// Server tool renderers (Anthropic web_search, web_fetch, code_execution)
+registerRenderer('web_search_result', () =>
+  import('../WebSearchRenderer').then(m => ({ default: m.WebSearchRenderer as ComponentType<RendererProps> }))
+);
+
+registerRenderer('web_fetch_result', () =>
+  import('../WebFetchRenderer').then(m => ({ default: m.WebFetchRenderer as ComponentType<RendererProps> }))
+);
+
+registerRenderer('code_execution_result', () =>
+  import('../CodeExecutionRenderer').then(m => ({ default: m.CodeExecutionRenderer as ComponentType<RendererProps> }))
+);

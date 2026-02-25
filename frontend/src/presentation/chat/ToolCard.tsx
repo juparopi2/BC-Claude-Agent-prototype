@@ -4,11 +4,11 @@ import { useState, useMemo } from 'react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Wrench, ChevronRight, ChevronDown, Clock, CheckCircle2, XCircle, Loader2, BarChart3, FileText, ImageIcon, Code, Table, FileSearch } from 'lucide-react';
+import { Wrench, ChevronRight, ChevronDown, Clock, CheckCircle2, XCircle, Loader2, BarChart3, FileText, ImageIcon, Code, Table, FileSearch, Search, Globe, Terminal } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import JsonView from '@uiw/react-json-view';
 import { useTheme } from 'next-themes';
-import { isAgentRenderedResult, AGENT_COLOR, AGENT_ID } from '@bc-agent/shared';
+import { isAgentRenderedResult, AGENT_COLOR, AGENT_ID, SERVER_TOOL_NAMES } from '@bc-agent/shared';
 import { AgentResultRenderer } from './AgentResultRenderer';
 
 /**
@@ -133,11 +133,28 @@ export function ToolCard({
   const citationTitle = citationData?.query ?? null;
   const isCitationCompleted = isCitationResult && status === 'completed';
 
+  // Server tool detection (web_search, web_fetch, code_execution sub-tools)
+  const serverToolConfig = useMemo(() => {
+    switch (toolName) {
+      case SERVER_TOOL_NAMES.WEB_SEARCH:
+        return { icon: Search, badge: 'Web Search', title: (toolArgs as { query?: string }).query ?? toolName };
+      case SERVER_TOOL_NAMES.WEB_FETCH:
+        return { icon: Globe, badge: 'Fetched', title: (toolArgs as { url?: string }).url ?? toolName };
+      case SERVER_TOOL_NAMES.BASH_CODE_EXECUTION:
+      case SERVER_TOOL_NAMES.TEXT_EDITOR_CODE_EXECUTION:
+        return { icon: Terminal, badge: 'Executed', title: toolName === SERVER_TOOL_NAMES.BASH_CODE_EXECUTION ? 'Code Execution' : 'File Editor' };
+      default:
+        return null;
+    }
+  }, [toolName, toolArgs]);
+  const isServerTool = serverToolConfig !== null;
+  const isServerToolCompleted = isServerTool && status === 'completed';
+
   const [isOpen, setIsOpen] = useState(false);
   const [hasBeenManuallyToggled, setHasBeenManuallyToggled] = useState(false);
 
-  // Auto-expand for completed chart/citation results, but let user toggle afterward
-  const effectiveIsOpen = (!hasBeenManuallyToggled && (isChartCompleted || isCitationCompleted)) || isOpen;
+  // Auto-expand for completed chart/citation/server tool results, but let user toggle afterward
+  const effectiveIsOpen = (!hasBeenManuallyToggled && (isChartCompleted || isCitationCompleted || isServerToolCompleted)) || isOpen;
 
   const handleOpenChange = (open: boolean) => {
     setHasBeenManuallyToggled(true);
@@ -145,7 +162,7 @@ export function ToolCard({
   };
 
   // Extract values
-  const displayName = chartTitle ?? citationTitle ?? toolName;
+  const displayName = chartTitle ?? citationTitle ?? serverToolConfig?.title ?? toolName;
   const displayArgs = toolArgs;
   const displayResult = result;
   const displayError = error;
@@ -217,30 +234,42 @@ export function ToolCard({
   // Result-type-specific overrides for avatar icon, colors, and badge
   // Citation color sourced from AGENT_COLOR to stay consistent with the RAG agent UI
   const ragColor = AGENT_COLOR[AGENT_ID.RAG_AGENT]; // #10B981
-  const AvatarIcon = isChartResult ? BarChart3 : isCitationResult ? CitationIcon : Wrench;
-  const avatarClass = (isChartCompleted || isCitationCompleted) ? '' : config.avatarClass;
+  const researchColor = AGENT_COLOR[AGENT_ID.RESEARCH_AGENT]; // #6366F1
+  const ServerToolIcon = serverToolConfig?.icon ?? Wrench;
+  const AvatarIcon = isChartResult ? BarChart3 : isCitationResult ? CitationIcon : isServerTool ? ServerToolIcon : Wrench;
+  const avatarClass = (isChartCompleted || isCitationCompleted || isServerToolCompleted) ? '' : config.avatarClass;
   const avatarStyle: React.CSSProperties | undefined = isChartCompleted
     ? { backgroundColor: '#F59E0B26' }
     : isCitationCompleted
       ? { backgroundColor: `${ragColor}1A` }
-      : undefined;
+      : isServerToolCompleted
+        ? { backgroundColor: `${researchColor}1A` }
+        : undefined;
   const avatarIconClass = isChartCompleted
     ? 'text-amber-600 dark:text-amber-400'
     : isCitationCompleted
       ? ''
-      : config.iconClass;
+      : isServerToolCompleted
+        ? ''
+        : config.iconClass;
   const avatarIconStyle: React.CSSProperties | undefined = isCitationCompleted
     ? { color: ragColor }
-    : undefined;
-  const badgeLabel = isChartCompleted ? 'Chart' : isCitationCompleted ? 'Search' : config.label;
+    : isServerToolCompleted
+      ? { color: researchColor }
+      : undefined;
+  const badgeLabel = isChartCompleted ? 'Chart' : isCitationCompleted ? 'Search' : isServerToolCompleted ? serverToolConfig!.badge : config.label;
   const badgeClass = isChartCompleted
     ? 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300'
     : isCitationCompleted
       ? ''
-      : config.badgeClass;
+      : isServerToolCompleted
+        ? ''
+        : config.badgeClass;
   const badgeStyle: React.CSSProperties | undefined = isCitationCompleted
     ? { backgroundColor: `${ragColor}1A`, color: ragColor }
-    : undefined;
+    : isServerToolCompleted
+      ? { backgroundColor: `${researchColor}1A`, color: researchColor }
+      : undefined;
 
   return (
     <div className="flex gap-3 py-2" data-testid="tool-card">
@@ -291,6 +320,7 @@ export function ToolCard({
                 <div className="text-xs font-medium text-emerald-700 dark:text-emerald-300 mb-1">Result</div>
                 <AgentResultRenderer
                   result={displayResult}
+                  toolName={toolName}
                   fallback={
                     <JsonView
                       value={tryParseJSON(displayResult)}

@@ -1,21 +1,25 @@
 'use client';
 
 import { Suspense, createElement, useMemo, type ReactNode } from 'react';
-import { isAgentRenderedResult } from '@bc-agent/shared';
+import { isAgentRenderedResult, detectServerToolResultType } from '@bc-agent/shared';
 import { getRenderer } from './rendererRegistry';
 
 interface AgentResultRendererProps {
   /** The tool result to render */
   result: unknown;
+  /** Tool name for server tool result type detection */
+  toolName?: string;
   /** Fallback component when no renderer matches */
   fallback: ReactNode;
 }
 
 /**
  * Routes tool results to specialized renderers based on `_type` field.
+ * For server tools (web_search, web_fetch, code_execution), falls back to
+ * toolName-based detection when `_type` is absent.
  * Falls back to provided fallback (typically JsonView) for unknown types.
  */
-export function AgentResultRenderer({ result, fallback }: AgentResultRendererProps) {
+export function AgentResultRenderer({ result, toolName, fallback }: AgentResultRendererProps) {
   // Parse JSON strings — tool results arrive as strings via WebSocket
   // but as objects on page reload (messageTransformer parses them)
   const parsedResult = useMemo(() => {
@@ -28,7 +32,11 @@ export function AgentResultRenderer({ result, fallback }: AgentResultRendererPro
     return result;
   }, [result]);
 
-  const resultType = isAgentRenderedResult(parsedResult) ? parsedResult._type : null;
+  // Detect result type: first try _type discriminator, then server tool detection
+  const resultType = useMemo(() => {
+    if (isAgentRenderedResult(parsedResult)) return parsedResult._type;
+    return detectServerToolResultType(toolName, parsedResult);
+  }, [parsedResult, toolName]);
 
   const rendererElement = useMemo(() => {
     if (!resultType) return null;

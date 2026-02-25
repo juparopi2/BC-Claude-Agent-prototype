@@ -399,7 +399,7 @@ export type {
   AgentRenderedResultBase,
 } from './agent-rendered-result.types';
 
-export { isAgentRenderedResult } from './agent-rendered-result.types';
+export { isAgentRenderedResult, detectServerToolResultType } from './agent-rendered-result.types';
 
 // Citation Result types (PRD-071)
 export type {

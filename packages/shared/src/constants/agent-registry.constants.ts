@@ -99,6 +99,32 @@ export const AGENT_API = {
 } as const;
 
 // ============================================
+// SERVER TOOL NAMES (Anthropic server-side tools)
+// ============================================
+
+/**
+ * Names of Anthropic server-side tools.
+ * These tools execute on Anthropic's servers (web_search, code_execution, etc.)
+ * and produce results with distinct data formats requiring custom UI renderers.
+ */
+export const SERVER_TOOL_NAMES = {
+  WEB_SEARCH: 'web_search',
+  WEB_FETCH: 'web_fetch',
+  CODE_EXECUTION: 'code_execution',
+  BASH_CODE_EXECUTION: 'bash_code_execution',
+  TEXT_EDITOR_CODE_EXECUTION: 'text_editor_code_execution',
+} as const;
+
+export type ServerToolName = (typeof SERVER_TOOL_NAMES)[keyof typeof SERVER_TOOL_NAMES];
+
+/**
+ * Check if a tool name is an Anthropic server-side tool.
+ */
+export function isServerToolName(toolName: string): toolName is ServerToolName {
+  return Object.values(SERVER_TOOL_NAMES).includes(toolName as ServerToolName);
+}
+
+// ============================================
 // INTERNAL TOOL DETECTION
 // ============================================
 

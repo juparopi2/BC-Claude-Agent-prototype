@@ -18,6 +18,7 @@ import {
   FileCode,
   FileArchive,
   FileWarning,
+  Presentation,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { env } from '@/lib/config/env';
@@ -72,9 +73,10 @@ function getExtension(fileName: string): string {
 }
 
 /**
- * Get icon type based on file type
+ * Get icon type based on file type.
+ * Returns specific types for PDF, Word, Excel, PowerPoint for color-coding.
  */
-function getFileIconType(fileName: string, mimeType: string): 'text' | 'spreadsheet' | 'image' | 'code' | 'archive' | 'file' {
+function getFileIconType(fileName: string, mimeType: string): 'pdf' | 'word' | 'excel' | 'powerpoint' | 'text' | 'spreadsheet' | 'image' | 'code' | 'archive' | 'file' {
   // Check mimeType first for images
   if (mimeType?.startsWith('image/')) {
     return 'image';
@@ -84,15 +86,21 @@ function getFileIconType(fileName: string, mimeType: string): 'text' | 'spreadsh
 
   switch (ext) {
     case 'pdf':
+      return 'pdf';
     case 'doc':
     case 'docx':
+      return 'word';
+    case 'xls':
+    case 'xlsx':
+      return 'excel';
+    case 'ppt':
+    case 'pptx':
+      return 'powerpoint';
+    case 'csv':
+      return 'spreadsheet';
     case 'txt':
     case 'md':
       return 'text';
-    case 'xls':
-    case 'xlsx':
-    case 'csv':
-      return 'spreadsheet';
     case 'png':
     case 'jpg':
     case 'jpeg':
@@ -120,14 +128,29 @@ function getFileIconType(fileName: string, mimeType: string): 'text' | 'spreadsh
 }
 
 /**
+ * Color classes for specific file types
+ */
+const fileTypeColors: Record<string, { icon: string; bg: string }> = {
+  pdf: { icon: 'text-red-600', bg: 'bg-red-50 dark:bg-red-950/30' },
+  word: { icon: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-950/30' },
+  excel: { icon: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-950/30' },
+  powerpoint: { icon: 'text-orange-600', bg: 'bg-orange-50 dark:bg-orange-950/30' },
+};
+
+/**
  * Renders the appropriate file icon based on type
  */
 function FileIcon({ iconType, className }: { iconType: ReturnType<typeof getFileIconType>; className?: string }) {
   switch (iconType) {
+    case 'pdf':
+    case 'word':
     case 'text':
       return <FileText className={className} />;
+    case 'excel':
     case 'spreadsheet':
       return <FileSpreadsheet className={className} />;
+    case 'powerpoint':
+      return <Presentation className={className} />;
     case 'image':
       return <FileImage className={className} />;
     case 'code':
@@ -220,16 +243,18 @@ export function FileThumbnail({
 
   // Non-image or image error: show file type icon
   const iconType = getFileIconType(fileName, mimeType);
+  const colorConfig = fileTypeColors[iconType];
 
   return (
     <div
       className={cn(
-        'flex items-center justify-center rounded-lg bg-muted',
+        'flex items-center justify-center rounded-lg',
+        colorConfig?.bg ?? 'bg-muted',
         config.container,
         className
       )}
     >
-      <FileIcon iconType={iconType} className={cn(config.icon, 'text-muted-foreground')} />
+      <FileIcon iconType={iconType} className={cn(config.icon, colorConfig?.icon ?? 'text-muted-foreground')} />
     </div>
   );
 }

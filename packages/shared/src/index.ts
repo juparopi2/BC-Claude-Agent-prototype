@@ -353,6 +353,8 @@ export {
   isNormalizedCompleteEvent,
   // Agent Rendered Result type guard (PRD-070)
   isAgentRenderedResult,
+  // Server tool result type detection
+  detectServerToolResultType,
 } from './types';
 
 // File constants
@@ -489,8 +491,11 @@ export {
   AGENT_API,
   INTERNAL_TOOL_PREFIXES,
   isInternalTool,
+  SERVER_TOOL_NAMES,
+  isServerToolName,
   type AgentId,
   type AgentCapability,
+  type ServerToolName,
 
   // File Type Categories (RAG Filtered Search)
   FILE_TYPE_CATEGORIES,

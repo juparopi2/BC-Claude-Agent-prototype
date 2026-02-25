@@ -369,7 +369,7 @@ export class MessageContextBuilder {
         }
 
         if (isImageMimeType(file.mimeType)) {
-          // Image block
+          // Image block — use SAS URL instead of base64 to avoid checkpoint bloat
           if (file.sizeBytes > MAX_IMAGE_BYTES) {
             logger.warn(
               { fileId: mention.fileId, sizeBytes: file.sizeBytes },
@@ -377,17 +377,16 @@ export class MessageContextBuilder {
             );
             continue;
           }
-          const buffer = await uploadService.downloadFromBlob(file.blobPath);
+          const sasUrl = uploadService.generateReadSasUrl(file.blobPath);
           blocks.push({
             type: 'image',
             source: {
-              type: 'base64',
-              media_type: file.mimeType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
-              data: buffer.toString('base64'),
+              type: 'url',
+              url: sasUrl,
             },
-          });
+          } as AnthropicAttachmentContentBlock);
         } else if (file.mimeType === 'application/pdf') {
-          // PDF document block
+          // PDF document block — use SAS URL instead of base64 to avoid checkpoint bloat
           if (file.sizeBytes > MAX_PDF_BYTES) {
             logger.warn(
               { fileId: mention.fileId, sizeBytes: file.sizeBytes },
@@ -395,13 +394,12 @@ export class MessageContextBuilder {
             );
             continue;
           }
-          const buffer = await uploadService.downloadFromBlob(file.blobPath);
+          const sasUrl = uploadService.generateReadSasUrl(file.blobPath);
           blocks.push({
             type: 'document',
             source: {
-              type: 'base64',
-              media_type: 'application/pdf',
-              data: buffer.toString('base64'),
+              type: 'url',
+              url: sasUrl,
             },
           } as AnthropicAttachmentContentBlock);
         } else if (TEXT_MIME_TYPES.has(file.mimeType)) {

@@ -512,7 +512,40 @@ export class FileUploadService {
   }
 
   /**
-   * 9. Generate SAS URLs for multiple files in bulk (outside transaction)
+   * 9. Generate a read-only SAS URL for a blob.
+   *
+   * Used to create short-lived HTTPS URLs that the Anthropic API can fetch
+   * directly, replacing inline base64 data in graph state to avoid checkpoint
+   * size bloat.
+   *
+   * @param blobPath - Full blob path (e.g. 'users/{userId}/files/{timestamp}-{file}')
+   * @param expiryMinutes - SAS token expiry time in minutes (default: 60)
+   * @returns Full blob URL with read-only SAS token
+   */
+  public generateReadSasUrl(blobPath: string, expiryMinutes: number = 60): string {
+    const { accountName, accountKey } = this.parseStorageCredentials();
+    const sharedKeyCredential = new StorageSharedKeyCredential(accountName, accountKey);
+    const blockBlobClient = this.containerClient.getBlockBlobClient(blobPath);
+
+    const sasToken = generateBlobSASQueryParameters(
+      {
+        containerName: this.containerName,
+        blobName: blobPath,
+        permissions: BlobSASPermissions.parse('r'),
+        startsOn: new Date(),
+        expiresOn: new Date(Date.now() + expiryMinutes * 60 * 1000),
+      },
+      sharedKeyCredential,
+    ).toString();
+
+    const sasUrl = `${blockBlobClient.url}?${sasToken}`;
+
+    this.logger.debug({ blobPath, expiryMinutes }, 'Read SAS URL generated');
+    return sasUrl;
+  }
+
+  /**
+   * 10. Generate SAS URLs for multiple files in bulk (outside transaction)
    *
    * Generates all SAS URLs in parallel with controlled concurrency.
    * Designed to run BEFORE a database transaction to avoid transaction timeout.

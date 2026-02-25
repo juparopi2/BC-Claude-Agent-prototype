@@ -304,6 +304,44 @@ export interface AnthropicImageBlock {
 }
 
 /**
+ * Anthropic document content block using URL reference.
+ *
+ * Used when a document is available via HTTPS URL (e.g. Azure Blob SAS URL).
+ * Avoids base64 bloat in graph state / checkpoints.
+ * @see https://docs.anthropic.com/en/docs/build-with-claude/pdf-support
+ */
+export interface AnthropicUrlDocumentBlock {
+  type: 'document';
+  source: {
+    type: 'url';
+    url: string;
+  };
+  /** Optional cache control for prompt caching */
+  cache_control?: {
+    type: 'ephemeral';
+  };
+}
+
+/**
+ * Anthropic image content block using URL reference.
+ *
+ * Used when an image is available via HTTPS URL (e.g. Azure Blob SAS URL).
+ * Avoids base64 bloat in graph state / checkpoints.
+ * @see https://docs.anthropic.com/en/docs/build-with-claude/vision
+ */
+export interface AnthropicUrlImageBlock {
+  type: 'image';
+  source: {
+    type: 'url';
+    url: string;
+  };
+  /** Optional cache control for prompt caching */
+  cache_control?: {
+    type: 'ephemeral';
+  };
+}
+
+/**
  * Anthropic document content block using Files API reference.
  *
  * Used when a file has been pre-uploaded to Anthropic's Files API.
@@ -346,6 +384,8 @@ export interface AnthropicFileImageBlock {
 export type AnthropicAttachmentContentBlock =
   | AnthropicDocumentBlock
   | AnthropicImageBlock
+  | AnthropicUrlDocumentBlock
+  | AnthropicUrlImageBlock
   | AnthropicFileDocumentBlock
   | AnthropicFileImageBlock;
 
@@ -371,7 +411,7 @@ export function isImageMimeType(mimeType: string): boolean {
 export interface LangChainImageBlock {
   type: 'image_url';
   image_url: {
-    url: string; // data:mime;base64,data format
+    url: string; // data:mime;base64,data URI or HTTPS URL (e.g. SAS URL)
   };
 }
 
@@ -402,6 +442,10 @@ export interface LangChainDocumentBlock {
     | {
         type: 'file';
         file_id: string;
+      }
+    | {
+        type: 'url';
+        url: string;
       };
 }
 

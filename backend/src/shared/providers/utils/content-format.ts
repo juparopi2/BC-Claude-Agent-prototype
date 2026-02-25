@@ -43,6 +43,23 @@ export function convertToLangChainFormat(
       } as LangChainContentBlock;
     }
 
+    // URL references (e.g. Azure Blob SAS URLs):
+    // - Images: LangChain image_url format with HTTPS URL
+    //   (LangChain's _formatImage detects HTTPS and converts to Anthropic { type: 'url' } format)
+    // - Documents: pass through as-is (Anthropic native URL format)
+    if (block.source.type === 'url') {
+      if (block.type === 'image') {
+        return {
+          type: 'image_url',
+          image_url: { url: block.source.url },
+        };
+      }
+      return {
+        type: 'document',
+        source: block.source,
+      };
+    }
+
     if (block.type === 'image') {
       // Convert Anthropic native base64 image format to LangChain image_url format
       return {

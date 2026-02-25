@@ -356,6 +356,55 @@ describe('FileUploadService', () => {
     });
   });
 
+  describe('generateReadSasUrl()', () => {
+    it('should return a URL string containing the blob path', () => {
+      const service = getFileUploadService();
+      const blobPath = 'users/user-123/files/1733683200000-invoice.pdf';
+
+      const url = service.generateReadSasUrl(blobPath);
+
+      expect(typeof url).toBe('string');
+      expect(url).toContain(blobPath);
+    });
+
+    it('should return a URL with SAS query parameters (contains "?")', () => {
+      const service = getFileUploadService();
+      const blobPath = 'users/user-456/files/1733683200000-report.docx';
+
+      const url = service.generateReadSasUrl(blobPath);
+
+      expect(url).toContain('?');
+    });
+
+    it('should work with default expiry (no second argument)', () => {
+      const service = getFileUploadService();
+      const blobPath = 'users/user-789/files/1733683200000-document.pdf';
+
+      expect(() => {
+        service.generateReadSasUrl(blobPath);
+      }).not.toThrow();
+
+      const url = service.generateReadSasUrl(blobPath);
+      expect(typeof url).toBe('string');
+      expect(url.length).toBeGreaterThan(0);
+    });
+
+    it('should accept custom expiry minutes', () => {
+      const service = getFileUploadService();
+      const blobPath = 'users/user-999/files/1733683200000-image.png';
+      const customExpiry = 120;
+
+      expect(() => {
+        service.generateReadSasUrl(blobPath, customExpiry);
+      }).not.toThrow();
+
+      const url = service.generateReadSasUrl(blobPath, customExpiry);
+      expect(typeof url).toBe('string');
+      expect(url).toContain('?');
+      expect(url).toContain(blobPath);
+    });
+  });
+
   // ============================================================================
   // INTEGRATION TESTS MOVED
   // ============================================================================
